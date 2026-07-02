@@ -18299,7 +18299,7 @@
                         t.sort((a, b) => a[0] - b[0]);
                         const bal = Number(window._levSchedBalance || 0);
                         let tgt = null; for (const tier of t) { if (bal >= tier[0]) tgt = tier[1]; else break; }
-                        out.textContent = (tgt !== null)
+                        out.textContent = (tgt !== null && tgt > 0)   // tgt<=0 = fail-open like the engine (M2)
                             ? `→ active: trade $${Math.round(tgt).toLocaleString()} / reserve $${Math.round(Math.max(0, bal - tgt)).toLocaleString()} @ $${Math.round(bal).toLocaleString()}`
                             : `→ below first tier: full balance tradeable`;
                     };

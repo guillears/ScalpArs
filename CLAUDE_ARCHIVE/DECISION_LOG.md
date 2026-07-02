@@ -1885,3 +1885,17 @@ Operator correction to the same-day working_capital ship: "the whole idea is to 
 Also set `leverage_balance_schedule="0:20, 25000:15, 75000:10, 250000:5"` in config (the ratified 4 tiers — the UI had unsaved guess values; config is now the truth). Both schedules inert at $3k; the only live-behavior config remains max_gross 25×.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---
+
+## 2026-07-02 — Code-review fixes on the auto reserve schedule: C1 equal_split sizing + M2 readout parity; I2 lev-clamp documented
+
+Code review (dispatched on the working tree) findings and resolutions:
+- **C1 (Critical, FIXED):** the equal_split per-position sizing branch computed its own reserve knowing only percentage/fixed — in schedule mode it silently fell back to `reserve_fixed=$500`, so per-position base at the $150k tier would be (150k−500)/5 ≈ $29.9k instead of target/5 = $10k (concentration bug: 2 fat positions instead of 5×$10k; total deployment was still clamped by the tradeable cap post equity-fix, but sizing was wrong). Fixed: equal_split's reserve_from_total is now mode-aware (schedule via the same tier lookup on total equity, working_capital via target, percentage, fixed). Verified: $150k → $10k/position, $50k → $5.5k/position.
+- **I1 (already fixed pre-commit):** tier keyed on total equity (free+margin) like the lev schedule, not free balance; reviewer confirmed the correct formulation matches what shipped (new tradeable = target − deployed, clamped ≥0).
+- **I2 (documented, operator-blessed):** the ratified `0:20` lev tier is NOT fully inert — it clamps the one remaining lev-stacked cell BTC_60-65_22-25 LONG (2×inv×1.5×lev = 30× → capped 20×, eff 3×→2×). Kept: consistent with the capital-scaling de-lever intent and the Jun-19 lev de-mux precedent. CURRENT_STATE multiplier line updated; its verdict gate now effectively judges a 2×-inv cell.
+- **M2 (FIXED):** UI schedule readout now treats a 0-valued tier as fail-open (matches engine) — `tgt > 0` guard.
+- **M1/M3/M4 (noted, no change):** 0-tier = "trade everything" fail-open semantics (convention); mode-switch save rewrites non-selected mode defaults (pre-existing pattern); UI table fixed at 8 rows (7 used +1 spare — a 9-tier schedule would truncate; revisit if the table ever grows).
+- **Withdrawal semantics clarified for the record (operator Q):** the schedule is STATELESS — withdrawing the $22.5k reserve at $50k leaves a $27.5k account that re-tiers immediately to the $25k row (trade $17.5k, reserve $10k) and re-climbs the curve with profits. Each withdrawal steps down the table; risk always matches CURRENT equity.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

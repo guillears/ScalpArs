@@ -2164,7 +2164,18 @@ class TradingEngine:
         elif tc.investment.mode == "equal_split":
             max_pos = tc.investment.max_open_positions or 5
             base = total_portfolio if total_portfolio else available_balance
-            if tc.investment.reserve_mode == "percentage":
+            if tc.investment.reserve_mode == "schedule":
+                # Jul 2 fix (code-review C1): this branch previously only knew percentage/fixed and
+                # silently fell back to reserve_fixed in schedule mode → per-position base ignored
+                # the working-capital target ((equity-500)/5 ≈ $30k instead of target/5 = $10k at
+                # the $150k tier). Same target lookup as the safe-reserve calc above.
+                _es_tgt = _lookup_leverage_schedule(
+                    getattr(tc.investment, 'reserve_schedule', ''), base)
+                reserve_from_total = max(0.0, base - _es_tgt) if (_es_tgt is not None and _es_tgt > 0) else 0.0
+            elif tc.investment.reserve_mode == "working_capital":
+                _es_wct = float(getattr(tc.investment, 'working_capital_target', 0.0) or 0.0)
+                reserve_from_total = max(0.0, base - _es_wct) if _es_wct > 0 else 0.0
+            elif tc.investment.reserve_mode == "percentage":
                 reserve_from_total = base * (tc.investment.reserve_percentage / 100)
             else:
                 reserve_from_total = tc.investment.reserve_fixed

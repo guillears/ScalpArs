@@ -1899,3 +1899,10 @@ Code review (dispatched on the working tree) findings and resolutions:
 - **Withdrawal semantics clarified for the record (operator Q):** the schedule is STATELESS — withdrawing the $22.5k reserve at $50k leaves a $27.5k account that re-tiers immediately to the $25k row (trade $17.5k, reserve $10k) and re-climbs the curve with profits. Each withdrawal steps down the table; risk always matches CURRENT equity.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+## 2026-07-02 — NAV/share history + true-equity NAV fix + heatmap totals (4a2fb05)
+- **BUG FIX:** `_get_portfolio_value` excluded open-position unrealized P&L → NAV/share stepped on every close and deposits/withdrawals while positions were open priced shares at wrong NAV. Now: free + margin + unrealized (from live `current_price`, gross — fees hit BNB at close) + BNB, both paper and live.
+- **NavSnapshot** table + hourly server-side upsert loop (one row per UTC-3 day). `/api/investors` serves 120d `nav_history` + `nav_high_water` + tradeable/reserve split. UI: NAV chart (HWM + $1.00 breakeven dashes) + panel sub-lines. D12: NAV section in both text exports via shared `_buildNavHistoryLines`.
+- Portfolio panel item #3 (ledger NAV-at-transaction) verified already built (Jun 1 ledger).
+- **Day×Time Heatmap:** marginal totals (per-day col, per-block row, grand corner), trade-weighted `dtHeatmapAgg`, all 3 surfaces. Descriptive only — any time-of-day gate still needs N≥30 cross-batch.
+- Also this session (analysis, no ship): RngPos×PairRSIdir and 24h-volume flip separators both INVERT baseline↔fresh batch → rejected, do-not-re-derive; XPL blacklist evaluated and rejected (current-stack 3W/1L +$168).

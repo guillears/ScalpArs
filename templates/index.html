@@ -237,6 +237,8 @@
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">USDT Balance</p>
                     <p id="usdt-balance" class="text-2xl font-bold text-white">$0.00</p>
+                    <p id="usdt-tradeable" class="text-xs text-gray-500 mt-1"></p>
+                    <p id="usdt-reserve" class="text-xs text-gray-500"></p>
                 </div>
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">BNB Balance <span id="bnb-label" class="text-xs text-gray-500">(fee reserve)</span></p>
@@ -7896,6 +7898,16 @@
                 const data = await res.json();
                 
                 document.getElementById('usdt-balance').textContent = formatUSD(data.usdt_balance);
+                // Tradeable / Reserve split (Jul 2, 2026) — mirrors the engine's safe-reserve formula
+                // server-side; in working_capital mode the reserve line = the withdrawable staging pool.
+                const trEl = document.getElementById('usdt-tradeable');
+                const rsEl = document.getElementById('usdt-reserve');
+                if (trEl && rsEl && data.tradeable != null) {
+                    trEl.textContent = `Tradeable: ${formatUSD(data.tradeable)}`;
+                    rsEl.textContent = `Reserve: ${formatUSD(data.reserve)}`;
+                    rsEl.className = (data.reserve_mode === 'working_capital' && data.reserve > 0)
+                        ? 'text-xs text-emerald-400' : 'text-xs text-gray-500';
+                }
                 const bnbKey = `${data.bnb_balance}|${data.bnb_balance_usd}|${_bnbBurnRate}`;
                 if (bnbKey !== _lastBnbKey) {
                     _lastBnbKey = bnbKey;

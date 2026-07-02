@@ -629,11 +629,26 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
 
 # ----- Balance -----
 
+def _reserve_split(free_balance: float):
+    """Reserve / tradeable split for the balance card (Jul 2, 2026) — MUST mirror the engine's
+    safe-reserve formula (trading_engine._calculate_investment) so the display never drifts from
+    what sizing actually does. Applied to FREE balance (what the engine sees at entry)."""
+    _inv = config.trading_config.investment
+    if _inv.reserve_mode == "working_capital":
+        _wct = float(getattr(_inv, 'working_capital_target', 0.0) or 0.0)
+        reserve = max(0.0, free_balance - _wct) if _wct > 0 else 0.0
+    elif _inv.reserve_mode == "percentage":
+        reserve = free_balance * (_inv.reserve_percentage / 100)
+    else:
+        reserve = _inv.reserve_fixed
+    return round(reserve, 2), round(max(0.0, free_balance - reserve), 2), _inv.reserve_mode
+
+
 @app.get("/api/balance")
 async def get_balance(db: AsyncSession = Depends(get_db)):
     """Get account balance"""
     await trading_engine.initialize(db)
-    
+
     if trading_engine.is_paper_mode:
         balance = await trading_engine._recalculate_paper_balance(db)
         await trading_engine._recalculate_paper_bnb(db)
@@ -657,6 +672,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         total_portfolio = balance + used_margin + bnb_usd
         starting_balance = total_portfolio - _closed_pnl
 
+        _reserve, _tradeable, _rmode = _reserve_split(balance)
+
         return {
             "usdt_balance": balance,
             "bnb_balance": round(bnb_usd, 2),
@@ -664,6 +681,9 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "usdt_in_orders": used_margin,
             "total_portfolio": round(total_portfolio, 2),
             "starting_balance": round(starting_balance, 2),
+            "reserve": _reserve,
+            "tradeable": _tradeable,
+            "reserve_mode": _rmode,
             "is_paper": True
         }
     else:
@@ -672,6 +692,7 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         bnb_usd = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
         usdt_free = balance['usdt_free']
         total = balance['usdt_total'] + bnb_usd
+        _reserve, _tradeable, _rmode = _reserve_split(usdt_free)
         return {
             "usdt_balance": usdt_free,
             "bnb_balance": balance['bnb_total'],
@@ -680,6 +701,9 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "usdt_in_orders": balance['usdt_used'],
             "total_portfolio": round(total, 2),
             "starting_balance": None,  # live: no paper seed; chart falls back to reverse-derivation
+            "reserve": _reserve,
+            "tradeable": _tradeable,
+            "reserve_mode": _rmode,
             "is_paper": False
         }
 

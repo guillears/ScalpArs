@@ -4584,7 +4584,9 @@
                             <select id="config-reserve-mode" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500">
                                 <option value="percentage">Percentage</option>
                                 <option value="fixed">Fixed Amount</option>
+                                <option value="working_capital">Working Capital (fixed tradeable $)</option>
                             </select>
+                            <p class="text-xs text-gray-500 mt-1">Working Capital: tradeable = min(balance, value); reserve auto-grows with the account — the capital-scaling primary knob. Withdrawals pull from the reserve.</p>
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Reserve Value</label>
@@ -18197,7 +18199,8 @@
                 const exitFee = (config.maker_exit_enabled) ? makerPct : takerPct;
                 document.getElementById('maker-roundtrip-display').textContent = (entryFee + exitFee).toFixed(3) + '%';
                 document.getElementById('config-reserve-mode').value = config.investment.reserve_mode;
-                document.getElementById('config-reserve-value').value = config.investment.reserve_mode === 'percentage' ? config.investment.reserve_percentage : config.investment.reserve_fixed;
+                document.getElementById('config-reserve-value').value = config.investment.reserve_mode === 'percentage' ? config.investment.reserve_percentage
+                    : (config.investment.reserve_mode === 'working_capital' ? (config.investment.working_capital_target || 0) : config.investment.reserve_fixed);
                 document.getElementById('config-paper-balance').value = config.paper_balance;
                 document.getElementById('config-bnb-swap-enabled').value = config.bnb_swap_enabled ? 'true' : 'false';
                 document.getElementById('config-paper-bnb-initial').value = config.paper_bnb_initial_usd || 500;
@@ -19524,7 +19527,7 @@
 
         function updateReserveUnit() {
             const mode = document.getElementById('config-reserve-mode').value;
-            document.getElementById('config-reserve-unit').textContent = mode === 'percentage' ? '%' : 'USD';
+            document.getElementById('config-reserve-unit').textContent = mode === 'percentage' ? '%' : 'USD';  // fixed + working_capital are both $
         }
 
         document.getElementById('config-investment-mode').addEventListener('change', updateInvestmentUnit);
@@ -19596,6 +19599,7 @@
                     reserve_mode: resMode,
                     reserve_fixed: resMode === 'fixed' ? resValue : 500,
                     reserve_percentage: resMode === 'percentage' ? resValue : 20,
+                    working_capital_target: resMode === 'working_capital' ? resValue : 0,
                     cooldown_after_loss_minutes: parseInt(document.getElementById('config-cooldown-loss').value) || 5,
                     max_open_positions: parseInt(document.getElementById('config-max-positions').value) || 100,
                     min_investment_size: safeFloat(document.getElementById('config-min-investment').value) || 100,

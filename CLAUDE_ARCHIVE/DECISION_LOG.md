@@ -1860,3 +1860,16 @@ Operator-requested deep analysis of the 07-01/02 batch's "Entry Conditions by St
 **Registered in CURRENT_STATE (winner-cell block, 2026-07-02 update): PRE-COMMITTED GATE — ship `flip_short_bear_max=80` at N≥15 with WR≤40% AND avg≤−0.15%; abandon if the zone re-earns ≥60%WR.** No ship today. Batch also re-confirms the closed entry-separator conclusion: flip W/L are feature-inseparable at entry; per-batch inversion checks are the immune system.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---
+
+## 2026-07-02 — Capital-scaling v3 SHIPPED: working_capital reserve mode built (OFF) + max gross 30→25 + 4-tier lev schedule ratified
+
+Operator-driven redesign of the Liquidity & Risk Caps section (supersedes the 07-01 11-tier threshold=G/L table):
+- **Operator corrections accepted:** (a) a global gross target was the wrong slippage tool — the per-pair 0.1% cap + $500k ceiling are adaptive and already govern capacity; gross only matters for the correlated tail → it can breathe $150-500k as long as cluster-loss %-of-balance falls. (b) 11 lev tiers = over-engineered → **4 coarse tiers `0:20, 25000:15, 75000:10, 250000:5`** (reserve does the fine work; avoids double de-risk by construction). (c) Reserve schedule was too conservative → v3 anchored at operator's "$150k → save $100k, trade $50k"; beyond $250k keep GROWING tradeable to a $100k ceiling hypothesis at ~$500k (validated by exit_slippage_pct), then reserve absorbs all growth. (d) Reserve today = $0 (already live: percentage @ 0%) — full-send growth phase at $3k.
+- **BUILT (D11 full): `reserve_mode="working_capital"` + `working_capital_target`** — engine: at the safe-reserve calc, `reserve = max(0, available − target)` when target>0 → tradeable = min(available, target), reserve auto-grows with balance, clamping max cluster loss to a fixed $; withdrawals stage FROM the reserve. config.py default + json 0.0 + UI (3rd Reserve-Mode option, shared value input flips to USD, load/save) . **Shipped INERT** (mode=percentage, target=0). At each milestone the operator flips the target manually.
+- **SHIPPED: `max_gross_leverage` 30→25.** Clarified mechanics for the record: NOT per-trade leverage (positions stay 20×) — it caps Σ(open notional) ≤ balance×25 and blocks the NEXT entry; binds only under multiplier stacks = exactly the correlated-dump moment.
+- **Liquidation math recorded:** 20× isolated → liq ≈ −4.7% price move vs SL −0.70..−1.20 (~4× buffer); residual liq risk = violent gap/bot outage (covered by the ② server-side reduce-only stop item). With isolated margin the absolute worst case = working capital; the reserve is structurally untouchable.
+- v3 milestone table in CURRENT_STATE ① (10k/20% · 25k/30% · 50k/45% · 100k/60% · 150k/67% · 250k/72% · 500k/80%→$100k trade).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

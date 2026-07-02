@@ -2131,7 +2131,14 @@ class TradingEngine:
             return 0, 0, False
 
         # Calculate safe reserve
-        if tc.investment.reserve_mode == "percentage":
+        if tc.investment.reserve_mode == "working_capital":
+            # Jul 2, 2026 — capital-scaling PRIMARY knob: fix the working capital, reserve absorbs
+            # ALL balance growth (tradeable = min(available, target); reserve auto-grows). Clamps
+            # the max correlated-cluster loss to a fixed $ no matter how big the account gets.
+            # target<=0 = inert (behaves like reserve 0). See CURRENT_STATE capital-scaling v3.
+            _wct = float(getattr(tc.investment, 'working_capital_target', 0.0) or 0.0)
+            reserve = max(0.0, available_balance - _wct) if _wct > 0 else 0.0
+        elif tc.investment.reserve_mode == "percentage":
             reserve = available_balance * (tc.investment.reserve_percentage / 100)
         else:
             reserve = tc.investment.reserve_fixed

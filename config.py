@@ -1141,9 +1141,15 @@ class InvestmentConfig(BaseModel):
     percentage: float = 5.0  # % of available balance
     
     # Safe reserve
-    reserve_mode: str = "percentage"  # "fixed" or "percentage"
+    # Jul 2, 2026: added "working_capital" mode — the capital-scaling PRIMARY de-risk knob
+    # (CLAUDE_CURRENT_STATE capital-scaling strategy, operator-ratified v3 schedule). In this mode
+    # tradeable = min(available, working_capital_target) and the reserve auto-grows with balance,
+    # clamping the max correlated-cluster loss to a fixed $ regardless of account size. Withdrawals
+    # pull from the reserve pool. target=0 or mode != working_capital = inert (current behavior).
+    reserve_mode: str = "percentage"  # "fixed" | "percentage" | "working_capital"
     reserve_fixed: float = 500.0  # USD
     reserve_percentage: float = 20.0  # % of total balance
+    working_capital_target: float = 0.0  # USD tradeable cap for working_capital mode (0 = off)
     
     # Cooldown after trade close (prevents immediate re-entry on same pair, win or loss)
     # CLAUDE.md May 26: cross-batch evidence on 919-trade pool shows 84 same-pair re-entries

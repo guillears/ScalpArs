@@ -1906,3 +1906,9 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 - Portfolio panel item #3 (ledger NAV-at-transaction) verified already built (Jun 1 ledger).
 - **Day×Time Heatmap:** marginal totals (per-day col, per-block row, grand corner), trade-weighted `dtHeatmapAgg`, all 3 surfaces. Descriptive only — any time-of-day gate still needs N≥30 cross-batch.
 - Also this session (analysis, no ship): RngPos×PairRSIdir and 24h-volume flip separators both INVERT baseline↔fresh batch → rejected, do-not-re-derive; XPL blacklist evaluated and rejected (current-stack 3W/1L +$168).
+
+## 2026-07-02 — NAV package code-review fixes (19a93ed)
+Review (be35834..5cf0c8b) verified paper equity identity + no fee double-count + D12; found C1 + I1-I5, all fixed same day:
+- **C1 (critical, live-mode only):** get_balance fail-opens to zeros → could have persisted NAV≈0 snapshots and priced deposits at NAV≈0. Fixed: 'ok' sentinel, _portfolio_components raises on failed fetch, loop skips ≤0 portfolio, deposit/withdraw 503 on NAV≤0.
+- **Equity semantics unified:** balance-card total = TRUE equity (incl. unrealized) like the Portfolio panel; seed + calendar day-% stay REALIZED-only (stable baselines). New `_portfolio_components()` = single source of truth.
+- I3 chart try-isolation · I4 HWM whole-table MAX (was 120d window — would decay) · I5 export column width 16 · reset clears nav_snapshots · balance card "Open Positions: N" sub-line.

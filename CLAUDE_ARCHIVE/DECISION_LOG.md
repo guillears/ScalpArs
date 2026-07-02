@@ -1840,3 +1840,23 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 Operator drafted the UI schedule with the original guess tiers (0:20/10k:15/25k:10/100k:5). Analysis: mechanically valid but never converges to constant volume — within-tier gross still compounds 3-4× (10× tier: $250k→$990k; $198k/position at $99k balance vs thin-pair engine caps $30-50k and a ~$25-30k/pos slippage ceiling). The transition phase's goal is a ramp to CONSTANT gross (lev ∝ 1/balance = the fixed-volume cap via the lev knob), so the correct generator is **threshold(L) = G/L**. Concrete table at G=$150k placeholder registered in CURRENT_STATE ①: `0:20, 10000:15, 12500:12, 15000:10, 19000:8, 25000:6, 30000:5, 37500:4, 50000:3, 75000:2, 150000:1` (overshoot ≤~30%/tier; plateau from ~$7.5k balance). Locks: G calibrated from exit_slippage_pct telemetry (not chosen a priori); schedule ends at 1× → working-capital reserve mode is the continuation past balance=G; pick-one-primary still applies. Inert at $3k either way.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---
+
+## 2026-07-02 — Flip-short batch W-vs-L cross-check: every flashy axis inverts except bear-breadth; bear≥80 registered as BLOCK candidate with pre-committed gate
+
+Operator-requested deep analysis of the 07-01/02 batch's "Entry Conditions by Strategy — Winners vs Losers" (FAN flip-shorts 6W/4L: ZBT −1.19 / JTO −1.06 / XPL −0.79 / TIA −0.72; mom-shorts 2W/0L = nothing to separate). Method: theory-first per axis, then the inversion test vs SCREENED_BASELINE v3 (46 flips).
+
+**Inversion results (batch direction vs baseline direction):**
+- ADXΔ: batch losers LOW (+0.12 vs +0.51) / baseline losers HIGH (+0.43 vs +0.12) → ✗ INVERTED (3rd flip of this axis).
+- RngPos: batch losers at range top (90 vs 70) / baseline NO separation (66.6 vs 68.3) → ✗.
+- Pair EMA13-50 gap: batch losers positive-gap / baseline WINNERS positive-gap (+0.18 vs −0.21) → ✗ (the seductive "short before breakdown confirms" theory refuted both directions).
+- BTC 1h slope: batch losers 1h-rising (ZBT +0.46/XPL +0.35) / baseline 1h>+0.10 flips = **88.9%WR, the BEST cohort** → ✗ (fades ≠ continuations; the momentum-short 1h filter does NOT generalize to flips).
+- Pair 24h vol: batch losers thin (<$60M 2W/3L) / baseline thin pairs = best cohort (77.8%WR +7.03%) → ✗.
+- BTCExt%: trivial both windows. **Breadth(bear%): CONSISTENT — the only survivor** (losers higher-bear both windows).
+
+**bear≥80 (exhaustion zone, 3rd consistent window):** combined N=11, 5W/6L, 45.5%WR, −0.02% avg; holds the 4 worst losers (PUMP/AGLD/ZBT/WIF −1.16..−1.24 + TIA) AND the 2 biggest winners (ORDI +2.80, H +1.28). Block impact: baseline +$25 ≈ 0 (forfeits $609 winners / saves $634); fresh batch +$237 clean (0 winners forfeited) — 90% of the $ case is 2 fresh trades. Fails the C-gate (needs ≤40%WR ≤−0.20% N≥30). Mechanism sound (bear≥80 = capitulation extreme → bounce → fade squeezed; breadth-mirror of the shipped bear<20 floor).
+
+**Registered in CURRENT_STATE (winner-cell block, 2026-07-02 update): PRE-COMMITTED GATE — ship `flip_short_bear_max=80` at N≥15 with WR≤40% AND avg≤−0.15%; abandon if the zone re-earns ≥60%WR.** No ship today. Batch also re-confirms the closed entry-separator conclusion: flip W/L are feature-inseparable at entry; per-batch inversion checks are the immune system.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

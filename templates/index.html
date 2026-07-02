@@ -4587,8 +4587,9 @@
                                 <option value="percentage">Percentage</option>
                                 <option value="fixed">Fixed Amount</option>
                                 <option value="working_capital">Working Capital (fixed tradeable $)</option>
+                                <option value="schedule">Auto Schedule (balance → tradeable)</option>
                             </select>
-                            <p class="text-xs text-gray-500 mt-1">Working Capital: tradeable = min(balance, value); reserve auto-grows with the account — the capital-scaling primary knob. Withdrawals pull from the reserve.</p>
+                            <p class="text-xs text-gray-500 mt-1">Working Capital: tradeable = min(balance, value); reserve auto-grows — withdrawals pull from the reserve. Auto Schedule: same, but the target follows the Balance → Tradeable table below automatically (no manual milestone flips).</p>
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Reserve Value</label>
@@ -4596,6 +4597,21 @@
                                 <input type="number" id="config-reserve-value" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="20">
                                 <span id="config-reserve-unit" class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">%</span>
                             </div>
+                            <p class="text-xs text-gray-500 mt-1">Ignored in Auto Schedule mode (the table below rules).</p>
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-sm text-gray-400 mb-2">📐 Balance → Tradeable Schedule (Auto Schedule mode) — capital-scaling v3</label>
+                            <div id="res-schedule-rows" class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="10000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="8000"></div>
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="25000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="17500"></div>
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="50000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="27500"></div>
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="100000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="40000"></div>
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="150000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="50000"></div>
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="250000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="70000"></div>
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="500000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="100000"></div>
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="—"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="—"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Each line = "at balance ≥ $X, tradeable = $T" (reserve = balance − T, auto-grows; withdrawals pull from the reserve and it self-rebuilds). Below the first tier = no reserve (full balance trades). Active tier = highest ≤ balance. <span id="res-schedule-readout" class="text-emerald-400/80"></span></p>
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Paper Balance</label>
@@ -7905,7 +7921,7 @@
                 if (trEl && rsEl && data.tradeable != null) {
                     trEl.textContent = `Tradeable: ${formatUSD(data.tradeable)}`;
                     rsEl.textContent = `Reserve: ${formatUSD(data.reserve)}`;
-                    rsEl.className = (data.reserve_mode === 'working_capital' && data.reserve > 0)
+                    rsEl.className = ((data.reserve_mode === 'working_capital' || data.reserve_mode === 'schedule') && data.reserve > 0)
                         ? 'text-xs text-emerald-400' : 'text-xs text-gray-500';
                 }
                 const bnbKey = `${data.bnb_balance}|${data.bnb_balance_usd}|${_bnbBurnRate}`;
@@ -18269,6 +18285,36 @@
                     _updLevRead();
                 })();
 
+                // Balance → Tradeable (reserve) schedule rows (Jul 2, 2026 — capital-scaling v3 auto mode)
+                (function(){
+                    const bals = document.querySelectorAll('.res-sched-bal'), trds = document.querySelectorAll('.res-sched-trd');
+                    if (!bals.length) return;
+                    const upd = function(){
+                        const out = document.getElementById('res-schedule-readout'); if (!out) return;
+                        const t = [];
+                        for (let i = 0; i < bals.length; i++) {
+                            const b = parseFloat(bals[i].value), v = parseFloat(trds[i].value);
+                            if (!isNaN(b) && !isNaN(v)) t.push([b, v]);
+                        }
+                        t.sort((a, b) => a[0] - b[0]);
+                        const bal = Number(window._levSchedBalance || 0);
+                        let tgt = null; for (const tier of t) { if (bal >= tier[0]) tgt = tier[1]; else break; }
+                        out.textContent = (tgt !== null)
+                            ? `→ active: trade $${Math.round(tgt).toLocaleString()} / reserve $${Math.round(Math.max(0, bal - tgt)).toLocaleString()} @ $${Math.round(bal).toLocaleString()}`
+                            : `→ below first tier: full balance tradeable`;
+                    };
+                    const s = (config.investment.reserve_schedule || '').trim();
+                    const tiers = [];
+                    if (s) { s.split(',').forEach(p => { const m = p.split(':'); if (m.length === 2) { const b = parseFloat(m[0]), v = parseFloat(m[1]); if (!isNaN(b) && !isNaN(v)) tiers.push([b, v]); } }); }
+                    tiers.sort((a, b) => a[0] - b[0]);
+                    for (let i = 0; i < bals.length; i++) {
+                        if (i < tiers.length) { bals[i].value = tiers[i][0]; trds[i].value = tiers[i][1]; }
+                        else { bals[i].value = ''; trds[i].value = ''; }
+                        bals[i].oninput = upd; trds[i].oninput = upd;
+                    }
+                    upd();
+                })();
+
                 // Trading pairs limit & blacklist + new-listing filter
                 document.getElementById('top-pairs-limit').value = config.trading_pairs_limit || 50;
                 document.getElementById('config-pair-blacklist').value = config.pair_blacklist || '';
@@ -19612,6 +19658,7 @@
                     reserve_fixed: resMode === 'fixed' ? resValue : 500,
                     reserve_percentage: resMode === 'percentage' ? resValue : 20,
                     working_capital_target: resMode === 'working_capital' ? resValue : 0,
+                    reserve_schedule: (function(){ const t = []; const bs = document.querySelectorAll('.res-sched-bal'), ts = document.querySelectorAll('.res-sched-trd'); for (let i = 0; i < bs.length; i++) { const b = (bs[i].value || '').trim(), v = (ts[i].value || '').trim(); if (b !== '' && v !== '') { const bn = parseFloat(b), vn = parseFloat(v); if (!isNaN(bn) && !isNaN(vn)) t.push([bn, vn]); } } t.sort((a, b) => a[0] - b[0]); return t.map(x => x[0] + ':' + x[1]).join(', '); })(),
                     cooldown_after_loss_minutes: parseInt(document.getElementById('config-cooldown-loss').value) || 5,
                     max_open_positions: parseInt(document.getElementById('config-max-positions').value) || 100,
                     min_investment_size: safeFloat(document.getElementById('config-min-investment').value) || 100,

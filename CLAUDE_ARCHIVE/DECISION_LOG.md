@@ -1873,3 +1873,15 @@ Operator-driven redesign of the Liquidity & Risk Caps section (supersedes the 07
 - v3 milestone table in CURRENT_STATE ① (10k/20% · 25k/30% · 50k/45% · 100k/60% · 150k/67% · 250k/72% · 500k/80%→$100k trade).
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---
+
+## 2026-07-02 — Capital-scaling v3 made FULLY AUTOMATIC: reserve_mode="schedule" shipped ON + lev tiers set in config
+
+Operator correction to the same-day working_capital ship: "the whole idea is to be all automatic, not me putting 40000 manually at 100k." Built `reserve_mode="schedule"` + `reserve_schedule` (balance→tradeable tiers, parsed by the SAME `_lookup_leverage_schedule` tier-lookup as the lev schedule; active target = highest tier ≤ free balance; below first tier → no reserve; fail-open). Engine branch in the safe-reserve calc; `_reserve_split` display helper mirrors it; UI = 4th Reserve-Mode option + Balance→Tradeable row-editor (8 rows, live readout "active: trade $X / reserve $Y") + save serializer; balance-card Reserve line emerald when active. D11 full.
+
+**Shipped ON with the v3 table:** `10000:8000, 25000:17500, 50000:27500, 100000:40000, 150000:50000, 250000:70000, 500000:100000` — inert at $3k (below first tier = full balance tradeable). End-to-end verified: reproduces the operator's table at every milestone; between milestones the reserve absorbs all growth ($60k → trade $27.5k/reserve $32.5k). Withdrawal mechanics recorded earlier same day: withdrawals come out of the reserve first, trading untouched while balance ≥ tier target, reserve self-rebuilds from profits, under-target degrades gracefully to full-balance trading.
+
+Also set `leverage_balance_schedule="0:20, 25000:15, 75000:10, 250000:5"` in config (the ratified 4 tiers — the UI had unsaved guess values; config is now the truth). Both schedules inert at $3k; the only live-behavior config remains max_gross 25×.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

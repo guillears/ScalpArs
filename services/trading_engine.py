@@ -2131,7 +2131,19 @@ class TradingEngine:
             return 0, 0, False
 
         # Calculate safe reserve
-        if tc.investment.reserve_mode == "working_capital":
+        if tc.investment.reserve_mode == "schedule":
+            # Jul 2, 2026 (operator-directed) — AUTOMATIC balance→tradeable schedule: the engine
+            # walks the v3 capital-scaling table by itself (no manual milestone flips). Tier is
+            # keyed on TOTAL EQUITY (free+margin, same basis as the lev schedule and the operator's
+            # table) — keying on free balance would read low with margin deployed and over-reserve.
+            # reserve = equity − target, so tradeable(free) = target − deployed_margin; the outer
+            # max(0, free − reserve) clamps to 0 when already at/over target. Below the first tier
+            # (or empty/malformed schedule) → no reserve = full balance tradeable. Fail-open.
+            _sched_eq = total_portfolio if total_portfolio else available_balance
+            _tgt = _lookup_leverage_schedule(
+                getattr(tc.investment, 'reserve_schedule', ''), _sched_eq)
+            reserve = max(0.0, _sched_eq - _tgt) if (_tgt is not None and _tgt > 0) else 0.0
+        elif tc.investment.reserve_mode == "working_capital":
             # Jul 2, 2026 — capital-scaling PRIMARY knob: fix the working capital, reserve absorbs
             # ALL balance growth (tradeable = min(available, target); reserve auto-grows). Clamps
             # the max correlated-cluster loss to a fixed $ no matter how big the account gets.

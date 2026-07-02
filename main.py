@@ -629,12 +629,18 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
 
 # ----- Balance -----
 
-def _reserve_split(free_balance: float):
+def _reserve_split(free_balance: float, deployed_margin: float = 0.0):
     """Reserve / tradeable split for the balance card (Jul 2, 2026) — MUST mirror the engine's
-    safe-reserve formula (trading_engine._calculate_investment) so the display never drifts from
-    what sizing actually does. Applied to FREE balance (what the engine sees at entry)."""
+    safe-reserve formula (trading_engine.calculate_position_size) so the display never drifts from
+    what sizing actually does. Schedule mode keys tiers on TOTAL EQUITY (free+margin, like the
+    engine); the displayed reserve is capped at free balance (it's the withdrawable pool)."""
     _inv = config.trading_config.investment
-    if _inv.reserve_mode == "working_capital":
+    if _inv.reserve_mode == "schedule":
+        from services.trading_engine import _lookup_leverage_schedule as _sched_lookup
+        _equity = free_balance + max(0.0, deployed_margin or 0.0)
+        _tgt = _sched_lookup(getattr(_inv, 'reserve_schedule', ''), _equity)
+        reserve = min(free_balance, max(0.0, _equity - _tgt)) if (_tgt is not None and _tgt > 0) else 0.0
+    elif _inv.reserve_mode == "working_capital":
         _wct = float(getattr(_inv, 'working_capital_target', 0.0) or 0.0)
         reserve = max(0.0, free_balance - _wct) if _wct > 0 else 0.0
     elif _inv.reserve_mode == "percentage":
@@ -672,7 +678,7 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         total_portfolio = balance + used_margin + bnb_usd
         starting_balance = total_portfolio - _closed_pnl
 
-        _reserve, _tradeable, _rmode = _reserve_split(balance)
+        _reserve, _tradeable, _rmode = _reserve_split(balance, used_margin)
 
         return {
             "usdt_balance": balance,
@@ -692,7 +698,7 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         bnb_usd = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
         usdt_free = balance['usdt_free']
         total = balance['usdt_total'] + bnb_usd
-        _reserve, _tradeable, _rmode = _reserve_split(usdt_free)
+        _reserve, _tradeable, _rmode = _reserve_split(usdt_free, balance['usdt_used'])
         return {
             "usdt_balance": usdt_free,
             "bnb_balance": balance['bnb_total'],

@@ -1146,10 +1146,16 @@ class InvestmentConfig(BaseModel):
     # tradeable = min(available, working_capital_target) and the reserve auto-grows with balance,
     # clamping the max correlated-cluster loss to a fixed $ regardless of account size. Withdrawals
     # pull from the reserve pool. target=0 or mode != working_capital = inert (current behavior).
-    reserve_mode: str = "percentage"  # "fixed" | "percentage" | "working_capital"
+    reserve_mode: str = "percentage"  # "fixed" | "percentage" | "working_capital" | "schedule"
     reserve_fixed: float = 500.0  # USD
     reserve_percentage: float = 20.0  # % of total balance
     working_capital_target: float = 0.0  # USD tradeable cap for working_capital mode (0 = off)
+    # Jul 2, 2026 (operator-directed): FULLY AUTOMATIC version of working_capital — mode="schedule"
+    # walks this balance→tradeable table by itself (no manual milestone flips). Format mirrors
+    # leverage_balance_schedule: "balance:tradeable_target, ..." ascending; active target = highest
+    # tier ≤ free balance; below the first tier → no reserve (full balance tradeable). The v3
+    # operating table (CURRENT_STATE capital-scaling) expressed as tiers. Empty = off.
+    reserve_schedule: str = ""  # e.g. "10000:8000, 25000:17500, ..., 500000:100000"
     
     # Cooldown after trade close (prevents immediate re-entry on same pair, win or loss)
     # CLAUDE.md May 26: cross-batch evidence on 919-trade pool shows 84 same-pair re-entries

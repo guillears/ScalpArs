@@ -28,10 +28,11 @@
     "mode": "equal_split",
     "fixed_amount": 200.0,
     "percentage": 30.0,
-    "reserve_mode": "percentage",
+    "reserve_mode": "schedule",
     "reserve_fixed": 500.0,
     "reserve_percentage": 0.0,
     "working_capital_target": 0.0,
+    "reserve_schedule": "10000:8000, 25000:17500, 50000:27500, 100000:40000, 150000:50000, 250000:70000, 500000:100000",
     "cooldown_after_loss_minutes": 5,
     "max_open_positions": 5,
     "max_holding_time_minutes": 1200,
@@ -41,7 +42,7 @@
     "max_gross_leverage": 25.0,
     "redeploy_leftover_enabled": false,
     "max_open_positions_hard": 10,
-    "leverage_balance_schedule": ""
+    "leverage_balance_schedule": "0:20, 25000:15, 75000:10, 250000:5"
   },
   "thresholds": {
     "long_rsi_extreme": 45.0,

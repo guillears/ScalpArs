@@ -813,8 +813,14 @@ class PairData(Base):
 
 
 class Investor(Base):
-    """Portfolio investor with share-based ownership tracking"""
+    """Portfolio investor with share-based ownership tracking.
+
+    Jul 3, 2026: sqlite_autoincrement — without AUTOINCREMENT, SQLite reuses a deleted
+    investor's row-id, so a re-added (or brand-new) investor silently inherited the old
+    id's ledger history. IDs are now never reused (migration rebuilds the table and seeds
+    sqlite_sequence past every id ever seen in investor_ledger)."""
     __tablename__ = "investors"
+    __table_args__ = {'sqlite_autoincrement': True}
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False, unique=True)

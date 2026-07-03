@@ -604,6 +604,40 @@ async def init_db():
                 connection.execute(text(
                     "CREATE INDEX IF NOT EXISTS ix_investor_ledger_investor_id ON investor_ledger (investor_id)"
                 ))
+            # Jul 3, 2026 — investors table: enforce AUTOINCREMENT (never reuse a deleted
+            # investor's id — recycled ids inherited the old id's ledger history). Rebuild
+            # once (SQLite can't ALTER-in AUTOINCREMENT), then seed sqlite_sequence past
+            # every id ever seen in investor_ledger so no historical ledger row can ever
+            # re-attach to a future investor.
+            if 'investors' in inspector.get_table_names():
+                _inv_sql = connection.execute(text(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='investors'"
+                )).scalar() or ''
+                if 'AUTOINCREMENT' not in _inv_sql.upper():
+                    connection.execute(text("""
+                        CREATE TABLE investors_new (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            name VARCHAR(100) NOT NULL UNIQUE,
+                            shares FLOAT NOT NULL DEFAULT 0.0,
+                            total_deposited FLOAT NOT NULL DEFAULT 0.0,
+                            total_withdrawn FLOAT NOT NULL DEFAULT 0.0,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """))
+                    connection.execute(text(
+                        "INSERT INTO investors_new (id, name, shares, total_deposited, total_withdrawn, created_at) "
+                        "SELECT id, name, shares, total_deposited, total_withdrawn, created_at FROM investors"
+                    ))
+                    connection.execute(text("DROP TABLE investors"))
+                    connection.execute(text("ALTER TABLE investors_new RENAME TO investors"))
+                    _max_seen = connection.execute(text(
+                        "SELECT MAX(m) FROM (SELECT COALESCE(MAX(id),0) AS m FROM investors "
+                        "UNION ALL SELECT COALESCE(MAX(investor_id),0) FROM investor_ledger)"
+                    )).scalar() or 0
+                    connection.execute(text("DELETE FROM sqlite_sequence WHERE name='investors'"))
+                    connection.execute(text(
+                        "INSERT INTO sqlite_sequence (name, seq) VALUES ('investors', :s)"
+                    ), {"s": int(_max_seen)})
             # Jul 2, 2026 — daily NAV/share snapshots (deposit-proof performance record)
             if 'nav_snapshots' not in inspector.get_table_names():
                 connection.execute(text("""

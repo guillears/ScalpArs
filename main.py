@@ -11786,11 +11786,17 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
 
 @app.get("/api/investors/{investor_id}/ledger")
 async def investor_ledger(investor_id: int, db: AsyncSession = Depends(get_db)):
-    """Dated cash-flow history for one investor (most recent first)."""
-    result = await db.execute(
-        select(InvestorLedger).where(InvestorLedger.investor_id == investor_id)
-        .order_by(InvestorLedger.created_at.desc(), InvestorLedger.id.desc())
-    )
+    """Dated cash-flow history for one investor (most recent first).
+
+    Jul 3, 2026: rows are scoped to the investor's CURRENT life — anything logged before
+    this investor row was created belongs to a previous holder of a recycled id (pre-
+    AUTOINCREMENT era). Those rows stay in the DB as audit trail but are not displayed
+    (2s grace: the creation DEPOSIT/OPENING row can share the investor's timestamp)."""
+    inv = await db.get(Investor, investor_id)
+    q = select(InvestorLedger).where(InvestorLedger.investor_id == investor_id)
+    if inv is not None and inv.created_at is not None:
+        q = q.where(InvestorLedger.created_at >= inv.created_at - timedelta(seconds=2))
+    result = await db.execute(q.order_by(InvestorLedger.created_at.desc(), InvestorLedger.id.desc()))
     entries = result.scalars().all()
     rows = [{
         "id": e.id,

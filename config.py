@@ -1236,7 +1236,7 @@ class TradingConfig(BaseModel):
     bnb_swap_enabled: bool = True
     bnb_check_interval_hours: int = 12
     bnb_runway_hours: int = 24
-    paper_bnb_initial_usd: float = 500.0
+    paper_bnb_initial_usd: float = 200.0  # Jul 3: 500->200 (operator; USDT seed 2500->2800, total $3000 unchanged)
     # BNB AUTO-SELL (Jun 22) — symmetric rebalance. The buy path tops BNB UP to a 24h
     # runway, but never claws back: when activity slows the 24h burn rate decays, runway
     # inflates, and the over-funded reserve locks USDT out of trading (tradable balance =

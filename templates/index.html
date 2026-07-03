@@ -6116,6 +6116,11 @@
                                     <input type="number" id="config-flip-short-rsi-min" step="1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
                                     <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off; ship 55 — fade only overbought blocked-longs)</span>
                                 </div>
+                                <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jul 3: BTC 1h-slope REGIME gate for flip-SHORTS — don't fade an alt pump while BTC's hourly trend is rising (recovery pumps are real and squeeze the short; falling-hour pumps are exhaustion and the fade pays). The ONLY flip separator (of 8 tested) direction-consistent across periods: baseline slope>0 = 17/65%WR/−$73 vs ≤0 = 29/76%/+$774; fresh Jun30-Jul3 slope>0 = 9/33%/−$405 vs ≤0 = 7/71%/+$51. Parity fix — momentum shorts already carry btc_1h_slope_max(+0.1); flips bypassed it. Counter FLIP_SHORT_BTC1H_SLOPE. 99 = off. ⚠ N=26 near-gate ship. TIGHT REVERT: →99 if blocked (slope>0) flips run ≥60% WR on N≥10 fresh phantoms.">
+                                    <span class="text-rose-300 whitespace-nowrap">Short flip: block BTC 1h slope &gt;</span>
+                                    <input type="number" id="config-flip-short-btc-1h-slope-max" step="0.01" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
+                                    <span class="text-gray-500 text-xs whitespace-nowrap">(99 = off; ship 0 — flips only while BTC hourly falls)</span>
+                                </div>
                                 <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 25: entry quality-score floor for flip-SHORTS — extends the global Entry-Quality-Score filter (blocks ≤1 for NORMAL entries; flips bypass it) to the flip-short sleeve. Block a flip-SHORT when entry quality score < the number (=2 blocks score ≤1). Cross-batch FAN flip-short: score is monotonic (1→4 = 56/64/76/80% WR); score≤1 = N=18/56%WR/−2.98%/8 dates (only negative band, loss diffuse across 16 pairs); score 0 ≈ empty (N=2). 06-25 batch: score≤1 = 3/3 losers, −$249. N=18/DISCIPLINE-OVERRIDE but the ≤1 threshold is globally validated. Counter FLIP_SHORT_QUALITY. 0 = off. TIGHT REVERT: →0 if blocked score≤1 flip-shorts hit ≥55% WR on N≥10 fresh.">
                                     <span class="text-rose-300 whitespace-nowrap">Short flip: block quality score &lt;</span>
                                     <input type="number" id="config-flip-short-quality-min" step="1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
@@ -18759,6 +18764,7 @@
                 if (_flEn) _flEn.checked = (config.thresholds.flip_long_enabled !== false);
                 _setVal('config-flip-short-atr-block-min', config.thresholds.flip_short_atr_block_min);
                 _setVal('config-flip-short-rsi-min', config.thresholds.flip_short_rsi_min);
+                _setVal('config-flip-short-btc-1h-slope-max', config.thresholds.flip_short_btc_1h_slope_max);
                 _setVal('config-flip-short-quality-min', config.thresholds.flip_short_quality_min);
                 _setVal('config-flip-short-bear-min', config.thresholds.flip_short_bear_min);
                 _setVal('config-flip-short-pair-gap-max', config.thresholds.flip_short_pair_gap_max);
@@ -20048,6 +20054,7 @@
                     flip_long_enabled: ((document.getElementById('config-flip-long-enabled') || {}).checked === true),
                     flip_short_atr_block_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-atr-block-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_rsi_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-rsi-min') || {}).value); return isNaN(v) ? 0 : v; })(),
+                    flip_short_btc_1h_slope_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-btc-1h-slope-max') || {}).value); return isNaN(v) ? 99 : v; })(),
                     flip_short_quality_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-quality-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_bear_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-bear-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_pair_gap_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-pair-gap-max') || {}).value); return isNaN(v) ? 0 : v; })(),

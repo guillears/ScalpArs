@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 from services.trading_engine import _flip_filters
 
-RAW = "reports/COMBINED_momentum_flip_2026-06-16to28_DEDUP.csv"
+RAW = "reports/COMBINED_momentum_flip_2026-06-16to28_DEDUP.csv"  # Jul 3: now spans 06-16..07-03 (batch appended; filename kept — all tooling points here)
 OUT = "reports/SCREENED_BASELINE.csv"
 th = config.trading_config.thresholds
 BL = set("ALLOUSDT,BNBUSDT,EIGENUSDT,ENAUSDT,ESPORTSUSDT,FILUSDT,MUSDT,RAVEUSDT,SYNUSDT,TRUMPUSDT,VELVETUSDT,VVVUSDT,XAGUSDT,XAUUSDT,ZECUSDT".split(","))
@@ -37,8 +37,15 @@ def pnl_current(r):
     shows -$332 (C1 at 2x) instead of the true -$122 (C1 at 1x). Memory: 'cross-batch re-sims
     MUST apply C1 demux.'"""
     p = nf(r.get('pnl')) or 0.0
-    if (r.get('cell_multiplier_source') or '') == 'C1' and (nf(r.get('cell_multiplier')) or 1.0) == 2.0:
+    src_ = r.get('cell_multiplier_source') or ''
+    mult = nf(r.get('cell_multiplier')) or 1.0
+    if src_ == 'C1' and mult == 2.0:
         return p / 2.0
+    # Jul 3 — flips run 2x live now (FAN_RATIO_GATE:2.0); the pinned flip baseline is at 1x, so
+    # de-mux any multiplied FLIP row to 1x when future batches land (else 1x-historical mixes with
+    # 2x-fresh and the flip net$ silently drifts — review I2; the FLIP anchor is count+$ so a miss fails the freeze).
+    if src_.startswith('FLIP') and mult > 1.0:
+        return p / mult
     return p
 
 def flip_ind(r):  # field-audited against engine _ff_in (trading_engine.py:3414)
@@ -50,7 +57,9 @@ def flip_ind(r):  # field-audited against engine _ff_in (trading_engine.py:3414)
         'btc_adx':nf(r.get('entry_btc_adx')),'btc_atr_pct':nf(r.get('entry_btc_atr_pct')),
         'atr_pct':nf(r.get('entry_atr_pct')),'pair_rsi':nf(r.get('entry_rsi')),
         'quality_score':nf(r.get('entry_quality_score')),'bear_pct':nf(r.get('entry_bear_pct')),
-        'range_position':nf(r.get('entry_range_position'))}
+        'range_position':nf(r.get('entry_range_position')),
+        # Jul 3 — required by flip_short_btc_1h_slope_max (the BTC-1h regime gate); missing = fail-open
+        'btc_1h_slope':nf(r.get('entry_btc_1h_slope'))}
 
 def sleeve(r):
     """Return 'MOM_LONG' / 'MOM_SHORT' / 'FLIP_SHORT' if the row SURVIVES the current stack, else None."""
@@ -120,17 +129,21 @@ def main():
     # hard validation anchors (both must hold — these are the verified current-stack truth)
     ml = agg.get('MOM_LONG', []);  ms = agg.get('MOM_SHORT', [])
     ml_net = sum(pnl_current(x) for x in ml);  ms_net = sum(pnl_current(x) for x in ms)
-    # Anchors updated 2026-07-01 (v3): weakcap parity closed — momentum_short_weakcap (engine-live Jun 28)
-    # was MISSING from the screen; adding it removes TAO 06-24 (-$51). MOM-short 16/$392 -> 15/$443.
-    # v2 (2026-06-30): W1-regime block REVERTED (overfit, failed cross-period), REPLACED by pair_vol>=1.0.
+    # Anchors updated 2026-07-03 (v4): ① Jun30-Jul3 batch (27 trades) appended to the pool;
+    # ② flip_short_btc_1h_slope_max=0 shipped (BTC-1h regime gate) — screens out 26 slope>0 flips
+    # (17 baseline-era + 9 batch). ML 25->34/$2496->$2708, MS 15->17/$443->$661, FLIP 46->36/$825 (1x — incl. de-mux of the Jun-17/18 legacy 2x flips, review I2).
+    # v3 (2026-07-01): weakcap parity closed (MOM-short 16/$392 -> 15/$443).
     # Prior anchors archived in DECISION_LOG: 23/$2146+28/-$122 (pre-batch), 25/$2496+14/$310 (W1-block v1),
-    # 25/$2496+16/$392 (v2, pre-weakcap-parity).
+    # 25/$2496+16/$392 (v2), 25/$2496+15/$443 (v3).
     _pvmax = float(getattr(th, 'momentum_short_pair_vol_max', 0.0) or 0.0)
     _pv_surv = sum(1 for r in ms if _pvmax > 0 and nf(r.get('entry_pair_volume_ratio')) is not None and nf(r.get('entry_pair_volume_ratio')) >= _pvmax)
     assert _pv_surv == 0, f"FAIL: {_pv_surv} pair_vol>={_pvmax} mom-shorts survived — vol block not applied, NOT freezing"
-    assert len(ml) == 25 and round(ml_net) == 2496, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 25/$2496 — screen wrong, NOT freezing"
-    assert len(ms) == 15 and round(ms_net) == 443, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 15/$443 (C1 de-mux + pair-vol + weakcap?) — NOT freezing"
-    print("\n✅ VALIDATION PASSED (MOM-long 25/$2496 + MOM-short 15/$443 + 0 pair-vol survivors). Freezing.")
+    assert len(ml) == 34 and round(ml_net) == 2708, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 34/$2708 — screen wrong, NOT freezing"
+    assert len(ms) == 17 and round(ms_net) == 661, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 17/$661 (C1 de-mux + pair-vol + weakcap?) — NOT freezing"
+    fl = agg.get('FLIP_SHORT', [])
+    fl_net = sum(pnl_current(x) for x in fl)
+    assert len(fl) == 36 and round(fl_net) == 825, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 36/$825 — btc_1h_slope gate or flip de-mux not applied? NOT freezing"
+    print("\n✅ VALIDATION PASSED (MOM-long 34/$2708 + MOM-short 17/$661 + FLIP 36 + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

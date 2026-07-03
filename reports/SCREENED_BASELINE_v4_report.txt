@@ -1,0 +1,55 @@
+==============================================================================
+SCREENED BASELINE v4 — CURRENT-STACK SURVIVORS (canonical analysis pool)
+Frozen: 2026-07-03  |  Pool: 2026-06-16 .. 2026-07-03 (372 raw -> 87 survivors)
+==============================================================================
+
+STACK AT FREEZE (deltas vs v3):
+  + flip_short_btc_1h_slope_max = 0.0  (Jul 3 — BTC 1h regime gate: no flip-shorts
+    while BTC hourly slope > 0; removes 26 slope-up flips: 17 old-era + 9 batch)
+  + flip_entry_sources FAN_RATIO_GATE 1.0x -> 2.0x  (W-gate pass: kept cohort
+    N=36/75%/+0.24%avg; operator-directed 2x, skipping 1.5x staging)
+  NOTE: flip net$ below is at HISTORICAL 1x sizing. Live flips now run 2x —
+  de-mux forward batches to 1x (pnl/cell_multiplier) before comparing here.
+
+Sleeve         N    WR%     Avg%     Net$   (net$ = current sizing, C1 de-muxed)
+------------------------------------------------------------
+MOM_LONG      34    82%   +0.310    +2708
+MOM_SHORT     17    76%   +0.278     +661
+FLIP_SHORT    36    75%   +0.236     +845
+------------------------------------------------------------
+TOTAL         87    78%             +4214
+
+## FLIP-SHORT x BTC 1h SLOPE (the shipped gate's evidence, both eras)
+Cohort                       N    WR%     Avg%     Net$
+kept: slope <= 0            36    75%   +0.236     +845
+(blocked slope>0 cohort, for reference: N=26, 54% WR, -$478 across both eras)
+
+## PER-SLEEVE BY BTC REGIME
+[MOM_LONG]
+  HEALTHY_BULL      27    81%   +0.247    +1746
+  STRONG_BULL        7    86%   +0.553     +962
+[MOM_SHORT]
+  HEALTHY_BEAR      14    71%   +0.173     +273
+  STRONG_BEAR        3   100%   +0.770     +388
+[FLIP_SHORT]
+  STRONG_BEAR       17    65%   +0.153     +191
+  HEALTHY_BEAR      16    81%   +0.322     +551
+  BEAR_EXHAUSTED     2   100%   +0.294      +87
+  HEALTHY_BULL       1   100%   +0.155      +16
+
+## TOP / BOTTOM PAIRS (net$, current sizing)
+  XPLUSDT           3t      +425
+  SUIUSDT           4t      +368
+  NEARUSDT          2t      +353
+  DOTUSDT           3t      +339
+  JTOUSDT           8t      +331
+  ...
+  BCHUSDT           1t       -94
+  MEUSDT            1t      -131
+  MANTAUSDT         1t      -131
+  PENGUUSDT         1t      -179
+  TIAUSDT           2t      -205
+
+==============================================================================
+PINNED (CLAUDE_CURRENT_STATE): ML 34-82%-+$2708 | MS 17-76%-+$661 | FLIP 36-75%-+$825 | TOTAL 87-78%-+$4194
+==============================================================================

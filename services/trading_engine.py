@@ -440,11 +440,24 @@ def _flip_filters(source, ind):
         # flip-shorts LOSE when BTC 30m RSI is rising (macro bouncing → the faded pump squeezes with it) and
         # PAY when falling. 2-batch consistent (rising −$1031 vs falling +$811; today −$965/−$998 was rising).
         # Block SHORT when (btc_rsi − btc_rsi_prev6) > min. Fail-open: missing data or min≥99 → no block.
-        _b30min = float(getattr(th, 'flip_short_btc30_rise_block_min', 99.0) or 0.0)
+        _b30raw = getattr(th, 'flip_short_btc30_rise_block_min', 99.0)
+        _b30min = 99.0 if _b30raw is None else float(_b30raw)  # None -> 99 (off, fail-open); NOT `or 0.0` which fail-CLOSED (Jul 3 review)
         if ind.get('flip_dir') == 'SHORT' and _b30min < 99:
             _br, _br6 = ind.get('btc_rsi'), ind.get('btc_rsi_prev6')
             if _br is not None and _br6 is not None and (_br - _br6) > _b30min:
                 return (True, "FLIP_SHORT_BTC30_RISE", 1.0, 1.0, None)
+        # BTC 1h-slope regime gate for flip-SHORTS (Jul 3): don't fade an alt pump while BTC's HOURLY
+        # trend is rising — in a recovery the pump is real and squeezes the short; when the hour falls
+        # it's exhaustion and the fade pays. The ONLY flip separator (of 8 tested) direction-consistent
+        # across periods: baseline slope>0 = 17/65%WR/−$73 vs ≤0 = 29/76%/+$774; fresh Jun30-Jul3
+        # slope>0 = 9/33%/−$405 vs ≤0 = 7/71%/+$51. Parity fix: momentum shorts already carry
+        # btc_1h_slope_max(+0.1) — flips bypassed it. Fail-open: missing slope or max≥99 → no block.
+        _b1hraw = getattr(th, 'flip_short_btc_1h_slope_max', 99.0)
+        _b1hmax = 99.0 if _b1hraw is None else float(_b1hraw)  # NOT `or` — the ship value 0.0 is falsy
+        if ind.get('flip_dir') == 'SHORT' and _b1hmax < 99:
+            _b1h = ind.get('btc_1h_slope')
+            if _b1h is not None and _b1h > _b1hmax:
+                return (True, "FLIP_SHORT_BTC1H_SLOPE", 1.0, 1.0, None)
         # High-ATR bear block (Jun 17): the REGIME-INVERTED hole in FLIP_SHORT_REGIME's bear exemption.
         # A high-ATR parabolic pump in a strong bear is a counter-trend short-SQUEEZE that keeps ripping →
         # the short never arms and the high ATR gaps the −0.70 SL to ~−1.2 (ESPORTS 4.0, HUSDT 3.0 = 0%WR/
@@ -498,7 +511,8 @@ def _flip_filters(source, ind):
         # (STRONG_BEAR, ADXΔ −1.02) = −$195 confirms (cut blocks BEL only, 0 winners, +$195). Block
         # SHORT when ADXΔ < min. SENTINEL −99 = OFF. Counter FLIP_SHORT_ADXD (auto-recorded by the
         # caller). Fail-open: missing ADXΔ or min≤−99 → no block.
-        _admin = float(getattr(th, 'flip_adx_delta_min', -99.0) or -99.0)
+        _admin_raw = getattr(th, 'flip_adx_delta_min', -99.0)
+        _admin = -99.0 if _admin_raw is None else float(_admin_raw)  # NOT `or` — 0.0 ('block ADXd<0') is falsy and would silently disable (Jul 3 review)
         if ind.get('flip_dir') == 'SHORT' and _admin > -99:
             _fad = ind.get('adx_delta')
             if _fad is not None and _fad < _admin:
@@ -530,7 +544,8 @@ def _flip_filters(source, ind):
         _lregs = (getattr(th, 'flip_long_regime_block_regimes', '') or '').strip()
         if ind.get('flip_dir') == 'LONG' and _lregs:
             _ladxd = ind.get('adx_delta'); _lreg = ind.get('btc_regime')
-            _lamax = float(getattr(th, 'flip_long_regime_block_adxd_max', 99.0) or 99.0)
+            _lamax_raw = getattr(th, 'flip_long_regime_block_adxd_max', 99.0)
+            _lamax = 99.0 if _lamax_raw is None else float(_lamax_raw)  # NOT `or` — 0.0 is a valid threshold (Jul 3 review)
             _lregset = {s.strip() for s in _lregs.split(',') if s.strip()}
             if _lreg and _lreg in _lregset and (_ladxd is None or _ladxd < _lamax):
                 return (True, "FLIP_LONG_REGIME", 1.0, 1.0, None)
@@ -3488,6 +3503,9 @@ class TradingEngine:
                 # (flip_fan_qs_cell), applied below. Jun 26.
                 'bear_pct': _ef.get('entry_bear_pct'),
                 'range_position': _ef.get('entry_range_position'),
+                # BTC 1h EMA20 slope — required by the flip-SHORT regime gate (flip_short_btc_1h_slope_max). Jul 3.
+                'btc_1h_slope': (_ef.get('entry_btc_1h_slope') if _ef.get('entry_btc_1h_slope') is not None
+                                 else _g.get('_current_btc_1h_slope')),
             }
             _blocked, _reason, _flip_cell_mult, _flip_cell_lev_mult, _flip_exit_mode = _flip_filters(source, _ff_in)
             if _blocked:

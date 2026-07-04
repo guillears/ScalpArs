@@ -9508,12 +9508,17 @@ async def _compute_phantom_flip_performance(db, is_paper):
     # pre-live flip-short research surface, now superseded by SCREENED_BASELINE + the live Flip Trade Log
     # (real fills, not naked fades). The matched-long→SHORT fade is the ★-paying mean-reversion-sleeve
     # candidate; broken out PER PATTERN (the W6 lead candidate) + PER REGIME below.
+    # Jul 4 — same-direction PASS phantoms (the blocked matched long tracked as a virtual LONG,
+    # bull re-enable hunt). Kept OUT of the fade rows/aggregate above; own section with the same
+    # per-pattern + per-regime sub-rows so W1/W2/W4 cells accrue toward their re-enable gates.
+    pass_longs = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:LONG_UNMATCHED_ONLY']
     source_specs = [
-        ("LONG_UNMATCHED_ONLY", ("SHORT",), True),
+        ("LONG_UNMATCHED_ONLY", ("SHORT",), True, flips),
+        ("PASS:LONG_UNMATCHED_ONLY", ("LONG",), True, pass_longs),
     ]
-    for src, _dirs, _subrows in source_specs:
+    for src, _dirs, _subrows, _pool in source_specs:
         for fd in _dirs:
-            sub = [r for r in flips if r.source_filter == src and r.flip_direction == fd]
+            sub = [r for r in _pool if r.source_filter == src and r.flip_direction == fd]
             a = _agg(sub)
             if not a:
                 continue

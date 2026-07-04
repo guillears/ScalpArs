@@ -200,7 +200,7 @@ def reset_phantom_flip_state():
 # Operator principle (2026-07-01): don't collect phantoms we don't display. Empty set = seed nothing.
 # ⚠ keep this in sync with the startup-purge allowlist in database.py::init_db — if they drift, the DB
 # purge deletes a newly-allowlisted source's history (or fails to purge a newly-retired one).
-_PHANTOM_KEEP_SOURCES = {"LONG_UNMATCHED_ONLY", "MOMENTUM_SHORT_W1_REGIME"}
+_PHANTOM_KEEP_SOURCES = {"LONG_UNMATCHED_ONLY", "MOMENTUM_SHORT_W1_REGIME", "PASS:LONG_UNMATCHED_ONLY"}  # Jul 4: + same-direction phantom of the blocked matched long (bull re-enable hunt)
 
 
 def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None, entry_fields=None, mode='FADE'):
@@ -4020,6 +4020,12 @@ class TradingEngine:
                 'entry_quality_score': entry_quality_score,
             }.items() if v is not None}
             _seed_phantom_flip(pair, current_price, "LONG", "LONG_UNMATCHED_ONLY", cohort=_um_cohort, entry_fields=_um_ef)
+            # Jul 4 (operator) — SAME-direction phantom of the blocked matched long itself
+            # (mode='PASS'): measures whether the Jun-9 LONG_UNMATCHED_ONLY block is over-
+            # restrictive in a bull tape. The Jun-9 evidence predates the current exit stack
+            # (which turned unmatched longs -0.10% -> +0.31%), so matched longs were never
+            # tested under today's bot. Re-enable gates per pattern cell in CURRENT_STATE.
+            _seed_phantom_flip(pair, current_price, "LONG", "PASS:LONG_UNMATCHED_ONLY", cohort=_um_cohort, entry_fields=_um_ef, mode='PASS')
             # Jun 15: LIVE flip — fade the matched long to a SHORT (registry-gated). This
             # block runs INSIDE open_position, so the flip opens in an ISOLATED session
             # (isolate=True) to keep the outer (blocked-long) transaction clean. The flip

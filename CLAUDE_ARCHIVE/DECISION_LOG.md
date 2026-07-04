@@ -1926,3 +1926,6 @@ Reviewer runtime-verified the full chain (gate fires at slope>0, 2.0x parses siz
 - **I2 — screen_pool flip de-mux:** pnl_current now de-muxes ANY multiplied FLIP row to 1x (was C1-only). The new $-anchor immediately caught that the $845 pin counted the Jun-17/18 legacy 2x flips at 2x — **true 1x flip baseline = $825, TOTAL $4194** (matches the original analysis figure). Re-pinned everywhere.
 - **I7 — FLIP anchor now count+$ (36/$825).**
 - **I3 (logged, no code):** Filter-Blocks counter undercounts FLIP_SHORT_BTC1H_SLOPE (SHORT blocks skipped while macro=BULLISH, which correlates with slope>0). Phantom tracker is the true revert-gate surface.
+
+## 2026-07-04 — GATE REGISTERED: max_open_positions 5→4 (operator-proposed, roadmap item)
+Capital-utilization move: equal_split at 4 slots = +25% margin/trade (+25% $ expectancy, %-invariant) at empirically zero cost (cap-cost counter has never recorded a block at max-5; the one ≥3-concurrent cluster on record was 3 wins). Accepted costs: 4-SL day −$670 vs −$535; a 2× cell = 50% of book. SHIP at N≥30 fresh post-regime-gate trades with positive net (no stacking with the Jul-3 ship); REVERT on ≥3 forfeited-signal events/batch or a ≥4-concurrent loss cluster.

@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 from services.trading_engine import _flip_filters
 
-RAW = "reports/COMBINED_momentum_flip_2026-06-16to28_DEDUP.csv"  # Jul 3: now spans 06-16..07-03 (batch appended; filename kept — all tooling points here)
+RAW = "reports/COMBINED_momentum_flip_2026-06-16to28_DEDUP.csv"  # Jul 5: now spans 06-16..07-05 (batches appended; filename kept — all tooling points here)
 OUT = "reports/SCREENED_BASELINE.csv"
 th = config.trading_config.thresholds
 BL = set("ALLOUSDT,BNBUSDT,EIGENUSDT,ENAUSDT,ESPORTSUSDT,FILUSDT,MUSDT,RAVEUSDT,SYNUSDT,TRUMPUSDT,VELVETUSDT,VVVUSDT,XAGUSDT,XAUUSDT,ZECUSDT".split(","))
@@ -135,7 +135,10 @@ def main():
     # hard validation anchors (both must hold — these are the verified current-stack truth)
     ml = agg.get('MOM_LONG', []);  ms = agg.get('MOM_SHORT', [])
     ml_net = sum(pnl_current(x) for x in ml);  ms_net = sum(pnl_current(x) for x in ms)
-    # Anchors updated 2026-07-05 (v6): CHOPPY_FLAT removed from both flip regime fields
+    # Anchors updated 2026-07-05 (v7): 07-04/05 batch appended (3 trades: PUMP W +$208,
+    # RPL/ETHFI L — both flat-1h zone, screened OUT by the deadband as the live gate now would):
+    # ML 27->28/$2964->$3172. MS/FLIP unchanged.
+    # v6 (2026-07-05): CHOPPY_FLAT removed from both flip regime fields
     # (block evidence dissolved — 28/30 CHOP flips are BTC30_RISE/BTC1H_SLOPE blocked anyway;
     # label was a proxy for BTC-turning-up): re-admits 1 winner (STG 06-18) -> FLIP 36->37/$825->$833.
     # v5 (2026-07-05): long_btc_1h_deadband=0.05 shipped (flat-1h DOA block) —
@@ -149,12 +152,12 @@ def main():
     _pvmax = float(getattr(th, 'momentum_short_pair_vol_max', 0.0) or 0.0)
     _pv_surv = sum(1 for r in ms if _pvmax > 0 and nf(r.get('entry_pair_volume_ratio')) is not None and nf(r.get('entry_pair_volume_ratio')) >= _pvmax)
     assert _pv_surv == 0, f"FAIL: {_pv_surv} pair_vol>={_pvmax} mom-shorts survived — vol block not applied, NOT freezing"
-    assert len(ml) == 27 and round(ml_net) == 2964, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 27/$2964 — 1h deadband applied? screen wrong, NOT freezing"
+    assert len(ml) == 28 and round(ml_net) == 3172, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 28/$3172 — 1h deadband applied? screen wrong, NOT freezing"
     assert len(ms) == 17 and round(ms_net) == 661, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 17/$661 (C1 de-mux + pair-vol + weakcap?) — NOT freezing"
     fl = agg.get('FLIP_SHORT', [])
     fl_net = sum(pnl_current(x) for x in fl)
     assert len(fl) == 37 and round(fl_net) == 833, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 37/$833 — CHOP unblock / btc_1h_slope gate / flip de-mux not applied? NOT freezing"
-    print("\n✅ VALIDATION PASSED (MOM-long 27/$2964 + MOM-short 17/$661 + FLIP 37/$833 + 0 pair-vol survivors). Freezing.")
+    print("\n✅ VALIDATION PASSED (MOM-long 28/$3172 + MOM-short 17/$661 + FLIP 37/$833 + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

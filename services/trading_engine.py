@@ -180,6 +180,48 @@ _PFLIP_PB = 0.25              # trailing pullback
 _PFLIP_MAX_MIN = 45           # max tracking horizon
 _PFLIP_COOLDOWN_MIN = 30      # min minutes between phantoms for the same pair|source
 
+# ── SPIKE-REVERSION phantom (Jul 5, operator-directed; observation-only) ──
+# Fade acute BTC velocity extremes: |BTC 15-min move| >= 0.5% → seed a virtual FADE on
+# BTCUSDT (spike up → phantom SHORT, spike down → phantom LONG), flat replica exit like
+# every phantom. Distinct mechanism from the dead PAIR_RSI_OB sleeve (that faded pair-level
+# overbought TRENDS; this fades BTC-level 15m VELOCITY) — never measured before. Pre-committed
+# bar (CURRENT_STATE): discussion-worthy only at N>=30 & WR>=60% & avg>=+0.15%; analyst
+# prediction ON RECORD: fails the bar (the falsifiable version of the PAIR_RSI_OB tombstone).
+# Cooldown/dedup ride _seed_phantom_flip (30min per direction via source key).
+_SPIKE_REV_MOVE_PCT = 0.5     # trigger: |move| over the window
+_SPIKE_REV_WINDOW_MIN = 15    # lookback window
+_BTC_SPIKE_HIST = []          # [(ts, price)] ~5s samples, pruned to window+5min
+
+def _maybe_seed_spike_rev():
+    """Sample BTC and seed a SPIKE_REV_BTC fade phantom on a >=0.5%/15min move. Fail-silent."""
+    try:
+        tracker = websocket_tracker.get_tracker('BTCUSDT')
+        price = tracker.last_price if tracker else None
+        if not price or price <= 0:
+            return
+        now = _leash_time.time()
+        if _BTC_SPIKE_HIST and now - _BTC_SPIKE_HIST[-1][0] < 5:
+            return  # ~5s sampling
+        _BTC_SPIKE_HIST.append((now, price))
+        cutoff = now - (_SPIKE_REV_WINDOW_MIN + 5) * 60
+        while _BTC_SPIKE_HIST and _BTC_SPIKE_HIST[0][0] < cutoff:
+            _BTC_SPIKE_HIST.pop(0)
+        # reference = the sample closest to WINDOW minutes back; need >=(WINDOW-1)min of coverage
+        target = now - _SPIKE_REV_WINDOW_MIN * 60
+        ref = None
+        for ts, p in _BTC_SPIKE_HIST:
+            if ts >= target:
+                ref = (ts, p); break
+        if ref is None or (now - _BTC_SPIKE_HIST[0][0]) < (_SPIKE_REV_WINDOW_MIN - 1) * 60:
+            return
+        move = (price - ref[1]) / ref[1] * 100.0
+        if abs(move) < _SPIKE_REV_MOVE_PCT:
+            return
+        # fade: spike UP → phantom SHORT (pass blocked_direction=LONG, mode FADE); spike DOWN → LONG
+        _seed_phantom_flip('BTCUSDT', price, 'LONG' if move > 0 else 'SHORT', 'SPIKE_REV_BTC')
+    except Exception:
+        pass
+
 
 def reset_phantom_flip_state():
     """Clear the in-memory phantom-flip tracking (open virtual fades + per-pair|source
@@ -200,7 +242,7 @@ def reset_phantom_flip_state():
 # Operator principle (2026-07-01): don't collect phantoms we don't display. Empty set = seed nothing.
 # ⚠ keep this in sync with the startup-purge allowlist in database.py::init_db — if they drift, the DB
 # purge deletes a newly-allowlisted source's history (or fails to purge a newly-retired one).
-_PHANTOM_KEEP_SOURCES = {"LONG_UNMATCHED_ONLY", "MOMENTUM_SHORT_W1_REGIME", "PASS:LONG_UNMATCHED_ONLY"}  # Jul 4: + same-direction phantom of the blocked matched long (bull re-enable hunt)
+_PHANTOM_KEEP_SOURCES = {"LONG_UNMATCHED_ONLY", "MOMENTUM_SHORT_W1_REGIME", "PASS:LONG_UNMATCHED_ONLY", "SPIKE_REV_BTC"}  # Jul 4: + same-direction phantom of the blocked matched long (bull re-enable hunt)
 
 
 def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None, entry_fields=None, mode='FADE'):
@@ -5692,6 +5734,7 @@ class TradingEngine:
         price-move %, apply the SL/trailing exit model, and persist on exit/timeout.
         Fully fail-silent — NEVER affects live trading. Uses an isolated DB session per
         persist so a failure can't poison the monitor-loop session."""
+        _maybe_seed_spike_rev()  # Jul 5 — BTC spike-reversion phantom (must run before the empty-state return)
         if not _PHANTOM_FLIP_STATE:
             return
         try:

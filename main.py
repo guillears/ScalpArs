@@ -9470,7 +9470,8 @@ async def _compute_phantom_flip_performance(db, is_paper):
         # FAN fade tracker remains clean.)
         flips = [f for f in _all_flips
                  if not (getattr(f, 'source_filter', '') or '').startswith('PASS:')
-                 and not (getattr(f, 'source_filter', '') or '').startswith('BLOCK:')]
+                 and not (getattr(f, 'source_filter', '') or '').startswith('BLOCK:')
+                 and not (getattr(f, 'source_filter', '') or '').startswith('SPIKE_REV')]  # Jul 5: BTC spike-reversion — own section, not a block-fade
     except Exception:
         return {"rows": [], "total": {}}
 
@@ -9512,9 +9513,12 @@ async def _compute_phantom_flip_performance(db, is_paper):
     # bull re-enable hunt). Kept OUT of the fade rows/aggregate above; own section with the same
     # per-pattern + per-regime sub-rows so W1/W2/W4 cells accrue toward their re-enable gates.
     pass_longs = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:LONG_UNMATCHED_ONLY']
+    # Jul 5 — BTC spike-reversion phantoms (fade |BTC 15m move|>=0.5%; SHORT = faded pump, LONG = faded dump)
+    spike_revs = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'SPIKE_REV_BTC']
     source_specs = [
         ("LONG_UNMATCHED_ONLY", ("SHORT",), True, flips),
         ("PASS:LONG_UNMATCHED_ONLY", ("LONG",), True, pass_longs),
+        ("SPIKE_REV_BTC", ("SHORT", "LONG"), True, spike_revs),
     ]
     for src, _dirs, _subrows, _pool in source_specs:
         for fd in _dirs:

@@ -67,7 +67,13 @@ def sleeve(r):
     d = r['direction']
     # --- MOM-long: keep only unmatched longs (long_unmatched_only) ---
     if d == 'LONG' and not isflip(r):
-        return 'MOM_LONG' if r.get('pattern_cell_source') == 'UNMATCHED' else None
+        if r.get('pattern_cell_source') != 'UNMATCHED': return None
+        # Jul 5 — LONG_BTC1H_DEADBAND parity: block when |BTC 1h slope| < long_btc_1h_deadband
+        # (flat hourly = no carry / DOA). Missing slope = fail-open, mirrors the engine gate.
+        _db = float(getattr(th, 'long_btc_1h_deadband', 0.0) or 0.0)
+        _s1h = nf(r.get('entry_btc_1h_slope'))
+        if _db > 0 and _s1h is not None and abs(_s1h) < _db: return None  # LONG_BTC1H_DEADBAND
+        return 'MOM_LONG'
     # --- FLIP-short: the REAL engine flip filter ---
     if d == 'SHORT' and isflip(r):
         blocked, *_ = _flip_filters('FAN_RATIO_GATE', flip_ind(r))
@@ -129,21 +135,23 @@ def main():
     # hard validation anchors (both must hold — these are the verified current-stack truth)
     ml = agg.get('MOM_LONG', []);  ms = agg.get('MOM_SHORT', [])
     ml_net = sum(pnl_current(x) for x in ml);  ms_net = sum(pnl_current(x) for x in ms)
-    # Anchors updated 2026-07-03 (v4): ① Jun30-Jul3 batch (27 trades) appended to the pool;
-    # ② flip_short_btc_1h_slope_max=0 shipped (BTC-1h regime gate) — screens out 26 slope>0 flips
-    # (17 baseline-era + 9 batch). ML 25->34/$2496->$2708, MS 15->17/$443->$661, FLIP 46->36/$825 (1x — incl. de-mux of the Jun-17/18 legacy 2x flips, review I2).
+    # Anchors updated 2026-07-05 (v5): long_btc_1h_deadband=0.05 shipped (flat-1h DOA block) —
+    # screens out 7 flat-zone MLs (4L/3W, -$256): ML 34->27/$2708->$2964. MS/FLIP unchanged.
+    # v4 (2026-07-03): ① Jun30-Jul3 batch (27 trades) appended; ② flip_short_btc_1h_slope_max=0
+    # shipped — screens out 26 slope>0 flips. ML 25->34/$2496->$2708, MS 15->17/$443->$661,
+    # FLIP 46->36/$825 (1x — incl. de-mux of the Jun-17/18 legacy 2x flips, review I2).
     # v3 (2026-07-01): weakcap parity closed (MOM-short 16/$392 -> 15/$443).
     # Prior anchors archived in DECISION_LOG: 23/$2146+28/-$122 (pre-batch), 25/$2496+14/$310 (W1-block v1),
     # 25/$2496+16/$392 (v2), 25/$2496+15/$443 (v3).
     _pvmax = float(getattr(th, 'momentum_short_pair_vol_max', 0.0) or 0.0)
     _pv_surv = sum(1 for r in ms if _pvmax > 0 and nf(r.get('entry_pair_volume_ratio')) is not None and nf(r.get('entry_pair_volume_ratio')) >= _pvmax)
     assert _pv_surv == 0, f"FAIL: {_pv_surv} pair_vol>={_pvmax} mom-shorts survived — vol block not applied, NOT freezing"
-    assert len(ml) == 34 and round(ml_net) == 2708, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 34/$2708 — screen wrong, NOT freezing"
+    assert len(ml) == 27 and round(ml_net) == 2964, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 27/$2964 — 1h deadband applied? screen wrong, NOT freezing"
     assert len(ms) == 17 and round(ms_net) == 661, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 17/$661 (C1 de-mux + pair-vol + weakcap?) — NOT freezing"
     fl = agg.get('FLIP_SHORT', [])
     fl_net = sum(pnl_current(x) for x in fl)
     assert len(fl) == 36 and round(fl_net) == 825, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 36/$825 — btc_1h_slope gate or flip de-mux not applied? NOT freezing"
-    print("\n✅ VALIDATION PASSED (MOM-long 34/$2708 + MOM-short 17/$661 + FLIP 36 + 0 pair-vol survivors). Freezing.")
+    print("\n✅ VALIDATION PASSED (MOM-long 27/$2964 + MOM-short 17/$661 + FLIP 36 + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

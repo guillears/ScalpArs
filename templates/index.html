@@ -7979,8 +7979,10 @@
                             runwayEl.textContent = `Runway: ${hrs}h`;
                             burnEl.textContent = `$${_bnbBurnRate.toFixed(2)}/hr`;
                         } else {
-                            runwayEl.textContent = '';
-                            burnEl.textContent = '';
+                            // Jul 5 (operator report): zero burn (no recent fees) used to BLANK both
+                            // lines — looked broken exactly when the bot was quiet. Show the truth instead.
+                            burnEl.textContent = '$0.00/hr (no recent fees)';
+                            runwayEl.textContent = 'Runway: ∞';
                         }
                     } else {
                         const bnbVal = parseFloat(data.bnb_balance || 0);
@@ -7994,7 +7996,7 @@
                             if (_bnbBurnRate > 0) {
                                 const hrs = Math.round(bnbUsd / _bnbBurnRate);
                                 runwayEl.textContent = `Runway: ${hrs}h`;
-                            } else { runwayEl.textContent = ''; }
+                            } else { runwayEl.textContent = 'Runway: ∞'; }  // Jul 5: zero burn = infinite, not blank
                         } else { burnEl.textContent = ''; }
                     }
                 }

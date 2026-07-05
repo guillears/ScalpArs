@@ -242,7 +242,8 @@ def reset_phantom_flip_state():
 # Operator principle (2026-07-01): don't collect phantoms we don't display. Empty set = seed nothing.
 # ⚠ keep this in sync with the startup-purge allowlist in database.py::init_db — if they drift, the DB
 # purge deletes a newly-allowlisted source's history (or fails to purge a newly-retired one).
-_PHANTOM_KEEP_SOURCES = {"LONG_UNMATCHED_ONLY", "MOMENTUM_SHORT_W1_REGIME", "PASS:LONG_UNMATCHED_ONLY", "SPIKE_REV_BTC"}  # Jul 4: + same-direction phantom of the blocked matched long (bull re-enable hunt)
+from models import PHANTOM_KEEP_SOURCES as _PHANTOM_KEEP_SOURCES_TUPLE
+_PHANTOM_KEEP_SOURCES = set(_PHANTOM_KEEP_SOURCES_TUPLE)  # Jul 5: single source of truth in models.py (purge-drift incident)  # Jul 4: + same-direction phantom of the blocked matched long (bull re-enable hunt)
 
 
 def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None, entry_fields=None, mode='FADE'):

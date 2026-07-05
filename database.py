@@ -64,12 +64,17 @@ async def init_db():
             return 'phantom_flips' in _pf_inspect(connection).get_table_names()
         try:
             if await conn.run_sync(_has_pf):
-                # ⚠ keep this allowlist in sync with _PHANTOM_KEEP_SOURCES in services/trading_engine.py —
-                # if they drift, this purge deletes a newly-allowlisted source's history (or fails to purge
-                # a newly-retired one). Raw SQL literal (can't drop a Python set into a NOT IN cheaply).
+                # Jul 5 — REBUILT after the PASS-phantom loss (operator invariant: phantoms die
+                # ONLY on /api/reset, NEVER on a redeploy). The old "DELETE ... NOT IN allowlist"
+                # was fail-DANGEROUS: any source added to the engine but not to the hardcoded copy
+                # was executed on the next boot (Jul-5 incident: 4 PASS phantoms). Now we delete
+                # ONLY sources explicitly listed in models.PHANTOM_RETIRED_SOURCES — an unknown or
+                # newly-added source ALWAYS survives a deploy, even if every other registry is
+                # forgotten. Fail-safe by construction.
+                from models import PHANTOM_RETIRED_SOURCES as _pf_retired
+                _pf_in = ", ".join(f"'{s}'" for s in _pf_retired)  # trusted literals from models.py
                 _res = await conn.execute(_pf_text(
-                    "DELETE FROM phantom_flips WHERE source_filter NOT IN "
-                    "('LONG_UNMATCHED_ONLY', 'MOMENTUM_SHORT_W1_REGIME')"))
+                    f"DELETE FROM phantom_flips WHERE source_filter IN ({_pf_in})"))
                 if getattr(_res, 'rowcount', 0):
                     import logging
                     logging.getLogger("database").info(f"[DB] purged {_res.rowcount} retired phantom_flip rows")

@@ -584,6 +584,30 @@ class Order(Base):
     notes = Column(Text, nullable=True)
 
 
+# Canonical phantom source allowlist (Jul 5 — SINGLE SOURCE OF TRUTH). Both the engine's
+# seeding keep-set (_PHANTOM_KEEP_SOURCES) and database.py's startup purge are generated
+# from THIS tuple. History: the purge had its own hardcoded copy; adding PASS:/SPIKE_REV
+# to the engine but not the purge caused every app restart to DELETE the new sources' rows
+# (Jul-5 incident: 4 PASS phantoms purged by the spike-phantom deploy's restart).
+PHANTOM_KEEP_SOURCES = (
+    "LONG_UNMATCHED_ONLY",
+    "MOMENTUM_SHORT_W1_REGIME",
+    "PASS:LONG_UNMATCHED_ONLY",
+    "SPIKE_REV_BTC",
+)
+
+# Jul 5 (operator invariant: "phantoms are killed ONLY on reset, never on redeploy").
+# The startup purge deletes ONLY the sources explicitly listed here (fail-SAFE: an
+# unknown/new source always survives a deploy, even if someone forgets every registry).
+# These are the pre-Jul-1 research sources whose rows were already purged once; the
+# list exists only to keep legacy DBs clean. NEVER add a live source here.
+PHANTOM_RETIRED_SOURCES = (
+    "FAN_RATIO_GATE", "ATR_GAP_LONG", "PAIR_TREND_FILTER", "PAIR_ADX_MAX",
+    "BTC_ADX_BLOCK_SHORT", "PAIR_RSI_ADX_CROSS", "BTC_RSI_ADX_CROSS", "PAIR_RSI_OB",
+    "PASS:BTC_ADX_GATE_LOW", "PASS:BTC_RSI_ADX_CROSS", "PASS:FAN_RATIO_GATE",
+)
+
+
 class PhantomFlip(Base):
     """Phantom Flip Tracker (Jun 13, observation-only). When an entry is BLOCKED by
     fan-ratio / ATR×gap / pair-trend, a virtual OPPOSITE-direction ("fade") position

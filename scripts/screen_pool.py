@@ -135,7 +135,10 @@ def main():
     # hard validation anchors (both must hold — these are the verified current-stack truth)
     ml = agg.get('MOM_LONG', []);  ms = agg.get('MOM_SHORT', [])
     ml_net = sum(pnl_current(x) for x in ml);  ms_net = sum(pnl_current(x) for x in ms)
-    # Anchors updated 2026-07-05 (v5): long_btc_1h_deadband=0.05 shipped (flat-1h DOA block) —
+    # Anchors updated 2026-07-05 (v6): CHOPPY_FLAT removed from both flip regime fields
+    # (block evidence dissolved — 28/30 CHOP flips are BTC30_RISE/BTC1H_SLOPE blocked anyway;
+    # label was a proxy for BTC-turning-up): re-admits 1 winner (STG 06-18) -> FLIP 36->37/$825->$833.
+    # v5 (2026-07-05): long_btc_1h_deadband=0.05 shipped (flat-1h DOA block) —
     # screens out 7 flat-zone MLs (4L/3W, -$256): ML 34->27/$2708->$2964. MS/FLIP unchanged.
     # v4 (2026-07-03): ① Jun30-Jul3 batch (27 trades) appended; ② flip_short_btc_1h_slope_max=0
     # shipped — screens out 26 slope>0 flips. ML 25->34/$2496->$2708, MS 15->17/$443->$661,
@@ -150,8 +153,8 @@ def main():
     assert len(ms) == 17 and round(ms_net) == 661, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 17/$661 (C1 de-mux + pair-vol + weakcap?) — NOT freezing"
     fl = agg.get('FLIP_SHORT', [])
     fl_net = sum(pnl_current(x) for x in fl)
-    assert len(fl) == 36 and round(fl_net) == 825, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 36/$825 — btc_1h_slope gate or flip de-mux not applied? NOT freezing"
-    print("\n✅ VALIDATION PASSED (MOM-long 27/$2964 + MOM-short 17/$661 + FLIP 36 + 0 pair-vol survivors). Freezing.")
+    assert len(fl) == 37 and round(fl_net) == 833, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 37/$833 — CHOP unblock / btc_1h_slope gate / flip de-mux not applied? NOT freezing"
+    print("\n✅ VALIDATION PASSED (MOM-long 27/$2964 + MOM-short 17/$661 + FLIP 37/$833 + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

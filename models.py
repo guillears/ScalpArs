@@ -594,6 +594,12 @@ PHANTOM_KEEP_SOURCES = (
     "MOMENTUM_SHORT_W1_REGIME",
     "PASS:LONG_UNMATCHED_ONLY",
     "SPIKE_REV_BTC",
+    # Jul 5 — same-direction PASS phantoms of the two decision-gated flip-SHORT blockers:
+    # BTC1H_SLOPE feeds the Jul-3 gate's locked revert (≥60% WR on N≥10 blocked → gate off;
+    # the gate shipped WITHOUT this surface — the revert could never trigger, bug fix).
+    # REGIME (bear≥80, #1 flip blocker at 290) measures what the bear-era filter forfeits in a bull.
+    "PASS:FLIP_SHORT_BTC1H_SLOPE",
+    "PASS:FLIP_SHORT_REGIME",
 )
 
 # Jul 5 (operator invariant: "phantoms are killed ONLY on reset, never on redeploy").

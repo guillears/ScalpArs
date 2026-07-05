@@ -9515,10 +9515,17 @@ async def _compute_phantom_flip_performance(db, is_paper):
     pass_longs = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:LONG_UNMATCHED_ONLY']
     # Jul 5 — BTC spike-reversion phantoms (fade |BTC 15m move|>=0.5%; SHORT = faded pump, LONG = faded dump)
     spike_revs = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'SPIKE_REV_BTC']
+    # Jul 5 — same-direction PASS phantoms of the two decision-gated flip-SHORT blockers:
+    # BTC1H_SLOPE = the Jul-3 gate's locked revert surface (≥60% WR on N≥10 → gate off);
+    # REGIME = bear≥80 (#1 flip blocker) — what does it forfeit in a bull?
+    pass_b1h = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:FLIP_SHORT_BTC1H_SLOPE']
+    pass_freg = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:FLIP_SHORT_REGIME']
     source_specs = [
         ("LONG_UNMATCHED_ONLY", ("SHORT",), True, flips),
         ("PASS:LONG_UNMATCHED_ONLY", ("LONG",), True, pass_longs),
         ("SPIKE_REV_BTC", ("SHORT", "LONG"), True, spike_revs),
+        ("PASS:FLIP_SHORT_BTC1H_SLOPE", ("SHORT",), True, pass_b1h),
+        ("PASS:FLIP_SHORT_REGIME", ("SHORT",), True, pass_freg),
     ]
     for src, _dirs, _subrows, _pool in source_specs:
         for fd in _dirs:

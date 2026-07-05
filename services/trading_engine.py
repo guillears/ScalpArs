@@ -3554,6 +3554,14 @@ class TradingEngine:
             if _blocked:
                 try: self._record_filter_block(_reason, flip_dir)
                 except Exception: pass
+                # Jul 5: same-direction PASS phantom for the two decision-gated flip-SHORT blockers.
+                # BTC1H_SLOPE = the Jul-3 gate's locked revert surface (≥60% WR on N≥10 blocked → gate
+                # off) — the gate shipped without it, so the revert could never fire. REGIME = the #1
+                # flip blocker (bear≥80); measures what the bear-era filter forfeits in a bull. The
+                # phantom runs the exact flip replica exit, so its WR is directly gate-comparable.
+                if _reason in ("FLIP_SHORT_BTC1H_SLOPE", "FLIP_SHORT_REGIME"):
+                    _seed_phantom_flip(pair, price, flip_dir, f"PASS:{_reason}",
+                                       entry_fields=_ef, mode='PASS')
                 logger.info(f"[FLIP_FILTER] {pair}: {source} flip vetoed by {_reason} "
                             f"(stretch={_ff_in.get('ema5_stretch')}, btcRSI={_ff_in.get('btc_rsi')}, btcADX={_ff_in.get('btc_adx')})")
                 return

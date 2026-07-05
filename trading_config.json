@@ -81,6 +81,7 @@
         "btc_1h_slope_max_short": 0.1,
         "btc_1h_slope_min_long": 0.0,
         "btc_1h_slope_min_short": -0.6,
+        "long_btc_1h_deadband": 0.05,
         "btc_rsi_1h_min_short": 35.0,
         "evo_chase_filter_long_enabled": true,
         "evo_chase_filter_short_enabled": false,

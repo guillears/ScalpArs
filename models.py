@@ -600,6 +600,9 @@ PHANTOM_KEEP_SOURCES = (
     # REGIME (bear≥80, #1 flip blocker at 290) measures what the bear-era filter forfeits in a bull.
     "PASS:FLIP_SHORT_BTC1H_SLOPE",
     "PASS:FLIP_SHORT_REGIME",
+    # Jul 5 PM — revert surface of the LONG_BTC1H_DEADBAND ship (flat-1h DOA block,
+    # N=9 discipline-override): re-open the band at >=60% WR on N>=10 blocked phantoms.
+    "PASS:LONG_BTC1H_DEADBAND",
 )
 
 # Jul 5 (operator invariant: "phantoms are killed ONLY on reset, never on redeploy").

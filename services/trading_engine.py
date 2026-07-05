@@ -8368,6 +8368,24 @@ class TradingEngine:
                     self._last_pair_block_reason[pair] = "BTC_1H_SLOPE_MIN_GATE"
                     signal = "NO_TRADE"
 
+                # Jul 5 — BTC 1h slope DEAD-BAND (LONG only). Flat hourly slope = no macro
+                # carry: the alt breakout has no sponsor and dies on arrival (baseline flat
+                # zone 43% WR vs 92-93% on both flanks; fresh losers RPL/ETHFI both in-zone,
+                # peaks 0.00-0.44 = DOA fingerprint). Blocks the middle the max/min gates
+                # leave open → allowed region becomes two trend windows. None-check (or-falsy
+                # lesson: 0.0 config = deliberate off, None = unset → off).
+                _dbraw = getattr(_th, 'long_btc_1h_deadband', 0.0)
+                _db = 0.0 if _dbraw is None else float(_dbraw)
+                if signal == "LONG" and _db > 0 and abs(_current_btc_1h_slope) < _db:
+                    logger.info(f"[LONG_BTC1H_DEADBAND] {pair}: LONG blocked — |BTC 1h slope {_current_btc_1h_slope:+.4f}%| < {_db}% (flat hourly: no carry, DOA zone)")
+                    self._record_filter_block("LONG_BTC1H_DEADBAND", "LONG", had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "LONG_BTC1H_DEADBAND"
+                    # revert surface: same-direction PASS phantom of the blocked LONG
+                    # (gate: re-open at >=60% WR on N>=10 fresh — the Jul-3 lesson, day-one wired)
+                    _seed_phantom_flip(pair, indicators.get('price'), "LONG", "PASS:LONG_BTC1H_DEADBAND",
+                                       entry_fields=self._flip_entry_fields(indicators, flip_dir="LONG"), mode='PASS')
+                    signal = "NO_TRADE"
+
             # Jun 10 — BTC 1h RSI FLOOR (SHORT). Block shorting when BTC's HOURLY RSI is
             # already deep-oversold = shorting into the hourly bounce zone (the 1h twin of
             # the 5m climax-oversold cross-filter block). Cross-batch matched shorts:

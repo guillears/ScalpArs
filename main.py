@@ -9520,12 +9520,16 @@ async def _compute_phantom_flip_performance(db, is_paper):
     # REGIME = bear≥80 (#1 flip blocker) — what does it forfeit in a bull?
     pass_b1h = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:FLIP_SHORT_BTC1H_SLOPE']
     pass_freg = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:FLIP_SHORT_REGIME']
+    # Jul 5 PM — flat-1h dead-band block (LONG_BTC1H_DEADBAND) revert surface: blocked
+    # momentum longs as same-direction phantoms; re-open the band at >=60% WR on N>=10.
+    pass_db = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:LONG_BTC1H_DEADBAND']
     source_specs = [
         ("LONG_UNMATCHED_ONLY", ("SHORT",), True, flips),
         ("PASS:LONG_UNMATCHED_ONLY", ("LONG",), True, pass_longs),
         ("SPIKE_REV_BTC", ("SHORT", "LONG"), True, spike_revs),
         ("PASS:FLIP_SHORT_BTC1H_SLOPE", ("SHORT",), True, pass_b1h),
         ("PASS:FLIP_SHORT_REGIME", ("SHORT",), True, pass_freg),
+        ("PASS:LONG_BTC1H_DEADBAND", ("LONG",), True, pass_db),
     ]
     for src, _dirs, _subrows, _pool in source_specs:
         for fd in _dirs:

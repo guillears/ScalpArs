@@ -5801,6 +5801,15 @@
                                 <span class="ml-1 text-gray-500">%</span>
                             </label>
                         </div>
+                        <!-- Jul 5: BTC 1h slope DEAD-BAND (LONG). Block momentum LONG when |1h slope| < value — flat hourly = no macro carry, DOA zone. -->
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
+                            <span class="text-xs text-cyan-300 w-32" title="Jul 5: block a momentum LONG when |BTC 1h EMA20 slope| < this (flat hourly = no macro carry → alt breakout has no sponsor → dies on arrival). Baseline |1h|<0.05 = 7/43%WR/−0.19% vs flanks 27/93%WR; fresh 07-05 losers RPL/ETHFI both in-zone (peaks ≤0.44, DOA). 6 of 8 cross-era unmatched-long losers, 6 pairs, monotone-worse toward 0. ⚠ N=9 discipline-override ship. Counter LONG_BTC1H_DEADBAND; blocked longs tracked as PASS:LONG_BTC1H_DEADBAND phantoms. TIGHT REVERT: →0 (off) if blocked phantoms ≥60% WR on N≥10. 0 = disabled.">1h Dead-band L:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="0.01" min="0" id="config-long-btc-1h-deadband" class="w-16 ml-1 bg-white/5 border border-cyan-500/40 rounded px-2 py-1 text-cyan-200 text-center" value="0.05">
+                                <span class="ml-1 text-gray-500">%</span>
+                            </label>
+                            <span class="text-xs text-gray-500">block LONG when |BTC 1h slope| &lt; value (flat = no carry)</span>
+                        </div>
                         <!-- Jun 10 guards: BTC 1h RSI floor (SHORT, hourly-oversold bounce risk) · Pair ATR ceiling (LONG, out-of-distribution memes) · RSI Spike Guard (LONG, first-candle pump chase). 0 = disabled. -->
                         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 border-t border-white/5 pt-2">
                             <span class="text-xs text-amber-300 w-32" title="Block SHORT when BTC's HOURLY RSI is below this = shorting into the hourly bounce zone (the 1h twin of the 5m climax-oversold block). Cross-batch: 1hRSI<30 = -$940, 30-35 = -$382, 35-40 = +$651 (monotonic). 0 = disabled. Live = 35.">Min BTC 1h RSI S:</span>
@@ -9691,6 +9700,7 @@
             lines.push(`  BTC EMA20 Slope Max L: ${th.btc_ema20_slope_max_long !== undefined ? th.btc_ema20_slope_max_long : 0}%  |  S: ${th.btc_ema20_slope_max_short !== undefined ? th.btc_ema20_slope_max_short : 0}%  (May 2: 0 = disabled)`);
             lines.push(`  BTC 1h Slope Max L: ${th.btc_1h_slope_max_long !== undefined ? th.btc_1h_slope_max_long : 0}%  |  S: ${th.btc_1h_slope_max_short !== undefined ? th.btc_1h_slope_max_short : 0}%  (May 24: 0 = disabled; LONG ship at 0.15)`);
             lines.push(`  BTC 1h Slope Min L: ${th.btc_1h_slope_min_long !== undefined ? th.btc_1h_slope_min_long : 0}%  |  S: ${th.btc_1h_slope_min_short !== undefined ? th.btc_1h_slope_min_short : 0}%  (Jun 3: neg = active, 0 = disabled; SHORT ship at -0.60)`);
+            lines.push(`  BTC 1h Dead-band L: ${th.long_btc_1h_deadband !== undefined ? th.long_btc_1h_deadband : 0}%  (Jul 5: block LONG when |1h slope| < value — flat hourly = no carry/DOA; 0 = disabled)`);
             lines.push(`  Jun-10 Guards: BTC 1h RSI Min S: ${th.btc_rsi_1h_min_short ?? 0} (hourly-oversold bounce)  |  Pair ATR Max L: ${th.pair_atr_max_long ?? 0}% (meme guard)  |  RSI Spike Guard L: rsi_prev<${th.rsi_prev_min_long ?? 0} AND jump>=${th.rsi_spike_min_jump_long ?? 0}`);
             lines.push(`  BTC-Accel Chase Filter (LONG): ${th.evo_chase_filter_long_enabled ? 'ON' : 'OFF'}  |  Window: ${th.evo_chase_window_min !== undefined ? th.evo_chase_window_min : 30}min  (Jun 3: block LONG when BTC EMA20 slope > last-LONG = chasing)`);
             lines.push(`  ADX Very Strong: L>${th.adx_very_strong_long || th.adx_very_strong} S>${th.adx_very_strong}  |  ADX Strong: L>${th.adx_strong_long || th.adx_strong} S>${th.adx_strong}  |  ADX Max: L${th.momentum_adx_max_long || th.momentum_adx_max} S${th.momentum_adx_max}`);
@@ -18681,6 +18691,7 @@
                 if (_b1hMinL) _b1hMinL.value = config.thresholds.btc_1h_slope_min_long !== undefined ? config.thresholds.btc_1h_slope_min_long : 0;
                 const _b1hMinS = document.getElementById('config-btc-1h-slope-min-short');
                 if (_b1hMinS) _b1hMinS.value = config.thresholds.btc_1h_slope_min_short !== undefined ? config.thresholds.btc_1h_slope_min_short : 0;
+                { const _e=document.getElementById('config-long-btc-1h-deadband'); if(_e) _e.value = config.thresholds.long_btc_1h_deadband !== undefined ? config.thresholds.long_btc_1h_deadband : 0; }
                 { const _e=document.getElementById('config-btc-rsi-1h-min-short'); if(_e) _e.value = config.thresholds.btc_rsi_1h_min_short !== undefined ? config.thresholds.btc_rsi_1h_min_short : 0; }
                 { const _e=document.getElementById('config-pair-atr-max-long'); if(_e) _e.value = config.thresholds.pair_atr_max_long !== undefined ? config.thresholds.pair_atr_max_long : 0; }
                 { const _e=document.getElementById('config-atr-gap-block-long-enabled'); if(_e) _e.checked = config.thresholds.atr_gap_block_long_enabled !== undefined ? !!config.thresholds.atr_gap_block_long_enabled : false; }
@@ -19994,6 +20005,7 @@
                     btc_1h_slope_max_short: safeFloat((document.getElementById('config-btc-1h-slope-max-short')||{}).value || 0),
                     btc_1h_slope_min_long: safeFloat((document.getElementById('config-btc-1h-slope-min-long')||{}).value || 0),
                     btc_1h_slope_min_short: safeFloat((document.getElementById('config-btc-1h-slope-min-short')||{}).value || 0),
+                    long_btc_1h_deadband: safeFloat((document.getElementById('config-long-btc-1h-deadband')||{}).value || 0),
                     btc_rsi_1h_min_short: safeFloat((document.getElementById('config-btc-rsi-1h-min-short')||{}).value || 0),
                     pair_atr_max_long: safeFloat((document.getElementById('config-pair-atr-max-long')||{}).value || 0),
                     atr_gap_block_long_enabled: (document.getElementById('config-atr-gap-block-long-enabled')||{checked:false}).checked,

@@ -111,6 +111,15 @@ class SignalThresholds(BaseModel):
     # the steep band — a different mechanism, not shipped here).
     btc_1h_slope_min_long: float = 0.0
     btc_1h_slope_min_short: float = 0.0
+    # Jul 5: BTC 1h slope DEAD-BAND for LONGs — block a momentum LONG when |BTC 1h slope|
+    # < this value (flat hourly = no macro carry → alt breakout has no sponsor → DOA).
+    # The FLAT-band loser zone the Jun-3 comment above predicted, now measured: baseline
+    # ML |1h|<0.05 = 7/43%WR/−0.19% avg vs flanks 27/93%WR (pullback flank is the shipped
+    # 1hPullback 2× cell); fresh 07-05 both losers in-zone (RPL −0.016, ETHFI +0.024);
+    # 6 of 8 cross-era losers, 6 pairs, monotone-worse toward 0, Fisher p≈0.01.
+    # ⚠ N=9 discipline-override ship (operator-directed) — tight phantom revert:
+    # PASS:LONG_BTC1H_DEADBAND ≥60% WR on N≥10 → set back to 0. 0 = disabled.
+    long_btc_1h_deadband: float = 0.0
     # Jun 10: BTC 1h RSI FLOOR for SHORTs — block shorting when BTC's HOURLY RSI is already
     # deep-oversold (= shorting into the hourly bounce zone; the 1h twin of the 5m
     # climax-oversold block). Cross-batch matched shorts: 1hRSI<30 = -$940, 30-35 = -$382,

@@ -480,6 +480,7 @@
         "atr_low_fixed_tp_atr_max": 1.1,
         "atr_low_fixed_tp_pct": 0.25,
         "long_unmatched_only": true,
+        "long_w2_reenable_1h_min": 0.05,
         "global_volume_max_short_capitulation_override_enabled": false,
         "ema13_cross_exit_long_enabled": false,
         "ema13_cross_exit_short_enabled": true,

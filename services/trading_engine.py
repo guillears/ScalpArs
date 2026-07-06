@@ -4081,7 +4081,24 @@ class TradingEngine:
         # Jun 9: "keep only unmatched longs" — the LONG pattern library selects for losers
         # (every C/W pattern net-negative); the edge is the no-pattern runner cohort (85% WR).
         # Block any LONG that matches ANY C or W pattern. Counter LONG_UNMATCHED_ONLY.
-        if direction == "LONG" and not flip_source and not bull_long and not bounce_long and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e):
+        # Jul 6 — W2 RE-ENABLE (1h-rising conditioned): admit a W2-matched long (NO C co-match)
+        # when BTC 1h slope ≥ long_w2_reenable_1h_min. First matched cell back since Jun-9.
+        # History split: W2 × 1h-rising 29·72%WR vs × pullback 14·14%·−0.55 (conditioned cell
+        # not refuted); phantoms ≈10·90%·+0.39. Trades at the W2 cell's 1× (not UNMATCHED 2×);
+        # tracking rides the Pattern Cell Ship table. Missing 1h → NO admit (fail-closed: the
+        # block is the safe state). 🔒 REVERT →99 if live cohort ≤50% WR or net-neg on N≥8.
+        _w2_admit = False
+        if direction == "LONG" and not flip_source and not bull_long and not bounce_long and _pw2_e and not _pc_any_e:
+            try:
+                _w2r_raw = getattr(config.trading_config.thresholds, 'long_w2_reenable_1h_min', 99.0)
+                _w2r = 99.0 if _w2r_raw is None else float(_w2r_raw)
+                _w2_1h = globals().get('_current_btc_1h_slope')
+                if _w2r < 99 and _w2_1h is not None and _w2_1h >= _w2r:
+                    _w2_admit = True
+                    logger.info(f"[W2_REENABLE] {pair}: W2-matched LONG ADMITTED — BTC 1h slope {_w2_1h:+.4f}% >= {_w2r}% (rising flank; cell 1x)")
+            except Exception:
+                _w2_admit = False
+        if direction == "LONG" and not flip_source and not bull_long and not bounce_long and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e) and not _w2_admit:
             logger.info(f"[LONG_UNMATCHED_ONLY] {pair}: LONG blocked — matched a pattern (c_any={_pc_any_e}, w_any={_pw_any_e})")
             try:
                 self._record_filter_block("LONG_UNMATCHED_ONLY", "LONG")

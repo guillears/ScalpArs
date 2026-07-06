@@ -910,6 +910,17 @@ class SignalThresholds(BaseModel):
     # but unmatched longs RUN (54% peak ≥0.40) — capping them at +0.25 strangles the edge, so
     # disable it and let them trail. (Coupling: if you re-enable matched longs, re-enable fix-TP.)
     long_unmatched_only: bool = False
+    # Jul 6: W2 RE-ENABLE, 1h-rising conditioned (operator-directed; first matched-long cell back
+    # since the Jun-9 block). Admit a W2-matched long (macro tailwind; NO C co-match) when BTC 1h
+    # slope ≥ this value. Evidence: historical live W2 longs split hard on 1h — rising ≥+0.05 =
+    # 29·72%WR vs pullback ≤−0.05 = 14·14%·−0.55 (refute-only history REFUTES unconditional
+    # re-enable, does NOT refute the conditioned cell); current-stack phantoms W2 ≈10·90%·+0.39
+    # (> friction); theory: W2 = continuation-with-macro — needs the hourly engine RUNNING
+    # (mirror: W6 prefers the pullback — same variable, opposite sign, mechanism-coherent).
+    # ⚠ phantom N ≈10 < the registered N≥20 gate = operator override. Trades at the W2 pattern
+    # cell's 1× (no UNMATCHED 2×). 🔒 TIGHT REVERT: →99 (off) if live W2-rising longs ≤50% WR
+    # or net-negative on N≥8. 99 = off; ship 0.05.
+    long_w2_reenable_1h_min: float = 99.0
     # BTC 1h Slope × BTC ADX Multiplier Rules (May 24 evening, 2026) — NEW dimension.
     # Sister to btc_rsi_adx_multiplier (existing) and extension_multiplier (today).
     # JSON-list format (not the string-CSV format used by btc_rsi_adx_multiplier_*)

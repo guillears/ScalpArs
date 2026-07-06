@@ -921,6 +921,18 @@ class SignalThresholds(BaseModel):
     # cell's 1× (no UNMATCHED 2×). 🔒 TIGHT REVERT: →99 (off) if live W2-rising longs ≤50% WR
     # or net-negative on N≥8. 99 = off; ship 0.05.
     long_w2_reenable_1h_min: float = 99.0
+    # Jul 6: W6 RE-ENABLE, 2D-conditioned (operator-directed; second matched cell back). Admit a
+    # W6-matched long (laggard catch-up; NO C co-match) when BTC 1h slope ≤ long_w6_reenable_1h_max
+    # (the dip = the discount) AND EMA5 stretch ≥ long_w6_reenable_stretch_min (the laggard is
+    # actually waking up). Head-to-head on identical rows (dedupe_pool_FULL, refute-only):
+    # pullback∧thrust = 23·78%WR (eraA 8·100%·+0.43 / eraB 15·67%) — the ONLY W6 cell consistent
+    # in both eras; pullback alone FAILED the era test (eraB 46%); thrust alone 65%. Mirror logic
+    # vs W2: W2's signature includes pair momentum (thrust redundant); W6's excludes it (thrust
+    # mandatory). ⚠ WEAKEST override yet: 2D cell search-derived, eraB $≈breakeven under OLD
+    # exits, phantom N=2. Trades at the W6 cell 1×. 🔒 TIGHT REVERT: →99/off if live cohort
+    # ≤50% WR or net-negative on N≥8. 1h_max 99 = off; ship −0.05 / stretch_min 0.31.
+    long_w6_reenable_1h_max: float = 99.0
+    long_w6_reenable_stretch_min: float = 0.31
     # BTC 1h Slope × BTC ADX Multiplier Rules (May 24 evening, 2026) — NEW dimension.
     # Sister to btc_rsi_adx_multiplier (existing) and extension_multiplier (today).
     # JSON-list format (not the string-CSV format used by btc_rsi_adx_multiplier_*)

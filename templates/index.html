@@ -5109,6 +5109,13 @@
                                 <input type="number" step="0.01" id="config-long-w2-reenable-1h-min" class="w-16 px-2 py-1 bg-gray-800 border border-cyan-500/40 rounded text-cyan-200 text-right">
                                 <span class="text-xs text-gray-500">% (99 = off; ship 0.05 — rising flank only, cell 1×)</span>
                             </div>
+                            <div class="flex items-center gap-2 flex-wrap mt-2" title="Jul 6: W6 RE-ENABLE, 2D-conditioned — admit a W6-matched long (laggard catch-up; NO C co-match) when BTC 1h slope ≤ the max (the dip = discount) AND EMA5 stretch ≥ the min (the laggard is actually waking up). Head-to-head on identical rows: pullback∧thrust = 23·78%WR (eraA 100% / eraB 67% — the ONLY era-consistent W6 cell); pullback alone FAILED the era test (eraB 46%). Mirror of W2: W2's signature includes pair momentum (thrust redundant there); W6's excludes it (thrust mandatory here). ⚠ Weakest override yet: search-derived 2D cell, eraB $≈breakeven under OLD exits, phantom N=2. Cell 1×; tracks as Pattern Cell W6 LONG. 🔒 REVERT →99 (off) if live cohort ≤50% WR or net-negative on N≥8.">
+                                <span class="text-cyan-300 text-sm">↳ W6 re-enable: admit W6 long when BTC 1h ≤</span>
+                                <input type="number" step="0.01" id="config-long-w6-reenable-1h-max" class="w-16 px-2 py-1 bg-gray-800 border border-cyan-500/40 rounded text-cyan-200 text-right">
+                                <span class="text-xs text-gray-500">% AND stretch ≥</span>
+                                <input type="number" step="0.01" id="config-long-w6-reenable-stretch-min" class="w-16 px-2 py-1 bg-gray-800 border border-cyan-500/40 rounded text-cyan-200 text-right">
+                                <span class="text-xs text-gray-500">(1h 99 = off; ship −0.05 / 0.31 — dip + thrust, cell 1×)</span>
+                            </div>
                         </div>
                         <div class="md:col-span-2 border border-cyan-500/20 rounded p-2">
                             <label class="block text-sm text-cyan-300 mb-2">🏃 Runner Stretch-Trail (LONG) <span class="text-xs text-gray-400 font-normal">(Jun 1 — high-ATR runner exit; OFF → runners use normal tight trailing)</span></label>
@@ -9786,7 +9793,7 @@
             lines.push(`  EMA13 Cross Exit: ${th.ema13_cross_exit_enabled !== undefined ? th.ema13_cross_exit_enabled : false}  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing) | Strict (require EMA5/EMA8 stack flip): ${th.ema13_cross_requires_stack_flip !== undefined ? th.ema13_cross_requires_stack_flip : false}`);
             lines.push(`  Fast Exit: ${th.fast_exit_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_threshold_pct ?? 0.20}%  |  Window ≤ ${th.fast_exit_window_minutes ?? 2}min  |  ATR× ${th.fast_exit_l1_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l1_atr_floor_cap_pct ?? 0.60}%  (eff = min(cap, max(fixed, ATR×mult)))`);
             lines.push(`  Low-ATR Fixed TP LONG (Jun 5): ${th.atr_low_fixed_tp_long_enabled ? 'ON' : 'OFF'} (ATR<${th.atr_low_fixed_tp_atr_max ?? 1.1}% → TP ≥ ${th.atr_low_fixed_tp_pct ?? 0.25}%)`);
-            lines.push(`  Keep ONLY Unmatched Longs (Jun 9): ${th.long_unmatched_only ? 'ON — block all pattern-matched longs' : 'OFF'}  (counter LONG_UNMATCHED_ONLY)  |  W2 re-enable 1h ≥ ${th.long_w2_reenable_1h_min !== undefined ? th.long_w2_reenable_1h_min : 99}% (Jul 6: 99 = off; 0.05 = admit W2 longs on the rising flank at cell 1×)`);
+            lines.push(`  Keep ONLY Unmatched Longs (Jun 9): ${th.long_unmatched_only ? 'ON — block all pattern-matched longs' : 'OFF'}  (counter LONG_UNMATCHED_ONLY)  |  W2 re-enable 1h ≥ ${th.long_w2_reenable_1h_min !== undefined ? th.long_w2_reenable_1h_min : 99}%  |  W6 re-enable 1h ≤ ${th.long_w6_reenable_1h_max !== undefined ? th.long_w6_reenable_1h_max : 99}% ∧ stretch ≥ ${th.long_w6_reenable_stretch_min !== undefined ? th.long_w6_reenable_stretch_min : 0.31} (Jul 6: 99 = off; W2 rising / W6 dip+thrust, cell 1×)`);
             lines.push(`  Fast Exit L2: ${th.fast_exit_l2_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_l2_threshold_pct ?? 0.40}%  |  Window ≤ ${th.fast_exit_l2_window_minutes ?? 5}min  |  ATR× ${th.fast_exit_l2_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l2_atr_floor_cap_pct ?? 0.80}%  (May 25 evening: cap protects extreme-ATR pairs)`);
             lines.push(`  EMA Stack Cross Exit: ${th.ema_stack_cross_exit_enabled !== undefined ? th.ema_stack_cross_exit_enabled : false}  |  Handoff at L≥${th.ema_stack_cross_exit_level !== undefined ? th.ema_stack_cross_exit_level : 2}  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)`);
             lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
@@ -18639,6 +18646,8 @@
                 { const _e=document.getElementById('config-atr-low-fixed-tp-pct'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_pct !== undefined ? config.thresholds.atr_low_fixed_tp_pct : 0.25; }
                 { const _e=document.getElementById('config-long-unmatched-only'); if(_e) _e.checked = !!config.thresholds.long_unmatched_only; }
                 { const _e=document.getElementById('config-long-w2-reenable-1h-min'); if(_e) _e.value = config.thresholds.long_w2_reenable_1h_min !== undefined ? config.thresholds.long_w2_reenable_1h_min : 99; }
+                { const _e=document.getElementById('config-long-w6-reenable-1h-max'); if(_e) _e.value = config.thresholds.long_w6_reenable_1h_max !== undefined ? config.thresholds.long_w6_reenable_1h_max : 99; }
+                { const _e=document.getElementById('config-long-w6-reenable-stretch-min'); if(_e) _e.value = config.thresholds.long_w6_reenable_stretch_min !== undefined ? config.thresholds.long_w6_reenable_stretch_min : 0.31; }
                 // Jun 6 — Runner Stretch-Trail control
                 { const _e=document.getElementById('config-runner-trail-enabled'); if(_e) _e.checked = config.thresholds.runner_trail_enabled !== undefined ? !!config.thresholds.runner_trail_enabled : true; }
                 { const _e=document.getElementById('config-runner-trail-atr-min'); if(_e) _e.value = config.thresholds.runner_trail_atr_min !== undefined ? config.thresholds.runner_trail_atr_min : 1.0; }
@@ -19976,6 +19985,8 @@
                     atr_low_fixed_tp_long_enabled: (document.getElementById('config-atr-low-fixed-tp-enabled')||{}).checked || false,
                     long_unmatched_only: (document.getElementById('config-long-unmatched-only')||{}).checked || false,
                     long_w2_reenable_1h_min: (function(){ const v = parseFloat((document.getElementById('config-long-w2-reenable-1h-min') || {}).value); return isNaN(v) ? 99 : v; })(),
+                    long_w6_reenable_1h_max: (function(){ const v = parseFloat((document.getElementById('config-long-w6-reenable-1h-max') || {}).value); return isNaN(v) ? 99 : v; })(),
+                    long_w6_reenable_stretch_min: (function(){ const v = parseFloat((document.getElementById('config-long-w6-reenable-stretch-min') || {}).value); return isNaN(v) ? 0.31 : v; })(),
                     atr_low_fixed_tp_atr_max: safeFloat(document.getElementById('config-atr-low-fixed-tp-atr-max')?.value || 1.1),
                     atr_low_fixed_tp_pct: safeFloat(document.getElementById('config-atr-low-fixed-tp-pct')?.value || 0.25),
                     runner_trail_enabled: (document.getElementById('config-runner-trail-enabled')||{checked:true}).checked,

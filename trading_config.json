@@ -229,7 +229,7 @@
         "flip_short_bear_min": 20.0,
         "flip_short_rsi_min": 55.0,
         "flip_short_btc_1h_slope_max": 0.0,
-        "flip_short_btc_1h_slope_admit_mult": 1.0,
+        "flip_short_btc_1h_slope_admit_mult": 0.0,
         "flip_short_quality_min": 2.0,
         "flip_short_pair_gap_max": 1.0,
         "flip_pair_rsi_ob_short_regimes": "STRONG_BULL",

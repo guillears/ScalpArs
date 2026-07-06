@@ -175,12 +175,12 @@ def main():
     assert len(ms) == 15 and round(ms_net) == 750, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 15/$750 (deep-gap floor + C1 de-mux + pair-vol + weakcap?) — NOT freezing"
     fl = agg.get('FLIP_SHORT', [])
     fl_net = sum(pnl_current(x) for x in fl)
-    assert len(fl) == 65 and round(fl_net) == 159, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 65/$159 — SLOPEUP admit / CHOP unblock / flip de-mux not applied? NOT freezing"
-    # split sanity: the SLOPEUP probation cohort vs the core (slope<=0) sleeve
-    _sup = [r for r in fl if (nf(r.get('entry_btc_1h_slope')) or -9) > float(getattr(th, 'flip_short_btc_1h_slope_max', 0.0) or 0.0)]
-    _sup_net = sum(pnl_current(x) for x in _sup)
-    assert len(_sup) == 26 and round(sum(pnl_current(x) for x in fl) - _sup_net) == 637, f"FAIL: SLOPEUP split {len(_sup)}/${_sup_net:.0f} — core should be 39/$637"
-    print(f"\n✅ VALIDATION PASSED (ML 29/$3435 + MS 15/$750 + FLIP 65/$159 [core 39/$637 + SLOPEUP {len(_sup)}/${_sup_net:.0f}] + 0 pair-vol survivors). Freezing.")
+    # v11 (2026-07-07 era, operator: "we block with fundaments"): SLOPEUP admit REVERTED to hard
+    # block (admit_mult=0) <1 day after ship — the un-block rested on ONE flawed pillar (13/18
+    # phantoms from a single bear Monday, not net-admissible) vs the block's three. FLIP returns
+    # to the core-only cohort. Rewritten revert gate lives in CURRENT_STATE.
+    assert len(fl) == 39 and round(fl_net) == 637, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 39/$637 — slope gate off? CHOP unblock / flip de-mux not applied? NOT freezing"
+    print(f"\n✅ VALIDATION PASSED (ML 29/$3435 + MS 15/$750 + FLIP core 39/$637 + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

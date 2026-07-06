@@ -471,7 +471,9 @@ async def init_db():
                             'shadow_atr15_pnl','shadow_atr15_min',
                             'shadow_cap025_pnl','shadow_cap025_min',  # Jun 17 PM: give-back-cap shadows (frac 0.25/0.35/0.50)
                             'shadow_cap035_pnl','shadow_cap035_min',
-                            'shadow_cap050_pnl','shadow_cap050_min'):
+                            'shadow_cap050_pnl','shadow_cap050_min',
+                            'shadow_arm035_pnl','shadow_arm035_min',  # Jul 6: arm-level shadows (arm 0.35/0.40, trail 0.25, pre-0.45 tracking)
+                            'shadow_arm040_pnl','shadow_arm040_min'):
                     if _sc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sc} FLOAT"))
                 for _sc in ('shadow_tight_reason','shadow_wide_reason','shadow_tierA_reason','shadow_tierB_reason',

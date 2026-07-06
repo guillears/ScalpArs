@@ -163,6 +163,14 @@ _ATR_N = {'atr05': 0.5, 'atr10': 1.0, 'atr15': 1.5}
 # frac×peak. Varies frac (0.25/0.35/0.50) to tune runner_trail_short_giveback_frac from data
 # (which frac captures most without noise-stopping), parallel to how _ATR_N tuned N.
 _CAP_FRAC = {'cap025': 0.25, 'cap035': 0.35, 'cap050': 0.50}
+# Jul 6: ARM-LEVEL shadows — the recurring "lower the arm 0.45→0.35/0.40?" question, answered
+# with data instead of path-blind CSV counterfactuals. Simulates arming the 0.25-trail at a
+# LOWER peak threshold; tracked on EVERY trade from the first tick (unlike the armed-only
+# leashes above) so both sides of the trade-off are measured: rescues on 0.35-0.45 peakers
+# that died (RPL/AAVE-flip class) AND early-chop on runners that the live 0.45 arm rode.
+# Decision offline at N≥30 from the orders CSV (columns ride free).
+_ARM_VAR = {'arm035': 0.35, 'arm040': 0.40}
+_ARM_TRAIL = 0.25  # same trail width as the live/flip replica trail
 
 # ===== PHANTOM FLIP TRACKER (Jun 13, observation-only) =====
 # When an entry is BLOCKED by fan-ratio / ATR×gap / pair-trend, simulate the OPPOSITE
@@ -500,7 +508,17 @@ def _flip_filters(source, ind):
         if ind.get('flip_dir') == 'SHORT' and _b1hmax < 99:
             _b1h = ind.get('btc_1h_slope')
             if _b1h is not None and _b1h > _b1hmax:
-                return (True, "FLIP_SHORT_BTC1H_SLOPE", 1.0, 1.0, None)
+                # Jul 6 — gate revert fired (blocked phantoms 18·78% ≥ locked 60%/N≥10) → graduated
+                # response: admit LIVE with cell mult capped at flip_short_btc_1h_slope_admit_mult
+                # (ship 1.0 = 1× while base flips also 1×; cap survives any future base re-mux).
+                # Tag applied at the open site (B1H_SLOPEUP) so the cohort tracks as its own cell.
+                # admit_mult 0/None = legacy hard block. Downstream gates still run (net-admissible
+                # by construction — the phantom surface's known overcount is bypassed entirely).
+                _adm_raw = getattr(th, 'flip_short_btc_1h_slope_admit_mult', 0.0)
+                _adm = 0.0 if _adm_raw is None else float(_adm_raw)
+                if _adm <= 0:
+                    return (True, "FLIP_SHORT_BTC1H_SLOPE", 1.0, 1.0, None)
+                # fall through un-blocked; sizing cap + tag handled in _maybe_open_flip
         # High-ATR bear block (Jun 17): the REGIME-INVERTED hole in FLIP_SHORT_REGIME's bear exemption.
         # A high-ATR parabolic pump in a strong bear is a counter-trend short-SQUEEZE that keeps ripping →
         # the short never arms and the high ATR gaps the −0.70 SL to ~−1.2 (ESPORTS 4.0, HUSDT 3.0 = 0%WR/
@@ -675,6 +693,8 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                   'aexit_mins': {n: None for n in _ATR_N},
                   'cexits': {n: None for n in _CAP_FRAC},
                   'cexit_mins': {n: None for n in _CAP_FRAC},
+                  'xexits': {n: None for n in _ARM_VAR},
+                  'xexit_mins': {n: None for n in _ARM_VAR},
                   'atr': atr,
                   'pstretch': None, 'estretch': entry_stretch}
             _LEASH_STATE[order_id] = st
@@ -688,6 +708,23 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
         if pnl_pct > st['rmax']:
             st['rmax'] = pnl_pct
         rmax = st['rmax']
+        # ---- Jul 6: ARM-LEVEL shadows — run BEFORE the 0.45 arm guard (their whole point is the
+        # sub-0.45 zone). Once running peak ≥ variant threshold: floor = peak − 0.25; exit at floor.
+        # Same backstops as the other leashes. Unfired → finalize falls back to actual ('window').
+        _xmin_now = round((_leash_time.time() - st['open_ts']) / 60.0, 2)
+        for _xn, _xarm in _ARM_VAR.items():
+            if st['xexits'][_xn] is not None:
+                continue
+            if pnl_pct <= _LEASH_SL:
+                st['xexits'][_xn] = (_LEASH_SL, 'hard_sl'); st['xexit_mins'][_xn] = _xmin_now; continue
+            if rmax < _xarm:
+                continue  # this variant not armed yet
+            if ema13_crossed:
+                st['xexits'][_xn] = (round(pnl_pct, 4), 'ema13'); st['xexit_mins'][_xn] = _xmin_now; continue
+            if signal_lost:
+                st['xexits'][_xn] = (round(pnl_pct, 4), 'signal_lost'); st['xexit_mins'][_xn] = _xmin_now; continue
+            if pnl_pct <= rmax - _ARM_TRAIL:
+                st['xexits'][_xn] = (round(rmax - _ARM_TRAIL, 4), 'trailing'); st['xexit_mins'][_xn] = _xmin_now
         if rmax < _LEASH_ACT:
             return  # not armed yet — leash inactive, other exits own the trade
         # track peak favorable stretch once armed
@@ -827,6 +864,13 @@ def _leash_finalize(order_id, fallback_pnl):
             else:
                 out[cname] = (round(fallback_pnl, 4) if fallback_pnl is not None else None, 'window')
                 out[cname + '_min'] = None
+        for xname in _ARM_VAR:
+            if st and st.get('xexits', {}).get(xname) is not None:
+                out[xname] = st['xexits'][xname]
+                out[xname + '_min'] = st.get('xexit_mins', {}).get(xname)
+            else:
+                out[xname] = (round(fallback_pnl, 4) if fallback_pnl is not None else None, 'window')
+                out[xname + '_min'] = None
         out['_peak_stretch'] = round(st['pstretch'], 4) if (st and st.get('pstretch') is not None) else None
     except Exception:
         pass
@@ -3574,6 +3618,22 @@ class TradingEngine:
                                                    _ff_in.get('bear_pct'), _ff_in.get('range_position'))
                 if _ct:
                     _flip_cell_mult, _flip_cell_lev_mult, _flip_cell_tag = _cs, _cl, _ct
+            # Jul 6 — B1H_SLOPEUP admit cohort (the fired revert gate's graduated live test):
+            # slope>0 flip-shorts trade at cell mult CAPPED at admit_mult (ship 1.0) under their
+            # own tag so Multiplier Cell Perf + Flip×Regime track them as a distinct cell.
+            # 🔒 RE-BLOCK (admit_mult→0) if ≤50% WR or net-negative on N≥10; PROMOTE at ≥65%/avg≥+0.15/N≥20.
+            try:
+                _b1x = getattr(config.trading_config.thresholds, 'flip_short_btc_1h_slope_max', 99.0)
+                _b1x = 99.0 if _b1x is None else float(_b1x)
+                _adm2 = getattr(config.trading_config.thresholds, 'flip_short_btc_1h_slope_admit_mult', 0.0)
+                _adm2 = 0.0 if _adm2 is None else float(_adm2)
+                _s1h2 = _ff_in.get('btc_1h_slope')
+                if (flip_dir == 'SHORT' and _b1x < 99 and _adm2 > 0
+                        and _s1h2 is not None and _s1h2 > _b1x):
+                    _flip_cell_mult = min(_flip_cell_mult or 1.0, _adm2)
+                    _flip_cell_tag = (_flip_cell_tag + "+B1H_SLOPEUP") if _flip_cell_tag else "B1H_SLOPEUP"
+            except Exception:
+                pass
             async def _open(_db):
                 return await self.open_position(
                     db=_db, pair=pair, direction=flip_dir, confidence="STRONG_BUY",
@@ -6136,6 +6196,11 @@ class TradingEngine:
                                 shadow_cap035_min=_leash_exits.get('cap035_min'),
                                 shadow_cap050_pnl=_leash_exits.get('cap050', (None, None))[0],
                                 shadow_cap050_min=_leash_exits.get('cap050_min'),
+                                # Jul 6: arm-level shadows (arm 0.35/0.40, trail 0.25, tracked pre-0.45) — the arm-lowering question
+                                shadow_arm035_pnl=_leash_exits.get('arm035', (None, None))[0],
+                                shadow_arm035_min=_leash_exits.get('arm035_min'),
+                                shadow_arm040_pnl=_leash_exits.get('arm040', (None, None))[0],
+                                shadow_arm040_min=_leash_exits.get('arm040_min'),
                                 # ===== LEASH SHADOW END =====
                                 post_exit_peak_pnl=round(peak_pnl, 4),
                                 post_exit_trough_pnl=round(trough_pnl, 4),

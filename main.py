@@ -9771,6 +9771,11 @@ def _compute_leash_shadow(orders):
         ('cap025', 'shadow_cap025_pnl', 'shadow_cap025_pnl', 'shadow_cap025_min'),  # frac 0.25 (tighter)
         ('cap035', 'shadow_cap035_pnl', 'shadow_cap035_pnl', 'shadow_cap035_min'),  # frac 0.35 (= live)
         ('cap050', 'shadow_cap050_pnl', 'shadow_cap050_pnl', 'shadow_cap050_min'),  # frac 0.50 (looser)
+        # Jul 6 — arm-level shadows (arm 0.35/0.40, trail 0.25). In THIS armed-cohort table they show
+        # only the early-chop side; the rescue side (0.35-0.45 peakers) is evaluated offline from the
+        # orders CSV where the columns cover ALL trades. Decision at N≥30 all-trades, both sides.
+        ('arm035', 'shadow_arm035_pnl', 'shadow_arm035_pnl', 'shadow_arm035_min'),  # arm at 0.35
+        ('arm040', 'shadow_arm040_pnl', 'shadow_arm040_pnl', 'shadow_arm040_min'),  # arm at 0.40
     ]
     # armed + shadow-populated cohort
     rows = [o for o in orders

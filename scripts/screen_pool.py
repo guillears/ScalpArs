@@ -135,7 +135,18 @@ def main():
     # hard validation anchors (both must hold — these are the verified current-stack truth)
     ml = agg.get('MOM_LONG', []);  ms = agg.get('MOM_SHORT', [])
     ml_net = sum(pnl_current(x) for x in ml);  ms_net = sum(pnl_current(x) for x in ms)
-    # Anchors updated 2026-07-05 (v7): 07-04/05 batch appended (3 trades: PUMP W +$208,
+    # Anchors updated 2026-07-06 (v9): 07-06 batch appended (5 trades). ML +AAVE long W (+$263)
+    # 28->29/$3435. MS +GIGGLE W4 L (-$135) 17->18/$526 — ⚠ ADA C1 W (+$91) traded LIVE but is
+    # WEAKCAP-screened on stamped fields (rng 10.3/ATR 0.33/pADX 26.1 all under thresholds;
+    # boundary sampling diff signal-time vs fill-time — screen is the stricter consistent ruler).
+    # FLIP +2 core losers at 1x (pnl_current auto-demuxed the 2x fills: KAITO -$123, AAVE -$73):
+    # core 37->39/$833->$637; SLOPEUP unchanged 26/-$478; blended 65/$159.
+    # v8 (2026-07-06): flip 1h gate revert FIRED (phantoms 18·78% ≥ locked 60%/N≥10)
+    # → slope>0 flip-shorts ADMITTED live at 1× cap (flip_short_btc_1h_slope_admit_mult=1.0, tag
+    # B1H_SLOPEUP). The 26 historical slope>0 flips re-enter the screen: FLIP 37/$833 -> 63/$356.
+    # SPLIT PIN (evaluate separately): core slope<=0 = 37·76%·+$833 · SLOPEUP probation = 26·~50%·−$477.
+    # The SLOPEUP re-block gate compares LIVE forward vs this historical prior.
+    # v7 (2026-07-05): 07-04/05 batch appended (3 trades: PUMP W +$208,
     # RPL/ETHFI L — both flat-1h zone, screened OUT by the deadband as the live gate now would):
     # ML 27->28/$2964->$3172. MS/FLIP unchanged.
     # v6 (2026-07-05): CHOPPY_FLAT removed from both flip regime fields
@@ -152,12 +163,16 @@ def main():
     _pvmax = float(getattr(th, 'momentum_short_pair_vol_max', 0.0) or 0.0)
     _pv_surv = sum(1 for r in ms if _pvmax > 0 and nf(r.get('entry_pair_volume_ratio')) is not None and nf(r.get('entry_pair_volume_ratio')) >= _pvmax)
     assert _pv_surv == 0, f"FAIL: {_pv_surv} pair_vol>={_pvmax} mom-shorts survived — vol block not applied, NOT freezing"
-    assert len(ml) == 28 and round(ml_net) == 3172, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 28/$3172 — 1h deadband applied? screen wrong, NOT freezing"
-    assert len(ms) == 17 and round(ms_net) == 661, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 17/$661 (C1 de-mux + pair-vol + weakcap?) — NOT freezing"
+    assert len(ml) == 29 and round(ml_net) == 3435, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 29/$3435 — 1h deadband applied? screen wrong, NOT freezing"
+    assert len(ms) == 18 and round(ms_net) == 526, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 18/$526 (C1 de-mux + pair-vol + weakcap?) — NOT freezing"
     fl = agg.get('FLIP_SHORT', [])
     fl_net = sum(pnl_current(x) for x in fl)
-    assert len(fl) == 37 and round(fl_net) == 833, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 37/$833 — CHOP unblock / btc_1h_slope gate / flip de-mux not applied? NOT freezing"
-    print("\n✅ VALIDATION PASSED (MOM-long 28/$3172 + MOM-short 17/$661 + FLIP 37/$833 + 0 pair-vol survivors). Freezing.")
+    assert len(fl) == 65 and round(fl_net) == 159, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 65/$159 — SLOPEUP admit / CHOP unblock / flip de-mux not applied? NOT freezing"
+    # split sanity: the SLOPEUP probation cohort vs the core (slope<=0) sleeve
+    _sup = [r for r in fl if (nf(r.get('entry_btc_1h_slope')) or -9) > float(getattr(th, 'flip_short_btc_1h_slope_max', 0.0) or 0.0)]
+    _sup_net = sum(pnl_current(x) for x in _sup)
+    assert len(_sup) == 26 and round(sum(pnl_current(x) for x in fl) - _sup_net) == 637, f"FAIL: SLOPEUP split {len(_sup)}/${_sup_net:.0f} — core should be 39/$637"
+    print(f"\n✅ VALIDATION PASSED (ML 29/$3435 + MS 18/$526 + FLIP 65/$159 [core 39/$637 + SLOPEUP {len(_sup)}/${_sup_net:.0f}] + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

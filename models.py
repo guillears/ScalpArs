@@ -528,6 +528,14 @@ class Order(Base):
     shadow_cap035_min = Column(Float, nullable=True)
     shadow_cap050_pnl = Column(Float, nullable=True)
     shadow_cap050_min = Column(Float, nullable=True)
+    # Jul 6 — ARM-LEVEL shadows: arm the 0.25-trail at peak≥0.35/0.40 instead of the live 0.45.
+    # Tracked on EVERY trade from tick 1 (not just the armed cohort) so both sides of the
+    # arm-lowering trade-off are measured: rescues on 0.35-0.45 peakers that died AND early-chop
+    # on runners. Decision offline at N≥30 from the orders CSV. Unfired → actual close pnl.
+    shadow_arm035_pnl = Column(Float, nullable=True)
+    shadow_arm035_min = Column(Float, nullable=True)
+    shadow_arm040_pnl = Column(Float, nullable=True)
+    shadow_arm040_min = Column(Float, nullable=True)
     # ===== LEASH SHADOW END =====
 
     # Jun 1, 2026 — RUNNER STRETCH-TRAIL: live peak |price−EMA5| stretch since

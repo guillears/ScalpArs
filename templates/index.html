@@ -5903,6 +5903,9 @@
                             <span class="text-xs text-gray-400 ml-1">block SHORT when gap ≥</span>
                             <input type="number" step="0.05" id="config-pair-trend-short-gap-max" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="0.0" title="Block SHORT when pair (EMA13-EMA50)/EMA50% >= this. 0 = block any pair at/above its 4hr trend. Watchlist: tighten to -0.2 (the -0.2..0 mild zone = 43% WR).">
                             <span class="text-xs text-gray-500">%</span>
+                            <span class="text-xs text-cyan-300 ml-3">deep-gap floor: block SHORT when gap ≤</span>
+                            <input type="number" step="0.1" id="config-momentum-short-pair-gap-min" class="w-16 bg-white/5 border border-cyan-500/40 rounded px-2 py-1 text-cyan-200 text-center" value="-1.0" title="Jul 6 (GIGGLE post-mortem): block a momentum-SHORT when the pair is ALREADY ≥1% below its 4h trend — selling after the crash → bounce kills it at 20×. Pair-level twin of btc_1h_slope_min_short (−0.60, N=4 same mechanism). Baseline: gap ≤−1.0 shorts = 3·33%WR·−$224 (BEL/MANTA/GIGGLE, 3 dates; all ≤−1.5, band −1.5..−1.0 EMPTY → threshold in clean space); mild pullback −1.0..−0.6 = 2·100%·+$164 untouched. MS sleeve $526→$750. ⚠ N=3 operator-directed override. Counter MOMENTUM_SHORT_DEEPGAP; blocked shorts tracked as PASS:MOMENTUM_SHORT_DEEPGAP phantoms. 🔒 REVERT →0 (off) if phantoms ≥55% WR on N≥8. 0 = off; negative activates.">
+                            <span class="text-xs text-gray-500">%</span>
                         </div>
                     </div>
                     <div class="mb-2 px-4">
@@ -7814,12 +7817,18 @@
                 // Update paper toggle
                 document.getElementById('paper-toggle').checked = !isPaperMode;
                 
-                // Start timer if running
+                // Start timer if running — and STOP it if paused (Jul 6: the poll only had the
+                // start branch, so a stale in-flight status response after a Pause click could
+                // restart the ticker and nothing ever stopped it again until a hard refresh).
                 if (isRunning && !timerInterval) {
                     timerInterval = setInterval(() => {
                         runtimeSeconds++;
                         updateTimer(runtimeSeconds);
                     }, 1000);
+                } else if (!isRunning && timerInterval) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                    updateTimer(runtimeSeconds);  // snap display to the server's frozen value
                 }
             } catch (e) {
                 console.error('Error loading status:', e);
@@ -18604,6 +18613,7 @@
                 { const _e=document.getElementById('config-pair-trend-filter-long-enabled'); if(_e) _e.checked = config.thresholds.pair_trend_filter_long_enabled !== undefined ? !!config.thresholds.pair_trend_filter_long_enabled : false; }
                 { const _e=document.getElementById('config-pair-trend-filter-short-enabled'); if(_e) _e.checked = config.thresholds.pair_trend_filter_short_enabled !== undefined ? !!config.thresholds.pair_trend_filter_short_enabled : true; }
                 { const _e=document.getElementById('config-pair-trend-short-gap-max'); if(_e) _e.value = config.thresholds.pair_trend_short_gap_max !== undefined ? config.thresholds.pair_trend_short_gap_max : 0.0; }
+                { const _e=document.getElementById('config-momentum-short-pair-gap-min'); if(_e) _e.value = config.thresholds.momentum_short_pair_gap_min !== undefined ? config.thresholds.momentum_short_pair_gap_min : 0.0; }
                 document.getElementById('config-btc-adx-dir-short').value = config.thresholds.btc_adx_dir_short || 'both';
                 document.getElementById('config-adx-dir-long').value = config.thresholds.adx_dir_long || 'both';
                 document.getElementById('config-adx-dir-short').value = config.thresholds.adx_dir_short || 'both';
@@ -19945,6 +19955,7 @@
                     pair_trend_filter_long_enabled: (document.getElementById('config-pair-trend-filter-long-enabled')||{checked:false}).checked,
                     pair_trend_filter_short_enabled: (document.getElementById('config-pair-trend-filter-short-enabled')||{checked:true}).checked,
                     pair_trend_short_gap_max: safeFloat((document.getElementById('config-pair-trend-short-gap-max')||{}).value || 0),
+                    momentum_short_pair_gap_min: safeFloat((document.getElementById('config-momentum-short-pair-gap-min')||{}).value || 0),
                     btc_adx_dir_short: document.getElementById('config-btc-adx-dir-short').value,
                     adx_dir_long: document.getElementById('config-adx-dir-long').value,
                     adx_dir_short: document.getElementById('config-adx-dir-short').value,

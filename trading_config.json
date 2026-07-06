@@ -185,6 +185,7 @@
         "pair_trend_filter_long_enabled": false,
         "pair_trend_filter_short_enabled": true,
         "pair_trend_short_gap_max": 0.0,
+        "momentum_short_pair_gap_min": -1.0,
         "tick_momentum_exit_enabled": false,
         "tick_momentum_exit_min_profit": 0.03,
         "tick_momentum_exit_min_profit_flagged": -0.25,

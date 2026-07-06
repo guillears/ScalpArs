@@ -9523,6 +9523,9 @@ async def _compute_phantom_flip_performance(db, is_paper):
     # Jul 5 PM — flat-1h dead-band block (LONG_BTC1H_DEADBAND) revert surface: blocked
     # momentum longs as same-direction phantoms; re-open the band at >=60% WR on N>=10.
     pass_db = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:LONG_BTC1H_DEADBAND']
+    # Jul 6 — deep-gap floor (MOMENTUM_SHORT_DEEPGAP) revert surface: blocked deep-hole
+    # shorts as same-direction phantoms; re-open at >=55% WR on N>=8.
+    pass_dg = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:MOMENTUM_SHORT_DEEPGAP']
     source_specs = [
         ("LONG_UNMATCHED_ONLY", ("SHORT",), True, flips),
         ("PASS:LONG_UNMATCHED_ONLY", ("LONG",), True, pass_longs),
@@ -9530,6 +9533,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
         ("PASS:FLIP_SHORT_BTC1H_SLOPE", ("SHORT",), True, pass_b1h),
         ("PASS:FLIP_SHORT_REGIME", ("SHORT",), True, pass_freg),
         ("PASS:LONG_BTC1H_DEADBAND", ("LONG",), True, pass_db),
+        ("PASS:MOMENTUM_SHORT_DEEPGAP", ("SHORT",), True, pass_dg),
     ]
     for src, _dirs, _subrows, _pool in source_specs:
         for fd in _dirs:

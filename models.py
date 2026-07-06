@@ -611,6 +611,9 @@ PHANTOM_KEEP_SOURCES = (
     # Jul 5 PM — revert surface of the LONG_BTC1H_DEADBAND ship (flat-1h DOA block,
     # N=9 discipline-override): re-open the band at >=60% WR on N>=10 blocked phantoms.
     "PASS:LONG_BTC1H_DEADBAND",
+    # Jul 6 — revert surface of the MOMENTUM_SHORT_DEEPGAP ship (pair gap <= -1.0 block,
+    # N=3 operator-directed): re-open at >=55% WR on N>=8 blocked phantoms.
+    "PASS:MOMENTUM_SHORT_DEEPGAP",
 )
 
 # Jul 5 (operator invariant: "phantoms are killed ONLY on reset, never on redeploy").

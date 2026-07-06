@@ -90,6 +90,11 @@ def sleeve(r):
         # non-W1 control breakeven+ → block W1 in the listed regimes (STRONG_BEAR W1 exempt = wins).
         _w1blk = {s.strip() for s in (getattr(th, 'momentum_short_w1_block_regimes', '') or '').split(',') if s.strip()}
         if (r.get('entry_pattern_w1_match') or '').strip().lower() == 'true' and (r.get('entry_btc_regime') in _w1blk): return None  # MOMENTUM_SHORT_W1_REGIME (reverted → empty = off)
+        # Jul 6: deep-gap floor (momentum_short_pair_gap_min) — block SHORT when pair 13-50 gap
+        # <= threshold (already crashed below the 4h trend → bounce). GIGGLE post-mortem ship.
+        _dg = float(getattr(th, 'momentum_short_pair_gap_min', 0.0) or 0.0)
+        _pg = nf(r.get('entry_pair_ema20_ema50_gap_pct'))
+        if _dg < 0 and _pg is not None and _pg <= _dg: return None  # MOMENTUM_SHORT_DEEPGAP
         # Jun 30: high-pair-volume block (momentum_short_pair_vol_max) — current-stack parity. Shorting into high
         # pair vol = climactic/exhaustion → bounce; the one separator robust across both periods.
         _pvmax = float(getattr(th, 'momentum_short_pair_vol_max', 0.0) or 0.0)
@@ -135,7 +140,10 @@ def main():
     # hard validation anchors (both must hold — these are the verified current-stack truth)
     ml = agg.get('MOM_LONG', []);  ms = agg.get('MOM_SHORT', [])
     ml_net = sum(pnl_current(x) for x in ml);  ms_net = sum(pnl_current(x) for x in ms)
-    # Anchors updated 2026-07-06 (v9): 07-06 batch appended (5 trades). ML +AAVE long W (+$263)
+    # Anchors updated 2026-07-06 (v10): momentum_short_pair_gap_min=-1.0 shipped (deep-gap floor,
+    # GIGGLE post-mortem, N=3 operator override) — screens out the 3 deep-hole shorts
+    # (BEL W +0.41 / MANTA / GIGGLE, -$224): MS 18->15/$526->$750. ML/FLIP unchanged.
+    # v9 (2026-07-06): 07-06 batch appended (5 trades). ML +AAVE long W (+$263)
     # 28->29/$3435. MS +GIGGLE W4 L (-$135) 17->18/$526 — ⚠ ADA C1 W (+$91) traded LIVE but is
     # WEAKCAP-screened on stamped fields (rng 10.3/ATR 0.33/pADX 26.1 all under thresholds;
     # boundary sampling diff signal-time vs fill-time — screen is the stricter consistent ruler).
@@ -164,7 +172,7 @@ def main():
     _pv_surv = sum(1 for r in ms if _pvmax > 0 and nf(r.get('entry_pair_volume_ratio')) is not None and nf(r.get('entry_pair_volume_ratio')) >= _pvmax)
     assert _pv_surv == 0, f"FAIL: {_pv_surv} pair_vol>={_pvmax} mom-shorts survived — vol block not applied, NOT freezing"
     assert len(ml) == 29 and round(ml_net) == 3435, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 29/$3435 — 1h deadband applied? screen wrong, NOT freezing"
-    assert len(ms) == 18 and round(ms_net) == 526, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 18/$526 (C1 de-mux + pair-vol + weakcap?) — NOT freezing"
+    assert len(ms) == 15 and round(ms_net) == 750, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 15/$750 (deep-gap floor + C1 de-mux + pair-vol + weakcap?) — NOT freezing"
     fl = agg.get('FLIP_SHORT', [])
     fl_net = sum(pnl_current(x) for x in fl)
     assert len(fl) == 65 and round(fl_net) == 159, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 65/$159 — SLOPEUP admit / CHOP unblock / flip de-mux not applied? NOT freezing"
@@ -172,7 +180,7 @@ def main():
     _sup = [r for r in fl if (nf(r.get('entry_btc_1h_slope')) or -9) > float(getattr(th, 'flip_short_btc_1h_slope_max', 0.0) or 0.0)]
     _sup_net = sum(pnl_current(x) for x in _sup)
     assert len(_sup) == 26 and round(sum(pnl_current(x) for x in fl) - _sup_net) == 637, f"FAIL: SLOPEUP split {len(_sup)}/${_sup_net:.0f} — core should be 39/$637"
-    print(f"\n✅ VALIDATION PASSED (ML 29/$3435 + MS 18/$526 + FLIP 65/$159 [core 39/$637 + SLOPEUP {len(_sup)}/${_sup_net:.0f}] + 0 pair-vol survivors). Freezing.")
+    print(f"\n✅ VALIDATION PASSED (ML 29/$3435 + MS 15/$750 + FLIP 65/$159 [core 39/$637 + SLOPEUP {len(_sup)}/${_sup_net:.0f}] + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

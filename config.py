@@ -428,6 +428,14 @@ class SignalThresholds(BaseModel):
     pair_trend_filter_long_enabled: bool = False
     pair_trend_filter_short_enabled: bool = True
     pair_trend_short_gap_max: float = 0.0  # block SHORT when pair (EMA13-EMA50)/EMA50% >= this
+    # Jul 6: DEEP-GAP FLOOR (GIGGLE post-mortem) — block a momentum-SHORT when pair gap ≤ this
+    # (already ≥1% below the 4h trend = selling after the crash → bounce). Pair-level twin of
+    # btc_1h_slope_min_short (−0.60, shipped N=4, same mechanism). Baseline zone (all ≤−1.5):
+    # 3·33%·−$224; band −1.5..−1.0 EMPTY (threshold in clean space); mild pullback −1.0..−0.6 =
+    # 2·100%·+$164 untouched. Ship impact MS $526→$750. ⚠ N=3 operator-directed override.
+    # 🔒 REVERT (→0 off) if PASS:MOMENTUM_SHORT_DEEPGAP phantoms hit ≥55% WR on N≥8 fresh.
+    # 0 = disabled; negative activates. Counter MOMENTUM_SHORT_DEEPGAP.
+    momentum_short_pair_gap_min: float = 0.0
     tick_momentum_exit_enabled: bool = False  # Real-time tick-based momentum exit via WebSocket
     tick_momentum_exit_min_profit: float = 0.05  # Min P&L % to trigger tick momentum exit
     tick_momentum_exit_min_profit_flagged: float = -0.10  # Min P&L % for flagged trades (Signal Lost Flag system)

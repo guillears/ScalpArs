@@ -8539,6 +8539,25 @@ class TradingEngine:
                             _seed_phantom_flip(pair, indicators.get('price'), "SHORT", "PAIR_TREND_FILTER",
                                                entry_fields=self._flip_entry_fields(indicators, flip_dir="LONG", scan=self._flip_scan_ctx(locals())))
                             signal = "NO_TRADE"
+                        else:
+                            # Jul 6 — DEEP-GAP FLOOR (GIGGLE post-mortem): block a momentum-SHORT when the
+                            # pair is ALREADY ≥ this far below its 4h trend — selling after the crash →
+                            # bounce kills it at 20× (pair-level twin of btc_1h_slope_min_short −0.60,
+                            # shipped N=4 same mechanism). Baseline: gap ≤−1.0 shorts 3·33%·−$224 (all
+                            # ≤−1.5; band −1.5..−1.0 EMPTY → threshold in clean space; mild pullback
+                            # −1.0..−0.6 = 2·100%·+$164 untouched). ⚠ N=3 operator-directed override —
+                            # PASS phantom = day-one revert surface. None-check (0 = off sentinel).
+                            _dg_raw = getattr(_th_pt, 'momentum_short_pair_gap_min', 0.0)
+                            _dg = 0.0 if _dg_raw is None else float(_dg_raw)
+                            if signal == "SHORT" and _dg < 0 and _pair_gap_pct <= _dg:
+                                logger.info(f"[MOMENTUM_SHORT_DEEPGAP] {pair}: SHORT blocked — pair gap {_pair_gap_pct:.4f}% <= {_dg}% (already crashed below 4h trend: late short, bounce risk)")
+                                self._record_filter_block("MOMENTUM_SHORT_DEEPGAP", "SHORT", had_room=_had_room)
+                                self._last_pair_block_reason[pair] = "MOMENTUM_SHORT_DEEPGAP"
+                                # revert surface: same-direction PASS phantom of the blocked short
+                                # (gate: re-open at ≥55% WR on N≥8 fresh phantoms)
+                                _seed_phantom_flip(pair, indicators.get('price'), "SHORT", "PASS:MOMENTUM_SHORT_DEEPGAP",
+                                                   entry_fields=self._flip_entry_fields(indicators, flip_dir="SHORT"), mode='PASS')
+                                signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"]:
                 _th = config.trading_config.thresholds

@@ -10133,6 +10133,55 @@ class TradingEngine:
                     order_info['_closing_in_progress'] = False
             # ─── FLIP STRPK RUNNER-TRAIL END ───
 
+            # ─── Jul 6: REALTIME LONG RUNNER ATR-FLOOR (Fix A extended to momentum longs). Once a
+            # LONG arms (peak ≥ runner_trail_arm_peak), the runner handoff SUPPRESSES the tight 1s
+            # trailing — but its ATR-floor was only checked by the slow monitor loop (~3-4 min for
+            # 50 pairs), leaving a blind window on fast movers: PUMP closed 0.18pp under its floor
+            # (−$40), USELESS 0.07pp (−$15), AAVE ~0. Same formula as indicators.check_exit_conditions
+            # (live: N=1.0, ratchet OFF → floor CAN be negative on high-ATR pairs — by design; the
+            # lock-ON counterfactual is the lock-aware atr10 shadow), evaluated on every tick; the
+            # monitor path stays as backstop. Fail-open. ───
+            if (not _is_flip and direction == "LONG" and not order_info.get('_closing_in_progress')):
+                try:
+                    _rl_th = config.trading_config.thresholds
+                    if getattr(_rl_th, 'runner_trail_enabled', False) and getattr(_rl_th, 'runner_trail_use_atr', True):
+                        _rl_arm = float(getattr(_rl_th, 'runner_trail_arm_peak', 0.45) or 0.45)
+                        _rl_amin = float(getattr(_rl_th, 'runner_trail_atr_min', 0.0) or 0.0)
+                        _rl_atr = order_info.get('entry_atr_pct')
+                        if (current_peak >= _rl_arm - 0.005 and _rl_atr and _rl_atr > 0
+                                and (_rl_amin <= 0 or _rl_atr >= _rl_amin)):
+                            _rl_n = float(getattr(_rl_th, 'runner_trail_atr_mult', 0.5) or 0.5)
+                            _rl_gb = _rl_n * _rl_atr
+                            _rl_frac = float(getattr(_rl_th, 'runner_trail_giveback_frac', 0.0) or 0.0)
+                            if _rl_frac > 0 and current_peak > 0 and _rl_frac * current_peak < _rl_gb:
+                                _rl_gb = _rl_frac * current_peak
+                            _rl_raw_floor = current_peak - _rl_gb
+                            _rl_floor = _rl_raw_floor
+                            if getattr(_rl_th, 'runner_trail_be_ratchet_enabled', True):
+                                _rl_floor = max(_rl_floor, float(getattr(_rl_th, 'runner_trail_be_lock_pct', 0.10) or 0.10))
+                            if pnl_pct <= _rl_floor:
+                                logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} LONG: pnl {pnl_pct:.3f}% <= floor {_rl_floor:.3f}% (peak={current_peak:.2f}%, giveback={_rl_gb:.3f}%) -> close")
+                                order_info['_closing_in_progress'] = True
+                                async with AsyncSessionLocal() as db:
+                                    _rlr = await db.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))
+                                    _rl_order = _rlr.scalar_one_or_none()
+                                    if _rl_order:
+                                        _rl_order.runner_trail_bound = ("lock" if _rl_floor > _rl_raw_floor else "atr")
+                                        _rl_closed = await self.close_position(db, _rl_order, current_price, "RUNNER_TRAIL")
+                                        if _rl_closed:
+                                            logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} LONG closed at {current_price} pnl={pnl_pct:.4f}%")
+                                            async with _cache_lock:
+                                                _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                                        else:
+                                            order_info['_closing_in_progress'] = False
+                                    else:
+                                        order_info['_closing_in_progress'] = False
+                                continue
+                except Exception as _rl_err:
+                    logger.error(f"[REALTIME_RUNNER_TRAIL] {pair} LONG: {_rl_err}")
+                    order_info['_closing_in_progress'] = False
+            # ─── REALTIME LONG RUNNER ATR-FLOOR END ───
+
             # Real-time trailing stop check (only when trailing stop is active and TP/trailing enabled).
             # Phase 1d-ExitTest (May 2): suppress trailing when RSI Handoff is active and trade is past level.
             # May 6: also suppress when EMA Stack Cross Exit is active and trade is past level.

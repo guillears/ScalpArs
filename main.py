@@ -1455,6 +1455,66 @@ async def export_orders_csv(db: AsyncSession = Depends(get_db)):
     )
 
 
+@app.get("/api/phantom-flips/export.csv")
+async def export_phantom_flips_csv(db: AsyncSession = Depends(get_db)):
+    """Export ALL PhantomFlip rows (closed AND still-open) for current mode as CSV.
+
+    Jul 7, 2026 — phantoms die on paper reset BY DESIGN, so their row-level entry
+    fields (needed for the NET-ADMISSIBILITY join through the downstream flip gates
+    — the rewritten SLOPEUP revert gate's required surface) were unrecoverable once
+    a reset happened; only report aggregates survived as manual priors. This export
+    makes the row-level pool saveable: download BEFORE every reset (alongside the
+    orders CSV) and feed `scripts/screen_phantoms.py`. Column order = model schema
+    (auto-includes future columns, same pattern as the orders export).
+    """
+    import csv
+    import io
+
+    await trading_engine.initialize(db)
+    await db.commit()
+    db.expunge_all()
+
+    result = await db.execute(
+        select(PhantomFlip)
+        .where(PhantomFlip.is_paper == trading_engine.is_paper_mode)
+        .order_by(desc(PhantomFlip.entry_at))
+    )
+    phantoms = result.scalars().all()
+
+    column_names = [c.name for c in PhantomFlip.__table__.columns]
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(column_names)
+    for p in phantoms:
+        row = []
+        for col in column_names:
+            val = getattr(p, col, None)
+            if isinstance(val, datetime):
+                row.append(val.isoformat())
+            elif val is None:
+                row.append("")
+            else:
+                row.append(val)
+        writer.writerow(row)
+
+    buffer.seek(0)
+    mode = "paper" if trading_engine.is_paper_mode else "live"
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"scalpars_phantoms_{mode}_{timestamp}.csv"
+
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
 @app.get("/api/transactions")
 async def get_transactions(db: AsyncSession = Depends(get_db)):
     """Get all transactions"""

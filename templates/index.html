@@ -569,6 +569,7 @@
                     <button id="copy-analytics-btn" onclick="copyAnalytics()" class="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Copy Analytics</button>
                     <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Copy Split Report</button>
                     <a id="download-orders-csv-btn" href="/api/orders/export.csv" download class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors" title="Download all CLOSED + SIGNAL_EXPIRED orders for current mode (paper/live) as CSV — no row limit, every Order column included. Use for counterfactual analysis, cross-sample re-binning, custom cross-tabs." onclick="this.href='/api/orders/export.csv?t=' + Date.now()">Download Orders CSV</a>
+                    <a id="download-phantoms-csv-btn" href="/api/phantom-flips/export.csv" download class="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-sm font-medium rounded transition-colors" title="Download ALL PhantomFlip rows (every entry field) as CSV. Phantoms are DELETED on paper reset — download this together with the Orders CSV before every reset so the net-admissibility joins (screen_phantoms.py) keep their row-level priors." onclick="this.href='/api/phantom-flips/export.csv?t=' + Date.now()">Download Phantoms CSV</a>
                 </div>
 
                 <!-- Period Performance Summary -->

@@ -3652,10 +3652,16 @@ class TradingEngine:
                 _tgm = 0.0 if _tgm_raw is None else float(_tgm_raw)
                 _tgz_raw = getattr(config.trading_config.thresholds, 'flip_short_tg_shallow_min', -0.10)
                 _tgz = -0.10 if _tgz_raw is None else float(_tgz_raw)
+                _tgmax_raw = getattr(config.trading_config.thresholds, 'flip_short_tg_shallow_max', 0.0)
+                _tgmax = 0.0 if _tgmax_raw is None else float(_tgmax_raw)
+                _tglev_raw = getattr(config.trading_config.thresholds, 'flip_short_tg_shallow_lev_mult', 1.0)
+                _tglev = 1.0 if _tglev_raw is None else float(_tglev_raw)
                 _btg2 = _ff_in.get('btc_trend_gap')
                 if (flip_dir == 'SHORT' and _tgm > 1.0 and _btg2 is not None
-                        and _tgz <= _btg2 < 0):
+                        and _tgz <= _btg2 < _tgmax):
                     _flip_cell_mult = max(_flip_cell_mult or 1.0, _tgm)
+                    if _tglev > 1.0:
+                        _flip_cell_lev_mult = max(_flip_cell_lev_mult or 1.0, _tglev)
                     _flip_cell_tag = (_flip_cell_tag + "+[TG_SHALLOW]") if _flip_cell_tag else "[TG_SHALLOW]"
             except Exception:
                 pass

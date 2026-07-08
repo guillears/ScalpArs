@@ -233,6 +233,8 @@
     "flip_short_btc_trend_gap_min": -0.22,
     "flip_short_tg_shallow_mult": 2.0,
     "flip_short_tg_shallow_min": -0.1,
+    "flip_short_tg_shallow_max": 0.0,
+    "flip_short_tg_shallow_lev_mult": 1.0,
     "flip_short_quality_min": 2.0,
     "flip_short_pair_gap_max": 1.0,
     "flip_pair_rsi_ob_short_regimes": "STRONG_BULL",

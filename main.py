@@ -9586,6 +9586,9 @@ async def _compute_phantom_flip_performance(db, is_paper):
     # Jul 6 — deep-gap floor (MOMENTUM_SHORT_DEEPGAP) revert surface: blocked deep-hole
     # shorts as same-direction phantoms; re-open at >=55% WR on N>=8.
     pass_dg = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:MOMENTUM_SHORT_DEEPGAP']
+    # Jul 8 — BTC trend-gap depth gate (FLIP_SHORT_BTC_TRENDGAP) revert surface: blocked
+    # deep-gap flips as same-direction phantoms; re-open at NET-ADMISSIBLE >=60% WR on N>=10.
+    pass_tg = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:FLIP_SHORT_BTC_TRENDGAP']
     source_specs = [
         ("LONG_UNMATCHED_ONLY", ("SHORT",), True, flips),
         ("PASS:LONG_UNMATCHED_ONLY", ("LONG",), True, pass_longs),
@@ -9594,6 +9597,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
         ("PASS:FLIP_SHORT_REGIME", ("SHORT",), True, pass_freg),
         ("PASS:LONG_BTC1H_DEADBAND", ("LONG",), True, pass_db),
         ("PASS:MOMENTUM_SHORT_DEEPGAP", ("SHORT",), True, pass_dg),
+        ("PASS:FLIP_SHORT_BTC_TRENDGAP", ("SHORT",), True, pass_tg),
     ]
     for src, _dirs, _subrows, _pool in source_specs:
         for fd in _dirs:

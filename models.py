@@ -614,6 +614,9 @@ PHANTOM_KEEP_SOURCES = (
     # Jul 6 — revert surface of the MOMENTUM_SHORT_DEEPGAP ship (pair gap <= -1.0 block,
     # N=3 operator-directed): re-open at >=55% WR on N>=8 blocked phantoms.
     "PASS:MOMENTUM_SHORT_DEEPGAP",
+    # Jul 8 — revert surface of the FLIP_SHORT_BTC_TRENDGAP ship (BTC EMA13-50 gap <= -0.22
+    # depth block, N=16 operator-directed): re-open at net-admissible >=60% WR on N>=10.
+    "PASS:FLIP_SHORT_BTC_TRENDGAP",
 )
 
 # Jul 5 (operator invariant: "phantoms are killed ONLY on reset, never on redeploy").
@@ -678,6 +681,7 @@ class PhantomFlip(Base):
     entry_btc_ema20_slope = Column(Float, nullable=True)
     entry_btc_1h_slope = Column(Float, nullable=True)
     entry_btc_dist_from_ema13_pct = Column(Float, nullable=True)
+    entry_btc_trend_gap_pct = Column(Float, nullable=True)  # Jul 8 — BTC EMA13-50 gap (flip depth gate surface); forward-only
     entry_macro_trend = Column(String(20), nullable=True)
     entry_btc_regime = Column(String(20), nullable=True)
     # Jun 15 (full parity round 2): pair slopes, market context, quality score.

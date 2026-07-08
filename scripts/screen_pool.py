@@ -59,7 +59,9 @@ def flip_ind(r):  # field-audited against engine _ff_in (trading_engine.py:3414)
         'quality_score':nf(r.get('entry_quality_score')),'bear_pct':nf(r.get('entry_bear_pct')),
         'range_position':nf(r.get('entry_range_position')),
         # Jul 3 — required by flip_short_btc_1h_slope_max (the BTC-1h regime gate); missing = fail-open
-        'btc_1h_slope':nf(r.get('entry_btc_1h_slope'))}
+        'btc_1h_slope':nf(r.get('entry_btc_1h_slope')),
+        # Jul 8 — required by flip_short_btc_trend_gap_min (the BTC depth gate); missing = fail-open
+        'btc_trend_gap':nf(r.get('entry_btc_trend_gap_pct'))}
 
 def sleeve(r):
     """Return 'MOM_LONG' / 'MOM_SHORT' / 'FLIP_SHORT' if the row SURVIVES the current stack, else None."""
@@ -179,7 +181,8 @@ def main():
     # block (admit_mult=0) <1 day after ship — the un-block rested on ONE flawed pillar (13/18
     # phantoms from a single bear Monday, not net-admissible) vs the block's three. FLIP returns
     # to the core-only cohort. Rewritten revert gate lives in CURRENT_STATE.
-    assert len(fl) == 39 and round(fl_net) == 637, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 39/$637 — slope gate off? CHOP unblock / flip de-mux not applied? NOT freezing"
+    # v12 (Jul 8): BTC trend-gap depth gate (flip_short_btc_trend_gap_min=-0.22) screens 12 more flips (42%WR/-$244)
+    assert len(fl) == 27 and round(fl_net) == 881, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 27/$881 — trend-gap gate off? slope gate off? de-mux? NOT freezing"
     print(f"\n✅ VALIDATION PASSED (ML 29/$3435 + MS 15/$750 + FLIP core 39/$637 + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']

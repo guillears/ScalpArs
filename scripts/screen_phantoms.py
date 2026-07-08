@@ -65,6 +65,8 @@ def phantom_ind(r):
         'bear_pct': nf(r.get('entry_bear_pct')),
         'range_position': nf(r.get('entry_range_position')),
         'btc_1h_slope': nf(r.get('entry_btc_1h_slope')),
+        # Jul 8 — flip depth gate field (older phantom rows lack the column -> fail-open)
+        'btc_trend_gap': nf(r.get('entry_btc_trend_gap_pct')),
     }
 
 
@@ -76,6 +78,12 @@ def disable_own_gate(source):
         th.flip_short_btc_1h_slope_max = 99.0
         def restore():
             th.flip_short_btc_1h_slope_max = old
+        return restore
+    if source == 'PASS:FLIP_SHORT_BTC_TRENDGAP':
+        old = getattr(th, 'flip_short_btc_trend_gap_min', 0.0)
+        th.flip_short_btc_trend_gap_min = 0.0
+        def restore():
+            th.flip_short_btc_trend_gap_min = old
         return restore
     if source == 'PASS:FLIP_SHORT_REGIME':
         old1 = getattr(th, 'flip_short_regime_block_regimes', '')

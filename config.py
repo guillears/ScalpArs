@@ -621,6 +621,21 @@ class SignalThresholds(BaseModel):
     # after this one). 🔒 RE-BLOCK (→0) if live SLOPEUP cohort ≤50% WR or net-negative on N≥10;
     # PROMOTE to full flip size at ≥65% WR & avg ≥+0.15% on N≥20.
     flip_short_btc_1h_slope_admit_mult: float = 0.0
+    # Jul 8 — flip-SHORT BTC trend-gap DEPTH gate: block flip-SHORT when BTC (EMA13-50)/EMA50 gap
+    # <= this value (BTC deep below its own trend = oversold bounce zone; the faded pump is a market
+    # relief squeeze). The ONLY ship-grade survivor of the full 31-dim winner/loser sweep (Jul 8):
+    # baseline monotone 5-bucket gradient (<=-0.30 = 25% WR ... -0.10..0 = 100% WR), fresh-window
+    # direction-consistent; -0.22 = plateau cut in clean space (-0.20 knife-edge rejected). Blocked
+    # 16·44%·-$417 over 10+ dates / kept baseline 27·85%·+$881. COMPLEMENT of the 1h slope gate
+    # (overlap 2/65 — depth vs direction). Sentinel 0 = OFF (active when < 0). Ship -0.22 in json.
+    flip_short_btc_trend_gap_min: float = 0.0
+    # Jul 8 — TG_SHALLOW multiplier cell (the depth gate's twin, operator-directed 2× ship): when a
+    # flip-SHORT fires with BTC gap in [shallow_min, 0) — the monotone gradient's top bucket, 10/10
+    # combined (baseline 8·100%·+0.53·+$455) — apply this INVEST multiplier (lev stays 1×). 0/1 = off.
+    # ⚠ Double override (N=10 << 30; skips 1.5× staging). REVERT: ✗ HARMFUL (net-neg N>=5) -> 1.0;
+    # ⚠ DRAG -> 1.5. Tag [TG_SHALLOW] = own row in Multiplier Cell Performance — SHORTs.
+    flip_short_tg_shallow_mult: float = 0.0
+    flip_short_tg_shallow_min: float = -0.10
     flip_short_btc_1h_slope_max: float = 99.0   # block flip-SHORT when BTC 1h EMA20 slope > this (99 = off; ship 0.0). Jul 3: THE regime gate — fading alt pumps loses when BTC's HOURLY trend is rising (pumps are real in a recovery and run over the short) and pays when falling (pumps are exhaustion). Two-period direction-CONSISTENT (the only flip separator of 8 tested that did not invert): baseline slope>0 = 17fl/65%WR/−$73 vs slope≤0 = 29/76%/+$774; fresh Jun30-Jul3 slope>0 = 9/33%/−$405 vs slope≤0 = 7/71%/+$51. Combined blocked N=26, Δ+$478. Mechanism = the momentum-short btc_1h_slope_max(+0.1) gate that flips BYPASSED (parity fix). ⚠ N=26 < N≥30 = near-gate ship. Counter FLIP_SHORT_BTC1H_SLOPE. TIGHT REVERT: →99 if would-be-blocked (slope>0) flips run ≥60% WR on N≥10 fresh phantoms.
     flip_short_quality_min: float = 2.0   # block flip-SHORT when entry quality score < this (so =2 blocks score ≤1). 0 = off. Jun 25: extends the global Entry-Quality-Score floor (already blocks ≤1 for NORMAL entries: validated N=95/34.7%WR/−$684) to the flip-short sleeve, which BYPASSES it. Cross-batch FAN flip-short (deduped, current stack): score is monotonic (1→4 = 56/64/76/80% WR, −0.17→+0.56% avg); score≤1 = N=18/56%WR/−2.98%/8 dates (the only negative band), loss DIFFUSE (16 pairs, top 21% — not pair-concentrated). Score 0 ≈ empty (N=2). Confirmed on 06-25 batch (score≤1 = 3/3 losers, −$249, incl. SAHARA −$145 gap-through; sleeve −$337→−$88). ⚠ N=18 < N≥30 gate = DISCIPLINE-OVERRIDE, but the score≤1 threshold itself is already globally validated — we only close the flip bypass. Counter FLIP_SHORT_QUALITY. TIGHT REVERT: →0 if would-be-blocked (score≤1) flip-shorts run ≥55% WR on N≥10 fresh.
     # Jun 21 — pair EMA13-EMA50 gap ceiling for flip-SHORTS. Refuse to fade a pair already steeply

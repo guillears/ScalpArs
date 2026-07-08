@@ -564,6 +564,7 @@ async def init_db():
                     'entry_pair_ema20_ema50_gap_pct', 'entry_dist_from_ema13_pct', 'entry_range_position',
                     'entry_btc_adx', 'entry_btc_rsi', 'entry_btc_ema20_slope', 'entry_btc_1h_slope',
                     'entry_btc_dist_from_ema13_pct',
+                    'entry_btc_trend_gap_pct',  # Jul 8 — flip depth gate (flip_short_btc_trend_gap_min) surface
                     # full-parity round 2 (Jun 15)
                     'entry_ema20_slope', 'entry_ema50_slope', 'entry_global_volume_ratio',
                     'entry_pair_volume_ratio', 'entry_bull_pct', 'entry_bear_pct', 'entry_pair_volume_24h_usd',

@@ -519,6 +519,23 @@ def _flip_filters(source, ind):
                 if _adm <= 0:
                     return (True, "FLIP_SHORT_BTC1H_SLOPE", 1.0, 1.0, None)
                 # fall through un-blocked; sizing cap + tag handled in _maybe_open_flip
+        # BTC trend-gap DEPTH gate for flip-SHORTS (Jul 8): don't fade an alt pump while BTC sits
+        # DEEP below its own trend (EMA13-50 gap ≤ min) — oversold tape means the pump is a
+        # market-wide relief bounce that keeps squeezing, not idiosyncratic exhaustion. Found by the
+        # full 31-dimension winner/loser sweep (the ONLY ship-grade survivor): baseline MONOTONE
+        # across 5 buckets (≤−0.30 = 25% WR → −0.10..0 = 100% WR), direction-consistent in the fresh
+        # 07-06..08 window; at −0.22 blocked = 16 (12 base + 4 fresh) · ~44% WR · −$417 over 10+
+        # dates, diffuse pairs (top 28%); kept baseline 27·85%·+$881. COMPLEMENTARY to the 1h slope
+        # gate (overlap 2/65; corr +0.49 — depth vs direction; cuts WITHIN regimes: 11/18 S.BEAR vs
+        # 3/17 H.BEAR). ⚠ N=16<30 near-gate ship (operator-directed, same evidence pattern as the
+        # Jul-3 1h gate at N=26) → TIGHT REVERT via PASS phantoms (see CURRENT_STATE). Sentinel
+        # 0 = off (active when < 0). Fail-open: missing gap → no block.
+        _tgmin_raw = getattr(th, 'flip_short_btc_trend_gap_min', 0.0)
+        _tgmin = 0.0 if _tgmin_raw is None else float(_tgmin_raw)
+        if ind.get('flip_dir') == 'SHORT' and _tgmin < 0:
+            _btg = ind.get('btc_trend_gap')
+            if _btg is not None and _btg <= _tgmin:
+                return (True, "FLIP_SHORT_BTC_TRENDGAP", 1.0, 1.0, None)
         # High-ATR bear block (Jun 17): the REGIME-INVERTED hole in FLIP_SHORT_REGIME's bear exemption.
         # A high-ATR parabolic pump in a strong bear is a counter-trend short-SQUEEZE that keeps ripping →
         # the short never arms and the high ATR gaps the −0.70 SL to ~−1.2 (ESPORTS 4.0, HUSDT 3.0 = 0%WR/
@@ -3503,6 +3520,7 @@ class TradingEngine:
             put('entry_btc_ema20_slope', lambda: g.get('_btc_ema20_slope_pct'))
             put('entry_btc_1h_slope', lambda: g.get('_current_btc_1h_slope'))
             put('entry_btc_dist_from_ema13_pct', lambda: round((g['_current_btc_price'] - g['_current_btc_ema13']) / g['_current_btc_ema13'] * 100, 4))
+            put('entry_btc_trend_gap_pct', lambda: g.get('_current_btc_trend_gap_pct'))  # Jul 8 — flip depth gate (flip_short_btc_trend_gap_min) surface
             # BTC prev/higher-TF COMPANIONS (Jun 15) — the "vs prev candle / vs 6-ago / 1h"
             # values the "Performance by BTC ... Direction / Volatility / 1h RSI" tables compare
             # against. Without these a flip is invisible to every one of those tables.
@@ -3593,6 +3611,9 @@ class TradingEngine:
                 # BTC 1h EMA20 slope — required by the flip-SHORT regime gate (flip_short_btc_1h_slope_max). Jul 3.
                 'btc_1h_slope': (_ef.get('entry_btc_1h_slope') if _ef.get('entry_btc_1h_slope') is not None
                                  else _g.get('_current_btc_1h_slope')),
+                # BTC EMA13-50 trend gap — required by the flip-SHORT depth gate (flip_short_btc_trend_gap_min). Jul 8.
+                'btc_trend_gap': (_ef.get('entry_btc_trend_gap_pct') if _ef.get('entry_btc_trend_gap_pct') is not None
+                                  else _g.get('_current_btc_trend_gap_pct')),
             }
             _blocked, _reason, _flip_cell_mult, _flip_cell_lev_mult, _flip_exit_mode = _flip_filters(source, _ff_in)
             if _blocked:
@@ -3603,7 +3624,8 @@ class TradingEngine:
                 # off) — the gate shipped without it, so the revert could never fire. REGIME = the #1
                 # flip blocker (bear≥80); measures what the bear-era filter forfeits in a bull. The
                 # phantom runs the exact flip replica exit, so its WR is directly gate-comparable.
-                if _reason in ("FLIP_SHORT_BTC1H_SLOPE", "FLIP_SHORT_REGIME"):
+                if _reason in ("FLIP_SHORT_BTC1H_SLOPE", "FLIP_SHORT_REGIME", "FLIP_SHORT_BTC_TRENDGAP"):
+                    # Jul 8: TRENDGAP = the depth gate's locked revert surface (net-admissible ≥60% WR on N≥10 → off).
                     _seed_phantom_flip(pair, price, flip_dir, f"PASS:{_reason}",
                                        entry_fields=_ef, mode='PASS')
                 logger.info(f"[FLIP_FILTER] {pair}: {source} flip vetoed by {_reason} "
@@ -3618,6 +3640,25 @@ class TradingEngine:
                                                    _ff_in.get('bear_pct'), _ff_in.get('range_position'))
                 if _ct:
                     _flip_cell_mult, _flip_cell_lev_mult, _flip_cell_tag = _cs, _cl, _ct
+            # Jul 8 — TG_SHALLOW multiplier cell (operator-directed 2× ship, same session as the
+            # trend-gap depth gate): BTC EMA13-50 gap in [shallow_min, 0) = the flip sleeve's edge
+            # core (baseline 8·100%·+0.53·+$455 + fresh 2·100% = 10/10 combined; the monotone
+            # gradient's top bucket). Invest mult only (lev stays 1×). ⚠ DOUBLE OVERRIDE
+            # acknowledged: N=10 ≪ 30 promotion gate AND skips the locked 1.5×-first staging
+            # (operator: sleeve must scale; testing the confluence now). 🔒 TIGHT REVERT (verdict
+            # machinery): ✗ HARMFUL (net-negative on N≥5 fresh fires) → mult 1.0; ⚠ DRAG → 1.5×.
+            try:
+                _tgm_raw = getattr(config.trading_config.thresholds, 'flip_short_tg_shallow_mult', 0.0)
+                _tgm = 0.0 if _tgm_raw is None else float(_tgm_raw)
+                _tgz_raw = getattr(config.trading_config.thresholds, 'flip_short_tg_shallow_min', -0.10)
+                _tgz = -0.10 if _tgz_raw is None else float(_tgz_raw)
+                _btg2 = _ff_in.get('btc_trend_gap')
+                if (flip_dir == 'SHORT' and _tgm > 1.0 and _btg2 is not None
+                        and _tgz <= _btg2 < 0):
+                    _flip_cell_mult = max(_flip_cell_mult or 1.0, _tgm)
+                    _flip_cell_tag = (_flip_cell_tag + "+[TG_SHALLOW]") if _flip_cell_tag else "[TG_SHALLOW]"
+            except Exception:
+                pass
             # Jul 6 — B1H_SLOPEUP admit cohort (the fired revert gate's graduated live test):
             # slope>0 flip-shorts trade at cell mult CAPPED at admit_mult (ship 1.0) under their
             # own tag so Multiplier Cell Perf + Flip×Regime track them as a distinct cell.

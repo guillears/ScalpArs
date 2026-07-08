@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 from services.trading_engine import _flip_filters
 
-RAW = "reports/COMBINED_momentum_flip_2026-06-16to28_DEDUP.csv"  # Jul 5: now spans 06-16..07-05 (batches appended; filename kept — all tooling points here)
+RAW = "reports/COMBINED_momentum_flip_2026-06-16to28_DEDUP.csv"  # Jul 8: now spans 06-16..07-08 (batches appended; filename kept — all tooling points here)
 OUT = "reports/SCREENED_BASELINE.csv"
 th = config.trading_config.thresholds
 BL = set("ALLOUSDT,BNBUSDT,EIGENUSDT,ENAUSDT,ESPORTSUSDT,FILUSDT,MUSDT,RAVEUSDT,SYNUSDT,TRUMPUSDT,VELVETUSDT,VVVUSDT,XAGUSDT,XAUUSDT,ZECUSDT".split(","))
@@ -173,8 +173,8 @@ def main():
     _pvmax = float(getattr(th, 'momentum_short_pair_vol_max', 0.0) or 0.0)
     _pv_surv = sum(1 for r in ms if _pvmax > 0 and nf(r.get('entry_pair_volume_ratio')) is not None and nf(r.get('entry_pair_volume_ratio')) >= _pvmax)
     assert _pv_surv == 0, f"FAIL: {_pv_surv} pair_vol>={_pvmax} mom-shorts survived — vol block not applied, NOT freezing"
-    assert len(ml) == 29 and round(ml_net) == 3435, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 29/$3435 — 1h deadband applied? screen wrong, NOT freezing"
-    assert len(ms) == 15 and round(ms_net) == 750, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 15/$750 (deep-gap floor + C1 de-mux + pair-vol + weakcap?) — NOT freezing"
+    assert len(ml) == 35 and round(ml_net) == 3482, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 35/$3482 (v13, 07-08 batch) — 1h deadband applied? screen wrong, NOT freezing"
+    assert len(ms) == 19 and round(ms_net) == 794, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 19/$794 (v13) — NOT freezing"
     fl = agg.get('FLIP_SHORT', [])
     fl_net = sum(pnl_current(x) for x in fl)
     # v11 (2026-07-07 era, operator: "we block with fundaments"): SLOPEUP admit REVERTED to hard
@@ -182,7 +182,7 @@ def main():
     # phantoms from a single bear Monday, not net-admissible) vs the block's three. FLIP returns
     # to the core-only cohort. Rewritten revert gate lives in CURRENT_STATE.
     # v12 (Jul 8): BTC trend-gap depth gate (flip_short_btc_trend_gap_min=-0.22) screens 12 more flips (42%WR/-$244)
-    assert len(fl) == 27 and round(fl_net) == 881, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 27/$881 — trend-gap gate off? slope gate off? de-mux? NOT freezing"
+    assert len(fl) == 31 and round(fl_net) == 692, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 31/$692 (v13) — trend-gap gate off? de-mux? NOT freezing"
     print(f"\n✅ VALIDATION PASSED (ML 29/$3435 + MS 15/$750 + FLIP core 39/$637 + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']

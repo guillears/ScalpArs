@@ -1,0 +1,60 @@
+================================================================================
+PHANTOM TRADES ANALYSIS — 2026-07-08 13:40 export (07-06 reset window, 135 closed)
+Row-level CSV: reports/phantoms_2026-07-06_reset_window_asof_07-08_1340.csv
+Prior row files: phantoms_2026-07-06_reset_window_asof_07-07_1211.csv
+Pre-reset aggregate priors (rows unrecoverable): CURRENT_STATE priors #1/#2/#3
+================================================================================
+
+## SOURCE SUMMARY (closed, this window)
+source (dir)                                 N    WR     avg       Σ   dates
+PASS:FLIP_SHORT_REGIME SHORT                41   41%  -0.053   -2.16   3
+PASS:FLIP_SHORT_BTC1H_SLOPE SHORT           38   66%  +0.213   +8.11   2
+PASS:LONG_UNMATCHED_ONLY LONG               18   83%  +0.280   +5.04   3
+LONG_UNMATCHED_ONLY fade SHORT              18   22%  -0.373   -6.71   3
+SPIKE_REV_BTC SHORT                          9   44%  -0.086   -0.78   3
+SPIKE_REV_BTC LONG                           6   33%  -0.179   -1.08   2
+PASS:LONG_BTC1H_DEADBAND LONG                5  100%  +0.328   +1.64   1
+
+## NET-ADMISSIBILITY JOINS (screen_phantoms.py — the decision surfaces)
+
+### PASS:FLIP_SHORT_BTC1H_SLOPE (SLOPEUP re-open + per-regime carve-out gates)
+Tracker 38·66%·+8.11 -> NET-ADMISSIBLE only 5·60%·+0.31·Σ+1.54 (2 dates).
+Per regime: S.BEAR 2·50%·+0.03 / H.BEAR 1W / CHOP 1W (+1.98) / H.BULL 1L.
+Blocked downstream: QUALITY 10, RSI_MIN 10 (80%·+4.13 — headline profit sits
+behind the pair-RSI floor AND further gates; double/triple-blocked), ADXD 6, others 7.
+GATES: global re-open needs net-adm >=60% on N>=15, >=3 dates incl bull window,
+avg >=+0.30 -> at 5/15, avg +0.31 — NOT close. All 4 carve-out cells ❌ (N 1-2/10).
+
+### PASS:FLIP_SHORT_REGIME (HEALTHY_BULL bear-era gate — "what does it forfeit?")
+Tracker 41·41%·−0.05 -> NET-ADMISSIBLE = 0/41. Every single HEALTHY_BULL
+blocked flip ALSO fails FLIP_SHORT_BTC30_RISE downstream (H.BULL ≡ BTC 30m RSI
+rising on this tape). DOUBLE REFUTATION of any relaxation: the raw cohort fails
+its own watchlist bar (41% < 55%) AND zero trades could exist anyway.
+The regime gate costs literally nothing in this bull window. CLOSED for now.
+
+## GATE TALLIES (armed revert/re-enable gates)
+- DEADBAND (>=60% WR on N>=10 blocked longs -> band off): window 5·100%·+0.33
+  + pre-reset prior 2·50%·−0.247 = RUNNING 7·86% at N 7/10. ⚠ Caveats hold:
+  3 of 5 wins same minute (07-07 15:27, one BTC impulse); all 5 at the BAND EDGE
+  (|1h| 0.042-0.048 vs 0.05 cut) — the deep-flat core (|1h|<0.04) has produced
+  NO winners yet. If N>=10 fires: run the pattern-match join first (only longs
+  that would survive LONG_UNMATCHED_ONLY/W2/W6 count), and consider NARROWING
+  the band (0.05 -> 0.04) as the graduated response instead of full removal.
+- PASS:LONG_UNMATCHED_ONLY (matched-long re-enable hunt, per-cell N>=20·60%·+0.15):
+  18·83%·+0.28. W2 sub-cell 7·100%·+3.66 — but these are FALLING-flank W2s
+  (blocked by the 1h>=0.05 condition) while the one admitted rising-flank W2
+  traded live and LOST. One window vs the 43-trade two-era history that picked
+  the rising flank: WATCH — if falling-flank W2 phantoms stay >=80% through
+  next window at N>=12, review the 0.05 condition (possible inversion).
+- SPIKE_REV_BTC (N>=30 bar): window 15·40%·−1.86 + priors 4·0% = 19·~32% toward
+  N>=30. Fade-the-BTC-spike keeps being refuted; prediction holding.
+- LUO fade side: 18·22%·−6.71 — fading blocked matched longs still whipsaws;
+  block-side validated again.
+- PASS:FLIP_SHORT_BTC_TRENDGAP (new, shipped 07-08): 0 phantoms yet (gate live
+  since the 13:1x deploy). Revert surface: net-adm >=60% WR on N>=10.
+
+## VERDICT
+No gate fires. Deadband is the nearest (7/10 at 86%) — 3 clean phantoms away,
+with the pattern-join + band-edge caveats pre-registered. Both flip-block
+relaxation surfaces (1h slope, HB regime) are refuted at net-admissibility.
+================================================================================

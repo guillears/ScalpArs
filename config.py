@@ -249,6 +249,11 @@ class SignalThresholds(BaseModel):
     # confirmed (May 4 + May 9) that LONG stretch <0.16% is a structural loser zone.
     ema5_stretch_filter_enabled: bool = True
     ema5_stretch_min_long: float = 0.16  # Min EMA5 stretch % for LONG entries (0 = disabled)
+    # Jul 10 SHIP (live JSON = 0.35): LONG stretch ceiling — chase-entry block. Zero-cost cut:
+    # across the ENTIRE screened history every mom-long winner entered at stretch ≤ 0.34 (max
+    # winner ACT 0.332); the only-ever occupants above 0.35 are losers (LDO 0.53 −$285,
+    # TAC 0.37 −$132 — buying an already-exhausted burst, pair ADX rolling over).
+    # 🔒 Revert → 0 if blocked stretch>0.35 longs run ≥60% WR on N≥8 fresh evidence.
     ema5_stretch_max_long: float = 0.0   # Max EMA5 stretch % for LONG entries (0 = disabled)
     ema5_stretch_min_short: float = 0.0  # Min EMA5 stretch % for SHORT entries (0 = disabled)
     ema5_stretch_max_short: float = 0.0  # Max EMA5 stretch % for SHORT entries (0 = disabled)
@@ -927,6 +932,14 @@ class SignalThresholds(BaseModel):
     # but unmatched longs RUN (54% peak ≥0.40) — capping them at +0.25 strangles the edge, so
     # disable it and let them trail. (Coupling: if you re-enable matched longs, re-enable fix-TP.)
     long_unmatched_only: bool = False
+    # Jul 10 SHIP (live JSON = 0.90): UNMATCHED-LONG crowded-entry DE-MUX. When an UNMATCHED long
+    # would take the 2× cell multiplier but entry pair_volume_ratio ≥ this value, size at 1×
+    # instead (sizing only — entry NOT blocked). Evidence: pool ladder is near-monotone — PVR
+    # <0.90 = 29W/3L while the ≥0.90 zone is 10 trades · 60% WR · net-NEGATIVE at both sizings
+    # (✗ HARMFUL sub-cell per the locked multiplier-verdict gate; catches HYPE/ME/PYTH/LDO).
+    # Mechanism: PVR ≥ 0.90 = the volume burst already happened = buying someone's exit.
+    # 🔒 Revert → 0 (full 2×) if fresh zone trades run ≥70% WR and net-positive at N≥8. 0 = off.
+    long_unmatched_mult_pvr_max: float = 0.0
     # Jul 6: W2 RE-ENABLE, 1h-rising conditioned (operator-directed; first matched-long cell back
     # since the Jun-9 block). Admit a W2-matched long (macro tailwind; NO C co-match) when BTC 1h
     # slope ≥ this value. Evidence: historical live W2 longs split hard on 1h — rising ≥+0.05 =

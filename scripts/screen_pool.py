@@ -41,6 +41,14 @@ def pnl_current(r):
     mult = nf(r.get('cell_multiplier')) or 1.0
     if src_ == 'C1' and mult == 2.0:
         return p / 2.0
+    # Jul 10 — UNMATCHED-LONG crowded-entry de-mux (long_unmatched_mult_pvr_max): the 2× cell
+    # sizes at 1× when entry PVR >= threshold (✗ HARMFUL sub-cell: zone 10 trades net-negative
+    # at both sizings). Historical 2× fills in the zone re-price to 1× under the current stack.
+    _upv = float(getattr(th, 'long_unmatched_mult_pvr_max', 0.0) or 0.0)
+    _pvr = nf(r.get('entry_pair_volume_ratio'))
+    if (_upv > 0 and src_ == 'UNMATCHED' and r.get('direction') == 'LONG' and mult > 1.0
+            and _pvr is not None and _pvr >= _upv):
+        return p / mult
     # Jul 3 — flips run 2x live now (FAN_RATIO_GATE:2.0); the pinned flip baseline is at 1x, so
     # de-mux any multiplied FLIP row to 1x when future batches land (else 1x-historical mixes with
     # 2x-fresh and the flip net$ silently drifts — review I2; the FLIP anchor is count+$ so a miss fails the freeze).
@@ -75,6 +83,12 @@ def sleeve(r):
         _db = float(getattr(th, 'long_btc_1h_deadband', 0.0) or 0.0)
         _s1h = nf(r.get('entry_btc_1h_slope'))
         if _db > 0 and _s1h is not None and abs(_s1h) < _db: return None  # LONG_BTC1H_DEADBAND
+        # Jul 10 — LONG stretch ceiling parity (ema5_stretch_max_long, indicators.py signal gate):
+        # chase-entry block. Zero-cost cut: every pool winner entered <= 0.34; only-ever occupants
+        # above 0.35 are losers (LDO 0.53, TAC 0.37). Missing stretch = fail-open like the engine.
+        _smax = float(getattr(th, 'ema5_stretch_max_long', 0.0) or 0.0)
+        _str = nf(r.get('entry_ema5_stretch'))
+        if _smax > 0 and _str is not None and _str > _smax: return None  # EMA5_STRETCH_MAX_LONG
         return 'MOM_LONG'
     # --- FLIP-short: the REAL engine flip filter ---
     if d == 'SHORT' and isflip(r):
@@ -173,8 +187,8 @@ def main():
     _pvmax = float(getattr(th, 'momentum_short_pair_vol_max', 0.0) or 0.0)
     _pv_surv = sum(1 for r in ms if _pvmax > 0 and nf(r.get('entry_pair_volume_ratio')) is not None and nf(r.get('entry_pair_volume_ratio')) >= _pvmax)
     assert _pv_surv == 0, f"FAIL: {_pv_surv} pair_vol>={_pvmax} mom-shorts survived — vol block not applied, NOT freezing"
-    assert len(ml) == 35 and round(ml_net) == 3482, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 35/$3482 (v13, 07-08 batch) — 1h deadband applied? screen wrong, NOT freezing"
-    assert len(ms) == 19 and round(ms_net) == 794, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 19/$794 (v13) — NOT freezing"
+    assert len(ml) == 41 and round(ml_net) == 3550, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 41/$3550 (v14: 07-10 batch + stretch<=0.35 + PVR>=0.90 demux) — screen wrong, NOT freezing"
+    assert len(ms) == 19 and round(ms_net) == 794, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 19/$794 (v14; NEAR 07-08 weakcap-screened) — NOT freezing"
     fl = agg.get('FLIP_SHORT', [])
     fl_net = sum(pnl_current(x) for x in fl)
     # v11 (2026-07-07 era, operator: "we block with fundaments"): SLOPEUP admit REVERTED to hard
@@ -182,7 +196,7 @@ def main():
     # phantoms from a single bear Monday, not net-admissible) vs the block's three. FLIP returns
     # to the core-only cohort. Rewritten revert gate lives in CURRENT_STATE.
     # v12 (Jul 8): BTC trend-gap depth gate (flip_short_btc_trend_gap_min=-0.22) screens 12 more flips (42%WR/-$244)
-    assert len(fl) == 31 and round(fl_net) == 692, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 31/$692 (v13) — trend-gap gate off? de-mux? NOT freezing"
+    assert len(fl) == 31 and round(fl_net) == 692, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 31/$692 (v14, unchanged from v13) — trend-gap gate off? de-mux? NOT freezing"
     print(f"\n✅ VALIDATION PASSED (ML 29/$3435 + MS 15/$750 + FLIP core 39/$637 + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']

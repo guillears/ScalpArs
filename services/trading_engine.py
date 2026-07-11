@@ -4249,6 +4249,18 @@ class TradingEngine:
                 logger.info(f"[C1_DEMUX_BREADTH] {pair} SHORT: bear%={entry_bear_pct} outside [{_clo},{_chi}) "
                             f"→ de-mux C1 {_pcell_inv}x/{_pcell_lev}x → 1x ({_pcell_src})")
                 _pcell_inv, _pcell_lev = 1.0, 1.0
+        # UNMATCHED LONG crowded-entry de-mux (Jul 10): the UNMATCHED 2× only earns its multiplier
+        # below pair_volume_ratio 0.90 — the ≥0.90 zone is a ✗ HARMFUL sub-cell (pool 10 trades,
+        # 60% WR, net-NEGATIVE at both sizings; below 0.90 the sleeve ran 29W/3L). Mechanism:
+        # PVR ≥ 0.90 = volume burst already happened = buying someone's exit (crowded entry —
+        # LDO/HYPE/ME/PYTH class). Sizing only, entry NOT blocked (a 60%-WR cohort is de-amplified,
+        # never blocked). 0 = off. Fail-open on missing PVR.
+        if (direction == "LONG" and _pcell_src and 'UNMATCHED' in str(_pcell_src) and (_pcell_inv or 1.0) > 1.0):
+            _upv_max = float(getattr(config.trading_config.thresholds, 'long_unmatched_mult_pvr_max', 0.0) or 0.0)
+            if _upv_max > 0 and entry_pair_volume_ratio is not None and entry_pair_volume_ratio >= _upv_max:
+                logger.info(f"[UNMATCHED_DEMUX_PVR] {pair} LONG: pair-vol ratio {entry_pair_volume_ratio:.2f} >= {_upv_max} "
+                            f"(crowded entry) → de-mux UNMATCHED {_pcell_inv}x/{_pcell_lev}x → 1x")
+                _pcell_inv, _pcell_lev = 1.0, 1.0
         # Jun 8: pattern-cell BLOCK action — skip the entry entirely (no order, no exchange
         # call; we're before position sizing / Order creation). Counter PATTERN_CELL_BLOCK.
         if _pcell_block and not flip_source and not bull_long and not bounce_long:
@@ -7894,7 +7906,12 @@ class TradingEngine:
                 _wc_amax = float(getattr(_wc_th, 'momentum_short_weakcap_atr_max', 0.0) or 0.0)
                 _wc_pmax = float(getattr(_wc_th, 'momentum_short_weakcap_padx_max', 0.0) or 0.0)
                 _wc_adx = indicators.get('adx')
-                _wc_atr = indicators.get('atr_pct')
+                # Jul 10 BUGFIX: the indicators dict carries 'atr' (absolute), not 'atr_pct' — the
+                # old .get('atr_pct') returned None every tick, so this filter NEVER fired since the
+                # Jun-28 ship (fail-open). NEARUSDT 07-08 (-$73 triple-weak DOA) leaked through here.
+                _wc_atr_abs = indicators.get('atr')
+                _wc_price0 = indicators.get('price')
+                _wc_atr = (_wc_atr_abs / _wc_price0 * 100) if (_wc_atr_abs is not None and _wc_price0) else None
                 _wc_px = indicators.get('price'); _wc_hi = indicators.get('high_20'); _wc_lo = indicators.get('low_20')
                 _wc_rng = ((_wc_px - _wc_lo) / (_wc_hi - _wc_lo) * 100) if (_wc_px is not None and _wc_hi is not None and _wc_lo is not None and _wc_hi != _wc_lo) else None
                 if (_wc_rmax > 0 and _wc_amax > 0 and _wc_pmax > 0

@@ -158,6 +158,24 @@ _STRPK_K = {'strpk': 0.5, 'strpk04': 0.4, 'strpk03': 0.3}
 _STRETCH_NAMES = ('strpk', 'strpk04', 'strpk03', 'stren', 'strpk_signed')
 # Jun 16: ATR-floored give-back trail (chandelier) shadows — exit when P&L retraces
 # > N×entry_atr_pct from peak. Tests which N the live runner_trail_short_atr_mult should be.
+def _ind_atr_pct(ind):
+    """ATR% from a raw indicators dict. The dict carries 'atr' (ABSOLUTE) — there is no
+    'atr_pct' key (Jul 10: the misnamed-key class that silenced the weakcap filter for
+    12 days; the old `... or indicators.get('atr_pct')` fallbacks were dead code)."""
+    try:
+        _a, _p = ind.get('atr'), ind.get('price')
+        return (_a / _p * 100) if (_a is not None and _p) else ind.get('atr_pct')
+    except Exception:
+        return None
+
+
+def _pop_or(ef, key, fallback):
+    """ef.pop(key) unless None, else fallback — `is not None` coalesce (a plain `or`
+    would eat a legitimate 0.0)."""
+    v = ef.pop(key, None)
+    return v if v is not None else fallback
+
+
 _ATR_N = {'atr05': 0.5, 'atr10': 1.0, 'atr15': 1.5}
 # Jun 17 PM: give-back-CAP shadows — ATR-floor at the LIVE N + lock, but give_back capped at
 # frac×peak. Varies frac (0.25/0.35/0.50) to tune runner_trail_short_giveback_frac from data
@@ -3687,7 +3705,7 @@ class TradingEngine:
                     current_price=price,
                     entry_rsi=_ef.pop('entry_rsi', None) or indicators.get('rsi'),
                     entry_adx=_ef.pop('entry_adx', None) or indicators.get('adx'),
-                    entry_atr_pct=_ef.pop('entry_atr_pct', None) or indicators.get('atr_pct'),
+                    entry_atr_pct=_pop_or(_ef, 'entry_atr_pct', _ind_atr_pct(indicators)),
                     flip_source=source, flip_cell_mult=_flip_cell_mult, flip_cell_lev_mult=_flip_cell_lev_mult, flip_exit_mode=_flip_exit_mode,
                     flip_cell_tag=_flip_cell_tag,
                     **_ef,
@@ -3802,7 +3820,7 @@ class TradingEngine:
                     current_price=price,
                     entry_rsi=_ef.pop('entry_rsi', None) or indicators.get('rsi'),
                     entry_adx=_ef.pop('entry_adx', None) or indicators.get('adx'),
-                    entry_atr_pct=_ef.pop('entry_atr_pct', None) or indicators.get('atr_pct'),
+                    entry_atr_pct=_pop_or(_ef, 'entry_atr_pct', _ind_atr_pct(indicators)),
                     bull_long=True, bull_long_size_mult=_size_mult, bull_long_lev_mult=_lev_mult,
                     **_ef,
                 )
@@ -3896,7 +3914,7 @@ class TradingEngine:
                     current_price=price,
                     entry_rsi=_ef.pop('entry_rsi', None) or indicators.get('rsi'),
                     entry_adx=_ef.pop('entry_adx', None) or indicators.get('adx'),
-                    entry_atr_pct=_ef.pop('entry_atr_pct', None) or indicators.get('atr_pct'),
+                    entry_atr_pct=_pop_or(_ef, 'entry_atr_pct', _ind_atr_pct(indicators)),
                     bounce_long=True, bounce_long_size_mult=_size_mult, bounce_long_lev_mult=_lev_mult,
                     **_ef,
                 )

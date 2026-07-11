@@ -314,7 +314,9 @@ def get_signal(
                 logger.debug(f"{direction} {confidence} rejected: EMA5 stretch {stretch_pct:.4f}% < min {stretch_min}%")
                 return False
             if stretch_max and stretch_max > 0 and stretch_pct > stretch_max:
-                logger.debug(f"{direction} {confidence} rejected: EMA5 stretch {stretch_pct:.4f}% > max {stretch_max}%")
+                # Jul 10: info-level (was debug) — the 0.35 LONG ceiling's revert gate needs a
+                # visible prod surface (blocked >0.35 longs ≥60% WR on N≥8 → revert to 0).
+                logger.info(f"[EMA5_STRETCH_MAX] {direction} {confidence} rejected: EMA5 stretch {stretch_pct:.4f}% > max {stretch_max}%")
                 return False
 
         return True

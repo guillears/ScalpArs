@@ -7539,8 +7539,13 @@
             // month header line ($ + compounded day-% + avg %/trading-day)
             const totEl = document.getElementById('pnl-cal-month-total');
             const pctStr2 = monthPct !== null ? `  (${monthPct >= 0 ? '+' : ''}${monthPct.toFixed(2)}% compounded)` : '';
+            // Jul 11 (operator-requested): $/day inline with the %/day — the review routine's
+            // realized-$ scaling metric, same denominator (trading days).
+            const monthTradeDays = greenDays + redDays;
+            const avgUsdInline = monthTradeDays > 0
+                ? ` (≈${_pnlCalFmt$(monthTotal / monthTradeDays)}/day)` : '';
             const avgStr = avgDayPct !== null
-                ? `  · ≈${avgDayPct >= 0 ? '+' : ''}${avgDayPct.toFixed(2)}%/day over ${pctDays} trading day${pctDays === 1 ? '' : 's'}` : '';
+                ? `  · ≈${avgDayPct >= 0 ? '+' : ''}${avgDayPct.toFixed(2)}%/day${avgUsdInline} over ${pctDays} trading day${pctDays === 1 ? '' : 's'}` : '';
             totEl.textContent = `${_pnlCalFmt$(monthTotal)} this month${pctStr2}${avgStr}`;
             totEl.className = 'font-bold ' + (monthTotal >= 0 ? 'text-emerald-400' : 'text-red-400');
             totEl.title = 'avg %/day = geometric mean over calendar trading days; the performance table’s Daily Compound Return uses bot runtime-days, so the two can differ slightly';
@@ -7567,10 +7572,12 @@
                     const lifePctStr = lifePct !== null ? `  (${lifePct >= 0 ? '+' : ''}${lifePct.toFixed(2)}% compounded)` : '';
                     const cls = lifeTotal >= 0 ? 'text-emerald-400' : 'text-red-400';
                     const range = allKeys[0] === allKeys[allKeys.length - 1] ? allKeys[0] : `${allKeys[0]} → ${allKeys[allKeys.length - 1]}`;
+                    const lifeAvgUsd = allKeys.length > 0 ? `<span class="${cls}">avg ${_pnlCalFmt$(lifeTotal / allKeys.length)}/day</span> <span class="text-gray-600">·</span> ` : '';
                     lifeEl.innerHTML =
                         `<span class="text-gray-500">Total (all months):</span> ` +
                         `<span class="${cls} font-semibold">${_pnlCalFmt$(lifeTotal)}${lifePctStr}</span> ` +
-                        `<span class="text-gray-500">· ${lifeDays} trading day${lifeDays === 1 ? '' : 's'} · ${range}</span>`;
+                        `<span class="text-gray-600">·</span> ${lifeAvgUsd}` +
+                        `<span class="text-gray-500">${lifeDays} trading day${lifeDays === 1 ? '' : 's'} · ${range}</span>`;
                     lifeEl.title = 'Cumulative across every month in this experiment (clears on paper reset). Compounded % chains each trading day’s return.';
                 } else {
                     lifeEl.textContent = '';

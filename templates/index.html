@@ -3114,6 +3114,56 @@
                     </div>
                 </div>
 
+                <!-- Performance by Pair −DI (Jul 10 — DMI downward directional movement) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Pair −DI (downward directional movement — Jul 10)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Wilder DMI −DI(14) at entry: strength of active SELLING in the pair. For a flip-SHORT (fading a pump), −DI high = sellers already present = the fade has fuel; −DI low = uncontested vertical pump. The [NEGDI15] 2× cell fires at −DI ≥ 15 (baseline 17/17, +$971; all 6 flip losers below 15).</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">−DI Range</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="neg-di-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting −DI)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Performance by Pair +DI (Jul 10 — DMI upward directional movement, the mirror) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Pair +DI (upward directional movement — Jul 10)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Wilder DMI +DI(14) at entry: strength of active BUYING. Mirror hypothesis under observation: do momentum LONGS win when buyers are already present (+DI high)? No gate consumes +DI yet — observation-only.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">+DI Range</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pos-di-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting +DI)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Performance by Entry ADX -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry ADX</h3>
@@ -6211,6 +6261,17 @@
                                 </div>
                                 <p class="text-[10px] text-gray-600 mt-1">Ship <span class="text-cyan-300/80">−0.10 / 0 @ 2×/1×</span> — 2× invest in the sleeve&#39;s edge core (10/10 combined, +$455 baseline); tag <span class="text-fuchsia-300/70">[TG_SHALLOW]</span> rows in Multiplier Cell Performance. 🔒 Revert: ✗ HARMFUL (net-neg N≥5) → 1.0 · ⚠ DRAG → 1.5. Keep Lev at 1.0 until BE-compat is measurable. Invest 0/1 = off.</p>
                             </div>
+                            <!-- Multiplier cell — NEGDI15: sellers-present −DI floor → Invest/Lev (Jul 10) -->
+                            <div class="mt-3 pt-2 border-t border-fuchsia-800/20" title="Jul 10: NEGDI15 &#39;sellers-present&#39; multiplier cell. A flip-SHORT fades a fresh alt pump; pair −DI (Wilder downward directional movement) ≥ the floor = sellers are ALREADY active in the pair → the fade has fuel behind it. −DI low = uncontested vertical pump = you&#39;re the first seller (squeeze risk). Baseline cell: 17·100%WR·+$971 (~+0.4%/trade), 13 dates / 15 pairs, era-consistent (12/12 pre-06-30, 5/5 post); ALL 6 sleeve losers sit below −DI 15. Deliberately NOT a &lt;15 block (that flank is a 57%-WR mixed cohort — multiply winners, never block them; the block idea is watchlist-gated). Distinct from the Jul-1 REFUTED DI-spread (+DI−−DI): raw −DI wins at BOTH +DI levels (2D-verified). ⚠ OPERATOR-DIRECTED DOUBLE OVERRIDE: N=17 &lt; 30 W-gate AND skips 1.5×-first staging. 🔒 TIGHT REVERT: ✗ HARMFUL (net-negative on N≥5 fresh fires) → 1.0× · ⚠ DRAG → 1.5×. Keep Lev at 1.0 until BE-compat measurable. Invest 0/1 = off.">
+                                <div class="text-[11px] text-fuchsia-300/80 mb-1">Multiplier cell <span class="text-cyan-300/90">— NEGDI15</span> <span class="text-amber-400/80">— SHORT flips only</span> <span class="text-gray-600">(pair −DI ≥ floor = sellers already active → the fade has fuel)</span></div>
+                                <div class="grid grid-cols-6 gap-2 text-[10px]">
+                                    <label class="flex flex-col gap-0.5"><span class="text-gray-500">−DI Min</span><input type="number" id="config-flip-negdi-min" step="0.5" class="w-full px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-center"></label>
+                                    <label class="flex flex-col gap-0.5 col-span-3"></label>
+                                    <label class="flex flex-col gap-0.5"><span class="text-amber-500/80">Invest Multi</span><input type="number" id="config-flip-negdi-mult" step="0.5" class="w-full px-1.5 py-1 bg-gray-800 border border-amber-700/50 rounded text-amber-200 text-center"></label>
+                                    <label class="flex flex-col gap-0.5"><span class="text-amber-500/80">Lev Multi</span><input type="number" id="config-flip-negdi-lev" step="0.1" class="w-full px-1.5 py-1 bg-gray-800 border border-amber-700/50 rounded text-amber-200 text-center"></label>
+                                </div>
+                                <p class="text-[10px] text-gray-600 mt-1">Ship <span class="text-cyan-300/80">15 @ 2×/1×</span> — 2× invest when sellers are present in the faded pair (baseline 17/17, +$971; all 6 sleeve losers below 15); tag <span class="text-fuchsia-300/70">[NEGDI15]</span> rows in Multiplier Cell Performance. 🔒 Revert: ✗ HARMFUL (net-neg N≥5) → 1.0 · ⚠ DRAG → 1.5. Keep Lev at 1.0 until BE-compat is measurable. Invest 0/1 = off.</p>
+                            </div>
                             <p class="text-[10px] text-gray-600 mt-2"><span class="text-amber-400/80">SHORT flips only</span>: block thin-fuel (stretch&lt;0.12) + fade-into-strong-bull (BTC RSI≥60 &amp; ADX≥30); strpk exit; multiplier on the <span class="text-fuchsia-300/70">winner cell</span> (quality score ≥ QS, market breadth ≥ Bear%, range position within Lo–Hi inclusive). <span class="text-gray-500">A FAN flip-LONG (blocked SHORT → LONG) skips all three and sizes 1×.</span> Default 3 / 70 / 60–90 @ 1×/1× = INERT, shipped to TRACK its row in Multiplier Cell Performance (in-sample N=14/85.7%WR/+$671; needs forward-N). ⚠ BE-compat fails for 2× → if sizing up, 1.5× first. Set Invest/Lev to 1.0 to keep inert.</p>
                             <!-- C1 SHORT multiplier breadth-scope de-mux (Jun 28) -->
                             <div class="mt-2 pt-2 border-t border-fuchsia-800/20 flex items-center gap-2 flex-wrap text-xs" title="Jun 28: the C1 'capitulation-chase' SHORT 2× cell only earns its multiplier in the 70–85 bear-breadth band (cross-pool 73–76% WR / +avg). Both tails (<70 and ≥85) are 50–60% WR / −avg where the 2× merely amplifies fat-tail DOA losers. When ON, a C1 SHORT that would size >1× is DE-MUXED to 1× when entry bear% is OUTSIDE [Lo, Hi). Sizing only — entry is NOT blocked (a 50%-WR cohort must be de-amplified, not blocked). 06-28: AAVE (bear 87) & HYPE (bear 62) −$242/−$186 → +$214.">
@@ -9305,6 +9366,18 @@
                 }
             }
 
+            for (const [_diKey, _diTitle] of [['neg_di_performance','## Performance by Pair −DI (downward directional movement — Jul 10)'], ['pos_di_performance','## Performance by Pair +DI (upward directional movement — Jul 10)']]) {
+                if (perf[_diKey] && perf[_diKey].length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push(_diTitle + '\n');
+                    lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                    for (const r of perf[_diKey]) {
+                        const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)}`);
+                    }
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Performance by Entry ADX\n');
             lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)}`);
@@ -11215,6 +11288,19 @@
                     for (const r of perf.adx_delta_performance) {
                         const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         lines.push(`${(r.range||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)}`);
+                    }
+                }
+
+                // --- PAIR −DI / +DI PERFORMANCE (Jul 10 — DMI directional components) ---
+                for (const [_diKey, _diTitle] of [['neg_di_performance','## Performance by Pair −DI (downward directional movement — Jul 10)'], ['pos_di_performance','## Performance by Pair +DI (upward directional movement — Jul 10)']]) {
+                    if (perf[_diKey] && perf[_diKey].length > 0) {
+                        lines.push(`\n${hr2}`);
+                        lines.push(_diTitle + '\n');
+                        lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                        for (const r of perf[_diKey]) {
+                            const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                            lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)}`);
+                        }
                     }
                 }
 
@@ -14457,6 +14543,43 @@
                 } else {
                     adxDeltaBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting ADX delta)</td></tr>';
                 }
+
+                // Performance by Pair −DI / +DI (Jul 10 — DMI directional components)
+                const _renderDiTable = (bodyId, rows, emptyMsg) => {
+                    const body = document.getElementById(bodyId);
+                    if (!body) return;
+                    if (rows && rows.length > 0) {
+                        body.innerHTML = rows.map(r => {
+                            const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const pnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                            const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                            const confBadges = Object.entries(r.by_confidence || {})
+                                .sort((a, b) => b[1] - a[1])
+                                .map(([conf, count]) => {
+                                    const color = {'VERY_STRONG':'text-purple-400','STRONG_BUY':'text-pink-400'}[conf] || 'text-gray-400';
+                                    return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
+                                }).join(' ');
+                            return `
+                                <tr class="hover:bg-white/5">
+                                    <td class="px-3 py-2 font-medium text-orange-400">${r.range}</td>
+                                    <td class="px-3 py-2 text-center">${r.count}</td>
+                                    <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
+                                    <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                    <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                    <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                    <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${r.avg_pnl_pct != null ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(2) + '%' : '-'}</td>
+                                    <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                                </tr>
+                            `;
+                        }).join('');
+                    } else {
+                        body.innerHTML = `<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">${emptyMsg}</td></tr>`;
+                    }
+                };
+                _renderDiTable('neg-di-performance-body', data.neg_di_performance, 'No data (collecting −DI)');
+                _renderDiTable('pos-di-performance-body', data.pos_di_performance, 'No data (collecting +DI)');
 
                 // Performance by Entry ADX
                 const adxBody = document.getElementById('adx-performance-body');
@@ -18838,6 +18961,9 @@
                 _setVal('config-flip-tg-shallow-min', config.thresholds.flip_short_tg_shallow_min !== undefined ? config.thresholds.flip_short_tg_shallow_min : -0.10);
                 _setVal('config-flip-tg-shallow-max', config.thresholds.flip_short_tg_shallow_max !== undefined ? config.thresholds.flip_short_tg_shallow_max : 0);
                 _setVal('config-flip-tg-shallow-lev', config.thresholds.flip_short_tg_shallow_lev_mult !== undefined ? config.thresholds.flip_short_tg_shallow_lev_mult : 1.0);
+                _setVal('config-flip-negdi-mult', config.thresholds.flip_short_negdi_mult !== undefined ? config.thresholds.flip_short_negdi_mult : 0);
+                _setVal('config-flip-negdi-min', config.thresholds.flip_short_negdi_min !== undefined ? config.thresholds.flip_short_negdi_min : 15.0);
+                _setVal('config-flip-negdi-lev', config.thresholds.flip_short_negdi_lev_mult !== undefined ? config.thresholds.flip_short_negdi_lev_mult : 1.0);
                 _setVal('config-flip-short-quality-min', config.thresholds.flip_short_quality_min);
                 _setVal('config-flip-short-bear-min', config.thresholds.flip_short_bear_min);
                 _setVal('config-flip-short-pair-gap-max', config.thresholds.flip_short_pair_gap_max);
@@ -20140,6 +20266,9 @@
                     flip_short_tg_shallow_min: (function(){ const v = parseFloat((document.getElementById('config-flip-tg-shallow-min') || {}).value); return isNaN(v) ? -0.10 : v; })(),
                     flip_short_tg_shallow_max: (function(){ const v = parseFloat((document.getElementById('config-flip-tg-shallow-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_tg_shallow_lev_mult: (function(){ const v = parseFloat((document.getElementById('config-flip-tg-shallow-lev') || {}).value); return isNaN(v) ? 1.0 : v; })(),
+                    flip_short_negdi_mult: (function(){ const v = parseFloat((document.getElementById('config-flip-negdi-mult') || {}).value); return isNaN(v) ? 0 : v; })(),
+                    flip_short_negdi_min: (function(){ const v = parseFloat((document.getElementById('config-flip-negdi-min') || {}).value); return isNaN(v) ? 15.0 : v; })(),
+                    flip_short_negdi_lev_mult: (function(){ const v = parseFloat((document.getElementById('config-flip-negdi-lev') || {}).value); return isNaN(v) ? 1.0 : v; })(),
                     flip_short_quality_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-quality-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_bear_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-bear-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_pair_gap_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-pair-gap-max') || {}).value); return isNaN(v) ? 0 : v; })(),

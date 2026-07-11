@@ -3622,6 +3622,9 @@ class TradingEngine:
                                    if (_ind.get('ema13') is not None and _ind.get('ema50')) else None)),
                 # entry quality score — required by the flip-SHORT quality floor (flip_short_quality_min). Jun 25.
                 'quality_score': _ef.get('entry_quality_score'),
+                # pair −DI (downward directional movement) — required by the NEGDI15 sellers-present
+                # multiplier cell (flip_short_negdi_mult). Jul 10.
+                'neg_di': _ef.get('entry_neg_di') if _ef.get('entry_neg_di') is not None else _ind.get('neg_di'),
                 # market breadth + range position — required by the FAN flip-SHORT winner cell
                 # (flip_fan_qs_cell), applied below. Jun 26.
                 'bear_pct': _ef.get('entry_bear_pct'),
@@ -3681,6 +3684,29 @@ class TradingEngine:
                     if _tglev > 1.0:
                         _flip_cell_lev_mult = max(_flip_cell_lev_mult or 1.0, _tglev)
                     _flip_cell_tag = (_flip_cell_tag + "+[TG_SHALLOW]") if _flip_cell_tag else "[TG_SHALLOW]"
+            except Exception:
+                pass
+            # Jul 10 — NEGDI15 "sellers-present" multiplier cell (operator-directed 2× ship): pair
+            # −DI ≥ min at entry = sellers already active in the faded pair → the fade has fuel.
+            # Baseline cell: 17·100%WR·+$971 (~+0.4%/trade) over 13 dates / 15 pairs, era-consistent
+            # (12/12 pre-06-30, 5/5 post); all 6 sleeve losers sit below −DI 15. NOT a filter — the
+            # <min flank is a 57%-WR mixed cohort (locked rule: multiply winners, don't block them).
+            # ⚠ DOUBLE OVERRIDE acknowledged: N=17 < 30 W-gate AND skips the locked 1.5×-first
+            # staging (operator call; TG_SHALLOW precedent). 🔒 TIGHT REVERT (verdict machinery):
+            # ✗ HARMFUL (net-negative on N≥5 fresh fires) → 1.0× · ⚠ DRAG (Δ$ vs BL <−$1) → 1.5×.
+            try:
+                _ndm_raw = getattr(config.trading_config.thresholds, 'flip_short_negdi_mult', 0.0)
+                _ndm = 0.0 if _ndm_raw is None else float(_ndm_raw)
+                _ndmin_raw = getattr(config.trading_config.thresholds, 'flip_short_negdi_min', 15.0)
+                _ndmin = 15.0 if _ndmin_raw is None else float(_ndmin_raw)
+                _ndlev_raw = getattr(config.trading_config.thresholds, 'flip_short_negdi_lev_mult', 1.0)
+                _ndlev = 1.0 if _ndlev_raw is None else float(_ndlev_raw)
+                _nd2 = _ff_in.get('neg_di')
+                if (flip_dir == 'SHORT' and _ndm > 1.0 and _nd2 is not None and _nd2 >= _ndmin):
+                    _flip_cell_mult = max(_flip_cell_mult or 1.0, _ndm)
+                    if _ndlev > 1.0:
+                        _flip_cell_lev_mult = max(_flip_cell_lev_mult or 1.0, _ndlev)
+                    _flip_cell_tag = (_flip_cell_tag + "+[NEGDI15]") if _flip_cell_tag else "[NEGDI15]"
             except Exception:
                 pass
             # Jul 6 — B1H_SLOPEUP admit cohort (the fired revert gate's graduated live test):

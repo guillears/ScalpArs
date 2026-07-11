@@ -1892,7 +1892,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [],
-            "ema813_gap_performance": [], "ema_fan_accel_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [],
+            "ema813_gap_performance": [], "ema_fan_accel_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "neg_di_performance": [], "pos_di_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [],
             "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "btc_volatility_performance": [], "btc_rsi_1h_direction_performance": [], "btc_vol_adx_crosstab": [], "btc_rsi_1h_5m_crosstab": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "range_pos_btc_rsi_dir_crosstab": [], "range_pos_pair_rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [], "pair_gap_pair_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
@@ -3623,6 +3623,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "rsi_performance": [],
             "range_position_performance": [],
             "adx_delta_performance": [],
+            "neg_di_performance": [],
+            "pos_di_performance": [],
             "adx_performance": [],
             "stretch_performance": [],
             "pair_slope_performance": [],
@@ -3872,6 +3874,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     rsi_performance = []
     range_position_performance = []
     adx_delta_performance = []
+    neg_di_performance = []  # Jul 10: pair −DI buckets (DMI; NEGDI15 cell surface)
+    pos_di_performance = []  # Jul 10: pair +DI buckets (DMI mirror)
     adx_performance = []
     adx_direction_performance = []
     rsi_direction_performance = []  # May 15: pair RSI direction at entry
@@ -4460,6 +4464,42 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown
                 })
+
+        # Performance by Pair −DI / +DI (Jul 10 — DMI directional components; stored on every
+        # order since the DMI work, never surfaced. The NEGDI15 flip cell consumes −DI≥15).
+        # −DI = downward directional movement strength (sellers active); +DI = upward (buyers).
+        di_ranges = [
+            ("< 10", -999, 10), ("10 - 12", 10, 12), ("12 - 15", 12, 15),
+            ("15 - 18", 15, 18), ("18 - 22", 18, 22), ("22 - 28", 22, 28), ("> 28", 28, 999),
+        ]
+        for _di_attr, _di_list in (("entry_neg_di", neg_di_performance), ("entry_pos_di", pos_di_performance)):
+            _di_orders = [o for o in orders if getattr(o, _di_attr, None) is not None]
+            for range_name, d_min, d_max in di_ranges:
+                range_orders = [o for o in _di_orders if d_min <= getattr(o, _di_attr) < d_max]
+                if not range_orders:
+                    continue
+                for direction in ["LONG", "SHORT"]:
+                    dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+                    count = len(dir_orders)
+                    if count == 0:
+                        continue
+                    dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                    pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                    pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
+                    conf_breakdown = {}
+                    for o in dir_orders:
+                        conf = o.confidence or "UNKNOWN"
+                        conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                    _di_list.append({
+                        "range": range_name,
+                        "direction": direction,
+                        "count": count,
+                        "win_rate": round(dir_wins / count * 100, 1),
+                        "avg_pnl_usd": round(pnl_sum / count, 2),
+                        "avg_pnl_pct": round(pnl_pct_sum / count, 4),
+                        "total_pnl_usd": round(pnl_sum, 2),
+                        "by_confidence": conf_breakdown
+                    })
 
         # Performance by Pair EMA20 Slope — SIGNED buckets (May 12).
         # Previously absolute-value bucketing collapsed downtrend and uptrend slopes
@@ -7533,6 +7573,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "stretch_performance": stretch_performance,
         "range_position_performance": range_position_performance,
         "adx_delta_performance": adx_delta_performance,
+        "neg_di_performance": neg_di_performance,
+        "pos_di_performance": pos_di_performance,
         "pair_slope_performance": pair_slope_performance,
         "btc_slope_performance": btc_slope_performance,
         "pair_ema20_ema50_gap_performance": pair_ema20_ema50_gap_performance,

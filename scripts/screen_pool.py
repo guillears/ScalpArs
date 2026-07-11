@@ -153,6 +153,25 @@ def main():
         print(f"{s:12}{len(rs):>4}{w/len(rs)*100:>5.0f}%{sum(d):>+9.0f}")
         tot_n+=len(rs); tot_w+=w; tot_d+=sum(d)
     print(f"{'TOTAL':12}{tot_n:>4}{tot_w/tot_n*100:>5.0f}%{tot_d:>+9.0f}   (net$ = current sizing, C1 de-muxed to 1x)")
+    # Jul 10 (operator-requested dual pricing): the FLIP anchor is 1× BY POLICY (measuring stick);
+    # ALSO print the live-sizing counterfactual (TG_SHALLOW + NEGDI15 cells at their live mults,
+    # max not stacked) so both numbers are on record at every freeze — anchor ≠ money view.
+    _fs_rows = agg.get('FLIP_SHORT', [])
+    _tgm_ = float(getattr(th, 'flip_short_tg_shallow_mult', 0.0) or 0.0)
+    _tglo_ = float(getattr(th, 'flip_short_tg_shallow_min', -0.10) or -0.10)
+    _tghi_ = float(getattr(th, 'flip_short_tg_shallow_max', 0.0) or 0.0)
+    _ndm_ = float(getattr(th, 'flip_short_negdi_mult', 0.0) or 0.0)
+    _ndmin_ = float(getattr(th, 'flip_short_negdi_min', 15.0) or 15.0)
+    _fs_live = 0.0
+    for r in _fs_rows:
+        _p = pnl_current(r)
+        _tg = nf(r.get('entry_btc_trend_gap_pct')); _nd = nf(r.get('entry_neg_di'))
+        _m = 1.0
+        if _tgm_ > 1.0 and _tg is not None and _tglo_ <= _tg < _tghi_: _m = max(_m, _tgm_)
+        if _ndm_ > 1.0 and _nd is not None and _nd >= _ndmin_: _m = max(_m, _ndm_)
+        _fs_live += _p * _m
+    _tot_live = tot_d - sum(pnl_current(r) for r in _fs_rows) + _fs_live
+    print(f"{'':12}{'':>4}{'':>5} {'':>8}  AT LIVE SIZING: FLIP ${_fs_live:+.0f} · TOTAL ${_tot_live:+.0f} (flip cells applied; ML/MS already live-sized)")
     # hard validation anchors (both must hold — these are the verified current-stack truth)
     ml = agg.get('MOM_LONG', []);  ms = agg.get('MOM_SHORT', [])
     ml_net = sum(pnl_current(x) for x in ml);  ms_net = sum(pnl_current(x) for x in ms)

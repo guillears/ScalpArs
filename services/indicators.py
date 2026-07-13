@@ -190,24 +190,29 @@ def gap_expand_marginal(indicators: dict, direction: str):
 
 def gap_expand_flat(indicators: dict, direction: str, th=None):
     """Jul 13: GAPFLAT probe tag. Returns True iff this entry FAILS the gap-expanding
-    check under the CURRENT mode (prev2_only: gap <= prev2; both: gap <= prev1 OR <= prev2)
-    — i.e. the cohort `PAIR_EMA_GAP_NOT_EXPANDING` blocks when the probe is off. Pure read
-    of the same EMA5-EMA13 gaps get_signal uses; None = insufficient data (treat as False)."""
+    check under the CURRENT config — an EXACT mirror of get_signal's `_gap_flat_long`
+    (prev1 branch only in 'both' mode; prev2 branch whenever the filter is enabled), so
+    tag and ladder can never disagree. None = no probe (filter off / missing th / data /
+    SHORT) — fail-safe: an untaggable candidate is never probed."""
     try:
+        if direction != "LONG" or th is None:
+            return None  # probe is LONG-only; th required — never guess the mode
+        if not getattr(th, 'ema_gap_expanding_filter', True):
+            return None  # filter globally OFF -> the ladder never blocks -> nothing to probe
         e5 = indicators.get('ema5'); e13 = indicators.get('ema13')
         e5p1 = indicators.get('ema5_prev1'); e13p1 = indicators.get('ema13_prev1')
         e5p2 = indicators.get('ema5_prev2'); e13p2 = indicators.get('ema13_prev2')
-        if direction != "LONG":
-            return None  # probe is LONG-only; shorts stay hard-blocked in get_signal
         gap = (e5 - e13) / e13 * 100 if e5 and e13 and e13 > 0 else None
         p1 = (e5p1 - e13p1) / e13p1 * 100 if e5p1 and e13p1 and e13p1 > 0 else None
         p2 = (e5p2 - e13p2) / e13p2 * 100 if e5p2 and e13p2 and e13p2 > 0 else None
-        if gap is None or p2 is None:
+        if gap is None or (p1 is None and p2 is None):
             return None
-        _mode = getattr(th, 'ema_gap_expanding_mode', 'both') if th is not None else 'prev2_only'
-        if _mode != 'prev2_only' and p1 is not None and gap <= p1:
+        _prev1_active = getattr(th, 'ema_gap_expanding_mode', 'both') != 'prev2_only'
+        if _prev1_active and p1 is not None and gap <= p1:
+            return True  # 'both' mode blocks on prev1 alone (even with p2 missing)
+        if p2 is not None and gap <= p2:
             return True
-        return bool(gap <= p2)
+        return False
     except Exception:
         return None
 

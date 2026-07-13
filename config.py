@@ -250,8 +250,7 @@ class SignalThresholds(BaseModel):
     gap_probe_enabled: bool = False
     gap_probe_invest_mult: float = 0.5   # x equal-split invest (~$385 ticket)
     gap_probe_lev_mult: float = 0.05     # x 20x base = 1x effective leverage
-    gap_probe_max_per_day: int = 3       # UTC-day budget (DB-counted, restart-safe)
-    gap_probe_max_open: int = 1          # concurrent probes
+    gap_probe_max_open: int = 3          # concurrent probes (Jul 13 PM operator: 1→3, and the per-day budget REMOVED — at ~$4/trade a daily cap only slows the N≥30 clock; slot guard + concurrency are the protections)
     # EMA5-EMA20 Gap Filter (signal quality gate — separate for longs/shorts)
     ema_gap_5_20_enabled: bool = True  # Master toggle for EMA5-EMA20 gap requirement
     ema_gap_5_20_min_long: float = 0.15  # Min EMA5-EMA20 gap % for LONG entries

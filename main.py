@@ -10629,6 +10629,12 @@ def _compute_gap_probe_cohort(orders):
             probe_rows.append(o)
         else:
             exp_rows.append(o)
+    # Fair A/B control: window the EXPANDING side to the probe-live period (same tape,
+    # same filter stack) — all-history controls mix dead configs (locked re-sim rule).
+    if probe_rows:
+        _p0 = min(getattr(o, 'opened_at', None) for o in probe_rows if getattr(o, 'opened_at', None))
+        if _p0:
+            exp_rows = [o for o in exp_rows if (getattr(o, 'opened_at', None) or _p0) >= _p0]
 
     def _demux(o):
         m = (getattr(o, 'cell_multiplier', 1.0) or 1.0) * (getattr(o, 'cell_lev_multiplier', 1.0) or 1.0)

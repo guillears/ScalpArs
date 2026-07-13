@@ -4091,9 +4091,10 @@ class TradingEngine:
         _is_redeploy_open = _redeploy_on and _open_count_now >= _inv_cfg.max_open_positions
 
         # Jul 13: GAPFLAT probe caps — a probe must NEVER crowd out the core edge. It opens only
-        # when ① the book is light (open count <= max_open_positions - 2, i.e. the last 2 slots
-        # stay reserved for real signals), ② no other probe is open (gap_probe_max_open), and
-        # ③ under the daily budget (gap_probe_max_per_day, UTC day, DB-counted = restart-safe).
+        # when ① the book is light (open count <= max_open_positions - 2 at open time — i.e. a
+        # probe only fires with >=2 free slots), and ② concurrent probes < gap_probe_max_open.
+        # Jul 13 PM (operator): NO daily budget — at ~1x-lev/$4-a-trade sizing a per-day cap only
+        # slows the N>=30 clock; the slot guard + concurrency cap are the real protections.
         # A cap rejection is recorded as PAIR_EMA_GAP_NOT_EXPANDING — identical funnel semantics
         # to the probe being off.
         if gap_probe and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
@@ -4108,17 +4109,8 @@ class TradingEngine:
                     select(func.count(Order.id)).where(and_(
                         Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
                         Order.cell_multiplier_source == "GAPFLAT_PROBE")))
-                if (_gp_open_q.scalar() or 0) >= int(getattr(_th_gp, 'gap_probe_max_open', 1) or 1):
-                    _gp_reason = "probe already open"
-                else:
-                    _gp_day_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-                    _gp_day_q = await db.execute(
-                        select(func.count(Order.id)).where(and_(
-                            Order.is_paper == self.is_paper_mode,
-                            Order.cell_multiplier_source == "GAPFLAT_PROBE",
-                            Order.opened_at >= _gp_day_start)))
-                    if (_gp_day_q.scalar() or 0) >= int(getattr(_th_gp, 'gap_probe_max_per_day', 3) or 3):
-                        _gp_reason = "daily probe budget spent"
+                if (_gp_open_q.scalar() or 0) >= int(getattr(_th_gp, 'gap_probe_max_open', 3) or 3):
+                    _gp_reason = "max concurrent probes open"
             if _gp_reason:
                 logger.info(f"[GAPFLAT_PROBE] {pair} LONG skipped: {_gp_reason}")
                 try:

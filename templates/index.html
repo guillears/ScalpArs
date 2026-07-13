@@ -7507,10 +7507,25 @@
                 }
             }
             const monthPct = hasPct ? (monthCompound - 1) * 100 : null;
-            // Geometric mean per TRADING day (calendar-day convention; the performance
+            // Jul 13 (operator-requested): denominators = ELAPSED experiment days, not just days
+            // with trades — the bot is live and at-risk on zero-trade days; excluding them inflates
+            // $/day and %/day vs the review routine's calendar-day convention (the baseline
+            // yardstick counts its zero days too). Today counts only once it has a trade or is
+            // complete (avoids the rate sagging intraday at each midnight rollover). Zero-trade
+            // days chain as x1.0 in the compound, so the geometric %/day over elapsed is exact.
+            const _allDataKeys = Object.keys(days).sort();
+            let monthElapsed = 0;
+            if (_allDataKeys.length) {
+                const _expStart = _allDataKeys[0];
+                for (const { key: _k, e: _e } of monthCells) {
+                    if (_k < _expStart) continue;
+                    if (_k < todayKey || (_k === todayKey && _e)) monthElapsed++;
+                }
+            }
+            // Geometric mean per ELAPSED day (calendar-day convention; the performance
             // table's DCR uses bot runtime-days instead, so the two can differ slightly)
-            const avgDayPct = (hasPct && pctDays > 0 && monthCompound > 0)
-                ? (Math.pow(monthCompound, 1 / pctDays) - 1) * 100 : null;
+            const avgDayPct = (hasPct && monthElapsed > 0 && monthCompound > 0)
+                ? (Math.pow(monthCompound, 1 / monthElapsed) - 1) * 100 : null;
 
             let html = '';
             for (let i = 0; i < firstDow; i++) html += '<div></div>';
@@ -7540,15 +7555,15 @@
             const totEl = document.getElementById('pnl-cal-month-total');
             const pctStr2 = monthPct !== null ? `  (${monthPct >= 0 ? '+' : ''}${monthPct.toFixed(2)}% compounded)` : '';
             // Jul 11 (operator-requested): $/day inline with the %/day — the review routine's
-            // realized-$ scaling metric, same denominator (trading days).
+            // realized-$ scaling metric. Jul 13: denominator = ELAPSED days (zero-trade days count).
             const monthTradeDays = greenDays + redDays;
-            const avgUsdInline = monthTradeDays > 0
-                ? ` (≈${_pnlCalFmt$(monthTotal / monthTradeDays)}/day)` : '';
+            const avgUsdInline = monthElapsed > 0
+                ? ` (≈${_pnlCalFmt$(monthTotal / monthElapsed)}/day)` : '';
             const avgStr = avgDayPct !== null
-                ? `  · ≈${avgDayPct >= 0 ? '+' : ''}${avgDayPct.toFixed(2)}%/day${avgUsdInline} over ${pctDays} trading day${pctDays === 1 ? '' : 's'}` : '';
+                ? `  · ≈${avgDayPct >= 0 ? '+' : ''}${avgDayPct.toFixed(2)}%/day${avgUsdInline} over ${monthElapsed} day${monthElapsed === 1 ? '' : 's'} (${monthTradeDays} active)` : '';
             totEl.textContent = `${_pnlCalFmt$(monthTotal)} this month${pctStr2}${avgStr}`;
             totEl.className = 'font-bold ' + (monthTotal >= 0 ? 'text-emerald-400' : 'text-red-400');
-            totEl.title = 'avg %/day = geometric mean over calendar trading days; the performance table’s Daily Compound Return uses bot runtime-days, so the two can differ slightly';
+            totEl.title = 'avg %/day and $/day = geometric/arithmetic mean over ELAPSED experiment days (zero-trade days count — the bot was live and at-risk; today counts once it has a trade or is complete). The performance table’s Daily Compound Return uses bot runtime-days, so the two can differ slightly';
             document.getElementById('pnl-cal-month-counts').innerHTML =
                 `<span class="text-gray-500">Profitable:</span> <span class="text-emerald-400">${greenDays} day${greenDays === 1 ? '' : 's'} / ${_pnlCalFmt$(greenSum)}</span>` +
                 ` <span class="text-gray-600">·</span> ` +
@@ -7572,13 +7587,21 @@
                     const lifePctStr = lifePct !== null ? `  (${lifePct >= 0 ? '+' : ''}${lifePct.toFixed(2)}% compounded)` : '';
                     const cls = lifeTotal >= 0 ? 'text-emerald-400' : 'text-red-400';
                     const range = allKeys[0] === allKeys[allKeys.length - 1] ? allKeys[0] : `${allKeys[0]} → ${allKeys[allKeys.length - 1]}`;
-                    const lifeAvgUsd = allKeys.length > 0 ? `<span class="${cls}">avg ${_pnlCalFmt$(lifeTotal / allKeys.length)}/day</span> <span class="text-gray-600">·</span> ` : '';
+                    // Jul 13: elapsed experiment days (first data day → today-if-traded-else-yesterday,
+                    // clamped to ≥ active days) — zero-trade days count; same convention as the month line.
+                    const _lifeStartD = new Date(allKeys[0] + 'T00:00:00');
+                    const _lifeEndD = days[todayKey]
+                        ? new Date(todayKey + 'T00:00:00')
+                        : new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+                    let lifeElapsed = Math.round((_lifeEndD - _lifeStartD) / 86400000) + 1;
+                    if (lifeElapsed < allKeys.length) lifeElapsed = allKeys.length;
+                    const lifeAvgUsd = lifeElapsed > 0 ? `<span class="${cls}">avg ${_pnlCalFmt$(lifeTotal / lifeElapsed)}/day</span> <span class="text-gray-600">·</span> ` : '';
                     lifeEl.innerHTML =
                         `<span class="text-gray-500">Total (all months):</span> ` +
                         `<span class="${cls} font-semibold">${_pnlCalFmt$(lifeTotal)}${lifePctStr}</span> ` +
                         `<span class="text-gray-600">·</span> ${lifeAvgUsd}` +
-                        `<span class="text-gray-500">${lifeDays} trading day${lifeDays === 1 ? '' : 's'} · ${range}</span>`;
-                    lifeEl.title = 'Cumulative across every month in this experiment (clears on paper reset). Compounded % chains each trading day’s return.';
+                        `<span class="text-gray-500">${lifeElapsed} day${lifeElapsed === 1 ? '' : 's'} (${allKeys.length} active) · ${range}</span>`;
+                    lifeEl.title = 'Cumulative across every month in this experiment (clears on paper reset). avg $/day over ELAPSED days — zero-trade days count (the bot was live and at-risk); today counts once it has a trade or is complete. Compounded % chains each trading day’s return.';
                 } else {
                     lifeEl.textContent = '';
                 }

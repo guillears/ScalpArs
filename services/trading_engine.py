@@ -15,7 +15,7 @@ from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, _leverage_blocked_pairs
-from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal
+from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat
 from services.regime import classify_btc_regime
 from services.websocket_tracker import websocket_tracker
 
@@ -4030,6 +4030,11 @@ class TradingEngine:
         bounce_long: bool = False,
         bounce_long_size_mult: float = 1.0,
         bounce_long_lev_mult: float = 1.0,
+        # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
+        # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
+        # lev_mult from gap_probe_* config), tagged cell_src=GAPFLAT_PROBE (own analytics row;
+        # excluded from screen anchors). Capped: only when book is light, 1 concurrent, N/day.
+        gap_probe: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -4084,6 +4089,43 @@ class TradingEngine:
         # max_open_positions — only reachable because redeploy raised the ceiling.
         # Recorded as REDEPLOY_OPEN after the Order commits (positive-event counter).
         _is_redeploy_open = _redeploy_on and _open_count_now >= _inv_cfg.max_open_positions
+
+        # Jul 13: GAPFLAT probe caps — a probe must NEVER crowd out the core edge. It opens only
+        # when ① the book is light (open count <= max_open_positions - 2, i.e. the last 2 slots
+        # stay reserved for real signals), ② no other probe is open (gap_probe_max_open), and
+        # ③ under the daily budget (gap_probe_max_per_day, UTC day, DB-counted = restart-safe).
+        # A cap rejection is recorded as PAIR_EMA_GAP_NOT_EXPANDING — identical funnel semantics
+        # to the probe being off.
+        if gap_probe and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
+            _th_gp = config.trading_config.thresholds
+            _gp_reason = None
+            if not getattr(_th_gp, 'gap_probe_enabled', False):
+                _gp_reason = "probe disabled"
+            elif _open_count_now > max(0, _inv_cfg.max_open_positions - 2):
+                _gp_reason = f"book too full ({_open_count_now} open, last 2 slots reserved)"
+            else:
+                _gp_open_q = await db.execute(
+                    select(func.count(Order.id)).where(and_(
+                        Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
+                        Order.cell_multiplier_source == "GAPFLAT_PROBE")))
+                if (_gp_open_q.scalar() or 0) >= int(getattr(_th_gp, 'gap_probe_max_open', 1) or 1):
+                    _gp_reason = "probe already open"
+                else:
+                    _gp_day_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+                    _gp_day_q = await db.execute(
+                        select(func.count(Order.id)).where(and_(
+                            Order.is_paper == self.is_paper_mode,
+                            Order.cell_multiplier_source == "GAPFLAT_PROBE",
+                            Order.opened_at >= _gp_day_start)))
+                    if (_gp_day_q.scalar() or 0) >= int(getattr(_th_gp, 'gap_probe_max_per_day', 3) or 3):
+                        _gp_reason = "daily probe budget spent"
+            if _gp_reason:
+                logger.info(f"[GAPFLAT_PROBE] {pair} LONG skipped: {_gp_reason}")
+                try:
+                    self._record_filter_block("PAIR_EMA_GAP_NOT_EXPANDING", "LONG")
+                except Exception:
+                    pass
+                return None
         
         # Check if we already have a position for this pair
         result = await db.execute(
@@ -4518,6 +4560,18 @@ class TradingEngine:
                 logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested lev={cell_lev_mult}x, hard-capped to lev={_lev_cap}x")
                 cell_lev_mult = _lev_cap
             cell_mult, cell_lev_mult = max(0.5, cell_mult), max(0.05, cell_lev_mult)
+
+        # Jul 13: GAPFLAT probe sizing — overrides ALL multiplier cells (a probe must never be
+        # 2x'd by the UNMATCHED cell); own cell_src row (rides Multiplier Cell Performance + CSV
+        # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
+        # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
+        if gap_probe and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
+            _th_gp2 = config.trading_config.thresholds
+            cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
+            cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
+            cell_src = "GAPFLAT_PROBE"
+            _mult_target = "both"
+            logger.info(f"[GAPFLAT_PROBE] {pair} LONG: opening probe at inv={cell_mult}x lev={cell_lev_mult}x (~1x effective)")
 
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
@@ -8995,6 +9049,15 @@ class TradingEngine:
                     # Jun 8: gap-expanding relaxation A/B tag — True if this entry was admitted
                     # by prev2_only but would have failed the strict prev1 check (MARGINAL cohort).
                     entry_gap_expand_marginal=gap_expand_marginal(indicators, signal),
+                    # Jul 13 GAPFLAT probe: True iff this LONG failed the gap-expanding check but
+                    # was let through the ladder by gap_probe_enabled (get_signal only admits a
+                    # gap-flat candidate when the probe is on, so this tag is exact). open_position
+                    # then applies the probe caps + 1x sizing, or records the block if capped.
+                    gap_probe=bool(
+                        signal == "LONG"
+                        and getattr(config.trading_config.thresholds, 'gap_probe_enabled', False)
+                        and gap_expand_flat(indicators, signal, config.trading_config.thresholds)
+                    ),
                 )
 
                 if order:

@@ -237,6 +237,21 @@ class SignalThresholds(BaseModel):
     # the strict rule rejected). Trades admitted by prev2_only that would have failed prev1 are
     # tagged entry_gap_expand_marginal=True so the cohort's WR can be isolated. Default 'both'.
     ema_gap_expanding_mode: str = 'both'  # 'both' | 'prev2_only'
+    # Jul 13: GAPFLAT PROBE — real-data A/B on the #1 entry blocker (PAIR_EMA_GAP_NOT_EXPANDING,
+    # ~22% of all blocks, never counterfactual-tested; blocks aren't stored so no offline re-sim is
+    # possible). When enabled, a momentum LONG failing ONLY the gap-expanding check (passes the whole
+    # rest of the ladder + engine gates) opens as a REAL order at ~1x effective leverage (invest_mult
+    # x lev_mult x 20x base), tagged cell_src=GAPFLAT_PROBE (own Multiplier-Cell row + CSV column;
+    # EXCLUDED from screen anchors + the MARGINAL/STRICT relaxation A/B). Caps: only when the book is
+    # light (last 2 slots always reserved for real signals), max_open concurrent, max_per_day budget.
+    # LONG-only; shorts stay hard-blocked. 🔒 GATES (pre-committed): at N>=30 probes (>=10 dates) —
+    # WR>=60% AND avg>=+0.15% => discuss relaxation (probe rows carry all entry columns for the
+    # sub-cohort hunt); WR<=45% OR avg<0 => filter vindicated, probe off permanently.
+    gap_probe_enabled: bool = False
+    gap_probe_invest_mult: float = 0.5   # x equal-split invest (~$385 ticket)
+    gap_probe_lev_mult: float = 0.05     # x 20x base = 1x effective leverage
+    gap_probe_max_per_day: int = 3       # UTC-day budget (DB-counted, restart-safe)
+    gap_probe_max_open: int = 1          # concurrent probes
     # EMA5-EMA20 Gap Filter (signal quality gate — separate for longs/shorts)
     ema_gap_5_20_enabled: bool = True  # Master toggle for EMA5-EMA20 gap requirement
     ema_gap_5_20_min_long: float = 0.15  # Min EMA5-EMA20 gap % for LONG entries

@@ -188,6 +188,30 @@ def gap_expand_marginal(indicators: dict, direction: str):
         return None
 
 
+def gap_expand_flat(indicators: dict, direction: str, th=None):
+    """Jul 13: GAPFLAT probe tag. Returns True iff this entry FAILS the gap-expanding
+    check under the CURRENT mode (prev2_only: gap <= prev2; both: gap <= prev1 OR <= prev2)
+    — i.e. the cohort `PAIR_EMA_GAP_NOT_EXPANDING` blocks when the probe is off. Pure read
+    of the same EMA5-EMA13 gaps get_signal uses; None = insufficient data (treat as False)."""
+    try:
+        e5 = indicators.get('ema5'); e13 = indicators.get('ema13')
+        e5p1 = indicators.get('ema5_prev1'); e13p1 = indicators.get('ema13_prev1')
+        e5p2 = indicators.get('ema5_prev2'); e13p2 = indicators.get('ema13_prev2')
+        if direction != "LONG":
+            return None  # probe is LONG-only; shorts stay hard-blocked in get_signal
+        gap = (e5 - e13) / e13 * 100 if e5 and e13 and e13 > 0 else None
+        p1 = (e5p1 - e13p1) / e13p1 * 100 if e5p1 and e13p1 and e13p1 > 0 else None
+        p2 = (e5p2 - e13p2) / e13p2 * 100 if e5p2 and e13p2 and e13p2 > 0 else None
+        if gap is None or p2 is None:
+            return None
+        _mode = getattr(th, 'ema_gap_expanding_mode', 'both') if th is not None else 'prev2_only'
+        if _mode != 'prev2_only' and p1 is not None and gap <= p1:
+            return True
+        return bool(gap <= p2)
+    except Exception:
+        return None
+
+
 def get_signal(
     ema5: float,
     ema8: float,
@@ -434,11 +458,15 @@ def get_signal(
                 ema_gap_max = getattr(th, 'ema_gap_5_8_max_long', 0) or getattr(th, 'ema_gap_5_8_max', 0)
                 long_gap_min = getattr(th, 'ema_gap_threshold_long', th.ema_gap_threshold)
                 gap_threshold_met = ema_gap_pct >= long_gap_min
-                if _gap_prev1_active and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct:
-                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-13 gap compressing vs 1 candle ({exp_prev_gap_pct:.4f}% -> {exp_gap_pct:.4f}%)")
-                    _record("PAIR_EMA_GAP_NOT_EXPANDING", "LONG")
-                elif gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct:
-                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-13 gap compressing vs 2 candles ({exp_prev2_gap_pct:.4f}% -> {exp_gap_pct:.4f}%)")
+                # Jul 13 GAPFLAT PROBE: when gap_probe_enabled, a gap-not-expanding LONG is NOT
+                # blocked here — it falls through the rest of the ladder and, if it would have
+                # signalled, the engine opens it as a 1x-effective-leverage GAPFLAT_PROBE (tagged,
+                # capped, excluded from headline metrics). Probe off => byte-identical to before.
+                _gap_flat_long = ((_gap_prev1_active and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct)
+                                  or (gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct))
+                _gap_probe_on = getattr(th, 'gap_probe_enabled', False)
+                if _gap_flat_long and not _gap_probe_on:
+                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-13 gap not expanding ({exp_gap_pct:.4f}% vs prev1 {exp_prev_gap_pct} / prev2 {exp_prev2_gap_pct})")
                     _record("PAIR_EMA_GAP_NOT_EXPANDING", "LONG")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")

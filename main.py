@@ -1892,7 +1892,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [],
-            "ema813_gap_performance": [], "ema_fan_accel_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "neg_di_performance": [], "pos_di_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [],
+            "ema813_gap_performance": [], "ema_fan_accel_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "neg_di_performance": [], "pos_di_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [], "gap_probe_cohort": {"rows": []},
             "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "btc_volatility_performance": [], "btc_rsi_1h_direction_performance": [], "btc_vol_adx_crosstab": [], "btc_rsi_1h_5m_crosstab": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "range_pos_btc_rsi_dir_crosstab": [], "range_pos_pair_rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [], "pair_gap_pair_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
@@ -3625,6 +3625,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "adx_delta_performance": [],
             "neg_di_performance": [],
             "pos_di_performance": [],
+            "gap_probe_cohort": {"rows": []},
             "adx_performance": [],
             "stretch_performance": [],
             "pair_slope_performance": [],
@@ -7663,6 +7664,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "trail_gate_cf": _compute_trail_gate_cf(orders),
         # Gap-Expanding relaxation A/B cohort (Jun 8, 2026 — MARGINAL vs STRICT)
         "gap_expand_cohort": _compute_gap_expand_cohort(orders),
+        # GAPFLAT probe A/B (Jul 13, 2026 — EXPANDING momentum longs vs 1x NON-EXPANDING probes)
+        "gap_probe_cohort": _compute_gap_probe_cohort(orders),
         # Trailing pullback confirmation performance (May 9, 2026)
         "trailing_confirmation_performance": _compute_trailing_confirmation_performance(orders),
         # Post-exit P&L snapshots for EMA13_CROSS_EXIT and STOP_LOSS_WIDE (May 12 LATE PM)
@@ -10558,6 +10561,10 @@ def _compute_gap_expand_cohort(orders):
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
+        # Jul 13: GAPFLAT probes are gap-NON-expanding by construction — they belong to the
+        # probe A/B (gap_probe_cohort), never to this MARGINAL/STRICT relaxation table.
+        if (getattr(o, 'cell_multiplier_source', None) or '') == 'GAPFLAT_PROBE':
+            continue
         marg = getattr(o, 'entry_gap_expand_marginal', None)
         if marg is None:
             continue  # pre-feature trades — not part of the A/B
@@ -10596,6 +10603,71 @@ def _compute_gap_expand_cohort(orders):
                 'wr': round(wr, 1), 'avg_pct': round(avg_pct, 4),
                 'total_demux': round(tot_demux, 2), 'verdict': verdict,
             })
+    return {'rows': rows_out}
+
+
+def _compute_gap_probe_cohort(orders):
+    """GAPFLAT probe A/B (Jul 13, 2026).
+
+    Compares CLOSED momentum LONGs: EXPANDING (normal entries — passed the gap-expanding
+    check) vs NON-EXPANDING (cell_src=GAPFLAT_PROBE — failed ONLY that check, opened as a
+    1x-effective-leverage probe). $ de-muxed to 1x so sizing never skews the comparison;
+    % metrics are size-invariant already. Verdict gates (pre-committed at ship):
+    N>=30 & WR>=60% & avg>=+0.15% => ★ relaxation candidate; N>=30 & (WR<=45% or avg<0)
+    => ✗ filter vindicated (switch probe off)."""
+    exp_rows, probe_rows = [], []
+    for o in orders:
+        if getattr(o, 'status', None) != "CLOSED":
+            continue
+        d = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or "LONG"
+        if d != "LONG":
+            continue
+        strat = getattr(o, 'entry_strategy', None) or "MOMENTUM"
+        if strat not in ("MOMENTUM",):
+            continue  # flips / bull-long / bounce-long are different sleeves
+        if (getattr(o, 'cell_multiplier_source', None) or '') == 'GAPFLAT_PROBE':
+            probe_rows.append(o)
+        else:
+            exp_rows.append(o)
+
+    def _demux(o):
+        m = (getattr(o, 'cell_multiplier', 1.0) or 1.0) * (getattr(o, 'cell_lev_multiplier', 1.0) or 1.0)
+        return (o.pnl or 0.0) / m if m else (o.pnl or 0.0)
+
+    rows_out = []
+    for cohort, rs in (("EXPANDING", exp_rows), ("NON-EXPANDING (probe)", probe_rows)):
+        n = len(rs)
+        if n == 0:
+            if cohort.startswith("NON-"):
+                rows_out.append({'cohort': cohort, 'n': 0, 'wr': None, 'avg_pct': None,
+                                 'total_demux': 0.0, 'avg_peak': None, 'doa_pct': None,
+                                 'dates': 0, 'verdict': "⏳ building (0/30)"})
+            continue
+        wr = sum(1 for o in rs if (o.pnl or 0) > 0) / n * 100
+        avg_pct = sum((o.pnl_percentage or 0.0) for o in rs) / n
+        tot_demux = sum(_demux(o) for o in rs)
+        peaks = [getattr(o, 'peak_pnl', None) for o in rs]
+        peaks = [p for p in peaks if p is not None]
+        avg_peak = (sum(peaks) / len(peaks)) if peaks else None
+        doa = sum(1 for p in peaks if p < 0.10)
+        doa_pct = (doa / len(peaks) * 100) if peaks else None
+        dates = len({(getattr(o, 'opened_at', None) or datetime.min).strftime('%Y-%m-%d')
+                     for o in rs if getattr(o, 'opened_at', None)})
+        verdict = ""
+        if cohort.startswith("NON-"):
+            if n < 30:
+                verdict = f"⏳ building ({n}/30)"
+            elif wr >= 60.0 and avg_pct >= 0.15 and dates >= 10:
+                verdict = "★ relaxation candidate (open the discussion)"
+            elif wr <= 45.0 or avg_pct < 0:
+                verdict = "✗ filter vindicated (switch probe off)"
+            else:
+                verdict = "✓ inconclusive (keep collecting)"
+        rows_out.append({'cohort': cohort, 'n': n, 'wr': round(wr, 1),
+                         'avg_pct': round(avg_pct, 4), 'total_demux': round(tot_demux, 2),
+                         'avg_peak': round(avg_peak, 4) if avg_peak is not None else None,
+                         'doa_pct': round(doa_pct, 1) if doa_pct is not None else None,
+                         'dates': dates, 'verdict': verdict})
     return {'rows': rows_out}
 
 

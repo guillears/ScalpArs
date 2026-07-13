@@ -251,6 +251,17 @@ class SignalThresholds(BaseModel):
     gap_probe_invest_mult: float = 0.5   # x equal-split invest (~$385 ticket)
     gap_probe_lev_mult: float = 0.05     # x 20x base = 1x effective leverage
     gap_probe_max_open: int = 3          # concurrent probes (Jul 13 PM operator: 1→3, and the per-day budget REMOVED — at ~$4/trade a daily cap only slows the N≥30 clock; slot guard + concurrency are the protections)
+    # Jul 13 PM: GAPMIN PROBE — sibling of the GAPFLAT probe, on the #2 LONG blocker
+    # (PAIR_EMA_GAP_MIN, 2,101 L blocks). A momentum LONG whose EMA5-8 gap sits in
+    # [gapmin_probe_floor, ema_gap_threshold_long) — accelerating (passed gap-expanding)
+    # but still SMALL = "young trend caught early" — opens as a 1x GAPMIN_PROBE. Cohort
+    # purity: gap-flat candidates are excluded (GAPFLAT owns those; double-relaxation
+    # candidates stay blocked). Shares gap_probe_invest_mult / gap_probe_lev_mult sizing
+    # + the last-2-slots guard. Same 🔒 gates: N>=30 probes (>=10 dates) -> WR>=60% &
+    # avg>=+0.15% = relaxation discussion; WR<=45% or avg<0 = filter vindicated, off.
+    gapmin_probe_enabled: bool = False
+    gapmin_probe_floor: float = 0.04     # band floor — below this = pure noise, blocked as always
+    gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes
     # EMA5-EMA20 Gap Filter (signal quality gate — separate for longs/shorts)
     ema_gap_5_20_enabled: bool = True  # Master toggle for EMA5-EMA20 gap requirement
     ema_gap_5_20_min_long: float = 0.15  # Min EMA5-EMA20 gap % for LONG entries

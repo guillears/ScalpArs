@@ -22,7 +22,7 @@
   "trading_pairs_limit": 50,
   "pair_blacklist": "ALLOUSDT,BNBUSDT,EIGENUSDT,ENAUSDT,ESPORTSUSDT,FILUSDT,MUSDT,RAVEUSDT,SYNUSDT,TRUMPUSDT,VELVETUSDT,VVVUSDT,XAGUSDT,XAUUSDT,ZECUSDT",
   "no_trade_pairs": "BTCUSDT,ETHUSDT",
-  "new_listing_filter_days": 180,
+  "new_listing_filter_days": 90,
   "alpha_subtype_filter_enabled": true,
   "investment": {
     "mode": "equal_split",
@@ -143,6 +143,9 @@
     "gap_probe_invest_mult": 0.5,
     "gap_probe_lev_mult": 0.05,
     "gap_probe_max_open": 3,
+    "gapmin_probe_enabled": true,
+    "gapmin_probe_floor": 0.04,
+    "gapmin_probe_max_open": 3,
     "ema_gap_5_20_enabled": true,
     "ema_gap_5_20_min_long": 0.05,
     "ema_gap_5_20_min_short": 0.05,

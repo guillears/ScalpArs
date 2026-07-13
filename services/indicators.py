@@ -217,6 +217,30 @@ def gap_expand_flat(indicators: dict, direction: str, th=None):
         return None
 
 
+def gap_min_band(indicators: dict, direction: str, th=None):
+    """Jul 13: GAPMIN probe tag. Returns True iff this LONG's EMA5-8 gap sits in the probe
+    band [gapmin_probe_floor, ema_gap_threshold_long) AND the candidate is NOT gap-flat
+    (cohort purity — GAPFLAT owns the flat class) — an EXACT mirror of get_signal's
+    `_gapmin_probe_band_long`. None = no probe (missing th/data / SHORT) — fail-safe."""
+    try:
+        if direction != "LONG" or th is None:
+            return None
+        e5 = indicators.get('ema5'); e8 = indicators.get('ema8')
+        gap58 = (e5 - e8) / e8 * 100 if e5 and e8 and e8 > 0 else None
+        if gap58 is None:
+            return None
+        _thr = float(getattr(th, 'ema_gap_threshold_long', None) or getattr(th, 'ema_gap_threshold', 0.06) or 0.06)
+        _floor = float(getattr(th, 'gapmin_probe_floor', 0.04) or 0.04)
+        if not (_floor <= gap58 < _thr):
+            return False
+        _flat = gap_expand_flat(indicators, direction, th)
+        if _flat:
+            return False  # flat candidates belong to (or are blocked by) the GAPFLAT cohort
+        return True
+    except Exception:
+        return None
+
+
 def get_signal(
     ema5: float,
     ema8: float,
@@ -470,13 +494,21 @@ def get_signal(
                 _gap_flat_long = ((_gap_prev1_active and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct)
                                   or (gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct))
                 _gap_probe_on = getattr(th, 'gap_probe_enabled', False)
+                # Jul 13 GAPMIN PROBE: sub-threshold-but-ACCELERATING LONGs in [floor, threshold)
+                # fall through as 1x GAPMIN_PROBE candidates ("young trend caught early"). COHORT
+                # PURITY: a candidate that is ALSO gap-flat stays blocked (two simultaneous
+                # relaxations = uninterpretable). Probe off / below floor => blocked as before.
+                _gapmin_probe_band_long = (getattr(th, 'gapmin_probe_enabled', False)
+                                           and not _gap_flat_long
+                                           and ema_gap_pct >= float(getattr(th, 'gapmin_probe_floor', 0.04) or 0.04)
+                                           and not gap_threshold_met)
                 if _gap_flat_long and not _gap_probe_on:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-13 gap not expanding ({exp_gap_pct:.4f}% vs prev1 {exp_prev_gap_pct} / prev2 {exp_prev2_gap_pct})")
                     _record("PAIR_EMA_GAP_NOT_EXPANDING", "LONG")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
                     _record("PAIR_EMA_GAP_MAX", "LONG")
-                elif not gap_threshold_met:
+                elif not gap_threshold_met and not _gapmin_probe_band_long:
                     _record("PAIR_EMA_GAP_MIN", "LONG")
                 elif not _passes_rsi_adx_filter("LONG", rsi, adx, th):
                     logger.debug(f"[MOMENTUM] LONG skipped: RSI x ADX cross-filter (RSI={rsi:.1f}, ADX={adx:.1f})")

@@ -215,6 +215,10 @@ class Order(Base):
     # at entry, captured BEFORE blacklist removal. Read gate for the 50->75
     # universe expansion: rank>50 cohort vs rank<=50 at N>=20. NULL pre-deploy.
     entry_pair_rank = Column(Integer, nullable=True)
+    # Jul 13: listing age (days since Binance onboardDate) at entry — read gate for
+    # the new-listing filter 180->90-day step-down (edge-by-age; NULL pre-deploy or
+    # missing metadata). Rides the orders CSV via column introspection.
+    entry_pair_age_days = Column(Float, nullable=True)
 
     # Liquidity-aware sizing observability (Jun 2, 2026 — see CLAUDE.md).
     # entry_desired_notional       = notional the order WOULD have opened at pre-cap (investment×leverage).

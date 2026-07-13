@@ -3029,6 +3029,43 @@ def _compute_pair_rank_performance(orders):
     return rows
 
 
+def _compute_pair_age_performance(orders):
+    """Jul 13: Bucket trades by the pair's listing age (entry_pair_age_days, days since
+    Binance onboardDate, stamped at entry). Read gate for the new-listing filter
+    180->90-day step-down: at N>=10 closed trades on age 90-180d pairs, compare WR /
+    Avg P&L% vs the >=180d cohorts — revert the filter to 180 if the young cohort runs
+    <=40% WR AND net-negative (watch SHORTS on young pairs especially — squeeze tail).
+    Pre-deploy trades have NULL age and are excluded."""
+    buckets = [
+        ("90-180d ✦", 90, 180), ("180-365d", 180, 365),
+        ("1-2y", 365, 730), (">2y", 730, 100_000), ("<90d ⚠", 0, 90),
+    ]
+    closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
+    rows = []
+    for name, lo, hi in buckets:
+        b = [o for o in closed
+             if getattr(o, 'entry_pair_age_days', None) is not None
+             and lo <= o.entry_pair_age_days < hi]
+        if not b:
+            continue
+        n = len(b)
+        wins = sum(1 for o in b if o.pnl > 0)
+        n_long = sum(1 for o in b if (o.direction.value if hasattr(o.direction, 'value') else o.direction) == "LONG")
+        pairs = len({o.pair for o in b})
+        rows.append({
+            "bucket": name,
+            "n": n,
+            "n_long": n_long,
+            "n_short": n - n_long,
+            "n_pairs": pairs,
+            "win_rate": round(100 * wins / n, 1),
+            "avg_pnl": round(sum(o.pnl for o in b) / n, 2),
+            "avg_pct": round(sum(o.pnl_percentage or 0 for o in b) / n, 3),
+            "total_pnl": round(sum(o.pnl for o in b), 2),
+        })
+    return rows
+
+
 def _compute_pair_volume_bucket_performance(orders):
     """May 10: Bucket trades by absolute pair 24h USD volume at entry.
 
@@ -7639,6 +7676,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # May 10: pair 24h USD volume bucket performance — find structural size threshold
         "pair_volume_bucket_performance": _compute_pair_volume_bucket_performance(orders),
         "pair_rank_performance": _compute_pair_rank_performance(orders),
+        # Pair listing-age buckets (Jul 13 — 180->90 new-listing step-down read gate)
+        "pair_age_performance": _compute_pair_age_performance(orders),
         # May 9: ATR bucket performance — tests "high volatility = loss driver" hypothesis
         "atr_bucket_performance": _compute_atr_bucket_performance(orders),
         "atr_holdtime_crosstab": _compute_atr_holdtime_crosstab(orders),
@@ -10561,9 +10600,9 @@ def _compute_gap_expand_cohort(orders):
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
-        # Jul 13: GAPFLAT probes are gap-NON-expanding by construction — they belong to the
-        # probe A/B (gap_probe_cohort), never to this MARGINAL/STRICT relaxation table.
-        if (getattr(o, 'cell_multiplier_source', None) or '') == 'GAPFLAT_PROBE':
+        # Jul 13: GAPFLAT/GAPMIN probes belong to the probe A/B (gap_probe_cohort),
+        # never to this MARGINAL/STRICT relaxation table.
+        if (getattr(o, 'cell_multiplier_source', None) or '') in ('GAPFLAT_PROBE', 'GAPMIN_PROBE'):
             continue
         marg = getattr(o, 'entry_gap_expand_marginal', None)
         if marg is None:
@@ -10615,7 +10654,7 @@ def _compute_gap_probe_cohort(orders):
     % metrics are size-invariant already. Verdict gates (pre-committed at ship):
     N>=30 & WR>=60% & avg>=+0.15% => ★ relaxation candidate; N>=30 & (WR<=45% or avg<0)
     => ✗ filter vindicated (switch probe off)."""
-    exp_rows, probe_rows = [], []
+    exp_rows, probe_rows, gapmin_rows = [], [], []
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
@@ -10625,14 +10664,18 @@ def _compute_gap_probe_cohort(orders):
         strat = getattr(o, 'entry_strategy', None) or "MOMENTUM"
         if strat not in ("MOMENTUM",):
             continue  # flips / bull-long / bounce-long are different sleeves
-        if (getattr(o, 'cell_multiplier_source', None) or '') == 'GAPFLAT_PROBE':
+        _src = getattr(o, 'cell_multiplier_source', None) or ''
+        if _src == 'GAPFLAT_PROBE':
             probe_rows.append(o)
+        elif _src == 'GAPMIN_PROBE':
+            gapmin_rows.append(o)
         else:
             exp_rows.append(o)
     # Fair A/B control: window the EXPANDING side to the probe-live period (same tape,
     # same filter stack) — all-history controls mix dead configs (locked re-sim rule).
-    if probe_rows:
-        _p0 = min(getattr(o, 'opened_at', None) for o in probe_rows if getattr(o, 'opened_at', None))
+    _all_probes = probe_rows + gapmin_rows
+    if _all_probes:
+        _p0 = min(getattr(o, 'opened_at', None) for o in _all_probes if getattr(o, 'opened_at', None))
         if _p0:
             exp_rows = [o for o in exp_rows if (getattr(o, 'opened_at', None) or _p0) >= _p0]
 
@@ -10641,10 +10684,10 @@ def _compute_gap_probe_cohort(orders):
         return (o.pnl or 0.0) / m if m else (o.pnl or 0.0)
 
     rows_out = []
-    for cohort, rs in (("EXPANDING", exp_rows), ("NON-EXPANDING (probe)", probe_rows)):
+    for cohort, rs in (("EXPANDING", exp_rows), ("NON-EXPANDING (probe)", probe_rows), ("SMALL-GAP (gapmin probe)", gapmin_rows)):
         n = len(rs)
         if n == 0:
-            if cohort.startswith("NON-"):
+            if cohort != "EXPANDING":
                 rows_out.append({'cohort': cohort, 'n': 0, 'wr': None, 'avg_pct': None,
                                  'total_demux': 0.0, 'avg_peak': None, 'doa_pct': None,
                                  'dates': 0, 'verdict': "⏳ building (0/30)"})
@@ -10660,7 +10703,7 @@ def _compute_gap_probe_cohort(orders):
         dates = len({(getattr(o, 'opened_at', None) or datetime.min).strftime('%Y-%m-%d')
                      for o in rs if getattr(o, 'opened_at', None)})
         verdict = ""
-        if cohort.startswith("NON-"):
+        if cohort != "EXPANDING":
             if n < 30:
                 verdict = f"⏳ building ({n}/30)"
             elif wr >= 60.0 and avg_pct >= 0.15 and dates >= 10:

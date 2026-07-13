@@ -15,7 +15,7 @@ from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, _leverage_blocked_pairs
-from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat
+from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band
 from services.regime import classify_btc_regime
 from services.websocket_tracker import websocket_tracker
 
@@ -4009,6 +4009,7 @@ class TradingEngine:
         # May 10: capture absolute pair 24h USD volume at entry for size-bucket analysis
         entry_pair_volume_24h_usd: float = None,
         entry_pair_rank: int = None,
+        entry_pair_age_days: float = None,  # Jul 13: listing age at entry (180->90 read gate)
         # Jun 8: gap-expanding relaxation A/B tag (prev2_only-admitted MARGINAL cohort)
         entry_gap_expand_marginal: bool = None,
         # Jun 14: Flip Entry sleeve — when set, this is a NAKED fade-the-block entry
@@ -4035,6 +4036,9 @@ class TradingEngine:
         # lev_mult from gap_probe_* config), tagged cell_src=GAPFLAT_PROBE (own analytics row;
         # excluded from screen anchors). Capped: only when book is light, 1 concurrent, N/day.
         gap_probe: bool = False,
+        # Jul 13 PM: GAPMIN probe — sibling cohort: EMA5-8 gap in [floor, threshold), accelerating
+        # but young. Same 1x sizing + guards, tagged GAPMIN_PROBE. Mutually exclusive with gap_probe.
+        gapmin_probe: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -4115,6 +4119,30 @@ class TradingEngine:
                 logger.info(f"[GAPFLAT_PROBE] {pair} LONG skipped: {_gp_reason}")
                 try:
                     self._record_filter_block("PAIR_EMA_GAP_NOT_EXPANDING", "LONG")
+                except Exception:
+                    pass
+                return None
+
+        # Jul 13 PM: GAPMIN probe caps — mirror of the GAPFLAT block (same slot guard, own
+        # concurrency cap, cap rejection recorded as PAIR_EMA_GAP_MIN = probe-off semantics).
+        if gapmin_probe and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
+            _th_gm = config.trading_config.thresholds
+            _gm_reason = None
+            if not getattr(_th_gm, 'gapmin_probe_enabled', False):
+                _gm_reason = "probe disabled"
+            elif _open_count_now > max(0, _inv_cfg.max_open_positions - 2):
+                _gm_reason = f"book too full ({_open_count_now} open, last 2 slots reserved)"
+            else:
+                _gm_open_q = await db.execute(
+                    select(func.count(Order.id)).where(and_(
+                        Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
+                        Order.cell_multiplier_source == "GAPMIN_PROBE")))
+                if (_gm_open_q.scalar() or 0) >= int(getattr(_th_gm, 'gapmin_probe_max_open', 3) or 3):
+                    _gm_reason = "max concurrent probes open"
+            if _gm_reason:
+                logger.info(f"[GAPMIN_PROBE] {pair} LONG skipped: {_gm_reason}")
+                try:
+                    self._record_filter_block("PAIR_EMA_GAP_MIN", "LONG")
                 except Exception:
                     pass
                 return None
@@ -4557,13 +4585,13 @@ class TradingEngine:
         # 2x'd by the UNMATCHED cell); own cell_src row (rides Multiplier Cell Performance + CSV
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
-        if gap_probe and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
+        if (gap_probe or gapmin_probe) and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
-            cell_src = "GAPFLAT_PROBE"
+            cell_src = "GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE"
             _mult_target = "both"
-            logger.info(f"[GAPFLAT_PROBE] {pair} LONG: opening probe at inv={cell_mult}x lev={cell_lev_mult}x (~1x effective)")
+            logger.info(f"[{cell_src}] {pair} LONG: opening probe at inv={cell_mult}x lev={cell_lev_mult}x (~1x effective)")
 
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
@@ -4893,6 +4921,7 @@ class TradingEngine:
             # May 10: absolute pair 24h USD volume at entry (size-bucket analytics)
             entry_pair_volume_24h_usd=entry_pair_volume_24h_usd,
             entry_pair_rank=entry_pair_rank,
+            entry_pair_age_days=entry_pair_age_days,
             # Jun 8: gap-expanding relaxation A/B cohort tag
             entry_gap_expand_marginal=entry_gap_expand_marginal,
             # Jun 2: liquidity-aware sizing observability (final notional = notional_value above)
@@ -7683,6 +7712,7 @@ class TradingEngine:
                     'indicators': indicators, 'signal': signal, 'confidence': confidence,
                     'pair_volume_ratio': _pair_volume_ratio, 'breadth_regime': breadth_regime,
                     'rank': pair_info.get('rank'),
+                    'age_days': pair_info.get('age_days'),  # Jul 13: listing age (180->90 step-down read gate)
                     'rsi_ob_flip': _current_pair_holder.get('rsi_ob_flip', False),  # Jun 16: overbought-RSI live flip
                 })
 
@@ -7736,6 +7766,7 @@ class TradingEngine:
             volume_24h = _cr['volume_24h']
             _pair_volume_ratio = _cr['pair_volume_ratio']
             _pair_rank = _cr.get('rank')
+            _pair_age_days = _cr.get('age_days')
 
             # Jun 16: PAIR_RSI_OB live flip — fade an overbought-long (rsi>65) block to SHORT.
             # The block fired inside get_signal (Phase 1, signal already NO_TRADE here), so we
@@ -9038,6 +9069,7 @@ class TradingEngine:
                     entry_pair_volume_24h_usd=volume_24h,
                     # Jun 12: eligible-universe volume rank at entry (50->75 read gate)
                     entry_pair_rank=_pair_rank,
+                    entry_pair_age_days=_pair_age_days,
                     # Jun 8: gap-expanding relaxation A/B tag — True if this entry was admitted
                     # by prev2_only but would have failed the strict prev1 check (MARGINAL cohort).
                     entry_gap_expand_marginal=gap_expand_marginal(indicators, signal),
@@ -9049,6 +9081,14 @@ class TradingEngine:
                         signal == "LONG"
                         and getattr(config.trading_config.thresholds, 'gap_probe_enabled', False)
                         and gap_expand_flat(indicators, signal, config.trading_config.thresholds)
+                    ),
+                    # Jul 13 PM GAPMIN probe: gap in [floor, threshold), NOT gap-flat (band helper
+                    # enforces cohort purity itself); only tagged when the probe is on — otherwise
+                    # such candidates never reach here (ladder blocks them).
+                    gapmin_probe=bool(
+                        signal == "LONG"
+                        and getattr(config.trading_config.thresholds, 'gapmin_probe_enabled', False)
+                        and gap_min_band(indicators, signal, config.trading_config.thresholds)
                     ),
                 )
 

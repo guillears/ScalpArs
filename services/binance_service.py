@@ -409,8 +409,20 @@ class BinanceService:
             # eligible pairs."  Fails open: pairs without a parseable
             # onboardDate are kept (conservative — don't accidentally block
             # established pairs due to missing metadata).
+            # Jul 13: stamp listing age (days since Binance onboardDate) on EVERY pair —
+            # threaded scan→order as entry_pair_age_days (read gate for the 180→90-day
+            # new-listing step-down). None when metadata is missing (fail-open, like the filter).
+            import time as _time
+            _now_ms = _time.time() * 1000
+            _age_mkts = self.public_exchange.markets or {}
+            for p in futures_pairs:
+                try:
+                    _ob = ((_age_mkts.get(p['symbol'], {}) or {}).get('info', {}) or {}).get('onboardDate')
+                    p['age_days'] = round((_now_ms - int(_ob)) / 86400000.0, 1) if _ob is not None else None
+                except (ValueError, TypeError):
+                    p['age_days'] = None
+
             if new_listing_filter_days > 0:
-                import time as _time
                 cutoff_ms = int((_time.time() - new_listing_filter_days * 86400) * 1000)
                 markets = self.public_exchange.markets or {}
                 before_count = len(futures_pairs)

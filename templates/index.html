@@ -4308,6 +4308,31 @@
                     </div>
                 </div>
 
+                <!-- Performance by Pair Listing Age (Jul 13, 2026) — 180->90 new-listing step-down read gate -->
+                <div class="mt-6 pt-6 border-t border-cyan-900/40">
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-1">🐣 Performance by Pair Listing Age (days since Binance onboardDate)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Read gate for the <strong>new-listing filter 180→90-day step-down (Jul 13)</strong> — the 180d exclusion was hiding ~47 of the highest-volume symbols (recent listings dominate volume). <span class="text-amber-400">90–180d ✦ = the newly-admitted cohort</span>; 🔒 revert the filter to 180 if it runs ≤40% WR AND net-negative at N≥10 (watch SHORTS on young pairs — squeeze tail; the meme ATR guard is LONG-only). <span class="text-red-400">&lt;90d ⚠ should stay empty</span> (still filtered). Pre-deploy trades have NULL age and are excluded.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-2 py-1 text-left">Age</th>
+                                    <th class="px-2 py-1 text-right">#</th>
+                                    <th class="px-2 py-1 text-right">L/S</th>
+                                    <th class="px-2 py-1 text-right">Pairs</th>
+                                    <th class="px-2 py-1 text-right">Win%</th>
+                                    <th class="px-2 py-1 text-right">Avg P&L</th>
+                                    <th class="px-2 py-1 text-right">Avg P&L %</th>
+                                    <th class="px-2 py-1 text-right">Total P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pair-age-perf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No age data yet (only entries after the Jul-13 deploy carry a listing age)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Never Positive Deep Dive -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Never Positive Deep Dive</h3>
@@ -6687,6 +6712,18 @@
                                 <input type="number" step="1" id="config-gap-probe-max-open" class="w-14 bg-white/5 border border-cyan-500/40 rounded px-2 py-1 text-cyan-200 text-center" value="3"></label>
                         </div>
                         <p class="text-xs text-gray-500 mt-1"><span class="text-cyan-300">GAPFLAT Probe (Jul 13)</span>: a momentum LONG that fails ONLY this gap-expanding check (and passes every other gate) opens as a REAL order at ~1× effective leverage (Invest 0.5× · Lev 0.05× × 20× = 1×), tagged <strong>GAPFLAT_PROBE</strong>. Real-data A/B on the #1 entry blocker — measured in the <strong>🪟 Gap-Expand Probe</strong> table (EXPANDING vs NON-EXPANDING). Caps: never uses the last 2 slots, Max Open concurrent (no daily budget — at ~$4/trade it only slows the N≥30 clock); excluded from screen anchors &amp; headline metrics. 🔒 Gates at N≥30 (≥10 dates): WR≥60% &amp; avg≥+0.15% → relaxation discussion; WR≤45% or avg&lt;0 → filter vindicated, probe off. LONG-only.</p>
+                        <div class="flex items-center gap-6 mt-3 flex-wrap">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-gapmin-probe-enabled" class="sr-only peer">
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-600"></div>
+                                <span class="ml-2 text-sm text-teal-300">GAPMIN Probe (1×)</span>
+                            </label>
+                            <label class="flex items-center gap-2 text-sm text-gray-400"><span>Band Floor</span>
+                                <input type="number" step="0.01" id="config-gapmin-probe-floor" class="w-16 bg-white/5 border border-teal-500/40 rounded px-2 py-1 text-teal-200 text-center" value="0.04"></label>
+                            <label class="flex items-center gap-2 text-sm text-gray-400"><span>Max Open</span>
+                                <input type="number" step="1" id="config-gapmin-probe-max-open" class="w-14 bg-white/5 border border-teal-500/40 rounded px-2 py-1 text-teal-200 text-center" value="3"></label>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1"><span class="text-teal-300">GAPMIN Probe (Jul 13)</span>: sibling probe on the #2 LONG blocker (<strong>PAIR_EMA_GAP_MIN</strong>): a LONG whose EMA5-8 gap sits in [Band Floor, threshold 0.06) — <em>accelerating (passed gap-expanding) but still small</em> = a young trend caught early — opens as a 1× <strong>GAPMIN_PROBE</strong> (shares the GAPFLAT sizing). Cohort purity: gap-flat candidates stay blocked (GAPFLAT owns those). Row <strong>SMALL-GAP</strong> in the 🪟 Gap-Expand Probe table; same 🔒 gates. LONG-only.</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">EMA5-EMA20 Gap Filter</span>
@@ -9457,6 +9494,16 @@
                 }
             }
 
+            if (perf.pair_age_performance && perf.pair_age_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Pair Listing Age (days since onboardDate — Jul 13, 180->90 read gate)\n');
+                lines.push(`${'Age'.padEnd(11)} ${'#'.padEnd(4)} ${'L/S'.padEnd(8)} ${'Pairs'.padEnd(6)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)}`);
+                for (const r of perf.pair_age_performance) {
+                    const dir = `${r.n_long}L/${r.n_short}S`;
+                    lines.push(`${r.bucket.padEnd(11)} ${String(r.n).padEnd(4)} ${dir.padEnd(8)} ${String(r.n_pairs).padEnd(6)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Performance by Entry ADX\n');
             lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)}`);
@@ -9925,6 +9972,7 @@
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 2 candles ago)`);
             lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  |  Mode: ${th.ema_gap_expanding_mode || 'both'}  (both = beat prev1 AND prev2 [strict]; prev2_only = beat prev2 only [relaxed, tags MARGINAL])`);
             lines.push(`  GAPFLAT Probe (Jul 13): ${th.gap_probe_enabled === true ? 'ON' : 'OFF'}  |  Invest: ${th.gap_probe_invest_mult !== undefined ? th.gap_probe_invest_mult : 0.5}x  |  Lev: ${th.gap_probe_lev_mult !== undefined ? th.gap_probe_lev_mult : 0.05}x (~1x eff)  |  Max Open: ${th.gap_probe_max_open !== undefined ? th.gap_probe_max_open : 3}  (gap-not-expanding LONGs open as 1x GAPFLAT_PROBE; last 2 slots reserved; no daily budget)`);
+            lines.push(`  GAPMIN Probe (Jul 13): ${th.gapmin_probe_enabled === true ? 'ON' : 'OFF'}  |  Band: [${th.gapmin_probe_floor !== undefined ? th.gapmin_probe_floor : 0.04}, ${th.ema_gap_threshold_long !== undefined ? th.ema_gap_threshold_long : 0.06})  |  Max Open: ${th.gapmin_probe_max_open !== undefined ? th.gapmin_probe_max_open : 3}  (young accelerating trends below the gap threshold open as 1x GAPMIN_PROBE; shares GAPFLAT sizing + slot guard)`);
 
             const inv = cfg.investment || {};
             lines.push(`\nGeneral Settings:`);
@@ -11675,6 +11723,16 @@
                         const dir = `${r.n_long}L/${r.n_short}S`;
                         const av = r.avg_volume_usd != null ? '$' + (r.avg_volume_usd/1e6).toFixed(0) + 'M' : '-';
                         lines.push(`${r.bucket.padEnd(8)} ${String(r.n).padEnd(4)} ${dir.padEnd(8)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${av.padStart(9)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                    }
+                }
+
+                if (perf.pair_age_performance && perf.pair_age_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by Pair Listing Age (days since onboardDate — Jul 13, 180->90 read gate)\n');
+                    lines.push(`${'Age'.padEnd(11)} ${'#'.padEnd(4)} ${'L/S'.padEnd(8)} ${'Pairs'.padEnd(6)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)}`);
+                    for (const r of perf.pair_age_performance) {
+                        const dir = `${r.n_long}L/${r.n_short}S`;
+                        lines.push(`${r.bucket.padEnd(11)} ${String(r.n).padEnd(4)} ${dir.padEnd(8)} ${String(r.n_pairs).padEnd(6)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
                     }
                 }
 
@@ -14060,7 +14118,7 @@
                             _gpcBody.innerHTML = '<tr><td colspan="9" class="py-3 text-center text-gray-500">No probe trades yet (enable the GAPFLAT Probe in Signal Thresholds)</td></tr>';
                         } else {
                             _gpcBody.innerHTML = _gpc.rows.map(r => {
-                                const cohC = r.cohort.startsWith('NON-') ? 'text-cyan-300 font-semibold' : 'text-gray-300';
+                                const cohC = r.cohort.startsWith('NON-') ? 'text-cyan-300 font-semibold' : (r.cohort.startsWith('SMALL-') ? 'text-teal-300 font-semibold' : 'text-gray-300');
                                 const wrC = r.wr === null ? 'text-gray-500' : (r.wr >= 60 ? 'text-emerald-400' : (r.wr <= 45 ? 'text-red-400' : 'text-gray-300'));
                                 const acC = (r.avg_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                                 const usdC = r.total_demux > 1 ? 'text-emerald-400' : (r.total_demux < -1 ? 'text-red-400' : 'text-gray-400');
@@ -17233,6 +17291,32 @@
                         prBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No rank data yet (only entries after the Jun-12 deploy carry a rank)</td></tr>';
                     }
                 }
+                // Performance by Pair Listing Age (Jul 13 — 180->90 step-down read gate)
+                const paBody = document.getElementById('pair-age-perf-body');
+                if (paBody) {
+                    if (data.pair_age_performance && data.pair_age_performance.length > 0) {
+                        paBody.innerHTML = data.pair_age_performance.map(r => {
+                            const wrCls = r.win_rate >= 55 ? 'text-emerald-400' : (r.win_rate < 45 ? 'text-red-400' : 'text-gray-300');
+                            const pctCls = (r.avg_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const totCls = (r.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const avgCls = (r.avg_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const newTier = r.bucket.includes('✦');
+                            const danger = r.bucket.includes('⚠');
+                            return `<tr class="hover:bg-white/5 ${newTier ? 'bg-amber-500/5' : ''} ${danger ? 'bg-red-500/10' : ''}">
+                                <td class="px-2 py-1.5 ${danger ? 'text-red-300' : (newTier ? 'text-amber-300' : 'text-cyan-300')} font-medium">${r.bucket}</td>
+                                <td class="px-2 py-1.5 text-right">${r.n}</td>
+                                <td class="px-2 py-1.5 text-right"><span class="text-emerald-400">${r.n_long}L</span>/<span class="text-red-400">${r.n_short}S</span></td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.n_pairs}</td>
+                                <td class="px-2 py-1.5 text-right ${wrCls}">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-2 py-1.5 text-right ${avgCls}">$${r.avg_pnl.toFixed(2)}</td>
+                                <td class="px-2 py-1.5 text-right ${pctCls}">${r.avg_pct >= 0 ? '+' : ''}${r.avg_pct.toFixed(3)}%</td>
+                                <td class="px-2 py-1.5 text-right ${totCls} font-bold">$${r.total_pnl.toFixed(2)}</td>
+                            </tr>`;
+                        }).join('');
+                    } else {
+                        paBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No age data yet (only entries after the Jul-13 deploy carry a listing age)</td></tr>';
+                    }
+                }
                 // ATR(14)% Bucket Performance (May 9)
                 const atrBucketBody = document.getElementById('atr-bucket-perf-body');
                 if (atrBucketBody) {
@@ -18973,6 +19057,9 @@
                 { const _e=document.getElementById('config-gap-probe-invest-mult'); if(_e) _e.value = config.thresholds.gap_probe_invest_mult !== undefined ? config.thresholds.gap_probe_invest_mult : 0.5; }
                 { const _e=document.getElementById('config-gap-probe-lev-mult'); if(_e) _e.value = config.thresholds.gap_probe_lev_mult !== undefined ? config.thresholds.gap_probe_lev_mult : 0.05; }
                 { const _e=document.getElementById('config-gap-probe-max-open'); if(_e) _e.value = config.thresholds.gap_probe_max_open !== undefined ? config.thresholds.gap_probe_max_open : 3; }
+                { const _e=document.getElementById('config-gapmin-probe-enabled'); if(_e) _e.checked = config.thresholds.gapmin_probe_enabled === true; }
+                { const _e=document.getElementById('config-gapmin-probe-floor'); if(_e) _e.value = config.thresholds.gapmin_probe_floor !== undefined ? config.thresholds.gapmin_probe_floor : 0.04; }
+                { const _e=document.getElementById('config-gapmin-probe-max-open'); if(_e) _e.value = config.thresholds.gapmin_probe_max_open !== undefined ? config.thresholds.gapmin_probe_max_open : 3; }
                 // May 2: split EMA5-EMA8 max with auto-fallback to legacy single field
                 const _legacy_gap58_max = config.thresholds.ema_gap_5_8_max !== undefined ? config.thresholds.ema_gap_5_8_max : 0;
                 document.getElementById('config-ema-gap-5-8-max-long').value = config.thresholds.ema_gap_5_8_max_long !== undefined ? config.thresholds.ema_gap_5_8_max_long : _legacy_gap58_max;
@@ -20312,6 +20399,9 @@
                     gap_probe_invest_mult: safeFloat(document.getElementById('config-gap-probe-invest-mult')?.value || 0.5),
                     gap_probe_lev_mult: safeFloat(document.getElementById('config-gap-probe-lev-mult')?.value || 0.05),
                     gap_probe_max_open: parseInt(document.getElementById('config-gap-probe-max-open')?.value || 3),
+                    gapmin_probe_enabled: (document.getElementById('config-gapmin-probe-enabled')?.checked === true),
+                    gapmin_probe_floor: safeFloat(document.getElementById('config-gapmin-probe-floor')?.value || 0.04),
+                    gapmin_probe_max_open: parseInt(document.getElementById('config-gapmin-probe-max-open')?.value || 3),
                     // May 2: split EMA5-EMA8 max + new pair/BTC slope max guards
                     ema_gap_5_8_max_long: safeFloat(document.getElementById('config-ema-gap-5-8-max-long').value),
                     ema_gap_5_8_max_short: safeFloat(document.getElementById('config-ema-gap-5-8-max-short').value),

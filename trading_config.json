@@ -144,7 +144,7 @@
     "gap_probe_lev_mult": 0.05,
     "gap_probe_max_open": 3,
     "gapmin_probe_enabled": true,
-    "gapmin_probe_floor": 0.04,
+    "gapmin_probe_floor": 0.02,
     "gapmin_probe_max_open": 3,
     "ema_gap_5_20_enabled": true,
     "ema_gap_5_20_min_long": 0.05,

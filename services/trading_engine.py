@@ -4124,8 +4124,9 @@ class TradingEngine:
                 return None
 
         # Jul 13 PM: GAPMIN probe caps — mirror of the GAPFLAT block (same slot guard, own
-        # concurrency cap, cap rejection recorded as PAIR_EMA_GAP_MIN = probe-off semantics).
-        if gapmin_probe and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
+        # concurrency cap shared across BOTH directions, cap rejection recorded as
+        # PAIR_EMA_GAP_MIN = probe-off semantics). SHORTs included (operator "both ways").
+        if gapmin_probe and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
             _th_gm = config.trading_config.thresholds
             _gm_reason = None
             if not getattr(_th_gm, 'gapmin_probe_enabled', False):
@@ -4140,9 +4141,9 @@ class TradingEngine:
                 if (_gm_open_q.scalar() or 0) >= int(getattr(_th_gm, 'gapmin_probe_max_open', 3) or 3):
                     _gm_reason = "max concurrent probes open"
             if _gm_reason:
-                logger.info(f"[GAPMIN_PROBE] {pair} LONG skipped: {_gm_reason}")
+                logger.info(f"[GAPMIN_PROBE] {pair} {direction} skipped: {_gm_reason}")
                 try:
-                    self._record_filter_block("PAIR_EMA_GAP_MIN", "LONG")
+                    self._record_filter_block("PAIR_EMA_GAP_MIN", direction)
                 except Exception:
                     pass
                 return None
@@ -4585,13 +4586,14 @@ class TradingEngine:
         # 2x'd by the UNMATCHED cell); own cell_src row (rides Multiplier Cell Performance + CSV
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
-        if (gap_probe or gapmin_probe) and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
+        if (((gap_probe and direction == "LONG") or (gapmin_probe and direction in ("LONG", "SHORT")))
+                and not flip_source and not bull_long and not bounce_long):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
-            cell_src = "GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE"
+            cell_src = "GAPFLAT_PROBE" if (gap_probe and direction == "LONG") else "GAPMIN_PROBE"
             _mult_target = "both"
-            logger.info(f"[{cell_src}] {pair} LONG: opening probe at inv={cell_mult}x lev={cell_lev_mult}x (~1x effective)")
+            logger.info(f"[{cell_src}] {pair} {direction}: opening probe at inv={cell_mult}x lev={cell_lev_mult}x (~1x effective)")
 
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
@@ -9082,11 +9084,11 @@ class TradingEngine:
                         and getattr(config.trading_config.thresholds, 'gap_probe_enabled', False)
                         and gap_expand_flat(indicators, signal, config.trading_config.thresholds)
                     ),
-                    # Jul 13 PM GAPMIN probe: gap in [floor, threshold), NOT gap-flat (band helper
-                    # enforces cohort purity itself); only tagged when the probe is on — otherwise
-                    # such candidates never reach here (ladder blocks them).
+                    # Jul 13 PM GAPMIN probe (BOTH directions): gap in [floor, per-side threshold),
+                    # NOT gap-flat on longs (band helper enforces cohort purity itself); only tagged
+                    # when the probe is on — otherwise such candidates never reach here.
                     gapmin_probe=bool(
-                        signal == "LONG"
+                        signal in ("LONG", "SHORT")
                         and getattr(config.trading_config.thresholds, 'gapmin_probe_enabled', False)
                         and gap_min_band(indicators, signal, config.trading_config.thresholds)
                     ),

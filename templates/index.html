@@ -6719,11 +6719,11 @@
                                 <span class="ml-2 text-sm text-teal-300">GAPMIN Probe (1×)</span>
                             </label>
                             <label class="flex items-center gap-2 text-sm text-gray-400"><span>Band Floor</span>
-                                <input type="number" step="0.01" id="config-gapmin-probe-floor" class="w-16 bg-white/5 border border-teal-500/40 rounded px-2 py-1 text-teal-200 text-center" value="0.04"></label>
+                                <input type="number" step="0.01" id="config-gapmin-probe-floor" class="w-16 bg-white/5 border border-teal-500/40 rounded px-2 py-1 text-teal-200 text-center" value="0.02"></label>
                             <label class="flex items-center gap-2 text-sm text-gray-400"><span>Max Open</span>
                                 <input type="number" step="1" id="config-gapmin-probe-max-open" class="w-14 bg-white/5 border border-teal-500/40 rounded px-2 py-1 text-teal-200 text-center" value="3"></label>
                         </div>
-                        <p class="text-xs text-gray-500 mt-1"><span class="text-teal-300">GAPMIN Probe (Jul 13)</span>: sibling probe on the #2 LONG blocker (<strong>PAIR_EMA_GAP_MIN</strong>): a LONG whose EMA5-8 gap sits in [Band Floor, threshold 0.06) — <em>accelerating (passed gap-expanding) but still small</em> = a young trend caught early — opens as a 1× <strong>GAPMIN_PROBE</strong> (shares the GAPFLAT sizing). Cohort purity: gap-flat candidates stay blocked (GAPFLAT owns those). Row <strong>SMALL-GAP</strong> in the 🪟 Gap-Expand Probe table; same 🔒 gates. LONG-only.</p>
+                        <p class="text-xs text-gray-500 mt-1"><span class="text-teal-300">GAPMIN Probe (Jul 13)</span>: sibling probe on the #2 blocker (<strong>PAIR_EMA_GAP_MIN</strong>), <strong>BOTH directions</strong> (Jul 13 PM: floor 0.04→0.02 + shorts added — "test it entirely"; the 0.06/0.08 thresholds predate most of the current filter stack): an entry whose EMA5-8 gap sits in [Band Floor, threshold) — LONG band [0.02, 0.06), SHORT band [0.02, 0.08) — <em>accelerating (passed gap-expanding) but still small</em> = a young trend caught early — opens as a 1× <strong>GAPMIN_PROBE</strong> (shares the GAPFLAT sizing; Max Open shared across both sides). Cohort purity: gap-flat longs stay blocked (GAPFLAT owns those). Rows <strong>SMALL-GAP · LONG / · SHORT</strong> in the 🪟 Gap-Expand Probe table; same 🔒 gates PER SIDE; at verdict time slice sub-bands from entry_ema_gap_5_8 to locate the true threshold.</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">EMA5-EMA20 Gap Filter</span>
@@ -9972,7 +9972,7 @@
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 2 candles ago)`);
             lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  |  Mode: ${th.ema_gap_expanding_mode || 'both'}  (both = beat prev1 AND prev2 [strict]; prev2_only = beat prev2 only [relaxed, tags MARGINAL])`);
             lines.push(`  GAPFLAT Probe (Jul 13): ${th.gap_probe_enabled === true ? 'ON' : 'OFF'}  |  Invest: ${th.gap_probe_invest_mult !== undefined ? th.gap_probe_invest_mult : 0.5}x  |  Lev: ${th.gap_probe_lev_mult !== undefined ? th.gap_probe_lev_mult : 0.05}x (~1x eff)  |  Max Open: ${th.gap_probe_max_open !== undefined ? th.gap_probe_max_open : 3}  (gap-not-expanding LONGs open as 1x GAPFLAT_PROBE; last 2 slots reserved; no daily budget)`);
-            lines.push(`  GAPMIN Probe (Jul 13): ${th.gapmin_probe_enabled === true ? 'ON' : 'OFF'}  |  Band: [${th.gapmin_probe_floor !== undefined ? th.gapmin_probe_floor : 0.04}, ${th.ema_gap_threshold_long !== undefined ? th.ema_gap_threshold_long : 0.06})  |  Max Open: ${th.gapmin_probe_max_open !== undefined ? th.gapmin_probe_max_open : 3}  (young accelerating trends below the gap threshold open as 1x GAPMIN_PROBE; shares GAPFLAT sizing + slot guard)`);
+            lines.push(`  GAPMIN Probe (Jul 13): ${th.gapmin_probe_enabled === true ? 'ON' : 'OFF'}  |  Band L: [${th.gapmin_probe_floor !== undefined ? th.gapmin_probe_floor : 0.02}, ${th.ema_gap_threshold_long !== undefined ? th.ema_gap_threshold_long : 0.06})  |  S: [${th.gapmin_probe_floor !== undefined ? th.gapmin_probe_floor : 0.02}, ${th.ema_gap_threshold_short !== undefined ? th.ema_gap_threshold_short : 0.08})  |  Max Open: ${th.gapmin_probe_max_open !== undefined ? th.gapmin_probe_max_open : 3}  (young accelerating trends below the gap threshold open as 1x GAPMIN_PROBE, BOTH directions; shares GAPFLAT sizing + slot guard)`);
 
             const inv = cfg.investment || {};
             lines.push(`\nGeneral Settings:`);
@@ -19058,7 +19058,7 @@
                 { const _e=document.getElementById('config-gap-probe-lev-mult'); if(_e) _e.value = config.thresholds.gap_probe_lev_mult !== undefined ? config.thresholds.gap_probe_lev_mult : 0.05; }
                 { const _e=document.getElementById('config-gap-probe-max-open'); if(_e) _e.value = config.thresholds.gap_probe_max_open !== undefined ? config.thresholds.gap_probe_max_open : 3; }
                 { const _e=document.getElementById('config-gapmin-probe-enabled'); if(_e) _e.checked = config.thresholds.gapmin_probe_enabled === true; }
-                { const _e=document.getElementById('config-gapmin-probe-floor'); if(_e) _e.value = config.thresholds.gapmin_probe_floor !== undefined ? config.thresholds.gapmin_probe_floor : 0.04; }
+                { const _e=document.getElementById('config-gapmin-probe-floor'); if(_e) _e.value = config.thresholds.gapmin_probe_floor !== undefined ? config.thresholds.gapmin_probe_floor : 0.02; }
                 { const _e=document.getElementById('config-gapmin-probe-max-open'); if(_e) _e.value = config.thresholds.gapmin_probe_max_open !== undefined ? config.thresholds.gapmin_probe_max_open : 3; }
                 // May 2: split EMA5-EMA8 max with auto-fallback to legacy single field
                 const _legacy_gap58_max = config.thresholds.ema_gap_5_8_max !== undefined ? config.thresholds.ema_gap_5_8_max : 0;
@@ -20400,7 +20400,7 @@
                     gap_probe_lev_mult: safeFloat(document.getElementById('config-gap-probe-lev-mult')?.value || 0.05),
                     gap_probe_max_open: parseInt(document.getElementById('config-gap-probe-max-open')?.value || 3),
                     gapmin_probe_enabled: (document.getElementById('config-gapmin-probe-enabled')?.checked === true),
-                    gapmin_probe_floor: safeFloat(document.getElementById('config-gapmin-probe-floor')?.value || 0.04),
+                    gapmin_probe_floor: safeFloat(document.getElementById('config-gapmin-probe-floor')?.value || 0.02),
                     gapmin_probe_max_open: parseInt(document.getElementById('config-gapmin-probe-max-open')?.value || 3),
                     // May 2: split EMA5-EMA8 max + new pair/BTC slope max guards
                     ema_gap_5_8_max_long: safeFloat(document.getElementById('config-ema-gap-5-8-max-long').value),

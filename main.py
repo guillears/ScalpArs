@@ -10654,40 +10654,47 @@ def _compute_gap_probe_cohort(orders):
     % metrics are size-invariant already. Verdict gates (pre-committed at ship):
     N>=30 & WR>=60% & avg>=+0.15% => ★ relaxation candidate; N>=30 & (WR<=45% or avg<0)
     => ✗ filter vindicated (switch probe off)."""
-    exp_rows, probe_rows, gapmin_rows = [], [], []
+    exp_rows, probe_rows, gapmin_rows, exp_s_rows, gapmin_s_rows = [], [], [], [], []
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
         d = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or "LONG"
-        if d != "LONG":
-            continue
         strat = getattr(o, 'entry_strategy', None) or "MOMENTUM"
         if strat not in ("MOMENTUM",):
             continue  # flips / bull-long / bounce-long are different sleeves
         _src = getattr(o, 'cell_multiplier_source', None) or ''
-        if _src == 'GAPFLAT_PROBE':
-            probe_rows.append(o)
-        elif _src == 'GAPMIN_PROBE':
-            gapmin_rows.append(o)
-        else:
-            exp_rows.append(o)
-    # Fair A/B control: window the EXPANDING side to the probe-live period (same tape,
+        if d == "LONG":
+            if _src == 'GAPFLAT_PROBE':
+                probe_rows.append(o)
+            elif _src == 'GAPMIN_PROBE':
+                gapmin_rows.append(o)
+            else:
+                exp_rows.append(o)
+        elif d == "SHORT":
+            if _src == 'GAPMIN_PROBE':
+                gapmin_s_rows.append(o)
+            elif _src != 'GAPFLAT_PROBE':
+                exp_s_rows.append(o)
+    # Fair A/B control: window BOTH control sides to the probe-live period (same tape,
     # same filter stack) — all-history controls mix dead configs (locked re-sim rule).
-    _all_probes = probe_rows + gapmin_rows
+    _all_probes = probe_rows + gapmin_rows + gapmin_s_rows
     if _all_probes:
         _p0 = min(getattr(o, 'opened_at', None) for o in _all_probes if getattr(o, 'opened_at', None))
         if _p0:
             exp_rows = [o for o in exp_rows if (getattr(o, 'opened_at', None) or _p0) >= _p0]
+            exp_s_rows = [o for o in exp_s_rows if (getattr(o, 'opened_at', None) or _p0) >= _p0]
 
     def _demux(o):
         m = (getattr(o, 'cell_multiplier', 1.0) or 1.0) * (getattr(o, 'cell_lev_multiplier', 1.0) or 1.0)
         return (o.pnl or 0.0) / m if m else (o.pnl or 0.0)
 
     rows_out = []
-    for cohort, rs in (("EXPANDING", exp_rows), ("NON-EXPANDING (probe)", probe_rows), ("SMALL-GAP (gapmin probe)", gapmin_rows)):
+    for cohort, rs in (("EXPANDING · LONG", exp_rows), ("NON-EXPANDING (probe) · LONG", probe_rows),
+                       ("SMALL-GAP (probe) · LONG", gapmin_rows),
+                       ("EXPANDING · SHORT", exp_s_rows), ("SMALL-GAP (probe) · SHORT", gapmin_s_rows)):
         n = len(rs)
         if n == 0:
-            if cohort != "EXPANDING":
+            if not cohort.startswith("EXPANDING"):
                 rows_out.append({'cohort': cohort, 'n': 0, 'wr': None, 'avg_pct': None,
                                  'total_demux': 0.0, 'avg_peak': None, 'doa_pct': None,
                                  'dates': 0, 'verdict': "⏳ building (0/30)"})
@@ -10703,7 +10710,7 @@ def _compute_gap_probe_cohort(orders):
         dates = len({(getattr(o, 'opened_at', None) or datetime.min).strftime('%Y-%m-%d')
                      for o in rs if getattr(o, 'opened_at', None)})
         verdict = ""
-        if cohort != "EXPANDING":
+        if not cohort.startswith("EXPANDING"):
             if n < 30:
                 verdict = f"⏳ building ({n}/30)"
             elif wr >= 60.0 and avg_pct >= 0.15 and dates >= 10:

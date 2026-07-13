@@ -218,24 +218,30 @@ def gap_expand_flat(indicators: dict, direction: str, th=None):
 
 
 def gap_min_band(indicators: dict, direction: str, th=None):
-    """Jul 13: GAPMIN probe tag. Returns True iff this LONG's EMA5-8 gap sits in the probe
-    band [gapmin_probe_floor, ema_gap_threshold_long) AND the candidate is NOT gap-flat
-    (cohort purity — GAPFLAT owns the flat class) — an EXACT mirror of get_signal's
-    `_gapmin_probe_band_long`. None = no probe (missing th/data / SHORT) — fail-safe."""
+    """Jul 13: GAPMIN probe tag, BOTH directions (operator-directed). Returns True iff the
+    direction's EMA5-8 gap sits in the probe band [gapmin_probe_floor, per-side threshold)
+    AND (LONG only) the candidate is NOT gap-flat (cohort purity — GAPFLAT owns the flat
+    class; SHORT flats are hard-blocked in the ladder, no tag needed) — an EXACT mirror of
+    get_signal's band conditions. None = no probe (missing th/data) — fail-safe."""
     try:
-        if direction != "LONG" or th is None:
+        if th is None or direction not in ("LONG", "SHORT"):
             return None
         e5 = indicators.get('ema5'); e8 = indicators.get('ema8')
-        gap58 = (e5 - e8) / e8 * 100 if e5 and e8 and e8 > 0 else None
+        if direction == "LONG":
+            gap58 = (e5 - e8) / e8 * 100 if e5 and e8 and e8 > 0 else None
+            _thr = float(getattr(th, 'ema_gap_threshold_long', None) or getattr(th, 'ema_gap_threshold', 0.06) or 0.06)
+        else:
+            gap58 = (e8 - e5) / e5 * 100 if e5 and e8 and e5 > 0 else None
+            _thr = float(getattr(th, 'ema_gap_threshold_short', None) or getattr(th, 'ema_gap_threshold', 0.08) or 0.08)
         if gap58 is None:
             return None
-        _thr = float(getattr(th, 'ema_gap_threshold_long', None) or getattr(th, 'ema_gap_threshold', 0.06) or 0.06)
-        _floor = float(getattr(th, 'gapmin_probe_floor', 0.04) or 0.04)
+        _floor = float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)
         if not (_floor <= gap58 < _thr):
             return False
-        _flat = gap_expand_flat(indicators, direction, th)
-        if _flat:
-            return False  # flat candidates belong to (or are blocked by) the GAPFLAT cohort
+        if direction == "LONG":
+            _flat = gap_expand_flat(indicators, direction, th)
+            if _flat:
+                return False  # flat candidates belong to (or are blocked by) the GAPFLAT cohort
         return True
     except Exception:
         return None
@@ -500,7 +506,7 @@ def get_signal(
                 # relaxations = uninterpretable). Probe off / below floor => blocked as before.
                 _gapmin_probe_band_long = (getattr(th, 'gapmin_probe_enabled', False)
                                            and not _gap_flat_long
-                                           and ema_gap_pct >= float(getattr(th, 'gapmin_probe_floor', 0.04) or 0.04)
+                                           and ema_gap_pct >= float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)
                                            and not gap_threshold_met)
                 if _gap_flat_long and not _gap_probe_on:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-13 gap not expanding ({exp_gap_pct:.4f}% vs prev1 {exp_prev_gap_pct} / prev2 {exp_prev2_gap_pct})")
@@ -576,7 +582,12 @@ def get_signal(
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
                     _record("PAIR_EMA_GAP_MAX", "SHORT")
-                elif not gap_threshold_met:
+                # Jul 13 PM GAPMIN PROBE (SHORT side, operator-directed "both ways"): sub-threshold
+                # but ACCELERATING shorts in [floor, threshold) fall through as 1x GAPMIN_PROBE
+                # candidates. Purity is automatic here — gap-flat shorts are hard-blocked above
+                # (no SHORT GAPFLAT probe), so anything reaching this check already expands.
+                elif not gap_threshold_met and not (getattr(th, 'gapmin_probe_enabled', False)
+                                                    and ema_gap_pct >= float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)):
                     _record("PAIR_EMA_GAP_MIN", "SHORT")
                 elif not _passes_rsi_adx_filter("SHORT", rsi, adx, th):
                     logger.debug(f"[MOMENTUM] SHORT skipped: RSI x ADX cross-filter (RSI={rsi:.1f}, ADX={adx:.1f})")

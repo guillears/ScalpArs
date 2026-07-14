@@ -14,6 +14,7 @@
   "bnb_swap_enabled": true,
   "bnb_check_interval_hours": 6,
   "bnb_runway_hours": 24,
+  "bnb_min_balance_usd": 50.0,
   "paper_bnb_initial_usd": 200.0,
   "bnb_auto_sell_enabled": true,
   "bnb_sell_runway_hours": 48.0,

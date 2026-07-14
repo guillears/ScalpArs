@@ -5429,6 +5429,14 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Hours of fee coverage to maintain</p>
                         </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Min Balance</label>
+                            <div class="flex">
+                                <span class="bg-white/10 border border-white/10 border-r-0 rounded-l-lg px-4 py-2 text-gray-400">$</span>
+                                <input type="number" id="config-bnb-min-balance" min="0" step="5" class="flex-1 bg-white/5 border border-white/10 rounded-r-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="50">
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Jul 14: hard $ floor — trailing-burn runway collapses when idle (burn swings 10×); top-up target, emergency threshold (×0.5) and auto-sell drain all respect this floor.</p>
+                        </div>
                     </div>
                     <div class="mt-4 p-3 rounded-lg border border-emerald-900/40 bg-emerald-950/10">
                         <div class="flex items-center gap-3 mb-3" title="Jun 22 — symmetric rebalance. The buy path only tops BNB UP; when activity slows the burn rate decays and the reserve over-funds, locking USDT out of trading. Auto-sell drains the excess back. Sells on the same scheduled-check interval; cannot fire in the 6h right after a buy (runway can't double that fast). Conservative burn = max(24h,12h) so it never sells into rising activity.">
@@ -18843,6 +18851,7 @@
                 document.getElementById('config-paper-bnb-initial').value = config.paper_bnb_initial_usd || 500;
                 document.getElementById('config-bnb-check-interval').value = config.bnb_check_interval_hours || 12;
                 document.getElementById('config-bnb-runway-hours').value = config.bnb_runway_hours || 24;
+                { const _e=document.getElementById('config-bnb-min-balance'); if(_e) _e.value = config.bnb_min_balance_usd !== undefined ? config.bnb_min_balance_usd : 50; }
                 document.getElementById('config-bnb-auto-sell-enabled').value = config.bnb_auto_sell_enabled ? 'true' : 'false';
                 document.getElementById('config-bnb-sell-runway-hours').value = config.bnb_sell_runway_hours != null ? config.bnb_sell_runway_hours : 48;
                 document.getElementById('config-bnb-sell-target-hours').value = config.bnb_sell_target_hours != null ? config.bnb_sell_target_hours : 36;
@@ -20284,6 +20293,7 @@
                 paper_bnb_initial_usd: safeFloat(document.getElementById('config-paper-bnb-initial').value),
                 bnb_check_interval_hours: parseInt(document.getElementById('config-bnb-check-interval').value) || 12,
                 bnb_runway_hours: parseInt(document.getElementById('config-bnb-runway-hours').value) || 24,
+                bnb_min_balance_usd: safeFloat(document.getElementById('config-bnb-min-balance')?.value || 50),
                 bnb_auto_sell_enabled: document.getElementById('config-bnb-auto-sell-enabled').value === 'true',
                 bnb_sell_runway_hours: parseFloat(document.getElementById('config-bnb-sell-runway-hours').value) || 0,
                 bnb_sell_target_hours: parseFloat(document.getElementById('config-bnb-sell-target-hours').value) || 0,

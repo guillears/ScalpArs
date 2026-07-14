@@ -2155,12 +2155,17 @@ class TradingEngine:
             if trade_span_h > span_24h_hours:
                 span_24h_hours = min(24.0, trade_span_h)
             self._bnb_burn_rate = fees_24h / span_24h_hours if span_24h_hours > 0 else 0
-            self._bnb_projected_need = self._bnb_burn_rate * tc.bnb_runway_hours
+            # Jul 14: HARD FLOOR (operator, $50) — trailing burn is a rear-view mirror (observed
+            # 0.32→3.16 $/hr = 10x swing): an idle stretch collapses the runway target to a few
+            # dollars, then a trading burst can drain the reserve between 6h checks. The floor
+            # covers the burst case; runway targeting still sizes the steady state above it.
+            _bnb_floor = float(getattr(tc, 'bnb_min_balance_usd', 50.0) or 0.0)
+            self._bnb_projected_need = max(self._bnb_burn_rate * tc.bnb_runway_hours, _bnb_floor)
             self._bnb_data_mature = span_24h_hours >= MIN_DATA_MATURE_HOURS
         else:
             span_24h_hours = 0
             self._bnb_burn_rate = 0
-            self._bnb_projected_need = 0
+            self._bnb_projected_need = float(getattr(tc, 'bnb_min_balance_usd', 50.0) or 0.0)
             self._bnb_data_mature = False
 
         # 12h emergency threshold — same logic, capped at 12h
@@ -2172,7 +2177,10 @@ class TradingEngine:
             burn_rate_12h = fees_12h / span_12h_hours if span_12h_hours > 0 else 0
         else:
             burn_rate_12h = 0
-        self._bnb_emergency_threshold = burn_rate_12h * 12.0
+        # Jul 14: emergency threshold floored at half the min-balance floor (can no longer
+        # collapse to cents during idle stretches — it sat at $0.24 when this shipped).
+        self._bnb_emergency_threshold = max(burn_rate_12h * 12.0,
+                                            float(getattr(tc, 'bnb_min_balance_usd', 50.0) or 0.0) * 0.5)
 
         return fees_24h
 
@@ -2274,7 +2282,9 @@ class TradingEngine:
             if sell_burn > 0 and sell_runway_h > 0:
                 sell_ceiling = sell_burn * sell_runway_h
                 if current_bnb > sell_ceiling:
-                    target_usd = sell_burn * float(tc.bnb_sell_target_hours or 0)
+                    # Jul 14: auto-sell may never drain below the min-balance floor.
+                    target_usd = max(sell_burn * float(tc.bnb_sell_target_hours or 0),
+                                     float(getattr(tc, 'bnb_min_balance_usd', 50.0) or 0.0))
                     logger.info(
                         f"[BNB_CHECK] Reserve over-funded: BNB ${current_bnb:.2f} > ceiling "
                         f"${sell_ceiling:.2f} ({sell_runway_h:.0f}h @ ${sell_burn:.2f}/hr). "

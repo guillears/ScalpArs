@@ -1357,6 +1357,12 @@ class TradingConfig(BaseModel):
     bnb_swap_enabled: bool = True
     bnb_check_interval_hours: int = 12
     bnb_runway_hours: int = 24
+    # Jul 14 (operator, $50): HARD dollar floor on the BNB fee reserve. The runway system is
+    # trailing-burn-based and collapses to a few dollars during idle stretches (observed burn
+    # swing 0.32→3.16 $/hr = 10x; balance sat at $11 with "36h runway"), so a trading burst
+    # could drain it between 6h checks. Floors: top-up target = max(burn×runway, THIS);
+    # emergency threshold = max(burn12×12, THIS×0.5); auto-sell never drains below THIS.
+    bnb_min_balance_usd: float = 50.0
     paper_bnb_initial_usd: float = 200.0  # Jul 3: 500->200 (operator; USDT seed 2500->2800, total $3000 unchanged)
     # BNB AUTO-SELL (Jun 22) — symmetric rebalance. The buy path tops BNB UP to a 24h
     # runway, but never claws back: when activity slows the 24h burn rate decays, runway

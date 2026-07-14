@@ -2181,3 +2181,9 @@ Operator requested a proactive winners-vs-losers deep dive on all three sleeves 
 **🔒 RULE LOCKED (watchlist bars amended):** any phantom-based relaxation bar is evaluated ONLY on POOLED (multi-export, deduped) NET-ADMISSIBLE phantoms — never single-file tracker rows. The Jul-5 FLIP_SHORT_REGIME bar is amended accordingly and currently stands at 0.
 
 **Residual watch (only survivor of pooling):** LONG_UNMATCHED_ONLY fade-SHORT in HEALTHY_BULL = pooled 23 · 65% · +0.155% pre-fee (≈+0.08% post-fee, thin). 🔒 Bar to open a 1× probe discussion: pooled N≥40 · WR≥60% · avg≥+0.12% pre-fee.
+
+## 2026-07-13 late PM — GAPFLAT probe extended to SHORTS (operator: "same as the gap, for shorts too")
+
+**Build (mirror of the GAPMIN both-ways pattern).** indicators.py: SHORT ladder gap-not-expanding block now falls through when gap_probe_enabled (`_gap_flat_short` boolean, byte-identical when off); the SHORT GAPMIN band condition gains `not _gap_flat_short` (cohort purity now REQUIRED on shorts too — flat+small stays blocked with both probes on, previously automatic). `gap_expand_flat()` extended to SHORT (per-side gap formulas, exact ladder mirror); `gap_min_band()` purity check now runs both sides. Engine: GAPFLAT caps/sizing/caller un-gated to both directions (max_open shared across sides; cap rejection records PAIR_EMA_GAP_NOT_EXPANDING per direction). Analytics: new "NON-EXPANDING (probe) · SHORT" row (GAPFLAT shorts were previously dropped silently from the cohort table); probe-live windowing includes the new bucket. UI blurb + config-report line updated. Smoke-tested 5 quadrants (SHORT flat off/on, flat+small purity, expanding regression, LONG regression); anchors byte-identical.
+
+**Probe fleet now: GAPFLAT both sides (gap-expanding check) + GAPMIN both sides (gap threshold band) — 4 independent cohort rows, per-side N>=30 gates, mutually exclusive by construction.**

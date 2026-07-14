@@ -10654,7 +10654,7 @@ def _compute_gap_probe_cohort(orders):
     % metrics are size-invariant already. Verdict gates (pre-committed at ship):
     N>=30 & WR>=60% & avg>=+0.15% => ★ relaxation candidate; N>=30 & (WR<=45% or avg<0)
     => ✗ filter vindicated (switch probe off)."""
-    exp_rows, probe_rows, gapmin_rows, exp_s_rows, gapmin_s_rows = [], [], [], [], []
+    exp_rows, probe_rows, gapmin_rows, exp_s_rows, gapmin_s_rows, gapflat_s_rows = [], [], [], [], [], []
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
@@ -10673,11 +10673,13 @@ def _compute_gap_probe_cohort(orders):
         elif d == "SHORT":
             if _src == 'GAPMIN_PROBE':
                 gapmin_s_rows.append(o)
-            elif _src != 'GAPFLAT_PROBE':
+            elif _src == 'GAPFLAT_PROBE':
+                gapflat_s_rows.append(o)
+            else:
                 exp_s_rows.append(o)
     # Fair A/B control: window BOTH control sides to the probe-live period (same tape,
     # same filter stack) — all-history controls mix dead configs (locked re-sim rule).
-    _all_probes = probe_rows + gapmin_rows + gapmin_s_rows
+    _all_probes = probe_rows + gapmin_rows + gapmin_s_rows + gapflat_s_rows
     if _all_probes:
         _p0 = min(getattr(o, 'opened_at', None) for o in _all_probes if getattr(o, 'opened_at', None))
         if _p0:
@@ -10691,7 +10693,8 @@ def _compute_gap_probe_cohort(orders):
     rows_out = []
     for cohort, rs in (("EXPANDING · LONG", exp_rows), ("NON-EXPANDING (probe) · LONG", probe_rows),
                        ("SMALL-GAP (probe) · LONG", gapmin_rows),
-                       ("EXPANDING · SHORT", exp_s_rows), ("SMALL-GAP (probe) · SHORT", gapmin_s_rows)):
+                       ("EXPANDING · SHORT", exp_s_rows), ("NON-EXPANDING (probe) · SHORT", gapflat_s_rows),
+                       ("SMALL-GAP (probe) · SHORT", gapmin_s_rows)):
         n = len(rs)
         if n == 0:
             if not cohort.startswith("EXPANDING"):

@@ -189,22 +189,28 @@ def gap_expand_marginal(indicators: dict, direction: str):
 
 
 def gap_expand_flat(indicators: dict, direction: str, th=None):
-    """Jul 13: GAPFLAT probe tag. Returns True iff this entry FAILS the gap-expanding
-    check under the CURRENT config — an EXACT mirror of get_signal's `_gap_flat_long`
-    (prev1 branch only in 'both' mode; prev2 branch whenever the filter is enabled), so
-    tag and ladder can never disagree. None = no probe (filter off / missing th / data /
-    SHORT) — fail-safe: an untaggable candidate is never probed."""
+    """Jul 13: GAPFLAT probe tag, BOTH directions (SHORT added Jul 13 late PM, operator).
+    Returns True iff this entry FAILS the gap-expanding check under the CURRENT config —
+    an EXACT mirror of get_signal's `_gap_flat_long` / `_gap_flat_short` (prev1 branch only
+    in 'both' mode; prev2 branch whenever the filter is enabled; per-side gap formulas), so
+    tag and ladder can never disagree. None = no probe (filter off / missing th / data) —
+    fail-safe: an untaggable candidate is never probed."""
     try:
-        if direction != "LONG" or th is None:
-            return None  # probe is LONG-only; th required — never guess the mode
+        if direction not in ("LONG", "SHORT") or th is None:
+            return None  # th required — never guess the mode
         if not getattr(th, 'ema_gap_expanding_filter', True):
             return None  # filter globally OFF -> the ladder never blocks -> nothing to probe
         e5 = indicators.get('ema5'); e13 = indicators.get('ema13')
         e5p1 = indicators.get('ema5_prev1'); e13p1 = indicators.get('ema13_prev1')
         e5p2 = indicators.get('ema5_prev2'); e13p2 = indicators.get('ema13_prev2')
-        gap = (e5 - e13) / e13 * 100 if e5 and e13 and e13 > 0 else None
-        p1 = (e5p1 - e13p1) / e13p1 * 100 if e5p1 and e13p1 and e13p1 > 0 else None
-        p2 = (e5p2 - e13p2) / e13p2 * 100 if e5p2 and e13p2 and e13p2 > 0 else None
+        if direction == "LONG":
+            gap = (e5 - e13) / e13 * 100 if e5 and e13 and e13 > 0 else None
+            p1 = (e5p1 - e13p1) / e13p1 * 100 if e5p1 and e13p1 and e13p1 > 0 else None
+            p2 = (e5p2 - e13p2) / e13p2 * 100 if e5p2 and e13p2 and e13p2 > 0 else None
+        else:
+            gap = (e13 - e5) / e5 * 100 if e5 and e13 and e5 > 0 else None
+            p1 = (e13p1 - e5p1) / e5p1 * 100 if e5p1 and e13p1 and e5p1 > 0 else None
+            p2 = (e13p2 - e5p2) / e5p2 * 100 if e5p2 and e13p2 and e5p2 > 0 else None
         if gap is None or (p1 is None and p2 is None):
             return None
         _prev1_active = getattr(th, 'ema_gap_expanding_mode', 'both') != 'prev2_only'
@@ -238,10 +244,9 @@ def gap_min_band(indicators: dict, direction: str, th=None):
         _floor = float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)
         if not (_floor <= gap58 < _thr):
             return False
-        if direction == "LONG":
-            _flat = gap_expand_flat(indicators, direction, th)
-            if _flat:
-                return False  # flat candidates belong to (or are blocked by) the GAPFLAT cohort
+        _flat = gap_expand_flat(indicators, direction, th)
+        if _flat:
+            return False  # flat candidates belong to (or are blocked by) the GAPFLAT cohort — both sides
         return True
     except Exception:
         return None
@@ -573,20 +578,23 @@ def get_signal(
                 ema_gap_max = getattr(th, 'ema_gap_5_8_max_short', 0) or getattr(th, 'ema_gap_5_8_max', 0)
                 short_gap_min = getattr(th, 'ema_gap_threshold_short', th.ema_gap_threshold)
                 gap_threshold_met = ema_gap_pct >= short_gap_min
-                if _gap_prev1_active and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct:
-                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-13 gap compressing vs 1 candle ({exp_prev_gap_pct:.4f}% -> {exp_gap_pct:.4f}%)")
-                    _record("PAIR_EMA_GAP_NOT_EXPANDING", "SHORT")
-                elif gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct:
-                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-13 gap compressing vs 2 candles ({exp_prev2_gap_pct:.4f}% -> {exp_gap_pct:.4f}%)")
+                # Jul 13 late PM GAPFLAT PROBE — SHORT side (operator: "same as the gap, for shorts
+                # too"): a gap-not-expanding SHORT falls through the ladder when gap_probe_enabled
+                # and, if it signals, opens as a 1x GAPFLAT_PROBE. Probe off => identical to before.
+                _gap_flat_short = ((_gap_prev1_active and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct)
+                                   or (gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct))
+                if _gap_flat_short and not getattr(th, 'gap_probe_enabled', False):
+                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-13 gap not expanding ({exp_gap_pct:.4f}% vs prev1 {exp_prev_gap_pct} / prev2 {exp_prev2_gap_pct})")
                     _record("PAIR_EMA_GAP_NOT_EXPANDING", "SHORT")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
                     _record("PAIR_EMA_GAP_MAX", "SHORT")
-                # Jul 13 PM GAPMIN PROBE (SHORT side, operator-directed "both ways"): sub-threshold
-                # but ACCELERATING shorts in [floor, threshold) fall through as 1x GAPMIN_PROBE
-                # candidates. Purity is automatic here — gap-flat shorts are hard-blocked above
-                # (no SHORT GAPFLAT probe), so anything reaching this check already expands.
+                # Jul 13 PM GAPMIN PROBE (SHORT side): sub-threshold but ACCELERATING shorts in
+                # [floor, threshold) fall through as 1x GAPMIN_PROBE candidates. COHORT PURITY:
+                # now that the SHORT GAPFLAT probe exists, a flat+small candidate stays BLOCKED
+                # here (two simultaneous relaxations = uninterpretable), mirroring the LONG side.
                 elif not gap_threshold_met and not (getattr(th, 'gapmin_probe_enabled', False)
+                                                    and not _gap_flat_short
                                                     and ema_gap_pct >= float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)):
                     _record("PAIR_EMA_GAP_MIN", "SHORT")
                 elif not _passes_rsi_adx_filter("SHORT", rsi, adx, th):

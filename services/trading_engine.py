@@ -4101,7 +4101,7 @@ class TradingEngine:
         # slows the N>=30 clock; the slot guard + concurrency cap are the real protections.
         # A cap rejection is recorded as PAIR_EMA_GAP_NOT_EXPANDING — identical funnel semantics
         # to the probe being off.
-        if gap_probe and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
+        if gap_probe and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
             _th_gp = config.trading_config.thresholds
             _gp_reason = None
             if not getattr(_th_gp, 'gap_probe_enabled', False):
@@ -4116,9 +4116,9 @@ class TradingEngine:
                 if (_gp_open_q.scalar() or 0) >= int(getattr(_th_gp, 'gap_probe_max_open', 3) or 3):
                     _gp_reason = "max concurrent probes open"
             if _gp_reason:
-                logger.info(f"[GAPFLAT_PROBE] {pair} LONG skipped: {_gp_reason}")
+                logger.info(f"[GAPFLAT_PROBE] {pair} {direction} skipped: {_gp_reason}")
                 try:
-                    self._record_filter_block("PAIR_EMA_GAP_NOT_EXPANDING", "LONG")
+                    self._record_filter_block("PAIR_EMA_GAP_NOT_EXPANDING", direction)
                 except Exception:
                     pass
                 return None
@@ -4586,12 +4586,12 @@ class TradingEngine:
         # 2x'd by the UNMATCHED cell); own cell_src row (rides Multiplier Cell Performance + CSV
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
-        if (((gap_probe and direction == "LONG") or (gapmin_probe and direction in ("LONG", "SHORT")))
+        if ((gap_probe or gapmin_probe) and direction in ("LONG", "SHORT")
                 and not flip_source and not bull_long and not bounce_long):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
-            cell_src = "GAPFLAT_PROBE" if (gap_probe and direction == "LONG") else "GAPMIN_PROBE"
+            cell_src = "GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE"
             _mult_target = "both"
             logger.info(f"[{cell_src}] {pair} {direction}: opening probe at inv={cell_mult}x lev={cell_lev_mult}x (~1x effective)")
 
@@ -9080,7 +9080,7 @@ class TradingEngine:
                     # gap-flat candidate when the probe is on, so this tag is exact). open_position
                     # then applies the probe caps + 1x sizing, or records the block if capped.
                     gap_probe=bool(
-                        signal == "LONG"
+                        signal in ("LONG", "SHORT")
                         and getattr(config.trading_config.thresholds, 'gap_probe_enabled', False)
                         and gap_expand_flat(indicators, signal, config.trading_config.thresholds)
                     ),

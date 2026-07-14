@@ -2669,7 +2669,7 @@
 
                 <!-- Entry Funnel (Jun 17) — why only flips, not normal trades -->
                 <div class="mt-6 pt-6 border-t border-white/10">
-                    <h3 class="text-sm font-semibold text-cyan-300 mb-2">🔎 Entry Funnel <span class="text-xs text-gray-500 font-normal">(why so few NORMAL trades — since bot start, in-memory)</span></h3>
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-2">🔎 Entry Funnel <span class="text-xs text-gray-500 font-normal">(why so few NORMAL trades — block counters persisted across redeploys; cap-skip resets on restart)</span></h3>
                     <p class="text-xs text-gray-500 mb-3">Momentum signals DO fire — the filter stack rejects them; flips are the contrarian residue. If <span class="text-cyan-300">opened-normal ≈ 0</span> while <span class="text-amber-300">blocked-by-filter</span> is large, it's the filters (regime), not a bug and not the 5-position cap.</p>
                     <div id="entry-funnel" class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs"></div>
                     <div id="entry-funnel-blockers" class="text-xs text-gray-400 mt-3"></div>
@@ -2677,8 +2677,8 @@
 
                 <!-- Filter Blocks (May 5) — pre-entry filter rejection counters -->
                 <div class="mt-6 pt-6 border-t border-white/10">
-                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Filter Blocks <span class="text-xs text-gray-500 font-normal">(since bot start, in-memory)</span></h3>
-                    <p class="text-xs text-gray-500 mb-3">Counts of pre-entry filter rejections, broken down by filter and direction. <span class="text-emerald-300 font-medium">"Real"</span> = block fired when bot had room to open a new position (filter actually prevented a trade). <span class="text-amber-300 font-medium">"Free"</span> = block fired when bot was at max_open_positions (no trade prevented — filter just logged). Resets on bot restart.</p>
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Filter Blocks <span class="text-xs text-gray-500 font-normal">(persisted — survives redeploys; sorted by Sole — the decision column)</span></h3>
+                    <p class="text-xs text-gray-500 mb-3">Counts of pre-entry filter rejections, broken down by filter and direction. <span class="text-emerald-300 font-medium">"Real"</span> = block fired when bot had room to open a new position (filter actually prevented a trade). <span class="text-amber-300 font-medium">"Free"</span> = block fired when bot was at max_open_positions (no trade prevented — filter just logged). All counters (Total + Funnel v2) are flushed to DB on every trade / BNB check and restored on startup.</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
@@ -9210,7 +9210,7 @@
             const _ef1 = perf.entry_funnel;
             if (_ef1) {
                 lines.push(`\n${hr2}`);
-                lines.push('## Entry Funnel (why so few NORMAL trades — since bot start, in-memory)\n');
+                lines.push('## Entry Funnel (why so few NORMAL trades — block counters persisted across redeploys; cap-skip resets on restart)\n');
                 lines.push(`Blocked by filter (had room): ${_ef1.blocked_by_filter_room}  |  Blocked at max-5 (no trade lost): ${_ef1.blocked_at_max}  [cap cost: ${_ef1.cap_skip_normal||0} norm / ${_ef1.cap_skip_flip||0} flip ready]`);
                 lines.push(`Opened — NORMAL: ${_ef1.opened_normal} (${_ef1.opened_normal_long||0}L/${_ef1.opened_normal_short||0}S)  |  Opened — FLIP: ${_ef1.opened_flip} (${_ef1.opened_flip_long||0}L/${_ef1.opened_flip_short||0}S)  |  Blocked L/S: ${_ef1.blocked_long}/${_ef1.blocked_short}`);
                 lines.push('Top blockers (room): ' + ((_ef1.top_blockers||[]).map(b=>`${b.filter} ${b.room}(L${b.long}/S${b.short})`).join(' · ') || '—'));
@@ -9219,10 +9219,10 @@
             const _fbc = window._lastFilterBlockCounts;
             if (_fbc && _fbc.rows && _fbc.rows.length) {
                 lines.push(`\n${hr2}`);
-                lines.push('## Filter Blocks (since bot start, in-memory)\n');
+                lines.push('## Filter Blocks (persisted — survives redeploys)\n');
                 lines.push('Real = filter blocked an entry the bot could have opened. Free = blocked at max_open_positions (no trade prevented).');
                 lines.push('L% / S% / T% = this filter\'s share of total LONG / SHORT / overall blocks.');
-                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0.');
+                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14 (Total from earlier), so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc), then Total.');
                 const _totL = _fbc.total_long || 0, _totS = _fbc.total_short || 0, _totT = _fbc.total || 0;
                 const _pct = (n, d) => d > 0 ? ((n / d) * 100).toFixed(0) + '%' : '-';
                 lines.push(`${'Filter'.padEnd(22)} ${'L-Real'.padEnd(7)} ${'L-Free'.padEnd(7)} ${'L-All'.padEnd(7)} ${'L%'.padEnd(6)} ${'S-Real'.padEnd(7)} ${'S-Free'.padEnd(7)} ${'S-All'.padEnd(7)} ${'S%'.padEnd(6)} ${'T-Real'.padEnd(7)} ${'T-Free'.padEnd(7)} ${'Total'.padEnd(7)} ${'T%'.padEnd(5)} ${'SoleL'.padEnd(6)} ${'SoleS'.padEnd(6)} ${'Sole'.padEnd(6)} ${'Epis'.padEnd(6)} ${'AllF'}`);
@@ -11136,7 +11136,7 @@
                 const _ef2 = perf.entry_funnel;
                 if (_ef2) {
                     lines.push(`\n${hr2}`);
-                    lines.push('## Entry Funnel (why so few NORMAL trades — since bot start, in-memory)\n');
+                    lines.push('## Entry Funnel (why so few NORMAL trades — block counters persisted across redeploys; cap-skip resets on restart)\n');
                     lines.push(`Blocked by filter (had room): ${_ef2.blocked_by_filter_room}  |  Blocked at max-5 (no trade lost): ${_ef2.blocked_at_max}  [cap cost: ${_ef2.cap_skip_normal||0} norm / ${_ef2.cap_skip_flip||0} flip ready]`);
                     lines.push(`Opened — NORMAL: ${_ef2.opened_normal} (${_ef2.opened_normal_long||0}L/${_ef2.opened_normal_short||0}S)  |  Opened — FLIP: ${_ef2.opened_flip} (${_ef2.opened_flip_long||0}L/${_ef2.opened_flip_short||0}S)  |  Blocked L/S: ${_ef2.blocked_long}/${_ef2.blocked_short}`);
                     lines.push('Top blockers (room): ' + ((_ef2.top_blockers||[]).map(b=>`${b.filter} ${b.room}(L${b.long}/S${b.short})`).join(' · ') || '—'));
@@ -11148,10 +11148,10 @@
                 const _fbc2 = window._lastFilterBlockCounts;
                 if (_fbc2 && _fbc2.rows && _fbc2.rows.length) {
                     lines.push(`\n${hr2}`);
-                    lines.push('## Filter Blocks (since bot start, in-memory)\n');
+                    lines.push('## Filter Blocks (persisted — survives redeploys)\n');
                     lines.push('Real = filter blocked an entry the bot could have opened. Free = blocked at max_open_positions (no trade prevented).');
                     lines.push('L% / S% / T% = this filter\'s share of total LONG / SHORT / overall blocks.');
-                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0.');
+                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14 (Total from earlier), so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc), then Total.');
                     const _totL2 = _fbc2.total_long || 0, _totS2 = _fbc2.total_short || 0, _totT2 = _fbc2.total || 0;
                     const _pct2 = (n, d) => d > 0 ? ((n / d) * 100).toFixed(0) + '%' : '-';
                     lines.push(`${'Filter'.padEnd(22)} ${'L-Real'.padEnd(7)} ${'L-Free'.padEnd(7)} ${'L-All'.padEnd(7)} ${'L%'.padEnd(6)} ${'S-Real'.padEnd(7)} ${'S-Free'.padEnd(7)} ${'S-All'.padEnd(7)} ${'S%'.padEnd(6)} ${'T-Real'.padEnd(7)} ${'T-Free'.padEnd(7)} ${'Total'.padEnd(7)} ${'T%'.padEnd(5)} ${'SoleL'.padEnd(6)} ${'SoleS'.padEnd(6)} ${'Sole'.padEnd(6)} ${'Epis'.padEnd(6)} ${'AllF'}`);

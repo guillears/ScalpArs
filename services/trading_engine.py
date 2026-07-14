@@ -1308,6 +1308,30 @@ class TradingEngine:
                     logger.info(f"[FILTER_BLOCKS] Restored {len(self._filter_block_counts)} counters from DB")
                 except Exception as _e:
                     logger.warning(f"[FILTER_BLOCKS] Failed to restore counters: {_e}")
+            # Restore Funnel v2 counters (Jul 14) — Sole/AllF/Episode share the same
+            # persisted lifetime as the legacy Total columns above. Keys "filter|dir".
+            _fv2_json = getattr(state, 'filter_funnel_v2_json', None)
+            if _fv2_json:
+                try:
+                    _fv2_raw = json.loads(_fv2_json)
+
+                    def _fv2_load(name):
+                        return {
+                            (parts[0], parts[1]): v
+                            for k, v in (_fv2_raw.get(name) or {}).items()
+                            if len(parts := k.split("|")) == 2
+                        }
+
+                    self._filter_all_counts = _fv2_load("all")
+                    self._filter_sole_counts = _fv2_load("sole")
+                    self._filter_episode_counts = _fv2_load("episode")
+                    logger.info(
+                        f"[FILTER_BLOCKS] Restored Funnel v2 counters from DB "
+                        f"(all={len(self._filter_all_counts)}, sole={len(self._filter_sole_counts)}, "
+                        f"episode={len(self._filter_episode_counts)})"
+                    )
+                except Exception as _e:
+                    logger.warning(f"[FILTER_BLOCKS] Failed to restore Funnel v2 counters: {_e}")
             # Restore last BNB check timestamp so the interval is respected
             # across restarts (May 7 fix).
             _last_bnb_check_db = getattr(state, 'last_bnb_check_at', None)
@@ -1504,6 +1528,17 @@ class TradingEngine:
             for k, v in self._filter_block_counts.items()
         }) if self._filter_block_counts else None
 
+        # Funnel v2 counters (Jul 14) — persisted alongside the legacy counters so
+        # Sole/AllF/Episode survive redeploys. _filter_blocked_state is scan-transient
+        # (edge detector vs _funnel_scan_seq, which restarts at 0) and is NOT saved.
+        def _fv2_dump(d):
+            return {f"{k[0]}|{k[1]}": v for k, v in d.items()}
+        _fv2_json = json.dumps({
+            "all": _fv2_dump(self._filter_all_counts),
+            "sole": _fv2_dump(self._filter_sole_counts),
+            "episode": _fv2_dump(self._filter_episode_counts),
+        }) if (self._filter_all_counts or self._filter_sole_counts or self._filter_episode_counts) else None
+
         if state:
             state.is_running = self.is_running
             state.is_paper_mode = self.is_paper_mode
@@ -1513,6 +1548,7 @@ class TradingEngine:
             state.started_at = self.started_at
             state.updated_at = datetime.utcnow()
             state.filter_block_counts_json = _fb_json
+            state.filter_funnel_v2_json = _fv2_json
             state.last_bnb_check_at = self._last_bnb_check
         else:
             state = BotState(
@@ -1523,6 +1559,7 @@ class TradingEngine:
                 total_runtime_seconds=self.total_runtime_seconds,
                 started_at=self.started_at,
                 filter_block_counts_json=_fb_json,
+                filter_funnel_v2_json=_fv2_json,
                 last_bnb_check_at=self._last_bnb_check,
             )
             db.add(state)
@@ -1714,6 +1751,17 @@ class TradingEngine:
         def _dir_sum(store, fname):
             return (store.get((fname, "LONG"), 0), store.get((fname, "SHORT"), 0))
 
+        # Include filters that only appear in the v2 stores (a filter that always
+        # fails together with an earlier ladder filter never becomes fails[0], so
+        # it has no legacy row — but its AllF/Sole columns are still meaningful).
+        for _store in (self._filter_all_counts, self._filter_sole_counts, self._filter_episode_counts):
+            for (_fname, _d) in _store.keys():
+                per_filter.setdefault(_fname, {
+                    "long": 0, "short": 0, "any": 0,
+                    "long_room": 0, "short_room": 0, "any_room": 0,
+                    "long_full": 0, "short_full": 0, "any_full": 0,
+                })
+
         rows = []
         total_long = total_short = total_any = 0
         total_room = total_full = 0
@@ -1748,7 +1796,9 @@ class TradingEngine:
             total_room += t_room
             total_full += t_full
 
-        rows.sort(key=lambda r: r["total"], reverse=True)
+        # Jul 14: rank by SOLE (true marginal cost — the decision column), tiebreak
+        # by legacy Total so the zero-Sole majority keeps a stable, familiar order.
+        rows.sort(key=lambda r: (r["sole"], r["total"]), reverse=True)
         return {
             "rows": rows,
             "total_long": total_long,

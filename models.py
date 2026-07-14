@@ -780,6 +780,13 @@ class BotState(Base):
     # Restored into _filter_block_counts on initialize(); flushed by save_state().
     filter_block_counts_json = Column(Text, nullable=True)
 
+    # Funnel v2 counters (Jul 14) — Sole/AllF/Episode dicts persisted as one JSON blob
+    # so the honest-ranking columns share the same lifetime as the legacy Total columns
+    # (they used to reset on every deploy, putting the two column groups on different
+    # clocks). Format: '{"all": {"F|LONG": n}, "sole": {...}, "episode": {...}}'.
+    # _filter_blocked_state (scan-transient edge detector) is intentionally NOT persisted.
+    filter_funnel_v2_json = Column(Text, nullable=True)
+
     # Last BNB scheduled-check timestamp — persisted across restarts so the
     # check interval is respected across redeployments. Without this, every
     # restart triggered a fresh check ~60s after startup, causing repeated

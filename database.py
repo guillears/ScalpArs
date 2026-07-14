@@ -548,6 +548,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN btc_regime_started_at DATETIME"))
                 if 'filter_block_counts_json' not in bs_columns:
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN filter_block_counts_json TEXT"))
+                if 'filter_funnel_v2_json' not in bs_columns:
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN filter_funnel_v2_json TEXT"))
                 if 'last_bnb_check_at' not in bs_columns:
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN last_bnb_check_at DATETIME"))
 

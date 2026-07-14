@@ -7839,8 +7839,9 @@
                 // ↳ variant rows: sub-rule breakdown of a composite filter (v2 columns
                 // only — legacy columns intentionally 0, they live on the parent row).
                 const nameCls = r.is_variant ? 'pl-6 text-violet-400/80 italic' : 'text-gray-300';
+                const nameEsc = String(r.filter).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 return `<tr class="hover:bg-white/5${r.is_variant ? ' opacity-80' : ''}">
-                    <td class="px-3 py-2 font-mono text-xs ${nameCls}">${r.filter}</td>
+                    <td class="px-3 py-2 font-mono text-xs ${nameCls}">${nameEsc}</td>
                     <td class="px-2 py-2 text-center bg-emerald-900/5 border-l-2 border-emerald-500/30">${cell(lRoom, 'text-emerald-300')}</td>
                     <td class="px-2 py-2 text-center bg-emerald-900/5">${cell(lFull, 'text-amber-300')}</td>
                     <td class="px-2 py-2 text-center bg-emerald-900/5">${cell(r.long || 0, 'text-emerald-400 font-medium')}</td>

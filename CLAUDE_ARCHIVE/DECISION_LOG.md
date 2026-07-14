@@ -2241,3 +2241,11 @@ Operator requested a proactive winners-vs-losers deep dive on all three sleeves 
 **Hidden:** ① `PASS:FLIP_SHORT_REGIME` — question CLOSED (pooled 130 · 54% · net-admissible 0/130); ALSO removed from `PHANTOM_KEEP_SOURCES` = seeding stops (one-way door acknowledged: the REGIME pool stops growing, the CLOSED verdict is effectively permanent). ② `SPIKE_REV_BTC` — 100% BTCUSDT (no-trade pair), verdict structurally unreachable; also removed from KEEP. ③ `PASS:LONG_UNMATCHED_ONLY` — stable ✗ whipsaws, hidden BUT KEEPS SEEDING (control arm of the active fade-short watch; pooled analysis needs both arms).
 
 **Untouched:** LONG_UNMATCHED_ONLY fade (armed probe watch, pooled 23·65%), PASS:FLIP_SHORT_BTC1H_SLOPE (Jul-3 gate revert surface), PASS:LONG_BTC1H_DEADBAND, PASS:MOMENTUM_SHORT_DEEPGAP, PASS:FLIP_SHORT_BTC_TRENDGAP (each a locked revert surface), MOMENTUM_SHORT_W1_REGIME. Table shrinks ~90 rows; every remaining row feeds an armed gate.
+
+## 2026-07-14 — GAPMIN probe floor 0.02→0.01 (operator: "let's test 0.01" — early open of the [<floor] door)
+
+**Evidence.** Funnel v2 GAP_MIN sub-rule split (shipped this morning) at ~half a day: SoleL 89 (55% of long soles — the long side woke up; SoleL was 0 everywhere in the morning read), splitting **[<floor] 57 vs [flat] 32** (~64/36). The floor door leads.
+
+**Discipline note (transparent override).** The locked read gate said "≥1 full day + clear majority." Opened early, operator-directed, because the blast radius is PROBE SCOPE only: the floor widens the 1× GAPMIN band to [0.01, threshold) — worst case a handful of ~$4 noise trades — and the GAPMIN read protocol slices sub-bands from entry_ema_gap_5_8 at verdict, so [0.01-0.02) admissions form their own bucket and cannot contaminate the [0.02+) read. The [flat] door (GAPBOTH_PROBE third cohort) remains gated on the original full-day majority read. The [<floor] variant tag threshold follows the config value automatically.
+
+**Change.** `gapmin_probe_floor` 0.02→0.01 (config.py default + evidence comment; trading_config.json). No engine/UI changes needed (Band Floor input already wired; variant tagging reads the config). Expect: GAPMIN probe flow up (mostly LONG), the [<floor] variant's Sole count to shrink toward true zero-gap candidates only.

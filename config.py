@@ -260,7 +260,7 @@ class SignalThresholds(BaseModel):
     # + the last-2-slots guard. Same 🔒 gates: N>=30 probes (>=10 dates) -> WR>=60% &
     # avg>=+0.15% = relaxation discussion; WR<=45% or avg<0 = filter vindicated, off.
     gapmin_probe_enabled: bool = False
-    gapmin_probe_floor: float = 0.02     # band floor (Jul 13 PM operator: 0.04→0.02, "test it entirely" — sub-bands sliced post-hoc from entry_ema_gap_5_8); below floor = blocked as always
+    gapmin_probe_floor: float = 0.01     # band floor (Jul 14 operator: 0.02→0.01 — Funnel v2 [<floor] variant led the GAP_MIN sole split 57v32 ~half-day in; early open of the leading door, probe-scope risk only, [0.01-0.02) sliced as its own sub-band at verdict. Jul 13 PM: 0.04→0.02 "test it entirely"); below floor = blocked as always
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

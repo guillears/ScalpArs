@@ -122,20 +122,17 @@ def determine_macro_regime(ema_current: float, ema_prev: float, flat_threshold: 
     return "NEUTRAL"
 
 
-def _passes_rsi_adx_filter(direction: str, rsi: float, adx: float, th) -> bool:
-    """Check RSI x ADX cross-filter rules. Returns True if the entry is allowed.
+def _rsi_adx_block_rule(direction: str, rsi: float, adx: float, th):
+    """Jul 14: return the exact rule string that BLOCKS this entry, or None if allowed.
 
-    Rule formats supported (backward compatible):
-      "RSI_LO-RSI_HI:MIN_ADX"          → require ADX >= MIN_ADX (existing)
-      "RSI_LO-RSI_HI:MIN_ADX-MAX_ADX"  → require MIN_ADX <= ADX <= MAX_ADX (May 5)
-
-    The range form lets us express "block when ADX > X" by setting MIN low.
-    Example: "65-70:0-34" blocks RSI 65-70 entries when ADX > 34.
+    Sub-rule granularity feeds the Funnel v2 breakdown (which RSI band of a
+    composite cross-filter is the real blocker). Semantics identical to the
+    old boolean check — first rule whose RSI band matches decides.
     """
     key = 'rsi_adx_filter_long' if direction == 'LONG' else 'rsi_adx_filter_short'
     filter_str = getattr(th, key, '')
     if not filter_str or not filter_str.strip():
-        return True
+        return None
     for rule in filter_str.split(','):
         rule = rule.strip()
         if not rule or ':' not in rule:
@@ -146,16 +143,29 @@ def _passes_rsi_adx_filter(direction: str, rsi: float, adx: float, th) -> bool:
             if rsi_min <= rsi < rsi_max:
                 bounds = adx_part.split('-')
                 if len(bounds) == 1:
-                    return adx >= float(bounds[0])
+                    return None if adx >= float(bounds[0]) else rule
                 elif len(bounds) == 2:
                     min_adx = float(bounds[0])
                     max_adx = float(bounds[1])
-                    return min_adx <= adx <= max_adx
+                    return None if min_adx <= adx <= max_adx else rule
                 else:
                     continue
         except (ValueError, TypeError):
             continue
-    return True
+    return None
+
+
+def _passes_rsi_adx_filter(direction: str, rsi: float, adx: float, th) -> bool:
+    """Check RSI x ADX cross-filter rules. Returns True if the entry is allowed.
+
+    Rule formats supported (backward compatible):
+      "RSI_LO-RSI_HI:MIN_ADX"          → require ADX >= MIN_ADX (existing)
+      "RSI_LO-RSI_HI:MIN_ADX-MAX_ADX"  → require MIN_ADX <= ADX <= MAX_ADX (May 5)
+
+    The range form lets us express "block when ADX > X" by setting MIN low.
+    Example: "65-70:0-34" blocks RSI 65-70 entries when ADX > 34.
+    """
+    return _rsi_adx_block_rule(direction, rsi, adx, th) is None
 
 
 def gap_expand_marginal(indicators: dict, direction: str):
@@ -515,11 +525,14 @@ def get_signal(
                 _l_fails.append("PAIR_EMA_GAP_MAX")
             if not gap_threshold_met and not _gapmin_probe_band_long:
                 _l_fails.append("PAIR_EMA_GAP_MIN")
-            if not _passes_rsi_adx_filter("LONG", rsi, adx, th):
-                _l_fails.append("PAIR_RSI_ADX_CROSS")
+            _rx_rule_l = _rsi_adx_block_rule("LONG", rsi, adx, th)
+            if _rx_rule_l:
+                # Sub-rule suffix feeds the Funnel v2 breakdown; legacy counter
+                # gets the stripped parent name (continuity of the Total column).
+                _l_fails.append(f"PAIR_RSI_ADX_CROSS[{_rx_rule_l}]")
             if _l_fails:
                 logger.debug(f"[MOMENTUM] LONG skipped: {_l_fails[0]} (all fails: {_l_fails})")
-                _record(_l_fails[0], "LONG")
+                _record(_l_fails[0].split('[', 1)[0], "LONG")
                 _record_multi(_l_fails, "LONG")
             else:
                 if adx > adx_vs_long:
@@ -574,11 +587,14 @@ def get_signal(
                                               and not _gap_flat_short
                                               and ema_gap_pct >= float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)):
                 _s_fails.append("PAIR_EMA_GAP_MIN")
-            if not _passes_rsi_adx_filter("SHORT", rsi, adx, th):
-                _s_fails.append("PAIR_RSI_ADX_CROSS")
+            _rx_rule_s = _rsi_adx_block_rule("SHORT", rsi, adx, th)
+            if _rx_rule_s:
+                # Sub-rule suffix feeds the Funnel v2 breakdown; legacy counter
+                # gets the stripped parent name (continuity of the Total column).
+                _s_fails.append(f"PAIR_RSI_ADX_CROSS[{_rx_rule_s}]")
             if _s_fails:
                 logger.debug(f"[MOMENTUM] SHORT skipped: {_s_fails[0]} (all fails: {_s_fails})")
-                _record(_s_fails[0], "SHORT")
+                _record(_s_fails[0].split('[', 1)[0], "SHORT")
                 _record_multi(_s_fails, "SHORT")
             else:
                 if adx > th.adx_very_strong:

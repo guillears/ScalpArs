@@ -1748,7 +1748,18 @@ class TradingEngine:
         # allf = filter failed regardless of order; episodes = edge-triggered blocked
         # episodes per (pair, dir) — de-inflated of scan-tick re-evaluation. Only momentum-
         # ladder filters populate these; engine-level gates show 0 (first-fail only).
+        # Jul 14 sub-rule breakdown: v2 keys may carry a variant suffix, e.g.
+        # "PAIR_RSI_ADX_CROSS[35-50:30]" — the exact composite sub-rule that
+        # blocked. Parent rows aggregate across variants; ↳ child rows split them.
+        def _parent(fname):
+            return fname.split('[', 1)[0]
+
         def _dir_sum(store, fname):
+            l = sum(v for (f, d), v in store.items() if d == "LONG" and _parent(f) == fname)
+            s = sum(v for (f, d), v in store.items() if d == "SHORT" and _parent(f) == fname)
+            return (l, s)
+
+        def _dir_sum_exact(store, fname):
             return (store.get((fname, "LONG"), 0), store.get((fname, "SHORT"), 0))
 
         # Include filters that only appear in the v2 stores (a filter that always
@@ -1756,7 +1767,7 @@ class TradingEngine:
         # it has no legacy row — but its AllF/Sole columns are still meaningful).
         for _store in (self._filter_all_counts, self._filter_sole_counts, self._filter_episode_counts):
             for (_fname, _d) in _store.keys():
-                per_filter.setdefault(_fname, {
+                per_filter.setdefault(_parent(_fname), {
                     "long": 0, "short": 0, "any": 0,
                     "long_room": 0, "short_room": 0, "any_room": 0,
                     "long_full": 0, "short_full": 0, "any_full": 0,
@@ -1799,6 +1810,36 @@ class TradingEngine:
         # Jul 14: rank by SOLE (true marginal cost — the decision column), tiebreak
         # by legacy Total so the zero-Sole majority keeps a stable, familiar order.
         rows.sort(key=lambda r: (r["sole"], r["total"]), reverse=True)
+
+        # Splice ↳ variant child rows under their parent (v2 columns only; legacy
+        # columns stay on the parent — the legacy counter never sees suffixes).
+        # Child rows carry is_variant so footer totals / percentage sums skip them.
+        _variants: Dict[str, set] = {}
+        for _store in (self._filter_all_counts, self._filter_sole_counts, self._filter_episode_counts):
+            for (_fname, _d) in _store.keys():
+                if '[' in _fname:
+                    _variants.setdefault(_parent(_fname), set()).add(_fname)
+        if _variants:
+            _spliced = []
+            for r in rows:
+                _spliced.append(r)
+                for _vname in sorted(_variants.get(r["filter"], ()),
+                                     key=lambda v: -(sum(_dir_sum_exact(self._filter_sole_counts, v)))):
+                    _vsl, _vss = _dir_sum_exact(self._filter_sole_counts, _vname)
+                    _val, _vas = _dir_sum_exact(self._filter_all_counts, _vname)
+                    _vel, _ves = _dir_sum_exact(self._filter_episode_counts, _vname)
+                    _spliced.append({
+                        "filter": "↳ " + _vname[_vname.index('['):],  # e.g. "↳ [35-50:30]"
+                        "is_variant": True,
+                        "long": 0, "short": 0, "any": 0, "total": 0,
+                        "long_room": 0, "short_room": 0, "any_room": 0,
+                        "long_full": 0, "short_full": 0, "any_full": 0,
+                        "total_room": 0, "total_full": 0,
+                        "sole_long": _vsl, "sole_short": _vss, "sole": _vsl + _vss,
+                        "allf_long": _val, "allf_short": _vas, "allf": _val + _vas,
+                        "episodes_long": _vel, "episodes_short": _ves, "episodes": _vel + _ves,
+                    })
+            rows = _spliced
         return {
             "rows": rows,
             "total_long": total_long,

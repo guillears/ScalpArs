@@ -2677,7 +2677,7 @@
 
                 <!-- Filter Blocks (May 5) — pre-entry filter rejection counters -->
                 <div class="mt-6 pt-6 border-t border-white/10">
-                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Filter Blocks <span class="text-xs text-gray-500 font-normal">(persisted — survives redeploys; sorted by Sole — the decision column)</span></h3>
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Filter Blocks <span class="text-xs text-gray-500 font-normal">(persisted — survives redeploys; sorted by Sole; ↳ rows = sub-rule breakdown)</span></h3>
                     <p class="text-xs text-gray-500 mb-3">Counts of pre-entry filter rejections, broken down by filter and direction. <span class="text-emerald-300 font-medium">"Real"</span> = block fired when bot had room to open a new position (filter actually prevented a trade). <span class="text-amber-300 font-medium">"Free"</span> = block fired when bot was at max_open_positions (no trade prevented — filter just logged). All counters (Total + Funnel v2) are flushed to DB on every trade / BNB check and restored on startup.</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
@@ -2687,7 +2687,7 @@
                                     <th class="px-3 py-2 font-bold text-center text-emerald-400 text-sm bg-emerald-900/15 border-l-2 border-emerald-500/40 border-b border-white/10" colspan="4">LONG</th>
                                     <th class="px-3 py-2 font-bold text-center text-red-400 text-sm bg-red-900/15 border-l-2 border-red-500/40 border-b border-white/10" colspan="4">SHORT</th>
                                     <th class="px-3 py-2 font-bold text-center text-white text-sm bg-white/5 border-l-2 border-white/30 border-b border-white/10" colspan="4">Total</th>
-                                    <th class="px-3 py-2 font-bold text-center text-violet-300 text-sm bg-violet-900/15 border-l-2 border-violet-500/40 border-b border-white/10" colspan="5" title="Jul 14 Funnel v2 — honest accounting from the evaluate-all pass (momentum ladder only; engine gates show 0)">🎯 Honest (v2)</th>
+                                    <th class="px-3 py-2 font-bold text-center text-violet-300 text-sm bg-violet-900/15 border-l-2 border-violet-500/40 border-b border-white/10" colspan="7" title="Jul 14 Funnel v2 — honest accounting from the evaluate-all pass (momentum ladder only; engine gates show 0)">🎯 Honest (v2)</th>
                                 </tr>
                                 <tr class="text-gray-500 text-[10px] border-b border-white/10">
                                     <th class="px-2 py-1 text-center text-emerald-300 bg-emerald-900/10 border-l-2 border-emerald-500/40">Real</th>
@@ -2703,14 +2703,16 @@
                                     <th class="px-2 py-1 text-center text-gray-400 bg-white/5">All</th>
                                     <th class="px-2 py-1 text-center text-violet-300 bg-white/5" title="This filter's T-All ÷ TOTAL T-All. Share of all blocks owned by this filter.">T%</th>
                                     <th class="px-2 py-1 text-center text-violet-200 bg-violet-900/10 border-l-2 border-violet-500/40" title="SOLE blocker LONG: the candidate would have TRADED but for this one filter — its true marginal cost in trades">SoleL</th>
+                                    <th class="px-2 py-1 text-center text-violet-300 bg-violet-900/10" title="This filter's SoleL ÷ TOTAL SoleL. Share of sole-blocked LONG candidates owned by this filter.">L%</th>
                                     <th class="px-2 py-1 text-center text-violet-200 bg-violet-900/10" title="SOLE blocker SHORT">SoleS</th>
+                                    <th class="px-2 py-1 text-center text-violet-300 bg-violet-900/10" title="This filter's SoleS ÷ TOTAL SoleS. Share of sole-blocked SHORT candidates owned by this filter.">S%</th>
                                     <th class="px-2 py-1 text-center text-violet-100 bg-violet-900/10 font-semibold" title="SOLE blocker total — rank filters by THIS, not by first-fail counts">SoleΣ</th>
                                     <th class="px-2 py-1 text-center text-sky-300 bg-violet-900/10" title="Blocked EPISODES (edge-triggered per pair+direction — one count per blocked stretch, not per scan tick)">Epis</th>
                                     <th class="px-2 py-1 text-center text-gray-400 bg-violet-900/10" title="All-fails: how often this filter failed regardless of evaluation order (redundancy indicator)">AllF</th>
                                 </tr>
                             </thead>
                             <tbody id="filter-blocks-body" class="divide-y divide-white/5">
-                                <tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>
+                                <tr><td colspan="20" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>
                             </tbody>
                             <tfoot id="filter-blocks-foot" class="border-t border-white/10"></tfoot>
                         </table>
@@ -7806,7 +7808,7 @@
             if (!body) return;
             const rows = (payload && payload.rows) || [];
             if (!rows.length) {
-                body.innerHTML = '<tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>';
+                body.innerHTML = '<tr><td colspan="20" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>';
                 if (foot) foot.innerHTML = '';
                 return;
             }
@@ -7827,12 +7829,18 @@
                           : 'text-gray-600';
                 return `<span class="${cls}">${v.toFixed(0)}%</span>`;
             };
+            // Sole share denominators (exclude ↳ variant rows — they duplicate the parent)
+            let _soleLDen = 0, _soleSDen = 0;
+            for (const r of rows) { if (!r.is_variant) { _soleLDen += r.sole_long || 0; _soleSDen += r.sole_short || 0; } }
             body.innerHTML = rows.map(r => {
                 const lRoom = r.long_room || 0, lFull = r.long_full || 0;
                 const sRoom = r.short_room || 0, sFull = r.short_full || 0;
                 const tRoom = r.total_room || 0, tFull = r.total_full || 0;
-                return `<tr class="hover:bg-white/5">
-                    <td class="px-3 py-2 font-mono text-xs text-gray-300">${r.filter}</td>
+                // ↳ variant rows: sub-rule breakdown of a composite filter (v2 columns
+                // only — legacy columns intentionally 0, they live on the parent row).
+                const nameCls = r.is_variant ? 'pl-6 text-violet-400/80 italic' : 'text-gray-300';
+                return `<tr class="hover:bg-white/5${r.is_variant ? ' opacity-80' : ''}">
+                    <td class="px-3 py-2 font-mono text-xs ${nameCls}">${r.filter}</td>
                     <td class="px-2 py-2 text-center bg-emerald-900/5 border-l-2 border-emerald-500/30">${cell(lRoom, 'text-emerald-300')}</td>
                     <td class="px-2 py-2 text-center bg-emerald-900/5">${cell(lFull, 'text-amber-300')}</td>
                     <td class="px-2 py-2 text-center bg-emerald-900/5">${cell(r.long || 0, 'text-emerald-400 font-medium')}</td>
@@ -7846,7 +7854,9 @@
                     <td class="px-2 py-2 text-center bg-white/5 font-bold text-white">${r.total}</td>
                     <td class="px-2 py-2 text-center bg-white/5">${pctCell(r.total || 0, totT)}</td>
                     <td class="px-2 py-2 text-center bg-violet-900/10 border-l-2 border-violet-500/30">${cell(r.sole_long || 0, 'text-violet-200 font-medium')}</td>
+                    <td class="px-2 py-2 text-center bg-violet-900/10">${pctCell(r.sole_long || 0, _soleLDen)}</td>
                     <td class="px-2 py-2 text-center bg-violet-900/10">${cell(r.sole_short || 0, 'text-violet-200 font-medium')}</td>
+                    <td class="px-2 py-2 text-center bg-violet-900/10">${pctCell(r.sole_short || 0, _soleSDen)}</td>
                     <td class="px-2 py-2 text-center bg-violet-900/10 font-bold">${cell(r.sole || 0, 'text-violet-100')}</td>
                     <td class="px-2 py-2 text-center bg-violet-900/10">${cell(r.episodes || 0, 'text-sky-300')}</td>
                     <td class="px-2 py-2 text-center bg-violet-900/10">${cell(r.allf || 0, 'text-gray-400')}</td>
@@ -7862,6 +7872,7 @@
                 let lRoomT = 0, lFullT = 0, sRoomT = 0, sFullT = 0;
                 let soleLT = 0, soleST = 0, episT = 0, allfT = 0;
                 for (const r of rows) {
+                    if (r.is_variant) continue;  // ↳ sub-rule rows duplicate the parent's v2 counts
                     lRoomT += r.long_room || 0; lFullT += r.long_full || 0;
                     sRoomT += r.short_room || 0; sFullT += r.short_full || 0;
                     soleLT += r.sole_long || 0; soleST += r.sole_short || 0;
@@ -7883,7 +7894,9 @@
                     <td class="px-2 py-2 text-center font-bold text-emerald-300 bg-white/10 border-l-2 border-white/30">${tRoom}</td>
                     <td class="px-2 py-2 text-center font-bold text-amber-300 bg-white/10">${tFull}
                     <td class="px-2 py-2 text-center font-bold text-violet-200 bg-violet-900/15 border-l-2 border-violet-500/40">${soleLT}</td>
+                    <td class="px-2 py-2 text-center bg-violet-900/15">${totalPctCell(soleLT)}</td>
                     <td class="px-2 py-2 text-center font-bold text-violet-200 bg-violet-900/15">${soleST}</td>
+                    <td class="px-2 py-2 text-center bg-violet-900/15">${totalPctCell(soleST)}</td>
                     <td class="px-2 py-2 text-center font-bold text-violet-100 bg-violet-900/15">${soleLT + soleST}</td>
                     <td class="px-2 py-2 text-center font-bold text-sky-300 bg-violet-900/15">${episT}</td>
                     <td class="px-2 py-2 text-center font-bold text-gray-400 bg-violet-900/15">${allfT}</td></td>
@@ -9222,15 +9235,17 @@
                 lines.push('## Filter Blocks (persisted — survives redeploys)\n');
                 lines.push('Real = filter blocked an entry the bot could have opened. Free = blocked at max_open_positions (no trade prevented).');
                 lines.push('L% / S% / T% = this filter\'s share of total LONG / SHORT / overall blocks.');
-                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14 (Total from earlier), so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc), then Total.');
+                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14 (Total from earlier), so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc), then Total. \u21b3 rows = sub-rule breakdown of a composite filter (v2 columns only; legacy Total stays on the parent).');
                 const _totL = _fbc.total_long || 0, _totS = _fbc.total_short || 0, _totT = _fbc.total || 0;
                 const _pct = (n, d) => d > 0 ? ((n / d) * 100).toFixed(0) + '%' : '-';
-                lines.push(`${'Filter'.padEnd(22)} ${'L-Real'.padEnd(7)} ${'L-Free'.padEnd(7)} ${'L-All'.padEnd(7)} ${'L%'.padEnd(6)} ${'S-Real'.padEnd(7)} ${'S-Free'.padEnd(7)} ${'S-All'.padEnd(7)} ${'S%'.padEnd(6)} ${'T-Real'.padEnd(7)} ${'T-Free'.padEnd(7)} ${'Total'.padEnd(7)} ${'T%'.padEnd(5)} ${'SoleL'.padEnd(6)} ${'SoleS'.padEnd(6)} ${'Sole'.padEnd(6)} ${'Epis'.padEnd(6)} ${'AllF'}`);
+                lines.push(`${'Filter'.padEnd(22)} ${'L-Real'.padEnd(7)} ${'L-Free'.padEnd(7)} ${'L-All'.padEnd(7)} ${'L%'.padEnd(6)} ${'S-Real'.padEnd(7)} ${'S-Free'.padEnd(7)} ${'S-All'.padEnd(7)} ${'S%'.padEnd(6)} ${'T-Real'.padEnd(7)} ${'T-Free'.padEnd(7)} ${'Total'.padEnd(7)} ${'T%'.padEnd(5)} ${'SoleL'.padEnd(6)} ${'L%'.padEnd(5)} ${'SoleS'.padEnd(6)} ${'S%'.padEnd(5)} ${'Sole'.padEnd(6)} ${'Epis'.padEnd(6)} ${'AllF'}`);
+                let _slDen = 0, _ssDen = 0;
+                for (const r of _fbc.rows) { if (!r.is_variant) { _slDen += r.sole_long||0; _ssDen += r.sole_short||0; } }
                 let _lR = 0, _lF = 0, _sR = 0, _sF = 0;
                 for (const r of _fbc.rows) {
                     const lr = r.long_room||0, lf = r.long_full||0, sr = r.short_room||0, sf = r.short_full||0, tr = r.total_room||0, tf = r.total_full||0;
                     _lR += lr; _lF += lf; _sR += sr; _sF += sf;
-                    lines.push(`${r.filter.padEnd(22)} ${String(lr).padEnd(7)} ${String(lf).padEnd(7)} ${String(r.long||0).padEnd(7)} ${_pct(r.long||0, _totL).padEnd(6)} ${String(sr).padEnd(7)} ${String(sf).padEnd(7)} ${String(r.short||0).padEnd(7)} ${_pct(r.short||0, _totS).padEnd(6)} ${String(tr).padEnd(7)} ${String(tf).padEnd(7)} ${String(r.total||0).padEnd(7)} ${_pct(r.total||0, _totT).padEnd(5)} ${String(r.sole_long||0).padEnd(6)} ${String(r.sole_short||0).padEnd(6)} ${String(r.sole||0).padEnd(6)} ${String(r.episodes||0).padEnd(6)} ${String(r.allf||0)}`);
+                    lines.push(`${r.filter.padEnd(22)} ${String(lr).padEnd(7)} ${String(lf).padEnd(7)} ${String(r.long||0).padEnd(7)} ${_pct(r.long||0, _totL).padEnd(6)} ${String(sr).padEnd(7)} ${String(sf).padEnd(7)} ${String(r.short||0).padEnd(7)} ${_pct(r.short||0, _totS).padEnd(6)} ${String(tr).padEnd(7)} ${String(tf).padEnd(7)} ${String(r.total||0).padEnd(7)} ${_pct(r.total||0, _totT).padEnd(5)} ${String(r.sole_long||0).padEnd(6)} ${(_slDen>0?((r.sole_long||0)/_slDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole_short||0).padEnd(6)} ${(_ssDen>0?((r.sole_short||0)/_ssDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole||0).padEnd(6)} ${String(r.episodes||0).padEnd(6)} ${String(r.allf||0)}`);
                 }
                 lines.push(`${'TOTAL'.padEnd(22)} ${String(_lR).padEnd(7)} ${String(_lF).padEnd(7)} ${String(_totL).padEnd(7)} ${(_totL>0?'100%':'-').padEnd(6)} ${String(_sR).padEnd(7)} ${String(_sF).padEnd(7)} ${String(_totS).padEnd(7)} ${(_totS>0?'100%':'-').padEnd(6)} ${String(_fbc.total_room||0).padEnd(7)} ${String(_fbc.total_full||0).padEnd(7)} ${String(_totT).padEnd(7)} ${_totT>0?'100%':'-'}`);
             }
@@ -11151,15 +11166,17 @@
                     lines.push('## Filter Blocks (persisted — survives redeploys)\n');
                     lines.push('Real = filter blocked an entry the bot could have opened. Free = blocked at max_open_positions (no trade prevented).');
                     lines.push('L% / S% / T% = this filter\'s share of total LONG / SHORT / overall blocks.');
-                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14 (Total from earlier), so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc), then Total.');
+                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14 (Total from earlier), so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc), then Total. \u21b3 rows = sub-rule breakdown of a composite filter (v2 columns only; legacy Total stays on the parent).');
                     const _totL2 = _fbc2.total_long || 0, _totS2 = _fbc2.total_short || 0, _totT2 = _fbc2.total || 0;
                     const _pct2 = (n, d) => d > 0 ? ((n / d) * 100).toFixed(0) + '%' : '-';
-                    lines.push(`${'Filter'.padEnd(22)} ${'L-Real'.padEnd(7)} ${'L-Free'.padEnd(7)} ${'L-All'.padEnd(7)} ${'L%'.padEnd(6)} ${'S-Real'.padEnd(7)} ${'S-Free'.padEnd(7)} ${'S-All'.padEnd(7)} ${'S%'.padEnd(6)} ${'T-Real'.padEnd(7)} ${'T-Free'.padEnd(7)} ${'Total'.padEnd(7)} ${'T%'.padEnd(5)} ${'SoleL'.padEnd(6)} ${'SoleS'.padEnd(6)} ${'Sole'.padEnd(6)} ${'Epis'.padEnd(6)} ${'AllF'}`);
+                    lines.push(`${'Filter'.padEnd(22)} ${'L-Real'.padEnd(7)} ${'L-Free'.padEnd(7)} ${'L-All'.padEnd(7)} ${'L%'.padEnd(6)} ${'S-Real'.padEnd(7)} ${'S-Free'.padEnd(7)} ${'S-All'.padEnd(7)} ${'S%'.padEnd(6)} ${'T-Real'.padEnd(7)} ${'T-Free'.padEnd(7)} ${'Total'.padEnd(7)} ${'T%'.padEnd(5)} ${'SoleL'.padEnd(6)} ${'L%'.padEnd(5)} ${'SoleS'.padEnd(6)} ${'S%'.padEnd(5)} ${'Sole'.padEnd(6)} ${'Epis'.padEnd(6)} ${'AllF'}`);
+                    let _slDen = 0, _ssDen = 0;
+                    for (const r of _fbc2.rows) { if (!r.is_variant) { _slDen += r.sole_long||0; _ssDen += r.sole_short||0; } }
                     let _lR2 = 0, _lF2 = 0, _sR2 = 0, _sF2 = 0;
                     for (const r of _fbc2.rows) {
                         const lr = r.long_room||0, lf = r.long_full||0, sr = r.short_room||0, sf = r.short_full||0, tr = r.total_room||0, tf = r.total_full||0;
                         _lR2 += lr; _lF2 += lf; _sR2 += sr; _sF2 += sf;
-                        lines.push(`${r.filter.padEnd(22)} ${String(lr).padEnd(7)} ${String(lf).padEnd(7)} ${String(r.long||0).padEnd(7)} ${_pct2(r.long||0, _totL2).padEnd(6)} ${String(sr).padEnd(7)} ${String(sf).padEnd(7)} ${String(r.short||0).padEnd(7)} ${_pct2(r.short||0, _totS2).padEnd(6)} ${String(tr).padEnd(7)} ${String(tf).padEnd(7)} ${String(r.total||0).padEnd(7)} ${_pct2(r.total||0, _totT2).padEnd(5)} ${String(r.sole_long||0).padEnd(6)} ${String(r.sole_short||0).padEnd(6)} ${String(r.sole||0).padEnd(6)} ${String(r.episodes||0).padEnd(6)} ${String(r.allf||0)}`);
+                        lines.push(`${r.filter.padEnd(22)} ${String(lr).padEnd(7)} ${String(lf).padEnd(7)} ${String(r.long||0).padEnd(7)} ${_pct2(r.long||0, _totL2).padEnd(6)} ${String(sr).padEnd(7)} ${String(sf).padEnd(7)} ${String(r.short||0).padEnd(7)} ${_pct2(r.short||0, _totS2).padEnd(6)} ${String(tr).padEnd(7)} ${String(tf).padEnd(7)} ${String(r.total||0).padEnd(7)} ${_pct2(r.total||0, _totT2).padEnd(5)} ${String(r.sole_long||0).padEnd(6)} ${(_slDen>0?((r.sole_long||0)/_slDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole_short||0).padEnd(6)} ${(_ssDen>0?((r.sole_short||0)/_ssDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole||0).padEnd(6)} ${String(r.episodes||0).padEnd(6)} ${String(r.allf||0)}`);
                     }
                     lines.push(`${'TOTAL'.padEnd(22)} ${String(_lR2).padEnd(7)} ${String(_lF2).padEnd(7)} ${String(_totL2).padEnd(7)} ${(_totL2>0?'100%':'-').padEnd(6)} ${String(_sR2).padEnd(7)} ${String(_sF2).padEnd(7)} ${String(_totS2).padEnd(7)} ${(_totS2>0?'100%':'-').padEnd(6)} ${String(_fbc2.total_room||0).padEnd(7)} ${String(_fbc2.total_full||0).padEnd(7)} ${String(_totT2).padEnd(7)} ${_totT2>0?'100%':'-'}`);
                 }

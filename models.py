@@ -605,13 +605,20 @@ PHANTOM_KEEP_SOURCES = (
     "LONG_UNMATCHED_ONLY",
     "MOMENTUM_SHORT_W1_REGIME",
     "PASS:LONG_UNMATCHED_ONLY",
-    "SPIKE_REV_BTC",
+    # Jul 14 — "SPIKE_REV_BTC" REMOVED from collection (operator: hide solved phantoms).
+    # 100% BTCUSDT (a no-trade pair) = verdict structurally unreachable. Rows preserved
+    # (NOT in PHANTOM_RETIRED_SOURCES); hidden from display via PHANTOM_HIDDEN_SOURCES.
     # Jul 5 — same-direction PASS phantoms of the two decision-gated flip-SHORT blockers:
     # BTC1H_SLOPE feeds the Jul-3 gate's locked revert (≥60% WR on N≥10 blocked → gate off;
     # the gate shipped WITHOUT this surface — the revert could never trigger, bug fix).
     # REGIME (bear≥80, #1 flip blocker at 290) measures what the bear-era filter forfeits in a bull.
     "PASS:FLIP_SHORT_BTC1H_SLOPE",
-    "PASS:FLIP_SHORT_REGIME",
+    # Jul 14 — "PASS:FLIP_SHORT_REGIME" REMOVED from collection (operator: hide solved
+    # phantoms). Question CLOSED Jul 14: pooled 130 phantoms · 54% WR · net-admissible
+    # 0/130 — relaxation refuted; new phantoms only re-ask a settled question. Rows
+    # preserved (NOT in PHANTOM_RETIRED_SOURCES) so the pooled-refutation evidence stays
+    # reproducible; hidden from display via PHANTOM_HIDDEN_SOURCES. One-way door noted:
+    # the REGIME pool stops growing, the CLOSED verdict is effectively permanent.
     # Jul 5 PM — revert surface of the LONG_BTC1H_DEADBAND ship (flat-1h DOA block,
     # N=9 discipline-override): re-open the band at >=60% WR on N>=10 blocked phantoms.
     "PASS:LONG_BTC1H_DEADBAND",
@@ -628,6 +635,18 @@ PHANTOM_KEEP_SOURCES = (
 # unknown/new source always survives a deploy, even if someone forgets every registry).
 # These are the pre-Jul-1 research sources whose rows were already purged once; the
 # list exists only to keep legacy DBs clean. NEVER add a live source here.
+# Jul 14 — RESOLVED sources hidden from the Phantom Flip Tracker table (UI + both text
+# exports) but NEVER deleted: rows stay in phantom_flips and ride the full CSV export,
+# so locked verdicts remain reproducible and future pooled re-analysis is possible.
+# Distinct from PHANTOM_RETIRED_SOURCES (explicit DELETE list) — do not confuse them.
+# PASS:LONG_UNMATCHED_ONLY keeps SEEDING (control arm of the active fade-short watch,
+# pooled analysis needs it) but its ✗-whipsaws verdict is stable → display noise.
+PHANTOM_HIDDEN_SOURCES = (
+    "PASS:FLIP_SHORT_REGIME",   # CLOSED: pooled 130 · 54% · net-admissible 0/130
+    "SPIKE_REV_BTC",            # 100% BTCUSDT (no-trade pair) — verdict unreachable
+    "PASS:LONG_UNMATCHED_ONLY", # stable ✗ whipsaws; still seeded as the fade's control arm
+)
+
 PHANTOM_RETIRED_SOURCES = (
     "FAN_RATIO_GATE", "ATR_GAP_LONG", "PAIR_TREND_FILTER", "PAIR_ADX_MAX",
     "BTC_ADX_BLOCK_SHORT", "PAIR_RSI_ADX_CROSS", "BTC_RSI_ADX_CROSS", "PAIR_RSI_OB",

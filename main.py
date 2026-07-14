@@ -9606,6 +9606,11 @@ async def _compute_phantom_flip_performance(db, is_paper):
             )
         )
         _all_flips = result.scalars().all()
+        # Jul 14 — hide RESOLVED sources from the tracker (display-only; rows stay in the
+        # DB and ride the full phantom CSV export). Registry: models.PHANTOM_HIDDEN_SOURCES.
+        from models import PHANTOM_HIDDEN_SOURCES as _pf_hidden
+        _all_flips = [f for f in _all_flips
+                      if (getattr(f, 'source_filter', '') or '') not in _pf_hidden]
         # Jun 17 — split off PASS:* passthrough-longs (un-block hunt) so they DON'T pollute the
         # fade tracker rows / "All phantom flips" aggregate / fan-curve / leftover test. They are
         # a different mechanism (same-direction, not a fade) and route ONLY into the Source×Regime

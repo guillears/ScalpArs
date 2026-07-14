@@ -2687,6 +2687,7 @@
                                     <th class="px-3 py-2 font-bold text-center text-emerald-400 text-sm bg-emerald-900/15 border-l-2 border-emerald-500/40 border-b border-white/10" colspan="4">LONG</th>
                                     <th class="px-3 py-2 font-bold text-center text-red-400 text-sm bg-red-900/15 border-l-2 border-red-500/40 border-b border-white/10" colspan="4">SHORT</th>
                                     <th class="px-3 py-2 font-bold text-center text-white text-sm bg-white/5 border-l-2 border-white/30 border-b border-white/10" colspan="4">Total</th>
+                                    <th class="px-3 py-2 font-bold text-center text-violet-300 text-sm bg-violet-900/15 border-l-2 border-violet-500/40 border-b border-white/10" colspan="5" title="Jul 14 Funnel v2 — honest accounting from the evaluate-all pass (momentum ladder only; engine gates show 0)">🎯 Honest (v2)</th>
                                 </tr>
                                 <tr class="text-gray-500 text-[10px] border-b border-white/10">
                                     <th class="px-2 py-1 text-center text-emerald-300 bg-emerald-900/10 border-l-2 border-emerald-500/40">Real</th>
@@ -2701,10 +2702,15 @@
                                     <th class="px-2 py-1 text-center text-amber-300 bg-white/5">Free</th>
                                     <th class="px-2 py-1 text-center text-gray-400 bg-white/5">All</th>
                                     <th class="px-2 py-1 text-center text-violet-300 bg-white/5" title="This filter's T-All ÷ TOTAL T-All. Share of all blocks owned by this filter.">T%</th>
+                                    <th class="px-2 py-1 text-center text-violet-200 bg-violet-900/10 border-l-2 border-violet-500/40" title="SOLE blocker LONG: the candidate would have TRADED but for this one filter — its true marginal cost in trades">SoleL</th>
+                                    <th class="px-2 py-1 text-center text-violet-200 bg-violet-900/10" title="SOLE blocker SHORT">SoleS</th>
+                                    <th class="px-2 py-1 text-center text-violet-100 bg-violet-900/10 font-semibold" title="SOLE blocker total — rank filters by THIS, not by first-fail counts">SoleΣ</th>
+                                    <th class="px-2 py-1 text-center text-sky-300 bg-violet-900/10" title="Blocked EPISODES (edge-triggered per pair+direction — one count per blocked stretch, not per scan tick)">Epis</th>
+                                    <th class="px-2 py-1 text-center text-gray-400 bg-violet-900/10" title="All-fails: how often this filter failed regardless of evaluation order (redundancy indicator)">AllF</th>
                                 </tr>
                             </thead>
                             <tbody id="filter-blocks-body" class="divide-y divide-white/5">
-                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>
+                                <tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>
                             </tbody>
                             <tfoot id="filter-blocks-foot" class="border-t border-white/10"></tfoot>
                         </table>
@@ -7792,7 +7798,7 @@
             if (!body) return;
             const rows = (payload && payload.rows) || [];
             if (!rows.length) {
-                body.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>';
+                body.innerHTML = '<tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>';
                 if (foot) foot.innerHTML = '';
                 return;
             }
@@ -7831,6 +7837,11 @@
                     <td class="px-2 py-2 text-center bg-white/5">${cell(tFull, 'text-amber-300 font-medium')}</td>
                     <td class="px-2 py-2 text-center bg-white/5 font-bold text-white">${r.total}</td>
                     <td class="px-2 py-2 text-center bg-white/5">${pctCell(r.total || 0, totT)}</td>
+                    <td class="px-2 py-2 text-center bg-violet-900/10 border-l-2 border-violet-500/30">${cell(r.sole_long || 0, 'text-violet-200 font-medium')}</td>
+                    <td class="px-2 py-2 text-center bg-violet-900/10">${cell(r.sole_short || 0, 'text-violet-200 font-medium')}</td>
+                    <td class="px-2 py-2 text-center bg-violet-900/10 font-bold">${cell(r.sole || 0, 'text-violet-100')}</td>
+                    <td class="px-2 py-2 text-center bg-violet-900/10">${cell(r.episodes || 0, 'text-sky-300')}</td>
+                    <td class="px-2 py-2 text-center bg-violet-900/10">${cell(r.allf || 0, 'text-gray-400')}</td>
                 </tr>`;
             }).join('');
             if (foot) {
@@ -7841,9 +7852,12 @@
                 const tFull = payload.total_full || 0;
                 // Per-direction room/full totals computed from rows
                 let lRoomT = 0, lFullT = 0, sRoomT = 0, sFullT = 0;
+                let soleLT = 0, soleST = 0, episT = 0, allfT = 0;
                 for (const r of rows) {
                     lRoomT += r.long_room || 0; lFullT += r.long_full || 0;
                     sRoomT += r.short_room || 0; sFullT += r.short_full || 0;
+                    soleLT += r.sole_long || 0; soleST += r.sole_short || 0;
+                    episT += r.episodes || 0; allfT += r.allf || 0;
                 }
                 const totalPctCell = (denom) => denom > 0
                     ? '<span class="text-violet-200 font-bold">100%</span>'
@@ -7859,7 +7873,12 @@
                     <td class="px-2 py-2 text-center font-bold text-red-400 bg-red-900/15">${tS}</td>
                     <td class="px-2 py-2 text-center bg-red-900/15">${totalPctCell(tS)}</td>
                     <td class="px-2 py-2 text-center font-bold text-emerald-300 bg-white/10 border-l-2 border-white/30">${tRoom}</td>
-                    <td class="px-2 py-2 text-center font-bold text-amber-300 bg-white/10">${tFull}</td>
+                    <td class="px-2 py-2 text-center font-bold text-amber-300 bg-white/10">${tFull}
+                    <td class="px-2 py-2 text-center font-bold text-violet-200 bg-violet-900/15 border-l-2 border-violet-500/40">${soleLT}</td>
+                    <td class="px-2 py-2 text-center font-bold text-violet-200 bg-violet-900/15">${soleST}</td>
+                    <td class="px-2 py-2 text-center font-bold text-violet-100 bg-violet-900/15">${soleLT + soleST}</td>
+                    <td class="px-2 py-2 text-center font-bold text-sky-300 bg-violet-900/15">${episT}</td>
+                    <td class="px-2 py-2 text-center font-bold text-gray-400 bg-violet-900/15">${allfT}</td></td>
                     <td class="px-2 py-2 text-center font-bold text-white bg-white/10">${tT}</td>
                     <td class="px-2 py-2 text-center bg-white/10">${totalPctCell(tT)}</td>
                 </tr>`;
@@ -9195,14 +9214,15 @@
                 lines.push('## Filter Blocks (since bot start, in-memory)\n');
                 lines.push('Real = filter blocked an entry the bot could have opened. Free = blocked at max_open_positions (no trade prevented).');
                 lines.push('L% / S% / T% = this filter\'s share of total LONG / SHORT / overall blocks.');
+                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0.');
                 const _totL = _fbc.total_long || 0, _totS = _fbc.total_short || 0, _totT = _fbc.total || 0;
                 const _pct = (n, d) => d > 0 ? ((n / d) * 100).toFixed(0) + '%' : '-';
-                lines.push(`${'Filter'.padEnd(22)} ${'L-Real'.padEnd(7)} ${'L-Free'.padEnd(7)} ${'L-All'.padEnd(7)} ${'L%'.padEnd(6)} ${'S-Real'.padEnd(7)} ${'S-Free'.padEnd(7)} ${'S-All'.padEnd(7)} ${'S%'.padEnd(6)} ${'T-Real'.padEnd(7)} ${'T-Free'.padEnd(7)} ${'Total'.padEnd(7)} ${'T%'}`);
+                lines.push(`${'Filter'.padEnd(22)} ${'L-Real'.padEnd(7)} ${'L-Free'.padEnd(7)} ${'L-All'.padEnd(7)} ${'L%'.padEnd(6)} ${'S-Real'.padEnd(7)} ${'S-Free'.padEnd(7)} ${'S-All'.padEnd(7)} ${'S%'.padEnd(6)} ${'T-Real'.padEnd(7)} ${'T-Free'.padEnd(7)} ${'Total'.padEnd(7)} ${'T%'.padEnd(5)} ${'SoleL'.padEnd(6)} ${'SoleS'.padEnd(6)} ${'Sole'.padEnd(6)} ${'Epis'.padEnd(6)} ${'AllF'}`);
                 let _lR = 0, _lF = 0, _sR = 0, _sF = 0;
                 for (const r of _fbc.rows) {
                     const lr = r.long_room||0, lf = r.long_full||0, sr = r.short_room||0, sf = r.short_full||0, tr = r.total_room||0, tf = r.total_full||0;
                     _lR += lr; _lF += lf; _sR += sr; _sF += sf;
-                    lines.push(`${r.filter.padEnd(22)} ${String(lr).padEnd(7)} ${String(lf).padEnd(7)} ${String(r.long||0).padEnd(7)} ${_pct(r.long||0, _totL).padEnd(6)} ${String(sr).padEnd(7)} ${String(sf).padEnd(7)} ${String(r.short||0).padEnd(7)} ${_pct(r.short||0, _totS).padEnd(6)} ${String(tr).padEnd(7)} ${String(tf).padEnd(7)} ${String(r.total||0).padEnd(7)} ${_pct(r.total||0, _totT)}`);
+                    lines.push(`${r.filter.padEnd(22)} ${String(lr).padEnd(7)} ${String(lf).padEnd(7)} ${String(r.long||0).padEnd(7)} ${_pct(r.long||0, _totL).padEnd(6)} ${String(sr).padEnd(7)} ${String(sf).padEnd(7)} ${String(r.short||0).padEnd(7)} ${_pct(r.short||0, _totS).padEnd(6)} ${String(tr).padEnd(7)} ${String(tf).padEnd(7)} ${String(r.total||0).padEnd(7)} ${_pct(r.total||0, _totT).padEnd(5)} ${String(r.sole_long||0).padEnd(6)} ${String(r.sole_short||0).padEnd(6)} ${String(r.sole||0).padEnd(6)} ${String(r.episodes||0).padEnd(6)} ${String(r.allf||0)}`);
                 }
                 lines.push(`${'TOTAL'.padEnd(22)} ${String(_lR).padEnd(7)} ${String(_lF).padEnd(7)} ${String(_totL).padEnd(7)} ${(_totL>0?'100%':'-').padEnd(6)} ${String(_sR).padEnd(7)} ${String(_sF).padEnd(7)} ${String(_totS).padEnd(7)} ${(_totS>0?'100%':'-').padEnd(6)} ${String(_fbc.total_room||0).padEnd(7)} ${String(_fbc.total_full||0).padEnd(7)} ${String(_totT).padEnd(7)} ${_totT>0?'100%':'-'}`);
             }
@@ -11123,14 +11143,15 @@
                     lines.push('## Filter Blocks (since bot start, in-memory)\n');
                     lines.push('Real = filter blocked an entry the bot could have opened. Free = blocked at max_open_positions (no trade prevented).');
                     lines.push('L% / S% / T% = this filter\'s share of total LONG / SHORT / overall blocks.');
+                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0.');
                     const _totL2 = _fbc2.total_long || 0, _totS2 = _fbc2.total_short || 0, _totT2 = _fbc2.total || 0;
                     const _pct2 = (n, d) => d > 0 ? ((n / d) * 100).toFixed(0) + '%' : '-';
-                    lines.push(`${'Filter'.padEnd(22)} ${'L-Real'.padEnd(7)} ${'L-Free'.padEnd(7)} ${'L-All'.padEnd(7)} ${'L%'.padEnd(6)} ${'S-Real'.padEnd(7)} ${'S-Free'.padEnd(7)} ${'S-All'.padEnd(7)} ${'S%'.padEnd(6)} ${'T-Real'.padEnd(7)} ${'T-Free'.padEnd(7)} ${'Total'.padEnd(7)} ${'T%'}`);
+                    lines.push(`${'Filter'.padEnd(22)} ${'L-Real'.padEnd(7)} ${'L-Free'.padEnd(7)} ${'L-All'.padEnd(7)} ${'L%'.padEnd(6)} ${'S-Real'.padEnd(7)} ${'S-Free'.padEnd(7)} ${'S-All'.padEnd(7)} ${'S%'.padEnd(6)} ${'T-Real'.padEnd(7)} ${'T-Free'.padEnd(7)} ${'Total'.padEnd(7)} ${'T%'.padEnd(5)} ${'SoleL'.padEnd(6)} ${'SoleS'.padEnd(6)} ${'Sole'.padEnd(6)} ${'Epis'.padEnd(6)} ${'AllF'}`);
                     let _lR2 = 0, _lF2 = 0, _sR2 = 0, _sF2 = 0;
                     for (const r of _fbc2.rows) {
                         const lr = r.long_room||0, lf = r.long_full||0, sr = r.short_room||0, sf = r.short_full||0, tr = r.total_room||0, tf = r.total_full||0;
                         _lR2 += lr; _lF2 += lf; _sR2 += sr; _sF2 += sf;
-                        lines.push(`${r.filter.padEnd(22)} ${String(lr).padEnd(7)} ${String(lf).padEnd(7)} ${String(r.long||0).padEnd(7)} ${_pct2(r.long||0, _totL2).padEnd(6)} ${String(sr).padEnd(7)} ${String(sf).padEnd(7)} ${String(r.short||0).padEnd(7)} ${_pct2(r.short||0, _totS2).padEnd(6)} ${String(tr).padEnd(7)} ${String(tf).padEnd(7)} ${String(r.total||0).padEnd(7)} ${_pct2(r.total||0, _totT2)}`);
+                        lines.push(`${r.filter.padEnd(22)} ${String(lr).padEnd(7)} ${String(lf).padEnd(7)} ${String(r.long||0).padEnd(7)} ${_pct2(r.long||0, _totL2).padEnd(6)} ${String(sr).padEnd(7)} ${String(sf).padEnd(7)} ${String(r.short||0).padEnd(7)} ${_pct2(r.short||0, _totS2).padEnd(6)} ${String(tr).padEnd(7)} ${String(tf).padEnd(7)} ${String(r.total||0).padEnd(7)} ${_pct2(r.total||0, _totT2).padEnd(5)} ${String(r.sole_long||0).padEnd(6)} ${String(r.sole_short||0).padEnd(6)} ${String(r.sole||0).padEnd(6)} ${String(r.episodes||0).padEnd(6)} ${String(r.allf||0)}`);
                     }
                     lines.push(`${'TOTAL'.padEnd(22)} ${String(_lR2).padEnd(7)} ${String(_lF2).padEnd(7)} ${String(_totL2).padEnd(7)} ${(_totL2>0?'100%':'-').padEnd(6)} ${String(_sR2).padEnd(7)} ${String(_sF2).padEnd(7)} ${String(_totS2).padEnd(7)} ${(_totS2>0?'100%':'-').padEnd(6)} ${String(_fbc2.total_room||0).padEnd(7)} ${String(_fbc2.total_full||0).padEnd(7)} ${String(_totT2).padEnd(7)} ${_totT2>0?'100%':'-'}`);
                 }

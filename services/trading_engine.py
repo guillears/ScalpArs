@@ -1222,6 +1222,16 @@ class TradingEngine:
         # Key: (filter_name, direction) → count. Reset on bot start.
         # See CLAUDE.md May 5 entry on BTC Trend Filter for context.
         self._filter_block_counts: Dict[tuple, int] = {}
+        # Jul 14 FUNNEL v2 (in-memory, not persisted): honest per-filter accounting from the
+        # momentum ladder's evaluate-all pass. all = filter failed (regardless of order);
+        # sole = filter was the ONLY fail (its true marginal cost in trades); episodes =
+        # edge-triggered per (pair, dir, filter) — counts blocked EPISODES, not scan ticks
+        # (kills the ~100x re-evaluation inflation). Keys: (filter, direction).
+        self._filter_all_counts: Dict[tuple, int] = {}
+        self._filter_sole_counts: Dict[tuple, int] = {}
+        self._filter_episode_counts: Dict[tuple, int] = {}
+        self._filter_blocked_state: Dict[tuple, int] = {}  # (pair, dir, filter) -> last scan seq
+        self._funnel_scan_seq: int = 0
         # Jun 18: REAL cap-cost — fully-qualified signals turned away by the position cap (open_position
         # max-pos gate), split normal vs flip. Distinct from the filter-blocks-while-full "blocked_at_max"
         # (which counts filter rejections during full scans, not trades the cap actually prevented). In-memory.
@@ -1632,6 +1642,38 @@ class TradingEngine:
         key = (filter_name, direction or "ANY", room_state)
         self._filter_block_counts[key] = self._filter_block_counts.get(key, 0) + 1
 
+    def _record_filter_multi(self, fails, direction: str, pair: str) -> None:
+        """Jul 14 FUNNEL v2: honest accounting for one momentum-ladder candidate evaluation.
+
+        fails = the FULL list of filters that failed (legacy elif order). Increments:
+        all-counts for every fail; sole-count when exactly ONE filter blocked (= remove it
+        and the trade happens — the true marginal cost); episode-counts edge-triggered per
+        (pair, dir, filter): +1 only when the pair NEWLY enters that blocked state (was not
+        blocked by it on the previous scan cycle). Same regime-aligned suppression as the
+        legacy counter so the surfaces stay comparable. In-memory only; resets on restart.
+        """
+        if not fails:
+            return
+        try:
+            _regime = _current_btc_regime
+            if _regime == "BEARISH" and direction == "LONG":
+                return
+            if _regime == "BULLISH" and direction == "SHORT":
+                return
+        except NameError:
+            pass
+        _seq = self._funnel_scan_seq
+        for f in fails:
+            k = (f, direction)
+            self._filter_all_counts[k] = self._filter_all_counts.get(k, 0) + 1
+            _sk = (pair, direction, f)
+            if self._filter_blocked_state.get(_sk) != _seq - 1:
+                self._filter_episode_counts[k] = self._filter_episode_counts.get(k, 0) + 1
+            self._filter_blocked_state[_sk] = _seq
+        if len(fails) == 1:
+            k = (fails[0], direction)
+            self._filter_sole_counts[k] = self._filter_sole_counts.get(k, 0) + 1
+
     def _get_filter_block_summary(self) -> Dict:
         """Return filter block counts grouped per-filter with direction + room split.
 
@@ -1664,6 +1706,14 @@ class TradingEngine:
             suffix = "_room" if room_state == "ROOM" else "_full"
             row[dir_key + suffix] += count
 
+        # Jul 14 FUNNEL v2: honest per-filter metrics from the ladder's evaluate-all pass.
+        # sole = candidate would have TRADED but for this one filter (true marginal cost);
+        # allf = filter failed regardless of order; episodes = edge-triggered blocked
+        # episodes per (pair, dir) — de-inflated of scan-tick re-evaluation. Only momentum-
+        # ladder filters populate these; engine-level gates show 0 (first-fail only).
+        def _dir_sum(store, fname):
+            return (store.get((fname, "LONG"), 0), store.get((fname, "SHORT"), 0))
+
         rows = []
         total_long = total_short = total_any = 0
         total_room = total_full = 0
@@ -1671,6 +1721,9 @@ class TradingEngine:
             t = splits["long"] + splits["short"] + splits["any"]
             t_room = splits["long_room"] + splits["short_room"] + splits["any_room"]
             t_full = splits["long_full"] + splits["short_full"] + splits["any_full"]
+            _sole_l, _sole_s = _dir_sum(self._filter_sole_counts, filter_name)
+            _all_l, _all_s = _dir_sum(self._filter_all_counts, filter_name)
+            _ep_l, _ep_s = _dir_sum(self._filter_episode_counts, filter_name)
             rows.append({
                 "filter": filter_name,
                 "long": splits["long"],
@@ -1685,6 +1738,9 @@ class TradingEngine:
                 "any_full": splits["any_full"],
                 "total_room": t_room,
                 "total_full": t_full,
+                "sole_long": _sole_l, "sole_short": _sole_s, "sole": _sole_l + _sole_s,
+                "allf_long": _all_l, "allf_short": _all_s, "allf": _all_l + _all_s,
+                "episodes_long": _ep_l, "episodes_short": _ep_s, "episodes": _ep_l + _ep_s,
             })
             total_long += splits["long"]
             total_short += splits["short"]
@@ -7293,6 +7349,8 @@ class TradingEngine:
         # get_top_futures_pairs BEFORE the top-N cut, so the returned list
         # is always "top N of eligible pairs" after both pre-filters apply.
         pairs_limit = config.trading_config.trading_pairs_limit
+        # Jul 14 FUNNEL v2: scan sequence for edge-triggered episode counting.
+        self._funnel_scan_seq = getattr(self, '_funnel_scan_seq', 0) + 1
         _new_listing_days = getattr(config.trading_config, 'new_listing_filter_days', 0)
         _alpha_filter = getattr(config.trading_config, 'alpha_subtype_filter_enabled', True)
         _coin_only = getattr(config.trading_config, 'coin_underlying_only', True)
@@ -7556,6 +7614,18 @@ class TradingEngine:
         # loop below so the recorder closure can stamp _last_pair_block_reason.
         _current_pair_holder = {'pair': None}
 
+        def _signal_multi_recorder(fails, direction: str):
+            # Jul 14 FUNNEL v2: full fail-list accounting (All-fails / SOLE / Episodes).
+            # Mirrors the legacy recorder's BTC-macro suppression so surfaces stay comparable.
+            if direction == "LONG" and _btc_macro_blocks_long is not None:
+                return
+            if direction == "SHORT" and _btc_macro_blocks_short is not None:
+                return
+            try:
+                self._record_filter_multi(fails, direction, _current_pair_holder.get('pair') or '?')
+            except Exception:
+                pass
+
         def _signal_block_recorder(filter_name: str, direction: str):
             # Suppress pair-level block recording for directions that BTC-level
             # filters would have vetoed anyway. This makes Filter Blocks counts
@@ -7702,6 +7772,7 @@ class TradingEngine:
                     high_20=indicators.get('high_20'),
                     low_20=indicators.get('low_20'),
                     block_recorder=_signal_block_recorder,
+                    multi_block_recorder=_signal_multi_recorder,
                 )
 
                 if signal in ["LONG", "SHORT"]:

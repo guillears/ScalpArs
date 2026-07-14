@@ -278,6 +278,7 @@ def get_signal(
     high_20: float = None,
     low_20: float = None,
     block_recorder=None,
+    multi_block_recorder=None,
 ) -> Tuple[str, Optional[str]]:
     """
     Generate trading signal based on indicators
@@ -308,6 +309,15 @@ def get_signal(
                 block_recorder(filter_name, direction)
             except Exception:
                 pass  # Never let observability break signal generation
+
+    def _record_multi(fails, direction: str):
+        """Jul 14 FUNNEL v2: report the FULL fail list for this candidate (All-fails +
+        SOLE-blocker accounting in the engine). Observability only — never raises."""
+        if multi_block_recorder is not None and fails:
+            try:
+                multi_block_recorder(list(fails), direction)
+            except Exception:
+                pass
 
     if any(v is None for v in [ema5, ema8, ema13, ema20, rsi, adx]):
         logger.debug(f"Signal check failed - None values: ema5={ema5}, ema8={ema8}, ema13={ema13}, ema20={ema20}, rsi={rsi}, adx={adx}")
@@ -449,166 +459,136 @@ def get_signal(
 
     if ema8 and ema8 > 0:
         if ema5 > ema8:
+            # Jul 14 FUNNEL v2: evaluate ALL entry conditions (not stop-at-first-fail) so the
+            # Filter Blocks table can report All-fails and SOLE-blocker counts (the true
+            # marginal cost of each filter — the first-fail-only table overstated the top
+            # blockers ~1000x: waiving #1+#2 via the probes yielded 3 trades while ~2,600
+            # blocks migrated downstream). DECISION IS UNCHANGED: the fails list is built in
+            # the EXACT legacy elif order, only fails[0] feeds the legacy counter, and a
+            # candidate signals iff fails is empty — byte-identical behavior + counts.
+            _l_fails = []
             if not regime_allows("LONG"):
-                logger.debug(f"[MOMENTUM] LONG skipped: regime={regime_for_long}, ema20={ema20}, ema20_prev3={ema20_prev3}")
-                _record("PAIR_REGIME", "LONG")
-            elif ema20_filter_long and (price is None or price <= ema20):
-                logger.debug(f"[MOMENTUM] LONG skipped: EMA20 filter active, price={price}, ema20={ema20}")
-                _record("PAIR_EMA20_FILTER", "LONG")
-            elif ema20_slope_long and (ema20_prev3 is None or ema20 <= ema20_prev3):
-                logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev3={ema20_prev3}")
-                _record("PAIR_EMA20_SLOPE", "LONG")
-            elif ema20_slope_min_long > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_long:
-                logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope {abs((ema20 - ema20_prev3) / ema20_prev3 * 100):.4f}% < min {ema20_slope_min_long}%")
-                _record("PAIR_EMA20_SLOPE_MIN", "LONG")
-            elif rp_max_long < 100.0 and range_position is not None and range_position > rp_max_long:
-                logger.debug(f"[MOMENTUM] LONG skipped: Range Position {range_position:.2f}% > max {rp_max_long}% (chasing top of range)")
-                _record("PAIR_RANGE_POSITION_MAX", "LONG")
-            elif min_adx_delta_long > 0 and adx_delta is not None and adx_delta < min_adx_delta_long:
-                logger.debug(f"[MOMENTUM] LONG skipped: ADX delta {adx_delta:.4f} < min {min_adx_delta_long}")
-                _record("PAIR_ADX_DELTA_MIN", "LONG")
-            elif entry_dist_ema13_min_long > 0 and pair_ext_pct is not None and pair_ext_pct < entry_dist_ema13_min_long:
-                logger.debug(f"[MOMENTUM] LONG skipped: pair_ext {pair_ext_pct:.4f}% < min {entry_dist_ema13_min_long}% (bottom-of-pullback NP zone)")
-                _record("PAIR_EXT_MIN", "LONG")
-            elif rsi_momentum_enabled and rsi is not None and rsi_prev2 is not None and rsi < rsi_prev2:
-                logger.debug(f"[MOMENTUM] LONG skipped: RSI falling ({rsi_prev2:.1f} -> {rsi:.1f}), momentum against LONG (2 candles)")
-                _record("PAIR_RSI_MOMENTUM", "LONG")
-            elif long_rsi_min > 0 and rsi is not None and rsi < long_rsi_min:
-                logger.debug(f"[MOMENTUM] LONG skipped: RSI {rsi:.1f} < min {long_rsi_min}")
-                _record("PAIR_RSI_RANGE", "LONG")
+                _l_fails.append("PAIR_REGIME")
+            if ema20_filter_long and (price is None or price <= ema20):
+                _l_fails.append("PAIR_EMA20_FILTER")
+            if ema20_slope_long and (ema20_prev3 is None or ema20 <= ema20_prev3):
+                _l_fails.append("PAIR_EMA20_SLOPE")
+            if ema20_slope_min_long > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_long:
+                _l_fails.append("PAIR_EMA20_SLOPE_MIN")
+            if rp_max_long < 100.0 and range_position is not None and range_position > rp_max_long:
+                _l_fails.append("PAIR_RANGE_POSITION_MAX")
+            if min_adx_delta_long > 0 and adx_delta is not None and adx_delta < min_adx_delta_long:
+                _l_fails.append("PAIR_ADX_DELTA_MIN")
+            if entry_dist_ema13_min_long > 0 and pair_ext_pct is not None and pair_ext_pct < entry_dist_ema13_min_long:
+                _l_fails.append("PAIR_EXT_MIN")
+            if rsi_momentum_enabled and rsi is not None and rsi_prev2 is not None and rsi < rsi_prev2:
+                _l_fails.append("PAIR_RSI_MOMENTUM")
+            if long_rsi_min > 0 and rsi is not None and rsi < long_rsi_min:
+                _l_fails.append("PAIR_RSI_RANGE")
             elif long_rsi_max < 100 and rsi is not None and rsi > long_rsi_max:
-                logger.debug(f"[MOMENTUM] LONG skipped: RSI {rsi:.1f} > max {long_rsi_max}")
-                _record("PAIR_RSI_RANGE", "LONG")
-            elif adx_max_long < 100 and adx > adx_max_long:
-                logger.debug(f"[MOMENTUM] LONG skipped: ADX {adx:.1f} > max_long {adx_max_long}")
-                _record("PAIR_ADX_MAX", "LONG")
+                _l_fails.append("PAIR_RSI_RANGE")
+            if adx_max_long < 100 and adx > adx_max_long:
+                _l_fails.append("PAIR_ADX_MAX")
+            # Gap family — pure math, now computed unconditionally (was nested in the else).
+            ema_gap_pct = ((ema5 - ema8) / ema8) * 100
+            # May 8: gap-expanding check uses EMA5-EMA13 (see original comment: EMA8 lags EMA5
+            # by only 3 periods so the 5-8 gap micro-oscillates; EMA13 stays monotonic in trend).
+            exp_gap_pct = ((ema5 - ema13) / ema13) * 100 if ema5 and ema13 and ema13 > 0 else None
+            exp_prev_gap_pct = ((ema5_prev1 - ema13_prev1) / ema13_prev1) * 100 if ema5_prev1 and ema13_prev1 and ema13_prev1 > 0 else None
+            exp_prev2_gap_pct = ((ema5_prev2 - ema13_prev2) / ema13_prev2) * 100 if ema5_prev2 and ema13_prev2 and ema13_prev2 > 0 else None
+            ema_gap_max = getattr(th, 'ema_gap_5_8_max_long', 0) or getattr(th, 'ema_gap_5_8_max', 0)
+            long_gap_min = getattr(th, 'ema_gap_threshold_long', th.ema_gap_threshold)
+            gap_threshold_met = ema_gap_pct >= long_gap_min
+            # Jul 13 GAPFLAT PROBE: gap-not-expanding LONGs fall through when gap_probe_enabled
+            # (engine opens as 1x GAPFLAT_PROBE). Jul 13 GAPMIN PROBE: [floor, threshold) band
+            # falls through when gapmin_probe_enabled; COHORT PURITY: flat+small stays blocked.
+            _gap_flat_long = ((_gap_prev1_active and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct)
+                              or (gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct))
+            _gap_probe_on = getattr(th, 'gap_probe_enabled', False)
+            _gapmin_probe_band_long = (getattr(th, 'gapmin_probe_enabled', False)
+                                       and not _gap_flat_long
+                                       and ema_gap_pct >= float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)
+                                       and not gap_threshold_met)
+            if _gap_flat_long and not _gap_probe_on:
+                _l_fails.append("PAIR_EMA_GAP_NOT_EXPANDING")
+            if ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
+                _l_fails.append("PAIR_EMA_GAP_MAX")
+            if not gap_threshold_met and not _gapmin_probe_band_long:
+                _l_fails.append("PAIR_EMA_GAP_MIN")
+            if not _passes_rsi_adx_filter("LONG", rsi, adx, th):
+                _l_fails.append("PAIR_RSI_ADX_CROSS")
+            if _l_fails:
+                logger.debug(f"[MOMENTUM] LONG skipped: {_l_fails[0]} (all fails: {_l_fails})")
+                _record(_l_fails[0], "LONG")
+                _record_multi(_l_fails, "LONG")
             else:
-                ema_gap_pct = ((ema5 - ema8) / ema8) * 100
-                # May 8: gap-expanding check switched from EMA5-EMA8 to EMA5-EMA13
-                # for less restrictiveness in trending markets. EMA8 lags EMA5 by
-                # only 3 periods, so the 5-8 gap micro-oscillates on every minor
-                # pullback even within a healthy trend, blocking legitimate
-                # trend-continuation entries. EMA13 lags by 8 periods — gap stays
-                # monotonically expanding for the full duration of a sustained
-                # trend, only compressing when momentum genuinely fades.
-                exp_gap_pct = ((ema5 - ema13) / ema13) * 100 if ema5 and ema13 and ema13 > 0 else None
-                exp_prev_gap_pct = ((ema5_prev1 - ema13_prev1) / ema13_prev1) * 100 if ema5_prev1 and ema13_prev1 and ema13_prev1 > 0 else None
-                exp_prev2_gap_pct = ((ema5_prev2 - ema13_prev2) / ema13_prev2) * 100 if ema5_prev2 and ema13_prev2 and ema13_prev2 > 0 else None
-                # May 2: per-direction EMA5-EMA8 max with auto-fallback to legacy single field.
-                ema_gap_max = getattr(th, 'ema_gap_5_8_max_long', 0) or getattr(th, 'ema_gap_5_8_max', 0)
-                long_gap_min = getattr(th, 'ema_gap_threshold_long', th.ema_gap_threshold)
-                gap_threshold_met = ema_gap_pct >= long_gap_min
-                # Jul 13 GAPFLAT PROBE: when gap_probe_enabled, a gap-not-expanding LONG is NOT
-                # blocked here — it falls through the rest of the ladder and, if it would have
-                # signalled, the engine opens it as a 1x-effective-leverage GAPFLAT_PROBE (tagged,
-                # capped, excluded from headline metrics). Probe off => byte-identical to before.
-                _gap_flat_long = ((_gap_prev1_active and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct)
-                                  or (gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct))
-                _gap_probe_on = getattr(th, 'gap_probe_enabled', False)
-                # Jul 13 GAPMIN PROBE: sub-threshold-but-ACCELERATING LONGs in [floor, threshold)
-                # fall through as 1x GAPMIN_PROBE candidates ("young trend caught early"). COHORT
-                # PURITY: a candidate that is ALSO gap-flat stays blocked (two simultaneous
-                # relaxations = uninterpretable). Probe off / below floor => blocked as before.
-                _gapmin_probe_band_long = (getattr(th, 'gapmin_probe_enabled', False)
-                                           and not _gap_flat_long
-                                           and ema_gap_pct >= float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)
-                                           and not gap_threshold_met)
-                if _gap_flat_long and not _gap_probe_on:
-                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-13 gap not expanding ({exp_gap_pct:.4f}% vs prev1 {exp_prev_gap_pct} / prev2 {exp_prev2_gap_pct})")
-                    _record("PAIR_EMA_GAP_NOT_EXPANDING", "LONG")
-                elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
-                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
-                    _record("PAIR_EMA_GAP_MAX", "LONG")
-                elif not gap_threshold_met and not _gapmin_probe_band_long:
-                    _record("PAIR_EMA_GAP_MIN", "LONG")
-                elif not _passes_rsi_adx_filter("LONG", rsi, adx, th):
-                    logger.debug(f"[MOMENTUM] LONG skipped: RSI x ADX cross-filter (RSI={rsi:.1f}, ADX={adx:.1f})")
-                    _record("PAIR_RSI_ADX_CROSS", "LONG")
-                else:
-                    if adx > adx_vs_long:
-                        if check_gap_and_mode("LONG", "VERY_STRONG"):
-                            logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime_for_long}, ema20_slope={'up' if ema20_prev3 and ema20 > ema20_prev3 else 'n/a'}")
-                            return "LONG", "VERY_STRONG"
-                    if adx > adx_s_long and adx <= adx_vs_long:
-                        if check_gap_and_mode("LONG", "STRONG_BUY"):
-                            logger.info(f"[MOMENTUM] LONG STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime_for_long}, ema20_slope={'up' if ema20_prev3 and ema20 > ema20_prev3 else 'n/a'}")
-                            return "LONG", "STRONG_BUY"
+                if adx > adx_vs_long:
+                    if check_gap_and_mode("LONG", "VERY_STRONG"):
+                        logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime_for_long}, ema20_slope={'up' if ema20_prev3 and ema20 > ema20_prev3 else 'n/a'}")
+                        return "LONG", "VERY_STRONG"
+                if adx > adx_s_long and adx <= adx_vs_long:
+                    if check_gap_and_mode("LONG", "STRONG_BUY"):
+                        logger.info(f"[MOMENTUM] LONG STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime_for_long}, ema20_slope={'up' if ema20_prev3 and ema20 > ema20_prev3 else 'n/a'}")
+                        return "LONG", "STRONG_BUY"
         elif ema5 < ema8 and ema5 > 0:
+            # Jul 14 FUNNEL v2 — SHORT mirror (see LONG comment above).
+            _s_fails = []
             if not regime_allows("SHORT"):
-                logger.debug(f"[MOMENTUM] SHORT skipped: regime={regime_for_short}, ema20={ema20}, ema20_prev3={ema20_prev3}")
-                _record("PAIR_REGIME", "SHORT")
-            elif ema20_filter_short and (price is None or price >= ema20):
-                logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 filter active, price={price}, ema20={ema20}")
-                _record("PAIR_EMA20_FILTER", "SHORT")
-            elif ema20_slope_short and (ema20_prev3 is None or ema20 >= ema20_prev3):
-                logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev3={ema20_prev3}")
-                _record("PAIR_EMA20_SLOPE", "SHORT")
-            elif ema20_slope_min_short > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_short:
-                logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope {abs((ema20 - ema20_prev3) / ema20_prev3 * 100):.4f}% < min {ema20_slope_min_short}%")
-                _record("PAIR_EMA20_SLOPE_MIN", "SHORT")
-            elif rp_min_short > 0 and range_position is not None and range_position < rp_min_short:
-                logger.debug(f"[MOMENTUM] SHORT skipped: Range Position {range_position:.2f}% < min {rp_min_short}% (pile-on at bottom of range)")
-                _record("PAIR_RANGE_POSITION_MIN", "SHORT")
-            elif min_adx_delta_short > 0 and adx_delta is not None and adx_delta < min_adx_delta_short:
-                logger.debug(f"[MOMENTUM] SHORT skipped: ADX delta {adx_delta:.4f} < min {min_adx_delta_short}")
-                _record("PAIR_ADX_DELTA_MIN", "SHORT")
-            elif entry_dist_ema13_min_short > 0 and pair_ext_pct is not None and abs(pair_ext_pct) < entry_dist_ema13_min_short:
-                logger.debug(f"[MOMENTUM] SHORT skipped: |pair_ext| {abs(pair_ext_pct):.4f}% < min {entry_dist_ema13_min_short}% (bottom-of-pullback NP zone, SHORT mirror)")
-                _record("PAIR_EXT_MIN", "SHORT")
-            elif rsi_momentum_enabled and rsi is not None and rsi_prev2 is not None and rsi > rsi_prev2:
-                logger.debug(f"[MOMENTUM] SHORT skipped: RSI rising ({rsi_prev2:.1f} -> {rsi:.1f}), momentum against SHORT (2 candles)")
-                _record("PAIR_RSI_MOMENTUM", "SHORT")
-            elif short_rsi_max < 100 and rsi is not None and rsi > short_rsi_max:
-                logger.debug(f"[MOMENTUM] SHORT skipped: RSI {rsi:.1f} > max {short_rsi_max}")
-                _record("PAIR_RSI_RANGE", "SHORT")
+                _s_fails.append("PAIR_REGIME")
+            if ema20_filter_short and (price is None or price >= ema20):
+                _s_fails.append("PAIR_EMA20_FILTER")
+            if ema20_slope_short and (ema20_prev3 is None or ema20 >= ema20_prev3):
+                _s_fails.append("PAIR_EMA20_SLOPE")
+            if ema20_slope_min_short > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_short:
+                _s_fails.append("PAIR_EMA20_SLOPE_MIN")
+            if rp_min_short > 0 and range_position is not None and range_position < rp_min_short:
+                _s_fails.append("PAIR_RANGE_POSITION_MIN")
+            if min_adx_delta_short > 0 and adx_delta is not None and adx_delta < min_adx_delta_short:
+                _s_fails.append("PAIR_ADX_DELTA_MIN")
+            if entry_dist_ema13_min_short > 0 and pair_ext_pct is not None and abs(pair_ext_pct) < entry_dist_ema13_min_short:
+                _s_fails.append("PAIR_EXT_MIN")
+            if rsi_momentum_enabled and rsi is not None and rsi_prev2 is not None and rsi > rsi_prev2:
+                _s_fails.append("PAIR_RSI_MOMENTUM")
+            if short_rsi_max < 100 and rsi is not None and rsi > short_rsi_max:
+                _s_fails.append("PAIR_RSI_RANGE")
             elif short_rsi_min > 0 and rsi is not None and rsi < short_rsi_min:
-                logger.debug(f"[MOMENTUM] SHORT skipped: RSI {rsi:.1f} < min {short_rsi_min} (oversold)")
-                _record("PAIR_RSI_RANGE", "SHORT")
-            elif adx_max < 100 and adx > adx_max:
-                logger.debug(f"[MOMENTUM] SHORT skipped: ADX {adx:.1f} > max {adx_max}")
-                _record("PAIR_ADX_MAX", "SHORT")
+                _s_fails.append("PAIR_RSI_RANGE")
+            if adx_max < 100 and adx > adx_max:
+                _s_fails.append("PAIR_ADX_MAX")
+            # Gap family (SHORT formulas) — computed unconditionally.
+            ema_gap_pct = ((ema8 - ema5) / ema5) * 100
+            exp_gap_pct = ((ema13 - ema5) / ema5) * 100 if ema5 and ema13 and ema5 > 0 else None
+            exp_prev_gap_pct = ((ema13_prev1 - ema5_prev1) / ema5_prev1) * 100 if ema5_prev1 and ema13_prev1 and ema5_prev1 > 0 else None
+            exp_prev2_gap_pct = ((ema13_prev2 - ema5_prev2) / ema5_prev2) * 100 if ema5_prev2 and ema13_prev2 and ema5_prev2 > 0 else None
+            ema_gap_max = getattr(th, 'ema_gap_5_8_max_short', 0) or getattr(th, 'ema_gap_5_8_max', 0)
+            short_gap_min = getattr(th, 'ema_gap_threshold_short', th.ema_gap_threshold)
+            gap_threshold_met = ema_gap_pct >= short_gap_min
+            # Jul 13 GAPFLAT (SHORT) + GAPMIN (SHORT) probes — purity: flat+small stays blocked.
+            _gap_flat_short = ((_gap_prev1_active and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct)
+                               or (gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct))
+            if _gap_flat_short and not getattr(th, 'gap_probe_enabled', False):
+                _s_fails.append("PAIR_EMA_GAP_NOT_EXPANDING")
+            if ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
+                _s_fails.append("PAIR_EMA_GAP_MAX")
+            if not gap_threshold_met and not (getattr(th, 'gapmin_probe_enabled', False)
+                                              and not _gap_flat_short
+                                              and ema_gap_pct >= float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)):
+                _s_fails.append("PAIR_EMA_GAP_MIN")
+            if not _passes_rsi_adx_filter("SHORT", rsi, adx, th):
+                _s_fails.append("PAIR_RSI_ADX_CROSS")
+            if _s_fails:
+                logger.debug(f"[MOMENTUM] SHORT skipped: {_s_fails[0]} (all fails: {_s_fails})")
+                _record(_s_fails[0], "SHORT")
+                _record_multi(_s_fails, "SHORT")
             else:
-                ema_gap_pct = ((ema8 - ema5) / ema5) * 100
-                # May 8: gap-expanding check switched from EMA5-EMA8 to EMA5-EMA13
-                # for less restrictiveness in trending markets (see LONG comment).
-                exp_gap_pct = ((ema13 - ema5) / ema5) * 100 if ema5 and ema13 and ema5 > 0 else None
-                exp_prev_gap_pct = ((ema13_prev1 - ema5_prev1) / ema5_prev1) * 100 if ema5_prev1 and ema13_prev1 and ema5_prev1 > 0 else None
-                exp_prev2_gap_pct = ((ema13_prev2 - ema5_prev2) / ema5_prev2) * 100 if ema5_prev2 and ema13_prev2 and ema5_prev2 > 0 else None
-                # May 2: per-direction EMA5-EMA8 max with auto-fallback to legacy single field.
-                ema_gap_max = getattr(th, 'ema_gap_5_8_max_short', 0) or getattr(th, 'ema_gap_5_8_max', 0)
-                short_gap_min = getattr(th, 'ema_gap_threshold_short', th.ema_gap_threshold)
-                gap_threshold_met = ema_gap_pct >= short_gap_min
-                # Jul 13 late PM GAPFLAT PROBE — SHORT side (operator: "same as the gap, for shorts
-                # too"): a gap-not-expanding SHORT falls through the ladder when gap_probe_enabled
-                # and, if it signals, opens as a 1x GAPFLAT_PROBE. Probe off => identical to before.
-                _gap_flat_short = ((_gap_prev1_active and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct)
-                                   or (gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct))
-                if _gap_flat_short and not getattr(th, 'gap_probe_enabled', False):
-                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-13 gap not expanding ({exp_gap_pct:.4f}% vs prev1 {exp_prev_gap_pct} / prev2 {exp_prev2_gap_pct})")
-                    _record("PAIR_EMA_GAP_NOT_EXPANDING", "SHORT")
-                elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
-                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
-                    _record("PAIR_EMA_GAP_MAX", "SHORT")
-                # Jul 13 PM GAPMIN PROBE (SHORT side): sub-threshold but ACCELERATING shorts in
-                # [floor, threshold) fall through as 1x GAPMIN_PROBE candidates. COHORT PURITY:
-                # now that the SHORT GAPFLAT probe exists, a flat+small candidate stays BLOCKED
-                # here (two simultaneous relaxations = uninterpretable), mirroring the LONG side.
-                elif not gap_threshold_met and not (getattr(th, 'gapmin_probe_enabled', False)
-                                                    and not _gap_flat_short
-                                                    and ema_gap_pct >= float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)):
-                    _record("PAIR_EMA_GAP_MIN", "SHORT")
-                elif not _passes_rsi_adx_filter("SHORT", rsi, adx, th):
-                    logger.debug(f"[MOMENTUM] SHORT skipped: RSI x ADX cross-filter (RSI={rsi:.1f}, ADX={adx:.1f})")
-                    _record("PAIR_RSI_ADX_CROSS", "SHORT")
-                else:
-                    if adx > th.adx_very_strong:
-                        if check_gap_and_mode("SHORT", "VERY_STRONG"):
-                            logger.info(f"[MOMENTUM] SHORT VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime_for_short}, ema20_slope={'down' if ema20_prev3 and ema20 < ema20_prev3 else 'n/a'}")
-                            return "SHORT", "VERY_STRONG"
-                    if adx > th.adx_strong and adx <= th.adx_very_strong:
-                        if check_gap_and_mode("SHORT", "STRONG_BUY"):
-                            logger.info(f"[MOMENTUM] SHORT STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime_for_short}, ema20_slope={'down' if ema20_prev3 and ema20 < ema20_prev3 else 'n/a'}")
-                            return "SHORT", "STRONG_BUY"
+                if adx > th.adx_very_strong:
+                    if check_gap_and_mode("SHORT", "VERY_STRONG"):
+                        logger.info(f"[MOMENTUM] SHORT VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime_for_short}, ema20_slope={'down' if ema20_prev3 and ema20 < ema20_prev3 else 'n/a'}")
+                        return "SHORT", "VERY_STRONG"
+                if adx > th.adx_strong and adx <= th.adx_very_strong:
+                    if check_gap_and_mode("SHORT", "STRONG_BUY"):
+                        logger.info(f"[MOMENTUM] SHORT STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime_for_short}, ema20_slope={'down' if ema20_prev3 and ema20 < ema20_prev3 else 'n/a'}")
+                        return "SHORT", "STRONG_BUY"
     
     # Check for bullish EMA stack (LONG conditions - looking for oversold)
     if ema5 > ema8 > ema13 > ema20:

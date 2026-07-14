@@ -10662,6 +10662,7 @@ def _compute_gap_probe_cohort(orders):
     N>=30 & WR>=60% & avg>=+0.15% => ★ relaxation candidate; N>=30 & (WR<=45% or avg<0)
     => ✗ filter vindicated (switch probe off)."""
     exp_rows, probe_rows, gapmin_rows, exp_s_rows, gapmin_s_rows, gapflat_s_rows = [], [], [], [], [], []
+    slopegate_rows, slopegate_s_rows = [], []  # Jul 14: BTC 5m flat dead-band probe
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
@@ -10675,6 +10676,8 @@ def _compute_gap_probe_cohort(orders):
                 probe_rows.append(o)
             elif _src == 'GAPMIN_PROBE':
                 gapmin_rows.append(o)
+            elif _src == 'SLOPEGATE_PROBE':
+                slopegate_rows.append(o)
             else:
                 exp_rows.append(o)
         elif d == "SHORT":
@@ -10682,11 +10685,13 @@ def _compute_gap_probe_cohort(orders):
                 gapmin_s_rows.append(o)
             elif _src == 'GAPFLAT_PROBE':
                 gapflat_s_rows.append(o)
+            elif _src == 'SLOPEGATE_PROBE':
+                slopegate_s_rows.append(o)
             else:
                 exp_s_rows.append(o)
     # Fair A/B control: window BOTH control sides to the probe-live period (same tape,
     # same filter stack) — all-history controls mix dead configs (locked re-sim rule).
-    _all_probes = probe_rows + gapmin_rows + gapmin_s_rows + gapflat_s_rows
+    _all_probes = probe_rows + gapmin_rows + gapmin_s_rows + gapflat_s_rows + slopegate_rows + slopegate_s_rows
     if _all_probes:
         _p0 = min(getattr(o, 'opened_at', None) for o in _all_probes if getattr(o, 'opened_at', None))
         if _p0:
@@ -10700,8 +10705,10 @@ def _compute_gap_probe_cohort(orders):
     rows_out = []
     for cohort, rs in (("EXPANDING · LONG", exp_rows), ("NON-EXPANDING (probe) · LONG", probe_rows),
                        ("SMALL-GAP (probe) · LONG", gapmin_rows),
+                       ("SLOPEGATE (probe) · LONG", slopegate_rows),
                        ("EXPANDING · SHORT", exp_s_rows), ("NON-EXPANDING (probe) · SHORT", gapflat_s_rows),
-                       ("SMALL-GAP (probe) · SHORT", gapmin_s_rows)):
+                       ("SMALL-GAP (probe) · SHORT", gapmin_s_rows),
+                       ("SLOPEGATE (probe) · SHORT", slopegate_s_rows)):
         n = len(rs)
         if n == 0:
             if not cohort.startswith("EXPANDING"):

@@ -4196,6 +4196,10 @@ class TradingEngine:
         # Jul 13 PM: GAPMIN probe — sibling cohort: EMA5-8 gap in [floor, threshold), accelerating
         # but young. Same 1x sizing + guards, tagged GAPMIN_PROBE. Mutually exclusive with gap_probe.
         gapmin_probe: bool = False,
+        # Jul 14 SLOPEGATE probe: signal-found candidate killed ONLY by the BTC 5m slope
+        # dead-band (macro_trend_flat_threshold_*, April N=4 calibration; measured 133
+        # kills/43 opportunities per day). Opens 1x tagged SLOPEGATE_PROBE.
+        slopegate_probe: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -4301,6 +4305,31 @@ class TradingEngine:
                 logger.info(f"[GAPMIN_PROBE] {pair} {direction} skipped: {_gm_reason}")
                 try:
                     self._record_filter_block("PAIR_EMA_GAP_MIN", direction)
+                except Exception:
+                    pass
+                return None
+
+        # Jul 14: SLOPEGATE probe caps — mirror of the GAPFLAT/GAPMIN blocks (same slot
+        # guard, own concurrency cap shared across BOTH directions, shared 0.5x/0.05x
+        # sizing). Cap rejection records BTC_SLOPE_GATE = probe-off semantics.
+        if slopegate_probe and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
+            _th_sg = config.trading_config.thresholds
+            _sg_reason = None
+            if not getattr(_th_sg, 'slopegate_probe_enabled', False):
+                _sg_reason = "probe disabled"
+            elif _open_count_now > max(0, _inv_cfg.max_open_positions - 2):
+                _sg_reason = f"book too full ({_open_count_now} open, last 2 slots reserved)"
+            else:
+                _sg_open_q = await db.execute(
+                    select(func.count(Order.id)).where(and_(
+                        Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
+                        Order.cell_multiplier_source == "SLOPEGATE_PROBE")))
+                if (_sg_open_q.scalar() or 0) >= int(getattr(_th_sg, 'slopegate_probe_max_open', 3) or 3):
+                    _sg_reason = "max concurrent probes open"
+            if _sg_reason:
+                logger.info(f"[SLOPEGATE_PROBE] {pair} {direction} skipped: {_sg_reason}")
+                try:
+                    self._record_filter_block("BTC_SLOPE_GATE", direction)
                 except Exception:
                     pass
                 return None
@@ -4743,12 +4772,12 @@ class TradingEngine:
         # 2x'd by the UNMATCHED cell); own cell_src row (rides Multiplier Cell Performance + CSV
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
-        if ((gap_probe or gapmin_probe) and direction in ("LONG", "SHORT")
+        if ((gap_probe or gapmin_probe or slopegate_probe) and direction in ("LONG", "SHORT")
                 and not flip_source and not bull_long and not bounce_long):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
-            cell_src = "GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE"
+            cell_src = "GAPFLAT_PROBE" if gap_probe else ("GAPMIN_PROBE" if gapmin_probe else "SLOPEGATE_PROBE")
             _mult_target = "both"
             logger.info(f"[{cell_src}] {pair} {direction}: opening probe at inv={cell_mult}x lev={cell_lev_mult}x (~1x effective)")
 
@@ -8763,24 +8792,41 @@ class TradingEngine:
             # For LONG: require BTC slope >= +flat_threshold_long (BTC rising meaningfully)
             # For SHORT: require BTC slope <= -flat_threshold_short (BTC falling meaningfully)
             # When the threshold is 0, the check is a no-op (allows any slope including flat/opposite).
+            # Jul 14 SLOPEGATE PROBE: this gate was measured killing ~133 signal-found
+            # candidates/day (43 distinct opportunities) while its calibration rests on an
+            # April N=4 sample. With slopegate_probe_enabled, a candidate hit ONLY by this
+            # gate stays alive (tagged) and must still pass every OTHER engine gate below;
+            # survivors open as 1x SLOPEGATE_PROBE in open_position. The gate still blocks
+            # normally when the probe is off. Legacy counter freezes while probing (probe
+            # fires ARE the signal — same convention as GAPFLAT/PAIR_EMA_GAP_NOT_EXPANDING).
+            _slopegate_probe_hit = False
             if signal in ["LONG", "SHORT"] and btc_ema20_slope_pct is not None:
                 _th = config.trading_config.thresholds
+                _sg_probe_on = getattr(_th, 'slopegate_probe_enabled', False)
                 if signal == "LONG":
                     _flat_th = getattr(_th, 'macro_trend_flat_threshold_long',
                                        getattr(_th, 'macro_trend_flat_threshold', 0))
                     if _flat_th > 0 and btc_ema20_slope_pct < _flat_th:
-                        logger.info(f"[BTC_SLOPE_GATE] {pair}: LONG blocked — BTC slope {btc_ema20_slope_pct:+.4f}% < min +{_flat_th}%")
-                        self._record_filter_block("BTC_SLOPE_GATE", "LONG", had_room=_had_room)
-                        self._last_pair_block_reason[pair] = "BTC_SLOPE_GATE"
-                        signal = "NO_TRADE"
+                        if _sg_probe_on:
+                            _slopegate_probe_hit = True
+                            logger.info(f"[SLOPEGATE_PROBE] {pair}: LONG candidate (BTC slope {btc_ema20_slope_pct:+.4f}% < +{_flat_th}%) — probing instead of blocking")
+                        else:
+                            logger.info(f"[BTC_SLOPE_GATE] {pair}: LONG blocked — BTC slope {btc_ema20_slope_pct:+.4f}% < min +{_flat_th}%")
+                            self._record_filter_block("BTC_SLOPE_GATE", "LONG", had_room=_had_room)
+                            self._last_pair_block_reason[pair] = "BTC_SLOPE_GATE"
+                            signal = "NO_TRADE"
                 else:  # SHORT
                     _flat_th = getattr(_th, 'macro_trend_flat_threshold_short',
                                        getattr(_th, 'macro_trend_flat_threshold', 0))
                     if _flat_th > 0 and btc_ema20_slope_pct > -_flat_th:
-                        logger.info(f"[BTC_SLOPE_GATE] {pair}: SHORT blocked — BTC slope {btc_ema20_slope_pct:+.4f}% > max -{_flat_th}%")
-                        self._record_filter_block("BTC_SLOPE_GATE", "SHORT", had_room=_had_room)
-                        self._last_pair_block_reason[pair] = "BTC_SLOPE_GATE"
-                        signal = "NO_TRADE"
+                        if _sg_probe_on:
+                            _slopegate_probe_hit = True
+                            logger.info(f"[SLOPEGATE_PROBE] {pair}: SHORT candidate (BTC slope {btc_ema20_slope_pct:+.4f}% > -{_flat_th}%) — probing instead of blocking")
+                        else:
+                            logger.info(f"[BTC_SLOPE_GATE] {pair}: SHORT blocked — BTC slope {btc_ema20_slope_pct:+.4f}% > max -{_flat_th}%")
+                            self._record_filter_block("BTC_SLOPE_GATE", "SHORT", had_room=_had_room)
+                            self._last_pair_block_reason[pair] = "BTC_SLOPE_GATE"
+                            signal = "NO_TRADE"
 
             # May 2: BTC EMA20 slope MAX guard. Block over-extended BTC trends
             # (late-cycle entries when BTC has already run too far). 0 = disabled.
@@ -9266,6 +9312,9 @@ class TradingEngine:
                         and getattr(config.trading_config.thresholds, 'gapmin_probe_enabled', False)
                         and gap_min_band(indicators, signal, config.trading_config.thresholds)
                     ),
+                    # Jul 14 SLOPEGATE probe: candidate was hit by the BTC 5m flat dead-band
+                    # (Phase-1 fall-through above) and survived every OTHER engine gate.
+                    slopegate_probe=bool(_slopegate_probe_hit),
                 )
 
                 if order:

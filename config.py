@@ -261,6 +261,18 @@ class SignalThresholds(BaseModel):
     # avg>=+0.15% = relaxation discussion; WR<=45% or avg<0 = filter vindicated, off.
     gapmin_probe_enabled: bool = False
     gapmin_probe_floor: float = 0.01     # band floor (Jul 14 operator: 0.02→0.01 — Funnel v2 [<floor] variant led the GAP_MIN sole split 57v32 ~half-day in; early open of the leading door, probe-scope risk only, [0.01-0.02) sliced as its own sub-band at verdict. Jul 13 PM: 0.04→0.02 "test it entirely"); below floor = blocked as always
+    # Jul 14 — SLOPEGATE PROBE (operator-directed same-night ship). The BTC 5m flat
+    # dead-band (macro_trend_flat_threshold_long/short = 0.02/0.03, Apr-14 calibration
+    # on N=4) was measured killing ~133 signal-found candidates (~43 distinct
+    # opportunities) per day in live logs — the true #1 marginal blocker, invisible to
+    # Funnel v2 (engine gate). With the probe on, a candidate hit ONLY by this gate
+    # (and passing every other engine gate) opens as a 1x-effective SLOPEGATE_PROBE
+    # (shares gap_probe_invest_mult/lev_mult sizing; own max_open; last-2-slots guard).
+    # 🔒 Gates per side at N>=30 (>=5 dates — flow is ~40/day so dates accrue fast):
+    # WR>=60% & avg>=+0.15% -> dead-band relaxation discussion; WR<=45% or avg<0 ->
+    # gate vindicated (its FIRST evidence-grade validation since April), probe off.
+    slopegate_probe_enabled: bool = True
+    slopegate_probe_max_open: int = 3    # concurrent SLOPEGATE probes (shared across both directions)
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

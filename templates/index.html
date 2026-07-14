@@ -2678,7 +2678,7 @@
                 <!-- Filter Blocks (May 5) — pre-entry filter rejection counters -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Filter Blocks <span class="text-xs text-gray-500 font-normal">(persisted — survives redeploys; sorted by Sole; ↳ rows = sub-rule breakdown)</span></h3>
-                    <p class="text-xs text-gray-500 mb-3">Counts of pre-entry filter rejections, broken down by filter and direction. <span class="text-emerald-300 font-medium">"Real"</span> = block fired when bot had room to open a new position (filter actually prevented a trade). (Free/at-cap blocks removed from the display Jul 14 — always 0 with the current cap behavior; still tracked in the payload.) All counters (Total + Funnel v2) are flushed to DB on every trade / BNB check and restored on startup.</p>
+                    <p class="text-xs text-gray-500 mb-3">Counts of pre-entry filter rejections, broken down by filter and direction. <span class="text-emerald-300 font-medium">"Real"</span> = decisive block (had room + regime-aligned counting). <span class="text-gray-300 font-medium">"All"</span> = TRUE count incl. countertrend blocks that the May-7 regime suppression used to censor (Jul 15 fix — a Real≪All gap flags a filter that fires mostly countertrend). Funnel v2 columns count every regime since Jul 15. New engine counters Jul 15: PAIR_HELD (one-position-per-pair skips), COOLDOWN (5-min re-entry), NO_BALANCE (balance-starved). All counters (Total + Funnel v2) are flushed to DB on every trade / BNB check and restored on startup.</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
@@ -9238,7 +9238,7 @@
             if (_fbc && _fbc.rows && _fbc.rows.length) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Filter Blocks (persisted — survives redeploys)\n');
-                lines.push('Real = filter blocked an entry the bot could have opened. (Free/at-cap columns removed Jul 14 — always 0 with the current cap behavior.)');
+                lines.push('Real = decisive block (had room + regime-aligned). All = TRUE count incl. previously-censored countertrend blocks (Jul 15 fix) — Real<<All flags a countertrend-firing filter. New Jul 15 engine counters: PAIR_HELD / COOLDOWN / NO_BALANCE.');
                 lines.push('L% / S% / T% = this filter\'s share of total LONG / SHORT / overall blocks.');
                 lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14 (Total from earlier), so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc), then Total. \u21b3 rows = sub-rule breakdown of a composite filter (v2 columns only; legacy Total stays on the parent).');
                 const _totL = _fbc.total_long || 0, _totS = _fbc.total_short || 0, _totT = _fbc.total || 0;
@@ -11170,7 +11170,7 @@
                 if (_fbc2 && _fbc2.rows && _fbc2.rows.length) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Filter Blocks (persisted — survives redeploys)\n');
-                    lines.push('Real = filter blocked an entry the bot could have opened. (Free/at-cap columns removed Jul 14 — always 0 with the current cap behavior.)');
+                    lines.push('Real = decisive block (had room + regime-aligned). All = TRUE count incl. previously-censored countertrend blocks (Jul 15 fix) — Real<<All flags a countertrend-firing filter. New Jul 15 engine counters: PAIR_HELD / COOLDOWN / NO_BALANCE.');
                     lines.push('L% / S% / T% = this filter\'s share of total LONG / SHORT / overall blocks.');
                 lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14 (Total from earlier), so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc), then Total. \u21b3 rows = sub-rule breakdown of a composite filter (v2 columns only; legacy Total stays on the parent).');
                     const _totL2 = _fbc2.total_long || 0, _totS2 = _fbc2.total_short || 0, _totT2 = _fbc2.total || 0;

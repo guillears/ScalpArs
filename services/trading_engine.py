@@ -1666,16 +1666,20 @@ class TradingEngine:
         """
         if not filter_name:
             return
-        # Regime-aligned gating: skip countertrend blocks during clear regimes
+        # Jul 15 VISIBILITY FIX (audit finding S1): countertrend blocks during clear
+        # regimes were silently DROPPED here since May 7 — which let gates whose firing
+        # condition correlates with the suppressing regime (e.g. shorts-blockers in a
+        # bull) block heavily while their counters barely moved (the BTC_SLOPE_GATE
+        # anatomy: +5 counted vs 112 actual kills/day). They are now recorded under
+        # room_state="SUPP": the "Real" column stays DECISIVE (regime-aligned, historical
+        # continuity), the "All" column becomes the TRUE count (Real + suppressed).
+        room_state = "ROOM" if had_room else "FULL"
         try:
             _regime = _current_btc_regime
-            if _regime == "BEARISH" and direction == "LONG":
-                return
-            if _regime == "BULLISH" and direction == "SHORT":
-                return
+            if (_regime == "BEARISH" and direction == "LONG") or                (_regime == "BULLISH" and direction == "SHORT"):
+                room_state = "SUPP"
         except NameError:
-            pass  # Regime global not yet set (cold start) — fail open, record both
-        room_state = "ROOM" if had_room else "FULL"
+            pass  # Regime global not yet set (cold start) — record as decisive
         key = (filter_name, direction or "ANY", room_state)
         self._filter_block_counts[key] = self._filter_block_counts.get(key, 0) + 1
 
@@ -1691,12 +1695,13 @@ class TradingEngine:
         """
         if not fails:
             return
+        # Jul 15 VISIBILITY FIX: the regime-aligned suppression is REMOVED from the
+        # Funnel-v2 counters — a suppressed sole block is still a real lost trade (the
+        # regime "suppression" was cosmetic noise-reduction, not an actual trade veto),
+        # and censoring it made countertrend filters look free. The honest table now
+        # counts every direction in every regime.
         try:
-            _regime = _current_btc_regime
-            if _regime == "BEARISH" and direction == "LONG":
-                return
-            if _regime == "BULLISH" and direction == "SHORT":
-                return
+            _regime = _current_btc_regime  # kept for parity of the try structure
         except NameError:
             pass
         _seq = self._funnel_scan_seq
@@ -1740,6 +1745,9 @@ class TradingEngine:
                 "long_full": 0, "short_full": 0, "any_full": 0,
             })
             row[dir_key] += count
+            # Jul 15: room_state "SUPP" (regime-suppressed, see _record_filter_block)
+            # deliberately folds into the hidden _full bucket — per-direction totals
+            # ("All" columns) include it, the displayed "Real" column stays decisive.
             suffix = "_room" if room_state == "ROOM" else "_full"
             row[dir_key + suffix] += count
 
@@ -4347,6 +4355,12 @@ class TradingEngine:
         existing = result.scalar_one_or_none()
         if existing:
             logger.info(f"[SKIP] {pair}: Already have open position")
+            try:
+                # Jul 15 visibility fix (audit B7): the one-position-per-pair rule was a
+                # zero-counter black hole — every repeat signal on a held pair vanished.
+                self._record_filter_block("PAIR_HELD", direction)
+            except Exception:
+                pass
             return None  # Already have position
         
         # Check cooldown - don't re-enter same pair too quickly after ANY close (win or loss)
@@ -4370,6 +4384,11 @@ class TradingEngine:
                 time_since_close = (datetime.utcnow() - recent_close.closed_at).total_seconds() / 60
                 outcome = "loss" if recent_close.pnl < 0 else "win"
                 logger.info(f"[COOLDOWN] {pair}: Recent {outcome} {time_since_close:.1f} mins ago (pnl={recent_close.pnl:.2f}), waiting {cooldown_minutes} mins")
+                try:
+                    # Jul 15 visibility fix (audit B8): re-entry suppression, previously uncounted.
+                    self._record_filter_block("COOLDOWN", direction)
+                except Exception:
+                    pass
                 return None
         
         # Calculate position size
@@ -4865,6 +4884,13 @@ class TradingEngine:
         logger.info(f"[TRADE] {pair}: {direction} {confidence} - Investment: ${investment:.2f}, Leverage: {leverage}x")
         
         if investment <= 0:
+            # Jul 15 visibility fix (audit B15): a balance-starved bot previously opened
+            # nothing SILENTLY — indistinguishable from strict filters in every report.
+            logger.warning(f"[NO_BALANCE] {pair} {direction}: computed investment ${investment:.2f} <= 0 — balance exhausted, entry dropped")
+            try:
+                self._record_filter_block("NO_BALANCE", direction)
+            except Exception:
+                pass
             return None
         
         # Calculate notional and quantity

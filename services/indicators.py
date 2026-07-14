@@ -347,17 +347,21 @@ def get_signal(
     if price and price > 0:
         gap = ((ema5 - ema20) / price) * 100
     
-    def check_gap_and_mode(direction: str, confidence: str) -> bool:
-        """Check if gap requirement and trade mode are satisfied"""
+    def check_gap_and_mode_reason(direction: str, confidence: str):
+        """Jul 14 (deep-review F1): reason-returning form of the gap/mode gate. Returns
+        None when the entry is allowed, else a Funnel-v2 fail tag naming the exact
+        rejection. Before this, these were the ONLY entry filters with zero funnel
+        surface — GAPMIN-band candidates were dying here invisibly (small EMA5-8 gap
+        ⇒ small EMA5-20 distance ⇒ killed by the 5-20 min with no counter)."""
         conf = conf_levels.get(confidence)
         if not conf or not conf.enabled:
-            return False
+            return "CONF_MODE"
         
         # Check trade mode
         if direction == "LONG" and conf.trade_mode not in ["long", "both"]:
-            return False
+            return "CONF_MODE"
         if direction == "SHORT" and conf.trade_mode not in ["short", "both"]:
-            return False
+            return "CONF_MODE"
         
         # Check EMA5-EMA20 gap requirement (from global thresholds, separated by direction)
         gap_520_enabled = getattr(th, 'ema_gap_5_20_enabled', True)
@@ -367,20 +371,20 @@ def get_signal(
                 gap_max = getattr(th, 'ema_gap_5_20_max_long', 0.8)
                 if gap < gap_min:
                     logger.debug(f"LONG {confidence} rejected: gap5-20 {gap:.4f}% < min {gap_min}%")
-                    return False
+                    return "PAIR_EMA_GAP_5_20[<min]"
                 if gap > gap_max:
                     logger.debug(f"LONG {confidence} rejected: gap5-20 {gap:.4f}% > max {gap_max}% (overextended)")
-                    return False
+                    return "PAIR_EMA_GAP_5_20[>max]"
             if direction == "SHORT":
                 gap_min = getattr(th, 'ema_gap_5_20_min_short', 0.15)
                 gap_max = getattr(th, 'ema_gap_5_20_max_short', 0.8)
                 abs_gap = abs(gap)
                 if abs_gap < gap_min:
                     logger.debug(f"SHORT {confidence} rejected: |gap5-20| {abs_gap:.4f}% < min {gap_min}%")
-                    return False
+                    return "PAIR_EMA_GAP_5_20[<min]"
                 if abs_gap > gap_max:
                     logger.debug(f"SHORT {confidence} rejected: |gap5-20| {abs_gap:.4f}% > max {gap_max}% (overextended)")
-                    return False
+                    return "PAIR_EMA_GAP_5_20[>max]"
         
         # EMA5 Stretch filter (May 9: moved from per-confidence-level to top-level per-direction
         # min/max in thresholds). Tests |price - ema5| / price * 100.
@@ -396,14 +400,18 @@ def get_signal(
                 stretch_max = getattr(th, 'ema5_stretch_max_short', 0)
             if stretch_min and stretch_min > 0 and stretch_pct < stretch_min:
                 logger.debug(f"{direction} {confidence} rejected: EMA5 stretch {stretch_pct:.4f}% < min {stretch_min}%")
-                return False
+                return "EMA5_STRETCH[<min]"
             if stretch_max and stretch_max > 0 and stretch_pct > stretch_max:
                 # Jul 10: info-level (was debug) — the 0.35 LONG ceiling's revert gate needs a
                 # visible prod surface (blocked >0.35 longs ≥60% WR on N≥8 → revert to 0).
                 logger.info(f"[EMA5_STRETCH_MAX] {direction} {confidence} rejected: EMA5 stretch {stretch_pct:.4f}% > max {stretch_max}%")
-                return False
+                return "EMA5_STRETCH[>max]"
 
-        return True
+        return None
+
+    def check_gap_and_mode(direction: str, confidence: str) -> bool:
+        """Check if gap requirement and trade mode are satisfied (boolean wrapper)."""
+        return check_gap_and_mode_reason(direction, confidence) is None
     
     # --- Macro trend regime (EMA20 slope) ---
     macro_filter_enabled = getattr(th, 'macro_trend_filter_enabled', True)
@@ -547,14 +555,25 @@ def get_signal(
                 _record(_l_fails[0].split('[', 1)[0], "LONG")
                 _record_multi(_l_fails, "LONG")
             else:
+                # Jul 14 (deep-review F1): the candidate passed the ENTIRE ladder — any
+                # rejection below was previously invisible (no counter, no log). Record it
+                # as a sole fail so the funnel finally sees these last-mile gates.
+                _gm_fail_l = None
                 if adx > adx_vs_long:
-                    if check_gap_and_mode("LONG", "VERY_STRONG"):
+                    _gm_fail_l = check_gap_and_mode_reason("LONG", "VERY_STRONG")
+                    if _gm_fail_l is None:
                         logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime_for_long}, ema20_slope={'up' if ema20_prev3 and ema20 > ema20_prev3 else 'n/a'}")
                         return "LONG", "VERY_STRONG"
                 if adx > adx_s_long and adx <= adx_vs_long:
-                    if check_gap_and_mode("LONG", "STRONG_BUY"):
+                    _gm_fail_l = check_gap_and_mode_reason("LONG", "STRONG_BUY")
+                    if _gm_fail_l is None:
                         logger.info(f"[MOMENTUM] LONG STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime_for_long}, ema20_slope={'up' if ema20_prev3 and ema20 > ema20_prev3 else 'n/a'}")
                         return "LONG", "STRONG_BUY"
+                _last_gate_l = _gm_fail_l if adx > adx_s_long else "PAIR_ADX_CONFIDENCE"
+                if _last_gate_l:
+                    logger.debug(f"[MOMENTUM] LONG skipped at last-mile gate: {_last_gate_l}")
+                    _record(_last_gate_l.split('[', 1)[0], "LONG")
+                    _record_multi([_last_gate_l], "LONG")
         elif ema5 < ema8 and ema5 > 0:
             # Jul 14 FUNNEL v2 — SHORT mirror (see LONG comment above).
             _s_fails = []
@@ -619,14 +638,23 @@ def get_signal(
                 _record(_s_fails[0].split('[', 1)[0], "SHORT")
                 _record_multi(_s_fails, "SHORT")
             else:
+                # Jul 14 (deep-review F1): mirror of the LONG last-mile gate recording.
+                _gm_fail_s = None
                 if adx > th.adx_very_strong:
-                    if check_gap_and_mode("SHORT", "VERY_STRONG"):
+                    _gm_fail_s = check_gap_and_mode_reason("SHORT", "VERY_STRONG")
+                    if _gm_fail_s is None:
                         logger.info(f"[MOMENTUM] SHORT VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime_for_short}, ema20_slope={'down' if ema20_prev3 and ema20 < ema20_prev3 else 'n/a'}")
                         return "SHORT", "VERY_STRONG"
                 if adx > th.adx_strong and adx <= th.adx_very_strong:
-                    if check_gap_and_mode("SHORT", "STRONG_BUY"):
+                    _gm_fail_s = check_gap_and_mode_reason("SHORT", "STRONG_BUY")
+                    if _gm_fail_s is None:
                         logger.info(f"[MOMENTUM] SHORT STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime_for_short}, ema20_slope={'down' if ema20_prev3 and ema20 < ema20_prev3 else 'n/a'}")
                         return "SHORT", "STRONG_BUY"
+                _last_gate_s = _gm_fail_s if adx > th.adx_strong else "PAIR_ADX_CONFIDENCE"
+                if _last_gate_s:
+                    logger.debug(f"[MOMENTUM] SHORT skipped at last-mile gate: {_last_gate_s}")
+                    _record(_last_gate_s.split('[', 1)[0], "SHORT")
+                    _record_multi([_last_gate_s], "SHORT")
     
     # Check for bullish EMA stack (LONG conditions - looking for oversold)
     if ema5 > ema8 > ema13 > ema20:

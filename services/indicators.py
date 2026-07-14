@@ -524,7 +524,19 @@ def get_signal(
             if ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                 _l_fails.append("PAIR_EMA_GAP_MAX")
             if not gap_threshold_met and not _gapmin_probe_band_long:
-                _l_fails.append("PAIR_EMA_GAP_MIN")
+                # Jul 14 sub-rule breakdown: with the GAPMIN probe on, a small-gap
+                # candidate is only rejected below the floor or via cohort purity
+                # (flat+small). Tag which branch for the Funnel v2 ↳ rows.
+                if getattr(th, 'gapmin_probe_enabled', False):
+                    _floor_l = float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)
+                    if ema_gap_pct is not None and ema_gap_pct < _floor_l:
+                        _l_fails.append("PAIR_EMA_GAP_MIN[<floor]")
+                    elif _gap_flat_long:
+                        _l_fails.append("PAIR_EMA_GAP_MIN[flat]")
+                    else:
+                        _l_fails.append("PAIR_EMA_GAP_MIN")
+                else:
+                    _l_fails.append("PAIR_EMA_GAP_MIN")
             _rx_rule_l = _rsi_adx_block_rule("LONG", rsi, adx, th)
             if _rx_rule_l:
                 # Sub-rule suffix feeds the Funnel v2 breakdown; legacy counter
@@ -586,7 +598,17 @@ def get_signal(
             if not gap_threshold_met and not (getattr(th, 'gapmin_probe_enabled', False)
                                               and not _gap_flat_short
                                               and ema_gap_pct >= float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)):
-                _s_fails.append("PAIR_EMA_GAP_MIN")
+                # Jul 14 sub-rule breakdown (mirror of the LONG branch): purity vs floor.
+                if getattr(th, 'gapmin_probe_enabled', False):
+                    _floor_s = float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)
+                    if ema_gap_pct is not None and ema_gap_pct < _floor_s:
+                        _s_fails.append("PAIR_EMA_GAP_MIN[<floor]")
+                    elif _gap_flat_short:
+                        _s_fails.append("PAIR_EMA_GAP_MIN[flat]")
+                    else:
+                        _s_fails.append("PAIR_EMA_GAP_MIN")
+                else:
+                    _s_fails.append("PAIR_EMA_GAP_MIN")
             _rx_rule_s = _rsi_adx_block_rule("SHORT", rsi, adx, th)
             if _rx_rule_s:
                 # Sub-rule suffix feeds the Funnel v2 breakdown; legacy counter

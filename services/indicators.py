@@ -494,9 +494,9 @@ def get_signal(
             if rsi_momentum_enabled and rsi is not None and rsi_prev2 is not None and rsi < rsi_prev2:
                 _l_fails.append("PAIR_RSI_MOMENTUM")
             if long_rsi_min > 0 and rsi is not None and rsi < long_rsi_min:
-                _l_fails.append("PAIR_RSI_RANGE")
+                _l_fails.append(f"PAIR_RSI_RANGE[<{long_rsi_min:g}]")  # too cold — weak momentum
             elif long_rsi_max < 100 and rsi is not None and rsi > long_rsi_max:
-                _l_fails.append("PAIR_RSI_RANGE")
+                _l_fails.append(f"PAIR_RSI_RANGE[>{long_rsi_max:g}]")  # too hot — overbought chase
             if adx_max_long < 100 and adx > adx_max_long:
                 _l_fails.append("PAIR_ADX_MAX")
             # Gap family — pure math, now computed unconditionally (was nested in the else).
@@ -575,9 +575,9 @@ def get_signal(
             if rsi_momentum_enabled and rsi is not None and rsi_prev2 is not None and rsi > rsi_prev2:
                 _s_fails.append("PAIR_RSI_MOMENTUM")
             if short_rsi_max < 100 and rsi is not None and rsi > short_rsi_max:
-                _s_fails.append("PAIR_RSI_RANGE")
+                _s_fails.append(f"PAIR_RSI_RANGE[>{short_rsi_max:g}]")  # too hot — pair still rising, not a short yet
             elif short_rsi_min > 0 and rsi is not None and rsi < short_rsi_min:
-                _s_fails.append("PAIR_RSI_RANGE")
+                _s_fails.append(f"PAIR_RSI_RANGE[<{short_rsi_min:g}]")  # too cold — washed out, bounce risk
             if adx_max < 100 and adx > adx_max:
                 _s_fails.append("PAIR_ADX_MAX")
             # Gap family (SHORT formulas) — computed unconditionally.

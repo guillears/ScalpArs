@@ -1399,6 +1399,16 @@ class TradingConfig(BaseModel):
     # Default ON.  Toggle off only for analysis (e.g., to test whether Alpha
     # pairs are systematically bad or sometimes profitable).
     alpha_subtype_filter_enabled: bool = True
+    # Crypto-only universe (Jul 14, 2026): allowlist `underlyingType == "COIN"` —
+    # excludes Binance's 132+ EQUITY/TradFi perps (tokenized stocks: MU/INTC/SPY/NVDA...,
+    # commodities: NATGAS/COPPER/XPT, indexes, leveraged ETFs) in ONE condition.
+    # Motivation: MU short 07-14 (−$77) was our FIRST-EVER equity-perp trade (zero in the
+    # 409-trade pool) — admitted by the 90-day step-down; signals are calibrated to crypto
+    # microstructure and equity perps trade synthetically while the underlying is CLOSED.
+    # Subsumes the hand-built XAU/XAG/ALL blacklist entries + the XAUT question... (XAUT
+    # itself is COIN-type Tether Gold — stays blacklist territory if wanted). Future-proof:
+    # new stock listings carry the tag on day one. Fail-open on missing metadata.
+    coin_underlying_only: bool = True
 
     # Broker-side protective stops feature REMOVED Apr 17 after 4 failed
     # hotfix attempts.  Binance rejected STOP_MARKET/TAKE_PROFIT_MARKET on

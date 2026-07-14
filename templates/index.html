@@ -4806,6 +4806,17 @@
                             <p class="text-xs text-gray-500 mt-1">Skip pairs whose Binance onboardDate is within last N days (filters new/Seed-tagged pairs). 0 = disabled.</p>
                         </div>
                         <div class="md:col-span-1">
+                            <label class="block text-sm text-gray-400 mb-2">Crypto-Only Universe</label>
+                            <div class="flex items-center gap-4 py-2">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-coin-underlying-only" class="sr-only peer" checked>
+                                    <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 relative"></div>
+                                    <span class="ml-2 text-sm text-gray-400">COIN only</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Jul 14: allowlist Binance <code>underlyingType == "COIN"</code> — excludes 132+ EQUITY/TradFi perps (tokenized stocks MU/INTC/SPY/NVDA…, commodities NATGAS/COPPER/XPT, indexes, leveraged ETFs) before the top-N cut. Signals are calibrated to crypto microstructure; equity perps trade synthetically while the underlying market is closed. Fail-open on missing metadata.</p>
+                        </div>
+                        <div class="md:col-span-1">
                             <label class="block text-sm text-gray-400 mb-2">Alpha Subtype Filter</label>
                             <div class="flex items-center gap-4 py-2">
                                 <label class="flex items-center cursor-pointer">
@@ -18904,6 +18915,7 @@
                 if (_nlf) _nlf.value = config.new_listing_filter_days !== undefined ? config.new_listing_filter_days : 0;
                 const _asf = document.getElementById('config-alpha-subtype-filter-enabled');
                 if (_asf) _asf.checked = config.alpha_subtype_filter_enabled !== false;
+                { const _cuo = document.getElementById('config-coin-underlying-only'); if (_cuo) _cuo.checked = config.coin_underlying_only !== false; }
                 
                 updateInvestmentUnit();
                 updateReserveUnit();
@@ -20246,6 +20258,7 @@
                 no_trade_pairs: (document.getElementById('config-no-trade-pairs')||{}).value !== undefined ? (document.getElementById('config-no-trade-pairs').value||'').trim() : '',
                 new_listing_filter_days: parseInt(document.getElementById('config-new-listing-filter-days')?.value) || 0,
                 alpha_subtype_filter_enabled: !!document.getElementById('config-alpha-subtype-filter-enabled')?.checked,
+                coin_underlying_only: !!document.getElementById('config-coin-underlying-only')?.checked,
                 bnb_swap_enabled: document.getElementById('config-bnb-swap-enabled').value === 'true',
                 paper_bnb_initial_usd: safeFloat(document.getElementById('config-paper-bnb-initial').value),
                 bnb_check_interval_hours: parseInt(document.getElementById('config-bnb-check-interval').value) || 12,

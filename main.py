@@ -415,6 +415,7 @@ class ConfigUpdate(BaseModel):
     trading_pairs_limit: Optional[int] = None
     new_listing_filter_days: Optional[int] = None
     alpha_subtype_filter_enabled: Optional[bool] = None
+    coin_underlying_only: Optional[bool] = None
     bnb_swap_enabled: Optional[bool] = None
     bnb_check_interval_hours: Optional[int] = None
     bnb_runway_hours: Optional[int] = None

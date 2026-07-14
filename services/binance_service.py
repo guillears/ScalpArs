@@ -332,6 +332,7 @@ class BinanceService:
         limit: int = 20,
         new_listing_filter_days: int = 0,
         alpha_subtype_filter_enabled: bool = False,
+        coin_underlying_only: bool = False,
     ) -> List[Dict]:
         """Get top USDT-perpetual futures pairs by 24h volume.
 
@@ -409,6 +410,32 @@ class BinanceService:
             # eligible pairs."  Fails open: pairs without a parseable
             # onboardDate are kept (conservative — don't accidentally block
             # established pairs due to missing metadata).
+            # Jul 14: crypto-only universe — allowlist Binance `underlyingType == "COIN"`.
+            # ONE condition excludes tokenized stocks (MU/INTC/SPY/NVDA...), commodities
+            # (NATGAS/COPPER/XPT), indexes and leveraged ETFs — 132+ EQUITY/TradFi perps —
+            # BEFORE the top-N cut. Signals are calibrated to crypto microstructure; equity
+            # perps trade synthetically while the underlying market is closed (MU 07-14 short,
+            # our first-ever equity trade, fired at 03:26 UTC). Fail-open: missing/unknown
+            # underlyingType keeps the pair (never drop an established crypto on a metadata gap).
+            if coin_underlying_only:
+                _cu_mkts = self.public_exchange.markets or {}
+                _cu_before = len(futures_pairs)
+                _cu_kept, _cu_dropped = [], []
+                for p in futures_pairs:
+                    _ut = (((_cu_mkts.get(p['symbol'], {}) or {}).get('info', {}) or {}).get('underlyingType'))
+                    if _ut is None or _ut == 'COIN':
+                        _cu_kept.append(p)
+                    else:
+                        _cu_dropped.append(p['pair'])
+                futures_pairs = _cu_kept
+                if _cu_dropped:
+                    _cu_prev = ', '.join(sorted(_cu_dropped)[:8])
+                    _cu_extra = f" +{len(_cu_dropped) - 8} more" if len(_cu_dropped) > 8 else ""
+                    logger.info(
+                        f"[BINANCE] Crypto-only filter: excluded {len(_cu_dropped)}/{_cu_before} "
+                        f"non-COIN perps ({_cu_prev}{_cu_extra})"
+                    )
+
             # Jul 13: stamp listing age (days since Binance onboardDate) on EVERY pair —
             # threaded scan→order as entry_pair_age_days (read gate for the 180→90-day
             # new-listing step-down). None when metadata is missing (fail-open, like the filter).

@@ -24,6 +24,7 @@
   "no_trade_pairs": "BTCUSDT,ETHUSDT",
   "new_listing_filter_days": 90,
   "alpha_subtype_filter_enabled": true,
+  "coin_underlying_only": true,
   "investment": {
     "mode": "equal_split",
     "fixed_amount": 200.0,

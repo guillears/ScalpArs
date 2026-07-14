@@ -7295,10 +7295,12 @@ class TradingEngine:
         pairs_limit = config.trading_config.trading_pairs_limit
         _new_listing_days = getattr(config.trading_config, 'new_listing_filter_days', 0)
         _alpha_filter = getattr(config.trading_config, 'alpha_subtype_filter_enabled', True)
+        _coin_only = getattr(config.trading_config, 'coin_underlying_only', True)
         top_pairs = await binance_service.get_top_futures_pairs(
             pairs_limit,
             new_listing_filter_days=_new_listing_days,
             alpha_subtype_filter_enabled=_alpha_filter,
+            coin_underlying_only=_coin_only,
         )
         # Jun 12: stamp the eligible-universe volume rank (1 = highest 24h vol)
         # BEFORE blacklist removal, so ranks stay comparable across config changes.

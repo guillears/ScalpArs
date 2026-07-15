@@ -550,6 +550,15 @@ def get_signal(
                 # Sub-rule suffix feeds the Funnel v2 breakdown; legacy counter
                 # gets the stripped parent name (continuity of the Total column).
                 _l_fails.append(f"PAIR_RSI_ADX_CROSS[{_rx_rule_l}]")
+            # Jul 15 RSIADX PROBE (probe #4, operator-directed day-2 early open): a candidate
+            # whose ONLY ladder fail is the Mar-27 RSI×ADX cross-filter (contested ~$6 of
+            # April evidence; measured 840 sole-blocked shorts = 66% of short soles in 2
+            # uncensored days) falls through and, if it survives the last-mile + engine
+            # gates, opens as a 1x RSIADX_PROBE. Gate blocks normally when the probe is off.
+            if (_l_fails and getattr(th, 'rsiadx_probe_enabled', False)
+                    and all(f.startswith("PAIR_RSI_ADX_CROSS") for f in _l_fails)):
+                logger.info(f"[RSIADX_PROBE] LONG candidate ({_l_fails[0]}) — probing instead of blocking")
+                _l_fails = []
             if _l_fails:
                 logger.debug(f"[MOMENTUM] LONG skipped: {_l_fails[0]} (all fails: {_l_fails})")
                 _record(_l_fails[0].split('[', 1)[0], "LONG")
@@ -633,6 +642,11 @@ def get_signal(
                 # Sub-rule suffix feeds the Funnel v2 breakdown; legacy counter
                 # gets the stripped parent name (continuity of the Total column).
                 _s_fails.append(f"PAIR_RSI_ADX_CROSS[{_rx_rule_s}]")
+            # Jul 15 RSIADX PROBE — SHORT mirror (see LONG comment above).
+            if (_s_fails and getattr(th, 'rsiadx_probe_enabled', False)
+                    and all(f.startswith("PAIR_RSI_ADX_CROSS") for f in _s_fails)):
+                logger.info(f"[RSIADX_PROBE] SHORT candidate ({_s_fails[0]}) — probing instead of blocking")
+                _s_fails = []
             if _s_fails:
                 logger.debug(f"[MOMENTUM] SHORT skipped: {_s_fails[0]} (all fails: {_s_fails})")
                 _record(_s_fails[0].split('[', 1)[0], "SHORT")

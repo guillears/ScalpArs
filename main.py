@@ -7537,8 +7537,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "blocked_at_max": _fb.get('total_full', 0),
             "cap_skip_normal": (trading_engine._cap_skip_counts or {}).get('normal', 0),
             "cap_skip_flip": (trading_engine._cap_skip_counts or {}).get('flip', 0),
-            "blocked_long": _fb.get('total_long', 0),
-            "blocked_short": _fb.get('total_short', 0),
+            # Jul 15 hotfix (review I2): room-only per-direction totals so the L/S
+            # sub-label matches the "had room" headline (SUPP excluded from both).
+            "blocked_long": _fb.get('total_long_room', _fb.get('total_long', 0)),
+            "blocked_short": _fb.get('total_short_room', _fb.get('total_short', 0)),
             "opened_normal": _nL + _nS, "opened_normal_long": _nL, "opened_normal_short": _nS,
             "opened_flip": _fL + _fS, "opened_flip_long": _fL, "opened_flip_short": _fS,
             "top_blockers": [{"filter": r["filter"], "room": r["total_room"],
@@ -10609,7 +10611,7 @@ def _compute_gap_expand_cohort(orders):
             continue
         # Jul 13: GAPFLAT/GAPMIN probes belong to the probe A/B (gap_probe_cohort),
         # never to this MARGINAL/STRICT relaxation table.
-        if (getattr(o, 'cell_multiplier_source', None) or '') in ('GAPFLAT_PROBE', 'GAPMIN_PROBE'):
+        if (getattr(o, 'cell_multiplier_source', None) or '') in ('GAPFLAT_PROBE', 'GAPMIN_PROBE', 'SLOPEGATE_PROBE', 'RSIADX_PROBE'):
             continue
         marg = getattr(o, 'entry_gap_expand_marginal', None)
         if marg is None:
@@ -10663,6 +10665,7 @@ def _compute_gap_probe_cohort(orders):
     => ✗ filter vindicated (switch probe off)."""
     exp_rows, probe_rows, gapmin_rows, exp_s_rows, gapmin_s_rows, gapflat_s_rows = [], [], [], [], [], []
     slopegate_rows, slopegate_s_rows = [], []  # Jul 14: BTC 5m flat dead-band probe
+    rsiadx_rows, rsiadx_s_rows = [], []  # Jul 15: RSI×ADX cross-filter probe (#4)
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
@@ -10678,6 +10681,8 @@ def _compute_gap_probe_cohort(orders):
                 gapmin_rows.append(o)
             elif _src == 'SLOPEGATE_PROBE':
                 slopegate_rows.append(o)
+            elif _src == 'RSIADX_PROBE':
+                rsiadx_rows.append(o)
             else:
                 exp_rows.append(o)
         elif d == "SHORT":
@@ -10687,11 +10692,14 @@ def _compute_gap_probe_cohort(orders):
                 gapflat_s_rows.append(o)
             elif _src == 'SLOPEGATE_PROBE':
                 slopegate_s_rows.append(o)
+            elif _src == 'RSIADX_PROBE':
+                rsiadx_s_rows.append(o)
             else:
                 exp_s_rows.append(o)
     # Fair A/B control: window BOTH control sides to the probe-live period (same tape,
     # same filter stack) — all-history controls mix dead configs (locked re-sim rule).
-    _all_probes = probe_rows + gapmin_rows + gapmin_s_rows + gapflat_s_rows + slopegate_rows + slopegate_s_rows
+    _all_probes = (probe_rows + gapmin_rows + gapmin_s_rows + gapflat_s_rows
+                   + slopegate_rows + slopegate_s_rows + rsiadx_rows + rsiadx_s_rows)
     if _all_probes:
         _p0 = min(getattr(o, 'opened_at', None) for o in _all_probes if getattr(o, 'opened_at', None))
         if _p0:
@@ -10706,9 +10714,11 @@ def _compute_gap_probe_cohort(orders):
     for cohort, rs in (("EXPANDING · LONG", exp_rows), ("NON-EXPANDING (probe) · LONG", probe_rows),
                        ("SMALL-GAP (probe) · LONG", gapmin_rows),
                        ("SLOPEGATE (probe) · LONG", slopegate_rows),
+                       ("RSIADX (probe) · LONG", rsiadx_rows),
                        ("EXPANDING · SHORT", exp_s_rows), ("NON-EXPANDING (probe) · SHORT", gapflat_s_rows),
                        ("SMALL-GAP (probe) · SHORT", gapmin_s_rows),
-                       ("SLOPEGATE (probe) · SHORT", slopegate_s_rows)):
+                       ("SLOPEGATE (probe) · SHORT", slopegate_s_rows),
+                       ("RSIADX (probe) · SHORT", rsiadx_s_rows)):
         n = len(rs)
         if n == 0:
             if not cohort.startswith("EXPANDING"):
@@ -10730,7 +10740,7 @@ def _compute_gap_probe_cohort(orders):
         if not cohort.startswith("EXPANDING"):
             if n < 30:
                 verdict = f"⏳ building ({n}/30)"
-            elif wr >= 60.0 and avg_pct >= 0.15 and dates >= 10:
+            elif wr >= 60.0 and avg_pct >= 0.15 and dates >= (5 if ("SLOPEGATE" in cohort or "RSIADX" in cohort) else 10):
                 verdict = "★ relaxation candidate (open the discussion)"
             elif wr <= 45.0 or avg_pct < 0:
                 verdict = "✗ filter vindicated (switch probe off)"

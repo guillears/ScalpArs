@@ -15,7 +15,7 @@ from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, _leverage_blocked_pairs
-from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band
+from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule
 from services.regime import classify_btc_regime
 from services.websocket_tracker import websocket_tracker
 
@@ -1676,8 +1676,9 @@ class TradingEngine:
         room_state = "ROOM" if had_room else "FULL"
         try:
             _regime = _current_btc_regime
-            if (_regime == "BEARISH" and direction == "LONG") or                (_regime == "BULLISH" and direction == "SHORT"):
-                room_state = "SUPP"
+            if had_room and ((_regime == "BEARISH" and direction == "LONG") or
+                             (_regime == "BULLISH" and direction == "SHORT")):
+                room_state = "SUPP"  # FULL keeps precedence — at-cap info is real either way
         except NameError:
             pass  # Regime global not yet set (cold start) — record as decisive
         key = (filter_name, direction or "ANY", room_state)
@@ -1743,12 +1744,12 @@ class TradingEngine:
                 "long": 0, "short": 0, "any": 0,
                 "long_room": 0, "short_room": 0, "any_room": 0,
                 "long_full": 0, "short_full": 0, "any_full": 0,
+                "long_supp": 0, "short_supp": 0, "any_supp": 0,
             })
             row[dir_key] += count
-            # Jul 15: room_state "SUPP" (regime-suppressed, see _record_filter_block)
-            # deliberately folds into the hidden _full bucket — per-direction totals
-            # ("All" columns) include it, the displayed "Real" column stays decisive.
-            suffix = "_room" if room_state == "ROOM" else "_full"
+            # Jul 15 hotfix (review I1): SUPP gets its OWN bucket — folding it into
+            # _full made regime-suppressed blocks display as "Blocked at max-5".
+            suffix = "_room" if room_state == "ROOM" else ("_supp" if room_state == "SUPP" else "_full")
             row[dir_key + suffix] += count
 
         # Jul 14 FUNNEL v2: honest per-filter metrics from the ladder's evaluate-all pass.
@@ -1779,15 +1780,18 @@ class TradingEngine:
                     "long": 0, "short": 0, "any": 0,
                     "long_room": 0, "short_room": 0, "any_room": 0,
                     "long_full": 0, "short_full": 0, "any_full": 0,
+                    "long_supp": 0, "short_supp": 0, "any_supp": 0,
                 })
 
         rows = []
         total_long = total_short = total_any = 0
-        total_room = total_full = 0
+        total_long_room = total_short_room = 0
+        total_room = total_full = total_supp = 0
         for filter_name, splits in per_filter.items():
             t = splits["long"] + splits["short"] + splits["any"]
             t_room = splits["long_room"] + splits["short_room"] + splits["any_room"]
             t_full = splits["long_full"] + splits["short_full"] + splits["any_full"]
+            t_supp = splits.get("long_supp", 0) + splits.get("short_supp", 0) + splits.get("any_supp", 0)
             _sole_l, _sole_s = _dir_sum(self._filter_sole_counts, filter_name)
             _all_l, _all_s = _dir_sum(self._filter_all_counts, filter_name)
             _ep_l, _ep_s = _dir_sum(self._filter_episode_counts, filter_name)
@@ -1805,6 +1809,7 @@ class TradingEngine:
                 "any_full": splits["any_full"],
                 "total_room": t_room,
                 "total_full": t_full,
+                "total_supp": t_supp,
                 "sole_long": _sole_l, "sole_short": _sole_s, "sole": _sole_l + _sole_s,
                 "allf_long": _all_l, "allf_short": _all_s, "allf": _all_l + _all_s,
                 "episodes_long": _ep_l, "episodes_short": _ep_s, "episodes": _ep_l + _ep_s,
@@ -1812,8 +1817,11 @@ class TradingEngine:
             total_long += splits["long"]
             total_short += splits["short"]
             total_any += splits["any"]
+            total_long_room += splits["long_room"]
+            total_short_room += splits["short_room"]
             total_room += t_room
             total_full += t_full
+            total_supp += t_supp
 
         # Jul 14: rank by SOLE (true marginal cost — the decision column), tiebreak
         # by legacy Total so the zero-Sole majority keeps a stable, familiar order.
@@ -1856,6 +1864,9 @@ class TradingEngine:
             "total": total_long + total_short + total_any,
             "total_room": total_room,
             "total_full": total_full,
+            "total_supp": total_supp,
+            "total_long_room": total_long_room,
+            "total_short_room": total_short_room,
         }
 
     async def _get_exit_btc_trend_gap(self) -> float:
@@ -4208,6 +4219,10 @@ class TradingEngine:
         # dead-band (macro_trend_flat_threshold_*, April N=4 calibration; measured 133
         # kills/43 opportunities per day). Opens 1x tagged SLOPEGATE_PROBE.
         slopegate_probe: bool = False,
+        # Jul 15 RSIADX probe (#4): candidate whose ONLY ladder fail was the Mar-27
+        # RSI×ADX cross-filter (840 sole shorts / 66% of short soles in 2 uncensored
+        # days; April evidence ~$6, contested). Opens 1x tagged RSIADX_PROBE.
+        rsiadx_probe: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -4338,6 +4353,31 @@ class TradingEngine:
                 logger.info(f"[SLOPEGATE_PROBE] {pair} {direction} skipped: {_sg_reason}")
                 try:
                     self._record_filter_block("BTC_SLOPE_GATE", direction)
+                except Exception:
+                    pass
+                return None
+
+        # Jul 15: RSIADX probe caps — mirror of the other probe blocks (slot guard, own
+        # concurrency cap shared across BOTH directions, shared 0.5x/0.05x sizing).
+        # Cap rejection records PAIR_RSI_ADX_CROSS = probe-off semantics.
+        if rsiadx_probe and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
+            _th_rx = config.trading_config.thresholds
+            _rx_reason = None
+            if not getattr(_th_rx, 'rsiadx_probe_enabled', False):
+                _rx_reason = "probe disabled"
+            elif _open_count_now > max(0, _inv_cfg.max_open_positions - 2):
+                _rx_reason = f"book too full ({_open_count_now} open, last 2 slots reserved)"
+            else:
+                _rx_open_q = await db.execute(
+                    select(func.count(Order.id)).where(and_(
+                        Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
+                        Order.cell_multiplier_source == "RSIADX_PROBE")))
+                if (_rx_open_q.scalar() or 0) >= int(getattr(_th_rx, 'rsiadx_probe_max_open', 3) or 3):
+                    _rx_reason = "max concurrent probes open"
+            if _rx_reason:
+                logger.info(f"[RSIADX_PROBE] {pair} {direction} skipped: {_rx_reason}")
+                try:
+                    self._record_filter_block("PAIR_RSI_ADX_CROSS", direction)
                 except Exception:
                     pass
                 return None
@@ -4791,12 +4831,22 @@ class TradingEngine:
         # 2x'd by the UNMATCHED cell); own cell_src row (rides Multiplier Cell Performance + CSV
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
-        if ((gap_probe or gapmin_probe or slopegate_probe) and direction in ("LONG", "SHORT")
+        if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe) and direction in ("LONG", "SHORT")
                 and not flip_source and not bull_long and not bounce_long):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
-            cell_src = "GAPFLAT_PROBE" if gap_probe else ("GAPMIN_PROBE" if gapmin_probe else "SLOPEGATE_PROBE")
+            # Jul 15 hotfix (review I3): SLOPEGATE wins the tag on overlap — pre-probe, a
+            # dead-band-hit candidate could NEVER have opened as a gap probe (it died at the
+            # slope gate first), so tagging overlaps GAPMIN/GAPFLAT would contaminate those
+            # locked A/B cohorts vs their frozen controls. Gap dimension stays sliceable
+            # from entry_ema_gap_5_8 at verdict time.
+            # Tag precedence = the FIRST gate that would have killed the candidate pre-probes:
+            # ladder cross-filter kills before the engine slope gate, which kills before the
+            # gap tags matter. Keeps every locked probe cohort pure vs its frozen control.
+            cell_src = ("RSIADX_PROBE" if rsiadx_probe else
+                        ("SLOPEGATE_PROBE" if slopegate_probe else
+                         ("GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE")))
             _mult_target = "both"
             logger.info(f"[{cell_src}] {pair} {direction}: opening probe at inv={cell_mult}x lev={cell_lev_mult}x (~1x effective)")
 
@@ -9341,6 +9391,15 @@ class TradingEngine:
                     # Jul 14 SLOPEGATE probe: candidate was hit by the BTC 5m flat dead-band
                     # (Phase-1 fall-through above) and survived every OTHER engine gate.
                     slopegate_probe=bool(_slopegate_probe_hit),
+                    # Jul 15 RSIADX probe (#4): the ladder admitted this candidate via the
+                    # cross-filter fall-through — recompute the exact block condition here
+                    # (same helper the ladder uses; identical inputs => identical output).
+                    rsiadx_probe=bool(
+                        signal in ("LONG", "SHORT")
+                        and getattr(config.trading_config.thresholds, 'rsiadx_probe_enabled', False)
+                        and _rsi_adx_block_rule(signal, indicators.get('rsi'), indicators.get('adx'),
+                                                config.trading_config.thresholds) is not None
+                    ),
                 )
 
                 if order:

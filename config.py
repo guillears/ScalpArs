@@ -273,6 +273,19 @@ class SignalThresholds(BaseModel):
     # gate vindicated (its FIRST evidence-grade validation since April), probe off.
     slopegate_probe_enabled: bool = True
     slopegate_probe_max_open: int = 3    # concurrent SLOPEGATE probes (shared across both directions)
+    # Jul 15 — RSIADX PROBE (probe #4, operator-directed day-2 early open of the locked
+    # >=3-dates gate; transparent override, probe-scope risk). The Mar-27 short RSI×ADX
+    # cross-filter ("30-35:25,35-50:30") is the #1 short-side sole blocker under the
+    # uncensored Funnel v2 (840 soles = 66% of short soles in 2 days; [35-50:30] = 617)
+    # with ~$6 of contested April evidence (Apr-17: "funnels entries into toxic
+    # high-ADX zones — inverting good logic" vs Apr-9 "benign gate"). Candidates whose
+    # ONLY ladder fail is this filter open as 1x RSIADX_PROBE (both directions; the
+    # LONG rule 60-65:0-25 rides along at low flow). 🔒 Gates PER SIDE at N>=30
+    # (>=5 dates): WR>=60% & avg>=+0.15% -> relaxation discussion (slice [35-50:30] vs
+    # [30-35:25] vs LONG rule at verdict); WR<=45% or avg<0 -> filter vindicated
+    # (first evidence-grade validation since March), probe off.
+    rsiadx_probe_enabled: bool = True
+    rsiadx_probe_max_open: int = 3       # concurrent RSIADX probes (shared across both directions)
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

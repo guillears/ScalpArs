@@ -4223,6 +4223,7 @@ class TradingEngine:
         # RSI×ADX cross-filter (840 sole shorts / 66% of short soles in 2 uncensored
         # days; April evidence ~$6, contested). Opens 1x tagged RSIADX_PROBE.
         rsiadx_probe: bool = False,
+        deadband_probe: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -4378,6 +4379,30 @@ class TradingEngine:
                 logger.info(f"[RSIADX_PROBE] {pair} {direction} skipped: {_rx_reason}")
                 try:
                     self._record_filter_block("PAIR_RSI_ADX_CROSS", direction)
+                except Exception:
+                    pass
+                return None
+
+        # Jul 15: DEADBAND probe caps (probe #5, LONG-only by construction) — mirror of the
+        # other probe blocks. Cap rejection records LONG_BTC1H_DEADBAND = probe-off semantics.
+        if deadband_probe and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
+            _th_db = config.trading_config.thresholds
+            _db_reason = None
+            if not getattr(_th_db, 'deadband_probe_enabled', False):
+                _db_reason = "probe disabled"
+            elif _open_count_now > max(0, _inv_cfg.max_open_positions - 2):
+                _db_reason = f"book too full ({_open_count_now} open, last 2 slots reserved)"
+            else:
+                _db_open_q = await db.execute(
+                    select(func.count(Order.id)).where(and_(
+                        Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
+                        Order.cell_multiplier_source == "DEADBAND_PROBE")))
+                if (_db_open_q.scalar() or 0) >= int(getattr(_th_db, 'deadband_probe_max_open', 3) or 3):
+                    _db_reason = "max concurrent probes open"
+            if _db_reason:
+                logger.info(f"[DEADBAND_PROBE] {pair} {direction} skipped: {_db_reason}")
+                try:
+                    self._record_filter_block("LONG_BTC1H_DEADBAND", direction)
                 except Exception:
                     pass
                 return None
@@ -4831,22 +4856,23 @@ class TradingEngine:
         # 2x'd by the UNMATCHED cell); own cell_src row (rides Multiplier Cell Performance + CSV
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
-        if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe) and direction in ("LONG", "SHORT")
+        if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe) and direction in ("LONG", "SHORT")
                 and not flip_source and not bull_long and not bounce_long):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
-            # Tag precedence = NEWEST probe wins (RSIADX Jul15 > SLOPEGATE Jul14 > GAPFLAT/
-            # GAPMIN Jul13). Rationale: a dual-flag candidate was still blocked under
+            # Tag precedence = NEWEST probe wins (DEADBAND Jul15(2) > RSIADX Jul15 >
+            # SLOPEGATE Jul14 > GAPFLAT/GAPMIN Jul13). Rationale: a dual-flag candidate was still blocked under
             # yesterday's stack (the older probe's fall-through alone didn't free it), so it
             # exists only because the newest probe opened its last blocker. Tagging it with
             # the newest probe keeps every OLDER running A/B cohort's admission criteria
             # frozen mid-experiment. NOT chronological ladder order (gap kills before RSIADX
             # kills before the engine slope gate) — verdict-time rule: slice each cohort on
             # the other probes' dimensions (gap band / slope band / RSI x ADX) before shipping.
-            cell_src = ("RSIADX_PROBE" if rsiadx_probe else
-                        ("SLOPEGATE_PROBE" if slopegate_probe else
-                         ("GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE")))
+            cell_src = ("DEADBAND_PROBE" if deadband_probe else
+                        ("RSIADX_PROBE" if rsiadx_probe else
+                         ("SLOPEGATE_PROBE" if slopegate_probe else
+                          ("GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE"))))
             _mult_target = "both"
             logger.info(f"[{cell_src}] {pair} {direction}: opening probe at inv={cell_mult}x lev={cell_lev_mult}x (~1x effective)")
 
@@ -8876,6 +8902,7 @@ class TradingEngine:
             # normally when the probe is off. Legacy counter freezes while probing (probe
             # fires ARE the signal — same convention as GAPFLAT/PAIR_EMA_GAP_NOT_EXPANDING).
             _slopegate_probe_hit = False
+            _deadband_probe_hit = False
             if signal in ["LONG", "SHORT"] and btc_ema20_slope_pct is not None:
                 _th = config.trading_config.thresholds
                 _sg_probe_on = getattr(_th, 'slopegate_probe_enabled', False)
@@ -8961,14 +8988,26 @@ class TradingEngine:
                 _dbraw = getattr(_th, 'long_btc_1h_deadband', 0.0)
                 _db = 0.0 if _dbraw is None else float(_dbraw)
                 if signal == "LONG" and _db > 0 and abs(_current_btc_1h_slope) < _db:
-                    logger.info(f"[LONG_BTC1H_DEADBAND] {pair}: LONG blocked — |BTC 1h slope {_current_btc_1h_slope:+.4f}%| < {_db}% (flat hourly: no carry, DOA zone)")
-                    self._record_filter_block("LONG_BTC1H_DEADBAND", "LONG", had_room=_had_room)
-                    self._last_pair_block_reason[pair] = "LONG_BTC1H_DEADBAND"
-                    # revert surface: same-direction PASS phantom of the blocked LONG
-                    # (gate: re-open at >=60% WR on N>=10 fresh — the Jul-3 lesson, day-one wired)
-                    _seed_phantom_flip(pair, indicators.get('price'), "LONG", "PASS:LONG_BTC1H_DEADBAND",
-                                       entry_fields=self._flip_entry_fields(indicators, flip_dir="LONG"), mode='PASS')
-                    signal = "NO_TRADE"
+                    # Jul 15 DEADBAND_PROBE (probe #5, operator-directed): HALF-OPEN test of the
+                    # flat-UP side only. Phantom raw revert gate technically fired (24·63%) but
+                    # the split says the halves differ: flat-up 14·79%·+0.284% (single-day,
+                    # ~4-5 episodes, 5 rows equity-perps now untradeable) vs flat-down
+                    # 10·40%·−0.05%; historical pool REFUTES flat-up (6·50%·−0.08%) — so the
+                    # case must be proven by fresh fills: slope in [0, +db) proceeds as a 1x
+                    # DEADBAND_PROBE (still faces every other gate below); flat-down (−db, 0)
+                    # keeps blocking + seeding PASS phantoms. Probe off → full band blocks.
+                    if getattr(_th, 'deadband_probe_enabled', False) and _current_btc_1h_slope >= 0:
+                        _deadband_probe_hit = True
+                        logger.info(f"[DEADBAND_PROBE] {pair}: LONG candidate (BTC 1h slope {_current_btc_1h_slope:+.4f}% in flat-up [0,+{_db}%)) — probing instead of blocking")
+                    else:
+                        logger.info(f"[LONG_BTC1H_DEADBAND] {pair}: LONG blocked — |BTC 1h slope {_current_btc_1h_slope:+.4f}%| < {_db}% (flat hourly: no carry, DOA zone)")
+                        self._record_filter_block("LONG_BTC1H_DEADBAND", "LONG", had_room=_had_room)
+                        self._last_pair_block_reason[pair] = "LONG_BTC1H_DEADBAND"
+                        # revert surface: same-direction PASS phantom of the blocked LONG
+                        # (gate: re-open at >=60% WR on N>=10 fresh — the Jul-3 lesson, day-one wired)
+                        _seed_phantom_flip(pair, indicators.get('price'), "LONG", "PASS:LONG_BTC1H_DEADBAND",
+                                           entry_fields=self._flip_entry_fields(indicators, flip_dir="LONG"), mode='PASS')
+                        signal = "NO_TRADE"
 
             # Jun 10 — BTC 1h RSI FLOOR (SHORT). Block shorting when BTC's HOURLY RSI is
             # already deep-oversold = shorting into the hourly bounce zone (the 1h twin of
@@ -9400,6 +9439,9 @@ class TradingEngine:
                         and _rsi_adx_block_rule(signal, indicators.get('rsi'), indicators.get('adx'),
                                                 config.trading_config.thresholds) is not None
                     ),
+                    # Jul 15 DEADBAND probe (#5): candidate sat in the 1h flat-UP half-band
+                    # (fall-through above) and survived every OTHER engine gate.
+                    deadband_probe=bool(_deadband_probe_hit),
                 )
 
                 if order:

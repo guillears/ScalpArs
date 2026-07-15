@@ -286,6 +286,19 @@ class SignalThresholds(BaseModel):
     # (first evidence-grade validation since March), probe off.
     rsiadx_probe_enabled: bool = True
     rsiadx_probe_max_open: int = 3       # concurrent RSIADX probes (shared across both directions)
+    # Jul 15 — DEADBAND PROBE (probe #5, operator-directed HALF-OPEN of the Jul-5
+    # LONG_BTC1H_DEADBAND gate). The raw phantom revert gate technically fired
+    # (24·63%·+0.145% >= "60% on N>=10") but was HELD: 20/24 single-day, ~4-5
+    # independent episodes, 5 rows equity-perps (now untradeable), and the halves
+    # split — flat-UP [0,+0.05) 14·79%·+0.284% vs flat-DOWN 10·40%·−0.05% — while
+    # the HISTORICAL pool refutes flat-up (6·50%·−0.08%). Probe: LONGs with BTC 1h
+    # slope in [0, +deadband) open as 1x DEADBAND_PROBE (every other gate still
+    # applies; 0/14 phantom overlap with the 5m SLOPEGATE band); flat-down keeps
+    # blocking + seeding PASS phantoms. 🔒 Gates at N>=30 (>=5 dates):
+    # WR>=60% & avg>=+0.15% -> promote the half-open to FULL sizing (uncap);
+    # WR<=45% or avg<0 -> band re-closes, probe off.
+    deadband_probe_enabled: bool = True
+    deadband_probe_max_open: int = 3     # concurrent DEADBAND probes (LONG-only by construction)
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

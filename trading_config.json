@@ -151,6 +151,8 @@
     "slopegate_probe_max_open": 3,
     "rsiadx_probe_enabled": true,
     "rsiadx_probe_max_open": 3,
+    "deadband_probe_enabled": true,
+    "deadband_probe_max_open": 3,
     "gapmin_probe_max_open": 3,
     "ema_gap_5_20_enabled": true,
     "ema_gap_5_20_min_long": 0.05,

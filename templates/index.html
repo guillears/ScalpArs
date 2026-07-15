@@ -6769,6 +6769,16 @@
                                 <input type="number" step="1" id="config-rsiadx-probe-max-open" class="w-14 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="3"></label>
                         </div>
                         <p class="text-xs text-gray-500 mt-1"><span class="text-rose-300">RSIADX Probe (Jul 15)</span>: probe #4 — the <strong>Mar-27 RSI×ADX cross-filter</strong> (SHORT: RSI 30-35 needs ADX≥25, RSI 35-50 needs ADX≥30; LONG: RSI 60-65 needs ADX≤25). Under the uncensored Funnel v2 it is the <strong>#1 short-side sole blocker: 840 soles = 66% of all short soles in 2 days</strong> ([35-50:30] alone 617), on ~$6 of contested April evidence. A candidate whose ONLY ladder fail is this filter opens as a 1× <strong>RSIADX_PROBE</strong> (shares GAPFLAT sizing; own Max Open shared across sides; last-2-slots guard). Rows <strong>RSIADX (probe) · LONG / · SHORT</strong> in the 🪟 probe table. 🔒 Gates PER SIDE at N≥30 (≥5 dates): WR≥60% &amp; avg≥+0.15% → relaxation discussion (slice by sub-rule at verdict); WR≤45% or avg&lt;0 → filter vindicated (first evidence since March), probe off. Legacy PAIR_RSI_ADX_CROSS counter freezes while probing. ⚠ Operator-directed day-2 early open of the ≥3-dates gate.</p>
+                        <div class="flex items-center gap-6 mt-3 flex-wrap">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-deadband-probe-enabled" class="sr-only peer">
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-600"></div>
+                                <span class="ml-2 text-sm text-teal-300">DEADBAND Probe (1×, flat-up)</span>
+                            </label>
+                            <label class="flex items-center gap-2 text-sm text-gray-400"><span>Max Open</span>
+                                <input type="number" step="1" id="config-deadband-probe-max-open" class="w-14 bg-white/5 border border-teal-500/40 rounded px-2 py-1 text-teal-200 text-center" value="3"></label>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1"><span class="text-teal-300">DEADBAND Probe (Jul 15)</span>: probe #5 — HALF-OPEN of the Jul-5 <strong>BTC 1h dead-band</strong> (LONG_BTC1H_DEADBAND blocks longs when |BTC 1h slope| &lt; 0.05). Phantom split: flat-UP [0,+0.05) 14·79%·+0.284% vs flat-DOWN 10·40%·−0.05% (single-day sample; history refutes flat-up 6·50%·−0.08% — fresh fills must carry the case). With the probe on, LONGs with BTC 1h slope in <strong>[0, +0.05)</strong> open as a 1× <strong>DEADBAND_PROBE</strong> (shares GAPFLAT sizing; own Max Open; last-2-slots guard); <strong>flat-down stays blocked</strong> and keeps seeding PASS phantoms. Row <strong>DEADBAND flat-up (probe) · LONG</strong> in the 🪟 probe table. 🔒 Gates at N≥30 (≥5 dates): WR≥60% &amp; avg≥+0.15% → promote the half-open to FULL sizing; WR≤45% or avg&lt;0 → band re-closes, probe off.</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">EMA5-EMA20 Gap Filter</span>
@@ -10044,6 +10054,7 @@
             lines.push(`  GAPMIN Probe (Jul 13): ${th.gapmin_probe_enabled === true ? 'ON' : 'OFF'}  |  Band L: [${th.gapmin_probe_floor !== undefined ? th.gapmin_probe_floor : 0.02}, ${th.ema_gap_threshold_long !== undefined ? th.ema_gap_threshold_long : 0.06})  |  S: [${th.gapmin_probe_floor !== undefined ? th.gapmin_probe_floor : 0.02}, ${th.ema_gap_threshold_short !== undefined ? th.ema_gap_threshold_short : 0.08})  |  Max Open: ${th.gapmin_probe_max_open !== undefined ? th.gapmin_probe_max_open : 3}  (young accelerating trends below the gap threshold open as 1x GAPMIN_PROBE, BOTH directions; shares GAPFLAT sizing + slot guard)`);
             lines.push(`  SLOPEGATE Probe (Jul 14): ${th.slopegate_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.slopegate_probe_max_open !== undefined ? th.slopegate_probe_max_open : 3}  (signal-found candidates killed ONLY by the BTC 5m flat dead-band open as 1x SLOPEGATE_PROBE, BOTH directions; ~40 opportunities/day measured; Apr N=4 calibration under test)`);
             lines.push(`  RSIADX Probe (Jul 15): ${th.rsiadx_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.rsiadx_probe_max_open !== undefined ? th.rsiadx_probe_max_open : 3}  (candidates blocked ONLY by the Mar-27 RSI×ADX cross-filter open as 1x RSIADX_PROBE, BOTH directions; 840 short soles/2d = 66% share measured; ~$6 April evidence under test)`);
+            lines.push(`  DEADBAND Probe (Jul 15): ${th.deadband_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.deadband_probe_max_open !== undefined ? th.deadband_probe_max_open : 3}  (HALF-OPEN of the BTC 1h dead-band: LONGs with 1h slope in [0,+${th.long_btc_1h_deadband ?? 0.05}) open as 1x DEADBAND_PROBE; flat-down stays blocked + seeds phantoms; promote to full size at N>=30/>=5 dates WR>=60% avg>=+0.15%)`);
 
             const inv = cfg.investment || {};
             lines.push(`\nGeneral Settings:`);
@@ -19138,6 +19149,8 @@
                 { const _e=document.getElementById('config-slopegate-probe-max-open'); if(_e && config.thresholds.slopegate_probe_max_open !== undefined) _e.value = config.thresholds.slopegate_probe_max_open; }
                 { const _e=document.getElementById('config-rsiadx-probe-enabled'); if(_e) _e.checked = config.thresholds.rsiadx_probe_enabled === true; }
                 { const _e=document.getElementById('config-rsiadx-probe-max-open'); if(_e && config.thresholds.rsiadx_probe_max_open !== undefined) _e.value = config.thresholds.rsiadx_probe_max_open; }
+                { const _e=document.getElementById('config-deadband-probe-enabled'); if(_e) _e.checked = config.thresholds.deadband_probe_enabled === true; }
+                { const _e=document.getElementById('config-deadband-probe-max-open'); if(_e && config.thresholds.deadband_probe_max_open !== undefined) _e.value = config.thresholds.deadband_probe_max_open; }
                 { const _e=document.getElementById('config-gapmin-probe-floor'); if(_e) _e.value = config.thresholds.gapmin_probe_floor !== undefined ? config.thresholds.gapmin_probe_floor : 0.02; }
                 { const _e=document.getElementById('config-gapmin-probe-max-open'); if(_e) _e.value = config.thresholds.gapmin_probe_max_open !== undefined ? config.thresholds.gapmin_probe_max_open : 3; }
                 // May 2: split EMA5-EMA8 max with auto-fallback to legacy single field
@@ -20486,6 +20499,8 @@
                     slopegate_probe_max_open: parseInt(document.getElementById('config-slopegate-probe-max-open')?.value || 3),
                     rsiadx_probe_enabled: (document.getElementById('config-rsiadx-probe-enabled')?.checked === true),
                     rsiadx_probe_max_open: parseInt(document.getElementById('config-rsiadx-probe-max-open')?.value || 3),
+                    deadband_probe_enabled: (document.getElementById('config-deadband-probe-enabled')?.checked === true),
+                    deadband_probe_max_open: parseInt(document.getElementById('config-deadband-probe-max-open')?.value || 3),
                     gapmin_probe_floor: safeFloat(document.getElementById('config-gapmin-probe-floor')?.value || 0.02),
                     gapmin_probe_max_open: parseInt(document.getElementById('config-gapmin-probe-max-open')?.value || 3),
                     // May 2: split EMA5-EMA8 max + new pair/BTC slope max guards

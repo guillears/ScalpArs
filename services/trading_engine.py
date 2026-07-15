@@ -4836,14 +4836,14 @@ class TradingEngine:
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
-            # Jul 15 hotfix (review I3): SLOPEGATE wins the tag on overlap — pre-probe, a
-            # dead-band-hit candidate could NEVER have opened as a gap probe (it died at the
-            # slope gate first), so tagging overlaps GAPMIN/GAPFLAT would contaminate those
-            # locked A/B cohorts vs their frozen controls. Gap dimension stays sliceable
-            # from entry_ema_gap_5_8 at verdict time.
-            # Tag precedence = the FIRST gate that would have killed the candidate pre-probes:
-            # ladder cross-filter kills before the engine slope gate, which kills before the
-            # gap tags matter. Keeps every locked probe cohort pure vs its frozen control.
+            # Tag precedence = NEWEST probe wins (RSIADX Jul15 > SLOPEGATE Jul14 > GAPFLAT/
+            # GAPMIN Jul13). Rationale: a dual-flag candidate was still blocked under
+            # yesterday's stack (the older probe's fall-through alone didn't free it), so it
+            # exists only because the newest probe opened its last blocker. Tagging it with
+            # the newest probe keeps every OLDER running A/B cohort's admission criteria
+            # frozen mid-experiment. NOT chronological ladder order (gap kills before RSIADX
+            # kills before the engine slope gate) — verdict-time rule: slice each cohort on
+            # the other probes' dimensions (gap band / slope band / RSI x ADX) before shipping.
             cell_src = ("RSIADX_PROBE" if rsiadx_probe else
                         ("SLOPEGATE_PROBE" if slopegate_probe else
                          ("GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE")))

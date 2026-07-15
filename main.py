@@ -7535,6 +7535,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         entry_funnel = {
             "blocked_by_filter_room": _fb.get('total_room', 0),
             "blocked_at_max": _fb.get('total_full', 0),
+            # Jul 15 (review): countertrend blocks vs the BTC regime (room existed but the
+            # regime-aligned recorder marked them SUPP). Own headline chip — without it the
+            # funnel silently under-accounts (room + full + supp = all recorded blocks).
+            "blocked_supp": _fb.get('total_supp', 0),
             "cap_skip_normal": (trading_engine._cap_skip_counts or {}).get('normal', 0),
             "cap_skip_flip": (trading_engine._cap_skip_counts or {}).get('flip', 0),
             # Jul 15 hotfix (review I2): room-only per-direction totals so the L/S
@@ -7548,7 +7552,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         }
     except Exception as e:
         logger.error(f"[PERF] Error computing Entry Funnel: {e}")
-        entry_funnel = {"blocked_by_filter_room": 0, "blocked_at_max": 0, "cap_skip_normal": 0, "cap_skip_flip": 0, "blocked_long": 0,
+        entry_funnel = {"blocked_by_filter_room": 0, "blocked_at_max": 0, "blocked_supp": 0, "cap_skip_normal": 0, "cap_skip_flip": 0, "blocked_long": 0,
                         "blocked_short": 0, "opened_normal": 0, "opened_normal_long": 0, "opened_normal_short": 0,
                         "opened_flip": 0, "opened_flip_long": 0, "opened_flip_short": 0, "top_blockers": []}
 

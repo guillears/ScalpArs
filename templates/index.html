@@ -9239,7 +9239,7 @@
             if (_ef1) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Funnel (why so few NORMAL trades — block counters persisted across redeploys; cap-skip resets on restart)\n');
-                lines.push(`Blocked by filter (had room): ${_ef1.blocked_by_filter_room}  |  Blocked at max-5 (no trade lost): ${_ef1.blocked_at_max}  [cap cost: ${_ef1.cap_skip_normal||0} norm / ${_ef1.cap_skip_flip||0} flip ready]`);
+                lines.push(`Blocked by filter (had room): ${_ef1.blocked_by_filter_room}  |  Blocked countertrend (regime SUPP): ${_ef1.blocked_supp||0}  |  Blocked at max-5 (no trade lost): ${_ef1.blocked_at_max}  [cap cost: ${_ef1.cap_skip_normal||0} norm / ${_ef1.cap_skip_flip||0} flip ready]`);
                 lines.push(`Opened — NORMAL: ${_ef1.opened_normal} (${_ef1.opened_normal_long||0}L/${_ef1.opened_normal_short||0}S)  |  Opened — FLIP: ${_ef1.opened_flip} (${_ef1.opened_flip_long||0}L/${_ef1.opened_flip_short||0}S)  |  Blocked L/S: ${_ef1.blocked_long}/${_ef1.blocked_short}`);
                 lines.push('Top blockers (room): ' + ((_ef1.top_blockers||[]).map(b=>`${b.filter} ${b.room}(L${b.long}/S${b.short})`).join(' · ') || '—'));
                 if (_ef1.opened_normal===0 && _ef1.blocked_by_filter_room>50) lines.push('=> Signals fire, filters reject them -> flips are the residue. Not a bug, not the 5-cap.');
@@ -11169,7 +11169,7 @@
                 if (_ef2) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Entry Funnel (why so few NORMAL trades — block counters persisted across redeploys; cap-skip resets on restart)\n');
-                    lines.push(`Blocked by filter (had room): ${_ef2.blocked_by_filter_room}  |  Blocked at max-5 (no trade lost): ${_ef2.blocked_at_max}  [cap cost: ${_ef2.cap_skip_normal||0} norm / ${_ef2.cap_skip_flip||0} flip ready]`);
+                    lines.push(`Blocked by filter (had room): ${_ef2.blocked_by_filter_room}  |  Blocked countertrend (regime SUPP): ${_ef2.blocked_supp||0}  |  Blocked at max-5 (no trade lost): ${_ef2.blocked_at_max}  [cap cost: ${_ef2.cap_skip_normal||0} norm / ${_ef2.cap_skip_flip||0} flip ready]`);
                     lines.push(`Opened — NORMAL: ${_ef2.opened_normal} (${_ef2.opened_normal_long||0}L/${_ef2.opened_normal_short||0}S)  |  Opened — FLIP: ${_ef2.opened_flip} (${_ef2.opened_flip_long||0}L/${_ef2.opened_flip_short||0}S)  |  Blocked L/S: ${_ef2.blocked_long}/${_ef2.blocked_short}`);
                     lines.push('Top blockers (room): ' + ((_ef2.top_blockers||[]).map(b=>`${b.filter} ${b.room}(L${b.long}/S${b.short})`).join(' · ') || '—'));
                     if (_ef2.opened_normal===0 && _ef2.blocked_by_filter_room>50) lines.push('=> Signals fire, filters reject them -> flips are the residue. Not a bug, not the 5-cap.');
@@ -12280,7 +12280,7 @@
                     if (!ef || !grid) return;
                     const cell = (label, val, cls, sub) => `<div class="bg-white/5 rounded p-2"><div class="text-gray-400">${label}</div><div class="text-lg font-bold ${cls||''}">${val}</div>${sub?`<div class="text-[10px] text-gray-500">${sub}</div>`:''}</div>`;
                     grid.innerHTML =
-                        cell('Blocked by filter (had room)', ef.blocked_by_filter_room.toLocaleString(), 'text-amber-300', `${(ef.blocked_long||0).toLocaleString()}L / ${(ef.blocked_short||0).toLocaleString()}S`) +
+                        cell('Blocked by filter (had room)', ef.blocked_by_filter_room.toLocaleString(), 'text-amber-300', `${(ef.blocked_long||0).toLocaleString()}L / ${(ef.blocked_short||0).toLocaleString()}S · countertrend SUPP: ${(ef.blocked_supp||0).toLocaleString()}`) +
                         cell('Blocked at max-5 (no trade lost)', ef.blocked_at_max.toLocaleString(), 'text-gray-400', `cap cost: ${(ef.cap_skip_normal||0).toLocaleString()} norm / ${(ef.cap_skip_flip||0).toLocaleString()} flip ready`) +
                         cell('Opened — NORMAL', ef.opened_normal, ef.opened_normal>0?'text-emerald-300':'text-red-400', `${ef.opened_normal_long||0}L / ${ef.opened_normal_short||0}S`) +
                         cell('Opened — FLIP', ef.opened_flip, 'text-cyan-300', `${ef.opened_flip_long||0}L / ${ef.opened_flip_short||0}S`);
@@ -20483,9 +20483,9 @@
                     gap_probe_max_open: parseInt(document.getElementById('config-gap-probe-max-open')?.value || 3),
                     gapmin_probe_enabled: (document.getElementById('config-gapmin-probe-enabled')?.checked === true),
                     slopegate_probe_enabled: (document.getElementById('config-slopegate-probe-enabled')?.checked === true),
-                    slopegate_probe_max_open: parseInt(document.getElementById('config-slopegate-probe-max-open')?.value ?? 3),
+                    slopegate_probe_max_open: parseInt(document.getElementById('config-slopegate-probe-max-open')?.value || 3),
                     rsiadx_probe_enabled: (document.getElementById('config-rsiadx-probe-enabled')?.checked === true),
-                    rsiadx_probe_max_open: parseInt(document.getElementById('config-rsiadx-probe-max-open')?.value ?? 3),
+                    rsiadx_probe_max_open: parseInt(document.getElementById('config-rsiadx-probe-max-open')?.value || 3),
                     gapmin_probe_floor: safeFloat(document.getElementById('config-gapmin-probe-floor')?.value || 0.02),
                     gapmin_probe_max_open: parseInt(document.getElementById('config-gapmin-probe-max-open')?.value || 3),
                     // May 2: split EMA5-EMA8 max + new pair/BTC slope max guards

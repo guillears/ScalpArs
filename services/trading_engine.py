@@ -6544,7 +6544,7 @@ class TradingEngine:
                 if _entry_supportive and not _live_supportive:
                     info["regime_flip_at"] = now
                     info["regime_flip_pnl"] = current_pnl
-                    logger.info(f"[POST_EXIT_REGIME_FLIP] {order.pair} {order.direction}: regime flipped {_entry_reg} → {_live_reg} after exit, captured pnl={current_pnl:.4f}%")
+                    logger.info(f"[POST_EXIT_REGIME_FLIP] {info['pair']} {direction}: regime flipped {_entry_reg} → {_live_reg} after exit, captured pnl={current_pnl:.4f}%")
 
             # Track reachable peak (best P&L while signal still active)
             if info["signal_lost_at"] is None:

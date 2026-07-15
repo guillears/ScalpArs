@@ -10615,7 +10615,7 @@ def _compute_gap_expand_cohort(orders):
             continue
         # Jul 13: GAPFLAT/GAPMIN probes belong to the probe A/B (gap_probe_cohort),
         # never to this MARGINAL/STRICT relaxation table.
-        if (getattr(o, 'cell_multiplier_source', None) or '') in ('GAPFLAT_PROBE', 'GAPMIN_PROBE', 'SLOPEGATE_PROBE', 'RSIADX_PROBE', 'DEADBAND_PROBE'):
+        if (getattr(o, 'cell_multiplier_source', None) or '') in ('GAPFLAT_PROBE', 'GAPMIN_PROBE', 'SLOPEGATE_PROBE', 'RSIADX_PROBE', 'DEADBAND_PROBE', 'RSICEIL_PROBE'):
             continue
         marg = getattr(o, 'entry_gap_expand_marginal', None)
         if marg is None:
@@ -10671,6 +10671,7 @@ def _compute_gap_probe_cohort(orders):
     slopegate_rows, slopegate_s_rows = [], []  # Jul 14: BTC 5m flat dead-band probe
     rsiadx_rows, rsiadx_s_rows = [], []  # Jul 15: RSI×ADX cross-filter probe (#4)
     deadband_rows = []  # Jul 15: BTC 1h flat-UP half-band probe (#5, LONG-only)
+    rsiceil_rows = []  # Jul 15: LONG RSI (65,70] ceiling probe (#6, LONG-only)
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
@@ -10690,6 +10691,8 @@ def _compute_gap_probe_cohort(orders):
                 rsiadx_rows.append(o)
             elif _src == 'DEADBAND_PROBE':
                 deadband_rows.append(o)
+            elif _src == 'RSICEIL_PROBE':
+                rsiceil_rows.append(o)
             else:
                 exp_rows.append(o)
         elif d == "SHORT":
@@ -10707,7 +10710,7 @@ def _compute_gap_probe_cohort(orders):
     # same filter stack) — all-history controls mix dead configs (locked re-sim rule).
     _all_probes = (probe_rows + gapmin_rows + gapmin_s_rows + gapflat_s_rows
                    + slopegate_rows + slopegate_s_rows + rsiadx_rows + rsiadx_s_rows
-                   + deadband_rows)
+                   + deadband_rows + rsiceil_rows)
     if _all_probes:
         _p0 = min(getattr(o, 'opened_at', None) for o in _all_probes if getattr(o, 'opened_at', None))
         if _p0:
@@ -10724,6 +10727,7 @@ def _compute_gap_probe_cohort(orders):
                        ("SLOPEGATE (probe) · LONG", slopegate_rows),
                        ("RSIADX (probe) · LONG", rsiadx_rows),
                        ("DEADBAND flat-up (probe) · LONG", deadband_rows),
+                       ("RSICEIL 65-70 (probe) · LONG", rsiceil_rows),
                        ("EXPANDING · SHORT", exp_s_rows), ("NON-EXPANDING (probe) · SHORT", gapflat_s_rows),
                        ("SMALL-GAP (probe) · SHORT", gapmin_s_rows),
                        ("SLOPEGATE (probe) · SHORT", slopegate_s_rows),
@@ -10749,7 +10753,7 @@ def _compute_gap_probe_cohort(orders):
         if not cohort.startswith("EXPANDING"):
             if n < 30:
                 verdict = f"⏳ building ({n}/30)"
-            elif wr >= 60.0 and avg_pct >= 0.15 and dates >= (5 if ("SLOPEGATE" in cohort or "RSIADX" in cohort or "DEADBAND" in cohort) else 10):
+            elif wr >= 60.0 and avg_pct >= 0.15 and dates >= (5 if ("SLOPEGATE" in cohort or "RSIADX" in cohort or "DEADBAND" in cohort or "RSICEIL" in cohort) else 10):
                 verdict = "★ relaxation candidate (open the discussion)"
             elif wr <= 45.0 or avg_pct < 0:
                 verdict = "✗ filter vindicated (switch probe off)"

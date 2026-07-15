@@ -262,6 +262,25 @@ def gap_min_band(indicators: dict, direction: str, th=None):
         return None
 
 
+def rsiceil_band(indicators: dict, direction: str, th=None):
+    """Jul 15: RSICEIL probe band (probe #6, LONG only). Returns True iff the candidate's
+    RSI sits in (momentum_long_rsi_max, rsiceil_probe_ceiling] — the dark zone above the
+    May-4 ceiling (set pre-UNMATCHED-only, N=2 lifetime above 65) whose current-era
+    gradient RISES toward it (60-63: 77% WR / 63-65: 73%). EXACT mirror of get_signal's
+    band condition. None = no probe (missing th/data) — fail-safe."""
+    try:
+        if th is None or direction != "LONG":
+            return None if direction != "LONG" else None
+        rsi = indicators.get('rsi')
+        if rsi is None:
+            return None
+        _max = float(getattr(th, 'momentum_long_rsi_max', 100) or 100)
+        _ceil = float(getattr(th, 'rsiceil_probe_ceiling', 70.0) or 70.0)
+        return bool(_max < 100 and _max < rsi <= _ceil)
+    except Exception:
+        return None
+
+
 def get_signal(
     ema5: float,
     ema8: float,
@@ -504,7 +523,15 @@ def get_signal(
             if long_rsi_min > 0 and rsi is not None and rsi < long_rsi_min:
                 _l_fails.append(f"PAIR_RSI_RANGE[<{long_rsi_min:g}]")  # too cold — weak momentum
             elif long_rsi_max < 100 and rsi is not None and rsi > long_rsi_max:
-                _l_fails.append(f"PAIR_RSI_RANGE[>{long_rsi_max:g}]")  # too hot — overbought chase
+                # Jul 15 RSICEIL PROBE (probe #6): the zone (max, ceiling] falls through when
+                # the probe is on — the >65 zone is DARK (N=2 lifetime) and the ceiling was
+                # set May-4 pre-UNMATCHED-only; above the probe ceiling stays blocked.
+                # Suppression mirrors GAPMIN: the band fail is not appended, so multi-fail
+                # candidates still block on their OTHER fails (cohort purity by construction).
+                _rsiceil_band_l = (getattr(th, 'rsiceil_probe_enabled', False)
+                                   and rsi <= float(getattr(th, 'rsiceil_probe_ceiling', 70.0) or 70.0))
+                if not _rsiceil_band_l:
+                    _l_fails.append(f"PAIR_RSI_RANGE[>{long_rsi_max:g}]")  # too hot — overbought chase
             if adx_max_long < 100 and adx > adx_max_long:
                 _l_fails.append("PAIR_ADX_MAX")
             # Gap family — pure math, now computed unconditionally (was nested in the else).

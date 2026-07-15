@@ -299,6 +299,19 @@ class SignalThresholds(BaseModel):
     # WR<=45% or avg<0 -> band re-closes, probe off.
     deadband_probe_enabled: bool = True
     deadband_probe_max_open: int = 3     # concurrent DEADBAND probes (LONG-only by construction)
+    # Jul 15 — RSICEIL PROBE (probe #6, operator-directed). The LONG RSI ceiling (65) was
+    # last set May-4 (Phase-1c, PRE-UNMATCHED-only longs + old exit stack) and the zone
+    # above it is DARK: N=2 lifetime trades with entry RSI 65-70. Current-era gradient
+    # RISES toward the ceiling (55-60: 62% / 60-63: 77%·+0.26% / 63-65: 73%) — the filter
+    # cuts where the book is strongest, on a dead configuration's evidence. Probe: LONGs
+    # whose ONLY ladder fail is RSI in (65, ceiling] open as 1x RSICEIL_PROBE (every other
+    # gate applies); RSI > ceiling stays blocked. 🔒 Gates at N>=30 (>=5 dates):
+    # WR>=60% & avg>=+0.15% -> ceiling-raise discussion (65->70 full size);
+    # WR<=45% or avg<0 -> ceiling vindicated, probe off. Verdict protocol applies
+    # (slice 65-67 vs 67-70 x other probes' dimensions).
+    rsiceil_probe_enabled: bool = True
+    rsiceil_probe_max_open: int = 3      # concurrent RSICEIL probes (LONG-only by construction)
+    rsiceil_probe_ceiling: float = 70.0  # probe band upper bound: RSI in (momentum_long_rsi_max, this]
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

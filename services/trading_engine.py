@@ -15,7 +15,7 @@ from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, _leverage_blocked_pairs
-from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule
+from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band
 from services.regime import classify_btc_regime
 from services.websocket_tracker import websocket_tracker
 
@@ -4224,6 +4224,7 @@ class TradingEngine:
         # days; April evidence ~$6, contested). Opens 1x tagged RSIADX_PROBE.
         rsiadx_probe: bool = False,
         deadband_probe: bool = False,
+        rsiceil_probe: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -4403,6 +4404,30 @@ class TradingEngine:
                 logger.info(f"[DEADBAND_PROBE] {pair} {direction} skipped: {_db_reason}")
                 try:
                     self._record_filter_block("LONG_BTC1H_DEADBAND", direction)
+                except Exception:
+                    pass
+                return None
+
+        # Jul 15: RSICEIL probe caps (probe #6, LONG-only by construction) — mirror block.
+        # Cap rejection records PAIR_RSI_RANGE = probe-off semantics.
+        if rsiceil_probe and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
+            _th_rc = config.trading_config.thresholds
+            _rc_reason = None
+            if not getattr(_th_rc, 'rsiceil_probe_enabled', False):
+                _rc_reason = "probe disabled"
+            elif _open_count_now > max(0, _inv_cfg.max_open_positions - 2):
+                _rc_reason = f"book too full ({_open_count_now} open, last 2 slots reserved)"
+            else:
+                _rc_open_q = await db.execute(
+                    select(func.count(Order.id)).where(and_(
+                        Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
+                        Order.cell_multiplier_source == "RSICEIL_PROBE")))
+                if (_rc_open_q.scalar() or 0) >= int(getattr(_th_rc, 'rsiceil_probe_max_open', 3) or 3):
+                    _rc_reason = "max concurrent probes open"
+            if _rc_reason:
+                logger.info(f"[RSICEIL_PROBE] {pair} {direction} skipped: {_rc_reason}")
+                try:
+                    self._record_filter_block("PAIR_RSI_RANGE", direction)
                 except Exception:
                     pass
                 return None
@@ -4856,23 +4881,24 @@ class TradingEngine:
         # 2x'd by the UNMATCHED cell); own cell_src row (rides Multiplier Cell Performance + CSV
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
-        if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe) and direction in ("LONG", "SHORT")
+        if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe) and direction in ("LONG", "SHORT")
                 and not flip_source and not bull_long and not bounce_long):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
-            # Tag precedence = NEWEST probe wins (DEADBAND Jul15(2) > RSIADX Jul15 >
-            # SLOPEGATE Jul14 > GAPFLAT/GAPMIN Jul13). Rationale: a dual-flag candidate was still blocked under
+            # Tag precedence = NEWEST probe wins (RSICEIL Jul15(3) > DEADBAND Jul15(2) >
+            # RSIADX Jul15 > SLOPEGATE Jul14 > GAPFLAT/GAPMIN Jul13). Rationale: a dual-flag candidate was still blocked under
             # yesterday's stack (the older probe's fall-through alone didn't free it), so it
             # exists only because the newest probe opened its last blocker. Tagging it with
             # the newest probe keeps every OLDER running A/B cohort's admission criteria
             # frozen mid-experiment. NOT chronological ladder order (gap kills before RSIADX
             # kills before the engine slope gate) — verdict-time rule: slice each cohort on
             # the other probes' dimensions (gap band / slope band / RSI x ADX) before shipping.
-            cell_src = ("DEADBAND_PROBE" if deadband_probe else
-                        ("RSIADX_PROBE" if rsiadx_probe else
-                         ("SLOPEGATE_PROBE" if slopegate_probe else
-                          ("GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE"))))
+            cell_src = ("RSICEIL_PROBE" if rsiceil_probe else
+                        ("DEADBAND_PROBE" if deadband_probe else
+                         ("RSIADX_PROBE" if rsiadx_probe else
+                          ("SLOPEGATE_PROBE" if slopegate_probe else
+                           ("GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE")))))
             _mult_target = "both"
             logger.info(f"[{cell_src}] {pair} {direction}: opening probe at inv={cell_mult}x lev={cell_lev_mult}x (~1x effective)")
 
@@ -9442,6 +9468,13 @@ class TradingEngine:
                     # Jul 15 DEADBAND probe (#5): candidate sat in the 1h flat-UP half-band
                     # (fall-through above) and survived every OTHER engine gate.
                     deadband_probe=bool(_deadband_probe_hit),
+                    # Jul 15 RSICEIL probe (#6): the ladder admitted this LONG via the
+                    # (max, ceiling] RSI band suppression — recompute the exact band here.
+                    rsiceil_probe=bool(
+                        signal == "LONG"
+                        and getattr(config.trading_config.thresholds, 'rsiceil_probe_enabled', False)
+                        and rsiceil_band(indicators, signal, config.trading_config.thresholds) is True
+                    ),
                 )
 
                 if order:

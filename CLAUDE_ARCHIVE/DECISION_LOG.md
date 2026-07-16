@@ -2328,3 +2328,17 @@ Census on the 17:05 export (431 rows, 8 sources) + fresh net-admissibility join 
 ① **PASS:FLIP_SHORT_BTC1H_SLOPE retired.** 160 pooled phantoms / ~2.5 weeks: raw 122·52%·−0.026% (gate blocks no-edge trades); net-admissible **9/160 · 67% · +0.27% · 4 dates** — 68 die downstream at FLIP_SHORT_QUALITY, 41 at RSI_MIN; every regime carve-out ❌ (best CHOPPY_FLAT 3/10, ~month+ to resolve at 9-per-2.5-weeks flow). Same closure state as the REGIME source (0/130). SLOPEUP precedent: one revert already tried (v8) and re-blocked (v11) in <1 day. The Jul-3 1h slope gate now stands on a 160-phantom forward vindication with its revert surface closed (one-way door acknowledged).
 ② **LONG_UNMATCHED_ONLY (fade arm) retired.** 66 phantoms · 55% · +0.054% avg, marginal for weeks; every sub-cell whipsaw or below the flip carve-out gates (best H.BULL 34·59%·+0.155%). "Fade blocked matched longs" = settled no-ship. The PASS side (matched-long re-enable hunt) keeps seeding as the control arm.
 **Kept (must not retire):** PASS:LONG_BTC1H_DEADBAND (probe #5's live flat-down revert surface) · PASS:FLIP_SHORT_BTC_TRENDGAP (locked tight-revert of the N=16 ship) · PASS:MOMENTUM_SHORT_DEEPGAP (young, ★). Verified: FLIP_SHORT_REGIME (88) and SPIKE_REV_BTC (11) static since the Jul-14 stop — that ship works. Mechanics: both retirees removed from PHANTOM_KEEP_SOURCES (seeding stops) + added to PHANTOM_HIDDEN_SOURCES (display); rows NEVER deleted (disjoint-from-delete-list asserted at import).
+
+## 2026-07-16 — SLOPEGATE·LONG early separation pass (operator: per-pair differentiator on the 8 probes)
+Follow-up to the LDO/TAO same-minute divergence. All 8 SLOPEGATE·LONG probes (Jul-16, 17:11 export) sliced on pair-level dimensions:
+| Time | Pair | P&L% | stretch | PVR | rng | pvol | tgap13-50 | Q |
+|---|---|---|---|---|---|---|---|---|
+| 01:01 | TAO W | +1.42 | 0.064 | 0.60 | 63 | $81M | +0.22 | 3 |
+| 01:01 | LDO L | −0.97 | 0.203 | 0.78 | 91 | $31M | +1.08 | 2 |
+| 01:32 | DODOX W | +0.10 | 0.029 | 0.55 | 69 | $180M | +0.25 | 3 |
+| 07:38 | ETHFI L | −0.81 | 0.192 | 0.71 | 73 | $32M | −0.00 | 3 |
+| 09:01 | PUMP L | −0.83 | 0.208 | 0.57 | 85 | $99M | −0.04 | 3 |
+| 10:01 | ONDO W | +0.10 | 0.077 | 0.64 | 79 | $193M | +0.24 | 3 |
+| 16:08 | SKL L | −0.70 | 0.056 | 1.12 | 59 | $91M | −0.40 | 2 |
+| 16:10 | XLM L | −0.69 | 0.107 | 0.79 | 89 | $73M | +0.30 | 3 |
+Near-splits, all one direction ("fresh entry on calm liquid pair" wins; "late chase on hot thin pair" loses): EMA5 stretch W ≤0.077 vs 4/5 L ≥0.107 (SKL exception); PVR W all <0.65 vs L avg 0.80; pair vol W avg $151M vs L $65M (both $100M+ pairs won — matches batch-wide $100-150M bucket 85.7%·+0.61 vs negative $30-80M); rng-pos losers 3/5 ≥85; both Q=2 trades lost; losers' RSI in motion (−10/−7/−5.5 falling or +4.7 spike) vs winners near-flat (batch-wide RSI-falling drag reproducing in-cohort). LDO vs TAO separated by EVERY pair dimension — confirms macro coordinates don't pick the pair here. ⚠ Stretch sign CONTRADICTS the batch-wide table (0.12-0.16 best bucket 7·100%) → cohort-conditional only. Verdict shape implication if it survives at N≥30: consider HALF-OPEN (block late/thin/hot, free fresh/quiet/liquid) instead of binary. Watchlist note added to CURRENT_STATE; no gate armed, no numeric threshold pre-committed (N=8 would lock noise). Same-minute/moment clusters (TAO+LDO 01:01; SKL+XLM 16:08/10) count once for MACRO reads; pair-level reads may use all 8.

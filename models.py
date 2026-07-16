@@ -602,7 +602,11 @@ class Order(Base):
 # to the engine but not the purge caused every app restart to DELETE the new sources' rows
 # (Jul-5 incident: 4 PASS phantoms purged by the spike-phantom deploy's restart).
 PHANTOM_KEEP_SOURCES = (
-    "LONG_UNMATCHED_ONLY",
+    # Jul 16 — "LONG_UNMATCHED_ONLY" (the fade arm) REMOVED from collection (operator:
+    # question answered). 66 phantoms · 55% · +0.054% avg, marginal for weeks; every
+    # sub-cell whipsaw or below the flip carve-out gates (best H.BULL 34·59%·+0.155%).
+    # "Fade blocked matched longs" = settled no-ship. Rows preserved; hidden via
+    # PHANTOM_HIDDEN_SOURCES. The PASS side (re-enable hunt control arm) keeps seeding.
     "MOMENTUM_SHORT_W1_REGIME",
     "PASS:LONG_UNMATCHED_ONLY",
     # Jul 14 — "SPIKE_REV_BTC" REMOVED from collection (operator: hide solved phantoms).
@@ -612,7 +616,13 @@ PHANTOM_KEEP_SOURCES = (
     # BTC1H_SLOPE feeds the Jul-3 gate's locked revert (≥60% WR on N≥10 blocked → gate off;
     # the gate shipped WITHOUT this surface — the revert could never trigger, bug fix).
     # REGIME (bear≥80, #1 flip blocker at 290) measures what the bear-era filter forfeits in a bull.
-    "PASS:FLIP_SHORT_BTC1H_SLOPE",
+    # Jul 16 — "PASS:FLIP_SHORT_BTC1H_SLOPE" REMOVED from collection (operator: hide +
+    # stop shadowing). 160 pooled phantoms over ~2.5 weeks: raw 52%·−0.026% (gate keeps
+    # blocking no-edge trades); NET-ADMISSIBLE only 9/160 (68 die at FLIP_SHORT_QUALITY,
+    # 41 at RSI_MIN) at 67%·+0.27% — every regime carve-out ❌ (best CHOP 3/10; ~month+
+    # to resolve at this flow). Same closure state as PASS:FLIP_SHORT_REGIME (0/130).
+    # SLOPEUP precedent: one revert already attempted (v8) and re-blocked (v11) <1 day.
+    # Rows preserved; hidden via PHANTOM_HIDDEN_SOURCES. One-way door: pool stops growing.
     # Jul 14 — "PASS:FLIP_SHORT_REGIME" REMOVED from collection (operator: hide solved
     # phantoms). Question CLOSED Jul 14: pooled 130 phantoms · 54% WR · net-admissible
     # 0/130 — relaxation refuted; new phantoms only re-ask a settled question. Rows
@@ -642,9 +652,11 @@ PHANTOM_KEEP_SOURCES = (
 # PASS:LONG_UNMATCHED_ONLY keeps SEEDING (control arm of the active fade-short watch,
 # pooled analysis needs it) but its ✗-whipsaws verdict is stable → display noise.
 PHANTOM_HIDDEN_SOURCES = (
-    "PASS:FLIP_SHORT_REGIME",   # CLOSED: pooled 130 · 54% · net-admissible 0/130
-    "SPIKE_REV_BTC",            # 100% BTCUSDT (no-trade pair) — verdict unreachable
-    "PASS:LONG_UNMATCHED_ONLY", # stable ✗ whipsaws; still seeded as the fade's control arm
+    "PASS:FLIP_SHORT_REGIME",       # CLOSED: pooled 130 · 54% · net-admissible 0/130
+    "SPIKE_REV_BTC",                # 100% BTCUSDT (no-trade pair) — verdict unreachable
+    "PASS:LONG_UNMATCHED_ONLY",     # stable ✗ whipsaws; still seeded as the fade's control arm
+    "PASS:FLIP_SHORT_BTC1H_SLOPE",  # Jul 16 CLOSED: 160 pooled · net-adm 9/160 · no carve-out near gate
+    "LONG_UNMATCHED_ONLY",          # Jul 16 CLOSED: fade marginal at N=66 · all sub-cells whipsaw/below gates
 )
 
 PHANTOM_RETIRED_SOURCES = (

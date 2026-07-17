@@ -430,9 +430,16 @@ def _flip_filters(source, ind):
     and its own filter TYPES (FAN uses stretch+regime+strpk+mult; future LONG_UNMATCHED /
     PAIR_RSI_OB branches define their own). Fully fail-open: any error → (False, None, 1.0,
     None) so a filter bug can never block a flip or break the scan.
-    Returns (blocked: bool, reason: str|None, size_mult: float, lev_mult: float, exit_mode: str|None)."""
+    Jul 17 FUNNEL v2: the chain now evaluates EVERY gate and collects the full fail list
+    instead of stopping at the first block (needed for Sole/Episode/AllF accounting — with
+    ~12 conjunctive gates, first-fail-wins made the marginal blocker unmeasurable). Behavior
+    is unchanged: blocked iff fails is non-empty, and reason = fails[0] (the same first-fail
+    name the legacy counters/logs/phantom-seeds always saw).
+    Returns (blocked: bool, reason: str|None, size_mult: float, lev_mult: float,
+    exit_mode: str|None, fails: list[str])."""
     try:
         th = config.trading_config.thresholds
+        _fails = []
         # PAIR_RSI_OB source (Jun 19): the overbought-fade short (a LONG blocked at pair RSI>65 → fade
         # SHORT). Its OWN per-source filter — fires ONLY in the validated regime allow-list (STRONG_BULL).
         # Cross-batch (Jun18/19, independent windows): S.BULL 76-80% WR / +0.20..+0.32 vs H.BULL 29-47% /
@@ -446,7 +453,7 @@ def _flip_filters(source, ind):
                 _ob_set = {s.strip().upper() for s in (getattr(th, 'flip_pair_rsi_ob_short_regimes', '') or '').split(',') if s.strip()}
                 _ob_reg = (ind.get('btc_regime') or '').upper()
                 if not _ob_set or _ob_reg not in _ob_set:
-                    return (True, "FLIP_PAIR_RSI_OB_REGIME", 1.0, 1.0, None)
+                    _fails.append("FLIP_PAIR_RSI_OB_REGIME")
                 # Pair-ADX floor (Jun 20, N=9 DISCIPLINE-OVERRIDE): the overbought-fade pays ONLY on a
                 # blow-off in a STRONGLY-trending pair — live pair-ADX bucket 33+ = 9/89% WR/+$698; every
                 # bucket <33 net-negative (18-22 −$75, 22-25 −$138, 25-28 −$163, 28-30 −$76, 30-33 −$91).
@@ -456,7 +463,7 @@ def _flip_filters(source, ind):
                 if _ob_amin > 0:
                     _ob_adx = ind.get('adx')
                     if _ob_adx is not None and _ob_adx < _ob_amin:
-                        return (True, "FLIP_PAIR_RSI_OB_ADX", 1.0, 1.0, None)
+                        _fails.append("FLIP_PAIR_RSI_OB_ADX")
                 # Jun 22 — pair EMA13-EMA50 gap ceiling (parabola guard). PAIR_RSI_OB returns early below so it
                 # never inherited the universal flip_short_pair_gap_max block; replicate it here on its OWN field.
                 # Don't fade a pair already steeply extended above its 4h trend (gap≥max) — it never arms and the
@@ -466,20 +473,22 @@ def _flip_filters(source, ind):
                 if _ob_pgmax > 0:
                     _ob_pgap = ind.get('pair_gap')
                     if _ob_pgap is not None and _ob_pgap >= _ob_pgmax:
-                        return (True, "FLIP_PAIR_RSI_OB_GAP", 1.0, 1.0, None)
+                        _fails.append("FLIP_PAIR_RSI_OB_GAP")
                 # Jun 21: the BTC-ADX>40 cohort is PROMOTED from de-risked 1x to full 20x after its first
                 # live batch — at the raised pADX>=45 floor it was 17/82%WR/+0.20%avg with BE-compat 67%
                 # (≥60% of losers armed, only 1/17 gapped). De-risk removed → all pADX>=45 STRONG_BULL fires
                 # at full lev regardless of BTC ADX. N=17/one-batch DISCIPLINE-OVERRIDE; revert = set
                 # flip_pair_rsi_ob_btc_adx_high_mode→off (stops the >40 seed) and/or floor→40.
-            return (False, None, 1.0, 1.0, None)
+            if _fails:
+                return (True, _fails[0], 1.0, 1.0, None, _fails)
+            return (False, None, 1.0, 1.0, None, _fails)
         # Universal fan-SPIKE block (ALL sources, Jun 17): refuse a flip that fades a violently-
         # accelerating parabolic fan (ratio >= flip_fan_spike_max) — it never arms, runs to SL.
         # Cross-batch N=3 / 0% WR (ASTER/VELVET/ALLO). Mirrors the live long-side fan>=5 block.
         _fan = ind.get('fan_ratio')
         _fmax = float(getattr(th, 'flip_fan_spike_max', 0.0) or 0.0)
         if _fmax > 0 and _fan is not None and _fan >= _fmax:
-            return (True, "FLIP_FAN_SPIKE", 1.0, 1.0, None)
+            _fails.append("FLIP_FAN_SPIKE")
         # Universal 2D regime×ADXΔ block for flip-SHORTS (ALL sources, Jun 17). Block a short flip
         # when entry ADXΔ < adxd_max AND BTC regime ∈ blocked set. Cross-batch BULL/CHOP ∧ ADXΔ<0 =
         # N=38/40%WR/-$1070; 96% of losers peak <0.45 arm so the give-back cap can't save them →
@@ -492,7 +501,7 @@ def _flip_filters(source, ind):
         if ind.get('flip_dir') == 'SHORT' and _smax > 0:
             _sstr = ind.get('ema5_stretch')
             if _sstr is not None and _sstr >= _smax:
-                return (True, "FLIP_SHORT_HISTRETCH", 1.0, 1.0, None)
+                _fails.append("FLIP_SHORT_HISTRETCH")
         _regs = (getattr(th, 'flip_short_regime_block_regimes', '') or '').strip()
         _anyregs = (getattr(th, 'flip_short_regime_block_any_adxd_regimes', '') or '').strip()
         if ind.get('flip_dir') == 'SHORT' and (_regs or _anyregs):
@@ -502,9 +511,9 @@ def _flip_filters(source, ind):
             _anyset = {s.strip() for s in _anyregs.split(',') if s.strip()}
             # B2 (Jun 17): block any-ADXΔ in these regimes (STRONG_BULL loses both ADXΔ halves).
             if _reg and _reg in _anyset:
-                return (True, "FLIP_SHORT_REGIME", 1.0, 1.0, None)
+                _fails.append("FLIP_SHORT_REGIME")
             if _adxd is not None and _reg and _adxd < _amax and _reg in _regset:
-                return (True, "FLIP_SHORT_REGIME", 1.0, 1.0, None)
+                _fails.append("FLIP_SHORT_REGIME")
         # BTC 30m-RSI-rising block for flip-SHORTS (Jun 18): the cleanest cross-batch differentiator. FAN
         # flip-shorts LOSE when BTC 30m RSI is rising (macro bouncing → the faded pump squeezes with it) and
         # PAY when falling. 2-batch consistent (rising −$1031 vs falling +$811; today −$965/−$998 was rising).
@@ -514,7 +523,7 @@ def _flip_filters(source, ind):
         if ind.get('flip_dir') == 'SHORT' and _b30min < 99:
             _br, _br6 = ind.get('btc_rsi'), ind.get('btc_rsi_prev6')
             if _br is not None and _br6 is not None and (_br - _br6) > _b30min:
-                return (True, "FLIP_SHORT_BTC30_RISE", 1.0, 1.0, None)
+                _fails.append("FLIP_SHORT_BTC30_RISE")
         # BTC 1h-slope regime gate for flip-SHORTS (Jul 3): don't fade an alt pump while BTC's HOURLY
         # trend is rising — in a recovery the pump is real and squeezes the short; when the hour falls
         # it's exhaustion and the fade pays. The ONLY flip separator (of 8 tested) direction-consistent
@@ -535,7 +544,7 @@ def _flip_filters(source, ind):
                 _adm_raw = getattr(th, 'flip_short_btc_1h_slope_admit_mult', 0.0)
                 _adm = 0.0 if _adm_raw is None else float(_adm_raw)
                 if _adm <= 0:
-                    return (True, "FLIP_SHORT_BTC1H_SLOPE", 1.0, 1.0, None)
+                    _fails.append("FLIP_SHORT_BTC1H_SLOPE")
                 # fall through un-blocked; sizing cap + tag handled in _maybe_open_flip
         # BTC trend-gap DEPTH gate for flip-SHORTS (Jul 8): don't fade an alt pump while BTC sits
         # DEEP below its own trend (EMA13-50 gap ≤ min) — oversold tape means the pump is a
@@ -553,7 +562,7 @@ def _flip_filters(source, ind):
         if ind.get('flip_dir') == 'SHORT' and _tgmin < 0:
             _btg = ind.get('btc_trend_gap')
             if _btg is not None and _btg <= _tgmin:
-                return (True, "FLIP_SHORT_BTC_TRENDGAP", 1.0, 1.0, None)
+                _fails.append("FLIP_SHORT_BTC_TRENDGAP")
         # High-ATR bear block (Jun 17): the REGIME-INVERTED hole in FLIP_SHORT_REGIME's bear exemption.
         # A high-ATR parabolic pump in a strong bear is a counter-trend short-SQUEEZE that keeps ripping →
         # the short never arms and the high ATR gaps the −0.70 SL to ~−1.2 (ESPORTS 4.0, HUSDT 3.0 = 0%WR/
@@ -567,7 +576,7 @@ def _flip_filters(source, ind):
             _hatr = ind.get('atr_pct'); _hareg = ind.get('btc_regime')
             _haset = {s.strip() for s in _haregs.split(',') if s.strip()}
             if _hamin > 0 and _hatr is not None and _hatr >= _hamin and _hareg and _hareg in _haset:
-                return (True, "FLIP_SHORT_HIATR", 1.0, 1.0, None)
+                _fails.append("FLIP_SHORT_HIATR")
         # Pair-RSI floor for flip-SHORTS (Jun 19): fade quality scales with how overbought the blocked
         # long was. Cross-batch (Jun17/18/19 deduped) RSI<55 = N=21/57%WR/-0.094%/Σ-1.98 (only consistently
         # negative zone); RSI>=55 = N=78/65%WR/+0.056%/Σ+4.33 (carries ~all the edge); 60-65 = 71%WR/+0.187.
@@ -577,7 +586,7 @@ def _flip_filters(source, ind):
         if ind.get('flip_dir') == 'SHORT' and _rmin > 0:
             _prsi = ind.get('pair_rsi')
             if _prsi is not None and _prsi < _rmin:
-                return (True, "FLIP_SHORT_RSI_MIN", 1.0, 1.0, None)
+                _fails.append("FLIP_SHORT_RSI_MIN")
         # Quality-score floor for flip-SHORTS (Jun 25): the global Entry-Quality-Score filter
         # blocks score ≤1 for NORMAL entries but flips BYPASS it. Cross-batch FAN flip-short is
         # monotonic in quality score; score ≤1 is the only negative band (N=18/56%WR/−2.98%/8 dates,
@@ -587,7 +596,7 @@ def _flip_filters(source, ind):
         if ind.get('flip_dir') == 'SHORT' and _qmin > 0:
             _qsc = ind.get('quality_score')
             if _qsc is not None and _qsc < _qmin:
-                return (True, "FLIP_SHORT_QUALITY", 1.0, 1.0, None)
+                _fails.append("FLIP_SHORT_QUALITY")
         # Market-breadth FLOOR for flip-SHORTS (2026-06-29): a fade-short needs the broad market falling
         # to follow through; when breadth is bullish/neutral the fade has no tailwind → DOA grind → 20× SL
         # gap. Fine bear-band split (COMBINED in-sample + 06-29 forward) localises the loss ENTIRELY to
@@ -599,7 +608,7 @@ def _flip_filters(source, ind):
         if ind.get('flip_dir') == 'SHORT' and _bmin > 0:
             _bp = ind.get('bear_pct')
             if _bp is not None and _bp < _bmin:
-                return (True, "FLIP_SHORT_BEAR_MIN", 1.0, 1.0, None)
+                _fails.append("FLIP_SHORT_BEAR_MIN")
         # Universal collapsing-pair-ADX block for flip-SHORTS (Jun 28): flip shorts BYPASS the momentum-
         # short `Pair ADX Dir S: rising` filter, so a flip-short can fire into a pair whose ADX is
         # COLLAPSING (ADXΔ << 0 = the trend that justified the fade is dying → no follow-through →
@@ -612,7 +621,7 @@ def _flip_filters(source, ind):
         if ind.get('flip_dir') == 'SHORT' and _admin > -99:
             _fad = ind.get('adx_delta')
             if _fad is not None and _fad < _admin:
-                return (True, "FLIP_SHORT_ADXD", 1.0, 1.0, None)
+                _fails.append("FLIP_SHORT_ADXD")
         # Pair EMA13-EMA50 gap ceiling for flip-SHORTS (Jun 21): refuse to fade a pair already steeply
         # extended above its OWN 4h trend — a parabola that keeps ripping → the 20× short gaps the SL
         # to ~-1.2%. Cross-batch FAN survivors (Jun17-21 deduped) gap≥1.0 = N=16/44%WR/-0.359%/Σ-$461,
@@ -624,7 +633,7 @@ def _flip_filters(source, ind):
         if ind.get('flip_dir') == 'SHORT' and _pgmax > 0:
             _pgap = ind.get('pair_gap')
             if _pgap is not None and _pgap >= _pgmax:
-                return (True, "FLIP_SHORT_PAIR_GAP", 1.0, 1.0, None)
+                _fails.append("FLIP_SHORT_PAIR_GAP")
         # Mirror for flip-LONGS (Jun 17): block a long flip when BTC regime ∈ bear set. A flip-LONG
         # fades a blocked SHORT -> goes LONG; in a STRONG_BEAR that's long-into-the-trend (AAVE/TAO
         # this batch: 2/0%WR/-$220, both straight to SL). UNLIKE the short gate, the observed long
@@ -634,7 +643,7 @@ def _flip_filters(source, ind):
         # losers DYDX −$115 + XPL −$164 = 0/2). Discipline-override (N=2 < N≥10 gate). Counter
         # FLIP_LONG_DISABLED. Fail-open: default enabled. Sits ABOVE the regime block (supersedes it).
         if ind.get('flip_dir') == 'LONG' and not getattr(th, 'flip_long_enabled', True):
-            return (True, "FLIP_LONG_DISABLED", 1.0, 1.0, None)
+            _fails.append("FLIP_LONG_DISABLED")
         # adxd_max high (99) so the gate is regime-dominant; operator can lower it to add an ADXΔ
         # cut later if a long ADXΔ cell proves out. Fail-open: empty regimes or missing regime → no block.
         _lregs = (getattr(th, 'flip_long_regime_block_regimes', '') or '').strip()
@@ -644,7 +653,7 @@ def _flip_filters(source, ind):
             _lamax = 99.0 if _lamax_raw is None else float(_lamax_raw)  # NOT `or` — 0.0 is a valid threshold (Jul 3 review)
             _lregset = {s.strip() for s in _lregs.split(',') if s.strip()}
             if _lreg and _lreg in _lregset and (_ladxd is None or _ladxd < _lamax):
-                return (True, "FLIP_LONG_REGIME", 1.0, 1.0, None)
+                _fails.append("FLIP_LONG_REGIME")
         if source == "FAN_RATIO_GATE":
             stretch = ind.get('ema5_stretch')
             brsi = ind.get('btc_rsi'); badx = ind.get('btc_adx')
@@ -669,16 +678,16 @@ def _flip_filters(source, ind):
                 if _loatr > 0:
                     _batr = ind.get('btc_atr_pct')
                     if _batr is not None and _batr < _loatr:
-                        return (True, "FLIP_FAN_LOATR", 1.0, 1.0, None)
+                        _fails.append("FLIP_FAN_LOATR")
                 # 1) thin-fuel block
                 smin = float(getattr(th, 'flip_fan_stretch_min', 0.0) or 0.0)
                 if smin > 0 and stretch is not None and stretch < smin:
-                    return (True, "FLIP_FAN_STRETCH", 1.0, 1.0, None)
+                    _fails.append("FLIP_FAN_STRETCH")
                 # 2) regime block — fade into a strong, un-exhausted bull
                 rmin = float(getattr(th, 'flip_fan_block_btc_rsi', 0.0) or 0.0)
                 amin = float(getattr(th, 'flip_fan_block_btc_adx', 0.0) or 0.0)
                 if rmin > 0 and amin > 0 and brsi is not None and badx is not None and brsi >= rmin and badx >= amin:
-                    return (True, "FLIP_FAN_REGIME", 1.0, 1.0, None)
+                    _fails.append("FLIP_FAN_REGIME")
                 # 2b) pair-ADX floor (Jun 23) — FAN flips BYPASS the momentum short system's pair-ADX
                 # requirement (Pair ADX Dir rising + ADX-Strong>20), so they fire weak-trend fades
                 # (pADX 15-19) with no follow-through that chop/gap back. Restore the floor. Cross-batch
@@ -693,19 +702,23 @@ def _flip_filters(source, ind):
                 if _padxmin > 0 and (ind.get('btc_regime') or '') not in _padx_exempt:
                     _padx = ind.get('adx')
                     if _padx is not None and _padx < _padxmin:
-                        return (True, "FLIP_FAN_PAIR_ADX", 1.0, 1.0, None)
+                        _fails.append("FLIP_FAN_PAIR_ADX")
                 # 3) size/lev multiplier — the FAN flip-SHORT "winner cell" (qs/bear/range) is
                 #    applied DOWNSTREAM in _maybe_open_flip via _fan_qs_cell_match (so it can carry
                 #    a distinct cell_multiplier_source tag even at 1× for tracking). This branch
                 #    leaves size/lev at 1.0; the override happens at the open site.
             # 4) exit mode (short runner stretch-trail; short-only at execution, harmless for longs)
             exitm = "strpk" if getattr(th, 'flip_fan_runner_strpk', False) else None
-            return (False, None, size, lev, exitm)
+            if _fails:
+                return (True, _fails[0], 1.0, 1.0, None, _fails)
+            return (False, None, size, lev, exitm, _fails)
         # LONG_UNMATCHED_ONLY / PAIR_RSI_OB: no entry filters yet (their own data pending), but
         # Jun 16 they DO share the SHORT runner stretch-trail exit via flip_runner_strpk_shorts.
-        return (False, None, 1.0, 1.0, ("strpk" if getattr(th, 'flip_runner_strpk_shorts', False) else None))
+        if _fails:
+            return (True, _fails[0], 1.0, 1.0, None, _fails)
+        return (False, None, 1.0, 1.0, ("strpk" if getattr(th, 'flip_runner_strpk_shorts', False) else None), _fails)
     except Exception:
-        return (False, None, 1.0, 1.0, None)
+        return (False, None, 1.0, 1.0, None, [])
 
 def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False,
                   stretch=None, entry_stretch=None, atr=None):
@@ -3812,7 +3825,12 @@ class TradingEngine:
                 'btc_trend_gap': (_ef.get('entry_btc_trend_gap_pct') if _ef.get('entry_btc_trend_gap_pct') is not None
                                   else _g.get('_current_btc_trend_gap_pct')),
             }
-            _blocked, _reason, _flip_cell_mult, _flip_cell_lev_mult, _flip_exit_mode = _flip_filters(source, _ff_in)
+            _blocked, _reason, _flip_cell_mult, _flip_cell_lev_mult, _flip_exit_mode, _flip_fails = _flip_filters(source, _ff_in)
+            # Jul 17 FUNNEL v2 for the flip chain: feed the FULL fail list to the Sole/Epis/AllF
+            # recorder (same stores as the momentum ladder → same table rows on every surface).
+            # Sole = the one gate whose removal alone admits the flip (the marginal blocker).
+            try: self._record_filter_multi(_flip_fails, flip_dir, pair)
+            except Exception: pass
             if _blocked:
                 try: self._record_filter_block(_reason, flip_dir)
                 except Exception: pass

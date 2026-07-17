@@ -7806,10 +7806,13 @@
                 utcString = isoString + 'Z';
             }
             const d = new Date(utcString);
-            // Display in UTC-3 (Argentina timezone)
-            return d.toLocaleTimeString('en-US', { 
-                hour: '2-digit', 
-                minute: '2-digit', 
+            // Display in UTC-3 (Argentina timezone) — Jul 17: date added (day + short month),
+            // year dropped as noise; inherited by Transactions / Open & Closed Orders / BNB Swaps.
+            return d.toLocaleString('en-US', {
+                month: 'short',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
                 second: '2-digit',
                 timeZone: 'America/Argentina/Buenos_Aires'
             });

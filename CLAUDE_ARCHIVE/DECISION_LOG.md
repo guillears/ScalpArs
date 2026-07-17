@@ -2369,3 +2369,15 @@ DIP_ALIGN advanced again (in-zone 13·53.8%·−0.22 vs out 8·25%·−0.63; GAP
 Trace: `btc_rsi_min_long=40 / btc_rsi_max_long=65` are set in live config but enforced ONLY inside the `btc_global_enabled` block (services/trading_engine.py ~8159; May-5 comment: "BTC RSI min/max stays GATED by btc_global_enabled per user direction") — and `btc_global_filter_enabled=false`. The window runs for NOBODY. The config report prints "BTC RSI L: 40-65" one line below "BTC Global: false" — inert values, easy misread (it fooled the Jul-17 morning analysis into a "purity bug" hypothesis).
 Why zero sub-40 normal longs across 100+ trades/both eras anyway: sub-40 BTC RSI ⇒ BTC falling ⇒ 5m slope < flat threshold ⇒ every normal long candidate dies at BTC_SLOPE_GATE before any RSI check would matter. **The dead-band and the RSI floor are entangled: part of the gate's measured value IS capitulation-blocking**, invisible until the SLOPEGATE probe opened the door (9 sub-40 fills · 33% · −0.59% = first-ever measurement of that function; RSI-clean remainder 12·50%·−0.21 = the gate's collateral damage on basing/recovery tape).
 Consequences: ① no probe bug — "sole-blocked" literally true for all 21; cohort integrity stands; ② SLOPEGATE verdict decomposes the gate into markdown-blocking (working) vs basing-blocking (costly); ③ 🔒 any half-open MUST pair with a standalone explicit BTC RSI floor (nothing else enforces one; do NOT enable btc_global for this — it bundles regime/pair-regime blocks); ④ housekeeping: UI BTC RSI fields silently inert — D11 decoupling candidate if the window is ever wanted independently.
+
+## 2026-07-17 — HOT_MATURE per-cohort impact (12:49 export) + EXPANDING-control window clarification
+Operator-requested before/after per long cohort @1× (SLOPEGATE covered in prior entry: removes PUMP/XPL, 0/2W):
+| Cohort | Before | After HOT block | Blocked | Δ1×$ |
+|---|---|---|---|---|
+| EXPANDING (post-deploy control) | 3·33%·+$83 | 1·100%·+$299 | 2·0% (BCH,XLM 14:23) | +$170 |
+| GAPFLAT non-expanding | 9·77.8%·+$310 | 8·87.5%·+$395 | 1·0% (TAO 14:21) | +$85 |
+| SMALL-GAP | 2 | unchanged | 0 | 0 |
+| DEADBAND flat-up | 5·80%·+$54 | 3·66.7%·−$43 | 2·100% (NEAR,DOT 15:28) | −$97 |
+| RSICEIL 65-70 | 4·75%·+$65 | 3·66.7%·+$15 | 1·100% (BONK 14:22) | −$51 |
+Net +$107 across the five, but: blocked set = 6 trades ≈ 2 episodes; BONK WON inside the founding 14:2x minute (3L+1W same moment → pair selection, not the zone, decided); Δ sign flips by cohort (helps momentum-chase flow, hurts the extreme-entry probes whose winners live near the zone boundary). In-zone long record now 5L/4W mixed. Watch reporting extended: per-cohort split at every batch review.
+**Window clarification (operator: "EXPANDING shows 3 trades"):** the probe table's EXPANDING·LONG control counts normal longs opened AFTER the Jul-13 probe deploy (3: SXT +2.44, BCH/XLM −0.69) — apples-to-apples with probes; the batch-wide analyses' "8 expanding" = all UNMATCHED longs incl. 5 pre-deploy. Both correct for their purpose; control is starving (~3/4d) → GAPFLAT verdict comparison leans on the baseline 41-trade expanding population (gradient entry, Jul-17).

@@ -10772,7 +10772,7 @@ def _compute_gap_probe_cohort(orders):
         if not cohort.startswith("EXPANDING"):
             if n < 30:
                 verdict = f"⏳ building ({n}/30)"
-            elif wr >= 60.0 and avg_pct >= 0.15 and dates >= (5 if ("SLOPEGATE" in cohort or "RSIADX" in cohort or "DEADBAND" in cohort or "RSICEIL" in cohort) else 10):
+            elif wr >= 60.0 and avg_pct >= 0.15 and dates >= (5 if ("SLOPEGATE" in cohort or "RSIADX" in cohort or "DEADBAND" in cohort or "RSICEIL" in cohort or "GMINFLAT" in cohort or "ADXMAX" in cohort or "DBDOWN" in cohort) else 10):
                 verdict = "★ relaxation candidate (open the discussion)"
             elif wr <= 45.0 or avg_pct < 0:
                 verdict = "✗ filter vindicated (switch probe off)"

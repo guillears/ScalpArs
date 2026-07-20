@@ -324,6 +324,10 @@ class SignalThresholds(BaseModel):
     # sole-blocked by [flat] open as 1x GMINFLAT_PROBE, BOTH directions. 🔒 Gates PER SIDE
     # at N>=30 (>=5 dates): WR>=60% & avg>=+0.15% -> relax discussion; WR<=45% or avg<0 ->
     # cohort-purity block vindicated, probe off.
+    # ⚠ DEPENDENCY (code-review): the [flat] suppression is only reachable while BOTH
+    # gap_probe_enabled (GAPFLAT) AND gapmin_probe_enabled are True — switching either off
+    # (e.g. executing their verdicts) silently starves this probe to zero flow (candidates
+    # stay safely blocked; nothing admits untagged). Re-check this flag at those verdicts.
     gminflat_probe_enabled: bool = True
     gminflat_probe_max_open: int = 3     # concurrent GMINFLAT probes (both directions combined)
     # Jul 20 — ADXMAX PROBE (probe #8, operator-directed; RSICEIL-clone). The pair-ADX

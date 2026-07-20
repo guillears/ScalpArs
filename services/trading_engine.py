@@ -4308,7 +4308,21 @@ class TradingEngine:
         # slows the N>=30 clock; the slot guard + concurrency cap are the real protections.
         # A cap rejection is recorded as PAIR_EMA_GAP_NOT_EXPANDING — identical funnel semantics
         # to the probe being off.
-        if gap_probe and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
+        # Jul 20 (code-review fix): resolve the candidate's FINAL probe tag first (newest
+        # wins — same precedence as cell_src below) and run ONLY that probe's cap block.
+        # Without this, a dual-flag candidate (e.g. every GMINFLAT is also gap-flat =>
+        # gap_probe=True) is capped/counted by the OLDER probe's block — starving the
+        # newer cohort's N-clock and mis-attributing the funnel counter.
+        _probe_final_tag = ("DBDOWN_PROBE" if dbdown_probe else
+                            ("ADXMAX_PROBE" if adxmax_probe else
+                             ("GMINFLAT_PROBE" if gminflat_probe else
+                              ("RSICEIL_PROBE" if rsiceil_probe else
+                               ("DEADBAND_PROBE" if deadband_probe else
+                                ("RSIADX_PROBE" if rsiadx_probe else
+                                 ("SLOPEGATE_PROBE" if slopegate_probe else
+                                  ("GAPFLAT_PROBE" if gap_probe else
+                                   ("GAPMIN_PROBE" if gapmin_probe else None)))))))))
+        if _probe_final_tag == "GAPFLAT_PROBE" and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
             _th_gp = config.trading_config.thresholds
             _gp_reason = None
             if not getattr(_th_gp, 'gap_probe_enabled', False):
@@ -4333,7 +4347,7 @@ class TradingEngine:
         # Jul 13 PM: GAPMIN probe caps — mirror of the GAPFLAT block (same slot guard, own
         # concurrency cap shared across BOTH directions, cap rejection recorded as
         # PAIR_EMA_GAP_MIN = probe-off semantics). SHORTs included (operator "both ways").
-        if gapmin_probe and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
+        if _probe_final_tag == "GAPMIN_PROBE" and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
             _th_gm = config.trading_config.thresholds
             _gm_reason = None
             if not getattr(_th_gm, 'gapmin_probe_enabled', False):
@@ -4358,7 +4372,7 @@ class TradingEngine:
         # Jul 14: SLOPEGATE probe caps — mirror of the GAPFLAT/GAPMIN blocks (same slot
         # guard, own concurrency cap shared across BOTH directions, shared 0.5x/0.05x
         # sizing). Cap rejection records BTC_SLOPE_GATE = probe-off semantics.
-        if slopegate_probe and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
+        if _probe_final_tag == "SLOPEGATE_PROBE" and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
             _th_sg = config.trading_config.thresholds
             _sg_reason = None
             if not getattr(_th_sg, 'slopegate_probe_enabled', False):
@@ -4383,7 +4397,7 @@ class TradingEngine:
         # Jul 15: RSIADX probe caps — mirror of the other probe blocks (slot guard, own
         # concurrency cap shared across BOTH directions, shared 0.5x/0.05x sizing).
         # Cap rejection records PAIR_RSI_ADX_CROSS = probe-off semantics.
-        if rsiadx_probe and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
+        if _probe_final_tag == "RSIADX_PROBE" and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
             _th_rx = config.trading_config.thresholds
             _rx_reason = None
             if not getattr(_th_rx, 'rsiadx_probe_enabled', False):
@@ -4407,7 +4421,7 @@ class TradingEngine:
 
         # Jul 15: DEADBAND probe caps (probe #5, LONG-only by construction) — mirror of the
         # other probe blocks. Cap rejection records LONG_BTC1H_DEADBAND = probe-off semantics.
-        if deadband_probe and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
+        if _probe_final_tag == "DEADBAND_PROBE" and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
             _th_db = config.trading_config.thresholds
             _db_reason = None
             if not getattr(_th_db, 'deadband_probe_enabled', False):
@@ -4431,7 +4445,7 @@ class TradingEngine:
 
         # Jul 15: RSICEIL probe caps (probe #6, LONG-only by construction) — mirror block.
         # Cap rejection records PAIR_RSI_RANGE = probe-off semantics.
-        if rsiceil_probe and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
+        if _probe_final_tag == "RSICEIL_PROBE" and direction == "LONG" and not flip_source and not bull_long and not bounce_long:
             _th_rc = config.trading_config.thresholds
             _rc_reason = None
             if not getattr(_th_rc, 'rsiceil_probe_enabled', False):
@@ -4460,7 +4474,9 @@ class TradingEngine:
             (adxmax_probe, "ADXMAX_PROBE", 'adxmax_probe_enabled', 'adxmax_probe_max_open', "PAIR_ADX_MAX", ("LONG", "SHORT")),
             (dbdown_probe, "DBDOWN_PROBE", 'dbdown_probe_enabled', 'dbdown_probe_max_open', "LONG_BTC1H_DEADBAND", ("LONG",)),
         ):
-            if _p_flag and direction in _p_dirs and not flip_source and not bull_long and not bounce_long:
+            # (cap rejection for DBDOWN records the counter but does NOT seed the PASS
+            # phantom the probe-off path would have — accepted: seeding is retiring anyway.)
+            if _probe_final_tag == _p_tag and direction in _p_dirs and not flip_source and not bull_long and not bounce_long:
                 _th_p = config.trading_config.thresholds
                 _p_reason = None
                 if not getattr(_th_p, _p_en, False):
@@ -4945,15 +4961,9 @@ class TradingEngine:
             # frozen mid-experiment. NOT chronological ladder order (gap kills before RSIADX
             # kills before the engine slope gate) — verdict-time rule: slice each cohort on
             # the other probes' dimensions (gap band / slope band / RSI x ADX) before shipping.
-            # Jul 20: probes #7-#9 prepend (newest wins): DBDOWN > ADXMAX > GMINFLAT > Jul-15 fleet.
-            cell_src = ("DBDOWN_PROBE" if dbdown_probe else
-                        ("ADXMAX_PROBE" if adxmax_probe else
-                         ("GMINFLAT_PROBE" if gminflat_probe else
-                          ("RSICEIL_PROBE" if rsiceil_probe else
-                           ("DEADBAND_PROBE" if deadband_probe else
-                            ("RSIADX_PROBE" if rsiadx_probe else
-                             ("SLOPEGATE_PROBE" if slopegate_probe else
-                              ("GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE"))))))))
+            # Jul 20: probes #7-#9 prepend (newest wins); single source of truth with the
+            # cap blocks above (code-review fix).
+            cell_src = _probe_final_tag or "GAPMIN_PROBE"
             _mult_target = "both"
             logger.info(f"[{cell_src}] {pair} {direction}: opening probe at inv={cell_mult}x lev={cell_lev_mult}x (~1x effective)")
 

@@ -1456,6 +1456,7 @@ class TradingEngine:
                     _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or
                     _reason_base.startswith("FAST_EXIT") or
                     _reason_base.startswith("ATR_FIXED_TP") or
+                    _reason_base.startswith("HARD_TP") or  # Jul 20: hard TP cap — regret rows are its revert-gate data
                     _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or
                     # Jun 14: Flip Entry exits — keep post-exit tracking alive across restart
                     _reason_base.startswith("FLIP_")):
@@ -6329,7 +6330,7 @@ class TradingEngine:
             _reason_base = _reason_base[5:]
         if _reason_base.startswith("FL_"):
             _reason_base = _reason_base[3:]
-        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
+        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -9796,6 +9797,48 @@ class TradingEngine:
                                         _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
                     except Exception as e:
                         logger.error(f"[PATTERN_FIXED_EXIT] Error closing {pair}: {e}")
+                    continue  # Trade closed; skip remaining checks
+
+            # ════════════════════════════════════════════════════════════════
+            # HARD TP (Jul 20, 2026) — flat profit cap at +1.0%, BOTH directions.
+            # CF evidence (peak-based, norm ruler): baseline +$519 / Jul-20 batch
+            # +$338; robust plateau 0.8-1.3% both eras (0.7% flips negative =
+            # floor). Harvests the wick round-trip class the condition-based
+            # runner trail structurally can't monetize (DEXE +3.64% peak →
+            # +0.43% close anatomy); tail forfeit is thin (worst single runner
+            # SXT −$176 vs +$659 saves). ATR-scaled variants REFUTED (0.5×ATR
+            # direction-inconsistent −$2,014 BL / +$1,118 batch); atr05-leash
+            # combo REFUTED (mechanisms cannibalize, −$257 BL). Profit-lock
+            # only — can never fire on a losing trade. Fires before
+            # ATR_FIXED_TP / Fast Exit / trailing / EMA13. Reason "HARD_TP L1"
+            # (added to BOTH post-exit tracking whitelists → Post-Exit Regret
+            # rows give the revert-gate data: post-exit continuation = cut
+            # runner; post-exit reversal = save).
+            # 🔒 Revert gate: on N≥15 fires, revert if avg(post_exit_peak_pnl)
+            # exceeds saves (runners dominate) or realized Δ vs pre-TP stack
+            # goes negative.
+            # ════════════════════════════════════════════════════════════════
+            _hard_tp_enabled = getattr(config.trading_config.thresholds, 'hard_tp_enabled', False)
+            if _hard_tp_enabled and not order_info.get('_closing_in_progress'):
+                _hard_tp_pct = float(getattr(config.trading_config.thresholds, 'hard_tp_pct', 1.0) or 1.0)
+                if _hard_tp_pct > 0 and pnl_pct >= _hard_tp_pct:
+                    logger.warning(
+                        f"[HARD_TP] {pair} {direction}: pnl={pnl_pct:.4f}% >= tp={_hard_tp_pct}% — CLOSING NOW!"
+                    )
+                    order_info['_closing_in_progress'] = True
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            result = await db.execute(
+                                select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                            )
+                            order = result.scalar_one_or_none()
+                            if order:
+                                closed = await self.close_position(db, order, current_price, "HARD_TP L1")
+                                if closed:
+                                    async with _cache_lock:
+                                        _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                    except Exception as e:
+                        logger.error(f"[HARD_TP] Error closing {pair}: {e}")
                     continue  # Trade closed; skip remaining checks
 
             # ════════════════════════════════════════════════════════════════

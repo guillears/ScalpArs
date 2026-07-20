@@ -1067,6 +1067,17 @@ class SignalThresholds(BaseModel):
     atr_low_fixed_tp_long_enabled: bool = False
     atr_low_fixed_tp_atr_max: float = 1.1  # entry_atr_pct strictly less than this = "pop-and-fade" cohort
     atr_low_fixed_tp_pct: float = 0.25     # LONG exits at this pnl% (profit-lock; never cuts a losing trade)
+    # HARD TP (Jul 20, 2026) — flat profit cap, BOTH directions, parallel to the full exit
+    # stack (runner trail untouched). Peak-based CF: baseline +$519 / Jul-20 batch +$338
+    # norm; plateau 0.8-1.3% positive BOTH eras (0.7% flips negative on baseline = floor;
+    # 1.0% beats 0.9% in both). Mechanism: runner trail is condition-based and captures
+    # only ~35-50% of peak on wick round-trips (DEXE +3.64→+0.43 anatomy); TP is the
+    # resting-order harvest of that class. ATR-scaling refuted (all k worse, 0.5×ATR
+    # direction-inconsistent); atr05-leash combo refuted (cannibalize, −$257 BL).
+    # 🔒 Revert gate: N≥15 fires — revert if forfeited-runner tail (post-exit
+    # continuation in the Regret table) exceeds cumulative saves.
+    hard_tp_enabled: bool = True
+    hard_tp_pct: float = 1.0               # exit the tick pnl% reaches this (0 = disabled)
     # Jun 9, 2026 — "keep only unmatched longs". 4-cohort analysis (10-pool, current stack):
     # the LONG pattern library uniformly selects for LOSERS (every C/W pattern net-negative:
     # W6 −$574, W2 −$480, C7 −$261 demux), while TRULY-UNMATCHED longs (no C, no W) are the

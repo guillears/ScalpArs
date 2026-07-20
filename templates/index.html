@@ -5216,6 +5216,20 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Profit-lock on the no-runner cohort (never cuts a DOA loser). <span class="text-gray-500">The High-ATR runner multiplier dimension was removed Jun 10 (Runner zone net-negative under the Jun-10 guard stack; zero current-era survivors above ATR 0.8).</span></p>
                         </div>
+                        <div class="md:col-span-2 border border-emerald-500/30 rounded p-2">
+                            <label class="block text-sm text-emerald-300 mb-2">🎯 Hard TP <span class="text-xs text-gray-400 font-normal">(Jul 20 — flat profit cap, BOTH directions; wick-harvest the runner trail can't catch)</span></label>
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <label class="flex items-center cursor-pointer" title="BOTH directions: exit the tick P&L reaches the threshold. Profit-LOCK only — never fires on a losing trade; runner trail untouched (rides everything below the cap). Close reason HARD_TP L1; tracked in Post-Exit Regret (revert-gate data). CF: baseline +$519 / Jul-20 batch +$338 norm, plateau 0.8-1.3% positive both eras. ATR-scaling + atr05-leash combo both refuted.">
+                                    <input type="checkbox" id="config-hard-tp-enabled" class="mr-1">
+                                    <span class="text-sm text-gray-300">Enabled — TP ≥</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    <input type="number" step="0.05" min="0" id="config-hard-tp-pct" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0">
+                                    <span class="ml-1 text-xs text-gray-500">%</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Harvests the wick round-trip class (DEXE +3.64% peak → +0.43% close): the condition-based trail captures ~35-50% of peak on v-spikes; a resting cap at 1.0% banks them. 🔒 Revert gate: N≥15 fires — revert if forfeited-runner tail (post-exit continuation in Regret rows) exceeds cumulative saves. <span class="text-amber-400">0.7% flips negative on baseline — do not lower below 0.8.</span></p>
+                        </div>
                         <div class="md:col-span-2 border border-fuchsia-500/30 rounded p-2">
                             <label class="block text-sm text-fuchsia-300 mb-2">🧬 Keep ONLY Unmatched Longs <span class="text-xs text-gray-400 font-normal">(Jun 9 — long patterns select for losers; the no-pattern runner cohort is the edge)</span></label>
                             <label class="flex items-center cursor-pointer" title="When ON, block any LONG matching ANY C or W pattern. Keep only truly-unmatched longs (no C, no W). Counter LONG_UNMATCHED_ONLY. Pair with fix-TP OFF so the unmatched runners trail.">
@@ -10156,6 +10170,7 @@
             lines.push(`  EMA13 Cross Exit: ${th.ema13_cross_exit_enabled !== undefined ? th.ema13_cross_exit_enabled : false}  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing) | Strict (require EMA5/EMA8 stack flip): ${th.ema13_cross_requires_stack_flip !== undefined ? th.ema13_cross_requires_stack_flip : false}`);
             lines.push(`  Fast Exit: ${th.fast_exit_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_threshold_pct ?? 0.20}%  |  Window ≤ ${th.fast_exit_window_minutes ?? 2}min  |  ATR× ${th.fast_exit_l1_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l1_atr_floor_cap_pct ?? 0.60}%  (eff = min(cap, max(fixed, ATR×mult)))`);
             lines.push(`  Low-ATR Fixed TP LONG (Jun 5): ${th.atr_low_fixed_tp_long_enabled ? 'ON' : 'OFF'} (ATR<${th.atr_low_fixed_tp_atr_max ?? 1.1}% → TP ≥ ${th.atr_low_fixed_tp_pct ?? 0.25}%)`);
+            lines.push(`  Hard TP (Jul 20): ${th.hard_tp_enabled ? 'ON' : 'OFF'}  |  TP ≥ ${th.hard_tp_pct ?? 1.0}%  (flat cap BOTH dirs; wick-harvest; CF BL +$519/batch +$338 norm; revert gate N≥15 fires via Post-Exit Regret)`);
             lines.push(`  Keep ONLY Unmatched Longs (Jun 9): ${th.long_unmatched_only ? 'ON — block all pattern-matched longs' : 'OFF'}  (counter LONG_UNMATCHED_ONLY)  |  W2 re-enable 1h ≥ ${th.long_w2_reenable_1h_min !== undefined ? th.long_w2_reenable_1h_min : 99}%  |  W6 re-enable 1h ≤ ${th.long_w6_reenable_1h_max !== undefined ? th.long_w6_reenable_1h_max : 99}% ∧ stretch ≥ ${th.long_w6_reenable_stretch_min !== undefined ? th.long_w6_reenable_stretch_min : 0.31} (Jul 6: 99 = off; W2 rising / W6 dip+thrust, cell 1×)  |  UNMATCHED 2×→1× de-mux at PVR ≥ ${th.long_unmatched_mult_pvr_max !== undefined ? th.long_unmatched_mult_pvr_max : 0} (Jul 10: crowded entry; 0 = off)`);
             lines.push(`  Fast Exit L2: ${th.fast_exit_l2_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_l2_threshold_pct ?? 0.40}%  |  Window ≤ ${th.fast_exit_l2_window_minutes ?? 5}min  |  ATR× ${th.fast_exit_l2_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l2_atr_floor_cap_pct ?? 0.80}%  (May 25 evening: cap protects extreme-ATR pairs)`);
             lines.push(`  EMA Stack Cross Exit: ${th.ema_stack_cross_exit_enabled !== undefined ? th.ema_stack_cross_exit_enabled : false}  |  Handoff at L≥${th.ema_stack_cross_exit_level !== undefined ? th.ema_stack_cross_exit_level : 2}  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)`);
@@ -19138,6 +19153,8 @@
                 { const _ov=document.getElementById('config-global-vol-max-short-cap-override-enabled'); if(_ov) _ov.checked = config.thresholds.global_volume_max_short_capitulation_override_enabled !== undefined ? !!config.thresholds.global_volume_max_short_capitulation_override_enabled : true; }
                 // Jun 5 — ATR-split LONG treatment
                 { const _e=document.getElementById('config-atr-low-fixed-tp-enabled'); if(_e) _e.checked = !!config.thresholds.atr_low_fixed_tp_long_enabled; }
+                { const _e=document.getElementById('config-hard-tp-enabled'); if(_e) _e.checked = !!config.thresholds.hard_tp_enabled; }
+                { const _e=document.getElementById('config-hard-tp-pct'); if(_e && config.thresholds.hard_tp_pct !== undefined) _e.value = config.thresholds.hard_tp_pct; }
                 { const _e=document.getElementById('config-atr-low-fixed-tp-atr-max'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_atr_max !== undefined ? config.thresholds.atr_low_fixed_tp_atr_max : 1.1; }
                 { const _e=document.getElementById('config-atr-low-fixed-tp-pct'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_pct !== undefined ? config.thresholds.atr_low_fixed_tp_pct : 0.25; }
                 { const _e=document.getElementById('config-long-unmatched-only'); if(_e) _e.checked = !!config.thresholds.long_unmatched_only; }
@@ -20516,6 +20533,8 @@
                     global_volume_max_short_capitulation_gv_cap: safeFloat(document.getElementById('config-global-vol-max-short-cap-gv-cap')?.value || 0),
                     global_volume_max_short_capitulation_override_enabled: (document.getElementById('config-global-vol-max-short-cap-override-enabled')||{checked:true}).checked,
                     atr_low_fixed_tp_long_enabled: (document.getElementById('config-atr-low-fixed-tp-enabled')||{}).checked || false,
+                    hard_tp_enabled: (document.getElementById('config-hard-tp-enabled')||{}).checked || false,
+                    hard_tp_pct: (function(){ const v = parseFloat((document.getElementById('config-hard-tp-pct') || {}).value); return isNaN(v) ? 1.0 : v; })(),
                     long_unmatched_only: (document.getElementById('config-long-unmatched-only')||{}).checked || false,
                     long_w2_reenable_1h_min: (function(){ const v = parseFloat((document.getElementById('config-long-w2-reenable-1h-min') || {}).value); return isNaN(v) ? 99 : v; })(),
                     long_w6_reenable_1h_max: (function(){ const v = parseFloat((document.getElementById('config-long-w6-reenable-1h-max') || {}).value); return isNaN(v) ? 99 : v; })(),

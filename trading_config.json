@@ -523,7 +523,9 @@
     "adxmax_probe_ceiling_short": 40.0,
     "dbdown_probe_enabled": true,
     "dbdown_probe_max_open": 3,
-    "rsiadx_probe_short_enabled": false
+    "rsiadx_probe_short_enabled": false,
+    "hard_tp_enabled": true,
+    "hard_tp_pct": 1.0
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

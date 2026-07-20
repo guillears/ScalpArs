@@ -2449,3 +2449,29 @@ CF "keep UNMATCHED 2× only when quiet": baseline Δ = −$1,021 live (halves th
 
 ### 5. Also this session
 SLOPEGATE·SHORT still N=1 (+0.32) — no read. UI ship b8dee20: formatTime() date+time in Transactions/Open/Closed/BNB tables (display-only; deploy green). CURRENT_STATE updated in place (Jul-18 verdict-day note supersedes Jul-17 N=21 note; quiet-tape watch added).
+
+## 2026-07-20 — LONGS batch-review verdict @N=83 (operator-driven "game-changer" deep pass, 3 rounds) + HOT_MATURE retirement + strategy sequence
+
+### 0. Context & operator corrections that shaped this entry
+Operator pushed three times: ① "deep analysis like never before, ALL variables 1D/2D/3D, don't make me come back with a variable you skipped"; ② "your conclusion is shit... you are not analysing theory behind the numbers"; ③ "what do you mean 'I expect' — you have the data." Each correction was right and produced the sections below. Batch = scalpars_orders_paper_2026-07-20_12-48-37 (83 longs 42W/41L, 9.37d); norm ruler = pct×$122.74 (all trades at 20×/1×); baseline at 1× anchor.
+
+### 1. No entry filter exists (12 candidates, 5 sweeps, all baseline-inverted)
+1D exhaustive (43 vars + derived directions, best threshold, min12/side) + ~2,900-cell 2D + the operator's named report tables. Every batch loser-zone is a baseline winner-zone: bADX-falling (batch 36·36%·−$1,523 norm / baseline 18·78%·+$668) · pADXrise∧bADXfall (25% / baseline 82%) · gap8-13≥0.19 (23% / baseline 86%) · btcATR≥0.165∧gap5-8≥0.09 (14% / baseline 87%·+$729) · illiquid<78M · 1h-slope<0.02 · gap5-8≥0.11 — plus combo test PUMP+bADX-falling: batch +$340 live BUT baseline −$1,703 live (cut 20·80% winners, flow 4.8→3.7/day). Operator's starvation frame = the second refutation: blocks spend flow we don't have. LOCKED PRINCIPLE: blocks face a higher bar than multipliers in a flow-starved system.
+
+### 2. Report-table decomposition method (why the tables mislead)
+Every operator-flagged "clearly positive cohort" decomposed into origin+concentration+baseline: live-$ cells 33-77% one trade (SXT/PUMP); WR cells = probe composition (RSI 65-70 = 4/4 RSICEIL; ADX bands = confidence tiers 15-22 SB / 22-30 VS; 1h-RSI-falling = SLOPEGATE-loaded, 72% SXT, baseline INVERTS 38·87%·+$1,748 rising vs 3·+$5 falling; fan table degenerate — 82/83 <0.85, SXT ratio 128.6 = divide-by-~0). Survivor of the operator's list: **bADX-RISING cross-era gradient (batch 62%/36%, baseline 91%/78% — both sides baseline-positive → multiplier family, never a block).** Also confirmed on-track: RSICEIL (4/30·75%). Baseline-dark curiosity: pADX 28-30 (80% WR batch, baseline N=1 — ADX-Max=30 ceiling).
+
+### 3. Clean-book truth (operator: "compute it, don't expect")
+9.37d window: full book 109·45%·−$148 live (−$15.8/day) = probes −$57 (−$6.1/day) + normals 10·40%·−$91; ex-MU (COIN shipped) = **9 trades·44%·−$14.61 live = −$1.56/day ≈ breakeven-idle at <1 trade/day**. Window decided by SXT+$526/JTO+$159 vs PUMP−$313/−$151/BCH−$180 — N=9 variance, sign is noise. My earlier "expect positive" = composition error (pooled normals were baseline-dominated); corrected on the record. Regime-dial research: BTC path-efficiency REJECTED (corr +0.01/25d); daily range partial (+0.31 concurrent, +0.24 predictive, non-monotonic) → pre-committed kill-or-build at N≥60d before any vol-throttle build (data: reports/btc_er_daily_jun14_jul20.csv + scripted fetch).
+
+### 4. The LONGs ladder (normalized) & the levers
+83·51%·−$1,635 → −SLOPEGATE(✗ imminent 27/30) 56·54%·−$391 → −RSIADX·L(if ✗; 12·50% undecided) 44·55%·−$194 → −GAPMIN(if ✗) **40·58%·−$48 = future book breakeven on the worst tape** → +2× on stretch∨quiet legs: 12 multiplied·92%·+$648 → **+$600** (pre-gate CF, in-sample). NON-EXP one-by-one: 17·58.8%·−$14 norm (slightly negative, correct); separator = BTC calm/hot 0.171 (80%/29%) + liquidity, 3 of 7 losers = one minute (Jul-20 00:37 AVAX/LINK/PENGU); calm∧liquid core = baseline profile. Equivalence PASSING vs same-window expanding (59% vs 50%, both avg≈0); aggregate relax gate NOT met → decision tree pre-registered (full / conditional calm-BTC admit / off) — logged in CURRENT_STATE E3④b.
+
+### 5. Sequencing discovery (operator: "are we killing stretch 0.12-0.16 with the probe blocks?")
+YES — 10 of 11 stretch-band trades are probe flow (GAPFLAT 4, RSICEIL 2, DEADBAND 2, SLOPEGATE 1, RSIADX 1; only SXT normal). The sweet-spot lives inside currently-blocked zones → promotions (NONEXP/RSICEIL/DEADBAND) are the delivery mechanism and are enriched in exactly the cross-era-winning entry profile; vindicated closures (SLOPEGATE+RSIADX) kill only 2/11. Stretch multiplier N-count: baseline 10 + future full-size fires only; probe fires = quality evidence, not countable.
+
+### 6. HOT_MATURE — ✝ RETIRED (refuted-by-decay)
+Three-review ledger: +$478 (Jul-16 @50) → +$9 (Jul-18 @78) → Jul-20 @83: in-zone 33·58%·−$10 norm (outperforms book), HM-only quadrant +$279 (blocking costs), damage entirely in BTC-ATR quadrants (ATR-only 15·33%·−$833), NONEXP overlay shows HM adds zero beyond hot-window overlap; baseline always −$236. Was episode luck (BCH/XLM 14:23) + hot-window proxy. Replacements already tracked (BTC-ATR short watch, E④). Marked retired in place in CURRENT_STATE.
+
+### 7. Operating sequence for LONG profitability (saved as E3)
+(1) Harvest verdicts (SLOPEGATE off imminent; RSIADX·S off at 30; RSIADX·L/GAPMIN by gate) → book to ~breakeven, tables readable. (2) At-bats pipeline: NONEXP decision tree, RSICEIL, DEADBAND — flow ~1→~3/day of validated cohorts. (3) Multiplier family at W-gates (stretch/quiet/bADX-rising/liquidity) — sizes winners, costs no flow. (4) No new blocks (locked principle). (5) Regime-vol throttle = research with pre-committed test. Target arithmetic (haircut 30-50%): baseline-era +$185/day long book × flow + sizing uplifts ≈ +$250-350/day at current account when trend returns; scaling roadmap gates on the clean forward record.

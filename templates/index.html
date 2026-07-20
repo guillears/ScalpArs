@@ -1340,7 +1340,7 @@
                 <!-- GAPFLAT Probe A/B (Jul 13, 2026) -->
                 <div class="mt-6 pt-6 border-t border-cyan-900/40">
                     <h3 class="text-sm font-semibold text-cyan-300 mb-2">🪟 Gap-Expand Probe — EXPANDING vs NON-EXPANDING (1×)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Real-data A/B on the #1 entry blocker (<strong>PAIR_EMA_GAP_NOT_EXPANDING</strong>). <span class="text-gray-300">EXPANDING</span> = normal momentum LONGs (passed the gap-expanding check); <span class="text-cyan-300">NON-EXPANDING (probe)</span> = failed ONLY that check, opened as a REAL ~1×-leverage order tagged GAPFLAT_PROBE. $ de-muxed to 1× (sizing never skews the read; % metrics size-invariant). 🔒 Gates at N≥30 probes (≥10 dates): <span class="text-emerald-400">★ relaxation candidate</span> = WR≥60% &amp; avg≥+0.15%; <span class="text-red-400">✗ filter vindicated</span> = WR≤45% or avg&lt;0 (switch probe off).</p>
+                    <p class="text-xs text-gray-500 mb-3">Real-data A/B on the #1 entry blocker (<strong>PAIR_EMA_GAP_NOT_EXPANDING</strong>). <span class="text-gray-300">EXPANDING</span> = normal momentum LONGs (passed the gap-expanding check); <span class="text-cyan-300">NON-EXPANDING (probe)</span> = failed ONLY that check, opened as a REAL ~1×-leverage order tagged GAPFLAT_PROBE. $ de-muxed to 1× (sizing never skews the read; % metrics size-invariant). 🔒 Gates at N≥30 probes (≥10 dates): <span class="text-emerald-400">★ relaxation candidate</span> = WR≥60% &amp; avg≥+0.15%; <span class="text-red-400">✗ filter vindicated</span> = WR≤45% or avg&lt;0 (switch probe off). <span class="opacity-40"><s>Dimmed/struck rows</s></span> = probe switched OFF (verdict executed or dependency down; N frozen at the evidence the decision used).</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs">
                             <thead class="text-gray-400 uppercase">
@@ -14265,8 +14265,11 @@
                                 const acC = (r.avg_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                                 const usdC = r.total_demux > 1 ? 'text-emerald-400' : (r.total_demux < -1 ? 'text-red-400' : 'text-gray-400');
                                 const vC = (r.verdict || '').includes('★') ? 'text-emerald-400 font-semibold' : ((r.verdict || '').includes('✗') ? 'text-red-400 font-semibold' : ((r.verdict || '').includes('building') ? 'text-blue-400' : 'text-gray-400'));
-                                return `<tr class="hover:bg-white/5">
-                                    <td class="px-2 py-1 ${cohC}">${r.cohort}</td>
+                                // Jul 20: disabled probe = closed case — dim the row, strike the name; N frozen at verdict evidence
+                                const rowC = r.disabled ? 'hover:bg-white/5 opacity-40' : 'hover:bg-white/5';
+                                const nameC = r.disabled ? cohC + ' line-through' : cohC;
+                                return `<tr class="${rowC}">
+                                    <td class="px-2 py-1 ${nameC}">${r.cohort}</td>
                                     <td class="px-2 py-1 text-right">${r.n}</td>
                                     <td class="px-2 py-1 text-right ${wrC}">${r.wr === null ? '—' : r.wr.toFixed(1) + '%'}</td>
                                     <td class="px-2 py-1 text-right ${acC}">${r.avg_pct === null ? '—' : (r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%'}</td>

@@ -10735,6 +10735,32 @@ def _compute_gap_probe_cohort(orders):
         m = (getattr(o, 'cell_multiplier', 1.0) or 1.0) * (getattr(o, 'cell_lev_multiplier', 1.0) or 1.0)
         return (o.pnl or 0.0) / m if m else (o.pnl or 0.0)
 
+    # Per-cohort kill switches (Jul 20): a probe row whose config flag(s) are off is a
+    # CLOSED CASE — its verdict was executed (or its dependency is down) and the N freezes
+    # at whatever evidence the decision used. The UI dims these; the verdict string rides
+    # into both text exports (data value, not CSS). GMINFLAT lists its hard dependencies
+    # (it can only fire while GAPFLAT+GAPMIN probes are on — see config.py).
+    _th_flags = config.trading_config.thresholds
+    def _g(name, default=True):
+        return bool(getattr(_th_flags, name, default))
+    _cohort_enabled = {
+        "NON-EXPANDING (probe) · LONG": _g('gap_probe_enabled'),
+        "NON-EXPANDING (probe) · SHORT": _g('gap_probe_enabled'),
+        "SMALL-GAP (probe) · LONG": _g('gapmin_probe_enabled'),
+        "SMALL-GAP (probe) · SHORT": _g('gapmin_probe_enabled'),
+        "SLOPEGATE (probe) · LONG": _g('slopegate_probe_enabled') and _g('slopegate_probe_long_enabled'),
+        "SLOPEGATE (probe) · SHORT": _g('slopegate_probe_enabled'),
+        "RSIADX (probe) · LONG": _g('rsiadx_probe_enabled'),
+        "RSIADX (probe) · SHORT": _g('rsiadx_probe_enabled') and _g('rsiadx_probe_short_enabled'),
+        "DEADBAND flat-up (probe) · LONG": _g('deadband_probe_enabled'),
+        "RSICEIL 65-70 (probe) · LONG": _g('rsiceil_probe_enabled'),
+        "GMINFLAT flat+small (probe) · LONG": _g('gminflat_probe_enabled') and _g('gap_probe_enabled') and _g('gapmin_probe_enabled'),
+        "GMINFLAT flat+small (probe) · SHORT": _g('gminflat_probe_enabled') and _g('gap_probe_enabled') and _g('gapmin_probe_enabled'),
+        "ADXMAX 30-35 (probe) · LONG": _g('adxmax_probe_enabled'),
+        "ADXMAX 35-40 (probe) · SHORT": _g('adxmax_probe_enabled'),
+        "DBDOWN flat-down (probe) · LONG": _g('dbdown_probe_enabled'),
+    }
+
     rows_out = []
     for cohort, rs in (("EXPANDING · LONG", exp_rows), ("NON-EXPANDING (probe) · LONG", probe_rows),
                        ("SMALL-GAP (probe) · LONG", gapmin_rows),
@@ -10752,11 +10778,13 @@ def _compute_gap_probe_cohort(orders):
                        ("GMINFLAT flat+small (probe) · SHORT", gminflat_s_rows),
                        ("ADXMAX 35-40 (probe) · SHORT", adxmax_s_rows)):
         n = len(rs)
+        _off = (not cohort.startswith("EXPANDING")) and not _cohort_enabled.get(cohort, True)
         if n == 0:
             if not cohort.startswith("EXPANDING"):
                 rows_out.append({'cohort': cohort, 'n': 0, 'wr': None, 'avg_pct': None,
                                  'total_demux': 0.0, 'avg_peak': None, 'doa_pct': None,
-                                 'dates': 0, 'verdict': "⏳ building (0/30)"})
+                                 'dates': 0, 'disabled': _off,
+                                 'verdict': "✗ OFF — probe disabled (0/30)" if _off else "⏳ building (0/30)"})
             continue
         wr = sum(1 for o in rs if (o.pnl or 0) > 0) / n * 100
         avg_pct = sum((o.pnl_percentage or 0.0) for o in rs) / n
@@ -10769,7 +10797,10 @@ def _compute_gap_probe_cohort(orders):
         dates = len({(getattr(o, 'opened_at', None) or datetime.min).strftime('%Y-%m-%d')
                      for o in rs if getattr(o, 'opened_at', None)})
         verdict = ""
-        if not cohort.startswith("EXPANDING"):
+        if _off:
+            # Verdict executed / dependency down — N frozen at the evidence the decision used.
+            verdict = f"✗ OFF — verdict executed ({n}/30)"
+        elif not cohort.startswith("EXPANDING"):
             if n < 30:
                 verdict = f"⏳ building ({n}/30)"
             elif wr >= 60.0 and avg_pct >= 0.15 and dates >= (5 if ("SLOPEGATE" in cohort or "RSIADX" in cohort or "DEADBAND" in cohort or "RSICEIL" in cohort or "GMINFLAT" in cohort or "ADXMAX" in cohort or "DBDOWN" in cohort) else 10):
@@ -10782,7 +10813,7 @@ def _compute_gap_probe_cohort(orders):
                          'avg_pct': round(avg_pct, 4), 'total_demux': round(tot_demux, 2),
                          'avg_peak': round(avg_peak, 4) if avg_peak is not None else None,
                          'doa_pct': round(doa_pct, 1) if doa_pct is not None else None,
-                         'dates': dates, 'verdict': verdict})
+                         'dates': dates, 'disabled': _off, 'verdict': verdict})
     return {'rows': rows_out}
 
 

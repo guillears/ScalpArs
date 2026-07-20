@@ -732,7 +732,10 @@ def get_signal(
                 # gets the stripped parent name (continuity of the Total column).
                 _s_fails.append(f"PAIR_RSI_ADX_CROSS[{_rx_rule_s}]")
             # Jul 15 RSIADX PROBE — SHORT mirror (see LONG comment above).
+            # Jul 20: SHORT verdict executed (✗ vindicated at 20/30) — per-side kill switch;
+            # the cross-filter resumes blocking SHORTs normally. LONG side unaffected.
             if (_s_fails and getattr(th, 'rsiadx_probe_enabled', False)
+                    and getattr(th, 'rsiadx_probe_short_enabled', True)
                     and all(f.startswith("PAIR_RSI_ADX_CROSS") for f in _s_fails)):
                 logger.info(f"[RSIADX_PROBE] SHORT candidate ({_s_fails[0]}) — probing instead of blocking")
                 _s_fails = []

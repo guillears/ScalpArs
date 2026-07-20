@@ -286,6 +286,14 @@ class SignalThresholds(BaseModel):
     # (first evidence-grade validation since March), probe off.
     rsiadx_probe_enabled: bool = True
     rsiadx_probe_max_open: int = 3       # concurrent RSIADX probes (shared across both directions)
+    # Jul 20 — RSIADX·SHORT VERDICT EXECUTED (operator-directed early close at 20/30,
+    # practically locked: 20·20%·−0.358% (Σ−7.16%) · 45% DOA · 4 dates — escape needs 10
+    # straight wins averaging +0.72% (2x the typical short win) and even 10/10 only reaches
+    # 46.7% WR. The Mar-27 cross-filter's SHORT rule is VINDICATED with real money.
+    # Anatomy for the record: aligned-DOWN entries (BTC 5m & 1h both falling) 1W/8L —
+    # mid-decline shorts are late; winners were bounce-fades (5m-up/1h-down 3/3) and
+    # range-floor breaks. LONG side (12·50%) keeps collecting to its own N>=30.
+    rsiadx_probe_short_enabled: bool = False
     # Jul 15 — DEADBAND PROBE (probe #5, operator-directed HALF-OPEN of the Jul-5
     # LONG_BTC1H_DEADBAND gate). The raw phantom revert gate technically fired
     # (24·63%·+0.145% >= "60% on N>=10") but was HELD: 20/24 single-day, ~4-5

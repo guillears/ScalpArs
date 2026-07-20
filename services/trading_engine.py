@@ -9536,6 +9536,8 @@ class TradingEngine:
                     rsiadx_probe=bool(
                         signal in ("LONG", "SHORT")
                         and getattr(config.trading_config.thresholds, 'rsiadx_probe_enabled', False)
+                        and (signal != "SHORT"
+                             or getattr(config.trading_config.thresholds, 'rsiadx_probe_short_enabled', True))
                         and _rsi_adx_block_rule(signal, indicators.get('rsi'), indicators.get('adx'),
                                                 config.trading_config.thresholds) is not None
                     ),

@@ -312,6 +312,44 @@ class SignalThresholds(BaseModel):
     rsiceil_probe_enabled: bool = True
     rsiceil_probe_max_open: int = 3      # concurrent RSICEIL probes (LONG-only by construction)
     rsiceil_probe_ceiling: float = 70.0  # probe band upper bound: RSI in (momentum_long_rsi_max, this]
+    # Jul 20 — SLOPEGATE·LONG VERDICT EXECUTED (✗ VINDICATED, closed at 27/30 with the avg
+    # arm mathematically locked: 27·44.4%·−0.376% — even 3 max-size wins leave avg<0; full
+    # separation pass in DECISION_LOG 2026-07-18/20). LONG side of the probe is OFF (the
+    # 5m dead-band gate resumes blocking LONGs normally); SHORT side keeps collecting (2/30).
+    slopegate_probe_long_enabled: bool = False
+    # Jul 20 — GMINFLAT PROBE (probe #7, operator-directed). Target = PAIR_EMA_GAP_MIN[flat]
+    # sub-rule: gap in [floor, threshold) AND gap-flat — the "flat+small" cohort-purity class
+    # both GAPFLAT and GAPMIN deliberately excluded. Funnel v2: 2,213 LONG soles (23% of ALL
+    # long soles — the single biggest unprobed long blocker) + 511 short soles. Candidates
+    # sole-blocked by [flat] open as 1x GMINFLAT_PROBE, BOTH directions. 🔒 Gates PER SIDE
+    # at N>=30 (>=5 dates): WR>=60% & avg>=+0.15% -> relax discussion; WR<=45% or avg<0 ->
+    # cohort-purity block vindicated, probe off.
+    gminflat_probe_enabled: bool = True
+    gminflat_probe_max_open: int = 3     # concurrent GMINFLAT probes (both directions combined)
+    # Jul 20 — ADXMAX PROBE (probe #8, operator-directed; RSICEIL-clone). The pair-ADX
+    # ceiling (L30/S35) is an old calibration with a DARK zone above it; Funnel v2 shows
+    # 1,335 LONG + 1,148 SHORT soles, and the Jul-20 batch WR gradient RISES into the
+    # ceiling (pADX 28-30 = 80% WR). Probe: candidates whose ADX sits in (per-side max,
+    # per-side probe ceiling] open as 1x ADXMAX_PROBE; above the probe ceiling stays
+    # blocked. 🔒 Gates PER SIDE at N>=30 (>=5 dates): WR>=60% & avg>=+0.15% ->
+    # ceiling-raise discussion; WR<=45% or avg<0 -> ceiling vindicated, probe off.
+    # Verdict slices 30-32 vs 32-35 (long) per protocol.
+    adxmax_probe_enabled: bool = True
+    adxmax_probe_max_open: int = 3       # concurrent ADXMAX probes (both directions combined)
+    adxmax_probe_ceiling_long: float = 35.0   # LONG probe band: ADX in (momentum_adx_max_long, this]
+    adxmax_probe_ceiling_short: float = 40.0  # SHORT probe band: ADX in (momentum_adx_max, this]
+    # Jul 20 — DBDOWN PROBE (probe #9, operator-directed): the FLAT-DOWN half of the 1h
+    # dead-band, [−deadband, 0). The Jul-5 gate's locked phantom revert FIRED (95·60.0%·
+    # +0.100%, 7 dates; fresh flat-down >=Jul-17: 51·65%·+0.154% meets BOTH arms; H.BULL
+    # 41·71%·+0.225 = the payer) while the traded flat-UP half runs 11·55%·−$107 norm —
+    # the halves invert (pullback-long > drift-long, matching baseline's 1h-down best
+    # cohort 19·89%). Graduated execution of the fired gate: flat-down opens as 1x
+    # DBDOWN_PROBE (own tag/row; flat-up DEADBAND_PROBE untouched, 11/30). PASS phantom
+    # seeding dries up naturally (no half left blocked). 🔒 Gates at N>=30 (>=5 dates):
+    # WR>=60% & avg>=+0.15% -> execute the fired revert (full open, consider H.BULL scope);
+    # WR<=45% or avg<0 -> dead-band re-locks flat-down, phantom-revert-gate logged RESOLVED.
+    dbdown_probe_enabled: bool = True
+    dbdown_probe_max_open: int = 3       # concurrent DBDOWN probes (LONG-only by construction)
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

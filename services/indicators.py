@@ -281,6 +281,53 @@ def rsiceil_band(indicators: dict, direction: str, th=None):
         return None
 
 
+def adxmax_band(indicators: dict, direction: str, th=None):
+    """Jul 20: ADXMAX probe band (probe #8, BOTH directions). True iff the pair ADX sits in
+    (per-side momentum ADX max, per-side probe ceiling] — the dark zone above the old
+    ceiling (L30/S35; Funnel v2: 1,335 L + 1,148 S soles; Jul-20 batch gradient rises into
+    it). EXACT mirror of get_signal's suppression. None = no probe — fail-safe."""
+    try:
+        if th is None or direction not in ("LONG", "SHORT"):
+            return None
+        adx = indicators.get('adx')
+        if adx is None:
+            return None
+        if direction == "LONG":
+            _mx = float(getattr(th, 'momentum_adx_max_long', getattr(th, 'momentum_adx_max', 100)) or 100)
+            _cl = float(getattr(th, 'adxmax_probe_ceiling_long', 35.0) or 35.0)
+        else:
+            _mx = float(getattr(th, 'momentum_adx_max', 100) or 100)
+            _cl = float(getattr(th, 'adxmax_probe_ceiling_short', 40.0) or 40.0)
+        return bool(_mx < 100 and _mx < adx <= _cl)
+    except Exception:
+        return None
+
+
+def gminflat_band(indicators: dict, direction: str, th=None):
+    """Jul 20: GMINFLAT probe band (probe #7, BOTH directions). True iff the candidate is
+    the flat+small cohort-purity class: EMA5-8 gap in [gapmin floor, per-side threshold)
+    AND gap-not-expanding — exactly the PAIR_EMA_GAP_MIN[flat] sub-rule (2,213 L soles).
+    EXACT mirror of get_signal's suppression branch. None = no probe — fail-safe."""
+    try:
+        if th is None or direction not in ("LONG", "SHORT"):
+            return None
+        e5 = indicators.get('ema5'); e8 = indicators.get('ema8')
+        if direction == "LONG":
+            gap58 = (e5 - e8) / e8 * 100 if e5 and e8 and e8 > 0 else None
+            _thr = float(getattr(th, 'ema_gap_threshold_long', None) or getattr(th, 'ema_gap_threshold', 0.06) or 0.06)
+        else:
+            gap58 = (e8 - e5) / e5 * 100 if e5 and e8 and e5 > 0 else None
+            _thr = float(getattr(th, 'ema_gap_threshold_short', None) or getattr(th, 'ema_gap_threshold', 0.08) or 0.08)
+        if gap58 is None:
+            return None
+        _floor = float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)
+        if not (_floor <= gap58 < _thr):
+            return False
+        return gap_expand_flat(indicators, direction, th) is True
+    except Exception:
+        return None
+
+
 def get_signal(
     ema5: float,
     ema8: float,
@@ -533,7 +580,13 @@ def get_signal(
                 if not _rsiceil_band_l:
                     _l_fails.append(f"PAIR_RSI_RANGE[>{long_rsi_max:g}]")  # too hot — overbought chase
             if adx_max_long < 100 and adx > adx_max_long:
-                _l_fails.append("PAIR_ADX_MAX")
+                # Jul 20 ADXMAX PROBE (probe #8): the (max, probe-ceiling] band falls through
+                # when the probe is on (RSICEIL suppression pattern — the fail is simply not
+                # appended, so multi-fail candidates still block on their OTHER fails).
+                _adxmax_band_l = (getattr(th, 'adxmax_probe_enabled', False)
+                                  and adx <= float(getattr(th, 'adxmax_probe_ceiling_long', 35.0) or 35.0))
+                if not _adxmax_band_l:
+                    _l_fails.append("PAIR_ADX_MAX")
             # Gap family — pure math, now computed unconditionally (was nested in the else).
             ema_gap_pct = ((ema5 - ema8) / ema8) * 100
             # May 8: gap-expanding check uses EMA5-EMA13 (see original comment: EMA8 lags EMA5
@@ -567,7 +620,10 @@ def get_signal(
                     if ema_gap_pct is not None and ema_gap_pct < _floor_l:
                         _l_fails.append("PAIR_EMA_GAP_MIN[<floor]")
                     elif _gap_flat_long:
-                        _l_fails.append("PAIR_EMA_GAP_MIN[flat]")
+                        # Jul 20 GMINFLAT PROBE (probe #7): the flat+small cohort-purity class
+                        # falls through when the probe is on (2,213 long soles = #1 dark zone).
+                        if not getattr(th, 'gminflat_probe_enabled', False):
+                            _l_fails.append("PAIR_EMA_GAP_MIN[flat]")
                     else:
                         _l_fails.append("PAIR_EMA_GAP_MIN")
                 else:
@@ -634,7 +690,11 @@ def get_signal(
             elif short_rsi_min > 0 and rsi is not None and rsi < short_rsi_min:
                 _s_fails.append(f"PAIR_RSI_RANGE[<{short_rsi_min:g}]")  # too cold — washed out, bounce risk
             if adx_max < 100 and adx > adx_max:
-                _s_fails.append("PAIR_ADX_MAX")
+                # Jul 20 ADXMAX PROBE — SHORT mirror (band (max, probe-ceiling-short]).
+                _adxmax_band_s = (getattr(th, 'adxmax_probe_enabled', False)
+                                  and adx <= float(getattr(th, 'adxmax_probe_ceiling_short', 40.0) or 40.0))
+                if not _adxmax_band_s:
+                    _s_fails.append("PAIR_ADX_MAX")
             # Gap family (SHORT formulas) — computed unconditionally.
             ema_gap_pct = ((ema8 - ema5) / ema5) * 100
             exp_gap_pct = ((ema13 - ema5) / ema5) * 100 if ema5 and ema13 and ema5 > 0 else None
@@ -659,7 +719,9 @@ def get_signal(
                     if ema_gap_pct is not None and ema_gap_pct < _floor_s:
                         _s_fails.append("PAIR_EMA_GAP_MIN[<floor]")
                     elif _gap_flat_short:
-                        _s_fails.append("PAIR_EMA_GAP_MIN[flat]")
+                        # Jul 20 GMINFLAT PROBE — SHORT mirror of the flat+small fall-through.
+                        if not getattr(th, 'gminflat_probe_enabled', False):
+                            _s_fails.append("PAIR_EMA_GAP_MIN[flat]")
                     else:
                         _s_fails.append("PAIR_EMA_GAP_MIN")
                 else:

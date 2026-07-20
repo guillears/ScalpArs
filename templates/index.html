@@ -6791,6 +6791,39 @@
                                 <input type="number" step="1" id="config-rsiceil-probe-ceiling" class="w-16 bg-white/5 border border-orange-500/40 rounded px-2 py-1 text-orange-200 text-center" value="70"></label>
                         </div>
                         <p class="text-xs text-gray-500 mt-1"><span class="text-orange-300">RSICEIL Probe (Jul 15)</span>: probe #6 — the <strong>LONG RSI ceiling (65)</strong>, last set May-4 (Phase-1c, pre-UNMATCHED-only + old exits). The zone above 65 is <strong>dark: N=2 lifetime trades</strong>, while the current-era gradient RISES toward the ceiling (60-63: 77%·+0.26% / 63-65: 73%) and [&gt;65] is the #2 long sole blocker (441 soles). With the probe on, LONGs whose ONLY ladder fail is <strong>RSI in (65, ceiling]</strong> open as a 1× <strong>RSICEIL_PROBE</strong> (shares GAPFLAT sizing; own Max Open; last-2-slots guard); RSI &gt; ceiling stays blocked. Row <strong>RSICEIL 65-70 (probe) · LONG</strong> in the 🪟 probe table. 🔒 Gates at N≥30 (≥5 dates): WR≥60% &amp; avg≥+0.15% → ceiling-raise discussion (65→70 full size); WR≤45% or avg&lt;0 → ceiling vindicated, probe off. Verdict protocol: slice 65-67 vs 67-70 × the other probes\' dimensions.</p>
+                        <div class="flex items-center gap-6 mt-3 flex-wrap">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-slopegate-probe-long-enabled" class="sr-only peer">
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+                                <span class="ml-2 text-sm text-amber-300">SLOPEGATE LONG side</span>
+                            </label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-gminflat-probe-enabled" class="sr-only peer">
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-lime-600"></div>
+                                <span class="ml-2 text-sm text-lime-300">GMINFLAT Probe (1×)</span>
+                            </label>
+                            <label class="flex items-center gap-2 text-sm text-gray-400"><span>Max Open</span>
+                                <input type="number" step="1" id="config-gminflat-probe-max-open" class="w-14 bg-white/5 border border-lime-500/40 rounded px-2 py-1 text-lime-200 text-center" value="3"></label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-adxmax-probe-enabled" class="sr-only peer">
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-fuchsia-600"></div>
+                                <span class="ml-2 text-sm text-fuchsia-300">ADXMAX Probe (1×)</span>
+                            </label>
+                            <label class="flex items-center gap-2 text-sm text-gray-400"><span>Max Open</span>
+                                <input type="number" step="1" id="config-adxmax-probe-max-open" class="w-14 bg-white/5 border border-fuchsia-500/40 rounded px-2 py-1 text-fuchsia-200 text-center" value="3"></label>
+                            <label class="flex items-center gap-2 text-sm text-gray-400"><span>Ceil L</span>
+                                <input type="number" step="1" id="config-adxmax-probe-ceiling-long" class="w-14 bg-white/5 border border-fuchsia-500/40 rounded px-2 py-1 text-fuchsia-200 text-center" value="35"></label>
+                            <label class="flex items-center gap-2 text-sm text-gray-400"><span>Ceil S</span>
+                                <input type="number" step="1" id="config-adxmax-probe-ceiling-short" class="w-14 bg-white/5 border border-fuchsia-500/40 rounded px-2 py-1 text-fuchsia-200 text-center" value="40"></label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-dbdown-probe-enabled" class="sr-only peer">
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-600"></div>
+                                <span class="ml-2 text-sm text-sky-300">DBDOWN Probe (1×)</span>
+                            </label>
+                            <label class="flex items-center gap-2 text-sm text-gray-400"><span>Max Open</span>
+                                <input type="number" step="1" id="config-dbdown-probe-max-open" class="w-14 bg-white/5 border border-sky-500/40 rounded px-2 py-1 text-sky-200 text-center" value="3"></label>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1"><span class="text-lime-300">Jul-20 fleet update (probes #7-#9 + SLOPEGATE·LONG verdict)</span>: <strong>SLOPEGATE LONG side OFF</strong> — verdict ✗ VINDICATED at 27/30 (27·44.4%·−0.376%, avg arm mathematically locked); the 5m dead-band resumes blocking LONGs; SHORT side keeps collecting (2/30). <strong>GMINFLAT_PROBE</strong> (#7, BOTH dirs): the flat+small cohort-purity class (PAIR_EMA_GAP_MIN[flat] — #1 long dark zone, 2,213 soles = 23%) opens at 1×; rows <strong>GMINFLAT flat+small (probe) · L/S</strong>. <strong>ADXMAX_PROBE</strong> (#8, BOTH dirs, RSICEIL-clone): pair-ADX in (per-side max, ceiling] — L (30,35], S (35,40] — opens at 1× (1,335 L + 1,148 S soles; batch gradient rises into the ceiling: 28-30 = 80% WR); rows <strong>ADXMAX · L/S</strong>. <strong>DBDOWN_PROBE</strong> (#9, LONG-only): the 1h flat-DOWN half-band [−0.05, 0) opens at 1× — graduated execution of the <strong>FIRED</strong> deadband phantom revert gate (95·60.0%·+0.100%; fresh flat-down 51·65%·+0.154%; H.BULL 41·71% = the payer; the halves invert vs the traded flat-up probe); row <strong>DBDOWN flat-down (probe) · LONG</strong>; PASS phantom seeding dries up (no half left blocked). 🔒 Gates PER SIDE at N≥30 (≥5 dates): WR≥60% &amp; avg≥+0.15% → relax/uncap discussion; WR≤45% or avg&lt;0 → vindicated, probe off. Tag precedence: DBDOWN &gt; ADXMAX &gt; GMINFLAT &gt; RSICEIL &gt; DEADBAND &gt; RSIADX &gt; SLOPEGATE &gt; GAPFLAT &gt; GAPMIN (newest wins).</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">EMA5-EMA20 Gap Filter</span>
@@ -10067,10 +10100,13 @@
             lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  |  Mode: ${th.ema_gap_expanding_mode || 'both'}  (both = beat prev1 AND prev2 [strict]; prev2_only = beat prev2 only [relaxed, tags MARGINAL])`);
             lines.push(`  GAPFLAT Probe (Jul 13): ${th.gap_probe_enabled === true ? 'ON' : 'OFF'}  |  Invest: ${th.gap_probe_invest_mult !== undefined ? th.gap_probe_invest_mult : 0.5}x  |  Lev: ${th.gap_probe_lev_mult !== undefined ? th.gap_probe_lev_mult : 0.05}x (~1x eff)  |  Max Open: ${th.gap_probe_max_open !== undefined ? th.gap_probe_max_open : 3}  (gap-not-expanding entries BOTH directions open as 1x GAPFLAT_PROBE; last 2 slots reserved; no daily budget)`);
             lines.push(`  GAPMIN Probe (Jul 13): ${th.gapmin_probe_enabled === true ? 'ON' : 'OFF'}  |  Band L: [${th.gapmin_probe_floor !== undefined ? th.gapmin_probe_floor : 0.02}, ${th.ema_gap_threshold_long !== undefined ? th.ema_gap_threshold_long : 0.06})  |  S: [${th.gapmin_probe_floor !== undefined ? th.gapmin_probe_floor : 0.02}, ${th.ema_gap_threshold_short !== undefined ? th.ema_gap_threshold_short : 0.08})  |  Max Open: ${th.gapmin_probe_max_open !== undefined ? th.gapmin_probe_max_open : 3}  (young accelerating trends below the gap threshold open as 1x GAPMIN_PROBE, BOTH directions; shares GAPFLAT sizing + slot guard)`);
-            lines.push(`  SLOPEGATE Probe (Jul 14): ${th.slopegate_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.slopegate_probe_max_open !== undefined ? th.slopegate_probe_max_open : 3}  (signal-found candidates killed ONLY by the BTC 5m flat dead-band open as 1x SLOPEGATE_PROBE, BOTH directions; ~40 opportunities/day measured; Apr N=4 calibration under test)`);
+            lines.push(`  SLOPEGATE Probe (Jul 14): ${th.slopegate_probe_enabled === true ? 'ON' : 'OFF'}  |  LONG side: ${th.slopegate_probe_long_enabled === true ? 'ON' : 'OFF (verdict \u2717 Jul 20)'}  |  Max Open: ${th.slopegate_probe_max_open !== undefined ? th.slopegate_probe_max_open : 3}  (signal-found candidates killed ONLY by the BTC 5m flat dead-band open as 1x SLOPEGATE_PROBE; LONG verdict \u2717 VINDICATED at 27/30 Jul-20 \u2014 SHORT side still collecting)`);
             lines.push(`  RSIADX Probe (Jul 15): ${th.rsiadx_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.rsiadx_probe_max_open !== undefined ? th.rsiadx_probe_max_open : 3}  (candidates blocked ONLY by the Mar-27 RSI×ADX cross-filter open as 1x RSIADX_PROBE, BOTH directions; 840 short soles/2d = 66% share measured; ~$6 April evidence under test)`);
             lines.push(`  DEADBAND Probe (Jul 15): ${th.deadband_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.deadband_probe_max_open !== undefined ? th.deadband_probe_max_open : 3}  (HALF-OPEN of the BTC 1h dead-band: LONGs with 1h slope in [0,+${th.long_btc_1h_deadband ?? 0.05}) open as 1x DEADBAND_PROBE; flat-down stays blocked + seeds phantoms; promote to full size at N>=30/>=5 dates WR>=60% avg>=+0.15%)`);
             lines.push(`  RSICEIL Probe (Jul 15): ${th.rsiceil_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.rsiceil_probe_max_open !== undefined ? th.rsiceil_probe_max_open : 3}  |  Ceiling: ${th.rsiceil_probe_ceiling ?? 70}  (LONGs sole-blocked by RSI>(${th.momentum_long_rsi_max ?? 65}) up to the ceiling open as 1x RSICEIL_PROBE; >ceiling stays blocked; dark zone N=2 lifetime, May-4 pre-UNMATCHED evidence under test)`);
+            lines.push(`  GMINFLAT Probe (Jul 20): ${th.gminflat_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.gminflat_probe_max_open !== undefined ? th.gminflat_probe_max_open : 3}  (flat+small purity class — PAIR_EMA_GAP_MIN[flat], #1 long dark zone 2,213 soles — opens as 1x GMINFLAT_PROBE, BOTH directions)`);
+            lines.push(`  ADXMAX Probe (Jul 20): ${th.adxmax_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.adxmax_probe_max_open !== undefined ? th.adxmax_probe_max_open : 3}  |  Ceiling L: ${th.adxmax_probe_ceiling_long ?? 35}  S: ${th.adxmax_probe_ceiling_short ?? 40}  (pair-ADX in (per-side max, ceiling] opens as 1x ADXMAX_PROBE; above ceiling stays blocked)`);
+            lines.push(`  DBDOWN Probe (Jul 20): ${th.dbdown_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.dbdown_probe_max_open !== undefined ? th.dbdown_probe_max_open : 3}  (1h flat-DOWN half-band [-0.05,0) opens as 1x DBDOWN_PROBE — graduated execution of the FIRED deadband phantom revert gate)`);
 
             const inv = cfg.investment || {};
             lines.push(`\nGeneral Settings:`);
@@ -19170,6 +19206,15 @@
                 { const _e=document.getElementById('config-rsiceil-probe-enabled'); if(_e) _e.checked = config.thresholds.rsiceil_probe_enabled === true; }
                 { const _e=document.getElementById('config-rsiceil-probe-max-open'); if(_e && config.thresholds.rsiceil_probe_max_open !== undefined) _e.value = config.thresholds.rsiceil_probe_max_open; }
                 { const _e=document.getElementById('config-rsiceil-probe-ceiling'); if(_e && config.thresholds.rsiceil_probe_ceiling !== undefined) _e.value = config.thresholds.rsiceil_probe_ceiling; }
+                { const _e=document.getElementById('config-slopegate-probe-long-enabled'); if(_e) _e.checked = config.thresholds.slopegate_probe_long_enabled === true; }
+                { const _e=document.getElementById('config-gminflat-probe-enabled'); if(_e) _e.checked = config.thresholds.gminflat_probe_enabled === true; }
+                { const _e=document.getElementById('config-gminflat-probe-max-open'); if(_e && config.thresholds.gminflat_probe_max_open !== undefined) _e.value = config.thresholds.gminflat_probe_max_open; }
+                { const _e=document.getElementById('config-adxmax-probe-enabled'); if(_e) _e.checked = config.thresholds.adxmax_probe_enabled === true; }
+                { const _e=document.getElementById('config-adxmax-probe-max-open'); if(_e && config.thresholds.adxmax_probe_max_open !== undefined) _e.value = config.thresholds.adxmax_probe_max_open; }
+                { const _e=document.getElementById('config-adxmax-probe-ceiling-long'); if(_e && config.thresholds.adxmax_probe_ceiling_long !== undefined) _e.value = config.thresholds.adxmax_probe_ceiling_long; }
+                { const _e=document.getElementById('config-adxmax-probe-ceiling-short'); if(_e && config.thresholds.adxmax_probe_ceiling_short !== undefined) _e.value = config.thresholds.adxmax_probe_ceiling_short; }
+                { const _e=document.getElementById('config-dbdown-probe-enabled'); if(_e) _e.checked = config.thresholds.dbdown_probe_enabled === true; }
+                { const _e=document.getElementById('config-dbdown-probe-max-open'); if(_e && config.thresholds.dbdown_probe_max_open !== undefined) _e.value = config.thresholds.dbdown_probe_max_open; }
                 { const _e=document.getElementById('config-gapmin-probe-floor'); if(_e) _e.value = config.thresholds.gapmin_probe_floor !== undefined ? config.thresholds.gapmin_probe_floor : 0.02; }
                 { const _e=document.getElementById('config-gapmin-probe-max-open'); if(_e) _e.value = config.thresholds.gapmin_probe_max_open !== undefined ? config.thresholds.gapmin_probe_max_open : 3; }
                 // May 2: split EMA5-EMA8 max with auto-fallback to legacy single field
@@ -20523,6 +20568,15 @@
                     rsiceil_probe_enabled: (document.getElementById('config-rsiceil-probe-enabled')?.checked === true),
                     rsiceil_probe_max_open: parseInt(document.getElementById('config-rsiceil-probe-max-open')?.value || 3),
                     rsiceil_probe_ceiling: safeFloat(document.getElementById('config-rsiceil-probe-ceiling')?.value || 70),
+                    slopegate_probe_long_enabled: (document.getElementById('config-slopegate-probe-long-enabled')?.checked === true),
+                    gminflat_probe_enabled: (document.getElementById('config-gminflat-probe-enabled')?.checked === true),
+                    gminflat_probe_max_open: parseInt(document.getElementById('config-gminflat-probe-max-open')?.value || 3),
+                    adxmax_probe_enabled: (document.getElementById('config-adxmax-probe-enabled')?.checked === true),
+                    adxmax_probe_max_open: parseInt(document.getElementById('config-adxmax-probe-max-open')?.value || 3),
+                    adxmax_probe_ceiling_long: safeFloat(document.getElementById('config-adxmax-probe-ceiling-long')?.value || 35),
+                    adxmax_probe_ceiling_short: safeFloat(document.getElementById('config-adxmax-probe-ceiling-short')?.value || 40),
+                    dbdown_probe_enabled: (document.getElementById('config-dbdown-probe-enabled')?.checked === true),
+                    dbdown_probe_max_open: parseInt(document.getElementById('config-dbdown-probe-max-open')?.value || 3),
                     gapmin_probe_floor: safeFloat(document.getElementById('config-gapmin-probe-floor')?.value || 0.02),
                     gapmin_probe_max_open: parseInt(document.getElementById('config-gapmin-probe-max-open')?.value || 3),
                     // May 2: split EMA5-EMA8 max + new pair/BTC slope max guards

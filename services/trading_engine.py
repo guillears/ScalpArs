@@ -15,7 +15,7 @@ from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, _leverage_blocked_pairs
-from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band
+from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, gminflat_band
 from services.regime import classify_btc_regime
 from services.websocket_tracker import websocket_tracker
 
@@ -4243,6 +4243,9 @@ class TradingEngine:
         rsiadx_probe: bool = False,
         deadband_probe: bool = False,
         rsiceil_probe: bool = False,
+        gminflat_probe: bool = False,
+        adxmax_probe: bool = False,
+        dbdown_probe: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -4449,7 +4452,36 @@ class TradingEngine:
                 except Exception:
                     pass
                 return None
-        
+
+        # Jul 20: caps for probes #7-#9 (GMINFLAT / ADXMAX / DBDOWN) — same mirror block;
+        # cap rejection records probe-off semantics (the filter that would have blocked).
+        for _p_flag, _p_tag, _p_en, _p_max, _p_ctr, _p_dirs in (
+            (gminflat_probe, "GMINFLAT_PROBE", 'gminflat_probe_enabled', 'gminflat_probe_max_open', "PAIR_EMA_GAP_MIN", ("LONG", "SHORT")),
+            (adxmax_probe, "ADXMAX_PROBE", 'adxmax_probe_enabled', 'adxmax_probe_max_open', "PAIR_ADX_MAX", ("LONG", "SHORT")),
+            (dbdown_probe, "DBDOWN_PROBE", 'dbdown_probe_enabled', 'dbdown_probe_max_open', "LONG_BTC1H_DEADBAND", ("LONG",)),
+        ):
+            if _p_flag and direction in _p_dirs and not flip_source and not bull_long and not bounce_long:
+                _th_p = config.trading_config.thresholds
+                _p_reason = None
+                if not getattr(_th_p, _p_en, False):
+                    _p_reason = "probe disabled"
+                elif _open_count_now > max(0, _inv_cfg.max_open_positions - 2):
+                    _p_reason = f"book too full ({_open_count_now} open, last 2 slots reserved)"
+                else:
+                    _p_open_q = await db.execute(
+                        select(func.count(Order.id)).where(and_(
+                            Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
+                            Order.cell_multiplier_source == _p_tag)))
+                    if (_p_open_q.scalar() or 0) >= int(getattr(_th_p, _p_max, 3) or 3):
+                        _p_reason = "max concurrent probes open"
+                if _p_reason:
+                    logger.info(f"[{_p_tag}] {pair} {direction} skipped: {_p_reason}")
+                    try:
+                        self._record_filter_block(_p_ctr, direction)
+                    except Exception:
+                        pass
+                    return None
+
         # Check if we already have a position for this pair
         result = await db.execute(
             select(Order).where(
@@ -4899,7 +4931,8 @@ class TradingEngine:
         # 2x'd by the UNMATCHED cell); own cell_src row (rides Multiplier Cell Performance + CSV
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
-        if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe) and direction in ("LONG", "SHORT")
+        if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
+             or gminflat_probe or adxmax_probe or dbdown_probe) and direction in ("LONG", "SHORT")
                 and not flip_source and not bull_long and not bounce_long):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
@@ -4912,11 +4945,15 @@ class TradingEngine:
             # frozen mid-experiment. NOT chronological ladder order (gap kills before RSIADX
             # kills before the engine slope gate) — verdict-time rule: slice each cohort on
             # the other probes' dimensions (gap band / slope band / RSI x ADX) before shipping.
-            cell_src = ("RSICEIL_PROBE" if rsiceil_probe else
-                        ("DEADBAND_PROBE" if deadband_probe else
-                         ("RSIADX_PROBE" if rsiadx_probe else
-                          ("SLOPEGATE_PROBE" if slopegate_probe else
-                           ("GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE")))))
+            # Jul 20: probes #7-#9 prepend (newest wins): DBDOWN > ADXMAX > GMINFLAT > Jul-15 fleet.
+            cell_src = ("DBDOWN_PROBE" if dbdown_probe else
+                        ("ADXMAX_PROBE" if adxmax_probe else
+                         ("GMINFLAT_PROBE" if gminflat_probe else
+                          ("RSICEIL_PROBE" if rsiceil_probe else
+                           ("DEADBAND_PROBE" if deadband_probe else
+                            ("RSIADX_PROBE" if rsiadx_probe else
+                             ("SLOPEGATE_PROBE" if slopegate_probe else
+                              ("GAPFLAT_PROBE" if gap_probe else "GAPMIN_PROBE"))))))))
             _mult_target = "both"
             logger.info(f"[{cell_src}] {pair} {direction}: opening probe at inv={cell_mult}x lev={cell_lev_mult}x (~1x effective)")
 
@@ -8947,6 +8984,7 @@ class TradingEngine:
             # fires ARE the signal — same convention as GAPFLAT/PAIR_EMA_GAP_NOT_EXPANDING).
             _slopegate_probe_hit = False
             _deadband_probe_hit = False
+            _dbdown_probe_hit = False
             if signal in ["LONG", "SHORT"] and btc_ema20_slope_pct is not None:
                 _th = config.trading_config.thresholds
                 _sg_probe_on = getattr(_th, 'slopegate_probe_enabled', False)
@@ -8954,7 +8992,9 @@ class TradingEngine:
                     _flat_th = getattr(_th, 'macro_trend_flat_threshold_long',
                                        getattr(_th, 'macro_trend_flat_threshold', 0))
                     if _flat_th > 0 and btc_ema20_slope_pct < _flat_th:
-                        if _sg_probe_on:
+                        # Jul 20: LONG probe verdict ✗ VINDICATED at 27/30 (avg arm locked) —
+                        # per-side kill switch; the gate resumes blocking LONGs normally.
+                        if _sg_probe_on and getattr(_th, 'slopegate_probe_long_enabled', True):
                             _slopegate_probe_hit = True
                             logger.info(f"[SLOPEGATE_PROBE] {pair}: LONG candidate (BTC slope {btc_ema20_slope_pct:+.4f}% < +{_flat_th}%) — probing instead of blocking")
                         else:
@@ -9043,6 +9083,12 @@ class TradingEngine:
                     if getattr(_th, 'deadband_probe_enabled', False) and _current_btc_1h_slope >= 0:
                         _deadband_probe_hit = True
                         logger.info(f"[DEADBAND_PROBE] {pair}: LONG candidate (BTC 1h slope {_current_btc_1h_slope:+.4f}% in flat-up [0,+{_db}%)) — probing instead of blocking")
+                    elif getattr(_th, 'dbdown_probe_enabled', False) and _current_btc_1h_slope < 0:
+                        # Jul 20 DBDOWN PROBE (probe #9): flat-DOWN half opens — graduated
+                        # execution of the FIRED phantom revert gate (95·60.0%·+0.100; fresh
+                        # flat-down 51·65%·+0.154 meets both arms; halves invert vs flat-up).
+                        _dbdown_probe_hit = True
+                        logger.info(f"[DBDOWN_PROBE] {pair}: LONG candidate (BTC 1h slope {_current_btc_1h_slope:+.4f}% in flat-down (−{_db}%,0)) — probing instead of blocking")
                     else:
                         logger.info(f"[LONG_BTC1H_DEADBAND] {pair}: LONG blocked — |BTC 1h slope {_current_btc_1h_slope:+.4f}%| < {_db}% (flat hourly: no carry, DOA zone)")
                         self._record_filter_block("LONG_BTC1H_DEADBAND", "LONG", had_room=_had_room)
@@ -9493,6 +9539,21 @@ class TradingEngine:
                         and getattr(config.trading_config.thresholds, 'rsiceil_probe_enabled', False)
                         and rsiceil_band(indicators, signal, config.trading_config.thresholds) is True
                     ),
+                    # Jul 20 GMINFLAT probe (#7): flat+small cohort-purity class admitted via
+                    # the [flat] sub-rule suppression — recompute the exact band here.
+                    gminflat_probe=bool(
+                        signal in ("LONG", "SHORT")
+                        and getattr(config.trading_config.thresholds, 'gminflat_probe_enabled', False)
+                        and gminflat_band(indicators, signal, config.trading_config.thresholds) is True
+                    ),
+                    # Jul 20 ADXMAX probe (#8): (per-side ADX max, probe ceiling] band.
+                    adxmax_probe=bool(
+                        signal in ("LONG", "SHORT")
+                        and getattr(config.trading_config.thresholds, 'adxmax_probe_enabled', False)
+                        and adxmax_band(indicators, signal, config.trading_config.thresholds) is True
+                    ),
+                    # Jul 20 DBDOWN probe (#9): 1h flat-DOWN half-band fall-through above.
+                    dbdown_probe=bool(_dbdown_probe_hit),
                 )
 
                 if order:

@@ -10615,7 +10615,7 @@ def _compute_gap_expand_cohort(orders):
             continue
         # Jul 13: GAPFLAT/GAPMIN probes belong to the probe A/B (gap_probe_cohort),
         # never to this MARGINAL/STRICT relaxation table.
-        if (getattr(o, 'cell_multiplier_source', None) or '') in ('GAPFLAT_PROBE', 'GAPMIN_PROBE', 'SLOPEGATE_PROBE', 'RSIADX_PROBE', 'DEADBAND_PROBE', 'RSICEIL_PROBE'):
+        if (getattr(o, 'cell_multiplier_source', None) or '') in ('GAPFLAT_PROBE', 'GAPMIN_PROBE', 'SLOPEGATE_PROBE', 'RSIADX_PROBE', 'DEADBAND_PROBE', 'RSICEIL_PROBE', 'GMINFLAT_PROBE', 'ADXMAX_PROBE', 'DBDOWN_PROBE'):
             continue
         marg = getattr(o, 'entry_gap_expand_marginal', None)
         if marg is None:
@@ -10672,6 +10672,9 @@ def _compute_gap_probe_cohort(orders):
     rsiadx_rows, rsiadx_s_rows = [], []  # Jul 15: RSI×ADX cross-filter probe (#4)
     deadband_rows = []  # Jul 15: BTC 1h flat-UP half-band probe (#5, LONG-only)
     rsiceil_rows = []  # Jul 15: LONG RSI (65,70] ceiling probe (#6, LONG-only)
+    gminflat_rows, gminflat_s_rows = [], []  # Jul 20: flat+small purity-class probe (#7)
+    adxmax_rows, adxmax_s_rows = [], []  # Jul 20: pair-ADX ceiling probe (#8)
+    dbdown_rows = []  # Jul 20: BTC 1h flat-DOWN half-band probe (#9, LONG-only)
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
@@ -10693,6 +10696,12 @@ def _compute_gap_probe_cohort(orders):
                 deadband_rows.append(o)
             elif _src == 'RSICEIL_PROBE':
                 rsiceil_rows.append(o)
+            elif _src == 'GMINFLAT_PROBE':
+                gminflat_rows.append(o)
+            elif _src == 'ADXMAX_PROBE':
+                adxmax_rows.append(o)
+            elif _src == 'DBDOWN_PROBE':
+                dbdown_rows.append(o)
             else:
                 exp_rows.append(o)
         elif d == "SHORT":
@@ -10704,13 +10713,18 @@ def _compute_gap_probe_cohort(orders):
                 slopegate_s_rows.append(o)
             elif _src == 'RSIADX_PROBE':
                 rsiadx_s_rows.append(o)
+            elif _src == 'GMINFLAT_PROBE':
+                gminflat_s_rows.append(o)
+            elif _src == 'ADXMAX_PROBE':
+                adxmax_s_rows.append(o)
             else:
                 exp_s_rows.append(o)
     # Fair A/B control: window BOTH control sides to the probe-live period (same tape,
     # same filter stack) — all-history controls mix dead configs (locked re-sim rule).
     _all_probes = (probe_rows + gapmin_rows + gapmin_s_rows + gapflat_s_rows
                    + slopegate_rows + slopegate_s_rows + rsiadx_rows + rsiadx_s_rows
-                   + deadband_rows + rsiceil_rows)
+                   + deadband_rows + rsiceil_rows
+                   + gminflat_rows + gminflat_s_rows + adxmax_rows + adxmax_s_rows + dbdown_rows)
     if _all_probes:
         _p0 = min(getattr(o, 'opened_at', None) for o in _all_probes if getattr(o, 'opened_at', None))
         if _p0:
@@ -10728,10 +10742,15 @@ def _compute_gap_probe_cohort(orders):
                        ("RSIADX (probe) · LONG", rsiadx_rows),
                        ("DEADBAND flat-up (probe) · LONG", deadband_rows),
                        ("RSICEIL 65-70 (probe) · LONG", rsiceil_rows),
+                       ("GMINFLAT flat+small (probe) · LONG", gminflat_rows),
+                       ("ADXMAX 30-35 (probe) · LONG", adxmax_rows),
+                       ("DBDOWN flat-down (probe) · LONG", dbdown_rows),
                        ("EXPANDING · SHORT", exp_s_rows), ("NON-EXPANDING (probe) · SHORT", gapflat_s_rows),
                        ("SMALL-GAP (probe) · SHORT", gapmin_s_rows),
                        ("SLOPEGATE (probe) · SHORT", slopegate_s_rows),
-                       ("RSIADX (probe) · SHORT", rsiadx_s_rows)):
+                       ("RSIADX (probe) · SHORT", rsiadx_s_rows),
+                       ("GMINFLAT flat+small (probe) · SHORT", gminflat_s_rows),
+                       ("ADXMAX 35-40 (probe) · SHORT", adxmax_s_rows)):
         n = len(rs)
         if n == 0:
             if not cohort.startswith("EXPANDING"):

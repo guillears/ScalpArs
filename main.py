@@ -10720,6 +10720,11 @@ def _compute_gap_probe_cohort(orders):
                 gminflat_s_rows.append(o)
             elif _src == 'ADXMAX_PROBE':
                 adxmax_s_rows.append(o)
+            elif _src == 'ADXMAX2_PROBE':
+                # Defensive (review): ADXMAX2 is LONG-only today — a SHORT carrying the tag
+                # (e.g. a future SHORT rung reusing it) must not contaminate the EXPANDING·SHORT
+                # control. Drop from the A/B rather than mis-bucket.
+                continue
             else:
                 exp_s_rows.append(o)
     # Fair A/B control: window BOTH control sides to the probe-live period (same tape,

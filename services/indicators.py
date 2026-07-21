@@ -314,9 +314,14 @@ def adxmax2_band(indicators: dict, direction: str, th=None):
         adx = indicators.get('adx')
         if adx is None:
             return None
+        # Review fix (Jul 21): honor the enclosing ladder guard — the suppression only
+        # runs when adx > momentum_adx_max_long, so the mirror must too (else raising
+        # the mainline max past ceiling_long would tag never-blocked full-size entries
+        # as probes). Effective band = (max(adx_max_long, ceiling_long), ceiling2].
+        _mx = float(getattr(th, 'momentum_adx_max_long', getattr(th, 'momentum_adx_max', 100)) or 100)
         _lo = float(getattr(th, 'adxmax_probe_ceiling_long', 35.0) or 35.0)
         _cl = float(getattr(th, 'adxmax2_probe_ceiling_long', 40.0) or 40.0)
-        return bool(_lo < adx <= _cl)
+        return bool(_mx < 100 and max(_mx, _lo) < adx <= _cl)
     except Exception:
         return None
 

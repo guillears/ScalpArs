@@ -138,7 +138,7 @@ def main():
         # Jul 13: GAPFLAT/GAPMIN probes are deliberately-suspect 1x observation sleeves —
         # NEVER part of the screened baseline / anchors. They have their own A/B
         # table (Gap-Expand Probe) and their own gates.
-        if (r.get('cell_multiplier_source') or '') in ('GAPFLAT_PROBE', 'GAPMIN_PROBE', 'SLOPEGATE_PROBE', 'RSIADX_PROBE', 'DEADBAND_PROBE', 'RSICEIL_PROBE', 'GMINFLAT_PROBE', 'ADXMAX_PROBE', 'DBDOWN_PROBE'):
+        if (r.get('cell_multiplier_source') or '') in ('GAPFLAT_PROBE', 'GAPMIN_PROBE', 'SLOPEGATE_PROBE', 'RSIADX_PROBE', 'DEADBAND_PROBE', 'RSICEIL_PROBE', 'GMINFLAT_PROBE', 'ADXMAX_PROBE', 'DBDOWN_PROBE', 'ADXMAX2_PROBE'):
             continue
         s = sleeve(r)
         if not s: continue

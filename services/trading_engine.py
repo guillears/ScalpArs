@@ -15,7 +15,7 @@ from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, _leverage_blocked_pairs
-from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, gminflat_band
+from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
 from services.websocket_tracker import websocket_tracker
 
@@ -4247,6 +4247,10 @@ class TradingEngine:
         gminflat_probe: bool = False,
         adxmax_probe: bool = False,
         dbdown_probe: bool = False,
+        # Jul 21 ADXMAX2 probe (#10, LONG-only): second rung of the LONG pair-ADX
+        # ladder, band (35, 40]. Parallel cohort to ADXMAX (30, 35] — disjoint bands,
+        # independent verdicts.
+        adxmax2_probe: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -4314,7 +4318,8 @@ class TradingEngine:
         # Without this, a dual-flag candidate (e.g. every GMINFLAT is also gap-flat =>
         # gap_probe=True) is capped/counted by the OLDER probe's block — starving the
         # newer cohort's N-clock and mis-attributing the funnel counter.
-        _probe_final_tag = ("DBDOWN_PROBE" if dbdown_probe else
+        _probe_final_tag = ("ADXMAX2_PROBE" if adxmax2_probe else
+                            "DBDOWN_PROBE" if dbdown_probe else
                             ("ADXMAX_PROBE" if adxmax_probe else
                              ("GMINFLAT_PROBE" if gminflat_probe else
                               ("RSICEIL_PROBE" if rsiceil_probe else
@@ -4474,6 +4479,8 @@ class TradingEngine:
             (gminflat_probe, "GMINFLAT_PROBE", 'gminflat_probe_enabled', 'gminflat_probe_max_open', "PAIR_EMA_GAP_MIN", ("LONG", "SHORT")),
             (adxmax_probe, "ADXMAX_PROBE", 'adxmax_probe_enabled', 'adxmax_probe_max_open', "PAIR_ADX_MAX", ("LONG", "SHORT")),
             (dbdown_probe, "DBDOWN_PROBE", 'dbdown_probe_enabled', 'dbdown_probe_max_open', "LONG_BTC1H_DEADBAND", ("LONG",)),
+            # Jul 21 probe #10: second LONG ADX rung (35, 40]
+            (adxmax2_probe, "ADXMAX2_PROBE", 'adxmax2_probe_enabled', 'adxmax2_probe_max_open', "PAIR_ADX_MAX", ("LONG",)),
         ):
             # (cap rejection for DBDOWN records the counter but does NOT seed the PASS
             # phantom the probe-off path would have — accepted: seeding is retiring anyway.)
@@ -4949,7 +4956,7 @@ class TradingEngine:
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
         if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
-             or gminflat_probe or adxmax_probe or dbdown_probe) and direction in ("LONG", "SHORT")
+             or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe) and direction in ("LONG", "SHORT")
                 and not flip_source and not bull_long and not bounce_long):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
@@ -9567,6 +9574,12 @@ class TradingEngine:
                     ),
                     # Jul 20 DBDOWN probe (#9): 1h flat-DOWN half-band fall-through above.
                     dbdown_probe=bool(_dbdown_probe_hit),
+                    # Jul 21 ADXMAX2 probe (#10, LONG-only): second rung (35, 40].
+                    adxmax2_probe=bool(
+                        signal == "LONG"
+                        and getattr(config.trading_config.thresholds, 'adxmax2_probe_enabled', False)
+                        and adxmax2_band(indicators, signal, config.trading_config.thresholds) is True
+                    ),
                 )
 
                 if order:
@@ -9809,7 +9822,8 @@ class TradingEngine:
             # SXT −$176 vs +$659 saves). ATR-scaled variants REFUTED (0.5×ATR
             # direction-inconsistent −$2,014 BL / +$1,118 batch); atr05-leash
             # combo REFUTED (mechanisms cannibalize, −$257 BL). Profit-lock
-            # only — can never fire on a losing trade. Fires before
+            # only — can never fire on a losing trade. Fires after PATTERN_FIXED
+            # (deliberate sub-1.0% loser-cohort locks win) but before
             # ATR_FIXED_TP / Fast Exit / trailing / EMA13. Reason "HARD_TP L1"
             # (added to BOTH post-exit tracking whitelists → Post-Exit Regret
             # rows give the revert-gate data: post-exit continuation = cut
@@ -9820,7 +9834,9 @@ class TradingEngine:
             # ════════════════════════════════════════════════════════════════
             _hard_tp_enabled = getattr(config.trading_config.thresholds, 'hard_tp_enabled', False)
             if _hard_tp_enabled and not order_info.get('_closing_in_progress'):
-                _hard_tp_pct = float(getattr(config.trading_config.thresholds, 'hard_tp_pct', 1.0) or 1.0)
+                # Review fix (Jul 20): no `or 1.0` coalescing — 0 must reach the >0 guard so "0 = disabled" works.
+                _hard_tp_raw = getattr(config.trading_config.thresholds, 'hard_tp_pct', 1.0)
+                _hard_tp_pct = float(_hard_tp_raw) if _hard_tp_raw is not None else 1.0
                 if _hard_tp_pct > 0 and pnl_pct >= _hard_tp_pct:
                     logger.warning(
                         f"[HARD_TP] {pair} {direction}: pnl={pnl_pct:.4f}% >= tp={_hard_tp_pct}% — CLOSING NOW!"

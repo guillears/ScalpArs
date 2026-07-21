@@ -350,6 +350,17 @@ class SignalThresholds(BaseModel):
     adxmax_probe_max_open: int = 3       # concurrent ADXMAX probes (both directions combined)
     adxmax_probe_ceiling_long: float = 35.0   # LONG probe band: ADX in (momentum_adx_max_long, this]
     adxmax_probe_ceiling_short: float = 40.0  # SHORT probe band: ADX in (momentum_adx_max, this]
+    # ADXMAX2 (Jul 21, 2026 — probe #10, LONG-only): SECOND rung of the LONG pair-ADX
+    # ladder — band (adxmax_probe_ceiling_long, this] = (35, 40]. Parallel to (not instead
+    # of) the 30-35 first rung: disjoint populations, separate cohort tag, each band faces
+    # its own N>=30/>=5-date gates independently (no post-hoc merging). Rationale: batch
+    # ADX gradient rises into the 35 ceiling (28-30: 80% / 30-33: 100% / 33-35: 100%;
+    # ADXMAX·L first rung 3/3 W early) and >35 is fully dark for LONGs; theory two-sided
+    # (very strong trend vs late/exhausted trend) — measure, don't assume. If the first
+    # rung lands ✗ the gradient thesis dies and this band's tuition is accepted moot cost.
+    adxmax2_probe_enabled: bool = True
+    adxmax2_probe_max_open: int = 3           # concurrent ADXMAX2 probes (LONG-only)
+    adxmax2_probe_ceiling_long: float = 40.0  # LONG band 2: ADX in (adxmax_probe_ceiling_long, this]
     # Jul 20 — DBDOWN PROBE (probe #9, operator-directed): the FLAT-DOWN half of the 1h
     # dead-band, [−deadband, 0). The Jul-5 gate's locked phantom revert FIRED (95·60.0%·
     # +0.100%, 7 dates; fresh flat-down >=Jul-17: 51·65%·+0.154% meets BOTH arms; H.BULL

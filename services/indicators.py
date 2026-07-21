@@ -303,6 +303,24 @@ def adxmax_band(indicators: dict, direction: str, th=None):
         return None
 
 
+def adxmax2_band(indicators: dict, direction: str, th=None):
+    """Jul 21: ADXMAX2 probe band (probe #10, LONG-only). True iff the pair ADX sits in
+    (adxmax_probe_ceiling_long, adxmax2_probe_ceiling_long] = the SECOND rung (35, 40] of
+    the LONG pair-ADX ladder — dark for LONGs (SHORT's rung-1 band already covers 35-40 on
+    its side). EXACT mirror of get_signal's suppression. None = no probe — fail-safe."""
+    try:
+        if th is None or direction != "LONG":
+            return None
+        adx = indicators.get('adx')
+        if adx is None:
+            return None
+        _lo = float(getattr(th, 'adxmax_probe_ceiling_long', 35.0) or 35.0)
+        _cl = float(getattr(th, 'adxmax2_probe_ceiling_long', 40.0) or 40.0)
+        return bool(_lo < adx <= _cl)
+    except Exception:
+        return None
+
+
 def gminflat_band(indicators: dict, direction: str, th=None):
     """Jul 20: GMINFLAT probe band (probe #7, BOTH directions). True iff the candidate is
     the flat+small cohort-purity class: EMA5-8 gap in [gapmin floor, per-side threshold)
@@ -585,7 +603,13 @@ def get_signal(
                 # appended, so multi-fail candidates still block on their OTHER fails).
                 _adxmax_band_l = (getattr(th, 'adxmax_probe_enabled', False)
                                   and adx <= float(getattr(th, 'adxmax_probe_ceiling_long', 35.0) or 35.0))
-                if not _adxmax_band_l:
+                # Jul 21 ADXMAX2 (probe #10, LONG-only): SECOND rung (ceiling_long, ceiling2]
+                # also falls through — independent of rung 1 (each band suppresses on its own
+                # flag; disjoint populations, separate cohort tags).
+                _adxmax2_band_l = (getattr(th, 'adxmax2_probe_enabled', False)
+                                   and adx > float(getattr(th, 'adxmax_probe_ceiling_long', 35.0) or 35.0)
+                                   and adx <= float(getattr(th, 'adxmax2_probe_ceiling_long', 40.0) or 40.0))
+                if not (_adxmax_band_l or _adxmax2_band_l):
                     _l_fails.append("PAIR_ADX_MAX")
             # Gap family — pure math, now computed unconditionally (was nested in the else).
             ema_gap_pct = ((ema5 - ema8) / ema8) * 100

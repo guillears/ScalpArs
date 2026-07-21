@@ -10615,7 +10615,7 @@ def _compute_gap_expand_cohort(orders):
             continue
         # Jul 13: GAPFLAT/GAPMIN probes belong to the probe A/B (gap_probe_cohort),
         # never to this MARGINAL/STRICT relaxation table.
-        if (getattr(o, 'cell_multiplier_source', None) or '') in ('GAPFLAT_PROBE', 'GAPMIN_PROBE', 'SLOPEGATE_PROBE', 'RSIADX_PROBE', 'DEADBAND_PROBE', 'RSICEIL_PROBE', 'GMINFLAT_PROBE', 'ADXMAX_PROBE', 'DBDOWN_PROBE'):
+        if (getattr(o, 'cell_multiplier_source', None) or '') in ('GAPFLAT_PROBE', 'GAPMIN_PROBE', 'SLOPEGATE_PROBE', 'RSIADX_PROBE', 'DEADBAND_PROBE', 'RSICEIL_PROBE', 'GMINFLAT_PROBE', 'ADXMAX_PROBE', 'DBDOWN_PROBE', 'ADXMAX2_PROBE'):
             continue
         marg = getattr(o, 'entry_gap_expand_marginal', None)
         if marg is None:
@@ -10675,6 +10675,7 @@ def _compute_gap_probe_cohort(orders):
     gminflat_rows, gminflat_s_rows = [], []  # Jul 20: flat+small purity-class probe (#7)
     adxmax_rows, adxmax_s_rows = [], []  # Jul 20: pair-ADX ceiling probe (#8)
     dbdown_rows = []  # Jul 20: BTC 1h flat-DOWN half-band probe (#9, LONG-only)
+    adxmax2_rows = []  # Jul 21: second LONG pair-ADX rung (35,40] probe (#10, LONG-only)
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
@@ -10702,6 +10703,8 @@ def _compute_gap_probe_cohort(orders):
                 adxmax_rows.append(o)
             elif _src == 'DBDOWN_PROBE':
                 dbdown_rows.append(o)
+            elif _src == 'ADXMAX2_PROBE':
+                adxmax2_rows.append(o)
             else:
                 exp_rows.append(o)
         elif d == "SHORT":
@@ -10724,7 +10727,7 @@ def _compute_gap_probe_cohort(orders):
     _all_probes = (probe_rows + gapmin_rows + gapmin_s_rows + gapflat_s_rows
                    + slopegate_rows + slopegate_s_rows + rsiadx_rows + rsiadx_s_rows
                    + deadband_rows + rsiceil_rows
-                   + gminflat_rows + gminflat_s_rows + adxmax_rows + adxmax_s_rows + dbdown_rows)
+                   + gminflat_rows + gminflat_s_rows + adxmax_rows + adxmax_s_rows + dbdown_rows + adxmax2_rows)
     if _all_probes:
         _p0 = min(getattr(o, 'opened_at', None) for o in _all_probes if getattr(o, 'opened_at', None))
         if _p0:
@@ -10757,6 +10760,7 @@ def _compute_gap_probe_cohort(orders):
         "GMINFLAT flat+small (probe) · LONG": _g('gminflat_probe_enabled') and _g('gap_probe_enabled') and _g('gapmin_probe_enabled'),
         "GMINFLAT flat+small (probe) · SHORT": _g('gminflat_probe_enabled') and _g('gap_probe_enabled') and _g('gapmin_probe_enabled'),
         "ADXMAX 30-35 (probe) · LONG": _g('adxmax_probe_enabled'),
+        "ADXMAX 35-40 (probe) · LONG": _g('adxmax2_probe_enabled'),
         "ADXMAX 35-40 (probe) · SHORT": _g('adxmax_probe_enabled'),
         "DBDOWN flat-down (probe) · LONG": _g('dbdown_probe_enabled'),
     }
@@ -10770,6 +10774,7 @@ def _compute_gap_probe_cohort(orders):
                        ("RSICEIL 65-70 (probe) · LONG", rsiceil_rows),
                        ("GMINFLAT flat+small (probe) · LONG", gminflat_rows),
                        ("ADXMAX 30-35 (probe) · LONG", adxmax_rows),
+                       ("ADXMAX 35-40 (probe) · LONG", adxmax2_rows),
                        ("DBDOWN flat-down (probe) · LONG", dbdown_rows),
                        ("EXPANDING · SHORT", exp_s_rows), ("NON-EXPANDING (probe) · SHORT", gapflat_s_rows),
                        ("SMALL-GAP (probe) · SHORT", gapmin_s_rows),

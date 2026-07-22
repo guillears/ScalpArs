@@ -10997,9 +10997,21 @@ class TradingEngine:
                     _flip_strpk_ok = (_is_flip and direction == "SHORT" and (
                         (_strpk_src == "FAN_RATIO_GATE" and getattr(_rt_th, 'flip_fan_runner_strpk', False))
                         or (_strpk_src != "FAN_RATIO_GATE" and getattr(_rt_th, 'flip_runner_strpk_shorts', False))))
-                    if (_rt_en and (not _is_flip or _flip_strpk_ok) and _rt_peak >= _rt_arm
-                            and (_rt_amin <= 0 or (_rt_atr is not None and _rt_atr >= _rt_amin))):
-                        _handoff_suppress = True
+                    # Jul 22 BUG FIX (operator-identified): suppress the legacy tight-trail for ALL
+                    # runner-eligible MOMENTUM trades, not only armed ones. The old `peak >= arm`
+                    # condition left the tight-trail alive in the sub-arm zone, creating a kill zone
+                    # just under the arm — both lifetime TRAILING_STOP closes peaked 0.4489/0.4494 vs
+                    # arm 0.45 (MIRA closed +0.45%, ran +19.1% in the next 30min). Jun-24 design
+                    # intent: the runner trail IS the exit; sub-arm exits = EMA13-strict / hard SL /
+                    # HARD_TP / NO_EXPANSION backstops. If runner_trail_atr_min > 0, low-ATR trades
+                    # remain tight-trail-managed (they are not runner-eligible). Flips keep the
+                    # armed-only suppression (their strpk exit design assumed it; flip-LONGs deferred).
+                    _rt_eligible = _rt_en and (_rt_amin <= 0 or (_rt_atr is not None and _rt_atr >= _rt_amin))
+                    if _rt_eligible:
+                        if not _is_flip:
+                            _handoff_suppress = True
+                        elif _flip_strpk_ok and _rt_peak >= _rt_arm:
+                            _handoff_suppress = True
             except Exception:
                 pass
 

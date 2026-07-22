@@ -10660,22 +10660,29 @@ def _compute_gap_expand_cohort(orders):
 
 
 def _compute_hard_tp_shadow(orders):
-    """HARD_TP mechanism shadow (Jul 22, observation-only) — tick-honest CF for the
-    operator-proposed leash/ladder alternatives, measured on the post-exit stream of
-    HARD_TP-closed trades (the cap closes the trade; continuation IS the CF path).
-    Rows: A = single leash (arm 1.0 / PB 0.25 / floor 0.75) · B = proportional ladder
-    (1.0/0.25 · 1.5/0.30 · 2.0/0.40 · 3.0/0.60 · 4.0/0.80) · C = flat cap 1.25 (exact
-    from post-exit peak; censored to final if never reached). Delta = vs realized cap.
-    Decision surface for the N>=15 four-way read (keep 1.0 / L1.25 / leash / ladder)."""
+    """HARD_TP mechanism shadow (Jul 22; review-fixed Jul 23) — tick-honest CF for the
+    exit-mechanism candidates, measured on the post-exit stream of HARD_TP-family fires.
+    Rows PER ERA (flat-cap fires vs live-ladder fires — mixing mechanisms in one cohort
+    was a review finding): A = single leash (trail 0.25, floor 0.75) · B = LIVE-ladder
+    replica (shared helper, per-side rungs) · C = flat cap 1.25 (reached if the in-trade
+    peak OR post-exit peak crossed 1.25; else censored to final). Delta = vs realized."""
     NORM = 122.74
+    def _base(o):
+        r = str(getattr(o, 'close_reason', '') or '')
+        if r.startswith("FLIP_"):
+            r = r[5:]
+        if r.startswith("FL_"):
+            r = r[3:]
+        return r
     fires = [o for o in orders
-             if getattr(o, 'status', None) == "CLOSED"
-             and str(getattr(o, 'close_reason', '') or '').replace("FLIP_", "").replace("FL_", "").startswith("HARD_TP")]
+             if getattr(o, 'status', None) == "CLOSED" and _base(o).startswith("HARD_TP")]
+    eras = {"flat-era": [o for o in fires if not _base(o).startswith("HARD_TP_LADDER")],
+            "ladder-era": [o for o in fires if _base(o).startswith("HARD_TP_LADDER")]}
     rows = []
-    def _row(label, vals, fired_n, censored_note):
+    def _row(label, vals, fired_n, note):
         if not vals:
             rows.append({"variant": label, "n": 0, "fired": 0, "avg_exit": None,
-                         "avg_cap": None, "delta_pp": None, "delta_norm": None, "note": censored_note})
+                         "avg_cap": None, "delta_pp": None, "delta_norm": None, "note": note})
             return
         n = len(vals)
         avg_exit = sum(v for v, _ in vals) / n
@@ -10684,32 +10691,37 @@ def _compute_hard_tp_shadow(orders):
         rows.append({"variant": label, "n": n, "fired": fired_n,
                      "avg_exit": round(avg_exit, 4), "avg_cap": round(avg_cap, 4),
                      "delta_pp": round(d_pp, 4), "delta_norm": round(d_pp * NORM, 2),
-                     "note": censored_note})
-    a_vals, a_fired = [], 0
-    b_vals, b_fired = [], 0
-    c_vals, c_reached = [], 0
-    for o in fires:
-        cap = o.pnl_percentage if o.pnl_percentage is not None else 1.0
-        av = getattr(o, 'hard_tp_shadow_leash_pnl', None)
-        if av is not None:
-            a_vals.append((av, cap))
-            if getattr(o, 'hard_tp_shadow_leash_fired', False):
-                a_fired += 1
-        bv = getattr(o, 'hard_tp_shadow_ladder_pnl', None)
-        if bv is not None:
-            b_vals.append((bv, cap))
-            if getattr(o, 'hard_tp_shadow_ladder_fired', False):
-                b_fired += 1
-        pk = getattr(o, 'post_exit_peak_pnl', None)
-        fin = getattr(o, 'post_exit_final_pnl', None)
-        if pk is not None:
-            if pk >= 1.25:
-                c_vals.append((1.25, cap)); c_reached += 1
-            elif fin is not None:
-                c_vals.append((fin, cap))  # censored: final observed
-    _row("A leash 1.0/0.25", a_vals, a_fired, "unfired=censored final")
-    _row("B ladder 1.0..4.0", b_vals, b_fired, "unfired=censored final")
-    _row("C flat cap 1.25", c_vals, c_reached, "unreached=censored final")
+                     "note": note})
+    for era, sub in eras.items():
+        if not sub:
+            continue
+        a_vals, a_fired = [], 0
+        b_vals, b_fired = [], 0
+        c_vals, c_reached = [], 0
+        for o in sub:
+            cap = o.pnl_percentage if o.pnl_percentage is not None else 1.0
+            av = getattr(o, 'hard_tp_shadow_leash_pnl', None)
+            if av is not None:
+                a_vals.append((av, cap))
+                if getattr(o, 'hard_tp_shadow_leash_fired', False):
+                    a_fired += 1
+            bv = getattr(o, 'hard_tp_shadow_ladder_pnl', None)
+            if bv is not None:
+                b_vals.append((bv, cap))
+                if getattr(o, 'hard_tp_shadow_ladder_fired', False):
+                    b_fired += 1
+            pk_post = getattr(o, 'post_exit_peak_pnl', None)
+            pk_trade = getattr(o, 'peak_pnl', None)
+            fin = getattr(o, 'post_exit_final_pnl', None)
+            pk_best = max(v for v in (pk_post, pk_trade, cap) if v is not None) if (pk_post is not None or pk_trade is not None) else None
+            if pk_best is not None:
+                if pk_best >= 1.25:
+                    c_vals.append((1.25, cap)); c_reached += 1
+                elif fin is not None:
+                    c_vals.append((fin, cap))  # censored: final observed
+        _row(f"A leash 1.0/0.25 [{era}]", a_vals, a_fired, "unfired=censored final")
+        _row(f"B live-ladder replica [{era}]", b_vals, b_fired, "unfired=censored final")
+        _row(f"C flat cap 1.25 [{era}]", c_vals, c_reached, "unreached=censored final")
     return {"fires_total": len(fires), "rows": rows}
 
 

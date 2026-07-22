@@ -2800,7 +2800,7 @@
                                     <th class="px-3 py-2 font-medium text-right">Fired</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Exit%</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Cap%</th>
-                                    <th class="px-3 py-2 font-medium text-right">Δpp</th>
+                                    <th class="px-3 py-2 font-medium text-right">ΣΔpp</th>
                                     <th class="px-3 py-2 font-medium text-right">Δ$ (norm)</th>
                                 </tr>
                             </thead>
@@ -9463,7 +9463,7 @@
             if (perf.hard_tp_shadow && perf.hard_tp_shadow.rows && perf.hard_tp_shadow.rows.some(r => r.n > 0)) {
                 lines.push(`\n${hr2}`);
                 lines.push('## HARD_TP Mechanism Shadow (Jul 22) — tick-honest CF on post-exit stream of fires\n');
-                lines.push(`${'Variant'.padEnd(22)} ${'N'.padStart(3)} ${'Fired'.padStart(6)} ${'AvgExit%'.padStart(10)} ${'AvgCap%'.padStart(9)} ${'Dpp'.padStart(9)} ${'D$norm'.padStart(9)}  Note`);
+                lines.push(`${'Variant'.padEnd(22)} ${'N'.padStart(3)} ${'Fired'.padStart(6)} ${'AvgExit%'.padStart(10)} ${'AvgCap%'.padStart(9)} ${'SDpp'.padStart(9)} ${'D$norm'.padStart(9)}  Note`);
                 for (const r of perf.hard_tp_shadow.rows) {
                     if (!r.n) { lines.push(`${r.variant.padEnd(22)}   0      -          -         -         -         -  ${r.note||''}`); continue; }
                     lines.push(`${r.variant.padEnd(22)} ${String(r.n).padStart(3)} ${String(r.fired).padStart(6)} ${('+'+r.avg_exit.toFixed(3)+'%').padStart(10)} ${('+'+r.avg_cap.toFixed(3)+'%').padStart(9)} ${((r.delta_pp>=0?'+':'')+r.delta_pp.toFixed(3)+'pp').padStart(9)} ${((r.delta_norm>=0?'+$':'-$')+Math.abs(r.delta_norm).toFixed(2)).padStart(9)}  ${r.note||''}`);
@@ -11421,7 +11421,7 @@
                 if (perf.hard_tp_shadow && perf.hard_tp_shadow.rows && perf.hard_tp_shadow.rows.some(r => r.n > 0)) {
                     lines.push(`\n${hr2}`);
                     lines.push('## HARD_TP Mechanism Shadow (Jul 22) — tick-honest CF on post-exit stream of fires\n');
-                    lines.push(`${'Variant'.padEnd(22)} ${'N'.padStart(3)} ${'Fired'.padStart(6)} ${'AvgExit%'.padStart(10)} ${'AvgCap%'.padStart(9)} ${'Dpp'.padStart(9)} ${'D$norm'.padStart(9)}  Note`);
+                    lines.push(`${'Variant'.padEnd(22)} ${'N'.padStart(3)} ${'Fired'.padStart(6)} ${'AvgExit%'.padStart(10)} ${'AvgCap%'.padStart(9)} ${'SDpp'.padStart(9)} ${'D$norm'.padStart(9)}  Note`);
                     for (const r of perf.hard_tp_shadow.rows) {
                         if (!r.n) { lines.push(`${r.variant.padEnd(22)}   0      -          -         -         -         -  ${r.note||''}`); continue; }
                         lines.push(`${r.variant.padEnd(22)} ${String(r.n).padStart(3)} ${String(r.fired).padStart(6)} ${('+'+r.avg_exit.toFixed(3)+'%').padStart(10)} ${('+'+r.avg_cap.toFixed(3)+'%').padStart(9)} ${((r.delta_pp>=0?'+':'')+r.delta_pp.toFixed(3)+'pp').padStart(9)} ${((r.delta_norm>=0?'+$':'-$')+Math.abs(r.delta_norm).toFixed(2)).padStart(9)}  ${r.note||''}`);

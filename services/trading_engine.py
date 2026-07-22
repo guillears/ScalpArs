@@ -17,6 +17,17 @@ from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, _leverage_blocked_pairs
 from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
+from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
+
+
+def _strip_reason_prefixes(reason):
+    """Strip FLIP_ then FL_ prefixes from a close reason (the whitelist convention)."""
+    r = reason or ""
+    if r.startswith("FLIP_"):
+        r = r[5:]
+    if r.startswith("FL_"):
+        r = r[3:]
+    return r
 from services.websocket_tracker import websocket_tracker
 
 logger = logging.getLogger(__name__)
@@ -1517,11 +1528,14 @@ class TradingEngine:
                 # tracked field must ride BOTH seed dicts). In-memory shadow peaks are lost
                 # on restart; resume conservatively from close pnl (if the leash already
                 # fired pre-restart the columns are only written at horizon, so re-simulate).
-                "htp_shadow": (order.close_reason or "").replace("FLIP_", "").replace("FL_", "").startswith("HARD_TP"),
-                "htp_A_peak": float(order.pnl_percentage or 1.0),
+                "htp_shadow": _strip_reason_prefixes(order.close_reason).startswith("HARD_TP"),
+                "htp_A_peak": max(float(order.pnl_percentage or 1.0), float(order.peak_pnl or 0.0)),
                 "htp_A_exit": None,
-                "htp_B_peak": float(order.pnl_percentage or 1.0),
+                "htp_B_peak": max(float(order.pnl_percentage or 1.0), float(order.peak_pnl or 0.0)),
                 "htp_B_exit": None,
+                "htp_B_rungs": (parse_hard_tp_ladder(getattr(tc.thresholds,
+                    'hard_tp_ladder_long' if order.direction == "LONG" else 'hard_tp_ladder_short', ''))
+                    or DEFAULT_LADDER_RUNGS),
                 "tick_prices": [],
                 # May 12 LATE PM: time-bucketed P&L snapshots (1/2/5/15/30 min)
                 # Resume from DB if already captured pre-restart
@@ -6403,10 +6417,16 @@ class TradingEngine:
             # start at the realized close pnl; exits freeze when the variant's pullback
             # threshold is crossed. Unfired at horizon => censored (final pnl, fired=False).
             "htp_shadow": _reason_base.startswith("HARD_TP"),
-            "htp_A_peak": float(order.pnl_percentage or 1.0),
+            # Review fix (Jul 23): peaks seed from the IN-TRADE peak (a ladder fire exits at
+            # its floor, below the trade's real peak — seeding from close alone would forget
+            # already-locked floors). Rungs = the live per-side ladder, parsed once.
+            "htp_A_peak": max(float(order.pnl_percentage or 1.0), float(order.peak_pnl or 0.0)),
             "htp_A_exit": None,
-            "htp_B_peak": float(order.pnl_percentage or 1.0),
+            "htp_B_peak": max(float(order.pnl_percentage or 1.0), float(order.peak_pnl or 0.0)),
             "htp_B_exit": None,
+            "htp_B_rungs": (parse_hard_tp_ladder(getattr(tc.thresholds,
+                'hard_tp_ladder_long' if order.direction == "LONG" else 'hard_tp_ladder_short', ''))
+                or DEFAULT_LADDER_RUNGS),
             "tick_prices": cached_tick_buf,
             # May 12 LATE PM: time-bucketed P&L snapshots (1/2/5/15/30 min after exit)
             "pnl_at_1min": None,
@@ -6546,30 +6566,33 @@ class TradingEngine:
             if info["running_min_pnl"] is None or current_pnl < info["running_min_pnl"]:
                 info["running_min_pnl"] = current_pnl
 
-            # Jul 22: HARD_TP mechanism shadow — advance leash (A) and ladder (B) on each tick.
+            # Jul 22: HARD_TP mechanism shadow — advance leash (A) and ladder-replica (B) per tick.
+            # Review fixes (Jul 23): ① the floor is IN the trigger condition (recording a
+            # floored exit the condition never enforced inflated the scorekeeper once ladder
+            # fires seed peaks below 1.0); ② variant B now replicates the LIVE ladder
+            # semantics exactly (trigger-locked floors via the shared helper, per-side live
+            # rungs stored at seed) instead of a peak-trailing leash that flattered it.
             if info.get("htp_shadow"):
                 try:
-                    # Variant A: single leash — arm 1.0, PB 0.25, ratchet floor 0.75.
+                    # Variant A: single leash — trail 0.25 behind the running peak, hard
+                    # floor 0.75. Effective stop = max(peak - 0.25, 0.75); fires when pnl
+                    # falls TO the stop; records the stop.
                     if info["htp_A_exit"] is None:
                         if current_pnl > info["htp_A_peak"]:
                             info["htp_A_peak"] = current_pnl
-                        elif current_pnl <= info["htp_A_peak"] - 0.25:
-                            info["htp_A_exit"] = round(max(info["htp_A_peak"] - 0.25, 0.75), 4)
-                    # Variant B: proportional ladder — offset from highest level reached;
-                    # monotone locked floors so a trade never ratchets below an earned level.
+                        else:
+                            _a_stop = max(info["htp_A_peak"] - 0.25, 0.75)
+                            if current_pnl <= _a_stop:
+                                info["htp_A_exit"] = round(_a_stop, 4)
+                    # Variant B: LIVE-ladder replica — same helper as the live exit.
                     if info["htp_B_exit"] is None:
                         if current_pnl > info["htp_B_peak"]:
                             info["htp_B_peak"] = current_pnl
                         else:
-                            _lvls = [(1.0, 0.25), (1.5, 0.30), (2.0, 0.40), (3.0, 0.60), (4.0, 0.80)]
-                            _off = 0.25
-                            _floor = 0.75
-                            for _trig, _o in _lvls:
-                                if info["htp_B_peak"] >= _trig:
-                                    _off = _o
-                                    _floor = max(_floor, _trig - _o)
-                            if current_pnl <= info["htp_B_peak"] - _off:
-                                info["htp_B_exit"] = round(max(info["htp_B_peak"] - _off, _floor), 4)
+                            _b_floor, _ = hard_tp_ladder_floor(
+                                info.get("htp_B_rungs") or DEFAULT_LADDER_RUNGS, info["htp_B_peak"])
+                            if _b_floor is not None and current_pnl <= _b_floor:
+                                info["htp_B_exit"] = round(_b_floor, 4)
                 except Exception:
                     pass
 
@@ -9898,30 +9921,27 @@ class TradingEngine:
                 _ladder_raw = getattr(config.trading_config.thresholds,
                                       'hard_tp_ladder_long' if direction == "LONG" else 'hard_tp_ladder_short',
                                       '') or ''
-                _rungs = []
-                for _tok in str(_ladder_raw).split(','):
-                    _tok = _tok.strip()
-                    if not _tok or ':' not in _tok:
-                        continue
-                    try:
-                        _t_s, _o_s = _tok.split(':', 1)
-                        _t, _o = float(_t_s), float(_o_s)
-                        if _t > 0 and 0 < _o < _t:
-                            _rungs.append((_t, _o))
-                    except (ValueError, TypeError):
-                        continue
-                _rungs.sort()
+                _rungs = parse_hard_tp_ladder(_ladder_raw)
                 _htp_fire_reason = None
                 if _rungs:
+                    # Note: peak_pnl is the PREVIOUS tick's peak (updated later in this
+                    # iteration) — harmless: a new-peak tick is always above any floor it
+                    # would lock, so the floor merely arms one tick later.
                     _htp_peak = order_info.get('peak_pnl', 0.0) or 0.0
-                    _floor = None
-                    _lvl = 0
-                    for _i, (_t, _o) in enumerate(_rungs, 1):
-                        if _htp_peak >= _t:
-                            _f = _t - _o
-                            if _floor is None or _f > _floor:
-                                _floor = _f
-                            _lvl = _i
+                    _floor, _lvl = hard_tp_ladder_floor(_rungs, _htp_peak)
+                    # Review fix (Jul 23): persist the in-trade peak whenever a NEW rung is
+                    # crossed (bounded: <= len(rungs) writes/trade) so locked floors survive
+                    # an engine restart (cache reseeds peak_pnl from the Order row).
+                    if _lvl > order_info.get('_htp_persisted_lvl', 0):
+                        order_info['_htp_persisted_lvl'] = _lvl
+                        try:
+                            async with AsyncSessionLocal() as _htp_pk_db:
+                                await _htp_pk_db.execute(
+                                    update(Order).where(Order.id == order_id).values(peak_pnl=_htp_peak)
+                                )
+                                await _htp_pk_db.commit()
+                        except Exception:
+                            pass
                     if _floor is not None and pnl_pct <= _floor:
                         _htp_fire_reason = f"HARD_TP_LADDER L{_lvl}"
                         logger.warning(

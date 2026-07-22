@@ -7525,7 +7525,10 @@
         let timerInterval = null;
         let runtimeSeconds = 0;
         let currentTab = 'transactions';
-        let _lastClosedCount = -1;
+        // Jul 22: signature of the newest closed order (id + closed_at), NOT a count —
+        // /api/orders/closed is capped at 100 rows, so a count check froze once the
+        // batch crossed 100 closed trades and the analytics tables went stale.
+        let _lastClosedSig = null;
         let _bnbBurnRate = 0;
         let _lastBnbKey = '';
 
@@ -7624,6 +7627,13 @@
             setInterval(() => {
                 loadOpenOrders();
             }, 1000);
+
+            // Jul 22: analytics safety net — loadPerformance() is event-driven (fires when the
+            // newest-closed-order signature changes, see loadClosedOrders), but recompute every
+            // 5 min anyway to catch anything the signature misses (restart recovery, resets).
+            setInterval(() => {
+                loadPerformance();
+            }, 300000);
         });
 
         // ===== Daily P&L Calendar (Jun 11, 2026) =====
@@ -18228,9 +18238,9 @@
                 const res = await fetch(`${API_BASE}/api/orders/closed`);
                 const data = await res.json();
                 
-                const newCount = (data && data.length) || 0;
-                if (newCount !== _lastClosedCount) {
-                    _lastClosedCount = newCount;
+                const newSig = (data && data.length) ? `${data[0].id}|${data[0].closed_at || ''}|${data.length}` : 'empty';
+                if (newSig !== _lastClosedSig) {
+                    _lastClosedSig = newSig;
                     loadPerformance();
                 }
                 

@@ -353,6 +353,18 @@ class Order(Base):
     # mid-window doesn't reset the peak/trough captured so far. Recovery reads
     # these and resumes tracking from saved state instead of starting from current
     # price + now timestamps.
+    # Jul 22: HARD_TP mechanism shadow (observation-only) — tick-honest CF for the
+    # operator-proposed BE-ladder alternative, tracked on the post-exit stream of
+    # HARD_TP-closed trades (the cap closes the trade, so continuation IS the
+    # counterfactual in-trade path). A = single leash (arm 1.0, PB 0.25, floor 0.75);
+    # B = proportional ladder (1.0/0.25 · 1.5/0.30 · 2.0/0.40 · 3.0/0.60 · 4.0/0.80,
+    # monotone floors). *_fired=False means the leash never triggered inside the
+    # tracking horizon and the value is the final observed pnl (censored — read as
+    # a LOWER bound on the variant's exit).
+    hard_tp_shadow_leash_pnl = Column(Float, nullable=True)
+    hard_tp_shadow_leash_fired = Column(Boolean, nullable=True)
+    hard_tp_shadow_ladder_pnl = Column(Float, nullable=True)
+    hard_tp_shadow_ladder_fired = Column(Boolean, nullable=True)
     post_exit_running_high = Column(Float, nullable=True)
     post_exit_running_low = Column(Float, nullable=True)
     post_exit_running_peak_at = Column(DateTime, nullable=True)

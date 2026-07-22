@@ -1513,6 +1513,15 @@ class TradingEngine:
                 "running_min_pnl": None,
                 "floor_before_signal_regain": None,
                 "close_reason": order.close_reason,
+                # Jul 22: HARD_TP mechanism shadow — recovery path (drift-bug lesson: every
+                # tracked field must ride BOTH seed dicts). In-memory shadow peaks are lost
+                # on restart; resume conservatively from close pnl (if the leash already
+                # fired pre-restart the columns are only written at horizon, so re-simulate).
+                "htp_shadow": (order.close_reason or "").replace("FLIP_", "").replace("FL_", "").startswith("HARD_TP"),
+                "htp_A_peak": float(order.pnl_percentage or 1.0),
+                "htp_A_exit": None,
+                "htp_B_peak": float(order.pnl_percentage or 1.0),
+                "htp_B_exit": None,
                 "tick_prices": [],
                 # May 12 LATE PM: time-bucketed P&L snapshots (1/2/5/15/30 min)
                 # Resume from DB if already captured pre-restart
@@ -6389,6 +6398,15 @@ class TradingEngine:
             "running_min_pnl": None,
             "floor_before_signal_regain": None,
             "close_reason": reason,
+            # Jul 22: HARD_TP mechanism shadow (leash A / ladder B). The cap closed the
+            # trade, so the post-exit stream IS the counterfactual in-trade path. Peaks
+            # start at the realized close pnl; exits freeze when the variant's pullback
+            # threshold is crossed. Unfired at horizon => censored (final pnl, fired=False).
+            "htp_shadow": _reason_base.startswith("HARD_TP"),
+            "htp_A_peak": float(order.pnl_percentage or 1.0),
+            "htp_A_exit": None,
+            "htp_B_peak": float(order.pnl_percentage or 1.0),
+            "htp_B_exit": None,
             "tick_prices": cached_tick_buf,
             # May 12 LATE PM: time-bucketed P&L snapshots (1/2/5/15/30 min after exit)
             "pnl_at_1min": None,
@@ -6527,6 +6545,33 @@ class TradingEngine:
             # Track running minimum P&L (from entry) for floor-before-recovery analysis
             if info["running_min_pnl"] is None or current_pnl < info["running_min_pnl"]:
                 info["running_min_pnl"] = current_pnl
+
+            # Jul 22: HARD_TP mechanism shadow — advance leash (A) and ladder (B) on each tick.
+            if info.get("htp_shadow"):
+                try:
+                    # Variant A: single leash — arm 1.0, PB 0.25, ratchet floor 0.75.
+                    if info["htp_A_exit"] is None:
+                        if current_pnl > info["htp_A_peak"]:
+                            info["htp_A_peak"] = current_pnl
+                        elif current_pnl <= info["htp_A_peak"] - 0.25:
+                            info["htp_A_exit"] = round(max(info["htp_A_peak"] - 0.25, 0.75), 4)
+                    # Variant B: proportional ladder — offset from highest level reached;
+                    # monotone locked floors so a trade never ratchets below an earned level.
+                    if info["htp_B_exit"] is None:
+                        if current_pnl > info["htp_B_peak"]:
+                            info["htp_B_peak"] = current_pnl
+                        else:
+                            _lvls = [(1.0, 0.25), (1.5, 0.30), (2.0, 0.40), (3.0, 0.60), (4.0, 0.80)]
+                            _off = 0.25
+                            _floor = 0.75
+                            for _trig, _o in _lvls:
+                                if info["htp_B_peak"] >= _trig:
+                                    _off = _o
+                                    _floor = max(_floor, _trig - _o)
+                            if current_pnl <= info["htp_B_peak"] - _off:
+                                info["htp_B_exit"] = round(max(info["htp_B_peak"] - _off, _floor), 4)
+                except Exception:
+                    pass
 
             # May 12 LATE PM: time-bucketed P&L snapshots (1/2/5/15/30 min after exit).
             # Captures the answer to "if we held N min more, what would close% be?"
@@ -6839,6 +6884,14 @@ class TradingEngine:
                                 phantom_tick_f_pnl=round(info["phantom_tick_f_pnl"], 4) if info.get("phantom_tick_f_pnl") is not None else None,
                                 phantom_tick_g_triggered_at=info.get("phantom_tick_g_triggered_at"),
                                 phantom_tick_g_pnl=round(info["phantom_tick_g_pnl"], 4) if info.get("phantom_tick_g_pnl") is not None else None,
+                                # Jul 22: HARD_TP mechanism shadow finalization. Unfired at
+                                # horizon => censored: record final observed pnl, fired=False.
+                                hard_tp_shadow_leash_pnl=(round(info["htp_A_exit"], 4) if info.get("htp_A_exit") is not None
+                                                          else (round(final_pnl, 4) if info.get("htp_shadow") else None)),
+                                hard_tp_shadow_leash_fired=((info.get("htp_A_exit") is not None) if info.get("htp_shadow") else None),
+                                hard_tp_shadow_ladder_pnl=(round(info["htp_B_exit"], 4) if info.get("htp_B_exit") is not None
+                                                           else (round(final_pnl, 4) if info.get("htp_shadow") else None)),
+                                hard_tp_shadow_ladder_fired=((info.get("htp_B_exit") is not None) if info.get("htp_shadow") else None),
                             )
                         )
                         await pe_write_db.commit()

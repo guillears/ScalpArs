@@ -7659,6 +7659,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "signal_expired_breakdown": _compute_signal_expired_breakdown(signal_expired_orders),
         "by_exit_type": _compute_exit_type_stats(orders),
         "post_exit_regret_deep_dive": post_exit_regret_deep_dive,
+        "hard_tp_shadow": _compute_hard_tp_shadow(orders),
         "hold_time_expectancy": hold_time_expectancy,
         "entry_conditions_by_reason": entry_conditions_by_reason,
         "entry_conditions_by_outcome": entry_conditions_by_outcome,
@@ -10656,6 +10657,60 @@ def _compute_gap_expand_cohort(orders):
                 'total_demux': round(tot_demux, 2), 'verdict': verdict,
             })
     return {'rows': rows_out}
+
+
+def _compute_hard_tp_shadow(orders):
+    """HARD_TP mechanism shadow (Jul 22, observation-only) — tick-honest CF for the
+    operator-proposed leash/ladder alternatives, measured on the post-exit stream of
+    HARD_TP-closed trades (the cap closes the trade; continuation IS the CF path).
+    Rows: A = single leash (arm 1.0 / PB 0.25 / floor 0.75) · B = proportional ladder
+    (1.0/0.25 · 1.5/0.30 · 2.0/0.40 · 3.0/0.60 · 4.0/0.80) · C = flat cap 1.25 (exact
+    from post-exit peak; censored to final if never reached). Delta = vs realized cap.
+    Decision surface for the N>=15 four-way read (keep 1.0 / L1.25 / leash / ladder)."""
+    NORM = 122.74
+    fires = [o for o in orders
+             if getattr(o, 'status', None) == "CLOSED"
+             and str(getattr(o, 'close_reason', '') or '').replace("FLIP_", "").replace("FL_", "").startswith("HARD_TP")]
+    rows = []
+    def _row(label, vals, fired_n, censored_note):
+        if not vals:
+            rows.append({"variant": label, "n": 0, "fired": 0, "avg_exit": None,
+                         "avg_cap": None, "delta_pp": None, "delta_norm": None, "note": censored_note})
+            return
+        n = len(vals)
+        avg_exit = sum(v for v, _ in vals) / n
+        avg_cap = sum(c for _, c in vals) / n
+        d_pp = sum(v - c for v, c in vals)
+        rows.append({"variant": label, "n": n, "fired": fired_n,
+                     "avg_exit": round(avg_exit, 4), "avg_cap": round(avg_cap, 4),
+                     "delta_pp": round(d_pp, 4), "delta_norm": round(d_pp * NORM, 2),
+                     "note": censored_note})
+    a_vals, a_fired = [], 0
+    b_vals, b_fired = [], 0
+    c_vals, c_reached = [], 0
+    for o in fires:
+        cap = o.pnl_percentage if o.pnl_percentage is not None else 1.0
+        av = getattr(o, 'hard_tp_shadow_leash_pnl', None)
+        if av is not None:
+            a_vals.append((av, cap))
+            if getattr(o, 'hard_tp_shadow_leash_fired', False):
+                a_fired += 1
+        bv = getattr(o, 'hard_tp_shadow_ladder_pnl', None)
+        if bv is not None:
+            b_vals.append((bv, cap))
+            if getattr(o, 'hard_tp_shadow_ladder_fired', False):
+                b_fired += 1
+        pk = getattr(o, 'post_exit_peak_pnl', None)
+        fin = getattr(o, 'post_exit_final_pnl', None)
+        if pk is not None:
+            if pk >= 1.25:
+                c_vals.append((1.25, cap)); c_reached += 1
+            elif fin is not None:
+                c_vals.append((fin, cap))  # censored: final observed
+    _row("A leash 1.0/0.25", a_vals, a_fired, "unfired=censored final")
+    _row("B ladder 1.0..4.0", b_vals, b_fired, "unfired=censored final")
+    _row("C flat cap 1.25", c_vals, c_reached, "unreached=censored final")
+    return {"fires_total": len(fires), "rows": rows}
 
 
 def _compute_gap_probe_cohort(orders):

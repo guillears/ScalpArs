@@ -511,6 +511,15 @@ async def init_db():
                 # Jun 14: Flip Entry sleeve — strategy tag (MOMENTUM vs FLIP:<SOURCE>)
                 if 'entry_strategy' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_strategy VARCHAR(40)"))
+                # Jul 22: HARD_TP mechanism shadow (leash A / ladder B) — tick-honest CF
+                if 'hard_tp_shadow_leash_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN hard_tp_shadow_leash_pnl FLOAT"))
+                if 'hard_tp_shadow_leash_fired' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN hard_tp_shadow_leash_fired BOOLEAN"))
+                if 'hard_tp_shadow_ladder_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN hard_tp_shadow_ladder_pnl FLOAT"))
+                if 'hard_tp_shadow_ladder_fired' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN hard_tp_shadow_ladder_fired BOOLEAN"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

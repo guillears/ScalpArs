@@ -1089,6 +1089,19 @@ class SignalThresholds(BaseModel):
     # continuation in the Regret table) exceeds cumulative saves.
     hard_tp_enabled: bool = True
     hard_tp_pct: float = 1.0               # exit the tick pnl% reaches this (0 = disabled)
+    # Jul 22 (operator-directed mechanism swap): HARD_TP LADDER — per-side rising profit
+    # floors replace the flat cap, NO upper cap (MIRA +19.1% anatomy: any cap forfeits the
+    # tail; ladder floors only fire on the way DOWN). Rungs "trigger:offset,...": peak
+    # crosses trigger -> floor locks at trigger-offset (monotone). Baseline CF (exact-ish,
+    # stepped floors are near-path-independent): per-side L1 (L 1.25 / S 1.00) = +$474 vs
+    # flat-cap +$519 — traded ~$45 of steady wick-capture for unbounded tail upside +
+    # DEXE-class collapse insurance (3.64%->0.43% actual; ladder floor 2.40). Runner trail
+    # runs in PARALLEL (upside engine); ladder is the collapse floor. Empty string = legacy
+    # flat hard_tp_pct (the revert path). 🔒 Revert gate: back to flat 1.0 (empty ladders)
+    # if N>=10 ladder-managed fires (peak >= first trigger, >=3 dates) underperform the
+    # exact flat-1.0 CF by >=$100 norm.
+    hard_tp_ladder_long: str = "1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80"
+    hard_tp_ladder_short: str = "1.0:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80"
     # Jun 9, 2026 — "keep only unmatched longs". 4-cohort analysis (10-pool, current stack):
     # the LONG pattern library uniformly selects for LOSERS (every C/W pattern net-negative:
     # W6 −$574, W2 −$480, C7 −$261 demux), while TRULY-UNMATCHED longs (no C, no W) are the

@@ -9887,13 +9887,58 @@ class TradingEngine:
             # ════════════════════════════════════════════════════════════════
             _hard_tp_enabled = getattr(config.trading_config.thresholds, 'hard_tp_enabled', False)
             if _hard_tp_enabled and not order_info.get('_closing_in_progress'):
-                # Review fix (Jul 20): no `or 1.0` coalescing — 0 must reach the >0 guard so "0 = disabled" works.
-                _hard_tp_raw = getattr(config.trading_config.thresholds, 'hard_tp_pct', 1.0)
-                _hard_tp_pct = float(_hard_tp_raw) if _hard_tp_raw is not None else 1.0
-                if _hard_tp_pct > 0 and pnl_pct >= _hard_tp_pct:
-                    logger.warning(
-                        f"[HARD_TP] {pair} {direction}: pnl={pnl_pct:.4f}% >= tp={_hard_tp_pct}% — CLOSING NOW!"
-                    )
+                # Jul 22 (operator-directed mechanism swap): LADDER mode replaces the flat cap
+                # when a per-side rung list is configured. Rungs = "trigger:offset,..." — once
+                # the trade's PEAK crosses a trigger, a profit FLOOR locks at trigger-offset
+                # (monotone: floors only rise). Exit fires when pnl falls TO the floor; there
+                # is NO upper cap — a MIRA-class pump rides the runner trail untouched.
+                # Empty/invalid ladder string -> legacy flat hard_tp_pct behavior (= revert path).
+                # Reason "HARD_TP_LADDER L{n}" — startswith("HARD_TP") inherits BOTH post-exit
+                # whitelists, the mechanism shadow, and its own Post-Exit Regret rows.
+                _ladder_raw = getattr(config.trading_config.thresholds,
+                                      'hard_tp_ladder_long' if direction == "LONG" else 'hard_tp_ladder_short',
+                                      '') or ''
+                _rungs = []
+                for _tok in str(_ladder_raw).split(','):
+                    _tok = _tok.strip()
+                    if not _tok or ':' not in _tok:
+                        continue
+                    try:
+                        _t_s, _o_s = _tok.split(':', 1)
+                        _t, _o = float(_t_s), float(_o_s)
+                        if _t > 0 and 0 < _o < _t:
+                            _rungs.append((_t, _o))
+                    except (ValueError, TypeError):
+                        continue
+                _rungs.sort()
+                _htp_fire_reason = None
+                if _rungs:
+                    _htp_peak = order_info.get('peak_pnl', 0.0) or 0.0
+                    _floor = None
+                    _lvl = 0
+                    for _i, (_t, _o) in enumerate(_rungs, 1):
+                        if _htp_peak >= _t:
+                            _f = _t - _o
+                            if _floor is None or _f > _floor:
+                                _floor = _f
+                            _lvl = _i
+                    if _floor is not None and pnl_pct <= _floor:
+                        _htp_fire_reason = f"HARD_TP_LADDER L{_lvl}"
+                        logger.warning(
+                            f"[HARD_TP_LADDER] {pair} {direction}: pnl={pnl_pct:.4f}% <= floor={_floor:.2f}% "
+                            f"(peak={_htp_peak:.4f}%, rung L{_lvl}) — CLOSING NOW!"
+                        )
+                else:
+                    # Legacy flat cap. Review fix (Jul 20): no `or 1.0` coalescing — 0 must
+                    # reach the >0 guard so "0 = disabled" works.
+                    _hard_tp_raw = getattr(config.trading_config.thresholds, 'hard_tp_pct', 1.0)
+                    _hard_tp_pct = float(_hard_tp_raw) if _hard_tp_raw is not None else 1.0
+                    if _hard_tp_pct > 0 and pnl_pct >= _hard_tp_pct:
+                        _htp_fire_reason = "HARD_TP L1"
+                        logger.warning(
+                            f"[HARD_TP] {pair} {direction}: pnl={pnl_pct:.4f}% >= tp={_hard_tp_pct}% — CLOSING NOW!"
+                        )
+                if _htp_fire_reason:
                     order_info['_closing_in_progress'] = True
                     try:
                         async with AsyncSessionLocal() as db:
@@ -9902,7 +9947,7 @@ class TradingEngine:
                             )
                             order = result.scalar_one_or_none()
                             if order:
-                                closed = await self.close_position(db, order, current_price, "HARD_TP L1")
+                                closed = await self.close_position(db, order, current_price, _htp_fire_reason)
                                 if closed:
                                     async with _cache_lock:
                                         _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]

@@ -526,6 +526,8 @@
     "rsiadx_probe_short_enabled": false,
     "hard_tp_enabled": true,
     "hard_tp_pct": 1.0,
+    "hard_tp_ladder_long": "1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80",
+    "hard_tp_ladder_short": "1.0:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80",
     "adxmax2_probe_enabled": true,
     "adxmax2_probe_max_open": 3,
     "adxmax2_probe_ceiling_long": 40.0

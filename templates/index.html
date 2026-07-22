@@ -5252,7 +5252,15 @@
                                     <span class="ml-1 text-xs text-gray-500">%</span>
                                 </label>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Harvests the wick round-trip class (DEXE +3.64% peak → +0.43% close): the condition-based trail captures ~35-50% of peak on v-spikes; a resting cap at 1.0% banks them. 🔒 Revert gate: N≥15 fires — revert if forfeited-runner tail (post-exit continuation in Regret rows) exceeds cumulative saves. <span class="text-amber-400">0.7% flips negative on baseline — do not lower below 0.8.</span></p>
+                            <div class="flex items-center gap-3 flex-wrap mt-2">
+                                <label class="flex items-center text-sm text-cyan-300" title="Jul 22 (operator-directed): LADDER mode — per-side rising profit FLOORS replace the flat cap, NO upper cap. Rungs trigger:offset — peak crosses trigger → floor locks at trigger−offset (monotone, floors only rise); exit fires when P&L falls TO the floor. Runner trail runs in parallel (upside engine). Close reason HARD_TP_LADDER L{n} (own Post-Exit Regret rows). EMPTY = legacy flat cap above (the revert path).">Ladder L
+                                    <input type="text" id="config-hard-tp-ladder-long" class="w-72 ml-2 bg-white/5 border border-cyan-500/40 rounded px-2 py-1 text-cyan-200 text-xs" value="1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80">
+                                </label>
+                                <label class="flex items-center text-sm text-cyan-300">Ladder S
+                                    <input type="text" id="config-hard-tp-ladder-short" class="w-72 ml-2 bg-white/5 border border-cyan-500/40 rounded px-2 py-1 text-cyan-200 text-xs" value="1.0:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80">
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Jul 22 — LADDER replaces the flat cap when rungs are set: rising per-side profit floors, unbounded upside (MIRA +19.1% anatomy — any cap forfeits the tail; floors only fire on the way DOWN). Baseline CF per-side L1 (L 1.25 / S 1.00) = +$474 vs flat +$519: ~$45 of wick-capture traded for the tail + DEXE-class collapse insurance. Close reason <code class="text-violet-300">HARD_TP_LADDER L{n}</code>, own Post-Exit Regret rows. 🔒 Revert gate: back to flat 1.0 (empty ladders) if N≥10 ladder fires (peak ≥ first trigger, ≥3 dates) underperform the exact flat-1.0 CF by ≥$100 norm. Legacy flat cap fields above stay as the revert path (used only when ladders are empty).</p>
                         </div>
                         <div class="md:col-span-2 border border-fuchsia-500/30 rounded p-2">
                             <label class="block text-sm text-fuchsia-300 mb-2">🧬 Keep ONLY Unmatched Longs <span class="text-xs text-gray-400 font-normal">(Jun 9 — long patterns select for losers; the no-pattern runner cohort is the edge)</span></label>
@@ -10224,7 +10232,11 @@
             lines.push(`  EMA13 Cross Exit: ${th.ema13_cross_exit_enabled !== undefined ? th.ema13_cross_exit_enabled : false}  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing) | Strict (require EMA5/EMA8 stack flip): ${th.ema13_cross_requires_stack_flip !== undefined ? th.ema13_cross_requires_stack_flip : false}`);
             lines.push(`  Fast Exit: ${th.fast_exit_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_threshold_pct ?? 0.20}%  |  Window ≤ ${th.fast_exit_window_minutes ?? 2}min  |  ATR× ${th.fast_exit_l1_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l1_atr_floor_cap_pct ?? 0.60}%  (eff = min(cap, max(fixed, ATR×mult)))`);
             lines.push(`  Low-ATR Fixed TP LONG (Jun 5): ${th.atr_low_fixed_tp_long_enabled ? 'ON' : 'OFF'} (ATR<${th.atr_low_fixed_tp_atr_max ?? 1.1}% → TP ≥ ${th.atr_low_fixed_tp_pct ?? 0.25}%)`);
-            lines.push(`  Hard TP (Jul 20): ${th.hard_tp_enabled ? 'ON' : 'OFF'}  |  TP ≥ ${th.hard_tp_pct ?? 1.0}%  (flat cap BOTH dirs; wick-harvest; CF BL +$519/batch +$338 norm; revert gate N≥15 fires via Post-Exit Regret)`);
+            if ((th.hard_tp_ladder_long || '').trim() || (th.hard_tp_ladder_short || '').trim()) {
+                lines.push(`  Hard TP LADDER (Jul 22): ${th.hard_tp_enabled ? 'ON' : 'OFF'}  |  L: ${th.hard_tp_ladder_long || '-'}  |  S: ${th.hard_tp_ladder_short || '-'}  (per-side rising floors, NO cap — trigger:offset rungs; reason HARD_TP_LADDER L{n}; revert = empty ladders -> flat ${th.hard_tp_pct ?? 1.0}%)`);
+            } else {
+                lines.push(`  Hard TP (Jul 20): ${th.hard_tp_enabled ? 'ON' : 'OFF'}  |  TP ≥ ${th.hard_tp_pct ?? 1.0}%  (flat cap BOTH dirs; wick-harvest; CF BL +$519/batch +$338 norm; revert gate N≥15 fires via Post-Exit Regret)`);
+            }
             lines.push(`  Keep ONLY Unmatched Longs (Jun 9): ${th.long_unmatched_only ? 'ON — block all pattern-matched longs' : 'OFF'}  (counter LONG_UNMATCHED_ONLY)  |  W2 re-enable 1h ≥ ${th.long_w2_reenable_1h_min !== undefined ? th.long_w2_reenable_1h_min : 99}%  |  W6 re-enable 1h ≤ ${th.long_w6_reenable_1h_max !== undefined ? th.long_w6_reenable_1h_max : 99}% ∧ stretch ≥ ${th.long_w6_reenable_stretch_min !== undefined ? th.long_w6_reenable_stretch_min : 0.31} (Jul 6: 99 = off; W2 rising / W6 dip+thrust, cell 1×)  |  UNMATCHED 2×→1× de-mux at PVR ≥ ${th.long_unmatched_mult_pvr_max !== undefined ? th.long_unmatched_mult_pvr_max : 0} (Jul 10: crowded entry; 0 = off)`);
             lines.push(`  Fast Exit L2: ${th.fast_exit_l2_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_l2_threshold_pct ?? 0.40}%  |  Window ≤ ${th.fast_exit_l2_window_minutes ?? 5}min  |  ATR× ${th.fast_exit_l2_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l2_atr_floor_cap_pct ?? 0.80}%  (May 25 evening: cap protects extreme-ATR pairs)`);
             lines.push(`  EMA Stack Cross Exit: ${th.ema_stack_cross_exit_enabled !== undefined ? th.ema_stack_cross_exit_enabled : false}  |  Handoff at L≥${th.ema_stack_cross_exit_level !== undefined ? th.ema_stack_cross_exit_level : 2}  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)`);
@@ -19242,6 +19254,8 @@
                 { const _e=document.getElementById('config-atr-low-fixed-tp-enabled'); if(_e) _e.checked = !!config.thresholds.atr_low_fixed_tp_long_enabled; }
                 { const _e=document.getElementById('config-hard-tp-enabled'); if(_e) _e.checked = !!config.thresholds.hard_tp_enabled; }
                 { const _e=document.getElementById('config-hard-tp-pct'); if(_e && config.thresholds.hard_tp_pct !== undefined) _e.value = config.thresholds.hard_tp_pct; }
+                { const _e=document.getElementById('config-hard-tp-ladder-long'); if(_e && config.thresholds.hard_tp_ladder_long !== undefined) _e.value = config.thresholds.hard_tp_ladder_long; }
+                { const _e=document.getElementById('config-hard-tp-ladder-short'); if(_e && config.thresholds.hard_tp_ladder_short !== undefined) _e.value = config.thresholds.hard_tp_ladder_short; }
                 { const _e=document.getElementById('config-atr-low-fixed-tp-atr-max'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_atr_max !== undefined ? config.thresholds.atr_low_fixed_tp_atr_max : 1.1; }
                 { const _e=document.getElementById('config-atr-low-fixed-tp-pct'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_pct !== undefined ? config.thresholds.atr_low_fixed_tp_pct : 0.25; }
                 { const _e=document.getElementById('config-long-unmatched-only'); if(_e) _e.checked = !!config.thresholds.long_unmatched_only; }
@@ -20625,6 +20639,8 @@
                     atr_low_fixed_tp_long_enabled: (document.getElementById('config-atr-low-fixed-tp-enabled')||{}).checked || false,
                     hard_tp_enabled: (document.getElementById('config-hard-tp-enabled')||{}).checked || false,
                     hard_tp_pct: (function(){ const v = parseFloat((document.getElementById('config-hard-tp-pct') || {}).value); return isNaN(v) ? 1.0 : v; })(),
+                    hard_tp_ladder_long: ((document.getElementById('config-hard-tp-ladder-long')||{}).value || '').trim(),
+                    hard_tp_ladder_short: ((document.getElementById('config-hard-tp-ladder-short')||{}).value || '').trim(),
                     long_unmatched_only: (document.getElementById('config-long-unmatched-only')||{}).checked || false,
                     long_w2_reenable_1h_min: (function(){ const v = parseFloat((document.getElementById('config-long-w2-reenable-1h-min') || {}).value); return isNaN(v) ? 99 : v; })(),
                     long_w6_reenable_1h_max: (function(){ const v = parseFloat((document.getElementById('config-long-w6-reenable-1h-max') || {}).value); return isNaN(v) ? 99 : v; })(),

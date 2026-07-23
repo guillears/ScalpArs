@@ -146,11 +146,16 @@ def _check_tick_momentum_fade(tick_buf, now, windows, per_window_deltas, directi
 import time as _leash_time
 _LEASH_STATE = {}  # order_id -> {'rmax', 'ts', 'exits': {name: (pnl, reason)}}
 # spec: (name, kind, tight_width, wide_width, switch_threshold)
+# Jul 23 SHADOW-SLOT REVIEW (operator: "simplify what we track"): wide/tierA/tierB price-leash
+# variants RETIRED — same slot principle as phantoms: a shadow earns per-tick compute only
+# while an armed gate consumes it (wide sanity + tierA/tierB questions resolved May-31/Jun-26).
+# 'tight' KEPT (review catch): the Jun-12/16 short-runner revert gates keyed on it read
+# FIRED-BUT-SUPERSEDED at the Jul-23 audit (full-size armed shorts cum actual−tight −4.13pp
+# N=41 honest-capped, but −3.71 of it is the June strpk era; July current-stack −0.42/10) —
+# a FRESH tight-vs-actual gate on the current stack is re-armed in CURRENT_STATE and consumes
+# this shadow. Columns stay in models/DB; reopen = re-add the spec line BEFORE the read.
 _LEASH_SPECS = [
-    ('tight', 'flat', 0.25, 0.25, 0.0),   # SANITY — should land ~= actual close
-    ('wide',  'flat', 0.60, 0.60, 0.0),   # "just loosen it" contrast
-    ('tierA', 'tier', 0.25, 0.80, 1.0),   # runner design, conservative
-    ('tierB', 'tier', 0.30, 1.00, 1.0),   # runner design, the params that flipped the rough sim
+    ('tight', 'flat', 0.25, 0.25, 0.0),  # 0.25 flat trail — the fresh short-gate benchmark
 ]
 _LEASH_ACT = 0.45    # trailing activation (matches live tp_min=0.45 V_S/S_B; was 0.5 — stale, missed 0.45-0.50 peakers the live trailing armed, e.g. 1000PEPE peak 0.485)
 _LEASH_SL = -0.7    # hard SL floor (matches live)
@@ -161,12 +166,11 @@ _LEASH_SL = -0.7    # hard SL floor (matches live)
 #             trail = holds the runner longer (more on runners, more giveback on reversers).
 #             The cohort settles K the same way tierA/tierB bracket the price-trail params.
 #   stren = exit when live stretch falls back to <= ENTRY stretch (extension collapsed to entry)
-_STRPK_K = {'strpk': 0.5, 'strpk04': 0.4, 'strpk03': 0.3}
-# Jun 1: strpk_signed = hold the runner FULLY while price stays above EMA5, exit
-# only when favorable stretch is lost (price crosses back below EMA5, signed ≤ 0).
-# Looser than strpk(K=0.5) on partial pullbacks — the candidate to catch Type-B
-# monsters (HOME: pulled back to +0.77 but stayed near EMA5, then re-ran +7.58).
-_STRETCH_NAMES = ('strpk', 'strpk04', 'strpk03', 'stren', 'strpk_signed')
+_STRPK_K = {'strpk': 0.5}
+# Jul 23 SHADOW-SLOT REVIEW: strpk04/strpk03/strpk_signed RETIRED (stretch-trail K-bracket
+# refuted; no armed consumer). strpk + stren KEPT — NOT for the leash table but because they
+# feed the Post-Exit Regret recoverable-regret band (Strpk%/Stren% columns, May-31 wiring).
+_STRETCH_NAMES = ('strpk', 'stren')
 # Jun 16: ATR-floored give-back trail (chandelier) shadows — exit when P&L retraces
 # > N×entry_atr_pct from peak. Tests which N the live runner_trail_short_atr_mult should be.
 def _ind_atr_pct(ind):
@@ -187,18 +191,25 @@ def _pop_or(ef, key, fallback):
     return v if v is not None else fallback
 
 
-_ATR_N = {'atr05': 0.5, 'atr10': 1.0, 'atr15': 1.5}
+# Jul 23 SHADOW-SLOT REVIEW: atr15 RETIRED (refuted Jun-29 — 1.5 over-widens; no consumer).
+# atr05 + atr10 are the ONLY leash shadows with armed gates: runner_trail_atr_mult revert
+# ("atr05≥atr10 over N≥20 fresh armed longs") + BE-ratchet revert (actual vs lockless-atr10).
+_ATR_N = {'atr05': 0.5, 'atr10': 1.0}
 # Jun 17 PM: give-back-CAP shadows — ATR-floor at the LIVE N + lock, but give_back capped at
 # frac×peak. Varies frac (0.25/0.35/0.50) to tune runner_trail_short_giveback_frac from data
 # (which frac captures most without noise-stopping), parallel to how _ATR_N tuned N.
-_CAP_FRAC = {'cap025': 0.25, 'cap035': 0.35, 'cap050': 0.50}
+# Jul 23 SHADOW-SLOT REVIEW: cap-frac shadows RETIRED — the flat-cap question was answered
+# by the HARD_TP ladder ship (Jul-22), which has its own dedicated mechanism shadow.
+_CAP_FRAC = {}
 # Jul 6: ARM-LEVEL shadows — the recurring "lower the arm 0.45→0.35/0.40?" question, answered
 # with data instead of path-blind CSV counterfactuals. Simulates arming the 0.25-trail at a
 # LOWER peak threshold; tracked on EVERY trade from the first tick (unlike the armed-only
 # leashes above) so both sides of the trade-off are measured: rescues on 0.35-0.45 peakers
 # that died (RPL/AAVE-flip class) AND early-chop on runners that the live 0.45 arm rode.
 # Decision offline at N≥30 from the orders CSV (columns ride free).
-_ARM_VAR = {'arm035': 0.35, 'arm040': 0.40}
+# Jul 23 SHADOW-SLOT REVIEW: arm-level shadows RETIRED — no armed gate ever registered for
+# the 0.35/0.40 arm question; collected columns remain in the CSV history if it reopens.
+_ARM_VAR = {}
 _ARM_TRAIL = 0.25  # same trail width as the live/flip replica trail
 
 # ===== PHANTOM FLIP TRACKER (Jun 13, observation-only) =====

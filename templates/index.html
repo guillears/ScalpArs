@@ -2484,19 +2484,12 @@
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-emerald-300 mb-2">🏃 Leash Shadow: Exit Capture by Direction (observation-only)</h3>
                     <p class="text-xs text-gray-400 mb-3">
-                        Virtual trailing leashes run alongside the real exit (armed trades only, peak≥0.45%) and keep tracking past the actual close — each row answers "what if we'd held with this policy?".
-                        <span class="text-cyan-300">tight</span>=0.25 flat (sanity vs live exit chain) ·
-                        <span class="text-emerald-300">wide</span>=0.60 flat ·
-                        <span class="text-cyan-300">tierA/B</span>=tight→loose after +1.0 ·
-                        <span class="text-cyan-300">strpk/strpk03</span>=stretch-trail from peak (K=0.5/0.3, lower=looser) ·
-                        <span class="text-cyan-300">stren</span>=exit when extension collapses to entry level ·
-                        <span class="text-cyan-300">strpk_signed</span>=hold until price crosses back below EMA5 (full-ride).
-                        <span class="text-amber-300">CONFIG-DECISION rows (Jun 17, lock-aware = mirror the live floor max(peak−N×ATR, lock)):</span>
-                        <span class="text-emerald-300">atr05</span>=the EXACT live config (N=0.5, cap-off, lock-on) ·
-                        <span class="text-emerald-300">atr10/atr15</span>=the N=1.0/1.5 candidates for <code>runner_trail_short_atr_mult</code> — promote N only if atr10 beats atr05 cumulatively on N≥8 fresh armed shorts ·
-                        <span class="text-cyan-300">cap025/035/050</span>=give-back-cap candidates (cap currently OFF live; re-introduce only if a cap row beats atr05).
-                        <span class="text-emerald-300">Δ</span>=leash total% − actual total%. <span class="text-emerald-300">Clean/Trap</span>=trades where leash beat/lost vs actual by &gt;0.1%.
-                        <span class="text-amber-400">SHIPPED Jun 12 (override): strpk is now the LIVE SHORT exit (Runner Stretch-Trail SHORT — arm 0.45, K=0.5, no ATR gate, EMA13 suppressed once armed). This table is now the REVERT MONITOR: the strpk row should ≈ actual (sanity); if shadow_tight beats actual cumulatively on N≥8 fresh armed shorts → revert. LONGS expected ~baseline (trail already optimal).</span>
+                        Virtual trailing leashes run alongside the real exit (armed trades only, peak≥0.45%) — each row answers "what if we'd exited with this policy?".
+                        <span class="text-amber-300">Slimmed Jul 23 (operator: only shadows with armed gates keep a row; 12 resolved variants retired — see CURRENT_STATE shadow-slot review):</span>
+                        <span class="text-cyan-300">tight</span>=0.25 flat trail — benchmark for the FRESH short-exit gate (Jul 23, re-armed after the Jun-12/16 gates read FIRED-BUT-SUPERSEDED): at N≥15 fresh full-size armed shorts under the ladder stack, cum(actual − min(tight, in-trade peak)) &lt; −1.5pp → tighten the short trail ·
+                        <span class="text-emerald-300">atr05</span>=N=0.5 (= live SHORT config; LONG revert arm — revert LONG mult if atr05≥atr10 on N≥20 fresh armed longs) ·
+                        <span class="text-emerald-300">atr10</span>=N=1.0 (= live LONG config; BE-ratchet revert benchmark).
+                        <span class="text-emerald-300">Δ</span>=leash total% − actual total% (in-trade capped). <span class="text-emerald-300">Clean/Trap</span>=trades where leash beat/lost vs actual by &gt;0.1%.
                     </p>
                     <div class="text-xs text-gray-400 mb-2" id="leash-shadow-pool">(no post-deploy armed trades yet)</div>
                     <div class="overflow-x-auto">
@@ -2678,27 +2671,15 @@
                 <!-- Filter Blocks (May 5) — pre-entry filter rejection counters -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Filter Blocks <span class="text-xs text-gray-500 font-normal">(persisted — survives redeploys; sorted by Sole; ↳ rows = sub-rule breakdown)</span></h3>
-                    <p class="text-xs text-gray-500 mb-3">Counts of pre-entry filter rejections, broken down by filter and direction. <span class="text-emerald-300 font-medium">"Real"</span> = decisive block (had room + regime-aligned counting). <span class="text-gray-300 font-medium">"All"</span> = TRUE count incl. countertrend blocks that the May-7 regime suppression used to censor (Jul 15 fix — a Real≪All gap flags a filter that fires mostly countertrend). Funnel v2 columns count every regime since Jul 15. New engine counters Jul 15: PAIR_HELD (one-position-per-pair skips), COOLDOWN (5-min re-entry), NO_BALANCE (balance-starved). All counters (Total + Funnel v2) are flushed to DB on every trade / BNB check and restored on startup.</p>
+                    <p class="text-xs text-gray-500 mb-3">Counts of pre-entry filter rejections. <span class="text-violet-300 font-medium">Honest v2 only (Jul 23 simplification, operator-directed)</span> — the legacy LONG/SHORT/Total Real/All columns were removed from display (the Jul-15 censorship fix made Real≈All everywhere, and sub-rule rows only populate v2; every decision consumes Sole/Epis). Legacy counters still persist server-side — display-only removal. Funnel v2 counts every regime since Jul 15. Engine counters Jul 15: PAIR_HELD (one-position-per-pair skips), COOLDOWN (5-min re-entry), NO_BALANCE (balance-starved). All counters are flushed to DB on every trade / BNB check and restored on startup.</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
                                 <tr class="text-gray-400 text-left">
                                     <th class="px-3 py-2 font-medium border-b border-white/10" rowspan="2">Filter</th>
-                                    <th class="px-3 py-2 font-bold text-center text-emerald-400 text-sm bg-emerald-900/15 border-l-2 border-emerald-500/40 border-b border-white/10" colspan="3">LONG</th>
-                                    <th class="px-3 py-2 font-bold text-center text-red-400 text-sm bg-red-900/15 border-l-2 border-red-500/40 border-b border-white/10" colspan="3">SHORT</th>
-                                    <th class="px-3 py-2 font-bold text-center text-white text-sm bg-white/5 border-l-2 border-white/30 border-b border-white/10" colspan="3">Total</th>
                                     <th class="px-3 py-2 font-bold text-center text-violet-300 text-sm bg-violet-900/15 border-l-2 border-violet-500/40 border-b border-white/10" colspan="8" title="Jul 14 Funnel v2 — honest accounting from the evaluate-all pass (momentum ladder only; engine gates show 0)">🎯 Honest (v2)</th>
                                 </tr>
                                 <tr class="text-gray-500 text-[10px] border-b border-white/10">
-                                    <th class="px-2 py-1 text-center text-emerald-300 bg-emerald-900/10 border-l-2 border-emerald-500/40">Real</th>
-                                    <th class="px-2 py-1 text-center text-gray-400 bg-emerald-900/10">All</th>
-                                    <th class="px-2 py-1 text-center text-violet-300 bg-emerald-900/10" title="This filter's L-All ÷ TOTAL L-All. Share of LONG blocks owned by this filter.">L%</th>
-                                    <th class="px-2 py-1 text-center text-emerald-300 bg-red-900/10 border-l-2 border-red-500/40">Real</th>
-                                    <th class="px-2 py-1 text-center text-gray-400 bg-red-900/10">All</th>
-                                    <th class="px-2 py-1 text-center text-violet-300 bg-red-900/10" title="This filter's S-All ÷ TOTAL S-All. Share of SHORT blocks owned by this filter.">S%</th>
-                                    <th class="px-2 py-1 text-center text-emerald-300 bg-white/5 border-l-2 border-white/30">Real</th>
-                                    <th class="px-2 py-1 text-center text-gray-400 bg-white/5">All</th>
-                                    <th class="px-2 py-1 text-center text-violet-300 bg-white/5" title="This filter's T-All ÷ TOTAL T-All. Share of all blocks owned by this filter.">T%</th>
                                     <th class="px-2 py-1 text-center text-violet-200 bg-violet-900/10 border-l-2 border-violet-500/40" title="SOLE blocker LONG: the candidate would have TRADED but for this one filter — its true marginal cost in trades">SoleL</th>
                                     <th class="px-2 py-1 text-center text-violet-300 bg-violet-900/10" title="This filter's SoleL ÷ TOTAL SoleL. Share of sole-blocked LONG candidates owned by this filter.">L%</th>
                                     <th class="px-2 py-1 text-center text-violet-200 bg-violet-900/10" title="SOLE blocker SHORT">SoleS</th>
@@ -2710,7 +2691,7 @@
                                 </tr>
                             </thead>
                             <tbody id="filter-blocks-body" class="divide-y divide-white/5">
-                                <tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>
                             </tbody>
                             <tfoot id="filter-blocks-foot" class="border-t border-white/10"></tfoot>
                         </table>
@@ -2830,8 +2811,6 @@
                                     <th class="px-3 py-2 font-medium text-center text-emerald-400">Peak Min</th>
                                     <th class="px-3 py-2 font-medium text-center text-cyan-300" title="May 31: Leash Shadow stretch-trail counterfactual (≤0.5× peak stretch) — the AGGRESSIVE recoverable-regret ceiling, running the actual post-exit path (respects the dip, unlike Post Peak). Armed post-deploy trades only.">Strpk %</th>
                                     <th class="px-3 py-2 font-medium text-center text-cyan-300" title="May 31: avg minutes from open to the strpk exit. Compare to Duration: fired AFTER the real close = post (held the runner); BEFORE = pre (exited earlier).">Strpk Min</th>
-                                    <th class="px-3 py-2 font-medium text-center text-cyan-300" title="May 31: strpk K=0.4 (looser trail — exit at ≤0.4× peak stretch, holds the runner longer than K=0.5). Compare vs Strpk% to see if a looser stretch-trail captures more.">Strpk04 %</th>
-                                    <th class="px-3 py-2 font-medium text-center text-cyan-300" title="May 31: strpk K=0.3 (loosest trail — exit at ≤0.3× peak stretch). Lower K = more on true runners, more giveback on reversers; the cohort settles the best K.">Strpk03 %</th>
                                     <th class="px-3 py-2 font-medium text-center text-cyan-300" title="May 31: Leash Shadow stretch-to-entry counterfactual (≤ entry stretch) — the CONSERVATIVE recoverable-regret floor. Read Close% → [Stren, Strpk] band → Post Peak ceiling.">Stren %</th>
                                     <th class="px-3 py-2 font-medium text-center text-cyan-300" title="May 31: avg minutes from open to the stren exit (vs Duration = pre/post-close).">Stren Min</th>
                                     <th class="px-3 py-2 font-medium text-center text-red-400">Avg Post Trough %</th>
@@ -7954,7 +7933,7 @@
             if (!body) return;
             const rows = (payload && payload.rows) || [];
             if (!rows.length) {
-                body.innerHTML = '<tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>';
+                body.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>';
                 if (foot) foot.innerHTML = '';
                 return;
             }
@@ -7988,15 +7967,6 @@
                 const nameEsc = String(r.filter).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 return `<tr class="hover:bg-white/5${r.is_variant ? ' opacity-80' : ''}">
                     <td class="px-3 py-2 font-mono text-xs ${nameCls}">${nameEsc}</td>
-                    <td class="px-2 py-2 text-center bg-emerald-900/5 border-l-2 border-emerald-500/30">${cell(lRoom, 'text-emerald-300')}</td>
-                    <td class="px-2 py-2 text-center bg-emerald-900/5">${cell(r.long || 0, 'text-emerald-400 font-medium')}</td>
-                    <td class="px-2 py-2 text-center bg-emerald-900/5">${pctCell(r.long || 0, totL)}</td>
-                    <td class="px-2 py-2 text-center bg-red-900/5 border-l-2 border-red-500/30">${cell(sRoom, 'text-emerald-300')}</td>
-                    <td class="px-2 py-2 text-center bg-red-900/5">${cell(r.short || 0, 'text-red-400 font-medium')}</td>
-                    <td class="px-2 py-2 text-center bg-red-900/5">${pctCell(r.short || 0, totS)}</td>
-                    <td class="px-2 py-2 text-center bg-white/5 border-l-2 border-white/30">${cell(tRoom, 'text-emerald-300 font-medium')}</td>
-                    <td class="px-2 py-2 text-center bg-white/5 font-bold text-white">${r.total}</td>
-                    <td class="px-2 py-2 text-center bg-white/5">${pctCell(r.total || 0, totT)}</td>
                     <td class="px-2 py-2 text-center bg-violet-900/10 border-l-2 border-violet-500/30">${cell(r.sole_long || 0, 'text-violet-200 font-medium')}</td>
                     <td class="px-2 py-2 text-center bg-violet-900/10">${pctCell(r.sole_long || 0, _soleLDen)}</td>
                     <td class="px-2 py-2 text-center bg-violet-900/10">${cell(r.sole_short || 0, 'text-violet-200 font-medium')}</td>
@@ -8028,15 +7998,6 @@
                     : '<span class="text-gray-600">—</span>';
                 foot.innerHTML = `<tr>
                     <td class="px-3 py-2 font-semibold text-gray-400 text-xs uppercase tracking-wide bg-white/5">Total</td>
-                    <td class="px-2 py-2 text-center font-bold text-emerald-300 bg-emerald-900/15 border-l-2 border-emerald-500/40">${lRoomT}</td>
-                    <td class="px-2 py-2 text-center font-bold text-emerald-400 bg-emerald-900/15">${tL}</td>
-                    <td class="px-2 py-2 text-center bg-emerald-900/15">${totalPctCell(tL)}</td>
-                    <td class="px-2 py-2 text-center font-bold text-emerald-300 bg-red-900/15 border-l-2 border-red-500/40">${sRoomT}</td>
-                    <td class="px-2 py-2 text-center font-bold text-red-400 bg-red-900/15">${tS}</td>
-                    <td class="px-2 py-2 text-center bg-red-900/15">${totalPctCell(tS)}</td>
-                    <td class="px-2 py-2 text-center font-bold text-emerald-300 bg-white/10 border-l-2 border-white/30">${tRoom}</td>
-                    <td class="px-2 py-2 text-center font-bold text-white bg-white/10">${tT}</td>
-                    <td class="px-2 py-2 text-center bg-white/10">${totalPctCell(tT)}</td>
                     <td class="px-2 py-2 text-center font-bold text-violet-200 bg-violet-900/15 border-l-2 border-violet-500/40">${soleLT}</td>
                     <td class="px-2 py-2 text-center bg-violet-900/15">${totalPctCell(soleLT)}</td>
                     <td class="px-2 py-2 text-center font-bold text-violet-200 bg-violet-900/15">${soleST}</td>
@@ -9376,21 +9337,15 @@
             if (_fbc && _fbc.rows && _fbc.rows.length) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Filter Blocks (persisted — survives redeploys)\n');
-                lines.push('Real = decisive block (had room + regime-aligned). All = TRUE count incl. previously-censored countertrend blocks (Jul 15 fix) — Real<<All flags a countertrend-firing filter. New Jul 15 engine counters: PAIR_HELD / COOLDOWN / NO_BALANCE.');
-                lines.push('L% / S% / T% = this filter\'s share of total LONG / SHORT / overall blocks.');
-                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14 (Total from earlier), so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc), then Total. \u21b3 rows = sub-rule breakdown of a composite filter (v2 columns only; legacy Total stays on the parent).');
-                const _totL = _fbc.total_long || 0, _totS = _fbc.total_short || 0, _totT = _fbc.total || 0;
-                const _pct = (n, d) => d > 0 ? ((n / d) * 100).toFixed(0) + '%' : '-';
-                lines.push(`${'Filter'.padEnd(22)} ${'L-Real'.padEnd(7)} ${'L-All'.padEnd(7)} ${'L%'.padEnd(6)} ${'S-Real'.padEnd(7)} ${'S-All'.padEnd(7)} ${'S%'.padEnd(6)} ${'T-Real'.padEnd(7)} ${'Total'.padEnd(7)} ${'T%'.padEnd(5)} ${'SoleL'.padEnd(6)} ${'L%'.padEnd(5)} ${'SoleS'.padEnd(6)} ${'S%'.padEnd(5)} ${'Sole'.padEnd(6)} ${'T%'.padEnd(5)} ${'Epis'.padEnd(6)} ${'AllF'}`);
-                let _slDen = 0, _ssDen = 0;
-                for (const r of _fbc.rows) { if (!r.is_variant) { _slDen += r.sole_long||0; _ssDen += r.sole_short||0; } }
-                let _lR = 0, _lF = 0, _sR = 0, _sF = 0;
+                lines.push('Jul 23 (operator): legacy LONG/SHORT/Total Real/All columns removed from display — Honest v2 only (Real≈All since the Jul-15 fix; every decision consumes Sole/Epis). Legacy counters still persist server-side.');
+                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14, so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc). \u21b3 rows = sub-rule breakdown of a composite filter.');
+                lines.push(`${'Filter'.padEnd(22)} ${'SoleL'.padEnd(6)} ${'L%'.padEnd(5)} ${'SoleS'.padEnd(6)} ${'S%'.padEnd(5)} ${'Sole'.padEnd(6)} ${'T%'.padEnd(5)} ${'Epis'.padEnd(6)} ${'AllF'}`);
+                let _slDen = 0, _ssDen = 0, _episT = 0, _allfT = 0;
+                for (const r of _fbc.rows) { if (!r.is_variant) { _slDen += r.sole_long||0; _ssDen += r.sole_short||0; _episT += r.episodes||0; _allfT += r.allf||0; } }
                 for (const r of _fbc.rows) {
-                    const lr = r.long_room||0, lf = r.long_full||0, sr = r.short_room||0, sf = r.short_full||0, tr = r.total_room||0, tf = r.total_full||0;
-                    _lR += lr; _lF += lf; _sR += sr; _sF += sf;
-                    lines.push(`${r.filter.padEnd(22)} ${String(lr).padEnd(7)} ${String(r.long||0).padEnd(7)} ${_pct(r.long||0, _totL).padEnd(6)} ${String(sr).padEnd(7)} ${String(r.short||0).padEnd(7)} ${_pct(r.short||0, _totS).padEnd(6)} ${String(tr).padEnd(7)} ${String(r.total||0).padEnd(7)} ${_pct(r.total||0, _totT).padEnd(5)} ${String(r.sole_long||0).padEnd(6)} ${(_slDen>0?((r.sole_long||0)/_slDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole_short||0).padEnd(6)} ${(_ssDen>0?((r.sole_short||0)/_ssDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole||0).padEnd(6)} ${((_slDen+_ssDen)>0?((r.sole||0)/(_slDen+_ssDen)*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.episodes||0).padEnd(6)} ${String(r.allf||0)}`);
+                    lines.push(`${r.filter.padEnd(22)} ${String(r.sole_long||0).padEnd(6)} ${(_slDen>0?((r.sole_long||0)/_slDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole_short||0).padEnd(6)} ${(_ssDen>0?((r.sole_short||0)/_ssDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole||0).padEnd(6)} ${((_slDen+_ssDen)>0?((r.sole||0)/(_slDen+_ssDen)*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.episodes||0).padEnd(6)} ${String(r.allf||0)}`);
                 }
-                lines.push(`${'TOTAL'.padEnd(22)} ${String(_lR).padEnd(7)} ${String(_totL).padEnd(7)} ${(_totL>0?'100%':'-').padEnd(6)} ${String(_sR).padEnd(7)} ${String(_totS).padEnd(7)} ${(_totS>0?'100%':'-').padEnd(6)} ${String(_fbc.total_room||0).padEnd(7)} ${String(_totT).padEnd(7)} ${_totT>0?'100%':'-'}`);
+                lines.push(`${'TOTAL'.padEnd(22)} ${String(_slDen).padEnd(6)} ${(_slDen>0?'100%':'-').padEnd(5)} ${String(_ssDen).padEnd(6)} ${(_ssDen>0?'100%':'-').padEnd(5)} ${String(_slDen+_ssDen).padEnd(6)} ${((_slDen+_ssDen)>0?'100%':'-').padEnd(5)} ${String(_episT).padEnd(6)} ${String(_allfT)}`);
             }
 
             lines.push(`\n${hr2}`);
@@ -9473,7 +9428,7 @@
             if (perf.post_exit_regret_deep_dive && perf.post_exit_regret_deep_dive.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Post-Exit Regret Deep Dive\n');
-                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'AvgATR%'.padStart(8)} ${'ATR-SL@1.5x'.padStart(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'Strpk%'.padStart(9)} ${'StrpkMin'.padStart(9)} ${'Strpk04%'.padStart(9)} ${'Strpk03%'.padStart(9)} ${'Stren%'.padStart(9)} ${'StrenMin'.padStart(9)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'EMA13X%'.padStart(8)} ${'EMA13XMin'.padStart(9)} ${'EMA13XP&L'.padStart(10)} ${'RegFlMin'.padStart(9)} ${'RegFlP&L'.padStart(10)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)} ${'Flr@SR'.padStart(9)} ${'NR-.20%'.padStart(8)} ${'NR-.10%'.padStart(8)} ${'NR-.05%'.padStart(8)} ${'EMA5Dst'.padStart(10)} ${'EMA5Slp'.padStart(10)} ${'EMA5X%'.padStart(8)}`);
+                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'AvgATR%'.padStart(8)} ${'ATR-SL@1.5x'.padStart(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'Strpk%'.padStart(9)} ${'StrpkMin'.padStart(9)} ${'Stren%'.padStart(9)} ${'StrenMin'.padStart(9)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'EMA13X%'.padStart(8)} ${'EMA13XMin'.padStart(9)} ${'EMA13XP&L'.padStart(10)} ${'RegFlMin'.padStart(9)} ${'RegFlP&L'.padStart(10)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)} ${'Flr@SR'.padStart(9)} ${'NR-.20%'.padStart(8)} ${'NR-.10%'.padStart(8)} ${'NR-.05%'.padStart(8)} ${'EMA5Dst'.padStart(10)} ${'EMA5Slp'.padStart(10)} ${'EMA5X%'.padStart(8)}`);
                 // Null-safe formatters — essential because FL_RECOVERED / FL_DEEP_STOP /
                 // FL_EMERGENCY_SL / FL_NO_EXPANSION rows may have null fields if none of the
                 // trades in the group reached a post-exit peak/trough/signal-loss event.
@@ -9508,7 +9463,7 @@
                     const ema5Dst = _perFp(r.avg_exit_ema5_dist);
                     const ema5Slp = _perFp(r.avg_exit_ema5_slope);
                     const ema5X = _perFpct(r.exit_ema5_crossed_pct);
-                    lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${(r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(3)+'%' : '   -  ').padStart(8)} ${(r.atr_sl_15x != null ? r.atr_sl_15x.toFixed(3)+'%' : '   -  ').padStart(10)} ${_perFp(r.avg_close_pnl).padStart(9)} ${_perFp(r.avg_post_peak).padStart(10)} ${_perFm(r.avg_peak_min).padStart(8)} ${_perFp(r.avg_strpk_pct).padStart(9)} ${_perFm(r.avg_strpk_min).padStart(9)} ${_perFp(r.avg_strpk04_pct).padStart(9)} ${_perFp(r.avg_strpk03_pct).padStart(9)} ${_perFp(r.avg_stren_pct).padStart(9)} ${_perFm(r.avg_stren_min).padStart(9)} ${_perFp(r.avg_post_trough).padStart(10)} ${_perFm(r.avg_trough_min).padStart(8)} ${_perFpct(r.peak_first_pct).padStart(9)} ${_perFp(r.avg_final_pnl).padStart(9)} ${_perFpct(r.sig_lost_pct).padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${ema13xPct.padStart(8)} ${ema13xMin.padStart(9)} ${ema13xPnl.padStart(10)} ${regFlMin.padStart(9)} ${regFlPnl.padStart(10)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)} ${ema5Dst.padStart(10)} ${ema5Slp.padStart(10)} ${ema5X.padStart(8)}`);
+                    lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${(r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(3)+'%' : '   -  ').padStart(8)} ${(r.atr_sl_15x != null ? r.atr_sl_15x.toFixed(3)+'%' : '   -  ').padStart(10)} ${_perFp(r.avg_close_pnl).padStart(9)} ${_perFp(r.avg_post_peak).padStart(10)} ${_perFm(r.avg_peak_min).padStart(8)} ${_perFp(r.avg_strpk_pct).padStart(9)} ${_perFm(r.avg_strpk_min).padStart(9)} ${_perFp(r.avg_stren_pct).padStart(9)} ${_perFm(r.avg_stren_min).padStart(9)} ${_perFp(r.avg_post_trough).padStart(10)} ${_perFm(r.avg_trough_min).padStart(8)} ${_perFpct(r.peak_first_pct).padStart(9)} ${_perFp(r.avg_final_pnl).padStart(9)} ${_perFpct(r.sig_lost_pct).padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${ema13xPct.padStart(8)} ${ema13xMin.padStart(9)} ${ema13xPnl.padStart(10)} ${regFlMin.padStart(9)} ${regFlPnl.padStart(10)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)} ${ema5Dst.padStart(10)} ${ema5Slp.padStart(10)} ${ema5X.padStart(8)}`);
                 }
             }
 
@@ -11330,21 +11285,15 @@
                 if (_fbc2 && _fbc2.rows && _fbc2.rows.length) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Filter Blocks (persisted — survives redeploys)\n');
-                    lines.push('Real = decisive block (had room + regime-aligned). All = TRUE count incl. previously-censored countertrend blocks (Jul 15 fix) — Real<<All flags a countertrend-firing filter. New Jul 15 engine counters: PAIR_HELD / COOLDOWN / NO_BALANCE.');
-                    lines.push('L% / S% / T% = this filter\'s share of total LONG / SHORT / overall blocks.');
-                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14 (Total from earlier), so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc), then Total. \u21b3 rows = sub-rule breakdown of a composite filter (v2 columns only; legacy Total stays on the parent).');
-                    const _totL2 = _fbc2.total_long || 0, _totS2 = _fbc2.total_short || 0, _totT2 = _fbc2.total || 0;
-                    const _pct2 = (n, d) => d > 0 ? ((n / d) * 100).toFixed(0) + '%' : '-';
-                    lines.push(`${'Filter'.padEnd(22)} ${'L-Real'.padEnd(7)} ${'L-All'.padEnd(7)} ${'L%'.padEnd(6)} ${'S-Real'.padEnd(7)} ${'S-All'.padEnd(7)} ${'S%'.padEnd(6)} ${'T-Real'.padEnd(7)} ${'Total'.padEnd(7)} ${'T%'.padEnd(5)} ${'SoleL'.padEnd(6)} ${'L%'.padEnd(5)} ${'SoleS'.padEnd(6)} ${'S%'.padEnd(5)} ${'Sole'.padEnd(6)} ${'T%'.padEnd(5)} ${'Epis'.padEnd(6)} ${'AllF'}`);
-                    let _slDen = 0, _ssDen = 0;
-                    for (const r of _fbc2.rows) { if (!r.is_variant) { _slDen += r.sole_long||0; _ssDen += r.sole_short||0; } }
-                    let _lR2 = 0, _lF2 = 0, _sR2 = 0, _sF2 = 0;
+                    lines.push('Jul 23 (operator): legacy LONG/SHORT/Total Real/All columns removed from display — Honest v2 only (Real≈All since the Jul-15 fix; every decision consumes Sole/Epis). Legacy counters still persist server-side.');
+                    lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14, so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc). \u21b3 rows = sub-rule breakdown of a composite filter.');
+                    lines.push(`${'Filter'.padEnd(22)} ${'SoleL'.padEnd(6)} ${'L%'.padEnd(5)} ${'SoleS'.padEnd(6)} ${'S%'.padEnd(5)} ${'Sole'.padEnd(6)} ${'T%'.padEnd(5)} ${'Epis'.padEnd(6)} ${'AllF'}`);
+                    let _slDen = 0, _ssDen = 0, _episT2 = 0, _allfT2 = 0;
+                    for (const r of _fbc2.rows) { if (!r.is_variant) { _slDen += r.sole_long||0; _ssDen += r.sole_short||0; _episT2 += r.episodes||0; _allfT2 += r.allf||0; } }
                     for (const r of _fbc2.rows) {
-                        const lr = r.long_room||0, lf = r.long_full||0, sr = r.short_room||0, sf = r.short_full||0, tr = r.total_room||0, tf = r.total_full||0;
-                        _lR2 += lr; _lF2 += lf; _sR2 += sr; _sF2 += sf;
-                        lines.push(`${r.filter.padEnd(22)} ${String(lr).padEnd(7)} ${String(r.long||0).padEnd(7)} ${_pct2(r.long||0, _totL2).padEnd(6)} ${String(sr).padEnd(7)} ${String(r.short||0).padEnd(7)} ${_pct2(r.short||0, _totS2).padEnd(6)} ${String(tr).padEnd(7)} ${String(r.total||0).padEnd(7)} ${_pct2(r.total||0, _totT2).padEnd(5)} ${String(r.sole_long||0).padEnd(6)} ${(_slDen>0?((r.sole_long||0)/_slDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole_short||0).padEnd(6)} ${(_ssDen>0?((r.sole_short||0)/_ssDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole||0).padEnd(6)} ${((_slDen+_ssDen)>0?((r.sole||0)/(_slDen+_ssDen)*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.episodes||0).padEnd(6)} ${String(r.allf||0)}`);
+                        lines.push(`${r.filter.padEnd(22)} ${String(r.sole_long||0).padEnd(6)} ${(_slDen>0?((r.sole_long||0)/_slDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole_short||0).padEnd(6)} ${(_ssDen>0?((r.sole_short||0)/_ssDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole||0).padEnd(6)} ${((_slDen+_ssDen)>0?((r.sole||0)/(_slDen+_ssDen)*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.episodes||0).padEnd(6)} ${String(r.allf||0)}`);
                     }
-                    lines.push(`${'TOTAL'.padEnd(22)} ${String(_lR2).padEnd(7)} ${String(_totL2).padEnd(7)} ${(_totL2>0?'100%':'-').padEnd(6)} ${String(_sR2).padEnd(7)} ${String(_totS2).padEnd(7)} ${(_totS2>0?'100%':'-').padEnd(6)} ${String(_fbc2.total_room||0).padEnd(7)} ${String(_totT2).padEnd(7)} ${_totT2>0?'100%':'-'}`);
+                    lines.push(`${'TOTAL'.padEnd(22)} ${String(_slDen).padEnd(6)} ${(_slDen>0?'100%':'-').padEnd(5)} ${String(_ssDen).padEnd(6)} ${(_ssDen>0?'100%':'-').padEnd(5)} ${String(_slDen+_ssDen).padEnd(6)} ${((_slDen+_ssDen)>0?'100%':'-').padEnd(5)} ${String(_episT2).padEnd(6)} ${String(_allfT2)}`);
                 }
 
                 // --- OUTCOME DISTRIBUTION ---
@@ -11431,7 +11380,7 @@
                 if (perf.post_exit_regret_deep_dive && perf.post_exit_regret_deep_dive.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Post-Exit Regret Deep Dive\n');
-                    lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'AvgATR%'.padStart(8)} ${'ATR-SL@1.5x'.padStart(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'Strpk%'.padStart(9)} ${'StrpkMin'.padStart(9)} ${'Strpk04%'.padStart(9)} ${'Strpk03%'.padStart(9)} ${'Stren%'.padStart(9)} ${'StrenMin'.padStart(9)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'EMA13X%'.padStart(8)} ${'EMA13XMin'.padStart(9)} ${'EMA13XP&L'.padStart(10)} ${'RegFlMin'.padStart(9)} ${'RegFlP&L'.padStart(10)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)} ${'Flr@SR'.padStart(9)} ${'NR-.20%'.padStart(8)} ${'NR-.10%'.padStart(8)} ${'NR-.05%'.padStart(8)} ${'EMA5Dst'.padStart(10)} ${'EMA5Slp'.padStart(10)} ${'EMA5X%'.padStart(8)}`);
+                    lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'AvgATR%'.padStart(8)} ${'ATR-SL@1.5x'.padStart(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'Strpk%'.padStart(9)} ${'StrpkMin'.padStart(9)} ${'Stren%'.padStart(9)} ${'StrenMin'.padStart(9)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'EMA13X%'.padStart(8)} ${'EMA13XMin'.padStart(9)} ${'EMA13XP&L'.padStart(10)} ${'RegFlMin'.padStart(9)} ${'RegFlP&L'.padStart(10)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)} ${'Flr@SR'.padStart(9)} ${'NR-.20%'.padStart(8)} ${'NR-.10%'.padStart(8)} ${'NR-.05%'.padStart(8)} ${'EMA5Dst'.padStart(10)} ${'EMA5Slp'.padStart(10)} ${'EMA5X%'.padStart(8)}`);
                     // Null-safe formatters — essential because FL_RECOVERED / FL_DEEP_STOP /
                     // FL_EMERGENCY_SL / FL_NO_EXPANSION rows may have null fields if none of
                     // the trades in the group reached a post-exit peak/trough/signal-loss event.
@@ -11466,7 +11415,7 @@
                         const ema5Dst = _perFp2(r.avg_exit_ema5_dist);
                         const ema5Slp = _perFp2(r.avg_exit_ema5_slope);
                         const ema5X = _perFpct2(r.exit_ema5_crossed_pct);
-                        lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${(r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(3)+'%' : '   -  ').padStart(8)} ${(r.atr_sl_15x != null ? r.atr_sl_15x.toFixed(3)+'%' : '   -  ').padStart(10)} ${_perFp2(r.avg_close_pnl).padStart(9)} ${_perFp2(r.avg_post_peak).padStart(10)} ${_perFm2(r.avg_peak_min).padStart(8)} ${_perFp2(r.avg_strpk_pct).padStart(9)} ${_perFm2(r.avg_strpk_min).padStart(9)} ${_perFp2(r.avg_strpk04_pct).padStart(9)} ${_perFp2(r.avg_strpk03_pct).padStart(9)} ${_perFp2(r.avg_stren_pct).padStart(9)} ${_perFm2(r.avg_stren_min).padStart(9)} ${_perFp2(r.avg_post_trough).padStart(10)} ${_perFm2(r.avg_trough_min).padStart(8)} ${_perFpct2(r.peak_first_pct).padStart(9)} ${_perFp2(r.avg_final_pnl).padStart(9)} ${_perFpct2(r.sig_lost_pct).padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${ema13xPct.padStart(8)} ${ema13xMin.padStart(9)} ${ema13xPnl.padStart(10)} ${regFlMin.padStart(9)} ${regFlPnl.padStart(10)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)} ${ema5Dst.padStart(10)} ${ema5Slp.padStart(10)} ${ema5X.padStart(8)}`);
+                        lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${(r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(3)+'%' : '   -  ').padStart(8)} ${(r.atr_sl_15x != null ? r.atr_sl_15x.toFixed(3)+'%' : '   -  ').padStart(10)} ${_perFp2(r.avg_close_pnl).padStart(9)} ${_perFp2(r.avg_post_peak).padStart(10)} ${_perFm2(r.avg_peak_min).padStart(8)} ${_perFp2(r.avg_strpk_pct).padStart(9)} ${_perFm2(r.avg_strpk_min).padStart(9)} ${_perFp2(r.avg_stren_pct).padStart(9)} ${_perFm2(r.avg_stren_min).padStart(9)} ${_perFp2(r.avg_post_trough).padStart(10)} ${_perFm2(r.avg_trough_min).padStart(8)} ${_perFpct2(r.peak_first_pct).padStart(9)} ${_perFp2(r.avg_final_pnl).padStart(9)} ${_perFpct2(r.sig_lost_pct).padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${ema13xPct.padStart(8)} ${ema13xMin.padStart(9)} ${ema13xPnl.padStart(10)} ${regFlMin.padStart(9)} ${regFlPnl.padStart(10)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)} ${ema5Dst.padStart(10)} ${ema5Slp.padStart(10)} ${ema5X.padStart(8)}`);
                     }
                 }
 
@@ -14078,8 +14027,8 @@
                     }
                     if (_lsDrill && (_ls.drill || []).length) {
                         const n2 = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2));
-                        _lsDrill.innerHTML = '<span class="text-gray-400">Runner cohort per-trade (top by post-exit peak) — str(entry→peak stretch), exits act / strpk K=.5/.4/.3 / signed:</span> '
-                            + _ls.drill.map(d => `${d.pair}(str${d.stretch}→${d.pkstr == null ? '?' : d.pkstr}) act${n2(d.actual)}/<span class="text-cyan-300">sp${n2(d.strpk)}/s04${n2(d.strpk04)}/s03${n2(d.strpk03)}/sig${n2(d.strpk_signed)}</span> pxpk${n2(d.pxpk)}`).join(' · ');
+                        _lsDrill.innerHTML = '<span class="text-gray-400">Runner cohort per-trade (top by post-exit peak) — str(entry→peak stretch), exits act / strpk K=.5:</span> '
+                            + _ls.drill.map(d => `${d.pair}(str${d.stretch}→${d.pkstr == null ? '?' : d.pkstr}) act${n2(d.actual)}/<span class="text-cyan-300">sp${n2(d.strpk)}</span> pxpk${n2(d.pxpk)}`).join(' · ');
                     } else if (_lsDrill) { _lsDrill.innerHTML = ''; }
                 }
                 // ===== LEASH SHADOW END =====
@@ -17282,8 +17231,7 @@
                                 <td class="px-3 py-2 text-right text-emerald-400">${r.avg_peak_min.toFixed(1)}m</td>
                                 <td class="px-3 py-2 text-right text-cyan-300 font-medium">${r.avg_strpk_pct != null ? (r.avg_strpk_pct >= 0 ? '+' : '') + r.avg_strpk_pct.toFixed(4) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right text-cyan-300">${r.avg_strpk_min != null ? r.avg_strpk_min.toFixed(1) + 'm' : '-'}</td>
-                                <td class="px-3 py-2 text-right text-cyan-300 font-medium">${r.avg_strpk04_pct != null ? (r.avg_strpk04_pct >= 0 ? '+' : '') + r.avg_strpk04_pct.toFixed(4) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right text-cyan-300 font-medium">${r.avg_strpk03_pct != null ? (r.avg_strpk03_pct >= 0 ? '+' : '') + r.avg_strpk03_pct.toFixed(4) + '%' : '-'}</td>
+                                
                                 <td class="px-3 py-2 text-right text-cyan-300 font-medium">${r.avg_stren_pct != null ? (r.avg_stren_pct >= 0 ? '+' : '') + r.avg_stren_pct.toFixed(4) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right text-cyan-300">${r.avg_stren_min != null ? r.avg_stren_min.toFixed(1) + 'm' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${troughClass} font-medium">${r.avg_post_trough >= 0 ? '+' : ''}${r.avg_post_trough.toFixed(4)}%</td>
@@ -17322,7 +17270,7 @@
                     }).join('');
                     peBody.innerHTML = peRows;
                 } else {
-                    peBody.innerHTML = '<tr><td colspan="42" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
+                    peBody.innerHTML = '<tr><td colspan="40" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
                 }
 
                 // Flagged Exits

@@ -9907,9 +9907,8 @@ def _compute_flip_trades(flip_orders):
 
 
 def _compute_leash_shadow(orders):
-    """Leash Shadow Tracker report. Compares virtual trailing leashes (tight/wide/
-    tierA/tierB) vs the actual exit on the runner-profile cohort, sliced by
-    Direction x stretch-bucket. Observation-only — see CLAUDE.md May 30.
+    """Leash Shadow Tracker report (slimmed Jul 23 — actual vs tight/atr05/atr10 only;
+    see the SHADOW-SLOT REVIEW comments in trading_engine.py). Observation-only.
     TO REMOVE: delete this fenced block + the payload line + the UI block."""
     ACT = 0.45  # armed threshold — matches live tp_min=0.45 (was 0.5, stale)
     # Jun 1 redefine — runner-focused leash set. Dropped tight (sim validated;
@@ -9919,35 +9918,28 @@ def _compute_leash_shadow(orders):
     # Each remaining leash answers one question: wide=is a price-trail enough? /
     # strpk=the shipped runner mechanism (K=0.5) / strpk03=does looser K catch the
     # pullback-rerun monster? / strpk_signed=ride the full move to the EMA5 cross.
+    # Jul 23 SHADOW-SLOT REVIEW (operator: "simplify what we track") — table slimmed 15→2
+    # variants. Only leashes with ARMED gates keep a row: atr05+atr10 serve the
+    # runner_trail_atr_mult revert ("atr05≥atr10 over N≥20 fresh armed longs") and the
+    # BE-ratchet revert (actual vs lockless-atr10). Retired from compute+display:
+    # strpk-family/stren (K-bracket refuted; strpk+stren still computed ONLY for the
+    # Post-Exit Regret band columns), atr15 (refuted Jun-29), cap-family (superseded by the
+    # HARD_TP ladder + its dedicated shadow), arm-family (no gate ever registered).
+    # Historical columns remain in models/DB/CSV; reopen = re-add the row BEFORE the read.
     LEASHES = [
         ('actual', None, None, None),
-        # Jun 26: removed tight/wide/tierA/tierB (flat & tiered leashes) — never used live.
-        ('strpk', 'shadow_strpk_pnl', 'shadow_strpk_reason', 'shadow_strpk_min'),  # stretch-trail K=0.5
-        ('strpk03', 'shadow_strpk03_pnl', 'shadow_strpk03_reason', 'shadow_strpk03_min'),  # K=0.3 (loosest stretch-trail)
-        ('stren', 'shadow_stren_pnl', 'shadow_stren_reason', 'shadow_stren_min'),  # exit when stretch collapses to entry level
-        ('strpk_signed', 'shadow_strpk_signed_pnl', 'shadow_strpk_signed_reason', 'shadow_strpk_signed_min'),  # hold to EMA5 cross
-        # Jun 16 — ATR-floor (chandelier) give-back trail at N=0.5/1.0/1.5. LIVE = N=0.5, so the
-        # 'actual' row ≈ 'atr05' = faithfulness check; 'atr10'/'atr15' = the N-counterfactuals.
+        ('tight', 'shadow_tight_pnl', 'shadow_tight_reason', 'shadow_tight_min'),  # 0.25 flat — fresh short-gate benchmark (Jul 23)
         # (No reason col — the leash stamps 'atr'/'hard_sl'; pass the pnl col for reason too, unused.)
-        ('atr05', 'shadow_atr05_pnl', 'shadow_atr05_pnl', 'shadow_atr05_min'),  # N=0.5 (= live)
-        ('atr10', 'shadow_atr10_pnl', 'shadow_atr10_pnl', 'shadow_atr10_min'),  # N=1.0 counterfactual
-        ('atr15', 'shadow_atr15_pnl', 'shadow_atr15_pnl', 'shadow_atr15_min'),  # N=1.5 counterfactual
-        # Jun 17 PM — give-back-cap shadows (live N + lock, give-back capped at frac×peak). cap035 ≈ the
-        # LIVE policy (minus ratchet edge cases); cap025/cap050 = tighter/looser counterfactuals to tune frac.
-        ('cap025', 'shadow_cap025_pnl', 'shadow_cap025_pnl', 'shadow_cap025_min'),  # frac 0.25 (tighter)
-        ('cap035', 'shadow_cap035_pnl', 'shadow_cap035_pnl', 'shadow_cap035_min'),  # frac 0.35 (= live)
-        ('cap050', 'shadow_cap050_pnl', 'shadow_cap050_pnl', 'shadow_cap050_min'),  # frac 0.50 (looser)
-        # Jul 6 — arm-level shadows (arm 0.35/0.40, trail 0.25). In THIS armed-cohort table they show
-        # only the early-chop side; the rescue side (0.35-0.45 peakers) is evaluated offline from the
-        # orders CSV where the columns cover ALL trades. Decision at N≥30 all-trades, both sides.
-        ('arm035', 'shadow_arm035_pnl', 'shadow_arm035_pnl', 'shadow_arm035_min'),  # arm at 0.35
-        ('arm040', 'shadow_arm040_pnl', 'shadow_arm040_pnl', 'shadow_arm040_min'),  # arm at 0.40
+        ('atr05', 'shadow_atr05_pnl', 'shadow_atr05_pnl', 'shadow_atr05_min'),  # N=0.5 (= live SHORT / LONG revert arm)
+        ('atr10', 'shadow_atr10_pnl', 'shadow_atr10_pnl', 'shadow_atr10_min'),  # N=1.0 (= live LONG)
     ]
-    # armed + shadow-populated cohort
+    # armed + shadow-populated cohort (Jul 23: keyed on atr05 — shadow_wide_pnl stopped
+    # populating when the flat/tier leashes retired; atr05 populates on every armed trade)
     rows = [o for o in orders
             if getattr(o, 'status', None) == 'CLOSED'
             and (getattr(o, 'peak_pnl', 0) or 0) >= ACT
-            and getattr(o, 'shadow_wide_pnl', None) is not None]
+            and (getattr(o, 'shadow_atr05_pnl', None) is not None
+                 or getattr(o, 'shadow_wide_pnl', None) is not None)]
     # Jun 1: re-sliced to the RUNNER cohort (ATR>=1.0 & peak>=0.70 - the actual arming
     # condition of the shipped runner trail) so the K-comparison validates the mechanism
     # we ship, not legacy entry-stretch buckets (which lumped real runners like STG with

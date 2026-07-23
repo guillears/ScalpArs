@@ -3858,13 +3858,16 @@ class TradingEngine:
             if _blocked:
                 try: self._record_filter_block(_reason, flip_dir)
                 except Exception: pass
-                # Jul 5: same-direction PASS phantom for the two decision-gated flip-SHORT blockers.
+                # Jul 5: same-direction PASS phantom for the decision-gated flip-SHORT blocker.
                 # BTC1H_SLOPE = the Jul-3 gate's locked revert surface (≥60% WR on N≥10 blocked → gate
-                # off) — the gate shipped without it, so the revert could never fire. REGIME = the #1
-                # flip blocker (bear≥80); measures what the bear-era filter forfeits in a bull. The
-                # phantom runs the exact flip replica exit, so its WR is directly gate-comparable.
-                if _reason in ("FLIP_SHORT_BTC1H_SLOPE", "FLIP_SHORT_REGIME", "FLIP_SHORT_BTC_TRENDGAP"):
-                    # Jul 8: TRENDGAP = the depth gate's locked revert surface (net-admissible ≥60% WR on N≥10 → off).
+                # off) — the gate shipped without it, so the revert could never fire. The phantom runs
+                # the exact flip replica exit, so its WR is directly gate-comparable.
+                # Jul 23 (phantom-slot review): REGIME and TRENDGAP seeding RETIRED — a phantom source
+                # only holds a slot while an armed gate consumes it. REGIME's relaxation discussion
+                # closed Jul-13 (0/130 net-admissible) and its flow died with the bull regime;
+                # TRENDGAP's revert fired-but-MOOT (Funnel v2 Sole=0 — the per-veto phantom WR is a
+                # first-block mirage; the revisit trigger is the funnel's Sole count, not phantoms).
+                if _reason == "FLIP_SHORT_BTC1H_SLOPE":
                     _seed_phantom_flip(pair, price, flip_dir, f"PASS:{_reason}",
                                        entry_fields=_ef, mode='PASS')
                 logger.info(f"[FLIP_FILTER] {pair}: {source} flip vetoed by {_reason} "

@@ -4288,6 +4288,10 @@ class TradingEngine:
         # ladder, band (35, 40]. Parallel cohort to ADXMAX (30, 35] — disjoint bands,
         # independent verdicts.
         adxmax2_probe: bool = False,
+        # Jul 24 SPIKE_CHASE probe (#11, LONG-only): single-candle RSI-explosion chase —
+        # a NEW ENTRY CLASS that bypasses the signal ladder by design (fires only when the
+        # ladder produced no signal). Opens 1x tagged SPIKE_CHASE_PROBE.
+        spike_chase_probe: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -4355,7 +4359,8 @@ class TradingEngine:
         # Without this, a dual-flag candidate (e.g. every GMINFLAT is also gap-flat =>
         # gap_probe=True) is capped/counted by the OLDER probe's block — starving the
         # newer cohort's N-clock and mis-attributing the funnel counter.
-        _probe_final_tag = ("ADXMAX2_PROBE" if adxmax2_probe else
+        _probe_final_tag = ("SPIKE_CHASE_PROBE" if spike_chase_probe else
+                            ("ADXMAX2_PROBE" if adxmax2_probe else
                             "DBDOWN_PROBE" if dbdown_probe else
                             ("ADXMAX_PROBE" if adxmax_probe else
                              ("GMINFLAT_PROBE" if gminflat_probe else
@@ -4364,7 +4369,7 @@ class TradingEngine:
                                 ("RSIADX_PROBE" if rsiadx_probe else
                                  ("SLOPEGATE_PROBE" if slopegate_probe else
                                   ("GAPFLAT_PROBE" if gap_probe else
-                                   ("GAPMIN_PROBE" if gapmin_probe else None)))))))))
+                                   ("GAPMIN_PROBE" if gapmin_probe else None))))))))))
         if _probe_final_tag == "GAPFLAT_PROBE" and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
             _th_gp = config.trading_config.thresholds
             _gp_reason = None
@@ -4513,6 +4518,9 @@ class TradingEngine:
         # Jul 20: caps for probes #7-#9 (GMINFLAT / ADXMAX / DBDOWN) — same mirror block;
         # cap rejection records probe-off semantics (the filter that would have blocked).
         for _p_flag, _p_tag, _p_en, _p_max, _p_ctr, _p_dirs in (
+            # Jul 24 probe #11: SPIKE_CHASE (LONG-only). Cap rejection records its own
+            # counter (no ladder filter maps to this entry class).
+            (spike_chase_probe, "SPIKE_CHASE_PROBE", 'spike_chase_probe_enabled', 'spike_chase_probe_max_open', "SPIKE_CHASE", ("LONG",)),
             (gminflat_probe, "GMINFLAT_PROBE", 'gminflat_probe_enabled', 'gminflat_probe_max_open', "PAIR_EMA_GAP_MIN", ("LONG", "SHORT")),
             (adxmax_probe, "ADXMAX_PROBE", 'adxmax_probe_enabled', 'adxmax_probe_max_open', "PAIR_ADX_MAX", ("LONG", "SHORT")),
             (dbdown_probe, "DBDOWN_PROBE", 'dbdown_probe_enabled', 'dbdown_probe_max_open', "LONG_BTC1H_DEADBAND", ("LONG",)),
@@ -4993,7 +5001,7 @@ class TradingEngine:
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
         if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
-             or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe) and direction in ("LONG", "SHORT")
+             or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or spike_chase_probe) and direction in ("LONG", "SHORT")
                 and not flip_source and not bull_long and not bounce_long):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
@@ -9453,6 +9461,28 @@ class TradingEngine:
                     self._last_pair_block_reason[pair] = "SPIKE_GUARD"
                     signal = "NO_TRADE"
 
+            # ── Jul 24 SPIKE_CHASE probe (#11): single-candle 5m RSI explosion chase. Fires
+            # ONLY when the ladder produced NO signal (normal full-size entries keep priority);
+            # bypasses the ladder BY DESIGN — this entry class has no fan yet and RSI>65 blocks
+            # every later candle (MIRA Jul-22 00:00 anatomy: RSI 49->82 on the discovery candle).
+            # Caps/sizing/tagging enforced inside open_position (max_open, last-2-slots guard).
+            _spike_chase_hit = False
+            try:
+                _sc_th = config.trading_config.thresholds
+                if (signal not in ("LONG", "SHORT")
+                        and getattr(_sc_th, 'spike_chase_probe_enabled', False)):
+                    _sc_rsi = indicators.get('rsi'); _sc_prev = indicators.get('rsi_prev1')
+                    if (_sc_rsi is not None and _sc_prev is not None
+                            and _sc_prev <= float(getattr(_sc_th, 'spike_chase_probe_rsi_prev_max', 55.0) or 55.0)
+                            and (_sc_rsi - _sc_prev) >= float(getattr(_sc_th, 'spike_chase_probe_rsi_jump', 25.0) or 25.0)):
+                        _nt_sc = set(x.strip() for x in (getattr(config.trading_config, 'no_trade_pairs', '') or '').split(',') if x.strip())
+                        if pair not in _nt_sc:
+                            signal, confidence = "LONG", "STRONG_BUY"
+                            _spike_chase_hit = True
+                            logger.info(f"[SPIKE_CHASE_PROBE] {pair}: RSI jump {_sc_prev:.1f}->{_sc_rsi:.1f} (+{_sc_rsi - _sc_prev:.1f}) — chase probe candidate")
+            except Exception:
+                _spike_chase_hit = False
+
             if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
                 logger.info(f"[DEBUG_REACHED_OPEN] {pair} {signal} {confidence}: about to call open_position()")
                 logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - Opening position...")
@@ -9505,7 +9535,7 @@ class TradingEngine:
                 # direction-consistent loser.
                 _qs_enabled = getattr(config.trading_config.thresholds, 'entry_quality_score_filter_enabled', False)
                 _qs_block_max = getattr(config.trading_config.thresholds, 'entry_quality_score_block_max', 1)
-                if _qs_enabled and entry_quality_score <= _qs_block_max:
+                if _qs_enabled and entry_quality_score <= _qs_block_max and not _spike_chase_hit:
                     logger.info(
                         f"[QUALITY_SCORE_GATE] {pair}: {signal} blocked — entry_quality_score={entry_quality_score} <= block_max={_qs_block_max}"
                     )
@@ -9670,6 +9700,8 @@ class TradingEngine:
                         and getattr(config.trading_config.thresholds, 'adxmax2_probe_enabled', False)
                         and adxmax2_band(indicators, signal, config.trading_config.thresholds) is True
                     ),
+                    # Jul 24 probe #11: ladder-bypass chase entry (flag set in the hook above).
+                    spike_chase_probe=bool(_spike_chase_hit),
                 )
 
                 if order:

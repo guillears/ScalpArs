@@ -361,6 +361,16 @@ class SignalThresholds(BaseModel):
     adxmax2_probe_enabled: bool = True
     adxmax2_probe_max_open: int = 3           # concurrent ADXMAX2 probes (LONG-only)
     adxmax2_probe_ceiling_long: float = 40.0  # LONG band 2: ADX in (adxmax_probe_ceiling_long, this]
+    # Jul 24 SPIKE_CHASE probe (#11, LONG-only, operator-directed): NEW ENTRY CLASS — chase a
+    # single-candle 5m RSI explosion (jump >= rsi_jump pts in ONE candle with rsi_prev1 <= prev_max).
+    # Calibrated on MIRA Jul-22 00:00 UTC: RSI 49->82 (+33) on the +1.84% discovery candle with
+    # +17% still ahead; pre-pump chop never jumps >9. Bypasses the signal ladder BY DESIGN (these
+    # candles have no fan yet; RSI>65 blocks all follow-ups). Fires only when the ladder produced
+    # NO signal. Right-tail cohort — pre-registered read weights avg over WR (CURRENT_STATE #11).
+    spike_chase_probe_enabled: bool = True
+    spike_chase_probe_max_open: int = 3          # same slot cap as the rest of the fleet
+    spike_chase_probe_rsi_jump: float = 25.0     # min single-candle RSI(12) jump (pts)
+    spike_chase_probe_rsi_prev_max: float = 55.0 # from-quiet condition: prev candle RSI <= this
     # Jul 20 — DBDOWN PROBE (probe #9, operator-directed): the FLAT-DOWN half of the 1h
     # dead-band, [−deadband, 0). The Jul-5 gate's locked phantom revert FIRED (95·60.0%·
     # +0.100%, 7 dates; fresh flat-down >=Jul-17: 51·65%·+0.154% meets BOTH arms; H.BULL

@@ -10735,6 +10735,7 @@ def _compute_gap_probe_cohort(orders):
     adxmax_rows, adxmax_s_rows = [], []  # Jul 20: pair-ADX ceiling probe (#8)
     dbdown_rows = []  # Jul 20: BTC 1h flat-DOWN half-band probe (#9, LONG-only)
     adxmax2_rows = []  # Jul 21: second LONG pair-ADX rung (35,40] probe (#10, LONG-only)
+    spike_rows = []    # Jul 24: SPIKE_CHASE ladder-bypass chase probe (#11, LONG-only)
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
@@ -10764,6 +10765,8 @@ def _compute_gap_probe_cohort(orders):
                 dbdown_rows.append(o)
             elif _src == 'ADXMAX2_PROBE':
                 adxmax2_rows.append(o)
+            elif _src == 'SPIKE_CHASE_PROBE':
+                spike_rows.append(o)
             else:
                 exp_rows.append(o)
         elif d == "SHORT":
@@ -10791,7 +10794,7 @@ def _compute_gap_probe_cohort(orders):
     _all_probes = (probe_rows + gapmin_rows + gapmin_s_rows + gapflat_s_rows
                    + slopegate_rows + slopegate_s_rows + rsiadx_rows + rsiadx_s_rows
                    + deadband_rows + rsiceil_rows
-                   + gminflat_rows + gminflat_s_rows + adxmax_rows + adxmax_s_rows + dbdown_rows + adxmax2_rows)
+                   + gminflat_rows + gminflat_s_rows + adxmax_rows + adxmax_s_rows + dbdown_rows + adxmax2_rows + spike_rows)
     if _all_probes:
         _p0 = min(getattr(o, 'opened_at', None) for o in _all_probes if getattr(o, 'opened_at', None))
         if _p0:
@@ -10827,6 +10830,7 @@ def _compute_gap_probe_cohort(orders):
         "ADXMAX 35-40 (probe) · LONG": _g('adxmax2_probe_enabled'),
         "ADXMAX 35-40 (probe) · SHORT": _g('adxmax_probe_enabled'),
         "DBDOWN flat-down (probe) · LONG": _g('dbdown_probe_enabled'),
+        "SPIKE_CHASE (probe) · LONG": _g('spike_chase_probe_enabled'),
     }
 
     rows_out = []
@@ -10840,6 +10844,7 @@ def _compute_gap_probe_cohort(orders):
                        ("ADXMAX 30-35 (probe) · LONG", adxmax_rows),
                        ("ADXMAX 35-40 (probe) · LONG", adxmax2_rows),
                        ("DBDOWN flat-down (probe) · LONG", dbdown_rows),
+                       ("SPIKE_CHASE (probe) · LONG", spike_rows),
                        ("EXPANDING · SHORT", exp_s_rows), ("NON-EXPANDING (probe) · SHORT", gapflat_s_rows),
                        ("SMALL-GAP (probe) · SHORT", gapmin_s_rows),
                        ("SLOPEGATE (probe) · SHORT", slopegate_s_rows),

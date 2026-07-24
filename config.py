@@ -371,6 +371,15 @@ class SignalThresholds(BaseModel):
     spike_chase_probe_max_open: int = 3          # same slot cap as the rest of the fleet
     spike_chase_probe_rsi_jump: float = 25.0     # min single-candle RSI(12) jump (pts)
     spike_chase_probe_rsi_prev_max: float = 55.0 # from-quiet condition: prev candle RSI <= this
+    spike_chase_probe_rsi_prev_min: float = 35.0 # Jul 24 PM (FHE dead-cat fire): quiet FLOOR — prev RSI in
+                                                  # [prev_min, prev_max] = resting band. FHE fired from RSI ~12
+                                                  # (active markdown; bounce = knife-catch, not discovery).
+                                                  # MIRA prev 49.1 (14-pt headroom); 35 not 40 keeps shakeout-
+                                                  # wick launches (high-30s) alive.
+    spike_chase_probe_min_vol_ratio: float = 5.0  # Jul 24 PM: discovery-candle volume >= this x its prior
+                                                  # 20-candle avg ("attention arrived"). MIRA discovery 59.6x
+                                                  # (12x headroom); pre-pump chop max 5.7x; USDCUSDT fire was
+                                                  # 2.39x. Free from klines already fetched (col 5).
     spike_chase_probe_min_candle_pct: float = 0.5 # Jul 24 PM: discovery candle must MOVE PRICE >= this %.
                                                   # RSI is scale-free: USDCUSDT fired on a +0.01% wiggle
                                                   # (RSI 35->71 on stablecoin noise). MIRA's real discovery

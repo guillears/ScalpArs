@@ -4229,6 +4229,8 @@ class TradingEngine:
         _jump = float(getattr(th, 'spike_chase_probe_rsi_jump', 25.0) or 25.0)
         _prev_max = float(getattr(th, 'spike_chase_probe_rsi_prev_max', 55.0) or 55.0)
         _min_chg = float(getattr(th, 'spike_chase_probe_min_candle_pct', 0.5) or 0.5)
+        _prev_min = float(getattr(th, 'spike_chase_probe_rsi_prev_min', 35.0) or 35.0)
+        _min_vr = float(getattr(th, 'spike_chase_probe_min_vol_ratio', 5.0) or 5.0)
         _vol_floor = float(getattr(th, 'spike_scanner_min_vol_usd', 1000000.0) or 1000000.0)
         _max_pairs = int(getattr(th, 'spike_scanner_max_pairs', 400) or 400)
         # Same protective screens as the trading universe (new-listing/Alpha/coin-only).
@@ -4271,12 +4273,18 @@ class TradingEngine:
                     rsi, rsi_prev = self._spike_rsi12(closes)
                     if rsi is None or rsi_prev is None:
                         continue
-                    if not (rsi_prev <= _prev_max and (rsi - rsi_prev) >= _jump):
+                    if not (_prev_min <= rsi_prev <= _prev_max and (rsi - rsi_prev) >= _jump):
                         continue
                     # Jul 24 PM: price-magnitude leg — RSI is scale-free, so a stablecoin's
                     # +0.01% wiggle can print a +36-pt "jump" (USDCUSDT #175). Real discovery
                     # candles move price (MIRA +1.84%); require the candle itself >= _min_chg %.
                     if closes[-2] <= 0 or (closes[-1] / closes[-2] - 1.0) * 100.0 < _min_chg:
+                        continue
+                    # Jul 24 PM leg 5: attention — discovery-candle volume >= _min_vr x prior-20 avg
+                    # (MIRA 59.6x / chop max 5.7x / USDCUSDT fire 2.39x). Free from these klines.
+                    _vols = [float(c[5]) for c in ohlcv]
+                    _av20 = sum(_vols[-21:-1]) / 20.0
+                    if _av20 <= 0 or (_vols[-1] / _av20) < _min_vr:
                         continue
                     _candle_ts = ohlcv[-1][0]  # one fire per pair per candle
                     if seen.get(p['pair']) == _candle_ts:
@@ -4288,7 +4296,7 @@ class TradingEngine:
                     if not ind or not ind.get('price'):
                         continue
                     logger.info(f"[SPIKE_SCANNER] {p['pair']}: RSI jump {rsi_prev:.1f}->{rsi:.1f} "
-                                f"(+{rsi - rsi_prev:.1f}) candle {(closes[-1]/closes[-2]-1.0)*100.0:+.2f}% vol24h=${(p.get('volume_24h') or 0)/1e6:.1f}M — SPIKE_CHASE probe entry")
+                                f"(+{rsi - rsi_prev:.1f}) candle {(closes[-1]/closes[-2]-1.0)*100.0:+.2f}% vol {_vols[-1]/_av20:.1f}x vol24h=${(p.get('volume_24h') or 0)/1e6:.1f}M — SPIKE_CHASE probe entry")
                     _g = globals()
                     _px = ind['price']
                     def _r(v, n=4):
@@ -9635,20 +9643,31 @@ class TradingEngine:
                     # just RSI (scale-free RSI explodes on stablecoin/flatline noise: USDCUSDT
                     # fired on +0.01%; MIRA's real discovery candle was +1.84%).
                     _sc_chg = None
+                    _sc_vr = None
                     try:
-                        if ohlcv and len(ohlcv) >= 2 and float(ohlcv[-2][4]) > 0:
+                        if ohlcv and len(ohlcv) >= 22 and float(ohlcv[-2][4]) > 0:
                             _sc_chg = (float(ohlcv[-1][4]) / float(ohlcv[-2][4]) - 1.0) * 100.0
+                            # Jul 24 PM leg 5: attention — discovery-candle volume vs prior-20 avg
+                            # (MIRA 59.6x; chop max 5.7x; USDC 2.39x). Klines col 5 = base volume.
+                            _sc_av = sum(float(c[5]) for c in ohlcv[-21:-1]) / 20.0
+                            _sc_vr = (float(ohlcv[-1][5]) / _sc_av) if _sc_av > 0 else None
                     except Exception:
                         _sc_chg = None
+                        _sc_vr = None
                     if (_sc_rsi is not None and _sc_prev is not None and _sc_chg is not None
+                            and _sc_vr is not None
+                            and _sc_vr >= float(getattr(_sc_th, 'spike_chase_probe_min_vol_ratio', 5.0) or 5.0)
                             and _sc_chg >= float(getattr(_sc_th, 'spike_chase_probe_min_candle_pct', 0.5) or 0.5)
+                            # Jul 24 PM leg 4: quiet FLOOR — FHE fired from RSI ~12 (markdown bounce
+                            # = knife-catch, not discovery); resting band is [prev_min, prev_max].
+                            and _sc_prev >= float(getattr(_sc_th, 'spike_chase_probe_rsi_prev_min', 35.0) or 35.0)
                             and _sc_prev <= float(getattr(_sc_th, 'spike_chase_probe_rsi_prev_max', 55.0) or 55.0)
                             and (_sc_rsi - _sc_prev) >= float(getattr(_sc_th, 'spike_chase_probe_rsi_jump', 25.0) or 25.0)):
                         _nt_sc = set(x.strip() for x in (getattr(config.trading_config, 'no_trade_pairs', '') or '').split(',') if x.strip())
                         if pair not in _nt_sc:
                             signal, confidence = "LONG", "STRONG_BUY"
                             _spike_chase_hit = True
-                            logger.info(f"[SPIKE_CHASE_PROBE] {pair}: RSI jump {_sc_prev:.1f}->{_sc_rsi:.1f} (+{_sc_rsi - _sc_prev:.1f}) candle {_sc_chg:+.2f}% — chase probe candidate")
+                            logger.info(f"[SPIKE_CHASE_PROBE] {pair}: RSI jump {_sc_prev:.1f}->{_sc_rsi:.1f} (+{_sc_rsi - _sc_prev:.1f}) candle {_sc_chg:+.2f}% vol {_sc_vr:.1f}x — chase probe candidate")
             except Exception:
                 _spike_chase_hit = False
 

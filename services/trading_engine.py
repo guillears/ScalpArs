@@ -4237,6 +4237,11 @@ class TradingEngine:
             alpha_subtype_filter_enabled=getattr(config.trading_config, 'alpha_subtype_filter_enabled', True),
             coin_underlying_only=getattr(config.trading_config, 'coin_underlying_only', True),
         )
+        # Jul 24 (review fix I2): stamp the eligible-universe volume rank (1 = highest)
+        # BEFORE filtering, mirroring the main scan's convention, so entry_pair_rank is
+        # populated on scanner fires (rank-dimension analysis at the read).
+        for _ui, _up in enumerate(universe):
+            _up['rank'] = _ui + 1
         _bl = set(x.strip() for x in (getattr(config.trading_config, 'pair_blacklist', '') or '').split(',') if x.strip())
         _nt = set(x.strip() for x in (getattr(config.trading_config, 'no_trade_pairs', '') or '').split(',') if x.strip())
         cands = [p for p in universe
@@ -4305,6 +4310,7 @@ class TradingEngine:
                         entry_pair_volume_ratio=_r((ind.get('volume') or 0) / ind['avg_volume']) if ind.get('avg_volume') else None,
                         entry_pair_volume_24h_usd=p.get('volume_24h'),
                         entry_pair_rank=p.get('rank'),
+                        entry_pair_age_days=p.get('age_days'),
                         entry_btc_adx=_g.get('_current_btc_adx'), entry_btc_rsi=_g.get('_current_btc_rsi'),
                         entry_btc_adx_prev=_g.get('_current_btc_adx_prev'), entry_btc_rsi_prev=_g.get('_current_btc_rsi_prev'),
                         entry_btc_rsi_prev6=_g.get('_current_btc_rsi_prev6'),
@@ -4320,7 +4326,9 @@ class TradingEngine:
                 except Exception as _sp_err:
                     logger.error(f"[SPIKE_SCANNER] {p.get('pair')}: trigger/open failed (fail-silent): {_sp_err}")
             if i + _B < len(cands):
-                await asyncio.sleep(0.25)
+                # Jul 24 (review I3): ccxt's enableRateLimit throttler already serializes/paces
+                # the calls; keep only a token yield so the loop stays cooperative (~20-30s/cycle).
+                await asyncio.sleep(0.1)
         if _fired or _checked:
             logger.info(f"[SPIKE_SCANNER] cycle done: {_checked} extended-universe pairs checked, {_fired} probe fires")
     # ===== SPIKE SCANNER END =====
@@ -7176,7 +7184,16 @@ class TradingEngine:
                 select(PairData).where(PairData.pair == order.pair)
             )
             pair_data = pair_result.scalar_one_or_none()
-            
+            # Jul 24 (review fix I1): stale-guard — >10-min-old PairData (unscanned
+            # extended-universe pair) treated as absent so EMA-driven exits skip cleanly
+            # instead of firing on days-old EMAs. See the cache-build twin guard.
+            if pair_data is not None and getattr(pair_data, 'updated_at', None) is not None:
+                from datetime import timezone as _tz_pd2
+                _pdts2 = pair_data.updated_at
+                _pdts2 = _pdts2.replace(tzinfo=_tz_pd2.utc) if _pdts2.tzinfo is None else _pdts2
+                if (datetime.now(_tz_pd2.utc) - _pdts2).total_seconds() > 600:
+                    pair_data = None
+
             # Extract EMA values for trend check
             ema5 = pair_data.ema5 if pair_data else None
             ema8 = pair_data.ema8 if pair_data else None
@@ -11512,9 +11529,21 @@ class TradingEngine:
                 select(PairData.pair, PairData.ema5, PairData.ema8, PairData.ema13,
                        PairData.ema20, PairData.price,
                        PairData.rsi, PairData.rsi_prev1, PairData.rsi_prev2,
-                       PairData.ema5_prev3).where(PairData.pair.in_(pair_names))
+                       PairData.ema5_prev3, PairData.updated_at).where(PairData.pair.in_(pair_names))
             )
+            # Jul 24 (review fix I1): extended-universe (spike-scanner) pairs are outside the
+            # top-50 scan, so their PairData row is absent or STALE (refreshed only for scanned
+            # pairs). Stale EMAs must not feed the realtime EMA13/stack exits — skip rows older
+            # than 10 min (cache emas stay None -> those exits skip cleanly; price-based exits
+            # SL/BE/trailing/ladder are websocket-fed and unaffected).
+            from datetime import timezone as _tz_pd
+            _pd_now = datetime.now(_tz_pd.utc)
             for row in sig_result:
+                _pd_ts = getattr(row, 'updated_at', None)
+                if _pd_ts is not None:
+                    _pd_ts = _pd_ts.replace(tzinfo=_tz_pd.utc) if _pd_ts.tzinfo is None else _pd_ts
+                    if (_pd_now - _pd_ts).total_seconds() > 600:
+                        continue
                 pair_emas[row.pair] = {
                     'ema5': row.ema5, 'ema8': row.ema8,
                     'ema13': row.ema13,

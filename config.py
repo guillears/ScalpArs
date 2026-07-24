@@ -371,6 +371,16 @@ class SignalThresholds(BaseModel):
     spike_chase_probe_max_open: int = 3          # same slot cap as the rest of the fleet
     spike_chase_probe_rsi_jump: float = 25.0     # min single-candle RSI(12) jump (pts)
     spike_chase_probe_rsi_prev_max: float = 55.0 # from-quiet condition: prev candle RSI <= this
+    # Jul 24 PM FULL-UNIVERSE SPIKE SCANNER (operator-directed same day; ZERO-ENGINEERING-RISK
+    # revert = this toggle OFF): extends the SPIKE_CHASE trigger beyond the top-50 to ALL
+    # eligible USDT perps (same protective screens: new-listing days / Alpha / coin-only /
+    # blacklist / no-trade). Rationale (MIRA forensics): pre-pump daily vol $1.2-4.4M = rank
+    # ~200+, invisible to the top-50; the pump promotes the pair with one-pump lag. Extended
+    # pairs get ONLY the spike door (never the ladder); fires route into the SAME
+    # SPIKE_CHASE_PROBE cohort/caps/gates. Piggybacks the scan loop; fail-silent.
+    spike_scanner_enabled: bool = True
+    spike_scanner_min_vol_usd: float = 1000000.0  # dead-book floor: skip pairs under $1M 24h vol
+    spike_scanner_max_pairs: int = 400            # universe cut (top-N by volume incl. the top-50)
     # Jul 20 — DBDOWN PROBE (probe #9, operator-directed): the FLAT-DOWN half of the 1h
     # dead-band, [−deadband, 0). The Jul-5 gate's locked phantom revert FIRED (95·60.0%·
     # +0.100%, 7 dates; fresh flat-down >=Jul-17: 51·65%·+0.154% meets BOTH arms; H.BULL

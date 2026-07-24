@@ -4189,6 +4189,142 @@ class TradingEngine:
             logger.error(f"[BOUNCE_LONG] {pair}: bounce-long open failed: {e}")
             return None
 
+    # ===== SPIKE SCANNER START (Jul 24) — helper + cycle =====
+    @staticmethod
+    def _spike_rsi12(closes):
+        """Wilder RSI(12) from a close list -> (rsi, rsi_prev1). Lightweight (no pandas)."""
+        try:
+            if len(closes) < 20:
+                return None, None
+            au = ad = 0.0
+            rsis = []
+            for i in range(1, len(closes)):
+                ch = closes[i] - closes[i - 1]
+                u = ch if ch > 0 else 0.0
+                d = -ch if ch < 0 else 0.0
+                if i == 1:
+                    au, ad = u, d
+                else:
+                    au = (au * 11 + u) / 12.0
+                    ad = (ad * 11 + d) / 12.0
+                if i >= 12:
+                    rsis.append(100.0 - 100.0 / (1 + (au / ad)) if ad > 0 else 100.0)
+            if len(rsis) < 2:
+                return None, None
+            return rsis[-1], rsis[-2]
+        except Exception:
+            return None, None
+
+    async def _spike_scanner_cycle(self, db: AsyncSession, top_set: set):
+        """Full-universe SPIKE_CHASE feeder (Jul 24). Scans eligible USDT perps BEYOND the
+        top-50 with ONLY the 2-candle RSI-jump trigger (never the ladder); a fire routes into
+        the standard SPIKE_CHASE probe (same tag / caps / sizing / gates). Fail-silent;
+        piggybacks the scan loop; one fire per pair per candle. ZERO-RISK REVERT =
+        spike_scanner_enabled=false."""
+        th = config.trading_config.thresholds
+        if not getattr(th, 'spike_scanner_enabled', False) or not getattr(th, 'spike_chase_probe_enabled', False):
+            return
+        if not self.is_running:
+            return
+        _jump = float(getattr(th, 'spike_chase_probe_rsi_jump', 25.0) or 25.0)
+        _prev_max = float(getattr(th, 'spike_chase_probe_rsi_prev_max', 55.0) or 55.0)
+        _vol_floor = float(getattr(th, 'spike_scanner_min_vol_usd', 1000000.0) or 1000000.0)
+        _max_pairs = int(getattr(th, 'spike_scanner_max_pairs', 400) or 400)
+        # Same protective screens as the trading universe (new-listing/Alpha/coin-only).
+        universe = await binance_service.get_top_futures_pairs(
+            _max_pairs,
+            new_listing_filter_days=getattr(config.trading_config, 'new_listing_filter_days', 0),
+            alpha_subtype_filter_enabled=getattr(config.trading_config, 'alpha_subtype_filter_enabled', True),
+            coin_underlying_only=getattr(config.trading_config, 'coin_underlying_only', True),
+        )
+        _bl = set(x.strip() for x in (getattr(config.trading_config, 'pair_blacklist', '') or '').split(',') if x.strip())
+        _nt = set(x.strip() for x in (getattr(config.trading_config, 'no_trade_pairs', '') or '').split(',') if x.strip())
+        cands = [p for p in universe
+                 if p['pair'] not in top_set and p['pair'] not in _bl and p['pair'] not in _nt
+                 and (p.get('volume_24h') or 0) >= _vol_floor]
+        if not cands:
+            return
+        seen = getattr(self, '_spike_scan_seen', None)
+        if seen is None:
+            seen = {}
+            self._spike_scan_seen = seen
+        _fired = 0
+        _checked = 0
+        _B = 8  # concurrency batch — gentle on rate limits (~350 klines calls / cycle)
+        for i in range(0, len(cands), _B):
+            batch = cands[i:i + _B]
+            results = await asyncio.gather(
+                *[binance_service.get_ohlcv(p['symbol'], '5m', 100) for p in batch],
+                return_exceptions=True)
+            for p, ohlcv in zip(batch, results):
+                if isinstance(ohlcv, Exception) or not ohlcv or len(ohlcv) < 20:
+                    continue
+                _checked += 1
+                try:
+                    closes = [float(c[4]) for c in ohlcv]
+                    rsi, rsi_prev = self._spike_rsi12(closes)
+                    if rsi is None or rsi_prev is None:
+                        continue
+                    if not (rsi_prev <= _prev_max and (rsi - rsi_prev) >= _jump):
+                        continue
+                    _candle_ts = ohlcv[-1][0]  # one fire per pair per candle
+                    if seen.get(p['pair']) == _candle_ts:
+                        continue
+                    seen[p['pair']] = _candle_ts
+                    if len(seen) > 600:
+                        seen.clear()
+                    ind = calculate_indicators(ohlcv)
+                    if not ind or not ind.get('price'):
+                        continue
+                    logger.info(f"[SPIKE_SCANNER] {p['pair']}: RSI jump {rsi_prev:.1f}->{rsi:.1f} "
+                                f"(+{rsi - rsi_prev:.1f}) vol24h=${(p.get('volume_24h') or 0)/1e6:.1f}M — SPIKE_CHASE probe entry")
+                    _g = globals()
+                    _px = ind['price']
+                    def _r(v, n=4):
+                        return round(v, n) if v is not None else None
+                    _atr = ind.get('atr')
+                    _ema50 = ind.get('ema50'); _ema50_p12 = ind.get('ema50_prev12')
+                    _ema13v = ind.get('ema13')
+                    order = await self.open_position(
+                        db=db, pair=p['pair'], direction="LONG", confidence="STRONG_BUY",
+                        current_price=_px,
+                        entry_gap=_r(abs((ind['ema5'] - ind['ema20']) / _px * 100)) if ind.get('ema5') and ind.get('ema20') else None,
+                        entry_ema_gap_5_8=_r(abs((ind['ema5'] - ind['ema8']) / ind['ema8'] * 100)) if ind.get('ema5') and ind.get('ema8') else None,
+                        entry_ema_gap_8_13=_r(abs((ind['ema8'] - ind['ema13']) / ind['ema13'] * 100)) if ind.get('ema8') and ind.get('ema13') else None,
+                        entry_ema5_stretch=_r(abs(_px - ind['ema5']) / _px * 100) if ind.get('ema5') else None,
+                        entry_price_vs_ema5_pct=_r((_px - ind['ema5']) / ind['ema5'] * 100) if ind.get('ema5') else None,
+                        entry_rsi=_r(ind.get('rsi'), 2), entry_rsi_prev=_r(ind.get('rsi_prev2'), 2),
+                        entry_adx=_r(ind.get('adx')), entry_adx_prev=_r(ind.get('adx_prev1')),
+                        entry_adx_delta=_r((ind.get('adx') - ind.get('adx_prev1'))) if ind.get('adx') is not None and ind.get('adx_prev1') is not None else None,
+                        entry_pos_di=ind.get('pos_di'), entry_neg_di=ind.get('neg_di'),
+                        entry_atr_pct=_r((_atr / _px) * 100) if _atr is not None else None,
+                        entry_ema50_slope=_r(((_ema50 - _ema50_p12) / _ema50_p12) * 100) if _ema50 is not None and _ema50_p12 else None,
+                        entry_pair_ema20_ema50_gap_pct=_r((_ema13v - _ema50) / _ema50 * 100) if _ema13v is not None and _ema50 else None,
+                        entry_dist_from_ema13_pct=_r((_px - _ema13v) / _ema13v * 100) if _ema13v else None,
+                        entry_range_position=_r(((_px - ind['low_20']) / (ind['high_20'] - ind['low_20'])) * 100, 1) if ind.get('high_20') and ind.get('low_20') and ind['high_20'] != ind['low_20'] else None,
+                        entry_pair_volume_ratio=_r((ind.get('volume') or 0) / ind['avg_volume']) if ind.get('avg_volume') else None,
+                        entry_pair_volume_24h_usd=p.get('volume_24h'),
+                        entry_pair_rank=p.get('rank'),
+                        entry_btc_adx=_g.get('_current_btc_adx'), entry_btc_rsi=_g.get('_current_btc_rsi'),
+                        entry_btc_adx_prev=_g.get('_current_btc_adx_prev'), entry_btc_rsi_prev=_g.get('_current_btc_rsi_prev'),
+                        entry_btc_rsi_prev6=_g.get('_current_btc_rsi_prev6'),
+                        entry_btc_atr_pct=_g.get('_current_btc_atr_pct'),
+                        entry_btc_rsi_1h=_g.get('_current_btc_rsi_1h'), entry_btc_rsi_1h_prev=_g.get('_current_btc_rsi_1h_prev'),
+                        entry_btc_dist_from_ema13_pct=_r((_g.get('_current_btc_price') - _g.get('_current_btc_ema13')) / _g.get('_current_btc_ema13') * 100) if _g.get('_current_btc_price') and _g.get('_current_btc_ema13') else None,
+                        entry_bull_pct=_g.get('_market_bull_pct'), entry_bear_pct=_g.get('_market_bear_pct'),
+                        entry_btc_regime=_g.get('_current_btc_regime'),
+                        spike_chase_probe=True,
+                    )
+                    if order:
+                        _fired += 1
+                except Exception as _sp_err:
+                    logger.error(f"[SPIKE_SCANNER] {p.get('pair')}: trigger/open failed (fail-silent): {_sp_err}")
+            if i + _B < len(cands):
+                await asyncio.sleep(0.25)
+        if _fired or _checked:
+            logger.info(f"[SPIKE_SCANNER] cycle done: {_checked} extended-universe pairs checked, {_fired} probe fires")
+    # ===== SPIKE SCANNER END =====
+
     async def open_position(
         self,
         db: AsyncSession,
@@ -9717,6 +9853,17 @@ class TradingEngine:
                     _open_positions_in_scan += 1
                 else:
                     logger.warning(f"[DEBUG_OPEN_FAILED] {pair} {signal} {confidence}: open_position returned None — check upstream logs in open_position for the real reason")
+
+        # ===== SPIKE SCANNER START (Jul 24 — full-universe SPIKE_CHASE feeder) =====
+        # REVERT = spike_scanner_enabled=false (UI toggle): this is the ONLY call site, the
+        # cycle is fail-silent, and the probe class has its own kill (spike_chase_probe_enabled).
+        # TO REMOVE: delete this fenced call + the _spike_scanner_cycle method + _spike_rsi12
+        # helper + the 3 config fields + UI block (grep "SPIKE SCANNER").
+        try:
+            await self._spike_scanner_cycle(db, set(p['pair'] for p in top_pairs))
+        except Exception as _ss_err:
+            logger.error(f"[SPIKE_SCANNER] cycle failed (fail-silent): {_ss_err}")
+        # ===== SPIKE SCANNER END =====
 
         self._last_scan_time = time.time()
         elapsed = self._last_scan_time - now

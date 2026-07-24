@@ -534,7 +534,10 @@
     "spike_chase_probe_enabled": true,
     "spike_chase_probe_max_open": 3,
     "spike_chase_probe_rsi_jump": 25.0,
-    "spike_chase_probe_rsi_prev_max": 55.0
+    "spike_chase_probe_rsi_prev_max": 55.0,
+    "spike_scanner_enabled": true,
+    "spike_scanner_min_vol_usd": 1000000.0,
+    "spike_scanner_max_pairs": 400
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

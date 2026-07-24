@@ -127,6 +127,35 @@ Unproven forward; read before each live checkpoint. All signals in UI (Gross gau
 
 ## Active watchlist & locked revert gates (pending — apply at next ≥30-trade checkpoint)
 
+> **☑ REVIEW CHECKLIST INDEX (2026-07-24 — walk EVERY line at each batch review and report a status per line: moved / checked-no-new-data / resolved. A missing line number = a missed gate. MAINTENANCE: add a line when a gate arms, strike it when it resolves — same save that edits the detailed block below; counts here are as-of the last review, the detailed blocks are authoritative.)**
+> **Probe gates:**
+> 1. GAPFLAT·L **29/30** — ✗ fires on avg<0 leg; precedence-held (noted-NOT-executed until #2 resolves) · GAPFLAT·S 4/30
+> 2. NONEXP·SBULL **15/20 · 5d** — single read at 20/≥6d; calm-3D cut decides the salvage; probes close on promotion/fail
+> 3. GMINFLAT·L 8/30 · S 3/30 (dependency: GAPFLAT+GAPMIN flags on)
+> 4. DEADBAND 14/30 — upper slice **8/15** (threshold 0.05→0.02; ex-KAITO sanity + pADX-23.4 axis at read)
+> 5. RSIADX·L 14/30 — tracking ✗; bear-cell follow-up probe candidate; breadth≤63.6 alternative relax
+> 6. ADXMAX·L 11/30 — regime cut ≠S.BULL only (slope-fresh STRUCK); needs ≥3 dates/side (S.BULL at 2) · ADXMAX·S 0/30
+> 7. ADXMAX2·L 5/30 (0% — gradient thesis dying) · 8. DBDOWN 4/30 · 9. GAPMIN·L 5/30 · S 1/30 · 10. RSICEIL·L 5/30 · 11. SLOPEGATE·S 3/30
+> 12. Short-probe RSI<31 admission condition (attaches to ANY short-probe promotion; ≥31 side 8·1W·−$224)
+> 13. W2 pure-cell disable review — DEFERRED post-fleet; re-enable stays ON (admission valve)
+> **Multiplier watches:**
+> 14. HIATR·LIQ **29/30** — at read: 3×3 grid ATR{0.45,0.5,0.55}×vol{80,100,120M} mandatory; avg-quality scope, never runner-justified
+> 15. C⑤ quiet (PVR<0.68) **19/30** — read outputs: 1.5× quiet mult / boundary GRID {0.8,0.9,0.93} / ≥0.9 band re-check; single-variable
+> 16. PVR≥0.93 escalation zone **12/20-30** — WR≤40∧avg≤−0.20 holding → sub-1× cap or block; high-WR shape → sizing only
+> 17. UNMATCHED 2× ★ WORKING + 2.5× step gate 12/50 (sub-0.90 fires only)
+> 18. Stretch 0.12-0.16 multiplier — sequencing-blocked · 19. Fade-SHORT phantom discussion (pooled H.BULL N≥40·WR≥60·avg≥+0.12; at 34·58.8%·+0.155)
+> **Exit / mechanism gates:**
+> 20. HARD_TP ladder revert **0/10 fires** (vs exact flat-1.0 CF; watch first HARD_TP_LADDER L{n} row)
+> 21. Fresh tight-vs-actual short gate **0/15** (full-size armed shorts post-Jul-22 ladder; cum(actual−capped tight)<−1.5pp → tighten)
+> 22. Kill-zone revert (restore armed-only if sub-arm reversals ≥−$150 norm N≥10/≥3d) · TRAILING_STOP must never fire on momentum
+> 23. runner_trail_atr_mult revert (atr05≥atr10, N≥20 fresh armed longs) + BE-ratchet revert (actual vs lockless-atr10, N≥10)
+> 24. DEEPGAP phantom trigger **13/15** + calibrated read (pass with phantom avg<+0.25 → revert ships WITH tight re-block gate)
+> **Standing reverts / sizing / routine:**
+> 25. Filter revert gates in dated blocks below (50-55 BTC-RSI band · weakcap · atr_min · pairvol · deepgap floor · flip gates · BTC1H_SLOPE surface — check each on fresh blocked-side data)
+> 26. G2 mom-short SL-floor pre-committed ship gate · 27. max-open 5→4 gate (N met, net FAILING as of 07-10) + 2.5× tally
+> 28. Routine: $-per-day scaling line · screen_pool re-freeze on any filter change · pair-blacklist checks (PUMP watch re-armed) · phantom-slot principle
+
+
 > **🔬 W2 RE-ENABLE CELL — disable-or-keep review (registered 2026-07-23; ⚠ AMENDED same day, operator-caught contamination).** First registration read `entry_pattern_w2_match` across all longs (14·57%·−0.055) — **WRONG COHORT: all 14 are PROBE trades** (5 GAPFLAT / 4 GMINFLAT / 2 ADXMAX / 2 RSIADX / 1 ADXMAX2 routing; the W2 label is just the signature riding along). Mechanics: W2-matched longs pass Keep-Only-Unmatched via the re-enable (1h ≥ +0.05), then get sole-blocked by a probe filter → open AS that probe; outcomes reflect the probe defect class, NOT the W2 thesis — the "fade" 75→67→57% was the probe fleet's regression wearing a W2 badge. **AMENDED GATE: the N≥20 disable-review counts PURE W2-cell trades ONLY (W2-matched, NON-probe routing) — currently ~0 fresh flow; probe-routed W2 performance is context, never the trigger. Read DEFERS to after the probe-fleet verdicts (intercepted flow then returns to normal routing); the re-enable stays ON meanwhile — cost ≈ nil AND disabling it would starve probe cohorts of W2-matched candidates (it currently functions as the fleet's admission valve).** ⚠ Audit rule: ANY pattern_cell_source-keyed table (Pattern Cell Ship rows incl.) is probe-diluted — check cell_multiplier_source routing before reading pattern cells. **Same session: ALIGNED-UP multiplier candidate REFUTED** — baseline direction-flips (aligned-up 22·82%·+0.22 vs rest 19·89%·+0.49; the batch table's 70%/+0.17 row is probe-diluted + era-specific; full-size 3/3 = N-noise). Do not re-propose without a changed baseline picture.
 
 > **🆕 SHIPPED 2026-07-23 — HARD_TP LADDER replaces the flat cap (operator-directed mechanism swap, pre-shadow).** Operator position: "a hard cap is never the best solution" — conceded on the bounded-regret argument (vs flat cap, worst case ≈ −0.25pp/fire; best case = the whole right tail; MIRA +19.1% anatomy). **Mechanism: per-side rising profit FLOORS, NO upper cap** — config `hard_tp_ladder_long="1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80"` / `hard_tp_ladder_short="1.0:0.25,..."` (trigger:offset rungs; peak crosses trigger → floor locks at trigger−offset, monotone; exit fires when pnl falls TO the floor). L1 per-side from the CF sweep: LONG 1.25 (+$209 side-optimal, operator instinct) / SHORT 1.00 (+$265) — combined +$474 vs flat-cap +$519 = ~$45/91-trades of wick-capture traded for unbounded tail + DEXE-class collapse insurance (floor 2.40 vs actual +0.43). Runner trail runs in PARALLEL (upside engine); ladder = collapse floor; backstops untouched. Reason **HARD_TP_LADDER L{n}** — startswith("HARD_TP") inherits BOTH post-exit whitelists + the mechanism shadow (now the live scorekeeper: ladder realized vs flat-1.0 exact CF from peaks) + own Post-Exit Regret rows (operator-required). Empty ladder strings = legacy flat `hard_tp_pct` (the revert path). NOT the BE-level system (not per-side; stays at 99s). D11 full (config+JSON+engine+2 UI text inputs ×3 surfaces+config-report line, grep-verified); ladder semantics extracted to services/hard_tp_ladder.py (pure, shared by live exit AND shadow) + tests/test_hard_tp_ladder.py checked in, 15/15 incl. MIRA/DEXE/garbage/unsorted-input cases. Jul-23 review fixes: shadow floor-in-condition + B=live-ladder replica + era-split compute (scorekeeper honest); in-trade peak persisted at rung crossings (floors survive restarts). **🔒 REVERT GATE: back to flat 1.0 (empty ladders) if N≥10 ladder-managed fires (peak ≥ first trigger, ≥3 dates) underperform the exact flat-1.0 CF by ≥$100 norm. The old HARD_TP four-way N≥15 read RESOLVES-BY-EXECUTION (mechanism chosen by operator); the shadow table keeps scoring leash-vs-ladder-vs-flat for the revert read.**

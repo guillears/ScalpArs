@@ -371,6 +371,11 @@ class SignalThresholds(BaseModel):
     spike_chase_probe_max_open: int = 3          # same slot cap as the rest of the fleet
     spike_chase_probe_rsi_jump: float = 25.0     # min single-candle RSI(12) jump (pts)
     spike_chase_probe_rsi_prev_max: float = 55.0 # from-quiet condition: prev candle RSI <= this
+    spike_chase_probe_min_candle_pct: float = 0.5 # Jul 24 PM: discovery candle must MOVE PRICE >= this %.
+                                                  # RSI is scale-free: USDCUSDT fired on a +0.01% wiggle
+                                                  # (RSI 35->71 on stablecoin noise). MIRA's real discovery
+                                                  # candle was +1.84% (3.7x headroom); pre-pump chop was
+                                                  # +-0.1-0.3%. Kills flatline/stable noise, never real pumps.
     # Jul 24 PM FULL-UNIVERSE SPIKE SCANNER (operator-directed same day; ZERO-ENGINEERING-RISK
     # revert = this toggle OFF): extends the SPIKE_CHASE trigger beyond the top-50 to ALL
     # eligible USDT perps (same protective screens: new-listing days / Alpha / coin-only /

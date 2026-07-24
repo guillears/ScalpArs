@@ -4228,6 +4228,7 @@ class TradingEngine:
             return
         _jump = float(getattr(th, 'spike_chase_probe_rsi_jump', 25.0) or 25.0)
         _prev_max = float(getattr(th, 'spike_chase_probe_rsi_prev_max', 55.0) or 55.0)
+        _min_chg = float(getattr(th, 'spike_chase_probe_min_candle_pct', 0.5) or 0.5)
         _vol_floor = float(getattr(th, 'spike_scanner_min_vol_usd', 1000000.0) or 1000000.0)
         _max_pairs = int(getattr(th, 'spike_scanner_max_pairs', 400) or 400)
         # Same protective screens as the trading universe (new-listing/Alpha/coin-only).
@@ -4272,6 +4273,11 @@ class TradingEngine:
                         continue
                     if not (rsi_prev <= _prev_max and (rsi - rsi_prev) >= _jump):
                         continue
+                    # Jul 24 PM: price-magnitude leg — RSI is scale-free, so a stablecoin's
+                    # +0.01% wiggle can print a +36-pt "jump" (USDCUSDT #175). Real discovery
+                    # candles move price (MIRA +1.84%); require the candle itself >= _min_chg %.
+                    if closes[-2] <= 0 or (closes[-1] / closes[-2] - 1.0) * 100.0 < _min_chg:
+                        continue
                     _candle_ts = ohlcv[-1][0]  # one fire per pair per candle
                     if seen.get(p['pair']) == _candle_ts:
                         continue
@@ -4282,7 +4288,7 @@ class TradingEngine:
                     if not ind or not ind.get('price'):
                         continue
                     logger.info(f"[SPIKE_SCANNER] {p['pair']}: RSI jump {rsi_prev:.1f}->{rsi:.1f} "
-                                f"(+{rsi - rsi_prev:.1f}) vol24h=${(p.get('volume_24h') or 0)/1e6:.1f}M — SPIKE_CHASE probe entry")
+                                f"(+{rsi - rsi_prev:.1f}) candle {(closes[-1]/closes[-2]-1.0)*100.0:+.2f}% vol24h=${(p.get('volume_24h') or 0)/1e6:.1f}M — SPIKE_CHASE probe entry")
                     _g = globals()
                     _px = ind['price']
                     def _r(v, n=4):
@@ -9625,14 +9631,24 @@ class TradingEngine:
                 if (signal not in ("LONG", "SHORT")
                         and getattr(_sc_th, 'spike_chase_probe_enabled', False)):
                     _sc_rsi = indicators.get('rsi'); _sc_prev = indicators.get('rsi_prev1')
-                    if (_sc_rsi is not None and _sc_prev is not None
+                    # Jul 24 PM: third trigger leg — the discovery candle must move PRICE, not
+                    # just RSI (scale-free RSI explodes on stablecoin/flatline noise: USDCUSDT
+                    # fired on +0.01%; MIRA's real discovery candle was +1.84%).
+                    _sc_chg = None
+                    try:
+                        if ohlcv and len(ohlcv) >= 2 and float(ohlcv[-2][4]) > 0:
+                            _sc_chg = (float(ohlcv[-1][4]) / float(ohlcv[-2][4]) - 1.0) * 100.0
+                    except Exception:
+                        _sc_chg = None
+                    if (_sc_rsi is not None and _sc_prev is not None and _sc_chg is not None
+                            and _sc_chg >= float(getattr(_sc_th, 'spike_chase_probe_min_candle_pct', 0.5) or 0.5)
                             and _sc_prev <= float(getattr(_sc_th, 'spike_chase_probe_rsi_prev_max', 55.0) or 55.0)
                             and (_sc_rsi - _sc_prev) >= float(getattr(_sc_th, 'spike_chase_probe_rsi_jump', 25.0) or 25.0)):
                         _nt_sc = set(x.strip() for x in (getattr(config.trading_config, 'no_trade_pairs', '') or '').split(',') if x.strip())
                         if pair not in _nt_sc:
                             signal, confidence = "LONG", "STRONG_BUY"
                             _spike_chase_hit = True
-                            logger.info(f"[SPIKE_CHASE_PROBE] {pair}: RSI jump {_sc_prev:.1f}->{_sc_rsi:.1f} (+{_sc_rsi - _sc_prev:.1f}) — chase probe candidate")
+                            logger.info(f"[SPIKE_CHASE_PROBE] {pair}: RSI jump {_sc_prev:.1f}->{_sc_rsi:.1f} (+{_sc_rsi - _sc_prev:.1f}) candle {_sc_chg:+.2f}% — chase probe candidate")
             except Exception:
                 _spike_chase_hit = False
 

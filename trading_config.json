@@ -21,7 +21,7 @@
   "bnb_sell_target_hours": 36.0,
   "bnb_min_sell_usd": 50.0,
   "trading_pairs_limit": 50,
-  "pair_blacklist": "ALLOUSDT,BNBUSDT,EIGENUSDT,ENAUSDT,ESPORTSUSDT,FILUSDT,MUSDT,RAVEUSDT,SYNUSDT,TRUMPUSDT,VELVETUSDT,VVVUSDT,XAGUSDT,XAUUSDT,ZECUSDT",
+  "pair_blacklist": "ALLOUSDT,BNBUSDT,EIGENUSDT,ENAUSDT,ESPORTSUSDT,FILUSDT,MUSDT,RAVEUSDT,SYNUSDT,TRUMPUSDT,USDCUSDT,VELVETUSDT,VVVUSDT,XAGUSDT,XAUUSDT,ZECUSDT",
   "no_trade_pairs": "BTCUSDT,ETHUSDT",
   "new_listing_filter_days": 90,
   "alpha_subtype_filter_enabled": true,
@@ -535,6 +535,7 @@
     "spike_chase_probe_max_open": 3,
     "spike_chase_probe_rsi_jump": 25.0,
     "spike_chase_probe_rsi_prev_max": 55.0,
+    "spike_chase_probe_min_candle_pct": 0.5,
     "spike_scanner_enabled": true,
     "spike_scanner_min_vol_usd": 1000000.0,
     "spike_scanner_max_pairs": 400

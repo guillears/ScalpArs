@@ -145,12 +145,12 @@ Unproven forward; read before each live checkpoint. All signals in UI (Gross gau
 > 13. W2 pure-cell disable review — DEFERRED post-fleet; re-enable stays ON (admission valve)
 > **Multiplier watches:**
 > 14. HIATR·LIQ **29/30** — at read: 3×3 grid ATR{0.45,0.5,0.55}×vol{80,100,120M} mandatory; avg-quality scope, never runner-justified
-> 15. C⑤ quiet (PVR<0.68) **19/30** — read outputs: 1.5× quiet mult / boundary GRID {0.8,0.9,0.93} / ≥0.9 band re-check; single-variable
+> 15. C⑤ quiet (PVR<0.68) — **QUIET BOOST SHIPPED 2026-07-26 at 19-0 (operator DISCIPLINE-OVERRIDE, N<30 acknowledged): UNMATCHED Inv 2×→2.5× (Lev 1.0 locked — BE-compat untestable at zero losses) at PVR<0.68, take-the-max, UI row in Keep-Only-Unmatched panel. 🔒 TIGHT REVERT: →0 if N≥8 fresh 2.5× fires WR≤60% or Δ$ vs 2×<0; TRIPWIRE: two never-positive quiet losses → immediate revert. The N≥30 read still lands and MERGES with #17 (one PVR sizing ladder): boundary <0.68 vs <0.90, 3× step, lev route (BE-compat on real losses first). PVR curve: cliff at 0.93 — do NOT lower de-mux 0.9→0.8 (0.80-0.93 = 9·87% healthy)**
 > 16. PVR≥0.93 escalation zone **12/20-30** — WR≤40∧avg≤−0.20 holding → sub-1× cap or block; high-WR shape → sizing only
 > 17. UNMATCHED 2× ★ WORKING + 2.5× step gate 12/50 (sub-0.90 fires only)
 > 18. Stretch 0.12-0.16 multiplier — sequencing-blocked · 19. Fade-SHORT phantom discussion (pooled H.BULL N≥40·WR≥60·avg≥+0.12; at 34·58.8%·+0.155)
 > **Exit / mechanism gates:**
-> 20. HARD_TP ladder revert **0/10 fires** (vs exact flat-1.0 CF; watch first HARD_TP_LADDER L{n} row)
+> 20. HARD_TP ladder revert **0/10 LADDER fires** (verified 07-26: the 4 'HARD_TP L1' rows are FLAT-CAP-ERA fires, all pre-Jul-22-19:46 deploy, all correct at avg +1.036; ladder era = 0 fires from 31 closes — correct, not silent: only 2 price-peak rung-crossers, ONDO never crossed in P&L terms (fee gap: price peak 1.30 ≈ pnl 1.21 < 1.25 trigger), LA armed the floor (~1.20) and the runner trail closed ABOVE it at +1.269 = the designed insurance interplay)
 > 21. Fresh tight-vs-actual short gate **0/15** (full-size armed shorts post-Jul-22 ladder; cum(actual−capped tight)<−1.5pp → tighten)
 > 22. Kill-zone revert (restore armed-only if sub-arm reversals ≥−$150 norm N≥10/≥3d) · TRAILING_STOP must never fire on momentum
 > 23. runner_trail_atr_mult revert (atr05≥atr10, N≥20 fresh armed longs) + BE-ratchet revert (actual vs lockless-atr10, N≥10)

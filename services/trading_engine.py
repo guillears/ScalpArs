@@ -4940,6 +4940,20 @@ class TradingEngine:
                 logger.info(f"[UNMATCHED_DEMUX_PVR] {pair} LONG: pair-vol ratio {entry_pair_volume_ratio:.2f} >= {_upv_max} "
                             f"(crowded entry) → de-mux UNMATCHED {_pcell_inv}x/{_pcell_lev}x → 1x")
                 _pcell_inv, _pcell_lev = 1.0, 1.0
+            else:
+                # Jul 26 QUIET BOOST (the opposite end of the same PVR ladder; discipline-override
+                # at 19-0, tight revert in config.py). PVR < quiet threshold → invest mult up
+                # (take-the-max, replaces the 2x; LEVERAGE UNTOUCHED — BE-compat gate). Fail-open
+                # on missing PVR (stays at the cell's 2x).
+                _uq_max = float(getattr(config.trading_config.thresholds, 'long_unmatched_quiet_pvr_max', 0.0) or 0.0)
+                _uq_mult = float(getattr(config.trading_config.thresholds, 'long_unmatched_quiet_mult', 0.0) or 0.0)
+                _uq_lev = float(getattr(config.trading_config.thresholds, 'long_unmatched_quiet_lev_mult', 1.0) or 1.0)
+                if (_uq_max > 0 and _uq_mult > 0 and entry_pair_volume_ratio is not None
+                        and entry_pair_volume_ratio < _uq_max and _uq_mult > (_pcell_inv or 1.0)):
+                    logger.info(f"[UNMATCHED_QUIET_BOOST] {pair} LONG: pair-vol ratio {entry_pair_volume_ratio:.2f} < {_uq_max} "
+                                f"(quiet book) → UNMATCHED invest {_pcell_inv}x → {_uq_mult}x, lev {_pcell_lev}x → {_uq_lev}x")
+                    _pcell_inv = _uq_mult
+                    _pcell_lev = _uq_lev
         # Jun 8: pattern-cell BLOCK action — skip the entry entirely (no order, no exchange
         # call; we're before position sizing / Order creation). Counter PATTERN_CELL_BLOCK.
         if _pcell_block and not flip_source and not bull_long and not bounce_long:

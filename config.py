@@ -1153,6 +1153,21 @@ class SignalThresholds(BaseModel):
     # Mechanism: PVR ≥ 0.90 = the volume burst already happened = buying someone's exit.
     # 🔒 Revert → 0 (full 2×) if fresh zone trades run ≥70% WR and net-positive at N≥8. 0 = off.
     long_unmatched_mult_pvr_max: float = 0.0
+    # Jul 26: QUIET BOOST (operator-directed DISCIPLINE-OVERRIDE at N=19 < 30 gate — acknowledged;
+    # tighter-than-standard revert below). The OPPOSITE end of the same PVR dial: UNMATCHED longs
+    # entered on a QUIET book (pair-vol ratio < pvr_max) size at quiet_mult INVEST (lev unchanged —
+    # the BE-compat rule blocks any lev-stacking until the cell shows real losses to test against).
+    # Evidence: C5 quiet cohort 19-0 · avg +0.529% · 14 dates · top pair 24%; full PVR curve
+    # monotonic with the cliff at 0.93 (quiet 100% / 0.68-0.90 ~78-83% / >=0.93 42%·-0.392).
+    # Take-the-max semantics: replaces (not stacks) the UNMATCHED 2x for qualifying trades.
+    # 🔒 TIGHT REVERT (pre-committed): -> 0 (back to 2x) if N>=8 fresh fires at 2.5x run WR<=60%
+    # or cumulative dollar-delta vs 2x < 0; TRIPWIRE: any TWO never-positive quiet losses ->
+    # immediate revert without waiting for N=8. 3x step / leverage route / boundary move: only at
+    # the C5+step-gate merged read (N>=30) with BE-compat on observed losses. 0 = off.
+    long_unmatched_quiet_mult: float = 2.5      # INVEST multiplier (replaces the UNMATCHED 2x)
+    long_unmatched_quiet_lev_mult: float = 1.0  # LEV multiplier — KEEP 1.0 until BE-compat passes
+                                                # on observed quiet losses (locked rule; 19-0 = untestable)
+    long_unmatched_quiet_pvr_max: float = 0.68
     # Jul 6: W2 RE-ENABLE, 1h-rising conditioned (operator-directed; first matched-long cell back
     # since the Jun-9 block). Admit a W2-matched long (macro tailwind; NO C co-match) when BTC 1h
     # slope ≥ this value. Evidence: historical live W2 longs split hard on 1h — rising ≥+0.05 =

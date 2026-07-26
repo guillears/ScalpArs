@@ -9747,6 +9747,19 @@ async def _compute_phantom_flip_performance(db, is_paper):
             r["verdict"] = "★ flip pays"
         else:
             r["verdict"] = "⚠ marginal"
+    # Jul 26 — resolved-question truth-marks (models.PHANTOM_RESOLVED_STATUS): closed
+    # sources keep their frozen stats but the verdict states the resolution and the UI
+    # dims the row (r["resolved"]); subrows inherit from their parent source row.
+    from models import PHANTOM_RESOLVED_STATUS as _pf_resolved
+    _pf_cur = None
+    for r in rows:
+        if not r.get("is_subrow"):
+            _pf_cur = r.get("source")
+            if _pf_cur in _pf_resolved:
+                r["verdict"] = _pf_resolved[_pf_cur]
+                r["resolved"] = True
+        elif _pf_cur in _pf_resolved:
+            r["resolved"] = True
 
     # Jun 17 — SOURCE × BTC-REGIME cross-tab (the BULL-MECHANISM hunt). Each flip source split by
     # regime bucket so we see WHICH signal pays in WHICH regime — not just "flips pay" but e.g.

@@ -620,7 +620,11 @@ PHANTOM_KEEP_SOURCES = (
     # "Fade blocked matched longs" = settled no-ship. Rows preserved; hidden via
     # PHANTOM_HIDDEN_SOURCES. The PASS side (re-enable hunt control arm) keeps seeding.
     "MOMENTUM_SHORT_W1_REGIME",
-    "PASS:LONG_UNMATCHED_ONLY",
+    # Jul 26 — "PASS:LONG_UNMATCHED_ONLY" REMOVED from collection (operator: stop the
+    # machine, not the display). 280 phantoms · 45% · −0.020 — the Jun-9 block monitor
+    # never wavered once; a monitor that can't move is a habit, not an instrument.
+    # Verdict on record: block vindicated. Rows preserved (hidden via
+    # PHANTOM_HIDDEN_SOURCES since Jul-14); re-arm = re-add this line (e.g. pre-live).
     # Jul 14 — "SPIKE_REV_BTC" REMOVED from collection (operator: hide solved phantoms).
     # 100% BTCUSDT (a no-trade pair) = verdict structurally unreachable. Rows preserved
     # (NOT in PHANTOM_RETIRED_SOURCES); hidden from display via PHANTOM_HIDDEN_SOURCES.
@@ -661,8 +665,8 @@ PHANTOM_KEEP_SOURCES = (
 # exports) but NEVER deleted: rows stay in phantom_flips and ride the full CSV export,
 # so locked verdicts remain reproducible and future pooled re-analysis is possible.
 # Distinct from PHANTOM_RETIRED_SOURCES (explicit DELETE list) — do not confuse them.
-# PASS:LONG_UNMATCHED_ONLY keeps SEEDING (control arm of the active fade-short watch,
-# pooled analysis needs it) but its ✗-whipsaws verdict is stable → display noise.
+# PASS:LONG_UNMATCHED_ONLY seeding STOPPED Jul-26 (block monitor retired at 280·45%·−0.020;
+# the fade-short watch it controlled for was itself closed Jul-16).
 PHANTOM_HIDDEN_SOURCES = (
     "PASS:FLIP_SHORT_REGIME",       # CLOSED: pooled 130 · 54% · net-admissible 0/130
     "SPIKE_REV_BTC",                # 100% BTCUSDT (no-trade pair) — verdict unreachable
@@ -670,6 +674,15 @@ PHANTOM_HIDDEN_SOURCES = (
     "PASS:FLIP_SHORT_BTC1H_SLOPE",  # Jul 16 CLOSED: 160 pooled · net-adm 9/160 · no carve-out near gate
     "LONG_UNMATCHED_ONLY",          # Jul 16 CLOSED: fade marginal at N=66 · all sub-cells whipsaw/below gates
 )
+
+# Jul 26 — RESOLVED verdicts for sources still DISPLAYED in the Phantom Flip Tracker
+# (operator: two of the three visible rows were closed questions shown as live). The
+# verdict string replaces the computed one and the row renders dimmed; rides both text
+# exports automatically (they print the verdict column). DEEPGAP stays live (13/15).
+PHANTOM_RESOLVED_STATUS = {
+    "PASS:LONG_BTC1H_DEADBAND": "✓ GRADUATED → DEADBAND/DBDOWN probes (gate fired Jul-20; N frozen)",
+    "PASS:FLIP_SHORT_BTC_TRENDGAP": "✗ RESOLVED MOOT Jul-20 — Sole=0 (reopen only if Sole grows)",
+}
 
 PHANTOM_RETIRED_SOURCES = (
     "FAN_RATIO_GATE", "ATR_GAP_LONG", "PAIR_TREND_FILTER", "PAIR_ADX_MAX",

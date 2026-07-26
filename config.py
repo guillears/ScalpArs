@@ -1157,6 +1157,13 @@ class SignalThresholds(BaseModel):
     # Mechanism: PVR ≥ 0.90 = the volume burst already happened = buying someone's exit.
     # 🔒 Revert → 0 (full 2×) if fresh zone trades run ≥70% WR and net-positive at N≥8. 0 = off.
     long_unmatched_mult_pvr_max: float = 0.0
+    # Jul 26 (operator patron fix): the de-mux TARGET multipliers are configurable, not hardcoded
+    # 1x/1x — same Invest/Lev patron as every other sizing cell. Defaults reproduce the Jul-10
+    # behavior exactly (full de-mux to 1x/1x). Values <=0 are coerced to 1.0 (a zero here would
+    # zero the position). Sub-1x targets are legitimate (e.g. the PVR>=0.93 escalation read may
+    # earn a sub-1x cap) — that decision stays behind its own gate, this only makes it a UI edit.
+    long_unmatched_demux_inv_mult: float = 1.0
+    long_unmatched_demux_lev_mult: float = 1.0
     # Jul 26: QUIET BOOST (operator-directed DISCIPLINE-OVERRIDE at N=19 < 30 gate — acknowledged;
     # tighter-than-standard revert below). The OPPOSITE end of the same PVR dial: UNMATCHED longs
     # entered on a QUIET book (pair-vol ratio < pvr_max) size at quiet_mult INVEST (lev unchanged —

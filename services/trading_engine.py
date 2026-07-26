@@ -4937,9 +4937,15 @@ class TradingEngine:
         if (direction == "LONG" and _pcell_src and 'UNMATCHED' in str(_pcell_src) and (_pcell_inv or 1.0) > 1.0):
             _upv_max = float(getattr(config.trading_config.thresholds, 'long_unmatched_mult_pvr_max', 0.0) or 0.0)
             if _upv_max > 0 and entry_pair_volume_ratio is not None and entry_pair_volume_ratio >= _upv_max:
+                # Jul 26 (operator patron fix): configurable de-mux targets (default 1.0/1.0 =
+                # the original full de-mux). <=0 coerced to 1.0 — a zero would zero the position.
+                _dm_inv = float(getattr(config.trading_config.thresholds, 'long_unmatched_demux_inv_mult', 1.0) or 1.0)
+                _dm_lev = float(getattr(config.trading_config.thresholds, 'long_unmatched_demux_lev_mult', 1.0) or 1.0)
+                if _dm_inv <= 0: _dm_inv = 1.0
+                if _dm_lev <= 0: _dm_lev = 1.0
                 logger.info(f"[UNMATCHED_DEMUX_PVR] {pair} LONG: pair-vol ratio {entry_pair_volume_ratio:.2f} >= {_upv_max} "
-                            f"(crowded entry) → de-mux UNMATCHED {_pcell_inv}x/{_pcell_lev}x → 1x")
-                _pcell_inv, _pcell_lev = 1.0, 1.0
+                            f"(crowded entry) → de-mux UNMATCHED {_pcell_inv}x/{_pcell_lev}x → {_dm_inv}x/{_dm_lev}x")
+                _pcell_inv, _pcell_lev = _dm_inv, _dm_lev
             else:
                 # Jul 26 QUIET BOOST (the opposite end of the same PVR ladder; discipline-override
                 # at 19-0, tight revert in config.py). PVR < quiet threshold → invest mult up

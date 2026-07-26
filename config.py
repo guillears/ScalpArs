@@ -1051,7 +1051,11 @@ class SignalThresholds(BaseModel):
     rsi_adx_multiplier_target: str = "investment"
     # Two independent hard caps (May 21). Each multiplier is clamped to its own cap regardless of UI input.
     # In "both" mode, max effective notional = invest_cap × lev_cap. Default cap_inv=2.0 reproduces pre-change behavior.
-    rsi_adx_multiplier_hard_cap: float = 2.0  # Investment-side hard cap (was the single cap pre-May-21)
+    rsi_adx_multiplier_hard_cap: float = 2.5  # Investment-side hard cap (was the single cap pre-May-21).
+                                              # Jul 26: 2.0 -> 2.5 — the QUIET BOOST (2.5x at PVR<0.68) was
+                                              # silently clamped to 2.0 by this cap (review Critical: the
+                                              # ship was a no-op). 2.5 = exactly the highest earned rung;
+                                              # the future 3x step must raise this AGAIN consciously.
     rsi_adx_multiplier_lev_hard_cap: float = 2.0  # Leverage-side hard cap (NEW May 21)
     # Pattern Cell Ship Rules (May 21, NEW dimension) — per-pattern multipliers + fixed exits.
     # JSON list of objects with fields:

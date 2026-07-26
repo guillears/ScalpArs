@@ -4950,10 +4950,16 @@ class TradingEngine:
                 _uq_lev = float(getattr(config.trading_config.thresholds, 'long_unmatched_quiet_lev_mult', 1.0) or 1.0)
                 if (_uq_max > 0 and _uq_mult > 0 and entry_pair_volume_ratio is not None
                         and entry_pair_volume_ratio < _uq_max and _uq_mult > (_pcell_inv or 1.0)):
+                    # Review fix (Jul 26): lev is take-the-max too — the quiet field may only
+                    # RAISE leverage (BE-compat-gated, default 1.0 = untouched); an unconditional
+                    # overwrite could silently DOWNGRADE the best cohort if the cell's lev is
+                    # ever raised above the quiet field.
+                    _uq_lev_eff = max(_pcell_lev or 1.0, _uq_lev)
                     logger.info(f"[UNMATCHED_QUIET_BOOST] {pair} LONG: pair-vol ratio {entry_pair_volume_ratio:.2f} < {_uq_max} "
-                                f"(quiet book) → UNMATCHED invest {_pcell_inv}x → {_uq_mult}x, lev {_pcell_lev}x → {_uq_lev}x")
+                                f"(quiet book) → UNMATCHED invest {_pcell_inv}x → {_uq_mult}x"
+                                + (f", lev {_pcell_lev}x → {_uq_lev_eff}x" if _uq_lev_eff != (_pcell_lev or 1.0) else ""))
                     _pcell_inv = _uq_mult
-                    _pcell_lev = _uq_lev
+                    _pcell_lev = _uq_lev_eff
         # Jun 8: pattern-cell BLOCK action — skip the entry entirely (no order, no exchange
         # call; we're before position sizing / Order creation). Counter PATTERN_CELL_BLOCK.
         if _pcell_block and not flip_source and not bull_long and not bounce_long:

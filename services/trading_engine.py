@@ -2807,7 +2807,10 @@ class TradingEngine:
         """
         rules = getattr(config.trading_config.thresholds, 'pattern_cell_rules', []) or []
         if not rules:
-            return 1.0, 1.0, None, None, None
+            # Jul 27 review fix: was returning 5 values against the 6-tuple contract every
+            # other path honors — clearing pattern_cell_rules (a documented revert action)
+            # would ValueError at the caller's unpack and fail-silently block ALL opens.
+            return 1.0, 1.0, None, None, None, False
 
         # Determine candidate sides in priority order (May 23 Option D — strict
         # C-blocks-W with explicit-opt-in for C multipliers).
@@ -4334,7 +4337,7 @@ class TradingEngine:
                             _g.get('_market_bull_pct'), _g.get('_market_bear_pct'),
                             _g.get('_current_btc_adx'), _sp_slope)
                     except Exception:
-                        _sp_qs = None
+                        _sp_qs = None; _sp_slope = None
                     order = await self.open_position(
                         db=db, pair=p['pair'], direction=_sp_dir, confidence="STRONG_BUY",
                         current_price=_px,

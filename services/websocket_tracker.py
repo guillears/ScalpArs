@@ -92,6 +92,12 @@ class WebSocketTracker:
     BINANCE_WS_URL = "wss://fstream.binance.com/stream"
     
     ZERO_PRICE_THRESHOLD = 50
+    # Connection-level dead-stream watchdog: with dozens-to-hundreds of @trade
+    # streams multiplexed, total silence for this long means the connection is
+    # dead even if TCP/pings look alive. Added after the Jul-27 frozen-price
+    # incident (staleness detection only counted received messages, so a
+    # silent stream was invisible to it).
+    SILENCE_TIMEOUT = 60
 
     def __init__(self):
         self.trackers: Dict[str, PriceTracker] = {}
@@ -255,25 +261,48 @@ class WebSocketTracker:
         tracker = self.trackers.get(pair)
         if tracker:
             tracker.update(price)
+        else:
+            # Create the tracker so fallback updates are recorded (and the
+            # watchdog's 90s silence clock works) even if subscription lagged
+            self.trackers[pair] = PriceTracker(pair, price)
     
     async def _staleness_reconnect(self):
-        """Force reconnect only when no open orders exist."""
+        """Force reconnect to recover a stale stream.
+
+        Reconnects UNCONDITIONALLY — including with open orders. Reconnects do
+        NOT destroy tracking data (high/low/last_price survive; only
+        force_reset clears them), so a stale stream must always be recovered:
+        an open position on a dead stream is price-blind and its realtime SL
+        is starved (Jul-27 incident: FLOCK/EVAA frozen at entry for ~1h
+        because the old code skipped reconnect while orders were open).
+        """
         if self._open_orders_callback:
             try:
                 has_open = await self._open_orders_callback()
                 if has_open:
                     logger.warning(
-                        "[WS_TRACKER] Stale stream detected but open orders exist — "
-                        "skipping reconnect to protect position tracking"
+                        "[WS_TRACKER] Stale stream with OPEN ORDERS — reconnecting "
+                        "(tracking data is preserved across reconnects)"
                     )
-                    return
             except Exception as e:
                 logger.error(f"[WS_TRACKER] Error checking open orders: {e}")
-                return
 
-        logger.info("[WS_TRACKER] No open orders — forcing reconnect to recover stale stream")
+        logger.info("[WS_TRACKER] Forcing reconnect to recover stale stream")
         self._consecutive_zero_prices = 0
         await self._reconnect()
+
+    async def force_reconnect(self, reason: str = ""):
+        """Public forced reconnect (e.g. engine watchdog found a silent open-order pair)."""
+        logger.warning(f"[WS_TRACKER] Forced reconnect requested{': ' + reason if reason else ''}")
+        self._consecutive_zero_prices = 0
+        await self._reconnect()
+
+    def pair_silence_seconds(self, pair: str) -> Optional[float]:
+        """Seconds since the last received tick for a pair (None = never ticked)."""
+        tracker = self.trackers.get(pair)
+        if not tracker or tracker.last_update is None:
+            return None
+        return (datetime.utcnow() - tracker.last_update).total_seconds()
 
     async def _reconnect(self):
         """Reconnect WebSocket with updated subscriptions"""
@@ -299,15 +328,21 @@ class WebSocketTracker:
         """Main WebSocket loop with auto-reconnect"""
         while self.running:
             try:
+                # Snapshot the pair set the URL is built from. Pairs subscribed
+                # while the connection is being established skip _reconnect()
+                # (self.websocket is still None) and would otherwise be
+                # permanently missing from this connection's stream list —
+                # the Jul-27 FLOCK/EVAA frozen-price race.
+                pairs_snapshot = set(self.subscribed_pairs)
                 url = self._build_ws_url()
-                
+
                 if not url:
                     # No pairs subscribed, wait and retry
                     await asyncio.sleep(1)
                     continue
-                
-                logger.info(f"[WS_TRACKER] Connecting to WebSocket ({len(self.subscribed_pairs)} pairs)...")
-                
+
+                logger.info(f"[WS_TRACKER] Connecting to WebSocket ({len(pairs_snapshot)} pairs)...")
+
                 async with websockets.connect(
                     url,
                     ping_interval=20,
@@ -317,11 +352,25 @@ class WebSocketTracker:
                     self.websocket = ws
                     self._reconnect_delay = 1  # Reset delay on successful connection
                     logger.info(f"[WS_TRACKER] Connected! Tracking: {', '.join(self.subscribed_pairs)}")
-                    
-                    async for message in ws:
-                        if not self.running:
+
+                    missing = self.subscribed_pairs - pairs_snapshot
+                    if missing:
+                        logger.warning(
+                            f"[WS_TRACKER] {len(missing)} pair(s) subscribed during connect "
+                            f"({', '.join(sorted(missing))}) — reconnecting with full stream list"
+                        )
+                        continue  # exits the context manager, which closes ws
+
+                    while self.running:
+                        try:
+                            message = await asyncio.wait_for(ws.recv(), timeout=self.SILENCE_TIMEOUT)
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                f"[WS_WATCHDOG] No messages for {self.SILENCE_TIMEOUT}s on a "
+                                f"{len(pairs_snapshot)}-stream connection — dead stream, reconnecting"
+                            )
                             break
-                        
+
                         try:
                             data = json.loads(message)
                             await self._handle_message(data)

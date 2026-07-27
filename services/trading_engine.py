@@ -7153,11 +7153,33 @@ class TradingEngine:
         updates = []
         
         for order in open_orders:
-            # Use WebSocket price only -- no REST fallback to avoid rate-limit bans.
-            # Open orders are always subscribed to WebSocket; if no price yet
-            # (e.g. first seconds after startup), just skip and retry next cycle.
+            # WebSocket price is primary. [WS_WATCHDOG] Jul-27 FLOCK/EVAA
+            # incident: an open order can go price-blind on a live connection
+            # (subscribe-during-connect race / dead stream) — frozen at entry
+            # with realtime SL starved. If the pair's tracker hasn't ticked in
+            # 90s, REST-fetch the price so exits keep working (self-limited to
+            # ~1 call/90s/pair because update_price refreshes last_update) and
+            # force one WS reconnect (globally rate-limited to every 120s).
             tracker = websocket_tracker.get_tracker(order.pair)
             current_price = tracker.last_price if tracker else None
+
+            _silence = websocket_tracker.pair_silence_seconds(order.pair)
+            if _silence is None or _silence > 90:
+                _rest_price = await binance_service.get_current_price(order.pair)
+                if _rest_price and _rest_price > 0:
+                    websocket_tracker.update_price(order.pair, _rest_price)
+                    logger.warning(
+                        f"[WS_WATCHDOG] {order.pair} silent on WS for "
+                        f"{'never-ticked' if _silence is None else f'{int(_silence)}s'} — "
+                        f"REST price fallback {_rest_price}"
+                    )
+                    current_price = _rest_price
+                _now_ts = datetime.utcnow().timestamp()
+                if _now_ts - getattr(self, '_ws_watchdog_last_reconnect', 0) > 120:
+                    self._ws_watchdog_last_reconnect = _now_ts
+                    await websocket_tracker.force_reconnect(
+                        f"open order {order.pair} silent on WS"
+                    )
 
             if not current_price or current_price <= 0:
                 continue

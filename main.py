@@ -1910,6 +1910,8 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "entry_conditions_by_strategy": [],
             "entry_conditions_by_strategy_outcome": [],
             "spike_fires": [],
+            "spike_summary": [],
+            "graduation_doors": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
             "extension_multiplier_performance": {"rules": [], "summary": {}},
@@ -3691,6 +3693,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "entry_conditions_by_strategy": [],
             "entry_conditions_by_strategy_outcome": [],
             "spike_fires": [],
+            "spike_summary": [],
+            "graduation_doors": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
             "extension_multiplier_performance": {"rules": [], "summary": {}},
@@ -6347,6 +6351,87 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         logger.error(f"[PERF] Error computing spike fires table: {e}\n{traceback.format_exc()}")
         spike_fires = []
 
+    # 🚀🎓 Jul 27 PM — Program scoreboards (operator-requested): compact summaries with the
+    # LOCKED gates self-reporting. Deploy floors (naive UTC, matching opened_at): spike
+    # full-size era from the 6048098 deploy, graduation doors from the 6cad258 deploy.
+    _SPIKE_ERA_TS = datetime(2026, 7, 27, 15, 40, 0)
+    _PROMO_TS = datetime(2026, 7, 27, 16, 40, 0)
+    spike_summary = []
+    graduation_doors = []
+    try:
+        def _cohort_stats(g):
+            n = len(g)
+            if n == 0:
+                return {"n": 0, "wr": None, "avg_pct": None, "total_usd": 0.0, "avg_peak": None,
+                        "armed_rate": None, "dates": 0, "worst_pct": None}
+            pns = [o.pnl_percentage or 0.0 for o in g]
+            peaks = [o.peak_pnl for o in g if o.peak_pnl is not None]
+            armed = [1 for o in g if getattr(o, 'spike_armed', False)]
+            return {
+                "n": n, "wr": round(100 * sum(1 for p in pns if p > 0) / n, 1),
+                "avg_pct": round(sum(pns) / n, 4), "total_usd": round(sum(o.pnl or 0 for o in g), 2),
+                "avg_peak": round(sum(peaks) / len(peaks), 4) if peaks else None,
+                "armed_rate": round(100 * len(armed) / n, 0) if n else None,
+                "dates": len({o.opened_at.strftime('%Y-%m-%d') for o in g if o.opened_at}),
+                "worst_pct": round(min(pns), 4),
+            }
+        _es2 = lambda o: (getattr(o, 'entry_strategy', None) or '')
+        _chase = [o for o in orders if _es2(o) == 'SPIKE_CHASE']
+        _fadeg = [o for o in orders if _es2(o) == 'SPIKE_FADE']
+        _probe_era = [o for o in orders if (getattr(o, 'cell_multiplier_source', None) or '') == 'SPIKE_CHASE_PROBE']
+        _cs = _cohort_stats(_chase)
+        # gate: revert to probe sizing at N>=8 net-negative; INSTANT on any fire < -1.5%
+        if _cs["n"] and _cs["worst_pct"] is not None and _cs["worst_pct"] <= -1.5:
+            _cg = f"✗ GATE TRIPPED: fire {_cs['worst_pct']:+.2f}% <= -1.5 — revert sizing to probe NOW"
+        elif _cs["n"] >= 8 and _cs["total_usd"] < 0:
+            _cg = f"✗ GATE TRIPPED: N={_cs['n']}>=8 net ${_cs['total_usd']:+.0f} — revert sizing to probe"
+        else:
+            _cg = f"⏳ {_cs['n']}/8 · Σ${_cs['total_usd']:+.0f} · worst {(_cs['worst_pct'] if _cs['worst_pct'] is not None else 0):+.2f}%"
+        spike_summary.append({"row": "SPIKE_CHASE (full size)", **_cs, "gate": _cg})
+        _fs = _cohort_stats(_fadeg)
+        _fade_on = bool(getattr(trading_config.thresholds, 'spike_fade_enabled', False))
+        if not _fade_on:
+            _fg = "🛑 FADE DISABLED (manual or TRIPWIRE fired — check logs before re-enabling)"
+        elif _fs["n"] >= 8 and (_fs["wr"] is not None and _fs["wr"] <= 50 or _fs["total_usd"] < 0):
+            _fg = f"✗ GATE TRIPPED: N={_fs['n']}>=8 WR {_fs['wr']}% / Σ${_fs['total_usd']:+.0f} — turn fade OFF"
+        else:
+            _fg = f"⏳ {_fs['n']}/8 · tripwire ARMED (-1.5)"
+        spike_summary.append({"row": "SPIKE_FADE (full size)", **_fs, "gate": _fg})
+        spike_summary.append({"row": "PROBE-era (frozen)", **_cohort_stats(_probe_era), "gate": "🚀 graduated Jul-27 — reference only"})
+
+        def _door(label, g, gate_n, wr_bar, revert_txt):
+            st = _cohort_stats(g)
+            if st["n"] >= gate_n and ((st["wr"] is not None and st["wr"] <= wr_bar) or st["total_usd"] < 0):
+                v = f"✗ REVERT: N={st['n']}>={gate_n} WR {st['wr']}% / Σ${st['total_usd']:+.0f} — {revert_txt}"
+            elif st["n"] >= max(4, gate_n - 3) and ((st["wr"] is not None and st["wr"] <= wr_bar) or st["total_usd"] < 0):
+                v = f"⚠ approaching revert ({st['n']}/{gate_n})"
+            elif st["n"] == 0:
+                v = "⏳ no fires yet"
+            else:
+                v = f"⏳ building ({st['n']}/{gate_n}) ✓ healthy" if st["total_usd"] >= 0 else f"⏳ building ({st['n']}/{gate_n})"
+            return {"row": label, **st, "gate": v}
+        _non_probe = lambda o: not ((getattr(o, 'cell_multiplier_source', None) or '').endswith('_PROBE'))
+        _post = lambda o, ts: (o.opened_at is not None and o.opened_at >= ts)
+        _calm = [o for o in orders if (getattr(o, 'cell_multiplier_source', None) or '') == 'NONEXP_CALM3D']
+        graduation_doors.append(_door("NONEXP_CALM3D (2× cell)", _calm, 10, 55, "cell OFF"))
+        _dbu = [o for o in orders if o.direction == 'LONG' and _non_probe(o) and _post(o, _PROMO_TS)
+                and _es2(o) in ('MOMENTUM', '') and getattr(o, 'entry_btc_1h_slope', None) is not None
+                and 0.025 <= o.entry_btc_1h_slope < 0.05]
+        graduation_doors.append(_door("DEADBAND upper [0.025,0.05)", _dbu, 10, 50, "pos back to 0.05"))
+        _bre = [o for o in orders if o.direction == 'LONG' and _non_probe(o) and _post(o, _PROMO_TS)
+                and _es2(o) in ('MOMENTUM', '') and getattr(o, 'entry_rsi', None) is not None
+                and 60 <= o.entry_rsi <= 65 and getattr(o, 'entry_adx', None) is not None and o.entry_adx <= 25
+                and getattr(o, 'entry_bull_pct', None) is not None and o.entry_bull_pct <= 63.6]
+        graduation_doors.append(_door("RSIADX breadth≤63.6 (60-65×ADX≤25)", _bre, 10, 55, "admit_max → 0"))
+        _rcl = [o for o in orders if o.direction == 'LONG' and _non_probe(o) and _post(o, _PROMO_TS)
+                and _es2(o) in ('MOMENTUM', '') and getattr(o, 'entry_rsi', None) is not None
+                and 65 < o.entry_rsi <= 70]
+        graduation_doors.append(_door("RSICEIL band (65,70]", _rcl, 10, 50, "rsi_max back to 65"))
+    except Exception as e:
+        logger.error(f"[PERF] Error computing program scoreboards: {e}\n{traceback.format_exc()}")
+        spike_summary = []
+        graduation_doors = []
+
     # Stop Loss Deep Dive + Winning Trades Drawdown
     stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
     winning_trades_drawdown = []
@@ -7702,6 +7787,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "entry_conditions_by_outcome": entry_conditions_by_outcome,
         "entry_conditions_by_strategy": entry_conditions_by_strategy,
         "spike_fires": spike_fires,
+        "spike_summary": spike_summary,
+        "graduation_doors": graduation_doors,
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "flagged_exits": flagged_exits,
         "period_performance": _compute_period_performance(orders),

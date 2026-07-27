@@ -7153,13 +7153,16 @@ class TradingEngine:
         updates = []
         
         for order in open_orders:
-            # WebSocket price is primary. [WS_WATCHDOG] Jul-27 FLOCK/EVAA
-            # incident: an open order can go price-blind on a live connection
-            # (subscribe-during-connect race / dead stream) — frozen at entry
-            # with realtime SL starved. If the pair's tracker hasn't ticked in
-            # 90s, REST-fetch the price so exits keep working (self-limited to
-            # ~1 call/90s/pair because update_price refreshes last_update) and
-            # force one WS reconnect (globally rate-limited to every 120s).
+            # WebSocket price is primary. [WS_WATCHDOG] Jul-27 FLOCK/EVAA/HBAR
+            # incidents: an open order can go price-blind (pair missing from
+            # the live stream / dead stream) — frozen at entry with realtime
+            # SL starved. If the pair's REAL-tick clock is silent >90s,
+            # REST-fetch the price so exits keep working (self-limited to
+            # ~1 call/90s/pair because the tick=True update refreshes
+            # last_tick). Force a WS reconnect ONLY when the pair is missing
+            # from the live stream (a quiet-but-healthy thin pair trades
+            # <1/90s legitimately — reconnecting the whole stream would blip
+            # every position blind for nothing); globally rate-limited 120s.
             tracker = websocket_tracker.get_tracker(order.pair)
             current_price = tracker.last_price if tracker else None
 
@@ -7167,7 +7170,9 @@ class TradingEngine:
             if _silence is None or _silence > 90:
                 _rest_price = await binance_service.get_current_price(order.pair)
                 if _rest_price and _rest_price > 0:
-                    websocket_tracker.update_price(order.pair, _rest_price)
+                    # tick=True: a REST price is a real observation — feeds the
+                    # silence clock so this fallback self-limits to ~1/90s/pair
+                    websocket_tracker.update_price(order.pair, _rest_price, tick=True)
                     logger.warning(
                         f"[WS_WATCHDOG] {order.pair} silent on WS for "
                         f"{'never-ticked' if _silence is None else f'{int(_silence)}s'} — "
@@ -7175,10 +7180,11 @@ class TradingEngine:
                     )
                     current_price = _rest_price
                 _now_ts = datetime.utcnow().timestamp()
-                if _now_ts - getattr(self, '_ws_watchdog_last_reconnect', 0) > 120:
+                if (not websocket_tracker.is_pair_streamed(order.pair)
+                        and _now_ts - getattr(self, '_ws_watchdog_last_reconnect', 0) > 120):
                     self._ws_watchdog_last_reconnect = _now_ts
                     await websocket_tracker.force_reconnect(
-                        f"open order {order.pair} silent on WS"
+                        f"open order {order.pair} missing from live WS stream"
                     )
 
             if not current_price or current_price <= 0:

@@ -23,12 +23,21 @@ class PriceTracker:
         self.low_price: Optional[float] = initial_price
         self.last_price: Optional[float] = initial_price
         self.last_update: Optional[datetime] = datetime.utcnow() if initial_price else None
+        # Stamped ONLY by real WS messages and explicit tick=True updates
+        # (REST watchdog fallback). The monitor loop echoes update_price()
+        # every cycle with the tracker's own stale price, which resets
+        # last_update — so last_update can NEVER measure stream silence.
+        # last_tick can. (Jul-27 HBAR frozen-price incident.)
+        self.last_tick: Optional[datetime] = datetime.utcnow() if initial_price else None
         self.trade_count: int = 0
-    
-    def update(self, price: float):
-        """Update tracking with new price"""
+
+    def update(self, price: float, tick: bool = False):
+        """Update tracking with new price. tick=True only for real WS
+        messages / REST watchdog fallback — it feeds the silence clock."""
         self.last_price = price
         self.last_update = datetime.utcnow()
+        if tick:
+            self.last_tick = self.last_update
         self.trade_count += 1
         
         # Track new highs (important for LONG trailing stops)
@@ -66,17 +75,21 @@ class PriceTracker:
         
         self.last_price = initial_price
         self.last_update = datetime.utcnow() if initial_price else None
+        # Entry/reset price counts as a real observation → grace period
+        # before the silence watchdog treats the pair as stale
+        self.last_tick = self.last_update
         self.trade_count = 0
-    
+
     def force_reset(self, initial_price: float = None):
         """Force complete reset - use only when starting fresh (new order on pair)
-        
+
         Unlike reset(), this always overwrites existing tracking data.
         """
         self.high_price = initial_price
         self.low_price = initial_price
         self.last_price = initial_price
         self.last_update = datetime.utcnow() if initial_price else None
+        self.last_tick = self.last_update
         self.trade_count = 0
 
 
@@ -111,6 +124,14 @@ class WebSocketTracker:
         self._open_orders_callback = None
         self._consecutive_zero_prices = 0
         self._lock = asyncio.Lock()
+        # Pair set the LIVE connection's stream URL was built from.
+        # Reconnect decisions must compare against this, NOT subscribed_pairs:
+        # force_reset_tracking() adds a pair to subscribed_pairs before
+        # subscribe_pair() runs, which made subscribe_pair skip the reconnect
+        # for genuinely-new pairs — spike-scanner pairs (outside the top-50
+        # stream) were then permanently absent from the connection
+        # (Jul-27 EVAA/FLOCK/HBAR frozen-price incidents).
+        self._connected_pairs: Set[str] = set()
     
     def set_price_callback(self, callback):
         """Set callback function to be called on each price update.
@@ -171,15 +192,20 @@ class WebSocketTracker:
                 self.subscribed_pairs.add(pair)
                 self.trackers[pair] = PriceTracker(pair, initial_price)
                 logger.info(f"[WS_TRACKER] Subscribed to {pair} (initial: {initial_price})")
-                
-                # Reconnect to update subscriptions
-                if self.websocket and self.running:
-                    await self._reconnect()
             elif initial_price:
                 # Already subscribed - just update with new price, preserving better high/low
                 # This prevents destroying good tracking data on reconnections/restarts
                 self.trackers[pair].update(initial_price)
                 logger.debug(f"[WS_TRACKER] Updated {pair} price: {initial_price} (preserved tracking)")
+
+            # Reconnect when the pair is missing from the LIVE connection's
+            # stream list — regardless of how it got into subscribed_pairs.
+            # (Checking subscribed_pairs membership here was the bug: a pair
+            # pre-added by force_reset_tracking never triggered a reconnect
+            # and stayed permanently silent.)
+            if self.websocket and self.running and pair not in self._connected_pairs:
+                logger.info(f"[WS_TRACKER] {pair} not in live stream — reconnecting to add it")
+                await self._reconnect()
     
     async def subscribe_pairs_batch(self, pairs: list):
         """Subscribe multiple pairs at once with a single reconnection.
@@ -195,7 +221,11 @@ class WebSocketTracker:
                     self.subscribed_pairs.add(pair)
                     self.trackers[pair] = PriceTracker(pair)
                     new_pairs.append(pair)
-            if new_pairs and self.websocket and self.running:
+            # Reconnect if ANY requested pair is missing from the live
+            # connection (not only brand-new subscriptions) — heals pairs
+            # that were pre-added without ever entering the stream.
+            missing_live = [p for p in pairs if p not in self._connected_pairs]
+            if missing_live and self.websocket and self.running:
                 await self._reconnect()
         if new_pairs:
             logger.info(f"[WS_TRACKER] Batch subscribed {len(new_pairs)} new pairs (total: {len(self.subscribed_pairs)})")
@@ -256,11 +286,14 @@ class WebSocketTracker:
             self.subscribed_pairs.add(pair)
             logger.info(f"[WS_TRACKER] Added {pair} to subscribed_pairs")
     
-    def update_price(self, pair: str, price: float):
-        """Manually update price (fallback when WebSocket not available)"""
+    def update_price(self, pair: str, price: float, tick: bool = False):
+        """Manually update price. tick=True ONLY for genuinely fresh prices
+        (REST watchdog fallback) — it feeds the silence clock. The monitor
+        loop's per-cycle echo of the tracker's own price must stay tick=False
+        or the watchdog can never detect a dead stream."""
         tracker = self.trackers.get(pair)
         if tracker:
-            tracker.update(price)
+            tracker.update(price, tick=tick)
         else:
             # Create the tracker so fallback updates are recorded (and the
             # watchdog's 90s silence clock works) even if subscription lagged
@@ -297,12 +330,23 @@ class WebSocketTracker:
         self._consecutive_zero_prices = 0
         await self._reconnect()
 
+    def is_pair_streamed(self, pair: str) -> bool:
+        """True if the LIVE connection's stream list includes this pair.
+        False = the pair can never tick on this connection (reconnect needed)."""
+        return pair in self._connected_pairs
+
     def pair_silence_seconds(self, pair: str) -> Optional[float]:
-        """Seconds since the last received tick for a pair (None = never ticked)."""
+        """Seconds since the last REAL tick for a pair (None = never ticked).
+
+        Reads last_tick, not last_update — the monitor loop echoes the
+        tracker's own stale price back via update_price() every cycle,
+        which refreshes last_update and would blind this clock (the bug
+        that kept the Jul-27 watchdog from ever firing on HBAR).
+        """
         tracker = self.trackers.get(pair)
-        if not tracker or tracker.last_update is None:
+        if not tracker or tracker.last_tick is None:
             return None
-        return (datetime.utcnow() - tracker.last_update).total_seconds()
+        return (datetime.utcnow() - tracker.last_tick).total_seconds()
 
     async def _reconnect(self):
         """Reconnect WebSocket with updated subscriptions"""
@@ -350,6 +394,7 @@ class WebSocketTracker:
                     close_timeout=5
                 ) as ws:
                     self.websocket = ws
+                    self._connected_pairs = pairs_snapshot  # what this connection actually streams
                     self._reconnect_delay = 1  # Reset delay on successful connection
                     logger.info(f"[WS_TRACKER] Connected! Tracking: {', '.join(self.subscribed_pairs)}")
 
@@ -420,7 +465,7 @@ class WebSocketTracker:
 
                 tracker = self.trackers.get(pair)
                 if tracker:
-                    tracker.update(price)
+                    tracker.update(price, tick=True)
 
                 if self._price_callback:
                     try:

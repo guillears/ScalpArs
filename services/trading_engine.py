@@ -4322,6 +4322,19 @@ class TradingEngine:
                             _g.get('_current_btc_adx'), _g.get('_current_btc_rsi'), _g.get('_btc_ema20_slope_pct'))
                     except Exception:
                         _sp_fine_regime = _g.get('_current_btc_regime')
+                    # Jul 27 night: quality score for spike fires too (operator) — same formulas
+                    # as the top-50 ladder (gap = |EMA5-EMA20|/price, slope = EMA20 3-bar).
+                    # Analytics-only: QS never gates the spike class (spike is ladder-exempt).
+                    try:
+                        _sp_e20 = ind.get('ema20'); _sp_e20p3 = ind.get('ema20_prev3')
+                        _sp_gap = round(abs((ind['ema5'] - _sp_e20) / _px * 100), 4) if ind.get('ema5') is not None and _sp_e20 else None
+                        _sp_slope = round(((_sp_e20 - _sp_e20p3) / _sp_e20p3) * 100, 4) if _sp_e20 and _sp_e20p3 else None
+                        _sp_qs = _calculate_quality_score(
+                            _sp_dir, ind.get('rsi'), ind.get('adx'), _sp_gap,
+                            _g.get('_market_bull_pct'), _g.get('_market_bear_pct'),
+                            _g.get('_current_btc_adx'), _sp_slope)
+                    except Exception:
+                        _sp_qs = None
                     order = await self.open_position(
                         db=db, pair=p['pair'], direction=_sp_dir, confidence="STRONG_BUY",
                         current_price=_px,
@@ -4356,6 +4369,7 @@ class TradingEngine:
                         # read at bull-vs-non-bull granularity. Stamp both, like momentum does.
                         entry_btc_regime=_sp_fine_regime,
                         entry_macro_trend=_g.get('_current_btc_regime'),
+                        entry_quality_score=_sp_qs, entry_ema20_slope=_sp_slope,
                         spike_chase_probe=not _sp_is_fade,
                         spike_fade=_sp_is_fade,
                     )

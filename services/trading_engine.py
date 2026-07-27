@@ -4470,6 +4470,10 @@ class TradingEngine:
         # spike_fade mults, fixed SL spike_fade_sl_pct (NO ATR widening), standard short
         # exit stack, strategy=SPIKE_FADE. Kill: spike_fade_enabled + auto-tripwire.
         spike_fade: bool = False,
+        # Jul 27 PM PROMOTION: NONEXP_CALM3D admission — gap-flat/flat+small LONG admitted
+        # full-size (Inv 2x/Lev 1x) when SBULL ∧ BTC-ATR <= 0.147 (engine router decided).
+        # Bypasses keep-only-unmatched + pattern treatment per the Jul-20 projection spec.
+        nonexp_calm3d: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -4542,7 +4546,7 @@ class TradingEngine:
         # Review I1: a spike fire must NEVER be claimed by a co-matching probe band
         # (the top-50 hook passes all probe kwargs computed from indicators) — a probe
         # cap block would silently drop a full-size fire as "book too full".
-        _probe_final_tag = None if (spike_chase_probe or spike_fade) else (("ADXMAX2_PROBE" if adxmax2_probe else
+        _probe_final_tag = None if (spike_chase_probe or spike_fade or nonexp_calm3d) else (("ADXMAX2_PROBE" if adxmax2_probe else
                             "DBDOWN_PROBE" if dbdown_probe else
                             ("ADXMAX_PROBE" if adxmax_probe else
                              ("GMINFLAT_PROBE" if gminflat_probe else
@@ -4866,7 +4870,7 @@ class TradingEngine:
                     logger.info(f"[W6_REENABLE] {pair}: W6-matched LONG ADMITTED — BTC 1h {_w6_1h:+.4f}% <= {_w6r}% AND stretch {entry_ema5_stretch:.3f} >= {_w6s} (dip+thrust; cell 1x)")
             except Exception:
                 _w6_admit = False
-        if direction == "LONG" and not flip_source and not bull_long and not bounce_long and not spike_chase_probe and not spike_fade and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e) and not _w2_admit and not _w6_admit:
+        if direction == "LONG" and not flip_source and not bull_long and not bounce_long and not spike_chase_probe and not spike_fade and not nonexp_calm3d and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e) and not _w2_admit and not _w6_admit:
             logger.info(f"[LONG_UNMATCHED_ONLY] {pair}: LONG blocked — matched a pattern (c_any={_pc_any_e}, w_any={_pw_any_e})")
             try:
                 self._record_filter_block("LONG_UNMATCHED_ONLY", "LONG")
@@ -4942,7 +4946,7 @@ class TradingEngine:
         # UNMATCHED-SHORT block would silently strangle every fade (new signature =
         # unmatched by construction), and any pattern fixed-TP/SL would pre-empt the
         # option-D stack (a +0.10 pattern TP amputates a +17 rider). Router owns spikes.
-        if spike_chase_probe or spike_fade:
+        if spike_chase_probe or spike_fade or nonexp_calm3d:
             _pcell_inv, _pcell_lev, _pcell_src = None, None, None
             _pcell_fixed_tp, _pcell_fixed_sl, _pcell_block = None, None, False
         # C1 SHORT breadth-scoped de-mux (Jun 28): the C1 capitulation-chase 2× only earns its
@@ -5223,7 +5227,7 @@ class TradingEngine:
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
         if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
              or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe) and direction in ("LONG", "SHORT")
-                and not flip_source and not bull_long and not bounce_long and not spike_chase_probe and not spike_fade):
+                and not flip_source and not bull_long and not bounce_long and not spike_chase_probe and not spike_fade and not nonexp_calm3d):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
@@ -5245,9 +5249,14 @@ class TradingEngine:
         # cells (same absolute-assign pattern as the probe block; a spike must never be
         # re-multiplied by UNMATCHED/quiet-boost). CHASE = Inv 2x/Lev 1x; FADE = Inv 1x/Lev 1x.
         # The 0.1% liquidity cap below is the TRUE governor (binds on every fire).
-        if spike_chase_probe or spike_fade:
+        if spike_chase_probe or spike_fade or nonexp_calm3d:
             _th_sp = config.trading_config.thresholds
-            if spike_fade:
+            if nonexp_calm3d:
+                # Jul 27 PM promotion: NONEXP_CALM3D cell (operator Inv 2x / Lev 1x)
+                cell_mult = max(0.1, float(getattr(_th_sp, 'nonexp_calm3d_invest_mult', 2.0) or 2.0))
+                cell_lev_mult = max(0.05, float(getattr(_th_sp, 'nonexp_calm3d_lev_mult', 1.0) or 1.0))
+                cell_src = "NONEXP_CALM3D"
+            elif spike_fade:
                 cell_mult = max(0.1, float(getattr(_th_sp, 'spike_fade_invest_mult', 1.0) or 1.0))
                 cell_lev_mult = max(0.05, float(getattr(_th_sp, 'spike_fade_lev_mult', 1.0) or 1.0))
                 cell_src = "SPIKE_FADE"
@@ -5256,7 +5265,7 @@ class TradingEngine:
                 cell_lev_mult = max(0.05, float(getattr(_th_sp, 'spike_lev_mult', 1.0) or 1.0))
                 cell_src = "SPIKE_CHASE"
             _mult_target = "both"
-            logger.info(f"[{cell_src}] {pair} {direction}: full-size spike open at inv={cell_mult}x lev={cell_lev_mult}x (0.1% liquidity cap governs)")
+            logger.info(f"[{cell_src}] {pair} {direction}: full-size open at inv={cell_mult}x lev={cell_lev_mult}x (0.1% liquidity cap governs)")
 
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
@@ -9594,7 +9603,16 @@ class TradingEngine:
                 # lesson: 0.0 config = deliberate off, None = unset → off).
                 _dbraw = getattr(_th, 'long_btc_1h_deadband', 0.0)
                 _db = 0.0 if _dbraw is None else float(_dbraw)
-                if signal == "LONG" and _db > 0 and abs(_current_btc_1h_slope) < _db:
+                # Jul 27 PROMOTION ③b (operator-ratified asymmetric split): the POSITIVE side
+                # narrows to long_btc_1h_deadband_pos (0.025) — the proven upper half
+                # [pos, _db) becomes NORMAL full-size flow (8·75%·+0.248 at ship). The
+                # NEGATIVE side keeps the full _db width (flat-down unproven; DBDOWN probe
+                # keeps collecting it). pos<=0 → legacy symmetric behavior.
+                _db_pos_raw = getattr(_th, 'long_btc_1h_deadband_pos', 0.0)
+                _db_pos = _db if (_db_pos_raw is None or float(_db_pos_raw) <= 0) else min(_db, float(_db_pos_raw))
+                _in_deadband = (_current_btc_1h_slope >= 0 and _current_btc_1h_slope < _db_pos) or \
+                               (_current_btc_1h_slope < 0 and _current_btc_1h_slope > -_db)
+                if signal == "LONG" and _db > 0 and _in_deadband:
                     # Jul 15 DEADBAND_PROBE (probe #5, operator-directed): HALF-OPEN test of the
                     # flat-UP side only. Phantom raw revert gate technically fired (24·63%) but
                     # the split says the halves differ: flat-up 14·79%·+0.284% (single-day,
@@ -9613,7 +9631,7 @@ class TradingEngine:
                         _dbdown_probe_hit = True
                         logger.info(f"[DBDOWN_PROBE] {pair}: LONG candidate (BTC 1h slope {_current_btc_1h_slope:+.4f}% in flat-down (−{_db}%,0)) — probing instead of blocking")
                     else:
-                        logger.info(f"[LONG_BTC1H_DEADBAND] {pair}: LONG blocked — |BTC 1h slope {_current_btc_1h_slope:+.4f}%| < {_db}% (flat hourly: no carry, DOA zone)")
+                        logger.info(f"[LONG_BTC1H_DEADBAND] {pair}: LONG blocked — BTC 1h slope {_current_btc_1h_slope:+.4f}% in dead-band (−{_db}%, +{_db_pos}%) (flat hourly: no carry, DOA zone)")
                         self._record_filter_block("LONG_BTC1H_DEADBAND", "LONG", had_room=_had_room)
                         self._last_pair_block_reason[pair] = "LONG_BTC1H_DEADBAND"
                         # revert surface: same-direction PASS phantom of the blocked LONG
@@ -9991,6 +10009,60 @@ class TradingEngine:
                     continue
                 entry_btc_regime = classify_btc_regime(btc_adx, btc_rsi, btc_ema20_slope_pct)
 
+                # ══ Jul 27 PROMOTION PACKAGE — engine-side admission router (LONG only).
+                # The ladder now falls gap-flat / flat+small / rsiadx-sole candidates through
+                # (probes OFF); this router either ADMITS them (full size) or RE-BLOCKS with
+                # the exact legacy counters. Fail-CLOSED: a router error blocks (old behavior)
+                # rather than admitting unchecked flow at full size.
+                _nonexp_calm3d_hit = False
+                if signal == "LONG" and not _spike_chase_hit and not _spike_fade_hit:
+                    _pp_block = None
+                    try:
+                        _th_pp = config.trading_config.thresholds
+                        _pp_gapflat = bool(gap_expand_flat(indicators, signal, _th_pp))
+                        _pp_gminflat = gminflat_band(indicators, signal, _th_pp) is True
+                        # Review I-2 + pass-2 IMPORTANT-1: per-CLASS probe gating, MOST-SPECIFIC
+                        # FIRST — gminflat ⊂ gapflat, so a flat+small candidate must be judged
+                        # by the GMINFLAT toggle alone (a re-enabled GMINFLAT probe owns its
+                        # class; the router must neither steal it at 2× nor starve it), and a
+                        # pure gap-flat candidate by the GAPFLAT toggle alone.
+                        if _pp_gminflat:
+                            _pp_route = not getattr(_th_pp, 'gminflat_probe_enabled', False)
+                        elif _pp_gapflat:
+                            _pp_route = not getattr(_th_pp, 'gap_probe_enabled', False)
+                        else:
+                            _pp_route = False
+                        if _pp_route:
+                            if getattr(_th_pp, 'nonexp_calm3d_enabled', False):
+                                _pp_regs = {x.strip() for x in (getattr(_th_pp, 'nonexp_calm3d_regimes', 'STRONG_BULL') or '').split(',') if x.strip()}
+                                _pp_atr_max = float(getattr(_th_pp, 'nonexp_calm3d_btc_atr_max', 0.147) or 0.147)
+                                _pp_batr = globals().get('_current_btc_atr_pct')
+                                if (entry_btc_regime in _pp_regs and _pp_batr is not None
+                                        and float(_pp_batr) <= _pp_atr_max):
+                                    _nonexp_calm3d_hit = True
+                                    logger.info(f"[NONEXP_CALM3D] {pair}: gap-{'flat' if _pp_gapflat else 'min[flat]'} LONG ADMITTED full-size — {entry_btc_regime} ∧ BTC-ATR {float(_pp_batr):.3f} <= {_pp_atr_max}")
+                                else:
+                                    _pp_block = "PAIR_EMA_GAP_NOT_EXPANDING" if _pp_gapflat else "PAIR_EMA_GAP_MIN"
+                            else:
+                                _pp_block = "PAIR_EMA_GAP_NOT_EXPANDING" if _pp_gapflat else "PAIR_EMA_GAP_MIN"
+                        # ② RSIADX breadth release — runs INDEPENDENTLY (a dual-class candidate
+                        # must pass BOTH admissions; calm3d passing must not skip this check).
+                        if (_pp_block is None
+                                and _rsi_adx_block_rule(signal, indicators.get('rsi'), indicators.get('adx'), _th_pp) is not None
+                                and not getattr(_th_pp, 'rsiadx_probe_enabled', False)):
+                            _pp_adm = float(getattr(_th_pp, 'rsiadx_breadth_admit_max', 0.0) or 0.0)
+                            if _pp_adm > 0 and _market_bull_pct is not None and _market_bull_pct <= _pp_adm:
+                                logger.info(f"[RSIADX_BREADTH_ADMIT] {pair}: cross-filter released — breadth {_market_bull_pct:.1f}% <= {_pp_adm} (inherits normal stack)")
+                            else:
+                                _pp_block = "PAIR_RSI_ADX_CROSS"
+                    except Exception as _pp_err:
+                        logger.error(f"[PROMO_ROUTER] {pair}: router error — fail-closed block: {_pp_err}")
+                        _pp_block = "PROMO_ROUTER_ERROR"  # review M-1: own counter, not a legacy mislabel
+                    if _pp_block is not None:
+                        self._record_filter_block(_pp_block, "LONG", had_room=_scan_had_room_snapshot)
+                        self._last_pair_block_reason[pair] = _pp_block
+                        continue
+
                 # Exploration Analytics (Apr 28) — observation-only fields
                 _entry_pos_di = indicators.get('pos_di')
                 _entry_neg_di = indicators.get('neg_di')
@@ -10151,6 +10223,8 @@ class TradingEngine:
                     # in the hook above); fade = the trigger's ADX>30 SHORT branch.
                     spike_chase_probe=bool(_spike_chase_hit),
                     spike_fade=bool(_spike_fade_hit),
+                    # Jul 27 PM promotion: NONEXP_CALM3D admission (engine router above)
+                    nonexp_calm3d=bool(_nonexp_calm3d_hit),
                 )
 
                 if order:

@@ -636,7 +636,10 @@ def get_signal(
                                        and not _gap_flat_long
                                        and ema_gap_pct >= float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)
                                        and not gap_threshold_met)
-            if _gap_flat_long and not _gap_probe_on:
+            # Jul 27 PROMOTION: gap-flat LONGs also fall through when the NONEXP_CALM3D
+            # admission is on (engine-side router admits SBULL∧calm at full size and
+            # RE-BLOCKS everything else — block semantics preserved, just relocated).
+            if _gap_flat_long and not _gap_probe_on and not getattr(th, 'nonexp_calm3d_enabled', False):
                 _l_fails.append("PAIR_EMA_GAP_NOT_EXPANDING")
             if ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                 _l_fails.append("PAIR_EMA_GAP_MAX")
@@ -651,12 +654,23 @@ def get_signal(
                     elif _gap_flat_long:
                         # Jul 20 GMINFLAT PROBE (probe #7): the flat+small cohort-purity class
                         # falls through when the probe is on (2,213 long soles = #1 dark zone).
-                        if not getattr(th, 'gminflat_probe_enabled', False):
+                        # Jul 27 PROMOTION: also falls through under NONEXP_CALM3D (engine router).
+                        if not (getattr(th, 'gminflat_probe_enabled', False)
+                                or getattr(th, 'nonexp_calm3d_enabled', False)):
                             _l_fails.append("PAIR_EMA_GAP_MIN[flat]")
                     else:
                         _l_fails.append("PAIR_EMA_GAP_MIN")
                 else:
-                    _l_fails.append("PAIR_EMA_GAP_MIN")
+                    # Jul 27 (review I-1): calm3d's flat+small fall-through must NOT depend on
+                    # the unrelated GAPMIN probe toggle — the day GAPMIN's verdict lands and it
+                    # turns off, the gminflat half of NONEXP_CALM3D would silently re-block here
+                    # (4th instance of the strangler class, pre-empted). <floor keeps blocking.
+                    _floor_l2 = float(getattr(th, 'gapmin_probe_floor', 0.02) or 0.02)
+                    if (getattr(th, 'nonexp_calm3d_enabled', False) and _gap_flat_long
+                            and ema_gap_pct is not None and ema_gap_pct >= _floor_l2):
+                        pass  # falls through to the engine router (admit or re-block)
+                    else:
+                        _l_fails.append("PAIR_EMA_GAP_MIN")
             _rx_rule_l = _rsi_adx_block_rule("LONG", rsi, adx, th)
             if _rx_rule_l:
                 # Sub-rule suffix feeds the Funnel v2 breakdown; legacy counter
@@ -667,9 +681,12 @@ def get_signal(
             # April evidence; measured 840 sole-blocked shorts = 66% of short soles in 2
             # uncensored days) falls through and, if it survives the last-mile + engine
             # gates, opens as a 1x RSIADX_PROBE. Gate blocks normally when the probe is off.
-            if (_l_fails and getattr(th, 'rsiadx_probe_enabled', False)
+            # Jul 27 PROMOTION: sole-blocked candidates also fall through when the breadth
+            # release is configured (engine router admits at breadth <= max, RE-BLOCKS above).
+            if (_l_fails and (getattr(th, 'rsiadx_probe_enabled', False)
+                              or float(getattr(th, 'rsiadx_breadth_admit_max', 0.0) or 0.0) > 0)
                     and all(f.startswith("PAIR_RSI_ADX_CROSS") for f in _l_fails)):
-                logger.info(f"[RSIADX_PROBE] LONG candidate ({_l_fails[0]}) — probing instead of blocking")
+                logger.debug(f"[RSIADX_RELEASE] LONG candidate ({_l_fails[0]}) — falling through to the engine router")
                 _l_fails = []
             if _l_fails:
                 logger.debug(f"[MOMENTUM] LONG skipped: {_l_fails[0]} (all fails: {_l_fails})")

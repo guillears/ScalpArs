@@ -284,7 +284,7 @@ class SignalThresholds(BaseModel):
     # (>=5 dates): WR>=60% & avg>=+0.15% -> relaxation discussion (slice [35-50:30] vs
     # [30-35:25] vs LONG rule at verdict); WR<=45% or avg<0 -> filter vindicated
     # (first evidence-grade validation since March), probe off.
-    rsiadx_probe_enabled: bool = True
+    rsiadx_probe_enabled: bool = False  # Jul 27 PM: verdict-closed/graduated (promotion package) — default matches ship state
     rsiadx_probe_max_open: int = 3       # concurrent RSIADX probes (shared across both directions)
     # Jul 20 — RSIADX·SHORT VERDICT EXECUTED (operator-directed early close at 20/30,
     # practically locked: 20·20%·−0.358% (Σ−7.16%) · 45% DOA · 4 dates — escape needs 10
@@ -305,7 +305,7 @@ class SignalThresholds(BaseModel):
     # blocking + seeding PASS phantoms. 🔒 Gates at N>=30 (>=5 dates):
     # WR>=60% & avg>=+0.15% -> promote the half-open to FULL sizing (uncap);
     # WR<=45% or avg<0 -> band re-closes, probe off.
-    deadband_probe_enabled: bool = True
+    deadband_probe_enabled: bool = False  # Jul 27 PM: verdict-closed/graduated (promotion package) — default matches ship state
     deadband_probe_max_open: int = 3     # concurrent DEADBAND probes (LONG-only by construction)
     # Jul 15 — RSICEIL PROBE (probe #6, operator-directed). The LONG RSI ceiling (65) was
     # last set May-4 (Phase-1c, PRE-UNMATCHED-only longs + old exit stack) and the zone
@@ -317,7 +317,7 @@ class SignalThresholds(BaseModel):
     # WR>=60% & avg>=+0.15% -> ceiling-raise discussion (65->70 full size);
     # WR<=45% or avg<0 -> ceiling vindicated, probe off. Verdict protocol applies
     # (slice 65-67 vs 67-70 x other probes' dimensions).
-    rsiceil_probe_enabled: bool = True
+    rsiceil_probe_enabled: bool = False  # Jul 27 PM: verdict-closed/graduated (promotion package) — default matches ship state
     rsiceil_probe_max_open: int = 3      # concurrent RSICEIL probes (LONG-only by construction)
     rsiceil_probe_ceiling: float = 70.0  # probe band upper bound: RSI in (momentum_long_rsi_max, this]
     # Jul 20 — SLOPEGATE·LONG VERDICT EXECUTED (✗ VINDICATED, closed at 27/30 with the avg
@@ -336,7 +336,7 @@ class SignalThresholds(BaseModel):
     # gap_probe_enabled (GAPFLAT) AND gapmin_probe_enabled are True — switching either off
     # (e.g. executing their verdicts) silently starves this probe to zero flow (candidates
     # stay safely blocked; nothing admits untagged). Re-check this flag at those verdicts.
-    gminflat_probe_enabled: bool = True
+    gminflat_probe_enabled: bool = False  # Jul 27 PM: verdict-closed/graduated (promotion package) — default matches ship state
     gminflat_probe_max_open: int = 3     # concurrent GMINFLAT probes (both directions combined)
     # Jul 20 — ADXMAX PROBE (probe #8, operator-directed; RSICEIL-clone). The pair-ADX
     # ceiling (L30/S35) is an old calibration with a DARK zone above it; Funnel v2 shows
@@ -358,7 +358,7 @@ class SignalThresholds(BaseModel):
     # ADXMAX·L first rung 3/3 W early) and >35 is fully dark for LONGs; theory two-sided
     # (very strong trend vs late/exhausted trend) — measure, don't assume. If the first
     # rung lands ✗ the gradient thesis dies and this band's tuition is accepted moot cost.
-    adxmax2_probe_enabled: bool = True
+    adxmax2_probe_enabled: bool = False  # Jul 27 PM: verdict-closed/graduated (promotion package) — default matches ship state
     adxmax2_probe_max_open: int = 3           # concurrent ADXMAX2 probes (LONG-only)
     adxmax2_probe_ceiling_long: float = 40.0  # LONG band 2: ADX in (adxmax_probe_ceiling_long, this]
     # Jul 24 SPIKE_CHASE probe (#11, LONG-only, operator-directed): NEW ENTRY CLASS — chase a
@@ -431,6 +431,28 @@ class SignalThresholds(BaseModel):
                                "32.5:12.7,35:13.7,37.5:14.6,40:15.6")
     spike_no_expansion_exempt_armed: bool = True  # ZEREBRO: armed +66min, 3h clock closed a +3.47
                                                   # ride at -0.09; unarmed zombies KEEP the sweep
+    # ══ Jul 27 PM — PROMOTION PACKAGE (operator-directed, discipline-override at N=9/8/8/5
+    # acknowledged; tight revert gates in CURRENT_STATE). Five probe verdicts executed early:
+    # NONEXP conditional admission + RSIADX breadth release + DEADBAND pos-half open +
+    # RSICEIL 65->70 + ADXMAX2 off.
+    # ① NONEXP_CALM3D: gap-flat / flat+small LONG candidates admitted at FULL SIZE when
+    # BTC regime is in the list AND BTC ATR <= max (pooled cohort 9·77.8%·+0.213 at ship;
+    # pre-registered branch-(b) decider; bypasses keep-only-unmatched per the Jul-20 spec).
+    nonexp_calm3d_enabled: bool = True
+    nonexp_calm3d_btc_atr_max: float = 0.147      # Jul-23 sweep #1 2D separator (calm-BTC)
+    nonexp_calm3d_regimes: str = "STRONG_BULL"    # comma list; the SBULL cell is the evidence
+    nonexp_calm3d_invest_mult: float = 2.0        # operator sizing (patron: Inv 2x / Lev 1x)
+    nonexp_calm3d_lev_mult: float = 1.0
+    # ② RSIADX breadth release: the Mar-27 RSI x ADX cross-filter releases a sole-blocked
+    # LONG when market breadth (bull%) <= this — candidate flows the NORMAL pipeline and
+    # inherits the UNMATCHED patron (2x / PVR ladder). Cohort at ship: 8·87.5%·+0.326.
+    # 0 = off. Cohort reconstruction = CSV slice (cross-filter bands ∧ entry_bull_pct).
+    rsiadx_breadth_admit_max: float = 63.6
+    # ③ DEADBAND asymmetric split (operator-ratified option b): POSITIVE side opens
+    # [pos, old-band) as normal flow (upper half 8·75%·+0.248 at ship); NEGATIVE side keeps
+    # the full long_btc_1h_deadband width (flat-down unproven — DBDOWN probe keeps collecting).
+    long_btc_1h_deadband_pos: float = 0.025       # block LONG when 1h slope in [0, this); neg side
+                                                  # uses long_btc_1h_deadband (0.05) unchanged
     # Jul 20 — DBDOWN PROBE (probe #9, operator-directed): the FLAT-DOWN half of the 1h
     # dead-band, [−deadband, 0). The Jul-5 gate's locked phantom revert FIRED (95·60.0%·
     # +0.100%, 7 dates; fresh flat-down >=Jul-17: 51·65%·+0.154% meets BOTH arms; H.BULL

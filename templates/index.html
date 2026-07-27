@@ -18071,7 +18071,7 @@
                     return;
                 }
                 
-                tbody.innerHTML = data.map(p => {
+                let _rowsHtml = data.map(p => {
                     const signalClass = p.signal === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 
                                        p.signal === 'SHORT' ? 'bg-red-500/20 text-red-400' : 
                                        'bg-yellow-500/20 text-yellow-400';
@@ -18164,6 +18164,7 @@
                         </tr>
                     `;
                 }).join('');
+                _setHTMLIfChanged(tbody, _rowsHtml);
                 
                 // Update BTC regime badge
                 let btcRegime = null;
@@ -18318,7 +18319,7 @@
                     return;
                 }
                 
-                tbody.innerHTML = data.map(t => {
+                let _rowsHtml = data.map(t => {
                     const actionClass = t.action.includes('LONG') ? 'text-emerald-400' : 'text-red-400';
                     const confClass = getConfidenceClass(t.confidence);
                     const ot = t.order_type || 'TAKER';
@@ -18342,12 +18343,22 @@
                         </tr>
                     `;
                 }).join('');
+                _setHTMLIfChanged(tbody, _rowsHtml);
             } catch (e) {
                 console.error('Error loading transactions:', e);
             }
         }
 
         // Load open orders
+        // Jul 27: dashboard memory fix — only touch the DOM when the rendered HTML actually
+        // changed. Idle refresh cycles were rebuilding every large table via innerHTML each
+        // tick (closed-orders full history every 10s, open orders every 1s), churning DOM
+        // nodes until Chrome killed the tab ("Aw, Snap" code 5). String-compare gate = same
+        // visuals, near-zero DOM churn when nothing changed. Display-only; no trading logic.
+        function _setHTMLIfChanged(el, html) {
+            if (el && el._lastHTML !== html) { el._lastHTML = html; el.innerHTML = html; }
+        }
+        let _closedShowAll = false;  // closed-orders table renders latest 200 until expanded
         async function loadOpenOrders() {
             try {
                 const res = await fetch(`${API_BASE}/api/orders/open`);
@@ -18356,11 +18367,11 @@
                 const tbody = document.getElementById('open-orders-table-body');
                 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="19" class="px-4 py-8 text-center text-gray-500">No open orders</td></tr>';
+                    _setHTMLIfChanged(tbody, '<tr><td colspan="19" class="px-4 py-8 text-center text-gray-500">No open orders</td></tr>');
                     return;
                 }
                 
-                tbody.innerHTML = data.map(o => {
+                let _rowsHtml = data.map(o => {
                     const dirClass = o.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                     const pnlClass = o.pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                     const confClass = getConfidenceClass(o.confidence);
@@ -18531,6 +18542,7 @@
                         </tr>
                     `;
                 }).join('');
+                _setHTMLIfChanged(tbody, _rowsHtml);
             } catch (e) {
                 console.error('Error loading open orders:', e);
             }
@@ -18551,11 +18563,13 @@
                 const tbody = document.getElementById('closed-orders-table-body');
                 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="19" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>';
+                    _setHTMLIfChanged(tbody, '<tr><td colspan="19" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>');
                     return;
                 }
                 
-                tbody.innerHTML = data.map(o => {
+                const _renderData = _closedShowAll ? data : data.slice(0, 200);
+                const _hiddenN = data.length - _renderData.length;
+                let _rowsHtml = _renderData.map(o => {
                     const dirClass = o.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                     const pnlClass = o.pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                     const confClass = getConfidenceClass(o.confidence);
@@ -18654,6 +18668,8 @@
                         </tr>
                     `;
                 }).join('');
+                if (_hiddenN > 0) _rowsHtml += '<tr><td colspan="19" class="px-4 py-3 text-center"><button class="text-xs text-sky-400 hover:text-sky-300 underline" onclick="_closedShowAll=true; loadClosedOrders()">Show all ' + data.length + ' closed orders (' + _hiddenN + ' older hidden)</button></td></tr>';
+                _setHTMLIfChanged(tbody, _rowsHtml);
             } catch (e) {
                 console.error('Error loading closed orders:', e);
             }

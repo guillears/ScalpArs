@@ -10922,7 +10922,13 @@ def _compute_gap_probe_cohort(orders):
         dates = len({(getattr(o, 'opened_at', None) or datetime.min).strftime('%Y-%m-%d')
                      for o in rs if getattr(o, 'opened_at', None)})
         verdict = ""
-        if _off:
+        if cohort.startswith("SPIKE_CHASE"):
+            # Jul 27: the spike probe GRADUATED to the full 🚀 program (strategy=SPIKE_CHASE/
+            # SPIKE_FADE, own Spike Fires table). This row = the frozen probe-era cohort;
+            # spike_chase_probe_enabled stays ON as the program's master trigger switch,
+            # so the generic enabled/building labels would mislead here.
+            verdict = f"🚀 GRADUATED → full ship Jul-27 (probe-era cohort frozen at {n}; live fires → Spike Fires table)"
+        elif _off:
             # Verdict executed / dependency down — N frozen at the evidence the decision used.
             verdict = f"✗ OFF — verdict executed ({n}/30)"
         elif not cohort.startswith("EXPANDING"):

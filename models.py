@@ -220,6 +220,14 @@ class Order(Base):
     # missing metadata). Rides the orders CSV via column introspection.
     entry_pair_age_days = Column(Float, nullable=True)
 
+    # Jul 27 🚀 SPIKE full ship — option-D L2 state (SPIKE_CHASE longs).
+    # spike_rsi_max = running maximum of 5m RSI(12) since entry (the RSI-cool exit
+    # anchor: exit at rsi <= max − drop). spike_armed = RSI crossed the arm threshold
+    # (>=75): switches L3 floors tight→wide envelope + exempts NO_EXPANSION. Both ride
+    # the orders CSV via column introspection (read instruments for the N>=30 verdicts).
+    spike_rsi_max = Column(Float, nullable=True)
+    spike_armed = Column(Boolean, default=False)
+
     # Liquidity-aware sizing observability (Jun 2, 2026 — see CLAUDE.md).
     # entry_desired_notional       = notional the order WOULD have opened at pre-cap (investment×leverage).
     # entry_liquidity_cap_notional = the ① per-pair liquidity cap value (_liq_cap); NULL if ① not configured.

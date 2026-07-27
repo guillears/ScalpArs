@@ -4317,6 +4317,36 @@
                     </div>
                 </div>
 
+                <!-- 🚀 Spike Fires (Jul 27, 2026 — full-ship per-fire read instrument) -->
+                <div class="mt-6 pt-6 border-t border-orange-900/40">
+                    <h3 class="text-sm font-semibold text-orange-300 mb-1">🚀 Spike Fires (per-fire — CHASE + FADE, both eras)</h3>
+                    <p class="text-xs text-gray-500 mb-3">One row per trigger fire (~1/day tail-weighted cohort: every fire is individually load-bearing). Separator columns feed the locked N≥30 verdicts: <strong>ADX</strong> (leg 6, shipped) · <strong>ATR%</strong> (leg-7 candidate, promote at 3 low-ATR failures) · <strong>Regime</strong> (leg-8 candidate, 3 non-bullish dates gate) · RngPos (observation). Exit column shows which option-D layer closed it (SPIKE_SL / SPIKE_FLOOR / SPIKE_RSI_COOL) or the fade's standard-stack reason. PROBE-era rows = pre-ship fires at probe sizing.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-2 py-1 text-left">Time</th>
+                                    <th class="px-2 py-1 text-left">Pair</th>
+                                    <th class="px-2 py-1 text-left">Species</th>
+                                    <th class="px-2 py-1 text-right">ADX</th>
+                                    <th class="px-2 py-1 text-right">ATR%</th>
+                                    <th class="px-2 py-1 text-right">RngPos</th>
+                                    <th class="px-2 py-1 text-left">Regime</th>
+                                    <th class="px-2 py-1 text-right">Peak%</th>
+                                    <th class="px-2 py-1 text-right">RSImax</th>
+                                    <th class="px-2 py-1 text-center">Armed</th>
+                                    <th class="px-2 py-1 text-left">Exit</th>
+                                    <th class="px-2 py-1 text-right">P&L %</th>
+                                    <th class="px-2 py-1 text-right">P&L $</th>
+                                </tr>
+                            </thead>
+                            <tbody id="spike-fires-body" class="divide-y divide-white/5">
+                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No spike fires in this window</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Performance by Pair Listing Age (Jul 13, 2026) — 180->90 new-listing step-down read gate -->
                 <div class="mt-6 pt-6 border-t border-cyan-900/40">
                     <h3 class="text-sm font-semibold text-cyan-300 mb-1">🐣 Performance by Pair Listing Age (days since Binance onboardDate)</h3>
@@ -5279,6 +5309,51 @@
                                 <span class="text-xs text-gray-500">(crowded entry → sized down to these; ratio 0 = off; ship 0.90 / 1.0 / 1.0; sub-1× allowed — the PVR≥0.93 read may earn it; ≤0 coerced to 1.0)</span>
                             </div>
                         </div>
+                            <!-- 🚀 SPIKE FULL SHIP (Jul 27, 2026 — operator one-ship: both species full size) -->
+                            <div class="md:col-span-2 border border-orange-500/30 rounded-lg py-2 px-3 bg-orange-500/5">
+                                <span class="text-sm font-semibold text-orange-300">🚀 Spike Full Ship — CHASE (long) + FADE (short)</span>
+                                <p class="text-xs text-gray-500 mb-1">Trigger legs 1-5 fire → pair ADX routes the direction (leg 6): ≤ MaxADX → SPIKE_CHASE LONG (option-D 3-layer exit) · &gt; MaxADX → SPIKE_FADE SHORT (fixed SL, standard short stack). Full size both; 0.1% liquidity cap governs. Legs 1-5 + scanner configured in the probe fleet block above.</p>
+                                <div class="flex items-center gap-5 mt-1 flex-wrap">
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="LEG 6 router cut (Jul 27): 10/10 lifetime — riders all fired at ADX ≤20.2, duds all ≥29.6 (RSI-leads-ADX clock: spike+low ADX = fresh ignition, spike+high ADX = mature blowoff). ≤ this → LONG chase; above → SHORT fade.">Max ADX (route)
+                                        <input type="number" step="1" id="config-spike-chase-max-adx" class="w-14 bg-white/5 border border-orange-500/40 rounded px-2 py-1 text-orange-200 text-center" value="30"></label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="CHASE sizing patron (Jul 27 operator: 2×). Invest multiplier on the equal-split base.">Chase Inv Mult
+                                        <input type="number" step="0.1" id="config-spike-invest-mult" class="w-14 bg-white/5 border border-orange-500/40 rounded px-2 py-1 text-orange-200 text-center" value="2.0"></label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="CHASE leverage multiplier (1.0 = confidence base 20x).">Chase Lev Mult
+                                        <input type="number" step="0.1" id="config-spike-lev-mult" class="w-14 bg-white/5 border border-orange-500/40 rounded px-2 py-1 text-orange-200 text-center" value="1.0"></label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="OPTION-D L1: fixed SL for spike longs — NOT ATR-derived. −0.70 kills two documented winner-breaths (MIRA-1 wicked −0.71 → +17.4; SWARMS −0.75 → +0.91); dud premium ~0.5pp/fire accepted.">Chase SL %
+                                        <input type="number" step="0.1" id="config-spike-sl-pct" class="w-16 bg-white/5 border border-orange-500/40 rounded px-2 py-1 text-orange-200 text-center" value="-1.2"></label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="OPTION-D L2 arm: trade arms when 5m RSI(12) ≥ this after entry (pump confirmed → RSI-cool exit takes over + floors switch to the wide envelope + NO_EXPANSION exempt).">RSI Arm ≥
+                                        <input type="number" step="1" id="config-spike-rsi-cool-arm" class="w-14 bg-white/5 border border-orange-500/40 rounded px-2 py-1 text-orange-200 text-center" value="75"></label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="OPTION-D L2 exit: close when RSI ≤ ride-max − this (RELATIVE — pumps pin 82-98; −8..−12 plateau robust). Banks winners near the top (PEOPLE +3.5) AND cuts failed pumps early (RECALL −0.27 vs −0.69 SL).">RSI Drop
+                                        <input type="number" step="1" id="config-spike-rsi-cool-drop" class="w-14 bg-white/5 border border-orange-500/40 rounded px-2 py-1 text-orange-200 text-center" value="10"></label>
+                                </div>
+                                <div class="flex items-center gap-5 mt-2 flex-wrap">
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="OPTION-D L3 floors, UNARMED state (RSI never hit arm): tight normal rungs, trigger:offset (floor = trigger − offset). SWARMS live proof (+1.25 rung → +1.0 floor).">Unarmed Ladder
+                                        <input type="text" id="config-spike-ladder-unarmed" class="w-64 bg-white/5 border border-orange-500/40 rounded px-2 py-1 text-orange-200 text-xs" value="1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80"></label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="OPTION-D L3 floors, ARMED state: the 27-rung MIRA breathing envelope (trigger:offset) — wide so floors never amputate a breathing ride; only a knife-through collapse hits them.">Armed Ladder
+                                        <input type="text" id="config-spike-ladder-armed" class="w-96 bg-white/5 border border-orange-500/40 rounded px-2 py-1 text-orange-200 text-xs"></label>
+                                    <label class="relative inline-flex items-center cursor-pointer" title="NO_EXPANSION exemption WHILE ARMED only — a confirmed pump is never clock-killed (ZEREBRO armed +66min; the 3h clock closed a +3.47 ride at −0.09). Unarmed zombie spikes keep the 3h sweep.">
+                                        <input type="checkbox" id="config-spike-noexp-exempt" class="sr-only peer">
+                                        <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600"></div>
+                                        <span class="ml-2 text-xs text-orange-300">NO_EXP exempt (armed)</span>
+                                    </label>
+                                </div>
+                                <div class="flex items-center gap-5 mt-2 flex-wrap">
+                                    <label class="relative inline-flex items-center cursor-pointer" title="SPIKE_FADE master toggle (Jul 27): trigger + ADX > MaxADX → SHORT the blowoff. 4/4 backtest (avg +0.31, max adverse +0.49). AUTO-TRIPWIRE: any fade closing ≤ Tripwire% self-disables this toggle (gap-through-the-stop = squeeze signature).">
+                                        <input type="checkbox" id="config-spike-fade-enabled" class="sr-only peer">
+                                        <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-rose-600"></div>
+                                        <span class="ml-2 text-sm text-rose-300">SPIKE_FADE (counter-spike short)</span>
+                                    </label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="FADE sizing patron (Jul 27 operator: 1×).">Fade Inv Mult
+                                        <input type="number" step="0.1" id="config-spike-fade-invest-mult" class="w-14 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="1.0"></label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="FADE leverage multiplier (1.0 = base 20x).">Fade Lev Mult
+                                        <input type="number" step="0.1" id="config-spike-fade-lev-mult" class="w-14 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="1.0"></label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="FADE fixed SL — NO ATR widening (high-ATR pumpers would widen to −1.2 and double squeeze exposure). Max adverse seen on the blocked class: +0.49.">Fade SL %
+                                        <input type="number" step="0.05" id="config-spike-fade-sl-pct" class="w-16 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="-0.70"></label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="AUTO-TRIPWIRE: a fade closing ≤ this means price GAPPED THROUGH the monitored stop (squeeze / stop-failure — should never fire on clean paper fills). Engine flips the fade toggle OFF + CRITICAL log; re-enable manually after investigation.">Tripwire %
+                                        <input type="number" step="0.1" id="config-spike-fade-tripwire-pct" class="w-16 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="-1.5"></label>
+                                </div>
+                            </div>
                         <div class="md:col-span-2 border border-cyan-500/20 rounded p-2">
                             <label class="block text-sm text-cyan-300 mb-2">🏃 Runner Stretch-Trail (LONG) <span class="text-xs text-gray-400 font-normal">(Jun 1 — high-ATR runner exit; OFF → runners use normal tight trailing)</span></label>
                             <div class="flex items-center gap-3 flex-wrap">
@@ -9695,6 +9770,15 @@
                 }
             }
 
+            if (perf.spike_fires && perf.spike_fires.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## 🚀 Spike Fires (per-fire — CHASE + FADE, both eras; Jul 27 full ship)\n');
+                lines.push(`${'Time'.padEnd(17)} ${'Pair'.padEnd(14)} ${'Species'.padEnd(12)} ${'ADX'.padStart(6)} ${'ATR%'.padStart(6)} ${'Rng'.padStart(4)} ${'Regime'.padEnd(8)} ${'Peak%'.padStart(7)} ${'RSImx'.padStart(6)} ${'Arm'.padEnd(4)} ${'Exit'.padEnd(18)} ${'P&L%'.padStart(7)} ${'P&L$'.padStart(9)}`);
+                for (const r of perf.spike_fires) {
+                    lines.push(`${(r.opened_at || '').slice(5, 16).padEnd(17)} ${(r.pair || '').padEnd(14)} ${((r.species || '') + (r.direction === 'SHORT' ? '·S' : '')).padEnd(12)} ${(r.adx != null ? r.adx.toFixed(1) : '-').padStart(6)} ${(r.atr_pct != null ? r.atr_pct.toFixed(2) : '-').padStart(6)} ${(r.rngpos != null ? r.rngpos.toFixed(0) : '-').padStart(4)} ${(r.btc_regime || '-').padEnd(8)} ${(r.peak_pnl != null ? ((r.peak_pnl >= 0 ? '+' : '') + r.peak_pnl.toFixed(2)) : '-').padStart(7)} ${(r.spike_rsi_max != null ? r.spike_rsi_max.toFixed(0) : '-').padStart(6)} ${(r.armed ? 'Y' : '·').padEnd(4)} ${(r.close_reason || 'OPEN').padEnd(18)} ${(r.pnl_pct != null ? ((r.pnl_pct >= 0 ? '+' : '') + r.pnl_pct.toFixed(2)) : '-').padStart(7)} ${(r.pnl_usd != null ? '$' + r.pnl_usd.toFixed(2) : '-').padStart(9)}`);
+                }
+            }
+
             if (perf.pair_age_performance && perf.pair_age_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Pair Listing Age (days since onboardDate — Jul 13, 180->90 read gate)\n');
@@ -10181,8 +10265,9 @@
             lines.push(`  GMINFLAT Probe (Jul 20): ${th.gminflat_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.gminflat_probe_max_open !== undefined ? th.gminflat_probe_max_open : 3}  (flat+small purity class — PAIR_EMA_GAP_MIN[flat], #1 long dark zone 2,213 soles — opens as 1x GMINFLAT_PROBE, BOTH directions)`);
             lines.push(`  ADXMAX Probe (Jul 20): ${th.adxmax_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.adxmax_probe_max_open !== undefined ? th.adxmax_probe_max_open : 3}  |  Ceiling L: ${th.adxmax_probe_ceiling_long ?? 35}  S: ${th.adxmax_probe_ceiling_short ?? 40}  (pair-ADX in (per-side max, ceiling] opens as 1x ADXMAX_PROBE; above ceiling stays blocked)`);
             lines.push(`  ADXMAX2 Probe (Jul 21): ${th.adxmax2_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.adxmax2_probe_max_open !== undefined ? th.adxmax2_probe_max_open : 3}  |  Band L: (${th.adxmax_probe_ceiling_long ?? 35}, ${th.adxmax2_probe_ceiling_long ?? 40}]  (LONG-only second ADX rung, 1x ADXMAX2_PROBE; parallel cohort, independent verdict)`);
-            lines.push(`  SPIKE_CHASE Probe (Jul 24): ${th.spike_chase_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.spike_chase_probe_max_open !== undefined ? th.spike_chase_probe_max_open : 3}  |  Trigger: RSI jump >= ${th.spike_chase_probe_rsi_jump ?? 25} pts in one 5m candle with prev RSI in [${th.spike_chase_probe_rsi_prev_min ?? 35}, ${th.spike_chase_probe_rsi_prev_max ?? 55}], candle move >= +${th.spike_chase_probe_min_candle_pct ?? 0.5}% and candle vol >= ${th.spike_chase_probe_min_vol_ratio ?? 5}x avg20  (LONG-only ladder-BYPASS chase, 1x SPIKE_CHASE_PROBE; fires only when no normal signal; right-tail read at N>=30 weights avg over WR)`);
+            lines.push(`  SPIKE_CHASE Probe (Jul 24): ${th.spike_chase_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.spike_chase_probe_max_open !== undefined ? th.spike_chase_probe_max_open : 3}  |  Trigger: RSI jump >= ${th.spike_chase_probe_rsi_jump ?? 25} pts in one 5m candle with prev RSI in [${th.spike_chase_probe_rsi_prev_min ?? 35}, ${th.spike_chase_probe_rsi_prev_max ?? 55}], candle move >= +${th.spike_chase_probe_min_candle_pct ?? 0.5}% and candle vol >= ${th.spike_chase_probe_min_vol_ratio ?? 5}x avg20  (ladder-BYPASS trigger legs 1-5; fires only when no normal signal; PROMOTED TO FULL SIZE Jul-27 — direction + sizing on the 🚀 line below; right-tail read at N>=30 weights avg over WR)`);
             lines.push(`  Full-Universe Spike Scanner (Jul 24 PM): ${th.spike_scanner_enabled === true ? 'ON' : 'OFF'}  |  Min Vol: $${((th.spike_scanner_min_vol_usd ?? 1e6)/1e6).toFixed(1)}M  |  Universe: top ${th.spike_scanner_max_pairs ?? 400} eligible perps  (extended pairs get ONLY the spike door -> same SPIKE_CHASE probe cohort; REVERT = toggle OFF, zero engineering risk)`);
+            lines.push(`  🚀 Spike Full Ship (Jul 27): ROUTE MaxADX=${th.spike_chase_max_adx ?? 30} (<= -> CHASE LONG Inv ${th.spike_invest_mult ?? 2}x/Lev ${th.spike_lev_mult ?? 1}x, option-D: SL ${th.spike_sl_pct ?? -1.2}% fixed / RSI-cool arm>=${th.spike_rsi_cool_arm ?? 75} exit at max-${th.spike_rsi_cool_drop ?? 10} / floors unarmed [${th.spike_ladder_unarmed ?? ''}] armed [27-rung envelope] / NO_EXP exempt armed: ${th.spike_no_expansion_exempt_armed === true ? 'ON' : 'OFF'})  |  FADE: ${th.spike_fade_enabled === true ? 'ON' : 'OFF (check tripwire!)'} SHORT Inv ${th.spike_fade_invest_mult ?? 1}x/Lev ${th.spike_fade_lev_mult ?? 1}x, fixed SL ${th.spike_fade_sl_pct ?? -0.7}% NO widen, tripwire ${th.spike_fade_tripwire_pct ?? -1.5}% auto-disables`);
             lines.push(`  DBDOWN Probe (Jul 20): ${th.dbdown_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.dbdown_probe_max_open !== undefined ? th.dbdown_probe_max_open : 3}  (1h flat-DOWN half-band [-0.05,0) opens as 1x DBDOWN_PROBE — graduated execution of the FIRED deadband phantom revert gate)`);
 
             const inv = cfg.investment || {};
@@ -11946,6 +12031,15 @@
                         const dir = `${r.n_long}L/${r.n_short}S`;
                         const av = r.avg_volume_usd != null ? '$' + (r.avg_volume_usd/1e6).toFixed(0) + 'M' : '-';
                         lines.push(`${r.bucket.padEnd(8)} ${String(r.n).padEnd(4)} ${dir.padEnd(8)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${av.padStart(9)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                    }
+                }
+
+                if (perf.spike_fires && perf.spike_fires.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## 🚀 Spike Fires (per-fire — CHASE + FADE, both eras; Jul 27 full ship)\n');
+                    lines.push(`${'Time'.padEnd(17)} ${'Pair'.padEnd(14)} ${'Species'.padEnd(12)} ${'ADX'.padStart(6)} ${'ATR%'.padStart(6)} ${'Rng'.padStart(4)} ${'Regime'.padEnd(8)} ${'Peak%'.padStart(7)} ${'RSImx'.padStart(6)} ${'Arm'.padEnd(4)} ${'Exit'.padEnd(18)} ${'P&L%'.padStart(7)} ${'P&L$'.padStart(9)}`);
+                    for (const r of perf.spike_fires) {
+                        lines.push(`${(r.opened_at || '').slice(5, 16).padEnd(17)} ${(r.pair || '').padEnd(14)} ${((r.species || '') + (r.direction === 'SHORT' ? '·S' : '')).padEnd(12)} ${(r.adx != null ? r.adx.toFixed(1) : '-').padStart(6)} ${(r.atr_pct != null ? r.atr_pct.toFixed(2) : '-').padStart(6)} ${(r.rngpos != null ? r.rngpos.toFixed(0) : '-').padStart(4)} ${(r.btc_regime || '-').padEnd(8)} ${(r.peak_pnl != null ? ((r.peak_pnl >= 0 ? '+' : '') + r.peak_pnl.toFixed(2)) : '-').padStart(7)} ${(r.spike_rsi_max != null ? r.spike_rsi_max.toFixed(0) : '-').padStart(6)} ${(r.armed ? 'Y' : '·').padEnd(4)} ${(r.close_reason || 'OPEN').padEnd(18)} ${(r.pnl_pct != null ? ((r.pnl_pct >= 0 ? '+' : '') + r.pnl_pct.toFixed(2)) : '-').padStart(7)} ${(r.pnl_usd != null ? '$' + r.pnl_usd.toFixed(2) : '-').padStart(9)}`);
                     }
                 }
 
@@ -17539,6 +17633,34 @@
                         prBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No rank data yet (only entries after the Jun-12 deploy carry a rank)</td></tr>';
                     }
                 }
+                // 🚀 Spike Fires per-fire table (Jul 27 full ship)
+                const spfBody = document.getElementById('spike-fires-body');
+                if (spfBody) {
+                    if (data.spike_fires && data.spike_fires.length > 0) {
+                        spfBody.innerHTML = data.spike_fires.map(r => {
+                            const pnlCls = (r.pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const spCls = r.species === 'SPIKE_FADE' ? 'text-rose-300' : (r.species === 'SPIKE_CHASE' ? 'text-orange-300' : 'text-gray-400');
+                            const t = r.opened_at ? new Date(r.opened_at + (r.opened_at.endsWith('Z') ? '' : 'Z')).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 text-gray-400">${t}</td>
+                                <td class="px-2 py-1.5 text-gray-200 font-medium">${r.pair || ''}</td>
+                                <td class="px-2 py-1.5 ${spCls}">${r.species || ''}${r.direction === 'SHORT' ? ' ·S' : ''}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.adx != null ? r.adx.toFixed(1) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.atr_pct != null ? r.atr_pct.toFixed(2) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.rngpos != null ? r.rngpos.toFixed(0) : '—'}</td>
+                                <td class="px-2 py-1.5 text-gray-400">${r.btc_regime || '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.peak_pnl != null ? ((r.peak_pnl >= 0 ? '+' : '') + r.peak_pnl.toFixed(2)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.spike_rsi_max != null ? r.spike_rsi_max.toFixed(0) : '—'}</td>
+                                <td class="px-2 py-1.5 text-center">${r.armed ? '<span class="text-orange-400">⚡</span>' : '<span class="text-gray-600">·</span>'}</td>
+                                <td class="px-2 py-1.5 text-gray-400">${r.close_reason || 'OPEN'}</td>
+                                <td class="px-2 py-1.5 text-right ${pnlCls}">${r.pnl_pct != null ? ((r.pnl_pct >= 0 ? '+' : '') + r.pnl_pct.toFixed(2) + '%') : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${pnlCls} font-bold">${r.pnl_usd != null ? '$' + r.pnl_usd.toFixed(2) : '—'}</td>
+                            </tr>`;
+                        }).join('');
+                    } else {
+                        spfBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No spike fires in this window</td></tr>';
+                    }
+                }
                 // Performance by Pair Listing Age (Jul 13 — 180->90 step-down read gate)
                 const paBody = document.getElementById('pair-age-perf-body');
                 if (paBody) {
@@ -19344,6 +19466,21 @@
                 { const _e=document.getElementById('config-spike-chase-probe-min-candle-pct'); if(_e && config.thresholds.spike_chase_probe_min_candle_pct !== undefined) _e.value = config.thresholds.spike_chase_probe_min_candle_pct; }
                 { const _e=document.getElementById('config-spike-chase-probe-rsi-prev-min'); if(_e && config.thresholds.spike_chase_probe_rsi_prev_min !== undefined) _e.value = config.thresholds.spike_chase_probe_rsi_prev_min; }
                 { const _e=document.getElementById('config-spike-chase-probe-min-vol-ratio'); if(_e && config.thresholds.spike_chase_probe_min_vol_ratio !== undefined) _e.value = config.thresholds.spike_chase_probe_min_vol_ratio; }
+                // 🚀 Jul 27 Spike Full Ship (D11 load handlers)
+                { const _e=document.getElementById('config-spike-chase-max-adx'); if(_e && config.thresholds.spike_chase_max_adx !== undefined) _e.value = config.thresholds.spike_chase_max_adx; }
+                { const _e=document.getElementById('config-spike-invest-mult'); if(_e && config.thresholds.spike_invest_mult !== undefined) _e.value = config.thresholds.spike_invest_mult; }
+                { const _e=document.getElementById('config-spike-lev-mult'); if(_e && config.thresholds.spike_lev_mult !== undefined) _e.value = config.thresholds.spike_lev_mult; }
+                { const _e=document.getElementById('config-spike-sl-pct'); if(_e && config.thresholds.spike_sl_pct !== undefined) _e.value = config.thresholds.spike_sl_pct; }
+                { const _e=document.getElementById('config-spike-rsi-cool-arm'); if(_e && config.thresholds.spike_rsi_cool_arm !== undefined) _e.value = config.thresholds.spike_rsi_cool_arm; }
+                { const _e=document.getElementById('config-spike-rsi-cool-drop'); if(_e && config.thresholds.spike_rsi_cool_drop !== undefined) _e.value = config.thresholds.spike_rsi_cool_drop; }
+                { const _e=document.getElementById('config-spike-ladder-unarmed'); if(_e && config.thresholds.spike_ladder_unarmed !== undefined) _e.value = config.thresholds.spike_ladder_unarmed; }
+                { const _e=document.getElementById('config-spike-ladder-armed'); if(_e && config.thresholds.spike_ladder_armed !== undefined) _e.value = config.thresholds.spike_ladder_armed; }
+                { const _e=document.getElementById('config-spike-noexp-exempt'); if(_e) _e.checked = config.thresholds.spike_no_expansion_exempt_armed === true; }
+                { const _e=document.getElementById('config-spike-fade-enabled'); if(_e) _e.checked = config.thresholds.spike_fade_enabled === true; }
+                { const _e=document.getElementById('config-spike-fade-invest-mult'); if(_e && config.thresholds.spike_fade_invest_mult !== undefined) _e.value = config.thresholds.spike_fade_invest_mult; }
+                { const _e=document.getElementById('config-spike-fade-lev-mult'); if(_e && config.thresholds.spike_fade_lev_mult !== undefined) _e.value = config.thresholds.spike_fade_lev_mult; }
+                { const _e=document.getElementById('config-spike-fade-sl-pct'); if(_e && config.thresholds.spike_fade_sl_pct !== undefined) _e.value = config.thresholds.spike_fade_sl_pct; }
+                { const _e=document.getElementById('config-spike-fade-tripwire-pct'); if(_e && config.thresholds.spike_fade_tripwire_pct !== undefined) _e.value = config.thresholds.spike_fade_tripwire_pct; }
                 { const _e=document.getElementById('config-spike-scanner-enabled'); if(_e) _e.checked = config.thresholds.spike_scanner_enabled === true; }
                 { const _e=document.getElementById('config-spike-scanner-min-vol'); if(_e && config.thresholds.spike_scanner_min_vol_usd !== undefined) _e.value = config.thresholds.spike_scanner_min_vol_usd / 1e6; }
                 { const _e=document.getElementById('config-spike-scanner-max-pairs'); if(_e && config.thresholds.spike_scanner_max_pairs !== undefined) _e.value = config.thresholds.spike_scanner_max_pairs; }
@@ -20731,6 +20868,21 @@
                     spike_chase_probe_min_candle_pct: safeFloat(document.getElementById('config-spike-chase-probe-min-candle-pct')?.value || 0.5),
                     spike_chase_probe_rsi_prev_min: safeFloat(document.getElementById('config-spike-chase-probe-rsi-prev-min')?.value || 35),
                     spike_chase_probe_min_vol_ratio: safeFloat(document.getElementById('config-spike-chase-probe-min-vol-ratio')?.value || 5),
+                    // 🚀 Jul 27 Spike Full Ship (D11 save handlers)
+                    spike_chase_max_adx: safeFloat(document.getElementById('config-spike-chase-max-adx')?.value || 30),
+                    spike_invest_mult: safeFloat(document.getElementById('config-spike-invest-mult')?.value || 2.0),
+                    spike_lev_mult: safeFloat(document.getElementById('config-spike-lev-mult')?.value || 1.0),
+                    spike_sl_pct: safeFloat(document.getElementById('config-spike-sl-pct')?.value || -1.2),
+                    spike_rsi_cool_arm: safeFloat(document.getElementById('config-spike-rsi-cool-arm')?.value || 75),
+                    spike_rsi_cool_drop: safeFloat(document.getElementById('config-spike-rsi-cool-drop')?.value || 10),
+                    spike_ladder_unarmed: (document.getElementById('config-spike-ladder-unarmed')?.value || '1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80'),
+                    spike_ladder_armed: (document.getElementById('config-spike-ladder-armed')?.value || '2.5:2.0,3:2.5,4:1.8,5:2.8,6:3.5,7:3.8,8:4.2,9:4.2,10:4.2,11:4.6,12:5,13:5.3,14:5.7,15:6.1,16:6.5,17:6.9,18:7.2,19:7.6,20:8,22.5:9,25:9.9,27.5:10.8,30:11.8,32.5:12.7,35:13.7,37.5:14.6,40:15.6'),
+                    spike_no_expansion_exempt_armed: (document.getElementById('config-spike-noexp-exempt')?.checked === true),
+                    spike_fade_enabled: (document.getElementById('config-spike-fade-enabled')?.checked === true),
+                    spike_fade_invest_mult: safeFloat(document.getElementById('config-spike-fade-invest-mult')?.value || 1.0),
+                    spike_fade_lev_mult: safeFloat(document.getElementById('config-spike-fade-lev-mult')?.value || 1.0),
+                    spike_fade_sl_pct: safeFloat(document.getElementById('config-spike-fade-sl-pct')?.value || -0.70),
+                    spike_fade_tripwire_pct: safeFloat(document.getElementById('config-spike-fade-tripwire-pct')?.value || -1.5),
                     spike_scanner_enabled: (document.getElementById('config-spike-scanner-enabled')?.checked === true),
                     spike_scanner_min_vol_usd: safeFloat(document.getElementById('config-spike-scanner-min-vol')?.value || 1) * 1e6,
                     spike_scanner_max_pairs: parseInt(document.getElementById('config-spike-scanner-max-pairs')?.value || 400),

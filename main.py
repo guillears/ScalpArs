@@ -1909,6 +1909,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "entry_conditions_by_outcome": [],
             "entry_conditions_by_strategy": [],
             "entry_conditions_by_strategy_outcome": [],
+            "spike_fires": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
             "extension_multiplier_performance": {"rules": [], "summary": {}},
@@ -3579,7 +3580,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # Non-flip (momentum) = PURE momentum only. Exclude flips (FLIP:*) AND the
             # build-side sleeves (BULL_LONG / BOUNCE_LONG) — they're their own strategies
             # with their own dropdown filters, not pure momentum (Jun 22).
-            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG')
+            # Jul 27 (review I3): SPIKE species excluded from pure-momentum too — they
+            # are their own program; blending full-size spikes would contaminate the
+            # sleeve stats the locked gates read. (Probe-era spike rows carry MOMENTUM
+            # labels and stay — cohort key for those = cell_multiplier_source.)
+            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE')
             orders = [o for o in orders if not _es(o).startswith('FLIP:') and _es(o).upper() not in _SLEEVES]
         else:
             # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side
@@ -3685,6 +3690,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "entry_conditions_by_outcome": [],
             "entry_conditions_by_strategy": [],
             "entry_conditions_by_strategy_outcome": [],
+            "spike_fires": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
             "extension_multiplier_performance": {"rules": [], "summary": {}},
@@ -6310,6 +6316,37 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         entry_conditions_by_strategy = []
         entry_conditions_by_strategy_outcome = []
 
+    # 🚀 Jul 27 — Spike per-fire table (full-ship read instrument): one row per fire,
+    # both eras (probe-era rows join via cell_multiplier_source; full-size rows via
+    # strategy stamp). Every fire is individually load-bearing in a ~1/day tail-weighted
+    # cohort — aggregates hide exactly what the N>=30 verdicts need (ADX/ATR/regime
+    # separator columns + which option-D layer closed it).
+    spike_fires = []
+    try:
+        _sp_rows = [o for o in orders
+                    if (getattr(o, 'entry_strategy', None) in ("SPIKE_CHASE", "SPIKE_FADE")
+                        or (getattr(o, 'cell_multiplier_source', None) or '') == 'SPIKE_CHASE_PROBE')]
+        for o in sorted(_sp_rows, key=lambda x: x.opened_at or datetime.min):
+            spike_fires.append({
+                "pair": o.pair,
+                "direction": o.direction,
+                "species": (o.entry_strategy if o.entry_strategy in ("SPIKE_CHASE", "SPIKE_FADE") else "PROBE-era"),
+                "opened_at": o.opened_at.isoformat() if o.opened_at else None,
+                "adx": getattr(o, 'entry_adx', None),
+                "atr_pct": getattr(o, 'entry_atr_pct', None),
+                "rngpos": getattr(o, 'entry_range_position', None),
+                "btc_regime": getattr(o, 'entry_btc_regime', None),
+                "peak_pnl": getattr(o, 'peak_pnl', None),
+                "spike_rsi_max": getattr(o, 'spike_rsi_max', None),
+                "armed": bool(getattr(o, 'spike_armed', False)),
+                "close_reason": o.close_reason,
+                "pnl_pct": o.pnl_percentage,
+                "pnl_usd": o.pnl,
+            })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing spike fires table: {e}\n{traceback.format_exc()}")
+        spike_fires = []
+
     # Stop Loss Deep Dive + Winning Trades Drawdown
     stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
     winning_trades_drawdown = []
@@ -7664,6 +7701,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "entry_conditions_by_reason": entry_conditions_by_reason,
         "entry_conditions_by_outcome": entry_conditions_by_outcome,
         "entry_conditions_by_strategy": entry_conditions_by_strategy,
+        "spike_fires": spike_fires,
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "flagged_exits": flagged_exits,
         "period_performance": _compute_period_performance(orders),

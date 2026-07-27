@@ -438,6 +438,11 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pair_rank INTEGER"))
                 if 'entry_pair_age_days' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pair_age_days FLOAT"))
+                # Jul 27 spike full ship: option-D L2 state columns
+                if 'spike_rsi_max' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN spike_rsi_max FLOAT"))
+                if 'spike_armed' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN spike_armed BOOLEAN DEFAULT 0"))
                 if 'exit_pair_ema20_ema50_gap_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_pair_ema20_ema50_gap_pct FLOAT"))
                 if 'exit_btc_trend_gap_pct' not in columns:

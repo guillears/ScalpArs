@@ -395,6 +395,42 @@ class SignalThresholds(BaseModel):
     spike_scanner_enabled: bool = True
     spike_scanner_min_vol_usd: float = 1000000.0  # dead-book floor: skip pairs under $1M 24h vol
     spike_scanner_max_pairs: int = 400            # universe cut (top-N by volume incl. the top-50)
+    # ══ Jul 27 — 🚀 SPIKE FULL SHIP (operator-directed one-ship: both species full size).
+    # Trigger fires (legs 1-5) then pair ADX ROUTES the direction (leg 6, 10/10 lifetime:
+    # riders all <=20.2, duds all >=29.6): ADX <= max_adx -> SPIKE_CHASE LONG at full size;
+    # ADX > max_adx -> SPIKE_FADE SHORT (4/4 backtest, avg +0.31, max adverse +0.49).
+    spike_chase_max_adx: float = 30.0             # leg 6 router cut (empty 20-29 gap; default 30)
+    spike_invest_mult: float = 2.0                # CHASE sizing: Inv 2x of equal-split base
+    spike_lev_mult: float = 1.0                   # CHASE leverage mult (1.0 = confidence base 20x)
+    spike_fade_enabled: bool = True               # master kill toggle for the fade species
+    spike_fade_invest_mult: float = 1.0           # FADE sizing: Inv 1x (operator 07-27)
+    spike_fade_lev_mult: float = 1.0              # FADE leverage mult (1.0 = base 20x)
+    spike_fade_sl_pct: float = -0.70              # FADE fixed SL — NO ATR widening (squeeze tail
+                                                  # on pumping pairs; max adverse seen +0.49)
+    spike_fade_tripwire_pct: float = -1.5         # AUTO-DISABLE: any fade closing <= this means the
+                                                  # price GAPPED THROUGH the monitored -0.70 stop
+                                                  # (squeeze signature) -> engine flips
+                                                  # spike_fade_enabled=false + CRITICAL log
+    # ⭐ OPTION-D 3-layer exit for SPIKE_CHASE longs (replaces the normal long exit stack):
+    # L1 fixed SL (MIRA-1 wicked -0.71 pre +17.4; SWARMS breathed -0.75 pre +0.91 — two
+    # documented winner-breaths through -0.70; dud premium ~0.5pp/fire accepted).
+    spike_sl_pct: float = -1.2                    # L1 — fixed, NOT ATR-derived
+    spike_rsi_cool_arm: float = 75.0              # L2 arm: 5m RSI(12) >= this after entry
+    spike_rsi_cool_drop: float = 10.0             # L2 exit: RSI <= ride-max minus this (relative —
+                                                  # pumps pin 82-98; -8..-12 plateau robust)
+    # L3 insurance floors — SAME trigger:offset format as the book's Profit Floor Ladder
+    # (floor = trigger − offset; parsed by services/hard_tp_ladder.py, ratchet-only, NEVER
+    # a TP — collapse insurance). UNARMED (RSI never confirmed >= arm): tight normal rungs
+    # (SWARMS live proof: the 1.25 rung took it at +1.0 floor).
+    spike_ladder_unarmed: str = "1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80"
+    # ARMED (pump confirmed): the 27-rung MIRA breathing envelope (archived Jul-24-26
+    # calibration string verbatim; e.g. peak 2.5 -> floor 0.5, peak 10 -> floor 5.8).
+    spike_ladder_armed: str = ("2.5:2.0,3:2.5,4:1.8,5:2.8,6:3.5,7:3.8,8:4.2,9:4.2,10:4.2,"
+                               "11:4.6,12:5,13:5.3,14:5.7,15:6.1,16:6.5,17:6.9,18:7.2,"
+                               "19:7.6,20:8,22.5:9,25:9.9,27.5:10.8,30:11.8,"
+                               "32.5:12.7,35:13.7,37.5:14.6,40:15.6")
+    spike_no_expansion_exempt_armed: bool = True  # ZEREBRO: armed +66min, 3h clock closed a +3.47
+                                                  # ride at -0.09; unarmed zombies KEEP the sweep
     # Jul 20 — DBDOWN PROBE (probe #9, operator-directed): the FLAT-DOWN half of the 1h
     # dead-band, [−deadband, 0). The Jul-5 gate's locked phantom revert FIRED (95·60.0%·
     # +0.100%, 7 dates; fresh flat-down >=Jul-17: 51·65%·+0.154% meets BOTH arms; H.BULL

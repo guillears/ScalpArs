@@ -4317,6 +4317,11 @@ class TradingEngine:
                     _atr = ind.get('atr')
                     _ema50 = ind.get('ema50'); _ema50_p12 = ind.get('ema50_prev12')
                     _ema13v = ind.get('ema13')
+                    try:
+                        _sp_fine_regime = classify_btc_regime(
+                            _g.get('_current_btc_adx'), _g.get('_current_btc_rsi'), _g.get('_btc_ema20_slope_pct'))
+                    except Exception:
+                        _sp_fine_regime = _g.get('_current_btc_regime')
                     order = await self.open_position(
                         db=db, pair=p['pair'], direction=_sp_dir, confidence="STRONG_BUY",
                         current_price=_px,
@@ -4345,7 +4350,12 @@ class TradingEngine:
                         entry_btc_rsi_1h=_g.get('_current_btc_rsi_1h'), entry_btc_rsi_1h_prev=_g.get('_current_btc_rsi_1h_prev'),
                         entry_btc_dist_from_ema13_pct=_r((_g.get('_current_btc_price') - _g.get('_current_btc_ema13')) / _g.get('_current_btc_ema13') * 100) if _g.get('_current_btc_price') and _g.get('_current_btc_ema13') else None,
                         entry_bull_pct=_g.get('_market_bull_pct'), entry_bear_pct=_g.get('_market_bear_pct'),
-                        entry_btc_regime=_g.get('_current_btc_regime'),
+                        # Jul 27 night fix: was stamping the COARSE macro-trend global into
+                        # entry_btc_regime (BULLISH/NEUTRAL/BEARISH) — the fine 6-way regime
+                        # was never recorded on scanner-path spike fires, capping the regime
+                        # read at bull-vs-non-bull granularity. Stamp both, like momentum does.
+                        entry_btc_regime=_sp_fine_regime,
+                        entry_macro_trend=_g.get('_current_btc_regime'),
                         spike_chase_probe=not _sp_is_fade,
                         spike_fade=_sp_is_fade,
                     )

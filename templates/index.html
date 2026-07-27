@@ -18067,7 +18067,7 @@
                 const tbody = document.getElementById('pairs-table-body');
                 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-gray-500">No pairs data available. Click Refresh to load.</td></tr>';
+                    _setHTMLIfChanged(tbody, '<tr><td colspan="15" class="px-4 py-8 text-center text-gray-500">No pairs data available. Click Refresh to load.</td></tr>');
                     return;
                 }
                 
@@ -18250,7 +18250,7 @@
             if (btn.disabled) return;
 
             try {
-                document.getElementById('pairs-table-body').innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-gray-500">Refreshing...</td></tr>';
+                _setHTMLIfChanged(document.getElementById('pairs-table-body'), '<tr><td colspan="15" class="px-4 py-8 text-center text-gray-500">Refreshing...</td></tr>');
                 const res = await fetch(`${API_BASE}/api/pairs/refresh`, { method: 'POST' });
                 const data = await res.json();
                 await loadPairs();
@@ -18315,7 +18315,7 @@
                 const tbody = document.getElementById('transactions-table-body');
                 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="12" class="px-4 py-8 text-center text-gray-500">No transactions yet</td></tr>';
+                    _setHTMLIfChanged(tbody, '<tr><td colspan="12" class="px-4 py-8 text-center text-gray-500">No transactions yet</td></tr>');
                     return;
                 }
                 

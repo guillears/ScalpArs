@@ -4306,11 +4306,32 @@ class TradingEngine:
                     _sp_max_adx = float(getattr(th, 'spike_chase_max_adx', 30.0) or 30.0)
                     _sp_dir = "LONG"
                     _sp_is_fade = False
-                    if _sp_adx is not None and _sp_adx > _sp_max_adx:
+                    # Jul 28 REGIME ROUTER — regime decides FIRST (non-bull spikes are
+                    # squeeze-wicks: 12/13 never reached +0.45 honest). Chase regimes ->
+                    # ADX leg as before; anything else -> FADE. Fallback on classify
+                    # failure = coarse macro (BULLISH -> chase logic, else fade).
+                    _sp_regime_fade = False
+                    _gl = globals()
+                    if getattr(th, 'spike_regime_router_enabled', False):
+                        try:
+                            _sp_reg_now = classify_btc_regime(
+                                _gl.get('_current_btc_adx'), _gl.get('_current_btc_rsi'), _gl.get('_btc_ema20_slope_pct'))
+                        except Exception:
+                            _sp_reg_now = None
+                        _sp_chase_regs = set(x.strip() for x in (getattr(th, 'spike_chase_regimes', '') or '').split(',') if x.strip())
+                        if _sp_reg_now is not None and _sp_reg_now != 'UNKNOWN':
+                            _sp_regime_fade = _sp_reg_now not in _sp_chase_regs
+                        else:
+                            # classify returns UNKNOWN on missing inputs (never raises) —
+                            # fall back to the coarse macro global (review M-3).
+                            _sp_regime_fade = (_gl.get('_current_btc_regime') or 'NEUTRAL') != 'BULLISH'
+                    if _sp_regime_fade or (_sp_adx is not None and _sp_adx > _sp_max_adx):
                         if not getattr(th, 'spike_fade_enabled', False):
-                            logger.info(f"[SPIKE_ADX_BLOCK] {p['pair']}: scanner trigger fired but ADX {_sp_adx:.1f} > {_sp_max_adx:.0f} and fade disabled — no trade")
+                            logger.info(f"[SPIKE_ROUTER_BLOCK] {p['pair']}: trigger fired but routed to FADE ({'regime' if _sp_regime_fade else 'ADX'}) and fade disabled — no trade")
                             continue
                         _sp_dir, _sp_is_fade = "SHORT", True
+                        if _sp_regime_fade:
+                            logger.info(f"[SPIKE_REGIME_FADE] {p['pair']}: non-chase regime — routing trigger to FADE short")
                     logger.info(f"[SPIKE_SCANNER] {p['pair']}: RSI jump {rsi_prev:.1f}->{rsi:.1f} "
                                 f"(+{rsi - rsi_prev:.1f}) candle {(closes[-1]/closes[-2]-1.0)*100.0:+.2f}% vol {_vols[-1]/_av20:.1f}x ADX {(_sp_adx if _sp_adx is not None else -1):.1f} vol24h=${(p.get('volume_24h') or 0)/1e6:.1f}M — {'SPIKE_FADE short' if _sp_is_fade else 'SPIKE_CHASE long'} entry")
                     _g = globals()
@@ -5787,6 +5808,8 @@ class TradingEngine:
             order_cache_entry = {
                 'id': order.id,
                 'direction': direction,
+                'opened_at': order.opened_at,          # Jul 28 review M-5: spike stale-kill/trail live from t0
+                'entry_atr_pct': entry_atr_pct,        # (both were previously added only at the first cache refresh)
                 'entry_strategy': ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))))),  # Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_price': actual_price,
@@ -7524,6 +7547,24 @@ class TradingEngine:
                             _sp_floor_mon, _sp_lvl_mon = hard_tp_ladder_floor(_sp_rungs_mon, _sp_peak_mon)
                             if _sp_floor_mon is not None and _sp_pnl_pct <= _sp_floor_mon:
                                 _sp_bk_reason = f"SPIKE_FLOOR L{_sp_lvl_mon}"
+                        # ── Jul 28 EXIT PATCH backstop parity (WS-starve lesson: every realtime
+                        # exit needs a monitor mirror). Unarmed only, same formulas.
+                        if _sp_bk_reason is None and not getattr(order, 'spike_armed', False):
+                            _sp_ta_mon = float(getattr(_th_sp_mon, 'spike_trail_arm_pct', 0.45) or 0.0)
+                            if _sp_ta_mon > 0 and _sp_peak_mon >= _sp_ta_mon:
+                                _sp_atr_mon = float(getattr(order, 'entry_atr_pct', None) or 0.0)
+                                _sp_gb_mon = (float(getattr(_th_sp_mon, 'runner_trail_atr_mult', 1.0) or 1.0) * _sp_atr_mon) if _sp_atr_mon > 0 else 0.45
+                                _sp_te_mon = max(_sp_peak_mon - _sp_gb_mon,
+                                                 float(getattr(_th_sp_mon, 'runner_trail_be_lock_pct', 0.10) or 0.10))
+                                if _sp_pnl_pct <= _sp_te_mon:
+                                    _sp_bk_reason = "SPIKE_TRAIL"
+                            if _sp_bk_reason is None:
+                                _sp_sk_mon = float(getattr(_th_sp_mon, 'spike_stale_kill_min', 30.0) or 0.0)
+                                if _sp_sk_mon > 0 and order.opened_at is not None and _sp_peak_mon < 0.2:
+                                    from datetime import timezone as _sp_tz2
+                                    _sp_ref2 = order.opened_at.replace(tzinfo=_sp_tz2.utc) if order.opened_at.tzinfo is None else order.opened_at
+                                    if (datetime.now(_sp_tz2.utc) - _sp_ref2).total_seconds() >= _sp_sk_mon * 60:
+                                        _sp_bk_reason = "SPIKE_STALE"
                     if _sp_bk_reason is not None:
                         logger.warning(f"[SPIKE_MONITOR_BACKSTOP] {order.pair}: {_sp_bk_reason} at pnl={_sp_pnl_pct:.4f}% (monitor-resolution enforcement)")
                         closed_order = await self.close_position(db, order, current_price, _sp_bk_reason)
@@ -9956,13 +9997,28 @@ class TradingEngine:
                             # >max -> FADE SHORT (mature blowoff). ADX None fails open to LONG.
                             _sc_adx = indicators.get('adx')
                             _sc_max_adx = float(getattr(_sc_th, 'spike_chase_max_adx', 30.0) or 30.0)
-                            if _sc_adx is not None and _sc_adx > _sc_max_adx:
+                            # Jul 28 REGIME ROUTER (parity with scanner): regime decides first.
+                            _sc_regime_fade = False
+                            if getattr(_sc_th, 'spike_regime_router_enabled', False):
+                                try:
+                                    _sc_reg_now = classify_btc_regime(
+                                        globals().get('_current_btc_adx'), globals().get('_current_btc_rsi'), globals().get('_btc_ema20_slope_pct'))
+                                except Exception:
+                                    _sc_reg_now = None
+                                _sc_chase_regs = set(x.strip() for x in (getattr(_sc_th, 'spike_chase_regimes', '') or '').split(',') if x.strip())
+                                if _sc_reg_now is not None and _sc_reg_now != 'UNKNOWN':
+                                    _sc_regime_fade = _sc_reg_now not in _sc_chase_regs
+                                else:
+                                    _sc_regime_fade = (globals().get('_current_btc_regime') or 'NEUTRAL') != 'BULLISH'
+                                if _sc_regime_fade:
+                                    logger.info(f"[SPIKE_REGIME_FADE] {pair}: non-chase regime ({_sc_reg_now}) — routing trigger to FADE short")
+                            if _sc_regime_fade or (_sc_adx is not None and _sc_adx > _sc_max_adx):
                                 if getattr(_sc_th, 'spike_fade_enabled', False):
                                     signal, confidence = "SHORT", "STRONG_BUY"
                                     _spike_fade_hit = True
-                                    logger.info(f"[SPIKE_FADE] {pair}: RSI jump {_sc_prev:.1f}->{_sc_rsi:.1f} (+{_sc_rsi - _sc_prev:.1f}) with ADX {_sc_adx:.1f} > {_sc_max_adx:.0f} — fading the blowoff (SHORT)")
+                                    logger.info(f"[SPIKE_FADE] {pair}: RSI jump {_sc_prev:.1f}->{_sc_rsi:.1f} (+{_sc_rsi - _sc_prev:.1f}) ADX {(_sc_adx if _sc_adx is not None else -1):.1f} route={'regime' if _sc_regime_fade else 'ADX>' + str(int(_sc_max_adx))} — fading (SHORT)")
                                 else:
-                                    logger.info(f"[SPIKE_ADX_BLOCK] {pair}: trigger fired but ADX {_sc_adx:.1f} > {_sc_max_adx:.0f} and fade disabled — no trade")
+                                    logger.info(f"[SPIKE_ROUTER_BLOCK] {pair}: trigger fired, routed FADE ({'regime' if _sc_regime_fade else 'ADX'}, ADX {(_sc_adx if _sc_adx is not None else -1):.1f}) but fade disabled — no trade")
                             else:
                                 signal, confidence = "LONG", "STRONG_BUY"
                                 _spike_chase_hit = True
@@ -10531,6 +10587,36 @@ class TradingEngine:
                             logger.warning(
                                 f"[SPIKE_FLOOR] {pair} LONG ({'armed' if _sp_armed_rt else 'unarmed'}): "
                                 f"pnl={pnl_pct:.4f}% <= floor={_sp_floor:.2f}% (peak {_sp_peak_rt:.2f}%) — CLOSING NOW!")
+                    # ── Jul 28 EXIT PATCH (unarmed only — armed rides keep the wide envelope) ──
+                    if _sp_close_reason is None and not _sp_armed_rt:
+                        # ① mid-zone trail: peaks in [arm, first rung) previously had NO
+                        #   protection (AKT +0.83 → −0.45). Standard runner-trail params.
+                        _sp_trail_arm = float(getattr(_th_sp_rt, 'spike_trail_arm_pct', 0.45) or 0.0)
+                        if _sp_trail_arm > 0 and _sp_peak_rt >= _sp_trail_arm:
+                            _sp_atr_rt = float(order_info.get('entry_atr_pct') or 0.0)
+                            # Review fix: ATR None/0 would make giveback 0 = instant TP at the
+                            # arm. Fallback to a generic 0.45 leash when ATR is unavailable.
+                            _sp_gb = (float(getattr(_th_sp_rt, 'runner_trail_atr_mult', 1.0) or 1.0) * _sp_atr_rt) if _sp_atr_rt > 0 else 0.45
+                            _sp_trail_exit = max(_sp_peak_rt - _sp_gb,
+                                                 float(getattr(_th_sp_rt, 'runner_trail_be_lock_pct', 0.10) or 0.10))
+                            if pnl_pct <= _sp_trail_exit:
+                                _sp_close_reason = "SPIKE_TRAIL"
+                                logger.warning(
+                                    f"[SPIKE_TRAIL] {pair} LONG (unarmed mid-zone): pnl={pnl_pct:.4f}% <= "
+                                    f"trail={_sp_trail_exit:.2f}% (peak {_sp_peak_rt:.2f}%, ATR {_sp_atr_rt:.2f}) — CLOSING NOW!")
+                        # ② stale-spike kill: no follow-through = failed explosion. Unarmed AND
+                        #   peak < +0.2 after N minutes → exit (QTUM/KAS zombie class, 3h → 30min).
+                        if _sp_close_reason is None:
+                            _sp_stale_min = float(getattr(_th_sp_rt, 'spike_stale_kill_min', 30.0) or 0.0)
+                            _sp_opened_rt = order_info.get('opened_at')
+                            if _sp_stale_min > 0 and _sp_opened_rt is not None and _sp_peak_rt < 0.2:
+                                from datetime import timezone as _sp_tz
+                                _sp_ref = _sp_opened_rt.replace(tzinfo=_sp_tz.utc) if _sp_opened_rt.tzinfo is None else _sp_opened_rt
+                                if (datetime.now(_sp_tz.utc) - _sp_ref).total_seconds() >= _sp_stale_min * 60:
+                                    _sp_close_reason = "SPIKE_STALE"
+                                    logger.warning(
+                                        f"[SPIKE_STALE] {pair} LONG: {_sp_stale_min:.0f}min elapsed, peak "
+                                        f"{_sp_peak_rt:.2f}% < 0.2 (unarmed) — failed explosion, CLOSING NOW!")
                 if _sp_close_reason is not None:
                     order_info['_closing_in_progress'] = True
                     try:

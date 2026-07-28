@@ -423,6 +423,26 @@ class SignalThresholds(BaseModel):
     # a TP — collapse insurance). UNARMED (RSI never confirmed >= arm): tight normal rungs
     # (SWARMS live proof: the 1.25 rung took it at +1.0 floor).
     spike_ladder_unarmed: str = "1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80"
+    # Jul 28 EXIT PATCH (operator-directed after full-size fires 0W/6L exposed two holes):
+    # ① mid-zone trail — unarmed chases peaking in [arm, 1.25) had ZERO protection (AKT
+    #   +0.83 peak → −0.45 NO_EXP). Once unarmed peak >= this, run the standard runner
+    #   trail (1×ATR giveback, BE-lock +0.10 — reuses runner_trail_atr_mult/be_lock);
+    #   RSI-arm hands off to the wide envelope so true tails keep their room. 0 = off.
+    spike_trail_arm_pct: float = 0.45
+    # ② stale-spike kill — a spike with no follow-through is dead by construction, yet
+    #   QTUM/KAS sat 3h at 0.00 peak bleeding to NO_EXP (−0.73/−0.95). Unarmed AND
+    #   peak < +0.2 after this many minutes → exit at market (30 = six 5m candles;
+    #   dial down to 20 at the read if zombies persist). 0 = off.
+    spike_stale_kill_min: float = 30.0
+    # Jul 28 REGIME ROUTER (operator-directed; leg-6 becomes regime-FIRST): fine BTC regime
+    # decides the species before ADX. In a chase regime -> ADX router as before (<=max CHASE,
+    # >max FADE). In ANY other regime -> FADE at standard fade sizing (1x/20x, SL -0.70,
+    # tripwire armed). Evidence: 20 lifetime fires — non-bull chases 12/13 never reached
+    # +0.45 honest across 3 distinct dates (gate-met for no-chase); routing the trigger to
+    # FADE instead = discipline-override at fade N=4, bounded by the armed fade OFF-gate
+    # (N>=8 WR<=50%/Σ<0) + tripwire −1.5 + 1x sizing. OFF = restore ADX-only router.
+    spike_regime_router_enabled: bool = True
+    spike_chase_regimes: str = "STRONG_BULL,HEALTHY_BULL"
     # ARMED (pump confirmed): the 27-rung MIRA breathing envelope (archived Jul-24-26
     # calibration string verbatim; e.g. peak 2.5 -> floor 0.5, peak 10 -> floor 5.8).
     spike_ladder_armed: str = ("2.5:2.0,3:2.5,4:1.8,5:2.8,6:3.5,7:3.8,8:4.2,9:4.2,10:4.2,"

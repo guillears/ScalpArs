@@ -566,7 +566,11 @@
     "nonexp_calm3d_invest_mult": 2.0,
     "nonexp_calm3d_lev_mult": 1.0,
     "rsiadx_breadth_admit_max": 63.6,
-    "long_btc_1h_deadband_pos": 0.025
+    "long_btc_1h_deadband_pos": 0.025,
+    "spike_trail_arm_pct": 0.45,
+    "spike_stale_kill_min": 30.0,
+    "spike_regime_router_enabled": true,
+    "spike_chase_regimes": "STRONG_BULL,HEALTHY_BULL"
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

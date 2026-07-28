@@ -12325,6 +12325,13 @@ class TradingEngine:
                             ):
                                 if old_info.get(_xkey) is not None:
                                     new_info[_xkey] = old_info[_xkey]
+                            # Jul 28 BE-LOCK SHADOW fix: carry the tracking dict + taint flag
+                            # across PERIODIC cache rebuilds. Without this, the reseed default
+                            # ('taint if DB peak >= 0.15') re-fired on every routine refresh and
+                            # wiped every armed trade's state — the taint guard is meant for
+                            # RESTARTS only (no old_info generation to inherit from).
+                            new_info['_belock'] = old_info.get('_belock')
+                            new_info['_belock_taint'] = bool(old_info.get('_belock_taint'))
                             if new_info['direction'] == 'LONG':
                                 new_info['high_price'] = max(new_info['high_price'], old_info.get('high_price', 0))
                             else:

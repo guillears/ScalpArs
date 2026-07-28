@@ -443,6 +443,19 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN spike_rsi_max FLOAT"))
                 if 'spike_armed' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN spike_armed BOOLEAN DEFAULT 0"))
+                # Jul 28 BE-LOCK SHADOW: per-threshold first-touch minute + post-touch trough
+                if 'belock_t15_min' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN belock_t15_min FLOAT"))
+                if 'belock_tr15' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN belock_tr15 FLOAT"))
+                if 'belock_t20_min' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN belock_t20_min FLOAT"))
+                if 'belock_tr20' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN belock_tr20 FLOAT"))
+                if 'belock_t30_min' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN belock_t30_min FLOAT"))
+                if 'belock_tr30' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN belock_tr30 FLOAT"))
                 if 'exit_pair_ema20_ema50_gap_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_pair_ema20_ema50_gap_pct FLOAT"))
                 if 'exit_btc_trend_gap_pct' not in columns:

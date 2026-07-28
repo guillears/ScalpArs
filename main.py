@@ -7883,6 +7883,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "phantom_flip": await _compute_phantom_flip_performance(db, trading_engine.is_paper_mode),  # PHANTOM FLIP (Jun 13, observation-only)
         "flip_trades": _compute_flip_trades(_flip_orders),  # FLIP TRADE LOG (Jun 14 — merged scorecard; replaced flip_entry)
         "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
+        "be_lock_shadow": _compute_be_lock_shadow(orders),  # BE-LOCK SHADOW (Jul 28, observation-only)
         "liquidity_sizing": _compute_liquidity_sizing(orders),  # LIQUIDITY SIZING (Jun 2, observation-only)
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
         # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
@@ -10164,6 +10165,85 @@ def _compute_leash_shadow(orders):
                 })
     return {'slices': slices, 'drill': drill, 'cohort_n': len(rows)}
 # ====================== LEASH SHADOW END ======================
+
+
+# ====================== BE-LOCK SHADOW START (Jul 28) ======================
+_BELOCK_ARMS = ((0.15, 'belock_t15_min', 'belock_tr15'),
+                (0.20, 'belock_t20_min', 'belock_tr20'),
+                (0.30, 'belock_t30_min', 'belock_tr30'))
+_BELOCK_WINDOWS = (5.0, 10.0, 15.0)          # minutes from entry
+_BELOCK_LEVELS = (0.05, 0.0, -0.15)          # lock exit P&L% (fee-covered BE / true BE / half-floor)
+
+
+def _compute_be_lock_shadow(orders):
+    """⏱ BE-LOCK SHADOW (Jul 28, observation-only) — time-boxed breakeven-lock CF.
+
+    Rule under test: IF P&L first touches +X% within Y minutes of entry, arm a lock
+    at level L — the trade can no longer close below L. Evaluated tick-honest from
+    the per-trade capture columns (first-touch minute + post-touch trough, realtime
+    1s stream, stamped at close). Momentum book only (spikes excluded at capture).
+
+    Per (X, Y, L) cell: fired = armed inside the window; lock EFFECT = post-touch
+    trough <= L (CF exit at L, else CF = actual). saved$ = deltas where L beats the
+    actual close (the bleed cohort); killed$ = |deltas| where the lock scratched a
+    trade that closed better (the runner cost — full freight). L is treated as a NET
+    exit (fee-approx). 🔒 Pre-committed gate (locked before data): ship the single
+    best cell ONLY at N>=30 fires · >=5 dates · net > 0 after the 30-50% haircut ·
+    killed$ <= 1/2 saved$. No cell clears -> archive the hypothesis.
+    """
+    tracked = [o for o in orders
+               if getattr(o, 'status', None) == 'CLOSED'
+               and not (getattr(o, 'entry_strategy', '') or '').startswith('SPIKE')
+               and any(getattr(o, t, None) is not None for _, t, _tr in _BELOCK_ARMS)]
+    # Cohort size for context: closed non-spike trades that COULD have tracked
+    # (post-ship). We approximate with tracked ∪ never-touched being invisible —
+    # report tracked (armed-at-least-once) as the pool.
+    cells = []
+    for arm_x, t_col, tr_col in _BELOCK_ARMS:
+        for win_y in _BELOCK_WINDOWS:
+            fired = [o for o in tracked
+                     if getattr(o, t_col, None) is not None and getattr(o, t_col) <= win_y]
+            for lvl in _BELOCK_LEVELS:
+                saved_usd = killed_usd = net_pct = 0.0
+                saved_n = killed_n = 0
+                dates = set()
+                for o in fired:
+                    trough = getattr(o, tr_col, None)
+                    if trough is None or trough > lvl:
+                        continue  # lock never triggered — CF == actual
+                    actual = o.pnl_percentage or 0.0
+                    delta_pct = lvl - actual
+                    notional = getattr(o, 'notional_value', None) or \
+                        (getattr(o, 'investment', 0.0) or 0.0) * (getattr(o, 'leverage', 1) or 1)
+                    delta_usd = delta_pct * notional / 100.0
+                    net_pct += delta_pct
+                    if delta_usd >= 0:
+                        saved_usd += delta_usd; saved_n += 1
+                    else:
+                        killed_usd += -delta_usd; killed_n += 1
+                    if o.opened_at:
+                        dates.add(o.opened_at.date().isoformat())
+                n_fired = len(fired)
+                n_locks = saved_n + killed_n
+                net_usd = saved_usd - killed_usd
+                if n_locks == 0:
+                    verdict = f'⏳ no locks ({n_fired} armed)'
+                elif n_fired < 30 or len(dates) < 5:
+                    verdict = f'⏳ building ({n_fired}/30 · {len(dates)}/5d)'
+                elif net_usd > 0 and killed_usd <= saved_usd / 2:
+                    verdict = '✓ GATE CANDIDATE (haircut pending)'
+                else:
+                    verdict = '✗ fails gate'
+                cells.append({
+                    'arm': arm_x, 'win': win_y, 'lock': lvl,
+                    'fired': n_fired, 'locks': n_locks,
+                    'saved_n': saved_n, 'killed_n': killed_n,
+                    'saved_usd': round(saved_usd, 2), 'killed_usd': round(killed_usd, 2),
+                    'net_usd': round(net_usd, 2), 'net_pct': round(net_pct, 2),
+                    'dates': len(dates), 'verdict': verdict,
+                })
+    return {'cells': cells, 'tracked_n': len(tracked)} if tracked else {'cells': [], 'tracked_n': 0}
+# ====================== BE-LOCK SHADOW END ======================
 
 
 # ====================== RUNNER TRAIL START (Jun 1) ======================

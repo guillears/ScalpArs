@@ -228,6 +228,21 @@ class Order(Base):
     spike_rsi_max = Column(Float, nullable=True)
     spike_armed = Column(Boolean, default=False)
 
+    # Jul 28 BE-LOCK SHADOW (observation-only, momentum book) — raw material for the
+    # time-boxed breakeven-lock counterfactual (arm BE only if peak >= X% by minute Y).
+    # Per arm threshold X in {0.15, 0.20, 0.30}: belock_tXX_min = minutes from open to
+    # FIRST touch of +X% (realtime 1s stream; NULL = never touched / restart-tainted);
+    # belock_trXX = minimum P&L% AFTER that first touch (the post-arm trough that decides
+    # whether a lock at level L would have fired). Stamped at close from the realtime
+    # cache; trades whose cache reseeded after a restart with peak already >= 0.15 are
+    # tainted (all six NULL) so the CF never sees wrong sequencing. Ride the CSV free.
+    belock_t15_min = Column(Float, nullable=True)
+    belock_tr15 = Column(Float, nullable=True)
+    belock_t20_min = Column(Float, nullable=True)
+    belock_tr20 = Column(Float, nullable=True)
+    belock_t30_min = Column(Float, nullable=True)
+    belock_tr30 = Column(Float, nullable=True)
+
     # Liquidity-aware sizing observability (Jun 2, 2026 — see CLAUDE.md).
     # entry_desired_notional       = notional the order WOULD have opened at pre-cap (investment×leverage).
     # entry_liquidity_cap_notional = the ① per-pair liquidity cap value (_liq_cap); NULL if ① not configured.

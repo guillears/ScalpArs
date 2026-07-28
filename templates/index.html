@@ -2463,6 +2463,38 @@
                 </div>
                 <!-- ===== RUNNER TRAIL END ===== -->
 
+                <!-- ===== BE-LOCK SHADOW START (Jul 28, observation-only) ===== -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-2">⏱ BE-Lock Shadow (time-boxed breakeven-lock CF — observation-only)</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Targets the "Positive, No BE" bleed cohort (trades that peak +0.2/0.4 early then roll to the stop).
+                        Rule under test: <strong>first touch of +X% within Y min → lock exit at level L</strong> (floors risk without capping upside).
+                        <span class="text-amber-300">Saved$</span> = losers the lock rescues · <span class="text-amber-300">Killed$</span> = eventual winners the lock scratches (full freight — the honest cost; winners' avg trough is −0.35, so true-BE is expected to lose).
+                        Momentum book only; tick-honest from close-stamped first-touch/post-trough capture (accumulates from Jul-28; restart-tainted trades excluded).
+                        🔒 Gate (locked): ship best cell ONLY at N≥30 fires · ≥5 dates · net&gt;0 post-haircut · Killed$ ≤ ½ Saved$.
+                    </p>
+                    <div class="text-xs text-gray-400 mb-2" id="belock-shadow-pool">(no BE-lock capture data yet — accumulates from Jul-28)</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead><tr class="text-gray-400 border-b border-white/10">
+                                <th class="px-2 py-2 text-center">Arm X%</th>
+                                <th class="px-2 py-2 text-center">Win Y</th>
+                                <th class="px-2 py-2 text-center">Lock L%</th>
+                                <th class="px-2 py-2 text-center">Fired</th>
+                                <th class="px-2 py-2 text-center">Locks</th>
+                                <th class="px-2 py-2 text-center">Saved (n/$)</th>
+                                <th class="px-2 py-2 text-center">Killed (n/$)</th>
+                                <th class="px-2 py-2 text-center">Net Δ$</th>
+                                <th class="px-2 py-2 text-center">Net Δ%</th>
+                                <th class="px-2 py-2 text-center">Dates</th>
+                                <th class="px-2 py-2 text-left">Verdict</th>
+                            </tr></thead>
+                            <tbody id="belock-shadow-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- ===== BE-LOCK SHADOW END ===== -->
+
                 <!-- ===== LIQUIDITY SIZING START (Jun 2, observation-only) ===== -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-sky-300 mb-2">💧 Liquidity Sizing (throttled orders)</h3>
@@ -9172,6 +9204,20 @@
             }
             // ===== RUNNER TRAIL END =====
 
+            // ===== BE-LOCK SHADOW START (Jul 28, observation-only) =====
+            const _bls1 = perf.be_lock_shadow || {};
+            if (_bls1.tracked_n > 0) {
+                lines.push(`## ⏱ BE-Lock Shadow (time-boxed breakeven-lock CF — Jul 28)  [tracked ${_bls1.tracked_n} · gate: N>=30 fires · >=5 dates · net>0 post-haircut · Killed$ <= 1/2 Saved$]`);
+                lines.push('  ArmX%  WinY  LockL%  Fired  Locks  Saved(n/$)     Killed(n/$)      NetD$     NetD%  Dates  Verdict');
+                lines.push('-'.repeat(110));
+                const _bd = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(Number(v)).toFixed(2);
+                (_bls1.cells || []).forEach(c => {
+                    lines.push(`  ${c.arm.toFixed(2).padStart(5)} ${(c.win + 'm').padStart(5)} ${((c.lock >= 0 ? '+' : '') + c.lock.toFixed(2)).padStart(7)} ${String(c.fired).padStart(6)} ${String(c.locks).padStart(6)}  ${(c.saved_n + '/' + _bd(c.saved_usd)).padStart(13)} ${(c.killed_n + '/' + _bd(c.killed_usd)).padStart(15)} ${_bd(c.net_usd).padStart(9)} ${((c.net_pct >= 0 ? '+' : '') + c.net_pct + '%').padStart(9)} ${String(c.dates).padStart(6)}  ${c.verdict}`);
+                });
+                lines.push('');
+            }
+            // ===== BE-LOCK SHADOW END =====
+
             // ===== LIQUIDITY SIZING START (Jun 2, observation-only) =====
             const _liq1 = perf.liquidity_sizing || {};
             if (_liq1.summary && _liq1.summary.capped > 0) {
@@ -11136,6 +11182,18 @@
                     lines.push('');
                 }
                 // Liquidity Sizing (Jun 2, observation-only)
+                // ===== BE-LOCK SHADOW (Jul 28, observation-only) =====
+                const _bls2 = perf.be_lock_shadow || {};
+                if (_bls2.tracked_n > 0) {
+                    lines.push(`## ⏱ BE-Lock Shadow (time-boxed breakeven-lock CF — Jul 28)  [tracked ${_bls2.tracked_n} · gate: N>=30 fires · >=5 dates · net>0 post-haircut · Killed$ <= 1/2 Saved$]`);
+                    lines.push('  ArmX%  WinY  LockL%  Fired  Locks  Saved(n/$)     Killed(n/$)      NetD$     NetD%  Dates  Verdict');
+                    lines.push('-'.repeat(110));
+                    const _bd2 = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(Number(v)).toFixed(2);
+                    (_bls2.cells || []).forEach(c => {
+                        lines.push(`  ${c.arm.toFixed(2).padStart(5)} ${(c.win + 'm').padStart(5)} ${((c.lock >= 0 ? '+' : '') + c.lock.toFixed(2)).padStart(7)} ${String(c.fired).padStart(6)} ${String(c.locks).padStart(6)}  ${(c.saved_n + '/' + _bd2(c.saved_usd)).padStart(13)} ${(c.killed_n + '/' + _bd2(c.killed_usd)).padStart(15)} ${_bd2(c.net_usd).padStart(9)} ${((c.net_pct >= 0 ? '+' : '') + c.net_pct + '%').padStart(9)} ${String(c.dates).padStart(6)}  ${c.verdict}`);
+                    });
+                    lines.push('');
+                }
                 const _liq2 = perf.liquidity_sizing || {};
                 if (_liq2.summary && _liq2.summary.capped > 0) {
                     const _lq = _liq2.summary;
@@ -14045,6 +14103,41 @@
                     }
                 }
                 // ===== RUNNER TRAIL END =====
+
+                // ===== BE-LOCK SHADOW START (Jul 28, observation-only) =====
+                if (data.be_lock_shadow) {
+                    const _bls = data.be_lock_shadow;
+                    const _blsPool = document.getElementById('belock-shadow-pool');
+                    const _blsBody = document.getElementById('belock-shadow-body');
+                    if (_blsPool) _blsPool.innerHTML = _bls.tracked_n > 0
+                        ? `Tracked (armed ≥1 threshold): <strong>${_bls.tracked_n}</strong> closed momentum trades · grid = arm {0.15, 0.20, 0.30} × window {5, 10, 15min} × lock {+0.05, 0.00, −0.15}`
+                        : '(no BE-lock capture data yet — accumulates from Jul-28)';
+                    if (_blsBody) {
+                        const bsd = (v) => v == null ? '—' : (v >= 0 ? '+$' : '-$') + Math.abs(Number(v)).toFixed(2);
+                        let html = '';
+                        (_bls.cells || []).forEach(c => {
+                            let vCls = 'text-gray-500';
+                            if (c.verdict.startsWith('✓')) vCls = 'text-emerald-400 font-semibold';
+                            else if (c.verdict.startsWith('✗')) vCls = 'text-red-400';
+                            const nCls = c.net_usd > 0 ? 'text-emerald-400 font-semibold' : c.net_usd < 0 ? 'text-red-400 font-semibold' : 'text-gray-400';
+                            html += `<tr class="border-b border-white/5">
+                                <td class="px-2 py-1 text-center text-gray-300">${c.arm.toFixed(2)}</td>
+                                <td class="px-2 py-1 text-center text-gray-300">${c.win}m</td>
+                                <td class="px-2 py-1 text-center text-amber-300">${(c.lock >= 0 ? '+' : '') + c.lock.toFixed(2)}</td>
+                                <td class="px-2 py-1 text-center text-gray-300">${c.fired}</td>
+                                <td class="px-2 py-1 text-center text-gray-400">${c.locks}</td>
+                                <td class="px-2 py-1 text-center text-emerald-300">${c.saved_n}/${bsd(c.saved_usd)}</td>
+                                <td class="px-2 py-1 text-center text-red-300">${c.killed_n}/${bsd(c.killed_usd)}</td>
+                                <td class="px-2 py-1 text-center ${nCls}">${bsd(c.net_usd)}</td>
+                                <td class="px-2 py-1 text-center ${nCls}">${(c.net_pct >= 0 ? '+' : '') + c.net_pct}%</td>
+                                <td class="px-2 py-1 text-center text-gray-400">${c.dates}</td>
+                                <td class="px-2 py-1 text-left ${vCls}">${c.verdict}</td>
+                            </tr>`;
+                        });
+                        _blsBody.innerHTML = html || '<tr><td colspan="11" class="px-2 py-3 text-center text-gray-500">No BE-lock capture data yet — accumulates from Jul-28.</td></tr>';
+                    }
+                }
+                // ===== BE-LOCK SHADOW END =====
 
                 // ===== LIQUIDITY SIZING START (Jun 2, observation-only) =====
                 {

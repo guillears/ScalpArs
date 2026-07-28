@@ -6389,6 +6389,17 @@ class TradingEngine:
                                 if order.post_arm_min_pnl_pct is None or _cache_pam < order.post_arm_min_pnl_pct:
                                     order.post_arm_min_pnl_pct = _cache_pam
                                     order.post_arm_min_pnl_at = _cache_pam_at
+                            # Jul 28 BE-LOCK SHADOW: stamp first-touch minute + post-touch
+                            # trough per arm threshold (tainted/spike trades leave NULLs).
+                            _cache_bl = _cached.get('_belock')
+                            if _cache_bl and not _cached.get('_belock_taint'):
+                                for _bl_x, _bl_cols in ((15, ('belock_t15_min', 'belock_tr15')),
+                                                        (20, ('belock_t20_min', 'belock_tr20')),
+                                                        (30, ('belock_t30_min', 'belock_tr30'))):
+                                    _bl_state = _cache_bl.get(_bl_x)
+                                    if _bl_state and _bl_state[0] is not None:
+                                        setattr(order, _bl_cols[0], _bl_state[0])
+                                        setattr(order, _bl_cols[1], _bl_state[1])
                             break
                 except Exception as _sync_e:
                     logger.debug(f"[CACHE_SYNC_PRE_CLOSE] {order_pair}: cache sync skipped: {_sync_e}")
@@ -11096,6 +11107,32 @@ class TradingEngine:
                         order_info['peak_ema5_slope_pct'] = round((_ema5_val - _ema5_prev3) / _ema5_val * 100, 4)
             order_info['peak_pnl'] = current_peak
 
+            # ===== BE-LOCK SHADOW — in-trade tick (Jul 28, observation-only) =====
+            # Records, per arm threshold X, the FIRST minute P&L touched +X% and the
+            # minimum P&L AFTER that touch. Feeds the time-boxed BE-lock counterfactual
+            # (arm BE only if peak >= X by minute Y). Momentum book only — spikes have
+            # their own exit stack. Restart-tainted trades ('_belock_taint', cache
+            # reseeded with peak already >= 0.15) are skipped so sequencing stays honest.
+            if not order_info.get('_belock_taint') \
+                    and not (order_info.get('entry_strategy') or '').startswith('SPIKE'):
+                try:
+                    _bl = order_info.get('_belock')
+                    if _bl is None:
+                        _bl = {15: [None, None], 20: [None, None], 30: [None, None]}
+                        order_info['_belock'] = _bl
+                    _bl_opened = order_info.get('opened_at')
+                    for _bl_x, _bl_state in _bl.items():
+                        if _bl_state[0] is None:
+                            if pnl_pct >= _bl_x / 100.0 and _bl_opened is not None:
+                                _bl_now = datetime.utcnow()
+                                _bl_ref = _bl_opened if _bl_opened.tzinfo is None else _bl_opened.replace(tzinfo=None)
+                                _bl_state[0] = round(max(0.0, (_bl_now - _bl_ref).total_seconds() / 60.0), 2)
+                                _bl_state[1] = round(pnl_pct, 4)
+                        elif _bl_state[1] is None or pnl_pct < _bl_state[1]:
+                            _bl_state[1] = round(pnl_pct, 4)
+                except Exception:
+                    pass  # observation-only: never let shadow tracking touch the exit path
+
             # ===== LEASH SHADOW START — in-trade tick (observation-only) =====
             _ls_ema5 = order_info.get('cached_ema5')
             _ls_stretch = None
@@ -12130,6 +12167,11 @@ class TradingEngine:
                 # Jul 27 option-D state resumed across restarts (SPIKE_CHASE)
                 'spike_armed': bool(getattr(order, 'spike_armed', False)),
                 'spike_rsi_max': getattr(order, 'spike_rsi_max', None),
+                # Jul 28 BE-LOCK SHADOW: a trade whose cache reseeds mid-flight with peak
+                # already >= 0.15 may have touched an arm threshold BEFORE the restart —
+                # its first-touch time is unrecoverable, so taint it (all six columns
+                # stay NULL, the CF excludes it). Fresh trades track from tick 1.
+                '_belock_taint': bool((order.peak_pnl or 0.0) >= 0.15),
                 # May 17: post-arm-min tracking (resumed if already populated)
                 'be_armed': order.post_arm_min_pnl_pct is not None,
                 'post_arm_min_pnl': order.post_arm_min_pnl_pct,

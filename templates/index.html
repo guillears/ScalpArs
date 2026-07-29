@@ -8055,6 +8055,38 @@
             return num.toPrecision(4);
         }
 
+        // Jul 29 — door-membership badge (display-only; identity stays entry_strategy).
+        // Derives the admission door / sizing tier from fields already on the order:
+        // cell_multiplier_source (CALM3D / probes / UNMATCHED / FGP_*) + the door bands
+        // (RSICEIL: entry_rsi (65,70] · DB-UP: entry_btc_1h_slope [0.025,0.05)) + PVR tier.
+        // RSIADX-release carries no stamp → not derivable client-side (by design, honest gap).
+        function doorBadges(o) {
+            const tags = [];
+            const src = o.cell_multiplier_source || '';
+            const strat = o.entry_strategy || '';
+            const fg = src.match(/\+((FGP_(QS|RSI|TG)))/);
+            if (fg) tags.push(fg[1]);
+            if (strat.startsWith('SPIKE') || strat.startsWith('FLIP:') || strat === 'BULL_LONG' || strat === 'BOUNCE_LONG') return tags;
+            if (src === 'NONEXP_CALM3D') tags.push('CALM3D');
+            else if (src.endsWith('_PROBE')) tags.push(src.replace('_PROBE', ''));
+            else if (src === 'UNMATCHED') {
+                const pvr = o.entry_pair_volume_ratio;
+                if (pvr != null && pvr < 0.68) tags.push('QUIET 2.5×');
+                else if (pvr != null && pvr >= 0.9) tags.push('DE-MUX 1×');
+                else tags.push('UNM 2×');
+            } else if (src) tags.push(src.length > 12 ? src.slice(0, 12) + '…' : src);
+            const rsi = o.entry_rsi;
+            if (rsi != null && rsi > 65 && rsi <= 70) tags.push('RSICEIL');
+            const s1 = o.entry_btc_1h_slope;
+            if (s1 != null && s1 >= 0.025 && s1 < 0.05) tags.push('DB-UP');
+            return tags;
+        }
+        function doorBadgeHtml(o) {
+            const tags = doorBadges(o);
+            if (!tags.length) return '';
+            return '<div class="mt-0.5 flex flex-wrap justify-center gap-0.5">' + tags.map(t =>
+                `<span class="px-1 py-px rounded text-[9px] font-semibold bg-teal-500/15 text-teal-300/90" title="Admission door / sizing tier (display-only — strategy identity unchanged)">${t}</span>`).join('') + '</div>';
+        }
         function formatTime(isoString) {
             if (!isoString) return '-';
             // Ensure the timestamp is treated as UTC by adding 'Z' if missing
@@ -18511,7 +18543,7 @@
                             <td class="px-4 py-3 font-medium">${o.pair}</td>
                             <td class="px-4 py-3 ${confClass}">${o.confidence || '-'}</td>
                             <td class="px-4 py-3 ${dirClass} font-medium">${o.direction}</td>
-                            <td class="px-4 py-3 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${_stratColor}">${_stratLabel}</span></td>
+                            <td class="px-4 py-3 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${_stratColor}">${_stratLabel}</span>${doorBadgeHtml(o)}</td>
                             <td class="px-4 py-3 text-center">${eotBadge}</td>
                             <td class="px-4 py-3 text-right">${formatUSD(o.investment)}</td>
                             <td class="px-4 py-3 text-right">${o.leverage}x</td>
@@ -18632,7 +18664,7 @@
                             <td class="px-4 py-3 font-medium">${o.pair}</td>
                             <td class="px-4 py-3 ${confClass}">${o.confidence || '-'}</td>
                             <td class="px-4 py-3 ${dirClass} font-medium">${o.direction}</td>
-                            <td class="px-4 py-3 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${_stratColor}">${_stratLabel}</span></td>
+                            <td class="px-4 py-3 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${_stratColor}">${_stratLabel}</span>${doorBadgeHtml(o)}</td>
                             <td class="px-4 py-3 text-center">${eotBadge}</td>
                             <td class="px-4 py-3 text-center">${exotBadge}</td>
                             <td class="px-4 py-3 text-right ${(() => {

@@ -1258,6 +1258,10 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "tp_target": o.dynamic_tp_target or 0,
             "entry_atr_pct": getattr(o, 'entry_atr_pct', None),  # Jun 1: runner-trail badge check
             "entry_strategy": getattr(o, 'entry_strategy', None),  # Jun 16: FAN-flip strpk runner badge check
+            # Jul 29: door-membership badge fields (display-only — RSICEIL band / DB-UP band / PVR tier)
+            "entry_rsi": getattr(o, 'entry_rsi', None),
+            "entry_btc_1h_slope": getattr(o, 'entry_btc_1h_slope', None),
+            "entry_pair_volume_ratio": getattr(o, 'entry_pair_volume_ratio', None),
             **_compute_be_level(o),
             "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER",
             "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER",
@@ -1383,6 +1387,10 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_btc_regime": o.entry_btc_regime,
             "exit_btc_regime": o.exit_btc_regime,
             "entry_strategy": getattr(o, 'entry_strategy', None),  # Jun 22: Strategy column in Closed Orders table
+            # Jul 29: door-membership badge fields (display-only — RSICEIL band / DB-UP band / PVR tier)
+            "entry_rsi": getattr(o, 'entry_rsi', None),
+            "entry_btc_1h_slope": getattr(o, 'entry_btc_1h_slope', None),
+            "entry_pair_volume_ratio": getattr(o, 'entry_pair_volume_ratio', None),
         })
 
     return orders_data

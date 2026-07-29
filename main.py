@@ -10172,7 +10172,12 @@ _BELOCK_ARMS = ((0.15, 'belock_t15_min', 'belock_tr15'),
                 (0.20, 'belock_t20_min', 'belock_tr20'),
                 (0.30, 'belock_t30_min', 'belock_tr30'))
 _BELOCK_WINDOWS = (5.0, 10.0, 15.0)          # minutes from entry
-_BELOCK_LEVELS = (0.05, 0.0, -0.15)          # lock exit P&L% (fee-covered BE / true BE / half-floor)
+_BELOCK_LEVELS = (0.10, 0.05, 0.0, -0.15)    # lock exit P&L% (profit-lock / fee-covered BE / true BE / half-floor)
+#   Jul-29: +0.10 added (analytics-only — capture columns store the RAW post-touch trough, so the
+#   grid re-derives every level from the same data; nothing re-accumulates). Evidence direction at
+#   N=8 exact-tracked: higher floors dominate (+0.10 → +$142 vs +0.05 → +$122 vs −0.15 → +$42)
+#   because killed winners dip deep enough to be scratched at ANY level — the floor mostly sets
+#   how much the saves bank. The pre-committed Phase-2 gate is unchanged and now spans 36 cells.
 
 
 def _compute_be_lock_shadow(orders):

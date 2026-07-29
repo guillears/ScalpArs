@@ -11895,6 +11895,57 @@ class TradingEngine:
                     order_info['_closing_in_progress'] = False
             # ─── REALTIME LONG RUNNER ATR-FLOOR END ───
 
+            # ─── Jul 29: REALTIME NON-FLIP SHORT RUNNER ATR-FLOOR (3rd appearance of the
+            # monitor-latency bug class; direction mirror of the Jul-6 LONG block). Non-flip
+            # SHORTS (momentum shorts + SPIKE_FADE) had their runner floor evaluated ONLY in
+            # the slow monitor loop — the realtime mirrors covered LONGs (Jul-6) and FLIP
+            # shorts (Jun-16 Fix A) but this class predated the fade program and was starved:
+            # PROM fade Jul-29 peaked +1.89 with a 0.5×ATR floor ≈ +1.58, fell through it
+            # between monitor passes, ladder backstop caught it at +0.52 (−1.0pp latency).
+            # Same formula as the monitor path (runner_trail_short_*: N=0.5, arm 0.45,
+            # ratchet per config), evaluated on every tick; monitor stays as backstop.
+            # Fail-open. Zero config changes. ───
+            if (not _is_flip and direction == "SHORT" and not order_info.get('_closing_in_progress')):
+                try:
+                    _rs_th = config.trading_config.thresholds
+                    if getattr(_rs_th, 'runner_trail_short_enabled', False) and getattr(_rs_th, 'runner_trail_short_use_atr', True):
+                        _rs_arm = float(getattr(_rs_th, 'runner_trail_short_arm_peak', 0.45) or 0.45)
+                        _rs_amin = float(getattr(_rs_th, 'runner_trail_short_atr_min', 0.0) or 0.0)
+                        _rs_atr = order_info.get('entry_atr_pct')
+                        if (current_peak >= _rs_arm - 0.005 and _rs_atr and _rs_atr > 0
+                                and (_rs_amin <= 0 or _rs_atr >= _rs_amin)):
+                            _rs_n = float(getattr(_rs_th, 'runner_trail_short_atr_mult', 0.5) or 0.5)
+                            _rs_gb = _rs_n * _rs_atr
+                            _rs_frac = float(getattr(_rs_th, 'runner_trail_short_giveback_frac', 0.0) or 0.0)
+                            if _rs_frac > 0 and current_peak > 0 and _rs_frac * current_peak < _rs_gb:
+                                _rs_gb = _rs_frac * current_peak
+                            _rs_raw_floor = current_peak - _rs_gb
+                            _rs_floor = _rs_raw_floor
+                            if getattr(_rs_th, 'runner_trail_short_be_ratchet_enabled', False):
+                                _rs_floor = max(_rs_floor, float(getattr(_rs_th, 'runner_trail_short_be_lock_pct', 0.10) or 0.10))
+                            if pnl_pct <= _rs_floor:
+                                logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} SHORT(non-flip): pnl {pnl_pct:.3f}% <= floor {_rs_floor:.3f}% (peak={current_peak:.2f}%, giveback={_rs_gb:.3f}%) -> close")
+                                order_info['_closing_in_progress'] = True
+                                async with AsyncSessionLocal() as db:
+                                    _rsr = await db.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))
+                                    _rs_order = _rsr.scalar_one_or_none()
+                                    if _rs_order:
+                                        _rs_order.runner_trail_bound = ("lock" if _rs_floor > _rs_raw_floor else "atr")
+                                        _rs_closed = await self.close_position(db, _rs_order, current_price, "RUNNER_TRAIL")
+                                        if _rs_closed:
+                                            logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} SHORT(non-flip) closed at {current_price} pnl={pnl_pct:.4f}%")
+                                            async with _cache_lock:
+                                                _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                                        else:
+                                            order_info['_closing_in_progress'] = False
+                                    else:
+                                        order_info['_closing_in_progress'] = False
+                                continue
+                except Exception as _rs_err:
+                    logger.error(f"[REALTIME_RUNNER_TRAIL] {pair} SHORT(non-flip): {_rs_err}")
+                    order_info['_closing_in_progress'] = False
+            # ─── REALTIME NON-FLIP SHORT RUNNER ATR-FLOOR END ───
+
             # Real-time trailing stop check (only when trailing stop is active and TP/trailing enabled).
             # Phase 1d-ExitTest (May 2): suppress trailing when RSI Handoff is active and trade is past level.
             # May 6: also suppress when EMA Stack Cross Exit is active and trade is past level.

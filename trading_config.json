@@ -503,7 +503,7 @@
     "atr_low_fixed_tp_atr_max": 1.1,
     "atr_low_fixed_tp_pct": 0.25,
     "long_unmatched_only": true,
-    "long_w2_reenable_1h_min": 0.05,
+    "long_w2_reenable_1h_min": 99.0,
     "long_w6_reenable_1h_max": 99.0,
     "long_w6_reenable_stretch_min": 0.31,
     "global_volume_max_short_capitulation_override_enabled": false,

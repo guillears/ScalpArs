@@ -461,8 +461,16 @@ class SignalThresholds(BaseModel):
     nonexp_calm3d_enabled: bool = True
     nonexp_calm3d_btc_atr_max: float = 0.147      # Jul-23 sweep #1 2D separator (calm-BTC)
     nonexp_calm3d_regimes: str = "STRONG_BULL"    # comma list; the SBULL cell is the evidence
-    nonexp_calm3d_invest_mult: float = 2.0        # operator sizing (patron: Inv 2x / Lev 1x)
+    nonexp_calm3d_invest_mult: float = 1.0        # Jul-29 de-escalated 2.0→1.0 at 7/10 fires (57% WR net-losing
+    #   −$240: 4 small wins wiped by NIL-class 2× tails — locked 'high-WR-net-losing → fix sizing' treatment;
+    #   the N≥10 gate still rules on the cell itself)
     nonexp_calm3d_lev_mult: float = 1.0
+    # Jul-29 RSICEIL door re-scope (operator-shipped at 6/10 fires as experimental narrowing):
+    # the graduated RSI (65,70] LONG band additionally requires pair-ADX >= this floor.
+    # Evidence: door fires split 2W (pADX 30.3/34.4) vs 4L (19.4-29.1) + lifetime RSI65-70
+    # x ADX>=30 positive / <30 all-negative + 11c clock mechanism (overbought needs trend
+    # support). Blocked candidates counted under RSICEIL_DOOR_ADXMIN. 0 = off (band open).
+    rsiceil_door_adx_min: float = 30.0
     # ② RSIADX breadth release: the Mar-27 RSI x ADX cross-filter releases a sole-blocked
     # LONG when market breadth (bull%) <= this — candidate flows the NORMAL pipeline and
     # inherits the UNMATCHED patron (2x / PVR ladder). Cohort at ship: 8·87.5%·+0.326.

@@ -602,6 +602,15 @@ def get_signal(
                                    and rsi <= float(getattr(th, 'rsiceil_probe_ceiling', 70.0) or 70.0))
                 if not _rsiceil_band_l:
                     _l_fails.append(f"PAIR_RSI_RANGE[>{long_rsi_max:g}]")  # too hot — overbought chase
+            # Jul 29 RSICEIL door re-scope: the graduated (65, long_rsi_max] band additionally
+            # requires pair-ADX >= floor (door fires split 2W pADX 30.3/34.4 vs 4L 19.4-29.1;
+            # lifetime RSI65-70 x ADX>=30 positive / <30 all-negative — overbought needs trend
+            # support). 0 = off. Standalone check so the legacy elif order is untouched; if the
+            # band ceiling returns to 65 the band is empty and this is inert.
+            _rc_adx_min = float(getattr(th, 'rsiceil_door_adx_min', 0.0) or 0.0)
+            if (_rc_adx_min > 0 and rsi is not None and 65.0 < rsi <= long_rsi_max
+                    and adx is not None and adx < _rc_adx_min):
+                _l_fails.append("RSICEIL_DOOR_ADXMIN")
             if adx_max_long < 100 and adx > adx_max_long:
                 # Jul 20 ADXMAX PROBE (probe #8): the (max, probe-ceiling] band falls through
                 # when the probe is on (RSICEIL suppression pattern — the fail is simply not

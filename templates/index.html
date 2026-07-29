@@ -7756,7 +7756,7 @@
             loadConfig();
             loadInvestors();
             loadPnlCalendar();
-            setInterval(loadPnlCalendar, 120000); // refresh calendar every 2 min
+            setInterval(() => { if (!document.hidden) loadPnlCalendar(); }, 120000); // refresh calendar every 2 min (Jul 29: skip while hidden)
             function checkServerIp() {
                 fetch(`${API_BASE}/api/server-ip`).then(r => r.json()).then(d => {
                     const el = document.getElementById('server-ip');
@@ -7772,7 +7772,7 @@
                 }).catch(() => {});
             }
             checkServerIp();
-            setInterval(checkServerIp, 60000);
+            setInterval(() => { if (!document.hidden) checkServerIp(); }, 60000); // Jul 29: skip while hidden
 
             // Click-to-copy IP badge (May 5)
             (function wireIpCopy() {
@@ -7799,28 +7799,51 @@
             document.getElementById('config-maker-entry-enabled').addEventListener('change', updateRoundtripDisplay);
             document.getElementById('config-maker-exit-enabled').addEventListener('change', updateRoundtripDisplay);
 
+            // Jul 29 — renderer-crash fix ("Aw, Snap" code 5 = tab OOM). Two leak vectors:
+            // ① intervals kept fetching/parsing while the tab was HIDDEN (hours of pointless
+            //   1Hz JSON churn); ② no in-flight guards — any API slowness (deploys, EB
+            //   hiccups) stacked unbounded concurrent fetches, each holding buffers.
+            // Fix: document.hidden gates every interval + per-key in-flight guards; a
+            // visibilitychange listener does one full refresh when the tab returns.
+            window._rfInflight = {};
+            const _rfGuard = (key, fn) => {
+                if (window._rfInflight[key]) return;
+                window._rfInflight[key] = true;
+                Promise.resolve().then(fn).catch(() => {}).finally(() => { window._rfInflight[key] = false; });
+            };
+            let _perfDirty = false;
+
             // Auto-refresh every 10 seconds
             setInterval(() => {
-                loadBalance();
-                loadPairs();
-                loadOpenOrders();
-                loadClosedOrders();
-                loadInvestors();
-                loadStatus();
-                if (currentTab === 'transactions') loadTransactions();
+                if (document.hidden) return;
+                _rfGuard('batch10', async () => {
+                    await Promise.allSettled([loadBalance(), loadPairs(), loadClosedOrders(), loadInvestors(), loadStatus()]);
+                    if (currentTab === 'transactions') await loadTransactions();
+                });
             }, 10000);
 
             // Update open orders every 1 second for faster decision making
             setInterval(() => {
-                loadOpenOrders();
+                if (document.hidden) return;
+                _rfGuard('oo', loadOpenOrders);
             }, 1000);
 
             // Jul 22: analytics safety net — loadPerformance() is event-driven (fires when the
             // newest-closed-order signature changes, see loadClosedOrders), but recompute every
             // 5 min anyway to catch anything the signature misses (restart recovery, resets).
             setInterval(() => {
-                loadPerformance();
+                if (document.hidden) { _perfDirty = true; return; }
+                _rfGuard('perf', loadPerformance);
             }, 300000);
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) return;
+                _rfGuard('oo', loadOpenOrders);
+                _rfGuard('batch10', async () => {
+                    await Promise.allSettled([loadBalance(), loadPairs(), loadClosedOrders(), loadInvestors(), loadStatus()]);
+                });
+                if (_perfDirty) { _perfDirty = false; _rfGuard('perf', loadPerformance); }
+            });
         });
 
         // ===== Daily P&L Calendar (Jun 11, 2026) =====

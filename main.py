@@ -1920,6 +1920,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "spike_fires": [],
             "spike_summary": [],
             "graduation_doors": [],
+            "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
             "extension_multiplier_performance": {"rules": [], "summary": {}},
@@ -3703,6 +3704,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "spike_fires": [],
             "spike_summary": [],
             "graduation_doors": [],
+            "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
             "extension_multiplier_performance": {"rules": [], "summary": {}},
@@ -6435,10 +6437,32 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 and _es2(o) in ('MOMENTUM', '') and getattr(o, 'entry_rsi', None) is not None
                 and 65 < o.entry_rsi <= 70]
         graduation_doors.append(_door("RSICEIL band (65,70]", _rcl, 10, 50, "rsi_max back to 65"))
+        # Jul 29 — OVERLAP DISCLOSURE (CURRENT_STATE #31 door-intersection protocol): the four
+        # rows are independent pinned slices, so a multi-door fire is counted in EVERY row it
+        # matches (their locked gates were pre-committed against these slices — rows must NOT
+        # be de-overlapped). This block DISCLOSES the overlap: per-row shared-fire count + a
+        # footer with the naive column sum vs the unique-trade total. Fail-silent.
+        try:
+            _door_sets = [ {id(o) for o in g} for g in (_calm, _dbu, _bre, _rcl) ]
+            _all_by_id = {id(o): o for g in (_calm, _dbu, _bre, _rcl) for o in g}
+            _memb = {oid: sum(1 for s in _door_sets if oid in s) for oid in _all_by_id}
+            for _row, _s in zip(graduation_doors, _door_sets):
+                _row["shared"] = sum(1 for oid in _s if _memb[oid] >= 2)
+            _shared_ids = [oid for oid, c in _memb.items() if c >= 2]
+            _naive = round(sum(r["total_usd"] for r in graduation_doors), 2)
+            _unique = round(sum((_all_by_id[oid].pnl or 0) for oid in _all_by_id), 2)
+            graduation_doors_overlap = {
+                "shared_fires": len(_shared_ids),
+                "shared_usd": round(sum((_all_by_id[oid].pnl or 0) for oid in _shared_ids), 2),
+                "naive_sum_usd": _naive, "unique_trades": len(_all_by_id), "unique_usd": _unique,
+            }
+        except Exception:
+            graduation_doors_overlap = None
     except Exception as e:
         logger.error(f"[PERF] Error computing program scoreboards: {e}\n{traceback.format_exc()}")
         spike_summary = []
         graduation_doors = []
+        graduation_doors_overlap = None
 
     # Stop Loss Deep Dive + Winning Trades Drawdown
     stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
@@ -7797,6 +7821,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "spike_fires": spike_fires,
         "spike_summary": spike_summary,
         "graduation_doors": graduation_doors,
+        "graduation_doors_overlap": graduation_doors_overlap,
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "flagged_exits": flagged_exits,
         "period_performance": _compute_period_performance(orders),

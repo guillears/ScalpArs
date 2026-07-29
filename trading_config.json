@@ -42,7 +42,7 @@
     "max_notional_pct_of_pair_volume": 0.1,
     "max_notional_hard_ceiling": 500000,
     "max_gross_leverage": 25.0,
-    "redeploy_leftover_enabled": false,
+    "redeploy_leftover_enabled": true,
     "max_open_positions_hard": 10,
     "leverage_balance_schedule": "0:20, 25000:15, 75000:10, 250000:5"
   },

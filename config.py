@@ -251,6 +251,16 @@ class SignalThresholds(BaseModel):
     gap_probe_invest_mult: float = 0.5   # x equal-split invest (~$385 ticket)
     gap_probe_lev_mult: float = 0.05     # x 20x base = 1x effective leverage
     gap_probe_max_open: int = 3          # concurrent probes (Jul 13 PM operator: 1→3, and the per-day budget REMOVED — at ~$4/trade a daily cap only slows the N≥30 clock; slot guard + concurrency are the protections)
+    # Jul 29: FLIPGATE PROBES (operator-directed after the flip-drought forensics). The flip
+    # sleeve produced 0 trades since Jul-8; down-window cross-ref showed candidates DO exist
+    # inside BTC down-windows (313 vetoes/7d in-window) but die on three June-fitted secondary
+    # floors (QUALITY 85 / RSI_MIN 72 / TRENDGAP 54 = 67% of in-window kills; TRENDGAP's
+    # registered Sole-growth reopen trigger fired). A flip-SHORT candidate sole-blocked by
+    # exactly ONE gate listed below opens at gap-probe sizing (~1x eff) under its own cell tag
+    # (FGP_QS / FGP_RSI / FGP_TG) — per-gate cohorts, per-gate locked N>=30 verdicts.
+    flipgate_probe_enabled: bool = True
+    flipgate_probe_gates: str = "FLIP_SHORT_QUALITY,FLIP_SHORT_RSI_MIN,FLIP_SHORT_BTC_TRENDGAP"
+    flipgate_probe_max_open: int = 3     # concurrent FGP_* probes (shared across the 3 cohorts)
     # Jul 13 PM: GAPMIN PROBE — sibling of the GAPFLAT probe, on the #2 LONG blocker
     # (PAIR_EMA_GAP_MIN, 2,101 L blocks). A momentum LONG whose EMA5-8 gap sits in
     # [gapmin_probe_floor, ema_gap_threshold_long) — accelerating (passed gap-expanding)

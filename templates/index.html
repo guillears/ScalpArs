@@ -6405,6 +6405,20 @@
                         </div>
                         <!-- per-source rows render here -->
                         <div id="flip-sources-list" class="space-y-2"></div>
+                        <!-- ===== FLIPGATE probes (Jul 29) ===== -->
+                        <div class="mt-3 px-3 py-2 rounded bg-fuchsia-950/15 border border-fuchsia-800/30">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="text-xs text-fuchsia-300 font-semibold">🧪 FLIPGATE probes <span class="text-fuchsia-500/60 text-[10px] font-normal">(Jul 29 — sole-blocked candidates re-admitted at gap-probe sizing, per-gate FGP_* cohorts)</span></div>
+                                <label class="inline-flex items-center cursor-pointer" title="Down-window forensics: flip candidates exist inside BTC down-windows but die on 3 June-fitted floors (QUALITY/RSI_MIN/TRENDGAP = 67% of in-window vetoes). A SHORT sole-blocked by exactly one listed gate opens at ~1x eff under FGP_QS/FGP_RSI/FGP_TG. Per-gate N>=30 verdicts.">
+                                    <input type="checkbox" id="config-flipgate-probe-enabled" class="sr-only peer">
+                                    <div class="relative w-9 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-fuchsia-500"></div>
+                                </label>
+                            </div>
+                            <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                <label class="flex items-center justify-between gap-2 col-span-2"><span class="text-gray-400">Probe-admitted gates</span><input type="text" id="config-flipgate-probe-gates" class="w-full ml-2 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-right"></label>
+                                <label class="flex items-center justify-between gap-2"><span class="text-gray-400">Max concurrent FGP probes</span><input type="number" id="config-flipgate-probe-max-open" step="1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-right"></label>
+                            </div>
+                        </div>
                         <!-- ===== FAN_RATIO_GATE flip filter section (Jun 16) ===== -->
                         <div class="mt-3 px-3 py-2 rounded bg-fuchsia-950/15 border border-fuchsia-800/30">
                             <div class="text-xs text-fuchsia-300 font-semibold mb-2">🔀 FAN_RATIO_GATE filters <span class="text-fuchsia-500/60 text-[10px] font-normal">(source-specific; future sources get their own)</span></div>
@@ -10330,6 +10344,7 @@
             lines.push(`  🎓 Promotion Package (Jul 27 PM): NONEXP_CALM3D ${th.nonexp_calm3d_enabled === true ? 'ON' : 'OFF'} (gap-flat/flat+small LONG admitted full-size when regime ∈ [${th.nonexp_calm3d_regimes ?? 'STRONG_BULL'}] ∧ BTC-ATR <= ${th.nonexp_calm3d_btc_atr_max ?? 0.147}; Inv ${th.nonexp_calm3d_invest_mult ?? 2}x/Lev ${th.nonexp_calm3d_lev_mult ?? 1}x, bypasses keep-only-unmatched)  |  RSIADX breadth release <= ${th.rsiadx_breadth_admit_max ?? 0} (0=off; inherits normal stack)  |  Deadband split: +side ${th.long_btc_1h_deadband_pos ?? 0} / −side ${th.long_btc_1h_deadband ?? 0.05} (upper half [${th.long_btc_1h_deadband_pos ?? 0}, ${th.long_btc_1h_deadband ?? 0.05}) = normal flow)  |  RSI max L ${th.momentum_long_rsi_max ?? 100} (65→70 RSICEIL graduation; Jul-29 re-scope: RSI (65,max] needs pair-ADX >= ${th.rsiceil_door_adx_min ?? 0}, 0=off) · CALM3D Inv de-escalated 2.0→${th.nonexp_calm3d_invest_mult ?? 1}x Jul-29  |  probes closed: GAPFLAT/GMINFLAT/RSIADX/DEADBAND/RSICEIL (graduated or replaced) + ADXMAX2 (0/6 off)`);
             lines.push(`  🚀 Spike Full Ship (Jul 27): REGIME ROUTER ${th.spike_regime_router_enabled === true ? `ON [chase in: ${th.spike_chase_regimes ?? 'STRONG_BULL,HEALTHY_BULL'}; else FADE]` : 'OFF (ADX-only)'} | ROUTE MaxADX=${th.spike_chase_max_adx ?? 30} (<= -> CHASE LONG Inv ${th.spike_invest_mult ?? 2}x/Lev ${th.spike_lev_mult ?? 1}x, option-D: SL ${th.spike_sl_pct ?? -1.2}% fixed / RSI-cool arm>=${th.spike_rsi_cool_arm ?? 75} exit at max-${th.spike_rsi_cool_drop ?? 10} / floors unarmed [${th.spike_ladder_unarmed ?? ''}] armed [27-rung envelope] / Jul-28 patch: trail-arm ${th.spike_trail_arm_pct ?? 0.45} (unarmed mid-zone, 1xATR+lock) + stale-kill ${th.spike_stale_kill_min ?? 30}min (unarmed peak<0.2) / NO_EXP exempt armed: ${th.spike_no_expansion_exempt_armed === true ? 'ON' : 'OFF'})  |  FADE: ${th.spike_fade_enabled === true ? 'ON' : 'OFF (check tripwire!)'} SHORT Inv ${th.spike_fade_invest_mult ?? 1}x/Lev ${th.spike_fade_lev_mult ?? 1}x, fixed SL ${th.spike_fade_sl_pct ?? -0.7}% NO widen, tripwire ${th.spike_fade_tripwire_pct ?? -1.5}% auto-disables`);
             lines.push(`  DBDOWN Probe (Jul 20): ${th.dbdown_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.dbdown_probe_max_open !== undefined ? th.dbdown_probe_max_open : 3}  (1h flat-DOWN half-band [-0.05,0) opens as 1x DBDOWN_PROBE — graduated execution of the FIRED deadband phantom revert gate)`);
+            lines.push(`  🧪 FLIPGATE Probes (Jul 29): ${th.flipgate_probe_enabled === true ? 'ON' : 'OFF'}  |  Gates: ${th.flipgate_probe_gates ?? ''}  |  Max Open: ${th.flipgate_probe_max_open ?? 3}  (flip-SHORT sole-blocked by exactly ONE listed gate re-admitted at gap-probe sizing under FGP_QS/FGP_RSI/FGP_TG cell tags — per-gate N>=30 verdicts; down-window forensics: these 3 floors = 67% of in-window vetoes)`);
 
             const inv = cfg.investment || {};
             lines.push(`\nGeneral Settings:`);
@@ -19703,6 +19718,10 @@
                 const _flipEn = document.getElementById('config-flip-entry-enabled');
                 if (_flipEn) _flipEn.checked = (config.thresholds.flip_entry_enabled === true);
                 loadFlipSources(config.thresholds.flip_entry_sources || '');
+                // FLIPGATE probes (Jul 29)
+                { const _e=document.getElementById('config-flipgate-probe-enabled'); if(_e) _e.checked = (config.thresholds.flipgate_probe_enabled === true); }
+                { const _e=document.getElementById('config-flipgate-probe-gates'); if(_e && config.thresholds.flipgate_probe_gates !== undefined) _e.value = config.thresholds.flipgate_probe_gates; }
+                { const _e=document.getElementById('config-flipgate-probe-max-open'); if(_e && config.thresholds.flipgate_probe_max_open !== undefined) _e.value = config.thresholds.flipgate_probe_max_open; }
                 // FAN_RATIO_GATE flip filters (Jun 16)
                 const _setVal=(id,v)=>{const e=document.getElementById(id); if(e&&v!==undefined&&v!==null) e.value=v;};
                 _setVal('config-flip-fan-stretch-min', config.thresholds.flip_fan_stretch_min);
@@ -21089,6 +21108,9 @@
                     fan_ratio_filter_enabled: ((document.getElementById('config-fan-ratio-filter-enabled') || {}).checked === true),
                     flip_entry_enabled: ((document.getElementById('config-flip-entry-enabled') || {}).checked === true),
                     flip_entry_sources: ((document.getElementById('config-flip-entry-sources') || {}).value || '').trim(),
+                    flipgate_probe_enabled: ((document.getElementById('config-flipgate-probe-enabled') || {}).checked === true),
+                    flipgate_probe_gates: ((document.getElementById('config-flipgate-probe-gates') || {}).value || '').trim(),
+                    flipgate_probe_max_open: parseInt((document.getElementById('config-flipgate-probe-max-open') || {}).value) || 3,
                     flip_fan_stretch_min: parseFloat((document.getElementById('config-flip-fan-stretch-min') || {}).value) || 0,
                     flip_fan_block_btc_rsi: parseFloat((document.getElementById('config-flip-fan-block-btc-rsi') || {}).value) || 0,
                     flip_fan_block_btc_adx: parseFloat((document.getElementById('config-flip-fan-block-btc-adx') || {}).value) || 0,

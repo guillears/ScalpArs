@@ -3871,7 +3871,32 @@ class TradingEngine:
             # Sole = the one gate whose removal alone admits the flip (the marginal blocker).
             try: self._record_filter_multi(_flip_fails, flip_dir, pair)
             except Exception: pass
+            # Jul 29 FLIPGATE PROBES (operator-directed after the down-window forensics): flip
+            # candidates DO exist inside BTC down-windows (313 in-window vetoes/7d) but die on
+            # three June-fitted secondary floors (QUALITY 85 / RSI_MIN 72 / TRENDGAP 54 = 67%
+            # of in-window kills; TRENDGAP's registered Sole-growth reopen trigger has fired).
+            # A SHORT candidate sole-blocked by exactly ONE probe-listed gate opens at gap-probe
+            # sizing (~1× eff) under its own FGP_* cell tag — per-gate cohorts, per-gate locked
+            # verdicts at N≥30 (CURRENT_STATE). Fail-silent: any error → normal block path.
+            _fg_admit_tag = None
             if _blocked:
+                try:
+                    _fg_th = config.trading_config.thresholds
+                    if (getattr(_fg_th, 'flipgate_probe_enabled', False) and flip_dir == 'SHORT'
+                            and isinstance(_flip_fails, list) and len(_flip_fails) == 1):
+                        _fg_map = {'FLIP_SHORT_QUALITY': 'FGP_QS', 'FLIP_SHORT_RSI_MIN': 'FGP_RSI',
+                                   'FLIP_SHORT_BTC_TRENDGAP': 'FGP_TG'}
+                        _fg_gates = {s.strip() for s in (getattr(_fg_th, 'flipgate_probe_gates', '') or '').split(',') if s.strip()}
+                        if _flip_fails[0] in _fg_gates and _flip_fails[0] in _fg_map and db is not None:
+                            _fg_q = await db.execute(
+                                select(func.count(Order.id)).where(and_(
+                                    Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
+                                    Order.cell_multiplier_source.like('%FGP_%'))))
+                            if (_fg_q.scalar() or 0) < int(getattr(_fg_th, 'flipgate_probe_max_open', 3) or 0):
+                                _fg_admit_tag = _fg_map[_flip_fails[0]]
+                except Exception:
+                    _fg_admit_tag = None
+            if _blocked and _fg_admit_tag is None:
                 try: self._record_filter_block(_reason, flip_dir)
                 except Exception: pass
                 # Jul 5: same-direction PASS phantom for the decision-gated flip-SHORT blocker.
@@ -3889,6 +3914,8 @@ class TradingEngine:
                 logger.info(f"[FLIP_FILTER] {pair}: {source} flip vetoed by {_reason} "
                             f"(stretch={_ff_in.get('ema5_stretch')}, btcRSI={_ff_in.get('btc_rsi')}, btcADX={_ff_in.get('btc_adx')})")
                 return
+            if _fg_admit_tag is not None:
+                logger.info(f"[FLIPGATE_PROBE] {pair}: sole-blocked by {_reason} → probe-admitted as {_fg_admit_tag} (gap-probe sizing)")
             # FAN flip-SHORT winner cell (Jun 26): qs≥3 × bear≥70 × range 60-90. SHORT flips only;
             # applies size/lev (default 1×=inert) AND a distinct cell tag so the cohort tracks as its
             # own row in Multiplier Cell Performance. Non-FAN sources / flip-LONGs leave it untouched.
@@ -3962,6 +3989,14 @@ class TradingEngine:
                     _flip_cell_tag = (_flip_cell_tag + "+B1H_SLOPEUP") if _flip_cell_tag else "B1H_SLOPEUP"
             except Exception:
                 pass
+            # Jul 29 FLIPGATE probe sizing — ABSOLUTE assign, placed AFTER the multiplier-cell
+            # blocks (they use max() and would re-inflate an observation-sized probe back to
+            # 1-2×). Probe rides the normal flip exit stack; only size/lev/tag are overridden.
+            if _fg_admit_tag is not None:
+                _fg_th2 = config.trading_config.thresholds
+                _flip_cell_mult = float(getattr(_fg_th2, 'gap_probe_invest_mult', 0.5) or 0.5)
+                _flip_cell_lev_mult = float(getattr(_fg_th2, 'gap_probe_lev_mult', 0.05) or 0.05)
+                _flip_cell_tag = "+" + _fg_admit_tag
             async def _open(_db):
                 return await self.open_position(
                     db=_db, pair=pair, direction=flip_dir, confidence="STRONG_BUY",

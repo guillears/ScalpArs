@@ -10927,10 +10927,24 @@ def _compute_gap_probe_cohort(orders):
     dbdown_rows = []  # Jul 20: BTC 1h flat-DOWN half-band probe (#9, LONG-only)
     adxmax2_rows = []  # Jul 21: second LONG pair-ADX rung (35,40] probe (#10, LONG-only)
     spike_rows = []    # Jul 24: SPIKE_CHASE ladder-bypass chase probe (#11, LONG-only)
+    fgp_qs_rows, fgp_rsi_rows, fgp_tg_rows = [], [], []  # Jul 29: FLIPGATE probes (SHORT-only flip fades)
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
         d = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or "LONG"
+        # Jul 29 FLIPGATE probes — captured BEFORE the momentum-strategy filter (they are
+        # flips, entry_strategy=FLIP:FAN_RATIO_GATE, which the filter below would drop).
+        # They never join the momentum A/B buckets or the EXPANDING control window.
+        _src_fg = getattr(o, 'cell_multiplier_source', None) or ''
+        if '+FGP_' in _src_fg:
+            if d == "SHORT":
+                if '+FGP_QS' in _src_fg:
+                    fgp_qs_rows.append(o)
+                elif '+FGP_RSI' in _src_fg:
+                    fgp_rsi_rows.append(o)
+                elif '+FGP_TG' in _src_fg:
+                    fgp_tg_rows.append(o)
+            continue
         strat = getattr(o, 'entry_strategy', None) or "MOMENTUM"
         if strat not in ("MOMENTUM",):
             continue  # flips / bull-long / bounce-long are different sleeves
@@ -11022,6 +11036,9 @@ def _compute_gap_probe_cohort(orders):
         "ADXMAX 35-40 (probe) · SHORT": _g('adxmax_probe_enabled'),
         "DBDOWN flat-down (probe) · LONG": _g('dbdown_probe_enabled'),
         "SPIKE_CHASE (probe) · LONG": _g('spike_chase_probe_enabled'),
+        "FLIPGATE QUALITY (probe) · SHORT": _g('flipgate_probe_enabled'),
+        "FLIPGATE RSI_MIN (probe) · SHORT": _g('flipgate_probe_enabled'),
+        "FLIPGATE TRENDGAP (probe) · SHORT": _g('flipgate_probe_enabled'),
     }
 
     rows_out = []
@@ -11041,7 +11058,10 @@ def _compute_gap_probe_cohort(orders):
                        ("SLOPEGATE (probe) · SHORT", slopegate_s_rows),
                        ("RSIADX (probe) · SHORT", rsiadx_s_rows),
                        ("GMINFLAT flat+small (probe) · SHORT", gminflat_s_rows),
-                       ("ADXMAX 35-40 (probe) · SHORT", adxmax_s_rows)):
+                       ("ADXMAX 35-40 (probe) · SHORT", adxmax_s_rows),
+                       ("FLIPGATE QUALITY (probe) · SHORT", fgp_qs_rows),
+                       ("FLIPGATE RSI_MIN (probe) · SHORT", fgp_rsi_rows),
+                       ("FLIPGATE TRENDGAP (probe) · SHORT", fgp_tg_rows)):
         n = len(rs)
         _off = (not cohort.startswith("EXPANDING")) and not _cohort_enabled.get(cohort, True)
         if n == 0:
@@ -11074,7 +11094,7 @@ def _compute_gap_probe_cohort(orders):
         elif not cohort.startswith("EXPANDING"):
             if n < 30:
                 verdict = f"⏳ building ({n}/30)"
-            elif wr >= 60.0 and avg_pct >= 0.15 and dates >= (5 if ("SLOPEGATE" in cohort or "RSIADX" in cohort or "DEADBAND" in cohort or "RSICEIL" in cohort or "GMINFLAT" in cohort or "ADXMAX" in cohort or "DBDOWN" in cohort) else 10):
+            elif wr >= 60.0 and avg_pct >= 0.15 and dates >= (5 if ("SLOPEGATE" in cohort or "RSIADX" in cohort or "DEADBAND" in cohort or "RSICEIL" in cohort or "GMINFLAT" in cohort or "ADXMAX" in cohort or "DBDOWN" in cohort or "FLIPGATE" in cohort) else 10):
                 verdict = "★ relaxation candidate (open the discussion)"
             elif wr <= 45.0 or avg_pct < 0:
                 verdict = "✗ filter vindicated (switch probe off)"

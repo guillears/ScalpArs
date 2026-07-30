@@ -564,6 +564,7 @@
     "nonexp_calm3d_enabled": true,
     "nonexp_calm3d_btc_atr_max": 0.147,
     "nonexp_calm3d_regimes": "STRONG_BULL",
+    "nonexp_calm3d_max_stretch": 0.06,
     "nonexp_calm3d_invest_mult": 1.0,
     "nonexp_calm3d_lev_mult": 1.0,
     "rsiadx_breadth_admit_max": 63.6,

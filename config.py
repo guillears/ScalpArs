@@ -481,6 +481,13 @@ class SignalThresholds(BaseModel):
     nonexp_calm3d_enabled: bool = True
     nonexp_calm3d_btc_atr_max: float = 0.147      # Jul-23 sweep #1 2D separator (calm-BTC)
     nonexp_calm3d_regimes: str = "STRONG_BULL"    # comma list; the SBULL cell is the evidence
+    nonexp_calm3d_max_stretch: float = 0.06       # Jul-30 COILED-PAIR leg (0=off): admit only when
+    # EMA5-stretch <= this. Pooled #24b read (door 10 + calm-probes 9 = N=19): stretch<=0.06 ->
+    # 11W/1L +0.328% vs stretched 2W/5L -0.350%; door fires alone perfectly monotonic (6W all
+    # <=0.06, 4L all 0.07-0.17). Mechanism: calm tape has no follow-through fuel — a stretched
+    # pair mean-reverts, a coiled one drifts with the trend. Threshold fitted on N=19 (full
+    # haircut). Ships as the Option-A alternative to the FIRED N=10/Σ<0 revert gate; fresh
+    # TIGHTER gate: next N>=10 post-refinement fires WR>=60 ∧ Σ$>0 else door OFF for good.
     nonexp_calm3d_invest_mult: float = 1.0        # Jul-29 de-escalated 2.0→1.0 at 7/10 fires (57% WR net-losing
     #   −$240: 4 small wins wiped by NIL-class 2× tails — locked 'high-WR-net-losing → fix sizing' treatment;
     #   the N≥10 gate still rules on the cell itself)

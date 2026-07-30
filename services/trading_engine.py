@@ -10201,11 +10201,21 @@ class TradingEngine:
                                 _pp_regs = {x.strip() for x in (getattr(_th_pp, 'nonexp_calm3d_regimes', 'STRONG_BULL') or '').split(',') if x.strip()}
                                 _pp_atr_max = float(getattr(_th_pp, 'nonexp_calm3d_btc_atr_max', 0.147) or 0.147)
                                 _pp_batr = globals().get('_current_btc_atr_pct')
+                                # Jul-30 COILED-PAIR leg (#24b pooled read, Option A vs the fired
+                                # revert gate): calm tape only carries UNSTRETCHED entries —
+                                # pooled N=19: stretch<=0.06 11W/1L +0.33 vs stretched 2W/5L
+                                # -0.35 (door fires perfectly monotonic). 0=off; stretch None
+                                # fails open (admit) for parity with the other legs.
+                                _pp_smax = float(getattr(_th_pp, 'nonexp_calm3d_max_stretch', 0.06) or 0.0)
+                                _pp_coiled = (_pp_smax <= 0) or (entry_ema5_stretch is None) or (entry_ema5_stretch <= _pp_smax)
                                 if (entry_btc_regime in _pp_regs and _pp_batr is not None
-                                        and float(_pp_batr) <= _pp_atr_max):
+                                        and float(_pp_batr) <= _pp_atr_max and _pp_coiled):
                                     _nonexp_calm3d_hit = True
-                                    logger.info(f"[NONEXP_CALM3D] {pair}: gap-{'flat' if _pp_gapflat else 'min[flat]'} LONG ADMITTED full-size — {entry_btc_regime} ∧ BTC-ATR {float(_pp_batr):.3f} <= {_pp_atr_max}")
+                                    logger.info(f"[NONEXP_CALM3D] {pair}: gap-{'flat' if _pp_gapflat else 'min[flat]'} LONG ADMITTED full-size — {entry_btc_regime} ∧ BTC-ATR {float(_pp_batr):.3f} <= {_pp_atr_max} ∧ stretch {(entry_ema5_stretch if entry_ema5_stretch is not None else -1):.2f} <= {_pp_smax}")
                                 else:
+                                    if (not _pp_coiled and entry_btc_regime in _pp_regs and _pp_batr is not None
+                                            and float(_pp_batr) <= _pp_atr_max):
+                                        logger.info(f"[NONEXP_CALM3D_STRETCH] {pair}: calm-tape candidate REJECTED — stretch {entry_ema5_stretch:.2f} > {_pp_smax} (coiled-pair leg)")
                                     _pp_block = "PAIR_EMA_GAP_NOT_EXPANDING" if _pp_gapflat else "PAIR_EMA_GAP_MIN"
                             else:
                                 _pp_block = "PAIR_EMA_GAP_NOT_EXPANDING" if _pp_gapflat else "PAIR_EMA_GAP_MIN"

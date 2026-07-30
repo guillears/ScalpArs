@@ -530,6 +530,17 @@ class SignalThresholds(BaseModel):
     # or Σ<0 -> floor re-locks, probe off. Phantom tracker retired same day (Jul 30).
     deepgap_probe_enabled: bool = True
     deepgap_probe_max_open: int = 3      # concurrent DEEPGAP probes (SHORT-only by construction)
+    # Jul 30 MAJORS probe (#14, BOTH directions) — strategic scaling experiment: BTC/ETH
+    # (no_trade_pairs, track-only since Jun 3) run the FULL normal ladder and a candidate whose
+    # ONLY blocker is the no-trade list opens at gap-probe sizing as MAJORS_PROBE. Rationale:
+    # the 0.1% liquidity cap already binds on alt-sized orders (TWT -75.5%) — majors are the
+    # only pairs where the $1M-roadmap capital deploys; "does the edge transfer?" is the key
+    # scaling unknown, answerable at ~$4/fire. ⚠ Expectation set at ship: the threshold stack
+    # is alt-vol calibrated (BTC ATR ~0.10-0.15% vs alts 0.3-1%) — thin flow IS a finding
+    # ("re-scale before judging the edge"), record fires/day alongside WR. Per-PAIR verdict
+    # rows (BTC vs ETH judged separately). 🔒 Read protocol in CURRENT_STATE #35.
+    majors_probe_enabled: bool = True
+    majors_probe_max_open: int = 2       # concurrent MAJORS probes (~1 per major)
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

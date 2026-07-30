@@ -10746,6 +10746,8 @@ def _compute_gap_probe_cohort(orders):
     spike_rows = []    # Jul 24: SPIKE_CHASE ladder-bypass chase probe (#11, LONG-only)
     fgp_qs_rows, fgp_rsi_rows, fgp_tg_rows = [], [], []  # Jul 29: FLIPGATE probes (SHORT-only flip fades)
     deepgap_s_rows = []  # Jul 30: deep-gap floor probe (#13, SHORT-only — graduated phantom)
+    majors_btc_rows, majors_btc_s_rows = [], []  # Jul 30: MAJORS probe (#14) — BTC, per-pair verdicts
+    majors_eth_rows, majors_eth_s_rows = [], []  # Jul 30: MAJORS probe (#14) — ETH
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
@@ -10790,6 +10792,8 @@ def _compute_gap_probe_cohort(orders):
                 adxmax2_rows.append(o)
             elif _src == 'SPIKE_CHASE_PROBE':
                 spike_rows.append(o)
+            elif _src == 'MAJORS_PROBE':
+                (majors_btc_rows if (getattr(o, 'pair', '') or '').startswith('BTC') else majors_eth_rows).append(o)
             else:
                 exp_rows.append(o)
         elif d == "SHORT":
@@ -10807,6 +10811,8 @@ def _compute_gap_probe_cohort(orders):
                 adxmax_s_rows.append(o)
             elif _src == 'DEEPGAP_PROBE':
                 deepgap_s_rows.append(o)
+            elif _src == 'MAJORS_PROBE':
+                (majors_btc_s_rows if (getattr(o, 'pair', '') or '').startswith('BTC') else majors_eth_s_rows).append(o)
             elif _src == 'ADXMAX2_PROBE':
                 # Defensive (review): ADXMAX2 is LONG-only today — a SHORT carrying the tag
                 # (e.g. a future SHORT rung reusing it) must not contaminate the EXPANDING·SHORT
@@ -10820,7 +10826,7 @@ def _compute_gap_probe_cohort(orders):
                    + slopegate_rows + slopegate_s_rows + rsiadx_rows + rsiadx_s_rows
                    + deadband_rows + rsiceil_rows
                    + gminflat_rows + gminflat_s_rows + adxmax_rows + adxmax_s_rows + dbdown_rows + adxmax2_rows + spike_rows
-                   + deepgap_s_rows)
+                   + deepgap_s_rows + majors_btc_rows + majors_btc_s_rows + majors_eth_rows + majors_eth_s_rows)
     if _all_probes:
         _p0 = min(getattr(o, 'opened_at', None) for o in _all_probes if getattr(o, 'opened_at', None))
         if _p0:
@@ -10861,6 +10867,10 @@ def _compute_gap_probe_cohort(orders):
         "FLIPGATE RSI_MIN (probe) · SHORT": _g('flipgate_probe_enabled'),
         "FLIPGATE TRENDGAP (probe) · SHORT": _g('flipgate_probe_enabled'),
         "DEEPGAP deep-gap floor (probe) · SHORT": _g('deepgap_probe_enabled'),
+        "MAJORS BTC (probe) · LONG": _g('majors_probe_enabled'),
+        "MAJORS BTC (probe) · SHORT": _g('majors_probe_enabled'),
+        "MAJORS ETH (probe) · LONG": _g('majors_probe_enabled'),
+        "MAJORS ETH (probe) · SHORT": _g('majors_probe_enabled'),
     }
 
     rows_out = []
@@ -10884,7 +10894,11 @@ def _compute_gap_probe_cohort(orders):
                        ("FLIPGATE QUALITY (probe) · SHORT", fgp_qs_rows),
                        ("FLIPGATE RSI_MIN (probe) · SHORT", fgp_rsi_rows),
                        ("FLIPGATE TRENDGAP (probe) · SHORT", fgp_tg_rows),
-                       ("DEEPGAP deep-gap floor (probe) · SHORT", deepgap_s_rows)):
+                       ("DEEPGAP deep-gap floor (probe) · SHORT", deepgap_s_rows),
+                       ("MAJORS BTC (probe) · LONG", majors_btc_rows),
+                       ("MAJORS BTC (probe) · SHORT", majors_btc_s_rows),
+                       ("MAJORS ETH (probe) · LONG", majors_eth_rows),
+                       ("MAJORS ETH (probe) · SHORT", majors_eth_s_rows)):
         n = len(rs)
         _off = (not cohort.startswith("EXPANDING")) and not _cohort_enabled.get(cohort, True)
         if n == 0:

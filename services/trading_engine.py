@@ -4490,6 +4490,10 @@ class TradingEngine:
         # deep-gap floor (pair >=1% below 4h trend). Graduated from the retired
         # PASS:MOMENTUM_SHORT_DEEPGAP phantom (N=17 · 71% · Σ+1.85%). Tagged DEEPGAP_PROBE.
         deepgap_probe: bool = False,
+        # Jul 30 MAJORS probe (#14, BOTH directions): BTC/ETH candidate that survived the
+        # FULL ladder and was blocked only by no_trade_pairs. Strategic scaling experiment
+        # (the liquidity cap makes majors the only home for roadmap capital). Tagged MAJORS_PROBE.
+        majors_probe: bool = False,
         # Jul 21 ADXMAX2 probe (#10, LONG-only): second rung of the LONG pair-ADX
         # ladder, band (35, 40]. Parallel cohort to ADXMAX (30, 35] — disjoint bands,
         # independent verdicts.
@@ -4580,7 +4584,8 @@ class TradingEngine:
         # Review I1: a spike fire must NEVER be claimed by a co-matching probe band
         # (the top-50 hook passes all probe kwargs computed from indicators) — a probe
         # cap block would silently drop a full-size fire as "book too full".
-        _probe_final_tag = None if (spike_chase_probe or spike_fade or nonexp_calm3d) else (("DEEPGAP_PROBE" if deepgap_probe else
+        _probe_final_tag = None if (spike_chase_probe or spike_fade or nonexp_calm3d) else (("MAJORS_PROBE" if majors_probe else
+                            "DEEPGAP_PROBE" if deepgap_probe else
                             "ADXMAX2_PROBE" if adxmax2_probe else
                             "DBDOWN_PROBE" if dbdown_probe else
                             ("ADXMAX_PROBE" if adxmax_probe else
@@ -4591,6 +4596,31 @@ class TradingEngine:
                                  ("SLOPEGATE_PROBE" if slopegate_probe else
                                   ("GAPFLAT_PROBE" if gap_probe else
                                    ("GAPMIN_PROBE" if gapmin_probe else None))))))))))
+        # Jul 30: MAJORS probe caps — mirror of the fleet blocks (same slot guard, own
+        # concurrency cap, shared 0.5x/0.05x sizing). Cap rejection records
+        # PAIR_NO_TRADE = probe-off semantics.
+        if _probe_final_tag == "MAJORS_PROBE" and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
+            _th_mj = config.trading_config.thresholds
+            _mj_reason = None
+            if not getattr(_th_mj, 'majors_probe_enabled', False):
+                _mj_reason = "probe disabled"
+            elif _open_count_now > max(0, _inv_cfg.max_open_positions - 2):
+                _mj_reason = f"book too full ({_open_count_now} open, last 2 slots reserved)"
+            else:
+                _mj_open_q = await db.execute(
+                    select(func.count(Order.id)).where(and_(
+                        Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
+                        Order.cell_multiplier_source == "MAJORS_PROBE")))
+                if (_mj_open_q.scalar() or 0) >= int(getattr(_th_mj, 'majors_probe_max_open', 2) or 2):
+                    _mj_reason = "max concurrent probes open"
+            if _mj_reason:
+                logger.info(f"[MAJORS_PROBE] {pair} {direction} skipped: {_mj_reason}")
+                try:
+                    self._record_filter_block("PAIR_NO_TRADE", direction)
+                except Exception:
+                    pass
+                return None
+
         # Jul 30: DEEPGAP probe caps — mirror of the fleet blocks (same slot guard, own
         # concurrency cap, shared 0.5x/0.05x sizing). Cap rejection records
         # MOMENTUM_SHORT_DEEPGAP = probe-off semantics.
@@ -5286,7 +5316,7 @@ class TradingEngine:
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
         if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
-             or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe) and direction in ("LONG", "SHORT")
+             or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe) and direction in ("LONG", "SHORT")
                 and not flip_source and not bull_long and not bounce_long and not spike_chase_probe and not spike_fade and not nonexp_calm3d):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
@@ -8736,14 +8766,24 @@ class TradingEngine:
             # scanned, displayed) but entries are blocked. Distinct from pair_blacklist
             # (which removes the pair from the universe entirely). Used for BTCUSDT: visible
             # for reference, never opens a position.
+            # Jul 30 MAJORS probe (#14): with the probe on, a no-trade major (BTC/ETH) is NOT
+            # blocked here — it stays alive (flag set) and must still pass EVERY downstream
+            # gate; survivors open as MAJORS_PROBE at gap-probe sizing in open_position
+            # (sole-block cohort purity by construction — SLOPEGATE pattern). Probe off →
+            # legacy track-only hard block, byte-identical behavior.
+            _majors_probe_hit = False
             if signal in ["LONG", "SHORT"]:
                 _nt_str = getattr(config.trading_config, 'no_trade_pairs', '') or ''
                 _nt = set(p.strip() for p in _nt_str.split(',') if p.strip())
                 if pair in _nt:
-                    logger.info(f"[PAIR_NO_TRADE] {pair}: {signal} blocked — pair is track-only (no_trade_pairs)")
-                    self._record_filter_block("PAIR_NO_TRADE", signal, had_room=_had_room)
-                    self._last_pair_block_reason[pair] = "PAIR_NO_TRADE"
-                    signal = "NO_TRADE"
+                    if getattr(config.trading_config.thresholds, 'majors_probe_enabled', False):
+                        _majors_probe_hit = True
+                        logger.info(f"[MAJORS_PROBE] {pair}: {signal} candidate (track-only pair) — probing instead of blocking")
+                    else:
+                        logger.info(f"[PAIR_NO_TRADE] {pair}: {signal} blocked — pair is track-only (no_trade_pairs)")
+                        self._record_filter_block("PAIR_NO_TRADE", signal, had_room=_had_room)
+                        self._last_pair_block_reason[pair] = "PAIR_NO_TRADE"
+                        signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"] and not self.is_paper_mode:
                 _symbol_check = pair.replace('USDT', '/USDT:USDT')
@@ -10294,6 +10334,8 @@ class TradingEngine:
                     dbdown_probe=bool(_dbdown_probe_hit),
                     # Jul 30 DEEPGAP probe (#13, SHORT-only): deep-gap floor fall-through above.
                     deepgap_probe=bool(_deepgap_probe_hit),
+                    # Jul 30 MAJORS probe (#14): no-trade major fall-through above (full ladder passed).
+                    majors_probe=bool(_majors_probe_hit),
                     # Jul 21 ADXMAX2 probe (#10, LONG-only): second rung (35, 40].
                     adxmax2_probe=bool(
                         signal == "LONG"

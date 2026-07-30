@@ -241,34 +241,9 @@ _SPIKE_REV_WINDOW_MIN = 15    # lookback window
 _BTC_SPIKE_HIST = []          # [(ts, price)] ~5s samples, pruned to window+5min
 
 def _maybe_seed_spike_rev():
-    """Sample BTC and seed a SPIKE_REV_BTC fade phantom on a >=0.5%/15min move. Fail-silent."""
-    try:
-        tracker = websocket_tracker.get_tracker('BTCUSDT')
-        price = tracker.last_price if tracker else None
-        if not price or price <= 0:
-            return
-        now = _leash_time.time()
-        if _BTC_SPIKE_HIST and now - _BTC_SPIKE_HIST[-1][0] < 5:
-            return  # ~5s sampling
-        _BTC_SPIKE_HIST.append((now, price))
-        cutoff = now - (_SPIKE_REV_WINDOW_MIN + 5) * 60
-        while _BTC_SPIKE_HIST and _BTC_SPIKE_HIST[0][0] < cutoff:
-            _BTC_SPIKE_HIST.pop(0)
-        # reference = the sample closest to WINDOW minutes back; need >=(WINDOW-1)min of coverage
-        target = now - _SPIKE_REV_WINDOW_MIN * 60
-        ref = None
-        for ts, p in _BTC_SPIKE_HIST:
-            if ts >= target:
-                ref = (ts, p); break
-        if ref is None or (now - _BTC_SPIKE_HIST[0][0]) < (_SPIKE_REV_WINDOW_MIN - 1) * 60:
-            return
-        move = (price - ref[1]) / ref[1] * 100.0
-        if abs(move) < _SPIKE_REV_MOVE_PCT:
-            return
-        # fade: spike UP → phantom SHORT (pass blocked_direction=LONG, mode FADE); spike DOWN → LONG
-        _seed_phantom_flip('BTCUSDT', price, 'LONG' if move > 0 else 'SHORT', 'SPIKE_REV_BTC')
-    except Exception:
-        pass
+    """Jul 30 — RETIRED no-op (phantom retirement; SPIKE_REV_BTC research superseded by
+    the live 🚀 spike program)."""
+    return
 
 
 def reset_phantom_flip_state():
@@ -280,68 +255,20 @@ def reset_phantom_flip_state():
     _PFLIP_COOLDOWN.clear()
 
 
-# Jul 1, 2026 — phantom seeding allowlist. Only these sources are still COLLECTED (+ displayed):
-# LONG_UNMATCHED_ONLY (the matched-long→short fade, the ★-paying mean-reversion-sleeve candidate) and
-# MOMENTUM_SHORT_W1_REGIME (the revert-gate observability for the reverted W1 filter; inert while W1 off).
-# All other phantom fades (PAIR_ADX_MAX / BTC_ADX_BLOCK_SHORT / BTC_RSI_ADX_CROSS / FAN_RATIO_GATE /
-# FAN_CONTROL / PAIR_TREND_FILTER / Pair RSI>65 / PASS:*) are RETIRED — they were the pre-live flip-short
-# research surface, now superseded by SCREENED_BASELINE + the live Flip Trade Log (real fills, not naked
-# fades). Their watchlist candidates (bear-70-80, qs≥3 multipliers) are already captured in CURRENT_STATE.
-# Operator principle (2026-07-01): don't collect phantoms we don't display. Empty set = seed nothing.
-# ⚠ keep this in sync with the startup-purge allowlist in database.py::init_db — if they drift, the DB
-# purge deletes a newly-allowlisted source's history (or fails to purge a newly-retired one).
-from models import PHANTOM_KEEP_SOURCES as _PHANTOM_KEEP_SOURCES_TUPLE
-_PHANTOM_KEEP_SOURCES = set(_PHANTOM_KEEP_SOURCES_TUPLE)  # Jul 5: single source of truth in models.py (purge-drift incident)  # Jul 4: + same-direction phantom of the blocked matched long (bull re-enable hunt)
+# Jul 30, 2026 — phantom seeding allowlist REMOVED with the tracker retirement (was the
+# Jul-1 keep-sources mechanism; models.PHANTOM_KEEP_SOURCES stays in models.py as schema
+# history for the frozen phantom_flips table).
 
 
 def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None, entry_fields=None, mode='FADE'):
-    """Seed a virtual position when an entry is blocked. mode='FADE' (default) opens the
-    OPPOSITE direction (fade-the-block, the bear mechanism). mode='PASS' opens the SAME
-    direction (passthrough / un-block — Jun 17 bull hunt: measure whether a too-conservative
-    filter is killing good trend-longs; caller uses a "PASS:" source prefix). Fail-silent.
-    De-duped: skips if an active phantom exists for pair|source or one was seeded within
-    the cooldown (the block filters re-fire every scan cycle the pair stays in the zone).
-    cohort: for LONG_UNMATCHED_ONLY only — "C+W"/"C"/"W" pattern family of the blocked
-    long, so the fade can be sub-divided downstream (None for other sources).
-    entry_fields (Jun 15): the _flip_entry_fields() dict so the persisted PhantomFlip row
-    carries full entry context (RSI/ATR/fan-ratio/regime) for cross-batch analysis."""
-    try:
-        if not entry_price or entry_price <= 0 or blocked_direction not in ("LONG", "SHORT"):
-            return
-        if source not in _PHANTOM_KEEP_SOURCES:
-            return  # Jul 1: retired sources — collect only the allowlisted phantoms (see _PHANTOM_KEEP_SOURCES)
-        # Build the entry-context dict (+ regime from globals, as open_position does).
-        _ef = dict(entry_fields or {})
-        _g = globals()
-        if 'entry_macro_trend' not in _ef:
-            _ef['entry_macro_trend'] = _g.get('_current_btc_regime')
-        if 'entry_btc_regime' not in _ef:
-            try:
-                _ef['entry_btc_regime'] = classify_btc_regime(
-                    _g.get('_current_btc_adx'), _g.get('_current_btc_rsi'), _g.get('_btc_ema20_slope_pct'))
-            except Exception:
-                pass
-        ck = f"{pair}|{source}"
-        _now = _leash_time.time()
-        _last = _PFLIP_COOLDOWN.get(ck, 0)
-        if _now - _last < _PFLIP_COOLDOWN_MIN * 60:
-            return
-        if any(v.get('pair') == pair and v.get('source') == source for v in _PHANTOM_FLIP_STATE.values()):
-            return
-        # bounded self-clean
-        if len(_PHANTOM_FLIP_STATE) > 200:
-            _cut = _now - 3 * 3600
-            for k in [k for k, v in _PHANTOM_FLIP_STATE.items() if v.get('open_ts', 0) < _cut]:
-                _PHANTOM_FLIP_STATE.pop(k, None)
-        _PFLIP_COOLDOWN[ck] = _now
-        _PHANTOM_FLIP_STATE[f"{ck}|{_now:.0f}"] = {
-            'pair': pair, 'source': source, 'blocked_dir': blocked_direction,
-            'flip_dir': blocked_direction if mode == 'PASS' else ("SHORT" if blocked_direction == "LONG" else "LONG"),
-            'entry': entry_price, 'open_ts': _now, 'cohort': cohort, '_ef': _ef,
-            'peak': 0.0, 'trough': 0.0, 'armed': False, '_last_pnl': 0.0,
-        }
-    except Exception:
-        pass
+    """Jul 30 — RETIRED no-op (operator-directed phantom retirement). Virtual phantom
+    seeding is off permanently: the phantom->probe pipeline matured (final DEEPGAP read
+    N=17 · 71% · Σ+1.85% graduated to DEEPGAP_PROBE the same day) and probes measure the
+    same hypotheses with real fills. Call sites left inert on purpose — each one documents
+    WHERE a blocked-cohort shadow used to be collected; revisit triggers now live on the
+    Funnel v2 Sole counters (the TRENDGAP precedent). FLIP_SHORT_BTC1H_SLOPE's revert
+    surface migrated to its Sole count (see CURRENT_STATE)."""
+    return
 
 
 # ===== FLIP ENTRY SLEEVE (Jun 14) =====
@@ -3894,7 +3821,11 @@ class TradingEngine:
                                     Order.cell_multiplier_source.like('%FGP_%'))))
                             if (_fg_q.scalar() or 0) < int(getattr(_fg_th, 'flipgate_probe_max_open', 3) or 0):
                                 _fg_admit_tag = _fg_map[_flip_fails[0]]
-                except Exception:
+                except Exception as _fg_e:
+                    # Jul 30 (zero-fire trace): the admit check stays FAIL-OPEN (normal block
+                    # path), but the error is no longer swallowed silently — 3 TRENDGAP soles
+                    # accrued post-deploy with 0 FGP fires and the logs couldn't say why.
+                    logger.warning(f"[FLIPGATE_PROBE] {pair}: admit check errored (fail-open to normal block): {_fg_e}")
                     _fg_admit_tag = None
             if _blocked and _fg_admit_tag is None:
                 try: self._record_filter_block(_reason, flip_dir)
@@ -4555,6 +4486,10 @@ class TradingEngine:
         gminflat_probe: bool = False,
         adxmax_probe: bool = False,
         dbdown_probe: bool = False,
+        # Jul 30 DEEPGAP probe (#13, SHORT-only): momentum-SHORT killed ONLY by the Jul-6
+        # deep-gap floor (pair >=1% below 4h trend). Graduated from the retired
+        # PASS:MOMENTUM_SHORT_DEEPGAP phantom (N=17 · 71% · Σ+1.85%). Tagged DEEPGAP_PROBE.
+        deepgap_probe: bool = False,
         # Jul 21 ADXMAX2 probe (#10, LONG-only): second rung of the LONG pair-ADX
         # ladder, band (35, 40]. Parallel cohort to ADXMAX (30, 35] — disjoint bands,
         # independent verdicts.
@@ -4645,7 +4580,8 @@ class TradingEngine:
         # Review I1: a spike fire must NEVER be claimed by a co-matching probe band
         # (the top-50 hook passes all probe kwargs computed from indicators) — a probe
         # cap block would silently drop a full-size fire as "book too full".
-        _probe_final_tag = None if (spike_chase_probe or spike_fade or nonexp_calm3d) else (("ADXMAX2_PROBE" if adxmax2_probe else
+        _probe_final_tag = None if (spike_chase_probe or spike_fade or nonexp_calm3d) else (("DEEPGAP_PROBE" if deepgap_probe else
+                            "ADXMAX2_PROBE" if adxmax2_probe else
                             "DBDOWN_PROBE" if dbdown_probe else
                             ("ADXMAX_PROBE" if adxmax_probe else
                              ("GMINFLAT_PROBE" if gminflat_probe else
@@ -4655,6 +4591,31 @@ class TradingEngine:
                                  ("SLOPEGATE_PROBE" if slopegate_probe else
                                   ("GAPFLAT_PROBE" if gap_probe else
                                    ("GAPMIN_PROBE" if gapmin_probe else None))))))))))
+        # Jul 30: DEEPGAP probe caps — mirror of the fleet blocks (same slot guard, own
+        # concurrency cap, shared 0.5x/0.05x sizing). Cap rejection records
+        # MOMENTUM_SHORT_DEEPGAP = probe-off semantics.
+        if _probe_final_tag == "DEEPGAP_PROBE" and direction == "SHORT" and not flip_source and not bull_long and not bounce_long:
+            _th_dg = config.trading_config.thresholds
+            _dgp_reason = None
+            if not getattr(_th_dg, 'deepgap_probe_enabled', False):
+                _dgp_reason = "probe disabled"
+            elif _open_count_now > max(0, _inv_cfg.max_open_positions - 2):
+                _dgp_reason = f"book too full ({_open_count_now} open, last 2 slots reserved)"
+            else:
+                _dgp_open_q = await db.execute(
+                    select(func.count(Order.id)).where(and_(
+                        Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
+                        Order.cell_multiplier_source == "DEEPGAP_PROBE")))
+                if (_dgp_open_q.scalar() or 0) >= int(getattr(_th_dg, 'deepgap_probe_max_open', 3) or 3):
+                    _dgp_reason = "max concurrent probes open"
+            if _dgp_reason:
+                logger.info(f"[DEEPGAP_PROBE] {pair} {direction} skipped: {_dgp_reason}")
+                try:
+                    self._record_filter_block("MOMENTUM_SHORT_DEEPGAP", direction)
+                except Exception:
+                    pass
+                return None
+
         if _probe_final_tag == "GAPFLAT_PROBE" and direction in ("LONG", "SHORT") and not flip_source and not bull_long and not bounce_long:
             _th_gp = config.trading_config.thresholds
             _gp_reason = None
@@ -5325,7 +5286,7 @@ class TradingEngine:
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
         if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
-             or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe) and direction in ("LONG", "SHORT")
+             or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe) and direction in ("LONG", "SHORT")
                 and not flip_source and not bull_long and not bounce_long and not spike_chase_probe and not spike_fade and not nonexp_calm3d):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
@@ -6851,71 +6812,9 @@ class TradingEngine:
         }
         logger.info(f"[POST_EXIT] Registered {order.pair} order {order.id} ({reason}) for {minutes}min tracking")
 
-    async def update_phantom_flips(self, db: AsyncSession):
-        """Monitor-tick (1s) update of virtual flip positions (Jun 13, observation-only).
-        For each blocked-entry phantom, read the live ws price, compute the flip's raw
-        price-move %, apply the SL/trailing exit model, and persist on exit/timeout.
-        Fully fail-silent — NEVER affects live trading. Uses an isolated DB session per
-        persist so a failure can't poison the monitor-loop session."""
-        _maybe_seed_spike_rev()  # Jul 5 — BTC spike-reversion phantom (must run before the empty-state return)
-        if not _PHANTOM_FLIP_STATE:
-            return
-        try:
-            now = _leash_time.time()
-            done = []  # (key, state, exit_pnl, reason)
-            for key, st in list(_PHANTOM_FLIP_STATE.items()):
-                try:
-                    aged = (now - st['open_ts']) / 60.0
-                    tracker = websocket_tracker.get_tracker(st['pair'])
-                    price = tracker.last_price if tracker else None
-                    if not price or price <= 0:
-                        if aged >= _PFLIP_MAX_MIN:
-                            done.append((key, st, st.get('_last_pnl', 0.0), 'horizon'))
-                        continue
-                    if st['flip_dir'] == "LONG":
-                        pnl = (price - st['entry']) / st['entry'] * 100.0
-                    else:
-                        pnl = (st['entry'] - price) / st['entry'] * 100.0
-                    st['_last_pnl'] = pnl
-                    if pnl > st['peak']:
-                        st['peak'] = pnl
-                    if pnl < st['trough']:
-                        st['trough'] = pnl
-                    if not st['armed'] and st['peak'] >= _PFLIP_ACT:
-                        st['armed'] = True
-                    if pnl <= _PFLIP_SL:
-                        done.append((key, st, _PFLIP_SL, 'sl'))
-                    elif st['armed'] and pnl <= st['peak'] - _PFLIP_PB:
-                        done.append((key, st, round(st['peak'] - _PFLIP_PB, 4), 'trail'))
-                    elif aged >= _PFLIP_MAX_MIN:
-                        done.append((key, st, round(pnl, 4), 'horizon'))
-                except Exception:
-                    continue
-            for key, st, exit_pnl, reason in done:
-                try:
-                    async with AsyncSessionLocal() as _pdb:
-                        _pdb.add(PhantomFlip(
-                            pair=st['pair'], source_filter=st['source'],
-                            blocked_direction=st['blocked_dir'], flip_direction=st['flip_dir'],
-                            entry_price=st['entry'], pnl_pct=round(exit_pnl, 4),
-                            peak_pct=round(st['peak'], 4), trough_pct=round(st['trough'], 4),
-                            exit_reason=reason, is_paper=self.is_paper_mode,
-                            entry_cohort=st.get('cohort'),
-                            entry_at=datetime.utcfromtimestamp(st['open_ts']),
-                            exit_at=datetime.utcnow(),
-                            # Jun 15: full entry context (RSI/ATR/fan-ratio/regime) for analysis.
-                            # Filter to REAL PhantomFlip columns — _ef is the Order-shaped field
-                            # set and may carry keys the phantom table lacks; an unknown kwarg
-                            # would raise into the swallowing try/except and silently kill the row.
-                            **{k: v for k, v in (st.get('_ef') or {}).items()
-                               if v is not None and k in PhantomFlip.__table__.columns},
-                        ))
-                        await _pdb.commit()
-                except Exception:
-                    pass
-                _PHANTOM_FLIP_STATE.pop(key, None)
-        except Exception:
-            pass
+    # Jul 30 — PHANTOM-FLIP TRACKER RETIRED (operator-directed): update_phantom_flips removed.
+    # The phantom->probe pipeline matured (DEEPGAP graduated as probe #13 the same day); probes
+    # are the live instrument (real fills/fees). Final phantom report archived in reports/.
 
     async def update_post_exit_tracking(self, db: AsyncSession):
         """Check prices for recently closed BE trades and update peak/trough/timing. Called from monitor loop.
@@ -9647,6 +9546,7 @@ class TradingEngine:
             _slopegate_probe_hit = False
             _deadband_probe_hit = False
             _dbdown_probe_hit = False
+            _deepgap_probe_hit = False  # Jul 30 probe #13 (SHORT-only, set at the deep-gap floor below)
             if signal in ["LONG", "SHORT"] and btc_ema20_slope_pct is not None:
                 _th = config.trading_config.thresholds
                 _sg_probe_on = getattr(_th, 'slopegate_probe_enabled', False)
@@ -9869,14 +9769,19 @@ class TradingEngine:
                             _dg_raw = getattr(_th_pt, 'momentum_short_pair_gap_min', 0.0)
                             _dg = 0.0 if _dg_raw is None else float(_dg_raw)
                             if signal == "SHORT" and _dg < 0 and _pair_gap_pct <= _dg:
-                                logger.info(f"[MOMENTUM_SHORT_DEEPGAP] {pair}: SHORT blocked — pair gap {_pair_gap_pct:.4f}% <= {_dg}% (already crashed below 4h trend: late short, bounce risk)")
-                                self._record_filter_block("MOMENTUM_SHORT_DEEPGAP", "SHORT", had_room=_had_room)
-                                self._last_pair_block_reason[pair] = "MOMENTUM_SHORT_DEEPGAP"
-                                # revert surface: same-direction PASS phantom of the blocked short
-                                # (gate: re-open at ≥55% WR on N≥8 fresh phantoms)
-                                _seed_phantom_flip(pair, indicators.get('price'), "SHORT", "PASS:MOMENTUM_SHORT_DEEPGAP",
-                                                   entry_fields=self._flip_entry_fields(indicators, flip_dir="SHORT"), mode='PASS')
-                                signal = "NO_TRADE"
+                                # Jul 30 DEEPGAP probe (#13): the PASS phantom graduated (final read
+                                # N=17 · 71% · Σ+1.85%) — with the probe on, the candidate stays alive
+                                # (ALL regimes; the regime read is the verdict's job) and must still
+                                # pass every OTHER gate below; survivors open as DEEPGAP_PROBE at
+                                # gap-probe sizing in open_position. Probe off → legacy hard block.
+                                if getattr(_th_pt, 'deepgap_probe_enabled', False):
+                                    _deepgap_probe_hit = True
+                                    logger.info(f"[DEEPGAP_PROBE] {pair}: SHORT candidate (pair gap {_pair_gap_pct:.4f}% <= {_dg}%) — probing instead of blocking")
+                                else:
+                                    logger.info(f"[MOMENTUM_SHORT_DEEPGAP] {pair}: SHORT blocked — pair gap {_pair_gap_pct:.4f}% <= {_dg}% (already crashed below 4h trend: late short, bounce risk)")
+                                    self._record_filter_block("MOMENTUM_SHORT_DEEPGAP", "SHORT", had_room=_had_room)
+                                    self._last_pair_block_reason[pair] = "MOMENTUM_SHORT_DEEPGAP"
+                                    signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"]:
                 _th = config.trading_config.thresholds
@@ -10387,6 +10292,8 @@ class TradingEngine:
                     ),
                     # Jul 20 DBDOWN probe (#9): 1h flat-DOWN half-band fall-through above.
                     dbdown_probe=bool(_dbdown_probe_hit),
+                    # Jul 30 DEEPGAP probe (#13, SHORT-only): deep-gap floor fall-through above.
+                    deepgap_probe=bool(_deepgap_probe_hit),
                     # Jul 21 ADXMAX2 probe (#10, LONG-only): second rung (35, 40].
                     adxmax2_probe=bool(
                         signal == "LONG"

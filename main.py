@@ -85,7 +85,6 @@ async def monitor_loop():
                 await trading_engine.update_open_positions(db)
                 await trading_engine.update_orders_cache(db)
                 await trading_engine.update_post_exit_tracking(db)
-                await trading_engine.update_phantom_flips(db)
 
                 _reconcile_counter += 1
                 if _reconcile_counter >= _RECONCILE_INTERVAL and not trading_engine.is_paper_mode:
@@ -1465,64 +1464,8 @@ async def export_orders_csv(db: AsyncSession = Depends(get_db)):
     )
 
 
-@app.get("/api/phantom-flips/export.csv")
-async def export_phantom_flips_csv(db: AsyncSession = Depends(get_db)):
-    """Export ALL PhantomFlip rows (closed AND still-open) for current mode as CSV.
-
-    Jul 7, 2026 — phantoms die on paper reset BY DESIGN, so their row-level entry
-    fields (needed for the NET-ADMISSIBILITY join through the downstream flip gates
-    — the rewritten SLOPEUP revert gate's required surface) were unrecoverable once
-    a reset happened; only report aggregates survived as manual priors. This export
-    makes the row-level pool saveable: download BEFORE every reset (alongside the
-    orders CSV) and feed `scripts/screen_phantoms.py`. Column order = model schema
-    (auto-includes future columns, same pattern as the orders export).
-    """
-    import csv
-    import io
-
-    await trading_engine.initialize(db)
-    await db.commit()
-    db.expunge_all()
-
-    result = await db.execute(
-        select(PhantomFlip)
-        .where(PhantomFlip.is_paper == trading_engine.is_paper_mode)
-        .order_by(desc(PhantomFlip.entry_at))
-    )
-    phantoms = result.scalars().all()
-
-    column_names = [c.name for c in PhantomFlip.__table__.columns]
-
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(column_names)
-    for p in phantoms:
-        row = []
-        for col in column_names:
-            val = getattr(p, col, None)
-            if isinstance(val, datetime):
-                row.append(val.isoformat())
-            elif val is None:
-                row.append("")
-            else:
-                row.append(val)
-        writer.writerow(row)
-
-    buffer.seek(0)
-    mode = "paper" if trading_engine.is_paper_mode else "live"
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"scalpars_phantoms_{mode}_{timestamp}.csv"
-
-    return StreamingResponse(
-        iter([buffer.getvalue()]),
-        media_type="text/csv",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0",
-        },
-    )
+# Jul 30 — /api/phantom-flips/export.csv REMOVED (phantom tracker retired; last report
+# archived in reports/). The phantom_flips table itself is untouched (frozen history).
 
 
 @app.get("/api/transactions")
@@ -7913,7 +7856,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # row-for-row ≈ the Unmatched Losers table (C-matches ~0, W-only ~17%) — pure duplication.
         # The 4-Cohort Pattern Coverage summary still reports the truly-unmatched aggregate.
         "leash_shadow": _compute_leash_shadow(orders),  # LEASH SHADOW (May 30, observation-only)
-        "phantom_flip": await _compute_phantom_flip_performance(db, trading_engine.is_paper_mode),  # PHANTOM FLIP (Jun 13, observation-only)
         "flip_trades": _compute_flip_trades(_flip_orders),  # FLIP TRADE LOG (Jun 14 — merged scorecard; replaced flip_entry)
         "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
         "be_lock_shadow": _compute_be_lock_shadow(orders),  # BE-LOCK SHADOW (Jul 28, observation-only)
@@ -9713,204 +9655,10 @@ def _compute_unmatched_losers(orders, limit=20):
 
 
 # ===================== LEASH SHADOW START (May 30, 2026 — observation-only) =====================
-async def _compute_phantom_flip_performance(db, is_paper):
-    """Phantom Flip Tracker performance (Jun 13, observation-only). Reads closed
-    PhantomFlip rows (virtual fade-the-block positions) and aggregates by source
-    filter x flip direction. Answers: does the reversion a block implies actually
-    pay (positive realized P&L after SL/trailing) or just whipsaw?
-
-    NOTE granularity: phantoms are priced from the 1s websocket feed and exited by
-    a base-SL(-0.70)/arm(0.45)/trail(0.25) model — realized %, not max-excursion.
-    """
-    try:
-        result = await db.execute(
-            select(PhantomFlip).where(
-                and_(PhantomFlip.is_paper == is_paper, PhantomFlip.pnl_pct.isnot(None))
-            )
-        )
-        _all_flips = result.scalars().all()
-        # Jul 14 — hide RESOLVED sources from the tracker (display-only; rows stay in the
-        # DB and ride the full phantom CSV export). Registry: models.PHANTOM_HIDDEN_SOURCES.
-        from models import PHANTOM_HIDDEN_SOURCES as _pf_hidden
-        _all_flips = [f for f in _all_flips
-                      if (getattr(f, 'source_filter', '') or '') not in _pf_hidden]
-        # Jun 17 — split off PASS:* passthrough-longs (un-block hunt) so they DON'T pollute the
-        # fade tracker rows / "All phantom flips" aggregate / fan-curve / leftover test. They are
-        # a different mechanism (same-direction, not a fade) and route ONLY into the Source×Regime
-        # cross-tab below (which already buckets by direction — LONG = bull candidate).
-        # Jun 18: also split off BLOCK:* / PASS:* virtual same-direction longs — they are NOT fades,
-        # so they must not pollute the fade tracker rows / aggregate / fan-curve / leftover test.
-        # (The Bull-Long Curve that consumed them was removed Jun 26; the exclusion stays so the
-        # FAN fade tracker remains clean.)
-        flips = [f for f in _all_flips
-                 if not (getattr(f, 'source_filter', '') or '').startswith('PASS:')
-                 and not (getattr(f, 'source_filter', '') or '').startswith('BLOCK:')
-                 and not (getattr(f, 'source_filter', '') or '').startswith('SPIKE_REV')]  # Jul 5: BTC spike-reversion — own section, not a block-fade
-    except Exception:
-        return {"rows": [], "total": {}}
-
-    def _agg(rs):
-        n = len(rs)
-        if n == 0:
-            return None
-        wins = sum(1 for r in rs if (r.pnl_pct or 0) > 0)
-        tot = sum((r.pnl_pct or 0) for r in rs)
-        sls = sum(1 for r in rs if r.exit_reason == 'sl')
-        # Per-pair concentration (CLAUDE.md: a cell's N is only promotion-grade if it's
-        # spread across pairs, not 1-2 sticky ones re-firing every 30min). Each phantom
-        # is already de-duped to one-per-pair-per-30min, so distinct_pairs < n means the
-        # SAME pair faded in separate episodes — correlated, not independent samples.
-        from collections import Counter
-        pc = Counter((r.pair or '?') for r in rs)
-        top_pair, top_n = pc.most_common(1)[0]
-        return {
-            "n": n,
-            "wr": round(100.0 * wins / n, 1),
-            "avg_pct": round(tot / n, 3),
-            "total_pct": round(tot, 2),
-            "sl_rate": round(100.0 * sls / n, 0),
-            "avg_peak": round(sum((r.peak_pct or 0) for r in rs) / n, 3),
-            "avg_trough": round(sum((r.trough_pct or 0) for r in rs) / n, 3),
-            "distinct_pairs": len(pc),
-            "top_pair": top_pair,
-            "top_pair_share": round(100.0 * top_n / n, 0),
-        }
-
-    rows = []
-    # Jul 1, 2026 — phantom tracker FOCUSED on LONG_UNMATCHED_ONLY only. Every other fade source
-    # (PAIR_ADX_MAX / BTC_ADX_BLOCK_SHORT / PAIR_RSI_ADX_CROSS / PAIR_TREND_FILTER / FAN_* / PASS:*) is
-    # RETIRED and no longer collected (see _PHANTOM_KEEP_SOURCES in trading_engine.py): it was the
-    # pre-live flip-short research surface, now superseded by SCREENED_BASELINE + the live Flip Trade Log
-    # (real fills, not naked fades). The matched-long→SHORT fade is the ★-paying mean-reversion-sleeve
-    # candidate; broken out PER PATTERN (the W6 lead candidate) + PER REGIME below.
-    # Jul 4 — same-direction PASS phantoms (the blocked matched long tracked as a virtual LONG,
-    # bull re-enable hunt). Kept OUT of the fade rows/aggregate above; own section with the same
-    # per-pattern + per-regime sub-rows so W1/W2/W4 cells accrue toward their re-enable gates.
-    pass_longs = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:LONG_UNMATCHED_ONLY']
-    # Jul 5 — BTC spike-reversion phantoms (fade |BTC 15m move|>=0.5%; SHORT = faded pump, LONG = faded dump)
-    spike_revs = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'SPIKE_REV_BTC']
-    # Jul 5 — same-direction PASS phantoms of the two decision-gated flip-SHORT blockers:
-    # BTC1H_SLOPE = the Jul-3 gate's locked revert surface (≥60% WR on N≥10 → gate off);
-    # REGIME = bear≥80 (#1 flip blocker) — what does it forfeit in a bull?
-    pass_b1h = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:FLIP_SHORT_BTC1H_SLOPE']
-    pass_freg = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:FLIP_SHORT_REGIME']
-    # Jul 5 PM — flat-1h dead-band block (LONG_BTC1H_DEADBAND) revert surface: blocked
-    # momentum longs as same-direction phantoms; re-open the band at >=60% WR on N>=10.
-    pass_db = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:LONG_BTC1H_DEADBAND']
-    # Jul 6 — deep-gap floor (MOMENTUM_SHORT_DEEPGAP) revert surface: blocked deep-hole
-    # shorts as same-direction phantoms; re-open at >=55% WR on N>=8.
-    pass_dg = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:MOMENTUM_SHORT_DEEPGAP']
-    # Jul 8 — BTC trend-gap depth gate (FLIP_SHORT_BTC_TRENDGAP) revert surface: blocked
-    # deep-gap flips as same-direction phantoms; re-open at NET-ADMISSIBLE >=60% WR on N>=10.
-    pass_tg = [f for f in _all_flips if (getattr(f, 'source_filter', '') or '') == 'PASS:FLIP_SHORT_BTC_TRENDGAP']
-    source_specs = [
-        ("LONG_UNMATCHED_ONLY", ("SHORT",), True, flips),
-        ("PASS:LONG_UNMATCHED_ONLY", ("LONG",), True, pass_longs),
-        ("SPIKE_REV_BTC", ("SHORT", "LONG"), True, spike_revs),
-        ("PASS:FLIP_SHORT_BTC1H_SLOPE", ("SHORT",), True, pass_b1h),
-        ("PASS:FLIP_SHORT_REGIME", ("SHORT",), True, pass_freg),
-        ("PASS:LONG_BTC1H_DEADBAND", ("LONG",), True, pass_db),
-        ("PASS:MOMENTUM_SHORT_DEEPGAP", ("SHORT",), True, pass_dg),
-        ("PASS:FLIP_SHORT_BTC_TRENDGAP", ("SHORT",), True, pass_tg),
-    ]
-    for src, _dirs, _subrows, _pool in source_specs:
-        for fd in _dirs:
-            sub = [r for r in _pool if r.source_filter == src and r.flip_direction == fd]
-            a = _agg(sub)
-            if not a:
-                continue
-            a.update({"source": src, "flip_direction": fd})
-            rows.append(a)
-            if not _subrows:
-                continue
-            # per-PATTERN split (entry_cohort joined codes, split on "+"; a C6+W6 flip counts toward
-            # BOTH C6 and W6 — matches the screen methodology). Threshold LOWERED 3→1 (2026-07-01) so
-            # every pattern — the W6 flip-short lead candidate especially — surfaces from trade 1;
-            # low-N rows carry the ⏳ verdict so N=1 is visible without being mistaken for signal.
-            _pat = {}
-            for r in sub:
-                for _p in (r.entry_cohort or "").split("+"):
-                    if _p:
-                        _pat.setdefault(_p, []).append(r)
-            for _p, _prs in sorted(_pat.items(), key=lambda x: -len(x[1])):
-                cc = _agg(_prs)
-                if cc and cc["n"] >= 1:
-                    cc.update({"source": f"  ↳ {_p}", "flip_direction": fd, "is_subrow": True})
-                    rows.append(cc)
-            # per-REGIME split (2026-07-01, operator ask) — which BTC regime each fade fell in + its WR.
-            _reg = {}
-            for r in sub:
-                _reg.setdefault(r.entry_btc_regime or "?", []).append(r)
-            for _rg, _rrs in sorted(_reg.items(), key=lambda x: -len(x[1])):
-                cc = _agg(_rrs)
-                if cc and cc["n"] >= 1:
-                    cc.update({"source": f"  ↳ [{_rg}]", "flip_direction": fd, "is_subrow": True})
-                    rows.append(cc)
-    total = _agg(flips) or {}
-    # verdict per row: does the flip pay? Concentration gates the ★ — a great-looking
-    # cell driven by one sticky pair (top_pair_share>=60%) is a mirage, not an edge
-    # (CLAUDE.md per-pair concentration rule). It can't earn the green check until the
-    # N is spread; we surface it as ⚠ concentrated instead.
-    for r in rows:
-        _conc = r["n"] >= 5 and r.get("top_pair_share", 0) >= 60
-        if r["n"] < 5:
-            r["verdict"] = "⏳ Low N"
-        elif r["avg_pct"] <= -0.05:
-            r["verdict"] = "✗ whipsaws"
-        elif _conc:
-            r["verdict"] = f"⚠ {r['top_pair']} {int(r['top_pair_share'])}%"
-        elif r["avg_pct"] >= 0.10 and r["wr"] >= 50:
-            r["verdict"] = "★ flip pays"
-        else:
-            r["verdict"] = "⚠ marginal"
-    # Jul 26 — resolved-question truth-marks (models.PHANTOM_RESOLVED_STATUS): closed
-    # sources keep their frozen stats but the verdict states the resolution and the UI
-    # dims the row (r["resolved"]); subrows inherit from their parent source row.
-    from models import PHANTOM_RESOLVED_STATUS as _pf_resolved
-    _pf_cur = None
-    for r in rows:
-        if not r.get("is_subrow"):
-            _pf_cur = r.get("source")
-            if _pf_cur in _pf_resolved:
-                r["verdict"] = _pf_resolved[_pf_cur]
-                r["resolved"] = True
-        elif _pf_cur in _pf_resolved:
-            r["resolved"] = True
-
-    # Jun 17 — SOURCE × BTC-REGIME cross-tab (the BULL-MECHANISM hunt). Each flip source split by
-    # regime bucket so we see WHICH signal pays in WHICH regime — not just "flips pay" but e.g.
-    # "BTC_RSI_ADX_CROSS LONG in HEALTHY_BULL". Keeps source (row) AND regime (col) so we never lose
-    # which signal we're looking at. Forward-only (phantoms with regime=NULL pre-capture are skipped).
-    def _regbucket(reg):
-        r = (reg or '').upper()
-        if 'BULL' in r:
-            # Jun 17: split bull so a STRONG_BULL passthrough-long edge isn't hidden inside a
-            # weak/healthy bull average. STRONG_BULL → sbull; HEALTHY_BULL/BULL_EXHAUSTED → hbull.
-            return 'sbull' if 'STRONG' in r else 'hbull'
-        if 'BEAR' in r:
-            # Jun 17: split bear too (symmetric to bull) — the proven flip-short edge is
-            # specifically STRONG_BEAR, not all bear. STRONG_BEAR → sbear; HEALTHY_BEAR/
-            # BEAR_EXHAUSTED → hbear.
-            return 'sbear' if 'STRONG' in r else 'hbear'
-        return 'chop'  # CHOPPY_* / NEUTRAL / unknown
-    _xt = {}
-    for _fp in _all_flips:  # include PASS:* passthrough-longs here (the bull-hunt LONG rows)
-        if not _fp.entry_btc_regime:
-            continue
-        _key = (_fp.source_filter, _fp.flip_direction)
-        _slot = _xt.setdefault(_key, {'sbull': [], 'hbull': [], 'sbear': [], 'hbear': [], 'chop': [], 'all': []})
-        _slot[_regbucket(_fp.entry_btc_regime)].append(_fp)
-        _slot['all'].append(_fp)
-    source_regime_xtab = []
-    for (_src, _fd), _b in sorted(_xt.items(), key=lambda kv: -len(kv[1]['all'])):
-        source_regime_xtab.append({
-            "source": _src, "direction": _fd,
-            "sbull": _agg(_b['sbull']), "hbull": _agg(_b['hbull']),
-            "sbear": _agg(_b['sbear']), "hbear": _agg(_b['hbear']),
-            "chop": _agg(_b['chop']), "all": _agg(_b['all']),
-        })
-
-    return {"rows": rows, "total": total, "source_regime_xtab": source_regime_xtab}
+# Jul 30 — _compute_phantom_flip_performance REMOVED (phantom tracker retired, operator-
+# directed). Final report archived: reports/scalpars_phantoms_paper_2026-07-30_13-38-44.csv.
+# The LIVE Flip Trades × BTC-Regime cross-tab (authoritative gate surface) lives in
+# _compute_flip_trades below and is unaffected.
 
 
 def _compute_flip_trades(flip_orders):
@@ -10961,6 +10709,7 @@ def _compute_gap_probe_cohort(orders):
     adxmax2_rows = []  # Jul 21: second LONG pair-ADX rung (35,40] probe (#10, LONG-only)
     spike_rows = []    # Jul 24: SPIKE_CHASE ladder-bypass chase probe (#11, LONG-only)
     fgp_qs_rows, fgp_rsi_rows, fgp_tg_rows = [], [], []  # Jul 29: FLIPGATE probes (SHORT-only flip fades)
+    deepgap_s_rows = []  # Jul 30: deep-gap floor probe (#13, SHORT-only — graduated phantom)
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
@@ -11020,6 +10769,8 @@ def _compute_gap_probe_cohort(orders):
                 gminflat_s_rows.append(o)
             elif _src == 'ADXMAX_PROBE':
                 adxmax_s_rows.append(o)
+            elif _src == 'DEEPGAP_PROBE':
+                deepgap_s_rows.append(o)
             elif _src == 'ADXMAX2_PROBE':
                 # Defensive (review): ADXMAX2 is LONG-only today — a SHORT carrying the tag
                 # (e.g. a future SHORT rung reusing it) must not contaminate the EXPANDING·SHORT
@@ -11032,7 +10783,8 @@ def _compute_gap_probe_cohort(orders):
     _all_probes = (probe_rows + gapmin_rows + gapmin_s_rows + gapflat_s_rows
                    + slopegate_rows + slopegate_s_rows + rsiadx_rows + rsiadx_s_rows
                    + deadband_rows + rsiceil_rows
-                   + gminflat_rows + gminflat_s_rows + adxmax_rows + adxmax_s_rows + dbdown_rows + adxmax2_rows + spike_rows)
+                   + gminflat_rows + gminflat_s_rows + adxmax_rows + adxmax_s_rows + dbdown_rows + adxmax2_rows + spike_rows
+                   + deepgap_s_rows)
     if _all_probes:
         _p0 = min(getattr(o, 'opened_at', None) for o in _all_probes if getattr(o, 'opened_at', None))
         if _p0:
@@ -11072,6 +10824,7 @@ def _compute_gap_probe_cohort(orders):
         "FLIPGATE QUALITY (probe) · SHORT": _g('flipgate_probe_enabled'),
         "FLIPGATE RSI_MIN (probe) · SHORT": _g('flipgate_probe_enabled'),
         "FLIPGATE TRENDGAP (probe) · SHORT": _g('flipgate_probe_enabled'),
+        "DEEPGAP deep-gap floor (probe) · SHORT": _g('deepgap_probe_enabled'),
     }
 
     rows_out = []
@@ -11094,7 +10847,8 @@ def _compute_gap_probe_cohort(orders):
                        ("ADXMAX 35-40 (probe) · SHORT", adxmax_s_rows),
                        ("FLIPGATE QUALITY (probe) · SHORT", fgp_qs_rows),
                        ("FLIPGATE RSI_MIN (probe) · SHORT", fgp_rsi_rows),
-                       ("FLIPGATE TRENDGAP (probe) · SHORT", fgp_tg_rows)):
+                       ("FLIPGATE TRENDGAP (probe) · SHORT", fgp_tg_rows),
+                       ("DEEPGAP deep-gap floor (probe) · SHORT", deepgap_s_rows)):
         n = len(rs)
         _off = (not cohort.startswith("EXPANDING")) and not _cohort_enabled.get(cohort, True)
         if n == 0:

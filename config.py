@@ -520,6 +520,16 @@ class SignalThresholds(BaseModel):
     # WR<=45% or avg<0 -> dead-band re-locks flat-down, phantom-revert-gate logged RESOLVED.
     dbdown_probe_enabled: bool = True
     dbdown_probe_max_open: int = 3       # concurrent DBDOWN probes (LONG-only by construction)
+    # Jul 30 DEEPGAP probe (#13, SHORT-only) — graduated from the PASS:MOMENTUM_SHORT_DEEPGAP
+    # phantom (final read at retirement: N=17 · 71% WR · Σ+1.85% · avg +0.109%; H.BULL 6·83%·+2.05
+    # carries it). Momentum-SHORTs killed ONLY by the Jul-6 deep-gap floor (pair ≥1% below its 4h
+    # trend) open at gap-probe sizing as DEEPGAP_PROBE instead of blocking. ALL regimes admitted
+    # (operator + quant: regime-slicing N=17 at promotion = pre-fit; the regime read is the
+    # VERDICT'S job). 🔒 Pre-registered verdict at N>=30 (>=5 dates): bull-family cohort
+    # (S.BULL+H.BULL) WR>=70% & Σ>0 at N>=15 -> promote bull-scoped full size; overall WR<=45%
+    # or Σ<0 -> floor re-locks, probe off. Phantom tracker retired same day (Jul 30).
+    deepgap_probe_enabled: bool = True
+    deepgap_probe_max_open: int = 3      # concurrent DEEPGAP probes (SHORT-only by construction)
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

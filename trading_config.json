@@ -344,7 +344,7 @@
       {
         "pattern": "W2+W1",
         "direction": "SHORT",
-        "inv_mult": 2.0,
+        "inv_mult": 1.0,
         "lev_mult": 1.0
       },
       {

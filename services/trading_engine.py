@@ -5457,6 +5457,18 @@ class TradingEngine:
         # Determine fee rate and entry type
         tc = config.trading_config
         maker_enabled = tc.maker_entry_enabled
+        # Jul 30 (operator-directed): SPIKE species BYPASS the maker entry — direct taker.
+        # Evidence: 18/18 lifetime spike fires were TAKER_FALLBACK (0 maker fills — the limit
+        # posts at the passive side while the spike runs away from it by definition), so every
+        # fire paid up to the full 20s timeout in ADVERSE DRIFT and captured zero fee savings.
+        # On this species latency is the whole game: ERA's entire trade lasted 19s; a fade
+        # sells a decaying top (20s late = systematically worse fill); a chase 20s late enters
+        # closer to/past the 1.5xATR stretch guard. Fee cost of the fix: taker 0.045 vs maker
+        # 0.018 = +0.027%/entry — noise vs 20s of drift on a >=0.5%/5min candle. Momentum/flip
+        # entries keep maker (slow-forming signals; book-wide maker record 87 fills/+$80 saved).
+        if maker_enabled and (spike_chase_probe or spike_fade):
+            maker_enabled = False
+            logger.info(f"[SPIKE_TAKER] {pair} {direction}: maker entry bypassed for spike species — direct taker (latency > fee)")
         maker_fee_rate = getattr(tc, 'maker_fee', tc.trading_fee)
         taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
 

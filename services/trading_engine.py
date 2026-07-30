@@ -3733,6 +3733,14 @@ class TradingEngine:
         try:
             if not _flip_active(source):
                 return
+            # Jul 30 HOTFIX (review-caught containment leak): the MAJORS probe fall-through
+            # keeps a BTC/ETH signal alive to the fan gate, whose block branch lands HERE —
+            # and this path has no no-trade check, so a track-only major could open a
+            # FULL-SIZE flip. No-trade pairs never flip, probe or not (the MAJORS contract
+            # is probe-sized momentum ONLY). Belt-and-suspenders with the open_position invariant.
+            _nt_flip = set(p.strip() for p in (getattr(config.trading_config, 'no_trade_pairs', '') or '').split(',') if p.strip())
+            if pair in _nt_flip:
+                return
             flip_dir = "SHORT" if blocked_signal == "LONG" else "LONG"
             price = indicators.get('price') if indicators else None
             if not price or price <= 0:
@@ -3965,6 +3973,12 @@ class TradingEngine:
         try:
             _th = config.trading_config.thresholds
             if not getattr(_th, 'bull_long_enabled', False):
+                return
+            # Jul 30 HOTFIX (same containment class as the flip guard): no-trade pairs never
+            # open bull-longs — latent today (sleeve disabled) but the MAJORS fall-through
+            # makes this path reachable for BTC/ETH when re-enabled.
+            _nt_bl = set(p.strip() for p in (getattr(config.trading_config, 'no_trade_pairs', '') or '').split(',') if p.strip())
+            if pair in _nt_bl:
                 return
             price = indicators.get('price') if indicators else None
             if not price or price <= 0:
@@ -4596,6 +4610,20 @@ class TradingEngine:
                                  ("SLOPEGATE_PROBE" if slopegate_probe else
                                   ("GAPFLAT_PROBE" if gap_probe else
                                    ("GAPMIN_PROBE" if gapmin_probe else None))))))))))
+        # Jul 30 HOTFIX — STRUCTURAL no-trade invariant (review recommendation after the flip
+        # containment leak): a no_trade_pairs order may open ONLY as a MAJORS_PROBE. This is
+        # the single choke-point every path funnels through (flips carry flip_source and no
+        # probe tag; bull/bounce-longs carry their flags; spikes suppress the probe tag) — so
+        # containment no longer depends on each call site remembering the list.
+        _nt_open = set(p.strip() for p in (getattr(config.trading_config, 'no_trade_pairs', '') or '').split(',') if p.strip())
+        if pair in _nt_open and _probe_final_tag != "MAJORS_PROBE":
+            logger.warning(f"[PAIR_NO_TRADE] {pair} {direction}: open_position invariant blocked a non-MAJORS_PROBE order on a track-only pair (source={flip_source or ('BULL_LONG' if bull_long else 'ladder')})")
+            try:
+                self._record_filter_block("PAIR_NO_TRADE", direction)
+            except Exception:
+                pass
+            return None
+
         # Jul 30: MAJORS probe caps — mirror of the fleet blocks (same slot guard, own
         # concurrency cap, shared 0.5x/0.05x sizing). Cap rejection records
         # PAIR_NO_TRADE = probe-off semantics.
@@ -4617,6 +4645,7 @@ class TradingEngine:
                 logger.info(f"[MAJORS_PROBE] {pair} {direction} skipped: {_mj_reason}")
                 try:
                     self._record_filter_block("PAIR_NO_TRADE", direction)
+                    self._last_pair_block_reason[pair] = "PAIR_NO_TRADE"  # review fix: keep the per-pair surface honest
                 except Exception:
                     pass
                 return None

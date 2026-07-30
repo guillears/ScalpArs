@@ -12563,8 +12563,14 @@
                     const _csGrp = document.getElementById('cell-source-filter-cells');
                     if (_csSel && _csGrp && Array.isArray(data.cell_source_options)) {
                         const _keep = _csSel.value;
-                        _csGrp.innerHTML = data.cell_source_options.map(c =>
-                            `<option value="${c.replace(/"/g,'&quot;')}">${c}</option>`).join('');
+                        _csGrp.innerHTML = '';
+                        // review fix: build via createElement/textContent — cell tags are
+                        // open-ended by design, never interpolate them into markup.
+                        data.cell_source_options.forEach(c => {
+                            const _o = document.createElement('option');
+                            _o.value = c; _o.textContent = c;
+                            _csGrp.appendChild(_o);
+                        });
                         if (_keep) _csSel.value = _keep;  // re-select (static options always exist)
                     }
                 } catch (e) { console.warn('[cell filter options]', e); }

@@ -4367,6 +4367,22 @@ class TradingEngine:
                         _sp_dir, _sp_is_fade = "SHORT", True
                         if _sp_regime_fade:
                             logger.info(f"[SPIKE_REGIME_FADE] {p['pair']}: non-chase regime — routing trigger to FADE short")
+                    if not _sp_is_fade:
+                        # Jul 30 EXTENSION GUARD (chase-only, scanner parity with the top-50
+                        # hook): block chase when stretch > mult x ATR%. Fail-open on missing.
+                        _sp_str_mult = float(getattr(th, 'spike_chase_max_stretch_atr', 1.5) or 0.0)
+                        _sp_atrp = _ind_atr_pct(ind)
+                        _sp_stretch = None
+                        try:
+                            if ind.get('ema5') and ind.get('price'):
+                                _sp_stretch = (ind['price'] - ind['ema5']) / ind['ema5'] * 100.0
+                        except Exception:
+                            _sp_stretch = None
+                        if (_sp_str_mult > 0 and _sp_stretch is not None and _sp_atrp
+                                and _sp_stretch > _sp_str_mult * _sp_atrp):
+                            self._record_filter_block("SPIKE_CHASE_STRETCH", "LONG")
+                            logger.info(f"[SPIKE_CHASE_STRETCH] {p['pair']}: scanner chase blocked — stretch {_sp_stretch:+.2f}% > {_sp_str_mult}x ATR {_sp_atrp:.2f}% (ratio {(_sp_stretch/_sp_atrp):.1f})")
+                            continue
                     logger.info(f"[SPIKE_SCANNER] {p['pair']}: RSI jump {rsi_prev:.1f}->{rsi:.1f} "
                                 f"(+{rsi - rsi_prev:.1f}) candle {(closes[-1]/closes[-2]-1.0)*100.0:+.2f}% vol {_vols[-1]/_av20:.1f}x ADX {(_sp_adx if _sp_adx is not None else -1):.1f} vol24h=${(p.get('volume_24h') or 0)/1e6:.1f}M — {'SPIKE_FADE short' if _sp_is_fade else 'SPIKE_CHASE long'} entry")
                     _g = globals()
@@ -10066,9 +10082,28 @@ class TradingEngine:
                                 else:
                                     logger.info(f"[SPIKE_ROUTER_BLOCK] {pair}: trigger fired, routed FADE ({'regime' if _sc_regime_fade else 'ADX'}, ADX {(_sc_adx if _sc_adx is not None else -1):.1f}) but fade disabled — no trade")
                             else:
-                                signal, confidence = "LONG", "STRONG_BUY"
-                                _spike_chase_hit = True
-                                logger.info(f"[SPIKE_CHASE] {pair}: RSI jump {_sc_prev:.1f}->{_sc_rsi:.1f} (+{_sc_rsi - _sc_prev:.1f}) candle {_sc_chg:+.2f}% vol {_sc_vr:.1f}x ADX {(_sc_adx if _sc_adx is not None else -1):.1f} — chase entry (LONG)")
+                                # Jul 30 EXTENSION GUARD (chase-only): by the time all trigger
+                                # legs confirm, price can be the completed spike top — all 8
+                                # lifetime chases entered >=2.0xATR above EMA5, 0 wins (ERA:
+                                # top tick, -1.2% in 19s). Block chase when stretch > mult x
+                                # ATR%; fade untouched (it profits from the same extension).
+                                # Fail-open on missing data (parity with the ADX router).
+                                _sc_str_mult = float(getattr(_sc_th, 'spike_chase_max_stretch_atr', 1.5) or 0.0)
+                                _sc_atrp = _ind_atr_pct(indicators)
+                                _sc_stretch = None
+                                try:
+                                    if indicators.get('ema5') and indicators.get('price'):
+                                        _sc_stretch = (indicators['price'] - indicators['ema5']) / indicators['ema5'] * 100.0
+                                except Exception:
+                                    _sc_stretch = None
+                                if (_sc_str_mult > 0 and _sc_stretch is not None and _sc_atrp
+                                        and _sc_stretch > _sc_str_mult * _sc_atrp):
+                                    self._record_filter_block("SPIKE_CHASE_STRETCH", "LONG")
+                                    logger.info(f"[SPIKE_CHASE_STRETCH] {pair}: chase blocked — stretch {_sc_stretch:+.2f}% > {_sc_str_mult}x ATR {_sc_atrp:.2f}% (ratio {(_sc_stretch/_sc_atrp):.1f})")
+                                else:
+                                    signal, confidence = "LONG", "STRONG_BUY"
+                                    _spike_chase_hit = True
+                                    logger.info(f"[SPIKE_CHASE] {pair}: RSI jump {_sc_prev:.1f}->{_sc_rsi:.1f} (+{_sc_rsi - _sc_prev:.1f}) candle {_sc_chg:+.2f}% vol {_sc_vr:.1f}x ADX {(_sc_adx if _sc_adx is not None else -1):.1f} stretch {(_sc_stretch if _sc_stretch is not None else 0):+.2f}%/{(_sc_atrp or 0):.2f}ATR — chase entry (LONG)")
             except Exception:
                 # Review M5: clear signal too — an exception AFTER the router set
                 # signal="SHORT"/"LONG" must not leak a plain MOMENTUM open at

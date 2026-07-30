@@ -410,10 +410,20 @@ class SignalThresholds(BaseModel):
     # riders all <=20.2, duds all >=29.6): ADX <= max_adx -> SPIKE_CHASE LONG at full size;
     # ADX > max_adx -> SPIKE_FADE SHORT (4/4 backtest, avg +0.31, max adverse +0.49).
     spike_chase_max_adx: float = 30.0             # leg 6 router cut (empty 20-29 gap; default 30)
+    spike_chase_max_stretch_atr: float = 1.5      # Jul 30 EXTENSION GUARD (0=off): block CHASE when
+    # (price-EMA5)/EMA5 % > mult x pair ATR%. Evidence: all 8 lifetime chases entered >=2.0xATR
+    # extended (bought the completed spike top; ERA top-tick -1.2% in 19s), 0 wins at any stretch;
+    # current-stack CF blocks 2/2 (+$171, zero winners lost). Chase-only — fade winners ARE the
+    # stretched ones (PROM 3.4xATR +1.16). Mechanism ship (N=2 current-stack, below gate,
+    # transparent override): post-guard eval pre-committed — first N>=8 post-guard chases
+    # net-negative => chase reverts to probe size regardless.
     spike_invest_mult: float = 2.0                # CHASE sizing: Inv 2x of equal-split base
     spike_lev_mult: float = 1.0                   # CHASE leverage mult (1.0 = confidence base 20x)
     spike_fade_enabled: bool = True               # master kill toggle for the fade species
-    spike_fade_invest_mult: float = 1.0           # FADE sizing: Inv 1x (operator 07-27)
+    spike_fade_invest_mult: float = 2.0           # FADE sizing: Inv 2x (operator 07-30 override at
+    # 7 fires 5W/2L +$96 — below the locked N>=30/1.5x-first bar; acknowledged discipline-override.
+    # TIGHT revert gate: first 6 fires AT 2x net-negative OR any single 2x fade <=-1.0% => back to
+    # 1x (tripwire -1.5% still auto-disables the species). FAN flip-short 2x precedent on record.
     spike_fade_lev_mult: float = 1.0              # FADE leverage mult (1.0 = base 20x)
     spike_fade_sl_pct: float = -0.70              # FADE fixed SL — NO ATR widening (squeeze tail
                                                   # on pumping pairs; max adverse seen +0.49)

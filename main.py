@@ -1803,7 +1803,7 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
 @app.get("/api/performance")
 async def get_performance(regime: str = None, window_hours: int = None,
                           from_date: str = None, to_date: str = None,
-                          flip_source: str = None, direction: str = None,
+                          flip_source: str = None, direction: str = None, cell_source: str = None,
                           db: AsyncSession = Depends(get_db)):
     """Get closed orders performance metrics, optionally filtered by macro trend regime and/or time window.
 
@@ -1816,13 +1816,18 @@ async def get_performance(regime: str = None, window_hours: int = None,
                   for one flip sleeve in isolation. Values: a source name (FAN_RATIO_GATE /
                   LONG_UNMATCHED_ONLY / PAIR_RSI_OB → entry_strategy startswith "FLIP:<name>"),
                   "FLIP" (all flips), "MOMENTUM" (non-flip only). None / "" / "ALL" = no filter.
+    cell_source: str (Jul 30) — slice by cell_multiplier_source (the orthogonal doors/multipliers
+                  axis; composes with flip_source). Values: "FULLSIZE" (exclude every *_PROBE /
+                  FGP_* ticket = the de-noised real-money book), "PLAIN" (no cell tag = the
+                  un-multiplied base book), or an exact cell tag (NONEXP_CALM3D / UNMATCHED / W2 ...).
+                  None / "" / "ALL" = no filter.
     """
     await trading_engine.initialize(db)
 
     try:
         return await _compute_performance(db, regime=regime, window_hours=window_hours,
                                           from_date=from_date, to_date=to_date, flip_source=flip_source,
-                                          direction=direction)
+                                          direction=direction, cell_source=cell_source)
     except Exception as e:
         logger.error(f"[PERF] Unhandled error in get_performance: {e}\n{traceback.format_exc()}")
         return {
@@ -3411,7 +3416,7 @@ def _compute_liquidity_sizing(orders):
 
 async def _compute_performance(db: AsyncSession, regime: str = None, window_hours: int = None,
                                 from_date: str = None, to_date: str = None, flip_source: str = None,
-                                direction: str = None):
+                                direction: str = None, cell_source: str = None):
     result = await db.execute(
         select(Order)
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
@@ -3548,6 +3553,27 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             orders = [o for o in orders if _es(o).upper().startswith(_pre) or _es(o).upper() == _fs]
         # SIGNAL_EXPIRED rows are aborted maker entries (never flips) → keep only for MOMENTUM/ALL
         if _fs != 'MOMENTUM':
+            signal_expired_orders = []
+
+    # Jul 30: Cell/Door filter (cell_multiplier_source axis — orthogonal to flip_source: a
+    # CALM3D door trade is still MOMENTUM sleeve). FULLSIZE = strip every probe ticket
+    # (*_PROBE / FGP_*) so the headline tables show the real-money book; PLAIN = no cell tag
+    # (the un-multiplied base book — a view that otherwise exists nowhere); exact tag = that
+    # cell in isolation. Composes AFTER regime + window + flip_source, BEFORE direction.
+    _cs = (cell_source or '').strip()
+    if _cs and _cs.upper() != 'ALL':
+        def _cms(o):
+            return (getattr(o, 'cell_multiplier_source', None) or '')
+        def _is_probe_row(o):
+            s = _cms(o)
+            return ('_PROBE' in s) or ('FGP_' in s)
+        if _cs.upper() == 'FULLSIZE':
+            orders = [o for o in orders if not _is_probe_row(o)]
+        elif _cs.upper() == 'PLAIN':
+            orders = [o for o in orders if not _cms(o)]
+        else:
+            orders = [o for o in orders if _cms(o) == _cs]
+            # aborted maker entries never carry a cell tag → drop for a specific-cell slice
             signal_expired_orders = []
 
     # Jun 19: Direction filter (LONG / SHORT). Composes AFTER regime + window + flip_source.
@@ -7857,6 +7883,16 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # The 4-Cohort Pattern Coverage summary still reports the truly-unmatched aggregate.
         "leash_shadow": _compute_leash_shadow(orders),  # LEASH SHADOW (May 30, observation-only)
         "flip_trades": _compute_flip_trades(_flip_orders),  # FLIP TRADE LOG (Jun 14 — merged scorecard; replaced flip_entry)
+        # Jul 30 — data-driven options for the UI Cell/Door filter: every distinct non-probe
+        # cell tag present in the closed book (computed from ALL closed orders, not the filtered
+        # pool, so the dropdown stays stable while a filter is active). Probes excluded by
+        # design (their instrument is the 🪟 probe table; per-probe global slices are noise).
+        "cell_source_options": sorted({
+            (getattr(o, 'cell_multiplier_source', None) or '') for o in all_orders
+            if (getattr(o, 'cell_multiplier_source', None) or '')
+            and '_PROBE' not in (getattr(o, 'cell_multiplier_source', None) or '')
+            and 'FGP_' not in (getattr(o, 'cell_multiplier_source', None) or '')
+        }),
         "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
         "be_lock_shadow": _compute_be_lock_shadow(orders),  # BE-LOCK SHADOW (Jul 28, observation-only)
         "liquidity_sizing": _compute_liquidity_sizing(orders),  # LIQUIDITY SIZING (Jun 2, observation-only)

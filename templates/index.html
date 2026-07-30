@@ -2519,6 +2519,7 @@
                         <table class="w-full text-xs">
                             <thead><tr class="text-gray-400 border-b border-white/10">
                                 <th class="px-2 py-2 text-left">Pair</th>
+                                <th class="px-2 py-2 text-left" title="Which book the throttled order belongs to: entry sleeve (MOMENTUM / SPIKE_FADE / FLIP:*) · cell/door tag when one exists (UNMATCHED, NONEXP_CALM3D, *_PROBE...)">Sleeve · Cell</th>
                                 <th class="px-2 py-2 text-center">desired $</th>
                                 <th class="px-2 py-2 text-center">final $</th>
                                 <th class="px-2 py-2 text-center">throttle %</th>
@@ -9276,11 +9277,11 @@
                     const _sg = (v) => (v >= 0 ? '+' : '') + v.toFixed(3) + '%';
                     lines.push(`  ① entry slip (live-only): capped ${_sg(_lq.capped_slip_avg)} (n=${_lq.capped_slip_n}) vs uncapped ${_sg(_lq.uncapped_slip_avg)} (n=${_lq.uncapped_slip_n})`);
                 }
-                lines.push('  Pair          Dir       desired$        final$  throttle%  reason');
+                lines.push('  Pair          Dir   Sleeve · Cell               desired$        final$  throttle%  reason');
                 lines.push('-'.repeat(72));
                 const _lm$ = (v) => '$' + Math.round(v||0).toLocaleString();
                 (_liq1.rows || []).forEach(r => {
-                    lines.push(`  ${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${_lm$(r.desired).padStart(13)} ${_lm$(r.final).padStart(13)} ${('-'+r.throttle_pct+'%').padStart(9)}  ${r.reason}`);
+                    lines.push(`  ${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${(r.sleeve||'-').padEnd(27)} ${_lm$(r.desired).padStart(13)} ${_lm$(r.final).padStart(13)} ${('-'+r.throttle_pct+'%').padStart(9)}  ${r.reason}`);
                 });
                 lines.push('');
             }
@@ -11242,11 +11243,11 @@
                         const _sg = (v) => (v >= 0 ? '+' : '') + v.toFixed(3) + '%';
                         lines.push(`  ① entry slip (live-only): capped ${_sg(_lq.capped_slip_avg)} (n=${_lq.capped_slip_n}) vs uncapped ${_sg(_lq.uncapped_slip_avg)} (n=${_lq.uncapped_slip_n})`);
                     }
-                    lines.push('  Pair          Dir       desired$        final$  throttle%  reason');
+                    lines.push('  Pair          Dir   Sleeve · Cell               desired$        final$  throttle%  reason');
                     lines.push('-'.repeat(72));
                     const _lm$ = (v) => '$' + Math.round(v||0).toLocaleString();
                     (_liq2.rows || []).forEach(r => {
-                        lines.push(`  ${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${_lm$(r.desired).padStart(13)} ${_lm$(r.final).padStart(13)} ${('-'+r.throttle_pct+'%').padStart(9)}  ${r.reason}`);
+                        lines.push(`  ${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${(r.sleeve||'-').padEnd(27)} ${_lm$(r.desired).padStart(13)} ${_lm$(r.final).padStart(13)} ${('-'+r.throttle_pct+'%').padStart(9)}  ${r.reason}`);
                     });
                     lines.push('');
                 }
@@ -14214,15 +14215,19 @@
                             const tCls = r.throttle_pct >= 50 ? 'text-red-400 font-semibold'
                                        : r.throttle_pct >= 20 ? 'text-amber-400 font-semibold'
                                        : 'text-gray-300';
+                            const _slvCls = (r.sleeve || '').startsWith('SPIKE') ? 'text-orange-300'
+                                          : (r.sleeve || '').startsWith('FLIP') ? 'text-fuchsia-300'
+                                          : 'text-gray-400';
                             html += `<tr class="border-b border-white/5">
                                 <td class="px-2 py-1 text-left text-gray-200">${r.pair} <span class="text-gray-500">${r.direction || ''}</span></td>
+                                <td class="px-2 py-1 text-left ${_slvCls}">${r.sleeve || '—'}</td>
                                 <td class="px-2 py-1 text-center text-gray-400">${_fmt$(r.desired)}</td>
                                 <td class="px-2 py-1 text-center text-sky-300 font-semibold">${_fmt$(r.final)}</td>
                                 <td class="px-2 py-1 text-center ${tCls}">−${r.throttle_pct}%</td>
                                 <td class="px-2 py-1 text-left text-gray-300">${r.reason}</td>
                             </tr>`;
                         });
-                        _liqBody.innerHTML = html || '<tr><td colspan="5" class="px-2 py-3 text-center text-gray-500">No throttled orders yet.</td></tr>';
+                        _liqBody.innerHTML = html || '<tr><td colspan="6" class="px-2 py-3 text-center text-gray-500">No throttled orders yet.</td></tr>';
                     }
                 }
                 // ===== LIQUIDITY SIZING END =====

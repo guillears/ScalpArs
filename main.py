@@ -3382,9 +3382,15 @@ def _compute_liquidity_sizing(orders):
         if 'GROSS' in reason:
             gross_n += 1
         throttles.append(throttle)
+        # Jul 30 (operator): sleeve · cell label — which book the throttled order belongs to
+        # (the table was 7/7 spike fades and nothing said so). entry_strategy + cell tag when
+        # one exists and differs from the strategy (SPIKE_FADE strategy + SPIKE_FADE cell = one label).
+        _strat = (getattr(o, 'entry_strategy', None) or 'MOMENTUM')
+        _cell = (getattr(o, 'cell_multiplier_source', None) or '')
         rows.append({
             'pair': o.pair,
             'direction': o.direction,
+            'sleeve': _strat if (not _cell or _cell == _strat) else f"{_strat} · {_cell}",
             'desired': round(desired, 2),
             'final': round(final, 2),
             'throttle_pct': round(throttle * 100, 1),

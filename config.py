@@ -488,9 +488,21 @@ class SignalThresholds(BaseModel):
     # pair mean-reverts, a coiled one drifts with the trend. Threshold fitted on N=19 (full
     # haircut). Ships as the Option-A alternative to the FIRED N=10/Σ<0 revert gate; fresh
     # TIGHTER gate: next N>=10 post-refinement fires WR>=60 ∧ Σ$>0 else door OFF for good.
-    nonexp_calm3d_invest_mult: float = 1.0        # Jul-29 de-escalated 2.0→1.0 at 7/10 fires (57% WR net-losing
-    #   −$240: 4 small wins wiped by NIL-class 2× tails — locked 'high-WR-net-losing → fix sizing' treatment;
-    #   the N≥10 gate still rules on the cell itself)
+    # Jul-31 RISING-HOUR leg (operator-directed at pooled N=15 coiled; acknowledged override):
+    # admit only when BTC 1h EMA20 slope > this. The door's third identity condition — calm
+    # BTC ∧ coiled pair ∧ RUNNING hourly engine ("quiet market, loaded spring, rising tide").
+    # Coiled-cohort evidence (door+calm-probes): b1h>0 = 10·90% WR·+0.372%·+$288 (EUL/TAO/UNI
+    # all here) vs b1h<=0 = 5·60%·−0.202%·−$65 (2 of 3 losses = ONE same-tick cluster —
+    # acknowledged). Sign boundary, NOT fitted (0 canonical). Mechanism kin: W2×1h-rising,
+    # deadband family. <= -98 = leg off; missing b1h fails open.
+    nonexp_calm3d_b1h_min: float = 0.0
+    nonexp_calm3d_invest_mult: float = 2.0        # Jul-31 RE-ESCALATED 1.0→2.0 with the b1h leg (operator-
+    #   directed DOUBLE staging override: skips the locked 1.5×-first ladder AND the N>=30 W-bar —
+    #   evidence = the refined cohort 10·90%·+0.372% (partially in-sample; legs discovered on it).
+    #   🔒 TIGHT REVERT = the standard cell verdict machinery at N>=5 fresh 2× fires: ✗ HARMFUL
+    #   (net-negative) → 1.0× · ⚠ DRAG → 1.5×; PLUS the door's own fresh N>=10 gate (reset at this
+    #   ship: WR>=60 ∧ Σ>0 else door OFF) rules the cell itself.
+    #   History: 2.0 original → 1.0 Jul-29 (✗ HARMFUL at 7/10, NIL-class 2× tails) → 2.0 Jul-31.
     nonexp_calm3d_lev_mult: float = 1.0
     # Jul-29 RSICEIL door re-scope (operator-shipped at 6/10 fires as experimental narrowing):
     # the graduated RSI (65,70] LONG band additionally requires pair-ADX >= this floor.

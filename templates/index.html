@@ -254,6 +254,7 @@
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">Total Portfolio Value</p>
                     <p id="total-portfolio" class="text-2xl font-bold text-emerald-400">$0.00</p>
+                    <p id="total-trades-count" class="text-xs text-gray-500 mt-1"></p>
                 </div>
             </div>
         </section>
@@ -8635,6 +8636,10 @@
                     ordCountEl.textContent = `Open Positions: ${data.open_orders_count}`;
                 }
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
+                const ttEl = document.getElementById('total-trades-count');
+                if (ttEl && data.total_trades_count != null) {
+                    ttEl.textContent = `Total Trades: ${data.total_trades_count}`;
+                }
             } catch (e) {
                 console.error('Error loading balance:', e);
             }

@@ -729,12 +729,18 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
 
         _reserve, _tradeable, _rmode = _reserve_split(balance, used_margin)
 
+        # Jul 31 (operator): batch trade tally for the Total Portfolio card —
+        # closed + open (paper reset wipes orders, so this = the current batch).
+        _total_trades = (await db.execute(
+            select(func.count(Order.id)).where(Order.is_paper == True))).scalar() or 0
+
         return {
             "usdt_balance": balance,
             "bnb_balance": round(bnb_usd, 2),
             "bnb_balance_is_usd": True,
             "usdt_in_orders": used_margin,
             "open_orders_count": len(open_orders),
+            "total_trades_count": _total_trades,
             "max_open_positions": config.trading_config.investment.max_open_positions,
             "total_portfolio": round(total_portfolio, 2),
             "starting_balance": round(starting_balance, 2),
@@ -762,6 +768,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "bnb_balance_is_usd": False,
             "usdt_in_orders": balance['usdt_used'],
             "open_orders_count": _live_open_count,
+            "total_trades_count": (await db.execute(
+                select(func.count(Order.id)).where(Order.is_paper == False))).scalar() or 0,
             "max_open_positions": config.trading_config.investment.max_open_positions,
             "total_portfolio": round(total, 2),
             "starting_balance": None,  # live: no paper seed; chart falls back to reverse-derivation

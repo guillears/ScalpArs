@@ -10214,14 +10214,26 @@ class TradingEngine:
                                 # fails open (admit) for parity with the other legs.
                                 _pp_smax = float(getattr(_th_pp, 'nonexp_calm3d_max_stretch', 0.06) or 0.0)
                                 _pp_coiled = (_pp_smax <= 0) or (entry_ema5_stretch is None) or (entry_ema5_stretch <= _pp_smax)
+                                # Jul-31 RISING-HOUR leg (operator-directed, #24b pooled read):
+                                # the door's third identity condition — calm BTC ∧ coiled pair ∧
+                                # RUNNING 1h engine. Coiled cohort split: b1h>0 = 10·90%·+$288
+                                # (every big winner) vs b1h<=0 = 5·60%·−$65 (cluster-inflated).
+                                # Sign boundary (not fitted). Sentinel <= -98 = leg off; b1h
+                                # None fails open (admit) for parity with the other legs.
+                                _pp_b1h_min = float(getattr(_th_pp, 'nonexp_calm3d_b1h_min', 0.0) if getattr(_th_pp, 'nonexp_calm3d_b1h_min', 0.0) is not None else 0.0)
+                                _pp_b1h = globals().get('_current_btc_1h_slope')
+                                _pp_hour_up = (_pp_b1h_min <= -98) or (_pp_b1h is None) or (float(_pp_b1h) > _pp_b1h_min)
                                 if (entry_btc_regime in _pp_regs and _pp_batr is not None
-                                        and float(_pp_batr) <= _pp_atr_max and _pp_coiled):
+                                        and float(_pp_batr) <= _pp_atr_max and _pp_coiled and _pp_hour_up):
                                     _nonexp_calm3d_hit = True
-                                    logger.info(f"[NONEXP_CALM3D] {pair}: gap-{'flat' if _pp_gapflat else 'min[flat]'} LONG ADMITTED full-size — {entry_btc_regime} ∧ BTC-ATR {float(_pp_batr):.3f} <= {_pp_atr_max} ∧ stretch {(entry_ema5_stretch if entry_ema5_stretch is not None else -1):.2f} <= {_pp_smax}")
+                                    logger.info(f"[NONEXP_CALM3D] {pair}: gap-{'flat' if _pp_gapflat else 'min[flat]'} LONG ADMITTED full-size — {entry_btc_regime} ∧ BTC-ATR {float(_pp_batr):.3f} <= {_pp_atr_max} ∧ stretch {(entry_ema5_stretch if entry_ema5_stretch is not None else -1):.2f} <= {_pp_smax} ∧ b1h {(float(_pp_b1h) if _pp_b1h is not None else -1):+.3f} > {_pp_b1h_min}")
                                 else:
                                     if (not _pp_coiled and entry_btc_regime in _pp_regs and _pp_batr is not None
                                             and float(_pp_batr) <= _pp_atr_max):
                                         logger.info(f"[NONEXP_CALM3D_STRETCH] {pair}: calm-tape candidate REJECTED — stretch {entry_ema5_stretch:.2f} > {_pp_smax} (coiled-pair leg)")
+                                    elif (_pp_coiled and not _pp_hour_up and entry_btc_regime in _pp_regs and _pp_batr is not None
+                                            and float(_pp_batr) <= _pp_atr_max):
+                                        logger.info(f"[NONEXP_CALM3D_B1H] {pair}: coiled calm-tape candidate REJECTED — BTC 1h slope {(float(_pp_b1h) if _pp_b1h is not None else -1):+.3f} <= {_pp_b1h_min} (rising-hour leg)")
                                     _pp_block = "PAIR_EMA_GAP_NOT_EXPANDING" if _pp_gapflat else "PAIR_EMA_GAP_MIN"
                             else:
                                 _pp_block = "PAIR_EMA_GAP_NOT_EXPANDING" if _pp_gapflat else "PAIR_EMA_GAP_MIN"
@@ -11200,11 +11212,18 @@ class TradingEngine:
             # ===== BE-LOCK SHADOW — in-trade tick (Jul 28, observation-only) =====
             # Records, per arm threshold X, the FIRST minute P&L touched +X% and the
             # minimum P&L AFTER that touch. Feeds the time-boxed BE-lock counterfactual
-            # (arm BE only if peak >= X by minute Y). Momentum book only — spikes have
-            # their own exit stack. Restart-tainted trades ('_belock_taint', cache
-            # reseeded with peak already >= 0.15) are skipped so sequencing stays honest.
+            # (arm BE only if peak >= X by minute Y). Momentum book + (Jul 31) SPIKE_FADE —
+            # the fade quick-lock question (touch 0.20 -> lock -0.15, pre-registered
+            # frozen in #24b) needs post-touch trough ordering that peak/trough columns
+            # can't resolve; capture is exit-neutral. SPIKE_CHASE stays excluded (own
+            # option-D ecosystem, no lock candidate). The ⏱ shadow TABLE still filters
+            # spikes out (main.py) — the momentum gate stays uncontaminated; the fade
+            # cohort is read from these columns separately at N>=12.
+            # Restart-tainted trades ('_belock_taint', cache reseeded with peak already
+            # >= 0.15) are skipped so sequencing stays honest.
+            _bl_strat = (order_info.get('entry_strategy') or '')
             if not order_info.get('_belock_taint') \
-                    and not (order_info.get('entry_strategy') or '').startswith('SPIKE'):
+                    and (not _bl_strat.startswith('SPIKE') or _bl_strat == 'SPIKE_FADE'):
                 try:
                     _bl = order_info.get('_belock')
                     if _bl is None:

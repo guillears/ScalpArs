@@ -553,6 +553,45 @@ class SignalThresholds(BaseModel):
     # rows (BTC vs ETH judged separately). 🔒 Read protocol in CURRENT_STATE #35.
     majors_probe_enabled: bool = True
     majors_probe_max_open: int = 2       # concurrent MAJORS probes (~1 per major)
+    # ── Jul 31 🏀 SPIKE_BOUNCE (third spike species — LONG the violent dump; operator-directed
+    # full-size ship at N=0, acknowledged: two dead countertrend-long predecessors (BOUNCE_LONG
+    # 2W/6L Jun-23, C7 falling-knife class) BUT neither was this trade — this is the fade
+    # MIRRORED (violent single-candle trigger, fixed SL never widens, direct taker, tripwire).
+    # Trigger (mirror of pump legs, same polled candles, zero extra API): RSI crash >= crash_pts
+    # in one 5m candle, prev RSI in [prev_min, prev_max], candle <= -min_candle_pct, vol >=
+    # min_vol_ratio x avg20, no normal signal. GUARDS (each side-specific evidence, NOT symmetry
+    # aesthetics — operator-caught twice): ① dump cap (candle >= -max_dump_pct; deeper = news/
+    # delist/hack, the -5/-6% liquidation post-mortem) · ② bRSI FLOOR >= min_btc_rsi (the TRUE
+    # mirror of the fade's shipped bRSI<=50 ceiling: buy a dump only when BTC momentum state is
+    # firm = idiosyncratic panic; cold BTC = cascade; pre-registered: winners cluster >=~53) ·
+    # ③ crashed-pair exclusion (pair EMA13-50 gap > min_pair_gap; DEEPGAP N=17·71% direct
+    # evidence that dumps on crashed pairs CONTINUE — deliberately NOT mirrored to the fade,
+    # its book shows no separation and EVAA won in-zone) · ④ regime block STRONG_BEAR/
+    # HEALTHY_BEAR (where BOUNCE_LONG died — dump in a bear trend = continuation).
+    # Exits = fade-mirrored verbatim (cohort comparability): fixed SL -0.7 NO widen, arm 0.45 +
+    # ~0.5xATR giveback (NOT 1x — atr05 beat atr10 on the fade cohort AND entry ATR is inflated
+    # by the dump itself), floor ladder = tail-catcher, tripwire auto-disable, BE-lock capture
+    # from fill #1, inherits the fade N>=12 three-way exit-read winner. Sizing: FULL Inv 1x/
+    # Lev 1x, normal book rules — NO sleeve max-open, NO auto kill gate (operator: manual
+    # review here; tally reported every read). 🔒 READ (locked): N>=10 · >=4 dates → WR>=55% ∧
+    # Σ>0; slices per-regime/bRSI/dump-magnitude/rng, never pooled; thresholds frozen.
+    spike_bounce_enabled: bool = True
+    spike_bounce_rsi_crash: float = 25.0     # RSI points DOWN in one 5m candle
+    spike_bounce_rsi_prev_min: float = 45.0  # resting band before the crash (mirror of [35,55])
+    spike_bounce_rsi_prev_max: float = 65.0
+    spike_bounce_min_candle_pct: float = 0.5   # candle must move <= -this %
+    spike_bounce_max_dump_pct: float = 3.0     # candle deeper than -this % = news class, NO trade
+    spike_bounce_min_vol_ratio: float = 5.0    # discovery-candle volume vs avg20
+    spike_bounce_min_btc_rsi: float = 50.0     # bRSI FLOOR (0=off; fail-open on missing)
+    spike_bounce_min_pair_gap: float = -1.0    # pair EMA13-50 gap must be > this (0=off; DEEPGAP guard)
+    spike_bounce_blocked_regimes: str = "STRONG_BEAR,HEALTHY_BEAR"  # comma list; empty = no regime block
+    spike_bounce_invest_mult: float = 1.0
+    spike_bounce_lev_mult: float = 1.0
+    spike_bounce_sl_pct: float = -0.70         # fixed, NEVER ATR-widened (the one dump law)
+    spike_bounce_trail_atr_mult: float = 0.5   # runner-trail giveback N (LONG global is 1.0; bounce
+                                               # frozen at 0.5 — atr05 beat atr10 on the fade cohort
+                                               # and entry ATR is inflated by the dump candle itself)
+    spike_bounce_tripwire_pct: float = -1.5    # close <= this → auto-disable species (gap-through)
     # Jul 30 PM — FADE BTC-RSI CEILING (operator discipline-override ship at sub-cohort N=3,
     # below the pre-registered N>=5 bar; acknowledged). Block a SPIKE_FADE when BTC RSI at
     # entry > this: fading an alt spike while BTC's own momentum is hot = shorting into

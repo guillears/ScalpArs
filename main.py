@@ -3549,7 +3549,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # are their own program; blending full-size spikes would contaminate the
             # sleeve stats the locked gates read. (Probe-era spike rows carry MOMENTUM
             # labels and stay — cohort key for those = cell_multiplier_source.)
-            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE')
+            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE')
             orders = [o for o in orders if not _es(o).startswith('FLIP:') and _es(o).upper() not in _SLEEVES]
         else:
             # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side
@@ -6313,13 +6313,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     spike_fires = []
     try:
         _sp_rows = [o for o in orders
-                    if (getattr(o, 'entry_strategy', None) in ("SPIKE_CHASE", "SPIKE_FADE")
+                    if (getattr(o, 'entry_strategy', None) in ("SPIKE_CHASE", "SPIKE_FADE", "SPIKE_BOUNCE")
                         or (getattr(o, 'cell_multiplier_source', None) or '') == 'SPIKE_CHASE_PROBE')]
         for o in sorted(_sp_rows, key=lambda x: x.opened_at or datetime.min):
             spike_fires.append({
                 "pair": o.pair,
                 "direction": o.direction,
-                "species": (o.entry_strategy if o.entry_strategy in ("SPIKE_CHASE", "SPIKE_FADE") else "PROBE-era"),
+                "species": (o.entry_strategy if o.entry_strategy in ("SPIKE_CHASE", "SPIKE_FADE", "SPIKE_BOUNCE") else "PROBE-era"),
                 "opened_at": o.opened_at.isoformat() if o.opened_at else None,
                 "adx": getattr(o, 'entry_adx', None),
                 "atr_pct": getattr(o, 'entry_atr_pct', None),
@@ -6382,6 +6382,19 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         else:
             _fg = f"⏳ {_fs['n']}/8 · tripwire ARMED (-1.5)"
         spike_summary.append({"row": "SPIKE_FADE (full size)", **_fs, "gate": _fg})
+        # 🏀 Jul 31 SPIKE_BOUNCE: NO auto kill gate BY DESIGN (operator: manual review
+        # only) — this row IS the tally reported every read. Locked read at N>=10 ·
+        # >=4 dates → WR>=55% ∧ Σ>0. Tripwire (−1.5 gap-through) is the only automation.
+        _bncg = [o for o in orders if _es2(o) == 'SPIKE_BOUNCE']
+        _bs = _cohort_stats(_bncg)
+        _bnc_on = bool(getattr(trading_config.thresholds, 'spike_bounce_enabled', False))
+        if not _bnc_on:
+            _bg = "🛑 BOUNCE DISABLED (manual or TRIPWIRE fired — check logs before re-enabling)"
+        elif _bs["n"] >= 10 and _bs["dates"] >= 4:
+            _bg = f"📖 READ DUE: N={_bs['n']}>=10 · {_bs['dates']} dates — verdict WR>=55% ∧ Σ>0 (manual)"
+        else:
+            _bg = f"⏳ {_bs['n']}/10 · {_bs['dates']}/4 dates · tripwire ARMED (-1.5) · manual review only"
+        spike_summary.append({"row": "SPIKE_BOUNCE (full size)", **_bs, "gate": _bg})
         spike_summary.append({"row": "PROBE-era (frozen)", **_cohort_stats(_probe_era), "gate": "🚀 graduated Jul-27 — reference only"})
 
         def _door(label, g, gate_n, wr_bar, revert_txt):

@@ -4207,7 +4207,12 @@ class TradingEngine:
         piggybacks the scan loop; one fire per pair per candle. ZERO-RISK REVERT =
         spike_scanner_enabled=false."""
         th = config.trading_config.thresholds
-        if not getattr(th, 'spike_scanner_enabled', False) or not getattr(th, 'spike_chase_probe_enabled', False):
+        # Jul 31 🏀: the scanner now feeds TWO species — pump (chase/fade) and bounce.
+        # It runs if either is on; each trigger branch is gated by its own toggle so
+        # disabling one species can never silently kill the other's 400-pair surface.
+        _pump_on = bool(getattr(th, 'spike_chase_probe_enabled', False))
+        _sb_on = bool(getattr(th, 'spike_bounce_enabled', False))
+        if not getattr(th, 'spike_scanner_enabled', False) or not (_pump_on or _sb_on):
             return
         if not self.is_running:
             return
@@ -4216,6 +4221,13 @@ class TradingEngine:
         _min_chg = float(getattr(th, 'spike_chase_probe_min_candle_pct', 0.5) or 0.5)
         _prev_min = float(getattr(th, 'spike_chase_probe_rsi_prev_min', 35.0) or 35.0)
         _min_vr = float(getattr(th, 'spike_chase_probe_min_vol_ratio', 5.0) or 5.0)
+        # Jul 31 🏀 SPIKE_BOUNCE (third species): mirrored dump-trigger params.
+        _sb_crash = float(getattr(th, 'spike_bounce_rsi_crash', 25.0) or 25.0)
+        _sb_pmin = float(getattr(th, 'spike_bounce_rsi_prev_min', 45.0) or 45.0)
+        _sb_pmax = float(getattr(th, 'spike_bounce_rsi_prev_max', 65.0) or 65.0)
+        _sb_chg = float(getattr(th, 'spike_bounce_min_candle_pct', 0.5) or 0.5)
+        _sb_maxdump = float(getattr(th, 'spike_bounce_max_dump_pct', 3.0) or 3.0)
+        _sb_vr = float(getattr(th, 'spike_bounce_min_vol_ratio', 5.0) or 5.0)
         _vol_floor = float(getattr(th, 'spike_scanner_min_vol_usd', 1000000.0) or 1000000.0)
         _max_pairs = int(getattr(th, 'spike_scanner_max_pairs', 400) or 400)
         # Same protective screens as the trading universe (new-listing/Alpha/coin-only).
@@ -4258,18 +4270,35 @@ class TradingEngine:
                     rsi, rsi_prev = self._spike_rsi12(closes)
                     if rsi is None or rsi_prev is None:
                         continue
-                    if not (_prev_min <= rsi_prev <= _prev_max and (rsi - rsi_prev) >= _jump):
+                    _pump_trig = (_pump_on and _prev_min <= rsi_prev <= _prev_max and (rsi - rsi_prev) >= _jump)
+                    # Jul 31 🏀 BOUNCE trigger (mirror): RSI crash from a resting band. Only
+                    # evaluated when the pump didn't fire (a candle can't be both).
+                    _bounce_trig = (not _pump_trig and _sb_on
+                                    and _sb_pmin <= rsi_prev <= _sb_pmax
+                                    and (rsi_prev - rsi) >= _sb_crash)
+                    if not (_pump_trig or _bounce_trig):
                         continue
                     # Jul 24 PM: price-magnitude leg — RSI is scale-free, so a stablecoin's
                     # +0.01% wiggle can print a +36-pt "jump" (USDCUSDT #175). Real discovery
                     # candles move price (MIRA +1.84%); require the candle itself >= _min_chg %.
-                    if closes[-2] <= 0 or (closes[-1] / closes[-2] - 1.0) * 100.0 < _min_chg:
+                    if closes[-2] <= 0:
                         continue
+                    _chg_now = (closes[-1] / closes[-2] - 1.0) * 100.0
+                    if _pump_trig and _chg_now < _min_chg:
+                        continue
+                    if _bounce_trig:
+                        if _chg_now > -_sb_chg:
+                            continue  # dump candle too shallow
+                        if _chg_now < -_sb_maxdump:
+                            # 🏀 guard ①: news/delist/hack class — no bounce edge, catastrophic tail
+                            self._record_filter_block("SPIKE_BOUNCE_DUMPCAP", "LONG")
+                            logger.info(f"[SPIKE_BOUNCE_DUMPCAP] {p['pair']}: dump {_chg_now:+.2f}% deeper than -{_sb_maxdump}% — news-class, no bounce")
+                            continue
                     # Jul 24 PM leg 5: attention — discovery-candle volume >= _min_vr x prior-20 avg
                     # (MIRA 59.6x / chop max 5.7x / USDCUSDT fire 2.39x). Free from these klines.
                     _vols = [float(c[5]) for c in ohlcv]
                     _av20 = sum(_vols[-21:-1]) / 20.0
-                    if _av20 <= 0 or (_vols[-1] / _av20) < _min_vr:
+                    if _av20 <= 0 or (_vols[-1] / _av20) < (_sb_vr if _bounce_trig else _min_vr):
                         continue
                     _candle_ts = ohlcv[-1][0]  # one fire per pair per candle
                     if seen.get(p['pair']) == _candle_ts:
@@ -4286,13 +4315,57 @@ class TradingEngine:
                     _sp_max_adx = float(getattr(th, 'spike_chase_max_adx', 30.0) or 30.0)
                     _sp_dir = "LONG"
                     _sp_is_fade = False
+                    _sp_is_bounce = False
+                    if _bounce_trig:
+                        # Jul 31 🏀 BOUNCE guards — a dump routes to LONG directly (no
+                        # ADX/regime router: the router splits PUMPS into chase/fade; a
+                        # dump has exactly one long thesis). Each guard earned its place
+                        # with side-specific evidence (design rule: no symmetry-by-aesthetics).
+                        _gl = globals()
+                        # guard ② bRSI >= floor — true mirror of the fade's <=50 ceiling:
+                        # fade shorts idiosyncratic exhaustion (needs calm BTC); bounce longs
+                        # idiosyncratic panic (needs non-bearish BTC). Fail-open on missing.
+                        _sb_brsi = _gl.get('_current_btc_rsi')
+                        _sb_brsi_min = float(getattr(th, 'spike_bounce_min_btc_rsi', 0.0) or 0.0)
+                        if _sb_brsi_min > 0 and _sb_brsi is not None and _sb_brsi < _sb_brsi_min:
+                            self._record_filter_block("SPIKE_BOUNCE_BRSI", "LONG")
+                            logger.info(f"[SPIKE_BOUNCE_BRSI] {p['pair']}: bounce blocked — BTC RSI {_sb_brsi:.1f} < {_sb_brsi_min} (market-wide risk-off, dump is beta not panic) | entry_px={ind.get('price')} pair_rsi={ind.get('rsi')}")
+                            continue
+                        # guard ③ crashed-pair exclusion (DEEPGAP evidence): pair already in
+                        # a downtrend (EMA13-50 gap <= min) = knife in trend, not a flash panic.
+                        _sb_gap_min = float(getattr(th, 'spike_bounce_min_pair_gap', 0.0) or 0.0)
+                        _sb_e13 = ind.get('ema13'); _sb_e50 = ind.get('ema50')
+                        if _sb_gap_min != 0 and _sb_e13 is not None and _sb_e50:
+                            _sb_gap = (_sb_e13 - _sb_e50) / _sb_e50 * 100.0
+                            if _sb_gap <= _sb_gap_min:
+                                self._record_filter_block("SPIKE_BOUNCE_CRASHED", "LONG")
+                                logger.info(f"[SPIKE_BOUNCE_CRASHED] {p['pair']}: bounce blocked — EMA13-50 gap {_sb_gap:+.2f}% <= {_sb_gap_min}% (already-crashed pair, DEEPGAP class)")
+                                continue
+                        # guard ④ regime block: no knife-catching in confirmed bear tape
+                        # (BOUNCE_LONG's Jun-23 graves were HEALTHY_BEAR cells).
+                        _sb_blocked = set(x.strip() for x in (getattr(th, 'spike_bounce_blocked_regimes', '') or '').split(',') if x.strip())
+                        if _sb_blocked:
+                            try:
+                                _sb_reg = classify_btc_regime(
+                                    _gl.get('_current_btc_adx'), _gl.get('_current_btc_rsi'), _gl.get('_btc_ema20_slope_pct'))
+                            except Exception:
+                                _sb_reg = None
+                            if _sb_reg is None or _sb_reg == 'UNKNOWN':
+                                # coarse fallback: treat BEARISH macro as blocked
+                                if (_gl.get('_current_btc_regime') or 'NEUTRAL') == 'BEARISH':
+                                    _sb_reg = 'STRONG_BEAR'
+                            if _sb_reg in _sb_blocked:
+                                self._record_filter_block("SPIKE_BOUNCE_REGIME", "LONG")
+                                logger.info(f"[SPIKE_BOUNCE_REGIME] {p['pair']}: bounce blocked — regime {_sb_reg} in blocked set {sorted(_sb_blocked)}")
+                                continue
+                        _sp_is_bounce = True
                     # Jul 28 REGIME ROUTER — regime decides FIRST (non-bull spikes are
                     # squeeze-wicks: 12/13 never reached +0.45 honest). Chase regimes ->
                     # ADX leg as before; anything else -> FADE. Fallback on classify
                     # failure = coarse macro (BULLISH -> chase logic, else fade).
                     _sp_regime_fade = False
                     _gl = globals()
-                    if getattr(th, 'spike_regime_router_enabled', False):
+                    if not _sp_is_bounce and getattr(th, 'spike_regime_router_enabled', False):
                         try:
                             _sp_reg_now = classify_btc_regime(
                                 _gl.get('_current_btc_adx'), _gl.get('_current_btc_rsi'), _gl.get('_btc_ema20_slope_pct'))
@@ -4305,7 +4378,7 @@ class TradingEngine:
                             # classify returns UNKNOWN on missing inputs (never raises) —
                             # fall back to the coarse macro global (review M-3).
                             _sp_regime_fade = (_gl.get('_current_btc_regime') or 'NEUTRAL') != 'BULLISH'
-                    if _sp_regime_fade or (_sp_adx is not None and _sp_adx > _sp_max_adx):
+                    if not _sp_is_bounce and (_sp_regime_fade or (_sp_adx is not None and _sp_adx > _sp_max_adx)):
                         if not getattr(th, 'spike_fade_enabled', False):
                             logger.info(f"[SPIKE_ROUTER_BLOCK] {p['pair']}: trigger fired but routed to FADE ({'regime' if _sp_regime_fade else 'ADX'}) and fade disabled — no trade")
                             continue
@@ -4321,7 +4394,7 @@ class TradingEngine:
                         _sp_dir, _sp_is_fade = "SHORT", True
                         if _sp_regime_fade:
                             logger.info(f"[SPIKE_REGIME_FADE] {p['pair']}: non-chase regime — routing trigger to FADE short")
-                    if not _sp_is_fade:
+                    if not _sp_is_fade and not _sp_is_bounce:
                         # Jul 30 EXTENSION GUARD (chase-only, scanner parity with the top-50
                         # hook): block chase when stretch > mult x ATR%. Fail-open on missing.
                         _sp_str_mult = float(getattr(th, 'spike_chase_max_stretch_atr', 1.5) or 0.0)
@@ -4337,8 +4410,8 @@ class TradingEngine:
                             self._record_filter_block("SPIKE_CHASE_STRETCH", "LONG")
                             logger.info(f"[SPIKE_CHASE_STRETCH] {p['pair']}: scanner chase blocked — stretch {_sp_stretch:+.2f}% > {_sp_str_mult}x ATR {_sp_atrp:.2f}% (ratio {(_sp_stretch/_sp_atrp):.1f})")
                             continue
-                    logger.info(f"[SPIKE_SCANNER] {p['pair']}: RSI jump {rsi_prev:.1f}->{rsi:.1f} "
-                                f"(+{rsi - rsi_prev:.1f}) candle {(closes[-1]/closes[-2]-1.0)*100.0:+.2f}% vol {_vols[-1]/_av20:.1f}x ADX {(_sp_adx if _sp_adx is not None else -1):.1f} vol24h=${(p.get('volume_24h') or 0)/1e6:.1f}M — {'SPIKE_FADE short' if _sp_is_fade else 'SPIKE_CHASE long'} entry")
+                    logger.info(f"[SPIKE_SCANNER] {p['pair']}: RSI {'crash' if _sp_is_bounce else 'jump'} {rsi_prev:.1f}->{rsi:.1f} "
+                                f"({rsi - rsi_prev:+.1f}) candle {(closes[-1]/closes[-2]-1.0)*100.0:+.2f}% vol {_vols[-1]/_av20:.1f}x ADX {(_sp_adx if _sp_adx is not None else -1):.1f} vol24h=${(p.get('volume_24h') or 0)/1e6:.1f}M — {'SPIKE_BOUNCE long' if _sp_is_bounce else ('SPIKE_FADE short' if _sp_is_fade else 'SPIKE_CHASE long')} entry")
                     _g = globals()
                     _px = ind['price']
                     def _r(v, n=4):
@@ -4399,8 +4472,9 @@ class TradingEngine:
                         entry_btc_regime=_sp_fine_regime,
                         entry_macro_trend=_g.get('_current_btc_regime'),
                         entry_quality_score=_sp_qs, entry_ema20_slope=_sp_slope,
-                        spike_chase_probe=not _sp_is_fade,
+                        spike_chase_probe=(not _sp_is_fade and not _sp_is_bounce),
                         spike_fade=_sp_is_fade,
+                        spike_bounce=_sp_is_bounce,
                     )
                     if order:
                         _fired += 1
@@ -4531,6 +4605,11 @@ class TradingEngine:
         # spike_fade mults, fixed SL spike_fade_sl_pct (NO ATR widening), standard short
         # exit stack, strategy=SPIKE_FADE. Kill: spike_fade_enabled + auto-tripwire.
         spike_fade: bool = False,
+        # Jul 31 🏀 SPIKE_BOUNCE (operator full ship, freeze carve-out): single-candle RSI
+        # CRASH -> LONG the violent idiosyncratic dump. Full size 1x/1x, fade-mirrored
+        # exits (fixed SL spike_bounce_sl_pct NO widening), strategy=SPIKE_BOUNCE.
+        # Kill: spike_bounce_enabled + auto-tripwire (spike_bounce_tripwire_pct).
+        spike_bounce: bool = False,
         # Jul 27 PM PROMOTION: NONEXP_CALM3D admission — gap-flat/flat+small LONG admitted
         # full-size (Inv 2x/Lev 1x) when SBULL ∧ BTC-ATR <= 0.147 (engine router decided).
         # Bypasses keep-only-unmatched + pattern treatment per the Jul-20 projection spec.
@@ -4607,7 +4686,7 @@ class TradingEngine:
         # Review I1: a spike fire must NEVER be claimed by a co-matching probe band
         # (the top-50 hook passes all probe kwargs computed from indicators) — a probe
         # cap block would silently drop a full-size fire as "book too full".
-        _probe_final_tag = None if (spike_chase_probe or spike_fade or nonexp_calm3d) else (("MAJORS_PROBE" if majors_probe else
+        _probe_final_tag = None if (spike_chase_probe or spike_fade or spike_bounce or nonexp_calm3d) else (("MAJORS_PROBE" if majors_probe else
                             "DEEPGAP_PROBE" if deepgap_probe else
                             "ADXMAX2_PROBE" if adxmax2_probe else
                             "DBDOWN_PROBE" if dbdown_probe else
@@ -5074,7 +5153,7 @@ class TradingEngine:
         # UNMATCHED-SHORT block would silently strangle every fade (new signature =
         # unmatched by construction), and any pattern fixed-TP/SL would pre-empt the
         # option-D stack (a +0.10 pattern TP amputates a +17 rider). Router owns spikes.
-        if spike_chase_probe or spike_fade or nonexp_calm3d:
+        if spike_chase_probe or spike_fade or spike_bounce or nonexp_calm3d:
             _pcell_inv, _pcell_lev, _pcell_src = None, None, None
             _pcell_fixed_tp, _pcell_fixed_sl, _pcell_block = None, None, False
         # C1 SHORT breadth-scoped de-mux (Jun 28): the C1 capitulation-chase 2× only earns its
@@ -5377,13 +5456,18 @@ class TradingEngine:
         # cells (same absolute-assign pattern as the probe block; a spike must never be
         # re-multiplied by UNMATCHED/quiet-boost). CHASE = Inv 2x/Lev 1x; FADE = Inv 1x/Lev 1x.
         # The 0.1% liquidity cap below is the TRUE governor (binds on every fire).
-        if spike_chase_probe or spike_fade or nonexp_calm3d:
+        if spike_chase_probe or spike_fade or spike_bounce or nonexp_calm3d:
             _th_sp = config.trading_config.thresholds
             if nonexp_calm3d:
                 # Jul 27 PM promotion: NONEXP_CALM3D cell (operator Inv 2x / Lev 1x)
                 cell_mult = max(0.1, float(getattr(_th_sp, 'nonexp_calm3d_invest_mult', 2.0) or 2.0))
                 cell_lev_mult = max(0.05, float(getattr(_th_sp, 'nonexp_calm3d_lev_mult', 1.0) or 1.0))
                 cell_src = "NONEXP_CALM3D"
+            elif spike_bounce:
+                # Jul 31 🏀 bounce = full size Inv 1x/Lev 1x (operator: normal trade, no probe cap)
+                cell_mult = max(0.1, float(getattr(_th_sp, 'spike_bounce_invest_mult', 1.0) or 1.0))
+                cell_lev_mult = max(0.05, float(getattr(_th_sp, 'spike_bounce_lev_mult', 1.0) or 1.0))
+                cell_src = "SPIKE_BOUNCE"
             elif spike_fade:
                 cell_mult = max(0.1, float(getattr(_th_sp, 'spike_fade_invest_mult', 1.0) or 1.0))
                 cell_lev_mult = max(0.05, float(getattr(_th_sp, 'spike_fade_lev_mult', 1.0) or 1.0))
@@ -5504,7 +5588,7 @@ class TradingEngine:
         # closer to/past the 1.5xATR stretch guard. Fee cost of the fix: taker 0.045 vs maker
         # 0.018 = +0.027%/entry — noise vs 20s of drift on a >=0.5%/5min candle. Momentum/flip
         # entries keep maker (slow-forming signals; book-wide maker record 87 fills/+$80 saved).
-        if maker_enabled and (spike_chase_probe or spike_fade):
+        if maker_enabled and (spike_chase_probe or spike_fade or spike_bounce):
             maker_enabled = False
             logger.info(f"[SPIKE_TAKER] {pair} {direction}: maker entry bypassed for spike species — direct taker (latency > fee)")
         maker_fee_rate = getattr(tc, 'maker_fee', tc.trading_fee)
@@ -5765,7 +5849,7 @@ class TradingEngine:
             cell_multiplier_capped=cell_capped,
             # Jun 14: Flip Entry sleeve strategy tag (segregates flip P&L from momentum)
             # Jun 18: BULL_LONG tag for the build-side sleeve (real long, normal exit; NOT _is_flip)
-            entry_strategy=("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))))),
+            entry_strategy=("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))),
             # Initialize dynamic TP tracking
             current_tp_level=1,
             dynamic_tp_target=conf_config.tp_min,
@@ -5902,7 +5986,7 @@ class TradingEngine:
                 'direction': direction,
                 'opened_at': order.opened_at,          # Jul 28 review M-5: spike stale-kill/trail live from t0
                 'entry_atr_pct': entry_atr_pct,        # (both were previously added only at the first cache refresh)
-                'entry_strategy': ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))))),  # Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches
+                'entry_strategy': ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))),  # Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_price': actual_price,
                 'quantity': quantity,
@@ -5913,6 +5997,7 @@ class TradingEngine:
                 # skipped for both in the check paths (entry_strategy-gated).
                 'stop_loss': (float(getattr(config.trading_config.thresholds, 'spike_sl_pct', -1.2) or -1.2) if spike_chase_probe
                               else float(getattr(config.trading_config.thresholds, 'spike_fade_sl_pct', -0.70) or -0.70) if spike_fade
+                              else float(getattr(config.trading_config.thresholds, 'spike_bounce_sl_pct', -0.70) or -0.70) if spike_bounce
                               else conf_config.stop_loss),
                 'current_tp_level': 1,
                 'peak_pnl': 0.0,
@@ -6443,6 +6528,28 @@ class TradingEngine:
                             f"SPIKE_FADE AUTO-DISABLED; re-enable manually after investigation.")
                 except Exception as _sp_trip_err:
                     logger.error(f"[SPIKE_FADE_TRIPWIRE] flip failed (fade stays enabled — investigate): {_sp_trip_err}")
+
+                # 🏀 Jul 31 SPIKE_BOUNCE AUTO-TRIPWIRE (mirror): a bounce closing <=
+                # tripwire means price gapped through the fixed −0.70 stop — the
+                # falling-knife / liquidation-cascade signature the Jun post-mortem
+                # documented (−5/−6% continuation = ruin class). Self-disable; manual
+                # re-enable after investigation. Retained deliberately even though the
+                # operator removed the N-based kill gate — this is a stop-FAILURE
+                # detector, not a performance verdict.
+                try:
+                    if ((order.entry_strategy or "") == "SPIKE_BOUNCE"
+                            and order.pnl_percentage is not None
+                            and getattr(config.trading_config.thresholds, 'spike_bounce_enabled', False)
+                            and order.pnl_percentage <= float(getattr(config.trading_config.thresholds, 'spike_bounce_tripwire_pct', -1.5) or -1.5)):
+                        config.trading_config.thresholds.spike_bounce_enabled = False
+                        from config import save_trading_config as _sb_save_cfg
+                        _sb_save_cfg(config.trading_config)
+                        logger.critical(
+                            f"[SPIKE_BOUNCE_TRIPWIRE] {order.pair}: bounce closed {order.pnl_percentage:.2f}% <= "
+                            f"tripwire — price gapped through the fixed stop (cascade continuation). "
+                            f"SPIKE_BOUNCE AUTO-DISABLED; re-enable manually after investigation.")
+                except Exception as _sb_trip_err:
+                    logger.error(f"[SPIKE_BOUNCE_TRIPWIRE] flip failed (bounce stays enabled — investigate): {_sb_trip_err}")
 
                 # ─────────────────────────────────────────────────────────────
                 # May 7 — Sync realtime cache → DB BEFORE invariant guard.
@@ -8083,6 +8190,9 @@ class TradingEngine:
                 current_stretch=_rt_stretch,  # Jun 1: runner stretch-trail
                 peak_stretch=getattr(order, 'runner_peak_stretch', None),  # Jun 1: runner stretch-trail
                 is_flip=(order.entry_strategy or "").startswith("FLIP:"),  # Jun 14: runner-trail off for flips → normal trailing
+                # Jul 31 🏀 SPIKE_BOUNCE: strategy-scoped trail giveback (0.5×ATR frozen)
+                runner_atr_mult_override=(float(getattr(config.trading_config.thresholds, 'spike_bounce_trail_atr_mult', 0.5) or 0.5)
+                                          if (order.entry_strategy or '') == 'SPIKE_BOUNCE' else None),
             )
 
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)
@@ -10118,6 +10228,89 @@ class TradingEngine:
                 _spike_chase_hit = False
                 _spike_fade_hit = False
 
+            # ── Jul 31 🏀 SPIKE_BOUNCE (third species): single-candle 5m RSI CRASH →
+            # LONG the violent idiosyncratic dump (mirror of the pump trigger). Fires
+            # only when the ladder produced no signal and no pump-spike fired. Guards
+            # each carry side-specific evidence (config.py comment block). Full size
+            # 1×/1×, fade-mirrored exits, tripwire −1.5 — see open_position wiring.
+            _spike_bounce_hit = False
+            try:
+                _sb_th = config.trading_config.thresholds
+                if (signal not in ("LONG", "SHORT")
+                        and not _spike_chase_hit and not _spike_fade_hit
+                        and getattr(_sb_th, 'spike_bounce_enabled', False)):
+                    _sb_rsi = indicators.get('rsi'); _sb_prev = indicators.get('rsi_prev1')
+                    _sb_chg = None; _sb_vr = None
+                    try:
+                        if ohlcv and len(ohlcv) >= 22 and float(ohlcv[-2][4]) > 0:
+                            _sb_chg = (float(ohlcv[-1][4]) / float(ohlcv[-2][4]) - 1.0) * 100.0
+                            _sb_av = sum(float(c[5]) for c in ohlcv[-21:-1]) / 20.0
+                            _sb_vr = (float(ohlcv[-1][5]) / _sb_av) if _sb_av > 0 else None
+                    except Exception:
+                        _sb_chg = None; _sb_vr = None
+                    _sb_crash_min = float(getattr(_sb_th, 'spike_bounce_rsi_crash', 25.0) or 25.0)
+                    _sb_pmin = float(getattr(_sb_th, 'spike_bounce_rsi_prev_min', 45.0) or 45.0)
+                    _sb_pmax = float(getattr(_sb_th, 'spike_bounce_rsi_prev_max', 65.0) or 65.0)
+                    _sb_min_chg = float(getattr(_sb_th, 'spike_bounce_min_candle_pct', 0.5) or 0.5)
+                    _sb_max_dump = float(getattr(_sb_th, 'spike_bounce_max_dump_pct', 3.0) or 3.0)
+                    _sb_min_vr = float(getattr(_sb_th, 'spike_bounce_min_vol_ratio', 5.0) or 5.0)
+                    if (_sb_rsi is not None and _sb_prev is not None and _sb_chg is not None
+                            and _sb_vr is not None and _sb_vr >= _sb_min_vr
+                            and _sb_pmin <= _sb_prev <= _sb_pmax
+                            and (_sb_prev - _sb_rsi) >= _sb_crash_min
+                            and _sb_chg <= -_sb_min_chg):
+                        _nt_sb = set(x.strip() for x in (getattr(config.trading_config, 'no_trade_pairs', '') or '').split(',') if x.strip())
+                        if pair not in _nt_sb:
+                            if _sb_chg < -_sb_max_dump:
+                                # guard ①: news/delist/hack class — no bounce edge
+                                self._record_filter_block("SPIKE_BOUNCE_DUMPCAP", "LONG")
+                                logger.info(f"[SPIKE_BOUNCE_DUMPCAP] {pair}: dump {_sb_chg:+.2f}% deeper than -{_sb_max_dump}% — news-class, no bounce")
+                            else:
+                                _sb_ok = True
+                                # guard ② bRSI floor (true mirror of the fade ceiling):
+                                # bounce longs idiosyncratic panic — needs non-bearish BTC.
+                                _sb_brsi = globals().get('_current_btc_rsi')
+                                _sb_brsi_min = float(getattr(_sb_th, 'spike_bounce_min_btc_rsi', 0.0) or 0.0)
+                                if _sb_brsi_min > 0 and _sb_brsi is not None and _sb_brsi < _sb_brsi_min:
+                                    self._record_filter_block("SPIKE_BOUNCE_BRSI", "LONG")
+                                    logger.info(f"[SPIKE_BOUNCE_BRSI] {pair}: bounce blocked — BTC RSI {_sb_brsi:.1f} < {_sb_brsi_min} (market-wide risk-off, dump is beta not panic) | entry_px={indicators.get('price')} pair_rsi={_sb_rsi:.1f}")
+                                    _sb_ok = False
+                                # guard ③ crashed-pair exclusion (DEEPGAP class)
+                                if _sb_ok:
+                                    _sb_gap_min = float(getattr(_sb_th, 'spike_bounce_min_pair_gap', 0.0) or 0.0)
+                                    _sb_e13 = indicators.get('ema13'); _sb_e50 = indicators.get('ema50')
+                                    if _sb_gap_min != 0 and _sb_e13 is not None and _sb_e50:
+                                        _sb_gap = (_sb_e13 - _sb_e50) / _sb_e50 * 100.0
+                                        if _sb_gap <= _sb_gap_min:
+                                            self._record_filter_block("SPIKE_BOUNCE_CRASHED", "LONG")
+                                            logger.info(f"[SPIKE_BOUNCE_CRASHED] {pair}: bounce blocked — EMA13-50 gap {_sb_gap:+.2f}% <= {_sb_gap_min}% (already-crashed pair, DEEPGAP class)")
+                                            _sb_ok = False
+                                # guard ④ regime block (BOUNCE_LONG's Jun-23 graves were bear cells)
+                                if _sb_ok:
+                                    _sb_blocked = set(x.strip() for x in (getattr(_sb_th, 'spike_bounce_blocked_regimes', '') or '').split(',') if x.strip())
+                                    if _sb_blocked:
+                                        try:
+                                            _sb_reg = classify_btc_regime(
+                                                globals().get('_current_btc_adx'), globals().get('_current_btc_rsi'), globals().get('_btc_ema20_slope_pct'))
+                                        except Exception:
+                                            _sb_reg = None
+                                        if _sb_reg is None or _sb_reg == 'UNKNOWN':
+                                            if (globals().get('_current_btc_regime') or 'NEUTRAL') == 'BEARISH':
+                                                _sb_reg = 'STRONG_BEAR'
+                                        if _sb_reg in _sb_blocked:
+                                            self._record_filter_block("SPIKE_BOUNCE_REGIME", "LONG")
+                                            logger.info(f"[SPIKE_BOUNCE_REGIME] {pair}: bounce blocked — regime {_sb_reg} in blocked set {sorted(_sb_blocked)}")
+                                            _sb_ok = False
+                                if _sb_ok:
+                                    signal, confidence = "LONG", "STRONG_BUY"
+                                    _spike_bounce_hit = True
+                                    logger.info(f"[SPIKE_BOUNCE] {pair}: RSI crash {_sb_prev:.1f}->{_sb_rsi:.1f} ({_sb_rsi - _sb_prev:+.1f}) candle {_sb_chg:+.2f}% vol {_sb_vr:.1f}x — bounce entry (LONG)")
+            except Exception:
+                # Same M5 rule as the pump block: an exception after signal was set
+                # must not leak a plain MOMENTUM open at normal sizing/exits.
+                signal = None
+                _spike_bounce_hit = False
+
             if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
                 logger.info(f"[DEBUG_REACHED_OPEN] {pair} {signal} {confidence}: about to call open_position()")
                 logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - Opening position...")
@@ -10170,7 +10363,7 @@ class TradingEngine:
                 # direction-consistent loser.
                 _qs_enabled = getattr(config.trading_config.thresholds, 'entry_quality_score_filter_enabled', False)
                 _qs_block_max = getattr(config.trading_config.thresholds, 'entry_quality_score_block_max', 1)
-                if _qs_enabled and entry_quality_score <= _qs_block_max and not _spike_chase_hit and not _spike_fade_hit:
+                if _qs_enabled and entry_quality_score <= _qs_block_max and not _spike_chase_hit and not _spike_fade_hit and not _spike_bounce_hit:
                     logger.info(
                         f"[QUALITY_SCORE_GATE] {pair}: {signal} blocked — entry_quality_score={entry_quality_score} <= block_max={_qs_block_max}"
                     )
@@ -10185,7 +10378,7 @@ class TradingEngine:
                 # the exact legacy counters. Fail-CLOSED: a router error blocks (old behavior)
                 # rather than admitting unchecked flow at full size.
                 _nonexp_calm3d_hit = False
-                if signal == "LONG" and not _spike_chase_hit and not _spike_fade_hit:
+                if signal == "LONG" and not _spike_chase_hit and not _spike_fade_hit and not _spike_bounce_hit:
                     _pp_block = None
                     try:
                         _th_pp = config.trading_config.thresholds
@@ -10419,6 +10612,7 @@ class TradingEngine:
                     # in the hook above); fade = the trigger's ADX>30 SHORT branch.
                     spike_chase_probe=bool(_spike_chase_hit),
                     spike_fade=bool(_spike_fade_hit),
+                    spike_bounce=bool(_spike_bounce_hit),
                     # Jul 27 PM promotion: NONEXP_CALM3D admission (engine router above)
                     nonexp_calm3d=bool(_nonexp_calm3d_hit),
                 )
@@ -10574,8 +10768,11 @@ class TradingEngine:
             _is_flip = (order_info.get('entry_strategy') or "").startswith("FLIP:")
             # Jul 27: SPIKE_FADE shorts ride the normal short stack but with a FIXED
             # stop (spike_fade_sl_pct, stamped in the cache) — no ATR widening, no
-            # signal-active widening (squeeze tail must stay bounded).
-            _is_spike_fade = (order_info.get('entry_strategy') or "") == "SPIKE_FADE"
+            # signal-active widening (squeeze tail must stay bounded). Jul 31: 🏀
+            # SPIKE_BOUNCE longs get the same fixed-SL treatment (spike_bounce_sl_pct
+            # — entry ATR is inflated by the dump candle itself; widening off it
+            # would re-open the falling-knife tail the fixed stop exists to bound).
+            _is_spike_fade = (order_info.get('entry_strategy') or "") in ("SPIKE_FADE", "SPIKE_BOUNCE")
             order_id = order_info['id']
             direction = order_info['direction']
             entry_price = order_info['entry_price']
@@ -11223,7 +11420,7 @@ class TradingEngine:
             # >= 0.15) are skipped so sequencing stays honest.
             _bl_strat = (order_info.get('entry_strategy') or '')
             if not order_info.get('_belock_taint') \
-                    and (not _bl_strat.startswith('SPIKE') or _bl_strat == 'SPIKE_FADE'):
+                    and (not _bl_strat.startswith('SPIKE') or _bl_strat in ('SPIKE_FADE', 'SPIKE_BOUNCE')):
                 try:
                     _bl = order_info.get('_belock')
                     if _bl is None:
@@ -11938,6 +12135,9 @@ class TradingEngine:
                         if (current_peak >= _rl_arm - 0.005 and _rl_atr and _rl_atr > 0
                                 and (_rl_amin <= 0 or _rl_atr >= _rl_amin)):
                             _rl_n = float(getattr(_rl_th, 'runner_trail_atr_mult', 0.5) or 0.5)
+                            if (order_info.get('entry_strategy') or '') == 'SPIKE_BOUNCE':
+                                # Jul 31 🏀 strategy-scoped trail N (dump-inflated entry ATR)
+                                _rl_n = float(getattr(_rl_th, 'spike_bounce_trail_atr_mult', 0.5) or 0.5)
                             _rl_gb = _rl_n * _rl_atr
                             _rl_frac = float(getattr(_rl_th, 'runner_trail_giveback_frac', 0.0) or 0.0)
                             if _rl_frac > 0 and current_peak > 0 and _rl_frac * current_peak < _rl_gb:
@@ -12312,6 +12512,7 @@ class TradingEngine:
                 # Jul 27 spike ship: fixed SLs survive cache rebuilds/restarts via entry_strategy
                 'stop_loss': (float(getattr(config.trading_config.thresholds, 'spike_sl_pct', -1.2) or -1.2) if (order.entry_strategy or '') == 'SPIKE_CHASE'
                               else float(getattr(config.trading_config.thresholds, 'spike_fade_sl_pct', -0.70) or -0.70) if (order.entry_strategy or '') == 'SPIKE_FADE'
+                              else float(getattr(config.trading_config.thresholds, 'spike_bounce_sl_pct', -0.70) or -0.70) if (order.entry_strategy or '') == 'SPIKE_BOUNCE'
                               else conf_config.stop_loss),
                 'signal_active_sl': conf_config.signal_active_sl,
                 'signal_active': is_signal_direction_active(

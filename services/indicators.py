@@ -910,6 +910,8 @@ def check_exit_conditions(
     is_flip: bool = False,          # Jun 14: Flip Entry — disable runner-trail for flips
                                     # (it's a continuation-ride; a flip is a reversion) →
                                     # flips fall back to the normal tiered trailing.
+    runner_atr_mult_override: float = None,  # Jul 31 🏀 SPIKE_BOUNCE: strategy-scoped trail N
+                                             # (0.5 vs the LONG global 1.0 — dump-inflated ATR).
 ) -> Dict:
     """
     Check if position should be closed based on SL/TP/Trailing stop
@@ -1241,6 +1243,8 @@ def check_exit_conditions(
             _rt_k = float(getattr(_rtc.thresholds, 'runner_trail_k', 0.5) or 0.5)
             _l_use_atr = bool(getattr(_rtc.thresholds, 'runner_trail_use_atr', True))
             _l_n = float(getattr(_rtc.thresholds, 'runner_trail_atr_mult', 0.5) or 0.5)
+            if runner_atr_mult_override is not None and runner_atr_mult_override > 0:
+                _l_n = float(runner_atr_mult_override)  # Jul 31 🏀 bounce trail N
             _l_frac = float(getattr(_rtc.thresholds, 'runner_trail_giveback_frac', 0.0) or 0.0)
             _l_lock = float(getattr(_rtc.thresholds, 'runner_trail_be_lock_pct', 0.10) or 0.10)
             _l_ratchet = bool(getattr(_rtc.thresholds, 'runner_trail_be_ratchet_enabled', True))

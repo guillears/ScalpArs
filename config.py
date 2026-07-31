@@ -541,6 +541,17 @@ class SignalThresholds(BaseModel):
     # rows (BTC vs ETH judged separately). 🔒 Read protocol in CURRENT_STATE #35.
     majors_probe_enabled: bool = True
     majors_probe_max_open: int = 2       # concurrent MAJORS probes (~1 per major)
+    # Jul 30 PM — FADE BTC-RSI CEILING (operator discipline-override ship at sub-cohort N=3,
+    # below the pre-registered N>=5 bar; acknowledged). Block a SPIKE_FADE when BTC RSI at
+    # entry > this: fading an alt spike while BTC's own momentum is hot = shorting into
+    # market-wide beta (squeeze), not idiosyncratic exhaustion. Evidence at ship: 7/7 fade
+    # winners entered bRSI <= 47.2; bRSI > 50 = 0W/3L (SNX 64.7 · ZEREBRO 53.7 · XPL 52.8
+    # −$103 at 2x, XPL = out-of-sample post-freeze). Ceiling frozen at the pre-registered 50.
+    # 🔒 REVERT SURFACE (phantoms retired -> blocked cohort logged instead): every block logs
+    # [SPIKE_FADE_BRSI] with pair/price/bRSI; at N>=5 blocked candidates, re-simulate their
+    # outcomes from 1m klines under the fade exit stack (fixed -0.7 SL / ladder) — blocked
+    # cohort >=60% WR or Σ>0 -> ceiling OFF. 0 = disabled. Fail-open on missing bRSI.
+    spike_fade_max_btc_rsi: float = 50.0
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

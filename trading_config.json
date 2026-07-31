@@ -532,6 +532,7 @@
     "deepgap_probe_max_open": 3,
     "majors_probe_enabled": true,
     "majors_probe_max_open": 2,
+    "spike_fade_max_btc_rsi": 50.0,
     "rsiadx_probe_short_enabled": false,
     "hard_tp_enabled": true,
     "hard_tp_pct": 1.0,

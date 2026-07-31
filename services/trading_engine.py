@@ -4309,6 +4309,15 @@ class TradingEngine:
                         if not getattr(th, 'spike_fade_enabled', False):
                             logger.info(f"[SPIKE_ROUTER_BLOCK] {p['pair']}: trigger fired but routed to FADE ({'regime' if _sp_regime_fade else 'ADX'}) and fade disabled — no trade")
                             continue
+                        # Jul 30 PM — fade bRSI ceiling (scanner parity with the top-50 hook):
+                        # don't fade while BTC's own momentum is hot. Fail-open on missing bRSI.
+                        # Log carries the re-sim revert surface (price + bRSI at block time).
+                        _sp_brsi = _gl.get('_current_btc_rsi')
+                        _sp_brsi_max = float(getattr(th, 'spike_fade_max_btc_rsi', 0.0) or 0.0)
+                        if _sp_brsi_max > 0 and _sp_brsi is not None and _sp_brsi > _sp_brsi_max:
+                            self._record_filter_block("SPIKE_FADE_BRSI", "SHORT")
+                            logger.info(f"[SPIKE_FADE_BRSI] {p['pair']}: scanner fade blocked — BTC RSI {_sp_brsi:.1f} > {_sp_brsi_max} (squeeze-against-gravity guard) | entry_px={ind.get('price')} pair_rsi={ind.get('rsi')} — re-sim revert row")
+                            continue
                         _sp_dir, _sp_is_fade = "SHORT", True
                         if _sp_regime_fade:
                             logger.info(f"[SPIKE_REGIME_FADE] {p['pair']}: non-chase regime — routing trigger to FADE short")
@@ -10061,7 +10070,18 @@ class TradingEngine:
                                 if _sc_regime_fade:
                                     logger.info(f"[SPIKE_REGIME_FADE] {pair}: non-chase regime ({_sc_reg_now}) — routing trigger to FADE short")
                             if _sc_regime_fade or (_sc_adx is not None and _sc_adx > _sc_max_adx):
-                                if getattr(_sc_th, 'spike_fade_enabled', False):
+                                # Jul 30 PM — fade bRSI ceiling: don't fade an alt spike while
+                                # BTC's own momentum is hot (bRSI > max = market-wide beta ->
+                                # the short gets squeezed; calm BTC = idiosyncratic exhaustion,
+                                # the fade pays). Fail-open on missing bRSI. Block log = the
+                                # kline re-sim revert surface (see config comment).
+                                _sc_brsi = globals().get('_current_btc_rsi')
+                                _sc_brsi_max = float(getattr(_sc_th, 'spike_fade_max_btc_rsi', 0.0) or 0.0)
+                                if (_sc_brsi_max > 0 and _sc_brsi is not None and _sc_brsi > _sc_brsi_max
+                                        and getattr(_sc_th, 'spike_fade_enabled', False)):
+                                    self._record_filter_block("SPIKE_FADE_BRSI", "SHORT")
+                                    logger.info(f"[SPIKE_FADE_BRSI] {pair}: fade blocked — BTC RSI {_sc_brsi:.1f} > {_sc_brsi_max} (squeeze-against-gravity guard) | entry_px={indicators.get('price')} pair_rsi={_sc_rsi:.1f} — re-sim revert row")
+                                elif getattr(_sc_th, 'spike_fade_enabled', False):
                                     signal, confidence = "SHORT", "STRONG_BUY"
                                     _spike_fade_hit = True
                                     logger.info(f"[SPIKE_FADE] {pair}: RSI jump {_sc_prev:.1f}->{_sc_rsi:.1f} (+{_sc_rsi - _sc_prev:.1f}) ADX {(_sc_adx if _sc_adx is not None else -1):.1f} route={'regime' if _sc_regime_fade else 'ADX>' + str(int(_sc_max_adx))} — fading (SHORT)")

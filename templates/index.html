@@ -21121,7 +21121,7 @@
                     spike_bounce_max_dump_pct: safeFloat(document.getElementById('config-spike-bounce-max-dump-pct')?.value || 3.0),
                     spike_bounce_min_vol_ratio: safeFloat(document.getElementById('config-spike-bounce-min-vol-ratio')?.value || 5.0),
                     spike_bounce_min_btc_rsi: safeFloat(document.getElementById('config-spike-bounce-min-btc-rsi')?.value || 50),
-                    spike_bounce_min_pair_gap: safeFloat(document.getElementById('config-spike-bounce-min-pair-gap')?.value ?? -1.0),
+                    spike_bounce_min_pair_gap: safeFloat(document.getElementById('config-spike-bounce-min-pair-gap')?.value || -1.0),
                     spike_bounce_blocked_regimes: (document.getElementById('config-spike-bounce-blocked-regimes')?.value ?? 'STRONG_BEAR,HEALTHY_BEAR'),
                     spike_bounce_invest_mult: safeFloat(document.getElementById('config-spike-bounce-invest-mult')?.value || 1.0),
                     spike_bounce_lev_mult: safeFloat(document.getElementById('config-spike-bounce-lev-mult')?.value || 1.0),

@@ -4286,14 +4286,8 @@ class TradingEngine:
                     _chg_now = (closes[-1] / closes[-2] - 1.0) * 100.0
                     if _pump_trig and _chg_now < _min_chg:
                         continue
-                    if _bounce_trig:
-                        if _chg_now > -_sb_chg:
-                            continue  # dump candle too shallow
-                        if _chg_now < -_sb_maxdump:
-                            # 🏀 guard ①: news/delist/hack class — no bounce edge, catastrophic tail
-                            self._record_filter_block("SPIKE_BOUNCE_DUMPCAP", "LONG")
-                            logger.info(f"[SPIKE_BOUNCE_DUMPCAP] {p['pair']}: dump {_chg_now:+.2f}% deeper than -{_sb_maxdump}% — news-class, no bounce")
-                            continue
+                    if _bounce_trig and _chg_now > -_sb_chg:
+                        continue  # dump candle too shallow
                     # Jul 24 PM leg 5: attention — discovery-candle volume >= _min_vr x prior-20 avg
                     # (MIRA 59.6x / chop max 5.7x / USDCUSDT fire 2.39x). Free from these klines.
                     _vols = [float(c[5]) for c in ohlcv]
@@ -4306,6 +4300,13 @@ class TradingEngine:
                     seen[p['pair']] = _candle_ts
                     if len(seen) > 600:
                         seen.clear()
+                    if _bounce_trig and _chg_now < -_sb_maxdump:
+                        # 🏀 guard ①: news/delist/hack class — no bounce edge, catastrophic
+                        # tail. Placed AFTER the vol leg + dedup (review fix): the counter
+                        # must count full triggers ONCE per candle, matching the ladder hook.
+                        self._record_filter_block("SPIKE_BOUNCE_DUMPCAP", "LONG")
+                        logger.info(f"[SPIKE_BOUNCE_DUMPCAP] {p['pair']}: dump {_chg_now:+.2f}% deeper than -{_sb_maxdump}% — news-class, no bounce")
+                        continue
                     ind = calculate_indicators(ohlcv)
                     if not ind or not ind.get('price'):
                         continue
@@ -5077,7 +5078,7 @@ class TradingEngine:
                     logger.info(f"[W6_REENABLE] {pair}: W6-matched LONG ADMITTED — BTC 1h {_w6_1h:+.4f}% <= {_w6r}% AND stretch {entry_ema5_stretch:.3f} >= {_w6s} (dip+thrust; cell 1x)")
             except Exception:
                 _w6_admit = False
-        if direction == "LONG" and not flip_source and not bull_long and not bounce_long and not spike_chase_probe and not spike_fade and not nonexp_calm3d and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e) and not _w2_admit and not _w6_admit:
+        if direction == "LONG" and not flip_source and not bull_long and not bounce_long and not spike_chase_probe and not spike_fade and not spike_bounce and not nonexp_calm3d and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e) and not _w2_admit and not _w6_admit:
             logger.info(f"[LONG_UNMATCHED_ONLY] {pair}: LONG blocked — matched a pattern (c_any={_pc_any_e}, w_any={_pw_any_e})")
             try:
                 self._record_filter_block("LONG_UNMATCHED_ONLY", "LONG")
@@ -5434,7 +5435,7 @@ class TradingEngine:
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
         if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
              or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe) and direction in ("LONG", "SHORT")
-                and not flip_source and not bull_long and not bounce_long and not spike_chase_probe and not spike_fade and not nonexp_calm3d):
+                and not flip_source and not bull_long and not bounce_long and not spike_chase_probe and not spike_fade and not spike_bounce and not nonexp_calm3d):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))

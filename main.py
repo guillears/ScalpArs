@@ -1892,6 +1892,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "pnl_distribution_stats": None,
             "mae_mfe": [],
             "sleeve_performance": [],
+            "strategy_performance": [],
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
@@ -2362,6 +2363,52 @@ def _compute_sleeve_performance(orders):
         }
     order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long']
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
+    all_closed = [o for o in orders if o.pnl_percentage is not None]
+    total = stats('Total', all_closed)
+    if total:
+        rows.append(total)
+    return rows
+
+
+def _compute_strategy_performance(orders):
+    """Per-strategy×direction rollup (Aug 2, 2026, operator-requested) — same columns/math as the
+    sleeve table but split by entry_strategy, because the sleeve rows lump the spike species into
+    Mom-Long/Mom-Short (program ② hides inside program ①'s rows). Row label = STRATEGY · L/S.
+    Probe-era spike rows carry entry_strategy MOMENTUM by design, so SPIKE_* rows here are the
+    full-size program record (Jul-27+); the probe tables remain the probe-era record."""
+    groups = {}
+    for o in orders:
+        if o.pnl_percentage is None:
+            continue
+        label = f"{o.entry_strategy or 'MOMENTUM'} · {'L' if o.direction == 'LONG' else 'S'}"
+        groups.setdefault(label, []).append(o)
+
+    def stats(name, g):
+        n = len(g)
+        if n == 0:
+            return None
+        wins = [o for o in g if (o.pnl_percentage or 0) > 0]
+        tot_pct = sum(o.pnl_percentage or 0 for o in g)
+        gross_w = sum(o.pnl or 0 for o in g if (o.pnl or 0) > 0)
+        gross_l = abs(sum(o.pnl or 0 for o in g if (o.pnl or 0) < 0))
+        return {
+            'strategy': name, 'n': n,
+            'wr': round(100.0 * len(wins) / n, 1),
+            'avg_pct': round(tot_pct / n, 3),
+            'total_pct': round(tot_pct, 2),
+            'net_usd': round(sum(o.pnl or 0 for o in g), 2),
+            'pf': round(gross_w / gross_l, 2) if gross_l > 0 else (999 if gross_w > 0 else 0),
+            'worst_pct': round(min((o.pnl_percentage or 0) for o in g), 2),
+        }
+
+    _pref = ['MOMENTUM', 'FAN_RATIO_GATE', 'BULL_LONG', 'PAIR_RSI_OB', 'BOUNCE_LONG',
+             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE']
+
+    def _rank(label):
+        head = label.split(' · ')[0]
+        return (_pref.index(head) if head in _pref else len(_pref), label)
+
+    rows = [s for label in sorted(groups, key=_rank) if (s := stats(label, groups[label]))]
     all_closed = [o for o in orders if o.pnl_percentage is not None]
     total = stats('Total', all_closed)
     if total:
@@ -3703,6 +3750,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "pnl_distribution_stats": None,
             "mae_mfe": [],
             "sleeve_performance": [],
+            "strategy_performance": [],
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
@@ -7826,6 +7874,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "pnl_distribution_stats": _compute_pnl_distribution_stats(orders),
         "mae_mfe": _compute_mae_mfe(orders),
         "sleeve_performance": _compute_sleeve_performance(orders),
+        "strategy_performance": _compute_strategy_performance(orders),
         "hourly_performance": _compute_hourly_performance(orders),
         "daily_performance": _compute_daily_performance(orders),
         "day_time_heatmap": _compute_day_time_heatmap(orders),

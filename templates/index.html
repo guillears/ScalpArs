@@ -776,6 +776,31 @@
                     </div>
                 </div>
 
+                <!-- Performance by Strategy (Aug 2, 2026 — operator-requested; sleeve-style rollup split by entry_strategy so the spike species don't hide inside Mom-Long/Mom-Short) -->
+                <div class="mt-4 pt-4 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Strategy</h3>
+                    <p class="text-xs text-gray-500 mb-3">Same columns as the Sleeve table, one row per entry strategy × direction — MOMENTUM vs the 🚀 spike species (probe-era spike rows carry MOMENTUM by design, so SPIKE_* rows = full-size program record).</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Strategy</th>
+                                    <th class="px-3 py-2 font-medium text-center">N</th>
+                                    <th class="px-3 py-2 font-medium text-right">WR %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Net $</th>
+                                    <th class="px-3 py-2 font-medium text-right">PF</th>
+                                    <th class="px-3 py-2 font-medium text-right">Worst %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="strategy-perf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Performance by Macro Trend -->
                 <div class="mt-4 pt-4 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Macro Trend (EMA20)</h3>
@@ -8706,6 +8731,16 @@
                 }
             }
 
+            if (perf.strategy_performance && perf.strategy_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Strategy\n');
+                lines.push(`${'Strategy'.padEnd(18)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)}`);
+                for (const s of perf.strategy_performance) {
+                    const pfStr = s.pf >= 999 ? '∞' : s.pf.toFixed(2);
+                    lines.push(`${s.strategy.padEnd(18)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)}`);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Performance by Macro Trend\n');
             lines.push(`${'Trend'.padEnd(10)} ${'Trades'.padEnd(18)} ${'AvgP&L%'.padEnd(9)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Long P&L'.padEnd(12)} ${'L Win%'.padEnd(8)} ${'Short P&L'.padEnd(12)} ${'S Win%'.padEnd(8)}`);
@@ -10691,6 +10726,17 @@
                     for (const s of perf.sleeve_performance) {
                         const pfStr = s.pf >= 999 ? '∞' : s.pf.toFixed(2);
                         lines.push(`${s.sleeve.padEnd(12)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)}`);
+                    }
+                }
+
+                // --- BY STRATEGY (Aug 2, 2026 — sleeve-style rollup split by entry_strategy) ---
+                if (perf.strategy_performance && perf.strategy_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by Strategy\n');
+                    lines.push(`${'Strategy'.padEnd(18)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)}`);
+                    for (const s of perf.strategy_performance) {
+                        const pfStr = s.pf >= 999 ? '∞' : s.pf.toFixed(2);
+                        lines.push(`${s.strategy.padEnd(18)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)}`);
                     }
                 }
 
@@ -12788,6 +12834,36 @@
                         }).join('');
                     } else {
                         sleeveBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    }
+                }
+
+                // Performance by Strategy (Aug 2, 2026 — sleeve-style rollup split by entry_strategy)
+                const stratPerfBody = document.getElementById('strategy-perf-body');
+                if (stratPerfBody) {
+                    const stp = data.strategy_performance;
+                    if (stp && stp.length > 0) {
+                        stratPerfBody.innerHTML = stp.map(s => {
+                            const isTot = s.strategy === 'Total';
+                            const isSpike = s.strategy.startsWith('SPIKE_');
+                            const nameCls = isTot ? 'text-gray-200' : (isSpike ? 'text-amber-300' : (s.strategy.endsWith('· L') ? 'text-emerald-400' : 'text-red-400'));
+                            const netCls = s.net_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const avgCls = s.avg_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const totCls = s.total_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const pfCls = s.pf >= 1 ? 'text-emerald-400' : 'text-red-400';
+                            return `
+                                <tr class="hover:bg-white/5${isTot ? ' border-t border-white/20 font-semibold' : ''}">
+                                    <td class="px-3 py-2 ${nameCls} font-medium">${s.strategy}</td>
+                                    <td class="px-3 py-2 text-center">${s.n}</td>
+                                    <td class="px-3 py-2 text-right">${s.wr.toFixed(1)}%</td>
+                                    <td class="px-3 py-2 text-right ${avgCls}">${s.avg_pct >= 0 ? '+' : ''}${s.avg_pct.toFixed(3)}%</td>
+                                    <td class="px-3 py-2 text-right ${totCls}">${s.total_pct >= 0 ? '+' : ''}${s.total_pct.toFixed(2)}%</td>
+                                    <td class="px-3 py-2 text-right ${netCls} font-bold">${formatUSD(s.net_usd)}</td>
+                                    <td class="px-3 py-2 text-right ${pfCls}">${s.pf >= 999 ? '∞' : s.pf.toFixed(2)}</td>
+                                    <td class="px-3 py-2 text-right text-red-300">${s.worst_pct.toFixed(2)}%</td>
+                                </tr>`;
+                        }).join('');
+                    } else {
+                        stratPerfBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                     }
                 }
 

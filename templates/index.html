@@ -965,7 +965,7 @@
                                 </tr>
                             </thead>
                             <tbody id="entry-conditions-reason-body" class="divide-y divide-white/5">
-                                <tr><td colspan="35" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="37" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1019,7 +1019,7 @@
                                 </tr>
                             </thead>
                             <tbody id="entry-conditions-outcome-body" class="divide-y divide-white/5">
-                                <tr><td colspan="33" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="37" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1031,7 +1031,7 @@
                     <p class="text-xs text-gray-500 mb-3">Same columns as Entry Conditions by Outcome, grouped by entry-strategy sleeve (FAN_RATIO_GATE / BULL_LONG / MOMENTUM / PAIR_RSI_OB / BOUNCE_LONG), one row per sleeve×direction. Sorted by Total$ desc.</p>
                     <div class="overflow-x-auto"><table class="w-full text-sm">
                         <thead><tr class="text-gray-400 text-left border-b border-white/10" id="entry-cond-strat-head"></tr></thead>
-                        <tbody id="entry-conditions-strategy-body" class="divide-y divide-white/5"><tr><td colspan="33" class="px-3 py-4 text-center text-gray-500">No data</td></tr></tbody>
+                        <tbody id="entry-conditions-strategy-body" class="divide-y divide-white/5"><tr><td colspan="37" class="px-3 py-4 text-center text-gray-500">No data</td></tr></tbody>
                     </table></div>
                 </div>
                 <div class="mt-6 pt-6 border-t border-white/10">
@@ -1039,7 +1039,7 @@
                     <p class="text-xs text-gray-500 mb-3">The per-sleeve winner-vs-loser entry profile — the native version of the FAN-flip / bull-long separator digs. A dimension only matters if winners and losers actually differ on it within the sleeve.</p>
                     <div class="overflow-x-auto"><table class="w-full text-sm">
                         <thead><tr class="text-gray-400 text-left border-b border-white/10" id="entry-cond-strat-out-head"></tr></thead>
-                        <tbody id="entry-conditions-strategy-outcome-body" class="divide-y divide-white/5"><tr><td colspan="33" class="px-3 py-4 text-center text-gray-500">No data</td></tr></tbody>
+                        <tbody id="entry-conditions-strategy-outcome-body" class="divide-y divide-white/5"><tr><td colspan="37" class="px-3 py-4 text-center text-gray-500">No data</td></tr></tbody>
                     </table></div>
                 </div>
 
@@ -8734,10 +8734,10 @@
             if (perf.strategy_performance && perf.strategy_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Strategy\n');
-                lines.push(`${'Strategy'.padEnd(18)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)}`);
+                lines.push(`${'Strategy'.padEnd(20)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)}`);
                 for (const s of perf.strategy_performance) {
                     const pfStr = s.pf >= 999 ? '∞' : s.pf.toFixed(2);
-                    lines.push(`${s.strategy.padEnd(18)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)}`);
+                    lines.push(`${s.strategy.padEnd(20)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)}`);
                 }
             }
 
@@ -10733,10 +10733,10 @@
                 if (perf.strategy_performance && perf.strategy_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Performance by Strategy\n');
-                    lines.push(`${'Strategy'.padEnd(18)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)}`);
+                    lines.push(`${'Strategy'.padEnd(20)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)}`);
                     for (const s of perf.strategy_performance) {
                         const pfStr = s.pf >= 999 ? '∞' : s.pf.toFixed(2);
-                        lines.push(`${s.strategy.padEnd(18)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)}`);
+                        lines.push(`${s.strategy.padEnd(20)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)}`);
                     }
                 }
 
@@ -13146,7 +13146,7 @@
                             </tr>`;
                         }).join('');
                 } else {
-                    ecrBody.innerHTML = '<tr><td colspan="31" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    ecrBody.innerHTML = '<tr><td colspan="37" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Entry Conditions by Outcome (May 2 — Winners vs Losers, L vs S)
@@ -13232,7 +13232,7 @@
                             </tr>`;
                         }).join('');
                 } else {
-                    ecoBody.innerHTML = '<tr><td colspan="29" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    ecoBody.innerHTML = '<tr><td colspan="37" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Entry Conditions by Strategy + by Strategy×Outcome (Jun 23) — same column set as by Outcome,

@@ -2352,6 +2352,9 @@ def _compute_sleeve_performance(orders):
         tot_pct = sum(o.pnl_percentage or 0 for o in g)
         gross_w = sum(o.pnl or 0 for o in g if (o.pnl or 0) > 0)
         gross_l = abs(sum(o.pnl or 0 for o in g if (o.pnl or 0) < 0))
+        _durs = [(o.closed_at - o.opened_at).total_seconds() for o in g
+                 if o.closed_at is not None and o.opened_at is not None]
+        _avg_s = int(sum(_durs) / len(_durs)) if _durs else 0
         return {
             'sleeve': name, 'n': n,
             'wr': round(100.0 * len(wins) / n, 1),
@@ -2360,6 +2363,7 @@ def _compute_sleeve_performance(orders):
             'net_usd': round(sum(o.pnl or 0 for o in g), 2),
             'pf': round(gross_w / gross_l, 2) if gross_l > 0 else (999 if gross_w > 0 else 0),
             'worst_pct': round(min((o.pnl_percentage or 0) for o in g), 2),
+            'avg_dur': f"{_avg_s // 3600:02d}:{(_avg_s % 3600) // 60:02d}:{_avg_s % 60:02d}",
         }
     order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long']
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
@@ -2391,6 +2395,9 @@ def _compute_strategy_performance(orders):
         tot_pct = sum(o.pnl_percentage or 0 for o in g)
         gross_w = sum(o.pnl or 0 for o in g if (o.pnl or 0) > 0)
         gross_l = abs(sum(o.pnl or 0 for o in g if (o.pnl or 0) < 0))
+        _durs = [(o.closed_at - o.opened_at).total_seconds() for o in g
+                 if o.closed_at is not None and o.opened_at is not None]
+        _avg_s = int(sum(_durs) / len(_durs)) if _durs else 0
         return {
             'strategy': name, 'n': n,
             'wr': round(100.0 * len(wins) / n, 1),
@@ -2399,6 +2406,7 @@ def _compute_strategy_performance(orders):
             'net_usd': round(sum(o.pnl or 0 for o in g), 2),
             'pf': round(gross_w / gross_l, 2) if gross_l > 0 else (999 if gross_w > 0 else 0),
             'worst_pct': round(min((o.pnl_percentage or 0) for o in g), 2),
+            'avg_dur': f"{_avg_s // 3600:02d}:{(_avg_s % 3600) // 60:02d}:{_avg_s % 60:02d}",
         }
 
     _pref = ['MOMENTUM', 'FAN_RATIO_GATE', 'BULL_LONG', 'PAIR_RSI_OB', 'BOUNCE_LONG',

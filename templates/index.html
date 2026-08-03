@@ -767,10 +767,11 @@
                                     <th class="px-3 py-2 font-medium text-right">Net $</th>
                                     <th class="px-3 py-2 font-medium text-right">PF</th>
                                     <th class="px-3 py-2 font-medium text-right">Worst %</th>
+                                    <th class="px-3 py-2 font-medium text-right">AvgDur</th>
                                 </tr>
                             </thead>
                             <tbody id="sleeve-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -792,10 +793,11 @@
                                     <th class="px-3 py-2 font-medium text-right">Net $</th>
                                     <th class="px-3 py-2 font-medium text-right">PF</th>
                                     <th class="px-3 py-2 font-medium text-right">Worst %</th>
+                                    <th class="px-3 py-2 font-medium text-right">AvgDur</th>
                                 </tr>
                             </thead>
                             <tbody id="strategy-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -8736,20 +8738,20 @@
             if (perf.sleeve_performance && perf.sleeve_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Sleeve\n');
-                lines.push(`${'Sleeve'.padEnd(12)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)}`);
+                lines.push(`${'Sleeve'.padEnd(12)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)} ${'AvgDur'.padStart(10)}`);
                 for (const s of perf.sleeve_performance) {
                     const pfStr = s.pf >= 999 ? '∞' : s.pf.toFixed(2);
-                    lines.push(`${s.sleeve.padEnd(12)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)}`);
+                    lines.push(`${s.sleeve.padEnd(12)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)} ${(s.avg_dur || '-').padStart(10)}`);
                 }
             }
 
             if (perf.strategy_performance && perf.strategy_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Strategy\n');
-                lines.push(`${'Strategy'.padEnd(20)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)}`);
+                lines.push(`${'Strategy'.padEnd(20)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)} ${'AvgDur'.padStart(10)}`);
                 for (const s of perf.strategy_performance) {
                     const pfStr = s.pf >= 999 ? '∞' : s.pf.toFixed(2);
-                    lines.push(`${s.strategy.padEnd(20)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)}`);
+                    lines.push(`${s.strategy.padEnd(20)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)} ${(s.avg_dur || '-').padStart(10)}`);
                 }
             }
 
@@ -10734,10 +10736,10 @@
                 if (perf.sleeve_performance && perf.sleeve_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Performance by Sleeve\n');
-                    lines.push(`${'Sleeve'.padEnd(12)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)}`);
+                    lines.push(`${'Sleeve'.padEnd(12)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)} ${'AvgDur'.padStart(10)}`);
                     for (const s of perf.sleeve_performance) {
                         const pfStr = s.pf >= 999 ? '∞' : s.pf.toFixed(2);
-                        lines.push(`${s.sleeve.padEnd(12)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)}`);
+                        lines.push(`${s.sleeve.padEnd(12)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)} ${(s.avg_dur || '-').padStart(10)}`);
                     }
                 }
 
@@ -10745,10 +10747,10 @@
                 if (perf.strategy_performance && perf.strategy_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Performance by Strategy\n');
-                    lines.push(`${'Strategy'.padEnd(20)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)}`);
+                    lines.push(`${'Strategy'.padEnd(20)} ${'N'.padStart(4)} ${'WR%'.padStart(7)} ${'AvgP&L%'.padStart(9)} ${'TotP&L%'.padStart(9)} ${'Net$'.padStart(10)} ${'PF'.padStart(6)} ${'Worst%'.padStart(8)} ${'AvgDur'.padStart(10)}`);
                     for (const s of perf.strategy_performance) {
                         const pfStr = s.pf >= 999 ? '∞' : s.pf.toFixed(2);
-                        lines.push(`${s.strategy.padEnd(20)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)}`);
+                        lines.push(`${s.strategy.padEnd(20)} ${String(s.n).padStart(4)} ${(s.wr.toFixed(1)+'%').padStart(7)} ${((s.avg_pct>=0?'+':'')+s.avg_pct.toFixed(3)+'%').padStart(9)} ${((s.total_pct>=0?'+':'')+s.total_pct.toFixed(2)+'%').padStart(9)} ${('$'+s.net_usd.toFixed(0)).padStart(10)} ${pfStr.padStart(6)} ${(s.worst_pct.toFixed(2)+'%').padStart(8)} ${(s.avg_dur || '-').padStart(10)}`);
                     }
                 }
 
@@ -12842,10 +12844,11 @@
                                     <td class="px-3 py-2 text-right ${netCls} font-bold">${formatUSD(s.net_usd)}</td>
                                     <td class="px-3 py-2 text-right ${pfCls}">${s.pf >= 999 ? '∞' : s.pf.toFixed(2)}</td>
                                     <td class="px-3 py-2 text-right text-red-300">${s.worst_pct.toFixed(2)}%</td>
+                                    <td class="px-3 py-2 text-right text-gray-400">${s.avg_dur || '-'}</td>
                                 </tr>`;
                         }).join('');
                     } else {
-                        sleeveBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                        sleeveBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                     }
                 }
 
@@ -12872,10 +12875,11 @@
                                     <td class="px-3 py-2 text-right ${netCls} font-bold">${formatUSD(s.net_usd)}</td>
                                     <td class="px-3 py-2 text-right ${pfCls}">${s.pf >= 999 ? '∞' : s.pf.toFixed(2)}</td>
                                     <td class="px-3 py-2 text-right text-red-300">${s.worst_pct.toFixed(2)}%</td>
+                                    <td class="px-3 py-2 text-right text-gray-400">${s.avg_dur || '-'}</td>
                                 </tr>`;
                         }).join('');
                     } else {
-                        stratPerfBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                        stratPerfBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                     }
                 }
 

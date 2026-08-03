@@ -410,13 +410,18 @@ class SignalThresholds(BaseModel):
     # riders all <=20.2, duds all >=29.6): ADX <= max_adx -> SPIKE_CHASE LONG at full size;
     # ADX > max_adx -> SPIKE_FADE SHORT (4/4 backtest, avg +0.31, max adverse +0.49).
     spike_chase_max_adx: float = 30.0             # leg 6 router cut (empty 20-29 gap; default 30)
-    spike_chase_max_stretch_atr: float = 1.5      # Jul 30 EXTENSION GUARD (0=off): block CHASE when
-    # (price-EMA5)/EMA5 % > mult x pair ATR%. Evidence: all 8 lifetime chases entered >=2.0xATR
-    # extended (bought the completed spike top; ERA top-tick -1.2% in 19s), 0 wins at any stretch;
-    # current-stack CF blocks 2/2 (+$171, zero winners lost). Chase-only — fade winners ARE the
-    # stretched ones (PROM 3.4xATR +1.16). Mechanism ship (N=2 current-stack, below gate,
-    # transparent override): post-guard eval pre-committed — first N>=8 post-guard chases
-    # net-negative => chase reverts to probe size regardless.
+    spike_chase_max_stretch_atr: float = 2.5      # Jul 30 EXTENSION GUARD (0=off): block CHASE when
+    # (price-EMA5)/EMA5 % > mult x pair ATR%. Chase-only — fade winners ARE the stretched ones
+    # (PROM 3.4xATR +1.16). ⚡ RAISED 1.5→2.5 Aug-3 (operator-directed): the founding 0/8 evidence
+    # was demolished by three confounds — 6/8 non-bull regime (router now seals it), AKT was an
+    # old-exit clock-kill (trails to ≈+0.55 today), and ALL 8 entered via the 20s maker-delay
+    # (fixed Jul-30 direct-taker; fill-stretch was delay-INFLATED, so the 1.5 line was calibrated
+    # on contaminated data). Chase-as-currently-built has zero record; CloudWatch ledger since
+    # Jul-30: 6 bull-eligible candidates blocked at ratios 1.7-3.9 (band ≤2.5 = 3 of 6, ~0.6/day).
+    # 🔒 TRIPWIRE (mechanical): at N=5 post-raise chases, Σ pnl% < 0 → revert to 1.5.
+    # 🔒 VERDICT: N>=15 · >=5 dates, slice 1.5-2.0 vs 2.0-2.5 — redraw the line from clean
+    # taker-era data; WR≤45% ∨ avg<0 → guard re-tightens to 1.5. The Jul-30 post-guard eval
+    # (N>=8 net-neg → probe size) still stands on top.
     spike_invest_mult: float = 2.0                # CHASE sizing: Inv 2x of equal-split base
     spike_lev_mult: float = 1.0                   # CHASE leverage mult (1.0 = confidence base 20x)
     spike_fade_enabled: bool = True               # master kill toggle for the fade species

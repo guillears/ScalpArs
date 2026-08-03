@@ -1705,6 +1705,16 @@ class InvestmentConfig(BaseModel):
     #    0 = disabled. Notional, not margin — what actually hits the book.
     max_notional_pct_of_pair_volume: float = 0.0  # e.g. 0.10 = 0.10% of 24h vol; 0 = off
     max_notional_hard_ceiling: float = 0.0  # flat $ notional backstop even on BTC-tier; 0 = off
+    # 🔒 SPIKE LOW-VOL CAP RAISE (Aug-3, operator-directed acknowledged OVERRIDE of the
+    # pre-committed gate's fresh-N term — evidence: scoped raise direction-consistent
+    # both batches (B1 <$10M fades Δ+$46 · B2 Δ+$492, +$21 ex-Sunday), loser side now
+    # lock-capped; $10M = frozen concentration-slice boundary (every large-$ spike loser
+    # on record is >=$10M). ALL spike species (chase: 0/6 historic <$10M, router-dark,
+    # accepted). Cap reason stamps LIQ2. 🔒 REVERT to 0 (=inherit 0.1%) if over the next
+    # 15 full-size <$10M spike fires: cohort Σ pnl% < 0 OR any stop/lock fill slips
+    # >15bps OR DOA (peak<+0.10) > 20%.
+    spike_lowvol_liq_cap_pct: float = 0.20        # spikes on thin pairs: % of 24h vol (0 = off → global pct)
+    spike_lowvol_threshold_usd: float = 10_000_000.0  # "thin" = 24h vol below this (frozen slice boundary)
     # ② Gross-notional cap: Σ(open notional) ≤ balance × max_gross_leverage.
     #    Portfolio liquidation/correlation guard (a -X% correlated dump costs
     #    X% × gross_leverage of the account). 0 = disabled.

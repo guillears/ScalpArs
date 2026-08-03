@@ -3426,12 +3426,16 @@ def _compute_liquidity_sizing(orders):
         liq_bound = (liq_cap is not None) and (liq_cap < desired - eps)
         ref = liq_cap if liq_cap is not None else desired
         gross_bound = final < ref - eps
+        # Aug-3: LIQ2 = the spike low-vol raised cap (0.2%) — derived from the persisted
+        # cap-to-volume ratio (>0.11% means the raised pct set the cap, not the global 0.1%).
+        _lv_vol = getattr(o, 'entry_pair_volume_24h_usd', None)
+        _liq_tag = 'LIQ2' if (liq_bound and _lv_vol and liq_cap and (liq_cap / _lv_vol * 100.0) > 0.11) else 'LIQ'
         if liq_bound and gross_bound:
-            reason = 'LIQ+GROSS'
+            reason = f'{_liq_tag}+GROSS'
         elif gross_bound:
             reason = 'GROSS'
         else:
-            reason = 'LIQ'  # liq_bound (or fallback when flag set but unclassifiable)
+            reason = _liq_tag  # liq_bound (or fallback when flag set but unclassifiable)
         if 'LIQ' in reason:
             liq_n += 1
         if 'GROSS' in reason:

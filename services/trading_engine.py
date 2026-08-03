@@ -5478,7 +5478,7 @@ class TradingEngine:
                 cell_lev_mult = max(0.05, float(getattr(_th_sp, 'spike_lev_mult', 1.0) or 1.0))
                 cell_src = "SPIKE_CHASE"
             _mult_target = "both"
-            logger.info(f"[{cell_src}] {pair} {direction}: full-size open at inv={cell_mult}x lev={cell_lev_mult}x (0.1% liquidity cap governs)")
+            logger.info(f"[{cell_src}] {pair} {direction}: full-size open at inv={cell_mult}x lev={cell_lev_mult}x (liquidity cap governs)")
 
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
@@ -5512,14 +5512,28 @@ class TradingEngine:
             _final_notional = _desired_notional
             _cap_reason = None
             # ① per-pair liquidity cap
+            # 🔒 Aug-3 SPIKE LOW-VOL CAP RAISE (operator override, see config comment):
+            # spike species on pairs below the frozen $10M slice boundary use the raised
+            # pct (0.2%); everything else (momentum/flips/spikes >= $10M) keeps the
+            # global pct. Raised-cap throttles stamp LIQ2 (Liquidity Sizing table + CSV
+            # = the revert-gate instrument).
+            _liq_pct_eff = _liq_pct
+            _liq_reason_tag = 'LIQ'
+            _sp_lowvol_pct = float(getattr(_inv_cfg, 'spike_lowvol_liq_cap_pct', 0.0) or 0.0)
+            _sp_lowvol_thr = float(getattr(_inv_cfg, 'spike_lowvol_threshold_usd', 0.0) or 0.0)
+            if ((spike_fade or spike_bounce or spike_chase_probe)
+                    and _sp_lowvol_pct > 0 and _sp_lowvol_thr > 0
+                    and entry_pair_volume_24h_usd and 0 < entry_pair_volume_24h_usd < _sp_lowvol_thr):
+                _liq_pct_eff = _sp_lowvol_pct
+                _liq_reason_tag = 'LIQ2'
             _liq_cap = None
-            if _liq_pct > 0 and entry_pair_volume_24h_usd and entry_pair_volume_24h_usd > 0:
-                _liq_cap = (_liq_pct / 100.0) * entry_pair_volume_24h_usd
+            if _liq_pct_eff > 0 and entry_pair_volume_24h_usd and entry_pair_volume_24h_usd > 0:
+                _liq_cap = (_liq_pct_eff / 100.0) * entry_pair_volume_24h_usd
             if _liq_ceiling > 0:
                 _liq_cap = _liq_ceiling if _liq_cap is None else min(_liq_cap, _liq_ceiling)
             if _liq_cap is not None and _final_notional > _liq_cap:
                 _final_notional = _liq_cap
-                _cap_reason = 'LIQ'
+                _cap_reason = _liq_reason_tag
             # ② gross-notional cap
             if _gross_lev > 0:
                 _bal_for_gross = total_portfolio if total_portfolio else available
@@ -5543,7 +5557,7 @@ class TradingEngine:
                     return None
                 if _final_notional > _gross_room:
                     _final_notional = _gross_room
-                    _cap_reason = 'GROSS' if _cap_reason is None else 'LIQ+GROSS'
+                    _cap_reason = 'GROSS' if _cap_reason is None else f'{_liq_reason_tag}+GROSS'
             # apply throttle: shrink margin to fit the capped notional
             if _final_notional < _desired_notional - 0.01:
                 _new_investment = _final_notional / leverage

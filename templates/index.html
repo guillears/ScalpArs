@@ -2538,7 +2538,7 @@
                         CLOSED trades whose notional was throttled by the ① per-pair liquidity cap
                         (slippage protection) and/or ② gross-notional cap (correlated-dump guard).
                         <span class="text-sky-300">throttle%</span> = 1 − final/desired.
-                        <span class="text-sky-300">reason</span>: LIQ (① bound), GROSS (② bound), or LIQ+GROSS (both).
+                        <span class="text-sky-300">reason</span>: LIQ (① bound), LIQ2 (① via the spike low-vol raised pct, Aug-3), GROSS (② bound), or LIQ+GROSS (both).
                         Paper fills show ~0 slippage, so this is risk-plumbing for live.
                     </p>
                     <div class="text-xs text-gray-400 mb-2" id="liq-sizing-summary">(no throttled orders yet)</div>
@@ -5370,6 +5370,10 @@
                                         <input type="number" step="0.05" id="config-spike-lock-arm" class="w-16 bg-white/5 border border-emerald-500/40 rounded px-2 py-1 text-emerald-200 text-center" value="0.20"></label>
                                     <label class="flex items-center gap-1 text-xs text-slate-400" title="Locked SL: replaces the species fixed SL once armed. −0.15 sits below the deepest observed post-touch winner dip (−0.09, N=17 captured) with 6bp margin; BE/+0.10 would clip the EGLD/ARB class.">Lock SL %
                                         <input type="number" step="0.05" id="config-spike-lock-sl" class="w-16 bg-white/5 border border-emerald-500/40 rounded px-2 py-1 text-emerald-200 text-center" value="-0.15"></label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="🔒 Aug-3 SPIKE LOW-VOL CAP RAISE (operator override, revert-gated): spike trades on pairs whose 24h vol < the threshold use THIS % of 24h vol as the liquidity cap instead of the global 0.1% (VANRY at 0.2% = $18.3k not $9.2k). Throttles stamp LIQ2 in the Liquidity Sizing table. 0 = off (inherit global). REVERT at 15 fires: Σpnl%<0 ∨ slip>15bps ∨ DOA>20%.">Spike LowVol Cap %
+                                        <input type="number" step="0.05" id="config-spike-lowvol-cap" class="w-16 bg-white/5 border border-emerald-500/40 rounded px-2 py-1 text-emerald-200 text-center" value="0.20"></label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-400" title="'Thin pair' boundary in $M of 24h volume (frozen Aug-1 concentration-slice line — every large-$ spike loser on record is ≥$10M: ICNT/XPL/STORJ/DODOX; they keep the 0.1% cap).">LowVol Thresh $M
+                                        <input type="number" step="1" id="config-spike-lowvol-thresh" class="w-14 bg-white/5 border border-emerald-500/40 rounded px-2 py-1 text-emerald-200 text-center" value="10"></label>
                                 </div>
                                 <div class="flex items-center gap-5 mt-2 flex-wrap">
                                     <label class="flex items-center gap-1 text-xs text-slate-400" title="OPTION-D L3 floors, UNARMED state (RSI never hit arm): tight normal rungs, trigger:offset (floor = trigger − offset). SWARMS live proof (+1.25 rung → +1.0 floor).">Unarmed Ladder
@@ -10471,7 +10475,7 @@
             lines.push(`  Burn Rate: $${_burnRate.toFixed(2)}/hr  |  Live Runway: ${_liveRunwayH}h  |  Emergency Threshold: $${(status && status.bnb_emergency_threshold) ? status.bnb_emergency_threshold.toFixed(2) : '0.00'}`);
             lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
             lines.push(`  Cooldown After Any Close: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
-            lines.push(`  Liquidity Caps: ① ${inv.max_notional_pct_of_pair_volume || 0}% 24h vol / ceiling $${inv.max_notional_hard_ceiling || 0}  |  ② max gross lev ${inv.max_gross_leverage || 0}×  |  ③ redeploy ${inv.redeploy_leftover_enabled ? 'ON (hard ' + (inv.max_open_positions_hard || 0) + ')' : 'off'}`);
+            lines.push(`  Liquidity Caps: ① ${inv.max_notional_pct_of_pair_volume || 0}% 24h vol / ceiling $${inv.max_notional_hard_ceiling || 0}  |  ② max gross lev ${inv.max_gross_leverage || 0}×  |  ③ redeploy ${inv.redeploy_leftover_enabled ? 'ON (hard ' + (inv.max_open_positions_hard || 0) + ')' : 'off'}  |  🔒 SPIKE LOWVOL (Aug-3 override): ${(inv.spike_lowvol_liq_cap_pct || 0) > 0 ? `${inv.spike_lowvol_liq_cap_pct}% cap on spike pairs < $${((inv.spike_lowvol_threshold_usd || 0)/1e6).toFixed(0)}M (LIQ2)` : 'off'}`);
             if (cfg.pair_blacklist) lines.push(`  Pair Blacklist: ${cfg.pair_blacklist}`);
             if (cfg.no_trade_pairs) lines.push(`  No-Trade Pairs (track-only): ${cfg.no_trade_pairs}`);
 
@@ -19454,6 +19458,8 @@
                 // Liquidity & Risk Caps (Jun 2)
                 const _liqSet = (id, v, dflt) => { const el = document.getElementById(id); if (el) el.value = (v !== undefined && v !== null) ? v : dflt; };
                 _liqSet('config-max-notional-pct-of-pair-volume', config.investment.max_notional_pct_of_pair_volume, 0);
+                { const _e=document.getElementById('config-spike-lowvol-cap'); if(_e && config.investment.spike_lowvol_liq_cap_pct !== undefined) _e.value = config.investment.spike_lowvol_liq_cap_pct; }
+                { const _e=document.getElementById('config-spike-lowvol-thresh'); if(_e && config.investment.spike_lowvol_threshold_usd !== undefined) _e.value = config.investment.spike_lowvol_threshold_usd / 1e6; }
                 _liqSet('config-max-notional-hard-ceiling', config.investment.max_notional_hard_ceiling, 0);
                 _liqSet('config-max-gross-leverage', config.investment.max_gross_leverage, 0);
                 _liqSet('config-max-open-positions-hard', config.investment.max_open_positions_hard, 10);
@@ -21002,6 +21008,8 @@
                     no_expansion_minutes: parseInt(document.getElementById('config-no-expansion').value) || 0,
                     // Liquidity & Risk Caps (Jun 2)
                     max_notional_pct_of_pair_volume: safeFloat(document.getElementById('config-max-notional-pct-of-pair-volume')?.value) || 0,
+                    spike_lowvol_liq_cap_pct: safeFloat(document.getElementById('config-spike-lowvol-cap')?.value ?? 0.20),
+                    spike_lowvol_threshold_usd: (safeFloat(document.getElementById('config-spike-lowvol-thresh')?.value ?? 10)) * 1e6,
                     max_notional_hard_ceiling: safeFloat(document.getElementById('config-max-notional-hard-ceiling')?.value) || 0,
                     max_gross_leverage: safeFloat(document.getElementById('config-max-gross-leverage')?.value) || 0,
                     max_open_positions_hard: parseInt(document.getElementById('config-max-open-positions-hard')?.value) || 10,

@@ -597,7 +597,10 @@
     "rsiceil_door_adx_min": 30.0,
     "flipgate_probe_enabled": true,
     "flipgate_probe_gates": "FLIP_SHORT_QUALITY,FLIP_SHORT_RSI_MIN,FLIP_SHORT_BTC_TRENDGAP",
-    "flipgate_probe_max_open": 3
+    "flipgate_probe_max_open": 3,
+    "spike_lock_enabled": true,
+    "spike_lock_arm_pct": 0.2,
+    "spike_lock_sl_pct": -0.15
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

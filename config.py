@@ -431,6 +431,19 @@ class SignalThresholds(BaseModel):
                                                   # price GAPPED THROUGH the monitored -0.70 stop
                                                   # (squeeze signature) -> engine flips
                                                   # spike_fade_enabled=false + CRITICAL log
+    # 🔒 SPIKE PROFIT LOCK (Aug-3, #24b variant-② verdict at fade-capture N=13: Saved $87 /
+    # Killed $0, Saved>=2xKilled bar passed on BOTH measured species; winners' post-touch dips
+    # bottom at -0.09 -> the -0.15 floor sits below the band with 6bp margin). Once a spike
+    # trade's peak P&L touches the arm, its fixed SL (-0.70 fade/bounce, -1.2 chase) tightens
+    # to the lock level; close reason SPIKE_LOCK L1 (SPIKE_ prefix = post-exit whitelists
+    # auto-covered). ALL spike species uniformly — fade/bounce measured, chase =
+    # mechanism-transfer (own tally row; 7/8 lifetime chases peaked 0.00 so it rarely arms).
+    # REVERT GATE (pre-committed): at N>=10 SPIKE_LOCK fires — revert if >=60% of locked
+    # trades' post-exit continuation recovers to >0 (peak-first) OR cumulative delta vs the
+    # fixed-SL counterfactual < 0.
+    spike_lock_enabled: bool = True
+    spike_lock_arm_pct: float = 0.20              # arm when peak P&L touches this (0 = off)
+    spike_lock_sl_pct: float = -0.15              # armed stop replaces the species fixed SL
     # ⭐ OPTION-D 3-layer exit for SPIKE_CHASE longs (replaces the normal long exit stack):
     # L1 fixed SL (MIRA-1 wicked -0.71 pre +17.4; SWARMS breathed -0.75 pre +0.91 — two
     # documented winner-breaths through -0.70; dud premium ~0.5pp/fire accepted).

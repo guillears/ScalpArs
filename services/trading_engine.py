@@ -7686,10 +7686,18 @@ class TradingEngine:
                     _sp_pnl_pct = ((_sp_raw - (order.entry_fee or 0) - _sp_fee) / _sp_notional) * 100
                     _sp_bk_reason = None
                     _sp_sl_mon = float(getattr(_th_sp_mon, 'spike_sl_pct', -1.2) or -1.2)
-                    if _sp_pnl_pct <= _sp_sl_mon + 0.01:
+                    _sp_peak_mon = max(realtime_peak or 0.0, _sp_pnl_pct)
+                    # 🔒 Aug-3 SPIKE PROFIT LOCK — monitor-backstop mirror of the realtime
+                    # leg (WS-starve lesson: every realtime exit needs a monitor twin).
+                    _lk_en_mon = bool(getattr(_th_sp_mon, 'spike_lock_enabled', True))
+                    _lk_arm_mon = float(getattr(_th_sp_mon, 'spike_lock_arm_pct', 0.20) or 0.0)
+                    _lk_sl_mon = float(getattr(_th_sp_mon, 'spike_lock_sl_pct', -0.15) or -0.15)
+                    if (_lk_en_mon and _lk_arm_mon > 0 and _sp_peak_mon >= _lk_arm_mon
+                            and _sp_pnl_pct <= _lk_sl_mon + 0.01):
+                        _sp_bk_reason = "SPIKE_LOCK L1"
+                    elif _sp_pnl_pct <= _sp_sl_mon + 0.01:
                         _sp_bk_reason = "SPIKE_SL L1"
                     else:
-                        _sp_peak_mon = max(realtime_peak or 0.0, _sp_pnl_pct)
                         _sp_rungs_mon = parse_hard_tp_ladder(getattr(
                             _th_sp_mon, 'spike_ladder_armed' if getattr(order, 'spike_armed', False) else 'spike_ladder_unarmed', '') or '')
                         if _sp_rungs_mon:
@@ -10884,7 +10892,20 @@ class TradingEngine:
                 _sp_peak_rt = order_info.get('peak_pnl') or 0.0
                 _sp_close_reason = None
                 _sp_sl_rt = float(getattr(_th_sp_rt, 'spike_sl_pct', -1.2) or -1.2)
-                if pnl_pct <= _sp_sl_rt + 0.01:
+                # 🔒 Aug-3 SPIKE PROFIT LOCK (#24b ② verdict, fade-capture N=13 S$87/K$0):
+                # once peak touches the arm, the fixed species SL tightens to the lock
+                # level (−1.2 → −0.15 on this path). Checked BEFORE the species SL so an
+                # armed collapse stamps SPIKE_LOCK, not SPIKE_SL. SPIKE_ prefix rides
+                # both post-exit whitelists. Chase leg = mechanism-transfer (own tally).
+                _sp_lk_en = bool(getattr(_th_sp_rt, 'spike_lock_enabled', True))
+                _sp_lk_arm = float(getattr(_th_sp_rt, 'spike_lock_arm_pct', 0.20) or 0.0)
+                _sp_lk_sl = float(getattr(_th_sp_rt, 'spike_lock_sl_pct', -0.15) or -0.15)
+                if (_sp_lk_en and _sp_lk_arm > 0 and _sp_peak_rt >= _sp_lk_arm
+                        and pnl_pct <= _sp_lk_sl + 0.01):
+                    _sp_close_reason = "SPIKE_LOCK L1"
+                    logger.warning(f"[SPIKE_LOCK] {pair} LONG: pnl={pnl_pct:.4f}% <= lock {_sp_lk_sl}% "
+                                   f"(peak {_sp_peak_rt:.2f}% >= arm {_sp_lk_arm}) — CLOSING NOW!")
+                elif pnl_pct <= _sp_sl_rt + 0.01:
                     _sp_close_reason = "SPIKE_SL L1"
                     logger.warning(f"[SPIKE_SL] {pair} LONG: pnl={pnl_pct:.4f}% <= {_sp_sl_rt}% (fixed, no ATR widen) — CLOSING NOW!")
                 else:
@@ -11619,9 +11640,27 @@ class TradingEngine:
                 if _sl_floor < 0 and effective_sl < _sl_floor:
                     effective_sl = _sl_floor
 
+            # 🔒 Aug-3 SPIKE PROFIT LOCK (#24b ② verdict, fade-capture N=13 S$87/K$0):
+            # FADE/BOUNCE leg (_is_spike_fade covers both) — once peak touches the arm,
+            # the fixed −0.70 tightens to the lock level. Winners' post-touch dips
+            # bottom at −0.09 → −0.15 sits below the band. Close reason SPIKE_LOCK
+            # (SPIKE_ prefix rides both post-exit whitelists). Chase gets the same leg
+            # inside its option-D chain + monitor backstop.
+            _spike_lock_active_rt = False
+            if _is_spike_fade:
+                _lk_en_rt = bool(getattr(config.trading_config.thresholds, 'spike_lock_enabled', True))
+                _lk_arm_rt = float(getattr(config.trading_config.thresholds, 'spike_lock_arm_pct', 0.20) or 0.0)
+                _lk_sl_rt = float(getattr(config.trading_config.thresholds, 'spike_lock_sl_pct', -0.15) or -0.15)
+                if (_lk_en_rt and _lk_arm_rt > 0 and current_peak >= _lk_arm_rt
+                        and _lk_sl_rt > effective_sl):
+                    effective_sl = _lk_sl_rt
+                    _spike_lock_active_rt = True
+
             # Check if stop loss triggered (epsilon 0.01% to avoid boundary precision issues)
             if pnl_pct <= effective_sl + 0.01:
-                if breakeven_active:
+                if _spike_lock_active_rt:
+                    close_reason = f"SPIKE_LOCK L{tp_level}"
+                elif breakeven_active:
                     close_reason = f"BREAKEVEN_EXIT_L{be_level}"
                 elif signal_still_active:
                     close_reason = f"STOP_LOSS_WIDE L{tp_level}"

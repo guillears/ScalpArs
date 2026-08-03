@@ -7787,6 +7787,32 @@ class TradingEngine:
             _notional = order.entry_price * order.quantity if order.quantity > 0 else 1
             pnl_pct = (_net_pnl / _notional) * 100
 
+            # 🔒 Aug-3 review fix I2: FADE/BOUNCE SPIKE-LOCK monitor twin (WS-starve
+            # parity — every realtime exit needs a monitor mirror; the chase leg got one
+            # at ship, this is the fade/bounce mirror). LOCK ONLY: the fixed −0.70 keeps
+            # its historical realtime-only enforcement (inherited scope, unchanged).
+            if (order.entry_strategy or "") in ("SPIKE_FADE", "SPIKE_BOUNCE"):
+                try:
+                    _th_fb_mon = config.trading_config.thresholds
+                    _fb_lk_en = bool(getattr(_th_fb_mon, 'spike_lock_enabled', True))
+                    _fb_lk_arm = float(getattr(_th_fb_mon, 'spike_lock_arm_pct', 0.20) or 0.0)
+                    _fb_lk_sl = float(getattr(_th_fb_mon, 'spike_lock_sl_pct', -0.15) or -0.15)
+                    _fb_peak_mon = max(realtime_peak or 0.0, pnl_pct, float(order.peak_pnl or 0.0))
+                    if (_fb_lk_en and _fb_lk_arm > 0 and _fb_peak_mon >= _fb_lk_arm
+                            and pnl_pct <= _fb_lk_sl + 0.01):
+                        logger.warning(f"[SPIKE_MONITOR_BACKSTOP] {order.pair}: SPIKE_LOCK L1 at "
+                                       f"pnl={pnl_pct:.4f}% (peak {_fb_peak_mon:.2f}%, monitor-resolution enforcement)")
+                        closed_order = await self.close_position(db, order, current_price, "SPIKE_LOCK L1")
+                        if closed_order:
+                            updates.append({
+                                "order_id": closed_order.id, "pair": closed_order.pair,
+                                "action": "CLOSED", "reason": "SPIKE_LOCK L1",
+                                "pnl": closed_order.pnl, "tp_level": order.current_tp_level or 1,
+                            })
+                            continue
+                except Exception as _fb_lk_err:
+                    logger.error(f"[SPIKE_LOCK_MONITOR] {order.pair}: fail-open: {_fb_lk_err}")
+
             # In-trade RSI pattern tracking (first occurrence, no P&L threshold)
             if pair_data and pair_data.rsi is not None:
                 _trk_rsi = pair_data.rsi
@@ -10900,6 +10926,22 @@ class TradingEngine:
                 _sp_lk_en = bool(getattr(_th_sp_rt, 'spike_lock_enabled', True))
                 _sp_lk_arm = float(getattr(_th_sp_rt, 'spike_lock_arm_pct', 0.20) or 0.0)
                 _sp_lk_sl = float(getattr(_th_sp_rt, 'spike_lock_sl_pct', -0.15) or -0.15)
+                # Review fix I1 (Aug-3): persist the peak ONCE when it first crosses the
+                # lock arm — chase `continue`s out of the monitor stack that persists
+                # peak_pnl for other strategies, so without this the armed lock (and the
+                # floor-ladder peak) died on redeploy (cache reseeds from Order.peak_pnl).
+                # Bounded: 1 write/trade. Same pattern as the Jul-23 HARD_TP review fix.
+                if (_sp_lk_en and _sp_lk_arm > 0 and _sp_peak_rt >= _sp_lk_arm
+                        and not order_info.get('_sp_lock_peak_persisted')):
+                    order_info['_sp_lock_peak_persisted'] = True
+                    try:
+                        async with AsyncSessionLocal() as _sp_pk_db:
+                            await _sp_pk_db.execute(
+                                update(Order).where(Order.id == order_id).values(peak_pnl=_sp_peak_rt)
+                            )
+                            await _sp_pk_db.commit()
+                    except Exception:
+                        pass
                 if (_sp_lk_en and _sp_lk_arm > 0 and _sp_peak_rt >= _sp_lk_arm
                         and pnl_pct <= _sp_lk_sl + 0.01):
                     _sp_close_reason = "SPIKE_LOCK L1"

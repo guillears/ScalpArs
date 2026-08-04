@@ -504,6 +504,7 @@
                     <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
                 </div>
                 <div id="pnl-calendar-grid" class="grid grid-cols-7 gap-1"></div>
+                <div id="pnl-eom-panel" class="mt-3"></div>
                 <div class="flex items-center gap-4 mt-3 text-xs text-gray-400">
                     <span class="px-2 py-1 rounded bg-white/5 border border-white/10">Current Positive Streak: <span id="pnl-cal-streak-current" class="text-gray-200 font-semibold">—</span></span>
                     <span class="px-2 py-1 rounded bg-white/5 border border-white/10">Best Streak This Month: <span id="pnl-cal-streak-best" class="text-gray-200 font-semibold">—</span></span>
@@ -8104,6 +8105,57 @@
             }
             document.getElementById('pnl-cal-streak-current').textContent = `${current} day${current === 1 ? '' : 's'}`;
             document.getElementById('pnl-cal-streak-best').textContent = `${best} day${best === 1 ? '' : 's'}`;
+
+            _renderEomPanel();
+        }
+
+        // ── EOM Projection Revisions panel (Aug-4, operator design) ─────────────────
+        // The revision SERIES is the improvement signal: each point = what the fixed-date
+        // EOM projection said at that day's close (back-computed — no snapshots). Rising =
+        // beating the model's own expectations. avg7 sparkline = rolling 7d avg P&L%/trade
+        // (leverage-invariant honesty twin: projection up + avg7 down = sizing illusion).
+        // Amber ticks = mechanism-ship dates (era boundaries — don't trend across blindly).
+        function _sparkSvg(vals, w, h, color, marks) {
+            const good = vals.map((v, i) => [i, v]).filter(p => p[1] != null && isFinite(p[1]));
+            if (good.length < 2) return '<span class="text-gray-600 text-xs">building…</span>';
+            const ys = good.map(p => p[1]);
+            const mn = Math.min(...ys), mx = Math.max(...ys), sp = (mx - mn) || 1;
+            const X = i => (i / (vals.length - 1)) * (w - 4) + 2;
+            const Y = v => h - 3 - ((v - mn) / sp) * (h - 6);
+            const pts = good.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(' ');
+            let ticks = '';
+            (marks || []).forEach(mi => {
+                if (mi >= 0 && mi < vals.length) ticks += `<line x1="${X(mi).toFixed(1)}" y1="1" x2="${X(mi).toFixed(1)}" y2="${h - 1}" stroke="rgba(251,191,36,0.55)" stroke-width="1" stroke-dasharray="2,2"/>`;
+            });
+            const last = good[good.length - 1];
+            return `<svg width="${w}" height="${h}" class="inline-block align-middle">${ticks}<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/><circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="2" fill="${color}"/></svg>`;
+        }
+        function _renderEomPanel() {
+            const el = document.getElementById('pnl-eom-panel');
+            if (!el) return;
+            const d = pnlCalData || {};
+            const rev = d.revisions || [];
+            window._eomPanel = null;
+            if (!rev.length) { el.innerHTML = ''; return; }
+            const projs = rev.map(r => r.proj);
+            const nowP = projs[projs.length - 1];
+            const at = k => (projs.length > k ? projs[projs.length - 1 - k] : null);
+            const d3 = at(3) != null ? nowP - at(3) : null, d7 = at(7) != null ? nowP - at(7) : null;
+            const fmt = v => (v == null ? '—' : (v >= 0 ? '+' : '−') + '$' + Math.abs(Math.round(v)).toLocaleString('en-US'));
+            const cls = v => (v == null ? 'text-gray-500' : v >= 0 ? 'text-emerald-400' : 'text-red-400');
+            const avg7 = (d.avg7 || []).map(a => a.avg_pct);
+            const a7now = avg7.length ? avg7[avg7.length - 1] : null;
+            const markIdx = (d.ship_marks || []).map(m => rev.findIndex(r => r.date === m[0])).filter(i => i >= 0);
+            window._eomPanel = { label: d.eom_label, proj: nowP, d3: d3, d7: d7, a7: a7now,
+                                 marks: (d.ship_marks || []).map(m => m.join(' ')) };
+            el.innerHTML =
+                `<div class="flex items-center gap-6 flex-wrap text-xs bg-white/[0.03] rounded-lg px-4 py-3" title="EOM projection revisions: each sparkline point = what 'balance by ${d.eom_label}' looked like at that day's close (back-computed from closed orders). The SLOPE is the improvement signal. Amber dashes = mechanism-ship dates (era boundaries). avg7 = rolling 7-day avg P&L%/trade — the leverage-invariant ruler; if the projection rises while avg7 falls, the rise is sizing/streak, not edge.">` +
+                `<div><span class="text-gray-500">Projected by ${d.eom_label}:</span> <span class="text-blue-300 font-bold text-sm">$${Math.round(nowP).toLocaleString('en-US')}</span></div>` +
+                `<div><span class="text-gray-500">Δ vs 3d ago:</span> <span class="${cls(d3)} font-medium">${fmt(d3)}</span></div>` +
+                `<div><span class="text-gray-500">Δ vs 7d ago:</span> <span class="${cls(d7)} font-medium">${fmt(d7)}</span></div>` +
+                `<div class="flex items-center gap-2"><span class="text-gray-500">revisions</span>${_sparkSvg(projs, 140, 34, '#60a5fa', markIdx)}</div>` +
+                `<div class="flex items-center gap-2"><span class="text-gray-500">avg%/trade 7d</span>${_sparkSvg(avg7, 140, 34, '#34d399', markIdx)} <span class="${cls(a7now)}">${a7now != null ? (a7now >= 0 ? '+' : '') + a7now.toFixed(3) + '%' : '—'}</span></div>` +
+                `</div>`;
         }
 
         // Toast notification
@@ -8737,6 +8789,15 @@
                     const slipStr = r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-';
                     lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${invStr.padEnd(12)} ${notStr.padEnd(14)} ${pnlInvStr.padEnd(22)} ${pnlNotStr.padEnd(24)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)} ${slipStr.padEnd(8)}`);
                 }
+            }
+
+            if (window._eomPanel && window._eomPanel.proj != null) {
+                const _ep = window._eomPanel;
+                const _f = v => v == null ? '-' : (v >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(v));
+                lines.push(`\n${hr2}`);
+                lines.push('## EOM Projection (fixed-date, MTD-rate; revisions = improvement signal)\n');
+                lines.push(`Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}  |  avg P&L%/trade (7d): ${_ep.a7 != null ? (_ep.a7 >= 0 ? '+' : '') + _ep.a7.toFixed(3) + '%' : '-'}`);
+                lines.push(`Era marks: ${(_ep.marks || []).join(' · ') || '-'}`);
             }
 
             if (perf.sleeve_performance && perf.sleeve_performance.length > 0) {
@@ -10737,6 +10798,15 @@
                 }
 
                 // --- BY SLEEVE (Jul 1, 2026) ---
+                if (window._eomPanel && window._eomPanel.proj != null) {
+                    const _ep = window._eomPanel;
+                    const _f = v => v == null ? '-' : (v >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(v));
+                    lines.push(`\n${hr2}`);
+                    lines.push('## EOM Projection (fixed-date, MTD-rate; revisions = improvement signal)\n');
+                    lines.push(`Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}  |  avg P&L%/trade (7d): ${_ep.a7 != null ? (_ep.a7 >= 0 ? '+' : '') + _ep.a7.toFixed(3) + '%' : '-'}`);
+                    lines.push(`Era marks: ${(_ep.marks || []).join(' · ') || '-'}`);
+                }
+
                 if (perf.sleeve_performance && perf.sleeve_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Performance by Sleeve\n');
@@ -12692,15 +12762,31 @@
                 const _ppCurrentBal = balData ? (balData.total_portfolio || ((balData.usdt_balance || 0) + (balData.usdt_in_orders || 0))) : null;
                 const _ppDCR = (data.daily_compound_return || 0) / 100; // convert % to decimal
                 const _ppDaysMap = {'Last 6h': 0.25, 'Last 12h': 0.5, '1 Day': 1, '2 Days': 2, '3 Days': 3, '5 Days': 5, '7 Days': 7, '15 Days': 15, '30 Days': 30, 'Total': null};
-                const _ppProjected = (period) => {
-                    if (!_ppCurrentBal || _ppDCR === 0) return null;
-                    const days = _ppDaysMap[period];
+                const _ppProjected = (r) => {
+                    if (!_ppCurrentBal) return null;
+                    // Aug-4 MTD→EOM row: FIXED-DATE projection — balance × (1 + MTD-DCR)^(days left
+                    // in month). Same question every day (converges to the actual balance at EOM);
+                    // "—" until >=4 active days (early-month compounding is noise). MTD-DCR is the
+                    // row's own realized rate: (bal / (bal − mtd_pnl))^(1/days_elapsed) − 1.
+                    if (r.eom) {
+                        if ((r.eom.active_days || 0) < 4) return null;
+                        // Review Minor-1: use REALIZED equity (same basis as the calendar panel's
+                        // revision series) so the two "by EOM" headlines agree intraday; falls back
+                        // to total portfolio before the calendar's first fetch.
+                        const _eomBal = (typeof pnlCalData !== 'undefined' && pnlCalData && pnlCalData.portfolio_now) || _ppCurrentBal;
+                        const start = _eomBal - (r.eom.mtd_pnl || 0);
+                        if (start <= 0 || _eomBal <= 0) return null;
+                        const mtdDcr = Math.pow(_eomBal / start, 1 / Math.max(r.eom.days_elapsed, 1e-6)) - 1;
+                        return _eomBal * Math.pow(1 + mtdDcr, r.eom.days_left);
+                    }
+                    if (_ppDCR === 0) return null;
+                    const days = _ppDaysMap[r.period];
                     if (days == null) return _ppCurrentBal; // "Total" row shows current balance
                     return _ppCurrentBal * Math.pow(1 + _ppDCR, days);
                 };
                 if (data.period_performance && data.period_performance.length > 0) {
                     ppBody.innerHTML = data.period_performance.map(r => {
-                        const projBal = _ppProjected(r.period);
+                        const projBal = _ppProjected(r);
                         const projStr = projBal != null ? '$' + Math.round(projBal).toLocaleString('en-US') : '-';
                         const projClass = projBal != null && _ppCurrentBal ? (projBal >= _ppCurrentBal ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
                         if (r.count === 0) {

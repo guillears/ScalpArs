@@ -1293,7 +1293,7 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
     await trading_engine.initialize(db)
 
     result = await db.execute(
-        select(Order.closed_at, Order.pnl)
+        select(Order.closed_at, Order.pnl, Order.pnl_percentage)
         .where(and_(
             Order.status == "CLOSED",
             Order.is_paper == trading_engine.is_paper_mode,
@@ -1303,13 +1303,16 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
     rows = result.all()
     offset = timedelta(minutes=tz_offset_min)
     days: Dict[str, dict] = {}
-    for closed_at, pnl in rows:
+    pcts_by_day: Dict[str, list] = {}
+    for closed_at, pnl, pnl_pct in rows:
         d = (closed_at + offset).date().isoformat()
         e = days.setdefault(d, {"pnl": 0.0, "trades": 0, "wins": 0})
         e["pnl"] += (pnl or 0.0)
         e["trades"] += 1
         if (pnl or 0.0) > 0:
             e["wins"] += 1
+        if pnl_pct is not None:
+            pcts_by_day.setdefault(d, []).append(pnl_pct)
 
     portfolio_now = None
     try:
@@ -1331,7 +1334,41 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
         e["pnl"] = round(e["pnl"], 2)
         e["wr"] = round(100.0 * e["wins"] / e["trades"], 0) if e["trades"] else 0.0
 
-    return {"days": days, "portfolio_now": round(portfolio_now, 2) if portfolio_now is not None else None}
+    # ── EOM Projection Revisions (Aug-4, operator design): back-compute, for every day of
+    # the CURRENT month, what the fixed-date EOM projection said at that day's close —
+    # balance_at_day × (1 + month-to-that-day DCR)^(days left). The revision SERIES (not the
+    # level) is the improvement signal: rising = beating the model's own expectations.
+    # Fully derived from closed orders — no snapshots, retroactive from day one. avg7 =
+    # rolling 7-day avg P&L%/trade (the leverage-invariant house ruler) as the honesty twin:
+    # projections rising while avg7 falls = sizing/streak illusion. SHIP_MARKS: append a
+    # (date,label) on each major mechanism ship — era ticks on the sparkline.
+    revisions = []; avg7 = []
+    _SHIP_MARKS = [("2026-08-03", "lock+LIQ2+chase2.5"), ("2026-08-04", "gates+floor $2M")]
+    if portfolio_now is not None:
+        from calendar import monthrange as _mr
+        _today_l = (datetime.utcnow() + offset).date()
+        _m_first = _today_l.replace(day=1)
+        _ld = _mr(_today_l.year, _today_l.month)[1]
+        _month_keys = [k for k in days.keys() if k >= _m_first.isoformat()]
+        _bal0 = portfolio_now - sum(days[k]["pnl"] for k in _month_keys)  # realized bal at month start
+        _cur = _bal0
+        _d = _m_first
+        while _d <= _today_l:
+            _iso = _d.isoformat()
+            _cur += days.get(_iso, {}).get("pnl", 0.0)
+            _elapsed = (_d - _m_first).days + 1
+            _dcr = ((_cur / _bal0) ** (1.0 / _elapsed) - 1.0) if (_bal0 > 0 and _cur > 0) else 0.0
+            _left = _ld - _d.day
+            revisions.append({"date": _iso, "proj": round(_cur * ((1.0 + _dcr) ** _left), 2),
+                              "bal": round(_cur, 2)})
+            _w = []
+            for _b in range(7):
+                _w += pcts_by_day.get((_d - timedelta(days=_b)).isoformat(), [])
+            avg7.append({"date": _iso, "avg_pct": round(sum(_w) / len(_w), 4) if _w else None, "n": len(_w)})
+            _d += timedelta(days=1)
+    return {"days": days, "portfolio_now": round(portfolio_now, 2) if portfolio_now is not None else None,
+            "revisions": revisions, "avg7": avg7, "ship_marks": _SHIP_MARKS,
+            "eom_label": (datetime.utcnow() + offset).strftime("%b ") + str(__import__("calendar").monthrange((datetime.utcnow()+offset).year,(datetime.utcnow()+offset).month)[1])}
 
 
 @app.get("/api/orders/closed")
@@ -2179,6 +2216,29 @@ def _compute_period_performance(orders):
         bucket = [o for o, ca in timed if ca >= cutoff]
         result.append(_period_stats(label, bucket))
 
+    # ── MTD → EOM row (Aug-4, operator design): calendar-month window between "30 Days"
+    # and "Total". Normal columns = month-to-date stats (UTC-3 day convention, matching the
+    # daily tables; the orders table only holds the current experiment, so paper resets clip
+    # the window naturally). The `eom` sub-dict powers the FIXED-DATE Projected Balance cell
+    # client-side: balance × (1 + MTD-DCR)^days_left — same question every day, converging
+    # to the actual balance on the last day of the month. Client shows "—" until >=4 active
+    # trading days (early-month compounding is noise).
+    from datetime import timezone as _tz_eom
+    import calendar as _cal_eom
+    _UTC3 = _tz_eom(timedelta(hours=-3))
+    _now_l = now.astimezone(_UTC3)
+    _m_start = _now_l.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    _last_day = _cal_eom.monthrange(_now_l.year, _now_l.month)[1]
+    _m_end = _now_l.replace(day=_last_day, hour=23, minute=59, second=59)
+    _mtd = [o for o, ca in timed if ca.astimezone(_UTC3) >= _m_start]
+    _mtd_row = _period_stats(f"MTD→{_now_l.strftime('%b')}{_last_day}", _mtd)
+    _mtd_row["eom"] = {
+        "active_days": len({ca.astimezone(_UTC3).date().isoformat() for o, ca in timed if ca.astimezone(_UTC3) >= _m_start}),
+        "days_elapsed": round(max((_now_l - _m_start).total_seconds() / 86400.0, 1e-6), 3),
+        "days_left": round(max((_m_end - _now_l).total_seconds() / 86400.0, 0.0), 2),
+        "mtd_pnl": _mtd_row["total_pnl"],
+    }
+    result.append(_mtd_row)
     result.append(_period_stats("Total", [o for o, _ in timed]))
     return result
 

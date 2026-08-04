@@ -1343,41 +1343,57 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
     # projections rising while avg7 falls = sizing/streak illusion. SHIP_MARKS: append a
     # (date,label) on each major mechanism ship — era ticks on the sparkline.
     revisions = []; avg7 = []
+    revisions_by_month = {}; avg7_by_month = {}; month_final = {}
     _SHIP_MARKS = [("2026-08-03", "lock+LIQ2+chase2.5"), ("2026-08-04", "gates+floor $2M")]
-    if portfolio_now is not None:
+    if portfolio_now is not None and days:
         from calendar import monthrange as _mr
         _today_l = (datetime.utcnow() + offset).date()
-        _m_first = _today_l.replace(day=1)
-        _ld = _mr(_today_l.year, _today_l.month)[1]
-        _month_keys = [k for k in days.keys() if k >= _m_first.isoformat()]
-        _bal0 = portfolio_now - sum(days[k]["pnl"] for k in _month_keys)  # realized bal at month start
-        _cur = _bal0
-        _d = _m_first
-        _active = 0
+        _all_keys = sorted(days.keys())
+        _first_day = datetime.fromisoformat(_all_keys[0]).date()
+        # walk chronologically from the balance BEFORE all recorded trades (realized equity
+        # incl. BNB — same ruler as the operator's $3,000 start; operator-required Aug-4)
+        _cur = portfolio_now - sum(days[k]["pnl"] for k in _all_keys)
+        _d = _first_day.replace(day=1)
+        _m_active = 0; _m_key = None; _m_total = 0.0
         while _d <= _today_l:
             _iso = _d.isoformat()
-            _cur += days.get(_iso, {}).get("pnl", 0.0)
-            if days.get(_iso, {}).get("trades", 0) > 0:
-                _active += 1
-            # Aug-4 polish: FLOOR the emitted series at >=4 active trading days — the same
-            # noise floor as the MTD row. Day 1-3 projections are one-crash-compounded
-            # fantasy ($106 on Aug-1); comparing today against them made the d-vs-3d
-            # readout scream +$17k of nothing. Both arrays stay index-aligned.
-            if _active < 4:
-                _d += timedelta(days=1)
-                continue
-            _elapsed = (_d - _m_first).days + 1
-            _dcr = ((_cur / _bal0) ** (1.0 / _elapsed) - 1.0) if (_bal0 > 0 and _cur > 0) else 0.0
-            _left = _ld - _d.day
-            revisions.append({"date": _iso, "proj": round(_cur * ((1.0 + _dcr) ** _left), 2),
-                              "bal": round(_cur, 2)})
-            _w = []
-            for _b in range(7):
-                _w += pcts_by_day.get((_d - timedelta(days=_b)).isoformat(), [])
-            avg7.append({"date": _iso, "avg_pct": round(sum(_w) / len(_w), 4) if _w else None, "n": len(_w)})
+            _mk = _iso[:7]
+            if _mk != _m_key:
+                _m_key = _mk; _m_active = 0; _m_total = 0.0
+                _m_bal0 = _cur
+                _m_first = _d.replace(day=1)
+                _m_ld = _mr(_d.year, _d.month)[1]
+                revisions_by_month.setdefault(_mk, []); avg7_by_month.setdefault(_mk, [])
+            _e = days.get(_iso)
+            if _e:
+                _cur += _e["pnl"]; _m_total += _e["pnl"]
+                if _e.get("trades", 0) > 0:
+                    _m_active += 1
+            # same >=4-active-days noise floor as the MTD row, applied per month
+            if _m_active >= 4:
+                _elapsed = (_d - _m_first).days + 1
+                _dcr = ((_cur / _m_bal0) ** (1.0 / _elapsed) - 1.0) if (_m_bal0 > 0 and _cur > 0) else 0.0
+                _left = _m_ld - _d.day
+                revisions_by_month[_mk].append({"date": _iso, "proj": round(_cur * ((1.0 + _dcr) ** _left), 2),
+                                                "bal": round(_cur, 2)})
+                _w = []
+                for _b in range(7):
+                    _w += pcts_by_day.get((_d - timedelta(days=_b)).isoformat(), [])
+                avg7_by_month[_mk].append({"date": _iso, "avg_pct": round(sum(_w) / len(_w), 4) if _w else None, "n": len(_w)})
+            # month closes on its last calendar day → freeze the settlement record
+            if _d.day == _m_ld:
+                month_final[_mk] = {"total": round(_m_total, 2), "closing_bal": round(_cur, 2),
+                                    "active_days": _m_active,
+                                    "label": _d.strftime("%b ") + str(_m_ld)}
             _d += timedelta(days=1)
+        # legacy aliases = CURRENT month (the MTD row + exports read these; unchanged contract)
+        _cur_mk = _today_l.isoformat()[:7]
+        revisions = revisions_by_month.get(_cur_mk, [])
+        avg7 = avg7_by_month.get(_cur_mk, [])
     return {"days": days, "portfolio_now": round(portfolio_now, 2) if portfolio_now is not None else None,
             "revisions": revisions, "avg7": avg7, "ship_marks": _SHIP_MARKS,
+            "revisions_by_month": revisions_by_month, "avg7_by_month": avg7_by_month,
+            "month_final": month_final,
             "eom_label": (datetime.utcnow() + offset).strftime("%b ") + str(__import__("calendar").monthrange((datetime.utcnow()+offset).year,(datetime.utcnow()+offset).month)[1])}
 
 

@@ -8115,20 +8115,31 @@
         // beating the model's own expectations. avg7 sparkline = rolling 7d avg P&L%/trade
         // (leverage-invariant honesty twin: projection up + avg7 down = sizing illusion).
         // Amber ticks = mechanism-ship dates (era boundaries — don't trend across blindly).
-        function _sparkSvg(vals, w, h, color, marks) {
+        function _sparkSvg(vals, w, h, color, marks, titles) {
             const good = vals.map((v, i) => [i, v]).filter(p => p[1] != null && isFinite(p[1]));
-            if (good.length < 2) return '<span class="text-gray-600 text-xs">building…</span>';
+            if (good.length < 2) return '<span class="text-gray-600 text-xs">building… (needs ≥2 mature days)</span>';
             const ys = good.map(p => p[1]);
             const mn = Math.min(...ys), mx = Math.max(...ys), sp = (mx - mn) || 1;
-            const X = i => (i / (vals.length - 1)) * (w - 4) + 2;
+            const denom = Math.max(vals.length - 1, 1);
+            const X = i => (i / denom) * (w - 4) + 2;
             const Y = v => h - 3 - ((v - mn) / sp) * (h - 6);
             const pts = good.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(' ');
             let ticks = '';
             (marks || []).forEach(mi => {
                 if (mi >= 0 && mi < vals.length) ticks += `<line x1="${X(mi).toFixed(1)}" y1="1" x2="${X(mi).toFixed(1)}" y2="${h - 1}" stroke="rgba(251,191,36,0.55)" stroke-width="1" stroke-dasharray="2,2"/>`;
             });
+            // Aug-4 polish: every point is inspectable (transparent hit-circle + <title> tooltip)
+            let dots = '';
+            good.forEach(p => {
+                const t = (titles && titles[p[0]]) ? `<title>${titles[p[0]]}</title>` : '';
+                dots += `<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="4" fill="transparent">${t}</circle>`;
+            });
             const last = good[good.length - 1];
-            return `<svg width="${w}" height="${h}" class="inline-block align-middle">${ticks}<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/><circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="2" fill="${color}"/></svg>`;
+            return `<svg width="${w}" height="${h}" class="inline-block align-middle">${ticks}<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/>${dots}<circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="2" fill="${color}"/></svg>`;
+        }
+        function _eomK(v) {
+            if (v == null || !isFinite(v)) return '';
+            return Math.abs(v) >= 10000 ? '$' + (v / 1000).toFixed(1) + 'k' : '$' + Math.round(v).toLocaleString('en-US');
         }
         function _renderEomPanel() {
             const el = document.getElementById('pnl-eom-panel');
@@ -8153,8 +8164,8 @@
                 `<div><span class="text-gray-500">Projected by ${d.eom_label}:</span> <span class="text-blue-300 font-bold text-sm">$${Math.round(nowP).toLocaleString('en-US')}</span></div>` +
                 `<div><span class="text-gray-500">Δ vs 3d ago:</span> <span class="${cls(d3)} font-medium">${fmt(d3)}</span></div>` +
                 `<div><span class="text-gray-500">Δ vs 7d ago:</span> <span class="${cls(d7)} font-medium">${fmt(d7)}</span></div>` +
-                `<div class="flex items-center gap-2"><span class="text-gray-500">revisions</span>${_sparkSvg(projs, 140, 34, '#60a5fa', markIdx)}</div>` +
-                `<div class="flex items-center gap-2"><span class="text-gray-500">avg%/trade 7d</span>${_sparkSvg(avg7, 140, 34, '#34d399', markIdx)} <span class="${cls(a7now)}">${a7now != null ? (a7now >= 0 ? '+' : '') + a7now.toFixed(3) + '%' : '—'}</span></div>` +
+                `<div class="flex items-center gap-2"><span class="text-gray-500">revisions</span><span class="text-gray-600 text-[10px]">${projs.length > 1 ? _eomK(projs[0]) : ''}</span>${_sparkSvg(projs, 180, 34, '#60a5fa', markIdx, rev.map(r => r.date + ': $' + Math.round(r.proj).toLocaleString('en-US')))}<span class="text-blue-300 text-[10px]">${projs.length > 1 ? _eomK(nowP) : ''}</span></div>` +
+                `<div class="flex items-center gap-2"><span class="text-gray-500">avg%/trade 7d</span>${_sparkSvg(avg7, 140, 34, '#34d399', markIdx, (d.avg7 || []).map(a => a.date + ': ' + (a.avg_pct != null ? (a.avg_pct >= 0 ? '+' : '') + a.avg_pct.toFixed(3) + '% (' + a.n + ' trades)' : '—')))} <span class="${cls(a7now)}">${a7now != null ? (a7now >= 0 ? '+' : '') + a7now.toFixed(3) + '%' : '—'}</span></div>` +
                 `</div>`;
         }
 
@@ -12769,15 +12780,14 @@
                     // "—" until >=4 active days (early-month compounding is noise). MTD-DCR is the
                     // row's own realized rate: (bal / (bal − mtd_pnl))^(1/days_elapsed) − 1.
                     if (r.eom) {
-                        if ((r.eom.active_days || 0) < 4) return null;
-                        // Review Minor-1: use REALIZED equity (same basis as the calendar panel's
-                        // revision series) so the two "by EOM" headlines agree intraday; falls back
-                        // to total portfolio before the calendar's first fetch.
-                        const _eomBal = (typeof pnlCalData !== 'undefined' && pnlCalData && pnlCalData.portfolio_now) || _ppCurrentBal;
-                        const start = _eomBal - (r.eom.mtd_pnl || 0);
-                        if (start <= 0 || _eomBal <= 0) return null;
-                        const mtdDcr = Math.pow(_eomBal / start, 1 / Math.max(r.eom.days_elapsed, 1e-6)) - 1;
-                        return _eomBal * Math.pow(1 + mtdDcr, r.eom.days_left);
+                        // Aug-4 polish 2 (SINGLE SOURCE OF TRUTH — operator caught $22,271 here vs
+                        // $17,486 in the calendar panel): this cell now displays EXACTLY the panel's
+                        // number = the last point of the server-computed revision series (realized
+                        // equity, whole-day convention, >=4-active-day floor all inherited). The
+                        // duplicate client-side formula is deleted — two surfaces cannot diverge by
+                        // construction. "-" briefly at page load until the calendar fetch lands.
+                        const _revs = (typeof pnlCalData !== 'undefined' && pnlCalData && pnlCalData.revisions) || [];
+                        return _revs.length ? _revs[_revs.length - 1].proj : null;
                     }
                     if (_ppDCR === 0) return null;
                     const days = _ppDaysMap[r.period];

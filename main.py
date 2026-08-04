@@ -1353,9 +1353,19 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
         _bal0 = portfolio_now - sum(days[k]["pnl"] for k in _month_keys)  # realized bal at month start
         _cur = _bal0
         _d = _m_first
+        _active = 0
         while _d <= _today_l:
             _iso = _d.isoformat()
             _cur += days.get(_iso, {}).get("pnl", 0.0)
+            if days.get(_iso, {}).get("trades", 0) > 0:
+                _active += 1
+            # Aug-4 polish: FLOOR the emitted series at >=4 active trading days — the same
+            # noise floor as the MTD row. Day 1-3 projections are one-crash-compounded
+            # fantasy ($106 on Aug-1); comparing today against them made the d-vs-3d
+            # readout scream +$17k of nothing. Both arrays stay index-aligned.
+            if _active < 4:
+                _d += timedelta(days=1)
+                continue
             _elapsed = (_d - _m_first).days + 1
             _dcr = ((_cur / _bal0) ** (1.0 / _elapsed) - 1.0) if (_bal0 > 0 and _cur > 0) else 0.0
             _left = _ld - _d.day

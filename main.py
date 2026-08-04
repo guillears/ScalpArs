@@ -6744,6 +6744,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "all_worst_trough_pnl": round(min((o.trough_pnl or 0) for o in sl_orders), 4) if sl_orders else 0,
             "all_avg_close_pnl": round(sum(o.pnl_percentage or 0 for o in sl_orders) / all_sl_count, 4) if sl_orders else 0,
             "all_avg_price_drop": round(sum(all_sl_drops) / all_sl_count, 4) if sl_orders else 0,
+            # Aug-4 fix: the two amber ATR columns were missing from the All row's payload,
+            # shifting every cell after Post-Arm two columns left in the UI table.
+            "all_avg_atr_pct": (lambda _a: round(sum(_a) / len(_a), 4) if _a else None)([o.entry_atr_pct for o in sl_orders if o.entry_atr_pct is not None]),
+            "all_atr_sl_15x": (lambda _a: round(-(sum(_a) / len(_a)) * 1.5, 4) if _a else None)([o.entry_atr_pct for o in sl_orders if o.entry_atr_pct is not None]),
             "all_total_pnl_usd": round(sum(o.pnl or 0 for o in sl_orders), 2),
             "all_by_confidence": all_sl_by_conf,
             "all_by_direction": all_sl_by_dir,

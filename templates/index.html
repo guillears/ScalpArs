@@ -17505,6 +17505,8 @@
                             <td class="px-3 py-2 text-right text-purple-400">${sld.all_avg_entry_rsi != null ? sld.all_avg_entry_rsi.toFixed(1) : '-'}</td>
                             <td class="px-3 py-2 text-right ${sld.avg_peak_all_sl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${sld.avg_peak_all_sl >= 0 ? '+' : ''}${sld.avg_peak_all_sl.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${sld.all_avg_post_arm_min_pct == null ? 'text-gray-600' : (sld.all_avg_post_arm_min_pct < 0.05 ? 'text-red-400' : (sld.all_avg_post_arm_min_pct < 0.10 ? 'text-amber-400' : 'text-gray-400'))} font-medium" title="${sld.all_post_arm_min_n != null ? 'N=' + sld.all_post_arm_min_n : 'No post-arm data'}">${sld.all_avg_post_arm_min_pct == null ? '-' : (sld.all_avg_post_arm_min_pct >= 0 ? '+' : '') + sld.all_avg_post_arm_min_pct.toFixed(4) + '%'}</td>
+                            <td class="px-3 py-2 text-right text-amber-400">${sld.all_avg_atr_pct != null ? sld.all_avg_atr_pct.toFixed(3) + '%' : '-'}</td>
+                            <td class="px-3 py-2 text-right text-amber-400">${sld.all_atr_sl_15x != null ? sld.all_atr_sl_15x.toFixed(3) + '%' : '-'}</td>
                             <td class="px-3 py-2 text-right ${(sld.all_avg_trough_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${(sld.all_avg_trough_pnl || 0) >= 0 ? '+' : ''}${(sld.all_avg_trough_pnl || 0).toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${(sld.all_worst_trough_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${(sld.all_worst_trough_pnl || 0) >= 0 ? '+' : ''}${(sld.all_worst_trough_pnl || 0).toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${sld.all_avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${sld.all_avg_close_pnl >= 0 ? '+' : ''}${sld.all_avg_close_pnl.toFixed(4)}%</td>
@@ -17517,7 +17519,7 @@
                     
                     slBody.innerHTML = rows;
                 } else {
-                    slBody.innerHTML = '<tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
+                    slBody.innerHTML = '<tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
                 }
                 
                 // Winning Trades Drawdown

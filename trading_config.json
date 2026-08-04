@@ -602,7 +602,9 @@
     "flipgate_probe_max_open": 3,
     "spike_lock_enabled": true,
     "spike_lock_arm_pct": 0.2,
-    "spike_lock_sl_pct": -0.15
+    "spike_lock_sl_pct": -0.15,
+    "nonexp_calm3d_reentry_cooldown_min": 90.0,
+    "spike_fade_max_btc_dist13": 0.0
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

@@ -514,6 +514,18 @@ class SignalThresholds(BaseModel):
     # acknowledged). Sign boundary, NOT fitted (0 canonical). Mechanism kin: W2×1h-rising,
     # deadband family. <= -98 = leg off; missing b1h fails open.
     nonexp_calm3d_b1h_min: float = 0.0
+    # 🔒 SAME-PAIR RE-ENTRY COOLDOWN (Aug-4, operator-directed at 90min; acknowledged N=2
+    # free-insurance ship, AGLD-class): the door's ONLY two current-admission losers are
+    # same-pair re-fires <=57min after a prior CALM3D fire on that pair (ONDO 39min -$198,
+    # HYPE 57min -$215 — the HYPE instance occurred AFTER the watch was pre-registered);
+    # all 12 winners were first-of-episode (nearest same-pair winner gap 8.4h). Mechanism =
+    # the door's own thesis: the edge is the FIRST release of a coil — a re-entry buys the
+    # spent spring. Historically-free zone for the line: (57min, 8.4h); 90 = operator pick
+    # (1.6x above the loser edge). Door-scoped ONLY (other books' same-pair re-fires WIN:
+    # ADA/EGLD/SXT — do not generalize). 0 = off. Counter CALM3D_REENTRY; in-memory
+    # tracker (resets on redeploy — known gap, revert surface covers it).
+    # 🔒 REVERT ->0 if blocked re-entries' would-be record runs >=60% WR on N>=8 fresh.
+    nonexp_calm3d_reentry_cooldown_min: float = 90.0
     nonexp_calm3d_invest_mult: float = 2.0        # Jul-31 RE-ESCALATED 1.0→2.0 with the b1h leg (operator-
     #   directed DOUBLE staging override: skips the locked 1.5×-first ladder AND the N>=30 W-bar —
     #   evidence = the refined cohort 10·90%·+0.372% (partially in-sample; legs discovered on it).
@@ -621,6 +633,21 @@ class SignalThresholds(BaseModel):
     # outcomes from 1m klines under the fade exit stack (fixed -0.7 SL / ladder) — blocked
     # cohort >=60% WR or Σ>0 -> ceiling OFF. 0 = disabled. Fail-open on missing bRSI.
     spike_fade_max_btc_rsi: float = 50.0
+    # 🔒 FADE BTC-DIST13 GATE (Aug-4, fade N>=25-30 read lead item executed): block a FADE
+    # when BTC trades ABOVE its 5m EMA13 (dist13 > max). Blocked cohort lifetime = 0W/5L
+    # -$304 across 4 dates / both batches (XPL/ZEREBRO/SNX B1 + ICNT/FRAX B2 — incl. the
+    # worst fade loss ever, ICNT -$131 slip-through); zero winners ever forfeited (AGLD
+    # free-insurance class). SIGN boundary (not fitted). Mechanism: BTC above its short-term
+    # mean = market bid intact -> the alt pump gets beta tailwind and squeezes the short;
+    # mirror-confirmed by the LONG species (ALL 10 bounce fires + both fresh chases had
+    # dist13>0 — the long side LIVES there; FADE-ONLY scope is structural, do not extend).
+    # Kin of the shipped bRSI<=50 ceiling (same family, mean-vs-level expression).
+    # Sentinel >= 99 = off. Fail-open on missing BTC price/EMA13. Counter SPIKE_FADE_BD13.
+    # 🔒 REVERT ->99 (off): blocked-candidate logs re-simmed from 1m klines (same surface
+    # as the bRSI ceiling) — >=60% WR or Σ>0 at N>=8 -> off. Note: does NOT address the
+    # SPELL crash-extreme class (BTC below EMA13 there — separate d6-band question at the
+    # fade read).
+    spike_fade_max_btc_dist13: float = 0.0
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

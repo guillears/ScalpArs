@@ -4392,6 +4392,15 @@ class TradingEngine:
                             self._record_filter_block("SPIKE_FADE_BRSI", "SHORT")
                             logger.info(f"[SPIKE_FADE_BRSI] {p['pair']}: scanner fade blocked — BTC RSI {_sp_brsi:.1f} > {_sp_brsi_max} (squeeze-against-gravity guard) | entry_px={ind.get('price')} pair_rsi={ind.get('rsi')} — re-sim revert row")
                             continue
+                        # Aug-4 FADE BTC-DIST13 GATE (scanner parity; see config comment):
+                        # don't short vs BTC above its 5m mean. 0W/5L lifetime above the line.
+                        _sp_bd13_max = float(getattr(th, 'spike_fade_max_btc_dist13', 99.0) if getattr(th, 'spike_fade_max_btc_dist13', 99.0) is not None else 99.0)
+                        _sp_bpx = _gl.get('_current_btc_price'); _sp_be13 = _gl.get('_current_btc_ema13')
+                        _sp_bd13 = ((_sp_bpx - _sp_be13) / _sp_be13 * 100.0) if (_sp_bpx and _sp_be13) else None
+                        if _sp_bd13_max < 99 and _sp_bd13 is not None and _sp_bd13 > _sp_bd13_max:
+                            self._record_filter_block("SPIKE_FADE_BD13", "SHORT")
+                            logger.info(f"[SPIKE_FADE_BD13] {p['pair']}: scanner fade blocked — BTC dist-EMA13 {_sp_bd13:+.3f}% > {_sp_bd13_max} (beta-tailwind guard) | entry_px={ind.get('price')} pair_rsi={ind.get('rsi')} — re-sim revert row")
+                            continue
                         _sp_dir, _sp_is_fade = "SHORT", True
                         if _sp_regime_fade:
                             logger.info(f"[SPIKE_REGIME_FADE] {p['pair']}: non-chase regime — routing trigger to FADE short")
@@ -6120,6 +6129,11 @@ class TradingEngine:
             }
             if pair not in _open_orders_cache:
                 _open_orders_cache[pair] = []
+            if nonexp_calm3d:
+                # Aug-4 re-entry cooldown tracker (in-memory; see config comment)
+                if not hasattr(self, '_calm3d_last_fire'):
+                    self._calm3d_last_fire = {}
+                self._calm3d_last_fire[pair] = datetime.utcnow()
             _open_orders_cache[pair].append(order_cache_entry)
         
         logger.info(f"[ORDER CREATED] {pair}: {direction} {confidence} - ID={order.id}, Investment=${investment:.2f}")
@@ -10240,6 +10254,13 @@ class TradingEngine:
                                         and getattr(_sc_th, 'spike_fade_enabled', False)):
                                     self._record_filter_block("SPIKE_FADE_BRSI", "SHORT")
                                     logger.info(f"[SPIKE_FADE_BRSI] {pair}: fade blocked — BTC RSI {_sc_brsi:.1f} > {_sc_brsi_max} (squeeze-against-gravity guard) | entry_px={indicators.get('price')} pair_rsi={_sc_rsi:.1f} — re-sim revert row")
+                                elif (lambda _bmax, _bpx, _b13: _bmax < 99 and _bpx and _b13 and ((_bpx - _b13) / _b13 * 100.0) > _bmax)(
+                                        float(getattr(_sc_th, 'spike_fade_max_btc_dist13', 99.0) if getattr(_sc_th, 'spike_fade_max_btc_dist13', 99.0) is not None else 99.0),
+                                        globals().get('_current_btc_price'), globals().get('_current_btc_ema13')) and getattr(_sc_th, 'spike_fade_enabled', False):
+                                    # Aug-4 FADE BTC-DIST13 GATE (hook parity; see config comment)
+                                    self._record_filter_block("SPIKE_FADE_BD13", "SHORT")
+                                    _sc_bd13v = (globals().get('_current_btc_price') - globals().get('_current_btc_ema13')) / globals().get('_current_btc_ema13') * 100.0
+                                    logger.info(f"[SPIKE_FADE_BD13] {pair}: fade blocked — BTC dist-EMA13 {_sc_bd13v:+.3f}% > {getattr(_sc_th, 'spike_fade_max_btc_dist13', 0.0)} (beta-tailwind guard) | entry_px={indicators.get('price')} pair_rsi={_sc_rsi:.1f} — re-sim revert row")
                                 elif getattr(_sc_th, 'spike_fade_enabled', False):
                                     signal, confidence = "SHORT", "STRONG_BUY"
                                     _spike_fade_hit = True
@@ -10465,8 +10486,24 @@ class TradingEngine:
                                 _pp_b1h_min = float(getattr(_th_pp, 'nonexp_calm3d_b1h_min', 0.0) if getattr(_th_pp, 'nonexp_calm3d_b1h_min', 0.0) is not None else 0.0)
                                 _pp_b1h = globals().get('_current_btc_1h_slope')
                                 _pp_hour_up = (_pp_b1h_min <= -98) or (_pp_b1h is None) or (float(_pp_b1h) > _pp_b1h_min)
+                                # Aug-4 SAME-PAIR RE-ENTRY COOLDOWN (4th leg, see config comment):
+                                # the door's only losers are <=57min same-pair re-fires — the coil
+                                # already released; the re-entry buys the spent spring. 0 = off.
+                                _pp_cool_min = float(getattr(_th_pp, 'nonexp_calm3d_reentry_cooldown_min', 90.0) or 0.0)
+                                _pp_cool_ok = True
+                                if _pp_cool_min > 0:
+                                    _pp_last = getattr(self, '_calm3d_last_fire', {}).get(pair)
+                                    if _pp_last is not None and (datetime.utcnow() - _pp_last).total_seconds() < _pp_cool_min * 60:
+                                        _pp_cool_ok = False
                                 if (entry_btc_regime in _pp_regs and _pp_batr is not None
-                                        and float(_pp_batr) <= _pp_atr_max and _pp_coiled and _pp_hour_up):
+                                        and float(_pp_batr) <= _pp_atr_max and _pp_coiled and _pp_hour_up
+                                        and not _pp_cool_ok):
+                                    self._record_filter_block("CALM3D_REENTRY", "LONG", had_room=_scan_had_room_snapshot)
+                                    logger.info(f"[CALM3D_REENTRY] {pair}: door candidate REJECTED — same-pair CALM3D fire "
+                                                f"{(datetime.utcnow() - _pp_last).total_seconds()/60:.0f}min ago < cooldown {_pp_cool_min:.0f}min (re-entry buys the spent coil)")
+                                if (entry_btc_regime in _pp_regs and _pp_batr is not None
+                                        and float(_pp_batr) <= _pp_atr_max and _pp_coiled and _pp_hour_up
+                                        and _pp_cool_ok):
                                     _nonexp_calm3d_hit = True
                                     logger.info(f"[NONEXP_CALM3D] {pair}: gap-{'flat' if _pp_gapflat else 'min[flat]'} LONG ADMITTED full-size — {entry_btc_regime} ∧ BTC-ATR {float(_pp_batr):.3f} <= {_pp_atr_max} ∧ stretch {(entry_ema5_stretch if entry_ema5_stretch is not None else -1):.2f} <= {_pp_smax} ∧ b1h {(float(_pp_b1h) if _pp_b1h is not None else -1):+.3f} > {_pp_b1h_min}")
                                 else:

@@ -403,7 +403,17 @@ class SignalThresholds(BaseModel):
     # pairs get ONLY the spike door (never the ladder); fires route into the SAME
     # SPIKE_CHASE_PROBE cohort/caps/gates. Piggybacks the scan loop; fail-silent.
     spike_scanner_enabled: bool = True
-    spike_scanner_min_vol_usd: float = 1000000.0  # dead-book floor: skip pairs under $1M 24h vol
+    # ⚡ RAISED $1M→$2M 2026-08-04 PM (operator-directed): restores the STRUCTURAL floor that
+    # existed pre-LIQ2 (0.1% cap × $100 min-investment made sub-$2M pairs unbuyable — B1 has
+    # ZERO trades under $2M; the Aug-3 LIQ2 raise removed it by accident, admitting the $1-2M
+    # sliver = 7 fires · 1W/6L · −$71 · worst avg −0.395%, incl. all three instant gap-throughs
+    # FRAX 7s / SPELL 24s / GTC + the stablecoin-wobble class). $2M = the ONLY line whose
+    # blocked side is negative everywhere it exists ($3M/$5M lines fail cross-batch: blocked
+    # side POSITIVE in B2 +$30/+$36 — EGLD/KAS/QNT/KSM winners live at $2-3M). Cost: one
+    # forfeited winner ever (IO +$8.89). NOT a fitted boundary. Transparency: shipped mid-
+    # LIQ2-window — the gate's conditions are unchanged but its remaining fires get cleaner
+    # by construction (logged in DECISION_LOG 2026-08-04 (4)).
+    spike_scanner_min_vol_usd: float = 2000000.0  # dead-book floor: skip pairs under $2M 24h vol
     spike_scanner_max_pairs: int = 400            # universe cut (top-N by volume incl. the top-50)
     # ══ Jul 27 — 🚀 SPIKE FULL SHIP (operator-directed one-ship: both species full size).
     # Trigger fires (legs 1-5) then pair ADX ROUTES the direction (leg 6, 10/10 lifetime:

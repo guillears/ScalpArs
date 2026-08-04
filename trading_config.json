@@ -566,7 +566,7 @@
     "spike_chase_probe_min_vol_ratio": 5.0,
     "spike_chase_probe_min_candle_pct": 0.5,
     "spike_scanner_enabled": true,
-    "spike_scanner_min_vol_usd": 1000000.0,
+    "spike_scanner_min_vol_usd": 2000000.0,
     "spike_scanner_max_pairs": 400,
     "spike_chase_max_adx": 30.0,
     "spike_chase_max_stretch_atr": 2.5,

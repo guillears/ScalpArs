@@ -658,7 +658,14 @@ class SignalThresholds(BaseModel):
     # [SPIKE_FADE_BRSI] with pair/price/bRSI; at N>=5 blocked candidates, re-simulate their
     # outcomes from 1m klines under the fade exit stack (fixed -0.7 SL / ladder) — blocked
     # cohort >=60% WR or Σ>0 -> ceiling OFF. 0 = disabled. Fail-open on missing bRSI.
-    spike_fade_max_btc_rsi: float = 50.0
+    # ⚙️ Aug-5 TIGHTEN 50→45 (operator ship, evidence acknowledged watch-grade/one-pool):
+    # zone [45,50) current batch = 8·3W/5L·38%·avg −0.617%·−$472 (EVAA/ICNT/PIPPIN/FRAX all
+    # live here — the 4 highest-bRSI entries of the batch are its 4 biggest losers); B1 zone
+    # only 2·1W/1L·−$33 = no cross-pool support; EVAA = 54% of blocked-$ (LIQ2-amplified;
+    # de-sized Δ ≈ +$344). Shipped on operator call with a TIGHT pre-committed revert:
+    # 🔒 at N≥6 blocked-in-[45,50) candidates (each logs [SPIKE_FADE_BRSI] with entry px),
+    # price-replay them under the fade exit stack — WR≥55% ∨ Σ>0 → ceiling back to 50.
+    spike_fade_max_btc_rsi: float = 45.0
     # 🔒 FADE BTC-DIST13 GATE (Aug-4, fade N>=25-30 read lead item executed): block a FADE
     # when BTC trades ABOVE its 5m EMA13 (dist13 > max). Blocked cohort lifetime = 0W/5L
     # -$304 across 4 dates / both batches (XPL/ZEREBRO/SNX B1 + ICNT/FRAX B2 — incl. the

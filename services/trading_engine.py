@@ -4342,6 +4342,13 @@ class TradingEngine:
                                 self._record_filter_block("SPIKE_BOUNCE_CRASHED", "LONG")
                                 logger.info(f"[SPIKE_BOUNCE_CRASHED] {p['pair']}: bounce blocked — EMA13-50 gap {_sb_gap:+.2f}% <= {_sb_gap_min}% (already-crashed pair, DEEPGAP class)")
                                 continue
+                            # guard ③b healthy-pair exclusion (Aug-5 pgap window): a violent dump
+                            # out of a flat/uptrending pair is news, not a stop cascade — no snapback.
+                            _sb_gap_max = float(getattr(th, 'spike_bounce_max_pair_gap', 99.0) if getattr(th, 'spike_bounce_max_pair_gap', None) is not None else 99.0)
+                            if _sb_gap_max < 99 and _sb_gap > _sb_gap_max:
+                                self._record_filter_block("SPIKE_BOUNCE_PGAP", "LONG")
+                                logger.info(f"[SPIKE_BOUNCE_PGAP] {p['pair']}: bounce blocked — EMA13-50 gap {_sb_gap:+.2f}% > {_sb_gap_max}% (healthy-pair dump = news class) | entry_px={ind.get('price')} pair_rsi={ind.get('rsi')} — re-sim revert row")
+                                continue
                         # guard ④ regime block: no knife-catching in confirmed bear tape
                         # (BOUNCE_LONG's Jun-23 graves were HEALTHY_BEAR cells).
                         _sb_blocked = set(x.strip() for x in (getattr(th, 'spike_bounce_blocked_regimes', '') or '').split(',') if x.strip())
@@ -10368,6 +10375,12 @@ class TradingEngine:
                                         if _sb_gap <= _sb_gap_min:
                                             self._record_filter_block("SPIKE_BOUNCE_CRASHED", "LONG")
                                             logger.info(f"[SPIKE_BOUNCE_CRASHED] {pair}: bounce blocked — EMA13-50 gap {_sb_gap:+.2f}% <= {_sb_gap_min}% (already-crashed pair, DEEPGAP class)")
+                                            _sb_ok = False
+                                        # guard ③b healthy-pair exclusion (Aug-5 pgap window)
+                                        _sb_gap_max = float(getattr(_sb_th, 'spike_bounce_max_pair_gap', 99.0) if getattr(_sb_th, 'spike_bounce_max_pair_gap', None) is not None else 99.0)
+                                        if _sb_ok and _sb_gap_max < 99 and _sb_gap > _sb_gap_max:
+                                            self._record_filter_block("SPIKE_BOUNCE_PGAP", "LONG")
+                                            logger.info(f"[SPIKE_BOUNCE_PGAP] {pair}: bounce blocked — EMA13-50 gap {_sb_gap:+.2f}% > {_sb_gap_max}% (healthy-pair dump = news class) | entry_px={indicators.get('price')} pair_rsi={_sb_rsi:.1f} — re-sim revert row")
                                             _sb_ok = False
                                 # guard ④ regime block (BOUNCE_LONG's Jun-23 graves were bear cells)
                                 if _sb_ok:

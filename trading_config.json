@@ -534,7 +534,7 @@
     "deepgap_probe_max_open": 3,
     "majors_probe_enabled": true,
     "majors_probe_max_open": 2,
-    "spike_bounce_enabled": false,
+    "spike_bounce_enabled": true,
     "spike_bounce_rsi_crash": 25.0,
     "spike_bounce_rsi_prev_min": 45.0,
     "spike_bounce_rsi_prev_max": 65.0,
@@ -605,7 +605,8 @@
     "spike_lock_sl_pct": -0.15,
     "nonexp_calm3d_reentry_cooldown_min": 90.0,
     "spike_fade_max_btc_dist13": 0.0,
-    "spike_tripwire_autodisable": false
+    "spike_tripwire_autodisable": false,
+    "spike_bounce_max_pair_gap": -0.125
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

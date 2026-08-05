@@ -629,9 +629,12 @@ class SignalThresholds(BaseModel):
     # Lev 1x, normal book rules — NO sleeve max-open, NO auto kill gate (operator: manual
     # review here; tally reported every read). 🔒 READ (locked): N>=10 · >=4 dates → WR>=55% ∧
     # Σ>0; slices per-regime/bRSI/dump-magnitude/rng, never pooled; thresholds frozen.
-    spike_bounce_enabled: bool = False  # ✗ READ FAILED 2026-08-05 (N=11·4 dates: 45.5% WR·−$27 —
-    # both frozen legs missed; XMR also counter-exampled the alignment-split rescue). Species OFF
-    # per operator; re-entry path = fresh probe proposal, not a toggle.
+    spike_bounce_enabled: bool = True
+    # ⚡ Aug-5 PM RE-ENABLED with the pgap window (operator ship after the theory review).
+    # History same day: frozen-leg read FAILED at N=11·4 dates (45.5%·−$27, XMR counter-exampled
+    # the alignment-split rescue) → species OFF AM; post-mortem found the pgap separator
+    # (0W/4L blocked · all 5 winners kept) → re-entry as this probe-class ship. Read gate lives
+    # on the spike_bounce_max_pair_gap line below; miss → OFF for good.
     spike_bounce_rsi_crash: float = 25.0     # RSI points DOWN in one 5m candle
     spike_bounce_rsi_prev_min: float = 45.0  # resting band before the crash (mirror of [35,55])
     spike_bounce_rsi_prev_max: float = 65.0
@@ -640,6 +643,15 @@ class SignalThresholds(BaseModel):
     spike_bounce_min_vol_ratio: float = 5.0    # discovery-candle volume vs avg20
     spike_bounce_min_btc_rsi: float = 50.0     # bRSI FLOOR (0=off; fail-open on missing)
     spike_bounce_min_pair_gap: float = -1.0    # pair EMA13-50 gap must be > this (0=off; DEEPGAP guard)
+    # 🏀 PGAP WINDOW upper bound (Aug-5 re-enable ship): bounce fires only when the pair was
+    # ALREADY mildly weak — gap ∈ (min, max]. N=11 post-mortem: pgap ≥ −0.10 = 0W/4L·−$106
+    # (MEME/XMR/IMX/B2 — healthy-pair dump = news class, incl. the XMR alignment counter-example);
+    # pgap ≤ −0.15 = ALL 5 winners (+$70). Threshold −0.125 frozen in the empty [−0.15,−0.10] gap
+    # (sign < 0 is the theory; the extra magnitude is empirical — if the read fails, retest the
+    # sign boundary before killing the mechanism). Single-pool post-hoc evidence, acknowledged.
+    # 🔒 PRE-COMMITTED READ: at N≥8 post-filter fires — WR≥55% ∧ Σ>0 → keep; miss → species OFF
+    # for good. Blocked side logs [SPIKE_BOUNCE_PGAP] with entry px (re-sim rows). ≥99 = off.
+    spike_bounce_max_pair_gap: float = -0.125
     spike_bounce_blocked_regimes: str = "STRONG_BEAR,HEALTHY_BEAR"  # comma list; empty = no regime block
     spike_bounce_invest_mult: float = 1.0
     spike_bounce_lev_mult: float = 1.0

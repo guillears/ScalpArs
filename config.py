@@ -440,9 +440,11 @@ class SignalThresholds(BaseModel):
     # 2x→1x executed) and the operator explicitly overrode it back to 2x same day, informed of the
     # tail math (EVAA at 2x+0.2%cap = −$255 vs ≈−$64 at 1x+0.1%) and that tripwire auto-disable is
     # now OFF (sizing = the only fade tail protection). Logged DECISION_LOG 2026-08-05.
-    # 🔒 TIGHTER RE-REVERT GATE (override-class, non-negotiable): any single 2x fade ≤ −0.75%
-    # OR Σ pnl% of the next 5 2x fades < 0 → 1x PERMANENTLY (no re-proposal without a
-    # structural change, e.g. tripwire auto-disable back ON).
+    # 📋 WATCHLIST (operator directive Aug-5 PM: NO automatic gate — review item only): quant
+    # FLAGS for operator decision on any single 2x fade ≤ −1.0% (gap-through class; −0.75 was
+    # miscalibrated — ordinary thin-pair slippage lands −0.76/−0.82) or rolling-15 Σ pnl% < 0
+    # (5-fire windows false-fire 8/18 in a +$267 era; 15-fire: 0/8). Note: 2x has NEVER bound —
+    # every era fade was liquidity-cap-bound (marginal $0 in 22 fires); binds only >$36M-vol pairs.
     spike_fade_lev_mult: float = 1.0              # FADE leverage mult (1.0 = base 20x)
     spike_fade_sl_pct: float = -0.70              # FADE fixed SL — NO ATR widening (squeeze tail
                                                   # on pumping pairs; max adverse seen +0.49)
@@ -1777,9 +1779,10 @@ class InvestmentConfig(BaseModel):
     # ✗ GATE FIRED 2026-08-05 (window complete 16/15, ALL THREE legs failed: Σ −1.09% <0 ·
     # DOA 5/16=31% >20% · EVAA slip-through −3.07% vs −0.70 stop ≫15bps) → mechanical revert to
     # 0.1% executed. ⚠ OPERATOR OVERRIDE same day: back to 0.2%, informed of the three-leg failure.
-    # 🔒 TIGHTER RE-REVERT GATE (override-class, non-negotiable): next 10 LIQ2-doubled fires —
-    # any single fire ≤ −1.5% OR window Σ pnl% < 0 OR DOA > 20% → 0.1% PERMANENTLY
-    # (no further re-proposal). Logged DECISION_LOG 2026-08-05.
+    # 📋 WATCHLIST (operator directive Aug-5 PM: NO automatic gate — review item only): quant
+    # FLAGS for operator decision on any doubled fire ≤ −1.5% or rolling-15 doubled-fire Σ pnl% < 0;
+    # DOA% reported each batch as diagnostic (not a trigger). Measured LIQ2 marginal at review:
+    # −$62 over 17 fires (boost gave +$130 across winners, −$127 on EVAA alone).
     spike_lowvol_liq_cap_pct: float = 0.2         # spikes on thin pairs: % of 24h vol (0 = off → global pct)
     spike_lowvol_threshold_usd: float = 10_000_000.0  # "thin" = 24h vol below this (frozen slice boundary)
     # ② Gross-notional cap: Σ(open notional) ≤ balance × max_gross_leverage.

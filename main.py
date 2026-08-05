@@ -2414,7 +2414,7 @@ def _compute_pnl_distribution_stats(orders):
     }
 
 
-def _compute_sleeve_performance(orders):
+def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
     """Per-sleeve performance rollup (Jul 1, 2026, operator-requested) — the exact split used in
     every batch analysis: MOM-long / MOM-short / FLIP-short (+ Total). Sleeve is derived from
     existing columns (entry_strategy + direction), so the orders CSV already carries the raw data.
@@ -2450,6 +2450,11 @@ def _compute_sleeve_performance(orders):
             'pf': round(gross_w / gross_l, 2) if gross_l > 0 else (999 if gross_w > 0 else 0),
             'worst_pct': round(min((o.pnl_percentage or 0) for o in g), 2),
             'avg_dur': f"{_avg_s // 3600:02d}:{(_avg_s % 3600) // 60:02d}:{_avg_s % 60:02d}",
+            # Aug-5: standalone daily compound — as if this row alone traded the batch-start
+            # balance for the window. Rows do NOT sum; the Total row is the real compound.
+            'pct_day': (round(((1 + sum(o.pnl or 0 for o in g) / start_balance) ** (1 / window_days) - 1) * 100, 3)
+                        if start_balance and start_balance > 0 and window_days and window_days >= 0.5
+                        and sum(o.pnl or 0 for o in g) / start_balance > -1 else None),
         }
     order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long']
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
@@ -2460,7 +2465,7 @@ def _compute_sleeve_performance(orders):
     return rows
 
 
-def _compute_strategy_performance(orders):
+def _compute_strategy_performance(orders, start_balance=None, window_days=None):
     """Per-strategy×direction rollup (Aug 2, 2026, operator-requested) — same columns/math as the
     sleeve table but split by entry_strategy, because the sleeve rows lump the spike species into
     Mom-Long/Mom-Short (program ② hides inside program ①'s rows). Row label = STRATEGY · L/S.
@@ -2493,6 +2498,10 @@ def _compute_strategy_performance(orders):
             'pf': round(gross_w / gross_l, 2) if gross_l > 0 else (999 if gross_w > 0 else 0),
             'worst_pct': round(min((o.pnl_percentage or 0) for o in g), 2),
             'avg_dur': f"{_avg_s // 3600:02d}:{(_avg_s % 3600) // 60:02d}:{_avg_s % 60:02d}",
+            # Aug-5: standalone daily compound (see sleeve table note — rows do NOT sum).
+            'pct_day': (round(((1 + sum(o.pnl or 0 for o in g) / start_balance) ** (1 / window_days) - 1) * 100, 3)
+                        if start_balance and start_balance > 0 and window_days and window_days >= 0.5
+                        and sum(o.pnl or 0 for o in g) / start_balance > -1 else None),
         }
 
     _pref = ['MOMENTUM', 'FAN_RATIO_GATE', 'BULL_LONG', 'PAIR_RSI_OB', 'BOUNCE_LONG',
@@ -7975,8 +7984,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "pnl_distribution": _compute_pnl_distribution(orders),
         "pnl_distribution_stats": _compute_pnl_distribution_stats(orders),
         "mae_mfe": _compute_mae_mfe(orders),
-        "sleeve_performance": _compute_sleeve_performance(orders),
-        "strategy_performance": _compute_strategy_performance(orders),
+        "sleeve_performance": _compute_sleeve_performance(orders, initial_balance, runtime_days),
+        "strategy_performance": _compute_strategy_performance(orders, initial_balance, runtime_days),
         "hourly_performance": _compute_hourly_performance(orders),
         "daily_performance": _compute_daily_performance(orders),
         "day_time_heatmap": _compute_day_time_heatmap(orders),

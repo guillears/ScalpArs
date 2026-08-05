@@ -8149,6 +8149,11 @@
             if (v == null || !isFinite(v)) return '';
             return Math.abs(v) >= 10000 ? '$' + (v / 1000).toFixed(1) + 'k' : '$' + Math.round(v).toLocaleString('en-US');
         }
+        // Aug-5 sparkline maturity cut (display-only): the >=4-active-day floor still lets the
+        // FIRST point carry an explosive extrapolation exponent (day-4 rate ^ ~27 days left ->
+        // $19.9k-class artifacts that crush the y-scale). The sparkline starts at day >= 7 of the
+        // month, where the exponent is sane; the Δ readouts + exports keep the full floored series.
+        const _eomSparkCut = arr => (arr || []).filter(r => +String(r.date || '').slice(8, 10) >= 7);
         function _renderEomPanel() {
             const el = document.getElementById('pnl-eom-panel');
             if (!el) return;
@@ -8166,9 +8171,10 @@
             const _isCur = _viewKey === _curKey;
             if (!_isCur) {
                 const fin = (d.month_final || {})[_viewKey];
-                const frev = ((d.revisions_by_month || {})[_viewKey] || []).map(r => r.proj);
-                const ftit = ((d.revisions_by_month || {})[_viewKey] || []).map(r => r.date + ': $' + Math.round(r.proj).toLocaleString('en-US'));
-                const fmarks = (d.ship_marks || []).map(m => ((d.revisions_by_month || {})[_viewKey] || []).findIndex(r => r.date === m[0])).filter(i => i >= 0);
+                const _frows = _eomSparkCut((d.revisions_by_month || {})[_viewKey]);
+                const frev = _frows.map(r => r.proj);
+                const ftit = _frows.map(r => r.date + ': $' + Math.round(r.proj).toLocaleString('en-US'));
+                const fmarks = (d.ship_marks || []).map(m => _frows.findIndex(r => r.date === m[0])).filter(i => i >= 0);
                 if (!fin) { el.innerHTML = ''; return; }
                 const fcls = fin.total >= 0 ? 'text-emerald-400' : 'text-red-400';
                 const spark = frev.length >= 2
@@ -8194,6 +8200,12 @@
             const avg7 = (d.avg7 || []).map(a => a.avg_pct);
             const a7now = avg7.length ? avg7[avg7.length - 1] : null;
             const markIdx = (d.ship_marks || []).map(m => rev.findIndex(r => r.date === m[0])).filter(i => i >= 0);
+            const revS = _eomSparkCut(rev);
+            const projsS = revS.map(r => r.proj);
+            const markIdxS = (d.ship_marks || []).map(m => revS.findIndex(r => r.date === m[0])).filter(i => i >= 0);
+            const sparkRev = projsS.length >= 2
+                ? `<span class="text-gray-600 text-[10px]">${_eomK(projsS[0])}</span>${_sparkSvg(projsS, 180, 34, '#60a5fa', markIdxS, revS.map(r => r.date + ': $' + Math.round(r.proj).toLocaleString('en-US')))}<span class="text-blue-300 text-[10px]">${_eomK(nowP)}</span>`
+                : `<span class="text-gray-600 text-[10px]">building… (matures day 7)</span>`;
             window._eomPanel = { label: d.eom_label, proj: nowP, d3: d3, d7: d7, a7: a7now,
                                  marks: (d.ship_marks || []).map(m => m.join(' ')) };
             el.innerHTML =
@@ -8201,7 +8213,7 @@
                 `<div><span class="text-gray-500">Projected by ${d.eom_label}:</span> <span class="text-blue-300 font-bold text-sm">$${Math.round(nowP).toLocaleString('en-US')}</span></div>` +
                 `<div><span class="text-gray-500">Δ vs 3d ago:</span> <span class="${cls(d3)} font-medium">${fmt(d3)}</span></div>` +
                 `<div><span class="text-gray-500">Δ vs 7d ago:</span> <span class="${cls(d7)} font-medium">${fmt(d7)}</span></div>` +
-                `<div class="flex items-center gap-2"><span class="text-gray-500">revisions</span><span class="text-gray-600 text-[10px]">${projs.length > 1 ? _eomK(projs[0]) : ''}</span>${_sparkSvg(projs, 180, 34, '#60a5fa', markIdx, rev.map(r => r.date + ': $' + Math.round(r.proj).toLocaleString('en-US')))}<span class="text-blue-300 text-[10px]">${projs.length > 1 ? _eomK(nowP) : ''}</span></div>` +
+                `<div class="flex items-center gap-2"><span class="text-gray-500">revisions</span>${sparkRev}</div>` +
                 `<div class="flex items-center gap-2"><span class="text-gray-500">avg%/trade 7d</span>${_sparkSvg(avg7, 140, 34, '#34d399', markIdx, (d.avg7 || []).map(a => a.date + ': ' + (a.avg_pct != null ? (a.avg_pct >= 0 ? '+' : '') + a.avg_pct.toFixed(3) + '% (' + a.n + ' trades)' : '—')))} <span class="${cls(a7now)}">${a7now != null ? (a7now >= 0 ? '+' : '') + a7now.toFixed(3) + '%' : '—'}</span></div>` +
                 `</div>`;
         }

@@ -4336,14 +4336,15 @@ class TradingEngine:
                         # a downtrend (EMA13-50 gap <= min) = knife in trend, not a flash panic.
                         _sb_gap_min = float(getattr(th, 'spike_bounce_min_pair_gap', 0.0) or 0.0)
                         _sb_e13 = ind.get('ema13'); _sb_e50 = ind.get('ema50')
-                        if _sb_gap_min != 0 and _sb_e13 is not None and _sb_e50:
+                        if _sb_e13 is not None and _sb_e50:
                             _sb_gap = (_sb_e13 - _sb_e50) / _sb_e50 * 100.0
-                            if _sb_gap <= _sb_gap_min:
+                            if _sb_gap_min != 0 and _sb_gap <= _sb_gap_min:
                                 self._record_filter_block("SPIKE_BOUNCE_CRASHED", "LONG")
                                 logger.info(f"[SPIKE_BOUNCE_CRASHED] {p['pair']}: bounce blocked — EMA13-50 gap {_sb_gap:+.2f}% <= {_sb_gap_min}% (already-crashed pair, DEEPGAP class)")
                                 continue
                             # guard ③b healthy-pair exclusion (Aug-5 pgap window): a violent dump
                             # out of a flat/uptrending pair is news, not a stop cascade — no snapback.
+                            # Independent of the DEEPGAP floor (still runs if min-gap is set to 0/off).
                             _sb_gap_max = float(getattr(th, 'spike_bounce_max_pair_gap', 99.0) if getattr(th, 'spike_bounce_max_pair_gap', None) is not None else 99.0)
                             if _sb_gap_max < 99 and _sb_gap > _sb_gap_max:
                                 self._record_filter_block("SPIKE_BOUNCE_PGAP", "LONG")
@@ -10370,13 +10371,14 @@ class TradingEngine:
                                 if _sb_ok:
                                     _sb_gap_min = float(getattr(_sb_th, 'spike_bounce_min_pair_gap', 0.0) or 0.0)
                                     _sb_e13 = indicators.get('ema13'); _sb_e50 = indicators.get('ema50')
-                                    if _sb_gap_min != 0 and _sb_e13 is not None and _sb_e50:
+                                    if _sb_e13 is not None and _sb_e50:
                                         _sb_gap = (_sb_e13 - _sb_e50) / _sb_e50 * 100.0
-                                        if _sb_gap <= _sb_gap_min:
+                                        if _sb_gap_min != 0 and _sb_gap <= _sb_gap_min:
                                             self._record_filter_block("SPIKE_BOUNCE_CRASHED", "LONG")
                                             logger.info(f"[SPIKE_BOUNCE_CRASHED] {pair}: bounce blocked — EMA13-50 gap {_sb_gap:+.2f}% <= {_sb_gap_min}% (already-crashed pair, DEEPGAP class)")
                                             _sb_ok = False
-                                        # guard ③b healthy-pair exclusion (Aug-5 pgap window)
+                                        # guard ③b healthy-pair exclusion (Aug-5 pgap window) —
+                                        # independent of the DEEPGAP floor (runs even if min-gap = 0/off)
                                         _sb_gap_max = float(getattr(_sb_th, 'spike_bounce_max_pair_gap', 99.0) if getattr(_sb_th, 'spike_bounce_max_pair_gap', None) is not None else 99.0)
                                         if _sb_ok and _sb_gap_max < 99 and _sb_gap > _sb_gap_max:
                                             self._record_filter_block("SPIKE_BOUNCE_PGAP", "LONG")

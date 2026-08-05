@@ -6539,7 +6539,7 @@ class TradingEngine:
                 # 🚀 Jul 27 SPIKE_FADE AUTO-TRIPWIRE: a fade closing <= tripwire
                 # means the price GAPPED THROUGH the monitored −0.70 stop (squeeze
                 # signature / stop-failure — should NEVER happen on clean paper
-                # fills). Engine self-disables the fade species immediately;
+                # fills). If spike_tripwire_autodisable: engine self-disables the fade species; else (default, Aug-5) CRITICAL alert-only;
                 # squeezes cluster faster than human reaction at full size.
                 # Re-enable = manual UI toggle after investigation.
                 # ─────────────────────────────────────────────────────────────
@@ -6548,20 +6548,28 @@ class TradingEngine:
                             and order.pnl_percentage is not None
                             and getattr(config.trading_config.thresholds, 'spike_fade_enabled', False)
                             and order.pnl_percentage <= float(getattr(config.trading_config.thresholds, 'spike_fade_tripwire_pct', -1.5) or -1.5)):
-                        config.trading_config.thresholds.spike_fade_enabled = False
-                        from config import save_trading_config as _sp_save_cfg
-                        _sp_save_cfg(config.trading_config)
-                        logger.critical(
-                            f"[SPIKE_FADE_TRIPWIRE] {order.pair}: fade closed {order.pnl_percentage:.2f}% <= "
-                            f"tripwire — price gapped through the fixed stop (squeeze). "
-                            f"SPIKE_FADE AUTO-DISABLED; re-enable manually after investigation.")
+                        # Aug-5 operator directive: tripwire is ALERT-ONLY unless
+                        # spike_tripwire_autodisable is re-enabled (see config comment).
+                        if getattr(config.trading_config.thresholds, 'spike_tripwire_autodisable', False):
+                            config.trading_config.thresholds.spike_fade_enabled = False
+                            from config import save_trading_config as _sp_save_cfg
+                            _sp_save_cfg(config.trading_config)
+                            logger.critical(
+                                f"[SPIKE_FADE_TRIPWIRE] {order.pair}: fade closed {order.pnl_percentage:.2f}% <= "
+                                f"tripwire — price gapped through the fixed stop (squeeze). "
+                                f"SPIKE_FADE AUTO-DISABLED; re-enable manually after investigation.")
+                        else:
+                            logger.critical(
+                                f"[SPIKE_FADE_TRIPWIRE] {order.pair}: fade closed {order.pnl_percentage:.2f}% <= "
+                                f"tripwire — price gapped through the fixed stop (squeeze). "
+                                f"ALERT-ONLY (auto-disable OFF per operator Aug-5); species stays enabled.")
                 except Exception as _sp_trip_err:
                     logger.error(f"[SPIKE_FADE_TRIPWIRE] flip failed (fade stays enabled — investigate): {_sp_trip_err}")
 
                 # 🏀 Jul 31 SPIKE_BOUNCE AUTO-TRIPWIRE (mirror): a bounce closing <=
                 # tripwire means price gapped through the fixed −0.70 stop — the
                 # falling-knife / liquidation-cascade signature the Jun post-mortem
-                # documented (−5/−6% continuation = ruin class). Self-disable; manual
+                # documented (−5/−6% continuation = ruin class). Self-disable only if spike_tripwire_autodisable (default OFF Aug-5 = alert-only); manual
                 # re-enable after investigation. Retained deliberately even though the
                 # operator removed the N-based kill gate — this is a stop-FAILURE
                 # detector, not a performance verdict.
@@ -6570,13 +6578,19 @@ class TradingEngine:
                             and order.pnl_percentage is not None
                             and getattr(config.trading_config.thresholds, 'spike_bounce_enabled', False)
                             and order.pnl_percentage <= float(getattr(config.trading_config.thresholds, 'spike_bounce_tripwire_pct', -1.5) or -1.5)):
-                        config.trading_config.thresholds.spike_bounce_enabled = False
-                        from config import save_trading_config as _sb_save_cfg
-                        _sb_save_cfg(config.trading_config)
-                        logger.critical(
-                            f"[SPIKE_BOUNCE_TRIPWIRE] {order.pair}: bounce closed {order.pnl_percentage:.2f}% <= "
-                            f"tripwire — price gapped through the fixed stop (cascade continuation). "
-                            f"SPIKE_BOUNCE AUTO-DISABLED; re-enable manually after investigation.")
+                        if getattr(config.trading_config.thresholds, 'spike_tripwire_autodisable', False):
+                            config.trading_config.thresholds.spike_bounce_enabled = False
+                            from config import save_trading_config as _sb_save_cfg
+                            _sb_save_cfg(config.trading_config)
+                            logger.critical(
+                                f"[SPIKE_BOUNCE_TRIPWIRE] {order.pair}: bounce closed {order.pnl_percentage:.2f}% <= "
+                                f"tripwire — price gapped through the fixed stop (cascade continuation). "
+                                f"SPIKE_BOUNCE AUTO-DISABLED; re-enable manually after investigation.")
+                        else:
+                            logger.critical(
+                                f"[SPIKE_BOUNCE_TRIPWIRE] {order.pair}: bounce closed {order.pnl_percentage:.2f}% <= "
+                                f"tripwire — price gapped through the fixed stop (cascade continuation). "
+                                f"ALERT-ONLY (auto-disable OFF per operator Aug-5); species stays enabled.")
                 except Exception as _sb_trip_err:
                     logger.error(f"[SPIKE_BOUNCE_TRIPWIRE] flip failed (bounce stays enabled — investigate): {_sb_trip_err}")
 

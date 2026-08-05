@@ -435,17 +435,29 @@ class SignalThresholds(BaseModel):
     spike_invest_mult: float = 2.0                # CHASE sizing: Inv 2x of equal-split base
     spike_lev_mult: float = 1.0                   # CHASE leverage mult (1.0 = confidence base 20x)
     spike_fade_enabled: bool = True               # master kill toggle for the fade species
-    spike_fade_invest_mult: float = 2.0           # FADE sizing: Inv 2x (operator 07-30 override at
-    # 7 fires 5W/2L +$96 — below the locked N>=30/1.5x-first bar; acknowledged discipline-override.
-    # TIGHT revert gate: first 6 fires AT 2x net-negative OR any single 2x fade <=-1.0% => back to
-    # 1x (tripwire -1.5% still auto-disables the species). FAN flip-short 2x precedent on record.
+    spike_fade_invest_mult: float = 2.0           # ⚠ OPERATOR OVERRIDE OF FIRED GATE 2026-08-05:
+    # the Jul-30 tight-revert gate FIRED (EVAA −3.07% ≤ −1.0% single-fire condition → mechanical
+    # 2x→1x executed) and the operator explicitly overrode it back to 2x same day, informed of the
+    # tail math (EVAA at 2x+0.2%cap = −$255 vs ≈−$64 at 1x+0.1%) and that tripwire auto-disable is
+    # now OFF (sizing = the only fade tail protection). Logged DECISION_LOG 2026-08-05.
+    # 🔒 TIGHTER RE-REVERT GATE (override-class, non-negotiable): any single 2x fade ≤ −0.75%
+    # OR Σ pnl% of the next 5 2x fades < 0 → 1x PERMANENTLY (no re-proposal without a
+    # structural change, e.g. tripwire auto-disable back ON).
     spike_fade_lev_mult: float = 1.0              # FADE leverage mult (1.0 = base 20x)
     spike_fade_sl_pct: float = -0.70              # FADE fixed SL — NO ATR widening (squeeze tail
                                                   # on pumping pairs; max adverse seen +0.49)
-    spike_fade_tripwire_pct: float = -1.5         # AUTO-DISABLE: any fade closing <= this means the
+    # ⚙️ Aug-5 OPERATOR DIRECTIVE after the EVAA event ("re-enable it, and disable the
+    # auto-disable feature"): tripwires are now ALERT-ONLY by default — a breach logs
+    # CRITICAL [.._TRIPWIRE] but no longer flips the species off. Tail protection = the
+    # bd13/bRSI gates + the override-class re-revert gates on 2x/0.2% (operator overrode the
+    # fired sizing gates same day — at 2x+0.2% an EVAA-class fire costs ≈ −$255, not −$64).
+    # Set True to restore the Jul-27 auto-disable behavior (applies to fade AND bounce).
+    spike_tripwire_autodisable: bool = False
+    spike_fade_tripwire_pct: float = -1.5         # tripwire threshold: any fade closing <= this means the
                                                   # price GAPPED THROUGH the monitored -0.70 stop
-                                                  # (squeeze signature) -> engine flips
-                                                  # spike_fade_enabled=false + CRITICAL log
+                                                  # (squeeze signature) -> flips species OFF only
+                                                  # if spike_tripwire_autodisable (default Aug-5:
+                                                  # CRITICAL alert-only, species stays on)
     # 🔒 SPIKE PROFIT LOCK (Aug-3, #24b variant-② verdict at fade-capture N=13: Saved $87 /
     # Killed $0, Saved>=2xKilled bar passed on BOTH measured species; winners' post-touch dips
     # bottom at -0.09 -> the -0.15 floor sits below the band with 6bp margin). Once a spike
@@ -615,7 +627,9 @@ class SignalThresholds(BaseModel):
     # Lev 1x, normal book rules — NO sleeve max-open, NO auto kill gate (operator: manual
     # review here; tally reported every read). 🔒 READ (locked): N>=10 · >=4 dates → WR>=55% ∧
     # Σ>0; slices per-regime/bRSI/dump-magnitude/rng, never pooled; thresholds frozen.
-    spike_bounce_enabled: bool = True
+    spike_bounce_enabled: bool = False  # ✗ READ FAILED 2026-08-05 (N=11·4 dates: 45.5% WR·−$27 —
+    # both frozen legs missed; XMR also counter-exampled the alignment-split rescue). Species OFF
+    # per operator; re-entry path = fresh probe proposal, not a toggle.
     spike_bounce_rsi_crash: float = 25.0     # RSI points DOWN in one 5m candle
     spike_bounce_rsi_prev_min: float = 45.0  # resting band before the crash (mirror of [35,55])
     spike_bounce_rsi_prev_max: float = 65.0
@@ -631,7 +645,7 @@ class SignalThresholds(BaseModel):
     spike_bounce_trail_atr_mult: float = 0.5   # runner-trail giveback N (LONG global is 1.0; bounce
                                                # frozen at 0.5 — atr05 beat atr10 on the fade cohort
                                                # and entry ATR is inflated by the dump candle itself)
-    spike_bounce_tripwire_pct: float = -1.5    # close <= this → auto-disable species (gap-through)
+    spike_bounce_tripwire_pct: float = -1.5    # close <= this → tripwire (gap-through); flips species OFF only if spike_tripwire_autodisable, else CRITICAL alert-only (Aug-5)
     # Jul 30 PM — FADE BTC-RSI CEILING (operator discipline-override ship at sub-cohort N=3,
     # below the pre-registered N>=5 bar; acknowledged). Block a SPIKE_FADE when BTC RSI at
     # entry > this: fading an alt spike while BTC's own momentum is hot = shorting into
@@ -780,7 +794,12 @@ class SignalThresholds(BaseModel):
     # Validated: shadow-armed LONG arm-0.70 strpk net +4.57 vs actual −1.36 (N=16).
     runner_trail_enabled: bool = True
     runner_trail_atr_min: float = 0.0    # Jun 24: 1.0→0.0 (no ATR gate, mirror the SHORT runner) when porting the short exit to longs
-    runner_trail_arm_peak: float = 0.45  # Jun 24: 0.70→0.45 (mirror SHORT arm) — peak P&L ≥ this swaps tight→stretch/ATR-floor trail
+    runner_trail_arm_peak: float = 0.40  # ⚡ 0.45→0.40 Aug-5 (operator; [0.40,0.45) peak band = 1W/3L·−$287
+    # across ALL THREE pools — AAVE/baseline, XLM/B1, WLD −$214 CALM3D Aug-5 — one loser per pool,
+    # three different cells; CF at arm 0.40 (trail floor = max(peak−ATR, +0.10 lock)) saves all three
+    # to ≈+0.10, MIRA the lone winner unaffected. Clip bound: current-era captured tr30 = 9/10 winners
+    # never near +0.10 post-0.30. 🔒 REVERT →0.45 if at N≥8 band-armed trades the trail Δ vs no-arm CF < 0.
+    # (Mechanic: peak P&L ≥ this swaps tight→stretch/ATR-floor trail. History: Jun-24 0.70→0.45, Aug-5 0.45→0.40.)
     runner_trail_k: float = 0.5          # exit when live stretch ≤ k × peak stretch (unsigned, matches shadow strpk) — fallback when use_atr=false
     # Jun 24 — LONG-runner parity with the SHORT runner (operator-directed): give longs the SAME
     # ATR-floor (chandelier) + BE-ratchet + give-back-cap machinery the shorts run, on independent
@@ -806,7 +825,7 @@ class SignalThresholds(BaseModel):
     # phantom instead of closing (the sim's uplift comes from riding through it).
     runner_trail_short_enabled: bool = True
     runner_trail_short_atr_min: float = 0.0   # 0 = no ATR gate (shadow had none)
-    runner_trail_short_arm_peak: float = 0.45 # matches leash ACT + live trailing arm
+    runner_trail_short_arm_peak: float = 0.40 # matches leash ACT + live trailing arm
     runner_trail_short_k: float = 0.5         # shadow strpk K=0.5 (stretch-ratio trail — fallback when use_atr=false)
     # Jun 16 — ATR-floored give-back trail (chandelier). Root cause of strpk early exits: the
     # K×peak_stretch ratio collapses to ~0 width on a freshly-armed (tiny) peak, so a first
@@ -1755,7 +1774,13 @@ class InvestmentConfig(BaseModel):
     # accepted). Cap reason stamps LIQ2. 🔒 REVERT to 0 (=inherit 0.1%) if over the next
     # 15 full-size <$10M spike fires: cohort Σ pnl% < 0 OR any stop/lock fill slips
     # >15bps OR DOA (peak<+0.10) > 20%.
-    spike_lowvol_liq_cap_pct: float = 0.20        # spikes on thin pairs: % of 24h vol (0 = off → global pct)
+    # ✗ GATE FIRED 2026-08-05 (window complete 16/15, ALL THREE legs failed: Σ −1.09% <0 ·
+    # DOA 5/16=31% >20% · EVAA slip-through −3.07% vs −0.70 stop ≫15bps) → mechanical revert to
+    # 0.1% executed. ⚠ OPERATOR OVERRIDE same day: back to 0.2%, informed of the three-leg failure.
+    # 🔒 TIGHTER RE-REVERT GATE (override-class, non-negotiable): next 10 LIQ2-doubled fires —
+    # any single fire ≤ −1.5% OR window Σ pnl% < 0 OR DOA > 20% → 0.1% PERMANENTLY
+    # (no further re-proposal). Logged DECISION_LOG 2026-08-05.
+    spike_lowvol_liq_cap_pct: float = 0.2         # spikes on thin pairs: % of 24h vol (0 = off → global pct)
     spike_lowvol_threshold_usd: float = 10_000_000.0  # "thin" = 24h vol below this (frozen slice boundary)
     # ② Gross-notional cap: Σ(open notional) ≤ balance × max_gross_leverage.
     #    Portfolio liquidation/correlation guard (a -X% correlated dump costs

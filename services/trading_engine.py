@@ -4409,6 +4409,19 @@ class TradingEngine:
                             self._record_filter_block("SPIKE_FADE_BD13", "SHORT")
                             logger.info(f"[SPIKE_FADE_BD13] {p['pair']}: scanner fade blocked — BTC dist-EMA13 {_sp_bd13:+.3f}% > {_sp_bd13_max} (beta-tailwind guard) | entry_px={ind.get('price')} pair_rsi={ind.get('rsi')} — re-sim revert row")
                             continue
+                        # Aug-10 FRESH-BREAKOUT GUARD (operator "ship B"; zone leg = watchlist):
+                        # never fade a spike from a low-RSI base on a non-crashed pair — that is
+                        # the START of a move (breakout / squeeze ignition), not an exhaustion.
+                        # Stack-screened: blocked 20·45%·−$344 combined; VANRY class kept.
+                        _sp_fb_rmin = float(getattr(th, 'spike_fade_fb_rsi_prev_min', 0.0) or 0.0)
+                        _sp_fb_gmin = float(getattr(th, 'spike_fade_fb_pgap_min', -0.40) if getattr(th, 'spike_fade_fb_pgap_min', None) is not None else -0.40)
+                        if _sp_fb_rmin > 0 and rsi_prev is not None and rsi_prev < _sp_fb_rmin:
+                            _sp_e13 = ind.get('ema13'); _sp_e50 = ind.get('ema50')
+                            _sp_pg = ((_sp_e13 - _sp_e50) / _sp_e50 * 100.0) if (_sp_e13 is not None and _sp_e50) else None
+                            if _sp_pg is not None and _sp_pg > _sp_fb_gmin:
+                                self._record_filter_block("SPIKE_FADE_FRESHBREAK", "SHORT")
+                                logger.info(f"[SPIKE_FADE_FRESHBREAK] {p['pair']}: scanner fade blocked — base RSI {rsi_prev:.1f} < {_sp_fb_rmin} on non-crashed pair (pgap {_sp_pg:+.2f} > {_sp_fb_gmin}) = fresh breakout, not exhaustion | entry_px={ind.get('price')} — re-sim revert row")
+                                continue
                         _sp_dir, _sp_is_fade = "SHORT", True
                         if _sp_regime_fade:
                             logger.info(f"[SPIKE_REGIME_FADE] {p['pair']}: non-chase regime — routing trigger to FADE short")
@@ -5195,7 +5208,25 @@ class TradingEngine:
         # never blocked). 0 = off. Fail-open on missing PVR.
         if (direction == "LONG" and _pcell_src and 'UNMATCHED' in str(_pcell_src) and (_pcell_inv or 1.0) > 1.0):
             _upv_max = float(getattr(config.trading_config.thresholds, 'long_unmatched_mult_pvr_max', 0.0) or 0.0)
-            if _upv_max > 0 and entry_pair_volume_ratio is not None and entry_pair_volume_ratio >= _upv_max:
+            # Aug-10 CROWD-SPRINT DE-MUX (operator ship after the 3-era "Rest" hunt): crowded
+            # global tape ∧ BTC sprinting = the FOMO window — the fan-expansion trigger fires
+            # everywhere at once (beta, not idiosyncratic flow), so the unmatched THESIS is
+            # unverifiable there; conviction sizing withdrawn, entry kept (never block what
+            # baseline tape can turn into ACT +$263). 3-era: window 19·58%·−$714 pooled
+            # (B1 6·17%·−$823 · BANK Aug-10 out-of-sample catch · BASE cost = ACT alone).
+            # TAKES PRECEDENCE over the quiet-PVR boost (quiet book under a loud market is
+            # still an unreadable backdrop). Either threshold 0 = leg off; fail-open on None.
+            _us_gvr_min = float(getattr(config.trading_config.thresholds, 'long_unmatched_sprint_demux_gvr_min', 0.0) or 0.0)
+            _us_slp_min = float(getattr(config.trading_config.thresholds, 'long_unmatched_sprint_demux_b20slope_min', 0.0) or 0.0)
+            _us_slp = globals().get('_btc_ema20_slope_pct')
+            if (_us_gvr_min > 0 and _us_slp_min > 0 and entry_global_volume_ratio is not None
+                    and _us_slp is not None and entry_global_volume_ratio > _us_gvr_min
+                    and float(_us_slp) > _us_slp_min):
+                logger.info(f"[UNMATCHED_SPRINT_DEMUX] {pair} LONG: global-vol {entry_global_volume_ratio:.2f} > {_us_gvr_min} "
+                            f"∧ BTC-slope {float(_us_slp):+.3f} > {_us_slp_min} (crowd-sprint window, thesis unverifiable) "
+                            f"→ de-mux UNMATCHED {_pcell_inv}x/{_pcell_lev}x → 1.0x/1.0x — re-sim read row")
+                _pcell_inv, _pcell_lev = 1.0, 1.0
+            elif _upv_max > 0 and entry_pair_volume_ratio is not None and entry_pair_volume_ratio >= _upv_max:
                 # Jul 26 (operator patron fix): configurable de-mux targets (default 1.0/1.0 =
                 # the original full de-mux). <=0 coerced to 1.0 — a zero would zero the position.
                 _dm_inv = float(getattr(config.trading_config.thresholds, 'long_unmatched_demux_inv_mult', 1.0) or 1.0)
@@ -10283,6 +10314,13 @@ class TradingEngine:
                                     self._record_filter_block("SPIKE_FADE_BD13", "SHORT")
                                     _sc_bd13v = (globals().get('_current_btc_price') - globals().get('_current_btc_ema13')) / globals().get('_current_btc_ema13') * 100.0
                                     logger.info(f"[SPIKE_FADE_BD13] {pair}: fade blocked — BTC dist-EMA13 {_sc_bd13v:+.3f}% > {getattr(_sc_th, 'spike_fade_max_btc_dist13', 0.0)} (beta-tailwind guard) | entry_px={indicators.get('price')} pair_rsi={_sc_rsi:.1f} — re-sim revert row")
+                                elif (lambda _rm, _gm, _rp, _e13, _e50: _rm > 0 and _rp is not None and _rp < _rm and _e13 is not None and _e50 and ((_e13 - _e50) / _e50 * 100.0) > _gm)(
+                                        float(getattr(_sc_th, 'spike_fade_fb_rsi_prev_min', 0.0) or 0.0),
+                                        float(getattr(_sc_th, 'spike_fade_fb_pgap_min', -0.40) if getattr(_sc_th, 'spike_fade_fb_pgap_min', None) is not None else -0.40),
+                                        _sc_prev, indicators.get('ema13'), indicators.get('ema50')) and getattr(_sc_th, 'spike_fade_enabled', False):
+                                    # Aug-10 FRESH-BREAKOUT GUARD (hook parity; see config comment)
+                                    self._record_filter_block("SPIKE_FADE_FRESHBREAK", "SHORT")
+                                    logger.info(f"[SPIKE_FADE_FRESHBREAK] {pair}: fade blocked — base RSI {_sc_prev:.1f} < {getattr(_sc_th, 'spike_fade_fb_rsi_prev_min', 0)} on non-crashed pair = fresh breakout, not exhaustion | entry_px={indicators.get('price')} — re-sim revert row")
                                 elif getattr(_sc_th, 'spike_fade_enabled', False):
                                     signal, confidence = "SHORT", "STRONG_BUY"
                                     _spike_fade_hit = True
@@ -10518,6 +10556,19 @@ class TradingEngine:
                                 # Aug-4 SAME-PAIR RE-ENTRY COOLDOWN (4th leg, see config comment):
                                 # the door's only losers are <=57min same-pair re-fires — the coil
                                 # already released; the re-entry buys the spent spring. 0 = off.
+                                # Aug-10 DMI THRUST leg (5th leg, operator "ship A"): the door
+                                # verifies the spring (calm tape / coiled pair / rising hour) but
+                                # never asks WHO is winding it. +DI(14) = the pair's upward-push
+                                # share; pADX = its smoothed strength. A coil without directional
+                                # sponsorship is a one-candle breakout that dies on arrival (the
+                                # DOA loser class). CUR door: keep 8·100%·+$874 / blocked 12·33%·
+                                # −$1,383; B1 keep 2·100%·+$120 (3 old-2-leg-door winners
+                                # sacrificed — discount on record). 0 = leg off; None fails open.
+                                _pp_di_min = float(getattr(_th_pp, 'nonexp_calm3d_min_pos_di', 0.0) or 0.0)
+                                _pp_padx_min = float(getattr(_th_pp, 'nonexp_calm3d_min_pair_adx', 0.0) or 0.0)
+                                _pp_di = indicators.get('pos_di'); _pp_padx = indicators.get('adx')
+                                _pp_dmi_ok = ((_pp_di_min <= 0 or _pp_di is None or float(_pp_di) >= _pp_di_min)
+                                              and (_pp_padx_min <= 0 or _pp_padx is None or float(_pp_padx) >= _pp_padx_min))
                                 _pp_cool_min = float(getattr(_th_pp, 'nonexp_calm3d_reentry_cooldown_min', 90.0) or 0.0)
                                 _pp_cool_ok = True
                                 if _pp_cool_min > 0:
@@ -10532,7 +10583,12 @@ class TradingEngine:
                                                 f"{(datetime.utcnow() - _pp_last).total_seconds()/60:.0f}min ago < cooldown {_pp_cool_min:.0f}min (re-entry buys the spent coil)")
                                 if (entry_btc_regime in _pp_regs and _pp_batr is not None
                                         and float(_pp_batr) <= _pp_atr_max and _pp_coiled and _pp_hour_up
-                                        and _pp_cool_ok):
+                                        and _pp_cool_ok and not _pp_dmi_ok):
+                                    self._record_filter_block("CALM3D_DMI", "LONG", had_room=_scan_had_room_snapshot)
+                                    logger.info(f"[CALM3D_DMI] {pair}: coiled candidate REJECTED — +DI {(float(_pp_di) if _pp_di is not None else -1):.1f} < {_pp_di_min} or pADX {(float(_pp_padx) if _pp_padx is not None else -1):.1f} < {_pp_padx_min} (thrust leg: coil without sponsorship) | entry_px={indicators.get('price')} — re-sim revert row")
+                                if (entry_btc_regime in _pp_regs and _pp_batr is not None
+                                        and float(_pp_batr) <= _pp_atr_max and _pp_coiled and _pp_hour_up
+                                        and _pp_cool_ok and _pp_dmi_ok):
                                     _nonexp_calm3d_hit = True
                                     logger.info(f"[NONEXP_CALM3D] {pair}: gap-{'flat' if _pp_gapflat else 'min[flat]'} LONG ADMITTED full-size — {entry_btc_regime} ∧ BTC-ATR {float(_pp_batr):.3f} <= {_pp_atr_max} ∧ stretch {(entry_ema5_stretch if entry_ema5_stretch is not None else -1):.2f} <= {_pp_smax} ∧ b1h {(float(_pp_b1h) if _pp_b1h is not None else -1):+.3f} > {_pp_b1h_min}")
                                 else:

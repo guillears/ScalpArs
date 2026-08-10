@@ -377,7 +377,7 @@ class SignalThresholds(BaseModel):
     # +17% still ahead; pre-pump chop never jumps >9. Bypasses the signal ladder BY DESIGN (these
     # candles have no fan yet; RSI>65 blocks all follow-ups). Fires only when the ladder produced
     # NO signal. Right-tail cohort — pre-registered read weights avg over WR (CURRENT_STATE #11).
-    spike_chase_probe_enabled: bool = True
+    spike_chase_probe_enabled: bool = False  # ✗ RETIRED 2026-08-10 (operator): superseded by the Jul-27 full ship; probe cohort frozen at graduation — the slot serves nothing
     spike_chase_probe_max_open: int = 3          # same slot cap as the rest of the fleet
     spike_chase_probe_rsi_jump: float = 25.0     # min single-candle RSI(12) jump (pts)
     spike_chase_probe_rsi_prev_max: float = 55.0 # from-quiet condition: prev candle RSI <= this
@@ -420,7 +420,7 @@ class SignalThresholds(BaseModel):
     # riders all <=20.2, duds all >=29.6): ADX <= max_adx -> SPIKE_CHASE LONG at full size;
     # ADX > max_adx -> SPIKE_FADE SHORT (4/4 backtest, avg +0.31, max adverse +0.49).
     spike_chase_max_adx: float = 30.0             # leg 6 router cut (empty 20-29 gap; default 30)
-    spike_chase_max_stretch_atr: float = 2.5      # Jul 30 EXTENSION GUARD (0=off): block CHASE when
+    spike_chase_max_stretch_atr: float = 1.5  # ✗ TRIPWIRE FIRED 2026-08-10: 5-fire Σ −$209 < 0 → mechanical revert 2.5→1.5 (MIRA −$228 @2.46×ATR = the driver); ALL 6 lifetime full-size chases entered 1.77-2.47 → species DORMANT at 1.5; revival = fresh probe proposal      # Jul 30 EXTENSION GUARD (0=off): block CHASE when
     # (price-EMA5)/EMA5 % > mult x pair ATR%. Chase-only — fade winners ARE the stretched ones
     # (PROM 3.4xATR +1.16). ⚡ RAISED 1.5→2.5 Aug-3 (operator-directed): the founding 0/8 evidence
     # was demolished by three confounds — 6/8 non-bull regime (router now seals it), AKT was an
@@ -455,6 +455,18 @@ class SignalThresholds(BaseModel):
     # fired sizing gates same day — at 2x+0.2% an EVAA-class fire costs ≈ −$255, not −$64).
     # Set True to restore the Jul-27 auto-disable behavior (applies to fade AND bounce).
     spike_tripwire_autodisable: bool = False
+    # 🛡 Aug-10 FRESH-BREAKOUT GUARD (operator "ship B" after the fade deep-dive; zone leg on
+    # watchlist): block a FADE when the pair spiked from a LOW-RSI base (rsi_prev < min) AND is
+    # NOT a crash-extreme (EMA13-50 gap > pgap_min) — a low-base spike on a non-crashed pair is
+    # the START of a move (fresh breakout / squeeze ignition), not an exhaustion; shorting
+    # beginnings is how EVAA/ETHFI/DEEP/SAND happened (the DOA 6-40s death class lives here).
+    # Stack-screened evidence: CUR blocked 17·41%·−$353 / after 26·69%·+$775; B1 blocked 3·+$9
+    # (free); combined blocked 20·45%·−$344. Thresholds: 44 ≈ pooled rsi_prev median (B1 42.0 /
+    # CUR 43.9); −0.40 = crash-extreme boundary (VANRY −0.89 / PIPPIN −0.57 kept).
+    # 🔒 READS: ① post-ship fades N≥10 → WR≥65 ∧ Σ>0; ② blocked-side re-sim N≥8 → would-be
+    # WR≥55 ∨ Σ>0 reverts. Counter SPIKE_FADE_FRESHBREAK (logs entry px). rsi_prev_min 0 = off.
+    spike_fade_fb_rsi_prev_min: float = 44.0
+    spike_fade_fb_pgap_min: float = -0.40
     spike_fade_tripwire_pct: float = -1.5         # tripwire threshold: any fade closing <= this means the
                                                   # price GAPPED THROUGH the monitored -0.70 stop
                                                   # (squeeze signature) -> flips species OFF only
@@ -550,6 +562,19 @@ class SignalThresholds(BaseModel):
     # tracker (resets on redeploy — known gap, revert surface covers it).
     # 🔒 REVERT ->0 if blocked re-entries' would-be record runs >=60% WR on N>=8 fresh.
     nonexp_calm3d_reentry_cooldown_min: float = 90.0
+    # 🎯 Aug-10 DMI THRUST leg (5th leg, operator "ship A" after the +DI deep-dive the operator
+    # drove): +DI(14) ≥ 28 ∧ pair-ADX ≥ 21 — the coil must already be directionally driven.
+    # Evidence: CUR door (only 4-leg-door pool) keep 8·100%·+$874 vs blocked 12·33%·−$1,383;
+    # B1 keep 2·100%·+$120, sacrifices 3 old-2-leg-door-era winners (+$165, discount on record);
+    # combined +$994. +DI buckets CUR: [25,28)=17%·−$955, ≥30=100%·+$739; pADX≥21 removes the
+    # PENGU 29.3/pADX-17.7 residual free of B1 cost (ADX = sweep #2 survivor, same DMI family).
+    # 🔒 READS: ① post-ship door fires N≥10 → WR≥60 ∧ Σ>0, else leg re-reviewed; ② STEP-BACK:
+    # [CALM3D_DMI] blocks log entry px — re-sim blocked DI∈[26,28) at N≥6: would-be WR≥60% →
+    # threshold 28→26 (the B1 EUL/UNI mid-band pattern returning under the 4-leg door).
+    # Cell stays 2× (kept cohort 100%/100% both pools at current sizing — the ✗ HARMFUL verdict
+    # is executed as fix-the-losers, per the locked caps/multipliers rule). 0 = leg off.
+    nonexp_calm3d_min_pos_di: float = 28.0
+    nonexp_calm3d_min_pair_adx: float = 21.0
     nonexp_calm3d_invest_mult: float = 2.0        # Jul-31 RE-ESCALATED 1.0→2.0 with the b1h leg (operator-
     #   directed DOUBLE staging override: skips the locked 1.5×-first ladder AND the N>=30 W-bar —
     #   evidence = the refined cohort 10·90%·+0.372% (partially in-sample; legs discovered on it).
@@ -605,7 +630,7 @@ class SignalThresholds(BaseModel):
     # is alt-vol calibrated (BTC ATR ~0.10-0.15% vs alts 0.3-1%) — thin flow IS a finding
     # ("re-scale before judging the edge"), record fires/day alongside WR. Per-PAIR verdict
     # rows (BTC vs ETH judged separately). 🔒 Read protocol in CURRENT_STATE #35.
-    majors_probe_enabled: bool = True
+    majors_probe_enabled: bool = False  # ✗ RETIRED 2026-08-10 (operator): 0 fires in 11 days = the experiment's ANSWER — alt-calibrated thresholds never trigger on BTC/ETH; a majors sleeve needs its own calibration (separate project)
     majors_probe_max_open: int = 2       # concurrent MAJORS probes (~1 per major)
     # ── Jul 31 🏀 SPIKE_BOUNCE (third spike species — LONG the violent dump; operator-directed
     # full-size ship at N=0, acknowledged: two dead countertrend-long predecessors (BOUNCE_LONG
@@ -1470,6 +1495,15 @@ class SignalThresholds(BaseModel):
     long_unmatched_quiet_lev_mult: float = 1.0  # LEV multiplier — KEEP 1.0 until BE-compat passes
                                                 # on observed quiet losses (locked rule; 19-0 = untestable)
     long_unmatched_quiet_pvr_max: float = 0.68
+    # ⚡ Aug-10 CROWD-SPRINT DE-MUX (operator ship; the 3-era unmatched "Rest" hunt): de-size to
+    # 1×/1× when global-vol ratio > gvr_min ∧ BTC EMA20 slope > slope_min — the FOMO window where
+    # the fan trigger is beta noise, not pair-specific flow. 3-era window: 19·58%·−$714 pooled
+    # (BASE blocked slice +$267 = ACT alone → BLOCK refused per the cross-pool rule; de-size =
+    # keep the claim, withdraw the conviction). Takes precedence over the quiet boost.
+    # 🔒 READ (frozen): N≥10 fresh window fires — WR≤45 ∧ Σ<0 → escalate to BLOCK proposal;
+    # WR≥60 ∨ Σ>0 → revert the de-mux. Counter row = [UNMATCHED_SPRINT_DEMUX] logs. 0 = off.
+    long_unmatched_sprint_demux_gvr_min: float = 0.74
+    long_unmatched_sprint_demux_b20slope_min: float = 0.07
     # Jul 6: W2 RE-ENABLE, 1h-rising conditioned (operator-directed; first matched-long cell back
     # since the Jun-9 block). Admit a W2-matched long (macro tailwind; NO C co-match) when BTC 1h
     # slope ≥ this value. Evidence: historical live W2 longs split hard on 1h — rising ≥+0.05 =

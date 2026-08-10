@@ -6059,7 +6059,7 @@ class TradingEngine:
                 # margin), FADE spike_fade_sl_pct (−0.70, squeeze bound). ATR widening is
                 # skipped for both in the check paths (entry_strategy-gated).
                 'stop_loss': (float(getattr(config.trading_config.thresholds, 'spike_sl_pct', -1.2) or -1.2) if spike_chase_probe
-                              else float(getattr(config.trading_config.thresholds, 'spike_fade_sl_pct', -0.70) or -0.70) if spike_fade
+                              else float(getattr(config.trading_config.thresholds, 'spike_fade_sl_pct', -1.50) or -1.50) if spike_fade
                               else float(getattr(config.trading_config.thresholds, 'spike_bounce_sl_pct', -0.70) or -0.70) if spike_bounce
                               else conf_config.stop_loss),
                 'current_tp_level': 1,
@@ -12740,7 +12740,7 @@ class TradingEngine:
                 'opened_at': order.opened_at,
                 # Jul 27 spike ship: fixed SLs survive cache rebuilds/restarts via entry_strategy
                 'stop_loss': (float(getattr(config.trading_config.thresholds, 'spike_sl_pct', -1.2) or -1.2) if (order.entry_strategy or '') == 'SPIKE_CHASE'
-                              else float(getattr(config.trading_config.thresholds, 'spike_fade_sl_pct', -0.70) or -0.70) if (order.entry_strategy or '') == 'SPIKE_FADE'
+                              else float(getattr(config.trading_config.thresholds, 'spike_fade_sl_pct', -1.50) or -1.50) if (order.entry_strategy or '') == 'SPIKE_FADE'
                               else float(getattr(config.trading_config.thresholds, 'spike_bounce_sl_pct', -0.70) or -0.70) if (order.entry_strategy or '') == 'SPIKE_BOUNCE'
                               else conf_config.stop_loss),
                 'signal_active_sl': conf_config.signal_active_sl,

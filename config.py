@@ -472,9 +472,13 @@ class SignalThresholds(BaseModel):
     # WR≥55 ∨ Σ>0 reverts. Counter SPIKE_FADE_FRESHBREAK (logs entry px). rsi_prev_min 0 = off.
     spike_fade_fb_rsi_prev_min: float = 44.0
     spike_fade_fb_pgap_min: float = -0.40
-    spike_fade_tripwire_pct: float = -1.5         # tripwire threshold: any fade closing <= this means the
-                                                  # price GAPPED THROUGH the monitored -0.70 stop
-                                                  # (squeeze signature) -> flips species OFF only
+    spike_fade_tripwire_pct: float = -2.5         # tripwire threshold: any fade closing <= this means the
+                                                  # price GAPPED THROUGH the -1.50 stop (squeeze
+                                                  # signature). Aug-10 review fix: -1.5 -> -2.5 after the
+                                                  # SL widened to -1.5 (equal values = alarm on EVERY
+                                                  # ordinary stop + a species-kill landmine if autodisable
+                                                  # ever returns; ~1pp spacing restored, mirroring the old
+                                                  # -0.70/-1.5 pair) -> flips species OFF only
                                                   # if spike_tripwire_autodisable (default Aug-5:
                                                   # CRITICAL alert-only, species stays on)
     # 🔒 SPIKE PROFIT LOCK (Aug-3, #24b variant-② verdict at fade-capture N=13: Saved $87 /

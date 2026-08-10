@@ -38,12 +38,16 @@ def load():
                 'entry_btc_rsi', 'entry_btc_dist_from_ema13_pct', G,
                 'entry_pair_volume_24h_usd', 'entry_atr_pct', 'entry_ema5_stretch',
                 'entry_btc_regime', 'entry_global_volume_ratio', 'entry_btc_ema20_slope',
-                'cell_multiplier', 'cell_multiplier_source', 'pattern_cell_source', 'status']
+                'cell_multiplier', 'cell_multiplier_source', 'pattern_cell_source', 'status',
+                # fade-SL/lock CF load-bearing (review fix: schema drift here must fail loudly,
+                # else every fade loser silently re-prices to the full stop)
+                'close_reason', 'entry_price', 'post_exit_running_high', 'post_exit_final_pnl']
     missing = [c for c in required if c not in cols]
     if missing:
         raise SystemExit(f"FATAL: gate columns missing from the 3-way intersection: {missing}")
     cols.discard('id')  # locked rule: NEVER use `id` (resets on paper reset) — keep it out of the pool
-    df = pd.concat([d[list(cols) + ['era']] if 'era' not in cols else d[list(cols)]
+    cols = sorted(cols)  # deterministic column order (review fix: set order reshuffled every regen)
+    df = pd.concat([d[cols + ['era']] if 'era' not in cols else d[cols]
                     for d in (base, b1, b2)], ignore_index=True)
     dup = df.duplicated(subset=['opened_at', 'pair', 'direction'])
     if dup.any():

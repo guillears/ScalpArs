@@ -576,7 +576,7 @@
     "spike_fade_invest_mult": 2.0,
     "spike_fade_lev_mult": 1.0,
     "spike_fade_sl_pct": -1.5,
-    "spike_fade_tripwire_pct": -1.5,
+    "spike_fade_tripwire_pct": -2.5,
     "spike_sl_pct": -1.2,
     "spike_rsi_cool_arm": 75.0,
     "spike_rsi_cool_drop": 10.0,

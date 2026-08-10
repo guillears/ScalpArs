@@ -446,8 +446,13 @@ class SignalThresholds(BaseModel):
     # (5-fire windows false-fire 8/18 in a +$267 era; 15-fire: 0/8). Note: 2x has NEVER bound —
     # every era fade was liquidity-cap-bound (marginal $0 in 22 fires); binds only >$36M-vol pairs.
     spike_fade_lev_mult: float = 1.0              # FADE leverage mult (1.0 = base 20x)
-    spike_fade_sl_pct: float = -0.70              # FADE fixed SL — NO ATR widening (squeeze tail
-                                                  # on pumping pairs; max adverse seen +0.49)
+    spike_fade_sl_pct: float = -1.50              # FADE fixed SL — NO ATR widening. Aug-10: −0.70→−1.50
+                                                  # (operator ship; −0.70 sat INSIDE the spike candle's wick:
+                                                  # 8/9 stopped fades reverted after the stop, B1+B2 CF Δ+$400
+                                                  # WR 74→84%, SUSHI −1.46% wick +1.6% revert = same-day OOS
+                                                  # confirm; only CHIP-class continuation pays more. N=7 SL
+                                                  # losers = DISCIPLINE-OVERRIDE, tight revert: saved-band
+                                                  # (adverse ∈(−0.70,−1.5]) fresh N≥6 WR<50%∨Σ<0 → −0.70)
     # ⚙️ Aug-5 OPERATOR DIRECTIVE after the EVAA event ("re-enable it, and disable the
     # auto-disable feature"): tripwires are now ALERT-ONLY by default — a breach logs
     # CRITICAL [.._TRIPWIRE] but no longer flips the species off. Tail protection = the

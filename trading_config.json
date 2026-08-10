@@ -603,6 +603,7 @@
     "spike_lock_enabled": true,
     "spike_lock_arm_pct": 0.2,
     "spike_lock_sl_pct": -0.15,
+    "spike_lock_exempt_fade": true,
     "nonexp_calm3d_reentry_cooldown_min": 90.0,
     "spike_fade_max_btc_dist13": 0.0,
     "spike_tripwire_autodisable": false,

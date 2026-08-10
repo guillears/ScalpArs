@@ -7876,6 +7876,10 @@ class TradingEngine:
                 try:
                     _th_fb_mon = config.trading_config.thresholds
                     _fb_lk_en = bool(getattr(_th_fb_mon, 'spike_lock_enabled', True))
+                    # Aug-10 PM: fade exemption — monitor twin of the realtime leg (WS-starve rule)
+                    if (_fb_lk_en and bool(getattr(_th_fb_mon, 'spike_lock_exempt_fade', True))
+                            and (order.entry_strategy or "") == "SPIKE_FADE"):
+                        _fb_lk_en = False
                     _fb_lk_arm = float(getattr(_th_fb_mon, 'spike_lock_arm_pct', 0.20) or 0.0)
                     _fb_lk_sl = float(getattr(_th_fb_mon, 'spike_lock_sl_pct', -0.15) or -0.15)
                     _fb_peak_mon = max(realtime_peak or 0.0, pnl_pct, float(order.peak_pnl or 0.0))
@@ -11827,6 +11831,13 @@ class TradingEngine:
             _spike_lock_active_rt = False
             if _is_spike_fade:
                 _lk_en_rt = bool(getattr(config.trading_config.thresholds, 'spike_lock_enabled', True))
+                # Aug-10 PM: FADES EXEMPT from the lock (spike_lock_exempt_fade) — under the
+                # −1.5 SL the lock is 0 saves / 4 kills on covered fades (multi-wave pumps
+                # arm on wave-1 pullback, eject before the wave-2 wick the wide SL rides).
+                # BOUNCE keeps the lock (species off; phantom semantics preserved).
+                if (_lk_en_rt and bool(getattr(config.trading_config.thresholds, 'spike_lock_exempt_fade', True))
+                        and (order_info.get('entry_strategy') or "") == "SPIKE_FADE"):
+                    _lk_en_rt = False
                 _lk_arm_rt = float(getattr(config.trading_config.thresholds, 'spike_lock_arm_pct', 0.20) or 0.0)
                 _lk_sl_rt = float(getattr(config.trading_config.thresholds, 'spike_lock_sl_pct', -0.15) or -0.15)
                 if (_lk_en_rt and _lk_arm_rt > 0 and current_peak >= _lk_arm_rt

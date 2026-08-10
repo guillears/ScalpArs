@@ -21,7 +21,7 @@ import warnings; warnings.filterwarnings('ignore')
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-08-10b"  # b: fade SL -0.70 -> -1.50 CF (41e)
+STACK_VERSION = "2026-08-10c"  # b: fade SL -0.70 -> -1.50 CF (41e) · c: fades exempt from SPIKE_LOCK (lock exits re-priced to held path)
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 def load():
@@ -101,7 +101,7 @@ def main():
         # adverse < 1.5% (post-exit running high vs entry, short side), outcome = held
         # trajectory endpoint; else full stop at -1.5. Non-SL exits (EMA13/SPIKE_LOCK) untouched.
         if (k and not r.is_probe and strat == 'SPIKE_FADE' and p < 0
-                and str(r.get('close_reason') or '').startswith('STOP_LOSS')
+                and str(r.get('close_reason') or '').startswith(('STOP_LOSS', 'SPIKE_LOCK'))
                 and pd.notna(r.pnl_percentage) and r.pnl_percentage != 0):
             dpp = abs(p / r.pnl_percentage)
             worst = None

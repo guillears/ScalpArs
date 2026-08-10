@@ -490,6 +490,17 @@ class SignalThresholds(BaseModel):
     spike_lock_enabled: bool = True
     spike_lock_arm_pct: float = 0.20              # arm when peak P&L touches this (0 = off)
     spike_lock_sl_pct: float = -0.15              # armed stop replaces the species fixed SL
+    spike_lock_exempt_fade: bool = True           # Aug-10 PM (operator): FADES EXEMPT from the lock —
+                                                  # under the −1.5 SL the lock's save class evaporated
+                                                  # (its 2-saves record was vs dying at −0.70): belock-grid
+                                                  # CF on all covered kept fades = 0 saves / 4 kills −$90
+                                                  # (SENT +0.21→−0.15 · HOLO +0.79→−0.15 · ZEN +0.06→−0.15
+                                                  # · PROM live −0.19 vs ~+0.5); no lock = best config
+                                                  # (+$1,451 vs live +$1,390). Multi-wave pumps arm on
+                                                  # wave-1 pullback and eject before the wave-2 wick the
+                                                  # wide SL holds through. Chase/bounce keep the lock.
+                                                  # 🔒 REVERT (→False) if ≥2 fresh fades arm ≥+0.20 then
+                                                  # run to the full −1.5 (re-enable at floor −0.40 instead)
     # ⭐ OPTION-D 3-layer exit for SPIKE_CHASE longs (replaces the normal long exit stack):
     # L1 fixed SL (MIRA-1 wicked -0.71 pre +17.4; SWARMS breathed -0.75 pre +0.91 — two
     # documented winner-breaths through -0.70; dud premium ~0.5pp/fire accepted).

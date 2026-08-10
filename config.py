@@ -659,7 +659,7 @@ class SignalThresholds(BaseModel):
     # Lev 1x, normal book rules — NO sleeve max-open, NO auto kill gate (operator: manual
     # review here; tally reported every read). 🔒 READ (locked): N>=10 · >=4 dates → WR>=55% ∧
     # Σ>0; slices per-regime/bRSI/dump-magnitude/rng, never pooled; thresholds frozen.
-    spike_bounce_enabled: bool = True
+    spike_bounce_enabled: bool = False  # ✝ OFF FOR GOOD 2026-08-10 PM (operator): PGAP-window read mathematically failed at 0W/4L post-ship (SKY/NAORIS/BANANA/TA −$87; WR≥55 unreachable at N=8). Lifetime: every $ earned came from the 5 fit-sample trades (+$77), forward gave it back (−$78). B2 impact of removal ≈ $0 (8 kept · −$1). Revival = phantom-only read (rsi_prev≥48 healthy-base leg, watchlist 37)
     # ⚡ Aug-5 PM RE-ENABLED with the pgap window (operator ship after the theory review).
     # History same day: frozen-leg read FAILED at N=11·4 dates (45.5%·−$27, XMR counter-exampled
     # the alignment-split rescue) → species OFF AM; post-mortem found the pgap separator

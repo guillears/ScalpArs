@@ -534,7 +534,7 @@
     "deepgap_probe_max_open": 3,
     "majors_probe_enabled": false,
     "majors_probe_max_open": 2,
-    "spike_bounce_enabled": true,
+    "spike_bounce_enabled": false,
     "spike_bounce_rsi_crash": 25.0,
     "spike_bounce_rsi_prev_min": 45.0,
     "spike_bounce_rsi_prev_max": 65.0,

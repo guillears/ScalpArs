@@ -377,7 +377,7 @@ class SignalThresholds(BaseModel):
     # +17% still ahead; pre-pump chop never jumps >9. Bypasses the signal ladder BY DESIGN (these
     # candles have no fan yet; RSI>65 blocks all follow-ups). Fires only when the ladder produced
     # NO signal. Right-tail cohort — pre-registered read weights avg over WR (CURRENT_STATE #11).
-    spike_chase_probe_enabled: bool = False  # ✗ RETIRED 2026-08-10 (operator): superseded by the Jul-27 full ship; probe cohort frozen at graduation — the slot serves nothing
+    spike_chase_probe_enabled: bool = True   # ⚠ MISNOMER — since the Jul-27 graduation this is the MASTER TRIGGER for the full-size 🚀 chase/fade program (scanner pump branch + top-50 hook detection), NOT a probe slot. Aug-10 "retirement" to False silently killed all fades/chases (review-caught, reverted same day). Must stay True while the program runs; the frozen probe-era cohort row is display-only.
     spike_chase_probe_max_open: int = 3          # same slot cap as the rest of the fleet
     spike_chase_probe_rsi_jump: float = 25.0     # min single-candle RSI(12) jump (pts)
     spike_chase_probe_rsi_prev_max: float = 55.0 # from-quiet condition: prev candle RSI <= this

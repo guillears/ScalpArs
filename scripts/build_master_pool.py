@@ -31,8 +31,25 @@ def load():
     b2 = pd.read_csv("reports/BASELINE2_batch0731-0810_orders_prereset.csv")
     b2 = b2[(b2.status == "CLOSED") & (b2.opened_at >= "2026-07-31")].copy(); b2['era'] = 'B2'
     cols = set(base.columns) & set(b1.columns) & set(b2.columns)
-    return pd.concat([d[list(cols) + ['era']] if 'era' not in cols else d[list(cols)]
-                      for d in (base, b1, b2)], ignore_index=True)
+    # gate-load-bearing columns must survive the 3-way intersection — a schema
+    # drift in ONE era file would otherwise silently shrink the analysis surface
+    required = ['opened_at', 'pair', 'direction', 'pnl', 'pnl_percentage', 'peak_pnl',
+                'entry_strategy', 'entry_rsi_prev', 'entry_pos_di', 'entry_adx',
+                'entry_btc_rsi', 'entry_btc_dist_from_ema13_pct', G,
+                'entry_pair_volume_24h_usd', 'entry_atr_pct', 'entry_ema5_stretch',
+                'entry_btc_regime', 'entry_global_volume_ratio', 'entry_btc_ema20_slope',
+                'cell_multiplier', 'cell_multiplier_source', 'pattern_cell_source', 'status']
+    missing = [c for c in required if c not in cols]
+    if missing:
+        raise SystemExit(f"FATAL: gate columns missing from the 3-way intersection: {missing}")
+    cols.discard('id')  # locked rule: NEVER use `id` (resets on paper reset) — keep it out of the pool
+    df = pd.concat([d[list(cols) + ['era']] if 'era' not in cols else d[list(cols)]
+                    for d in (base, b1, b2)], ignore_index=True)
+    dup = df.duplicated(subset=['opened_at', 'pair', 'direction'])
+    if dup.any():
+        raise SystemExit(f"FATAL: {dup.sum()} duplicate rows on the locked dedup key "
+                         f"(opened_at, pair, direction) — era boundaries overlap")
+    return df
 
 def main():
     df = load()
@@ -57,11 +74,9 @@ def main():
         k, why = True, ''
         if r.is_probe:
             why = 'PROBE_EXEMPT'
-        elif strat == 'SPIKE_FADE' or slv == 'FLIP_SHORT' and False:
-            pass
         if not r.is_probe:
             if strat == 'SPIKE_FADE':
-                if r.entry_btc_rsi >= 45: k, why = False, 'FADE_BRSI45'
+                if r.entry_btc_rsi > 45: k, why = False, 'FADE_BRSI45'  # engine uses strict > (45.0 passes)
                 elif pd.notna(r.entry_btc_dist_from_ema13_pct) and r.entry_btc_dist_from_ema13_pct > 0: k, why = False, 'FADE_BD13'
                 elif v is not None and v < 2e6: k, why = False, 'FLOOR_2M'
                 elif (pd.notna(r.entry_rsi_prev) and r.entry_rsi_prev < 44
@@ -88,9 +103,11 @@ def main():
                 sp = max(pk - atr, 0.10) / 100 * abs(p / (r.pnl_percentage / 100)); why = why or 'CF_ARM040'
             elif (not r.is_door and pd.notna(r.entry_global_volume_ratio) and pd.notna(r.entry_btc_ema20_slope)
                   and r.entry_global_volume_ratio > 0.74 and r.entry_btc_ema20_slope > 0.07):
+                # engine de-mux only strips a >1x boost on UNMATCHED cells — a trade that
+                # actually sized 1x is untouched (no 2.0 fallback: that halved real 1x P&L)
                 m = pd.to_numeric(r.cell_multiplier, errors='coerce')
-                m = m if pd.notna(m) and m > 1 else 2.0
-                sp = p / m; why = why or 'CF_SPRINT_DEMUX'
+                if pd.notna(m) and m > 1 and 'UNMATCHED' in str(r.cell_multiplier_source or '').upper():
+                    sp = p / m; why = why or 'CF_SPRINT_DEMUX'
         keep.append(k); reason.append(why); spnl.append(sp if k else 0.0)
     df['stack_keep'] = keep; df['stack_block_reason'] = reason
     df['stack_pnl'] = np.round(spnl, 2); df['stack_version'] = STACK_VERSION

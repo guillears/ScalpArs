@@ -558,7 +558,7 @@
     "adxmax2_probe_enabled": false,
     "adxmax2_probe_max_open": 3,
     "adxmax2_probe_ceiling_long": 40.0,
-    "spike_chase_probe_enabled": false,
+    "spike_chase_probe_enabled": true,
     "spike_chase_probe_max_open": 3,
     "spike_chase_probe_rsi_jump": 25.0,
     "spike_chase_probe_rsi_prev_max": 55.0,

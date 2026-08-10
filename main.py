@@ -11089,11 +11089,14 @@ def _compute_gap_probe_cohort(orders):
         n = len(rs)
         _off = (not cohort.startswith("EXPANDING")) and not _cohort_enabled.get(cohort, True)
         if n == 0:
-            if not cohort.startswith("EXPANDING"):
+            # Aug-10 prune (operator): disabled probes with zero batch fires are corpses —
+            # their verdicts live in DECISION_LOG/config comments; the table shows only
+            # enabled or fired cohorts (UI + both exports inherit this payload).
+            if not cohort.startswith("EXPANDING") and not _off:
                 rows_out.append({'cohort': cohort, 'n': 0, 'wr': None, 'avg_pct': None,
                                  'total_demux': 0.0, 'avg_peak': None, 'doa_pct': None,
                                  'dates': 0, 'disabled': _off,
-                                 'verdict': "✗ OFF — probe disabled (0/30)" if _off else "⏳ building (0/30)"})
+                                 'verdict': "⏳ building (0/30)"})
             continue
         wr = sum(1 for o in rs if (o.pnl or 0) > 0) / n * 100
         avg_pct = sum((o.pnl_percentage or 0.0) for o in rs) / n

@@ -1901,7 +1901,7 @@ class TradingConfig(BaseModel):
     # could drain it between 6h checks. Floors: top-up target = max(burn×runway, THIS);
     # emergency threshold = max(burn12×12, THIS×0.5); auto-sell never drains below THIS.
     bnb_min_balance_usd: float = 50.0
-    paper_bnb_initial_usd: float = 200.0  # Jul 3: 500->200 (operator; USDT seed 2500->2800, total $3000 unchanged)
+    paper_bnb_initial_usd: float = 100.0  # Aug 10: 200->100 (operator; USDT seed 2800->2900, total $3000 unchanged)
     # BNB AUTO-SELL (Jun 22) — symmetric rebalance. The buy path tops BNB UP to a 24h
     # runway, but never claws back: when activity slows the 24h burn rate decays, runway
     # inflates, and the over-funded reserve locks USDT out of trading (tradable balance =

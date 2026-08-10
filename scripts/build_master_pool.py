@@ -21,7 +21,7 @@ import warnings; warnings.filterwarnings('ignore')
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-08-10"
+STACK_VERSION = "2026-08-10b"  # b: fade SL -0.70 -> -1.50 CF (41e)
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 def load():
@@ -97,6 +97,21 @@ def main():
                 elif r.is_door and pd.notna(r.entry_adx) and r.entry_adx < 21: k, why = False, 'CALM3D_DMI_ADX'
         # CF P&L for kept trades
         sp = p
+        # fade SL -1.5 (41e): SL-stopped fade losers re-priced — survive if worst-ever
+        # adverse < 1.5% (post-exit running high vs entry, short side), outcome = held
+        # trajectory endpoint; else full stop at -1.5. Non-SL exits (EMA13/SPIKE_LOCK) untouched.
+        if (k and not r.is_probe and strat == 'SPIKE_FADE' and p < 0
+                and str(r.get('close_reason') or '').startswith('STOP_LOSS')
+                and pd.notna(r.pnl_percentage) and r.pnl_percentage != 0):
+            dpp = abs(p / r.pnl_percentage)
+            worst = None
+            if pd.notna(r.get('post_exit_running_high')) and pd.notna(r.entry_price) and r.entry_price:
+                worst = (r.post_exit_running_high / r.entry_price - 1) * 100  # adverse % for the short
+            if worst is not None and worst < 1.5 and pd.notna(r.get('post_exit_final_pnl')):
+                sp = r.post_exit_final_pnl * dpp
+            else:
+                sp = -1.5 * dpp
+            why = why or 'CF_FADE_SL15'
         if k and not r.is_probe and (strat.startswith('MOMENTUM') or slv.startswith('MOM')) and str(r.direction) == 'LONG':
             pk, atr = r.peak_pnl, (r.entry_atr_pct if pd.notna(r.entry_atr_pct) else 99)
             if pd.notna(pk) and 0.40 <= pk < 0.45 and pd.notna(r.pnl_percentage) and r.pnl_percentage < max(pk - atr, 0.10) and r.pnl_percentage != 0:

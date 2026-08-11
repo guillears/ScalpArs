@@ -912,6 +912,13 @@ def check_exit_conditions(
                                     # flips fall back to the normal tiered trailing.
     runner_atr_mult_override: float = None,  # Jul 31 🏀 SPIKE_BOUNCE: strategy-scoped trail N
                                              # (0.5 vs the LONG global 1.0 — dump-inflated ATR).
+    fixed_sl_override: float = None,  # Aug 11 ROSE bug fix: spike species (FADE/BOUNCE/CHASE)
+                                      # carry a FIXED SL that the realtime path enforces
+                                      # verbatim. This monitor checker was racing it with the
+                                      # momentum conf SL (−0.70) + BE/signal/ATR chain —
+                                      # invisible while fade SL == −0.70, it stopped ROSE at
+                                      # −0.75 the day the fade SL widened to −1.5. When set,
+                                      # this value REPLACES the whole effective-SL chain.
 ) -> Dict:
     """
     Check if position should be closed based on SL/TP/Trailing stop
@@ -1092,11 +1099,20 @@ def check_exit_conditions(
             logger.debug(f"[ATR_SL_FLOOR] {direction}: SL clamped from {effective_stop_loss}% to {_sl_floor}% (floor cap)")
             effective_stop_loss = _sl_floor
 
+    # Aug 11 ROSE bug fix: a spike fixed SL overrides the ENTIRE chain above —
+    # no BE offsets, no signal-active widening, no ATR widening (exact mirror of
+    # the realtime path's _is_spike_fade gating). Must be applied AFTER the chain
+    # so none of its branches can tighten or widen a fixed-SL species.
+    if fixed_sl_override is not None:
+        effective_stop_loss = fixed_sl_override
+        breakeven_active = False
+        be_level = 0
+
     # Check Stop Loss (P&L based, with break-even adjustment in pre-TP zone only)
     if pnl_pct <= effective_stop_loss:
         if breakeven_active:
             close_reason = f"BREAKEVEN_EXIT_L{be_level}"
-        elif signal_active:
+        elif signal_active and fixed_sl_override is None:
             close_reason = f"STOP_LOSS_WIDE L{current_tp_level}"
         else:
             close_reason = f"STOP_LOSS L{current_tp_level}"

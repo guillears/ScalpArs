@@ -522,7 +522,7 @@ class SignalThresholds(BaseModel):
     #   +0.83 peak → −0.45 NO_EXP). Once unarmed peak >= this, run the standard runner
     #   trail (1×ATR giveback, BE-lock +0.10 — reuses runner_trail_atr_mult/be_lock);
     #   RSI-arm hands off to the wide envelope so true tails keep their room. 0 = off.
-    spike_trail_arm_pct: float = 0.45
+    spike_trail_arm_pct: float = 0.40  # Aug-11: 0.45→0.40 (operator; alignment with the system-wide 0.40 trail arm — zero lifetime chases peaked in [0.40,0.45), pure consistency)
     # ② stale-spike kill — a spike with no follow-through is dead by construction, yet
     #   QTUM/KAS sat 3h at 0.00 peak bleeding to NO_EXP (−0.73/−0.95). Unarmed AND
     #   peak < +0.2 after this many minutes → exit at market (30 = six 5m candles;

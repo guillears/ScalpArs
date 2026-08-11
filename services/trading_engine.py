@@ -8313,6 +8313,18 @@ class TradingEngine:
                 # Jul 31 🏀 SPIKE_BOUNCE: strategy-scoped trail giveback (0.5×ATR frozen)
                 runner_atr_mult_override=(float(getattr(config.trading_config.thresholds, 'spike_bounce_trail_atr_mult', 0.5) or 0.5)
                                           if (order.entry_strategy or '') == 'SPIKE_BOUNCE' else None),
+                # Aug 11 ROSE bug fix: spike species carry FIXED SLs — this monitor checker
+                # was racing the realtime path with the momentum conf SL (−0.70) and won on
+                # ROSE (stopped −0.75 vs the shipped fade −1.5). Pass the species SL so the
+                # monitor enforces the SAME stop as realtime (chase included for safety —
+                # its option-D block normally exits it before reaching here).
+                fixed_sl_override=(float(getattr(config.trading_config.thresholds, 'spike_fade_sl_pct', -1.50) or -1.50)
+                                   if (order.entry_strategy or '') == 'SPIKE_FADE'
+                                   else float(getattr(config.trading_config.thresholds, 'spike_bounce_sl_pct', -0.70) or -0.70)
+                                   if (order.entry_strategy or '') == 'SPIKE_BOUNCE'
+                                   else float(getattr(config.trading_config.thresholds, 'spike_sl_pct', -1.2) or -1.2)
+                                   if (order.entry_strategy or '') == 'SPIKE_CHASE'
+                                   else None),
             )
 
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)

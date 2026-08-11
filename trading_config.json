@@ -592,7 +592,7 @@
     "nonexp_calm3d_lev_mult": 1.0,
     "rsiadx_breadth_admit_max": 63.6,
     "long_btc_1h_deadband_pos": 0.025,
-    "spike_trail_arm_pct": 0.45,
+    "spike_trail_arm_pct": 0.4,
     "spike_stale_kill_min": 30.0,
     "spike_regime_router_enabled": true,
     "spike_chase_regimes": "STRONG_BULL,HEALTHY_BULL",

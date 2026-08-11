@@ -1424,32 +1424,6 @@
                     </tr></thead><tbody id="graduation-doors-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
 
-                <!-- GAPFLAT Probe A/B (Jul 13, 2026) -->
-                <div class="mt-6 pt-6 border-t border-cyan-900/40">
-                    <h3 class="text-sm font-semibold text-cyan-300 mb-2">🪟 Gap-Expand Probe — EXPANDING vs NON-EXPANDING (1×)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Real-data A/B on the #1 entry blocker (<strong>PAIR_EMA_GAP_NOT_EXPANDING</strong>). <span class="text-gray-300">EXPANDING</span> = normal momentum LONGs (passed the gap-expanding check); <span class="text-cyan-300">NON-EXPANDING (probe)</span> = failed ONLY that check, opened as a REAL ~1×-leverage order tagged GAPFLAT_PROBE. $ de-muxed to 1× (sizing never skews the read; % metrics size-invariant). 🔒 Gates at N≥30 probes (≥10 dates): <span class="text-emerald-400">★ relaxation candidate</span> = WR≥60% &amp; avg≥+0.15%; <span class="text-red-400">✗ filter vindicated</span> = WR≤45% or avg&lt;0 (switch probe off). <span class="opacity-40"><s>Dimmed/struck rows</s></span> = probe switched OFF (verdict executed or dependency down; N frozen at the evidence the decision used).</p>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs">
-                            <thead class="text-gray-400 uppercase">
-                                <tr>
-                                    <th class="text-left py-1 px-2">Cohort</th>
-                                    <th class="text-right px-2">N</th>
-                                    <th class="text-right px-2">WR%</th>
-                                    <th class="text-right px-2" title="Avg pnl% (leverage-invariant)">Avg P&L%</th>
-                                    <th class="text-right px-2" title="Total $ de-multiplied to 1× base">Total $ (1×)</th>
-                                    <th class="text-right px-2" title="Avg in-trade peak P&L%">AvgPk%</th>
-                                    <th class="text-right px-2" title="Share of trades that never reached +0.10% (dead on arrival)">DOA%</th>
-                                    <th class="text-right px-2">Dates</th>
-                                    <th class="text-left px-2">Verdict</th>
-                                </tr>
-                            </thead>
-                            <tbody id="gap-probe-cohort-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="py-3 text-center text-gray-500">No probe trades yet (enable the GAPFLAT Probe in Signal Thresholds)</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
                 <!-- Trailing Confirmation Performance (May 9, 2026) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
                     <h3 class="text-sm font-semibold text-cyan-300 mb-2">⏱️ Trailing Confirmation Performance</h3>
@@ -10077,14 +10051,6 @@
                     lines.push(`  ⚠ overlap (#31): ${_gdo.shared_fires} fires counted in >=2 rows (Σ$${_gdo.shared_usd.toFixed(2)}) — naive column sum $${_gdo.naive_sum_usd.toFixed(2)} vs UNIQUE ${_gdo.unique_trades} trades $${_gdo.unique_usd.toFixed(2)}; gates stay per-row (locked slices), intersections read per CURRENT_STATE #31`);
                 }
             }
-            if (perf.gap_probe_cohort && perf.gap_probe_cohort.rows && perf.gap_probe_cohort.rows.length > 0) {
-                lines.push(`\n${hr2}`);
-                lines.push('## Gap-Expand Probe — EXPANDING vs NON-EXPANDING (1x) — Jul 13\n');
-                lines.push(`${'Cohort'.padEnd(24)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$(1x)'.padEnd(12)} ${'AvgPk%'.padEnd(9)} ${'DOA%'.padEnd(7)} ${'Dates'.padEnd(6)} Verdict`);
-                for (const r of perf.gap_probe_cohort.rows) {
-                    lines.push(`${(r.cohort||'').padEnd(24)} ${String(r.n).padEnd(5)} ${(r.wr===null||r.wr===undefined?'—':r.wr.toFixed(1)+'%').padEnd(7)} ${(r.avg_pct===null||r.avg_pct===undefined?'—':((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%')).padEnd(10)} ${((r.total_demux>=0?'+$':'-$')+Math.abs(r.total_demux||0).toFixed(2)).padEnd(12)} ${(r.avg_peak===null||r.avg_peak===undefined?'—':'+'+r.avg_peak.toFixed(3)+'%').padEnd(9)} ${(r.doa_pct===null||r.doa_pct===undefined?'—':r.doa_pct.toFixed(1)+'%').padEnd(7)} ${String(r.dates||0).padEnd(6)} ${r.verdict||''}`);
-                }
-            }
 
             if (perf.spike_fires && perf.spike_fires.length > 0) {
                 lines.push(`\n${hr2}`);
@@ -12077,14 +12043,6 @@
                     const _gdo = perf.graduation_doors_overlap;
                     if (_gdo && _gdo.shared_fires > 0) {
                         lines.push(`  ⚠ overlap (#31): ${_gdo.shared_fires} fires counted in >=2 rows (Σ$${_gdo.shared_usd.toFixed(2)}) — naive column sum $${_gdo.naive_sum_usd.toFixed(2)} vs UNIQUE ${_gdo.unique_trades} trades $${_gdo.unique_usd.toFixed(2)}; gates stay per-row (locked slices), intersections read per CURRENT_STATE #31`);
-                    }
-                }
-                if (perf.gap_probe_cohort && perf.gap_probe_cohort.rows && perf.gap_probe_cohort.rows.length > 0) {
-                    lines.push(`\n${hr2}`);
-                    lines.push('## Gap-Expand Probe — EXPANDING vs NON-EXPANDING (1x) — Jul 13\n');
-                    lines.push(`${'Cohort'.padEnd(24)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$(1x)'.padEnd(12)} ${'AvgPk%'.padEnd(9)} ${'DOA%'.padEnd(7)} ${'Dates'.padEnd(6)} Verdict`);
-                    for (const r of perf.gap_probe_cohort.rows) {
-                        lines.push(`${(r.cohort||'').padEnd(24)} ${String(r.n).padEnd(5)} ${(r.wr===null||r.wr===undefined?'—':r.wr.toFixed(1)+'%').padEnd(7)} ${(r.avg_pct===null||r.avg_pct===undefined?'—':((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%')).padEnd(10)} ${((r.total_demux>=0?'+$':'-$')+Math.abs(r.total_demux||0).toFixed(2)).padEnd(12)} ${(r.avg_peak===null||r.avg_peak===undefined?'—':'+'+r.avg_peak.toFixed(3)+'%').padEnd(9)} ${(r.doa_pct===null||r.doa_pct===undefined?'—':r.doa_pct.toFixed(1)+'%').padEnd(7)} ${String(r.dates||0).padEnd(6)} ${r.verdict||''}`);
                     }
                 }
 
@@ -14791,39 +14749,6 @@
                                     <td class="px-2 py-1 text-right ${acC}">${r.avg_pct >= 0 ? '+' : ''}${r.avg_pct.toFixed(3)}%</td>
                                     <td class="px-2 py-1 text-right ${usdC}">${r.total_demux >= 0 ? '+$' : '-$'}${Math.abs(r.total_demux).toFixed(2)}</td>
                                     <td class="px-2 py-1 ${vC} text-xs">${r.verdict}</td>
-                                </tr>`;
-                            }).join('');
-                        }
-                    }
-                }
-
-                // GAPFLAT Probe A/B (Jul 13, 2026)
-                if (data.gap_probe_cohort) {
-                    const _gpc = data.gap_probe_cohort;
-                    const _gpcBody = document.getElementById('gap-probe-cohort-body');
-                    if (_gpcBody) {
-                        if (!_gpc.rows || !_gpc.rows.length) {
-                            _gpcBody.innerHTML = '<tr><td colspan="9" class="py-3 text-center text-gray-500">No probe trades yet (enable the GAPFLAT Probe in Signal Thresholds)</td></tr>';
-                        } else {
-                            _gpcBody.innerHTML = _gpc.rows.map(r => {
-                                const cohC = r.cohort.startsWith('NON-') ? 'text-cyan-300 font-semibold' : (r.cohort.startsWith('SMALL-') ? 'text-teal-300 font-semibold' : 'text-gray-300');
-                                const wrC = r.wr === null ? 'text-gray-500' : (r.wr >= 60 ? 'text-emerald-400' : (r.wr <= 45 ? 'text-red-400' : 'text-gray-300'));
-                                const acC = (r.avg_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
-                                const usdC = r.total_demux > 1 ? 'text-emerald-400' : (r.total_demux < -1 ? 'text-red-400' : 'text-gray-400');
-                                const vC = (r.verdict || '').includes('★') ? 'text-emerald-400 font-semibold' : ((r.verdict || '').includes('✗') ? 'text-red-400 font-semibold' : ((r.verdict || '').includes('building') ? 'text-blue-400' : 'text-gray-400'));
-                                // Jul 20: disabled probe = closed case — dim the row, strike the name; N frozen at verdict evidence
-                                const rowC = r.disabled ? 'hover:bg-white/5 opacity-40' : 'hover:bg-white/5';
-                                const nameC = r.disabled ? cohC + ' line-through' : cohC;
-                                return `<tr class="${rowC}">
-                                    <td class="px-2 py-1 ${nameC}">${r.cohort}</td>
-                                    <td class="px-2 py-1 text-right">${r.n}</td>
-                                    <td class="px-2 py-1 text-right ${wrC}">${r.wr === null ? '—' : r.wr.toFixed(1) + '%'}</td>
-                                    <td class="px-2 py-1 text-right ${acC}">${r.avg_pct === null ? '—' : (r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%'}</td>
-                                    <td class="px-2 py-1 text-right ${usdC}">${r.total_demux >= 0 ? '+$' : '-$'}${Math.abs(r.total_demux).toFixed(2)}</td>
-                                    <td class="px-2 py-1 text-right text-gray-300">${r.avg_peak === null ? '—' : '+' + r.avg_peak.toFixed(3) + '%'}</td>
-                                    <td class="px-2 py-1 text-right text-gray-300">${r.doa_pct === null ? '—' : r.doa_pct.toFixed(1) + '%'}</td>
-                                    <td class="px-2 py-1 text-right text-gray-300">${r.dates}</td>
-                                    <td class="px-2 py-1 ${vC} text-xs">${r.verdict || ''}</td>
                                 </tr>`;
                             }).join('');
                         }

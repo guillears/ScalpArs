@@ -1921,7 +1921,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [],
-            "ema813_gap_performance": [], "ema_fan_accel_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "neg_di_performance": [], "pos_di_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [], "gap_probe_cohort": {"rows": []},
+            "ema813_gap_performance": [], "ema_fan_accel_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "neg_di_performance": [], "pos_di_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [],
             "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "btc_volatility_performance": [], "btc_rsi_1h_direction_performance": [], "btc_vol_adx_crosstab": [], "btc_rsi_1h_5m_crosstab": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "range_pos_btc_rsi_dir_crosstab": [], "range_pos_pair_rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [], "pair_gap_pair_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
@@ -3817,7 +3817,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "adx_delta_performance": [],
             "neg_di_performance": [],
             "pos_di_performance": [],
-            "gap_probe_cohort": {"rows": []},
             "adx_performance": [],
             "stretch_performance": [],
             "pair_slope_performance": [],
@@ -8026,8 +8025,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "trail_gate_cf": _compute_trail_gate_cf(orders),
         # Gap-Expanding relaxation A/B cohort (Jun 8, 2026 — MARGINAL vs STRICT)
         "gap_expand_cohort": _compute_gap_expand_cohort(orders),
-        # GAPFLAT probe A/B (Jul 13, 2026 — EXPANDING momentum longs vs 1x NON-EXPANDING probes)
-        "gap_probe_cohort": _compute_gap_probe_cohort(orders),
         # Trailing pullback confirmation performance (May 9, 2026)
         "trailing_confirmation_performance": _compute_trailing_confirmation_performance(orders),
         # Post-exit P&L snapshots for EMA13_CROSS_EXIT and STOP_LOSS_WIDE (May 12 LATE PM)
@@ -10910,229 +10907,6 @@ def _compute_hard_tp_shadow(orders):
         _row(f"B live-ladder replica [{era}]", b_vals, b_fired, "unfired=censored final")
         _row(f"C flat cap 1.25 [{era}]", c_vals, c_reached, "unreached=censored final")
     return {"fires_total": len(fires), "rows": rows}
-
-
-def _compute_gap_probe_cohort(orders):
-    """GAPFLAT probe A/B (Jul 13, 2026).
-
-    Compares CLOSED momentum LONGs: EXPANDING (normal entries — passed the gap-expanding
-    check) vs NON-EXPANDING (cell_src=GAPFLAT_PROBE — failed ONLY that check, opened as a
-    1x-effective-leverage probe). $ de-muxed to 1x so sizing never skews the comparison;
-    % metrics are size-invariant already. Verdict gates (pre-committed at ship):
-    N>=30 & WR>=60% & avg>=+0.15% => ★ relaxation candidate; N>=30 & (WR<=45% or avg<0)
-    => ✗ filter vindicated (switch probe off)."""
-    exp_rows, probe_rows, gapmin_rows, exp_s_rows, gapmin_s_rows, gapflat_s_rows = [], [], [], [], [], []
-    slopegate_rows, slopegate_s_rows = [], []  # Jul 14: BTC 5m flat dead-band probe
-    rsiadx_rows, rsiadx_s_rows = [], []  # Jul 15: RSI×ADX cross-filter probe (#4)
-    deadband_rows = []  # Jul 15: BTC 1h flat-UP half-band probe (#5, LONG-only)
-    rsiceil_rows = []  # Jul 15: LONG RSI (65,70] ceiling probe (#6, LONG-only)
-    gminflat_rows, gminflat_s_rows = [], []  # Jul 20: flat+small purity-class probe (#7)
-    adxmax_rows, adxmax_s_rows = [], []  # Jul 20: pair-ADX ceiling probe (#8)
-    dbdown_rows = []  # Jul 20: BTC 1h flat-DOWN half-band probe (#9, LONG-only)
-    adxmax2_rows = []  # Jul 21: second LONG pair-ADX rung (35,40] probe (#10, LONG-only)
-    spike_rows = []    # Jul 24: SPIKE_CHASE ladder-bypass chase probe (#11, LONG-only)
-    fgp_qs_rows, fgp_rsi_rows, fgp_tg_rows = [], [], []  # Jul 29: FLIPGATE probes (SHORT-only flip fades)
-    deepgap_s_rows = []  # Jul 30: deep-gap floor probe (#13, SHORT-only — graduated phantom)
-    majors_btc_rows, majors_btc_s_rows = [], []  # Jul 30: MAJORS probe (#14) — BTC, per-pair verdicts
-    majors_eth_rows, majors_eth_s_rows = [], []  # Jul 30: MAJORS probe (#14) — ETH
-    for o in orders:
-        if getattr(o, 'status', None) != "CLOSED":
-            continue
-        d = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or "LONG"
-        # Jul 29 FLIPGATE probes — captured BEFORE the momentum-strategy filter (they are
-        # flips, entry_strategy=FLIP:FAN_RATIO_GATE, which the filter below would drop).
-        # They never join the momentum A/B buckets or the EXPANDING control window.
-        _src_fg = getattr(o, 'cell_multiplier_source', None) or ''
-        if '+FGP_' in _src_fg:
-            if d == "SHORT":
-                if '+FGP_QS' in _src_fg:
-                    fgp_qs_rows.append(o)
-                elif '+FGP_RSI' in _src_fg:
-                    fgp_rsi_rows.append(o)
-                elif '+FGP_TG' in _src_fg:
-                    fgp_tg_rows.append(o)
-            continue
-        strat = getattr(o, 'entry_strategy', None) or "MOMENTUM"
-        if strat not in ("MOMENTUM",):
-            continue  # flips / bull-long / bounce-long are different sleeves
-        _src = getattr(o, 'cell_multiplier_source', None) or ''
-        if d == "LONG":
-            if _src == 'GAPFLAT_PROBE':
-                probe_rows.append(o)
-            elif _src == 'GAPMIN_PROBE':
-                gapmin_rows.append(o)
-            elif _src == 'SLOPEGATE_PROBE':
-                slopegate_rows.append(o)
-            elif _src == 'RSIADX_PROBE':
-                rsiadx_rows.append(o)
-            elif _src == 'DEADBAND_PROBE':
-                deadband_rows.append(o)
-            elif _src == 'RSICEIL_PROBE':
-                rsiceil_rows.append(o)
-            elif _src == 'GMINFLAT_PROBE':
-                gminflat_rows.append(o)
-            elif _src == 'ADXMAX_PROBE':
-                adxmax_rows.append(o)
-            elif _src == 'DBDOWN_PROBE':
-                dbdown_rows.append(o)
-            elif _src == 'ADXMAX2_PROBE':
-                adxmax2_rows.append(o)
-            elif _src == 'SPIKE_CHASE_PROBE':
-                spike_rows.append(o)
-            elif _src == 'MAJORS_PROBE':
-                (majors_btc_rows if (getattr(o, 'pair', '') or '').startswith('BTC') else majors_eth_rows).append(o)
-            else:
-                exp_rows.append(o)
-        elif d == "SHORT":
-            if _src == 'GAPMIN_PROBE':
-                gapmin_s_rows.append(o)
-            elif _src == 'GAPFLAT_PROBE':
-                gapflat_s_rows.append(o)
-            elif _src == 'SLOPEGATE_PROBE':
-                slopegate_s_rows.append(o)
-            elif _src == 'RSIADX_PROBE':
-                rsiadx_s_rows.append(o)
-            elif _src == 'GMINFLAT_PROBE':
-                gminflat_s_rows.append(o)
-            elif _src == 'ADXMAX_PROBE':
-                adxmax_s_rows.append(o)
-            elif _src == 'DEEPGAP_PROBE':
-                deepgap_s_rows.append(o)
-            elif _src == 'MAJORS_PROBE':
-                (majors_btc_s_rows if (getattr(o, 'pair', '') or '').startswith('BTC') else majors_eth_s_rows).append(o)
-            elif _src == 'ADXMAX2_PROBE':
-                # Defensive (review): ADXMAX2 is LONG-only today — a SHORT carrying the tag
-                # (e.g. a future SHORT rung reusing it) must not contaminate the EXPANDING·SHORT
-                # control. Drop from the A/B rather than mis-bucket.
-                continue
-            else:
-                exp_s_rows.append(o)
-    # Fair A/B control: window BOTH control sides to the probe-live period (same tape,
-    # same filter stack) — all-history controls mix dead configs (locked re-sim rule).
-    _all_probes = (probe_rows + gapmin_rows + gapmin_s_rows + gapflat_s_rows
-                   + slopegate_rows + slopegate_s_rows + rsiadx_rows + rsiadx_s_rows
-                   + deadband_rows + rsiceil_rows
-                   + gminflat_rows + gminflat_s_rows + adxmax_rows + adxmax_s_rows + dbdown_rows + adxmax2_rows + spike_rows
-                   + deepgap_s_rows + majors_btc_rows + majors_btc_s_rows + majors_eth_rows + majors_eth_s_rows)
-    if _all_probes:
-        _p0 = min(getattr(o, 'opened_at', None) for o in _all_probes if getattr(o, 'opened_at', None))
-        if _p0:
-            exp_rows = [o for o in exp_rows if (getattr(o, 'opened_at', None) or _p0) >= _p0]
-            exp_s_rows = [o for o in exp_s_rows if (getattr(o, 'opened_at', None) or _p0) >= _p0]
-
-    def _demux(o):
-        m = (getattr(o, 'cell_multiplier', 1.0) or 1.0) * (getattr(o, 'cell_lev_multiplier', 1.0) or 1.0)
-        return (o.pnl or 0.0) / m if m else (o.pnl or 0.0)
-
-    # Per-cohort kill switches (Jul 20): a probe row whose config flag(s) are off is a
-    # CLOSED CASE — its verdict was executed (or its dependency is down) and the N freezes
-    # at whatever evidence the decision used. The UI dims these; the verdict string rides
-    # into both text exports (data value, not CSS). GMINFLAT lists its hard dependencies
-    # (it can only fire while GAPFLAT+GAPMIN probes are on — see config.py).
-    _th_flags = config.trading_config.thresholds
-    def _g(name, default=True):
-        return bool(getattr(_th_flags, name, default))
-    _cohort_enabled = {
-        "NON-EXPANDING (probe) · LONG": _g('gap_probe_enabled'),
-        "NON-EXPANDING (probe) · SHORT": _g('gap_probe_enabled'),
-        "SMALL-GAP (probe) · LONG": _g('gapmin_probe_enabled'),
-        "SMALL-GAP (probe) · SHORT": _g('gapmin_probe_enabled'),
-        "SLOPEGATE (probe) · LONG": _g('slopegate_probe_enabled') and _g('slopegate_probe_long_enabled'),
-        "SLOPEGATE (probe) · SHORT": _g('slopegate_probe_enabled'),
-        "RSIADX (probe) · LONG": _g('rsiadx_probe_enabled'),
-        "RSIADX (probe) · SHORT": _g('rsiadx_probe_enabled') and _g('rsiadx_probe_short_enabled'),
-        "DEADBAND flat-up (probe) · LONG": _g('deadband_probe_enabled'),
-        "RSICEIL 65-70 (probe) · LONG": _g('rsiceil_probe_enabled'),
-        "GMINFLAT flat+small (probe) · LONG": _g('gminflat_probe_enabled') and _g('gap_probe_enabled') and _g('gapmin_probe_enabled'),
-        "GMINFLAT flat+small (probe) · SHORT": _g('gminflat_probe_enabled') and _g('gap_probe_enabled') and _g('gapmin_probe_enabled'),
-        "ADXMAX 30-35 (probe) · LONG": _g('adxmax_probe_enabled'),
-        "ADXMAX 35-40 (probe) · LONG": _g('adxmax2_probe_enabled'),
-        "ADXMAX 35-40 (probe) · SHORT": _g('adxmax_probe_enabled'),
-        "DBDOWN flat-down (probe) · LONG": _g('dbdown_probe_enabled'),
-        "SPIKE_CHASE (probe) · LONG": _g('spike_chase_probe_enabled'),
-        "FLIPGATE QUALITY (probe) · SHORT": _g('flipgate_probe_enabled'),
-        "FLIPGATE RSI_MIN (probe) · SHORT": _g('flipgate_probe_enabled'),
-        "FLIPGATE TRENDGAP (probe) · SHORT": _g('flipgate_probe_enabled'),
-        "DEEPGAP deep-gap floor (probe) · SHORT": _g('deepgap_probe_enabled'),
-        "MAJORS BTC (probe) · LONG": _g('majors_probe_enabled'),
-        "MAJORS BTC (probe) · SHORT": _g('majors_probe_enabled'),
-        "MAJORS ETH (probe) · LONG": _g('majors_probe_enabled'),
-        "MAJORS ETH (probe) · SHORT": _g('majors_probe_enabled'),
-    }
-
-    rows_out = []
-    for cohort, rs in (("EXPANDING · LONG", exp_rows), ("NON-EXPANDING (probe) · LONG", probe_rows),
-                       ("SMALL-GAP (probe) · LONG", gapmin_rows),
-                       ("SLOPEGATE (probe) · LONG", slopegate_rows),
-                       ("RSIADX (probe) · LONG", rsiadx_rows),
-                       ("DEADBAND flat-up (probe) · LONG", deadband_rows),
-                       ("RSICEIL 65-70 (probe) · LONG", rsiceil_rows),
-                       ("GMINFLAT flat+small (probe) · LONG", gminflat_rows),
-                       ("ADXMAX 30-35 (probe) · LONG", adxmax_rows),
-                       ("ADXMAX 35-40 (probe) · LONG", adxmax2_rows),
-                       ("DBDOWN flat-down (probe) · LONG", dbdown_rows),
-                       ("SPIKE_CHASE (probe) · LONG", spike_rows),
-                       ("EXPANDING · SHORT", exp_s_rows), ("NON-EXPANDING (probe) · SHORT", gapflat_s_rows),
-                       ("SMALL-GAP (probe) · SHORT", gapmin_s_rows),
-                       ("SLOPEGATE (probe) · SHORT", slopegate_s_rows),
-                       ("RSIADX (probe) · SHORT", rsiadx_s_rows),
-                       ("GMINFLAT flat+small (probe) · SHORT", gminflat_s_rows),
-                       ("ADXMAX 35-40 (probe) · SHORT", adxmax_s_rows),
-                       ("FLIPGATE QUALITY (probe) · SHORT", fgp_qs_rows),
-                       ("FLIPGATE RSI_MIN (probe) · SHORT", fgp_rsi_rows),
-                       ("FLIPGATE TRENDGAP (probe) · SHORT", fgp_tg_rows),
-                       ("DEEPGAP deep-gap floor (probe) · SHORT", deepgap_s_rows),
-                       ("MAJORS BTC (probe) · LONG", majors_btc_rows),
-                       ("MAJORS BTC (probe) · SHORT", majors_btc_s_rows),
-                       ("MAJORS ETH (probe) · LONG", majors_eth_rows),
-                       ("MAJORS ETH (probe) · SHORT", majors_eth_s_rows)):
-        n = len(rs)
-        _off = (not cohort.startswith("EXPANDING")) and not _cohort_enabled.get(cohort, True)
-        if n == 0:
-            # Aug-10 prune (operator): disabled probes with zero batch fires are corpses —
-            # their verdicts live in DECISION_LOG/config comments; the table shows only
-            # enabled or fired cohorts (UI + both exports inherit this payload).
-            if not cohort.startswith("EXPANDING") and not _off:
-                rows_out.append({'cohort': cohort, 'n': 0, 'wr': None, 'avg_pct': None,
-                                 'total_demux': 0.0, 'avg_peak': None, 'doa_pct': None,
-                                 'dates': 0, 'disabled': _off,
-                                 'verdict': "⏳ building (0/30)"})
-            continue
-        wr = sum(1 for o in rs if (o.pnl or 0) > 0) / n * 100
-        avg_pct = sum((o.pnl_percentage or 0.0) for o in rs) / n
-        tot_demux = sum(_demux(o) for o in rs)
-        peaks = [getattr(o, 'peak_pnl', None) for o in rs]
-        peaks = [p for p in peaks if p is not None]
-        avg_peak = (sum(peaks) / len(peaks)) if peaks else None
-        doa = sum(1 for p in peaks if p < 0.10)
-        doa_pct = (doa / len(peaks) * 100) if peaks else None
-        dates = len({(getattr(o, 'opened_at', None) or datetime.min).strftime('%Y-%m-%d')
-                     for o in rs if getattr(o, 'opened_at', None)})
-        verdict = ""
-        if cohort.startswith("SPIKE_CHASE"):
-            # Jul 27: the spike probe GRADUATED to the full 🚀 program (strategy=SPIKE_CHASE/
-            # SPIKE_FADE, own Spike Fires table). This row = the frozen probe-era cohort;
-            # spike_chase_probe_enabled stays ON as the program's master trigger switch,
-            # so the generic enabled/building labels would mislead here.
-            verdict = f"🚀 GRADUATED → full ship Jul-27 (probe-era cohort frozen at {n}; live fires → Spike Fires table)"
-        elif _off:
-            # Verdict executed / dependency down — N frozen at the evidence the decision used.
-            verdict = f"✗ OFF — verdict executed ({n}/30)"
-        elif not cohort.startswith("EXPANDING"):
-            if n < 30:
-                verdict = f"⏳ building ({n}/30)"
-            elif wr >= 60.0 and avg_pct >= 0.15 and dates >= (5 if ("SLOPEGATE" in cohort or "RSIADX" in cohort or "DEADBAND" in cohort or "RSICEIL" in cohort or "GMINFLAT" in cohort or "ADXMAX" in cohort or "DBDOWN" in cohort or "FLIPGATE" in cohort) else 10):
-                verdict = "★ relaxation candidate (open the discussion)"
-            elif wr <= 45.0 or avg_pct < 0:
-                verdict = "✗ filter vindicated (switch probe off)"
-            else:
-                verdict = "✓ inconclusive (keep collecting)"
-        rows_out.append({'cohort': cohort, 'n': n, 'wr': round(wr, 1),
-                         'avg_pct': round(avg_pct, 4), 'total_demux': round(tot_demux, 2),
-                         'avg_peak': round(avg_peak, 4) if avg_peak is not None else None,
-                         'doa_pct': round(doa_pct, 1) if doa_pct is not None else None,
-                         'dates': dates, 'disabled': _off, 'verdict': verdict})
-    return {'rows': rows_out}
 
 
 def _compute_trail_gate_cf(orders):

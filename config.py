@@ -258,7 +258,7 @@ class SignalThresholds(BaseModel):
     # registered Sole-growth reopen trigger fired). A flip-SHORT candidate sole-blocked by
     # exactly ONE gate listed below opens at gap-probe sizing (~1x eff) under its own cell tag
     # (FGP_QS / FGP_RSI / FGP_TG) — per-gate cohorts, per-gate locked N>=30 verdicts.
-    flipgate_probe_enabled: bool = True
+    flipgate_probe_enabled: bool = False  # ✝ PROBE FLEET RETIRED 2026-08-11 (operator: near-zero flow, no value; ADXMAX math-dead for its relaxation gate at 12W/13L). Gap-Expand Probe table deleted same day; engine gates stay dormant.
     flipgate_probe_gates: str = "FLIP_SHORT_QUALITY,FLIP_SHORT_RSI_MIN,FLIP_SHORT_BTC_TRENDGAP"
     flipgate_probe_max_open: int = 3     # concurrent FGP_* probes (shared across the 3 cohorts)
     # Jul 13 PM: GAPMIN PROBE — sibling of the GAPFLAT probe, on the #2 LONG blocker
@@ -281,7 +281,7 @@ class SignalThresholds(BaseModel):
     # 🔒 Gates per side at N>=30 (>=5 dates — flow is ~40/day so dates accrue fast):
     # WR>=60% & avg>=+0.15% -> dead-band relaxation discussion; WR<=45% or avg<0 ->
     # gate vindicated (its FIRST evidence-grade validation since April), probe off.
-    slopegate_probe_enabled: bool = True
+    slopegate_probe_enabled: bool = False  # ✝ PROBE FLEET RETIRED 2026-08-11 (operator: near-zero flow, no value; ADXMAX math-dead for its relaxation gate at 12W/13L). Gap-Expand Probe table deleted same day; engine gates stay dormant.
     slopegate_probe_max_open: int = 3    # concurrent SLOPEGATE probes (shared across both directions)
     # Jul 15 — RSIADX PROBE (probe #4, operator-directed day-2 early open of the locked
     # >=3-dates gate; transparent override, probe-scope risk). The Mar-27 short RSI×ADX
@@ -356,7 +356,7 @@ class SignalThresholds(BaseModel):
     # blocked. 🔒 Gates PER SIDE at N>=30 (>=5 dates): WR>=60% & avg>=+0.15% ->
     # ceiling-raise discussion; WR<=45% or avg<0 -> ceiling vindicated, probe off.
     # Verdict slices 30-32 vs 32-35 (long) per protocol.
-    adxmax_probe_enabled: bool = True
+    adxmax_probe_enabled: bool = False  # ✝ PROBE FLEET RETIRED 2026-08-11 (operator: near-zero flow, no value; ADXMAX math-dead for its relaxation gate at 12W/13L). Gap-Expand Probe table deleted same day; engine gates stay dormant.
     adxmax_probe_max_open: int = 3       # concurrent ADXMAX probes (both directions combined)
     adxmax_probe_ceiling_long: float = 35.0   # LONG probe band: ADX in (momentum_adx_max_long, this]
     adxmax_probe_ceiling_short: float = 40.0  # SHORT probe band: ADX in (momentum_adx_max, this]
@@ -629,7 +629,7 @@ class SignalThresholds(BaseModel):
     # seeding dries up naturally (no half left blocked). 🔒 Gates at N>=30 (>=5 dates):
     # WR>=60% & avg>=+0.15% -> execute the fired revert (full open, consider H.BULL scope);
     # WR<=45% or avg<0 -> dead-band re-locks flat-down, phantom-revert-gate logged RESOLVED.
-    dbdown_probe_enabled: bool = True
+    dbdown_probe_enabled: bool = False  # ✝ PROBE FLEET RETIRED 2026-08-11 (operator: near-zero flow, no value; ADXMAX math-dead for its relaxation gate at 12W/13L). Gap-Expand Probe table deleted same day; engine gates stay dormant.
     dbdown_probe_max_open: int = 3       # concurrent DBDOWN probes (LONG-only by construction)
     # Jul 30 DEEPGAP probe (#13, SHORT-only) — graduated from the PASS:MOMENTUM_SHORT_DEEPGAP
     # phantom (final read at retirement: N=17 · 71% WR · Σ+1.85% · avg +0.109%; H.BULL 6·83%·+2.05
@@ -639,7 +639,7 @@ class SignalThresholds(BaseModel):
     # VERDICT'S job). 🔒 Pre-registered verdict at N>=30 (>=5 dates): bull-family cohort
     # (S.BULL+H.BULL) WR>=70% & Σ>0 at N>=15 -> promote bull-scoped full size; overall WR<=45%
     # or Σ<0 -> floor re-locks, probe off. Phantom tracker retired same day (Jul 30).
-    deepgap_probe_enabled: bool = True
+    deepgap_probe_enabled: bool = False  # ✝ PROBE FLEET RETIRED 2026-08-11 (operator: near-zero flow, no value; ADXMAX math-dead for its relaxation gate at 12W/13L). Gap-Expand Probe table deleted same day; engine gates stay dormant.
     deepgap_probe_max_open: int = 3      # concurrent DEEPGAP probes (SHORT-only by construction)
     # Jul 30 MAJORS probe (#14, BOTH directions) — strategic scaling experiment: BTC/ETH
     # (no_trade_pairs, track-only since Jun 3) run the FULL normal ladder and a candidate whose

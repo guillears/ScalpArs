@@ -1661,6 +1661,30 @@ class TradingEngine:
         key = (filter_name, direction or "ANY", room_state)
         self._filter_block_counts[key] = self._filter_block_counts.get(key, 0) + 1
 
+    def _sanitize_open_kwargs(self, ef: dict, sleeve: str, direction: str) -> dict:
+        """Aug-11 hardening — the unexpected-kwarg SILENT SPECIES-KILL class (3rd occurrence:
+        May-5 momentum, Jul-8 FLIP dead 34 days, Aug-11 BULL/BOUNCE_LONG found pre-armed).
+        The `_flip_entry_fields` dict is **-splatted into open_position(), which has no
+        **kwargs — one key added without a matching param = TypeError on EVERY open,
+        swallowed by the sleeve's log-only except, and the sleeve dies invisibly (zero
+        fires reads as quiet tape). This guard intersects the splat against the LIVE
+        signature: unknown keys are DROPPED (the trade opens) + logged ERROR + counted
+        on the visible Filter Blocks surface (OPEN_KWARG_DROPPED) so the defect is a
+        dashboard number the same day, not a month of log archaeology."""
+        allowed = getattr(self, '_open_position_params', None)
+        if allowed is None:
+            import inspect
+            allowed = set(inspect.signature(self.open_position).parameters)
+            self._open_position_params = allowed
+        unknown = [k for k in ef if k not in allowed]
+        if not unknown:
+            return ef
+        for k in unknown:
+            logger.error(f"[OPEN_KWARG_DROPPED] {sleeve}/{direction}: '{k}' is not an open_position param — "
+                         f"dropped to keep the sleeve ALIVE (fix the caller; this key would have TypeError-killed every {sleeve} open)")
+            self._record_filter_block("OPEN_KWARG_DROPPED", direction)
+        return {k: v for k, v in ef.items() if k in allowed}
+
     def _record_filter_multi(self, fails, direction: str, pair: str) -> None:
         """Jul 14 FUNNEL v2: honest accounting for one momentum-ladder candidate evaluation.
 
@@ -3952,7 +3976,7 @@ class TradingEngine:
                     entry_atr_pct=_pop_or(_ef, 'entry_atr_pct', _ind_atr_pct(indicators)),
                     flip_source=source, flip_cell_mult=_flip_cell_mult, flip_cell_lev_mult=_flip_cell_lev_mult, flip_exit_mode=_flip_exit_mode,
                     flip_cell_tag=_flip_cell_tag,
-                    **_ef,
+                    **self._sanitize_open_kwargs(_ef, 'FLIP', flip_dir),
                 )
             if isolate:
                 async with AsyncSessionLocal() as _fdb:
@@ -3963,6 +3987,7 @@ class TradingEngine:
                 logger.info(f"[FLIP_ENTRY] {pair}: {source} blocked {blocked_signal} -> opened {flip_dir} flip (id={order.id})")
         except Exception as e:
             logger.error(f"[FLIP_ENTRY] {pair}: flip open failed for {source}/{blocked_signal}: {e}")
+            self._record_filter_block("OPEN_FAILED_FLIP", flip_dir if 'flip_dir' in dir() else "ANY")  # Aug-11: dashboard-visible sleeve-death counter
 
     async def _maybe_open_bull_long(self, db, pair, indicators, isolate=False, entry_fields=None):
         """Bull-Long Entry trigger (Jun 18) — the BUILD-side twin of the flip sleeve. When a
@@ -4065,6 +4090,7 @@ class TradingEngine:
             _size_mult = getattr(_th, 'bull_long_size_mult', 1.0) or 1.0
             _lev_mult = getattr(_th, 'bull_long_lev_mult', 1.0) or 1.0
             async def _open(_db):
+                _ef.pop('entry_btc_trend_gap_pct', None)  # Aug-11: not an open_position param (stamped internally from globals) — same poison that killed FLIP for 34 days; sanitizer below catches any future stragglers
                 return await self.open_position(
                     db=_db, pair=pair, direction="LONG", confidence="STRONG_BUY",
                     current_price=price,
@@ -4072,7 +4098,7 @@ class TradingEngine:
                     entry_adx=_ef.pop('entry_adx', None) or indicators.get('adx'),
                     entry_atr_pct=_pop_or(_ef, 'entry_atr_pct', _ind_atr_pct(indicators)),
                     bull_long=True, bull_long_size_mult=_size_mult, bull_long_lev_mult=_lev_mult,
-                    **_ef,
+                    **self._sanitize_open_kwargs(_ef, 'BULL_LONG', 'LONG'),
                 )
             if isolate:
                 async with AsyncSessionLocal() as _bdb:
@@ -4086,6 +4112,7 @@ class TradingEngine:
             return order  # caller uses this to PRE-EMPT the flip-fade (don't open opposite positions)
         except Exception as e:
             logger.error(f"[BULL_LONG] {pair}: bull-long open failed: {e}")
+            self._record_filter_block("OPEN_FAILED_BULL_LONG", "LONG")  # Aug-11: dashboard-visible sleeve-death counter
             return None
 
     async def _maybe_open_bounce_long(self, db, pair, indicators, isolate=False, entry_fields=None):
@@ -4159,6 +4186,7 @@ class TradingEngine:
             _size_mult = getattr(_th, 'bounce_long_size_mult', 1.0) or 1.0
             _lev_mult = getattr(_th, 'bounce_long_lev_mult', 1.0) or 1.0
             async def _open(_db):
+                _ef.pop('entry_btc_trend_gap_pct', None)  # Aug-11: not an open_position param (stamped internally from globals) — same poison that killed FLIP for 34 days; sanitizer below catches any future stragglers
                 return await self.open_position(
                     db=_db, pair=pair, direction="LONG", confidence="STRONG_BUY",
                     current_price=price,
@@ -4166,7 +4194,7 @@ class TradingEngine:
                     entry_adx=_ef.pop('entry_adx', None) or indicators.get('adx'),
                     entry_atr_pct=_pop_or(_ef, 'entry_atr_pct', _ind_atr_pct(indicators)),
                     bounce_long=True, bounce_long_size_mult=_size_mult, bounce_long_lev_mult=_lev_mult,
-                    **_ef,
+                    **self._sanitize_open_kwargs(_ef, 'BOUNCE_LONG', 'LONG'),
                 )
             if isolate:
                 async with AsyncSessionLocal() as _bdb:
@@ -4179,6 +4207,7 @@ class TradingEngine:
             return order
         except Exception as e:
             logger.error(f"[BOUNCE_LONG] {pair}: bounce-long open failed: {e}")
+            self._record_filter_block("OPEN_FAILED_BOUNCE_LONG", "LONG")  # Aug-11: dashboard-visible sleeve-death counter
             return None
 
     # ===== SPIKE SCANNER START (Jul 24) — helper + cycle =====
@@ -4518,6 +4547,7 @@ class TradingEngine:
                         _fired += 1
                 except Exception as _sp_err:
                     logger.error(f"[SPIKE_SCANNER] {p.get('pair')}: trigger/open failed (fail-silent): {_sp_err}")
+                    self._record_filter_block("OPEN_FAILED_SPIKE_SCANNER", "ANY")  # Aug-11: dashboard-visible sleeve-death counter
             if i + _B < len(cands):
                 # Jul 24 (review I3): ccxt's enableRateLimit throttler already serializes/paces
                 # the calls; keep only a token yield so the loop stays cooperative (~20-30s/cycle).

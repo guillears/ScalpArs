@@ -3937,6 +3937,13 @@ class TradingEngine:
                 _flip_cell_lev_mult = float(getattr(_fg_th2, 'gap_probe_lev_mult', 0.05) or 0.05)
                 _flip_cell_tag = "+" + _fg_admit_tag
             async def _open(_db):
+                # Aug-11 CRITICAL FIX: open_position has NO entry_btc_trend_gap_pct param (it
+                # stamps the Order internally from the same global) — the Jul-8 depth-gate ship
+                # added the key to _ef, and the **_ef splat made EVERY flip open raise
+                # TypeError since Jul-8 10:40 (last flip ever: Jul-8 07:41 — the sleeve was
+                # silently dead through all of B1+B2). Pop it before the splat; the key must
+                # STAY in _ef (the flip-filters consumer at ~3800 reads it).
+                _ef.pop('entry_btc_trend_gap_pct', None)
                 return await self.open_position(
                     db=_db, pair=pair, direction=flip_dir, confidence="STRONG_BUY",
                     current_price=price,

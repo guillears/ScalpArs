@@ -650,6 +650,64 @@ class BinanceService:
             logger.error(f"[BINANCE] Error creating order for {symbol}: {e}")
             return None
     
+    # ── Aug-11 🛡 BROKER BACKSTOP (Algo Order API) ────────────────────────────
+    # -4120 ROOT CAUSE SOLVED: Binance MANDATORILY migrated conditional orders
+    # (STOP_MARKET / TAKE_PROFIT_MARKET / TRAILING_STOP_MARKET) from /fapi/v1/order
+    # to POST /fapi/v1/algoOrder (algoType=CONDITIONAL), account waves through
+    # 2025-12-09 (error -4120 = STOP_ORDER_SWITCH_ALGO). The Apr-17 "removal after
+    # 4 failed hotfixes" retried params on the deprecated endpoint — never an
+    # account defect. closePosition=true makes these orders structurally incapable
+    # of creating exposure (flatten-only). DECISION_LOG 2026-08-11 (6).
+    async def place_backstop_stop(self, pair: str, direction: str, trigger_price: float):
+        """Place a resting CONDITIONAL STOP_MARKET (close-all). Returns algoId or None."""
+        try:
+            await self._check_ban()
+            side = 'SELL' if direction == 'LONG' else 'BUY'
+            try:
+                _trig = self.public_exchange.price_to_precision(pair.replace('USDT', '/USDT:USDT'), trigger_price)
+            except Exception:
+                _trig = f"{trigger_price:.6g}"
+            res = await self.exchange.fapiPrivatePostAlgoOrder({
+                'algoType': 'CONDITIONAL',
+                'symbol': pair,
+                'side': side,
+                'type': 'STOP_MARKET',
+                'triggerPrice': _trig,
+                'closePosition': 'true',
+                'workingType': 'MARK_PRICE',
+                'priceProtect': 'TRUE',
+            })
+            _aid = res.get('algoId') if isinstance(res, dict) else None
+            return str(_aid) if _aid else None
+        except Exception as e:
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] backstop place failed for {pair}: {e}")
+            return None
+
+    async def cancel_backstop_stop(self, pair: str, algo_id: str) -> bool:
+        """Cancel a resting backstop. Already-gone/triggered orders count as success."""
+        try:
+            await self._check_ban()
+            await self.exchange.fapiPrivateDeleteAlgoOrder({'algoId': algo_id})
+            return True
+        except Exception as e:
+            _m = str(e)
+            if any(t in _m for t in ('-2011', 'Unknown order', 'not exist', 'NOT_FOUND', 'CANCELED', 'TRIGGERED')):
+                return True  # nothing resting = already done
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] backstop cancel failed for {pair} algoId={algo_id}: {e}")
+            return False
+
+    async def query_backstop_stop(self, algo_id: str):
+        """Query a backstop algo order (dict incl. algoStatus) or None."""
+        try:
+            await self._check_ban()
+            return await self.exchange.fapiPrivateGetAlgoOrder({'algoId': algo_id})
+        except Exception as e:
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] backstop query failed algoId={algo_id}: {e}")
+            return None
+
     async def get_tick_size(self, symbol: str) -> float:
         """Get the minimum price increment (tick size) for a symbol"""
         try:

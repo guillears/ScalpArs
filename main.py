@@ -1820,6 +1820,33 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                 # for this account — see CLAUDE.md).
                 order.status = "CLOSED"
                 order.close_reason = "EXTERNAL_CLOSE"
+                # Aug-11 🛡: if this order carried a resting broker backstop, ask Binance
+                # whether it TRIGGERED — that close is the dead-man's brake firing while the
+                # bot was down/blind. Recorded as BACKSTOP_STOP (own close_reason: rides the
+                # CSV, close-reason tables and post-exit regret whitelists). STANDING RULE:
+                # ANY live BACKSTOP_STOP = investigate the OUTAGE (deploy/crash/WS/ban), not
+                # the trade — the software layer was dead at that moment.
+                if getattr(order, 'backstop_algo_id', None):
+                    try:
+                        _bk_st = await binance_service.query_backstop_stop(order.backstop_algo_id)
+                        if _bk_st and str(_bk_st.get('algoStatus', '')).upper() == 'TRIGGERED':
+                            order.close_reason = "BACKSTOP_STOP"
+                            logger.critical(f"[BACKSTOP_FIRED] {order.pair}: resting stop TRIGGERED while the bot was blind — recorded BACKSTOP_STOP (algoId={order.backstop_algo_id})")
+                            try:
+                                # review fix (operator directive): backstop fires get the full
+                                # 45min post-exit regret tracking — reconciler mints this reason,
+                                # so it must register the tracking itself.
+                                trading_engine._register_post_exit_tracking(order, "BACKSTOP_STOP")
+                            except Exception as _bk_reg_err:
+                                logger.error(f"[BACKSTOP_REGRET_REG_FAILED] {order.pair}: {_bk_reg_err}")
+                        else:
+                            # review fix: NOT triggered (or unknown) → the resting stop is an
+                            # orphan; cancel best-effort so it can never flatten a FUTURE
+                            # position on the same pair at a stale trigger.
+                            await binance_service.cancel_backstop_stop(order.pair, order.backstop_algo_id)
+                            logger.warning(f"[BACKSTOP_ORPHAN_CANCELED] {order.pair}: external close with non-triggered backstop — canceled algoId={order.backstop_algo_id}")
+                    except Exception as _bk_q_err:
+                        logger.error(f"[BACKSTOP_QUERY_FAILED] {order.pair}: {_bk_q_err}")
                 order.closed_at = datetime.utcnow()
                 order.exit_price = exit_price
                 if order.direction == "LONG":
@@ -6639,6 +6666,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "SIGNAL_LOST", "BREAKEVEN_EXIT",
             "DEEP_STOP",          # FL_DEEP_STOP at -1% — modern stop-loss for flagged trades
             "EMERGENCY_SL",       # FL1 WIDE_SL backstop at -1.2%
+            "BACKSTOP_STOP",      # Aug-11 🛡 resting exchange-side stop fired (bot was down/blind)
             "RSI_MOMENTUM_EXIT",  # RSI faded, trade cut on losing side
             "NO_EXPANSION",       # Trade timed out without profit expansion
             "REGIME_CHANGE",      # BTC regime flipped against the trade

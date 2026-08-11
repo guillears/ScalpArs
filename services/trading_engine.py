@@ -5700,6 +5700,7 @@ class TradingEngine:
         # Execute trade
         binance_order_id = None
         actual_price = current_price
+        _bk_algo_id = None  # Aug-11 🛡 broker backstop algoId (live only)
         
         if not self.is_paper_mode:
             symbol = pair.replace('USDT', '/USDT:USDT')
@@ -5871,8 +5872,28 @@ class TradingEngine:
             _entry_slippage_pct = None
 
         # Create order record
+        # Aug-11 🛡 BROKER BACKSTOP (live only): resting exchange-side STOP_MARKET via the
+        # Algo Order API — dead-man's brake for deploy/crash/WS-starve/ban windows. WIDE by
+        # design (broker_backstop_pct from the ACTUAL fill px) so it never races the software
+        # stops; fires only when the bot cannot act. Failure = position still opens on
+        # software stops, but counted + CRITICAL (never silent — the flip-bug lesson).
+        if (not self.is_paper_mode and actual_price and actual_price > 0
+                and bool(getattr(config.trading_config.thresholds, 'broker_backstop_enabled', False))):
+            try:
+                _bk_pct = float(getattr(config.trading_config.thresholds, 'broker_backstop_pct', 2.5) or 2.5)
+                _bk_trigger = actual_price * (1 - _bk_pct / 100.0) if direction == "LONG" else actual_price * (1 + _bk_pct / 100.0)
+                _bk_algo_id = await binance_service.place_backstop_stop(pair, direction, _bk_trigger)
+                if _bk_algo_id:
+                    logger.info(f"[BACKSTOP_PLACED] {pair} {direction}: algoId={_bk_algo_id} trigger={_bk_trigger:.6g} ({_bk_pct}% from fill {actual_price})")
+                else:
+                    self._record_filter_block("BACKSTOP_PLACE_FAILED", direction)
+                    logger.critical(f"[BACKSTOP_PLACE_FAILED] {pair} {direction}: position runs on SOFTWARE stops only — investigate SAME DAY")
+            except Exception as _bk_err:
+                self._record_filter_block("BACKSTOP_PLACE_FAILED", direction)
+                logger.critical(f"[BACKSTOP_PLACE_FAILED] {pair} {direction}: {_bk_err}")
         order = Order(
             binance_order_id=binance_order_id,
+            backstop_algo_id=_bk_algo_id,
             pair=pair,
             direction=direction,
             status="OPEN",
@@ -6327,6 +6348,22 @@ class TradingEngine:
         # reconciler race (Apr 16)" for the original incident.
         if not self.is_paper_mode:
             await self._mark_close_in_progress(db, order.id)
+            # Aug-11 🛡: cancel the resting backstop BEFORE our own close order goes out —
+            # the dual-close race guard (never let the exchange stop + the bot's close race).
+            if getattr(order, 'backstop_algo_id', None):
+                try:
+                    _bkc_ok = await binance_service.cancel_backstop_stop(order.pair, order.backstop_algo_id)
+                    logger.info(f"[BACKSTOP_CANCELED] {order.pair}: algoId={order.backstop_algo_id} ok={_bkc_ok} (pre-close)")
+                    if _bkc_ok:
+                        # review fix: null + commit so a failed close leaves a NULL id the
+                        # sweep can heal (a dead algoId would read as 'protected' while naked)
+                        order.backstop_algo_id = None
+                        await db.commit()
+                    else:
+                        self._record_filter_block("BACKSTOP_CANCEL_FAILED", order.direction)
+                except Exception as _bkc_err:
+                    self._record_filter_block("BACKSTOP_CANCEL_FAILED", order.direction)
+                    logger.error(f"[BACKSTOP_CANCEL_FAILED] {order.pair}: {_bkc_err}")
 
         # Attempt maker exit if enabled, otherwise use taker
         tc = config.trading_config
@@ -6471,6 +6508,21 @@ class TradingEngine:
                 except Exception as e:
                     logger.error(f"[EXTERNAL_CLOSE] {order.pair}: reconcile check failed: {e}")
                 _exit_retry_queue.setdefault(order.id, 0)
+                # Aug-11 🛡: close failed → RE-PLACE the backstop immediately so the position
+                # is never naked while the retry queue grinds (we canceled it pre-close).
+                if bool(getattr(config.trading_config.thresholds, 'broker_backstop_enabled', False)) and not self.is_paper_mode:
+                    try:
+                        _bk_pct = float(getattr(config.trading_config.thresholds, 'broker_backstop_pct', 2.5) or 2.5)
+                        _bk_tr = order.entry_price * (1 - _bk_pct / 100.0) if order.direction == "LONG" else order.entry_price * (1 + _bk_pct / 100.0)
+                        _bk_new = await binance_service.place_backstop_stop(order.pair, order.direction, _bk_tr)
+                        if _bk_new:
+                            order.backstop_algo_id = _bk_new
+                            await db.commit()  # review fix: persist NOW — reconciler/next close must see the LIVE id, not the canceled one
+                            logger.warning(f"[BACKSTOP_REPLACED] {order.pair}: close failed → fresh algoId={_bk_new} guarding the retry window")
+                        else:
+                            self._record_filter_block("BACKSTOP_PLACE_FAILED", order.direction)
+                    except Exception as _bkr_err:
+                        logger.error(f"[BACKSTOP_REPLACE_FAILED] {order.pair}: {_bkr_err}")
                 logger.critical(
                     f"[EXIT_FAILED] {order.pair}: All {max_exit_retries} exit attempts failed — "
                     f"added to retry queue (attempt {_exit_retry_queue[order.id]}/{_EXIT_RETRY_MAX})"
@@ -7040,7 +7092,7 @@ class TradingEngine:
             _reason_base = _reason_base[5:]
         if _reason_base.startswith("FL_"):
             _reason_base = _reason_base[3:]
-        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
+        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("BACKSTOP_STOP")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -8520,6 +8572,30 @@ class TradingEngine:
                 # held the write lock continuously, starving close_position's
                 # retry loop for 2+ minutes.
                 await db.commit()
+
+        # Aug-11 🛡 BACKSTOP SWEEP (live only): heal missing resting stops every scan —
+        # covers restart/deploy gaps (in-flight positions re-armed) and earlier placement
+        # failures. The DOT-orphan class dies here.
+        if (not self.is_paper_mode
+                and bool(getattr(config.trading_config.thresholds, 'broker_backstop_enabled', False))):
+            try:
+                async with AsyncSessionLocal() as _bk_db:
+                    _bk_rows = (await _bk_db.execute(
+                        select(Order).where(and_(Order.status == "OPEN", Order.is_paper == False,
+                                                 Order.backstop_algo_id.is_(None))))).scalars().all()
+                    for _bko in _bk_rows:
+                        _bk_pct = float(getattr(config.trading_config.thresholds, 'broker_backstop_pct', 2.5) or 2.5)
+                        _bk_tr = _bko.entry_price * (1 - _bk_pct / 100.0) if _bko.direction == "LONG" else _bko.entry_price * (1 + _bk_pct / 100.0)
+                        _bk_new = await binance_service.place_backstop_stop(_bko.pair, _bko.direction, _bk_tr)
+                        if _bk_new:
+                            _bko.backstop_algo_id = _bk_new
+                            logger.warning(f"[BACKSTOP_SWEEP] {_bko.pair}: healed missing backstop algoId={_bk_new}")
+                        else:
+                            self._record_filter_block("BACKSTOP_PLACE_FAILED", _bko.direction)
+                    if _bk_rows:
+                        await _bk_db.commit()
+            except Exception as _bks_err:
+                logger.error(f"[BACKSTOP_SWEEP] failed: {_bks_err}")
 
         # --- Process exit retry queue (live mode only) ---
         if not self.is_paper_mode and _exit_retry_queue:

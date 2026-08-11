@@ -505,6 +505,15 @@ class SignalThresholds(BaseModel):
                                                   # wide SL holds through. Chase/bounce keep the lock.
                                                   # 🔒 REVERT (→False) if ≥2 fresh fades arm ≥+0.20 then
                                                   # run to the full −1.5 (re-enable at floor −0.40 instead)
+    # 🛡 Aug-11 BROKER BACKSTOP — resting exchange-side STOP_MARKET per LIVE position via the
+    # Algo Order API (POST /fapi/v1/algoOrder; -4120 was Binance's MANDATORY conditional-order
+    # migration, NOT an account defect — DECISION_LOG 2026-08-11 (6)). Dead-man's brake for
+    # deploy/crash/WS-starve/ban windows: WIDE by design (never races the software stops; fires
+    # only when the bot cannot act). Fires reconcile as close_reason BACKSTOP_STOP (own row in
+    # close-reason tables + post-exit regret whitelists — ANY live fire = investigate the outage).
+    # Paper mode: fully dormant. Arm ONLY at go-live, after the testnet contract test passes.
+    broker_backstop_enabled: bool = False
+    broker_backstop_pct: float = 2.5   # trigger distance (% of entry px) ≈ caps bot-dead tail at ~50% of one slot's margin at 20x
     # ⭐ OPTION-D 3-layer exit for SPIKE_CHASE longs (replaces the normal long exit stack):
     # L1 fixed SL (MIRA-1 wicked -0.71 pre +17.4; SWARMS breathed -0.75 pre +0.91 — two
     # documented winner-breaths through -0.70; dud premium ~0.5pp/fire accepted).

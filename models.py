@@ -32,6 +32,7 @@ class Order(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     binance_order_id = Column(String(50), nullable=True)  # Null for paper trades
+    backstop_algo_id = Column(String(30), nullable=True)  # Aug-11 🛡: resting exchange-side STOP_MARKET algoId (live dead-man's brake); rides the CSV via introspection
     
     # Trade info
     pair = Column(String(20), nullable=False)  # e.g., "BTCUSDT"

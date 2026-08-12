@@ -1661,6 +1661,7 @@ class TradingEngine:
         key = (filter_name, direction or "ANY", room_state)
         self._filter_block_counts[key] = self._filter_block_counts.get(key, 0) + 1
         self._last_filter_block_ts = time.time()  # Aug-12: lets the open-failed logger tell 'counted filter block' from 'real failure'
+        self._last_filter_block_name = filter_name  # Aug-12 review fix: name travels with the stamp so the logger can attribute
 
     def _sanitize_open_kwargs(self, ef: dict, sleeve: str, direction: str) -> dict:
         """Aug-11 hardening — the unexpected-kwarg SILENT SPECIES-KILL class (3rd occurrence:
@@ -10936,7 +10937,10 @@ class TradingEngine:
                     # log reviews. Only WARN when NO filter block was recorded in the last 2s
                     # (that residue = the real M4 failure class: rejections, precision, etc.).
                     if time.time() - getattr(self, '_last_filter_block_ts', 0) < 2.0:
-                        logger.info(f"[OPEN_FILTERED] {pair} {signal} {confidence}: declined by a counted entry filter (see the block line above)")
+                        # review fix: name the filter in the line itself — the 2s window is engine-global,
+                        # so cross-pair masking is possible on busy scans (OPEN_FAILED_MOMENTUM may
+                        # undercount; the named filter lets a log review catch a mismatch by eye)
+                        logger.info(f"[OPEN_FILTERED] {pair} {signal} {confidence}: declined by a counted entry filter (last block: {getattr(self, '_last_filter_block_name', '?')})")
                     else:
                         logger.warning(f"[OPEN_FAILED_UNATTRIBUTED] {pair} {signal} {confidence}: open_position returned None with NO filter block recorded — real failure class (rejection/precision/balance), investigate")
                         self._record_filter_block("OPEN_FAILED_MOMENTUM", signal if signal in ("LONG", "SHORT") else "ANY")

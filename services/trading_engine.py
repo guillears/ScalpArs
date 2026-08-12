@@ -1660,6 +1660,7 @@ class TradingEngine:
             pass  # Regime global not yet set (cold start) — record as decisive
         key = (filter_name, direction or "ANY", room_state)
         self._filter_block_counts[key] = self._filter_block_counts.get(key, 0) + 1
+        self._last_filter_block_ts = time.time()  # Aug-12: lets the open-failed logger tell 'counted filter block' from 'real failure'
 
     def _sanitize_open_kwargs(self, ef: dict, sleeve: str, direction: str) -> dict:
         """Aug-11 hardening — the unexpected-kwarg SILENT SPECIES-KILL class (3rd occurrence:
@@ -10929,7 +10930,16 @@ class TradingEngine:
                     # filter checks within this same scan iteration.
                     _open_positions_in_scan += 1
                 else:
-                    logger.warning(f"[DEBUG_OPEN_FAILED] {pair} {signal} {confidence}: open_position returned None — check upstream logs in open_position for the real reason")
+                    # Aug-12 (operator): a None from open_position is USUALLY a counted entry
+                    # filter (LONG_UNMATCHED_ONLY, already-open skip, ...) that logged its own
+                    # line one instant earlier — warning about it read as a malfunction during
+                    # log reviews. Only WARN when NO filter block was recorded in the last 2s
+                    # (that residue = the real M4 failure class: rejections, precision, etc.).
+                    if time.time() - getattr(self, '_last_filter_block_ts', 0) < 2.0:
+                        logger.info(f"[OPEN_FILTERED] {pair} {signal} {confidence}: declined by a counted entry filter (see the block line above)")
+                    else:
+                        logger.warning(f"[OPEN_FAILED_UNATTRIBUTED] {pair} {signal} {confidence}: open_position returned None with NO filter block recorded — real failure class (rejection/precision/balance), investigate")
+                        self._record_filter_block("OPEN_FAILED_MOMENTUM", signal if signal in ("LONG", "SHORT") else "ANY")
 
         # ===== SPIKE SCANNER START (Jul 24 — full-universe SPIKE_CHASE feeder) =====
         # REVERT = spike_scanner_enabled=false (UI toggle): this is the ONLY call site, the

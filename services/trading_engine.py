@@ -12659,7 +12659,11 @@ class TradingEngine:
                     if _rt_eligible:
                         if not _is_flip:
                             _handoff_suppress = True
-                        elif _flip_strpk_ok and _rt_peak >= _rt_arm:
+                        elif _flip_strpk_ok and _rt_peak >= _rt_arm - 0.005:
+                            # Aug-12: −0.005 tolerance MATCHES the tier-activation tolerance, so the
+                            # strpk runner always wins the arm boundary — closes the 0.005pp window
+                            # where a flip-short tier stop could fire (MIRA class) now that tp_min
+                            # and the runner arm share the 0.40 boundary (DECISION_LOG 2026-08-12 (5))
                             _handoff_suppress = True
             except Exception:
                 pass

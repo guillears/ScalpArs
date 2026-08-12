@@ -12448,7 +12448,19 @@ class TradingEngine:
                                 _sp_lock = float(getattr(_sp_th, 'runner_trail_short_be_lock_pct', 0.10) or 0.10)
                                 _sp_ratchet = getattr(_sp_th, 'runner_trail_short_be_ratchet_enabled', True)
                                 _sp_floor = max(_sp_atr_floor, _sp_lock) if _sp_ratchet else _sp_atr_floor
-                                if pnl_pct <= _sp_floor:
+                                # Aug-12 🛞 NEGFLOOR RIDE (operator ship, IDOL/BICO class — DECISION_LOG 2026-08-12 (3)):
+                                # a NEGATIVE floor (giveback > peak on a wild-ATR pair) means the trail is
+                                # definitionally broken — firing it exits an ARMED WINNER red. Suppress the
+                                # trail instead; the hard SL bounds the tail; the trail resumes automatically
+                                # once the peak outgrows the giveback. Both lifetime cases re-ran the short's
+                                # way post-red-exit (IDOL +1.37 / BICO +1.25); May-25 sibling precedent
+                                # (suppress+ride +$1,506 vs +$190). REVERT: 2 ridden trades to full SL
+                                # without re-arming before the 4th positive tally -> clamp-at-BE instead.
+                                if _sp_floor < 0:
+                                    if not order_info.get('_negfloor_ride_logged'):
+                                        order_info['_negfloor_ride_logged'] = True
+                                        logger.warning(f"[RUNNER_NEGFLOOR_RIDE] {pair} SHORT(flip): floor {_sp_floor:.3f}% < 0 (peak {current_peak:.2f} < giveback {_sp_giveback:.2f}) — trail SUPPRESSED, hard SL governs until peak outgrows giveback")
+                                elif pnl_pct <= _sp_floor:
                                     _sp_fire = True
                                     _sp_bound = ("lock" if (_sp_ratchet and _sp_lock > _sp_atr_floor)
                                                  else "cap" if _sp_capped else "atr")
@@ -12561,7 +12573,12 @@ class TradingEngine:
                             _rs_floor = _rs_raw_floor
                             if getattr(_rs_th, 'runner_trail_short_be_ratchet_enabled', False):
                                 _rs_floor = max(_rs_floor, float(getattr(_rs_th, 'runner_trail_short_be_lock_pct', 0.10) or 0.10))
-                            if pnl_pct <= _rs_floor:
+                            # Aug-12 🛞 NEGFLOOR RIDE — see the flip-site comment (same class, same revert)
+                            if _rs_floor < 0:
+                                if not order_info.get('_negfloor_ride_logged'):
+                                    order_info['_negfloor_ride_logged'] = True
+                                    logger.warning(f"[RUNNER_NEGFLOOR_RIDE] {pair} SHORT: floor {_rs_floor:.3f}% < 0 (peak {current_peak:.2f} < giveback {_rs_gb:.2f}) — trail SUPPRESSED, hard SL governs until peak outgrows giveback")
+                            elif pnl_pct <= _rs_floor:
                                 logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} SHORT(non-flip): pnl {pnl_pct:.3f}% <= floor {_rs_floor:.3f}% (peak={current_peak:.2f}%, giveback={_rs_gb:.3f}%) -> close")
                                 order_info['_closing_in_progress'] = True
                                 async with AsyncSessionLocal() as db:

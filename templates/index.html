@@ -18698,12 +18698,21 @@
                     const _runnerArmedFlip = _flipStrpkOn
                         && o.direction === 'SHORT'
                         && _tpPeak >= (_rtTh.runner_trail_short_arm_peak ?? 0.45);
-                    const _runnerArmed = _runnerArmedLong || _runnerArmedFlip;
-                    if (_armed) {
+                    // Aug-12 (operator): non-flip SHORTS (fades, momentum shorts) run the Jun-12
+                    // short runner too — they were missing from the badge scope entirely, and the
+                    // whole tree was gated on the tp_min arm (0.45), hiding the REAL arm (0.40).
+                    const _runnerArmedShort = _rtTh.runner_trail_short_enabled === true
+                        && o.direction === 'SHORT'
+                        && !_flipSrc
+                        && ((_rtTh.runner_trail_short_atr_min ?? 0) <= 0
+                            || (typeof o.entry_atr_pct === 'number' && o.entry_atr_pct >= (_rtTh.runner_trail_short_atr_min ?? 0)))
+                        && _tpPeak >= (_rtTh.runner_trail_short_arm_peak ?? 0.40);
+                    const _runnerArmed = _runnerArmedLong || _runnerArmedFlip || _runnerArmedShort;
+                    if (_armed || _runnerArmed) {
                         let bgClass, textClass, label, title;
                         if (_runnerArmed) {
-                            const _rtK = (_runnerArmedFlip ? (_rtTh.runner_trail_short_k ?? 0.5) : (_rtTh.runner_trail_k ?? 0.5));
-                            const _rtArm = (_runnerArmedFlip ? (_rtTh.runner_trail_short_arm_peak ?? 0.45) : (_rtTh.runner_trail_arm_peak ?? 0.70));
+                            const _rtK = ((_runnerArmedFlip || _runnerArmedShort) ? (_rtTh.runner_trail_short_k ?? 0.5) : (_rtTh.runner_trail_k ?? 0.5));
+                            const _rtArm = ((_runnerArmedFlip || _runnerArmedShort) ? (_rtTh.runner_trail_short_arm_peak ?? 0.40) : (_rtTh.runner_trail_arm_peak ?? 0.70));
                             bgClass = 'bg-fuchsia-500/25'; textClass = 'text-fuchsia-300';
                             label = `🏃 RUNNER L${_tpLvl}`;
                             title = _runnerArmedFlip

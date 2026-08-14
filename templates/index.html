@@ -8230,7 +8230,7 @@
                 // Payload untouched (revisions history still feeds the Δs; sparkline data
                 // available if ever re-rendered).
                 `<div class="flex items-center gap-6 flex-wrap text-xs bg-white/[0.03] rounded-lg px-4 py-3" title="EOM projection: 'balance by ${d.eom_label}' back-computed from closed orders at MTD rate. Δ vs 3d/7d ago = the improvement signal — is the month getting better or worse as days settle?">` +
-                `<div><span class="text-gray-500">Portfolio now:</span> <span class="text-emerald-300 font-bold text-sm">${window._lastTotalPortfolio != null ? '$' + Math.round(window._lastTotalPortfolio).toLocaleString('en-US') : '—'}</span></div>` +
+                `<div><span class="text-gray-500">Portfolio now:</span> <span id="eom-portfolio-now" class="text-emerald-300 font-bold text-sm">${window._lastTotalPortfolio != null ? '$' + Math.round(window._lastTotalPortfolio).toLocaleString('en-US') : '—'}</span></div>` +
                 `<div><span class="text-gray-500">Projected by ${d.eom_label}:</span> <span class="text-blue-300 font-bold text-sm">$${Math.round(nowP).toLocaleString('en-US')}</span></div>` +
                 `<div><span class="text-gray-500">Δ vs 3d ago:</span> <span class="${cls(d3)} font-medium">${fmt(d3)}</span></div>` +
                 `<div><span class="text-gray-500">Δ vs 7d ago:</span> <span class="${cls(d7)} font-medium">${fmt(d7)}</span></div>` +
@@ -8811,6 +8811,11 @@
                 }
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
                 window._lastTotalPortfolio = data.total_portfolio;  // Aug-14: calendar footer + exports read this (Portfolio-now line)
+                // Live-update the calendar footer span (fixes the render-order race: the
+                // calendar draws once on load — often BEFORE the first balance fetch — and
+                // only redraws on month-nav; without this push the footer showed '—').
+                const _eomPf = document.getElementById('eom-portfolio-now');
+                if (_eomPf && data.total_portfolio != null) _eomPf.textContent = '$' + Math.round(data.total_portfolio).toLocaleString('en-US');
                 const ttEl = document.getElementById('total-trades-count');
                 if (ttEl && data.total_trades_count != null) {
                     ttEl.textContent = `Total Trades: ${data.total_trades_count}`;

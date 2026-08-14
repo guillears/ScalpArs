@@ -8230,6 +8230,7 @@
                 // Payload untouched (revisions history still feeds the Δs; sparkline data
                 // available if ever re-rendered).
                 `<div class="flex items-center gap-6 flex-wrap text-xs bg-white/[0.03] rounded-lg px-4 py-3" title="EOM projection: 'balance by ${d.eom_label}' back-computed from closed orders at MTD rate. Δ vs 3d/7d ago = the improvement signal — is the month getting better or worse as days settle?">` +
+                `<div><span class="text-gray-500">Portfolio now:</span> <span class="text-emerald-300 font-bold text-sm">${window._lastTotalPortfolio != null ? '$' + Math.round(window._lastTotalPortfolio).toLocaleString('en-US') : '—'}</span></div>` +
                 `<div><span class="text-gray-500">Projected by ${d.eom_label}:</span> <span class="text-blue-300 font-bold text-sm">$${Math.round(nowP).toLocaleString('en-US')}</span></div>` +
                 `<div><span class="text-gray-500">Δ vs 3d ago:</span> <span class="${cls(d3)} font-medium">${fmt(d3)}</span></div>` +
                 `<div><span class="text-gray-500">Δ vs 7d ago:</span> <span class="${cls(d7)} font-medium">${fmt(d7)}</span></div>` +
@@ -8809,6 +8810,7 @@
                     ordCountEl.textContent = `Open Positions: ${data.open_orders_count}`;
                 }
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
+                window._lastTotalPortfolio = data.total_portfolio;  // Aug-14: calendar footer + exports read this (Portfolio-now line)
                 const ttEl = document.getElementById('total-trades-count');
                 if (ttEl && data.total_trades_count != null) {
                     ttEl.textContent = `Total Trades: ${data.total_trades_count}`;
@@ -8874,7 +8876,7 @@
                 const _f = v => v == null ? '-' : (v >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(v));
                 lines.push(`\n${hr2}`);
                 lines.push('## EOM Projection (fixed-date, MTD-rate; d3/d7 = improvement signal)\n');
-                lines.push(`Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}`);
+                lines.push(`Portfolio now: ${window._lastTotalPortfolio != null ? '$' + Math.round(window._lastTotalPortfolio) : '-'}  |  Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}`);
                 lines.push(`Era marks: ${(_ep.marks || []).join(' · ') || '-'}`);
             }
 
@@ -10875,7 +10877,7 @@
                     const _f = v => v == null ? '-' : (v >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(v));
                     lines.push(`\n${hr2}`);
                     lines.push('## EOM Projection (fixed-date, MTD-rate; d3/d7 = improvement signal)\n');
-                    lines.push(`Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}`);
+                    lines.push(`Portfolio now: ${window._lastTotalPortfolio != null ? '$' + Math.round(window._lastTotalPortfolio) : '-'}  |  Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}`);
                     lines.push(`Era marks: ${(_ep.marks || []).join(' · ') || '-'}`);
                 }
 

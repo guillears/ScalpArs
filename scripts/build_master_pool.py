@@ -21,7 +21,7 @@ import warnings; warnings.filterwarnings('ignore')
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-08-10c"  # b: fade SL -0.70 -> -1.50 CF (41e) · c: fades exempt from SPIKE_LOCK (lock exits re-priced to held path)
+STACK_VERSION = "2026-08-14a"  # a: FAKE_BULL_GUARD entry gate (HEALTHY_BULL×STRONG_BUY×bull_pct<=71×tg<=+0.01 momentum longs -> stack_keep=False). NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies). Prior: 2026-08-10c (fade SL -1.50 CF + lock exemption re-price).
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 def load():
@@ -38,6 +38,8 @@ def load():
                 'entry_btc_rsi', 'entry_btc_dist_from_ema13_pct', G,
                 'entry_pair_volume_24h_usd', 'entry_atr_pct', 'entry_ema5_stretch',
                 'entry_btc_regime', 'entry_global_volume_ratio', 'entry_btc_ema20_slope',
+                # FAKE_BULL_GUARD gate columns (2026-08-14a) — schema drift must fail loudly
+                'confidence', 'entry_bull_pct', 'entry_btc_trend_gap_pct',
                 'cell_multiplier', 'cell_multiplier_source', 'pattern_cell_source', 'status',
                 # fade-SL/lock CF load-bearing (review fix: schema drift here must fail loudly,
                 # else every fade loser silently re-prices to the full stop)
@@ -99,6 +101,14 @@ def main():
                 if i in cooldown_idx: k, why = False, 'CALM3D_REENTRY'
                 elif r.is_door and pd.notna(r.entry_pos_di) and r.entry_pos_di < 28: k, why = False, 'CALM3D_DMI_DI'
                 elif r.is_door and pd.notna(r.entry_adx) and r.entry_adx < 21: k, why = False, 'CALM3D_DMI_ADX'
+                # 🛡 FAKE_BULL_GUARD (2026-08-14 ship, gate 47): weakest-tier bull label with
+                # neither breadth nor BTC 13/50 structure confirming — mirror of the engine
+                # check at trading_engine.py ~9310 on the recorded entry columns.
+                elif (str(r.direction) == 'LONG' and str(r.get('confidence')) == 'STRONG_BUY'
+                      and str(r.entry_btc_regime) == 'HEALTHY_BULL'
+                      and pd.notna(r.entry_bull_pct) and r.entry_bull_pct <= 71.0
+                      and pd.notna(r.entry_btc_trend_gap_pct) and r.entry_btc_trend_gap_pct <= 0.01):
+                    k, why = False, 'FAKE_BULL_GUARD'
         # CF P&L for kept trades
         sp = p
         # fade SL -1.5 (41e): SL-stopped fade losers re-priced — survive if worst-ever

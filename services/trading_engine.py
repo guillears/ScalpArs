@@ -9329,7 +9329,8 @@ class TradingEngine:
                     and getattr(config.trading_config.thresholds, 'fake_bull_guard_enabled', False)):
                 try:
                     _fbg_th = config.trading_config.thresholds
-                    _fbg_bull_max = float(getattr(_fbg_th, 'fake_bull_guard_bull_pct_max', 71.0) or 71.0)
+                    _fbg_bull_raw = getattr(_fbg_th, 'fake_bull_guard_bull_pct_max', 71.0)
+                    _fbg_bull_max = float(_fbg_bull_raw) if _fbg_bull_raw is not None else 71.0
                     _fbg_tg_raw = getattr(_fbg_th, 'fake_bull_guard_tg_max', 0.01)
                     _fbg_tg_max = float(_fbg_tg_raw) if _fbg_tg_raw is not None else 0.01
                     _fbg_bull = globals().get('_market_bull_pct')
@@ -9342,15 +9343,17 @@ class TradingEngine:
                         _fbg_reg = None
                     if (_fbg_reg == 'HEALTHY_BULL' and _fbg_bull is not None and _fbg_tg is not None
                             and _fbg_bull <= _fbg_bull_max and _fbg_tg <= _fbg_tg_max):
-                        logger.info(f"[FAKE_BULL_GUARD] {pair}: LONG blocked — HEALTHY_BULL×STRONG_BUY, "
-                                    f"bull_pct {_fbg_bull:.1f}<={_fbg_bull_max:.0f} AND btc_trend_gap "
-                                    f"{_fbg_tg:+.4f}<=+{_fbg_tg_max} (bull label unconfirmed)")
+                        # px= stamp IS the gate-47 revert surface (review fix: _seed_phantom_flip
+                        # has been a retired no-op since Jul-30 — the CALM3D "blocks log entry px"
+                        # pattern replaces it). At the first-6-blocks checkpoint, each block is
+                        # replayed from (pair, ts, px) via klines under the current long exit
+                        # stack; >=50% would-be winners or would-be net>0 -> disable. Logs rotate:
+                        # pull the read within EB retention / at each batch review.
+                        logger.info(f"[FAKE_BULL_GUARD] {pair}: LONG blocked px={indicators.get('price')} — "
+                                    f"HEALTHY_BULL×STRONG_BUY, bull_pct {_fbg_bull:.1f}<={_fbg_bull_max:.0f} AND "
+                                    f"btc_trend_gap {_fbg_tg:+.4f}<={_fbg_tg_max:+g} (bull label unconfirmed)")
                         self._record_filter_block("FAKE_BULL_GUARD", "LONG", had_room=_had_room)
-                        try:
-                            _seed_phantom_flip(pair, indicators.get('price'), "LONG", "PASS:FAKE_BULL_GUARD",
-                                               entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())), mode='PASS')
-                        except Exception:
-                            pass
+                        self._last_pair_block_reason[pair] = "FAKE_BULL_GUARD"
                         signal = "NO_TRADE"
                 except Exception as _fbg_e:
                     logger.warning(f"[FAKE_BULL_GUARD] {pair}: check errored ({_fbg_e}) — fail-open, no block")

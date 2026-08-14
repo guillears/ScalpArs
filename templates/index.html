@@ -8224,12 +8224,15 @@
             window._eomPanel = { label: d.eom_label, proj: nowP, d3: d3, d7: d7, a7: a7now,
                                  marks: (d.ship_marks || []).map(m => m.join(' ')) };
             el.innerHTML =
-                `<div class="flex items-center gap-6 flex-wrap text-xs bg-white/[0.03] rounded-lg px-4 py-3" title="EOM projection revisions: each sparkline point = what 'balance by ${d.eom_label}' looked like at that day's close (back-computed from closed orders). The SLOPE is the improvement signal. Amber dashes = mechanism-ship dates (era boundaries). avg7 = rolling 7-day avg P&L%/trade — the leverage-invariant ruler; if the projection rises while avg7 falls, the rise is sizing/streak, not edge.">` +
+                // Aug-14 use-test cut (operator; EOM-panel checkpoint resolved): revisions
+                // sparkline + avg%/trade 7d STRIPPED from the footer — meta-instrumentation
+                // (projection stability / duplicated per-trade edge) never used for a decision.
+                // Payload untouched (revisions history still feeds the Δs; sparkline data
+                // available if ever re-rendered).
+                `<div class="flex items-center gap-6 flex-wrap text-xs bg-white/[0.03] rounded-lg px-4 py-3" title="EOM projection: 'balance by ${d.eom_label}' back-computed from closed orders at MTD rate. Δ vs 3d/7d ago = the improvement signal — is the month getting better or worse as days settle?">` +
                 `<div><span class="text-gray-500">Projected by ${d.eom_label}:</span> <span class="text-blue-300 font-bold text-sm">$${Math.round(nowP).toLocaleString('en-US')}</span></div>` +
                 `<div><span class="text-gray-500">Δ vs 3d ago:</span> <span class="${cls(d3)} font-medium">${fmt(d3)}</span></div>` +
                 `<div><span class="text-gray-500">Δ vs 7d ago:</span> <span class="${cls(d7)} font-medium">${fmt(d7)}</span></div>` +
-                `<div class="flex items-center gap-2"><span class="text-gray-500">revisions</span>${sparkRev}</div>` +
-                `<div class="flex items-center gap-2"><span class="text-gray-500">avg%/trade 7d</span>${_sparkSvg(avg7, 140, 34, '#34d399', markIdx, (d.avg7 || []).map(a => a.date + ': ' + (a.avg_pct != null ? (a.avg_pct >= 0 ? '+' : '') + a.avg_pct.toFixed(3) + '% (' + a.n + ' trades)' : '—')))} <span class="${cls(a7now)}">${a7now != null ? (a7now >= 0 ? '+' : '') + a7now.toFixed(3) + '%' : '—'}</span></div>` +
                 `</div>`;
         }
 
@@ -8870,8 +8873,8 @@
                 const _ep = window._eomPanel;
                 const _f = v => v == null ? '-' : (v >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(v));
                 lines.push(`\n${hr2}`);
-                lines.push('## EOM Projection (fixed-date, MTD-rate; revisions = improvement signal)\n');
-                lines.push(`Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}  |  avg P&L%/trade (7d): ${_ep.a7 != null ? (_ep.a7 >= 0 ? '+' : '') + _ep.a7.toFixed(3) + '%' : '-'}`);
+                lines.push('## EOM Projection (fixed-date, MTD-rate; d3/d7 = improvement signal)\n');
+                lines.push(`Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}`);
                 lines.push(`Era marks: ${(_ep.marks || []).join(' · ') || '-'}`);
             }
 
@@ -10871,8 +10874,8 @@
                     const _ep = window._eomPanel;
                     const _f = v => v == null ? '-' : (v >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(v));
                     lines.push(`\n${hr2}`);
-                    lines.push('## EOM Projection (fixed-date, MTD-rate; revisions = improvement signal)\n');
-                    lines.push(`Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}  |  avg P&L%/trade (7d): ${_ep.a7 != null ? (_ep.a7 >= 0 ? '+' : '') + _ep.a7.toFixed(3) + '%' : '-'}`);
+                    lines.push('## EOM Projection (fixed-date, MTD-rate; d3/d7 = improvement signal)\n');
+                    lines.push(`Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}`);
                     lines.push(`Era marks: ${(_ep.marks || []).join(' · ') || '-'}`);
                 }
 

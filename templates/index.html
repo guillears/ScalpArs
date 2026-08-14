@@ -6108,6 +6108,22 @@
                         <span class="text-sm text-gray-300">BTC Independent Filters</span>
                         <p class="text-xs text-gray-500 mb-1">These filters run independently — do not require Macro Trend to be enabled.</p>
                         <div class="flex items-center gap-4 mt-1 flex-wrap">
+                            <span class="text-xs text-gray-500 w-24">🛡 Fake-Bull Guard:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="checkbox" id="config-fake-bull-guard-enabled" class="mr-1 accent-blue-500">
+                                <span class="text-xs">on</span>
+                            </label>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <span class="text-xs text-gray-500 mr-1">bull% ≤</span>
+                                <input type="number" step="1" min="0" max="100" id="config-fake-bull-guard-bull-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="71">
+                            </label>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <span class="text-xs text-gray-500 mr-1">BTC 13-50 gap ≤</span>
+                                <input type="number" step="0.01" id="config-fake-bull-guard-tg-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.01">
+                            </label>
+                            <span class="text-xs text-gray-600">blocks HEALTHY_BULL × STRONG_BUY longs when breadth AND BTC 13/50 structure both fail to confirm</span>
+                        </div>
+                        <div class="flex items-center gap-4 mt-1 flex-wrap">
                             <span class="text-xs text-gray-500 w-20">ADX BTC LONG:</span>
                             <label class="flex items-center text-sm text-gray-400">
                                 <input type="number" step="1" min="0" max="100" id="config-btc-adx-min-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
@@ -10536,6 +10552,7 @@
             lines.push(`  RSI x ADX Filter L: ${rsiAdxL}  |  S: ${rsiAdxS}`);
             lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}`);
             lines.push(`  BTC RSI L: ${th.btc_rsi_min_long||0}-${th.btc_rsi_max_long||100}  |  BTC RSI S: ${th.btc_rsi_min_short||0}-${th.btc_rsi_max_short||100}  |  BTC ADX L: ${th.btc_adx_min_long||0}-${th.btc_adx_max_long||100}  |  BTC ADX S: ${th.btc_adx_min_short||0}-${th.btc_adx_max_short||100}  |  ADX Dir L: ${th.btc_adx_dir_long||'both'}  |  ADX Dir S: ${th.btc_adx_dir_short||'both'}`);
+            lines.push(`  Fake-Bull Guard: ${th.fake_bull_guard_enabled ? 'ON' : 'off'} (HEALTHY_BULL×STRONG_BUY, bull%<=${th.fake_bull_guard_bull_pct_max!==undefined?th.fake_bull_guard_bull_pct_max:71}, BTC 13-50 gap<=${th.fake_bull_guard_tg_max!==undefined?th.fake_bull_guard_tg_max:0.01})`);
             lines.push(`  Pair ADX Dir L: ${th.adx_dir_long||'both'}  |  Pair ADX Dir S: ${th.adx_dir_short||'both'}`);
             lines.push(`  Global Vol Filter: ${th.global_volume_filter_enabled}  |  Min L: ${th.global_volume_threshold_long||0.95}  |  Min S: ${th.global_volume_threshold_short||0}  |  Max S: ${th.global_volume_max_short||0} (capitulation override: ${th.global_volume_max_short_capitulation_override_enabled === false ? 'REMOVED' : 'ON'} — BTC RSI<${th.global_volume_max_short_capitulation_rsi||30} AND slope<${th.global_volume_max_short_capitulation_slope||0})  |  Lookback: ${th.global_volume_lookback_bars||48} bars`);
             lines.push(`  Pair Vol Filter: ${th.pair_volume_filter_enabled}  |  Thresh L: ${th.pair_volume_threshold_long||1.10}  |  Thresh S: ${th.pair_volume_threshold_short||1.10}  |  Lookback: ${th.pair_volume_lookback_bars||20} bars`);
@@ -19718,6 +19735,9 @@
                 document.getElementById('config-btc-rsi-max-long').value = config.thresholds.btc_rsi_max_long !== undefined ? config.thresholds.btc_rsi_max_long : 100;
                 document.getElementById('config-btc-rsi-min-short').value = config.thresholds.btc_rsi_min_short !== undefined ? config.thresholds.btc_rsi_min_short : 0;
                 document.getElementById('config-btc-rsi-max-short').value = config.thresholds.btc_rsi_max_short !== undefined ? config.thresholds.btc_rsi_max_short : 100;
+                document.getElementById('config-fake-bull-guard-enabled').checked = config.thresholds.fake_bull_guard_enabled !== undefined ? config.thresholds.fake_bull_guard_enabled : true;
+                document.getElementById('config-fake-bull-guard-bull-max').value = config.thresholds.fake_bull_guard_bull_pct_max !== undefined ? config.thresholds.fake_bull_guard_bull_pct_max : 71;
+                document.getElementById('config-fake-bull-guard-tg-max').value = config.thresholds.fake_bull_guard_tg_max !== undefined ? config.thresholds.fake_bull_guard_tg_max : 0.01;
                 document.getElementById('config-btc-adx-min-long').value = config.thresholds.btc_adx_min_long !== undefined ? config.thresholds.btc_adx_min_long : 0;
                 document.getElementById('config-btc-adx-max-long').value = config.thresholds.btc_adx_max_long !== undefined ? config.thresholds.btc_adx_max_long : 100;
                 document.getElementById('config-btc-adx-min-short').value = config.thresholds.btc_adx_min_short !== undefined ? config.thresholds.btc_adx_min_short : 0;
@@ -21195,6 +21215,9 @@
                     btc_rsi_max_long: safeFloat(document.getElementById('config-btc-rsi-max-long').value),
                     btc_rsi_min_short: safeFloat(document.getElementById('config-btc-rsi-min-short').value),
                     btc_rsi_max_short: safeFloat(document.getElementById('config-btc-rsi-max-short').value),
+                    fake_bull_guard_enabled: document.getElementById('config-fake-bull-guard-enabled').checked,
+                    fake_bull_guard_bull_pct_max: safeFloat(document.getElementById('config-fake-bull-guard-bull-max').value),
+                    fake_bull_guard_tg_max: safeFloat(document.getElementById('config-fake-bull-guard-tg-max').value),
                     btc_adx_min_long: safeFloat(document.getElementById('config-btc-adx-min-long').value),
                     btc_adx_max_long: safeFloat(document.getElementById('config-btc-adx-max-long').value),
                     btc_adx_min_short: safeFloat(document.getElementById('config-btc-adx-min-short').value),

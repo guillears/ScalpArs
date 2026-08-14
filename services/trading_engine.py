@@ -9316,6 +9316,45 @@ class TradingEngine:
                             pass
                     signal = "NO_TRADE"
 
+            # 🛡 FAKE_BULL_GUARD — Aug-14 2026 operator-override ship (blocked cohort N=10,
+            # below locked gates — acknowledged; DECISION_LOG 2026-08-14). Blocks a momentum
+            # LONG when every bull-confirmation axis fails at once: regime HEALTHY_BULL
+            # (weakest bull tier) ∧ confidence STRONG_BUY (weakest tier) ∧ breadth
+            # bull_pct <= 71 ∧ BTC EMA13-50 trend gap <= +0.01 (0 + measurement tolerance).
+            # 4-pool blocked cohort 10 · 3W/7L · −$818; fires 0× in B2 real bull; 8/10 losers
+            # DOA (peak <0.10 — no exit rule reaches them). Same-direction phantom seeds the
+            # 🔒 revert read: first 6 blocked phantoms >=50% winners or net>0 → revert.
+            # Fail-open on any error.
+            if (signal == "LONG" and confidence == "STRONG_BUY"
+                    and getattr(config.trading_config.thresholds, 'fake_bull_guard_enabled', False)):
+                try:
+                    _fbg_th = config.trading_config.thresholds
+                    _fbg_bull_max = float(getattr(_fbg_th, 'fake_bull_guard_bull_pct_max', 71.0) or 71.0)
+                    _fbg_tg_raw = getattr(_fbg_th, 'fake_bull_guard_tg_max', 0.01)
+                    _fbg_tg_max = float(_fbg_tg_raw) if _fbg_tg_raw is not None else 0.01
+                    _fbg_bull = globals().get('_market_bull_pct')
+                    _fbg_tg = globals().get('_current_btc_trend_gap_pct')
+                    try:
+                        _fbg_reg = classify_btc_regime(globals().get('_current_btc_adx'),
+                                                       globals().get('_current_btc_rsi'),
+                                                       globals().get('_btc_ema20_slope_pct'))
+                    except Exception:
+                        _fbg_reg = None
+                    if (_fbg_reg == 'HEALTHY_BULL' and _fbg_bull is not None and _fbg_tg is not None
+                            and _fbg_bull <= _fbg_bull_max and _fbg_tg <= _fbg_tg_max):
+                        logger.info(f"[FAKE_BULL_GUARD] {pair}: LONG blocked — HEALTHY_BULL×STRONG_BUY, "
+                                    f"bull_pct {_fbg_bull:.1f}<={_fbg_bull_max:.0f} AND btc_trend_gap "
+                                    f"{_fbg_tg:+.4f}<=+{_fbg_tg_max} (bull label unconfirmed)")
+                        self._record_filter_block("FAKE_BULL_GUARD", "LONG", had_room=_had_room)
+                        try:
+                            _seed_phantom_flip(pair, indicators.get('price'), "LONG", "PASS:FAKE_BULL_GUARD",
+                                               entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())), mode='PASS')
+                        except Exception:
+                            pass
+                        signal = "NO_TRADE"
+                except Exception as _fbg_e:
+                    logger.warning(f"[FAKE_BULL_GUARD] {pair}: check errored ({_fbg_e}) — fail-open, no block")
+
             # BTC RSI BAND × BTC ATR conditional block — May 27, 2026 A3 ship.
             # Replaces the broad "65-70:99-100" BTC RSI 65-70 LONG block (over-restrictive)
             # with a surgical "BTC RSI in band AND BTC ATR condition" filter.

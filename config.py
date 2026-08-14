@@ -195,6 +195,20 @@ class SignalThresholds(BaseModel):
     # Default 24/30 from cross-batch evidence (965-trade pool): BTC ADX 24-30 SHORT = 49% WR / -$16/tr.
     btc_adx_block_min_short: float = 0.0
     btc_adx_block_max_short: float = 0.0
+    # 🛡 FAKE_BULL_GUARD (Aug-14 2026 operator-override ship — DECISION_LOG 2026-08-14): block a
+    # momentum LONG when the bull label is unconfirmed on EVERY axis at once: 5m regime
+    # HEALTHY_BULL (weakest bull tier) ∧ confidence STRONG_BUY (weakest tier) ∧ market breadth
+    # bull_pct <= fake_bull_guard_bull_pct_max ∧ BTC EMA13-50 trend gap <= fake_bull_guard_tg_max
+    # (+0.01 = "0 + measurement tolerance": a gap of 0.007% is noise-flat; same knife-edge
+    # convention as the runner-arm −0.005). 4-pool blocked cohort: 10 trades · 3W/7L · −$818
+    # (BASE −243 / B1 −283 / BATCH −293; fires 0× in B2's real-bull tape). 8/10 losers were DOA
+    # (peak <0.10). Flip-sleeve symmetry: gap<=0 is already the flip depth gate's "bull label
+    # suspect" zone. N=10 is BELOW the locked filter gates — operator override, acknowledged.
+    # 🔒 REVERT: first 6 blocked phantoms (PASS:FAKE_BULL_GUARD) — if >=50% would-be winners OR
+    # phantom-net > 0 → set enabled=false. Follow-up read: flat-band (0<gap<=0.05) phantom tally.
+    fake_bull_guard_enabled: bool = True
+    fake_bull_guard_bull_pct_max: float = 71.0   # breadth non-confirmation ceiling (BASE-median of the cell)
+    fake_bull_guard_tg_max: float = 0.01         # BTC trend-gap ceiling = 0 + measurement tolerance
     # BTC RSI band × BTC ATR conditional block (May 27, 2026 — A3 ship per CLAUDE.md).
     # Replaces the broad BTC RSI 65-70 block with a surgical "RSI band AND BTC ATR condition" filter.
     # Format per rule: "RSI_LO-RSI_HI:OP" where OP is "<X", ">X", or "X-Y". Multi-rule comma-separated.

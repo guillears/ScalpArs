@@ -1269,9 +1269,13 @@ def check_exit_conditions(
             _rh_amin = float(getattr(_rtc.thresholds, 'runner_trail_short_atr_min', 0.0) or 0.0)
             _rh_arm = float(getattr(_rtc.thresholds, 'runner_trail_short_arm_peak', 0.45) or 0.45)
             _rt_k = float(getattr(_rtc.thresholds, 'runner_trail_short_k', 0.5) or 0.5)
-        if (_rh_en and not is_flip and peak_pnl >= _rh_arm
+        if (_rh_en and not is_flip and peak_pnl >= _rh_arm - 0.005
                 and (_rh_amin <= 0
                      or (entry_atr_pct is not None and entry_atr_pct >= _rh_amin))):
+            # −0.005 tolerance (Aug-14 review): tier activation above uses tp_target − 0.005;
+            # with tp_min = arm = 0.40 an untoleranced arm re-opened the exact [0.395, 0.400)
+            # MIRA window at the MONITOR site (realtime was already closed in 32a8847) — a
+            # momentum long peaking there had monitor trailing active but unsuppressed.
             _handoff_suppress_trailing = True  # take over the profit-taking side
             if _l_use_atr and entry_atr_pct and entry_atr_pct > 0:
                 # ATR-floor (chandelier) + give-back cap + BE-ratchet — mirror of the SHORT

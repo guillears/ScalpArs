@@ -157,7 +157,7 @@ _LEASH_STATE = {}  # order_id -> {'rmax', 'ts', 'exits': {name: (pnl, reason)}}
 _LEASH_SPECS = [
     ('tight', 'flat', 0.25, 0.25, 0.0),  # 0.25 flat trail — the fresh short-gate benchmark
 ]
-_LEASH_ACT = 0.45    # trailing activation (matches live tp_min=0.45 V_S/S_B; was 0.5 — stale, missed 0.45-0.50 peakers the live trailing armed, e.g. 1000PEPE peak 0.485)
+_LEASH_ACT = 0.40    # trailing activation (Aug-14: matches live runner arm + tp_min = 0.40; was 0.45 — stale after 32a8847, missed 0.40-0.45 peakers; before that 0.5 missed the 0.485 peaker 1000PEPE)
 _LEASH_SL = -0.7    # hard SL floor (matches live)
 # Stretch-exit variants (May 30 ext): exit on EXTENSION fade, not price pullback.
 # Live stretch = signed %-distance of price from EMA5 (positive = favorable extension).
@@ -222,7 +222,7 @@ _ARM_TRAIL = 0.25  # same trail width as the live/flip replica trail
 # the main.py perf block + the UI block.
 _PHANTOM_FLIP_STATE = {}      # key "pair|source|ts" -> live state
 _PFLIP_COOLDOWN = {}          # "pair|source" -> last seed epoch (dedupe distinct episodes)
-_PFLIP_ACT = 0.45             # trailing arm (raw price-move %, matches live tp_min)
+_PFLIP_ACT = 0.40             # trailing arm (raw price-move %, matches live tp_min; 0.45→0.40 Aug-14 with 32a8847)
 _PFLIP_SL = -0.70             # base hard SL (fresh hypothetical → base, not signal-active wide)
 _PFLIP_PB = 0.25              # trailing pullback
 _PFLIP_MAX_MIN = 45           # max tracking horizon
@@ -765,9 +765,12 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                     if es is not None and stretch <= es:
                         st['sexits'][sname] = (round(pnl_pct, 4), 'stretch')
         # ---- ATR-floored give-back exits (chandelier): exit when P&L retraces > N×ATR from peak.
-        # Jun 17 PM: now LOCK-AWARE — floor = max(peak − N×ATR, lock), mirroring the LIVE policy
-        # (cap-off since Jun 17, BE-ratchet/lock ON). So atr05 == the EXACT live config (N=0.5),
-        # and atr10/atr15 are the N=1.0/1.5 candidates under the SAME lock → the clean decision
+        # Jun 17 PM: now LOCK-AWARE — floor = max(peak − N×ATR, lock), mirroring the then-LIVE
+        # policy (cap-off Jun 17, BE-ratchet/lock ON). Aug-14 (8108a60): live shorts now run
+        # cap=0.35 with ratchet OFF, so atr05 is no longer the live replica — it is the
+        # UNCAPPED N=0.5 counterfactual the 46c revert gate compares against (cap-bound exits
+        # vs these shadows). Gate 46's calm-band read must re-interpret atr05 accordingly.
+        # atr10/atr15 remain the N=1.0/1.5 candidates under the SAME lock → the clean decision
         # surface for runner_trail_short_atr_mult. (Pre-Jun-17 these were lockless = the cap-era
         # chandelier; the lock now backstops the low-peak give-back that N alone can't.)
         # _aatr = the pair's entry ATR% captured at first tick. ----
@@ -12520,7 +12523,8 @@ class TradingEngine:
                                 _rl_n = float(getattr(_rl_th, 'spike_bounce_trail_atr_mult', 0.5) or 0.5)
                             _rl_gb = _rl_n * _rl_atr
                             _rl_frac = float(getattr(_rl_th, 'runner_trail_giveback_frac', 0.0) or 0.0)
-                            if _rl_frac > 0 and current_peak > 0 and _rl_frac * current_peak < _rl_gb:
+                            _rl_capped = (_rl_frac > 0 and current_peak > 0 and _rl_frac * current_peak < _rl_gb)
+                            if _rl_capped:
                                 _rl_gb = _rl_frac * current_peak
                             _rl_raw_floor = current_peak - _rl_gb
                             _rl_floor = _rl_raw_floor
@@ -12533,7 +12537,8 @@ class TradingEngine:
                                     _rlr = await db.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))
                                     _rl_order = _rlr.scalar_one_or_none()
                                     if _rl_order:
-                                        _rl_order.runner_trail_bound = ("lock" if _rl_floor > _rl_raw_floor else "atr")
+                                        _rl_order.runner_trail_bound = ("lock" if _rl_floor > _rl_raw_floor
+                                                                        else "cap" if _rl_capped else "atr")
                                         _rl_closed = await self.close_position(db, _rl_order, current_price, "RUNNER_TRAIL")
                                         if _rl_closed:
                                             logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} LONG closed at {current_price} pnl={pnl_pct:.4f}%")
@@ -12571,7 +12576,8 @@ class TradingEngine:
                             _rs_n = float(getattr(_rs_th, 'runner_trail_short_atr_mult', 0.5) or 0.5)
                             _rs_gb = _rs_n * _rs_atr
                             _rs_frac = float(getattr(_rs_th, 'runner_trail_short_giveback_frac', 0.0) or 0.0)
-                            if _rs_frac > 0 and current_peak > 0 and _rs_frac * current_peak < _rs_gb:
+                            _rs_capped = (_rs_frac > 0 and current_peak > 0 and _rs_frac * current_peak < _rs_gb)
+                            if _rs_capped:
                                 _rs_gb = _rs_frac * current_peak
                             _rs_raw_floor = current_peak - _rs_gb
                             _rs_floor = _rs_raw_floor
@@ -12589,7 +12595,8 @@ class TradingEngine:
                                     _rsr = await db.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))
                                     _rs_order = _rsr.scalar_one_or_none()
                                     if _rs_order:
-                                        _rs_order.runner_trail_bound = ("lock" if _rs_floor > _rs_raw_floor else "atr")
+                                        _rs_order.runner_trail_bound = ("lock" if _rs_floor > _rs_raw_floor
+                                                                        else "cap" if _rs_capped else "atr")
                                         _rs_closed = await self.close_position(db, _rs_order, current_price, "RUNNER_TRAIL")
                                         if _rs_closed:
                                             logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} SHORT(non-flip) closed at {current_price} pnl={pnl_pct:.4f}%")

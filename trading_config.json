@@ -198,7 +198,7 @@
     "runner_trail_short_atr_mult": 0.5,
     "runner_trail_short_be_ratchet_enabled": false,
     "runner_trail_short_be_lock_pct": 0.1,
-    "runner_trail_short_giveback_frac": 0.0,
+    "runner_trail_short_giveback_frac": 0.35,
     "flip_fan_spike_max": 10.0,
     "trailing_early_arm_threshold": 0.0,
     "trailing_early_arm_pullback": 0.1,

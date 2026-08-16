@@ -113,7 +113,7 @@
     "btc_rsi_max_long": 65,
     "btc_rsi_min_short": 25,
     "btc_rsi_max_short": 60,
-    "fake_bull_guard_enabled": true,
+    "fake_bull_guard_enabled": false,
     "fake_bull_guard_bull_pct_max": 71.0,
     "fake_bull_guard_tg_max": 0.01,
     "btc_adx_min_long": 18,

@@ -195,20 +195,18 @@ class SignalThresholds(BaseModel):
     # Default 24/30 from cross-batch evidence (965-trade pool): BTC ADX 24-30 SHORT = 49% WR / -$16/tr.
     btc_adx_block_min_short: float = 0.0
     btc_adx_block_max_short: float = 0.0
-    # 🛡 FAKE_BULL_GUARD (Aug-14 2026 operator-override ship — DECISION_LOG 2026-08-14): block a
-    # momentum LONG when the bull label is unconfirmed on EVERY axis at once: 5m regime
-    # HEALTHY_BULL (weakest bull tier) ∧ confidence STRONG_BUY (weakest tier) ∧ market breadth
-    # bull_pct <= fake_bull_guard_bull_pct_max ∧ BTC EMA13-50 trend gap <= fake_bull_guard_tg_max
-    # (+0.01 = "0 + measurement tolerance": a gap of 0.007% is noise-flat; same knife-edge
-    # convention as the runner-arm −0.005). 4-pool blocked cohort: 10 trades · 3W/7L · −$818
-    # (BASE −243 / B1 −283 / BATCH −293; fires 0× in B2's real-bull tape). 8/10 losers were DOA
-    # (peak <0.10). Flip-sleeve symmetry: gap<=0 is already the flip depth gate's "bull label
-    # suspect" zone. N=10 is BELOW the locked filter gates — operator override, acknowledged.
-    # 🔒 REVERT: first 6 blocked phantoms (PASS:FAKE_BULL_GUARD) — if >=50% would-be winners OR
-    # phantom-net > 0 → set enabled=false. Follow-up read: flat-band (0<gap<=0.05) phantom tally.
-    fake_bull_guard_enabled: bool = True
-    fake_bull_guard_bull_pct_max: float = 71.0   # breadth non-confirmation ceiling (BASE-median of the cell)
-    fake_bull_guard_tg_max: float = 0.01         # BTC trend-gap ceiling = 0 + measurement tolerance
+    # 🛡 FAKE_BULL_GUARD — ✝ REVERTED 2026-08-16 by its own locked gate 47, 2 days after the
+    # Aug-14 override ship (N=10 in-sample: 3W/7L·−$818). Forward replay of the first 12 blocked
+    # would-be longs (price-stamped block logs → kline replay): 6W/6L = 50% would-be winners AND
+    # phantom-net +4.65pp — BOTH revert legs tripped (already tripped at the first 6: 3W/3L,
+    # net +1.37). The winner-rate leg is MODEL-FREE (+0.40 reached before −0.70). The mined
+    # 4D pattern did not survive out-of-sample — textbook N=10 override fate; the tight gate
+    # bounded the damage to ~2 days of phantom-only cost. Machinery kept (fields/UI/counter/
+    # engine block) for a future re-hearing ONLY with N≥30 cross-batch evidence per the locked
+    # promotion gates — do NOT re-enable on the original evidence. DECISION_LOG 2026-08-16.
+    fake_bull_guard_enabled: bool = False
+    fake_bull_guard_bull_pct_max: float = 71.0   # dormant (see revert note above)
+    fake_bull_guard_tg_max: float = 0.01         # dormant (see revert note above)
     # BTC RSI band × BTC ATR conditional block (May 27, 2026 — A3 ship per CLAUDE.md).
     # Replaces the broad BTC RSI 65-70 block with a surgical "RSI band AND BTC ATR condition" filter.
     # Format per rule: "RSI_LO-RSI_HI:OP" where OP is "<X", ">X", or "X-Y". Multi-rule comma-separated.

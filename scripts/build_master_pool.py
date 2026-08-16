@@ -21,7 +21,7 @@ import warnings; warnings.filterwarnings('ignore')
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-08-14a"  # a: FAKE_BULL_GUARD entry gate (HEALTHY_BULL×STRONG_BUY×bull_pct<=71×tg<=+0.01 momentum longs -> stack_keep=False). NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies). Prior: 2026-08-10c (fade SL -1.50 CF + lock exemption re-price).
+STACK_VERSION = "2026-08-16a"  # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 def load():
@@ -101,14 +101,9 @@ def main():
                 if i in cooldown_idx: k, why = False, 'CALM3D_REENTRY'
                 elif r.is_door and pd.notna(r.entry_pos_di) and r.entry_pos_di < 28: k, why = False, 'CALM3D_DMI_DI'
                 elif r.is_door and pd.notna(r.entry_adx) and r.entry_adx < 21: k, why = False, 'CALM3D_DMI_ADX'
-                # 🛡 FAKE_BULL_GUARD (2026-08-14 ship, gate 47): weakest-tier bull label with
-                # neither breadth nor BTC 13/50 structure confirming — mirror of the engine
-                # check at trading_engine.py ~9310 on the recorded entry columns.
-                elif (str(r.direction) == 'LONG' and str(r.get('confidence')) == 'STRONG_BUY'
-                      and str(r.entry_btc_regime) == 'HEALTHY_BULL'
-                      and pd.notna(r.entry_bull_pct) and r.entry_bull_pct <= 71.0
-                      and pd.notna(r.entry_btc_trend_gap_pct) and r.entry_btc_trend_gap_pct <= 0.01):
-                    k, why = False, 'FAKE_BULL_GUARD'
+                # 🛡 FAKE_BULL_GUARD gate REMOVED 2026-08-16 (guard reverted by its own locked
+                # gate 47: forward 12-block replay 6W/6L·net+4.65pp — see DECISION_LOG). The
+                # stack no longer blocks this cohort; columns stay load-bearing for the record.
         # CF P&L for kept trades
         sp = p
         # fade SL -1.5 (41e): SL-stopped fade losers re-priced — survive if worst-ever

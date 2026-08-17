@@ -10526,10 +10526,14 @@ class TradingEngine:
                                     signal, confidence = "LONG", "STRONG_BUY"
                                     _spike_chase_hit = True
                                     logger.info(f"[SPIKE_CHASE] {pair}: RSI jump {_sc_prev:.1f}->{_sc_rsi:.1f} (+{_sc_rsi - _sc_prev:.1f}) candle {_sc_chg:+.2f}% vol {_sc_vr:.1f}x ADX {(_sc_adx if _sc_adx is not None else -1):.1f} stretch {(_sc_stretch if _sc_stretch is not None else 0):+.2f}%/{(_sc_atrp or 0):.2f}ATR — chase entry (LONG)")
-            except Exception:
+            except Exception as _sph_err:
                 # Review M5: clear signal too — an exception AFTER the router set
                 # signal="SHORT"/"LONG" must not leak a plain MOMENTUM open at
                 # normal sizing/exits.
+                # Aug-17 audit (Important-4): the swallow was SILENT — the flip-kill
+                # anatomy in miniature for the spike species (a recurring exception here
+                # would read as "quiet tape"). Now logged loudly.
+                logger.error(f"[SPIKE_HOOK_ERROR] {pair}: chase/fade hook raised — signal discarded (fail-safe): {_sph_err}")
                 signal = None
                 _spike_chase_hit = False
                 _spike_fade_hit = False
@@ -10618,15 +10622,20 @@ class TradingEngine:
                                     signal, confidence = "LONG", "STRONG_BUY"
                                     _spike_bounce_hit = True
                                     logger.info(f"[SPIKE_BOUNCE] {pair}: RSI crash {_sb_prev:.1f}->{_sb_rsi:.1f} ({_sb_rsi - _sb_prev:+.1f}) candle {_sb_chg:+.2f}% vol {_sb_vr:.1f}x — bounce entry (LONG)")
-            except Exception:
+            except Exception as _sbh_err:
                 # Same M5 rule as the pump block: an exception after signal was set
                 # must not leak a plain MOMENTUM open at normal sizing/exits.
+                # Aug-17 audit (Important-4): silent swallow now logged (flip-kill class).
+                logger.error(f"[SPIKE_HOOK_ERROR] {pair}: bounce hook raised — signal discarded (fail-safe): {_sbh_err}")
                 signal = None
                 _spike_bounce_hit = False
 
             if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
-                logger.info(f"[DEBUG_REACHED_OPEN] {pair} {signal} {confidence}: about to call open_position()")
-                logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - Opening position...")
+                # Aug-17 audit (Important-1): these two lines fire BEFORE the quality gate,
+                # the promo router, and every in-open_position rejection — reworded so log
+                # audits stop counting them as opens ([PORTFOLIO_OPEN] is the only true open).
+                logger.info(f"[DEBUG_REACHED_OPEN] {pair} {signal} {confidence}: survived entry ladder — evaluating open (quality gate → router → open_position)")
+                logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - candidate accepted, not yet opened")
                 entry_gap = None
                 if indicators.get('ema5') and indicators.get('ema20') and indicators['price'] > 0:
                     entry_gap = round(abs((indicators['ema5'] - indicators['ema20']) / indicators['price'] * 100), 4)
@@ -10791,6 +10800,12 @@ class TradingEngine:
                         logger.error(f"[PROMO_ROUTER] {pair}: router error — fail-closed block: {_pp_err}")
                         _pp_block = "PROMO_ROUTER_ERROR"  # review M-1: own counter, not a legacy mislabel
                     if _pp_block is not None:
+                        # Aug-17 (operator "no LONGs" audit): this re-block was COUNTED but never
+                        # LOGGED — reached-open candidates vanished from the logs (the exact
+                        # observability hole class that hid the flip kill 34 days). Named log line
+                        # makes every router re-block visible between DEBUG_REACHED_OPEN and the
+                        # scan summary.
+                        logger.info(f"[PROMO_ROUTER_REBLOCK] {pair}: LONG fall-through candidate re-blocked as {_pp_block} (door legs not met — counted, not opened)")
                         self._record_filter_block(_pp_block, "LONG", had_room=_scan_had_room_snapshot)
                         self._last_pair_block_reason[pair] = _pp_block
                         continue
@@ -10834,135 +10849,143 @@ class TradingEngine:
                 except Exception:
                     pass
 
-                order = await self.open_position(
-                    db=db,
-                    pair=pair,
-                    direction=signal,
-                    confidence=confidence,
-                    current_price=indicators['price'],
-                    entry_gap=entry_gap,
-                    entry_ema_gap_5_8=entry_ema_gap_5_8,
-                    entry_ema_gap_8_13=entry_ema_gap_8_13,
-                    entry_ema5_stretch=entry_ema5_stretch,
-                    entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
-                    entry_rsi_prev=round(entry_rsi_prev, 2) if entry_rsi_prev is not None else None,
-                    entry_adx=round(entry_adx, 4) if entry_adx is not None else None,
-                    entry_adx_prev=round(entry_adx_prev, 4) if entry_adx_prev is not None else None,
-                    entry_macro_trend=entry_regime,
-                    entry_ema20_slope=pair_ema20_slope_pct,
-                    entry_btc_ema20_slope=btc_ema20_slope_pct,
-                    entry_btc_adx=round(btc_adx, 4) if btc_adx is not None else None,
-                    entry_btc_adx_prev=round(btc_adx_prev, 4) if btc_adx_prev is not None else None,
-                    entry_btc_rsi=round(btc_rsi, 1) if btc_rsi is not None else None,
-                    entry_btc_rsi_prev=round(btc_rsi_prev, 1) if btc_rsi_prev is not None else None,
-                    entry_btc_rsi_prev6=round(btc_rsi_prev6, 1) if btc_rsi_prev6 is not None else None,
-                    entry_btc_atr_pct=btc_atr_pct,
-                    entry_btc_rsi_1h=btc_rsi_1h,
-                    entry_btc_rsi_1h_prev=btc_rsi_1h_prev,
-                    entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
-                    entry_global_volume_ratio=round(_global_volume_ratio, 4),
-                    entry_pair_volume_ratio=round(_pair_volume_ratio, 4),
-                    entry_bull_pct=_market_bull_pct,
-                    entry_bear_pct=_market_bear_pct,
-                    entry_range_position=round(((indicators['price'] - indicators['low_20']) / (indicators['high_20'] - indicators['low_20'])) * 100, 1) if indicators.get('high_20') and indicators.get('low_20') and indicators['high_20'] != indicators['low_20'] else None,
-                    entry_adx_delta=round(entry_adx - entry_adx_prev, 4) if entry_adx is not None and entry_adx_prev is not None else None,
-                    entry_quality_score=entry_quality_score,
-                    entry_btc_regime=entry_btc_regime,
-                    # entry_btc_trend_gap_pct is handled inside open_position via globals lookup
-                    # (see line ~1840 — Order() constructor reads _current_btc_trend_gap_pct directly).
-                    # Passing it as a kwarg was a bug — open_position's signature doesn't accept it,
-                    # which TypeError'd every scan loop and prevented ALL position openings (May 5).
-                    entry_pos_di=_entry_pos_di,
-                    entry_neg_di=_entry_neg_di,
-                    entry_atr_pct=_entry_atr_pct,
-                    entry_ema50_slope=_entry_ema50_slope,
-                    entry_funding_rate=_entry_funding_rate,
-                    entry_pair_ema20_ema50_gap_pct=_entry_pair_ema20_ema50_gap_pct,
-                    entry_dist_from_ema13_pct=_entry_dist_from_ema13_pct,
-                    entry_btc_dist_from_ema13_pct=_entry_btc_dist_from_ema13_pct,
-                    entry_btc_1h_slope=_current_btc_1h_slope,
-                    # May 10: absolute pair 24h USD volume — sourced from binance scan
-                    entry_pair_volume_24h_usd=volume_24h,
-                    # Jun 12: eligible-universe volume rank at entry (50->75 read gate)
-                    entry_pair_rank=_pair_rank,
-                    entry_pair_age_days=_pair_age_days,
-                    # Jun 8: gap-expanding relaxation A/B tag — True if this entry was admitted
-                    # by prev2_only but would have failed the strict prev1 check (MARGINAL cohort).
-                    entry_gap_expand_marginal=gap_expand_marginal(indicators, signal),
-                    # Jul 13 GAPFLAT probe: True iff this LONG failed the gap-expanding check but
-                    # was let through the ladder by gap_probe_enabled (get_signal only admits a
-                    # gap-flat candidate when the probe is on, so this tag is exact). open_position
-                    # then applies the probe caps + 1x sizing, or records the block if capped.
-                    gap_probe=bool(
-                        signal in ("LONG", "SHORT")
-                        and getattr(config.trading_config.thresholds, 'gap_probe_enabled', False)
-                        and gap_expand_flat(indicators, signal, config.trading_config.thresholds)
-                    ),
-                    # Jul 13 PM GAPMIN probe (BOTH directions): gap in [floor, per-side threshold),
-                    # NOT gap-flat on longs (band helper enforces cohort purity itself); only tagged
-                    # when the probe is on — otherwise such candidates never reach here.
-                    gapmin_probe=bool(
-                        signal in ("LONG", "SHORT")
-                        and getattr(config.trading_config.thresholds, 'gapmin_probe_enabled', False)
-                        and gap_min_band(indicators, signal, config.trading_config.thresholds)
-                    ),
-                    # Jul 14 SLOPEGATE probe: candidate was hit by the BTC 5m flat dead-band
-                    # (Phase-1 fall-through above) and survived every OTHER engine gate.
-                    slopegate_probe=bool(_slopegate_probe_hit),
-                    # Jul 15 RSIADX probe (#4): the ladder admitted this candidate via the
-                    # cross-filter fall-through — recompute the exact block condition here
-                    # (same helper the ladder uses; identical inputs => identical output).
-                    rsiadx_probe=bool(
-                        signal in ("LONG", "SHORT")
-                        and getattr(config.trading_config.thresholds, 'rsiadx_probe_enabled', False)
-                        and (signal != "SHORT"
-                             or getattr(config.trading_config.thresholds, 'rsiadx_probe_short_enabled', True))
-                        and _rsi_adx_block_rule(signal, indicators.get('rsi'), indicators.get('adx'),
-                                                config.trading_config.thresholds) is not None
-                    ),
-                    # Jul 15 DEADBAND probe (#5): candidate sat in the 1h flat-UP half-band
-                    # (fall-through above) and survived every OTHER engine gate.
-                    deadband_probe=bool(_deadband_probe_hit),
-                    # Jul 15 RSICEIL probe (#6): the ladder admitted this LONG via the
-                    # (max, ceiling] RSI band suppression — recompute the exact band here.
-                    rsiceil_probe=bool(
-                        signal == "LONG"
-                        and getattr(config.trading_config.thresholds, 'rsiceil_probe_enabled', False)
-                        and rsiceil_band(indicators, signal, config.trading_config.thresholds) is True
-                    ),
-                    # Jul 20 GMINFLAT probe (#7): flat+small cohort-purity class admitted via
-                    # the [flat] sub-rule suppression — recompute the exact band here.
-                    gminflat_probe=bool(
-                        signal in ("LONG", "SHORT")
-                        and getattr(config.trading_config.thresholds, 'gminflat_probe_enabled', False)
-                        and gminflat_band(indicators, signal, config.trading_config.thresholds) is True
-                    ),
-                    # Jul 20 ADXMAX probe (#8): (per-side ADX max, probe ceiling] band.
-                    adxmax_probe=bool(
-                        signal in ("LONG", "SHORT")
-                        and getattr(config.trading_config.thresholds, 'adxmax_probe_enabled', False)
-                        and adxmax_band(indicators, signal, config.trading_config.thresholds) is True
-                    ),
-                    # Jul 20 DBDOWN probe (#9): 1h flat-DOWN half-band fall-through above.
-                    dbdown_probe=bool(_dbdown_probe_hit),
-                    # Jul 30 DEEPGAP probe (#13, SHORT-only): deep-gap floor fall-through above.
-                    deepgap_probe=bool(_deepgap_probe_hit),
-                    # Jul 30 MAJORS probe (#14): no-trade major fall-through above (full ladder passed).
-                    majors_probe=bool(_majors_probe_hit),
-                    # Jul 21 ADXMAX2 probe (#10, LONG-only): second rung (35, 40].
-                    adxmax2_probe=bool(
-                        signal == "LONG"
-                        and getattr(config.trading_config.thresholds, 'adxmax2_probe_enabled', False)
-                        and adxmax2_band(indicators, signal, config.trading_config.thresholds) is True
-                    ),
-                    # Jul 24 probe #11 → Jul 27 full ship: ladder-bypass chase entry (flag set
-                    # in the hook above); fade = the trigger's ADX>30 SHORT branch.
-                    spike_chase_probe=bool(_spike_chase_hit),
-                    spike_fade=bool(_spike_fade_hit),
-                    spike_bounce=bool(_spike_bounce_hit),
-                    # Jul 27 PM promotion: NONEXP_CALM3D admission (engine router above)
-                    nonexp_calm3d=bool(_nonexp_calm3d_hit),
-                )
+                # Aug-17 audit (Important-2): an exception escaping open_position previously
+                # rode to scan_loop as a pair-UNNAMED error and ABORTED the whole cycle
+                # (all later pairs unscanned). Now: pair-named, counted, cycle continues.
+                try:
+                    order = await self.open_position(
+                        db=db,
+                        pair=pair,
+                        direction=signal,
+                        confidence=confidence,
+                        current_price=indicators['price'],
+                        entry_gap=entry_gap,
+                        entry_ema_gap_5_8=entry_ema_gap_5_8,
+                        entry_ema_gap_8_13=entry_ema_gap_8_13,
+                        entry_ema5_stretch=entry_ema5_stretch,
+                        entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
+                        entry_rsi_prev=round(entry_rsi_prev, 2) if entry_rsi_prev is not None else None,
+                        entry_adx=round(entry_adx, 4) if entry_adx is not None else None,
+                        entry_adx_prev=round(entry_adx_prev, 4) if entry_adx_prev is not None else None,
+                        entry_macro_trend=entry_regime,
+                        entry_ema20_slope=pair_ema20_slope_pct,
+                        entry_btc_ema20_slope=btc_ema20_slope_pct,
+                        entry_btc_adx=round(btc_adx, 4) if btc_adx is not None else None,
+                        entry_btc_adx_prev=round(btc_adx_prev, 4) if btc_adx_prev is not None else None,
+                        entry_btc_rsi=round(btc_rsi, 1) if btc_rsi is not None else None,
+                        entry_btc_rsi_prev=round(btc_rsi_prev, 1) if btc_rsi_prev is not None else None,
+                        entry_btc_rsi_prev6=round(btc_rsi_prev6, 1) if btc_rsi_prev6 is not None else None,
+                        entry_btc_atr_pct=btc_atr_pct,
+                        entry_btc_rsi_1h=btc_rsi_1h,
+                        entry_btc_rsi_1h_prev=btc_rsi_1h_prev,
+                        entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
+                        entry_global_volume_ratio=round(_global_volume_ratio, 4),
+                        entry_pair_volume_ratio=round(_pair_volume_ratio, 4),
+                        entry_bull_pct=_market_bull_pct,
+                        entry_bear_pct=_market_bear_pct,
+                        entry_range_position=round(((indicators['price'] - indicators['low_20']) / (indicators['high_20'] - indicators['low_20'])) * 100, 1) if indicators.get('high_20') and indicators.get('low_20') and indicators['high_20'] != indicators['low_20'] else None,
+                        entry_adx_delta=round(entry_adx - entry_adx_prev, 4) if entry_adx is not None and entry_adx_prev is not None else None,
+                        entry_quality_score=entry_quality_score,
+                        entry_btc_regime=entry_btc_regime,
+                        # entry_btc_trend_gap_pct is handled inside open_position via globals lookup
+                        # (see line ~1840 — Order() constructor reads _current_btc_trend_gap_pct directly).
+                        # Passing it as a kwarg was a bug — open_position's signature doesn't accept it,
+                        # which TypeError'd every scan loop and prevented ALL position openings (May 5).
+                        entry_pos_di=_entry_pos_di,
+                        entry_neg_di=_entry_neg_di,
+                        entry_atr_pct=_entry_atr_pct,
+                        entry_ema50_slope=_entry_ema50_slope,
+                        entry_funding_rate=_entry_funding_rate,
+                        entry_pair_ema20_ema50_gap_pct=_entry_pair_ema20_ema50_gap_pct,
+                        entry_dist_from_ema13_pct=_entry_dist_from_ema13_pct,
+                        entry_btc_dist_from_ema13_pct=_entry_btc_dist_from_ema13_pct,
+                        entry_btc_1h_slope=_current_btc_1h_slope,
+                        # May 10: absolute pair 24h USD volume — sourced from binance scan
+                        entry_pair_volume_24h_usd=volume_24h,
+                        # Jun 12: eligible-universe volume rank at entry (50->75 read gate)
+                        entry_pair_rank=_pair_rank,
+                        entry_pair_age_days=_pair_age_days,
+                        # Jun 8: gap-expanding relaxation A/B tag — True if this entry was admitted
+                        # by prev2_only but would have failed the strict prev1 check (MARGINAL cohort).
+                        entry_gap_expand_marginal=gap_expand_marginal(indicators, signal),
+                        # Jul 13 GAPFLAT probe: True iff this LONG failed the gap-expanding check but
+                        # was let through the ladder by gap_probe_enabled (get_signal only admits a
+                        # gap-flat candidate when the probe is on, so this tag is exact). open_position
+                        # then applies the probe caps + 1x sizing, or records the block if capped.
+                        gap_probe=bool(
+                            signal in ("LONG", "SHORT")
+                            and getattr(config.trading_config.thresholds, 'gap_probe_enabled', False)
+                            and gap_expand_flat(indicators, signal, config.trading_config.thresholds)
+                        ),
+                        # Jul 13 PM GAPMIN probe (BOTH directions): gap in [floor, per-side threshold),
+                        # NOT gap-flat on longs (band helper enforces cohort purity itself); only tagged
+                        # when the probe is on — otherwise such candidates never reach here.
+                        gapmin_probe=bool(
+                            signal in ("LONG", "SHORT")
+                            and getattr(config.trading_config.thresholds, 'gapmin_probe_enabled', False)
+                            and gap_min_band(indicators, signal, config.trading_config.thresholds)
+                        ),
+                        # Jul 14 SLOPEGATE probe: candidate was hit by the BTC 5m flat dead-band
+                        # (Phase-1 fall-through above) and survived every OTHER engine gate.
+                        slopegate_probe=bool(_slopegate_probe_hit),
+                        # Jul 15 RSIADX probe (#4): the ladder admitted this candidate via the
+                        # cross-filter fall-through — recompute the exact block condition here
+                        # (same helper the ladder uses; identical inputs => identical output).
+                        rsiadx_probe=bool(
+                            signal in ("LONG", "SHORT")
+                            and getattr(config.trading_config.thresholds, 'rsiadx_probe_enabled', False)
+                            and (signal != "SHORT"
+                                 or getattr(config.trading_config.thresholds, 'rsiadx_probe_short_enabled', True))
+                            and _rsi_adx_block_rule(signal, indicators.get('rsi'), indicators.get('adx'),
+                                                    config.trading_config.thresholds) is not None
+                        ),
+                        # Jul 15 DEADBAND probe (#5): candidate sat in the 1h flat-UP half-band
+                        # (fall-through above) and survived every OTHER engine gate.
+                        deadband_probe=bool(_deadband_probe_hit),
+                        # Jul 15 RSICEIL probe (#6): the ladder admitted this LONG via the
+                        # (max, ceiling] RSI band suppression — recompute the exact band here.
+                        rsiceil_probe=bool(
+                            signal == "LONG"
+                            and getattr(config.trading_config.thresholds, 'rsiceil_probe_enabled', False)
+                            and rsiceil_band(indicators, signal, config.trading_config.thresholds) is True
+                        ),
+                        # Jul 20 GMINFLAT probe (#7): flat+small cohort-purity class admitted via
+                        # the [flat] sub-rule suppression — recompute the exact band here.
+                        gminflat_probe=bool(
+                            signal in ("LONG", "SHORT")
+                            and getattr(config.trading_config.thresholds, 'gminflat_probe_enabled', False)
+                            and gminflat_band(indicators, signal, config.trading_config.thresholds) is True
+                        ),
+                        # Jul 20 ADXMAX probe (#8): (per-side ADX max, probe ceiling] band.
+                        adxmax_probe=bool(
+                            signal in ("LONG", "SHORT")
+                            and getattr(config.trading_config.thresholds, 'adxmax_probe_enabled', False)
+                            and adxmax_band(indicators, signal, config.trading_config.thresholds) is True
+                        ),
+                        # Jul 20 DBDOWN probe (#9): 1h flat-DOWN half-band fall-through above.
+                        dbdown_probe=bool(_dbdown_probe_hit),
+                        # Jul 30 DEEPGAP probe (#13, SHORT-only): deep-gap floor fall-through above.
+                        deepgap_probe=bool(_deepgap_probe_hit),
+                        # Jul 30 MAJORS probe (#14): no-trade major fall-through above (full ladder passed).
+                        majors_probe=bool(_majors_probe_hit),
+                        # Jul 21 ADXMAX2 probe (#10, LONG-only): second rung (35, 40].
+                        adxmax2_probe=bool(
+                            signal == "LONG"
+                            and getattr(config.trading_config.thresholds, 'adxmax2_probe_enabled', False)
+                            and adxmax2_band(indicators, signal, config.trading_config.thresholds) is True
+                        ),
+                        # Jul 24 probe #11 → Jul 27 full ship: ladder-bypass chase entry (flag set
+                        # in the hook above); fade = the trigger's ADX>30 SHORT branch.
+                        spike_chase_probe=bool(_spike_chase_hit),
+                        spike_fade=bool(_spike_fade_hit),
+                        spike_bounce=bool(_spike_bounce_hit),
+                        # Jul 27 PM promotion: NONEXP_CALM3D admission (engine router above)
+                        nonexp_calm3d=bool(_nonexp_calm3d_hit),
+                    )
+                except Exception as _op_err:
+                    logger.error(f"[OPEN_EXCEPTION] {pair} {signal} {confidence}: open_position raised — cycle continues: {_op_err}", exc_info=True)
+                    self._record_filter_block("OPEN_EXCEPTION", signal if signal in ("LONG", "SHORT") else "ANY")
+                    order = None
 
                 if order:
                     logger.info(f"[DEBUG_OPENED] {pair} {signal} {confidence}: open_position returned order id={order.id}")

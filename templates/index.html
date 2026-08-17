@@ -19745,7 +19745,7 @@
                 document.getElementById('config-btc-rsi-max-long').value = config.thresholds.btc_rsi_max_long !== undefined ? config.thresholds.btc_rsi_max_long : 100;
                 document.getElementById('config-btc-rsi-min-short').value = config.thresholds.btc_rsi_min_short !== undefined ? config.thresholds.btc_rsi_min_short : 0;
                 document.getElementById('config-btc-rsi-max-short').value = config.thresholds.btc_rsi_max_short !== undefined ? config.thresholds.btc_rsi_max_short : 100;
-                document.getElementById('config-fake-bull-guard-enabled').checked = config.thresholds.fake_bull_guard_enabled !== undefined ? config.thresholds.fake_bull_guard_enabled : true;
+                document.getElementById('config-fake-bull-guard-enabled').checked = config.thresholds.fake_bull_guard_enabled !== undefined ? config.thresholds.fake_bull_guard_enabled : false;  // Aug-17 audit: fallback was ': true' — the silent-re-enable landmine (unreachable today, wrong-signed vs the reverted state)
                 document.getElementById('config-fake-bull-guard-bull-max').value = config.thresholds.fake_bull_guard_bull_pct_max !== undefined ? config.thresholds.fake_bull_guard_bull_pct_max : 71;
                 document.getElementById('config-fake-bull-guard-tg-max').value = config.thresholds.fake_bull_guard_tg_max !== undefined ? config.thresholds.fake_bull_guard_tg_max : 0.01;
                 document.getElementById('config-btc-adx-min-long').value = config.thresholds.btc_adx_min_long !== undefined ? config.thresholds.btc_adx_min_long : 0;

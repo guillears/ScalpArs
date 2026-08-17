@@ -1877,7 +1877,17 @@ class InvestmentConfig(BaseModel):
     # FLAGS for operator decision on any doubled fire ≤ −1.5% or rolling-15 doubled-fire Σ pnl% < 0;
     # DOA% reported each batch as diagnostic (not a trigger). Measured LIQ2 marginal at review:
     # −$62 over 17 fires (boost gave +$130 across winners, −$127 on EVAA alone).
-    spike_lowvol_liq_cap_pct: float = 0.2         # spikes on thin pairs: % of 24h vol (0 = off → global pct)
+    # Aug-17 2026: 0.2 → 0.3 (operator ship). Evidence: 46/48 kept fades are liq-capped at
+    # median 31% of desired size; capped cohort 83% WR +$1,475 across all eras — linear paper
+    # CF at 0.3 = +$340 (avg size 1.35×). ⚠ ON RECORD: the increment's P&L is UNVERIFIABLE
+    # UNTIL LIVE — the cap exists for market impact, which paper fills don't model (a 0.3%
+    # order on a $2-4M/day pair is minutes of the pair's volume in one taker order during a
+    # spike reversal; fade edge ~+0.3%/trade vs realistic thin-book slippage 0.2-0.5%).
+    # 0.4 DECLINED. 🔒 LIVE-CUTOVER REVIEW (mandatory, in the live punch list): revert to 0.2
+    # at live start; walk back up only with measured per-fill slippage data (exit_slippage_pct
+    # column) proving each step. Paper review: fade cohort at each batch review — sizing-up a
+    # loser streak reverts to 0.2 per the standard cohort tally.
+    spike_lowvol_liq_cap_pct: float = 0.3         # spikes on thin pairs: % of 24h vol (0 = off → global pct)
     spike_lowvol_threshold_usd: float = 10_000_000.0  # "thin" = 24h vol below this (frozen slice boundary)
     # ② Gross-notional cap: Σ(open notional) ≤ balance × max_gross_leverage.
     #    Portfolio liquidation/correlation guard (a -X% correlated dump costs

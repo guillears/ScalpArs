@@ -45,7 +45,7 @@
     "redeploy_leftover_enabled": true,
     "max_open_positions_hard": 10,
     "leverage_balance_schedule": "0:20, 25000:15, 75000:10, 250000:5",
-    "spike_lowvol_liq_cap_pct": 0.2,
+    "spike_lowvol_liq_cap_pct": 0.3,
     "spike_lowvol_threshold_usd": 10000000.0
   },
   "thresholds": {

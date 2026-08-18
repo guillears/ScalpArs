@@ -988,6 +988,16 @@ class SignalThresholds(BaseModel):
     rsi_handoff_level: int = 3  # Promote-past level at which trailing disables and RSI takes over
     rsi_adx_filter_long: str = ""  # RSI x ADX cross-filter for LONGs, e.g. "55-60:18,60-65:25" (empty = allow all)
     rsi_adx_filter_short: str = ""  # RSI x ADX cross-filter for SHORTs, e.g. "30-35:25,35-50:30" (empty = allow all)
+    # Aug-18 2026 BAND RELAXATION (operator-directed, gate 51; DECISION_LOG 2026-08-18 (2)):
+    # JSON "50-55:99-100,55-60:20-25,70-100:40" → "50-55:18-40,55-60:18-30,70-100:40".
+    # ① 50-55 was a TOTAL block (requires ADX 99-100 = impossible), shipped Jun-1 on PRE-UNMATCHED
+    # mixed-flow evidence under the retired exit stack; 18-40 = no-op vs the global ADX gate
+    # (band neutralized, handle kept). ③ 55-60 ADX window 20-25 → 18-30 (May-18 Option B, same
+    # era caveats). 70-100:40 climax rule KEPT (weakest relaxation case). Three-pillar docket:
+    # retired exits (breakeven WR 50→32%) · retired population (pre-Jun-9 keep-only-unmatched)
+    # · phased replays (blocked cohorts armed 58-76% by band, phases 1-2). ⚠ Gate-49's
+    # falling-BTC phase-3 SKIPPED by operator decision — the live flow IS phase-3 at full size;
+    # 🔒 reverts in gate 51 (CURRENT_STATE), incl. the falling-BTC tripwire.
     btc_rsi_adx_filter_long: str = ""  # BTC RSI x ADX cross-filter for LONGs (empty = allow all)
     btc_rsi_adx_filter_short: str = ""  # BTC RSI x ADX cross-filter for SHORTs (empty = allow all)
     # ADX Delta x BTC ADX cross-filter (May 11, 2026 — pooled-data finding, see CLAUDE.md).

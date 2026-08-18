@@ -5373,7 +5373,7 @@
                                     <label class="flex items-center justify-between gap-2 text-xs text-gray-400" title="Aug-10: fades exempt from the profit lock — under the −1.5 fade SL the lock was 0 saves / 4 kills (multi-wave pumps arm on wave-1 pullback, eject before the wave-2 wick the wide SL survives). Revert if ≥2 fresh fades arm ≥+0.20 then run to the full −1.5.">Fades exempt from lock
                                         <input type="checkbox" id="config-spike-lock-exempt-fade" class="sr-only peer" checked></label>
                                     <label class="flex items-center gap-1 text-xs text-slate-400" title="🔒 Aug-3 SPIKE LOW-VOL CAP RAISE (operator override, revert-gated): spike trades on pairs whose 24h vol < the threshold use THIS % of 24h vol as the liquidity cap instead of the global 0.1% (VANRY at 0.2% = $18.3k not $9.2k). Throttles stamp LIQ2 in the Liquidity Sizing table. 0 = off (inherit global). REVERT at 15 fires: Σpnl%<0 ∨ slip>15bps ∨ DOA>20%.">Spike LowVol Cap %
-                                        <input type="number" step="0.05" id="config-spike-lowvol-cap" class="w-16 bg-white/5 border border-emerald-500/40 rounded px-2 py-1 text-emerald-200 text-center" value="0.20"></label>
+                                        <input type="number" step="0.05" id="config-spike-lowvol-cap" class="w-16 bg-white/5 border border-emerald-500/40 rounded px-2 py-1 text-emerald-200 text-center" value="0.30"></label>
                                     <label class="flex items-center gap-1 text-xs text-slate-400" title="'Thin pair' boundary in $M of 24h volume (frozen Aug-1 concentration-slice line — every large-$ spike loser on record is ≥$10M: ICNT/XPL/STORJ/DODOX; they keep the 0.1% cap).">LowVol Thresh $M
                                         <input type="number" step="1" id="config-spike-lowvol-thresh" class="w-14 bg-white/5 border border-emerald-500/40 rounded px-2 py-1 text-emerald-200 text-center" value="10"></label>
                                 </div>
@@ -21168,7 +21168,7 @@
                     no_expansion_minutes: parseInt(document.getElementById('config-no-expansion').value) || 0,
                     // Liquidity & Risk Caps (Jun 2)
                     max_notional_pct_of_pair_volume: safeFloat(document.getElementById('config-max-notional-pct-of-pair-volume')?.value) || 0,
-                    spike_lowvol_liq_cap_pct: safeFloat(document.getElementById('config-spike-lowvol-cap')?.value ?? 0.20),
+                    spike_lowvol_liq_cap_pct: safeFloat(document.getElementById('config-spike-lowvol-cap')?.value ?? 0.30),
                     spike_lowvol_threshold_usd: (safeFloat(document.getElementById('config-spike-lowvol-thresh')?.value ?? 10)) * 1e6,
                     max_notional_hard_ceiling: safeFloat(document.getElementById('config-max-notional-hard-ceiling')?.value) || 0,
                     max_gross_leverage: safeFloat(document.getElementById('config-max-gross-leverage')?.value) || 0,

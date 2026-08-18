@@ -5602,11 +5602,12 @@ class TradingEngine:
             _final_notional = _desired_notional
             _cap_reason = None
             # ① per-pair liquidity cap
-            # 🔒 Aug-3 SPIKE LOW-VOL CAP RAISE (operator override, see config comment):
+            # 🔒 Aug-3 SPIKE LOW-VOL CAP RAISE (operator override; 0.1→0.2 Aug-3, 0.2→0.3
+            # Aug-18 gate 50 — see config comment: increment UNVERIFIABLE UNTIL LIVE):
             # spike species on pairs below the frozen $10M slice boundary use the raised
-            # pct (0.2%); everything else (momentum/flips/spikes >= $10M) keeps the
-            # global pct. Raised-cap throttles stamp LIQ2 (Liquidity Sizing table + CSV
-            # = the revert-gate instrument).
+            # pct (config value, currently 0.3%); everything else (momentum/flips/spikes
+            # >= $10M) keeps the global pct. Raised-cap throttles stamp LIQ2 (Liquidity
+            # Sizing table + CSV = the revert-gate instrument).
             _liq_pct_eff = _liq_pct
             _liq_reason_tag = 'LIQ'
             _sp_lowvol_pct = float(getattr(_inv_cfg, 'spike_lowvol_liq_cap_pct', 0.0) or 0.0)

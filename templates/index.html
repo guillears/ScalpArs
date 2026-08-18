@@ -1423,6 +1423,13 @@
                         <th class="px-2 py-1 text-left">Door</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Σ$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Dates</th><th class="px-2 py-1 text-left">Gate verdict</th>
                     </tr></thead><tbody id="graduation-doors-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
+                <div class="mt-6 pt-6 border-t border-sky-900/40">
+                    <h3 class="text-sm font-semibold text-sky-300 mb-1">🔓 Gate 51 — Reopened Band Fires (Aug 18 — post-deploy momentum LONGs only)</h3>
+                    <p class="text-xs text-gray-500 mb-3">The three relaxed BTC-gate bands vs their LOCKED reverts (gate 51): each fill self-classifies by entry BTC RSI × BTC ADX. Rows overlap by design (② can intersect ①/③). Falling-BTC tripwire: first −2% BTC day → combined fresh fills ≤30% WR ∨ ≤−$250 ⇒ ALL THREE revert (manual check at review).</p>
+                    <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
+                        <th class="px-2 py-1 text-left">Band</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Dates</th><th class="px-2 py-1 text-left">Gate verdict</th>
+                    </tr></thead><tbody id="gate51-bands-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
+                </div>
 
                 <!-- Trailing Confirmation Performance (May 9, 2026) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
@@ -8294,6 +8301,13 @@
             if (rsi != null && rsi > 65 && rsi <= 70) tags.push('RSICEIL');
             const s1 = o.entry_btc_1h_slope;
             if (s1 != null && s1 >= 0.025 && s1 < 0.05) tags.push('DB-UP');
+            // Aug-18 gate 51: reopened-band membership badges (LONGs only; slices mirror the payload rows)
+            if (o.direction === 'LONG') {
+                const brsi = o.entry_btc_rsi, badx = o.entry_btc_adx;
+                if (brsi != null && brsi >= 50 && brsi < 55) tags.push('G51-①');
+                if (badx != null && badx >= 15 && badx < 18) tags.push('G51-②');
+                if (brsi != null && brsi >= 55 && brsi < 60 && badx != null && ((badx >= 15 && badx < 20) || (badx > 25 && badx <= 30))) tags.push('G51-③');
+            }
             return tags;
         }
         function doorBadgeHtml(o) {
@@ -10089,6 +10103,16 @@
                 }
             }
 
+            if (perf.gate51_bands && perf.gate51_bands.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## 🔓 Gate 51 — Reopened Band Fires (post-deploy vs locked reverts — Aug 18)\n');
+                lines.push(`${'Band'.padEnd(42)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Dates'.padStart(6)}  Gate verdict`);
+                for (const r of perf.gate51_bands) {
+                    lines.push(`${(r.row||'').padEnd(42)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? '+'+r.avg_peak.toFixed(2) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
+                }
+                lines.push('  Falling-BTC tripwire: first -2% BTC day -> combined fresh fills <=30% WR or <=-$250 => ALL THREE revert (gate 51)');
+            }
+
             if (perf.spike_fires && perf.spike_fires.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## 🚀 Spike Fires (per-fire — CHASE + FADE, both eras; Jul 27 full ship)\n');
@@ -10560,6 +10584,7 @@
             const rsiAdxL = th.rsi_adx_filter_long || '(none)';
             const rsiAdxS = th.rsi_adx_filter_short || '(none)';
             lines.push(`  RSI x ADX Filter L: ${rsiAdxL}  |  S: ${rsiAdxS}`);
+            lines.push(`  BTC RSI x ADX Filter L: ${th.btc_rsi_adx_filter_long||'(off)'}  |  S: ${th.btc_rsi_adx_filter_short||'(off)'}`);  // Aug-18 review M2: the operative cross string was invisible in saved config reports
             lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}`);
             lines.push(`  BTC RSI L: ${th.btc_rsi_min_long||0}-${th.btc_rsi_max_long||100}  |  BTC RSI S: ${th.btc_rsi_min_short||0}-${th.btc_rsi_max_short||100}  |  BTC ADX L: ${th.btc_adx_min_long||0}-${th.btc_adx_max_long||100}  |  BTC ADX S: ${th.btc_adx_min_short||0}-${th.btc_adx_max_short||100}  |  ADX Dir L: ${th.btc_adx_dir_long||'both'}  |  ADX Dir S: ${th.btc_adx_dir_short||'both'}`);
             lines.push(`  Fake-Bull Guard: ${th.fake_bull_guard_enabled ? 'ON' : 'off'} (HEALTHY_BULL×STRONG_BUY, bull%<=${th.fake_bull_guard_bull_pct_max!==undefined?th.fake_bull_guard_bull_pct_max:71}, BTC 13-50 gap<=${th.fake_bull_guard_tg_max!==undefined?th.fake_bull_guard_tg_max:0.01})`);
@@ -12370,7 +12395,17 @@
                     }
                 }
 
-                if (perf.spike_fires && perf.spike_fires.length > 0) {
+                if (perf.gate51_bands && perf.gate51_bands.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## 🔓 Gate 51 — Reopened Band Fires (post-deploy vs locked reverts — Aug 18)\n');
+                lines.push(`${'Band'.padEnd(42)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Dates'.padStart(6)}  Gate verdict`);
+                for (const r of perf.gate51_bands) {
+                    lines.push(`${(r.row||'').padEnd(42)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? '+'+r.avg_peak.toFixed(2) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
+                }
+                lines.push('  Falling-BTC tripwire: first -2% BTC day -> combined fresh fills <=30% WR or <=-$250 => ALL THREE revert (gate 51)');
+            }
+
+            if (perf.spike_fires && perf.spike_fires.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## 🚀 Spike Fires (per-fire — CHASE + FADE, both eras; Jul 27 full ship)\n');
                     lines.push(`${'Time'.padEnd(17)} ${'Pair'.padEnd(14)} ${'Species'.padEnd(12)} ${'ADX'.padStart(6)} ${'ATR%'.padStart(6)} ${'Rng'.padStart(4)} ${'Regime'.padEnd(8)} ${'Peak%'.padStart(7)} ${'RSImx'.padStart(6)} ${'Arm'.padEnd(4)} ${'Exit'.padEnd(18)} ${'P&L%'.padStart(7)} ${'P&L$'.padStart(9)}`);
@@ -18013,6 +18048,25 @@
                             gdBody.innerHTML += `<tr><td colspan="8" class="px-2 py-1.5 text-[11px] text-amber-400/80">⚠ overlap: ${_gdo.shared_fires} fires counted in ≥2 rows (Σ$${_gdo.shared_usd.toFixed(2)}) — naive sum $${_gdo.naive_sum_usd.toFixed(2)} vs unique ${_gdo.unique_trades} trades $${_gdo.unique_usd.toFixed(2)} · gates stay per-row; intersections read per #31</td></tr>`;
                         }
                     } else { gdBody.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No door fires yet</td></tr>'; }
+                }
+                const g51Body = document.getElementById('gate51-bands-body');
+                if (g51Body) {
+                    if (data.gate51_bands && data.gate51_bands.length > 0) {
+                        g51Body.innerHTML = data.gate51_bands.map(r => {
+                            const tc = (r.total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const gc = (r.gate || '').startsWith('✗') ? 'text-red-400 font-semibold' : ((r.gate || '').startsWith('⚠') ? 'text-amber-400' : 'text-gray-400');
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 text-sky-300 font-medium">${r.row}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.n}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.wr != null ? r.wr.toFixed(1) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc}">${r.avg_pct != null ? ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc} font-bold">$${(r.total_usd || 0).toFixed(2)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.avg_peak != null ? ('+' + r.avg_peak.toFixed(2)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.dates}</td>
+                                <td class="px-2 py-1.5 ${gc}">${r.gate || ''}</td>
+                            </tr>`;
+                        }).join('');
+                    } else { g51Body.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No band fires yet</td></tr>'; }
                 }
                 // 🚀 Spike Fires per-fire table (Jul 27 full ship)
                 const spfBody = document.getElementById('spike-fires-body');

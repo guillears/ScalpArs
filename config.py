@@ -989,7 +989,7 @@ class SignalThresholds(BaseModel):
     rsi_adx_filter_long: str = ""  # RSI x ADX cross-filter for LONGs, e.g. "55-60:18,60-65:25" (empty = allow all)
     rsi_adx_filter_short: str = ""  # RSI x ADX cross-filter for SHORTs, e.g. "30-35:25,35-50:30" (empty = allow all)
     # Aug-18 2026 BAND RELAXATION (operator-directed, gate 51; DECISION_LOG 2026-08-18 (2)):
-    # JSON "50-55:99-100,55-60:20-25,70-100:40" → "50-55:18-40,55-60:18-30,70-100:40".
+    # JSON "50-55:99-100,55-60:20-25,70-100:40" → "50-55:15-40,55-60:15-30,70-100:40" (review I1: first cut used 18-floors, silently blocking RSI-50-60×ADX-15-18 ≈5.4% of tape vs the new 15 floor).
     # ① 50-55 was a TOTAL block (requires ADX 99-100 = impossible), shipped Jun-1 on PRE-UNMATCHED
     # mixed-flow evidence under the retired exit stack; 18-40 = no-op vs the global ADX gate
     # (band neutralized, handle kept). ③ 55-60 ADX window 20-25 → 18-30 (May-18 Option B, same

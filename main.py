@@ -1269,6 +1269,8 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "entry_rsi": getattr(o, 'entry_rsi', None),
             "entry_btc_1h_slope": getattr(o, 'entry_btc_1h_slope', None),
             "entry_pair_volume_ratio": getattr(o, 'entry_pair_volume_ratio', None),
+            "entry_btc_rsi": getattr(o, 'entry_btc_rsi', None),  # Aug-18: G51 band badges
+            "entry_btc_adx": getattr(o, 'entry_btc_adx', None),
             **_compute_be_level(o),
             "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER",
             "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER",
@@ -1461,6 +1463,8 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_rsi": getattr(o, 'entry_rsi', None),
             "entry_btc_1h_slope": getattr(o, 'entry_btc_1h_slope', None),
             "entry_pair_volume_ratio": getattr(o, 'entry_pair_volume_ratio', None),
+            "entry_btc_rsi": getattr(o, 'entry_btc_rsi', None),  # Aug-18: G51 band badges
+            "entry_btc_adx": getattr(o, 'entry_btc_adx', None),
         })
 
     return orders_data
@@ -1966,6 +1970,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "spike_fires": [],
             "spike_summary": [],
             "graduation_doors": [],
+            "gate51_bands": [],
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -3867,6 +3872,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "spike_fires": [],
             "spike_summary": [],
             "graduation_doors": [],
+            "gate51_bands": [],
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -6532,6 +6538,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     _PROMO_TS = datetime(2026, 7, 27, 16, 40, 0)
     spike_summary = []
     graduation_doors = []
+    gate51_bands = []
     try:
         def _cohort_stats(g):
             n = len(g)
@@ -6614,6 +6621,23 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 and _es2(o) in ('MOMENTUM', '') and getattr(o, 'entry_rsi', None) is not None
                 and 65 < o.entry_rsi <= 70]
         graduation_doors.append(_door("RSICEIL band (65,70]", _rcl, 10, 50, "rsi_max back to 65"))
+        # 🔓 Aug-18 GATE 51 — BTC-gate band-relaxation tracking (operator table; CURRENT_STATE
+        # gate 51). Cohorts = pinned entry-column slices (entry_btc_rsi × entry_btc_adx), fills
+        # self-classify; post-deploy floor so pre-relaxation trades can never contaminate.
+        # Rows OVERLAP by design (② can intersect ①/③) — each row answers its own locked revert.
+        _G51_TS = datetime(2026, 8, 18, 15, 30, 0)
+        _g51_ml = [o for o in orders if o.direction == 'LONG' and _non_probe(o) and _post(o, _G51_TS)
+                   and _es2(o) in ('MOMENTUM', '')]
+        _g51_b1 = [o for o in _g51_ml if getattr(o, 'entry_btc_rsi', None) is not None
+                   and 50 <= o.entry_btc_rsi < 55]
+        _g51_b2 = [o for o in _g51_ml if getattr(o, 'entry_btc_adx', None) is not None
+                   and 15 <= o.entry_btc_adx < 18]
+        _g51_b3 = [o for o in _g51_ml if getattr(o, 'entry_btc_rsi', None) is not None
+                   and 55 <= o.entry_btc_rsi < 60 and getattr(o, 'entry_btc_adx', None) is not None
+                   and (15 <= o.entry_btc_adx < 20 or 25 < o.entry_btc_adx <= 30)]
+        gate51_bands.append(_door("① RSI 50-55 band (was TOTAL block)", _g51_b1, 10, 45, "restore 50-55:99-100"))
+        gate51_bands.append(_door("② BTC ADX 15-18 floor cohort", _g51_b2, 8, 45, "btc_adx_min_long back to 18"))
+        gate51_bands.append(_door("③ 55-60 window new zone [15,20)∪(25,30]", _g51_b3, 10, 45, "window back to 20-25"))
         # Jul 29 — OVERLAP DISCLOSURE (CURRENT_STATE #31 door-intersection protocol): the four
         # rows are independent pinned slices, so a multi-door fire is counted in EVERY row it
         # matches (their locked gates were pre-committed against these slices — rows must NOT
@@ -8003,6 +8027,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "spike_fires": spike_fires,
         "spike_summary": spike_summary,
         "graduation_doors": graduation_doors,
+        "gate51_bands": gate51_bands,
         "graduation_doors_overlap": graduation_doors_overlap,
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "flagged_exits": flagged_exits,

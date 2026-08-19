@@ -1897,8 +1897,16 @@ class InvestmentConfig(BaseModel):
     # at live start; walk back up only with measured per-fill slippage data (exit_slippage_pct
     # column) proving each step. Paper review: fade cohort at each batch review — sizing-up a
     # loser streak reverts to 0.2 per the standard cohort tally.
+    # Aug-18 2026: threshold $10M → $1T (operator: "apply the 0.3% for all spike trades") —
+    # config-only mechanism: every spike pair now falls below the threshold, so ALL spike
+    # species get the raised cap (LIQ2 stamp everywhere → they all enter the Liquidity Sizing
+    # table = gate-50's revert instrument). Increment measured on the $10-36M fade band the
+    # old boundary excluded: master 5 fades 80% WR net extra +$144 (+$72-101 haircut) · current
+    # batch 1 fade +$38 — at 0.3% all affected trades reach 100% of desired size. Bounces
+    # unaffected (all <$10M already). Momentum/flips untouched (global 0.1% keeps the book rail;
+    # binds ~never: 3 trims ever at ≥92% of desired). Revert = restore 10_000_000.0.
     spike_lowvol_liq_cap_pct: float = 0.3         # spikes on thin pairs: % of 24h vol (0 = off → global pct)
-    spike_lowvol_threshold_usd: float = 10_000_000.0  # "thin" = 24h vol below this (frozen slice boundary)
+    spike_lowvol_threshold_usd: float = 10_000_000.0  # "thin" = 24h vol below this (JSON carries $1T = all-spikes since Aug-18)
     # ② Gross-notional cap: Σ(open notional) ≤ balance × max_gross_leverage.
     #    Portfolio liquidation/correlation guard (a -X% correlated dump costs
     #    X% × gross_leverage of the account). 0 = disabled.

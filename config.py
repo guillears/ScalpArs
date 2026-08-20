@@ -1939,6 +1939,14 @@ class InvestmentConfig(BaseModel):
     #    sits alongside the gross cap as the second systemic risk knob. Genuinely inert until balance
     #    crosses the first non-base tier. Tier VALUES should come from the tail-stressed blended-pool
     #    Kelly (growth-optimal ≈ fractional-Kelly < 20×), not round guesses → see GO-LIVE TODO.
+    # Aug-20 2026 (operator-directed, drawdown-derived — DECISION_LOG 2026-08-20): JSON simplified
+    # "0:20,25000:15,75000:10,250000:5" → "0:20,25000:15" (75k/250k tiers DELETED). Derivation from
+    # 54-day measured tail (worst day −4.13 slot-units · stress w/ gate-53 widths −5.12 · design
+    # −7.69 = 1.5× safety): above $25k the tradeable schedule ALONE keeps effective exposure
+    # (trade% × lev) inside a 15%-worst-day bound — 10.5×@25k → 8.2×@50k → 6.0×@100k → 4.2×@250k
+    # → 3.0×@500k, monotonic. The deleted tiers double-braked $75k+ to 1.4-4× effective. ON RECORD:
+    # sub-$25k 20× runs ABOVE the 15% bound (design-tail day ≈ −31%; lived −16% Jul-10) — accepted
+    # legacy aggression at small balances. 🔴 RE-DERIVE ON LIVE FILLS AT CUTOVER (punch list).
     leverage_balance_schedule: str = ""  # "0:20, 10000:15, 25000:10, 100000:5"; empty = off
 
 

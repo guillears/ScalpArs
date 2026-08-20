@@ -4931,6 +4931,90 @@
                     </div>
                     <!-- ===== INVESTMENT PARAMS BOX END — exit-behavior toggles below ===== -->
                     </div>
+                <!-- BNB Fee Management -->
+                <div>
+                    <h4 class="text-md font-semibold text-gray-300 mb-3">BNB Fee Management</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Auto-Swap Enabled</label>
+                            <select id="config-bnb-swap-enabled" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500">
+                                <option value="true">Enabled</option>
+                                <option value="false">Disabled</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Paper BNB Initial</label>
+                            <div class="flex">
+                                <input type="number" id="config-paper-bnb-initial" min="0" step="50" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="500">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">USD</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Check Interval</label>
+                            <div class="flex">
+                                <input type="number" id="config-bnb-check-interval" min="1" max="48" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="12">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">hrs</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Runway Target</label>
+                            <div class="flex">
+                                <input type="number" id="config-bnb-runway-hours" min="1" max="168" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="24">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">hrs</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Hours of fee coverage to maintain</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Min Balance</label>
+                            <div class="flex">
+                                <span class="bg-white/10 border border-white/10 border-r-0 rounded-l-lg px-4 py-2 text-gray-400">$</span>
+                                <input type="number" id="config-bnb-min-balance" min="0" step="5" class="flex-1 bg-white/5 border border-white/10 rounded-r-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="50">
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Jul 14: hard $ floor — trailing-burn runway collapses when idle (burn swings 10×); top-up target, emergency threshold (×0.5) and auto-sell drain all respect this floor.</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 p-3 rounded-lg border border-emerald-900/40 bg-emerald-950/10">
+                        <div class="flex items-center gap-3 mb-3" title="Jun 22 — symmetric rebalance. The buy path only tops BNB UP; when activity slows the burn rate decays and the reserve over-funds, locking USDT out of trading. Auto-sell drains the excess back. Sells on the same scheduled-check interval; cannot fire in the 6h right after a buy (runway can't double that fast). Conservative burn = max(24h,12h) so it never sells into rising activity.">
+                            <label class="text-sm text-emerald-300 font-semibold">BNB Auto-Sell (drain excess → tradable USDT)</label>
+                            <select id="config-bnb-auto-sell-enabled" class="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500">
+                                <option value="false">OFF</option>
+                                <option value="true">ON</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-3 gap-3">
+                            <div title="Sell when BNB runway exceeds this (ceiling). Default 48h = 2× the buy target, a wide band so it only sells when genuinely over-funded. 0 = off.">
+                                <label class="block text-xs text-gray-400 mb-1">Sell ceiling</label>
+                                <div class="flex"><input type="number" id="config-bnb-sell-runway-hours" min="0" max="336" step="1" class="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-l-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" value="48"><span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-2 py-1.5 text-gray-400 text-xs">hrs</span></div>
+                            </div>
+                            <div title="After triggering, sell BNB down to THIS runway — a buffer above the 24h buy floor so a small burn uptick won't immediately re-buy. Default 36h.">
+                                <label class="block text-xs text-gray-400 mb-1">Sell down to</label>
+                                <div class="flex"><input type="number" id="config-bnb-sell-target-hours" min="0" max="336" step="1" class="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-l-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" value="36"><span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-2 py-1.5 text-gray-400 text-xs">hrs</span></div>
+                            </div>
+                            <div title="Minimum auto-sell size — avoids tiny churn swaps (live each swap costs ~0.15-0.2% round-trip). Default $50.">
+                                <label class="block text-xs text-gray-400 mb-1">Min sell</label>
+                                <div class="flex"><span class="bg-white/10 border border-white/10 border-r-0 rounded-l-lg px-2 py-1.5 text-gray-400 text-xs">$</span><input type="number" id="config-bnb-min-sell-usd" min="5" step="5" class="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-r-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" value="50"></div>
+                            </div>
+                        </div>
+                        <p class="text-[11px] text-gray-500 mt-2">Hold band: buy ≤ runway target · sell ≥ ceiling, down to target. Wide gap = anti-churn (matters live).</p>
+                    </div>
+                    <div class="mt-4 flex items-center gap-3">
+                        <label class="text-sm text-gray-400 w-32">Manual BNB Buy:</label>
+                        <div class="flex">
+                            <input type="number" id="manual-bnb-amount" min="1" step="1" placeholder="USDT" class="w-24 bg-white/5 border border-white/10 rounded-l-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500">
+                            <button onclick="manualBnbBuy()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded-r-lg transition">Buy BNB</button>
+                        </div>
+                        <span id="manual-bnb-result" class="text-xs text-gray-500"></span>
+                    </div>
+                    <!-- May 25 — Manual BNB Sell row (reverse of Buy) -->
+                    <div class="mt-2 flex items-center gap-3">
+                        <label class="text-sm text-gray-400 w-32">Manual BNB Sell:</label>
+                        <div class="flex">
+                            <input type="number" id="manual-bnb-sell-amount" min="1" step="1" placeholder="USDT" class="w-24 bg-white/5 border border-white/10 rounded-l-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500">
+                            <button onclick="manualBnbSell()" class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium rounded-r-lg transition">Sell BNB</button>
+                        </div>
+                        <span id="manual-bnb-sell-result" class="text-xs text-gray-500"></span>
+                    </div>
+                </div>
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Regime Change Exit</label>
@@ -5664,90 +5748,6 @@
                     </div>
                 </div>
 
-                <!-- BNB Fee Management -->
-                <div>
-                    <h4 class="text-md font-semibold text-gray-300 mb-3">BNB Fee Management</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div>
-                            <label class="block text-sm text-gray-400 mb-2">Auto-Swap Enabled</label>
-                            <select id="config-bnb-swap-enabled" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500">
-                                <option value="true">Enabled</option>
-                                <option value="false">Disabled</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm text-gray-400 mb-2">Paper BNB Initial</label>
-                            <div class="flex">
-                                <input type="number" id="config-paper-bnb-initial" min="0" step="50" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="500">
-                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">USD</span>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-sm text-gray-400 mb-2">Check Interval</label>
-                            <div class="flex">
-                                <input type="number" id="config-bnb-check-interval" min="1" max="48" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="12">
-                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">hrs</span>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-sm text-gray-400 mb-2">Runway Target</label>
-                            <div class="flex">
-                                <input type="number" id="config-bnb-runway-hours" min="1" max="168" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="24">
-                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">hrs</span>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1">Hours of fee coverage to maintain</p>
-                        </div>
-                        <div>
-                            <label class="block text-sm text-gray-400 mb-2">Min Balance</label>
-                            <div class="flex">
-                                <span class="bg-white/10 border border-white/10 border-r-0 rounded-l-lg px-4 py-2 text-gray-400">$</span>
-                                <input type="number" id="config-bnb-min-balance" min="0" step="5" class="flex-1 bg-white/5 border border-white/10 rounded-r-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="50">
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1">Jul 14: hard $ floor — trailing-burn runway collapses when idle (burn swings 10×); top-up target, emergency threshold (×0.5) and auto-sell drain all respect this floor.</p>
-                        </div>
-                    </div>
-                    <div class="mt-4 p-3 rounded-lg border border-emerald-900/40 bg-emerald-950/10">
-                        <div class="flex items-center gap-3 mb-3" title="Jun 22 — symmetric rebalance. The buy path only tops BNB UP; when activity slows the burn rate decays and the reserve over-funds, locking USDT out of trading. Auto-sell drains the excess back. Sells on the same scheduled-check interval; cannot fire in the 6h right after a buy (runway can't double that fast). Conservative burn = max(24h,12h) so it never sells into rising activity.">
-                            <label class="text-sm text-emerald-300 font-semibold">BNB Auto-Sell (drain excess → tradable USDT)</label>
-                            <select id="config-bnb-auto-sell-enabled" class="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500">
-                                <option value="false">OFF</option>
-                                <option value="true">ON</option>
-                            </select>
-                        </div>
-                        <div class="grid grid-cols-3 gap-3">
-                            <div title="Sell when BNB runway exceeds this (ceiling). Default 48h = 2× the buy target, a wide band so it only sells when genuinely over-funded. 0 = off.">
-                                <label class="block text-xs text-gray-400 mb-1">Sell ceiling</label>
-                                <div class="flex"><input type="number" id="config-bnb-sell-runway-hours" min="0" max="336" step="1" class="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-l-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" value="48"><span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-2 py-1.5 text-gray-400 text-xs">hrs</span></div>
-                            </div>
-                            <div title="After triggering, sell BNB down to THIS runway — a buffer above the 24h buy floor so a small burn uptick won't immediately re-buy. Default 36h.">
-                                <label class="block text-xs text-gray-400 mb-1">Sell down to</label>
-                                <div class="flex"><input type="number" id="config-bnb-sell-target-hours" min="0" max="336" step="1" class="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-l-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" value="36"><span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-2 py-1.5 text-gray-400 text-xs">hrs</span></div>
-                            </div>
-                            <div title="Minimum auto-sell size — avoids tiny churn swaps (live each swap costs ~0.15-0.2% round-trip). Default $50.">
-                                <label class="block text-xs text-gray-400 mb-1">Min sell</label>
-                                <div class="flex"><span class="bg-white/10 border border-white/10 border-r-0 rounded-l-lg px-2 py-1.5 text-gray-400 text-xs">$</span><input type="number" id="config-bnb-min-sell-usd" min="5" step="5" class="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-r-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" value="50"></div>
-                            </div>
-                        </div>
-                        <p class="text-[11px] text-gray-500 mt-2">Hold band: buy ≤ runway target · sell ≥ ceiling, down to target. Wide gap = anti-churn (matters live).</p>
-                    </div>
-                    <div class="mt-4 flex items-center gap-3">
-                        <label class="text-sm text-gray-400 w-32">Manual BNB Buy:</label>
-                        <div class="flex">
-                            <input type="number" id="manual-bnb-amount" min="1" step="1" placeholder="USDT" class="w-24 bg-white/5 border border-white/10 rounded-l-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500">
-                            <button onclick="manualBnbBuy()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded-r-lg transition">Buy BNB</button>
-                        </div>
-                        <span id="manual-bnb-result" class="text-xs text-gray-500"></span>
-                    </div>
-                    <!-- May 25 — Manual BNB Sell row (reverse of Buy) -->
-                    <div class="mt-2 flex items-center gap-3">
-                        <label class="text-sm text-gray-400 w-32">Manual BNB Sell:</label>
-                        <div class="flex">
-                            <input type="number" id="manual-bnb-sell-amount" min="1" step="1" placeholder="USDT" class="w-24 bg-white/5 border border-white/10 rounded-l-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500">
-                            <button onclick="manualBnbSell()" class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium rounded-r-lg transition">Sell BNB</button>
-                        </div>
-                        <span id="manual-bnb-sell-result" class="text-xs text-gray-500"></span>
-                    </div>
-                </div>
 
                 <!-- Signal Thresholds -->
                 <div>

@@ -6647,7 +6647,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # Custom verdict (locked revert): ≥3 of first 10 such excursions close ≤ −1.9 (blown to
         # the wide stop) ∨ cohort Σ<0 at N≥8 → threshold back to 0. Row ② = ineligible stops
         # (reference: the −0.70/ATR-chain class, unchanged by the rule).
-        _G53_TS = datetime(2026, 8, 19, 23, 0, 0)
+        _G53_TS = datetime(2026, 8, 20, 13, 10, 0)  # true deploy TS (review I1: the first
+        # cut said Aug-19 23:00 — 14h BEFORE deploy; pre-deploy −0.7-stopped fills would
+        # have contaminated row ① and biased the locked Σ<0 revert leg toward false revert
         _q_thr = float(getattr(trading_config.thresholds, 'momentum_long_sl_atr_threshold', 0.0) or 0.0)
         _g53_ml = [o for o in orders if o.direction == 'LONG' and _non_probe(o) and _post(o, _G53_TS)
                    and _es2(o) in ('MOMENTUM', '') and getattr(o, 'entry_atr_pct', None) is not None]

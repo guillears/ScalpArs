@@ -1430,6 +1430,13 @@
                         <th class="px-2 py-1 text-left">Band</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Dates</th><th class="px-2 py-1 text-left">Gate verdict</th>
                     </tr></thead><tbody id="gate51-bands-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
+                <div class="mt-6 pt-6 border-t border-sky-900/40">
+                    <h3 class="text-sm font-semibold text-emerald-300 mb-1">🛡 Gate 53 — Quiet-Pair Conditional SL (Aug 19 — override ship, post-deploy momentum LONGs)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Momentum LONGs from quiet pairs (entry ATR% &lt; threshold) carry SL −2.0 instead of −0.70. Row ① = eligible fills that dipped ≤−0.65 (would have stopped under the old rule — the cohort the change acts on). 🔒 LOCKED REVERT: ≥3 of first 10 close ≤−1.9 ∨ cohort Σ&lt;0 at N≥8 ⇒ threshold → 0. Row ② = hot-class stops (unchanged, reference).</p>
+                    <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
+                        <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Dates</th><th class="px-2 py-1 text-left">Gate verdict</th>
+                    </tr></thead><tbody id="quiet-sl-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
+                </div>
 
                 <!-- Trailing Confirmation Performance (May 9, 2026) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
@@ -5021,6 +5028,22 @@
                                 <span id="config-sl-atr-widen-floor-preview" class="text-xs text-gray-500"></span>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Caps the ATR-SL widening so extreme-ATR pairs don't effectively disable the SL. If <code>entry_atr_pct × sl_atr_multiplier &gt; |floor|</code>, effective_sl is clamped at this floor. <span class="text-amber-400">May 23: COSUSDT (ATR 2.32%) ran SL out to -3.47%, closed -1.52% via EMA13 (-$135) — base -0.70 SL would have caught at ~-$60. Cross-batch (N=6 high-ATR winners): zero winners trough &lt; -0.68%, so -1.20 cap kills no winners.</span> 0 = disabled (no cap). Set negative (e.g., -1.20) to enable.</p>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">🛡 Quiet-Pair Conditional SL — momentum LONGs <span class="text-xs text-emerald-400">(Aug 19 · gate 53)</span></label>
+                            <div class="flex items-center gap-4 flex-wrap">
+                                <label class="flex items-center text-sm text-gray-400">
+                                    ATR threshold (quiet below)
+                                    <input type="number" step="0.05" min="0" max="1.0" id="config-ml-quiet-sl-atr-thresh" class="w-24 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.45">
+                                    <span class="ml-1">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Quiet-class SL
+                                    <input type="number" step="0.1" min="-4.0" max="0" id="config-ml-quiet-sl-pct" class="w-24 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-2.0">
+                                    <span class="ml-1">%</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Momentum LONG only (flips/spikes/bull/bounce excluded). Quiet pair (entry ATR% &lt; threshold): −0.70 is a ≥2.3-ATR flash move that mean-reverts → hard SL widens to the quiet value. Hot pairs keep the base/ATR-widened chain (their stop is information — flip wide-SL refutation class). <span class="text-emerald-400">Real eligible stops 6/8 armed; 138-episode dose-response 71%→31% arm by ATR bucket, positive all 7 months. −2.0 = interior optimum (−1.5 sits inside the quiet-flush zone).</span> BE floors and intermediate exits unchanged (hard floor, not a hold guarantee). <span class="text-red-400">Override ship below the observe gate — REVERT (threshold → 0) if ≥3 of first 10 eligible excursions close ≤−1.9 ∨ cohort Σ&lt;0 (gate 53).</span> Threshold 0 = OFF.</p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Early-Arm Trailing (Phase 2) <span class="text-xs text-violet-400">(May 8)</span></label>
@@ -10113,6 +10136,16 @@
                 lines.push('  Falling-BTC tripwire: first -2% BTC day -> combined fresh fills <=30% WR or <=-$250 => ALL THREE revert (gate 51)');
             }
 
+            if (perf.quiet_sl_rows && perf.quiet_sl_rows.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## \u{1F6E1} Gate 53 — Quiet-Pair Conditional SL (override ship — Aug 19)\n');
+                lines.push(`${'Cohort'.padEnd(46)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Dates'.padStart(6)}  Gate verdict`);
+                for (const r of perf.quiet_sl_rows) {
+                    lines.push(`${(r.row||'').padEnd(46)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
+                }
+                lines.push('  LOCKED REVERT: >=3 of first 10 eligible excursions close <=-1.9 OR cohort net<0 at N>=8 => threshold -> 0 (gate 53)');
+            }
+
             if (perf.spike_fires && perf.spike_fires.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## 🚀 Spike Fires (per-fire — CHASE + FADE, both eras; Jul 27 full ship)\n');
@@ -10685,6 +10718,11 @@
             for (const [name, c] of Object.entries(cfg.confidence_levels || {})) {
                 if (!c.enabled) continue;
                 lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  BE:${c.be_levels_enabled !== false ? 'Y' : 'N'}  ${c.be_level1_trigger}%   ${c.be_level1_offset}%  ${c.be_level2_trigger}%   ${c.be_level2_offset}%  ${c.be_level3_trigger}%   ${c.be_level3_offset}%  ${c.be_level4_trigger}%   ${c.be_level4_offset}%  ${c.be_level5_trigger}%   ${c.be_level5_offset}%  ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
+            }
+            {
+                const _qt = cfg?.thresholds?.momentum_long_sl_atr_threshold ?? 0;
+                const _qs = cfg?.thresholds?.momentum_long_sl_quiet_pct ?? 0;
+                lines.push(`  🛡 Quiet-Pair SL (gate 53): ${(_qt > 0 && _qs < 0) ? `ML LONG entry ATR < ${_qt}% → SL ${_qs}% (hot pairs keep base/ATR chain)` : 'OFF'}`);
             }
 
             if (changelog.length > 0) {
@@ -12403,6 +12441,16 @@
                     lines.push(`${(r.row||'').padEnd(42)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? '+'+r.avg_peak.toFixed(2) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
                 }
                 lines.push('  Falling-BTC tripwire: first -2% BTC day -> combined fresh fills <=30% WR or <=-$250 => ALL THREE revert (gate 51)');
+            }
+
+            if (perf.quiet_sl_rows && perf.quiet_sl_rows.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## \u{1F6E1} Gate 53 — Quiet-Pair Conditional SL (override ship — Aug 19)\n');
+                lines.push(`${'Cohort'.padEnd(46)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Dates'.padStart(6)}  Gate verdict`);
+                for (const r of perf.quiet_sl_rows) {
+                    lines.push(`${(r.row||'').padEnd(46)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
+                }
+                lines.push('  LOCKED REVERT: >=3 of first 10 eligible excursions close <=-1.9 OR cohort net<0 at N>=8 => threshold -> 0 (gate 53)');
             }
 
             if (perf.spike_fires && perf.spike_fires.length > 0) {
@@ -18068,6 +18116,25 @@
                         }).join('');
                     } else { g51Body.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No band fires yet</td></tr>'; }
                 }
+                const qslBody = document.getElementById('quiet-sl-body');
+                if (qslBody) {
+                    if (data.quiet_sl_rows && data.quiet_sl_rows.length > 0) {
+                        qslBody.innerHTML = data.quiet_sl_rows.map(r => {
+                            const tc = (r.total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const gc = (r.gate || '').startsWith('✗') ? 'text-red-400 font-semibold' : ((r.gate || '').startsWith('⚠') ? 'text-amber-400' : 'text-gray-400');
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 text-emerald-300 font-medium">${r.row}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.n}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.wr != null ? r.wr.toFixed(1) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc}">${r.avg_pct != null ? ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc} font-bold">$${(r.total_usd || 0).toFixed(2)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.avg_peak != null ? ((r.avg_peak >= 0 ? '+' : '') + r.avg_peak.toFixed(2)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.dates}</td>
+                                <td class="px-2 py-1.5 ${gc}">${r.gate || ''}</td>
+                            </tr>`;
+                        }).join('');
+                    } else { qslBody.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No fills yet</td></tr>'; }
+                }
                 // 🚀 Spike Fires per-fire table (Jul 27 full ship)
                 const spfBody = document.getElementById('spike-fires-body');
                 if (spfBody) {
@@ -20257,6 +20324,11 @@
                 }
 
                 // May 23: SL ATR widen floor cap
+                // 🛡 Aug 19 gate 53: quiet-pair conditional SL (momentum LONGs)
+                { const _e = document.getElementById('config-ml-quiet-sl-atr-thresh');
+                  if (_e) _e.value = config.thresholds.momentum_long_sl_atr_threshold !== undefined ? config.thresholds.momentum_long_sl_atr_threshold : 0.45; }
+                { const _e = document.getElementById('config-ml-quiet-sl-pct');
+                  if (_e) _e.value = config.thresholds.momentum_long_sl_quiet_pct !== undefined ? config.thresholds.momentum_long_sl_quiet_pct : -2.0; }
                 const _slAtrFloorInput = document.getElementById('config-sl-atr-widen-floor-pct');
                 if (_slAtrFloorInput) {
                     _slAtrFloorInput.value = config.thresholds.sl_atr_widen_floor_pct !== undefined ? config.thresholds.sl_atr_widen_floor_pct : -1.20;
@@ -21602,6 +21674,8 @@
                     trailing_min_profit_to_fire: safeFloat(document.getElementById('config-trailing-min-profit-to-fire')?.value ?? -99),
                     sl_atr_multiplier: safeFloat(document.getElementById('config-sl-atr-multiplier')?.value || 1.5),
                     sl_atr_widen_floor_pct: safeFloat(document.getElementById('config-sl-atr-widen-floor-pct')?.value || -1.20),
+                    momentum_long_sl_atr_threshold: safeFloat(document.getElementById('config-ml-quiet-sl-atr-thresh')?.value ?? 0.45),
+                    momentum_long_sl_quiet_pct: safeFloat(document.getElementById('config-ml-quiet-sl-pct')?.value ?? -2.0),
                     trailing_pullback_confirmation_seconds: parseInt(document.getElementById('config-trailing-pullback-confirmation-seconds')?.value || 15) || 0,
                     trailing_early_arm_threshold: safeFloat(document.getElementById('config-trailing-early-arm-threshold')?.value || 0.30),
                     trailing_early_arm_pullback: safeFloat(document.getElementById('config-trailing-early-arm-pullback')?.value || 0.10),

@@ -1971,6 +1971,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "spike_summary": [],
             "graduation_doors": [],
             "gate51_bands": [],
+            "quiet_sl_rows": [],
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -3873,6 +3874,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "spike_summary": [],
             "graduation_doors": [],
             "gate51_bands": [],
+            "quiet_sl_rows": [],
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -6539,6 +6541,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     spike_summary = []
     graduation_doors = []
     gate51_bands = []
+    quiet_sl_rows = []
     try:
         def _cohort_stats(g):
             n = len(g)
@@ -6638,6 +6641,33 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         gate51_bands.append(_door("① RSI 50-55 band (was TOTAL block)", _g51_b1, 10, 45, "restore 50-55:99-100"))
         gate51_bands.append(_door("② BTC ADX 15-18 floor cohort", _g51_b2, 8, 45, "btc_adx_min_long back to 18"))
         gate51_bands.append(_door("③ 55-60 window new zone [15,20)∪(25,30]", _g51_b3, 10, 45, "window back to 20-25"))
+        # 🛡 Aug-19 GATE 53 — Quiet-Pair Conditional SL tracking (override ship; CURRENT_STATE
+        # gate 53). Row ① = the cohort the rule ACTS on: eligible fills (entry ATR < threshold)
+        # whose trough went past the old −0.70 stop — these would have been stopped before.
+        # Custom verdict (locked revert): ≥3 of first 10 such excursions close ≤ −1.9 (blown to
+        # the wide stop) ∨ cohort Σ<0 at N≥8 → threshold back to 0. Row ② = ineligible stops
+        # (reference: the −0.70/ATR-chain class, unchanged by the rule).
+        _G53_TS = datetime(2026, 8, 19, 23, 0, 0)
+        _q_thr = float(getattr(trading_config.thresholds, 'momentum_long_sl_atr_threshold', 0.0) or 0.0)
+        _g53_ml = [o for o in orders if o.direction == 'LONG' and _non_probe(o) and _post(o, _G53_TS)
+                   and _es2(o) in ('MOMENTUM', '') and getattr(o, 'entry_atr_pct', None) is not None]
+        _g53_elig = [o for o in _g53_ml if o.entry_atr_pct < (_q_thr or 0.45)
+                     and getattr(o, 'trough_pnl', None) is not None and o.trough_pnl <= -0.65]
+        _g53_inel = [o for o in _g53_ml if o.entry_atr_pct >= (_q_thr or 0.45)
+                     and (o.close_reason or '').startswith('STOP_LOSS')]
+        _e_st = _cohort_stats(_g53_elig)
+        _e_blown = [o for o in _g53_elig if (o.pnl_percentage or 0) <= -1.9]
+        if len(_g53_elig) and len(_e_blown) >= 3:
+            _e_g = f"✗ REVERT: {len(_e_blown)} blown ≤−1.9 in first {len(_g53_elig)} — threshold → 0"
+        elif _e_st['n'] >= 8 and _e_st['total_usd'] < 0:
+            _e_g = f"✗ REVERT: N={_e_st['n']}≥8 Σ${_e_st['total_usd']:+.0f} — threshold → 0"
+        elif _e_st['n'] == 0:
+            _e_g = "⏳ no sub-−0.7 excursions yet"
+        else:
+            _e_g = f"⏳ building ({_e_st['n']}/10 · blown {len(_e_blown)}/3)"
+        quiet_sl_rows.append({"row": "① QUIET class holds (ATR<thr, dipped ≤−0.65)", **_e_st, "gate": _e_g})
+        quiet_sl_rows.append({"row": "② hot-class stops (ref, unchanged −0.7/ATR)",
+                              **_cohort_stats(_g53_inel), "gate": "— reference row"})
         # Jul 29 — OVERLAP DISCLOSURE (CURRENT_STATE #31 door-intersection protocol): the four
         # rows are independent pinned slices, so a multi-door fire is counted in EVERY row it
         # matches (their locked gates were pre-committed against these slices — rows must NOT
@@ -8028,6 +8058,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "spike_summary": spike_summary,
         "graduation_doors": graduation_doors,
         "gate51_bands": gate51_bands,
+        "quiet_sl_rows": quiet_sl_rows,
         "graduation_doors_overlap": graduation_doors_overlap,
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "flagged_exits": flagged_exits,

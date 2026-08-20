@@ -859,6 +859,21 @@ class SignalThresholds(BaseModel):
     # SHORT heavy-regret avg ATR 0.633% vs right-exits 0.500%. Projected save:
     # ~$700-1000 across pool after in-sample bias haircut.
     sl_atr_multiplier: float = 1.5
+    # 🛡 Aug-19 2026: QUIET-PAIR CONDITIONAL SL (gate 53; operator-directed OVERRIDE ship —
+    # N=18 real stops below the locked observe gate, acknowledged; tighter-than-standard
+    # revert in CURRENT_STATE gate 53). Momentum LONGs from quiet pairs (entry ATR% <
+    # threshold): the fixed −0.70 stop is a ≥2.3-ATR flash move that mean-reverts — real
+    # eligible stops 6/8 armed (+0.40 before −2.0); 138-episode dose-response 71%→31% arm
+    # by ATR bucket, eligible split positive all 7 months, shuffle P=0.09. Hot pairs keep
+    # the −0.70/ATR-widened chain (their stop IS information — same mechanism that refuted
+    # the flip wide SL 5/7). N×ATR scaling REJECTED on data (widens exactly the blown
+    # class: all clamp variants −18 to −30pp vs +4.1 two-regime). Width −2.0 = interior
+    # optimum (−1.5 sits inside the quiet-flush zone: BONK/AVAX blown at −1.5, armed at
+    # −2.0; curve decays past −2.0). Wired in BOTH SL paths (realtime + monitor, ROSE-fix
+    # lesson). BE floors, FL1/FL2, fast exits all unchanged — hard FLOOR, not a hold
+    # guarantee. threshold 0 = OFF (instant revert). 🔴 LIVE-CUTOVER: OFF at live start.
+    momentum_long_sl_atr_threshold: float = 0.45  # entry ATR% below this = quiet class
+    momentum_long_sl_quiet_pct: float = -2.0      # quiet-class hard SL (negative)
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

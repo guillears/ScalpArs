@@ -919,6 +919,11 @@ def check_exit_conditions(
                                       # invisible while fade SL == −0.70, it stopped ROSE at
                                       # −0.75 the day the fade SL widened to −1.5. When set,
                                       # this value REPLACES the whole effective-SL chain.
+    quiet_sl_pct: float = None,       # 🛡 Aug 19 gate 53: quiet-pair conditional SL. Caller
+                                      # (engine) passes the widened SL ONLY for eligible fills
+                                      # (momentum LONG, entry ATR% < threshold) — None for
+                                      # every other trade. min()-applied after the ATR chain;
+                                      # BE floors always win (skipped under BE like the widen).
 ) -> Dict:
     """
     Check if position should be closed based on SL/TP/Trailing stop
@@ -1098,6 +1103,11 @@ def check_exit_conditions(
         if _sl_floor < 0 and effective_stop_loss < _sl_floor:
             logger.debug(f"[ATR_SL_FLOOR] {direction}: SL clamped from {effective_stop_loss}% to {_sl_floor}% (floor cap)")
             effective_stop_loss = _sl_floor
+        # 🛡 Aug 19 gate 53: quiet-pair conditional SL — applied AFTER the floor cap
+        # (the quiet width deliberately exceeds the −1.2 widen cap; hot pairs never
+        # reach here because the caller passes None for them). Only widens.
+        if quiet_sl_pct is not None and quiet_sl_pct < effective_stop_loss:
+            effective_stop_loss = quiet_sl_pct
 
     # Aug 11 ROSE bug fix: a spike fixed SL overrides the ENTIRE chain above —
     # no BE offsets, no signal-active widening, no ATR widening (exact mirror of

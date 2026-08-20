@@ -618,7 +618,9 @@
     "spike_fade_fb_rsi_prev_min": 44.0,
     "spike_fade_fb_pgap_min": -0.4,
     "long_unmatched_sprint_demux_gvr_min": 0.74,
-    "long_unmatched_sprint_demux_b20slope_min": 0.07
+    "long_unmatched_sprint_demux_b20slope_min": 0.07,
+    "momentum_long_sl_atr_threshold": 0.45,
+    "momentum_long_sl_quiet_pct": -2.0
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

@@ -191,6 +191,31 @@ def _pop_or(ef, key, fallback):
     return v if v is not None else fallback
 
 
+def _quiet_sl_for(direction, entry_strategy, entry_atr_pct):
+    """🛡 Aug 19 gate 53: quiet-pair conditional SL eligibility. Returns the widened
+    SL pct for eligible fills (momentum LONG whose entry ATR% < threshold — the −0.70
+    stop is a ≥2.3-ATR flash move on those and mean-reverts 75% of the time), else
+    None. Scope: momentum LONGs ONLY (flips/spikes/bull/bounce excluded — flips are
+    hot-pair stops by construction, wide SL refuted 5/7; fades already carry −1.5).
+    threshold 0 or pct 0 = feature off (instant revert). Fail-safe: any error → None
+    (base SL applies)."""
+    try:
+        th = config.trading_config.thresholds
+        thr = float(getattr(th, 'momentum_long_sl_atr_threshold', 0.0) or 0.0)
+        qsl = float(getattr(th, 'momentum_long_sl_quiet_pct', 0.0) or 0.0)
+        if thr <= 0 or qsl >= 0:
+            return None
+        if direction != 'LONG':
+            return None
+        if (entry_strategy or 'MOMENTUM') not in ('MOMENTUM', ''):
+            return None
+        if entry_atr_pct is None or entry_atr_pct <= 0 or entry_atr_pct >= thr:
+            return None
+        return qsl
+    except Exception:
+        return None
+
+
 # Jul 23 SHADOW-SLOT REVIEW: atr15 RETIRED (refuted Jun-29 — 1.5 over-widens; no consumer).
 # atr05 + atr10 are the ONLY leash shadows with armed gates: runner_trail_atr_mult revert
 # ("atr05≥atr10 over N≥20 fresh armed longs") + BE-ratchet revert (actual vs lockless-atr10).
@@ -8420,6 +8445,10 @@ class TradingEngine:
                                    else float(getattr(config.trading_config.thresholds, 'spike_sl_pct', -1.2) or -1.2)
                                    if (order.entry_strategy or '') == 'SPIKE_CHASE'
                                    else None),
+                # 🛡 Aug 19 gate 53: quiet-pair conditional SL — same value in BOTH SL
+                # paths (this monitor + realtime), same lesson as the ROSE fix above.
+                quiet_sl_pct=_quiet_sl_for(order.direction, order.entry_strategy,
+                                           getattr(order, 'entry_atr_pct', None)),
             )
 
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)
@@ -12029,6 +12058,13 @@ class TradingEngine:
                     _sl_floor = 0.0
                 if _sl_floor < 0 and effective_sl < _sl_floor:
                     effective_sl = _sl_floor
+                # 🛡 Aug 19 gate 53: quiet-pair conditional SL — applied AFTER the
+                # −1.2 widen cap (the quiet width deliberately exceeds it). Same
+                # eligibility as the monitor path; BE floors already returned above.
+                _q_sl = _quiet_sl_for(direction, order_info.get('entry_strategy'),
+                                      _entry_atr_pct)
+                if _q_sl is not None and _q_sl < effective_sl:
+                    effective_sl = _q_sl
 
             # 🔒 Aug-3 SPIKE PROFIT LOCK (#24b ② verdict, fade-capture N=13 S$87/K$0):
             # FADE/BOUNCE leg (_is_spike_fade covers both) — once peak touches the arm,

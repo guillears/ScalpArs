@@ -1875,6 +1875,15 @@ class InvestmentConfig(BaseModel):
     
     # Position limits
     max_open_positions: int = 100  # Max simultaneous open positions
+    # Aug-20 2026 (operator-directed; gate 55, DECISION_LOG 2026-08-20 (2)): JSON 5 → 4.
+    # Concurrency replay over all 209 kept trades / 63 days: max observed concurrency = 3;
+    # ZERO trades would have been blocked at 4 (85-87% of in-market time at ONE position).
+    # Equal-split slot = working/max_open → 4 gives every trade 1.25× sizing for free
+    # (CF: master +$1,902 · current +$128). Per-trade concentration +25% (quiet-SL blow
+    # = −10% of working vs −8%); max gross UNCHANGED (4×1.25 = 5 slots-worth). ⚠ KNOWN
+    # BLIND SPOT: a max-open block is neither counted nor logged — an unexplained no-trade
+    # stretch in a hot tape → check open-count FIRST. Revert to 5 if any bind observed
+    # or suspected during the gate-51 flow ramp (concurrency profile recomputed each review).
     min_investment_size: float = 100.0  # Min investment per trade (USD)
     max_investment_size: float = 50000.0  # Max investment per trade (USD)
     max_holding_time_minutes: int = 180  # Max time to hold a trade (minutes), 0 = disabled

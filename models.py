@@ -970,6 +970,7 @@ class MonitorPeriod(Base):
     state = Column(String(10), nullable=False, index=True)      # GREEN / AMBER / DARK
     started_at = Column(DateTime, nullable=False, index=True)
     ended_at = Column(DateTime, nullable=True)                   # NULL = open period
+    last_update = Column(DateTime, nullable=True)                # last running refresh (boot-seed age bound; downtime detection)
     ended_by = Column(String(30), nullable=True)                 # latch / stay-band / →GREEN / →AMBER / →DARK / restart→X
     r72_start = Column(Float, nullable=True)
     above_start = Column(Float, nullable=True)

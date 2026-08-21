@@ -2502,7 +2502,7 @@ async def _bullrun_periods_rows(db, limit=50):
         for p in _ps:
             _end = p.ended_at or _now
             g = [o for o in _fills if o.opened_at and p.started_at <= o.opened_at < _end]
-            gc = [o for o in g if o.pnl_percentage is not None]
+            gc = [o for o in g if o.status == 'CLOSED' and o.pnl_percentage is not None]  # review: pnl_percentage defaults 0.0, so status is the only honest closed test
             _wins = sum(1 for o in gc if (o.pnl_percentage or 0) > 0)
             _kb = [o for o in _first10_all if o.opened_at < _end and o.status == 'CLOSED' and o.pnl_percentage is not None]
             _kb_wr = (100.0 * sum(1 for o in _kb if (o.pnl_percentage or 0) > 0) / len(_kb)) if _kb else None

@@ -4225,7 +4225,9 @@ class TradingEngine:
                     select(MonitorPeriod).where(MonitorPeriod.ended_at.is_(None)).order_by(MonitorPeriod.started_at.desc()).limit(1)
                 )).scalar_one_or_none()
                 if cur is not None:
-                    if cur.state == new_state:
+                    # legacy rows (pre-hotfix, last_update NULL) are adopted — never split an episode on the deploy that adds the column
+                    _stale_min = 0.0 if cur.last_update is None else (now - cur.last_update).total_seconds() / 60
+                    if cur.state == new_state and _stale_min <= 60:
                         _bullrun_monitor['period_id'] = cur.id
                         _bullrun_monitor['resumed'] = True
                         _bullrun_monitor['green_since'] = cur.started_at.strftime('%Y-%m-%d %H:%M') if new_state == 'GREEN' else None
@@ -4233,7 +4235,9 @@ class TradingEngine:
                             _bullrun_monitor[_k] = int(getattr(cur, _col, 0) or 0)
                         logger.info(f"[BULLRUN_MONITOR] resumed open {cur.state} period #{cur.id} (since {cur.started_at:%Y-%m-%d %H:%M} UTC) after restart")
                     else:
-                        cur.ended_at = now; cur.ended_by = f"restart→{new_state}"
+                        # stale (>60 min without a running update = bot was down) or state changed across the restart
+                        cur.ended_at = (cur.last_update or now) if _stale_min > 60 else now
+                        cur.ended_by = f"restart→{new_state}" if _stale_min <= 60 else f"downtime→{new_state}"
                         cur.r72_end, cur.above_end, cur.eff_end, cur.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
                         cur = None
             if cur is not None and cur.state == new_state:
@@ -4244,6 +4248,11 @@ class TradingEngine:
                 cur.blocked_spacing = int(_bullrun_monitor.get('blk_spacing', 0) or 0)
                 cur.blocked_slots = int(_bullrun_monitor.get('blk_slots', 0) or 0)
                 cur.blocked_ema50 = int(_bullrun_monitor.get('blk_ema50', 0) or 0)
+                cur.last_update = now
+                # breadth backfill: the first compute after boot can precede the breadth scan (0/0)
+                _gb = globals()
+                if not cur.bull_pct_start and not cur.bear_pct_start and (_gb.get('_market_bull_pct') or _gb.get('_market_bear_pct')):
+                    cur.bull_pct_start = _gb.get('_market_bull_pct'); cur.bear_pct_start = _gb.get('_market_bear_pct')
                 _bullrun_monitor['period_id'] = cur.id
             else:
                 amber_lead = None
@@ -4257,8 +4266,24 @@ class TradingEngine:
                     if cur.state == 'AMBER' and new_state == 'GREEN':
                         amber_lead = int((now - cur.started_at).total_seconds() / 60)
                 _g = globals()
+                _start = now
+                if cur is None and new_state == 'GREEN':
+                    # Bootstrap honesty: with NO period history at all, a GREEN first row starts at the
+                    # earliest sleeve fill still in the DB (a sleeve can only fill while GREEN) — the
+                    # ledger shipped mid-episode (Aug-21: fire 17:05 UTC, ledger deploy 18:29 UTC).
+                    try:
+                        _any_p = (await db.execute(select(func.count(MonitorPeriod.id)))).scalar() or 0
+                        if _any_p == 0:
+                            _first_fill = (await db.execute(
+                                select(func.min(Order.opened_at)).where(and_(Order.entry_strategy == 'BULLRUN_LONG', Order.is_paper == self.is_paper_mode))
+                            )).scalar()
+                            if _first_fill is not None and _first_fill < now:
+                                _start = _first_fill
+                                logger.info(f"[BULLRUN_MONITOR] first-ever GREEN period backdated to earliest sleeve fill {_first_fill:%Y-%m-%d %H:%M} UTC")
+                    except Exception as _bd_err:
+                        logger.warning(f"[BULLRUN_MONITOR] backdate check failed: {_bd_err}")
                 newp = MonitorPeriod(
-                    state=new_state, started_at=now,
+                    state=new_state, started_at=_start, last_update=now,
                     r72_start=rd['r72'], above_start=rd['above'], eff_start=rd['eff'], r6_start=rd['r6'],
                     r72_end=rd['r72'], above_end=rd['above'], eff_end=rd['eff'],
                     r72_peak=rd['r72'], eff_peak=rd['eff'], r6_min=rd['r6'],
@@ -4336,7 +4361,10 @@ class TradingEngine:
                         _open_p = (await _sdb.execute(
                             select(MonitorPeriod).where(MonitorPeriod.ended_at.is_(None)).order_by(MonitorPeriod.started_at.desc()).limit(1)
                         )).scalar_one_or_none()
-                        if _open_p is not None:
+                        _age_min = (0.0 if _open_p.last_update is None else (datetime.utcnow() - _open_p.last_update).total_seconds() / 60) if _open_p is not None else None
+                        if _open_p is not None and _age_min is not None and _age_min > 60:
+                            logger.info(f"[BULLRUN_MONITOR] boot seed: open period #{_open_p.id} ({_open_p.state}) is {_age_min:.0f} min stale — NOT adopted; evaluating with turn-on thresholds (review I3 age bound)")
+                        elif _open_p is not None:
                             _bullrun_monitor['green'] = (_open_p.state == 'GREEN')
                             _bullrun_monitor['state'] = _open_p.state
                             logger.info(f"[BULLRUN_MONITOR] boot seed: open period #{_open_p.id} is {_open_p.state} — hysteresis seeded from DB")
@@ -4443,7 +4471,9 @@ class TradingEngine:
                 return  # dip marked, reclaim not yet — wait
             sp = float(getattr(th, 'bullrun_pair_spacing_hours', 2.0) or 2.0) * 3600.0
             if _now - _br_last_fire.get(pair, 0) < sp:
-                _bullrun_monitor['blk_spacing'] = _bullrun_monitor.get('blk_spacing', 0) + 1
+                if st.get('blk_key') != ('sp', st.get('dip_ts')):  # review: count CANDIDATES, not scan cycles
+                    st['blk_key'] = ('sp', st.get('dip_ts'))
+                    _bullrun_monitor['blk_spacing'] = _bullrun_monitor.get('blk_spacing', 0) + 1
                 return
             slots = int(getattr(th, 'bullrun_max_slots', 4) or 4)
             _open_ct = (await db.execute(
@@ -4454,7 +4484,9 @@ class TradingEngine:
             )).scalar() or 0
             if _open_ct >= slots:
                 self._record_filter_block("BULLRUN_MAX_SLOTS", "LONG")
-                _bullrun_monitor['blk_slots'] = _bullrun_monitor.get('blk_slots', 0) + 1
+                if st.get('blk_key') != ('sl', st.get('dip_ts')):
+                    st['blk_key'] = ('sl', st.get('dip_ts'))
+                    _bullrun_monitor['blk_slots'] = _bullrun_monitor.get('blk_slots', 0) + 1
                 return
             price = float(indicators.get('price') or closes[-1])
             cached = _br_e50h_cache.get(pair)
@@ -4473,7 +4505,9 @@ class TradingEngine:
                     return  # fail-safe: no 1h context = no entry
             if price <= cached[1]:
                 self._record_filter_block("BULLRUN_BELOW_1H_EMA50", "LONG")
-                _bullrun_monitor['blk_ema50'] = _bullrun_monitor.get('blk_ema50', 0) + 1
+                if st.get('blk_key') != ('ema', st.get('dip_ts')):
+                    st['blk_key'] = ('ema', st.get('dip_ts'))
+                    _bullrun_monitor['blk_ema50'] = _bullrun_monitor.get('blk_ema50', 0) + 1
                 return
             atr_pct = (atr / closes[-1] * 100.0) if closes[-1] else None
             # Full entry-column stamping (operator, Aug-21): sleeve fills carry the SAME

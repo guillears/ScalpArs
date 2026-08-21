@@ -4371,6 +4371,14 @@ class TradingEngine:
                 self._record_filter_block("BULLRUN_BELOW_1H_EMA50", "LONG")
                 return
             atr_pct = (atr / closes[-1] * 100.0) if closes[-1] else None
+            # Full entry-column stamping (operator, Aug-21): sleeve fills carry the SAME
+            # analytics columns as every other trade (ADX/RSI + prevs, EMA gaps, stretch,
+            # range-position, breadth, BTC-side state, funding, rank, quality score) via the
+            # shared builder — W/L review must never be blind on a dimension (BULL_LONG pattern).
+            _ef = dict(self._flip_entry_fields(indicators, flip_dir='LONG') or {})
+            _ef.pop('entry_btc_trend_gap_pct', None)  # not an open_position param (stamped internally)
+            for _k_ovr in ('entry_rsi', 'entry_adx', 'entry_atr_pct', 'entry_pair_volume_24h_usd', 'entry_pair_rank'):
+                _ef.pop(_k_ovr, None)
             order = await self.open_position(
                 db=db, pair=pair, direction="LONG", confidence="STRONG_BUY", current_price=price,
                 entry_rsi=indicators.get('rsi'), entry_adx=indicators.get('adx'),
@@ -4381,6 +4389,7 @@ class TradingEngine:
                 entry_br_above=_bullrun_monitor.get('above'),
                 entry_br_eff=_bullrun_monitor.get('eff'),
                 bullrun_long=True,
+                **self._sanitize_open_kwargs(_ef, 'BULLRUN_LONG', 'LONG'),
             )
             if order:
                 st['dipped'] = False

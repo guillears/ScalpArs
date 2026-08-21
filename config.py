@@ -938,7 +938,8 @@ class SignalThresholds(BaseModel):
     # / P(dd≤−1%) 53-62% when >1.6% under the high vs +0.05% / 34% within 0.8%; no effect outside
     # uptrends (= specifically the pullback phase of a run). Mechanism-aware re-sim at −2.0: +$2,649 →
     # +$3,770, thrust days untouched. All 5 day-1 live losers fired at −2.5..−3.3%. Plateau −1.6..−2.0;
-    # −1.0 kills thrust-day entries. 0 = disabled (the ONLY off value; a positive value is normalized to its
+    # −1.0 kills thrust-day entries. Refused dips stay ALIVE (consuming them cost −$925 on the founding
+    # window — DECISION_LOG 2026-08-21 (13)). 0 = disabled (the ONLY off value; a positive value is normalized to its
     # negative with a warning — a sign slip must never silently disable the gate). Stamped per fill as entry_br_off24h.
     bullrun_btc_off24h_max: float = -2.0
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula

@@ -4479,11 +4479,13 @@ class TradingEngine:
                 return
             if closes[-1] <= emas[-1]:
                 return  # dip marked, reclaim not yet — wait
-            # Aug-21 (11) PULLBACK-PHASE GATE (review: placed AFTER dip→reclaim so it counts real
-            # candidates, before any DB work): no entry while BTC sits more than N% below its 24h
-            # high. A refused dip is CONSUMED (st['dipped']=False) — when the gate lifts, the next
-            # entry needs a fresh dip→reclaim with BTC back near its highs (no replay evidence for
-            # firing instantly on gate-lift). 0 = off.
+            # Aug-21 (11) PULLBACK-PHASE GATE (placed AFTER dip→reclaim so it counts real candidates,
+            # before any DB work): no entry while BTC sits more than N% below its 24h high. The dip
+            # is KEPT ALIVE while refused (6h expiry still applies) so the entry fires on the first
+            # scan where BTC is back within range and the pair still holds above its EMA20 —
+            # replay-tested vs consuming the dip: consumption cost −$925 on the founding window
+            # (Aug-19 +$110 → −$865; strong pairs don't re-dip after BTC recovers, they run).
+            # DECISION_LOG 2026-08-21 (13). 0 = off.
             _off_max = float(getattr(th, 'bullrun_btc_off24h_max', 0.0) or 0.0)
             if _off_max > 0:
                 # review hygiene: a sign slip in the JSON (+2 meaning "2% below") must NOT silently disable
@@ -4498,8 +4500,7 @@ class TradingEngine:
                     st['blk_key'] = ('24h', st.get('dip_ts'))
                     _bullrun_monitor['blk_off24h'] = _bullrun_monitor.get('blk_off24h', 0) + 1
                     self._record_filter_block("BULLRUN_BTC_OFF24H", "LONG")
-                    logger.info(f"[BULLRUN_LONG] {pair}: refused by BTC off-24h-high gate (BTC {float(_off_now):+.2f}% vs max {_off_max}%, dip_ts={st.get('dip_ts')}) — dip consumed")
-                st['dipped'] = False
+                    logger.info(f"[BULLRUN_LONG] {pair}: refused by BTC off-24h-high gate (BTC {float(_off_now):+.2f}% vs max {_off_max}%, dip_ts={st.get('dip_ts')}) — dip kept alive, re-evaluated next scan")
                 return
             sp = float(getattr(th, 'bullrun_pair_spacing_hours', 2.0) or 2.0) * 3600.0
             # Restart-proof spacing (Aug-21 live catch: ONG re-entered 11 min after its stop because a

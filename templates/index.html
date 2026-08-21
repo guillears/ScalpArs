@@ -19056,9 +19056,12 @@
                         const _brLock = _rtTh.bullrun_be_lock_pct ?? 0.2;
                         const _brTrail = _rtTh.bullrun_trail_atr_mult ?? 2.0;
                         const _brArmed = _tpPeak >= _brArm;
-                        tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${_brArmed ? 'bg-cyan-500/25 text-cyan-300' : 'bg-white/10 text-gray-400'}" title="${_brArmed
-                            ? `🌊 Bull-run trail armed (peak ${_tpPeak.toFixed(2)}% ≥ ${_brArm}%): BE locked +${_brLock}%, trailing ${_brTrail}×ATR from peak. Exits BR_TRAILING_STOP / BR_BREAKEVEN_EXIT.`
-                            : `🌊 Bull-run sleeve: riding to BE-arm at +${_brArm}% peak (now ${_tpPeak.toFixed(2)}%). Only the BR_ stop (−0.7/ATR chain) applies below the arm — deliberate room-to-run.`}">🌊 ${_brArmed ? 'TRAIL' : 'RIDE'}</span>`;
+                        // Operator (Aug-21): Flag stays EMPTY below the arm (same as every other
+                        // trade pre-arm — the Strategy column already says it's a sleeve trade);
+                        // the 🌊 TRAIL badge appears only once the trail is armed.
+                        if (_brArmed) {
+                            tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/25 text-cyan-300" title="🌊 Bull-run trail armed (peak ${_tpPeak.toFixed(2)}% ≥ ${_brArm}%): BE locked +${_brLock}%, trailing ${_brTrail}×ATR from peak. Exits BR_TRAILING_STOP / BR_BREAKEVEN_EXIT.">🌊 TRAIL</span>`;
+                        }
                     } else {
                     const _runnerArmed = _runnerArmedLong || _runnerArmedFlip || _runnerArmedShort;
                     if (_armed || _runnerArmed) {

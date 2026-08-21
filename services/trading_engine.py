@@ -230,6 +230,31 @@ def _quiet_sl_for(direction, entry_strategy, entry_atr_pct):
         return None
 
 
+_BR_LADDER_CACHE = {}
+def _bullrun_ladder_floor(peak, ladder_str):
+    """Highest rung floor whose peak threshold ≤ peak, from "peak:floor, ..." (parsed once per string).
+    Malformed → None (fail-safe: no ladder, trail unchanged)."""
+    try:
+        rungs = _BR_LADDER_CACHE.get(ladder_str)
+        if rungs is None:
+            rungs = []
+            for part in (ladder_str or '').split(','):
+                part = part.strip()
+                if not part or ':' not in part:
+                    continue
+                a, b = part.split(':', 1)
+                rungs.append((float(a.strip()), float(b.strip())))
+            rungs.sort()
+            _BR_LADDER_CACHE[ladder_str] = rungs
+        out = None
+        for thr, fl in rungs:
+            if peak >= thr:
+                out = fl
+        return out
+    except Exception:
+        return None
+
+
 def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct):
     """🌊 Aug-21 gate 57: dedicated BULLRUN_LONG exit check — the ONLY exit logic sleeve
     trades run (both paths intercept BEFORE the alt exit machinery, so FAST_EXIT / tick /
@@ -260,8 +285,12 @@ def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct):
         if pk >= arm:
             trail_line = (pk - trail_mult * atr) if atr > 0 else lock
             stop_line = max(lock, trail_line)
+            reason = "TRAILING_STOP" if trail_line > lock else "BREAKEVEN_EXIT"
+            # Aug-21 (15) high-rung profit lock: floor = max(trail line, highest rung ≤ peak)
+            _lf = _bullrun_ladder_floor(pk, getattr(th, 'bullrun_ladder', '') or '')
+            if _lf is not None and _lf > stop_line:
+                stop_line = _lf; reason = "LADDER_FLOOR"
             if pnl <= stop_line:
-                reason = "TRAILING_STOP" if trail_line > lock else "BREAKEVEN_EXIT"
                 return True, reason, stop_line
             return False, None, stop_line
         if pnl <= sl:
@@ -1486,7 +1515,7 @@ class TradingEngine:
                     _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or
                     _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or
                     _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or
-                    _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or
+                    _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("LADDER_FLOOR") or
                     _reason_base.startswith("RUNNER_TRAIL") or
                     _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or
                     _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or
@@ -7646,7 +7675,7 @@ class TradingEngine:
             _reason_base = _reason_base[3:]
         if _reason_base.startswith("BR_"):  # Aug 21 gate 57: bull-run sleeve reasons (BR_STOP_LOSS → STOP_LOSS etc.)
             _reason_base = _reason_base[3:]
-        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("BACKSTOP_STOP")):
+        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("LADDER_FLOOR") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("BACKSTOP_STOP")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)

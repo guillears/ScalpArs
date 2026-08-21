@@ -942,6 +942,14 @@ class SignalThresholds(BaseModel):
     # window — DECISION_LOG 2026-08-21 (13)). 0 = disabled (the ONLY off value; a positive value is normalized to its
     # negative with a warning — a sign slip must never silently disable the gate). Stamped per fill as entry_br_off24h.
     bullrun_btc_off24h_max: float = -2.0
+    # Aug-21 (15) HIGH-RUNG PROFIT LOCK (operator-directed after the PEPE +4.37 → +2.52 exit). Empirical retrace
+    # study (two 30-path cohorts): after reaching +2/+3 a runner goes on to the next +1% in 93-100% of cases but
+    # pulls back a MEDIAN 1.2-1.4% first (p80 1.8-3.0) → mid-level rungs stop the continuers (refuted: rungs from
+    # +2 lose in both cohorts). Past +4 continuation decays (84%) and the retrace grows → a lock there is positive
+    # in BOTH cohorts (+$136 / +$100; PEPE 2.53 → 3.50). Floor = max(2×ATR trail line, rung floor); below the
+    # first rung nothing changes. "peak:floor" pairs. 🔒 REVERT: at N≥8 trades reaching +4, if ladder-exited
+    # trades underperform their trail counterfactual (peak/exit recorded) → clear the string. "" = off.
+    bullrun_ladder: str = "4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0"
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

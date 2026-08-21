@@ -644,7 +644,8 @@
     "bullrun_be_arm_pct": 1.0,
     "bullrun_be_lock_pct": 0.2,
     "bullrun_trail_atr_mult": 2.0,
-    "bullrun_btc_off24h_max": -2.0
+    "bullrun_btc_off24h_max": -2.0,
+    "bullrun_ladder": "4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0"
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

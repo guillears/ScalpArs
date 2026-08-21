@@ -703,6 +703,9 @@ def _reserve_split(free_balance: float, deployed_margin: float = 0.0):
         reserve = free_balance * (_inv.reserve_percentage / 100)
     else:
         reserve = _inv.reserve_fixed
+    # Aug 21: fee-reserve FLOOR mirrors calculate_position_size (display must never overstate tradeable)
+    reserve += max(0.0, float(getattr(_inv, 'fee_reserve_usd', 0.0) or 0.0))
+    reserve = min(reserve, max(0.0, free_balance))
     return round(reserve, 2), round(max(0.0, free_balance - reserve), 2), _inv.reserve_mode
 
 

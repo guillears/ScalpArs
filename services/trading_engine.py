@@ -4248,6 +4248,21 @@ class TradingEngine:
                         cur.r72_end, cur.above_end, cur.eff_end, cur.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
                         cur = None
             if cur is not None and cur.state == new_state:
+                # Bootstrap honesty (idempotent): the ledger's OLDEST row, if GREEN, starts no later than the
+                # first sleeve fill (a sleeve can only fill while GREEN). Ship day: the table was born 18:29 UTC
+                # mid-episode while the first fills were 17:06 → row #1 is corrected once; never fires again.
+                try:
+                    _min_id = (await db.execute(select(func.min(MonitorPeriod.id)))).scalar()
+                    if cur.state == 'GREEN' and _min_id is not None and cur.id == _min_id:
+                        _first_fill = (await db.execute(
+                            select(func.min(Order.opened_at)).where(and_(Order.entry_strategy == 'BULLRUN_LONG', Order.is_paper == self.is_paper_mode))
+                        )).scalar()
+                        if _first_fill is not None and _first_fill < cur.started_at:
+                            logger.info(f"[BULLRUN_MONITOR] period #{cur.id} started_at {cur.started_at:%H:%M} → backdated to first sleeve fill {_first_fill:%Y-%m-%d %H:%M} UTC (one-time bootstrap correction)")
+                            cur.started_at = _first_fill
+                            _bullrun_monitor['green_since'] = _first_fill.strftime('%Y-%m-%d %H:%M')
+                except Exception as _bd2_err:
+                    logger.debug(f"[BULLRUN_MONITOR] oldest-row backdate check skipped: {_bd2_err}")
                 cur.r72_end, cur.above_end, cur.eff_end, cur.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
                 cur.eff_peak = max(cur.eff_peak if cur.eff_peak is not None else rd['eff'], rd['eff'])
                 cur.r72_peak = max(cur.r72_peak if cur.r72_peak is not None else rd['r72'], rd['r72'])

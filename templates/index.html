@@ -1440,6 +1440,13 @@
                     </tr></thead><tbody id="quiet-sl-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
                 <div class="mt-6 pt-6 border-t border-cyan-900/40">
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-1">🌊 Monitor Periods — episode ledger (persisted; restart-proof)</h3>
+                    <p class="text-xs text-gray-500 mb-3">One row per contiguous monitor state. Readings = r72 / above-EMA20% / efficiency at START → END; eff pk = max efficiency in period; r6 min = closest approach to the −3% crash-latch; BTC = move during the period; Breadth = bull%/bear% at start; AMBER lead = minutes AMBER was on before this GREEN; Fills = sleeve entries opened in the period (open ones in parentheses); Blocked = candidates refused by spacing / slots / 1h-EMA50; Kill bar = lifetime first-10 tally as of period end.</p>
+                    <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
+                        <th class="px-2 py-1 text-left">State</th><th class="px-2 py-1 text-left">Start</th><th class="px-2 py-1 text-left">End</th><th class="px-2 py-1 text-right">Dur</th><th class="px-2 py-1 text-right">r72/abv/eff @start</th><th class="px-2 py-1 text-right">@end</th><th class="px-2 py-1 text-right">eff pk</th><th class="px-2 py-1 text-right">r6 min</th><th class="px-2 py-1 text-right">BTC</th><th class="px-2 py-1 text-right">Breadth</th><th class="px-2 py-1 text-right">AMBER lead</th><th class="px-2 py-1 text-right">Fills</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">Net$</th><th class="px-2 py-1 text-right">Blocked sp/sl/ema</th><th class="px-2 py-1 text-left">Kill bar</th><th class="px-2 py-1 text-left">Ended by</th>
+                    </tr></thead><tbody id="bullrun-periods-body" class="divide-y divide-white/5"><tr><td colspan="17" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
+                </div>
+                <div class="mt-6 pt-6 border-t border-cyan-900/40">
                     <h3 class="text-sm font-semibold text-cyan-300 mb-1">🌊 Gate 57 — Bull-Run Sleeve (Aug 21 — GREEN-gated dip-reclaim LONGs, top-10 COIN)</h3>
                     <p class="text-xs text-gray-500 mb-1" id="bullrun-monitor-line">Monitor: —</p>
                     <p class="text-xs text-gray-500 mb-3">Trades only while the Monitor is GREEN (72h composite + Schmitt band + crash-latch). Own exits: BR_STOP_LOSS / BR_BREAKEVEN_EXIT (arm +1.0 → lock +0.2) / BR_TRAILING_STOP (2×ATR giveback). 🔒 KILL BAR (manual): first 10 fills WR≤45% ∨ Σ&lt;0 ⇒ toggle OFF. Sizing frozen 1×/1× until ≥2 profitable episodes.</p>
@@ -10282,6 +10289,17 @@
                 lines.push('  LOCKED REVERT: >=3 of first 10 eligible excursions close <=-1.9 OR cohort net<0 at N>=8 => threshold -> 0 (gate 53)');
             }
 
+            if (perf.bullrun_periods && perf.bullrun_periods.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## \u{1F30A} Monitor Periods — episode ledger (persisted)\n');
+                lines.push(`${'State'.padEnd(6)} ${'Start (UTC)'.padEnd(17)} ${'End (UTC)'.padEnd(17)} ${'Dur'.padStart(6)} ${'r72/abv/eff@s'.padStart(16)} ${'@end'.padStart(16)} ${'effpk'.padStart(6)} ${'r6min'.padStart(6)} ${'BTC%'.padStart(7)} ${'Brd'.padStart(6)} ${'AMBlead'.padStart(7)} ${'Fills'.padStart(5)} ${'WR%'.padStart(5)} ${'Net$'.padStart(9)} ${'Blk'.padStart(8)}  Kill bar / Ended by`);
+                const _f = (v, d = 1) => (v == null ? '-' : Number(v).toFixed(d));
+                for (const r of perf.bullrun_periods) {
+                    const dur = r.dur_min == null ? '-' : (r.dur_min >= 60 ? `${Math.floor(r.dur_min / 60)}h${String(r.dur_min % 60).padStart(2, '0')}` : `${r.dur_min}m`);
+                    lines.push(`${r.state.padEnd(6)} ${(r.start || '').slice(0, 16).replace('T', ' ').padEnd(17)} ${(r.end ? r.end.slice(0, 16).replace('T', ' ') : 'open').padEnd(17)} ${dur.padStart(6)} ${`${_f(r.r72_s)}/${_f(r.above_s, 0)}/${_f(r.eff_s, 3)}`.padStart(16)} ${`${_f(r.r72_e)}/${_f(r.above_e, 0)}/${_f(r.eff_e, 3)}`.padStart(16)} ${_f(r.eff_peak, 3).padStart(6)} ${_f(r.r6_min, 2).padStart(6)} ${(r.btc_pct == null ? '-' : (r.btc_pct >= 0 ? '+' : '') + r.btc_pct.toFixed(2)).padStart(7)} ${`${_f(r.bull_s, 0)}/${_f(r.bear_s, 0)}`.padStart(6)} ${(r.amber_lead == null ? '-' : r.amber_lead + 'm').padStart(7)} ${String(r.fills).padStart(5)} ${_f(r.wr, 0).padStart(5)} ${('$' + _f(r.net, 0)).padStart(9)} ${`${r.blk_sp}/${r.blk_sl}/${r.blk_ema}`.padStart(8)}  ${r.kb_n ? `${r.kb_n}/10·${_f(r.kb_wr, 0)}%·$${_f(r.kb_usd, 0)}` : '-'} / ${r.ended_by || ''}`);
+                }
+            }
+
             if ((perf.bullrun_rows && perf.bullrun_rows.length > 0) || perf.bullrun_monitor) {
                 lines.push(`\n${hr2}`);
                 lines.push('## \u{1F30A} Gate 57 — Bull-Run Sleeve (GREEN-gated dip-reclaim LONGs — Aug 21)\n');
@@ -12605,6 +12623,17 @@
                     lines.push(`${(r.row||'').padEnd(46)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
                 }
                 lines.push('  LOCKED REVERT: >=3 of first 10 eligible excursions close <=-1.9 OR cohort net<0 at N>=8 => threshold -> 0 (gate 53)');
+            }
+
+            if (perf.bullrun_periods && perf.bullrun_periods.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## \u{1F30A} Monitor Periods — episode ledger (persisted)\n');
+                lines.push(`${'State'.padEnd(6)} ${'Start (UTC)'.padEnd(17)} ${'End (UTC)'.padEnd(17)} ${'Dur'.padStart(6)} ${'r72/abv/eff@s'.padStart(16)} ${'@end'.padStart(16)} ${'effpk'.padStart(6)} ${'r6min'.padStart(6)} ${'BTC%'.padStart(7)} ${'Brd'.padStart(6)} ${'AMBlead'.padStart(7)} ${'Fills'.padStart(5)} ${'WR%'.padStart(5)} ${'Net$'.padStart(9)} ${'Blk'.padStart(8)}  Kill bar / Ended by`);
+                const _f = (v, d = 1) => (v == null ? '-' : Number(v).toFixed(d));
+                for (const r of perf.bullrun_periods) {
+                    const dur = r.dur_min == null ? '-' : (r.dur_min >= 60 ? `${Math.floor(r.dur_min / 60)}h${String(r.dur_min % 60).padStart(2, '0')}` : `${r.dur_min}m`);
+                    lines.push(`${r.state.padEnd(6)} ${(r.start || '').slice(0, 16).replace('T', ' ').padEnd(17)} ${(r.end ? r.end.slice(0, 16).replace('T', ' ') : 'open').padEnd(17)} ${dur.padStart(6)} ${`${_f(r.r72_s)}/${_f(r.above_s, 0)}/${_f(r.eff_s, 3)}`.padStart(16)} ${`${_f(r.r72_e)}/${_f(r.above_e, 0)}/${_f(r.eff_e, 3)}`.padStart(16)} ${_f(r.eff_peak, 3).padStart(6)} ${_f(r.r6_min, 2).padStart(6)} ${(r.btc_pct == null ? '-' : (r.btc_pct >= 0 ? '+' : '') + r.btc_pct.toFixed(2)).padStart(7)} ${`${_f(r.bull_s, 0)}/${_f(r.bear_s, 0)}`.padStart(6)} ${(r.amber_lead == null ? '-' : r.amber_lead + 'm').padStart(7)} ${String(r.fills).padStart(5)} ${_f(r.wr, 0).padStart(5)} ${('$' + _f(r.net, 0)).padStart(9)} ${`${r.blk_sp}/${r.blk_sl}/${r.blk_ema}`.padStart(8)}  ${r.kb_n ? `${r.kb_n}/10·${_f(r.kb_wr, 0)}%·$${_f(r.kb_usd, 0)}` : '-'} / ${r.ended_by || ''}`);
+                }
             }
 
             if ((perf.bullrun_rows && perf.bullrun_rows.length > 0) || perf.bullrun_monitor) {
@@ -18302,6 +18331,39 @@
                             </tr>`;
                         }).join('');
                     } else { qslBody.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No fills yet</td></tr>'; }
+                }
+                // 🌊 Monitor Periods (episode ledger) — Aug 21
+                const brPer = document.getElementById('bullrun-periods-body');
+                if (brPer) {
+                    const _pf = (v, d = 1) => (v == null ? '—' : Number(v).toFixed(d));
+                    const _pt = (t) => (t ? formatTime(t) : 'open');
+                    if (data.bullrun_periods && data.bullrun_periods.length > 0) {
+                        brPer.innerHTML = data.bullrun_periods.map(r => {
+                            const sc = r.state === 'GREEN' ? 'text-emerald-400 font-bold' : (r.state === 'AMBER' ? 'text-amber-400 font-bold' : 'text-gray-500');
+                            const nc = (r.net || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const dur = r.dur_min == null ? '—' : (r.dur_min >= 60 ? `${Math.floor(r.dur_min / 60)}h${String(r.dur_min % 60).padStart(2, '0')}` : `${r.dur_min}m`);
+                            const kb = r.kb_n ? `${r.kb_n}/10 · ${_pf(r.kb_wr, 0)}% · $${_pf(r.kb_usd, 0)}` : '—';
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 ${sc}">${r.state}</td>
+                                <td class="px-2 py-1.5 text-gray-300">${_pt(r.start)}</td>
+                                <td class="px-2 py-1.5 text-gray-300">${r.end ? _pt(r.end) : '<span class="text-emerald-400">open</span>'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${dur}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400 font-mono">${_pf(r.r72_s)} / ${_pf(r.above_s, 0)} / ${_pf(r.eff_s, 3)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400 font-mono">${_pf(r.r72_e)} / ${_pf(r.above_e, 0)} / ${_pf(r.eff_e, 3)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${_pf(r.eff_peak, 3)}</td>
+                                <td class="px-2 py-1.5 text-right ${(r.r6_min != null && r.r6_min <= -2) ? 'text-amber-400' : 'text-gray-400'}">${_pf(r.r6_min, 2)}%</td>
+                                <td class="px-2 py-1.5 text-right ${(r.btc_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${r.btc_pct == null ? '—' : ((r.btc_pct >= 0 ? '+' : '') + r.btc_pct.toFixed(2) + '%')}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${_pf(r.bull_s, 0)}/${_pf(r.bear_s, 0)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.amber_lead == null ? '—' : r.amber_lead + 'm'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.fills}${r.open_fills ? ` (${r.open_fills})` : ''}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${_pf(r.wr, 0)}</td>
+                                <td class="px-2 py-1.5 text-right ${nc} font-bold">$${_pf(r.net, 2)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.blk_sp}/${r.blk_sl}/${r.blk_ema}</td>
+                                <td class="px-2 py-1.5 text-gray-400">${kb}</td>
+                                <td class="px-2 py-1.5 text-gray-400">${r.ended_by || ''}</td>
+                            </tr>`;
+                        }).join('');
+                    } else { brPer.innerHTML = '<tr><td colspan="17" class="px-3 py-3 text-center text-gray-500">No periods recorded yet (ledger starts at the first monitor compute after deploy)</td></tr>'; }
                 }
                 // 🌊 Gate 57 — Bull-Run Sleeve table + monitor line (Aug 21)
                 const brBody = document.getElementById('bullrun-body');

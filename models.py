@@ -958,6 +958,39 @@ class PairData(Base):
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
 
+class MonitorPeriod(Base):
+    """🌊 Aug 21 gate 57 — Bull-Run Monitor PERIODS ledger (one row per contiguous state
+    stretch: GREEN / AMBER / DARK). Persisted so the episode record survives deploys (the
+    in-memory state re-arms on every restart and faked 4 'DARK→GREEN' flips on ship day).
+    The engine ADOPTS the open row on restart when the recomputed state matches, so a
+    restart never creates a period. Fills are joined per period at read time (opened_at
+    within [started_at, ended_at)) — the unit the locked gate-57 episode rules speak in."""
+    __tablename__ = "monitor_periods"
+    id = Column(Integer, primary_key=True, index=True)
+    state = Column(String(10), nullable=False, index=True)      # GREEN / AMBER / DARK
+    started_at = Column(DateTime, nullable=False, index=True)
+    ended_at = Column(DateTime, nullable=True)                   # NULL = open period
+    ended_by = Column(String(30), nullable=True)                 # latch / stay-band / →GREEN / →AMBER / →DARK / restart→X
+    r72_start = Column(Float, nullable=True)
+    above_start = Column(Float, nullable=True)
+    eff_start = Column(Float, nullable=True)
+    r6_start = Column(Float, nullable=True)
+    r72_end = Column(Float, nullable=True)                       # running while open; final at close
+    above_end = Column(Float, nullable=True)
+    eff_end = Column(Float, nullable=True)
+    r72_peak = Column(Float, nullable=True)
+    eff_peak = Column(Float, nullable=True)
+    r6_min = Column(Float, nullable=True)                        # closest approach to the crash-latch
+    btc_start = Column(Float, nullable=True)
+    btc_end = Column(Float, nullable=True)                       # running while open
+    bull_pct_start = Column(Float, nullable=True)                # market breadth at period start
+    bear_pct_start = Column(Float, nullable=True)
+    amber_lead_min = Column(Integer, nullable=True)              # GREEN rows: minutes the preceding AMBER period lasted
+    blocked_spacing = Column(Integer, default=0)                 # sleeve candidates refused in this period, by rule
+    blocked_slots = Column(Integer, default=0)
+    blocked_ema50 = Column(Integer, default=0)
+
+
 class Investor(Base):
     """Portfolio investor with share-based ownership tracking.
 

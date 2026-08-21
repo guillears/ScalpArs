@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, update, and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip
+from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod
 from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
@@ -4205,11 +4205,86 @@ class TradingEngine:
             self._record_filter_block("OPEN_FAILED_BULL_LONG", "LONG")  # Aug-11: dashboard-visible sleeve-death counter
             return None
 
-    async def _update_bullrun_monitor(self):
+    async def _bullrun_persist_period(self, db, new_state, rd):
+        """🌊 Periods ledger writer (gate 57 episode table). Restart-proof: adopts the open DB
+        row when its state matches the recomputed one (no fake period); closes it with
+        ended_by='restart→X' otherwise. Running fields (r72/above/eff_end, btc_end, peaks,
+        r6_min, blocked counters) refresh every compute so the OPEN row is always current.
+        Sets _bullrun_monitor['resumed']=True on adoption so the caller skips the flip log.
+        Never raises — persistence failure must not touch the trading monitor."""
+        if db is None:
+            return
+        try:
+            now = datetime.utcnow()
+            pid = _bullrun_monitor.get('period_id')
+            cur = None
+            if pid:
+                cur = (await db.execute(select(MonitorPeriod).where(MonitorPeriod.id == pid))).scalar_one_or_none()
+            if cur is None:
+                cur = (await db.execute(
+                    select(MonitorPeriod).where(MonitorPeriod.ended_at.is_(None)).order_by(MonitorPeriod.started_at.desc()).limit(1)
+                )).scalar_one_or_none()
+                if cur is not None:
+                    if cur.state == new_state:
+                        _bullrun_monitor['period_id'] = cur.id
+                        _bullrun_monitor['resumed'] = True
+                        _bullrun_monitor['green_since'] = cur.started_at.strftime('%Y-%m-%d %H:%M') if new_state == 'GREEN' else None
+                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50')):
+                            _bullrun_monitor[_k] = int(getattr(cur, _col, 0) or 0)
+                        logger.info(f"[BULLRUN_MONITOR] resumed open {cur.state} period #{cur.id} (since {cur.started_at:%Y-%m-%d %H:%M} UTC) after restart")
+                    else:
+                        cur.ended_at = now; cur.ended_by = f"restart→{new_state}"
+                        cur.r72_end, cur.above_end, cur.eff_end, cur.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
+                        cur = None
+            if cur is not None and cur.state == new_state:
+                cur.r72_end, cur.above_end, cur.eff_end, cur.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
+                cur.eff_peak = max(cur.eff_peak if cur.eff_peak is not None else rd['eff'], rd['eff'])
+                cur.r72_peak = max(cur.r72_peak if cur.r72_peak is not None else rd['r72'], rd['r72'])
+                cur.r6_min = min(cur.r6_min if cur.r6_min is not None else rd['r6'], rd['r6'])
+                cur.blocked_spacing = int(_bullrun_monitor.get('blk_spacing', 0) or 0)
+                cur.blocked_slots = int(_bullrun_monitor.get('blk_slots', 0) or 0)
+                cur.blocked_ema50 = int(_bullrun_monitor.get('blk_ema50', 0) or 0)
+                _bullrun_monitor['period_id'] = cur.id
+            else:
+                amber_lead = None
+                if cur is not None:
+                    cur.ended_at = now
+                    cur.r72_end, cur.above_end, cur.eff_end, cur.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
+                    cur.ended_by = 'latch' if rd['latch'] else ('stay-band' if cur.state == 'GREEN' else f"→{new_state}")
+                    cur.blocked_spacing = int(_bullrun_monitor.get('blk_spacing', 0) or 0)
+                    cur.blocked_slots = int(_bullrun_monitor.get('blk_slots', 0) or 0)
+                    cur.blocked_ema50 = int(_bullrun_monitor.get('blk_ema50', 0) or 0)
+                    if cur.state == 'AMBER' and new_state == 'GREEN':
+                        amber_lead = int((now - cur.started_at).total_seconds() / 60)
+                _g = globals()
+                newp = MonitorPeriod(
+                    state=new_state, started_at=now,
+                    r72_start=rd['r72'], above_start=rd['above'], eff_start=rd['eff'], r6_start=rd['r6'],
+                    r72_end=rd['r72'], above_end=rd['above'], eff_end=rd['eff'],
+                    r72_peak=rd['r72'], eff_peak=rd['eff'], r6_min=rd['r6'],
+                    btc_start=rd['px'], btc_end=rd['px'],
+                    bull_pct_start=_g.get('_market_bull_pct'), bear_pct_start=_g.get('_market_bear_pct'),
+                    amber_lead_min=amber_lead, blocked_spacing=0, blocked_slots=0, blocked_ema50=0,
+                )
+                db.add(newp)
+                await db.flush()
+                _bullrun_monitor['period_id'] = newp.id
+                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50'):
+                    _bullrun_monitor[_k] = 0
+            await db.commit()
+        except Exception as e:
+            logger.error(f"[BULLRUN_MONITOR] period persistence failed: {e}")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
+    async def _update_bullrun_monitor(self, db=None):
         """🌊 Aug-21 gate 57: Bull-Run Monitor — hourly-class composite on BTC 5m (Schmitt band
         + crash-latch + AMBER). Throttled to one recompute per 10 min; updated_at is stamped
         ONLY on success so a failed fetch retries next cycle and the 30-min staleness gate in
-        the sleeve entry fails safe (stale ≠ GREEN). Evidence: config.py bullrun_* block."""
+        the sleeve entry fails safe (stale ≠ GREEN). Periods ledger persisted via
+        _bullrun_persist_period (restart-proof). Evidence: config.py bullrun_* block."""
         global _bullrun_monitor
         th = config.trading_config.thresholds
         _now = _leash_time.time()
@@ -4251,6 +4326,22 @@ class TradingEngine:
                 logger.warning(f"[BULLRUN_MONITOR] 1h EMA50 fetch failed ({_e50_err}) — latch runs on r6h only this cycle")
             price = closes[-1]
             latch = (r6 <= float(getattr(th, 'bullrun_latch_r6h', -3.0) or -3.0)) or (e50h is not None and price < e50h)
+            # Review C1: on the FIRST compute after a boot, seed the hysteresis state from the
+            # open DB period — memory starts DARK, so without this a GREEN sitting in the
+            # stay-band (below the turn-on bar) would be evaluated against turn-on thresholds,
+            # fail, and be closed as 'restart→DARK' (a fake episode end + sleeve silently off).
+            if not _bullrun_monitor.get('updated_at'):
+                try:
+                    async with AsyncSessionLocal() as _sdb:
+                        _open_p = (await _sdb.execute(
+                            select(MonitorPeriod).where(MonitorPeriod.ended_at.is_(None)).order_by(MonitorPeriod.started_at.desc()).limit(1)
+                        )).scalar_one_or_none()
+                        if _open_p is not None:
+                            _bullrun_monitor['green'] = (_open_p.state == 'GREEN')
+                            _bullrun_monitor['state'] = _open_p.state
+                            logger.info(f"[BULLRUN_MONITOR] boot seed: open period #{_open_p.id} is {_open_p.state} — hysteresis seeded from DB")
+                except Exception as _seed_err:
+                    logger.warning(f"[BULLRUN_MONITOR] boot seed failed ({_seed_err}) — evaluating with turn-on thresholds")
             was_green = bool(_bullrun_monitor.get('green'))
             # `or default` guards: a blanked UI field saves 0, which must FAIL-DARK (defaults
             # restore), never fail-open into a trivially-satisfied GREEN (review minor).
@@ -4265,13 +4356,24 @@ class TradingEngine:
             amber = (not green) and (r24 >= float(th.bullrun_amber_r24 or 6.0) and above24 >= float(th.bullrun_amber_above or 65.0)
                                      and eff24 >= float(th.bullrun_amber_eff or 0.12))
             state = 'GREEN' if green else ('AMBER' if amber else 'DARK')
-            if state != _bullrun_monitor.get('state'):
+            prev_state = _bullrun_monitor.get('state')
+            # Periods ledger (restart-proof adoption happens inside; sets 'resumed' on adoption)
+            # Review I1: persistence runs on its OWN session — never commit/rollback the scan loop's
+            # shared session from inside the monitor (today nothing is pending there; this keeps
+            # it true if anyone ever writes above the call site).
+            try:
+                async with AsyncSessionLocal() as _pdb:
+                    await self._bullrun_persist_period(_pdb, state, {'r72': r72, 'above': above, 'eff': eff, 'r6': r6, 'px': price, 'latch': latch})
+            except Exception as _pers_err:
+                logger.error(f"[BULLRUN_MONITOR] period session failed: {_pers_err}")
+            resumed = bool(_bullrun_monitor.pop('resumed', False))
+            if state != prev_state and not resumed:
                 flip = {'ts': datetime.utcnow().strftime('%Y-%m-%d %H:%M'), 'state': state,
                         'r72': round(r72, 2), 'above': round(above, 1), 'eff': round(eff, 3), 'r6': round(r6, 2)}
                 _bullrun_monitor['flips'] = (_bullrun_monitor.get('flips') or [])[-59:] + [flip]
-                logger.critical(f"[BULLRUN_MONITOR] state {_bullrun_monitor.get('state')} → {state} | "
+                logger.critical(f"[BULLRUN_MONITOR] state {prev_state} → {state} | "
                                 f"r72={r72:+.2f}% above={above:.1f}% eff={eff:.3f} r6={r6:+.2f}% latch={latch}")
-            if green and not was_green:
+            if green and not was_green and not resumed:
                 _bullrun_monitor['green_since'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
             elif not green:
                 _bullrun_monitor['green_since'] = None
@@ -4341,6 +4443,7 @@ class TradingEngine:
                 return  # dip marked, reclaim not yet — wait
             sp = float(getattr(th, 'bullrun_pair_spacing_hours', 2.0) or 2.0) * 3600.0
             if _now - _br_last_fire.get(pair, 0) < sp:
+                _bullrun_monitor['blk_spacing'] = _bullrun_monitor.get('blk_spacing', 0) + 1
                 return
             slots = int(getattr(th, 'bullrun_max_slots', 4) or 4)
             _open_ct = (await db.execute(
@@ -4351,6 +4454,7 @@ class TradingEngine:
             )).scalar() or 0
             if _open_ct >= slots:
                 self._record_filter_block("BULLRUN_MAX_SLOTS", "LONG")
+                _bullrun_monitor['blk_slots'] = _bullrun_monitor.get('blk_slots', 0) + 1
                 return
             price = float(indicators.get('price') or closes[-1])
             cached = _br_e50h_cache.get(pair)
@@ -4369,6 +4473,7 @@ class TradingEngine:
                     return  # fail-safe: no 1h context = no entry
             if price <= cached[1]:
                 self._record_filter_block("BULLRUN_BELOW_1H_EMA50", "LONG")
+                _bullrun_monitor['blk_ema50'] = _bullrun_monitor.get('blk_ema50', 0) + 1
                 return
             atr_pct = (atr / closes[-1] * 100.0) if closes[-1] else None
             # Full entry-column stamping (operator, Aug-21): sleeve fills carry the SAME
@@ -9179,7 +9284,7 @@ class TradingEngine:
         logger.info(f"[SCAN] BTC regime={btc_regime} slope={_btc_ema20_slope_pct}% (ema20={btc_ema20}, prev3={btc_ema20_prev3}, adx={btc_adx}) global_filter={'ON' if btc_global_enabled else 'OFF'}")
 
         # 🌊 Aug-21 gate 57: refresh the Bull-Run Monitor (self-throttled to 10 min; never raises)
-        await self._update_bullrun_monitor()
+        await self._update_bullrun_monitor(db)
 
         # ── Phase 1: Collect indicators, signals, and pair regimes for ALL pairs ──
         _collected = []

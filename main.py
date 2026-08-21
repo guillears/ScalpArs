@@ -23,7 +23,7 @@ from sqlalchemy import select, and_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -1985,6 +1985,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "quiet_sl_rows": [],
             "bullrun_rows": [],
             "bullrun_monitor": None,
+            "bullrun_periods": [],
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -2475,6 +2476,59 @@ def _bullrun_monitor_payload():
         }
     except Exception:
         return None
+
+
+async def _bullrun_periods_rows(db, limit=50):
+    """🌊 Aug 21 gate 57 — Monitor PERIODS table (episode ledger): one row per contiguous
+    GREEN/AMBER/DARK stretch from the persisted monitor_periods table, with BULLRUN_LONG
+    fills joined per period (opened_at within the period), readings at start/end, peaks,
+    closest latch approach, breadth at start, AMBER lead time, per-rule blocked counts and
+    a running kill-bar tally (lifetime first-10). Newest first. Fail-silent → []."""
+    try:
+        _ps = (await db.execute(
+            select(MonitorPeriod).order_by(MonitorPeriod.started_at.desc()).limit(limit)
+        )).scalars().all()
+        if not _ps:
+            return []
+        _fills = (await db.execute(
+            select(Order).where(and_(Order.entry_strategy == 'BULLRUN_LONG', Order.is_paper == trading_engine.is_paper_mode))
+            .order_by(Order.opened_at.asc())
+        )).scalars().all()
+        _now = datetime.utcnow()
+        # running kill bar (review I3): the locked bar is the lifetime FIRST 10 FILLS by open
+        # time — slice ALL fills first, then score the closed subset (shown as closed/10).
+        _first10_all = [o for o in _fills if o.opened_at][:10]
+        rows = []
+        for p in _ps:
+            _end = p.ended_at or _now
+            g = [o for o in _fills if o.opened_at and p.started_at <= o.opened_at < _end]
+            gc = [o for o in g if o.pnl_percentage is not None]
+            _wins = sum(1 for o in gc if (o.pnl_percentage or 0) > 0)
+            _kb = [o for o in _first10_all if o.opened_at < _end and o.status == 'CLOSED' and o.pnl_percentage is not None]
+            _kb_wr = (100.0 * sum(1 for o in _kb if (o.pnl_percentage or 0) > 0) / len(_kb)) if _kb else None
+            rows.append({
+                'state': p.state,
+                'start': p.started_at.isoformat() if p.started_at else None,
+                'end': p.ended_at.isoformat() if p.ended_at else None,
+                'dur_min': int((_end - p.started_at).total_seconds() / 60) if p.started_at else None,
+                'r72_s': p.r72_start, 'above_s': p.above_start, 'eff_s': p.eff_start,
+                'r72_e': p.r72_end, 'above_e': p.above_end, 'eff_e': p.eff_end,
+                'eff_peak': p.eff_peak, 'r6_min': p.r6_min,
+                'btc_pct': (round((p.btc_end / p.btc_start - 1) * 100, 2) if p.btc_start and p.btc_end else None),
+                'bull_s': p.bull_pct_start, 'bear_s': p.bear_pct_start,
+                'amber_lead': p.amber_lead_min,
+                'fills': len(g), 'open_fills': len(g) - len(gc),
+                'wr': (round(100.0 * _wins / len(gc), 1) if gc else None),
+                'net': round(sum(o.pnl or 0 for o in gc), 2),
+                'blk_sp': p.blocked_spacing or 0, 'blk_sl': p.blocked_slots or 0, 'blk_ema': p.blocked_ema50 or 0,
+                'kb_n': len(_kb), 'kb_wr': (round(_kb_wr, 0) if _kb_wr is not None else None),
+                'kb_usd': round(sum(o.pnl or 0 for o in _kb), 2),
+                'ended_by': p.ended_by or ('open' if p.ended_at is None else ''),
+            })
+        return rows
+    except Exception as _e:
+        logger.debug(f"[PERF] bullrun periods skipped: {_e}")
+        return []
 
 
 def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
@@ -3909,6 +3963,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "quiet_sl_rows": [],
             "bullrun_rows": [],
             "bullrun_monitor": None,
+            "bullrun_periods": [],
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -6792,6 +6847,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                         bullrun_rows.append({"row": f"  {_lbl} {_bl}", **_br_stats(_g), "gate": ""})
     except Exception as _br_tbl_err:
         logger.debug(f"[PERF] bullrun table skipped: {_br_tbl_err}")
+    bullrun_periods = await _bullrun_periods_rows(db)
 
     # Stop Loss Deep Dive + Winning Trades Drawdown
     stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
@@ -8159,6 +8215,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "quiet_sl_rows": quiet_sl_rows,
         "bullrun_rows": bullrun_rows,
         "bullrun_monitor": _bullrun_monitor_payload(),
+        "bullrun_periods": bullrun_periods,
         "graduation_doors_overlap": graduation_doors_overlap,
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "flagged_exits": flagged_exits,

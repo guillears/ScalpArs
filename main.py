@@ -2500,7 +2500,7 @@ async def _bullrun_periods_rows(db, limit=50):
         _now = datetime.utcnow()
         # running kill bar (review I3): the locked bar is the lifetime FIRST 10 FILLS by open
         # time — slice ALL fills first, then score the closed subset (shown as closed/10).
-        _first10_all = [o for o in _fills if o.opened_at][:10]
+        _first10_all = [o for o in _fills if o.opened_at and o.opened_at >= datetime(2026, 8, 21, 19, 16, 0)][:10]  # v2 cohort floor (operator)
         rows = []
         for p in _ps:
             _end = p.ended_at or _now
@@ -6792,11 +6792,19 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     # 🌊 Aug 21 gate 57: Bull-Run sleeve scoreboard — ALL row + per-exit-reason rows, with the
     # locked kill bar tracked live on the first 10 fills (manual toggle-off; no auto-revert).
     bullrun_rows = []
+    # Aug-21 (operator): v2 cohort floor — the off-24h gate deployed 2026-08-21 19:16 UTC (835f389). v1's
+    # six pre-gate fills (0 wins, −$763) are EXCLUDED from every sleeve stat and from the kill bar (else v2's
+    # bar is pre-decided by v1); they remain in the pool as the v1 record (reference row).
+    _G57V2_TS = datetime(2026, 8, 21, 19, 16, 0)
     try:
-        _br_orders = [o for o in orders if (o.entry_strategy or '') == 'BULLRUN_LONG' and o.pnl_percentage is not None]
-        if _br_orders:
+        _br_all = [o for o in orders if (o.entry_strategy or '') == 'BULLRUN_LONG' and o.pnl_percentage is not None]
+        _br_v1 = [o for o in _br_all if o.opened_at and o.opened_at < _G57V2_TS]
+        _br_orders = [o for o in _br_all if o.opened_at and o.opened_at >= _G57V2_TS]
+        if _br_orders or _br_v1:
             def _br_stats(g):
                 _n = len(g)
+                if _n == 0:
+                    return {"n": 0, "wr": None, "avg_pct": None, "total_usd": 0.0, "avg_peak": None, "dates": 0}
                 _pks = [o.peak_pnl for o in g if o.peak_pnl is not None]
                 return {
                     "n": _n,
@@ -6814,6 +6822,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     select(Order).where(and_(
                         Order.entry_strategy == 'BULLRUN_LONG', Order.status == 'CLOSED',
                         Order.is_paper == trading_engine.is_paper_mode,
+                        Order.opened_at >= _G57V2_TS,
                     )).order_by(Order.opened_at.asc()).limit(10)
                 )).scalars().all()
             except Exception:
@@ -6826,7 +6835,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 _br_gate = f"🔴 KILL BAR HIT — first 10: WR {_f_wr:.0f}% · ${_f_usd:+.0f} (bar: ≤45% ∨ Σ<0) → toggle OFF (manual)"
             else:
                 _br_gate = f"kill bar: first {_f_n}/10 WR {_f_wr:.0f}% · ${_f_usd:+.0f} (trip: ≤45% ∨ Σ<0 at 10)"
-            bullrun_rows.append({"row": "ALL sleeve fills", **_br_stats(_br_orders), "gate": _br_gate})
+            if _br_orders:
+                bullrun_rows.append({"row": "ALL v2 fills (post-gate, ≥ Aug-21 19:16 UTC)", **_br_stats(_br_orders), "gate": _br_gate})
+            else:
+                bullrun_rows.append({"row": "ALL v2 fills (post-gate, ≥ Aug-21 19:16 UTC)", "n": 0, "wr": None, "avg_pct": None, "total_usd": 0.0, "avg_peak": None, "dates": 0, "gate": "kill bar: 0/10 — no v2 fills yet"})
+            if _br_v1:
+                _v1c = [o for o in _br_v1 if o.status == 'CLOSED']
+                bullrun_rows.append({"row": "  v1 reference (pre-gate, closed on its own bar)", **_br_stats(_v1c), "gate": "EXCLUDED from v2 stats/kill bar"})
             _br_by_reason = {}
             for o in _br_orders:
                 _br_by_reason.setdefault(o.close_reason or "?", []).append(o)

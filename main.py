@@ -6778,7 +6778,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # readings stamped at entry (entry_br_* columns) — the episode-review optimization
             # surface for GREEN-threshold recalibration. Rows appear once fills carry the columns.
             _br_ranges = [
-                ("by r72 @entry", 'entry_br_r72', [(-99, 8, "+5–8%"), (8, 12, "+8–12%"), (12, 999, ">+12%")]),
+                ("by r72 @entry", 'entry_br_r72', [(-99, 8, "≤+8%"), (8, 12, "+8–12%"), (12, 999, ">+12%")]),
                 ("by above% @entry", 'entry_br_above', [(0, 60, "56–60"), (60, 65, "60–65"), (65, 101, ">65")]),
                 ("by eff @entry", 'entry_br_eff', [(0, 0.14, "0.10–0.14"), (0.14, 0.18, "0.14–0.18"), (0.18, 9, ">0.18")]),
             ]

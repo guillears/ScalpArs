@@ -4342,7 +4342,7 @@ class TradingEngine:
             sp = float(getattr(th, 'bullrun_pair_spacing_hours', 2.0) or 2.0) * 3600.0
             if _now - _br_last_fire.get(pair, 0) < sp:
                 return
-            slots = int(getattr(th, 'bullrun_max_slots', 3) or 3)
+            slots = int(getattr(th, 'bullrun_max_slots', 4) or 4)
             _open_ct = (await db.execute(
                 select(func.count(Order.id)).where(and_(
                     Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
@@ -4377,8 +4377,17 @@ class TradingEngine:
             # shared builder — W/L review must never be blind on a dimension (BULL_LONG pattern).
             _ef = dict(self._flip_entry_fields(indicators, flip_dir='LONG') or {})
             _ef.pop('entry_btc_trend_gap_pct', None)  # not an open_position param (stamped internally)
-            for _k_ovr in ('entry_rsi', 'entry_adx', 'entry_atr_pct', 'entry_pair_volume_24h_usd', 'entry_pair_rank'):
+            for _k_ovr in ('entry_rsi', 'entry_adx', 'entry_atr_pct', 'entry_pair_volume_24h_usd', 'entry_pair_rank',
+                           'entry_bull_pct', 'entry_bear_pct', 'entry_global_volume_ratio', 'entry_pair_volume_ratio'):
                 _ef.pop(_k_ovr, None)
+            # post-ship review I2: breadth + volume ratios come from scan ctx the hook doesn't
+            # have — stamp from the live globals / indicators explicitly (WINDOW-UNITS review
+            # of a market-wide-gated sleeve NEEDS breadth). Funding stays NULL for sleeve
+            # fills (no source at the hook; on record in DECISION_LOG).
+            _g_now = globals()
+            _br_bull = _g_now.get('_market_bull_pct'); _br_bear = _g_now.get('_market_bear_pct')
+            _br_gvr = _g_now.get('_global_volume_ratio')
+            _br_pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if indicators.get('avg_volume') else None
             order = await self.open_position(
                 db=db, pair=pair, direction="LONG", confidence="STRONG_BUY", current_price=price,
                 entry_rsi=indicators.get('rsi'), entry_adx=indicators.get('adx'),
@@ -4388,6 +4397,8 @@ class TradingEngine:
                 entry_br_r72=_bullrun_monitor.get('r72'),
                 entry_br_above=_bullrun_monitor.get('above'),
                 entry_br_eff=_bullrun_monitor.get('eff'),
+                entry_bull_pct=_br_bull, entry_bear_pct=_br_bear,
+                entry_global_volume_ratio=_br_gvr, entry_pair_volume_ratio=_br_pvr,
                 bullrun_long=True,
                 **self._sanitize_open_kwargs(_ef, 'BULLRUN_LONG', 'LONG'),
             )
@@ -4993,7 +5004,7 @@ class TradingEngine:
         # btc_regime → they classified as NEUTRAL and vanished from the BULLISH/BEARISH
         # report sections (all-flips batch => empty tables). Populate both from the live
         # BTC globals, exactly as the momentum path does.
-        if flip_source:
+        if flip_source or bullrun_long:  # Aug 21 gate 57 (post-ship review): sleeve fills were NULL-regime → 100% filed under NEUTRAL, invisible to every BULLISH-filtered view (4th recurrence of the Jun-15 flip bug class)
             if not entry_macro_trend:
                 entry_macro_trend = globals().get('_current_btc_regime') or 'NEUTRAL'
             if not entry_btc_regime:

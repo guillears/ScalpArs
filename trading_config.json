@@ -636,7 +636,7 @@
     "bullrun_universe_size": 10,
     "bullrun_dip_atr_mult": 0.3,
     "bullrun_pair_spacing_hours": 2.0,
-    "bullrun_max_slots": 3,
+    "bullrun_max_slots": 4,
     "bullrun_invest_mult": 1.0,
     "bullrun_lev_mult": 1.0,
     "bullrun_base_sl_pct": -0.7,

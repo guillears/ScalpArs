@@ -5093,7 +5093,7 @@
                             </div>
                             <div>
                                 <label class="block text-xs text-gray-400 mb-1">Max sleeve slots</label>
-                                <input type="number" step="1" min="1" max="10" id="config-br-max-slots" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3">
+                                <input type="number" step="1" min="1" max="10" id="config-br-max-slots" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="4">
                             </div>
                             <div>
                                 <label class="block text-xs text-gray-400 mb-1">Inv Mult</label>
@@ -10874,7 +10874,7 @@
             }
             {
                 const _bt = cfg?.thresholds || {};
-                lines.push(`  🌊 Bull-Run Sleeve (gate 57): ${_bt.bullrun_sleeve_enabled !== false ? `ON — GREEN(r72≥${_bt.bullrun_green_r72_on ?? 5}/${_bt.bullrun_green_r72_off ?? 4} ∧ above≥${_bt.bullrun_green_above_on ?? 56}/${_bt.bullrun_green_above_off ?? 53} ∧ eff≥${_bt.bullrun_green_eff_on ?? 0.10}/${_bt.bullrun_green_eff_off ?? 0.08}) latch ${_bt.bullrun_latch_r6h ?? -3}%/1hEMA50 · top-${_bt.bullrun_universe_size ?? 10} COIN · dip ${_bt.bullrun_dip_atr_mult ?? 0.3}×ATR · ${_bt.bullrun_max_slots ?? 3} slots · Inv ${_bt.bullrun_invest_mult ?? 1}x/Lev ${_bt.bullrun_lev_mult ?? 1}x · SL ${_bt.bullrun_base_sl_pct ?? -0.7}/ATR · BE ${_bt.bullrun_be_arm_pct ?? 1.0}→${_bt.bullrun_be_lock_pct ?? 0.2} · trail ${_bt.bullrun_trail_atr_mult ?? 2.0}×ATR` : 'OFF'}`);
+                lines.push(`  🌊 Bull-Run Sleeve (gate 57): ${_bt.bullrun_sleeve_enabled !== false ? `ON — GREEN(r72≥${_bt.bullrun_green_r72_on ?? 5}/${_bt.bullrun_green_r72_off ?? 4} ∧ above≥${_bt.bullrun_green_above_on ?? 56}/${_bt.bullrun_green_above_off ?? 53} ∧ eff≥${_bt.bullrun_green_eff_on ?? 0.10}/${_bt.bullrun_green_eff_off ?? 0.08}) latch ${_bt.bullrun_latch_r6h ?? -3}%/1hEMA50 · top-${_bt.bullrun_universe_size ?? 10} COIN · dip ${_bt.bullrun_dip_atr_mult ?? 0.3}×ATR · ${_bt.bullrun_max_slots ?? 4} slots · Inv ${_bt.bullrun_invest_mult ?? 1}x/Lev ${_bt.bullrun_lev_mult ?? 1}x · SL ${_bt.bullrun_base_sl_pct ?? -0.7}/ATR · BE ${_bt.bullrun_be_arm_pct ?? 1.0}→${_bt.bullrun_be_lock_pct ?? 0.2} · trail ${_bt.bullrun_trail_atr_mult ?? 2.0}×ATR` : 'OFF'}`);
             }
 
             if (changelog.length > 0) {
@@ -19047,6 +19047,19 @@
                         && ((_rtTh.runner_trail_short_atr_min ?? 0) <= 0
                             || (typeof o.entry_atr_pct === 'number' && o.entry_atr_pct >= (_rtTh.runner_trail_short_atr_min ?? 0)))
                         && _tpPeak >= (_rtTh.runner_trail_short_arm_peak ?? 0.40);
+                    // 🌊 Aug 21 gate 57: BULLRUN_LONG runs its OWN exit stack (BR_ SL / BE arm
+                    // +1.0 → lock +0.2 / 2×ATR trail) — the RUNNER/🛡 badges describe the alt
+                    // machinery, which can never touch a sleeve trade (operator-caught cosmetic
+                    // mislabel on the first live fill). Show the sleeve's true state instead.
+                    if ((o.entry_strategy || '') === 'BULLRUN_LONG') {
+                        const _brArm = _rtTh.bullrun_be_arm_pct ?? 1.0;
+                        const _brLock = _rtTh.bullrun_be_lock_pct ?? 0.2;
+                        const _brTrail = _rtTh.bullrun_trail_atr_mult ?? 2.0;
+                        const _brArmed = _tpPeak >= _brArm;
+                        tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${_brArmed ? 'bg-cyan-500/25 text-cyan-300' : 'bg-white/10 text-gray-400'}" title="${_brArmed
+                            ? `🌊 Bull-run trail armed (peak ${_tpPeak.toFixed(2)}% ≥ ${_brArm}%): BE locked +${_brLock}%, trailing ${_brTrail}×ATR from peak. Exits BR_TRAILING_STOP / BR_BREAKEVEN_EXIT.`
+                            : `🌊 Bull-run sleeve: riding to BE-arm at +${_brArm}% peak (now ${_tpPeak.toFixed(2)}%). Only the BR_ stop (−0.7/ATR chain) applies below the arm — deliberate room-to-run.`}">🌊 ${_brArmed ? 'TRAIL' : 'RIDE'}</span>`;
+                    } else {
                     const _runnerArmed = _runnerArmedLong || _runnerArmedFlip || _runnerArmedShort;
                     if (_armed || _runnerArmed) {
                         let bgClass, textClass, label, title;
@@ -19073,14 +19086,16 @@
                         }
                         tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${bgClass} ${textClass}" title="${title}">${label}</span>`;
                     }
-                    
+                    }  // close the gate-57 sleeve-badge else
+
                     // Strategy / sleeve badge (matches the Filter by Flip Source names)
                     const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');
                     const _stratRaw = _isFlipStrat ? (o.entry_strategy || '').slice(5) : ((o.entry_strategy || 'MOMENTUM'));
-                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw;
+                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? '🌊 BULLRUN' : _stratRaw;
                     const _stratColor = _isFlipStrat ? 'bg-sky-500/20 text-sky-300'
                         : _stratRaw === 'BULL_LONG' ? 'bg-emerald-500/20 text-emerald-300'
                         : _stratRaw === 'BOUNCE_LONG' ? 'bg-amber-500/20 text-amber-300'
+                        : _stratRaw === 'BULLRUN_LONG' ? 'bg-cyan-500/20 text-cyan-300'
                         : 'bg-gray-500/20 text-gray-400';
                     return `
                         <tr class="hover:bg-white/5 transition">
@@ -19197,10 +19212,11 @@
                     // Strategy / sleeve badge (matches the Filter by Flip Source names)
                     const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');
                     const _stratRaw = _isFlipStrat ? (o.entry_strategy || '').slice(5) : ((o.entry_strategy || 'MOMENTUM'));
-                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw;
+                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? '🌊 BULLRUN' : _stratRaw;
                     const _stratColor = _isFlipStrat ? 'bg-sky-500/20 text-sky-300'
                         : _stratRaw === 'BULL_LONG' ? 'bg-emerald-500/20 text-emerald-300'
                         : _stratRaw === 'BOUNCE_LONG' ? 'bg-amber-500/20 text-amber-300'
+                        : _stratRaw === 'BULLRUN_LONG' ? 'bg-cyan-500/20 text-cyan-300'
                         : 'bg-gray-500/20 text-gray-400';
                     return `
                         <tr class="hover:bg-white/5 transition">
@@ -20539,7 +20555,7 @@
                     ['config-br-universe-size', 'bullrun_universe_size', 10],
                     ['config-br-dip-atr-mult', 'bullrun_dip_atr_mult', 0.3],
                     ['config-br-spacing-hours', 'bullrun_pair_spacing_hours', 2.0],
-                    ['config-br-max-slots', 'bullrun_max_slots', 3],
+                    ['config-br-max-slots', 'bullrun_max_slots', 4],
                     ['config-br-invest-mult', 'bullrun_invest_mult', 1.0],
                     ['config-br-lev-mult', 'bullrun_lev_mult', 1.0],
                     ['config-br-base-sl', 'bullrun_base_sl_pct', -0.7],
@@ -21914,7 +21930,7 @@
                     bullrun_universe_size: parseInt(document.getElementById('config-br-universe-size')?.value || 10) || 10,
                     bullrun_dip_atr_mult: safeFloat(document.getElementById('config-br-dip-atr-mult')?.value ?? 0.3),
                     bullrun_pair_spacing_hours: safeFloat(document.getElementById('config-br-spacing-hours')?.value ?? 2.0),
-                    bullrun_max_slots: parseInt(document.getElementById('config-br-max-slots')?.value || 3) || 3,
+                    bullrun_max_slots: parseInt(document.getElementById('config-br-max-slots')?.value || 4) || 4,
                     bullrun_invest_mult: safeFloat(document.getElementById('config-br-invest-mult')?.value ?? 1.0),
                     bullrun_lev_mult: safeFloat(document.getElementById('config-br-lev-mult')?.value ?? 1.0),
                     bullrun_base_sl_pct: safeFloat(document.getElementById('config-br-base-sl')?.value ?? -0.7),

@@ -924,7 +924,7 @@ class SignalThresholds(BaseModel):
     bullrun_universe_size: int = 10        # sleeve trades scan-rank ≤ N (COIN-only universe; rank 11-20 refuted: 50% WR −$1,933)
     bullrun_dip_atr_mult: float = 0.3      # entry: dip ≥ N×ATR(14,5m) below 5m EMA20, then close reclaims
     bullrun_pair_spacing_hours: float = 2.0  # min hours between sleeve fires on the same pair
-    bullrun_max_slots: int = 3             # sleeve concurrency cap (episode-2 review item; global max_open still applies)
+    bullrun_max_slots: int = 4             # sleeve concurrency cap — operator-directed Aug-21: match max_open_positions (4), no separate sleeve throttle; global max_open remains the real bound
     bullrun_invest_mult: float = 1.0       # Inv Mult (same cell plumbing as other sleeves)
     bullrun_lev_mult: float = 1.0          # Lev Mult
     bullrun_base_sl_pct: float = -0.7      # sleeve base SL; widened by the existing sl_atr_multiplier/floor chain

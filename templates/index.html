@@ -22038,7 +22038,7 @@
                     bullrun_be_lock_pct: safeFloat(document.getElementById('config-br-be-lock')?.value ?? 0.2),
                     bullrun_trail_atr_mult: safeFloat(document.getElementById('config-br-trail-atr-mult')?.value ?? 2.0),
                     bullrun_btc_off24h_max: safeFloat(document.getElementById('config-br-off24h-max')?.value || -2.0),
-                    bullrun_ladder: String(document.getElementById('config-br-ladder')?.value ?? '').trim(),  // blank = off (deliberate)  // blank → default −2.0 ('0' stays a truthy string = explicit OFF)
+                    bullrun_ladder: String(document.getElementById('config-br-ladder')?.value ?? '').trim(),  // blank = ladder OFF (deliberate)
                     trailing_pullback_confirmation_seconds: parseInt(document.getElementById('config-trailing-pullback-confirmation-seconds')?.value || 15) || 0,
                     trailing_early_arm_threshold: safeFloat(document.getElementById('config-trailing-early-arm-threshold')?.value || 0.30),
                     trailing_early_arm_pullback: safeFloat(document.getElementById('config-trailing-early-arm-pullback')?.value || 0.10),

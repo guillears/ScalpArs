@@ -238,14 +238,24 @@ def _bullrun_ladder_floor(peak, ladder_str):
         rungs = _BR_LADDER_CACHE.get(ladder_str)
         if rungs is None:
             rungs = []
-            for part in (ladder_str or '').split(','):
-                part = part.strip()
-                if not part or ':' not in part:
-                    continue
-                a, b = part.split(':', 1)
-                rungs.append((float(a.strip()), float(b.strip())))
-            rungs.sort()
-            _BR_LADDER_CACHE[ladder_str] = rungs
+            try:
+                for part in (ladder_str or '').split(','):
+                    part = part.strip()
+                    if not part or ':' not in part:
+                        continue
+                    a, b = part.split(':', 1)
+                    thr, fl = float(a.strip()), float(b.strip())
+                    if fl >= thr:
+                        logger.warning(f"[BULLRUN_LADDER] rung '{part}' ignored — floor must be BELOW its peak threshold (else it is a take-profit, not a lock)")
+                        continue
+                    rungs.append((thr, fl))
+                rungs.sort()
+                if not rungs and (ladder_str or '').strip():
+                    logger.warning(f"[BULLRUN_LADDER] bullrun_ladder '{ladder_str}' yields no valid rungs — ladder OFF, plain 2×ATR trail applies")
+            except Exception as _lp_err:
+                logger.warning(f"[BULLRUN_LADDER] malformed bullrun_ladder '{ladder_str}' ({_lp_err}) — ladder OFF, plain 2×ATR trail applies")
+                rungs = []
+            _BR_LADDER_CACHE[ladder_str] = rungs  # cached even when empty → warnings fire once per string, not per tick
         out = None
         for thr, fl in rungs:
             if peak >= thr:
@@ -291,6 +301,9 @@ def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct):
             if _lf is not None and _lf > stop_line:
                 stop_line = _lf; reason = "LADDER_FLOOR"
             if pnl <= stop_line:
+                if reason == "LADDER_FLOOR":
+                    # revert-gate instrument (DECISION_LOG (15)): the trail counterfactual this lock pre-empted
+                    logger.info(f"[BULLRUN_LADDER] floor {stop_line:.2f} fired at peak {pk:.2f} (trail line would have been {max(lock, trail_line):.2f})")
                 return True, reason, stop_line
             return False, None, stop_line
         if pnl <= sl:
@@ -4540,8 +4553,8 @@ class TradingEngine:
                 _off_max = -_off_max
             _off_now = _bullrun_monitor.get('off24h')
             if _off_max < 0 and _off_now is not None and float(_off_now) <= _off_max:
-                if st.get('blk_key') != ('24h', st.get('dip_ts')):
-                    st['blk_key'] = ('24h', st.get('dip_ts'))
+                if st.get('blk_24h_ts') != st.get('dip_ts'):  # own key (review: shared blk_key double-counted an oscillating dip)
+                    st['blk_24h_ts'] = st.get('dip_ts')
                     _bullrun_monitor['blk_off24h'] = _bullrun_monitor.get('blk_off24h', 0) + 1
                     self._record_filter_block("BULLRUN_BTC_OFF24H", "LONG")
                     logger.info(f"[BULLRUN_LONG] {pair}: refused by BTC off-24h-high gate (BTC {float(_off_now):+.2f}% vs max {_off_max}%, dip_ts={st.get('dip_ts')}) — dip kept alive, re-evaluated next scan")

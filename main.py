@@ -2464,6 +2464,11 @@ def _compute_pnl_distribution_stats(orders):
     }
 
 
+# 🌊 Aug-21 gate 57 v2 cohort floor (operator): every sleeve stat and BOTH kill bars count only fills opened at/after
+# the off-24h gate deploy (835f389). One constant — referenced by the sleeve scoreboard AND the periods builder.
+G57V2_TS = datetime(2026, 8, 21, 19, 16, 0)
+
+
 def _bullrun_monitor_payload():
     """🌊 Aug 21 gate 57: monitor state + flip history for the Bull-Run table header (in-memory
     engine global — flips reset on redeploy, but every flip is also logger.critical'd so the
@@ -2500,7 +2505,7 @@ async def _bullrun_periods_rows(db, limit=50):
         _now = datetime.utcnow()
         # running kill bar (review I3): the locked bar is the lifetime FIRST 10 FILLS by open
         # time — slice ALL fills first, then score the closed subset (shown as closed/10).
-        _first10_all = [o for o in _fills if o.opened_at and o.opened_at >= datetime(2026, 8, 21, 19, 16, 0)][:10]  # v2 cohort floor (operator)
+        _first10_all = [o for o in _fills if o.opened_at and o.opened_at >= G57V2_TS][:10]  # v2 cohort floor (operator)
         rows = []
         for p in _ps:
             _end = p.ended_at or _now
@@ -6795,7 +6800,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     # Aug-21 (operator): v2 cohort floor — the off-24h gate deployed 2026-08-21 19:16 UTC (835f389). v1's
     # six pre-gate fills (0 wins, −$763) are EXCLUDED from every sleeve stat and from the kill bar (else v2's
     # bar is pre-decided by v1); they remain in the pool as the v1 record (reference row).
-    _G57V2_TS = datetime(2026, 8, 21, 19, 16, 0)
+    _G57V2_TS = G57V2_TS  # module constant (review: was duplicated)
     try:
         _br_all = [o for o in orders if (o.entry_strategy or '') == 'BULLRUN_LONG' and o.pnl_percentage is not None]
         _br_v1 = [o for o in _br_all if o.opened_at and o.opened_at < _G57V2_TS]
@@ -6841,7 +6846,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 bullrun_rows.append({"row": "ALL v2 fills (post-gate, ≥ Aug-21 19:16 UTC)", "n": 0, "wr": None, "avg_pct": None, "total_usd": 0.0, "avg_peak": None, "dates": 0, "gate": "kill bar: 0/10 — no v2 fills yet"})
             if _br_v1:
                 _v1c = [o for o in _br_v1 if o.status == 'CLOSED']
-                bullrun_rows.append({"row": "  v1 reference (pre-gate, closed on its own bar)", **_br_stats(_v1c), "gate": "EXCLUDED from v2 stats/kill bar"})
+                bullrun_rows.append({"row": "  v1 reference in this window (pre-gate; lifetime 7 fills 1W/6L −$623)", **_br_stats(_v1c), "gate": "EXCLUDED from v2 stats/kill bar"})
             _br_by_reason = {}
             for o in _br_orders:
                 _br_by_reason.setdefault(o.close_reason or "?", []).append(o)

@@ -2559,6 +2559,12 @@ class TradingEngine:
         else:
             reserve = tc.investment.reserve_fixed
 
+        # Aug 21 (operator): fee-reserve FLOOR — USDT sizing never deploys, so the BNB auto-swap can
+        # always refuel (sub-$10k books have no schedule tier → went 100% into margin). Applies on
+        # top of every reserve mode. 0 = off.
+        _fee_res = max(0.0, float(getattr(tc.investment, 'fee_reserve_usd', 0.0) or 0.0))
+        reserve += _fee_res
+
         # Available after reserve
         tradeable = max(0, available_balance - reserve)
 
@@ -2583,6 +2589,7 @@ class TradingEngine:
                 reserve_from_total = base * (tc.investment.reserve_percentage / 100)
             else:
                 reserve_from_total = tc.investment.reserve_fixed
+            reserve_from_total += _fee_res  # fee-reserve floor rides the equal-split base too
             investment = max(0, base - reserve_from_total) / max_pos
         else:
             investment = min(tc.investment.fixed_amount, tradeable)

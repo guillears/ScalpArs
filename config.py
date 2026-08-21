@@ -1922,6 +1922,14 @@ class InvestmentConfig(BaseModel):
     # tier ≤ free balance; below the first tier → no reserve (full balance tradeable). The v3
     # operating table (CURRENT_STATE capital-scaling) expressed as tiers. Empty = off.
     reserve_schedule: str = ""  # e.g. "10000:8000, 25000:17500, ..., 500000:100000"
+    # Aug 21, 2026 (operator) — FEE RESERVE FLOOR: USDT that sizing never deploys, on top of whatever
+    # the reserve mode/schedule says. Root cause on record: the reserve_schedule has no tier below
+    # $10k, so a sub-$10k book goes 100% into margin and the runway-triggered BNB auto-swap starves
+    # ("[BNB_SWAP] Cannot swap: insufficient USDT (available=-0.00)" at 17:36:49 Aug-21, the second
+    # the 4th position opened). $75 ≈ 1.5 days of burn at $2.17/h, covers the $50-minimum swap.
+    # Paper: cosmetic (sim charges fees in USDT at 0 BNB). Live: without it, fees lose the BNB
+    # discount once BNB hits 0 and the bot cannot refuel while the book is full. 0 = disabled.
+    fee_reserve_usd: float = 75.0
     
     # Cooldown after trade close (prevents immediate re-entry on same pair, win or loss)
     # CLAUDE.md May 26: cross-batch evidence on 919-trade pool shows 84 same-pair re-entries

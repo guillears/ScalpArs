@@ -4775,6 +4775,11 @@
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="250000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="70000"><span class="res-sched-resv text-gray-500 text-sm"></span></div>
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="500000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="100000"><span class="res-sched-resv text-gray-500 text-sm"></span></div>
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="—"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="—"><span class="res-sched-resv text-gray-500 text-sm"></span></div>
+                                <div class="flex items-center gap-2 mt-2 pt-2 border-t border-white/5" title="Aug 21: USDT that sizing never deploys, on top of the reserve mode/schedule — keeps the BNB auto-swap fueled when the book is 100% in margin (sub-$10k books have no schedule tier). 0 = off.">
+                                    <span class="text-gray-400 text-sm">Fee reserve floor $</span>
+                                    <input type="number" id="config-fee-reserve-usd" class="w-24 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm text-center focus:outline-none focus:border-emerald-500" min="0" step="5" value="75">
+                                    <span class="text-gray-500 text-xs">never traded — BNB refuel money (≈1.5 days burn). Applies in every reserve mode.</span>
+                                </div>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Each line = "at balance ≥ $X, tradeable = $T" (reserve = balance − T, auto-grows; withdrawals pull from the reserve and it self-rebuilds). Below the first tier = no reserve (full balance trades). Active tier = highest ≤ balance. <span id="res-schedule-readout" class="text-emerald-400/80"></span></p>
                         </div>
@@ -10846,6 +10851,7 @@
             lines.push(`  BNB Auto-Swap: ${cfg.bnb_swap_enabled ? 'ON' : 'OFF'}  |  Paper BNB (live): $${_liveBnb.toFixed(2)}  |  Initial: $${cfg.paper_bnb_initial_usd || 500}  |  Check: ${cfg.bnb_check_interval_hours || 12}h  |  Target Runway: ${_runwayTarget}h`);
             lines.push(`  Burn Rate: $${_burnRate.toFixed(2)}/hr  |  Live Runway: ${_liveRunwayH}h  |  Emergency Threshold: $${(status && status.bnb_emergency_threshold) ? status.bnb_emergency_threshold.toFixed(2) : '0.00'}`);
             lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
+            lines.push(`  Fee reserve floor: $${inv.fee_reserve_usd ?? 0} (never traded — BNB refuel; 0 = off)`);
             lines.push(`  Cooldown After Any Close: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
             lines.push(`  Liquidity Caps: ① ${inv.max_notional_pct_of_pair_volume || 0}% 24h vol / ceiling $${inv.max_notional_hard_ceiling || 0}  |  ② max gross lev ${inv.max_gross_leverage || 0}×  |  ③ redeploy ${inv.redeploy_leftover_enabled ? 'ON (hard ' + (inv.max_open_positions_hard || 0) + ')' : 'off'}  |  🔒 SPIKE LOWVOL (Aug-3 override): ${(inv.spike_lowvol_liq_cap_pct || 0) > 0 ? `${inv.spike_lowvol_liq_cap_pct}% cap on spike pairs < $${((inv.spike_lowvol_threshold_usd || 0)/1e6).toFixed(0)}M (LIQ2)` : 'off'}`);
             if (cfg.pair_blacklist) lines.push(`  Pair Blacklist: ${cfg.pair_blacklist}`);
@@ -20060,6 +20066,7 @@
                             ? `→ active: trade $${Math.round(tgt).toLocaleString()} / reserve $${Math.round(Math.max(0, bal - tgt)).toLocaleString()} @ $${Math.round(bal).toLocaleString()}`
                             : `→ below first tier: full balance tradeable`;
                     };
+                    { const _fr = document.getElementById('config-fee-reserve-usd'); if (_fr) _fr.value = config.investment.fee_reserve_usd !== undefined ? config.investment.fee_reserve_usd : 75; }
                     const s = (config.investment.reserve_schedule || '').trim();
                     const tiers = [];
                     if (s) { s.split(',').forEach(p => { const m = p.split(':'); if (m.length === 2) { const b = parseFloat(m[0]), v = parseFloat(m[1]); if (!isNaN(b) && !isNaN(v)) tiers.push([b, v]); } }); }
@@ -21591,6 +21598,7 @@
                     reserve_fixed: resMode === 'fixed' ? resValue : 500,
                     reserve_percentage: resMode === 'percentage' ? resValue : 20,
                     working_capital_target: resMode === 'working_capital' ? resValue : 0,
+                    fee_reserve_usd: safeFloat(document.getElementById('config-fee-reserve-usd')?.value ?? 75),
                     reserve_schedule: (function(){ const t = []; const bs = document.querySelectorAll('.res-sched-bal'), ts = document.querySelectorAll('.res-sched-trd'); for (let i = 0; i < bs.length; i++) { const b = (bs[i].value || '').trim(), v = (ts[i].value || '').trim(); if (b !== '' && v !== '') { const bn = parseFloat(b), vn = parseFloat(v); if (!isNaN(bn) && !isNaN(vn)) t.push([bn, vn]); } } t.sort((a, b) => a[0] - b[0]); return t.map(x => x[0] + ':' + x[1]).join(', '); })(),
                     cooldown_after_loss_minutes: parseInt(document.getElementById('config-cooldown-loss').value) || 5,
                     max_open_positions: parseInt(document.getElementById('config-max-positions').value) || 100,

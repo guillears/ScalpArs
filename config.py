@@ -102,6 +102,18 @@ class SignalThresholds(BaseModel):
     # Cross-batch + today: slope > +0.15% LONG cohort N=26 / 30.8% WR / -$837 (today),
     # active-window pool also showed cliff at 0.12-0.15%. 0 = disabled.
     # SHORT side disabled by default (no clean cliff observed yet).
+    # ⚖️ Aug-21 2026 (operator-directed; gate 56, DECISION_LOG 2026-08-21 (2)): LONG side
+    # JSON 0.15 → 0 (OFF). The gate's May-24 founding evidence (N=26, mixed matched
+    # population, pre-runner exits) was never re-adjudicated and it shipped with an
+    # UNRESOLVED "over-block risk" watchlist tag. First-ever cohort isolation (Aug-19/21
+    # +19% BTC rally, 109 sole-blocked screen-passing episodes, 14 distinct hours): 72%
+    # armed (+0.40 before −0.70) — capacity-honest foregone ≈ $1,200-1,800/37h vs the
+    # actual window's 1 trade. Largest single blocker of the rally (30.7% of 48h).
+    # Climax protection intact via 70-100:40 cross + ADX>40 (both KEPT on their own data).
+    # 🔒 REVERT (manual, no auto): fills with stamped entry_btc_1h_slope > 0.15 —
+    # N≥10 across ≥4 dates, WR≤45% ∨ Σ<0 → restore 0.15. Falling-BTC tripwire shared
+    # with gate 51. ⚠ Single-phase override, acknowledged (window-units: one bullish
+    # phase); the SHORT cap (0.1) untouched.
     btc_1h_slope_max_long: float = 0.0
     btc_1h_slope_max_short: float = 0.0
     # Jun 3: minimum BTC 1h slope FLOOR (block entries when 1h slope is too steeply

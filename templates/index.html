@@ -184,45 +184,38 @@
 
     <!-- Market Regime Bar -->
     <div class="glass border-b border-white/5">
-        <div class="container mx-auto px-6 py-2 flex items-center justify-between text-sm">
-            <div class="flex items-center space-x-3">
-                <span class="text-gray-400 font-medium">Market Regime:</span>
-                <span id="btc-regime-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-500/20 text-gray-400">--</span>
-                <span class="text-gray-500">(BTC)</span>
-                <span id="btc-ema20-slope" class="text-gray-400 text-xs font-mono">--</span>
-                <span id="btc-global-tag" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400 uppercase tracking-wide">Global Filter</span>
-                <span class="text-gray-500">|</span>
-                <span class="text-gray-400 font-medium">BTC Trend:</span>
-                <span id="btc-trend-gap" class="text-xs font-mono text-gray-400" title="BTC EMA13/EMA50 gap % — active filter (May 6+)">--</span>
-                <span id="btc-trend-badge" class="px-1.5 py-0 rounded text-[9px] font-bold bg-gray-500/20 text-gray-400 leading-tight" title="EMA13 vs EMA50 — active filter (May 6+)">--</span>
-                <span class="text-gray-500">|</span>
-                <span class="text-gray-400 font-medium">BTC ADX:</span>
-                <span id="btc-adx-value" class="text-gray-300 font-bold">--</span>
-                <span id="btc-adx-dir-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide">--</span>
-                <span id="btc-adx-low-tag" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 uppercase tracking-wide">ADX LOW</span>
-                <span class="text-gray-500">|</span>
-                <span class="text-gray-400 font-medium">Global Vol:</span>
-                <span id="global-vol-value" class="text-gray-300 font-bold">--</span>
-                <span id="global-vol-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide">--</span>
-                <span class="text-gray-500">|</span>
-                <span class="text-gray-400 font-medium">Breadth:</span>
-                <span id="breadth-bull-value" class="text-gray-300 font-bold">--</span>
-                <span class="text-gray-500">/</span>
-                <span id="breadth-bear-value" class="text-gray-300 font-bold">--</span>
-                <span class="text-gray-500">|</span>
-                <span class="text-gray-400 font-medium">Gross:</span>
-                <span id="gross-gauge" class="text-gray-500 text-xs font-mono" title="Σ open-position notional ÷ (balance × max_gross_leverage). Green <70% · amber 70–90% · red >90%. 'off' = gross cap disabled.">--</span>
-                <span class="text-gray-500">|</span>
-                <span id="bullrun-chip" class="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide" title="🌊 Bull-Run Monitor (gate 57): GREEN = 72h composite ON (r72/above-EMA20%/efficiency, Schmitt band + crash-latch) → BULLRUN_LONG sleeve trades. AMBER = 24h alert only. Hover values: r72 / above% / eff / r6h.">🌊 --</span>
-            </div>
-            <div class="flex items-center space-x-4">
-                <span id="regime-pair-count" class="text-gray-500">--</span>
-                <div class="flex items-center space-x-2 text-xs">
-                    <span class="flex items-center"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block mr-1"></span><span id="regime-bull-count" class="text-gray-400">0</span></span>
-                    <span class="flex items-center"><span class="w-2 h-2 rounded-full bg-red-400 inline-block mr-1"></span><span id="regime-bear-count" class="text-gray-400">0</span></span>
-                    <span class="flex items-center"><span class="w-2 h-2 rounded-full bg-yellow-400 inline-block mr-1"></span><span id="regime-neutral-count" class="text-gray-400">0</span></span>
-                </div>
-            </div>
+        <!-- Regime bar (Aug 21 redesign, operator): shorter labels, duplicated pair-count cluster folded into the Breadth tooltip,
+             🌊 chip single-line, flex-wrap so a narrow window gives two tidy rows instead of crushed chips. All element ids kept. -->
+        <div class="container mx-auto px-6 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <span class="text-gray-400 font-medium">Regime</span>
+            <span id="btc-regime-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-500/20 text-gray-400">--</span>
+            <span id="btc-ema20-slope" class="text-gray-400 text-xs font-mono" title="BTC 5m EMA20 slope">--</span>
+            <span id="btc-global-tag" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400 uppercase tracking-wide">Global Filter</span>
+            <span class="text-gray-600">·</span>
+            <span class="text-gray-400 font-medium">Trend</span>
+            <span id="btc-trend-gap" class="text-xs font-mono text-gray-400" title="BTC EMA13/EMA50 gap % — active filter (May 6+)">--</span>
+            <span id="btc-trend-badge" class="px-1.5 py-0 rounded text-[9px] font-bold bg-gray-500/20 text-gray-400 leading-tight" title="EMA13 vs EMA50 — active filter (May 6+)">--</span>
+            <span class="text-gray-600">·</span>
+            <span class="text-gray-400 font-medium">ADX</span>
+            <span id="btc-adx-value" class="text-gray-300 font-bold">--</span>
+            <span id="btc-adx-dir-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide" title="BTC ADX direction">--</span>
+            <span id="btc-adx-low-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 uppercase tracking-wide" title="BTC ADX outside the long/short admission band">LOW</span>
+            <span class="text-gray-600">·</span>
+            <span class="text-gray-400 font-medium">Vol</span>
+            <span id="global-vol-value" class="text-gray-300 font-bold" title="Global volume ratio (Σ current / Σ 20-bar avg across the top pairs)">--</span>
+            <span id="global-vol-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide">--</span>
+            <span class="text-gray-600">·</span>
+            <span id="breadth-wrap" class="flex items-center gap-1" title="Market breadth — share of scanned pairs in a bullish / bearish regime">
+                <span class="text-gray-400 font-medium">Breadth</span>
+                <span id="breadth-bull-value" class="text-gray-300 font-bold">--</span><span class="text-gray-500">/</span><span id="breadth-bear-value" class="text-gray-300 font-bold">--</span>
+            </span>
+            <span class="text-gray-600">·</span>
+            <span class="text-gray-400 font-medium">Gross</span>
+            <span id="gross-gauge" class="text-gray-500 text-xs font-mono" title="Σ open-position notional ÷ (balance × max_gross_leverage). Green <70% · amber 70–90% · red >90%. 'off' = gross cap disabled.">--</span>
+            <span class="text-gray-600">·</span>
+            <span id="bullrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide" title="🌊 Bull-Run Monitor (gate 57): GREEN = 72h composite ON (r72/above-EMA20%/efficiency, Schmitt band + crash-latch) → BULLRUN_LONG sleeve trades. AMBER = 24h alert only. Hover values: r72 / above% / eff / r6h / off-24h-high.">🌊 --</span>
+            <!-- pair-count cluster kept for the JS writers but folded into the Breadth tooltip (duplicate of Breadth) -->
+            <span class="hidden"><span id="regime-pair-count"></span><span id="regime-bull-count"></span><span id="regime-bear-count"></span><span id="regime-neutral-count"></span></span>
         </div>
     </div>
 
@@ -8767,12 +8760,12 @@
                 const bBearEl = document.getElementById('breadth-bear-value');
                 if (bBullEl && bullPct != null) {
                     const bullTh = parseFloat(document.getElementById('config-market-breadth-bull-threshold-long')?.value) || 50;
-                    bBullEl.textContent = `L:${bullPct.toFixed(0)}%`;
+                    bBullEl.textContent = `${bullPct.toFixed(0)}`;
                     bBullEl.className = bullPct >= bullTh ? 'text-emerald-400 font-bold' : 'text-gray-400 font-bold';
                 }
                 if (bBearEl && bearPct != null) {
                     const bearTh = parseFloat(document.getElementById('config-market-breadth-bear-threshold-short')?.value) || 65;
-                    bBearEl.textContent = `S:${bearPct.toFixed(0)}%`;
+                    bBearEl.textContent = `${bearPct.toFixed(0)}`;
                     bBearEl.className = bearPct >= bearTh ? 'text-emerald-400 font-bold' : 'text-gray-400 font-bold';
                 }
                 // Update breadth counts (use same threshold as breadth %)
@@ -8785,6 +8778,8 @@
                     if (blEl) blEl.textContent = `${data.breadth_n_bull} Bull`;
                     if (brEl) brEl.textContent = `${data.breadth_n_bear} Bear`;
                     if (ntEl) ntEl.textContent = `${data.breadth_n_neutral} Neutral`;
+                    const _bw = document.getElementById('breadth-wrap');
+                    if (_bw) _bw.title = `Market breadth — ${data.breadth_n_total} pairs scanned: ${data.breadth_n_bull} bull / ${data.breadth_n_bear} bear / ${data.breadth_n_neutral} neutral. L% = share bullish (long admission threshold), S% = share bearish (short).`;
                 }
 
                 // Update paper toggle
@@ -18865,21 +18860,21 @@
                     if (adxLowTag) {
                         adxLowTag.classList.toggle('hidden', !(isLow || isHigh));
                         if (isLow) {
-                            adxLowTag.textContent = 'ADX LOW';
+                            adxLowTag.textContent = 'LOW';
                         } else if (isHigh) {
-                            adxLowTag.textContent = 'ADX HIGH';
+                            adxLowTag.textContent = 'HIGH';
                         }
                     }
                     const adxDirTag = document.getElementById('btc-adx-dir-tag');
                     if (adxDirTag && window._prevBtcAdx != null) {
                         const _ADX_HOLD_MS = 30000;
                         if (btcAdxVal > window._prevBtcAdx) {
-                            adxDirTag.textContent = 'RISING';
+                            adxDirTag.textContent = '↑ RISING';
                             adxDirTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-emerald-500/20 text-emerald-400';
                             adxDirTag.classList.remove('hidden');
                             window._adxDirSetAt = Date.now();
                         } else if (btcAdxVal < window._prevBtcAdx) {
-                            adxDirTag.textContent = 'FALLING';
+                            adxDirTag.textContent = '↓ FALLING';
                             adxDirTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-red-500/20 text-red-400';
                             adxDirTag.classList.remove('hidden');
                             window._adxDirSetAt = Date.now();

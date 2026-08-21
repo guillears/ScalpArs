@@ -21,11 +21,13 @@ from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, 
 
 
 def _strip_reason_prefixes(reason):
-    """Strip FLIP_ then FL_ prefixes from a close reason (the whitelist convention)."""
+    """Strip FLIP_ then FL_ then BR_ prefixes from a close reason (the whitelist convention)."""
     r = reason or ""
     if r.startswith("FLIP_"):
         r = r[5:]
     if r.startswith("FL_"):
+        r = r[3:]
+    if r.startswith("BR_"):  # Aug-21 gate 57: bull-run sleeve exits (BR_STOP_LOSS etc.)
         r = r[3:]
     return r
 from services.websocket_tracker import websocket_tracker
@@ -87,6 +89,18 @@ _current_btc_adx: float = None
 _current_btc_rsi: float = None
 _market_bull_pct: float = 0.0
 _market_bear_pct: float = 0.0
+# 🌊 Aug-21 gate 57: Bull-Run Monitor state (in-memory; flips also logged for post-restart
+# forensics). state ∈ DARK/AMBER/GREEN. Schmitt band + crash-latch computed in
+# _update_bullrun_monitor (throttled). Entries additionally require updated_at fresh
+# (≤30 min) — a stale monitor is NOT GREEN (fail-safe).
+_bullrun_monitor: Dict = {
+    'state': 'DARK', 'green': False, 'amber': False, 'latch': False,
+    'r72': None, 'above': None, 'eff': None, 'r6': None, 'r24': None,
+    'green_since': None, 'updated_at': 0.0, 'flips': [],
+}
+_br_dip_state: Dict[str, Dict] = {}      # pair -> {'dipped': bool, 'last_bar_ts': int}
+_br_e50h_cache: Dict[str, tuple] = {}    # pair -> (fetched_at_epoch, ema50_1h)
+_br_last_fire: Dict[str, float] = {}     # pair -> epoch of last sleeve entry OR exit (spacing)
 _breadth_n_bull: int = 0
 _breadth_n_bear: int = 0
 _breadth_n_neutral: int = 0
@@ -214,6 +228,50 @@ def _quiet_sl_for(direction, entry_strategy, entry_atr_pct):
         return qsl
     except Exception:
         return None
+
+
+def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct):
+    """🌊 Aug-21 gate 57: dedicated BULLRUN_LONG exit check — the ONLY exit logic sleeve
+    trades run (both paths intercept BEFORE the alt exit machinery, so FAST_EXIT / tick /
+    RSI / signal-lost / gate-53 quiet-SL never touch them; MAX_HOLD + manual still apply
+    via their own paths). Exactly the replay-validated stack: SL = min(base, -(ATR×mult))
+    floored; BE arm at peak ≥ arm → floor lock; trail = peak − trail_mult×ATR once armed.
+    pnl/peak are the CALLER's net-pnl-% convention (both live paths use net-of-fees price %).
+    Trail width uses ENTRY ATR% (live paths carry no rolling pair ATR — known approximation
+    vs the sim's rolling ATR, on record in DECISION_LOG 2026-08-21(4)).
+    Returns (close: bool, reason: str|None, effective_stop_pct: float). Fail-safe: on any
+    error returns the plain base-SL check so a position is never left stop-less."""
+    try:
+        th = config.trading_config.thresholds
+        base = float(getattr(th, 'bullrun_base_sl_pct', -0.7) or -0.7)
+        atr = float(entry_atr_pct or 0.0)
+        mult = float(getattr(th, 'sl_atr_multiplier', 0.0) or 0.0)
+        floor_cap = float(getattr(th, 'sl_atr_widen_floor_pct', 0.0) or 0.0)
+        sl = base
+        if atr > 0 and mult > 0:
+            widened = -(atr * mult)
+            if floor_cap < 0:
+                widened = max(widened, floor_cap)
+            sl = min(base, widened)
+        arm = float(getattr(th, 'bullrun_be_arm_pct', 1.0) or 1.0)
+        lock = float(getattr(th, 'bullrun_be_lock_pct', 0.2) or 0.2)
+        trail_mult = float(getattr(th, 'bullrun_trail_atr_mult', 2.0) or 2.0)
+        pk = float(peak_pnl or 0.0)
+        if pk >= arm:
+            trail_line = (pk - trail_mult * atr) if atr > 0 else lock
+            stop_line = max(lock, trail_line)
+            if pnl <= stop_line:
+                reason = "TRAILING_STOP" if trail_line > lock else "BREAKEVEN_EXIT"
+                return True, reason, stop_line
+            return False, None, stop_line
+        if pnl <= sl:
+            return True, "STOP_LOSS", sl
+        return False, None, sl
+    except Exception:
+        try:
+            return (pnl <= -0.7), ("STOP_LOSS" if pnl <= -0.7 else None), -0.7
+        except Exception:
+            return False, None, -0.7
 
 
 # Jul 23 SHADOW-SLOT REVIEW: atr15 RETIRED (refuted Jun-29 — 1.5 over-widens; no consumer).
@@ -1410,6 +1468,8 @@ class TradingEngine:
             if _reason_base.startswith("FLIP_"):
                 _reason_base = _reason_base[5:]
             if _reason_base.startswith("FL_"):
+                _reason_base = _reason_base[3:]
+            if _reason_base.startswith("BR_"):  # Aug 21 gate 57: bull-run sleeve reasons
                 _reason_base = _reason_base[3:]
             # May 7: added EMA13_CROSS_EXIT and EMA_STACK_CROSS_EXIT to recovery
             # whitelist. Without them, EMA13/EMA_STACK trades that spanned a
@@ -4145,6 +4205,191 @@ class TradingEngine:
             self._record_filter_block("OPEN_FAILED_BULL_LONG", "LONG")  # Aug-11: dashboard-visible sleeve-death counter
             return None
 
+    async def _update_bullrun_monitor(self):
+        """🌊 Aug-21 gate 57: Bull-Run Monitor — hourly-class composite on BTC 5m (Schmitt band
+        + crash-latch + AMBER). Throttled to one recompute per 10 min; updated_at is stamped
+        ONLY on success so a failed fetch retries next cycle and the 30-min staleness gate in
+        the sleeve entry fails safe (stale ≠ GREEN). Evidence: config.py bullrun_* block."""
+        global _bullrun_monitor
+        th = config.trading_config.thresholds
+        _now = _leash_time.time()
+        if _now - (_bullrun_monitor.get('updated_at') or 0) < 600:
+            return
+        try:
+            k5 = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 1000)
+            if not k5 or len(k5) < 940:
+                logger.warning(f"[BULLRUN_MONITOR] short BTC 5m fetch ({len(k5) if k5 else 0} bars) — skipping update")
+                return
+            closes = [float(r[4]) for r in k5[:-1]]  # closed bars only
+            W = 864
+            win = closes[-W:]
+            r72 = (win[-1] / win[0] - 1) * 100.0
+            ema = closes[0]; _k = 2.0 / 21.0; above_flags = []
+            for c in closes:
+                ema = c * _k + ema * (1 - _k)
+                above_flags.append(c > ema)
+            above = 100.0 * sum(above_flags[-W:]) / W
+            diffs = sum(abs(win[i] - win[i - 1]) for i in range(1, W))
+            eff = (abs(win[-1] - win[0]) / diffs) if diffs > 0 else 0.0
+            r6 = (win[-1] / win[-72] - 1) * 100.0
+            W24 = 288
+            w24 = closes[-W24:]
+            r24 = (w24[-1] / w24[0] - 1) * 100.0
+            d24 = sum(abs(w24[i] - w24[i - 1]) for i in range(1, W24))
+            eff24 = (abs(w24[-1] - w24[0]) / d24) if d24 > 0 else 0.0
+            above24 = 100.0 * sum(above_flags[-W24:]) / W24
+            e50h = None
+            try:
+                k1h = await binance_service.get_ohlcv('BTC/USDT:USDT', '1h', 150)
+                if k1h and len(k1h) >= 60:
+                    hc = [float(r[4]) for r in k1h[:-1]]
+                    _e = hc[0]; _kk = 2.0 / 51.0
+                    for c in hc:
+                        _e = c * _kk + _e * (1 - _kk)
+                    e50h = _e
+            except Exception as _e50_err:
+                logger.warning(f"[BULLRUN_MONITOR] 1h EMA50 fetch failed ({_e50_err}) — latch runs on r6h only this cycle")
+            price = closes[-1]
+            latch = (r6 <= float(getattr(th, 'bullrun_latch_r6h', -3.0) or -3.0)) or (e50h is not None and price < e50h)
+            was_green = bool(_bullrun_monitor.get('green'))
+            # `or default` guards: a blanked UI field saves 0, which must FAIL-DARK (defaults
+            # restore), never fail-open into a trivially-satisfied GREEN (review minor).
+            if latch:
+                green = False
+            elif was_green:
+                green = (r72 >= float(th.bullrun_green_r72_off or 4.0) and above >= float(th.bullrun_green_above_off or 53.0)
+                         and eff >= float(th.bullrun_green_eff_off or 0.08))
+            else:
+                green = (r72 >= float(th.bullrun_green_r72_on or 5.0) and above >= float(th.bullrun_green_above_on or 56.0)
+                         and eff >= float(th.bullrun_green_eff_on or 0.10))
+            amber = (not green) and (r24 >= float(th.bullrun_amber_r24 or 6.0) and above24 >= float(th.bullrun_amber_above or 65.0)
+                                     and eff24 >= float(th.bullrun_amber_eff or 0.12))
+            state = 'GREEN' if green else ('AMBER' if amber else 'DARK')
+            if state != _bullrun_monitor.get('state'):
+                flip = {'ts': datetime.utcnow().strftime('%Y-%m-%d %H:%M'), 'state': state,
+                        'r72': round(r72, 2), 'above': round(above, 1), 'eff': round(eff, 3), 'r6': round(r6, 2)}
+                _bullrun_monitor['flips'] = (_bullrun_monitor.get('flips') or [])[-59:] + [flip]
+                logger.critical(f"[BULLRUN_MONITOR] state {_bullrun_monitor.get('state')} → {state} | "
+                                f"r72={r72:+.2f}% above={above:.1f}% eff={eff:.3f} r6={r6:+.2f}% latch={latch}")
+            if green and not was_green:
+                _bullrun_monitor['green_since'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+            elif not green:
+                _bullrun_monitor['green_since'] = None
+            _bullrun_monitor.update({
+                'state': state, 'green': green, 'amber': amber, 'latch': latch,
+                'r72': round(r72, 2), 'above': round(above, 1), 'eff': round(eff, 3),
+                'r6': round(r6, 2), 'r24': round(r24, 2), 'updated_at': _now,
+            })
+        except Exception as e:
+            logger.error(f"[BULLRUN_MONITOR] update failed: {e}")
+
+    async def _maybe_open_bullrun_long(self, db, pair_info, ohlcv, indicators):
+        """🌊 Aug-21 gate 57: BULLRUN_LONG sleeve entry — GREEN-gated dip-reclaim on scan-rank
+        ≤ N COIN pairs (universe already COIN-only via coin_underlying_only). Entry: dip ≥
+        dip_atr_mult×ATR(14,5m) below 5m EMA20 (flag persists), then a closed 5m bar reclaims
+        EMA20, pair above its own 1h EMA50 (lazy 30-min cache), ≥ spacing_hours per pair, ≤
+        max_slots concurrent. Sized via open_position(bullrun_long=True) → 1×/1× cells; the
+        no-trade list (BTC/ETH) is bypassed ONLY for this tagged path (containment invariant
+        amended). Alt entry filters do NOT run — the monitor replaces them at regime level.
+        TO REMOVE: grep "BULLRUN" / "bullrun" / "_maybe_open_bullrun_long"."""
+        pair = None
+        try:
+            th = config.trading_config.thresholds
+            if not getattr(th, 'bullrun_sleeve_enabled', False):
+                return
+            _now = _leash_time.time()
+            if not (_bullrun_monitor.get('green') and (_now - (_bullrun_monitor.get('updated_at') or 0) <= 1800)):
+                return
+            pair = pair_info.get('pair') or pair_info.get('symbol')
+            rank = pair_info.get('rank')
+            if not rank or int(rank) > int(getattr(th, 'bullrun_universe_size', 10) or 10):
+                return
+            if not ohlcv or len(ohlcv) < 40:
+                return
+            bars = ohlcv[:-1]  # closed bars only (last row is forming)
+            closes = [float(b[4]) for b in bars]
+            highs = [float(b[2]) for b in bars]
+            lows = [float(b[3]) for b in bars]
+            ema = closes[0]; _k = 2.0 / 21.0; emas = []
+            for c in closes:
+                ema = c * _k + ema * (1 - _k)
+                emas.append(ema)
+            trs = [max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+                   for i in range(1, len(bars))]
+            if len(trs) < 20:
+                return
+            atr = sum(trs[:14]) / 14.0
+            for t in trs[14:]:
+                atr = (atr * 13 + t) / 14.0
+            dipm = float(getattr(th, 'bullrun_dip_atr_mult', 0.3) or 0.3)
+            st = _br_dip_state.setdefault(pair, {'dipped': False, 'last_bar_ts': 0})
+            last_ts = st.get('last_bar_ts') or 0
+            for i in range(max(1, len(bars) - 24), len(bars)):
+                if int(bars[i][0]) <= last_ts:
+                    continue
+                if lows[i] <= emas[i] - dipm * atr:
+                    st['dipped'] = True
+                    st['dip_ts'] = int(bars[i][0])
+            st['last_bar_ts'] = int(bars[-1][0])
+            # review I3: dips EXPIRE after 6h — without this the flag survives GREEN→DARK→GREEN
+            # and a stale dip from a prior window authorizes an instant entry on re-fire.
+            if st.get('dipped') and int(bars[-1][0]) - (st.get('dip_ts') or 0) > 6 * 3600 * 1000:
+                st['dipped'] = False
+            if not st['dipped']:
+                return
+            if closes[-1] <= emas[-1]:
+                return  # dip marked, reclaim not yet — wait
+            sp = float(getattr(th, 'bullrun_pair_spacing_hours', 2.0) or 2.0) * 3600.0
+            if _now - _br_last_fire.get(pair, 0) < sp:
+                return
+            slots = int(getattr(th, 'bullrun_max_slots', 3) or 3)
+            _open_ct = (await db.execute(
+                select(func.count(Order.id)).where(and_(
+                    Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
+                    Order.entry_strategy == "BULLRUN_LONG",
+                ))
+            )).scalar() or 0
+            if _open_ct >= slots:
+                self._record_filter_block("BULLRUN_MAX_SLOTS", "LONG")
+                return
+            price = float(indicators.get('price') or closes[-1])
+            cached = _br_e50h_cache.get(pair)
+            if not cached or _now - cached[0] > 1800:
+                try:
+                    k1h = await binance_service.get_ohlcv(pair_info.get('symbol') or pair, '1h', 100)
+                    hc = [float(r[4]) for r in k1h[:-1]] if k1h else []
+                    if len(hc) < 55:
+                        return
+                    _e = hc[0]; _kk = 2.0 / 51.0
+                    for c in hc:
+                        _e = c * _kk + _e * (1 - _kk)
+                    cached = (_now, _e)
+                    _br_e50h_cache[pair] = cached
+                except Exception:
+                    return  # fail-safe: no 1h context = no entry
+            if price <= cached[1]:
+                self._record_filter_block("BULLRUN_BELOW_1H_EMA50", "LONG")
+                return
+            atr_pct = (atr / closes[-1] * 100.0) if closes[-1] else None
+            order = await self.open_position(
+                db=db, pair=pair, direction="LONG", confidence="STRONG_BUY", current_price=price,
+                entry_rsi=indicators.get('rsi'), entry_adx=indicators.get('adx'),
+                entry_atr_pct=atr_pct,
+                entry_pair_volume_24h_usd=pair_info.get('volume_24h'),
+                entry_pair_rank=rank,
+                entry_br_r72=_bullrun_monitor.get('r72'),
+                entry_br_above=_bullrun_monitor.get('above'),
+                entry_br_eff=_bullrun_monitor.get('eff'),
+                bullrun_long=True,
+            )
+            if order:
+                st['dipped'] = False
+                _br_last_fire[pair] = _now
+                logger.info(f"[BULLRUN_LONG] {pair}: GREEN dip-reclaim opened (rank={rank} atr={atr_pct:.2f}% id={order.id})")
+        except Exception as e:
+            logger.error(f"[BULLRUN_LONG] {pair}: open failed: {e}")
+            self._record_filter_block("OPEN_FAILED_BULLRUN", "LONG")
+
     async def _maybe_open_bounce_long(self, db, pair, indicators, isolate=False, entry_fields=None):
         """Bounce-Long Entry trigger (Jun 19) — the oversold-WASHOUT-bounce sleeve. In an allowed
         BEAR regime, when a SHORT is blocked by BTC_RSI_ADX_CROSS because BTC is washed out (the
@@ -4645,6 +4890,10 @@ class TradingEngine:
         entry_pair_volume_24h_usd: float = None,
         entry_pair_rank: int = None,
         entry_pair_age_days: float = None,  # Jul 13: listing age at entry (180->90 read gate)
+        # Aug 21 gate 57: Bull-Run Monitor readings at entry (BULLRUN_LONG fills only)
+        entry_br_r72: float = None,
+        entry_br_above: float = None,
+        entry_br_eff: float = None,
         # Jun 8: gap-expanding relaxation A/B tag (prev2_only-admitted MARGINAL cohort)
         entry_gap_expand_marginal: bool = None,
         # Jun 14: Flip Entry sleeve — when set, this is a NAKED fade-the-block entry
@@ -4666,6 +4915,12 @@ class TradingEngine:
         bounce_long: bool = False,
         bounce_long_size_mult: float = 1.0,
         bounce_long_lev_mult: float = 1.0,
+        # 🌊 Aug-21 gate 57: Bull-Run Continuation sleeve — GREEN-gated dip-reclaim LONG on
+        # top-N COIN pairs. Tagged entry_strategy="BULLRUN_LONG"; bypasses pattern/multiplier
+        # cells (sized bullrun_invest_mult × bullrun_lev_mult, default 1×/1×) and the no-trade
+        # list (scoped — the ONLY non-MAJORS_PROBE bypass); NOT _is_flip. Exits via the
+        # dedicated _bullrun_exit_for stack (BR_-prefixed reasons), never the alt exit chain.
+        bullrun_long: bool = False,
         # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
         # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
         # lev_mult from gap_probe_* config), tagged cell_src=GAPFLAT_PROBE (own analytics row;
@@ -4808,7 +5063,7 @@ class TradingEngine:
         # probe tag; bull/bounce-longs carry their flags; spikes suppress the probe tag) — so
         # containment no longer depends on each call site remembering the list.
         _nt_open = set(p.strip() for p in (getattr(config.trading_config, 'no_trade_pairs', '') or '').split(',') if p.strip())
-        if pair in _nt_open and _probe_final_tag != "MAJORS_PROBE":
+        if pair in _nt_open and _probe_final_tag != "MAJORS_PROBE" and not bullrun_long:
             logger.warning(f"[PAIR_NO_TRADE] {pair} {direction}: open_position invariant blocked a non-MAJORS_PROBE order on a track-only pair (source={flip_source or ('BULL_LONG' if bull_long else 'ladder')})")
             try:
                 self._record_filter_block("PAIR_NO_TRADE", direction)
@@ -5257,7 +5512,9 @@ class TradingEngine:
         # UNMATCHED-SHORT block would silently strangle every fade (new signature =
         # unmatched by construction), and any pattern fixed-TP/SL would pre-empt the
         # option-D stack (a +0.10 pattern TP amputates a +17 rider). Router owns spikes.
-        if spike_chase_probe or spike_fade or spike_bounce or nonexp_calm3d:
+        # Aug 21 gate 57 (review I1): BULLRUN same exemption — a pattern rule must never block a
+        # sleeve fill or stamp fixed TP/SL that would pre-empt the dedicated BR_ exit stack.
+        if spike_chase_probe or spike_fade or spike_bounce or nonexp_calm3d or bullrun_long:
             _pcell_inv, _pcell_lev, _pcell_src = None, None, None
             _pcell_fixed_tp, _pcell_fixed_sl, _pcell_block = None, None, False
         # C1 SHORT breadth-scoped de-mux (Jun 28): the C1 capitulation-chase 2× only earns its
@@ -5550,13 +5807,30 @@ class TradingEngine:
                 cell_lev_mult = _lev_cap
             cell_mult, cell_lev_mult = max(0.5, cell_mult), max(0.05, cell_lev_mult)
 
+        # 🌊 Aug-21 gate 57: Bull-Run sleeve sizing — same absolute-assign override pattern as
+        # BULL_LONG/BOUNCE_LONG (a sleeve fill must never be re-multiplied by UNMATCHED/pattern
+        # cells). Inv/Lev mults are UI fields (bullrun_invest_mult/bullrun_lev_mult, default
+        # 1×/1× — 🔒 frozen until ≥2 profitable episodes per gate 57).
+        if bullrun_long:
+            _th_br = config.trading_config.thresholds
+            cell_mult = max(0.1, float(getattr(_th_br, 'bullrun_invest_mult', 1.0) or 1.0))
+            cell_lev_mult = max(0.05, float(getattr(_th_br, 'bullrun_lev_mult', 1.0) or 1.0))
+            cell_src = "BULLRUN"
+            _mult_target = "both"
+            if cell_mult > _inv_cap:
+                logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested inv={cell_mult}x, hard-capped to inv={_inv_cap}x")
+                cell_mult = _inv_cap
+            if cell_lev_mult > _lev_cap:
+                logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested lev={cell_lev_mult}x, hard-capped to lev={_lev_cap}x")
+                cell_lev_mult = _lev_cap
+
         # Jul 13: GAPFLAT probe sizing — overrides ALL multiplier cells (a probe must never be
         # 2x'd by the UNMATCHED cell); own cell_src row (rides Multiplier Cell Performance + CSV
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
         if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
              or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe) and direction in ("LONG", "SHORT")
-                and not flip_source and not bull_long and not bounce_long and not spike_chase_probe and not spike_fade and not spike_bounce and not nonexp_calm3d):
+                and not flip_source and not bull_long and not bounce_long and not bullrun_long and not spike_chase_probe and not spike_fade and not spike_bounce and not nonexp_calm3d):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
@@ -5985,6 +6259,9 @@ class TradingEngine:
             entry_pair_volume_24h_usd=entry_pair_volume_24h_usd,
             entry_pair_rank=entry_pair_rank,
             entry_pair_age_days=entry_pair_age_days,
+            entry_br_r72=entry_br_r72,
+            entry_br_above=entry_br_above,
+            entry_br_eff=entry_br_eff,
             # Jun 8: gap-expanding relaxation A/B cohort tag
             entry_gap_expand_marginal=entry_gap_expand_marginal,
             # Jun 2: liquidity-aware sizing observability (final notional = notional_value above)
@@ -6007,7 +6284,7 @@ class TradingEngine:
             cell_multiplier_capped=cell_capped,
             # Jun 14: Flip Entry sleeve strategy tag (segregates flip P&L from momentum)
             # Jun 18: BULL_LONG tag for the build-side sleeve (real long, normal exit; NOT _is_flip)
-            entry_strategy=("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))),
+            entry_strategy=("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))))))),
             # Initialize dynamic TP tracking
             current_tp_level=1,
             dynamic_tp_target=conf_config.tp_min,
@@ -6144,7 +6421,7 @@ class TradingEngine:
                 'direction': direction,
                 'opened_at': order.opened_at,          # Jul 28 review M-5: spike stale-kill/trail live from t0
                 'entry_atr_pct': entry_atr_pct,        # (both were previously added only at the first cache refresh)
-                'entry_strategy': ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))),  # Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches
+                'entry_strategy': ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))))))),  # Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches; Aug 21: BULLRUN_LONG (gate 57, dedicated BR_ exits)
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_price': actual_price,
                 'quantity': quantity,
@@ -6296,6 +6573,17 @@ class TradingEngine:
         # post-exit-whitelist matchers strip the FLIP_ prefix to recover the base reason.
         if reason and (order.entry_strategy or "").startswith("FLIP:") and not reason.startswith("FLIP_"):
             reason = "FLIP_" + reason
+        # Aug 21 gate 57: same funnel-prefix convention for the bull-run sleeve — BR_STOP_LOSS /
+        # BR_BREAKEVEN_EXIT / BR_TRAILING_STOP / BR_MAX_HOLD_TIME. Whitelist matchers strip BR_.
+        if reason and (order.entry_strategy or "") == "BULLRUN_LONG" and not reason.startswith("BR_"):
+            reason = "BR_" + reason
+        # Aug 21 gate 57: stamp per-pair spacing on sleeve CLOSES too (entry stamps on open) —
+        # the replay's 2h spacing ran exit-to-entry.
+        if (order.entry_strategy or "") == "BULLRUN_LONG":
+            try:
+                _br_last_fire[order.pair] = _leash_time.time()
+            except Exception:
+                pass
         # Jun 16: snapshot the shadow's peak stretch AT THIS CLOSE INSTANT (before post-exit
         # tracking grows it). Diagnostic — vs runner_peak_stretch (live peak at exit): if ≈ equal
         # the live strpk was NOT under-sampling (the whole shadow gap is post-exit → Fix B, not A).
@@ -6415,7 +6703,7 @@ class TradingEngine:
             exit_result = None
 
             _urgent_exit = any(reason.startswith(p) for p in (
-                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED",
+                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
             ))
 
             for attempt in range(1, max_exit_retries + 1):
@@ -6608,7 +6896,7 @@ class TradingEngine:
             # --- Paper mode: no retry needed, no slippage ---
             _slippage_pct = None
             _urgent_exit_paper = any(reason.startswith(p) for p in (
-                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED",
+                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
             ))
             if maker_exit_enabled and reason != "MANUAL" and not _urgent_exit_paper:
                 exit_result = await self._simulate_maker_exit_paper(
@@ -7128,6 +7416,8 @@ class TradingEngine:
         if _reason_base.startswith("FLIP_"):
             _reason_base = _reason_base[5:]
         if _reason_base.startswith("FL_"):
+            _reason_base = _reason_base[3:]
+        if _reason_base.startswith("BR_"):  # Aug 21 gate 57: bull-run sleeve reasons (BR_STOP_LOSS → STOP_LOSS etc.)
             _reason_base = _reason_base[3:]
         if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("BACKSTOP_STOP")):
             return
@@ -7803,7 +8093,42 @@ class TradingEngine:
                         realtime_trough = min(realtime_trough, cached.get('trough_pnl', 0))
                         realtime_peak_ema5_gap = max(realtime_peak_ema5_gap, cached.get('peak_ema5_gap', 0))
                         break
-            
+
+            # 🌊 Aug-21 gate 57: BULLRUN_LONG dedicated exit path — sleeve trades run ONLY
+            # _bullrun_exit_for (+ MAX_HOLD above + manual). Intercept BEFORE NO_EXPANSION /
+            # FL / momentum-exit stack / check_exit_conditions so none of the alt exit
+            # machinery ever touches them. `continue` sits OUTSIDE the try so a sleeve order
+            # can never fall through into the alt chain on an error.
+            if (order.entry_strategy or "") == "BULLRUN_LONG":
+                try:
+                    if order.direction == "LONG":
+                        _br_raw = (current_price - order.entry_price) * order.quantity
+                    else:
+                        _br_raw = (order.entry_price - current_price) * order.quantity
+                    _br_fee = current_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+                    _br_notional = order.entry_price * order.quantity if order.quantity > 0 else 1
+                    _br_pnl = ((_br_raw - (order.entry_fee or 0) - _br_fee) / _br_notional) * 100
+                    _br_peak = max(realtime_peak, _br_pnl)
+                    order.peak_pnl = _br_peak
+                    order.trough_pnl = min(realtime_trough, _br_pnl)
+                    _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None))
+                    if _br_close:
+                        logger.info(f"[BULLRUN_EXIT] {order.pair}: {_br_reason} fire pnl={_br_pnl:.2f}% peak={_br_peak:.2f}% stop_line={_br_stop:.2f}%")
+                        closed_order = await self.close_position(db, order, current_price, _br_reason)
+                        if closed_order:
+                            updates.append({
+                                "order_id": closed_order.id, "pair": closed_order.pair,
+                                "action": "CLOSED", "reason": closed_order.close_reason,
+                                "pnl": closed_order.pnl, "tp_level": order.current_tp_level or 1,
+                            })
+                except Exception as _br_ex_err:
+                    logger.error(f"[BULLRUN_EXIT] {order.pair}: monitor-path check failed: {_br_ex_err}")
+                try:
+                    await db.commit()  # review I2: persist peak/trough on the no-close path (FLIP-skip precedent) — else a restart reseeds from a stale peak and BE/trail state is lost
+                except Exception:
+                    pass
+                continue
+
             # Check NO_EXPANSION: close stale trades that never expanded
             # Jul 27: SPIKE_CHASE exemption WHILE ARMED only — a confirmed pump (RSI>=arm
             # seen) must never be clock-killed (ZEREBRO armed +66min, 3h clock closed a
@@ -8832,7 +9157,10 @@ class TradingEngine:
         _current_btc_rsi_1h = btc_rsi_1h
         _current_btc_rsi_1h_prev = btc_rsi_1h_prev
         logger.info(f"[SCAN] BTC regime={btc_regime} slope={_btc_ema20_slope_pct}% (ema20={btc_ema20}, prev3={btc_ema20_prev3}, adx={btc_adx}) global_filter={'ON' if btc_global_enabled else 'OFF'}")
-        
+
+        # 🌊 Aug-21 gate 57: refresh the Bull-Run Monitor (self-throttled to 10 min; never raises)
+        await self._update_bullrun_monitor()
+
         # ── Phase 1: Collect indicators, signals, and pair regimes for ALL pairs ──
         _collected = []
         _breadth_flat_th = getattr(config.trading_config.thresholds, 'market_breadth_flat_threshold', 0.03)
@@ -9075,6 +9403,14 @@ class TradingEngine:
                 indicators = calculate_indicators(ohlcv, pair_volume_bars=_pair_vol_bars, global_volume_bars=_global_vol_bars)
                 if not indicators:
                     continue
+
+                # 🌊 Aug-21 gate 57: Bull-Run sleeve hook — independent of the alt signal ladder
+                # (the monitor replaces the entry filters at regime level). Self-gates on
+                # enabled/GREEN/rank≤N inside; own try/except so it can never break the scan.
+                try:
+                    await self._maybe_open_bullrun_long(db, pair_info, ohlcv, indicators)
+                except Exception as _br_err:
+                    logger.error(f"[BULLRUN_LONG] {pair}: hook failed: {_br_err}")
 
                 rsi_val = indicators.get('rsi')
                 adx_val = indicators.get('adx')
@@ -11245,6 +11581,42 @@ class TradingEngine:
             
             pnl_pct = (pnl / entry_notional) * 100
 
+            # 🌊 Aug-21 gate 57: BULLRUN_LONG dedicated realtime exit — FIRST in the chain, so
+            # NO alt close mechanism (PATTERN_FIXED / HARD_TP ladder / ATR_FIXED_TP / FAST_EXIT /
+            # EMA13 / EMA_STACK / BE / SL / trailing / tick) can ever touch a sleeve trade
+            # (review C2: the original intercept sat after HARD_TP, which would have floor-locked
+            # every winner at +1.25% and nullified the replay-validated 2×ATR trail). Peak/trough
+            # are updated inline here (the shared tracking below is skipped for sleeve orders —
+            # phantom/shadow columns stay NULL for them, on record). `continue` sits OUTSIDE the
+            # try so a sleeve order can never fall through into the alt chain on an error.
+            if (order_info.get('entry_strategy') or '') == 'BULLRUN_LONG':
+                try:
+                    _br_peak_rt = max(order_info.get('peak_pnl', 0) or 0, pnl_pct)
+                    order_info['peak_pnl'] = _br_peak_rt
+                    if pnl_pct < (order_info.get('trough_pnl', 0) or 0):
+                        order_info['trough_pnl'] = pnl_pct
+                    _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'))
+                    if _br_close and not order_info.get('_closing_in_progress'):
+                        order_info['_closing_in_progress'] = True
+                        logger.warning(f"[REALTIME_BULLRUN_EXIT] {pair} {direction}: {_br_reason} pnl={pnl_pct:.4f}% peak={_br_peak_rt:.4f}% stop_line={_br_stop:.2f}% - CLOSING NOW!")
+                        try:
+                            async with AsyncSessionLocal() as _br_db:
+                                _br_res = await _br_db.execute(
+                                    select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                                )
+                                _br_order = _br_res.scalar_one_or_none()
+                                if _br_order:
+                                    _br_closed = await self.close_position(_br_db, _br_order, current_price, _br_reason)
+                                    if _br_closed:
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                        except Exception as _br_e:
+                            logger.error(f"[REALTIME_BULLRUN_EXIT] Error closing {pair}: {_br_e}")
+                            order_info['_closing_in_progress'] = False
+                except Exception as _br_e2:
+                    logger.error(f"[REALTIME_BULLRUN_EXIT] {pair}: check failed: {_br_e2}")
+                continue
+
             # ════════════════════════════════════════════════════════════════
             # Pattern Fixed TP/SL (May 21, Pattern Cell Ship rules) — fires
             # BEFORE Fast Exit because TP at e.g. +0.10% needs to lock before
@@ -11988,7 +12360,7 @@ class TradingEngine:
                     except Exception:
                         pass
             effective_tp_target = tp_level * tp_min if tp_level > 1 else tp_min
-            
+
             # Trailing stop activates once peak reaches TP target or at L2+.
             # 0.005pp tolerance (May 6 — bug fix): floating-point rounding can leave
             # a peak at e.g. +0.4998% when tp_min is 0.50% — operationally identical

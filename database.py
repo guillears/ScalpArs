@@ -514,6 +514,13 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN liquidity_capped BOOLEAN DEFAULT 0"))
                 if 'entry_slippage_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_slippage_pct FLOAT"))
+                # Aug 21 gate 57: Bull-Run Monitor readings at entry (BULLRUN_LONG fills)
+                if 'entry_br_r72' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_r72 FLOAT"))
+                if 'entry_br_above' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_above FLOAT"))
+                if 'entry_br_eff' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_eff FLOAT"))
                 # Jun 7: phantom EMA13 cross (records would-have-exited pnl when EMA13
                 # cross exit is DISABLED for that direction — observation CF).
                 if 'phantom_ema13_cross_pnl' not in columns:

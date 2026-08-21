@@ -221,6 +221,13 @@ class Order(Base):
     # missing metadata). Rides the orders CSV via column introspection.
     entry_pair_age_days = Column(Float, nullable=True)
 
+    # 🌊 Aug 21 gate 57 — Bull-Run Monitor readings at entry (BULLRUN_LONG fills only, NULL
+    # otherwise). The episode-review optimization surface: fills bucketed by regime intensity
+    # (r72 / above-EMA20% / efficiency at fire time). Ride the orders CSV via introspection.
+    entry_br_r72 = Column(Float, nullable=True)
+    entry_br_above = Column(Float, nullable=True)
+    entry_br_eff = Column(Float, nullable=True)
+
     # Jul 27 🚀 SPIKE full ship — option-D L2 state (SPIKE_CHASE longs).
     # spike_rsi_max = running maximum of 5m RSI(12) since entry (the RSI-cool exit
     # anchor: exit at rsi <= max − drop). spike_armed = RSI crossed the arm threshold

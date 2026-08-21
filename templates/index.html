@@ -212,6 +212,8 @@
                 <span class="text-gray-500">|</span>
                 <span class="text-gray-400 font-medium">Gross:</span>
                 <span id="gross-gauge" class="text-gray-500 text-xs font-mono" title="Σ open-position notional ÷ (balance × max_gross_leverage). Green <70% · amber 70–90% · red >90%. 'off' = gross cap disabled.">--</span>
+                <span class="text-gray-500">|</span>
+                <span id="bullrun-chip" class="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide" title="🌊 Bull-Run Monitor (gate 57): GREEN = 72h composite ON (r72/above-EMA20%/efficiency, Schmitt band + crash-latch) → BULLRUN_LONG sleeve trades. AMBER = 24h alert only. Hover values: r72 / above% / eff / r6h.">🌊 --</span>
             </div>
             <div class="flex items-center space-x-4">
                 <span id="regime-pair-count" class="text-gray-500">--</span>
@@ -1436,6 +1438,14 @@
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
                         <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Dates</th><th class="px-2 py-1 text-left">Gate verdict</th>
                     </tr></thead><tbody id="quiet-sl-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
+                </div>
+                <div class="mt-6 pt-6 border-t border-cyan-900/40">
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-1">🌊 Gate 57 — Bull-Run Sleeve (Aug 21 — GREEN-gated dip-reclaim LONGs, top-10 COIN)</h3>
+                    <p class="text-xs text-gray-500 mb-1" id="bullrun-monitor-line">Monitor: —</p>
+                    <p class="text-xs text-gray-500 mb-3">Trades only while the Monitor is GREEN (72h composite + Schmitt band + crash-latch). Own exits: BR_STOP_LOSS / BR_BREAKEVEN_EXIT (arm +1.0 → lock +0.2) / BR_TRAILING_STOP (2×ATR giveback). 🔒 KILL BAR (manual): first 10 fills WR≤45% ∨ Σ&lt;0 ⇒ toggle OFF. Sizing frozen 1×/1× until ≥2 profitable episodes.</p>
+                    <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
+                        <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Dates</th><th class="px-2 py-1 text-left">Gate verdict</th>
+                    </tr></thead><tbody id="bullrun-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
 
                 <!-- Trailing Confirmation Performance (May 9, 2026) -->
@@ -5015,6 +5025,103 @@
                 </div>
                     <!-- ===== INVESTMENT PARAMS BOX END — exit-behavior toggles below ===== -->
                     </div>
+                    <!-- ===== 🌊 BULL-RUN SLEEVE BOX (Aug 21 · gate 57) — dedicated section (operator-directed) ===== -->
+                    <div class="border border-cyan-500/25 rounded-xl p-4 bg-cyan-500/[0.03] mt-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <label class="text-sm font-semibold text-cyan-300">🌊 Bull-Run Sleeve — gate 57 (GREEN-gated dip-reclaim LONGs, top-N COIN)</label>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-br-enabled" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-checked:bg-cyan-500/50 rounded-full relative transition-colors">
+                                    <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
+                                </div>
+                                <span class="ml-2 text-xs text-gray-400">Sleeve enabled (kill switch)</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-3">Monitor GREEN = BTC 72h composite (return ∧ %bars&gt;EMA20 ∧ trend efficiency, Schmitt ON/stay band) minus crash-latch (6h return ≤ latch ∨ price &lt; 1h EMA50 → instant OFF). Trades: dip ≥ N×ATR below 5m EMA20 → reclaim close, pair above own 1h EMA50, rank ≤ universe. Own exits (BR_*): base SL/ATR chain · BE arm→lock · ATR trail. 🔒 KILL BAR (manual): first 10 fills WR≤45% ∨ Σ&lt;0 → toggle OFF. Evidence: config.py bullrun_* block.</p>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">GREEN ON: r72 ≥ %</label>
+                                <input type="number" step="0.5" id="config-br-r72-on" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="5">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">stay-ON: r72 ≥ %</label>
+                                <input type="number" step="0.5" id="config-br-r72-off" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="4">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">GREEN ON: above-EMA20 ≥ %</label>
+                                <input type="number" step="1" id="config-br-above-on" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="56">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">stay-ON: above ≥ %</label>
+                                <input type="number" step="1" id="config-br-above-off" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="53">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">GREEN ON: efficiency ≥</label>
+                                <input type="number" step="0.01" id="config-br-eff-on" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.10">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">stay-ON: eff ≥</label>
+                                <input type="number" step="0.01" id="config-br-eff-off" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.08">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Crash-latch: 6h return ≤ %</label>
+                                <input type="number" step="0.5" id="config-br-latch-r6h" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-3">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Universe size (rank ≤)</label>
+                                <input type="number" step="1" min="1" max="50" id="config-br-universe-size" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="10">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">AMBER: r24 ≥ %</label>
+                                <input type="number" step="0.5" id="config-br-amber-r24" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="6">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">AMBER: above ≥ %</label>
+                                <input type="number" step="1" id="config-br-amber-above" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="65">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">AMBER: eff ≥</label>
+                                <input type="number" step="0.01" id="config-br-amber-eff" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.12">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Dip depth (× ATR)</label>
+                                <input type="number" step="0.1" min="0" id="config-br-dip-atr-mult" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.3">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Pair spacing (hours)</label>
+                                <input type="number" step="0.5" min="0" id="config-br-spacing-hours" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="2">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Max sleeve slots</label>
+                                <input type="number" step="1" min="1" max="10" id="config-br-max-slots" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Inv Mult</label>
+                                <input type="number" step="0.1" min="0.1" id="config-br-invest-mult" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Lev Mult</label>
+                                <input type="number" step="0.05" min="0.05" id="config-br-lev-mult" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Base SL %</label>
+                                <input type="number" step="0.05" max="0" id="config-br-base-sl" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-0.7">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">BE arm at peak ≥ %</label>
+                                <input type="number" step="0.1" min="0" id="config-br-be-arm" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">BE lock %</label>
+                                <input type="number" step="0.05" id="config-br-be-lock" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.2">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Trail (× entry ATR)</label>
+                                <input type="number" step="0.25" min="0.5" id="config-br-trail-atr-mult" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="2.0">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- ===== BULL-RUN SLEEVE BOX END ===== -->
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Regime Change Exit</label>
@@ -8526,6 +8633,28 @@
                     }
                 }
 
+                // 🌊 Aug 21 gate 57: Bull-Run Monitor chip
+                const _brChip = document.getElementById('bullrun-chip');
+                if (_brChip) {
+                    const _br = data.bullrun;
+                    if (_br && _br.state) {
+                        const _vals = `r72 ${_br.r72 != null ? _br.r72 : '—'}% · above ${_br.above != null ? _br.above : '—'}% · eff ${_br.eff != null ? _br.eff : '—'} · r6h ${_br.r6 != null ? _br.r6 : '—'}%${_br.latch ? ' · LATCH FIRED' : ''}${_br.enabled ? '' : ' · sleeve OFF'}`;
+                        _brChip.title = `🌊 Bull-Run Monitor (gate 57): ${_vals}`;
+                        if (_br.state === 'GREEN') {
+                            _brChip.textContent = `🌊 GREEN${_br.green_since ? ' · ' + _br.green_since.slice(5) : ''}`;
+                            _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 uppercase tracking-wide';
+                        } else if (_br.state === 'AMBER') {
+                            _brChip.textContent = '🌊 AMBER';
+                            _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 uppercase tracking-wide';
+                        } else {
+                            _brChip.textContent = '🌊 dark';
+                            _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide';
+                        }
+                    } else {
+                        _brChip.textContent = '🌊 --';
+                    }
+                }
+
                 // BTC EMA20 slope display
                 const slopeEl = document.getElementById('btc-ema20-slope');
                 const slope = data.btc_ema20_slope_pct;
@@ -10151,6 +10280,20 @@
                 lines.push('  LOCKED REVERT: >=3 of first 10 eligible excursions close <=-1.9 OR cohort net<0 at N>=8 => threshold -> 0 (gate 53)');
             }
 
+            if ((perf.bullrun_rows && perf.bullrun_rows.length > 0) || perf.bullrun_monitor) {
+                lines.push(`\n${hr2}`);
+                lines.push('## \u{1F30A} Gate 57 — Bull-Run Sleeve (GREEN-gated dip-reclaim LONGs — Aug 21)\n');
+                const _bm = perf.bullrun_monitor;
+                if (_bm) lines.push(`  Monitor: ${_bm.state}${_bm.green_since ? ` since ${_bm.green_since}` : ''}  r72=${_bm.r72 != null ? _bm.r72 : '-'}%  above=${_bm.above != null ? _bm.above : '-'}%  eff=${_bm.eff != null ? _bm.eff : '-'}  r6h=${_bm.r6 != null ? _bm.r6 : '-'}%  latch=${_bm.latch ? 'FIRED' : 'clear'}  sleeve=${_bm.enabled ? 'ON' : 'OFF'}`);
+                if (perf.bullrun_rows && perf.bullrun_rows.length > 0) {
+                    lines.push(`${'Cohort'.padEnd(46)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Dates'.padStart(6)}  Gate verdict`);
+                    for (const r of perf.bullrun_rows) {
+                        lines.push(`${(r.row||'').padEnd(46)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
+                    }
+                }
+                lines.push('  KILL BAR (manual): first 10 fills WR<=45% OR net<0 => sleeve toggle OFF (gate 57)');
+            }
+
             if (perf.spike_fires && perf.spike_fires.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## 🚀 Spike Fires (per-fire — CHASE + FADE, both eras; Jul 27 full ship)\n');
@@ -10728,6 +10871,10 @@
                 const _qt = cfg?.thresholds?.momentum_long_sl_atr_threshold ?? 0;
                 const _qs = cfg?.thresholds?.momentum_long_sl_quiet_pct ?? 0;
                 lines.push(`  🛡 Quiet-Pair SL (gate 53): ${(_qt > 0 && _qs < 0) ? `ML LONG entry ATR < ${_qt}% → SL ${_qs}% (hot pairs keep base/ATR chain)` : 'OFF'}`);
+            }
+            {
+                const _bt = cfg?.thresholds || {};
+                lines.push(`  🌊 Bull-Run Sleeve (gate 57): ${_bt.bullrun_sleeve_enabled !== false ? `ON — GREEN(r72≥${_bt.bullrun_green_r72_on ?? 5}/${_bt.bullrun_green_r72_off ?? 4} ∧ above≥${_bt.bullrun_green_above_on ?? 56}/${_bt.bullrun_green_above_off ?? 53} ∧ eff≥${_bt.bullrun_green_eff_on ?? 0.10}/${_bt.bullrun_green_eff_off ?? 0.08}) latch ${_bt.bullrun_latch_r6h ?? -3}%/1hEMA50 · top-${_bt.bullrun_universe_size ?? 10} COIN · dip ${_bt.bullrun_dip_atr_mult ?? 0.3}×ATR · ${_bt.bullrun_max_slots ?? 3} slots · Inv ${_bt.bullrun_invest_mult ?? 1}x/Lev ${_bt.bullrun_lev_mult ?? 1}x · SL ${_bt.bullrun_base_sl_pct ?? -0.7}/ATR · BE ${_bt.bullrun_be_arm_pct ?? 1.0}→${_bt.bullrun_be_lock_pct ?? 0.2} · trail ${_bt.bullrun_trail_atr_mult ?? 2.0}×ATR` : 'OFF'}`);
             }
 
             if (changelog.length > 0) {
@@ -12456,6 +12603,20 @@
                     lines.push(`${(r.row||'').padEnd(46)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
                 }
                 lines.push('  LOCKED REVERT: >=3 of first 10 eligible excursions close <=-1.9 OR cohort net<0 at N>=8 => threshold -> 0 (gate 53)');
+            }
+
+            if ((perf.bullrun_rows && perf.bullrun_rows.length > 0) || perf.bullrun_monitor) {
+                lines.push(`\n${hr2}`);
+                lines.push('## \u{1F30A} Gate 57 — Bull-Run Sleeve (GREEN-gated dip-reclaim LONGs — Aug 21)\n');
+                const _bm2 = perf.bullrun_monitor;
+                if (_bm2) lines.push(`  Monitor: ${_bm2.state}${_bm2.green_since ? ` since ${_bm2.green_since}` : ''}  r72=${_bm2.r72 != null ? _bm2.r72 : '-'}%  above=${_bm2.above != null ? _bm2.above : '-'}%  eff=${_bm2.eff != null ? _bm2.eff : '-'}  r6h=${_bm2.r6 != null ? _bm2.r6 : '-'}%  latch=${_bm2.latch ? 'FIRED' : 'clear'}  sleeve=${_bm2.enabled ? 'ON' : 'OFF'}`);
+                if (perf.bullrun_rows && perf.bullrun_rows.length > 0) {
+                    lines.push(`${'Cohort'.padEnd(46)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Dates'.padStart(6)}  Gate verdict`);
+                    for (const r of perf.bullrun_rows) {
+                        lines.push(`${(r.row||'').padEnd(46)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
+                    }
+                }
+                lines.push('  KILL BAR (manual): first 10 fills WR<=45% OR net<0 => sleeve toggle OFF (gate 57)');
             }
 
             if (perf.spike_fires && perf.spike_fires.length > 0) {
@@ -18140,6 +18301,32 @@
                         }).join('');
                     } else { qslBody.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No fills yet</td></tr>'; }
                 }
+                // 🌊 Gate 57 — Bull-Run Sleeve table + monitor line (Aug 21)
+                const brBody = document.getElementById('bullrun-body');
+                if (brBody) {
+                    const brMonLine = document.getElementById('bullrun-monitor-line');
+                    if (brMonLine && data.bullrun_monitor) {
+                        const _bm = data.bullrun_monitor;
+                        const _stCls = _bm.state === 'GREEN' ? 'text-emerald-400 font-bold' : (_bm.state === 'AMBER' ? 'text-amber-400 font-bold' : 'text-gray-500');
+                        brMonLine.innerHTML = `Monitor: <span class="${_stCls}">${_bm.state}</span>${_bm.green_since ? ` since ${_bm.green_since}` : ''} · r72 ${_bm.r72 != null ? _bm.r72 : '—'}% · above ${_bm.above != null ? _bm.above : '—'}% · eff ${_bm.eff != null ? _bm.eff : '—'} · r6h ${_bm.r6 != null ? _bm.r6 : '—'}% · latch ${_bm.latch ? '<span class="text-red-400">FIRED</span>' : 'clear'} · sleeve ${_bm.enabled ? 'ON' : '<span class="text-red-400">OFF</span>'}${(_bm.flips && _bm.flips.length) ? ' · flips: ' + _bm.flips.map(f => `${f.ts} ${f.state}`).join(' → ') : ''}`;
+                    }
+                    if (data.bullrun_rows && data.bullrun_rows.length > 0) {
+                        brBody.innerHTML = data.bullrun_rows.map(r => {
+                            const tc = (r.total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const gc = (r.gate || '').startsWith('🔴') ? 'text-red-400 font-semibold' : 'text-gray-400';
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 text-cyan-300 font-medium">${r.row}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.n}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.wr != null ? r.wr.toFixed(1) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc}">${r.avg_pct != null ? ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc} font-bold">$${(r.total_usd || 0).toFixed(2)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.avg_peak != null ? ((r.avg_peak >= 0 ? '+' : '') + r.avg_peak.toFixed(2)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.dates}</td>
+                                <td class="px-2 py-1.5 ${gc}">${r.gate || ''}</td>
+                            </tr>`;
+                        }).join('');
+                    } else { brBody.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No sleeve fills yet</td></tr>'; }
+                }
                 // 🚀 Spike Fires per-fire table (Jul 27 full ship)
                 const spfBody = document.getElementById('spike-fires-body');
                 if (spfBody) {
@@ -20335,6 +20522,35 @@
                   if (_e) _e.value = config.thresholds.momentum_long_sl_atr_threshold !== undefined ? config.thresholds.momentum_long_sl_atr_threshold : 0.45; }
                 { const _e = document.getElementById('config-ml-quiet-sl-pct');
                   if (_e) _e.value = config.thresholds.momentum_long_sl_quiet_pct !== undefined ? config.thresholds.momentum_long_sl_quiet_pct : -2.0; }
+                // 🌊 Aug 21 gate 57: Bull-Run Sleeve box
+                { const _e = document.getElementById('config-br-enabled');
+                  if (_e) _e.checked = config.thresholds.bullrun_sleeve_enabled !== false; }
+                const _brLoad = [
+                    ['config-br-r72-on', 'bullrun_green_r72_on', 5.0],
+                    ['config-br-r72-off', 'bullrun_green_r72_off', 4.0],
+                    ['config-br-above-on', 'bullrun_green_above_on', 56.0],
+                    ['config-br-above-off', 'bullrun_green_above_off', 53.0],
+                    ['config-br-eff-on', 'bullrun_green_eff_on', 0.10],
+                    ['config-br-eff-off', 'bullrun_green_eff_off', 0.08],
+                    ['config-br-latch-r6h', 'bullrun_latch_r6h', -3.0],
+                    ['config-br-amber-r24', 'bullrun_amber_r24', 6.0],
+                    ['config-br-amber-above', 'bullrun_amber_above', 65.0],
+                    ['config-br-amber-eff', 'bullrun_amber_eff', 0.12],
+                    ['config-br-universe-size', 'bullrun_universe_size', 10],
+                    ['config-br-dip-atr-mult', 'bullrun_dip_atr_mult', 0.3],
+                    ['config-br-spacing-hours', 'bullrun_pair_spacing_hours', 2.0],
+                    ['config-br-max-slots', 'bullrun_max_slots', 3],
+                    ['config-br-invest-mult', 'bullrun_invest_mult', 1.0],
+                    ['config-br-lev-mult', 'bullrun_lev_mult', 1.0],
+                    ['config-br-base-sl', 'bullrun_base_sl_pct', -0.7],
+                    ['config-br-be-arm', 'bullrun_be_arm_pct', 1.0],
+                    ['config-br-be-lock', 'bullrun_be_lock_pct', 0.2],
+                    ['config-br-trail-atr-mult', 'bullrun_trail_atr_mult', 2.0],
+                ];
+                for (const [_id, _key, _def] of _brLoad) {
+                    const _e = document.getElementById(_id);
+                    if (_e) _e.value = config.thresholds[_key] !== undefined ? config.thresholds[_key] : _def;
+                }
                 const _slAtrFloorInput = document.getElementById('config-sl-atr-widen-floor-pct');
                 if (_slAtrFloorInput) {
                     _slAtrFloorInput.value = config.thresholds.sl_atr_widen_floor_pct !== undefined ? config.thresholds.sl_atr_widen_floor_pct : -1.20;
@@ -21683,6 +21899,28 @@
                     sl_atr_widen_floor_pct: safeFloat(document.getElementById('config-sl-atr-widen-floor-pct')?.value || -1.20),
                     momentum_long_sl_atr_threshold: safeFloat(document.getElementById('config-ml-quiet-sl-atr-thresh')?.value ?? 0.45),
                     momentum_long_sl_quiet_pct: safeFloat(document.getElementById('config-ml-quiet-sl-pct')?.value ?? -2.0),
+                    // 🌊 Aug 21 gate 57: Bull-Run Sleeve
+                    bullrun_sleeve_enabled: document.getElementById('config-br-enabled')?.checked ?? true,
+                    bullrun_green_r72_on: safeFloat(document.getElementById('config-br-r72-on')?.value ?? 5.0),
+                    bullrun_green_r72_off: safeFloat(document.getElementById('config-br-r72-off')?.value ?? 4.0),
+                    bullrun_green_above_on: safeFloat(document.getElementById('config-br-above-on')?.value ?? 56.0),
+                    bullrun_green_above_off: safeFloat(document.getElementById('config-br-above-off')?.value ?? 53.0),
+                    bullrun_green_eff_on: safeFloat(document.getElementById('config-br-eff-on')?.value ?? 0.10),
+                    bullrun_green_eff_off: safeFloat(document.getElementById('config-br-eff-off')?.value ?? 0.08),
+                    bullrun_latch_r6h: safeFloat(document.getElementById('config-br-latch-r6h')?.value ?? -3.0),
+                    bullrun_amber_r24: safeFloat(document.getElementById('config-br-amber-r24')?.value ?? 6.0),
+                    bullrun_amber_above: safeFloat(document.getElementById('config-br-amber-above')?.value ?? 65.0),
+                    bullrun_amber_eff: safeFloat(document.getElementById('config-br-amber-eff')?.value ?? 0.12),
+                    bullrun_universe_size: parseInt(document.getElementById('config-br-universe-size')?.value || 10) || 10,
+                    bullrun_dip_atr_mult: safeFloat(document.getElementById('config-br-dip-atr-mult')?.value ?? 0.3),
+                    bullrun_pair_spacing_hours: safeFloat(document.getElementById('config-br-spacing-hours')?.value ?? 2.0),
+                    bullrun_max_slots: parseInt(document.getElementById('config-br-max-slots')?.value || 3) || 3,
+                    bullrun_invest_mult: safeFloat(document.getElementById('config-br-invest-mult')?.value ?? 1.0),
+                    bullrun_lev_mult: safeFloat(document.getElementById('config-br-lev-mult')?.value ?? 1.0),
+                    bullrun_base_sl_pct: safeFloat(document.getElementById('config-br-base-sl')?.value ?? -0.7),
+                    bullrun_be_arm_pct: safeFloat(document.getElementById('config-br-be-arm')?.value ?? 1.0),
+                    bullrun_be_lock_pct: safeFloat(document.getElementById('config-br-be-lock')?.value ?? 0.2),
+                    bullrun_trail_atr_mult: safeFloat(document.getElementById('config-br-trail-atr-mult')?.value ?? 2.0),
                     trailing_pullback_confirmation_seconds: parseInt(document.getElementById('config-trailing-pullback-confirmation-seconds')?.value || 15) || 0,
                     trailing_early_arm_threshold: safeFloat(document.getElementById('config-trailing-early-arm-threshold')?.value || 0.30),
                     trailing_early_arm_pullback: safeFloat(document.getElementById('config-trailing-early-arm-pullback')?.value || 0.10),

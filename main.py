@@ -532,6 +532,17 @@ async def get_status(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.debug(f"[STATUS] gross gauge skipped: {e}")
         _status["gross_enabled"] = False
+    # 🌊 Aug 21 gate 57: Bull-Run Monitor state for the header chip (in-memory engine global).
+    try:
+        from services.trading_engine import _bullrun_monitor as _brm
+        _status["bullrun"] = {
+            "state": _brm.get("state"), "green_since": _brm.get("green_since"),
+            "r72": _brm.get("r72"), "above": _brm.get("above"), "eff": _brm.get("eff"),
+            "r6": _brm.get("r6"), "latch": _brm.get("latch"),
+            "enabled": bool(getattr(config.trading_config.thresholds, 'bullrun_sleeve_enabled', False)),
+        }
+    except Exception as e:
+        logger.debug(f"[STATUS] bullrun chip skipped: {e}")
     return _status
 
 
@@ -1972,6 +1983,8 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "graduation_doors": [],
             "gate51_bands": [],
             "quiet_sl_rows": [],
+            "bullrun_rows": [],
+            "bullrun_monitor": None,
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -2447,6 +2460,23 @@ def _compute_pnl_distribution_stats(orders):
     }
 
 
+def _bullrun_monitor_payload():
+    """🌊 Aug 21 gate 57: monitor state + flip history for the Bull-Run table header (in-memory
+    engine global — flips reset on redeploy, but every flip is also logger.critical'd so the
+    log stream is the durable record; sleeve P&L rows come from the DB and persist)."""
+    try:
+        from services.trading_engine import _bullrun_monitor as _brm
+        return {
+            "state": _brm.get("state"), "green_since": _brm.get("green_since"),
+            "r72": _brm.get("r72"), "above": _brm.get("above"), "eff": _brm.get("eff"),
+            "r6": _brm.get("r6"), "latch": _brm.get("latch"),
+            "flips": list(_brm.get("flips") or [])[-12:],
+            "enabled": bool(getattr(config.trading_config.thresholds, 'bullrun_sleeve_enabled', False)),
+        }
+    except Exception:
+        return None
+
+
 def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
     """Per-sleeve performance rollup (Jul 1, 2026, operator-requested) — the exact split used in
     every batch analysis: MOM-long / MOM-short / FLIP-short (+ Total). Sleeve is derived from
@@ -2455,6 +2485,8 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
     the canonical cross-batch metric) · Net $ (as-sized) · PF (gross wins/|gross losses|) ·
     Worst % (fat-tail visibility)."""
     def sleeve(o):
+        if (o.entry_strategy or '') == 'BULLRUN_LONG':
+            return 'BullRun-Long'  # Aug 21 gate 57: own row — must NOT contaminate Mom-Long
         if 'FLIP' in (o.entry_strategy or ''):
             return 'Flip-Short' if o.direction == 'SHORT' else 'Flip-Long'
         return 'Mom-Long' if o.direction == 'LONG' else 'Mom-Short'
@@ -2489,7 +2521,7 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
                         if start_balance and start_balance > 0 and window_days and window_days >= 0.5
                         and sum(o.pnl or 0 for o in g) / start_balance > -1 else None),
         }
-    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long']
+    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long']
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
     all_closed = [o for o in orders if o.pnl_percentage is not None]
     total = stats('Total', all_closed)
@@ -2538,7 +2570,7 @@ def _compute_strategy_performance(orders, start_balance=None, window_days=None):
         }
 
     _pref = ['MOMENTUM', 'FAN_RATIO_GATE', 'BULL_LONG', 'PAIR_RSI_OB', 'BOUNCE_LONG',
-             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE']
+             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG']
 
     def _rank(label):
         head = label.split(' · ')[0]
@@ -3875,6 +3907,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "graduation_doors": [],
             "gate51_bands": [],
             "quiet_sl_rows": [],
+            "bullrun_rows": [],
+            "bullrun_monitor": None,
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -6697,6 +6731,68 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         graduation_doors = []
         graduation_doors_overlap = None
 
+    # 🌊 Aug 21 gate 57: Bull-Run sleeve scoreboard — ALL row + per-exit-reason rows, with the
+    # locked kill bar tracked live on the first 10 fills (manual toggle-off; no auto-revert).
+    bullrun_rows = []
+    try:
+        _br_orders = [o for o in orders if (o.entry_strategy or '') == 'BULLRUN_LONG' and o.pnl_percentage is not None]
+        if _br_orders:
+            def _br_stats(g):
+                _n = len(g)
+                _pks = [o.peak_pnl for o in g if o.peak_pnl is not None]
+                return {
+                    "n": _n,
+                    "wr": round(100.0 * sum(1 for o in g if (o.pnl_percentage or 0) > 0) / _n, 1) if _n else 0,
+                    "avg_pct": round(sum(o.pnl_percentage or 0 for o in g) / _n, 3) if _n else 0,
+                    "total_usd": round(sum(o.pnl or 0 for o in g), 2),
+                    "avg_peak": round(sum(_pks) / len(_pks), 3) if _pks else None,
+                    "dates": len({o.opened_at.date() for o in g if o.opened_at}),
+                }
+            # Kill bar reads the LIFETIME first 10 (unfiltered query — the dashboard's
+            # regime/window filters must never fake or hide the bar; resets still censor,
+            # per the standing tally rule: adjudication N = master pool + live).
+            try:
+                _br_life = (await db.execute(
+                    select(Order).where(and_(
+                        Order.entry_strategy == 'BULLRUN_LONG', Order.status == 'CLOSED',
+                        Order.is_paper == trading_engine.is_paper_mode,
+                    )).order_by(Order.opened_at.asc()).limit(10)
+                )).scalars().all()
+            except Exception:
+                _br_life = []
+            _br_first10 = _br_life if _br_life else sorted(_br_orders, key=lambda o: (o.opened_at or datetime.min))[:10]
+            _f_n = len(_br_first10)
+            _f_wr = 100.0 * sum(1 for o in _br_first10 if (o.pnl_percentage or 0) > 0) / _f_n if _f_n else 0
+            _f_usd = sum(o.pnl or 0 for o in _br_first10)
+            if _f_n >= 10 and (_f_wr <= 45.0 or _f_usd < 0):
+                _br_gate = f"🔴 KILL BAR HIT — first 10: WR {_f_wr:.0f}% · ${_f_usd:+.0f} (bar: ≤45% ∨ Σ<0) → toggle OFF (manual)"
+            else:
+                _br_gate = f"kill bar: first {_f_n}/10 WR {_f_wr:.0f}% · ${_f_usd:+.0f} (trip: ≤45% ∨ Σ<0 at 10)"
+            bullrun_rows.append({"row": "ALL sleeve fills", **_br_stats(_br_orders), "gate": _br_gate})
+            _br_by_reason = {}
+            for o in _br_orders:
+                _br_by_reason.setdefault(o.close_reason or "?", []).append(o)
+            for _r in sorted(_br_by_reason.keys()):
+                bullrun_rows.append({"row": f"  {_r}", **_br_stats(_br_by_reason[_r]), "gate": ""})
+            # by-range breakdowns (operator-requested, Aug-21): fills bucketed by the Monitor
+            # readings stamped at entry (entry_br_* columns) — the episode-review optimization
+            # surface for GREEN-threshold recalibration. Rows appear once fills carry the columns.
+            _br_ranges = [
+                ("by r72 @entry", 'entry_br_r72', [(-99, 8, "+5–8%"), (8, 12, "+8–12%"), (12, 999, ">+12%")]),
+                ("by above% @entry", 'entry_br_above', [(0, 60, "56–60"), (60, 65, "60–65"), (65, 101, ">65")]),
+                ("by eff @entry", 'entry_br_eff', [(0, 0.14, "0.10–0.14"), (0.14, 0.18, "0.14–0.18"), (0.18, 9, ">0.18")]),
+            ]
+            for _lbl, _col, _bks in _br_ranges:
+                _vals = [o for o in _br_orders if getattr(o, _col, None) is not None]
+                if not _vals:
+                    continue
+                for _lo, _hi, _bl in _bks:
+                    _g = [o for o in _vals if _lo <= getattr(o, _col) < _hi]
+                    if _g:
+                        bullrun_rows.append({"row": f"  {_lbl} {_bl}", **_br_stats(_g), "gate": ""})
+    except Exception as _br_tbl_err:
+        logger.debug(f"[PERF] bullrun table skipped: {_br_tbl_err}")
+
     # Stop Loss Deep Dive + Winning Trades Drawdown
     stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
     winning_trades_drawdown = []
@@ -6734,7 +6830,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "EMA13_CROSS_EXIT",
             "EMA_STACK_CROSS_EXIT",
         ]
-        _cr_match = lambda cr: any(cr.startswith(p) or cr.startswith(f"FL_{p}") or cr.startswith(f"FLIP_{p}") for p in _sl_reason_prefixes)
+        _cr_match = lambda cr: any(cr.startswith(p) or cr.startswith(f"FL_{p}") or cr.startswith(f"FLIP_{p}") or cr.startswith(f"BR_{p}") for p in _sl_reason_prefixes)  # Aug 21 gate 57: BR_-prefixed sleeve stops ride the deep dive
         sl_orders = [o for o in orders if o.close_reason and (o.pnl or 0) <= 0 and _cr_match(o.close_reason)]
         
         be_active_trades = []
@@ -8061,6 +8157,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "graduation_doors": graduation_doors,
         "gate51_bands": gate51_bands,
         "quiet_sl_rows": quiet_sl_rows,
+        "bullrun_rows": bullrun_rows,
+        "bullrun_monitor": _bullrun_monitor_payload(),
         "graduation_doors_overlap": graduation_doors_overlap,
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "flagged_exits": flagged_exits,

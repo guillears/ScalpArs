@@ -896,6 +896,41 @@ class SignalThresholds(BaseModel):
     # guarantee. threshold 0 = OFF (instant revert). 🔴 LIVE-CUTOVER: OFF at live start.
     momentum_long_sl_atr_threshold: float = 0.45  # entry ATR% below this = quiet class
     momentum_long_sl_quiet_pct: float = -2.0      # quiet-class hard SL (negative)
+    # 🌊 Aug-21 2026: BULL-RUN CONTINUATION SLEEVE (gate 57). Regime-gated dip-buy LONGs on the
+    # top-N COIN pairs, active ONLY while the Bull-Run Monitor is GREEN. Derivation (Aug 19-21
+    # +19% episode + 8.7-month false-positive scan, 6,169 windows): the regime signature is
+    # trend EFFICIENCY (|net|/Σ|moves| ≥0.10) — every historical trap-rally (Dec-3/4, Feb-7/8,
+    # Feb-26, Mar-4/5) peaked at eff 0.065-0.082 despite r72 up to +12.9%; a real accumulation
+    # run travels orderly. Composite ON(r72≥5 ∧ above≥56 ∧ eff≥0.10) fired exactly 3× in 8.7
+    # months (Jan-5 4h −0.29%, Jun-15 6h −1.36%, Aug-19 41h+ +11.92%). Sleeve replay on the
+    # founding episode (COIN top-10, GREEN-gated, 3 slots, wide exits, fees): N=76 · 67% WR ·
+    # +$1,443 (haircut expectation ≈ +$700-900/72h GREEN). Live alt exits REFUTED for this
+    # class (BE 0.4→0.1 + 1×ATR: avg trade +0.046% < 0.09% fee toll → −$2,003 same entries);
+    # arm sweep monotone 0.4→1.5, plateau 0.8-1.2 → arm 1.0 (plateau middle, not the edge).
+    # TradFi perps (EQUITY/COMMODITY underlyingType) 40% WR −$5,043 vs COIN 66% +$7,014 —
+    # universe rides coin_underlying_only + rank ≤ size. 🔒 KILL BAR (manual, no auto): first
+    # 10 fills WR≤45% ∨ Σ<0 → toggle OFF. Sizing frozen 1×/1× until ≥2 profitable episodes.
+    bullrun_sleeve_enabled: bool = True    # master toggle (kill switch — entries only; monitor keeps computing)
+    bullrun_green_r72_on: float = 5.0      # GREEN turn-ON: BTC 72h return ≥ this %
+    bullrun_green_r72_off: float = 4.0     # GREEN stay-ON floor (Schmitt band)
+    bullrun_green_above_on: float = 56.0   # GREEN turn-ON: % of 5m bars above EMA20 ≥ this
+    bullrun_green_above_off: float = 53.0  # GREEN stay-ON floor
+    bullrun_green_eff_on: float = 0.10     # GREEN turn-ON: trend efficiency ≥ this (THE load-bearing leg)
+    bullrun_green_eff_off: float = 0.08    # GREEN stay-ON floor
+    bullrun_latch_r6h: float = -3.0        # crash-latch: BTC 6h return ≤ this → instant OFF (also price < 1h EMA50)
+    bullrun_amber_r24: float = 6.0         # AMBER alert (24h tight variant) — display/log only, never arms
+    bullrun_amber_above: float = 65.0
+    bullrun_amber_eff: float = 0.12
+    bullrun_universe_size: int = 10        # sleeve trades scan-rank ≤ N (COIN-only universe; rank 11-20 refuted: 50% WR −$1,933)
+    bullrun_dip_atr_mult: float = 0.3      # entry: dip ≥ N×ATR(14,5m) below 5m EMA20, then close reclaims
+    bullrun_pair_spacing_hours: float = 2.0  # min hours between sleeve fires on the same pair
+    bullrun_max_slots: int = 3             # sleeve concurrency cap (episode-2 review item; global max_open still applies)
+    bullrun_invest_mult: float = 1.0       # Inv Mult (same cell plumbing as other sleeves)
+    bullrun_lev_mult: float = 1.0          # Lev Mult
+    bullrun_base_sl_pct: float = -0.7      # sleeve base SL; widened by the existing sl_atr_multiplier/floor chain
+    bullrun_be_arm_pct: float = 1.0        # BE arms at peak ≥ this (must clear ~2×ATR dip-entry noise band)
+    bullrun_be_lock_pct: float = 0.2       # BE floor once armed
+    bullrun_trail_atr_mult: float = 2.0    # trail giveback = N × entry ATR% from peak (plateau 2.0-2.5)
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

@@ -227,6 +227,7 @@ class Order(Base):
     entry_br_r72 = Column(Float, nullable=True)
     entry_br_above = Column(Float, nullable=True)
     entry_br_eff = Column(Float, nullable=True)
+    entry_br_off24h = Column(Float, nullable=True)   # Aug 21 (11): BTC % below its 24h high at entry — the pullback-phase variable
 
     # Jul 27 🚀 SPIKE full ship — option-D L2 state (SPIKE_CHASE longs).
     # spike_rsi_max = running maximum of 5m RSI(12) since entry (the RSI-cool exit
@@ -990,6 +991,7 @@ class MonitorPeriod(Base):
     blocked_spacing = Column(Integer, default=0)                 # sleeve candidates refused in this period, by rule
     blocked_slots = Column(Integer, default=0)
     blocked_ema50 = Column(Integer, default=0)
+    blocked_off24h = Column(Integer, default=0)                  # Aug 21 (11): refused by the BTC off-24h-high gate
 
 
 class Investor(Base):

@@ -95,7 +95,7 @@ _market_bear_pct: float = 0.0
 # (≤30 min) — a stale monitor is NOT GREEN (fail-safe).
 _bullrun_monitor: Dict = {
     'state': 'DARK', 'green': False, 'amber': False, 'latch': False,
-    'r72': None, 'above': None, 'eff': None, 'r6': None, 'r24': None,
+    'r72': None, 'above': None, 'eff': None, 'r6': None, 'r24': None, 'off24h': None,
     'green_since': None, 'updated_at': 0.0, 'flips': [],
 }
 _br_dip_state: Dict[str, Dict] = {}      # pair -> {'dipped': bool, 'last_bar_ts': int}
@@ -4238,7 +4238,7 @@ class TradingEngine:
                         _bullrun_monitor['period_id'] = cur.id
                         _bullrun_monitor['resumed'] = True
                         _bullrun_monitor['green_since'] = cur.started_at.strftime('%Y-%m-%d %H:%M') if new_state == 'GREEN' else None
-                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50')):
+                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h')):
                             _bullrun_monitor[_k] = int(getattr(cur, _col, 0) or 0)
                         logger.info(f"[BULLRUN_MONITOR] resumed open {cur.state} period #{cur.id} (since {cur.started_at:%Y-%m-%d %H:%M} UTC) after restart")
                     else:
@@ -4255,6 +4255,7 @@ class TradingEngine:
                 cur.blocked_spacing = int(_bullrun_monitor.get('blk_spacing', 0) or 0)
                 cur.blocked_slots = int(_bullrun_monitor.get('blk_slots', 0) or 0)
                 cur.blocked_ema50 = int(_bullrun_monitor.get('blk_ema50', 0) or 0)
+                cur.blocked_off24h = int(_bullrun_monitor.get('blk_off24h', 0) or 0)
                 cur.last_update = now
                 # breadth backfill: the first compute after boot can precede the breadth scan (0/0)
                 _gb = globals()
@@ -4270,6 +4271,7 @@ class TradingEngine:
                     cur.blocked_spacing = int(_bullrun_monitor.get('blk_spacing', 0) or 0)
                     cur.blocked_slots = int(_bullrun_monitor.get('blk_slots', 0) or 0)
                     cur.blocked_ema50 = int(_bullrun_monitor.get('blk_ema50', 0) or 0)
+                    cur.blocked_off24h = int(_bullrun_monitor.get('blk_off24h', 0) or 0)
                     if cur.state == 'AMBER' and new_state == 'GREEN':
                         amber_lead = int((now - cur.started_at).total_seconds() / 60)
                 _g = globals()
@@ -4296,12 +4298,12 @@ class TradingEngine:
                     r72_peak=rd['r72'], eff_peak=rd['eff'], r6_min=rd['r6'],
                     btc_start=rd['px'], btc_end=rd['px'],
                     bull_pct_start=_g.get('_market_bull_pct'), bear_pct_start=_g.get('_market_bear_pct'),
-                    amber_lead_min=amber_lead, blocked_spacing=0, blocked_slots=0, blocked_ema50=0,
+                    amber_lead_min=amber_lead, blocked_spacing=0, blocked_slots=0, blocked_ema50=0, blocked_off24h=0,
                 )
                 db.add(newp)
                 await db.flush()
                 _bullrun_monitor['period_id'] = newp.id
-                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50'):
+                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50', 'blk_off24h'):
                     _bullrun_monitor[_k] = 0
             await db.commit()
         except Exception as e:
@@ -4339,6 +4341,7 @@ class TradingEngine:
             diffs = sum(abs(win[i] - win[i - 1]) for i in range(1, W))
             eff = (abs(win[-1] - win[0]) / diffs) if diffs > 0 else 0.0
             r6 = (win[-1] / win[-72] - 1) * 100.0
+            off24h = (win[-1] / max(float(r[2]) for r in k5[-289:-1]) - 1) * 100.0  # % below the 24h HIGH (pullback-phase gate)
             W24 = 288
             w24 = closes[-W24:]
             r24 = (w24[-1] / w24[0] - 1) * 100.0
@@ -4415,7 +4418,7 @@ class TradingEngine:
             _bullrun_monitor.update({
                 'state': state, 'green': green, 'amber': amber, 'latch': latch,
                 'r72': round(r72, 2), 'above': round(above, 1), 'eff': round(eff, 3),
-                'r6': round(r6, 2), 'r24': round(r24, 2), 'updated_at': _now,
+                'r6': round(r6, 2), 'r24': round(r24, 2), 'off24h': round(off24h, 2), 'updated_at': _now,
             })
         except Exception as e:
             logger.error(f"[BULLRUN_MONITOR] update failed: {e}")
@@ -4476,7 +4479,39 @@ class TradingEngine:
                 return
             if closes[-1] <= emas[-1]:
                 return  # dip marked, reclaim not yet — wait
+            # Aug-21 (11) PULLBACK-PHASE GATE (review: placed AFTER dip→reclaim so it counts real
+            # candidates, before any DB work): no entry while BTC sits more than N% below its 24h
+            # high. A refused dip is CONSUMED (st['dipped']=False) — when the gate lifts, the next
+            # entry needs a fresh dip→reclaim with BTC back near its highs (no replay evidence for
+            # firing instantly on gate-lift). 0 = off.
+            _off_max = float(getattr(th, 'bullrun_btc_off24h_max', 0.0) or 0.0)
+            _off_now = _bullrun_monitor.get('off24h')
+            if _off_max < 0 and _off_now is not None and float(_off_now) <= _off_max:
+                if st.get('blk_key') != ('24h', st.get('dip_ts')):
+                    st['blk_key'] = ('24h', st.get('dip_ts'))
+                    _bullrun_monitor['blk_off24h'] = _bullrun_monitor.get('blk_off24h', 0) + 1
+                    self._record_filter_block("BULLRUN_BTC_OFF24H", "LONG")
+                st['dipped'] = False
+                return
             sp = float(getattr(th, 'bullrun_pair_spacing_hours', 2.0) or 2.0) * 3600.0
+            # Restart-proof spacing (Aug-21 live catch: ONG re-entered 11 min after its stop because a
+            # deploy wiped the in-memory stamp) — the DB is the source of truth: latest BULLRUN_LONG
+            # order on this pair, opened_at OR closed_at, whichever is later.
+            try:
+                if pair in _br_last_fire:
+                    raise StopIteration  # memory already seeded (open+close both write it) — one DB lookup per pair per process life
+                _last_o = (await db.execute(
+                    select(Order).where(and_(Order.pair == pair, Order.entry_strategy == 'BULLRUN_LONG', Order.is_paper == self.is_paper_mode))
+                    .order_by(Order.opened_at.desc()).limit(1)
+                )).scalar_one_or_none()
+                if _last_o is not None:
+                    _ts = max([t for t in (_last_o.opened_at, _last_o.closed_at) if t is not None]).replace(tzinfo=None)
+                    _db_epoch = (_ts - datetime(1970, 1, 1)).total_seconds()
+                    _br_last_fire[pair] = max(_br_last_fire.get(pair, 0), _db_epoch)
+            except StopIteration:
+                pass
+            except Exception as _sp_err:
+                logger.warning(f"[BULLRUN_LONG] {pair}: DB spacing lookup failed ({_sp_err}) — using in-memory stamp")
             if _now - _br_last_fire.get(pair, 0) < sp:
                 if st.get('blk_key') != ('sp', st.get('dip_ts')):  # review: count CANDIDATES, not scan cycles
                     st['blk_key'] = ('sp', st.get('dip_ts'))
@@ -4543,6 +4578,7 @@ class TradingEngine:
                 entry_br_r72=_bullrun_monitor.get('r72'),
                 entry_br_above=_bullrun_monitor.get('above'),
                 entry_br_eff=_bullrun_monitor.get('eff'),
+                entry_br_off24h=_bullrun_monitor.get('off24h'),
                 entry_bull_pct=_br_bull, entry_bear_pct=_br_bear,
                 entry_global_volume_ratio=_br_gvr, entry_pair_volume_ratio=_br_pvr,
                 bullrun_long=True,
@@ -5060,6 +5096,7 @@ class TradingEngine:
         entry_br_r72: float = None,
         entry_br_above: float = None,
         entry_br_eff: float = None,
+        entry_br_off24h: float = None,
         # Jun 8: gap-expanding relaxation A/B tag (prev2_only-admitted MARGINAL cohort)
         entry_gap_expand_marginal: bool = None,
         # Jun 14: Flip Entry sleeve — when set, this is a NAKED fade-the-block entry
@@ -6428,6 +6465,7 @@ class TradingEngine:
             entry_br_r72=entry_br_r72,
             entry_br_above=entry_br_above,
             entry_br_eff=entry_br_eff,
+            entry_br_off24h=entry_br_off24h,
             # Jun 8: gap-expanding relaxation A/B cohort tag
             entry_gap_expand_marginal=entry_gap_expand_marginal,
             # Jun 2: liquidity-aware sizing observability (final notional = notional_value above)

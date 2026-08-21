@@ -2473,7 +2473,7 @@ def _bullrun_monitor_payload():
         return {
             "state": _brm.get("state"), "green_since": _brm.get("green_since"),
             "r72": _brm.get("r72"), "above": _brm.get("above"), "eff": _brm.get("eff"),
-            "r6": _brm.get("r6"), "latch": _brm.get("latch"),
+            "r6": _brm.get("r6"), "latch": _brm.get("latch"), "off24h": _brm.get("off24h"),
             "flips": list(_brm.get("flips") or [])[-12:],
             "enabled": bool(getattr(config.trading_config.thresholds, 'bullrun_sleeve_enabled', False)),
         }
@@ -2523,7 +2523,7 @@ async def _bullrun_periods_rows(db, limit=50):
                 'fills': len(g), 'open_fills': len(g) - len(gc),
                 'wr': (round(100.0 * _wins / len(gc), 1) if gc else None),
                 'net': round(sum(o.pnl or 0 for o in gc), 2),
-                'blk_sp': p.blocked_spacing or 0, 'blk_sl': p.blocked_slots or 0, 'blk_ema': p.blocked_ema50 or 0,
+                'blk_sp': p.blocked_spacing or 0, 'blk_sl': p.blocked_slots or 0, 'blk_ema': p.blocked_ema50 or 0, 'blk_24h': getattr(p, 'blocked_off24h', 0) or 0,
                 'kb_n': len(_kb), 'kb_wr': (round(_kb_wr, 0) if _kb_wr is not None else None),
                 'kb_usd': round(sum(o.pnl or 0 for o in _kb), 2),
                 'ended_by': p.ended_by or ('open' if p.ended_at is None else ''),
@@ -6839,6 +6839,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 ("by r72 @entry", 'entry_br_r72', [(-99, 8, "≤+8%"), (8, 12, "+8–12%"), (12, 999, ">+12%")]),
                 ("by above% @entry", 'entry_br_above', [(0, 60, "56–60"), (60, 65, "60–65"), (65, 101, ">65")]),
                 ("by eff @entry", 'entry_br_eff', [(0, 0.14, "0.10–0.14"), (0.14, 0.18, "0.14–0.18"), (0.18, 9, ">0.18")]),
+                ("by BTC off-24h-high @entry", 'entry_br_off24h', [(-99, -2.0, "< −2.0%"), (-2.0, -0.8, "−2.0..−0.8"), (-0.8, 1, "within 0.8%")]),
             ]
             for _lbl, _col, _bks in _br_ranges:
                 _vals = [o for o in _br_orders if getattr(o, _col, None) is not None]

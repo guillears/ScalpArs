@@ -931,6 +931,15 @@ class SignalThresholds(BaseModel):
     bullrun_be_arm_pct: float = 1.0        # BE arms at peak ≥ this (must clear ~2×ATR dip-entry noise band)
     bullrun_be_lock_pct: float = 0.2       # BE floor once armed
     bullrun_trail_atr_mult: float = 2.0    # trail giveback = N × entry ATR% from peak (plateau 2.0-2.5)
+    # Aug-21 (day-1 post-mortem, DECISION_LOG 2026-08-21 (11)): PULLBACK-PHASE GATE — no sleeve entry while
+    # BTC sits more than N% below its 24h high. The one variable that separated the founding replay's
+    # winners from losers (top of 21, 3/3 per-day): off24h ≤ −1.6% → −$1,679·50% WR vs near the high
+    # +$2,985·84%. 8.7-month regime validation inside uptrends (N=1,167, 23 distinct days): fwd-6h −0.33%
+    # / P(dd≤−1%) 53-62% when >1.6% under the high vs +0.05% / 34% within 0.8%; no effect outside
+    # uptrends (= specifically the pullback phase of a run). Mechanism-aware re-sim at −2.0: +$2,649 →
+    # +$3,770, thrust days untouched. All 5 day-1 live losers fired at −2.5..−3.3%. Plateau −1.6..−2.0;
+    # −1.0 kills thrust-day entries. 0 = disabled. Stamped per fill as entry_br_off24h either way.
+    bullrun_btc_off24h_max: float = -2.0
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

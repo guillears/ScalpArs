@@ -521,6 +521,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_above FLOAT"))
                 if 'entry_br_eff' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_eff FLOAT"))
+                if 'entry_br_off24h' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_off24h FLOAT"))
                 # Jun 7: phantom EMA13 cross (records would-have-exited pnl when EMA13
                 # cross exit is DISABLED for that direction — observation CF).
                 if 'phantom_ema13_cross_pnl' not in columns:
@@ -553,6 +555,8 @@ async def init_db():
                 _mp_cols = [c['name'] for c in inspector.get_columns('monitor_periods')]
                 if 'last_update' not in _mp_cols:
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN last_update DATETIME"))
+                if 'blocked_off24h' not in _mp_cols:
+                    connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_off24h INTEGER DEFAULT 0"))
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]
                 if 'order_type' not in tx_columns:

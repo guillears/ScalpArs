@@ -4775,11 +4775,6 @@
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="250000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="70000"><span class="res-sched-resv text-gray-500 text-sm"></span></div>
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="500000"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="100000"><span class="res-sched-resv text-gray-500 text-sm"></span></div>
                                 <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="res-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="—"><span class="text-gray-500">→ trade $</span><input type="number" class="res-sched-trd w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="—"><span class="res-sched-resv text-gray-500 text-sm"></span></div>
-                                <div class="flex items-center gap-2 mt-2 pt-2 border-t border-white/5 md:col-span-2" title="Aug 21: USDT that sizing never deploys, on top of the reserve mode/schedule — keeps the BNB auto-swap fueled when the book is 100% in margin (sub-$10k books have no schedule tier). 0 = off.">
-                                    <span class="text-gray-400 text-sm">Fee reserve floor $</span>
-                                    <input type="number" id="config-fee-reserve-usd" class="w-24 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm text-center focus:outline-none focus:border-emerald-500" min="0" step="5" value="75">
-                                    <span class="text-gray-500 text-xs">never traded — BNB refuel money (≈1.5 days burn). Applies in every reserve mode.</span>
-                                </div>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Each line = "at balance ≥ $X, tradeable = $T" (reserve = balance − T, auto-grows; withdrawals pull from the reserve and it self-rebuilds). Below the first tier = no reserve (full balance trades). Active tier = highest ≤ balance. <span id="res-schedule-readout" class="text-emerald-400/80"></span></p>
                         </div>
@@ -4991,6 +4986,14 @@
                                 <input type="number" id="config-bnb-min-balance" min="0" step="5" class="flex-1 bg-white/5 border border-white/10 rounded-r-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="50">
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Jul 14: hard $ floor — trailing-burn runway collapses when idle (burn swings 10×); top-up target, emergency threshold (×0.5) and auto-sell drain all respect this floor.</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Fee Reserve Floor <span class="text-xs text-gray-500">(USDT never traded)</span></label>
+                            <div class="flex">
+                                <span class="bg-white/10 border border-white/10 border-r-0 rounded-l-lg px-4 py-2 text-gray-400">$</span>
+                                <input type="number" id="config-fee-reserve-usd" min="0" step="5" class="flex-1 bg-white/5 border border-white/10 rounded-r-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="75">
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Aug 21: USDT that position sizing never deploys (on top of the reserve mode/schedule) so the auto-swap always has fuel — sub-$10k books have no schedule tier and went 100% into margin (swap starved 17:36). ≈1.5 days of burn. 0 = off.</p>
                         </div>
                     </div>
                     <div class="mt-4 p-3 rounded-lg border border-emerald-900/40 bg-emerald-950/10">
@@ -8957,8 +8960,7 @@
                 if (trEl && rsEl && data.tradeable != null) {
                     trEl.textContent = `Tradeable: ${formatUSD(data.tradeable)}`;
                     rsEl.textContent = `Reserve: ${formatUSD(data.reserve)}`;
-                    rsEl.className = ((data.reserve_mode === 'working_capital' || data.reserve_mode === 'schedule') && data.reserve > 0)
-                        ? 'text-xs text-emerald-400' : 'text-xs text-gray-500';
+                    rsEl.className = 'text-xs text-gray-500';  // Aug 21 (operator): same font/color as the Tradeable line
                 }
                 const bnbKey = `${data.bnb_balance}|${data.bnb_balance_usd}|${_bnbBurnRate}`;
                 if (bnbKey !== _lastBnbKey) {

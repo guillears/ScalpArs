@@ -390,6 +390,16 @@ class SignalThresholds(BaseModel):
     # candles have no fan yet; RSI>65 blocks all follow-ups). Fires only when the ladder produced
     # NO signal. Right-tail cohort — pre-registered read weights avg over WR (CURRENT_STATE #11).
     spike_chase_probe_enabled: bool = True   # ⚠ MISNOMER — since the Jul-27 graduation this is the MASTER TRIGGER for the full-size 🚀 chase/fade program (scanner pump branch + top-50 hook detection), NOT a probe slot. Aug-10 "retirement" to False silently killed all fades/chases (review-caught, reverted same day). Must stay True while the program runs; the frozen probe-era cohort row is display-only.
+    # 🛑 Aug-21 2026 (operator-directed; DECISION_LOG 2026-08-21): dedicated CHASE kill-switch —
+    # the species had NO own flag (its probe flag became the program master trigger at
+    # graduation; disabling via the stretch-guard was rejected as semantic abuse — "more
+    # professional"). Mirrors spike_fade_enabled / spike_bounce_enabled. JSON ships FALSE:
+    # full-size chases 0W/3L −$632 (SYRUP/DODOX Jul-27 bear-hour · MORPHO Aug-21 in
+    # HEALTHY_BULL through the 1.5×ATR guard — the "dormant at 1.5" claim was leaky), lifetime
+    # honest 3W/8L, non-bull 0W/9L. Both entry sites gated (scanner + top-50 hook); every
+    # would-be fire still logs [SPIKE_ROUTER_BLOCK] + counter SPIKE_CHASE_DISABLED, so revival
+    # evidence accrues for free. FADE/BOUNCE untouched. Revival = fresh probe proposal (11b).
+    spike_chase_enabled: bool = True   # default True = legacy; JSON carries the live value (False since Aug-21)
     spike_chase_probe_max_open: int = 3          # same slot cap as the rest of the fleet
     spike_chase_probe_rsi_jump: float = 25.0     # min single-candle RSI(12) jump (pts)
     spike_chase_probe_rsi_prev_max: float = 55.0 # from-quiet condition: prev candle RSI <= this

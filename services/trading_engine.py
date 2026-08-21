@@ -4492,6 +4492,12 @@ class TradingEngine:
                         if _sp_regime_fade:
                             logger.info(f"[SPIKE_REGIME_FADE] {p['pair']}: non-chase regime — routing trigger to FADE short")
                     if not _sp_is_fade and not _sp_is_bounce:
+                        # 🛑 Aug-21 dedicated CHASE kill-switch (operator-directed; mirrors
+                        # spike_fade_enabled — the species had no own flag since graduation).
+                        if not getattr(th, 'spike_chase_enabled', True):
+                            self._record_filter_block("SPIKE_CHASE_DISABLED", "LONG")
+                            logger.info(f"[SPIKE_ROUTER_BLOCK] {p['pair']}: trigger fired, routed to CHASE and chase disabled — no trade")
+                            continue
                         # Jul 30 EXTENSION GUARD (chase-only, scanner parity with the top-50
                         # hook): block chase when stretch > mult x ATR%. Fail-open on missing.
                         _sp_str_mult = float(getattr(th, 'spike_chase_max_stretch_atr', 1.5) or 0.0)
@@ -10548,7 +10554,11 @@ class TradingEngine:
                                         _sc_stretch = (indicators['price'] - indicators['ema5']) / indicators['ema5'] * 100.0
                                 except Exception:
                                     _sc_stretch = None
-                                if (_sc_str_mult > 0 and _sc_stretch is not None and _sc_atrp
+                                if not getattr(_sc_th, 'spike_chase_enabled', True):
+                                    # 🛑 Aug-21 dedicated CHASE kill-switch (hook parity)
+                                    self._record_filter_block("SPIKE_CHASE_DISABLED", "LONG")
+                                    logger.info(f"[SPIKE_ROUTER_BLOCK] {pair}: trigger fired, routed CHASE and chase disabled — no trade")
+                                elif (_sc_str_mult > 0 and _sc_stretch is not None and _sc_atrp
                                         and _sc_stretch > _sc_str_mult * _sc_atrp):
                                     self._record_filter_block("SPIKE_CHASE_STRETCH", "LONG")
                                     logger.info(f"[SPIKE_CHASE_STRETCH] {pair}: chase blocked — stretch {_sc_stretch:+.2f}% > {_sc_str_mult}x ATR {_sc_atrp:.2f}% (ratio {(_sc_stretch/_sc_atrp):.1f})")

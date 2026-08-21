@@ -8634,7 +8634,8 @@
                 }
 
                 // 🌊 Aug 21 gate 57: Bull-Run Monitor chip (timestamps → UTC-3 via formatTime, operator)
-                const _brFmt = (t) => (t ? formatTime(String(t).replace(' ', 'T') + ':00') : '');
+                // chip format (operator): compact 'Aug 21, 14:54' — 24h, no seconds, same UTC-3 zone as the tables
+                const _brFmt = (t) => (t ? new Date(String(t).replace(' ', 'T') + ':00Z').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' }) : '');
                 const _brChip = document.getElementById('bullrun-chip');
                 if (_brChip) {
                     const _br = data.bullrun;
@@ -8642,7 +8643,7 @@
                         const _vals = `r72 ${_br.r72 != null ? _br.r72 : '—'}% · above ${_br.above != null ? _br.above : '—'}% · eff ${_br.eff != null ? _br.eff : '—'} · r6h ${_br.r6 != null ? _br.r6 : '—'}%${_br.latch ? ' · LATCH FIRED' : ''}${_br.enabled ? '' : ' · sleeve OFF'}`;
                         _brChip.title = `🌊 Bull-Run Monitor (gate 57): ${_vals}`;
                         if (_br.state === 'GREEN') {
-                            _brChip.textContent = `🌊 GREEN${_br.green_since ? ' · ' + _brFmt(_br.green_since) : ''}`;
+                            _brChip.textContent = `🌊 ${_br.green_since ? _brFmt(_br.green_since) : 'GREEN'}`;  // color = state; text = since (operator)
                             _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 uppercase tracking-wide';
                         } else if (_br.state === 'AMBER') {
                             _brChip.textContent = '🌊 AMBER';

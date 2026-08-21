@@ -4485,32 +4485,39 @@ class TradingEngine:
             # entry needs a fresh dip→reclaim with BTC back near its highs (no replay evidence for
             # firing instantly on gate-lift). 0 = off.
             _off_max = float(getattr(th, 'bullrun_btc_off24h_max', 0.0) or 0.0)
+            if _off_max > 0:
+                # review hygiene: a sign slip in the JSON (+2 meaning "2% below") must NOT silently disable
+                # the gate — normalize to the negative form (0 is the only OFF value).
+                if not _bullrun_monitor.get('_off_sign_warned'):
+                    logger.warning(f"[BULLRUN_LONG] bullrun_btc_off24h_max={_off_max} is positive — interpreting as {-_off_max} (% below the 24h high); set 0 to disable")
+                    _bullrun_monitor['_off_sign_warned'] = True
+                _off_max = -_off_max
             _off_now = _bullrun_monitor.get('off24h')
             if _off_max < 0 and _off_now is not None and float(_off_now) <= _off_max:
                 if st.get('blk_key') != ('24h', st.get('dip_ts')):
                     st['blk_key'] = ('24h', st.get('dip_ts'))
                     _bullrun_monitor['blk_off24h'] = _bullrun_monitor.get('blk_off24h', 0) + 1
                     self._record_filter_block("BULLRUN_BTC_OFF24H", "LONG")
+                    logger.info(f"[BULLRUN_LONG] {pair}: refused by BTC off-24h-high gate (BTC {float(_off_now):+.2f}% vs max {_off_max}%, dip_ts={st.get('dip_ts')}) — dip consumed")
                 st['dipped'] = False
                 return
             sp = float(getattr(th, 'bullrun_pair_spacing_hours', 2.0) or 2.0) * 3600.0
             # Restart-proof spacing (Aug-21 live catch: ONG re-entered 11 min after its stop because a
             # deploy wiped the in-memory stamp) — the DB is the source of truth: latest BULLRUN_LONG
             # order on this pair, opened_at OR closed_at, whichever is later.
-            try:
-                if pair in _br_last_fire:
-                    raise StopIteration  # memory already seeded (open+close both write it) — one DB lookup per pair per process life
+            if pair not in _br_last_fire:  # one DB lookup per pair per process life (open+close both write the stamp afterwards)
+              try:
                 _last_o = (await db.execute(
                     select(Order).where(and_(Order.pair == pair, Order.entry_strategy == 'BULLRUN_LONG', Order.is_paper == self.is_paper_mode))
                     .order_by(Order.opened_at.desc()).limit(1)
                 )).scalar_one_or_none()
                 if _last_o is not None:
+                    # DB datetimes are naive UTC (engine utcnow / SQLite func.now) — epoch math assumes that
                     _ts = max([t for t in (_last_o.opened_at, _last_o.closed_at) if t is not None]).replace(tzinfo=None)
-                    _db_epoch = (_ts - datetime(1970, 1, 1)).total_seconds()
-                    _br_last_fire[pair] = max(_br_last_fire.get(pair, 0), _db_epoch)
-            except StopIteration:
-                pass
-            except Exception as _sp_err:
+                    _br_last_fire[pair] = (_ts - datetime(1970, 1, 1)).total_seconds()
+                else:
+                    _br_last_fire[pair] = 0.0  # no history: sentinel so we don't re-query every candidate
+              except Exception as _sp_err:
                 logger.warning(f"[BULLRUN_LONG] {pair}: DB spacing lookup failed ({_sp_err}) — using in-memory stamp")
             if _now - _br_last_fire.get(pair, 0) < sp:
                 if st.get('blk_key') != ('sp', st.get('dip_ts')):  # review: count CANDIDATES, not scan cycles

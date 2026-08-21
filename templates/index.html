@@ -214,6 +214,7 @@
             <span id="gross-gauge" class="text-gray-500 text-xs font-mono" title="Σ open-position notional ÷ (balance × max_gross_leverage). Green <70% · amber 70–90% · red >90%. 'off' = gross cap disabled.">--</span>
             <span class="text-gray-600">·</span>
             <span id="bullrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide" title="🌊 Bull-Run Monitor (gate 57): GREEN = 72h composite ON (r72/above-EMA20%/efficiency, Schmitt band + crash-latch) → BULLRUN_LONG sleeve trades. AMBER = 24h alert only. Hover values: r72 / above% / eff / r6h / off-24h-high.">🌊 --</span>
+            <span id="btc-off24h-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide" title="BTC distance from its 24h high (gate 57 v2 pullback-phase gate). Red = at/under the gate → sleeve refusing entries (dips kept alive); green = inside range → next reclaim fires.">24h-high --</span>
             <!-- pair-count cluster kept for the JS writers but folded into the Breadth tooltip (duplicate of Breadth) -->
             <span class="hidden"><span id="regime-pair-count"></span><span id="regime-bull-count"></span><span id="regime-bear-count"></span><span id="regime-neutral-count"></span></span>
         </div>
@@ -8666,6 +8667,22 @@
                         }
                     } else {
                         _brChip.textContent = '🌊 --';
+                    }
+                }
+
+                // Aug 21: BTC off-24h-high chip (gate 57 v2 variable) — red = gated, green = in range
+                const _offChip = document.getElementById('btc-off24h-chip');
+                if (_offChip) {
+                    const _off = data.bullrun ? data.bullrun.off24h : null;
+                    const _gate = window._cachedConfig?.thresholds?.bullrun_btc_off24h_max;
+                    const _gateAbs = (_gate != null && _gate !== 0) ? -Math.abs(_gate) : null;
+                    if (_off != null) {
+                        const _gated = (_gateAbs != null && _off <= _gateAbs);
+                        _offChip.textContent = `24h-high ${_off.toFixed(2)}%`;
+                        _offChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ' + (_gateAbs == null ? 'bg-gray-500/20 text-gray-400' : (_gated ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'));
+                        _offChip.title = `BTC is ${_off.toFixed(2)}% below its 24h high` + (_gateAbs == null ? ' (gate off)' : (_gated ? ` — at/under the ${_gateAbs}% gate: sleeve refusing new entries (dips kept alive, re-checked every scan)` : ` — inside the ${_gateAbs}% gate: the next dip-reclaim fires`));
+                    } else {
+                        _offChip.textContent = '24h-high --';
                     }
                 }
 

@@ -6667,7 +6667,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             _e_g = "⏳ no sub-−0.7 excursions yet"
         else:
             _e_g = f"⏳ building ({_e_st['n']}/10 · blown {len(_e_blown)}/3)"
-        quiet_sl_rows.append({"row": "① QUIET class holds (ATR<thr, dipped ≤−0.65)", **_e_st, "gate": _e_g})
+        quiet_sl_rows.append({"row": "① QUIET class holds (ATR below thr, dipped ≤−0.65)", **_e_st, "gate": _e_g})
         quiet_sl_rows.append({"row": "② hot-class stops (ref, unchanged −0.7/ATR)",
                               **_cohort_stats(_g53_inel), "gate": "— reference row"})
         # Jul 29 — OVERLAP DISCLOSURE (CURRENT_STATE #31 door-intersection protocol): the four

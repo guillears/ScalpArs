@@ -251,7 +251,7 @@ def main():
                 elif b['btc_gap'] is not None and any(a1 <= b['btc_gap'] < a2 and b1 <= b['btc_adx'] < b2
                                                       for a1, a2, b1, b2 in P1.BGAP_L): blk = 'BTC_GAP'
                 elif b['btc_slope'] < float(TH.macro_trend_flat_threshold_long): blk = 'BTC_SLOPE'
-                elif abs(b['btc_slope']) > float(TH.btc_ema20_slope_max_long): blk = 'BTC_SLOPE_MAX'
+                elif float(TH.btc_ema20_slope_max_long or 0) > 0 and abs(b['btc_slope']) > float(TH.btc_ema20_slope_max_long): blk = 'BTC_SLOPE_MAX'
                 elif b['btc_1h_slope'] is not None and float(TH.btc_1h_slope_max_long or 0) > 0 and b['btc_1h_slope'] > float(TH.btc_1h_slope_max_long): blk = 'BTC_1H_MAX'
                 if blk is None and b['btc_1h_slope'] is not None:
                     db = float(TH.long_btc_1h_deadband); dbp = min(db, float(TH.long_btc_1h_deadband_pos))
@@ -260,7 +260,7 @@ def main():
                 if blk is None:
                     p20s = ((ind['ema20'] - ind['ema20_prev3']) / ind['ema20_prev3'] * 100
                             if ind['ema20_prev3'] else None)
-                    if p20s is not None and abs(p20s) > float(TH.momentum_ema20_slope_max_long): blk = 'PAIR_SLOPE_MAX'
+                    if p20s is not None and float(TH.momentum_ema20_slope_max_long or 0) > 0 and abs(p20s) > float(TH.momentum_ema20_slope_max_long): blk = 'PAIR_SLOPE_MAX'
                     elif not np.isnan(gvr_now) and gvr_now < float(TH.global_volume_threshold_long):
                         # engine rescue leg: high-24h-vol pairs trade through deep lulls
                         _rv = float(getattr(TH, 'pair_volume_usd_rescue_long', 0) or 0)

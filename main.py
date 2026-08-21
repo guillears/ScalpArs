@@ -538,7 +538,7 @@ async def get_status(db: AsyncSession = Depends(get_db)):
         _status["bullrun"] = {
             "state": _brm.get("state"), "green_since": _brm.get("green_since"),
             "r72": _brm.get("r72"), "above": _brm.get("above"), "eff": _brm.get("eff"),
-            "r6": _brm.get("r6"), "latch": _brm.get("latch"),
+            "r6": _brm.get("r6"), "latch": _brm.get("latch"), "off24h": _brm.get("off24h"),
             "enabled": bool(getattr(config.trading_config.thresholds, 'bullrun_sleeve_enabled', False)),
         }
     except Exception as e:

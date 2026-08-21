@@ -8423,7 +8423,7 @@
             const strat = o.entry_strategy || '';
             const fg = src.match(/\+((FGP_(QS|RSI|TG)))/);
             if (fg) tags.push(fg[1]);
-            if (strat.startsWith('SPIKE') || strat.startsWith('FLIP:') || strat === 'BULL_LONG' || strat === 'BOUNCE_LONG') return tags;
+            if (strat.startsWith('SPIKE') || strat.startsWith('FLIP:') || strat === 'BULL_LONG' || strat === 'BOUNCE_LONG' || strat === 'BULLRUN_LONG') return tags;  // Aug 21: sleeve fills take no door/band badges (gate-51 table is strategy-scoped already)
             if (src === 'NONEXP_CALM3D') tags.push('CALM3D');
             else if (src.endsWith('_PROBE')) tags.push(src.replace('_PROBE', ''));
             else if (src === 'UNMATCHED') {
@@ -19097,7 +19097,7 @@
                     // Strategy / sleeve badge (matches the Filter by Flip Source names)
                     const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');
                     const _stratRaw = _isFlipStrat ? (o.entry_strategy || '').slice(5) : ((o.entry_strategy || 'MOMENTUM'));
-                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? '🌊 BULLRUN' : _stratRaw;
+                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? 'BULLRUN' : _stratRaw;
                     const _stratColor = _isFlipStrat ? 'bg-sky-500/20 text-sky-300'
                         : _stratRaw === 'BULL_LONG' ? 'bg-emerald-500/20 text-emerald-300'
                         : _stratRaw === 'BOUNCE_LONG' ? 'bg-amber-500/20 text-amber-300'
@@ -19218,7 +19218,7 @@
                     // Strategy / sleeve badge (matches the Filter by Flip Source names)
                     const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');
                     const _stratRaw = _isFlipStrat ? (o.entry_strategy || '').slice(5) : ((o.entry_strategy || 'MOMENTUM'));
-                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? '🌊 BULLRUN' : _stratRaw;
+                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? 'BULLRUN' : _stratRaw;
                     const _stratColor = _isFlipStrat ? 'bg-sky-500/20 text-sky-300'
                         : _stratRaw === 'BULL_LONG' ? 'bg-emerald-500/20 text-emerald-300'
                         : _stratRaw === 'BOUNCE_LONG' ? 'bg-amber-500/20 text-amber-300'

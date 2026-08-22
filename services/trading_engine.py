@@ -4498,12 +4498,13 @@ class TradingEngine:
             if not (_bullrun_monitor.get('green') and (_now - (_bullrun_monitor.get('updated_at') or 0) <= 1800)):
                 return
             pair = pair_info.get('pair') or pair_info.get('symbol')
-            rank = pair_info.get('rank')
-            if not rank or int(rank) > int(getattr(th, 'bullrun_universe_size', 10) or 10):
-                return
             _br_bl = {p.strip().upper() for p in str(getattr(th, 'bullrun_pair_blacklist', '') or '').split(',') if p.strip()}
             if _br_bl and str(pair).upper() in _br_bl:
                 self._record_filter_block('BR_PAIR_BLACKLIST', 'LONG')
+                return
+            # Aug-22: rank among TRADEABLE pairs (br_rank, blacklists skipped) so top-N stays N pairs
+            rank = pair_info.get('br_rank') if pair_info.get('br_rank') is not None else pair_info.get('rank')
+            if not rank or int(rank) > int(getattr(th, 'bullrun_universe_size', 10) or 10):
                 return
             if not ohlcv or len(ohlcv) < 40:
                 return
@@ -9313,6 +9314,21 @@ class TradingEngine:
         # Persisted per-trade as entry_pair_rank (read gate for the 50->75 expansion).
         for _rank_i, _rank_p in enumerate(top_pairs):
             _rank_p['rank'] = _rank_i + 1
+        # Aug-22 (operator-caught): the 🌊 sleeve's "top-N" must be N TRADEABLE pairs — blacklisted pairs
+        # (global list AND bullrun_pair_blacklist) must not occupy rank slots, else ONG+ETH+BNB turn
+        # top-10 into top-7. br_rank = rank among non-blacklisted pairs (what the replay models).
+        try:
+            _br_skip = set(x.strip().upper() for x in (getattr(config.trading_config, 'pair_blacklist', '') or '').split(',') if x.strip())
+            _br_skip |= set(x.strip().upper() for x in (getattr(getattr(config.trading_config, 'thresholds', None), 'bullrun_pair_blacklist', '') or '').split(',') if x.strip())
+            _br_n = 0
+            for _rank_p in top_pairs:
+                _sym = str(_rank_p.get('pair') or _rank_p.get('symbol') or '').upper()
+                if _sym in _br_skip:
+                    _rank_p['br_rank'] = None
+                else:
+                    _br_n += 1; _rank_p['br_rank'] = _br_n
+        except Exception as _bre:
+            logger.warning(f"[BULLRUN_LONG] br_rank stamping failed ({_bre}) — falling back to raw rank")
         _blacklist_str = getattr(config.trading_config, 'pair_blacklist', '')
         _blacklist = set(p.strip() for p in _blacklist_str.split(',') if p.strip())
         if _blacklist:

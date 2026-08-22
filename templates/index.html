@@ -593,8 +593,8 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Sum of margin/investment across trades">Tot Inv</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Sum of notional value (investment × leverage)">Tot Not</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="P&L as $ and % of total investment">P&L / Inv</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="P&L as $ and % of total notional">P&L / Not</th>
+                                    <th class="px-3 py-2 font-medium text-right whitespace-nowrap" title="P&L as $ and % of total investment">P&L / Inv</th>
+                                    <th class="px-3 py-2 font-medium text-right whitespace-nowrap" title="P&L as $ and % of total notional">P&L / Not</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Total Wins $ / Total Losses $ (>1 = profitable)">PF</th>
                                     <th class="px-3 py-2 font-medium text-right text-yellow-400" title="Total fees paid (entry + exit)">Fees</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Avg exit slippage (+ = worse fill, - = better fill). Only live trades.">Slip %</th>
@@ -13210,8 +13210,8 @@
                             <td class="px-3 py-2 text-right ${avgClass} font-medium">${safe(r.avg_pnl_pct) >= 0 ? '+' : ''}${safe(r.avg_pnl_pct).toFixed(2)}%</td>
                             <td class="px-3 py-2 text-right text-gray-300">$${fmtNum(r.total_investment)}</td>
                             <td class="px-3 py-2 text-right text-gray-300">$${fmtNum(r.total_notional)}</td>
-                            <td class="px-3 py-2 text-right ${pnlClass} font-medium">${pnlInvStr}</td>
-                            <td class="px-3 py-2 text-right ${pnlClass} font-medium">${pnlNotStr}</td>
+                            <td class="px-3 py-2 text-right whitespace-nowrap ${pnlClass} font-medium">${pnlInvStr}</td>
+                            <td class="px-3 py-2 text-right whitespace-nowrap ${pnlClass} font-medium">${pnlNotStr}</td>
                             <td class="px-3 py-2 text-right ${pfClass} font-medium">${safe(r.profit_factor) >= 999 ? '∞' : safe(r.profit_factor).toFixed(2)}</td>
                             <td class="px-3 py-2 text-right text-yellow-400">$${fmtNum(r.total_fees)}</td>
                             <td class="px-3 py-2 text-right ${r.avg_slippage_pct != null ? (r.avg_slippage_pct > 0.02 ? 'text-red-400' : r.avg_slippage_pct < -0.02 ? 'text-emerald-400' : 'text-gray-300') : 'text-gray-500'}">${r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-'}</td>

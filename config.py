@@ -958,6 +958,12 @@ class SignalThresholds(BaseModel):
     # capped below the ladder, stops cost the same = slot-hog. BTC NOT blacklisted (its fills won the founding window).
     # 🔒 revert ETH: low-ATR (≤0.5%) sleeve fills avg ≥ +0.30%/t on N≥8 in the next GREEN episode.
     bullrun_pair_blacklist: str = "ONGUSDT,ETHUSDT"
+    # Aug-22 (3): BTC-leader gate — no sleeve entry while BTC is BELOW its own 5m EMA13 (an alt reclaim without BTC's
+    # reclaim = alt moving without its leader). Only BTC variable losing in EVERY window: live 6·33%·−$545, founding
+    # replay 8·38%·−$220, replay-live 5·40%·−$65 (pooled N=14, 36% WR, −0.35%/t). Discipline-override (N<30).
+    # Live 25·48%·+$989 → 19·53%·+$1,534; founding 59·63%·+$3,033 → 51·67%·+$3,252. DECISION_LOG 2026-08-22 (15).
+    # 🔒 revert: re-run scripts/bullrun_replay.py at the next GREEN episode close — blocked cohort net-positive → off.
+    bullrun_btc_ema13_required: bool = True
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

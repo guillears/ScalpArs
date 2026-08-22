@@ -4568,6 +4568,17 @@ class TradingEngine:
                     self._record_filter_block("BULLRUN_BTC_OFF24H", "LONG")
                     logger.info(f"[BULLRUN_LONG] {pair}: refused by BTC off-24h-high gate (BTC {float(_off_now):+.2f}% vs max {_off_max}%, dip_ts={st.get('dip_ts')}) — dip kept alive, re-evaluated next scan")
                 return
+            # Aug-22 (3): BTC-leader gate — BTC must be at/above its own 5m EMA13 (module globals stamped by the scan).
+            # Fail-open on missing data (parity with the other BTC gates). Counter per (rule, dip) like off-24h.
+            if bool(getattr(th, 'bullrun_btc_ema13_required', True)):
+                _g = globals(); _bpx = _g.get('_current_btc_price'); _be13 = _g.get('_current_btc_ema13')
+                if _bpx is not None and _be13 is not None and float(_be13) > 0 and float(_bpx) < float(_be13):
+                    if st.get('blk_e13_ts') != st.get('dip_ts'):
+                        st['blk_e13_ts'] = st.get('dip_ts')
+                        _bullrun_monitor['blk_ema13'] = _bullrun_monitor.get('blk_ema13', 0) + 1
+                        self._record_filter_block("BULLRUN_BTC_EMA13", "LONG")
+                        logger.info(f"[BULLRUN_LONG] {pair}: refused by BTC-leader gate (BTC {float(_bpx):.2f} below EMA13 {float(_be13):.2f}, {((float(_bpx)/float(_be13))-1)*100:+.3f}%) — dip stays alive")
+                    return
             sp = float(getattr(th, 'bullrun_pair_spacing_hours', 2.0) or 2.0) * 3600.0
             # Restart-proof spacing (Aug-21 live catch: ONG re-entered 11 min after its stop because a
             # deploy wiped the in-memory stamp) — the DB is the source of truth: latest BULLRUN_LONG

@@ -4501,6 +4501,10 @@ class TradingEngine:
             rank = pair_info.get('rank')
             if not rank or int(rank) > int(getattr(th, 'bullrun_universe_size', 10) or 10):
                 return
+            _br_bl = {p.strip().upper() for p in str(getattr(th, 'bullrun_pair_blacklist', '') or '').split(',') if p.strip()}
+            if _br_bl and str(pair).upper() in _br_bl:
+                self._record_filter_block('BR_PAIR_BLACKLIST', 'LONG')
+                return
             if not ohlcv or len(ohlcv) < 40:
                 return
             bars = ohlcv[:-1]  # closed bars only (last row is forming)

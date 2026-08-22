@@ -950,6 +950,10 @@ class SignalThresholds(BaseModel):
     # first rung nothing changes. "peak:floor" pairs. 🔒 REVERT: at N≥8 trades reaching +4, if ladder-exited
     # trades underperform their trail counterfactual (peak/exit recorded) → clear the string. "" = off.
     bullrun_ladder: str = "4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0, 10.0:9.0, 12.0:11.0, 15.0:13.5, 20.0:18.0, 25.0:22.5, 30.0:27.0"
+    # Aug-22: sleeve-scoped pair blacklist (comma-separated). ONG: 0/5 across v1+v2 (−$760), every loss a −1.2 stop —
+    # its entry ATR (1.1-1.9%) puts the floored SL at ~1× ATR (majors sit at 2-4×). Discipline-override ship (founding
+    # replay had ONG winning); 🔒 revert: if the non-ONG ATR>1.0 sleeve cohort wins (N≥5, Σ>0) re-admit + fix the floor.
+    bullrun_pair_blacklist: str = "ONGUSDT"
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

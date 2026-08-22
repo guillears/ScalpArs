@@ -5132,6 +5132,10 @@
                                 <label class="block text-xs text-gray-400 mb-1">Profit-lock ladder (peak:floor, …)</label>
                                 <input type="text" id="config-br-ladder" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0, 10.0:9.0, 12.0:11.0, 15.0:13.5, 20.0:18.0, 25.0:22.5, 30.0:27.0">
                             </div>
+                            <div class="md:col-span-2" title="Aug 22: sleeve-only pair blacklist (comma-separated; momentum/flip unaffected). ONG 0/5 in the sleeve (−$760): its 1.1-1.9% ATR puts the floored −1.2 stop at ~1× ATR. Revert: non-ONG ATR>1.0 cohort winning on N≥5.">
+                                <label class="block text-xs text-gray-400 mb-1">Sleeve pair blacklist (comma-separated)</label>
+                                <input type="text" id="config-br-blacklist" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="ONGUSDT">
+                            </div>
                             <div title="Aug 21 (11): pullback-phase gate — no sleeve entry while BTC is more than this % below its 24h high (negative; 0 = off). The variable that separated the replay's winners from losers; all five day-1 live losers fired at −2.5..−3.3%.">
                                 <label class="block text-xs text-gray-400 mb-1">BTC off 24h-high gate (≤ %)</label>
                                 <input type="number" step="0.1" min="-10" max="0" id="config-br-off24h-max" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-2.0">
@@ -10924,7 +10928,7 @@
             }
             {
                 const _bt = cfg?.thresholds || {};
-                lines.push(`  🌊 Bull-Run Sleeve (gate 57): ${_bt.bullrun_sleeve_enabled !== false ? `ON — GREEN(r72≥${_bt.bullrun_green_r72_on ?? 5}/${_bt.bullrun_green_r72_off ?? 4} ∧ above≥${_bt.bullrun_green_above_on ?? 56}/${_bt.bullrun_green_above_off ?? 53} ∧ eff≥${_bt.bullrun_green_eff_on ?? 0.10}/${_bt.bullrun_green_eff_off ?? 0.08}) latch ${_bt.bullrun_latch_r6h ?? -3}%/1hEMA50 · top-${_bt.bullrun_universe_size ?? 10} COIN · dip ${_bt.bullrun_dip_atr_mult ?? 0.3}×ATR · ${_bt.bullrun_max_slots ?? 4} slots · Inv ${_bt.bullrun_invest_mult ?? 1}x/Lev ${_bt.bullrun_lev_mult ?? 1}x · SL ${_bt.bullrun_base_sl_pct ?? -0.7}/ATR · BE ${_bt.bullrun_be_arm_pct ?? 1.0}→${_bt.bullrun_be_lock_pct ?? 0.2} · trail ${_bt.bullrun_trail_atr_mult ?? 2.0}×ATR · BTC off-24h gate ${(_bt.bullrun_btc_off24h_max ?? 0) < 0 ? `≤${_bt.bullrun_btc_off24h_max}%` : 'OFF'} · ladder ${(_bt.bullrun_ladder || '').trim() ? _bt.bullrun_ladder : 'OFF'}` : 'OFF'}`);
+                lines.push(`  🌊 Bull-Run Sleeve (gate 57): ${_bt.bullrun_sleeve_enabled !== false ? `ON — GREEN(r72≥${_bt.bullrun_green_r72_on ?? 5}/${_bt.bullrun_green_r72_off ?? 4} ∧ above≥${_bt.bullrun_green_above_on ?? 56}/${_bt.bullrun_green_above_off ?? 53} ∧ eff≥${_bt.bullrun_green_eff_on ?? 0.10}/${_bt.bullrun_green_eff_off ?? 0.08}) latch ${_bt.bullrun_latch_r6h ?? -3}%/1hEMA50 · top-${_bt.bullrun_universe_size ?? 10} COIN · dip ${_bt.bullrun_dip_atr_mult ?? 0.3}×ATR · ${_bt.bullrun_max_slots ?? 4} slots · Inv ${_bt.bullrun_invest_mult ?? 1}x/Lev ${_bt.bullrun_lev_mult ?? 1}x · SL ${_bt.bullrun_base_sl_pct ?? -0.7}/ATR · BE ${_bt.bullrun_be_arm_pct ?? 1.0}→${_bt.bullrun_be_lock_pct ?? 0.2} · trail ${_bt.bullrun_trail_atr_mult ?? 2.0}×ATR · BTC off-24h gate ${(_bt.bullrun_btc_off24h_max ?? 0) < 0 ? `≤${_bt.bullrun_btc_off24h_max}%` : 'OFF'} · ladder ${(_bt.bullrun_ladder || '').trim() ? _bt.bullrun_ladder : 'OFF'} · blacklist ${(_bt.bullrun_pair_blacklist || '').trim() || 'none'}` : 'OFF'}`);
             }
 
             if (changelog.length > 0) {
@@ -20668,6 +20672,7 @@
                     ['config-br-off24h-max', 'bullrun_btc_off24h_max', -2.0],
                 ];
                 { const _e = document.getElementById('config-br-ladder'); if (_e) _e.value = (config.thresholds.bullrun_ladder !== undefined && config.thresholds.bullrun_ladder !== null) ? config.thresholds.bullrun_ladder : '4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0, 10.0:9.0, 12.0:11.0, 15.0:13.5, 20.0:18.0, 25.0:22.5, 30.0:27.0'; }
+                { const _e = document.getElementById('config-br-blacklist'); if (_e) _e.value = String(config.thresholds.bullrun_pair_blacklist ?? ''); }
                 for (const [_id, _key, _def] of _brLoad) {
                     const _e = document.getElementById(_id);
                     if (_e) _e.value = config.thresholds[_key] !== undefined ? config.thresholds[_key] : _def;
@@ -22045,6 +22050,7 @@
                     bullrun_trail_atr_mult: safeFloat(document.getElementById('config-br-trail-atr-mult')?.value ?? 2.0),
                     bullrun_btc_off24h_max: safeFloat(document.getElementById('config-br-off24h-max')?.value || -2.0),
                     bullrun_ladder: String(document.getElementById('config-br-ladder')?.value ?? '').trim(),  // blank = ladder OFF (deliberate)
+                    bullrun_pair_blacklist: String(document.getElementById('config-br-blacklist')?.value ?? '').trim().toUpperCase(),  // blank = none
                     trailing_pullback_confirmation_seconds: parseInt(document.getElementById('config-trailing-pullback-confirmation-seconds')?.value || 15) || 0,
                     trailing_early_arm_threshold: safeFloat(document.getElementById('config-trailing-early-arm-threshold')?.value || 0.30),
                     trailing_early_arm_pullback: safeFloat(document.getElementById('config-trailing-early-arm-pullback')?.value || 0.10),

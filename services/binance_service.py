@@ -285,9 +285,8 @@ class BinanceService:
     @property
     def _last_balance_payload(self):
         """Last successful get_balance payload if fetched ≤5 s ago, else None (status-poll reuse)."""
-        import time as _t
         p = getattr(self, '_last_balance_payload_raw', None)
-        return p if (p and _t.time() - p.get('_ts', 0) <= 5.0) else None
+        return p if (p and time.time() - p.get('_ts', 0) <= 5.0) else None
 
     @_last_balance_payload.setter
     def _last_balance_payload(self, v):
@@ -333,8 +332,7 @@ class BinanceService:
                 'margin_balance': _mbal,
             }
             # Aug-22 review: short-lived copy for same-poll consumers (status margin ratio) — 5 s TTL
-            import time as _t
-            self._last_balance_payload = dict(_payload, _ts=_t.time())
+            self._last_balance_payload = dict(_payload, _ts=time.time())
             return _payload
         except Exception as e:
             logger.error(f"[BINANCE] Error fetching balance: {e}")

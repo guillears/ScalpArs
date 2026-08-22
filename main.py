@@ -549,7 +549,7 @@ async def get_status(db: AsyncSession = Depends(get_db)):
                     _maint = float(_lb.get('maint_margin') or 0); _mbal = float(_lb.get('margin_balance') or 0); _mr_src = 'binance'
                 else:
                     _mr_src = 'unavailable'
-            _status["margin_ratio_pct"] = (_maint / _mbal * 100.0) if _mbal > 0 else 0.0
+            _status["margin_ratio_pct"] = None if _mr_src == 'unavailable' else ((_maint / _mbal * 100.0) if _mbal > 0 else 0.0)
             _status["margin_maint"] = _maint
             _status["margin_balance"] = _mbal
             _status["margin_ratio_source"] = _mr_src

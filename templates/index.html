@@ -8374,7 +8374,8 @@
             // realized rate); the Δ vs 3d/7d below stays on the realized series (like-for-like).
             const nowP = (d.eom_now && d.eom_now.proj_total != null) ? d.eom_now.proj_total : projs[projs.length - 1];
             const at = k => (projs.length > k ? projs[projs.length - 1 - k] : null);
-            const d3 = at(3) != null ? nowP - at(3) : null, d7 = at(7) != null ? nowP - at(7) : null;
+            const lastR = projs[projs.length - 1];  // realized-series point — Δ compares like with like
+            const d3 = at(3) != null ? lastR - at(3) : null, d7 = at(7) != null ? lastR - at(7) : null;
             const fmt = v => (v == null ? '—' : (v >= 0 ? '+' : '−') + '$' + Math.abs(Math.round(v)).toLocaleString('en-US'));
             const cls = v => (v == null ? 'text-gray-500' : v >= 0 ? 'text-emerald-400' : 'text-red-400');
             const avg7 = (d.avg7 || []).map(a => a.avg_pct);

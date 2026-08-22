@@ -1392,7 +1392,8 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
                 _dcr = ((_cur / _m_bal0) ** (1.0 / _elapsed) - 1.0) if (_m_bal0 > 0 and _cur > 0) else 0.0
                 _left = _m_ld - _d.day
                 revisions_by_month[_mk].append({"date": _iso, "proj": round(_cur * ((1.0 + _dcr) ** _left), 2),
-                                                "bal": round(_cur, 2), "dcr": round(_dcr * 100, 4), "days_left": _left})
+                                                "bal": round(_cur, 2), "dcr": round(_dcr * 100, 4), "days_left": _left,
+                                                "_dcr_raw": _dcr})
                 _w = []
                 for _b in range(7):
                     _w += pcts_by_day.get((_d - timedelta(days=_b)).isoformat(), [])
@@ -1414,7 +1415,7 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
             # REALIZED equity, so a few hundred $ of open sleeve P&L made the row read as broken. Rate stays the
             # month's realized DCR (history untouched); the headline projection now uses the same base as the table.
             "eom_now": ({"dcr": revisions[-1]["dcr"], "days_left": revisions[-1]["days_left"],
-                         "proj_total": round(float(total_equity_now) * ((1.0 + revisions[-1]["dcr"] / 100.0) ** revisions[-1]["days_left"]), 2),
+                         "proj_total": round(float(total_equity_now) * ((1.0 + revisions[-1]["_dcr_raw"]) ** revisions[-1]["days_left"]), 2),
                          "proj_realized": revisions[-1]["proj"], "total_equity": round(float(total_equity_now), 2)}
                         if (revisions and total_equity_now is not None) else None),
             "revisions_by_month": revisions_by_month, "avg7_by_month": avg7_by_month,

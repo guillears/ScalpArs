@@ -282,6 +282,17 @@ class BinanceService:
         await self.public_exchange.close()
         await self.spot_exchange.close()
     
+    @property
+    def _last_balance_payload(self):
+        """Last successful get_balance payload if fetched ≤5 s ago, else None (status-poll reuse)."""
+        import time as _t
+        p = getattr(self, '_last_balance_payload_raw', None)
+        return p if (p and _t.time() - p.get('_ts', 0) <= 5.0) else None
+
+    @_last_balance_payload.setter
+    def _last_balance_payload(self, v):
+        self._last_balance_payload_raw = v
+
     async def get_balance(self) -> Dict:
         """Get account balance"""
         try:
@@ -310,7 +321,7 @@ class BinanceService:
                 _mbal = float(raw_info.get('totalMarginBalance', 0) or 0)
             except Exception:
                 _maint, _mbal = 0.0, 0.0
-            return {
+            _payload = {
                 'ok': True,
                 'usdt_free': usdt_free,
                 'usdt_used': float(usdt_balance.get('used', 0)),
@@ -321,6 +332,10 @@ class BinanceService:
                 'maint_margin': _maint,
                 'margin_balance': _mbal,
             }
+            # Aug-22 review: short-lived copy for same-poll consumers (status margin ratio) — 5 s TTL
+            import time as _t
+            self._last_balance_payload = dict(_payload, _ts=_t.time())
+            return _payload
         except Exception as e:
             logger.error(f"[BINANCE] Error fetching balance: {e}")
             # 'ok': False lets callers distinguish a FAILED fetch from a genuinely

@@ -542,9 +542,13 @@ async def get_status(db: AsyncSession = Depends(get_db)):
                 _maint = _gross_open * 0.005
                 _mbal = float(_pc['free']) + float(_pc['margin']) + float(_pc['unrealized'])
             else:
-                _lb = await binance_service.get_balance()
+                # Review (Aug-22): reuse the account payload the gross block's get_available_balance already
+                # fetched this poll when the service caches it; otherwise one extra fetch per 10s poll.
+                _lb = getattr(binance_service, '_last_balance_payload', None) or await binance_service.get_balance()
                 if _lb.get('ok') and float(_lb.get('margin_balance') or 0) > 0:
                     _maint = float(_lb.get('maint_margin') or 0); _mbal = float(_lb.get('margin_balance') or 0); _mr_src = 'binance'
+                else:
+                    _mr_src = 'unavailable'
             _status["margin_ratio_pct"] = (_maint / _mbal * 100.0) if _mbal > 0 else 0.0
             _status["margin_maint"] = _maint
             _status["margin_balance"] = _mbal

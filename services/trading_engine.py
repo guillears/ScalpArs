@@ -84,6 +84,7 @@ _current_btc_price: Optional[float] = None  # May 14 — BTC price for BTC Marke
 _current_btc_1h_slope: Optional[float] = None  # May 14 — BTC 1h EMA20 slope (higher-TF macro context)
 _current_btc_ema50: Optional[float] = None
 _current_btc_trend_gap_pct: Optional[float] = None  # As of May 6: (EMA13 - EMA50) / EMA50; was EMA20-based before
+_current_btc_adx_prev1: Optional[float] = None  # Aug-22: previous closed bar — arrow = sign(adx - adx_prev1)
 # Module-level BTC indicators for regime classification at exit time
 _current_btc_adx: float = None
 _current_btc_rsi: float = None
@@ -1734,6 +1735,9 @@ class TradingEngine:
             "btc_ema13": round(_current_btc_ema13, 2) if _current_btc_ema13 else None,
             "btc_ema50": round(_current_btc_ema50, 2) if _current_btc_ema50 else None,
             "btc_trend_gap_pct": round(_current_btc_trend_gap_pct, 4) if _current_btc_trend_gap_pct is not None else None,
+            # Aug-22 (operator): persistent ADX direction arrow — closed-bar ADX vs previous closed bar
+            "btc_adx": round(_current_btc_adx, 2) if _current_btc_adx is not None else None,
+            "btc_adx_prev1": round(_current_btc_adx_prev1, 2) if _current_btc_adx_prev1 is not None else None,
             "btc_trend_filter_enabled": bool(getattr(config.trading_config.thresholds, 'btc_trend_filter_enabled', False)),
             "market_bull_pct": round(_market_bull_pct, 1),
             "market_bear_pct": round(_market_bear_pct, 1),
@@ -9391,10 +9395,11 @@ class TradingEngine:
                 if btc_ema20 and btc_ema20_prev3 and btc_ema20_prev3 != 0:
                     btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev3) / btc_ema20_prev3) * 100, 4)
         global _current_btc_regime, _btc_ema20_slope_pct, _current_btc_adx, _current_btc_rsi
-        global _current_btc_ema20, _current_btc_ema13, _current_btc_ema50, _current_btc_trend_gap_pct, _current_btc_price
+        global _current_btc_ema20, _current_btc_ema13, _current_btc_ema50, _current_btc_trend_gap_pct, _current_btc_price, _current_btc_adx_prev1
         _current_btc_regime = btc_regime
         _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
         _current_btc_adx = btc_adx
+        _current_btc_adx_prev1 = btc_adx_prev  # Aug-22: header arrow = sign(adx - adx_prev1) on closed bars
         _current_btc_rsi = btc_rsi
         # BTC Trend Filter state (May 5; switched from EMA20→EMA13 on May 6 for faster reversal detection)
         _current_btc_ema20 = btc_ema20

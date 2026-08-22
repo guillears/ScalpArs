@@ -25,6 +25,16 @@
         }
     </script>
     <style>
+        /* Aug-22 (operator): instant hover tooltips for the regime-bar gauges — native title= needs a
+           ~1 s still mouse and dies on any movement. Shown below the element, wraps at 22rem. */
+        [data-tip] { position: relative; }
+        [data-tip]:hover::after {
+            content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 6px); z-index: 60;
+            width: max-content; max-width: 22rem; white-space: normal; line-height: 1.35;
+            padding: 8px 10px; border-radius: 8px; font: 500 11px/1.35 ui-sans-serif, system-ui, sans-serif;
+            color: #e5e7eb; background: rgba(17, 24, 39, 0.97); border: 1px solid rgba(255,255,255,0.12);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.45); pointer-events: none; text-transform: none; letter-spacing: 0;
+        }
         body {
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             min-height: 100vh;
@@ -198,7 +208,7 @@
             <span class="text-gray-600">·</span>
             <span class="text-gray-400 font-medium">ADX</span>
             <span id="btc-adx-value" class="text-gray-300 font-bold">--</span>
-            <span id="btc-adx-dir-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide" title="BTC ADX direction">--</span>
+            <span id="btc-adx-dir-tag" class="hidden px-1.5 py-0 rounded text-[9px] font-bold leading-tight" data-tip="BTC ADX direction (closed 5m bars)">--</span>
             <span id="btc-adx-low-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 uppercase tracking-wide" title="BTC ADX outside the long/short admission band">LOW</span>
             <span class="text-gray-600">·</span>
             <span class="text-gray-400 font-medium">Vol</span>
@@ -210,11 +220,11 @@
                 <span id="breadth-bull-value" class="text-gray-300 font-bold">--</span><span class="text-gray-500">/</span><span id="breadth-bear-value" class="text-gray-300 font-bold">--</span>
             </span>
             <span class="text-gray-600">·</span>
-            <span class="text-gray-400 font-medium cursor-help" title="Gross = how much exposure is on: Σ open notional ÷ (balance × max_gross_leverage cap). The PRE-TRADE sizing check — the bot itself gates new entries on it. It does not say how close the wallet is to liquidation.">Gross</span>
-            <span id="gross-gauge" class="text-gray-500 text-xs font-mono" title="Σ open-position notional ÷ (balance × max_gross_leverage). Green <70% · amber 70–90% · red >90%. 'off' = gross cap disabled.">--</span>
+            <span class="text-gray-400 font-medium cursor-help" data-tip="Gross = how much exposure is on: Σ open notional ÷ (balance × max_gross_leverage cap). The PRE-TRADE sizing check — the bot itself gates new entries on it. It does not say how close the wallet is to liquidation.">Gross</span>
+            <span id="gross-gauge" class="text-gray-500 text-xs font-mono cursor-help" data-tip="Σ open-position notional ÷ (balance × max_gross_leverage). Green <70% · amber 70–90% · red >90%. 'off' = gross cap disabled.">--</span>
             <span class="text-gray-600">·</span>
-            <span class="text-gray-400 font-medium cursor-help" title="Margin ratio = how close the cross wallet is to liquidation RIGHT NOW, including unrealized P&L (maintenance margin ÷ margin balance; Binance liquidates at 100%). The SURVIVAL gauge — the one that matters when the bot is down and the software stop cannot fire.">Margin</span>
-            <span id="margin-ratio-gauge" class="text-gray-500 text-xs font-mono" title="Binance Margin Ratio = maintenance margin ÷ margin balance (cross wallet liquidates at 100%). Green <20% · amber 20–50% · red ≥50%. Paper = estimate at 0.5% MMR.">--</span>
+            <span class="text-gray-400 font-medium cursor-help" data-tip="Margin ratio = how close the cross wallet is to liquidation RIGHT NOW, including unrealized P&L (maintenance margin ÷ margin balance; Binance liquidates at 100%). The SURVIVAL gauge — the one that matters when the bot is down and the software stop cannot fire.">Margin</span>
+            <span id="margin-ratio-gauge" class="text-gray-500 text-xs font-mono cursor-help" data-tip="Binance Margin Ratio = maintenance margin ÷ margin balance (cross wallet liquidates at 100%). Green <20% · amber 20–50% · red ≥50%. Paper = estimate at 0.5% MMR.">--</span>
             <span class="text-gray-600">·</span>
             <span id="bullrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide" title="🌊 Bull-Run Monitor (gate 57): GREEN = 72h composite ON (r72/above-EMA20%/efficiency, Schmitt band + crash-latch) → BULLRUN_LONG sleeve trades. AMBER = 24h alert only. Hover values: r72 / above% / eff / r6h / off-24h-high.">🌊 --</span>
             <span id="btc-off24h-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide" title="BTC distance from its 24h high (gate 57 v2 pullback-phase gate). Red = at/under the gate → sleeve refusing entries (dips kept alive); green = inside range → next reclaim fires.">24h-high --</span>
@@ -8655,15 +8665,20 @@
                         const _fmt = (v) => '$' + Math.round(v || 0).toLocaleString();
                         // Compact: show % only (the at-a-glance signal); full $ in the tooltip.
                         _grossEl.textContent = `${_pct.toFixed(0)}%`;
-                        _grossEl.title = `Open notional ${_fmt(data.gross_open)} / budget ${_fmt(data.gross_budget)} (balance × max_gross_leverage). Green <70% · amber 70–90% · red >90%.`;
-                        _grossEl.className = 'text-xs font-mono font-bold ' +
+                        _grossEl.dataset.tip = `Open notional ${_fmt(data.gross_open)} / budget ${_fmt(data.gross_budget)} (balance × max_gross_leverage). Green <70% · amber 70–90% · red >90%.`;
+                        _grossEl.className = 'text-xs font-mono font-bold cursor-help ' +
                             (_pct < 70 ? 'text-emerald-400' : _pct <= 90 ? 'text-yellow-400' : 'text-red-400');
                     } else {
                         _grossEl.textContent = 'off';
-                        _grossEl.title = 'Gross cap disabled (max_gross_leverage = 0).';
-                        _grossEl.className = 'text-xs font-mono text-gray-500';
+                        _grossEl.dataset.tip = 'Gross cap disabled (max_gross_leverage = 0).';
+                        _grossEl.className = 'text-xs font-mono text-gray-500 cursor-help';
                     }
                 }
+
+                // Aug-22 (operator): closed-bar BTC ADX pair for the persistent header arrow
+                window._btcAdxClosed = (data.btc_adx != null) ? data.btc_adx : null;
+                window._btcAdxPrev1 = (data.btc_adx_prev1 != null) ? data.btc_adx_prev1 : null;
+                try { renderAdxArrow(); } catch (_) {}
 
                 // Aug-22 (operator): Margin Ratio chip — distance to cross-wallet liquidation (100%)
                 const _mrEl = document.getElementById('margin-ratio-gauge');
@@ -8673,12 +8688,16 @@
                         const _fmt$ = (v) => '$' + Math.round(v || 0).toLocaleString();
                         const _liq = data.margin_liq_move_pct != null ? ` · uniform adverse move to liquidation ≈ −${data.margin_liq_move_pct.toFixed(1)}%` : '';
                         _mrEl.textContent = `${_mr.toFixed(1)}%`;
-                        _mrEl.title = `Margin ratio ${_mr.toFixed(2)}% = maintenance ${_fmt$(data.margin_maint)} ÷ margin balance ${_fmt$(data.margin_balance)} (${data.margin_ratio_source === 'binance' ? 'Binance account' : 'paper estimate @0.5% MMR, BNB excluded'})${_liq}. Liquidation at 100%. Green <20% · amber 20–50% · red ≥50%.`;
-                        _mrEl.className = 'text-xs font-mono font-bold ' + (_mr < 20 ? 'text-emerald-400' : _mr < 50 ? 'text-yellow-400' : 'text-red-400');
+                        _mrEl.dataset.tip = `Margin ratio ${_mr.toFixed(2)}% = maintenance ${_fmt$(data.margin_maint)} ÷ margin balance ${_fmt$(data.margin_balance)} (${data.margin_ratio_source === 'binance' ? 'Binance account' : 'paper estimate @0.5% MMR, BNB excluded'})${_liq}. Liquidation at 100%. Green <20% · amber 20–50% · red ≥50%.`;
+                        _mrEl.className = 'text-xs font-mono font-bold cursor-help ' + (_mr < 20 ? 'text-emerald-400' : _mr < 50 ? 'text-yellow-400' : 'text-red-400');
+                    } else if (data.margin_ratio_pct == null || data.margin_ratio_source === 'unavailable') {
+                        _mrEl.textContent = 'n/a';
+                        _mrEl.dataset.tip = 'Margin ratio unavailable this poll (payload missing or account fetch failed).';
+                        _mrEl.className = 'text-xs font-mono text-gray-500 cursor-help';
                     } else {
                         _mrEl.textContent = '0%';
-                        _mrEl.title = 'No open positions — margin ratio 0%. Liquidation at 100%.';
-                        _mrEl.className = 'text-xs font-mono text-gray-500';
+                        _mrEl.dataset.tip = 'No open positions — margin ratio 0%. Liquidation at 100%.';
+                        _mrEl.className = 'text-xs font-mono text-gray-500 cursor-help';
                     }
                 }
 
@@ -18922,23 +18941,10 @@
                             adxLowTag.textContent = 'HIGH';
                         }
                     }
-                    const adxDirTag = document.getElementById('btc-adx-dir-tag');
-                    if (adxDirTag && window._prevBtcAdx != null) {
-                        const _ADX_HOLD_MS = 30000;
-                        if (btcAdxVal > window._prevBtcAdx) {
-                            adxDirTag.textContent = '↑ RISING';
-                            adxDirTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-emerald-500/20 text-emerald-400';
-                            adxDirTag.classList.remove('hidden');
-                            window._adxDirSetAt = Date.now();
-                        } else if (btcAdxVal < window._prevBtcAdx) {
-                            adxDirTag.textContent = '↓ FALLING';
-                            adxDirTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-red-500/20 text-red-400';
-                            adxDirTag.classList.remove('hidden');
-                            window._adxDirSetAt = Date.now();
-                        } else if (!window._adxDirSetAt || Date.now() - window._adxDirSetAt > _ADX_HOLD_MS) {
-                            adxDirTag.classList.add('hidden');
-                        }
-                    }
+                    // Aug-22 (operator): persistent arrow (↑/↓/≈) from the closed 5m bar — replaces the
+                    // poll-to-poll RISING/FALLING tag that only showed for 30 s after a change.
+                    window._btcAdxLive = btcAdxVal;
+                    try { renderAdxArrow(); } catch (_) {}
                     window._prevBtcAdx = btcAdxVal;
                 } else if (adxValueEl) {
                     adxValueEl.textContent = '--';
@@ -19650,6 +19656,35 @@
                     },
                 },
             });
+        }
+
+        function renderAdxArrow() {
+            const el = document.getElementById('btc-adx-dir-tag');
+            if (!el) return;
+            const cur = (window._btcAdxClosed != null) ? window._btcAdxClosed : window._btcAdxLive;
+            const prev = window._btcAdxPrev1;
+            if (cur == null || prev == null) {
+                // no closed-bar pair yet: fall back to poll-to-poll delta if we have one
+                if (window._btcAdxLive != null && window._prevBtcAdx != null && window._btcAdxLive !== window._prevBtcAdx) {
+                    const up = window._btcAdxLive > window._prevBtcAdx;
+                    el.textContent = up ? '↑' : '↓';
+                    el.className = 'px-1.5 py-0 rounded text-[9px] font-bold leading-tight ' + (up ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400');
+                    el.dataset.tip = 'BTC ADX direction (poll-to-poll; closed-bar data not yet available)';
+                    el.classList.remove('hidden');
+                }
+                window._prevBtcAdx = window._btcAdxLive;
+                return;
+            }
+            const d = cur - prev;
+            let label, cls;
+            if (Math.abs(d) < 0.05) { label = '≈'; cls = 'bg-yellow-500/20 text-yellow-400'; }
+            else if (d > 0) { label = '↑'; cls = 'bg-emerald-500/20 text-emerald-400'; }
+            else { label = '↓'; cls = 'bg-red-500/20 text-red-400'; }
+            el.textContent = label;
+            el.className = 'px-1.5 py-0 rounded text-[9px] font-bold leading-tight cursor-help ' + cls;
+            el.dataset.tip = `BTC ADX direction on closed 5m bars: ${cur.toFixed(1)} vs previous bar ${prev.toFixed(1)} (Δ ${d >= 0 ? '+' : ''}${d.toFixed(2)}). ↑ trend strength building · ↓ fading · ≈ flat (|Δ| < 0.05).`;
+            el.classList.remove('hidden');
+            window._prevBtcAdx = window._btcAdxLive;
         }
 
         async function loadInvestors() {

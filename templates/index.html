@@ -213,6 +213,9 @@
             <span class="text-gray-400 font-medium">Gross</span>
             <span id="gross-gauge" class="text-gray-500 text-xs font-mono" title="Σ open-position notional ÷ (balance × max_gross_leverage). Green <70% · amber 70–90% · red >90%. 'off' = gross cap disabled.">--</span>
             <span class="text-gray-600">·</span>
+            <span class="text-gray-400 font-medium">Margin</span>
+            <span id="margin-ratio-gauge" class="text-gray-500 text-xs font-mono" title="Binance Margin Ratio = maintenance margin ÷ margin balance (cross wallet liquidates at 100%). Green <20% · amber 20–50% · red ≥50%. Paper = estimate at 0.5% MMR.">--</span>
+            <span class="text-gray-600">·</span>
             <span id="bullrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide" title="🌊 Bull-Run Monitor (gate 57): GREEN = 72h composite ON (r72/above-EMA20%/efficiency, Schmitt band + crash-latch) → BULLRUN_LONG sleeve trades. AMBER = 24h alert only. Hover values: r72 / above% / eff / r6h / off-24h-high.">🌊 --</span>
             <span id="btc-off24h-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide" title="BTC distance from its 24h high (gate 57 v2 pullback-phase gate). Red = at/under the gate → sleeve refusing entries (dips kept alive); green = inside range → next reclaim fires.">24h-high --</span>
             <!-- pair-count cluster kept for the JS writers but folded into the Breadth tooltip (duplicate of Breadth) -->
@@ -8654,6 +8657,23 @@
                         _grossEl.textContent = 'off';
                         _grossEl.title = 'Gross cap disabled (max_gross_leverage = 0).';
                         _grossEl.className = 'text-xs font-mono text-gray-500';
+                    }
+                }
+
+                // Aug-22 (operator): Margin Ratio chip — distance to cross-wallet liquidation (100%)
+                const _mrEl = document.getElementById('margin-ratio-gauge');
+                if (_mrEl) {
+                    if (data.margin_ratio_pct != null && (data.margin_balance || 0) > 0 && (data.gross_open || 0) > 0) {
+                        const _mr = data.margin_ratio_pct || 0;
+                        const _fmt$ = (v) => '$' + Math.round(v || 0).toLocaleString();
+                        const _liq = data.margin_liq_move_pct != null ? ` · uniform adverse move to liquidation ≈ −${data.margin_liq_move_pct.toFixed(1)}%` : '';
+                        _mrEl.textContent = `${_mr.toFixed(1)}%`;
+                        _mrEl.title = `Margin ratio ${_mr.toFixed(2)}% = maintenance ${_fmt$(data.margin_maint)} ÷ margin balance ${_fmt$(data.margin_balance)} (${data.margin_ratio_source === 'binance' ? 'Binance account' : 'paper estimate @0.5% MMR, BNB excluded'})${_liq}. Liquidation at 100%. Green <20% · amber 20–50% · red ≥50%.`;
+                        _mrEl.className = 'text-xs font-mono font-bold ' + (_mr < 20 ? 'text-emerald-400' : _mr < 50 ? 'text-yellow-400' : 'text-red-400');
+                    } else {
+                        _mrEl.textContent = '0%';
+                        _mrEl.title = 'No open positions — margin ratio 0%. Liquidation at 100%.';
+                        _mrEl.className = 'text-xs font-mono text-gray-500';
                     }
                 }
 

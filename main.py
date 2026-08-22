@@ -529,6 +529,28 @@ async def get_status(db: AsyncSession = Depends(get_db)):
         _status["gross_budget"] = _gross_budget
         _status["gross_pct"] = (_gross_open / _gross_budget * 100.0) if _gross_budget > 0 else 0.0
         _status["gross_enabled"] = _gl > 0
+        # Aug-22 (operator): Binance-style MARGIN RATIO = maintenance margin ÷ margin balance (cross
+        # wallet liquidates at 100%). Live: straight from the account payload. Paper: estimate with a
+        # flat 0.5% maintenance rate (Binance tier-1 MMR for alts; BTC is 0.4%) on open notional, over
+        # USDT wallet + open unrealized (BNB excluded — not collateral without Multi-Assets mode).
+        # liq_move_pct = uniform adverse price move across the book that would reach 100%.
+        try:
+            _mr_src = 'paper_est'; _maint = 0.0; _mbal = 0.0
+            if trading_engine.is_paper_mode:
+                _pc = await _portfolio_components(db)
+                _maint = _gross_open * 0.005
+                _mbal = float(_pc['free']) + float(_pc['margin']) + float(_pc['unrealized'])
+            else:
+                _lb = await binance_service.get_balance()
+                if _lb.get('ok') and float(_lb.get('margin_balance') or 0) > 0:
+                    _maint = float(_lb.get('maint_margin') or 0); _mbal = float(_lb.get('margin_balance') or 0); _mr_src = 'binance'
+            _status["margin_ratio_pct"] = (_maint / _mbal * 100.0) if _mbal > 0 else 0.0
+            _status["margin_maint"] = _maint
+            _status["margin_balance"] = _mbal
+            _status["margin_ratio_source"] = _mr_src
+            _status["margin_liq_move_pct"] = ((_mbal - _maint) / _gross_open * 100.0) if _gross_open > 0 else None
+        except Exception as _mre:
+            logger.debug(f"[STATUS] margin ratio skipped: {_mre}")
     except Exception as e:
         logger.debug(f"[STATUS] gross gauge skipped: {e}")
         _status["gross_enabled"] = False

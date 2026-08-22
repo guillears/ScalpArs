@@ -303,6 +303,13 @@ class BinanceService:
                     usdt_free = float(asset.get('maxWithdrawAmount', usdt_free))
                     break
             
+            # Aug-22: Binance "Margin Ratio" inputs (cross wallet): totalMaintMargin / totalMarginBalance
+            # (liquidation at 100%). Surfaced as-is; the dashboard computes the ratio.
+            try:
+                _maint = float(raw_info.get('totalMaintMargin', 0) or 0)
+                _mbal = float(raw_info.get('totalMarginBalance', 0) or 0)
+            except Exception:
+                _maint, _mbal = 0.0, 0.0
             return {
                 'ok': True,
                 'usdt_free': usdt_free,
@@ -310,7 +317,9 @@ class BinanceService:
                 'usdt_total': usdt_wallet,
                 'bnb_free': float(bnb_balance.get('free', 0)),
                 'bnb_total': float(bnb_balance.get('total', 0)),
-                'total_portfolio': float(balance.get('total', {}).get('USDT', 0))
+                'total_portfolio': float(balance.get('total', {}).get('USDT', 0)),
+                'maint_margin': _maint,
+                'margin_balance': _mbal,
             }
         except Exception as e:
             logger.error(f"[BINANCE] Error fetching balance: {e}")
@@ -324,7 +333,9 @@ class BinanceService:
                 'usdt_total': 0,
                 'bnb_free': 0,
                 'bnb_total': 0,
-                'total_portfolio': 0
+                'total_portfolio': 0,
+                'maint_margin': 0,
+                'margin_balance': 0,
             }
     
     async def get_top_futures_pairs(

@@ -2504,6 +2504,7 @@ def _compute_pnl_distribution_stats(orders):
 # 🌊 Aug-21 gate 57 v2 cohort floor (operator): every sleeve stat and BOTH kill bars count only fills opened at/after
 # the off-24h gate deploy (835f389). One constant — referenced by the sleeve scoreboard AND the periods builder.
 G57V2_TS = datetime(2026, 8, 21, 19, 16, 0)
+G57V3_TS = datetime(2026, 8, 22, 21, 53, 0)  # Aug-22 (15): BTC-leader gate deploy (EB Ready 21:53:18 UTC) — post-gate cohort floor
 
 
 def _bullrun_monitor_payload():
@@ -2565,7 +2566,7 @@ async def _bullrun_periods_rows(db, limit=50):
                 'fills': len(g), 'open_fills': len(g) - len(gc),
                 'wr': (round(100.0 * _wins / len(gc), 1) if gc else None),
                 'net': round(sum(o.pnl or 0 for o in gc), 2),
-                'blk_sp': p.blocked_spacing or 0, 'blk_sl': p.blocked_slots or 0, 'blk_ema': p.blocked_ema50 or 0, 'blk_24h': getattr(p, 'blocked_off24h', 0) or 0,
+                'blk_sp': p.blocked_spacing or 0, 'blk_sl': p.blocked_slots or 0, 'blk_ema': p.blocked_ema50 or 0, 'blk_24h': getattr(p, 'blocked_off24h', 0), 'blk_e13': getattr(p, 'blocked_ema13', 0) or 0 or 0,
                 'kb_n': len(_kb), 'kb_wr': (round(_kb_wr, 0) if _kb_wr is not None else None),
                 'kb_usd': round(sum(o.pnl or 0 for o in _kb), 2),
                 'ended_by': p.ended_by or ('open' if p.ended_at is None else ''),
@@ -6881,6 +6882,17 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 bullrun_rows.append({"row": "ALL v2 fills (post-gate, ≥ Aug-21 19:16 UTC)", **_br_stats(_br_orders), "gate": _br_gate})
             else:
                 bullrun_rows.append({"row": "ALL v2 fills (post-gate, ≥ Aug-21 19:16 UTC)", "n": 0, "wr": None, "avg_pct": None, "total_usd": 0.0, "avg_peak": None, "dates": 0, "gate": "kill bar: 0/10 — no v2 fills yet"})
+            # Aug-22 (15): the comparable read after the BTC-leader gate — current config (blacklist honoured by
+            # construction) with pre-gate fills the gate WOULD have blocked removed (entry column < 0) + all post-gate fills.
+            try:
+                _bl_now = {x.strip().upper() for x in str(getattr(config.trading_config.thresholds, 'bullrun_pair_blacklist', '') or '').split(',') if x.strip()}
+                _cc = [o for o in _br_orders if (o.pair or '').upper() not in _bl_now
+                       and not (o.opened_at < G57V3_TS and (getattr(o, 'entry_btc_dist_from_ema13_pct', None) is not None) and float(o.entry_btc_dist_from_ema13_pct) < 0)]
+                bullrun_rows.append({"row": "  CURRENT-CONFIG cohort (ex-blacklist; pre-gate fills BTC<EMA13 removed) — the read baseline", **_br_stats(_cc), "gate": ""})
+                _v3 = [o for o in _br_orders if o.opened_at >= G57V3_TS]
+                bullrun_rows.append({"row": "  post-gate fills only (v3, ≥ Aug-22 21:53 UTC)", **_br_stats(_v3), "gate": ""})
+            except Exception as _cce:
+                logger.debug(f"[BULLRUN_ROWS] current-config cohort skipped: {_cce}")
             if _br_v1:
                 _v1c = [o for o in _br_v1 if o.status == 'CLOSED']
                 bullrun_rows.append({"row": "  v1 reference in this window (pre-gate; lifetime 7 fills 1W/6L −$623)", **_br_stats(_v1c), "gate": "EXCLUDED from v2 stats/kill bar"})

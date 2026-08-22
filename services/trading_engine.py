@@ -4284,7 +4284,7 @@ class TradingEngine:
                         _bullrun_monitor['period_id'] = cur.id
                         _bullrun_monitor['resumed'] = True
                         _bullrun_monitor['green_since'] = cur.started_at.strftime('%Y-%m-%d %H:%M') if new_state == 'GREEN' else None
-                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h')):
+                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13')):
                             _bullrun_monitor[_k] = int(getattr(cur, _col, 0) or 0)
                         logger.info(f"[BULLRUN_MONITOR] resumed open {cur.state} period #{cur.id} (since {cur.started_at:%Y-%m-%d %H:%M} UTC) after restart")
                     else:
@@ -4317,6 +4317,7 @@ class TradingEngine:
                 cur.blocked_slots = int(_bullrun_monitor.get('blk_slots', 0) or 0)
                 cur.blocked_ema50 = int(_bullrun_monitor.get('blk_ema50', 0) or 0)
                 cur.blocked_off24h = int(_bullrun_monitor.get('blk_off24h', 0) or 0)
+                cur.blocked_ema13 = int(_bullrun_monitor.get('blk_ema13', 0) or 0)
                 cur.last_update = now
                 # breadth backfill: the first compute after boot can precede the breadth scan (0/0)
                 _gb = globals()
@@ -4333,6 +4334,7 @@ class TradingEngine:
                     cur.blocked_slots = int(_bullrun_monitor.get('blk_slots', 0) or 0)
                     cur.blocked_ema50 = int(_bullrun_monitor.get('blk_ema50', 0) or 0)
                     cur.blocked_off24h = int(_bullrun_monitor.get('blk_off24h', 0) or 0)
+                    cur.blocked_ema13 = int(_bullrun_monitor.get('blk_ema13', 0) or 0)
                     if cur.state == 'AMBER' and new_state == 'GREEN':
                         amber_lead = int((now - cur.started_at).total_seconds() / 60)
                 _g = globals()
@@ -4359,12 +4361,12 @@ class TradingEngine:
                     r72_peak=rd['r72'], eff_peak=rd['eff'], r6_min=rd['r6'],
                     btc_start=rd['px'], btc_end=rd['px'],
                     bull_pct_start=_g.get('_market_bull_pct'), bear_pct_start=_g.get('_market_bear_pct'),
-                    amber_lead_min=amber_lead, blocked_spacing=0, blocked_slots=0, blocked_ema50=0, blocked_off24h=0,
+                    amber_lead_min=amber_lead, blocked_spacing=0, blocked_slots=0, blocked_ema50=0, blocked_off24h=0, blocked_ema13=0,
                 )
                 db.add(newp)
                 await db.flush()
                 _bullrun_monitor['period_id'] = newp.id
-                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50', 'blk_off24h'):
+                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50', 'blk_off24h', 'blk_ema13'):
                     _bullrun_monitor[_k] = 0
             await db.commit()
         except Exception as e:

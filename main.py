@@ -1330,12 +1330,13 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
         if pnl_pct is not None:
             pcts_by_day.setdefault(d, []).append(pnl_pct)
 
-    portfolio_now = None
+    portfolio_now = None; total_equity_now = None
     try:
         # REALIZED equity only (review I2): the day-return back-walk pairs closed-P&L
         # deltas with a closed-P&L baseline — including live unrealized here would make
         # every HISTORICAL day's % drift intraday while positions are open.
-        portfolio_now = (await _portfolio_components(db))["realized_equity"]
+        _pc = await _portfolio_components(db)
+        portfolio_now = _pc["realized_equity"]; total_equity_now = _pc["total_equity"]
     except Exception:
         pass
     if portfolio_now is not None:
@@ -1391,7 +1392,7 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
                 _dcr = ((_cur / _m_bal0) ** (1.0 / _elapsed) - 1.0) if (_m_bal0 > 0 and _cur > 0) else 0.0
                 _left = _m_ld - _d.day
                 revisions_by_month[_mk].append({"date": _iso, "proj": round(_cur * ((1.0 + _dcr) ** _left), 2),
-                                                "bal": round(_cur, 2)})
+                                                "bal": round(_cur, 2), "dcr": round(_dcr * 100, 4), "days_left": _left})
                 _w = []
                 for _b in range(7):
                     _w += pcts_by_day.get((_d - timedelta(days=_b)).isoformat(), [])
@@ -1408,6 +1409,14 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
         avg7 = avg7_by_month.get(_cur_mk, [])
     return {"days": days, "portfolio_now": round(portfolio_now, 2) if portfolio_now is not None else None,
             "revisions": revisions, "avg7": avg7, "ship_marks": _SHIP_MARKS,
+            # Aug-22 (operator caught MTD→EOM $2,790/$3,462 vs $4k+ on every other row): the other period rows
+            # compound from LIVE TOTAL equity (incl. open unrealized); this cell compounded the month's rate from
+            # REALIZED equity, so a few hundred $ of open sleeve P&L made the row read as broken. Rate stays the
+            # month's realized DCR (history untouched); the headline projection now uses the same base as the table.
+            "eom_now": ({"dcr": revisions[-1]["dcr"], "days_left": revisions[-1]["days_left"],
+                         "proj_total": round(float(total_equity_now) * ((1.0 + revisions[-1]["dcr"] / 100.0) ** revisions[-1]["days_left"]), 2),
+                         "proj_realized": revisions[-1]["proj"], "total_equity": round(float(total_equity_now), 2)}
+                        if (revisions and total_equity_now is not None) else None),
             "revisions_by_month": revisions_by_month, "avg7_by_month": avg7_by_month,
             "month_final": month_final,
             "eom_label": (datetime.utcnow() + offset).strftime("%b ") + str(__import__("calendar").monthrange((datetime.utcnow()+offset).year,(datetime.utcnow()+offset).month)[1])}

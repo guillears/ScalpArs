@@ -949,7 +949,7 @@ class SignalThresholds(BaseModel):
     # in BOTH cohorts (+$136 / +$100; PEPE 2.53 → 3.50). Floor = max(2×ATR trail line, rung floor); below the
     # first rung nothing changes. "peak:floor" pairs. 🔒 REVERT: at N≥8 trades reaching +4, if ladder-exited
     # trades underperform their trail counterfactual (peak/exit recorded) → clear the string. "" = off.
-    bullrun_ladder: str = "4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0"
+    bullrun_ladder: str = "4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0, 10.0:9.0, 12.0:11.0, 15.0:13.5, 20.0:18.0, 25.0:22.5, 30.0:27.0"
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

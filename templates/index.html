@@ -5130,7 +5130,7 @@
                             </div>
                             <div class="md:col-span-2" title="Aug 21 (15): high-rung profit lock for sleeve runners — 'peak:floor' pairs; floor = max(2×ATR trail line, highest rung ≤ peak). Below the first rung nothing changes. Retrace study: runners pull back a median 1.2-1.4% before their next leg, so rungs start at +4 where continuation decays (84%). Blank = off.">
                                 <label class="block text-xs text-gray-400 mb-1">Profit-lock ladder (peak:floor, …)</label>
-                                <input type="text" id="config-br-ladder" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0">
+                                <input type="text" id="config-br-ladder" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0, 10.0:9.0, 12.0:11.0, 15.0:13.5, 20.0:18.0, 25.0:22.5, 30.0:27.0">
                             </div>
                             <div title="Aug 21 (11): pullback-phase gate — no sleeve entry while BTC is more than this % below its 24h high (negative; 0 = off). The variable that separated the replay's winners from losers; all five day-1 live losers fired at −2.5..−3.3%.">
                                 <label class="block text-xs text-gray-400 mb-1">BTC off 24h-high gate (≤ %)</label>
@@ -8366,7 +8366,9 @@
             window._eomPanel = null;
             if (!rev.length) { el.innerHTML = ''; return; }
             const projs = rev.map(r => r.proj);
-            const nowP = projs[projs.length - 1];
+            // Headline = same number as the period table's MTD cell (live total-equity base, month's
+            // realized rate); the Δ vs 3d/7d below stays on the realized series (like-for-like).
+            const nowP = (d.eom_now && d.eom_now.proj_total != null) ? d.eom_now.proj_total : projs[projs.length - 1];
             const at = k => (projs.length > k ? projs[projs.length - 1 - k] : null);
             const d3 = at(3) != null ? nowP - at(3) : null, d7 = at(7) != null ? nowP - at(7) : null;
             const fmt = v => (v == null ? '—' : (v >= 0 ? '+' : '−') + '$' + Math.abs(Math.round(v)).toLocaleString('en-US'));
@@ -13154,6 +13156,10 @@
                         // equity, whole-day convention, >=4-active-day floor all inherited). The
                         // duplicate client-side formula is deleted — two surfaces cannot diverge by
                         // construction. "-" briefly at page load until the calendar fetch lands.
+                        // Aug-22: base = LIVE TOTAL equity (same base as every other row — incl. open
+                        // unrealized), rate = the month's realized DCR (server eom_now). Fallback: series.
+                        const _eom = (typeof pnlCalData !== 'undefined' && pnlCalData && pnlCalData.eom_now) || null;
+                        if (_eom && _eom.proj_total != null) return _eom.proj_total;
                         const _revs = (typeof pnlCalData !== 'undefined' && pnlCalData && pnlCalData.revisions) || [];
                         return _revs.length ? _revs[_revs.length - 1].proj : null;
                     }
@@ -20661,7 +20667,7 @@
                     ['config-br-trail-atr-mult', 'bullrun_trail_atr_mult', 2.0],
                     ['config-br-off24h-max', 'bullrun_btc_off24h_max', -2.0],
                 ];
-                { const _e = document.getElementById('config-br-ladder'); if (_e) _e.value = (config.thresholds.bullrun_ladder !== undefined && config.thresholds.bullrun_ladder !== null) ? config.thresholds.bullrun_ladder : '4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0'; }
+                { const _e = document.getElementById('config-br-ladder'); if (_e) _e.value = (config.thresholds.bullrun_ladder !== undefined && config.thresholds.bullrun_ladder !== null) ? config.thresholds.bullrun_ladder : '4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0, 10.0:9.0, 12.0:11.0, 15.0:13.5, 20.0:18.0, 25.0:22.5, 30.0:27.0'; }
                 for (const [_id, _key, _def] of _brLoad) {
                     const _e = document.getElementById(_id);
                     if (_e) _e.value = config.thresholds[_key] !== undefined ? config.thresholds[_key] : _def;

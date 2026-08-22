@@ -953,7 +953,11 @@ class SignalThresholds(BaseModel):
     # Aug-22: sleeve-scoped pair blacklist (comma-separated). ONG: 0/5 across v1+v2 (−$760), every loss a −1.2 stop —
     # its entry ATR (1.1-1.9%) puts the floored SL at ~1× ATR (majors sit at 2-4×). Discipline-override ship (founding
     # replay had ONG winning); 🔒 revert: if the non-ONG ATR>1.0 sleeve cohort wins (N≥5, Σ>0) re-admit + fix the floor.
-    bullrun_pair_blacklist: str = "ONGUSDT"
+    # Aug-22 (2): ETH added — replay (founding + live windows) shows ETH fills ≈ zero expectancy (+0.06%/t, 13 fills) while
+    # its freed slot pays in BOTH windows (+$163 / +$702); live v2: 2 fills 0W peak 0.00. Mechanism: ATR 0.3-0.5 → runner
+    # capped below the ladder, stops cost the same = slot-hog. BTC NOT blacklisted (its fills won the founding window).
+    # 🔒 revert ETH: low-ATR (≤0.5%) sleeve fills avg ≥ +0.30%/t on N≥8 in the next GREEN episode.
+    bullrun_pair_blacklist: str = "ONGUSDT,ETHUSDT"
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

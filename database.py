@@ -557,6 +557,11 @@ async def init_db():
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN last_update DATETIME"))
                 if 'blocked_off24h' not in _mp_cols:
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_off24h INTEGER DEFAULT 0"))
+            # Aug-22: investors.eth_wallet (optional payout address)
+            if 'investors' in inspector.get_table_names():
+                _inv_cols = [c['name'] for c in inspector.get_columns('investors')]
+                if 'eth_wallet' not in _inv_cols:
+                    connection.execute(text("ALTER TABLE investors ADD COLUMN eth_wallet VARCHAR(42)"))
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]
                 if 'order_type' not in tx_columns:
@@ -678,12 +683,14 @@ async def init_db():
                             shares FLOAT NOT NULL DEFAULT 0.0,
                             total_deposited FLOAT NOT NULL DEFAULT 0.0,
                             total_withdrawn FLOAT NOT NULL DEFAULT 0.0,
-                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            eth_wallet VARCHAR(42)
                         )
                     """))
+                    # eth_wallet is guaranteed present here: its ALTER guard runs earlier in this function (Aug-22)
                     connection.execute(text(
-                        "INSERT INTO investors_new (id, name, shares, total_deposited, total_withdrawn, created_at) "
-                        "SELECT id, name, shares, total_deposited, total_withdrawn, created_at FROM investors"
+                        "INSERT INTO investors_new (id, name, shares, total_deposited, total_withdrawn, created_at, eth_wallet) "
+                        "SELECT id, name, shares, total_deposited, total_withdrawn, created_at, eth_wallet FROM investors"
                     ))
                     connection.execute(text("DROP TABLE investors"))
                     connection.execute(text("ALTER TABLE investors_new RENAME TO investors"))

@@ -1010,6 +1010,7 @@ class Investor(Base):
     total_deposited = Column(Float, nullable=False, default=0.0)
     total_withdrawn = Column(Float, nullable=False, default=0.0)
     created_at = Column(DateTime, nullable=False, default=func.now())
+    eth_wallet = Column(String(42), nullable=True)  # Aug-22: optional 0x… payout address (EVM, 42 chars)
 
 
 class InvestorLedger(Base):

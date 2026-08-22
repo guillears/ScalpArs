@@ -210,10 +210,10 @@
                 <span id="breadth-bull-value" class="text-gray-300 font-bold">--</span><span class="text-gray-500">/</span><span id="breadth-bear-value" class="text-gray-300 font-bold">--</span>
             </span>
             <span class="text-gray-600">·</span>
-            <span class="text-gray-400 font-medium">Gross</span>
+            <span class="text-gray-400 font-medium cursor-help" title="Gross = how much exposure is on: Σ open notional ÷ (balance × max_gross_leverage cap). The PRE-TRADE sizing check — the bot itself gates new entries on it. It does not say how close the wallet is to liquidation.">Gross</span>
             <span id="gross-gauge" class="text-gray-500 text-xs font-mono" title="Σ open-position notional ÷ (balance × max_gross_leverage). Green <70% · amber 70–90% · red >90%. 'off' = gross cap disabled.">--</span>
             <span class="text-gray-600">·</span>
-            <span class="text-gray-400 font-medium">Margin</span>
+            <span class="text-gray-400 font-medium cursor-help" title="Margin ratio = how close the cross wallet is to liquidation RIGHT NOW, including unrealized P&L (maintenance margin ÷ margin balance; Binance liquidates at 100%). The SURVIVAL gauge — the one that matters when the bot is down and the software stop cannot fire.">Margin</span>
             <span id="margin-ratio-gauge" class="text-gray-500 text-xs font-mono" title="Binance Margin Ratio = maintenance margin ÷ margin balance (cross wallet liquidates at 100%). Green <20% · amber 20–50% · red ≥50%. Paper = estimate at 0.5% MMR.">--</span>
             <span class="text-gray-600">·</span>
             <span id="bullrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide" title="🌊 Bull-Run Monitor (gate 57): GREEN = 72h composite ON (r72/above-EMA20%/efficiency, Schmitt band + crash-latch) → BULLRUN_LONG sleeve trades. AMBER = 24h alert only. Hover values: r72 / above% / eff / r6h / off-24h-high.">🌊 --</span>
@@ -4549,11 +4549,12 @@
                                 <th class="px-3 py-2 text-right font-medium">Deposited</th>
                                 <th class="px-3 py-2 text-right font-medium">Withdrawn</th>
                                 <th class="px-3 py-2 text-right font-medium">P&L</th>
+                                <th class="px-3 py-2 text-left font-medium" title="Payout address (EVM). Click the address to copy it.">ETH Wallet</th>
                                 <th class="px-3 py-2 text-center font-medium">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="investors-table-body">
-                            <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No investors yet</td></tr>
+                            <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No investors yet</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -4570,6 +4571,10 @@
                     <div>
                         <label class="block text-sm text-gray-400 mb-1">Name</label>
                         <input type="text" id="investor-add-name" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" placeholder="Investor name">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">ETH Wallet <span class="text-gray-600">(optional — can be added later)</span></label>
+                        <input type="text" id="investor-add-wallet" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white font-mono text-xs" placeholder="0x…">
                     </div>
                     <div class="flex gap-3 justify-end">
                         <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
@@ -19678,7 +19683,7 @@
 
                 const tbody = document.getElementById('investors-table-body');
                 if (!_investorsCache.length) {
-                    tbody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No investors yet</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No investors yet</td></tr>';
                     return;
                 }
 
@@ -19699,16 +19704,20 @@
                         <td class="px-3 py-2 text-right text-gray-400">$${inv.total_deposited.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                         <td class="px-3 py-2 text-right text-gray-400">$${inv.total_withdrawn.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                         <td class="px-3 py-2 text-right ${pnlCls} font-medium">${pnlSign}$${Math.abs(pnl).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} <span class="text-xs opacity-80">(${pnlPctStr})</span></td>
+                        <td class="px-3 py-2 text-left">${inv.eth_wallet
+                            ? `<button onclick="copyInvestorWallet(${inv.id})" class="font-mono text-xs text-cyan-300 hover:text-white transition" title="${inv.eth_wallet} — click to copy">${inv.eth_wallet.slice(0, 6)}…${inv.eth_wallet.slice(-4)}</button>`
+                            : `<span class="text-gray-600 text-xs">—</span>`}</td>
                         <td class="px-3 py-2 text-center">
                             <div class="flex gap-1 justify-center">
                                 <button onclick="renameInvestor(${inv.id})" class="px-2 py-1 bg-purple-600/30 hover:bg-purple-600/50 text-purple-400 rounded text-xs transition" title="Edit name">✎</button>
+                                <button onclick="editInvestorWallet(${inv.id})" class="px-2 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 rounded text-xs transition" title="${inv.eth_wallet ? 'Edit ETH wallet' : 'Add ETH wallet'}">Ξ</button>
                                 <button onclick="openInvestorModal('deposit', ${inv.id})" class="px-2 py-1 bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-400 rounded text-xs transition" title="Deposit">+$</button>
                                 <button onclick="openInvestorModal('withdraw', ${inv.id})" class="px-2 py-1 bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 rounded text-xs transition" title="Withdraw">-$</button>
                                 <button onclick="openInvestorModal('remove', ${inv.id})" class="px-2 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-400 rounded text-xs transition" title="Remove">✕</button>
                             </div>
                         </td>
                     </tr>
-                    <tr id="ledger-row-${inv.id}" class="hidden"><td colspan="9" class="px-3 py-0 bg-black/20"><div id="ledger-body-${inv.id}" class="py-2 text-xs text-gray-400">Loading…</div></td></tr>`;
+                    <tr id="ledger-row-${inv.id}" class="hidden"><td colspan="10" class="px-3 py-0 bg-black/20"><div id="ledger-body-${inv.id}" class="py-2 text-xs text-gray-400">Loading…</div></td></tr>`;
                 }).join('');
                 // Re-apply any rows the user had expanded (auto-refresh rebuilds the table).
                 // Restore cached HTML instantly (no "Loading…" flicker), then silently refresh.
@@ -19811,6 +19820,37 @@
             }
         }
 
+        async function copyInvestorWallet(investorId) {
+            const inv = (_investorsCache || []).find(i => i.id === investorId);
+            if (!inv || !inv.eth_wallet) return;
+            try {
+                await navigator.clipboard.writeText(inv.eth_wallet);
+                showToast(`Copied ${inv.eth_wallet}`, 'success');
+            } catch (e) {
+                prompt('Copy the address:', inv.eth_wallet);
+            }
+        }
+
+        async function editInvestorWallet(investorId) {
+            const inv = (_investorsCache || []).find(i => i.id === investorId);
+            const current = (inv && inv.eth_wallet) || '';
+            const val = prompt('ETH wallet address (0x…, 42 chars). Leave empty to clear:', current);
+            if (val === null) return;  // cancelled
+            const trimmed = val.trim();
+            if (trimmed && !/^0x[0-9a-fA-F]{40}$/.test(trimmed)) { showToast('Invalid ETH address (0x + 40 hex chars)', 'error'); return; }
+            if (trimmed === current) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/investors/${investorId}`, {
+                    method: 'PATCH', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({eth_wallet: trimmed})
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { showToast(data.detail || 'Failed to save wallet', 'error'); return; }
+                showToast(trimmed ? 'Wallet saved' : 'Wallet cleared', 'success');
+                await loadInvestors();
+            } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+        }
+
         function openInvestorModal(mode, investorId) {
             const modal = document.getElementById('investor-modal');
             const title = document.getElementById('investor-modal-title');
@@ -19824,6 +19864,7 @@
             if (mode === 'add') {
                 title.textContent = 'Add Investor';
                 document.getElementById('investor-add-name').value = '';
+                const _w = document.getElementById('investor-add-wallet'); if (_w) _w.value = '';
                 document.getElementById('investor-form-add').classList.remove('hidden');
             } else if (mode === 'deposit') {
                 title.textContent = 'Deposit Funds';
@@ -19855,11 +19896,13 @@
         async function submitAddInvestor() {
             const name = document.getElementById('investor-add-name').value.trim();
             if (!name) { showToast('Name is required', 'error'); return; }
+            const eth_wallet = (document.getElementById('investor-add-wallet')?.value || '').trim();
+            if (eth_wallet && !/^0x[0-9a-fA-F]{40}$/.test(eth_wallet)) { showToast('Invalid ETH address (0x + 40 hex chars)', 'error'); return; }
             try {
                 const res = await fetch(`${API_BASE}/api/investors`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name})
+                    body: JSON.stringify({name, eth_wallet: eth_wallet || null})
                 });
                 const data = await res.json();
                 if (res.ok) {

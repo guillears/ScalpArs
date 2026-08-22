@@ -8,6 +8,7 @@ import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
+import re
 
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Form
 from fastapi.staticfiles import StaticFiles
@@ -12365,6 +12366,19 @@ def _compute_btc_1h_slope_btc_adx_multiplier_performance(orders):
 
 class InvestorCreate(BaseModel):
     name: str
+    eth_wallet: Optional[str] = None   # optional at creation; can be added later via PATCH
+
+
+_ETH_ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+def _clean_eth_wallet(raw) -> Optional[str]:
+    """'' / None → None (clears). Otherwise must be a 42-char 0x-hex EVM address (checksum case preserved)."""
+    w = (raw or "").strip()
+    if not w:
+        return None
+    if not _ETH_ADDR_RE.match(w):
+        raise HTTPException(400, "Invalid ETH address — expected 0x followed by 40 hex characters")
+    return w
 
 class InvestorDeposit(BaseModel):
     investor_id: int
@@ -12375,7 +12389,8 @@ class InvestorWithdraw(BaseModel):
     amount: float
 
 class InvestorRename(BaseModel):
-    name: str
+    name: Optional[str] = None
+    eth_wallet: Optional[str] = None   # PATCH: send to set/edit ('' clears); omit to leave unchanged
 
 
 def _open_unrealized_pnl(open_orders) -> float:
@@ -12496,6 +12511,7 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
             "total_deposited": round(inv.total_deposited, 2),
             "total_withdrawn": round(inv.total_withdrawn, 2),
             "created_at": inv.created_at.isoformat() if inv.created_at else None,
+            "eth_wallet": inv.eth_wallet,
         })
 
     # NAV history (last 120 days shown) + high-water mark, live point included via the hourly upsert
@@ -12562,10 +12578,11 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
     if existing.scalar():
         raise HTTPException(409, f"Investor '{name}' already exists")
 
-    inv = Investor(name=name, shares=0.0, total_deposited=0.0, total_withdrawn=0.0)
+    inv = Investor(name=name, shares=0.0, total_deposited=0.0, total_withdrawn=0.0,
+                   eth_wallet=_clean_eth_wallet(body.eth_wallet))
     db.add(inv)
     await db.flush()
-    return {"ok": True, "id": inv.id, "name": inv.name}
+    return {"ok": True, "id": inv.id, "name": inv.name, "eth_wallet": inv.eth_wallet}
 
 
 @app.post("/api/investors/deposit")
@@ -12620,12 +12637,18 @@ async def rename_investor(investor_id: int, body: InvestorRename, db: AsyncSessi
     inv = await db.get(Investor, investor_id)
     if not inv:
         raise HTTPException(404, "Investor not found")
-    new_name = (body.name or "").strip()
-    if not new_name:
-        raise HTTPException(400, "Name cannot be empty")
-    inv.name = new_name
+    fields = body.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(400, "Nothing to update")
+    if 'name' in fields:
+        new_name = (body.name or "").strip()
+        if not new_name:
+            raise HTTPException(400, "Name cannot be empty")
+        inv.name = new_name
+    if 'eth_wallet' in fields:
+        inv.eth_wallet = _clean_eth_wallet(body.eth_wallet)
     await db.flush()
-    return {"ok": True, "id": investor_id, "name": new_name}
+    return {"ok": True, "id": investor_id, "name": inv.name, "eth_wallet": inv.eth_wallet}
 
 
 @app.delete("/api/investors/{investor_id}")

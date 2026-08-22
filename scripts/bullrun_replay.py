@@ -14,6 +14,15 @@ def _fetch(p):
 PAIRS=["BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","DOGEUSDT","1000PEPEUSDT","HYPEUSDT","SUIUSDT","ADAUSDT","LINKUSDT"]
 INCLUDE_ONG='--ong' in sys.argv
 if INCLUDE_ONG: PAIRS.append("ONGUSDT")
+def _arg(k,default=None,cast=float):
+    for a in sys.argv:
+        if a.startswith(k+'='): return cast(a.split('=',1)[1])
+    return default
+for _p in (_arg('--extra','',str) or '').split(','):
+    if _p and _p not in PAIRS: PAIRS.append(_p)
+ATR_MAX=_arg('--atr-max'); CHG_MAX=_arg('--chg-max'); SL_FLOOR=_arg('--sl-floor',-1.2); EXCL=(_arg('--exclude','',str) or '').split(',')
+PAIRS=[p for p in PAIRS if p not in EXCL]
+QUIET='--quiet' in sys.argv
 def load(p):
     if not os.path.exists(f"{S}/{p}_5m.csv"): _fetch(p)
     d=pd.read_csv(f"{S}/{p}_5m.csv"); d['ts']=pd.to_datetime(d.open_time,unit='ms',utc=True); return d.set_index('ts')
@@ -42,12 +51,12 @@ btc['green']=state
 P={}
 for p in PAIRS:
     d=load(p); d['e20']=ema(d.c,20); d['e5']=ema(d.c,5); d['atr']=atr(d); d['atrp']=d.atr/d.c*100
-    h1=d.c.resample('1h').last().dropna(); d['e50h']=ema(h1,50).reindex(d.index,method='ffill').shift(1); P[p]=d
+    h1=d.c.resample('1h').last().dropna(); d['e50h']=ema(h1,50).reindex(d.index,method='ffill').shift(1); d['chg24']=(d.c/d.c.shift(288)-1)*100; P[p]=d
 idx=btc.index[btc.index>=pd.Timestamp("2026-08-14",tz="UTC")]
 LADDER=[(4,3.5),(5,4.5),(6,5.5),(8,7),(10,9),(12,11),(15,13.5),(20,18),(25,22.5),(30,27)]
 FEE=0.09
 def simulate(entry_i,p,ep,atrp):
-    d=P[p]; sl=max(min(-0.7,-1.5*atrp),-1.2); peak=0.0; armed=False
+    d=P[p]; sl=max(min(-0.7,-1.5*atrp),SL_FLOOR); peak=0.0; armed=False
     for j in range(entry_i+1,min(entry_i+240,len(d))):
         hi=(d.h.iloc[j]/ep-1)*100; lo=(d.l.iloc[j]/ep-1)*100
         stop=sl; reason='SL'
@@ -72,12 +81,19 @@ for ts in idx:
         if p in dip and (ts-dip[p])<=pd.Timedelta(hours=6) and r.c>r.e20:
             if b.off24< -2.0: continue            # gate; dip stays alive
             dip.pop(p,None)
+            if ATR_MAX is not None and r.atrp>ATR_MAX: continue
+            if CHG_MAX is not None and abs(r.chg24)>CHG_MAX: continue
             if p in open_pos or (p in last_fire and ts-last_fire[p]<pd.Timedelta(hours=2)) or len(open_pos)>=4: continue
             ep=d.o.iloc[i+1]; pnl,peak,reason,cts=simulate(i+1,p,ep,r.atrp)
-            trades.append(dict(ts=ts,pair=p,pnl=pnl,peak=peak,reason=reason,atr=r.atrp,adx_prev=b.adx_prev,reclaim=(r.c-r.e5)/r.e5*100,off24=b.off24,r72=b.r72))
+            trades.append(dict(ts=ts,pair=p,pnl=pnl,peak=peak,reason=reason,atr=r.atrp,adx_prev=b.adx_prev,reclaim=(r.c-r.e5)/r.e5*100,off24=b.off24,r72=b.r72,chg24=r.chg24))
             open_until[p]=cts; open_pos[p]=cts; last_fire[p]=ts
 t=pd.DataFrame(trades); t['usd']=t.pnl/100*12700; t['win']=t.pnl>0
 t.to_csv(f"{S}/replay_trades{'_ong' if INCLUDE_ONG else ''}.csv",index=False)
+if QUIET:
+    LIVE=pd.Timestamp('2026-08-21 17:06',tz='UTC'); tag=' '.join(a for a in sys.argv[1:] if a!='--quiet')
+    for wl,w in [('FOUND',t[t.ts<LIVE]),('LIVE',t[t.ts>=LIVE]),('ALL',t)]:
+        print(f"{tag:52s} {wl:5s} N={len(w):3d} WR={100*w.win.mean() if len(w) else 0:4.0f}% net=${w.usd.sum():6.0f} avg={w.pnl.mean() if len(w) else 0:+.2f}%")
+    sys.exit(0)
 g=btc[btc.green]; print("GREEN bars:",len(g),"| episodes:", (btc.green & ~btc.green.shift(1,fill_value=False)).sum(), "| first/last:",g.index.min(),g.index.max())
 def rep(x,lab):
     print(f"{lab:44s} N={len(x):3d} WR={100*x.win.mean() if len(x) else 0:4.0f}% net=${x.usd.sum():6.0f} avg={x.pnl.mean() if len(x) else 0:+.2f}%")

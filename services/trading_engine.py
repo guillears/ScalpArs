@@ -4481,7 +4481,7 @@ class TradingEngine:
                             _bullrun_monitor['green'] = (_open_p.state == 'GREEN')
                             _bullrun_monitor['state'] = _open_p.state
                             # Aug-23 (20) review: seed REARM too, else a deploy mid-REARM evaluates turn-on thresholds with an
-                            # empty adx_hist → 'restart→DARK' (the C1 bug class) and the sleeve silently disarms.
+                            # the sleeve would silently disarm after a deploy (the C1 bug class).
                             _bullrun_monitor['rearm'] = (_open_p.state == 'REARM')
                             if _open_p.state == 'REARM' and _open_p.started_at is not None:
                                 _bullrun_monitor['rearm_t0'] = _open_p.started_at.replace(tzinfo=timezone.utc).timestamp()
@@ -4515,14 +4515,39 @@ class TradingEngine:
                             _bullrun_monitor['green_end_ts'] = _lg.ended_at.replace(tzinfo=timezone.utc).timestamp()
                 except Exception as _ge:
                     logger.warning(f"[BULLRUN_MONITOR] last-GREEN-end seed failed ({_ge})")
-            # Aug-23 (20): RE-ARM door (composite OFF only). ADX history kept on the monitor tick for the 30-min rise test.
+            # Aug-23 (25): RE-ARM door (composite OFF only). The rising test is computed BAR-EXACT from the
+            # monitor's own closed 5m bars (Wilder ADX-14 series, now vs 6 bars ago) — restart-immune (the
+            # in-memory adx_hist deque needed 25-35 min of warm-up after every deploy) and identical to the
+            # 8.7-month backtest's definition.
             rearm = False
             try:
-                _adx_now = globals().get('_current_btc_adx')
-                _hist = [(t_, a_) for (t_, a_) in (_bullrun_monitor.get('adx_hist') or []) if _now - t_ <= 7200]
-                if _adx_now is not None:
-                    _hist.append((_now, float(_adx_now)))
-                _bullrun_monitor['adx_hist'] = _hist[-24:]
+                _adx_now = None; _adx_prev6 = None
+                try:
+                    _kb = k5[:-1][-420:]
+                    _bh = [float(r[2]) for r in _kb]; _bl = [float(r[3]) for r in _kb]; _bc = [float(r[4]) for r in _kb]
+                    if len(_bc) >= 60:
+                        _n = 14; _trs = []; _pdms = []; _ndms = []
+                        for _i in range(1, len(_bc)):
+                            _up = _bh[_i] - _bh[_i - 1]; _dn = _bl[_i - 1] - _bl[_i]
+                            _pdms.append(_up if (_up > _dn and _up > 0) else 0.0)
+                            _ndms.append(_dn if (_dn > _up and _dn > 0) else 0.0)
+                            _trs.append(max(_bh[_i] - _bl[_i], abs(_bh[_i] - _bc[_i - 1]), abs(_bl[_i] - _bc[_i - 1])))
+                        _atr = _trs[0]; _pd = _pdms[0]; _nd = _ndms[0]; _dxs = []
+                        for _i in range(1, len(_trs)):
+                            _atr = (_atr * (_n - 1) + _trs[_i]) / _n
+                            _pd = (_pd * (_n - 1) + _pdms[_i]) / _n
+                            _nd = (_nd * (_n - 1) + _ndms[_i]) / _n
+                            _pdi = 100.0 * _pd / _atr if _atr > 0 else 0.0
+                            _ndi = 100.0 * _nd / _atr if _atr > 0 else 0.0
+                            _dxs.append(100.0 * abs(_pdi - _ndi) / (_pdi + _ndi) if (_pdi + _ndi) > 0 else 0.0)
+                        _adx = _dxs[0]; _adx_series = []
+                        for _i in range(1, len(_dxs)):
+                            _adx = (_adx * (_n - 1) + _dxs[_i]) / _n
+                            _adx_series.append(_adx)
+                        if len(_adx_series) >= 7:
+                            _adx_now = _adx_series[-1]; _adx_prev6 = _adx_series[-7]
+                except Exception as _adx_err:
+                    logger.warning(f"[BULLRUN_MONITOR] bar-exact ADX failed ({_adx_err}) — REARM off this tick")
                 if bool(getattr(th, 'bullrun_rearm_enabled', False)) and not green and not latch:
                     _was_rearm = bool(_bullrun_monitor.get('rearm'))
                     _adx_min = float(getattr(th, 'bullrun_rearm_adx_min', 40.0) or 40.0)
@@ -4543,8 +4568,7 @@ class TradingEngine:
                     _e13, _e20, _e50 = _ema(closes, 13), _ema(closes, 20), _ema(closes, 50)
                     _fan = _e13 > _e20 > _e50
                     _above_1h = (e50h is not None and price > e50h)
-                    _older = [a_ for (t_, a_) in _hist if _now - t_ >= 1500]  # ≥25 min ago (10-min ticks → the 30-min bar)
-                    _rising = (_adx_now is not None and bool(_older) and float(_adx_now) > _older[-1])
+                    _rising = (_adx_now is not None and _adx_prev6 is not None and float(_adx_now) > float(_adx_prev6))
                     _alts = [v for v in _br_alt_stats.values() if _now - (v.get('ts') or 0) <= 1200]
                     _alt_ok = False; _alt_med = None; _alt_ab = None
                     if len(_alts) >= 3:

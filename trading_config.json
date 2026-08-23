@@ -523,7 +523,7 @@
     "long_unmatched_quiet_mult": 2.5,
     "long_unmatched_quiet_lev_mult": 1.0,
     "long_unmatched_quiet_pvr_max": 0.68,
-    "flip_short_negdi_mult": 1.0,
+    "flip_short_negdi_mult": 2.0,
     "flip_short_negdi_min": 15.0,
     "flip_short_negdi_lev_mult": 1.0,
     "slopegate_probe_long_enabled": false,

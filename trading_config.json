@@ -651,7 +651,7 @@
     "bullrun_btc_ema13_required": true,
     "bullrun_btc_1h_slope_min": 0.0,
     "bullrun_rearm_enabled": true,
-    "bullrun_rearm_adx_min": 40.0,
+    "bullrun_rearm_adx_min": 35.0,
     "bullrun_rearm_adx_off": 30.0,
     "bullrun_rearm_alt_r6h_min": 1.0,
     "bullrun_rearm_alt_above_pct": 80.0,

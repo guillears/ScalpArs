@@ -986,7 +986,10 @@ class SignalThresholds(BaseModel):
     # bypassed (bounce from a ≥2% low); EMA13 + 1h-slope gates apply. Watchlist ship (operator).
     # 🔒 REVERT (manual): ≤1 winning window of the first 3 REARM windows with fills → bullrun_rearm_enabled=false.
     bullrun_rearm_enabled: bool = True
-    bullrun_rearm_adx_min: float = 40.0        # entry: BTC ADX(14, 5m) ≥ this AND > its value 30 min ago
+    # Aug-23 (23): 40 → 35 — replay at 30/35/40 opens the SAME 5 windows (no new fakes; the alts-leading + fan + 1h-EMA50
+    # legs exclude them); ADX only times the arm: 40 arms Aug-19 50 min later (6/6 +$2,044 vs 8/8 +$2,507) and misses Aug-23.
+    # 30 = 35 in outcomes; 35 keeps a margin above the stay level. In-sample tuning on 5 windows — revert gate unchanged.
+    bullrun_rearm_adx_min: float = 35.0        # entry: BTC ADX(14, 5m) ≥ this AND > its value 30 min ago
     bullrun_rearm_adx_off: float = 30.0        # stay: ADX ≥ this
     bullrun_rearm_alt_r6h_min: float = 1.0     # entry: median universe-pair 6h return > this %
     bullrun_rearm_alt_above_pct: float = 80.0  # entry: ≥ this % of universe pairs above their 1h EMA50

@@ -4302,6 +4302,8 @@ class TradingEngine:
                     else:
                         # stale (>60 min without a running update = bot was down) or state changed across the restart
                         cur.ended_at = (cur.last_update or now) if _stale_min > 60 else now
+                        if cur.state == 'GREEN':  # Aug-23 (24) review: the ledger close is the authoritative GREEN-end stamp (covers live, restart, downtime)
+                            _bullrun_monitor['green_end_ts'] = cur.ended_at.replace(tzinfo=timezone.utc).timestamp()
                         cur.ended_by = f"restart→{new_state}" if _stale_min <= 60 else f"downtime→{new_state}"
                         cur.r72_end, cur.above_end, cur.eff_end, cur.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
                         cur = None
@@ -4341,6 +4343,8 @@ class TradingEngine:
                 amber_lead = None
                 if cur is not None:
                     cur.ended_at = now
+                    if cur.state == 'GREEN':  # Aug-23 (24) review: the ledger close is the authoritative GREEN-end stamp (covers live, restart, downtime)
+                        _bullrun_monitor['green_end_ts'] = cur.ended_at.replace(tzinfo=timezone.utc).timestamp()
                     cur.r72_end, cur.above_end, cur.eff_end, cur.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
                     cur.ended_by = 'latch' if rd['latch'] else ('stay-band' if cur.state == 'GREEN' else f"→{new_state}")
                     cur.blocked_spacing = int(_bullrun_monitor.get('blk_spacing', 0) or 0)
@@ -4526,7 +4530,8 @@ class TradingEngine:
                     _r6_min = float(getattr(th, 'bullrun_rearm_alt_r6h_min', 1.0) or 1.0)
                     _ab_min = float(getattr(th, 'bullrun_rearm_alt_above_pct', 80.0) or 80.0)
                     _max_h = float(getattr(th, 'bullrun_rearm_max_hours', 24.0) or 24.0)
-                    _post_h = float(getattr(th, 'bullrun_rearm_after_green_hours', 48.0) or 0.0)
+                    _pv = getattr(th, 'bullrun_rearm_after_green_hours', 48.0)
+                    _post_h = 48.0 if _pv is None else float(_pv)   # 0 = any time (explicit); None → default 48 (fail-closed)
                     _gend = _bullrun_monitor.get('green_end_ts')
                     _post_ok = (_post_h <= 0) or (_gend is not None and (_now - float(_gend)) / 3600.0 <= _post_h)
                     # EMA fan on the same closed BTC 5m closes the composite used

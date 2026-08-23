@@ -4544,7 +4544,7 @@ class TradingEngine:
                 logger.warning(f"[BULLRUN_MONITOR] re-arm evaluation failed ({_re_err}) — REARM off this tick")
                 rearm = False
             if _bullrun_monitor.get('rearm') and not rearm:
-                logger.critical(f"[BULLRUN_MONITOR] RE-ARM → {'GREEN' if green else ('latch' if latch else 'off')}")
+                logger.info(f"[BULLRUN_MONITOR] RE-ARM → {'GREEN' if green else ('latch' if latch else 'off')}")
             state = 'GREEN' if green else ('REARM' if rearm else ('AMBER' if amber else 'DARK'))
             prev_state = _bullrun_monitor.get('state')
             # Periods ledger (restart-proof adoption happens inside; sets 'resumed' on adoption)

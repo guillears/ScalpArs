@@ -4368,7 +4368,8 @@ class TradingEngine:
                                 MonitorPeriod.ended_at >= now - timedelta(minutes=30),
                             )).order_by(MonitorPeriod.ended_at.desc()).limit(1)
                         )).scalars().first()
-                        if _prev is not None and 'stay' in str(_prev.ended_by or ''):
+                        _closed_was_rearm = (cur is not None and getattr(cur, 'state', None) == 'REARM')
+                        if _prev is not None and 'stay' in str(_prev.ended_by or '') and not _closed_was_rearm:  # review I1: a REARM interlude = real re-fire, open a NEW GREEN row
                             _prev.ended_at = None; _prev.ended_by = None; _prev.last_update = now
                             _prev.r72_end, _prev.above_end, _prev.eff_end, _prev.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
                             _bullrun_monitor['period_id'] = _prev.id
@@ -4504,7 +4505,6 @@ class TradingEngine:
             if was_green and not green:
                 _bullrun_monitor['green_end_ts'] = _now
             if _bullrun_monitor.get('green_end_ts') is None and not _bullrun_monitor.get('_gend_seeded'):
-                _bullrun_monitor['_gend_seeded'] = True
                 try:
                     async with AsyncSessionLocal() as _gdb:
                         _lg = (await _gdb.execute(
@@ -4512,8 +4512,9 @@ class TradingEngine:
                             .order_by(MonitorPeriod.ended_at.desc()).limit(1))).scalars().first()
                         if _lg is not None:
                             _bullrun_monitor['green_end_ts'] = _lg.ended_at.replace(tzinfo=timezone.utc).timestamp()
+                        _bullrun_monitor['_gend_seeded'] = True  # review I2: latch only on a successful query; errors retry next tick
                 except Exception as _ge:
-                    logger.warning(f"[BULLRUN_MONITOR] last-GREEN-end seed failed ({_ge})")
+                    logger.warning(f"[BULLRUN_MONITOR] last-GREEN-end seed failed ({_ge}) — will retry next tick")
             # Aug-23 (25): RE-ARM door (composite OFF only). The rising test is computed BAR-EXACT from the
             # monitor's own closed 5m bars (Wilder ADX-14 series, now vs 6 bars ago) — restart-immune (the
             # in-memory adx_hist deque needed 25-35 min of warm-up after every deploy) and identical to the
@@ -4549,13 +4550,13 @@ class TradingEngine:
                     logger.warning(f"[BULLRUN_MONITOR] bar-exact ADX failed ({_adx_err}) — REARM off this tick")
                 if bool(getattr(th, 'bullrun_rearm_enabled', False)) and not green and not latch:
                     _was_rearm = bool(_bullrun_monitor.get('rearm'))
-                    _adx_min = float(getattr(th, 'bullrun_rearm_adx_min', 40.0) or 40.0)
+                    _adx_min = float(getattr(th, 'bullrun_rearm_adx_min', 35.0) or 35.0)
                     _adx_off = float(getattr(th, 'bullrun_rearm_adx_off', 30.0) or 30.0)
                     _r6_min = float(getattr(th, 'bullrun_rearm_alt_r6h_min', 1.0) or 1.0)
                     _ab_min = float(getattr(th, 'bullrun_rearm_alt_above_pct', 80.0) or 80.0)
                     _max_h = float(getattr(th, 'bullrun_rearm_max_hours', 24.0) or 24.0)
                     _pv = getattr(th, 'bullrun_rearm_after_green_hours', 48.0)
-                    _post_h = 48.0 if _pv is None else float(_pv)   # 0 = any time (explicit); None → default 48 (fail-closed)
+                    _post_h = 48.0 if (_pv is None or float(_pv) < 0) else float(_pv)   # 0 = any time; None/negative → 48 (fail-closed)
                     _gend = _bullrun_monitor.get('green_end_ts')
                     _post_ok = (_post_h <= 0) or (_gend is not None and (_now - float(_gend)) / 3600.0 <= _post_h)
                     # EMA fan on the same closed BTC 5m closes the composite used
@@ -4580,8 +4581,9 @@ class TradingEngine:
                             _bullrun_monitor['rearm_t0'] = _now
                             logger.critical(f"[BULLRUN_MONITOR] RE-ARM ON: ADX {float(_adx_now):.1f} rising, alts med r6h {_alt_med:+.2f}% / {_alt_ab:.0f}% above 1h EMA50, fan={_fan}, BTC>1hEMA50={_above_1h}")
                     else:
-                        _age_h = (_now - float(_bullrun_monitor.get('rearm_t0') or _now)) / 3600.0
-                        rearm = bool(_above_1h and _adx_now is not None and float(_adx_now) >= _adx_off and _age_h <= _max_h)
+                        _rt0 = _bullrun_monitor.get('rearm_t0')
+                        _age_h = ((_now - float(_rt0)) / 3600.0) if _rt0 else None
+                        rearm = bool(_rt0 and _above_1h and _adx_now is not None and float(_adx_now) >= _adx_off and _age_h <= _max_h)  # review M4: missing t0 → disarm
                         if not rearm:
                             logger.critical(f"[BULLRUN_MONITOR] RE-ARM OFF: ADX {float(_adx_now) if _adx_now is not None else float('nan'):.1f}, BTC>1hEMA50={_above_1h}, age {_age_h:.1f}h")
                     _bullrun_monitor['rearm_alt_med'] = _alt_med; _bullrun_monitor['rearm_alt_above'] = _alt_ab
@@ -4764,8 +4766,8 @@ class TradingEngine:
               except Exception as _sp_err:
                 logger.warning(f"[BULLRUN_LONG] {pair}: DB spacing lookup failed ({_sp_err}) — using in-memory stamp")
             if _now - _br_last_fire.get(pair, 0) < sp:
-                if st.get('blk_key') != ('sp', st.get('dip_ts')):  # review: count CANDIDATES, not scan cycles
-                    st['blk_key'] = ('sp', st.get('dip_ts'))
+                if st.get('blk_sp_ts') != st.get('dip_ts'):  # review M3: per-rule key  # review: count CANDIDATES, not scan cycles
+                    st['blk_sp_ts'] = st.get('dip_ts')
                     _bullrun_monitor['blk_spacing'] = _bullrun_monitor.get('blk_spacing', 0) + 1
                 return
             slots = int(getattr(th, 'bullrun_max_slots', 4) or 4)
@@ -4777,8 +4779,8 @@ class TradingEngine:
             )).scalar() or 0
             if _open_ct >= slots:
                 self._record_filter_block("BULLRUN_MAX_SLOTS", "LONG")
-                if st.get('blk_key') != ('sl', st.get('dip_ts')):
-                    st['blk_key'] = ('sl', st.get('dip_ts'))
+                if st.get('blk_sl_ts') != st.get('dip_ts'):  # review M3: per-rule key
+                    st['blk_sl_ts'] = st.get('dip_ts')
                     _bullrun_monitor['blk_slots'] = _bullrun_monitor.get('blk_slots', 0) + 1
                 return
             price = float(indicators.get('price') or closes[-1])
@@ -4798,8 +4800,8 @@ class TradingEngine:
                     return  # fail-safe: no 1h context = no entry
             if price <= cached[1]:
                 self._record_filter_block("BULLRUN_BELOW_1H_EMA50", "LONG")
-                if st.get('blk_key') != ('ema', st.get('dip_ts')):
-                    st['blk_key'] = ('ema', st.get('dip_ts'))
+                if st.get('blk_ema_ts') != st.get('dip_ts'):  # review M3: per-rule key
+                    st['blk_ema_ts'] = st.get('dip_ts')
                     _bullrun_monitor['blk_ema50'] = _bullrun_monitor.get('blk_ema50', 0) + 1
                 return
             atr_pct = (atr / closes[-1] * 100.0) if closes[-1] else None

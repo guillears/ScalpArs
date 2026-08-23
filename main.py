@@ -2566,7 +2566,7 @@ async def _bullrun_periods_rows(db, limit=50):
                 'fills': len(g), 'open_fills': len(g) - len(gc),
                 'wr': (round(100.0 * _wins / len(gc), 1) if gc else None),
                 'net': round(sum(o.pnl or 0 for o in gc), 2),
-                'blk_sp': p.blocked_spacing or 0, 'blk_sl': p.blocked_slots or 0, 'blk_ema': p.blocked_ema50 or 0, 'blk_24h': getattr(p, 'blocked_off24h', 0), 'blk_e13': getattr(p, 'blocked_ema13', 0) or 0 or 0,
+                'blk_sp': p.blocked_spacing or 0, 'blk_sl': p.blocked_slots or 0, 'blk_ema': p.blocked_ema50 or 0, 'blk_24h': getattr(p, 'blocked_off24h', 0), 'blk_e13': getattr(p, 'blocked_ema13', 0) or 0, 'blk_1h': getattr(p, 'blocked_1h', 0) or 0 or 0,
                 'kb_n': len(_kb), 'kb_wr': (round(_kb_wr, 0) if _kb_wr is not None else None),
                 'kb_usd': round(sum(o.pnl or 0 for o in _kb), 2),
                 'ended_by': p.ended_by or ('open' if p.ended_at is None else ''),

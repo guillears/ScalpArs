@@ -993,6 +993,7 @@ class MonitorPeriod(Base):
     blocked_ema50 = Column(Integer, default=0)
     blocked_off24h = Column(Integer, default=0)                  # Aug 21 (11): refused by the BTC off-24h-high gate
     blocked_ema13 = Column(Integer, default=0)                   # Aug 22 (15): refused by the BTC-leader (EMA13) gate
+    blocked_1h = Column(Integer, default=0)                      # Aug 23 (18): refused by the BTC 1h-slope gate
 
 
 class Investor(Base):

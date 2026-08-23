@@ -647,7 +647,8 @@
     "bullrun_btc_off24h_max": -2.0,
     "bullrun_ladder": "4.0:3.5, 5.0:4.5, 6.0:5.5, 8.0:7.0, 10.0:9.0, 12.0:11.0, 15.0:13.5, 20.0:18.0, 25.0:22.5, 30.0:27.0",
     "bullrun_pair_blacklist": "ONGUSDT,ETHUSDT",
-    "bullrun_btc_ema13_required": true
+    "bullrun_btc_ema13_required": true,
+    "bullrun_btc_1h_slope_min": 0.0
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

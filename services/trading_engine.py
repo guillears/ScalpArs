@@ -4284,7 +4284,7 @@ class TradingEngine:
                         _bullrun_monitor['period_id'] = cur.id
                         _bullrun_monitor['resumed'] = True
                         _bullrun_monitor['green_since'] = cur.started_at.strftime('%Y-%m-%d %H:%M') if new_state == 'GREEN' else None
-                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13')):
+                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_1h', 'blocked_1h')):
                             _bullrun_monitor[_k] = int(getattr(cur, _col, 0) or 0)
                         logger.info(f"[BULLRUN_MONITOR] resumed open {cur.state} period #{cur.id} (since {cur.started_at:%Y-%m-%d %H:%M} UTC) after restart")
                     else:
@@ -4318,6 +4318,7 @@ class TradingEngine:
                 cur.blocked_ema50 = int(_bullrun_monitor.get('blk_ema50', 0) or 0)
                 cur.blocked_off24h = int(_bullrun_monitor.get('blk_off24h', 0) or 0)
                 cur.blocked_ema13 = int(_bullrun_monitor.get('blk_ema13', 0) or 0)
+                cur.blocked_1h = int(_bullrun_monitor.get('blk_1h', 0) or 0)
                 cur.last_update = now
                 # breadth backfill: the first compute after boot can precede the breadth scan (0/0)
                 _gb = globals()
@@ -4335,6 +4336,7 @@ class TradingEngine:
                     cur.blocked_ema50 = int(_bullrun_monitor.get('blk_ema50', 0) or 0)
                     cur.blocked_off24h = int(_bullrun_monitor.get('blk_off24h', 0) or 0)
                     cur.blocked_ema13 = int(_bullrun_monitor.get('blk_ema13', 0) or 0)
+                    cur.blocked_1h = int(_bullrun_monitor.get('blk_1h', 0) or 0)
                     if cur.state == 'AMBER' and new_state == 'GREEN':
                         amber_lead = int((now - cur.started_at).total_seconds() / 60)
                 _g = globals()
@@ -4354,7 +4356,7 @@ class TradingEngine:
                             _prev.ended_at = None; _prev.ended_by = None; _prev.last_update = now
                             _prev.r72_end, _prev.above_end, _prev.eff_end, _prev.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
                             _bullrun_monitor['period_id'] = _prev.id
-                            for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13')):
+                            for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_1h', 'blocked_1h')):
                                 _bullrun_monitor[_k] = int(getattr(_prev, _col, 0) or 0)
                             logger.info(f"[BULLRUN_MONITOR] GREEN re-armed within 30 min of a stay-band drop — period #{_prev.id} reopened (flap, not a new episode)")
                             await db.commit()
@@ -4383,12 +4385,12 @@ class TradingEngine:
                     r72_peak=rd['r72'], eff_peak=rd['eff'], r6_min=rd['r6'],
                     btc_start=rd['px'], btc_end=rd['px'],
                     bull_pct_start=_g.get('_market_bull_pct'), bear_pct_start=_g.get('_market_bear_pct'),
-                    amber_lead_min=amber_lead, blocked_spacing=0, blocked_slots=0, blocked_ema50=0, blocked_off24h=0, blocked_ema13=0,
+                    amber_lead_min=amber_lead, blocked_spacing=0, blocked_slots=0, blocked_ema50=0, blocked_off24h=0, blocked_ema13=0, blocked_1h=0,
                 )
                 db.add(newp)
                 await db.flush()
                 _bullrun_monitor['period_id'] = newp.id
-                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50', 'blk_off24h', 'blk_ema13'):
+                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50', 'blk_off24h', 'blk_ema13', 'blk_1h'):
                     _bullrun_monitor[_k] = 0
             await db.commit()
         except Exception as e:
@@ -4602,6 +4604,17 @@ class TradingEngine:
                         _bullrun_monitor['blk_ema13'] = _bullrun_monitor.get('blk_ema13', 0) + 1
                         self._record_filter_block("BULLRUN_BTC_EMA13", "LONG")
                         logger.info(f"[BULLRUN_LONG] {pair}: refused by BTC-leader gate (BTC {float(_bpx):.2f} below EMA13 {float(_be13):.2f}, {((float(_bpx)/float(_be13))-1)*100:+.3f}%) — dip stays alive")
+                    return
+            # Aug-23 (18): BTC 1h-EMA20 slope gate (None/blank = off). Fail-open on missing slope. Once per (rule, dip).
+            _s_min = getattr(th, 'bullrun_btc_1h_slope_min', None)
+            if _s_min is not None and str(_s_min) != '':
+                _s_now = globals().get('_current_btc_1h_slope')
+                if _s_now is not None and float(_s_now) <= float(_s_min):
+                    if st.get('blk_1h_ts') != st.get('dip_ts'):
+                        st['blk_1h_ts'] = st.get('dip_ts')
+                        _bullrun_monitor['blk_1h'] = _bullrun_monitor.get('blk_1h', 0) + 1
+                        self._record_filter_block("BULLRUN_BTC_1H_SLOPE", "LONG")
+                        logger.info(f"[BULLRUN_LONG] {pair}: refused by BTC 1h-slope gate ({float(_s_now):+.3f} ≤ {float(_s_min):+.3f}) — dip stays alive")
                     return
             sp = float(getattr(th, 'bullrun_pair_spacing_hours', 2.0) or 2.0) * 3600.0
             # Restart-proof spacing (Aug-21 live catch: ONG re-entered 11 min after its stop because a

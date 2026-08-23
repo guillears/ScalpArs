@@ -970,6 +970,12 @@ class SignalThresholds(BaseModel):
     # Live 25·48%·+$989 → 19·53%·+$1,534; founding 59·63%·+$3,033 → 51·67%·+$3,252. DECISION_LOG 2026-08-22 (15).
     # 🔒 revert: re-run scripts/bullrun_replay.py at the next GREEN episode close — blocked cohort net-positive → off.
     bullrun_btc_ema13_required: bool = True
+    # Aug-23 (18): BTC 1h-EMA20 slope gate — no sleeve entry while BTC's 1h slope ≤ this (0.0 = the tested cut; blank = off).
+    # Live 13·23%·−$979 removed (4 windows; monotone: <−0.02 → 23% WR, 0-0.05 → 25%, >0.3 → 64%·+1.27/t); replay-live
+    # removed 5·20%·−$561; founding window had zero cases. Shipped WITH the 0.10 stay band (overlap 9 fills; each adds
+    # 3-4 losers the other misses): ex-ONG/ETH 31·42%·+$515 → 15·67%·+$1,918. Discipline-override (N<30).
+    # 🔒 revert: next GREEN episode close — blocked cohort (replay or live entry_btc_1h_slope ≤ min) net-positive → off.
+    bullrun_btc_1h_slope_min: Optional[float] = 0.0
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

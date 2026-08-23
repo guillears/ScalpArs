@@ -4450,7 +4450,7 @@ class TradingEngine:
                 green = False
             elif was_green:
                 green = (r72 >= float(th.bullrun_green_r72_off or 4.0) and above >= float(th.bullrun_green_above_off or 53.0)
-                         and eff >= float(th.bullrun_green_eff_off or 0.08))
+                         and eff >= float(th.bullrun_green_eff_off or 0.10))
             else:
                 green = (r72 >= float(th.bullrun_green_r72_on or 5.0) and above >= float(th.bullrun_green_above_on or 56.0)
                          and eff >= float(th.bullrun_green_eff_on or 0.10))

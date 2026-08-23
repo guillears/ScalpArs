@@ -916,7 +916,13 @@ class SignalThresholds(BaseModel):
     bullrun_green_above_on: float = 56.0   # GREEN turn-ON: % of 5m bars above EMA20 ≥ this
     bullrun_green_above_off: float = 53.0  # GREEN stay-ON floor
     bullrun_green_eff_on: float = 0.10     # GREEN turn-ON: trend efficiency ≥ this (THE load-bearing leg)
-    bullrun_green_eff_off: float = 0.08    # GREEN stay-ON floor
+    # Aug-23 (16): stay band raised 0.08 → 0.10 (= the ON threshold; efficiency loses its hysteresis, r72/above keep
+    # theirs). Stale-GREEN detector: every fill taken with eff < 0.10 lost — live 12·17%·−$997 across 3 windows incl. all
+    # six post-gate losers; the founding window never traded below 0.10 (zero out-of-sample cost by construction).
+    # Counterfactual this episode: GREEN ends Aug-22 15:25 UTC (brief re-arms 17:05-18:40, 19:10-20:05), dark from 20:05.
+    # Before/after: ex-ONG/ETH 31·42%·+$515 → 19·58%·+$1,512. Sleeve switch (window units) — acknowledged override.
+    # 🔒 revert: next GREEN episode close → scripts/bullrun_replay.py with stay 0.08 vs 0.10; 0.10 net-worse → back to 0.08.
+    bullrun_green_eff_off: float = 0.10    # GREEN stay-ON floor (was 0.08)
     bullrun_latch_r6h: float = -3.0        # crash-latch: BTC 6h return ≤ this → instant OFF (also price < 1h EMA50)
     bullrun_amber_r24: float = 6.0         # AMBER alert (24h tight variant) — display/log only, never arms
     bullrun_amber_above: float = 65.0

@@ -629,7 +629,7 @@
     "bullrun_green_above_on": 56.0,
     "bullrun_green_above_off": 53.0,
     "bullrun_green_eff_on": 0.1,
-    "bullrun_green_eff_off": 0.08,
+    "bullrun_green_eff_off": 0.1,
     "bullrun_latch_r6h": -3.0,
     "bullrun_amber_r24": 6.0,
     "bullrun_amber_above": 65.0,

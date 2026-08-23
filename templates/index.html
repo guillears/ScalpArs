@@ -5091,7 +5091,7 @@
                             </div>
                             <div>
                                 <label class="block text-xs text-gray-400 mb-1">stay-ON: eff ≥</label>
-                                <input type="number" step="0.01" id="config-br-eff-off" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.08">
+                                <input type="number" step="0.01" id="config-br-eff-off" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.10">
                             </div>
                             <div>
                                 <label class="block text-xs text-gray-400 mb-1">Crash-latch: 6h return ≤ %</label>
@@ -20767,7 +20767,7 @@
                     ['config-br-above-on', 'bullrun_green_above_on', 56.0],
                     ['config-br-above-off', 'bullrun_green_above_off', 53.0],
                     ['config-br-eff-on', 'bullrun_green_eff_on', 0.10],
-                    ['config-br-eff-off', 'bullrun_green_eff_off', 0.08],
+                    ['config-br-eff-off', 'bullrun_green_eff_off', 0.10],
                     ['config-br-latch-r6h', 'bullrun_latch_r6h', -3.0],
                     ['config-br-amber-r24', 'bullrun_amber_r24', 6.0],
                     ['config-br-amber-above', 'bullrun_amber_above', 65.0],
@@ -22147,7 +22147,7 @@
                     bullrun_green_above_on: safeFloat(document.getElementById('config-br-above-on')?.value ?? 56.0),
                     bullrun_green_above_off: safeFloat(document.getElementById('config-br-above-off')?.value ?? 53.0),
                     bullrun_green_eff_on: safeFloat(document.getElementById('config-br-eff-on')?.value ?? 0.10),
-                    bullrun_green_eff_off: safeFloat(document.getElementById('config-br-eff-off')?.value ?? 0.08),
+                    bullrun_green_eff_off: safeFloat(document.getElementById('config-br-eff-off')?.value ?? 0.10),
                     bullrun_latch_r6h: safeFloat(document.getElementById('config-br-latch-r6h')?.value ?? -3.0),
                     bullrun_amber_r24: safeFloat(document.getElementById('config-br-amber-r24')?.value ?? 6.0),
                     bullrun_amber_above: safeFloat(document.getElementById('config-br-amber-above')?.value ?? 65.0),

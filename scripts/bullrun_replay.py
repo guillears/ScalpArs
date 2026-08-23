@@ -20,6 +20,7 @@ def _arg(k,default=None,cast=float):
     return default
 for _p in (_arg('--extra','',str) or '').split(','):
     if _p and _p not in PAIRS: PAIRS.append(_p)
+EFF_ON=_arg('--eff-on',0.10); EFF_OFF=_arg('--eff-off',0.10)  # Aug-23 (16): live stay band = 0.10; pass --eff-off=0.08 for the pre-ship band
 ATR_MAX=_arg('--atr-max'); CHG_MAX=_arg('--chg-max'); SL_FLOOR=_arg('--sl-floor',-1.2); EXCL=(_arg('--exclude','',str) or '').split(',')
 PAIRS=[p for p in PAIRS if p not in EXCL]
 QUIET='--quiet' in sys.argv
@@ -43,8 +44,8 @@ btc['off24']=(c/btc.h.rolling(288).max()-1)*100; btc['adx']=adx(btc); btc['adx_p
 state=[];g=False
 for i,(r72,ab,ef,r6,cl,e5) in enumerate(zip(btc.r72,btc.above,btc.eff,btc.r6,btc.c,btc.e50h)):
     if np.isnan(r72) or np.isnan(ab) or np.isnan(ef): state.append(False); continue
-    if not g and r72>=5 and ab>=56 and ef>=0.10: g=True
-    elif g and not (r72>=4 and ab>=53 and ef>=0.08): g=False
+    if not g and r72>=5 and ab>=56 and ef>=EFF_ON: g=True
+    elif g and not (r72>=4 and ab>=53 and ef>=EFF_OFF): g=False
     if g and ((not np.isnan(r6) and r6<=-3) or (not np.isnan(e5) and cl<e5)): g=False
     state.append(g)
 btc['green']=state

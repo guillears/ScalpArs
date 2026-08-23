@@ -4339,6 +4339,28 @@ class TradingEngine:
                         amber_lead = int((now - cur.started_at).total_seconds() / 60)
                 _g = globals()
                 _start = now
+                # Aug-23 (16) review: with the efficiency band at 0.10 = 0.10 a GREEN can flap on a 10-min tick.
+                # A GREEN row that closed ≤30 min ago on the stay band is REOPENED (counters kept) instead of
+                # inserting a fragment — keeps the episode a single ledger unit (WINDOW-UNITS rule).
+                if new_state == 'GREEN':
+                    try:
+                        _prev = (await db.execute(
+                            select(MonitorPeriod).where(and_(
+                                MonitorPeriod.state == 'GREEN', MonitorPeriod.ended_at.isnot(None),
+                                MonitorPeriod.ended_at >= now - timedelta(minutes=30),
+                            )).order_by(MonitorPeriod.ended_at.desc()).limit(1)
+                        )).scalars().first()
+                        if _prev is not None and 'stay' in str(_prev.ended_by or ''):
+                            _prev.ended_at = None; _prev.ended_by = None; _prev.last_update = now
+                            _prev.r72_end, _prev.above_end, _prev.eff_end, _prev.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
+                            _bullrun_monitor['period_id'] = _prev.id
+                            for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13')):
+                                _bullrun_monitor[_k] = int(getattr(_prev, _col, 0) or 0)
+                            logger.info(f"[BULLRUN_MONITOR] GREEN re-armed within 30 min of a stay-band drop — period #{_prev.id} reopened (flap, not a new episode)")
+                            await db.commit()
+                            return
+                    except Exception as _rm_err:
+                        logger.warning(f"[BULLRUN_MONITOR] re-arm merge check failed ({_rm_err}) — opening a new period")
                 if cur is None and new_state == 'GREEN':
                     # Bootstrap honesty: with NO period history at all, a GREEN first row starts at the
                     # earliest sleeve fill still in the DB (a sleeve can only fill while GREEN) — the

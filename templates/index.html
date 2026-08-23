@@ -1451,9 +1451,9 @@
                 </div>
                 <div class="mt-6 pt-6 border-t border-cyan-900/40">
                     <h3 class="text-sm font-semibold text-cyan-300 mb-1">🌊 Monitor Periods — episode ledger (persisted; restart-proof)</h3>
-                    <p class="text-xs text-gray-500 mb-3">One row per contiguous monitor state. Readings = r72 / above-EMA20% / efficiency at START → END; eff pk = max efficiency in period; r6 min = closest approach to the −3% crash-latch; BTC = move during the period; Breadth = bull%/bear% at start; AMBER lead = minutes AMBER was on before this GREEN; Fills = sleeve entries opened in the period (open ones in parentheses); Blocked = candidates refused by spacing / slots / 1h-EMA50 / BTC off-24h-high (columns are not mutually exclusive — a dip refused by spacing that BTC later pulls under the gate counts in both); Kill bar = first-10 tally as of period end (current DB — a paper reset restarts it; adjudicate against the master pool per the standing tally rule).</p>
+                    <p class="text-xs text-gray-500 mb-3">One row per contiguous monitor state. Readings = r72 / above-EMA20% / efficiency at START → END; eff pk = max efficiency in period; r6 min = closest approach to the −3% crash-latch; BTC = move during the period; Breadth = bull%/bear% at start; AMBER lead = minutes AMBER was on before this GREEN; Fills = sleeve entries opened in the period (open ones in parentheses); Blocked = candidates refused by spacing / slots / 1h-EMA50 / BTC off-24h / BTC-leader EMA13 / BTC 1h-slope-high (columns are not mutually exclusive — a dip refused by spacing that BTC later pulls under the gate counts in both); Kill bar = first-10 tally as of period end (current DB — a paper reset restarts it; adjudicate against the master pool per the standing tally rule).</p>
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
-                        <th class="px-2 py-1 text-left">State</th><th class="px-2 py-1 text-left">Start</th><th class="px-2 py-1 text-left">End</th><th class="px-2 py-1 text-right">Dur</th><th class="px-2 py-1 text-right">r72/abv/eff @start</th><th class="px-2 py-1 text-right">@end</th><th class="px-2 py-1 text-right">eff pk</th><th class="px-2 py-1 text-right">r6 min</th><th class="px-2 py-1 text-right">BTC</th><th class="px-2 py-1 text-right">Breadth</th><th class="px-2 py-1 text-right">AMBER lead</th><th class="px-2 py-1 text-right">Fills</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">Net$</th><th class="px-2 py-1 text-right" title="Refusals per period: spacing / slots / pair EMA50 / BTC off-24h / BTC-leader EMA13">Blocked sp/sl/ema/24h/e13/1h</th><th class="px-2 py-1 text-left">Kill bar</th><th class="px-2 py-1 text-left">Ended by</th>
+                        <th class="px-2 py-1 text-left">State</th><th class="px-2 py-1 text-left">Start</th><th class="px-2 py-1 text-left">End</th><th class="px-2 py-1 text-right">Dur</th><th class="px-2 py-1 text-right">r72/abv/eff @start</th><th class="px-2 py-1 text-right">@end</th><th class="px-2 py-1 text-right">eff pk</th><th class="px-2 py-1 text-right">r6 min</th><th class="px-2 py-1 text-right">BTC</th><th class="px-2 py-1 text-right">Breadth</th><th class="px-2 py-1 text-right">AMBER lead</th><th class="px-2 py-1 text-right">Fills</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">Net$</th><th class="px-2 py-1 text-right" title="Refusals per period: spacing / slots / pair EMA50 / BTC off-24h / BTC-leader EMA13 / BTC 1h-slope">Blocked sp/sl/ema/24h/e13/1h</th><th class="px-2 py-1 text-left">Kill bar</th><th class="px-2 py-1 text-left">Ended by</th>
                     </tr></thead><tbody id="bullrun-periods-body" class="divide-y divide-white/5"><tr><td colspan="17" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
                 <div class="mt-6 pt-6 border-t border-cyan-900/40">
@@ -5170,6 +5170,22 @@
                                 <label class="block text-xs text-gray-400 mb-1">BTC 1h-slope gate (entry refused if ≤ %)</label>
                                 <input type="number" step="0.01" id="config-br-1h-slope-min" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="0.0">
                             </div>
+                            <div class="md:col-span-2 mt-2 pt-2 border-t border-cyan-500/20" title="Aug 23 (20): RE-ARM door — second trigger while the 72h composite is OFF (it can't re-arm after a pullback). ON = BTC ADX ≥ min AND rising vs 30 min ago AND alts leading (median 6h return, % above their 1h EMA50) AND EMA13>EMA20>EMA50 AND BTC > 1h EMA50; OFF = BTC < 1h EMA50 | ADX < off | max hours | composite GREEN. In REARM the off-24h gate is bypassed; EMA13 + 1h-slope gates apply. Replay 14·79%·+$2,338, no losing window. Revert: ≤1 winning window of the first 3 → OFF.">
+                                <label class="flex items-center cursor-pointer mb-2">
+                                    <input type="checkbox" id="config-br-rearm-enabled" class="sr-only peer" checked>
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-sky-500/50 rounded-full relative transition-colors">
+                                        <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
+                                    </div>
+                                    <span class="ml-2 text-xs text-sky-300 font-semibold">RE-ARM door (composite OFF) — watchlist ship</span>
+                                </label>
+                                <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+                                    <div><label class="block text-[10px] text-gray-500 mb-0.5">ADX ≥ (entry, rising)</label><input type="number" step="1" id="config-br-rearm-adx-min" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="40"></div>
+                                    <div><label class="block text-[10px] text-gray-500 mb-0.5">ADX ≥ (stay)</label><input type="number" step="1" id="config-br-rearm-adx-off" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="30"></div>
+                                    <div><label class="block text-[10px] text-gray-500 mb-0.5">alt median r6h > %</label><input type="number" step="0.1" id="config-br-rearm-alt-r6h" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="1.0"></div>
+                                    <div><label class="block text-[10px] text-gray-500 mb-0.5">alts above 1h EMA50 ≥ %</label><input type="number" step="5" id="config-br-rearm-alt-above" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="80"></div>
+                                    <div><label class="block text-[10px] text-gray-500 mb-0.5">max hours</label><input type="number" step="1" id="config-br-rearm-max-h" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="24"></div>
+                                </div>
+                            </div>
                             <div title="Aug 21 (11): pullback-phase gate — no sleeve entry while BTC is more than this % below its 24h high (negative; 0 = off). The variable that separated the replay's winners from losers; all five day-1 live losers fired at −2.5..−3.3%.">
                                 <label class="block text-xs text-gray-400 mb-1">BTC off 24h-high gate (≤ %)</label>
                                 <input type="number" step="0.1" min="-10" max="0" id="config-br-off24h-max" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-2.0">
@@ -8729,6 +8745,9 @@
                         if (_br.state === 'GREEN') {
                             _brChip.textContent = `🌊 ${_br.green_since ? _brFmt(_br.green_since) : 'GREEN'}`;  // color = state; text = since (operator)
                             _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 uppercase tracking-wide';
+                        } else if (_br.state === 'REARM') {
+                            _brChip.textContent = `🌊 REARM ${_br.rearm_since ? _brFmt(_br.rearm_since) : ''}`;
+                            _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-400 uppercase tracking-wide';
                         } else if (_br.state === 'AMBER') {
                             _brChip.textContent = '🌊 AMBER';
                             _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 uppercase tracking-wide';
@@ -10989,7 +11008,7 @@
             }
             {
                 const _bt = cfg?.thresholds || {};
-                lines.push(`  🌊 Bull-Run Sleeve (gate 57): ${_bt.bullrun_sleeve_enabled !== false ? `ON — GREEN(r72≥${_bt.bullrun_green_r72_on ?? 5}/${_bt.bullrun_green_r72_off ?? 4} ∧ above≥${_bt.bullrun_green_above_on ?? 56}/${_bt.bullrun_green_above_off ?? 53} ∧ eff≥${_bt.bullrun_green_eff_on ?? 0.10}/${_bt.bullrun_green_eff_off ?? 0.10}) latch ${_bt.bullrun_latch_r6h ?? -3}%/1hEMA50 · top-${_bt.bullrun_universe_size ?? 10} COIN · dip ${_bt.bullrun_dip_atr_mult ?? 0.3}×ATR · ${_bt.bullrun_max_slots ?? 4} slots · Inv ${_bt.bullrun_invest_mult ?? 1}x/Lev ${_bt.bullrun_lev_mult ?? 1}x · SL ${_bt.bullrun_base_sl_pct ?? -0.7}/ATR · BE ${_bt.bullrun_be_arm_pct ?? 1.0}→${_bt.bullrun_be_lock_pct ?? 0.2} · trail ${_bt.bullrun_trail_atr_mult ?? 2.0}×ATR · BTC off-24h gate ${(_bt.bullrun_btc_off24h_max ?? 0) < 0 ? `≤${_bt.bullrun_btc_off24h_max}%` : 'OFF'} · ladder ${(_bt.bullrun_ladder || '').trim() ? _bt.bullrun_ladder : 'OFF'} · blacklist ${(_bt.bullrun_pair_blacklist || '').trim() || 'none'} · BTC≥EMA13 ${_bt.bullrun_btc_ema13_required !== false ? 'ON' : 'off'} · 1h-slope>${(_bt.bullrun_btc_1h_slope_min === null || _bt.bullrun_btc_1h_slope_min === undefined) ? 'off' : _bt.bullrun_btc_1h_slope_min}` : 'OFF'}`);
+                lines.push(`  🌊 Bull-Run Sleeve (gate 57): ${_bt.bullrun_sleeve_enabled !== false ? `ON — GREEN(r72≥${_bt.bullrun_green_r72_on ?? 5}/${_bt.bullrun_green_r72_off ?? 4} ∧ above≥${_bt.bullrun_green_above_on ?? 56}/${_bt.bullrun_green_above_off ?? 53} ∧ eff≥${_bt.bullrun_green_eff_on ?? 0.10}/${_bt.bullrun_green_eff_off ?? 0.10}) latch ${_bt.bullrun_latch_r6h ?? -3}%/1hEMA50 · top-${_bt.bullrun_universe_size ?? 10} COIN · dip ${_bt.bullrun_dip_atr_mult ?? 0.3}×ATR · ${_bt.bullrun_max_slots ?? 4} slots · Inv ${_bt.bullrun_invest_mult ?? 1}x/Lev ${_bt.bullrun_lev_mult ?? 1}x · SL ${_bt.bullrun_base_sl_pct ?? -0.7}/ATR · BE ${_bt.bullrun_be_arm_pct ?? 1.0}→${_bt.bullrun_be_lock_pct ?? 0.2} · trail ${_bt.bullrun_trail_atr_mult ?? 2.0}×ATR · BTC off-24h gate ${(_bt.bullrun_btc_off24h_max ?? 0) < 0 ? `≤${_bt.bullrun_btc_off24h_max}%` : 'OFF'} · ladder ${(_bt.bullrun_ladder || '').trim() ? _bt.bullrun_ladder : 'OFF'} · blacklist ${(_bt.bullrun_pair_blacklist || '').trim() || 'none'} · BTC≥EMA13 ${_bt.bullrun_btc_ema13_required !== false ? 'ON' : 'off'} · 1h-slope>${(_bt.bullrun_btc_1h_slope_min === null || _bt.bullrun_btc_1h_slope_min === undefined) ? 'off' : _bt.bullrun_btc_1h_slope_min} · RE-ARM ${_bt.bullrun_rearm_enabled !== false ? `ON(ADX≥${_bt.bullrun_rearm_adx_min ?? 40}↑/stay ${_bt.bullrun_rearm_adx_off ?? 30}, alts r6h>${_bt.bullrun_rearm_alt_r6h_min ?? 1}% & ≥${_bt.bullrun_rearm_alt_above_pct ?? 80}% >1hEMA50, ≤${_bt.bullrun_rearm_max_hours ?? 24}h)` : 'off'}` : 'OFF'}`);
             }
 
             if (changelog.length > 0) {
@@ -18438,7 +18457,7 @@
                     const _pt = (t) => (t ? new Date(String(t).endsWith('Z') ? t : t + 'Z').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' }) : 'open');
                     if (data.bullrun_periods && data.bullrun_periods.length > 0) {
                         brPer.innerHTML = data.bullrun_periods.map(r => {
-                            const sc = r.state === 'GREEN' ? 'text-emerald-400 font-bold' : (r.state === 'AMBER' ? 'text-amber-400 font-bold' : 'text-gray-500');
+                            const sc = r.state === 'GREEN' ? 'text-emerald-400 font-bold' : r.state === 'REARM' ? 'text-sky-400 font-bold' : (r.state === 'AMBER' ? 'text-amber-400 font-bold' : 'text-gray-500');
                             const nc = (r.net || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const dur = r.dur_min == null ? '—' : (r.dur_min >= 60 ? `${Math.floor(r.dur_min / 60)}h${String(r.dur_min % 60).padStart(2, '0')}` : `${r.dur_min}m`);
                             const kb = r.kb_n ? `${r.kb_n}/10 · ${_pf(r.kb_wr, 0)}% · $${_pf(r.kb_usd, 0)}` : '—';
@@ -18470,7 +18489,7 @@
                     const brMonLine = document.getElementById('bullrun-monitor-line');
                     if (brMonLine && data.bullrun_monitor) {
                         const _bm = data.bullrun_monitor;
-                        const _stCls = _bm.state === 'GREEN' ? 'text-emerald-400 font-bold' : (_bm.state === 'AMBER' ? 'text-amber-400 font-bold' : 'text-gray-500');
+                        const _stCls = _bm.state === 'GREEN' ? 'text-emerald-400 font-bold' : _bm.state === 'REARM' ? 'text-sky-400 font-bold' : (_bm.state === 'AMBER' ? 'text-amber-400 font-bold' : 'text-gray-500');
                         const _bmFmt = (t) => (t ? formatTime(String(t).replace(' ', 'T') + ':00') : '');
                         brMonLine.innerHTML = `Monitor: <span class="${_stCls}">${_bm.state}</span>${_bm.green_since ? ` since ${_bmFmt(_bm.green_since)}` : ''} · r72 ${_bm.r72 != null ? _bm.r72 : '—'}% · above ${_bm.above != null ? _bm.above : '—'}% · eff ${_bm.eff != null ? _bm.eff : '—'} · r6h ${_bm.r6 != null ? _bm.r6 : '—'}% · off-24h-high ${_bm.off24h != null ? _bm.off24h + '%' : '—'} · latch ${_bm.latch ? '<span class="text-red-400">FIRED</span>' : 'clear'} · sleeve ${_bm.enabled ? 'ON' : '<span class="text-red-400">OFF</span>'}${(_bm.flips && _bm.flips.length) ? ' · flips: ' + _bm.flips.map(f => `${_bmFmt(f.ts)} ${f.state}`).join(' → ') : ''}`;
                     }
@@ -20765,6 +20784,9 @@
                   if (_e) _e.checked = config.thresholds.bullrun_sleeve_enabled !== false; }
                 { const _e = document.getElementById('config-br-ema13');
                   if (_e) _e.checked = config.thresholds.bullrun_btc_ema13_required !== false; }
+                { const _e = document.getElementById('config-br-rearm-enabled'); if (_e) _e.checked = config.thresholds.bullrun_rearm_enabled !== false; }
+                for (const [_id, _key, _def] of [['config-br-rearm-adx-min','bullrun_rearm_adx_min',40],['config-br-rearm-adx-off','bullrun_rearm_adx_off',30],['config-br-rearm-alt-r6h','bullrun_rearm_alt_r6h_min',1.0],['config-br-rearm-alt-above','bullrun_rearm_alt_above_pct',80],['config-br-rearm-max-h','bullrun_rearm_max_hours',24]]) {
+                    const _e = document.getElementById(_id); if (_e) _e.value = (config.thresholds[_key] !== undefined && config.thresholds[_key] !== null) ? config.thresholds[_key] : _def; }
                 { const _e = document.getElementById('config-br-1h-slope-min');
                   if (_e) { const _v = config.thresholds.bullrun_btc_1h_slope_min; _e.value = (_v === null || _v === undefined) ? '' : _v; } }
                 const _brLoad = [
@@ -22148,6 +22170,12 @@
                     // 🌊 Aug 21 gate 57: Bull-Run Sleeve
                     bullrun_sleeve_enabled: document.getElementById('config-br-enabled')?.checked ?? true,
                     bullrun_btc_ema13_required: document.getElementById('config-br-ema13')?.checked ?? true,
+                    bullrun_rearm_enabled: document.getElementById('config-br-rearm-enabled')?.checked ?? true,
+                    bullrun_rearm_adx_min: safeFloat(document.getElementById('config-br-rearm-adx-min')?.value ?? 40) || 40,
+                    bullrun_rearm_adx_off: safeFloat(document.getElementById('config-br-rearm-adx-off')?.value ?? 30) || 30,
+                    bullrun_rearm_alt_r6h_min: safeFloat(document.getElementById('config-br-rearm-alt-r6h')?.value ?? 1.0) || 1.0,
+                    bullrun_rearm_alt_above_pct: safeFloat(document.getElementById('config-br-rearm-alt-above')?.value ?? 80) || 80,
+                    bullrun_rearm_max_hours: safeFloat(document.getElementById('config-br-rearm-max-h')?.value ?? 24) || 24,
                     bullrun_btc_1h_slope_min: (function(){ const v = String(document.getElementById('config-br-1h-slope-min')?.value ?? '').trim(); return v === '' ? null : parseFloat(v); })(),  // blank = gate OFF
                     bullrun_green_r72_on: safeFloat(document.getElementById('config-br-r72-on')?.value ?? 5.0),
                     bullrun_green_r72_off: safeFloat(document.getElementById('config-br-r72-off')?.value ?? 4.0),

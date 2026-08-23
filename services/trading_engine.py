@@ -101,6 +101,7 @@ _bullrun_monitor: Dict = {
 }
 _br_dip_state: Dict[str, Dict] = {}      # pair -> {'dipped': bool, 'last_bar_ts': int}
 _br_e50h_cache: Dict[str, tuple] = {}    # pair -> (fetched_at_epoch, ema50_1h)
+_br_alt_stats: dict = {}  # Aug-23 (20): per-pair {'r6h','above','ts'} stamped by the sleeve hook (rank≤N, non-blacklisted) for the RE-ARM door
 _br_last_fire: Dict[str, float] = {}     # pair -> epoch of last sleeve entry OR exit (spacing)
 _breadth_n_bull: int = 0
 _breadth_n_bear: int = 0
@@ -4480,7 +4481,53 @@ class TradingEngine:
                          and eff >= float(th.bullrun_green_eff_on or 0.10))
             amber = (not green) and (r24 >= float(th.bullrun_amber_r24 or 6.0) and above24 >= float(th.bullrun_amber_above or 65.0)
                                      and eff24 >= float(th.bullrun_amber_eff or 0.12))
-            state = 'GREEN' if green else ('AMBER' if amber else 'DARK')
+            # Aug-23 (20): RE-ARM door (composite OFF only). ADX history kept on the monitor tick for the 30-min rise test.
+            rearm = False
+            try:
+                _adx_now = globals().get('_current_btc_adx')
+                _hist = [(t_, a_) for (t_, a_) in (_bullrun_monitor.get('adx_hist') or []) if _now - t_ <= 7200]
+                if _adx_now is not None:
+                    _hist.append((_now, float(_adx_now)))
+                _bullrun_monitor['adx_hist'] = _hist[-24:]
+                if bool(getattr(th, 'bullrun_rearm_enabled', False)) and not green and not latch:
+                    _was_rearm = bool(_bullrun_monitor.get('rearm'))
+                    _adx_min = float(getattr(th, 'bullrun_rearm_adx_min', 40.0) or 40.0)
+                    _adx_off = float(getattr(th, 'bullrun_rearm_adx_off', 30.0) or 30.0)
+                    _r6_min = float(getattr(th, 'bullrun_rearm_alt_r6h_min', 1.0) or 1.0)
+                    _ab_min = float(getattr(th, 'bullrun_rearm_alt_above_pct', 80.0) or 80.0)
+                    _max_h = float(getattr(th, 'bullrun_rearm_max_hours', 24.0) or 24.0)
+                    # EMA fan on the same closed BTC 5m closes the composite used
+                    def _ema(seq, n):
+                        k_ = 2.0 / (n + 1.0); e_ = seq[0]
+                        for c_ in seq[1:]:
+                            e_ = c_ * k_ + e_ * (1 - k_)
+                        return e_
+                    _e13, _e20, _e50 = _ema(closes, 13), _ema(closes, 20), _ema(closes, 50)
+                    _fan = _e13 > _e20 > _e50
+                    _above_1h = (e50h is not None and price > e50h)
+                    _older = [a_ for (t_, a_) in _hist if _now - t_ >= 1500]  # ≥25 min ago (10-min ticks → the 30-min bar)
+                    _rising = (_adx_now is not None and bool(_older) and float(_adx_now) > _older[-1])
+                    _alts = [v for v in _br_alt_stats.values() if _now - (v.get('ts') or 0) <= 1200]
+                    _alt_ok = False; _alt_med = None; _alt_ab = None
+                    if len(_alts) >= 3:
+                        _r6s = sorted(v['r6h'] for v in _alts); _alt_med = _r6s[len(_r6s) // 2]
+                        _alt_ab = 100.0 * sum(1 for v in _alts if v.get('above')) / len(_alts)
+                        _alt_ok = (_alt_med > _r6_min and _alt_ab >= _ab_min)
+                    if not _was_rearm:
+                        rearm = bool(_adx_now is not None and float(_adx_now) >= _adx_min and _rising and _alt_ok and _fan and _above_1h)
+                        if rearm:
+                            _bullrun_monitor['rearm_t0'] = _now
+                            logger.critical(f"[BULLRUN_MONITOR] RE-ARM ON: ADX {float(_adx_now):.1f} rising, alts med r6h {_alt_med:+.2f}% / {_alt_ab:.0f}% above 1h EMA50, fan={_fan}, BTC>1hEMA50={_above_1h}")
+                    else:
+                        _age_h = (_now - float(_bullrun_monitor.get('rearm_t0') or _now)) / 3600.0
+                        rearm = bool(_above_1h and _adx_now is not None and float(_adx_now) >= _adx_off and _age_h <= _max_h)
+                        if not rearm:
+                            logger.critical(f"[BULLRUN_MONITOR] RE-ARM OFF: ADX {float(_adx_now) if _adx_now is not None else float('nan'):.1f}, BTC>1hEMA50={_above_1h}, age {_age_h:.1f}h")
+                    _bullrun_monitor['rearm_alt_med'] = _alt_med; _bullrun_monitor['rearm_alt_above'] = _alt_ab
+            except Exception as _re_err:
+                logger.warning(f"[BULLRUN_MONITOR] re-arm evaluation failed ({_re_err}) — REARM off this tick")
+                rearm = False
+            state = 'GREEN' if green else ('REARM' if rearm else ('AMBER' if amber else 'DARK'))
             prev_state = _bullrun_monitor.get('state')
             # Periods ledger (restart-proof adoption happens inside; sets 'resumed' on adoption)
             # Review I1: persistence runs on its OWN session — never commit/rollback the scan loop's
@@ -4502,8 +4549,12 @@ class TradingEngine:
                 _bullrun_monitor['green_since'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
             elif not green:
                 _bullrun_monitor['green_since'] = None
+            if rearm and not _bullrun_monitor.get('rearm'):
+                _bullrun_monitor['rearm_since'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+            elif not rearm:
+                _bullrun_monitor['rearm_since'] = None
             _bullrun_monitor.update({
-                'state': state, 'green': green, 'amber': amber, 'latch': latch,
+                'state': state, 'green': green, 'rearm': rearm, 'amber': amber, 'latch': latch,
                 'r72': round(r72, 2), 'above': round(above, 1), 'eff': round(eff, 3),
                 'r6': round(r6, 2), 'r24': round(r24, 2), 'off24h': round(off24h, 2), 'updated_at': _now,
             })
@@ -4525,12 +4576,13 @@ class TradingEngine:
             if not getattr(th, 'bullrun_sleeve_enabled', False):
                 return
             _now = _leash_time.time()
-            if not (_bullrun_monitor.get('green') and (_now - (_bullrun_monitor.get('updated_at') or 0) <= 1800)):
-                return
+            _fresh = (_now - (_bullrun_monitor.get('updated_at') or 0) <= 1800)
+            _armed = bool(_fresh and (_bullrun_monitor.get('green') or _bullrun_monitor.get('rearm')))
             pair = pair_info.get('pair') or pair_info.get('symbol')
             _br_bl = {p.strip().upper() for p in str(getattr(th, 'bullrun_pair_blacklist', '') or '').split(',') if p.strip()}
             if _br_bl and str(pair).upper() in _br_bl:
-                self._record_filter_block('BR_PAIR_BLACKLIST', 'LONG')
+                if _armed:
+                    self._record_filter_block('BR_PAIR_BLACKLIST', 'LONG')
                 return
             # Aug-22: rank among TRADEABLE pairs (br_rank, blacklists skipped) so top-N stays N pairs
             rank = pair_info.get('br_rank') if pair_info.get('br_rank') is not None else pair_info.get('rank')
@@ -4540,6 +4592,20 @@ class TradingEngine:
                 return
             bars = ohlcv[:-1]  # closed bars only (last row is forming)
             closes = [float(b[4]) for b in bars]
+            # Aug-23 (20): alt-participation stamp for the RE-ARM door (runs even while DARK; zero extra requests).
+            # above = pair close vs its 1h EMA50 (sleeve cache when present, else the scan's 5m EMA50 as proxy).
+            try:
+                _r6h_p = (closes[-1] / closes[-73] - 1.0) * 100.0 if len(closes) >= 73 else None
+                _c50 = _br_e50h_cache.get(pair)  # (ts, value) tuple written by the sleeve's 1h fetch
+                _e50_ref = _c50[1] if (isinstance(_c50, tuple) and len(_c50) == 2 and _now - float(_c50[0] or 0) <= 3600) else None
+                if _e50_ref is None:
+                    _e50_ref = (indicators or {}).get('ema50')  # 5m EMA50 proxy while the 1h cache is cold
+                if _r6h_p is not None and _e50_ref:
+                    _br_alt_stats[pair] = {'r6h': _r6h_p, 'above': closes[-1] > float(_e50_ref), 'ts': _now}
+            except Exception:
+                pass
+            if not _armed:
+                return
             highs = [float(b[2]) for b in bars]
             lows = [float(b[3]) for b in bars]
             ema = closes[0]; _k = 2.0 / 21.0; emas = []
@@ -4587,7 +4653,7 @@ class TradingEngine:
                     _bullrun_monitor['_off_sign_warned'] = True
                 _off_max = -_off_max
             _off_now = _bullrun_monitor.get('off24h')
-            if _off_max < 0 and _off_now is not None and float(_off_now) <= _off_max:
+            if _bullrun_monitor.get('green') and _off_max < 0 and _off_now is not None and float(_off_now) <= _off_max:  # bypassed in REARM (bounce from a ≥2% low)
                 if st.get('blk_24h_ts') != st.get('dip_ts'):  # own key (review: shared blk_key double-counted an oscillating dip)
                     st['blk_24h_ts'] = st.get('dip_ts')
                     _bullrun_monitor['blk_off24h'] = _bullrun_monitor.get('blk_off24h', 0) + 1
@@ -4701,6 +4767,7 @@ class TradingEngine:
                 entry_br_above=_bullrun_monitor.get('above'),
                 entry_br_eff=_bullrun_monitor.get('eff'),
                 entry_br_off24h=_bullrun_monitor.get('off24h'),
+                entry_br_door=('GREEN' if _bullrun_monitor.get('green') else 'REARM'),
                 entry_bull_pct=_br_bull, entry_bear_pct=_br_bear,
                 entry_global_volume_ratio=_br_gvr, entry_pair_volume_ratio=_br_pvr,
                 bullrun_long=True,
@@ -5219,6 +5286,7 @@ class TradingEngine:
         entry_br_above: float = None,
         entry_br_eff: float = None,
         entry_br_off24h: float = None,
+        entry_br_door: str = None,   # Aug-23 (20): 'GREEN' (composite) or 'REARM' (re-arm door)
         # Jun 8: gap-expanding relaxation A/B tag (prev2_only-admitted MARGINAL cohort)
         entry_gap_expand_marginal: bool = None,
         # Jun 14: Flip Entry sleeve — when set, this is a NAKED fade-the-block entry
@@ -6588,6 +6656,7 @@ class TradingEngine:
             entry_br_above=entry_br_above,
             entry_br_eff=entry_br_eff,
             entry_br_off24h=entry_br_off24h,
+            entry_br_door=entry_br_door,
             # Jun 8: gap-expanding relaxation A/B cohort tag
             entry_gap_expand_marginal=entry_gap_expand_marginal,
             # Jun 2: liquidity-aware sizing observability (final notional = notional_value above)

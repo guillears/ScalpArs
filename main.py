@@ -564,6 +564,7 @@ async def get_status(db: AsyncSession = Depends(get_db)):
         from services.trading_engine import _bullrun_monitor as _brm
         _status["bullrun"] = {
             "state": _brm.get("state"), "green_since": _brm.get("green_since"),
+            "rearm": _brm.get("rearm"), "rearm_since": _brm.get("rearm_since"), "rearm_alt_med": _brm.get("rearm_alt_med"), "rearm_alt_above": _brm.get("rearm_alt_above"),
             "r72": _brm.get("r72"), "above": _brm.get("above"), "eff": _brm.get("eff"),
             "r6": _brm.get("r6"), "latch": _brm.get("latch"), "off24h": _brm.get("off24h"),
             "enabled": bool(getattr(config.trading_config.thresholds, 'bullrun_sleeve_enabled', False)),
@@ -2515,6 +2516,7 @@ def _bullrun_monitor_payload():
         from services.trading_engine import _bullrun_monitor as _brm
         return {
             "state": _brm.get("state"), "green_since": _brm.get("green_since"),
+            "rearm": _brm.get("rearm"), "rearm_since": _brm.get("rearm_since"), "rearm_alt_med": _brm.get("rearm_alt_med"), "rearm_alt_above": _brm.get("rearm_alt_above"),
             "r72": _brm.get("r72"), "above": _brm.get("above"), "eff": _brm.get("eff"),
             "r6": _brm.get("r6"), "latch": _brm.get("latch"), "off24h": _brm.get("off24h"),
             "flips": list(_brm.get("flips") or [])[-12:],
@@ -2566,7 +2568,7 @@ async def _bullrun_periods_rows(db, limit=50):
                 'fills': len(g), 'open_fills': len(g) - len(gc),
                 'wr': (round(100.0 * _wins / len(gc), 1) if gc else None),
                 'net': round(sum(o.pnl or 0 for o in gc), 2),
-                'blk_sp': p.blocked_spacing or 0, 'blk_sl': p.blocked_slots or 0, 'blk_ema': p.blocked_ema50 or 0, 'blk_24h': getattr(p, 'blocked_off24h', 0), 'blk_e13': getattr(p, 'blocked_ema13', 0) or 0, 'blk_1h': getattr(p, 'blocked_1h', 0) or 0 or 0,
+                'blk_sp': p.blocked_spacing or 0, 'blk_sl': p.blocked_slots or 0, 'blk_ema': p.blocked_ema50 or 0, 'blk_24h': getattr(p, 'blocked_off24h', 0), 'blk_e13': getattr(p, 'blocked_ema13', 0) or 0, 'blk_1h': getattr(p, 'blocked_1h', 0) or 0,
                 'kb_n': len(_kb), 'kb_wr': (round(_kb_wr, 0) if _kb_wr is not None else None),
                 'kb_usd': round(sum(o.pnl or 0 for o in _kb), 2),
                 'ended_by': p.ended_by or ('open' if p.ended_at is None else ''),
@@ -6891,6 +6893,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 bullrun_rows.append({"row": "  CURRENT-CONFIG cohort (ex-blacklist; pre-gate fills BTC<EMA13 removed) — the read baseline", **_br_stats(_cc), "gate": ""})
                 _v3 = [o for o in _br_orders if o.opened_at >= G57V3_TS]
                 bullrun_rows.append({"row": "  post-gate fills only (v3, ≥ Aug-22 21:53 UTC)", **_br_stats(_v3), "gate": ""})
+                _rd = [o for o in _br_orders if getattr(o, "entry_br_door", None) == "REARM"]
+                bullrun_rows.append({"row": "  RE-ARM door fills (composite OFF; revert ≤1 winning window of first 3)", **_br_stats(_rd), "gate": ""})
             except Exception as _cce:
                 logger.debug(f"[BULLRUN_ROWS] current-config cohort skipped: {_cce}")
             if _br_v1:

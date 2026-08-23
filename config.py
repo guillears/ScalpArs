@@ -976,6 +976,21 @@ class SignalThresholds(BaseModel):
     # 3-4 losers the other misses): ex-ONG/ETH 31·42%·+$515 → 15·67%·+$1,918. Discipline-override (N<30).
     # 🔒 revert: next GREEN episode close — blocked cohort (replay or live entry_btc_1h_slope ≤ min) net-positive → off.
     bullrun_btc_1h_slope_min: Optional[float] = 0.0
+    # Aug-23 (20): RE-ARM DOOR — second trigger while the 72h composite is OFF (it detects continuation late and
+    # cannot re-arm after a pullback: eff needs +3.9% straight-line). ON = BTC ADX ≥ adx_min AND rising vs 30 min ago
+    # AND alts leading (median universe 6h return > alt_r6h_min %, ≥ alt_above_pct % above their 1h EMA50) AND
+    # EMA13>EMA20>EMA50 AND BTC > 1h EMA50. OFF = BTC < 1h EMA50 | ADX < adx_off | max_hours | composite GREEN.
+    # Replay Aug-13→23 (sleeve entries/exits, composite-OFF only): 14·79%·+$2,338 (ex-ETH 13·77%·+$1,497), no losing
+    # window, skipped the 3 fake bounces (Aug-17 15:05, Aug-18 14:25, Aug-22 night); Aug-19 14:10 = 6·6W·+$2,045 six hours
+    # before the composite confirmed. Caveats: 3 windows with fills, late by construction. In REARM the off-24h gate is
+    # bypassed (bounce from a ≥2% low); EMA13 + 1h-slope gates apply. Watchlist ship (operator).
+    # 🔒 REVERT (manual): ≤1 winning window of the first 3 REARM windows with fills → bullrun_rearm_enabled=false.
+    bullrun_rearm_enabled: bool = True
+    bullrun_rearm_adx_min: float = 40.0        # entry: BTC ADX(14, 5m) ≥ this AND > its value 30 min ago
+    bullrun_rearm_adx_off: float = 30.0        # stay: ADX ≥ this
+    bullrun_rearm_alt_r6h_min: float = 1.0     # entry: median universe-pair 6h return > this %
+    bullrun_rearm_alt_above_pct: float = 80.0  # entry: ≥ this % of universe pairs above their 1h EMA50
+    bullrun_rearm_max_hours: float = 24.0      # hard off
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

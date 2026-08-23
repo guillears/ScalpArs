@@ -994,6 +994,13 @@ class SignalThresholds(BaseModel):
     bullrun_rearm_alt_r6h_min: float = 1.0     # entry: median universe-pair 6h return > this %
     bullrun_rearm_alt_above_pct: float = 80.0  # entry: ≥ this % of universe pairs above their 1h EMA50
     bullrun_rearm_max_hours: float = 24.0      # hard off
+    # Aug-23 (24): POST-GREEN leg — the door may only ARM within this many hours after a GREEN episode ended (0 = any time).
+    # 8.7-month backtest (Nov-25→Aug-23, 10-pair universe, full sleeve stack): door at ANY time = 160 windows, 123 with
+    # fills, 87 losing (71%), 489·37%·−$7,834 — a generic bounce-catcher that loses in 8 of 10 months; restricted to
+    # ≤48h after a GREEN end = 6 windows, 4 with fills, 0 losing, 12·100%·+$1,037 (Apr-9/10 after the Apr-8 episode,
+    # Aug-23 10:45/13:25 after the Aug-19→22 episode). Mechanism = persistence of a CONFIRMED run, not bounce-catching.
+    # Evidence: 2 clusters (watchlist-grade) but the downside is bounded by construction. DECISION_LOG 2026-08-23 (24).
+    bullrun_rearm_after_green_hours: float = 48.0
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

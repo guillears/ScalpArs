@@ -4497,6 +4497,20 @@ class TradingEngine:
                          and eff >= float(th.bullrun_green_eff_on or 0.10))
             amber = (not green) and (r24 >= float(th.bullrun_amber_r24 or 6.0) and above24 >= float(th.bullrun_amber_above or 65.0)
                                      and eff24 >= float(th.bullrun_amber_eff or 0.12))
+            # Aug-23 (24): remember when the last GREEN episode ended (restart-proof: seeded from the periods ledger)
+            if was_green and not green:
+                _bullrun_monitor['green_end_ts'] = _now
+            if _bullrun_monitor.get('green_end_ts') is None and not _bullrun_monitor.get('_gend_seeded'):
+                _bullrun_monitor['_gend_seeded'] = True
+                try:
+                    async with AsyncSessionLocal() as _gdb:
+                        _lg = (await _gdb.execute(
+                            select(MonitorPeriod).where(and_(MonitorPeriod.state == 'GREEN', MonitorPeriod.ended_at.isnot(None)))
+                            .order_by(MonitorPeriod.ended_at.desc()).limit(1))).scalars().first()
+                        if _lg is not None:
+                            _bullrun_monitor['green_end_ts'] = _lg.ended_at.replace(tzinfo=timezone.utc).timestamp()
+                except Exception as _ge:
+                    logger.warning(f"[BULLRUN_MONITOR] last-GREEN-end seed failed ({_ge})")
             # Aug-23 (20): RE-ARM door (composite OFF only). ADX history kept on the monitor tick for the 30-min rise test.
             rearm = False
             try:
@@ -4512,6 +4526,9 @@ class TradingEngine:
                     _r6_min = float(getattr(th, 'bullrun_rearm_alt_r6h_min', 1.0) or 1.0)
                     _ab_min = float(getattr(th, 'bullrun_rearm_alt_above_pct', 80.0) or 80.0)
                     _max_h = float(getattr(th, 'bullrun_rearm_max_hours', 24.0) or 24.0)
+                    _post_h = float(getattr(th, 'bullrun_rearm_after_green_hours', 48.0) or 0.0)
+                    _gend = _bullrun_monitor.get('green_end_ts')
+                    _post_ok = (_post_h <= 0) or (_gend is not None and (_now - float(_gend)) / 3600.0 <= _post_h)
                     # EMA fan on the same closed BTC 5m closes the composite used
                     def _ema(seq, n):
                         k_ = 2.0 / (n + 1.0); e_ = seq[0]
@@ -4530,7 +4547,7 @@ class TradingEngine:
                         _alt_ab = 100.0 * sum(1 for v in _alts if v.get('above')) / len(_alts)
                         _alt_ok = (_alt_med > _r6_min and _alt_ab >= _ab_min)
                     if not _was_rearm:
-                        rearm = bool(_adx_now is not None and float(_adx_now) >= _adx_min and _rising and _alt_ok and _fan and _above_1h)
+                        rearm = bool(_post_ok and _adx_now is not None and float(_adx_now) >= _adx_min and _rising and _alt_ok and _fan and _above_1h)
                         if rearm:
                             _bullrun_monitor['rearm_t0'] = _now
                             logger.critical(f"[BULLRUN_MONITOR] RE-ARM ON: ADX {float(_adx_now):.1f} rising, alts med r6h {_alt_med:+.2f}% / {_alt_ab:.0f}% above 1h EMA50, fan={_fan}, BTC>1hEMA50={_above_1h}")

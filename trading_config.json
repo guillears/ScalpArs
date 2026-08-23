@@ -655,7 +655,8 @@
     "bullrun_rearm_adx_off": 30.0,
     "bullrun_rearm_alt_r6h_min": 1.0,
     "bullrun_rearm_alt_above_pct": 80.0,
-    "bullrun_rearm_max_hours": 24.0
+    "bullrun_rearm_max_hours": 24.0,
+    "bullrun_rearm_after_green_hours": 48.0
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

@@ -6888,10 +6888,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # construction) with pre-gate fills the gate WOULD have blocked removed (entry column < 0) + all post-gate fills.
             try:
                 _bl_now = {x.strip().upper() for x in str(getattr(config.trading_config.thresholds, 'bullrun_pair_blacklist', '') or '').split(',') if x.strip()}
-                _cc = [o for o in _br_orders if (o.pair or '').upper() not in _bl_now
+                _cc = [o for o in _br_orders if (o.pair or '').upper() not in _bl_now and getattr(o, 'entry_br_door', None) != 'REARM'
                        and not (o.opened_at < G57V3_TS and (getattr(o, 'entry_btc_dist_from_ema13_pct', None) is not None) and float(o.entry_btc_dist_from_ema13_pct) < 0)]
                 bullrun_rows.append({"row": "  CURRENT-CONFIG cohort (ex-blacklist; pre-gate fills BTC<EMA13 removed) — the read baseline", **_br_stats(_cc), "gate": ""})
-                _v3 = [o for o in _br_orders if o.opened_at >= G57V3_TS]
+                _v3 = [o for o in _br_orders if o.opened_at >= G57V3_TS and getattr(o, 'entry_br_door', None) != 'REARM']
                 bullrun_rows.append({"row": "  post-gate fills only (v3, ≥ Aug-22 21:53 UTC)", **_br_stats(_v3), "gate": ""})
                 _rd = [o for o in _br_orders if getattr(o, "entry_br_door", None) == "REARM"]
                 bullrun_rows.append({"row": "  RE-ARM door fills (composite OFF; revert ≤1 winning window of first 3)", **_br_stats(_rd), "gate": ""})

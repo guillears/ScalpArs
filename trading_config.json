@@ -253,6 +253,7 @@
     "flip_short_bear_min": 20.0,
     "flip_short_rsi_min": 55.0,
     "flip_short_btc_1h_slope_max": 0.0,
+    "flip_fan_btc_ema13_max": -0.08,
     "flip_short_btc_1h_slope_admit_mult": 0.0,
     "flip_short_btc_trend_gap_min": -0.22,
     "flip_short_tg_shallow_mult": 2.0,

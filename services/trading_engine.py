@@ -622,6 +622,13 @@ def _flip_filters(source, ind):
                 if _adm <= 0:
                     _fails.append("FLIP_SHORT_BTC1H_SLOPE")
                 # fall through un-blocked; sizing cap + tag handled in _maybe_open_flip
+        # Aug-23 (21): FAN_RATIO_GATE shorts need a BEARISH BTC — block while BTC sits at/above its 5m EMA13
+        # (distance > max, default −0.08%). Fail-open on missing distance; None/blank config = off.
+        _fe13_raw = getattr(th, 'flip_fan_btc_ema13_max', None)
+        if source == "FAN_RATIO_GATE" and ind.get('flip_dir') == 'SHORT' and _fe13_raw is not None and str(_fe13_raw) != '':
+            _bd13 = ind.get('btc_dist_ema13')
+            if _bd13 is not None and float(_bd13) > float(_fe13_raw):
+                _fails.append("FLIP_FAN_BTC_EMA13")
         # BTC trend-gap DEPTH gate for flip-SHORTS (Jul 8): don't fade an alt pump while BTC sits
         # DEEP below its own trend (EMA13-50 gap ≤ min) — oversold tape means the pump is a
         # market-wide relief bounce that keeps squeezing, not idiosyncratic exhaustion. Found by the
@@ -3967,6 +3974,10 @@ class TradingEngine:
                 # BTC EMA13-50 trend gap — required by the flip-SHORT depth gate (flip_short_btc_trend_gap_min). Jul 8.
                 'btc_trend_gap': (_ef.get('entry_btc_trend_gap_pct') if _ef.get('entry_btc_trend_gap_pct') is not None
                                   else _g.get('_current_btc_trend_gap_pct')),
+                # BTC distance from its 5m EMA13 — required by the FAN-gate bearish-BTC filter (flip_fan_btc_ema13_max). Aug 23.
+                'btc_dist_ema13': (_ef.get('entry_btc_dist_from_ema13_pct') if _ef.get('entry_btc_dist_from_ema13_pct') is not None
+                                   else ((float(_g.get('_current_btc_price')) - float(_g.get('_current_btc_ema13'))) / float(_g.get('_current_btc_ema13')) * 100.0
+                                         if (_g.get('_current_btc_price') and _g.get('_current_btc_ema13')) else None)),
             }
             _blocked, _reason, _flip_cell_mult, _flip_cell_lev_mult, _flip_exit_mode, _flip_fails = _flip_filters(source, _ff_in)
             # Jul 17 FUNNEL v2 for the flip chain: feed the FULL fail list to the Sole/Epis/AllF
@@ -4465,6 +4476,11 @@ class TradingEngine:
                         elif _open_p is not None:
                             _bullrun_monitor['green'] = (_open_p.state == 'GREEN')
                             _bullrun_monitor['state'] = _open_p.state
+                            # Aug-23 (20) review: seed REARM too, else a deploy mid-REARM evaluates turn-on thresholds with an
+                            # empty adx_hist → 'restart→DARK' (the C1 bug class) and the sleeve silently disarms.
+                            _bullrun_monitor['rearm'] = (_open_p.state == 'REARM')
+                            if _open_p.state == 'REARM' and _open_p.started_at is not None:
+                                _bullrun_monitor['rearm_t0'] = _open_p.started_at.replace(tzinfo=timezone.utc).timestamp()
                             logger.info(f"[BULLRUN_MONITOR] boot seed: open period #{_open_p.id} is {_open_p.state} — hysteresis seeded from DB")
                 except Exception as _seed_err:
                     logger.warning(f"[BULLRUN_MONITOR] boot seed failed ({_seed_err}) — evaluating with turn-on thresholds")
@@ -4527,6 +4543,8 @@ class TradingEngine:
             except Exception as _re_err:
                 logger.warning(f"[BULLRUN_MONITOR] re-arm evaluation failed ({_re_err}) — REARM off this tick")
                 rearm = False
+            if _bullrun_monitor.get('rearm') and not rearm:
+                logger.critical(f"[BULLRUN_MONITOR] RE-ARM → {'GREEN' if green else ('latch' if latch else 'off')}")
             state = 'GREEN' if green else ('REARM' if rearm else ('AMBER' if amber else 'DARK'))
             prev_state = _bullrun_monitor.get('state')
             # Periods ledger (restart-proof adoption happens inside; sets 'resumed' on adoption)

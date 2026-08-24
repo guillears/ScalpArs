@@ -232,15 +232,45 @@ class BinanceService:
                 logger.error(f"[BNB_SWAP_SELL] Computed BNB qty too small: {bnb_to_sell} at price {bnb_price}")
                 return None
 
+            # Aug-24 fix (live -1013 NOTIONAL + stranded funds): check the spot min-notional BEFORE any transfer.
+            try:
+                _bm = self.spot_exchange.market('BNB/USDT')
+                _min_cost = float(((_bm.get('limits') or {}).get('cost') or {}).get('min') or 10.0)
+            except Exception:
+                _min_cost = 10.0
+            if amount_usdt < _min_cost:
+                logger.error(f"[BNB_SWAP_SELL] Refused: ${amount_usdt:.2f} is below the spot minimum order of ${_min_cost:.0f} — nothing transferred. Enter the USD value to sell (≥ ${_min_cost:.0f}).")
+                return None
+
+            # Sweep any BNB already stranded on spot (e.g. from a previously failed sell) into this sell.
+            try:
+                _sb = await self.spot_exchange.fetch_balance()
+                _stranded = float((_sb.get('BNB') or {}).get('free') or 0)
+                if _stranded > 0.0005:
+                    logger.info(f"[BNB_SWAP_SELL] Sweeping {_stranded} stranded spot BNB into this sell")
+                    bnb_to_sell = round(bnb_to_sell, 4)
+            except Exception:
+                _stranded = 0.0
+
             # Step 1: Transfer BNB from futures wallet to spot wallet
             logger.info(f"[BNB_SWAP_SELL] Step 1/4: Transferring {bnb_to_sell} BNB futures → spot")
             await self.spot_exchange.transfer('BNB', bnb_to_sell, 'future', 'spot')
 
-            # Step 2: Sell BNB on spot for USDT (market order)
-            logger.info(f"[BNB_SWAP_SELL] Step 2/4: Selling {bnb_to_sell} BNB on spot")
-            order = await self.spot_exchange.create_order(
-                'BNB/USDT', 'market', 'sell', bnb_to_sell, None
-            )
+            # Step 2: Sell BNB on spot for USDT (market order) — on failure, transfer the BNB BACK (no stranding)
+            _sell_qty = round(bnb_to_sell + (_stranded if _stranded > 0.0005 else 0.0), 4)
+            logger.info(f"[BNB_SWAP_SELL] Step 2/4: Selling {_sell_qty} BNB on spot")
+            try:
+                order = await self.spot_exchange.create_order(
+                    'BNB/USDT', 'market', 'sell', _sell_qty, None
+                )
+            except Exception as _sell_err:
+                logger.error(f"[BNB_SWAP_SELL] Spot sell failed ({_sell_err}) — transferring {bnb_to_sell} BNB back to futures")
+                try:
+                    await self.spot_exchange.transfer('BNB', bnb_to_sell, 'spot', 'future')
+                    logger.info("[BNB_SWAP_SELL] Rollback transfer completed — no stranded funds")
+                except Exception as _rb_err:
+                    logger.critical(f"[BNB_SWAP_SELL] ROLLBACK FAILED ({_rb_err}) — {bnb_to_sell} BNB stranded on SPOT; move it back manually")
+                return None
 
             avg_price = float(order.get('average', order.get('price', 0)))
             cost = float(order.get('cost', 0))  # USDT received

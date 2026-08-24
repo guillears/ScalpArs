@@ -807,6 +807,7 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         bnb_price = await binance_service.get_bnb_price()
         bnb_usd = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
         usdt_free = balance['usdt_free']
+        spot = await binance_service.get_spot_balance_usd()  # 60s-cached; None on API failure
         _live_open = (await db.execute(
             select(Order).where(
                 and_(Order.status == "OPEN", Order.is_paper == False)))).scalars().all()
@@ -829,6 +830,9 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "reserve": _reserve,
             "tradeable": _tradeable,
             "reserve_mode": _rmode,
+            "spot_usdt": spot['usdt'] if spot else None,
+            "spot_bnb_usd": spot['bnb_usd'] if spot else None,
+            "spot_total": spot['total'] if spot else None,
             "is_paper": False
         }
 

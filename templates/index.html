@@ -267,6 +267,7 @@
                     <p class="text-sm text-gray-400 mb-1">Total Portfolio Value</p>
                     <p id="total-portfolio" class="text-2xl font-bold text-emerald-400">$0.00</p>
                     <p id="total-trades-count" class="text-xs text-gray-500 mt-1"></p>
+                    <p id="wallet-split" class="text-xs text-gray-500 mt-0.5 hidden"></p>
                 </div>
             </div>
         </section>
@@ -9141,6 +9142,18 @@
                 const ttEl = document.getElementById('total-trades-count');
                 if (ttEl && data.total_trades_count != null) {
                     ttEl.textContent = `Total Trades: ${data.total_trades_count}`;
+                }
+                // Aug-24 (operator): Futures/Spot split — spot should be ~$0; money parked there
+                // usually means a stranded swap (the $77.64 incident). Amber above $5.
+                const wsEl = document.getElementById('wallet-split');
+                if (wsEl) {
+                    if (!data.is_paper && data.spot_total != null) {
+                        const fut = (data.total_portfolio != null) ? data.total_portfolio : 0;
+                        wsEl.innerHTML = `Futures: ${formatUSD(fut)} · Spot: <span class="${data.spot_total > 5 ? 'text-amber-400 font-semibold' : ''}">${formatUSD(data.spot_total)}</span>`;
+                        wsEl.classList.remove('hidden');
+                    } else {
+                        wsEl.classList.add('hidden');
+                    }
                 }
             } catch (e) {
                 console.error('Error loading balance:', e);

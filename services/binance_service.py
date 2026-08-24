@@ -156,6 +156,31 @@ class BinanceService:
                 logger.error(f"[BINANCE] Error fetching BNB price: {e}")
                 return 0.0
 
+    async def get_spot_balance_usd(self) -> Optional[Dict]:
+        """Spot wallet snapshot in USD (Aug-24, operator: Futures/Spot split on the portfolio card
+        to catch stranded-funds errors like the $77.64 BNB-swap incident). 60s TTL cache — the UI
+        polls /api/balance every few seconds; spot balances only move during swaps. Fail-open None."""
+        try:
+            import time as _t
+            _c = getattr(self, '_spot_bal_cache', None)
+            if _c and (_t.monotonic() - _c[0]) < 60:
+                return _c[1]
+            await self._load_spot_markets()
+            bal = await self.spot_exchange.fetch_balance()
+            usdt = float((bal.get('USDT') or {}).get('total') or 0)
+            bnb = float((bal.get('BNB') or {}).get('total') or 0)
+            bnb_usd = 0.0
+            if bnb > 0:
+                px = await self.get_bnb_price()
+                bnb_usd = bnb * px if px > 0 else 0.0
+            out = {'usdt': round(usdt, 2), 'bnb': bnb, 'bnb_usd': round(bnb_usd, 2),
+                   'total': round(usdt + bnb_usd, 2)}
+            self._spot_bal_cache = (_t.monotonic(), out)
+            return out
+        except Exception as e:
+            logger.warning(f"[SPOT_BAL] fetch failed: {e}")
+            return None
+
     async def buy_bnb(self, amount_usdt: float) -> Optional[Dict]:
         """Buy BNB with USDT via transfer-to-spot + spot market buy + transfer-back.
         Four steps; all non-time-sensitive, no expiring quotes."""
@@ -163,9 +188,10 @@ class BinanceService:
             await self.load_markets()
             await self._load_spot_markets()
 
-            # Aug-24 live incident: a raw float shortfall (77.637613796537) was rejected by the
-            # transfer API — Binance caps transfer amounts at 8 decimals and reports over-precision
-            # as "insufficient balance". Floor to 2 dp (never exceeds free balance; matches step 2).
+            # Aug-24 live incident: the raw float shortfall (77.637613796537) TRANSFERRED fine
+            # (ccxt truncates), crediting spot 77.6376 — but step 2's buy asked round(...,2)=77.64,
+            # more than spot held → 'insufficient balance' AFTER the debit. Floor to 2 dp up front
+            # so the transfer and the buy use the identical amount.
             amount_usdt = int(amount_usdt * 100) / 100.0
             if amount_usdt < 1:
                 logger.warning(f"[BNB_SWAP] Amount too small after rounding (${amount_usdt:.2f}) — skipping")
@@ -261,7 +287,7 @@ class BinanceService:
                 _stranded = 0.0
 
             # Step 1: Transfer BNB from futures wallet to spot wallet
-            bnb_to_sell = int(bnb_to_sell * 1e8) / 1e8  # transfer API caps at 8 decimals (Aug-24 buy-path incident)
+            bnb_to_sell = int(bnb_to_sell * 1e8 + 0.5) / 1e8  # review: half-up to 8 dp — a pure floor can land 1e-8 below the 4-dp value while _sell_qty rounds back up over the transferred balance
             logger.info(f"[BNB_SWAP_SELL] Step 1/4: Transferring {bnb_to_sell} BNB futures → spot")
             await self.spot_exchange.transfer('BNB', bnb_to_sell, 'future', 'spot')
 

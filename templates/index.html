@@ -218,7 +218,7 @@
             <span id="global-vol-value" class="text-gray-300 font-bold" title="Global volume ratio (Σ current / Σ 20-bar avg across the top pairs)">--</span>
             <span id="global-vol-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide">--</span>
             <span class="text-gray-600">·</span>
-            <span id="breadth-wrap" class="flex items-center gap-1" title="Market breadth — share of scanned pairs in a bullish / bearish regime">
+            <span id="breadth-wrap" class="flex items-center gap-1" title="Market breadth — bull% / bear% of scanned pairs. Bull turns GREEN at ≥ its LONG gate (default 50); bear turns RED at ≥ its SHORT gate (default 65); gray = below threshold.">
                 <span class="text-gray-400 font-medium">Breadth</span>
                 <span id="breadth-bull-value" class="text-gray-300 font-bold">--</span><span class="text-gray-500">/</span><span id="breadth-bear-value" class="text-gray-300 font-bold">--</span>
             </span>
@@ -8877,7 +8877,7 @@
                 if (bBearEl && bearPct != null) {
                     const bearTh = parseFloat(document.getElementById('config-market-breadth-bear-threshold-short')?.value) || 65;
                     bBearEl.textContent = `${bearPct.toFixed(0)}`;
-                    bBearEl.className = bearPct >= bearTh ? 'text-emerald-400 font-bold' : 'text-gray-400 font-bold';
+                    bBearEl.className = bearPct >= bearTh ? 'text-red-400 font-bold' : 'text-gray-400 font-bold';  // Aug-24 (operator): bear side ≥ threshold = RED (market meaning), not emerald (filter-armed)
                 }
                 // Update breadth counts (use same threshold as breadth %)
                 if (data.breadth_n_total != null && data.breadth_n_total > 0) {

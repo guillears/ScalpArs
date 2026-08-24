@@ -5,6 +5,27 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from config import settings
+import asyncio
+
+# Aug-24 (33): single-process FAIR write queue for SQLite. The Aug-24 22:00 incident: a live
+# close burned 5x5s busy-timeouts ("database is locked") while the 1s monitor loop streamed
+# small commits — SQLite's busy handler POLLS, so a waiting writer loses every re-acquire race
+# to a high-frequency writer. asyncio.Lock wakes waiters FIFO, so routing every commit through
+# locked_commit() makes the queue fair: a close waits at most one in-flight commit, never 35s.
+# NEVER call locked_commit while holding db_write_lock (it is not reentrant) — the lock must
+# only ever be taken inside this helper.
+db_write_lock = asyncio.Lock()
+
+async def locked_commit(session) -> None:
+    """Commit under the process-wide fair write lock. Use for EVERY commit on the SQLite DB."""
+    import time as _t
+    _w0 = _t.monotonic()
+    async with db_write_lock:
+        _wait = _t.monotonic() - _w0
+        if _wait > 1.0:
+            import logging
+            logging.getLogger(__name__).warning(f"[DB_QUEUE_SLOW] commit waited {_wait:.2f}s in the fair write queue")
+        await session.commit()
 
 # Create async engine with SQLite concurrency settings.
 #
@@ -830,7 +851,7 @@ async def get_db():
     async with AsyncSessionLocal() as session:
         try:
             yield session
-            await session.commit()
+            await locked_commit(session)  # per-request implicit commit joins the fair write queue
         except Exception:
             await session.rollback()
             raise

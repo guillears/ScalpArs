@@ -11,7 +11,7 @@ from sqlalchemy import select, update, and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod
-from database import AsyncSessionLocal
+from database import AsyncSessionLocal, locked_commit
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, _leverage_blocked_pairs
@@ -1288,6 +1288,9 @@ class TradingEngine:
     """Main trading engine that manages positions and executes trades"""
     
     def __init__(self):
+        # Strong refs to fire-and-forget tasks (funding stamps) — asyncio only keeps weak refs,
+        # so an unreferenced task can be garbage-collected mid-flight.
+        self._bg_tasks: set = set()
         self.is_running = False
         self.is_paper_mode = True
         self.paper_balance = config.trading_config.paper_balance
@@ -1381,7 +1384,7 @@ class TradingEngine:
             if getattr(state, 'runtime_initial_total_usd', None) is None:
                 _backfill_initial = (state.paper_balance or 0) + (self.paper_bnb_balance_usd or 0)
                 state.runtime_initial_total_usd = _backfill_initial
-                await db.commit()
+                await locked_commit(db)
                 logger.warning(
                     f"[BOTSTATE] Backfilled runtime_initial_total_usd=${_backfill_initial:.2f} "
                     f"for existing BotState row. This is a one-time migration — Return Multiple "
@@ -1467,7 +1470,7 @@ class TradingEngine:
                 total_runtime_seconds=0
             )
             db.add(state)
-            await db.commit()
+            await locked_commit(db)
             self.is_running = False
             self.is_paper_mode = _default_is_paper
             self.paper_balance = config.trading_config.paper_balance
@@ -1680,7 +1683,7 @@ class TradingEngine:
             )
             db.add(state)
 
-        await db.commit()
+        await locked_commit(db)
     
     async def start(self, db: AsyncSession):
         """Start the trading bot"""
@@ -2199,7 +2202,7 @@ class TradingEngine:
                 is_paper=True
             )
             db.add(swap_log)
-            await db.commit()
+            await locked_commit(db)
             
             await self._recalculate_paper_balance(db)
             await self.save_state(db)
@@ -2242,7 +2245,7 @@ class TradingEngine:
                 is_paper=False
             )
             db.add(swap_log)
-            await db.commit()
+            await locked_commit(db)
             logger.info(
                 f"[BNB_SWAP] Live {swap_type}: bought {result['bnb_amount']:.4f} BNB "
                 f"for ${result['cost_usdt']:.2f} @ ${result['price']:.2f}"
@@ -2290,7 +2293,7 @@ class TradingEngine:
                 is_paper=True,
             )
             db.add(swap_log)
-            await db.commit()
+            await locked_commit(db)
 
             await self._recalculate_paper_balance(db)
             await self.save_state(db)
@@ -2327,7 +2330,7 @@ class TradingEngine:
                 is_paper=False,
             )
             db.add(swap_log)
-            await db.commit()
+            await locked_commit(db)
             logger.info(
                 f"[BNB_SELL] Live {swap_type}: sold {result['bnb_amount']:.4f} BNB "
                 f"for ${result['proceeds_usdt']:.2f} @ ${result['price']:.2f}"
@@ -3347,7 +3350,7 @@ class TradingEngine:
                 entry_pattern_w_any_match=_pw_any,
             )
             db.add(order)
-            await db.commit()
+            await locked_commit(db)
         except Exception as e:
             logger.error(f"[SIGNAL_EXPIRED] {pair}: Failed to persist aborted-entry row: {e}")
             try:
@@ -4376,7 +4379,7 @@ class TradingEngine:
                             for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_1h', 'blocked_1h')):
                                 _bullrun_monitor[_k] = int(getattr(_prev, _col, 0) or 0)
                             logger.info(f"[BULLRUN_MONITOR] GREEN re-armed within 30 min of a stay-band drop — period #{_prev.id} reopened (flap, not a new episode)")
-                            await db.commit()
+                            await locked_commit(db)
                             return
                     except Exception as _rm_err:
                         logger.warning(f"[BULLRUN_MONITOR] re-arm merge check failed ({_rm_err}) — opening a new period")
@@ -4409,7 +4412,7 @@ class TradingEngine:
                 _bullrun_monitor['period_id'] = newp.id
                 for _k in ('blk_spacing', 'blk_slots', 'blk_ema50', 'blk_off24h', 'blk_ema13', 'blk_1h'):
                     _bullrun_monitor[_k] = 0
-            await db.commit()
+            await locked_commit(db)
         except Exception as e:
             logger.error(f"[BULLRUN_MONITOR] period persistence failed: {e}")
             try:
@@ -6800,7 +6803,7 @@ class TradingEngine:
         )
         db.add(transaction)
 
-        await db.commit()
+        await locked_commit(db)
         await db.refresh(order)
 
         # Jun 2: count a redeploy-band open (position beyond normal max_open_positions,
@@ -7026,6 +7029,26 @@ class TradingEngine:
 
         return order
     
+    async def _stamp_funding_async(self, order_id: int, pair: str, opened_at) -> None:
+        """Aug-24 (33): stamp Σ funding on a CLOSED live order from its own session, off the close funnel.
+        Fail-open: any error logs and exits; the column stays NULL (recorded-only metric, not in pnl)."""
+        try:
+            if opened_at is None:
+                return
+            _f_start = int(opened_at.replace(tzinfo=timezone.utc).timestamp() * 1000)
+            _f_end = int(datetime.utcnow().replace(tzinfo=timezone.utc).timestamp() * 1000) + 60000
+            _fund = await binance_service.get_funding_fees_usd(pair, _f_start, _f_end)
+            if _fund is None:
+                return
+            async with AsyncSessionLocal() as _fdb:
+                _row = await _fdb.get(Order, order_id)
+                if _row is not None and _row.status == "CLOSED":
+                    _row.funding_fee_usd = float(_fund)
+                    await locked_commit(_fdb)
+                    logger.info(f"[FUNDING] {pair} order {order_id}: Σ funding {float(_fund):+.4f} USDT over the position's life (not in pnl)")
+        except Exception as _fe:
+            logger.warning(f"[FUNDING] async stamp failed for {pair} order {order_id}: {_fe}")
+
     async def close_position(
         self,
         db: AsyncSession,
@@ -7091,7 +7114,7 @@ class TradingEngine:
                         close_initiated_at=datetime.utcnow(),
                     )
                 )
-                await db.commit()
+                await locked_commit(db)
                 return True
             except Exception as _e:
                 try:
@@ -7151,7 +7174,7 @@ class TradingEngine:
                         # review fix: null + commit so a failed close leaves a NULL id the
                         # sweep can heal (a dead algoId would read as 'protected' while naked)
                         order.backstop_algo_id = None
-                        await db.commit()
+                        await locked_commit(db)
                     else:
                         self._record_filter_block("BACKSTOP_CANCEL_FAILED", order.direction)
                 except Exception as _bkc_err:
@@ -7291,7 +7314,7 @@ class TradingEngine:
                         )
                         db.add(tx)
                         _exit_retry_queue.pop(order.id, None)
-                        await db.commit()
+                        await locked_commit(db)
                         await db.refresh(order)
                         async with _cache_lock:
                             _open_orders_cache[order.pair] = [
@@ -7310,7 +7333,7 @@ class TradingEngine:
                         _bk_new = await binance_service.place_backstop_stop(order.pair, order.direction, _bk_tr)
                         if _bk_new:
                             order.backstop_algo_id = _bk_new
-                            await db.commit()  # review fix: persist NOW — reconciler/next close must see the LIVE id, not the canceled one
+                            await locked_commit(db)  # review fix: persist NOW — reconciler/next close must see the LIVE id, not the canceled one
                             logger.warning(f"[BACKSTOP_REPLACED] {order.pair}: close failed → fresh algoId={_bk_new} guarding the retry window")
                         else:
                             self._record_filter_block("BACKSTOP_PLACE_FAILED", order.direction)
@@ -7423,6 +7446,7 @@ class TradingEngine:
         _tx_investment = order.investment
         _tx_leverage = order.leverage
         _tx_is_paper = order.is_paper
+        _tx_opened_at = order.opened_at  # Aug-24 (33): snapshot for the async funding stamp
         _db_attempt = 0
 
         # Track total time spent waiting on the DB across all retry attempts so we can
@@ -7626,7 +7650,7 @@ class TradingEngine:
                 )
                 db.add(transaction)
 
-                await db.commit()
+                await locked_commit(db)  # Aug-24 (33): fair write queue — see database.py
                 await db.refresh(order)
                 _db_commit_success = True
 
@@ -7653,22 +7677,6 @@ class TradingEngine:
                         f"(waited={_attempt_elapsed:.2f}s, reason={reason}, pnl=${pnl_data['pnl']:.4f}, "
                         f"exit={actual_exit_price:.6f}{_slip_str})"
                     )
-                    # Aug-24 M6: funding while open (live only; RECORDED, not folded into pnl — reporting decision pending)
-                    try:
-                        if not self.is_paper_mode and order.opened_at is not None:
-                            _f_start = int(order.opened_at.replace(tzinfo=timezone.utc).timestamp() * 1000)
-                            _f_end = int(datetime.utcnow().replace(tzinfo=timezone.utc).timestamp() * 1000) + 60000
-                            _fund = await binance_service.get_funding_fees_usd(order.pair, _f_start, _f_end)
-                            if _fund is not None:
-                                order.funding_fee_usd = _fund
-                                await db.commit()
-                                logger.info(f"[FUNDING] {order.pair} order {order.id}: Σ funding {_fund:+.4f} USDT over the position's life (not in pnl)")
-                    except Exception as _fe:
-                        logger.warning(f"[FUNDING] stamp failed for {order.pair}: {_fe}")
-                        try:
-                            await db.rollback()  # review m3: a failed funding commit must not poison the phase-2 commit
-                        except Exception:
-                            pass
                 break
 
             except Exception as _db_err:
@@ -7696,6 +7704,17 @@ class TradingEngine:
                         f"(final_attempt_waited={_attempt_elapsed:.2f}s, total_waited={_total_elapsed:.2f}s): "
                         f"{_err_str[:120]}"
                     )
+
+        # Aug-24 (33)/M6: funding stamp runs OFF the close funnel (it held an HTTP await + commit
+        # inside the contention window) as a fire-and-forget task with its own session. Guarded by
+        # _db_commit_success, so retry-path commits are stamped too (review m2). Live only; RECORDED, not in pnl.
+        if _db_commit_success and not self.is_paper_mode:
+            try:
+                _ft = asyncio.create_task(self._stamp_funding_async(order_id, order_pair, _tx_opened_at))
+                self._bg_tasks.add(_ft)
+                _ft.add_done_callback(self._bg_tasks.discard)
+            except Exception as _ft_err:
+                logger.warning(f"[FUNDING] task spawn failed for {order_pair}: {_ft_err}")
 
         if not _db_commit_success:
             _total_elapsed = time.monotonic() - _db_total_wait_start
@@ -7830,7 +7849,7 @@ class TradingEngine:
             else:
                 order.ema5_went_negative = "ENDED_NEG"
 
-            await db.commit()
+            await locked_commit(db)
         except Exception as _meta_err:
             logger.warning(f"[CLOSE_METADATA] {order.pair}: Optional metadata failed (order already closed safely): {_meta_err}")
             try:
@@ -8033,7 +8052,7 @@ class TradingEngine:
                                 post_exit_running_trough_at=info["trough_at"],
                             )
                         )
-                        await _pe_state_db.commit()
+                        await locked_commit(_pe_state_db)
                 except Exception as _pe_state_exc:
                     logger.debug(f"[POST_EXIT_RUNNING] Failed to persist running state for {info['pair']}: {_pe_state_exc}")
 
@@ -8103,7 +8122,7 @@ class TradingEngine:
                             .where(Order.id == order_id)
                             .values(**_values)
                         )
-                        await _pe_snap_db.commit()
+                        await locked_commit(_pe_snap_db)
                 except Exception as _pe_snap_exc:
                     logger.debug(f"[POST_EXIT_SNAP] Failed to persist time snapshot for {info['pair']}: {_pe_snap_exc}")
 
@@ -8398,7 +8417,7 @@ class TradingEngine:
                                 hard_tp_shadow_ladder_fired=((info.get("htp_B_exit") is not None) if info.get("htp_shadow") else None),
                             )
                         )
-                        await pe_write_db.commit()
+                        await locked_commit(pe_write_db)
                     sig_info = f", sig_lost={sig_lost_minutes:.1f}min" if sig_lost_minutes is not None else ""
                     rsi_info = f", rsi_exit={rsi_exit_minutes:.1f}min@{info['rsi_exit_pnl']:.4f}%" if rsi_exit_minutes is not None else ""
                     rsi3_info = f", rsi3_exit={rsi3_exit_minutes:.1f}min@{info['rsi3_exit_pnl']:.4f}%" if rsi3_exit_minutes is not None else ""
@@ -8608,7 +8627,7 @@ class TradingEngine:
                 except Exception as _br_ex_err:
                     logger.error(f"[BULLRUN_EXIT] {order.pair}: monitor-path check failed: {_br_ex_err}")
                 try:
-                    await db.commit()  # review I2: persist peak/trough on the no-close path (FLIP-skip precedent) — else a restart reseeds from a stale peak and BE/trail state is lost
+                    await locked_commit(db)  # review I2: persist peak/trough on the no-close path (FLIP-skip precedent) — else a restart reseeds from a stale peak and BE/trail state is lost
                 except Exception:
                     pass
                 continue
@@ -8672,7 +8691,7 @@ class TradingEngine:
                 # tracks peak-stretch and checks the trail like the leash-shadow does, rather than
                 # under-tracking the peak and trailing out on a 1-second bounce. The shared
                 # MAX_HOLD + NO_EXPANSION above already ran; just commit and skip the stack.
-                await db.commit()
+                await locked_commit(db)
                 continue
 
             # ════════════════════════════════════════════════════════════════
@@ -8790,7 +8809,7 @@ class TradingEngine:
                             continue
                 except Exception as _sp_mon_err:
                     logger.error(f"[SPIKE_MONITOR] {order.pair}: L2 layer error (fail-open, SL/floors still live): {_sp_mon_err}")
-                await db.commit()
+                await locked_commit(db)
                 continue
 
             # Compute current P&L % for exit checks
@@ -9119,7 +9138,7 @@ class TradingEngine:
                         order.signal_lost_flag_pnl = round(sl_pnl_pct, 4)
                         order.signal_lost_flagged_at = flag_time
                         order.fl1_origin = "SIGNAL_LOST"
-                        await db.commit()
+                        await locked_commit(db)
                         logger.info(f"[SIGNAL_LOST_FLAG] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% — FLAGGED[SIGNAL_LOST] (persisted to DB), signal='{pair_data.signal}'")
                         continue
                     elif not _flag_enabled:
@@ -9176,7 +9195,7 @@ class TradingEngine:
                         order.fl2_flagged = True
                         order.fl2_flagged_at = fl2_time
                         order.fl2_flag_pnl = round(sl_pnl_pct, 4)
-                        await db.commit()
+                        await locked_commit(db)
                         logger.info(f"[FL2_FLAG] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% — promoted to FL2 (origin={order.fl1_origin or 'SIGNAL_LOST'}), recovery_target={getattr(config.trading_config.thresholds, 'fl2_recovery_target', -0.4)}%, deep_stop={getattr(config.trading_config.thresholds, 'fl2_deep_stop', -1.0)}%")
                         continue
                     if _is_fl2:
@@ -9318,7 +9337,7 @@ class TradingEngine:
                 order.signal_lost_flag_pnl = _pnl_pct_w
                 order.signal_lost_flagged_at = flag_time_w
                 order.fl1_origin = "WIDE_SL"
-                await db.commit()
+                await locked_commit(db)
                 logger.info(f"[FL1_WIDE_SL] {order.pair} {order.direction} L{tp_level}: pnl={_pnl_pct_w:.4f}% — flagged from STOP_LOSS_WIDE (origin=WIDE_SL), backstop={getattr(config.trading_config.thresholds, 'fl1_wide_sl_backstop', -1.2)}%")
                 continue
 
@@ -9354,7 +9373,7 @@ class TradingEngine:
                     # Only FL_RECOVERED, FL_DEEP_STOP, or max hold time should exit a FL2 trade.
                     if exit_result.get("should_close") and isinstance(reason, str) and reason.startswith("STOP_LOSS"):
                         logger.debug(f"[FL2_HOLD] {order.pair} {order.direction} L{_tp_level_m}: pnl={_pnl_pct_m:.4f}% — suppressing {reason}, FL2 monitor holds to recovery/deep_stop")
-                        await db.commit()
+                        await locked_commit(db)
                         continue
                 elif (order.fl1_origin or "") == "WIDE_SL":
                     # FL1[WIDE_SL] emergency backstop — fires at fl1_wide_sl_backstop (-1.2%)
@@ -9369,7 +9388,7 @@ class TradingEngine:
                     # The trade should only exit via backstop, trailing recovery, signal regain + trailing, or max hold time.
                     if exit_result.get("should_close") and isinstance(reason, str) and reason.startswith("STOP_LOSS"):
                         logger.debug(f"[FL1_WIDE_SL_HOLD] {order.pair} {order.direction} L{_tp_level_m}: pnl={_pnl_pct_m:.4f}% — suppressing {reason}, runway to backstop={_fl1_backstop}%")
-                        await db.commit()
+                        await locked_commit(db)
                         continue
 
             if exit_result.get("should_close"):
@@ -9404,7 +9423,7 @@ class TradingEngine:
                             cached_order['current_tp_level'] = new_tp_level
                             break
 
-                await db.commit()
+                await locked_commit(db)
 
                 updates.append({
                     "order_id": order.id,
@@ -9421,7 +9440,7 @@ class TradingEngine:
                 # of the loop, but autoflush on the next iteration's SELECT
                 # held the write lock continuously, starving close_position's
                 # retry loop for 2+ minutes.
-                await db.commit()
+                await locked_commit(db)
 
         # Aug-11 🛡 BACKSTOP SWEEP (live only): heal missing resting stops every scan —
         # covers restart/deploy gaps (in-flight positions re-armed) and earlier placement
@@ -9443,7 +9462,7 @@ class TradingEngine:
                         else:
                             self._record_filter_block("BACKSTOP_PLACE_FAILED", _bko.direction)
                     if _bk_rows:
-                        await _bk_db.commit()
+                        await locked_commit(_bk_db)
             except Exception as _bks_err:
                 logger.error(f"[BACKSTOP_SWEEP] failed: {_bks_err}")
 
@@ -9516,7 +9535,7 @@ class TradingEngine:
                             if not _o.notional_value and _o.quantity:
                                 _o.notional_value = float(_o.quantity) * _o.entry_price
                             logger.critical(f"[M2_REPAIR] {_sym} order {_o.id}: entry_price 0 → {_o.entry_price} from Binance positionRisk — stop protection restored")
-                    await db.commit()
+                    await locked_commit(db)
             except Exception as _m2e:
                 logger.error(f"[M2_REPAIR] failed: {_m2e}")
         global _global_volume_ratio
@@ -12006,7 +12025,7 @@ class TradingEngine:
             )
             db.add(pair_data)
 
-        await db.commit()
+        await locked_commit(db)
     
     async def check_realtime_stop_loss(self, pair: str, current_price: float):
         """
@@ -12219,7 +12238,7 @@ class TradingEngine:
                             await _sp_pk_db.execute(
                                 update(Order).where(Order.id == order_id).values(peak_pnl=_sp_peak_rt)
                             )
-                            await _sp_pk_db.commit()
+                            await locked_commit(_sp_pk_db)
                     except Exception:
                         pass
                 if (_sp_lk_en and _sp_lk_arm > 0 and _sp_peak_rt >= _sp_lk_arm
@@ -12340,7 +12359,7 @@ class TradingEngine:
                                 await _htp_pk_db.execute(
                                     update(Order).where(Order.id == order_id).values(peak_pnl=_htp_peak)
                                 )
-                                await _htp_pk_db.commit()
+                                await locked_commit(_htp_pk_db)
                         except Exception:
                             pass
                     if _floor is not None and pnl_pct <= _floor:
@@ -12639,7 +12658,7 @@ class TradingEngine:
                                             _h_order = _h_result.scalar_one_or_none()
                                             if _h_order is not None and _h_order.ema13_strict_held_pnl_pct is None:
                                                 _h_order.ema13_strict_held_pnl_pct = float(pnl_pct)
-                                                await _hdb.commit()
+                                                await locked_commit(_hdb)
                                                 logger.info(
                                                     f"[EMA13_STRICT_FIRST_HOLD] {pair} order_id={order_id}: "
                                                     f"recorded held_pnl_pct={pnl_pct:.4f}%"
@@ -12661,7 +12680,7 @@ class TradingEngine:
                                         if _p_order is not None and _p_order.phantom_ema13_cross_pnl is None:
                                             _p_order.phantom_ema13_cross_pnl = float(pnl_pct)
                                             _p_order.phantom_ema13_cross_at = datetime.utcnow()
-                                            await _pdb.commit()
+                                            await locked_commit(_pdb)
                                 except Exception as _pexc:
                                     logger.warning(f"[PHANTOM_EMA13_CROSS] persist failed for {pair}: {_pexc}")
                             # fall through to other exit checks (no close)
@@ -12877,7 +12896,7 @@ class TradingEngine:
                     try:
                         async with AsyncSessionLocal() as _lvl_db:
                             await _lvl_db.execute(update(Order).where(Order.id == order_id).values(current_tp_level=tp_level))
-                            await _lvl_db.commit()
+                            await locked_commit(_lvl_db)
                     except Exception:
                         pass
             effective_tp_target = tp_level * tp_min if tp_level > 1 else tp_min
@@ -13028,7 +13047,7 @@ class TradingEngine:
                                 order_db.signal_lost_flag_pnl = round(pnl_pct, 4)
                                 order_db.signal_lost_flagged_at = flag_time_rt
                                 order_db.fl1_origin = "WIDE_SL"
-                                await db.commit()
+                                await locked_commit(db)
                     except Exception as e:
                         logger.error(f"[REALTIME_FL1_WIDE_SL] Error persisting flag for {pair}: {e}")
                     continue  # Don't close — let the trade run to backstop or recover
@@ -13171,7 +13190,7 @@ class TradingEngine:
                                     order_db.fl2_flagged = True
                                     order_db.fl2_flagged_at = fl2_time_rt
                                     order_db.fl2_flag_pnl = round(pnl_pct, 4)
-                                    await db.commit()
+                                    await locked_commit(db)
                         except Exception as e:
                             logger.error(f"[REALTIME_FL2_FLAG] Error persisting FL2 for {pair}: {e}")
                         continue
@@ -13751,7 +13770,7 @@ class TradingEngine:
                                         trailing_first_pullback_pnl_pct=float(pnl_pct)
                                     )
                                 )
-                                await _tp_db.commit()
+                                await locked_commit(_tp_db)
                         except Exception:
                             pass
                         if _confirm_secs > 0:
@@ -13774,7 +13793,7 @@ class TradingEngine:
                                             trailing_confirmed_at=_now
                                         )
                                     )
-                                    await _tp_db2.commit()
+                                    await locked_commit(_tp_db2)
                             except Exception:
                                 pass
                         # else: still waiting for confirmation, no close
@@ -13793,7 +13812,7 @@ class TradingEngine:
                                         trailing_pullback_resets=_resets
                                     )
                                 )
-                                await _tp_db3.commit()
+                                await locked_commit(_tp_db3)
                         except Exception:
                             pass
                 

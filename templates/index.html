@@ -8748,7 +8748,7 @@
                         const _mr = data.margin_ratio_pct || 0;
                         const _fmt$ = (v) => '$' + Math.round(v || 0).toLocaleString();
                         const _liq = data.margin_liq_move_pct != null ? ` · uniform adverse move to liquidation ≈ −${data.margin_liq_move_pct.toFixed(1)}%` : '';
-                        _mrEl.textContent = `${_mr.toFixed(1)}%`;
+                        _mrEl.textContent = `${_mr.toFixed(2)}%`;
                         _mrEl.dataset.tip = `Margin ratio ${_mr.toFixed(2)}% = maintenance ${_fmt$(data.margin_maint)} ÷ margin balance ${_fmt$(data.margin_balance)} (${data.margin_ratio_source === 'binance' ? 'Binance account' : 'paper estimate @0.5% MMR, BNB excluded'})${_liq}. Liquidation at 100%. Green <20% · amber 20–50% · red ≥50%.`;
                         _mrEl.className = 'text-xs font-mono font-bold cursor-help tip-right ' + (_mr < 20 ? 'text-emerald-400' : _mr < 50 ? 'text-yellow-400' : 'text-red-400');
                     } else if (data.margin_ratio_pct == null || data.margin_ratio_source === 'unavailable') {

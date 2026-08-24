@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, and_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import init_db, get_db, AsyncSessionLocal
+from database import init_db, get_db, AsyncSessionLocal, locked_commit
 from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod
 import config
 from config import (
@@ -184,7 +184,7 @@ async def nav_snapshot_loop():
                         db.add(NavSnapshot(date=today, portfolio_value=round(portfolio, 2),
                                            total_shares=round(total_shares, 6),
                                            nav_per_share=round(nav, 6)))
-                    await db.commit()
+                    await locked_commit(db)
         except Exception as e:
             logger.error(f"[NAV_LOOP] Error in NAV snapshot loop: {e}")
         await asyncio.sleep(3600)
@@ -235,6 +235,12 @@ async def stop_background_tasks():
             except asyncio.CancelledError:
                 pass
 
+    # Aug-24 (33): cancel in-flight fire-and-forget funding stamps so a deploy doesn't log
+    # "Task was destroyed but it is pending" (fail-open metric — a lost stamp stays NULL).
+    for _bt in list(getattr(trading_engine, "_bg_tasks", ())):
+        _bt.cancel()
+    await asyncio.gather(*list(getattr(trading_engine, "_bg_tasks", ())), return_exceptions=True)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -262,7 +268,7 @@ async def lifespan(app: FastAPI):
                         note=f"Opening balance — pre-ledger (deposited ${_inv.total_deposited:.2f}, withdrawn ${_inv.total_withdrawn:.2f})",
                         created_at=_inv.created_at,
                     ))
-            await _seed_db.commit()
+            await locked_commit(_seed_db)
     except Exception as _e:
         logger.warning(f"[INVESTOR_LEDGER] opening-balance seed skipped: {_e}")
 
@@ -272,7 +278,7 @@ async def lifespan(app: FastAPI):
         bot_state = ban_row.scalar_one_or_none()
         if bot_state and bot_state.ban_until and bot_state.ban_until > 0:
             bot_state.ban_until = 0
-            await db.commit()
+            await locked_commit(db)
             logger.info("[STARTUP] Cleared stale ban state from DB (fresh deploy)")
     
     # Register callback to persist ban state to DB when detected
@@ -284,7 +290,7 @@ async def lifespan(app: FastAPI):
                 state = result.scalar_one_or_none()
                 if state:
                     state.ban_until = ban_epoch
-                    await _db.commit()
+                    await locked_commit(_db)
                     logger.info(f"[BINANCE] Ban state persisted to DB: expires at {ban_epoch:.0f}")
         try:
             loop = _aio.get_running_loop()
@@ -662,7 +668,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
             state_row.ban_until = 0
             state_row.filter_block_counts_json = None
 
-        await db.commit()
+        await locked_commit(db)
 
         balance = trading_engine.paper_balance if is_paper else 0
         logger.info(f"[RESET] {mode_label} ALL trading reset. {'Balance: $' + str(balance) + ', ' if is_paper else ''}Timer: 00:00:00")
@@ -694,7 +700,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
                 delete(Order).where(Order.id.in_(order_ids))
             )
 
-        await db.commit()
+        await locked_commit(db)
 
         # Recalculate paper balance from remaining trades
         if is_paper:
@@ -895,7 +901,7 @@ async def manual_bnb_buy(data: dict, db: AsyncSession = Depends(get_db)):
             is_paper=True
         )
         db.add(swap_log)
-        await db.commit()
+        await locked_commit(db)
         await trading_engine._recalculate_paper_balance(db)
         await trading_engine.save_state(db)
         return {"ok": True, "bnb_amount": round(amount / bnb_price, 6), "bnb_price": round(bnb_price, 2), "cost_usdt": round(amount, 2)}
@@ -923,7 +929,7 @@ async def manual_bnb_buy(data: dict, db: AsyncSession = Depends(get_db)):
             is_paper=False
         )
         db.add(swap_log)
-        await db.commit()
+        await locked_commit(db)
         return {"ok": True, "bnb_amount": result['bnb_amount'], "bnb_price": round(bnb_price, 2), "cost_usdt": round(result['cost_usdt'], 2)}
 
 
@@ -966,7 +972,7 @@ async def manual_bnb_sell(data: dict, db: AsyncSession = Depends(get_db)):
             is_paper=True
         )
         db.add(swap_log)
-        await db.commit()
+        await locked_commit(db)
         await trading_engine._recalculate_paper_balance(db)
         await trading_engine.save_state(db)
         return {"ok": True, "bnb_amount": round(amount / bnb_price, 6), "bnb_price": round(bnb_price, 2), "proceeds_usdt": round(amount, 2)}
@@ -997,7 +1003,7 @@ async def manual_bnb_sell(data: dict, db: AsyncSession = Depends(get_db)):
             is_paper=False
         )
         db.add(swap_log)
-        await db.commit()
+        await locked_commit(db)
         return {"ok": True, "bnb_amount": result['bnb_amount'], "bnb_price": round(bnb_price, 2), "proceeds_usdt": round(result['proceeds_usdt'], 2)}
 
 
@@ -1544,7 +1550,7 @@ async def export_orders_csv(db: AsyncSession = Depends(get_db)):
     # rows from disk. Without this, the export was occasionally missing trades
     # closed in the brief window between trading_engine.initialize() and this
     # query — the session's transaction snapshot pre-dated those commits.
-    await db.commit()
+    await locked_commit(db)
     db.expunge_all()
 
     result = await db.execute(
@@ -1735,7 +1741,7 @@ async def recover_positions(db: AsyncSession = Depends(get_db)):
         db.add(transaction)
         recovered.append({"pair": pair, "direction": direction, "entry_price": entry_price, "quantity": quantity})
 
-    await db.commit()
+    await locked_commit(db)
     return {"recovered": len(recovered), "positions": recovered}
 
 
@@ -1935,7 +1941,7 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                 logger.error(f"[RECONCILE] {order.pair} {order.direction}: failed to close orphan order {order.id}: {e}")
 
     if closed:
-        await db.commit()
+        await locked_commit(db)
         async with _cache_lock:
             for info in closed:
                 pair = info["pair"]
@@ -12856,7 +12862,7 @@ async def update_config(config_update: ConfigUpdate):
                             old_value=ch["old"],
                             new_value=ch["new"]
                         ))
-                    await db.commit()
+                    await locked_commit(db)
                 print(f"Config updated with {len(changes)} change(s) logged.")
             except Exception as e:
                 print(f"Config saved but failed to log changes: {e}")

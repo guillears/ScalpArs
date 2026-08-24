@@ -4426,7 +4426,7 @@ class TradingEngine:
         global _bullrun_monitor
         th = config.trading_config.thresholds
         _now = _leash_time.time()
-        if _now - (_bullrun_monitor.get('updated_at') or 0) < 600:
+        if _now - (_bullrun_monitor.get('updated_at') or 0) < 110:  # Aug-24 (32): 600 → 110 — evaluate every scan (~2 min). GREEN's 72h legs don't care; REARM's 5m ADX legs do (10-min sampling kept landing on sub-threshold moments while ADX oscillated 29-31).
             return
         try:
             k5 = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 1000)

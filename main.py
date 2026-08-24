@@ -12424,6 +12424,7 @@ class InvestorWithdraw(BaseModel):
 class InvestorRename(BaseModel):
     name: Optional[str] = None
     eth_wallet: Optional[str] = None   # PATCH: send to set/edit ('' clears); omit to leave unchanged
+    deposit_total: Optional[float] = None  # Aug-24: EDIT the deposited total — the delta vs current is applied at NAV (deposit/withdraw + ledger)
 
 
 def _open_unrealized_pnl(open_orders) -> float:
@@ -12692,8 +12693,32 @@ async def rename_investor(investor_id: int, body: InvestorRename, db: AsyncSessi
         inv.name = new_name
     if 'eth_wallet' in fields:
         inv.eth_wallet = _clean_eth_wallet(body.eth_wallet)
+    _adj = None
+    if 'deposit_total' in fields and body.deposit_total is not None:
+        _target = float(body.deposit_total)
+        if _target < 0:
+            raise HTTPException(400, "Deposited total cannot be negative")
+        _delta = _target - float(inv.total_deposited or 0)
+        if abs(_delta) > 0.005:  # Aug-24: edit = apply the DELTA at current NAV so shares/ledger stay consistent
+            nav = await _get_nav_per_share(db)
+            if nav <= 0:
+                raise HTTPException(503, "NAV unavailable — retry the deposit edit shortly")
+            if _delta > 0:
+                _sh = _delta / nav
+                inv.shares += _sh
+                inv.total_deposited += _delta
+                _log_investor_ledger(db, inv.id, "DEPOSIT", _delta, nav, _sh, note="Edit-investor adjustment")
+            else:
+                _sh = (-_delta) / nav
+                if _sh > inv.shares + 1e-9:
+                    raise HTTPException(400, f"Reducing deposited by ${-_delta:.2f} needs {_sh:.4f} shares; investor holds {inv.shares:.4f}")
+                inv.shares -= _sh
+                inv.total_deposited += _delta  # delta negative
+                inv.total_withdrawn += (-_delta)
+                _log_investor_ledger(db, inv.id, "WITHDRAW", -_delta, nav, -_sh, note="Edit-investor adjustment")
+            _adj = round(_delta, 2)
     await db.flush()
-    return {"ok": True, "id": investor_id, "name": inv.name, "eth_wallet": inv.eth_wallet}
+    return {"ok": True, "id": investor_id, "name": inv.name, "eth_wallet": inv.eth_wallet, "deposit_adjustment": _adj}
 
 
 @app.delete("/api/investors/{investor_id}")

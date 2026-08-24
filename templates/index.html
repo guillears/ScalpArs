@@ -4611,8 +4611,8 @@
                         <input type="text" id="investor-edit-wallet" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white font-mono text-xs" placeholder="0x…">
                     </div>
                     <div>
-                        <label class="block text-sm text-gray-400 mb-1">Add deposit (USD) <span class="text-gray-600">(optional — at current NAV; history stays in the ledger)</span></label>
-                        <input type="number" step="0.01" id="investor-edit-amount" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" placeholder="0.00">
+                        <label class="block text-sm text-gray-400 mb-1">Deposited (USD) <span class="text-gray-600">(edit the total — the difference is applied at current NAV and logged in the ledger)</span></label>
+                        <input type="number" step="0.01" id="investor-edit-amount" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white">
                     </div>
                     <div class="flex gap-3 justify-end">
                         <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
@@ -19924,22 +19924,17 @@
             const inv = (_investorsCache || []).find(i => i.id === id) || {};
             const name = document.getElementById('investor-edit-name').value.trim();
             const wallet = document.getElementById('investor-edit-wallet').value.trim();
-            const dep = parseFloat(document.getElementById('investor-edit-amount').value);
+            const depTotal = parseFloat(document.getElementById('investor-edit-amount').value);
             if (!name) { showToast('Name is required', 'error'); return; }
             if (wallet && !/^0x[0-9a-fA-F]{40}$/.test(wallet)) { showToast('Invalid ETH address (0x + 40 hex chars)', 'error'); return; }
             try {
                 const patch = {};
                 if (name !== inv.name) patch.name = name;
                 if (wallet !== ((inv.eth_wallet) || '')) patch.eth_wallet = wallet;
+                if (!isNaN(depTotal) && Math.abs(depTotal - (inv.total_deposited || 0)) > 0.005) patch.deposit_total = depTotal;
                 if (Object.keys(patch).length) {
                     const res = await fetch(`${API_BASE}/api/investors/${id}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(patch)});
                     if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.detail || 'Edit failed', 'error'); return; }
-                }
-                if (!isNaN(dep) && dep > 0) {
-                    const res2 = await fetch(`${API_BASE}/api/investors/deposit`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({investor_id: id, amount: dep})});
-                    const d2 = await res2.json().catch(() => ({}));
-                    if (!res2.ok) { showToast(d2.detail || 'Deposit failed', 'error'); return; }
-                    showToast(`Deposited $${dep.toFixed(2)} (${(d2.new_shares || 0).toFixed(4)} shares)`, 'success');
                 }
                 showToast('Investor updated', 'success');
                 closeInvestorModal();
@@ -19994,7 +19989,7 @@
                 document.getElementById('investor-edit-id').value = investorId;
                 document.getElementById('investor-edit-name').value = inv ? inv.name : '';
                 document.getElementById('investor-edit-wallet').value = (inv && inv.eth_wallet) || '';
-                document.getElementById('investor-edit-amount').value = '';
+                document.getElementById('investor-edit-amount').value = (inv && inv.total_deposited != null) ? inv.total_deposited.toFixed(2) : '';
                 document.getElementById('investor-form-edit').classList.remove('hidden');
             } else if (mode === 'add') {
                 title.textContent = 'Add Investor';

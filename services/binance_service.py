@@ -163,6 +163,14 @@ class BinanceService:
             await self.load_markets()
             await self._load_spot_markets()
 
+            # Aug-24 live incident: a raw float shortfall (77.637613796537) was rejected by the
+            # transfer API — Binance caps transfer amounts at 8 decimals and reports over-precision
+            # as "insufficient balance". Floor to 2 dp (never exceeds free balance; matches step 2).
+            amount_usdt = int(amount_usdt * 100) / 100.0
+            if amount_usdt < 1:
+                logger.warning(f"[BNB_SWAP] Amount too small after rounding (${amount_usdt:.2f}) — skipping")
+                return None
+
             # Step 1: Transfer USDT from futures wallet to spot wallet
             logger.info(f"[BNB_SWAP] Step 1/4: Transferring {amount_usdt} USDT futures → spot")
             await self.spot_exchange.transfer('USDT', amount_usdt, 'future', 'spot')
@@ -253,6 +261,7 @@ class BinanceService:
                 _stranded = 0.0
 
             # Step 1: Transfer BNB from futures wallet to spot wallet
+            bnb_to_sell = int(bnb_to_sell * 1e8) / 1e8  # transfer API caps at 8 decimals (Aug-24 buy-path incident)
             logger.info(f"[BNB_SWAP_SELL] Step 1/4: Transferring {bnb_to_sell} BNB futures → spot")
             await self.spot_exchange.transfer('BNB', bnb_to_sell, 'future', 'spot')
 

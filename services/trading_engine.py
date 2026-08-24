@@ -9482,6 +9482,25 @@ class TradingEngine:
             return []
         
         logger.info(f"[SCAN] Starting scan_and_trade cycle...")
+        # Aug-24 LIVE M2 repair (GRASS incident): a live OPEN row with entry_price<=0 has NO working
+        # realtime stop (the cache guard skips it). Repair from Binance's own position entryPrice each scan.
+        if not self.is_paper_mode:
+            try:
+                _bad = (await db.execute(select(Order).where(and_(
+                    Order.status == 'OPEN', Order.is_paper == False, Order.entry_price <= 0)))).scalars().all()
+                if _bad:
+                    _live_pos = await binance_service.get_open_positions() or []
+                    for _o in _bad:
+                        _sym = str(_o.pair or '')
+                        _mt = next((pp for pp in _live_pos if str(pp.get('symbol', '')).replace('/', '').replace(':USDT', '').upper().startswith(_sym.replace('USDT', '').upper()) and pp.get('entry_price')), None)
+                        if _mt and float(_mt['entry_price']) > 0:
+                            _o.entry_price = float(_mt['entry_price'])
+                            if not _o.notional_value and _o.quantity:
+                                _o.notional_value = float(_o.quantity) * _o.entry_price
+                            logger.critical(f"[M2_REPAIR] {_sym} order {_o.id}: entry_price 0 → {_o.entry_price} from Binance positionRisk — stop protection restored")
+                    await db.commit()
+            except Exception as _m2e:
+                logger.error(f"[M2_REPAIR] failed: {_m2e}")
         global _global_volume_ratio
         actions = []
         _scan_vol_sum = 0.0

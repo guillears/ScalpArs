@@ -660,12 +660,28 @@ class BinanceService:
                 params=params
             )
             
+            # Aug-24 LIVE M2 fix: a market-order ACK can lack average/price → a 0 used to stamp through and the
+            # realtime SL then SKIPS the position (entry_price<=0 guard) = live position with NO stop (GRASS incident).
+            _px = float(order.get('average') or order.get('price') or 0)
+            if _px <= 0:
+                try:
+                    _ref = await self.exchange.fetch_order(order['id'], symbol)
+                    _px = float((_ref or {}).get('average') or (_ref or {}).get('price') or 0)
+                except Exception as _re:
+                    logger.warning(f"[BINANCE] fill-price refetch failed for {symbol}: {_re}")
+            if _px <= 0:
+                try:
+                    _tk = await self.exchange.fetch_ticker(symbol)
+                    _px = float(_tk.get('last') or 0)
+                    logger.critical(f"[BINANCE] {symbol}: fill price unavailable from order+refetch — stamped TICKER last {_px} (M2 fallback)")
+                except Exception:
+                    pass
             return {
                 'id': order['id'],
                 'symbol': symbol,
                 'side': side,
                 'amount': float(order.get('amount') or amount),
-                'price': float(order.get('average') or order.get('price') or 0),
+                'price': _px,
                 'cost': float(order.get('cost') or 0),
                 'fee': float((order.get('fee') or {}).get('cost', 0)),
                 'timestamp': order.get('timestamp', datetime.now().timestamp() * 1000)

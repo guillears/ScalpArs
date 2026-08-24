@@ -4483,6 +4483,14 @@ class TradingEngine:
                             _bullrun_monitor['state'] = _open_p.state
                             # Aug-23 (20) review: seed REARM too, else a deploy mid-REARM after a deploy mid-REARM the sleeve would silently disarm (the C1 bug class).
                             _bullrun_monitor['rearm'] = (_open_p.state == 'REARM')
+                            # Aug-24 (RAW-hover catch): restore the 'since' display timestamps from the adopted row —
+                            # they were only written on live transitions, so every restart blanked the chip's date.
+                            if _open_p.started_at is not None:
+                                _since = _open_p.started_at.strftime('%Y-%m-%d %H:%M')
+                                if _open_p.state == 'GREEN':
+                                    _bullrun_monitor['green_since'] = _since
+                                elif _open_p.state == 'REARM':
+                                    _bullrun_monitor['rearm_since'] = _since
                             if _open_p.state == 'REARM' and _open_p.started_at is not None:
                                 _bullrun_monitor['rearm_t0'] = _open_p.started_at.replace(tzinfo=timezone.utc).timestamp()
                             logger.info(f"[BULLRUN_MONITOR] boot seed: open period #{_open_p.id} is {_open_p.state} — hysteresis seeded from DB")

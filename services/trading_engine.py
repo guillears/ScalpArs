@@ -9492,7 +9492,9 @@ class TradingEngine:
                     _live_pos = await binance_service.get_open_positions() or []
                     for _o in _bad:
                         _sym = str(_o.pair or '')
-                        _mt = next((pp for pp in _live_pos if str(pp.get('symbol', '')).replace('/', '').replace(':USDT', '').upper().startswith(_sym.replace('USDT', '').upper()) and pp.get('entry_price')), None)
+                        # review I1: EQUALITY match (startswith let BTCDOM stamp a bad BTCUSDT row). One-way position
+                        # mode assumed — one position per symbol; a hedge-mode switch would need a side check here.
+                        _mt = next((pp for pp in _live_pos if str(pp.get('symbol', '')).replace('/', '').replace(':USDT', '').upper() == _sym.upper() and pp.get('entry_price')), None)
                         if _mt and float(_mt['entry_price']) > 0:
                             _o.entry_price = float(_mt['entry_price'])
                             if not _o.notional_value and _o.quantity:

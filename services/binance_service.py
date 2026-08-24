@@ -676,6 +676,8 @@ class BinanceService:
                     logger.critical(f"[BINANCE] {symbol}: fill price unavailable from order+refetch — stamped TICKER last {_px} (M2 fallback)")
                 except Exception:
                     pass
+            if _px <= 0:  # review M2: both fallbacks failed — never be silent (the [M2_REPAIR] scan pass is the last net)
+                logger.critical(f"[BINANCE] {symbol}: fill price STILL 0 after refetch + ticker — order {order.get('id')} returns price 0; scan repair must fix it")
             return {
                 'id': order['id'],
                 'symbol': symbol,

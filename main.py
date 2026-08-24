@@ -12399,6 +12399,7 @@ def _compute_btc_1h_slope_btc_adx_multiplier_performance(orders):
 class InvestorCreate(BaseModel):
     name: str
     eth_wallet: Optional[str] = None   # optional at creation; can be added later via PATCH
+    deposit_amount: Optional[float] = None   # Aug-24: optional initial deposit at creation (same NAV math as /deposit)
 
 
 _ETH_ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -12614,7 +12615,19 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
                    eth_wallet=_clean_eth_wallet(body.eth_wallet))
     db.add(inv)
     await db.flush()
-    return {"ok": True, "id": inv.id, "name": inv.name, "eth_wallet": inv.eth_wallet}
+    _dep_shares = None
+    _dep = float(body.deposit_amount or 0)
+    if _dep > 0:  # Aug-24: optional initial deposit — identical NAV/share math + ledger as /api/investors/deposit
+        nav = await _get_nav_per_share(db)
+        if nav <= 0:
+            raise HTTPException(503, "Investor created but NAV unavailable — deposit skipped; use the +$ button shortly")
+        _dep_shares = _dep / nav
+        inv.shares += _dep_shares
+        inv.total_deposited += _dep
+        await db.flush()
+        _log_investor_ledger(db, inv.id, "DEPOSIT", _dep, nav, _dep_shares)
+    return {"ok": True, "id": inv.id, "name": inv.name, "eth_wallet": inv.eth_wallet,
+            "deposited": _dep if _dep > 0 else None, "new_shares": round(_dep_shares, 6) if _dep_shares else None}
 
 
 @app.post("/api/investors/deposit")

@@ -4589,9 +4589,34 @@
                         <label class="block text-sm text-gray-400 mb-1">ETH Wallet <span class="text-gray-600">(optional — can be added later)</span></label>
                         <input type="text" id="investor-add-wallet" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white font-mono text-xs" placeholder="0x…">
                     </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Amount invested (USD) <span class="text-gray-600">(optional — deposits at current NAV)</span></label>
+                        <input type="number" step="0.01" id="investor-add-amount" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" placeholder="0.00">
+                    </div>
                     <div class="flex gap-3 justify-end">
                         <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
                         <button onclick="submitAddInvestor()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm transition">Add</button>
+                    </div>
+                </div>
+
+                <!-- Edit Investor Form (Aug-24: name + wallet + optional extra deposit in one place) -->
+                <div id="investor-form-edit" class="space-y-4 hidden">
+                    <input type="hidden" id="investor-edit-id">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Name</label>
+                        <input type="text" id="investor-edit-name" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">ETH Wallet <span class="text-gray-600">(blank = remove)</span></label>
+                        <input type="text" id="investor-edit-wallet" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white font-mono text-xs" placeholder="0x…">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Add deposit (USD) <span class="text-gray-600">(optional — at current NAV; history stays in the ledger)</span></label>
+                        <input type="number" step="0.01" id="investor-edit-amount" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" placeholder="0.00">
+                    </div>
+                    <div class="flex gap-3 justify-end">
+                        <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
+                        <button onclick="submitEditInvestor()" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm transition">Save</button>
                     </div>
                 </div>
 
@@ -19783,7 +19808,7 @@
                             : `<span class="text-gray-600 text-xs">—</span>`}</td>
                         <td class="px-3 py-2 text-center">
                             <div class="flex gap-1 justify-center">
-                                <button onclick="renameInvestor(${inv.id})" class="px-2 py-1 bg-purple-600/30 hover:bg-purple-600/50 text-purple-400 rounded text-xs transition" title="Edit name">✎</button>
+                                <button onclick="openInvestorModal('edit', ${inv.id})" class="px-2 py-1 bg-purple-600/30 hover:bg-purple-600/50 text-purple-400 rounded text-xs transition" title="Edit name / wallet / add deposit">✎</button>
                                 <button onclick="editInvestorWallet(${inv.id})" class="px-2 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 rounded text-xs transition" title="${inv.eth_wallet ? 'Edit ETH wallet' : 'Add ETH wallet'}">Ξ</button>
                                 <button onclick="openInvestorModal('deposit', ${inv.id})" class="px-2 py-1 bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-400 rounded text-xs transition" title="Deposit">+$</button>
                                 <button onclick="openInvestorModal('withdraw', ${inv.id})" class="px-2 py-1 bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 rounded text-xs transition" title="Withdraw">-$</button>
@@ -19894,6 +19919,34 @@
             }
         }
 
+        async function submitEditInvestor() {
+            const id = parseInt(document.getElementById('investor-edit-id').value);
+            const inv = (_investorsCache || []).find(i => i.id === id) || {};
+            const name = document.getElementById('investor-edit-name').value.trim();
+            const wallet = document.getElementById('investor-edit-wallet').value.trim();
+            const dep = parseFloat(document.getElementById('investor-edit-amount').value);
+            if (!name) { showToast('Name is required', 'error'); return; }
+            if (wallet && !/^0x[0-9a-fA-F]{40}$/.test(wallet)) { showToast('Invalid ETH address (0x + 40 hex chars)', 'error'); return; }
+            try {
+                const patch = {};
+                if (name !== inv.name) patch.name = name;
+                if (wallet !== ((inv.eth_wallet) || '')) patch.eth_wallet = wallet;
+                if (Object.keys(patch).length) {
+                    const res = await fetch(`${API_BASE}/api/investors/${id}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(patch)});
+                    if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.detail || 'Edit failed', 'error'); return; }
+                }
+                if (!isNaN(dep) && dep > 0) {
+                    const res2 = await fetch(`${API_BASE}/api/investors/deposit`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({investor_id: id, amount: dep})});
+                    const d2 = await res2.json().catch(() => ({}));
+                    if (!res2.ok) { showToast(d2.detail || 'Deposit failed', 'error'); return; }
+                    showToast(`Deposited $${dep.toFixed(2)} (${(d2.new_shares || 0).toFixed(4)} shares)`, 'success');
+                }
+                showToast('Investor updated', 'success');
+                closeInvestorModal();
+                await loadInvestors();
+            } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+        }
+
         async function copyInvestorWallet(investorId) {
             const inv = (_investorsCache || []).find(i => i.id === investorId);
             if (!inv || !inv.eth_wallet) return;
@@ -19932,13 +19985,22 @@
             document.getElementById('investor-form-deposit').classList.add('hidden');
             document.getElementById('investor-form-withdraw').classList.add('hidden');
             document.getElementById('investor-form-remove').classList.add('hidden');
+            { const _fe = document.getElementById('investor-form-edit'); if (_fe) _fe.classList.add('hidden'); }
 
             const inv = _investorsCache.find(i => i.id === investorId);
 
-            if (mode === 'add') {
+            if (mode === 'edit') {
+                title.textContent = 'Edit Investor';
+                document.getElementById('investor-edit-id').value = investorId;
+                document.getElementById('investor-edit-name').value = inv ? inv.name : '';
+                document.getElementById('investor-edit-wallet').value = (inv && inv.eth_wallet) || '';
+                document.getElementById('investor-edit-amount').value = '';
+                document.getElementById('investor-form-edit').classList.remove('hidden');
+            } else if (mode === 'add') {
                 title.textContent = 'Add Investor';
                 document.getElementById('investor-add-name').value = '';
                 const _w = document.getElementById('investor-add-wallet'); if (_w) _w.value = '';
+                { const _a = document.getElementById('investor-add-amount'); if (_a) _a.value = ''; }
                 document.getElementById('investor-form-add').classList.remove('hidden');
             } else if (mode === 'deposit') {
                 title.textContent = 'Deposit Funds';
@@ -19976,7 +20038,7 @@
                 const res = await fetch(`${API_BASE}/api/investors`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name, eth_wallet: eth_wallet || null})
+                    body: JSON.stringify({name, eth_wallet: eth_wallet || null, deposit_amount: (function(){ const v = parseFloat(document.getElementById('investor-add-amount')?.value); return isNaN(v) || v <= 0 ? null : v; })()})
                 });
                 const data = await res.json();
                 if (res.ok) {

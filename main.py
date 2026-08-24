@@ -562,6 +562,8 @@ async def get_status(db: AsyncSession = Depends(get_db)):
     # 🌊 Aug 21 gate 57: Bull-Run Monitor state for the header chip (in-memory engine global).
     try:
         from services.trading_engine import _bullrun_monitor as _brm
+        if _brm.get("state") == "GREEN" and not _brm.get("green"):  # Aug-24 tripwire (chip incident)
+            logger.critical(f"[BULLRUN_PAYLOAD] INCONSISTENT: state=GREEN but green flag False — {dict(_brm)}")
         _status["bullrun"] = {
             "state": _brm.get("state"), "green_since": _brm.get("green_since"),
             "rearm": _brm.get("rearm"), "rearm_since": _brm.get("rearm_since"), "rearm_alt_med": _brm.get("rearm_alt_med"), "rearm_alt_above": _brm.get("rearm_alt_above"),
@@ -2514,6 +2516,13 @@ def _bullrun_monitor_payload():
     log stream is the durable record; sleeve P&L rows come from the DB and persist)."""
     try:
         from services.trading_engine import _bullrun_monitor as _brm
+        # Aug-24 tripwire: the operator saw a GREEN-format chip at the 12:55 REARM transition (unreproduced).
+        # If the payload is about to claim GREEN while the engine flag disagrees, scream with the full dict.
+        try:
+            if _brm.get("state") == "GREEN" and not _brm.get("green"):
+                logger.critical(f"[BULLRUN_PAYLOAD] INCONSISTENT: state=GREEN but green flag False — {dict(_brm)}")
+        except Exception:
+            pass
         return {
             "state": _brm.get("state"), "green_since": _brm.get("green_since"),
             "rearm": _brm.get("rearm"), "rearm_since": _brm.get("rearm_since"), "rearm_alt_med": _brm.get("rearm_alt_med"), "rearm_alt_above": _brm.get("rearm_alt_above"),

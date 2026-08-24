@@ -8745,7 +8745,7 @@
                     const _br = data.bullrun;
                     if (_br && _br.state) {
                         const _vals = `r72 ${_br.r72 != null ? _br.r72 : '—'}% · above ${_br.above != null ? _br.above : '—'}% · eff ${_br.eff != null ? _br.eff : '—'} · r6h ${_br.r6 != null ? _br.r6 : '—'}% · off-24h-high ${_br.off24h != null ? _br.off24h + '%' : '—'}${_br.latch ? ' · LATCH FIRED' : ''}${_br.enabled ? '' : ' · sleeve OFF'}`;
-                        _brChip.title = `🌊 Bull-Run Monitor (gate 57): ${_vals}`;
+                        _brChip.title = `🌊 Bull-Run Monitor (gate 57): ${_vals} | RAW state=${_br.state} green_since=${_br.green_since ?? 'null'} rearm_since=${_br.rearm_since ?? 'null'}`;  // Aug-24: verbatim payload for incident screenshots
                         if (_br.state === 'GREEN') {
                             _brChip.textContent = `🌊 ${_br.green_since ? _brFmt(_br.green_since) : 'GREEN'}`;  // color = state; text = since (operator)
                             _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 uppercase tracking-wide';

@@ -525,6 +525,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_off24h FLOAT"))
                 if 'entry_br_door' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_door VARCHAR(8)"))
+                if 'funding_fee_usd' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN funding_fee_usd FLOAT"))
                 # Jun 7: phantom EMA13 cross (records would-have-exited pnl when EMA13
                 # cross exit is DISABLED for that direction — observation CF).
                 if 'phantom_ema13_cross_pnl' not in columns:

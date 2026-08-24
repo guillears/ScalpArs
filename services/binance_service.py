@@ -637,6 +637,7 @@ class BinanceService:
     ) -> Optional[Dict]:
         """Create a market order"""
         try:
+            await self._check_ban()  # Aug-24 M3: private calls respect an active IP ban (close_position delegates here too)
             await self.load_markets()
 
             if not is_close:
@@ -650,6 +651,26 @@ class BinanceService:
                     _leverage_blocked_pairs.add(symbol)
                     return None
             
+            # Aug-24 M5: client-side precision + MIN_NOTIONAL check (entries only) — a -1013/-4164 reject
+            # used to surface as a silent None (the flip-bug class). Rounded amount, then min-cost gate.
+            try:
+                _amt_p = float(self.exchange.amount_to_precision(symbol, amount))
+                if _amt_p > 0:
+                    amount = _amt_p
+                if not is_close:
+                    _mkt = self.exchange.market(symbol)
+                    _min_amt = ((_mkt.get('limits') or {}).get('amount') or {}).get('min')
+                    _min_cost = ((_mkt.get('limits') or {}).get('cost') or {}).get('min') or 5.0
+                    if _min_amt and amount < float(_min_amt):
+                        logger.error(f"[MIN_NOTIONAL_BLOCK] {symbol}: amount {amount} < exchange min {_min_amt} — order not sent")
+                        return None
+                    _tk = await self.exchange.fetch_ticker(symbol)
+                    _last = float(_tk.get('last') or 0)
+                    if _last > 0 and amount * _last < float(_min_cost):
+                        logger.error(f"[MIN_NOTIONAL_BLOCK] {symbol}: notional {amount * _last:.2f} < min {_min_cost} — order not sent")
+                        return None
+            except Exception as _m5e:
+                logger.warning(f"[MIN_NOTIONAL_CHECK] {symbol}: pre-check failed ({_m5e}) — proceeding (exchange will validate)")
             # reduceOnly prevents position flip on close orders
             params = {'reduceOnly': True} if is_close else {}
             order = await self.exchange.create_order(
@@ -685,7 +706,7 @@ class BinanceService:
                 'amount': float(order.get('amount') or amount),
                 'price': _px,
                 'cost': float(order.get('cost') or 0),
-                'fee': float((order.get('fee') or {}).get('cost', 0)),
+                'fee': float((order.get('fee') or {}).get('cost') or 0),
                 'timestamp': order.get('timestamp', datetime.now().timestamp() * 1000)
             }
         except Exception as e:
@@ -793,6 +814,7 @@ class BinanceService:
     ) -> Optional[Dict]:
         """Place a limit (maker) order"""
         try:
+            await self._check_ban()  # Aug-24 M3
             await self.load_markets()
             if not is_close:
                 actual_leverage = await self.set_leverage(symbol, leverage)
@@ -825,7 +847,7 @@ class BinanceService:
                 'status': order.get('status', 'open'),
                 'filled': float(order.get('filled') or 0),
                 'remaining': float(order.get('remaining') or amount),
-                'fee': float((order.get('fee') or {}).get('cost', 0)),
+                'fee': float((order.get('fee') or {}).get('cost') or 0),
                 'timestamp': order.get('timestamp', datetime.now().timestamp() * 1000)
             }
         except Exception as e:
@@ -843,7 +865,7 @@ class BinanceService:
                 'filled': float(order.get('filled') or 0),
                 'remaining': float(order.get('remaining') or 0),
                 'average': float(order.get('average') or order.get('price') or 0),
-                'fee': float((order.get('fee') or {}).get('cost', 0)),
+                'fee': float((order.get('fee') or {}).get('cost') or 0),
             }
         except Exception as e:
             logger.error(f"[BINANCE] Error fetching order status {order_id} for {symbol}: {e}")
@@ -914,6 +936,23 @@ class BinanceService:
             return None
         except Exception as e:
             logger.error(f"[BINANCE] Error fetching position for {symbol}: {e}")
+            return None
+
+    async def get_funding_fees_usd(self, pair: str, start_ms: int, end_ms: int) -> Optional[float]:
+        """Aug-24 M6: Σ FUNDING_FEE income for one symbol over [start_ms, end_ms] (negative = paid). None on error."""
+        try:
+            if _ban_until > 0 and time.time() < _ban_until:  # review I1: optional metadata — never sleep out a ban for it
+                return None
+            await self.load_markets()
+            _sym = pair.replace('USDT', '/USDT:USDT') if '/' not in pair else pair
+            _mid = self.exchange.market_id(_sym)
+            rows = await self.exchange.fapiPrivateGetIncome({
+                'symbol': _mid, 'incomeType': 'FUNDING_FEE',
+                'startTime': int(start_ms), 'endTime': int(end_ms), 'limit': 1000,
+            })
+            return float(sum(float(r.get('income', 0) or 0) for r in (rows or [])))
+        except Exception as e:
+            logger.warning(f"[FUNDING] income fetch failed for {pair}: {e}")
             return None
 
     async def fetch_my_trades(self, symbol: str, limit: int = 5) -> Optional[List[Dict]]:

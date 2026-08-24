@@ -3384,7 +3384,7 @@ class TradingEngine:
             return {
                 'id': result['id'], 'price': fill_price,
                 'amount': fill_amount,
-                'entry_fee': fill_amount * fill_price * taker_fee_rate,
+                'entry_fee': (result.get('fee') or 0) if (result.get('fee') or 0) > 0 else fill_amount * fill_price * taker_fee_rate,  # Aug-24 M6: real fill fee when reported
                 'entry_order_type': 'TAKER_FALLBACK',
             }
 
@@ -3412,7 +3412,7 @@ class TradingEngine:
             return {
                 'id': result['id'], 'price': fill_price,
                 'amount': fill_amount,
-                'entry_fee': fill_amount * fill_price * taker_fee_rate,
+                'entry_fee': (result.get('fee') or 0) if (result.get('fee') or 0) > 0 else fill_amount * fill_price * taker_fee_rate,  # Aug-24 M6: real fill fee when reported
                 'entry_order_type': 'TAKER_FALLBACK',
             }
 
@@ -3483,7 +3483,7 @@ class TradingEngine:
         return {
             'id': result['id'], 'price': fill_price,
             'amount': fill_amount,
-            'entry_fee': fill_amount * fill_price * taker_fee_rate,
+            'entry_fee': (result.get('fee') or 0) if (result.get('fee') or 0) > 0 else fill_amount * fill_price * taker_fee_rate,  # Aug-24 M6
             'entry_order_type': 'TAKER_FALLBACK',
         }
 
@@ -4558,7 +4558,7 @@ class TradingEngine:
                     logger.warning(f"[BULLRUN_MONITOR] bar-exact ADX failed ({_adx_err}) — REARM off this tick")
                 if bool(getattr(th, 'bullrun_rearm_enabled', False)) and not green and not latch:
                     _was_rearm = bool(_bullrun_monitor.get('rearm'))
-                    _adx_min = float(getattr(th, 'bullrun_rearm_adx_min', 35.0) or 35.0)
+                    _adx_min = float(getattr(th, 'bullrun_rearm_adx_min', 30.0) or 30.0)
                     _adx_off = float(getattr(th, 'bullrun_rearm_adx_off', 30.0) or 30.0)
                     _r6_min = float(getattr(th, 'bullrun_rearm_alt_r6h_min', 1.0) or 1.0)
                     _ab_min = float(getattr(th, 'bullrun_rearm_alt_above_pct', 80.0) or 80.0)
@@ -7653,6 +7653,22 @@ class TradingEngine:
                         f"(waited={_attempt_elapsed:.2f}s, reason={reason}, pnl=${pnl_data['pnl']:.4f}, "
                         f"exit={actual_exit_price:.6f}{_slip_str})"
                     )
+                    # Aug-24 M6: funding while open (live only; RECORDED, not folded into pnl — reporting decision pending)
+                    try:
+                        if not self.is_paper_mode and order.opened_at is not None:
+                            _f_start = int(order.opened_at.replace(tzinfo=timezone.utc).timestamp() * 1000)
+                            _f_end = int(datetime.utcnow().replace(tzinfo=timezone.utc).timestamp() * 1000) + 60000
+                            _fund = await binance_service.get_funding_fees_usd(order.pair, _f_start, _f_end)
+                            if _fund is not None:
+                                order.funding_fee_usd = _fund
+                                await db.commit()
+                                logger.info(f"[FUNDING] {order.pair} order {order.id}: Σ funding {_fund:+.4f} USDT over the position's life (not in pnl)")
+                    except Exception as _fe:
+                        logger.warning(f"[FUNDING] stamp failed for {order.pair}: {_fe}")
+                        try:
+                            await db.rollback()  # review m3: a failed funding commit must not poison the phase-2 commit
+                        except Exception:
+                            pass
                 break
 
             except Exception as _db_err:

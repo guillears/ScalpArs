@@ -989,7 +989,10 @@ class SignalThresholds(BaseModel):
     # Aug-23 (23): 40 → 35 — replay at 30/35/40 opens the SAME 5 windows (no new fakes; the alts-leading + fan + 1h-EMA50
     # legs exclude them); ADX only times the arm: 40 arms Aug-19 50 min later (6/6 +$2,044 vs 8/8 +$2,507) and misses Aug-23.
     # 30 = 35 in outcomes; 35 keeps a margin above the stay level. In-sample tuning on 5 windows — revert gate unchanged.
-    bullrun_rearm_adx_min: float = 35.0        # entry: BTC ADX(14, 5m) ≥ this AND > its value 30 min ago
+    # Aug-24 (31): 35 → 30 (operator; live case 14:50 UTC — 7/8 legs green, alts 100% above 1h EMA50, ADX 30.9 rising the
+    # only blocker). Replay grid: entry ≥30 = ≥35 exactly (same 5 windows, 17·82%·+$2,853; the alt/fan/1h legs gate).
+    # Stay floor unchanged (30); 'rising' remains the timing discriminator. In-sample caveat: 5 windows.
+    bullrun_rearm_adx_min: float = 30.0        # entry: BTC ADX(14, 5m) ≥ this AND > its value 30 min ago
     bullrun_rearm_adx_off: float = 30.0        # stay: ADX ≥ this
     bullrun_rearm_alt_r6h_min: float = 1.0     # entry: median universe-pair 6h return > this %
     bullrun_rearm_alt_above_pct: float = 80.0  # entry: ≥ this % of universe pairs above their 1h EMA50

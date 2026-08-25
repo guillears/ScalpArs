@@ -843,6 +843,32 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         }
 
 
+@app.get("/api/income-history")
+async def get_income_history(hours: int = 12):
+    """Aug-25 (36): READ-ONLY Binance income mirror (REALIZED_PNL / COMMISSION / FUNDING_FEE)
+    for book-vs-wallet reconciliation — added during the ghost-PROM incident (a fill whose DB
+    insert died left an unbooked position; its later closes hit the wallet invisibly)."""
+    if trading_engine.is_paper_mode:
+        return {"error": "paper mode — no exchange income"}
+    try:
+        import time as _t
+        _end = int(_t.time() * 1000)
+        _start = _end - int(hours) * 3600 * 1000
+        rows = await binance_service.exchange.fapiPrivateGetIncome({
+            "startTime": _start, "endTime": _end, "limit": 1000})
+        out = []
+        for r in rows or []:
+            out.append({"time": int(r.get("time") or 0), "symbol": r.get("symbol"),
+                        "type": r.get("incomeType"), "income": float(r.get("income") or 0),
+                        "asset": r.get("asset"), "info": r.get("info")})
+        _tot = {}
+        for r in out:
+            _tot[r["type"]] = round(_tot.get(r["type"], 0.0) + (r["income"] if r["asset"] == "USDT" else 0.0), 4)
+        return {"rows": out, "totals_usdt": _tot, "hours": hours}
+    except Exception as e:
+        return {"error": str(e)[:200]}
+
+
 @app.get("/api/bnb-swaps")
 async def get_bnb_swaps(db: AsyncSession = Depends(get_db)):
     """Get BNB swap history and current status"""

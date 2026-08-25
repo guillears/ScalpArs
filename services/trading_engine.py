@@ -6725,6 +6725,16 @@ class TradingEngine:
             except Exception as _bk_err:
                 self._record_filter_block("BACKSTOP_PLACE_FAILED", direction)
                 logger.critical(f"[BACKSTOP_PLACE_FAILED] {pair} {direction}: {_bk_err}")
+        # Aug-25 (39) PARTIAL-FILL truth (live HYPE id 16: maker filled 1.0/77.31, quantity was
+        # correctly downsized but investment/notional kept the INTENDED $313.90/$6,278 — display
+        # wrong AND the gross-notional cap counted a phantom $6.2k against the budget). Recompute
+        # both from the ACTUAL fill; exact for full fills too (uses real fill price).
+        if actual_price and quantity:
+            _real_notional = float(actual_price) * float(quantity)
+            if abs(_real_notional - notional_value) / max(notional_value, 1e-9) > 0.001:
+                logger.warning(f"[PARTIAL_FILL] {pair}: booking ACTUAL size — notional {notional_value:,.2f} → {_real_notional:,.2f}, investment {investment:,.2f} → {_real_notional/leverage:,.2f}")
+            notional_value = _real_notional
+            investment = _real_notional / leverage
         order = Order(
             binance_order_id=binance_order_id,
             backstop_algo_id=_bk_algo_id,

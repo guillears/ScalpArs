@@ -920,6 +920,15 @@ async def init_db():
             "WHERE id=5 AND pair='DOGEUSDT' AND is_paper=0 "
             "AND exit_slippage_pct > 2.0"))
 
+        # Aug-25 one-shot repair #3: live HYPE order 16 — maker entry partially filled (1.0 of
+        # 77.31, remainder canceled at the 20s timeout) but investment/notional booked the
+        # INTENDED size; quantity was already correct so P&L math was never wrong. Real:
+        # notional = 1.0 x 81.023 = 81.02, investment = 81.02/20 = 4.05. Guarded on the old
+        # wrong values (qty 1.0, investment > 300) = no-op after first boot.
+        await conn.execute(_sql_text(
+            "UPDATE orders SET investment=4.0512, notional_value=81.023, entry_desired_notional=81.023 "
+            "WHERE id=16 AND pair='HYPEUSDT' AND is_paper=0 AND quantity=1.0 AND investment > 300"))
+
 
 async def get_db():
     """Dependency for getting database session"""

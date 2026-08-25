@@ -4720,6 +4720,14 @@ class TradingEngine:
             # replay-tested vs consuming the dip: consumption cost −$925 on the founding window
             # (Aug-19 +$110 → −$865; strong pairs don't re-dip after BTC recovers, they run).
             # DECISION_LOG 2026-08-21 (13). 0 = off.
+            def _gate_log(rule_key, msg):
+                # Aug-25 (34): the once-per-dip guard made a permanently-refusing gate silent and
+                # indistinguishable from a passing one (REARM 01:10 window: 8 candidates, zero log
+                # lines after the first refusal). Re-log every 600s while a candidate stays refused.
+                _lg_key = f'_lastlog_{rule_key}'
+                if st.get(f'blk_{rule_key}_ts') != st.get('dip_ts') or _now - (st.get(_lg_key) or 0) > 600:
+                    st[_lg_key] = _now
+                    logger.info(msg)
             _off_max = float(getattr(th, 'bullrun_btc_off24h_max', 0.0) or 0.0)
             if _off_max > 0:
                 # review hygiene: a sign slip in the JSON (+2 meaning "2% below") must NOT silently disable
@@ -4741,22 +4749,22 @@ class TradingEngine:
             if bool(getattr(th, 'bullrun_btc_ema13_required', True)):
                 _g = globals(); _bpx = _g.get('_current_btc_price'); _be13 = _g.get('_current_btc_ema13')
                 if _bpx is not None and _be13 is not None and float(_be13) > 0 and float(_bpx) < float(_be13):
+                    _gate_log('e13', f"[BULLRUN_LONG] {pair}: refused by BTC-leader gate (BTC {float(_bpx):.2f} below EMA13 {float(_be13):.2f}, {((float(_bpx)/float(_be13))-1)*100:+.3f}%) — dip stays alive")
                     if st.get('blk_e13_ts') != st.get('dip_ts'):
                         st['blk_e13_ts'] = st.get('dip_ts')
                         _bullrun_monitor['blk_ema13'] = _bullrun_monitor.get('blk_ema13', 0) + 1
                         self._record_filter_block("BULLRUN_BTC_EMA13", "LONG")
-                        logger.info(f"[BULLRUN_LONG] {pair}: refused by BTC-leader gate (BTC {float(_bpx):.2f} below EMA13 {float(_be13):.2f}, {((float(_bpx)/float(_be13))-1)*100:+.3f}%) — dip stays alive")
                     return
             # Aug-23 (18): BTC 1h-EMA20 slope gate (None/blank = off). Fail-open on missing slope. Once per (rule, dip).
             _s_min = getattr(th, 'bullrun_btc_1h_slope_min', None)
             if _s_min is not None and str(_s_min) != '':
                 _s_now = globals().get('_current_btc_1h_slope')
                 if _s_now is not None and float(_s_now) <= float(_s_min):
+                    _gate_log('1h', f"[BULLRUN_LONG] {pair}: refused by BTC 1h-slope gate ({float(_s_now):+.3f} ≤ {float(_s_min):+.3f}) — dip stays alive")
                     if st.get('blk_1h_ts') != st.get('dip_ts'):
                         st['blk_1h_ts'] = st.get('dip_ts')
                         _bullrun_monitor['blk_1h'] = _bullrun_monitor.get('blk_1h', 0) + 1
                         self._record_filter_block("BULLRUN_BTC_1H_SLOPE", "LONG")
-                        logger.info(f"[BULLRUN_LONG] {pair}: refused by BTC 1h-slope gate ({float(_s_now):+.3f} ≤ {float(_s_min):+.3f}) — dip stays alive")
                     return
             sp = float(getattr(th, 'bullrun_pair_spacing_hours', 2.0) or 2.0) * 3600.0
             # Restart-proof spacing (Aug-21 live catch: ONG re-entered 11 min after its stop because a
@@ -4801,6 +4809,7 @@ class TradingEngine:
                     k1h = await binance_service.get_ohlcv(pair_info.get('symbol') or pair, '1h', 100)
                     hc = [float(r[4]) for r in k1h[:-1]] if k1h else []
                     if len(hc) < 55:
+                        logger.warning(f"[BULLRUN_LONG] {pair}: 1h history too short/failed ({len(hc)} bars) — no entry (fail-safe)")
                         return
                     _e = hc[0]; _kk = 2.0 / 51.0
                     for c in hc:
@@ -4810,6 +4819,7 @@ class TradingEngine:
                 except Exception:
                     return  # fail-safe: no 1h context = no entry
             if price <= cached[1]:
+                _gate_log('ema', f"[BULLRUN_LONG] {pair}: refused by own-1h-EMA50 gate (px {price:.6g} <= {cached[1]:.6g})")
                 self._record_filter_block("BULLRUN_BELOW_1H_EMA50", "LONG")
                 if st.get('blk_ema_ts') != st.get('dip_ts'):  # review M3: per-rule key
                     st['blk_ema_ts'] = st.get('dip_ts')
@@ -4833,6 +4843,7 @@ class TradingEngine:
             _br_bull = _g_now.get('_market_bull_pct'); _br_bear = _g_now.get('_market_bear_pct')
             _br_gvr = _g_now.get('_global_volume_ratio')
             _br_pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if indicators.get('avg_volume') else None
+            logger.info(f"[BULLRUN_LONG] {pair}: all gates passed (door={'GREEN' if _bullrun_monitor.get('green') else 'REARM'} rank={rank} px={price:.6g}) → opening")
             order = await self.open_position(
                 db=db, pair=pair, direction="LONG", confidence="STRONG_BUY", current_price=price,
                 entry_rsi=indicators.get('rsi'), entry_adx=indicators.get('adx'),

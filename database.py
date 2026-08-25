@@ -16,6 +16,23 @@ import asyncio
 # only ever be taken inside this helper.
 db_write_lock = asyncio.Lock()
 
+async def locked_execute_commit(session, statement) -> None:
+    """Execute ONE write statement AND commit under a single fair-lock hold. For sessions
+    that write via execute(): SQLite takes the file write-lock at EXECUTE time, so executing
+    first and queueing at the fair lock afterwards INVERTS priority — the session holds the
+    file lock while waiting behind another commit, which then burns a busy_timeout against
+    it (the 5.0-5.3s [TXN_HOLD] class named by telemetry, Aug-25). Lock-first removes the
+    inversion. NEVER call while holding db_write_lock."""
+    import time as _t
+    _w0 = _t.monotonic()
+    async with db_write_lock:
+        _w = _t.monotonic() - _w0
+        if _w > 1.0:
+            import logging
+            logging.getLogger(__name__).warning(f"[DB_QUEUE_SLOW] execute+commit waited {_w:.2f}s in the fair write queue")
+        await session.execute(statement)
+        await session.commit()
+
 async def locked_commit(session) -> None:
     """Commit under the process-wide fair write lock. Use for EVERY commit on the SQLite DB."""
     import time as _t

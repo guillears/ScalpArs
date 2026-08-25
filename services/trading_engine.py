@@ -11,7 +11,7 @@ from sqlalchemy import select, update, and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod
-from database import AsyncSessionLocal, locked_commit
+from database import AsyncSessionLocal, locked_commit, locked_execute_commit
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, _leverage_blocked_pairs
@@ -8148,7 +8148,7 @@ class TradingEngine:
             if _new_high or _new_low:
                 try:
                     async with AsyncSessionLocal() as _pe_state_db:
-                        await _pe_state_db.execute(
+                        await locked_execute_commit(_pe_state_db, 
                             update(Order)
                             .where(Order.id == order_id)
                             .values(
@@ -8158,7 +8158,6 @@ class TradingEngine:
                                 post_exit_running_trough_at=info["trough_at"],
                             )
                         )
-                        await locked_commit(_pe_state_db)
                 except Exception as _pe_state_exc:
                     logger.debug(f"[POST_EXIT_RUNNING] Failed to persist running state for {info['pair']}: {_pe_state_exc}")
 
@@ -8223,12 +8222,11 @@ class TradingEngine:
                         f"post_exit_{k}": info[k] for k in _snap_fired
                     }
                     async with AsyncSessionLocal() as _pe_snap_db:
-                        await _pe_snap_db.execute(
+                        await locked_execute_commit(_pe_snap_db, 
                             update(Order)
                             .where(Order.id == order_id)
                             .values(**_values)
                         )
-                        await locked_commit(_pe_snap_db)
                 except Exception as _pe_snap_exc:
                     logger.debug(f"[POST_EXIT_SNAP] Failed to persist time snapshot for {info['pair']}: {_pe_snap_exc}")
 
@@ -8426,7 +8424,7 @@ class TradingEngine:
 
                 try:
                     async with AsyncSessionLocal() as pe_write_db:
-                        await pe_write_db.execute(
+                        await locked_execute_commit(pe_write_db, 
                             update(Order)
                             .where(Order.id == order_id)
                             .values(
@@ -8523,7 +8521,6 @@ class TradingEngine:
                                 hard_tp_shadow_ladder_fired=((info.get("htp_B_exit") is not None) if info.get("htp_shadow") else None),
                             )
                         )
-                        await locked_commit(pe_write_db)
                     sig_info = f", sig_lost={sig_lost_minutes:.1f}min" if sig_lost_minutes is not None else ""
                     rsi_info = f", rsi_exit={rsi_exit_minutes:.1f}min@{info['rsi_exit_pnl']:.4f}%" if rsi_exit_minutes is not None else ""
                     rsi3_info = f", rsi3_exit={rsi3_exit_minutes:.1f}min@{info['rsi3_exit_pnl']:.4f}%" if rsi3_exit_minutes is not None else ""

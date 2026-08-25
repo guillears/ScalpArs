@@ -2623,6 +2623,12 @@ class TradingEngine:
         # always refuel (sub-$10k books have no schedule tier → went 100% into margin). Applies on
         # top of every reserve mode. 0 = off.
         _fee_res = max(0.0, float(getattr(tc.investment, 'fee_reserve_usd', 0.0) or 0.0))
+        # Aug-25 (operator): fee reserve FORMULA — max(flat floor, N hours x live BNB burn/hr).
+        # Self-scales with trading activity; burn None/0 (fresh boot, paper) → floor only.
+        _fee_hrs = max(0.0, float(getattr(tc.investment, 'fee_reserve_hours', 0.0) or 0.0))
+        _burn = float(getattr(self, '_bnb_burn_rate', 0.0) or 0.0)
+        if _fee_hrs > 0 and _burn > 0:
+            _fee_res = max(_fee_res, _fee_hrs * _burn)
         reserve += _fee_res
 
         # Available after reserve

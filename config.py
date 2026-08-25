@@ -2010,7 +2010,8 @@ class InvestmentConfig(BaseModel):
     # the 4th position opened). $75 ≈ 1.5 days of burn at $2.17/h, covers the $50-minimum swap.
     # Paper: cosmetic (sim charges fees in USDT at 0 BNB). Live: without it, fees lose the BNB
     # discount once BNB hits 0 and the bot cannot refuel while the book is full. 0 = disabled.
-    fee_reserve_usd: float = 75.0
+    fee_reserve_usd: float = 30.0          # Aug-25 (operator): flat FLOOR, was 75 (oversized at ~$800 equity)
+    fee_reserve_hours: float = 12.0        # Aug-25 (operator 'find a formula'): reserve = max(floor, hours x live BNB burn/hr) — self-scales with activity; 0 = floor only
     
     # Cooldown after trade close (prevents immediate re-entry on same pair, win or loss)
     # CLAUDE.md May 26: cross-batch evidence on 919-trade pool shows 84 same-pair re-entries

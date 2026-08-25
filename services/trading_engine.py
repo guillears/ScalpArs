@@ -5887,7 +5887,7 @@ class TradingEngine:
         # tracking rides the Pattern Cell Ship table. Missing 1h → NO admit (fail-closed: the
         # block is the safe state). 🔒 REVERT →99 if live cohort ≤50% WR or net-neg on N≥8.
         _w2_admit = False
-        if direction == "LONG" and not flip_source and not bull_long and not bounce_long and _pw2_e and not _pc_any_e:
+        if direction == "LONG" and not flip_source and not bull_long and not bullrun_long and not bounce_long and _pw2_e and not _pc_any_e:
             try:
                 _w2r_raw = getattr(config.trading_config.thresholds, 'long_w2_reenable_1h_min', 99.0)
                 _w2r = 99.0 if _w2r_raw is None else float(_w2r_raw)
@@ -5903,7 +5903,7 @@ class TradingEngine:
         # era test (eraB 46%). Cell 1× via the W6 pattern cell; fail-closed on missing data.
         # 🔒 REVERT →99 (off) if live cohort ≤50% WR or net-negative on N≥8.
         _w6_admit = False
-        if direction == "LONG" and not flip_source and not bull_long and not bounce_long and _pw6_e and not _pc_any_e and not _w2_admit:
+        if direction == "LONG" and not flip_source and not bull_long and not bullrun_long and not bounce_long and _pw6_e and not _pc_any_e and not _w2_admit:
             try:
                 _w6r_raw = getattr(config.trading_config.thresholds, 'long_w6_reenable_1h_max', 99.0)
                 _w6r = 99.0 if _w6r_raw is None else float(_w6r_raw)
@@ -5916,7 +5916,7 @@ class TradingEngine:
                     logger.info(f"[W6_REENABLE] {pair}: W6-matched LONG ADMITTED — BTC 1h {_w6_1h:+.4f}% <= {_w6r}% AND stretch {entry_ema5_stretch:.3f} >= {_w6s} (dip+thrust; cell 1x)")
             except Exception:
                 _w6_admit = False
-        if direction == "LONG" and not flip_source and not bull_long and not bounce_long and not spike_chase_probe and not spike_fade and not spike_bounce and not nonexp_calm3d and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e) and not _w2_admit and not _w6_admit:
+        if direction == "LONG" and not flip_source and not bull_long and not bullrun_long and not bounce_long and not spike_chase_probe and not spike_fade and not spike_bounce and not nonexp_calm3d and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e) and not _w2_admit and not _w6_admit:
             logger.info(f"[LONG_UNMATCHED_ONLY] {pair}: LONG blocked — matched a pattern (c_any={_pc_any_e}, w_any={_pw_any_e})")
             try:
                 self._record_filter_block("LONG_UNMATCHED_ONLY", "LONG")
@@ -6068,7 +6068,7 @@ class TradingEngine:
                     _pcell_lev = _uq_lev_eff
         # Jun 8: pattern-cell BLOCK action — skip the entry entirely (no order, no exchange
         # call; we're before position sizing / Order creation). Counter PATTERN_CELL_BLOCK.
-        if _pcell_block and not flip_source and not bull_long and not bounce_long:
+        if _pcell_block and not flip_source and not bull_long and not bullrun_long and not bounce_long:
             logger.info(f"[PATTERN_CELL_BLOCK] {pair} {direction}: entry blocked by pattern-cell rule (signature={_pcell_src})")
             try:
                 self._record_filter_block("PATTERN_CELL_BLOCK", direction)

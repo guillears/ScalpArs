@@ -8478,6 +8478,25 @@ class TradingEngine:
         updates = []
         
         for order in open_orders:
+            # Aug-25 (37) TXN_HOLD verdict fix: the loop used to carry the PREVIOUS order's
+            # uncommitted price/peak stamps into THIS order's network awaits — SQLite's write
+            # lock rode along for the whole pass (52.6s at BTC's close, 53.1s at TAO's; the
+            # cause of every starved close commit). Commit leftovers NOW, before any await,
+            # so each write transaction is bounded to one order's in-memory work.
+            try:
+                if db.dirty or db.new:
+                    await locked_commit(db)
+            except Exception as _st_err:
+                # review F1: rollback EXPIRES all instances (expire_on_commit only governs
+                # commit) — falling through would lazy-refresh on attribute access and raise
+                # MissingGreenlet mid-pass. Abort THIS pass; the next 1s cycle re-selects
+                # fresh instances on a fresh session (close_position 7464 precedent).
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
+                logger.error(f"[MONITOR] stamp commit failed ({str(_st_err)[:60]}) — aborting this pass, next cycle re-stamps")
+                break
             # WebSocket price is primary. [WS_WATCHDOG] Jul-27 FLOCK/EVAA/HBAR
             # incidents: an open order can go price-blind (pair missing from
             # the live stream / dead stream) — frozen at entry with realtime
@@ -8565,6 +8584,18 @@ class TradingEngine:
                 if order.current_tp_level and order.current_tp_level >= 2 and old_low != order.low_price_since_entry:
                     logger.info(f"[TRACKING] {order.pair} SHORT L{order.current_tp_level}: LOW updated {old_low} -> {order.low_price_since_entry} (ws_low={ws_low})")
 
+            # Aug-25 (37): stamping cluster done — commit before the exit stack's awaits
+            # (get_ohlcv in the spike path, close_position HTTP, etc.) for the same reason.
+            try:
+                if db.dirty or db.new:
+                    await locked_commit(db)
+            except Exception as _st_err2:
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
+                logger.error(f"[MONITOR] stamp commit failed ({str(_st_err2)[:60]}) — aborting this pass, next cycle re-stamps")
+                break
             # Jun 16: flips no longer use the flip-specific 45min horizon. They flow through
             # the SAME monitor-loop timeouts as normal trades — MAX_HOLD + NO_EXPANSION below
             # (180min + BE-peak gate + signal-active reset) — then skip the momentum exit STACK
@@ -9472,6 +9503,18 @@ class TradingEngine:
                 # held the write lock continuously, starving close_position's
                 # retry loop for 2+ minutes.
                 await locked_commit(db)
+
+        # Aug-25 (37) review F2: the LAST order's leftover stamps must not escape the loop —
+        # the exit-retry / backstop-sweep blocks below await HTTP after db.execute calls whose
+        # autoflush would open a write txn with those leftovers (the 53s-hold disease, tail case).
+        try:
+            if db.dirty or db.new:
+                await locked_commit(db)
+        except Exception:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
 
         # Aug-11 🛡 BACKSTOP SWEEP (live only): heal missing resting stops every scan —
         # covers restart/deploy gaps (in-flight positions re-armed) and earlier placement

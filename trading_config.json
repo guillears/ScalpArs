@@ -32,7 +32,7 @@
     "percentage": 30.0,
     "reserve_mode": "schedule",
     "reserve_fixed": 500.0,
-    "fee_reserve_usd": 30.0,
+    "fee_reserve_usd": 15.0,
     "reserve_percentage": 0.0,
     "working_capital_target": 0.0,
     "reserve_schedule": "10000:8000, 25000:17500, 50000:27500, 100000:40000, 150000:50000, 250000:70000, 500000:100000",
@@ -48,7 +48,8 @@
     "leverage_balance_schedule": "0:20, 25000:15",
     "spike_lowvol_liq_cap_pct": 0.3,
     "spike_lowvol_threshold_usd": 1000000000000.0,
-    "fee_reserve_hours": 12.0
+    "fee_reserve_hours": 12.0,
+    "fee_reserve_pct": 2.5
   },
   "thresholds": {
     "long_rsi_extreme": 45.0,

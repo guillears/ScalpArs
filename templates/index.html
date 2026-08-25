@@ -5029,20 +5029,28 @@
                             <p class="text-xs text-gray-500 mt-1">Jul 14: hard $ floor — trailing-burn runway collapses when idle (burn swings 10×); top-up target, emergency threshold (×0.5) and auto-sell drain all respect this floor.</p>
                         </div>
                         <div>
-                            <label class="block text-sm text-gray-400 mb-2">Fee Reserve Floor <span class="text-xs text-gray-500">(USDT never traded)</span></label>
+                            <label class="block text-sm text-gray-400 mb-2">Fee Reserve — absolute min <span class="text-xs text-gray-500">(leg 1 of 3; micro-balance safety)</span></label>
                             <div class="flex">
                                 <span class="bg-white/10 border border-white/10 border-r-0 rounded-l-lg px-4 py-2 text-gray-400">$</span>
                                 <input type="number" id="config-fee-reserve-usd" min="0" step="5" class="flex-1 bg-white/5 border border-white/10 rounded-r-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="75">
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Aug 21: USDT that position sizing never deploys (on top of the reserve mode/schedule) so the auto-swap always has fuel — sub-$10k books have no schedule tier and went 100% into margin (swap starved 17:36). ≈1.5 days of burn. 0 = off.</p>
+                            <p class="text-xs text-gray-500 mt-1">🧮 Reserve = <b>max( $min , % × total equity , h × live BNB burn )</b> — never traded, always fuels the auto-swap. Set a leg to 0 to disable it.</p>
                         </div>
                         <div>
-                            <label class="block text-sm text-gray-400 mb-2">Fee Reserve Formula <span class="text-xs text-gray-500">(hours × live burn/hr; 0 = floor only)</span></label>
+                            <label class="block text-sm text-gray-400 mb-2">Fee Reserve — % of equity <span class="text-xs text-gray-500">(leg 2 of 3; balance-proof)</span></label>
+                            <div class="flex">
+                                <span class="bg-white/10 border border-white/10 border-r-0 rounded-l-lg px-4 py-2 text-gray-400">%</span>
+                                <input type="number" id="config-fee-reserve-pct" min="0" step="0.5" class="flex-1 bg-white/5 border border-white/10 rounded-r-lg px-4 py-2 text-white">
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Leg 2 of 3: scales with holdings — add $4k and the cushion grows by itself.</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Fee Reserve — hours of burn <span class="text-xs text-gray-500">(leg 3 of 3)</span></label>
                             <div class="flex">
                                 <span class="bg-white/10 border border-white/10 border-r-0 rounded-l-lg px-4 py-2 text-gray-400">h</span>
                                 <input type="number" id="config-fee-reserve-hours" min="0" step="1" class="flex-1 bg-white/5 border border-white/10 rounded-r-lg px-4 py-2 text-white">
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Aug 25: reserve = max(floor, hours × BNB burn rate) — self-scales with activity.</p>
+                            <p class="text-xs text-gray-500 mt-1">Leg 3 of 3: activity-aware — busy day → bigger cushion.</p>
                         </div>
                     </div>
                     <div class="mt-4 p-3 rounded-lg border border-emerald-900/40 bg-emerald-950/10">
@@ -11014,7 +11022,7 @@
             lines.push(`  Burn Rate: $${_burnRate.toFixed(2)}/hr  |  Live Runway: ${_liveRunwayH}h  |  Emergency Threshold: $${(status && status.bnb_emergency_threshold) ? status.bnb_emergency_threshold.toFixed(2) : '0.00'}`);
             lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
             lines.push(`  Fee reserve floor: $${inv.fee_reserve_usd ?? 0} (never traded — BNB refuel; 0 = off)`);
-            lines.push(`  Fee reserve formula: max(floor, ${inv.fee_reserve_hours ?? 0}h × live BNB burn/hr)`);
+            lines.push(`  Fee reserve = max($${inv.fee_reserve_usd ?? 0} min, ${inv.fee_reserve_pct ?? 0}% × equity, ${inv.fee_reserve_hours ?? 0}h × live BNB burn/hr)`);
             lines.push(`  Cooldown After Any Close: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
             lines.push(`  Liquidity Caps: ① ${inv.max_notional_pct_of_pair_volume || 0}% 24h vol / ceiling $${inv.max_notional_hard_ceiling || 0}  |  ② max gross lev ${inv.max_gross_leverage || 0}×  |  ③ redeploy ${inv.redeploy_leftover_enabled ? 'ON (hard ' + (inv.max_open_positions_hard || 0) + ')' : 'off'}  |  🔒 SPIKE LOWVOL (Aug-3 override): ${(inv.spike_lowvol_liq_cap_pct || 0) > 0 ? `${inv.spike_lowvol_liq_cap_pct}% cap on spike pairs < $${((inv.spike_lowvol_threshold_usd || 0)/1e6).toFixed(0)}M (LIQ2)` : 'off'}`);
             if (cfg.pair_blacklist) lines.push(`  Pair Blacklist: ${cfg.pair_blacklist}`);
@@ -20321,6 +20329,7 @@
                     };
                     { const _fr = document.getElementById('config-fee-reserve-usd'); if (_fr) _fr.value = (config.investment.fee_reserve_usd !== undefined && config.investment.fee_reserve_usd !== null) ? config.investment.fee_reserve_usd : 75; }
                     { const _fh = document.getElementById('config-fee-reserve-hours'); if (_fh) _fh.value = (config.investment.fee_reserve_hours !== undefined && config.investment.fee_reserve_hours !== null) ? config.investment.fee_reserve_hours : 12; }
+                    { const _fp = document.getElementById('config-fee-reserve-pct'); if (_fp) _fp.value = (config.investment.fee_reserve_pct !== undefined && config.investment.fee_reserve_pct !== null) ? config.investment.fee_reserve_pct : 2.5; }
                     const s = (config.investment.reserve_schedule || '').trim();
                     const tiers = [];
                     if (s) { s.split(',').forEach(p => { const m = p.split(':'); if (m.length === 2) { const b = parseFloat(m[0]), v = parseFloat(m[1]); if (!isNaN(b) && !isNaN(v)) tiers.push([b, v]); } }); }
@@ -21864,8 +21873,9 @@
                     reserve_fixed: resMode === 'fixed' ? resValue : 500,
                     reserve_percentage: resMode === 'percentage' ? resValue : 20,
                     working_capital_target: resMode === 'working_capital' ? resValue : 0,
-                    fee_reserve_usd: (function(){ const _v = String(document.getElementById('config-fee-reserve-usd')?.value ?? '').trim(); return _v === '' ? 30 : Math.max(0, safeFloat(_v)); })(),  // blank → default 75 (review: '' is not nullish; a cleared box must not silently disable the BNB refuel reserve)
+                    fee_reserve_usd: (function(){ const _v = String(document.getElementById('config-fee-reserve-usd')?.value ?? '').trim(); return _v === '' ? 15 : Math.max(0, safeFloat(_v)); })(),  // blank → default 75 (review: '' is not nullish; a cleared box must not silently disable the BNB refuel reserve)
                     fee_reserve_hours: (function(){ const _v = String(document.getElementById('config-fee-reserve-hours')?.value ?? '').trim(); return _v === '' ? 12 : Math.max(0, parseFloat(_v) || 0); })(),
+                    fee_reserve_pct: (function(){ const _v = String(document.getElementById('config-fee-reserve-pct')?.value ?? '').trim(); return _v === '' ? 2.5 : Math.max(0, parseFloat(_v) || 0); })(),
                     reserve_schedule: (function(){ const t = []; const bs = document.querySelectorAll('.res-sched-bal'), ts = document.querySelectorAll('.res-sched-trd'); for (let i = 0; i < bs.length; i++) { const b = (bs[i].value || '').trim(), v = (ts[i].value || '').trim(); if (b !== '' && v !== '') { const bn = parseFloat(b), vn = parseFloat(v); if (!isNaN(bn) && !isNaN(vn)) t.push([bn, vn]); } } t.sort((a, b) => a[0] - b[0]); return t.map(x => x[0] + ':' + x[1]).join(', '); })(),
                     cooldown_after_loss_minutes: parseInt(document.getElementById('config-cooldown-loss').value) || 5,
                     max_open_positions: parseInt(document.getElementById('config-max-positions').value) || 100,

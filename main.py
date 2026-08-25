@@ -750,7 +750,11 @@ def _reserve_split(free_balance: float, deployed_margin: float = 0.0):
         reserve = _inv.reserve_fixed
     # Aug 21: fee-reserve FLOOR mirrors calculate_position_size (display must never overstate tradeable)
     _fee_res = max(0.0, float(getattr(_inv, 'fee_reserve_usd', 0.0) or 0.0))
-    # Aug-25: formula mirror — max(floor, hours x live BNB burn/hr), same as sizing
+    # Aug-25: three-leg mirror of calculate_position_size — max(min, pct x equity, hours x burn)
+    _fee_pct = max(0.0, float(getattr(_inv, 'fee_reserve_pct', 0.0) or 0.0))
+    _fee_eq = free_balance + max(0.0, deployed_margin or 0.0)
+    if _fee_pct > 0 and _fee_eq:
+        _fee_res = max(_fee_res, _fee_eq * _fee_pct / 100.0)
     _fee_hrs = max(0.0, float(getattr(_inv, 'fee_reserve_hours', 0.0) or 0.0))
     _burn = float(getattr(trading_engine, '_bnb_burn_rate', 0.0) or 0.0)
     if _fee_hrs > 0 and _burn > 0:

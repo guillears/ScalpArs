@@ -2622,9 +2622,14 @@ class TradingEngine:
         # Aug 21 (operator): fee-reserve FLOOR — USDT sizing never deploys, so the BNB auto-swap can
         # always refuel (sub-$10k books have no schedule tier → went 100% into margin). Applies on
         # top of every reserve mode. 0 = off.
+        # Aug-25 (operator): fee reserve = max(absolute min, pct x total equity, hours x live
+        # BNB burn/hr). Pct leg is balance-proof; burn leg is activity-aware; usd is only the
+        # micro-balance safety min. Same three legs mirrored in main._reserve_split (display).
         _fee_res = max(0.0, float(getattr(tc.investment, 'fee_reserve_usd', 0.0) or 0.0))
-        # Aug-25 (operator): fee reserve FORMULA — max(flat floor, N hours x live BNB burn/hr).
-        # Self-scales with trading activity; burn None/0 (fresh boot, paper) → floor only.
+        _fee_pct = max(0.0, float(getattr(tc.investment, 'fee_reserve_pct', 0.0) or 0.0))
+        _fee_eq = total_portfolio if total_portfolio else available_balance
+        if _fee_pct > 0 and _fee_eq:
+            _fee_res = max(_fee_res, _fee_eq * _fee_pct / 100.0)
         _fee_hrs = max(0.0, float(getattr(tc.investment, 'fee_reserve_hours', 0.0) or 0.0))
         _burn = float(getattr(self, '_bnb_burn_rate', 0.0) or 0.0)
         if _fee_hrs > 0 and _burn > 0:

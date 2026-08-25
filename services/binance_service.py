@@ -750,11 +750,20 @@ class BinanceService:
             # realtime SL then SKIPS the position (entry_price<=0 guard) = live position with NO stop (GRASS incident).
             _px = float(order.get('average') or order.get('price') or 0)
             if _px <= 0:
-                try:
-                    _ref = await self.exchange.fetch_order(order['id'], symbol)
-                    _px = float((_ref or {}).get('average') or (_ref or {}).get('price') or 0)
-                except Exception as _re:
-                    logger.warning(f"[BINANCE] fill-price refetch failed for {symbol}: {_re}")
+                # Aug-25: RETRY the refetch (3x, 0.4s apart) — the single instant refetch kept
+                # finding avgPrice still 0 (fill not yet reported) and control fell through to
+                # the ticker/WS fallbacks, booking the DECISION price as the fill (BTC id 3:
+                # exit off by $35/0.044%, slip recorded 0.0). Fills report within ~1s.
+                for _m2_try in range(3):
+                    try:
+                        if _m2_try:
+                            await asyncio.sleep(0.4)
+                        _ref = await self.exchange.fetch_order(order['id'], symbol)
+                        _px = float((_ref or {}).get('average') or (_ref or {}).get('price') or 0)
+                        if _px > 0:
+                            break
+                    except Exception as _re:
+                        logger.warning(f"[BINANCE] fill-price refetch failed for {symbol} (try {_m2_try+1}/3): {_re}")
             if _px <= 0:
                 try:
                     _tk = await self.exchange.fetch_ticker(symbol)

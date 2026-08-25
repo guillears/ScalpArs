@@ -845,6 +845,19 @@ async def init_db():
 
         await conn.run_sync(_backfill_choppy_split)
 
+        # Aug-25 one-shot repair (operator-approved "ship the fix"): live DOGE order 5's close
+        # was booked with YESTERDAY'S fill (0.08995) by the unbounded fill lookup during the
+        # 02:50 lock cascade — the real fill was 0.09219 (EXIT_SLIPPAGE log line). pnl −160.08
+        # → −35.51 (same fee formula: gross −32.27 − entry 0.9291 − exit 2.3082). The strict
+        # WHERE (all the old wrong values) makes this a no-op everywhere except that exact row,
+        # and a no-op again on every later boot.
+        from sqlalchemy import text as _sql_text
+        await conn.execute(_sql_text(
+            "UPDATE orders SET exit_price=0.09219, exit_fee=2.3082, total_fee=3.2373, "
+            "pnl=-35.51, pnl_percentage=-0.69 "
+            "WHERE id=5 AND pair='DOGEUSDT' AND is_paper=0 AND exit_price=0.08995 "
+            "AND pnl < -159.0 AND pnl > -161.0"))
+
 
 async def get_db():
     """Dependency for getting database session"""

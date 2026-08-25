@@ -4312,7 +4312,7 @@ class TradingEngine:
                         _bullrun_monitor['period_id'] = cur.id
                         _bullrun_monitor['resumed'] = True
                         _bullrun_monitor['green_since'] = cur.started_at.strftime('%Y-%m-%d %H:%M') if new_state == 'GREEN' else None
-                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_1h', 'blocked_1h')):
+                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_pvr', 'blocked_pvr'), ('blk_1h', 'blocked_1h')):
                             _bullrun_monitor[_k] = int(getattr(cur, _col, 0) or 0)
                         logger.info(f"[BULLRUN_MONITOR] resumed open {cur.state} period #{cur.id} (since {cur.started_at:%Y-%m-%d %H:%M} UTC) after restart")
                     else:
@@ -4389,7 +4389,7 @@ class TradingEngine:
                             _prev.ended_at = None; _prev.ended_by = None; _prev.last_update = now
                             _prev.r72_end, _prev.above_end, _prev.eff_end, _prev.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
                             _bullrun_monitor['period_id'] = _prev.id
-                            for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_1h', 'blocked_1h')):
+                            for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_pvr', 'blocked_pvr'), ('blk_1h', 'blocked_1h')):
                                 _bullrun_monitor[_k] = int(getattr(_prev, _col, 0) or 0)
                             logger.info(f"[BULLRUN_MONITOR] GREEN re-armed within 30 min of a stay-band drop — period #{_prev.id} reopened (flap, not a new episode)")
                             await locked_commit(db)
@@ -4423,7 +4423,7 @@ class TradingEngine:
                 db.add(newp)
                 await db.flush()
                 _bullrun_monitor['period_id'] = newp.id
-                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50', 'blk_off24h', 'blk_ema13', 'blk_1h'):
+                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50', 'blk_off24h', 'blk_ema13', 'blk_1h', 'blk_pvr'):
                     _bullrun_monitor[_k] = 0
             await locked_commit(db)
         except Exception as e:
@@ -4856,6 +4856,21 @@ class TradingEngine:
             _br_bull = _g_now.get('_market_bull_pct'); _br_bear = _g_now.get('_market_bear_pct')
             _br_gvr = _g_now.get('_global_volume_ratio')
             _br_pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if indicators.get('avg_volume') else None
+            # Aug-25 (operator override ship, OBSERVE-FIRST acknowledged): PVR ceiling — losers
+            # enter on climactic books (B3+B4 blocked cohort 7·14%·−$350; W-avg 0.92 vs L-avg
+            # 1.35, 1.06σ). Below the locked N≥30 gate → observation surface = the refusal log
+            # lines below (pair + PVR + refusal price, re-logged 600s) + the BULLRUN_PVR_MAX
+            # filter-block counter; the refused cohort is scored RETROACTIVELY from those logs
+            # at each batch review (phantom seeding retired Jul-30 — review C2: never claim it).
+            # Tight revert gate in CURRENT_STATE. Fail-open on missing PVR. Dip stays alive.
+            _pvr_max = float(getattr(th, 'bullrun_pvr_max', 0.0) or 0.0)
+            if _pvr_max > 0 and _br_pvr is not None and _br_pvr > _pvr_max:
+                _gate_log('pvr', f"[BULLRUN_LONG] {pair}: refused by PVR ceiling ({_br_pvr:.2f} > {_pvr_max:g}) at px {price:.6g} — dip stays alive (scored at batch review)")
+                if st.get('blk_pvr_ts') != st.get('dip_ts'):
+                    st['blk_pvr_ts'] = st.get('dip_ts')
+                    _bullrun_monitor['blk_pvr'] = _bullrun_monitor.get('blk_pvr', 0) + 1
+                    self._record_filter_block("BULLRUN_PVR_MAX", "LONG")
+                return
             logger.info(f"[BULLRUN_LONG] {pair}: all gates passed (door={'GREEN' if _bullrun_monitor.get('green') else 'REARM'} rank={rank} px={price:.6g}) → opening")
             order = await self.open_position(
                 db=db, pair=pair, direction="LONG", confidence="STRONG_BUY", current_price=price,

@@ -927,6 +927,7 @@ class SignalThresholds(BaseModel):
     bullrun_amber_r24: float = 6.0         # AMBER alert (24h tight variant) — display/log only, never arms
     bullrun_amber_above: float = 65.0
     bullrun_amber_eff: float = 0.12
+    bullrun_pvr_max: float = 1.2           # 2026-08-25 (operator override, OBSERVE-FIRST acknowledged): refuse sleeve entries with pair-vol ratio > max; evidence B3+B4 blocked cohort 7·14%·−$350 (below N≥30 gate — ships WITH PASS:BULLRUN_PVR_MAX phantoms so the cohort keeps scoring; tight revert gate in CURRENT_STATE). 0 = off.
     bullrun_universe_size: int = 10        # sleeve trades scan-rank ≤ N (COIN-only universe; rank 11-20 refuted: 50% WR −$1,933)
     bullrun_dip_atr_mult: float = 0.3      # entry: dip ≥ N×ATR(14,5m) below 5m EMA20, then close reclaims
     bullrun_pair_spacing_hours: float = 2.0  # min hours between sleeve fires on the same pair
@@ -963,7 +964,7 @@ class SignalThresholds(BaseModel):
     # its freed slot pays in BOTH windows (+$163 / +$702); live v2: 2 fills 0W peak 0.00. Mechanism: ATR 0.3-0.5 → runner
     # capped below the ladder, stops cost the same = slot-hog. BTC NOT blacklisted (its fills won the founding window).
     # 🔒 revert ETH: low-ATR (≤0.5%) sleeve fills avg ≥ +0.30%/t on N≥8 in the next GREEN episode.
-    bullrun_pair_blacklist: str = "ONGUSDT,ETHUSDT"
+    bullrun_pair_blacklist: str = "ONGUSDT,ETHUSDT,BTCUSDT"  # BTC added 2026-08-25 (operator ship): 0/4 sleeve fills, −$342, every one a full stop; leader-self-reference thesis; frees a br_rank slot
     # Aug-22 (3): BTC-leader gate — no sleeve entry while BTC is BELOW its own 5m EMA13 (an alt reclaim without BTC's
     # reclaim = alt moving without its leader). Only BTC variable losing in EVERY window: live 6·33%·−$545, founding
     # replay 8·38%·−$220, replay-live 5·40%·−$65 (pooled N=14, 36% WR, −0.35%/t). Discipline-override (N<30).

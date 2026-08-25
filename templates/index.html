@@ -5124,6 +5124,10 @@
                                 <input type="number" step="0.5" id="config-br-latch-r6h" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-3">
                             </div>
                             <div>
+                                <label class="block text-xs text-gray-400 mb-1">PVR ceiling (0=off)</label>
+                                <input type="number" step="0.1" min="0" id="config-br-pvr-max" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-white text-center">
+                            </div>
+                            <div>
                                 <label class="block text-xs text-gray-400 mb-1">Universe size (rank ≤)</label>
                                 <input type="number" step="1" min="1" max="50" id="config-br-universe-size" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="10">
                             </div>
@@ -20876,6 +20880,7 @@
                     ['config-br-amber-above', 'bullrun_amber_above', 65.0],
                     ['config-br-amber-eff', 'bullrun_amber_eff', 0.12],
                     ['config-br-universe-size', 'bullrun_universe_size', 10],
+                    ['config-br-pvr-max', 'bullrun_pvr_max', 1.2],
                     ['config-br-dip-atr-mult', 'bullrun_dip_atr_mult', 0.3],
                     ['config-br-spacing-hours', 'bullrun_pair_spacing_hours', 2.0],
                     ['config-br-max-slots', 'bullrun_max_slots', 4],
@@ -22264,6 +22269,7 @@
                     bullrun_amber_r24: safeFloat(document.getElementById('config-br-amber-r24')?.value ?? 6.0),
                     bullrun_amber_above: safeFloat(document.getElementById('config-br-amber-above')?.value ?? 65.0),
                     bullrun_amber_eff: safeFloat(document.getElementById('config-br-amber-eff')?.value ?? 0.12),
+                    bullrun_pvr_max: parseFloat(document.getElementById('config-br-pvr-max').value) || 0,
                     bullrun_universe_size: parseInt(document.getElementById('config-br-universe-size')?.value || 10) || 10,
                     bullrun_dip_atr_mult: safeFloat(document.getElementById('config-br-dip-atr-mult')?.value ?? 0.3),
                     bullrun_pair_spacing_hours: safeFloat(document.getElementById('config-br-spacing-hours')?.value ?? 2.0),

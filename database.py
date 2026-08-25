@@ -901,6 +901,23 @@ async def init_db():
             "WHERE id=5 AND pair='DOGEUSDT' AND is_paper=0 AND exit_price=0.08995 "
             "AND pnl < -159.0 AND pnl > -161.0"))
 
+        # Aug-25 one-shot repair #2 (operator-approved "ok fix it"): live PROM order 7. The
+        # 02:50 failed open left a 1,355-unit GHOST leg (filled on Binance, DB insert died in
+        # the lock cascade); the reconciler closed its remainder at 03:00:27 for -83.80,
+        # invisible to the books. Binance income (REALIZED_PNL, full episode): -74.62 vs booked
+        # +16.17. Row updated to the full-episode truth; pct = -74.62/(112.18*20) = -3.33%.
+        # Also DOGE order 5's phantom +2.4086% exit-slippage reading (computed vs the stale
+        # fill) becomes the real -0.0216. Guarded on old wrong values = no-op after first boot.
+        await conn.execute(_sql_text(
+            "UPDATE orders SET pnl=-74.62, pnl_percentage=-3.33, "
+            "notes='Aug-25 repair: includes ghost leg (failed-open duplicate; reconciler-closed 03:00:27 at -83.80; Binance income ground truth)' "
+            "WHERE id=7 AND pair='PROMUSDT' AND is_paper=0 "
+            "AND pnl > 16.0 AND pnl < 16.3"))
+        await conn.execute(_sql_text(
+            "UPDATE orders SET exit_slippage_pct=-0.0216 "
+            "WHERE id=5 AND pair='DOGEUSDT' AND is_paper=0 "
+            "AND exit_slippage_pct > 2.0"))
+
 
 async def get_db():
     """Dependency for getting database session"""

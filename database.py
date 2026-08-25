@@ -926,8 +926,14 @@ async def init_db():
         # notional = 1.0 x 81.023 = 81.02, investment = 81.02/20 = 4.05. Guarded on the old
         # wrong values (qty 1.0, investment > 300) = no-op after first boot.
         await conn.execute(_sql_text(
-            "UPDATE orders SET investment=4.0512, notional_value=81.023, entry_desired_notional=81.023 "
+            "UPDATE orders SET investment=4.0512, notional_value=81.023 "
             "WHERE id=16 AND pair='HYPEUSDT' AND is_paper=0 AND quantity=1.0 AND investment > 300"))
+
+        # review d231539 f2: entry_desired_notional records pre-cap INTENT (models.py doc) — the
+        # first boot of repair #3 wrongly set it to the fill; restore the true intended 6278.04.
+        await conn.execute(_sql_text(
+            "UPDATE orders SET entry_desired_notional=6278.04 "
+            "WHERE id=16 AND pair='HYPEUSDT' AND is_paper=0 AND entry_desired_notional > 80 AND entry_desired_notional < 82"))
 
 
 async def get_db():

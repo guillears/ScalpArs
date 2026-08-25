@@ -17733,9 +17733,9 @@
                 // Entry Type Performance
                 const etBody = document.getElementById('entry-type-perf-body');
                 if (data.by_entry_type && Object.keys(data.by_entry_type).length > 0) {
-                    const etColors = { 'MAKER': 'text-emerald-400', 'TAKER': 'text-gray-400', 'TAKER_FALLBACK': 'text-yellow-400', 'SIGNAL_EXPIRED': 'text-red-400' };
+                    const etColors = { 'MAKER+TAKER': 'text-teal-300',  'MAKER': 'text-emerald-400', 'TAKER': 'text-gray-400', 'TAKER_FALLBACK': 'text-yellow-400', 'SIGNAL_EXPIRED': 'text-red-400' };
                     const etConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
-                    const etOrder = ['MAKER', 'TAKER', 'TAKER_FALLBACK'];
+                    const etOrder = ['MAKER', 'MAKER+TAKER', 'TAKER', 'TAKER_FALLBACK'];
                     const sortedTypes = etOrder.filter(t => data.by_entry_type[t]);
                     let totalTrades = 0, totalPnl = 0, totalFees = 0, totalSavings = 0;
                     const rows = sortedTypes.map(etype => {

@@ -3465,7 +3465,41 @@ class TradingEngine:
         if filled_qty and filled_qty > 0:
             fill_price = final_status['average'] or limit_price
             fill_fee = filled_qty * fill_price * maker_fee_rate
-            logger.info(f"[MAKER_ENTRY] {pair}: Partial fill {filled_qty}/{amount} @ {fill_price}")
+            # Aug-25 (40, operator): partial ≥95% → accept as-is (dust top-up not worth a taker
+            # order). Below 95% → IMMEDIATE taker top-up of the remainder, NO re-validation:
+            # a partial means price ran AWAY from the limit (signal confirming, not dying — a
+            # dying signal fills the limit completely on the way through), so re-validation
+            # would ~always pass and only add latency while the market moves. Live HYPE id 16:
+            # 1.0/77.31 filled → booked a $4 trade instead of $314.
+            if filled_qty >= 0.95 * amount:
+                logger.info(f"[MAKER_ENTRY] {pair}: Partial fill {filled_qty}/{amount} @ {fill_price} (≥95% — accepted)")
+                return {
+                    'id': order_id, 'price': fill_price,
+                    'amount': filled_qty, 'entry_fee': fill_fee,
+                    'entry_order_type': 'MAKER',
+                }
+            _rem = amount - filled_qty
+            logger.info(f"[MAKER_ENTRY] {pair}: Partial fill {filled_qty}/{amount} @ {fill_price} — taker top-up for remaining {_rem}")
+            _top = await binance_service.create_market_order(symbol, side, _rem, leverage)
+            # review I2: a top-up that FILLED but reports price 0 (M2 total fallback failure)
+            # must still be BOOKED — discarding it books less size than the live position
+            # (ghost-leg class). Use the maker limit price as the taker-price proxy + CRITICAL.
+            if _top and float(_top.get('amount') or 0) > 0 and float(_top.get('price') or 0) <= 0:
+                logger.critical(f"[MAKER_ENTRY] {pair}: top-up filled {_top.get('amount')} but price UNKNOWN — booking at limit-price proxy {fill_price} (M2_REPAIR will true it up)")
+                _top['price'] = fill_price
+            if _top and float(_top.get('amount') or 0) > 0 and float(_top.get('price') or 0) > 0:
+                _tq = float(_top['amount']); _tp = float(_top['price'])
+                _total_qty = filled_qty + _tq
+                _blend = (filled_qty * fill_price + _tq * _tp) / _total_qty
+                _t_fee_raw = _top.get('fee')
+                _t_fee = float(_t_fee_raw) if _t_fee_raw and float(_t_fee_raw) > 0 else _tq * _tp * taker_fee_rate
+                logger.info(f"[MAKER_ENTRY] {pair}: MAKER+TAKER complete — {_total_qty} @ blended {_blend:.10g} (maker {filled_qty}, taker {_tq})")
+                return {
+                    'id': _top.get('id') or order_id, 'price': _blend,
+                    'amount': _total_qty, 'entry_fee': fill_fee + _t_fee,
+                    'entry_order_type': 'MAKER+TAKER',
+                }
+            logger.warning(f"[MAKER_ENTRY] {pair}: top-up FAILED — keeping the partial {filled_qty} (protected by stops as usual)")
             return {
                 'id': order_id, 'price': fill_price,
                 'amount': filled_qty, 'entry_fee': fill_fee,
@@ -6508,6 +6542,7 @@ class TradingEngine:
         
         # Calculate notional and quantity
         notional_value = investment * leverage
+        _req_qty_snapshot = None
         quantity = notional_value / current_price
         
         # Determine fee rate and entry type
@@ -6542,6 +6577,7 @@ class TradingEngine:
 
             if maker_enabled:
                 # --- Maker entry flow ---
+                _req_qty_snapshot = quantity
                 result = await self._try_maker_entry(
                     symbol=symbol, side=side, amount=quantity,
                     leverage=int(leverage), direction=direction, pair=pair,
@@ -6607,6 +6643,7 @@ class TradingEngine:
                     logger.error(f"[MAKER_ENTRY] {pair}: Both maker and fallback failed")
                     return None
             else:
+                _req_qty_snapshot = quantity
                 result = await binance_service.create_market_order(
                     symbol=symbol, side=side, amount=quantity, leverage=int(leverage)
                 )
@@ -6731,8 +6768,10 @@ class TradingEngine:
         # both from the ACTUAL fill; exact for full fills too (uses real fill price).
         if actual_price and quantity:
             _real_notional = float(actual_price) * float(quantity)
-            if abs(_real_notional - notional_value) / max(notional_value, 1e-9) > 0.001:
-                logger.warning(f"[PARTIAL_FILL] {pair}: booking ACTUAL size — notional {notional_value:,.2f} → {_real_notional:,.2f}, investment {investment:,.2f} → {_real_notional/leverage:,.2f}")
+            # review (d231539 f1): tag PARTIAL_FILL only on a real SIZE shortfall — ordinary
+            # taker slippage reprices the notional a few bp on full fills and must not alarm.
+            if _req_qty_snapshot and float(quantity) < 0.995 * _req_qty_snapshot:
+                logger.warning(f"[PARTIAL_FILL] {pair}: booking ACTUAL size — qty {quantity}/{_req_qty_snapshot}, notional {notional_value:,.2f} → {_real_notional:,.2f}")
             notional_value = _real_notional
             investment = _real_notional / leverage
         order = Order(

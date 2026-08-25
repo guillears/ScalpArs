@@ -12036,7 +12036,21 @@ class TradingEngine:
             )
             db.add(pair_data)
 
-        await locked_commit(db)
+        # Aug-25 (35): pair_data is a DISPLAY CACHE — one lost update is harmless, but its
+        # commit failing used to raise out of scan_and_trade and ABORT THE WHOLE SCAN CYCLE
+        # (02:29:36 live: an entry-burst session's autoflush held SQLite's write lock across
+        # its HTTP awaits; this commit burned its busy-timeouts INSIDE the fair queue and the
+        # scan died mid-batch). Fail-open with a warning and keep scanning.
+        try:
+            await locked_commit(db)
+        except Exception as _pd_err:
+            # No retry: rollback discards the ORM mutations, so a retry would commit nothing
+            # and report success. The next scan (~2 min) rewrites every pair_data row anyway.
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            logger.warning(f"[PAIR_DATA] {pair}: cache write failed ({str(_pd_err)[:60]}) — skipped, next scan rewrites it (display-only)")
     
     async def check_realtime_stop_loss(self, pair: str, current_price: float):
         """

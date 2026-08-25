@@ -48,6 +48,49 @@ engine = create_async_engine(
     connect_args={"timeout": 5},
 )
 
+# Aug-25 (36): WRITE-TRANSACTION HOLD TELEMETRY. Three live closes starved 35s+ behind a
+# single long-lived write transaction; the commit queue can't see it (the SQLite file lock is
+# taken at first WRITE, i.e. flush time, and held until that session commits). These passive
+# listeners stamp each connection's first write statement and log [TXN_HOLD] when the write→
+# commit span exceeds 3s — naming the holder instead of guessing. Fail-open everywhere.
+from sqlalchemy import event as _sa_event
+import time as _tx_time
+import logging as _tx_logging
+_txn_first_write = {}
+
+def _install_txn_telemetry(sync_engine):
+    @_sa_event.listens_for(sync_engine, "after_cursor_execute")
+    def _stmt(conn, cursor, statement, parameters, context, executemany):
+        try:
+            _st = (statement or "").lstrip()[:10].upper()
+            if _st.startswith(("INSERT", "UPDATE", "DELETE", "REPLACE")):
+                k = id(conn)
+                if k not in _txn_first_write:
+                    _txn_first_write[k] = (_tx_time.monotonic(), (statement or "")[:110])
+        except Exception:
+            pass
+
+    def _txn_end(conn, kind):
+        try:
+            v = _txn_first_write.pop(id(conn), None)
+            if v is not None:
+                _dur = _tx_time.monotonic() - v[0]
+                if _dur > 3.0:
+                    _tx_logging.getLogger("database").warning(
+                        f"[TXN_HOLD] write transaction held {_dur:.1f}s before {kind} — first write: {v[1]}")
+        except Exception:
+            pass
+
+    @_sa_event.listens_for(sync_engine, "commit")
+    def _cm(conn):
+        _txn_end(conn, "COMMIT")
+
+    @_sa_event.listens_for(sync_engine, "rollback")
+    def _rb(conn):
+        _txn_end(conn, "ROLLBACK")
+
+_install_txn_telemetry(engine.sync_engine)
+
 # Async session factory
 AsyncSessionLocal = sessionmaker(
     engine,

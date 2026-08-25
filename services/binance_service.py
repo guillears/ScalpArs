@@ -808,6 +808,24 @@ class BinanceService:
             _aid = res.get('algoId') if isinstance(res, dict) else None
             return str(_aid) if _aid else None
         except Exception as e:
+            # Aug-25 live (PROM): -4130 'an open stop already exists' = an ORPHAN backstop from a
+            # failed open attempt (placed, then the DB insert died). Backstops are the ONLY algo
+            # orders this bot uses, so cancel-all-for-symbol is safe: clear the orphan, retry once.
+            if '-4130' in str(e):
+                try:
+                    await self.exchange.fapiPrivateDeleteAlgoOpenOrders({'symbol': pair})
+                    logger.warning(f"[BINANCE] {pair}: cleared orphan algo order(s) after -4130 — retrying backstop place")
+                    res = await self.exchange.fapiPrivatePostAlgoOrder({
+                        'algoType': 'CONDITIONAL', 'symbol': pair,
+                        'side': 'SELL' if direction == 'LONG' else 'BUY',
+                        'type': 'STOP_MARKET', 'triggerPrice': _trig,
+                        'closePosition': 'true', 'workingType': 'MARK_PRICE', 'priceProtect': 'TRUE',
+                    })
+                    _aid = res.get('algoId') if isinstance(res, dict) else None
+                    if _aid:
+                        return str(_aid)
+                except Exception as e2:
+                    logger.error(f"[BINANCE] backstop -4130 recovery failed for {pair}: {e2}")
             self._detect_ban(e)
             logger.error(f"[BINANCE] backstop place failed for {pair}: {e}")
             return None

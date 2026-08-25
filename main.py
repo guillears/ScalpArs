@@ -81,6 +81,12 @@ async def monitor_loop():
     _RECONCILE_INTERVAL = 60
     while not should_stop:
         try:
+            # Aug-25 (35): yield to any in-flight close commit — this loop's 1Hz write stream
+            # was the writer that starved the DOGE/SOL close commits (35s, twice). Bounded wait.
+            _cp_wait = 0.0
+            while getattr(trading_engine, 'close_db_priority', 0) > 0 and _cp_wait < 30.0:
+                await asyncio.sleep(0.1)
+                _cp_wait += 0.1
             async with AsyncSessionLocal() as db:
                 await trading_engine.initialize(db)
                 await trading_engine.update_open_positions(db)

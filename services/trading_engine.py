@@ -1291,6 +1291,9 @@ class TradingEngine:
         # Strong refs to fire-and-forget tasks (funding stamps) — asyncio only keeps weak refs,
         # so an unreferenced task can be garbage-collected mid-flight.
         self._bg_tasks: set = set()
+        # Aug-25 (35): while >0, the 1s monitor loop pauses BETWEEN cycles so a live close's
+        # commit never starves behind the loop's write stream (DOGE/SOL closes burned 5x5s twice).
+        self.close_db_priority = 0
         self.is_running = False
         self.is_paper_mode = True
         self.paper_balance = config.trading_config.paper_balance
@@ -3589,9 +3592,19 @@ class TradingEngine:
             trades = await binance_service.fetch_my_trades(symbol, limit=10)
             if trades:
                 close_side = 'sell' if order.direction == 'LONG' else 'buy'
-                relevant = [t for t in trades if t['side'] == close_side]
+                # Aug-25 live (DOGE id 5, -$160 recorded vs -$35 real): with no time bound this
+                # grabbed YESTERDAY'S fill for the same pair. Only trades from this order's
+                # lifetime qualify, newest first.
+                _lo_ms = 0
+                try:
+                    if order.opened_at is not None:
+                        _lo_ms = int((order.opened_at - datetime(1970, 1, 1)).total_seconds() * 1000) - 60000
+                except Exception:
+                    _lo_ms = 0
+                relevant = [t for t in trades if t['side'] == close_side
+                            and (t.get('timestamp') or 0) >= _lo_ms]
                 if relevant:
-                    latest = relevant[-1]
+                    latest = max(relevant, key=lambda t: (t.get('timestamp') or 0))
                     logger.info(
                         f"[FILL_PRICE] {order.pair}: Found actual fill @ {latest['price']} "
                         f"(side={latest['side']}, time={latest['datetime']})"
@@ -4866,6 +4879,10 @@ class TradingEngine:
                 logger.info(f"[BULLRUN_LONG] {pair}: GREEN dip-reclaim opened (rank={rank} atr={atr_pct:.2f}% id={order.id})")
         except Exception as e:
             logger.error(f"[BULLRUN_LONG] {pair}: open failed: {e}")
+            try:
+                await db.rollback()  # Aug-25: a failed open must not poison the scan session (PUMP cascade)
+            except Exception:
+                pass
             self._record_filter_block("OPEN_FAILED_BULLRUN", "LONG")
 
     async def _maybe_open_bounce_long(self, db, pair, indicators, isolate=False, entry_fields=None):
@@ -7467,6 +7484,7 @@ class TradingEngine:
         # elapsed value close to 5s indicates the attempt hit the timeout ceiling.
         _db_total_wait_start = time.monotonic()
 
+        self.close_db_priority += 1  # monitor loop yields between cycles while a close commits
         for _db_attempt in range(1, _max_db_retries + 1):
             _db_attempt_start = time.monotonic()
             try:
@@ -7715,6 +7733,8 @@ class TradingEngine:
                         f"(final_attempt_waited={_attempt_elapsed:.2f}s, total_waited={_total_elapsed:.2f}s): "
                         f"{_err_str[:120]}"
                     )
+
+        self.close_db_priority = max(0, self.close_db_priority - 1)
 
         # Aug-24 (33)/M6: funding stamp runs OFF the close funnel (it held an HTTP await + commit
         # inside the contention window) as a fire-and-forget task with its own session. Guarded by

@@ -2359,7 +2359,7 @@ class TradingEngine:
                 func.coalesce(func.sum(Order.total_fee), 0),
                 func.count(Order.id)
             ).where(
-                and_(Order.status == "CLOSED", Order.closed_at >= cutoff_24h)
+                and_(Order.status == "CLOSED", Order.is_paper == self.is_paper_mode, Order.closed_at >= cutoff_24h)
             )
         )
         row_24h = result_24h.one()
@@ -2372,7 +2372,7 @@ class TradingEngine:
                 func.count(Order.id),
                 func.min(Order.closed_at),
             ).where(
-                and_(Order.status == "CLOSED", Order.closed_at >= cutoff_12h)
+                and_(Order.status == "CLOSED", Order.is_paper == self.is_paper_mode, Order.closed_at >= cutoff_12h)
             )
         )
         row_12h = result_12h.one()
@@ -2386,7 +2386,7 @@ class TradingEngine:
         # burn rate immediately after a restart.
         result_oldest_24h = await db.execute(
             select(func.min(Order.closed_at)).where(
-                and_(Order.status == "CLOSED", Order.closed_at >= cutoff_24h)
+                and_(Order.status == "CLOSED", Order.is_paper == self.is_paper_mode, Order.closed_at >= cutoff_24h)
             )
         )
         oldest_24h = result_oldest_24h.scalar()

@@ -5032,7 +5032,7 @@
                             <label class="block text-sm text-gray-400 mb-2">Fee Reserve — absolute min <span class="text-xs text-gray-500">(leg 1 of 3; micro-balance safety)</span></label>
                             <div class="flex">
                                 <span class="bg-white/10 border border-white/10 border-r-0 rounded-l-lg px-4 py-2 text-gray-400">$</span>
-                                <input type="number" id="config-fee-reserve-usd" min="0" step="5" class="flex-1 bg-white/5 border border-white/10 rounded-r-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="75">
+                                <input type="number" id="config-fee-reserve-usd" min="0" step="5" class="flex-1 bg-white/5 border border-white/10 rounded-r-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="15">
                             </div>
                             <p class="text-xs text-gray-500 mt-1">🧮 Reserve = <b>max( $min , % × total equity , h × live BNB burn )</b> — never traded, always fuels the auto-swap. Set a leg to 0 to disable it.</p>
                         </div>
@@ -20327,7 +20327,7 @@
                             ? `→ active: trade $${Math.round(tgt).toLocaleString()} / reserve $${Math.round(Math.max(0, bal - tgt)).toLocaleString()} @ $${Math.round(bal).toLocaleString()}`
                             : `→ below first tier: full balance tradeable`;
                     };
-                    { const _fr = document.getElementById('config-fee-reserve-usd'); if (_fr) _fr.value = (config.investment.fee_reserve_usd !== undefined && config.investment.fee_reserve_usd !== null) ? config.investment.fee_reserve_usd : 75; }
+                    { const _fr = document.getElementById('config-fee-reserve-usd'); if (_fr) _fr.value = (config.investment.fee_reserve_usd !== undefined && config.investment.fee_reserve_usd !== null) ? config.investment.fee_reserve_usd : 15; }
                     { const _fh = document.getElementById('config-fee-reserve-hours'); if (_fh) _fh.value = (config.investment.fee_reserve_hours !== undefined && config.investment.fee_reserve_hours !== null) ? config.investment.fee_reserve_hours : 12; }
                     { const _fp = document.getElementById('config-fee-reserve-pct'); if (_fp) _fp.value = (config.investment.fee_reserve_pct !== undefined && config.investment.fee_reserve_pct !== null) ? config.investment.fee_reserve_pct : 2.5; }
                     const s = (config.investment.reserve_schedule || '').trim();

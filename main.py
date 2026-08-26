@@ -757,7 +757,8 @@ def _reserve_split(free_balance: float, deployed_margin: float = 0.0):
         _fee_res = max(_fee_res, _fee_eq * _fee_pct / 100.0)
     _fee_hrs = max(0.0, float(getattr(_inv, 'fee_reserve_hours', 0.0) or 0.0))
     _burn = float(getattr(trading_engine, '_bnb_burn_rate', 0.0) or 0.0)
-    if _fee_hrs > 0 and _burn > 0:
+    # Aug-26: burn leg gated on data maturity — mirror of calculate_position_size (B5 reset artifact)
+    if _fee_hrs > 0 and _burn > 0 and getattr(trading_engine, '_bnb_data_mature', False):
         _fee_res = max(_fee_res, _fee_hrs * _burn)
     reserve += _fee_res
     reserve = min(reserve, max(0.0, free_balance))

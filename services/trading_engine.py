@@ -2632,7 +2632,10 @@ class TradingEngine:
             _fee_res = max(_fee_res, _fee_eq * _fee_pct / 100.0)
         _fee_hrs = max(0.0, float(getattr(tc.investment, 'fee_reserve_hours', 0.0) or 0.0))
         _burn = float(getattr(self, '_bnb_burn_rate', 0.0) or 0.0)
-        if _fee_hrs > 0 and _burn > 0:
+        # Aug-26 (B5 boot): gate the burn leg on data maturity — post-reset the runtime clock
+        # restarts, so fees/0.5h read $82/hr and the leg locked $979 away from sizing. The swap
+        # machinery was already maturity-gated (May-25); the reserve leg must match it.
+        if _fee_hrs > 0 and _burn > 0 and getattr(self, '_bnb_data_mature', False):
             _fee_res = max(_fee_res, _fee_hrs * _burn)
         reserve += _fee_res
 

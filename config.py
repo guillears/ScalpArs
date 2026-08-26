@@ -1695,7 +1695,7 @@ class SignalThresholds(BaseModel):
     # or cumulative dollar-delta vs 2x < 0; TRIPWIRE: any TWO never-positive quiet losses ->
     # immediate revert without waiting for N=8. 3x step / leverage route / boundary move: only at
     # the C5+step-gate merged read (N>=30) with BE-compat on observed losses. 0 = off.
-    long_unmatched_quiet_mult: float = 2.5      # INVEST multiplier (replaces the UNMATCHED 2x)
+    long_unmatched_quiet_mult: float = 2.0      # 2026-08-25 operator: 2.5 'too aggressive' → 2.0 (parity with the base UNMATCHED cell); review at next batch read
     long_unmatched_quiet_lev_mult: float = 1.0  # LEV multiplier — KEEP 1.0 until BE-compat passes
                                                 # on observed quiet losses (locked rule; 19-0 = untestable)
     long_unmatched_quiet_pvr_max: float = 0.68

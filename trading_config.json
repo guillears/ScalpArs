@@ -522,7 +522,7 @@
     "long_unmatched_mult_pvr_max": 0.9,
     "long_unmatched_demux_inv_mult": 1.0,
     "long_unmatched_demux_lev_mult": 1.0,
-    "long_unmatched_quiet_mult": 2.5,
+    "long_unmatched_quiet_mult": 2.0,
     "long_unmatched_quiet_lev_mult": 1.0,
     "long_unmatched_quiet_pvr_max": 0.68,
     "flip_short_negdi_mult": 2.0,

@@ -3515,3 +3515,6 @@ Operator: "why is it not immediate?" Signals are closed-5m-bar based (fastest me
 **REARM window 1 (01:10→04:11)**: 7 fills 2W/5L −$180.30 = LOSING window, strike 1 of the locked ≤1-of-3 gate.
 **SHIPS (operator "Ship both") **: ① `bullrun_pvr_max=1.2` (blocked cohort B3+B4 7·14%·−$350, 1.06σ; BELOW N≥30 gate — acknowledged override; observation = refusal logs + BULLRun_PVR_MAX counter + blocked_pvr episode column, scored retroactively at reviews; phantom seeding NOT available - retired Jul-30). ② BTCUSDT → bullrun_pair_blacklist (0/4, −$342, all full stops; leader-self-reference thesis). Review: 2 criticals caught pre-push (JSON keys at root = inert blacklist; phantom claim false) — fixed.
 **BNB swap precision fix** `8ebfb03` ($77.64 stranded on spot — recovered) + Futures/Spot card split with amber tripwire `435d2af`.
+
+## 2026-08-25 (41) — UNMATCHED_QUIET 2.5× → 2.0× (operator sizing trim)
+Operator: "too aggressive, no need of the 2.5" after SHIB id10 (2.5× quiet fire, −$103 full stop) vs SOL id1 (+$66). Config `thresholds.long_unmatched_quiet_mult` 2.5→2.0 (config.py default + JSON). Review queued at next batch read via Multiplier Cell Performance rows, per-era recorded-CF. Re-raise only through locked multiplier gates (N≥30/WR≥70/avg≥+0.10/Total$>0).

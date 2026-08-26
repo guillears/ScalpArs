@@ -1,0 +1,43 @@
+MASTER POOL + B3 — all current filters applied (CORRECTED 2026-08-24: per-era RECORDED counterfactuals used,
+not just this week's ships — operator-caught: B2 is NOT negative under the current stack)
+Generated from the 2026-08-24 12:25 CSV · B3 = 2026-08-11 → 08-24 (pre-reset archive: BASELINE3_batch0811-0824_orders_prereset.csv)
+Reference baseline for the LIVE batch (B4) starting at the reset.
+
+era                    sleeve         | AS TRADED N · WR · net$   | CURRENT STACK N · WR · net$ | source / Δ$
+BASE (24d)             Flip-Short     |  31 ·  81% ·   +$589      | 24 · 83% · +$629            | re-screen + fan filter (+39)
+                       Mom-Long       |  41 ·  85% · +$3,506      | same                        | —
+                       Mom-Short      |  19 ·  79% ·   +$794      | same                        | —
+                       **total**      |  91 ·  82% · +$4,890      | 84 · 83% · +$4,929          | +39
+----------------------------------------------------------------------------------------------------------
+B1 (21d)               **total**      | 240 ·  49% ·   +$340      | +$340 (NO CF COMPUTED)      | conservative: no recorded
+                                      |                           |                             | counterfactual exists; the
+                                      |                           |                             | Aug-10 ships were derived
+                                      |                           |                             | largely from B1's losers →
+                                      |                           |                             | true figure likely HIGHER
+----------------------------------------------------------------------------------------------------------
+B2 (10d)               **total**      | 109 ·  52% ·   −$921      | 47 · 70.2% · +$1,602        | RECORDED full-stack CF at
+                                      | (97 full-size · 52.6%)    |                             | the Aug-10 close (locks,
+                                      |                           |                             | gates, bRSI45, chase
+                                      |                           |                             | dormancy, crowd-sprint
+                                      |                           |                             | de-mux — all in today's
+                                      |                           |                             | stack) · Δ +2,523
+----------------------------------------------------------------------------------------------------------
+B3 (13.5d)             BullRun-Long   |  42 ·  33% ·   −$663      | 12 · 75% · +$2,224          | sleeve gates (in-sample)
+                       Flip-Short     |  10 ·  50% ·   −$354      |  5 · 80% · +$342            | fan bearish-BTC filter
+                       Mom-Long       |  28 ·  79% ·   +$750      | same                        | —
+                       Mom-Short      |   2 ·  50% ·    −$39      | same                        | —
+                       Spike-Chase    |   1 ·   0% ·   −$409      | same                        | —
+                       Spike-Fade     |  20 ·  85% ·   +$366      | same                        | —
+                       **total**      | 103 ·  57% ·   −$348      | 68 · 78% · +$3,234          | +3,582
+----------------------------------------------------------------------------------------------------------
+MASTER TOTAL (68d)                    | 543 ·  57% · +$3,961      | ≈ +$10,105 (mixed method)   | +6,144
+
+Compounding exercise (per-era % on the ~$3,000 era bases, chained):
+  BASE ×2.64 (24d) → B1 ×1.11 (21d) → B2 ×1.53 (10d) → B3 ×2.08 (13.5d)  =  ×9.4 over 68 days ≈ +3.4%/day
+  $5,000 on day 1 → ≈ $46,900. As traded: ×1.79 → ≈ $9,000 (+0.9%/day).
+
+Caveats (read before quoting): B2's CF was computed with the Aug-10 stack (today's is stricter; direction on
+B2's fills unknown); B1 has NO counterfactual (conservative as-traded figure used); B3's sleeve leg is
+in-sample (ceiling, expect ~half forward); zero slippage/funding in all paper numbers. Defensible planning
+range: +1.5–3%/day. Method note for future tables (operator-caught): always use each era's RECORDED
+current-stack CF — never re-apply only the newest ships to old eras.

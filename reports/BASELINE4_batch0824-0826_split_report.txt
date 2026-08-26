@@ -1,0 +1,25 @@
+================================================================================
+BASELINE 4 — FIRST LIVE BATCH (2026-08-24 21:02 → 2026-08-26, pre-reset archive)
+================================================================================
+THE MACHINERY-SHAKEDOWN BATCH: first live money. 14 fixes shipped DURING the batch
+(fair write queue, sleeve pattern-gate unblock 02:28 05ad0282, ghost-leg class, fill
+price/size truth, 53s lock holder, PVR<=1.2 + BTC sleeve blacklist 29d9aca, taker
+top-up fdcdefc, quiet mult 2.5->2.0 590e8b0). READ WITH ERA BOUNDARIES — this batch
+is NOT a clean strategy sample; B5 (post-reset) is the clean-stack forward test.
+
+TOTAL       N=20 · WR 55% · avg -0.30% · net $-238.46
+Momentum    N=12 · WR 75% · avg +0.12% · net $+52.56
+BullRun     N= 7 · WR 29% · avg -0.82% · net $-180.29   <- one REARM whipsaw window (strike 1 of door gate);
+                              pre-fix biased cohort until 02:28; PROM incl ghost leg
+Spike Fade  N= 1 · WR 0% · avg -1.58% · net $-110.73   <- single squeeze tail (stop saved ~-$295 -> -$110.73)
+
+LONGs       N=12 · WR 42% · avg -0.55% · net $-197.80
+SHORTs      N= 8 · WR 75% · avg +0.09% · net $-40.67
+
+Bookkeeping: reconciled to Binance income TO THE CENT (repairs: DOGE id5, PROM id7
+incl ghost -83.80, HYPE id16 partial-fill truth). Final short cluster (ids 17-20)
+= 4/4 winners +$58.63 on the fully-fixed stack. HYPE id16 = the $4 partial that
+motivated the MAKER+TAKER top-up ship.
+Counterfactual under full current stack (PVR+BTC gates, from trade 1): 11 tr · 55% ·
+-$199.93 (in-sample, haircut before quoting).
+================================================================================

@@ -907,50 +907,11 @@ async def init_db():
 
         await conn.run_sync(_backfill_choppy_split)
 
-        # Aug-25 one-shot repair (operator-approved "ship the fix"): live DOGE order 5's close
-        # was booked with YESTERDAY'S fill (0.08995) by the unbounded fill lookup during the
-        # 02:50 lock cascade — the real fill was 0.09219 (EXIT_SLIPPAGE log line). pnl −160.08
-        # → −35.51 (same fee formula: gross −32.27 − entry 0.9291 − exit 2.3082). The strict
-        # WHERE (all the old wrong values) makes this a no-op everywhere except that exact row,
-        # and a no-op again on every later boot.
-        from sqlalchemy import text as _sql_text
-        await conn.execute(_sql_text(
-            "UPDATE orders SET exit_price=0.09219, exit_fee=2.3082, total_fee=3.2373, "
-            "pnl=-35.51, pnl_percentage=-0.69 "
-            "WHERE id=5 AND pair='DOGEUSDT' AND is_paper=0 AND exit_price=0.08995 "
-            "AND pnl < -159.0 AND pnl > -161.0"))
-
-        # Aug-25 one-shot repair #2 (operator-approved "ok fix it"): live PROM order 7. The
-        # 02:50 failed open left a 1,355-unit GHOST leg (filled on Binance, DB insert died in
-        # the lock cascade); the reconciler closed its remainder at 03:00:27 for -83.80,
-        # invisible to the books. Binance income (REALIZED_PNL, full episode): -74.62 vs booked
-        # +16.17. Row updated to the full-episode truth; pct = -74.62/(112.18*20) = -3.33%.
-        # Also DOGE order 5's phantom +2.4086% exit-slippage reading (computed vs the stale
-        # fill) becomes the real -0.0216. Guarded on old wrong values = no-op after first boot.
-        await conn.execute(_sql_text(
-            "UPDATE orders SET pnl=-74.62, pnl_percentage=-3.33, "
-            "notes='Aug-25 repair: includes ghost leg (failed-open duplicate; reconciler-closed 03:00:27 at -83.80; Binance income ground truth)' "
-            "WHERE id=7 AND pair='PROMUSDT' AND is_paper=0 "
-            "AND pnl > 16.0 AND pnl < 16.3"))
-        await conn.execute(_sql_text(
-            "UPDATE orders SET exit_slippage_pct=-0.0216 "
-            "WHERE id=5 AND pair='DOGEUSDT' AND is_paper=0 "
-            "AND exit_slippage_pct > 2.0"))
-
-        # Aug-25 one-shot repair #3: live HYPE order 16 — maker entry partially filled (1.0 of
-        # 77.31, remainder canceled at the 20s timeout) but investment/notional booked the
-        # INTENDED size; quantity was already correct so P&L math was never wrong. Real:
-        # notional = 1.0 x 81.023 = 81.02, investment = 81.02/20 = 4.05. Guarded on the old
-        # wrong values (qty 1.0, investment > 300) = no-op after first boot.
-        await conn.execute(_sql_text(
-            "UPDATE orders SET investment=4.0512, notional_value=81.023 "
-            "WHERE id=16 AND pair='HYPEUSDT' AND is_paper=0 AND quantity=1.0 AND investment > 300"))
-
-        # review d231539 f2: entry_desired_notional records pre-cap INTENT (models.py doc) — the
-        # first boot of repair #3 wrongly set it to the fill; restore the true intended 6278.04.
-        await conn.execute(_sql_text(
-            "UPDATE orders SET entry_desired_notional=6278.04 "
-            "WHERE id=16 AND pair='HYPEUSDT' AND is_paper=0 AND entry_desired_notional > 80 AND entry_desired_notional < 82"))
+        # Aug-25/26: the FIVE one-shot row repairs (DOGE id5 stale-fill + slippage field,
+        # PROM id7 ghost leg, HYPE id16 partial-size + desired-notional restore) LIVED HERE —
+        # executed + verified on the pre-reset DB, then REMOVED before the B5 reset so no
+        # id-keyed SQL faces a fresh database (review-queued removal; full text in git
+        # history at 11f9a34 / 93eb696 / d231539 / fdcdefc).
 
 
 async def get_db():

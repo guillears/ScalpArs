@@ -8551,10 +8551,13 @@
             if (src === 'NONEXP_CALM3D') tags.push('CALM3D');
             else if (src.endsWith('_PROBE')) tags.push(src.replace('_PROBE', ''));
             else if (src === 'UNMATCHED') {
+                // Aug-26 (operator): render the ROW'S recorded multiplier — hardcoded numbers
+                // went stale the day the quiet cell moved 2.5→2.0.
                 const pvr = o.entry_pair_volume_ratio;
-                if (pvr != null && pvr < 0.68) tags.push('QUIET 2.5×');
-                else if (pvr != null && pvr >= 0.9) tags.push('DE-MUX 1×');
-                else tags.push('UNM 2×');
+                const _m = (o.cell_multiplier != null) ? `${o.cell_multiplier}×` : '';
+                if (pvr != null && pvr < 0.68) tags.push(`QUIET ${_m || '2×'}`);
+                else if (pvr != null && pvr >= 0.9) tags.push(`DE-MUX ${_m || '1×'}`);
+                else tags.push(`UNM ${_m || '2×'}`);
             } else if (src) tags.push(src.length > 12 ? src.slice(0, 12) + '…' : src);
             const rsi = o.entry_rsi;
             if (rsi != null && rsi > 65 && rsi <= 70) tags.push('RSICEIL');

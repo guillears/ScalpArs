@@ -141,8 +141,11 @@ async def scan_loop():
 async def bnb_swap_loop():
     """Periodic loop to check BNB balance and auto-swap USDT to BNB for fee coverage."""
     global should_stop
-    interval = config.trading_config.bnb_check_interval_hours * 3600
-    logger.info(f"[BNB_LOOP] BNB swap loop started (every {config.trading_config.bnb_check_interval_hours}h)")
+    # Aug-26: wake every 15 min — the ACTION stays gated to bnb_check_interval_hours inside
+    # bnb_scheduled_check; frequent wakes exist so the live emergency bypass can actually
+    # notice a threshold breach between the 6h routine swaps (B5 gap: BNB $11 for hours unseen).
+    interval = 900
+    logger.info(f"[BNB_LOOP] BNB swap loop started (wake 15min; routine action gated {config.trading_config.bnb_check_interval_hours}h; live emergency bypass below 25% of threshold)")
     await asyncio.sleep(60)
     while not should_stop:
         try:

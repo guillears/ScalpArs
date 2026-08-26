@@ -2466,8 +2466,27 @@ class TradingEngine:
         # Only the swap action is gated below.
         fees_24h = await self._recompute_bnb_burn_rate(db)
 
+        # Aug-26 (B5, operator-caught): LIVE EMERGENCY BYPASS of the interval gate. The old
+        # structure only evaluated the threshold on 6h wakes (the paper fee-deduction path was
+        # the only event-driven check) — live BNB could breach the threshold for hours unseen
+        # (observed: BNB $11 vs threshold $114, runway 1h, next wake 20:58). If data is MATURE
+        # and live BNB sits below 25% of the extrapolated threshold, treat as emergency: bypass
+        # the gate (sanity check + all downstream guards still apply).
+        _bnb_gate_force = force
+        if (not force and not self.is_paper_mode and self._bnb_data_mature
+                and self._bnb_emergency_threshold > 0):
+            try:
+                _bal_now = await binance_service.get_balance()
+                _px_now = await binance_service.get_bnb_price()
+                _bnb_now_usd = (_bal_now.get('bnb_total') or 0) * _px_now if (_bal_now and _bal_now.get('ok', True) and _px_now and _px_now > 0) else None  # review I1: a fetch-failure zeros payload must not fake an emergency
+                if _bnb_now_usd is not None and _bnb_now_usd < 0.25 * self._bnb_emergency_threshold:
+                    logger.warning(f"[BNB_EMERGENCY] live BNB ${_bnb_now_usd:.2f} < 25% of threshold ${self._bnb_emergency_threshold:.2f} — bypassing the {int(tc.bnb_check_interval_hours or 6)}h interval gate")
+                    _bnb_gate_force = True
+            except Exception as _em_err:
+                logger.warning(f"[BNB_EMERGENCY] pre-gate balance probe failed: {_em_err}")
+
         # Interval gate (skip swap ACTION if last check was within bnb_check_interval_hours).
-        if not force and self._last_bnb_check is not None:
+        if not _bnb_gate_force and self._last_bnb_check is not None:
             interval_hours = max(1, int(tc.bnb_check_interval_hours or 6))
             elapsed = (datetime.utcnow() - self._last_bnb_check).total_seconds()
             if elapsed < interval_hours * 3600:

@@ -12858,7 +12858,11 @@ async def investor_withdraw(body: InvestorWithdraw, db: AsyncSession = Depends(g
 class FundWithdraw(BaseModel):
     amount: float
     note: Optional[str] = None
-    nav_override: Optional[float] = None  # register an ALREADY-EXECUTED exchange withdrawal at its historical NAV
+    nav_override: Optional[float] = None  # manual override (advanced; rarely needed now)
+    already_executed: bool = False  # Aug-27: withdrawal already happened on the exchange → server RECONSTRUCTS
+    # the registration NAV as (current equity + amount) / total shares. Exact and timing-independent for a
+    # pro-rata burn: equity already dropped by `amount` with no shares burned, so adding it back recovers the
+    # continuous NAV; burning at that price leaves every ownership %% unchanged and post-registration NAV == it.
 
 
 @app.post("/api/investors/withdraw-all")
@@ -12872,10 +12876,20 @@ async def fund_withdraw(body: FundWithdraw, db: AsyncSession = Depends(get_db)):
     invs = (await db.execute(select(Investor).where(Investor.shares > 0))).scalars().all()
     if not invs:
         raise HTTPException(400, "No investors with shares")
+    _reconstructed = False
     if body.nav_override is not None:
         if body.nav_override <= 0:
             raise HTTPException(400, "nav_override must be positive")
         nav = float(body.nav_override)
+    elif body.already_executed:
+        _shares_now = await _get_total_shares(db)
+        if _shares_now <= 0:
+            raise HTTPException(400, "No shares outstanding")
+        _equity_now = await _get_portfolio_value(db)
+        nav = (_equity_now + body.amount) / _shares_now
+        if nav <= 0:
+            raise HTTPException(503, "NAV unavailable — retry shortly")
+        _reconstructed = True
     else:
         nav = await _get_nav_per_share(db)
         if nav <= 0:
@@ -12897,11 +12911,13 @@ async def fund_withdraw(body: FundWithdraw, db: AsyncSession = Depends(get_db)):
             sh = inv.shares
         inv.shares = max(0.0, inv.shares - sh)
         inv.total_withdrawn += amt
-        _note = (body.note or "Pro-rata fund withdrawal") + (f" (registered at NAV {nav:.4f})" if body.nav_override else "")
+        _note = (body.note or "Pro-rata fund withdrawal") + (
+            f" (registered at reconstructed NAV {nav:.4f})" if _reconstructed
+            else (f" (registered at NAV {nav:.4f})" if body.nav_override else ""))
         _log_investor_ledger(db, inv.id, "WITHDRAW", amt, nav, -sh, note=_note)
         split.append({"investor": inv.name, "amount": amt, "shares_burned": round(sh, 6)})
     await db.flush()
-    return {"ok": True, "nav": round(nav, 6), "split": split}
+    return {"ok": True, "nav": round(nav, 6), "reconstructed": _reconstructed, "split": split}
 
 
 @app.patch("/api/investors/{investor_id}")

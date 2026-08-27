@@ -22621,7 +22621,11 @@
                 <input type="number" id="fw-amount" min="0" step="10" class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white mb-3">
                 <label class="block text-xs text-gray-400 mb-1">Note (optional)</label>
                 <input type="text" id="fw-note" class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white mb-3">
-                <label class="block text-xs text-gray-500 mb-1">NAV override (advanced — blank = current NAV)</label>
+                <label class="flex items-center gap-2 text-xs text-gray-300 mb-3" title="The withdrawal already left the exchange, so displayed NAV is crashed. The server reconstructs the correct registration NAV automatically: (current equity + amount) / total shares — exact, no manual input.">
+                    <input type="checkbox" id="fw-already" class="accent-amber-600">
+                    Already executed on the exchange — reconstruct NAV automatically
+                </label>
+                <label class="block text-xs text-gray-500 mb-1">NAV override (advanced — blank = automatic)</label>
                 <input type="number" id="fw-nav" step="0.0001" class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white mb-4">
                 <div class="flex justify-end gap-2">
                     <button onclick="document.getElementById('fund-withdraw-modal').classList.add('hidden')" class="px-3 py-1.5 bg-white/10 text-gray-300 text-sm rounded-lg">Cancel</button>
@@ -22638,12 +22642,14 @@
             const navRaw = document.getElementById('fw-nav').value;
             const body = { amount: amt, note: note };
             if (navRaw && parseFloat(navRaw) > 0) body.nav_override = parseFloat(navRaw);
-            if (!confirm(`Withdraw $${amt.toFixed(2)} pro-rata across all investors${body.nav_override ? ` at NAV override ${body.nav_override}` : ' at current NAV'}?`)) return;
+            body.already_executed = document.getElementById('fw-already').checked;
+            const navDesc = body.nav_override ? ` at NAV override ${body.nav_override}` : (body.already_executed ? ' at auto-reconstructed NAV' : ' at current NAV');
+            if (!confirm(`Withdraw $${amt.toFixed(2)} pro-rata across all investors${navDesc}?`)) return;
             try {
                 const r = await fetch('/api/investors/withdraw-all', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
                 const j = await r.json();
                 if (!r.ok) { alert(j.detail || 'Withdrawal failed'); return; }
-                alert('Registered at NAV ' + j.nav + ':\n' + j.split.map(x => `${x.investor}: $${x.amount}`).join('\n'));
+                alert('Registered at ' + (j.reconstructed ? 'reconstructed ' : '') + 'NAV ' + j.nav + ':\n' + j.split.map(x => `${x.investor}: $${x.amount}`).join('\n'));
                 document.getElementById('fund-withdraw-modal').classList.add('hidden');
                 if (typeof loadInvestors === 'function') loadInvestors();
             } catch(e){ alert('Error: ' + e); }

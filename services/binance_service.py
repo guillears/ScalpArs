@@ -156,6 +156,32 @@ class BinanceService:
                 logger.error(f"[BINANCE] Error fetching BNB price: {e}")
                 return 0.0
 
+    async def get_transfer_rows(self, start_ms: int):
+        """Aug-27 phase-2: raw external USDT transfer rows [(ts_ms, amount)] since start_ms
+        (deposits +, withdrawals −). 10-min cache keyed on start_ms."""
+        import time as _t
+        _cache = getattr(self, '_tx_rows_cache', None) or {}
+        _hit = _cache.get(start_ms)
+        if _hit and (_t.monotonic() - _hit[0]) < 600:
+            return _hit[1]
+        out = []
+        cursor = start_ms
+        for _page in range(10):
+            rows = await self.exchange.fapiPrivateGetIncome({
+                'incomeType': 'TRANSFER', 'startTime': int(cursor),
+                'endTime': int(_t.time() * 1000), 'limit': 1000})
+            if not rows:
+                break
+            for r in rows:
+                if r.get('asset') == 'USDT':
+                    out.append((int(r.get('time') or 0), float(r.get('income') or 0)))
+            if len(rows) < 1000:
+                break
+            cursor = int(rows[-1].get('time') or cursor) + 1
+        _cache[start_ms] = (_t.monotonic(), out)
+        self._tx_rows_cache = _cache
+        return out
+
     async def get_spot_balance_usd(self) -> Optional[Dict]:
         """Spot wallet snapshot in USD (Aug-24, operator: Futures/Spot split on the portfolio card
         to catch stranded-funds errors like the $77.64 BNB-swap incident). 60s TTL cache — the UI

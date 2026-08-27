@@ -1385,6 +1385,36 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
     return orders_data
 
 
+async def _external_flow_rows(db: AsyncSession, start_ms: int):
+    """Aug-27 review C1: TRANSFER income includes the bot's OWN BNB-swap legs (USDT leg to
+    spot shows as an outflow; the BNB return is another asset, invisible to a USDT filter).
+    External flows = TRANSFER rows MINUS rows matching a logged BnbSwapLog within +/-3 min
+    (outbound leg ~ swap amount, or the small leftover-USDT return leg). Live only."""
+    rows = await binance_service.get_transfer_rows(start_ms)
+    if not rows:
+        return []
+    _sw = (await db.execute(
+        select(BnbSwapLog.timestamp, BnbSwapLog.amount_usdt, BnbSwapLog.swap_type)
+        .where(BnbSwapLog.is_paper == False)
+    )).all()
+    out = []
+    for ts, amt in rows:
+        _is_swap_leg = False
+        for _st, _samt, _stype in _sw:
+            if _st is None or _samt is None:
+                continue
+            _sms = int(_st.replace(tzinfo=timezone.utc).timestamp() * 1000)
+            if abs(ts - _sms) <= 180000:
+                _tol = max(2.0, 0.02 * abs(_samt))
+                _expected = abs(_samt) if 'sell' in str(_stype).lower() else -abs(_samt)
+                if abs(amt - _expected) <= _tol or (0 < amt <= _tol):
+                    _is_swap_leg = True
+                    break
+        if not _is_swap_leg:
+            out.append((ts, amt))
+    return out
+
+
 @app.get("/api/pnl-calendar")
 async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(get_db)):
     """Daily P&L Calendar (Jun 11, 2026 — Option A: computed live from CLOSED orders;
@@ -1428,12 +1458,43 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
         portfolio_now = _pc["realized_equity"]; total_equity_now = _pc["total_equity"]
     except Exception:
         pass
+    # Aug-27 PHASE 2 (operator: deposits/withdrawals polluted the day-%): Modified-Dietz
+    # day returns. External transfers (Binance income, live only) are bucketed per LOCAL day;
+    # each flow joins that day's return base weighted by the fraction of the day it was
+    # actually present (deposit at 18:00 -> 25% weight). The equity walks strip net flows so
+    # day-start balances stay true. Paper: no flows -> identical to the legacy math.
+    flows_by_day = {}
+    if days and not trading_engine.is_paper_mode:
+        try:
+            _fd_start = int((datetime.fromisoformat(sorted(days.keys())[0]) - offset - timedelta(days=1)).replace(tzinfo=timezone.utc).timestamp() * 1000)
+            # Aug-27 (operator-caught): same era rule as the headline — pre-first-order funding
+            # is initial capital, not a day flow (it inflated the Aug-26 Dietz base otherwise).
+            _era_row_c = (await db.execute(
+                select(func.min(Order.opened_at)).where(Order.is_paper == trading_engine.is_paper_mode)
+            )).scalar()
+            if _era_row_c is not None:
+                _fd_start = max(_fd_start, int(_era_row_c.replace(tzinfo=timezone.utc).timestamp() * 1000))
+            for _fts, _famt in await _external_flow_rows(db, _fd_start):
+                _flocal = datetime.utcfromtimestamp(_fts / 1000) + offset
+                _fday = _flocal.date().isoformat()
+                _day_end = datetime.combine(_flocal.date(), datetime.max.time())
+                _frac = max(0.0, min(1.0, (_day_end - _flocal).total_seconds() / 86400.0))
+                flows_by_day.setdefault(_fday, []).append((_famt, _frac))
+        except Exception as _fl_err:
+            logger.warning(f"[PNL_CAL] transfer fetch failed ({str(_fl_err)[:60]}) - day percentages fall back to flow-blind")
+            flows_by_day = {}
     if portfolio_now is not None:
         running = portfolio_now
-        for d in sorted(days.keys(), reverse=True):
-            e = days[d]
-            start = running - e["pnl"]
-            e["day_return_pct"] = round(e["pnl"] / start * 100.0, 2) if start > 0 else None
+        _all_iso = sorted(set(list(days.keys()) + list(flows_by_day.keys())), reverse=True)
+        for d in _all_iso:
+            e = days.get(d)
+            _dflows = flows_by_day.get(d, [])
+            _dnet = sum(a_ for a_, _ in _dflows)
+            _pnl = e["pnl"] if e else 0.0
+            start = running - _pnl - _dnet
+            if e:
+                _base = start + sum(a_ * f_ for a_, f_ in _dflows)
+                e["day_return_pct"] = round(_pnl / _base * 100.0, 2) if _base > 0 else None
             running = start
 
     for e in days.values():
@@ -1455,10 +1516,10 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
         from calendar import monthrange as _mr
         _today_l = (datetime.utcnow() + offset).date()
         _all_keys = sorted(days.keys())
-        _first_day = datetime.fromisoformat(_all_keys[0]).date()
+        _first_day = datetime.fromisoformat(min(_all_keys + sorted(flows_by_day.keys()))).date()  # review M1: pad-day flows must be re-added by the walk
         # walk chronologically from the balance BEFORE all recorded trades (realized equity
         # incl. BNB — same ruler as the operator's $3,000 start; operator-required Aug-4)
-        _cur = portfolio_now - sum(days[k]["pnl"] for k in _all_keys)
+        _cur = portfolio_now - sum(days[k]["pnl"] for k in _all_keys) - sum(a_ for fl in flows_by_day.values() for a_, _ in fl)
         _d = _first_day.replace(day=1)
         _m_active = 0; _m_key = None; _m_total = 0.0
         while _d <= _today_l:
@@ -1471,6 +1532,7 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
                 _m_ld = _mr(_d.year, _d.month)[1]
                 revisions_by_month.setdefault(_mk, []); avg7_by_month.setdefault(_mk, [])
             _e = days.get(_iso)
+            _cur += sum(a_ for a_, _ in flows_by_day.get(_iso, []))  # Aug-27: flows move balances, not P&L
             if _e:
                 _cur += _e["pnl"]; _m_total += _e["pnl"]
                 if _e.get("trades", 0) > 0:
@@ -4212,7 +4274,31 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         current_balance = balance['usdt_total'] + bnb_usd
         initial_balance = current_balance - total_pnl
 
-    return_multiple = current_balance / initial_balance if initial_balance > 0 else 0
+    # Aug-27 (operator-caught): the reverse-derived initial (current − pnl) assumes NO external
+    # flows — a live withdrawal shrinks 'initial' and fabricates return (observed: $3k out →
+    # 1.42× / +48.2%/day / $116M projection on +$256 of real P&L). Flow-aware: subtract net
+    # external transfers over the SAME window the exponent uses. Fail-open to legacy on error.
+    if not trading_engine.is_paper_mode and runtime_days > 0:
+        try:
+            # review I1: anchor the flows window to the ERA wall-clock start (earliest live
+            # order) — runtime pauses would silently shrink the window. Hour-quantized so
+            # the transfer-rows cache can hit (review I2). Swap legs excluded (review C1).
+            _era_row = (await db.execute(
+                select(func.min(Order.opened_at)).where(Order.is_paper == False)
+            )).scalar()
+            # Aug-27 (operator-caught): flows count only AFTER the era's first order — the
+            # B5 funding transfer landed 18 min BEFORE the first trade and the padded window
+            # swallowed it, deriving initial=$64 instead of $2,689. Pre-first-order transfers
+            # ARE the initial capital by definition. Anchor is exact and era-stable (cacheable).
+            _era_start = _era_row or (datetime.utcnow() - timedelta(days=runtime_days))
+            _flow_start_ms = int(_era_start.replace(tzinfo=timezone.utc).timestamp() * 1000)
+            _net_flows = sum(a2 for _, a2 in await _external_flow_rows(db, _flow_start_ms))
+            initial_balance = current_balance - total_pnl - _net_flows
+        except Exception as _fl_err:
+            logger.warning(f"[PERF] net-transfer fetch failed ({str(_fl_err)[:60]}) — return multiple uses legacy (flow-blind) derivation")
+    # multiple = 1 + pnl/initial — algebraically identical to current/initial when flows are
+    # zero, and the only correct form when they are not (current embeds the flows themselves).
+    return_multiple = (1.0 + total_pnl / initial_balance) if initial_balance > 0 else 0
     if runtime_days >= 0.5 and return_multiple > 0:
         daily_compound_return = (return_multiple ** (1 / runtime_days) - 1) * 100
     else:
@@ -12732,6 +12818,55 @@ async def investor_withdraw(body: InvestorWithdraw, db: AsyncSession = Depends(g
     _log_investor_ledger(db, inv.id, "WITHDRAW", body.amount, nav, -shares_needed)
 
     return {"ok": True, "shares_removed": round(shares_needed, 6), "nav": round(nav, 6)}
+
+
+class FundWithdraw(BaseModel):
+    amount: float
+    note: Optional[str] = None
+    nav_override: Optional[float] = None  # register an ALREADY-EXECUTED exchange withdrawal at its historical NAV
+
+
+@app.post("/api/investors/withdraw-all")
+async def fund_withdraw(body: FundWithdraw, db: AsyncSession = Depends(get_db)):
+    """Aug-27 (operator): fund-wide withdrawal applied PRO-RATA by ownership. Burns each
+    investor's shares at NAV (current, or nav_override when registering an exchange
+    withdrawal that already happened — e.g. the unledgered -$3,000 that crashed displayed
+    NAV to $0.2456). Every slice is ledgered per investor."""
+    if body.amount <= 0:
+        raise HTTPException(400, "Amount must be positive")
+    invs = (await db.execute(select(Investor).where(Investor.shares > 0))).scalars().all()
+    if not invs:
+        raise HTTPException(400, "No investors with shares")
+    if body.nav_override is not None:
+        if body.nav_override <= 0:
+            raise HTTPException(400, "nav_override must be positive")
+        nav = float(body.nav_override)
+    else:
+        nav = await _get_nav_per_share(db)
+        if nav <= 0:
+            raise HTTPException(503, "NAV unavailable — retry shortly")
+    total_shares = sum(i.shares for i in invs)
+    total_value = total_shares * nav
+    if body.amount > total_value + 0.01:
+        raise HTTPException(400, f"Amount exceeds fund value at this NAV (${total_value:.2f})")
+    split = []
+    allocated = 0.0
+    for idx, inv in enumerate(invs):
+        if idx == len(invs) - 1:
+            amt = round(body.amount - allocated, 2)  # remainder to the last — split sums exactly
+        else:
+            amt = round(body.amount * (inv.shares / total_shares), 2)
+        allocated += amt
+        sh = amt / nav
+        if sh > inv.shares + 1e-6:
+            sh = inv.shares
+        inv.shares = max(0.0, inv.shares - sh)
+        inv.total_withdrawn += amt
+        _note = (body.note or "Pro-rata fund withdrawal") + (f" (registered at NAV {nav:.4f})" if body.nav_override else "")
+        _log_investor_ledger(db, inv.id, "WITHDRAW", amt, nav, -sh, note=_note)
+        split.append({"investor": inv.name, "amount": amt, "shares_burned": round(sh, 6)})
+    await db.flush()
+    return {"ok": True, "nav": round(nav, 6), "split": split}
 
 
 @app.patch("/api/investors/{investor_id}")

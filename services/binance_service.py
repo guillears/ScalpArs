@@ -156,6 +156,39 @@ class BinanceService:
                 logger.error(f"[BINANCE] Error fetching BNB price: {e}")
                 return 0.0
 
+    async def get_capital_flows(self, start_ms: int):
+        """Aug-27 flow-reconciliation alarm: TRUE external flows (on-chain/fiat) from the
+        capital endpoints — deposits (status 1=success? Binance: 1=success for hisrec... we
+        keep completed only) and withdrawals (status 6=completed). These land SPOT-side; the
+        futures TRANSFER feed is the primary ledger — this is the cross-check. Returns
+        [(ts_ms, +amount|for deposits / -amount|for withdrawals, coin)]. 10-min dict cache.
+        Fail-open: raises to caller."""
+        import time as _t
+        _cache = getattr(self, '_cap_flow_cache', None) or {}
+        _hit = _cache.get(start_ms)
+        if _hit and (_t.monotonic() - _hit[0]) < 600:
+            return _hit[1]
+        out = []
+        _now_ms = int(_t.time() * 1000)
+        # capital endpoints cap the window at 90d — clamp
+        _s = max(start_ms, _now_ms - 89 * 86400000)
+        deps = await self.spot_exchange.sapiGetCapitalDepositHisrec({'startTime': _s, 'endTime': _now_ms, 'limit': 1000})
+        for r in deps or []:
+            if str(r.get('status')) in ('1', '6'):  # review: 6 = credited-but-cannot-withdraw is already usable capital
+                out.append((int(r.get('insertTime') or 0), abs(float(r.get('amount') or 0)), r.get('coin')))
+        wds = await self.spot_exchange.sapiGetCapitalWithdrawHistory({'startTime': _s, 'endTime': _now_ms, 'limit': 1000})
+        for r in wds or []:
+            if str(r.get('status')) == '6':
+                _ts = r.get('completeTime') or r.get('applyTime')
+                try:
+                    _tms = int(_ts) if str(_ts).isdigit() else int(__import__('datetime').datetime.fromisoformat(str(_ts)).replace(tzinfo=__import__('datetime').timezone.utc).timestamp() * 1000)
+                except Exception:
+                    _tms = 0
+                out.append((_tms, -abs(float(r.get('amount') or 0)), r.get('coin')))
+        _cache[start_ms] = (_t.monotonic(), out)
+        self._cap_flow_cache = _cache
+        return out
+
     async def get_transfer_rows(self, start_ms: int):
         """Aug-27 phase-2: raw external USDT transfer rows [(ts_ms, amount)] since start_ms
         (deposits +, withdrawals −). 10-min cache keyed on start_ms."""

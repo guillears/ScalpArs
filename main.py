@@ -1385,6 +1385,9 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
     return orders_data
 
 
+_FLOW_RECON_SEEN: set = set()
+
+
 async def _external_flow_rows(db: AsyncSession, start_ms: int):
     """Aug-27 review C1: TRANSFER income includes the bot's OWN BNB-swap legs (USDT leg to
     spot shows as an outflow; the BNB return is another asset, invisible to a USDT filter).
@@ -1412,6 +1415,33 @@ async def _external_flow_rows(db: AsyncSession, start_ms: int):
                     break
         if not _is_swap_leg:
             out.append((ts, amt))
+    # Aug-27 RECONCILIATION ALARM (operator: "what if we have a bug?") — cross-check every
+    # identified external flow against the TRUE external record (capital deposit/withdraw
+    # endpoints). A flow matching neither a capital event (amount within $2/2%, time within
+    # 48h — spot-side external events precede the futures transfer by minutes to hours) nor
+    # the swap log gets a loud [FLOW_UNRECONCILED] warning. LOG-ONLY: classification is
+    # unchanged — accounting mistakes must SHOUT, never guess. Fail-open on API error.
+    global _FLOW_RECON_SEEN
+    try:
+        _cap = await binance_service.get_capital_flows(start_ms - 48 * 3600000)
+        for ts, amt in out:
+            _matched = False
+            for _cts, _camt, _coin in _cap:
+                if str(_coin).upper() not in ('USDT', 'USDC', 'BUSD'):
+                    continue
+                if (amt >= 0) == (_camt >= 0) and abs(abs(amt) - abs(_camt)) <= max(2.0, 0.02 * abs(amt)) and abs(ts - _cts) <= 48 * 3600000:
+                    _matched = True
+                    break
+            if not _matched:
+                _key = (ts, round(amt, 2))
+                if _key not in _FLOW_RECON_SEEN:  # review: warn ONCE per row, not per dashboard poll
+                    _FLOW_RECON_SEEN.add(_key)
+                    logger.warning(f"[FLOW_UNRECONCILED] TRANSFER {amt:+.2f} USDT at {datetime.utcfromtimestamp(ts/1000).isoformat()}Z matches neither a capital deposit/withdrawal nor a logged swap — verify manually (manual swap? internal/P2P funding — those never appear in the capital record — or an unlogged action)")
+    except Exception as _rc_err:
+        if '_recon_fail_warned' not in _FLOW_RECON_SEEN:  # review: a permanently-dead alarm must announce itself once
+            _FLOW_RECON_SEEN.add('_recon_fail_warned')
+            logger.warning(f"[FLOW_RECON] capital cross-check unavailable ({str(_rc_err)[:80]}) — reconciliation alarm inactive")
+        logger.debug(f"[FLOW_RECON] capital cross-check unavailable ({str(_rc_err)[:60]})")
     return out
 
 

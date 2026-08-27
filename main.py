@@ -12920,6 +12920,65 @@ async def fund_withdraw(body: FundWithdraw, db: AsyncSession = Depends(get_db)):
     return {"ok": True, "nav": round(nav, 6), "reconstructed": _reconstructed, "split": split}
 
 
+class FundDeposit(BaseModel):
+    amount: float
+    note: Optional[str] = None
+    nav_override: Optional[float] = None  # manual override (advanced)
+    already_executed: bool = False  # deposit already landed on the exchange → server RECONSTRUCTS the
+    # registration NAV as (current equity - amount) / total shares: equity already INCLUDES the money
+    # with no shares issued, so removing it recovers the continuous NAV; issuing at that price leaves
+    # every ownership %% unchanged and post-registration NAV equals it (exact mirror of withdraw-all).
+
+
+@app.post("/api/investors/deposit-all")
+async def fund_deposit(body: FundDeposit, db: AsyncSession = Depends(get_db)):
+    """Aug-27 (operator: 'same way we have a general withdrawn we should add a general Deposit'):
+    fund-wide deposit applied PRO-RATA by ownership. Issues each investor's shares at NAV
+    (current, reconstructed, or nav_override). Every slice is ledgered per investor."""
+    if body.amount <= 0:
+        raise HTTPException(400, "Amount must be positive")
+    invs = (await db.execute(select(Investor).where(Investor.shares > 0))).scalars().all()
+    if not invs:
+        raise HTTPException(400, "No investors with shares — use Add Investor for the first deposit")
+    _reconstructed = False
+    if body.nav_override is not None:
+        if body.nav_override <= 0:
+            raise HTTPException(400, "nav_override must be positive")
+        nav = float(body.nav_override)
+    elif body.already_executed:
+        _shares_now = await _get_total_shares(db)
+        if _shares_now <= 0:
+            raise HTTPException(400, "No shares outstanding")
+        _equity_now = await _get_portfolio_value(db)
+        nav = (_equity_now - body.amount) / _shares_now
+        if nav <= 0:
+            raise HTTPException(400, "Amount ≥ current equity — cannot reconstruct NAV (was this deposit really already made?)")
+        _reconstructed = True
+    else:
+        nav = await _get_nav_per_share(db)
+        if nav <= 0:
+            raise HTTPException(503, "NAV unavailable — retry shortly")
+    total_shares = sum(i.shares for i in invs)
+    split = []
+    allocated = 0.0
+    for idx, inv in enumerate(invs):
+        if idx == len(invs) - 1:
+            amt = round(body.amount - allocated, 2)  # remainder to the last — split sums exactly
+        else:
+            amt = round(body.amount * (inv.shares / total_shares), 2)
+        allocated += amt
+        sh = amt / nav
+        inv.shares += sh
+        inv.total_deposited += amt
+        _note = (body.note or "Pro-rata fund deposit") + (
+            f" (registered at reconstructed NAV {nav:.4f})" if _reconstructed
+            else (f" (registered at NAV {nav:.4f})" if body.nav_override else ""))
+        _log_investor_ledger(db, inv.id, "DEPOSIT", amt, nav, sh, note=_note)
+        split.append({"investor": inv.name, "amount": amt, "shares_issued": round(sh, 6)})
+    await db.flush()
+    return {"ok": True, "nav": round(nav, 6), "reconstructed": _reconstructed, "split": split}
+
+
 @app.patch("/api/investors/{investor_id}")
 async def rename_investor(investor_id: int, body: InvestorRename, db: AsyncSession = Depends(get_db)):
     inv = await db.get(Investor, investor_id)

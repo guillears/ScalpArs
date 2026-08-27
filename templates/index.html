@@ -4521,6 +4521,7 @@
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-semibold text-gray-300">Portfolio Management</h2>
                 <div class="flex gap-2">
+                <button onclick="openFundDepositModal()" class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm rounded-lg">+ Deposit Funds</button>
                 <button onclick="openFundWithdrawModal()" class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white text-sm rounded-lg">− Withdraw Funds</button>
                 <button onclick="openInvestorModal('add')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm rounded-lg transition">+ Add Investor</button>
                 </div>
@@ -22613,6 +22614,26 @@
 
 
         <!-- Aug-27: fund-wide pro-rata withdrawal (operator) -->
+        <div id="fund-deposit-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+            <div class="glass rounded-xl p-6 w-full max-w-md">
+                <h3 class="text-lg font-semibold text-gray-200 mb-3">Deposit Funds (pro-rata)</h3>
+                <p class="text-xs text-gray-400 mb-3">Applies to every investor by ownership %. Issues shares at NAV and ledgers each slice. Tick the checkbox if the money is already on the exchange (unregistered) so the server reconstructs the correct NAV automatically.</p>
+                <label class="block text-xs text-gray-400 mb-1">Amount (USD)</label>
+                <input type="number" id="fd2-amount" min="0" step="10" class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white mb-3">
+                <label class="block text-xs text-gray-400 mb-1">Note (optional)</label>
+                <input type="text" id="fd2-note" class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white mb-3">
+                <label class="flex items-center gap-2 text-xs text-gray-300 mb-3" title="The deposit already landed on the exchange, so displayed NAV is inflated. The server reconstructs the correct registration NAV automatically: (current equity − amount) / total shares — exact, no manual input.">
+                    <input type="checkbox" id="fd2-already" class="accent-sky-600">
+                    Already on the exchange — reconstruct NAV automatically
+                </label>
+                <label class="block text-xs text-gray-500 mb-1">NAV override (advanced — blank = automatic)</label>
+                <input type="number" id="fd2-nav" step="0.0001" class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white mb-4">
+                <div class="flex justify-end gap-2">
+                    <button onclick="document.getElementById('fund-deposit-modal').classList.add('hidden')" class="px-3 py-1.5 bg-white/10 text-gray-300 text-sm rounded-lg">Cancel</button>
+                    <button onclick="submitFundDeposit()" class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm rounded-lg">Deposit</button>
+                </div>
+            </div>
+        </div>
         <div id="fund-withdraw-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
             <div class="glass rounded-xl p-6 w-full max-w-md">
                 <h3 class="text-lg font-semibold text-gray-200 mb-3">Withdraw Funds (pro-rata)</h3>
@@ -22635,6 +22656,26 @@
         </div>
         <script>
         function openFundWithdrawModal(){ document.getElementById('fund-withdraw-modal').classList.remove('hidden'); }
+        function openFundDepositModal(){ document.getElementById('fund-deposit-modal').classList.remove('hidden'); }
+        async function submitFundDeposit(){
+            const amt = parseFloat(document.getElementById('fd2-amount').value);
+            if (!amt || amt <= 0) { alert('Enter a positive amount'); return; }
+            const note = document.getElementById('fd2-note').value || null;
+            const navRaw = document.getElementById('fd2-nav').value;
+            const body = { amount: amt, note: note };
+            if (navRaw && parseFloat(navRaw) > 0) body.nav_override = parseFloat(navRaw);
+            body.already_executed = document.getElementById('fd2-already').checked;
+            const navDesc = body.nav_override ? ` at NAV override ${body.nav_override}` : (body.already_executed ? ' at auto-reconstructed NAV' : ' at current NAV');
+            if (!confirm(`Deposit $${amt.toFixed(2)} pro-rata across all investors${navDesc}?`)) return;
+            try {
+                const r = await fetch('/api/investors/deposit-all', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const j = await r.json();
+                if (!r.ok) { alert(j.detail || 'Deposit failed'); return; }
+                alert('Registered at ' + (j.reconstructed ? 'reconstructed ' : '') + 'NAV ' + j.nav + ':\n' + j.split.map(x => `${x.investor}: $${x.amount}`).join('\n'));
+                document.getElementById('fund-deposit-modal').classList.add('hidden');
+                if (typeof loadInvestors === 'function') loadInvestors();
+            } catch(e){ alert('Error: ' + e); }
+        }
         async function submitFundWithdraw(){
             const amt = parseFloat(document.getElementById('fw-amount').value);
             if (!amt || amt <= 0) { alert('Enter a positive amount'); return; }

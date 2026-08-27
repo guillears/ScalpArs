@@ -2531,16 +2531,21 @@ def _period_stats(label, trades):
     total_wins_usd = sum(o.pnl for o in trades if (o.pnl or 0) > 0)
     total_losses_usd = abs(sum(o.pnl for o in trades if (o.pnl or 0) < 0))
     profit_factor = round(total_wins_usd / total_losses_usd, 2) if total_losses_usd > 0 else (999 if total_wins_usd > 0 else 0)
-    # Slippage stats (only for trades that have slippage data)
-    slippage_trades = [o for o in trades if o.exit_slippage_pct is not None]
-    avg_slippage_pct = round(sum(o.exit_slippage_pct for o in slippage_trades) / len(slippage_trades), 4) if slippage_trades else None
+    # Slippage stats — COMBINED entry+exit per trade (operator Aug-27: % and $ must share one calculation).
+    # Per-trade combined % = entry_slippage_pct + exit_slippage_pct (each signed vs decision price, missing leg = 0);
+    # Slip $ = Σ combined% × notional (slippage is measured on price ⇒ scales with notional, like fees).
+    slippage_trades = [o for o in trades if o.exit_slippage_pct is not None or o.entry_slippage_pct is not None]
+    _slip_comb = [((o.entry_slippage_pct or 0.0) + (o.exit_slippage_pct or 0.0)) for o in slippage_trades]
+    avg_slippage_pct = round(sum(_slip_comb) / len(_slip_comb), 4) if slippage_trades else None
+    total_slippage_usd = round(sum(((o.entry_slippage_pct or 0.0) + (o.exit_slippage_pct or 0.0)) / 100.0 * (o.notional_value or 0.0)
+                                   for o in slippage_trades), 2) if slippage_trades else None
     return {
         "period": label, "count": count, "longs": longs, "shorts": shorts,
         "win_rate": win_rate, "avg_pnl_pct": avg_pnl_pct, "total_pnl": total_pnl,
         "profit_factor": profit_factor, "total_fees": total_fees,
         "total_investment": total_investment, "total_notional": total_notional,
         "pnl_over_inv": pnl_over_inv, "pnl_over_not": pnl_over_not,
-        "avg_slippage_pct": avg_slippage_pct, "slippage_count": len(slippage_trades),
+        "avg_slippage_pct": avg_slippage_pct, "total_slippage_usd": total_slippage_usd, "slippage_count": len(slippage_trades),
     }
 
 

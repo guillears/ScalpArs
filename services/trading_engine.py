@@ -2614,6 +2614,7 @@ class TradingEngine:
             return 0, 0, False
 
         # Calculate safe reserve
+        _sched_tgt_active = None  # set when an ACTIVE schedule tier caps tradeable (fee pct-leg base)
         if tc.investment.reserve_mode == "schedule":
             # Jul 2, 2026 (operator-directed) — AUTOMATIC balance→tradeable schedule: the engine
             # walks the v3 capital-scaling table by itself (no manual milestone flips). Tier is
@@ -2626,6 +2627,7 @@ class TradingEngine:
             _tgt = _lookup_leverage_schedule(
                 getattr(tc.investment, 'reserve_schedule', ''), _sched_eq)
             reserve = max(0.0, _sched_eq - _tgt) if (_tgt is not None and _tgt > 0) else 0.0
+            _sched_tgt_active = _tgt if (_tgt is not None and _tgt > 0) else None
         elif tc.investment.reserve_mode == "working_capital":
             # Jul 2, 2026 — capital-scaling PRIMARY knob: fix the working capital, reserve absorbs
             # ALL balance growth (tradeable = min(available, target); reserve auto-grows). Clamps
@@ -2647,6 +2649,12 @@ class TradingEngine:
         _fee_res = max(0.0, float(getattr(tc.investment, 'fee_reserve_usd', 0.0) or 0.0))
         _fee_pct = max(0.0, float(getattr(tc.investment, 'fee_reserve_pct', 0.0) or 0.0))
         _fee_eq = total_portfolio if total_portfolio else available_balance
+        # Aug-28 (operator): with an ACTIVE schedule tier, the pct leg keys on the tier's TRADEABLE
+        # target, not total equity — fees scale with traded notional (schedule-capped), not with
+        # capital the schedule already parked (at $500k: 2.5% x $100k target = $2.5k, not $12.5k).
+        # Below the first tier / other modes: unchanged (full equity base). min() = safety clamp.
+        if _sched_tgt_active is not None:
+            _fee_eq = min(_fee_eq, _sched_tgt_active)
         if _fee_pct > 0 and _fee_eq:
             _fee_res = max(_fee_res, _fee_eq * _fee_pct / 100.0)
         _fee_hrs = max(0.0, float(getattr(tc.investment, 'fee_reserve_hours', 0.0) or 0.0))

@@ -739,11 +739,13 @@ def _reserve_split(free_balance: float, deployed_margin: float = 0.0):
     what sizing actually does. Schedule mode keys tiers on TOTAL EQUITY (free+margin, like the
     engine); the displayed reserve is capped at free balance (it's the withdrawable pool)."""
     _inv = config.trading_config.investment
+    _sched_tgt_active = None  # mirror of the engine's schedule-aware fee pct-leg base (Aug-28)
     if _inv.reserve_mode == "schedule":
         from services.trading_engine import _lookup_leverage_schedule as _sched_lookup
         _equity = free_balance + max(0.0, deployed_margin or 0.0)
         _tgt = _sched_lookup(getattr(_inv, 'reserve_schedule', ''), _equity)
         reserve = min(free_balance, max(0.0, _equity - _tgt)) if (_tgt is not None and _tgt > 0) else 0.0
+        _sched_tgt_active = _tgt if (_tgt is not None and _tgt > 0) else None
     elif _inv.reserve_mode == "working_capital":
         _wct = float(getattr(_inv, 'working_capital_target', 0.0) or 0.0)
         reserve = max(0.0, free_balance - _wct) if _wct > 0 else 0.0
@@ -756,6 +758,8 @@ def _reserve_split(free_balance: float, deployed_margin: float = 0.0):
     # Aug-25: three-leg mirror of calculate_position_size — max(min, pct x equity, hours x burn)
     _fee_pct = max(0.0, float(getattr(_inv, 'fee_reserve_pct', 0.0) or 0.0))
     _fee_eq = free_balance + max(0.0, deployed_margin or 0.0)
+    if _sched_tgt_active is not None:  # Aug-28: pct leg keys on the tier's tradeable target (engine mirror)
+        _fee_eq = min(_fee_eq, _sched_tgt_active)
     if _fee_pct > 0 and _fee_eq:
         _fee_res = max(_fee_res, _fee_eq * _fee_pct / 100.0)
     _fee_hrs = max(0.0, float(getattr(_inv, 'fee_reserve_hours', 0.0) or 0.0))

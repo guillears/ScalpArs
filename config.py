@@ -2012,7 +2012,7 @@ class InvestmentConfig(BaseModel):
     # discount once BNB hits 0 and the bot cannot refuel while the book is full. 0 = disabled.
     fee_reserve_usd: float = 15.0          # Aug-25 (operator): absolute MIN floor only (micro-balance edge: must cover Binance's $10 BNB top-up min); the real reserve comes from pct/hours below
     fee_reserve_hours: float = 12.0        # Aug-25: burn leg — hours x live BNB burn/hr; 0 = off
-    fee_reserve_pct: float = 2.5           # Aug-25 (operator 'percentage of total holding'): equity leg — pct x total equity; balance-proof (add $4k → cushion scales). reserve = max(usd_min, pct leg, burn leg). 0 = off
+    fee_reserve_pct: float = 2.5           # Aug-25 (operator 'percentage of total holding'): pct leg. Aug-28 (operator): base = ACTIVE schedule tier's tradeable target when one applies (fees scale with traded notional, not parked capital), else total equity. reserve = max(usd_min, pct leg, burn leg). 0 = off
     
     # Cooldown after trade close (prevents immediate re-entry on same pair, win or loss)
     # CLAUDE.md May 26: cross-batch evidence on 919-trade pool shows 84 same-pair re-entries

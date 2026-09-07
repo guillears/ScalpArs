@@ -8148,8 +8148,8 @@
             })();
 
             function updateRoundtripDisplay() {
-                const makerPct = parseFloat(document.getElementById('config-maker-fee').value) || 0.018;
-                const takerPct = parseFloat(document.getElementById('config-taker-fee').value) || 0.045;
+                const makerPct = safeFloat(document.getElementById('config-maker-fee').value) || 0.018;
+                const takerPct = safeFloat(document.getElementById('config-taker-fee').value) || 0.045;
                 const entryFee = document.getElementById('config-maker-entry-enabled').checked ? makerPct : takerPct;
                 const exitFee = document.getElementById('config-maker-exit-enabled').checked ? makerPct : takerPct;
                 document.getElementById('maker-roundtrip-display').textContent = (entryFee + exitFee).toFixed(3) + '%';
@@ -8845,8 +8845,8 @@
                 if (slopeEl && slope != null) {
                     const sign = slope >= 0 ? '+' : '';
                     slopeEl.textContent = `${sign}${slope.toFixed(2)}%`;
-                    const _flatL = parseFloat(document.getElementById('config-macro-trend-flat-threshold-long')?.value) || 0;
-                    const _flatS = parseFloat(document.getElementById('config-macro-trend-flat-threshold-short')?.value) || 0.02;
+                    const _flatL = safeFloat(document.getElementById('config-macro-trend-flat-threshold-long')?.value) || 0;
+                    const _flatS = safeFloat(document.getElementById('config-macro-trend-flat-threshold-short')?.value) || 0.02;
                     const flatTh = Math.min(_flatL, _flatS);
                     slopeEl.className = slope > flatTh ? 'text-emerald-400 text-xs font-mono' :
                                         slope < -flatTh ? 'text-red-400 text-xs font-mono' :
@@ -8908,8 +8908,8 @@
                 const gvTag = document.getElementById('global-vol-tag');
                 if (gvEl && gvr != null) {
                     gvEl.textContent = gvr.toFixed(2);
-                    const gvThreshL = parseFloat(document.getElementById('config-global-vol-threshold-long')?.value) || 1.05;
-                    const gvThreshS = parseFloat(document.getElementById('config-global-vol-threshold-short')?.value) || 1.05;
+                    const gvThreshL = safeFloat(document.getElementById('config-global-vol-threshold-long')?.value) || 1.05;
+                    const gvThreshS = safeFloat(document.getElementById('config-global-vol-threshold-short')?.value) || 1.05;
                     const gvMin = Math.min(gvThreshL, gvThreshS);
                     if (gvr < gvMin) {
                         gvEl.className = 'text-red-400 font-bold';
@@ -8929,12 +8929,12 @@
                 const bBullEl = document.getElementById('breadth-bull-value');
                 const bBearEl = document.getElementById('breadth-bear-value');
                 if (bBullEl && bullPct != null) {
-                    const bullTh = parseFloat(document.getElementById('config-market-breadth-bull-threshold-long')?.value) || 50;
+                    const bullTh = safeFloat(document.getElementById('config-market-breadth-bull-threshold-long')?.value) || 50;
                     bBullEl.textContent = `${bullPct.toFixed(0)}`;
                     bBullEl.className = bullPct >= bullTh ? 'text-emerald-400 font-bold' : 'text-gray-400 font-bold';
                 }
                 if (bBearEl && bearPct != null) {
-                    const bearTh = parseFloat(document.getElementById('config-market-breadth-bear-threshold-short')?.value) || 65;
+                    const bearTh = safeFloat(document.getElementById('config-market-breadth-bear-threshold-short')?.value) || 65;
                     bBearEl.textContent = `${bearPct.toFixed(0)}`;
                     bBearEl.className = bearPct >= bearTh ? 'text-red-400 font-bold' : 'text-gray-400 font-bold';  // Aug-24 (operator): bear side ≥ threshold = RED (market meaning), not emerald (filter-armed)
                 }
@@ -9010,6 +9010,7 @@
                 updateStatusUI();
                 
                 if (isRunning) {
+                    if (timerInterval) clearInterval(timerInterval);  // Sep-7 hygiene: poll may have started the ticker already — never stack two
                     timerInterval = setInterval(() => {
                         runtimeSeconds++;
                         updateTimer(runtimeSeconds);
@@ -9316,6 +9317,18 @@
                 }
             }
 
+
+            // --- PAIR RANK (Sep-7 D12 parity: was only in the main clipboard report) ---
+            if (perf.pair_rank_performance && perf.pair_rank_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Pair Rank (volume rank at entry — Jun 12)\n');
+                lines.push(`${'Rank'.padEnd(8)} ${'#'.padEnd(4)} ${'L/S'.padEnd(8)} ${'Win%'.padEnd(7)} ${'AvgVol'.padEnd(9)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)}`);
+                for (const r of perf.pair_rank_performance) {
+                    const dir = `${r.n_long}L/${r.n_short}S`;
+                    const av = r.avg_volume_usd != null ? '$' + (r.avg_volume_usd/1e6).toFixed(0) + 'M' : '-';
+                    lines.push(`${r.bucket.padEnd(8)} ${String(r.n).padEnd(4)} ${dir.padEnd(8)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${av.padStart(9)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                }
+            }
             lines.push(`\n${hr2}`);
             lines.push('## Closing Reason Summary\n');
             const crCopyTotal = Object.values(perf.by_close_reason || {}).reduce((s, r) => s + (r.trades || 0), 0);
@@ -11000,7 +11013,7 @@
             lines.push(`  GMINFLAT Probe (Jul 20): ${th.gminflat_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.gminflat_probe_max_open !== undefined ? th.gminflat_probe_max_open : 3}  (flat+small purity class — PAIR_EMA_GAP_MIN[flat], #1 long dark zone 2,213 soles — opens as 1x GMINFLAT_PROBE, BOTH directions)`);
             lines.push(`  ADXMAX Probe (Jul 20): ${th.adxmax_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.adxmax_probe_max_open !== undefined ? th.adxmax_probe_max_open : 3}  |  Ceiling L: ${th.adxmax_probe_ceiling_long ?? 35}  S: ${th.adxmax_probe_ceiling_short ?? 40}  (pair-ADX in (per-side max, ceiling] opens as 1x ADXMAX_PROBE; above ceiling stays blocked)`);
             lines.push(`  ADXMAX2 Probe (Jul 21): ${th.adxmax2_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.adxmax2_probe_max_open !== undefined ? th.adxmax2_probe_max_open : 3}  |  Band L: (${th.adxmax_probe_ceiling_long ?? 35}, ${th.adxmax2_probe_ceiling_long ?? 40}]  (LONG-only second ADX rung, 1x ADXMAX2_PROBE; parallel cohort, independent verdict)`);
-            lines.push(`  SPIKE_CHASE Probe (Jul 24): ${th.spike_chase_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.spike_chase_probe_max_open !== undefined ? th.spike_chase_probe_max_open : 3}  |  Trigger: RSI jump >= ${th.spike_chase_probe_rsi_jump ?? 25} pts in one 5m candle with prev RSI in [${th.spike_chase_probe_rsi_prev_min ?? 35}, ${th.spike_chase_probe_rsi_prev_max ?? 55}], candle move >= +${th.spike_chase_probe_min_candle_pct ?? 0.5}% and candle vol >= ${th.spike_chase_probe_min_vol_ratio ?? 5}x avg20  (ladder-BYPASS trigger legs 1-5; fires only when no normal signal; PROMOTED TO FULL SIZE Jul-27 — direction + sizing on the 🚀 line below; right-tail read at N>=30 weights avg over WR)`);
+            lines.push(`  SPIKE_CHASE Probe (Jul 24): ${th.spike_chase_probe_enabled === true ? 'ON' : 'OFF'}  |  Trigger: RSI jump >= ${th.spike_chase_probe_rsi_jump ?? 25} pts in one 5m candle with prev RSI in [${th.spike_chase_probe_rsi_prev_min ?? 35}, ${th.spike_chase_probe_rsi_prev_max ?? 55}], candle move >= +${th.spike_chase_probe_min_candle_pct ?? 0.5}% and candle vol >= ${th.spike_chase_probe_min_vol_ratio ?? 5}x avg20  (ladder-BYPASS trigger legs 1-5; fires only when no normal signal; PROMOTED TO FULL SIZE Jul-27 — direction + sizing on the 🚀 line below; right-tail read at N>=30 weights avg over WR)`);
             lines.push(`  Full-Universe Spike Scanner (Jul 24 PM): ${th.spike_scanner_enabled === true ? 'ON' : 'OFF'}  |  Min Vol: $${((th.spike_scanner_min_vol_usd ?? 1e6)/1e6).toFixed(1)}M  |  Universe: top ${th.spike_scanner_max_pairs ?? 400} eligible perps  (extended pairs get ONLY the spike door -> same SPIKE_CHASE probe cohort; REVERT = toggle OFF, zero engineering risk)`);
             lines.push(`  🎓 Promotion Package (Jul 27 PM): NONEXP_CALM3D ${th.nonexp_calm3d_enabled === true ? 'ON' : 'OFF'} (gap-flat/flat+small LONG admitted full-size when regime ∈ [${th.nonexp_calm3d_regimes ?? 'STRONG_BULL'}] ∧ BTC-ATR <= ${th.nonexp_calm3d_btc_atr_max ?? 0.147} ∧ stretch <= ${th.nonexp_calm3d_max_stretch ?? 0.06} (Jul-30 coiled-pair leg, 0=off) ∧ b1h > ${th.nonexp_calm3d_b1h_min ?? 0} (Jul-31 rising-hour leg, <=-98=off) ∧ same-pair re-entry cooldown ${th.nonexp_calm3d_reentry_cooldown_min ?? 90}min (Aug-4 4th leg, 0=off) ∧ DMI thrust +DI >= ${th.nonexp_calm3d_min_pos_di ?? 28} ∧ pADX >= ${th.nonexp_calm3d_min_pair_adx ?? 21} (Aug-10 5th leg, 0=off; step-back 28→26 read armed); Inv${th.nonexp_calm3d_invest_mult ?? 2}x/Lev ${th.nonexp_calm3d_lev_mult ?? 1}x (Jul-31 re-escalated with the leg), bypasses keep-only-unmatched)  |  RSIADX breadth release <= ${th.rsiadx_breadth_admit_max ?? 0} (0=off; inherits normal stack)  |  Deadband split: +side ${th.long_btc_1h_deadband_pos ?? 0} / −side ${th.long_btc_1h_deadband ?? 0.05} (upper half [${th.long_btc_1h_deadband_pos ?? 0}, ${th.long_btc_1h_deadband ?? 0.05}) = normal flow)  |  RSI max L ${th.momentum_long_rsi_max ?? 100} (65→70 RSICEIL graduation; Jul-29 re-scope: RSI (65,max] needs pair-ADX >= ${th.rsiceil_door_adx_min ?? 0}, 0=off) · CALM3D Inv ${th.nonexp_calm3d_invest_mult ?? 2}x (2.0→1.0 Jul-29 → re-escalated Jul-31 with the b1h leg)  |  probes closed: GAPFLAT/GMINFLAT/RSIADX/DEADBAND/RSICEIL (graduated or replaced) + ADXMAX2 (0/6 off)`);
             lines.push(`  🚀 Spike Full Ship (Jul 27): REGIME ROUTER ${th.spike_regime_router_enabled === true ? `ON [chase in: ${th.spike_chase_regimes ?? 'STRONG_BULL,HEALTHY_BULL'}; else FADE]` : 'OFF (ADX-only)'} | ROUTE MaxADX=${th.spike_chase_max_adx ?? 30} | CHASE MaxStretch ${th.spike_chase_max_stretch_atr ?? 1.5}xATR (Jul 30 extension guard, 0=off) (<= -> CHASE ${th.spike_chase_enabled !== false ? 'ON' : 'OFF (Aug-21 kill-switch)'} LONG Inv ${th.spike_invest_mult ?? 2}x/Lev ${th.spike_lev_mult ?? 1}x, option-D: SL ${th.spike_sl_pct ?? -1.2}% fixed / RSI-cool arm>=${th.spike_rsi_cool_arm ?? 75} exit at max-${th.spike_rsi_cool_drop ?? 10} / floors unarmed [${th.spike_ladder_unarmed ?? ''}] armed [27-rung envelope] / Jul-28 patch: trail-arm ${th.spike_trail_arm_pct ?? 0.45} (unarmed mid-zone, 1xATR+lock) + stale-kill ${th.spike_stale_kill_min ?? 30}min (unarmed peak<0.2) / NO_EXP exempt armed: ${th.spike_no_expansion_exempt_armed === true ? 'ON' : 'OFF'})  |  FADE: ${th.spike_fade_enabled === true ? 'ON' : (th.spike_tripwire_autodisable === true ? 'OFF (check tripwire!)' : 'OFF (manual)')} SHORT Inv ${th.spike_fade_invest_mult ?? 1}x/Lev ${th.spike_fade_lev_mult ?? 1}x, fixed SL ${th.spike_fade_sl_pct ?? -0.7}% NO widen, tripwire ${th.spike_fade_tripwire_pct ?? -1.5}% ${th.spike_tripwire_autodisable === true ? 'auto-disables' : 'ALERT-ONLY (Aug-5)'}, bRSI ceiling ${th.spike_fade_max_btc_rsi ?? 50} (Jul-30 squeeze guard, 0=off), bDist13 max ${th.spike_fade_max_btc_dist13 ?? 0}% (Aug-4 beta-tailwind guard, >=99=off), FRESH-BREAKOUT guard base-RSI<${th.spike_fade_fb_rsi_prev_min ?? 44} ∧ pgap>${th.spike_fade_fb_pgap_min ?? -0.4} → block (Aug-10; 0=off; zone leg (−0.30,0] on watchlist)  |  🔒 LOCK (Aug-3 ② verdict): ${th.spike_lock_enabled === true ? `touch >= ${th.spike_lock_arm_pct ?? 0.20}% -> SL ${th.spike_lock_sl_pct ?? -0.15}% (${th.spike_lock_exempt_fade === true ? 'FADES EXEMPT Aug-10 — 0 saves/4 kills under the -1.5 SL; chase/bounce only' : 'ALL species'}, reason SPIKE_LOCK)` : 'OFF'}  |  ENTRY: direct TAKER all spike species (Jul-30 maker bypass — 18/18 lifetime fires were TAKER_FALLBACK, 0 maker fills; up to 20s adverse drift for zero fee savings)`);
@@ -11359,6 +11372,25 @@
                     lines.push(`${conf.padEnd(14)} ${trades.padEnd(18)} ${avgPnlPct.padEnd(9)} ${(c.total_win_rate||0)+'%'.padEnd(6)} ${(c.risk_reward||0).toString().padEnd(6)} $${(c.total_pnl||0).toFixed(2).padStart(10)} $${(c.long_pnl||0).toFixed(2).padStart(8)} ${lPctStr.padEnd(8)} ${lWrStr.padEnd(8)} $${(c.short_pnl||0).toFixed(2).padStart(8)} ${sPctStr.padEnd(8)} ${sWrStr.padEnd(8)} ${(c.avg_entry_gap||0).toFixed(3)}%`);
                 }
 
+
+                // --- BTC REGIME + TRANSITION (Sep-7 D12 parity: were only in the split report) ---
+                if (perf.regime_performance && perf.regime_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by BTC Regime (at Entry)\n');
+                    lines.push(`${'Regime'.padEnd(18)} ${'#'.padEnd(6)} ${'Dir'.padEnd(8)} ${'Win%'.padEnd(8)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'Conf'}`);
+                    for (const r of perf.regime_performance) {
+                        const confStr = Object.entries(r.by_confidence||{}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.range||'?').padEnd(18)} ${String(r.count).padEnd(6)} ${(r.direction||'ALL').padEnd(8)} ${(r.win_rate+'%').padEnd(8)} ${('$'+(r.total_pnl_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${((r.avg_pnl_pct||0).toFixed(2)+'%').padStart(9)} ${((r.avg_peak_pct||0).toFixed(4)+'%').padStart(9)} ${confStr}`);
+                    }
+                }
+                if (perf.regime_transition_performance && perf.regime_transition_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Regime Transition Performance\n');
+                    lines.push(`${'Transition'.padEnd(16)} ${'#'.padEnd(6)} ${'Win%'.padEnd(8)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)}`);
+                    for (const r of perf.regime_transition_performance) {
+                        lines.push(`${(r.range||'?').padEnd(16)} ${String(r.count).padEnd(6)} ${(r.win_rate+'%').padEnd(8)} ${('$'+(r.total_pnl_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${((r.avg_pnl_pct||0).toFixed(2)+'%').padStart(9)}`);
+                    }
+                }
                 // --- CLOSING REASON ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Closing Reason Summary\n');
@@ -13222,7 +13254,9 @@
             return `${prefix}window_hours=${sel}`;
         }
 
+        let _perfGen = 0;  // Sep-7 hygiene: request generation — a slower stale response must never render over a newer filter
         async function loadPerformance() {
+            const _myGen = ++_perfGen;
             try {
                 const safe = (v, fb=0) => (v != null && !isNaN(v)) ? v : fb;
                 const regimeFilter = document.getElementById('regime-filter').value;
@@ -13279,6 +13313,7 @@
                 ]);
                 const data = await res.json();
                 const balData = balRes.ok ? await balRes.json() : null;
+                if (_myGen !== _perfGen) return;  // Sep-7 hygiene: a newer filter request superseded this one — drop the stale payload
                 if (data._error) console.warn('[Performance API error]', data._error);
                 // Jul 30 — data-driven Cell/Door options (distinct non-probe cell tags in the
                 // closed book, server-computed). Rebuild the optgroup preserving the selection.
@@ -13728,7 +13763,7 @@
                         `;
                     }).join('');
                 } else {
-                    reasonBody.innerHTML = '<tr><td colspan="22" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    reasonBody.innerHTML = '<tr><td colspan="21" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Entry Conditions by Close Reason
@@ -13959,10 +13994,10 @@
                     const _dirColor = (d) => d === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                     const _b1 = document.getElementById('entry-conditions-strategy-body');
                     const rows1 = data.entry_conditions_by_strategy || [];
-                    if (_b1) _b1.innerHTML = rows1.length ? rows1.map(r => _stratRow(r, `<td class="px-3 py-2 font-medium text-gray-200">${r.strategy} <span class="${_dirColor(r.direction)} text-xs font-normal">${r.direction==='LONG'?'L':'S'}</span></td>`, false)).join('') : '<tr><td colspan="33" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    if (_b1) _b1.innerHTML = rows1.length ? rows1.map(r => _stratRow(r, `<td class="px-3 py-2 font-medium text-gray-200">${r.strategy} <span class="${_dirColor(r.direction)} text-xs font-normal">${r.direction==='LONG'?'L':'S'}</span></td>`, false)).join('') : '<tr><td colspan="37" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                     const _b2 = document.getElementById('entry-conditions-strategy-outcome-body');
                     const rows2 = data.entry_conditions_by_strategy_outcome || [];
-                    if (_b2) _b2.innerHTML = rows2.length ? rows2.map(r => { const isW = r.outcome === 'Winners'; return _stratRow(r, `<td class="px-3 py-2 font-medium"><span class="text-gray-200">${r.strategy}</span> <span class="${isW?'text-emerald-400':'text-red-400'} text-xs">${r.outcome}</span> <span class="${_dirColor(r.direction)} text-xs font-normal">${r.direction==='LONG'?'L':'S'}</span></td>`, isW); }).join('') : '<tr><td colspan="33" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    if (_b2) _b2.innerHTML = rows2.length ? rows2.map(r => { const isW = r.outcome === 'Winners'; return _stratRow(r, `<td class="px-3 py-2 font-medium"><span class="text-gray-200">${r.strategy}</span> <span class="${isW?'text-emerald-400':'text-red-400'} text-xs">${r.outcome}</span> <span class="${_dirColor(r.direction)} text-xs font-normal">${r.direction==='LONG'?'L':'S'}</span></td>`, isW); }).join('') : '<tr><td colspan="37" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                   } catch (e) { console.error('[entry-cond-by-strategy] render error', e); }
                 })();
 
@@ -14606,7 +14641,7 @@
                     // moved into the inline footnote below the table.
                     if (_pcBody) {
                         if (!_pcRows.length) {
-                            _pcBody.innerHTML = '<tr><td colspan="13" class="px-3 py-2 text-center text-gray-500">(no matched trades yet — column populated from this deploy onward)</td></tr>';
+                            _pcBody.innerHTML = '<tr><td colspan="16" class="px-3 py-2 text-center text-gray-500">(no matched trades yet — column populated from this deploy onward)</td></tr>';
                         } else {
                             const fmt = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
                             const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
@@ -14791,7 +14826,7 @@
                     }
                     if (_pwBody) {
                         if (!_pwRows.length) {
-                            _pwBody.innerHTML = '<tr><td colspan="13" class="px-3 py-2 text-center text-gray-500">(no matching trades yet — Pattern W evaluated from existing entry features)</td></tr>';
+                            _pwBody.innerHTML = '<tr><td colspan="15" class="px-3 py-2 text-center text-gray-500">(no matching trades yet — Pattern W evaluated from existing entry features)</td></tr>';
                         } else {
                             const fmt = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
                             const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
@@ -16753,7 +16788,7 @@
                     pairSlopeAdxBody.innerHTML = data.pair_slope_adx_crosstab
                         .map(r => _renderSlopeAdxRow(r, 'text-amber-400')).join('');
                 } else {
-                    pairSlopeAdxBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
+                    pairSlopeAdxBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
                 }
 
                 // BTC Slope x BTC ADX Cross-Tab
@@ -16762,7 +16797,7 @@
                     btcSlopeAdxBody.innerHTML = data.btc_slope_adx_crosstab
                         .map(r => _renderSlopeAdxRow(r, 'text-cyan-400')).join('');
                 } else {
-                    btcSlopeAdxBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
+                    btcSlopeAdxBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
                 }
 
                 // ADX Delta x BTC ADX Cross-Tab (May 11)
@@ -16987,7 +17022,7 @@
                         `;
                     }).join('');
                 } else {
-                    npBody.innerHTML = '<tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    npBody.innerHTML = '<tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Performance Over Time Chart - only rebuild if data changed
@@ -18220,7 +18255,7 @@
                     }).join('');
                     peBody.innerHTML = peRows;
                 } else {
-                    peBody.innerHTML = '<tr><td colspan="40" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
+                    peBody.innerHTML = '<tr><td colspan="44" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
                 }
 
                 // Flagged Exits
@@ -19035,10 +19070,10 @@
 
                 const adxValueEl = document.getElementById('btc-adx-value');
                 const adxLowTag = document.getElementById('btc-adx-low-tag');
-                const adxMinL = parseFloat(document.getElementById('config-btc-adx-min-long')?.value) || 0;
-                const adxMinS = parseFloat(document.getElementById('config-btc-adx-min-short')?.value) || 0;
-                const adxMaxL = parseFloat(document.getElementById('config-btc-adx-max-long')?.value) || 100;
-                const adxMaxS = parseFloat(document.getElementById('config-btc-adx-max-short')?.value) || 100;
+                const adxMinL = safeFloat(document.getElementById('config-btc-adx-min-long')?.value) || 0;
+                const adxMinS = safeFloat(document.getElementById('config-btc-adx-min-short')?.value) || 0;
+                const adxMaxL = safeFloat(document.getElementById('config-btc-adx-max-long')?.value) || 100;
+                const adxMaxS = safeFloat(document.getElementById('config-btc-adx-max-short')?.value) || 100;
                 const effectiveMin = Math.min(adxMinL || 0, adxMinS || 0);
                 const effectiveMax = Math.max(adxMaxL || 100, adxMaxS || 100);
                 if (adxValueEl && btcAdxVal != null) {
@@ -19622,7 +19657,7 @@
                 const tbody = document.getElementById('bnb-swaps-table-body');
 
                 if (swaps.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">No BNB swaps yet</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-gray-500">No BNB swaps yet</td></tr>';
                     return;
                 }
 
@@ -19975,7 +20010,7 @@
             const inv = (_investorsCache || []).find(i => i.id === id) || {};
             const name = document.getElementById('investor-edit-name').value.trim();
             const wallet = document.getElementById('investor-edit-wallet').value.trim();
-            const depTotal = parseFloat(document.getElementById('investor-edit-amount').value);
+            const depTotal = safeFloat(document.getElementById('investor-edit-amount').value);
             if (!name) { showToast('Name is required', 'error'); return; }
             if (wallet && !/^0x[0-9a-fA-F]{40}$/.test(wallet)) { showToast('Invalid ETH address (0x + 40 hex chars)', 'error'); return; }
             try {
@@ -20084,7 +20119,7 @@
                 const res = await fetch(`${API_BASE}/api/investors`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name, eth_wallet: eth_wallet || null, deposit_amount: (function(){ const v = parseFloat(document.getElementById('investor-add-amount')?.value); return isNaN(v) || v <= 0 ? null : v; })()})
+                    body: JSON.stringify({name, eth_wallet: eth_wallet || null, deposit_amount: (function(){ const v = safeFloat(document.getElementById('investor-add-amount')?.value); return isNaN(v) || v <= 0 ? null : v; })()})
                 });
                 const data = await res.json();
                 if (res.ok) {
@@ -20101,7 +20136,7 @@
 
         async function submitDeposit() {
             const id = parseInt(document.getElementById('investor-deposit-id').value);
-            const amount = parseFloat(document.getElementById('investor-deposit-amount').value);
+            const amount = safeFloat(document.getElementById('investor-deposit-amount').value);
             if (!amount || amount <= 0) { showToast('Enter a valid amount', 'error'); return; }
             try {
                 const res = await fetch(`${API_BASE}/api/investors/deposit`, {
@@ -20124,7 +20159,7 @@
 
         async function submitWithdraw() {
             const id = parseInt(document.getElementById('investor-withdraw-id').value);
-            const amount = parseFloat(document.getElementById('investor-withdraw-amount').value);
+            const amount = safeFloat(document.getElementById('investor-withdraw-amount').value);
             if (!amount || amount <= 0) { showToast('Enter a valid amount', 'error'); return; }
             try {
                 const res = await fetch(`${API_BASE}/api/investors/withdraw`, {
@@ -20561,7 +20596,7 @@
                 { const _e=document.getElementById('config-adxmax2-probe-max-open'); if(_e && config.thresholds.adxmax2_probe_max_open !== undefined) _e.value = config.thresholds.adxmax2_probe_max_open; }
                 { const _e=document.getElementById('config-adxmax2-probe-ceiling-long'); if(_e && config.thresholds.adxmax2_probe_ceiling_long !== undefined) _e.value = config.thresholds.adxmax2_probe_ceiling_long; }
                 { const _e=document.getElementById('config-spike-chase-probe-enabled'); if(_e) _e.checked = config.thresholds.spike_chase_probe_enabled === true; }
-                { const _e=document.getElementById('config-spike-chase-probe-max-open'); if(_e && config.thresholds.spike_chase_probe_max_open !== undefined) _e.value = config.thresholds.spike_chase_probe_max_open; }
+
                 { const _e=document.getElementById('config-spike-chase-probe-rsi-jump'); if(_e && config.thresholds.spike_chase_probe_rsi_jump !== undefined) _e.value = config.thresholds.spike_chase_probe_rsi_jump; }
                 { const _e=document.getElementById('config-spike-chase-probe-rsi-prev-max'); if(_e && config.thresholds.spike_chase_probe_rsi_prev_max !== undefined) _e.value = config.thresholds.spike_chase_probe_rsi_prev_max; }
                 { const _e=document.getElementById('config-spike-chase-probe-min-candle-pct'); if(_e && config.thresholds.spike_chase_probe_min_candle_pct !== undefined) _e.value = config.thresholds.spike_chase_probe_min_candle_pct; }
@@ -20830,7 +20865,7 @@
                 _widenInput.value = config.thresholds.pullback_widening_per_level !== undefined ? config.thresholds.pullback_widening_per_level : 0.0;
                 const _updateWidenPreview = () => {
                     const widen = parseFloat(_widenInput.value) || 0;
-                    const basePb = parseFloat(document.getElementById('config-very-strong-pb')?.value || config.confidence_levels?.VERY_STRONG?.pullback_trigger || 0.20);
+                    const basePb = parseFloat(document.getElementById('config-very_strong-pb')?.value || config.confidence_levels?.VERY_STRONG?.pullback_trigger || 0.20);
                     const preview = document.getElementById('config-pullback-widening-preview');
                     if (preview) {
                         const l1 = basePb.toFixed(2), l2 = (basePb + widen).toFixed(2), l3 = (basePb + 2*widen).toFixed(2), l4 = (basePb + 3*widen).toFixed(2);
@@ -21848,7 +21883,7 @@
         // Locale-safe float parser: handles comma decimal separators (e.g. "0,018" -> 0.018)
         function safeFloat(val) {
             if (typeof val === 'number') return val;
-            return parseFloat(String(val).replace(',', '.')) || 0;
+            return parseFloat(String(val).replace(/,/g, '.')) || 0;  // Sep-7 hygiene: replace ALL commas (EU input)
         }
 
         // Save configuration
@@ -21883,9 +21918,9 @@
                 bnb_runway_hours: parseInt(document.getElementById('config-bnb-runway-hours').value) || 24,
                 bnb_min_balance_usd: safeFloat(document.getElementById('config-bnb-min-balance')?.value || 50),
                 bnb_auto_sell_enabled: document.getElementById('config-bnb-auto-sell-enabled').value === 'true',
-                bnb_sell_runway_hours: parseFloat(document.getElementById('config-bnb-sell-runway-hours').value) || 0,
-                bnb_sell_target_hours: parseFloat(document.getElementById('config-bnb-sell-target-hours').value) || 0,
-                bnb_min_sell_usd: parseFloat(document.getElementById('config-bnb-min-sell-usd').value) || 50,
+                bnb_sell_runway_hours: safeFloat(document.getElementById('config-bnb-sell-runway-hours').value) || 0,
+                bnb_sell_target_hours: safeFloat(document.getElementById('config-bnb-sell-target-hours').value) || 0,
+                bnb_min_sell_usd: safeFloat(document.getElementById('config-bnb-min-sell-usd').value) || 50,
                 investment: {
                     mode: invMode,
                     fixed_amount: invMode === 'fixed' ? invValue : 100,
@@ -22079,7 +22114,7 @@
                     adxmax2_probe_max_open: parseInt(document.getElementById('config-adxmax2-probe-max-open')?.value || 3),
                     adxmax2_probe_ceiling_long: safeFloat(document.getElementById('config-adxmax2-probe-ceiling-long')?.value || 40),
                     spike_chase_probe_enabled: (document.getElementById('config-spike-chase-probe-enabled')?.checked === true),
-                    spike_chase_probe_max_open: parseInt(document.getElementById('config-spike-chase-probe-max-open')?.value || 3),
+
                     spike_chase_probe_rsi_jump: safeFloat(document.getElementById('config-spike-chase-probe-rsi-jump')?.value || 25),
                     spike_chase_probe_rsi_prev_max: safeFloat(document.getElementById('config-spike-chase-probe-rsi-prev-max')?.value || 55),
                     spike_chase_probe_min_candle_pct: safeFloat(document.getElementById('config-spike-chase-probe-min-candle-pct')?.value || 0.5),
@@ -22299,7 +22334,7 @@
                     bullrun_rearm_alt_r6h_min: safeFloat(document.getElementById('config-br-rearm-alt-r6h')?.value ?? 1.0) || 1.0,
                     bullrun_rearm_alt_above_pct: safeFloat(document.getElementById('config-br-rearm-alt-above')?.value ?? 80) || 80,
                     bullrun_rearm_max_hours: safeFloat(document.getElementById('config-br-rearm-max-h')?.value ?? 24) || 24,
-                    bullrun_rearm_after_green_hours: (function(){ const v = parseFloat(document.getElementById('config-br-rearm-after-green-h')?.value); return isNaN(v) ? 48 : v; })(),  // 0 = any time
+                    bullrun_rearm_after_green_hours: (function(){ const raw = String(document.getElementById('config-br-rearm-after-green-h')?.value ?? '').trim(); return raw === '' ? 48 : safeFloat(raw); })(),  // Sep-7 review: blank = default 48 (safeFloat never NaNs, the old isNaN guard died); explicit 0 = any time
                     bullrun_btc_1h_slope_min: (function(){ const v = String(document.getElementById('config-br-1h-slope-min')?.value ?? '').trim(); return v === '' ? null : parseFloat(v); })(),  // blank = gate OFF
                     bullrun_green_r72_on: safeFloat(document.getElementById('config-br-r72-on')?.value ?? 5.0),
                     bullrun_green_r72_off: safeFloat(document.getElementById('config-br-r72-off')?.value ?? 4.0),
@@ -22311,7 +22346,7 @@
                     bullrun_amber_r24: safeFloat(document.getElementById('config-br-amber-r24')?.value ?? 6.0),
                     bullrun_amber_above: safeFloat(document.getElementById('config-br-amber-above')?.value ?? 65.0),
                     bullrun_amber_eff: safeFloat(document.getElementById('config-br-amber-eff')?.value ?? 0.12),
-                    bullrun_pvr_max: parseFloat(document.getElementById('config-br-pvr-max').value) || 0,
+                    bullrun_pvr_max: safeFloat(document.getElementById('config-br-pvr-max').value) || 0,
                     bullrun_universe_size: parseInt(document.getElementById('config-br-universe-size')?.value || 10) || 10,
                     bullrun_dip_atr_mult: safeFloat(document.getElementById('config-br-dip-atr-mult')?.value ?? 0.3),
                     bullrun_pair_spacing_hours: safeFloat(document.getElementById('config-br-spacing-hours')?.value ?? 2.0),
@@ -22341,11 +22376,11 @@
                     fl2_deep_stop: safeFloat(document.getElementById('config-fl2-deep-stop').value),
                     tick_momentum_exit_min_profit_flagged: safeFloat(document.getElementById('config-tick-momentum-min-profit-flagged').value),
                     ema5_slope_exit_enabled: false,
-                    ema5_slope_lookback: 3,
+
                     ema5_slope_threshold: -0.02,
                     pnl_trailing_trigger: 0,
                     pnl_trailing_ratio: 0.5,
-                    pnl_trailing_ratio_signal_active: 0.4,
+
                     rsi_momentum_exit_enabled: document.getElementById('config-rsi-momentum-exit-enabled').checked,
                     rsi_momentum_exit_min_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-min-profit').value),
                     rsi_momentum_exit_max_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-max-profit').value),
@@ -22685,7 +22720,7 @@
         function openFundWithdrawModal(){ document.getElementById('fund-withdraw-modal').classList.remove('hidden'); }
         function openFundDepositModal(){ document.getElementById('fund-deposit-modal').classList.remove('hidden'); }
         async function submitFundDeposit(){
-            const amt = parseFloat(document.getElementById('fd2-amount').value);
+            const amt = safeFloat(document.getElementById('fd2-amount').value);
             if (!amt || amt <= 0) { alert('Enter a positive amount'); return; }
             const note = document.getElementById('fd2-note').value || null;
             const navRaw = document.getElementById('fd2-nav').value;
@@ -22704,7 +22739,7 @@
             } catch(e){ alert('Error: ' + e); }
         }
         async function submitFundWithdraw(){
-            const amt = parseFloat(document.getElementById('fw-amount').value);
+            const amt = safeFloat(document.getElementById('fw-amount').value);
             if (!amt || amt <= 0) { alert('Enter a positive amount'); return; }
             const note = document.getElementById('fw-note').value || null;
             const navRaw = document.getElementById('fw-nav').value;

@@ -304,7 +304,9 @@ async def lifespan(app: FastAPI):
                     logger.info(f"[BINANCE] Ban state persisted to DB: expires at {ban_epoch:.0f}")
         try:
             loop = _aio.get_running_loop()
-            loop.create_task(_save())
+            _t = loop.create_task(_save())
+            trading_engine._bg_tasks.add(_t)  # Sep-7 hygiene: unreferenced task could be GC'd before running (ban persistence dropped)
+            _t.add_done_callback(trading_engine._bg_tasks.discard)
         except RuntimeError:
             pass
     set_ban_persist_callback(_persist_ban)
@@ -1449,6 +1451,9 @@ async def _external_flow_rows(db: AsyncSession, start_ms: int):
     global _FLOW_RECON_SEEN
     try:
         _cap = await binance_service.get_capital_flows(start_ms - 48 * 3600000)
+        _FLOW_RECON_SEEN.discard('_recon_fail_warned')  # Sep-7 hygiene: endpoint recovered — re-arm the one-shot failure warning
+        if len(_FLOW_RECON_SEEN) > 4000:  # Sep-7 review: arbitrary-order trims re-emit warnings — clear wholesale at a bound never reached in practice (log-only alarm, repeats harmless)
+            _FLOW_RECON_SEEN = set()
         for ts, amt in out:
             _matched = False
             for _cts, _camt, _coin in _cap:
@@ -13260,8 +13265,8 @@ async def update_pairs_limit(data: dict):
     # Validate limit (Jun 12: 100 replaced by 75 — see 50->75 expansion audit;
     # 100 caused a rate-limit ban in the pre-batching era and Tier B $27-49M
     # pairs are long-hostile + liquidity-cap-pinched)
-    if limit not in [5, 10, 20, 50]:
-        raise HTTPException(status_code=400, detail="Limit must be 5, 10, 20, or 50")
+    if limit not in [5, 10, 20, 50, 75]:  # Sep-7 hygiene: 75 is the documented Jun-12 policy cap, list had drifted
+        raise HTTPException(status_code=400, detail="Limit must be 5, 10, 20, 50, or 75")
     
     current_config = load_trading_config()
     current_config.trading_pairs_limit = limit

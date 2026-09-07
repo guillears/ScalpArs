@@ -145,7 +145,6 @@ class SignalThresholds(BaseModel):
     # the 4-loss clusters). Caught the 4 consecutive LONG losses on 06-03 (0/4) while
     # keeping both winners. LONG only; SHORT plumbed-but-disabled (untested side).
     evo_chase_filter_long_enabled: bool = False
-    evo_chase_filter_short_enabled: bool = False
     evo_chase_window_min: int = 30
     # May 10: minimum ADX delta (current ADX − ADX 1 candle ago).
     # Cross-sample validated 2-sample finding (May 4 224tr survivors + May 10 34tr):
@@ -246,13 +245,9 @@ class SignalThresholds(BaseModel):
     fl2_recovery_target: float = -0.4  # Tight recovery target — close as FL_RECOVERED if P&L climbs back to this level
     fl2_deep_stop: float = -1.0  # Deep stop — close as FL_DEEP_STOP if P&L falls below this level
     ema5_slope_exit_enabled: bool = True  # Exit when EMA5 slope decelerates (momentum loss)
-    ema5_slope_lookback: int = 3  # Number of candles back for EMA5 slope calculation
     ema5_slope_threshold: float = 0.01  # Min EMA5 slope % to stay in trade (0 = original behavior)
-    price_ema5_exit_ratio: float = 0.3  # Exit when price-to-EMA5 distance drops to this fraction of peak (0 = disabled)
-    min_peak_ema5_gap_pct: float = 0.05  # Min peak gap (% of entry price) before distance trailing activates (0 = no minimum)
     pnl_trailing_trigger: float = 0.1  # Min peak P&L % to activate P&L trailing exit (0 = disabled)
     pnl_trailing_ratio: float = 0.5  # Ratio when signal lost (MOMENTUM_EXIT) -- tighter
-    pnl_trailing_ratio_signal_active: float = 0.3  # Ratio when signal active (PNL_TRAILING) -- wider
     ema_gap_expanding_filter: bool = True  # Block entry if EMA5-EMA8 gap is compressing (current <= previous candle)
     # Jun 8: strictness mode for the gap-expanding filter. 'both' (legacy) = block unless the
     # EMA5-EMA13 gap beats BOTH prev1 AND prev2 candles (a fresh 3-bar expansion high — very
@@ -412,7 +407,6 @@ class SignalThresholds(BaseModel):
     # would-be fire still logs [SPIKE_ROUTER_BLOCK] + counter SPIKE_CHASE_DISABLED, so revival
     # evidence accrues for free. FADE/BOUNCE untouched. Revival = fresh probe proposal (11b).
     spike_chase_enabled: bool = True   # default True = legacy; JSON carries the live value (False since Aug-21)
-    spike_chase_probe_max_open: int = 3          # same slot cap as the rest of the fleet
     spike_chase_probe_rsi_jump: float = 25.0     # min single-candle RSI(12) jump (pts)
     spike_chase_probe_rsi_prev_max: float = 55.0 # from-quiet condition: prev candle RSI <= this
     spike_chase_probe_rsi_prev_min: float = 35.0 # Jul 24 PM (FHE dead-cat fire): quiet FLOOR — prev RSI in
@@ -927,7 +921,7 @@ class SignalThresholds(BaseModel):
     bullrun_amber_r24: float = 6.0         # AMBER alert (24h tight variant) — display/log only, never arms
     bullrun_amber_above: float = 65.0
     bullrun_amber_eff: float = 0.12
-    bullrun_pvr_max: float = 1.2           # 2026-08-25 (operator override, OBSERVE-FIRST acknowledged): refuse sleeve entries with pair-vol ratio > max; evidence B3+B4 blocked cohort 7·14%·−$350 (below N≥30 gate — ships WITH PASS:BULLRUN_PVR_MAX phantoms so the cohort keeps scoring; tight revert gate in CURRENT_STATE). 0 = off.
+    bullrun_pvr_max: float = 1.2           # 2026-08-25 (operator override, OBSERVE-FIRST acknowledged): refuse sleeve entries with pair-vol ratio > max; evidence B3+B4 blocked cohort 7·14%·−$350 (below N≥30 gate — phantom seeding RETIRED Jul-30 — cohort scored via the blocked_pvr episode counter instead (Sep-7 fix); tight revert gate in CURRENT_STATE). 0 = off.
     bullrun_universe_size: int = 10        # sleeve trades scan-rank ≤ N (COIN-only universe; rank 11-20 refuted: 50% WR −$1,933)
     bullrun_dip_atr_mult: float = 0.3      # entry: dip ≥ N×ATR(14,5m) below 5m EMA20, then close reclaims
     bullrun_pair_spacing_hours: float = 2.0  # min hours between sleeve fires on the same pair
@@ -1978,7 +1972,6 @@ class SignalThresholds(BaseModel):
     spike_guard_enabled: bool = True
     spike_guard_volume_multiplier: float = 3.0  # Block if candle volume >= X × 20-bar avg AND price moved >= spike_guard_price_move_pct
     spike_guard_price_move_pct: float = 1.5  # Min candle price move % to trigger volume spike block
-    spike_guard_max_ema20_distance_pct: float = 2.0  # Block if price is >= X% away from EMA20 (overextended)
 
 
 class InvestmentConfig(BaseModel):
@@ -2000,7 +1993,7 @@ class InvestmentConfig(BaseModel):
     # Jul 2, 2026 (operator-directed): FULLY AUTOMATIC version of working_capital — mode="schedule"
     # walks this balance→tradeable table by itself (no manual milestone flips). Format mirrors
     # leverage_balance_schedule: "balance:tradeable_target, ..." ascending; active target = highest
-    # tier ≤ free balance; below the first tier → no reserve (full balance tradeable). The v3
+    # tier ≤ TOTAL EQUITY (free+margin — Jul-2 engine change; NOT free balance); below the first tier → no reserve. The v3
     # operating table (CURRENT_STATE capital-scaling) expressed as tiers. Empty = off.
     reserve_schedule: str = ""  # e.g. "10000:8000, 25000:17500, ..., 500000:100000"
     # Aug 21, 2026 (operator) — FEE RESERVE FLOOR: USDT that sizing never deploys, on top of whatever

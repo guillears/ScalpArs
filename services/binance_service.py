@@ -202,6 +202,9 @@ class BinanceService:
                     _tms = 0
                 out.append((_tms, -abs(float(r.get('amount') or 0)), r.get('coin')))
         _cache[start_ms] = (_t.monotonic(), out)
+        if len(_cache) > 8:  # Sep-7 hygiene: keys accumulate as the era window shifts — keep newest
+            for _k in sorted(_cache, key=lambda k: _cache[k][0])[:-8]:
+                _cache.pop(_k, None)
         self._cap_flow_cache = _cache
         return out
 
@@ -223,11 +226,24 @@ class BinanceService:
                 break
             for r in rows:
                 if r.get('asset') == 'USDT':
-                    out.append((int(r.get('time') or 0), float(r.get('income') or 0)))
+                    out.append((int(r.get('time') or 0), float(r.get('income') or 0), str(r.get('tranId') or '')))
             if len(rows) < 1000:
                 break
-            cursor = int(rows[-1].get('time') or cursor) + 1
+            # Sep-7 hygiene: page on the LAST timestamp itself (not +1) so same-millisecond rows
+            # split across a page boundary are not dropped; the overlap dedups below.
+            _next = int(rows[-1].get('time') or 0)
+            if _next <= cursor:  # no forward progress (pathological) — stop rather than loop
+                break
+            cursor = _next
+        _seen = set()
+        # Sep-7 review: dedup on tranId (unique per income row) so two GENUINE same-ms same-amount
+        # transfers survive; rows lacking tranId fall back to the (ts, amount) identity.
+        out = [r for r in out if not ((r[2] or r[:2]) in _seen or _seen.add(r[2] or r[:2]))]
+        out = [(t, a) for t, a, _ in out]  # callers consume (ts, amount)
         _cache[start_ms] = (_t.monotonic(), out)
+        if len(_cache) > 8:  # Sep-7 hygiene: same cap as _cap_flow_cache
+            for _k in sorted(_cache, key=lambda k: _cache[k][0])[:-8]:
+                _cache.pop(_k, None)
         self._tx_rows_cache = _cache
         return out
 

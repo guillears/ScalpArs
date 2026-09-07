@@ -4563,7 +4563,7 @@ class TradingEngine:
 
     async def _update_bullrun_monitor(self, db=None):
         """🌊 Aug-21 gate 57: Bull-Run Monitor — hourly-class composite on BTC 5m (Schmitt band
-        + crash-latch + AMBER). Throttled to one recompute per 10 min; updated_at is stamped
+        + crash-latch + AMBER). Throttled to one recompute per ~2 min (110s, Aug-24 (32)); updated_at is stamped
         ONLY on success so a failed fetch retries next cycle and the 30-min staleness gate in
         the sleeve entry fails safe (stale ≠ GREEN). Periods ledger persisted via
         _bullrun_persist_period (restart-proof). Evidence: config.py bullrun_* block."""

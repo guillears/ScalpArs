@@ -4714,6 +4714,10 @@
                                 <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">%</span>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Market orders</p>
+                            <label class="flex items-center gap-2 text-xs text-gray-300 mt-2" title="Sep-3: fetch the account's REAL rates from Binance (commissionRate × 0.9 when the futures BNB discount is on and BNB fuel exists) on start + every 24h. Catches the silent +11% jump when BNB runs dry and VIP-tier changes. Off / fetch failure = these cells apply as entered.">
+                                <input type="checkbox" id="config-fee-auto-fetch" class="accent-emerald-600">
+                                Auto-sync from Binance (incl. BNB discount)
+                            </label>
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Maker Fee (per side)</label>
@@ -20240,8 +20244,9 @@
                     document.getElementById('config-investment-value').value = '';
                 }
                 // Fee settings
-                document.getElementById('config-taker-fee').value = ((config.taker_fee || config.trading_fee) * 100).toFixed(3);
-                document.getElementById('config-maker-fee').value = ((config.maker_fee ?? 0.00018) * 100).toFixed(3);
+                document.getElementById('config-taker-fee').value = ((config.taker_fee || config.trading_fee) * 100).toFixed(4);
+                { const _fa = document.getElementById('config-fee-auto-fetch'); if (_fa) _fa.checked = config.fee_auto_fetch !== false; }
+                document.getElementById('config-maker-fee').value = ((config.maker_fee ?? 0.00018) * 100).toFixed(4);
                 document.getElementById('config-maker-entry-enabled').checked = config.maker_entry_enabled || false;
                 document.getElementById('config-maker-timeout').value = config.maker_timeout_seconds || 15;
                 document.getElementById('config-maker-offset-ticks').value = config.maker_offset_ticks || 2;
@@ -21854,6 +21859,7 @@
             const config = {
                 trading_fee: takerFeeVal,
                 taker_fee: takerFeeVal,
+                fee_auto_fetch: document.getElementById('config-fee-auto-fetch')?.checked ?? true,
                 maker_fee: safeFloat(document.getElementById('config-maker-fee').value) / 100,
                 maker_entry_enabled: document.getElementById('config-maker-entry-enabled').checked,
                 maker_timeout_seconds: parseInt(document.getElementById('config-maker-timeout').value) || 15,

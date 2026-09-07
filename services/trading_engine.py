@@ -1693,6 +1693,10 @@ class TradingEngine:
         self.is_running = True
         self.started_at = datetime.utcnow()
         await self.save_state(db)
+        try:
+            await self._sync_fee_rates()  # Sep-3: fee auto-sync on start (self-throttled, fail-open)
+        except Exception:
+            pass
         return {"status": "running", "message": "Bot started"}
     
     async def pause(self, db: AsyncSession):
@@ -2445,6 +2449,50 @@ class TradingEngine:
 
         return fees_24h
 
+    async def _sync_fee_rates(self):
+        """Sep-3 (operator): auto-sync maker/taker fees from the account's REAL Binance rates.
+        effective = base commissionRate x 0.9 when the futures BNB discount (feeBurn) is ON and
+        BNB fuel exists (>$1; unknown balance = assume stocked -- the reserve machinery's job).
+        In-memory only (the UI save persists whatever is loaded, as with any field). Fail-open:
+        any error keeps current values and retries in 1h; success re-checks in 24h. Recorded
+        fees on fills are UNAFFECTED (M6 uses exchange-reported fill fees); this drives the
+        estimate layer (BE offsets, fee drag, projections, paper sim)."""
+        tc = config.trading_config
+        if not getattr(tc, 'fee_auto_fetch', False):
+            return
+        _now = _leash_time.time()
+        if _now - (getattr(self, '_fee_sync_at', 0) or 0) < 24 * 3600:
+            return
+        try:
+            rates = await binance_service.get_commission_rates()
+            disc = 1.0
+            if rates['fee_burn']:
+                if self.is_paper_mode:
+                    disc = 0.9 if (self.paper_bnb_balance_usd or 0) > 1 else 1.0
+                else:
+                    _bnb_usd = None
+                    try:
+                        _bal = await binance_service.get_balance()
+                        _px = await binance_service.get_bnb_price()
+                        if _bal and _bal.get('ok', True) and _px and _px > 0:
+                            _bnb_usd = (_bal.get('bnb_total') or 0) * _px
+                    except Exception:
+                        pass
+                    disc = 0.9 if (_bnb_usd is None or _bnb_usd > 1.0) else 1.0
+            new_t = round(rates['taker'] * disc, 8)
+            new_m = round(rates['maker'] * disc, 8)
+            if abs(new_t - (tc.taker_fee or 0)) > 1e-9 or abs(new_m - (tc.maker_fee or 0)) > 1e-9:
+                logger.info(f"[FEE_SYNC] Binance: taker {rates['taker']*100:.3f}% maker {rates['maker']*100:.3f}% x {'0.9 (BNB discount)' if disc < 1 else '1.0 (NO discount)'} -> effective {new_t*100:.4f}%/{new_m*100:.4f}% (was {(tc.taker_fee or 0)*100:.4f}%/{(tc.maker_fee or 0)*100:.4f}%)")
+                tc.taker_fee = new_t
+                tc.maker_fee = new_m
+                tc.trading_fee = new_t  # legacy mirror (kept in lockstep everywhere it is set)
+            else:
+                logger.info(f"[FEE_SYNC] rates verified unchanged: taker {new_t*100:.4f}% / maker {new_m*100:.4f}%{' (BNB discount on)' if disc < 1 else ''}")
+            self._fee_sync_at = _now
+        except Exception as e:
+            self._fee_sync_at = _now - 23 * 3600  # retry in ~1h
+            logger.warning(f"[FEE_SYNC] fetch failed ({str(e)[:80]}) -- keeping configured fees (manual fallback)")
+
     async def bnb_scheduled_check(self, db: AsyncSession, force: bool = False):
         """Scheduled BNB balance check: compute burn rate, project needs, swap if necessary.
 
@@ -2459,6 +2507,7 @@ class TradingEngine:
         up to 6h after a bot restart because the gate blocked the recompute.
         """
         tc = config.trading_config
+        await self._sync_fee_rates()  # Sep-3: fee auto-sync rides the 15-min wake (24h self-throttle)
         if not tc.bnb_swap_enabled:
             return
 

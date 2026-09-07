@@ -63,6 +63,7 @@ class BinanceService:
         })
         
         # Private exchange for trading (requires API keys)
+        self._commission_cache = None  # (monotonic_ts, rates) -- fee auto-sync (Sep-3)
         self.exchange = ccxt.binanceusdm({
             'apiKey': settings.binance_api_key,
             'secret': settings.binance_api_secret,
@@ -415,6 +416,27 @@ class BinanceService:
     @_last_balance_payload.setter
     def _last_balance_payload(self, v):
         self._last_balance_payload_raw = v
+
+    async def get_commission_rates(self) -> Dict:
+        """Sep-3 (operator): the account's ACTUAL futures fee rates + BNB-discount state.
+        /fapi/v1/commissionRate returns the BASE tier rate (BNB discount NOT included);
+        /fapi/v1/feeBurn says whether the futures 10% pay-in-BNB discount is switched on.
+        Effective rate = base x 0.9 when feeBurn AND BNB fuel exists (caller's job).
+        Raises to caller (fail-open there). 1h cache -- rates change at most daily."""
+        _now = time.monotonic()
+        if self._commission_cache and _now - self._commission_cache[0] < 3600:
+            return self._commission_cache[1]
+        cr = await self.exchange.fapiPrivateGetCommissionRate({'symbol': 'BTCUSDT'})
+        fb = await self.exchange.fapiPrivateGetFeeBurn()
+        out = {
+            'maker': float(cr.get('makerCommissionRate') or 0),
+            'taker': float(cr.get('takerCommissionRate') or 0),
+            'fee_burn': str(fb.get('feeBurn')).lower() == 'true',
+        }
+        if out['maker'] <= 0 or out['taker'] <= 0:
+            raise ValueError(f"commissionRate returned non-positive rates: {cr}")
+        self._commission_cache = (_now, out)
+        return out
 
     async def get_balance(self) -> Dict:
         """Get account balance"""

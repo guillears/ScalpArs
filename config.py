@@ -2115,6 +2115,11 @@ class TradingConfig(BaseModel):
     # Independent fee rates
     maker_fee: float = 0.00018  # 0.018% per side (limit order fills)
     taker_fee: float = 0.00045  # 0.045% per side (market order fills)
+    # Sep-3 (operator): AUTO-SYNC the two rates from Binance -- commissionRate (base tier rate)
+    # x 0.9 when the futures BNB discount (feeBurn) is ON and BNB fuel exists. Catches the silent
+    # +11% fee jump when BNB runs dry and any VIP-tier change. Manual cells stay as fail-open
+    # fallback (sync failure keeps current values). Refresh: on start + every 24h (1h retry on error).
+    fee_auto_fetch: bool = True
     
     # Maker entry settings
     maker_entry_enabled: bool = False

@@ -816,5 +816,6 @@
       "be_level5_offset": 4.0,
       "tp_trailing_enabled": true
     }
-  }
+  },
+  "fee_auto_fetch": true
 }

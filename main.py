@@ -149,6 +149,7 @@ async def bnb_swap_loop():
     await asyncio.sleep(60)
     while not should_stop:
         try:
+            await trading_engine._sync_fee_rates()  # Sep-3 review I2: fee auto-sync must survive bnb_swap_enabled=false (24h self-throttle, fail-open)
             if config.trading_config.bnb_swap_enabled:
                 async with AsyncSessionLocal() as db:
                     await trading_engine.initialize(db)
@@ -412,6 +413,7 @@ class ConfigUpdate(BaseModel):
     trading_fee: Optional[float] = None
     maker_fee: Optional[float] = None
     taker_fee: Optional[float] = None
+    fee_auto_fetch: Optional[bool] = None
     maker_entry_enabled: Optional[bool] = None
     maker_timeout_seconds: Optional[int] = None
     maker_offset_ticks: Optional[int] = None
@@ -13169,6 +13171,7 @@ async def update_config(config_update: ConfigUpdate):
         # Reload global config
         import config
         config.trading_config = new_config
+        trading_engine._fee_sync_at = 0  # Sep-3 review I1: a config save replaces the global with DISK values — force a fee re-sync on the next 15-min wake so a save can't silently revert synced rates for 24h
         return {"status": "success", "message": f"Configuration saved ({len(changes)} change(s))"}
     else:
         raise HTTPException(status_code=500, detail="Failed to save configuration")

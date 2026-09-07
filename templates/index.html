@@ -4714,11 +4714,6 @@
                                 <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">%</span>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Market orders</p>
-                            <label class="flex items-center gap-2 text-xs text-gray-300 mt-2" title="Sep-3: fetch the account's REAL rates from Binance (commissionRate × 0.9 when the futures BNB discount is on and BNB fuel exists) on start + every 24h. Catches the silent +11% jump when BNB runs dry and VIP-tier changes. Off / fetch failure = these cells apply as entered.">
-                                <input type="checkbox" id="config-fee-auto-fetch" class="accent-emerald-600" onchange="applyFeeAutoState()">
-                                Auto-sync from Binance (incl. BNB discount)
-                            </label>
-                            <p class="text-xs text-emerald-500/80 mt-1 hidden" id="fee-sync-status"></p>
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Maker Fee (per side)</label>
@@ -4753,6 +4748,13 @@
                                     <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">tk</span>
                                 </div>
                             </div>
+                        </div>
+                        <div class="col-span-2 md:col-span-4 flex flex-wrap items-center gap-x-4 gap-y-1 -mt-2">
+                            <label class="flex items-center gap-2 text-xs text-gray-300" title="Sep-3: fetch the account's REAL rates from Binance (commissionRate × 0.9 when the futures BNB discount is on and BNB fuel exists) on start + every 24h. Catches the silent +11% jump when BNB runs dry and VIP-tier changes. Off / fetch failure = the two fee cells apply as entered.">
+                                <input type="checkbox" id="config-fee-auto-fetch" class="accent-emerald-600" onchange="applyFeeAutoState()">
+                                Auto-sync from Binance (incl. BNB discount)
+                            </label>
+                            <p class="text-xs text-emerald-500/80 hidden" id="fee-sync-status"></p>
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Re-validate Signal at Timeout</label>

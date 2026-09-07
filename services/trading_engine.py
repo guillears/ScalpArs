@@ -4474,6 +4474,7 @@ class TradingEngine:
                 cur.blocked_ema50 = int(_bullrun_monitor.get('blk_ema50', 0) or 0)
                 cur.blocked_off24h = int(_bullrun_monitor.get('blk_off24h', 0) or 0)
                 cur.blocked_ema13 = int(_bullrun_monitor.get('blk_ema13', 0) or 0)
+                cur.blocked_pvr = int(_bullrun_monitor.get('blk_pvr', 0) or 0)  # Sep-7 review: was omitted — counter died on every restart
                 cur.blocked_1h = int(_bullrun_monitor.get('blk_1h', 0) or 0)
                 cur.last_update = now
                 # breadth backfill: the first compute after boot can precede the breadth scan (0/0)
@@ -4494,6 +4495,7 @@ class TradingEngine:
                     cur.blocked_ema50 = int(_bullrun_monitor.get('blk_ema50', 0) or 0)
                     cur.blocked_off24h = int(_bullrun_monitor.get('blk_off24h', 0) or 0)
                     cur.blocked_ema13 = int(_bullrun_monitor.get('blk_ema13', 0) or 0)
+                    cur.blocked_pvr = int(_bullrun_monitor.get('blk_pvr', 0) or 0)  # Sep-7 review: was omitted (period-close block)
                     cur.blocked_1h = int(_bullrun_monitor.get('blk_1h', 0) or 0)
                     if cur.state == 'AMBER' and new_state == 'GREEN':
                         amber_lead = int((now - cur.started_at).total_seconds() / 60)
@@ -10237,6 +10239,7 @@ class TradingEngine:
 
                 _collected.append({
                     'pair': pair, 'symbol': symbol, 'volume_24h': volume_24h,
+                    'ohlcv': ohlcv,  # Sep-7 full-review C1: Phase 3's spike hooks read `ohlcv` — without this they judged the LAST Phase-1 pair's candles
                     'indicators': indicators, 'signal': signal, 'confidence': confidence,
                     'pair_volume_ratio': _pair_volume_ratio, 'breadth_regime': breadth_regime,
                     'rank': pair_info.get('rank'),
@@ -10288,6 +10291,8 @@ class TradingEngine:
         for _cr in _collected:
             _had_room = _open_positions_in_scan < _max_positions
             pair = _cr['pair']
+            symbol = _cr['symbol']  # Sep-7 full-review C1: was leaked from Phase 1's last iteration — entry_funding_rate stamped the wrong pair
+            ohlcv = _cr.get('ohlcv')  # Sep-7 full-review C1: same leak — spike chase/fade/bounce candle+volume legs judged the wrong pair
             indicators = _cr['indicators']
             signal = _cr['signal']
             confidence = _cr['confidence']
@@ -14354,6 +14359,15 @@ class TradingEngine:
                             # RESTARTS only (no old_info generation to inherit from).
                             new_info['_belock'] = old_info.get('_belock')
                             new_info['_belock_taint'] = bool(old_info.get('_belock_taint'))
+                            # Sep-7 full-review C6 (same omission class as May-15/May-20 fixes below):
+                            # per-trade persistence-dedup + timer keys were wiped every ~1s rebuild.
+                            # _htp_persisted_lvl was ACTIVE damage — any order past a HARD_TP rung
+                            # re-fired its persist UPDATE+commit once per second for the trade's life.
+                            for _key in ('_htp_persisted_lvl', '_sp_lock_peak_persisted',
+                                         '_trailing_pullback_first_at', '_trailing_pullback_first_pnl_pct',
+                                         'runner_peak_stretch'):
+                                if old_info.get(_key) is not None:
+                                    new_info[_key] = old_info[_key]
                             if new_info['direction'] == 'LONG':
                                 new_info['high_price'] = max(new_info['high_price'], old_info.get('high_price', 0))
                             else:

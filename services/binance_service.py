@@ -253,8 +253,17 @@ class BinanceService:
             # more than spot held → 'insufficient balance' AFTER the debit. Floor to 2 dp up front
             # so the transfer and the buy use the identical amount.
             amount_usdt = int(amount_usdt * 100) / 100.0
-            if amount_usdt < 1:
-                logger.warning(f"[BNB_SWAP] Amount too small after rounding (${amount_usdt:.2f}) — skipping")
+            # Sep-7 full-review (2 reviewers): spot BNB/USDT min order is ~$10 — a $5-10 request
+            # previously TRANSFERRED to spot (step 1) then the buy rejected, stranding the USDT.
+            # Refuse BEFORE any money moves (exact mirror of the Aug-24 sell-path check).
+            try:
+                _bm = self.spot_exchange.market('BNB/USDT')
+                _min_cost = float(((_bm.get('limits') or {}).get('cost') or {}).get('min') or 10.0)
+            except Exception:
+                _min_cost = 10.0
+            _floor = max(1.0, _min_cost)
+            if amount_usdt < _floor:
+                logger.warning(f"[BNB_SWAP] Refused: ${amount_usdt:.2f} is below the spot minimum order of ${_floor:.0f} — nothing transferred")
                 return None
 
             # Step 1: Transfer USDT from futures wallet to spot wallet
@@ -263,13 +272,24 @@ class BinanceService:
 
             # Step 2: Buy BNB on spot using quoteOrderQty (spend exact USDT amount)
             logger.info(f"[BNB_SWAP] Step 2/4: Buying BNB with {amount_usdt} USDT on spot")
-            order = await self.spot_exchange.create_order(
-                'BNB/USDT', 'market', 'buy', None, None,
-                {'quoteOrderQty': round(amount_usdt, 2)}
-            )
+            try:
+                order = await self.spot_exchange.create_order(
+                    'BNB/USDT', 'market', 'buy', None, None,
+                    {'quoteOrderQty': round(amount_usdt, 2)}
+                )
+            except Exception as _buy_err:
+                # Sep-7 full-review: the USDT is already ON SPOT — roll it back instead of
+                # stranding it silently (sell path got this rollback Aug-24; buy was missed).
+                logger.error(f"[BNB_SWAP] Spot buy failed ({_buy_err}) — rolling {amount_usdt} USDT back to futures")
+                try:
+                    await self.spot_exchange.transfer('USDT', amount_usdt, 'spot', 'future')
+                    logger.info(f"[BNB_SWAP] Rollback complete: {amount_usdt} USDT returned to futures")
+                except Exception as _rb_err:
+                    logger.error(f"[BNB_SWAP] ROLLBACK FAILED ({_rb_err}) — {amount_usdt} USDT STRANDED ON SPOT; manual sweep needed (a later successful buy also sweeps it)")
+                return None
 
-            avg_price = float(order.get('average', order.get('price', 0)))
-            cost = float(order.get('cost', amount_usdt))
+            avg_price = float(order.get('average') or order.get('price') or 0)
+            cost = float(order.get('cost') or amount_usdt)
             order_id = order.get('id', 'spot_buy')
 
             # Step 3: Fetch actual spot balances and transfer BNB back to futures
@@ -367,8 +387,8 @@ class BinanceService:
                     logger.critical(f"[BNB_SWAP_SELL] ROLLBACK FAILED ({_rb_err}) — {bnb_to_sell} BNB stranded on SPOT; move it back manually")
                 return None
 
-            avg_price = float(order.get('average', order.get('price', 0)))
-            cost = float(order.get('cost', 0))  # USDT received
+            avg_price = float(order.get('average') or order.get('price') or 0)  # Sep-7: 'average': None must not TypeError post-trade
+            cost = float(order.get('cost') or 0)  # USDT received
             order_id = order.get('id', 'spot_sell')
 
             # Step 3: Fetch actual spot balances and transfer USDT back to futures

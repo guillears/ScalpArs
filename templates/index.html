@@ -4715,9 +4715,10 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Market orders</p>
                             <label class="flex items-center gap-2 text-xs text-gray-300 mt-2" title="Sep-3: fetch the account's REAL rates from Binance (commissionRate × 0.9 when the futures BNB discount is on and BNB fuel exists) on start + every 24h. Catches the silent +11% jump when BNB runs dry and VIP-tier changes. Off / fetch failure = these cells apply as entered.">
-                                <input type="checkbox" id="config-fee-auto-fetch" class="accent-emerald-600">
+                                <input type="checkbox" id="config-fee-auto-fetch" class="accent-emerald-600" onchange="applyFeeAutoState()">
                                 Auto-sync from Binance (incl. BNB discount)
                             </label>
+                            <p class="text-xs text-emerald-500/80 mt-1 hidden" id="fee-sync-status"></p>
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Maker Fee (per side)</label>
@@ -20246,6 +20247,8 @@
                 // Fee settings
                 document.getElementById('config-taker-fee').value = ((config.taker_fee || config.trading_fee) * 100).toFixed(4);
                 { const _fa = document.getElementById('config-fee-auto-fetch'); if (_fa) _fa.checked = config.fee_auto_fetch !== false; }
+                window._feeSyncStatus = config.fee_sync_status || null;
+                applyFeeAutoState();
                 document.getElementById('config-maker-fee').value = ((config.maker_fee ?? 0.00018) * 100).toFixed(4);
                 document.getElementById('config-maker-entry-enabled').checked = config.maker_entry_enabled || false;
                 document.getElementById('config-maker-timeout').value = config.maker_timeout_seconds || 15;
@@ -22661,6 +22664,24 @@
             </div>
         </div>
         <script>
+        function applyFeeAutoState(){
+            const auto = document.getElementById('config-fee-auto-fetch')?.checked;
+            for (const id of ['config-taker-fee','config-maker-fee']) {
+                const el = document.getElementById(id);
+                if (el) { el.disabled = !!auto; el.classList.toggle('opacity-50', !!auto); }
+            }
+            const st = document.getElementById('fee-sync-status');
+            if (st) {
+                const i = window._feeSyncStatus;
+                if (auto && i) {
+                    st.textContent = `Synced from Binance ${Math.round(i.age_min)}min ago · base ${(i.base_taker*100).toFixed(3)}%/${(i.base_maker*100).toFixed(3)}% · BNB discount ${i.discount_on ? 'ON (×0.9)' : 'OFF'}`;
+                    st.classList.remove('hidden');
+                } else if (auto) {
+                    st.textContent = 'Auto-sync armed — first fetch on the next 15-min wake';
+                    st.classList.remove('hidden');
+                } else st.classList.add('hidden');
+            }
+        }
         function openFundWithdrawModal(){ document.getElementById('fund-withdraw-modal').classList.remove('hidden'); }
         function openFundDepositModal(){ document.getElementById('fund-deposit-modal').classList.remove('hidden'); }
         async function submitFundDeposit(){

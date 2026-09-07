@@ -10859,7 +10859,12 @@ def _compute_runner_trail_performance(orders):
 _FAST_EXIT_THRESHOLDS = [0.20, 0.30, 0.40]   # P&L % triggers to test (May 17: shifted from [0.10,0.15,0.20] now that 0.20 is live)
 _FAST_EXIT_WINDOWS = [1, 2, 5]               # minutes from entry (3min dropped May 13)
 _FAST_EXIT_DEFAULT_CELL = (0.20, 2)          # cell for close-reason breakdown
-_FAST_EXIT_FEE_PCT = 0.063                   # taker round-trip fee approx
+def _fast_exit_fee_pct():
+    # Sep-3 fee-hardcode audit: was a 0.063 literal (maker entry + taker exit, old rates) — now
+    # computed from live config so the CF grid follows the auto-synced rates.
+    tc = config.trading_config
+    _entry = (tc.maker_fee if getattr(tc, 'maker_entry_enabled', False) else tc.taker_fee) or 0.00045
+    return ((_entry + (tc.taker_fee or 0.00045)) * 100.0)
 
 
 def _compute_fast_exit_counterfactual(orders):
@@ -10983,7 +10988,7 @@ def _compute_fast_exit_counterfactual(orders):
         saved_pct = sum(threshold - t['pnl_pct'] for t in losers)     # positive
         net_pct = saved_pct - give_up_pct
         # $-based: approximate using investment * leverage and (threshold - fee)
-        cf_per_trade_usd = lambda t: t['investment'] * t['leverage'] * (threshold - _FAST_EXIT_FEE_PCT) / 100.0
+        cf_per_trade_usd = lambda t: t['investment'] * t['leverage'] * (threshold - _fast_exit_fee_pct()) / 100.0
         real_dollars = sum(t['pnl_usd'] for t in fired)
         cf_dollars = sum(cf_per_trade_usd(t) for t in fired)
         return {
@@ -11089,7 +11094,7 @@ def _compute_fast_exit_counterfactual(orders):
             cr = t['close_reason']
             by_cr.setdefault(cr, []).append(t)
         cr_rows = []
-        cf_per_trade_usd = lambda t: t['investment'] * t['leverage'] * (thr - _FAST_EXIT_FEE_PCT) / 100.0
+        cf_per_trade_usd = lambda t: t['investment'] * t['leverage'] * (thr - _fast_exit_fee_pct()) / 100.0
         for cr, trs in sorted(by_cr.items(), key=lambda kv: -len(kv[1])):
             n = len(trs)
             wins = sum(1 for t in trs if t['pnl_pct'] > 0)
@@ -13088,8 +13093,24 @@ async def get_server_ip():
 @app.get("/api/config")
 async def get_config():
     """Get current trading configuration"""
+    import config as _cfg
     config = load_trading_config()
-    return config.model_dump()
+    out = config.model_dump()
+    # Sep-3 (review follow-up): while auto-sync is ON, the fee cells must show what the ENGINE
+    # actually uses — overlay the live in-memory rates (the sync writes memory, not disk).
+    _live = _cfg.trading_config
+    if getattr(_live, 'fee_auto_fetch', False):
+        out['taker_fee'] = _live.taker_fee
+        out['maker_fee'] = _live.maker_fee
+        out['trading_fee'] = _live.trading_fee
+    _info = getattr(trading_engine, '_fee_sync_info', None)
+    if _info:
+        out['fee_sync_status'] = {
+            'base_taker': _info['base_taker'], 'base_maker': _info['base_maker'],
+            'discount_on': _info['discount_on'],
+            'age_min': round((time.time() - _info['synced_at']) / 60.0, 1),
+        }
+    return out
 
 
 @app.put("/api/config")

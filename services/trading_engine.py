@@ -2481,6 +2481,8 @@ class TradingEngine:
                     disc = 0.9 if (_bnb_usd is None or _bnb_usd > 1.0) else 1.0
             new_t = round(rates['taker'] * disc, 8)
             new_m = round(rates['maker'] * disc, 8)
+            self._fee_sync_info = {'base_taker': rates['taker'], 'base_maker': rates['maker'],
+                                   'discount_on': disc < 1.0, 'synced_at': _now}  # display (get_config overlay)
             if abs(new_t - (tc.taker_fee or 0)) > 1e-9 or abs(new_m - (tc.maker_fee or 0)) > 1e-9:
                 logger.info(f"[FEE_SYNC] Binance: taker {rates['taker']*100:.3f}% maker {rates['maker']*100:.3f}% x {'0.9 (BNB discount)' if disc < 1 else '1.0 (NO discount)'} -> effective {new_t*100:.4f}%/{new_m*100:.4f}% (was {(tc.taker_fee or 0)*100:.4f}%/{(tc.maker_fee or 0)*100:.4f}%)")
                 tc.taker_fee = new_t

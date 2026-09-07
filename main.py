@@ -376,7 +376,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-LOGIN_PASSWORD = os.environ.get("LOGIN_PASSWORD", "guille86")
+# Sep-7 full-review: the repo previously shipped KNOWN fallbacks for both secrets. EB has both
+# env vars set (verified); if they ever go missing, fall back to unguessable per-boot randoms —
+# auth stays closed instead of open, and the CRITICAL log says exactly what to fix.
+import secrets as _secrets
+LOGIN_PASSWORD = os.environ.get("LOGIN_PASSWORD")
+if not LOGIN_PASSWORD:
+    logging.getLogger("scalpars").critical("[AUTH] LOGIN_PASSWORD env var missing — login DISABLED with a random password until it is set (EB: environment properties)")
+    LOGIN_PASSWORD = _secrets.token_urlsafe(24)
 
 class AuthMiddleware(BaseHTTPMiddleware):
     OPEN_PATHS = {"/login", "/static", "/favicon.ico"}
@@ -394,7 +401,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(AuthMiddleware)
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.environ.get("SESSION_SECRET", "scalpars-s3cr3t-k3y-ch4ng3-m3"),
+    secret_key=os.environ.get("SESSION_SECRET") or _secrets.token_hex(32),  # Sep-7: missing env → per-boot random (sessions reset, forgery impossible) instead of a repo-known constant
     max_age=60 * 60 * 24 * 30,
 )
 
@@ -465,7 +472,8 @@ async def login_page(request: Request):
 @app.post("/login")
 async def login(request: Request, password: str = Form(...)):
     """Validate password and create session"""
-    if password == LOGIN_PASSWORD:
+    import hmac as _hmac
+    if _hmac.compare_digest(str(password).encode("utf-8"), str(LOGIN_PASSWORD).encode("utf-8")):  # Sep-7: constant-time compare (bytes — non-ASCII input must not 500)
         request.session["authenticated"] = True
         return RedirectResponse(url="/", status_code=302)
     return RedirectResponse(url="/login?error=1", status_code=302)
@@ -629,6 +637,14 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
     mode_label = "Paper" if is_paper else "Live"
     direction = direction.upper()
 
+    # Sep-7 full-review: refuse ANY reset while OPEN orders exist in this mode — a live reset
+    # previously deleted the DB rows while the REAL Binance positions kept running invisibly
+    # (no stop management, no monitoring). Close everything first, then reset.
+    _open_ct = (await db.execute(select(func.count(Order.id)).where(
+        and_(Order.is_paper == is_paper, Order.status == "OPEN")))).scalar() or 0
+    if _open_ct > 0:
+        raise HTTPException(409, f"{_open_ct} OPEN {mode_label.lower()} position(s) — close them before resetting (a reset would orphan real exchange positions)")
+
     if direction == "ALL":
         # Full reset — original behavior
         if trading_engine.is_running:
@@ -649,9 +665,12 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         await db.execute(
             delete(PhantomFlip).where(PhantomFlip.is_paper == is_paper)
         )
-        # NAV snapshots: a full reset re-seeds the balance, so keeping old rows would
-        # record the reset as a fake performance cliff. Fresh record per run.
-        await db.execute(delete(NavSnapshot))
+        # Sep-7 full-review: NavSnapshot deletion REMOVED. NAV/share is the deposit- AND
+        # reset-proof performance record — a reset changes neither equity nor shares, so the
+        # history must survive (the old unscoped delete let a PAPER reset erase the LIVE
+        # fund's record, and even a live reset needlessly destroyed investor history).
+        # Known quirk (review): in PAPER mode with shares outstanding, a paper reset re-seeds
+        # paper_balance so the surviving history shows a NAV cliff — honest, and live-unaffected.
         import services.trading_engine as _te
         _te.reset_phantom_flip_state()
 
@@ -12800,16 +12819,21 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
     if existing.scalar():
         raise HTTPException(409, f"Investor '{name}' already exists")
 
+    # Sep-7 full-review (DB red #1): price the NAV BEFORE the first write — the old order
+    # flushed the INSERT (SQLite write lock taken) then awaited live Binance for NAV, holding
+    # the write transaction across network I/O (the Aug-25 close-starvation class).
+    _dep_shares = None
+    _dep = float(body.deposit_amount or 0)
+    nav = None
+    if _dep > 0:
+        nav = await _get_nav_per_share(db)
+        if nav <= 0:
+            raise HTTPException(503, "NAV unavailable — retry shortly (nothing was created)")
     inv = Investor(name=name, shares=0.0, total_deposited=0.0, total_withdrawn=0.0,
                    eth_wallet=_clean_eth_wallet(body.eth_wallet))
     db.add(inv)
     await db.flush()
-    _dep_shares = None
-    _dep = float(body.deposit_amount or 0)
     if _dep > 0:  # Aug-24: optional initial deposit — identical NAV/share math + ledger as /api/investors/deposit
-        nav = await _get_nav_per_share(db)
-        if nav <= 0:
-            raise HTTPException(503, "Investor created but NAV unavailable — deposit skipped; use the +$ button shortly")
         _dep_shares = _dep / nav
         inv.shares += _dep_shares
         inv.total_deposited += _dep
@@ -12884,7 +12908,7 @@ async def fund_withdraw(body: FundWithdraw, db: AsyncSession = Depends(get_db)):
     NAV to $0.2456). Every slice is ledgered per investor."""
     if body.amount <= 0:
         raise HTTPException(400, "Amount must be positive")
-    invs = (await db.execute(select(Investor).where(Investor.shares > 0))).scalars().all()
+    invs = (await db.execute(select(Investor).where(Investor.shares > 0).order_by(Investor.id))).scalars().all()  # Sep-7: deterministic remainder assignment
     if not invs:
         raise HTTPException(400, "No investors with shares")
     _reconstructed = False
@@ -12913,13 +12937,14 @@ async def fund_withdraw(body: FundWithdraw, db: AsyncSession = Depends(get_db)):
     allocated = 0.0
     for idx, inv in enumerate(invs):
         if idx == len(invs) - 1:
-            amt = round(body.amount - allocated, 2)  # remainder to the last — split sums exactly
+            amt = max(0.0, round(body.amount - allocated, 2))  # Sep-7 review: rounding drift must never go NEGATIVE (would mint shares)
         else:
             amt = round(body.amount * (inv.shares / total_shares), 2)
-        allocated += amt
         sh = amt / nav
         if sh > inv.shares + 1e-6:
             sh = inv.shares
+            amt = round(sh * nav, 2)  # Sep-7 review: clamped burn must ledger the clamped VALUE, not the full slice
+        allocated += amt
         inv.shares = max(0.0, inv.shares - sh)
         inv.total_withdrawn += amt
         _note = (body.note or "Pro-rata fund withdrawal") + (
@@ -12928,6 +12953,7 @@ async def fund_withdraw(body: FundWithdraw, db: AsyncSession = Depends(get_db)):
         _log_investor_ledger(db, inv.id, "WITHDRAW", amt, nav, -sh, note=_note)
         split.append({"investor": inv.name, "amount": amt, "shares_burned": round(sh, 6)})
     await db.flush()
+    binance_service.invalidate_flow_caches()  # Sep-7 review: a fresh flow must not sit behind the 10-min transfer cache distorting return metrics
     return {"ok": True, "nav": round(nav, 6), "reconstructed": _reconstructed, "split": split}
 
 
@@ -12948,7 +12974,7 @@ async def fund_deposit(body: FundDeposit, db: AsyncSession = Depends(get_db)):
     (current, reconstructed, or nav_override). Every slice is ledgered per investor."""
     if body.amount <= 0:
         raise HTTPException(400, "Amount must be positive")
-    invs = (await db.execute(select(Investor).where(Investor.shares > 0))).scalars().all()
+    invs = (await db.execute(select(Investor).where(Investor.shares > 0).order_by(Investor.id))).scalars().all()  # Sep-7: deterministic remainder assignment
     if not invs:
         raise HTTPException(400, "No investors with shares — use Add Investor for the first deposit")
     _reconstructed = False
@@ -12974,7 +13000,7 @@ async def fund_deposit(body: FundDeposit, db: AsyncSession = Depends(get_db)):
     allocated = 0.0
     for idx, inv in enumerate(invs):
         if idx == len(invs) - 1:
-            amt = round(body.amount - allocated, 2)  # remainder to the last — split sums exactly
+            amt = max(0.0, round(body.amount - allocated, 2))  # Sep-7 review: guard against negative remainder (would confiscate shares)
         else:
             amt = round(body.amount * (inv.shares / total_shares), 2)
         allocated += amt
@@ -12987,6 +13013,7 @@ async def fund_deposit(body: FundDeposit, db: AsyncSession = Depends(get_db)):
         _log_investor_ledger(db, inv.id, "DEPOSIT", amt, nav, sh, note=_note)
         split.append({"investor": inv.name, "amount": amt, "shares_issued": round(sh, 6)})
     await db.flush()
+    binance_service.invalidate_flow_caches()  # Sep-7 review: same as withdraw-all
     return {"ok": True, "nav": round(nav, 6), "reconstructed": _reconstructed, "split": split}
 
 
@@ -12998,6 +13025,18 @@ async def rename_investor(investor_id: int, body: InvestorRename, db: AsyncSessi
     fields = body.model_dump(exclude_unset=True)
     if not fields:
         raise HTTPException(400, "Nothing to update")
+    # Sep-7 full-review (DB red #2): price the NAV BEFORE mutating the row — the old order
+    # dirtied `inv`, then _get_nav_per_share's select autoflushed the UPDATE and the write
+    # lock was held across the live Binance equity fetch (Aug-25 starvation class).
+    _nav_pre = None
+    if 'deposit_total' in fields and body.deposit_total is not None:
+        _t_pre = float(body.deposit_total)
+        if _t_pre < 0:
+            raise HTTPException(400, "Deposited total cannot be negative")
+        if abs(_t_pre - float(inv.total_deposited or 0)) > 0.005:
+            _nav_pre = await _get_nav_per_share(db)
+            if _nav_pre <= 0:
+                raise HTTPException(503, "NAV unavailable — retry the deposit edit shortly")
     if 'name' in fields:
         new_name = (body.name or "").strip()
         if not new_name:
@@ -13008,13 +13047,9 @@ async def rename_investor(investor_id: int, body: InvestorRename, db: AsyncSessi
     _adj = None
     if 'deposit_total' in fields and body.deposit_total is not None:
         _target = float(body.deposit_total)
-        if _target < 0:
-            raise HTTPException(400, "Deposited total cannot be negative")
         _delta = _target - float(inv.total_deposited or 0)
         if abs(_delta) > 0.005:  # Aug-24: edit = apply the DELTA at current NAV so shares/ledger stay consistent
-            nav = await _get_nav_per_share(db)
-            if nav <= 0:
-                raise HTTPException(503, "NAV unavailable — retry the deposit edit shortly")
+            nav = _nav_pre
             if _delta > 0:
                 _sh = _delta / nav
                 inv.shares += _sh

@@ -230,6 +230,25 @@ class WebSocketTracker:
         if new_pairs:
             logger.info(f"[WS_TRACKER] Batch subscribed {len(new_pairs)} new pairs (total: {len(self.subscribed_pairs)})")
 
+    async def prune_to(self, keep_pairs: set):
+        """Sep-7 full-review: the subscription set previously only GREW as the scan's top-N
+        rotated — heading for the combined-stream cap, where reconnects fail and every open
+        position loses its price feed. Prune pairs outside `keep_pairs` (current scan set +
+        pairs with open orders), but only once the set is large (>150) so routine rotation
+        doesn't churn reconnects; one reconnect covers the whole prune."""
+        async with self._lock:
+            if len(self.subscribed_pairs) <= 150:
+                return
+            stale = [p for p in self.subscribed_pairs if p not in keep_pairs]
+            if not stale:
+                return
+            for p in stale:
+                self.subscribed_pairs.discard(p)
+                self.trackers.pop(p, None)
+            logger.info(f"[WS_TRACKER] Pruned {len(stale)} stale pairs (total now: {len(self.subscribed_pairs)})")
+            if self.websocket and self.running:
+                await self._reconnect()
+
     async def unsubscribe_pair(self, pair: str):
         """Unsubscribe from price updates for a pair"""
         async with self._lock:

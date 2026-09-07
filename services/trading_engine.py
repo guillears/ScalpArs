@@ -14,7 +14,7 @@ from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFl
 from database import AsyncSessionLocal, locked_commit, locked_execute_commit
 import config
 from config import save_trading_config, TradingConfig
-from services.binance_service import binance_service, _leverage_blocked_pairs
+from services.binance_service import binance_service, is_leverage_blocked
 from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
@@ -9822,6 +9822,13 @@ class TradingEngine:
         
         # Subscribe all top pairs to WebSocket in a single batch (one reconnection)
         await websocket_tracker.subscribe_pairs_batch([p['pair'] for p in top_pairs])
+        try:
+            # Sep-7 full-review: prune subscriptions that left the scan set and hold no open
+            # order (>150 threshold inside — routine top-N rotation never churns reconnects).
+            _ws_keep = {p['pair'] for p in top_pairs} | set(_open_orders_cache.keys())
+            await websocket_tracker.prune_to(_ws_keep)
+        except Exception as _pr_err:
+            logger.debug(f"[WS_TRACKER] prune skipped: {_pr_err}")
         
         # BTC global regime filter: fetch BTC data once before processing all pairs
         btc_global_enabled = getattr(config.trading_config.thresholds, 'btc_global_filter_enabled', False)
@@ -10341,7 +10348,7 @@ class TradingEngine:
 
             if signal in ["LONG", "SHORT"] and not self.is_paper_mode:
                 _symbol_check = pair.replace('USDT', '/USDT:USDT')
-                if _symbol_check in _leverage_blocked_pairs:
+                if is_leverage_blocked(_symbol_check):
                     logger.debug(f"[LEVERAGE_BLOCKED] {pair}: Skipping — leverage mismatch previously detected")
                     signal = "NO_TRADE"
 

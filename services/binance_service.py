@@ -17,7 +17,22 @@ _ban_until: float = 0
 _ban_persist_callback = None
 POST_BAN_COOLDOWN = 60
 
-_leverage_blocked_pairs: set = set()
+_leverage_blocked_pairs: dict = {}  # symbol -> blocked_at epoch. Sep-7 full-review: was a set with no
+# expiry — one transient set_leverage failure benched a pair until process restart. TTL below.
+_LEVERAGE_BLOCK_TTL_S = 3600.0
+
+
+def is_leverage_blocked(symbol: str) -> bool:
+    """TTL-aware check (Sep-7): a block older than 1h expires — a REAL config/exchange mismatch
+    re-blocks on the next attempt within seconds, so expiry only costs one retried call."""
+    _ts = _leverage_blocked_pairs.get(symbol)
+    if _ts is None:
+        return False
+    if time.time() - _ts > _LEVERAGE_BLOCK_TTL_S:
+        _leverage_blocked_pairs.pop(symbol, None)
+        logger.info(f"[LEVERAGE_BLOCK] {symbol}: 1h TTL expired — pair eligible again")
+        return False
+    return True
 
 
 def set_ban_persist_callback(callback):
@@ -437,6 +452,12 @@ class BinanceService:
     def _last_balance_payload(self, v):
         self._last_balance_payload_raw = v
 
+    def invalidate_flow_caches(self):
+        """Sep-7 review: called by the fund deposit/withdraw endpoints so a just-registered
+        flow is visible to the return metrics immediately (not after the 10-min TTL)."""
+        self._tx_rows_cache = {}
+        self._cap_flow_cache = {}
+
     async def get_commission_rates(self) -> Dict:
         """Sep-3 (operator): the account's ACTUAL futures fee rates + BNB-discount state.
         /fapi/v1/commissionRate returns the BASE tier rate (BNB discount NOT included);
@@ -810,11 +831,11 @@ class BinanceService:
                 actual_leverage = await self.set_leverage(symbol, leverage)
                 if actual_leverage == 0:
                     logger.error(f"[LEVERAGE_MISMATCH] {symbol}: Cannot determine leverage, skipping order")
-                    _leverage_blocked_pairs.add(symbol)
+                    _leverage_blocked_pairs[symbol] = time.time()
                     return None
                 if actual_leverage != leverage:
                     logger.warning(f"[LEVERAGE_MISMATCH] {symbol}: Binance leverage {actual_leverage}x != configured {leverage}x — blocking pair")
-                    _leverage_blocked_pairs.add(symbol)
+                    _leverage_blocked_pairs[symbol] = time.time()
                     return None
             
             # Aug-24 M5: client-side precision + MIN_NOTIONAL check (entries only) — a -1013/-4164 reject
@@ -1013,11 +1034,11 @@ class BinanceService:
                 actual_leverage = await self.set_leverage(symbol, leverage)
                 if actual_leverage == 0:
                     logger.error(f"[LEVERAGE_MISMATCH] {symbol}: Cannot determine leverage, skipping limit order")
-                    _leverage_blocked_pairs.add(symbol)
+                    _leverage_blocked_pairs[symbol] = time.time()
                     return None
                 if actual_leverage != leverage:
                     logger.warning(f"[LEVERAGE_MISMATCH] {symbol}: Binance leverage {actual_leverage}x != configured {leverage}x — blocking pair")
-                    _leverage_blocked_pairs.add(symbol)
+                    _leverage_blocked_pairs[symbol] = time.time()
                     return None
 
             # reduceOnly prevents position flip on close orders

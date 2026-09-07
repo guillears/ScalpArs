@@ -4766,11 +4766,9 @@
                                 <span class="text-xs text-gray-500" title="When ON, after maker timeout the bot re-checks signal validity before falling back to taker. If signal flipped, abort entry as SIGNAL_EXPIRED. When OFF, taker fires immediately at timeout (pre-Apr 18 behaviour).">Re-check before taker fallback</span>
                             </div>
                         </div>
-                    </div>
-                    <!-- Maker Exit -->
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mt-3">
-                        <div></div>
-                        <div></div>
+                        <!-- Maker Exit — same row as Re-validate (operator Sep-7: one line); spacer keeps
+                             Maker Exit under Maker Entry and Exit Timeout/Offset under their Entry twins -->
+                        <div class="hidden md:block"></div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Maker Exit</label>
                             <div class="flex items-center gap-4 h-[42px]">

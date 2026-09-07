@@ -2231,7 +2231,7 @@ class TradingEngine:
             min_investment = tc.investment.min_investment_size
             if available_usdt - shortfall < min_investment:
                 shortfall = max(0, available_usdt - min_investment)
-            if shortfall <= 5:
+            if shortfall <= 10:  # Sep-7 integration review: align with buy_bnb's spot $10 min-notional refusal (a $5-10 request was refused every wake anyway)
                 return
             
             result = await binance_service.buy_bnb(shortfall)

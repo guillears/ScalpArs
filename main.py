@@ -382,6 +382,7 @@ app.add_middleware(
 # env vars set (verified); if they ever go missing, fall back to unguessable per-boot randoms —
 # auth stays closed instead of open, and the CRITICAL log says exactly what to fix.
 import secrets as _secrets
+import hmac as _hmac
 LOGIN_PASSWORD = os.environ.get("LOGIN_PASSWORD")
 if not LOGIN_PASSWORD:
     logging.getLogger("scalpars").critical("[AUTH] LOGIN_PASSWORD env var missing — login DISABLED with a random password until it is set (EB: environment properties)")
@@ -474,7 +475,6 @@ async def login_page(request: Request):
 @app.post("/login")
 async def login(request: Request, password: str = Form(...)):
     """Validate password and create session"""
-    import hmac as _hmac
     if _hmac.compare_digest(str(password).encode("utf-8"), str(LOGIN_PASSWORD).encode("utf-8")):  # Sep-7: constant-time compare (bytes — non-ASCII input must not 500)
         request.session["authenticated"] = True
         return RedirectResponse(url="/", status_code=302)
@@ -12844,6 +12844,7 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
         inv.total_deposited += _dep
         await db.flush()
         _log_investor_ledger(db, inv.id, "DEPOSIT", _dep, nav, _dep_shares)
+    binance_service.invalidate_flow_caches()  # Sep-7 integration review: initial deposit path — same class
     return {"ok": True, "id": inv.id, "name": inv.name, "eth_wallet": inv.eth_wallet,
             "deposited": _dep if _dep > 0 else None, "new_shares": round(_dep_shares, 6) if _dep_shares else None}
 
@@ -12865,6 +12866,8 @@ async def investor_deposit(body: InvestorDeposit, db: AsyncSession = Depends(get
     inv.total_deposited += body.amount
     await db.flush()
     _log_investor_ledger(db, inv.id, "DEPOSIT", body.amount, nav, new_shares)
+
+    binance_service.invalidate_flow_caches()  # Sep-7 integration review: single-investor flows also move real money — same cache staleness as the fund-level endpoints
 
     return {"ok": True, "new_shares": round(new_shares, 6), "nav": round(nav, 6)}
 
@@ -12891,6 +12894,8 @@ async def investor_withdraw(body: InvestorWithdraw, db: AsyncSession = Depends(g
     inv.total_withdrawn += body.amount
     await db.flush()
     _log_investor_ledger(db, inv.id, "WITHDRAW", body.amount, nav, -shares_needed)
+
+    binance_service.invalidate_flow_caches()  # Sep-7 integration review: mirror of investor_deposit
 
     return {"ok": True, "shares_removed": round(shares_needed, 6), "nav": round(nav, 6)}
 
@@ -13273,6 +13278,7 @@ async def update_pairs_limit(data: dict):
     
     if save_trading_config(current_config):
         config.trading_config = current_config
+        trading_engine._fee_sync_at = 0  # Sep-7 integration review: disk rebind must not silently revert auto-synced fees for 24h (same hole update_config was patched for)
         return {"success": True, "trading_pairs_limit": limit}
     else:
         raise HTTPException(status_code=500, detail="Failed to save configuration")

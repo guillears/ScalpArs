@@ -50,6 +50,22 @@ CASES = [
 ]
 
 
+import pytest
+
+
+@pytest.mark.parametrize("name,ladder,peak,pnl,exp_reason,exp_floor", CASES,
+                         ids=[c[0][:48] for c in CASES])
+def test_hard_tp_case(name, ladder, peak, pnl, exp_reason, exp_floor):
+    # Sep-8 deep review: cases were script-only — invisible to the pytest gate. Same
+    # oracle as main() below, one case per test so failures name themselves.
+    reason, floor = fire(ladder, peak, pnl)
+    assert reason == exp_reason, f"{name}: reason {reason!r} != {exp_reason!r}"
+    if exp_floor is None:
+        assert floor is None or reason is None
+    else:
+        assert floor is not None and abs(floor - exp_floor) < 1e-9, f"{name}: floor {floor} != {exp_floor}"
+
+
 def main():
     failures = 0
     for name, lad, pk, pnl, exp_r, exp_f in CASES:

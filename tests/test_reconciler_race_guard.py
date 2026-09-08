@@ -30,8 +30,8 @@ from unittest.mock import patch, AsyncMock
 # Make the project root importable when running this file directly.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Force in-memory SQLite before anything imports config/database.
-os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+# (Sep-8 deep review: the old DATABASE_URL env override removed — every test builds its
+# own in-memory engine, and under pytest collection the comment's premise was false anyway.)
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession

@@ -21,6 +21,7 @@ You are the technical owner (engineering) **and** the quant analyst. The user is
 ## Deploy / commit discipline
 - **NEVER commit or push without the explicit words "commit" / "push" / "commit and push".** "ok" / "yes" / "do it" / "ship it" do NOT authorize git. (Treat a violation as fatal.)
 - **Always show the diff before committing.**
+- **Regression suite gate (Sep-8):** `venv/bin/pytest tests/ -q` must be GREEN before every commit (pure-math money cores: sizing/reserve, exit ladder, NAV/pro-rata, flow classification, cache-key preservation, fee sync, slip math; ~1s, no network). A new money-math ship adds its invariants to `tests/`.
 - Commit directly to `main` (AWS auto-deploys on push). **Always include `trading_config.json`** in any push (else UI settings get overwritten). **Never rebuild the EB environment** (use restart).
 - End commit messages with: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`
 

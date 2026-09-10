@@ -116,3 +116,39 @@ async def test_nav_override_beats_reconstruction(db, monkeypatch):
                              already_executed=True)
     res = await main.fund_withdraw(body, db)
     assert abs(res["nav"] - 1.0916) < 1e-9                    # manual override wins
+
+
+async def test_preview_mutates_nothing_and_matches_real(db, monkeypatch):
+    """Sep-10 modal preview: a preview call must leave shares/withdrawn/ledger untouched,
+    and its split must equal the real call's split exactly (same compute pass)."""
+    from sqlalchemy import select, func
+    a = await _add(db, "A", 600.0)
+    b = await _add(db, "B", 300.0)
+    c = await _add(db, "C", 100.0)
+    _mock_equity(monkeypatch, 2000.0)
+    before = [(x.shares, x.total_withdrawn) for x in (a, b, c)]
+    ledger_before = (await db.execute(select(func.count(models.InvestorLedger.id)))).scalar()
+    body = main.FundWithdraw(amount=500.0, note=None, nav_override=None,
+                             already_executed=False, preview=True)
+    pv = await main.fund_withdraw(body, db)
+    assert pv["preview"] is True
+    assert [(x.shares, x.total_withdrawn) for x in (a, b, c)] == before      # nothing mutated
+    ledger_after = (await db.execute(select(func.count(models.InvestorLedger.id)))).scalar()
+    assert ledger_after == ledger_before                                      # no ledger rows
+    real = await main.fund_withdraw(body.model_copy(update={"preview": False}), db)
+    assert [(s["investor"], s["amount"], s["shares_burned"]) for s in pv["split"]] == \
+           [(s["investor"], s["amount"], s["shares_burned"]) for s in real["split"]]
+    assert real.get("preview") is None                                       # real call is not flagged
+
+
+async def test_deposit_preview_mutates_nothing(db, monkeypatch):
+    a = await _add(db, "A", 100.0)
+    _mock_equity(monkeypatch, 500.0)
+    shares0 = a.shares
+    body = main.FundDeposit(amount=200.0, note=None, nav_override=None,
+                            already_executed=False, preview=True)
+    pv = await main.fund_deposit(body, db)
+    assert pv["preview"] is True and a.shares == shares0 and a.total_deposited == 100.0
+    real = await main.fund_deposit(body.model_copy(update={"preview": False}), db)
+    assert pv["split"][0]["shares_issued"] == real["split"][0]["shares_issued"]
+    assert abs(a.shares - (shares0 + real["split"][0]["shares_issued"])) < 1e-6

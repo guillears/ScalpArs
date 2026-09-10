@@ -12904,6 +12904,7 @@ class FundWithdraw(BaseModel):
     amount: float
     note: Optional[str] = None
     nav_override: Optional[float] = None  # manual override (advanced; rarely needed now)
+    preview: bool = False  # Sep-10: dry run — returns the exact split/NAV without mutating anything (modal preview)
     already_executed: bool = False  # Aug-27: withdrawal already happened on the exchange → server RECONSTRUCTS
     # the registration NAV as (current equity + amount) / total shares. Exact and timing-independent for a
     # pro-rata burn: equity already dropped by `amount` with no shares burned, so adding it back recovers the
@@ -12943,7 +12944,10 @@ async def fund_withdraw(body: FundWithdraw, db: AsyncSession = Depends(get_db)):
     total_value = total_shares * nav
     if body.amount > total_value + 0.01:
         raise HTTPException(400, f"Amount exceeds fund value at this NAV (${total_value:.2f})")
-    split = []
+    # Sep-10 (modal preview): PURE compute pass first — the split depends only on each
+    # investor's CURRENT shares, so it can be computed without mutating; preview returns it,
+    # the real call then applies exactly the computed triples (preview == real by construction).
+    plan = []
     allocated = 0.0
     for idx, inv in enumerate(invs):
         if idx == len(invs) - 1:
@@ -12955,13 +12959,19 @@ async def fund_withdraw(body: FundWithdraw, db: AsyncSession = Depends(get_db)):
             sh = inv.shares
             amt = round(sh * nav, 2)  # Sep-7 review: clamped burn must ledger the clamped VALUE, not the full slice
         allocated += amt
+        plan.append((inv, amt, sh))
+    split = [{"investor": inv.name, "amount": amt, "shares_burned": round(sh, 6),
+              "shares_after": round(max(0.0, inv.shares - sh), 6)} for inv, amt, sh in plan]
+    if body.preview:
+        return {"ok": True, "preview": True, "nav": round(nav, 6), "reconstructed": _reconstructed,
+                "fund_value": round(total_value, 2), "split": split}
+    for inv, amt, sh in plan:
         inv.shares = max(0.0, inv.shares - sh)
         inv.total_withdrawn += amt
         _note = (body.note or "Pro-rata fund withdrawal") + (
             f" (registered at reconstructed NAV {nav:.4f})" if _reconstructed
             else (f" (registered at NAV {nav:.4f})" if body.nav_override else ""))
         _log_investor_ledger(db, inv.id, "WITHDRAW", amt, nav, -sh, note=_note)
-        split.append({"investor": inv.name, "amount": amt, "shares_burned": round(sh, 6)})
     await db.flush()
     binance_service.invalidate_flow_caches()  # Sep-7 review: a fresh flow must not sit behind the 10-min transfer cache distorting return metrics
     return {"ok": True, "nav": round(nav, 6), "reconstructed": _reconstructed, "split": split}
@@ -12971,6 +12981,7 @@ class FundDeposit(BaseModel):
     amount: float
     note: Optional[str] = None
     nav_override: Optional[float] = None  # manual override (advanced)
+    preview: bool = False  # Sep-10: dry run — same math, no mutation (modal preview)
     already_executed: bool = False  # deposit already landed on the exchange → server RECONSTRUCTS the
     # registration NAV as (current equity - amount) / total shares: equity already INCLUDES the money
     # with no shares issued, so removing it recovers the continuous NAV; issuing at that price leaves
@@ -13006,7 +13017,7 @@ async def fund_deposit(body: FundDeposit, db: AsyncSession = Depends(get_db)):
         if nav <= 0:
             raise HTTPException(503, "NAV unavailable — retry shortly")
     total_shares = sum(i.shares for i in invs)
-    split = []
+    plan = []  # Sep-10 (modal preview): pure compute pass, then apply — see fund_withdraw
     allocated = 0.0
     for idx, inv in enumerate(invs):
         if idx == len(invs) - 1:
@@ -13015,13 +13026,18 @@ async def fund_deposit(body: FundDeposit, db: AsyncSession = Depends(get_db)):
             amt = round(body.amount * (inv.shares / total_shares), 2)
         allocated += amt
         sh = amt / nav
+        plan.append((inv, amt, sh))
+    split = [{"investor": inv.name, "amount": amt, "shares_issued": round(sh, 6),
+              "shares_after": round(inv.shares + sh, 6)} for inv, amt, sh in plan]
+    if body.preview:
+        return {"ok": True, "preview": True, "nav": round(nav, 6), "reconstructed": _reconstructed, "split": split}
+    for inv, amt, sh in plan:
         inv.shares += sh
         inv.total_deposited += amt
         _note = (body.note or "Pro-rata fund deposit") + (
             f" (registered at reconstructed NAV {nav:.4f})" if _reconstructed
             else (f" (registered at NAV {nav:.4f})" if body.nav_override else ""))
         _log_investor_ledger(db, inv.id, "DEPOSIT", amt, nav, sh, note=_note)
-        split.append({"investor": inv.name, "amount": amt, "shares_issued": round(sh, 6)})
     await db.flush()
     binance_service.invalidate_flow_caches()  # Sep-7 review: same as withdraw-all
     return {"ok": True, "nav": round(nav, 6), "reconstructed": _reconstructed, "split": split}

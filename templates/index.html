@@ -131,22 +131,6 @@
                         <span class="text-gray-500">IP</span>
                         <span id="server-ip" class="text-slate-200">--</span>
                     </div>
-                    <!-- Sep-10: section navigation (sticky header already) — jump links + active highlight -->
-                    <nav id="sec-nav" class="hidden xl:flex items-center space-x-1 text-xs ml-2">
-                        <a href="#sec-balance" class="sec-link px-2 py-1 rounded text-gray-400 hover:text-white hover:bg-white/10" data-sec="sec-balance">Balance</a>
-                        <a href="#sec-performance" class="sec-link px-2 py-1 rounded text-gray-400 hover:text-white hover:bg-white/10" data-sec="sec-performance">Performance</a>
-                        <a href="#sec-monitor" class="sec-link px-2 py-1 rounded text-gray-400 hover:text-white hover:bg-white/10" data-sec="sec-monitor">Monitor</a>
-                        <a href="#sec-investors" class="sec-link px-2 py-1 rounded text-gray-400 hover:text-white hover:bg-white/10" data-sec="sec-investors">Investors</a>
-                        <a href="#sec-config" class="sec-link px-2 py-1 rounded text-gray-400 hover:text-white hover:bg-white/10" data-sec="sec-config">Config</a>
-                    </nav>
-                    <select id="sec-nav-mobile" class="xl:hidden bg-white/5 border border-white/10 rounded text-xs text-gray-300 px-2 py-1 ml-1" onchange="if(this.value){document.getElementById(this.value)?.scrollIntoView({behavior:'smooth'}); this.value='';}">
-                        <option value="">Jump to…</option>
-                        <option value="sec-balance">Balance</option>
-                        <option value="sec-performance">Performance</option>
-                        <option value="sec-monitor">Monitor</option>
-                        <option value="sec-investors">Investors</option>
-                        <option value="sec-config">Config</option>
-                    </select>
                 </div>
                 
                 <div class="flex items-center space-x-6">
@@ -257,7 +241,7 @@
     <main class="container mx-auto px-6 py-8 space-y-8">
         <!-- Balance Cards -->
         <section>
-            <div id="sec-balance" class="flex items-center space-x-2 mb-4">
+            <div class="flex items-center space-x-2 mb-4">
                 <h2 class="text-lg font-semibold text-gray-300">Account Balance</h2>
                 <button id="balance-eye-btn" onclick="toggleBalancesHidden()" title="Hide/show balances" class="text-gray-400 hover:text-white transition text-lg leading-none">🐵</button>
             </div>
@@ -543,7 +527,7 @@
         </section>
 
         <!-- Performance Metrics -->
-        <section id="sec-performance">
+        <section>
             <h2 class="text-lg font-semibold text-gray-300 mb-4">Closed Orders Performance</h2>
             <div class="glass rounded-xl p-6">
                 <p class="text-xs text-gray-500 mb-4">All metrics below are calculated from closed orders only</p>
@@ -1469,7 +1453,7 @@
                     </tr></thead><tbody id="quiet-sl-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
                 <div class="mt-6 pt-6 border-t border-cyan-900/40">
-                    <h3 id="sec-monitor" class="text-sm font-semibold text-cyan-300 mb-1">🌊 Monitor Periods — episode ledger (persisted; restart-proof)</h3>
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-1">🌊 Monitor Periods — episode ledger (persisted; restart-proof)</h3>
                     <p class="text-[11px] text-gray-500 mb-1">Blocked = sleeve entry refusals per episode, in order: spacing / slots / pair EMA50 / BTC off-24h / BTC-leader EMA13 / PVR ceiling / BTC 1h-slope (hover any number).</p>
                     <p class="text-xs text-gray-500 mb-3">One row per contiguous monitor state (GREEN = 72h composite · REARM = re-arm door, composite OFF · AMBER · DARK). Readings = r72 / above-EMA20% / efficiency at START → END; eff pk = max efficiency in period; r6 min = closest approach to the −3% crash-latch; BTC = move during the period; Breadth = bull%/bear% at start; AMBER lead = minutes AMBER was on before this GREEN; Fills = sleeve entries opened in the period (open ones in parentheses); Blocked = candidates refused by spacing / slots / 1h-EMA50 / BTC off-24h / BTC-leader EMA13 / PVR ceiling / BTC 1h-slope floor (columns are not mutually exclusive — a dip refused by spacing that BTC later pulls under the gate counts in both); Kill bar = first-10 tally as of period end (current DB — a paper reset restarts it; adjudicate against the master pool per the standing tally rule).</p>
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
@@ -4536,7 +4520,7 @@
 
         <!-- Portfolio Management -->
         <section>
-            <div id="sec-investors" class="flex items-center justify-between mb-4">
+            <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-semibold text-gray-300">Portfolio Management</h2>
                 <div class="flex gap-2">
                 <button onclick="openFundDepositModal()" class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm rounded-lg">+ Deposit Funds</button>
@@ -4689,7 +4673,7 @@
         <!-- Configuration Panel -->
         <section>
             <h2 class="text-lg font-semibold text-gray-300 mb-4 flex items-center justify-between cursor-pointer select-none hover:text-gray-100 transition-colors" onclick="document.getElementById('config-panel-body').classList.toggle('hidden'); this.querySelector('svg').classList.toggle('-rotate-90');" title="Show / hide configuration">
-                <span id="sec-config">Trading Configuration</span>
+                <span>Trading Configuration</span>
                 <svg class="w-5 h-5 text-gray-400 transition-transform duration-200 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
@@ -22719,22 +22703,6 @@
             </div>
         </div>
         <script>
-        // Sep-10: section nav — highlight the link of the section currently on screen; anchors
-        // get scroll-margin so the sticky header never covers a title after a jump.
-        (function(){
-            try {
-                const st = document.createElement('style'); st.textContent = '[id^="sec-"]{scroll-margin-top:96px}'; document.head.appendChild(st);
-                const links = Array.from(document.querySelectorAll('#sec-nav .sec-link'));
-                const targets = links.map(l => document.getElementById(l.dataset.sec)).filter(Boolean);
-                if (!targets.length || !('IntersectionObserver' in window)) return;
-                const setActive = id => links.forEach(l => { const on = l.dataset.sec === id; l.classList.toggle('text-white', on); l.classList.toggle('bg-white/10', on); l.classList.toggle('text-gray-400', !on); });
-                // caveman review: a 5%-tall band missed jumps/fast scrolls — observe the band just under
-                // the sticky header down to 30% of the viewport, and highlight immediately on click.
-                const io = new IntersectionObserver(entries => { entries.forEach(e => { if (e.isIntersecting) setActive(e.target.id); }); }, { rootMargin: '-96px 0px -70% 0px' });
-                targets.forEach(t => io.observe(t));
-                links.forEach(l => l.addEventListener('click', () => setActive(l.dataset.sec)));
-            } catch (e) { /* nav highlight is cosmetic */ }
-        })();
         function applyFeeAutoState(){
             const auto = document.getElementById('config-fee-auto-fetch')?.checked;
             for (const id of ['config-taker-fee','config-maker-fee']) {

@@ -3549,3 +3549,33 @@ Operator asked why ZEC was absent from the top-50 → it sat on `pair_blacklist`
 
 ## 2026-09-11 (50) — Fee-reserve burn leg → RUNWAY-AWARE (operator-caught double-provisioning after the first P6 paper swap)
 Observed: paper swap bought $451 → BNB $508 (24h runway), then the USDT burn leg held ANOTHER $249 (12h × inflated $20.73/hr) → $757 ≈ 25% of a $3k book idle for fees. Root cause: the swap target (24h) and the USDT leg (12h) never knew about each other. Ship: leg = max(0, hours × burn − BNB held); BNB held = paper exact / live cache (`_bnb_usd_last`) stamped at the 15-min wake (routine + emergency), swaps/sells, every /api/balance poll; None → full leg (conservative). Engine + display mirror + 3 regression tests (net-out, unknown-live conservative, parity w/ BNB held; falsifiable — deleting the −held term fails 2 tests). DEEP MECHANISM REVIEW (SHIP): dynamic invariant B + free_USDT ≥ 12h·burn24 − open-book exit fees (≤$27) − realized losses holds at every fill; BNB SELF-PROTECTS when the reserve binds (fills blocked → no entry-fee burn); negative-feedback loop, no oscillation; live staleness ≤ one 15-min wake (≈$5–12) + BNB price drift, self-healing; NEW is strictly weaker than OLD by exactly the BNB held = the intended redundancy; failure mode = 10% fee surcharge (fees paid in USDT), not a halt. Reviewer's stationary-equity sim at live-scale burn: 0 starvation both rules, NEW frees ~7pp of the book, ends +4% higher. My own sim (reports/RESERVE_RUNWAY_AWARE_sim_2026-09-11.py) is annotated NON-EVIDENTIARY (P&L-neutral book dies; burn 70× below live). 📋 DOCKET (pre-existing holes named by the review, separate ships): (I-1) `_execute_bnb_swap` caps the buy at free − min_investment_size ($100) — the reserve exists to be SPENT on the swap; cap at free − max($15, pct leg) instead + test; (I-2) live has NO fee-event emergency swap — `_deduct_fee_from_bnb`'s live branch is dead code (callers are paper-only); docstring corrected, path left in place; (M-4) the saved-file export lacks the fee-reserve formula line (pre-existing asymmetry). Note for future runway analyses: max_holding_time_minutes is 1200 in JSON (not 180).
+
+## 2026-09-11 (51) — BCH −$500 read: gate-51 bands × gate-53 wide stop × 2.0× base — no config change, interlock registered
+
+**Trigger (operator):** "Check last transaction, it was a complete disaster, in size and loss … review Gate 51 … check previous batches … see if there is an action."
+
+**Anatomy — BCHUSDT LONG, P6 paper, opened 2026-09-11 20:41 UTC, closed 21:56 STOP_LOSS L1, −1.99% / −$499.71.**
+- Size $1,255 = 50% of the tradeable book: equal-split slot $2,510/4 = $628 × 2.0 (pattern_cell_rules UNMATCHED LONG inv_mult 2.0; PVR 0.76 < long_unmatched_mult_pvr_max 0.9 → not de-muxed; > quiet_pvr_max 0.68 → no quiet boost). Same rule sized ARB/HYPE that morning.
+- Stop = gate-53 quiet SL −2.0 (entry ATR 0.34% < 0.45). At 20× = −40% of margin = −20% of the book.
+- Entry in the gate-51 reopened zone: BTC ADX 17.14 / RSI 57.3 — blocked twice pre-Aug-18 (ADX floor 18; 55-60 window 20-25). BTC flat/falling: 1h slope −0.116, 1h RSI 48.9, trend gap −0.10, bATR 0.133.
+- Path: peak +0.002%; EMA13 cross at −0.34 (6 min); signal lost at −0.61 (15 min); sat ~60 min; 21:45 15m candle flushed BCH to 225.0 (−2.06% from entry). Post-exit bounce only to −0.97% from entry — holding would not have rescued it.
+- BTC tape: Sep-10 −2.21% (bot idle — reset happened Sep-11), Sep-11 +0.8%. Gate-51/53 falling-BTC tripwires not testable.
+
+**Gate 51 master-pool cross (dashboard is reset-censored → B3+B4+B5+B6; 33 post-deploy momentum longs, non-probe):**
+
+| band | N | WR | avg% | Σ$ | ex-BCH |
+|---|---|---|---|---|---|
+| ① RSI 50-55 | 7 | 100% | +0.12 | +$168 | +$168 |
+| ② ADX 15-18 | 7 | 71% | −0.32 | −$487 | +$13 (N=6) |
+| ③ 55-60 × [15,20)∪(25,30] | 3 | 67% | −0.60 | −$486 | +$14 (N=2) |
+| any band (unique) | 13 | 85% | −0.13 | −$399 | +$101 |
+| non-band | 20 | 80% | +0.23 | +$850 | |
+
+Overlap (operator-caught): 4 multi-band fills — DOGE ②③ +$11 · HYPE ①② +$28 · ARB ①② +$55 · BCH ②③ −$500. The two −$48x figures are the SAME trade. Per-slice counting stays (locked gates pre-committed per slice, doors protocol) but summaries must say so.
+Per-revert removal (de-duplicated): ③ → DOGE, LIT, BCH (surgical, spares ARB/HYPE/TAO/ASTER) · ② → 7 fills incl. ARB/HYPE.
+
+**Actions considered and rejected:**
+1. Early ③ revert (operator: "why not focus on reverting Gate 51 ③?") — evidence against ③ = one trade; bar N≥10 at N=3; paper cost-of-waiting 0; and ③ does not touch the loss mechanism (AVAX B3 −0.70 stop at 2.5× = −$215 in a NON-band zone would be up to −$615 under −2.0). Band ② adjudicates on its own at the next fill (needs a >+$487 winner to survive) and a ② revert (floor 18) blocks BCH's zone anyway.
+2. Risk-normalise cap (1× invest when the quiet stop applies; my first proposal, withdrawn after operator pushback "better or worse in previous batches?") — applies to momentum LONGs with entry ATR<0.45 = 54 of 111 momentum longs (half the sleeve). Actual vs 1×: BASE 21·90% +$1,670/+$835 · B1 10·70% −$152/−$88 · B2 7·100% +$866/+$399 · B3 12·67% +$121/+$0 · B4 2·100% +$77/+$32 · B5 1 +$26/+$26 · B6 1 −$500/−$250 · TOTAL +$2,109 / +$955. Worse by ~$1,150; crosses caps-for-losers; = docket ⑬ demux (B3-refuted). REJECTED.
+
+**Registered:** gate-53 first tally (ONDO armed, BCH blown 1/3); the measured interlock (−2.0 × 2.0× = −20%/blow, 2× gate 55's priced −10%) as a LIVE RE-VALIDATION CONDITION on gate 53 (its own note already sets threshold→0 at live cutover); gate-55 figure corrected; quiet×BTC-ADX<20 probe prior (4W/6L) as observe-only for ③. Reproducible from reports/MASTER_POOL_stacked.csv + BASELINE5 CSV + the Sep-11 22:37 B6 export.

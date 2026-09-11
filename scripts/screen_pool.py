@@ -23,7 +23,7 @@ from services.trading_engine import _flip_filters
 RAW = "reports/COMBINED_momentum_flip_2026-06-16to28_DEDUP.csv"  # Jul 8: now spans 06-16..07-08 (batches appended; filename kept — all tooling points here)
 OUT = "reports/SCREENED_BASELINE.csv"
 th = config.trading_config.thresholds
-BL = set("ALLOUSDT,BNBUSDT,EIGENUSDT,ENAUSDT,ESPORTSUSDT,FILUSDT,MUSDT,RAVEUSDT,SYNUSDT,TRUMPUSDT,VELVETUSDT,VVVUSDT,XAGUSDT,XAUUSDT,ZECUSDT".split(","))
+BL = set("ALLOUSDT,EIGENUSDT,ESPORTSUSDT,FILUSDT,MUSDT,PAXGUSDT,RAVEUSDT,SYNUSDT,TRUMPUSDT,USDCUSDT,VELVETUSDT,VVVUSDT,XAGUSDT,XAUTUSDT,XAUUSDT".split(","))  # Sep-11: ZEC+ENA released (preemptive no-data entries, now liquid majors); BNB released observe-first (May-era N=16/38% old-mechanism evidence; PAIR_ATR_MIN now guards the low-ATR-major mechanism; re-blacklist gate N≥10 WR≤40% or net<0); PAXG+XAUT added (tokenized gold = same commodity class as XAU/XAG)
 
 def nf(x):
     try: return float(x)

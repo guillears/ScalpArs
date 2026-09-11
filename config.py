@@ -2004,7 +2004,7 @@ class InvestmentConfig(BaseModel):
     # Paper: cosmetic (sim charges fees in USDT at 0 BNB). Live: without it, fees lose the BNB
     # discount once BNB hits 0 and the bot cannot refuel while the book is full. 0 = disabled.
     fee_reserve_usd: float = 15.0          # Aug-25 (operator): absolute MIN floor only (micro-balance edge: must cover Binance's $10 BNB top-up min); the real reserve comes from pct/hours below
-    fee_reserve_hours: float = 12.0        # Aug-25: burn leg — hours x live BNB burn/hr; 0 = off
+    fee_reserve_hours: float = 12.0        # Aug-25: burn leg — hours x live BNB burn/hr; 0 = off. Sep-11: RUNWAY-AWARE — leg = max(0, hours x burn − BNB held): the USDT leg only funds the NEXT swap, so BNB already bought (24h runway) is netted out (was double-provisioning ~25% of a $3k book)
     fee_reserve_pct: float = 2.5           # Aug-25 (operator 'percentage of total holding'): pct leg. Aug-28 (operator): base = ACTIVE schedule tier's tradeable target when one applies (fees scale with traded notional, not parked capital), else total equity. reserve = max(usd_min, pct leg, burn leg). 0 = off
     
     # Cooldown after trade close (prevents immediate re-entry on same pair, win or loss)

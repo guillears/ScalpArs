@@ -1312,6 +1312,7 @@ class TradingEngine:
         self._signal_expired_log_max = 200
         # BNB fee management
         self.paper_bnb_balance_usd: float = config.trading_config.paper_bnb_initial_usd
+        self._bnb_usd_last = None  # Sep-11: live BNB-held cache for the runway-aware reserve leg (None = unknown → full leg)
         self._bnb_emergency_threshold: float = 0.0
         self._bnb_projected_need: float = 0.0
         self._bnb_burn_rate: float = 0.0
@@ -1713,6 +1714,7 @@ class TradingEngine:
     async def set_paper_mode(self, enabled: bool, db: AsyncSession):
         """Toggle paper trading mode"""
         self.is_paper_mode = enabled
+        self._bnb_usd_last = None  # Sep-11 (review M-1): a live→paper→live toggle must not reuse a stale live cache
         if enabled:
             self.paper_balance = config.trading_config.paper_balance
         await self.save_state(db)
@@ -2132,6 +2134,8 @@ class TradingEngine:
                 if bnb_price <= 0 or not balance:
                     return
                 current_bnb = balance.get('bnb_total', 0) * bnb_price
+                if balance.get('ok', True):  # caveman review: a fetch-failure zeros payload must not stamp 0 (would over-reserve until the next good probe)
+                    self._bnb_usd_last = current_bnb  # Sep-11: feeds the runway-aware reserve leg
             except Exception as e:
                 logger.warning(f"[BNB_EMERGENCY] Failed to query live BNB balance: {e}")
                 return
@@ -2224,6 +2228,8 @@ class TradingEngine:
             if bnb_price <= 0:
                 return
             current_bnb_usd = balance['bnb_total'] * bnb_price
+            if not self.is_paper_mode and balance.get('ok', True):
+                self._bnb_usd_last = current_bnb_usd  # Sep-11 (review M-2): routine/forced wake refreshes the cache too
             if current_bnb_usd >= target:
                 return
             shortfall = target - current_bnb_usd
@@ -2239,6 +2245,11 @@ class TradingEngine:
                 return
             
             new_balance = await binance_service.get_balance()
+            try:  # Sep-11: refresh the runway-aware reserve leg's BNB cache immediately after a swap (else the reserve stays high up to 15 min)
+                if new_balance and new_balance.get('ok', True) and (result.get('price') or 0) > 0:
+                    self._bnb_usd_last = (new_balance.get('bnb_total') or 0) * float(result['price'])
+            except Exception:
+                pass
             swap_log = BnbSwapLog(
                 swap_type=swap_type,
                 amount_usdt=result['cost_usdt'],
@@ -2324,6 +2335,11 @@ class TradingEngine:
                 return
 
             new_balance = await binance_service.get_balance()
+            try:  # caveman review: refresh the runway-aware cache after a sell too (else stale-HIGH until the next probe)
+                if new_balance and new_balance.get('ok', True) and bnb_price > 0:
+                    self._bnb_usd_last = (new_balance.get('bnb_total') or 0) * bnb_price
+            except Exception:
+                pass
             swap_log = BnbSwapLog(
                 swap_type=swap_type,
                 amount_usdt=-result['proceeds_usdt'],  # negative = USDT inflow
@@ -2495,6 +2511,18 @@ class TradingEngine:
             self._fee_sync_at = _now - 23 * 3600  # retry in ~1h
             logger.warning(f"[FEE_SYNC] fetch failed ({str(e)[:80]}) -- keeping configured fees (manual fallback)")
 
+    def _bnb_held_usd(self):
+        """Sep-11 (operator: 'why is the reserve so high after the swap?'): BNB fee fuel already
+        held, in USD — paper exact; live = last-known value stamped by the 15-min wake probe,
+        swaps/sells, and every /api/balance poll (NOTE: the fee-deduction path is PAPER-only —
+        its callers sit inside is_paper_mode blocks — so live staleness = up to one 15-min wake,
+        plus BNB price drift on the cached USD value; both self-heal at the next probe).
+        None = unknown (caller must be conservative). Used by the runway-aware burn leg."""
+        if self.is_paper_mode:
+            return float(self.paper_bnb_balance_usd or 0.0)
+        _v = getattr(self, '_bnb_usd_last', None)
+        return float(_v) if _v is not None else None
+
     async def bnb_scheduled_check(self, db: AsyncSession, force: bool = False):
         """Scheduled BNB balance check: compute burn rate, project needs, swap if necessary.
 
@@ -2530,6 +2558,8 @@ class TradingEngine:
                 _bal_now = await binance_service.get_balance()
                 _px_now = await binance_service.get_bnb_price()
                 _bnb_now_usd = (_bal_now.get('bnb_total') or 0) * _px_now if (_bal_now and _bal_now.get('ok', True) and _px_now and _px_now > 0) else None  # review I1: a fetch-failure zeros payload must not fake an emergency
+                if _bnb_now_usd is not None:
+                    self._bnb_usd_last = _bnb_now_usd  # Sep-11: runway-aware reserve leg cache
                 if _bnb_now_usd is not None and _bnb_now_usd < 0.25 * self._bnb_emergency_threshold:
                     logger.warning(f"[BNB_EMERGENCY] live BNB ${_bnb_now_usd:.2f} < 25% of threshold ${self._bnb_emergency_threshold:.2f} — bypassing the {int(tc.bnb_check_interval_hours or 6)}h interval gate")
                     _bnb_gate_force = True
@@ -2714,7 +2744,13 @@ class TradingEngine:
         # restarts, so fees/0.5h read $82/hr and the leg locked $979 away from sizing. The swap
         # machinery was already maturity-gated (May-25); the reserve leg must match it.
         if _fee_hrs > 0 and _burn > 0 and getattr(self, '_bnb_data_mature', False):
-            _fee_res = max(_fee_res, _fee_hrs * _burn)
+            # Sep-11 (operator-caught double-provisioning): the swap just bought 24h of BNB runway,
+            # then this leg held ANOTHER 12h of fees in USDT (~25% of a $3k book idle). The USDT
+            # leg exists only to fund the NEXT swap, so it reserves the coverage BNB does NOT
+            # already provide: max(0, hours x burn - BNB held). Unknown live BNB -> full leg.
+            _need = _fee_hrs * _burn
+            _have = self._bnb_held_usd()
+            _fee_res = max(_fee_res, _need if _have is None else max(0.0, _need - _have))
         reserve += _fee_res
 
         # Available after reserve

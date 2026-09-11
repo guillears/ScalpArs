@@ -1,0 +1,11 @@
+scenario                                rule | trades STARVE $lost swaps minBNB idle% burn$/h legGov% medEndEq breachH worstGap
+A stationary+ (mu+1.8%) LIVE             old  |   2085      0   0.0  65.2    7.0  26.7   99.57    100    10455     0.0    384.7
+A stationary+ (mu+1.8%) LIVE             new  |   2088      0   0.0  68.9    7.0  19.5  116.37      7    10872    12.7    429.3
+B stationary+ PAPER (fee-evt swap)       old  |   2084      0   0.0  66.4    7.0  26.8  101.46    100    11741     0.0    384.7
+B stationary+ PAPER (fee-evt swap)       new  |   2087      0   0.0  83.7    7.0  20.1  125.56      0    12058     0.0    384.7
+C drawdown (mu-1.0%) LIVE                old  |    547      0   0.0  12.4    8.4  36.2    0.00     30      154     0.1    380.6
+C drawdown (mu-1.0%) LIVE                new  |    512      0   0.0  11.0    8.4  34.4    0.00      0      152     0.3    380.6
+D hot tape mu+3% tpd200 hold15-45        old  |   4168     82  54.4  93.1    0.0  38.1 2078839.02    100 148222783     0.1   1001.9
+D hot tape mu+3% tpd200 hold15-45        new  |   4201     82  54.4 103.9    0.0  25.9 24438586.67     19 1341213170    56.8 167662324.1
+E long holds 15-1200 mu+1.8%             old  |    275     28  33.2  48.2    0.0   4.9    6.25      2     4183     2.6    127.4
+E long holds 15-1200 mu+1.8%             new  |    274     31  30.0  46.8    0.0   5.0    6.02      0     4182     2.9    127.4

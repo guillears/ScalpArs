@@ -687,6 +687,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         trading_engine._bnb_projected_need = 0.0
         trading_engine._bnb_burn_rate = 0.0
         trading_engine._last_bnb_check = None
+        trading_engine._bnb_usd_last = None  # Sep-11 (review M-1): reset clears the live BNB cache like every other BNB field
 
         # Reset Filter Block counters (in-memory + persisted)
         trading_engine._filter_block_counts = {}
@@ -789,7 +790,10 @@ def _reserve_split(free_balance: float, deployed_margin: float = 0.0):
     _burn = float(getattr(trading_engine, '_bnb_burn_rate', 0.0) or 0.0)
     # Aug-26: burn leg gated on data maturity — mirror of calculate_position_size (B5 reset artifact)
     if _fee_hrs > 0 and _burn > 0 and getattr(trading_engine, '_bnb_data_mature', False):
-        _fee_res = max(_fee_res, _fee_hrs * _burn)
+        # Sep-11: runway-aware — mirror of calculate_position_size (reserve only what BNB doesn't cover)
+        _need = _fee_hrs * _burn
+        _have = trading_engine._bnb_held_usd()
+        _fee_res = max(_fee_res, _need if _have is None else max(0.0, _need - _have))
     reserve += _fee_res
     reserve = min(reserve, max(0.0, free_balance))
     return round(reserve, 2), round(max(0.0, free_balance - reserve), 2), _inv.reserve_mode
@@ -853,6 +857,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         balance = await binance_service.get_balance()
         bnb_price = await binance_service.get_bnb_price()
         bnb_usd = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
+        if bnb_price > 0 and balance.get('ok', True):
+            trading_engine._bnb_usd_last = bnb_usd  # Sep-11: every dashboard poll refreshes the reserve leg's BNB cache
         usdt_free = balance['usdt_free']
         spot = await binance_service.get_spot_balance_usd()  # 60s-cached; None on API failure
         _live_open = (await db.execute(

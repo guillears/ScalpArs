@@ -13,7 +13,11 @@ SCHED = "10000:8000, 25000:17500, 50000:27500, 100000:40000, 150000:50000, 25000
 
 
 def _setup(monkeypatch, mode="schedule", pct=2.5, usd=15.0, hours=12.0,
-           burn=0.0, mature=False):
+           burn=0.0, mature=False, bnb_held=0.0):
+    # Sep-11: burn leg is runway-aware (hours x burn − BNB held). Tests pin BNB held explicitly
+    # (paper mode → paper_bnb_balance_usd) so legacy expectations stay exact at bnb_held=0.
+    monkeypatch.setattr(te.trading_engine, "is_paper_mode", True, raising=False)
+    monkeypatch.setattr(te.trading_engine, "paper_bnb_balance_usd", bnb_held, raising=False)
     inv = config.trading_config.investment
     monkeypatch.setattr(inv, "reserve_mode", mode)
     monkeypatch.setattr(inv, "reserve_schedule", SCHED)
@@ -107,3 +111,42 @@ def test_engine_mirror_parity(monkeypatch):
             equity, conf, total_portfolio=equity)
         _r, mirror_tradeable, _ = main._reserve_split(equity, 0.0)
         assert abs(investment - mirror_tradeable) < 0.51, (equity, investment, mirror_tradeable)
+
+
+def test_burn_leg_nets_out_bnb_held(monkeypatch):
+    """Sep-11 (operator-caught double-provisioning): the USDT burn leg only reserves the fee
+    coverage BNB does NOT already provide. 12h x $20.73 = $248.76 need."""
+    _setup(monkeypatch, burn=20.73, mature=True, bnb_held=0.0)
+    r, _, _ = main._reserve_split(2574.88, 0.0)
+    assert abs(r - 248.76) < 0.01                       # no BNB → full leg (old behavior)
+    _setup(monkeypatch, burn=20.73, mature=True, bnb_held=507.82)
+    r, _, _ = main._reserve_split(2574.88, 0.0)
+    assert abs(r - 2574.88 * 0.025) < 0.01              # BNB covers 24h → leg 0 → pct leg governs ($64.37)
+    _setup(monkeypatch, burn=20.73, mature=True, bnb_held=150.0)
+    r, _, _ = main._reserve_split(2574.88, 0.0)
+    assert abs(r - (248.76 - 150.0)) < 0.01             # partial: reserve exactly the uncovered gap
+
+
+def test_burn_leg_unknown_live_bnb_is_conservative(monkeypatch):
+    """Live mode with no BNB probe yet (None) → full leg, never under-reserve."""
+    _setup(monkeypatch, burn=20.73, mature=True)
+    monkeypatch.setattr(te.trading_engine, "is_paper_mode", False, raising=False)
+    monkeypatch.setattr(te.trading_engine, "_bnb_usd_last", None, raising=False)
+    r, _, _ = main._reserve_split(2574.88, 0.0)
+    assert abs(r - 248.76) < 0.01
+    monkeypatch.setattr(te.trading_engine, "_bnb_usd_last", 507.82, raising=False)
+    r, _, _ = main._reserve_split(2574.88, 0.0)
+    assert abs(r - 2574.88 * 0.025) < 0.01
+
+
+def test_engine_mirror_parity_with_bnb_held(monkeypatch):
+    """Engine and display must net out BNB identically (mirror rule)."""
+    _setup(monkeypatch, burn=20.0, mature=True, bnb_held=100.0)
+    inv = config.trading_config.investment
+    monkeypatch.setattr(inv, "mode", "percentage"); monkeypatch.setattr(inv, "percentage", 100.0)
+    monkeypatch.setattr(inv, "max_investment_size", 10**9); monkeypatch.setattr(inv, "min_investment_size", 0.0)
+    conf, level = next((k, v) for k, v in config.trading_config.confidence_levels.items() if v.enabled)
+    monkeypatch.setattr(level, "investment_multiplier", 1.0)
+    investment, _, _ = te.trading_engine.calculate_position_size(3000.0, conf, total_portfolio=3000.0)
+    _, mirror_tradeable, _ = main._reserve_split(3000.0, 0.0)
+    assert abs(investment - mirror_tradeable) < 0.51     # burn leg 240−100 = 140 on both sides

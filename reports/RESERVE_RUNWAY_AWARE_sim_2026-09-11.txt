@@ -1,0 +1,14 @@
+# ⚠ NON-EVIDENTIARY (deep review 2026-09-11, I-3): this sim is P&L-neutral, so fees drain the
+# book to ~$165 by day 30; its burn (~$0.3/hr) is ~70x below live and the NEW burn leg governs
+# 0% of the time — it never exercises the mechanism. Kept only as the model skeleton. The ship
+# rests on the invariant argument (B + free_USDT >= 12h*burn24 - open-book exit fees - realized
+# losses at every fill; BNB self-protects when the reserve binds) and on the reviewer's
+# stationary-equity variant (RESERVE_RUNWAY_AWARE_sim_variant2_2026-09-11.txt): live-scale burn,
+# 0 starvation both rules, NEW frees ~7pp of the book and ends +4% higher.
+ tpd rule | trades blocked STARVE swaps   avg$  minBNB  idle% tradeable$
+   8 old  |    244       2      0  50.8     40    19.2    6.5       1340
+   8 new  |    244       2      0  50.8     40    19.2    6.3       1342
+  20 old  |    540      72      0  47.2     56    20.1   11.7        609
+  20 new  |    539      72      0  46.9     57    20.8   10.7        611
+  40 old  |    737     467      0  38.9     71    20.5   18.4        300
+  40 new  |    722     483      0  38.2     73    18.4   17.1        302

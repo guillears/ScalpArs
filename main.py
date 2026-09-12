@@ -2212,6 +2212,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "spike_summary": [],
             "graduation_doors": [],
             "gate51_bands": [],
+            "gate51_cells": [],
             "quiet_sl_rows": [],
             "bullrun_rows": [],
             "bullrun_monitor": None,
@@ -4209,6 +4210,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "spike_summary": [],
             "graduation_doors": [],
             "gate51_bands": [],
+            "gate51_cells": [],
             "quiet_sl_rows": [],
             "bullrun_rows": [],
             "bullrun_monitor": None,
@@ -6903,6 +6905,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     spike_summary = []
     graduation_doors = []
     gate51_bands = []
+    gate51_cells = []
     quiet_sl_rows = []
     try:
         def _cohort_stats(g):
@@ -7003,6 +7006,27 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         gate51_bands.append(_door("① RSI 50-55 band (was TOTAL block)", _g51_b1, 10, 45, "restore 50-55:99-100"))
         gate51_bands.append(_door("② BTC ADX 15-18 floor cohort", _g51_b2, 8, 45, "btc_adx_min_long back to 18"))
         gate51_bands.append(_door("③ 55-60 window new zone [15,20)∪(25,30]", _g51_b3, 10, 45, "window back to 20-25"))
+        # 🔓 Sep-11 GATE 51 CELLS — the bands' overlaps as a PARTITION (attribution, no gate).
+        # Same base cohort + same pinned columns as the band rows; every band fill lands in
+        # exactly one cell, so Σ over cells == Σ over unique band fills (disclosed in the footer row).
+        _g51_by_cell = {k: [] for k in _G51_CELL_ORDER}
+        for _o in _g51_ml:
+            _ck = _g51_cell(getattr(_o, 'entry_btc_rsi', None), getattr(_o, 'entry_btc_adx', None))
+            if _ck is not None:
+                _g51_by_cell[_ck].append(_o)
+        for _ck in _G51_CELL_ORDER:
+            _cg = _g51_by_cell[_ck]
+            _cst = _cohort_stats(_cg)
+            gate51_cells.append({"row": _G51_CELL_LABEL[_ck], **_cst,
+                                 "gate": ("— attribution only (no locked bar)" if _cst["n"] else "⏳ no fires yet")})
+        # Dedup row from the TRUE band union (review I-1: deriving it from the cells would make
+        # the parity a tautology). Any band fill the classifier cannot place is disclosed, not hidden.
+        _g51_uniq = list({id(o): o for o in (_g51_b1 + _g51_b2 + _g51_b3)}.values())
+        _g51_uncl = len(_g51_uniq) - sum(len(g) for g in _g51_by_cell.values())
+        gate51_cells.append({"row": "Σ unique band fills (bands overlap; cells do not)",
+                             **_cohort_stats(_g51_uniq),
+                             "gate": ("— dedup total" if not _g51_uncl
+                                      else f"— dedup total · ⚠ {_g51_uncl} band fill(s) not in any cell (one BTC column NULL)")})
         # 🛡 Aug-19 GATE 53 — Quiet-Pair Conditional SL tracking (override ship; CURRENT_STATE
         # gate 53). Row ① = the cohort the rule ACTS on: eligible fills (entry ATR < threshold)
         # whose trough went past the old −0.70 stop — these would have been stopped before.
@@ -7058,6 +7082,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         spike_summary = []
         graduation_doors = []
         graduation_doors_overlap = None
+        gate51_bands = []
+        gate51_cells = []
+        quiet_sl_rows = []
 
     # 🌊 Aug 21 gate 57: Bull-Run sleeve scoreboard — ALL row + per-exit-reason rows, with the
     # locked kill bar tracked live on the first 10 fills (manual toggle-off; no auto-revert).
@@ -8514,6 +8541,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "spike_summary": spike_summary,
         "graduation_doors": graduation_doors,
         "gate51_bands": gate51_bands,
+        "gate51_cells": gate51_cells,
         "quiet_sl_rows": quiet_sl_rows,
         "bullrun_rows": bullrun_rows,
         "bullrun_monitor": _bullrun_monitor_payload(),
@@ -10889,6 +10917,45 @@ def _compute_runner_trail_performance(orders):
 _FAST_EXIT_THRESHOLDS = [0.20, 0.30, 0.40]   # P&L % triggers to test (May 17: shifted from [0.10,0.15,0.20] now that 0.20 is live)
 _FAST_EXIT_WINDOWS = [1, 2, 5]               # minutes from entry (3min dropped May 13)
 _FAST_EXIT_DEFAULT_CELL = (0.20, 2)          # cell for close-reason breakdown
+# 🔓 Gate 51 CELL classifier (Sep-11, operator: "we also should see the combination of them").
+# The three relaxed bands are rectangles on BTC RSI × BTC ADX, so their overlaps are fixed cells.
+# This maps a fill to EXACTLY ONE cell (a partition of the bands' union) so the dashboard can show
+# attribution alongside the (overlapping, pre-committed) band rows. Cells carry NO locked bar —
+# they say WHICH half of a band tripped it (full vs partial restore), never whether it tripped.
+# Partition invariant (tested): ① = ①∩② ∪ ①only · ② = ①∩② ∪ ②∩③ ∪ ②only(<50) ∪ ②only(60+)
+# · ③ = ②∩③ ∪ ③only. Anything outside all three bands → None.
+_G51_CELL_ORDER = ("①∩②", "①only", "②∩③", "③only", "②only<50", "②only60+")
+_G51_CELL_LABEL = {
+    "①∩②": "①∩② RSI 50-55 × ADX 15-18",
+    "①only": "① only RSI 50-55 × ADX ≥18",
+    "②∩③": "②∩③ RSI 55-60 × ADX 15-18",
+    "③only": "③ only RSI 55-60 × ADX [18,20)∪(25,30]",
+    "②only<50": "② only RSI <50 × ADX 15-18",
+    "②only60+": "② only RSI ≥60 × ADX 15-18 (history-flagged half)",
+}
+def _g51_cell(rsi, adx):
+    """Return the gate-51 cell key for (BTC RSI, BTC ADX) at entry, or None if the fill is in no band."""
+    try:
+        # Null handling mirrors the band rows: ① needs only RSI, ② only ADX, ③ both.
+        rsi = None if rsi is None else float(rsi)
+        adx = None if adx is None else float(adx)
+        in_b1 = rsi is not None and 50 <= rsi < 55
+        in_b2 = adx is not None and 15 <= adx < 18
+        in_b3 = rsi is not None and adx is not None and 55 <= rsi < 60 and (15 <= adx < 20 or 25 < adx <= 30)
+        if in_b1 and in_b2:
+            return "①∩②"
+        if in_b1:
+            return "①only"
+        if in_b2 and in_b3:
+            return "②∩③"
+        if in_b3:
+            return "③only"
+        if in_b2:
+            return "②only<50" if (rsi is not None and rsi < 50) else "②only60+"
+        return None
+    except (TypeError, ValueError):
+        return None
+
 def _fast_exit_fee_pct():
     # Sep-3 fee-hardcode audit: was a 0.063 literal (maker entry + taker exit, old rates) — now
     # computed from live config so the CF grid follows the auto-synced rates.

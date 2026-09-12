@@ -1444,6 +1444,11 @@
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
                         <th class="px-2 py-1 text-left">Band</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Dates</th><th class="px-2 py-1 text-left">Gate verdict</th>
                     </tr></thead><tbody id="gate51-bands-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
+                    <h4 class="text-xs font-semibold text-sky-200/80 mt-4 mb-1">Cells — where the band fills actually sit (attribution only, no locked bar)</h4>
+                    <p class="text-xs text-gray-500 mb-2">The bands overlap; these cells do not — every band fill lands in exactly one cell (① = ①∩② + ①only · ② = ①∩② + ②∩③ + ②only(<50) + ②only(≥60) · ③ = ②∩③ + ③only). When a band trips its bar, the cells say which half did it (full vs partial restore). The last row is the de-duplicated total.</p>
+                    <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
+                        <th class="px-2 py-1 text-left">Cell</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Dates</th><th class="px-2 py-1 text-left">Note</th>
+                    </tr></thead><tbody id="gate51-cells-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
                 <div class="mt-6 pt-6 border-t border-sky-900/40">
                     <h3 class="text-sm font-semibold text-emerald-300 mb-1">🛡 Gate 53 — Quiet-Pair Conditional SL (Aug 19 — override ship, post-deploy momentum LONGs)</h3>
@@ -10478,9 +10483,16 @@
                 lines.push('## 🔓 Gate 51 — Reopened Band Fires (post-deploy vs locked reverts — Aug 18)\n');
                 lines.push(`${'Band'.padEnd(42)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Dates'.padStart(6)}  Gate verdict`);
                 for (const r of perf.gate51_bands) {
-                    lines.push(`${(r.row||'').padEnd(42)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? '+'+r.avg_peak.toFixed(2) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
+                    lines.push(`${(r.row||'').padEnd(42)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
                 }
                 lines.push('  Falling-BTC tripwire: first -2% BTC day -> combined fresh fills <=30% WR or <=-$250 => ALL THREE revert (gate 51)');
+                if (perf.gate51_cells && perf.gate51_cells.length > 0) {
+                    lines.push('\n  Cells (partition of the bands — attribution only, no locked bar; last row = dedup total):');
+                    lines.push(`  ${'Cell'.padEnd(52)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Dates'.padStart(6)}`);
+                    for (const r of perf.gate51_cells) {
+                        lines.push(`  ${(r.row||'').padEnd(52)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.dates).padStart(6)}`);
+                    }
+                }
             }
 
             if (perf.quiet_sl_rows && perf.quiet_sl_rows.length > 0) {
@@ -12836,9 +12848,16 @@
                 lines.push('## 🔓 Gate 51 — Reopened Band Fires (post-deploy vs locked reverts — Aug 18)\n');
                 lines.push(`${'Band'.padEnd(42)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Dates'.padStart(6)}  Gate verdict`);
                 for (const r of perf.gate51_bands) {
-                    lines.push(`${(r.row||'').padEnd(42)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? '+'+r.avg_peak.toFixed(2) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
+                    lines.push(`${(r.row||'').padEnd(42)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
                 }
                 lines.push('  Falling-BTC tripwire: first -2% BTC day -> combined fresh fills <=30% WR or <=-$250 => ALL THREE revert (gate 51)');
+                if (perf.gate51_cells && perf.gate51_cells.length > 0) {
+                    lines.push('\n  Cells (partition of the bands — attribution only, no locked bar; last row = dedup total):');
+                    lines.push(`  ${'Cell'.padEnd(52)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Dates'.padStart(6)}`);
+                    for (const r of perf.gate51_cells) {
+                        lines.push(`  ${(r.row||'').padEnd(52)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.dates).padStart(6)}`);
+                    }
+                }
             }
 
             if (perf.quiet_sl_rows && perf.quiet_sl_rows.length > 0) {
@@ -18547,6 +18566,25 @@
                             </tr>`;
                         }).join('');
                     } else { g51Body.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No band fires yet</td></tr>'; }
+                }
+                const g51Cells = document.getElementById('gate51-cells-body');
+                if (g51Cells) {
+                    if (data.gate51_cells && data.gate51_cells.length > 0) {
+                        g51Cells.innerHTML = data.gate51_cells.map(r => {
+                            const tc = (r.total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const isTotal = (r.row || '').startsWith('Σ');
+                            return `<tr class="hover:bg-white/5 ${isTotal ? 'border-t border-white/10' : ''}">
+                                <td class="px-2 py-1.5 ${isTotal ? 'text-gray-300 font-semibold' : 'text-sky-200/90'}">${r.row}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.n}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.wr != null ? r.wr.toFixed(1) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc}">${r.avg_pct != null ? ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc} font-bold">$${(r.total_usd || 0).toFixed(2)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.avg_peak != null ? ((r.avg_peak >= 0 ? '+' : '') + r.avg_peak.toFixed(2)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.dates}</td>
+                                <td class="px-2 py-1.5 text-gray-500">${r.gate || ''}</td>
+                            </tr>`;
+                        }).join('');
+                    } else { g51Cells.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No band fires yet</td></tr>'; }
                 }
                 const qslBody = document.getElementById('quiet-sl-body');
                 if (qslBody) {

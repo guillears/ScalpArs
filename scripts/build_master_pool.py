@@ -6,7 +6,9 @@ Merges the three canonical era pools into ONE file with stack columns, so every
 cross-era analysis starts from the same screened source instead of re-deriving
 the gate logic inline (the error class behind the d6 double-count incident).
 
-  era          BASE (screened Jun-17→Jul-10) / B1 (Jul-11→31 anchor) / B2 (Jul-31→Aug-10)
+  era          BASE (screened Jun-17→Jul-10) / B1 (Jul-11→31 anchor) / B2 (Jul-31→Aug-10) /
+               B3 (Aug-11→24) / B4 (Aug-24→26 first live) / B5 (Aug-26→27) / B<n> auto-discovered
+               from reports/BASELINE<n>_*.csv for n ≥ 6 (archive each batch there at its pre-reset export)
   is_probe     *_PROBE cell fires (headline tables exclude these — full-size-only rule)
   is_door      NONEXP_CALM3D fires
   stack_keep   would TODAY'S entry stack admit this trade?
@@ -24,14 +26,60 @@ from datetime import datetime
 STACK_VERSION = "2026-08-16a"  # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
+# Era registry (Sep-11: B3/B4/B5 were previously stacked by a one-off — the builder only knew
+# BASE/B1/B2, so the committed MASTER_POOL had B3/B4 rows with NULL stack columns and no B5).
+# Fixed eras are listed explicitly; every later batch is auto-discovered from the archive naming
+# convention reports/BASELINE<n>_*.csv (n ≥ 6 → era B<n>). Archive each batch under that name
+# at its pre-reset export and the pool picks it up on the next regen.
+# (era, path, min_opened_at, lenient_status) — lenient_status=True keeps NaN-status rows as CLOSED
+# (the B1 anchor file's legacy quirk); every other era is strict `status == "CLOSED"`.
+FIXED_ERAS = [
+    ('BASE', "reports/SCREENED_BASELINE.csv", None, False),
+    ('B1',   "reports/BASELINE2_ANCHOR_batch0711-31_current_stack.csv", None, True),
+    ('B2',   "reports/BASELINE2_batch0731-0810_orders_prereset.csv", "2026-07-31", False),
+    ('B3',   "reports/BASELINE3_batch0811-0824_orders_prereset.csv", None, False),
+    ('B4',   "reports/BASELINE4_batch0824-0826_first_live_orders_prereset.csv", None, False),
+    ('B5',   "reports/BASELINE5_batch0826-0903_orders.csv", None, False),
+]
+
+def discover_eras():
+    """FIXED_ERAS + reports/BASELINE<n>_*.csv for n ≥ 6 (one file per n; ambiguity is fatal)."""
+    import glob, re
+    eras = list(FIXED_ERAS)
+    found = {}
+    for f in sorted(glob.glob("reports/BASELINE[0-9]*_*.csv")):
+        m = re.match(r"reports/BASELINE(\d+)_.*\.csv$", f)
+        if not m or int(m.group(1)) < 6 or '_split_report' in f or 'ANCHOR' in f:
+            continue
+        n = int(m.group(1))
+        if n in found:
+            raise SystemExit(f"FATAL: two archive files for BASELINE{n}: {found[n]} and {f} — keep one")
+        found[n] = f
+    for n in sorted(found):
+        eras.append((f'B{n}', found[n], None, False))
+    return eras
+
 def load():
-    base = pd.read_csv("reports/SCREENED_BASELINE.csv"); base['era'] = 'BASE'
-    b1 = pd.read_csv("reports/BASELINE2_ANCHOR_batch0711-31_current_stack.csv")
-    b1 = b1[b1.status.fillna("CLOSED") == "CLOSED"]; b1 = b1.copy(); b1['era'] = 'B1'
-    b2 = pd.read_csv("reports/BASELINE2_batch0731-0810_orders_prereset.csv")
-    b2 = b2[(b2.status == "CLOSED") & (b2.opened_at >= "2026-07-31")].copy(); b2['era'] = 'B2'
-    cols = set(base.columns) & set(b1.columns) & set(b2.columns)
-    # gate-load-bearing columns must survive the 3-way intersection — a schema
+    frames = []
+    for era, path, min_open, lenient in discover_eras():
+        d = pd.read_csv(path, low_memory=False)
+        if era != 'BASE':  # BASE is already the screened CLOSED set
+            st = d.status.fillna("CLOSED") if lenient else d.status
+            d = d[st == "CLOSED"]
+            if min_open:
+                d = d[d.opened_at >= min_open]
+        d = d.copy(); d['era'] = era
+        frames.append(d)
+    n_eras = len(frames)
+    # Schema: the gate-load-bearing `required` columns must be present in EVERY era (strict
+    # intersection, fails loudly on drift); everything else is UNIONED (NaN where an era predates
+    # the column) so later-era shadow/BE-lock columns survive the regen (review Sep-11: a strict
+    # intersection silently dropped 23 B3/B4 columns).
+    # ONE exception on record: the stack's MOM fallback reads `screen_sleeve` (union-only, BASE-populated) —
+    # verified Sep-11 it never disagrees with the required `entry_strategy`, so the union is stack-neutral.
+    inter = set.intersection(*[set(d.columns) for d in frames])
+    cols = set.union(*[set(d.columns) for d in frames])
+    # gate-load-bearing columns must survive the N-way intersection — a schema
     # drift in ONE era file would otherwise silently shrink the analysis surface
     required = ['opened_at', 'pair', 'direction', 'pnl', 'pnl_percentage', 'peak_pnl',
                 'entry_strategy', 'entry_rsi_prev', 'entry_pos_di', 'entry_adx',
@@ -44,13 +92,12 @@ def load():
                 # fade-SL/lock CF load-bearing (review fix: schema drift here must fail loudly,
                 # else every fade loser silently re-prices to the full stop)
                 'close_reason', 'entry_price', 'post_exit_running_high', 'post_exit_final_pnl']
-    missing = [c for c in required if c not in cols]
+    missing = [c for c in required if c not in inter]
     if missing:
-        raise SystemExit(f"FATAL: gate columns missing from the 3-way intersection: {missing}")
+        raise SystemExit(f"FATAL: gate columns missing from the {n_eras}-way intersection: {missing}")
     cols.discard('id')  # locked rule: NEVER use `id` (resets on paper reset) — keep it out of the pool
     cols = sorted(cols)  # deterministic column order (review fix: set order reshuffled every regen)
-    df = pd.concat([d[cols + ['era']] if 'era' not in cols else d[cols]
-                    for d in (base, b1, b2)], ignore_index=True)
+    df = pd.concat([d.reindex(columns=cols) for d in frames], ignore_index=True, sort=False)
     dup = df.duplicated(subset=['opened_at', 'pair', 'direction'])
     if dup.any():
         raise SystemExit(f"FATAL: {dup.sum()} duplicate rows on the locked dedup key "
@@ -140,7 +187,7 @@ def main():
     df.to_csv(out, index=False)
     print(f"MASTER_POOL_stacked.csv written — {len(df)} rows, stack v{STACK_VERSION}\n")
     fs = df[~df.is_probe]
-    for era in ('BASE', 'B1', 'B2'):
+    for era in [e[0] for e in discover_eras()]:
         d = fs[fs.era == era]; k = d[d.stack_keep]
         print(f"  {era:4s} full-size raw {len(d):3d}·{100*(d.pnl>0).mean():4.1f}%·${d.pnl.sum():+9.2f}"
               f"  |  stack-kept {len(k):3d}·{100*(k.pnl>0).mean():4.1f}%·${k.stack_pnl.sum():+9.2f}")

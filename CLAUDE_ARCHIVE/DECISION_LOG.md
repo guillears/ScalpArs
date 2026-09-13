@@ -3556,7 +3556,7 @@ Observed: paper swap bought $451 → BNB $508 (24h runway), then the USDT burn l
 
 **Anatomy — BCHUSDT LONG, P6 paper, opened 2026-09-11 20:41 UTC, closed 21:56 STOP_LOSS L1, −1.99% / −$499.71.**
 - Size $1,255 = 50% of the tradeable book: equal-split slot $2,510/4 = $628 × 2.0 (pattern_cell_rules UNMATCHED LONG inv_mult 2.0; PVR 0.76 < long_unmatched_mult_pvr_max 0.9 → not de-muxed; > quiet_pvr_max 0.68 → no quiet boost). Same rule sized ARB/HYPE that morning.
-- Stop = gate-53 quiet SL −2.0 (entry ATR 0.34% < 0.45). At 20× = −40% of margin = −20% of the book.
+- Stop = gate-53 LOW-ATR ('quiet-pair') SL −2.0 (entry ATR 0.34% < 0.45). At 20× = −40% of margin = −20% of the book. ⚠ NOT a QUIET-book fill (operator-caught Sep-12): PVR 0.76 > 0.68 → no 'QUIET 2×' badge, plain 'UNM 2×' base; ARB/HYPE the same batch WERE quiet-book (PVR 0.34/0.36) and hot-ATR (0.92/0.60) — the two 'quiet' rules are independent.
 - Entry in the gate-51 reopened zone: BTC ADX 17.14 / RSI 57.3 — blocked twice pre-Aug-18 (ADX floor 18; 55-60 window 20-25). BTC flat/falling: 1h slope −0.116, 1h RSI 48.9, trend gap −0.10, bATR 0.133.
 - Path: peak +0.002%; EMA13 cross at −0.34 (6 min); signal lost at −0.61 (15 min); sat ~60 min; 21:45 15m candle flushed BCH to 225.0 (−2.06% from entry). Post-exit bounce only to −0.97% from entry — holding would not have rescued it.
 - BTC tape: Sep-10 −2.21% (bot idle — reset happened Sep-11), Sep-11 +0.8%. Gate-51/53 falling-BTC tripwires not testable.

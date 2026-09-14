@@ -207,6 +207,27 @@ def _pop_or(ef, key, fallback):
     return v if v is not None else fallback
 
 
+def _ema13_cross_exit_applies(entry_strategy):
+    """Sep-14 (VTHO −$188 in 36 ms): which sleeves the realtime EMA13-cross exit may claim.
+    Flips were already excluded (Jun 15). SPIKE_FADE shorts are entered ABOVE EMA13 by
+    construction (VTHO: +8.6%) and SPIKE_BOUNCE longs BELOW it, so the cross condition is
+    true on the first tick — the exit would (and did) close them at t+0 for the taker
+    round-trip whenever the pair's EMA13 is cached (top-50 pairs); scanner-class fades
+    survived only because the cache was absent. Both spike species ride their own stack
+    (fixed spike SL, runner trail, lock, ladder). SPIKE_CHASE is deliberately NOT excluded:
+    chase longs are entered above EMA13 (cross false at t+0) and use the option-D branch.
+    Fail-safe: None/"" → applies (momentum); non-string garbage → applies (old behaviour)."""
+    try:
+        es = (entry_strategy or "")
+        if es.startswith("FLIP:"):
+            return False
+        if es in ("SPIKE_FADE", "SPIKE_BOUNCE"):
+            return False
+        return True
+    except Exception:
+        return True
+
+
 def _quiet_sl_for(direction, entry_strategy, entry_atr_pct):
     """🛡 Aug 19 gate 53: quiet-pair conditional SL eligibility. Returns the widened
     SL pct for eligible fills (momentum LONG whose entry ATR% < threshold — the −0.70
@@ -7705,7 +7726,7 @@ class TradingEngine:
 
                 # ─────────────────────────────────────────────────────────────
                 # 🚀 Jul 27 SPIKE_FADE AUTO-TRIPWIRE: a fade closing <= tripwire
-                # means the price GAPPED THROUGH the monitored −0.70 stop (squeeze
+                # means the price GAPPED THROUGH the monitored fade stop (spike_fade_sl_pct, −1.5 since Aug-10; squeeze
                 # signature / stop-failure — should NEVER happen on clean paper
                 # fills). If spike_tripwire_autodisable: engine self-disables the fade species; else (default, Aug-5) CRITICAL alert-only;
                 # squeezes cluster faster than human reaction at full size.
@@ -8955,7 +8976,8 @@ class TradingEngine:
             # 5m RSI source: PairData for top-50 pairs; scanner-class pairs get
             # a rate-limited klines fetch (>=60s/order — 1-2 open spikes max).
             # SPIKE_FADE shorts deliberately fall through: they ride the normal
-            # short stack (trail + EMA13) with their fixed −0.70 stop.
+            # short stack (trail, lock, ladder) with their fixed spike stop. Sep-14: the
+            # realtime EMA13-cross exit is EXCLUDED for them (_ema13_cross_exit_applies).
             # ════════════════════════════════════════════════════════════════
             if (order.entry_strategy or "") == "SPIKE_CHASE":
                 try:
@@ -12877,7 +12899,8 @@ class TradingEngine:
             # Cascade-close behavior: when toggle activates, any open trade
             # currently on wrong side of EMA13 closes on next tick.
             # ════════════════════════════════════════════════════════════════
-            if not _is_flip and getattr(config.trading_config.thresholds, 'ema13_cross_exit_enabled', False):
+            # Sep-14: sleeve scope via _ema13_cross_exit_applies (flips + spike fade/bounce excluded — see helper)
+            if _ema13_cross_exit_applies(order_info.get('entry_strategy')) and getattr(config.trading_config.thresholds, 'ema13_cross_exit_enabled', False):
                 _ema13_for_exit = order_info.get('cached_ema13')
                 if _ema13_for_exit is not None and _ema13_for_exit > 0:
                     if direction == "LONG":

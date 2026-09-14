@@ -7038,7 +7038,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # cut said Aug-19 23:00 — 14h BEFORE deploy; pre-deploy −0.7-stopped fills would
         # have contaminated row ① and biased the locked Σ<0 revert leg toward false revert
         _q_thr = float(getattr(trading_config.thresholds, 'momentum_long_sl_atr_threshold', 0.0) or 0.0)
+        _G53_END = datetime(2026, 9, 14, 22, 30, 0)  # rollback deploy (DECISION_LOG 59) — row ① is FROZEN history:
+        # fills opened after this ran the −0.70 chain again and must not drift the pinned record (review Sep-14)
         _g53_ml = [o for o in orders if o.direction == 'LONG' and _non_probe(o) and _post(o, _G53_TS)
+                   and o.opened_at < _G53_END
                    and _es2(o) in ('MOMENTUM', '') and getattr(o, 'entry_atr_pct', None) is not None]
         _g53_elig = [o for o in _g53_ml if o.entry_atr_pct < (_q_thr or 0.45)
                      and getattr(o, 'trough_pnl', None) is not None and o.trough_pnl <= -0.65]
@@ -7046,15 +7049,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                      and (o.close_reason or '').startswith('STOP_LOSS')]
         _e_st = _cohort_stats(_g53_elig)
         _e_blown = [o for o in _g53_elig if (o.pnl_percentage or 0) <= -1.9]
-        if len(_g53_elig) and len(_e_blown) >= 3:
-            _e_g = f"✗ REVERT: {len(_e_blown)} blown ≤−1.9 in first {len(_g53_elig)} — threshold → 0"
-        elif _e_st['n'] >= 8 and _e_st['total_usd'] < 0:
-            _e_g = f"✗ REVERT: N={_e_st['n']}≥8 Σ${_e_st['total_usd']:+.0f} — threshold → 0"
-        elif _e_st['n'] == 0:
-            _e_g = "⏳ no sub-−0.7 excursions yet"
-        else:
-            _e_g = f"⏳ building ({_e_st['n']}/10 · blown {len(_e_blown)}/3)"
-        quiet_sl_rows.append({"row": "① QUIET class holds (ATR below thr, dipped ≤−0.65)", **_e_st, "gate": _e_g})
+        # Sep-14: the live verdict branches are retired with the rollback — the row carries a pinned
+        # verdict and a date-capped cohort (dips: N and blown count shown from the frozen slice).
+        quiet_sl_rows.append({"row": "① QUIET class holds — ROLLED BACK 09-14 (frozen)", **_e_st,
+                              "gate": f"■ ROLLED BACK 2026-09-14 — threshold 0 (frozen record: {_e_st['n']} dips, {len(_e_blown)} blown; slice 0.45 kept for history)"})
         quiet_sl_rows.append({"row": "② hot-class stops (ref, unchanged −0.7/ATR)",
                               **_cohort_stats(_g53_inel), "gate": "— reference row"})
         # Jul 29 — OVERLAP DISCLOSURE (CURRENT_STATE #31 door-intersection protocol): the four

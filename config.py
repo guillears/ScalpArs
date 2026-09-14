@@ -904,7 +904,7 @@ class SignalThresholds(BaseModel):
     # −2.0; curve decays past −2.0). Wired in BOTH SL paths (realtime + monitor, ROSE-fix
     # lesson). BE floors, FL1/FL2, fast exits all unchanged — hard FLOOR, not a hold
     # guarantee. threshold 0 = OFF (instant revert). 🔴 LIVE-CUTOVER: OFF at live start.
-    momentum_long_sl_atr_threshold: float = 0.45  # entry ATR% below this = quiet class
+    momentum_long_sl_atr_threshold: float = 0  # entry ATR% below this = quiet class → wide stop. 0 = OFF. ROLLED BACK 2026-09-14 (gate 53, operator-directed early exercise of its revert; DECISION_LOG 59): 9 fills · 89% · one blow (BCH −$500 at 2×); measured recovery 9/12 dips; edge ≈ +0.16 pt/dip before slot cost; one 2× blow ≈ 13 dips of edge. Was 0.45 (Aug-20 → Sep-14).
     momentum_long_sl_quiet_pct: float = -2.0      # quiet-class hard SL (negative)
     # 🌊 Aug-21 2026: BULL-RUN CONTINUATION SLEEVE (gate 57). Regime-gated dip-buy LONGs on the
     # top-N COIN pairs, active ONLY while the Bull-Run Monitor is GREEN. Derivation (Aug 19-21

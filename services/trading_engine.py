@@ -207,6 +207,20 @@ def _pop_or(ef, key, fallback):
     return v if v is not None else fallback
 
 
+def _fade_vol_blocked(vol_24h_usd, ceiling_usd):
+    """Sep-14 fade 24h-volume ceiling (operator discipline-override, DECISION_LOG 55): True when the
+    pair's 24h USD volume at fire is at/above the ceiling. 0/None ceiling = off; missing/zero volume
+    fails OPEN (the fade fires) — parity with every other fade gate. Never raises."""
+    try:
+        c = float(ceiling_usd or 0.0)
+        if c <= 0:
+            return False
+        v = float(vol_24h_usd) if vol_24h_usd is not None else 0.0
+        return v > 0 and v >= c
+    except Exception:
+        return False
+
+
 def _ema13_cross_exit_applies(entry_strategy):
     """Sep-14 (VTHO −$188 in 36 ms): which sleeves the realtime EMA13-cross exit may claim.
     Flips were already excluded (Jun 15). SPIKE_FADE shorts are entered ABOVE EMA13 by
@@ -5396,6 +5410,12 @@ class TradingEngine:
                     if not _sp_is_bounce and (_sp_regime_fade or (_sp_adx is not None and _sp_adx > _sp_max_adx)):
                         if not getattr(th, 'spike_fade_enabled', False):
                             logger.info(f"[SPIKE_ROUTER_BLOCK] {p['pair']}: trigger fired but routed to FADE ({'regime' if _sp_regime_fade else 'ADX'}) and fade disabled — no trade")
+                            continue
+                        # Sep-14 FADE 24h-VOLUME CEILING (scanner; see config comment — operator override):
+                        _sp_vmax = float(getattr(th, 'spike_fade_max_vol_24h_usd', 0.0) or 0.0)
+                        if _fade_vol_blocked(p.get('volume_24h'), _sp_vmax):
+                            self._record_filter_block("SPIKE_FADE_MAXVOL", "SHORT")
+                            logger.info(f"[SPIKE_FADE_MAXVOL] {p['pair']}: scanner fade blocked — 24h vol ${(p.get('volume_24h') or 0)/1e6:.1f}M >= ${_sp_vmax/1e6:.0f}M (large-cap ceiling) | entry_px={ind.get('price')} pair_rsi={ind.get('rsi')} atr={ind.get('atr_pct')} — reopen-read row")
                             continue
                         # Jul 30 PM — fade bRSI ceiling (scanner parity with the top-50 hook):
                         # don't fade while BTC's own momentum is hot. Fail-open on missing bRSI.
@@ -11688,7 +11708,12 @@ class TradingEngine:
                                 # kline re-sim revert surface (see config comment).
                                 _sc_brsi = globals().get('_current_btc_rsi')
                                 _sc_brsi_max = float(getattr(_sc_th, 'spike_fade_max_btc_rsi', 0.0) or 0.0)
-                                if (_sc_brsi_max > 0 and _sc_brsi is not None and _sc_brsi > _sc_brsi_max
+                                _sc_vmax = float(getattr(_sc_th, 'spike_fade_max_vol_24h_usd', 0.0) or 0.0)
+                                if (_fade_vol_blocked(volume_24h, _sc_vmax) and getattr(_sc_th, 'spike_fade_enabled', False)):
+                                    # Sep-14 FADE 24h-VOLUME CEILING (hook parity; see config comment — operator override)
+                                    self._record_filter_block("SPIKE_FADE_MAXVOL", "SHORT")
+                                    logger.info(f"[SPIKE_FADE_MAXVOL] {pair}: fade blocked — 24h vol ${(volume_24h or 0)/1e6:.1f}M >= ${_sc_vmax/1e6:.0f}M (large-cap ceiling) | entry_px={indicators.get('price')} pair_rsi={_sc_rsi:.1f} atr={indicators.get('atr_pct')} — reopen-read row")
+                                elif (_sc_brsi_max > 0 and _sc_brsi is not None and _sc_brsi > _sc_brsi_max
                                         and getattr(_sc_th, 'spike_fade_enabled', False)):
                                     self._record_filter_block("SPIKE_FADE_BRSI", "SHORT")
                                     logger.info(f"[SPIKE_FADE_BRSI] {pair}: fade blocked — BTC RSI {_sc_brsi:.1f} > {_sc_brsi_max} (squeeze-against-gravity guard) | entry_px={indicators.get('price')} pair_rsi={_sc_rsi:.1f} — re-sim revert row")

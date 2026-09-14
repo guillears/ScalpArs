@@ -23,7 +23,7 @@ import warnings; warnings.filterwarnings('ignore')
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-08-16a"  # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
+STACK_VERSION = "2026-09-14a"  # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 # Era registry (Sep-11: B3/B4/B5 were previously stacked by a one-off — the builder only knew
@@ -129,7 +129,8 @@ def main():
             why = 'PROBE_EXEMPT'
         if not r.is_probe:
             if strat == 'SPIKE_FADE':
-                if r.entry_btc_rsi > 45: k, why = False, 'FADE_BRSI45'  # engine uses strict > (45.0 passes)
+                if v is not None and v >= 20e6: k, why = False, 'FADE_MAXVOL'   # Sep-14 ceiling — engine order: first fade gate
+                elif r.entry_btc_rsi > 45: k, why = False, 'FADE_BRSI45'  # engine uses strict > (45.0 passes)
                 elif pd.notna(r.entry_btc_dist_from_ema13_pct) and r.entry_btc_dist_from_ema13_pct > 0: k, why = False, 'FADE_BD13'
                 elif v is not None and v < 2e6: k, why = False, 'FLOOR_2M'
                 elif (pd.notna(r.entry_rsi_prev) and r.entry_rsi_prev < 44

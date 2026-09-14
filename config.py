@@ -760,6 +760,22 @@ class SignalThresholds(BaseModel):
     # 🔒 at N≥6 blocked-in-[45,50) candidates (each logs [SPIKE_FADE_BRSI] with entry px),
     # price-replay them under the fade exit stack — WR≥55% ∨ Σ>0 → ceiling back to 50.
     spike_fade_max_btc_rsi: float = 45.0
+    # 🔒 FADE 24h-VOLUME CEILING (Sep-14, operator DISCIPLINE-OVERRIDE — acknowledged; DECISION_LOG 55):
+    # block a SPIKE_FADE when the pair's 24h USD volume at fire ≥ this. Evidence at ship (screened,
+    # all eras): large-cap fades N=6 · 2W/4L · −$558 (DEXE/VTHO = the EMA13 tick-1 bug since fixed;
+    # clean 2W/2L −$369: TAC/HEMI won, ZRO/龙虾 stopped) vs micro-cap 48·77%·+$1,273. Window units:
+    # 3 (Aug-23 +, Aug-25 −, Sep-14 −). BELOW every locked block gate (N≥30, ≥3 consistent batches);
+    # volume has no population-level signal (ρ −0.10, calibrated sweep: none). Mechanism on record:
+    # large caps resolve in seconds with 3-4× the micro-cap squeeze/collapse amplitude — same geometry
+    # as the 5-for-5 high-ATR micro-caps; outcome = which move arrives first (unknowable at entry).
+    # 🔒 REOPEN (pre-committed): 30 days after ship (2026-10-14) → ceiling 0 + a NEW large-cap-only probe sizing field
+    # (0.5×; the existing spike_fade_invest_mult is sleeve-wide and must NOT be halved for this) until
+    # N≥10 clean fills adjudicate; OR sooner if ≥3 of the next 10 micro-cap fades (entry_pair_volume_24h_usd
+    # < 20M) show the large-cap failure shape: closed_at−opened_at ≤ 45 s AND
+    # (entry_price − post_exit_running_low)/entry_price ≥ 1.5% (45-min post-exit window). Blocked large
+    # caps exist only as [SPIKE_FADE_MAXVOL] log rows — the 30-day counterfactual is a log replay.
+    # 0 = off; fail-open on missing volume. UI stores whole $M (a JSON value <0.5M would round to 0 = off).
+    spike_fade_max_vol_24h_usd: float = 20_000_000.0
     # 🔒 FADE BTC-DIST13 GATE (Aug-4, fade N>=25-30 read lead item executed): block a FADE
     # when BTC trades ABOVE its 5m EMA13 (dist13 > max). Blocked cohort lifetime = 0W/5L
     # -$304 across 4 dates / both batches (XPL/ZEREBRO/SNX B1 + ICNT/FRAX B2 — incl. the

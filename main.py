@@ -7004,7 +7004,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                    and 55 <= o.entry_btc_rsi < 60 and getattr(o, 'entry_btc_adx', None) is not None
                    and (15 <= o.entry_btc_adx < 20 or 25 < o.entry_btc_adx <= 30)]
         gate51_bands.append(_door("① RSI 50-55 band (was TOTAL block)", _g51_b1, 10, 45, "restore 50-55:99-100"))
-        gate51_bands.append(_door("② BTC ADX 15-18 floor cohort", _g51_b2, 8, 45, "btc_adx_min_long back to 18"))
+        gate51_bands.append(_door("② ADX 15-18 floor — REVERTED 09-14 (frozen)", _g51_b2, 8, 45, "btc_adx_min_long back to 18"))
+        gate51_bands[-1]["gate"] = "■ REVERTED 2026-09-14 — floor back to 18 (final 7·71%·−$487); row frozen"  # Sep-14: pinned verdict (review: the live _door text read 'approaching revert' on a closed door)
         gate51_bands.append(_door("③ 55-60 window new zone [15,20)∪(25,30]", _g51_b3, 10, 45, "window back to 20-25"))
         # 🔓 Sep-11 GATE 51 CELLS — the bands' overlaps as a PARTITION (attribution, no gate).
         # Same base cohort + same pinned columns as the band rows; every band fill lands in

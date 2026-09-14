@@ -29,7 +29,7 @@ G51_TS = "2026-08-18T15:30:00"
 BANDS = [  # label, predicate(rsi, adx), gate_n, wr_bar, revert text — mirrors main.py gate51_bands
     ("① RSI 50-55 band (was TOTAL block)",
      lambda r, a: pd.notna(r) and 50 <= r < 55, 10, 45, "restore 50-55:99-100"),
-    ("② BTC ADX 15-18 floor cohort",
+    ("② ADX 15-18 floor — REVERTED 09-14 (frozen)",
      lambda r, a: pd.notna(a) and 15 <= a < 18, 8, 45, "btc_adx_min_long back to 18"),
     ("③ 55-60 window new zone [15,20)∪(25,30]",
      lambda r, a: pd.notna(r) and pd.notna(a) and 55 <= r < 60 and (15 <= a < 20 or 25 < a <= 30),

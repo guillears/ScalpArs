@@ -1188,7 +1188,7 @@ class SignalThresholds(BaseModel):
     # · phased replays (blocked cohorts armed 58-76% by band, phases 1-2). ⚠ Gate-49's
     # falling-BTC phase-3 SKIPPED by operator decision — the live flow IS phase-3 at full size;
     # 🔒 reverts in gate 51 (CURRENT_STATE), incl. the falling-BTC tripwire.
-    btc_rsi_adx_filter_long: str = ""  # BTC RSI x ADX cross-filter for LONGs (empty = allow all)
+    btc_rsi_adx_filter_long: str = ""  # BTC RSI x ADX cross-filter for LONGs (empty = allow all). JSON 2026-09-15: gate-51 bands ① and ③ RESTORED by the locked falling-BTC tripwire (first −2% BTC day after the Aug-18 ship: that day's band fills 1·0%·−$359 龙虾 ≤ −$250) → "50-55:99-100,55-60:20-25,70-100:40" (① total block back, ③ window back to 20-25; ② was reverted Sep-14). Reopen only via the phase-3 falling-BTC replay at a batch review (DECISION_LOG 61).
     btc_rsi_adx_filter_short: str = ""  # BTC RSI x ADX cross-filter for SHORTs (empty = allow all)
     # ADX Delta x BTC ADX cross-filter (May 11, 2026 — pooled-data finding, see CLAUDE.md).
     # Format per rule: "<deltaLo>-<deltaHi>:<btcAdxLo>-<btcAdxHi>" (block when both ranges match).
@@ -2218,7 +2218,7 @@ class TradingConfig(BaseModel):
     
     # Trading pairs limit (how many top pairs by volume to trade)
     trading_pairs_limit: int = 20  # 5, 10, 20, or 50
-    pair_blacklist: str = ""  # Comma-separated pairs to exclude ENTIRELY (removed from the top-pair/volume universe)
+    pair_blacklist: str = ""  # Comma-separated pairs to exclude ENTIRELY (removed from the top-pair/volume universe). JSON 2026-09-15: 龙虾USDT added — 2 stops in 30h (fade −$381 Sep-14, momentum long −$359 Sep-15) vs one +$33 win; 1m bars with +7.6%/−8.8% wicks minutes after the stop; non-ASCII symbol breaks the aggTrades archive fetch (per-pair concentration rule, DECISION_LOG 61)
     # Jun 3: comma-separated pairs to TRACK but NOT TRADE — they stay in the top-pair/volume
     # list (subscribed, scanned, displayed) but entries are blocked. Use for a pair you want
     # visible (e.g. BTCUSDT for reference) without opening positions. Distinct from pair_blacklist
@@ -2388,7 +2388,7 @@ def load_trading_config() -> TradingConfig:
     """Load trading configuration from file or return defaults"""
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, "r") as f:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:  # Sep-15: non-ASCII pair symbols (龙虾USDT) in the blacklist
                 data = json.load(f)
                 return TradingConfig(**data)
         except Exception as e:
@@ -2399,7 +2399,7 @@ def load_trading_config() -> TradingConfig:
 def save_trading_config(config: TradingConfig) -> bool:
     """Save trading configuration to file"""
     try:
-        with open(CONFIG_FILE, "w") as f:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config.model_dump(), f, indent=2)
         return True
     except Exception as e:

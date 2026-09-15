@@ -7079,8 +7079,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # self-classify; post-deploy floor so pre-relaxation trades can never contaminate.
         # Rows OVERLAP by design (② can intersect ①/③) — each row answers its own locked revert.
         _G51_TS = datetime(2026, 8, 18, 15, 30, 0)
+        # Sep-15: the locked falling-BTC tripwire fired (first −2% BTC day after the ship; that day's band fills
+        # 1·0%·−$359) → bands ① and ③ restored, all three rows frozen and date-capped at the restore deploy
+        # (gate-53 lesson: a frozen row must not keep accepting fills or recomputing a live verdict).
+        _G51_END = datetime(2026, 9, 16, 1, 0, 0)  # deep review: cap AFTER the realistic deploy time (a too-late cap costs nothing: no band fill is possible once the restored string is live)
         _g51_ml = [o for o in orders if o.direction == 'LONG' and _non_probe(o) and _post(o, _G51_TS)
-                   and _es2(o) in ('MOMENTUM', '')]
+                   and o.opened_at < _G51_END and _es2(o) in ('MOMENTUM', '')]
         _g51_b1 = [o for o in _g51_ml if getattr(o, 'entry_btc_rsi', None) is not None
                    and 50 <= o.entry_btc_rsi < 55]
         _g51_b2 = [o for o in _g51_ml if getattr(o, 'entry_btc_adx', None) is not None
@@ -7088,10 +7092,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         _g51_b3 = [o for o in _g51_ml if getattr(o, 'entry_btc_rsi', None) is not None
                    and 55 <= o.entry_btc_rsi < 60 and getattr(o, 'entry_btc_adx', None) is not None
                    and (15 <= o.entry_btc_adx < 20 or 25 < o.entry_btc_adx <= 30)]
-        gate51_bands.append(_door("① RSI 50-55 band (was TOTAL block)", _g51_b1, 10, 45, "restore 50-55:99-100"))
+        gate51_bands.append(_door("① RSI 50-55 band — RESTORED 09-15 (frozen, tripwire)", _g51_b1, 10, 45, "restore 50-55:99-100"))
+        gate51_bands[-1]["gate"] = "■ TRIPWIRE 2026-09-15 — total block restored (50-55:99-100); final 8·88%·−$191 (龙虾 −$359 on the first −2% BTC day); row frozen"
         gate51_bands.append(_door("② ADX 15-18 floor — REVERTED 09-14 (frozen)", _g51_b2, 8, 45, "btc_adx_min_long back to 18"))
         gate51_bands[-1]["gate"] = "■ REVERTED 2026-09-14 — floor back to 18 (final 7·71%·−$487); row frozen"  # Sep-14: pinned verdict (review: the live _door text read 'approaching revert' on a closed door)
-        gate51_bands.append(_door("③ 55-60 window new zone [15,20)∪(25,30]", _g51_b3, 10, 45, "window back to 20-25"))
+        gate51_bands.append(_door("③ 55-60 window [15,20)∪(25,30] — RESTORED 09-15 (frozen, tripwire)", _g51_b3, 10, 45, "window back to 20-25"))
+        gate51_bands[-1]["gate"] = "■ TRIPWIRE 2026-09-15 — window back to 20-25; final 3·67%·−$486 (BCH); row frozen"
         # 🔓 Sep-11 GATE 51 CELLS — the bands' overlaps as a PARTITION (attribution, no gate).
         # Same base cohort + same pinned columns as the band rows; every band fill lands in
         # exactly one cell, so Σ over cells == Σ over unique band fills (disclosed in the footer row).

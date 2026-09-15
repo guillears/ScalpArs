@@ -27,11 +27,11 @@ RAW_PRE_POOL = "reports/dedupe_pool.csv"   # May-4 → Jun-25 raw pool: the foun
 
 G51_TS = "2026-08-18T15:30:00"
 BANDS = [  # label, predicate(rsi, adx), gate_n, wr_bar, revert text — mirrors main.py gate51_bands
-    ("① RSI 50-55 band (was TOTAL block)",
+    ("① RSI 50-55 band — RESTORED 09-15 (frozen, tripwire)",
      lambda r, a: pd.notna(r) and 50 <= r < 55, 10, 45, "restore 50-55:99-100"),
     ("② ADX 15-18 floor — REVERTED 09-14 (frozen)",
      lambda r, a: pd.notna(a) and 15 <= a < 18, 8, 45, "btc_adx_min_long back to 18"),
-    ("③ 55-60 window new zone [15,20)∪(25,30]",
+    ("③ 55-60 window [15,20)∪(25,30] — RESTORED 09-15 (frozen, tripwire)",
      lambda r, a: pd.notna(r) and pd.notna(a) and 55 <= r < 60 and (15 <= a < 20 or 25 < a <= 30),
      10, 45, "window back to 20-25"),
 ]
@@ -130,7 +130,14 @@ def main():
     for label, pred, gn, wb, txt in BANDS:
         m = ml.apply(lambda o: bool(pred(o.entry_btc_rsi, o.entry_btc_adx)), axis=1) if len(ml) else pd.Series(dtype=bool)
         masks[label] = m
-        print(fmt(label, stats(ml[m]), verdict(stats(ml[m]), gn, wb, txt)))
+        _st = stats(ml[m])
+        # Sep-15: all three bands are CLOSED — pinned verdicts (a frozen row must not recompute a live verdict; gate-53 lesson)
+        _pinned = {
+            "① RSI 50-55 band — RESTORED 09-15 (frozen, tripwire)": "■ TRIPWIRE 2026-09-15 — total block restored (50-55:99-100); row frozen",
+            "② ADX 15-18 floor — REVERTED 09-14 (frozen)": "■ REVERTED 2026-09-14 — floor back to 18; row frozen",
+            "③ 55-60 window [15,20)∪(25,30] — RESTORED 09-15 (frozen, tripwire)": "■ TRIPWIRE 2026-09-15 — window back to 20-25; row frozen",
+        }
+        print(fmt(label, _st, _pinned.get(label) or verdict(_st, gn, wb, txt)))
     print("\nCELLS (partition of the bands — attribution only, no locked bar)"); print(hdr.replace('Gate verdict', 'Note'))
     for ck in _G51_CELL_ORDER:
         d = ml[ml.cell == ck]

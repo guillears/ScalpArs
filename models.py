@@ -229,6 +229,13 @@ class Order(Base):
     entry_br_eff = Column(Float, nullable=True)
     entry_br_off24h = Column(Float, nullable=True)   # Aug 21 (11): BTC % below its 24h high at entry — the pullback-phase variable
     entry_br_door = Column(String(8), nullable=True)  # Aug 23 (20): 'GREEN' composite or 'REARM' re-arm door
+    # 🐻 Sep 15 gate 60 — Bear-Run Monitor readings at entry (BEARRUN_SHORT fills only, NULL otherwise):
+    # r24 / bars-below-EMA20% / 24h efficiency / BTC % above its 24h low at fire time + the BTC gates bypassed.
+    entry_bear_r24 = Column(Float, nullable=True)
+    entry_bear_below24 = Column(Float, nullable=True)
+    entry_bear_eff24 = Column(Float, nullable=True)
+    entry_bear_off24lo = Column(Float, nullable=True)
+    entry_bear_bypass = Column(String(160), nullable=True)   # comma list of the BTC macro gates this fill passed through
     funding_fee_usd = Column(Float, nullable=True)  # Aug 24 M6: Σ funding paid/received while open (live; negative = paid). NOT folded into pnl.
 
     # Jul 27 🚀 SPIKE full ship — option-D L2 state (SPIKE_CHASE longs).
@@ -997,6 +1004,39 @@ class MonitorPeriod(Base):
     blocked_ema13 = Column(Integer, default=0)                   # Aug 22 (15): refused by the BTC-leader (EMA13) gate
     blocked_pvr = Column(Integer, default=0)                    # Aug-25: PVR-ceiling refusals this episode (BULLRUN_PVR_MAX ship)
     blocked_1h = Column(Integer, default=0)                      # Aug 23 (18): refused by the BTC 1h-slope gate
+
+
+class BearMonitorPeriod(Base):
+    """🐻 Sep 15 gate 60 — Bear-Run Monitor PERIODS ledger: one row per contiguous ON stretch of the
+    24h bear composite (BTC r24 / bars-below-EMA20 / efficiency, Schmitt band + squeeze latch).
+    Own table (the bull-run ledger's open-row adoption selects on ended_at IS NULL and must never
+    see a bear row). Restart-proof: the engine adopts the open row when its state matches and it
+    is <60 min stale; closes it as restart/downtime otherwise. Fills are joined per period at read
+    time (opened_at within [started_at, ended_at)) — the WINDOW unit every gate-60 rule speaks in."""
+    __tablename__ = "bear_monitor_periods"
+    id = Column(Integer, primary_key=True, index=True)
+    started_at = Column(DateTime, nullable=False, index=True)
+    ended_at = Column(DateTime, nullable=True)                   # NULL = open period
+    last_update = Column(DateTime, nullable=True)
+    ended_by = Column(String(30), nullable=True)                 # latch / stay-band / restart→OFF / downtime→OFF
+    r24_start = Column(Float, nullable=True)
+    below_start = Column(Float, nullable=True)
+    eff_start = Column(Float, nullable=True)
+    r6_start = Column(Float, nullable=True)
+    r24_end = Column(Float, nullable=True)                       # running while open; final at close
+    below_end = Column(Float, nullable=True)
+    eff_end = Column(Float, nullable=True)
+    r24_min = Column(Float, nullable=True)                       # deepest 24h return in the period
+    eff_peak = Column(Float, nullable=True)
+    r6_max = Column(Float, nullable=True)                        # closest approach to the squeeze latch
+    off24lo_max = Column(Float, nullable=True)                   # furthest BTC bounced above its 24h low in the period
+    btc_start = Column(Float, nullable=True)
+    btc_end = Column(Float, nullable=True)
+    bear_pct_start = Column(Float, nullable=True)                # market breadth (bear %) at period start
+    bypasses = Column(Integer, default=0)                        # BTC-gate bypasses granted in this period
+    blocked_off24lo = Column(Integer, default=0)                 # sleeve refusals in this period, by rule
+    blocked_blacklist = Column(Integer, default=0)
+    blocked_spacing = Column(Integer, default=0)
 
 
 class Investor(Base):

@@ -1015,6 +1015,39 @@ class SignalThresholds(BaseModel):
     # Aug-23 10:45/13:25 after the Aug-19→22 episode). Mechanism = persistence of a CONFIRMED run, not bounce-catching.
     # Evidence: 2 clusters (watchlist-grade) but the downside is bounded by construction. DECISION_LOG 2026-08-23 (24).
     bullrun_rearm_after_green_hours: float = 48.0
+
+    # 🐻 Sep-15, 2026 — gate 60: BEAR-RUN SHORT sleeve (operator-directed after the Sep-15 zero-trade bear day:
+    # every momentum SHORT was refused by the BTC macro gates while BTC fell 4%; a 1m-bar replay of the refused
+    # signals ran 39·87%·+$1,299 and random shorts on the same tape 84%·+$1,404 → the edge was the REGIME, not the
+    # signal). Year-to-date study (reports/BEAR_SLEEVE_STUDY_2026-09-15.md, 15 alts, 5m bars, worst-ordering exit
+    # replica): a 24h BTC monitor (r24 ≤ −4% ∧ bars-below-EMA20 ≥ 50% ∧ 24h trend-efficiency ≥ 0.15) → 14 windows,
+    # momentum-short proxy 269·75%·+0.28%/fill vs random +$4.0k of +$8.2k, 9/14 windows signal>random, same rule with
+    # the monitor OFF = 66% / +0.07 (nothing). The 72h bull-run mirror was REJECTED (covered 5 of the 14 worst BTC days,
+    # never Sep-15). Bull-run exit set REJECTED for shorts (58% WR, 4/14 windows). PVR ceiling REJECTED (−$3.3k, −2 windows).
+    # MECHANISM: while the monitor is ON, momentum SHORT candidates BYPASS the listed BTC macro gates only — every
+    # pair-level gate (quality score, promo router, weak-cap, pair ADX dir), the BTC ADX ≥18 floor and the ADX ≤40
+    # ceiling still apply. A fill is a sleeve fill ONLY if a bypass actually happened (tag BEARRUN_SHORT; otherwise it
+    # is a plain momentum short). Exits = the LIVE momentum-short stack, unchanged. Shares the global max_open slots
+    # (operator: no separate cap). ⚠ ON RECORD: thresholds chosen from a 70-config sweep (selection bias), 5 of 14
+    # historical windows negative, replica ≈ +0.10%/fill optimistic — the first live windows are the out-of-sample test.
+    # 🔒 SHIP MODE = 1× PROBE (lev_mult 0.05 × 20× base = 1× effective). ARM BAR: first 3 live ON windows ≥ 2 net-positive
+    # ∧ Σ > 0 → bearrun_lev_mult 1.0. KILL BAR once armed (manual): first 10 fills WR ≤ 45% ∨ Σ < 0, or 2 consecutive
+    # net-negative windows → bearrun_sleeve_enabled false. TO REMOVE: grep "BEARRUN" / "bearrun".
+    bearrun_sleeve_enabled: bool = True          # master kill switch (entries + bypass only; the monitor keeps computing)
+    bearrun_r24_on: float = 4.0                  # turn-ON: BTC 24h return ≤ −this % (study: 4; neighbours 3 agree)
+    bearrun_r24_off: float = 3.0                 # stay-ON (Schmitt band) while ≤ −this %
+    bearrun_below_on: float = 50.0               # turn-ON: % of last-24h 5m bars closed below EMA20 ≥ this
+    bearrun_below_off: float = 47.0              # stay-ON floor
+    bearrun_eff_on: float = 0.15                 # turn-ON: 24h trend efficiency |net|/Σ|Δ| ≥ this (0.10 = signal ≈ random; 0.20 = 3 windows/yr)
+    bearrun_eff_off: float = 0.15                # stay-ON floor
+    bearrun_latch_r6h: float = 3.0               # squeeze latch: BTC 6h return ≥ +this % → instant OFF (positive; 0 = off)
+    bearrun_latch_ema50: bool = True             # squeeze latch: BTC price above its 1h EMA50 → instant OFF
+    bearrun_btc_off24lo_max: float = 2.0         # no bypass while BTC is more than this % ABOVE its 24h low (mirror of the bull-run off-24h-high gate; operator chose 2.0 over the 1.0 variant — the 1–2% band is logged as BEARRUN_REFUSED_OFF24LO for the review)
+    bearrun_bypass_gates: str = "BTC_ADX_BLOCK_SHORT,BTC_RSI_ADX_CROSS,BTC_1H_5M_RSI_DIR_GATE,BTC_SLOPE_GATE,BTC_1H_RSI_MIN_GATE"  # the BTC macro gates the sleeve passes through while ON (comma list; edit to shrink); a bypass takes precedence over the (currently off) SLOPEGATE probe fork — the sleeve is the newer experiment
+    bearrun_pair_blacklist: str = "BTCUSDT,ETHUSDT"  # the leader and its twin never ride the sleeve (bull-run lesson: leader self-reference 0/4)
+    bearrun_pair_spacing_hours: float = 2.0      # per-pair spacing between sleeve fills (DB-backed — restart-proof)
+    bearrun_invest_mult: float = 1.0             # investment multiplier (absolute-assign: never re-multiplied by pattern cells)
+    bearrun_lev_mult: float = 0.05               # leverage multiplier: 0.05 × 20× = 1× PROBE (ship); 1.0 = ARMED (after the arm bar)
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

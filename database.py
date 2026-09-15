@@ -606,6 +606,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_off24h FLOAT"))
                 if 'entry_br_door' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_door VARCHAR(8)"))
+                # Sep 15 gate 60: Bear-Run Monitor readings at entry (BEARRUN_SHORT fills)
+                for _bc, _bt in (('entry_bear_r24', 'FLOAT'), ('entry_bear_below24', 'FLOAT'), ('entry_bear_eff24', 'FLOAT'), ('entry_bear_off24lo', 'FLOAT'), ('entry_bear_bypass', 'VARCHAR(160)')):
+                    if _bc not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_bc} {_bt}"))
                 if 'funding_fee_usd' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN funding_fee_usd FLOAT"))
                 # Jun 7: phantom EMA13 cross (records would-have-exited pnl when EMA13

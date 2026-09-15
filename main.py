@@ -24,7 +24,7 @@ from sqlalchemy import select, and_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -603,6 +603,20 @@ async def get_status(db: AsyncSession = Depends(get_db)):
         }
     except Exception as e:
         logger.debug(f"[STATUS] bullrun chip skipped: {e}")
+    # 🐻 Sep 15 gate 60: Bear-Run Monitor state for the header chip
+    try:
+        from services.trading_engine import _bearrun_monitor as _bem
+        _th_b = config.trading_config.thresholds
+        _status["bearrun"] = {
+            "state": _bem.get("state"), "on_since": _bem.get("on_since"),
+            "r24": _bem.get("r24"), "below24": _bem.get("below24"), "eff24": _bem.get("eff24"),
+            "r6": _bem.get("r6"), "latch": _bem.get("latch"), "off24lo": _bem.get("off24lo"),
+            "enabled": bool(getattr(_th_b, 'bearrun_sleeve_enabled', False)),
+            "lev_mult": float(getattr(_th_b, 'bearrun_lev_mult', 0.05) or 0.05),
+            "off24lo_max": float(getattr(_th_b, 'bearrun_btc_off24lo_max', 2.0) or 0),
+        }
+    except Exception as e:
+        logger.debug(f"[STATUS] bearrun chip skipped: {e}")
     return _status
 
 
@@ -2217,6 +2231,9 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "bullrun_rows": [],
             "bullrun_monitor": None,
             "bullrun_periods": [],
+            "bearrun_rows": [],
+            "bearrun_monitor": None,
+            "bearrun_periods": [],
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -2781,6 +2798,69 @@ async def _bullrun_periods_rows(db, limit=50):
         return []
 
 
+def _bearrun_monitor_payload():
+    """🐻 Sep 15 gate 60: Bear-Run monitor state + flip history for the sleeve table header."""
+    try:
+        from services.trading_engine import _bearrun_monitor as _bem
+        _th_b = config.trading_config.thresholds
+        return {
+            "state": _bem.get("state"), "on_since": _bem.get("on_since"),
+            "r24": _bem.get("r24"), "below24": _bem.get("below24"), "eff24": _bem.get("eff24"),
+            "r6": _bem.get("r6"), "latch": _bem.get("latch"), "off24lo": _bem.get("off24lo"),
+            "flips": list(_bem.get("flips") or [])[-12:],
+            "bypasses": int(_bem.get("bypasses") or 0), "blk_off24lo": int(_bem.get("blk_off24lo") or 0),
+            "blk_blacklist": int(_bem.get("blk_blacklist") or 0), "blk_spacing": int(_bem.get("blk_spacing") or 0),
+            "enabled": bool(getattr(_th_b, 'bearrun_sleeve_enabled', False)),
+            "lev_mult": float(getattr(_th_b, 'bearrun_lev_mult', 0.05) or 0.05),
+            "bypass_gates": str(getattr(_th_b, 'bearrun_bypass_gates', '') or ''),
+        }
+    except Exception:
+        return None
+
+
+async def _bearrun_periods_rows(db, limit=50):
+    """🐻 Sep 15 gate 60 — Bear-Run PERIODS table (WINDOW ledger): one row per contiguous ON stretch of the 24h
+    bear composite with BEARRUN_SHORT fills joined per window (opened_at within the window), readings at
+    start/end, extremes, refusal counters and the running arm/kill tally. Newest first. Fail-silent → []."""
+    try:
+        _ps = (await db.execute(
+            select(BearMonitorPeriod).order_by(BearMonitorPeriod.started_at.desc()).limit(limit)
+        )).scalars().all()
+        if not _ps:
+            return []
+        _fills = (await db.execute(
+            select(Order).where(and_(Order.entry_strategy == 'BEARRUN_SHORT', Order.is_paper == trading_engine.is_paper_mode))
+            .order_by(Order.opened_at.asc())
+        )).scalars().all()
+        _now = datetime.utcnow()
+        rows = []
+        for p in _ps:
+            _end = p.ended_at or _now
+            g = [o for o in _fills if o.opened_at and p.started_at <= o.opened_at < _end]
+            gc = [o for o in g if o.status == 'CLOSED' and o.pnl_percentage is not None]
+            _wins = sum(1 for o in gc if (o.pnl_percentage or 0) > 0)
+            rows.append({
+                'start': p.started_at.isoformat() if p.started_at else None,
+                'end': p.ended_at.isoformat() if p.ended_at else None,
+                'dur_min': int((_end - p.started_at).total_seconds() / 60) if p.started_at else None,
+                'r24_s': p.r24_start, 'below_s': p.below_start, 'eff_s': p.eff_start,
+                'r24_e': p.r24_end, 'below_e': p.below_end, 'eff_e': p.eff_end,
+                'r24_min': p.r24_min, 'eff_peak': p.eff_peak, 'r6_max': p.r6_max, 'off24lo_max': p.off24lo_max,
+                'btc_pct': (round((p.btc_end / p.btc_start - 1) * 100, 2) if p.btc_start and p.btc_end else None),
+                'bear_s': p.bear_pct_start,
+                'fills': len(g), 'open_fills': len(g) - len(gc),
+                'wr': (round(100.0 * _wins / len(gc), 1) if gc else None),
+                'net': round(sum(o.pnl or 0 for o in gc), 2),
+                'avg_pct': (round(sum(o.pnl_percentage or 0 for o in gc) / len(gc), 3) if gc else None),
+                'bypasses': p.bypasses or 0, 'blk_24lo': p.blocked_off24lo or 0, 'blk_bl': p.blocked_blacklist or 0, 'blk_sp': p.blocked_spacing or 0,
+                'ended_by': p.ended_by or ('open' if p.ended_at is None else ''),
+            })
+        return rows
+    except Exception as _e:
+        logger.debug(f"[PERF] bearrun periods skipped: {_e}")
+        return []
+
+
 def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
     """Per-sleeve performance rollup (Jul 1, 2026, operator-requested) — the exact split used in
     every batch analysis: MOM-long / MOM-short / FLIP-short (+ Total). Sleeve is derived from
@@ -2791,6 +2871,8 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
     def sleeve(o):
         if (o.entry_strategy or '') == 'BULLRUN_LONG':
             return 'BullRun-Long'  # Aug 21 gate 57: own row — must NOT contaminate Mom-Long
+        if (o.entry_strategy or '') == 'BEARRUN_SHORT':
+            return 'BearRun-Short'  # Sep 15 gate 60: own row — must NOT contaminate Mom-Short (1× probe fills)
         if 'FLIP' in (o.entry_strategy or ''):
             return 'Flip-Short' if o.direction == 'SHORT' else 'Flip-Long'
         return 'Mom-Long' if o.direction == 'LONG' else 'Mom-Short'
@@ -2825,7 +2907,7 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
                         if start_balance and start_balance > 0 and window_days and window_days >= 0.5
                         and sum(o.pnl or 0 for o in g) / start_balance > -1 else None),
         }
-    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long']
+    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short']
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
     all_closed = [o for o in orders if o.pnl_percentage is not None]
     total = stats('Total', all_closed)
@@ -2874,7 +2956,7 @@ def _compute_strategy_performance(orders, start_balance=None, window_days=None):
         }
 
     _pref = ['MOMENTUM', 'FAN_RATIO_GATE', 'BULL_LONG', 'PAIR_RSI_OB', 'BOUNCE_LONG',
-             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG']
+             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT']
 
     def _rank(label):
         head = label.split(' · ')[0]
@@ -4080,7 +4162,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # are their own program; blending full-size spikes would contaminate the
             # sleeve stats the locked gates read. (Probe-era spike rows carry MOMENTUM
             # labels and stay — cohort key for those = cell_multiplier_source.)
-            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE')
+            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT')  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
             orders = [o for o in orders if not _es(o).startswith('FLIP:') and _es(o).upper() not in _SLEEVES]
         else:
             # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side
@@ -4215,6 +4297,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "bullrun_rows": [],
             "bullrun_monitor": None,
             "bullrun_periods": [],
+            "bearrun_rows": [],
+            "bearrun_monitor": None,
+            "bearrun_periods": [],
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -7177,6 +7262,84 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         logger.debug(f"[PERF] bullrun table skipped: {_br_tbl_err}")
     bullrun_periods = await _bullrun_periods_rows(db)
 
+    # 🐻 Sep 15 gate 60: Bear-Run sleeve scoreboard — ALL fills + per-exit-reason + by-reading rows, with the
+    # locked ARM bar (probe phase) / KILL bar (armed phase) tracked live. Manual toggles; no auto-flip.
+    bearrun_rows = []
+    bearrun_periods = await _bearrun_periods_rows(db)
+    try:
+        _th_bear = config.trading_config.thresholds
+        _bear_lev = float(getattr(_th_bear, 'bearrun_lev_mult', 0.05) or 0.05)
+        _bear_all = [o for o in orders if (o.entry_strategy or '') == 'BEARRUN_SHORT' and o.pnl_percentage is not None]
+        def _bear_stats(g):
+            _n = len(g)
+            if _n == 0:
+                return {"n": 0, "wr": None, "avg_pct": None, "total_usd": 0.0, "avg_peak": None, "dates": 0}
+            _pks = [o.peak_pnl for o in g if o.peak_pnl is not None]
+            return {"n": _n,
+                    "wr": round(100.0 * sum(1 for o in g if (o.pnl_percentage or 0) > 0) / _n, 1),
+                    "avg_pct": round(sum(o.pnl_percentage or 0 for o in g) / _n, 3),
+                    "total_usd": round(sum(o.pnl or 0 for o in g), 2),
+                    "avg_peak": round(sum(_pks) / len(_pks), 3) if _pks else None,
+                    "dates": len({o.opened_at.date() for o in g if o.opened_at})}
+        # window tally from the ledger (closed windows with ≥1 closed fill, oldest first)
+        _closed_w = [w for w in reversed(bearrun_periods) if w.get('end') and (w.get('fills', 0) - w.get('open_fills', 0)) > 0]
+        _w_signs = [(w['net'] or 0) > 0 for w in _closed_w]
+        if _bear_lev < 1.0:
+            _first3 = _w_signs[:3]
+            _sum3 = sum((w['net'] or 0) for w in _closed_w[:3])
+            if len(_first3) >= 3:
+                _ok = (sum(_first3) >= 2 and _sum3 > 0)
+                _bear_gate = (f"🟢 ARM BAR MET — first 3 windows {sum(_first3)}/3 positive · ${_sum3:+.0f} → set bearrun_lev_mult 1.0 (manual)" if _ok
+                              else f"⚪ arm bar NOT met — first 3 windows {sum(_first3)}/3 positive · ${_sum3:+.0f} (bar: ≥2 ∧ Σ>0) → stays 1× probe; review the windows")
+            else:
+                _bear_gate = f"1× PROBE (lev ×{_bear_lev:g}) · arm bar: {len(_first3)}/3 windows scored, {sum(_first3)} positive · ${_sum3:+.0f} (bar: ≥2 of first 3 ∧ Σ>0)"
+        else:
+            # Kill bar reads the LIFETIME first 10 closed fills (unfiltered query — the dashboard's regime/window
+            # filters must never fake or hide the bar; same rule as the bull-run twin). Falls back to the view on error.
+            try:
+                _life = (await db.execute(
+                    select(Order).where(and_(
+                        Order.entry_strategy == 'BEARRUN_SHORT', Order.status == 'CLOSED',
+                        Order.is_paper == trading_engine.is_paper_mode,
+                    )).order_by(Order.opened_at.asc()).limit(10)
+                )).scalars().all()
+            except Exception:
+                _life = sorted(_bear_all, key=lambda o: (o.opened_at or datetime.min))[:10]
+            _f_n = len(_life); _f_wr = (100.0 * sum(1 for o in _life if (o.pnl_percentage or 0) > 0) / _f_n) if _f_n else 0
+            _f_usd = sum(o.pnl or 0 for o in _life)
+            _two_neg = any((not _w_signs[i]) and (not _w_signs[i + 1]) for i in range(len(_w_signs) - 1))
+            if (_f_n >= 10 and (_f_wr <= 45.0 or _f_usd < 0)) or _two_neg:
+                _bear_gate = f"🔴 KILL BAR HIT — first {_f_n}/10: WR {_f_wr:.0f}% · ${_f_usd:+.0f}{' · 2 consecutive net-negative windows' if _two_neg else ''} → toggle OFF (manual)"
+            else:
+                _bear_gate = f"ARMED (lev ×{_bear_lev:g}) · kill bar: first {_f_n}/10 WR {_f_wr:.0f}% · ${_f_usd:+.0f} (trip: ≤45% ∨ Σ<0 at 10, or 2 consecutive negative windows)"
+        bearrun_rows.append({"row": "ALL sleeve fills (BTC-gate bypass while the 24h bear monitor is ON)", **_bear_stats(_bear_all), "gate": _bear_gate})
+        if _bear_all:
+            _by_reason = {}
+            for o in _bear_all:
+                _by_reason.setdefault(o.close_reason or "?", []).append(o)
+            for _r in sorted(_by_reason.keys()):
+                bearrun_rows.append({"row": f"  {_r}", **_bear_stats(_by_reason[_r]), "gate": ""})
+            _by_gate = {}
+            for o in _bear_all:
+                for _g in str(getattr(o, 'entry_bear_bypass', '') or '').split(','):
+                    if _g.strip():
+                        _by_gate.setdefault(_g.strip(), []).append(o)
+            for _g in sorted(_by_gate.keys()):
+                bearrun_rows.append({"row": f"  bypassed {_g}", **_bear_stats(_by_gate[_g]), "gate": "(a fill can bypass several gates — rows overlap)"})
+            _ranges = [
+                ("by r24 @entry", 'entry_bear_r24', [(-99, -8, "≤ −8%"), (-8, -5, "−8..−5%"), (-5, 1, "> −5%")]),
+                ("by eff24 @entry", 'entry_bear_eff24', [(0, 0.20, "0.15–0.20"), (0.20, 0.30, "0.20–0.30"), (0.30, 9, "> 0.30")]),
+                ("by BTC off-24h-low @entry", 'entry_bear_off24lo', [(-99, 0.5, "≤ 0.5%"), (0.5, 1.0, "0.5–1.0%"), (1.0, 2.0, "1.0–2.0%"), (2.0, 99, "> 2.0%")]),
+            ]
+            for _lbl, _col, _bks in _ranges:
+                _vals = [o for o in _bear_all if getattr(o, _col, None) is not None]
+                for _lo, _hi, _bl in _bks:
+                    _g = [o for o in _vals if _lo <= getattr(o, _col) < _hi]
+                    if _g:
+                        bearrun_rows.append({"row": f"  {_lbl} {_bl}", **_bear_stats(_g), "gate": ""})
+    except Exception as _bear_tbl_err:
+        logger.debug(f"[PERF] bearrun table skipped: {_bear_tbl_err}")
+
     # Stop Loss Deep Dive + Winning Trades Drawdown
     stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
     winning_trades_drawdown = []
@@ -8545,6 +8708,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "bullrun_rows": bullrun_rows,
         "bullrun_monitor": _bullrun_monitor_payload(),
         "bullrun_periods": bullrun_periods,
+        "bearrun_rows": bearrun_rows,
+        "bearrun_monitor": _bearrun_monitor_payload(),
+        "bearrun_periods": bearrun_periods,
         "graduation_doors_overlap": graduation_doors_overlap,
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "flagged_exits": flagged_exits,

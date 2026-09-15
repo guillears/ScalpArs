@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, update, and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod
+from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod, BearMonitorPeriod
 from database import AsyncSessionLocal, locked_commit, locked_execute_commit
 import config
 from config import save_trading_config, TradingConfig
@@ -103,6 +103,16 @@ _br_dip_state: Dict[str, Dict] = {}      # pair -> {'dipped': bool, 'last_bar_ts
 _br_e50h_cache: Dict[str, tuple] = {}    # pair -> (fetched_at_epoch, ema50_1h)
 _br_alt_stats: dict = {}  # Aug-23 (20): per-pair {'r6h','above','ts'} stamped by the sleeve hook (rank≤N, non-blacklisted) for the RE-ARM door
 _br_last_fire: Dict[str, float] = {}     # pair -> epoch of last sleeve entry OR exit (spacing)
+# 🐻 Sep-15 gate 60: Bear-Run Monitor state (24h BTC composite; computed inside _update_bullrun_monitor on the
+# SAME 5m fetch, persisted to bear_monitor_periods). state ∈ OFF/ON. Entries additionally require updated_at
+# fresh (≤30 min) — a stale monitor is NOT ON (fail-safe, same convention as the bull-run monitor).
+_bearrun_monitor: Dict = {
+    'state': 'OFF', 'on': False, 'latch': False,
+    'r24': None, 'below24': None, 'eff24': None, 'r6': None, 'off24lo': None, 'e50h': None,
+    'on_since': None, 'updated_at': 0.0, 'flips': [], 'period_id': None,
+    'bypasses': 0, 'blk_off24lo': 0, 'blk_blacklist': 0, 'blk_spacing': 0,
+}
+_bear_last_fire: Dict[str, float] = {}   # pair -> epoch of last BEARRUN_SHORT fill (spacing; DB-backed on miss)
 _breadth_n_bull: int = 0
 _breadth_n_bear: int = 0
 _breadth_n_neutral: int = 0
@@ -268,6 +278,36 @@ def _quiet_sl_for(direction, entry_strategy, entry_atr_pct):
 
 
 _BR_LADDER_CACHE = {}
+def _bearrun_next_state(prev_on, r24, below24, eff24, r6, price, e50h,
+                        r24_on=4.0, r24_off=3.0, below_on=50.0, below_off=47.0, eff_on=0.15, eff_off=0.15,
+                        latch_r6h=3.0, latch_ema50=True):
+    """🐻 gate 60 pure math: next Bear-Run monitor state. Returns (on, latched).
+    Schmitt band: turn-ON needs r24 ≤ −r24_on ∧ below24 ≥ below_on ∧ eff24 ≥ eff_on; once ON it stays while
+    r24 ≤ −r24_off ∧ below24 ≥ below_off ∧ eff24 ≥ eff_off. Squeeze latch (instant OFF, blocks turn-ON): 6h
+    return ≥ +latch_r6h (0 = off) or price above the 1h EMA50 (when latch_ema50 and e50h known). Thresholds are
+    magnitudes (positive numbers) — a negative r24_on is normalised so a sign slip cannot silently disable it."""
+    if r24 is None or below24 is None or eff24 is None:
+        return False, False
+    r_on, r_off = abs(float(r24_on or 0)), abs(float(r24_off or 0))
+    latched = False
+    if latch_r6h and r6 is not None and r6 >= abs(float(latch_r6h)):
+        latched = True
+    if latch_ema50 and e50h is not None and price is not None and price > e50h:
+        latched = True
+    if latched:
+        return False, True
+    if prev_on:
+        on = (r24 <= -r_off) and (below24 >= float(below_off)) and (eff24 >= float(eff_off))
+    else:
+        on = (r24 <= -r_on) and (below24 >= float(below_on)) and (eff24 >= float(eff_on))
+    return bool(on), False
+
+
+def _bearrun_bypass_set(gates_str):
+    """🐻 gate 60: parse the bypass list ('A,B,C' → {'A','B','C'}); blank = no gate bypassed (sleeve inert)."""
+    return {g.strip().upper() for g in str(gates_str or '').split(',') if g.strip()}
+
+
 def _bullrun_ladder_floor(peak, ladder_str):
     """Highest rung floor whose peak threshold ≤ peak, from "peak:floor, ..." (parsed once per string).
     Malformed → None (fail-safe: no ladder, trail unchanged)."""
@@ -1363,6 +1403,8 @@ class TradingEngine:
         # Key: (filter_name, direction) → count. Reset on bot start.
         # See CLAUDE.md May 5 entry on BTC Trend Filter for context.
         self._filter_block_counts: Dict[tuple, int] = {}
+        # 🐻 gate 60: per-pair-scan bear-run bypass state (set by _bearrun_eligibility, read by _bearrun_bypass)
+        self._bear_pair = None; self._bear_ok = False; self._bear_refuse = None; self._bear_bypassed = []; self._bear_refuse_done = False
         # Jul 14 FUNNEL v2 (in-memory, not persisted): honest per-filter accounting from the
         # momentum ladder's evaluate-all pass. all = filter failed (regardless of order);
         # sole = filter was the ONLY fail (its true marginal cost in trades); episodes =
@@ -4680,6 +4722,12 @@ class TradingEngine:
                 logger.warning(f"[BULLRUN_MONITOR] 1h EMA50 fetch failed ({_e50_err}) — latch runs on r6h only this cycle")
             price = closes[-1]
             latch = (r6 <= float(getattr(th, 'bullrun_latch_r6h', -3.0) or -3.0)) or (e50h is not None and price < e50h)
+            # 🐻 gate 60: Bear-Run monitor rides the same fetch (own try — can never touch the bull-run path)
+            try:
+                _off24lo = (price / min(float(r[3]) for r in k5[-289:-1]) - 1) * 100.0  # % ABOVE the 24h LOW (bounce-phase gate)
+                await self._update_bearrun_monitor(r24, 100.0 - above24, eff24, r6, price, e50h, _off24lo, _now)
+            except Exception as _bear_err:
+                logger.error(f"[BEARRUN_MONITOR] update failed: {_bear_err}")
             # Review C1: on the FIRST compute after a boot, seed the hysteresis state from the
             # open DB period — memory starts DARK, so without this a GREEN sitting in the
             # stay-band (below the turn-on bar) would be evaluated against turn-on thresholds,
@@ -4848,6 +4896,194 @@ class TradingEngine:
             })
         except Exception as e:
             logger.error(f"[BULLRUN_MONITOR] update failed: {e}")
+
+    async def _update_bearrun_monitor(self, r24, below24, eff24, r6, price, e50h, off24lo, _now):
+        """🐻 gate 60: Bear-Run Monitor — 24h BTC composite (r24 ≤ −4% ∧ bars-below-EMA20 ≥ 50% ∧ efficiency ≥ 0.15,
+        Schmitt stay band 3/47/0.15, squeeze latch r6h ≥ +3% ∨ price > 1h EMA50). Called from _update_bullrun_monitor
+        on its closed-bar readings (same 110 s cadence). Periods ledger persisted on its own session."""
+        global _bearrun_monitor
+        th = config.trading_config.thresholds
+        was_on = bool(_bearrun_monitor.get('on'))
+        # boot seed (bull-run review C1 lesson): adopt the open DB period when fresh, so a restart mid-window is
+        # evaluated against the STAY band, not the turn-on bar
+        if not _bearrun_monitor.get('updated_at'):
+            try:
+                async with AsyncSessionLocal() as _sdb:
+                    _open_p = (await _sdb.execute(
+                        select(BearMonitorPeriod).where(BearMonitorPeriod.ended_at.is_(None)).order_by(BearMonitorPeriod.started_at.desc()).limit(1)
+                    )).scalar_one_or_none()
+                    if _open_p is not None:
+                        _age = (0.0 if _open_p.last_update is None else (datetime.utcnow() - _open_p.last_update).total_seconds() / 60)
+                        if _age <= 60:
+                            was_on = True
+                            _bearrun_monitor['on'] = True; _bearrun_monitor['state'] = 'ON'
+                            _bearrun_monitor['on_since'] = _open_p.started_at.strftime('%Y-%m-%d %H:%M')
+                            logger.info(f"[BEARRUN_MONITOR] boot seed: adopting open ON period #{_open_p.id} ({_age:.0f} min old)")
+            except Exception as _bs_err:
+                logger.warning(f"[BEARRUN_MONITOR] boot seed skipped: {_bs_err}")
+        on, latched = _bearrun_next_state(
+            was_on, r24, below24, eff24, r6, price, e50h,
+            r24_on=getattr(th, 'bearrun_r24_on', 4.0), r24_off=getattr(th, 'bearrun_r24_off', 3.0),
+            below_on=getattr(th, 'bearrun_below_on', 50.0), below_off=getattr(th, 'bearrun_below_off', 47.0),
+            eff_on=getattr(th, 'bearrun_eff_on', 0.15), eff_off=getattr(th, 'bearrun_eff_off', 0.15),
+            latch_r6h=getattr(th, 'bearrun_latch_r6h', 3.0), latch_ema50=bool(getattr(th, 'bearrun_latch_ema50', True)))
+        rd = {'r24': r24, 'below24': below24, 'eff24': eff24, 'r6': r6, 'px': price, 'e50h': e50h, 'off24lo': off24lo, 'latch': latched}
+        try:
+            async with AsyncSessionLocal() as _pdb:
+                await self._bearrun_persist_period(_pdb, on, rd)
+        except Exception as _pers_err:
+            logger.error(f"[BEARRUN_MONITOR] period session failed: {_pers_err}")
+        resumed = bool(_bearrun_monitor.pop('resumed', False))
+        if on != was_on and not resumed:
+            flip = {'ts': datetime.utcnow().strftime('%Y-%m-%d %H:%M'), 'state': 'ON' if on else 'OFF',
+                    'r24': round(r24, 2), 'below24': round(below24, 1), 'eff24': round(eff24, 3), 'r6': round(r6, 2)}
+            _bearrun_monitor['flips'] = (_bearrun_monitor.get('flips') or [])[-59:] + [flip]
+            logger.critical(f"[BEARRUN_MONITOR] state {'ON' if was_on else 'OFF'} → {'ON' if on else 'OFF'} | "
+                            f"r24={r24:+.2f}% below={below24:.1f}% eff24={eff24:.3f} r6={r6:+.2f}% off24lo={off24lo:+.2f}% latch={latched}")
+        if on and not was_on and not resumed:
+            _bearrun_monitor['on_since'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+        elif not on:
+            _bearrun_monitor['on_since'] = None
+        _bearrun_monitor.update({
+            'state': 'ON' if on else 'OFF', 'on': on, 'latch': latched,
+            'r24': round(r24, 2), 'below24': round(below24, 1), 'eff24': round(eff24, 3), 'r6': round(r6, 2),
+            'off24lo': round(off24lo, 2), 'e50h': (round(e50h, 2) if e50h is not None else None), 'updated_at': _now,
+        })
+
+    async def _bearrun_persist_period(self, db, on, rd):
+        """🐻 gate 60 periods ledger: ONE row per contiguous ON stretch (bear_monitor_periods). Adopts the open row on
+        restart when still ON and <60 min stale (sets 'resumed'); closes it as restart→OFF / downtime→OFF otherwise;
+        refreshes running fields + refusal counters every compute; closes with ended_by latch/stay-band. Never raises."""
+        if db is None:
+            return
+        try:
+            now = datetime.utcnow()
+            pid = _bearrun_monitor.get('period_id')
+            cur = None
+            if pid:
+                cur = (await db.execute(select(BearMonitorPeriod).where(BearMonitorPeriod.id == pid))).scalar_one_or_none()
+                if cur is None:
+                    _bearrun_monitor['period_id'] = None  # deep review ⚪9: row gone → forget the stale id
+            if cur is None:
+                cur = (await db.execute(
+                    select(BearMonitorPeriod).where(BearMonitorPeriod.ended_at.is_(None)).order_by(BearMonitorPeriod.started_at.desc()).limit(1)
+                )).scalar_one_or_none()
+                if cur is not None:
+                    _stale_min = 0.0 if cur.last_update is None else (now - cur.last_update).total_seconds() / 60
+                    if on and _stale_min <= 60:
+                        _bearrun_monitor['period_id'] = cur.id
+                        _bearrun_monitor['resumed'] = True
+                        _bearrun_monitor['on_since'] = cur.started_at.strftime('%Y-%m-%d %H:%M')
+                        for _k, _col in (('bypasses', 'bypasses'), ('blk_off24lo', 'blocked_off24lo'), ('blk_blacklist', 'blocked_blacklist'), ('blk_spacing', 'blocked_spacing')):
+                            _bearrun_monitor[_k] = int(getattr(cur, _col, 0) or 0)
+                        logger.info(f"[BEARRUN_MONITOR] resumed open ON period #{cur.id} (since {cur.started_at:%Y-%m-%d %H:%M} UTC) after restart")
+                    else:
+                        cur.ended_at = (cur.last_update or now) if _stale_min > 60 else now
+                        cur.ended_by = "restart→OFF" if _stale_min <= 60 else "downtime→OFF"
+                        cur.r24_end, cur.below_end, cur.eff_end, cur.btc_end = rd['r24'], rd['below24'], rd['eff24'], rd['px']
+                        cur = None
+            if cur is not None:
+                # running refresh
+                cur.last_update = now
+                cur.r24_end, cur.below_end, cur.eff_end, cur.btc_end = rd['r24'], rd['below24'], rd['eff24'], rd['px']
+                cur.r24_min = min(cur.r24_min, rd['r24']) if cur.r24_min is not None else rd['r24']
+                cur.eff_peak = max(cur.eff_peak, rd['eff24']) if cur.eff_peak is not None else rd['eff24']
+                cur.r6_max = max(cur.r6_max, rd['r6']) if cur.r6_max is not None else rd['r6']
+                cur.off24lo_max = max(cur.off24lo_max, rd['off24lo']) if cur.off24lo_max is not None else rd['off24lo']
+                cur.bypasses = int(_bearrun_monitor.get('bypasses', 0) or 0)
+                cur.blocked_off24lo = int(_bearrun_monitor.get('blk_off24lo', 0) or 0)
+                cur.blocked_blacklist = int(_bearrun_monitor.get('blk_blacklist', 0) or 0)
+                cur.blocked_spacing = int(_bearrun_monitor.get('blk_spacing', 0) or 0)
+                if not on:
+                    cur.ended_at = now
+                    cur.ended_by = 'latch' if rd['latch'] else 'stay-band'
+                    _bearrun_monitor['period_id'] = None
+            elif on:
+                _g = globals()
+                newp = BearMonitorPeriod(
+                    started_at=now, last_update=now,
+                    r24_start=rd['r24'], below_start=rd['below24'], eff_start=rd['eff24'], r6_start=rd['r6'],
+                    r24_end=rd['r24'], below_end=rd['below24'], eff_end=rd['eff24'],
+                    r24_min=rd['r24'], eff_peak=rd['eff24'], r6_max=rd['r6'], off24lo_max=rd['off24lo'],
+                    btc_start=rd['px'], btc_end=rd['px'], bear_pct_start=_g.get('_market_bear_pct'),
+                    bypasses=0, blocked_off24lo=0, blocked_blacklist=0, blocked_spacing=0,
+                )
+                db.add(newp)
+                await db.flush()
+                _bearrun_monitor['period_id'] = newp.id
+                for _k in ('bypasses', 'blk_off24lo', 'blk_blacklist', 'blk_spacing'):
+                    _bearrun_monitor[_k] = 0
+            await locked_commit(db)
+        except Exception as e:
+            logger.error(f"[BEARRUN_MONITOR] period persistence failed: {e}")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
+    async def _bearrun_eligibility(self, db, pair, signal, indicators=None):
+        """🐻 gate 60: decide ONCE per pair-scan whether this SHORT candidate may bypass the BTC macro gates.
+        Sets self._bear_pair/_bear_ok/_bear_refuse/_bear_bypassed. ok requires: sleeve enabled ∧ monitor ON ∧ fresh
+        (≤30 min) ∧ SHORT ∧ pair not blacklisted ∧ BTC ≤ off24lo_max above its 24h low ∧ ≥ spacing since the pair's
+        last sleeve fill (DB-backed). A refused candidate falls back to the NORMAL gate chain (nothing is blocked
+        here); the refusal is logged with its values when a bypassed gate would have fired (_bearrun_bypass)."""
+        self._bear_pair = pair; self._bear_ok = False; self._bear_refuse = None; self._bear_bypassed = []; self._bear_refuse_done = False
+        th = config.trading_config.thresholds
+        if signal != "SHORT" or not getattr(th, 'bearrun_sleeve_enabled', False):
+            return
+        _now = _leash_time.time()
+        if not (_bearrun_monitor.get('on') and (_now - (_bearrun_monitor.get('updated_at') or 0) <= 1800)):
+            return
+        _bl = {p.strip().upper() for p in str(getattr(th, 'bearrun_pair_blacklist', '') or '').split(',') if p.strip()}
+        if str(pair).upper() in _bl:
+            self._bear_refuse = 'BLACKLIST'; return
+        _max = float(getattr(th, 'bearrun_btc_off24lo_max', 2.0) or 0)
+        _off = _bearrun_monitor.get('off24lo')
+        if _max > 0 and (_off is None or _off > _max):
+            self._bear_refuse = 'OFF24LO'; return
+        sp = float(getattr(th, 'bearrun_pair_spacing_hours', 2.0) or 0) * 3600.0
+        if sp > 0:
+            if pair not in _bear_last_fire:
+                try:
+                    _last_o = (await db.execute(
+                        select(Order).where(and_(Order.pair == pair, Order.entry_strategy == 'BEARRUN_SHORT', Order.is_paper == self.is_paper_mode))
+                        .order_by(desc(Order.opened_at)).limit(1)
+                    )).scalar_one_or_none()
+                    _bear_last_fire[pair] = ((_last_o.opened_at.replace(tzinfo=None) - datetime(1970, 1, 1)).total_seconds() if (_last_o is not None and _last_o.opened_at) else 0.0)
+                except Exception as _sp_err:
+                    logger.warning(f"[BEARRUN] {pair}: DB spacing lookup failed ({_sp_err}) — using in-memory stamp")
+                    _bear_last_fire.setdefault(pair, 0.0)
+            if _now - _bear_last_fire.get(pair, 0.0) < sp:
+                self._bear_refuse = 'SPACING'; return
+        self._bear_ok = True
+
+    def _bearrun_bypass(self, pair, gate, had_room=True):
+        """🐻 gate 60: called by a BTC macro gate site at the moment it WOULD block a SHORT. True = pass through
+        (logged, counted, gate name stamped on the fill). False = block normally. When the sleeve is ON but the
+        candidate was refused by a sleeve rule, the refusal is recorded once per pair-scan (BEARRUN_REFUSED_<rule>)
+        with the values — the review cohort for widening/tightening the sleeve gates."""
+        if self._bear_pair != pair:
+            return False
+        th = config.trading_config.thresholds
+        if gate.upper() not in _bearrun_bypass_set(getattr(th, 'bearrun_bypass_gates', '')):
+            return False
+        if self._bear_ok:
+            if gate in self._bear_bypassed:  # deep review ⚪7: overlapping CROSS bands must not double-stamp/count
+                return True
+            self._bear_bypassed.append(gate)
+            # NOT _record_filter_block: a bypass is the opposite of a block (funnel honesty) — counted in the windows ledger
+            _bearrun_monitor['bypasses'] = int(_bearrun_monitor.get('bypasses', 0) or 0) + 1
+            logger.info(f"[BEARRUN_BYPASS] {pair}: SHORT passes {gate} — monitor ON (r24 {_bearrun_monitor.get('r24')}% · below {_bearrun_monitor.get('below24')}% · eff24 {_bearrun_monitor.get('eff24')} · off24lo {_bearrun_monitor.get('off24lo')}%)")
+            return True
+        if self._bear_refuse and not self._bear_refuse_done:
+            self._bear_refuse_done = True
+            _k = {'OFF24LO': 'blk_off24lo', 'BLACKLIST': 'blk_blacklist', 'SPACING': 'blk_spacing'}.get(self._bear_refuse)
+            if _k:
+                _bearrun_monitor[_k] = int(_bearrun_monitor.get(_k, 0) or 0) + 1
+            # NOT _record_filter_block: the normal gate blocks and counts this candidate right after — a second
+            # counter would double-count it in blocked_short. Ledger (per window) + the log line are the record.
+            logger.info(f"[BEARRUN_REFUSED] {pair}: SHORT would bypass {gate} but refused by {self._bear_refuse} (off24lo {_bearrun_monitor.get('off24lo')}% vs max {getattr(th, 'bearrun_btc_off24lo_max', None)} · r24 {_bearrun_monitor.get('r24')}% · eff24 {_bearrun_monitor.get('eff24')})")
+        return False
 
     async def _maybe_open_bullrun_long(self, db, pair_info, ohlcv, indicators):
         """🌊 Aug-21 gate 57: BULLRUN_LONG sleeve entry — GREEN-gated dip-reclaim on scan-rank
@@ -5611,6 +5847,12 @@ class TradingEngine:
         entry_br_eff: float = None,
         entry_br_off24h: float = None,
         entry_br_door: str = None,   # Aug-23 (20): 'GREEN' (composite) or 'REARM' (re-arm door)
+        # 🐻 Sep-15 gate 60: Bear-Run Monitor readings at entry (BEARRUN_SHORT fills only)
+        entry_bear_r24: float = None,
+        entry_bear_below24: float = None,
+        entry_bear_eff24: float = None,
+        entry_bear_off24lo: float = None,
+        entry_bear_bypass: str = None,
         # Jun 8: gap-expanding relaxation A/B tag (prev2_only-admitted MARGINAL cohort)
         entry_gap_expand_marginal: bool = None,
         # Jun 14: Flip Entry sleeve — when set, this is a NAKED fade-the-block entry
@@ -5638,6 +5880,10 @@ class TradingEngine:
         # list (scoped — the ONLY non-MAJORS_PROBE bypass); NOT _is_flip. Exits via the
         # dedicated _bullrun_exit_for stack (BR_-prefixed reasons), never the alt exit chain.
         bullrun_long: bool = False,
+        # 🐻 Sep-15 gate 60: Bear-Run sleeve — a momentum SHORT that passed through ≥1 BTC macro gate while the
+        # 24h bear monitor was ON. Tagged entry_strategy="BEARRUN_SHORT"; sized bearrun_invest_mult × bearrun_lev_mult
+        # (absolute-assign, never re-multiplied; ship 1×/0.05 = 1× probe). Exits = the normal momentum-short stack.
+        bearrun_short: bool = False,
         # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
         # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
         # lev_mult from gap_probe_* config), tagged cell_src=GAPFLAT_PROBE (own analytics row;
@@ -6541,13 +6787,28 @@ class TradingEngine:
                 logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested lev={cell_lev_mult}x, hard-capped to lev={_lev_cap}x")
                 cell_lev_mult = _lev_cap
 
+        # 🐻 Sep-15 gate 60: Bear-Run sleeve sizing — same absolute-assign override as BULLRUN (a sleeve fill
+        # must never be re-multiplied by pattern/C1 cells). Ship: inv 1.0 × lev 0.05 = 1× effective PROBE.
+        if bearrun_short:
+            _th_bear = config.trading_config.thresholds
+            cell_mult = max(0.1, float(getattr(_th_bear, 'bearrun_invest_mult', 1.0) or 1.0))
+            cell_lev_mult = max(0.05, float(getattr(_th_bear, 'bearrun_lev_mult', 0.05) or 0.05))
+            cell_src = "BEARRUN"
+            _mult_target = "both"
+            if cell_mult > _inv_cap:
+                logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested inv={cell_mult}x, hard-capped to inv={_inv_cap}x")
+                cell_mult = _inv_cap
+            if cell_lev_mult > _lev_cap:
+                logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested lev={cell_lev_mult}x, hard-capped to lev={_lev_cap}x")
+                cell_lev_mult = _lev_cap
+
         # Jul 13: GAPFLAT probe sizing — overrides ALL multiplier cells (a probe must never be
         # 2x'd by the UNMATCHED cell); own cell_src row (rides Multiplier Cell Performance + CSV
         # for free); de-levers to ~1x effective (invest 0.5x, lev 0.05x x 20x base = 1x live).
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
         if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
              or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe) and direction in ("LONG", "SHORT")
-                and not flip_source and not bull_long and not bounce_long and not bullrun_long and not spike_chase_probe and not spike_fade and not spike_bounce and not nonexp_calm3d):
+                and not flip_source and not bull_long and not bounce_long and not bullrun_long and not bearrun_short and not spike_chase_probe and not spike_fade and not spike_bounce and not nonexp_calm3d):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
@@ -6996,6 +7257,8 @@ class TradingEngine:
             entry_br_eff=entry_br_eff,
             entry_br_off24h=entry_br_off24h,
             entry_br_door=entry_br_door,
+            entry_bear_r24=entry_bear_r24, entry_bear_below24=entry_bear_below24, entry_bear_eff24=entry_bear_eff24,
+            entry_bear_off24lo=entry_bear_off24lo, entry_bear_bypass=entry_bear_bypass,
             # Jun 8: gap-expanding relaxation A/B cohort tag
             entry_gap_expand_marginal=entry_gap_expand_marginal,
             # Jun 2: liquidity-aware sizing observability (final notional = notional_value above)
@@ -7018,7 +7281,7 @@ class TradingEngine:
             cell_multiplier_capped=cell_capped,
             # Jun 14: Flip Entry sleeve strategy tag (segregates flip P&L from momentum)
             # Jun 18: BULL_LONG tag for the build-side sleeve (real long, normal exit; NOT _is_flip)
-            entry_strategy=("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))))))),
+            entry_strategy=("BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),
             # Initialize dynamic TP tracking
             current_tp_level=1,
             dynamic_tp_target=conf_config.tp_min,
@@ -7155,7 +7418,7 @@ class TradingEngine:
                 'direction': direction,
                 'opened_at': order.opened_at,          # Jul 28 review M-5: spike stale-kill/trail live from t0
                 'entry_atr_pct': entry_atr_pct,        # (both were previously added only at the first cache refresh)
-                'entry_strategy': ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))))))),  # Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches; Aug 21: BULLRUN_LONG (gate 57, dedicated BR_ exits)
+                'entry_strategy': ("BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),  # Sep 15 gate 60: BEARRUN_SHORT twin (momentum exits; label parity with the Order row). Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches; Aug 21: BULLRUN_LONG (gate 57, dedicated BR_ exits)
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_price': actual_price,
                 'quantity': quantity,
@@ -10643,6 +10906,13 @@ class TradingEngine:
                         except (ValueError, TypeError):
                             continue
 
+            # 🐻 gate 60: bear-run bypass eligibility for this pair-scan (read by the BTC gate sites below)
+            try:
+                await self._bearrun_eligibility(db, pair, signal, indicators)
+            except Exception as _bear_err:
+                self._bear_pair = None
+                logger.debug(f"[BEARRUN] {pair}: eligibility failed ({_bear_err}) — no bypass this scan")
+
             # SHORT-only BTC ADX BLOCK RANGE — May 27, 2026 (see CLAUDE.md).
             # Blocks SHORT entries when BTC ADX falls inside a "kill zone" range, even though
             # min/max gate above would allow it. Cross-batch evidence (965-trade pool, full
@@ -10654,7 +10924,7 @@ class TradingEngine:
                 _th2 = config.trading_config.thresholds
                 _block_lo = getattr(_th2, 'btc_adx_block_min_short', 0.0)
                 _block_hi = getattr(_th2, 'btc_adx_block_max_short', 0.0)
-                if _block_lo > 0 and _block_hi > _block_lo and _block_lo <= btc_adx < _block_hi:
+                if _block_lo > 0 and _block_hi > _block_lo and _block_lo <= btc_adx < _block_hi and not self._bearrun_bypass(pair, "BTC_ADX_BLOCK_SHORT", _had_room):  # 🐻 gate 60 bypass
                     logger.info(
                         f"[BTC_ADX_BLOCK_SHORT] {pair}: SHORT blocked — BTC ADX {btc_adx:.1f} "
                         f"in kill range [{_block_lo}, {_block_hi})"
@@ -10780,7 +11050,7 @@ class TradingEngine:
                             else:
                                 continue
                             if _cf_rsi_min <= btc_rsi < _cf_rsi_max:
-                                if btc_adx < _cf_min_adx or btc_adx > _cf_max_adx:
+                                if (btc_adx < _cf_min_adx or btc_adx > _cf_max_adx) and not self._bearrun_bypass(pair, "BTC_RSI_ADX_CROSS", _had_room):  # 🐻 gate 60 bypass (SHORT, monitor ON)
                                     logger.info(
                                         f"[BTC_RSI_ADX_CROSS] {pair}: {signal} blocked — "
                                         f"BTC RSI {btc_rsi:.1f} in [{_cf_rsi_min}-{_cf_rsi_max}) "
@@ -11119,7 +11389,7 @@ class TradingEngine:
                     _dir_5m = 'R' if btc_rsi > btc_rsi_prev else 'F'
                     _trade_key = f"{_dir_1h}{_dir_5m}"
                     _rules = [r.strip().upper() for r in _rsi_dir_str.split(',') if r.strip()]
-                    if _trade_key in _rules:
+                    if _trade_key in _rules and not self._bearrun_bypass(pair, "BTC_1H_5M_RSI_DIR_GATE", _had_room):  # 🐻 gate 60 bypass
                         _dir_full = lambda c: 'Rising' if c == 'R' else 'Falling'
                         logger.info(
                             f"[BTC_1H_5M_RSI_DIR_GATE] {pair}: {signal} blocked — "
@@ -11288,7 +11558,7 @@ class TradingEngine:
                 else:  # SHORT
                     _flat_th = getattr(_th, 'macro_trend_flat_threshold_short',
                                        getattr(_th, 'macro_trend_flat_threshold', 0))
-                    if _flat_th > 0 and btc_ema20_slope_pct > -_flat_th:
+                    if _flat_th > 0 and btc_ema20_slope_pct > -_flat_th and not self._bearrun_bypass(pair, "BTC_SLOPE_GATE", _had_room):  # 🐻 gate 60 bypass
                         if _sg_probe_on:
                             _slopegate_probe_hit = True
                             logger.info(f"[SLOPEGATE_PROBE] {pair}: SHORT candidate (BTC slope {btc_ema20_slope_pct:+.4f}% > -{_flat_th}%) — probing instead of blocking")
@@ -11397,7 +11667,7 @@ class TradingEngine:
             # 1hRSI<30 = -$940 · 30-35 = -$382 · 35-40 = +$651 (monotonic). 0 = disabled.
             if signal == "SHORT" and btc_rsi_1h is not None:
                 _rsi1h_min = getattr(config.trading_config.thresholds, 'btc_rsi_1h_min_short', 0) or 0
-                if _rsi1h_min > 0 and btc_rsi_1h < _rsi1h_min:
+                if _rsi1h_min > 0 and btc_rsi_1h < _rsi1h_min and not self._bearrun_bypass(pair, "BTC_1H_RSI_MIN_GATE", _had_room):  # 🐻 gate 60 bypass
                     logger.info(f"[BTC_1H_RSI_MIN_GATE] {pair}: SHORT blocked — BTC 1h RSI {btc_rsi_1h:.1f} < min {_rsi1h_min} (hourly oversold: bounce risk)")
                     self._record_filter_block("BTC_1H_RSI_MIN_GATE", "SHORT", had_room=_had_room)
                     self._last_pair_block_reason[pair] = "BTC_1H_RSI_MIN_GATE"
@@ -12143,6 +12413,13 @@ class TradingEngine:
                         # Jun 12: eligible-universe volume rank at entry (50->75 read gate)
                         entry_pair_rank=_pair_rank,
                         entry_pair_age_days=_pair_age_days,
+                        # 🐻 gate 60: a sleeve fill ONLY when a BTC gate was actually bypassed this scan
+                        bearrun_short=bool(self._bear_pair == pair and self._bear_bypassed),
+                        entry_bear_r24=(_bearrun_monitor.get('r24') if (self._bear_pair == pair and self._bear_bypassed) else None),
+                        entry_bear_below24=(_bearrun_monitor.get('below24') if (self._bear_pair == pair and self._bear_bypassed) else None),
+                        entry_bear_eff24=(_bearrun_monitor.get('eff24') if (self._bear_pair == pair and self._bear_bypassed) else None),
+                        entry_bear_off24lo=(_bearrun_monitor.get('off24lo') if (self._bear_pair == pair and self._bear_bypassed) else None),
+                        entry_bear_bypass=(",".join(self._bear_bypassed) if (self._bear_pair == pair and self._bear_bypassed) else None),
                         # Jun 8: gap-expanding relaxation A/B tag — True if this entry was admitted
                         # by prev2_only but would have failed the strict prev1 check (MARGINAL cohort).
                         entry_gap_expand_marginal=gap_expand_marginal(indicators, signal),
@@ -12227,6 +12504,8 @@ class TradingEngine:
 
                 if order:
                     logger.info(f"[DEBUG_OPENED] {pair} {signal} {confidence}: open_position returned order id={order.id}")
+                    if getattr(order, 'entry_strategy', None) == 'BEARRUN_SHORT':  # 🐻 gate 60: in-memory spacing stamp (DB-backed on restart)
+                        _bear_last_fire[pair] = _leash_time.time()
                     actions.append({
                         "pair": pair,
                         "action": f"OPENED_{signal}",

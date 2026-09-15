@@ -231,6 +231,9 @@
             <span class="text-gray-600">·</span>
             <span id="bullrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide" title="🌊 Bull-Run Monitor (gate 57): GREEN = 72h composite ON (r72/above-EMA20%/efficiency, Schmitt band + crash-latch) → BULLRUN_LONG sleeve trades. AMBER = 24h alert only. Hover values: r72 / above% / eff / r6h / off-24h-high.">🌊 --</span>
             <span id="btc-off24h-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide" title="BTC distance from its 24h high (gate 57 v2 pullback-phase gate). Red = at/under the gate → sleeve refusing entries (dips kept alive); green = inside range → next reclaim fires.">24h-high --</span>
+            <span class="text-gray-600">·</span>
+            <span id="bearrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide" title="🐻 Bear-Run Monitor (gate 60): ON = BTC 24h composite (r24 ≤ −4% ∧ bars-below-EMA20 ≥ 50% ∧ efficiency ≥ 0.15, Schmitt band + squeeze latch) → momentum SHORTs bypass the BTC macro gates as BEARRUN_SHORT (1× probe). Hover values: r24 / below% / eff24 / r6h / off-24h-low.">🐻 --</span>
+            <span id="btc-off24lo-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide" title="BTC distance ABOVE its 24h low (gate 60 bounce-phase gate). Red = above the gate → sleeve refusing bypasses; green = inside range → bypasses granted while the monitor is ON.">24h-low --</span>
             <!-- pair-count cluster kept for the JS writers but folded into the Breadth tooltip (duplicate of Breadth) -->
             <span class="hidden"><span id="regime-pair-count"></span><span id="regime-bull-count"></span><span id="regime-bear-count"></span><span id="regime-neutral-count"></span></span>
         </div>
@@ -1472,6 +1475,22 @@
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
                         <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Dates</th><th class="px-2 py-1 text-left">Gate verdict</th>
                     </tr></thead><tbody id="bullrun-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
+                </div>
+                <!-- 🐻 Sep 15 gate 60 — Bear-Run sleeve: windows ledger + scoreboard -->
+                <div class="mt-6 pt-6 border-t border-rose-900/40">
+                    <h3 class="text-sm font-semibold text-rose-300 mb-1">🐻 Bear-Run Windows — episode ledger (persisted; restart-proof)</h3>
+                    <p class="text-xs text-gray-500 mb-3">One row per contiguous ON stretch of the 24h bear composite (BTC r24 ≤ −4% ∧ bars-below-EMA20 ≥ 50% ∧ efficiency ≥ 0.15; stay 3/47/0.15; squeeze latch r6h ≥ +3% ∨ BTC above its 1h EMA50). Readings = r24 / below% / eff24 at START → END; r24 min = deepest 24h return; eff pk = max efficiency; r6 max = closest approach to the squeeze latch; 24h-low max = furthest BTC bounced above its 24h low; BTC = move during the window; Fills = BEARRUN_SHORT entries opened in the window (open ones in parentheses); Bypasses = BTC-gate passes granted; Refused = candidates refused by the sleeve's own rules (off-24h-low / blacklist / spacing). The WINDOW is the unit of every gate-60 rule.</p>
+                    <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
+                        <th class="px-2 py-1 text-left">Start</th><th class="px-2 py-1 text-left">End</th><th class="px-2 py-1 text-right">Dur</th><th class="px-2 py-1 text-right">r24/below/eff @start</th><th class="px-2 py-1 text-right">@end</th><th class="px-2 py-1 text-right">r24 min</th><th class="px-2 py-1 text-right">eff pk</th><th class="px-2 py-1 text-right">r6 max</th><th class="px-2 py-1 text-right">24h-low max</th><th class="px-2 py-1 text-right">BTC</th><th class="px-2 py-1 text-right">Bear%</th><th class="px-2 py-1 text-right">Fills</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Net$</th><th class="px-2 py-1 text-right" title="Bypasses granted / refused by off-24h-low / blacklist / spacing">Byp / refused 24lo/bl/sp</th><th class="px-2 py-1 text-left">Ended by</th>
+                    </tr></thead><tbody id="bearrun-periods-body" class="divide-y divide-white/5"><tr><td colspan="17" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
+                </div>
+                <div class="mt-6 pt-6 border-t border-rose-900/40">
+                    <h3 class="text-sm font-semibold text-rose-300 mb-1">🐻 Gate 60 — Bear-Run Sleeve (Sep 15 — momentum SHORTs bypass the BTC macro gates while the 24h bear monitor is ON)</h3>
+                    <p class="text-xs text-gray-500 mb-1" id="bearrun-monitor-line">Monitor: —</p>
+                    <p class="text-xs text-gray-500 mb-3">A fill is a sleeve fill ONLY if a BTC macro gate was actually bypassed (else it is a plain momentum short). Pair-level gates, the BTC ADX ≥18 floor and the ADX ≤40 ceiling still apply; exits = the live momentum-short stack. Ships as a 1× PROBE (lev ×0.05). 🔒 ARM BAR: first 3 live windows ≥2 net-positive ∧ Σ&gt;0 → lev ×1.0 (manual). 🔒 KILL BAR once armed: first 10 fills WR≤45% ∨ Σ&lt;0, or 2 consecutive net-negative windows → toggle OFF (manual). Study: reports/BEAR_SLEEVE_STUDY_2026-09-15.md.</p>
+                    <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
+                        <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Dates</th><th class="px-2 py-1 text-left">Gate verdict</th>
+                    </tr></thead><tbody id="bearrun-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
 
                 <!-- Trailing Confirmation Performance (May 9, 2026) -->
@@ -5257,6 +5276,37 @@
                         </div>
                     </div>
                     <!-- ===== BULL-RUN SLEEVE BOX END ===== -->
+                    <!-- ===== 🐻 BEAR-RUN SLEEVE BOX (Sep 15 · gate 60) ===== -->
+                    <div class="border border-rose-500/25 rounded-xl p-4 bg-rose-500/[0.03] mt-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <label class="text-sm font-semibold text-rose-300">🐻 Bear-Run Sleeve — gate 60 (momentum SHORTs bypass the BTC macro gates while the 24h bear monitor is ON)</label>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-be-enabled" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-checked:bg-rose-500/50 rounded-full relative transition-colors">
+                                    <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
+                                </div>
+                                <span class="ml-2 text-xs text-gray-400">Sleeve enabled (kill switch)</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-3">Monitor ON = BTC 24h composite (24h return ≤ −r24 ∧ % of 5m bars below EMA20 ≥ below ∧ 24h trend efficiency ≥ eff; Schmitt ON/stay band) minus squeeze latch (6h return ≥ +latch ∨ BTC above its 1h EMA50 → instant OFF). While ON, a momentum SHORT that a listed BTC gate would refuse passes through instead (tag BEARRUN_SHORT); pair-level gates, the BTC ADX ≥18 floor and ≤40 ceiling still apply; exits = the live momentum-short stack. Own gates: BTC ≤ X% above its 24h low, blacklist, per-pair spacing. Sizing: Inv × Lev multipliers (0.05 × 20× base = 1× PROBE). 🔒 ARM BAR: first 3 windows ≥2 positive ∧ Σ&gt;0 → Lev 1.0. 🔒 KILL BAR (armed): first 10 fills WR≤45% ∨ Σ&lt;0, or 2 consecutive negative windows → toggle OFF. Evidence: config.py bearrun_* block · reports/BEAR_SLEEVE_STUDY_2026-09-15.md.</p>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div title="Turn-ON: BTC 24h return at or below MINUS this % (study: 4; the 3 neighbour agrees). Positive number."><label class="block text-xs text-gray-400 mb-1">ON: r24 ≤ −%</label><input type="number" step="0.5" id="config-be-r24-on" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="4"></div>
+                            <div title="Stay-ON band: once ON, stays while the 24h return is at or below MINUS this %."><label class="block text-xs text-gray-400 mb-1">stay: r24 ≤ −%</label><input type="number" step="0.5" id="config-be-r24-off" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3"></div>
+                            <div title="Turn-ON: share of the last 24h 5m bars that closed below EMA20 (study: 50; 56/62 cut windows without adding edge)."><label class="block text-xs text-gray-400 mb-1">ON: below-EMA20 ≥ %</label><input type="number" step="1" id="config-be-below-on" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="50"></div>
+                            <div title="Stay-ON floor for the below-EMA20 share."><label class="block text-xs text-gray-400 mb-1">stay: below ≥ %</label><input type="number" step="1" id="config-be-below-off" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="47"></div>
+                            <div title="Turn-ON: 24h trend efficiency |net move| ÷ Σ|bar moves| (study: 0.15 = the discriminating leg; 0.10 → signal ≈ random; 0.20 → 3 windows a year)."><label class="block text-xs text-gray-400 mb-1">ON: eff24 ≥</label><input type="number" step="0.01" id="config-be-eff-on" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.15"></div>
+                            <div title="Stay-ON floor for efficiency."><label class="block text-xs text-gray-400 mb-1">stay: eff24 ≥</label><input type="number" step="0.01" id="config-be-eff-off" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.15"></div>
+                            <div title="Squeeze latch: BTC 6h return at or above +this % → instant OFF and no turn-ON (0 = off). Positive number."><label class="block text-xs text-gray-400 mb-1">latch: r6h ≥ +%</label><input type="number" step="0.5" id="config-be-latch-r6h" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3"></div>
+                            <div title="Squeeze latch leg 2: BTC price above its 1h EMA50 → instant OFF."><label class="block text-xs text-gray-400 mb-1">latch: BTC &gt; 1h EMA50</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-be-latch-ema50" class="sr-only peer" checked><div class="w-9 h-5 bg-white/10 peer-checked:bg-rose-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div><span class="ml-2 text-xs text-gray-400">on</span></label></div>
+                            <div title="Bounce-phase gate (mirror of the bull-run off-24h-high gate): no bypass while BTC is more than this % ABOVE its 24h low (0 = off). Study: 2.0 ships (operator); 1.0 = −10% fills, −9% stops, same money — the 1–2% band is logged as BEARRUN_REFUSED_OFF24LO for the review."><label class="block text-xs text-gray-400 mb-1">BTC off 24h-low gate (≤ +%)</label><input type="number" step="0.1" min="0" max="10" id="config-be-off24lo-max" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="2.0"></div>
+                            <div title="Per-pair spacing between sleeve fills, hours (DB-backed, restart-proof)."><label class="block text-xs text-gray-400 mb-1">Pair spacing (h)</label><input type="number" step="0.5" id="config-be-spacing-hours" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="2.0"></div>
+                            <div title="Investment multiplier (absolute-assign: a sleeve fill is never re-multiplied by pattern/C1 cells)."><label class="block text-xs text-gray-400 mb-1">Inv mult</label><input type="number" step="0.1" id="config-be-invest-mult" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0"></div>
+                            <div title="Leverage multiplier: 0.05 × 20× base = 1× effective PROBE (ship). Set 1.0 to ARM after the arm bar (first 3 windows ≥2 positive ∧ Σ>0)."><label class="block text-xs text-gray-400 mb-1">Lev mult (0.05 = 1× probe · 1.0 = armed)</label><input type="number" step="0.05" min="0.05" max="2" id="config-be-lev-mult" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.05"></div>
+                            <div class="md:col-span-2" title="The BTC macro gates the sleeve passes through while ON (comma list). Edit to shrink; blank = sleeve inert. Never add BTC_ADX_GATE_LOW/HIGH — the study kept the ADX 18 floor (its refused trades lost on Sep-15)."><label class="block text-xs text-gray-400 mb-1">Bypassed BTC gates</label><input type="text" id="config-be-bypass-gates" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="BTC_ADX_BLOCK_SHORT,BTC_RSI_ADX_CROSS,BTC_1H_5M_RSI_DIR_GATE,BTC_SLOPE_GATE,BTC_1H_RSI_MIN_GATE"></div>
+                            <div class="md:col-span-2" title="Pairs that never ride the sleeve (comma list). BTC = the leader the monitor reads (bull-run lesson: 0/4); ETH its twin; the scan universe is already coin-only."><label class="block text-xs text-gray-400 mb-1">Sleeve blacklist</label><input type="text" id="config-be-blacklist" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="BTCUSDT,ETHUSDT"></div>
+                        </div>
+                    </div>
+                    <!-- ===== BEAR-RUN SLEEVE BOX END ===== -->
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Regime Change Exit</label>
@@ -8566,7 +8616,7 @@
             const strat = o.entry_strategy || '';
             const fg = src.match(/\+((FGP_(QS|RSI|TG)))/);
             if (fg) tags.push(fg[1]);
-            if (strat.startsWith('SPIKE') || strat.startsWith('FLIP:') || strat === 'BULL_LONG' || strat === 'BOUNCE_LONG' || strat === 'BULLRUN_LONG') return tags;  // Aug 21: sleeve fills take no door/band badges (gate-51 table is strategy-scoped already)
+            if (strat.startsWith('SPIKE') || strat.startsWith('FLIP:') || strat === 'BULL_LONG' || strat === 'BOUNCE_LONG' || strat === 'BULLRUN_LONG' || strat === 'BEARRUN_SHORT') return tags;  // Aug 21: sleeve fills take no door/band badges (gate-51 table is strategy-scoped already)
             if (src === 'NONEXP_CALM3D') tags.push('CALM3D');
             else if (src.endsWith('_PROBE')) tags.push(src.replace('_PROBE', ''));
             else if (src === 'UNMATCHED') {
@@ -8845,6 +8895,38 @@
                         _offChip.title = `BTC is ${_off.toFixed(2)}% below its 24h high` + (_gateAbs == null ? ' (gate off)' : (_gated ? ` — at/under the ${_gateAbs}% gate: sleeve refusing new entries (dips kept alive, re-checked every scan)` : ` — inside the ${_gateAbs}% gate: the next dip-reclaim fires`));
                     } else {
                         _offChip.textContent = '24h-high --';
+                    }
+                }
+
+                // 🐻 Sep 15 gate 60: Bear-Run Monitor chip + BTC off-24h-low chip (mirror of the bull-run pair)
+                const _beChip = document.getElementById('bearrun-chip');
+                if (_beChip) {
+                    const _be = data.bearrun;
+                    if (_be && _be.state) {
+                        const _bv = `r24 ${_be.r24 != null ? _be.r24 : '—'}% · below ${_be.below24 != null ? _be.below24 : '—'}% · eff24 ${_be.eff24 != null ? _be.eff24 : '—'} · r6h ${_be.r6 != null ? _be.r6 : '—'}% · off-24h-low ${_be.off24lo != null ? _be.off24lo + '%' : '—'}${_be.latch ? ' · SQUEEZE LATCH' : ''}${_be.enabled ? (_be.lev_mult != null && _be.lev_mult < 1 ? ` · sleeve 1× probe (lev ×${_be.lev_mult})` : ' · sleeve ARMED') : ' · sleeve OFF'}`;
+                        _beChip.title = `🐻 Bear-Run Monitor (gate 60): ${_bv} | RAW state=${_be.state} on_since=${_be.on_since ?? 'null'}`;
+                        if (_be.state === 'ON') {
+                            _beChip.textContent = `🐻 ${_be.on_since ? _brFmt(_be.on_since) : 'ON'}`;
+                            _beChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 uppercase tracking-wide';
+                        } else {
+                            _beChip.textContent = `🐻 off${_be.enabled ? '' : ' (sleeve OFF)'}`;
+                            _beChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide';
+                        }
+                    } else {
+                        _beChip.textContent = '🐻 --';
+                    }
+                }
+                const _loChip = document.getElementById('btc-off24lo-chip');
+                if (_loChip) {
+                    const _lo = data.bearrun ? data.bearrun.off24lo : null;
+                    const _loGate = data.bearrun ? data.bearrun.off24lo_max : null;
+                    if (_lo != null) {
+                        const _loGated = (_loGate != null && _loGate > 0 && _lo > _loGate);
+                        _loChip.textContent = `24h-low +${_lo.toFixed(2)}%`;
+                        _loChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ' + (!(_loGate > 0) ? 'bg-gray-500/20 text-gray-400' : (_loGated ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'));
+                        _loChip.title = `BTC is ${_lo.toFixed(2)}% above its 24h low` + (!(_loGate > 0) ? ' (gate off)' : (_loGated ? ` — above the ${_loGate}% gate: bear sleeve refusing bypasses (bounce phase)` : ` — inside the ${_loGate}% gate: bypasses granted while the monitor is ON`));
+                    } else {
+                        _loChip.textContent = '24h-low --';
                     }
                 }
 
@@ -10533,6 +10615,31 @@
                 lines.push('  KILL BAR (manual): first 10 fills WR<=45% OR net<0 => sleeve toggle OFF (gate 57)');
             }
 
+            if (perf.bearrun_periods && perf.bearrun_periods.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## \u{1F43B} Bear-Run Windows — episode ledger (persisted)\n');
+                lines.push(`${'Start (UTC)'.padEnd(17)} ${'End (UTC)'.padEnd(17)} ${'Dur'.padStart(6)} ${'r24/blw/eff@s'.padStart(16)} ${'@end'.padStart(16)} ${'r24min'.padStart(7)} ${'effpk'.padStart(6)} ${'r6max'.padStart(6)} ${'24lomx'.padStart(6)} ${'BTC%'.padStart(7)} ${'Bear%'.padStart(5)} ${'Fills'.padStart(5)} ${'WR%'.padStart(5)} ${'avg%'.padStart(7)} ${'Net$'.padStart(9)} ${'Byp/ref'.padStart(10)}  Ended by`);
+                const _fb = (v, d = 1) => (v == null ? '-' : Number(v).toFixed(d));
+                for (const r of perf.bearrun_periods) {
+                    const dur = r.dur_min == null ? '-' : (r.dur_min >= 60 ? `${Math.floor(r.dur_min / 60)}h${String(r.dur_min % 60).padStart(2, '0')}` : `${r.dur_min}m`);
+                    lines.push(`${(r.start || '').slice(0, 16).replace('T', ' ').padEnd(17)} ${(r.end ? r.end.slice(0, 16).replace('T', ' ') : 'open').padEnd(17)} ${dur.padStart(6)} ${`${_fb(r.r24_s)}/${_fb(r.below_s, 0)}/${_fb(r.eff_s, 3)}`.padStart(16)} ${`${_fb(r.r24_e)}/${_fb(r.below_e, 0)}/${_fb(r.eff_e, 3)}`.padStart(16)} ${_fb(r.r24_min, 2).padStart(7)} ${_fb(r.eff_peak, 3).padStart(6)} ${_fb(r.r6_max, 2).padStart(6)} ${_fb(r.off24lo_max, 2).padStart(6)} ${(r.btc_pct == null ? '-' : (r.btc_pct >= 0 ? '+' : '') + r.btc_pct.toFixed(2)).padStart(7)} ${_fb(r.bear_s, 0).padStart(5)} ${String(r.fills).padStart(5)} ${_fb(r.wr, 0).padStart(5)} ${(r.avg_pct == null ? '-' : (r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3)).padStart(7)} ${('$' + _fb(r.net, 0)).padStart(9)} ${`${r.bypasses}/${r.blk_24lo}/${r.blk_bl}/${r.blk_sp}`.padStart(10)}  ${r.ended_by || ''}`);
+                }
+            }
+
+            if ((perf.bearrun_rows && perf.bearrun_rows.length > 0) || perf.bearrun_monitor) {
+                lines.push(`\n${hr2}`);
+                lines.push('## \u{1F43B} Gate 60 — Bear-Run Sleeve (BTC-gate bypass while the 24h bear monitor is ON — Sep 15)\n');
+                const _bem = perf.bearrun_monitor;
+                if (_bem) lines.push(`  Monitor: ${_bem.state}${_bem.on_since ? ` since ${_bem.on_since}` : ''}  r24=${_bem.r24 != null ? _bem.r24 : '-'}%  below-EMA20=${_bem.below24 != null ? _bem.below24 : '-'}%  eff24=${_bem.eff24 != null ? _bem.eff24 : '-'}  r6h=${_bem.r6 != null ? _bem.r6 : '-'}%  off-24h-low=${_bem.off24lo != null ? _bem.off24lo : '-'}%  latch=${_bem.latch ? 'SQUEEZE' : 'clear'}  sleeve=${_bem.enabled ? (_bem.lev_mult < 1 ? `1x PROBE (lev x${_bem.lev_mult})` : 'ARMED') : 'OFF'}  bypassed-gates=${_bem.bypass_gates || 'none'}  this-window: ${_bem.bypasses ?? 0} bypasses / refused ${_bem.blk_off24lo ?? 0} off24lo · ${_bem.blk_blacklist ?? 0} blacklist · ${_bem.blk_spacing ?? 0} spacing`);
+                if (perf.bearrun_rows && perf.bearrun_rows.length > 0) {
+                    lines.push(`${'Cohort'.padEnd(46)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Dates'.padStart(6)}  Gate verdict`);
+                    for (const r of perf.bearrun_rows) {
+                        lines.push(`${(r.row||'').padEnd(46)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
+                    }
+                }
+                lines.push('  ARM BAR (1x probe): first 3 windows >=2 net-positive AND sum>0 => lev x1.0 (manual) · KILL BAR (armed): first 10 fills WR<=45% OR net<0, or 2 consecutive net-negative windows => toggle OFF (gate 60)');
+            }
+
             if (perf.spike_fires && perf.spike_fires.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## 🚀 Spike Fires (per-fire — CHASE + FADE, both eras; Jul 27 full ship)\n');
@@ -11116,6 +11223,7 @@
             {
                 const _bt = cfg?.thresholds || {};
                 lines.push(`  🌊 Bull-Run Sleeve (gate 57): ${_bt.bullrun_sleeve_enabled !== false ? `ON — GREEN(r72≥${_bt.bullrun_green_r72_on ?? 5}/${_bt.bullrun_green_r72_off ?? 4} ∧ above≥${_bt.bullrun_green_above_on ?? 56}/${_bt.bullrun_green_above_off ?? 53} ∧ eff≥${_bt.bullrun_green_eff_on ?? 0.10}/${_bt.bullrun_green_eff_off ?? 0.10}) latch ${_bt.bullrun_latch_r6h ?? -3}%/1hEMA50 · top-${_bt.bullrun_universe_size ?? 10} COIN · dip ${_bt.bullrun_dip_atr_mult ?? 0.3}×ATR · ${_bt.bullrun_max_slots ?? 4} slots · Inv ${_bt.bullrun_invest_mult ?? 1}x/Lev ${_bt.bullrun_lev_mult ?? 1}x · SL ${_bt.bullrun_base_sl_pct ?? -0.7}/ATR · BE ${_bt.bullrun_be_arm_pct ?? 1.0}→${_bt.bullrun_be_lock_pct ?? 0.2} · trail ${_bt.bullrun_trail_atr_mult ?? 2.0}×ATR · BTC off-24h gate ${(_bt.bullrun_btc_off24h_max ?? 0) < 0 ? `≤${_bt.bullrun_btc_off24h_max}%` : 'OFF'} · ladder ${(_bt.bullrun_ladder || '').trim() ? _bt.bullrun_ladder : 'OFF'} · blacklist ${(_bt.bullrun_pair_blacklist || '').trim() || 'none'} · BTC≥EMA13 ${_bt.bullrun_btc_ema13_required !== false ? 'ON' : 'off'} · 1h-slope>${(_bt.bullrun_btc_1h_slope_min === null || _bt.bullrun_btc_1h_slope_min === undefined) ? 'off' : _bt.bullrun_btc_1h_slope_min} · RE-ARM ${_bt.bullrun_rearm_enabled !== false ? `ON(ADX≥${_bt.bullrun_rearm_adx_min ?? 30}↑/stay ${_bt.bullrun_rearm_adx_off ?? 30}, alts r6h>${_bt.bullrun_rearm_alt_r6h_min ?? 1}% & ≥${_bt.bullrun_rearm_alt_above_pct ?? 80}% >1hEMA50, ≤${_bt.bullrun_rearm_max_hours ?? 24}h, only ≤${_bt.bullrun_rearm_after_green_hours ?? 48}h after GREEN)` : 'off'}` : 'OFF'}`);
+                lines.push(`  🐻 Bear-Run Sleeve (gate 60): ${_bt.bearrun_sleeve_enabled !== false ? `ON — ${(_bt.bearrun_lev_mult ?? 0.05) < 1 ? `1× PROBE (lev ×${_bt.bearrun_lev_mult ?? 0.05})` : 'ARMED'} · monitor 24h (r24≤−${_bt.bearrun_r24_on ?? 4}/${_bt.bearrun_r24_off ?? 3} ∧ below-EMA20≥${_bt.bearrun_below_on ?? 50}/${_bt.bearrun_below_off ?? 47} ∧ eff24≥${_bt.bearrun_eff_on ?? 0.15}/${_bt.bearrun_eff_off ?? 0.15}) squeeze latch r6h≥+${_bt.bearrun_latch_r6h ?? 3}%${_bt.bearrun_latch_ema50 !== false ? '/1hEMA50' : ''} · BTC off-24h-low gate ${(_bt.bearrun_btc_off24lo_max ?? 0) > 0 ? `≤+${_bt.bearrun_btc_off24lo_max}%` : 'OFF'} · bypass ${(_bt.bearrun_bypass_gates || '').trim() || 'none'} · blacklist ${(_bt.bearrun_pair_blacklist || '').trim() || 'none'} · spacing ${_bt.bearrun_pair_spacing_hours ?? 2}h · Inv ${_bt.bearrun_invest_mult ?? 1}x · exits = momentum-short stack` : 'OFF'}`);
             }
 
             if (changelog.length > 0) {
@@ -12899,6 +13007,31 @@
                 lines.push('  KILL BAR (manual): first 10 fills WR<=45% OR net<0 => sleeve toggle OFF (gate 57)');
             }
 
+            if (perf.bearrun_periods && perf.bearrun_periods.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## \u{1F43B} Bear-Run Windows — episode ledger (persisted)\n');
+                lines.push(`${'Start (UTC)'.padEnd(17)} ${'End (UTC)'.padEnd(17)} ${'Dur'.padStart(6)} ${'r24/blw/eff@s'.padStart(16)} ${'@end'.padStart(16)} ${'r24min'.padStart(7)} ${'effpk'.padStart(6)} ${'r6max'.padStart(6)} ${'24lomx'.padStart(6)} ${'BTC%'.padStart(7)} ${'Bear%'.padStart(5)} ${'Fills'.padStart(5)} ${'WR%'.padStart(5)} ${'avg%'.padStart(7)} ${'Net$'.padStart(9)} ${'Byp/ref'.padStart(10)}  Ended by`);
+                const _fb = (v, d = 1) => (v == null ? '-' : Number(v).toFixed(d));
+                for (const r of perf.bearrun_periods) {
+                    const dur = r.dur_min == null ? '-' : (r.dur_min >= 60 ? `${Math.floor(r.dur_min / 60)}h${String(r.dur_min % 60).padStart(2, '0')}` : `${r.dur_min}m`);
+                    lines.push(`${(r.start || '').slice(0, 16).replace('T', ' ').padEnd(17)} ${(r.end ? r.end.slice(0, 16).replace('T', ' ') : 'open').padEnd(17)} ${dur.padStart(6)} ${`${_fb(r.r24_s)}/${_fb(r.below_s, 0)}/${_fb(r.eff_s, 3)}`.padStart(16)} ${`${_fb(r.r24_e)}/${_fb(r.below_e, 0)}/${_fb(r.eff_e, 3)}`.padStart(16)} ${_fb(r.r24_min, 2).padStart(7)} ${_fb(r.eff_peak, 3).padStart(6)} ${_fb(r.r6_max, 2).padStart(6)} ${_fb(r.off24lo_max, 2).padStart(6)} ${(r.btc_pct == null ? '-' : (r.btc_pct >= 0 ? '+' : '') + r.btc_pct.toFixed(2)).padStart(7)} ${_fb(r.bear_s, 0).padStart(5)} ${String(r.fills).padStart(5)} ${_fb(r.wr, 0).padStart(5)} ${(r.avg_pct == null ? '-' : (r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3)).padStart(7)} ${('$' + _fb(r.net, 0)).padStart(9)} ${`${r.bypasses}/${r.blk_24lo}/${r.blk_bl}/${r.blk_sp}`.padStart(10)}  ${r.ended_by || ''}`);
+                }
+            }
+
+            if ((perf.bearrun_rows && perf.bearrun_rows.length > 0) || perf.bearrun_monitor) {
+                lines.push(`\n${hr2}`);
+                lines.push('## \u{1F43B} Gate 60 — Bear-Run Sleeve (BTC-gate bypass while the 24h bear monitor is ON — Sep 15)\n');
+                const _bem = perf.bearrun_monitor;
+                if (_bem) lines.push(`  Monitor: ${_bem.state}${_bem.on_since ? ` since ${_bem.on_since}` : ''}  r24=${_bem.r24 != null ? _bem.r24 : '-'}%  below-EMA20=${_bem.below24 != null ? _bem.below24 : '-'}%  eff24=${_bem.eff24 != null ? _bem.eff24 : '-'}  r6h=${_bem.r6 != null ? _bem.r6 : '-'}%  off-24h-low=${_bem.off24lo != null ? _bem.off24lo : '-'}%  latch=${_bem.latch ? 'SQUEEZE' : 'clear'}  sleeve=${_bem.enabled ? (_bem.lev_mult < 1 ? `1x PROBE (lev x${_bem.lev_mult})` : 'ARMED') : 'OFF'}  bypassed-gates=${_bem.bypass_gates || 'none'}  this-window: ${_bem.bypasses ?? 0} bypasses / refused ${_bem.blk_off24lo ?? 0} off24lo · ${_bem.blk_blacklist ?? 0} blacklist · ${_bem.blk_spacing ?? 0} spacing`);
+                if (perf.bearrun_rows && perf.bearrun_rows.length > 0) {
+                    lines.push(`${'Cohort'.padEnd(46)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Dates'.padStart(6)}  Gate verdict`);
+                    for (const r of perf.bearrun_rows) {
+                        lines.push(`${(r.row||'').padEnd(46)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.dates).padStart(6)}  ${r.gate||''}`);
+                    }
+                }
+                lines.push('  ARM BAR (1x probe): first 3 windows >=2 net-positive AND sum>0 => lev x1.0 (manual) · KILL BAR (armed): first 10 fills WR<=45% OR net<0, or 2 consecutive net-negative windows => toggle OFF (gate 60)');
+            }
+
             if (perf.spike_fires && perf.spike_fires.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## 🚀 Spike Fires (per-fire — CHASE + FADE, both eras; Jul 27 full ship)\n');
@@ -13525,7 +13658,7 @@
                 if (sleeveBody) {
                     const sp = data.sleeve_performance;
                     if (sp && sp.length > 0) {
-                        const slColors = { 'Mom-Long': 'text-emerald-400', 'Mom-Short': 'text-red-400', 'Flip-Short': 'text-purple-400', 'Flip-Long': 'text-orange-400', 'Total': 'text-gray-200' };
+                        const slColors = { 'Mom-Long': 'text-emerald-400', 'Mom-Short': 'text-red-400', 'Flip-Short': 'text-purple-400', 'Flip-Long': 'text-orange-400', 'BullRun-Long': 'text-cyan-400', 'BearRun-Short': 'text-rose-400', 'Total': 'text-gray-200' };
                         sleeveBody.innerHTML = sp.map(s => {
                             const isTot = s.sleeve === 'Total';
                             const netCls = s.net_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -18669,6 +18802,64 @@
                         }).join('');
                     } else { brBody.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No sleeve fills yet</td></tr>'; }
                 }
+                // 🐻 Sep 15 gate 60 — Bear-Run windows ledger
+                const bePer = document.getElementById('bearrun-periods-body');
+                if (bePer) {
+                    const _pf = (v, d = 1) => (v == null ? '—' : Number(v).toFixed(d));
+                    const _pt = (t) => (t ? new Date(String(t).endsWith('Z') ? t : t + 'Z').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' }) : 'open');
+                    if (data.bearrun_periods && data.bearrun_periods.length > 0) {
+                        bePer.innerHTML = data.bearrun_periods.map(r => {
+                            const nc = (r.net || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const dur = r.dur_min == null ? '—' : (r.dur_min >= 60 ? `${Math.floor(r.dur_min / 60)}h${String(r.dur_min % 60).padStart(2, '0')}` : `${r.dur_min}m`);
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 text-gray-300">${_pt(r.start)}</td>
+                                <td class="px-2 py-1.5 text-gray-300">${r.end ? _pt(r.end) : '<span class="text-rose-400">open</span>'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${dur}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400 font-mono">${_pf(r.r24_s)} / ${_pf(r.below_s, 0)} / ${_pf(r.eff_s, 3)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400 font-mono">${_pf(r.r24_e)} / ${_pf(r.below_e, 0)} / ${_pf(r.eff_e, 3)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${_pf(r.r24_min, 2)}%</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${_pf(r.eff_peak, 3)}</td>
+                                <td class="px-2 py-1.5 text-right ${(r.r6_max != null && r.r6_max >= 2) ? 'text-amber-400' : 'text-gray-400'}">${_pf(r.r6_max, 2)}%</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${_pf(r.off24lo_max, 2)}%</td>
+                                <td class="px-2 py-1.5 text-right ${(r.btc_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${r.btc_pct == null ? '—' : ((r.btc_pct >= 0 ? '+' : '') + r.btc_pct.toFixed(2) + '%')}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${_pf(r.bear_s, 0)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.fills}${r.open_fills ? ` (${r.open_fills})` : ''}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${_pf(r.wr, 0)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.avg_pct == null ? '—' : ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3))}</td>
+                                <td class="px-2 py-1.5 text-right ${nc} font-bold">$${_pf(r.net, 2)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400"><span title="BTC-gate bypasses granted">${r.bypasses}</span> / <span title="refused: BTC above the off-24h-low gate">${r.blk_24lo}</span>/<span title="refused: pair blacklisted">${r.blk_bl}</span>/<span title="refused: pair spacing">${r.blk_sp}</span></td>
+                                <td class="px-2 py-1.5 text-gray-400">${r.ended_by || ''}</td>
+                            </tr>`;
+                        }).join('');
+                    } else { bePer.innerHTML = '<tr><td colspan="17" class="px-3 py-3 text-center text-gray-500">No bear windows recorded yet (ledger starts at the first monitor ON after deploy)</td></tr>'; }
+                }
+                // 🐻 Gate 60 — Bear-Run Sleeve table + monitor line
+                const beBody = document.getElementById('bearrun-body');
+                if (beBody) {
+                    const beMonLine = document.getElementById('bearrun-monitor-line');
+                    if (beMonLine && data.bearrun_monitor) {
+                        const _bm = data.bearrun_monitor;
+                        const _stCls = _bm.state === 'ON' ? 'text-rose-400 font-bold' : 'text-gray-500';
+                        const _bmFmt = (t) => (t ? formatTime(String(t).replace(' ', 'T') + ':00') : '');
+                        beMonLine.innerHTML = `Monitor: <span class="${_stCls}">${_bm.state}</span>${_bm.on_since ? ` since ${_bmFmt(_bm.on_since)}` : ''} · r24 ${_bm.r24 != null ? _bm.r24 : '—'}% · below-EMA20 ${_bm.below24 != null ? _bm.below24 : '—'}% · eff24 ${_bm.eff24 != null ? _bm.eff24 : '—'} · r6h ${_bm.r6 != null ? _bm.r6 : '—'}% · off-24h-low ${_bm.off24lo != null ? _bm.off24lo + '%' : '—'} · latch ${_bm.latch ? '<span class="text-red-400">SQUEEZE</span>' : 'clear'} · sleeve ${_bm.enabled ? (_bm.lev_mult < 1 ? `<span class="text-amber-300">1× PROBE (lev ×${_bm.lev_mult})</span>` : '<span class="text-rose-300">ARMED</span>') : '<span class="text-red-400">OFF</span>'} · bypassed gates: ${_bm.bypass_gates || 'none'} · this window: ${_bm.bypasses ?? 0} bypasses / refused ${_bm.blk_off24lo ?? 0} off-24h-low · ${_bm.blk_blacklist ?? 0} blacklist · ${_bm.blk_spacing ?? 0} spacing${(_bm.flips && _bm.flips.length) ? ' · flips: ' + _bm.flips.map(f => `${_bmFmt(f.ts)} ${f.state}`).join(' → ') : ''}`;
+                    }
+                    if (data.bearrun_rows && data.bearrun_rows.length > 0) {
+                        beBody.innerHTML = data.bearrun_rows.map(r => {
+                            const tc = (r.total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const gc = (r.gate || '').startsWith('🔴') ? 'text-red-400 font-semibold' : ((r.gate || '').startsWith('🟢') ? 'text-emerald-400 font-semibold' : 'text-gray-400');
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 text-rose-300 font-medium">${r.row}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.n}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.wr != null ? r.wr.toFixed(1) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc}">${r.avg_pct != null ? ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc} font-bold">$${(r.total_usd || 0).toFixed(2)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.avg_peak != null ? ((r.avg_peak >= 0 ? '+' : '') + r.avg_peak.toFixed(2)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.dates}</td>
+                                <td class="px-2 py-1.5 ${gc}">${r.gate || ''}</td>
+                            </tr>`;
+                        }).join('');
+                    } else { beBody.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No sleeve fills yet</td></tr>'; }
+                }
                 // 🚀 Spike Fires per-fire table (Jul 27 full ship)
                 const spfBody = document.getElementById('spike-fires-body');
                 if (spfBody) {
@@ -19423,11 +19614,12 @@
                     // Strategy / sleeve badge (matches the Filter by Flip Source names)
                     const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');
                     const _stratRaw = _isFlipStrat ? (o.entry_strategy || '').slice(5) : ((o.entry_strategy || 'MOMENTUM'));
-                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? 'BULLRUN' : _stratRaw;
+                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? 'BULLRUN' : _stratRaw === 'BEARRUN_SHORT' ? 'BEARRUN' : _stratRaw;
                     const _stratColor = _isFlipStrat ? 'bg-sky-500/20 text-sky-300'
                         : _stratRaw === 'BULL_LONG' ? 'bg-emerald-500/20 text-emerald-300'
                         : _stratRaw === 'BOUNCE_LONG' ? 'bg-amber-500/20 text-amber-300'
                         : _stratRaw === 'BULLRUN_LONG' ? 'bg-cyan-500/20 text-cyan-300'
+                        : _stratRaw === 'BEARRUN_SHORT' ? 'bg-rose-500/20 text-rose-300'
                         : 'bg-gray-500/20 text-gray-400';
                     return `
                         <tr class="hover:bg-white/5 transition">
@@ -19544,11 +19736,12 @@
                     // Strategy / sleeve badge (matches the Filter by Flip Source names)
                     const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');
                     const _stratRaw = _isFlipStrat ? (o.entry_strategy || '').slice(5) : ((o.entry_strategy || 'MOMENTUM'));
-                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? 'BULLRUN' : _stratRaw;
+                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? 'BULLRUN' : _stratRaw === 'BEARRUN_SHORT' ? 'BEARRUN' : _stratRaw;
                     const _stratColor = _isFlipStrat ? 'bg-sky-500/20 text-sky-300'
                         : _stratRaw === 'BULL_LONG' ? 'bg-emerald-500/20 text-emerald-300'
                         : _stratRaw === 'BOUNCE_LONG' ? 'bg-amber-500/20 text-amber-300'
                         : _stratRaw === 'BULLRUN_LONG' ? 'bg-cyan-500/20 text-cyan-300'
+                        : _stratRaw === 'BEARRUN_SHORT' ? 'bg-rose-500/20 text-rose-300'
                         : 'bg-gray-500/20 text-gray-400';
                     return `
                         <tr class="hover:bg-white/5 transition">
@@ -21017,6 +21210,22 @@
                     const _e = document.getElementById(_id);
                     if (_e) _e.value = config.thresholds[_key] !== undefined ? config.thresholds[_key] : _def;
                 }
+                // 🐻 Sep 15 gate 60: Bear-Run Sleeve box
+                { const _e = document.getElementById('config-be-enabled'); if (_e) _e.checked = config.thresholds.bearrun_sleeve_enabled !== false; }
+                { const _e = document.getElementById('config-be-latch-ema50'); if (_e) _e.checked = config.thresholds.bearrun_latch_ema50 !== false; }
+                { const _e = document.getElementById('config-be-bypass-gates'); if (_e) _e.value = String(config.thresholds.bearrun_bypass_gates ?? 'BTC_ADX_BLOCK_SHORT,BTC_RSI_ADX_CROSS,BTC_1H_5M_RSI_DIR_GATE,BTC_SLOPE_GATE,BTC_1H_RSI_MIN_GATE'); }
+                { const _e = document.getElementById('config-be-blacklist'); if (_e) _e.value = String(config.thresholds.bearrun_pair_blacklist ?? ''); }
+                for (const [_id, _key, _def] of [
+                    ['config-be-r24-on', 'bearrun_r24_on', 4.0], ['config-be-r24-off', 'bearrun_r24_off', 3.0],
+                    ['config-be-below-on', 'bearrun_below_on', 50.0], ['config-be-below-off', 'bearrun_below_off', 47.0],
+                    ['config-be-eff-on', 'bearrun_eff_on', 0.15], ['config-be-eff-off', 'bearrun_eff_off', 0.15],
+                    ['config-be-latch-r6h', 'bearrun_latch_r6h', 3.0], ['config-be-off24lo-max', 'bearrun_btc_off24lo_max', 2.0],
+                    ['config-be-spacing-hours', 'bearrun_pair_spacing_hours', 2.0], ['config-be-invest-mult', 'bearrun_invest_mult', 1.0],
+                    ['config-be-lev-mult', 'bearrun_lev_mult', 0.05],
+                ]) {
+                    const _e = document.getElementById(_id);
+                    if (_e) _e.value = (config.thresholds[_key] !== undefined && config.thresholds[_key] !== null) ? config.thresholds[_key] : _def;
+                }
                 const _slAtrFloorInput = document.getElementById('config-sl-atr-widen-floor-pct');
                 if (_slAtrFloorInput) {
                     _slAtrFloorInput.value = config.thresholds.sl_atr_widen_floor_pct !== undefined ? config.thresholds.sl_atr_widen_floor_pct : -1.20;
@@ -22406,6 +22615,22 @@
                     bullrun_btc_off24h_max: safeFloat(document.getElementById('config-br-off24h-max')?.value || -2.0),
                     bullrun_ladder: String(document.getElementById('config-br-ladder')?.value ?? '').trim(),  // blank = ladder OFF (deliberate)
                     bullrun_pair_blacklist: String(document.getElementById('config-br-blacklist')?.value ?? '').trim().toUpperCase(),  // blank = none
+                    // 🐻 Sep 15 gate 60: Bear-Run Sleeve — blank numeric fields fall back to the shipped default (never silently zero a gate)
+                    bearrun_sleeve_enabled: document.getElementById('config-be-enabled')?.checked ?? true,
+                    bearrun_latch_ema50: document.getElementById('config-be-latch-ema50')?.checked ?? true,
+                    bearrun_r24_on: safeFloat(document.getElementById('config-be-r24-on')?.value || 4.0),
+                    bearrun_r24_off: safeFloat(document.getElementById('config-be-r24-off')?.value || 3.0),
+                    bearrun_below_on: safeFloat(document.getElementById('config-be-below-on')?.value || 50.0),
+                    bearrun_below_off: safeFloat(document.getElementById('config-be-below-off')?.value || 47.0),
+                    bearrun_eff_on: safeFloat(document.getElementById('config-be-eff-on')?.value || 0.15),
+                    bearrun_eff_off: safeFloat(document.getElementById('config-be-eff-off')?.value || 0.15),
+                    bearrun_latch_r6h: (function(){ const v = String(document.getElementById('config-be-latch-r6h')?.value ?? '').trim(); return v === '' ? 3.0 : safeFloat(v); })(),  // explicit 0 = latch leg off
+                    bearrun_btc_off24lo_max: (function(){ const v = String(document.getElementById('config-be-off24lo-max')?.value ?? '').trim(); return v === '' ? 2.0 : safeFloat(v); })(),  // explicit 0 = gate off
+                    bearrun_pair_spacing_hours: (function(){ const v = String(document.getElementById('config-be-spacing-hours')?.value ?? '').trim(); return v === '' ? 2.0 : safeFloat(v); })(),  // explicit 0 = spacing off
+                    bearrun_invest_mult: safeFloat(document.getElementById('config-be-invest-mult')?.value || 1.0),
+                    bearrun_lev_mult: safeFloat(document.getElementById('config-be-lev-mult')?.value || 0.05),
+                    bearrun_bypass_gates: String(document.getElementById('config-be-bypass-gates')?.value ?? '').trim().toUpperCase(),  // blank = sleeve inert (deliberate)
+                    bearrun_pair_blacklist: String(document.getElementById('config-be-blacklist')?.value ?? '').trim().toUpperCase(),  // blank = none
                     trailing_pullback_confirmation_seconds: parseInt(document.getElementById('config-trailing-pullback-confirmation-seconds')?.value || 15) || 0,
                     trailing_early_arm_threshold: safeFloat(document.getElementById('config-trailing-early-arm-threshold')?.value || 0.30),
                     trailing_early_arm_pullback: safeFloat(document.getElementById('config-trailing-early-arm-pullback')?.value || 0.10),

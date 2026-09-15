@@ -5288,7 +5288,7 @@
                                 <span class="ml-2 text-xs text-gray-400">Sleeve enabled (kill switch)</span>
                             </label>
                         </div>
-                        <p class="text-xs text-gray-500 mb-3">Monitor ON = BTC 24h composite (24h return ≤ −r24 ∧ % of 5m bars below EMA20 ≥ below ∧ 24h trend efficiency ≥ eff; Schmitt ON/stay band) minus squeeze latch (6h return ≥ +latch ∨ BTC above its 1h EMA50 → instant OFF). While ON, a momentum SHORT that a listed BTC gate would refuse passes through instead (tag BEARRUN_SHORT); pair-level gates, the BTC ADX ≥18 floor and ≤40 ceiling still apply; exits = the live momentum-short stack. Own gates: BTC ≤ X% above its 24h low, blacklist, per-pair spacing. Sizing: Inv × Lev multipliers (0.05 × 20× base = 1× PROBE). 🔒 ARM BAR: first 3 windows ≥2 positive ∧ Σ&gt;0 → Lev 1.0. 🔒 KILL BAR (armed): first 10 fills WR≤45% ∨ Σ&lt;0, or 2 consecutive negative windows → toggle OFF. Evidence: config.py bearrun_* block · reports/BEAR_SLEEVE_STUDY_2026-09-15.md.</p>
+                        <p class="text-xs text-gray-500 mb-3">Monitor ON = BTC 24h composite (24h return ≤ −r24 ∧ % of 5m bars below EMA20 ≥ below ∧ 24h trend efficiency ≥ eff; Schmitt ON/stay band) minus squeeze latch (6h return ≥ +latch ∨ BTC above its 1h EMA50 → instant OFF). While ON, a momentum SHORT that a listed BTC gate would refuse passes through instead (tag BEARRUN_SHORT); pair-level gates, the BTC ADX ≥18 floor and ≤40 ceiling still apply; exits = the live momentum-short stack. Own gates: BTC ≤ X% above its 24h low, blacklist, per-pair spacing. Sizing: Inv × Lev multipliers (Lev 1.0 = ARMED at the 20× base, set 2026-09-15 by operator decision; 0.05 = back to the 1× probe). 🔒 KILL BAR (manual, display-only verdict): first 10 fills WR≤45% ∨ Σ&lt;0, or 2 consecutive negative windows → toggle OFF. Evidence: config.py bearrun_* block · reports/BEAR_SLEEVE_STUDY_2026-09-15.md.</p>
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div title="Turn-ON: BTC 24h return at or below MINUS this % (study: 4; the 3 neighbour agrees). Positive number."><label class="block text-xs text-gray-400 mb-1">ON: r24 ≤ −%</label><input type="number" step="0.5" id="config-be-r24-on" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="4"></div>
                             <div title="Stay-ON band: once ON, stays while the 24h return is at or below MINUS this %."><label class="block text-xs text-gray-400 mb-1">stay: r24 ≤ −%</label><input type="number" step="0.5" id="config-be-r24-off" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3"></div>
@@ -9003,15 +9003,18 @@
                     const gvThreshL = safeFloat(document.getElementById('config-global-vol-threshold-long')?.value) || 1.05;
                     const gvThreshS = safeFloat(document.getElementById('config-global-vol-threshold-short')?.value) || 1.05;
                     const gvMin = Math.min(gvThreshL, gvThreshS);
+                    // Sep-15 (operator): the WEAK/STRONG badge was redundant with the number's colour and wide enough to wrap
+                    // the header on quiet tapes — the word now lives in the number's tooltip; the tag span stays hidden.
+                    if (gvTag) gvTag.classList.add('hidden');
                     if (gvr < gvMin) {
-                        gvEl.className = 'text-red-400 font-bold';
-                        if (gvTag) { gvTag.textContent = 'WEAK'; gvTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-red-500/20 text-red-400'; gvTag.classList.remove('hidden'); }
+                        gvEl.className = 'text-red-400 font-bold cursor-help';
+                        gvEl.title = `Global volume ratio ${gvr.toFixed(2)} — WEAK: below the ${gvMin.toFixed(2)} entry threshold (long ${gvThreshL.toFixed(2)} / short ${gvThreshS.toFixed(2)})`;
                     } else if (gvr >= 1.15) {
-                        gvEl.className = 'text-emerald-400 font-bold';
-                        if (gvTag) { gvTag.textContent = 'STRONG'; gvTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-emerald-500/20 text-emerald-400'; gvTag.classList.remove('hidden'); }
+                        gvEl.className = 'text-emerald-400 font-bold cursor-help';
+                        gvEl.title = `Global volume ratio ${gvr.toFixed(2)} — STRONG (≥ 1.15)`;
                     } else {
-                        gvEl.className = 'text-gray-300 font-bold';
-                        if (gvTag) gvTag.classList.add('hidden');
+                        gvEl.className = 'text-gray-300 font-bold cursor-help';
+                        gvEl.title = `Global volume ratio ${gvr.toFixed(2)} — normal (thresholds: long ${gvThreshL.toFixed(2)} / short ${gvThreshS.toFixed(2)})`;
                     }
                 }
                 

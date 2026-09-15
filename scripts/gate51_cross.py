@@ -26,7 +26,7 @@ logging.disable(logging.NOTSET)
 RAW_PRE_POOL = "reports/dedupe_pool.csv"   # May-4 → Jun-25 raw pool: the founding evidence the old gates were built on
 
 G51_TS = "2026-08-18T15:30:00"
-BANDS = [  # label, predicate(rsi, adx), gate_n, wr_bar, revert text — mirrors main.py gate51_bands
+BANDS = [  # label, predicate(rsi, adx), gate_n, wr_bar, revert text — mirrors the RETIRED main.py gate51_bands rows (DECISION_LOG 62)
     ("① RSI 50-55 band — RESTORED 09-15 (frozen, tripwire)",
      lambda r, a: pd.notna(r) and 50 <= r < 55, 10, 45, "restore 50-55:99-100"),
     ("② ADX 15-18 floor — REVERTED 09-14 (frozen)",

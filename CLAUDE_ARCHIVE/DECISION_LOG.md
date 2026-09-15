@@ -3700,3 +3700,11 @@ Design finding → shipped: the ledger opened one row per ON stretch, so tonight
 
 **Dual-review gate:** see commit message.
 
+## 2026-09-15 (62) — Dashboard hygiene: gate-51 and gate-53 tables RETIRED; ADX badge → tooltip (operator: "these two gates are OFF, and forever, it makes sense to keep these tables?" → "build it, deep review, then commit and push"; "same we did in Volume we should do in ADX with the LOW label")
+
+**Retired:** the 🔓 Gate 51 band + cell tables and the 🛡 Gate 53 quiet-SL table — page markup, the renderers, both text-export blocks, and the row builders in /api/performance (they ran cohort slices on every poll for rows that can never fill again: all three gate-51 bands are total blocks, the gate-53 threshold is 0). Payload keys gate51_bands/gate51_cells/quiet_sl_rows removed from the endpoint and both fallback dicts. KEPT: `_G51_CELL_ORDER/_G51_CELL_LABEL/_g51_cell` in main.py (parity for scripts/gate51_cross.py + tests/test_gate51_cells.py, 5 invariants), the G51-①/②/③ order badges (label historical fills from stamped columns), the cross script (pinned verdicts), the master pool. The final tallies are pinned in CURRENT_STATE gate 51 / gate 53 entries and DECISION_LOG 53/56/59/61.
+
+**Header:** BTC ADX LOW/HIGH badge removed — the number keeps its colour and carries the word + admission band in its tooltip (the volume badge got the same treatment in c512035); the header stays on one line at the operator's window width.
+
+**Removal discipline (D11):** deleted spans scanned for names referenced elsewhere (none outside the removed blocks); /api/performance exercised live after deploy (sleeve, strategy, bull/bear tables present, no all-zeros payload).
+

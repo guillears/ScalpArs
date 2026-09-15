@@ -2225,9 +2225,6 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "spike_fires": [],
             "spike_summary": [],
             "graduation_doors": [],
-            "gate51_bands": [],
-            "gate51_cells": [],
-            "quiet_sl_rows": [],
             "bullrun_rows": [],
             "bullrun_monitor": None,
             "bullrun_periods": [],
@@ -4291,9 +4288,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "spike_fires": [],
             "spike_summary": [],
             "graduation_doors": [],
-            "gate51_bands": [],
-            "gate51_cells": [],
-            "quiet_sl_rows": [],
             "bullrun_rows": [],
             "bullrun_monitor": None,
             "bullrun_periods": [],
@@ -6989,9 +6983,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     _PROMO_TS = datetime(2026, 7, 27, 16, 40, 0)
     spike_summary = []
     graduation_doors = []
-    gate51_bands = []
-    gate51_cells = []
-    quiet_sl_rows = []
     try:
         def _cohort_stats(g):
             n = len(g)
@@ -7074,78 +7065,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 and _es2(o) in ('MOMENTUM', '') and getattr(o, 'entry_rsi', None) is not None
                 and 65 < o.entry_rsi <= 70]
         graduation_doors.append(_door("RSICEIL band (65,70]", _rcl, 10, 50, "rsi_max back to 65"))
-        # 🔓 Aug-18 GATE 51 — BTC-gate band-relaxation tracking (operator table; CURRENT_STATE
-        # gate 51). Cohorts = pinned entry-column slices (entry_btc_rsi × entry_btc_adx), fills
-        # self-classify; post-deploy floor so pre-relaxation trades can never contaminate.
-        # Rows OVERLAP by design (② can intersect ①/③) — each row answers its own locked revert.
-        _G51_TS = datetime(2026, 8, 18, 15, 30, 0)
-        # Sep-15: the locked falling-BTC tripwire fired (first −2% BTC day after the ship; that day's band fills
-        # 1·0%·−$359) → bands ① and ③ restored, all three rows frozen and date-capped at the restore deploy
-        # (gate-53 lesson: a frozen row must not keep accepting fills or recomputing a live verdict).
-        _G51_END = datetime(2026, 9, 16, 1, 0, 0)  # deep review: cap AFTER the realistic deploy time (a too-late cap costs nothing: no band fill is possible once the restored string is live)
-        _g51_ml = [o for o in orders if o.direction == 'LONG' and _non_probe(o) and _post(o, _G51_TS)
-                   and o.opened_at < _G51_END and _es2(o) in ('MOMENTUM', '')]
-        _g51_b1 = [o for o in _g51_ml if getattr(o, 'entry_btc_rsi', None) is not None
-                   and 50 <= o.entry_btc_rsi < 55]
-        _g51_b2 = [o for o in _g51_ml if getattr(o, 'entry_btc_adx', None) is not None
-                   and 15 <= o.entry_btc_adx < 18]
-        _g51_b3 = [o for o in _g51_ml if getattr(o, 'entry_btc_rsi', None) is not None
-                   and 55 <= o.entry_btc_rsi < 60 and getattr(o, 'entry_btc_adx', None) is not None
-                   and (15 <= o.entry_btc_adx < 20 or 25 < o.entry_btc_adx <= 30)]
-        gate51_bands.append(_door("① RSI 50-55 band — RESTORED 09-15 (frozen, tripwire)", _g51_b1, 10, 45, "restore 50-55:99-100"))
-        gate51_bands[-1]["gate"] = "■ TRIPWIRE 2026-09-15 — total block restored (50-55:99-100); final 8·88%·−$191 (龙虾 −$359 on the first −2% BTC day); row frozen"
-        gate51_bands.append(_door("② ADX 15-18 floor — REVERTED 09-14 (frozen)", _g51_b2, 8, 45, "btc_adx_min_long back to 18"))
-        gate51_bands[-1]["gate"] = "■ REVERTED 2026-09-14 — floor back to 18 (final 7·71%·−$487); row frozen"  # Sep-14: pinned verdict (review: the live _door text read 'approaching revert' on a closed door)
-        gate51_bands.append(_door("③ 55-60 window [15,20)∪(25,30] — RESTORED 09-15 (frozen, tripwire)", _g51_b3, 10, 45, "window back to 20-25"))
-        gate51_bands[-1]["gate"] = "■ TRIPWIRE 2026-09-15 — window back to 20-25; final 3·67%·−$486 (BCH); row frozen"
-        # 🔓 Sep-11 GATE 51 CELLS — the bands' overlaps as a PARTITION (attribution, no gate).
-        # Same base cohort + same pinned columns as the band rows; every band fill lands in
-        # exactly one cell, so Σ over cells == Σ over unique band fills (disclosed in the footer row).
-        _g51_by_cell = {k: [] for k in _G51_CELL_ORDER}
-        for _o in _g51_ml:
-            _ck = _g51_cell(getattr(_o, 'entry_btc_rsi', None), getattr(_o, 'entry_btc_adx', None))
-            if _ck is not None:
-                _g51_by_cell[_ck].append(_o)
-        for _ck in _G51_CELL_ORDER:
-            _cg = _g51_by_cell[_ck]
-            _cst = _cohort_stats(_cg)
-            gate51_cells.append({"row": _G51_CELL_LABEL[_ck], **_cst,
-                                 "gate": ("— attribution only (no locked bar)" if _cst["n"] else "⏳ no fires yet")})
-        # Dedup row from the TRUE band union (review I-1: deriving it from the cells would make
-        # the parity a tautology). Any band fill the classifier cannot place is disclosed, not hidden.
-        _g51_uniq = list({id(o): o for o in (_g51_b1 + _g51_b2 + _g51_b3)}.values())
-        _g51_uncl = len(_g51_uniq) - sum(len(g) for g in _g51_by_cell.values())
-        gate51_cells.append({"row": "Σ unique band fills (bands overlap; cells do not)",
-                             **_cohort_stats(_g51_uniq),
-                             "gate": ("— dedup total" if not _g51_uncl
-                                      else f"— dedup total · ⚠ {_g51_uncl} band fill(s) not in any cell (one BTC column NULL)")})
-        # 🛡 Aug-19 GATE 53 — Quiet-Pair Conditional SL tracking (override ship; CURRENT_STATE
-        # gate 53). Row ① = the cohort the rule ACTS on: eligible fills (entry ATR < threshold)
-        # whose trough went past the old −0.70 stop — these would have been stopped before.
-        # Custom verdict (locked revert): ≥3 of first 10 such excursions close ≤ −1.9 (blown to
-        # the wide stop) ∨ cohort Σ<0 at N≥8 → threshold back to 0. Row ② = ineligible stops
-        # (reference: the −0.70/ATR-chain class, unchanged by the rule).
-        _G53_TS = datetime(2026, 8, 20, 13, 10, 0)  # true deploy TS (review I1: the first
-        # cut said Aug-19 23:00 — 14h BEFORE deploy; pre-deploy −0.7-stopped fills would
-        # have contaminated row ① and biased the locked Σ<0 revert leg toward false revert
-        _q_thr = float(getattr(trading_config.thresholds, 'momentum_long_sl_atr_threshold', 0.0) or 0.0)
-        _G53_END = datetime(2026, 9, 14, 22, 30, 0)  # rollback deploy (DECISION_LOG 59) — row ① is FROZEN history:
-        # fills opened after this ran the −0.70 chain again and must not drift the pinned record (review Sep-14)
-        _g53_ml = [o for o in orders if o.direction == 'LONG' and _non_probe(o) and _post(o, _G53_TS)
-                   and o.opened_at < _G53_END
-                   and _es2(o) in ('MOMENTUM', '') and getattr(o, 'entry_atr_pct', None) is not None]
-        _g53_elig = [o for o in _g53_ml if o.entry_atr_pct < (_q_thr or 0.45)
-                     and getattr(o, 'trough_pnl', None) is not None and o.trough_pnl <= -0.65]
-        _g53_inel = [o for o in _g53_ml if o.entry_atr_pct >= (_q_thr or 0.45)
-                     and (o.close_reason or '').startswith('STOP_LOSS')]
-        _e_st = _cohort_stats(_g53_elig)
-        _e_blown = [o for o in _g53_elig if (o.pnl_percentage or 0) <= -1.9]
-        # Sep-14: the live verdict branches are retired with the rollback — the row carries a pinned
-        # verdict and a date-capped cohort (dips: N and blown count shown from the frozen slice).
-        quiet_sl_rows.append({"row": "① QUIET class holds — ROLLED BACK 09-14 (frozen)", **_e_st,
-                              "gate": f"■ ROLLED BACK 2026-09-14 — threshold 0 (frozen record: {_e_st['n']} dips, {len(_e_blown)} blown; slice 0.45 kept for history)"})
-        quiet_sl_rows.append({"row": "② hot-class stops (ref, unchanged −0.7/ATR)",
-                              **_cohort_stats(_g53_inel), "gate": "— reference row"})
+        # Sep-15: the gate-51 band/cell tables and the gate-53 quiet-SL table were RETIRED from the dashboard —
+        # all three bands are total blocks again and the quiet threshold is 0, so the rows could never fill; history
+        # lives in the master pool (stamped columns), scripts/gate51_cross.py and DECISION_LOG 53/56/59/61/62.
         # Jul 29 — OVERLAP DISCLOSURE (CURRENT_STATE #31 door-intersection protocol): the four
         # rows are independent pinned slices, so a multi-door fire is counted in EVERY row it
         # matches (their locked gates were pre-committed against these slices — rows must NOT
@@ -7172,9 +7094,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         spike_summary = []
         graduation_doors = []
         graduation_doors_overlap = None
-        gate51_bands = []
-        gate51_cells = []
-        quiet_sl_rows = []
 
     # 🌊 Aug 21 gate 57: Bull-Run sleeve scoreboard — ALL row + per-exit-reason rows, with the
     # locked kill bar tracked live on the first 10 fills (manual toggle-off; no auto-revert).
@@ -8708,9 +8627,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "spike_fires": spike_fires,
         "spike_summary": spike_summary,
         "graduation_doors": graduation_doors,
-        "gate51_bands": gate51_bands,
-        "gate51_cells": gate51_cells,
-        "quiet_sl_rows": quiet_sl_rows,
         "bullrun_rows": bullrun_rows,
         "bullrun_monitor": _bullrun_monitor_payload(),
         "bullrun_periods": bullrun_periods,
@@ -11095,6 +11011,8 @@ _FAST_EXIT_DEFAULT_CELL = (0.20, 2)          # cell for close-reason breakdown
 # they say WHICH half of a band tripped it (full vs partial restore), never whether it tripped.
 # Partition invariant (tested): ① = ①∩② ∪ ①only · ② = ①∩② ∪ ②∩③ ∪ ②only(<50) ∪ ②only(60+)
 # · ③ = ②∩③ ∪ ③only. Anything outside all three bands → None.
+# Sep-15: the dashboard tables that used this partition were retired (gate 51 closed); the helper stays for
+# scripts/gate51_cross.py parity and tests/test_gate51_cells.py (pure-math invariants of the band partition).
 _G51_CELL_ORDER = ("①∩②", "①only", "②∩③", "③only", "②only<50", "②only60+")
 _G51_CELL_LABEL = {
     "①∩②": "①∩② RSI 50-55 × ADX 15-18",

@@ -668,7 +668,8 @@
     "bearrun_pair_blacklist": "BTCUSDT,ETHUSDT",
     "bearrun_pair_spacing_hours": 2.0,
     "bearrun_invest_mult": 1.0,
-    "bearrun_lev_mult": 0.05
+    "bearrun_lev_mult": 1.0,
+    "bearrun_window_merge_minutes": 180.0
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

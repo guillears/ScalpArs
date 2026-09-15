@@ -4962,6 +4962,8 @@ class TradingEngine:
             cur = None
             if pid:
                 cur = (await db.execute(select(BearMonitorPeriod).where(BearMonitorPeriod.id == pid))).scalar_one_or_none()
+                if cur is not None and cur.ended_at is not None:
+                    cur = None  # deep review ⚪4: a failed merge commit can leave memory pointing at a still-closed row → treat as gone
                 if cur is None:
                     _bearrun_monitor['period_id'] = None  # deep review ⚪9: row gone → forget the stale id
             if cur is None:
@@ -4999,6 +5001,38 @@ class TradingEngine:
                     cur.ended_by = 'latch' if rd['latch'] else 'stay-band'
                     _bearrun_monitor['period_id'] = None
             elif on:
+                # FLAP MERGE (Sep-15 post-deploy read: the first live evening flickered 7× in 3.7h on the efficiency
+                # leg). The study validated thresholds on windows with ON stretches merged across gaps ≤3h — the
+                # ledger must speak the same unit or the arm/kill bars count flickers as windows. Same device as the
+                # bull-run GREEN re-open (≤30 min there): a row closed on the stay band/latch ≤ merge_minutes ago
+                # is REOPENED (counters kept) instead of inserting a fragment.
+                try:
+                    _merge_min = float(getattr(config.trading_config.thresholds, 'bearrun_window_merge_minutes', 180.0) or 0)
+                    _prev = None
+                    if _merge_min > 0:
+                        # deep review 🟡2: take the LATEST row by start (no ended_by filter) and merge only if IT qualifies —
+                        # else a restart/downtime-closed later row could be spanned by a reopened older one (fill double-count).
+                        _last_row = (await db.execute(
+                            select(BearMonitorPeriod).order_by(BearMonitorPeriod.started_at.desc()).limit(1)
+                        )).scalars().first()
+                        if (_last_row is not None and _last_row.ended_at is not None
+                                and str(_last_row.ended_by or '') in ('latch', 'stay-band')
+                                and _last_row.ended_at >= now - timedelta(minutes=_merge_min)):
+                            _prev = _last_row
+                    if _prev is not None:
+                        _prev_lbl = _prev.ended_by or 'stay-band'  # caveman: read BEFORE clearing (else the log always says stay-band)
+                        _prev.ended_at = None; _prev.ended_by = None; _prev.last_update = now
+                        _prev.r24_end, _prev.below_end, _prev.eff_end, _prev.btc_end = rd['r24'], rd['below24'], rd['eff24'], rd['px']
+                        _bearrun_monitor['period_id'] = _prev.id
+                        _bearrun_monitor['resumed'] = True  # not a new window: no flip entry, on_since = the row's start
+                        _bearrun_monitor['on_since'] = _prev.started_at.strftime('%Y-%m-%d %H:%M')
+                        for _k, _col in (('bypasses', 'bypasses'), ('blk_off24lo', 'blocked_off24lo'), ('blk_blacklist', 'blocked_blacklist'), ('blk_spacing', 'blocked_spacing')):
+                            _bearrun_monitor[_k] = int(getattr(_prev, _col, 0) or 0)
+                        logger.info(f"[BEARRUN_MONITOR] ON again within {_merge_min:.0f} min of a {_prev_lbl} drop — window #{_prev.id} reopened (flap, not a new window)")
+                        await locked_commit(db)
+                        return
+                except Exception as _rm_err:
+                    logger.warning(f"[BEARRUN_MONITOR] flap-merge check failed ({_rm_err}) — opening a new window")
                 _g = globals()
                 newp = BearMonitorPeriod(
                     started_at=now, last_update=now,

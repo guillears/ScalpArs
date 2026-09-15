@@ -1030,9 +1030,9 @@ class SignalThresholds(BaseModel):
     # is a plain momentum short). Exits = the LIVE momentum-short stack, unchanged. Shares the global max_open slots
     # (operator: no separate cap). ⚠ ON RECORD: thresholds chosen from a 70-config sweep (selection bias), 5 of 14
     # historical windows negative, replica ≈ +0.10%/fill optimistic — the first live windows are the out-of-sample test.
-    # 🔒 SHIP MODE = 1× PROBE (lev_mult 0.05 × 20× base = 1× effective). ARM BAR: first 3 live ON windows ≥ 2 net-positive
-    # ∧ Σ > 0 → bearrun_lev_mult 1.0. KILL BAR once armed (manual): first 10 fills WR ≤ 45% ∨ Σ < 0, or 2 consecutive
-    # net-negative windows → bearrun_sleeve_enabled false. TO REMOVE: grep "BEARRUN" / "bearrun".
+    # 🔒 SHIPPED 22:30 UTC as a 1× PROBE (lev 0.05); ARMED 1.0 the same evening (operator override, see bearrun_lev_mult).
+    # KILL BAR (manual, display-only verdict): first 10 fills WR ≤ 45% ∨ Σ < 0, or 2 consecutive net-negative windows →
+    # bearrun_sleeve_enabled false. De-arm (0.05) is one field if the first windows disappoint. TO REMOVE: grep "BEARRUN" / "bearrun".
     bearrun_sleeve_enabled: bool = True          # master kill switch (entries + bypass only; the monitor keeps computing)
     bearrun_r24_on: float = 4.0                  # turn-ON: BTC 24h return ≤ −this % (study: 4; neighbours 3 agree)
     bearrun_r24_off: float = 3.0                 # stay-ON (Schmitt band) while ≤ −this %
@@ -1047,7 +1047,8 @@ class SignalThresholds(BaseModel):
     bearrun_pair_blacklist: str = "BTCUSDT,ETHUSDT"  # the leader and its twin never ride the sleeve (bull-run lesson: leader self-reference 0/4)
     bearrun_pair_spacing_hours: float = 2.0      # per-pair spacing between sleeve fills (DB-backed — restart-proof)
     bearrun_invest_mult: float = 1.0             # investment multiplier (absolute-assign: never re-multiplied by pattern cells)
-    bearrun_lev_mult: float = 0.05               # leverage multiplier: 0.05 × 20× = 1× PROBE (ship); 1.0 = ARMED (after the arm bar)
+    bearrun_lev_mult: float = 1.0                # leverage multiplier: 1.0 = ARMED (20× base). Shipped 0.05 (1× probe) 2026-09-15 22:30 UTC; ARMED the same evening by operator decision (DISCIPLINE OVERRIDE on record: arm bar was 'first 3 windows ≥2 positive'; evidence = ONE window, 8 fills · 100% · +0.61%/fill on the first live evening). Worst case at 20×: stop −0.7..−1.2% × ~$12k notional = $84-144/fill, 4 slots ≈ $576 ≈ 19% of a $3.1k book in one squeeze. Kill bar applies from fill 1.
+    bearrun_window_merge_minutes: float = 180.0  # Sep-15 post-deploy: ON stretches separated by ≤ this many minutes are ONE window (the study's merge unit; the first live evening flickered 7× in 3.7h on the efficiency leg). 0 = every ON stretch is its own row
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

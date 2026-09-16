@@ -3708,3 +3708,13 @@ Design finding → shipped: the ledger opened one row per ON stretch, so tonight
 
 **Removal discipline (D11):** deleted spans scanned for names referenced elsewhere (none outside the removed blocks); /api/performance exercised live after deploy (sleeve, strategy, bull/bear tables present, no all-zeros payload).
 
+## 2026-09-16 (63) — Gate 60 universe read: top-10 vs the full scanner (operator: "the bear applies to top 10 pairs same as Bull?" → "make a deep dive … run it" → "save it"); verdict NO CAP
+
+**Question.** The bull-run sleeve trades only rank ≤10 (rank 11-20 refuted 50%·−$1,933); the bear sleeve lets the momentum SHORT through the BTC gates for the whole scanner (≈47 pairs; Sep-15's replay fills included T, CVC, INJ). The base study used a fixed 15-alt set (≈ top-15). Untested variable on an armed 20× sleeve → deep dive.
+
+**Method** (scratch bear/rank_study.py; fills → reports/BEAR_SLEEVE_RANK_STUDY_fills_2026-09-16.csv): exchangeInfo → 526 USDT-M COIN perpetuals trading now (survivorship on record; EQUITY/COMMODITY TradFi perps excluded as the scanner does); daily quote volume for the year → each window day's top-50 by the PREVIOUS day's volume (what the scanner sees), current blacklist + BTC/ETH removed; 191 pairs touched the 14 shipped-monitor windows; 5m bars per (pair, window) with a 30h warm-up; the shipped sleeve replayed per window (momentum-short proxy, off-24h-low ≤2%, 2h spacing, 4 SHARED slots across all 50 pairs, live momentum-short exits, worst-ordering replica); fills bucketed by rank at entry; random-entry control per bucket (6 seeds, same pairs/window/exits).
+
+**Result.** Signal fills: 1-10 116·74%·+0.30%·+$4,160 (11/13 windows positive) · 11-20 145·73%·+0.23%·+$4,074 (9/13) · 21-50 385·74%·+0.27%·+$12,491 (10/14). Random control: 1-10 +$2,416 (96 fills) · 11-20 +$5,191 (179) · 21-50 +$14,107 (409), random WR 73-77%. No rank degradation on any read (fill WR flat 73-74%, avg per fill within a narrow band, window positivity 69-85% in every bucket); two thirds of the sleeve's fills come from ranks 21-50 at the same quality; Jun-2 = 44% of the 21-50 bucket (same shape as the base study). Honest note: at 50 pairs the momentum signal does NOT beat random shorts in any bucket (the 15-alt edge over random did not reproduce) — the regime switch + exits carry the sleeve, the entry pick does not; expectation carried into the live windows.
+
+**Verdict.** Universe stays as shipped (full scanner minus blacklists). A `bearrun` rank cap would remove ~2/3 of capacity for no quality gain. Observe: split live fills by the stamped `entry_pair_rank` at the first window review; revisit only if the 21-50 cohort loses in window units.
+

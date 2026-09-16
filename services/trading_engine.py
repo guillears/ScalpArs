@@ -7291,6 +7291,9 @@ class TradingEngine:
             entry_br_eff=entry_br_eff,
             entry_br_off24h=entry_br_off24h,
             entry_br_door=entry_br_door,
+            # Sep 16: BTC 24h-range position at entry on every fill (from the monitors' shared 5m fetch, ≤2 min old; None before the first compute)
+            entry_btc_off24h_pct=(_bullrun_monitor.get('off24h') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # deep review: stale monitor (>30 min, exchange outage) → None, never an old reading
+            entry_btc_off24lo_pct=(_bearrun_monitor.get('off24lo') if (_leash_time.time() - (_bearrun_monitor.get('updated_at') or 0)) <= 1800 else None),
             entry_bear_r24=entry_bear_r24, entry_bear_below24=entry_bear_below24, entry_bear_eff24=entry_bear_eff24,
             entry_bear_off24lo=entry_bear_off24lo, entry_bear_bypass=entry_bear_bypass,
             # Jun 8: gap-expanding relaxation A/B cohort tag

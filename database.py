@@ -610,6 +610,10 @@ async def init_db():
                 for _bc, _bt in (('entry_bear_r24', 'FLOAT'), ('entry_bear_below24', 'FLOAT'), ('entry_bear_eff24', 'FLOAT'), ('entry_bear_off24lo', 'FLOAT'), ('entry_bear_bypass', 'VARCHAR(160)')):
                     if _bc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_bc} {_bt}"))
+                # Sep 16: BTC 24h-range position at entry (all fills)
+                for _bc in ('entry_btc_off24h_pct', 'entry_btc_off24lo_pct'):
+                    if _bc not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_bc} FLOAT"))
                 if 'funding_fee_usd' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN funding_fee_usd FLOAT"))
                 # Jun 7: phantom EMA13 cross (records would-have-exited pnl when EMA13

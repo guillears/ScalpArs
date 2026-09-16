@@ -8704,6 +8704,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # after May 4 finding that every 5m-timeframe dimension showed identical
         # winner/loser signatures. Tests "5m bearish blip during 1h uptrend" hypothesis.
         "btc_1h_slope_performance": _compute_btc_1h_slope_performance(orders),
+        "btc_off24h_performance": _compute_btc_range_performance(orders, "entry_btc_off24h_pct", BTC_OFF24H_BUCKETS),  # Sep 16
+        "btc_off24lo_performance": _compute_btc_range_performance(orders, "entry_btc_off24lo_pct", BTC_OFF24LO_BUCKETS),
         "btc_5m_1h_slope_alignment_crosstab": _compute_btc_5m_1h_slope_alignment_crosstab(orders),
         "btc_1h_30m_rsi_direction_crosstab": _compute_btc_1h_30m_rsi_direction_crosstab(orders),
         "btc_1h_slope_adx_crosstab": _compute_btc_1h_slope_adx_crosstab(orders),
@@ -9540,6 +9542,53 @@ def _compute_btc_extension_pair_extension_crosstab(orders):
 # 1. Single-dim performance by 1h slope (signed buckets)
 # 2. 5m × 1h slope alignment cross-tab (the diagnostic — Aligned/Opposite/Flat)
 # 3. 1h slope × BTC ADX cross-tab
+
+BTC_OFF24H_BUCKETS = [('within 0.8% of high', 0.0, 0.8), ('0.8 to 2% below', 0.8, 2.0), ('2 to 4% below', 2.0, 4.0), ('> 4% below high', 4.0, 1e9)]  # in DISTANCE-BELOW units (the stamped column is ≤0: bucket on −value so the −2% gate edge lands on the refused side)
+BTC_OFF24LO_BUCKETS = [('<= 0.5% above low', -1e9, 0.5), ('0.5 to 1%', 0.5, 1.0), ('1 to 2%', 1.0, 2.0), ('2 to 4%', 2.0, 4.0), ('> 4% above low', 4.0, 1e9)]
+
+
+def _range_bucket(value, buckets):
+    """Sep 16: half-open [lo, hi) bucket lookup for the BTC 24h-range dimension tables (pure; tested)."""
+    if value is None:
+        return None
+    for lbl, lo, hi in buckets:
+        if lo <= value < hi:
+            return lbl
+    return None
+
+
+def _off24h_bucket(value):
+    """Bucket for `entry_btc_off24h_pct` (≤0 = % below the 24h high): distance-below units, so −2.0 → '2 to 4% below' (refused by the bull gate)."""
+    return None if value is None else _range_bucket(-float(value), BTC_OFF24H_BUCKETS)
+
+
+def _compute_btc_range_performance(orders, col, buckets):
+    """Sep 16 (operator): performance by BTC's position in its 24h range at entry — `entry_btc_off24h_pct`
+    (% below the 24h high) or `entry_btc_off24lo_pct` (% above the 24h low) — longs/shorts, same row shape as
+    the 1h-slope table so the UI renderer and exports are shared. Stamped on every fill since the Sep-16 deploy."""
+    closed = [o for o in orders if o.status == 'CLOSED' and getattr(o, col, None) is not None]
+    if not closed:
+        return {'longs': [], 'shorts': [], 'pool_size': 0}
+    def _for(direction):
+        rows = []
+        dir_o = [o for o in closed if o.direction == direction]
+        for lbl, lo, hi in buckets:
+            sub = [o for o in dir_o if (_off24h_bucket(getattr(o, col)) if col == 'entry_btc_off24h_pct' else _range_bucket(getattr(o, col), buckets)) == lbl]
+            if not sub:
+                continue
+            n = len(sub)
+            wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+            tot = sum(o.pnl or 0 for o in sub)
+            avg_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+            avg_peak = sum(o.peak_pnl or 0 for o in sub) / n
+            np_ct = sum(1 for o in sub if (o.peak_pnl or 0) <= 0)
+            rows.append({'range': lbl, 'count': n, 'win_rate': round(wins / n * 100, 1),
+                         'avg_pnl_pct': round(avg_pct, 4), 'avg_pnl_usd': round(tot / n, 2),
+                         'total_pnl_usd': round(tot, 2), 'avg_peak_pct': round(avg_peak, 4),
+                         'np_count': np_ct, 'np_pct': round(np_ct / n * 100, 1)})
+        return rows
+    return {'longs': _for('LONG'), 'shorts': _for('SHORT'), 'pool_size': len(closed)}
+
 
 def _compute_btc_1h_slope_performance(orders):
     closed = [o for o in orders if o.status == 'CLOSED' and getattr(o, 'entry_btc_1h_slope', None) is not None]

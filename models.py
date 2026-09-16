@@ -194,6 +194,11 @@ class Order(Base):
     # Combined with pair extension (double-stretch detection), tests whether
     # losses cluster when BOTH levels are extended.
     entry_btc_dist_from_ema13_pct = Column(Float, nullable=True)
+    # Sep 16 (operator): BTC position in its 24h range at entry, on EVERY fill (all sleeves): % below the 24h high
+    # (≤0; the bull-run pullback variable) and % above the 24h low (≥0; the bear-run bounce variable). Stamped from the
+    # monitors' shared 5m fetch (≤2 min old). Rides the orders CSV.
+    entry_btc_off24h_pct = Column(Float, nullable=True)
+    entry_btc_off24lo_pct = Column(Float, nullable=True)
     # May 14 — BTC 1h EMA20 slope at trade entry.
     # Captures multi-hour BTC trend direction (12× longer than 5m slope).
     # Slope = (ema20_1h - ema20_1h_prev3) / ema20_1h_prev3 × 100.

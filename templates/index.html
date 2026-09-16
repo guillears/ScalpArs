@@ -2003,6 +2003,22 @@
                     </div>
                 </div>
 
+                <!-- Sep 16 (operator): BTC 24h-range position at entry — the two header chips, stamped on every fill -->
+                <div class="mt-6 pt-6 border-t border-violet-900/40">
+                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">📏 BTC 24h-Range Position at Entry</h3>
+                    <p class="text-xs text-gray-500 mb-2">Where BTC sat in its own 24h range when each trade opened — the two header chips (24h-high / 24h-low) stamped on every fill of every sleeve since the Sep-16 deploy. Above: % below the 24h HIGH (the bull-run pullback variable: −2% is that sleeve's gate). Below: % above the 24h LOW (the bear-run bounce variable: +2% is that sleeve's gate). Half-open buckets; longs and shorts side by side.</p>
+                    <h4 class="text-xs font-semibold text-gray-400 mt-3 mb-2">Performance by BTC distance below its 24h high <span id="btc-off24h-pool" class="text-gray-500 font-normal ml-2"></span></h4>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div class="overflow-x-auto"><h5 class="text-xs text-emerald-300 mb-1">LONG</h5><table class="w-full text-xs"><thead class="text-gray-400 uppercase"><tr><th class="text-left py-1 px-2">BTC vs 24h HIGH</th><th class="text-right px-2">N</th><th class="text-right px-2">WR%</th><th class="text-right px-2">Avg%</th><th class="text-right px-2">Total$</th><th class="text-right px-2">Peak%</th><th class="text-right px-2" title="Peak ≤ 0%">NP%</th></tr></thead><tbody id="btc-off24h-long-body" class="divide-y divide-white/5"><tr><td colspan="7" class="py-3 text-center text-gray-500">No trades yet</td></tr></tbody></table></div>
+                        <div class="overflow-x-auto"><h5 class="text-xs text-red-300 mb-1">SHORT</h5><table class="w-full text-xs"><thead class="text-gray-400 uppercase"><tr><th class="text-left py-1 px-2">BTC vs 24h HIGH</th><th class="text-right px-2">N</th><th class="text-right px-2">WR%</th><th class="text-right px-2">Avg%</th><th class="text-right px-2">Total$</th><th class="text-right px-2">Peak%</th><th class="text-right px-2" title="Peak ≤ 0%">NP%</th></tr></thead><tbody id="btc-off24h-short-body" class="divide-y divide-white/5"><tr><td colspan="7" class="py-3 text-center text-gray-500">No trades yet</td></tr></tbody></table></div>
+                    </div>
+                    <h4 class="text-xs font-semibold text-gray-400 mt-3 mb-2">Performance by BTC distance above its 24h low <span id="btc-off24lo-pool" class="text-gray-500 font-normal ml-2"></span></h4>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div class="overflow-x-auto"><h5 class="text-xs text-emerald-300 mb-1">LONG</h5><table class="w-full text-xs"><thead class="text-gray-400 uppercase"><tr><th class="text-left py-1 px-2">BTC vs 24h LOW</th><th class="text-right px-2">N</th><th class="text-right px-2">WR%</th><th class="text-right px-2">Avg%</th><th class="text-right px-2">Total$</th><th class="text-right px-2">Peak%</th><th class="text-right px-2" title="Peak ≤ 0%">NP%</th></tr></thead><tbody id="btc-off24lo-long-body" class="divide-y divide-white/5"><tr><td colspan="7" class="py-3 text-center text-gray-500">No trades yet</td></tr></tbody></table></div>
+                        <div class="overflow-x-auto"><h5 class="text-xs text-red-300 mb-1">SHORT</h5><table class="w-full text-xs"><thead class="text-gray-400 uppercase"><tr><th class="text-left py-1 px-2">BTC vs 24h LOW</th><th class="text-right px-2">N</th><th class="text-right px-2">WR%</th><th class="text-right px-2">Avg%</th><th class="text-right px-2">Total$</th><th class="text-right px-2">Peak%</th><th class="text-right px-2" title="Peak ≤ 0%">NP%</th></tr></thead><tbody id="btc-off24lo-short-body" class="divide-y divide-white/5"><tr><td colspan="7" class="py-3 text-center text-gray-500">No trades yet</td></tr></tbody></table></div>
+                    </div>
+                </div>
+
                 <!-- BTC 1h Slope Analytics (May 14) — higher-TF macro context -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
                     <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🕐 BTC 1h Slope Analytics (Higher-TF Macro)</h3>
@@ -9764,6 +9780,24 @@
                 });
             }
 
+            // Sep 16: BTC 24h-range position at entry (both exports)
+            for (const [_rk, _rt] of [['btc_off24h_performance', 'BTC distance BELOW its 24h HIGH at entry (bull-run gate -2%)'], ['btc_off24lo_performance', 'BTC distance ABOVE its 24h LOW at entry (bear-run gate +2%)']]) {
+                const _rp = perf[_rk] || {};
+                if (!_rp.pool_size) continue;
+                lines.push(`\n${hr2}`);
+                lines.push(`## BTC 24h-Range Position — ${_rt} — pool ${_rp.pool_size} trades\n`);
+                ['longs','shorts'].forEach(k => {
+                    const rows = _rp[k] || [];
+                    if (!rows.length) return;
+                    lines.push(`### ${k.toUpperCase()}`);
+                    lines.push('Range                    N    WR%    Avg%       Total$     Peak%      NP%');
+                    lines.push('-'.repeat(80));
+                    rows.forEach(r => {
+                        lines.push(`${r.range.padEnd(24)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(7)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(8)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${((r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)').padStart(10)}`);
+                    });
+                    lines.push('');
+                });
+            }
             // BTC 1h Slope Analytics (May 14) — higher-TF macro context
             const _b1h1 = perf.btc_1h_slope_performance || {};
             const _bAlign1 = perf.btc_5m_1h_slope_alignment_crosstab || {};
@@ -11836,6 +11870,24 @@
                     });
                 }
 
+                // Sep 16: BTC 24h-range position at entry (both exports)
+                for (const [_rk, _rt] of [['btc_off24h_performance', 'BTC distance BELOW its 24h HIGH at entry (bull-run gate -2%)'], ['btc_off24lo_performance', 'BTC distance ABOVE its 24h LOW at entry (bear-run gate +2%)']]) {
+                    const _rp = perf[_rk] || {};
+                    if (!_rp.pool_size) continue;
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## BTC 24h-Range Position — ${_rt} — pool ${_rp.pool_size} trades\n`);
+                    ['longs','shorts'].forEach(k => {
+                        const rows = _rp[k] || [];
+                        if (!rows.length) return;
+                        lines.push(`### ${k.toUpperCase()}`);
+                        lines.push('Range                    N    WR%    Avg%       Total$     Peak%      NP%');
+                        lines.push('-'.repeat(80));
+                        rows.forEach(r => {
+                            lines.push(`${r.range.padEnd(24)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(7)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(8)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${((r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)').padStart(10)}`);
+                        });
+                        lines.push('');
+                    });
+                }
                 // BTC 1h Slope Analytics (May 14) — higher-TF macro context
                 const _b1h2 = perf.btc_1h_slope_performance || {};
                 const _bAlign2 = perf.btc_5m_1h_slope_alignment_crosstab || {};
@@ -14553,6 +14605,15 @@
                     _render1hSlopeSingle(_b1.shorts, 'btc-1h-slope-short-body');
                     const _p = document.getElementById('btc-1h-slope-pool');
                     if (_p) _p.textContent = _b1.pool_size ? `(pool: ${_b1.pool_size} trades)` : '(no post-deploy trades yet)';
+                }
+                // Sep 16: BTC 24h-range position tables (same row shape as the 1h-slope table → shared renderer)
+                for (const [_k, _id] of [['btc_off24h_performance', 'btc-off24h'], ['btc_off24lo_performance', 'btc-off24lo']]) {
+                    const _bp = data[_k];
+                    if (!_bp) continue;
+                    _render1hSlopeSingle(_bp.longs, `${_id}-long-body`);
+                    _render1hSlopeSingle(_bp.shorts, `${_id}-short-body`);
+                    const _pp = document.getElementById(`${_id}-pool`);
+                    if (_pp) _pp.textContent = _bp.pool_size ? `(pool: ${_bp.pool_size} trades)` : '(no stamped trades yet — Sep-16 deploy onward)';
                 }
                 if (data.btc_5m_1h_slope_alignment_crosstab) {
                     const _ba = data.btc_5m_1h_slope_alignment_crosstab;

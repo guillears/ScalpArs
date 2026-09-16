@@ -4289,10 +4289,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "spike_summary": [],
             "graduation_doors": [],
             "bullrun_rows": [],
-            "bullrun_monitor": None,
+            "bullrun_monitor": _bullrun_monitor_payload(),  # Sep-15: monitors are live state, shown even with no closed trades
             "bullrun_periods": [],
             "bearrun_rows": [],
-            "bearrun_monitor": None,
+            "bearrun_monitor": _bearrun_monitor_payload(),
             "bearrun_periods": [],
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},

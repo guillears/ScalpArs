@@ -200,22 +200,22 @@
         <!-- Regime bar (Aug 21 redesign, operator): shorter labels, duplicated pair-count cluster folded into the Breadth tooltip,
              🌊 chip single-line, flex-wrap so a narrow window gives two tidy rows instead of crushed chips. All element ids kept. -->
         <div class="container mx-auto px-6 py-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-            <span class="text-gray-400 font-medium">Regime</span>
+            <span id="regime-label" class="text-gray-400 font-medium cursor-help" data-tip="BTC 5m EMA20 slope over 3 bars vs the flat threshold → BULLISH / BEARISH / NEUTRAL; the % is that slope. Stamped on every fill as its entry regime (the ADX/RSI regime classifier that routes spike fades is separate).">Regime</span>
             <span id="btc-regime-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-500/20 text-gray-400">--</span>
             <span id="btc-ema20-slope" class="text-gray-400 text-xs font-mono" title="BTC 5m EMA20 slope">--</span>
             <span id="btc-global-tag" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400 uppercase tracking-wide">Global Filter</span>
             <span class="text-gray-600">·</span>
-            <span class="text-gray-400 font-medium">Trend</span>
+            <span id="trend-label" class="text-gray-400 font-medium cursor-help" data-tip="BTC trend gap = (EMA13 − EMA50) ÷ EMA50 on 5m candles; arrow = direction vs the previous closed bar. Dimmed when the BTC trend filter is off.">Trend</span>
             <span id="btc-trend-gap" class="text-xs font-mono text-gray-400" title="BTC EMA13/EMA50 gap % — active filter (May 6+)">--</span>
             <span id="btc-trend-badge" class="px-1.5 py-0 rounded text-[9px] font-bold bg-gray-500/20 text-gray-400 leading-tight" title="EMA13 vs EMA50 — active filter (May 6+)">--</span>
             <span class="text-gray-600">·</span>
-            <span class="text-gray-400 font-medium">ADX</span>
+            <span id="adx-label" class="text-gray-400 font-medium cursor-help" data-tip="BTC ADX(14) on 5m candles; arrow = direction vs the previous closed bar. Entry band 18 to 40 for longs and shorts; shorts also refused at 24 to 30. Red = outside the band.">ADX</span>
             <span id="btc-adx-value" class="text-gray-300 font-bold">--</span>
             <span id="btc-adx-dir-tag" class="hidden px-1.5 py-0 rounded text-[9px] font-bold leading-tight" data-tip="BTC ADX direction (closed 5m bars)">--</span>
             <span id="btc-adx-low-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 uppercase tracking-wide" title="BTC ADX outside the long/short admission band">LOW</span>
             <span class="text-gray-600">·</span>
-            <span class="text-gray-400 font-medium">Vol</span>
-            <span id="global-vol-value" class="text-gray-300 font-bold" title="Global volume ratio (Σ current / Σ 20-bar avg across the top pairs)">--</span>
+            <span id="vol-label" class="text-gray-400 font-medium cursor-help" data-tip="Global volume ratio = current 5m volume across the scan universe ÷ its 48-bar average. Longs need ≥ 0.70, shorts ≥ 0.50. Red below the threshold, green at 1.15 or more.">Vol</span>
+            <span id="global-vol-value" class="text-gray-300 font-bold" title="Global volume ratio (Σ current / Σ 48-bar avg across the top pairs)">--</span>
             <span id="global-vol-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide">--</span>
             <span class="text-gray-600">·</span>
             <span id="breadth-wrap" class="flex items-center gap-1" title="Market breadth — bull% / bear% of scanned pairs. Bull turns GREEN at ≥ its LONG gate (default 50); bear turns RED at ≥ its SHORT gate (default 65); gray = below threshold.">
@@ -229,11 +229,11 @@
             <span class="text-gray-400 font-medium cursor-help" data-tip="Margin ratio = how close the cross wallet is to liquidation RIGHT NOW, including unrealized P&L (maintenance margin ÷ margin balance; Binance liquidates at 100%). The SURVIVAL gauge — the one that matters when the bot is down and the software stop cannot fire.">Margin</span>
             <span id="margin-ratio-gauge" class="text-gray-500 text-xs font-mono cursor-help tip-right" data-tip="Binance Margin Ratio = maintenance margin ÷ margin balance (cross wallet liquidates at 100%). Green <20% · amber 20–50% · red ≥50%. Paper = estimate at 0.5% MMR.">--</span>
             <span class="text-gray-600">·</span>
-            <span id="bullrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide" title="🌊 Bull-Run Monitor (gate 57): GREEN = 72h composite ON (r72/above-EMA20%/efficiency, Schmitt band + crash-latch) → BULLRUN_LONG sleeve trades. AMBER = 24h alert only. Hover values: r72 / above% / eff / r6h / off-24h-high.">🌊 --</span>
-            <span id="btc-off24h-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide" title="BTC distance from its 24h high (gate 57 v2 pullback-phase gate). Red = at/under the gate → sleeve refusing entries (dips kept alive); green = inside range → next reclaim fires.">24h-high --</span>
+            <span id="bullrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide cursor-help tip-right" data-tip="🌊 Bull-Run Monitor (gate 57): GREEN = 72h composite ON (r72/above-EMA20%/efficiency, Schmitt band + crash-latch) → BULLRUN_LONG sleeve trades. AMBER = 24h alert only. Hover values: r72 / above% / eff / r6h / off-24h-high.">🌊 --</span>
+            <span id="btc-off24h-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide cursor-help tip-right" data-tip="BTC distance from its 24h high (gate 57 v2 pullback-phase gate). Red = at/under the gate → sleeve refusing entries (dips kept alive); green = inside range → next reclaim fires.">24h-high --</span>
             <span class="text-gray-600">·</span>
-            <span id="bearrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide" title="🐻 Bear-Run Monitor (gate 60): ON = BTC 24h composite (r24 ≤ −4% ∧ bars-below-EMA20 ≥ 50% ∧ efficiency ≥ 0.15, Schmitt band + squeeze latch) → momentum SHORTs bypass the BTC macro gates as BEARRUN_SHORT (1× probe). Hover values: r24 / below% / eff24 / r6h / off-24h-low.">🐻 --</span>
-            <span id="btc-off24lo-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide" title="BTC distance ABOVE its 24h low (gate 60 bounce-phase gate). Red = above the gate → sleeve refusing bypasses; green = inside range → bypasses granted while the monitor is ON.">24h-low --</span>
+            <span id="bearrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide cursor-help tip-right" data-tip="🐻 Bear-Run Monitor (gate 60): ON = BTC 24h composite (r24 ≤ −4% ∧ bars-below-EMA20 ≥ 50% ∧ efficiency ≥ 0.15, Schmitt band + squeeze latch) → momentum SHORTs bypass the BTC macro gates as BEARRUN_SHORT. Hover values: r24 / below% / eff24 / r6h / off-24h-low.">🐻 --</span>
+            <span id="btc-off24lo-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide cursor-help tip-right" data-tip="BTC distance ABOVE its 24h low (gate 60 bounce-phase gate). Red = above the gate → sleeve refusing bypasses; green = inside range → bypasses granted while the monitor is ON.">24h-low --</span>
             <!-- pair-count cluster kept for the JS writers but folded into the Breadth tooltip (duplicate of Breadth) -->
             <span class="hidden"><span id="regime-pair-count"></span><span id="regime-bull-count"></span><span id="regime-bear-count"></span><span id="regime-neutral-count"></span></span>
         </div>
@@ -8846,19 +8846,22 @@
                     const _br = data.bullrun;
                     if (_br && _br.state) {
                         const _vals = `r72 ${_br.r72 != null ? _br.r72 : '—'}% · above ${_br.above != null ? _br.above : '—'}% · eff ${_br.eff != null ? _br.eff : '—'} · r6h ${_br.r6 != null ? _br.r6 : '—'}% · off-24h-high ${_br.off24h != null ? _br.off24h + '%' : '—'}${_br.latch ? ' · LATCH FIRED' : ''}${_br.enabled ? '' : ' · sleeve OFF'}`;
-                        _brChip.title = `🌊 Bull-Run Monitor (gate 57): ${_vals} | RAW state=${_br.state} green_since=${_br.green_since ?? 'null'} rearm_since=${_br.rearm_since ?? 'null'}`;  // Aug-24: verbatim payload for incident screenshots
+                        // Sep-15 (operator): styled popover, each leg vs its bar with ✓/✗ so 'why DARK' reads at a glance (thresholds from the cached config form)
+                        const _bt = window._cachedConfig?.thresholds || {};
+                        const _legB = (v, bar, dir, unit = '') => (v == null ? '—' : `${v}${unit} (${dir} ${bar}) ${(dir === '≥' ? v >= bar : v <= bar) ? '✓' : '✗'}`);
+                        _brChip.dataset.tip = `🌊 Bull-Run monitor ${_br.state}${_br.green_since ? ` since ${_brFmt(_br.green_since)}` : ''} · 72h return ${_legB(_br.r72, _bt.bullrun_green_r72_on ?? 5, '≥', '%')} · bars above EMA20 ${_legB(_br.above, _bt.bullrun_green_above_on ?? 56, '≥', '%')} · efficiency ${_legB(_br.eff, _bt.bullrun_green_eff_on ?? 0.10, '≥')} · 6h ${_br.r6 != null ? _br.r6 + '%' : '—'} · crash latch ${_br.latch ? 'FIRED' : 'clear'} · sleeve ${_br.enabled ? 'ON' : 'OFF'}${_br.rearm ? ' · RE-ARM door open' : ''}`;
                         if (_br.state === 'GREEN') {
                             _brChip.textContent = `🌊 ${_br.green_since ? _brFmt(_br.green_since) : 'GREEN'}`;  // color = state; text = since (operator)
-                            _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 uppercase tracking-wide';
+                            _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 uppercase tracking-wide cursor-help tip-right';
                         } else if (_br.state === 'REARM') {
                             _brChip.textContent = `🌊 REARM ${_br.rearm_since ? _brFmt(_br.rearm_since) : ''}`;
-                            _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-400 uppercase tracking-wide';
+                            _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-400 uppercase tracking-wide cursor-help tip-right';
                         } else if (_br.state === 'AMBER') {
                             _brChip.textContent = '🌊 AMBER';
-                            _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 uppercase tracking-wide';
+                            _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 uppercase tracking-wide cursor-help tip-right';
                         } else {
                             _brChip.textContent = '🌊 dark';
-                            _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide';
+                            _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide cursor-help tip-right';
                         }
                     } else {
                         _brChip.textContent = '🌊 --';
@@ -8874,8 +8877,8 @@
                     if (_off != null) {
                         const _gated = (_gateAbs != null && _off <= _gateAbs);
                         _offChip.textContent = `24h-high ${_off.toFixed(2)}%`;
-                        _offChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ' + (_gateAbs == null ? 'bg-gray-500/20 text-gray-400' : (_gated ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'));
-                        _offChip.title = `BTC is ${_off.toFixed(2)}% below its 24h high` + (_gateAbs == null ? ' (gate off)' : (_gated ? ` — at/under the ${_gateAbs}% gate: sleeve refusing new entries (dips kept alive, re-checked every scan)` : ` — inside the ${_gateAbs}% gate: the next dip-reclaim fires`));
+                        _offChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold tracking-wide cursor-help tip-right ' + (_gateAbs == null ? 'bg-gray-500/20 text-gray-400' : (_gated ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'));
+                        _offChip.dataset.tip = `BTC is ${_off.toFixed(2)}% below its 24h high` + (_gateAbs == null ? ' (gate off)' : (_gated ? ` — at/under the ${_gateAbs}% gate: sleeve refusing new entries (dips kept alive, re-checked every scan)` : ` — inside the ${_gateAbs}% gate: the next dip-reclaim fires`));
                     } else {
                         _offChip.textContent = '24h-high --';
                     }
@@ -8887,13 +8890,15 @@
                     const _be = data.bearrun;
                     if (_be && _be.state) {
                         const _bv = `r24 ${_be.r24 != null ? _be.r24 : '—'}% · below ${_be.below24 != null ? _be.below24 : '—'}% · eff24 ${_be.eff24 != null ? _be.eff24 : '—'} · r6h ${_be.r6 != null ? _be.r6 : '—'}% · off-24h-low ${_be.off24lo != null ? _be.off24lo + '%' : '—'}${_be.latch ? ' · SQUEEZE LATCH' : ''}${_be.enabled ? (_be.lev_mult != null && _be.lev_mult < 1 ? ` · sleeve 1× probe (lev ×${_be.lev_mult})` : ' · sleeve ARMED') : ' · sleeve OFF'}`;
-                        _beChip.title = `🐻 Bear-Run Monitor (gate 60): ${_bv} | RAW state=${_be.state} on_since=${_be.on_since ?? 'null'}`;
+                        const _btb = window._cachedConfig?.thresholds || {};
+                        const _legR = (v, bar, dir, unit = '') => (v == null ? '—' : `${v}${unit} (${dir} ${bar}) ${(dir === '≥' ? v >= bar : v <= bar) ? '✓' : '✗'}`);
+                        _beChip.dataset.tip = `🐻 Bear-Run monitor ${_be.state}${_be.on_since ? ` since ${_brFmt(_be.on_since)}` : ''} · 24h return ${_legR(_be.r24, -Math.abs(_btb.bearrun_r24_on ?? 4), '≤', '%')} · bars below EMA20 ${_legR(_be.below24, _btb.bearrun_below_on ?? 50, '≥', '%')} · efficiency ${_legR(_be.eff24, _btb.bearrun_eff_on ?? 0.15, '≥')} · 6h ${_be.r6 != null ? _be.r6 + '%' : '—'} · squeeze latch ${_be.latch ? 'FIRED' : 'clear'} · sleeve ${_be.enabled ? (_be.lev_mult != null && _be.lev_mult < 1 ? `1× probe (lev ×${_be.lev_mult})` : 'ARMED 20×') : 'OFF'}`;
                         if (_be.state === 'ON') {
                             _beChip.textContent = `🐻 ${_be.on_since ? _brFmt(_be.on_since) : 'ON'}`;
-                            _beChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 uppercase tracking-wide';
+                            _beChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 uppercase tracking-wide cursor-help tip-right';
                         } else {
                             _beChip.textContent = `🐻 off${_be.enabled ? '' : ' (sleeve OFF)'}`;
-                            _beChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide';
+                            _beChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide cursor-help tip-right';
                         }
                     } else {
                         _beChip.textContent = '🐻 --';
@@ -8906,8 +8911,8 @@
                     if (_lo != null) {
                         const _loGated = (_loGate != null && _loGate > 0 && _lo > _loGate);
                         _loChip.textContent = `24h-low +${_lo.toFixed(2)}%`;
-                        _loChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ' + (!(_loGate > 0) ? 'bg-gray-500/20 text-gray-400' : (_loGated ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'));
-                        _loChip.title = `BTC is ${_lo.toFixed(2)}% above its 24h low` + (!(_loGate > 0) ? ' (gate off)' : (_loGated ? ` — above the ${_loGate}% gate: bear sleeve refusing bypasses (bounce phase)` : ` — inside the ${_loGate}% gate: bypasses granted while the monitor is ON`));
+                        _loChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold tracking-wide cursor-help tip-right ' + (!(_loGate > 0) ? 'bg-gray-500/20 text-gray-400' : (_loGated ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'));
+                        _loChip.dataset.tip = `BTC is ${_lo.toFixed(2)}% above its 24h low` + (!(_loGate > 0) ? ' (gate off)' : (_loGated ? ` — above the ${_loGate}% gate: bear sleeve refusing bypasses (bounce phase)` : ` — inside the ${_loGate}% gate: bypasses granted while the monitor is ON`));
                     } else {
                         _loChip.textContent = '24h-low --';
                     }
@@ -8988,6 +8993,7 @@
                     // Sep-15 (operator): the WEAK/STRONG badge was redundant with the number's colour and wide enough to wrap
                     // the header on quiet tapes — the word now lives in the number's tooltip; the tag span stays hidden.
                     if (gvTag) gvTag.classList.add('hidden');
+                    { const _vl = document.getElementById('vol-label'); if (_vl) _vl.dataset.tip = `Global volume ratio = current 5m volume across the scan universe ÷ its ${window._cachedConfig?.thresholds?.global_volume_lookback_bars ?? 48}-bar average. Longs need ≥ ${gvThreshL.toFixed(2)}, shorts ≥ ${gvThreshS.toFixed(2)}. Red below the threshold, green at 1.15 or more.`; }
                     if (gvr < gvMin) {
                         gvEl.className = 'text-red-400 font-bold cursor-help';
                         gvEl.title = `Global volume ratio ${gvr.toFixed(2)} — WEAK: below the ${gvMin.toFixed(2)} entry threshold (long ${gvThreshL.toFixed(2)} / short ${gvThreshS.toFixed(2)})`;
@@ -19196,6 +19202,7 @@
                     // Sep-15 (operator): the LOW/HIGH badge was redundant with the number's colour and wrapped the
                     // header on quiet tapes — the word now lives in the number's tooltip; the tag span stays hidden.
                     if (adxLowTag) adxLowTag.classList.add('hidden');
+                    { const _al = document.getElementById('adx-label'); if (_al) _al.dataset.tip = `BTC ADX(14) on 5m candles; arrow = direction vs the previous closed bar. Entry band: longs ${adxMinL}–${adxMaxL}, shorts ${adxMinS}–${adxMaxS}; shorts also refused at ${window._cachedConfig?.thresholds?.btc_adx_block_min_short ?? 24}–${window._cachedConfig?.thresholds?.btc_adx_block_max_short ?? 30}. Red = outside the band.`; }
                     adxValueEl.title = `BTC ADX ${btcAdxVal.toFixed(1)} — ` + (isLow ? `LOW: below the ${effectiveMin} admission floor` : (isHigh ? `HIGH: above the ${effectiveMax} ceiling` : `inside the admission band [${effectiveMin}, ${effectiveMax}]`)) + ` (long ${adxMinL}-${adxMaxL} / short ${adxMinS}-${adxMaxS})`;
                     // Aug-22 (operator): persistent arrow (↑/↓/≈) from the closed 5m bar — replaces the
                     // poll-to-poll RISING/FALLING tag that only showed for 30 s after a change.

@@ -23,7 +23,7 @@ import warnings; warnings.filterwarnings('ignore')
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-09-18a"  # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
+STACK_VERSION = "2026-09-18b"  # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 # Era registry (Sep-11: B3/B4/B5 were previously stacked by a one-off — the builder only knew
@@ -115,6 +115,26 @@ def main():
         df['is_probe'] = df['is_probe'] | ((df.entry_strategy.astype(str) == 'BEARRUN_SHORT') & (_lev < 1.0))
     df['is_door'] = src.str.contains('CALM3D')
     vol = df.entry_pair_volume_24h_usd
+    # 🔥 Sep-18 long heat block parity — the engine's own pure rule with the SHIPPED thresholds pinned here
+    # (builder convention: the stack version freezes its numbers). 30d reading: stamped column when the
+    # fill has it, else the hourly series from scripts/build_btc_off30d.py; missing → fail-open like live.
+    import os, sys
+    from types import SimpleNamespace
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from services.trading_engine import long_heat_eval
+    _HEAT_TH = SimpleNamespace(long_heat_block_enabled=True, long_heat_btc_slope_min=0.07, long_heat_btc_rsi_prev_min=64.0,
+                               long_heat_bull_pct_min=80.0, long_heat_exempt_off30d_max=-10.0)
+    _off30 = {}
+    if os.path.exists("reports/btc_off30d_hourly.csv"):
+        _o = pd.read_csv("reports/btc_off30d_hourly.csv")
+        _off30 = dict(zip(_o.hour_utc, _o.btc_off30d_high_pct))
+    else:
+        print("WARNING: reports/btc_off30d_hourly.csv missing — LONG_HEAT_BLOCK fails open on unstamped rows")
+    def _row_off30d(r):
+        v = r.get('entry_btc_off30d_high_pct')
+        if v is not None and pd.notna(v):
+            return float(v)
+        return _off30.get(str(r.opened_at)[:13].replace('T', ' ') + ':00')
     keep, reason, spnl = [], [], []
     # door same-pair <=90min re-fire detection (cooldown), computed per era
     df['_ts'] = pd.to_datetime(df.opened_at.str[:19], errors='coerce')
@@ -162,6 +182,9 @@ def main():
                 if i in cooldown_idx: k, why = False, 'CALM3D_REENTRY'
                 elif r.is_door and pd.notna(r.entry_pos_di) and r.entry_pos_di < 28: k, why = False, 'CALM3D_DMI_DI'
                 elif r.is_door and pd.notna(r.entry_adx) and r.entry_adx < 21: k, why = False, 'CALM3D_DMI_ADX'
+                elif (str(r.direction) == 'LONG'
+                      and long_heat_eval(_HEAT_TH, r.entry_btc_ema20_slope, r.get('entry_btc_rsi_prev'), r.entry_bull_pct, _row_off30d(r))[1]):
+                    k, why = False, 'LONG_HEAT_BLOCK'
                 # Sep-18: momentum_short_pair_vol_max 1.0 → 0.86 (live parity; engine: strict >=, fail-open on missing PVR).
                 elif (str(r.direction) == 'SHORT' and pd.notna(r.entry_pair_volume_ratio)
                       and float(r.entry_pair_volume_ratio) >= 0.86): k, why = False, 'MOM_SHORT_PAIRVOL'

@@ -18,7 +18,7 @@ Flip-short uses the real services.trading_engine._flip_filters with a field-audi
 import csv, sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
-from services.trading_engine import _flip_filters
+from services.trading_engine import _flip_filters, long_heat_eval
 
 RAW = "reports/COMBINED_momentum_flip_2026-06-16to28_DEDUP.csv"  # Jul 8: now spans 06-16..07-08 (batches appended; filename kept — all tooling points here)
 OUT = "reports/SCREENED_BASELINE.csv"
@@ -71,6 +71,11 @@ def flip_ind(r):  # field-audited against engine _ff_in (trading_engine.py:3414)
         # Jul 8 — required by flip_short_btc_trend_gap_min (the BTC depth gate); missing = fail-open
         'btc_trend_gap':nf(r.get('entry_btc_trend_gap_pct'))}
 
+_OFF30 = {}
+if os.path.exists("reports/btc_off30d_hourly.csv"):
+    with open("reports/btc_off30d_hourly.csv") as _f:
+        _OFF30 = {x['hour_utc']: float(x['btc_off30d_high_pct']) for x in csv.DictReader(_f)}
+
 def sleeve(r):
     """Return 'MOM_LONG' / 'MOM_SHORT' / 'FLIP_SHORT' if the row SURVIVES the current stack, else None."""
     if r.get('status') != 'CLOSED' or r['pair'] in BL: return None
@@ -89,6 +94,13 @@ def sleeve(r):
         _smax = float(getattr(th, 'ema5_stretch_max_long', 0.0) or 0.0)
         _str = nf(r.get('entry_ema5_stretch'))
         if _smax > 0 and _str is not None and _str > _smax: return None  # EMA5_STRETCH_MAX_LONG
+        # Sep 18 — 🔥 LONG HEAT BLOCK parity: the engine's own pure rule on the LIVE config thresholds. 30d reading =
+        # stamped column when present, else reports/btc_off30d_hourly.csv (scripts/build_btc_off30d.py); missing = fail-open.
+        _o30 = nf(r.get('entry_btc_off30d_high_pct'))
+        if _o30 is None:
+            _o30 = _OFF30.get(str(r.get('opened_at'))[:13].replace('T', ' ') + ':00')
+        if long_heat_eval(th, nf(r.get('entry_btc_ema20_slope')), nf(r.get('entry_btc_rsi_prev')), nf(r.get('entry_bull_pct')), _o30)[1]:
+            return None  # LONG_HEAT_BLOCK
         return 'MOM_LONG'
     # --- FLIP-short: the REAL engine flip filter ---
     if d == 'SHORT' and isflip(r):
@@ -211,7 +223,8 @@ def main():
     _pvmax = float(getattr(th, 'momentum_short_pair_vol_max', 0.0) or 0.0)
     _pv_surv = sum(1 for r in ms if _pvmax > 0 and nf(r.get('entry_pair_volume_ratio')) is not None and nf(r.get('entry_pair_volume_ratio')) >= _pvmax)
     assert _pv_surv == 0, f"FAIL: {_pv_surv} pair_vol>={_pvmax} mom-shorts survived — vol block not applied, NOT freezing"
-    assert len(ml) == 41 and round(ml_net) == 3550, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 41/$3550 (v14: 07-10 batch + stretch<=0.35 + PVR>=0.90 demux) — screen wrong, NOT freezing"
+    # v16 (2026-09-18): 🔥 LONG_HEAT_BLOCK screens 3 BASE longs (PYTH −$98 / PUMP +$160 / AVAX +$48): ML 41/$3550 -> 38/$3440.
+    assert len(ml) == 38 and round(ml_net) == 3440, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 38/$3440 (v16: long heat block) — screen wrong, NOT freezing"
     # v15 (2026-09-18): momentum_short_pair_vol_max 1.0 -> 0.86 screens 5 more mom-shorts (MS 19/$794 -> 14/$756).
     assert len(ms) == 14 and round(ms_net) == 756, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 14/$756 (v15; pair-vol ceiling 0.86) — NOT freezing"
     fl = agg.get('FLIP_SHORT', [])
@@ -222,7 +235,7 @@ def main():
     # to the core-only cohort. Rewritten revert gate lives in CURRENT_STATE.
     # v12 (Jul 8): BTC trend-gap depth gate (flip_short_btc_trend_gap_min=-0.22) screens 12 more flips (42%WR/-$244)
     assert len(fl) == 31 and round(fl_net) == 692, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 31/$692 (v14, unchanged from v13) — trend-gap gate off? de-mux? NOT freezing"
-    print(f"\n✅ VALIDATION PASSED (v15: ML 41/$3550 + MS 14/$756 + FLIP 31/$692 + 0 pair-vol survivors). Freezing.")
+    print(f"\n✅ VALIDATION PASSED (v16: ML 38/$3440 + MS 14/$756 + FLIP 31/$692 + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

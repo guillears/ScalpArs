@@ -199,6 +199,11 @@ class Order(Base):
     # monitors' shared 5m fetch (≤2 min old). Rides the orders CSV.
     entry_btc_off24h_pct = Column(Float, nullable=True)
     entry_btc_off24lo_pct = Column(Float, nullable=True)
+    # Sep 18 (long heat block): heat legs true at entry (0-3: BTC EMA20 slope / BTC RSI prev / bull breadth vs the
+    # long_heat_* thresholds) and BTC % below its 30-day high (≤0) — stamped on EVERY fill so the blocked zone's
+    # 2-flag neighbours and the washed-out state stay readable in every report. Rides the orders CSV.
+    entry_long_heat_flags = Column(Integer, nullable=True)
+    entry_btc_off30d_high_pct = Column(Float, nullable=True)
     # May 14 — BTC 1h EMA20 slope at trade entry.
     # Captures multi-hour BTC trend direction (12× longer than 5m slope).
     # Slope = (ema20_1h - ema20_1h_prev3) / ema20_1h_prev3 × 100.

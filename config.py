@@ -1758,6 +1758,24 @@ class SignalThresholds(BaseModel):
     # WR≥60 ∨ Σ>0 → revert the de-mux. Counter row = [UNMATCHED_SPRINT_DEMUX] logs. 0 = off.
     long_unmatched_sprint_demux_gvr_min: float = 0.74
     long_unmatched_sprint_demux_b20slope_min: float = 0.07
+    # 🔥 Sep-18 LONG HEAT BLOCK (operator-directed DISCIPLINE-OVERRIDE — N 8 vs the locked N≥30 block gate;
+    # DECISION_LOG 2026-09-18 (70)). Refuse a momentum LONG (UNMATCHED + CALM3D doors) when BTC EMA20 slope ≥ slope_min
+    # ∧ BTC RSI(prev bar) ≥ rsi_prev_min ∧ bull breadth ≥ bull_pct_min ∧ BTC is within |exempt| % of its 30-day high.
+    # Theory: BTC sprinting + already overbought + everyone already long = a late, carried entry with no follow-through
+    # (all 4 zone losers never went positive: PYTH/BONK/SHIB/OP). Washed-out BTC (>10% below its 30d high) is EXEMPT —
+    # Jun-18→Jul-2 every sleeve won there (55·91%). Master+current kept longs, today's real sizing: zone 8·50%·−$220
+    # (BASE 3·67%·+$110 · B1 2·50%·−$71 · B3 1·+$32 · B4 1·−$103 · CUR OP −$188); OP = $188 of it. The two BTC legs are
+    # negative on 3 independent sources; threshold grid (500 combos) gap positive in 100%. The SIZING half of the idea
+    # already exists (Aug-10 crowd-sprint de-mux, gate 42). Blocked signals are NOT tracked (operator) →
+    # 🔒 REVERT: if the visible 2-flag neighbours (entry_long_heat_flags==2, not washed out) come back ≥70% WR on N≥10
+    # fresh longs COUNTED IN WINDOWS (all legs are market-wide → same-moment fills = ONE observation; the 8 zone
+    # trades are 7 windows: PUMP+AVAX fired 20 s apart) → switch the block off. Bull% leg is inclusive (STX sat at 80.0).
+    # Scope note: W2/W6 matched longs carry no exempt flag and would be blocked too — moot while both re-enables = 99. Any leg threshold 0 = that leg off; exempt 0 = no exemption. Fail-open.
+    long_heat_block_enabled: bool = True
+    long_heat_btc_slope_min: float = 0.07
+    long_heat_btc_rsi_prev_min: float = 64.0
+    long_heat_bull_pct_min: float = 80.0
+    long_heat_exempt_off30d_max: float = -10.0
     # Jul 6: W2 RE-ENABLE, 1h-rising conditioned (operator-directed; first matched-long cell back
     # since the Jun-9 block). Admit a W2-matched long (macro tailwind; NO C co-match) when BTC 1h
     # slope ≥ this value. Evidence: historical live W2 longs split hard on 1h — rising ≥+0.05 =

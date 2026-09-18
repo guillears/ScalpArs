@@ -614,6 +614,11 @@ async def init_db():
                 for _bc in ('entry_btc_off24h_pct', 'entry_btc_off24lo_pct'):
                     if _bc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_bc} FLOAT"))
+                # Sep 18: long heat block stamps (every fill)
+                if 'entry_long_heat_flags' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_long_heat_flags INTEGER"))
+                if 'entry_btc_off30d_high_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_off30d_high_pct FLOAT"))
                 if 'funding_fee_usd' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN funding_fee_usd FLOAT"))
                 # Jun 7: phantom EMA13 cross (records would-have-exited pnl when EMA13

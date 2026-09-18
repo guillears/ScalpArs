@@ -98,6 +98,7 @@ _bullrun_monitor: Dict = {
     'state': 'DARK', 'green': False, 'amber': False, 'latch': False,
     'r72': None, 'above': None, 'eff': None, 'r6': None, 'r24': None, 'off24h': None,
     'green_since': None, 'updated_at': 0.0, 'flips': [],
+    'off30d': None, 'off30d_at': 0.0,   # Sep-18 long heat block: BTC % below its 30-day high (own 1h fetch, ~10-min refresh)
 }
 _br_dip_state: Dict[str, Dict] = {}      # pair -> {'dipped': bool, 'last_bar_ts': int}
 _br_e50h_cache: Dict[str, tuple] = {}    # pair -> (fetched_at_epoch, ema50_1h)
@@ -519,6 +520,43 @@ def _flip_size_mult(source):
 
 def _flip_lev_mult(source):
     return _flip_registry().get(source, (1.0, 1.0))[1]
+
+def long_heat_eval(th, btc_slope, btc_rsi_prev, bull_pct, btc_off30d):
+    """🔥 Sep-18 LONG HEAT BLOCK (operator override, DECISION_LOG 2026-09-18 (70)) — pure rule, shared by the
+    engine, scripts/build_master_pool.py and scripts/screen_pool.py (single source of truth).
+
+    A momentum LONG is refused when ALL enabled legs hold at entry:
+      ① BTC 5m EMA20 slope ≥ long_heat_btc_slope_min      (BTC sprinting — the alt is carried, not moving on its own flow)
+      ② BTC RSI on the previous 5m bar ≥ long_heat_btc_rsi_prev_min   (the BTC move is already late)
+      ③ bull breadth ≥ long_heat_bull_pct_min              (most buyers already in)
+      ④ BTC is NOT washed out: % below its 30-day high > long_heat_exempt_off30d_max (e.g. −6 > −10).
+         Washed-out tape (Jun-18→Jul-2: every sleeve won, 55·91%) is exempt — a sprint there is a recovery.
+    A leg threshold of 0 switches that leg OFF (dropped from the AND). Exempt threshold 0 = no exemption.
+    FAIL-OPEN: any ENABLED leg with a missing reading → no block (a block never fires on missing data).
+
+    Returns (flags, block): flags = number of heat legs ①-③ that are ON and TRUE (None if none readable)."""
+    def _f(v):
+        try:
+            return None if v is None else float(v)
+        except (TypeError, ValueError):
+            return None
+    legs = ((_f(btc_slope), float(getattr(th, 'long_heat_btc_slope_min', 0.0) or 0.0)),
+            (_f(btc_rsi_prev), float(getattr(th, 'long_heat_btc_rsi_prev_min', 0.0) or 0.0)),
+            (_f(bull_pct), float(getattr(th, 'long_heat_bull_pct_min', 0.0) or 0.0)))
+    enabled = [(v, t) for v, t in legs if t > 0]
+    readable = [(v, t) for v, t in enabled if v is not None]
+    flags = sum(1 for v, t in readable if v >= t) if readable else None
+    if not bool(getattr(th, 'long_heat_block_enabled', False)) or not enabled:
+        return flags, False
+    if len(readable) < len(enabled) or flags != len(enabled):
+        return flags, False
+    _ex = float(getattr(th, 'long_heat_exempt_off30d_max', 0.0) or 0.0)
+    if _ex < 0:
+        _o = _f(btc_off30d)
+        if _o is None or _o <= _ex:      # unknown → fail-open; washed out → exempt
+            return flags, False
+    return flags, True
+
 
 def _fan_qs_cell_match(th, qs, bear, rng):
     """FAN flip-SHORT 'winner cell' (Jun 26). Spec `flip_fan_qs_cell` =
@@ -4891,6 +4929,19 @@ class TradingEngine:
                 _bullrun_monitor['rearm_since'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
             elif not rearm:
                 _bullrun_monitor['rearm_since'] = None
+            # 🔥 Sep-18 long heat block: BTC % below its 30-day HIGH (hourly highs, closed bars). Own try + own
+            # ~10-min throttle — can never touch the bull/bear monitor path; a failed fetch keeps the last
+            # reading until it goes stale (30 min) at the consumer, which then fails OPEN.
+            try:
+                if _now - (_bullrun_monitor.get('off30d_at') or 0) >= 600:
+                    _k30 = await binance_service.get_ohlcv('BTC/USDT:USDT', '1h', 745)
+                    if _k30 and len(_k30) >= 360:
+                        _hi30 = max(float(r[2]) for r in _k30[-721:-1])
+                        if _hi30 > 0:
+                            _bullrun_monitor['off30d'] = round((closes[-1] / _hi30 - 1) * 100.0, 2)
+                            _bullrun_monitor['off30d_at'] = _now
+            except Exception as _o30_err:
+                logger.warning(f"[LONG_HEAT] BTC 30d-high fetch failed ({_o30_err}) — last reading kept until stale")
             _bullrun_monitor.update({
                 'state': state, 'green': green, 'rearm': rearm, 'amber': amber, 'latch': latch,
                 'r72': round(r72, 2), 'above': round(above, 1), 'eff': round(eff, 3),
@@ -6655,6 +6706,30 @@ class TradingEngine:
                     pass
                 return None
 
+        # 🔥 Sep-18 LONG HEAT BLOCK (operator override; config.py long_heat_* evidence comment). Momentum LONGs only
+        # (UNMATCHED + NONEXP_CALM3D doors — OP Sep-17 was a door); every sleeve/probe/spike/flip is exempt in the
+        # guard. Rule = long_heat_eval (pure, shared with the pool builders). Flags + the 30d reading are stamped on
+        # EVERY fill below, so the zone and its 2-flag neighbours stay visible (the revert read).
+        _lh_off30d = (_bullrun_monitor.get('off30d') if (_leash_time.time() - (_bullrun_monitor.get('off30d_at') or 0)) <= 1800 else None)
+        _lh_flags, _lh_block = None, False
+        try:
+            _lh_flags, _lh_block = long_heat_eval(config.trading_config.thresholds, entry_btc_ema20_slope,
+                                                  entry_btc_rsi_prev, entry_bull_pct, _lh_off30d)
+        except Exception as _lh_err:
+            logger.error(f"[LONG_HEAT] eval failed ({_lh_err}) — fail-open")
+            _lh_flags, _lh_block = None, False
+        if (_lh_block and direction == "LONG" and not flip_source and not bull_long and not bounce_long
+                and not bullrun_long and not spike_chase_probe and not spike_fade and not spike_bounce
+                and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
+                         or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe)):
+            logger.info(f"[LONG_HEAT_BLOCK] {pair}: momentum LONG blocked — BTC slope {entry_btc_ema20_slope} / BTC RSI prev "
+                        f"{entry_btc_rsi_prev} / bull {entry_bull_pct}% all hot, BTC {_lh_off30d}% vs 30d high (not washed out)")
+            try:
+                self._record_filter_block("LONG_HEAT_BLOCK", "LONG")
+            except Exception:
+                pass
+            return None
+
         # === Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3) ===
         # Look up cell multiplier from BOTH pair-level (Pair RSI × Pair ADX) and BTC-level
         # (BTC RSI × BTC ADX) rule strings.  When both match, take HIGHER (max) — not multiply
@@ -7296,6 +7371,8 @@ class TradingEngine:
             # Sep 16: BTC 24h-range position at entry on every fill (from the monitors' shared 5m fetch, ≤2 min old; None before the first compute)
             entry_btc_off24h_pct=(_bullrun_monitor.get('off24h') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # deep review: stale monitor (>30 min, exchange outage) → None, never an old reading
             entry_btc_off24lo_pct=(_bearrun_monitor.get('off24lo') if (_leash_time.time() - (_bearrun_monitor.get('updated_at') or 0)) <= 1800 else None),
+            entry_long_heat_flags=_lh_flags,          # Sep-18: 0-3 heat legs true at entry (every fill, all sleeves)
+            entry_btc_off30d_high_pct=_lh_off30d,     # Sep-18: BTC % below its 30-day high (≤0; None if stale/unknown)
             entry_bear_r24=entry_bear_r24, entry_bear_below24=entry_bear_below24, entry_bear_eff24=entry_bear_eff24,
             entry_bear_off24lo=entry_bear_off24lo, entry_bear_bypass=entry_bear_bypass,
             # Jun 8: gap-expanding relaxation A/B cohort tag

@@ -30,6 +30,7 @@ def _strip_reason_prefixes(reason):
     if r.startswith("BR_"):  # Aug-21 gate 57: bull-run sleeve exits (BR_STOP_LOSS etc.)
         r = r[3:]
     return r
+from services import decision_journal as _djournal  # Sep-18 📓 decision journal (file-only, never raises)
 from services.websocket_tracker import websocket_tracker
 
 logger = logging.getLogger(__name__)
@@ -1933,6 +1934,12 @@ class TradingEngine:
         Same logic for SHORT in BULLISH. NEUTRAL regime records both
         (no clear directional preference).
         """
+        # 📓 Sep-18 decision journal: gate + the pair under evaluation + its indicator snapshot (file-only, never raises)
+        try:
+            _djournal.note('BLOCK', gate=filter_name, dir=direction, pair=getattr(self, '_journal_pair', None),
+                           room=bool(had_room), ctx=getattr(self, '_journal_ctx', None))
+        except Exception:
+            pass
         if not filter_name:
             return
         # Jul 15 VISIBILITY FIX (audit finding S1): countertrend blocks during clear
@@ -3503,6 +3510,11 @@ class TradingEngine:
         Historical SIGNAL_EXPIRED rows persisted before this change have NULL
         indicator values forever — only post-deploy aborts are analyzable.
         """
+        # 📓 Sep-18 decision journal: maker window lapsed / re-validation failed (file-only, never raises)
+        try:
+            _djournal.note('EXPIRED', pair=pair, dir=direction, price=entry_price, conf=confidence, reason=reason)
+        except Exception:
+            pass
         try:
             now = datetime.utcnow()
             opened_at = (now - timedelta(seconds=wait_seconds)) if wait_seconds is not None else now
@@ -4967,7 +4979,7 @@ class TradingEngine:
                 logger.warning(f"[LONG_HEAT] BTC 30d-high fetch failed ({_o30_err}) — last reading kept until stale")
             _bullrun_monitor.update({
                 'state': state, 'green': green, 'rearm': rearm, 'amber': amber, 'latch': latch,
-                'r72': round(r72, 2), 'above': round(above, 1), 'eff': round(eff, 3),
+                'r72': round(r72, 2), 'above': round(above, 1), 'eff': (int(eff * 1000) / 1000.0),  # Sep-18: TRUNCATE for display (0.09993 showed as '0.1 ✓' while the unrounded gate test eff ≥ 0.10 failed) — the shown value can never look like a pass the engine did not grant
                 'r6': round(r6, 2), 'r24': round(r24, 2), 'off24h': round(off24h, 2), 'updated_at': _now,
             })
         except Exception as e:
@@ -5572,6 +5584,7 @@ class TradingEngine:
         the standard SPIKE_CHASE probe (same tag / caps / sizing / gates). Fail-silent;
         piggybacks the scan loop; one fire per pair per candle. ZERO-RISK REVERT =
         spike_scanner_enabled=false."""
+        self._journal_pair = None; self._journal_ctx = None  # 📓 deep review: never carry the main loop's last pair into spike-path journal lines
         th = config.trading_config.thresholds
         # Jul 31 🏀: the scanner now feeds TWO species — pump (chase/fade) and bounce.
         # It runs if either is on; each trigger branch is gated by its own toggle so
@@ -7493,6 +7506,13 @@ class TradingEngine:
 
         await locked_commit(db)
         await db.refresh(order)
+        # 📓 Sep-18 decision journal: the fill (file-only, never raises)
+        try:
+            _djournal.note('OPEN', pair=pair, dir=direction, strategy=getattr(order, 'entry_strategy', None), price=getattr(order, 'entry_price', None),
+                           conf=confidence, cell=getattr(order, 'cell_multiplier_source', None), mult=getattr(order, 'cell_multiplier', None),
+                           order_type=getattr(order, 'entry_order_type', None), heat=_lh_flags, off30d=_lh_off30d)
+        except Exception:
+            pass
 
         # Jun 2: count a redeploy-band open (position beyond normal max_open_positions,
         # only reachable because ① throttling freed margin + redeploy raised the ceiling).
@@ -10564,6 +10584,15 @@ class TradingEngine:
             if _s_smax and _s_smax > 0 and abs(btc_ema20_slope_pct) > _s_smax:
                 _btc_macro_blocks_short = _btc_macro_blocks_short or "BTC_SLOPE_MAX_GATE"
 
+        # 📓 Sep-18 decision journal — scan header (also flushes the previous scan's buffered events to disk)
+        try:
+            _djournal.flush()
+            _djournal.note('SCAN', btc_rsi=btc_rsi, btc_adx=btc_adx, btc_adx_prev=btc_adx_prev, btc_slope=btc_ema20_slope_pct,
+                           veto_long=_btc_macro_blocks_long, veto_short=_btc_macro_blocks_short,
+                           br_state=_bullrun_monitor.get('state'), r72=_bullrun_monitor.get('r72'), above=_bullrun_monitor.get('above'),
+                           eff=_bullrun_monitor.get('eff'), off24h=_bullrun_monitor.get('off24h'), off30d=_bullrun_monitor.get('off30d'))
+        except Exception:
+            pass
         if _btc_macro_blocks_long or _btc_macro_blocks_short:
             logger.info(
                 f"[FILTER_BLOCK_ATTRIB] BTC macro veto active this scan — "
@@ -10671,6 +10700,7 @@ class TradingEngine:
                 # Stash current pair so the block recorder closure can stamp
                 # _last_pair_block_reason for the UI's Block Reason column.
                 _current_pair_holder['pair'] = pair
+                self._journal_pair = pair; self._journal_ctx = None  # 📓 Phase-1 (signal generation) blocks: pair known, snapshot not yet
                 # Pre-stamp a default "no setup" reason. Most top-50 pairs at any
                 # moment have no EMA stack alignment → get_signal returns NOTHING
                 # without calling _record(). Default placeholder is overwritten
@@ -10806,10 +10836,13 @@ class TradingEngine:
             _had_room = _open_positions_in_scan < _max_positions
             pair = _cr['pair']
             _cross_ob_open_hit = False  # Sep-18 narrowed overbought band: per-pair flag, reset FIRST (no leak between pairs)
+            self._journal_pair = pair  # 📓 decision journal context for every gate below (reset per pair)
+            self._journal_ctx = None
             symbol = _cr['symbol']  # Sep-7 full-review C1: was leaked from Phase 1's last iteration — entry_funding_rate stamped the wrong pair
             ohlcv = _cr.get('ohlcv')  # Sep-7 full-review C1: same leak — spike chase/fade/bounce candle+volume legs judged the wrong pair
             indicators = _cr['indicators']
             signal = _cr['signal']
+            self._journal_ctx = _djournal.snapshot(indicators) if signal in ("LONG", "SHORT") else None  # 📓 only when a signal exists
             confidence = _cr['confidence']
             volume_24h = _cr['volume_24h']
             _pair_volume_ratio = _cr['pair_volume_ratio']
@@ -11230,6 +11263,7 @@ class TradingEngine:
                                         f"{getattr(_th, 'long_cross_ob_r72_block_min', None)}% (breakout from a base) → probe size"
                                     )
                                     _cross_ob_open_hit = True
+                                    _djournal.note('ADMIT', gate='CROSS_OB_OPEN', dir='LONG', pair=pair, btc_rsi=btc_rsi, btc_adx=btc_adx, r72=_bullrun_monitor.get('r72'))
                                 elif _cf_out and not self._bearrun_bypass(pair, "BTC_RSI_ADX_CROSS", _had_room):  # 🐻 gate 60 bypass (SHORT, monitor ON)
                                     logger.info(
                                         f"[BTC_RSI_ADX_CROSS] {pair}: {signal} blocked — "

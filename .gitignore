@@ -38,3 +38,6 @@ Thumbs.db
 
 # engine-replay data cache (6 GB — never commit)
 reports/backtest_cache/
+
+# decision journal files (local dev runs)
+journal/

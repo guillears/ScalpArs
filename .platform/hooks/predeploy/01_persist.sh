@@ -38,5 +38,13 @@ fi
 ln -sf "$PERSISTENT_DIR/scalpars.db" "$STAGING_DIR/scalpars.db"
 ln -sf "$PERSISTENT_DIR/trading_config.json" "$STAGING_DIR/trading_config.json"
 
+# Sep-18 📓 decision journal: writable folder + include it in the EB log BUNDLE (so it can be pulled with
+# `aws elasticbeanstalk request-environment-info --info-type bundle`). Best-effort: never fail a deploy for it.
+mkdir -p "$PERSISTENT_DIR/journal" 2>/dev/null || true
+chmod 777 "$PERSISTENT_DIR/journal" 2>/dev/null || true
+if [ -d /opt/elasticbeanstalk/tasks/bundlelogs.d ]; then
+  echo "$PERSISTENT_DIR/journal/*" > /opt/elasticbeanstalk/tasks/bundlelogs.d/scalpars-journal.conf 2>/dev/null || true
+fi
+
 echo "[PREDEPLOY_HOOK] persistent dir=$PERSISTENT_DIR, staging=$STAGING_DIR"
 ls -la "$PERSISTENT_DIR/" || true

@@ -5723,6 +5723,10 @@
                                         <input type="number" step="0.1" id="config-long-cross-ob-invest-mult" class="w-14 bg-white/5 border border-sky-500/40 rounded px-2 py-1 text-sky-200 text-center" value="1"></label>
                                     <label class="flex items-center gap-1 text-xs text-gray-400">Lev
                                         <input type="number" step="0.05" id="config-long-cross-ob-lev-mult" class="w-14 bg-white/5 border border-sky-500/40 rounded px-2 py-1 text-sky-200 text-center" value="1"></label>
+                                    <label class="flex items-center gap-1 text-xs text-slate-300" title="📓 Sep-18 DECISION JOURNAL: records what the bot saw and decided (scan header, every gate block with the pair's indicator snapshot, admits, opens, expiries) to daily files under /opt/scalpars-data/journal. File-only, never touches the DB, changes nothing about trading. Used to calibrate the replay harness and to answer 'why no trades'. Files are gzipped daily and deleted after Days.">📓 Journal
+                                        <input type="checkbox" id="config-decision-journal-enabled" class="accent-slate-400"></label>
+                                    <label class="flex items-center gap-1 text-xs text-gray-400">Days
+                                        <input type="number" step="1" id="config-decision-journal-retention-days" class="w-14 bg-white/5 border border-slate-500/40 rounded px-2 py-1 text-slate-200 text-center" value="45"></label>
                                 <span class="text-xs text-gray-500">(crowded entry → sized down to these; ratio 0 = off; ship 0.90 / 1.0 / 1.0; sub-1× allowed — the PVR≥0.93 read may earn it; ≤0 coerced to 1.0)</span>
                             </div>
                         </div>
@@ -20719,6 +20723,8 @@
                 { const _e=document.getElementById('config-long-cross-ob-r72-block-min'); if(_e && config.thresholds.long_cross_ob_r72_block_min !== undefined) _e.value = config.thresholds.long_cross_ob_r72_block_min; }
                 { const _e=document.getElementById('config-long-cross-ob-invest-mult'); if(_e && config.thresholds.long_cross_ob_invest_mult !== undefined) _e.value = config.thresholds.long_cross_ob_invest_mult; }
                 { const _e=document.getElementById('config-long-cross-ob-lev-mult'); if(_e && config.thresholds.long_cross_ob_lev_mult !== undefined) _e.value = config.thresholds.long_cross_ob_lev_mult; }
+                { const _e=document.getElementById('config-decision-journal-enabled'); if(_e) _e.checked = (config.thresholds.decision_journal_enabled === true); }
+                { const _e=document.getElementById('config-decision-journal-retention-days'); if(_e && config.thresholds.decision_journal_retention_days !== undefined) _e.value = config.thresholds.decision_journal_retention_days; }
                 { const _e=document.getElementById('config-long-unmatched-quiet-mult'); if(_e) _e.value = config.thresholds.long_unmatched_quiet_mult !== undefined ? config.thresholds.long_unmatched_quiet_mult : 0; }
                 { const _e=document.getElementById('config-long-unmatched-quiet-pvr-max'); if(_e) _e.value = config.thresholds.long_unmatched_quiet_pvr_max !== undefined ? config.thresholds.long_unmatched_quiet_pvr_max : 0; }
                 { const _e=document.getElementById('config-long-unmatched-quiet-lev-mult'); if(_e) _e.value = config.thresholds.long_unmatched_quiet_lev_mult !== undefined ? config.thresholds.long_unmatched_quiet_lev_mult : 1; }
@@ -22272,6 +22278,8 @@
                     long_cross_ob_r72_block_min: (() => { const _v = document.getElementById('config-long-cross-ob-r72-block-min')?.value; return safeFloat(_v === '' || _v == null ? 5 : _v); })(),
                     long_cross_ob_invest_mult: (() => { const _v = document.getElementById('config-long-cross-ob-invest-mult')?.value; return safeFloat(_v === '' || _v == null ? 1 : _v); })(),
                     long_cross_ob_lev_mult: (() => { const _v = document.getElementById('config-long-cross-ob-lev-mult')?.value; return safeFloat(_v === '' || _v == null ? 1 : _v); })(),
+                    decision_journal_enabled: ((document.getElementById('config-decision-journal-enabled') || {}).checked === true),
+                    decision_journal_retention_days: (() => { const _v = parseInt(document.getElementById('config-decision-journal-retention-days')?.value, 10); return (isNaN(_v) || _v < 1) ? 45 : _v; })(),
                     long_unmatched_quiet_mult: (function(){ const v = parseFloat((document.getElementById('config-long-unmatched-quiet-mult') || {}).value); return isNaN(v) ? 0 : v; })(),
                     long_unmatched_quiet_pvr_max: (function(){ const v = parseFloat((document.getElementById('config-long-unmatched-quiet-pvr-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     long_unmatched_quiet_lev_mult: (function(){ const v = parseFloat((document.getElementById('config-long-unmatched-quiet-lev-mult') || {}).value); return isNaN(v) ? 1 : v; })(),

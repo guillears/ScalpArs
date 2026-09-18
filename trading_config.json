@@ -627,6 +627,8 @@
     "long_cross_ob_r72_block_min": 5.0,
     "long_cross_ob_invest_mult": 1.0,
     "long_cross_ob_lev_mult": 1.0,
+    "decision_journal_enabled": true,
+    "decision_journal_retention_days": 45,
     "momentum_long_sl_atr_threshold": 0,
     "momentum_long_sl_quiet_pct": -2.0,
     "spike_chase_enabled": false,

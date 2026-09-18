@@ -64,6 +64,7 @@ DB_PATH = os.path.join(db_dir, f"replay_{A.tag}.db")
 for f in glob.glob(DB_PATH + "*"):
     os.remove(f)
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{DB_PATH}"
+os.environ["SCALPARS_JOURNAL_OFF"] = "1"   # a replay must never write the live decision journal
 os.environ["DEBUG"] = "false"
 
 logging.basicConfig(level=getattr(logging, A.log.upper()), format="%(levelname)s %(name)s: %(message)s")

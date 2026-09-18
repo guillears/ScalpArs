@@ -1793,6 +1793,14 @@ class SignalThresholds(BaseModel):
     long_cross_ob_r72_block_min: float = 5.0
     long_cross_ob_invest_mult: float = 1.0
     long_cross_ob_lev_mult: float = 1.0
+    # 📓 Sep-18 DECISION JOURNAL (DECISION_LOG 2026-09-18 (74)) — records what the bot saw and decided (SCAN header, every
+    # gate BLOCK with the pair's indicator snapshot, ADMIT, OPEN, EXPIRED) as JSONL files under /opt/scalpars-data/journal
+    # (one per UTC day, gzipped on rollover, deleted after retention_days). File-only — never touches the DB, never raises
+    # into the trading path, changes NOTHING about trading. Purpose: exact ground truth to calibrate the engine-replay
+    # harness (which reproduced live winners 2-3× more often than live losers) and to answer 'why no trades' without a
+    # log bundle. Retrieved through the EB log bundle (predeploy hook registers the folder). Replay sets SCALPARS_JOURNAL_OFF.
+    decision_journal_enabled: bool = True
+    decision_journal_retention_days: int = 45
     # Jul 6: W2 RE-ENABLE, 1h-rising conditioned (operator-directed; first matched-long cell back
     # since the Jun-9 block). Admit a W2-matched long (macro tailwind; NO C co-match) when BTC 1h
     # slope ≥ this value. Evidence: historical live W2 longs split hard on 1h — rising ≥+0.05 =

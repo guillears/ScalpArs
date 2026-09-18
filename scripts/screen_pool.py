@@ -212,7 +212,8 @@ def main():
     _pv_surv = sum(1 for r in ms if _pvmax > 0 and nf(r.get('entry_pair_volume_ratio')) is not None and nf(r.get('entry_pair_volume_ratio')) >= _pvmax)
     assert _pv_surv == 0, f"FAIL: {_pv_surv} pair_vol>={_pvmax} mom-shorts survived — vol block not applied, NOT freezing"
     assert len(ml) == 41 and round(ml_net) == 3550, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 41/$3550 (v14: 07-10 batch + stretch<=0.35 + PVR>=0.90 demux) — screen wrong, NOT freezing"
-    assert len(ms) == 19 and round(ms_net) == 794, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 19/$794 (v14; NEAR 07-08 weakcap-screened) — NOT freezing"
+    # v15 (2026-09-18): momentum_short_pair_vol_max 1.0 -> 0.86 screens 5 more mom-shorts (MS 19/$794 -> 14/$756).
+    assert len(ms) == 14 and round(ms_net) == 756, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 14/$756 (v15; pair-vol ceiling 0.86) — NOT freezing"
     fl = agg.get('FLIP_SHORT', [])
     fl_net = sum(pnl_current(x) for x in fl)
     # v11 (2026-07-07 era, operator: "we block with fundaments"): SLOPEUP admit REVERTED to hard
@@ -221,7 +222,7 @@ def main():
     # to the core-only cohort. Rewritten revert gate lives in CURRENT_STATE.
     # v12 (Jul 8): BTC trend-gap depth gate (flip_short_btc_trend_gap_min=-0.22) screens 12 more flips (42%WR/-$244)
     assert len(fl) == 31 and round(fl_net) == 692, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 31/$692 (v14, unchanged from v13) — trend-gap gate off? de-mux? NOT freezing"
-    print(f"\n✅ VALIDATION PASSED (ML 29/$3435 + MS 15/$750 + FLIP core 39/$637 + 0 pair-vol survivors). Freezing.")
+    print(f"\n✅ VALIDATION PASSED (v15: ML 41/$3550 + MS 14/$756 + FLIP 31/$692 + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

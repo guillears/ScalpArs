@@ -1593,9 +1593,15 @@ class SignalThresholds(BaseModel):
     # net-negative ≤06-13 → blocking >=1.0 is +EV in BOTH windows (unlike W1, which was +EV only recently).
     # Momentum-only (flips bypass — handled in _flip_filters). NOTE: this is a MAX (block at/above); distinct from
     # the legacy pair_volume_threshold_short=1.1 which is a MIN (require >=, the OPPOSITE) and stays OFF. Counter
-    # MOMENTUM_SHORT_PAIRVOL. DISCIPLINE-OVERRIDE (N=34 mom-short universe). TIGHT REVERT: set 0 if pair_vol>=1.0
+    # MOMENTUM_SHORT_PAIRVOL. DISCIPLINE-OVERRIDE (N=34 mom-short universe). (Jun-30 revert text — SUPERSEDED Sep-18 below) TIGHT REVERT: set 0 if pair_vol>=1.0
     # mom-shorts come back >=50% WR AND net-positive on N>=15 fresh, OR if pair_vol<1.0 (the kept side) drops <55% WR.
-    momentum_short_pair_vol_max: float = 1.0
+    # 2026-09-18 — TIGHTENED 1.0 → 0.86 (operator-directed DISCIPLINE-OVERRIDE, N below the locked N≥30 gate; DECISION_LOG
+    # 2026-09-18 (68)). Master+current kept full-size mom-shorts: PVR≥0.86 = 15·40%·−$389·−0.22 vs <0.86 = 26·88%·+$1,029·+0.37;
+    # blocked side worse in 5/6 batches, 13 pairs (top-2 35%), plateau 0.84–0.91, 0.86 = clean-space cut (winner 0.854 / loser
+    # 0.871), single-variable shuffle P=0.005. Year replay disagreed but reproduces 0/10 live mom-short losers (invalid here).
+    # NO phantom tracking of the blocked side (operator decision) → REVERT reads the KEPT side: back to 1.0 if PVR<0.86
+    # mom-shorts fall <70% WR on N≥15 fresh fills.
+    momentum_short_pair_vol_max: float = 0.86
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier Mechanism, per CLAUDE.md May 3 design).
     # Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>", comma-separated.
     # Example: "55-60:22-25:2.0,60-65:18-22:1.5" — boost LONG entries in those two cells by the listed factor.

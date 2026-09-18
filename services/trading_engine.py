@@ -6642,7 +6642,7 @@ class TradingEngine:
         # is a MIN and stays OFF. Counter MOMENTUM_SHORT_PAIRVOL. 0 = off. Fail-open: missing pair-vol → no block.
         # Jul 27 (review-2 C-1): spike_fade MUST be exempt — the spike trigger's leg 5
         # REQUIRES candle vol >= 5x avg20, so every fade arrives with PVR >= 5 >= this
-        # block's 1.0 max; without the exemption the entire fade species is unreachable.
+        # block's max (1.0 → 0.86 Sep-18); without the exemption the entire fade species is unreachable.
         # (The fade deliberately shorts the climactic move this filter avoids — that IS
         # its thesis, protected by the fixed -0.70 stop + tripwire, not by this block.)
         if direction == "SHORT" and not flip_source and not bull_long and not bounce_long and not spike_fade:

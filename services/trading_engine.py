@@ -521,6 +521,29 @@ def _flip_size_mult(source):
 def _flip_lev_mult(source):
     return _flip_registry().get(source, (1.0, 1.0))[1]
 
+def cross_ob_waived(th, rule_rsi_min, btc_r72, fresh):
+    """🚪 Sep-18 NARROWED OVERBOUGHT BAND (operator override, DECISION_LOG 2026-09-18 (71)) — pure rule.
+
+    The LONG band(s) of `btc_rsi_adx_filter_long` whose RSI floor is ≥ long_cross_ob_rsi_min (the "70-100:40"
+    band = "never long while BTC RSI > 70", since btc_adx_max_long caps ADX at 40) are WAIVED when BTC is breaking out
+    of a base: 72h return < long_cross_ob_r72_block_min. With BTC already extended (72h ≥ +5%) the band keeps blocking —
+    BTC history: a −1% dip follows an RSI>70 crossing within 4h 47% of the time when extended vs 19% from a base.
+    This is an UN-block → FAIL-CLOSED: reading missing/stale, feature off, or either number ≤ 0 → the band blocks as before.
+    Returns True when the block is waived."""
+    try:
+        if not bool(getattr(th, 'long_cross_ob_narrow_enabled', False)):
+            return False
+        band_min = float(getattr(th, 'long_cross_ob_rsi_min', 0.0) or 0.0)
+        r72_block = float(getattr(th, 'long_cross_ob_r72_block_min', 0.0) or 0.0)
+        if band_min <= 0 or r72_block <= 0 or rule_rsi_min is None or float(rule_rsi_min) < band_min:
+            return False
+        if not fresh or btc_r72 is None:
+            return False
+        return float(btc_r72) < r72_block
+    except (TypeError, ValueError):
+        return False
+
+
 def long_heat_eval(th, btc_slope, btc_rsi_prev, bull_pct, btc_off30d):
     """🔥 Sep-18 LONG HEAT BLOCK (operator override, DECISION_LOG 2026-09-18 (70)) — pure rule, shared by the
     engine, scripts/build_master_pool.py and scripts/screen_pool.py (single source of truth).
@@ -6023,6 +6046,10 @@ class TradingEngine:
         # full-size (Inv 2x/Lev 1x) when SBULL ∧ BTC-ATR <= 0.147 (engine router decided).
         # Bypasses keep-only-unmatched + pattern treatment per the Jul-20 projection spec.
         nonexp_calm3d: bool = False,
+        # Sep-18 🚪 narrowed overbought band: LONG admitted through the BTC RSI≥70 cross band on a base breakout
+        # (cross_ob_waived). Sized long_cross_ob_invest_mult × long_cross_ob_lev_mult (ship 1×/1×, 0 = normal cells),
+        # tagged cell_src=CROSS_OB_OPEN (own Multiplier Cell Performance row = the revert read).
+        cross_ob_open: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -6964,6 +6991,24 @@ class TradingEngine:
             _mult_target = "both"
             logger.info(f"[{cell_src}] {pair} {direction}: full-size open at inv={cell_mult}x lev={cell_lev_mult}x (liquidity cap governs)")
 
+        # 🚪 Sep-18 narrowed overbought band — absolute-assign LAST (after the door/spike block) so an admitted LONG is never
+        # re-multiplied by UNMATCHED/quiet/CALM3D cells while the cohort is unproven. Sleeves/probes/flips keep their own sizing.
+        if (cross_ob_open and direction == "LONG" and not flip_source and not bull_long and not bounce_long and not bullrun_long
+                and not spike_chase_probe and not spike_fade and not spike_bounce
+                and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
+                         or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe)):
+            _th_co = config.trading_config.thresholds
+            _co_inv = float(getattr(_th_co, 'long_cross_ob_invest_mult', 1.0) or 0.0)
+            if _co_inv > 0:
+                cell_mult = max(0.1, min(_co_inv, _inv_cap))
+                cell_lev_mult = max(0.05, min(float(getattr(_th_co, 'long_cross_ob_lev_mult', 1.0) or 1.0), _lev_cap))
+                # Deep review M-1: a CALM3D DOOR admitted through the band keeps its NONEXP_CALM3D tag (the door table in
+                # main.py and the pool builder's is_door/cooldown re-screen key on it) but still takes the unproven-zone
+                # size; identify those fills by entry_btc_rsi ≥ 70 ∧ entry_btc_r72_pct. Everything else → own row.
+                cell_src = "NONEXP_CALM3D" if nonexp_calm3d else "CROSS_OB_OPEN"
+                _mult_target = "both"
+                logger.info(f"[CROSS_OB_OPEN] {pair} LONG: sized inv={cell_mult}x lev={cell_lev_mult}x (unproven cohort, own row)")
+
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
             cell_multiplier=cell_mult, cell_lev_multiplier=cell_lev_mult,
@@ -7371,6 +7416,7 @@ class TradingEngine:
             # Sep 16: BTC 24h-range position at entry on every fill (from the monitors' shared 5m fetch, ≤2 min old; None before the first compute)
             entry_btc_off24h_pct=(_bullrun_monitor.get('off24h') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # deep review: stale monitor (>30 min, exchange outage) → None, never an old reading
             entry_btc_off24lo_pct=(_bearrun_monitor.get('off24lo') if (_leash_time.time() - (_bearrun_monitor.get('updated_at') or 0)) <= 1800 else None),
+            entry_btc_r72_pct=(_bullrun_monitor.get('r72') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # Sep-18: BTC 72h return at entry (every fill)
             entry_long_heat_flags=_lh_flags,          # Sep-18: 0-3 heat legs true at entry (every fill, all sleeves)
             entry_btc_off30d_high_pct=_lh_off30d,     # Sep-18: BTC % below its 30-day high (≤0; None if stale/unknown)
             entry_bear_r24=entry_bear_r24, entry_bear_below24=entry_bear_below24, entry_bear_eff24=entry_bear_eff24,
@@ -10490,7 +10536,11 @@ class TradingEngine:
                             continue
                         if _r_lo <= btc_rsi < _r_hi and (btc_adx < _a_lo or btc_adx > _a_hi):
                             if _dir_name == "LONG":
-                                _btc_macro_blocks_long = _btc_macro_blocks_long or "BTC_RSI_ADX_CROSS"
+                                # Sep-18 (deep review I-1): a WAIVED overbought band is not a macro veto — else the LONG
+                                # funnel/counters would go dark in exactly the windows where waived longs now trade.
+                                if not cross_ob_waived(_th_pre, _r_lo, _bullrun_monitor.get('r72'),
+                                                       (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800):
+                                    _btc_macro_blocks_long = _btc_macro_blocks_long or "BTC_RSI_ADX_CROSS"
                             else:
                                 _btc_macro_blocks_short = _btc_macro_blocks_short or "BTC_RSI_ADX_CROSS"
                             break
@@ -10755,6 +10805,7 @@ class TradingEngine:
         for _cr in _collected:
             _had_room = _open_positions_in_scan < _max_positions
             pair = _cr['pair']
+            _cross_ob_open_hit = False  # Sep-18 narrowed overbought band: per-pair flag, reset FIRST (no leak between pairs)
             symbol = _cr['symbol']  # Sep-7 full-review C1: was leaked from Phase 1's last iteration — entry_funding_rate stamped the wrong pair
             ohlcv = _cr.get('ohlcv')  # Sep-7 full-review C1: same leak — spike chase/fade/bounce candle+volume legs judged the wrong pair
             indicators = _cr['indicators']
@@ -11166,7 +11217,20 @@ class TradingEngine:
                             else:
                                 continue
                             if _cf_rsi_min <= btc_rsi < _cf_rsi_max:
-                                if (btc_adx < _cf_min_adx or btc_adx > _cf_max_adx) and not self._bearrun_bypass(pair, "BTC_RSI_ADX_CROSS", _had_room):  # 🐻 gate 60 bypass (SHORT, monitor ON)
+                                _cf_out = (btc_adx < _cf_min_adx or btc_adx > _cf_max_adx)
+                                # 🚪 Sep-18 narrowed overbought band: a LONG refused ONLY by the RSI≥70 band is admitted at
+                                # probe size when BTC is breaking out of a base (72h return < +5%, bull-run monitor reading,
+                                # ≤30 min old). Extended BTC keeps the block. Fail-closed (cross_ob_waived).
+                                _cf_r72_fresh = (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800
+                                if (_cf_out and signal == "LONG"
+                                        and cross_ob_waived(_th, _cf_rsi_min, _bullrun_monitor.get('r72'), _cf_r72_fresh)):
+                                    logger.info(
+                                        f"[CROSS_OB_OPEN] {pair}: LONG admitted through the BTC RSI band [{_cf_rsi_min}-{_cf_rsi_max}) — "
+                                        f"BTC RSI {btc_rsi:.1f}, ADX {btc_adx:.1f}, BTC 72h {_bullrun_monitor.get('r72')}% < "
+                                        f"{getattr(_th, 'long_cross_ob_r72_block_min', None)}% (breakout from a base) → probe size"
+                                    )
+                                    _cross_ob_open_hit = True
+                                elif _cf_out and not self._bearrun_bypass(pair, "BTC_RSI_ADX_CROSS", _had_room):  # 🐻 gate 60 bypass (SHORT, monitor ON)
                                     logger.info(
                                         f"[BTC_RSI_ADX_CROSS] {pair}: {signal} blocked — "
                                         f"BTC RSI {btc_rsi:.1f} in [{_cf_rsi_min}-{_cf_rsi_max}) "
@@ -12612,6 +12676,8 @@ class TradingEngine:
                         spike_bounce=bool(_spike_bounce_hit),
                         # Jul 27 PM promotion: NONEXP_CALM3D admission (engine router above)
                         nonexp_calm3d=bool(_nonexp_calm3d_hit),
+                        # Sep-18 narrowed overbought band: admitted through the RSI≥70 cross band → probe size + own tag
+                        cross_ob_open=bool(signal == "LONG" and _cross_ob_open_hit),
                     )
                 except Exception as _op_err:
                     logger.error(f"[OPEN_EXCEPTION] {pair} {signal} {confidence}: open_position raised — cycle continues: {_op_err}", exc_info=True)

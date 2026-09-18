@@ -204,6 +204,9 @@ class Order(Base):
     # 2-flag neighbours and the washed-out state stay readable in every report. Rides the orders CSV.
     entry_long_heat_flags = Column(Integer, nullable=True)
     entry_btc_off30d_high_pct = Column(Float, nullable=True)
+    # Sep 18 (narrowed overbought band): BTC 72h return at entry (the bull-run monitor's r72, ≤30 min old) on EVERY fill —
+    # the variable that splits 'breakout from a base' (<+5%) from 'extended run' (≥+5%). Rides the orders CSV.
+    entry_btc_r72_pct = Column(Float, nullable=True)
     # May 14 — BTC 1h EMA20 slope at trade entry.
     # Captures multi-hour BTC trend direction (12× longer than 5m slope).
     # Slope = (ema20_1h - ema20_1h_prev3) / ema20_1h_prev3 × 100.

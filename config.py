@@ -1776,6 +1776,23 @@ class SignalThresholds(BaseModel):
     long_heat_btc_rsi_prev_min: float = 64.0
     long_heat_bull_pct_min: float = 80.0
     long_heat_exempt_off30d_max: float = -10.0
+    # 🚪 Sep-18 NARROWED OVERBOUGHT BAND (operator-directed override of the gate-49 three-phase protocol — 2 phases, both
+    # rally starts; DECISION_LOG 2026-09-18 (71)). The `70-100:40` band of btc_rsi_adx_filter_long acts as "never long
+    # while BTC RSI > 70" (btc_adx_max_long caps ADX at 40). It is now WAIVED when BTC's 72h return < r72_block_min
+    # (breakout from a base) and KEPT when BTC is already extended. Evidence: blocked-signal replays Aug-17 8·6W/1L +
+    # Sep-18 17·14W/3L (83% vs 74% random-entry control; ~6 distinct moments on 2 days); the only live fills in the zone
+    # (old pool May-Jun, older exits) 22·59%·−0.11 vs pool −0.14 — all 22 had 72h < +5%; BTC history Dec→Sep, 601 RSI>70
+    # crossings: −1% dip within 4h = 19% from a flat base vs 47% when 72h ≥ +5% (N=43). Band binds ~51 h / 3 months; the
+    # narrowed rule opens ~92% of them. Admitted longs are UNPROVEN → sized invest_mult × lev_mult (ship 1×/1×; 0 = normal
+    # cells) and tagged cell_src CROSS_OB_OPEN (own Multiplier Cell Performance row). Un-block → FAIL-CLOSED on a
+    # missing/stale 72h reading. Heat block + every other long gate still apply. Bull-run sleeve untouched (own path).
+    # 🔒 READ at N≥10 CROSS_OB_OPEN fills over ≥3 distinct days: WR≥60% ∧ Σ>0 → release to normal sizing (invest_mult 0);
+    # WR≤50% ∨ Σ<0 → long_cross_ob_narrow_enabled=false (full band back).
+    long_cross_ob_narrow_enabled: bool = True
+    long_cross_ob_rsi_min: float = 70.0
+    long_cross_ob_r72_block_min: float = 5.0
+    long_cross_ob_invest_mult: float = 1.0
+    long_cross_ob_lev_mult: float = 1.0
     # Jul 6: W2 RE-ENABLE, 1h-rising conditioned (operator-directed; first matched-long cell back
     # since the Jun-9 block). Admit a W2-matched long (macro tailwind; NO C co-match) when BTC 1h
     # slope ≥ this value. Evidence: historical live W2 longs split hard on 1h — rising ≥+0.05 =

@@ -35,3 +35,6 @@ Thumbs.db
 
 # Claude Code worktrees (local-only, never commit)
 .claude/
+
+# engine-replay data cache (6 GB — never commit)
+reports/backtest_cache/

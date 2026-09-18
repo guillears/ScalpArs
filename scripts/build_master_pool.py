@@ -23,7 +23,7 @@ import warnings; warnings.filterwarnings('ignore')
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-09-15a"  # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
+STACK_VERSION = "2026-09-16a"  # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 # Era registry (Sep-11: B3/B4/B5 were previously stacked by a one-off — the builder only knew
@@ -152,6 +152,12 @@ def main():
                 elif pg is not None and not (-1.0 < pg <= -0.125): k, why = False, 'BOUNCE_PGAP'
                 elif pd.notna(r.entry_btc_rsi) and r.entry_btc_rsi < 50: k, why = False, 'BOUNCE_BRSI'
                 elif any(x in str(r.entry_btc_regime) for x in ('STRONG_BEAR', 'HEALTHY_BEAR')): k, why = False, 'BOUNCE_REGIME'
+            elif strat.startswith('FLIP:FAN') and str(r.direction) == 'SHORT':
+                # Aug-23 FAN-gate bearish-BTC filter (flip_fan_btc_ema13_max=-0.08): a FAN_RATIO_GATE short is
+                # refused while BTC sits above -0.08% vs its 5m EMA13. Engine: strict >, fail-open on a missing
+                # distance. Added Sep-16 (builder never carried the flip gates; GIGGLE/ONDO/TRB read as kept).
+                bd13 = r.entry_btc_dist_from_ema13_pct
+                if pd.notna(bd13) and float(bd13) > -0.08: k, why = False, 'FLIP_FAN_BTC_EMA13'
             elif strat.startswith('MOMENTUM') or slv.startswith('MOM'):
                 if i in cooldown_idx: k, why = False, 'CALM3D_REENTRY'
                 elif r.is_door and pd.notna(r.entry_pos_di) and r.entry_pos_di < 28: k, why = False, 'CALM3D_DMI_DI'

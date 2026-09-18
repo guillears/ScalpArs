@@ -3416,6 +3416,7 @@ class TradingEngine:
         entry_adx_delta: Optional[float] = None,
         entry_quality_score: Optional[int] = None,
         entry_btc_regime: Optional[str] = None,
+        entry_btc_trend_gap_pct: Optional[float] = None,  # Sep-16 fix: open_position passes it (1792492) — missing here made every maker-window expiry raise TypeError (trade aborted anyway, row never recorded)
         entry_pos_di: Optional[float] = None,
         entry_neg_di: Optional[float] = None,
         entry_atr_pct: Optional[float] = None,
@@ -3528,7 +3529,8 @@ class TradingEngine:
                 entry_adx_delta=entry_adx_delta,
                 entry_quality_score=entry_quality_score,
                 entry_btc_regime=entry_btc_regime,
-                entry_btc_trend_gap_pct=globals().get('_current_btc_trend_gap_pct'),
+                entry_btc_trend_gap_pct=(entry_btc_trend_gap_pct if entry_btc_trend_gap_pct is not None
+                                         else globals().get('_current_btc_trend_gap_pct')),
                 entry_pos_di=entry_pos_di,
                 entry_neg_di=entry_neg_di,
                 entry_atr_pct=entry_atr_pct,

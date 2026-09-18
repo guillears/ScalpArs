@@ -27,8 +27,10 @@ def test_writes_one_json_line_per_event(tmp_path, monkeypatch):
     assert len(files) == 1 and files[0].startswith('decisions-') and files[0].endswith('.jsonl')
     rows = [json.loads(l) for l in open(tmp_path / 'journal' / files[0])]
     assert [r['e'] for r in rows] == ['SCAN', 'BLOCK']
-    assert rows[0]['btc_rsi'] == 71.2346 and 'nothing' not in rows[0]
-    assert rows[1]['ctx'] == {'rsi': 61.2346, 'adx': None}        # NaN → null, unknown keys dropped
+    assert rows[0]['btc_rsi'] == 71.234567 and 'nothing' not in rows[0]
+    assert rows[1]['ctx'] == {'rsi': 61.23456, 'adx': None}       # NaN → null, unknown keys dropped
+    dj.note('OPEN', pair='1000PEPEUSDT', price=0.0038596123456); dj.flush()
+    assert json.loads(open(tmp_path / 'journal' / files[0]).read().splitlines()[-1])['price'] == 0.003859612346   # 10 significant digits, not 4 dp
 
 
 def test_disabled_and_env_switch_write_nothing(tmp_path, monkeypatch):

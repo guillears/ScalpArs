@@ -56,15 +56,16 @@ def _enabled():
 
 
 def _num(v):
-    """JSON-safe, compact: floats rounded to 4 dp, NaN/inf → None, everything exotic → str."""
+    """JSON-safe, compact: floats kept to 10 SIGNIFICANT digits (4 dp lost sub-cent prices: PEPE 0.0038596 was
+    journalled as 0.0039 on the first live day), NaN/inf → None, everything exotic → str."""
     if v is None or isinstance(v, (bool, int, str)):
         return v
     try:
         f = float(v)
         if f != f or f in (float('inf'), float('-inf')):
             return None
-        return round(f, 4)
-    except (TypeError, ValueError):
+        return float(f'{f:.10g}')       # 10 significant digits: exact for sub-cent prices AND for 24h volumes in the billions
+    except (TypeError, ValueError, OverflowError):
         return str(v)[:80]
 
 

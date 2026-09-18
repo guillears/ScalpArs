@@ -207,6 +207,11 @@ class Order(Base):
     # Sep 18 (narrowed overbought band): BTC 72h return at entry (the bull-run monitor's r72, ≤30 min old) on EVERY fill —
     # the variable that splits 'breakout from a base' (<+5%) from 'extended run' (≥+5%). Rides the orders CSV.
     entry_btc_r72_pct = Column(Float, nullable=True)
+    # Sep 18: the bull-run monitor's other two legs at entry, on EVERY fill (the sleeve's own fills already carried them as
+    # entry_br_eff / entry_br_above): 72h trend efficiency (truncated to 3 dp, exactly what the gate's display shows) and
+    # % of 5m bars above EMA20 over 72h. Lets any batch be split by how trendy BTC was — the 0.085-0.10 efficiency question.
+    entry_btc_eff72 = Column(Float, nullable=True)
+    entry_btc_above72_pct = Column(Float, nullable=True)
     # May 14 — BTC 1h EMA20 slope at trade entry.
     # Captures multi-hour BTC trend direction (12× longer than 5m slope).
     # Slope = (ema20_1h - ema20_1h_prev3) / ema20_1h_prev3 × 100.

@@ -7430,6 +7430,8 @@ class TradingEngine:
             entry_btc_off24h_pct=(_bullrun_monitor.get('off24h') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # deep review: stale monitor (>30 min, exchange outage) → None, never an old reading
             entry_btc_off24lo_pct=(_bearrun_monitor.get('off24lo') if (_leash_time.time() - (_bearrun_monitor.get('updated_at') or 0)) <= 1800 else None),
             entry_btc_r72_pct=(_bullrun_monitor.get('r72') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # Sep-18: BTC 72h return at entry (every fill)
+            entry_btc_eff72=(_bullrun_monitor.get('eff') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # Sep-18: monitor 72h trend efficiency at entry (every fill; None when stale)
+            entry_btc_above72_pct=(_bullrun_monitor.get('above') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # Sep-18: % of 5m bars above EMA20 over 72h
             entry_long_heat_flags=_lh_flags,          # Sep-18: 0-3 heat legs true at entry (every fill, all sleeves)
             entry_btc_off30d_high_pct=_lh_off30d,     # Sep-18: BTC % below its 30-day high (≤0; None if stale/unknown)
             entry_bear_r24=entry_bear_r24, entry_bear_below24=entry_bear_below24, entry_bear_eff24=entry_bear_eff24,
@@ -7510,7 +7512,8 @@ class TradingEngine:
         try:
             _djournal.note('OPEN', pair=pair, dir=direction, strategy=getattr(order, 'entry_strategy', None), price=getattr(order, 'entry_price', None),
                            conf=confidence, cell=getattr(order, 'cell_multiplier_source', None), mult=getattr(order, 'cell_multiplier', None),
-                           order_type=getattr(order, 'entry_order_type', None), heat=_lh_flags, off30d=_lh_off30d)
+                           order_type=getattr(order, 'entry_order_type', None), heat=_lh_flags, off30d=_lh_off30d,
+                           eff72=getattr(order, 'entry_btc_eff72', None), r72=getattr(order, 'entry_btc_r72_pct', None))
         except Exception:
             pass
 

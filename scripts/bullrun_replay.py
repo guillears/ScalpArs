@@ -20,7 +20,7 @@ def _arg(k,default=None,cast=float):
     return default
 for _p in (_arg('--extra','',str) or '').split(','):
     if _p and _p not in PAIRS: PAIRS.append(_p)
-EFF_ON=_arg('--eff-on',0.10); EFF_OFF=_arg('--eff-off',0.10)  # Aug-23 (16): live stay band = 0.10; pass --eff-off=0.08 for the pre-ship band
+EFF_ON=_arg('--eff-on',0.10); EFF_OFF=_arg('--eff-off',0.095)  # Sep-18: live stay band = 0.095 (was 0.10 Aug-23 → Sep-18, 0.08 at ship)
 ATR_MAX=_arg('--atr-max'); CHG_MAX=_arg('--chg-max'); SL_FLOOR=_arg('--sl-floor',-1.2); EXCL=(_arg('--exclude','',str) or '').split(',')
 PAIRS=[p for p in PAIRS if p not in EXCL]
 QUIET='--quiet' in sys.argv

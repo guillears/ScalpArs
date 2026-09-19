@@ -932,7 +932,14 @@ class SignalThresholds(BaseModel):
     # Counterfactual this episode: GREEN ends Aug-22 15:25 UTC (brief re-arms 17:05-18:40, 19:10-20:05), dark from 20:05.
     # Before/after: ex-ONG/ETH 31·42%·+$515 → 19·58%·+$1,512. Sleeve switch (window units) — acknowledged override.
     # 🔒 revert: next GREEN episode close → scripts/bullrun_replay.py with stay 0.08 vs 0.10; 0.10 net-worse → back to 0.08.
-    bullrun_green_eff_off: float = 0.10    # GREEN stay-ON floor (was 0.08)
+    # Sep-18 (DECISION_LOG 2026-09-18 (75)): STAY buffer 0.10 → 0.095 (switch-ON stays 0.10). The efficiency leg was the only
+    # one without hysteresis and flickered ON/OFF all evening at 0.0976/0.1001/0.0994. Full-gate sleeve replay Jan-2024→Sep-2026
+    # (ten majors, every current gate, slot-aware; reports/BULLRUN_sleeve_replay_2024-2026_trades_2026-09-18.csv): 0.10/0.10
+    # 572·51%·+0.136%·+78.0pp·167 switch-ons → 0.10/0.095 612·52%·+0.148%·+90.3pp·82 switch-ons; deeper stays degrade (0.09 +79.8 ·
+    # 0.085 +70.6 · 0.08 +58.9 — consistent with the Aug-23 removal of the 0.08 band); lower switch-ON is worse (0.095/0.095 +74.1).
+    # In-sample pick among 8 variants → haircut ≈ +6-8pp; the certain benefit is mechanical (half the flicker).
+    # 🔒 REVERT: first 10 sleeve fills entered with entry_br_eff in [0.095, 0.10): WR ≤45% ∨ Σ<0 → back to 0.10.
+    bullrun_green_eff_off: float = 0.095   # GREEN stay-ON floor (0.08 at ship → 0.10 Aug-23 → 0.095 Sep-18)
     bullrun_latch_r6h: float = -3.0        # crash-latch: BTC 6h return ≤ this → instant OFF (also price < 1h EMA50)
     bullrun_amber_r24: float = 6.0         # AMBER alert (24h tight variant) — display/log only, never arms
     bullrun_amber_above: float = 65.0

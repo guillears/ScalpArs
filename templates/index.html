@@ -5167,7 +5167,7 @@
                             </div>
                             <div>
                                 <label class="block text-xs text-gray-400 mb-1">stay-ON: eff ≥</label>
-                                <input type="number" step="0.01" id="config-br-eff-off" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.10">
+                                <input type="number" step="0.005" id="config-br-eff-off" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.095">
                             </div>
                             <div>
                                 <label class="block text-xs text-gray-400 mb-1">Crash-latch: 6h return ≤ %</label>
@@ -8888,8 +8888,8 @@
                         const _vals = `r72 ${_br.r72 != null ? _br.r72 : '—'}% · above ${_br.above != null ? _br.above : '—'}% · eff ${_br.eff != null ? _br.eff : '—'} · r6h ${_br.r6 != null ? _br.r6 : '—'}% · off-24h-high ${_br.off24h != null ? _br.off24h + '%' : '—'}${_br.latch ? ' · LATCH FIRED' : ''}${_br.enabled ? '' : ' · sleeve OFF'}`;
                         // Sep-15 (operator): styled popover, each leg vs its bar with ✓/✗ so 'why DARK' reads at a glance (thresholds from the cached config form)
                         const _bt = window._cachedConfig?.thresholds || {};
-                        const _legB = (v, bar, dir, unit = '') => (v == null ? '—' : `${v}${unit} (${dir} ${bar}) ${(dir === '≥' ? v >= bar : v <= bar) ? '✓' : '✗'}`);
-                        _brChip.dataset.tip = `🌊 Bull-Run monitor ${_br.state}${_br.green_since ? ` since ${_brFmt(_br.green_since)}` : ''} · 72h return ${_legB(_br.r72, _bt.bullrun_green_r72_on ?? 5, '≥', '%')} · bars above EMA20 ${_legB(_br.above, _bt.bullrun_green_above_on ?? 56, '≥', '%')} · efficiency ${_legB(_br.eff, _bt.bullrun_green_eff_on ?? 0.10, '≥')} · 6h ${_br.r6 != null ? _br.r6 + '%' : '—'} · crash latch ${_br.latch ? 'FIRED' : 'clear'} · sleeve ${_br.enabled ? 'ON' : 'OFF'}${_br.rearm ? ' · RE-ARM door open' : ''}`;
+                        const _legB = (v, bar, dir, unit = '') => (v == null ? '—' : `${v}${unit} (${dir} ${bar}) ${(dir.includes('≥') ? v >= bar : v <= bar) ? '✓' : '✗'}`);  // Sep-18: 'stay ≥' while GREEN — the hover shows the bar that actually governs the current state
+                        _brChip.dataset.tip = `🌊 Bull-Run monitor ${_br.state}${_br.green_since ? ` since ${_brFmt(_br.green_since)}` : ''} · 72h return ${_legB(_br.r72, (_br.state === 'GREEN' ? (_bt.bullrun_green_r72_off ?? 4) : (_bt.bullrun_green_r72_on ?? 5)), (_br.state === 'GREEN' ? 'stay ≥' : '≥'), '%')} · bars above EMA20 ${_legB(_br.above, (_br.state === 'GREEN' ? (_bt.bullrun_green_above_off ?? 53) : (_bt.bullrun_green_above_on ?? 56)), (_br.state === 'GREEN' ? 'stay ≥' : '≥'), '%')} · efficiency ${_legB(_br.eff, (_br.state === 'GREEN' ? (_bt.bullrun_green_eff_off ?? 0.095) : (_bt.bullrun_green_eff_on ?? 0.10)), (_br.state === 'GREEN' ? 'stay ≥' : '≥'))} · 6h ${_br.r6 != null ? _br.r6 + '%' : '—'} · crash latch ${_br.latch ? 'FIRED' : 'clear'} · sleeve ${_br.enabled ? 'ON' : 'OFF'}${_br.rearm ? ' · RE-ARM door open' : ''}`;
                         if (_br.state === 'GREEN') {
                             _brChip.textContent = `🌊 ${_br.green_since ? _brFmt(_br.green_since) : 'GREEN'}`;  // color = state; text = since (operator)
                             _brChip.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 uppercase tracking-wide cursor-help tip-right';

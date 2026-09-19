@@ -5252,19 +5252,19 @@
                             </div>
                             <div>
                                 <label class="block text-xs text-gray-400 mb-1">Breadth min (bull % to enter; blank = off)</label>
-                                <input type="number" step="1" id="config-br-breadth-min" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="60">
+                                <input type="number" step="1" id="config-br-breadth-min" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="40">
                             </div>
                             <div title="Sep 19 (57f): skip the entry when the maker limit rests >X% from price (gapped book — ONE −$225 in 0.996s) or the taker fallback would chase >X% beyond the signal (ONG/ENA class). 0 = off. Master |slip|≥0.3 sleeve cohort: 6 fills, 0 wins, −$876.">
                                 <label class="block text-xs text-gray-400 mb-1">Entry dislocation max % (0 = off)</label>
                                 <input type="number" step="0.05" id="config-br-disloc-max" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="0.3">
                             </div>
-                            <div class="md:col-span-2" title="Sep 19 (57c, operator-found): market-breadth minimum — the sleeve's alt-participation leg. Ships OFF: open <60 fills with breadth rising looked good live; weekend review decides static ≥60 vs a Δbreadth variant (journal SCAN now logs bull/bear every ~2 min).">
+                            <div class="md:col-span-2" title="Sep 19 (57c): market-breadth minimum. ARMED at FLOOR 40 late Sep-19 — REARM-door protection (only door with no market-strength gate; sub-40 has zero winning history). REARM also fails CLOSED during breadth warm-up. Static ≥60 vs Δbreadth for GREEN = weekend review on the journal series.">
                                 <label class="flex items-center cursor-pointer">
-                                    <input type="checkbox" id="config-br-breadth-enabled" class="sr-only peer">
+                                    <input type="checkbox" id="config-br-breadth-enabled" class="sr-only peer" checked>
                                     <div class="w-9 h-5 bg-white/10 peer-checked:bg-emerald-500/50 rounded-full relative transition-colors">
                                         <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
                                     </div>
-                                    <span class="ml-2 text-xs text-gray-400">Breadth gate: require bull breadth ≥ min at entry (OFF pending weekend review)</span>
+                                    <span class="ml-2 text-xs text-gray-400">Breadth gate: bull breadth ≥ min at entry (armed Sep-19 at FLOOR 40 — REARM-door protection; REARM fails closed on warm-up; 60-vs-Δ = weekend review)</span>
                                 </label>
                             </div>
                             <div class="md:col-span-2 mt-2 pt-2 border-t border-cyan-500/20" title="Aug 23 (20): RE-ARM door — second trigger while the 72h composite is OFF (it can't re-arm after a pullback). ON = BTC ADX ≥ min AND rising vs 30 min ago AND alts leading (median 6h return, % above their 1h EMA50) AND EMA13>EMA20>EMA50 AND BTC > 1h EMA50; OFF = BTC < 1h EMA50 | ADX < off | max hours | composite GREEN. In REARM the off-24h gate is bypassed; EMA13 + 1h-slope gates apply. Replay 14·79%·+$2,338, no losing window. Revert: ≤1 winning window of the first 3 → OFF.">

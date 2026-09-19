@@ -1015,8 +1015,16 @@ class SignalThresholds(BaseModel):
     # (SCAN now logs bull/bear every ~2 min → Δbreadth / breadth∧X candidates become computable).
     # 🔒 arming review (end of weekend): re-run the window ledger on the new data; static ≥60 confirmed
     # → toggle on; rising-breadth exception supported → ship Δbreadth variant instead.
-    bullrun_breadth_enabled: bool = False
-    bullrun_breadth_min: Optional[float] = 60.0
+    # Sep-19 late night — ARMED AT FLOOR LEVEL (operator, after the REARM-door hole was located):
+    # enabled=true, min 40. Door-specific rationale: every GREEN fill at r72>=10 entered at breadth
+    # 73-91 (floor costs GREEN nothing, and no GREEN exists below r72 10 anyway); REARM is the only
+    # door with NO market-strength gate and its one live window went 2W/5L incl. a bull 28 / bear 63
+    # fill. Static-60 vs delta-breadth for GREEN stays a weekend-review question on the journal series.
+    # Warm-up split (same commit): uncomputed breadth (0/0 post-restart) fails OPEN for GREEN,
+    # CLOSED for REARM (B4: 5 of 7 REARM fills entered blind, 4 lost).
+    # LOCKED revert: blocked cohort net-positive over the next 2 windows with fills -> floor off (enabled=false).
+    bullrun_breadth_enabled: bool = True
+    bullrun_breadth_min: Optional[float] = 40.0
     # 🛡 Sep-19 (57f) — ENTRY-DISLOCATION GUARD (bullrun-only; 0 = off): skip the entry when ① the
     # maker limit would rest > this % from the current/mid price (gapped book: ONE −$225 in 0.996s —
     # limit −3.2% via the paper tick-ladder bug, fixed same commit) or ② the taker-fallback would fill

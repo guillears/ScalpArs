@@ -38,11 +38,26 @@ def test_off_when_blank_zero_or_none():
     assert bullrun_breadth_ok(SimpleNamespace(), 10.0, 80.0) is True  # field absent entirely
 
 
-def test_warmup_fails_open():
+def test_warmup_fails_open_for_green():
     # B4 restart artifact: fills stamped bull 0.0 / bear 0.0 minutes after a deploy
     assert bullrun_breadth_ok(_th(), 0.0, 0.0) is True
     assert bullrun_breadth_ok(_th(), None, None) is True
     assert bullrun_breadth_ok(_th(), 0.0, None) is True
+    assert bullrun_breadth_ok(_th(), 0.0, 0.0, door='GREEN') is True
+
+
+def test_warmup_fails_closed_for_rearm():
+    # Sep-19 fix: 5 of B4's 7 REARM fills entered blind post-restart, 4 lost — the aggressive
+    # door waits one scan cycle instead of trading an unmeasured market
+    assert bullrun_breadth_ok(_th(), 0.0, 0.0, door='REARM') is False
+    assert bullrun_breadth_ok(_th(), None, None, door='REARM') is False
+    # with a REAL reading, REARM is judged on the floor like anyone else
+    assert bullrun_breadth_ok(_th(v=40.0), 45.0, 30.0, door='REARM') is True
+    assert bullrun_breadth_ok(_th(v=40.0), 27.9, 62.8, door='REARM') is False  # the B4 bear-majority fill
+    assert bullrun_breadth_ok(_th(v=40.0), 38.0, 30.0, door='GREEN') is False  # sub-40 zone: no winning history
+    # toggle off / garbage still admit regardless of door
+    assert bullrun_breadth_ok(_th(on=False), 0.0, 0.0, door='REARM') is True
+    assert bullrun_breadth_ok(_th('x'), 0.0, 0.0, door='REARM') is True
 
 
 def test_genuine_zero_bull_with_bear_reading_blocks():

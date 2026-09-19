@@ -582,16 +582,17 @@ def long_heat_eval(th, btc_slope, btc_rsi_prev, bull_pct, btc_off30d):
     return flags, True
 
 
-def bullrun_breadth_ok(th, bull_pct, bear_pct):
+def bullrun_breadth_ok(th, bull_pct, bear_pct, door=None):
     """🌊 Sep-19 (gate 57 / watch 57c, operator-found): sleeve entry breadth minimum.
     The GREEN monitor is BTC-only; the missing 'are alts participating?' leg. Blocks the sleeve
     entry when market bull breadth < bullrun_breadth_min (dip stays alive, re-checked next scan).
     Evidence: blocked cohort (<60) negative in 8 of 10 windows it ever fired; current-config
     cohort 41·51%·+$1,491 → kept 19·74%·+$2,305, blocked 22·32%·−$814; B3 historic = zero cost
     (no admissible fill below 60). Ship bar (2 confirming GREEN windows) met 2026-09-19.
-    FAIL-OPEN when breadth is not computed yet: bull+bear both 0/None = scan warm-up (B4 fills
-    stamped 0.0 after a restart), never a real market state — blocking then would freeze the
-    sleeve on every deploy. Returns True = entry may proceed. Never raises."""
+    Warm-up (bull+bear both 0/None = breadth not computed since restart): fail-OPEN for the
+    GREEN door (r72/eff protect it; a deploy must not freeze a confirmed run) and fail-CLOSED
+    for door='REARM' (Sep-19: the aggressive door has no other market-strength gate — it waits
+    one scan cycle instead). Returns True = entry may proceed. Never raises."""
     try:
         if not bool(getattr(th, 'bullrun_breadth_enabled', False)):
             return True                      # toggle OFF (ships off — operator: review with weekend data)
@@ -603,7 +604,11 @@ def bullrun_breadth_ok(th, bull_pct, bear_pct):
             return True
         b = float(bull_pct or 0.0); r = float(bear_pct or 0.0)
         if b <= 0 and r <= 0:
-            return True                      # breadth not computed this process yet — fail-open
+            # Sep-19 warm-up split (B4: 5 of 7 REARM fills entered blind post-restart, 4 lost):
+            # GREEN keeps fail-open (r72/eff protect it; a deploy must not freeze a confirmed run);
+            # REARM fails CLOSED — the aggressive door has no other market-strength gate, and
+            # waiting one scan cycle (~1-2 min) for the first real reading costs it nothing.
+            return door != 'REARM'
         return b >= _min
     except Exception:
         return True
@@ -5421,9 +5426,10 @@ class TradingEngine:
                         self._record_filter_block("BULLRUN_BTC_1H_SLOPE", "LONG")
                     return
             # Sep-19 (57c, operator-found): market-breadth minimum — the sleeve's alt-participation leg.
-            # Module globals _market_bull_pct/_market_bear_pct are stamped by the scan; fail-open during
-            # warm-up (both 0). Applies to GREEN and REARM doors alike. Once per (rule, dip).
-            if not bullrun_breadth_ok(th, globals().get('_market_bull_pct'), globals().get('_market_bear_pct')):
+            # Both doors judged on the floor when breadth is REAL; warm-up (both 0) = fail-open for
+            # GREEN, fail-closed for REARM (a warm-up hold, not a floor breach). Once per (rule, dip).
+            if not bullrun_breadth_ok(th, globals().get('_market_bull_pct'), globals().get('_market_bear_pct'),
+                                       door=('GREEN' if _bullrun_monitor.get('green') else 'REARM')):
                 _gate_log('br', f"[BULLRUN_LONG] {pair}: refused by breadth gate (bull {float(globals().get('_market_bull_pct') or 0.0):.1f}% < min {float(getattr(th, 'bullrun_breadth_min', 0) or 0):.0f}%) — dip stays alive")
                 if st.get('blk_br_ts') != st.get('dip_ts'):
                     st['blk_br_ts'] = st.get('dip_ts')

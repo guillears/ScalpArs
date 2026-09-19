@@ -921,8 +921,17 @@ class SignalThresholds(BaseModel):
     # universe rides coin_underlying_only + rank ≤ size. 🔒 KILL BAR (manual, no auto): first
     # 10 fills WR≤45% ∨ Σ<0 → toggle OFF. Sizing frozen 1×/1× until ≥2 profitable episodes.
     bullrun_sleeve_enabled: bool = True    # master toggle (kill switch — entries only; monitor keeps computing)
-    bullrun_green_r72_on: float = 5.0      # GREEN turn-ON: BTC 72h return ≥ this %
-    bullrun_green_r72_off: float = 4.0     # GREEN stay-ON floor (Schmitt band)
+    # Sep-19 (episode-2 read, DECISION_LOG (88)): 5/4 → 10/8. The sleeve is a CONTINUATION engine and
+    # only pays in real runs: live windows at r72≥10 = 3-of-4 positive +$2,225 (Aug, r72 13-22) vs
+    # r72<10 = 1-of-6 positive −$1,316 (Sep drift at ~7 = the whole B9 sleeve loss −$1,136). Replay:
+    # founding trade list IDENTICAL at 10 (a real run blows through both bars → entries NOT delayed;
+    # zero out-of-sample cost — same shape as the Aug-23 eff-band ship); 13 starts cutting winners.
+    # Era-confound acknowledged (window units 4 vs 6). One-day BTC spikes stay momentum/bounce-door
+    # territory by design (72h lookback dilutes them; trap-rally signature).
+    # 🔒 revert: first GREEN window that 5/4 would trade and 10/8 skips → re-sim under the full
+    # stack; skipped cohort net-positive → back to 5/4. REARM door unaffected (own legs).
+    bullrun_green_r72_on: float = 10.0     # GREEN turn-ON: BTC 72h return ≥ this %
+    bullrun_green_r72_off: float = 8.0     # GREEN stay-ON floor (Schmitt band)
     bullrun_green_above_on: float = 56.0   # GREEN turn-ON: % of 5m bars above EMA20 ≥ this
     bullrun_green_above_off: float = 53.0  # GREEN stay-ON floor
     bullrun_green_eff_on: float = 0.10     # GREEN turn-ON: trend efficiency ≥ this (THE load-bearing leg)

@@ -41,6 +41,7 @@ btc['eff']=(c-c.shift(864)).abs()/c.diff().abs().rolling(864).sum()
 btc['r6']=(c/c.shift(72)-1)*100; h1=btc.c.resample('1h').last().dropna(); e50h=ema(h1,50); btc['e50h']=e50h.reindex(btc.index,method='ffill').shift(1)
 btc['off24']=(c/btc.h.rolling(288).max()-1)*100; btc['adx']=adx(btc); btc['adx_prev']=btc['adx'].shift(1)
 # GREEN state machine on closed bars
+# ⚠ STALE vs live since 2026-09-19: live r72 ON/stay = 10/8 (this script models the OLD 5/4; parametrized copy used for the ship A/B lives in the session scratchpad — parametrize here on next touch)
 state=[];g=False
 for i,(r72,ab,ef,r6,cl,e5) in enumerate(zip(btc.r72,btc.above,btc.eff,btc.r6,btc.c,btc.e50h)):
     if np.isnan(r72) or np.isnan(ab) or np.isnan(ef): state.append(False); continue

@@ -609,6 +609,42 @@ def bullrun_breadth_ok(th, bull_pct, bear_pct):
         return True
 
 
+def bullrun_disloc_exceeded(max_pct, ref_price, px):
+    """🛡 Sep-19 (57f): entry-dislocation guard predicate. True = the price px sits further than
+    max_pct% from ref_price → the entry must be SKIPPED (gapped book / ran-away tape). 0/None/blank
+    max_pct = guard off. Fail-open on any bad input — a guard can never block on garbage."""
+    try:
+        m = float(max_pct or 0)
+        if m <= 0:
+            return False
+        r = float(ref_price); x = float(px)
+        if r <= 0 or x <= 0:
+            return False
+        return abs(x - r) / r * 100.0 > m
+    except Exception:
+        return False
+
+
+async def _paper_tick_size(pair, current_price):
+    """Sep-19 tick fix (ONE −$225 in 0.996s): the paper maker sim estimated tick size from price
+    MAGNITUDE, bottoming at 0.0001 — on a $0.004 pair that is 2.5% per 'tick', so the 1-2 tick
+    maker offset placed resting orders percent-deep below market (ONE: limit −3.2%, filled mid-
+    flash-crash). Use the exchange's REAL tick; the ladder survives only as the failure fallback."""
+    try:
+        t = await binance_service.get_tick_size(pair.replace('USDT', '/USDT:USDT'))
+        # sanity: accept only a plausible tick (>0 and ≤0.2% of price) — get_tick_size returns a
+        # 0.01 DEFAULT on missing precision, which on a $0.004 pair would be 250%/tick (worse than
+        # the ladder). Coarsest real Binance perp tick observed = 0.137% of price (FLNC).
+        if t and float(t) > 0 and current_price > 0 and float(t) / current_price <= 0.002:
+            return float(t)
+    except Exception:
+        pass
+    if current_price >= 10000: return 0.10
+    if current_price >= 100:   return 0.01
+    if current_price >= 1:     return 0.001
+    return 0.0001
+
+
 def _fan_qs_cell_match(th, qs, bear, rng):
     """FAN flip-SHORT 'winner cell' (Jun 26). Spec `flip_fan_qs_cell` =
     qs_min : bear_min : range_lo-range_hi : size [: lev]. Returns (size, lev, tag) when the
@@ -3673,6 +3709,7 @@ class TradingEngine:
         direction: str, pair: str, notional_value: float,
         maker_fee_rate: float, taker_fee_rate: float,
         confidence: Optional[str] = None,
+        max_disloc_pct: Optional[float] = None,   # 🛡 57f: set only for BULLRUN entries
     ) -> Optional[Dict]:
         """Attempt a maker (limit) entry, falling back to taker (market) on timeout.
 
@@ -3708,6 +3745,14 @@ class TradingEngine:
             limit_price = ob['best_ask'] + (offset_ticks * tick_size)
 
         limit_price = round(limit_price / tick_size) * tick_size
+
+        # 🛡 57f placement leg (bullrun-scoped): never rest an order >X% from the mid — a book
+        # gapped that far is a falling-knife catch regardless of what the indicators say.
+        _mid = (float(ob['best_bid']) + float(ob['best_ask'])) / 2.0
+        if bullrun_disloc_exceeded(max_disloc_pct, _mid, limit_price):
+            logger.warning(f"[MAKER_ENTRY] {pair}: DISLOC_SKIP placement — limit {limit_price} is {abs(limit_price-_mid)/_mid*100:.2f}% from mid {_mid} (max {max_disloc_pct}%)")
+            return {'entry_order_type': 'DISLOC_SKIP', 'skipped': True, 'price': _mid, 'entry_fee': 0.0,
+                    'reason': f'placement dislocation {abs(limit_price-_mid)/_mid*100:.2f}% > {max_disloc_pct}%', 'wait_seconds': 0.0}
 
         logger.info(f"[MAKER_ENTRY] {pair}: Placing limit {side} @ {limit_price} "
                      f"(bid={ob['best_bid']}, ask={ob['best_ask']}, offset={offset_ticks} ticks)")
@@ -3822,6 +3867,17 @@ class TradingEngine:
             logger.info(f"[MAKER_ENTRY] {pair}: No fill, signal re-validated, falling back to market order")
         else:
             logger.info(f"[MAKER_ENTRY] {pair}: No fill, re-validation disabled, falling back to market order")
+        # 🛡 57f fallback leg (bullrun-scoped): price ran away during the maker wait → don't chase.
+        if max_disloc_pct:
+            try:
+                _ob2 = await binance_service.fetch_orderbook(symbol)
+                _px2 = float(_ob2['best_ask'] if direction == 'LONG' else _ob2['best_bid']) if _ob2 else None
+                if _px2 and bullrun_disloc_exceeded(max_disloc_pct, _mid, _px2):
+                    logger.warning(f"[MAKER_ENTRY] {pair}: DISLOC_SKIP fallback — market {_px2} is {abs(_px2-_mid)/_mid*100:.2f}% from entry-time mid {_mid} (max {max_disloc_pct}%)")
+                    return {'entry_order_type': 'DISLOC_SKIP', 'skipped': True, 'price': _mid, 'entry_fee': 0.0,
+                            'reason': f'fallback dislocation {abs(_px2-_mid)/_mid*100:.2f}% > {max_disloc_pct}%', 'wait_seconds': wait_seconds_elapsed}
+            except Exception:
+                pass                                   # fail-open: guard never blocks on missing data
         result = await binance_service.create_market_order(symbol, side, amount, leverage)
         if not result:
             return None
@@ -3838,6 +3894,7 @@ class TradingEngine:
         self, pair: str, direction: str, current_price: float,
         notional_value: float, maker_fee_rate: float, taker_fee_rate: float,
         confidence: Optional[str] = None,
+        max_disloc_pct: Optional[float] = None,   # 🛡 57f: set only for BULLRUN entries
     ) -> Dict:
         """Simulate maker entry for paper trading using WebSocket prices.
 
@@ -3850,15 +3907,7 @@ class TradingEngine:
         timeout = getattr(tc, 'maker_timeout_seconds', 15)
         offset_ticks = getattr(tc, 'maker_offset_ticks', 2)
 
-        # Estimate tick size from price magnitude
-        if current_price >= 10000:
-            tick_size = 0.10
-        elif current_price >= 100:
-            tick_size = 0.01
-        elif current_price >= 1:
-            tick_size = 0.001
-        else:
-            tick_size = 0.0001
+        tick_size = await _paper_tick_size(pair, current_price)   # Sep-19 fix: REAL exchange tick (magnitude ladder = fallback only)
 
         if direction == 'LONG':
             limit_price = current_price - (offset_ticks * tick_size)
@@ -3866,6 +3915,13 @@ class TradingEngine:
             limit_price = current_price + (offset_ticks * tick_size)
 
         limit_price = round(limit_price / tick_size) * tick_size
+
+        # 🛡 57f placement leg (bullrun-scoped via max_disloc_pct): a limit that lands >X% from the
+        # reference price = gapped book / coarse pricing — never rest an order there.
+        if bullrun_disloc_exceeded(max_disloc_pct, current_price, limit_price):
+            logger.warning(f"[MAKER_PAPER] {pair}: DISLOC_SKIP placement — limit {limit_price} is {abs(limit_price-current_price)/current_price*100:.2f}% from current {current_price} (max {max_disloc_pct}%)")
+            return {'entry_order_type': 'DISLOC_SKIP', 'skipped': True, 'price': current_price, 'entry_fee': 0.0,
+                    'reason': f'placement dislocation {abs(limit_price-current_price)/current_price*100:.2f}% > {max_disloc_pct}%', 'wait_seconds': 0.0}
 
         logger.info(f"[MAKER_PAPER] {pair}: Simulating limit {direction} @ {limit_price} "
                      f"(current={current_price}, offset={offset_ticks} ticks)")
@@ -3919,6 +3975,12 @@ class TradingEngine:
 
         tracker = websocket_tracker.get_tracker(pair)
         fallback_price = tracker.last_price if tracker and tracker.last_price else current_price
+        # 🛡 57f fallback leg: price ran away from the signal during the maker wait → don't chase
+        # (master pool: |slip|≥0.3 sleeve cohort 6·0W·−$876 — the ONG/ENA class).
+        if bullrun_disloc_exceeded(max_disloc_pct, current_price, fallback_price):
+            logger.warning(f"[MAKER_PAPER] {pair}: DISLOC_SKIP fallback — price {fallback_price} is {abs(fallback_price-current_price)/current_price*100:.2f}% from signal {current_price} (max {max_disloc_pct}%)")
+            return {'entry_order_type': 'DISLOC_SKIP', 'skipped': True, 'price': current_price, 'entry_fee': 0.0,
+                    'reason': f'fallback dislocation {abs(fallback_price-current_price)/current_price*100:.2f}% > {max_disloc_pct}%', 'wait_seconds': float(timeout)}
         logger.info(f"[MAKER_PAPER] {pair}: No fill after {timeout}s, signal re-validated, taker fallback @ {fallback_price}")
         return {
             'price': fallback_price,
@@ -4100,14 +4162,7 @@ class TradingEngine:
         maker_fee_rate = getattr(tc, 'maker_fee', 0.00018)
         taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
 
-        if current_price >= 10000:
-            tick_size = 0.10
-        elif current_price >= 100:
-            tick_size = 0.01
-        elif current_price >= 1:
-            tick_size = 0.001
-        else:
-            tick_size = 0.0001
+        tick_size = await _paper_tick_size(pair, current_price)   # Sep-19 fix: REAL exchange tick
 
         if direction == 'LONG':
             limit_price = current_price + (offset_ticks * tick_size)
@@ -7177,6 +7232,8 @@ class TradingEngine:
         # Determine fee rate and entry type
         tc = config.trading_config
         maker_enabled = tc.maker_entry_enabled
+        # 🛡 57f (Sep-19): entry-dislocation guard, BULLRUN-scoped (ONE −$225 in 0.996s; CC evidence: master +$75 / B9 +$353, 0 winners cut)
+        _br_disloc_max = (float(getattr(config.trading_config.thresholds, 'bullrun_max_entry_dislocation_pct', 0) or 0) or None) if bullrun_long else None
         # Jul 30 (operator-directed): SPIKE species BYPASS the maker entry — direct taker.
         # Evidence: 18/18 lifetime spike fires were TAKER_FALLBACK (0 maker fills — the limit
         # posts at the passive side while the spike runs away from it by definition), so every
@@ -7213,7 +7270,13 @@ class TradingEngine:
                     notional_value=notional_value,
                     maker_fee_rate=maker_fee_rate, taker_fee_rate=taker_fee_rate,
                     confidence=confidence,
+                    max_disloc_pct=_br_disloc_max,
                 )
+                if result and result.get('entry_order_type') == 'DISLOC_SKIP':
+                    # 🛡 57f: entry refused on dislocation — count + journal, dip stays alive, NO order row.
+                    self._record_filter_block("BULLRUN_DISLOC", direction)   # journals its own BLOCK line (deep review: an explicit second note double-counted the gate)
+                    logger.warning(f"[BULLRUN_DISLOC] {pair}: entry aborted — {result.get('reason')}")
+                    return None
                 if result and result.get('skipped'):
                     # Amendment #7: signal expired during maker wait → record + abort entry.
                     # May 2: forward all entry indicators + wait_seconds so aborted entries
@@ -7293,7 +7356,13 @@ class TradingEngine:
                     notional_value=notional_value,
                     maker_fee_rate=maker_fee_rate, taker_fee_rate=taker_fee_rate,
                     confidence=confidence,
+                    max_disloc_pct=_br_disloc_max,
                 )
+                if result.get('entry_order_type') == 'DISLOC_SKIP':
+                    # 🛡 57f: entry refused on dislocation — count + journal, dip stays alive, NO order row.
+                    self._record_filter_block("BULLRUN_DISLOC", direction)   # journals its own BLOCK line (deep review: an explicit second note double-counted the gate)
+                    logger.warning(f"[BULLRUN_DISLOC] {pair}: entry aborted — {result.get('reason')}")
+                    return None
                 if result.get('skipped'):
                     # Amendment #7: signal expired during maker wait → record + abort entry.
                     # May 2: forward all entry indicators + wait_seconds so aborted entries

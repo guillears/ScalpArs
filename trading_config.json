@@ -660,6 +660,7 @@
     "bullrun_btc_1h_slope_min": 0.0,
     "bullrun_breadth_enabled": false,
     "bullrun_breadth_min": 60.0,
+    "bullrun_max_entry_dislocation_pct": 0.3,
     "bullrun_rearm_enabled": true,
     "bullrun_rearm_adx_min": 30.0,
     "bullrun_rearm_adx_off": 30.0,

@@ -1008,6 +1008,16 @@ class SignalThresholds(BaseModel):
     # → toggle on; rising-breadth exception supported → ship Δbreadth variant instead.
     bullrun_breadth_enabled: bool = False
     bullrun_breadth_min: Optional[float] = 60.0
+    # 🛡 Sep-19 (57f) — ENTRY-DISLOCATION GUARD (bullrun-only; 0 = off): skip the entry when ① the
+    # maker limit would rest > this % from the current/mid price (gapped book: ONE −$225 in 0.996s —
+    # limit −3.2% via the paper tick-ladder bug, fixed same commit) or ② the taker-fallback would fill
+    # > this % from the signal price (ran-away chase: ONG×3/ENA class). Master pool 531 fills: |slip|
+    # 0.1-0.3 = 87·71%·+$3,077 (keep) vs ≥0.3 = 12·25%·−$977 (cliff AT 0.3, 5 eras); sleeve subset
+    # 6·0W·−$876; CURRENT-CONFIG effect: master +$75 (ONG already blacklisted) / B9 +$353, 0 winners
+    # cut anywhere. Momentum unaffected by evidence (5·3W·−$86) → scope stays bullrun. N=6 sleeve =
+    # declared execution-mechanism override (precedent: spike direct-taker, stretch guard).
+    # 🔒 revert: blocked-dislocation cohort re-simmed (1m klines, BR exit stack) net-positive at N≥8 → loosen to 0.5 or off.
+    bullrun_max_entry_dislocation_pct: float = 0.3
     # Aug-23 (20): RE-ARM DOOR — second trigger while the 72h composite is OFF (it detects continuation late and
     # cannot re-arm after a pullback: eff needs +3.9% straight-line). ON = BTC ADX ≥ adx_min AND rising vs 30 min ago
     # AND alts leading (median universe 6h return > alt_r6h_min %, ≥ alt_above_pct % above their 1h EMA50) AND

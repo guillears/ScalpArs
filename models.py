@@ -1022,6 +1022,7 @@ class MonitorPeriod(Base):
     blocked_ema13 = Column(Integer, default=0)                   # Aug 22 (15): refused by the BTC-leader (EMA13) gate
     blocked_pvr = Column(Integer, default=0)                    # Aug-25: PVR-ceiling refusals this episode (BULLRUN_PVR_MAX ship)
     blocked_1h = Column(Integer, default=0)                      # Aug 23 (18): refused by the BTC 1h-slope gate
+    blocked_breadth = Column(Integer, default=0)                 # Sep 19 (57c): refused by the market-breadth minimum
 
 
 class BearMonitorPeriod(Base):

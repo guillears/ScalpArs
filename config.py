@@ -994,6 +994,20 @@ class SignalThresholds(BaseModel):
     # 3-4 losers the other misses): ex-ONG/ETH 31·42%·+$515 → 15·67%·+$1,918. Discipline-override (N<30).
     # 🔒 revert: next GREEN episode close — blocked cohort (replay or live entry_btc_1h_slope ≤ min) net-positive → off.
     bullrun_btc_1h_slope_min: Optional[float] = 0.0
+    # Sep-19 (57c, OPERATOR-FOUND): market-breadth minimum — no sleeve entry while bull breadth < this
+    # (blank/0 = off). The GREEN monitor is BTC-only; this is the missing 'are alts participating?' leg
+    # (the REARM door always had one). Blocked cohort (<60) negative in 8 of 10 windows it ever fired;
+    # current-config cohort 41·51%·+$1,491 → kept 19·74%·+$2,305 / blocked 22·32%·−$814; B3 historic =
+    # zero cost (no admissible fill below 60); any cut 60-70 blocks the same fills, 60 = loosest.
+    # Pre-registered ship bar (one more confirming GREEN window) met Sep-19 (08:05 −$127 · 13:03 −$107).
+    # Fail-open while breadth uncomputed (bull+bear both 0 = scan warm-up). DECISION_LOG 2026-09-19 (79).
+    # ⚠ SHIPS OFF (operator, Sep-19 pre-commit): open <60 fills with breadth RISING looked good live —
+    # a static level may over-block; review at the weekend with the journal's new breadth series
+    # (SCAN now logs bull/bear every ~2 min → Δbreadth / breadth∧X candidates become computable).
+    # 🔒 arming review (end of weekend): re-run the window ledger on the new data; static ≥60 confirmed
+    # → toggle on; rising-breadth exception supported → ship Δbreadth variant instead.
+    bullrun_breadth_enabled: bool = False
+    bullrun_breadth_min: Optional[float] = 60.0
     # Aug-23 (20): RE-ARM DOOR — second trigger while the 72h composite is OFF (it detects continuation late and
     # cannot re-arm after a pullback: eff needs +3.9% straight-line). ON = BTC ADX ≥ adx_min AND rising vs 30 min ago
     # AND alts leading (median universe 6h return > alt_r6h_min %, ≥ alt_above_pct % above their 1h EMA50) AND
@@ -2176,6 +2190,13 @@ class InvestmentConfig(BaseModel):
     # batch 1 fade +$38 — at 0.3% all affected trades reach 100% of desired size. Bounces
     # unaffected (all <$10M already). Momentum/flips untouched (global 0.1% keeps the book rail;
     # binds ~never: 3 trims ever at ≥92% of desired). Revert = restore 10_000_000.0.
+    # Sep-19 2026 — REVERT EXECUTED (gate 50b, operator early-call on the armed next-read trigger):
+    # JSON threshold restored $1T → $10M, so fades on pairs ≥ $10M fall back to the global 0.1% cap.
+    # Evidence: capped fades 51·86%·+$1,778 vs full-size 4·75%·−$89; SAND 09-19 −$361 on a $24.1k
+    # ticket ($12.4M pair) vs QTUM same night capped $10.4k → +$72; 41h loser zone turns +$120 with
+    # this alone. Entry engine untouched (91% WR outside zone). DECISION_LOG 2026-09-19 (80).
+    # 🔒 revert-of-revert: ≥$10M fades throttled by the 0.1% cap go net-negative vs their full-size
+    # counterfactual on N≥10 fresh fills → raise threshold again.
     spike_lowvol_liq_cap_pct: float = 0.3         # spikes on thin pairs: % of 24h vol (0 = off → global pct)
     spike_lowvol_threshold_usd: float = 10_000_000.0  # "thin" = 24h vol below this (JSON carries $1T = all-spikes since Aug-18)
     # ② Gross-notional cap: Σ(open notional) ≤ balance × max_gross_leverage.

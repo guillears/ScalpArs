@@ -666,6 +666,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_pvr INTEGER DEFAULT 0"))
                 if 'blocked_1h' not in _mp_cols:
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_1h INTEGER DEFAULT 0"))
+                if 'blocked_breadth' not in _mp_cols:
+                    connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_breadth INTEGER DEFAULT 0"))
             # Aug-22: investors.eth_wallet (optional payout address)
             if 'investors' in inspector.get_table_names():
                 _inv_cols = [c['name'] for c in inspector.get_columns('investors')]

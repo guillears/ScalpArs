@@ -582,6 +582,33 @@ def long_heat_eval(th, btc_slope, btc_rsi_prev, bull_pct, btc_off30d):
     return flags, True
 
 
+def bullrun_breadth_ok(th, bull_pct, bear_pct):
+    """🌊 Sep-19 (gate 57 / watch 57c, operator-found): sleeve entry breadth minimum.
+    The GREEN monitor is BTC-only; the missing 'are alts participating?' leg. Blocks the sleeve
+    entry when market bull breadth < bullrun_breadth_min (dip stays alive, re-checked next scan).
+    Evidence: blocked cohort (<60) negative in 8 of 10 windows it ever fired; current-config
+    cohort 41·51%·+$1,491 → kept 19·74%·+$2,305, blocked 22·32%·−$814; B3 historic = zero cost
+    (no admissible fill below 60). Ship bar (2 confirming GREEN windows) met 2026-09-19.
+    FAIL-OPEN when breadth is not computed yet: bull+bear both 0/None = scan warm-up (B4 fills
+    stamped 0.0 after a restart), never a real market state — blocking then would freeze the
+    sleeve on every deploy. Returns True = entry may proceed. Never raises."""
+    try:
+        if not bool(getattr(th, 'bullrun_breadth_enabled', False)):
+            return True                      # toggle OFF (ships off — operator: review with weekend data)
+        _min = getattr(th, 'bullrun_breadth_min', None)
+        if _min is None or str(_min) == '':
+            return True
+        _min = float(_min)
+        if _min <= 0:
+            return True
+        b = float(bull_pct or 0.0); r = float(bear_pct or 0.0)
+        if b <= 0 and r <= 0:
+            return True                      # breadth not computed this process yet — fail-open
+        return b >= _min
+    except Exception:
+        return True
+
+
 def _fan_qs_cell_match(th, qs, bear, rng):
     """FAN flip-SHORT 'winner cell' (Jun 26). Spec `flip_fan_qs_cell` =
     qs_min : bear_min : range_lo-range_hi : size [: lev]. Returns (size, lev, tag) when the
@@ -4626,7 +4653,7 @@ class TradingEngine:
                         _bullrun_monitor['period_id'] = cur.id
                         _bullrun_monitor['resumed'] = True
                         _bullrun_monitor['green_since'] = cur.started_at.strftime('%Y-%m-%d %H:%M') if new_state == 'GREEN' else None
-                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_pvr', 'blocked_pvr'), ('blk_1h', 'blocked_1h')):
+                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_pvr', 'blocked_pvr'), ('blk_1h', 'blocked_1h'), ('blk_breadth', 'blocked_breadth')):
                             _bullrun_monitor[_k] = int(getattr(cur, _col, 0) or 0)
                         logger.info(f"[BULLRUN_MONITOR] resumed open {cur.state} period #{cur.id} (since {cur.started_at:%Y-%m-%d %H:%M} UTC) after restart")
                     else:
@@ -4664,6 +4691,7 @@ class TradingEngine:
                 cur.blocked_ema13 = int(_bullrun_monitor.get('blk_ema13', 0) or 0)
                 cur.blocked_pvr = int(_bullrun_monitor.get('blk_pvr', 0) or 0)  # Sep-7 review: was omitted — counter died on every restart
                 cur.blocked_1h = int(_bullrun_monitor.get('blk_1h', 0) or 0)
+                cur.blocked_breadth = int(_bullrun_monitor.get('blk_breadth', 0) or 0)
                 cur.last_update = now
                 # breadth backfill: the first compute after boot can precede the breadth scan (0/0)
                 _gb = globals()
@@ -4685,6 +4713,7 @@ class TradingEngine:
                     cur.blocked_ema13 = int(_bullrun_monitor.get('blk_ema13', 0) or 0)
                     cur.blocked_pvr = int(_bullrun_monitor.get('blk_pvr', 0) or 0)  # Sep-7 review: was omitted (period-close block)
                     cur.blocked_1h = int(_bullrun_monitor.get('blk_1h', 0) or 0)
+                    cur.blocked_breadth = int(_bullrun_monitor.get('blk_breadth', 0) or 0)
                     if cur.state == 'AMBER' and new_state == 'GREEN':
                         amber_lead = int((now - cur.started_at).total_seconds() / 60)
                 _g = globals()
@@ -4705,7 +4734,7 @@ class TradingEngine:
                             _prev.ended_at = None; _prev.ended_by = None; _prev.last_update = now
                             _prev.r72_end, _prev.above_end, _prev.eff_end, _prev.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
                             _bullrun_monitor['period_id'] = _prev.id
-                            for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_pvr', 'blocked_pvr'), ('blk_1h', 'blocked_1h')):
+                            for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_pvr', 'blocked_pvr'), ('blk_1h', 'blocked_1h'), ('blk_breadth', 'blocked_breadth')):
                                 _bullrun_monitor[_k] = int(getattr(_prev, _col, 0) or 0)
                             logger.info(f"[BULLRUN_MONITOR] GREEN re-armed within 30 min of a stay-band drop — period #{_prev.id} reopened (flap, not a new episode)")
                             await locked_commit(db)
@@ -4734,12 +4763,12 @@ class TradingEngine:
                     r72_peak=rd['r72'], eff_peak=rd['eff'], r6_min=rd['r6'],
                     btc_start=rd['px'], btc_end=rd['px'],
                     bull_pct_start=_g.get('_market_bull_pct'), bear_pct_start=_g.get('_market_bear_pct'),
-                    amber_lead_min=amber_lead, blocked_spacing=0, blocked_slots=0, blocked_ema50=0, blocked_off24h=0, blocked_ema13=0, blocked_1h=0,
+                    amber_lead_min=amber_lead, blocked_spacing=0, blocked_slots=0, blocked_ema50=0, blocked_off24h=0, blocked_ema13=0, blocked_1h=0, blocked_pvr=0, blocked_breadth=0,
                 )
                 db.add(newp)
                 await db.flush()
                 _bullrun_monitor['period_id'] = newp.id
-                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50', 'blk_off24h', 'blk_ema13', 'blk_1h', 'blk_pvr'):
+                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50', 'blk_off24h', 'blk_ema13', 'blk_1h', 'blk_pvr', 'blk_breadth'):
                     _bullrun_monitor[_k] = 0
             await locked_commit(db)
         except Exception as e:
@@ -5336,6 +5365,16 @@ class TradingEngine:
                         _bullrun_monitor['blk_1h'] = _bullrun_monitor.get('blk_1h', 0) + 1
                         self._record_filter_block("BULLRUN_BTC_1H_SLOPE", "LONG")
                     return
+            # Sep-19 (57c, operator-found): market-breadth minimum — the sleeve's alt-participation leg.
+            # Module globals _market_bull_pct/_market_bear_pct are stamped by the scan; fail-open during
+            # warm-up (both 0). Applies to GREEN and REARM doors alike. Once per (rule, dip).
+            if not bullrun_breadth_ok(th, globals().get('_market_bull_pct'), globals().get('_market_bear_pct')):
+                _gate_log('br', f"[BULLRUN_LONG] {pair}: refused by breadth gate (bull {float(globals().get('_market_bull_pct') or 0.0):.1f}% < min {float(getattr(th, 'bullrun_breadth_min', 0) or 0):.0f}%) — dip stays alive")
+                if st.get('blk_br_ts') != st.get('dip_ts'):
+                    st['blk_br_ts'] = st.get('dip_ts')
+                    _bullrun_monitor['blk_breadth'] = _bullrun_monitor.get('blk_breadth', 0) + 1
+                    self._record_filter_block("BULLRUN_BREADTH", "LONG")
+                return
             sp = float(getattr(th, 'bullrun_pair_spacing_hours', 2.0) or 2.0) * 3600.0
             # Restart-proof spacing (Aug-21 live catch: ONG re-entered 11 min after its stop because a
             # deploy wiped the in-memory stamp) — the DB is the source of truth: latest BULLRUN_LONG
@@ -10593,7 +10632,8 @@ class TradingEngine:
             _djournal.note('SCAN', btc_rsi=btc_rsi, btc_adx=btc_adx, btc_adx_prev=btc_adx_prev, btc_slope=btc_ema20_slope_pct,
                            veto_long=_btc_macro_blocks_long, veto_short=_btc_macro_blocks_short,
                            br_state=_bullrun_monitor.get('state'), r72=_bullrun_monitor.get('r72'), above=_bullrun_monitor.get('above'),
-                           eff=_bullrun_monitor.get('eff'), off24h=_bullrun_monitor.get('off24h'), off30d=_bullrun_monitor.get('off30d'))
+                           eff=_bullrun_monitor.get('eff'), off24h=_bullrun_monitor.get('off24h'), off30d=_bullrun_monitor.get('off30d'),
+                           bull=globals().get('_market_bull_pct'), bear=globals().get('_market_bear_pct'))
         except Exception:
             pass
         if _btc_macro_blocks_long or _btc_macro_blocks_short:

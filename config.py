@@ -1092,6 +1092,15 @@ class SignalThresholds(BaseModel):
     bearrun_latch_ema50: bool = True             # squeeze latch: BTC price above its 1h EMA50 → instant OFF
     bearrun_btc_off24lo_max: float = 2.0         # no bypass while BTC is more than this % ABOVE its 24h low (mirror of the bull-run off-24h-high gate; operator chose 2.0 over the 1.0 variant — the 1–2% band is logged as BEARRUN_REFUSED_OFF24LO for the review)
     bearrun_bypass_gates: str = "BTC_ADX_BLOCK_SHORT,BTC_RSI_ADX_CROSS,BTC_1H_5M_RSI_DIR_GATE,BTC_SLOPE_GATE,BTC_1H_RSI_MIN_GATE"  # the BTC macro gates the sleeve passes through while ON (comma list; edit to shrink); a bypass takes precedence over the (currently off) SLOPEGATE probe fork — the sleeve is the newer experiment
+    # Sep-19 (bull-run 57c lesson mirrored same week, DECISION_LOG (92)): bypass breadth floor - no
+    # bear-run bypass unless bear breadth >= this (0 = off). The bypass strips 5 BTC macro gates;
+    # sub-floor bear breadth while BTC prints -4%/24h = BTC falling alone = squeeze, not a run.
+    # 40 mirrors the bull floor (sub-40 bull breadth had zero winning history; bear side has ZERO
+    # armed fills - this ships as pre-emptive structure, evidence bar registered, not evidence-won).
+    # Warm-up (breadth uncomputed post-restart) fails CLOSED for the bypass (B4 REARM lesson).
+    # LOCKED revert: refused-BREADTH cohort (BEARRUN_REFUSED log lines) re-simmed net-positive at
+    # N>=8 across >=2 windows -> floor off. Read with the first armed bear window.
+    bearrun_breadth_min: float = 40.0
     bearrun_pair_blacklist: str = "BTCUSDT,ETHUSDT"  # the leader and its twin never ride the sleeve (bull-run lesson: leader self-reference 0/4)
     bearrun_pair_spacing_hours: float = 2.0      # per-pair spacing between sleeve fills (DB-backed — restart-proof)
     bearrun_invest_mult: float = 1.0             # investment multiplier (absolute-assign: never re-multiplied by pattern cells)

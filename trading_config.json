@@ -679,6 +679,7 @@
     "bearrun_latch_r6h": 3.0,
     "bearrun_latch_ema50": true,
     "bearrun_btc_off24lo_max": 2.0,
+    "bearrun_breadth_min": 40.0,
     "bearrun_bypass_gates": "BTC_ADX_BLOCK_SHORT,BTC_RSI_ADX_CROSS,BTC_1H_5M_RSI_DIR_GATE,BTC_SLOPE_GATE,BTC_1H_RSI_MIN_GATE",
     "bearrun_pair_blacklist": "BTCUSDT,ETHUSDT",
     "bearrun_pair_spacing_hours": 2.0,

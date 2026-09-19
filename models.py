@@ -1054,6 +1054,7 @@ class BearMonitorPeriod(Base):
     bear_pct_start = Column(Float, nullable=True)                # market breadth (bear %) at period start
     bypasses = Column(Integer, default=0)                        # BTC-gate bypasses granted in this period
     blocked_off24lo = Column(Integer, default=0)                 # sleeve refusals in this period, by rule
+    blocked_breadth = Column(Integer, default=0)                 # Sep 19: refused by the bear-breadth floor (57c mirror)
     blocked_blacklist = Column(Integer, default=0)
     blocked_spacing = Column(Integer, default=0)
 

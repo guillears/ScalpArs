@@ -112,7 +112,7 @@ _bearrun_monitor: Dict = {
     'state': 'OFF', 'on': False, 'latch': False,
     'r24': None, 'below24': None, 'eff24': None, 'r6': None, 'off24lo': None, 'e50h': None,
     'on_since': None, 'updated_at': 0.0, 'flips': [], 'period_id': None,
-    'bypasses': 0, 'blk_off24lo': 0, 'blk_blacklist': 0, 'blk_spacing': 0,
+    'bypasses': 0, 'blk_off24lo': 0, 'blk_blacklist': 0, 'blk_spacing': 0, 'blk_breadth': 0,
 }
 _bear_last_fire: Dict[str, float] = {}   # pair -> epoch of last BEARRUN_SHORT fill (spacing; DB-backed on miss)
 _breadth_n_bull: int = 0
@@ -303,6 +303,31 @@ def _bearrun_next_state(prev_on, r24, below24, eff24, r6, price, e50h,
     else:
         on = (r24 <= -r_on) and (below24 >= float(below_on)) and (eff24 >= float(eff_on))
     return bool(on), False
+
+
+def bearrun_breadth_ok(th, bear_pct, bull_pct):
+    """Sep-19 (gate 60, bull-run 57c lesson mirrored): bear-run bypass breadth floor.
+    The bear monitor is BTC-only; the bypass strips five BTC macro gates, leaving pair-level
+    filters as the only protection. This leg requires the MARKET to confirm the downmove:
+    bear breadth >= bearrun_breadth_min (0/blank = off). BTC down 4% with bear breadth under
+    the floor = BTC falling alone = squeeze setup, not a bear run.
+    Warm-up (bear+bull both 0/None = breadth not computed since restart): fail-CLOSED - the
+    bypass is the aggressive mode (bull-run B4 lesson: 5 of 7 REARM fills entered blind, 4
+    lost); it waits one scan cycle. Garbage/exception: fail-open (a guard never blocks on
+    its own bug). Returns True = bypass may proceed."""
+    try:
+        m = getattr(th, 'bearrun_breadth_min', None)
+        if m is None or str(m) == '':
+            return True
+        m = float(m)
+        if m <= 0:
+            return True
+        br = float(bear_pct or 0.0); bl = float(bull_pct or 0.0)
+        if br <= 0 and bl <= 0:
+            return False                     # warm-up: the aggressive door waits for a real reading
+        return br >= m
+    except Exception:
+        return True
 
 
 def _bearrun_bypass_set(gates_str):
@@ -5153,7 +5178,7 @@ class TradingEngine:
                         _bearrun_monitor['period_id'] = cur.id
                         _bearrun_monitor['resumed'] = True
                         _bearrun_monitor['on_since'] = cur.started_at.strftime('%Y-%m-%d %H:%M')
-                        for _k, _col in (('bypasses', 'bypasses'), ('blk_off24lo', 'blocked_off24lo'), ('blk_blacklist', 'blocked_blacklist'), ('blk_spacing', 'blocked_spacing')):
+                        for _k, _col in (('bypasses', 'bypasses'), ('blk_off24lo', 'blocked_off24lo'), ('blk_blacklist', 'blocked_blacklist'), ('blk_spacing', 'blocked_spacing'), ('blk_breadth', 'blocked_breadth')):
                             _bearrun_monitor[_k] = int(getattr(cur, _col, 0) or 0)
                         logger.info(f"[BEARRUN_MONITOR] resumed open ON period #{cur.id} (since {cur.started_at:%Y-%m-%d %H:%M} UTC) after restart")
                     else:
@@ -5171,6 +5196,7 @@ class TradingEngine:
                 cur.off24lo_max = max(cur.off24lo_max, rd['off24lo']) if cur.off24lo_max is not None else rd['off24lo']
                 cur.bypasses = int(_bearrun_monitor.get('bypasses', 0) or 0)
                 cur.blocked_off24lo = int(_bearrun_monitor.get('blk_off24lo', 0) or 0)
+                cur.blocked_breadth = int(_bearrun_monitor.get('blk_breadth', 0) or 0)
                 cur.blocked_blacklist = int(_bearrun_monitor.get('blk_blacklist', 0) or 0)
                 cur.blocked_spacing = int(_bearrun_monitor.get('blk_spacing', 0) or 0)
                 if not on:
@@ -5203,7 +5229,7 @@ class TradingEngine:
                         _bearrun_monitor['period_id'] = _prev.id
                         _bearrun_monitor['resumed'] = True  # not a new window: no flip entry, on_since = the row's start
                         _bearrun_monitor['on_since'] = _prev.started_at.strftime('%Y-%m-%d %H:%M')
-                        for _k, _col in (('bypasses', 'bypasses'), ('blk_off24lo', 'blocked_off24lo'), ('blk_blacklist', 'blocked_blacklist'), ('blk_spacing', 'blocked_spacing')):
+                        for _k, _col in (('bypasses', 'bypasses'), ('blk_off24lo', 'blocked_off24lo'), ('blk_blacklist', 'blocked_blacklist'), ('blk_spacing', 'blocked_spacing'), ('blk_breadth', 'blocked_breadth')):
                             _bearrun_monitor[_k] = int(getattr(_prev, _col, 0) or 0)
                         logger.info(f"[BEARRUN_MONITOR] ON again within {_merge_min:.0f} min of a {_prev_lbl} drop — window #{_prev.id} reopened (flap, not a new window)")
                         await locked_commit(db)
@@ -5217,12 +5243,12 @@ class TradingEngine:
                     r24_end=rd['r24'], below_end=rd['below24'], eff_end=rd['eff24'],
                     r24_min=rd['r24'], eff_peak=rd['eff24'], r6_max=rd['r6'], off24lo_max=rd['off24lo'],
                     btc_start=rd['px'], btc_end=rd['px'], bear_pct_start=_g.get('_market_bear_pct'),
-                    bypasses=0, blocked_off24lo=0, blocked_blacklist=0, blocked_spacing=0,
+                    bypasses=0, blocked_off24lo=0, blocked_blacklist=0, blocked_spacing=0, blocked_breadth=0,
                 )
                 db.add(newp)
                 await db.flush()
                 _bearrun_monitor['period_id'] = newp.id
-                for _k in ('bypasses', 'blk_off24lo', 'blk_blacklist', 'blk_spacing'):
+                for _k in ('bypasses', 'blk_off24lo', 'blk_blacklist', 'blk_spacing', 'blk_breadth'):
                     _bearrun_monitor[_k] = 0
             await locked_commit(db)
         except Exception as e:
@@ -5252,6 +5278,9 @@ class TradingEngine:
         _off = _bearrun_monitor.get('off24lo')
         if _max > 0 and (_off is None or _off > _max):
             self._bear_refuse = 'OFF24LO'; return
+        # Sep-19 (57c mirror): market must confirm the downmove - bear breadth floor; warm-up fail-closed.
+        if not bearrun_breadth_ok(th, globals().get('_market_bear_pct'), globals().get('_market_bull_pct')):
+            self._bear_refuse = 'BREADTH'; return
         sp = float(getattr(th, 'bearrun_pair_spacing_hours', 2.0) or 0) * 3600.0
         if sp > 0:
             if pair not in _bear_last_fire:
@@ -5288,12 +5317,12 @@ class TradingEngine:
             return True
         if self._bear_refuse and not self._bear_refuse_done:
             self._bear_refuse_done = True
-            _k = {'OFF24LO': 'blk_off24lo', 'BLACKLIST': 'blk_blacklist', 'SPACING': 'blk_spacing'}.get(self._bear_refuse)
+            _k = {'OFF24LO': 'blk_off24lo', 'BLACKLIST': 'blk_blacklist', 'SPACING': 'blk_spacing', 'BREADTH': 'blk_breadth'}.get(self._bear_refuse)
             if _k:
                 _bearrun_monitor[_k] = int(_bearrun_monitor.get(_k, 0) or 0) + 1
             # NOT _record_filter_block: the normal gate blocks and counts this candidate right after — a second
             # counter would double-count it in blocked_short. Ledger (per window) + the log line are the record.
-            logger.info(f"[BEARRUN_REFUSED] {pair}: SHORT would bypass {gate} but refused by {self._bear_refuse} (off24lo {_bearrun_monitor.get('off24lo')}% vs max {getattr(th, 'bearrun_btc_off24lo_max', None)} · r24 {_bearrun_monitor.get('r24')}% · eff24 {_bearrun_monitor.get('eff24')})")
+            logger.info(f"[BEARRUN_REFUSED] {pair}: SHORT would bypass {gate} but refused by {self._bear_refuse} (off24lo {_bearrun_monitor.get('off24lo')}% vs max {getattr(th, 'bearrun_btc_off24lo_max', None)} · r24 {_bearrun_monitor.get('r24')}% · eff24 {_bearrun_monitor.get('eff24')} · breadth bear {globals().get('_market_bear_pct')}/bull {globals().get('_market_bull_pct')} vs floor {getattr(th, 'bearrun_breadth_min', None)})")
         return False
 
     async def _maybe_open_bullrun_long(self, db, pair_info, ohlcv, indicators):

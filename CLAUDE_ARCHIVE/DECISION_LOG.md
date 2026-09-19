@@ -3822,3 +3822,18 @@ Operator caught two more row errors in the freshly pinned ledger. (a) 'isn't tha
 
 ## 2026-09-19 (91) - Breadth gate ARMED at floor 40 + REARM warm-up fail-closed (operator: 'build both')
 Operator post-ledger question exposed the residual hole: the 19 surviving master bull-run fills split GREEN r72>=10 (breadth 73-91 every fill) vs B4's REARM window (r72 2.4-3.1; breadth 0/0 x5 post-restart warm-up, one 27.9/bear-63, one 69.8; 2W/5L -$180) - the r72 10/8 ship protects only the GREEN door; REARM has no market-strength gate at all. Shipped: (a) bullrun_breadth_enabled=true, min=40 - floor level, both doors; on the reachable cohort floors 30-45 are empirically identical (one +$7 scratch blocked), 40 chosen because sub-40 has zero winning history anywhere on record (the 40-50 band's 9-0W--$1,334 prior lives in now-unreachable sub-10-r72 windows; 40-70 left to REARM's alt-leg + the weekend review). (b) Warm-up split in bullrun_breadth_ok(door=): 0/0 uncomputed breadth fails OPEN for GREEN (r72/eff protect it; deploys must not freeze a confirmed run) and CLOSED for REARM (waits one scan cycle ~1-2 min). GREEN-vs-delta-breadth for the GREEN door stays the weekend question - the floor pre-judges nothing above 40. Tests 119 (2 new + 1 extended). LOCKED revert: blocked cohort net-positive over the next 2 windows with fills -> enabled=false. REARM's own 3-window bar unchanged (0-for-1).
+
+## 2026-09-19 (92) - Bear-run bypass breadth floor 40 shipped (bull-run symmetry audit; operator 'build it')
+Operator asked what the bear sleeve deserves from the week's bull-run lessons. Symmetry audit on gate 60 (armed 20x on
+ONE probe window, 8 fills 100% +0.61%/fill Sep-15, zero armed fills since): run-strength lesson pre-applied (r24<=-4%/24h,
+eff 0.15 - its own study rejected 0.10 as random); BTC/ETH blacklist + off-24h-low gate + spacing already mirrored;
+dislocation guard not needed (bear fills ride the momentum-short entry path where dislocated entries are noise, 3W/5
+-$86); ATR ceiling + threshold reads pre-registered for the first armed window. THE HOLE: the bear monitor is BTC-only
+and the bypass strips five BTC macro gates - the exact 57c structure, thinner. SHIPPED: bearrun_breadth_min=40 in
+_bearrun_eligibility after the OFF24LO check (refusal reason BREADTH, rides the existing BEARRUN_REFUSED logging);
+pure fn bearrun_breadth_ok - warm-up (0/0) fails CLOSED for the bypass (B4 REARM lesson), real readings judged
+bear>=40 inclusive, bear=0 with bull>0 = real reading, blocks. 40 mirrors the bull floor; NOTE ON RECORD: this ships as
+PRE-EMPTIVE STRUCTURE on zero armed fills, not evidence-won - the locked evidence bar governs. D11: config+JSON+UI
+input (bear box, beside off24lo)+loader/saver+config text-export line + window-ledger parity (blk_breadth counter, bear_monitor_periods.blocked_breadth column + ALTER, payload, 3 refused-strings) + breadth values in the REFUSED log line. 6 tests (suite 125). LOCKED revert: refused-
+BREADTH cohort re-simmed net-positive at N>=8 across >=2 windows -> floor 0. Read with the first armed bear window
+alongside the pre-registered r24/eff threshold read and the short-side ATR>=1.2 tally.

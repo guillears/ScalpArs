@@ -2805,7 +2805,7 @@ def _bearrun_monitor_payload():
             "r24": _bem.get("r24"), "below24": _bem.get("below24"), "eff24": _bem.get("eff24"),
             "r6": _bem.get("r6"), "latch": _bem.get("latch"), "off24lo": _bem.get("off24lo"),
             "flips": list(_bem.get("flips") or [])[-12:],
-            "bypasses": int(_bem.get("bypasses") or 0), "blk_off24lo": int(_bem.get("blk_off24lo") or 0),
+            "bypasses": int(_bem.get("bypasses") or 0), "blk_off24lo": int(_bem.get("blk_off24lo") or 0), "blk_breadth": int(_bem.get("blk_breadth") or 0),
             "blk_blacklist": int(_bem.get("blk_blacklist") or 0), "blk_spacing": int(_bem.get("blk_spacing") or 0),
             "enabled": bool(getattr(_th_b, 'bearrun_sleeve_enabled', False)),
             "lev_mult": float(getattr(_th_b, 'bearrun_lev_mult', 0.05) or 0.05),

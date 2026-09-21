@@ -86,24 +86,44 @@ def klines(pair, opened_at, cache, refresh=False):
     return cache[key]
 
 
-def simulate(hi, lo, atr_pct, arm, trail):
-    """Live BR exit stack with (arm, trail) swapped in. Returns realized pnl% net of fees.
+def simulate(hi, lo, atr_pct, arm=LIVE_ARM, trail=LIVE_TRAIL, ladder=None, trig=None, tight=None):
+    """Live BR exit stack with any of (arm, trail, ladder, peak-conditional tighten) swapped in.
 
     Conservative intra-bar ordering: the stop is tested against the bar LOW before the peak is
     updated from the bar HIGH, i.e. the adverse move is assumed to come first. Identical for every
     variant, so the RELATIVE comparison is valid even though absolute levels are pessimistic.
+
+    trig/tight = the peak-conditional variant: trail widens to `trail` until peak >= trig, then
+    narrows to `tight` (REFUTED 2026-09-21, DECISION_LOG 96 — kept so the refutation stays re-runnable).
     """
+    ladder = LADDER if ladder is None else ladder
     stop_base = max(min(-0.7, -1.5 * atr_pct), -1.2)        # SL: min(−0.7, ATR-widened), floor −1.2
     peak = 0.0
     for h, l in zip(hi, lo):
         stop = stop_base
         if peak >= arm:
-            rung = max([f for t, f in LADDER if peak >= t], default=-99)
-            stop = max(max(LOCK, peak - trail * atr_pct), rung)
+            band = tight if (trig is not None and peak >= trig) else trail
+            rung = max([f for t, f in ladder if peak >= t], default=-99)
+            stop = max(max(LOCK, peak - band * atr_pct), rung)
         if l <= stop:
             return stop - FEE, peak
         peak = max(peak, h)
     return (hi[-1] + lo[-1]) / 2 - FEE, peak
+
+
+# --- grids kept re-runnable because DECISION_LOG (96) rests on them -------------------------
+PEAK_COND = [(trig, tight) for trig in (1.5, 2.0, 2.5, 3.0) for tight in (1.0, 1.25, 1.5)]
+LADDER_VARIANTS = {                      # each is the FULL set of rungs ADDED to the live ladder
+    "+(2.0->1.0)": [(2.0, 1.0)],
+    "+(2.0->1.2)": [(2.0, 1.2)],
+    "+(2.0->1.4)": [(2.0, 1.4)],
+    "+(1.5->0.9)": [(1.5, 0.9)],
+    "+(2.5->1.5)": [(2.5, 1.5)],
+    "+(2->1.0)+(3->1.8)": [(2.0, 1.0), (3.0, 1.8)],
+    "+(2->1.2)+(3->2.0)": [(2.0, 1.2), (3.0, 2.0)],
+    "+(1.5->0.7)+(2->1.0)+(2.5->1.3)+(3->1.8)": [(1.5, 0.7), (2.0, 1.0), (2.5, 1.3), (3.0, 1.8)],
+    "+(1.5->0.9)+(2->1.3)+(3->2.1)": [(1.5, 0.9), (2.0, 1.3), (3.0, 2.1)],
+}
 
 
 def main():
@@ -123,7 +143,7 @@ def main():
         lo = [(l / ep - 1) * 100 for _, l in kl]
         usd = float(r["investment"]) * float(r["leverage"]) / 100.0
         rec = dict(era=r["era"], door=r["door"], pair=r["pair"], atr=atr_pct,
-                   actual=float(r["pnl_"]), usd_per_pct=usd)
+                   actual=float(r["pnl_"]), usd_per_pct=usd, hi=hi, lo=lo)
         for a in ARMS:
             p, pk = simulate(hi, lo, atr_pct, a, LIVE_TRAIL)
             rec[f"arm{a}"] = p * usd
@@ -170,6 +190,31 @@ def main():
         print(f"    {e}: N={len(g)} live ${g.live.sum():+7.0f} -> package ${g.pkg.sum():+7.0f}  Δ ${g.pkg.sum() - g.live.sum():+7.0f}")
     print("\n  🔒 57i SHIP BAR: ≥2 more REARM windows AND ≥10 armed REARM fills AND direction-consistent.")
     print(f"     armed REARM fills so far: {int((rearm_t.peak >= LIVE_ARM).sum())}   REARM windows so far: {rearm_t.era.nunique()}")
+
+    # ---- the two grids DECISION_LOG (96) rests on -------------------------------------------
+    print("\n=== PEAK-CONDITIONAL TRAIL (✗ REFUTED 2026-09-21 — kept re-runnable) ===")
+    print("  wide 2.0× until peak ≥ trigger, then tighten:")
+    for trig, tight in PEAK_COND:
+        v = sum(simulate(r.hi, r.lo, r.atr, trail=LIVE_TRAIL, trig=trig, tight=tight)[0] * r.usd_per_pct
+                for r in t.itertuples())
+        print(f"    trigger {trig} -> {tight}×: ${v:+7.0f}   Δ ${v - t.live.sum():+6.0f}")
+
+    print("\n=== LADDER FLOOR-RUNGS (57j candidate — band untouched, only fixed floors added) ===")
+    print("  NOTE each label is the FULL set of rungs added to the live ladder (4:3.5, 5:4.5, …):")
+    res = {}
+    for name, extra in LADDER_VARIANTS.items():
+        lad = sorted(LADDER + extra)
+        per = [(r, simulate(r.hi, r.lo, r.atr, ladder=lad)[0] * r.usd_per_pct) for r in t.itertuples()]
+        v = sum(p for _, p in per)
+        changed = [(r, p - r.live) for r, p in per if abs(p - r.live) > 1]
+        res[name] = v
+        top = max((abs(d) for _, d in changed), default=0)
+        print(f"    {name:44s} ${v:+7.0f}  Δ ${v - t.live.sum():+6.0f}"
+              f"   fills changed {len(changed):2d}"
+              f"   top-1 share {100 * top / sum(abs(d) for _, d in changed) if changed else 0:3.0f}%")
+    best = max(res, key=res.get)
+    print(f"  best: {best}  Δ ${res[best] - t.live.sum():+.0f}"
+          f"   ⚠ judge on fills-changed + top-1 share, not on Δ alone (N is tiny)")
 
 
 if __name__ == "__main__":

@@ -32,6 +32,14 @@ import requests
 POOL = "reports/MASTER_POOL_stacked.csv"
 CACHE = "reports/backtest_cache/bullrun_exit_1m.pkl"
 V2_FLOOR = "2026-08-21T19:16"          # gate-57 v2 cohort floor (locked)
+# run-as-script fix (2026-09-21, DECISION_LOG 103 — same bug already fixed once in
+# current_stack_ledger.py): invoked as `python scripts/bullrun_exit_sweep.py`, sys.path[0] is
+# scripts/, so `import config` raised and the blacklist SILENTLY fell back to the two-pair
+# pre-ship list. The documented invocation therefore scored 42 fills — including the ONE/ZEC/BTC
+# fills the bot no longer trades — instead of the true 36.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
 def _sleeve_blacklist():
     """Read the LIVE blacklist (deep review 2026-09-21: a hardcoded tuple silently diverged from
     config once ONE/ZEC/BTC were added, so the revert gate would have scored a different cohort
@@ -40,18 +48,43 @@ def _sleeve_blacklist():
         import config
         return tuple(p.strip().upper() for p in
                      str(getattr(config.trading_config.thresholds, "bullrun_pair_blacklist", "") or "").split(",") if p.strip())
-    except Exception:
+    except Exception as e:                                  # noqa: BLE001
+        # LOUD, never silent: a quiet fallback here prices a different cohort than the bot trades
+        print(f"  ⚠ could not read live 'bullrun_pair_blacklist' ({e}) — falling back to the "
+              "PRE-SHIP two-pair list. EVERY NUMBER BELOW IS SUSPECT.")
         return ("ONGUSDT", "ETHUSDT")
 
 # live BR exit stack (config.py: bullrun_be_arm_pct / _be_lock_pct / _trail_atr_mult / _ladder)
 LIVE_ARM, LIVE_TRAIL, LOCK = 1.0, 2.0, 0.2
+REARM_TRAIL_SHIP_UTC = "2026-09-21T14:04"   # commit 9d00b7b (11:03:52 -03:00) + deploy
+
+
 def _live_rearm_trail():
     """0 before the 2026-09-21 ship, 1.0 after — so 'sim @ live settings' stays honest post-ship."""
     try:
         import config
         return float(getattr(config.trading_config.thresholds, "bullrun_rearm_trail_atr_mult", 0.0) or 0.0)
-    except Exception:
+    except Exception as e:                                  # noqa: BLE001
+        print(f"  ⚠ could not read live 'bullrun_rearm_trail_atr_mult' ({e}) — assuming pre-ship 2.0×.")
         return 0.0
+
+
+def _trail_as_lived(door, closed_at):
+    """The trail multiplier the fill ACTUALLY exited on — the baseline calibration must match.
+
+    Deep review 2026-09-21 (DECISION_LOG 103): `_live_rearm_trail` was defined and never called,
+    so `main()` calibrated an all-2.0× sim against actuals. Harmless today (no REARM fill has yet
+    ARMED after the ship) but this script IS the 57i revert instrument, so the first armed
+    post-ship REARM fill would have silently mis-calibrated the very gate it exists to judge.
+    The door alone is NOT sufficient: pre-ship REARM fills exited on 2.0×, so the ship timestamp
+    gates it too — applying 1.0× to them would fabricate a counterfactual as the baseline.
+    """
+    rt = _live_rearm_trail()
+    if rt > 0 and str(door or "").upper() == "REARM" and str(closed_at or "") >= REARM_TRAIL_SHIP_UTC:
+        return rt
+    return LIVE_TRAIL
+
+
 LADDER = [(4, 3.5), (5, 4.5), (6, 5.5), (8, 7.0), (10, 9.0), (12, 11.0)]
 FEE = 0.09                              # round-trip taker toll in pnl% terms (replay-harness parity)
 ARMS = [0.6, 0.7, 0.85, 1.0, 1.2, 1.5]
@@ -122,10 +155,21 @@ def simulate(hi, lo, atr_pct, arm=LIVE_ARM, trail=LIVE_TRAIL, ladder=None, trig=
 
     trig/tight = the peak-conditional variant: trail widens to `trail` until peak >= trig, then
     narrows to `tight` (REFUTED 2026-09-21, DECISION_LOG 96 — kept so the refutation stays re-runnable).
+
+    ⚠ NET-P&L CONVENTION (fixed 2026-09-21, DECISION_LOG 103 — this was a real bug). The engine
+    arms on `peak_pnl` and stops on `pnl_percentage`, and BOTH are fee-NET; this function used to
+    compare a GROSS path against them, so live "arm 1.0" was simulated as 1.0 gross when it really
+    demands 1.0 + FEE gross. Every fill peaking between 1.0 and 1.09 gross was simulated as ARMED
+    when live it took the full stop — the entire near-miss class was invisible (SUI 2026-09-21
+    peaked 0.9884 net and cost −$170 where the sim scored it +$28). Converting the path to net up
+    front makes every threshold below literally the engine's own number. Calibration went corr
+    0.92 / 89% sign → corr 0.99 / 100%. Returns (exit_pnl_net, peak_net).
     """
     ladder = LADDER if ladder is None else ladder
+    hi = [h - FEE for h in hi]                              # gross path → net, once, up front
+    lo = [l - FEE for l in lo]
     stop_base = max(min(-0.7, -1.5 * atr_pct), -1.2)        # SL: min(−0.7, ATR-widened), floor −1.2
-    peak = 0.0
+    peak = 0.0                                              # engine seeds peak_pnl at 0, not at entry
     for h, l in zip(hi, lo):
         stop = stop_base
         if peak >= arm:
@@ -133,9 +177,9 @@ def simulate(hi, lo, atr_pct, arm=LIVE_ARM, trail=LIVE_TRAIL, ladder=None, trig=
             rung = max([f for t, f in ladder if peak >= t], default=-99)
             stop = max(max(LOCK, peak - band * atr_pct), rung)
         if l <= stop:
-            return stop - FEE, peak
+            return stop, peak
         peak = max(peak, h)
-    return (hi[-1] + lo[-1]) / 2 - FEE, peak
+    return (hi[-1] + lo[-1]) / 2, peak
 
 
 # --- grids kept re-runnable because DECISION_LOG (96) rests on them -------------------------
@@ -169,10 +213,11 @@ def main():
         hi = [(h / ep - 1) * 100 for h, _ in kl]
         lo = [(l / ep - 1) * 100 for _, l in kl]
         usd = float(r["investment"]) * float(r["leverage"]) / 100.0
+        lt = _trail_as_lived(r["door"], r.get("closed_at"))   # 2.0×, or 1.0× for post-ship REARM
         rec = dict(era=r["era"], door=r["door"], pair=r["pair"], atr=atr_pct,
-                   actual=float(r["pnl_"]), usd_per_pct=usd, hi=hi, lo=lo)
+                   actual=float(r["pnl_"]), usd_per_pct=usd, hi=hi, lo=lo, live_trail=lt)
         for a in ARMS:
-            p, pk = simulate(hi, lo, atr_pct, a, LIVE_TRAIL)
+            p, pk = simulate(hi, lo, atr_pct, a, lt)
             rec[f"arm{a}"] = p * usd
             if a == LIVE_ARM:
                 rec["live"], rec["peak"] = p * usd, pk
@@ -189,7 +234,8 @@ def main():
     print(f"\nfills {len(t)}  (GREEN {int((t.door == 'GREEN').sum())} / REARM {int((t.door == 'REARM').sum())})"
           f"  eras {dict(t.era.value_counts())}")
     print("\n=== CALIBRATION (must be tight or nothing below is quotable) ===")
-    print(f"  sim @ live arm {LIVE_ARM} / trail {LIVE_TRAIL}: ${t.live.sum():+.0f}   actual: ${t.actual.sum():+.0f}"
+    _mix = "/".join(f"{v}x*{n}" for v, n in sorted(t.live_trail.value_counts().items()))
+    print(f"  sim @ live arm {LIVE_ARM} / trail AS-LIVED ({_mix}): ${t.live.sum():+.0f}   actual: ${t.actual.sum():+.0f}"
           f"   per-trade corr {t.actual.corr(t.live):.2f}   sign agreement {(np.sign(t.actual) == np.sign(t.live)).mean() * 100:.0f}%")
 
     armed = t[t.peak >= LIVE_ARM]
@@ -222,7 +268,7 @@ def main():
     print("\n=== PEAK-CONDITIONAL TRAIL (✗ REFUTED 2026-09-21 — kept re-runnable) ===")
     print("  wide 2.0× until peak ≥ trigger, then tighten:")
     for trig, tight in PEAK_COND:
-        v = sum(simulate(r.hi, r.lo, r.atr, trail=LIVE_TRAIL, trig=trig, tight=tight)[0] * r.usd_per_pct
+        v = sum(simulate(r.hi, r.lo, r.atr, trail=r.live_trail, trig=trig, tight=tight)[0] * r.usd_per_pct
                 for r in t.itertuples())
         print(f"    trigger {trig} -> {tight}×: ${v:+7.0f}   Δ ${v - t.live.sum():+6.0f}")
 
@@ -231,7 +277,8 @@ def main():
     res = {}
     for name, extra in LADDER_VARIANTS.items():
         lad = sorted(LADDER + extra)
-        per = [(r, simulate(r.hi, r.lo, r.atr, ladder=lad)[0] * r.usd_per_pct) for r in t.itertuples()]
+        per = [(r, simulate(r.hi, r.lo, r.atr, trail=r.live_trail, ladder=lad)[0] * r.usd_per_pct)
+               for r in t.itertuples()]
         v = sum(p for _, p in per)
         changed = [(r, p - r.live) for r, p in per if abs(p - r.live) > 1]
         res[name] = v

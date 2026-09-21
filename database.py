@@ -662,6 +662,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN hard_tp_shadow_ladder_fired BOOLEAN"))
 
             # Aug 21 gate 57: monitor_periods ledger — last_update (added after the table shipped)
+            if 'bot_state' in inspector.get_table_names():
+                _bs_cols = [c['name'] for c in inspector.get_columns('bot_state')]
+                if 'founding_allocated_usd' not in _bs_cols:
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN founding_allocated_usd FLOAT DEFAULT 0"))
             if 'monitor_periods' in inspector.get_table_names():
                 _mp_cols = [c['name'] for c in inspector.get_columns('monitor_periods')]
                 if 'last_update' not in _mp_cols:

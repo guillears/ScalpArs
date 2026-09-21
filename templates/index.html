@@ -4620,8 +4620,12 @@
                         <input type="text" id="investor-add-wallet" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white font-mono text-xs" placeholder="0x…">
                     </div>
                     <div>
-                        <label class="block text-sm text-gray-400 mb-1">Amount invested (USD) <span class="text-gray-600">(optional — deposits at current NAV)</span></label>
+                        <label class="block text-sm text-gray-400 mb-1">Amount invested (USD) <span class="text-gray-600">(optional — at current NAV, or at 1.0 if dividing existing capital below)</span></label>
                         <input type="number" step="0.01" id="investor-add-amount" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" placeholder="0.00">
+                        <label class="flex items-start gap-2 mt-2 cursor-pointer" title="Tick when this investor is taking a share of capital the fund ALREADY holds (a founding split), not wiring new money. Founding shares are issued at NAV 1.0 so every founder is priced identically no matter what order they are added in — routed through the normal deposit path, three equal $1,000 shares of an existing fund bought 59% / 18% / 23%. Paper mode only; limited to the unallocated capital seed.">
+                            <input type="checkbox" id="investor-add-founding" class="mt-0.5 accent-amber-400">
+                            <span class="text-xs text-amber-300/90">Dividing existing capital <span class="text-gray-500">(founding share at NAV 1.0 — not new money)</span></span>
+                        </label>
                     </div>
                     <div class="flex gap-3 justify-end">
                         <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
@@ -20305,6 +20309,9 @@
                 document.getElementById('investor-add-name').value = '';
                 const _w = document.getElementById('investor-add-wallet'); if (_w) _w.value = '';
                 { const _a = document.getElementById('investor-add-amount'); if (_a) _a.value = ''; }
+                // Sep-21 deep review: the founding checkbox was STICKY across dialog opens — add a
+                // founder, reopen, add an ordinary investor and they were silently minted at NAV 1.0.
+                { const _f = document.getElementById('investor-add-founding'); if (_f) _f.checked = false; }
                 document.getElementById('investor-form-add').classList.remove('hidden');
             } else if (mode === 'deposit') {
                 title.textContent = 'Deposit Funds';
@@ -20342,7 +20349,7 @@
                 const res = await fetch(`${API_BASE}/api/investors`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name, eth_wallet: eth_wallet || null, deposit_amount: (function(){ const v = safeFloat(document.getElementById('investor-add-amount')?.value); return isNaN(v) || v <= 0 ? null : v; })()})
+                    body: JSON.stringify({name, eth_wallet: eth_wallet || null, deposit_amount: (function(){ const v = safeFloat(document.getElementById('investor-add-amount')?.value); return isNaN(v) || v <= 0 ? null : v; })(), founding: !!document.getElementById('investor-add-founding')?.checked})
                 });
                 const data = await res.json();
                 if (res.ok) {

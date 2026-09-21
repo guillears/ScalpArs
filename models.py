@@ -903,6 +903,16 @@ class BotState(Base):
     # See CLAUDE.md May 5 entry on Return Multiple bug fix.
     runtime_initial_total_usd = Column(Float, nullable=True)
 
+    # 💰 Sep-21 — capital ever issued as FOUNDING shares (NAV 1.0, dividing pre-existing money).
+    # MONOTONIC: it only ever increases. The first implementation derived the remaining room from
+    # SUM(Investor.total_deposited), which deleting an investor or editing their deposit total
+    # silently reduced — reopening room against capital that had already LEFT the fund. Deep
+    # review traced the exploit: 3 founders -> room $0; delete one (cash-out, equity leaves) ->
+    # room $1,000 again -> a 4th founder mints 1,000 shares for ZERO cash, dropping NAV from
+    # 1.1129 to 0.7420 and taking $371 from each remaining holder. A counter that never decreases
+    # cannot be gamed by removing or editing rows.
+    founding_allocated_usd = Column(Float, nullable=False, default=0.0, server_default="0")
+
     # BTC regime tracking — persisted across restarts so regime age survives
     # downtime. Updated each scan cycle when BTC regime classification changes.
     # See CLAUDE.md May 5 entry on regime stability instrumentation.
@@ -1106,7 +1116,7 @@ class InvestorLedger(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     investor_id = Column(Integer, nullable=False, index=True)
-    type = Column(String(12), nullable=False)        # DEPOSIT | WITHDRAW | CASHOUT | OPENING | ADJUST
+    type = Column(String(12), nullable=False)        # DEPOSIT | WITHDRAW | CASHOUT | OPENING | ADJUST | FOUNDING
     # ADJUST (Sep-21) = a deposit-total EDIT: a CORRECTION of the recorded figure, NOT a cash
     # movement. It moves shares + total_deposited and must NEVER touch total_withdrawn.
     amount = Column(Float, nullable=False)            # USD moved (always positive)

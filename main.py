@@ -12823,6 +12823,7 @@ class InvestorCreate(BaseModel):
     name: str
     eth_wallet: Optional[str] = None   # optional at creation; can be added later via PATCH
     deposit_amount: Optional[float] = None   # Aug-24: optional initial deposit at creation (same NAV math as /deposit)
+    founding: bool = False                   # Sep-21: this share DIVIDES pre-existing capital (NAV 1.0), it is not new money
 
 
 _ETH_ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -12913,6 +12914,31 @@ async def _get_portfolio_value(db: AsyncSession) -> float:
     return (await _portfolio_components(db))["total_equity"]
 
 
+async def _paper_capital_seed(db: AsyncSession) -> float:
+    """The fund's SEEDED capital: USDT seed + BNB seed (operator, Aug-10: 'USDT seed 2800->2900,
+    total $3000 unchanged' — the BNB tranche is capital, not a freebie).
+
+    Reads BotState.runtime_initial_total_usd, the IMMUTABLE baseline set once at cold start. The
+    first version read config.trading_config directly, which the operator can hot-edit — raising
+    `paper_balance` to 5,000 would have retroactively created $2,000 of at-par minting room. That
+    column exists precisely for this bug class (see its comment in models.py). Config is the
+    fallback only when the baseline is NULL (pre-column rows; the engine backfills it on init).
+    """
+    st = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+    _base = getattr(st, "runtime_initial_total_usd", None) if st is not None else None
+    if _base:
+        return float(_base)
+    _c = config.trading_config
+    return float(_c.paper_balance or 0.0) + float(_c.paper_bnb_initial_usd or 0.0)
+
+
+async def _founding_allocated(db: AsyncSession) -> float:
+    """Capital ever issued as founding shares — MONOTONIC, so deleting or editing an investor
+    cannot reopen room (deep review exploit; see BotState.founding_allocated_usd)."""
+    st = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+    return float(getattr(st, "founding_allocated_usd", 0.0) or 0.0) if st is not None else 0.0
+
+
 async def _get_total_shares(db: AsyncSession) -> float:
     result = await db.execute(select(func.coalesce(func.sum(Investor.shares), 0.0)))
     return result.scalar()
@@ -12959,6 +12985,39 @@ def investor_edit_adjustment(current_deposited, target_deposited, nav, shares):
         raise ValueError(f"Reducing deposited by ${-delta:.2f} needs {sh:.4f} shares; "
                          f"investor holds {float(shares):.4f}")
     return {"delta": delta, "shares_delta": (sh if delta > 0 else -sh)}
+
+
+def founding_allocation_shares(amount, already_allocated, initial_capital):
+    """💰 Pure core for a FOUNDING allocation — dividing capital the fund ALREADY holds.
+
+    Sep-21 (operator): three people each took $1,000 of an existing $3,000 fund. Routed through
+    the normal deposit path they were priced at whatever NAV existed at that second — 1.0000 /
+    3.3388 / 2.5693 — because the pot never grows when you divide it, so each new investor
+    re-priced the fund downward for the next. Three equal contributors ended up owning
+    59% / 18% / 23%.
+
+    A founding share is issued at NAV 1.0 (`shares == amount`), so EVERY founder in the round is
+    priced identically regardless of the order they are added in or what the bot earns in between.
+    NAV then settles at portfolio / total_shares and the P&L is shared pro-rata, which is the
+    intent: the gain was earned on their collective capital.
+
+    ⚠ The guard is against the CAPITAL SEED, never the portfolio value — P&L must not create room
+    to mint founding shares, or a profitable fund would let a latecomer buy in at par. And
+    `already_allocated` must be the MONOTONIC founding counter, never SUM(total_deposited):
+    deleting an investor or editing their deposit total shrinks that sum and reopens room
+    against capital that has already left the fund (deep review exploit, Sep-21).
+    """
+    amount = float(amount)
+    if amount <= 0:
+        raise ValueError("Founding amount must be positive")
+    room = float(initial_capital) - float(already_allocated)
+    if amount > room + 0.005:
+        raise ValueError(
+            f"Founding allocation of ${amount:,.2f} exceeds the unallocated capital "
+            f"(${room:,.2f} of ${float(initial_capital):,.2f} left). New money must be deposited "
+            f"at the live NAV instead."
+        )
+    return amount                                   # NAV 1.0 by definition
 
 
 def _log_investor_ledger(db: AsyncSession, investor_id: int, type_: str, amount: float,
@@ -13073,8 +13132,25 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
     # the write transaction across network I/O (the Aug-25 close-starvation class).
     _dep_shares = None
     _dep = float(body.deposit_amount or 0)
+    _founding = bool(getattr(body, "founding", False))
+    if _founding and _dep <= 0:
+        raise HTTPException(400, "Founding allocation requires an amount")
+    _founding_shares = None
     nav = None
-    if _dep > 0:
+    if _founding:
+        # Dividing capital the fund ALREADY holds — priced at NAV 1.0 so every founder in the
+        # round gets the same price regardless of order or interim P&L. Paper-mode only: in live
+        # mode capital arrives by wire and must be deposited at the live NAV.
+        if not trading_engine.is_paper_mode:
+            raise HTTPException(400, "Founding allocation is paper-mode only — in live mode, "
+                                     "deposit real capital at the live NAV")
+        try:
+            _founding_shares = founding_allocation_shares(
+                _dep, await _founding_allocated(db), await _paper_capital_seed(db))
+        except ValueError as _fe:
+            raise HTTPException(400, str(_fe))
+        nav = 1.0
+    elif _dep > 0:
         nav = await _get_nav_per_share(db)
         if nav <= 0:
             raise HTTPException(503, "NAV unavailable — retry shortly (nothing was created)")
@@ -13083,11 +13159,19 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
     db.add(inv)
     await db.flush()
     if _dep > 0:  # Aug-24: optional initial deposit — identical NAV/share math + ledger as /api/investors/deposit
-        _dep_shares = _dep / nav
+        _dep_shares = _founding_shares if _founding_shares is not None else (_dep / nav)
         inv.shares += _dep_shares
         inv.total_deposited += _dep
+        if _founding:
+            # MONOTONIC bump — the only writer. Must happen in the same transaction as the mint.
+            _st = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+            if _st is None:
+                raise HTTPException(503, "Bot state unavailable — refusing to mint founding shares")
+            _st.founding_allocated_usd = float(_st.founding_allocated_usd or 0.0) + _dep
         await db.flush()
-        _log_investor_ledger(db, inv.id, "DEPOSIT", _dep, nav, _dep_shares)
+        _log_investor_ledger(db, inv.id, "FOUNDING" if _founding else "DEPOSIT", _dep, nav, _dep_shares,
+                             note=("Founding allocation — share of pre-existing capital at NAV 1.0"
+                                   if _founding else None))
     binance_service.invalidate_flow_caches()  # Sep-7 integration review: initial deposit path — same class
     return {"ok": True, "id": inv.id, "name": inv.name, "eth_wallet": inv.eth_wallet,
             "deposited": _dep if _dep > 0 else None, "new_shares": round(_dep_shares, 6) if _dep_shares else None}

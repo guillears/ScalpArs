@@ -1071,7 +1071,25 @@ class SignalThresholds(BaseModel):
     bullrun_rearm_adx_off: float = 30.0        # stay: ADX ≥ this
     bullrun_rearm_alt_r6h_min: float = 1.0     # entry: median universe-pair 6h return > this %
     bullrun_rearm_alt_above_pct: float = 80.0  # entry: ≥ this % of universe pairs above their 1h EMA50
-    bullrun_rearm_max_hours: float = 24.0      # hard off
+    bullrun_rearm_max_hours: float = 24.0      # hard off (door LIFE — see the entry-age gate below, which is the one that binds)
+    # 🕐 Sep-21 (57l) REARM ENTRY-AGE GATE — refuse NEW sleeve entries once the REARM door has been open
+    # this many minutes. The door is NOT closed (that would churn: `bullrun_rearm_max_hours` has no re-arm
+    # cooldown, so an age-expired door re-arms on the very next tick with a fresh clock — see the RE-ARM
+    # arm/stay branches in _update_bullrun_monitor). Evidence (log-derived door episodes #40/#42/#44 from web.stdout.log [BULLRUN_MONITOR] state
+    # transitions, current entry stack): fills at door-age <60min = 14·93%·+$952 · ≥60min = 20·35%·−$1,108.
+    # WITHIN episode #44 alone (one door, 23 fills, 6h38m — no day/regime/door confound) the running P&L
+    # peaked +$562 at 31 minutes and closed −$358; the 0-60m bucket was 4·100%·+$562 and the 6h+ bucket
+    # 5·0%·−$689. All 3 episodes direction-consistent. Per-pair concentration of the blocked cohort = 46%
+    # top-2 (below the 60% blacklist trigger, 10 distinct pairs) and the edge survives dropping either worst
+    # pair (ex-NEAR +$677, ex-ENA +$773). GREEN is untouched by construction (REARM-only). 0 = disabled.
+    # DECISION_LOG 2026-09-21 (104).
+    bullrun_rearm_max_entry_age_min: float = 60.0
+    # Anti-flap: a REARM door that re-arms within this many minutes of the previous REARM ending KEEPS the
+    # old age clock (mirrors the GREEN flap-merge at trading_engine ~L4833). Without it a flapping door
+    # hands out a fresh 60-minute entry window on every flap, which is the hole that sinks the naive fix.
+    # A GREEN episode always supersedes the clock (a post-GREEN re-arm is a NEW episode, never a flap).
+    # 0/blank restores 30 in the UI save handler — anti-flap must not be disablable by a blanked field.
+    bullrun_rearm_flap_merge_min: float = 30.0
     # Aug-23 (24): POST-GREEN leg — the door may only ARM within this many hours after a GREEN episode ended (0 = any time).
     # 8.7-month backtest (Nov-25→Aug-23, 10-pair universe, full sleeve stack): door at ANY time = 160 windows, 123 with
     # fills, 87 losing (71%), 489·37%·−$7,834 — a generic bounce-catcher that loses in 8 of 10 months; restricted to

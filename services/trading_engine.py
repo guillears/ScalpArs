@@ -616,6 +616,57 @@ def long_heat_eval(th, btc_slope, btc_rsi_prev, bull_pct, btc_off30d):
     return flags, True
 
 
+def bullrun_door_age_min(now_ts, rearm_t0):
+    """🕐 Sep-21 (57l) — minutes the REARM door has been open, or None when it is not a REARM episode.
+
+    Pure so the gate is unit-testable. `rearm_t0` is set when the door arms and CARRIED FORWARD across
+    a flap (see the monitor), so this is EPISODE age, not time-since-last-tick.
+    """
+    if not rearm_t0:
+        return None
+    try:
+        return max(0.0, (float(now_ts) - float(rearm_t0)) / 60.0)
+    except (TypeError, ValueError):
+        return None
+
+
+def rearm_clock_for_arm(now_ts, off_at, prev_t0, flap_min):
+    """🕐 Sep-21 (57l) — which clock a newly-ARMING REARM door should run on.
+
+    Returns `prev_t0` (carry the old clock) when the door re-arms within `flap_min` minutes of the
+    last REARM ending — a flap, not a new episode — otherwise `now_ts` (a fresh clock). Extracted
+    as a pure function because the deep review found the carry decision was the highest-risk part
+    of 57l and had zero test coverage. 0/absent `flap_min` = no carry.
+    """
+    try:
+        window = float(flap_min or 0.0) * 60.0
+    except (TypeError, ValueError):
+        window = 0.0
+    if window > 0 and off_at and prev_t0:
+        try:
+            gap = float(now_ts) - float(off_at)
+            if 0.0 <= gap <= window:
+                return float(prev_t0)
+        except (TypeError, ValueError):
+            pass
+    return now_ts
+
+
+def bullrun_entry_age_ok(th, door, age_min):
+    """🕐 Sep-21 (57l) REARM entry-age gate. True = entry allowed.
+
+    GREEN is NEVER gated (it carries the sleeve's P&L; the decay evidence is REARM-only).
+    Fails OPEN on a missing age — an unknown clock must not silently halt the sleeve, and the
+    block counter would hide it. 0/absent threshold disables the gate.
+    """
+    if str(door or '').upper() != 'REARM':
+        return True
+    cap = float(getattr(th, 'bullrun_rearm_max_entry_age_min', 0.0) or 0.0)
+    if cap <= 0 or age_min is None:
+        return True
+    return float(age_min) <= cap
+
+
 def bullrun_breadth_ok(th, bull_pct, bear_pct, door=None):
     """🌊 Sep-19 (gate 57 / watch 57c, operator-found): sleeve entry breadth minimum.
     The GREEN monitor is BTC-only; the missing 'are alts participating?' leg. Blocks the sleeve
@@ -4747,7 +4798,7 @@ class TradingEngine:
                         _bullrun_monitor['period_id'] = cur.id
                         _bullrun_monitor['resumed'] = True
                         _bullrun_monitor['green_since'] = cur.started_at.strftime('%Y-%m-%d %H:%M') if new_state == 'GREEN' else None
-                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_pvr', 'blocked_pvr'), ('blk_1h', 'blocked_1h'), ('blk_breadth', 'blocked_breadth')):
+                        for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_pvr', 'blocked_pvr'), ('blk_1h', 'blocked_1h'), ('blk_breadth', 'blocked_breadth'), ('blk_age', 'blocked_age')):
                             _bullrun_monitor[_k] = int(getattr(cur, _col, 0) or 0)
                         logger.info(f"[BULLRUN_MONITOR] resumed open {cur.state} period #{cur.id} (since {cur.started_at:%Y-%m-%d %H:%M} UTC) after restart")
                     else:
@@ -4786,6 +4837,7 @@ class TradingEngine:
                 cur.blocked_pvr = int(_bullrun_monitor.get('blk_pvr', 0) or 0)  # Sep-7 review: was omitted — counter died on every restart
                 cur.blocked_1h = int(_bullrun_monitor.get('blk_1h', 0) or 0)
                 cur.blocked_breadth = int(_bullrun_monitor.get('blk_breadth', 0) or 0)
+                cur.blocked_age = int(_bullrun_monitor.get('blk_age', 0) or 0)
                 cur.last_update = now
                 # breadth backfill: the first compute after boot can precede the breadth scan (0/0)
                 _gb = globals()
@@ -4808,6 +4860,7 @@ class TradingEngine:
                     cur.blocked_pvr = int(_bullrun_monitor.get('blk_pvr', 0) or 0)  # Sep-7 review: was omitted (period-close block)
                     cur.blocked_1h = int(_bullrun_monitor.get('blk_1h', 0) or 0)
                     cur.blocked_breadth = int(_bullrun_monitor.get('blk_breadth', 0) or 0)
+                    cur.blocked_age = int(_bullrun_monitor.get('blk_age', 0) or 0)
                     if cur.state == 'AMBER' and new_state == 'GREEN':
                         amber_lead = int((now - cur.started_at).total_seconds() / 60)
                 _g = globals()
@@ -4828,7 +4881,7 @@ class TradingEngine:
                             _prev.ended_at = None; _prev.ended_by = None; _prev.last_update = now
                             _prev.r72_end, _prev.above_end, _prev.eff_end, _prev.btc_end = rd['r72'], rd['above'], rd['eff'], rd['px']
                             _bullrun_monitor['period_id'] = _prev.id
-                            for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_pvr', 'blocked_pvr'), ('blk_1h', 'blocked_1h'), ('blk_breadth', 'blocked_breadth')):
+                            for _k, _col in (('blk_spacing', 'blocked_spacing'), ('blk_slots', 'blocked_slots'), ('blk_ema50', 'blocked_ema50'), ('blk_off24h', 'blocked_off24h'), ('blk_ema13', 'blocked_ema13'), ('blk_pvr', 'blocked_pvr'), ('blk_1h', 'blocked_1h'), ('blk_breadth', 'blocked_breadth'), ('blk_age', 'blocked_age')):
                                 _bullrun_monitor[_k] = int(getattr(_prev, _col, 0) or 0)
                             logger.info(f"[BULLRUN_MONITOR] GREEN re-armed within 30 min of a stay-band drop — period #{_prev.id} reopened (flap, not a new episode)")
                             await locked_commit(db)
@@ -4857,12 +4910,12 @@ class TradingEngine:
                     r72_peak=rd['r72'], eff_peak=rd['eff'], r6_min=rd['r6'],
                     btc_start=rd['px'], btc_end=rd['px'],
                     bull_pct_start=_g.get('_market_bull_pct'), bear_pct_start=_g.get('_market_bear_pct'),
-                    amber_lead_min=amber_lead, blocked_spacing=0, blocked_slots=0, blocked_ema50=0, blocked_off24h=0, blocked_ema13=0, blocked_1h=0, blocked_pvr=0, blocked_breadth=0,
+                    amber_lead_min=amber_lead, blocked_spacing=0, blocked_slots=0, blocked_ema50=0, blocked_off24h=0, blocked_ema13=0, blocked_1h=0, blocked_pvr=0, blocked_breadth=0, blocked_age=0,
                 )
                 db.add(newp)
                 await db.flush()
                 _bullrun_monitor['period_id'] = newp.id
-                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50', 'blk_off24h', 'blk_ema13', 'blk_1h', 'blk_pvr', 'blk_breadth'):
+                for _k in ('blk_spacing', 'blk_slots', 'blk_ema50', 'blk_off24h', 'blk_ema13', 'blk_1h', 'blk_pvr', 'blk_breadth', 'blk_age'):
                     _bullrun_monitor[_k] = 0
             await locked_commit(db)
         except Exception as e:
@@ -5047,18 +5100,37 @@ class TradingEngine:
                     if not _was_rearm:
                         rearm = bool(_post_ok and _adx_now is not None and float(_adx_now) >= _adx_min and _rising and _alt_ok and _fan and _above_1h)
                         if rearm:
-                            _bullrun_monitor['rearm_t0'] = _now
+                            # 🕐 Sep-21 (57l) ANTI-FLAP: a door that re-arms within `flap_merge_min` of the
+                            # previous REARM ending KEEPS its old clock — otherwise every flap hands out a
+                            # fresh entry window and the entry-age gate below is trivially defeated. Mirrors
+                            # the GREEN flap-merge in _bullrun_persist_period. The clock only truly resets after a real gap.
+                            _off_at = _bullrun_monitor.get('rearm_off_at')
+                            _prev_t0 = _bullrun_monitor.get('rearm_t0')
+                            _t0 = rearm_clock_for_arm(_now, _off_at, _prev_t0,
+                                                      getattr(th, 'bullrun_rearm_flap_merge_min', 30.0))
+                            _bullrun_monitor['rearm_t0'] = _t0
+                            if _t0 != _now:
+                                logger.info(f"[BULLRUN_MONITOR] RE-ARM within {(_now - float(_off_at)) / 60.0:.0f} min of the last one "
+                                            f"— carrying the age clock forward (flap, not a new episode)")
                             logger.critical(f"[BULLRUN_MONITOR] RE-ARM ON: ADX {float(_adx_now):.1f} rising, alts med r6h {_alt_med:+.2f}% / {_alt_ab:.0f}% above 1h EMA50, fan={_fan}, BTC>1hEMA50={_above_1h}")
                     else:
                         _rt0 = _bullrun_monitor.get('rearm_t0')
                         _age_h = ((_now - float(_rt0)) / 3600.0) if _rt0 else None
                         rearm = bool(_rt0 and _above_1h and _adx_now is not None and float(_adx_now) >= _adx_off and _age_h <= _max_h)  # review M4: missing t0 → disarm
                         if not rearm:
+                            _bullrun_monitor['rearm_off_at'] = _now          # 57l: anti-flap reference point
                             logger.critical(f"[BULLRUN_MONITOR] RE-ARM OFF: ADX {float(_adx_now) if _adx_now is not None else float('nan'):.1f}, BTC>1hEMA50={_above_1h}, age {_age_h:.1f}h")
                     _bullrun_monitor['rearm_alt_med'] = _alt_med; _bullrun_monitor['rearm_alt_above'] = _alt_ab
             except Exception as _re_err:
                 logger.warning(f"[BULLRUN_MONITOR] re-arm evaluation failed ({_re_err}) — REARM off this tick")
                 rearm = False
+            if green:
+                # 🕐 57l (deep review): a GREEN episode SUPERSEDES any REARM clock. Without this, a
+                # short REARM → GREEN → REARM interlude (GREEN under flap_merge_min) let the NEW
+                # post-GREEN door inherit the PRE-GREEN t0 and be blocked from its first second —
+                # the one narrowly-reachable path that silently disables the sleeve.
+                _bullrun_monitor['rearm_t0'] = None
+                _bullrun_monitor['rearm_off_at'] = None
             if _bullrun_monitor.get('rearm') and not rearm:
                 logger.info(f"[BULLRUN_MONITOR] RE-ARM → {'GREEN' if green else ('latch' if latch else 'off')}")
             state = 'GREEN' if green else ('REARM' if rearm else ('AMBER' if amber else 'DARK'))
@@ -5474,6 +5546,21 @@ class TradingEngine:
                     _bullrun_monitor['blk_breadth'] = _bullrun_monitor.get('blk_breadth', 0) + 1
                     self._record_filter_block("BULLRUN_BREADTH", "LONG")
                 return
+            # 🕐 Sep-21 (57l): REARM ENTRY-AGE gate — a bounce off a dark composite is worth trading for
+            # its first hour, not its sixth. Episode #44 (2026-09-21 08:42, 23 fills over 6h38m) peaked
+            # +$562 at 31 min and closed −$358; every B11 fill sat at age 346-398 min. The DOOR IS LEFT
+            # OPEN on purpose — closing it (bullrun_rearm_max_hours) has no cooldown, so it would re-arm
+            # next tick with a fresh clock. GREEN is never gated. DECISION_LOG (104).
+            _br_door_now = 'GREEN' if _bullrun_monitor.get('green') else 'REARM'
+            _br_age = bullrun_door_age_min(_now, _bullrun_monitor.get('rearm_t0'))
+            if not bullrun_entry_age_ok(th, _br_door_now, _br_age):
+                _gate_log('brage', f"[BULLRUN_LONG] {pair}: refused by REARM entry-age gate "
+                                f"(door open {_br_age:.0f} min > {float(getattr(th, 'bullrun_rearm_max_entry_age_min', 0) or 0):.0f}) — dip stays alive")
+                if st.get('blk_brage_ts') != st.get('dip_ts'):
+                    st['blk_brage_ts'] = st.get('dip_ts')
+                    _bullrun_monitor['blk_age'] = _bullrun_monitor.get('blk_age', 0) + 1
+                    self._record_filter_block("BULLRUN_REARM_STALE", "LONG")
+                return
             sp = float(getattr(th, 'bullrun_pair_spacing_hours', 2.0) or 2.0) * 3600.0
             # Restart-proof spacing (Aug-21 live catch: ONG re-entered 11 min after its stop because a
             # deploy wiped the in-memory stamp) — the DB is the source of truth: latest BULLRUN_LONG
@@ -5578,6 +5665,8 @@ class TradingEngine:
                 entry_br_eff=_bullrun_monitor.get('eff'),
                 entry_br_off24h=_bullrun_monitor.get('off24h'),
                 entry_br_door=('GREEN' if _bullrun_monitor.get('green') else 'REARM'),
+                entry_br_door_age_min=(None if _bullrun_monitor.get('green')
+                                       else bullrun_door_age_min(_now, _bullrun_monitor.get('rearm_t0'))),
                 entry_bull_pct=_br_bull, entry_bear_pct=_br_bear,
                 entry_global_volume_ratio=_br_gvr, entry_pair_volume_ratio=_br_pvr,
                 bullrun_long=True,
@@ -6108,6 +6197,7 @@ class TradingEngine:
         entry_br_eff: float = None,
         entry_br_off24h: float = None,
         entry_br_door: str = None,   # Aug-23 (20): 'GREEN' (composite) or 'REARM' (re-arm door)
+        entry_br_door_age_min: float = None,   # Sep-21 (57l): minutes the door had been open at entry
         # 🐻 Sep-15 gate 60: Bear-Run Monitor readings at entry (BEARRUN_SHORT fills only)
         entry_bear_r24: float = None,
         entry_bear_below24: float = None,
@@ -7578,6 +7668,7 @@ class TradingEngine:
             entry_br_eff=entry_br_eff,
             entry_br_off24h=entry_br_off24h,
             entry_br_door=entry_br_door,
+            entry_br_door_age_min=entry_br_door_age_min,
             # Sep 16: BTC 24h-range position at entry on every fill (from the monitors' shared 5m fetch, ≤2 min old; None before the first compute)
             entry_btc_off24h_pct=(_bullrun_monitor.get('off24h') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # deep review: stale monitor (>30 min, exchange outage) → None, never an old reading
             entry_btc_off24lo_pct=(_bearrun_monitor.get('off24lo') if (_leash_time.time() - (_bearrun_monitor.get('updated_at') or 0)) <= 1800 else None),

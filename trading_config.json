@@ -668,6 +668,8 @@
     "bullrun_rearm_alt_r6h_min": 1.0,
     "bullrun_rearm_alt_above_pct": 80.0,
     "bullrun_rearm_max_hours": 24.0,
+    "bullrun_rearm_max_entry_age_min": 60.0,
+    "bullrun_rearm_flap_merge_min": 30.0,
     "bullrun_rearm_after_green_hours": 48.0,
     "bullrun_pvr_max": 1.2,
     "bearrun_sleeve_enabled": true,

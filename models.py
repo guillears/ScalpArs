@@ -247,6 +247,7 @@ class Order(Base):
     entry_br_eff = Column(Float, nullable=True)
     entry_br_off24h = Column(Float, nullable=True)   # Aug 21 (11): BTC % below its 24h high at entry — the pullback-phase variable
     entry_br_door = Column(String(8), nullable=True)  # Aug 23 (20): 'GREEN' composite or 'REARM' re-arm door
+    entry_br_door_age_min = Column(Float, nullable=True)  # Sep 21 (57l): minutes the door had been open at entry — the sleeve's own clock, previously invisible to every analysis (it took AWS log archaeology to recover)
     # 🐻 Sep 15 gate 60 — Bear-Run Monitor readings at entry (BEARRUN_SHORT fills only, NULL otherwise):
     # r24 / bars-below-EMA20% / 24h efficiency / BTC % above its 24h low at fire time + the BTC gates bypassed.
     entry_bear_r24 = Column(Float, nullable=True)
@@ -1023,6 +1024,7 @@ class MonitorPeriod(Base):
     blocked_pvr = Column(Integer, default=0)                    # Aug-25: PVR-ceiling refusals this episode (BULLRUN_PVR_MAX ship)
     blocked_1h = Column(Integer, default=0)                      # Aug 23 (18): refused by the BTC 1h-slope gate
     blocked_breadth = Column(Integer, default=0)                 # Sep 19 (57c): refused by the market-breadth minimum
+    blocked_age = Column(Integer, default=0)                     # Sep 21 (57l): refused by the REARM entry-age cap
 
 
 class BearMonitorPeriod(Base):

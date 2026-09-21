@@ -1116,7 +1116,9 @@ class InvestorLedger(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     investor_id = Column(Integer, nullable=False, index=True)
-    type = Column(String(12), nullable=False)        # DEPOSIT | WITHDRAW | CASHOUT | OPENING | ADJUST | FOUNDING
+    # String(16): "TRANSFER_OUT" is exactly 12 — zero headroom on the old width. SQLite ignores
+    # VARCHAR length so no migration is needed, but a future Postgres move would truncate.
+    type = Column(String(16), nullable=False)        # DEPOSIT | WITHDRAW | CASHOUT | OPENING | ADJUST | FOUNDING | TRANSFER_IN | TRANSFER_OUT
     # ADJUST (Sep-21) = a deposit-total EDIT: a CORRECTION of the recorded figure, NOT a cash
     # movement. It moves shares + total_deposited and must NEVER touch total_withdrawn.
     amount = Column(Float, nullable=False)            # USD moved (always positive)

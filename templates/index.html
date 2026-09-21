@@ -4668,6 +4668,25 @@
                     </div>
                 </div>
 
+                <!-- Transfer Form (Sep-21): move VALUE between investors; no money enters or leaves -->
+                <div id="investor-form-transfer" class="space-y-4 hidden">
+                    <input type="hidden" id="investor-transfer-from">
+                    <p class="text-sm text-gray-400">From: <span id="investor-transfer-name" class="text-white font-medium"></span></p>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">To</label>
+                        <select id="investor-transfer-to" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white"></select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Amount (USD of current value)</label>
+                        <input type="number" step="0.01" min="0.01" id="investor-transfer-amount" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" placeholder="0.00">
+                        <p class="text-[11px] text-gray-500 mt-1">Converted to shares at the current NAV. Nothing is minted or burned — portfolio value and NAV are unchanged. The recipient's cost basis is what they paid, so their P&amp;L starts at zero and you keep the gain you earned.</p>
+                    </div>
+                    <div class="flex gap-3 justify-end">
+                        <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
+                        <button onclick="submitTransfer()" class="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-sm transition">Transfer</button>
+                    </div>
+                </div>
+
                 <!-- Withdraw Form -->
                 <div id="investor-form-withdraw" class="space-y-4 hidden">
                     <input type="hidden" id="investor-withdraw-id">
@@ -20125,6 +20144,7 @@
                                 <button onclick="editInvestorWallet(${inv.id})" class="px-2 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 rounded text-xs transition" title="${inv.eth_wallet ? 'Edit ETH wallet' : 'Add ETH wallet'}">Ξ</button>
                                 <button onclick="openInvestorModal('deposit', ${inv.id})" class="px-2 py-1 bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-400 rounded text-xs transition" title="Deposit">+$</button>
                                 <button onclick="openInvestorModal('withdraw', ${inv.id})" class="px-2 py-1 bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 rounded text-xs transition" title="Withdraw">-$</button>
+                                <button onclick="openInvestorModal('transfer', ${inv.id})" class="px-2 py-1 bg-teal-600/30 hover:bg-teal-600/50 text-teal-300 rounded text-xs transition" title="Transfer value to another investor (no money enters or leaves the fund)">⇄</button>
                                 <button onclick="openInvestorModal('remove', ${inv.id})" class="px-2 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-400 rounded text-xs transition" title="Remove">✕</button>
                             </div>
                         </td>
@@ -20172,7 +20192,7 @@
                 const data = await res.json();
                 const entries = data.entries || [];
                 if (!entries.length) { body.innerHTML = '<span class="text-gray-500">No cash-flow entries yet.</span>'; _ledgerHtmlCache[id] = body.innerHTML; return; }
-                const tc = t => t==='DEPOSIT'?'text-cyan-400':t==='WITHDRAW'?'text-orange-400':t==='CASHOUT'?'text-red-400':t==='ADJUST'?'text-amber-300':'text-gray-500';
+                const tc = t => t==='DEPOSIT'?'text-cyan-400':t==='WITHDRAW'?'text-orange-400':t==='CASHOUT'?'text-red-400':t==='ADJUST'?'text-amber-300':t==='FOUNDING'?'text-emerald-300':t==='TRANSFER_IN'?'text-teal-300':t==='TRANSFER_OUT'?'text-teal-500':'text-gray-500';
                 body.innerHTML = `<table class="w-full text-xs">
                     <thead><tr class="text-gray-500 border-b border-white/5">
                         <th class="text-left py-1 pr-3">Date</th><th class="text-left pr-3">Type</th>
@@ -20292,6 +20312,7 @@
             document.getElementById('investor-form-add').classList.add('hidden');
             document.getElementById('investor-form-deposit').classList.add('hidden');
             document.getElementById('investor-form-withdraw').classList.add('hidden');
+            { const _ft = document.getElementById('investor-form-transfer'); if (_ft) _ft.classList.add('hidden'); }
             document.getElementById('investor-form-remove').classList.add('hidden');
             { const _fe = document.getElementById('investor-form-edit'); if (_fe) _fe.classList.add('hidden'); }
 
@@ -20319,6 +20340,16 @@
                 document.getElementById('investor-deposit-name').textContent = inv ? inv.name : '';
                 document.getElementById('investor-deposit-amount').value = '';
                 document.getElementById('investor-form-deposit').classList.remove('hidden');
+            } else if (mode === 'transfer') {
+                title.textContent = 'Transfer Between Investors';
+                document.getElementById('investor-transfer-from').value = investorId;
+                document.getElementById('investor-transfer-name').textContent = inv ? inv.name : '';
+                document.getElementById('investor-transfer-amount').value = '';
+                { const _sel = document.getElementById('investor-transfer-to');
+                  _sel.innerHTML = (_investorsCache || []).filter(x => x.id !== investorId)
+                      .map(x => `<option value="${x.id}">${x.name}</option>`).join('')
+                      || '<option value="">(no other investor)</option>'; }
+                document.getElementById('investor-form-transfer').classList.remove('hidden');
             } else if (mode === 'withdraw') {
                 title.textContent = 'Withdraw Funds';
                 document.getElementById('investor-withdraw-id').value = investorId;
@@ -20361,6 +20392,31 @@
                 }
             } catch (e) {
                 showToast('Error adding investor', 'error');
+            }
+        }
+
+        async function submitTransfer() {
+            const from_investor_id = parseInt(document.getElementById('investor-transfer-from').value);
+            const to_investor_id = parseInt(document.getElementById('investor-transfer-to').value);
+            const amount = safeFloat(document.getElementById('investor-transfer-amount').value);
+            if (!to_investor_id) { showToast('Pick a recipient', 'error'); return; }
+            if (!amount || amount <= 0) { showToast('Enter a valid amount', 'error'); return; }
+            try {
+                const res = await fetch(`${API_BASE}/api/investors/transfer`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({from_investor_id, to_investor_id, amount})
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast(`Transferred $${amount.toFixed(2)} (${data.shares_moved.toFixed(4)} shares @ NAV $${data.nav.toFixed(6)})`, 'success');
+                    closeInvestorModal();
+                    loadInvestors();
+                } else {
+                    showToast(data.detail || 'Error transferring', 'error');
+                }
+            } catch (e) {
+                showToast('Error transferring', 'error');
             }
         }
 

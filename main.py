@@ -12819,6 +12819,12 @@ def _compute_btc_1h_slope_btc_adx_multiplier_performance(orders):
 
 # ----- Investor Portfolio -----
 
+class InvestorTransfer(BaseModel):
+    from_investor_id: int
+    to_investor_id: int
+    amount: float                       # USD of CURRENT VALUE to move (operator: "transfer in dollars")
+
+
 class InvestorCreate(BaseModel):
     name: str
     eth_wallet: Optional[str] = None   # optional at creation; can be added later via PATCH
@@ -12985,6 +12991,66 @@ def investor_edit_adjustment(current_deposited, target_deposited, nav, shares):
         raise ValueError(f"Reducing deposited by ${-delta:.2f} needs {sh:.4f} shares; "
                          f"investor holds {float(shares):.4f}")
     return {"delta": delta, "shares_delta": (sh if delta > 0 else -sh)}
+
+
+def investor_transfer_split(amount, nav, from_shares, from_deposited):
+    """💰 Pure core for a TRANSFER of value between investors. No money enters or leaves the fund.
+
+    Sep-21 (operator): "in reality I will receive $1,000, then I decide if I add $1,000, or if I
+    transfer part of my $5,000." Both branches must leave the RECIPIENT identical — otherwise the
+    choice between them is arbitrary. So the recipient's basis is the dollars they paid and their
+    P&L starts at 0; the sender's basis drops by the same amount and keeps the gain they earned.
+
+    Why not the edit path: reducing one investor and adding another are two operations at two
+    different NAVs, so the shares never reconcile and value silently moves (the windfall documented
+    on investor_edit_adjustment). A transfer moves shares directly — nothing is minted or burned,
+    portfolio value and NAV are untouched, and SUM(total_deposited) is conserved exactly, so
+    per-investor P&L still sums to fund P&L.
+
+    Returns {'shares', 'basis'} — both to subtract from the sender and add to the recipient.
+    """
+    amount = float(amount)
+    nav = float(nav)
+    # 🛑 NaN/inf FIRST. `json.loads` accepts a bare NaN literal and Pydantic passes it straight
+    # through; every comparison below is then False, so `nan <= 0` and `nan > from_shares` both
+    # sail past. One request would zero the sender's shares AND basis (max(0.0, nan) == 0.0) while
+    # setting the recipient's to NaN — poisoning _get_total_shares -> NAV for EVERY investor and
+    # every snapshot, unrecoverable without DB surgery. Deep review, Sep-21.
+    if not math.isfinite(amount):
+        raise ValueError("Transfer amount must be a finite number")
+    if not math.isfinite(nav):
+        raise ValueError("NAV is not a finite number — refusing to price a transfer")
+    if amount <= 0:
+        raise ValueError("Transfer amount must be positive")
+    if nav <= 0:
+        raise ValueError("NAV must be positive to price a transfer")
+    shares = amount / nav
+    if shares > float(from_shares) + 1e-9:
+        raise ValueError(f"Transfer of ${amount:,.2f} needs {shares:.4f} shares; "
+                         f"sender holds {float(from_shares):.4f} (${float(from_shares) * nav:,.2f})")
+    # Basis moves with the value, CLAMPED at what the sender actually has. Clamping is symmetric —
+    # the recipient receives exactly what the sender gives — so SUM(total_deposited) is conserved
+    # either way and per-investor P&L still sums to fund P&L.
+    #
+    # My first version REFUSED when amount > basis, which made it impossible to hand over a
+    # profitable stake in full: at NAV 1.1129 a $3,000 basis is worth $3,338.80, so "transfer
+    # everything" always exceeded the basis. Caught by test_full_transfer_empties_the_sender.
+    # When the clamp binds, the sender has realised a gain outside the fund: they leave with basis
+    # 0, and the recipient's basis is the capital the fund actually has on record (less than the
+    # cash that changed hands), so the recipient starts slightly positive. That is the truthful
+    # reading — the fund only ever saw the original contribution.
+    basis = min(amount, float(from_deposited))
+    if basis < amount and shares < float(from_shares) - 1e-9:
+        # PARTIAL transfer exceeding the sender's recorded basis. Clamping here would silently
+        # hand the recipient a positive opening P&L and credit the sender with a gain "out of
+        # nowhere" — breaking this function's own contract (recipient starts at 0, sender keeps
+        # the gain). The clamp is only honest on a FULL exit, where the sender leaves at basis 0
+        # and the recipient inherits everything the fund ever recorded. Deep review, Sep-21.
+        raise ValueError(
+            f"Partial transfer of ${amount:,.2f} exceeds your recorded basis of "
+            f"${float(from_deposited):,.2f} — transfer at most ${float(from_deposited):,.2f}, "
+            f"or transfer your full stake")
+    return {"shares": shares, "basis": basis}
 
 
 def founding_allocation_shares(amount, already_allocated, initial_capital):
@@ -13198,6 +13264,48 @@ async def investor_deposit(body: InvestorDeposit, db: AsyncSession = Depends(get
     binance_service.invalidate_flow_caches()  # Sep-7 integration review: single-investor flows also move real money — same cache staleness as the fund-level endpoints
 
     return {"ok": True, "new_shares": round(new_shares, 6), "nav": round(nav, 6)}
+
+
+@app.post("/api/investors/transfer")
+async def investor_transfer(body: InvestorTransfer, db: AsyncSession = Depends(get_db)):
+    """Move VALUE between two investors. Nothing enters or leaves the fund."""
+    if body.from_investor_id == body.to_investor_id:
+        raise HTTPException(400, "Cannot transfer to the same investor")
+    src = await db.get(Investor, body.from_investor_id)
+    dst = await db.get(Investor, body.to_investor_id)
+    if not src:
+        raise HTTPException(404, "Sending investor not found")
+    if not dst:
+        raise HTTPException(404, "Receiving investor not found")
+
+    # NAV priced BEFORE any mutation (Sep-7 DB red #1: never hold the write lock across the
+    # live equity fetch). Nothing is written until every read and guard has passed.
+    nav = await _get_nav_per_share(db)
+    if nav <= 0:
+        raise HTTPException(503, "NAV unavailable — retry the transfer shortly (nothing moved)")
+    try:
+        _mv = investor_transfer_split(body.amount, nav, src.shares, src.total_deposited or 0.0)
+    except ValueError as _te:
+        raise HTTPException(400, str(_te))
+
+    src.shares -= _mv["shares"]
+    if abs(src.shares) < 1e-9:
+        src.shares = 0.0                  # exact zero, not -1e-9 — and without inflating the total
+    dst.shares += _mv["shares"]
+    # `basis = min(amount, from_deposited)` already bounds this at >= 0; no max() needed (a clamp
+    # here would be a fake safety net that hides a core regression instead of surfacing it).
+    src.total_deposited = float(src.total_deposited or 0.0) - _mv["basis"]
+    dst.total_deposited = float(dst.total_deposited or 0.0) + _mv["basis"]
+    _note = f"Transfer ${body.amount:,.2f} — {src.name} → {dst.name} (no money entered or left the fund)"
+    # Ledgered BEFORE the flush so the rows commit or roll back WITH the balances. Deposit and
+    # withdraw can survive a lost row because real cash movement corroborates them; a transfer has
+    # no external witness, so a fail-open row here would leave value moved with no audit trail.
+    _log_investor_ledger(db, src.id, "TRANSFER_OUT", body.amount, nav, -_mv["shares"], note=_note)
+    _log_investor_ledger(db, dst.id, "TRANSFER_IN", body.amount, nav, _mv["shares"], note=_note)
+    await db.flush()
+    return {"ok": True, "nav": round(nav, 6), "shares_moved": round(_mv["shares"], 6),
+            "from": {"id": src.id, "shares": round(src.shares, 6)},
+            "to": {"id": dst.id, "shares": round(dst.shares, 6)}}
 
 
 @app.post("/api/investors/withdraw")

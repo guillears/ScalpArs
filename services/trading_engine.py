@@ -90,6 +90,9 @@ _current_btc_adx_prev1: Optional[float] = None  # Aug-22: previous closed bar �
 _current_btc_adx: float = None
 _current_btc_rsi: float = None
 _market_bull_pct: float = 0.0
+_market_bull_pct_top: float = None   # 105: breadth over br_rank ≤ universe_size (observe-only)
+_market_bear_pct_top: float = None
+_market_top_n: int = 0          # 105: how many TRADEABLE pairs the reading above is over
 _market_bear_pct: float = 0.0
 # 🌊 Aug-21 gate 57: Bull-Run Monitor state (in-memory; flips also logged for post-restart
 # forensics). state ∈ DARK/AMBER/GREEN. Schmitt band + crash-latch computed in
@@ -628,6 +631,51 @@ def bullrun_door_age_min(now_ts, rearm_t0):
         return max(0.0, (float(now_ts) - float(rearm_t0)) / 60.0)
     except (TypeError, ValueError):
         return None
+
+
+def tradeable_breadth(collected, universe_size):
+    """📏 Sep-21 (105, operator-raised) — (bull%, bear%) over the TRADEABLE universe, or (None, None).
+
+    The live breadth floor reads the SCAN-WIDE number (trading_pairs_limit, 50 today) while the
+    bull-run sleeve only trades `br_rank <= bullrun_universe_size` (10) — so the gate measures ~40
+    pairs it will never trade. This is the same statistic scoped to the pairs the sleeve can
+    actually buy. OBSERVE-ONLY: stamped per fill, gates nothing, so the mismatch can be MEASURED
+    before anyone changes a threshold off it.
+
+    Rows without a `br_rank` are blacklisted (br_rank is None for those) and are excluded — which
+    is the point: a blacklisted pair cannot participate, so it must not vote on participation.
+
+    Returns (bull_pct, bear_pct, n) — the DENOMINATOR is returned and stamped because `_collected`
+    only holds pairs that survived the Phase-1 OHLCV fetch, so this slice can legitimately be 2-3
+    rows and still read a confident-looking 100.0. Over the scan-wide 50 that dilution was
+    invisible; over 10 it is not. An un-auditable 100.0 in the CSV is exactly how a false finding
+    gets born (deep review, DECISION_LOG 105).
+
+    ⚠ (None, None, 0) is NOT a safe sentinel for `bullrun_breadth_ok` — that predicate does
+    `float(bull_pct or 0.0)` and coerces None→0.0 into its REARM fail-closed arm. Wiring these
+    columns into a gate requires a real no-reading sentinel first.
+    """
+    try:
+        n = int(universe_size or 0)
+    except (TypeError, ValueError):
+        return None, None, 0
+    if n <= 0:
+        return None, None, 0
+    rows = []
+    for r in (collected or []):
+        br = r.get("br_rank")
+        if br is None:
+            continue
+        try:
+            if 1 <= int(br) <= n:
+                rows.append(r)
+        except (TypeError, ValueError):
+            continue
+    if not rows:
+        return None, None, 0
+    bull = round(100.0 * sum(1 for r in rows if r.get("breadth_regime") == "BULLISH") / len(rows), 1)
+    bear = round(100.0 * sum(1 for r in rows if r.get("breadth_regime") == "BEARISH") / len(rows), 1)
+    return bull, bear, len(rows)
 
 
 def rearm_clock_for_arm(now_ts, off_at, prev_t0, flap_min):
@@ -5665,6 +5713,9 @@ class TradingEngine:
                 entry_br_eff=_bullrun_monitor.get('eff'),
                 entry_br_off24h=_bullrun_monitor.get('off24h'),
                 entry_br_door=('GREEN' if _bullrun_monitor.get('green') else 'REARM'),
+                entry_br_bull_pct_top10=_g_now.get('_market_bull_pct_top'),
+                entry_br_bear_pct_top10=_g_now.get('_market_bear_pct_top'),
+                entry_br_top10_n=_g_now.get('_market_top_n'),
                 entry_br_door_age_min=(None if _bullrun_monitor.get('green')
                                        else bullrun_door_age_min(_now, _bullrun_monitor.get('rearm_t0'))),
                 entry_bull_pct=_br_bull, entry_bear_pct=_br_bear,
@@ -6198,6 +6249,9 @@ class TradingEngine:
         entry_br_off24h: float = None,
         entry_br_door: str = None,   # Aug-23 (20): 'GREEN' (composite) or 'REARM' (re-arm door)
         entry_br_door_age_min: float = None,   # Sep-21 (57l): minutes the door had been open at entry
+        entry_br_bull_pct_top10: float = None,  # Sep-21 (105): breadth over the TRADEABLE universe — observe-only
+        entry_br_bear_pct_top10: float = None,
+        entry_br_top10_n: int = None,   # 105: denominator — a 100.0 over 2 pairs must be auditable
         # 🐻 Sep-15 gate 60: Bear-Run Monitor readings at entry (BEARRUN_SHORT fills only)
         entry_bear_r24: float = None,
         entry_bear_below24: float = None,
@@ -7669,6 +7723,9 @@ class TradingEngine:
             entry_br_off24h=entry_br_off24h,
             entry_br_door=entry_br_door,
             entry_br_door_age_min=entry_br_door_age_min,
+            entry_br_bull_pct_top10=entry_br_bull_pct_top10,
+            entry_br_bear_pct_top10=entry_br_bear_pct_top10,
+            entry_br_top10_n=entry_br_top10_n,
             # Sep 16: BTC 24h-range position at entry on every fill (from the monitors' shared 5m fetch, ≤2 min old; None before the first compute)
             entry_btc_off24h_pct=(_bullrun_monitor.get('off24h') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # deep review: stale monitor (>30 min, exchange outage) → None, never an old reading
             entry_btc_off24lo_pct=(_bearrun_monitor.get('off24lo') if (_leash_time.time() - (_bearrun_monitor.get('updated_at') or 0)) <= 1800 else None),
@@ -11036,6 +11093,7 @@ class TradingEngine:
                     'indicators': indicators, 'signal': signal, 'confidence': confidence,
                     'pair_volume_ratio': _pair_volume_ratio, 'breadth_regime': breadth_regime,
                     'rank': pair_info.get('rank'),
+                    'br_rank': pair_info.get('br_rank'),   # 105: rank among TRADEABLE pairs — the bull-run sleeve's real universe
                     'age_days': pair_info.get('age_days'),  # Jul 13: listing age (180->90 step-down read gate)
                     'rsi_ob_flip': _current_pair_holder.get('rsi_ob_flip', False),  # Jun 16: overbought-RSI live flip
                 })
@@ -11049,6 +11107,7 @@ class TradingEngine:
             logger.info(f"[GLOBAL_VOL] ratio={_global_volume_ratio:.4f} (sum_vol={_scan_vol_sum:.0f}, sum_avg={_scan_avg_vol_sum:.0f})")
 
         global _market_bull_pct, _market_bear_pct, _breadth_n_bull, _breadth_n_bear, _breadth_n_neutral, _breadth_n_total
+        global _market_bull_pct_top, _market_bear_pct_top, _market_top_n
         _breadth_n_bull = sum(1 for r in _collected if r['breadth_regime'] == "BULLISH")
         _breadth_n_bear = sum(1 for r in _collected if r['breadth_regime'] == "BEARISH")
         _breadth_n_total = len(_collected)
@@ -11059,7 +11118,20 @@ class TradingEngine:
         else:
             _market_bull_pct = 0.0
             _market_bear_pct = 0.0
-        logger.info(f"[BREADTH] Bull={_market_bull_pct:.1f}% ({_breadth_n_bull}/{_breadth_n_total}) Bear={_market_bear_pct:.1f}% ({_breadth_n_bear}/{_breadth_n_total}) threshold={_breadth_flat_th}%")
+        # 📏 (105, operator-raised) TRADEABLE-UNIVERSE breadth — OBSERVE-ONLY, gates nothing.
+        # The live floor reads the scan-wide number below (trading_pairs_limit=50) while this sleeve
+        # only trades br_rank ≤ bullrun_universe_size. The REARM door already reasons over the
+        # tradeable universe (alt_r6h_min / alt_above_pct) — though on a different horizon (6h return
+        # + 1h EMA50, vs EMA20 slope here), so this is not a like-for-like of the door either.
+        _bru_n, _bru_rows = 10, 0
+        try:
+            _bru_n = int(getattr(config.trading_config.thresholds, "bullrun_universe_size", 10) or 10)
+            _market_bull_pct_top, _market_bear_pct_top, _bru_rows = tradeable_breadth(_collected, _bru_n)
+        except Exception as _tb_err:   # noqa: BLE001 — an observe-only stat must never break the scan
+            _market_bull_pct_top = _market_bear_pct_top = None; _bru_rows = 0
+            logger.warning(f"[BREADTH] tradeable-universe breadth failed ({_tb_err}) — stamping NULL")
+        _market_top_n = _bru_rows
+        logger.info(f"[BREADTH] Bull={_market_bull_pct:.1f}% ({_breadth_n_bull}/{_breadth_n_total}) Bear={_market_bear_pct:.1f}% ({_breadth_n_bear}/{_breadth_n_total}) threshold={_breadth_flat_th}% | tradeable top-{_bru_n}: Bull={_market_bull_pct_top if _market_bull_pct_top is not None else 'n/a'}% Bear={_market_bear_pct_top if _market_bear_pct_top is not None else 'n/a'}% over {_bru_rows} pairs (observe-only)")
 
         # ── Phase 3: Apply gates (BTC, volume, breadth) and enter trades ──
         _breadth_enabled = getattr(config.trading_config.thresholds, 'market_breadth_filter_enabled', True)

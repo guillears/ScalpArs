@@ -175,6 +175,12 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_gap FLOAT"))
                 if 'entry_br_door_age_min' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_door_age_min FLOAT"))
+                if 'entry_br_bull_pct_top10' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_bull_pct_top10 FLOAT"))
+                if 'entry_br_bear_pct_top10' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_bear_pct_top10 FLOAT"))
+                if 'entry_br_top10_n' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_top10_n INTEGER"))
                 if 'backstop_algo_id' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN backstop_algo_id VARCHAR(30)"))
                 if 'entry_rsi' not in columns:

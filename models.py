@@ -247,6 +247,14 @@ class Order(Base):
     entry_br_eff = Column(Float, nullable=True)
     entry_br_off24h = Column(Float, nullable=True)   # Aug 21 (11): BTC % below its 24h high at entry — the pullback-phase variable
     entry_br_door = Column(String(8), nullable=True)  # Aug 23 (20): 'GREEN' composite or 'REARM' re-arm door
+    # 📏 Sep 21 (105, operator-raised): breadth measured over the TRADEABLE universe (br_rank ≤
+    # bullrun_universe_size) instead of the full scan. The live gate still reads the scan-wide
+    # entry_bull_pct/_bear_pct (trading_pairs_limit=50) while this sleeve only trades the top 10 —
+    # these two columns exist to MEASURE that mismatch. OBSERVE-ONLY: they gate nothing.
+    entry_br_bull_pct_top10 = Column(Float, nullable=True)
+    entry_br_bear_pct_top10 = Column(Float, nullable=True)
+    entry_br_top10_n = Column(Integer, nullable=True)   # denominator: _collected only holds pairs that survived the OHLCV fetch, so this slice can be 2-3 rows and still read 100.0
+    # ⚠ the name pins N=10 as of ship; changing `bullrun_universe_size` invalidates historical rows.
     entry_br_door_age_min = Column(Float, nullable=True)  # Sep 21 (57l): minutes the door had been open at entry — the sleeve's own clock, previously invisible to every analysis (it took AWS log archaeology to recover)
     # 🐻 Sep 15 gate 60 — Bear-Run Monitor readings at entry (BEARRUN_SHORT fills only, NULL otherwise):
     # r24 / bars-below-EMA20% / 24h efficiency / BTC % above its 24h low at fire time + the BTC gates bypassed.
@@ -323,6 +331,16 @@ class Order(Base):
     peak_pnl = Column(Float, nullable=False, default=0.0)  # For trailing stop
     trough_pnl = Column(Float, nullable=False, default=0.0)  # Lowest P&L reached during trade
     high_price_since_entry = Column(Float, nullable=True)  # For LONG
+    # ⚠ high_ = the LONG's FAVOURABLE extreme, low_ = the SHORT's. NEITHER is an adverse extreme.
+    # A LONG opens with low_ = None and the realtime loop only updates low_ in its SHORT branch —
+    # but the CSV shows ENTRY PRICE, not NULL, because the order cache seeds `low_price` to the
+    # fill price for BOTH directions and the close-time cache→DB sync copies it in via its
+    # `is None` arm. So a LONG's low_ is a SEED, never a measurement. That is BY DESIGN, not
+    # corruption — a 2026-09-21 note claiming otherwise was retracted the same day (DECISION_LOG
+    # 105), and the retraction's FIRST mechanism was wrong too (it explained NULL, not entry).
+    # Every COMPUTED read is direction-guarded; two raw pass-throughs are not, and are harmless
+    # because only the SHORT branch consumes them. Adverse excursion in P&L terms is `trough_pnl`,
+    # which IS tracked live (~1Hz) and is the field analysis must use.
     low_price_since_entry = Column(Float, nullable=True)  # For SHORT
     peak_ema5_gap = Column(Float, nullable=True, default=0.0)  # Peak price-to-EMA5 distance for momentum exit
     peak_ema5_dist_pct = Column(Float, nullable=True)  # Price-to-EMA5 distance at moment of peak P&L

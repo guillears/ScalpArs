@@ -12928,6 +12928,39 @@ async def _get_nav_per_share(db: AsyncSession) -> float:
 
 
 
+def investor_edit_adjustment(current_deposited, target_deposited, nav, shares):
+    """💰 Pure core for a deposit-total EDIT. An edit is a CORRECTION, never a cash flow.
+
+    Sep-21 bug (operator-found): the edit path booked `total_withdrawn += -delta` when the total
+    was reduced, inventing a withdrawal of money that never left the account. One edit of
+    $3,338.80 → $3,000 left total_withdrawn = $338.80, and since the UI computes
+    `pnl = value - deposited + withdrawn` the investor read +$677.60 (+22.59%) against a true
+    +$338.80 (+11.29%) — the NAV/share of 1.1129 was right, the row double-counted.
+
+    Returns None when the edit is a no-op (below the half-cent threshold), else
+    {'delta', 'shares_delta'}. `total_withdrawn` is NEVER part of the result: real cash movement
+    goes through the deposit/withdraw endpoints, which is what those buttons are for.
+
+    ⚠ KNOWN LIMITATION (deep review, not fixed here): the correction is priced at TODAY's NAV, so
+    an edit made after the fund has moved is NOT NAV-neutral. Correcting 3338.80 → 3000 at NAV
+    1.1129 removes only 304.25 shares, leaving the investor ~34.55 shares of return on money they
+    never contributed — a windfall paid for by everyone else. Correct behaviour would unwind at
+    the NAV of the deposit being corrected. The operator's case is clean only because the edit
+    happened at NAV 1.0. Edits at NAV != 1 should be treated as suspect until this is addressed.
+    """
+    delta = float(target_deposited) - float(current_deposited)
+    if abs(delta) <= 0.005:
+        return None
+    nav = float(nav)
+    if nav <= 0:
+        raise ValueError("NAV must be positive to price an edit adjustment")
+    sh = abs(delta) / nav
+    if delta < 0 and sh > float(shares) + 1e-9:
+        raise ValueError(f"Reducing deposited by ${-delta:.2f} needs {sh:.4f} shares; "
+                         f"investor holds {float(shares):.4f}")
+    return {"delta": delta, "shares_delta": (sh if delta > 0 else -sh)}
+
+
 def _log_investor_ledger(db: AsyncSession, investor_id: int, type_: str, amount: float,
                          nav: float = None, shares_delta: float = None, note: str = None):
     """Append a dated cash-flow row. Fail-open — a ledger error must NEVER break
@@ -13284,22 +13317,26 @@ async def rename_investor(investor_id: int, body: InvestorRename, db: AsyncSessi
     _adj = None
     if 'deposit_total' in fields and body.deposit_total is not None:
         _target = float(body.deposit_total)
-        _delta = _target - float(inv.total_deposited or 0)
-        if abs(_delta) > 0.005:  # Aug-24: edit = apply the DELTA at current NAV so shares/ledger stay consistent
-            nav = _nav_pre
-            if _delta > 0:
-                _sh = _delta / nav
-                inv.shares += _sh
-                inv.total_deposited += _delta
-                _log_investor_ledger(db, inv.id, "DEPOSIT", _delta, nav, _sh, note="Edit-investor adjustment")
-            else:
-                _sh = (-_delta) / nav
-                if _sh > inv.shares + 1e-9:
-                    raise HTTPException(400, f"Reducing deposited by ${-_delta:.2f} needs {_sh:.4f} shares; investor holds {inv.shares:.4f}")
-                inv.shares -= _sh
-                inv.total_deposited += _delta  # delta negative
-                inv.total_withdrawn += (-_delta)
-                _log_investor_ledger(db, inv.id, "WITHDRAW", -_delta, nav, -_sh, note="Edit-investor adjustment")
+        # Aug-24: edit = apply the DELTA at current NAV so shares/ledger stay consistent.
+        # Sep-21 FIX (operator-found): an edit is a CORRECTION, not a cash flow — it must never
+        # write to total_withdrawn. Doing so invented a withdrawal and double-counted P&L
+        # (value − deposited + withdrawn). Real money movement = the deposit/withdraw endpoints.
+        if _nav_pre is None and abs(_target - float(inv.total_deposited or 0)) > 0.005:
+            raise HTTPException(503, "NAV unavailable — retry the deposit edit shortly")
+        try:
+            _res = investor_edit_adjustment(inv.total_deposited or 0, _target, _nav_pre, inv.shares)
+        except ValueError as _ve:
+            raise HTTPException(400, str(_ve))
+        if _res is not None:
+            _delta = _res["delta"]
+            _was = float(inv.total_deposited or 0)
+            # clamp: the guard allows a full reduction to land at ~-1e-9, and a negative share
+            # balance would feed _get_total_shares -> the NAV denominator and ownership %
+            inv.shares = max(0.0, inv.shares + _res["shares_delta"])
+            inv.total_deposited += _delta            # negative delta reduces it; withdrawn untouched
+            _log_investor_ledger(db, inv.id, "ADJUST", _delta, _nav_pre, _res["shares_delta"],
+                                 note=(f"Edit-investor adjustment: deposited ${_was:,.2f} → "
+                                       f"${_target:,.2f} (correction, not a cash flow)"))
             _adj = round(_delta, 2)
     await db.flush()
     return {"ok": True, "id": investor_id, "name": inv.name, "eth_wallet": inv.eth_wallet, "deposit_adjustment": _adj}

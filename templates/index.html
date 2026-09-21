@@ -20168,7 +20168,7 @@
                 const data = await res.json();
                 const entries = data.entries || [];
                 if (!entries.length) { body.innerHTML = '<span class="text-gray-500">No cash-flow entries yet.</span>'; _ledgerHtmlCache[id] = body.innerHTML; return; }
-                const tc = t => t==='DEPOSIT'?'text-cyan-400':t==='WITHDRAW'?'text-orange-400':t==='CASHOUT'?'text-red-400':'text-gray-500';
+                const tc = t => t==='DEPOSIT'?'text-cyan-400':t==='WITHDRAW'?'text-orange-400':t==='CASHOUT'?'text-red-400':t==='ADJUST'?'text-amber-300':'text-gray-500';
                 body.innerHTML = `<table class="w-full text-xs">
                     <thead><tr class="text-gray-500 border-b border-white/5">
                         <th class="text-left py-1 pr-3">Date</th><th class="text-left pr-3">Type</th>

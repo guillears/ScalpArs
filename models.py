@@ -1106,7 +1106,9 @@ class InvestorLedger(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     investor_id = Column(Integer, nullable=False, index=True)
-    type = Column(String(12), nullable=False)        # DEPOSIT | WITHDRAW | CASHOUT | OPENING
+    type = Column(String(12), nullable=False)        # DEPOSIT | WITHDRAW | CASHOUT | OPENING | ADJUST
+    # ADJUST (Sep-21) = a deposit-total EDIT: a CORRECTION of the recorded figure, NOT a cash
+    # movement. It moves shares + total_deposited and must NEVER touch total_withdrawn.
     amount = Column(Float, nullable=False)            # USD moved (always positive)
     nav_at_time = Column(Float, nullable=True)        # NAV/share at the moment
     shares_delta = Column(Float, nullable=True)       # + on deposit, − on withdraw

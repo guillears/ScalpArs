@@ -33,6 +33,8 @@ G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do n
 # at its pre-reset export and the pool picks it up on the next regen.
 # (era, path, min_opened_at, lenient_status) — lenient_status=True keeps NaN-status rows as CLOSED
 # (the B1 anchor file's legacy quirk); every other era is strict `status == "CLOSED"`.
+BASE_ERA_END = "2026-07-11"   # B1/ANCHOR starts here; see the BASE cap in load()
+
 FIXED_ERAS = [
     ('BASE', "reports/SCREENED_BASELINE.csv", None, False),
     ('B1',   "reports/BASELINE2_ANCHOR_batch0711-31_current_stack.csv", None, True),
@@ -63,7 +65,15 @@ def load():
     frames = []
     for era, path, min_open, lenient in discover_eras():
         d = pd.read_csv(path, low_memory=False)
-        if era != 'BASE':  # BASE is already the screened CLOSED set
+        if era == 'BASE':
+            # 🔒 BASE ERA CAP (2026-09-21 fix): SCREENED_BASELINE.csv is the SCREENED COMBINED pool,
+            # and every new batch gets appended to COMBINED at its review (v17 appended B9's three
+            # momentum longs on Sep-19). Those rows then appear BOTH here and in their own
+            # BASELINE<n> archive → the locked dedup key collides and the build dies. BASE is an
+            # ERA (Jun-17 → Jul-10, before B1/ANCHOR starts Jul-11), so cap it at that boundary and
+            # let each later era come from its own archive. Restores BASE to its historical 83 rows.
+            d = d[d.opened_at < BASE_ERA_END]
+        else:  # BASE is already the screened CLOSED set
             st = d.status.fillna("CLOSED") if lenient else d.status
             d = d[st == "CLOSED"]
             if min_open:

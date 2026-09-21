@@ -964,6 +964,15 @@ class SignalThresholds(BaseModel):
     bullrun_be_arm_pct: float = 1.0        # BE arms at peak ≥ this (must clear ~2×ATR dip-entry noise band)
     bullrun_be_lock_pct: float = 0.2       # BE floor once armed
     bullrun_trail_atr_mult: float = 2.0    # trail giveback = N × entry ATR% from peak (plateau 2.0-2.5)
+    # Sep-21 (57i SHIPPED, DECISION_LOG (99)): REARM-door trail. 0 = use the GREEN multiplier above.
+    # Evidence (1m-path sim, calibrated sim +$1,986 vs actual +$2,176, corr 0.94): armed REARM fills
+    # 1.0x $719 > 1.25x $621 > 2.0x $527; armed GREEN the reverse (2.0x $2,601 > 1.0x $1,613) so GREEN
+    # is untouched. Ship bar met on all three legs: 3/3 REARM windows positive (+$172/+$122/+$125),
+    # 19 armed REARM fills (>=10), direction-consistent; 17 fills changed, 15 improved / 2 worse,
+    # top-1 share 11%. The ARM component of the same 57i package FAILED (3/4 windows) and did NOT ship.
+    # 🔒 revert: first 2 REARM windows after this ship where the 1.0x cohort underperforms its 2.0x
+    # counterfactual (scripts/bullrun_exit_sweep.py) -> back to 0.
+    bullrun_rearm_trail_atr_mult: float = 1.0
     # Aug-21 (day-1 post-mortem, DECISION_LOG 2026-08-21 (11)): PULLBACK-PHASE GATE — no sleeve entry while
     # BTC sits more than N% below its 24h high. The one variable that separated the founding replay's
     # winners from losers (top of 21, 3/3 per-day): off24h ≤ −1.6% → −$1,679·50% WR vs near the high
@@ -990,7 +999,14 @@ class SignalThresholds(BaseModel):
     # its freed slot pays in BOTH windows (+$163 / +$702); live v2: 2 fills 0W peak 0.00. Mechanism: ATR 0.3-0.5 → runner
     # capped below the ladder, stops cost the same = slot-hog. BTC NOT blacklisted (its fills won the founding window).
     # 🔒 revert ETH: low-ATR (≤0.5%) sleeve fills avg ≥ +0.30%/t on N≥8 in the next GREEN episode.
-    bullrun_pair_blacklist: str = "ONGUSDT,ETHUSDT,BTCUSDT"  # BTC added 2026-08-25 (operator ship): 0/4 sleeve fills, −$342, every one a full stop; leader-self-reference thesis; frees a br_rank slot
+    # Sep-21: +ONEUSDT,ZECUSDT — OPERATOR OVERRIDE, acknowledged BELOW the registered trigger.
+    # ONE 0W/4L −$749 (trigger was 0-of-5 OR Σ≤−$760: $11 and one fill short) · ZEC 1W/6L −$489 (has a
+    # win, so it never had a bar). Both are crash-tourist/high-ATR pairs: ONE entered at ATR 1.19-4.49
+    # and is 48% of the ATR>=1.2 cohort's losses. Current batch effect: 28·68%·+$286 vs 33·58%·−$401
+    # as traded (5 fills blocked, ZERO winners). DECISION_LOG (99).
+    # 🔒 TIGHT REVERT (tighter than standard, per the discipline-override rule): if EITHER pair would
+    # have won on N>=3 blocked candidates re-simmed from 1m klines under the BR exit stack -> re-admit it.
+    bullrun_pair_blacklist: str = "ONGUSDT,ETHUSDT,BTCUSDT,ONEUSDT,ZECUSDT"  # ONG 0/5 · ETH 0/4 · BTC added 2026-08-25 (operator ship): 0W/4 · −$342, every one a full stop; leader-self-reference thesis; frees a br_rank slot
     # Aug-22 (3): BTC-leader gate — no sleeve entry while BTC is BELOW its own 5m EMA13 (an alt reclaim without BTC's
     # reclaim = alt moving without its leader). Only BTC variable losing in EVERY window: live 6·33%·−$545, founding
     # replay 8·38%·−$220, replay-live 5·40%·−$65 (pooled N=14, 36% WR, −0.35%/t). Discipline-override (N<30).

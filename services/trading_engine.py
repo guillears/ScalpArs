@@ -369,7 +369,7 @@ def _bullrun_ladder_floor(peak, ladder_str):
         return None
 
 
-def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct):
+def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct, door=None):
     """🌊 Aug-21 gate 57: dedicated BULLRUN_LONG exit check — the ONLY exit logic sleeve
     trades run (both paths intercept BEFORE the alt exit machinery, so FAST_EXIT / tick /
     RSI / signal-lost / gate-53 quiet-SL never touch them; MAX_HOLD + manual still apply
@@ -394,7 +394,16 @@ def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct):
             sl = min(base, widened)
         arm = float(getattr(th, 'bullrun_be_arm_pct', 1.0) or 1.0)
         lock = float(getattr(th, 'bullrun_be_lock_pct', 0.2) or 0.2)
+        # Sep-21 (57i SHIPPED): door-conditional trail. A confirmed multi-day run (GREEN) pays for
+        # giving room; a bounce off a dark composite (REARM) has limited follow-through, so banking
+        # wins. Bar met on all 3 legs: 3/3 REARM windows positive (+$172/+$122/+$125), 19 armed REARM
+        # fills, 17 changed (15 improved / 2 worse, top-1 share 11%). GREEN keeps 2.0x (tightening it
+        # costs -$988 there). 0 = fall back to the GREEN multiplier.
         trail_mult = float(getattr(th, 'bullrun_trail_atr_mult', 2.0) or 2.0)
+        if str(door or '').upper() == 'REARM':
+            _rt = float(getattr(th, 'bullrun_rearm_trail_atr_mult', 0.0) or 0.0)
+            if _rt > 0:
+                trail_mult = _rt
         pk = float(peak_pnl or 0.0)
         if pk >= arm:
             trail_line = (pk - trail_mult * atr) if atr > 0 else lock
@@ -7746,6 +7755,7 @@ class TradingEngine:
                 'direction': direction,
                 'opened_at': order.opened_at,          # Jul 28 review M-5: spike stale-kill/trail live from t0
                 'entry_atr_pct': entry_atr_pct,        # (both were previously added only at the first cache refresh)
+                'entry_br_door': entry_br_door,        # Sep-21 (57i): the realtime BR exit needs the door for the trail width
                 'entry_strategy': ("BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),  # Sep 15 gate 60: BEARRUN_SHORT twin (momentum exits; label parity with the Order row). Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches; Aug 21: BULLRUN_LONG (gate 57, dedicated BR_ exits)
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_price': actual_price,
@@ -7789,6 +7799,7 @@ class TradingEngine:
                 'pullback_trigger': conf_config.pullback_trigger,
                 'tp_trailing_enabled': conf_config.tp_trailing_enabled,
                 'entry_atr_pct': entry_atr_pct,  # May 7 Phase 1: ATR-normalized trailing in realtime path
+                'entry_br_door': entry_br_door,  # Sep-21 (57i): door-conditional BR trail
                 'tp_min': conf_config.tp_min,    # May 7 Phase 2: needed for early-arm zone check
                 'cached_ema5': _cached_ema5,
                 'cached_ema5_prev3': _cached_ema5_prev3,
@@ -9499,7 +9510,7 @@ class TradingEngine:
                     _br_peak = max(realtime_peak, _br_pnl)
                     order.peak_pnl = _br_peak
                     order.trough_pnl = min(realtime_trough, _br_pnl)
-                    _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None))
+                    _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None), getattr(order, 'entry_br_door', None))
                     if _br_close:
                         logger.info(f"[BULLRUN_EXIT] {order.pair}: {_br_reason} fire pnl={_br_pnl:.2f}% peak={_br_peak:.2f}% stop_line={_br_stop:.2f}%")
                         closed_order = await self.close_position(db, order, current_price, _br_reason)
@@ -13113,7 +13124,7 @@ class TradingEngine:
                     order_info['peak_pnl'] = _br_peak_rt
                     if pnl_pct < (order_info.get('trough_pnl', 0) or 0):
                         order_info['trough_pnl'] = pnl_pct
-                    _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'))
+                    _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'), order_info.get('entry_br_door'))
                     if _br_close and not order_info.get('_closing_in_progress'):
                         order_info['_closing_in_progress'] = True
                         logger.warning(f"[REALTIME_BULLRUN_EXIT] {pair} {direction}: {_br_reason} pnl={pnl_pct:.4f}% peak={_br_peak_rt:.4f}% stop_line={_br_stop:.2f}% - CLOSING NOW!")
@@ -14952,6 +14963,7 @@ class TradingEngine:
                 'pullback_trigger': conf_config.pullback_trigger,
                 'tp_trailing_enabled': conf_config.tp_trailing_enabled,
                 'entry_atr_pct': getattr(order, 'entry_atr_pct', None),  # May 7 Phase 1: ATR-normalized trailing
+                'entry_br_door': getattr(order, 'entry_br_door', None),  # Sep-21 (57i): DB-backed so the realtime BR trail keeps its door across the ~1Hz cache rebuild
                 'tp_min': conf_config.tp_min,                            # May 7 Phase 2: early-arm zone check
                 'cached_ema5': pair_ema5s.get(order.pair),
                 'cached_ema5_prev3': pair_emas.get(order.pair, {}).get('ema5_prev3'),

@@ -32,10 +32,26 @@ import requests
 POOL = "reports/MASTER_POOL_stacked.csv"
 CACHE = "reports/backtest_cache/bullrun_exit_1m.pkl"
 V2_FLOOR = "2026-08-21T19:16"          # gate-57 v2 cohort floor (locked)
-SLEEVE_BLACKLIST = ("ONGUSDT", "ETHUSDT")
+def _sleeve_blacklist():
+    """Read the LIVE blacklist (deep review 2026-09-21: a hardcoded tuple silently diverged from
+    config once ONE/ZEC/BTC were added, so the revert gate would have scored a different cohort
+    than the bot actually trades)."""
+    try:
+        import config
+        return tuple(p.strip().upper() for p in
+                     str(getattr(config.trading_config.thresholds, "bullrun_pair_blacklist", "") or "").split(",") if p.strip())
+    except Exception:
+        return ("ONGUSDT", "ETHUSDT")
 
 # live BR exit stack (config.py: bullrun_be_arm_pct / _be_lock_pct / _trail_atr_mult / _ladder)
 LIVE_ARM, LIVE_TRAIL, LOCK = 1.0, 2.0, 0.2
+def _live_rearm_trail():
+    """0 before the 2026-09-21 ship, 1.0 after — so 'sim @ live settings' stays honest post-ship."""
+    try:
+        import config
+        return float(getattr(config.trading_config.thresholds, "bullrun_rearm_trail_atr_mult", 0.0) or 0.0)
+    except Exception:
+        return 0.0
 LADDER = [(4, 3.5), (5, 4.5), (6, 5.5), (8, 7.0), (10, 9.0), (12, 11.0)]
 FEE = 0.09                              # round-trip taker toll in pnl% terms (replay-harness parity)
 ARMS = [0.6, 0.7, 0.85, 1.0, 1.2, 1.5]
@@ -64,7 +80,7 @@ def load_cohort(batches):
     # version applied only the first three and reported a 60-fill cohort with 32 "master" fills;
     # the true current-stack cohort is 39 with 11 master. Operator caught it. The ledger rebuild
     # rule in CLAUDE_CURRENT_STATE applies here too: gates go ON TOP of stack_keep, all of them.)
-    keep = (~br["pair"].isin(SLEEVE_BLACKLIST)
+    keep = (~br["pair"].isin(_sleeve_blacklist())
             & ((_num(br, "entry_br_r72").fillna(99) >= 10) | rearm)          # r72 10/8, GREEN door
             & (_num(br, "entry_btc_dist_from_ema13_pct").fillna(1) >= 0)     # BTC ≥ 5m EMA13
             & (_num(br, "entry_btc_1h_slope").fillna(1) > 0)                 # BTC 1h-slope gate

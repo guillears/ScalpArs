@@ -59,10 +59,21 @@ def load_cohort(batches):
     br = df[(df.entry_strategy == "BULLRUN_LONG") & (df.opened_at >= V2_FLOOR)].copy()
     br["pnl_"] = _num(br, "stack_pnl").fillna(_num(br, "pnl"))
     rearm = br["entry_br_door"].eq("REARM") | br["era"].eq("B4")   # B4 = the Aug-25 REARM window
-    # the CURRENT entry stack: sleeve blacklist · r72 10/8 on the GREEN door · BTC ≥ EMA13
+    bull, bear = _num(br, "entry_bull_pct"), _num(br, "entry_bear_pct")
+    # ⚠ THE FULL CURRENT ENTRY STACK — every live gate, not a subset. (2026-09-21: an earlier
+    # version applied only the first three and reported a 60-fill cohort with 32 "master" fills;
+    # the true current-stack cohort is 39 with 11 master. Operator caught it. The ledger rebuild
+    # rule in CLAUDE_CURRENT_STATE applies here too: gates go ON TOP of stack_keep, all of them.)
     keep = (~br["pair"].isin(SLEEVE_BLACKLIST)
-            & ((_num(br, "entry_br_r72").fillna(99) >= 10) | rearm)
-            & (_num(br, "entry_btc_dist_from_ema13_pct").fillna(1) >= 0))
+            & ((_num(br, "entry_br_r72").fillna(99) >= 10) | rearm)          # r72 10/8, GREEN door
+            & (_num(br, "entry_btc_dist_from_ema13_pct").fillna(1) >= 0)     # BTC ≥ 5m EMA13
+            & (_num(br, "entry_btc_1h_slope").fillna(1) > 0)                 # BTC 1h-slope gate
+            & ((_num(br, "entry_br_eff").fillna(1) >= 0.095) | rearm)        # efficiency stay band
+            & ((_num(br, "entry_br_off24h").fillna(0) >= -2.0) | rearm)      # off-24h gate
+            & (bull >= 40)                                                   # breadth floor (Sep-19)
+            & ~(rearm & (bull.fillna(0) <= 0) & (bear.fillna(0) <= 0))       # REARM warm-up fail-closed
+            & (_num(br, "entry_slippage_pct").abs().fillna(0) < 0.3)         # 57f dislocation guard
+            & (_num(br, "entry_pair_volume_ratio").fillna(0) <= 1.2))        # PVR ceiling
     cc = br[keep].copy()
     cc["door"] = np.where(rearm[keep], "REARM", "GREEN")
     return cc

@@ -6,7 +6,7 @@ was built, so the hand-written predicate list was stale (FRESHBREAK ruler artifa
 blacklist → B6 band cohort → the breadth floor). The gate list now lives in ONE place, here, and
 reads the live blacklist straight from config so it cannot drift.
 
-    venv/bin/python scripts/current_stack_ledger.py [--no-rearm-trail]
+    venv/bin/python scripts/current_stack_ledger.py [--batch <live batch csv>] [--no-age-cap] [--no-rearm-trail]
 
 Population: stack_keep ∧ non-probe ∧ pair_blacklist ∧ gate-51 bands (momentum longs) ∧ the full
 bull-run gate list ∧ fade-cap reprice ∧ live-passed boundary fills restored. DCR compounds each
@@ -26,11 +26,33 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 POOL = "reports/MASTER_POOL_stacked.csv"
 EQ = 3000.0
-ERAS = ["BASE", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10"]
+ERAS = ["BASE", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10"] + [f"B{n}" for n in range(11, 30)]
 # fills that PASSED the live gate but the stack ruler blocks on stamped boundary values
 # (ADA-weakcap divergence class — live governs for an as-lived ledger)
 RESTORE = [("QTUMUSDT", "2026-09-19T00:00:51"), ("API3USDT", "2026-09-19T06:23:54")]
 FADE_CAP_REPRICE = {("SANDUSDT", "2026-09-19T00:04:12"): -185.0}   # gate 50b cap restored
+
+# 🕐 57l REARM entry-age cap. The door clock is NOT in the trade data for historical fills —
+# `entry_br_door_age_min` only stamps from the 2026-09-21 ship onward — so the episode boundaries
+# below are transcribed from the EB log bundle (`web.stdout.log`, [BULLRUN_MONITOR] state
+# transitions). They are the ONLY record: the logs rotate, and monitor_periods is wiped by a paper
+# reset.
+# ⚠ SCOPE OF THE "verified" CLAIM (deep review): every REARM fill that SURVIVES THE GATE LIST above
+# falls inside one of these. The pool ALSO holds 7 B4 REARM fills (2026-08-25 02:28→03:53) with NO
+# covering episode — they are invisible here only because the bull-run gate drops them first, so the
+# fail-open warning never fires for them. Do not read this list as covering the whole pool.
+# ⚠ #44's END IS AN ASSUMPTION, NOT A LOG LINE — the door was still open at the log dump and this
+# constant assumes it never re-armed for 15h. That single assumption produces the 346-398 min ages
+# that delete all 10 B11 fills and the 187-222 min ages that delete 5 B10 fills, i.e. it carries the
+# ENTIRE headline swing. The list also skips #41/#43 (states between these REARM stretches), so the
+# transcription is selective by design, not exhaustive.
+# ⚠ FRAGILE BY SECONDS: ENAUSDT 2026-09-20T17:13:14 lands at 60.33 min — a 21-second error in #40's
+# transcribed start flips that fill in or out of the ledger.
+REARM_EPISODES = [
+    ("#40", "2026-09-20T16:12:54", "2026-09-20T18:17:11"),
+    ("#42", "2026-09-21T00:42:59", "2026-09-21T01:36:55"),
+    ("#44", "2026-09-21T08:42:50", "2026-09-22T00:00:00"),   # still open at the log dump
+]
 
 
 def _n(d, c):
@@ -48,9 +70,35 @@ def _blacklist(key, fallback):
         return {p.strip().upper() for p in fallback.split(",") if p.strip()}
 
 
-def build(rearm_trail=True):
-    df = pd.read_csv(POOL, low_memory=False)
-    df = df[df.status == "CLOSED"].copy()
+def _rearm_age_min(opened_at):
+    """Minutes into its door episode from the TRANSCRIBED boundaries, or None when none covers it."""
+    t = pd.Timestamp(opened_at)
+    for _lab, a, b in REARM_EPISODES:
+        if pd.Timestamp(a) <= t < pd.Timestamp(b):
+            return (t - pd.Timestamp(a)).total_seconds() / 60.0
+    return None
+
+
+def build(rearm_trail=True, entry_age_cap=60.0):
+    frames = [pd.read_csv(POOL, low_memory=False)]
+    _batches = []
+    for i, a in enumerate(sys.argv):
+        if a == "--batch":
+            if i + 1 >= len(sys.argv):
+                sys.exit("usage: --batch <live batch csv>  (no path given)")
+            _batches.append(sys.argv[i + 1])
+    for i, b in enumerate(_batches):
+        _b = pd.read_csv(b, low_memory=False)
+        _b["stack_keep"] = True; _b["is_probe"] = False; _b["stack_pnl"] = _b["pnl"]
+        _b["era"] = f"B{11 + i}"        # each --batch is its OWN era; they used to collide into B11
+        frames.append(_b)
+    df = pd.concat(frames, ignore_index=True)
+    df = df[df.status == "CLOSED"]
+    _n0 = len(df)
+    # keep="last": a --batch export is FRESHER than the pool, so a corrected row must win
+    df = df.drop_duplicates(subset=["opened_at", "pair", "direction"], keep="last").copy()
+    if len(df) != _n0:
+        print(f"  ℹ dedup dropped {_n0 - len(df)} duplicate row(s) on (opened_at, pair, direction)")
     keep = (df["stack_keep"].astype(str).fillna("nan").str.lower().isin(["true", "1"])
             & ~df["is_probe"].astype(str).fillna("nan").str.lower().isin(["true", "1"]))
     d = df[keep].copy()
@@ -83,12 +131,41 @@ def build(rearm_trail=True):
                   & (_n(d, "entry_pair_volume_ratio").fillna(0) <= 1.2))
     d = d[ok].copy()
 
+    # 🕐 57l: drop REARM-door fills taken past the entry-age cap. GREEN/null-door fills are never
+    # touched (the decay evidence is REARM-only). A REARM fill with NO known episode is KEPT and
+    # reported LOUDLY — an unknown clock must never silently delete rows from the ledger.
+    if entry_age_cap and entry_age_cap > 0:
+        _r = (d.entry_strategy == "BULLRUN_LONG") & d["entry_br_door"].eq("REARM")
+        if _r.any():
+            # 🕐 PREFER THE STAMPED CLOCK. From the 2026-09-21 ship every fill carries the engine's
+            # own `entry_br_door_age_min`; without this the ledger would keep scoring B12+ off the
+            # hand-transcribed constant forever, silently (deep review, DECISION_LOG 106).
+            _age = d.loc[_r, "opened_at"].map(_rearm_age_min)
+            if "entry_br_door_age_min" in d.columns:
+                _stamped = pd.to_numeric(d.loc[_r, "entry_br_door_age_min"], errors="coerce")
+                _both = _stamped.notna() & _age.notna()
+                _bad = _both & ((_stamped - _age).abs() > 1.0)
+                if _bad.any():
+                    print(f"  ⚠ {int(_bad.sum())} fill(s): the STAMPED door age disagrees with the "
+                          f"transcribed episode by >1 min — REARM_EPISODES is wrong, fix it. "
+                          f"Using the stamped value.")
+                _age = _stamped.where(_stamped.notna(), _age)
+            _unknown = int(_age.isna().sum())
+            if _unknown:
+                print(f"  ⚠ {_unknown} REARM fill(s) have no known door episode — KEPT (fail-open). "
+                      f"Add the episode to REARM_EPISODES or the 57l column is understated.")
+            _drop = _age.notna() & (_age > float(entry_age_cap))
+            d = d.drop(index=_age.index[_drop])
+
     for (pair, ts), v in FADE_CAP_REPRICE.items():
         d.loc[(d.pair == pair) & (d.opened_at == ts), "pnl_"] = v
     hive = (d.pair == "HIVEUSDT") & (d.era == "B7") & (d.pnl_ > 100)
     d.loc[hive, "pnl_"] = 48.0
 
     # restore live-passed boundary fills the ruler blocks
+    # ⚠ these are concatenated AFTER the gate chain, so they bypass the blacklist, the gate-51
+    #   bands AND the 57l entry-age cap. Harmless today (both are SPIKE_FADE, never REARM) but
+    #   a REARM row added here would silently dodge 57l. Deep review, DECISION_LOG 106.
     raw = pd.read_csv(POOL, low_memory=False)
     for pair, ts in RESTORE:
         if not ((d.pair == pair) & (d.opened_at == ts)).any():
@@ -104,7 +181,10 @@ def build(rearm_trail=True):
             deltas = _rearm_deltas(d)
             d["delta"] = [deltas.get((r.pair, r.opened_at), 0.0) for r in d.itertuples()]
         except Exception as e:                                        # noqa: BLE001
-            print(f"  ! REARM trail deltas unavailable ({e}) — showing live-trail numbers")
+            # LOUD + typed: this used to swallow anything, so a batch CSV missing `closed_at`
+            # would silently revert the WHOLE table to live-trail numbers.
+            print(f"  ⚠ REARM trail deltas unavailable ({type(e).__name__}: {e}) — the trail\n"
+                  f"    counterfactual is NOT applied; every era below is on live-trail numbers.")
     d["net"] = d.pnl_ + d.delta
     return d
 
@@ -116,7 +196,12 @@ def _rearm_deltas(d):
     import bullrun_exit_sweep as B
     cache = pickle.load(open(B.CACHE, "rb"))
     out = {}
-    sub = d[(d.entry_strategy == "BULLRUN_LONG") & (d["entry_br_door"] == "REARM")]
+    # ⚠ ONLY fills that closed BEFORE the 57i ship get a counterfactual. A fill that already
+    # EXITED on the 1.0× trail has lived it — re-pricing 1.0×-vs-2.0× on top double-counts the
+    # change and understates the era. (B11 read −$933 against an actual −$643 before this guard;
+    # same class as the sweep's `_trail_as_lived` fix, DECISION_LOG 103.)
+    sub = d[(d.entry_strategy == "BULLRUN_LONG") & (d["entry_br_door"] == "REARM")
+            & (d.closed_at.astype(str) < B.REARM_TRAIL_SHIP_UTC)]
     for r in sub.itertuples():
         kl = cache.get((r.pair, str(r.opened_at)))
         if not kl:
@@ -131,7 +216,8 @@ def _rearm_deltas(d):
 
 
 def main():
-    d = build(rearm_trail="--no-rearm-trail" not in sys.argv)
+    d = build(rearm_trail="--no-rearm-trail" not in sys.argv,
+              entry_age_cap=(0.0 if "--no-age-cap" in sys.argv else 60.0))
     print(f"\n{'Era':5} {'Dates':22} {'N':>4} {'WR':>5} {'Net $':>10} {'Days':>5} {'DCR/day':>9}")
     tot_n = tot_w = 0
     tot_net = 0.0

@@ -2,6 +2,7 @@
 SCALPARS Trading Platform - Main Application
 """
 import asyncio
+import functools
 import math
 import time
 import traceback
@@ -66,6 +67,59 @@ _bnb_swap_task = None
 _nav_task = None
 should_stop = False
 _scan_lock = asyncio.Lock()
+# 💰 Sep-21 — investor/NAV writes are read-modify-write across separate sessions, so two concurrent
+# requests could both read shares=3000, both compute, and last-writer-wins. For a transfer that
+# MINTS shares rather than just misreporting one row. SQLite has no row locking and `get_db`
+# commits AFTER the handler returns — outside anything the handler holds — so the lock must span
+# read -> mutate -> COMMIT. `_investor_serialized` does exactly that. Lock order is always
+# _investor_lock -> db_write_lock (inside locked_commit), never the reverse, so it cannot deadlock.
+_investor_lock = asyncio.Lock()
+
+
+def _investor_serialized(fn):
+    """Serialize an investor-mutating endpoint and commit INSIDE the lock.
+
+    ⚠ The session is found by TYPE, not by the name "db". Deep review: looking it up as
+    kwargs["db"] meant a future endpoint naming its session `session` would be serialized but
+    NOT committed inside the lock — silently back to last-writer-wins share minting, with a
+    green test suite. Missing session is now a hard error, never a skipped commit.
+
+    ⚠ read-only PREVIEW calls skip the critical section entirely: they mutate nothing, and
+    letting a modal preview queue behind (or block) a real transfer is pure contention.
+
+    ⚠ PER-PROCESS lock. Correct under the Procfile's single uvicorn worker; running --workers 2
+    would silently restore the race — if this ever moves to multiple workers the lock must become
+    a DB-level one (SELECT ... FOR UPDATE on Postgres, or an advisory lock).
+
+    ⚠ In LIVE mode the lock spans _get_nav_per_share -> binance_service.get_balance(), a network
+    call with no explicit timeout, so a hung exchange stalls all investor endpoints. Paper mode
+    (today) touches only the DB. Registered as a follow-up rather than fixed here.
+    """
+    @functools.wraps(fn)
+    async def _wrapped(*args, **kwargs):
+        _body = kwargs.get("body")
+        if getattr(_body, "preview", False):
+            return await fn(*args, **kwargs)            # read-only dry run — no lock, no commit
+        _db = next((v for v in kwargs.values() if isinstance(v, AsyncSession)),
+                   next((a for a in args if isinstance(a, AsyncSession)), None))
+        if _db is None:
+            raise RuntimeError(
+                f"{fn.__name__} is @_investor_serialized but exposes no AsyncSession parameter — "
+                f"the commit must happen INSIDE the lock or the race is back")
+        async with _investor_lock:
+            # Defensive: these routes have exactly one dependency (get_db) which emits no SQL, so
+            # the session has not begun a transaction and will read A's committed write. Expiring
+            # keeps that true if anyone later adds a dependency that reads on this session.
+            _db.expire_all()
+            result = await fn(*args, **kwargs)
+            # commit while still holding the lock, so the next waiter reads committed state rather
+            # than its own snapshot. get_db's later commit is a true no-op (verified in review) —
+            # it only re-enters the fair write queue once more, which is harmless.
+            await locked_commit(_db)
+            return result
+    _wrapped.__investor_serialized__ = True             # explicit marker; __wrapped__ proves nothing
+    return _wrapped
+
 
 
 async def monitor_loop():
@@ -13184,6 +13238,7 @@ async def investor_ledger(investor_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @app.post("/api/investors")
+@_investor_serialized
 async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db)):
     name = body.name.strip()
     if not name:
@@ -13244,6 +13299,7 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
 
 
 @app.post("/api/investors/deposit")
+@_investor_serialized
 async def investor_deposit(body: InvestorDeposit, db: AsyncSession = Depends(get_db)):
     if body.amount <= 0:
         raise HTTPException(400, "Amount must be positive")
@@ -13267,6 +13323,7 @@ async def investor_deposit(body: InvestorDeposit, db: AsyncSession = Depends(get
 
 
 @app.post("/api/investors/transfer")
+@_investor_serialized
 async def investor_transfer(body: InvestorTransfer, db: AsyncSession = Depends(get_db)):
     """Move VALUE between two investors. Nothing enters or leaves the fund."""
     if body.from_investor_id == body.to_investor_id:
@@ -13309,6 +13366,7 @@ async def investor_transfer(body: InvestorTransfer, db: AsyncSession = Depends(g
 
 
 @app.post("/api/investors/withdraw")
+@_investor_serialized
 async def investor_withdraw(body: InvestorWithdraw, db: AsyncSession = Depends(get_db)):
     if body.amount <= 0:
         raise HTTPException(400, "Amount must be positive")
@@ -13348,6 +13406,7 @@ class FundWithdraw(BaseModel):
 
 
 @app.post("/api/investors/withdraw-all")
+@_investor_serialized
 async def fund_withdraw(body: FundWithdraw, db: AsyncSession = Depends(get_db)):
     """Aug-27 (operator): fund-wide withdrawal applied PRO-RATA by ownership. Burns each
     investor's shares at NAV (current, or nav_override when registering an exchange
@@ -13425,6 +13484,7 @@ class FundDeposit(BaseModel):
 
 
 @app.post("/api/investors/deposit-all")
+@_investor_serialized
 async def fund_deposit(body: FundDeposit, db: AsyncSession = Depends(get_db)):
     """Aug-27 (operator: 'same way we have a general withdrawn we should add a general Deposit'):
     fund-wide deposit applied PRO-RATA by ownership. Issues each investor's shares at NAV
@@ -13480,6 +13540,7 @@ async def fund_deposit(body: FundDeposit, db: AsyncSession = Depends(get_db)):
 
 
 @app.patch("/api/investors/{investor_id}")
+@_investor_serialized
 async def rename_investor(investor_id: int, body: InvestorRename, db: AsyncSession = Depends(get_db)):
     inv = await db.get(Investor, investor_id)
     if not inv:
@@ -13535,6 +13596,7 @@ async def rename_investor(investor_id: int, body: InvestorRename, db: AsyncSessi
 
 
 @app.delete("/api/investors/{investor_id}")
+@_investor_serialized
 async def remove_investor(investor_id: int, db: AsyncSession = Depends(get_db)):
     inv = await db.get(Investor, investor_id)
     if not inv:

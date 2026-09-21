@@ -189,6 +189,8 @@ async def test_editing_a_deposit_down_does_NOT_reopen_founding_room(db, monkeypa
     await main.rename_investor(a.id, main.InvestorRename(deposit_total=1.0), db)
     await db.flush()
 
+    # re-read: @_investor_serialized expire_all()s the session, so `st` is stale by design
+    st = (await db.execute(select(models.BotState))).scalar_one()
     assert st.founding_allocated_usd == pytest.approx(3000.0)      # unchanged by the edit
     with pytest.raises(main.HTTPException):
         await main.add_investor(main.InvestorCreate(name="Exploit", deposit_amount=500.0, founding=True), db)

@@ -55,6 +55,63 @@ REARM_EPISODES = [
 ]
 
 
+# 🔌 sleeve MASTER TOGGLES — a "full current stack" ledger must not contain fills the live stack
+# would refuse to take at all. Operator-caught 2026-09-21: SPIKE_CHASE (dormant since the Aug-10
+# tripwire — CORRECTION per deep review: the real kill is 2026-08-21 via `spike_chase_enabled`;
+# Aug-10 was the accidental probe-flag retirement, reverted the same day) and SPIKE_BOUNCE
+# ("OFF FOR GOOD 2026-08-10 PM") were still in the table. This is the
+# SIXTH time the ledger went stale, and the same root cause every time — something shipped after
+# the gate list was written. Entry filters were checked; the on/off switch never was.
+# Each sleeve maps to ALL the flags that must be ON — the spike species have TWO switches, and
+# `spike_chase_probe_enabled` killing every fade AND chase at once is exactly what happened on
+# Aug-10. Deep review: mapping only the per-species flag reproduces that failure.
+SLEEVE_TOGGLE = {
+    "SPIKE_CHASE":   ["spike_chase_probe_enabled", "spike_chase_enabled"],
+    "SPIKE_BOUNCE":  ["spike_bounce_enabled"],
+    "SPIKE_FADE":    ["spike_chase_probe_enabled", "spike_fade_enabled"],
+    "BULLRUN_LONG":  ["bullrun_sleeve_enabled"],
+    "BEARRUN_SHORT": ["bearrun_sleeve_enabled"],
+    "FLIP":          ["flip_entry_enabled"],
+    "BOUNCE_LONG":   ["bounce_long_enabled"],     # OFF today — the engine can still stamp the label
+    "BULL_LONG":     ["bull_long_enabled"],       # OFF today
+}
+
+
+def _validate_toggles():
+    """A flag name that no longer exists returns True with NO exception and NO warning — the bug
+    back, silently. Validate the map against the real field list at import (deep review)."""
+    try:
+        import config
+        fields = set(getattr(config.trading_config.thresholds, "model_fields", {}) or {})
+        if not fields:
+            return
+        unknown = sorted({k for ks in SLEEVE_TOGGLE.values() for k in ks} - fields)
+        if unknown:
+            print(f"  ⚠ SLEEVE_TOGGLE names not found on SignalThresholds: {unknown} — those sleeves "
+                  f"are treated as ON. NUMBERS BELOW ARE SUSPECT.")
+    except Exception:                                             # noqa: BLE001
+        pass
+
+
+def _sleeve_on(strategy):
+    """True when EVERY master toggle for the sleeve is ON (or it has none, e.g. MOMENTUM)."""
+    # engine labels can be namespaced (`FLIP:FAN_RATIO_GATE`) — key on the family
+    keys = SLEEVE_TOGGLE.get(str(strategy)) or SLEEVE_TOGGLE.get(str(strategy).split(":")[0])
+    if not keys:
+        return True
+    try:
+        import config
+        th = config.trading_config.thresholds
+        for key in keys:
+            val = getattr(th, key, None)
+            if val is not None and not bool(val):
+                return False
+        return True
+    except Exception as e:                                        # noqa: BLE001
+        print(f"  ⚠ could not read {keys} ({e}) — KEEPING {strategy} fills. NUMBERS SUSPECT.")
+        return True
+
+
 def _n(d, c):
     return pd.to_numeric(d[c], errors="coerce")
 
@@ -105,6 +162,15 @@ def build(rearm_trail=True, entry_age_cap=60.0):
     d["pnl_"] = _n(d, "stack_pnl").fillna(_n(d, "pnl"))
 
     d = d[~d.pair.str.upper().isin(_blacklist("pair_blacklist", ""))]              # global blacklist
+
+    # drop fills from sleeves that are switched OFF today
+    _validate_toggles()
+    _off = sorted({s_ for s_ in d.entry_strategy.astype(str).unique() if not _sleeve_on(s_)})
+    if _off:
+        _drop = d.entry_strategy.astype(str).isin(_off)
+        print(f"  ℹ sleeve(s) OFF, excluded: {', '.join(_off)} "
+              f"({int(_drop.sum())} fills, ${d.loc[_drop, 'pnl_'].sum():+,.0f})")
+        d = d[~_drop]
 
     # gate 51 bands — momentum LONGs only
     ml = (d.entry_strategy == "MOMENTUM") & (d.direction == "LONG")
@@ -164,7 +230,8 @@ def build(rearm_trail=True, entry_age_cap=60.0):
 
     # restore live-passed boundary fills the ruler blocks
     # ⚠ these are concatenated AFTER the gate chain, so they bypass the blacklist, the gate-51
-    #   bands AND the 57l entry-age cap. Harmless today (both are SPIKE_FADE, never REARM) but
+    #   bands, the SLEEVE TOGGLES and the 57l entry-age cap. Harmless today (both are SPIKE_FADE,
+    #   which is ON, and never REARM) but
     #   a REARM row added here would silently dodge 57l. Deep review, DECISION_LOG 106.
     raw = pd.read_csv(POOL, low_memory=False)
     for pair, ts in RESTORE:

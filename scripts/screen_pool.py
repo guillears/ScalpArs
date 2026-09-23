@@ -18,7 +18,7 @@ Flip-short uses the real services.trading_engine._flip_filters with a field-audi
 import csv, sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
-from services.trading_engine import _flip_filters, long_heat_eval
+from services.trading_engine import _flip_filters, long_heat_eval, long_megacap_block
 
 RAW = "reports/COMBINED_momentum_flip_2026-06-16to28_DEDUP.csv"  # Jul 8: now spans 06-16..07-08 (batches appended; filename kept — all tooling points here)
 OUT = "reports/SCREENED_BASELINE.csv"
@@ -101,6 +101,10 @@ def sleeve(r):
             _o30 = _OFF30.get(str(r.get('opened_at'))[:13].replace('T', ' ') + ':00')
         if long_heat_eval(th, nf(r.get('entry_btc_ema20_slope')), nf(r.get('entry_btc_rsi_prev')), nf(r.get('entry_bull_pct')), _o30)[1]:
             return None  # LONG_HEAT_BLOCK
+        # Sep 23 — 🏦 MEGA-CAP EXCLUSION parity: the engine's own pure rule on the LIVE threshold; raw eligible-universe
+        # rank (entry_pair_rank); an unstamped rank fails open like the engine.
+        if long_megacap_block(th, nf(r.get('entry_pair_rank'))):
+            return None  # LONG_MEGACAP_BLOCK
         return 'MOM_LONG'
     # --- FLIP-short: the REAL engine flip filter ---
     if d == 'SHORT' and isflip(r):
@@ -228,7 +232,9 @@ def main():
     # COMBINED pool and all survive the screen (LIT +$339 W · PEPE −$98 L · HYPE −$77 L = +$164):
     # ML 38/$3440 -> 41/$3604. MS/FLIP unchanged (B9 had no mom-shorts, no flips; fades live in the
     # spike tables; BULLRUN_LONG is never screened here).
-    assert len(ml) == 41 and round(ml_net) == 3604, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 41/$3604 (v17: B9 appended) — screen wrong, NOT freezing"
+    # v18 (2026-09-23): 🏦 LONG_MEGACAP_BLOCK screens 4 rank≤10 momentum longs (HYPE r4 −$31 · HYPE r6 +$52 · SOL r3 +$25 ·
+    # HYPE r8 −$77 = −$31): ML 41/$3604 -> 37/$3635. MS/FLIP unchanged (the gate is momentum-LONG only).
+    assert len(ml) == 37 and round(ml_net) == 3635, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 37/$3635 (v18: mega-cap exclusion) — screen wrong, NOT freezing"
     # v15 (2026-09-18): momentum_short_pair_vol_max 1.0 -> 0.86 screens 5 more mom-shorts (MS 19/$794 -> 14/$756).
     assert len(ms) == 14 and round(ms_net) == 756, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 14/$756 (v15; pair-vol ceiling 0.86) — NOT freezing"
     fl = agg.get('FLIP_SHORT', [])
@@ -239,7 +245,7 @@ def main():
     # to the core-only cohort. Rewritten revert gate lives in CURRENT_STATE.
     # v12 (Jul 8): BTC trend-gap depth gate (flip_short_btc_trend_gap_min=-0.22) screens 12 more flips (42%WR/-$244)
     assert len(fl) == 31 and round(fl_net) == 692, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 31/$692 (v14, unchanged from v13) — trend-gap gate off? de-mux? NOT freezing"
-    print(f"\n✅ VALIDATION PASSED (v17: ML 41/$3604 + MS 14/$756 + FLIP 31/$692 + 0 pair-vol survivors). Freezing.")
+    print(f"\n✅ VALIDATION PASSED (v18: ML 37/$3635 + MS 14/$756 + FLIP 31/$692 + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

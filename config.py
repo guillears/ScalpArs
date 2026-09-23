@@ -1867,6 +1867,22 @@ class SignalThresholds(BaseModel):
     long_heat_btc_rsi_prev_min: float = 64.0
     long_heat_bull_pct_min: float = 80.0
     long_heat_exempt_off30d_max: float = -10.0
+    # 🏦 Sep-23 MEGA-CAP EXCLUSION (operator override at N=10 — below the N≥30 bar, acknowledged; DECISION_LOG 110).
+    # Refuse a momentum LONG (UNMATCHED + NONEXP_CALM3D doors only; every other sleeve/probe/flip/spike and the
+    # bull-run sleeve exempt) when the pair's RAW eligible-universe volume rank (entry_pair_rank, stamped before
+    # blacklist removal) is ≤ this. Evidence, current stack (116 momentum longs, Jun-17→Sep-23): rank ≤10 =
+    # 10·50%·−0.17%·−$131 over 9 windows (HYPE 5 · SOL 3 · ADA 1 · XRP 1; ex-ADA 9·44%·−$373; avg% negative in
+    # every era but B2 = the single ADA winner) vs rank 11-15 = 15·93%·+$1,920 · rank 16-20 = 10·50%·+$180 (not a
+    # monotone gradient: one bad top bucket). Thesis: a 5m EMA-stack signal on a BTC-beta mega-cap is BTC noise;
+    # the unmatched-long thesis is idiosyncratic flow, which lives in rank 11-60. Bull-run sleeve keeps the top 10.
+    # ⚠ FITTED to momentum-long fills → resets MOMENTUM_LONG's OOS anchor to the ship date (readiness tracker).
+    # 🔒 TIGHT REVERT (blocked signals leave no phantom → priced from the [LONG_MEGACAP_BLOCK] log lines on 1m
+    # klines at each batch review): re-admit (→ 0) if the blocked cohort runs ≥60% WR ∧ Σ>0 on N≥8 across ≥3
+    # windows. Counter LONG_MEGACAP_BLOCK. 0 = off. Fail-open on a missing rank. Ledger parity: current_stack_ledger +
+    # build_master_pool (frozen 10) + screen_pool. ⚠ probes are exempt by the shared guard: if majors_probe is ever re-enabled,
+    # BTC/ETH (rank 1-2) would enter as MAJORS_PROBE despite this gate (off today). ⚠ EVIDENCE SIGN rests on ONE fill: the 9
+    # pre-B12 fills were 5W/4L·+$89; B12's XRP −$220 turned the cohort negative (avg% was already negative in every era but B2).
+    long_megacap_rank_max: int = 0
     # 🚪 Sep-18 NARROWED OVERBOUGHT BAND (operator-directed override of the gate-49 three-phase protocol — 2 phases, both
     # rally starts; DECISION_LOG 2026-09-18 (71)). The `70-100:40` band of btc_rsi_adx_filter_long acts as "never long
     # while BTC RSI > 70" (btc_adx_max_long caps ADX at 40). It is now WAIVED when BTC's 72h return < r72_block_min

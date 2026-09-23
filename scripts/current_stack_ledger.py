@@ -180,6 +180,25 @@ def build(rearm_trail=True, entry_age_cap=60.0):
             | ((rsi >= 70) & ((r72 >= 5) | r72.isna())))
     d = d[~(ml & band.fillna(False))]
 
+    # 🏦 Sep-23 mega-cap exclusion — momentum LONGs only, RAW eligible-universe rank (entry_pair_rank), same
+    # pure rule the engine gate calls. Reads the live threshold so the ledger cannot go stale a 7th time.
+    try:
+        from services.trading_engine import long_megacap_block
+        import config as _cfg
+        _th = _cfg.trading_config.thresholds
+        if int(float(getattr(_th, 'long_megacap_rank_max', 0) or 0)) != 10:
+            print(f"  ⚠ live long_megacap_rank_max={getattr(_th, 'long_megacap_rank_max', 0)} but build_master_pool.py freezes 10 — "
+                  "stacked pool and this ledger DISAGREE until the builder constant is updated and the pool rebuilt.")
+        # element-wise on the column (not row-apply): an empty frame yields an empty Series, never a DataFrame
+        mega = _n(d, "entry_pair_rank").map(lambda v: long_megacap_block(_th, v)).astype(bool)
+        _mega_drop = ml.reindex(d.index).fillna(False) & mega
+        if int(_mega_drop.sum()):
+            print(f"  ℹ mega-cap exclusion (rank <= {getattr(_th, 'long_megacap_rank_max', 0)}): "
+                  f"{int(_mega_drop.sum())} momentum-long fill(s) dropped, ${d.loc[_mega_drop, 'pnl_'].sum():+,.0f}")
+        d = d[~_mega_drop]
+    except Exception as e:                                        # noqa: BLE001
+        print(f"  ⚠ could not apply the mega-cap exclusion ({e}) — NUMBERS BELOW INCLUDE rank<=10 momentum longs.")
+
     # bull-run sleeve — the FULL live gate list
     br = d.entry_strategy == "BULLRUN_LONG"
     rearm = d["entry_br_door"].eq("REARM") | ((d.era == "B4") & br)

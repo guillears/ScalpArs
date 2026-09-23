@@ -619,6 +619,32 @@ def long_heat_eval(th, btc_slope, btc_rsi_prev, bull_pct, btc_off30d):
     return flags, True
 
 
+def long_megacap_block(th, pair_rank):
+    """🏦 Sep-23 MEGA-CAP EXCLUSION (operator override at N=10, DECISION_LOG 110) — pure rule, shared by the
+    engine gate and scripts/current_stack_ledger.py (single source of truth).
+
+    A momentum LONG (UNMATCHED + NONEXP_CALM3D doors) is refused when the pair's RAW eligible-universe volume
+    rank (`entry_pair_rank`, stamped BEFORE blacklist removal — the number the evidence was computed on, NOT
+    br_rank) is ≤ long_megacap_rank_max. Evidence: rank ≤10 = 10·50%·−0.17%·−$131 over 9 windows (HYPE 5 · SOL 3
+    · ADA 1 · XRP 1; ex-ADA 9·44%·−$373) vs rank 11-15 = 15·93%·+$1,920. Thesis: a 5m EMA-stack signal on a
+    BTC-beta mega-cap is BTC noise; the unmatched thesis is idiosyncratic flow. The bull-run sleeve keeps the
+    top 10 — that is its universe. 0 = off. FAIL-OPEN on a missing/garbage rank (a block never fires on data
+    it does not have). Boundary inclusive (rank == N blocks)."""
+    try:
+        n = int(float(getattr(th, 'long_megacap_rank_max', 0) or 0))
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if n <= 0:
+        return False
+    try:
+        r = int(float(pair_rank))
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if r <= 0:
+        return False
+    return r <= n
+
+
 def bullrun_door_age_min(now_ts, rearm_t0):
     """🕐 Sep-21 (57l) — minutes the REARM door has been open, or None when it is not a REARM episode.
 
@@ -7048,6 +7074,25 @@ class TradingEngine:
                         f"{entry_btc_rsi_prev} / bull {entry_bull_pct}% all hot, BTC {_lh_off30d}% vs 30d high (not washed out)")
             try:
                 self._record_filter_block("LONG_HEAT_BLOCK", "LONG")
+            except Exception:
+                pass
+            return None
+
+        # 🏦 Sep-23 MEGA-CAP EXCLUSION (operator override at N=10; config.py long_megacap_rank_max evidence
+        # comment; DECISION_LOG 110). Momentum LONGs only — same exemption guard as the heat block above, so
+        # every sleeve/probe/spike/flip and the bull-run sleeve (whose universe IS the top 10) pass untouched.
+        # Rule = long_megacap_block (pure, shared with the ledger). Uses the RAW rank stamped on the fill.
+        # Blocked signals leave NO phantom → the revert read re-sims the [LONG_MEGACAP_BLOCK] log lines on 1m
+        # klines at each batch review (re-admit at ≥60% WR ∧ Σ>0 on N≥8 across ≥3 windows).
+        if (direction == "LONG" and not flip_source and not bull_long and not bounce_long
+                and not bullrun_long and not spike_chase_probe and not spike_fade and not spike_bounce
+                and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
+                         or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe)
+                and long_megacap_block(config.trading_config.thresholds, entry_pair_rank)):
+            logger.info(f"[LONG_MEGACAP_BLOCK] {pair}: momentum LONG blocked — eligible-universe rank {entry_pair_rank} "
+                        f"<= {getattr(config.trading_config.thresholds, 'long_megacap_rank_max', 0)} (mega-cap = BTC beta)")
+            try:
+                self._record_filter_block("LONG_MEGACAP_BLOCK", "LONG")
             except Exception:
                 pass
             return None

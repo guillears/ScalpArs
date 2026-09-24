@@ -773,7 +773,13 @@ class SignalThresholds(BaseModel):
     # de-sized Δ ≈ +$344). Shipped on operator call with a TIGHT pre-committed revert:
     # 🔒 at N≥6 blocked-in-[45,50) candidates (each logs [SPIKE_FADE_BRSI] with entry px),
     # price-replay them under the fade exit stack — WR≥55% ∨ Σ>0 → ceiling back to 50.
-    spike_fade_max_btc_rsi: float = 45.0
+    # ✅ Sep-24 REVERT GATE FIRED → 50 (DECISION_LOG 112): 9 [SPIKE_FADE_BRSI] triggers in [45,50) (Sep-20→24, 7 windows,
+    # 3 days) priced on TICKS under the live fade stack incl. late-arm (replica matched all 5 live fades on sign) =
+    # 9·89%·Σ+6.42% (ex-DRIFT +4.76: 8·88%·+1.67). Checked against the LATER fade gates: 6/9 also clear BD13 +
+    # FRESHBREAK = 6·100%·Σ+6.73% (HUMA, the one loser, dies at BD13 anyway). ≥50 stays blocked: 17·65%·Σ−4.69.
+    # Fade frequency ≈ 1.2/day → ≈ 2.6/day. 🔒 TIGHT RE-REVERT: fresh fades opened at BTC RSI [45,50) (entry_btc_rsi
+    # stamp) at N≥10 — WR<55% ∨ Σ<0 → back to 45. Window units: same-minute fires count once.
+    spike_fade_max_btc_rsi: float = 50.0
     # 🔒 FADE 24h-VOLUME CEILING (Sep-14, operator DISCIPLINE-OVERRIDE — acknowledged; DECISION_LOG 55):
     # block a SPIKE_FADE when the pair's 24h USD volume at fire ≥ this. Evidence at ship (screened,
     # all eras): large-cap fades N=6 · 2W/4L · −$558 (DEXE/VTHO = the EMA13 tick-1 bug since fixed;

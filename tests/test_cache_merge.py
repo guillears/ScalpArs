@@ -20,6 +20,9 @@ MUST_SURVIVE = {
     "_trailing_pullback_first_pnl_pct": 0.31,
     "runner_peak_stretch": 0.42,
     "_belock_taint": True,                        # Jul-28 fix (regression guard)
+    "fade_late_peak": 0.31,                       # Sep-24 fade late-arm: post-X running peak
+    "fade_late_armed_at": datetime(2026, 9, 24, 3, 0, 0),
+    "_age_min": 17.5,
 }
 
 

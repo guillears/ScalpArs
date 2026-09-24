@@ -645,6 +645,153 @@ def long_megacap_block(th, pair_rank):
     return r <= n
 
 
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# ⏱ Sep-24 FADE LATE-ARM (operator override at N=2, DECISION_LOG 111). A SPIKE_FADE still unarmed
+# X minutes after entry arms its runner trail at a LOWER peak, measured on the peak reached AFTER X.
+# Pure helpers shared by the realtime exit, the master-pool builder and the ledger; tests pin them
+# (tests/test_fade_late_arm.py). Evidence: of 61 kept fades, 54 close before 15 min (untouched); of the
+# 12 still unarmed at 15, the ones whose post-15 peak sits in [0.30, 0.40) and then lose are rescued
+# (PROVE −1.53→≈+0.22, SENT −0.16→≈+0.23); 7 late winners are EXPOSED to an earlier trail (worst −$147,
+# path not stamped). Every late exit is priced against today's stack by the base-stack shadow.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+def _finite(x):
+    try:
+        v = float(x)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return v if v == v and v not in (float('inf'), float('-inf')) else None
+
+
+def fade_late_arm_level(th, entry_strategy, age_min):
+    """Late arm level for a SPIKE_FADE aged >= X minutes, else None (rule absent). 0/missing = off;
+    a level at or above the normal short arm is meaningless and treated as off."""
+    if (entry_strategy or "") != "SPIKE_FADE":
+        return None
+    x = _finite(getattr(th, 'spike_fade_late_arm_after_min', 0) or 0)
+    lvl = _finite(getattr(th, 'spike_fade_late_arm_peak', 0) or 0)
+    base = _finite(getattr(th, 'runner_trail_short_arm_peak', 0.45) or 0.45) or 0.45
+    age = _finite(age_min)
+    if not x or not lvl or x <= 0 or lvl <= 0 or lvl >= base or age is None or age < x:
+        return None
+    return lvl
+
+
+def next_fade_late_peak(th, entry_strategy, age_min, prev, pnl):
+    """Running max P&L SINCE minute X (None before X / for non-fades). The first reading after X seeds
+    it — even negative — so an early pop that has since collapsed can never arm at minute X."""
+    if fade_late_arm_level(th, entry_strategy, age_min) is None:
+        return prev
+    v = _finite(pnl)
+    if v is None:
+        return prev
+    return v if prev is None else max(prev, v)
+
+
+def short_runner_arm(th, entry_strategy, age_min, all_peak, late_peak):
+    """(armed, peak_for_floor, is_late) for the non-flip SHORT runner trail. The normal arm (with the
+    engine's −0.005 tolerance) always wins and uses the since-entry peak; otherwise a fade past X arms on
+    its post-X peak."""
+    base = _finite(getattr(th, 'runner_trail_short_arm_peak', 0.45) or 0.45) or 0.45
+    ap = _finite(all_peak) or 0.0
+    if ap >= base - 0.005:
+        return True, ap, False
+    lvl = fade_late_arm_level(th, entry_strategy, age_min)
+    lp = _finite(late_peak)
+    if lvl is not None and lp is not None and lp >= lvl - 0.005:
+        return True, lp, True
+    return False, ap, False
+
+
+def short_trail_floor(th, peak, atr):
+    """(floor, raw_floor, capped) — the live non-flip SHORT runner floor: give-back N×ATR capped at
+    frac×peak, optional BE ratchet. Mirrors the realtime block verbatim (kept inline there)."""
+    n = _finite(getattr(th, 'runner_trail_short_atr_mult', 0.5) or 0.5) or 0.5
+    frac = _finite(getattr(th, 'runner_trail_short_giveback_frac', 0.0) or 0.0) or 0.0
+    gb = n * (atr or 0.0)
+    capped = frac > 0 and peak > 0 and frac * peak < gb
+    if capped:
+        gb = frac * peak
+    raw = peak - gb
+    floor = raw
+    if getattr(th, 'runner_trail_short_be_ratchet_enabled', False):
+        floor = max(floor, _finite(getattr(th, 'runner_trail_short_be_lock_pct', 0.10) or 0.10) or 0.10)
+    return floor, raw, capped
+
+
+def fade_late_arm_cf(th, pnl_pct, peak_pnl, peak_min, dur_min, atr):
+    """History counterfactual from STAMPS ONLY. Returns the late-armed exit P&L% for a fade that never
+    armed, stayed open past X and whose (max) peak came AFTER X inside [late level, normal arm); else None.
+    Exposed late winners (armed normally after X) are deliberately NOT repriced — their post-X path is not
+    stamped, so the CF is optimistic by construction (documented at every consumer)."""
+    x = _finite(getattr(th, 'spike_fade_late_arm_after_min', 0) or 0)
+    lvl = fade_late_arm_level(th, "SPIKE_FADE", x if x else None)
+    base = _finite(getattr(th, 'runner_trail_short_arm_peak', 0.45) or 0.45) or 0.45
+    pk, pm, dm, a = _finite(peak_pnl), _finite(peak_min), _finite(dur_min), _finite(atr)
+    if lvl is None or pk is None or pm is None or dm is None or a is None or a <= 0:
+        return None
+    if dm < x or pm <= x or pk >= base - 0.005 or pk < lvl - 0.005:
+        return None
+    floor, _, _ = short_trail_floor(th, pk, a)
+    if floor < 0:
+        return None
+    lived = _finite(pnl_pct)
+    if lived is not None and lived >= floor:     # closed at/above the late floor by another exit → the trail never bound
+        return None
+    return floor
+    # ⚠ BLIND CLASS (deep review I3): a fade whose since-entry peak came BEFORE X but which later made a
+    # smaller post-X peak inside [late, 0.40) arms live yet is invisible here (only the max peak is stamped).
+    # So pool/ledger UNDERCOUNT the rule's reach both ways; the revert gate reads the fade_late_base_* shadow.
+
+
+def fade_base_shadow_seed(th, peak_pnl, atr, stop=None):
+    """State for the post-exit shadow of TODAY's fade stack (stop, normal arm, trail, HARD_TP). `stop` = the order's
+    own stamped stop (review M3) — falls back to spike_fade_sl_pct. HARD_TP is snapshotted as the live stack runs it:
+    off, the per-side ladder, or (empty ladder string) the legacy flat cap at hard_tp_pct."""
+    _htp_on = bool(getattr(th, 'hard_tp_enabled', False))
+    _raw = (getattr(th, 'hard_tp_ladder_short', '') or '').strip()
+    _st = _finite(stop)
+    return dict(peak=_finite(peak_pnl) or 0.0, atr=_finite(atr) or 0.0, th=th, seen=0,
+                stop=_st if (_st is not None and _st < 0) else (_finite(getattr(th, 'spike_fade_sl_pct', -1.5) or -1.5) or -1.5),
+                arm=_finite(getattr(th, 'runner_trail_short_arm_peak', 0.45) or 0.45) or 0.45,
+                use_atr=bool(getattr(th, 'runner_trail_short_use_atr', True)),
+                rungs=((parse_hard_tp_ladder(_raw) or DEFAULT_LADDER_RUNGS) if (_htp_on and _raw) else None),
+                flat_cap=(_finite(getattr(th, 'hard_tp_pct', 0) or 0) if (_htp_on and not _raw) else None))
+
+
+def fade_base_shadow_step(st, pnl):
+    """Advance the shadow by one price reading (net P&L%). Returns (exit_pnl, reason) when today's stack
+    would have closed — STOP / TRAIL / LADDER — else None. Same order as the realtime path: stop first
+    (engine epsilon +0.01), then the trail/ladder floor from the peak BEFORE this reading, then peak update."""
+    v = _finite(pnl)
+    if v is None:
+        return None
+    st['seen'] = st.get('seen', 0) + 1
+    if v <= st['stop'] + 0.01:
+        return v, "STOP"
+    if st.get('flat_cap') and v >= st['flat_cap']:
+        return v, "HARD_TP"
+    pk = st['peak']
+    tf = None
+    if pk >= st['arm'] - 0.005 and st['atr'] > 0 and st.get('use_atr', True):
+        tf, _, _ = short_trail_floor(st['th'], pk, st['atr'])
+    lf = hard_tp_ladder_floor(st['rungs'], pk)[0] if st.get('rungs') else None     # the ladder needs no ATR
+    cand = [(f, w) for f, w in ((tf, "TRAIL"), (lf, "LADDER")) if f is not None]
+    if cand:
+        floor, why = max(cand, key=lambda t: t[0])
+        if floor >= 0 and v <= floor:
+            return v, why
+    if v > pk:
+        st['peak'] = v
+    return None
+
+
+def fade_shadow_timeout_reason(seen, resumed):
+    """Reason stamped when the shadow reaches its horizon unresolved (review I1): NO_FEED when no fresh price was
+    ever observed (a pruned/frozen feed must not read as 'base = late', which biases the revert gate to neutral)."""
+    why = "TIMEOUT" if (seen or 0) > 0 else "NO_FEED"
+    return f"{why}_RESUMED" if resumed else why
+
+
 def bullrun_door_age_min(now_ts, rearm_t0):
     """🕐 Sep-21 (57l) — minutes the REARM door has been open, or None when it is not a REARM episode.
 
@@ -1668,6 +1815,7 @@ class TradingEngine:
         self._last_scan_time: float = 0
         self._initialized = False
         self._post_exit_tracking: Dict[int, dict] = {}
+        self._fade_late_shadow: Dict[int, dict] = {}   # ⏱ Sep-24: base-stack shadow of every late-armed fade exit
         self._rsi3_history: Dict[int, list] = {}  # per-order RSI history for 3-drop detection
         # Signal re-validation tracking (Amendment #7 / Apr 18)
         # Tracks entries aborted after maker timeout because the signal went stale.
@@ -1852,6 +2000,7 @@ class TradingEngine:
             await self.save_state(db)
 
         await self._recover_post_exit_tracking(db)
+        await self._recover_fade_late_shadow(db)
         self._initialized = True
 
     async def _recover_post_exit_tracking(self, db: AsyncSession):
@@ -8817,6 +8966,11 @@ class TradingEngine:
                     for _lbl in ['a', 'b', 'c', 'd', 'e', 'f', 'g']:
                         setattr(order, f'phantom_tick_{_lbl}_triggered_at', cached.get(f'phantom_tick_{_lbl}_triggered_at'))
                         setattr(order, f'phantom_tick_{_lbl}_pnl', cached.get(f'phantom_tick_{_lbl}_pnl'))
+                    # ⏱ Sep-24 FADE LATE-ARM: stamp the late arm, and price every LATE exit against today's stack
+                    if cached.get('fade_late_armed_at') is not None:
+                        order.fade_late_armed_at = cached.get('fade_late_armed_at')
+                        if cached.get('fade_late_peak') is not None:
+                            order.fade_late_arm_peak = round(float(cached['fade_late_peak']), 4)
                     if cached.get('peak_ema5_dist_pct') is not None:
                         order.peak_ema5_dist_pct = cached['peak_ema5_dist_pct']
                     if cached.get('peak_ema5_slope_pct') is not None:
@@ -8965,6 +9119,10 @@ class TradingEngine:
                 logger.warning(f"[PORTFOLIO_CLOSE] Failed to log live balance: {e}")
 
         self._register_post_exit_tracking(order, reason)
+        # ⏱ Sep-24 (review I2): price every LATE exit against today's stack — seeded HERE (after phase 2, no
+        # dependence on the realtime cache still holding the order) and prefix-safe (FL_/FLIP_/BR_).
+        if _strip_reason_prefixes(reason).startswith("RUNNER_TRAIL_LATE"):
+            self._seed_fade_late_shadow(order, resumed=False)
         self._rsi3_history.pop(order.id, None)
 
         return order
@@ -9065,12 +9223,90 @@ class TradingEngine:
     # The phantom->probe pipeline matured (DEEPGAP graduated as probe #13 the same day); probes
     # are the live instrument (real fills/fees). Final phantom report archived in reports/.
 
+    # ⏱ Sep-24 FADE LATE-ARM — BASE-STACK SHADOW. After a RUNNER_TRAIL_LATE exit, keep watching the pair (up to
+    # FADE_LATE_SHADOW_MIN) and record what TODAY's fade stack would have done: STOP / TRAIL / LADDER / TIMEOUT.
+    # Every late decision is then rescued (base worse) or cut (base better) straight from the order row — the
+    # revert gate reads it with no replay. Monitor-loop price resolution (≈1 s), not ticks: good enough for a
+    # scorekeeper, noted in the gate text. Restart: re-seeded conservatively, reason suffixed _RESUMED.
+    FADE_LATE_SHADOW_MIN = 240
+
+    def _seed_fade_late_shadow(self, order, resumed: bool):
+        try:
+            tc = config.trading_config
+            notional = (order.entry_price or 0) * (order.quantity or 0) or 1
+            fee_drag = (((order.entry_fee or 0) + notional * getattr(tc, 'taker_fee', tc.trading_fee)) / notional) * 100
+            closed = order.closed_at or datetime.utcnow()
+            closed = closed.replace(tzinfo=None) if closed.tzinfo is not None else closed
+            if order.id in self._fade_late_shadow:
+                return
+            st = fade_base_shadow_seed(tc.thresholds, max(float(order.peak_pnl or 0.0), 0.0), order.entry_atr_pct,
+                                       stop=getattr(order, 'stop_loss', None))
+            st.update(order_id=order.id, pair=order.pair, entry=float(order.entry_price), fee_drag=fee_drag,
+                      closed_at=closed, until=closed + timedelta(minutes=self.FADE_LATE_SHADOW_MIN), resumed=resumed,
+                      last_pnl=float(order.pnl_percentage or 0.0))
+            self._fade_late_shadow[order.id] = st
+        except Exception as e:
+            logger.error(f"[FADE_LATE_SHADOW] seed failed for order {getattr(order, 'id', '?')}: {e}")
+
+    async def _persist_fade_late_async(self, order_id: int, armed_at, peak) -> None:
+        """Fire-and-forget (review I5): the arm stamp + running post-X peak, own session, never on the tick loop."""
+        try:
+            async with AsyncSessionLocal() as _fla_db:
+                await locked_execute_commit(_fla_db, update(Order).where(Order.id == order_id).values(
+                    fade_late_armed_at=armed_at, fade_late_arm_peak=round(float(peak), 4)))
+        except Exception as e:
+            logger.debug(f"[FADE_LATE_ARM] order {order_id}: persist failed ({e}) — cache still carries it")
+
+    async def _recover_fade_late_shadow(self, db: AsyncSession):
+        try:
+            cutoff = datetime.utcnow() - timedelta(minutes=self.FADE_LATE_SHADOW_MIN)
+            res = await db.execute(select(Order).where(
+                Order.status == 'CLOSED', Order.close_reason.like('%RUNNER_TRAIL_LATE%'),
+                Order.fade_late_base_reason.is_(None), Order.closed_at >= cutoff))
+            for o in res.scalars().all():
+                self._seed_fade_late_shadow(o, resumed=True)
+        except Exception as e:
+            logger.warning(f"[FADE_LATE_SHADOW] recovery failed: {e}")
+
+    async def _update_fade_late_shadow(self):
+        if not self._fade_late_shadow:
+            return
+        now = datetime.utcnow()
+        for oid in list(self._fade_late_shadow.keys()):
+            st = self._fade_late_shadow[oid]
+            try:
+                done = None
+                tr = websocket_tracker.get_tracker(st['pair'])
+                _fresh = bool(tr and tr.last_price and tr.last_price > 0 and getattr(tr, 'last_tick', None)
+                              and (now - tr.last_tick).total_seconds() <= 30)          # review I1: frozen feed ≠ a price
+                if _fresh:
+                    pnl = ((st['entry'] - tr.last_price) / st['entry']) * 100 - st['fee_drag']   # fades are SHORT
+                    st['last_pnl'] = pnl
+                    done = fade_base_shadow_step(st, pnl)
+                if done is None and now >= st['until']:
+                    done = (st['last_pnl'], fade_shadow_timeout_reason(st.get('seen'), st.get('resumed')))
+                elif done is not None and st.get('resumed'):
+                    done = (done[0], f"{done[1]}_RESUMED")
+                if done is None:
+                    continue
+                base_pnl, why = done
+                async with AsyncSessionLocal() as _fs_db:
+                    await locked_execute_commit(_fs_db, update(Order).where(Order.id == oid).values(
+                        fade_late_base_pnl=round(float(base_pnl), 4), fade_late_base_reason=why,
+                        fade_late_base_min=round((now - st['closed_at']).total_seconds() / 60.0, 2)))
+                logger.info(f"[FADE_LATE_SHADOW] {st['pair']} order {oid}: today's stack would have exited {why} at "
+                            f"{base_pnl:+.3f}% ({(now - st['closed_at']).total_seconds() / 60.0:.1f} min after the late exit)")
+                del self._fade_late_shadow[oid]
+            except Exception as e:
+                logger.error(f"[FADE_LATE_SHADOW] {st.get('pair')} order {oid}: {e}")
+
     async def update_post_exit_tracking(self, db: AsyncSession):
         """Check prices for recently closed BE trades and update peak/trough/timing. Called from monitor loop.
 
         Uses isolated DB sessions for all queries and writes so that failures
         never corrupt the shared monitor-loop session / connection pool.
         """
+        await self._update_fade_late_shadow()   # ⏱ Sep-24: independent of the post-exit whitelist/horizon
         if not self._post_exit_tracking:
             return
 
@@ -10698,7 +10934,10 @@ class TradingEngine:
         try:
             # Sep-7 full-review: prune subscriptions that left the scan set and hold no open
             # order (>150 threshold inside — routine top-N rotation never churns reconnects).
-            _ws_keep = {p['pair'] for p in top_pairs} | set(_open_orders_cache.keys())
+            _ws_keep = ({p['pair'] for p in top_pairs} | set(_open_orders_cache.keys())
+                        # ⏱ Sep-24 (review I1): the fade-late shadow and post-exit trackers need their feed too
+                        | {v.get('pair') for v in self._fade_late_shadow.values()}
+                        | {v.get('pair') for v in self._post_exit_tracking.values()})
             await websocket_tracker.prune_to(_ws_keep)
         except Exception as _pr_err:
             logger.debug(f"[WS_TRACKER] prune skipped: {_pr_err}")
@@ -13966,6 +14205,19 @@ class TradingEngine:
                     if _ema5_prev3 and _ema5_prev3 > 0:
                         order_info['peak_ema5_slope_pct'] = round((_ema5_val - _ema5_prev3) / _ema5_val * 100, 4)
             order_info['peak_pnl'] = current_peak
+            # ⏱ Sep-24 FADE LATE-ARM: age + running peak SINCE minute X (SPIKE_FADE only; pure helper keeps
+            # it None before X so an early pop that collapsed can never arm at X). Fail-open.
+            if (order_info.get('entry_strategy') or "") == "SPIKE_FADE":
+                try:
+                    _fl_open = order_info.get('opened_at')
+                    if _fl_open is not None:
+                        _fl_open = _fl_open.replace(tzinfo=None) if _fl_open.tzinfo is not None else _fl_open
+                        order_info['_age_min'] = (datetime.utcnow() - _fl_open).total_seconds() / 60.0
+                        order_info['fade_late_peak'] = next_fade_late_peak(
+                            config.trading_config.thresholds, "SPIKE_FADE", order_info['_age_min'],
+                            order_info.get('fade_late_peak'), pnl_pct)
+                except Exception:
+                    pass
 
             # ===== BE-LOCK SHADOW — in-trade tick (Jul 28, observation-only) =====
             # Records, per arm threshold X, the FIRST minute P&L touched +X% and the
@@ -14790,18 +15042,40 @@ class TradingEngine:
                 try:
                     _rs_th = config.trading_config.thresholds
                     if getattr(_rs_th, 'runner_trail_short_enabled', False) and getattr(_rs_th, 'runner_trail_short_use_atr', True):
-                        _rs_arm = float(getattr(_rs_th, 'runner_trail_short_arm_peak', 0.45) or 0.45)
                         _rs_amin = float(getattr(_rs_th, 'runner_trail_short_atr_min', 0.0) or 0.0)
                         _rs_atr = order_info.get('entry_atr_pct')
-                        if (current_peak >= _rs_arm - 0.005 and _rs_atr and _rs_atr > 0
+                        # ⏱ Sep-24: the ARM decision goes through short_runner_arm — the normal arm (since-entry
+                        # peak, −0.005 tolerance) always wins; a SPIKE_FADE past X arms on its post-X peak. The
+                        # floor below is built from whichever peak armed it (_rs_pk). Non-fades: identical to before.
+                        _rs_armed, _rs_pk, _rs_late = short_runner_arm(
+                            _rs_th, order_info.get('entry_strategy'), order_info.get('_age_min'),
+                            current_peak, order_info.get('fade_late_peak'))
+                        if (_rs_armed and _rs_atr and _rs_atr > 0
                                 and (_rs_amin <= 0 or _rs_atr >= _rs_amin)):
+                            if _rs_late and not order_info.get('fade_late_armed_at'):
+                                order_info['fade_late_armed_at'] = datetime.utcnow()
+                                logger.info(f"[FADE_LATE_ARM] {pair}: armed at post-X peak {_rs_pk:.3f}% "
+                                            f"(age {order_info.get('_age_min') or 0:.1f} min, since-entry peak {current_peak:.3f}%)")
+                            # Review I5/M1: persist the arm stamp and the RUNNING post-X peak (throttled to +0.01 steps)
+                            # OFF the websocket receive loop — a restart then resumes the same floor, never a lower one.
+                            if order_info.get('fade_late_armed_at') and (
+                                    order_info.get('_fl_peak_persisted') is None
+                                    or (order_info.get('fade_late_peak') or 0) >= order_info['_fl_peak_persisted'] + 0.01):
+                                order_info['_fl_peak_persisted'] = order_info.get('fade_late_peak') or _rs_pk
+                                try:
+                                    _flt = asyncio.create_task(self._persist_fade_late_async(
+                                        order_id, order_info['fade_late_armed_at'], order_info['_fl_peak_persisted']))
+                                    self._bg_tasks.add(_flt)
+                                    _flt.add_done_callback(self._bg_tasks.discard)
+                                except Exception as _fla_err:
+                                    logger.debug(f"[FADE_LATE_ARM] {pair}: persist task spawn failed ({_fla_err})")
                             _rs_n = float(getattr(_rs_th, 'runner_trail_short_atr_mult', 0.5) or 0.5)
                             _rs_gb = _rs_n * _rs_atr
                             _rs_frac = float(getattr(_rs_th, 'runner_trail_short_giveback_frac', 0.0) or 0.0)
-                            _rs_capped = (_rs_frac > 0 and current_peak > 0 and _rs_frac * current_peak < _rs_gb)
+                            _rs_capped = (_rs_frac > 0 and _rs_pk > 0 and _rs_frac * _rs_pk < _rs_gb)
                             if _rs_capped:
-                                _rs_gb = _rs_frac * current_peak
-                            _rs_raw_floor = current_peak - _rs_gb
+                                _rs_gb = _rs_frac * _rs_pk
+                            _rs_raw_floor = _rs_pk - _rs_gb
                             _rs_floor = _rs_raw_floor
                             if getattr(_rs_th, 'runner_trail_short_be_ratchet_enabled', False):
                                 _rs_floor = max(_rs_floor, float(getattr(_rs_th, 'runner_trail_short_be_lock_pct', 0.10) or 0.10))
@@ -14809,9 +15083,9 @@ class TradingEngine:
                             if _rs_floor < 0:
                                 if not order_info.get('_negfloor_ride_logged'):
                                     order_info['_negfloor_ride_logged'] = True
-                                    logger.warning(f"[RUNNER_NEGFLOOR_RIDE] {pair} SHORT: floor {_rs_floor:.3f}% < 0 (peak {current_peak:.2f} < giveback {_rs_gb:.2f}) — trail SUPPRESSED, hard SL governs until peak outgrows giveback")
+                                    logger.warning(f"[RUNNER_NEGFLOOR_RIDE] {pair} SHORT: floor {_rs_floor:.3f}% < 0 (peak {_rs_pk:.2f} < giveback {_rs_gb:.2f}) — trail SUPPRESSED, hard SL governs until peak outgrows giveback")
                             elif pnl_pct <= _rs_floor:
-                                logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} SHORT(non-flip): pnl {pnl_pct:.3f}% <= floor {_rs_floor:.3f}% (peak={current_peak:.2f}%, giveback={_rs_gb:.3f}%) -> close")
+                                logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} SHORT(non-flip){' LATE-ARM' if _rs_late else ''}: pnl {pnl_pct:.3f}% <= floor {_rs_floor:.3f}% (peak={_rs_pk:.2f}%, giveback={_rs_gb:.3f}%) -> close")
                                 order_info['_closing_in_progress'] = True
                                 async with AsyncSessionLocal() as db:
                                     _rsr = await db.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))
@@ -14819,7 +15093,8 @@ class TradingEngine:
                                     if _rs_order:
                                         _rs_order.runner_trail_bound = ("lock" if _rs_floor > _rs_raw_floor
                                                                         else "cap" if _rs_capped else "atr")
-                                        _rs_closed = await self.close_position(db, _rs_order, current_price, "RUNNER_TRAIL")
+                                        _rs_closed = await self.close_position(db, _rs_order, current_price,
+                                                                               "RUNNER_TRAIL_LATE" if _rs_late else "RUNNER_TRAIL")
                                         if _rs_closed:
                                             logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} SHORT(non-flip) closed at {current_price} pnl={pnl_pct:.4f}%")
                                             async with _cache_lock:
@@ -15151,6 +15426,10 @@ class TradingEngine:
                 # its first-touch time is unrecoverable, so taint it (all six columns
                 # stay NULL, the CF excludes it). Fresh trades track from tick 1.
                 '_belock_taint': bool((order.peak_pnl or 0.0) >= 0.15),
+                # ⏱ Sep-24 fade late-arm: resume an arm that fired before a restart. fade_late_arm_peak holds the
+                # RUNNING post-X peak (persisted in +0.01 steps once armed), so the floor resumes where it was.
+                'fade_late_armed_at': getattr(order, 'fade_late_armed_at', None),
+                'fade_late_peak': getattr(order, 'fade_late_arm_peak', None),
                 # May 17: post-arm-min tracking (resumed if already populated)
                 'be_armed': order.post_arm_min_pnl_pct is not None,
                 'post_arm_min_pnl': order.post_arm_min_pnl_pct,
@@ -15316,9 +15595,12 @@ class TradingEngine:
                             # per-trade persistence-dedup + timer keys were wiped every ~1s rebuild.
                             # _htp_persisted_lvl was ACTIVE damage — any order past a HARD_TP rung
                             # re-fired its persist UPDATE+commit once per second for the trade's life.
+                            # ⏱ Sep-24: fade late-arm state rides the rebuild too (else the post-X peak and the
+                            # arm stamp are wiped every ~1s and the late arm can never fire).
                             for _key in ('_htp_persisted_lvl', '_sp_lock_peak_persisted',
                                          '_trailing_pullback_first_at', '_trailing_pullback_first_pnl_pct',
-                                         'runner_peak_stretch'):
+                                         'runner_peak_stretch', 'fade_late_peak', 'fade_late_armed_at', '_age_min',
+                                         '_fl_peak_persisted'):
                                 if old_info.get(_key) is not None:
                                     new_info[_key] = old_info[_key]
                             if new_info['direction'] == 'LONG':

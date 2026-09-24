@@ -578,6 +578,8 @@
     "spike_fade_lev_mult": 1.0,
     "spike_fade_sl_pct": -1.5,
     "spike_fade_tripwire_pct": -2.5,
+    "spike_fade_late_arm_after_min": 15.0,
+    "spike_fade_late_arm_peak": 0.3,
     "spike_sl_pct": -1.2,
     "spike_rsi_cool_arm": 75.0,
     "spike_rsi_cool_drop": 10.0,

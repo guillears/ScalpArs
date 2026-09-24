@@ -29,7 +29,9 @@ EQ = 3000.0
 ERAS = ["BASE", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10"] + [f"B{n}" for n in range(11, 30)]
 # fills that PASSED the live gate but the stack ruler blocks on stamped boundary values
 # (ADA-weakcap divergence class — live governs for an as-lived ledger)
-RESTORE = [("QTUMUSDT", "2026-09-19T00:00:51"), ("API3USDT", "2026-09-19T06:23:54")]
+RESTORE = [("QTUMUSDT", "2026-09-19T00:00:51"), ("API3USDT", "2026-09-19T06:23:54"),
+           ("ZILUSDT", "2026-09-23T09:04:05")]   # Sep-24: B12 fade, live-passed; builder blocks it FADE_FRESHBREAK on
+                                                 # stamped rsi_prev 40.6 / pgap −0.05 (same boundary class, +$237)
 FADE_CAP_REPRICE = {("SANDUSDT", "2026-09-19T00:04:12"): -185.0}   # gate 50b cap restored
 
 # 🕐 57l REARM entry-age cap. The door clock is NOT in the trade data for historical fills —
@@ -148,6 +150,30 @@ def build(rearm_trail=True, entry_age_cap=60.0):
         _b = pd.read_csv(b, low_memory=False)
         _b["stack_keep"] = True; _b["is_probe"] = False; _b["stack_pnl"] = _b["pnl"]
         _b["era"] = f"B{11 + i}"        # each --batch is its OWN era; they used to collide into B11
+        # ⏱ Sep-24 FADE LATE-ARM parity for batch rows (the pool builder applies the same pure CF to archived eras):
+        # a never-armed fade open past X whose post-X peak sits in [late, 0.40) is re-priced to the late trail floor.
+        # Optimistic by design (exposed late winners are not repriced — their post-X path is not stamped).
+        try:
+            from services.trading_engine import fade_late_arm_cf
+            import config as _cfg
+            _fth = _cfg.trading_config.thresholds
+            if (float(getattr(_fth, 'spike_fade_late_arm_after_min', 0) or 0), float(getattr(_fth, 'spike_fade_late_arm_peak', 0) or 0)) != (15.0, 0.30):
+                print(f"  ⚠ live fade late-arm ({getattr(_fth, 'spike_fade_late_arm_after_min', 0)} min / {getattr(_fth, 'spike_fade_late_arm_peak', 0)}) "
+                      "differs from build_master_pool.py's frozen 15 / 0.30 — pool and batch rows are priced differently.")
+            _o = pd.to_datetime(_b["opened_at"], errors="coerce")
+            _pm = (pd.to_datetime(_b.get("peak_reached_at"), errors="coerce") - _o).dt.total_seconds() / 60
+            _dm = (pd.to_datetime(_b["closed_at"], errors="coerce") - _o).dt.total_seconds() / 60
+            # review I4: fills that already ran under the rule keep their REAL P&L (slippage included)
+            _ran = (_b.get("fade_late_armed_at", pd.Series(index=_b.index, dtype=object)).notna()
+                    | _b["close_reason"].astype(str).str.contains("RUNNER_TRAIL_LATE", na=False))
+            for j in _b.index[_b.entry_strategy.eq("SPIKE_FADE") & ~_ran]:
+                r = _b.loc[j]
+                _cf = fade_late_arm_cf(_fth, r.pnl_percentage, r.peak_pnl, _pm[j], _dm[j], r.entry_atr_pct)
+                if _cf is not None and pd.notna(r.pnl_percentage) and r.pnl_percentage != 0:
+                    _b.loc[j, "stack_pnl"] = _cf * abs(r.pnl / r.pnl_percentage)
+                    print(f"  ℹ fade late-arm CF: {r.pair} {r.opened_at} {r.pnl:+.0f} → {_b.loc[j, 'stack_pnl']:+.0f}")
+        except Exception as e:                                    # noqa: BLE001
+            print(f"  ⚠ could not apply the fade late-arm CF to batch rows ({e}) — NUMBERS BELOW ARE AS LIVED for fades.")
         frames.append(_b)
     df = pd.concat(frames, ignore_index=True)
     df = df[df.status == "CLOSED"]

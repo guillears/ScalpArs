@@ -547,6 +547,17 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN belock_t30_min FLOAT"))
                 if 'belock_tr30' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN belock_tr30 FLOAT"))
+                # ⏱ Sep-24 fade late-arm + base-stack shadow (DECISION_LOG 111)
+                if 'fade_late_armed_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN fade_late_armed_at DATETIME"))
+                if 'fade_late_arm_peak' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN fade_late_arm_peak FLOAT"))
+                if 'fade_late_base_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN fade_late_base_pnl FLOAT"))
+                if 'fade_late_base_reason' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN fade_late_base_reason VARCHAR(24)"))
+                if 'fade_late_base_min' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN fade_late_base_min FLOAT"))
                 if 'exit_pair_ema20_ema50_gap_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_pair_ema20_ema50_gap_pct FLOAT"))
                 if 'exit_btc_trend_gap_pct' not in columns:

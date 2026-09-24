@@ -1373,6 +1373,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
         # while DB peak/trough only get updated on monitor-loop polls. The cache
         # is therefore fresher — use it preferentially for the open-orders display.
         cached_peak_pnl = None
+        cached_fade_late_armed = None
         cached_trough_pnl = None
         for ci in _open_orders_cache.get(o.pair, []):
             if ci['id'] == o.id:
@@ -1380,6 +1381,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
                 cached_fl2_flagged = ci.get('fl2_flagged', False)
                 cached_fl1_origin = ci.get('fl1_origin')
                 cached_peak_pnl = ci.get('peak_pnl')
+                cached_fade_late_armed = ci.get('fade_late_armed_at')
                 cached_trough_pnl = ci.get('trough_pnl')
                 break
         # Fall back to DB values if cache missing (rare — cache can lag briefly)
@@ -1469,6 +1471,8 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "tp_target": o.dynamic_tp_target or 0,
             "entry_atr_pct": getattr(o, 'entry_atr_pct', None),  # Jun 1: runner-trail badge check
             "entry_strategy": getattr(o, 'entry_strategy', None),  # Jun 16: FAN-flip strpk runner badge check
+            # ⏱ Sep-24 fade late-arm: badge shows the runner armed at the LATE level (cache first, DB fallback)
+            "fade_late_armed": bool(cached_fade_late_armed or getattr(o, 'fade_late_armed_at', None)),
             # Jul 29: door-membership badge fields (display-only — RSICEIL band / DB-UP band / PVR tier)
             "entry_rsi": getattr(o, 'entry_rsi', None),
             "entry_btc_1h_slope": getattr(o, 'entry_btc_1h_slope', None),
@@ -11025,7 +11029,8 @@ def _compute_runner_trail_performance(orders):
         r = getattr(o, 'close_reason', '') or ''
         return r.split(' ')[0] if r else ''
     rt = [o for o in orders
-          if getattr(o, 'status', None) == 'CLOSED' and _cr(o).startswith('RUNNER_TRAIL')]
+          if getattr(o, 'status', None) == 'CLOSED' and _cr(o).startswith('RUNNER_TRAIL')
+          and not _cr(o).startswith('RUNNER_TRAIL_LATE')]   # Sep-24 review M5: late fade exits have their own shadow
     rows = []
     tot_exit = tot_cf = tot_post = 0.0
     tot_actual_usd = tot_gain_usd = 0.0

@@ -23,7 +23,7 @@ import warnings; warnings.filterwarnings('ignore')
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-09-23a"  # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
+STACK_VERSION = "2026-09-24a"  # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 # Era registry (Sep-11: B3/B4/B5 were previously stacked by a one-off — the builder only knew
@@ -131,7 +131,12 @@ def main():
     import os, sys
     from types import SimpleNamespace
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from services.trading_engine import long_heat_eval, long_megacap_block
+    from services.trading_engine import long_heat_eval, long_megacap_block, fade_late_arm_cf
+    # ⏱ Sep-24 frozen fade exit constants for the late-arm CF (live values at ship; builder pins a STACK_VERSION)
+    _FADE_TH = SimpleNamespace(spike_fade_late_arm_after_min=15.0, spike_fade_late_arm_peak=0.30,
+                               runner_trail_short_arm_peak=0.40, runner_trail_short_atr_mult=0.5,
+                               runner_trail_short_giveback_frac=0.35, runner_trail_short_be_ratchet_enabled=False,
+                               runner_trail_short_be_lock_pct=0.10)
     # frozen stack constants (the builder pins a STACK_VERSION, it does not read hot config) — Sep-23: mega-cap rank ≤10
     _HEAT_TH = SimpleNamespace(long_heat_block_enabled=True, long_heat_btc_slope_min=0.07, long_heat_btc_rsi_prev_min=64.0,
                                long_heat_bull_pct_min=80.0, long_heat_exempt_off30d_max=-10.0,
@@ -224,6 +229,17 @@ def main():
             else:
                 sp = -1.5 * dpp
             why = why or 'CF_FADE_SL15'
+        # ⏱ Sep-24 FADE LATE-ARM (DECISION_LOG 111): stamps-only CF — a never-armed fade still open past 15 min whose
+        # (max) peak came AFTER minute 15 inside [0.30, 0.40) is re-priced to the late trail floor. It supersedes the
+        # SL15 reprice (the late trail fires at the post-15 peak, before any later stop). Exposed late winners (armed
+        # normally after 15) stay as lived — their post-15 path is not stamped, so this CF is OPTIMISTIC by design.
+        if k and not r.is_probe and strat == 'SPIKE_FADE' and pd.notna(r.pnl_percentage) and r.pnl_percentage != 0:
+            _o = pd.to_datetime(r.opened_at, errors='coerce')
+            _pmin = (pd.to_datetime(r.get('peak_reached_at'), errors='coerce') - _o).total_seconds() / 60 if pd.notna(r.get('peak_reached_at')) else None
+            _dmin = (pd.to_datetime(r.closed_at, errors='coerce') - _o).total_seconds() / 60 if pd.notna(r.get('closed_at')) else None
+            _cf = fade_late_arm_cf(_FADE_TH, r.pnl_percentage, r.peak_pnl, _pmin, _dmin, r.entry_atr_pct)
+            if _cf is not None:
+                sp = _cf * abs(p / r.pnl_percentage); why = 'CF_FADE_LATE_ARM'
         if k and not r.is_probe and (strat.startswith('MOMENTUM') or slv.startswith('MOM')) and str(r.direction) == 'LONG':
             pk, atr = r.peak_pnl, (r.entry_atr_pct if pd.notna(r.entry_atr_pct) else 99)
             if pd.notna(pk) and 0.40 <= pk < 0.45 and pd.notna(r.pnl_percentage) and r.pnl_percentage < max(pk - atr, 0.10) and r.pnl_percentage != 0:

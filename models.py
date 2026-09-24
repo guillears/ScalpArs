@@ -288,6 +288,18 @@ class Order(Base):
     belock_t30_min = Column(Float, nullable=True)
     belock_tr30 = Column(Float, nullable=True)
 
+    # ⏱ Sep-24 FADE LATE-ARM (DECISION_LOG 111). fade_late_armed_at = when a SPIKE_FADE still unarmed X min after
+    # entry armed on its post-X peak; fade_late_arm_peak = the RUNNING post-X peak (persisted in +0.01 steps once
+    # armed, final value at close) — a restart resumes the same floor. fade_late_base_* = the BASE-STACK SHADOW of every
+    # RUNNER_TRAIL_LATE exit: what today's fade stack (stop, 0.40 arm, trail, HARD_TP ladder) would have done —
+    # STOP/TRAIL/LADDER/TIMEOUT (+_RESUMED after a restart), its P&L% and minutes after the late exit. The revert
+    # gate reads rescued (base < late) vs cut (base > late) straight from these columns. Ride the CSV free.
+    fade_late_armed_at = Column(DateTime, nullable=True)
+    fade_late_arm_peak = Column(Float, nullable=True)
+    fade_late_base_pnl = Column(Float, nullable=True)
+    fade_late_base_reason = Column(String(24), nullable=True)
+    fade_late_base_min = Column(Float, nullable=True)
+
     # Liquidity-aware sizing observability (Jun 2, 2026 — see CLAUDE.md).
     # entry_desired_notional       = notional the order WOULD have opened at pre-cap (investment×leverage).
     # entry_liquidity_cap_notional = the ① per-pair liquidity cap value (_liq_cap); NULL if ① not configured.

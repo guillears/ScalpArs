@@ -500,6 +500,20 @@ class SignalThresholds(BaseModel):
     # WR≥55 ∨ Σ>0 reverts. Counter SPIKE_FADE_FRESHBREAK (logs entry px). rsi_prev_min 0 = off.
     spike_fade_fb_rsi_prev_min: float = 44.0
     spike_fade_fb_pgap_min: float = -0.40
+    # ⏱ Sep-24 FADE LATE-ARM (operator-directed DECLARED OVERRIDE at N=2 — below every locked bar, acknowledged;
+    # DECISION_LOG 111). A SPIKE_FADE still unarmed `after_min` minutes after entry arms its runner trail at `peak`
+    # instead of runner_trail_short_arm_peak (0.40), measured on the peak reached AFTER minute X (an early pop that
+    # collapsed can never arm at X — that variant is a time stop, refuted). Floor = the live short formula on that
+    # peak (≈ +0.20 at 0.30). Close reason RUNNER_TRAIL_LATE. Evidence (stamps, 61 kept fades): 54 close before
+    # 15 min (untouched); rescues PROVE −1.53→≈+0.22 (+$310) and SENT −0.16→≈+0.27 (+$19); 7 late winners exposed
+    # to an earlier trail, worst −$147 (path not stamped). History ex-PROVE +$19..−$129. Thesis: a fade that has
+    # not faded by X is a slow move — bank a small bounce rather than wait for the 0.40 arm.
+    # 🔒 TIGHT REVERT (read from the fade_late_base_* shadow columns — today's stack re-run after every late exit):
+    # at the FIRST 8 RUNNER_TRAIL_LATE exits or 30 days, switch OFF (after_min → 0) if Σ(late − base)×size < 0, OR
+    # cuts (base > late) outnumber rescues, OR any single cut costs > $100. CONFIRM at 20 late exits with Σ > 0 in
+    # ≥2 batches. Resets SPIKE_FADE's readiness anchor (a rule fitted to fade fills). 0 = off. level ≥ 0.40 = off.
+    spike_fade_late_arm_after_min: float = 0.0
+    spike_fade_late_arm_peak: float = 0.30
     spike_fade_tripwire_pct: float = -2.5         # tripwire threshold: any fade closing <= this means the
                                                   # price GAPPED THROUGH the -1.50 stop (squeeze
                                                   # signature). Aug-10 review fix: -1.5 -> -2.5 after the

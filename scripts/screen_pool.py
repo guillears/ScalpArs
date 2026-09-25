@@ -70,6 +70,10 @@ def flip_ind(r):  # field-audited against engine _ff_in (trading_engine.py:3414)
         'btc_1h_slope':nf(r.get('entry_btc_1h_slope')),
         # Jul 8 — required by flip_short_btc_trend_gap_min (the BTC depth gate); missing = fail-open
         'btc_trend_gap':nf(r.get('entry_btc_trend_gap_pct'))}
+        # Sep 25 — deliberately NO ema20_slope key → FLIP_FAN_WEAK_BOUNCE fails OPEN here (like FLIP_FAN_BTC_EMA13, which
+        # this screen never carried). BASE rows in MASTER_POOL_stacked come FROM this file, so screening a new flip gate
+        # here would DELETE its BASE cohort from the pool instead of stamping it blocked (deep review I1). The builder
+        # applies the gate. FLIP anchor stays 31/$692 (v18).
 
 _OFF30 = {}
 if os.path.exists("reports/btc_off30d_hourly.csv"):

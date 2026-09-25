@@ -645,6 +645,29 @@ def long_megacap_block(th, pair_rank):
     return r <= n
 
 
+def flip_fan_weak_bounce(th, pair_gap, ema20_slope):
+    """🪃 Sep-25 FAN-FLIP WEAK-BOUNCE BLOCK (operator-directed ARMED override at N=8, DECISION_LOG 113) — pure
+    rule, shared by `_flip_filters`, scripts/build_master_pool.py and tests (single source of truth).
+
+    True = refuse the FAN_RATIO_GATE flip-SHORT. Fires when the pair sits BELOW its own trend (EMA13−EMA50 gap%
+    < flip_fan_weak_bounce_gap_max, ship 0.0) AND its EMA20 is rising only gently (3-bar EMA20 slope% <
+    flip_fan_weak_bounce_slope_max, ship 0.15). Thesis: a fade needs STRETCH (pair extended above trend) or
+    VIOLENCE (a steep squeeze) to revert; an orderly rise from below trend has neither — it is how a bottom /
+    relief turn looks, not a pump. Completes the Jun-21 pair-gap sweet spot (gap ≥1.0 already blocked by
+    flip_short_pair_gap_max). Evidence (34 kept fan flips, today's stack): blocked 8·25%·−0.47%·−$906 (6 of the
+    8 losers; post washed-out window 5·0%), kept 26·92%·+0.45%·+$1,588; below-trend flips split 6/6 W when steep
+    vs 2W/6L when gentle; threshold-insensitive (slope 0.14–0.16 × gap 0–0.17 block the same 8). Strict
+    inequalities; FAIL-OPEN on disabled / missing / non-finite inputs (a block never fires on data it lacks)."""
+    if not getattr(th, 'flip_fan_weak_bounce_enabled', False):
+        return False
+    gmax = _finite(getattr(th, 'flip_fan_weak_bounce_gap_max', None))
+    smax = _finite(getattr(th, 'flip_fan_weak_bounce_slope_max', None))
+    g, s = _finite(pair_gap), _finite(ema20_slope)
+    if gmax is None or smax is None or g is None or s is None:
+        return False
+    return g < gmax and s < smax
+
+
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 # ⏱ Sep-24 FADE LATE-ARM (operator override at N=2, DECISION_LOG 111). A SPIKE_FADE still unarmed
 # X minutes after entry arms its runner trail at a LOWER peak, measured on the peak reached AFTER X.
@@ -1277,6 +1300,10 @@ def _flip_filters(source, ind):
                 smin = float(getattr(th, 'flip_fan_stretch_min', 0.0) or 0.0)
                 if smin > 0 and stretch is not None and stretch < smin:
                     _fails.append("FLIP_FAN_STRETCH")
+                # 1b) Sep-25 weak-bounce block — pair below its own trend AND rising gently = a relief
+                # turn, not a pump to fade (flip_fan_weak_bounce; counter FLIP_FAN_WEAK_BOUNCE).
+                if flip_fan_weak_bounce(th, ind.get('pair_gap'), ind.get('ema20_slope')):
+                    _fails.append("FLIP_FAN_WEAK_BOUNCE")
                 # 2) regime block — fade into a strong, un-exhausted bull
                 rmin = float(getattr(th, 'flip_fan_block_btc_rsi', 0.0) or 0.0)
                 amin = float(getattr(th, 'flip_fan_block_btc_adx', 0.0) or 0.0)
@@ -4684,6 +4711,14 @@ class TradingEngine:
                 'pair_gap': (_ef.get('entry_pair_ema20_ema50_gap_pct') if _ef.get('entry_pair_ema20_ema50_gap_pct') is not None
                              else (round((_ind['ema13'] - _ind['ema50']) / _ind['ema50'] * 100, 4)
                                    if (_ind.get('ema13') is not None and _ind.get('ema50')) else None)),
+                # pair EMA20 3-bar slope% — required by the FAN weak-bounce block (flip_fan_weak_bounce). Sep 25.
+                # Same (EMA20 − EMA20[3 bars ago]) / EMA20[3 bars ago] the entry feature stamps.
+                # Fail-silent: garbage EMAs → None (the gate then fails open) — never raise into the flip path.
+                'ema20_slope': (_ef.get('entry_ema20_slope') if _ef.get('entry_ema20_slope') is not None
+                                else (round((_finite(_ind.get('ema20')) - _finite(_ind.get('ema20_prev3')))
+                                            / _finite(_ind.get('ema20_prev3')) * 100, 4)
+                                      if (_finite(_ind.get('ema20')) is not None and _finite(_ind.get('ema20_prev3')))
+                                      else None)),
                 # entry quality score — required by the flip-SHORT quality floor (flip_short_quality_min). Jun 25.
                 'quality_score': _ef.get('entry_quality_score'),
                 # pair −DI (downward directional movement) — required by the NEGDI15 sellers-present
@@ -4755,7 +4790,8 @@ class TradingEngine:
                     _seed_phantom_flip(pair, price, flip_dir, f"PASS:{_reason}",
                                        entry_fields=_ef, mode='PASS')
                 logger.info(f"[FLIP_FILTER] {pair}: {source} flip vetoed by {_reason} "
-                            f"(stretch={_ff_in.get('ema5_stretch')}, btcRSI={_ff_in.get('btc_rsi')}, btcADX={_ff_in.get('btc_adx')})")
+                            f"(stretch={_ff_in.get('ema5_stretch')}, btcRSI={_ff_in.get('btc_rsi')}, btcADX={_ff_in.get('btc_adx')}, "
+                            f"gap={_ff_in.get('pair_gap')}, slope={_ff_in.get('ema20_slope')}, px={price}, fails={_flip_fails})")
                 return
             if _fg_admit_tag is not None:
                 logger.info(f"[FLIPGATE_PROBE] {pair}: sole-blocked by {_reason} → probe-admitted as {_fg_admit_tag} (gap-probe sizing)")

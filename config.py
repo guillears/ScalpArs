@@ -1508,6 +1508,17 @@ class SignalThresholds(BaseModel):
     # Discipline-override (13 pooled, ~4 windows). Blank/None = off. DECISION_LOG 2026-08-23 (21).
     # 🔒 revert: kept fan-gate shorts < 60% WR on N≥10 fresh fills → off.
     flip_fan_btc_ema13_max: Optional[float] = -0.08
+    # 🪃 Sep-25 FAN-FLIP WEAK-BOUNCE BLOCK (operator-directed ARMED override at N=8 < the N≥30 filter gate;
+    # DECISION_LOG 113). Refuse a FAN_RATIO_GATE flip-SHORT when the pair is BELOW its own trend (EMA13−EMA50
+    # gap% < gap_max) AND its EMA20 rises only gently (3-bar slope% < slope_max): an orderly turn off the lows,
+    # not a pump — nothing stretched or violent to revert. Kept fan flips (today's stack): blocked 8·25%·−$906
+    # (6 of 8 losers; post washed-out window 5·0%), kept 34·76%·+$683 → 26·92%·+$1,588; threshold-insensitive.
+    # Rule = engine flip_fan_weak_bounce (pure, shared with the pool builder). Counter FLIP_FAN_WEAK_BOUNCE.
+    # 🔒 TIGHT REVERT: re-price the first 8 flips blocked SOLELY by this gate (veto log + 1m klines, flip exit):
+    # WR ≥60% OR Σ>0 → enabled=false.
+    flip_fan_weak_bounce_enabled: bool = False
+    flip_fan_weak_bounce_gap_max: float = 0.0      # block only when pair EMA13−EMA50 gap% < this (ship 0.0 = below trend)
+    flip_fan_weak_bounce_slope_max: float = 0.15   # … AND pair EMA20 3-bar slope% < this (ship 0.15 = gentle rise)
     flip_short_quality_min: float = 2.0   # block flip-SHORT when entry quality score < this (so =2 blocks score ≤1). 0 = off. Jun 25: extends the global Entry-Quality-Score floor (already blocks ≤1 for NORMAL entries: validated N=95/34.7%WR/−$684) to the flip-short sleeve, which BYPASSES it. Cross-batch FAN flip-short (deduped, current stack): score is monotonic (1→4 = 56/64/76/80% WR, −0.17→+0.56% avg); score≤1 = N=18/56%WR/−2.98%/8 dates (the only negative band), loss DIFFUSE (16 pairs, top 21% — not pair-concentrated). Score 0 ≈ empty (N=2). Confirmed on 06-25 batch (score≤1 = 3/3 losers, −$249, incl. SAHARA −$145 gap-through; sleeve −$337→−$88). ⚠ N=18 < N≥30 gate = DISCIPLINE-OVERRIDE, but the score≤1 threshold itself is already globally validated — we only close the flip bypass. Counter FLIP_SHORT_QUALITY. TIGHT REVERT: →0 if would-be-blocked (score≤1) flip-shorts run ≥55% WR on N≥10 fresh.
     # Jun 21 — pair EMA13-EMA50 gap ceiling for flip-SHORTS. Refuse to fade a pair already steeply
     # extended above its OWN 4h trend (gap = (EMA13-EMA50)/EMA50 %): a parabola that keeps ripping →

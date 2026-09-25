@@ -225,6 +225,30 @@ def build(rearm_trail=True, entry_age_cap=60.0):
     except Exception as e:                                        # noqa: BLE001
         print(f"  ⚠ could not apply the mega-cap exclusion ({e}) — NUMBERS BELOW INCLUDE rank<=10 momentum longs.")
 
+    # 🪃 Sep-25 fan-flip weak-bounce block — FAN_RATIO_GATE shorts, same pure rule as the engine gate and the
+    # builder (pool rows are already stack-blocked; this catches --batch rows). Reads the live thresholds.
+    try:
+        from services.trading_engine import flip_fan_weak_bounce, _finite
+        import config as _cfg
+        _th = _cfg.trading_config.thresholds
+        if (not getattr(_th, 'flip_fan_weak_bounce_enabled', False)
+                or _finite(getattr(_th, 'flip_fan_weak_bounce_gap_max', None)) != 0.0
+                or _finite(getattr(_th, 'flip_fan_weak_bounce_slope_max', None)) != 0.15):
+            print("  ⚠ live flip_fan_weak_bounce_* differs from the builder freeze (ON · 0 · 0.15) — "
+                  "stacked pool and this ledger DISAGREE until the builder constants are updated and the pool rebuilt.")
+        fan = d.entry_strategy.astype(str).str.startswith("FLIP:FAN") & (d.direction == "SHORT")
+        # a batch CSV without the stamp fails OPEN per row (NaN → no block), not the whole rule
+        _gap = _n(d, "entry_pair_ema20_ema50_gap_pct") if "entry_pair_ema20_ema50_gap_pct" in d else pd.Series(float("nan"), index=d.index)
+        _slp = _n(d, "entry_ema20_slope") if "entry_ema20_slope" in d else pd.Series(float("nan"), index=d.index)
+        wb = pd.Series([flip_fan_weak_bounce(_th, g, s) for g, s in zip(_gap, _slp)], index=d.index, dtype=bool)
+        _wb_drop = fan & wb
+        if int(_wb_drop.sum()):
+            print(f"  ℹ fan-flip weak-bounce block: {int(_wb_drop.sum())} flip(s) dropped, "
+                  f"${d.loc[_wb_drop, 'pnl_'].sum():+,.0f}")
+        d = d[~_wb_drop]
+    except Exception as e:                                        # noqa: BLE001
+        print(f"  ⚠ could not apply the fan-flip weak-bounce block ({e}) — NUMBERS BELOW INCLUDE weak-bounce flips.")
+
     # bull-run sleeve — the FULL live gate list
     br = d.entry_strategy == "BULLRUN_LONG"
     rearm = d["entry_br_door"].eq("REARM") | ((d.era == "B4") & br)

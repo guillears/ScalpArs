@@ -45,6 +45,13 @@ chmod 777 "$PERSISTENT_DIR/journal" 2>/dev/null || true
 if [ -d /opt/elasticbeanstalk/tasks/bundlelogs.d ]; then
   echo "$PERSISTENT_DIR/journal/*" > /opt/elasticbeanstalk/tasks/bundlelogs.d/scalpars-journal.conf 2>/dev/null || true
 fi
+# Sep-25 diagnostic: log bundles only ever carried the live .jsonl, never the gzipped finished days — list the
+# journal folder into eb-hooks.log (rides every bundle) to see whether those .gz files exist on disk at all
+# (e.g. wiped by an instance replacement) before changing anything else.
+echo "[PREDEPLOY_HOOK] journal files:"
+ls -la "$PERSISTENT_DIR/journal/" | tail -60 || true
+echo "[PREDEPLOY_HOOK] bundlelogs conf:"
+cat /opt/elasticbeanstalk/tasks/bundlelogs.d/scalpars-journal.conf 2>/dev/null || true
 
 echo "[PREDEPLOY_HOOK] persistent dir=$PERSISTENT_DIR, staging=$STAGING_DIR"
 ls -la "$PERSISTENT_DIR/" || true

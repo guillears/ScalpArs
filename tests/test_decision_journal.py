@@ -52,18 +52,55 @@ def test_never_raises_when_the_folder_is_unwritable(tmp_path, monkeypatch):
     assert dj._buffer == []                                    # and must not grow without bound
 
 
-def test_rollover_gzips_finished_days_and_deletes_old_ones(tmp_path, monkeypatch):
+def test_rollover_keeps_finished_days_plain_and_deletes_old_ones(tmp_path, monkeypatch):
+    """Sep-25: finished days stay .jsonl (the EB log bundle skips .gz in this folder)."""
     _setup(tmp_path, monkeypatch, keep=10)
     d = tmp_path / 'journal'; d.mkdir()
     old = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d')
     yday = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
-    (d / f'decisions-{old}.jsonl.gz').write_bytes(b'x')
+    (d / f'decisions-{old}.jsonl').write_text('x\n')
     (d / f'decisions-{yday}.jsonl').write_text('{"e":"SCAN"}\n')
     dj.note('SCAN'); dj.flush()
     names = sorted(os.listdir(d))
-    assert f'decisions-{old}.jsonl.gz' not in names
-    assert f'decisions-{yday}.jsonl.gz' in names and f'decisions-{yday}.jsonl' not in names
-    assert gzip.open(d / f'decisions-{yday}.jsonl.gz', 'rt').read() == '{"e":"SCAN"}\n'
+    assert f'decisions-{old}.jsonl' not in names
+    assert f'decisions-{yday}.jsonl' in names and not any(n.endswith('.gz') for n in names)
+    assert (d / f'decisions-{yday}.jsonl').read_text() == '{"e":"SCAN"}\n'
+
+
+def test_rollover_decompresses_legacy_gz_days_without_losing_lines(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch, keep=10)
+    d = tmp_path / 'journal'; d.mkdir()
+    d2 = (datetime.utcnow() - timedelta(days=2)).strftime('%Y-%m-%d')
+    d3 = (datetime.utcnow() - timedelta(days=3)).strftime('%Y-%m-%d')
+    old = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d')
+    with gzip.open(d / f'decisions-{d3}.jsonl.gz', 'wt') as f:
+        f.write('{"e":"A"}\n')
+    with gzip.open(d / f'decisions-{d2}.jsonl.gz', 'wt') as f:
+        f.write('{"e":"B"}\n')
+    (d / f'decisions-{d2}.jsonl').write_text('{"e":"C"}\n')       # stray late flush for the same day
+    (d / f'decisions-{old}.jsonl.gz').write_bytes(b'x')              # past retention -> deleted, never decompressed
+    dj.note('SCAN'); dj.flush()
+    names = sorted(os.listdir(d))
+    assert not any(n.endswith('.gz') or n.endswith('.tmp') for n in names)
+    assert (d / f'decisions-{d3}.jsonl').read_text() == '{"e":"A"}\n'
+    assert (d / f'decisions-{d2}.jsonl').read_text() == '{"e":"B"}\n{"e":"C"}\n'
+    assert f'decisions-{old}.jsonl' not in names
+
+
+def test_rollover_leaves_today_untouched_and_survives_a_corrupt_gz(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch, keep=10)
+    d = tmp_path / 'journal'; d.mkdir()
+    today = datetime.utcnow().strftime('%Y-%m-%d')
+    d2 = (datetime.utcnow() - timedelta(days=2)).strftime('%Y-%m-%d')
+    (d / f'decisions-{today}.jsonl').write_text('{"e":"T"}\n')
+    (d / f'decisions-{d2}.jsonl.gz').write_bytes(b'not a gzip')      # corrupt legacy archive
+    (d / f'decisions-{d2}.jsonl').write_text('{"e":"S"}\n')
+    dj.note('SCAN'); dj.flush()                                        # must not raise
+    names = sorted(os.listdir(d))
+    assert f'decisions-{d2}.jsonl.gz' in names                         # original kept for a later look
+    assert (d / f'decisions-{d2}.jsonl').read_text() == '{"e":"S"}\n'  # stray lines intact
+    assert not any(n.endswith('.jsonl.tmp') for n in names)
+    assert (d / f'decisions-{today}.jsonl').read_text().startswith('{"e":"T"}\n')
 
 
 def test_buffer_is_bounded(tmp_path, monkeypatch):

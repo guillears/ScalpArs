@@ -11,7 +11,9 @@ Design constraints (this bot has had SQLite write-lock incidents — the journal
   * events are BUFFERED in memory and written once per scan (flush at the next SCAN header, or when the
     buffer reaches _MAX_BUFFER) — a handful of small writes per minute
   * every failure is swallowed: the journal can never raise into the trading path
-  * on day rollover yesterday's file is gzipped and files older than the retention are deleted
+  * finished days stay PLAIN .jsonl (Sep-25: the EB log bundle silently skips .gz files in this folder, so the
+    gzipped days 18-24 Sep were unreachable); legacy .gz days are decompressed back to .jsonl once; files older
+    than the retention are deleted (~3-7 MB/day plain → ~150-330 MB at 45 days; the log bundle zips them)
   * off switch: thresholds.decision_journal_enabled=false, or env SCALPARS_JOURNAL_OFF=1 (the replay
     harness sets it — a replay must not write a journal)
 
@@ -117,14 +119,20 @@ def flush():
 
 
 def _rollover(d, today):
-    """gzip finished days, delete files past the retention. Best-effort."""
+    """Delete files past the retention; decompress legacy .gz finished days back to .jsonl so the EB log bundle
+    (which skips .gz here) can carry every day. Best-effort, never raises."""
     try:
         import config
         keep = int(getattr(config.trading_config.thresholds, 'decision_journal_retention_days', 45) or 45)
     except Exception:
         keep = 45
     cutoff = (datetime.utcnow() - timedelta(days=max(1, keep))).strftime('%Y-%m-%d')
-    for name in sorted(os.listdir(d)):
+    try:
+        names = sorted(os.listdir(d))
+    except Exception as e:
+        logger.warning(f"[DECISION_JOURNAL] rollover listing failed ({e}) — skipped, events already written")
+        return
+    for name in names:
         if not name.startswith('decisions-'):
             continue
         day = name[len('decisions-'):len('decisions-') + 10]
@@ -132,9 +140,18 @@ def _rollover(d, today):
         try:
             if day < cutoff:
                 os.remove(path)
-            elif day < today and name.endswith('.jsonl'):
-                with open(path, 'rb') as src, gzip.open(path + '.gz', 'wb', compresslevel=5) as dst:   # level 5: ~3× faster, the event loop waits on this once a day
+            elif day < today and name.endswith('.jsonl.gz'):
+                # legacy gzipped day → plain. If a .jsonl for the same day also exists (a stray late flush), the
+                # archive goes FIRST and the plain lines are appended after it — nothing is dropped.
+                plain = path[:-3]
+                tmp = plain[:-len('.jsonl')] + '.partial'   # never matches *.jsonl* (bundle/calibration readers)
+                with gzip.open(path, 'rb') as src, open(tmp, 'wb') as dst:
                     shutil.copyfileobj(src, dst)
+                    if os.path.exists(plain):
+                        with open(plain, 'rb') as extra:
+                            shutil.copyfileobj(extra, dst)
+                os.replace(tmp, plain)
                 os.remove(path)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[DECISION_JOURNAL] rollover of {name} failed ({e}) — file left as is, trading unaffected")
             continue

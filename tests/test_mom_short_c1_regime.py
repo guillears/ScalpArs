@@ -83,4 +83,5 @@ def test_pool_stamps_exactly_the_strong_bear_c1_shorts():
 
 def test_screen_and_stack_version_carry_the_rule():
     assert "mom_short_c1_regime_block(th, r.get('entry_pattern_c1_match'), r.get('entry_btc_regime'))" in _src("scripts", "screen_pool.py")
-    assert 'STACK_VERSION = "2026-09-25b"' in _src("scripts", "build_master_pool.py")
+    # the version string advances with every later ship — pin that the C1 entry is IN the stack-version chain, not its position
+    assert '2026-09-25b # b: MOM_SHORT_C1_REGIME' in _src("scripts", "build_master_pool.py")

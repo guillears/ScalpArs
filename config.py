@@ -1901,14 +1901,28 @@ class SignalThresholds(BaseModel):
     # (BASE 3·67%·+$110 · B1 2·50%·−$71 · B3 1·+$32 · B4 1·−$103 · CUR OP −$188); OP = $188 of it. The two BTC legs are
     # negative on 3 independent sources; threshold grid (500 combos) gap positive in 100%. The SIZING half of the idea
     # already exists (Aug-10 crowd-sprint de-mux, gate 42). Blocked signals are NOT tracked (operator) →
+    # (SUPERSEDED Sep-25 by the re-scope's tight revert above — with the BTC legs off, 2-flag neighbours cannot occur.)
     # 🔒 REVERT: if the visible 2-flag neighbours (entry_long_heat_flags==2, not washed out) come back ≥70% WR on N≥10
     # fresh longs COUNTED IN WINDOWS (all legs are market-wide → same-moment fills = ONE observation; the 8 zone
     # trades are 7 windows: PUMP+AVAX fired 20 s apart) → switch the block off. Bull% leg is inclusive (STX sat at 80.0).
     # Scope note: W2/W6 matched longs carry no exempt flag and would be blocked too — moot while both re-enables = 99. Any leg threshold 0 = that leg off; exempt 0 = no exemption. Fail-open.
+    # 🔥→🫧 Sep-25 RE-SCOPE (operator-directed declared override; DECISION_LOG 116): the two BTC legs OFF (0) and the breadth
+    # leg 80 → 85 — the block is now "momentum LONG at bull breadth ≥85%, unless BTC is washed out (>10% below its 30d high)".
+    # Why: the Sep-18 4-leg zone missed the crowd losers by a hair (SHIB/DASH/PENGU BTC RSI 63.3-63.8 vs 64; DASH/PEPE/SHIB
+    # slope 0.058-0.066 vs 0.07 — fitted thresholds), and at bull ≥85 BTC RSI does not separate (≥55 → 8·50%, ≥60 → 7·57%,
+    # ≥64 → only AAVE, a winner). Breadth measures the crowd directly; mirror of the fan-flip bear ≥80 exhaustion zone.
+    # Evidence — the FULL cohort the rule covers (bull ≥85, not washed out; incl. the 3 BASE longs the Sep-18 block already
+    # screened out: PYTH −$98, PUMP +$160, AVAX +$48): 11·45%·−0.30%·−$619, 8 windows, window-bootstrap P(mean<0) 0.966, 90% CI
+    # [−0.61, −0.03]. Washed-out winner AAVE +$197 stays exempt. Newly blocked vs today 8·38%·−$729; re-admits the old zone's
+    # bull 80-85 fills (BONK −$91, STX +$32). No 84.4–86.4 fill exists → the 85 cut is insensitive over that gap. Ledger
+    # 252·84%·+$14,205 → 246·85%·+$14,875. Expectancy bar: WR ✓ (45 < 61) · P ✓ (≥0.95) · windows ✓ (8) · N ✗ (11 < 15)
+    # → declared override on sample size only. entry_long_heat_flags now counts the breadth leg only (0/1, was 0-3).
+    # 🔒 TIGHT REVERT → restore 0.07 / 64 / 80: first 6 blocked fires re-priced ([LONG_HEAT_BLOCK] log px + 1m klines, live
+    # momentum-long exit) WR ≥60%, OR the Jan–Jun engine replay fails the expectancy bar for bull ≥85 momentum longs.
     long_heat_block_enabled: bool = True
-    long_heat_btc_slope_min: float = 0.07
-    long_heat_btc_rsi_prev_min: float = 64.0
-    long_heat_bull_pct_min: float = 80.0
+    long_heat_btc_slope_min: float = 0.0
+    long_heat_btc_rsi_prev_min: float = 0.0
+    long_heat_bull_pct_min: float = 85.0
     long_heat_exempt_off30d_max: float = -10.0
     # 🏦 Sep-23 MEGA-CAP EXCLUSION (operator override at N=10 — below the N≥30 bar, acknowledged; DECISION_LOG 110).
     # Refuse a momentum LONG (UNMATCHED + NONEXP_CALM3D doors only; every other sleeve/probe/flip/spike and the

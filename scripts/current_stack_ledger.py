@@ -249,6 +249,35 @@ def build(rearm_trail=True, entry_age_cap=60.0):
     except Exception as e:                                        # noqa: BLE001
         print(f"  ⚠ could not apply the fan-flip weak-bounce block ({e}) — NUMBERS BELOW INCLUDE weak-bounce flips.")
 
+    # 🫧 Sep-25 heat block (re-scoped to bull breadth ≥85 unless washed out) — momentum LONGs, same pure rule as the
+    # engine; pool rows are already stack-blocked, this catches --batch rows. Uses the stamped 30d reading (fail-open).
+    try:
+        from services.trading_engine import long_heat_eval
+        import config as _cfg
+        _th = _cfg.trading_config.thresholds
+        if (float(getattr(_th, 'long_heat_btc_slope_min', 0) or 0), float(getattr(_th, 'long_heat_btc_rsi_prev_min', 0) or 0),
+                float(getattr(_th, 'long_heat_bull_pct_min', 0) or 0), float(getattr(_th, 'long_heat_exempt_off30d_max', 0) or 0)) != (0.0, 0.0, 85.0, -10.0):
+            print("  ⚠ live long_heat_* differs from build_master_pool.py's frozen (0 / 0 / 85 / −10) — "
+                  "stacked pool and this ledger DISAGREE until the builder constants are updated and the pool rebuilt.")
+        _mlh = (d.entry_strategy == "MOMENTUM") & (d.direction == "LONG")
+        _o30 = _n(d, "entry_btc_off30d_high_pct") if "entry_btc_off30d_high_pct" in d else pd.Series(float("nan"), index=d.index)
+        # unstamped 30d reading → the builder's hourly fallback (reports/btc_off30d_hourly.csv), else fail-open
+        if os.path.exists("reports/btc_off30d_hourly.csv") and _o30.isna().any():
+            import csv as _csv
+            with open("reports/btc_off30d_hourly.csv") as _fh:
+                _hr = {x["hour_utc"]: float(x["btc_off30d_high_pct"]) for x in _csv.DictReader(_fh)}
+            _key = d.opened_at.astype(str).str[:13].str.replace("T", " ") + ":00"
+            _o30 = _o30.where(_o30.notna(), _key.map(_hr))
+        _rp = _n(d, "entry_btc_rsi_prev") if "entry_btc_rsi_prev" in d else pd.Series(float("nan"), index=d.index)
+        _hb = pd.Series([bool(long_heat_eval(_th, s, r, b, (o if o == o else None))[1]) for s, r, b, o in
+                         zip(_n(d, "entry_btc_ema20_slope"), _rp, _n(d, "entry_bull_pct"), _o30)], index=d.index, dtype=bool)
+        _h_drop = _mlh & _hb
+        if int(_h_drop.sum()):
+            print(f"  ℹ long heat block: {int(_h_drop.sum())} momentum long(s) dropped, ${d.loc[_h_drop, 'pnl_'].sum():+,.0f}")
+        d = d[~_h_drop]
+    except Exception as e:                                        # noqa: BLE001
+        print(f"  ⚠ could not apply the long heat block ({e}) — NUMBERS BELOW INCLUDE those longs.")
+
     # 🧊 Sep-25 C1 momentum-short regime block — same pure rule as the engine gate and the builder (pool rows are
     # already stack-blocked; this catches --batch rows). Reads the live regime list.
     try:

@@ -7285,12 +7285,27 @@ class TradingEngine:
         except Exception as _lh_err:
             logger.error(f"[LONG_HEAT] eval failed ({_lh_err}) — fail-open")
             _lh_flags, _lh_block = None, False
+        # Sep-25 review: with the BTC legs off the 30d reading is the only other input — a stale/unknown reading at bull ≥ min
+        # fails OPEN (documented), but it is now COUNTED so silent passes (Binance 1h/5m outage, cold start) are visible.
+        try:
+            _lh_bmin = float(getattr(config.trading_config.thresholds, 'long_heat_bull_pct_min', 0.0) or 0.0)
+            if (bool(getattr(config.trading_config.thresholds, 'long_heat_block_enabled', False)) and _lh_bmin > 0
+                    and float(getattr(config.trading_config.thresholds, 'long_heat_exempt_off30d_max', 0.0) or 0.0) < 0
+                    and entry_bull_pct is not None and float(entry_bull_pct) >= _lh_bmin and _lh_off30d is None
+                    and direction == "LONG" and not flip_source and not bullrun_long):
+                logger.warning(f"[LONG_HEAT_FAILOPEN] {pair}: bull {entry_bull_pct}% ≥ {_lh_bmin} but the BTC 30d reading is stale/unknown — not blocked")
+                self._record_filter_block("LONG_HEAT_FAILOPEN", "LONG")
+        except Exception:
+            pass
         if (_lh_block and direction == "LONG" and not flip_source and not bull_long and not bounce_long
                 and not bullrun_long and not spike_chase_probe and not spike_fade and not spike_bounce
                 and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
                          or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe)):
-            logger.info(f"[LONG_HEAT_BLOCK] {pair}: momentum LONG blocked — BTC slope {entry_btc_ema20_slope} / BTC RSI prev "
-                        f"{entry_btc_rsi_prev} / bull {entry_bull_pct}% all hot, BTC {_lh_off30d}% vs 30d high (not washed out)")
+            _lh_t = config.trading_config.thresholds
+            logger.info(f"[LONG_HEAT_BLOCK] {pair}: momentum LONG blocked — bull {entry_bull_pct}% ≥ {getattr(_lh_t, 'long_heat_bull_pct_min', 0)}"
+                        f" (BTC slope leg {getattr(_lh_t, 'long_heat_btc_slope_min', 0) or 'off'}: {entry_btc_ema20_slope} · "
+                        f"BTC RSI-prev leg {getattr(_lh_t, 'long_heat_btc_rsi_prev_min', 0) or 'off'}: {entry_btc_rsi_prev}), "
+                        f"BTC {_lh_off30d}% vs 30d high (not washed out) px={current_price}")
             try:
                 self._record_filter_block("LONG_HEAT_BLOCK", "LONG")
             except Exception:
@@ -7996,7 +8011,7 @@ class TradingEngine:
             entry_btc_r72_pct=(_bullrun_monitor.get('r72') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # Sep-18: BTC 72h return at entry (every fill)
             entry_btc_eff72=(_bullrun_monitor.get('eff') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # Sep-18: monitor 72h trend efficiency at entry (every fill; None when stale)
             entry_btc_above72_pct=(_bullrun_monitor.get('above') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # Sep-18: % of 5m bars above EMA20 over 72h
-            entry_long_heat_flags=_lh_flags,          # Sep-18: 0-3 heat legs true at entry (every fill, all sleeves)
+            entry_long_heat_flags=_lh_flags,          # heat legs ON and true at entry — 0-3 until Sep-25, 0/1 after (breadth leg only)
             entry_btc_off30d_high_pct=_lh_off30d,     # Sep-18: BTC % below its 30-day high (≤0; None if stale/unknown)
             entry_bear_r24=entry_bear_r24, entry_bear_below24=entry_bear_below24, entry_bear_eff24=entry_bear_eff24,
             entry_bear_off24lo=entry_bear_off24lo, entry_bear_bypass=entry_bear_bypass,

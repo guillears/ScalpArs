@@ -645,6 +645,26 @@ def long_megacap_block(th, pair_rank):
     return r <= n
 
 
+def mom_short_c1_regime_block(th, c1_match, btc_regime):
+    """🧊 Sep-25 C1 MOMENTUM-SHORT REGIME BLOCK (operator-directed ARMED override; DECISION_LOG 114) — pure rule, shared
+    by the engine gate, scripts/build_master_pool.py, scripts/current_stack_ledger.py and tests.
+
+    True = refuse a MOMENTUM short whose C1 ("capitulation") signature matched while the BTC regime is in
+    momentum_short_c1_block_regimes (ship 'STRONG_BEAR'). Thesis: C1 fires on a pair ALREADY far below its trend; in a
+    strong, mature BTC downtrend that dump is usually done and BTC is oversold, so the next move is a sharp bounce
+    into the −0.70 fixed stop. Ordinary momentum shorts are earlier in the move and keep winning there (10 of 12).
+    Evidence: C1 shorts in STRONG_BEAR 2·0%·−$178 (DASH Sep-23, BCH Sep-25 — the only two ever), every other C1 short
+    8W/4L; the locked Sep-23 gate ('C1 in STRONG_BEAR N≥3 windows, WR≤40 ∨ Σ<0 → block') sat at 2/3 windows with
+    the third mathematically decided in every realistic case. Empty list = off; FAIL-OPEN on a missing regime or
+    unknown C1 flag (a block never fires on data it does not have)."""
+    regs = {s.strip().upper() for s in str(getattr(th, 'momentum_short_c1_block_regimes', '') or '').split(',') if s.strip()}
+    if not regs or btc_regime is None:
+        return False
+    if c1_match is True or str(c1_match).strip().lower() in ('true', '1', '1.0'):
+        return str(btc_regime).strip().upper() in regs
+    return False
+
+
 def flip_fan_weak_bounce(th, pair_gap, ema20_slope):
     """🪃 Sep-25 FAN-FLIP WEAK-BOUNCE BLOCK (operator-directed ARMED override at N=8, DECISION_LOG 113) — pure
     rule, shared by `_flip_filters`, scripts/build_master_pool.py and tests (single source of truth).
@@ -7215,6 +7235,20 @@ class TradingEngine:
                 except Exception:
                     pass
                 return None
+
+        # 🧊 Sep-25 C1 MOMENTUM-SHORT REGIME BLOCK (operator override; config.py momentum_short_c1_block_regimes evidence;
+        # DECISION_LOG 114). Momentum shorts only — flips, fades, bounces and the bear-run sleeve are exempt. Rule =
+        # mom_short_c1_regime_block (pure, shared with the pool builder + ledger). No phantom: the revert read re-prices
+        # the [MOM_SHORT_C1_REGIME] log lines (pair, regime, price) on 1m klines.
+        if (direction == "SHORT" and not flip_source and not bull_long and not bounce_long and not spike_fade
+                and not bearrun_short and mom_short_c1_regime_block(config.trading_config.thresholds, _pc1_e, entry_btc_regime)):
+            logger.info(f"[MOM_SHORT_C1_REGIME] {pair}: C1 momentum SHORT blocked — BTC regime {entry_btc_regime} "
+                        f"(capitulation already done; bounce risk) px={current_price}")
+            try:
+                self._record_filter_block("MOM_SHORT_C1_REGIME", "SHORT")
+            except Exception:
+                pass
+            return None
 
         # MOMENTUM-SHORT high-pair-volume block — Jun 30, 2026 (see config.py momentum_short_pair_vol_max).
         # Block a momentum SHORT when entry pair-volume ratio >= the threshold. Mechanism: shorting into HIGH

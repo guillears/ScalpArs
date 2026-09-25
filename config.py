@@ -1516,6 +1516,18 @@ class SignalThresholds(BaseModel):
     # Rule = engine flip_fan_weak_bounce (pure, shared with the pool builder). Counter FLIP_FAN_WEAK_BOUNCE.
     # 🔒 TIGHT REVERT: re-price the first 8 flips blocked SOLELY by this gate (veto log + 1m klines, flip exit):
     # WR ≥60% OR Σ>0 → enabled=false.
+    # 🧊 Sep-25 C1 MOMENTUM-SHORT REGIME BLOCK (operator-directed ARMED override; DECISION_LOG 114). Refuse a MOMENTUM
+    # short whose C1 (capitulation) signature matched while BTC regime ∈ this comma list. C1 fires on a pair already far
+    # below trend; in a strong mature BTC downtrend the dump is done and the bounce hits the −0.70 stop. C1 in
+    # STRONG_BEAR = 2·0%·−$178 (DASH Sep-23, BCH Sep-25; the only two ever) vs other C1 shorts 8W/4L and non-C1
+    # momentum shorts in STRONG_BEAR 10/12 W. Locked Sep-23 gate (N≥3 windows, WR≤40 ∨ Σ<0) sat at 2/3, third decided.
+    # Ledger 253·83%·+$14,227 → 251·84%·+$14,405; B12 19·68%·+$488 → 17·76%·+$666. Rule = engine
+    # mom_short_c1_regime_block (pure, shared with the pool builder + ledger). Counter MOM_SHORT_C1_REGIME. '' = off.
+    # Scope: MOMENTUM shorts only — the bear-run sleeve (gate 60) is exempt by design: both evidence trades are
+    # entry_strategy MOMENTUM, zero bear-run C1 fills exist, and that sleeve carries its own gate list (revisit if a
+    # bear-run C1 short ever loses in STRONG_BEAR). Needs pattern_c_tracker_enabled (C flags None → fail-open).
+    # 🔒 TIGHT REVERT: re-price the first 5 blocked fires (log + 1m klines, −0.70 fixed stop) → WR ≥60% ⇒ ''.
+    momentum_short_c1_block_regimes: str = ""
     flip_fan_weak_bounce_enabled: bool = False
     flip_fan_weak_bounce_gap_max: float = 0.0      # block only when pair EMA13−EMA50 gap% < this (ship 0.0 = below trend)
     flip_fan_weak_bounce_slope_max: float = 0.15   # … AND pair EMA20 3-bar slope% < this (ship 0.15 = gentle rise)

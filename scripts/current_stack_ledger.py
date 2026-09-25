@@ -249,6 +249,28 @@ def build(rearm_trail=True, entry_age_cap=60.0):
     except Exception as e:                                        # noqa: BLE001
         print(f"  ⚠ could not apply the fan-flip weak-bounce block ({e}) — NUMBERS BELOW INCLUDE weak-bounce flips.")
 
+    # 🧊 Sep-25 C1 momentum-short regime block — same pure rule as the engine gate and the builder (pool rows are
+    # already stack-blocked; this catches --batch rows). Reads the live regime list.
+    try:
+        from services.trading_engine import mom_short_c1_regime_block
+        import config as _cfg
+        _th = _cfg.trading_config.thresholds
+        if str(getattr(_th, 'momentum_short_c1_block_regimes', '') or '').strip().upper() != 'STRONG_BEAR':
+            print("  ⚠ live momentum_short_c1_block_regimes differs from the builder freeze ('STRONG_BEAR') — "
+                  "stacked pool and this ledger DISAGREE until the builder constant is updated and the pool rebuilt.")
+        ms = d.entry_strategy.astype(str).str.startswith("MOMENTUM") & (d.direction == "SHORT")
+        _c1 = d["entry_pattern_c1_match"] if "entry_pattern_c1_match" in d else pd.Series(None, index=d.index, dtype=object)
+        _rg = d["entry_btc_regime"] if "entry_btc_regime" in d else pd.Series(None, index=d.index, dtype=object)
+        c1b = pd.Series([mom_short_c1_regime_block(_th, c, r if isinstance(r, str) else None) for c, r in zip(_c1, _rg)],
+                        index=d.index, dtype=bool)
+        _c1_drop = ms & c1b
+        if int(_c1_drop.sum()):
+            print(f"  ℹ C1 momentum-short regime block: {int(_c1_drop.sum())} short(s) dropped, "
+                  f"${d.loc[_c1_drop, 'pnl_'].sum():+,.0f}")
+        d = d[~_c1_drop]
+    except Exception as e:                                        # noqa: BLE001
+        print(f"  ⚠ could not apply the C1 momentum-short regime block ({e}) — NUMBERS BELOW INCLUDE those shorts.")
+
     # bull-run sleeve — the FULL live gate list
     br = d.entry_strategy == "BULLRUN_LONG"
     rearm = d["entry_br_door"].eq("REARM") | ((d.era == "B4") & br)

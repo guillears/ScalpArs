@@ -23,7 +23,7 @@ import warnings; warnings.filterwarnings('ignore')
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-09-25a"  # a: FLIP_FAN_WEAK_BOUNCE — FAN flip-shorts refused when pair EMA13−EMA50 gap < 0 AND EMA20 slope < 0.15 (operator ARMED override at N=8, DECISION_LOG 113; rule = engine flip_fan_weak_bounce); B12 snapshot as-of 09-25. Prior: 2026-09-24b # b: FADE_BRSI 45→50 — the Aug-5 ceiling's own pre-committed revert fired (DECISION_LOG 112); label FADE_BRSI45→FADE_BRSI50. Prior: 2026-09-24a # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
+STACK_VERSION = "2026-09-25b"  # b: MOM_SHORT_C1_REGIME — C1 momentum shorts refused when BTC is STRONG_BEAR (operator ARMED override, DECISION_LOG 114; rule = engine mom_short_c1_regime_block). Prior: 2026-09-25a # a: FLIP_FAN_WEAK_BOUNCE — FAN flip-shorts refused when pair EMA13−EMA50 gap < 0 AND EMA20 slope < 0.15 (operator ARMED override at N=8, DECISION_LOG 113; rule = engine flip_fan_weak_bounce); B12 snapshot as-of 09-25. Prior: 2026-09-24b # b: FADE_BRSI 45→50 — the Aug-5 ceiling's own pre-committed revert fired (DECISION_LOG 112); label FADE_BRSI45→FADE_BRSI50. Prior: 2026-09-24a # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 # Era registry (Sep-11: B3/B4/B5 were previously stacked by a one-off — the builder only knew
@@ -98,6 +98,8 @@ def load():
                 'entry_btc_regime', 'entry_global_volume_ratio', 'entry_btc_ema20_slope',
                 # 🪃 Sep-25 FLIP_FAN_WEAK_BOUNCE inputs (review fix: a missing era column must fail loudly, not fail open)
                 'entry_ema20_slope', 'entry_pair_ema20_ema50_gap_pct',
+                # 🧊 Sep-25 MOM_SHORT_C1_REGIME inputs (a missing era column must fail loudly)
+                'entry_pattern_c1_match',
                 # FAKE_BULL_GUARD gate columns (2026-08-14a) — schema drift must fail loudly
                 'confidence', 'entry_bull_pct', 'entry_btc_trend_gap_pct',
                 'cell_multiplier', 'cell_multiplier_source', 'pattern_cell_source', 'status',
@@ -133,7 +135,7 @@ def main():
     import os, sys
     from types import SimpleNamespace
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from services.trading_engine import long_heat_eval, long_megacap_block, fade_late_arm_cf, flip_fan_weak_bounce
+    from services.trading_engine import long_heat_eval, long_megacap_block, fade_late_arm_cf, flip_fan_weak_bounce, mom_short_c1_regime_block
     # ⏱ Sep-24 frozen fade exit constants for the late-arm CF (live values at ship; builder pins a STACK_VERSION)
     _FADE_TH = SimpleNamespace(spike_fade_late_arm_after_min=15.0, spike_fade_late_arm_peak=0.30,
                                runner_trail_short_arm_peak=0.40, runner_trail_short_atr_mult=0.5,
@@ -146,6 +148,8 @@ def main():
     # 🪃 Sep-25 frozen fan-flip weak-bounce constants (live values at ship; DECISION_LOG 113)
     _FLIP_TH = SimpleNamespace(flip_fan_weak_bounce_enabled=True, flip_fan_weak_bounce_gap_max=0.0,
                                flip_fan_weak_bounce_slope_max=0.15)
+    # 🧊 Sep-25 frozen C1 momentum-short regime block (live value at ship; DECISION_LOG 114)
+    _C1_TH = SimpleNamespace(momentum_short_c1_block_regimes='STRONG_BEAR')
     _off30 = {}
     if os.path.exists("reports/btc_off30d_hourly.csv"):
         _o = pd.read_csv("reports/btc_off30d_hourly.csv")
@@ -215,6 +219,11 @@ def main():
                 # (engine long_megacap_block; fail-open on an unstamped rank). Live parity, DECISION_LOG 110.
                 elif str(r.direction) == 'LONG' and long_megacap_block(_HEAT_TH, r.get('entry_pair_rank')):
                     k, why = False, 'LONG_MEGACAP_BLOCK'
+                # Sep-25: 🧊 C1 momentum shorts refused in STRONG_BEAR (engine mom_short_c1_regime_block, checked BEFORE the
+                # pair-vol ceiling like the engine; fail-open on missing flag/regime). Live parity, DECISION_LOG 114.
+                elif (str(r.direction) == 'SHORT'
+                      and mom_short_c1_regime_block(_C1_TH, r.get('entry_pattern_c1_match'), r.get('entry_btc_regime'))):
+                    k, why = False, 'MOM_SHORT_C1_REGIME'
                 # Sep-18: momentum_short_pair_vol_max 1.0 → 0.86 (live parity; engine: strict >=, fail-open on missing PVR).
                 elif (str(r.direction) == 'SHORT' and pd.notna(r.entry_pair_volume_ratio)
                       and float(r.entry_pair_volume_ratio) >= 0.86): k, why = False, 'MOM_SHORT_PAIRVOL'

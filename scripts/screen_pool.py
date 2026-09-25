@@ -18,7 +18,7 @@ Flip-short uses the real services.trading_engine._flip_filters with a field-audi
 import csv, sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
-from services.trading_engine import _flip_filters, long_heat_eval, long_megacap_block
+from services.trading_engine import _flip_filters, long_heat_eval, long_megacap_block, mom_short_c1_regime_block
 
 RAW = "reports/COMBINED_momentum_flip_2026-06-16to28_DEDUP.csv"  # Jul 8: now spans 06-16..07-08 (batches appended; filename kept — all tooling points here)
 OUT = "reports/SCREENED_BASELINE.csv"
@@ -131,6 +131,9 @@ def sleeve(r):
         _dg = float(getattr(th, 'momentum_short_pair_gap_min', 0.0) or 0.0)
         _pg = nf(r.get('entry_pair_ema20_ema50_gap_pct'))
         if _dg < 0 and _pg is not None and _pg <= _dg: return None  # MOMENTUM_SHORT_DEEPGAP
+        # Sep 25: C1 momentum-short regime block — engine parity (checked before pair-vol, like the engine). No COMBINED
+        # row matches today (the only two C1-in-STRONG_BEAR shorts are B12), so the v18 anchors do not move.
+        if mom_short_c1_regime_block(th, r.get('entry_pattern_c1_match'), r.get('entry_btc_regime')): return None  # MOM_SHORT_C1_REGIME
         # Jun 30: high-pair-volume block (momentum_short_pair_vol_max) — current-stack parity. Shorting into high
         # pair vol = climactic/exhaustion → bounce; the one separator robust across both periods.
         _pvmax = float(getattr(th, 'momentum_short_pair_vol_max', 0.0) or 0.0)

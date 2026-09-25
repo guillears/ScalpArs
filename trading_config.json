@@ -251,6 +251,7 @@
     "flip_short_rsi_min": 55.0,
     "flip_short_btc_1h_slope_max": 0.0,
     "flip_fan_btc_ema13_max": -0.08,
+    "momentum_short_c1_block_regimes": "STRONG_BEAR",
     "flip_fan_weak_bounce_enabled": true,
     "flip_fan_weak_bounce_gap_max": 0.0,
     "flip_fan_weak_bounce_slope_max": 0.15,

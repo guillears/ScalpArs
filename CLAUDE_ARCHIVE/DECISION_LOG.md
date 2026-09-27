@@ -3988,3 +3988,28 @@ Reviews: caveman — evidence text updated to the full 11-trade cohort; flags se
 B12 final (Sep-21 19:38 → Sep-25 16:31): 23·52%·−$632 as traded → 15·80%·+$723 under the current stack (in-sample). Attribution of the week's ships on B12: weak-bounce +$391 (FET, AVAX) · fade late-arm +$310 (PROVE re-priced, optimistic) · heat breadth ≥85 +$257 (FORM, DASH long, PEPE) · mega-cap +$220 (XRP) · C1 STRONG_BEAR +$178 (DASH short, BCH). Left standing: WIF/XLM Sep-23, XLM Sep-25 (quiet-cell DOA momentum longs). Operator reset → B13 starts with the complete stack live from trade 1 and serves as the forward test of the frozen system (rules change only via locked revert gates / bugs).
 Engine-replay calibration (this session): decision-journal comparison 23-24 Sep — completed-bar indicators exact; the forming candle was the gap (volume-so-far 12% off → 1.2% with tick rebuild); harness fixes: maker stand-in signature (broken since Sep-19, zero opens), real live maker entry (20 s window + re-validation), tick forming candle, live scan timestamps / synthetic cadence 111.6±5 s, per-moment config history (604 versions), atomic on-demand cache writes, non-ASCII tick URLs. Momentum longs 6/6 reproduced with journal timing; ablations: no-journal-timing 3/6, 1m-only 2/6 → entry flicker makes single-trade identity random pre-journal → calibration is population-level. Sep-18→24 window (100 live fills from the B8-B12 archives, 3 seeds): ML live 2.3/d·56%·+0.01% inside seeds 2.3-3.0/d·50-69%·−0.19..+0.10; fades inside; bull-run fewer fills (REARM Sep-21 08-15h blocked by the entry-age cap default that shipped 16:01 — explained); W/L reproduction 59% vs 49% (old harness 13/29 vs 0/10). Journal: finished days now plain .jsonl (a900a73) so bundles carry them.
 Full-year-to-date run (Jan-4 → Sep-25) launched on frozen config 5442bbc: 5 seeds × 9 monthly chunks, newest first as ticks (15,912 pair-days, ~38 GB) arrive. The heat re-scope / breadth verdict reads the Jan–Jun chunks ONLY (Jul–Sep = in-sample for those rules). Operator started B13 right after the save. Go-live bar (freeze · protocol · per-sleeve keep/cut · book bar · 14-day forward · live ramp) drafted; operator chose to register it after the report.
+
+## 2026-09-27 (118) - 🌫 CALM3D BTC-ATR floor ARMED (declared operator override) + full-year replay report
+Ship: `nonexp_calm3d_btc_atr_min = 0.08` (config default 0 = off; JSON 0.08) — 6th leg of the NONEXP_CALM3D door, judged last
+(counter CALM3D_BTC_ATR_MIN = sole blocks; block log carries entry_px). Thesis: the door buys a coiled pair on a CALM BTC; a
+DEAD tape (BTC 5m ATR% < 0.08) gives the coil no market energy to release into. Evidence — live master+B13 (all 22 CALM3D fills
+stamped): blocks 4 = NEAR +0.26 (B2) + B13 PUMP −0.70 / PEPE −0.69 / UNI −0.70 (2 windows, one day) → CALM3D 22·82%·+$1,292 →
+18·94%·+$1,849; ledger 249·85%·+$14,988 → 248·85%·+$14,930; B13 10·60%·−$244 → 7·86%·+$371. Replay yr2 (corrected full-year,
+5 seeds): OOS blocked 10 unique setups·26%·−0.49% · window-bootstrap P(avg<0) 1.00 · 10 windows / 9 days · negative in all 5
+seeds; IS 3 setups·+0.19% (contradicts, N=3); other momentum longs at BTC ATR <0.08 are not worse (live 5·80%·+0.36%) →
+CALM3D-specific. Expectancy bar: WR/confidence/windows pass OOS, N 10 < 15 fails → shipped as a DECLARED override with a tight
+revert: first 5 blocked candidates re-priced on 1m klines, would-be Σ > 0 ⇒ 0. Parity: engine helper calm3d_btc_atr_floor_block ·
+build_master_pool STACK 2026-09-27b (merged on top of the parallel 27a FRESHBREAK-scope fix, commit 11e65f6) · ledger (--batch rows,
+drift warning) · backtest_phase1/2 door copies · tests/test_calm3d_atr_floor.py. Reviews: caveman clean; deep review 0 blocking
+(fixed: old replay door copies, UI blank → 0.08, engine-wiring test; noted: builder cooldown chain counts blocked door rows —
+pre-existing pattern). Refuted same day: watch D (CALM3D ∧ BTC 72h return ≥ 0) — 14 of 22 fills unstamped; rebuilt from btc_5m
+the rule blocks 10W/4L (−$333; B2's 7 winners fired at BTC +1.1…+3.3% 72h).
+Full-year replay (reports/ENGINE_REPLAY_YEAR_FINAL_2026-09-27.md, audit trail reports/ENGINE_REPLAY_YEAR_PLAN.md): corrected
+campaign yr2 (harness bugs fixed: heat 30d history, real tick size, every-trade exit feed). OOS Jan-4→Jun-16 TOTAL 965/seed·64%·
+−0.05%/trade (ML −0.09, fades +0.03, flips −0.18, MS −0.08); live sizing (5–10× equity notional per fill) ruins every seed; per-filter
+OOS: keep mega-cap / C1 / weak-bounce / late-arm, heat re-scope + CROSS_OB_OPEN revert candidates, fade bRSI 45→50 directional
+only. Validation: at live's exact scan seconds + per-moment config the replay reproduced 7/7 live momentum opens at the same price
+(volume 1.2 %, RSI 0.45 % median error); per-sleeve mechanics audit found fade stops too deep where ticks are missing (22 % beyond
+−1.7 % vs 8 % with ticks) → missing tick pair-days being fetched for a full-coverage re-run; live under today's rules (Sep 16–25)
+ran above the replay's seeds for fades/ML → the replay's absolute level is a lower-side estimate until that re-run.
+

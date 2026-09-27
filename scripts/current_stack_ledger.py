@@ -300,6 +300,25 @@ def build(rearm_trail=True, entry_age_cap=60.0):
     except Exception as e:                                        # noqa: BLE001
         print(f"  ⚠ could not apply the C1 momentum-short regime block ({e}) — NUMBERS BELOW INCLUDE those shorts.")
 
+    # 🌫 Sep-27 CALM3D BTC-ATR floor — same pure rule as the engine door leg and the builder (pool rows are already
+    # stack-blocked; this catches --batch rows). Reads the live threshold; warns if it drifts from the builder freeze.
+    try:
+        from services.trading_engine import calm3d_btc_atr_floor_block, _finite
+        import config as _cfg
+        _th = _cfg.trading_config.thresholds
+        if _finite(getattr(_th, 'nonexp_calm3d_btc_atr_min', None)) != 0.08:
+            print("  ⚠ live nonexp_calm3d_btc_atr_min differs from the builder freeze (0.08) — "
+                  "stacked pool and this ledger DISAGREE until the builder constant is updated and the pool rebuilt.")
+        door = d["cell_multiplier_source"].astype(str).str.contains("CALM3D", na=False) if "cell_multiplier_source" in d else pd.Series(False, index=d.index)
+        _ba = d["entry_btc_atr_pct"] if "entry_btc_atr_pct" in d else pd.Series(None, index=d.index, dtype=object)
+        fb = pd.Series([calm3d_btc_atr_floor_block(_th, v) for v in _ba], index=d.index, dtype=bool)
+        _fb_drop = door & fb
+        if int(_fb_drop.sum()):
+            print(f"  ℹ CALM3D BTC-ATR floor: {int(_fb_drop.sum())} door long(s) dropped, ${d.loc[_fb_drop, 'pnl_'].sum():+,.0f}")
+        d = d[~_fb_drop]
+    except Exception as e:                                        # noqa: BLE001
+        print(f"  ⚠ could not apply the CALM3D BTC-ATR floor ({e}) — NUMBERS BELOW INCLUDE those longs.")
+
     # bull-run sleeve — the FULL live gate list
     br = d.entry_strategy == "BULLRUN_LONG"
     rearm = d["entry_br_door"].eq("REARM") | ((d.era == "B4") & br)

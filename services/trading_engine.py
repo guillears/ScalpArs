@@ -688,6 +688,24 @@ def flip_fan_weak_bounce(th, pair_gap, ema20_slope):
     return g < gmax and s < smax
 
 
+def calm3d_btc_atr_floor_block(th, btc_atr_pct):
+    """🌫 Sep-27 CALM3D BTC-ATR FLOOR (operator-directed ARMED override, DECISION_LOG 118) — pure rule, shared by
+    the NONEXP_CALM3D door, scripts/build_master_pool.py, scripts/current_stack_ledger.py and tests.
+
+    True = refuse the CALM3D admission. The door buys a coiled pair on a CALM BTC (ATR ≤ nonexp_calm3d_btc_atr_max);
+    this leg adds a floor: BTC 5m ATR% < nonexp_calm3d_btc_atr_min (ship 0.08) = a DEAD tape — no market energy
+    behind the alt's breakout, the coil releases into nothing. Evidence: live master+B13 CALM3D 22·82%·+$1,292 →
+    blocked 4 (1W NEAR +0.26 / 3L B13 PUMP, PEPE, UNI) Δ +$557; full-year replay OOS blocked 10 setups · 26% · −0.49%
+    (P(avg<0) 1.00, 10 windows, negative in all 5 seeds), IS 3 setups · +0.19% (contradicts, N=3). Fails only N≥15 of
+    the expectancy bar. CALM3D-specific: other momentum longs at BTC ATR < 0.08 win (live 5·80%·+0.36%).
+    Strict <; 0 = leg off; FAIL-OPEN on missing / non-finite BTC ATR (a block never fires on data it lacks)."""
+    floor = _finite(getattr(th, 'nonexp_calm3d_btc_atr_min', None))
+    v = _finite(btc_atr_pct)
+    if floor is None or floor <= 0 or v is None:
+        return False
+    return v < floor
+
+
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 # ⏱ Sep-24 FADE LATE-ARM (operator override at N=2, DECISION_LOG 111). A SPIKE_FADE still unarmed
 # X minutes after entry arms its runner trail at a LOWER peak, measured on the peak reached AFTER X.
@@ -13183,9 +13201,20 @@ class TradingEngine:
                                         and _pp_cool_ok and not _pp_dmi_ok):
                                     self._record_filter_block("CALM3D_DMI", "LONG", had_room=_scan_had_room_snapshot)
                                     logger.info(f"[CALM3D_DMI] {pair}: coiled candidate REJECTED — +DI {(float(_pp_di) if _pp_di is not None else -1):.1f} < {_pp_di_min} or pADX {(float(_pp_padx) if _pp_padx is not None else -1):.1f} < {_pp_padx_min} (thrust leg: coil without sponsorship) | entry_px={indicators.get('price')} — re-sim revert row")
+                                # Sep-27 BTC-ATR FLOOR (6th leg, operator ARMED override, DECISION_LOG 118): a DEAD
+                                # tape (BTC ATR < floor) gives the coil nothing to release into. Judged LAST, only
+                                # when every other leg admits, so its counter = the floor's own sole blocks.
+                                _pp_floor_block = calm3d_btc_atr_floor_block(_th_pp, _pp_batr)
                                 if (entry_btc_regime in _pp_regs and _pp_batr is not None
                                         and float(_pp_batr) <= _pp_atr_max and _pp_coiled and _pp_hour_up
-                                        and _pp_cool_ok and _pp_dmi_ok):
+                                        and _pp_cool_ok and _pp_dmi_ok and _pp_floor_block):
+                                    self._record_filter_block("CALM3D_BTC_ATR_MIN", "LONG", had_room=_scan_had_room_snapshot)
+                                    logger.info(f"[CALM3D_BTC_ATR_MIN] {pair}: door candidate REJECTED — BTC-ATR {float(_pp_batr):.3f} < "
+                                                f"{getattr(_th_pp, 'nonexp_calm3d_btc_atr_min', 0)} (dead tape: the coil has nothing to release into) "
+                                                f"| entry_px={indicators.get('price')} — re-sim revert row")
+                                if (entry_btc_regime in _pp_regs and _pp_batr is not None
+                                        and float(_pp_batr) <= _pp_atr_max and _pp_coiled and _pp_hour_up
+                                        and _pp_cool_ok and _pp_dmi_ok and not _pp_floor_block):
                                     _nonexp_calm3d_hit = True
                                     logger.info(f"[NONEXP_CALM3D] {pair}: gap-{'flat' if _pp_gapflat else 'min[flat]'} LONG ADMITTED full-size — {entry_btc_regime} ∧ BTC-ATR {float(_pp_batr):.3f} <= {_pp_atr_max} ∧ stretch {(entry_ema5_stretch if entry_ema5_stretch is not None else -1):.2f} <= {_pp_smax} ∧ b1h {(float(_pp_b1h) if _pp_b1h is not None else -1):+.3f} > {_pp_b1h_min}")
                                 else:

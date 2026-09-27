@@ -294,7 +294,8 @@ def main():
                               and stretch <= float(TH.nonexp_calm3d_max_stretch)
                               and (b['btc_1h_slope'] is None or b['btc_1h_slope'] > float(TH.nonexp_calm3d_b1h_min))
                               and (ind['pos_di'] is None or ind['pos_di'] >= float(TH.nonexp_calm3d_min_pos_di))
-                              and ind['adx'] >= float(TH.nonexp_calm3d_min_pair_adx))
+                              and ind['adx'] >= float(TH.nonexp_calm3d_min_pair_adx)
+                              and not P1.calm3d_btc_atr_floor_block(TH, b['btc_atr_pct']))   # Sep-27 dead-tape floor (engine parity)
                         cl = calm_last.get(p)
                         if ok and cl is not None and dec - cl < float(TH.nonexp_calm3d_reentry_cooldown_min) * 60_000:
                             blk = 'CALM3D_REENTRY'

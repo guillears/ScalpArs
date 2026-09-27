@@ -619,6 +619,7 @@
     "spike_bounce_max_pair_gap": -0.125,
     "nonexp_calm3d_min_pos_di": 28.0,
     "nonexp_calm3d_min_pair_adx": 21.0,
+    "nonexp_calm3d_btc_atr_min": 0.08,
     "spike_fade_fb_rsi_prev_min": 44.0,
     "spike_fade_fb_pgap_min": -0.4,
     "long_unmatched_sprint_demux_gvr_min": 0.74,

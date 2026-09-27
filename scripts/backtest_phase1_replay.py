@@ -31,6 +31,7 @@ import config as config_module
 from services.indicators import (get_signal, gap_expand_flat, gminflat_band,
                                  _rsi_adx_block_rule, determine_macro_regime)
 from services.regime import classify_btc_regime
+from services.trading_engine import calm3d_btc_atr_floor_block
 from ta.trend import EMAIndicator, ADXIndicator
 from ta.momentum import RSIIndicator
 from ta.volatility import AverageTrueRange
@@ -389,7 +390,8 @@ def main():
                                    if float(getattr(TH, 'nonexp_calm3d_max_stretch', 0.06)) > 0 else True)
                               and (pd.isna(b['btc_1h_slope']) or b['btc_1h_slope'] > float(getattr(TH, 'nonexp_calm3d_b1h_min', 0.0)))
                               and (r['pos_di'] >= float(getattr(TH, 'nonexp_calm3d_min_pos_di', 28.0)) if not pd.isna(r['pos_di']) else True)
-                              and (r['adx'] >= float(getattr(TH, 'nonexp_calm3d_min_pair_adx', 21.0))))
+                              and (r['adx'] >= float(getattr(TH, 'nonexp_calm3d_min_pair_adx', 21.0)))
+                              and not calm3d_btc_atr_floor_block(TH, b['btc_atr_pct']))   # Sep-27 dead-tape floor (engine parity)
                         cl = calm_last.get(p)
                         if ok and cl is not None and (ts - cl).total_seconds() < float(getattr(TH, 'nonexp_calm3d_reentry_cooldown_min', 90)) * 60:
                             block = 'CALM3D_REENTRY'

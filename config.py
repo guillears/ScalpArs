@@ -646,6 +646,16 @@ class SignalThresholds(BaseModel):
     # is executed as fix-the-losers, per the locked caps/multipliers rule). 0 = leg off.
     nonexp_calm3d_min_pos_di: float = 28.0
     nonexp_calm3d_min_pair_adx: float = 21.0
+    # 🌫 Sep-27 BTC-ATR FLOOR (6th leg, operator-directed ARMED override at N=10 unique OOS setups < N≥15 bar;
+    # DECISION_LOG 118): refuse a CALM3D admission when BTC 5m ATR% < this — a DEAD tape gives the coil nothing to
+    # release into (the door's ceiling nonexp_calm3d_btc_atr_max keeps it calm; this keeps it alive). Evidence:
+    # live master+B13 CALM3D 22·82%·+$1,292 → blocks 4 (1W/3L: NEAR +0.26 / B13 PUMP, PEPE, UNI) Δ +$557; replay OOS
+    # blocked 10 setups·26%·−0.49% P(avg<0) 1.00 (10 windows, all 5 seeds negative), IS 3 setups·+0.19% (N=3,
+    # contradicts). CALM3D-specific (other longs at BTC ATR<0.08 win). Rule = engine calm3d_btc_atr_floor_block;
+    # strict <, fail-open on missing BTC ATR; judged LAST in the door (counter CALM3D_BTC_ATR_MIN = sole blocks,
+    # log carries entry_px for the revert re-sim). 🔒 TIGHT REVERT: first 5 blocked candidates re-priced from the
+    # log on 1m klines → would-be Σ > 0 ⇒ 0 (off). 0 = leg off (default).
+    nonexp_calm3d_btc_atr_min: float = 0.0
     nonexp_calm3d_invest_mult: float = 2.0        # Jul-31 RE-ESCALATED 1.0→2.0 with the b1h leg (operator-
     #   directed DOUBLE staging override: skips the locked 1.5×-first ladder AND the N>=30 W-bar —
     #   evidence = the refined cohort 10·90%·+0.372% (partially in-sample; legs discovered on it).

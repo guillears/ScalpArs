@@ -4026,3 +4026,16 @@ paper and live share the sizing path, no hardcoded 0.3 elsewhere; LIQ vs LIQ2 is
 = SPIKE_FADE opened after the deploy with cap ratio ≈ 0.5%; first 10 net Σ$ < 0; slippage leg (> 0.15% median) counts on LIVE fills
 only. Test tests/test_spike_lowvol_cap.py pins JSON == default == UI fallback.
 
+## 2026-09-27 (120) - 🔭 FAN flip −DI<15 registered OBSERVE (B13 BR loser review)
+B13 BR (FLIP:FAN_RATIO_GATE, QS winner cell 1×) −0.76% / −$102, stopped in 1.6 min: STRONG_BEAR, BTC +0.04% above its 24h low with
+BTC RSI rebounding 30→36, pair RSI 55→63, bear breadth 78.7, −DI 12.9. Open fan-flip gates untouched (weak-bounce n/a: gap +0.14;
+pADX exemption n/a: pADX 23.3; NEGDI15 cell n/a); tallies: winner cell +1 forward loser (stays 1×), "bear 70–80" multiplier candidate
++1 counter-example, STRONG_BEAR fan flips since Jun-30 → 11·55%·−$181. Live kept fan flips 27·89%·+$1,486 (BASE 20·+$826, B3 4·+$459,
+B6 +$215, B8 +$88, B13 −$102); the 3 losers ever (IDOL, DEXE, BR) share high bear breadth (med 78.7 vs 67.9) and weak −DI (12.9 vs
+16.0). bear≥76 ∧ −DI<15 blocks 4 (1W JTO +0.15 / 3L) → 23·100%·+$1,719 (+$232; BASE +$130, B13 +$102) — thresholds read off the same 3
+losers. Replay yr2 flip orders carry NO bear/DMI stamps (0 % — harness stamping gap, decisions unaffected); rebuilt bear from the
+replay scan journal and −DI from 5m klines for 224 fan-flip setups: combined rule OOS 23 setups·60%·−0.21% (P .93) vs kept −0.16, IS
++0.11 (against); bear≥76 alone wrong sign both periods (W/L median 67.4 = 67.4); −DI<15 alone OOS 72 setups·55%·−0.26% P 1.00 vs kept
+−0.06, IS +0.03 vs −0.02. → register −DI<15 as the observe candidate (companion tally ∧ bear≥76); no block (live N=3 losers, 3
+windows; bar needs N≥15 / ≥8 windows).
+

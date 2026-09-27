@@ -2350,7 +2350,16 @@ class InvestmentConfig(BaseModel):
     # this alone. Entry engine untouched (91% WR outside zone). DECISION_LOG 2026-09-19 (80).
     # 🔒 revert-of-revert: ≥$10M fades throttled by the 0.1% cap go net-negative vs their full-size
     # counterfactual on N≥10 fresh fills → raise threshold again.
-    spike_lowvol_liq_cap_pct: float = 0.3         # spikes on thin pairs: % of 24h vol (0 = off → global pct)
+    # 🐳 Sep-27 THIN-PAIR CAP 0.3 → 0.5 (operator-directed override, DECISION_LOG 119): fades on pairs < $10M were
+    # cap-limited on 87% of fills (median ticket $9.5k ≈ 4.3 min of the pair's average volume vs ~$26k desired).
+    # Live master+B13 thin-pair fades 62·77%: re-priced at 0.5% +$3,243 → +$4,398 (winners +$3,843→+$5,261, losers
+    # −$600→−$864; every batch up except B10 −$214→−$356; B13 +$201→+$311); ticket ≈ 7 min of average volume (a
+    # spike candle trades several × average). ⚠ B2 = 72% of the Δ; paper fills carry no market impact; the year
+    # replay's opposite read had fade stops biased deep (missing ticks — re-run pending). 🔒 REVERT → 0.3: cohort =
+    # SPIKE_FADE opened after the deploy with liquidity_capped ∧ entry_liquidity_cap_notional/entry_pair_volume_24h_usd
+    # ≈ 0.5% (orders CSV); first 10 of them net Σ$ < 0 ⇒ 0.3. Slippage leg (median |entry_slippage_pct| > 0.15%)
+    # counts on LIVE fills only (paper simulates ≈0 slippage).
+    spike_lowvol_liq_cap_pct: float = 0.5         # spikes on thin pairs: % of 24h vol (0 = off → global pct)
     spike_lowvol_threshold_usd: float = 10_000_000.0  # "thin" = 24h vol below this (JSON carries $1T = all-spikes since Aug-18)
     # ② Gross-notional cap: Σ(open notional) ≤ balance × max_gross_leverage.
     #    Portfolio liquidation/correlation guard (a -X% correlated dump costs

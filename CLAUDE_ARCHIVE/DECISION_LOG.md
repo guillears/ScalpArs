@@ -4013,3 +4013,16 @@ only. Validation: at live's exact scan seconds + per-moment config the replay re
 −1.7 % vs 8 % with ticks) → missing tick pair-days being fetched for a full-coverage re-run; live under today's rules (Sep 16–25)
 ran above the replay's seeds for fades/ML → the replay's absolute level is a lower-side estimate until that re-run.
 
+## 2026-09-27 (119) - 🐳 Thin-pair fade liquidity cap 0.3% → 0.5% (operator override)
+`investment.spike_lowvol_liq_cap_pct` 0.3 → 0.5 (JSON + config default); pairs ≥ $10M/day keep the global 0.1% cap (operator also
+asked about raising those: 9 kept fades·78%·+$40, one SAND −$362 decides it, larger pairs fade worse — declined). Evidence (live
+master stack-kept + B13, thin-pair fades 62·77%): 87% of fills cap-limited, median ticket $9.5k ≈ 4.3 min of the pair's average
+volume vs ~$26k desired. Re-priced (fill × new cap / actual, up to desired): 0.3% +$3,243 · 0.4% +$3,917 · 0.5% +$4,398 · 0.75%
++$5,128 · 1.0% +$5,588; at 0.5% winners +$3,843 → +$5,261, losers −$600 → −$864, worst loss −$313; every batch up except B10
+(−$214 → −$356); B13 +$201 → +$311. Caveats on record: B2 carries 72% of the Δ (concentration); paper fills carry no market impact
+(ticket ≈ 7 min of average volume, a spike candle trades several ×); the year replay's contrary read had fade stops biased deep
+where ticks were missing (full-coverage re-run pending). Deep review: cap only shrinks orders (0.5% × $10M = $50k ≪ $500k ceiling),
+paper and live share the sizing path, no hardcoded 0.3 elsewhere; LIQ vs LIQ2 is derived from stored columns. 🔒 REVERT → 0.3: cohort
+= SPIKE_FADE opened after the deploy with cap ratio ≈ 0.5%; first 10 net Σ$ < 0; slippage leg (> 0.15% median) counts on LIVE fills
+only. Test tests/test_spike_lowvol_cap.py pins JSON == default == UI fallback.
+

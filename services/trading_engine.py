@@ -7636,7 +7636,7 @@ class TradingEngine:
             # 🔒 Aug-3 SPIKE LOW-VOL CAP RAISE (operator override; 0.1→0.2 Aug-3, 0.2→0.3
             # Aug-18 gate 50 — see config comment: increment UNVERIFIABLE UNTIL LIVE):
             # spike species on pairs below the frozen $10M slice boundary use the raised
-            # pct (config value, currently 0.3%); everything else (momentum/flips/spikes
+            # pct (config value, 0.5% since Sep-27 — DECISION_LOG 119); everything else (momentum/flips/spikes
             # >= $10M) keeps the global pct. Raised-cap throttles stamp LIQ2 (Liquidity
             # Sizing table + CSV = the revert-gate instrument).
             _liq_pct_eff = _liq_pct

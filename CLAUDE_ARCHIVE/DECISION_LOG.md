@@ -4104,3 +4104,20 @@ Known limits (for any future mcap cohort study): NULL = pair outside the refresh
 unavailable (futures-only, e.g. 1000000MOG) — NULLs cluster on thin pairs; a few upstream caps look rounded (1INCH 150,000,000.00).
 Reviews: caveman (strong task ref) + deep (full-symbol-first + alias check, rank parsed separately, watchdog, one lookup per row) —
 all applied; tests 301 green (tests/test_mcap_service.py).
+
+## 2026-09-28 (125) - 🔭 ML "BTC-drop + pair-rollover" registered OBSERVE (B14 TAO/VIRTUAL loser review; no code)
+Trigger: B14 TAO + VIRTUAL momentum LONGs, SAME scan (19:03:49 / 19:03:52 UTC), UNMATCHED 2×. BTC 5m RSI 59.7→49.6 inside the
+entry bar, BTC ADX 26.6→25.4, BTC −0.055% under EMA13 and 1.14% under its 24h high, 1h RSI 57.4→54.2; pair RSI falling on both
+(61.1→58.1, 59.6→54.4). Both never green: −0.84% / −1.02% (−$525).
+Signature = full-size momentum LONG with entry_btc_rsi_prev − entry_btc_rsi ≥ 5 AND entry_rsi < entry_rsi_prev (all stamped).
+Master (current-stack ledger, validated 108·Σ+30.2%) per batch: BASE 2·100%·+0.427 · B1 2·50%·−0.297 · B2 1·100% · B3 1·0% ·
+B12 1·100% · B14 2·0%·−0.928 → 9·56%·−0.199%·−$346 over 7 windows vs rest 101·82%·+0.299%. Without B14: 7·71%·+0.009 (one window
+flipped the sign). Backtest (yr2, 5 seeds, today's-rules adjusted) does NOT separate: Jan–Apr hit −0.089 vs rest −0.080 · May–Sep
+−0.016 vs −0.051; BTC-drop alone is BETTER than average there. Fails the expectancy bar on N (9<15), windows (7<8) and OOS → observe.
+Rejected in the same review: "late long" (6 definitions — BTC +1–1.5% in 3–6h, off its 100-min high, 1h range-pos>70 ∧ red 5m bar):
+none separates in the master (closest 9·100%), halves disagree in the backtest; master BTC 5m/15m-weakness splits stay positive and
+above breakeven (last 5m bar red 35·71%·+0.114 vs 73·86%·+0.360). Noted, not registered: same-scan concentration (master scans with
+≥3 ML = 1 scan 3·0%; 2 ML = 10·80%).
+🔒 BAR (frozen; thresholds 5 pts / "falling" never re-tuned): count only fills opened after 2026-09-28 19:10 UTC; one scan (opens
+within 2 min) = ONE window; 1× de-multiplied, probes excluded. At fresh N≥15 over ≥8 windows → BLOCK CANDIDATE only if WR < ML
+breakeven (~61%) ∧ avg<0 at 95% window-clustered bootstrap ∧ no window ≥50% of the loss; otherwise the watch closes.

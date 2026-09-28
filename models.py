@@ -258,6 +258,8 @@ class Order(Base):
     # ⚠ the name pins N=10 as of ship; changing `bullrun_universe_size` invalidates historical rows.
     entry_br_door_age_min = Column(Float, nullable=True)  # Sep 21 (57l): minutes the door had been open at entry — the sleeve's own clock, previously invisible to every analysis (it took AWS log archaeology to recover)
     adx_surge_open = Column(Boolean, default=False, nullable=True)  # ⚡ Sep-28 (DECISION_LOG 123): LONG admitted through the BTC ADX-surge waiver (ADX floor / RSI 50-60 bands lifted on an ADX jump + positive slope) — the cohort's identity (CALM3D doors keep their cell tag)
+    entry_mcap_usd = Column(Float, nullable=True)   # 💰 Sep-28 (DECISION_LOG 124): pair market cap (USD, circulating; CMC via Binance Info) at entry — cache ≤3× refresh old, NULL if unknown
+    entry_cmc_rank = Column(Integer, nullable=True)  # 💰 Sep-28: CoinMarketCap rank at entry (NULL if unknown)
     # 🐻 Sep 15 gate 60 — Bear-Run Monitor readings at entry (BEARRUN_SHORT fills only, NULL otherwise):
     # r24 / bars-below-EMA20% / 24h efficiency / BTC % above its 24h low at fire time + the BTC gates bypassed.
     entry_bear_r24 = Column(Float, nullable=True)

@@ -497,6 +497,8 @@ class ConfigUpdate(BaseModel):
     new_listing_filter_days: Optional[int] = None
     alpha_subtype_filter_enabled: Optional[bool] = None
     coin_underlying_only: Optional[bool] = None
+    mcap_fetch_enabled: Optional[bool] = None      # 💰 Sep-28 (DECISION_LOG 124)
+    mcap_refresh_minutes: Optional[float] = None
     bnb_swap_enabled: Optional[bool] = None
     bnb_check_interval_hours: Optional[int] = None
     bnb_runway_hours: Optional[int] = None
@@ -1198,10 +1200,15 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
     )
     positions = {(row[0], row[1]): row[2] for row in positions_result}
     
+    try:
+        from services.mcap_service import get as _mcap_get
+    except Exception:
+        _mcap_get = lambda _p: (None, None)
     pairs_data = []
     for p in pairs:
         long_count = positions.get((p.pair, "LONG"), 0)
         short_count = positions.get((p.pair, "SHORT"), 0)
+        _mc = _mcap_get(p.pair)
         
         # Use real-time WebSocket price instead of stale OHLCV close
         ws_tracker = websocket_tracker.trackers.get(p.pair)
@@ -1248,6 +1255,8 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
             "confidence": p.confidence,
             "macro_regime": p.macro_regime,
             "volume_24h": p.volume_24h,
+            "mcap_usd": _mc[0],     # 💰 Sep-28: cached market cap (None → '–')
+            "cmc_rank": _mc[1],
             "block_reason": block_reason,
             "open_positions": {
                 "long": long_count,

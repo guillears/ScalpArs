@@ -2479,6 +2479,12 @@ class TradingConfig(BaseModel):
     
     # Trading pairs limit (how many top pairs by volume to trade)
     trading_pairs_limit: int = 20  # 5, 10, 20, or 50
+    # 💰 Sep-28 MARKET CAP (DECISION_LOG 124): Top Pairs "Mcap" column + per-order stamps entry_mcap_usd / entry_cmc_rank.
+    # Source = the undocumented endpoint behind Binance's "Info" panel (CoinMarketCap data), fetched by services/mcap_service.py
+    # as a background task every mcap_refresh_minutes; the engine only reads the in-memory cache (never waits on the network);
+    # any failure → '–' / NULL stamps. Display + analytics only — no trading rule reads it. False = no fetching at all.
+    mcap_fetch_enabled: bool = True
+    mcap_refresh_minutes: float = 30.0
     pair_blacklist: str = ""  # Comma-separated pairs to exclude ENTIRELY (removed from the top-pair/volume universe). JSON 2026-09-15: 龙虾USDT added — 2 stops in 30h (fade −$381 Sep-14, momentum long −$359 Sep-15) vs one +$33 win; 1m bars with +7.6%/−8.8% wicks minutes after the stop; non-ASCII symbol breaks the aggTrades archive fetch (per-pair concentration rule, DECISION_LOG 61)
     # Jun 3: comma-separated pairs to TRACK but NOT TRADE — they stay in the top-pair/volume
     # list (subscribed, scanned, displayed) but entries are blocked. Use for a pair you want

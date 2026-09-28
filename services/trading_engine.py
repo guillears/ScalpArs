@@ -7639,6 +7639,11 @@ class TradingEngine:
         # pool builder key on it) — every waived admit is identified by the orders.adx_surge_open column instead.
         # ONE predicate drives both the sizing and the orders.adx_surge_open stamp (deep review #4): only a genuine momentum
         # LONG admitted through the waiver — never a probe / spike / sleeve fill or a CROSS_OB co-hit — carries the badge.
+        try:   # 💰 Sep-28: market-cap stamp from the in-memory cache only (never a network call on the open path)
+            from services import mcap_service as _mcs
+            _mcap_usd, _cmc_rank = _mcs.get(pair)
+        except Exception:
+            _mcap_usd, _cmc_rank = None, None
         _adx_surge_admit = bool(adx_surge_open and not cross_ob_open and direction == "LONG" and not flip_source and not bull_long
                                 and not bounce_long and not bullrun_long and not spike_chase_probe and not spike_fade and not spike_bounce
                                 and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
@@ -8073,6 +8078,7 @@ class TradingEngine:
             entry_br_door=entry_br_door,
             entry_br_door_age_min=entry_br_door_age_min,
             adx_surge_open=_adx_surge_admit,   # ⚡ Sep-28: admitted through the BTC ADX-surge waiver (same predicate as its sizing)
+            entry_mcap_usd=_mcap_usd, entry_cmc_rank=_cmc_rank,   # 💰 Sep-28: cached market cap / CMC rank (NULL if unknown)
             entry_br_bull_pct_top10=entry_br_bull_pct_top10,
             entry_br_bear_pct_top10=entry_br_bear_pct_top10,
             entry_br_top10_n=entry_br_top10_n,
@@ -11058,6 +11064,11 @@ class TradingEngine:
         # Persisted per-trade as entry_pair_rank (read gate for the 50->75 expansion).
         for _rank_i, _rank_p in enumerate(top_pairs):
             _rank_p['rank'] = _rank_i + 1
+        try:   # 💰 Sep-28: background market-cap refresh when due (fire-and-forget, never blocks the scan)
+            from services import mcap_service as _mcs
+            _mcs.ensure_refresh(p.get('pair') for p in top_pairs)
+        except Exception:
+            pass
         # Aug-22 (operator-caught): the 🌊 sleeve's "top-N" must be N TRADEABLE pairs — blacklisted pairs
         # (global list AND bullrun_pair_blacklist) must not occupy rank slots, else ONG+ETH+BNB turn
         # top-10 into top-7. br_rank = rank among non-blacklisted pairs (what the replay models).

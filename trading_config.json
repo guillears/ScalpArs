@@ -21,6 +21,8 @@
   "bnb_sell_target_hours": 36.0,
   "bnb_min_sell_usd": 50.0,
   "trading_pairs_limit": 50,
+  "mcap_fetch_enabled": true,
+  "mcap_refresh_minutes": 30.0,
   "pair_blacklist": "ALLOUSDT,EIGENUSDT,ESPORTSUSDT,FILUSDT,MUSDT,PAXGUSDT,RAVEUSDT,SYNUSDT,TRUMPUSDT,USDCUSDT,VELVETUSDT,VVVUSDT,XAGUSDT,XAUTUSDT,XAUUSDT,龙虾USDT",
   "no_trade_pairs": "BTCUSDT,ETHUSDT",
   "new_listing_filter_days": 90,

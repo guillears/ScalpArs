@@ -4088,3 +4088,19 @@ as the sizing — never probes/spikes/CROSS_OB co-hits) · payloads /api/orders/
 sleeve population unchanged). Reviews: caveman + deep → ship; tests 295 green (tests/test_adx_surge_waiver.py).
 🔒 REVERT (pre-committed, tight): first 10 fills with orders.adx_surge_open = True over ≥3 distinct days: WR ≤ 50% ∨ Σ$ < 0 →
 long_btc_adx_surge_enabled=false. Count by the COLUMN (door admits sit in the NONEXP_CALM3D cell row).
+
+## 2026-09-28 (124) - 💰 Market cap: Top Pairs "Mcap" column + entry_mcap_usd / entry_cmc_rank stamps (operator request)
+Binance's documented APIs carry no market cap; its own "Info" panel does, via the undocumented endpoint
+`bapi/apex/v1/friendly/apex/marketing/tardingPair/detail?symbol=<base>` (CoinMarketCap data: data.mc circulating cap, data.rk rank,
+data.alias). Verified vs the panel (BTC $1.680T #1 · QNT $2.93B #30 · HYPE $22.3B #10 — the spot get-products endpoint gave HYPE
+$89B from total supply, rejected). services/mcap_service.py: background refresh of the scanned top pairs every mcap_refresh_minutes
+(30), fire-and-forget (strong task ref + watchdog), cache-only reads on the trading path (no network on open), values expire after
+3× the interval; lookup = FULL base first (1000sats / 1000cat / 1000cheems exist as themselves), multiplier-stripped second (pepe,
+shib, bonk), and a response is accepted ONLY if data.alias equals the queried symbol (a different coin can never be stamped).
+Never runs inside the engine replay (SCALPARS_REPLAY=1). Surfaces: /api/pairs mcap_usd + cmc_rank · UI column (T/B/M, rank on hover,
+'–' when unknown) · settings toggle + minutes (ConfigUpdate schema, load/save) · report line in both exports · Order columns
+entry_mcap_usd (FLOAT) + entry_cmc_rank (INTEGER) with SQLite auto-migrate → CSV. Display/analytics ONLY — no trading rule reads it.
+Known limits (for any future mcap cohort study): NULL = pair outside the refreshed top-50 universe (e.g. thin spike-fade pairs) or
+unavailable (futures-only, e.g. 1000000MOG) — NULLs cluster on thin pairs; a few upstream caps look rounded (1INCH 150,000,000.00).
+Reviews: caveman (strong task ref) + deep (full-symbol-first + alias check, rank parsed separately, watchdog, one lookup per row) —
+all applied; tests 301 green (tests/test_mcap_service.py).

@@ -1972,6 +1972,23 @@ class SignalThresholds(BaseModel):
     long_cross_ob_r72_block_min: float = 5.0
     long_cross_ob_invest_mult: float = 1.0
     long_cross_ob_lev_mult: float = 1.0
+    # ⚡ Sep-28 BTC ADX-SURGE WAIVER (operator-directed ARMED override; DECISION_LOG 123). A momentum LONG refused ONLY by
+    # a BTC-level ADX gate — the ADX floor (btc_adx_min_long) or a btc_rsi_adx_filter_long band whose RSI floor is below
+    # band_rsi_max (the 50-55 / 55-60 bands; the ≥70 band is never lifted) — is admitted when BTC's 5m ADX rose ≥ min_delta
+    # vs the previous bar AND BTC EMA20 slope > slope_min (a flat-base breakout: live Sep-28 16:00-16:23 UTC, BTC RSI 52→74
+    # with ADX 17-20, refused at every scan). Every pair-level gate still applies. EVIDENCE IS SPLIT (year replay journals,
+    # yr2 seed 1, per 5m bar, BTC +0.4% before −0.4% within 2 h, inside the blocked zones): ΔADX≥1.5 ∧ slope>0.05 Jan–Apr
+    # 115 bars 34% up / 52% down (edge −18) vs May–Sep 142 bars 49% / 30% (edge +19) — sign flips between halves; weaker
+    # variants ≈ 0. Shipped ARMED at 1×/1× (own cell row ADX_SURGE_OPEN; CALM3D doors keep their tag, all admits carry
+    # orders.adx_surge_open). Un-block → FAIL-CLOSED on any missing reading. Default OFF; the JSON arms it.
+    # 🔒 REVERT (pre-committed, tight — a loosening): first 10 admitted fills over ≥3 distinct days: WR ≤ 50% ∨ Σ$ < 0 →
+    # long_btc_adx_surge_enabled=false.
+    long_btc_adx_surge_enabled: bool = False
+    long_btc_adx_surge_min_delta: float = 1.5
+    long_btc_adx_surge_slope_min: float = 0.05
+    long_btc_adx_surge_band_rsi_max: float = 60.0
+    long_btc_adx_surge_invest_mult: float = 1.0
+    long_btc_adx_surge_lev_mult: float = 1.0
     # 📓 Sep-18 DECISION JOURNAL (DECISION_LOG 2026-09-18 (74)) — records what the bot saw and decided (SCAN header, every
     # gate BLOCK with the pair's indicator snapshot, ADMIT, OPEN, EXPIRED) as JSONL files under /opt/scalpars-data/journal
     # (one per UTC day, gzipped on rollover, deleted after retention_days). File-only — never touches the DB, never raises

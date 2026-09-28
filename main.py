@@ -1440,6 +1440,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "cell_multiplier": getattr(o, 'cell_multiplier', None),
             "cell_lev_multiplier": getattr(o, 'cell_lev_multiplier', None),
             "cell_multiplier_source": getattr(o, 'cell_multiplier_source', None),
+            "adx_surge_open": bool(getattr(o, 'adx_surge_open', False) or False),   # ⚡ Sep-28 badge source
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
             "pattern_fixed_tp_pct": getattr(o, 'pattern_fixed_tp_pct', None),
             "pattern_fixed_sl_pct": getattr(o, 'pattern_fixed_sl_pct', None),
@@ -1743,6 +1744,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "cell_multiplier": getattr(o, 'cell_multiplier', None),
             "cell_lev_multiplier": getattr(o, 'cell_lev_multiplier', None),
             "cell_multiplier_source": getattr(o, 'cell_multiplier_source', None),
+            "adx_surge_open": bool(getattr(o, 'adx_surge_open', False) or False),   # ⚡ Sep-28 badge source
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
             "pattern_fixed_tp_pct": getattr(o, 'pattern_fixed_tp_pct', None),
             "pattern_fixed_sl_pct": getattr(o, 'pattern_fixed_sl_pct', None),

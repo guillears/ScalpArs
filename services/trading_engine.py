@@ -559,6 +559,36 @@ def _flip_size_mult(source):
 def _flip_lev_mult(source):
     return _flip_registry().get(source, (1.0, 1.0))[1]
 
+def btc_adx_surge_waived(th, gate, rule_rsi_min, btc_adx, btc_adx_prev, btc_slope):
+    """⚡ Sep-28 BTC ADX-SURGE WAIVER (operator-directed ARMED override, DECISION_LOG 123) — pure rule.
+
+    A momentum LONG refused ONLY by a BTC-level ADX gate is admitted when BTC is breaking out of a flat base:
+    BTC 5m ADX rose ≥ long_btc_adx_surge_min_delta vs the previous bar AND BTC EMA20 slope > long_btc_adx_surge_slope_min.
+    Gates it may lift: BTC_ADX_GATE_LOW (ADX under btc_adx_min_long) and the BTC_RSI_ADX_CROSS bands whose RSI floor is
+    below long_btc_adx_surge_band_rsi_max (the 50-55 / 55-60 bands). The RSI≥70 band is NEVER lifted here (CROSS_OB's
+    question). Every pair-level gate still applies. This is an UN-block → FAIL-CLOSED: feature off, non-positive
+    thresholds, a missing/non-finite reading or any other gate → the block stands. Returns True when the block is lifted."""
+    try:
+        if not bool(getattr(th, 'long_btc_adx_surge_enabled', False)):
+            return False
+        dmin = _finite(getattr(th, 'long_btc_adx_surge_min_delta', None))
+        smin = _finite(getattr(th, 'long_btc_adx_surge_slope_min', None))
+        if dmin is None or dmin <= 0 or smin is None or smin <= 0:
+            return False
+        a, ap, sl = _finite(btc_adx), _finite(btc_adx_prev), _finite(btc_slope)
+        if a is None or ap is None or sl is None:
+            return False
+        if gate == "BTC_RSI_ADX_CROSS":
+            rmax, r = _finite(getattr(th, 'long_btc_adx_surge_band_rsi_max', None)), _finite(rule_rsi_min)
+            if rmax is None or r is None or r >= rmax:
+                return False
+        elif gate != "BTC_ADX_GATE_LOW":
+            return False
+        return (a - ap) >= dmin and sl > smin
+    except (TypeError, ValueError):
+        return False
+
+
 def cross_ob_waived(th, rule_rsi_min, btc_r72, fresh):
     """🚪 Sep-18 NARROWED OVERBOUGHT BAND (operator override, DECISION_LOG 2026-09-18 (71)) — pure rule.
 
@@ -6594,6 +6624,9 @@ class TradingEngine:
         # (cross_ob_waived). Sized long_cross_ob_invest_mult × long_cross_ob_lev_mult (ship 1×/1×, 0 = normal cells),
         # tagged cell_src=CROSS_OB_OPEN (own Multiplier Cell Performance row = the revert read).
         cross_ob_open: bool = False,
+        # ⚡ Sep-28 BTC ADX-surge waiver (btc_adx_surge_waived): sized long_btc_adx_surge_invest_mult × _lev_mult (1×/1×,
+        # 0 = normal cells), tagged cell_src=ADX_SURGE_OPEN, and stamped orders.adx_surge_open=True (doors keep their tag).
+        adx_surge_open: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -7601,6 +7634,25 @@ class TradingEngine:
                 _mult_target = "both"
                 logger.info(f"[CROSS_OB_OPEN] {pair} LONG: sized inv={cell_mult}x lev={cell_lev_mult}x (unproven cohort, own row)")
 
+        # ⚡ Sep-28 BTC ADX-surge waiver — same absolute-assign-LAST rule as CROSS_OB: an admitted LONG is never re-multiplied
+        # by UNMATCHED/quiet/CALM3D cells while the cohort is unproven. A CALM3D door keeps its NONEXP_CALM3D tag (door table +
+        # pool builder key on it) — every waived admit is identified by the orders.adx_surge_open column instead.
+        # ONE predicate drives both the sizing and the orders.adx_surge_open stamp (deep review #4): only a genuine momentum
+        # LONG admitted through the waiver — never a probe / spike / sleeve fill or a CROSS_OB co-hit — carries the badge.
+        _adx_surge_admit = bool(adx_surge_open and not cross_ob_open and direction == "LONG" and not flip_source and not bull_long
+                                and not bounce_long and not bullrun_long and not spike_chase_probe and not spike_fade and not spike_bounce
+                                and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
+                                         or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe))
+        if _adx_surge_admit:
+            _th_as = config.trading_config.thresholds
+            _as_inv = float(getattr(_th_as, 'long_btc_adx_surge_invest_mult', 1.0) or 0.0)
+            if _as_inv > 0:
+                cell_mult = max(0.1, min(_as_inv, _inv_cap))
+                cell_lev_mult = max(0.05, min(float(getattr(_th_as, 'long_btc_adx_surge_lev_mult', 1.0) or 1.0), _lev_cap))
+                cell_src = "NONEXP_CALM3D" if nonexp_calm3d else "ADX_SURGE_OPEN"
+                _mult_target = "both"
+                logger.info(f"[ADX_SURGE_OPEN] {pair} LONG: sized inv={cell_mult}x lev={cell_lev_mult}x (unproven cohort, own row)")
+
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
             cell_multiplier=cell_mult, cell_lev_multiplier=cell_lev_mult,
@@ -8020,6 +8072,7 @@ class TradingEngine:
             entry_br_off24h=entry_br_off24h,
             entry_br_door=entry_br_door,
             entry_br_door_age_min=entry_br_door_age_min,
+            adx_surge_open=_adx_surge_admit,   # ⚡ Sep-28: admitted through the BTC ADX-surge waiver (same predicate as its sizing)
             entry_br_bull_pct_top10=entry_br_bull_pct_top10,
             entry_br_bear_pct_top10=entry_br_bear_pct_top10,
             entry_br_top10_n=entry_br_top10_n,
@@ -11207,9 +11260,12 @@ class TradingEngine:
             _l_lo = getattr(_th_pre, 'btc_adx_min_long', 0)
             _l_hi = getattr(_th_pre, 'btc_adx_max_long', 100)
             if (_l_lo > 0 and btc_adx < _l_lo) or (_l_hi < 100 and btc_adx > _l_hi):
-                _btc_macro_blocks_long = _btc_macro_blocks_long or (
-                    "BTC_ADX_GATE_LOW" if (_l_lo > 0 and btc_adx < _l_lo) else "BTC_ADX_GATE_HIGH"
-                )
+                # ⚡ Sep-28: a surge-waived low-ADX floor is not a macro veto (counters/journal must see the admits)
+                if not ((_l_lo > 0 and btc_adx < _l_lo) and not (_l_hi < 100 and btc_adx > _l_hi)
+                        and btc_adx_surge_waived(_th_pre, "BTC_ADX_GATE_LOW", None, btc_adx, btc_adx_prev, btc_ema20_slope_pct)):
+                    _btc_macro_blocks_long = _btc_macro_blocks_long or (
+                        "BTC_ADX_GATE_LOW" if (_l_lo > 0 and btc_adx < _l_lo) else "BTC_ADX_GATE_HIGH"
+                    )
             _s_lo = getattr(_th_pre, 'btc_adx_min_short', 0)
             _s_hi = getattr(_th_pre, 'btc_adx_max_short', 100)
             if (_s_lo > 0 and btc_adx < _s_lo) or (_s_hi < 100 and btc_adx > _s_hi):
@@ -11251,7 +11307,9 @@ class TradingEngine:
                                 # Sep-18 (deep review I-1): a WAIVED overbought band is not a macro veto — else the LONG
                                 # funnel/counters would go dark in exactly the windows where waived longs now trade.
                                 if not cross_ob_waived(_th_pre, _r_lo, _bullrun_monitor.get('r72'),
-                                                       (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800):
+                                                       (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800) \
+                                        and not btc_adx_surge_waived(_th_pre, "BTC_RSI_ADX_CROSS", _r_lo, btc_adx, btc_adx_prev,
+                                                                     btc_ema20_slope_pct):
                                     _btc_macro_blocks_long = _btc_macro_blocks_long or "BTC_RSI_ADX_CROSS"
                             else:
                                 _btc_macro_blocks_short = _btc_macro_blocks_short or "BTC_RSI_ADX_CROSS"
@@ -11544,6 +11602,7 @@ class TradingEngine:
             _had_room = _open_positions_in_scan < _max_positions
             pair = _cr['pair']
             _cross_ob_open_hit = False  # Sep-18 narrowed overbought band: per-pair flag, reset FIRST (no leak between pairs)
+            _adx_surge_open_hit = False  # ⚡ Sep-28 BTC ADX-surge waiver: per-pair flag, reset FIRST (no leak between pairs)
             self._journal_pair = pair  # 📓 decision journal context for every gate below (reset per pair)
             self._journal_ctx = None
             symbol = _cr['symbol']  # Sep-7 full-review C1: was leaked from Phase 1's last iteration — entry_funding_rate stamped the wrong pair
@@ -11700,7 +11759,15 @@ class TradingEngine:
                     _btc_adx_hi = getattr(_th, 'btc_adx_max_short', 100)
                 _btc_adx_too_low = _btc_adx_lo > 0 and btc_adx < _btc_adx_lo
                 _btc_adx_too_high = _btc_adx_hi < 100 and btc_adx > _btc_adx_hi
-                if _btc_adx_too_low or _btc_adx_too_high:
+                if (signal == "LONG" and _btc_adx_too_low and not _btc_adx_too_high
+                        and btc_adx_surge_waived(_th, "BTC_ADX_GATE_LOW", None, btc_adx, btc_adx_prev, btc_ema20_slope_pct)):
+                    # ⚡ Sep-28 BTC ADX-surge waiver: the flat-base breakout the ADX floor refuses (operator ARMED override)
+                    logger.info(f"[ADX_SURGE_OPEN] {pair}: LONG admitted through the BTC ADX floor — BTC ADX {btc_adx:.1f} "
+                                f"(prev {btc_adx_prev:.1f}, +{btc_adx - btc_adx_prev:.2f}) < {_btc_adx_lo}, slope {btc_ema20_slope_pct:+.4f}")
+                    _adx_surge_open_hit = True
+                    _djournal.note('ADMIT', gate='ADX_SURGE', dir='LONG', pair=pair, via='BTC_ADX_GATE_LOW', btc_adx=btc_adx,
+                                   btc_adx_prev=btc_adx_prev, btc_slope=btc_ema20_slope_pct)
+                elif _btc_adx_too_low or _btc_adx_too_high:
                     _gate_subtype = "BTC_ADX_GATE_LOW" if _btc_adx_too_low else "BTC_ADX_GATE_HIGH"
                     _bound_label = f"<{_btc_adx_lo}" if _btc_adx_too_low else f">{_btc_adx_hi}"
                     logger.info(f"[{_gate_subtype}] {pair}: {signal} blocked — BTC ADX {btc_adx:.1f} {_bound_label} (range [{_btc_adx_lo}-{_btc_adx_hi}])")
@@ -11972,6 +12039,14 @@ class TradingEngine:
                                     )
                                     _cross_ob_open_hit = True
                                     _djournal.note('ADMIT', gate='CROSS_OB_OPEN', dir='LONG', pair=pair, btc_rsi=btc_rsi, btc_adx=btc_adx, r72=_bullrun_monitor.get('r72'))
+                                elif (_cf_out and signal == "LONG"
+                                        and btc_adx_surge_waived(_th, "BTC_RSI_ADX_CROSS", _cf_rsi_min, btc_adx, btc_adx_prev, btc_ema20_slope_pct)):
+                                    # ⚡ Sep-28 BTC ADX-surge waiver on the 50-55 / 55-60 bands (never the ≥70 band)
+                                    logger.info(f"[ADX_SURGE_OPEN] {pair}: LONG admitted through the BTC RSI band [{_cf_rsi_min}-{_cf_rsi_max}) — "
+                                                f"BTC RSI {btc_rsi:.1f}, ADX {btc_adx:.1f} (prev {btc_adx_prev:.1f}), slope {btc_ema20_slope_pct:+.4f}")
+                                    _adx_surge_open_hit = True
+                                    _djournal.note('ADMIT', gate='ADX_SURGE', dir='LONG', pair=pair, via='BTC_RSI_ADX_CROSS', btc_rsi=btc_rsi,
+                                                   btc_adx=btc_adx, btc_adx_prev=btc_adx_prev, btc_slope=btc_ema20_slope_pct)
                                 elif _cf_out and not self._bearrun_bypass(pair, "BTC_RSI_ADX_CROSS", _had_room):  # 🐻 gate 60 bypass (SHORT, monitor ON)
                                     logger.info(
                                         f"[BTC_RSI_ADX_CROSS] {pair}: {signal} blocked — "
@@ -12173,7 +12248,10 @@ class TradingEngine:
                                             pass
                                     # Flip Entry — fade the block live (both sides), UNLESS a bull-long already
                                     # un-blocked this long (avoid opposite positions on the same pair).
-                                    if not _bl_opened:
+                                    # ⚡ Sep-28 (deep review #3): a LONG that only reached this gate because the BTC ADX-surge
+                                    # waiver lifted a BTC veto must not seed a live FAN flip SHORT — the flip sleeve keeps
+                                    # exactly its pre-waiver population.
+                                    if not _bl_opened and not _adx_surge_open_hit:
                                         await self._maybe_open_flip(db, pair, signal, "FAN_RATIO_GATE", indicators,
                                                                     entry_fields=_fan_ef)
                                     signal = "NO_TRADE"
@@ -13431,6 +13509,8 @@ class TradingEngine:
                         nonexp_calm3d=bool(_nonexp_calm3d_hit),
                         # Sep-18 narrowed overbought band: admitted through the RSI≥70 cross band → probe size + own tag
                         cross_ob_open=bool(signal == "LONG" and _cross_ob_open_hit),
+                        # ⚡ Sep-28 BTC ADX-surge waiver: admitted through a BTC ADX gate on a surge → own size + tag + column
+                        adx_surge_open=bool(signal == "LONG" and _adx_surge_open_hit),
                     )
                 except Exception as _op_err:
                     logger.error(f"[OPEN_EXCEPTION] {pair} {signal} {confidence}: open_position raised — cycle continues: {_op_err}", exc_info=True)

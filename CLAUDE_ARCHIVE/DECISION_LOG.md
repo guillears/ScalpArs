@@ -4068,3 +4068,23 @@ floor removes UNI/PEPE/PUMP (−$615 — the fills the floor was built on, so in
 3·67%·+$170 · fades 2Z/BEAMX/RATS/LUNC 4·100%·+$201 (as lived at cap 0.3; +$108 more at the new 0.5 cap) · MOM-short PHA +0.61 / DOT −0.73 ·
 FLIP BR −0.76 (FAN −DI 12.9 → observe tally +1, DECISION_LOG 120). Ledger TOTAL 258·84%·+$15,182·+2.43%/day. Operator reset → B14 runs the full
 stack incl. the Sep-27/28 ships (ATR floor, fade cap 0.5, CROSS_OB off).
+
+## 2026-09-28 (123) - ⚡ BTC ADX-SURGE WAIVER shipped ARMED (operator-directed override; evidence split)
+Trigger: live B14 Sep-28 16:00–16:26 UTC — BTC RSI 52→74 from a flat base (ADX 17–20, rising), 0 entries: live journal shows the BTC
+RSI×ADX bands (50-55 total block; 55-60 needs ADX 20-25) 16:00–16:08, the ADX floor 18 16:10–16:17, pair gates (range position ≤95,
+EMA5 stretch, pADX max) at the 3 open scans 16:19–16:23, then the RSI≥70 band. Rule (pure `btc_adx_surge_waived`): a momentum LONG
+refused ONLY by BTC_ADX_GATE_LOW or a btc_rsi_adx_filter_long band with RSI floor < 60 is admitted when BTC 5m ADX − ADX_prev ≥ 1.5 AND
+BTC EMA20 slope > 0.05; the ≥70 band is never lifted; every other BTC gate (1h deadband, BTC gap×ADX cross, accel-chase, RSI×ATR, ADX
+>40, slope max) and every pair gate still apply — deep review expects the 1h deadband / BTC_GAP_BTC_ADX_CROSS to be the next blockers
+on flat-base breakouts, so fires may be rare. The band lift covers the whole band (both ADX sides), matching the evidence population.
+Evidence (year-replay journals yr2 seed 1, per 5m bar inside the blocked zones, BTC +0.4% before −0.4% within 2 h): ΔADX≥1.5 ∧ slope>0.05
+Jan–Apr 115 bars 34% up / 52% down (edge −18) vs May–Sep 142 bars 49% / 30% (edge +19) — SIGN FLIPS between halves; weaker variants
+(ΔADX≥0.5–1.0, 2-bar ADX, +breadth) ≈ 0 both halves. BTC-direction proxy, not alt P&L. → DECLARED OVERRIDE: fails the both-halves
+consistency and every expectancy leg; operator shipped armed. Build: config (default OFF, JSON arms: 1.5 / 0.05 / band<60 / 1×/1×) ·
+engine (scan-wide veto hygiene + per-pair ADX floor + per-pair band elif, sizing absolute-assign-last like CROSS_OB, cell_src
+ADX_SURGE_OPEN — CALM3D doors keep NONEXP_CALM3D) · new column orders.adx_surge_open (auto-migrate; stamped by the SAME predicate
+as the sizing — never probes/spikes/CROSS_OB co-hits) · payloads /api/orders/open + /closed · UI settings row + load/save + report line
+(both exports) + yellow badge "⚡ ADX SURGE" on open & closed positions · a surge-admitted LONG never seeds a live FAN flip SHORT (flip
+sleeve population unchanged). Reviews: caveman + deep → ship; tests 295 green (tests/test_adx_surge_waiver.py).
+🔒 REVERT (pre-committed, tight): first 10 fills with orders.adx_surge_open = True over ≥3 distinct days: WR ≤ 50% ∨ Σ$ < 0 →
+long_btc_adx_surge_enabled=false. Count by the COLUMN (door admits sit in the NONEXP_CALM3D cell row).

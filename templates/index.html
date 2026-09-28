@@ -5769,6 +5769,18 @@
                                         <input type="number" step="0.1" id="config-long-cross-ob-invest-mult" class="w-14 bg-white/5 border border-sky-500/40 rounded px-2 py-1 text-sky-200 text-center" value="1"></label>
                                     <label class="flex items-center gap-1 text-xs text-gray-400">Lev
                                         <input type="number" step="0.05" id="config-long-cross-ob-lev-mult" class="w-14 bg-white/5 border border-sky-500/40 rounded px-2 py-1 text-sky-200 text-center" value="1"></label>
+                                    <label class="flex items-center gap-1 text-xs text-yellow-300" title="⚡ Sep-28 BTC ADX-SURGE WAIVER (operator ARMED override, DECISION_LOG 123): a momentum LONG refused ONLY by a BTC ADX gate — the ADX floor or a BTC RSI×ADX band with RSI floor below 'band RSI <' (the 50-55 / 55-60 bands; the ≥70 band is never lifted) — is admitted when BTC 5m ADX rose ≥ ΔADX vs the previous bar AND BTC EMA20 slope > slope. Every pair gate still applies. Admits sized Inv×Lev (0 = normal cells), badge ⚡ ADX SURGE, cell row ADX_SURGE_OPEN. Evidence SPLIT (Jan–Apr edge −18 / May–Sep +19). REVERT: first 10 fills over ≥3 days WR ≤50% or Σ$&lt;0 → off.">⚡ ADX-surge waiver
+                                        <input type="checkbox" id="config-long-btc-adx-surge-enabled" class="accent-yellow-500"></label>
+                                    <label class="flex items-center gap-1 text-xs text-gray-400">ΔADX≥
+                                        <input type="number" step="0.1" id="config-long-btc-adx-surge-min-delta" class="w-16 bg-white/5 border border-yellow-500/40 rounded px-2 py-1 text-yellow-200 text-center" value="1.5"></label>
+                                    <label class="flex items-center gap-1 text-xs text-gray-400">slope&gt;
+                                        <input type="number" step="0.01" id="config-long-btc-adx-surge-slope-min" class="w-16 bg-white/5 border border-yellow-500/40 rounded px-2 py-1 text-yellow-200 text-center" value="0.05"></label>
+                                    <label class="flex items-center gap-1 text-xs text-gray-400">band RSI&lt;
+                                        <input type="number" step="1" id="config-long-btc-adx-surge-band-rsi-max" class="w-16 bg-white/5 border border-yellow-500/40 rounded px-2 py-1 text-yellow-200 text-center" value="60"></label>
+                                    <label class="flex items-center gap-1 text-xs text-gray-400">Inv
+                                        <input type="number" step="0.1" id="config-long-btc-adx-surge-invest-mult" class="w-14 bg-white/5 border border-yellow-500/40 rounded px-2 py-1 text-yellow-200 text-center" value="1"></label>
+                                    <label class="flex items-center gap-1 text-xs text-gray-400">Lev
+                                        <input type="number" step="0.05" id="config-long-btc-adx-surge-lev-mult" class="w-14 bg-white/5 border border-yellow-500/40 rounded px-2 py-1 text-yellow-200 text-center" value="1"></label>
                                     <label class="flex items-center gap-1 text-xs text-slate-300" title="📓 Sep-18 DECISION JOURNAL: records what the bot saw and decided (scan header, every gate block with the pair's indicator snapshot, admits, opens, expiries) to daily files under /opt/scalpars-data/journal. File-only, never touches the DB, changes nothing about trading. Used to calibrate the replay harness and to answer 'why no trades'. Files are gzipped daily and deleted after Days.">📓 Journal
                                         <input type="checkbox" id="config-decision-journal-enabled" class="accent-slate-400"></label>
                                     <label class="flex items-center gap-1 text-xs text-gray-400">Days
@@ -8696,6 +8708,7 @@
         // RSIADX-release carries no stamp → not derivable client-side (by design, honest gap).
         function doorBadges(o) {
             const tags = [];
+            if (o.adx_surge_open) tags.push('⚡ ADX SURGE');   // Sep-28: admitted through the BTC ADX-surge waiver (every such admit, doors included)
             const src = o.cell_multiplier_source || '';
             const strat = o.entry_strategy || '';
             const fg = src.match(/\+((FGP_(QS|RSI|TG)))/);
@@ -8729,7 +8742,9 @@
             const tags = doorBadges(o);
             if (!tags.length) return '';
             return '<div class="mt-0.5 flex flex-wrap justify-center gap-0.5">' + tags.map(t =>
-                `<span class="px-1 py-px rounded text-[9px] font-semibold bg-teal-500/15 text-teal-300/90" title="Admission door / sizing tier (display-only — strategy identity unchanged)">${t}</span>`).join('') + '</div>';
+                (t === '⚡ ADX SURGE'
+                    ? `<span class="px-1 py-px rounded text-[9px] font-semibold bg-yellow-500/20 text-yellow-300" title="⚡ Sep-28 BTC ADX-surge waiver: entered through a lifted BTC ADX gate (ADX floor / RSI 50-60 band) on an ADX jump + positive slope — unproven cohort, own revert gate">${t}</span>`
+                    : `<span class="px-1 py-px rounded text-[9px] font-semibold bg-teal-500/15 text-teal-300/90" title="Admission door / sizing tier (display-only — strategy identity unchanged)">${t}</span>`)).join('') + '</div>';
         }
         function formatTime(isoString) {
             if (!isoString) return '-';
@@ -11289,6 +11304,7 @@
             lines.push(`  Long Heat Block (Sep 18; re-scoped Sep 25 to breadth): ${th.long_heat_block_enabled ? 'ON' : 'OFF'} — BTC slope >= ${(+th.long_heat_btc_slope_min > 0) ? th.long_heat_btc_slope_min : 'off'} & BTC RSI prev >= ${(+th.long_heat_btc_rsi_prev_min > 0) ? th.long_heat_btc_rsi_prev_min : 'off'} & bull% >= ${(+th.long_heat_bull_pct_min > 0) ? th.long_heat_bull_pct_min : 'off'}; exempt when BTC <= ${th.long_heat_exempt_off30d_max ?? '-'}% vs 30d high  (counter LONG_HEAT_BLOCK)`);
             lines.push(`  Mega-cap Exclusion (Sep 23): ${(th.long_megacap_rank_max > 0) ? `ON — momentum LONGs refused at eligible-universe rank <= ${th.long_megacap_rank_max} (bull-run sleeve exempt)` : 'OFF'}  (counter LONG_MEGACAP_BLOCK)`);
             lines.push(`  RSI70 base-breakout (Sep 18): ${th.long_cross_ob_narrow_enabled ? 'ON' : 'OFF'} — BTC RSI >= ${th.long_cross_ob_rsi_min ?? '-'} band waived when BTC 72h < ${th.long_cross_ob_r72_block_min ?? '-'}%; admitted longs sized ${th.long_cross_ob_invest_mult ?? '-'}x / lev ${th.long_cross_ob_lev_mult ?? '-'}x  (cell CROSS_OB_OPEN)`);
+            lines.push(`  ⚡ ADX-surge waiver (Sep 28): ${th.long_btc_adx_surge_enabled ? 'ON' : 'OFF'} — BTC ADX floor + RSI bands with floor < ${th.long_btc_adx_surge_band_rsi_max ?? '-'} lifted when BTC ADX jumps ≥ ${th.long_btc_adx_surge_min_delta ?? '-'} and slope > ${th.long_btc_adx_surge_slope_min ?? '-'}; admits sized ${th.long_btc_adx_surge_invest_mult ?? '-'}×/${th.long_btc_adx_surge_lev_mult ?? '-'}×, badge ⚡ ADX SURGE (revert: first 10 fills WR ≤50% or Σ$<0)`);
             lines.push(`  Fast Exit L2: ${th.fast_exit_l2_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_l2_threshold_pct ?? 0.40}%  |  Window ≤ ${th.fast_exit_l2_window_minutes ?? 5}min  |  ATR× ${th.fast_exit_l2_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l2_atr_floor_cap_pct ?? 0.80}%  (May 25 evening: cap protects extreme-ATR pairs)`);
             lines.push(`  EMA Stack Cross Exit: ${th.ema_stack_cross_exit_enabled !== undefined ? th.ema_stack_cross_exit_enabled : false}  |  Handoff at L≥${th.ema_stack_cross_exit_level !== undefined ? th.ema_stack_cross_exit_level : 2}  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)`);
             lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
@@ -20833,6 +20849,12 @@
                 { const _e=document.getElementById('config-long-cross-ob-r72-block-min'); if(_e && config.thresholds.long_cross_ob_r72_block_min !== undefined) _e.value = config.thresholds.long_cross_ob_r72_block_min; }
                 { const _e=document.getElementById('config-long-cross-ob-invest-mult'); if(_e && config.thresholds.long_cross_ob_invest_mult !== undefined) _e.value = config.thresholds.long_cross_ob_invest_mult; }
                 { const _e=document.getElementById('config-long-cross-ob-lev-mult'); if(_e && config.thresholds.long_cross_ob_lev_mult !== undefined) _e.value = config.thresholds.long_cross_ob_lev_mult; }
+                { const _e=document.getElementById('config-long-btc-adx-surge-enabled'); if(_e) _e.checked = (config.thresholds.long_btc_adx_surge_enabled === true); }
+                { const _e=document.getElementById('config-long-btc-adx-surge-min-delta'); if(_e && config.thresholds.long_btc_adx_surge_min_delta !== undefined) _e.value = config.thresholds.long_btc_adx_surge_min_delta; }
+                { const _e=document.getElementById('config-long-btc-adx-surge-slope-min'); if(_e && config.thresholds.long_btc_adx_surge_slope_min !== undefined) _e.value = config.thresholds.long_btc_adx_surge_slope_min; }
+                { const _e=document.getElementById('config-long-btc-adx-surge-band-rsi-max'); if(_e && config.thresholds.long_btc_adx_surge_band_rsi_max !== undefined) _e.value = config.thresholds.long_btc_adx_surge_band_rsi_max; }
+                { const _e=document.getElementById('config-long-btc-adx-surge-invest-mult'); if(_e && config.thresholds.long_btc_adx_surge_invest_mult !== undefined) _e.value = config.thresholds.long_btc_adx_surge_invest_mult; }
+                { const _e=document.getElementById('config-long-btc-adx-surge-lev-mult'); if(_e && config.thresholds.long_btc_adx_surge_lev_mult !== undefined) _e.value = config.thresholds.long_btc_adx_surge_lev_mult; }
                 { const _e=document.getElementById('config-decision-journal-enabled'); if(_e) _e.checked = (config.thresholds.decision_journal_enabled === true); }
                 { const _e=document.getElementById('config-decision-journal-retention-days'); if(_e && config.thresholds.decision_journal_retention_days !== undefined) _e.value = config.thresholds.decision_journal_retention_days; }
                 { const _e=document.getElementById('config-long-unmatched-quiet-mult'); if(_e) _e.value = config.thresholds.long_unmatched_quiet_mult !== undefined ? config.thresholds.long_unmatched_quiet_mult : 0; }
@@ -22401,6 +22423,12 @@
                     long_cross_ob_r72_block_min: (() => { const _v = document.getElementById('config-long-cross-ob-r72-block-min')?.value; return safeFloat(_v === '' || _v == null ? 5 : _v); })(),
                     long_cross_ob_invest_mult: (() => { const _v = document.getElementById('config-long-cross-ob-invest-mult')?.value; return safeFloat(_v === '' || _v == null ? 1 : _v); })(),
                     long_cross_ob_lev_mult: (() => { const _v = document.getElementById('config-long-cross-ob-lev-mult')?.value; return safeFloat(_v === '' || _v == null ? 1 : _v); })(),
+                    long_btc_adx_surge_enabled: ((document.getElementById('config-long-btc-adx-surge-enabled') || {}).checked === true),
+                    long_btc_adx_surge_min_delta: (() => { const _v = document.getElementById('config-long-btc-adx-surge-min-delta')?.value; return safeFloat(_v === '' || _v == null ? 1.5 : _v); })(),
+                    long_btc_adx_surge_slope_min: (() => { const _v = document.getElementById('config-long-btc-adx-surge-slope-min')?.value; return safeFloat(_v === '' || _v == null ? 0.05 : _v); })(),
+                    long_btc_adx_surge_band_rsi_max: (() => { const _v = document.getElementById('config-long-btc-adx-surge-band-rsi-max')?.value; return safeFloat(_v === '' || _v == null ? 60 : _v); })(),
+                    long_btc_adx_surge_invest_mult: (() => { const _v = document.getElementById('config-long-btc-adx-surge-invest-mult')?.value; return safeFloat(_v === '' || _v == null ? 1 : _v); })(),
+                    long_btc_adx_surge_lev_mult: (() => { const _v = document.getElementById('config-long-btc-adx-surge-lev-mult')?.value; return safeFloat(_v === '' || _v == null ? 1 : _v); })(),
                     decision_journal_enabled: ((document.getElementById('config-decision-journal-enabled') || {}).checked === true),
                     decision_journal_retention_days: (() => { const _v = parseInt(document.getElementById('config-decision-journal-retention-days')?.value, 10); return (isNaN(_v) || _v < 1) ? 45 : _v; })(),
                     long_unmatched_quiet_mult: (function(){ const v = parseFloat((document.getElementById('config-long-unmatched-quiet-mult') || {}).value); return isNaN(v) ? 0 : v; })(),

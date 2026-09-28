@@ -4059,3 +4059,12 @@ tests/test_cross_ob_waiver.py pins JSON false + model default False + loaded con
 🔒 REVISIT (pre-committed): re-open only if paired test C shows momentum longs' avg per unique setup LOWER with the waiver off than
 with it on (both halves Jun–Jul and Aug–Sep), or live/replay evidence for RSI≥70 base breakouts clears the promotion bar.
 ⚠ Deploy note: reload the dashboard after the deploy before saving any setting (a stale tab would write `true` back).
+
+## 2026-09-28 (122) - 📦 B13 archived → B14 (operator reset)
+B13 (Sep-26 05:23 → Sep-27 22:55; first batch run on the complete stack from trade 1) archived as
+`reports/BASELINE13_batch0926-0928_orders.csv` (export 2026-09-28 15:34; 13 closed, identical to the 03:11 export). As traded 13·54%·−$362.
+Under today's stack (MASTER_POOL rebuilt, STACK 2026-09-27b; backup .pre0928_bak) 10·70%·+$253·+4.13%/active day: the Sep-27 CALM3D BTC-ATR
+floor removes UNI/PEPE/PUMP (−$615 — the fills the floor was built on, so in-sample). By sleeve: MOM-long DOT +0.91 / INJ +0.22 / ONDO −0.69 =
+3·67%·+$170 · fades 2Z/BEAMX/RATS/LUNC 4·100%·+$201 (as lived at cap 0.3; +$108 more at the new 0.5 cap) · MOM-short PHA +0.61 / DOT −0.73 ·
+FLIP BR −0.76 (FAN −DI 12.9 → observe tally +1, DECISION_LOG 120). Ledger TOTAL 258·84%·+$15,182·+2.43%/day. Operator reset → B14 runs the full
+stack incl. the Sep-27/28 ships (ATR floor, fade cap 0.5, CROSS_OB off).

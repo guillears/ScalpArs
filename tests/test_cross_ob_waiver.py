@@ -37,3 +37,17 @@ def test_disabled_or_zeroed_never_waives():
     assert cross_ob_waived(_th(long_cross_ob_narrow_enabled=False), 70.0, 1.0, True) is False
     assert cross_ob_waived(_th(long_cross_ob_r72_block_min=0.0), 70.0, 1.0, True) is False
     assert cross_ob_waived(_th(long_cross_ob_rsi_min=0.0), 70.0, 1.0, True) is False
+
+
+def test_sep28_switched_off_json_and_default():
+    """⛔ Sep-28 (DECISION_LOG 121): the waiver is OFF live and by default — a missing key must never re-open the band."""
+    import json, os
+    import config
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    with open(os.path.join(root, "trading_config.json")) as f:
+        th = json.load(f)["thresholds"]
+    assert th["long_cross_ob_narrow_enabled"] is False
+    assert config.SignalThresholds.model_fields["long_cross_ob_narrow_enabled"].default is False
+    assert config.load_trading_config().thresholds.long_cross_ob_narrow_enabled is False   # through pydantic, as the bot loads it
+    live_th = SimpleNamespace(**th)
+    assert cross_ob_waived(live_th, 70.0, 1.0, True) is False     # a base-breakout reading no longer waives the band

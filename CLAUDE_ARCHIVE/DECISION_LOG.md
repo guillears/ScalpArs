@@ -4039,3 +4039,23 @@ replay scan journal and −DI from 5m klines for 224 fan-flip setups: combined r
 −0.06, IS +0.03 vs −0.02. → register −DI<15 as the observe candidate (companion tally ∧ bear≥76); no block (live N=3 losers, 3
 windows; bar needs N≥15 / ≥8 windows).
 
+
+## 2026-09-28 (121) - ⛔ CROSS_OB narrowed overbought band SWITCHED OFF (operator-directed override, before its own read)
+`long_cross_ob_narrow_enabled` true → false (JSON + config.py default; the engine getattr fallback was already False). The full
+`70-100:40` band of `btc_rsi_adx_filter_long` is back: no momentum long while BTC 5m RSI ≥ 70 (CALM3D door longs included — the
+door router runs after the cross-filter). Bull-run sleeve untouched (own path). Its own pre-registered read (N≥10 CROSS_OB_OPEN fills
+over ≥3 days, gate 49b / DECISION_LOG 71) was never reached: 0 live fills in 10 days since the Sep-18 ship. Evidence = the full-year
+engine replay only (frozen config 5442bbc, real engine, live-calibrated clock), CROSS_OB_OPEN momentum longs, unique setups (seed
+copies collapsed), 95% day-block bootstrap: yr2 Jan–Sep 201 setups · WR 53% vs breakeven 70% · −0.11%/setup (−0.19%/fill) ·
+P(<0) 0.987 · 119 days · worst day 5% of the loss · negative 8/9 months (Apr +0.12 the exception); yr3 Jul–Sep (full ticks +
+latency) 62 setups · 49% vs 74% · −0.31%/setup · P(<0) 1.00 · 34 days · worst day 11%. It clears every leg of the expectancy bar.
+Honest caveats: (a) replay-only evidence; (b) per unique setup in yr2 it is barely worse than the rest of momentum longs (−0.11 vs
+−0.09; yr3 −0.31 vs −0.10) → removing it will NOT by itself make the sleeve positive; (c) freed slots get refilled — the net effect
+is measured by paired replay test C (frozen_config_5442bbc_mlC_crossob_off.json, Jun–Sep × 5 seeds, same cadence seeds as yr3), queued
+after yr3. Master pool / pinned ledger impact: 0 (no CROSS_OB fill ever; the 4 master longs at BTC RSI > 70 are Jul-26 SPIKE_CHASE
+probes). Reviews: caveman (UI load/save/report consistent; stale-tab risk) + deep (both engine paths enforce the band, sizing/tag
+path unreachable, /api/performance cell rows are data-driven, both text exports carry the ON/OFF line) → ship; tests 287 green,
+tests/test_cross_ob_waiver.py pins JSON false + model default False + loaded config False + no waiver on a base-breakout reading.
+🔒 REVISIT (pre-committed): re-open only if paired test C shows momentum longs' avg per unique setup LOWER with the waiver off than
+with it on (both halves Jun–Jul and Aug–Sep), or live/replay evidence for RSI≥70 base breakouts clears the promotion bar.
+⚠ Deploy note: reload the dashboard after the deploy before saving any setting (a stale tab would write `true` back).

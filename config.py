@@ -1962,7 +1962,12 @@ class SignalThresholds(BaseModel):
     # missing/stale 72h reading. Heat block + every other long gate still apply. Bull-run sleeve untouched (own path).
     # 🔒 READ at N≥10 CROSS_OB_OPEN fills over ≥3 distinct days: WR≥60% ∧ Σ>0 → release to normal sizing (invest_mult 0);
     # WR≤50% ∨ Σ<0 → long_cross_ob_narrow_enabled=false (full band back).
-    long_cross_ob_narrow_enabled: bool = True
+    # ⛔ Sep-28 SWITCHED OFF (operator-directed override BEFORE its own N≥10 read — 0 live fills in 10 days; DECISION_LOG 121).
+    # Full-year engine replay, CROSS_OB_OPEN longs, unique setups: yr2 Jan–Sep 201·53%·−0.11%/setup (−0.19%/fill), WR vs
+    # breakeven 53/70, 95% day-bootstrap P(<0) 0.987, 119 days, worst day 5% of the loss, 8/9 months negative · yr3 Jul–Sep
+    # 62·49%·−0.31%/setup, P(<0) 1.00, 34 days, worst day 11%. Rest of momentum longs yr2 −0.09 · yr3 −0.10 per setup. Master
+    # pool impact 0 (no CROSS_OB fills ever). Default False so a missing key can never re-open the band.
+    long_cross_ob_narrow_enabled: bool = False
     long_cross_ob_rsi_min: float = 70.0
     long_cross_ob_r72_block_min: float = 5.0
     long_cross_ob_invest_mult: float = 1.0

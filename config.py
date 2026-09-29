@@ -2492,6 +2492,13 @@ class TradingConfig(BaseModel):
     # could drain it between 6h checks. Floors: top-up target = max(burn×runway, THIS);
     # emergency threshold = max(burn12×12, THIS×0.5); auto-sell never drains below THIS.
     bnb_min_balance_usd: float = 50.0
+    # ⛽ Sep-29 HARD CEILING on the BNB fee reserve, % of account equity (0 = no cap). The top-up target and the emergency
+    # threshold are burn-rate extrapolations (fees/hour × 24 h / × 12 h): on a 2-hour-old batch with a few large fills they
+    # read $3,019 / $1,509 on a $2,300 account, and the emergency swap — clipped only to "available − min investment" — would
+    # have converted the whole free USDT balance into BNB. With 10 %: target ≤ 10 % of equity, threshold ≤ 5 %, one swap ≤ 10 %
+    # (never below bnb_min_balance_usd). Same ship: MANUAL fills leave the burn forecast, the immature-window branch checks
+    # the real floor, and the paper reserve is clamped at 0 (fees beyond it are paid from USDT, as on the exchange).
+    bnb_max_reserve_pct_of_equity: float = 10.0
     paper_bnb_initial_usd: float = 100.0  # Aug 10: 200->100 (operator; USDT seed 2800->2900, total $3000 unchanged)
     # BNB AUTO-SELL (Jun 22) — symmetric rebalance. The buy path tops BNB UP to a 24h
     # runway, but never claws back: when activity slows the 24h burn rate decays, runway

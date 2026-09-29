@@ -20,7 +20,7 @@ from starlette.requests import Request
 from starlette.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -504,6 +504,7 @@ class ConfigUpdate(BaseModel):
     bnb_check_interval_hours: Optional[int] = None
     bnb_runway_hours: Optional[int] = None
     bnb_min_balance_usd: Optional[float] = None
+    bnb_max_reserve_pct_of_equity: Optional[float] = Field(default=None, ge=0, le=50)   # ⛽ Sep-29 reserve ceiling (% of equity; 0 = no cap)
     paper_bnb_initial_usd: Optional[float] = None
     bnb_auto_sell_enabled: Optional[bool] = None
     bnb_sell_runway_hours: Optional[float] = None
@@ -1054,24 +1055,8 @@ async def manual_bnb_buy(data: dict, db: AsyncSession = Depends(get_db)):
         bnb_price = await binance_service.get_bnb_price()
         if bnb_price <= 0:
             bnb_price = 600.0
-        pre_bnb = trading_engine.paper_bnb_balance_usd
-        pre_usdt = trading_engine.paper_balance
-        trading_engine.paper_bnb_balance_usd += amount
-        swap_log = BnbSwapLog(
-            swap_type="manual",
-            amount_usdt=amount,
-            bnb_price=bnb_price,
-            amount_bnb=round(amount / bnb_price, 6),
-            pre_bnb_usd=pre_bnb,
-            post_bnb_usd=trading_engine.paper_bnb_balance_usd,
-            pre_usdt=pre_usdt,
-            post_usdt=pre_usdt - amount,
-            burn_rate=trading_engine._bnb_burn_rate,
-            is_paper=True
-        )
-        db.add(swap_log)
-        await locked_commit(db)
-        await trading_engine._recalculate_paper_balance(db)
+        # ⛽ Sep-29: same ledger path as the automatic swap (settles fees already paid in USDT, DB-derived balances)
+        await trading_engine._paper_bnb_credit(db, amount, "manual", bnb_price)
         await trading_engine.save_state(db)
         return {"ok": True, "bnb_amount": round(amount / bnb_price, 6), "bnb_price": round(bnb_price, 2), "cost_usdt": round(amount, 2)}
     else:

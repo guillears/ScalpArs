@@ -5102,6 +5102,14 @@
                             <p class="text-xs text-gray-500 mt-1">Hours of fee coverage to maintain</p>
                         </div>
                         <div>
+                            <label class="block text-sm text-gray-400 mb-2" title="⛽ Sep-29: hard ceiling on the BNB fee reserve as % of account equity. The top-up target and emergency threshold are burn-rate extrapolations — on a young batch with a few large fills they exceeded the whole account, and the emergency swap would have converted the entire free USDT balance into BNB. 10 = target ≤ 10% of equity, threshold ≤ 5%, one swap ≤ 10%. Never below Min Balance. 0 = no cap.">Max Reserve (% equity)</label>
+                            <div class="flex">
+                                <input type="number" id="config-bnb-max-reserve-pct" min="0" max="50" step="1" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="10">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">%</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Sep 29: ceiling for the top-up target / emergency threshold / any single swap. 0 = no cap.</p>
+                        </div>
+                        <div>
                             <label class="block text-sm text-gray-400 mb-2">Min Balance</label>
                             <div class="flex">
                                 <span class="bg-white/10 border border-white/10 border-r-0 rounded-l-lg px-4 py-2 text-gray-400">$</span>
@@ -11276,6 +11284,7 @@
             lines.push(`  Min ADX Delta L: ${th.min_adx_delta_long || 0}  |  S: ${th.min_adx_delta_short || 0}  (May 10: cross-sample validated; ADXΔ <0.10 LONG = ~17% WR vs ≥0.10 = ~62% WR)`);
             lines.push(`  Entry Quality Score Filter: ${th.entry_quality_score_filter_enabled ? 'ON' : 'OFF'}  |  Block when score ≤ ${th.entry_quality_score_block_max ?? 1}  (May 15 PM opt-in. Score ≤ 1 cross-sample = N=95, 34.7% WR, −$684)`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 2 candles ago)`);
+            lines.push(`  ⛽ BNB reserve ceiling (Sep 29): ${cfg.bnb_max_reserve_pct_of_equity ?? 10}% of equity (top-up target / emergency threshold ×0.5 / any single swap; never below the $${cfg.bnb_min_balance_usd ?? 50} floor; 0 = no cap). Burn forecast = systematic fills only; paper BNB clamped at 0 (excess fees paid from USDT)`);
             lines.push(`  🖐 Manual sleeve (Sep 29): dashboard-opened positions, label MANUAL (excluded from every systematic read); floor SL ${th.manual_floor_sl_pct ?? -3}% (FLOOR mode stop and the widest FIXED stop accepted); own slot lane, cap ${cfg.investment?.manual_max_open_positions ?? 8} (bot slots exclude MANUAL)`);
             lines.push(`  🪤 Fade laggard gate (Sep 29): SPIKE_FADE blocked when pair daily −DI(14) > ${th.spike_fade_lag_ndi_min ?? 0} AND BTC 4h EMA50/EMA200 gap > ${th.spike_fade_lag_btc_gap_min ?? 0}% (0 = off; counter SPIKE_FADE_LAGGARD; stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct; revert: first 10 blocked re-simmed WR ≥66% or Σ>0 → 0)`);
             lines.push(`  🧭 Low-ADX RSI-momentum gate (Sep 29): LONG blocked when RSI < RSI 2 candles ago AND pair ADX < ${th.long_rsi_momentum_adx_max ?? 0} (0 = off; counter PAIR_RSI_MOMENTUM_LOADX; revert: first 8 blocked re-simmed WR ≥60% or net>0 → 0)`);
@@ -11438,13 +11447,16 @@
                 );
             }
             // Summary stats
-            const totalUsdt = swaps.reduce((a, s) => a + (s.amount_usdt || 0), 0);
+            const _isSettle = s => (s.swap_type || '').toLowerCase() === 'fee_settle';   // fees paid in USDT while the reserve was empty — not a purchase
+            const totalUsdt = swaps.filter(s => !_isSettle(s)).reduce((a, s) => a + (s.amount_usdt || 0), 0);
+            const settleUsdt = swaps.filter(_isSettle).reduce((a, s) => a + (s.amount_usdt || 0), 0);
             const emergencyCount = swaps.filter(s => (s.swap_type || '').toLowerCase() === 'emergency').length;
             const scheduledCount = swaps.filter(s => (s.swap_type || '').toLowerCase() === 'scheduled').length;
             const manualCount = swaps.filter(s => (s.swap_type || '').toLowerCase() === 'manual').length;
             const autoSellCount = swaps.filter(s => (s.swap_type || '').toLowerCase() === 'auto_sell').length;
             lines.push(hr2);
             lines.push(`Summary: Total USDT swapped: $${totalUsdt.toFixed(2)}  |  Emergency: ${emergencyCount}  |  Scheduled: ${scheduledCount}  |  Manual: ${manualCount}  |  Auto-Sell: ${autoSellCount}`);
+            if (settleUsdt > 0) lines.push(`Fees paid in USDT while the BNB reserve was empty (fee_settle rows, no BNB bought): $${settleUsdt.toFixed(2)}`);
             return lines;
         }
 
@@ -20028,6 +20040,8 @@
                         ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-orange-500/20 text-orange-400">MANUAL SELL</span>'
                         : s.swap_type === 'auto_sell'
                         ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400">AUTO SELL</span>'
+                        : s.swap_type === 'fee_settle'
+                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-500/20 text-gray-300" title="The BNB reserve was empty, so these fees were paid from USDT. Booked here so the next top-up really fills the reserve. No BNB was bought.">FEES IN USDT</span>'
                         : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">AUTO</span>';
                     // BNB direction-aware coloring: BUY = BNB rises (green if increase), SELL = BNB drops (orange)
                     const afterClass = s.post_bnb_usd > s.pre_bnb_usd
@@ -20037,7 +20051,9 @@
                     // Show absolute value in column + sign in a separate visual marker.
                     const usdtAbs = Math.abs(s.amount_usdt || 0);
                     const isSell = (s.amount_usdt || 0) < 0 || s.swap_type === 'manual_sell';
-                    const usdtCell = isSell
+                    const usdtCell = s.swap_type === 'fee_settle'
+                        ? `<span class="text-gray-300">${formatUSD(usdtAbs)}</span><span class="text-gray-500 text-xs ml-1">(fees paid in USDT)</span>`
+                        : isSell
                         ? `<span class="text-orange-400">+${formatUSD(usdtAbs)}</span><span class="text-gray-500 text-xs ml-1">(BNB→USDT)</span>`
                         : `<span class="text-yellow-400 font-medium">-${formatUSD(usdtAbs)}</span><span class="text-gray-500 text-xs ml-1">(USDT→BNB)</span>`;
                     return `
@@ -20778,6 +20794,7 @@
                 document.getElementById('config-bnb-check-interval').value = config.bnb_check_interval_hours || 12;
                 document.getElementById('config-bnb-runway-hours').value = config.bnb_runway_hours || 24;
                 { const _e=document.getElementById('config-bnb-min-balance'); if(_e) _e.value = config.bnb_min_balance_usd !== undefined ? config.bnb_min_balance_usd : 50; }
+                { const _e=document.getElementById('config-bnb-max-reserve-pct'); if(_e) _e.value = config.bnb_max_reserve_pct_of_equity !== undefined ? config.bnb_max_reserve_pct_of_equity : 10; }   // ⛽ Sep-29
                 document.getElementById('config-bnb-auto-sell-enabled').value = config.bnb_auto_sell_enabled ? 'true' : 'false';
                 document.getElementById('config-bnb-sell-runway-hours').value = config.bnb_sell_runway_hours != null ? config.bnb_sell_runway_hours : 48;
                 document.getElementById('config-bnb-sell-target-hours').value = config.bnb_sell_target_hours != null ? config.bnb_sell_target_hours : 36;
@@ -22448,6 +22465,7 @@
                 bnb_check_interval_hours: parseInt(document.getElementById('config-bnb-check-interval').value) || 12,
                 bnb_runway_hours: parseInt(document.getElementById('config-bnb-runway-hours').value) || 24,
                 bnb_min_balance_usd: safeFloat(document.getElementById('config-bnb-min-balance')?.value || 50),
+                bnb_max_reserve_pct_of_equity: (() => { const _v = document.getElementById('config-bnb-max-reserve-pct')?.value; return Math.max(0, safeFloat(_v === '' || _v == null ? 10 : _v)); })(),   // ⛽ Sep-29
                 bnb_auto_sell_enabled: document.getElementById('config-bnb-auto-sell-enabled').value === 'true',
                 bnb_sell_runway_hours: safeFloat(document.getElementById('config-bnb-sell-runway-hours').value) || 0,
                 bnb_sell_target_hours: safeFloat(document.getElementById('config-bnb-sell-target-hours').value) || 0,

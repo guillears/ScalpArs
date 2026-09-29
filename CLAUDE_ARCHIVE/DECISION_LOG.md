@@ -4355,3 +4355,36 @@ columns NULL (QNT/FET/ZEC/SOON and the two dead-tape shorts of Sep-29 were attri
 Reviews: caveman (signed 5–20 gap → absolute; fallback text; fill price; pools) + deep ×2 (migration, 7 end-to-end cases, 24/24
 formula parity, leaks found by before/after /api/performance) — all applied. UI same ship: Momentum stack is the default exit
 mode of the manual panel; the 🚫 mark on rated-but-blocked rows is a small inline glyph (one line).
+
+## 2026-09-29 (135) - ⛽ BNB fee reserve: equity cap, real-floor emergency, systematic-only forecast, paper reserve never negative (operator-caught)
+INCIDENT (B15, paper): dashboard BNB −$72.18, runway −1 h, burn $126/hr, emergency threshold $1,509, projected need $3,019 on a
+~$2,300 account, auto-swap ON and "No BNB swaps yet". Operator: "something is not good with the BNB auto swap with manual buys".
+CAUSES: ① the top-up target and emergency threshold are burn-rate EXTRAPOLATIONS (fees of CLOSED fills over the data span × 24 h /
+× 12 h); a ~2 h old batch with six manual fills at $40–60k notional ($36–54 fee each) extrapolated to more than the account.
+② `_deduct_fee_from_bnb`'s immature-window branch returned unconditionally — its log line claimed the real floor "is not breached"
+without testing it — so the reserve ran to zero with no swap. ③ ARMED, not yet fired: once the window matured the emergency swap
+would have used target $3,019, clipped only to "available − min investment" → ≈ $2,100 of free USDT converted to BNB in one swap.
+④ the DB-derived paper reserve went negative (fees kept being charged to an empty reserve).
+FIX: `bnb_max_reserve_pct_of_equity` = 10 % (new config, D11 complete): top-up target ≤ 10 % of equity, emergency threshold ≤ 5 %,
+any single swap ≤ 10 % — never below the $50 / $25 dollar floors (pure helpers bnb_reserve_cap_usd / bnb_reserve_targets). On the
+incident numbers: $3,019 / $1,509 → $230 / $115. The immature-window branch now swaps when the REAL floor (max(10 % of the seed
+reserve, 0.5 × bnb_min_balance_usd)) is breached. The burn forecast is the SYSTEMATIC book's (MANUAL fills excluded — sporadic and
+operator-sized; their fees are funded by the floor / emergency path). Paper reserve clamped at 0; fees beyond it are charged to
+USDT, as the exchange does (paper_bnb_split: reserve − USDT charge == the raw ledger, so total equity is unchanged to the cent).
+Equity for the cap: paper = seed USDT + seed BNB + Σ realised P&L; live = the last equity seen by a balance fetch (cap skipped until
+one happened). tests/test_bnb_reserve_cap.py (incident numbers, floors, NAV conservation, immature-window floor, wiring).
+
+DUAL REVIEW (both FIX-FIRST, same defect, applied pre-commit): with the reserve clamped at 0, a paper swap was sized against the
+clamped figure, so a purchase smaller than the fees already paid in USDT only offset that deficit — reserve still $0, USDT
+unchanged, one swap row per fee (reproduced by both reviewers). Fixed with ONE ledger path, `_paper_bnb_credit` (automatic swap +
+the manual BNB-buy endpoint): the deficit is first booked in its own `fee_settle` row (USDT-neutral — the money already left;
+shown as "FEES IN USDT" in the swap table and on its own line in the report, excluded from "Total USDT swapped"), then the
+purchase; balances and log-row post-values are DB-derived. After the swap: reserve == target, USDT − purchase, NAV identical.
+Also applied: emergency threshold ≤ top-up target; real floor clamped to the target; NaN/negative equity or pct → no cap (never a
+NaN cap); runway 0 honoured; live equity stamped at every balance read (the cap was inactive until the first swap attempt after a
+restart); config field bounded 0–50 like the UI input; "Cannot swap" log throttled to once per 10 min; tests pin their own config
+and run the swap on a scratch DB. scripts/entry_feature_factory.py committed (a tracked test imports it — clean checkout was red).
+SECOND-ORDER (deep review F6, accepted): taking MANUAL fees out of the burn rate also shrinks the sizing fee-reserve leg and the
+dashboard runway (incident numbers: 12 h × $125.80 = $1,509 held back → 12 h × $35.20 = $422) — i.e. the bot stops withholding
+USDT from position sizing for fees it will never pay. KNOWN BEHAVIOUR: with a quiet systematic book (target $50) each large manual
+fill triggers one emergency top-up back to target; raise `bnb_min_balance_usd` if the swap log gets noisy.

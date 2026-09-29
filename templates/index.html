@@ -8775,13 +8775,24 @@
             }
             return tags;
         }
+        function doorBadgeTitle(t, o) {   // Sep-29: what each door badge means; on a MANUAL row it is market CONTEXT, not an admission
+            const what = t === 'G51-①' ? 'Gate-51 band ①: BTC RSI in [50, 55). Systematic longs are currently BLOCKED in this band (closed Sep-15 by the falling-BTC tripwire), except via the ⚡ ADX-surge waiver.'
+                : t === 'G51-②' ? 'Gate-51 band ②: BTC ADX in [15, 18) — below the BTC ADX floor (18). Systematic longs are currently BLOCKED here, except via the ⚡ ADX-surge waiver.'
+                : t === 'G51-③' ? 'Gate-51 band ③: BTC RSI in [55, 60) with BTC ADX in [15, 20) or (25, 30]. Systematic longs are currently BLOCKED here (only ADX 20–25 is admitted in this RSI band), except via the ⚡ ADX-surge waiver.'
+                : t === 'RSICEIL' ? 'Pair RSI in (65, 70] — the RSI-ceiling zone (an admitted zone for systematic longs).'
+                : t === 'DB-UP' ? 'BTC 1h slope in [0.025, 0.05) — the dead-band upper half (an admitted zone for systematic longs).'
+                : 'Admission door / sizing tier.';
+            return ((o.entry_strategy || '') === 'MANUAL')
+                ? `Market context at your MANUAL entry — ${what} Your manual entry bypassed every gate; this badge only tells you which gate state the market was in.`
+                : `${what} (display-only — strategy identity unchanged)`;
+        }
         function doorBadgeHtml(o) {
             const tags = doorBadges(o);
             if (!tags.length) return '';
             return '<div class="mt-0.5 flex flex-wrap justify-center gap-0.5">' + tags.map(t =>
                 (t === '⚡ ADX SURGE'
                     ? `<span class="px-1 py-px rounded text-[9px] font-semibold bg-yellow-500/20 text-yellow-300" title="⚡ Sep-28 BTC ADX-surge waiver: entered through a lifted BTC ADX gate (ADX floor / RSI 50-60 band) on an ADX jump + positive slope — unproven cohort, own revert gate">${t}</span>`
-                    : `<span class="px-1 py-px rounded text-[9px] font-semibold bg-teal-500/15 text-teal-300/90" title="Admission door / sizing tier (display-only — strategy identity unchanged)">${t}</span>`)).join('') + '</div>';
+                    : `<span class="px-1 py-px rounded text-[9px] font-semibold bg-teal-500/15 text-teal-300/90" title="${doorBadgeTitle(t, o)}">${t}</span>`)).join('') + '</div>';
         }
         function formatTime(isoString) {
             if (!isoString) return '-';

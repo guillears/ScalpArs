@@ -7408,6 +7408,8 @@
                                 <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
                                 <span class="ml-2 text-sm text-gray-400">Enabled</span>
                             </label>
+                            <label class="flex items-center gap-1 text-xs text-cyan-300" title="🧭 Sep-29 LOW-ADX RSI-MOMENTUM gate (DECISION_LOG 126; declared override at master N=10): block a momentum LONG when RSI(12) is below its value two candles ago AND pair ADX is below this value — the EMA-stack signal lags; RSI already falling at the fire means the impulse reversed before entry and a weak trend cannot absorb the pullback. Evidence: full-year replay both halves negative at 95% (Jan–Apr 41%·−0.35 / May–Sep 60%·−0.16, 230 fills, 87 windows, every seed), master 10·50%·−0.26. LONG only; the toggle on the left is the old unscoped leg (off). 0 = off. Counter PAIR_RSI_MOMENTUM_LOADX. REVERT: first 8 blocked signals re-simulated from the log WR ≥60% or net>0 → 0.">🧭 LONG only when pair ADX &lt;
+                                <input type="number" step="1" min="0" id="config-long-rsi-momentum-adx-max" class="w-16 bg-white/5 border border-cyan-500/40 rounded px-2 py-1 text-cyan-200 text-center" value="0"></label>
                         </div>
                         <p class="text-xs text-gray-500 mt-1">Block LONG if RSI is falling (vs 2 candles ago, ~10min). Block SHORT if RSI is rising. Prevents entries against RSI momentum direction.</p>
                     </div>
@@ -11231,6 +11233,7 @@
             lines.push(`  Min ADX Delta L: ${th.min_adx_delta_long || 0}  |  S: ${th.min_adx_delta_short || 0}  (May 10: cross-sample validated; ADXΔ <0.10 LONG = ~17% WR vs ≥0.10 = ~62% WR)`);
             lines.push(`  Entry Quality Score Filter: ${th.entry_quality_score_filter_enabled ? 'ON' : 'OFF'}  |  Block when score ≤ ${th.entry_quality_score_block_max ?? 1}  (May 15 PM opt-in. Score ≤ 1 cross-sample = N=95, 34.7% WR, −$684)`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 2 candles ago)`);
+            lines.push(`  🧭 Low-ADX RSI-momentum gate (Sep 29): LONG blocked when RSI < RSI 2 candles ago AND pair ADX < ${th.long_rsi_momentum_adx_max ?? 0} (0 = off; counter PAIR_RSI_MOMENTUM_LOADX; revert: first 8 blocked re-simmed WR ≥60% or net>0 → 0)`);
             lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  |  Mode: ${th.ema_gap_expanding_mode || 'both'}  (both = beat prev1 AND prev2 [strict]; prev2_only = beat prev2 only [relaxed, tags MARGINAL])`);
             lines.push(`  GAPFLAT Probe (Jul 13): ${th.gap_probe_enabled === true ? 'ON' : 'OFF'}  |  Invest: ${th.gap_probe_invest_mult !== undefined ? th.gap_probe_invest_mult : 0.5}x  |  Lev: ${th.gap_probe_lev_mult !== undefined ? th.gap_probe_lev_mult : 0.05}x (~1x eff)  |  Max Open: ${th.gap_probe_max_open !== undefined ? th.gap_probe_max_open : 3}  (gap-not-expanding entries BOTH directions open as 1x GAPFLAT_PROBE; last 2 slots reserved; no daily budget)`);
             lines.push(`  GAPMIN Probe (Jul 13): ${th.gapmin_probe_enabled === true ? 'ON' : 'OFF'}  |  Band L: [${th.gapmin_probe_floor !== undefined ? th.gapmin_probe_floor : 0.02}, ${th.ema_gap_threshold_long !== undefined ? th.ema_gap_threshold_long : 0.06})  |  S: [${th.gapmin_probe_floor !== undefined ? th.gapmin_probe_floor : 0.02}, ${th.ema_gap_threshold_short !== undefined ? th.ema_gap_threshold_short : 0.08})  |  Max Open: ${th.gapmin_probe_max_open !== undefined ? th.gapmin_probe_max_open : 3}  (young accelerating trends below the gap threshold open as 1x GAPMIN_PROBE, BOTH directions; shares GAPFLAT sizing + slot guard)`);
@@ -20923,6 +20926,7 @@
                 document.getElementById('config-momentum-short-rsi-min').value = config.thresholds.momentum_short_rsi_min !== undefined ? config.thresholds.momentum_short_rsi_min : 30;
                 document.getElementById('config-momentum-adx-max').value = config.thresholds.momentum_adx_max !== undefined ? config.thresholds.momentum_adx_max : 100;
                 document.getElementById('config-rsi-momentum-filter-enabled').checked = config.thresholds.rsi_momentum_filter_enabled !== undefined ? config.thresholds.rsi_momentum_filter_enabled : true;
+                { const _e=document.getElementById('config-long-rsi-momentum-adx-max'); if(_e && config.thresholds.long_rsi_momentum_adx_max !== undefined) _e.value = config.thresholds.long_rsi_momentum_adx_max; }
                 document.getElementById('config-ema-gap-expanding-filter').checked = config.thresholds.ema_gap_expanding_filter !== undefined ? config.thresholds.ema_gap_expanding_filter : true;
                 { const _e=document.getElementById('config-ema-gap-expanding-mode'); if(_e) _e.value = config.thresholds.ema_gap_expanding_mode || 'both'; }
                 { const _e=document.getElementById('config-gap-probe-enabled'); if(_e) _e.checked = config.thresholds.gap_probe_enabled === true; }
@@ -22486,6 +22490,7 @@
                     momentum_short_rsi_min: safeFloat(document.getElementById('config-momentum-short-rsi-min').value),
                     momentum_adx_max: safeFloat(document.getElementById('config-momentum-adx-max').value),
                     rsi_momentum_filter_enabled: document.getElementById('config-rsi-momentum-filter-enabled').checked,
+                    long_rsi_momentum_adx_max: (() => { const _v = document.getElementById('config-long-rsi-momentum-adx-max')?.value; return safeFloat(_v === '' || _v == null ? 0 : _v); })(),
                     ema_gap_expanding_filter: document.getElementById('config-ema-gap-expanding-filter').checked,
                     ema_gap_expanding_mode: document.getElementById('config-ema-gap-expanding-mode')?.value || 'both',
                     gap_probe_enabled: (document.getElementById('config-gap-probe-enabled')?.checked === true),

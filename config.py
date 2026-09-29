@@ -858,7 +858,14 @@ class SignalThresholds(BaseModel):
     # immediately like before). Default 15s — short enough to add minimal
     # delay on real reversals (~0.05pp), long enough to filter <15s noise.
     trailing_pullback_confirmation_seconds: int = 15
-    rsi_momentum_filter_enabled: bool = True  # Block LONG if RSI falling, block SHORT if RSI rising (vs 3 candles ago)
+    rsi_momentum_filter_enabled: bool = False  # Block LONG if RSI falling, block SHORT if RSI rising (vs 2 candles ago). Retired May-8; default now == live (False) because the Sep-29 scan fix makes this leg reachable again
+    # 🧭 Sep-29 LOW-ADX RSI-MOMENTUM gate (DECISION_LOG 126; declared override — master N=10 < 15): block a momentum LONG when
+    # RSI(12) < RSI two candles ago AND pair ADX < this value. Evidence: full-year replay yr3, both halves negative at 95 %
+    # (Jan–Apr 41%·−0.349 over 38 windows · May–Sep 60%·−0.157 over 49 windows, 230 fills, every seed negative), monotonic
+    # in the RSI-drop size, distinct DOA mechanism (master cohort 40 % never green vs 11 %); master 10·50%·−0.257·−$717 over 8
+    # windows, same direction. The unscoped PAIR_RSI_MOMENTUM leg was retired May-8 as "redundant", never re-read. 0 = off.
+    # 🔒 REVERT (tighter than standard): first 8 blocked LONG signals re-simulated from the log — WR ≥ 60 % ∨ net > 0 → 0.
+    long_rsi_momentum_adx_max: float = 0.0
     rsi_momentum_exit_enabled: bool = True  # Exit LONG on 2 consecutive RSI drops, SHORT on 2 consecutive rises
     rsi_momentum_exit_min_profit: float = 0.05  # Min P&L % (notional) to trigger RSI momentum exit
     rsi_momentum_exit_max_profit: float = 999.0  # Max P&L % to trigger RSI momentum exit (caps to losers when set to 0)

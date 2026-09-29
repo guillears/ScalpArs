@@ -262,6 +262,24 @@ def gap_min_band(indicators: dict, direction: str, th=None):
         return None
 
 
+def rsi_mom_loadx_block(th, rsi, rsi_prev2, adx):
+    """🧭 Sep-29 LOW-ADX RSI-MOMENTUM gate (DECISION_LOG 126) — block a momentum LONG whose RSI(12) is already BELOW its value
+    two candles ago while pair ADX is below `long_rsi_momentum_adx_max`: the EMA-stack signal lags price; RSI falling at the
+    fire means the impulse reversed before entry, and with no trend strength behind it the pullback becomes the stop.
+    Scoped re-enable of the May-8-retired PAIR_RSI_MOMENTUM leg (LONG side only). 0 / None = off. Fail-OPEN on any missing
+    reading (an entry gate must never block on absent data). Pure — shared by the engine, the pool builder and the tests."""
+    try:
+        amax = float(getattr(th, 'long_rsi_momentum_adx_max', 0.0) or 0.0)
+        if amax <= 0 or rsi is None or rsi_prev2 is None or adx is None:
+            return False
+        rsi, rsi_prev2, adx = float(rsi), float(rsi_prev2), float(adx)
+        if any(x != x for x in (rsi, rsi_prev2, adx)):
+            return False
+        return rsi < rsi_prev2 and adx < amax
+    except (TypeError, ValueError):
+        return False
+
+
 def rsiceil_band(indicators: dict, direction: str, th=None):
     """Jul 15: RSICEIL probe band (probe #6, LONG only). Returns True iff the candidate's
     RSI sits in (momentum_long_rsi_max, rsiceil_probe_ceiling] — the dark zone above the
@@ -590,6 +608,8 @@ def get_signal(
                 _l_fails.append("PAIR_EXT_MIN")
             if rsi_momentum_enabled and rsi is not None and rsi_prev2 is not None and rsi < rsi_prev2:
                 _l_fails.append("PAIR_RSI_MOMENTUM")
+            if rsi_mom_loadx_block(th, rsi, rsi_prev2, adx):          # 🧭 Sep-29 low-ADX RSI-momentum leg (LONG only)
+                _l_fails.append("PAIR_RSI_MOMENTUM_LOADX")
             if long_rsi_min > 0 and rsi is not None and rsi < long_rsi_min:
                 _l_fails.append(f"PAIR_RSI_RANGE[<{long_rsi_min:g}]")  # too cold — weak momentum
             elif long_rsi_max < 100 and rsi is not None and rsi > long_rsi_max:

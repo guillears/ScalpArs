@@ -11523,6 +11523,7 @@ class TradingEngine:
                     ema50=indicators.get('ema50'),
                     ema50_prev12=indicators.get('ema50_prev12'),
                     rsi_prev3=indicators.get('rsi_prev3'),
+                    rsi_prev2=indicators.get('rsi_prev2'),   # 🧭 Sep-29 (deep review): the scan never passed rsi_prev2 — the RSI-momentum legs were unreachable here since c42d1c1
                     ema5_prev1=indicators.get('ema5_prev1'),
                     ema8_prev1=indicators.get('ema8_prev1'),
                     ema5_prev2=indicators.get('ema5_prev2'),

@@ -319,6 +319,22 @@ def build(rearm_trail=True, entry_age_cap=60.0):
     except Exception as e:                                        # noqa: BLE001
         print(f"  ⚠ could not apply the CALM3D BTC-ATR floor ({e}) — NUMBERS BELOW INCLUDE those longs.")
 
+    try:   # 🧭 Sep-29 low-ADX RSI-momentum leg (DECISION_LOG 126) — live parity with build_master_pool STACK 2026-09-29a
+        from services.indicators import rsi_mom_loadx_block
+        import config as _cfg
+        _th = _cfg.trading_config.thresholds
+        if float(getattr(_th, 'long_rsi_momentum_adx_max', 0) or 0) != 21.0:
+            print(f"  ⚠ live long_rsi_momentum_adx_max={getattr(_th, 'long_rsi_momentum_adx_max', 0)} but build_master_pool.py freezes 21 — "
+                  "stacked pool and this ledger DISAGREE until the builder constant is updated and the pool rebuilt.")
+        _mlx = (d.entry_strategy == "MOMENTUM") & (d.direction == "LONG")
+        _lx = pd.Series([rsi_mom_loadx_block(_th, a, b, c) for a, b, c in zip(_n(d, "entry_rsi"), _n(d, "entry_rsi_prev"), _n(d, "entry_adx"))], index=d.index, dtype=bool)
+        _lx_drop = _mlx & _lx
+        if int(_lx_drop.sum()):
+            print(f"  ℹ low-ADX RSI-momentum leg: {int(_lx_drop.sum())} momentum-long fill(s) dropped, ${d.loc[_lx_drop, 'pnl_'].sum():+,.0f}")
+        d = d[~_lx_drop]
+    except Exception as e:                                        # noqa: BLE001
+        print(f"  ⚠ could not apply the low-ADX RSI-momentum leg ({e}) — NUMBERS BELOW INCLUDE those longs.")
+
     # bull-run sleeve — the FULL live gate list
     br = d.entry_strategy == "BULLRUN_LONG"
     rearm = d["entry_br_door"].eq("REARM") | ((d.era == "B4") & br)

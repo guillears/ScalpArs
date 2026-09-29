@@ -4121,3 +4121,27 @@ above breakeven (last 5m bar red 35·71%·+0.114 vs 73·86%·+0.360). Noted, not
 🔒 BAR (frozen; thresholds 5 pts / "falling" never re-tuned): count only fills opened after 2026-09-28 19:10 UTC; one scan (opens
 within 2 min) = ONE window; 1× de-multiplied, probes excluded. At fresh N≥15 over ≥8 windows → BLOCK CANDIDATE only if WR < ML
 breakeven (~61%) ∧ avg<0 at 95% window-clustered bootstrap ∧ no window ≥50% of the loss; otherwise the watch closes.
+
+## 2026-09-29 (126) - 🧭 LOW-ADX RSI-MOMENTUM gate shipped for momentum LONGs (declared override at master N=10; DECISION_LOG 125 review → full differential review)
+Rule (indicators.rsi_mom_loadx_block, pure, shared by engine / pool builder / ledger): refuse a momentum LONG when RSI(12) < RSI two
+candles ago (indicators rsi_prev2 = the stamped entry_rsi_prev) AND pair ADX < long_rsi_momentum_adx_max (21). Fail-OPEN on any
+missing reading; LONG side only; doors included (a door with pADX<21 is already CALM3D_DMI_ADX-blocked, so moot). Counter/journal
+gate PAIR_RSI_MOMENTUM_LOADX. Scoped re-enable of the PAIR_RSI_MOMENTUM leg retired May-8 as "redundant" — the deep review found
+that leg had been UNREACHABLE in the live scan since c42d1c1 (scan_and_trade never passed rsi_prev2 to get_signal); fixed in the same
+ship (rsi_prev2 now passed; config default rsi_momentum_filter_enabled True→False so default == live, JSON stays false).
+Theory: the EMA-stack fire lags price; RSI already below its 2-bar-ago value at the fire = the impulse reversed before entry, and with
+no trend strength (ADX<21) the pullback becomes the stop. Evidence (yr3 full-year replay, real ticks + latency, today's rules): cohort
+Jan–Apr 20/seed·41%·−0.349 (day-CI −0.49..−0.21, 38 windows) · May–Sep 26/seed·60%·−0.157 (CI −0.30..−0.03, 49 windows); every
+seed negative; dose-response monotonic in the RSI-drop size in all three sources (Δ≤−3: −0.43 / −0.51 / master −0.35 → RSI rising
+≈0 / ≈0 / +0.40); distinct mechanism (master cohort 40% never green vs 11% rest); diffuse (69 pairs, 124 days). Master+B14 10·50%·
+−0.257·−$717 over 8 windows, same direction (N<15 → override acknowledged). Per batch before→after (master+B14): BASE 35·89%·$3,255
+→33·91%·$3,335 · B1 19·74%·$837→16·75%·$861 · B2 11·82%·$607→10·80%·$509 · B3 18·78%·$1,034→16·81%·$1,220 · B14 8·38%·−$822→6·50%·
+−$297; backtest sleeve −0.075→−0.054 (H1) / −0.053→−0.044 (H2). Rule A (ADX<21 ∧ DI spread ≥10) REJECTED in the same review:
+threshold-fragile (dissolves at ADX 19/23 or spread 8), non-monotonic (spread 0–5 hole), theory variable DX−ADX carries nothing,
+master signal = B14 only. Same-scan cap REJECTED: the 2nd long of a scan is flat (13·62%·+$102), cap removes winners. B14 ML observe
+tallies at ship: BTC-drop+rollover 1 fresh (DOGE +0.09); ADX-surge 0; 1h-slope>0.15 tally 26 fills still net-positive.
+Pool rebuilt STACK 2026-09-29a (backup MASTER_POOL_stacked.csv.pre0929_bak): LONG_RSI_MOM_LOADX removes 10 pool fills (−$741:
+WLD, UNI, UNI, XLM, BCH, ADA, ACE, AVAX, LIT, 龙虾); ledger ML 100·83%·+0.309·$7,125, TOTAL 250·$15,375. Calibration table rebuilt;
+validate_against_master ALL PASS; tests 305 green (tests/test_rsi_mom_loadx.py incl. a get_signal-level call-site test).
+🔒 REVERT (pre-committed, tighter than standard): first 8 PAIR_RSI_MOMENTUM_LOADX-blocked LONG signals re-simulated from the
+log/journal — WR ≥ 60% ∨ net > 0 → long_rsi_momentum_adx_max = 0. Read at each batch review, window units.

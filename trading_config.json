@@ -173,6 +173,7 @@
     "ema5_stretch_min_short": 0.0,
     "ema5_stretch_max_short": 0.0,
     "rsi_momentum_filter_enabled": false,
+    "long_rsi_momentum_adx_max": 21.0,
     "rsi_momentum_exit_enabled": false,
     "rsi_momentum_exit_min_profit": -0.8,
     "rsi_momentum_exit_max_profit": -0.45,

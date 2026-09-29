@@ -621,6 +621,7 @@
     "spike_fade_max_btc_dist13": 0.0,
     "spike_fade_lag_ndi_min": 16.1,
     "spike_fade_lag_btc_gap_min": 0.0,
+    "manual_floor_sl_pct": -3.0,
     "spike_tripwire_autodisable": false,
     "spike_bounce_max_pair_gap": -0.125,
     "nonexp_calm3d_min_pos_di": 28.0,

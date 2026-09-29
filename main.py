@@ -518,6 +518,17 @@ class ManualCloseRequest(BaseModel):
     order_id: int
 
 
+class ManualOpenRequest(BaseModel):   # 🖐 Sep-29 MANUAL sleeve
+    pair: str
+    direction: str
+    investment: float
+    leverage: float = 20.0
+    exit_mode: str = "FIXED"          # FIXED | MOMENTUM | FLOOR
+    sl_pct: Optional[float] = None    # price-move %, FIXED mode (sign ignored)
+    tp_pct: Optional[float] = None    # price-move %, FIXED mode, optional
+    note: Optional[str] = None
+
+
 # ============== Auth Routes ==============
 
 @app.get("/login", response_class=HTMLResponse)
@@ -1454,6 +1465,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "entry_btc_ema50_100_gap_pct": getattr(o, 'entry_btc_ema50_100_gap_pct', None), "entry_eth_5m_ret1_pct": getattr(o, 'entry_eth_5m_ret1_pct', None),   # 🧭 Sep-29 zone stamps
             "entry_btc_1d_ret_pct": getattr(o, 'entry_btc_1d_ret_pct', None), "entry_pair_1h_ema20_200_gap_pct": getattr(o, 'entry_pair_1h_ema20_200_gap_pct', None),
             "entry_pair_1d_ndi": getattr(o, 'entry_pair_1d_ndi', None), "entry_btc_4h_ema50_200_gap_pct": getattr(o, 'entry_btc_4h_ema50_200_gap_pct', None),   # 🪤 Sep-29 fade laggard readings
+            "manual_exit_mode": getattr(o, 'manual_exit_mode', None), "manual_note": getattr(o, 'manual_note', None),   # 🖐 Sep-29 MANUAL sleeve
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
             "pattern_fixed_tp_pct": getattr(o, 'pattern_fixed_tp_pct', None),
             "pattern_fixed_sl_pct": getattr(o, 'pattern_fixed_sl_pct', None),
@@ -1761,6 +1773,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_btc_ema50_100_gap_pct": getattr(o, 'entry_btc_ema50_100_gap_pct', None), "entry_eth_5m_ret1_pct": getattr(o, 'entry_eth_5m_ret1_pct', None),   # 🧭 Sep-29 zone stamps
             "entry_btc_1d_ret_pct": getattr(o, 'entry_btc_1d_ret_pct', None), "entry_pair_1h_ema20_200_gap_pct": getattr(o, 'entry_pair_1h_ema20_200_gap_pct', None),
             "entry_pair_1d_ndi": getattr(o, 'entry_pair_1d_ndi', None), "entry_btc_4h_ema50_200_gap_pct": getattr(o, 'entry_btc_4h_ema50_200_gap_pct', None),   # 🪤 Sep-29 fade laggard readings
+            "manual_exit_mode": getattr(o, 'manual_exit_mode', None), "manual_note": getattr(o, 'manual_note', None),   # 🖐 Sep-29 MANUAL sleeve
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
             "pattern_fixed_tp_pct": getattr(o, 'pattern_fixed_tp_pct', None),
             "pattern_fixed_sl_pct": getattr(o, 'pattern_fixed_sl_pct', None),
@@ -1936,6 +1949,22 @@ async def close_order(request: ManualCloseRequest, db: AsyncSession = Depends(ge
         raise HTTPException(status_code=500, detail="Failed to close order")
     
     return {"status": "closed", "pnl": closed_order.pnl}
+
+
+@app.post("/api/orders/manual_open")
+async def manual_open(request: ManualOpenRequest, db: AsyncSession = Depends(get_db)):
+    """🖐 Sep-29 MANUAL sleeve: open a position from the dashboard (bypasses every entry gate; own label; own exit mode)."""
+    try:
+        order = await trading_engine.open_manual_position(
+            db, pair=request.pair, direction=request.direction, investment=request.investment, leverage=request.leverage,
+            exit_mode=request.exit_mode, sl_pct=request.sl_pct, tp_pct=request.tp_pct, note=request.note)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[MANUAL_OPEN] failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"manual open failed: {e}")
+    return {"status": "open", "order_id": order.id, "pair": order.pair, "direction": order.direction, "entry_price": order.entry_price,
+            "exit_mode": order.manual_exit_mode, "sl_pct": order.pattern_fixed_sl_pct, "tp_pct": order.pattern_fixed_tp_pct}
 
 
 @app.post("/api/recover-positions")
@@ -2942,6 +2971,8 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
     the canonical cross-batch metric) · Net $ (as-sized) · PF (gross wins/|gross losses|) ·
     Worst % (fat-tail visibility)."""
     def sleeve(o):
+        if (o.entry_strategy or '') == 'MANUAL':
+            return 'Manual'  # 🖐 Sep-29: operator-opened positions — own row, never a systematic sleeve
         if (o.entry_strategy or '') == 'BULLRUN_LONG':
             return 'BullRun-Long'  # Aug 21 gate 57: own row — must NOT contaminate Mom-Long
         if (o.entry_strategy or '') == 'BEARRUN_SHORT':
@@ -2980,7 +3011,7 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
                         if start_balance and start_balance > 0 and window_days and window_days >= 0.5
                         and sum(o.pnl or 0 for o in g) / start_balance > -1 else None),
         }
-    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short']
+    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Manual']   # 🖐 Sep-29: own row
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
     all_closed = [o for o in orders if o.pnl_percentage is not None]
     total = stats('Total', all_closed)
@@ -4235,7 +4266,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # are their own program; blending full-size spikes would contaminate the
             # sleeve stats the locked gates read. (Probe-era spike rows carry MOMENTUM
             # labels and stay — cohort key for those = cell_multiplier_source.)
-            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT')  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
+            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'MANUAL')   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
             orders = [o for o in orders if not _es(o).startswith('FLIP:') and _es(o).upper() not in _SLEEVES]
         else:
             # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side

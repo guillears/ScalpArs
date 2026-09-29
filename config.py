@@ -833,6 +833,9 @@ class SignalThresholds(BaseModel):
     # Young listings (< 42 closed daily bars) have no −DI reading → never gated (fail-open by design; they are a fade staple).
     spike_fade_lag_ndi_min: float = 0.0           # 0 = off; JSON ships 16.1
     spike_fade_lag_btc_gap_min: float = 0.0       # BTC 4h EMA50/EMA200 gap % must exceed this (0 = EMA50 above EMA200)
+    # 🖐 Sep-29 MANUAL sleeve: hard stop (price-move %) for FLOOR mode and the widest SL FIXED mode accepts — a stop-less
+    # position is never allowed (at 20× a −5% print is the whole margin). Operator research instrument; no systematic read uses it.
+    manual_floor_sl_pct: float = -3.0
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

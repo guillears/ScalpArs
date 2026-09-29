@@ -229,9 +229,11 @@ def main():
         p = r.pnl; strat = str(r.entry_strategy); slv = str(r.get('screen_sleeve') or '')
         v = vol[i] if pd.notna(vol[i]) else None
         k, why = True, ''
-        if r.is_probe:
+        if strat == 'MANUAL':
+            k, why = False, 'MANUAL_EXEMPT'   # 🖐 Sep-29: operator-opened — never a stack trade, never in the ledger
+        elif r.is_probe:
             why = 'PROBE_EXEMPT'
-        if not r.is_probe:
+        if not r.is_probe and strat != 'MANUAL':
             if strat == 'BEARRUN_SHORT':
                 why = 'BEARRUN_SLEEVE'   # kept, but its OWN sleeve — MOM-short reads must filter entry_strategy == 'MOMENTUM'
             elif strat == 'SPIKE_FADE':

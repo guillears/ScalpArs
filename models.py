@@ -268,6 +268,9 @@ class Order(Base):
     # 🪤 Sep-29 FADE LAGGARD gate readings (DECISION_LOG 128) — SPIKE_FADE fills only, NULL otherwise
     entry_pair_1d_ndi = Column(Float, nullable=True)                # pair Wilder −DI(14), closed daily bars
     entry_btc_4h_ema50_200_gap_pct = Column(Float, nullable=True)   # BTC 4h EMA50 vs EMA200 (%), closed bars
+    # 🖐 Sep-29 MANUAL sleeve (operator-opened positions; entry_strategy='MANUAL'; excluded from every systematic read)
+    manual_exit_mode = Column(String(12), nullable=True)            # FIXED | MOMENTUM | FLOOR
+    manual_note = Column(String(200), nullable=True)                # the operator's hypothesis for the trade
     # 🐻 Sep 15 gate 60 — Bear-Run Monitor readings at entry (BEARRUN_SHORT fills only, NULL otherwise):
     # r24 / bars-below-EMA20% / 24h efficiency / BTC % above its 24h low at fire time + the BTC gates bypassed.
     entry_bear_r24 = Column(Float, nullable=True)

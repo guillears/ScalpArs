@@ -185,6 +185,9 @@ async def init_db():
                             'entry_pair_1d_ndi', 'entry_btc_4h_ema50_200_gap_pct'):   # 🪤 Sep-29 fade laggard readings
                     if _zc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_zc} FLOAT"))
+                for _mc, _mt in (('manual_exit_mode', 'VARCHAR(12)'), ('manual_note', 'VARCHAR(200)')):   # 🖐 Sep-29 MANUAL sleeve
+                    if _mc not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_mc} {_mt}"))
                 if 'entry_br_bull_pct_top10' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_bull_pct_top10 FLOAT"))
                 if 'entry_br_bear_pct_top10' not in columns:

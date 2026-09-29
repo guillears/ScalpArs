@@ -189,6 +189,11 @@ def build(rearm_trail=True, entry_age_cap=60.0):
 
     d = d[~d.pair.str.upper().isin(_blacklist("pair_blacklist", ""))]              # global blacklist
 
+    _mn = d.entry_strategy.astype(str).eq("MANUAL")   # 🖐 Sep-29: operator-opened positions are never part of a systematic read
+    if int(_mn.sum()):
+        print(f"  ℹ MANUAL fills excluded: {int(_mn.sum())} (${d.loc[_mn, 'pnl_'].sum():+,.0f})")
+        d = d[~_mn]
+
     # drop fills from sleeves that are switched OFF today
     _validate_toggles()
     _off = sorted({s_ for s_ in d.entry_strategy.astype(str).unique() if not _sleeve_on(s_)})

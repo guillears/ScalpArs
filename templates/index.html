@@ -295,6 +295,21 @@
                     </button>
                 </div>
             </div>
+            <!-- 🖐 Sep-29 MANUAL sleeve: operator-opened position (bypasses every entry gate; own label MANUAL; own exit mode) -->
+            <div class="glass rounded-xl p-4 mb-4" id="manual-entry-panel">
+                <div class="flex flex-wrap items-end gap-3 text-xs">
+                    <span class="text-sm font-semibold text-amber-300 mr-2" title="Opens a position NOW at market, bypassing every entry gate and cell multiplier. Labelled MANUAL — never counted in any systematic sleeve. SL/TP are % of price move NET of fees (leverage-invariant, the same pnl every exit uses): 1.5 ≈ −1.4% raw price ≈ −30% of margin at 20×. MAX_HOLD still applies as the universal safety net. Paper mode only.">🖐 Manual entry</span>
+                    <label class="flex flex-col text-gray-400">Pair<input id="manual-pair" type="text" placeholder="DOGEUSDT" class="w-28 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <label class="flex flex-col text-gray-400">Side<select id="manual-direction" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
+                    <label class="flex flex-col text-gray-400">Size $<input id="manual-investment" type="number" step="10" min="1" value="500" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <label class="flex flex-col text-gray-400">Lev<input id="manual-leverage" type="number" step="1" min="1" max="125" value="20" class="w-14 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack · FLOOR = no TP, hard stop at the floor (config)">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM">Momentum stack</option><option value="FLOOR">Floor stop only</option></select></label>
+                    <label class="flex flex-col text-gray-400">SL %<input id="manual-sl" type="number" step="0.1" min="0" placeholder="1.5" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <label class="flex flex-col text-gray-400">TP %<input id="manual-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <label class="flex flex-col text-gray-400 flex-1 min-w-[12rem]">Note (why)<input id="manual-note" type="text" maxlength="200" placeholder="hypothesis for this trade" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <button id="manual-open-btn" onclick="openManualPosition()" class="px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-400/60 text-amber-200 hover:bg-amber-500/30 transition font-semibold">Open position</button>
+                </div>
+            </div>
             <div class="glass rounded-xl overflow-hidden">
                 <div class="overflow-x-auto scrollbar-thin max-h-[28rem] overflow-y-auto">
                     <table class="w-full text-sm">
@@ -5941,6 +5956,8 @@
                                         <input type="number" step="0.1" min="0" id="config-spike-fade-lag-ndi-min" class="w-16 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="0"></label>
                                     <label class="flex items-center gap-1 text-xs text-rose-300" title="🪤 Sep-29 FADE LAGGARD gate, BTC leg: BTC 4h EMA50 vs EMA200 gap (%) must exceed this for the block to apply (0 = EMA50 above EMA200). Frozen at 0.">BTC 4h gap min
                                         <input type="number" step="0.1" id="config-spike-fade-lag-btc-gap-min" class="w-16 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="0"></label>
+                                    <label class="flex items-center gap-1 text-xs text-amber-300" title="🖐 Sep-29 MANUAL sleeve: hard stop (% of price move) used by the FLOOR exit mode and the widest stop the FIXED mode accepts. A manual position is never stop-less. Negative number.">Manual floor SL %
+                                        <input type="number" step="0.1" max="0" id="config-manual-floor-sl-pct" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="-3"></label>
                                     <label class="flex items-center gap-1 text-xs text-gray-400" title="🛡 Aug-10 FRESH-BREAKOUT GUARD: block a fade when the pair spiked from a base RSI below this AND its EMA13-50 gap is above PGapMin (non-crashed) — a low-base spike on a healthy-ish pair is the START of a move, not an exhaustion (the 6-40s DOA death class). Stack-screened: blocked 20·45%·−$344 combined, VANRY class kept. Counter SPIKE_FADE_FRESHBREAK. 0 = off.">Base RSI min
                                         <input type="number" step="1" id="config-spike-fade-fb-rsi-prev-min" class="w-14 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="44"></label>
                                     <label class="flex items-center gap-1 text-xs text-gray-400" title="Crash-extreme boundary of the fresh-breakout guard: pairs with EMA13-50 gap ≤ this are capitulation-extremes (VANRY class) and stay fadeable at any base RSI.">FB PGap min
@@ -11239,6 +11256,7 @@
             lines.push(`  Min ADX Delta L: ${th.min_adx_delta_long || 0}  |  S: ${th.min_adx_delta_short || 0}  (May 10: cross-sample validated; ADXΔ <0.10 LONG = ~17% WR vs ≥0.10 = ~62% WR)`);
             lines.push(`  Entry Quality Score Filter: ${th.entry_quality_score_filter_enabled ? 'ON' : 'OFF'}  |  Block when score ≤ ${th.entry_quality_score_block_max ?? 1}  (May 15 PM opt-in. Score ≤ 1 cross-sample = N=95, 34.7% WR, −$684)`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 2 candles ago)`);
+            lines.push(`  🖐 Manual sleeve (Sep 29): dashboard-opened positions, label MANUAL (excluded from every systematic read); floor SL ${th.manual_floor_sl_pct ?? -3}% (FLOOR mode stop and the widest FIXED stop accepted)`);
             lines.push(`  🪤 Fade laggard gate (Sep 29): SPIKE_FADE blocked when pair daily −DI(14) > ${th.spike_fade_lag_ndi_min ?? 0} AND BTC 4h EMA50/EMA200 gap > ${th.spike_fade_lag_btc_gap_min ?? 0}% (0 = off; counter SPIKE_FADE_LAGGARD; stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct; revert: first 10 blocked re-simmed WR ≥66% or Σ>0 → 0)`);
             lines.push(`  🧭 Low-ADX RSI-momentum gate (Sep 29): LONG blocked when RSI < RSI 2 candles ago AND pair ADX < ${th.long_rsi_momentum_adx_max ?? 0} (0 = off; counter PAIR_RSI_MOMENTUM_LOADX; revert: first 8 blocked re-simmed WR ≥60% or net>0 → 0)`);
             lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  |  Mode: ${th.ema_gap_expanding_mode || 'both'}  (both = beat prev1 AND prev2 [strict]; prev2_only = beat prev2 only [relaxed, tags MARGINAL])`);
@@ -13772,7 +13790,7 @@
                 if (sleeveBody) {
                     const sp = data.sleeve_performance;
                     if (sp && sp.length > 0) {
-                        const slColors = { 'Mom-Long': 'text-emerald-400', 'Mom-Short': 'text-red-400', 'Flip-Short': 'text-purple-400', 'Flip-Long': 'text-orange-400', 'BullRun-Long': 'text-cyan-400', 'BearRun-Short': 'text-rose-400', 'Total': 'text-gray-200' };
+                        const slColors = { 'Mom-Long': 'text-emerald-400', 'Mom-Short': 'text-red-400', 'Flip-Short': 'text-purple-400', 'Flip-Long': 'text-orange-400', 'BullRun-Long': 'text-cyan-400', 'BearRun-Short': 'text-rose-400', 'Manual': 'text-amber-300', 'Total': 'text-gray-200' };
                         sleeveBody.innerHTML = sp.map(s => {
                             const isTot = s.sleeve === 'Total';
                             const netCls = s.net_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -20007,6 +20025,43 @@
             }
         }
 
+        // 🖐 Sep-29 MANUAL sleeve
+        function manualExitModeChanged() {
+            const m = document.getElementById('manual-exit-mode')?.value || 'FIXED';
+            const sl = document.getElementById('manual-sl'), tp = document.getElementById('manual-tp');
+            if (sl) sl.disabled = (m !== 'FIXED'); if (tp) tp.disabled = (m !== 'FIXED');
+        }
+        async function openManualPosition() {
+            const g = id => document.getElementById(id);
+            const body = {
+                pair: (g('manual-pair')?.value || '').trim().toUpperCase(),
+                direction: g('manual-direction')?.value || 'LONG',
+                investment: parseFloat(g('manual-investment')?.value || '0'),
+                leverage: parseFloat(g('manual-leverage')?.value || '20'),
+                exit_mode: g('manual-exit-mode')?.value || 'FIXED',
+                sl_pct: g('manual-sl')?.value === '' ? null : parseFloat(g('manual-sl').value),
+                tp_pct: g('manual-tp')?.value === '' ? null : parseFloat(g('manual-tp').value),
+                note: (g('manual-note')?.value || '').trim() || null,
+            };
+            if (!body.pair) { showToast('Pair is required', 'error'); return; }
+            if (!(body.investment > 0)) { showToast('Size must be > 0', 'error'); return; }
+            if (body.exit_mode === 'FIXED' && !(body.sl_pct > 0)) { showToast('Custom mode needs a stop loss %', 'error'); return; }
+            if (!confirm(`Open ${body.direction} ${body.pair} $${body.investment} × ${body.leverage} (${body.exit_mode}${body.exit_mode === 'FIXED' ? ` SL ${body.sl_pct}%${body.tp_pct ? ' TP ' + body.tp_pct + '%' : ''}` : ''}) at market?`)) return;
+            const btn = g('manual-open-btn'); if (btn) btn.disabled = true;
+            try {
+                const res = await fetch(`${API_BASE}/api/orders/manual_open`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    showToast(`MANUAL ${data.direction} ${data.pair} opened @ ${data.entry_price} (exit ${data.exit_mode}${data.sl_pct != null ? ' SL ' + data.sl_pct : ''}${data.tp_pct != null ? ' TP ' + data.tp_pct : ''})`);
+                    loadOpenOrders(); loadTransactions(); loadBalance();
+                } else {
+                    showToast(data.detail || 'Manual open failed', 'error');
+                }
+            } catch (e) {
+                showToast('Manual open failed: ' + e, 'error');
+            } finally { if (btn) btn.disabled = false; }
+        }
+
         // Close order manually
         async function closeOrder(orderId) {
             if (!confirm('Are you sure you want to close this position?')) return;
@@ -21017,6 +21072,7 @@
                 { const _e=document.getElementById('config-spike-fade-max-bd13'); if(_e && config.thresholds.spike_fade_max_btc_dist13 !== undefined) _e.value = config.thresholds.spike_fade_max_btc_dist13; }
                 { const _e=document.getElementById('config-spike-fade-lag-ndi-min'); if(_e && config.thresholds.spike_fade_lag_ndi_min !== undefined) _e.value = config.thresholds.spike_fade_lag_ndi_min; }   // 🪤 Sep-29 fade laggard gate
                 { const _e=document.getElementById('config-spike-fade-lag-btc-gap-min'); if(_e && config.thresholds.spike_fade_lag_btc_gap_min !== undefined) _e.value = config.thresholds.spike_fade_lag_btc_gap_min; }
+                { const _e=document.getElementById('config-manual-floor-sl-pct'); if(_e && config.thresholds.manual_floor_sl_pct !== undefined) _e.value = config.thresholds.manual_floor_sl_pct; }   // 🖐 Sep-29 MANUAL sleeve
                 { const _e=document.getElementById('config-spike-fade-fb-rsi-prev-min'); if(_e && config.thresholds.spike_fade_fb_rsi_prev_min !== undefined) _e.value = config.thresholds.spike_fade_fb_rsi_prev_min; }
                 { const _e=document.getElementById('config-spike-fade-fb-pgap-min'); if(_e && config.thresholds.spike_fade_fb_pgap_min !== undefined) _e.value = config.thresholds.spike_fade_fb_pgap_min; }
                 { const _e=document.getElementById('config-spike-fade-tripwire-pct'); if(_e && config.thresholds.spike_fade_tripwire_pct !== undefined) _e.value = config.thresholds.spike_fade_tripwire_pct; }
@@ -22590,6 +22646,7 @@
                     spike_fade_max_btc_dist13: safeFloat(document.getElementById('config-spike-fade-max-bd13')?.value ?? 0),
                     spike_fade_lag_ndi_min: (() => { const _v = document.getElementById('config-spike-fade-lag-ndi-min')?.value; return safeFloat(_v === '' || _v == null ? 16.1 : _v); })(),   // 🪤 Sep-29 fade laggard gate
                     spike_fade_lag_btc_gap_min: (() => { const _v = document.getElementById('config-spike-fade-lag-btc-gap-min')?.value; return safeFloat(_v === '' || _v == null ? 0 : _v); })(),
+                    manual_floor_sl_pct: (() => { const _v = document.getElementById('config-manual-floor-sl-pct')?.value; const f = safeFloat(_v === '' || _v == null ? -3 : _v); return -Math.abs(f); })(),   // 🖐 Sep-29 MANUAL sleeve
                     spike_fade_fb_rsi_prev_min: (() => { const _v = document.getElementById('config-spike-fade-fb-rsi-prev-min')?.value; return safeFloat(_v === '' || _v == null ? 44 : _v); })(),
                     spike_fade_fb_pgap_min: (() => { const _v = document.getElementById('config-spike-fade-fb-pgap-min')?.value; return safeFloat(_v === '' || _v == null ? -0.40 : _v); })(),
                     spike_fade_tripwire_pct: safeFloat(document.getElementById('config-spike-fade-tripwire-pct')?.value || -1.5),

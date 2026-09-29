@@ -8467,6 +8467,112 @@ class TradingEngine:
 
         return order
     
+    async def open_manual_position(self, db: AsyncSession, pair: str, direction: str, investment: float, leverage: float,
+                                   exit_mode: str = "FIXED", sl_pct=None, tp_pct=None, note: str = None):
+        """🖐 Sep-29 MANUAL sleeve (operator-requested research instrument). Opens a position from the dashboard with the given
+        size/leverage — BYPASSES every entry gate and every cell multiplier — and labels it entry_strategy="MANUAL" so it never
+        contaminates a systematic sleeve's stats (ledger / pool builder / readiness all exclude it; it gets its own row).
+        Exit modes: FIXED = custom SL (and optional TP) only, the momentum stack is skipped · MOMENTUM = the momentum exit stack
+        (label stays MANUAL) · FLOOR = no TP, hard SL at manual_floor_sl_pct (liquidation protection — a stop-less position is
+        never allowed). SL/TP are price-move % NET of the round-trip fees (leverage-invariant — the same pnl convention every
+        exit uses, so "SL 1.5" fires at ≈ −1.4 % raw price). Counts against max_open_positions like any position. MAX_HOLD
+        (the universal safety net, as for BULLRUN) still applies to every mode. PAPER-ONLY until the broker backstop / partial-
+        fill truth of open_position is factored into a shared helper (caveman review) — live mode is refused, never silently
+        stop-less. Raises ValueError with a readable message on bad input."""
+        pair = (pair or "").upper().strip().replace("/", "").replace(":USDT", "")
+        if not pair.endswith("USDT"):
+            pair += "USDT"
+        direction = (direction or "").upper().strip()
+        if direction not in ("LONG", "SHORT"):
+            raise ValueError("direction must be LONG or SHORT")
+        exit_mode = (exit_mode or "FIXED").upper().strip()
+        if exit_mode not in ("FIXED", "MOMENTUM", "FLOOR"):
+            raise ValueError("exit mode must be FIXED, MOMENTUM or FLOOR")
+        try:
+            investment, leverage = float(investment), float(leverage)
+        except (TypeError, ValueError):
+            raise ValueError("size and leverage must be numbers")
+        if not investment > 0:
+            raise ValueError("size must be > 0")
+        if not (1.0 <= leverage <= 125.0):
+            raise ValueError("leverage must be between 1 and 125")
+        if not self.is_paper_mode:
+            raise ValueError("manual entry is paper-only for now (live needs the broker backstop wired — see docstring)")
+        th = config.trading_config.thresholds
+        floor = -abs(float(getattr(th, 'manual_floor_sl_pct', -3.0) or -3.0))
+        sl = tp = None
+        if exit_mode == "FIXED":
+            if sl_pct in (None, ""):
+                raise ValueError("FIXED mode needs a stop loss (% of price)")
+            sl = -abs(float(sl_pct))
+            if sl < floor:
+                raise ValueError(f"stop loss {sl:.2f}% is below the liquidation floor {floor:.2f}% (manual_floor_sl_pct)")
+            if tp_pct not in (None, ""):
+                tp = abs(float(tp_pct))
+                if tp <= 0:
+                    raise ValueError("take profit must be > 0")
+        elif exit_mode == "FLOOR":
+            sl = floor
+        _dup = await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.pair == pair, Order.is_paper == self.is_paper_mode)))
+        if (_dup.scalar() or 0) > 0:
+            raise ValueError(f"{pair} already has an open position")
+        _n_open = (await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)))).scalar() or 0
+        _cap = int(getattr(config.trading_config.investment, 'max_open_positions', 4) or 4)
+        if _n_open >= _cap:
+            raise ValueError(f"max open positions reached ({_n_open}/{_cap})")
+        available = await self.get_available_balance(db)
+        if investment > available:
+            raise ValueError(f"size ${investment:,.0f} exceeds available balance ${available:,.0f}")
+        symbol = f"{pair[:-4]}/USDT:USDT"
+        price = await binance_service.get_current_price(symbol)
+        if not price or price <= 0:
+            raise ValueError(f"no price for {pair} — is it a listed USDT-M perpetual?")
+        tc = config.trading_config
+        taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
+        notional_value = investment * leverage
+        quantity = notional_value / price
+        binance_order_id = None
+        if self.is_paper_mode:
+            actual_price = float(price)
+        else:
+            result = await binance_service.create_market_order(symbol=symbol, side=("buy" if direction == "LONG" else "sell"), amount=quantity, leverage=int(leverage))
+            if not result:
+                raise RuntimeError("exchange market order failed")
+            binance_order_id = result['id']; actual_price = float(result['price']); quantity = float(result.get('amount', quantity))
+        entry_fee = actual_price * quantity * taker_fee_rate
+        g = globals(); _zfresh = (_leash_time.time() - (g.get('_zone_stamps_at') or 0)) <= 1800
+        order = Order(
+            pair=pair, direction=direction, status="OPEN", entry_price=actual_price, investment=investment, leverage=leverage,
+            notional_value=notional_value, quantity=quantity, confidence="STRONG_BUY", entry_strategy="MANUAL",
+            cell_multiplier=1.0, cell_lev_multiplier=1.0, cell_multiplier_source=None,   # plain sizing; entry_strategy is the label
+            pattern_fixed_tp_pct=tp, pattern_fixed_sl_pct=sl, manual_exit_mode=exit_mode, manual_note=((note or "").strip()[:200] or None),
+            entry_fee=entry_fee, entry_order_type="TAKER", is_paper=self.is_paper_mode, opened_at=datetime.utcnow(), binance_order_id=binance_order_id,
+            # macro context at the click — free stamps so the MANUAL table can be read like any other sleeve
+            entry_btc_rsi=g.get('_current_btc_rsi'), entry_btc_adx=g.get('_current_btc_adx'), entry_btc_ema20_slope=g.get('_btc_ema20_slope_pct'),
+            entry_btc_atr_pct=g.get('_current_btc_atr_pct'), entry_btc_rsi_1h=g.get('_current_btc_rsi_1h'), entry_btc_1h_slope=g.get('_current_btc_1h_slope'),
+            entry_macro_trend=g.get('_current_btc_regime'), entry_bull_pct=g.get('_market_bull_pct'), entry_bear_pct=g.get('_market_bear_pct'),
+            entry_btc_trend_gap_pct=g.get('_current_btc_trend_gap_pct'),
+            entry_btc_ema50_100_gap_pct=(g.get('_current_btc_ema50_100_gap_pct') if _zfresh else None),
+            entry_eth_5m_ret1_pct=(g.get('_current_eth_5m_ret1_pct') if _zfresh else None),
+            entry_btc_1d_ret_pct=(g.get('_current_btc_1d_ret_pct') if _zfresh else None),
+        )
+        db.add(order)
+        await db.flush()
+        db.add(Transaction(order_id=order.id, binance_order_id=binance_order_id, pair=pair, action=f"OPEN_{direction}", price=actual_price,
+                           quantity=quantity, investment=investment, leverage=leverage, notional_value=notional_value, fee=entry_fee,
+                           order_type="TAKER", is_paper=self.is_paper_mode))
+        await locked_commit(db)
+        await db.refresh(order)
+        if self.is_paper_mode:   # same three calls as open_position (caveman review: BNB fee + persisted state)
+            await self._recalculate_paper_balance(db)
+            await self._deduct_fee_from_bnb(entry_fee, db)
+            await self.save_state(db)
+        websocket_tracker.force_reset_tracking(pair, actual_price)
+        await websocket_tracker.subscribe_pair(pair, actual_price)
+        await self.update_orders_cache(db)   # canonical cache entry (stop/exit fields built by the same code as a restart)
+        logger.warning(f"[MANUAL_OPEN] {pair} {direction} ${investment:,.0f}×{leverage:g} @ {actual_price} exit={exit_mode} sl={sl} tp={tp} note={order.manual_note!r}")
+        return order
+
     async def _stamp_funding_async(self, order_id: int, pair: str, opened_at) -> None:
         """Aug-24 (33): stamp Σ funding on a CLOSED live order from its own session, off the close funnel.
         Fail-open: any error logs and exits; the column stays NULL (recorded-only metric, not in pnl)."""
@@ -8632,7 +8738,7 @@ class TradingEngine:
             exit_result = None
 
             _urgent_exit = any(reason.startswith(p) for p in (
-                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
+                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent; Sep-29 MANUAL_SL/TP too
             ))
 
             for attempt in range(1, max_exit_retries + 1):
@@ -8825,7 +8931,7 @@ class TradingEngine:
             # --- Paper mode: no retry needed, no slippage ---
             _slippage_pct = None
             _urgent_exit_paper = any(reason.startswith(p) for p in (
-                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
+                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
             ))
             if maker_exit_enabled and reason != "MANUAL" and not _urgent_exit_paper:
                 exit_result = await self._simulate_maker_exit_paper(
@@ -10153,6 +10259,9 @@ class TradingEngine:
                         realtime_peak_ema5_gap = max(realtime_peak_ema5_gap, cached.get('peak_ema5_gap', 0))
                         break
 
+            # 🖐 Sep-29 MANUAL FIXED/FLOOR: the operator's SL/TP is the only exit (realtime path); skip every candle-based exit.
+            if (order.entry_strategy or "") == "MANUAL" and (getattr(order, 'manual_exit_mode', None) or "FIXED") in ("FIXED", "FLOOR"):
+                continue
             # 🌊 Aug-21 gate 57: BULLRUN_LONG dedicated exit path — sleeve trades run ONLY
             # _bullrun_exit_for (+ MAX_HOLD above + manual). Intercept BEFORE NO_EXPANSION /
             # FL / momentum-exit stack / check_exit_conditions so none of the alt exit
@@ -13869,6 +13978,37 @@ class TradingEngine:
             
             pnl_pct = (pnl / entry_notional) * 100
 
+            # 🖐 Sep-29 MANUAL sleeve, FIXED / FLOOR exit modes: ONLY the operator's SL/TP (pattern_fixed_* on the row) — no
+            # alt mechanism may touch it. Mirrors the BULLRUN intercept (continue outside the try). MOMENTUM mode falls through.
+            if ((order_info.get('entry_strategy') or '') == 'MANUAL'
+                    and (order_info.get('manual_exit_mode') or 'FIXED') in ('FIXED', 'FLOOR')):
+                try:
+                    _mn_peak = max(order_info.get('peak_pnl', 0) or 0, pnl_pct)
+                    order_info['peak_pnl'] = _mn_peak
+                    if pnl_pct < (order_info.get('trough_pnl', 0) or 0):
+                        order_info['trough_pnl'] = pnl_pct
+                    _mn_tp = order_info.get('pattern_fixed_tp_pct'); _mn_sl = order_info.get('pattern_fixed_sl_pct')
+                    _mn_reason = ("MANUAL_TP" if (_mn_tp is not None and pnl_pct >= float(_mn_tp))
+                                  else "MANUAL_SL" if (_mn_sl is not None and pnl_pct <= float(_mn_sl)) else None)
+                    if _mn_reason and not order_info.get('_closing_in_progress'):
+                        order_info['_closing_in_progress'] = True
+                        logger.warning(f"[REALTIME_MANUAL_EXIT] {pair} {direction}: {_mn_reason} pnl={pnl_pct:.4f}% sl={_mn_sl} tp={_mn_tp}")
+                        try:
+                            async with AsyncSessionLocal() as _mn_db:
+                                _mn_res = await _mn_db.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))
+                                _mn_order = _mn_res.scalar_one_or_none()
+                                if _mn_order:
+                                    _mn_closed = await self.close_position(_mn_db, _mn_order, current_price, _mn_reason)
+                                    if _mn_closed:
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                        except Exception as _mn_e:
+                            logger.error(f"[REALTIME_MANUAL_EXIT] Error closing {pair}: {_mn_e}")
+                            order_info['_closing_in_progress'] = False
+                except Exception as _mn_e2:
+                    logger.error(f"[REALTIME_MANUAL_EXIT] {pair}: check failed: {_mn_e2}")
+                continue
+
             # 🌊 Aug-21 gate 57: BULLRUN_LONG dedicated realtime exit — FIRST in the chain, so
             # NO alt close mechanism (PATTERN_FIXED / HARD_TP ladder / ATR_FIXED_TP / FAST_EXIT /
             # EMA13 / EMA_STACK / BE / SL / trailing / tick) can ever touch a sleeve trade
@@ -15849,6 +15989,7 @@ class TradingEngine:
                 'pattern_cell_source': getattr(order, 'pattern_cell_source', None),
                 'pattern_fixed_tp_pct': getattr(order, 'pattern_fixed_tp_pct', None),
                 'pattern_fixed_sl_pct': getattr(order, 'pattern_fixed_sl_pct', None),
+                'manual_exit_mode': getattr(order, 'manual_exit_mode', None),   # 🖐 Sep-29 MANUAL sleeve exit mode
             }
 
             if order.pair not in new_cache:

@@ -4230,3 +4230,35 @@ Open instrument question (unchanged): the yr3 replay and live overlap on ~20 % o
 −0.17, live-only 35·71%·+0.10); indicators/config/BTC state agree — the real-maker Aug rerun (rm_2026-08_s1, running) tests whether
 live's maker window + re-validation is the missing selection step.
 
+## 2026-09-29 (130) - 🖐 MANUAL sleeve built (operator-requested research instrument) + two exit/sizing reads closed
+BUILD: `TradingEngine.open_manual_position` (dashboard POST /api/orders/manual_open): opens a position at market with the
+operator's size/leverage, BYPASSING every entry gate and cell multiplier, labelled entry_strategy="MANUAL" (cell source MANUAL,
+confidence STRONG_BUY so the canonical cache rebuild carries it). Exit modes: FIXED = only the operator's SL (+ optional TP) — a
+realtime intercept placed BEFORE the bull-run intercept closes on MANUAL_TP / MANUAL_SL and the candle loop skips the order ·
+MOMENTUM = the full momentum exit stack (label stays MANUAL) · FLOOR = no TP, hard stop at `manual_floor_sl_pct` (−3.0; also the
+widest FIXED stop accepted — a manual position is never stop-less). SL/TP are price-move % (leverage-invariant). Refuses a
+duplicate open pair, respects max_open_positions and available balance. Order columns manual_exit_mode / manual_note (+ migration,
+payloads, CSV for free); macro context stamped at the click (BTC RSI/ADX/slope/ATR/1h, breadth, zone readings). SEGREGATION:
+ledger drops MANUAL, pool builder marks MANUAL_EXEMPT (stack_keep False), /api/performance gives it its own 'Manual' sleeve row —
+it never enters a systematic sleeve's stats. UI: manual-entry panel above the pairs table (pair/side/size/lev/exit mode/SL/TP/
+note, confirm dialog), config input for the floor, report line. tests/test_manual_sleeve.py. Reviews: caveman + deep (end-to-end
+paper test in an isolated DB, 22 assertions incl. MANUAL_TP/SL crossings both sides and a no-close band) — applied: paper-only guard until
+the broker backstop is factored into a helper (live refused, never stop-less), BNB fee + save_state parity with open_position, 'MANUAL' in
+the pure-momentum _SLEEVES exclusion, plain cell source, fee-NET wording (SL 1.5 ≈ −1.4 % raw price), MAX_HOLD documented as the
+universal safety net, 'Manual' row rendered in the sleeve table, MANUAL_ exits urgent (taker) in both exit paths, behavioural
+intercept test (SL/TP/FLOOR/MOMENTUM pass-through).
+READS CLOSED IN THE SAME SESSION (no code):
+  • "No SL on momentum longs when BTC EMA50 > EMA200": live-stopped cohort 19 (16 re-simmable, 6 h no-SL paths). With no SL the
+    engine's own EMA13-cross exit fires a median 5 min after the stop at the same price (up-trend regime −0.72 vs stop −0.78);
+    blind 6 h hold = +0.05/fill for an average −2.35 % adverse excursion (−3.78 worst) in the up-trend, and one −10 % liquidation
+    (MMT) outside it. The stop is not the loss; the entry is. REJECTED.
+  • "Bull-run exit stack on all momentum longs": 111 stack-kept fills, real 1 m paths (bullrun_exit_sweep.simulate, pessimistic
+    intrabar order): +$6,430 → +$4,760 (Δ −$1,670; WR 81→59 %); BR beats 48 / loses 63; the loss sits on the RUNNER_TRAIL winners
+    (74 fills, −$1,778) because BR arms at +1.0 net and momentum at 0.4 — 45 fills fall back to the base stop vs 20 live. Positive
+    only on B8–B14 (+$557, N 27). REJECTED as a swap; hybrid (0.4 arm + BR ATR trail after 1.0) noted, not built.
+    scripts/ml_bullrun_exit_cf.py · reports/ML_BULLRUN_EXIT_CF.csv.
+  • "5 slots instead of 4": cap never bound since B12 (max concurrent 2–3, 0 refused fills); it bound 14–29 % of B9/B10 on
+    same-scan clusters — a 5th slot adds exposure exactly when the book is one correlated bet. KEEP 4.
+  • Raw "all filters off per sleeve" mode: sized (EMA-stack long signal reaches a quality gate on ~560 pair-hours/day in Aug) and
+    designed (structural gates only, 12–15 slots, offline raw-year run first); operator declined ("we must stop losing"). Not built.
+

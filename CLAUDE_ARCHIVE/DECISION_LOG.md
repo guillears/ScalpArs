@@ -4388,3 +4388,25 @@ SECOND-ORDER (deep review F6, accepted): taking MANUAL fees out of the burn rate
 dashboard runway (incident numbers: 12 h × $125.80 = $1,509 held back → 12 h × $35.20 = $422) — i.e. the bot stops withholding
 USDT from position sizing for fees it will never pay. KNOWN BEHAVIOUR: with a quiet systematic book (target $50) each large manual
 fill triggers one emergency top-up back to target; raise `bnb_min_balance_usd` if the swap log gets noisy.
+
+## 2026-09-29 (136) - ⛽ Empty paper BNB reserve is refilled on the 15-min wake (operator-caught right after 135 deployed)
+SYMPTOM (23:21 UTC, minutes after 347146b): USDT $147.44, BNB $0.00, $2,900 in 5 manual positions, burn $0.00/hr, runway ∞, no
+swap. Operator: "what the fuck happened with bnb ?"
+LOGS (EB bundle): at deploy `[BALANCE_SYNC] in_memory=312.97, db_correct=147.44` — the raw reserve was −$165.53 ($265.53 of fees
+on the batch vs the $100 seed reserve); 135 shows it as $0 and charges the excess to USDT (sum unchanged). No refill because a
+top-up had only two triggers: ① a fee event (none since deploy) ② the 6 h routine (`Swap action skipped: last check 1.61h ago`),
+which is ALSO suppressed while `_bnb_data_mature` is False — permanent on a batch with manual fills only, since 135 took MANUAL
+fees out of the forecast. Gap introduced by 135 (scope change without a new trigger).
+FIX: `bnb_scheduled_check` (paper, not forced) recalculates the reserve from the DB on every 15-min wake and, below the real
+floor (`bnb_real_floor_usd` = max(10 % of the seed reserve, 0.5 × bnb_min_balance_usd), never above the target → $25), runs the
+emergency swap ahead of the interval and maturity gates. All swap guards unchanged (cap, min investment, $5 minimum). Dashboard
+label "(no recent fees)" → "(no recent bot fees)". Live path untouched (MANUAL sleeve is paper-only).
+CONTEXT for batch reviews: manual fills at 30–50× cost $27–54 of fees per round trip; B15 evening = $265.53 fees = 8.9 % of the
+$3,000 account.
+DUAL REVIEW: caveman FIX-FIRST, deep SHIP (on the version with the caveman fixes). Applied: ONE reserve operation at a time
+(`_bnb_swap_lock` around swap, manual buy and auto-sell; ledger re-read inside the lock) — both reviewers reproduced a wake and a
+fee event landing together settling the same deficit twice (USDT −$113, BNB $260, NAV intact); the same race already existed
+between two fee events. Forced checks refill too; a refused refill writes nothing and is logged hourly; failure in the block =
+rollback + return; paper price fetched before the lock. Deep review confirmed to the cent on the production state: fee_settle
+165.53 + emergency 47.44 → USDT 100.00 / BNB 47.44 / NAV 3,047.44 unchanged; 10 wakes = 2 rows; live path byte-identical to HEAD.
+PRODUCTION (23:30:25 UTC, 347146b, fee-event path): fee_settle $185.41 + emergency $50.00 → BNB $50.00.

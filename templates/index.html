@@ -9396,9 +9396,9 @@
                             runwayEl.textContent = `Runway: ${hrs}h`;
                             burnEl.textContent = `$${_bnbBurnRate.toFixed(2)}/hr`;
                         } else {
-                            // Jul 5 (operator report): zero burn (no recent fees) used to BLANK both
+                            // Jul 5 (operator report): zero burn (no recent bot fees) used to BLANK both
                             // lines — looked broken exactly when the bot was quiet. Show the truth instead.
-                            burnEl.textContent = '$0.00/hr (no recent fees)';
+                            burnEl.textContent = '$0.00/hr (no recent bot fees)';   // Sep-29: the forecast reads the bot's own fills; manual fees are paid as they come
                             runwayEl.textContent = 'Runway: ∞';
                         }
                     } else {

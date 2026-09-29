@@ -200,6 +200,111 @@ def test_manual_buy_path_and_the_forecast_scope(cfg):
     assert [r.swap_type for r in rows] == [T.PAPER_FEE_SETTLE, "manual"] and abs(nav - nav0) < 1e-6 and abs(b - 80.0) < 1e-6
 
 
+def test_scheduled_wake_refills_an_empty_reserve_on_a_manual_only_batch(cfg):
+    """Sep-29b, the state right after the reserve-cap deploy: $2,900 seed all in 5 manual positions, $265.53 of fees paid
+    (reserve $100 + $165.53 from USDT), no systematic fills → burn 0, data never 'mature', 6 h gate closed. The 15-min wake
+    must still refill the reserve — within the min-investment guard — and leave a healthy reserve alone."""
+    cfg.paper_balance = 2900.0
+
+    async def scenario(db):
+        for i, fee in enumerate([60.0, 50.0, 40.0]):
+            db.add(_order(i, "MANUAL", fee, pnl=75.0))                                          # closed manual fills: fees 150, pnl +225
+        for i, fee in enumerate([70.0, 60.0, 50.0, 30.0, 21.06]):
+            o = _order(10 + i, "MANUAL", fee, status="OPEN"); o.investment = 580.0; db.add(o)   # 5 open × 580 = 2,900 margin, entry fees 115.53
+        await db.commit()
+        e = _engine(need=0.0, threshold=0.0, stub_swap=False)
+        e._last_bnb_check = dt.datetime.utcnow(); e._filter_block_counts = {}                   # interval gate closed
+        async def _nofee(): return None
+        e._sync_fee_rates = _nofee
+        u0, b0, r0, nav0 = await _book(e, db)
+        await e.bnb_scheduled_check(db)
+        u1, b1, r1, nav1 = await _book(e, db)
+        await e.bnb_scheduled_check(db)                                                         # next wake: reserve above the floor → nothing
+        u2, b2, r2, nav2 = await _book(e, db)
+        return (u0, b0, r0, nav0), (u1, b1, r1, nav1), (u2, b2, len(r2)), e
+    (u0, b0, r0, n0), (u1, b1, r1, n1), (u2, b2, n_rows2), e = _run_db(scenario)
+    assert b0 == 0.0 and r0 == [] and abs(u0 - (2900.0 + 225.0 + 150.0 - 2900.0 - 165.53)) < 1e-6
+    assert e._bnb_burn_rate == 0 and e._bnb_data_mature is False
+    assert [r.swap_type for r in r1] == [T.PAPER_FEE_SETTLE, "emergency"] and abs(r1[0].amount_usdt - 165.53) < 1e-6
+    assert abs(b1 - 50.0) < 1e-6 and abs(u1 - (u0 - 50.0)) < 1e-6 and abs(n1 - n0) < 1e-6
+    assert n_rows2 == 2 and (u2, b2) == (u1, b1)
+    assert T.bnb_real_floor_usd(cfg, 50.0) == 25.0 and T.bnb_real_floor_usd(cfg, 20.0) == 20.0 and T.bnb_real_floor_usd(cfg, 0) == 0.0
+
+
+def _wake_engine():
+    e = _engine(need=0.0, threshold=0.0, stub_swap=False)
+    e._last_bnb_check = dt.datetime.utcnow(); e._filter_block_counts = {}
+
+    async def _nofee(): return None
+    e._sync_fee_rates = _nofee
+    return e
+
+
+def test_wake_refill_refusals_write_nothing_and_a_healthy_reserve_is_left_alone(cfg):
+    async def scenario(db, fees, seed_usdt, **kw):
+        cfg.paper_balance = seed_usdt
+        for k, v in kw.items(): setattr(cfg, k, v)
+        db.add(_order(1, "MANUAL", fees, pnl=0.0)); await db.commit()
+        e = _wake_engine(); e._last_bnb_check = None                                            # interval gate OPEN
+        _, _, _, nav0 = await _book(e, db)
+        for _ in range(4):
+            await e.bnb_scheduled_check(db)
+        u, b, rows, nav = await _book(e, db)
+        return b, [r.swap_type for r in rows], abs(nav - nav0) < 1e-6
+    # reserve 40: between the floor (25) and the target (50) → the wake leaves it alone (routine is suppressed: no bot history)
+    assert _run_db(lambda db: scenario(db, 60.0, 2900.0)) == (40.0, [], True)
+    # empty reserve but free USDT at the minimum kept for trading → refused on every wake, nothing written
+    assert _run_db(lambda db: scenario(db, 130.0, 100.0 - 130.0 + 30.0)) == (0.0, [], True)      # USDT = seed + fees − deficit = 100
+    # a $4 purchase is under the $5 minimum → refused, nothing written
+    assert _run_db(lambda db: scenario(db, 130.0, 104.0 - 130.0 + 30.0)) == (0.0, [], True)      # USDT 104
+    # auto-swap OFF → nothing fires
+    assert _run_db(lambda db: scenario(db, 130.0, 2900.0, bnb_swap_enabled=False)) == (0.0, [], True)
+
+
+def test_forced_check_and_concurrent_triggers(cfg):
+    """A forced check refills like the wake does; a wake and a fee event landing together book ONE purchase."""
+    cfg.paper_balance = 2900.0
+
+    async def forced(db):
+        db.add(_order(1, "MANUAL", 130.0, pnl=0.0)); await db.commit()
+        e = _wake_engine()
+        await e.bnb_scheduled_check(db, force=True)
+        _, b, rows, _ = await _book(e, db)
+        return b, [r.swap_type for r in rows]
+    assert _run_db(forced) == (50.0, [T.PAPER_FEE_SETTLE, "emergency"])
+
+    async def slow_px():
+        await asyncio.sleep(0.05); return 600.0
+    T.binance_service.get_bnb_price = slow_px                                                   # (restored by the cfg fixture)
+
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    import models
+
+    async def race():
+        eng = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool, connect_args={"check_same_thread": False})
+        async with eng.begin() as c:
+            await c.run_sync(models.Base.metadata.create_all)
+        Session = async_sessionmaker(eng, expire_on_commit=False)
+        async with Session() as db:
+            db.add(_order(1, "MANUAL", 265.53, pnl=0.0)); await db.commit()
+        e = _wake_engine(); e._bnb_emergency_threshold = 25.0; e._bnb_projected_need = 50.0
+
+        async def wake():
+            async with Session() as db: await e.bnb_scheduled_check(db)
+
+        async def fee_event():
+            async with Session() as db: await e._deduct_fee_from_bnb(9.0, db)
+        await asyncio.gather(wake(), fee_event(), wake())
+        async with Session() as db:
+            out = await _book(e, db)
+        await eng.dispose()
+        return out
+    u, b, rows, nav = asyncio.run(race())
+    assert [r.swap_type for r in rows] == [T.PAPER_FEE_SETTLE, "emergency"] and abs(b - 50.0) < 1e-6
+    assert abs(rows[0].amount_usdt - 165.53) < 1e-6 and abs(u - (2900.0 + 265.53 - 165.53 - 50.0)) < 1e-6
+
+
 def test_wiring_parity():
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json"), encoding="utf-8"))
     assert "bnb_max_reserve_pct_of_equity" in cfg and 0 <= float(cfg["bnb_max_reserve_pct_of_equity"]) <= 50

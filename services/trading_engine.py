@@ -186,6 +186,14 @@ def paper_bnb_split(initial_bnb, swaps_in, fees_paid):
     return max(raw, 0.0), max(-raw, 0.0) + 0.0   # + 0.0: an exactly-empty ledger reads 0.0, not -0.0
 
 
+def bnb_real_floor_usd(tc, target) -> float:
+    """The reserve level that is a genuine 'nearly empty' — max(10 % of the seed reserve, half the dollar floor), never above
+    the top-up target (a floor above the target would call a swap that buys nothing). Not an extrapolation: it holds on a
+    young batch and on a batch with no systematic fills at all."""
+    floor = max(float(getattr(tc, 'paper_bnb_initial_usd', 0.0) or 0.0) * 0.1, float(getattr(tc, 'bnb_min_balance_usd', 50.0) or 0.0) * 0.5)
+    return min(floor, max(float(target or 0.0), 0.0))
+
+
 PAPER_FEE_SETTLE = "fee_settle"   # BnbSwapLog.swap_type of the row that books fees already paid in USDT (reserve was empty)
 
 
@@ -2966,6 +2974,11 @@ class TradingEngine:
         return float(config.trading_config.paper_bnb_initial_usd), float(swaps), float(closed_fees) + float(open_fees)
 
     async def _paper_bnb_credit(self, db: AsyncSession, amount: float, swap_type: str, bnb_price: float):
+        """Locked entry point (manual BNB buy endpoint). See _paper_bnb_credit_unlocked."""
+        async with self._bnb_swap_lock():
+            return await self._paper_bnb_credit_unlocked(db, amount, swap_type, bnb_price)
+
+    async def _paper_bnb_credit_unlocked(self, db: AsyncSession, amount: float, swap_type: str, bnb_price: float):
         """⛽ Book a paper USDT→BNB purchase of `amount` and return (pre_bnb, post_bnb, pre_usdt, post_usdt), all DB-derived.
         If the reserve ran dry earlier, fees were charged to USDT (paper_bnb_split) — that deficit is first made permanent
         with a PAPER_FEE_SETTLE row (USDT-neutral: the money already left), otherwise the purchase would only offset the
@@ -3032,9 +3045,7 @@ class TradingEngine:
             if using_extrapolated and not self._bnb_data_mature:
                 # ⛽ Sep-29 fix: this branch used to return unconditionally — its own message claimed the real floor was
                 # "not breached" without testing it, so a young batch could run the reserve to zero with no swap.
-                _real_floor = max(tc.paper_bnb_initial_usd * 0.1, float(getattr(tc, 'bnb_min_balance_usd', 50.0) or 0.0) * 0.5)
-                _target = self._bnb_projected_need if self._bnb_projected_need > 0 else tc.paper_bnb_initial_usd * 0.4
-                _real_floor = min(_real_floor, _target)   # a floor above the top-up target would call a swap that buys nothing, every fee
+                _real_floor = bnb_real_floor_usd(tc, self._bnb_projected_need if self._bnb_projected_need > 0 else tc.paper_bnb_initial_usd * 0.4)
                 if current_bnb >= _real_floor:
                     logger.info(
                         f"[BNB_EMERGENCY] {'Paper' if self.is_paper_mode else 'Live'} BNB ${current_bnb:.2f} "
@@ -3051,8 +3062,29 @@ class TradingEngine:
             )
             await self._execute_bnb_swap(db, swap_type="emergency")
 
-    async def _execute_bnb_swap(self, db: AsyncSession, swap_type: str = "scheduled"):
-        """Execute a USDT→BNB swap (paper or live)."""
+    def _bnb_swap_lock(self) -> asyncio.Lock:
+        """One reserve purchase at a time. The fee path, the 15-min wake and the manual buy each read the ledger and then
+        book rows; interleaved they settle the same deficit twice and buy past the target (caveman review, reproduced).
+        Created lazily per event loop."""
+        loop = asyncio.get_running_loop()
+        held = getattr(self, '_bnb_swap_lock_obj', None)
+        if held is None or held[0] is not loop:
+            held = (loop, asyncio.Lock())
+            self._bnb_swap_lock_obj = held
+        return held[1]
+
+    async def _execute_bnb_swap(self, db: AsyncSession, swap_type: str = "scheduled") -> bool:
+        """Execute a USDT→BNB swap (paper or live) under the reserve lock. Paper: True = a purchase was booked (the live
+        branch reports nothing — no caller reads it). The paper price is fetched BEFORE the lock so a slow ticker never
+        holds up another flow waiting for the reserve (deep review)."""
+        paper_px = None
+        if self.is_paper_mode and config.trading_config.bnb_swap_enabled:
+            paper_px = await binance_service.get_bnb_price()
+        async with self._bnb_swap_lock():
+            return bool(await self._execute_bnb_swap_unlocked(db, swap_type, paper_px))
+
+    async def _execute_bnb_swap_unlocked(self, db: AsyncSession, swap_type: str = "scheduled", paper_px=None):
+        """The swap itself — sized from the ledger as it is NOW (re-read inside the lock)."""
         tc = config.trading_config
         if not tc.bnb_swap_enabled:
             return
@@ -3070,7 +3102,7 @@ class TradingEngine:
                 shortfall = max(0, available_usdt - min_investment)
             if shortfall <= 0:
                 _now = time.time()
-                if _now - getattr(self, '_bnb_cannot_swap_logged_at', 0.0) >= 600:   # once per 10 min, not once per fee
+                if _now - getattr(self, '_bnb_cannot_swap_logged_at', 0.0) >= 3600:   # hourly, not once per fee / per 15-min wake
                     self._bnb_cannot_swap_logged_at = _now
                     logger.warning(f"[BNB_SWAP] Cannot swap: insufficient USDT (available={available_usdt:.2f})")
                 return
@@ -3081,17 +3113,18 @@ class TradingEngine:
                 logger.info(f"[BNB_SWAP] Skipped: shortfall ${shortfall:.2f} below $5 min threshold")
                 return
             
-            bnb_price = await binance_service.get_bnb_price()
+            bnb_price = paper_px if paper_px is not None else await binance_service.get_bnb_price()
             if bnb_price <= 0:
                 bnb_price = 600.0  # fallback for paper mode
             
-            pre_bnb, post_bnb, _pre_usdt, _post_usdt = await self._paper_bnb_credit(db, shortfall, swap_type, bnb_price)
+            pre_bnb, post_bnb, _pre_usdt, _post_usdt = await self._paper_bnb_credit_unlocked(db, shortfall, swap_type, bnb_price)
             await self.save_state(db)
             logger.info(
                 f"[BNB_SWAP] Paper {swap_type}: swapped ${shortfall:.2f} USDT → "
                 f"{shortfall/bnb_price:.4f} BNB @ ${bnb_price:.2f}. "
                 f"BNB: ${pre_bnb:.2f} → ${post_bnb:.2f}"
             )
+            return True
         else:
             balance = await binance_service.get_balance()
             bnb_price = await binance_service.get_bnb_price()
@@ -3141,6 +3174,11 @@ class TradingEngine:
             )
 
     async def _execute_bnb_sell(self, db: AsyncSession, target_usd: float, swap_type: str = "auto_sell"):
+        """Auto-sell under the reserve lock (a sale and a purchase never interleave). See _execute_bnb_sell_unlocked."""
+        async with self._bnb_swap_lock():
+            return await self._execute_bnb_sell_unlocked(db, target_usd, swap_type)
+
+    async def _execute_bnb_sell_unlocked(self, db: AsyncSession, target_usd: float, swap_type: str = "auto_sell"):
         """Sell EXCESS BNB→USDT down to target_usd (paper or live). Symmetric counterpart of
         _execute_bnb_swap (Jun 22). Reuses the proven manual-sell mechanics: logs a NEGATIVE
         amount_usdt so the reverse-derived paper balance INCREASES by the proceeds, and the
@@ -3429,6 +3467,32 @@ class TradingEngine:
         # Always recompute the burn-rate metric (cheap, drives UI runway display).
         # Only the swap action is gated below.
         fees_24h = await self._recompute_bnb_burn_rate(db)
+
+        # ⛽ Sep-29b (operator-caught right after the reserve-cap deploy: BNB $0.00, no swap): an EMPTY paper reserve is
+        # refilled on this 15-min wake. Before, only a fee event or the 6 h routine could top it up — and the routine is
+        # suppressed while the data window is immature, which is PERMANENT on a batch with manual fills only (the forecast
+        # reads the systematic book). The swap keeps every guard: cap, min-investment, $5 minimum.
+        if self.is_paper_mode:
+            try:
+                _paper_bnb_now = await self._recalculate_paper_bnb(db)
+                _floor_now = bnb_real_floor_usd(tc, self._bnb_projected_need if self._bnb_projected_need > 0 else tc.paper_bnb_initial_usd * 0.4)
+                if _paper_bnb_now < _floor_now:
+                    if await self._execute_bnb_swap(db, swap_type="emergency"):
+                        logger.warning(f"[BNB_EMERGENCY] Paper BNB was ${_paper_bnb_now:.2f} < real floor ${_floor_now:.2f} on the reserve check — refilled to ${self.paper_bnb_balance_usd:.2f}")
+                    else:
+                        _now = time.time()
+                        if _now - getattr(self, '_bnb_floor_refused_logged_at', 0.0) >= 3600:   # a refused refill repeats every wake: say it hourly
+                            self._bnb_floor_refused_logged_at = _now
+                            logger.warning(f"[BNB_EMERGENCY] Paper BNB ${_paper_bnb_now:.2f} < real floor ${_floor_now:.2f} but no swap was possible "
+                                           f"(free USDT ${self.paper_balance:.2f}, minimum kept ${tc.investment.min_investment_size:.2f}) — fees are being paid from USDT")
+                    return
+            except Exception as _fl_err:
+                logger.warning(f"[BNB_EMERGENCY] scheduled floor check failed: {_fl_err}")
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
+                return
 
         # Aug-26 (B5, operator-caught): LIVE EMERGENCY BYPASS of the interval gate. The old
         # structure only evaluated the threshold on 6h wakes (the paper fee-deduction path was

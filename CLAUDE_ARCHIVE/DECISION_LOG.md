@@ -4211,3 +4211,22 @@ an edge" is wrong at portfolio level — conditional 2× on winning cohorts IS a
 right (ML 2× fills +0.378 vs 1× +0.052, size-weighted +0.333 vs equal-weight +0.309) but on the yr3 year they are not (UNMATCHED
 −0.064, CALM3D −0.077 at 1×; ALL −0.043 → −0.050 size-weighted). Both readings to be shown side by side in the monthly table.
 
+## 2026-09-29 (129) - 📦 B14 archived → B15 (operator reset)
+B14 (Sep-28 19:03 → Sep-29 16:20, 2 days) archived `reports/BASELINE14_batch0928-0929_orders.csv`: 14 closed · 36% · −$1,030 as
+traded (ML 8·38%·−$822 · MS 6·33%·−$209; DCR −18.98%/day). UNDER TODAY'S STACK 12·42%·−$504 (LOADX removes VIRTUAL −$287 / TAO −$237,
+both opened 19:03 Sep-28 before the gate shipped; DCR −8.78%/day). First batch negative under the full current stack. Kept: ADA S
++32, INJ S +31, HYPE S −87, DOGE L +23, PENGU L +24, 0G L −141, ALGO L −118, DASH L −144, INJ L +61, DOGE S −73, LTC S −51, BCH S −60.
+Watchlist reads: LOADX — 0 kept fills in the zone post-ship (blocked-signal re-sim needs the server block log, not exportable) ·
+BTC-drop+rollover observe — TAO/VIRTUAL were its registration case (DECISION_LOG 125), no new fill · 1h-slope — 8/8 longs on positive
+BTC 1h slope · zone stamps C/D — 0/8 longs stamped (all B14 longs opened before the 4aae5de deploy) · fade laggard / FAN −DI / C1 —
+no fades, flips or C1 shorts in the batch. Momentum-short review (the same-scan BCH/LTC/DOGE trio): cross-batch pool 34 fills → 27
+observations (6 losers) · 43 stamped + 795 kline features at full coverage · best separator AUC 0.91 vs shuffled-label chance 0.88
+median / 0.96 95th → NO separator; "BTC within 0.5 % of its 24h low" was first reported on 8 stamped fills (wrong — 26 unscored fills
+counted as "rest"), rebuilt for all 34 it is 16·62%·−0.01 (9 of 10 pre-B13 zone fills won) → not a candidate; LOADX mirror on shorts
+(RSI rising ∧ ADX<21) = 0 fills in master and backtest (the short ladder excludes that state); "BTC RSI<35 rising" refuted on yr3.
+Memory rule added: separator coverage first (unscored ≠ rest; same-scan = one observation; per-batch full-pool table first).
+Master pool rebuilt (718 rows, stack 2026-09-29b); validate_against_master ALL PASS; ledger TOTAL 252·85%·+$15,433.
+Open instrument question (unchanged): the yr3 replay and live overlap on ~20 % of momentum-long fills Aug–Sep (replay extras 82·57%·
+−0.17, live-only 35·71%·+0.10); indicators/config/BTC state agree — the real-maker Aug rerun (rm_2026-08_s1, running) tests whether
+live's maker window + re-validation is the missing selection step.
+

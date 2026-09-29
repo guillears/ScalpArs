@@ -271,6 +271,16 @@ class Order(Base):
     # 🖐 Sep-29 MANUAL sleeve (operator-opened positions; entry_strategy='MANUAL'; excluded from every systematic read)
     manual_exit_mode = Column(String(12), nullable=True)            # FIXED | MOMENTUM | FLOOR
     manual_note = Column(String(200), nullable=True)                # the operator's hypothesis for the trade
+    manual_block_reason = Column(String(60), nullable=True)         # Sep-29: gate shown on the Top Pairs row at the click ('NONE' = enterable, NULL = no scan data)
+    manual_setup_rating = Column(String(15), nullable=True)         # the pair's rating at the click (STRONG_BUY / VERY_STRONG / NO_TRADE)
+    manual_setup_side = Column(String(10), nullable=True)           # side of the pair's setup at the click (EMA5 vs EMA8): LONG / SHORT
+    # pair readings at the click — same formulas as the bot's entry_* stamps, own columns so manual fills never enter its tables
+    manual_pair_rsi = Column(Float, nullable=True)
+    manual_pair_adx = Column(Float, nullable=True)
+    manual_gap_5_20 = Column(Float, nullable=True)      # |EMA5−EMA20| / price %
+    manual_gap_5_8 = Column(Float, nullable=True)       # |EMA5−EMA8| / EMA8 %
+    manual_gap_8_13 = Column(Float, nullable=True)      # |EMA8−EMA13| / EMA13 %
+    manual_px_vs_ema5 = Column(Float, nullable=True)    # (fill price − EMA5) / EMA5 %, signed
     # 🐻 Sep 15 gate 60 — Bear-Run Monitor readings at entry (BEARRUN_SHORT fills only, NULL otherwise):
     # r24 / bars-below-EMA20% / 24h efficiency / BTC % above its 24h low at fire time + the BTC gates bypassed.
     entry_bear_r24 = Column(Float, nullable=True)

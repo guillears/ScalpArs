@@ -97,6 +97,7 @@ _fade_lag_ndi_cache: Dict[str, tuple] = {}   # symbol → (read_at, −DI) — d
 
 
 PAIR_REASON_PLACEHOLDER = "No EMA Stack"
+PAIR_REASON_AWAITING = "Awaiting scan (no pair data yet)"   # what the Top Pairs row shows when nothing was ever stamped
 _PAIR_REASON_EXCLUDED_PREFIXES = ("FLIP_", "OPEN_", "BACKSTOP_", "BULL_LONG", "BULLRUN_", "BR_", "SPIKE_", "BOUNCE_", "REDEPLOY", "PASS:")
 _PAIR_REASON_ALLOWED = ("SPIKE_GUARD",)                 # momentum-ladder gates that happen to share an excluded prefix
 _PAIR_REASON_NOT_A_BLOCK = ("LONG_HEAT_FAILOPEN",)      # counters that do not refuse the trade
@@ -176,6 +177,51 @@ def manual_floor_for_leverage(th, leverage) -> float:
     except (TypeError, ValueError):
         pass
     return cfg
+
+
+MANUAL_NO_GATE = "NONE"   # manual_block_reason of a fill on a pair the bot could enter at that moment
+
+
+def manual_gate_context(stash, pair, pd_row, max_age_s: float = 600.0, now=None, live_price=None) -> dict:
+    """🖐 What the Top Pairs row says about `pair` at the click, stamped on a MANUAL order so the export records WHICH gate the
+    operator traded through (operator request, replaces the hand-typed note). block_reason = the gate refusing the pair's setup
+    (MANUAL_NO_GATE = 'NONE' when the pair is enterable, None when the pair has no fresh scan data — the CSV writes None as an
+    empty cell, so "enterable" needs its own word); rating/side = the setup's rating and the side of its EMA fan; plus the pair
+    readings, computed with the SAME formulas as the bot's entry stamps (gaps absolute, RSI/ADX rounded 2/4) but stored in
+    manual_* columns. px_vs_ema5 uses the FILL price against the scan's EMA5 (≤ 10 min old). Pure; fail-soft to empty fields."""
+    out = dict(block_reason=None, rating=None, side=None, rsi=None, adx=None, gap_5_8=None, gap_8_13=None, gap_5_20=None, px_vs_ema5=None)
+    try:
+        if pd_row is None:
+            return out
+        upd = getattr(pd_row, 'updated_at', None)
+        if upd is not None and getattr(upd, 'tzinfo', None) is not None:
+            upd = upd.astimezone(timezone.utc).replace(tzinfo=None)
+        if upd is None or ((now or datetime.utcnow()) - upd).total_seconds() > max_age_s:
+            return out
+        sig, e5, e8, e13, e20, px = (getattr(pd_row, k, None) for k in ('signal', 'ema5', 'ema8', 'ema13', 'ema20', 'price'))
+        out['rating'] = getattr(pd_row, 'confidence', None)
+        if e5 and e8:
+            out['side'] = "LONG" if e5 > e8 else ("SHORT" if e5 < e8 else None)
+            out['gap_5_8'] = round(abs((e5 - e8) / e8) * 100, 4)
+        if e8 and e13:
+            out['gap_8_13'] = round(abs((e8 - e13) / e13) * 100, 4)
+        if e5 and e20 and px:
+            out['gap_5_20'] = round(abs((e5 - e20) / px * 100), 4)          # ABS, like every systematic entry_gap stamp
+        _lp = live_price if (live_price and live_price > 0) else px          # the FILL price, so the stamp agrees with entry_price
+        if e5 and _lp:
+            out['px_vs_ema5'] = round((_lp - e5) / e5 * 100, 4)
+        _rsi, _adx = getattr(pd_row, 'rsi', None), getattr(pd_row, 'adx', None)
+        out['rsi'] = round(float(_rsi), 2) if _rsi is not None else None      # same rounding as the scan path
+        out['adx'] = round(float(_adx), 4) if _adx is not None else None
+        if sig in ("LONG", "SHORT"):
+            r = stash.reason_for_verdict(pair) if hasattr(stash, 'reason_for_verdict') else None
+            out['block_reason'] = r or MANUAL_NO_GATE         # enterable unless a late gate refused this verdict
+        else:
+            r = stash.get(pair) if stash is not None else None
+            out['block_reason'] = r or PAIR_REASON_AWAITING               # exactly what the Top Pairs row shows
+    except Exception as _e:
+        logger.debug(f"[MANUAL_GATE_CONTEXT] {pair}: {_e}")
+    return out
 
 
 def manual_momentum_first_tick_exit(th, direction, price, ema5, ema8, ema13) -> bool:
@@ -8683,6 +8729,10 @@ class TradingEngine:
             price = await binance_service.get_current_price(symbol)
         if not price or price <= 0:
             raise ValueError(f"no price for {pair} — is it a listed USDT-M perpetual?")
+        # one PairData read: the gate context stamped on the order + the Momentum-stack guard below
+        _pd = (await db.execute(select(PairData.signal, PairData.confidence, PairData.price, PairData.ema5, PairData.ema8, PairData.ema13,
+                                       PairData.ema20, PairData.rsi, PairData.adx, PairData.updated_at).where(PairData.pair == pair))).first()
+        _gc = manual_gate_context(getattr(self, '_last_pair_block_reason', None), pair, _pd, live_price=price)
         if exit_mode == "MOMENTUM":
             _mconf = config.trading_config.confidence_levels.get("STRONG_BUY")
             # the stack's WIDEST stop: with the signal active the realtime path uses signal_active_sl (deep review)
@@ -8693,7 +8743,6 @@ class TradingEngine:
                                  f"or use Custom SL/TP with a tighter stop")
             # The momentum stack closes a position that sits on the WRONG side of the pair's EMA13 (EMA13_CROSS_EXIT) — a
             # counter-trend manual entry would be closed at the first tick (QNT shorts, Sep-29). Refuse it up front.
-            _pd = (await db.execute(select(PairData.ema5, PairData.ema8, PairData.ema13, PairData.updated_at).where(PairData.pair == pair))).first()
             _upd = getattr(_pd, 'updated_at', None) if _pd is not None else None
             if _upd is not None and getattr(_upd, 'tzinfo', None) is not None:
                 _upd = _upd.astimezone(timezone.utc).replace(tzinfo=None)
@@ -8724,6 +8773,13 @@ class TradingEngine:
             notional_value=notional_value, quantity=quantity, confidence="STRONG_BUY", entry_strategy="MANUAL",
             cell_multiplier=1.0, cell_lev_multiplier=1.0, cell_multiplier_source=None,   # plain sizing; entry_strategy is the label
             pattern_fixed_tp_pct=tp, pattern_fixed_sl_pct=sl, manual_exit_mode=exit_mode, manual_note=((note or "").strip()[:200] or None),
+            # the gate the operator traded through + the pair readings a systematic fill stamps (from the pair's last scan row)
+            manual_block_reason=(None if _gc['block_reason'] is None else str(_gc['block_reason'])[:60]),
+            manual_setup_rating=(str(_gc['rating'])[:15] if _gc['rating'] else None), manual_setup_side=_gc['side'],
+            # pair readings live in MANUAL-OWNED columns (deep review: writing the bot's entry_* columns leaked manual fills
+            # into every dashboard table keyed on "entry_x is not None" — one bucket's WR moved 40 % → 57 %)
+            manual_pair_rsi=_gc['rsi'], manual_pair_adx=_gc['adx'], manual_gap_5_20=_gc['gap_5_20'], manual_gap_5_8=_gc['gap_5_8'],
+            manual_gap_8_13=_gc['gap_8_13'], manual_px_vs_ema5=_gc['px_vs_ema5'],
             # same TP-ladder seed as open_position (current_tp_level 1 / target = confidence tp_min) — the UI derives its
             # "armed" badge from dynamic_tp_target, so a NULL here painted 🛡 L1 on an unarmed trade (TAO, Sep-29)
             current_tp_level=1, dynamic_tp_target=(float(getattr(config.trading_config.confidence_levels.get("STRONG_BUY"), 'tp_min', 0.4) or 0.4) if exit_mode == "MOMENTUM" else tp),
@@ -8751,7 +8807,8 @@ class TradingEngine:
         websocket_tracker.force_reset_tracking(pair, actual_price)
         await websocket_tracker.subscribe_pair(pair, actual_price)
         await self.update_orders_cache(db)   # canonical cache entry (stop/exit fields built by the same code as a restart)
-        logger.warning(f"[MANUAL_OPEN] {pair} {direction} ${investment:,.0f}×{leverage:g} @ {actual_price} exit={exit_mode} sl={sl} tp={tp} note={order.manual_note!r}")
+        logger.warning(f"[MANUAL_OPEN] {pair} {direction} ${investment:,.0f}×{leverage:g} @ {actual_price} exit={exit_mode} sl={sl} tp={tp} "
+                       f"gate={order.manual_block_reason!r} setup={order.manual_setup_rating}/{order.manual_setup_side} note={order.manual_note!r}")
         return order
 
     async def _stamp_funding_async(self, order_id: int, pair: str, opened_at) -> None:

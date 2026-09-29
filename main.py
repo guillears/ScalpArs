@@ -1255,7 +1255,7 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
             if _stash is not None:
                 block_reason = _stash.get(p.pair)
             if not block_reason:
-                block_reason = "Awaiting scan (no pair data yet)"
+                block_reason = _te.PAIR_REASON_AWAITING
         elif _stash is not None and hasattr(_stash, 'reason_for_verdict'):
             # Sep-29: a gate that runs AFTER the PairData write (quality score, heat block, unmatched-only, pattern cell,
             # cooldown, …) refused this rated setup in the same scan — the row is rated but NOT enterable.
@@ -1277,6 +1277,7 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
             # Sep-29: confidence is the RAW setup rating from get_signal; any later gate can still refuse the entry. True only
             # when the scan left the signal LONG/SHORT and recorded no refusal for this verdict.
             "entry_ready": (p.signal in ("LONG", "SHORT")) and not block_reason,
+            "setup_side": ("LONG" if (p.ema5 and p.ema8 and p.ema5 > p.ema8) else ("SHORT" if (p.ema5 and p.ema8 and p.ema5 < p.ema8) else None)),   # raw EMAs (the rounded ones tie on sub-$1 pairs)
             "macro_regime": p.macro_regime,
             "volume_24h": p.volume_24h,
             "mcap_usd": _mc[0],     # 💰 Sep-28: cached market cap (None → '–')
@@ -1478,6 +1479,8 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "entry_btc_1d_ret_pct": getattr(o, 'entry_btc_1d_ret_pct', None), "entry_pair_1h_ema20_200_gap_pct": getattr(o, 'entry_pair_1h_ema20_200_gap_pct', None),
             "entry_pair_1d_ndi": getattr(o, 'entry_pair_1d_ndi', None), "entry_btc_4h_ema50_200_gap_pct": getattr(o, 'entry_btc_4h_ema50_200_gap_pct', None),   # 🪤 Sep-29 fade laggard readings
             "manual_exit_mode": getattr(o, 'manual_exit_mode', None), "manual_note": getattr(o, 'manual_note', None),   # 🖐 Sep-29 MANUAL sleeve
+            "manual_block_reason": getattr(o, 'manual_block_reason', None), "manual_setup_rating": getattr(o, 'manual_setup_rating', None), "manual_setup_side": getattr(o, 'manual_setup_side', None),
+            "manual_pair_rsi": getattr(o, 'manual_pair_rsi', None), "manual_pair_adx": getattr(o, 'manual_pair_adx', None),
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
             "pattern_fixed_tp_pct": getattr(o, 'pattern_fixed_tp_pct', None),
             "pattern_fixed_sl_pct": getattr(o, 'pattern_fixed_sl_pct', None),
@@ -1786,6 +1789,8 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_btc_1d_ret_pct": getattr(o, 'entry_btc_1d_ret_pct', None), "entry_pair_1h_ema20_200_gap_pct": getattr(o, 'entry_pair_1h_ema20_200_gap_pct', None),
             "entry_pair_1d_ndi": getattr(o, 'entry_pair_1d_ndi', None), "entry_btc_4h_ema50_200_gap_pct": getattr(o, 'entry_btc_4h_ema50_200_gap_pct', None),   # 🪤 Sep-29 fade laggard readings
             "manual_exit_mode": getattr(o, 'manual_exit_mode', None), "manual_note": getattr(o, 'manual_note', None),   # 🖐 Sep-29 MANUAL sleeve
+            "manual_block_reason": getattr(o, 'manual_block_reason', None), "manual_setup_rating": getattr(o, 'manual_setup_rating', None), "manual_setup_side": getattr(o, 'manual_setup_side', None),
+            "manual_pair_rsi": getattr(o, 'manual_pair_rsi', None), "manual_pair_adx": getattr(o, 'manual_pair_adx', None),
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
             "pattern_fixed_tp_pct": getattr(o, 'pattern_fixed_tp_pct', None),
             "pattern_fixed_sl_pct": getattr(o, 'pattern_fixed_sl_pct', None),
@@ -1976,7 +1981,8 @@ async def manual_open(request: ManualOpenRequest, db: AsyncSession = Depends(get
         logger.error(f"[MANUAL_OPEN] failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"manual open failed: {e}")
     return {"status": "open", "order_id": order.id, "pair": order.pair, "direction": order.direction, "entry_price": order.entry_price,
-            "exit_mode": order.manual_exit_mode, "sl_pct": order.pattern_fixed_sl_pct, "tp_pct": order.pattern_fixed_tp_pct}
+            "exit_mode": order.manual_exit_mode, "sl_pct": order.pattern_fixed_sl_pct, "tp_pct": order.pattern_fixed_tp_pct,
+            "block_reason": order.manual_block_reason, "setup_rating": order.manual_setup_rating, "setup_side": order.manual_setup_side}
 
 
 @app.post("/api/recover-positions")
@@ -4200,7 +4206,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     # Compute by_macro_trend summary from ALL orders (before filtering)
     macro_trend_performance = {}
     for trend in ['BULLISH', 'BEARISH', 'NEUTRAL']:
-        trend_orders = [o for o in all_orders if (o.entry_macro_trend or 'NEUTRAL') == trend]
+        trend_orders = [o for o in all_orders if (o.entry_macro_trend or 'NEUTRAL') == trend
+                        and (getattr(o, 'entry_strategy', None) or '').upper() != 'MANUAL']   # 🖐 Sep-29: a read of the systematic book
         trend_longs = [o for o in trend_orders if o.direction == "LONG"]
         trend_shorts = [o for o in trend_orders if o.direction == "SHORT"]
         trend_long_pnl = sum(o.pnl or 0 for o in trend_longs)
@@ -4319,6 +4326,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         orders = [o for o in orders if (getattr(o, 'direction', None) or '').upper() == _dir]
         signal_expired_orders = [o for o in signal_expired_orders
                                  if (getattr(o, 'direction', None) or '').upper() == _dir]
+    # 🖐 Sep-29: every ENTRY-INDICATOR table below is a read of the systematic book — MANUAL fills (which now carry the pair/BTC
+    # readings at the click) must never enter those buckets. Totals, balances and the sleeve table keep using `orders`.
+    _ind_orders = [o for o in orders if (getattr(o, 'entry_strategy', None) or '').upper() != 'MANUAL']
 
     if not orders:
         logger.warning("[PERF] No closed orders found for is_paper=%s (regime=%s), returning empty performance",
@@ -4589,6 +4599,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         seconds = int(avg_seconds % 60)
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     
+    # 🖐 Sep-29 (verification review): from here on `orders` IS the systematic book. Everything above (headline totals, fees,
+    # balances) read the full list; every analytic below — indicator buckets, crosstabs, patterns, multiplier cells, entry
+    # conditions, deep dives — is a read of the bot and must never see a MANUAL fill (they carry BTC/breadth stamps and the
+    # STRONG_BUY label). The account-level tables at the end read `_all_orders` explicitly. Default-safe: a table added
+    # later is systematic-only unless it opts in.
+    _all_orders = orders
+    orders = _ind_orders
+
     # Performance by confidence level
     confidence_performance = {}
     for conf in ['VERY_STRONG', 'STRONG_BUY', 'LOW', 'MEDIUM', 'HIGH', 'EXTREME']:
@@ -4719,7 +4737,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("1.25 - 1.50%", 1.25, 1.50),
             ("> 1.50%", 1.50, 999),
         ]
-        gap_orders = [o for o in orders if o.entry_gap is not None]
+        gap_orders = [o for o in _ind_orders if o.entry_gap is not None]
         for range_name, gap_min, gap_max in gap_ranges:
             range_orders = [o for o in gap_orders if gap_min <= o.entry_gap < gap_max]
             if not range_orders:
@@ -4766,7 +4784,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("0.18 - 0.20%", 0.18, 0.20),
             ("> 0.20%", 0.20, 999),
         ]
-        ema58_gap_orders = [o for o in orders if o.entry_ema_gap_5_8 is not None]
+        ema58_gap_orders = [o for o in _ind_orders if o.entry_ema_gap_5_8 is not None]
         for range_name, gap_min, gap_max in ema58_ranges:
             range_orders = [o for o in ema58_gap_orders if gap_min <= o.entry_ema_gap_5_8 < gap_max]
             if not range_orders:
@@ -4817,7 +4835,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("0.18 - 0.20%", 0.18, 0.20),
             ("> 0.20%", 0.20, 999),
         ]
-        ema813_gap_orders = [o for o in orders if getattr(o, 'entry_ema_gap_8_13', None) is not None]
+        ema813_gap_orders = [o for o in _ind_orders if getattr(o, 'entry_ema_gap_8_13', None) is not None]
         for range_name, gap_min, gap_max in ema813_ranges:
             range_orders = [o for o in ema813_gap_orders if gap_min <= o.entry_ema_gap_8_13 < gap_max]
             if not range_orders:
@@ -4882,7 +4900,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             (">5.00", 5.00, 999),
         ]
         ema_fan_orders = [
-            o for o in orders
+            o for o in _ind_orders
             if getattr(o, 'entry_ema_gap_5_8', None) is not None
             and getattr(o, 'entry_ema_gap_8_13', None) is not None
             and (o.entry_ema_gap_8_13 or 0) > 0
@@ -4934,7 +4952,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("65 - 70", 65, 70),
             ("70 - 80", 70, 80),
         ]
-        rsi_orders = [o for o in orders if o.entry_rsi is not None]
+        rsi_orders = [o for o in _ind_orders if o.entry_rsi is not None]
         for range_name, rsi_min, rsi_max in rsi_ranges:
             range_orders = [o for o in rsi_orders if rsi_min <= o.entry_rsi < rsi_max]
             if not range_orders:
@@ -4966,7 +4984,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("15-18", 15, 18), ("18-22", 18, 22), ("22-25", 22, 25),
             ("25-28", 25, 28), ("28-30", 28, 30), ("30-33", 30, 33), ("33-35", 33, 35), ("35+", 35, 999),
         ]
-        adx_orders = [o for o in orders if o.entry_adx is not None]
+        adx_orders = [o for o in _ind_orders if o.entry_adx is not None]
         for range_name, adx_min, adx_max in adx_ranges:
             range_orders = [o for o in adx_orders if adx_min <= o.entry_adx < adx_max]
             if not range_orders:
@@ -4994,7 +5012,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "by_confidence": conf_breakdown
                 })
         # Performance by ADX Direction (Rising vs Falling at entry)
-        adx_dir_orders = [o for o in orders if o.entry_adx is not None and o.entry_adx_prev is not None]
+        adx_dir_orders = [o for o in _ind_orders if o.entry_adx is not None and o.entry_adx_prev is not None]
         for adx_dir_label in ["Rising", "Falling"]:
             if adx_dir_label == "Rising":
                 dir_pool = [o for o in adx_dir_orders if o.entry_adx > o.entry_adx_prev]
@@ -5028,7 +5046,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "by_confidence": conf_breakdown
                 })
         # Performance by RSI Direction (Rising vs Falling at entry) — May 15
-        rsi_dir_orders = [o for o in orders if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None]
+        rsi_dir_orders = [o for o in _ind_orders if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None]
         for rsi_dir_label in ["Rising", "Falling"]:
             if rsi_dir_label == "Rising":
                 r_dir_pool = [o for o in rsi_dir_orders if o.entry_rsi > o.entry_rsi_prev]
@@ -5073,7 +5091,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("0.25 - 0.30%", 0.25, 0.30),
             ("> 0.30%", 0.30, 999),
         ]
-        stretch_orders = [o for o in orders if o.entry_ema5_stretch is not None]
+        stretch_orders = [o for o in _ind_orders if o.entry_ema5_stretch is not None]
         for range_name, s_min, s_max in stretch_ranges:
             range_orders = [o for o in stretch_orders if s_min <= o.entry_ema5_stretch < s_max]
             if not range_orders:
@@ -5109,7 +5127,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("75-85%", 75, 85), ("85-90%", 85, 90),
             ("90-95%", 90, 95), ("95-98%", 95, 98), ("98-100%", 98, 100.1),
         ]
-        range_pos_orders = [o for o in orders if o.entry_range_position is not None]
+        range_pos_orders = [o for o in _ind_orders if o.entry_range_position is not None]
         for range_name, rp_min, rp_max in range_pos_ranges:
             range_orders = [o for o in range_pos_orders if rp_min <= o.entry_range_position < rp_max]
             if not range_orders:
@@ -5144,7 +5162,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # Range Position × BTC RSI Direction Cross-Tab (May 15)
         # Tests: does macro RSI direction discriminate within Range Position buckets?
         # Specifically: low-range SHORTs (chasing) — do they fail more when BTC RSI Rising?
-        rp_btcrsi_orders = [o for o in orders if o.entry_range_position is not None
+        rp_btcrsi_orders = [o for o in _ind_orders if o.entry_range_position is not None
                             and o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None]
         for rp_name, rp_min, rp_max in range_pos_ranges:
             for btc_rsi_dir in ["Rising", "Falling"]:
@@ -5186,7 +5204,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # Tests: does pair-level RSI direction discriminate within Range Position buckets?
         # Pair RSI direction uses rsi_prev2 (~10min, matches RSI Momentum Filter logic).
         # Post-deploy trades only — entry_rsi_prev is NULL for historical orders.
-        rp_pairrsi_orders = [o for o in orders if o.entry_range_position is not None
+        rp_pairrsi_orders = [o for o in _ind_orders if o.entry_range_position is not None
                              and o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None]
         for rp_name, rp_min, rp_max in range_pos_ranges:
             for pair_rsi_dir in ["Rising", "Falling"]:
@@ -5231,7 +5249,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("0.0 to 0.05", 0.0, 0.05), ("0.05 to 0.1", 0.05, 0.1), ("0.1 to 0.3", 0.1, 0.3),
             ("0.3 to 0.5", 0.3, 0.5), ("0.5 to 1.0", 0.5, 1.0), ("1.0 to 2.0", 1.0, 2.0), ("> 2.0", 2.0, 999),
         ]
-        adx_delta_orders = [o for o in orders if o.entry_adx_delta is not None]
+        adx_delta_orders = [o for o in _ind_orders if o.entry_adx_delta is not None]
         for range_name, d_min, d_max in adx_delta_ranges:
             range_orders = [o for o in adx_delta_orders if d_min <= o.entry_adx_delta < d_max]
             if not range_orders:
@@ -5336,7 +5354,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("+0.40 to +0.60%", 0.40, 0.60),
             ("> +0.60%", 0.60, 999),
         ]
-        pair_slope_orders = [o for o in orders if o.entry_ema20_slope is not None]
+        pair_slope_orders = [o for o in _ind_orders if o.entry_ema20_slope is not None]
         for range_name, s_min, s_max in slope_ranges:
             range_orders = [o for o in pair_slope_orders if s_min <= o.entry_ema20_slope < s_max]
             if not range_orders:
@@ -5374,7 +5392,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 })
 
         # Performance by BTC EMA20 Slope (absolute value, 0.02% buckets)
-        btc_slope_orders = [o for o in orders if o.entry_btc_ema20_slope is not None]
+        btc_slope_orders = [o for o in _ind_orders if o.entry_btc_ema20_slope is not None]
         for range_name, s_min, s_max in slope_ranges:
             range_orders = [o for o in btc_slope_orders if s_min <= o.entry_btc_ema20_slope < s_max]
             if not range_orders:
@@ -5443,7 +5461,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("> +1.00%", 1.00, 999),
         ]
         pair_ema20_ema50_gap_performance = []
-        pair_ema_gap_orders = [o for o in orders if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None]
+        pair_ema_gap_orders = [o for o in _ind_orders if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None]
         for range_name, g_min, g_max in pair_ema_gap_ranges:
             range_orders = [o for o in pair_ema_gap_orders if g_min <= o.entry_pair_ema20_ema50_gap_pct < g_max]
             if not range_orders:
@@ -5484,7 +5502,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # Performance by BTC EMA20-EMA50 Gap at entry (May 6, observation-only)
         # Mirrors pair version. Uses entry_btc_trend_gap_pct (BTC EMA20 vs EMA50, ~4hr context).
         btc_ema20_ema50_gap_performance = []
-        btc_ema_gap_orders = [o for o in orders if getattr(o, 'entry_btc_trend_gap_pct', None) is not None]
+        btc_ema_gap_orders = [o for o in _ind_orders if getattr(o, 'entry_btc_trend_gap_pct', None) is not None]
         for range_name, g_min, g_max in pair_ema_gap_ranges:
             range_orders = [o for o in btc_ema_gap_orders if g_min <= o.entry_btc_trend_gap_pct < g_max]
             if not range_orders:
@@ -5527,7 +5545,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("10-15", 10, 15), ("15-20", 15, 20), ("20-25", 20, 25),
             ("25-30", 25, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40+", 40, 999),
         ]
-        btc_adx_orders = [o for o in orders if o.entry_btc_adx is not None]
+        btc_adx_orders = [o for o in _ind_orders if o.entry_btc_adx is not None]
         for range_name, a_min, a_max in btc_adx_ranges:
             range_orders = [o for o in btc_adx_orders if a_min <= o.entry_btc_adx < a_max]
             if not range_orders:
@@ -5562,7 +5580,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 })
 
         # Performance by BTC ADX Direction (Rising vs Falling at entry)
-        btc_adx_dir_orders = [o for o in orders if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None]
+        btc_adx_dir_orders = [o for o in _ind_orders if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None]
         for btc_dir_label in ["Rising", "Falling"]:
             if btc_dir_label == "Rising":
                 btc_dir_pool = [o for o in btc_adx_dir_orders if o.entry_btc_adx > o.entry_btc_adx_prev]
@@ -5597,7 +5615,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 })
 
         # Performance by BTC RSI Direction (Rising vs Falling at entry) — May 15
-        btc_rsi_dir_orders = [o for o in orders if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None]
+        btc_rsi_dir_orders = [o for o in _ind_orders if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None]
         for brsi_dir_label in ["Rising", "Falling"]:
             if brsi_dir_label == "Rising":
                 br_dir_pool = [o for o in btc_rsi_dir_orders if o.entry_btc_rsi > o.entry_btc_rsi_prev]
@@ -5632,7 +5650,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 })
 
         # Performance by BTC RSI Direction (30min — sustained momentum) — May 15
-        btc_rsi_30m_dir_orders = [o for o in orders if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None]
+        btc_rsi_30m_dir_orders = [o for o in _ind_orders if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None]
         for brsi30_dir_label in ["Rising", "Falling"]:
             if brsi30_dir_label == "Rising":
                 br30_dir_pool = [o for o in btc_rsi_30m_dir_orders if o.entry_btc_rsi > o.entry_btc_rsi_prev6]
@@ -5668,7 +5686,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
         # BTC RSI 30m × BTC RSI 5m Cross-Tab — May 15
         # Diagnoses sustained-momentum vs flicker. Both Falling = clean bear; mixed = transition zones.
-        btc_rsi_ct_orders = [o for o in orders if o.entry_btc_rsi is not None
+        btc_rsi_ct_orders = [o for o in _ind_orders if o.entry_btc_rsi is not None
                              and o.entry_btc_rsi_prev is not None
                              and getattr(o, 'entry_btc_rsi_prev6', None) is not None]
         for rsi30_dir in ["Rising", "Falling"]:
@@ -5714,7 +5732,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("0.30 - 0.45%", 0.30, 0.45),
             ("> 0.45%", 0.45, 999.0),
         ]
-        btc_vol_orders = [o for o in orders if getattr(o, 'entry_btc_atr_pct', None) is not None]
+        btc_vol_orders = [o for o in _ind_orders if getattr(o, 'entry_btc_atr_pct', None) is not None]
         for bv_label, bv_lo, bv_hi in btc_vol_buckets:
             bv_pool = [o for o in btc_vol_orders if bv_lo <= o.entry_btc_atr_pct < bv_hi]
             if not bv_pool:
@@ -5749,7 +5767,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # 1h timeframe momentum slice. Adds to 5m (vs prev1) and 30m (vs prev6) family.
         # Direction = sign of (entry_btc_rsi_1h - entry_btc_rsi_1h_prev).
         # Flat treated as Rising (>=) for parity with other RSI Direction tables.
-        btc_rsi_1h_dir_orders = [o for o in orders if getattr(o, 'entry_btc_rsi_1h', None) is not None
+        btc_rsi_1h_dir_orders = [o for o in _ind_orders if getattr(o, 'entry_btc_rsi_1h', None) is not None
                                   and getattr(o, 'entry_btc_rsi_1h_prev', None) is not None]
         for brsi1h_dir_label in ["Rising", "Falling"]:
             if brsi1h_dir_label == "Rising":
@@ -5788,7 +5806,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # Decomposes "violent chop" (high ATR + low ADX = big swings, no direction)
         # vs "clean trend" (mid ATR + high ADX = ride-able momentum).
         # 3 vol buckets × 3 ADX buckets × direction.
-        btc_vol_adx_orders = [o for o in orders if getattr(o, 'entry_btc_atr_pct', None) is not None
+        btc_vol_adx_orders = [o for o in _ind_orders if getattr(o, 'entry_btc_atr_pct', None) is not None
                               and o.entry_btc_adx is not None]
         vol_buckets_ct = [("Low <0.15%", 0.0, 0.15), ("Mid 0.15-0.30%", 0.15, 0.30), ("High >0.30%", 0.30, 999.0)]
         adx_buckets_ct = [("Low <20", 0.0, 20.0), ("Mid 20-30", 20.0, 30.0), ("High >30", 30.0, 999.0)]
@@ -5828,7 +5846,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # downtrend, mixed = transition zones (5m blip during 1h trend, or 1h reversal
         # showing first on 5m). Aligned cells should outperform mixed cells if the
         # multi-TF hypothesis is right.
-        btc_rsi_mtf_orders = [o for o in orders if getattr(o, 'entry_btc_rsi_1h', None) is not None
+        btc_rsi_mtf_orders = [o for o in _ind_orders if getattr(o, 'entry_btc_rsi_1h', None) is not None
                               and getattr(o, 'entry_btc_rsi_1h_prev', None) is not None
                               and o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None]
         for r1h_dir in ["Rising", "Falling"]:
@@ -5863,7 +5881,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     })
 
         # Pair RSI Dir × BTC RSI Dir Cross-Tab — May 15
-        rsi_ct_orders = [o for o in orders if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None
+        rsi_ct_orders = [o for o in _ind_orders if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None
                          and o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None]
         for pair_rdir in ["Rising", "Falling"]:
             for btc_rdir in ["Rising", "Falling"]:
@@ -5897,7 +5915,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     })
 
         # Pair ADX Dir x BTC ADX Dir Cross-Tab
-        adx_ct_orders = [o for o in orders if o.entry_adx is not None and o.entry_adx_prev is not None
+        adx_ct_orders = [o for o in _ind_orders if o.entry_adx is not None and o.entry_adx_prev is not None
                          and o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None]
         for pair_dir in ["Rising", "Falling"]:
             for btc_dir in ["Rising", "Falling"]:
@@ -6027,7 +6045,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("≥35", 35, 999),
         ]
         adx_delta_btc_adx_crosstab = []
-        _adx_delta_pool = [o for o in orders
+        _adx_delta_pool = [o for o in _ind_orders
                            if getattr(o, 'entry_adx_delta', None) is not None
                            and getattr(o, 'entry_btc_adx', None) is not None]
         for direction in ["LONG", "SHORT"]:
@@ -6072,7 +6090,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # Surfaces the +0.10-0.20% loser sub-zone with finer resolution (+0.10-0.15
         # vs +0.15-0.20) — critical for tuning the May 19 cross-filter rules.
         btc_gap_btc_adx_crosstab = []
-        _btc_gap_pool = [o for o in orders
+        _btc_gap_pool = [o for o in _ind_orders
                          if getattr(o, 'entry_btc_trend_gap_pct', None) is not None
                          and getattr(o, 'entry_btc_adx', None) is not None]
         for direction in ["LONG", "SHORT"]:
@@ -6116,7 +6134,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # Mirror of the BTC version per CLAUDE.md May 19 design — surfaces sub-cell structure
         # in the pair's own multi-hour trend.
         pair_gap_pair_adx_crosstab = []
-        _pair_gap_pool = [o for o in orders
+        _pair_gap_pool = [o for o in _ind_orders
                           if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None
                           and getattr(o, 'entry_adx', None) is not None]
         for direction in ["LONG", "SHORT"]:
@@ -6159,7 +6177,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50),
             ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70+", 70, 999),
         ]
-        btc_rsi_orders = [o for o in orders if o.entry_btc_rsi is not None]
+        btc_rsi_orders = [o for o in _ind_orders if o.entry_btc_rsi is not None]
         for range_name, r_min, r_max in btc_rsi_ranges:
             range_orders = [o for o in btc_rsi_orders if r_min <= o.entry_btc_rsi < r_max]
             if not range_orders:
@@ -6203,7 +6221,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("10-15", 10, 15), ("15-20", 15, 20), ("20-25", 20, 25),
             ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999),
         ]
-        ct_btc_rsi_orders = [o for o in orders if o.entry_btc_rsi is not None and o.entry_btc_adx is not None]
+        ct_btc_rsi_orders = [o for o in _ind_orders if o.entry_btc_rsi is not None and o.entry_btc_adx is not None]
         for direction in ["LONG", "SHORT"]:
             dir_ct = [o for o in ct_btc_rsi_orders if (o.direction or "LONG") == direction]
             for rsi_name, rsi_lo, rsi_hi in ct_btc_rsi_ranges:
@@ -6232,7 +6250,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
         # Quality Score Performance
         try:
-            qs_orders = [o for o in orders if o.entry_quality_score is not None]
+            qs_orders = [o for o in _ind_orders if o.entry_quality_score is not None]
             for score_val in range(7):  # 0-6
                 score_orders = [o for o in qs_orders if int(o.entry_quality_score) == score_val]
                 if not score_orders:
@@ -6264,7 +6282,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
         # BTC Regime Performance — group by entry_btc_regime
         try:
-            regime_orders = [o for o in orders if o.entry_btc_regime is not None]
+            regime_orders = [o for o in _ind_orders if o.entry_btc_regime is not None]
             # CHOPPY is the legacy single-bucket label (pre-split historical rows).
             # CHOPPY_WEAK / CHOPPY_FLAT are the new split labels used by
             # classify_btc_regime for all new trades.
@@ -7648,7 +7666,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("15-18", 15, 18), ("18-22", 18, 22), ("22-25", 22, 25),
             ("25-28", 25, 28), ("28-30", 28, 30), ("30-33", 30, 33), ("33-35", 33, 35), ("35+", 35, 999),
         ]
-        ct_orders = [o for o in orders if o.entry_rsi is not None and o.entry_adx is not None]
+        ct_orders = [o for o in _ind_orders if o.entry_rsi is not None and o.entry_adx is not None]
         for direction in ["LONG", "SHORT"]:
             dir_ct = [o for o in ct_orders if (o.direction or "LONG") == direction]
             for rsi_name, rsi_lo, rsi_hi in ct_rsi_ranges:
@@ -7743,7 +7761,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
             np_adx_ranges = [("15-18", 15, 18), ("18-22", 18, 22), ("22-25", 22, 25), ("25-28", 25, 28), ("28-30", 28, 30), ("30-33", 30, 33), ("33-35", 33, 35), ("35+", 35, 999)]
             np_adx_trades = [o for o in np_trades if o.entry_adx is not None]
-            all_adx_trades = [o for o in orders if o.entry_adx is not None]
+            all_adx_trades = [o for o in _ind_orders if o.entry_adx is not None]
             for rng, lo, hi in np_adx_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_adx_trades if lo <= o.entry_adx < hi and (o.direction or "LONG") == direction]
@@ -7766,7 +7784,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 ("> +0.60%", 0.60, 99),
             ]
             np_ext_trades = [o for o in np_trades if getattr(o, 'entry_dist_from_ema13_pct', None) is not None]
-            all_ext_trades = [o for o in orders if getattr(o, 'entry_dist_from_ema13_pct', None) is not None]
+            all_ext_trades = [o for o in _ind_orders if getattr(o, 'entry_dist_from_ema13_pct', None) is not None]
             for rng, lo, hi in np_ext_ranges:
                 for direction in ["LONG", "SHORT"]:
                     def _ext_of(o, d=direction):
@@ -7782,7 +7800,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # bucketing as pair extension. Positive = BTC stretched within the move.
             np_btc_ext_ranges = np_ext_ranges  # share bucket definitions
             np_btc_ext_trades = [o for o in np_trades if getattr(o, 'entry_btc_dist_from_ema13_pct', None) is not None]
-            all_btc_ext_trades = [o for o in orders if getattr(o, 'entry_btc_dist_from_ema13_pct', None) is not None]
+            all_btc_ext_trades = [o for o in _ind_orders if getattr(o, 'entry_btc_dist_from_ema13_pct', None) is not None]
             for rng, lo, hi in np_btc_ext_ranges:
                 for direction in ["LONG", "SHORT"]:
                     def _btc_ext_of(o, d=direction):
@@ -7796,7 +7814,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
             np_rsi_ranges = [("20-30", 20, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50), ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70+", 70, 999)]
             np_rsi_trades = [o for o in np_trades if o.entry_rsi is not None]
-            all_rsi_trades = [o for o in orders if o.entry_rsi is not None]
+            all_rsi_trades = [o for o in _ind_orders if o.entry_rsi is not None]
             for rng, lo, hi in np_rsi_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_rsi_trades if lo <= o.entry_rsi < hi and (o.direction or "LONG") == direction]
@@ -7812,7 +7830,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 ("0.18-0.20%", 0.18, 0.20), (">0.20%", 0.20, 999)
             ]
             np_gap58_trades = [o for o in np_trades if o.entry_ema_gap_5_8 is not None]
-            all_gap58_trades = [o for o in orders if o.entry_ema_gap_5_8 is not None]
+            all_gap58_trades = [o for o in _ind_orders if o.entry_ema_gap_5_8 is not None]
             for rng, lo, hi in np_gap58_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_gap58_trades if lo <= o.entry_ema_gap_5_8 < hi and (o.direction or "LONG") == direction]
@@ -7854,7 +7872,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
             np_gap_ranges = [("<0.15%", 0.00, 0.15), ("0.15-0.25%", 0.15, 0.25), ("0.25-0.35%", 0.25, 0.35), ("0.35-0.50%", 0.35, 0.50), ("0.50-0.80%", 0.50, 0.80), (">0.80%", 0.80, 999)]
             np_gap_trades = [o for o in np_trades if o.entry_gap is not None]
-            all_gap_trades = [o for o in orders if o.entry_gap is not None]
+            all_gap_trades = [o for o in _ind_orders if o.entry_gap is not None]
             for rng, lo, hi in np_gap_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_gap_trades if lo <= o.entry_gap < hi and (o.direction or "LONG") == direction]
@@ -7865,7 +7883,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
             np_stretch_ranges = [("<0.04%", 0.00, 0.04), ("0.04-0.08%", 0.04, 0.08), ("0.08-0.12%", 0.08, 0.12), ("0.12-0.16%", 0.12, 0.16), ("0.16-0.20%", 0.16, 0.20), ("0.20-0.25%", 0.20, 0.25), ("0.25-0.30%", 0.25, 0.30), (">0.30%", 0.30, 999)]
             np_stretch_trades = [o for o in np_trades if o.entry_ema5_stretch is not None]
-            all_stretch_trades = [o for o in orders if o.entry_ema5_stretch is not None]
+            all_stretch_trades = [o for o in _ind_orders if o.entry_ema5_stretch is not None]
             for rng, lo, hi in np_stretch_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_stretch_trades if lo <= o.entry_ema5_stretch < hi and (o.direction or "LONG") == direction]
@@ -7912,7 +7930,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 ("> +0.60%", 0.60, 999),
             ]
             np_slope_trades = [o for o in np_trades if o.entry_ema20_slope is not None]
-            all_slope_trades = [o for o in orders if o.entry_ema20_slope is not None]
+            all_slope_trades = [o for o in _ind_orders if o.entry_ema20_slope is not None]
             for rng, lo, hi in np_slope_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_slope_trades if lo <= o.entry_ema20_slope < hi and (o.direction or "LONG") == direction]
@@ -7924,7 +7942,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # May 12: BTC EMA20 Slope NP deep dive uses same signed buckets as Pair.
             np_btc_slope_ranges = np_slope_ranges
             np_btc_slope_trades = [o for o in np_trades if o.entry_btc_ema20_slope is not None]
-            all_btc_slope_trades = [o for o in orders if o.entry_btc_ema20_slope is not None]
+            all_btc_slope_trades = [o for o in _ind_orders if o.entry_btc_ema20_slope is not None]
             for rng, lo, hi in np_btc_slope_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_btc_slope_trades if lo <= o.entry_btc_ema20_slope < hi and (o.direction or "LONG") == direction]
@@ -7935,7 +7953,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
             np_btc_adx_ranges = [("10-15", 10, 15), ("15-20", 15, 20), ("20-25", 20, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999)]
             np_btc_adx_trades = [o for o in np_trades if o.entry_btc_adx is not None]
-            all_btc_adx_trades = [o for o in orders if o.entry_btc_adx is not None]
+            all_btc_adx_trades = [o for o in _ind_orders if o.entry_btc_adx is not None]
             for rng, lo, hi in np_btc_adx_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_btc_adx_trades if lo <= o.entry_btc_adx < hi and (o.direction or "LONG") == direction]
@@ -7946,7 +7964,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
             np_btc_rsi_ranges = [("<20", 0, 20), ("20-25", 20, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50), ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70+", 70, 999)]
             np_btc_rsi_trades = [o for o in np_trades if o.entry_btc_rsi is not None]
-            all_btc_rsi_trades = [o for o in orders if o.entry_btc_rsi is not None]
+            all_btc_rsi_trades = [o for o in _ind_orders if o.entry_btc_rsi is not None]
             for rng, lo, hi in np_btc_rsi_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_btc_rsi_trades if lo <= o.entry_btc_rsi < hi and (o.direction or "LONG") == direction]
@@ -7957,7 +7975,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
             for np_adx_dir_label in ["Rising", "Falling"]:
                 np_adx_dir_trades = [o for o in np_trades if o.entry_adx is not None and o.entry_adx_prev is not None]
-                all_adx_dir_trades = [o for o in orders if o.entry_adx is not None and o.entry_adx_prev is not None]
+                all_adx_dir_trades = [o for o in _ind_orders if o.entry_adx is not None and o.entry_adx_prev is not None]
                 if np_adx_dir_label == "Rising":
                     np_adx_dir_pool = [o for o in np_adx_dir_trades if o.entry_adx > o.entry_adx_prev]
                     all_adx_dir_pool = [o for o in all_adx_dir_trades if o.entry_adx > o.entry_adx_prev]
@@ -7978,7 +7996,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 ("0.3 to 0.5", 0.3, 0.5), ("0.5 to 1.0", 0.5, 1.0), ("1.0 to 2.0", 1.0, 2.0), ("> 2.0", 2.0, 999),
             ]
             np_adx_delta_trades = [o for o in np_trades if o.entry_adx_delta is not None]
-            all_adx_delta_trades = [o for o in orders if o.entry_adx_delta is not None]
+            all_adx_delta_trades = [o for o in _ind_orders if o.entry_adx_delta is not None]
             for rng, lo, hi in np_adx_delta_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_adx_delta_trades if lo <= o.entry_adx_delta < hi and (o.direction or "LONG") == direction]
@@ -7989,7 +8007,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
             for np_btc_dir_label in ["Rising", "Falling"]:
                 np_btc_dir_trades = [o for o in np_trades if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None]
-                all_btc_dir_trades = [o for o in orders if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None]
+                all_btc_dir_trades = [o for o in _ind_orders if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None]
                 if np_btc_dir_label == "Rising":
                     np_btc_dir_pool = [o for o in np_btc_dir_trades if o.entry_btc_adx > o.entry_btc_adx_prev]
                     all_btc_dir_pool = [o for o in all_btc_dir_trades if o.entry_btc_adx > o.entry_btc_adx_prev]
@@ -8006,7 +8024,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # Pair RSI Direction (May 15) — matches RSI Momentum Filter comparison (rsi vs rsi_prev2)
             for np_rsi_dir_label in ["Rising", "Falling"]:
                 np_rsi_dir_trades = [o for o in np_trades if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None]
-                all_rsi_dir_trades = [o for o in orders if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None]
+                all_rsi_dir_trades = [o for o in _ind_orders if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None]
                 if np_rsi_dir_label == "Rising":
                     np_rsi_dir_pool = [o for o in np_rsi_dir_trades if o.entry_rsi > o.entry_rsi_prev]
                     all_rsi_dir_pool = [o for o in all_rsi_dir_trades if o.entry_rsi > o.entry_rsi_prev]
@@ -8023,7 +8041,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # BTC RSI Direction (May 15) — uses entry_btc_rsi vs entry_btc_rsi_prev (1 candle)
             for np_btc_rsi_dir_label in ["Rising", "Falling"]:
                 np_btc_rsi_dir_trades = [o for o in np_trades if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None]
-                all_btc_rsi_dir_trades = [o for o in orders if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None]
+                all_btc_rsi_dir_trades = [o for o in _ind_orders if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None]
                 if np_btc_rsi_dir_label == "Rising":
                     np_btc_rsi_dir_pool = [o for o in np_btc_rsi_dir_trades if o.entry_btc_rsi > o.entry_btc_rsi_prev]
                     all_btc_rsi_dir_pool = [o for o in all_btc_rsi_dir_trades if o.entry_btc_rsi > o.entry_btc_rsi_prev]
@@ -8040,7 +8058,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # BTC RSI Direction 30min (May 15) — sustained-momentum window (vs btc_rsi_prev6)
             for np_btc_rsi30_dir_label in ["Rising", "Falling"]:
                 np_btc_rsi30_dir_trades = [o for o in np_trades if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None]
-                all_btc_rsi30_dir_trades = [o for o in orders if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None]
+                all_btc_rsi30_dir_trades = [o for o in _ind_orders if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None]
                 if np_btc_rsi30_dir_label == "Rising":
                     np_btc_rsi30_dir_pool = [o for o in np_btc_rsi30_dir_trades if o.entry_btc_rsi > o.entry_btc_rsi_prev6]
                     all_btc_rsi30_dir_pool = [o for o in all_btc_rsi30_dir_trades if o.entry_btc_rsi > o.entry_btc_rsi_prev6]
@@ -8057,7 +8075,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # BTC 1h RSI Direction (May 15 PM) — 1h timeframe sustained momentum
             for np_btc_rsi1h_dir_label in ["Rising", "Falling"]:
                 np_b1h_dir_trades = [o for o in np_trades if getattr(o, 'entry_btc_rsi_1h', None) is not None and getattr(o, 'entry_btc_rsi_1h_prev', None) is not None]
-                all_b1h_dir_trades = [o for o in orders if getattr(o, 'entry_btc_rsi_1h', None) is not None and getattr(o, 'entry_btc_rsi_1h_prev', None) is not None]
+                all_b1h_dir_trades = [o for o in _ind_orders if getattr(o, 'entry_btc_rsi_1h', None) is not None and getattr(o, 'entry_btc_rsi_1h_prev', None) is not None]
                 if np_btc_rsi1h_dir_label == "Rising":
                     np_b1h_pool = [o for o in np_b1h_dir_trades if o.entry_btc_rsi_1h > o.entry_btc_rsi_1h_prev]
                     all_b1h_pool = [o for o in all_b1h_dir_trades if o.entry_btc_rsi_1h > o.entry_btc_rsi_1h_prev]
@@ -8135,7 +8153,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 ("> +1.00%", 1.00, 999),
             ]
             np_pgap_trades = [o for o in np_trades if o.entry_pair_ema20_ema50_gap_pct is not None]
-            all_pgap_trades = [o for o in orders if o.entry_pair_ema20_ema50_gap_pct is not None]
+            all_pgap_trades = [o for o in _ind_orders if o.entry_pair_ema20_ema50_gap_pct is not None]
             for rng, lo, hi in np_pgap_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_pgap_trades if lo <= o.entry_pair_ema20_ema50_gap_pct < hi and (o.direction or "LONG") == direction]
@@ -8148,7 +8166,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # scheme as Pair version for apples-to-apples cross-table comparison.
             np_btcgap_ranges = np_pgap_ranges
             np_btcgap_trades = [o for o in np_trades if o.entry_btc_trend_gap_pct is not None]
-            all_btcgap_trades = [o for o in orders if o.entry_btc_trend_gap_pct is not None]
+            all_btcgap_trades = [o for o in _ind_orders if o.entry_btc_trend_gap_pct is not None]
             for rng, lo, hi in np_btcgap_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_btcgap_trades if lo <= o.entry_btc_trend_gap_pct < hi and (o.direction or "LONG") == direction]
@@ -8164,7 +8182,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 ("0.65-0.85%", 0.65, 0.85), ("0.85-1.00%", 0.85, 1.00), ("≥1.00%", 1.00, 999),
             ]
             np_atr_trades = [o for o in np_trades if o.entry_atr_pct is not None]
-            all_atr_trades = [o for o in orders if o.entry_atr_pct is not None]
+            all_atr_trades = [o for o in _ind_orders if o.entry_atr_pct is not None]
             for rng, lo, hi in np_atr_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_atr_trades if lo <= o.entry_atr_pct < hi and (o.direction or "LONG") == direction]
@@ -8181,7 +8199,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 ("$500M-1B", 500_000_000, 1_000_000_000), (">$1B", 1_000_000_000, 9.9e18),
             ]
             np_pvol_trades = [o for o in np_trades if o.entry_pair_volume_24h_usd is not None]
-            all_pvol_trades = [o for o in orders if o.entry_pair_volume_24h_usd is not None]
+            all_pvol_trades = [o for o in _ind_orders if o.entry_pair_volume_24h_usd is not None]
             for rng, lo, hi in np_pvol_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_pvol_trades if lo <= o.entry_pair_volume_24h_usd < hi and (o.direction or "LONG") == direction]
@@ -8194,7 +8212,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # _VOL_BINS (refined to 8 buckets the same day). Surfaces NP concentration
             # in very-low / extreme gvol zones (e.g., SUI's gvol<0.70 LONG cell).
             np_gvol_trades = [o for o in np_trades if o.entry_global_volume_ratio is not None]
-            all_gvol_trades = [o for o in orders if o.entry_global_volume_ratio is not None]
+            all_gvol_trades = [o for o in _ind_orders if o.entry_global_volume_ratio is not None]
             for rng, lo, hi in _VOL_BINS:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_gvol_trades if lo <= o.entry_global_volume_ratio < hi and (o.direction or "LONG") == direction]
@@ -8212,7 +8230,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 ("90-95%", 90, 95), ("95-98%", 95, 98), ("98-100%", 98, 100.1),
             ]
             np_rp_trades = [o for o in np_trades if o.entry_range_position is not None]
-            all_rp_trades = [o for o in orders if o.entry_range_position is not None]
+            all_rp_trades = [o for o in _ind_orders if o.entry_range_position is not None]
             for rng, lo, hi in np_rp_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_rp_trades if lo <= o.entry_range_position < hi and (o.direction or "LONG") == direction]
@@ -8607,6 +8625,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # each split by direction without 4 separate scans.
         _oc = Counter()
         for o in all_orders:
+            if (getattr(o, 'entry_strategy', None) or '').upper() == 'MANUAL':
+                continue   # 🖐 Sep-29: operator-opened fills are not momentum signals that passed the funnel
             _kind = 'flip' if (getattr(o, 'entry_strategy', None) or '').startswith('FLIP:') else 'norm'
             _oc[(_kind, o.direction)] += 1
         _nL, _nS = _oc[('norm', 'LONG')], _oc[('norm', 'SHORT')]
@@ -8733,7 +8753,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "trough_recovery": trough_recovery,
         "rsi_adx_crosstab": rsi_adx_crosstab,
         "never_positive_deep_dive": never_positive_deep_dive,
-        "performance_over_time": _compute_time_buckets(orders),
+        "performance_over_time": _compute_time_buckets(_all_orders),
         "by_entry_type": _compute_entry_type_stats(orders, signal_expired_orders=signal_expired_orders),
         "signal_expired_breakdown": _compute_signal_expired_breakdown(signal_expired_orders),
         "by_exit_type": _compute_exit_type_stats(orders),
@@ -8755,31 +8775,31 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "graduation_doors_overlap": graduation_doors_overlap,
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "flagged_exits": flagged_exits,
-        "period_performance": _compute_period_performance(orders),
-        "equity_curve": _compute_equity_curve(orders),
+        "period_performance": _compute_period_performance(_all_orders),
+        "equity_curve": _compute_equity_curve(_all_orders),
         "pnl_distribution": _compute_pnl_distribution(orders),
         "pnl_distribution_stats": _compute_pnl_distribution_stats(orders),
         "mae_mfe": _compute_mae_mfe(orders),
-        "sleeve_performance": _compute_sleeve_performance(orders, initial_balance, runtime_days),
-        "strategy_performance": _compute_strategy_performance(orders, initial_balance, runtime_days),
-        "hourly_performance": _compute_hourly_performance(orders),
-        "daily_performance": _compute_daily_performance(orders),
-        "day_time_heatmap": _compute_day_time_heatmap(orders),
+        "sleeve_performance": _compute_sleeve_performance(_all_orders, initial_balance, runtime_days),
+        "strategy_performance": _compute_strategy_performance(_all_orders, initial_balance, runtime_days),
+        "hourly_performance": _compute_hourly_performance(_all_orders),
+        "daily_performance": _compute_daily_performance(_all_orders),
+        "day_time_heatmap": _compute_day_time_heatmap(_all_orders),
         "volume_crosstab": _compute_volume_crosstab(orders),
         # May 10 evening: 2D Global Vol Ratio × Pair Vol USD cross-tab. Buckets
         # match existing Volume Cross-Tab (Global axis) and Performance by Pair
         # 24h Volume (Pair axis) tables for cross-reference consistency.
         "volume_intersection_crosstab": _compute_volume_intersection_crosstab(orders),
         "breadth_crosstab": _compute_breadth_crosstab(orders),
-        "pair_performance": _compute_pair_performance(orders),
+        "pair_performance": _compute_pair_performance(_all_orders),
         # May 10: pair 24h USD volume bucket performance — find structural size threshold
         "pair_volume_bucket_performance": _compute_pair_volume_bucket_performance(orders),
         "pair_rank_performance": _compute_pair_rank_performance(orders),
         # Pair listing-age buckets (Jul 13 — 180->90 new-listing step-down read gate)
         "pair_age_performance": _compute_pair_age_performance(orders),
         # May 9: ATR bucket performance — tests "high volatility = loss driver" hypothesis
-        "atr_bucket_performance": _compute_atr_bucket_performance(orders),
-        "atr_holdtime_crosstab": _compute_atr_holdtime_crosstab(orders),
+        "atr_bucket_performance": _compute_atr_bucket_performance(_ind_orders),
+        "atr_holdtime_crosstab": _compute_atr_holdtime_crosstab(_ind_orders),
         "holdtime_atr_table": _compute_holdtime_atr_table(orders),
         "regime_drift_outcome": _compute_regime_drift_outcome(orders),
         "regime_exit_counterfactual": _compute_regime_exit_counterfactual(orders),
@@ -8808,21 +8828,21 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "post_exit_snapshots_by_reason": _compute_post_exit_snapshots_by_reason(orders),
         # Entry Extension / Late Entry Risk (May 13 PM) — tests whether bad trades
         # are timing failures (late entries) vs signal-quality failures.
-        "ema13_extension_performance": _compute_ema13_extension_performance(orders),
-        "ema13_extension_pvol_crosstab": _compute_ema13_extension_pvol_crosstab(orders),
-        "ema13_extension_adxdelta_crosstab": _compute_ema13_extension_adxdelta_crosstab(orders),
+        "ema13_extension_performance": _compute_ema13_extension_performance(_ind_orders),
+        "ema13_extension_pvol_crosstab": _compute_ema13_extension_pvol_crosstab(_ind_orders),
+        "ema13_extension_adxdelta_crosstab": _compute_ema13_extension_adxdelta_crosstab(_ind_orders),
         "ema13_extension_pair_adx_crosstab": _compute_ema13_extension_pair_adx_crosstab(orders),
         # BTC Market Extension / BTC Late Regime Risk (May 14) — macro counterpart of
         # pair extension. Tests whether losses cluster when BTC itself is stretched
         # (price far from BTC EMA13), and especially when both BTC and pair are
         # extended simultaneously (double-stretch).
-        "btc_extension_performance": _compute_btc_extension_performance(orders),
+        "btc_extension_performance": _compute_btc_extension_performance(_ind_orders),
         "btc_extension_globalvol_crosstab": _compute_btc_extension_globalvol_crosstab(orders),
         "btc_extension_pair_extension_crosstab": _compute_btc_extension_pair_extension_crosstab(orders),
         # BTC 1h Slope (May 14) — higher-TF macro context. Discriminator candidate
         # after May 4 finding that every 5m-timeframe dimension showed identical
         # winner/loser signatures. Tests "5m bearish blip during 1h uptrend" hypothesis.
-        "btc_1h_slope_performance": _compute_btc_1h_slope_performance(orders),
+        "btc_1h_slope_performance": _compute_btc_1h_slope_performance(_ind_orders),
         "btc_off24h_performance": _compute_btc_range_performance(orders, "entry_btc_off24h_pct", BTC_OFF24H_BUCKETS),  # Sep 16
         "btc_off24lo_performance": _compute_btc_range_performance(orders, "entry_btc_off24lo_pct", BTC_OFF24LO_BUCKETS),
         "btc_5m_1h_slope_alignment_crosstab": _compute_btc_5m_1h_slope_alignment_crosstab(orders),

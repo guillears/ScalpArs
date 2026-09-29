@@ -4328,3 +4328,30 @@ $2,900 book: base $706.9 × 2 (UNMATCHED cell) × 20 = $28,275 notional → one 
 Zone fills = MOMENTUM LONG with entry_atr_pct ≥ 1.0 ∧ entry_pair_ema20_ema50_gap_pct ≥ 0.5 (order stamps; manual
 fills are tallied on a separate line, never pooled). Thresholds frozen. Not re-tuned on the data that reads it.
 
+## 2026-09-29 (134) - 🖐 MANUAL fills record the gate they traded through automatically (operator request; replaces the hand-typed note)
+Operator: "instead of a note, register the block reason automatically … to then have that info in the export". Every manual open
+now stamps what the Top Pairs row says about the pair at the click: `manual_block_reason` (the refusing gate; 'NONE' = the pair was
+enterable; empty/NULL = no fresh scan data), `manual_setup_rating` (STRONG_BUY / VERY_STRONG / NO_TRADE) and `manual_setup_side`
+(side of the pair's EMA fan — tells whether the operator traded WITH the refused setup or AGAINST it), plus the pair readings at the
+click in MANUAL-OWNED columns: `manual_pair_rsi`, `manual_pair_adx`, `manual_gap_5_20`, `manual_gap_5_8`, `manual_gap_8_13`
+(same formulas as the bot's entry stamps: gaps absolute, RSI/ADX rounded 2/4) and `manual_px_vs_ema5` (FILL price vs the scan's
+EMA5). The bot's own entry_* columns stay EMPTY on manual fills.
+WHY OWN COLUMNS (deep review, executed): writing entry_rsi/entry_adx/entry_gap on manual rows leaked them into every dashboard
+table keyed on "entry_x is not None" — the EMA fan-accel bucket moved 5 → 7 fills and 40 % → 57 % WR with three manual rows, and
+the averaged readings of by_confidence / by_close_reason shifted. The final verification pass then showed manual fills' BTC/
+breadth stamps (carried since the first manual ship) still reached the pattern W/C coverage tables, the multiplier "[Default 1.0x]"
+baseline, five BTC crosstabs and the entry-conditions averages through helper calls and loops. FIX = default inverted inside
+_compute_performance: after the headline totals `orders` IS the systematic book (MANUAL excluded); only the account-level tables
+opt in to all fills via `_all_orders` (totals, equity curve, period/daily/hourly tables, heatmap, performance over time, pair
+table, sleeve table with its Manual row, strategy table). A table added later is systematic-only unless it opts in. by_macro_trend
+and the entry funnel skip MANUAL too. Guarded by a behavioural test (payload with vs without manual fills on an in-memory DB).
+scripts/build_unified_pool.py and scripts/screen_pool.py drop MANUAL rows.
+Pure helper `manual_gate_context`; one PairData read for every exit mode; migration for the 9 columns; payloads + CSV; MANUAL
+badge tooltip shows the gate and the readings; the panel shows the pair's live gate/rating as the pair is typed (pair normalised
+like the engine; setup side computed server-side on raw EMAs); the note is optional.
+USE AT BATCH REVIEWS: group MANUAL rows by `manual_block_reason` (and with/against the setup side) — that is the would-be-blocked
+cohort of each gate under the live exits, the evidence each gate's revert bar needs. Fills opened before this ship have the
+columns NULL (QNT/FET/ZEC/SOON and the two dead-tape shorts of Sep-29 were attributed by hand in the log).
+Reviews: caveman (signed 5–20 gap → absolute; fallback text; fill price; pools) + deep ×2 (migration, 7 end-to-end cases, 24/24
+formula parity, leaks found by before/after /api/performance) — all applied. UI same ship: Momentum stack is the default exit
+mode of the manual panel; the 🚫 mark on rated-but-blocked rows is a small inline glyph (one line).

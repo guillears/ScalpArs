@@ -31,7 +31,7 @@ def test_no_pair_in_context_stamps_nothing_and_never_raises():
 
 def test_ui_marks_a_rated_but_blocked_setup():
     ui = open(os.path.join(ROOT, "templates", "index.html")).read()
-    assert "p.entry_ready === false" in ui and "_confBlocked ? '🚫 ' + _confSafe" in ui and "const _brSafe = _escAttr(p.block_reason)" in ui
+    assert "p.entry_ready === false" in ui and "🚫</span>' + _confSafe" in ui and "whitespace-nowrap ${_confBlocked" in ui and "const _brSafe = _escAttr(p.block_reason)" in ui
 
 
 def test_first_decisive_gate_wins_and_other_sleeves_never_stamp():
@@ -100,3 +100,60 @@ def test_pairs_route_marks_late_gate_refusals(monkeypatch):
     assert by["AAAUSDT"]["entry_ready"] is False and by["AAAUSDT"]["block_reason"] == "LONG_HEAT_BLOCK"
     assert by["BBBUSDT"]["entry_ready"] is True and by["BBBUSDT"]["block_reason"] is None
     assert by["CCCUSDT"]["entry_ready"] is False and by["CCCUSDT"]["block_reason"] == "BTC_ADX_GATE_LOW"
+    assert "setup_side" in by["AAAUSDT"]
+
+
+def test_dashboard_analytics_never_include_manual_rows():
+    """Behavioural (verification review): compute the performance payload on a scratch in-memory DB with 8 systematic fills, add 3
+    MANUAL fills carrying BTC/breadth stamps and the STRONG_BUY label, recompute — only ACCOUNT-LEVEL keys may change. Any
+    analytic table moving = a manual fill leaked into a read of the systematic book."""
+    import asyncio, json, datetime as dt
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    import main, models, services.trading_engine as T
+
+    ACCOUNT_LEVEL = {"total_trades", "total_longs", "total_shorts", "total_wins", "total_losses", "win_rate", "win_rate_longs", "win_rate_shorts",
+                     "avg_win", "avg_win_long", "avg_win_short", "avg_loss", "avg_loss_long", "avg_loss_short", "best_win_long", "best_win_short",
+                     "worst_loss_long", "worst_loss_short", "total_pnl", "total_pnl_percentage", "total_pnl_notional_percentage",
+                     "total_investment_notional", "total_investment_value", "total_investment_long_notional", "total_investment_long_value",
+                     "total_investment_short_notional", "total_investment_short_value", "total_fees", "avg_duration", "avg_duration_long",
+                     "avg_duration_short", "avg_leverage", "return_multiple", "daily_compound_return", "runtime_days",
+                     "avg_win_pct", "avg_win_long_pct", "avg_win_short_pct", "avg_loss_pct", "avg_loss_long_pct", "avg_loss_short_pct", "expectancy",
+                     "period_performance", "equity_curve", "sleeve_performance", "strategy_performance", "hourly_performance", "daily_performance",
+                     "day_time_heatmap", "performance_over_time", "pair_performance"}
+
+    def order(i, strat, direction, pnl_pct, **kw):
+        t0 = dt.datetime(2026, 9, 20, 10, 0, 0) + dt.timedelta(hours=3 * i)
+        base = dict(pair=f"P{i}USDT", direction=direction, status="CLOSED", entry_price=100.0, exit_price=100.0 * (1 + pnl_pct / 100), investment=500.0,
+                    leverage=20.0, notional_value=10000.0, quantity=100.0, confidence="STRONG_BUY", entry_strategy=strat, is_paper=True,
+                    pnl=pnl_pct * 100.0, pnl_percentage=pnl_pct, peak_pnl=max(pnl_pct, 0.1), trough_pnl=min(pnl_pct, -0.1), entry_fee=4.5, total_fee=9.0,
+                    opened_at=t0, closed_at=t0 + dt.timedelta(minutes=17), close_reason=("RUNNER_TRAIL L1" if pnl_pct > 0 else "STOP_LOSS L1"),
+                    entry_btc_rsi=55.0 + i, entry_btc_adx=24.0 + i % 3, entry_btc_ema20_slope=0.03, entry_btc_atr_pct=0.15, entry_btc_rsi_1h=52.0,
+                    entry_btc_1h_slope=0.03, entry_bull_pct=62.0, entry_bear_pct=20.0, entry_macro_trend="BULLISH", entry_btc_trend_gap_pct=0.1,
+                    cell_multiplier=1.0, cell_lev_multiplier=1.0)
+        base.update(kw); return models.Order(**base)
+
+    async def run():
+        eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with eng.begin() as c:
+            await c.run_sync(models.Base.metadata.create_all)
+        Session = async_sessionmaker(eng, expire_on_commit=False)
+        main.trading_engine.is_paper_mode = True
+        async with Session() as db:
+            for i, (d, p) in enumerate([("LONG", 0.5), ("LONG", -0.7), ("SHORT", 0.4), ("LONG", 0.3), ("SHORT", -0.7), ("LONG", 0.6), ("SHORT", 0.2), ("LONG", -0.4)]):
+                db.add(order(i, "MOMENTUM", d, p, entry_rsi=55.0, entry_adx=25.0, entry_gap=0.3, entry_ema_gap_5_8=0.08, entry_ema_gap_8_13=0.09,
+                             entry_atr_pct=0.5, entry_range_position=60.0, entry_btc_regime="HEALTHY_BULL", cell_multiplier_source="UNMATCHED"))
+            await db.commit()
+            before = json.loads(json.dumps(await main._compute_performance(db), default=str))
+            for j, (d, p) in enumerate([("LONG", 0.4), ("SHORT", 0.3), ("LONG", -0.6)]):
+                db.add(order(20 + j, "MANUAL", d, p, manual_exit_mode="MOMENTUM", manual_block_reason="ATR_GAP_LONG", manual_setup_rating="STRONG_BUY",
+                             manual_setup_side="LONG", manual_pair_rsi=54.0, manual_pair_adx=17.0, manual_gap_5_20=0.33))
+            await db.commit()
+            after = json.loads(json.dumps(await main._compute_performance(db), default=str))
+        await eng.dispose()
+        return before, after
+    before, after = asyncio.run(run())
+    changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
+    assert changed, "the manual fills must at least move the account totals"
+    leaks = sorted(changed - ACCOUNT_LEVEL)
+    assert not leaks, f"manual fills leaked into systematic analytics: {leaks}"
+    assert {"total_trades", "sleeve_performance", "strategy_performance"} <= changed

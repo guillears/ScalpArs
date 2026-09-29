@@ -300,15 +300,16 @@
                 <div class="flex flex-wrap items-end gap-3 text-xs">
                     <button type="button" id="manual-entry-toggle" onclick="toggleManualPanel()" class="text-sm font-semibold text-amber-300 mr-2 hover:text-amber-200 select-none" title="Opens a position NOW at market, bypassing every entry gate and cell multiplier. Labelled MANUAL — never counted in any systematic sleeve. SL/TP are % of price move NET of fees (leverage-invariant, the same pnl every exit uses): 1.5 ≈ −1.4% raw price ≈ −30% of margin at 20×. MAX_HOLD still applies as the universal safety net. The widest stop allowed is leverage-aware: the tighter of the config floor and 80% of the liquidation distance (100/leverage minus 0.5% maintenance margin) — with the default floor: 20× → −3.0%, 30× → −2.3%, 50× → −1.2%, 100× → −0.4%. Paper mode only. Click to collapse / expand.">🖐 Manual entry <span id="manual-entry-chevron" class="text-gray-500">▾</span></button>
                     <div id="manual-entry-body" class="contents">
-                    <label class="flex flex-col text-gray-400">Pair<input id="manual-pair" type="text" list="manual-pair-list" placeholder="DOGEUSDT" autocomplete="off" class="w-32 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><datalist id="manual-pair-list"></datalist></label>
+                    <label class="flex flex-col text-gray-400">Pair<input id="manual-pair" type="text" list="manual-pair-list" placeholder="DOGEUSDT" autocomplete="off" oninput="manualPairHint()" class="w-32 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><datalist id="manual-pair-list"></datalist></label>
                     <label class="flex flex-col text-gray-400">Side<select id="manual-direction" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
                     <label class="flex flex-col text-gray-400">Size $<input id="manual-investment" type="number" step="10" min="1" value="500" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">Lev<input id="manual-leverage" type="number" step="1" min="1" max="125" value="20" class="w-14 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
-                    <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack; refused only when its EMA13-cross exit would close the trade at the first tick (counter-trend entry with the EMA5/EMA8 stack against it) · FLOOR = no TP, hard stop at the floor (config)">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM">Momentum stack</option><option value="FLOOR">Floor stop only</option></select></label>
+                    <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack; refused only when its EMA13-cross exit would close the trade at the first tick (counter-trend entry with the EMA5/EMA8 stack against it) · FLOOR = no TP, hard stop at the floor (config)">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM" selected>Momentum stack</option><option value="FLOOR">Floor stop only</option></select></label>
                     <label class="flex flex-col text-gray-400">SL %<input id="manual-sl" type="number" step="0.1" min="0" placeholder="1.5" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">TP %<input id="manual-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
-                    <label class="flex flex-col text-gray-400 flex-1 min-w-[12rem]">Note (why)<input id="manual-note" type="text" maxlength="200" placeholder="hypothesis for this trade" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <label class="flex flex-col text-gray-400 flex-1 min-w-[12rem]">Note (optional)<input id="manual-note" type="text" maxlength="200" placeholder="optional — the gate is recorded automatically" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <button id="manual-open-btn" onclick="openManualPosition()" class="px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-400/60 text-amber-200 hover:bg-amber-500/30 transition font-semibold">Open position</button>
+                    <div id="manual-pair-hint" class="basis-full text-[11px] text-gray-500 -mt-1" title="What the bot sees for this pair right now — stamped on the order automatically (manual_block_reason / manual_setup_rating / manual_setup_side in the export)"></div>
                     </div>
                 </div>
             </div>
@@ -19290,6 +19291,7 @@
                 { // 🖐 manual-entry pair typeahead: the scanned list (top-N by volume), typing still accepts any pair
                     const _dl = document.getElementById('manual-pair-list');
                     if (_dl) { const _opts = data.map(p => `<option value="${p.pair}"></option>`).join(''); if (_dl.innerHTML !== _opts) _dl.innerHTML = _opts; }
+                    _manualPairsSnapshot = Object.fromEntries(data.map(p => [p.pair, p])); try { manualPairHint(); } catch (e) {}
                 }
                 let _rowsHtml = data.map(p => {
                     const signalClass = p.signal === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 
@@ -19388,7 +19390,7 @@
                             <td class="px-4 py-3 text-right font-mono ${rsiClass}">${p.rsi !== null ? p.rsi.toFixed(1) : '-'}</td>
                             <td class="px-4 py-3 text-right font-mono ${adxClass}">${p.adx !== null ? p.adx.toFixed(1) : '-'}</td>
                             <td class="px-4 py-3 text-center">${blockReasonHtml}</td>
-                            <td class="px-4 py-3 text-center ${_confBlocked ? 'text-gray-500' : confidenceClass} font-medium" title="${_confTitle}">${_confBlocked ? '🚫 ' + _confSafe : (_confSafe || '-')}</td>
+                            <td class="px-4 py-3 text-center whitespace-nowrap ${_confBlocked ? 'text-gray-500' : confidenceClass} font-medium" title="${_confTitle}">${_confBlocked ? '<span class="text-[9px] align-middle mr-0.5 opacity-80">🚫</span>' + _confSafe : (_confSafe || '-')}</td>
                             <td class="px-4 py-3 text-center">${positionsHtml}</td>
                         </tr>
                     `;
@@ -20065,7 +20067,14 @@
             const exitTxt = m === 'MOMENTUM' ? 'exit: MOMENTUM stack (STRONG_BUY stop −0.70%, runner arm +0.40%, EMA13 cross)'
                 : m === 'FLOOR' ? `exit: FLOOR — hard SL ${sl != null ? sl.toFixed(2) + '%' : '(config floor)'}, no TP`
                 : `exit: CUSTOM — SL ${sl != null ? sl.toFixed(2) + '%' : '—'}${tp != null ? ', TP +' + Number(tp).toFixed(2) + '%' : ', no TP'}`;
-            return `Manual entry · ${exitTxt} (% of price, net of fees)${o.manual_note ? ' · note: ' + String(o.manual_note).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) : ''}`;
+            const _e = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            const _setup = o.manual_setup_rating ? ` (setup ${_e(o.manual_setup_rating)}${o.manual_setup_side ? ' ' + _e(o.manual_setup_side) : ''})` : (o.manual_setup_side ? ` (fan ${_e(o.manual_setup_side)})` : '');
+            const _against = (o.manual_setup_side && o.direction && o.manual_setup_side !== o.direction) ? ' — traded AGAINST the setup side' : '';
+            const gateTxt = (o.manual_block_reason == null || o.manual_block_reason === '') ? '' : (o.manual_block_reason === 'NONE'
+                ? ` · gate at entry: none — the pair was enterable${_setup}${_against}`
+                : ` · gate at entry: ${_e(o.manual_block_reason)}${_setup}${_against}`)
+                + (o.manual_pair_rsi != null ? ` · pair RSI ${Number(o.manual_pair_rsi).toFixed(1)} / ADX ${o.manual_pair_adx != null ? Number(o.manual_pair_adx).toFixed(1) : '—'}` : '');
+            return `Manual entry · ${exitTxt} (% of price, net of fees)${gateTxt}${o.manual_note ? ' · note: ' + String(o.manual_note).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) : ''}`;
         }
         function toggleManualPanel(force) {   // click the title to fold the form to one line; remembered per browser
             const body = document.getElementById('manual-entry-body'), chev = document.getElementById('manual-entry-chevron');
@@ -20075,7 +20084,19 @@
             if (chev) chev.textContent = collapse ? '▸' : '▾';
             try { localStorage.setItem('manualPanelCollapsed', collapse ? '1' : '0'); } catch (e) {}
         }
-        try { toggleManualPanel(localStorage.getItem('manualPanelCollapsed') !== '0'); } catch (e) { toggleManualPanel(true); }   // collapsed by default; expanded only if the user left it open
+        try { toggleManualPanel(localStorage.getItem('manualPanelCollapsed') !== '0'); } catch (e) { toggleManualPanel(true); }
+        try { manualExitModeChanged(); } catch (e) {}   // default exit = Momentum stack → SL/TP inputs start disabled   // collapsed by default; expanded only if the user left it open
+        let _manualPairsSnapshot = {};   // pair → latest /api/pairs row (filled by loadPairs)
+        function manualPairHint() {
+            const el = document.getElementById('manual-pair-hint'); if (!el) return;
+            let _k = (document.getElementById('manual-pair')?.value || '').trim().toUpperCase().replace('/', '').replace(':USDT', '');
+            if (_k && !_k.endsWith('USDT')) _k += 'USDT';                      // same normalisation as the engine
+            const p = _manualPairsSnapshot[_k];
+            if (!p) { el.textContent = _k.length > 4 ? `${_k}: not in the scanned list — the order will carry no gate context` : ''; return; }
+            const side = p.setup_side || '';   // computed server-side on the raw EMAs
+            el.textContent = p.entry_ready ? `${p.pair}: enterable now — ${p.signal} ${p.confidence || ''} (no gate; will be stamped as gate: NONE)`
+                : `${p.pair}: ${p.confidence && p.confidence !== 'NO_TRADE' ? '🚫 ' + p.confidence + (side ? ' ' + side : '') + ' setup' : (p.confidence || 'no setup')} — gate: ${p.block_reason || '—'} · RSI ${p.rsi ?? '—'} · ADX ${p.adx ?? '—'} (stamped on the order automatically)`;
+        }
         function manualExitModeChanged() {
             const m = document.getElementById('manual-exit-mode')?.value || 'FIXED';
             const sl = document.getElementById('manual-sl'), tp = document.getElementById('manual-tp');

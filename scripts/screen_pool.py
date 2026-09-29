@@ -154,7 +154,7 @@ def sleeve(r):
     return None
 
 def main():
-    rows = list(csv.DictReader(open(RAW)))
+    rows = [r for r in csv.DictReader(open(RAW)) if (r.get('entry_strategy') or '').upper() != 'MANUAL']   # 🖐 Sep-29: operator-opened fills are never screened as momentum
     kept = []
     agg = {}
     for r in rows:

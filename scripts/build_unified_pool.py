@@ -76,6 +76,8 @@ def build_pool(from_date: str, output_path: Path, quiet: bool = False) -> dict:
                 for row in reader:
                     if row.get("status") != "CLOSED":
                         continue
+                    if (row.get("entry_strategy") or "").upper() == "MANUAL":   # 🖐 Sep-29: operator-opened fills are never part of a systematic pool
+                        continue
                     opened = (row.get("opened_at") or "").strip()
                     if not opened:
                         continue  # defensive: skip rows with no timestamp

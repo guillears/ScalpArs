@@ -187,6 +187,7 @@ def test_momentum_mode_refuses_only_what_the_ema13_exit_would_close_at_once(monk
         row = None
         if ema13 is not None:
             row = _Row(); row.ema13 = ema13; row.ema5 = ema5; row.ema8 = ema8; row.updated_at = _dt.datetime.utcnow() - _dt.timedelta(seconds=age_s)
+            row.signal = "NO_TRADE"; row.confidence = "STRONG_BUY"; row.price = 268.0; row.ema20 = ema13; row.rsi = 50.0; row.adx = 20.0
 
         class _Res:
             def __init__(self, first=None, scalar=0): self._f, self._s = first, scalar
@@ -229,6 +230,12 @@ def test_momentum_mode_refuses_only_what_the_ema13_exit_would_close_at_once(monk
         assert "momentum stack's stop" in attempt("LONG", 266.0, leverage=_hi) and attempt("LONG", 266.0, leverage=_hi - 1) == "ACCEPTED"
         captured.clear(); assert attempt("LONG", 266.0, leverage=50, exit_mode="FLOOR") == "ACCEPTED"
         assert captured[-1].pattern_fixed_sl_pct == T.manual_floor_for_leverage(th, 50) == -1.2 and captured[-1].pattern_fixed_tp_pct is None
+        # the gate context lands on the Order itself (behavioural, not a source grep): stub row = NO_TRADE / STRONG_BUY, fan long
+        _o = captured[-1]
+        assert _o.manual_block_reason == T.PAIR_REASON_AWAITING and _o.manual_setup_rating == "STRONG_BUY" and _o.manual_setup_side == "LONG"
+        assert _o.manual_pair_rsi == 50.0 and _o.manual_pair_adx == 20.0 and _o.manual_gap_5_20 is not None and _o.manual_gap_5_20 >= 0
+        # the bot's own entry_* columns stay EMPTY on a manual fill — that is what keeps it out of every systematic table
+        assert _o.entry_rsi is None and _o.entry_adx is None and _o.entry_gap is None and _o.entry_ema_gap_5_8 is None
         th.ema13_cross_exit_long_enabled = False                                                           # live config today
         assert attempt("LONG", 270.0, ema5=267.0, ema8=268.0) == "ACCEPTED"                                # LONG side disabled → phantom only
     finally:
@@ -254,3 +261,42 @@ def test_manual_floor_is_leverage_aware():
             assert ("wider than the widest stop allowed" in str(e)) == (not ok), (lev, sl, str(e))
         except Exception:
             assert ok, (lev, sl)                                    # got past the floor check (then fails on the None db)
+
+
+def test_gate_context_is_stamped_automatically():
+    """Operator request: the gate shown on the Top Pairs row at the click is recorded on the manual order (no hand-typed note)."""
+    import services.trading_engine as T, datetime as _dt
+    from types import SimpleNamespace as NS
+    now = _dt.datetime.utcnow()
+    st = T.PairReasonStash(); st.cur_seq = 3
+    row = lambda **k: NS(**{**dict(signal="NO_TRADE", confidence="STRONG_BUY", price=268.0, ema5=268.6, ema8=268.4, ema13=268.2, ema20=267.7, rsi=54.2, adx=16.8, updated_at=now), **k})
+    st["QNTUSDT"] = "ATR_GAP_LONG"; st.mark_verdict("QNTUSDT")
+    g = T.manual_gate_context(st, "QNTUSDT", row(), now=now)
+    assert g["block_reason"] == "ATR_GAP_LONG" and g["rating"] == "STRONG_BUY" and g["side"] == "LONG" and g["rsi"] == 54.2 and g["adx"] == 16.8
+    assert g["gap_5_8"] > 0 and g["gap_5_20"] > 0 and g["px_vs_ema5"] < 0
+    # enterable pair: signal LONG and nothing refused this verdict → the explicit word NONE (the CSV writes None as an empty cell)
+    st.mark_verdict("SOONUSDT")
+    assert T.manual_gate_context(st, "SOONUSDT", row(signal="LONG", confidence="VERY_STRONG"), now=now)["block_reason"] == T.MANUAL_NO_GATE == "NONE"
+    # rated LONG but a late gate refused the same verdict
+    st["DOGEUSDT"] = "LONG_HEAT_BLOCK"; st.mark_verdict("DOGEUSDT")
+    assert T.manual_gate_context(st, "DOGEUSDT", row(signal="LONG"), now=now)["block_reason"] == "LONG_HEAT_BLOCK"
+    # bearish fan → setup side SHORT, gaps stay ABSOLUTE like every systematic stamp; nothing stamped → what the row shows
+    gb = T.manual_gate_context(st, "BTCUSDT", row(ema5=100.0, ema8=101.0, ema13=102.0, ema20=103.0, price=99.5, confidence="NO_TRADE"), now=now, live_price=99.0)
+    assert gb["side"] == "SHORT" and gb["gap_5_20"] > 0 and gb["gap_5_8"] > 0 and gb["gap_8_13"] > 0
+    assert gb["px_vs_ema5"] == round((99.0 - 100.0) / 100.0 * 100, 4)                      # the FILL price, signed
+    assert gb["block_reason"] == T.PAIR_REASON_AWAITING
+    # no row / stale row → everything None (the pair is not in the scanned list)
+    assert T.manual_gate_context(st, "XUSDT", None)["block_reason"] is None
+    assert T.manual_gate_context(st, "QNTUSDT", row(updated_at=now - _dt.timedelta(minutes=30)), now=now)["block_reason"] is None
+    assert T.manual_gate_context(None, "QNTUSDT", row(), now=now)["block_reason"] == T.PAIR_REASON_AWAITING      # no stash: never raises
+    # wiring
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert "manual_block_reason=(None if _gc['block_reason'] is None else str(_gc['block_reason'])[:60])" in eng
+    models = open(os.path.join(ROOT, "models.py"), encoding="utf-8").read(); db = open(os.path.join(ROOT, "database.py"), encoding="utf-8").read()
+    for c in ("manual_block_reason", "manual_setup_rating", "manual_setup_side"):
+        assert f"{c} = Column(String" in models and f"'{c}'" in db
+    for c in ("manual_pair_rsi", "manual_pair_adx", "manual_gap_5_20", "manual_gap_5_8", "manual_gap_8_13", "manual_px_vs_ema5"):
+        assert f"{c} = Column(Float" in models and f"('{c}', 'FLOAT')" in db
+    main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read(); assert main.count('"manual_block_reason": getattr(') == 2
+    ui = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert "function manualPairHint()" in ui and 'id="manual-pair-hint"' in ui and "gate at entry:" in ui

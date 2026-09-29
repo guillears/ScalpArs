@@ -165,3 +165,92 @@ def test_manual_cap_zero_means_off_and_bot_count_excludes_manual():
             assert "manual positions cap reached (2/2" in str(e)
     finally:
         T.config.trading_config.investment.manual_max_open_positions = old
+
+
+def test_momentum_mode_refuses_only_what_the_ema13_exit_would_close_at_once(monkeypatch):
+    """QNT (Sep-29): a SHORT above EMA13 in Momentum mode was closed by EMA13_CROSS_EXIT at the first tick — refuse it up front."""
+    import services.trading_engine as T, datetime as _dt
+    TE = T.TradingEngine; eng = TE.__new__(TE); eng.is_paper_mode = True
+
+    async def _bal(db): return 10_000.0
+    eng.get_available_balance = _bal
+
+    class _Trk: last_price = 268.0
+    monkeypatch.setattr(T.websocket_tracker, "get_tracker", lambda p: _Trk())
+    monkeypatch.setattr(T.websocket_tracker, "pair_silence_seconds", lambda p: 1.0)
+
+    class _Accepted(Exception): pass
+    captured = []
+
+    def db_with(ema13, age_s, ema5=269.0, ema8=268.5):
+        class _Row: pass
+        row = None
+        if ema13 is not None:
+            row = _Row(); row.ema13 = ema13; row.ema5 = ema5; row.ema8 = ema8; row.updated_at = _dt.datetime.utcnow() - _dt.timedelta(seconds=age_s)
+
+        class _Res:
+            def __init__(self, first=None, scalar=0): self._f, self._s = first, scalar
+            def scalar(self): return self._s
+            def first(self): return self._f
+
+        class _DB:
+            def __init__(self): self.n = 0
+            async def execute(self, *a, **k):
+                self.n += 1
+                return _Res(first=row) if self.n == 3 else _Res()      # 1 dup check, 2 manual count, 3 PairData
+            def add(self, o): captured.append(o); raise _Accepted()
+        return _DB()
+
+    def attempt(direction, ema13, age_s=10, leverage=20, exit_mode="MOMENTUM", **kw):
+        try:
+            asyncio.run(TE.open_manual_position(eng, db_with(ema13, age_s, **kw), pair="QNTUSDT", direction=direction, investment=100, leverage=leverage, exit_mode=exit_mode))
+        except ValueError as e:
+            return str(e)
+        except _Accepted:                                              # reached db.add = every guard passed
+            return "ACCEPTED"
+        raise AssertionError("stub DB should have raised _Accepted")
+    th = T.config.trading_config.thresholds
+    old = (th.ema13_cross_exit_enabled, th.ema13_cross_exit_long_enabled, th.ema13_cross_exit_short_enabled, th.ema13_cross_requires_stack_flip)
+    try:
+        th.ema13_cross_exit_enabled = True; th.ema13_cross_exit_long_enabled = True; th.ema13_cross_exit_short_enabled = True; th.ema13_cross_requires_stack_flip = True
+        # QNT: SHORT at 268 above EMA13 266 with the stack long (EMA5 269 > EMA8 268.5) → the exit fires at the first tick
+        assert "would close this SHORT at the first tick" in attempt("SHORT", 266.0)
+        # strict mode: same SHORT but the stack is NOT against it (EMA5 < EMA8) → the exit would hold → accepted
+        assert attempt("SHORT", 266.0, ema5=267.0, ema8=268.0) == "ACCEPTED"
+        assert "would close this LONG at the first tick" in attempt("LONG", 270.0, ema5=267.0, ema8=268.0)
+        assert attempt("LONG", 266.0) == "ACCEPTED" and attempt("SHORT", 270.0) == "ACCEPTED"          # with-trend
+        assert attempt("LONG", None) == "ACCEPTED"                                                        # pair not scanned: no EMA exits
+        # a row that exists is judged even when stale (deep review: the first refreshed tick closed a stale-admitted short)
+        _m = attempt("SHORT", 266.0, age_s=1200); assert "at the first tick" in _m and "min old" in _m
+        assert attempt("SHORT", 270.0, age_s=1200) == "ACCEPTED"
+        # leverage: the stack's widest stop (signal_active_sl) must sit inside the floor
+        _sb = T.config.trading_config.confidence_levels.get("STRONG_BUY"); _widest = min(_sb.stop_loss, _sb.signal_active_sl)
+        _hi = next(l for l in range(20, 126) if T.manual_floor_for_leverage(th, l) > _widest)             # first leverage whose floor is tighter than the stop
+        assert "momentum stack's stop" in attempt("LONG", 266.0, leverage=_hi) and attempt("LONG", 266.0, leverage=_hi - 1) == "ACCEPTED"
+        captured.clear(); assert attempt("LONG", 266.0, leverage=50, exit_mode="FLOOR") == "ACCEPTED"
+        assert captured[-1].pattern_fixed_sl_pct == T.manual_floor_for_leverage(th, 50) == -1.2 and captured[-1].pattern_fixed_tp_pct is None
+        th.ema13_cross_exit_long_enabled = False                                                           # live config today
+        assert attempt("LONG", 270.0, ema5=267.0, ema8=268.0) == "ACCEPTED"                                # LONG side disabled → phantom only
+    finally:
+        (th.ema13_cross_exit_enabled, th.ema13_cross_exit_long_enabled, th.ema13_cross_exit_short_enabled, th.ema13_cross_requires_stack_flip) = old
+
+
+def test_manual_floor_is_leverage_aware():
+    import services.trading_engine as T
+    from types import SimpleNamespace as NS
+    th = NS(manual_floor_sl_pct=-3.0)
+    f = T.manual_floor_for_leverage
+    assert f(th, 20) == -3.0 and f(th, 10) == -3.0                 # config floor binds (liquidation ≈ −4.5 % / −9.5 %)
+    assert abs(f(th, 30) - (-2.2667)) < 1e-3 and f(th, 50) == -1.2 and f(th, 100) == -0.4      # 0.8 × (100/lev − 0.5 maintenance margin)
+    assert f(NS(manual_floor_sl_pct=-1.0), 50) == -1.0 and f(NS(manual_floor_sl_pct=-1.0), 100) == -0.4
+    assert T.manual_liquidation_distance_pct(50) == 1.5 and T.manual_liquidation_distance_pct(250) == 0.0
+    assert f(th, None) == -3.0 and f(th, "x") == -3.0 and f(th, 0) == -3.0
+    TE = T.TradingEngine; eng = TE.__new__(TE); eng.is_paper_mode = True
+    for lev, sl, ok in [(50, 1.1, True), (50, 1.5, False), (20, 2.5, True), (100, 1.0, False), (30, 2.2, True), (30, 2.4, False)]:
+        try:
+            asyncio.run(TE.open_manual_position(eng, None, pair="DOGEUSDT", direction="LONG", investment=100, leverage=lev, exit_mode="FIXED", sl_pct=sl))
+            raise AssertionError("no DB → must raise")
+        except ValueError as e:
+            assert ("wider than the widest stop allowed" in str(e)) == (not ok), (lev, sl, str(e))
+        except Exception:
+            assert ok, (lev, sl)                                    # got past the floor check (then fails on the None db)

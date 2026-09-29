@@ -298,13 +298,13 @@
             <!-- 🖐 Sep-29 MANUAL sleeve: operator-opened position (bypasses every entry gate; own label MANUAL; own exit mode) -->
             <div class="glass rounded-xl p-4 mb-4" id="manual-entry-panel">
                 <div class="flex flex-wrap items-end gap-3 text-xs">
-                    <button type="button" id="manual-entry-toggle" onclick="toggleManualPanel()" class="text-sm font-semibold text-amber-300 mr-2 hover:text-amber-200 select-none" title="Opens a position NOW at market, bypassing every entry gate and cell multiplier. Labelled MANUAL — never counted in any systematic sleeve. SL/TP are % of price move NET of fees (leverage-invariant, the same pnl every exit uses): 1.5 ≈ −1.4% raw price ≈ −30% of margin at 20×. MAX_HOLD still applies as the universal safety net. Paper mode only. Click to collapse / expand.">🖐 Manual entry <span id="manual-entry-chevron" class="text-gray-500">▾</span></button>
+                    <button type="button" id="manual-entry-toggle" onclick="toggleManualPanel()" class="text-sm font-semibold text-amber-300 mr-2 hover:text-amber-200 select-none" title="Opens a position NOW at market, bypassing every entry gate and cell multiplier. Labelled MANUAL — never counted in any systematic sleeve. SL/TP are % of price move NET of fees (leverage-invariant, the same pnl every exit uses): 1.5 ≈ −1.4% raw price ≈ −30% of margin at 20×. MAX_HOLD still applies as the universal safety net. The widest stop allowed is leverage-aware: the tighter of the config floor and 80% of the liquidation distance (100/leverage minus 0.5% maintenance margin) — with the default floor: 20× → −3.0%, 30× → −2.3%, 50× → −1.2%, 100× → −0.4%. Paper mode only. Click to collapse / expand.">🖐 Manual entry <span id="manual-entry-chevron" class="text-gray-500">▾</span></button>
                     <div id="manual-entry-body" class="contents">
                     <label class="flex flex-col text-gray-400">Pair<input id="manual-pair" type="text" list="manual-pair-list" placeholder="DOGEUSDT" autocomplete="off" class="w-32 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><datalist id="manual-pair-list"></datalist></label>
                     <label class="flex flex-col text-gray-400">Side<select id="manual-direction" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
                     <label class="flex flex-col text-gray-400">Size $<input id="manual-investment" type="number" step="10" min="1" value="500" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">Lev<input id="manual-leverage" type="number" step="1" min="1" max="125" value="20" class="w-14 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
-                    <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack · FLOOR = no TP, hard stop at the floor (config)">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM">Momentum stack</option><option value="FLOOR">Floor stop only</option></select></label>
+                    <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack; refused only when its EMA13-cross exit would close the trade at the first tick (counter-trend entry with the EMA5/EMA8 stack against it) · FLOOR = no TP, hard stop at the floor (config)">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM">Momentum stack</option><option value="FLOOR">Floor stop only</option></select></label>
                     <label class="flex flex-col text-gray-400">SL %<input id="manual-sl" type="number" step="0.1" min="0" placeholder="1.5" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">TP %<input id="manual-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400 flex-1 min-w-[12rem]">Note (why)<input id="manual-note" type="text" maxlength="200" placeholder="hypothesis for this trade" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
@@ -5963,7 +5963,7 @@
                                         <input type="number" step="0.1" min="0" id="config-spike-fade-lag-ndi-min" class="w-16 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="0"></label>
                                     <label class="flex items-center gap-1 text-xs text-rose-300" title="🪤 Sep-29 FADE LAGGARD gate, BTC leg: BTC 4h EMA50 vs EMA200 gap (%) must exceed this for the block to apply (0 = EMA50 above EMA200). Frozen at 0.">BTC 4h gap min
                                         <input type="number" step="0.1" id="config-spike-fade-lag-btc-gap-min" class="w-16 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="0"></label>
-                                    <label class="flex items-center gap-1 text-xs text-amber-300" title="🖐 Sep-29 MANUAL sleeve: hard stop (% of price move) used by the FLOOR exit mode and the widest stop the FIXED mode accepts. A manual position is never stop-less. Negative number.">Manual floor SL %
+                                    <label class="flex items-center gap-1 text-xs text-amber-300" title="🖐 Sep-29 MANUAL sleeve: hard stop (% of price move) used by the FLOOR exit mode and the widest stop the FIXED mode accepts. A manual position is never stop-less. Negative number. At high leverage the effective floor is tighter: 80% of the liquidation distance (100 / leverage − 0.5% maintenance margin).">Manual floor SL %
                                         <input type="number" step="0.1" max="0" id="config-manual-floor-sl-pct" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="-3"></label>
                                     <label class="flex items-center gap-1 text-xs text-gray-400" title="🛡 Aug-10 FRESH-BREAKOUT GUARD: block a fade when the pair spiked from a base RSI below this AND its EMA13-50 gap is above PGapMin (non-crashed) — a low-base spike on a healthy-ish pair is the START of a move, not an exhaustion (the 6-40s DOA death class). Stack-screened: blocked 20·45%·−$344 combined, VANRY class kept. Counter SPIKE_FADE_FRESHBREAK. 0 = off.">Base RSI min
                                         <input type="number" step="1" id="config-spike-fade-fb-rsi-prev-min" class="w-14 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="44"></label>
@@ -19361,8 +19361,16 @@
                         adxClass = (p.adx >= adxMin && p.adx <= adxMax) ? 'text-emerald-400' : 'text-red-400';
                     }
 
+                    // Sep-29: confidence = raw setup rating; a rated setup the gates refuse is shown greyed with 🚫 + the blocking gate
+                    const _confBlocked = !!(p.confidence && p.confidence !== 'NO_TRADE' && p.entry_ready === false);
+                    const _escAttr = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+                    const _brSafe = _escAttr(p.block_reason);
+                    const _confSafe = _escAttr(p.confidence);
+                    const _confTitle = _confBlocked ? `Raw setup rating ${_confSafe} — entry BLOCKED by ${(_brSafe && !_brSafe.startsWith('Awaiting')) ? _brSafe : 'a gate'}. Not tradeable by the bot right now.`
+                        : (p.confidence === 'NO_TRADE' ? 'EMA stack present, but the setup meets no confidence level'
+                        : (!p.confidence ? 'No aligned EMA stack — nothing to rate' : 'Setup rating — passed the scan gates (sizing / slot / pattern checks still apply at the open)'));
                     const blockReasonHtml = p.block_reason
-                        ? `<span class="text-xs text-yellow-400/80">${p.block_reason}</span>`
+                        ? `<span class="text-xs text-yellow-400/80">${_brSafe}</span>`
                         : '<span class="text-gray-500">-</span>';
 
                     return `
@@ -19380,7 +19388,7 @@
                             <td class="px-4 py-3 text-right font-mono ${rsiClass}">${p.rsi !== null ? p.rsi.toFixed(1) : '-'}</td>
                             <td class="px-4 py-3 text-right font-mono ${adxClass}">${p.adx !== null ? p.adx.toFixed(1) : '-'}</td>
                             <td class="px-4 py-3 text-center">${blockReasonHtml}</td>
-                            <td class="px-4 py-3 text-center ${confidenceClass} font-medium">${p.confidence || '-'}</td>
+                            <td class="px-4 py-3 text-center ${_confBlocked ? 'text-gray-500' : confidenceClass} font-medium" title="${_confTitle}">${_confBlocked ? '🚫 ' + _confSafe : (_confSafe || '-')}</td>
                             <td class="px-4 py-3 text-center">${positionsHtml}</td>
                         </tr>
                     `;

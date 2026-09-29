@@ -4270,3 +4270,38 @@ so a research trade never crowds out a systematic fill and vice-versa; balance /
 pair field is a `<datalist>` typeahead over the scanned top-N list (any pair still accepted), the panel collapses to its title
 (click; remembered in localStorage), config input for the cap (load/save/report line). D11 complete; tests extended.
 
+## 2026-09-29 (132) - 🖐 MANUAL sleeve hardening + Top Pairs shows the gate that really refused a setup (operator-caught, three review rounds)
+OPERATOR CATCHES (live use of the manual panel): ① QNT/SOON rows showed "No EMA Stack" + STRONG_BUY/VERY_STRONG while the real
+block was the BTC ADX floor (BTC ADX 17.6 < 18); ② two manual QNT shorts in Momentum-stack mode were closed by EMA13_CROSS_EXIT at the
+first tick (−$167 paper; the 0-second one lost 0.35 % to an entry/exit price-source gap); ③ a manual fill showed an armed 🛡 L1 badge at
+peak 0.35 (dynamic_tp_target NULL — fixed in cb71f29); ④ 50× positions could carry a stop beyond liquidation.
+CONFIDENCE COLUMN RULE (documented, unchanged): "–" = an indicator missing or the four EMAs not strictly stacked · NO_TRADE = stacked
+but a pair-level requirement fails · STRONG_BUY / VERY_STRONG = every pair-level requirement passes, level = the pair's ADX band
+(LONG 15–22 / >22; SHORT 20–30 / >30). Market-wide gates run AFTER the rating.
+BUILD (display + manual path only; no entry decision changes):
+  • PairReasonStash — every reason write is tagged with the scan sequence: first decisive gate wins within a scan (recorder), the
+    ladder's explicit stamps stay unconditional, the previous scan's reason stays on display until re-stamped (the old Phase-1
+    placeholder wipe blanked it for most of each scan), and a reason counts for a verdict only when stamped in the verdict's scan.
+    Other sleeves' counters (FLIP_/OPEN_/BACKSTOP_/BULL_LONG/BULLRUN_/BR_/SPIKE_/BOUNCE_/REDEPLOY/PASS:/…_CAP_SKIP) and anything
+    recorded while open_position works for another sleeve never name the momentum reason; SPIKE_GUARD allowed; BTC ADX gate stamps.
+  • /api/pairs: entry_ready = signal LONG/SHORT and no refusal recorded for that verdict (late gates — quality score, heat block,
+    unmatched-only, pattern cell, cooldown — included); block_reason returned for those rows. UI: 🚫 <rating> greyed + tooltip with
+    the gate; values HTML-escaped.
+  • Manual entry price from the live stream when fresh (≤ 5 s), REST fallback.
+  • Momentum-stack mode refused only when the real EMA13-cross exit would fire at the first tick (pure helper
+    manual_momentum_first_tick_exit mirrors the realtime exit: master toggle ∧ per-direction toggle ∧ wrong side ∧ strict stack
+    flip; 160/160 rows agree with the engine). A stale PairData row is still judged; an unscanned pair has no EMA exits.
+  • Leverage-aware floor: widest manual stop = tighter of manual_floor_sl_pct and 80 % of the liquidation distance
+    (100/leverage − 0.5 % maintenance margin): 20× −3.0 · 30× −2.27 · 50× −1.2 · 100× −0.4. Applies to Custom SL, Floor mode and
+    the momentum stack's WIDEST stop (signal_active_sl), so a stop can never sit beyond liquidation.
+  • Door badges on manual rows read as market context (per-badge tooltips), MANUAL badge tooltip shows exit mode/SL/TP/note.
+READS ON THE GATES THE OPERATOR TRADED THROUGH (refused Aug–Sep signals priced with one simplified momentum exit; same simulator on
+the taken fills: sign agreement 82 %, corr 0.65): ATR_GAP_LONG refused 426·66%·+0.06 vs longs taken 56·61%·+0.04 → NOT worse than
+what we take (gate evidence = 16 fills from June, old exits; its revert gate was never read) · FAN_RATIO_GATE refused 1,500·54%·−0.06
+· PAIR_ADX_DIR (short) refused 1,763·51%·−0.10 · dead-tape shorts refused 1,368·59%·−0.03 → those three gates hold. Manual fills:
+QNT long (inside ATR×gap, ATR 1.76 / gap +1.44) +0.41 %; FET short (ADX falling + BTC ATR 0.079) +0.26 %.
+SIZING READ (operator: "$2,000 × 30"): no 99 % cohort exists — best lower bounds (Wilson 95 %): fades 61·90% → 80 %, flips −DI≥15
+17·100% → 82 %, all 252·85% → 80 %. $60k notional = −$420 per −0.70 stop (14 % of a $3,000 account), −$900 per fade stop (30 %).
+Positive expectancy at 85 % WR (+$200/trade) but the forward batches on the full stack ran 70 % (B13) and 42 % (B14); at 60 % the
+edge is negative. Recommendation given: step size per batch on forward results; 50× stays off systematic trades.
+

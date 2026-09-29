@@ -1248,13 +1248,18 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
         # Single source of truth — every filter that fires _record_filter_block
         # also stamps _last_pair_block_reason[pair] = tag. No UI enumeration drift.
         block_reason = None
+        import services.trading_engine as _te
+        engine = getattr(_te, 'trading_engine', None)
+        _stash = getattr(engine, '_last_pair_block_reason', None) if engine else None
         if p.signal in (None, "NOTHING", "NO_TRADE"):
-            import services.trading_engine as _te
-            engine = getattr(_te, 'trading_engine', None)
-            if engine and hasattr(engine, '_last_pair_block_reason'):
-                block_reason = engine._last_pair_block_reason.get(p.pair)
+            if _stash is not None:
+                block_reason = _stash.get(p.pair)
             if not block_reason:
                 block_reason = "Awaiting scan (no pair data yet)"
+        elif _stash is not None and hasattr(_stash, 'reason_for_verdict'):
+            # Sep-29: a gate that runs AFTER the PairData write (quality score, heat block, unmatched-only, pattern cell,
+            # cooldown, …) refused this rated setup in the same scan — the row is rated but NOT enterable.
+            block_reason = _stash.reason_for_verdict(p.pair)
 
         pairs_data.append({
             "pair": p.pair,
@@ -1269,6 +1274,9 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
             "adx": round(p.adx, 2) if p.adx else None,
             "signal": p.signal,
             "confidence": p.confidence,
+            # Sep-29: confidence is the RAW setup rating from get_signal; any later gate can still refuse the entry. True only
+            # when the scan left the signal LONG/SHORT and recorded no refusal for this verdict.
+            "entry_ready": (p.signal in ("LONG", "SHORT")) and not block_reason,
             "macro_regime": p.macro_regime,
             "volume_24h": p.volume_24h,
             "mcap_usd": _mc[0],     # 💰 Sep-28: cached market cap (None → '–')

@@ -96,6 +96,111 @@ _btc_4h_gap_at: float = 0.0
 _fade_lag_ndi_cache: Dict[str, tuple] = {}   # symbol → (read_at, −DI) — daily bars change once a day; 60-min TTL
 
 
+PAIR_REASON_PLACEHOLDER = "No EMA Stack"
+_PAIR_REASON_EXCLUDED_PREFIXES = ("FLIP_", "OPEN_", "BACKSTOP_", "BULL_LONG", "BULLRUN_", "BR_", "SPIKE_", "BOUNCE_", "REDEPLOY", "PASS:")
+_PAIR_REASON_ALLOWED = ("SPIKE_GUARD",)                 # momentum-ladder gates that happen to share an excluded prefix
+_PAIR_REASON_NOT_A_BLOCK = ("LONG_HEAT_FAILOPEN",)      # counters that do not refuse the trade
+
+
+def pair_reason_stampable(filter_name) -> bool:
+    """Sep-29: may this recorded counter name the Top Pairs 'Block Reason' of the pair in context? Only the momentum ladder's
+    own gates — never another sleeve's refusal, an open failure, a redeploy/backstop event, a cap-skip or a non-blocking counter."""
+    n = str(filter_name or "")
+    if not n or n in _PAIR_REASON_NOT_A_BLOCK:
+        return False
+    if n in _PAIR_REASON_ALLOWED:
+        return True
+    return not n.startswith(_PAIR_REASON_EXCLUDED_PREFIXES) and not n.endswith("_CAP_SKIP")
+
+
+class PairReasonStash(dict):
+    """Per-pair 'Block Reason' behind the Top Pairs table (display only). Every write is tagged with the scan sequence, so
+    ① the first decisive gate wins WITHIN a scan (recorder stamps; the ladder's explicit stamps stay unconditional),
+    ② the previous scan's reason stays on display until this scan's verdict replaces it — no placeholder window while the
+       pair waits for its Phase-3 turn (deep review), and ③ the API can tell whether a reason belongs to the verdict
+       currently stored in PairData (late gates after the PairData write included)."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.cur_seq = 0
+        self.seq_of = {}
+        self.verdict_seq = {}
+
+    def __setitem__(self, pair, reason):
+        super().__setitem__(pair, reason)
+        self.seq_of[pair] = self.cur_seq
+
+    def stamped_this_scan(self, pair) -> bool:
+        return self.seq_of.get(pair) == self.cur_seq
+
+    def first_wins(self, pair, reason) -> bool:
+        if not self.stamped_this_scan(pair) or self.get(pair) == PAIR_REASON_PLACEHOLDER:
+            self[pair] = reason
+            return True
+        return False
+
+    def mark_verdict(self, pair) -> None:
+        self.verdict_seq[pair] = self.cur_seq
+
+    def reason_for_verdict(self, pair):
+        """The gate that refused the pair's CURRENT verdict (same scan as the PairData write), else None."""
+        r = self.get(pair)
+        if r and r != PAIR_REASON_PLACEHOLDER and pair in self.verdict_seq and self.seq_of.get(pair) == self.verdict_seq.get(pair):
+            return r
+        return None
+
+
+MANUAL_LIQ_SAFETY = 0.80   # the widest manual stop sits at 80 % of the liquidation distance
+MANUAL_MAINT_MARGIN_PCT = 0.50   # conservative maintenance-margin allowance (exchange tiers ≈ 0.4–1 %): liquidation ≈ 100/lev − this
+
+
+def manual_liquidation_distance_pct(leverage) -> float:
+    """Approximate adverse price move (%) at which an isolated position is liquidated: 100 / leverage minus the maintenance
+    margin allowance. Never below 0."""
+    return max(0.0, 100.0 / float(leverage) - MANUAL_MAINT_MARGIN_PCT)
+
+
+def manual_floor_for_leverage(th, leverage) -> float:
+    """🖐 Widest stop (price-move %, negative) a MANUAL position may carry at this leverage: the TIGHTER of the configured floor
+    (manual_floor_sl_pct) and 80 % of the liquidation distance (100/leverage − maintenance margin). 20× → −3.0 (config binds;
+    liquidation ≈ −4.5 %) · 30× → −2.27 · 50× → −1.2 (liquidation ≈ −1.5 %) · 100× → −0.4. A stop beyond liquidation can never
+    fire, and paper does not simulate liquidation, so it would also overstate paper P&L. Pure; bad input → the config floor."""
+    try:
+        cfg = -abs(float(getattr(th, 'manual_floor_sl_pct', -3.0) or -3.0))
+    except (TypeError, ValueError):
+        cfg = -3.0
+    try:
+        lev = float(leverage)
+        if lev >= 1.0:
+            return round(max(cfg, -manual_liquidation_distance_pct(lev) * MANUAL_LIQ_SAFETY), 4)
+    except (TypeError, ValueError):
+        pass
+    return cfg
+
+
+def manual_momentum_first_tick_exit(th, direction, price, ema5, ema8, ema13) -> bool:
+    """🖐 Would the momentum stack's EMA13_CROSS_EXIT close a MANUAL position at its first tick? Mirrors the realtime exit
+    exactly (check_realtime_stop_loss): master toggle ∧ per-direction toggle ∧ price on the wrong side of EMA13 ∧ (strict mode:
+    the EMA5/EMA8 stack flipped against the trade; missing EMA5/8 = the exit does NOT fire). No EMA13 (unscanned/stale pair) =
+    the exit cannot fire. Pure."""
+    try:
+        if not getattr(th, 'ema13_cross_exit_enabled', False) or ema13 is None or float(ema13) <= 0 or price is None:
+            return False
+        d = str(direction).upper()
+        if not getattr(th, 'ema13_cross_exit_long_enabled' if d == "LONG" else 'ema13_cross_exit_short_enabled', True):
+            return False
+        price, ema13 = float(price), float(ema13)
+        if not ((price < ema13) if d == "LONG" else (price > ema13)):
+            return False
+        if getattr(th, 'ema13_cross_requires_stack_flip', False):
+            if ema5 is None or ema8 is None or float(ema5) <= 0 or float(ema8) <= 0:
+                return False
+            return (float(ema5) < float(ema8)) if d == "LONG" else (float(ema5) > float(ema8))
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 def _bot_open_filter():
     """🖐 Sep-29: SQL clause selecting the BOT's open positions for slot caps — MANUAL rows live in their own lane
     (manual_max_open_positions); legacy rows with a NULL entry_strategy are momentum and stay in the count."""
@@ -1992,7 +2097,7 @@ class TradingEngine:
         # Updated at every _record_filter_block call site. Read by main.py
         # /api/pairs to show Block Reason column without re-enumerating
         # 40+ filters in UI code (single source of truth).
-        self._last_pair_block_reason: Dict[str, str] = {}
+        self._last_pair_block_reason: Dict[str, str] = PairReasonStash()   # Sep-29: scan-sequence-tagged (see class)
         # Jun 3: BTC-acceleration-chase filter state (stateful evolution filter).
         # Tracks the BTC EMA20 slope at the most recent LONG that actually opened.
         self._last_long_open_ts: Optional[datetime] = None
@@ -2464,6 +2569,25 @@ class TradingEngine:
                 room_state = "SUPP"  # FULL keeps precedence — at-cap info is real either way
         except NameError:
             pass  # Regime global not yet set (cold start) — record as decisive
+        # Sep-29 (operator-caught: QNT/SOON showed "No EMA Stack" + STRONG_BUY while the BTC ADX floor was the real block):
+        # EVERY recorded block stamps the pair in context, so the Top Pairs "Block Reason" is the gate that actually
+        # refused the setup. _journal_pair is set per pair in both scan phases and cleared on the spike path; display only.
+        # FIRST DECISIVE GATE WINS (caveman review): stamp only over the per-scan placeholder, and never with a counter that
+        # belongs to another sleeve or to the infrastructure (a flip/bull-run/spike/bounce refusal or an OPEN_FAILED recorded
+        # later in the same pair iteration must not rename the gate that refused the rated setup). Explicit stamps at the veto
+        # sites keep working as before.
+        # Sleeve scope: a counter recorded while open_position works for ANOTHER sleeve (flip / bull-run / bounce / spike)
+        # never names the momentum reason (_open_ctx_momentum is reset per pair iteration).
+        try:
+            _jp = getattr(self, '_journal_pair', None)
+            _st = getattr(self, '_last_pair_block_reason', None)
+            if _jp and _st is not None and pair_reason_stampable(filter_name) and getattr(self, '_open_ctx_momentum', True):
+                if isinstance(_st, PairReasonStash):
+                    _st.first_wins(_jp, filter_name)
+                elif _st.get(_jp, PAIR_REASON_PLACEHOLDER) == PAIR_REASON_PLACEHOLDER:
+                    _st[_jp] = filter_name
+        except Exception:
+            pass
         key = (filter_name, direction or "ANY", room_state)
         self._filter_block_counts[key] = self._filter_block_counts.get(key, 0) + 1
         self._last_filter_block_ts = time.time()  # Aug-12: lets the open-failed logger tell 'counted filter block' from 'real failure'
@@ -6689,6 +6813,11 @@ class TradingEngine:
         adx_surge_open: bool = False,
     ) -> Optional[Order]:
         """Open a new position"""
+        # Sep-29: Top Pairs 'Block Reason' is the MOMENTUM ladder's — counters recorded while this call works for another
+        # sleeve must not name it (read by _record_filter_block; reset to True at every pair iteration of the scan).
+        # (bearrun_short is NOT in the list: that fill comes from the momentum ladder's own open, so its refusals are the pair's.)
+        self._open_ctx_momentum = not (flip_source or bull_long or bullrun_long or bounce_long
+                                       or spike_chase_probe or spike_fade or spike_bounce)
         if not self.is_running:
             logger.warning(f"[SKIP] {pair}: Bot not running")
             return None
@@ -8480,7 +8609,8 @@ class TradingEngine:
         size/leverage — BYPASSES every entry gate and every cell multiplier — and labels it entry_strategy="MANUAL" so it never
         contaminates a systematic sleeve's stats (ledger / pool builder / readiness all exclude it; it gets its own row).
         Exit modes: FIXED = custom SL (and optional TP) only, the momentum stack is skipped · MOMENTUM = the momentum exit stack
-        (label stays MANUAL) · FLOOR = no TP, hard SL at manual_floor_sl_pct (liquidation protection — a stop-less position is
+        (label stays MANUAL; refused only when the live EMA13-cross exit would close it at the first tick — see
+        manual_momentum_first_tick_exit; an unscanned pair has no EMA exits, so its momentum stack = stop + trail) · FLOOR = no TP, hard SL at manual_floor_sl_pct (liquidation protection — a stop-less position is
         never allowed). Own slot lane: counts only against manual_max_open_positions, never against the bot's max_open_positions
         (and the bot's count excludes MANUAL rows). SL/TP are price-move % NET of the round-trip fees (leverage-invariant — the same pnl convention every
         exit uses, so "SL 1.5" fires at ≈ −1.4 % raw price). MAX_HOLD
@@ -8507,14 +8637,16 @@ class TradingEngine:
         if not self.is_paper_mode:
             raise ValueError("manual entry is paper-only for now (live needs the broker backstop wired — see docstring)")
         th = config.trading_config.thresholds
-        floor = -abs(float(getattr(th, 'manual_floor_sl_pct', -3.0) or -3.0))
+        floor = manual_floor_for_leverage(th, leverage)   # leverage-aware: never wider than 80 % of the liquidation distance
         sl = tp = None
         if exit_mode == "FIXED":
             if sl_pct in (None, ""):
                 raise ValueError("FIXED mode needs a stop loss (% of price)")
             sl = -abs(float(sl_pct))
             if sl < floor:
-                raise ValueError(f"stop loss {sl:.2f}% is below the liquidation floor {floor:.2f}% (manual_floor_sl_pct)")
+                raise ValueError(f"stop loss {sl:.2f}% is wider than the widest stop allowed at {leverage:g}×: {floor:.2f}% "
+                                 f"(config floor {-abs(float(getattr(th, 'manual_floor_sl_pct', -3.0) or -3.0)):.2f}%; "
+                                 f"liquidation ≈ −{manual_liquidation_distance_pct(leverage):.2f}%, the stop must stay within 80% of it)")
             if tp_pct not in (None, ""):
                 tp = abs(float(tp_pct))
                 if tp <= 0:
@@ -8536,9 +8668,43 @@ class TradingEngine:
         if investment > available:
             raise ValueError(f"size ${investment:,.0f} exceeds available balance ${available:,.0f}")
         symbol = f"{pair[:-4]}/USDT:USDT"
-        price = await binance_service.get_current_price(symbol)
+        # PRICE SOURCE (Sep-29, QNT 0-second trade lost 0.35 % on the source gap): exits price off the live websocket tick, so
+        # the entry must too — the REST ticker can lag a few seconds on a fast pair. Stream price when fresh (≤ 5 s), else REST
+        # (a pair with no trade in 5 s falls back to REST: the source gap can remain on illiquid pairs).
+        price = None
+        try:
+            _trk = websocket_tracker.get_tracker(pair)
+            _sil = websocket_tracker.pair_silence_seconds(pair)
+            if _trk is not None and _trk.last_price and _trk.last_price > 0 and _sil is not None and _sil <= 5.0:
+                price = float(_trk.last_price)
+        except Exception:
+            price = None
+        if price is None:
+            price = await binance_service.get_current_price(symbol)
         if not price or price <= 0:
             raise ValueError(f"no price for {pair} — is it a listed USDT-M perpetual?")
+        if exit_mode == "MOMENTUM":
+            _mconf = config.trading_config.confidence_levels.get("STRONG_BUY")
+            # the stack's WIDEST stop: with the signal active the realtime path uses signal_active_sl (deep review)
+            _mstop = min(float(getattr(_mconf, 'stop_loss', -0.7) or -0.7), float(getattr(_mconf, 'signal_active_sl', -0.7) or -0.7))
+            if _mstop < floor:
+                raise ValueError(f"at {leverage:g}× the momentum stack's stop ({_mstop:.2f}%) is wider than the widest stop allowed "
+                                 f"({floor:.2f}%; liquidation ≈ −{manual_liquidation_distance_pct(leverage):.2f}%) — lower the leverage "
+                                 f"or use Custom SL/TP with a tighter stop")
+            # The momentum stack closes a position that sits on the WRONG side of the pair's EMA13 (EMA13_CROSS_EXIT) — a
+            # counter-trend manual entry would be closed at the first tick (QNT shorts, Sep-29). Refuse it up front.
+            _pd = (await db.execute(select(PairData.ema5, PairData.ema8, PairData.ema13, PairData.updated_at).where(PairData.pair == pair))).first()
+            _upd = getattr(_pd, 'updated_at', None) if _pd is not None else None
+            if _upd is not None and getattr(_upd, 'tzinfo', None) is not None:
+                _upd = _upd.astimezone(timezone.utc).replace(tzinfo=None)
+            _age = (datetime.utcnow() - _upd).total_seconds() if _upd is not None else None
+            # A row that exists is judged even when stale (deep review: a 20-min-old row let a counter-trend short in, and the
+            # first refreshed tick closed it). No row at all = the pair is not scanned: no EMA exits, nothing to refuse.
+            if _pd is not None and manual_momentum_first_tick_exit(th, direction, price, _pd.ema5, _pd.ema8, _pd.ema13):
+                _stale = "" if (_age is not None and _age <= 600) else f" (EMA data is {int((_age or 0) // 60)} min old — it applies as soon as the pair is rescanned)"
+                raise ValueError(f"Momentum stack would close this {direction} at the first tick: price {price:g} is "
+                                 f"{'below' if direction == 'LONG' else 'above'} EMA13 {float(_pd.ema13):g} with the EMA5/EMA8 stack against it "
+                                 f"(EMA13-cross exit){_stale}. Use Custom SL/TP for a counter-trend entry.")
         tc = config.trading_config
         taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
         notional_value = investment * leverage
@@ -11454,6 +11620,8 @@ class TradingEngine:
             _scan_start_open_count = 0
         _scan_max_positions = config.trading_config.investment.max_open_positions or 5
         _scan_had_room_snapshot = _scan_start_open_count < _scan_max_positions
+        if isinstance(self._last_pair_block_reason, PairReasonStash):
+            self._last_pair_block_reason.cur_seq += 1   # Sep-29: new scan → reasons stamped from here on belong to it
 
         # ── BTC macro veto pre-compute (May 8) ───────────────────────────────
         # Pair-level filter block counts were inflated because the chain runs
@@ -11608,9 +11776,14 @@ class TradingEngine:
             # ADX>40 de-risk (lev 0.05 in _flip_filters) still apply downstream.
             _rsiob_mode = (getattr(config.trading_config.thresholds, 'flip_pair_rsi_ob_btc_adx_high_mode', 'off') or 'off').lower()
             _seed_through = (direction == "LONG" and _btc_macro_blocks_long == "BTC_ADX_GATE_HIGH" and _rsiob_mode != 'off')
+            _p0 = _current_pair_holder.get('pair')
             if direction == "LONG" and _btc_macro_blocks_long is not None and not _seed_through:
+                if _p0:
+                    self._last_pair_block_reason[_p0] = _btc_macro_blocks_long   # the scan-wide veto IS this pair's reason (display only)
                 return
             if direction == "SHORT" and _btc_macro_blocks_short is not None:
+                if _p0:
+                    self._last_pair_block_reason[_p0] = _btc_macro_blocks_short
                 return
             _p = _current_pair_holder.get('pair')
             # When seeding THROUGH a macro veto, suppress the redundant pair-block count + decisive-reason
@@ -11681,11 +11854,9 @@ class TradingEngine:
                 # _last_pair_block_reason for the UI's Block Reason column.
                 _current_pair_holder['pair'] = pair
                 self._journal_pair = pair; self._journal_ctx = None  # 📓 Phase-1 (signal generation) blocks: pair known, snapshot not yet
-                # Pre-stamp a default "no setup" reason. Most top-50 pairs at any
-                # moment have no EMA stack alignment → get_signal returns NOTHING
-                # without calling _record(). Default placeholder is overwritten
-                # the moment any filter actually fires.
-                self._last_pair_block_reason[pair] = "No EMA Stack"
+                # Sep-29: NO placeholder wipe here (it blanked the real reason for most of every scan). The placeholder is
+                # written after get_signal, only when nothing was stamped for this pair in this scan.
+                self._open_ctx_momentum = True
 
                 ohlcv = await binance_service.get_ohlcv(symbol, '5m', 100)
                 if not ohlcv:
@@ -11755,6 +11926,10 @@ class TradingEngine:
                     multi_block_recorder=_signal_multi_recorder,
                 )
 
+                if signal not in ("LONG", "SHORT"):
+                    _prs = self._last_pair_block_reason
+                    if not (isinstance(_prs, PairReasonStash) and _prs.stamped_this_scan(pair)):
+                        _prs[pair] = PAIR_REASON_PLACEHOLDER   # get_signal rated nothing and no gate recorded: genuinely no setup
                 if signal in ["LONG", "SHORT"]:
                     logger.info(f"[SIGNAL-FOUND] {pair}: {signal} {confidence} - RSI={indicators.get('rsi'):.1f}, ADX={indicators.get('adx')}")
 
@@ -11834,6 +12009,7 @@ class TradingEngine:
             _cross_ob_open_hit = False  # Sep-18 narrowed overbought band: per-pair flag, reset FIRST (no leak between pairs)
             _adx_surge_open_hit = False  # ⚡ Sep-28 BTC ADX-surge waiver: per-pair flag, reset FIRST (no leak between pairs)
             self._journal_pair = pair  # 📓 decision journal context for every gate below (reset per pair)
+            self._open_ctx_momentum = True   # Sep-29: reason-stamp scope back to the momentum ladder for this pair
             self._journal_ctx = None
             symbol = _cr['symbol']  # Sep-7 full-review C1: was leaked from Phase 1's last iteration — entry_funding_rate stamped the wrong pair
             ohlcv = _cr.get('ohlcv')  # Sep-7 full-review C1: same leak — spike chase/fade/bounce candle+volume legs judged the wrong pair
@@ -12002,6 +12178,7 @@ class TradingEngine:
                     _bound_label = f"<{_btc_adx_lo}" if _btc_adx_too_low else f">{_btc_adx_hi}"
                     logger.info(f"[{_gate_subtype}] {pair}: {signal} blocked — BTC ADX {btc_adx:.1f} {_bound_label} (range [{_btc_adx_lo}-{_btc_adx_hi}])")
                     self._record_filter_block(_gate_subtype, signal, had_room=_had_room)
+                    self._last_pair_block_reason[pair] = _gate_subtype   # Sep-29: was the only ladder gate without an explicit stamp
                     # Jun 17 passthrough-long (un-block hunt): low-ADX macro gate is the prime
                     # over-blocker in a real bull trend. Seed a SAME-direction virtual LONG so the
                     # Source×Regime cross-tab shows whether these blocked longs win in bull.
@@ -13111,6 +13288,8 @@ class TradingEngine:
                     signal = "NO_TRADE"
 
             await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h, _pair_volume_ratio)
+            if isinstance(self._last_pair_block_reason, PairReasonStash):
+                self._last_pair_block_reason.mark_verdict(pair)   # reasons stamped in this scan belong to this verdict
             if signal in ["LONG", "SHORT"]:
                 logger.info(f"[DEBUG_AFTER_PAIRDATA] {pair} {signal} {confidence}: signal still valid after PairData write")
 

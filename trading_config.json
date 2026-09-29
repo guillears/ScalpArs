@@ -506,7 +506,7 @@
     "btc_rsi_band_atr_block_short": "",
     "pair_atr_min_long": 0.25,
     "pair_atr_max_long": 2.5,
-    "atr_gap_block_long_enabled": true,
+    "atr_gap_block_long_enabled": false,
     "atr_gap_block_atr_min_long": 1.0,
     "atr_gap_block_gap_min_long": 0.5,
     "pair_atr_min_short": 0.25,

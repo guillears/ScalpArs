@@ -4305,3 +4305,26 @@ SIZING READ (operator: "$2,000 × 30"): no 99 % cohort exists — best lower bou
 Positive expectancy at 85 % WR (+$200/trade) but the forward batches on the full stack ran 70 % (B13) and 42 % (B14); at 60 % the
 edge is negative. Recommendation given: step size per batch on forward results; 50× stays off systematic trades.
 
+## 2026-09-29 (133) - 🔓 ATR×GAP LONG gate RE-OPENED at normal sizing (operator-directed) + watch item for the next batch review
+Operator, after a manual QNT long inside the zone (+0.41 %): "I do not consider I was lucky — I think we are losing valuable
+trades… build the re-open, normal sizing, keep it as a watchlist item". Config-only: `atr_gap_block_long_enabled` true → false
+(thresholds 1.0 / 0.5 kept as the ZONE DEFINITION; engine, UI toggle, counter unchanged).
+EVIDENCE FOR: the gate shipped Jun-13 as a declared override on 16 fills (31 % WR, −$611) priced under the OLD exit stack; its own
+revert gate (would-be-blocked ≥ 50 % WR on N ≥ 8) was never read — blocked longs leave no trades and the phantom seed was removed
+in June. Refused signals (replay journal seed 1, months 08+09 incl. the chunk's 3 warm-up days of late July; 426 pair-hours, ~7/day) priced
+with one simplified momentum exit: 66 % · +0.06 vs the longs the bot took under the same simulator 61 % · +0.04 (live kept, N 64);
+by month Jul −0.10 (n16) · Aug +0.11 (n261) · Sep −0.02 (n149) — the support is one month, the latest is flat-negative; 57 %
+positive days. Calibration on live fills: sign agreement 81 %, corr 0.64, level ±0.1 → a RELATIVE read only. Artifact:
+reports/GATE_REFUSED_SIGNALS_2026-09-29.md (+ _signals.csv), scripts/gate_refused_signals_read.py. EVIDENCE AGAINST: the pre-ship pool (reports/dedupe_pool_FULL.csv, Apr 28→Jun 13, ALL momentum longs with both stamps, old exits)
+zone = 32 fills·41%·−0.30, 38 % full stops (the ship's N=16 was the UNMATCHED subset of it); within the zone nothing separates
+winners from losers beyond chance (28 observations = the 32 fills with same-pair fills ≤ 30 min apart collapsed; best AUC 0.80 vs
+chance 0.74 median / 0.83 95th;
+tendency: winners entered while the push was still accelerating — price stretch above EMA5 0.75 vs 0.37). Edge-of-gate precedent:
+龙虾 Sep-15 (−$359 at 2×; stamped entry_atr_pct 0.94, gap 1.24 — just under the ATR bar). QUANT POSITION ON RECORD: recommended a reduced-size probe; operator chose normal sizing.
+SIZE NOTE: every zone fill carries the ATR-widened stop (min(SL, −1.5×ATR) capped at −1.2 → exactly −1.2 for ATR ≥ 1.0). On the
+$2,900 book: base $706.9 × 2 (UNMATCHED cell) × 20 = $28,275 notional → one stop ≈ −$340 (11.7 %); 1× (de-mux) ≈ −$170. Same class as
+龙虾 Sep-15 (−$359) and 0G Sep-29 (ATR 1.09, −1.22 %, −$141 at 1×). Live zone = ATR in [1.0, 2.5): PAIR_ATR_MAX stays on.
+🔒 TRIPWIRE — evaluated after EVERY closed zone fill among the first 5: as soon as the closed zone fills show ≥ 4 losers (pnl ≤ 0), or their summed live-sized pnl $ is ≤ −$400, the gate goes back ON (one 2× stop ≈ −$340, so the $ leg needs a second loss). 🔒 VERDICT once N ≥ 10 closed zone fills opened on ≥ 6 distinct UTC dates: stays open only if ≥ 61% winners (pnl > 0; at N=10 that is ≥ 7) AND mean pnl_percentage > 0; otherwise back ON. Columns: entry_strategy, direction, status, entry_atr_pct, entry_pair_ema20_ema50_gap_pct, pnl, pnl_percentage, opened_at. The tripwire is a review rule (no engine enforcement) — read it on every export.
+Zone fills = MOMENTUM LONG with entry_atr_pct ≥ 1.0 ∧ entry_pair_ema20_ema50_gap_pct ≥ 0.5 (order stamps; manual
+fills are tallied on a separate line, never pooled). Thresholds frozen. Not re-tuned on the data that reads it.
+

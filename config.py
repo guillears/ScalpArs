@@ -1658,6 +1658,15 @@ class SignalThresholds(BaseModel):
     # Orthogonal to keep-only-unmatched (lives INSIDE the unmatched cohort; removing
     # the quadrant rehabilitates NO banned C/W pattern). 0 atr_min OR disabled = off.
     # REVERT GATE: drop if would-be-blocked longs >=50% WR on N>=8 fresh.
+    # 🔓 Sep-29 RE-OPENED (operator-directed, normal sizing; DECISION_LOG 133): JSON → false. The gate's only evidence was the
+    # 16 June fills under the old exit stack and its revert gate had never been read (blocked longs leave no trades). Refused
+    # Aug–Sep signals priced with one simplified momentum exit: 426 · 66% · +0.06 vs the longs we took 56 · 61% · +0.04 (same
+    # simulator; sign agreement with live 82%) — not worse than what we take. Zone fills are identified on the order stamps:
+    # MOMENTUM LONG with entry_atr_pct >= 1.0 AND entry_pair_ema20_ema50_gap_pct >= 0.5 (thresholds below stay as the zone
+    # definition; PAIR_ATR_MAX 2.5 stays on). 🔒 TRIPWIRE, after every closed zone fill among the first 5: >= 4 losers OR summed
+    # live-sized pnl <= -$400 → gate back ON. 🔒 VERDICT at N >= 10 closed zone fills opened on >= 6 distinct UTC dates: stays
+    # open only if >= 61% winners AND mean pnl_percentage > 0; else back ON. Full wording: CLAUDE_CURRENT_STATE.md / DECISION_LOG 133.
+    # Size note (on record): zone fills carry the ATR-widened −1.2 stop; ≈ −$340 per stop at a 2× cell on the $2,900 book.
     atr_gap_block_long_enabled: bool = False
     atr_gap_block_atr_min_long: float = 1.0
     atr_gap_block_gap_min_long: float = 0.5

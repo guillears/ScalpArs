@@ -2414,6 +2414,8 @@ class InvestmentConfig(BaseModel):
     #    ceiling) to deploy the freed capital — gated by ② + tradeable margin.
     redeploy_leftover_enabled: bool = False
     max_open_positions_hard: int = 10  # absolute ceiling when redeploying
+    # 🖐 Sep-29 MANUAL sleeve: its own slot lane — manual positions never consume a bot slot and are capped here (balance still binds)
+    manual_max_open_positions: int = 8
     # ④ Balance→leverage schedule (Jun 26): a balance-aware leverage CEILING — de-lever as the
     #    account grows so a fat-tail/correlated event can't end the (now larger) account. Format:
     #    "bal0:lev0, bal1:lev1, ..." ascending balance tiers; the cap = highest tier ≤ current equity.

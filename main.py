@@ -925,7 +925,9 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "bnb_balance": round(bnb_usd, 2),
             "bnb_balance_is_usd": True,
             "usdt_in_orders": used_margin,
-            "open_orders_count": len(open_orders),
+            "open_orders_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']),   # bot lane (🖐 Sep-29)
+            "manual_open_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') == 'MANUAL']),
+            "manual_max_open_positions": getattr(config.trading_config.investment, 'manual_max_open_positions', 8),
             "total_trades_count": _total_trades,
             "max_open_positions": config.trading_config.investment.max_open_positions,
             "total_portfolio": round(total_portfolio, 2),
@@ -956,7 +958,9 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "bnb_balance_usd": round(bnb_usd, 2),
             "bnb_balance_is_usd": False,
             "usdt_in_orders": balance['usdt_used'],
-            "open_orders_count": _live_open_count,
+            "open_orders_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']),   # bot lane (🖐 Sep-29, parity with paper)
+            "manual_open_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') == 'MANUAL']),
+            "manual_max_open_positions": getattr(config.trading_config.investment, 'manual_max_open_positions', 8),
             "total_trades_count": (await db.execute(
                 select(func.count(Order.id)).where(Order.is_paper == False))).scalar() or 0,
             "max_open_positions": config.trading_config.investment.max_open_positions,

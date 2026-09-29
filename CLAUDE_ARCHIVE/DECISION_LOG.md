@@ -4262,3 +4262,11 @@ READS CLOSED IN THE SAME SESSION (no code):
   • Raw "all filters off per sleeve" mode: sized (EMA-stack long signal reaches a quality gate on ~560 pair-hours/day in Aug) and
     designed (structural gates only, 12–15 slots, offline raw-year run first); operator declined ("we must stop losing"). Not built.
 
+## 2026-09-29 (131) - 🖐 MANUAL sleeve follow-up: own slot lane (cap 8), pair typeahead, collapsible panel
+Operator: manual positions must not be limited by the bot's order-quantity cap. Shipped as a SEPARATE LANE, not an exemption:
+`investment.manual_max_open_positions` (default 8; 0 = manual entry off) caps MANUAL rows only; `open_position`'s slot count now
+excludes MANUAL rows (`or_(entry_strategy IS NULL, entry_strategy != 'MANUAL')` — legacy NULL rows still count as bot positions),
+so a research trade never crowds out a systematic fill and vice-versa; balance / margin accounting still includes both. UI: the
+pair field is a `<datalist>` typeahead over the scanned top-N list (any pair still accepted), the panel collapses to its title
+(click; remembered in localStorage), config input for the cap (load/save/report line). D11 complete; tests extended.
+

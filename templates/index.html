@@ -298,8 +298,9 @@
             <!-- 🖐 Sep-29 MANUAL sleeve: operator-opened position (bypasses every entry gate; own label MANUAL; own exit mode) -->
             <div class="glass rounded-xl p-4 mb-4" id="manual-entry-panel">
                 <div class="flex flex-wrap items-end gap-3 text-xs">
-                    <span class="text-sm font-semibold text-amber-300 mr-2" title="Opens a position NOW at market, bypassing every entry gate and cell multiplier. Labelled MANUAL — never counted in any systematic sleeve. SL/TP are % of price move NET of fees (leverage-invariant, the same pnl every exit uses): 1.5 ≈ −1.4% raw price ≈ −30% of margin at 20×. MAX_HOLD still applies as the universal safety net. Paper mode only.">🖐 Manual entry</span>
-                    <label class="flex flex-col text-gray-400">Pair<input id="manual-pair" type="text" placeholder="DOGEUSDT" class="w-28 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <button type="button" id="manual-entry-toggle" onclick="toggleManualPanel()" class="text-sm font-semibold text-amber-300 mr-2 hover:text-amber-200 select-none" title="Opens a position NOW at market, bypassing every entry gate and cell multiplier. Labelled MANUAL — never counted in any systematic sleeve. SL/TP are % of price move NET of fees (leverage-invariant, the same pnl every exit uses): 1.5 ≈ −1.4% raw price ≈ −30% of margin at 20×. MAX_HOLD still applies as the universal safety net. Paper mode only. Click to collapse / expand.">🖐 Manual entry <span id="manual-entry-chevron" class="text-gray-500">▾</span></button>
+                    <div id="manual-entry-body" class="contents">
+                    <label class="flex flex-col text-gray-400">Pair<input id="manual-pair" type="text" list="manual-pair-list" placeholder="DOGEUSDT" autocomplete="off" class="w-32 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><datalist id="manual-pair-list"></datalist></label>
                     <label class="flex flex-col text-gray-400">Side<select id="manual-direction" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
                     <label class="flex flex-col text-gray-400">Size $<input id="manual-investment" type="number" step="10" min="1" value="500" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">Lev<input id="manual-leverage" type="number" step="1" min="1" max="125" value="20" class="w-14 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
@@ -308,6 +309,7 @@
                     <label class="flex flex-col text-gray-400">TP %<input id="manual-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400 flex-1 min-w-[12rem]">Note (why)<input id="manual-note" type="text" maxlength="200" placeholder="hypothesis for this trade" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <button id="manual-open-btn" onclick="openManualPosition()" class="px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-400/60 text-amber-200 hover:bg-amber-500/30 transition font-semibold">Open position</button>
+                    </div>
                 </div>
             </div>
             <div class="glass rounded-xl overflow-hidden">
@@ -5036,6 +5038,11 @@
                             <p class="text-xs text-gray-500 mt-1">③ Position-count ceiling used only when Redeploy Leftover is ON.</p>
                         </div>
                         <div>
+                            <label class="block text-sm text-gray-400 mb-2">🖐 Manual Max Open Positions</label>
+                            <input type="number" id="config-manual-max-open-positions" min="0" max="20" step="1" class="w-full bg-white/5 border border-amber-500/40 rounded-lg px-4 py-2 text-amber-200 focus:outline-none focus:border-amber-400" value="8">
+                            <p class="text-xs text-gray-500 mt-1">Own lane for dashboard-opened positions: they never consume a bot slot and are capped here (balance still binds). 0 = manual entry off.</p>
+                        </div>
+                        <div>
                             <label class="block text-sm text-gray-400 mb-2">Redeploy Leftover</label>
                             <div class="flex items-center gap-4 py-2">
                                 <label class="flex items-center cursor-pointer">
@@ -9393,8 +9400,9 @@
                 document.getElementById('usdt-orders').textContent = formatUSD(data.usdt_in_orders);
                 const ordCountEl = document.getElementById('usdt-orders-count');
                 if (ordCountEl && data.open_orders_count != null) {
-                    ordCountEl.textContent = `Open Positions: ${data.open_orders_count}`;
+                    ordCountEl.textContent = `Open Positions: ${data.open_orders_count}` + (data.manual_open_count ? ` (+${data.manual_open_count} manual)` : '');
                 }
+                { const _mp = document.getElementById('manual-entry-panel'); if (_mp && data.manual_max_open_positions != null) _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0); }   // 🖐 cap 0 = manual entry off
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
                 window._lastTotalPortfolio = data.total_portfolio;  // Aug-14: calendar footer + exports read this (Portfolio-now line)
                 // Live-update the calendar footer span (fixes the render-order race: the
@@ -11256,7 +11264,7 @@
             lines.push(`  Min ADX Delta L: ${th.min_adx_delta_long || 0}  |  S: ${th.min_adx_delta_short || 0}  (May 10: cross-sample validated; ADXΔ <0.10 LONG = ~17% WR vs ≥0.10 = ~62% WR)`);
             lines.push(`  Entry Quality Score Filter: ${th.entry_quality_score_filter_enabled ? 'ON' : 'OFF'}  |  Block when score ≤ ${th.entry_quality_score_block_max ?? 1}  (May 15 PM opt-in. Score ≤ 1 cross-sample = N=95, 34.7% WR, −$684)`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 2 candles ago)`);
-            lines.push(`  🖐 Manual sleeve (Sep 29): dashboard-opened positions, label MANUAL (excluded from every systematic read); floor SL ${th.manual_floor_sl_pct ?? -3}% (FLOOR mode stop and the widest FIXED stop accepted)`);
+            lines.push(`  🖐 Manual sleeve (Sep 29): dashboard-opened positions, label MANUAL (excluded from every systematic read); floor SL ${th.manual_floor_sl_pct ?? -3}% (FLOOR mode stop and the widest FIXED stop accepted); own slot lane, cap ${cfg.investment?.manual_max_open_positions ?? 8} (bot slots exclude MANUAL)`);
             lines.push(`  🪤 Fade laggard gate (Sep 29): SPIKE_FADE blocked when pair daily −DI(14) > ${th.spike_fade_lag_ndi_min ?? 0} AND BTC 4h EMA50/EMA200 gap > ${th.spike_fade_lag_btc_gap_min ?? 0}% (0 = off; counter SPIKE_FADE_LAGGARD; stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct; revert: first 10 blocked re-simmed WR ≥66% or Σ>0 → 0)`);
             lines.push(`  🧭 Low-ADX RSI-momentum gate (Sep 29): LONG blocked when RSI < RSI 2 candles ago AND pair ADX < ${th.long_rsi_momentum_adx_max ?? 0} (0 = off; counter PAIR_RSI_MOMENTUM_LOADX; revert: first 8 blocked re-simmed WR ≥60% or net>0 → 0)`);
             lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  |  Mode: ${th.ema_gap_expanding_mode || 'both'}  (both = beat prev1 AND prev2 [strict]; prev2_only = beat prev2 only [relaxed, tags MARGINAL])`);
@@ -19268,6 +19276,10 @@
                     return;
                 }
                 
+                { // 🖐 manual-entry pair typeahead: the scanned list (top-N by volume), typing still accepts any pair
+                    const _dl = document.getElementById('manual-pair-list');
+                    if (_dl) { const _opts = data.map(p => `<option value="${p.pair}"></option>`).join(''); if (_dl.innerHTML !== _opts) _dl.innerHTML = _opts; }
+                }
                 let _rowsHtml = data.map(p => {
                     const signalClass = p.signal === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 
                                        p.signal === 'SHORT' ? 'bg-red-500/20 text-red-400' : 
@@ -20026,6 +20038,15 @@
         }
 
         // 🖐 Sep-29 MANUAL sleeve
+        function toggleManualPanel(force) {   // click the title to fold the form to one line; remembered per browser
+            const body = document.getElementById('manual-entry-body'), chev = document.getElementById('manual-entry-chevron');
+            if (!body) return;
+            const collapse = (typeof force === 'boolean') ? force : !body.classList.contains('hidden');
+            body.classList.toggle('hidden', collapse); body.classList.toggle('contents', !collapse);
+            if (chev) chev.textContent = collapse ? '▸' : '▾';
+            try { localStorage.setItem('manualPanelCollapsed', collapse ? '1' : '0'); } catch (e) {}
+        }
+        try { if (localStorage.getItem('manualPanelCollapsed') === '1') toggleManualPanel(true); } catch (e) {}   // panel markup is already parsed when this script runs
         function manualExitModeChanged() {
             const m = document.getElementById('manual-exit-mode')?.value || 'FIXED';
             const sl = document.getElementById('manual-sl'), tp = document.getElementById('manual-tp');
@@ -20726,6 +20747,7 @@
                 _liqSet('config-max-notional-hard-ceiling', config.investment.max_notional_hard_ceiling, 0);
                 _liqSet('config-max-gross-leverage', config.investment.max_gross_leverage, 0);
                 _liqSet('config-max-open-positions-hard', config.investment.max_open_positions_hard, 10);
+                _liqSet('config-manual-max-open-positions', config.investment.manual_max_open_positions, 8);   // 🖐 Sep-29
                 const _rde = document.getElementById('config-redeploy-leftover-enabled');
                 if (_rde) _rde.checked = !!config.investment.redeploy_leftover_enabled;
                 // ④ Balance→leverage schedule (per-line rows) + live readout (active tier @ balance)
@@ -22405,6 +22427,7 @@
                     max_notional_hard_ceiling: safeFloat(document.getElementById('config-max-notional-hard-ceiling')?.value) || 0,
                     max_gross_leverage: safeFloat(document.getElementById('config-max-gross-leverage')?.value) || 0,
                     max_open_positions_hard: parseInt(document.getElementById('config-max-open-positions-hard')?.value) || 10,
+                    manual_max_open_positions: (() => { const _v = parseInt(document.getElementById('config-manual-max-open-positions')?.value); return Number.isFinite(_v) ? Math.max(0, _v) : 8; })(),   // 🖐 Sep-29 (0 = off)
                     redeploy_leftover_enabled: !!document.getElementById('config-redeploy-leftover-enabled')?.checked,
                     leverage_balance_schedule: (function(){ const t = []; const bs = document.querySelectorAll('.lev-sched-bal'), ls = document.querySelectorAll('.lev-sched-lev'); for (let i = 0; i < bs.length; i++) { const b = (bs[i].value || '').trim(), l = (ls[i].value || '').trim(); if (b !== '' && l !== '') { const bn = parseFloat(b), ln = parseFloat(l); if (!isNaN(bn) && !isNaN(ln)) t.push([bn, ln]); } } t.sort((a, b) => a[0] - b[0]); return t.map(x => x[0] + ':' + x[1]).join(', '); })()
                 },

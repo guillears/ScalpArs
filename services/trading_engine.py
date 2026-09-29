@@ -7,7 +7,7 @@ import logging
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
-from sqlalchemy import select, update, and_, desc, func
+from sqlalchemy import select, update, and_, or_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod, BearMonitorPeriod
@@ -94,6 +94,12 @@ _zone_stamps_at: float = 0.0
 _current_btc_4h_ema50_200_gap_pct: Optional[float] = None
 _btc_4h_gap_at: float = 0.0
 _fade_lag_ndi_cache: Dict[str, tuple] = {}   # symbol → (read_at, −DI) — daily bars change once a day; 60-min TTL
+
+
+def _bot_open_filter():
+    """🖐 Sep-29: SQL clause selecting the BOT's open positions for slot caps — MANUAL rows live in their own lane
+    (manual_max_open_positions); legacy rows with a NULL entry_strategy are momentum and stay in the count."""
+    return or_(Order.entry_strategy.is_(None), Order.entry_strategy != "MANUAL")
 
 
 async def _fade_pair_1d_ndi(symbol: str):
@@ -6710,10 +6716,11 @@ class TradingEngine:
             logger.warning(f"[SKIP] {pair}: {confidence} confidence not enabled")
             return None
         
-        # Check max open positions limit
+        # Check max open positions limit — 🖐 Sep-29: MANUAL positions live in their own lane (manual_max_open_positions) and
+        # never consume a systematic slot (NULL entry_strategy = legacy momentum rows, kept in the count).
         total_open = await db.execute(
             select(func.count(Order.id)).where(
-                and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)
+                and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_open_filter())
             )
         )
         # Jun 2: when redeploy_leftover is on, the count limit rises to the hard
@@ -8474,8 +8481,9 @@ class TradingEngine:
         contaminates a systematic sleeve's stats (ledger / pool builder / readiness all exclude it; it gets its own row).
         Exit modes: FIXED = custom SL (and optional TP) only, the momentum stack is skipped · MOMENTUM = the momentum exit stack
         (label stays MANUAL) · FLOOR = no TP, hard SL at manual_floor_sl_pct (liquidation protection — a stop-less position is
-        never allowed). SL/TP are price-move % NET of the round-trip fees (leverage-invariant — the same pnl convention every
-        exit uses, so "SL 1.5" fires at ≈ −1.4 % raw price). Counts against max_open_positions like any position. MAX_HOLD
+        never allowed). Own slot lane: counts only against manual_max_open_positions, never against the bot's max_open_positions
+        (and the bot's count excludes MANUAL rows). SL/TP are price-move % NET of the round-trip fees (leverage-invariant — the same pnl convention every
+        exit uses, so "SL 1.5" fires at ≈ −1.4 % raw price). MAX_HOLD
         (the universal safety net, as for BULLRUN) still applies to every mode. PAPER-ONLY until the broker backstop / partial-
         fill truth of open_position is factored into a shared helper (caveman review) — live mode is refused, never silently
         stop-less. Raises ValueError with a readable message on bad input."""
@@ -8516,10 +8524,14 @@ class TradingEngine:
         _dup = await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.pair == pair, Order.is_paper == self.is_paper_mode)))
         if (_dup.scalar() or 0) > 0:
             raise ValueError(f"{pair} already has an open position")
-        _n_open = (await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)))).scalar() or 0
-        _cap = int(getattr(config.trading_config.investment, 'max_open_positions', 4) or 4)
+        # own lane: only MANUAL positions count against manual_max_open_positions; the bot's slots are untouched either way
+        _n_open = (await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == "MANUAL")))).scalar() or 0
+        _cap_raw = getattr(config.trading_config.investment, 'manual_max_open_positions', 8)
+        _cap = int(_cap_raw) if _cap_raw is not None else 8
+        if _cap <= 0:
+            raise ValueError("manual entry is off (manual_max_open_positions = 0)")
         if _n_open >= _cap:
-            raise ValueError(f"max open positions reached ({_n_open}/{_cap})")
+            raise ValueError(f"manual positions cap reached ({_n_open}/{_cap} — manual_max_open_positions)")
         available = await self.get_available_balance(db)
         if investment > available:
             raise ValueError(f"size ${investment:,.0f} exceeds available balance ${available:,.0f}")
@@ -11431,7 +11443,7 @@ class TradingEngine:
         try:
             _scan_start_open_count_q = await db.execute(
                 select(func.count(Order.id)).where(
-                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)
+                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_open_filter())   # 🖐 bot lane only
                 )
             )
             _scan_start_open_count = _scan_start_open_count_q.scalar() or 0
@@ -11805,7 +11817,7 @@ class TradingEngine:
         try:
             _open_count_q = await db.execute(
                 select(func.count(Order.id)).where(
-                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)
+                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_open_filter())   # 🖐 bot lane only
                 )
             )
             _open_positions_in_scan = _open_count_q.scalar() or 0

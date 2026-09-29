@@ -111,3 +111,56 @@ def test_realtime_intercept_closes_on_sl_and_tp_and_passes_momentum_through(monk
     # MOMENTUM mode is not intercepted by the manual block (whatever else fires, it is not MANUAL_*)
     assert not any(r.startswith("MANUAL_") for r in asyncio.run(drive("LONG", "MOMENTUM", None, None, 98.0)))
     T._open_orders_cache.pop("ZZZUSDT", None)
+
+
+def test_manual_slot_lane_wiring():
+    """Manual positions never consume a bot slot (open_position count excludes MANUAL) and are capped by their own field."""
+    import config as C
+    assert C.InvestmentConfig.model_fields["manual_max_open_positions"].default == 8
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["investment"]["manual_max_open_positions"] == 8
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
+    assert 'or_(Order.entry_strategy.is_(None), Order.entry_strategy != "MANUAL")' in eng            # bot slot count
+    assert 'Order.entry_strategy == "MANUAL")))).scalar() or 0' in eng and "'manual_max_open_positions', 8" in eng
+    ui = open(os.path.join(ROOT, "templates", "index.html")).read()
+    assert ui.count("config-manual-max-open-positions") >= 3 and "own slot lane, cap" in ui
+
+
+def test_manual_cap_zero_means_off_and_bot_count_excludes_manual():
+    import services.trading_engine as T
+    from sqlalchemy import and_, select, func
+    from models import Order
+    sql = str(select(func.count(Order.id)).where(and_(Order.status == "OPEN", T._bot_open_filter())).compile(compile_kwargs={"literal_binds": True}))
+    assert "entry_strategy IS NULL OR orders.entry_strategy != 'MANUAL'" in sql.replace("orders.entry_strategy IS NULL", "entry_strategy IS NULL")
+    TE = T.TradingEngine; eng = TE.__new__(TE); eng.is_paper_mode = True
+    old = T.config.trading_config.investment.manual_max_open_positions
+    try:
+        T.config.trading_config.investment.manual_max_open_positions = 0
+
+        class _Res:
+            def scalar(self): return 0
+
+        class _DB:
+            async def execute(self, *a, **k): return _Res()
+        try:
+            asyncio.run(TE.open_manual_position(eng, _DB(), pair="DOGEUSDT", direction="LONG", investment=100, leverage=20, exit_mode="FLOOR"))
+            raise AssertionError("cap 0 did not refuse")
+        except ValueError as e:
+            assert "manual entry is off" in str(e)
+        T.config.trading_config.investment.manual_max_open_positions = 2
+
+        class _Res2:
+            def scalar(self): return 2          # dup query → treated as "2 open on pair"? no: first query is the dup check
+
+        class _DB2:
+            def __init__(self): self.n = 0
+            async def execute(self, *a, **k):
+                self.n += 1
+                r = _Res(); r.scalar = (lambda: 0) if self.n == 1 else (lambda: 2)   # dup check 0, manual count 2 ≥ cap 2
+                return r
+        try:
+            asyncio.run(TE.open_manual_position(eng, _DB2(), pair="DOGEUSDT", direction="LONG", investment=100, leverage=20, exit_mode="FLOOR"))
+            raise AssertionError("cap reached did not refuse")
+        except ValueError as e:
+            assert "manual positions cap reached (2/2" in str(e)
+    finally:
+        T.config.trading_config.investment.manual_max_open_positions = old

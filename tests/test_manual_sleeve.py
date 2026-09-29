@@ -32,6 +32,7 @@ def test_floor_and_fixed_semantics_from_config():
     assert th["manual_floor_sl_pct"] == -3.0
     src = inspect.getsource(_engine().open_manual_position)
     assert 'exit_mode == "FLOOR"' in src and "sl = floor" in src and 'sl = -abs(float(sl_pct))' in src   # sign ignored, floor enforced
+    assert "dynamic_tp_target=(float(getattr(config.trading_config.confidence_levels.get(\"STRONG_BUY\"), 'tp_min', 0.4)" in src and 'current_tp_level=1' in src   # UI arm badge seed + cache level never None
 
 
 def test_exits_never_touch_a_fixed_manual_trade_and_cache_carries_the_mode():

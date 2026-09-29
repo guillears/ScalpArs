@@ -8558,6 +8558,9 @@ class TradingEngine:
             notional_value=notional_value, quantity=quantity, confidence="STRONG_BUY", entry_strategy="MANUAL",
             cell_multiplier=1.0, cell_lev_multiplier=1.0, cell_multiplier_source=None,   # plain sizing; entry_strategy is the label
             pattern_fixed_tp_pct=tp, pattern_fixed_sl_pct=sl, manual_exit_mode=exit_mode, manual_note=((note or "").strip()[:200] or None),
+            # same TP-ladder seed as open_position (current_tp_level 1 / target = confidence tp_min) — the UI derives its
+            # "armed" badge from dynamic_tp_target, so a NULL here painted 🛡 L1 on an unarmed trade (TAO, Sep-29)
+            current_tp_level=1, dynamic_tp_target=(float(getattr(config.trading_config.confidence_levels.get("STRONG_BUY"), 'tp_min', 0.4) or 0.4) if exit_mode == "MOMENTUM" else tp),
             entry_fee=entry_fee, entry_order_type="TAKER", is_paper=self.is_paper_mode, opened_at=datetime.utcnow(), binance_order_id=binance_order_id,
             # macro context at the click — free stamps so the MANUAL table can be read like any other sleeve
             entry_btc_rsi=g.get('_current_btc_rsi'), entry_btc_adx=g.get('_current_btc_adx'), entry_btc_ema20_slope=g.get('_btc_ema20_slope_pct'),

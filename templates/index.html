@@ -19708,6 +19708,7 @@
                         tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${bgClass} ${textClass}" title="${title}">${label}</span>`;
                     }
                     }  // close the gate-57 sleeve-badge else
+                    if ((o.entry_strategy || '') === 'MANUAL' && (o.manual_exit_mode || 'FIXED') !== 'MOMENTUM') tpTierBadge = '';   // 🖐 FIXED/FLOOR never trail — no arm badge
 
                     // Strategy / sleeve badge (matches the Filter by Flip Source names)
                     const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');

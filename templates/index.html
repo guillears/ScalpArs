@@ -19726,7 +19726,7 @@
                             <td class="px-4 py-3 font-medium">${o.pair}</td>
                             <td class="px-4 py-3 ${confClass}">${o.confidence || '-'}</td>
                             <td class="px-4 py-3 ${dirClass} font-medium">${o.direction}</td>
-                            <td class="px-4 py-3 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${_stratColor}">${_stratLabel}</span>${doorBadgeHtml(o)}</td>
+                            <td class="px-4 py-3 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${_stratColor}" title="${manualBadgeTitle(o)}">${_stratLabel}</span>${doorBadgeHtml(o)}</td>
                             <td class="px-4 py-3 text-center">${eotBadge}</td>
                             <td class="px-4 py-3 text-right">${formatUSD(o.investment)}</td>
                             <td class="px-4 py-3 text-right">${o.leverage}x</td>
@@ -19849,7 +19849,7 @@
                             <td class="px-4 py-3 font-medium">${o.pair}</td>
                             <td class="px-4 py-3 ${confClass}">${o.confidence || '-'}</td>
                             <td class="px-4 py-3 ${dirClass} font-medium">${o.direction}</td>
-                            <td class="px-4 py-3 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${_stratColor}">${_stratLabel}</span>${doorBadgeHtml(o)}</td>
+                            <td class="px-4 py-3 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${_stratColor}" title="${manualBadgeTitle(o)}">${_stratLabel}</span>${doorBadgeHtml(o)}</td>
                             <td class="px-4 py-3 text-center">${eotBadge}</td>
                             <td class="px-4 py-3 text-center">${exotBadge}</td>
                             <td class="px-4 py-3 text-right ${(() => {
@@ -20039,6 +20039,15 @@
         }
 
         // 🖐 Sep-29 MANUAL sleeve
+        function manualBadgeTitle(o) {   // hover on the MANUAL badge: exit mode + SL/TP + the operator's note
+            if ((o.entry_strategy || '') !== 'MANUAL') return '';
+            const m = o.manual_exit_mode || 'FIXED';
+            const sl = o.pattern_fixed_sl_pct, tp = o.pattern_fixed_tp_pct;
+            const exitTxt = m === 'MOMENTUM' ? 'exit: MOMENTUM stack (STRONG_BUY stop −0.70%, runner arm +0.40%, EMA13 cross)'
+                : m === 'FLOOR' ? `exit: FLOOR — hard SL ${sl != null ? sl.toFixed(2) + '%' : '(config floor)'}, no TP`
+                : `exit: CUSTOM — SL ${sl != null ? sl.toFixed(2) + '%' : '—'}${tp != null ? ', TP +' + Number(tp).toFixed(2) + '%' : ', no TP'}`;
+            return `Manual entry · ${exitTxt} (% of price, net of fees)${o.manual_note ? ' · note: ' + String(o.manual_note).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) : ''}`;
+        }
         function toggleManualPanel(force) {   // click the title to fold the form to one line; remembered per browser
             const body = document.getElementById('manual-entry-body'), chev = document.getElementById('manual-entry-chevron');
             if (!body) return;

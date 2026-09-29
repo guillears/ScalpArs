@@ -499,6 +499,7 @@ class ConfigUpdate(BaseModel):
     coin_underlying_only: Optional[bool] = None
     mcap_fetch_enabled: Optional[bool] = None      # 💰 Sep-28 (DECISION_LOG 124)
     mcap_refresh_minutes: Optional[float] = None
+    entry_zone_stamps_enabled: Optional[bool] = None   # 🧭 Sep-29 zone stamps kill switch
     bnb_swap_enabled: Optional[bool] = None
     bnb_check_interval_hours: Optional[int] = None
     bnb_runway_hours: Optional[int] = None
@@ -1450,6 +1451,8 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "cell_lev_multiplier": getattr(o, 'cell_lev_multiplier', None),
             "cell_multiplier_source": getattr(o, 'cell_multiplier_source', None),
             "adx_surge_open": bool(getattr(o, 'adx_surge_open', False) or False),   # ⚡ Sep-28 badge source
+            "entry_btc_ema50_100_gap_pct": getattr(o, 'entry_btc_ema50_100_gap_pct', None), "entry_eth_5m_ret1_pct": getattr(o, 'entry_eth_5m_ret1_pct', None),   # 🧭 Sep-29 zone stamps
+            "entry_btc_1d_ret_pct": getattr(o, 'entry_btc_1d_ret_pct', None), "entry_pair_1h_ema20_200_gap_pct": getattr(o, 'entry_pair_1h_ema20_200_gap_pct', None),
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
             "pattern_fixed_tp_pct": getattr(o, 'pattern_fixed_tp_pct', None),
             "pattern_fixed_sl_pct": getattr(o, 'pattern_fixed_sl_pct', None),
@@ -1754,6 +1757,8 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "cell_lev_multiplier": getattr(o, 'cell_lev_multiplier', None),
             "cell_multiplier_source": getattr(o, 'cell_multiplier_source', None),
             "adx_surge_open": bool(getattr(o, 'adx_surge_open', False) or False),   # ⚡ Sep-28 badge source
+            "entry_btc_ema50_100_gap_pct": getattr(o, 'entry_btc_ema50_100_gap_pct', None), "entry_eth_5m_ret1_pct": getattr(o, 'entry_eth_5m_ret1_pct', None),   # 🧭 Sep-29 zone stamps
+            "entry_btc_1d_ret_pct": getattr(o, 'entry_btc_1d_ret_pct', None), "entry_pair_1h_ema20_200_gap_pct": getattr(o, 'entry_pair_1h_ema20_200_gap_pct', None),
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
             "pattern_fixed_tp_pct": getattr(o, 'pattern_fixed_tp_pct', None),
             "pattern_fixed_sl_pct": getattr(o, 'pattern_fixed_sl_pct', None),

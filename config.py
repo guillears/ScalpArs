@@ -2492,6 +2492,10 @@ class TradingConfig(BaseModel):
     # any failure → '–' / NULL stamps. Display + analytics only — no trading rule reads it. False = no fetching at all.
     mcap_fetch_enabled: bool = True
     mcap_refresh_minutes: float = 30.0
+    # 🧭 Sep-29 ZONE STAMPS (DECISION_LOG 127): stamp entry_btc_ema50_100_gap_pct / entry_eth_5m_ret1_pct / entry_btc_1d_ret_pct
+    # (3 small fetches per scan) and entry_pair_1h_ema20_200_gap_pct (one 1h fetch per fill) — observe-only readings for the C/D
+    # momentum-long watch items (yr3: 28 % of fills in those zones carry the sleeve's whole loss; master 25·72%·+$482). Off = NULL stamps.
+    entry_zone_stamps_enabled: bool = True
     pair_blacklist: str = ""  # Comma-separated pairs to exclude ENTIRELY (removed from the top-pair/volume universe). JSON 2026-09-15: 龙虾USDT added — 2 stops in 30h (fade −$381 Sep-14, momentum long −$359 Sep-15) vs one +$33 win; 1m bars with +7.6%/−8.8% wicks minutes after the stop; non-ASCII symbol breaks the aggTrades archive fetch (per-pair concentration rule, DECISION_LOG 61)
     # Jun 3: comma-separated pairs to TRACK but NOT TRADE — they stay in the top-pair/volume
     # list (subscribed, scanned, displayed) but entries are blocked. Use for a pair you want

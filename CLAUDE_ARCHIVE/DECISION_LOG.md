@@ -4145,3 +4145,31 @@ WLD, UNI, UNI, XLM, BCH, ADA, ACE, AVAX, LIT, 龙虾); ledger ML 100·83%·+0.30
 validate_against_master ALL PASS; tests 305 green (tests/test_rsi_mom_loadx.py incl. a get_signal-level call-site test).
 🔒 REVERT (pre-committed, tighter than standard): first 8 PAIR_RSI_MOMENTUM_LOADX-blocked LONG signals re-simulated from the
 log/journal — WR ≥ 60% ∨ net > 0 → long_rsi_momentum_adx_max = 0. Read at each batch review, window units.
+
+## 2026-09-29 (127) - 🧭 ZONE STAMPS built (observe-only) + momentum-long watch items C and D registered (exhaustive-2D review)
+Method correction first: the earlier "845 variables, nothing separates" claim rested on a 1D screen and a top-25 2D pass; the LOADX
+gate (ADX<21 ∧ RSI falling) is an interaction of two individually useless legs and was never tested by them. New standard (memory +
+scripts/exhaustive_2d_scan.py / exhaustive_2d_master.py): every variable × every variable, both binarisations, 4 quadrants, with a
+within-day shuffled-label null and OOS confirmation. Master-first exhaustive scan: 2,587 survivors vs null median 1,740 (95th 2,846) →
+luck; backtest confirmation of master survivors 40% vs ~53% chance → none. Backtest-first strict pass (Δ≤−0.20 both halves, ≥100
+fills/half, master N≥10 ∧ Δ≤−0.10): 45 survivors vs null median 1 → real, 36 families, one theme: pair weak vs its own longer trend
+while the majors are soft. Two frozen zones chosen:
+  C (majors soft, MARKET-WIDE → window units): BTC 5m EMA50 ≤ EMA100 (gap ≤ +0.006 %) ∧ ETH last closed 5m bar red.
+    Master 12·67%·−0.118·+$33 (10 windows, CI −0.33..+0.13) · backtest 29/seed·50%·−0.257 (H1) / 27·54%·−0.234 (H2), worse than the
+    rest in 8 of 9 months, 11 % of fills.
+  D (laggard pair on a BTC up-day, PAIR-level): BTC last closed daily bar > +0.092 % ∧ pair 1h EMA20 ≤ EMA200.
+    Master 13·77%·+0.132·+$449 (12 windows) · backtest 48/seed·48%·−0.217 / 47·48%·−0.213, worse than the rest in 9 of 9 months, 18 %.
+  C∪D = 28 % of backtest fills carrying the sleeve's whole loss (rest +0.023 / +0.013 in both halves); master 25·72%·+0.012·+$482 —
+  blocking it would cost the master $482 (BASE −$479, B2 −$403; B1 +$210, B3 +$191). NOT a block. Rejected in the same review: the
+  BTC-shift mid-trade exit (every variant negative on master and both halves; 15 of 20 residual losers are pair-only), PUMP
+  blacklist (8·75%·+$718 master, 5th-best pair in the backtest), same-scan sizing asymmetry (backtest 2nd-of-scan is not worse;
+  "1st at 3×" is just 1.5× the sleeve), any multiplier cohort (only "NOT C∪D" passes the W bar on the master AND is positive in both
+  backtest halves, at +0.02/+0.01 — too thin to size up).
+BUILD (observe-only, no rule reads them): pure helpers indicators.closed_ema_gap_pct / last_closed_bar_ret_pct (closed bars only,
+forming candle dropped); per scan BTC 5m EMA50/EMA100 gap (300-bar fetch), ETH last closed 5m return, BTC last closed daily return →
+globals, each fail-safe to None; per FILL the pair's 1h EMA20/EMA200 gap (one 1h fetch after the exchange order); Order columns
+entry_btc_ema50_100_gap_pct / entry_eth_5m_ret1_pct / entry_btc_1d_ret_pct / entry_pair_1h_ema20_200_gap_pct (+ SQLite migration,
+payload fields, flip path + put() helper); kill switch entry_zone_stamps_enabled (config/JSON/UI/load/save/report line).
+🔒 BAR (both zones, frozen; thresholds never re-tuned): fresh fills after this ship only; C counts one scan = one window; at fresh
+N ≥ 15 over ≥ 8 windows → BLOCK CANDIDATE only if WR < ML breakeven (~61 %) ∧ avg < 0 at 95 % window-bootstrap ∧ no window ≥ 50 % of
+the loss; else the watch closes. First read at the 20-fill B14 checkpoint.

@@ -181,6 +181,9 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_mcap_usd FLOAT"))
                 if 'entry_cmc_rank' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_cmc_rank INTEGER"))
+                for _zc in ('entry_btc_ema50_100_gap_pct', 'entry_eth_5m_ret1_pct', 'entry_btc_1d_ret_pct', 'entry_pair_1h_ema20_200_gap_pct'):   # 🧭 Sep-29 zone stamps
+                    if _zc not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_zc} FLOAT"))
                 if 'entry_br_bull_pct_top10' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_bull_pct_top10 FLOAT"))
                 if 'entry_br_bear_pct_top10' not in columns:

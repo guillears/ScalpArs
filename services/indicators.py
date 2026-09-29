@@ -262,6 +262,32 @@ def gap_min_band(indicators: dict, direction: str, th=None):
         return None
 
 
+def closed_ema_gap_pct(ohlcv, fast: int, slow: int):
+    """🧭 Sep-29 zone stamps (DECISION_LOG 127): (EMA_fast / EMA_slow − 1) × 100 on CLOSED bars — the last element of an exchange
+    OHLCV list is the forming candle and is dropped, so the reading matches the research feature factory (closed bars, Wilder-free
+    ewm adjust=False). None when too short or on any error — a stamp, never a gate."""
+    try:
+        closes = [float(c[4]) for c in (ohlcv or [])][:-1]
+        if len(closes) < slow:
+            return None
+        s = pd.Series(closes)
+        ef = float(s.ewm(span=fast, adjust=False).mean().iloc[-1]); es = float(s.ewm(span=slow, adjust=False).mean().iloc[-1])
+        return round((ef / es - 1) * 100, 4) if es else None
+    except Exception:
+        return None
+
+
+def last_closed_bar_ret_pct(ohlcv):
+    """🧭 Sep-29 zone stamps: return (%) of the last CLOSED bar vs the one before it (forming bar dropped). None if < 3 bars."""
+    try:
+        closes = [float(c[4]) for c in (ohlcv or [])][:-1]
+        if len(closes) < 2 or closes[-2] <= 0:
+            return None
+        return round((closes[-1] / closes[-2] - 1) * 100, 4)
+    except Exception:
+        return None
+
+
 def rsi_mom_loadx_block(th, rsi, rsi_prev2, adx):
     """🧭 Sep-29 LOW-ADX RSI-MOMENTUM gate (DECISION_LOG 126) — block a momentum LONG whose RSI(12) is already BELOW its value
     two candles ago while pair ADX is below `long_rsi_momentum_adx_max`: the EMA-stack signal lags price; RSI falling at the

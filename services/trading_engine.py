@@ -15,7 +15,7 @@ from database import AsyncSessionLocal, locked_commit, locked_execute_commit
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, is_leverage_blocked
-from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
+from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
@@ -83,6 +83,12 @@ _current_btc_ema20: Optional[float] = None
 _current_btc_ema13: Optional[float] = None  # May 6 — BTC Trend Filter switched to EMA13/EMA50
 _current_btc_price: Optional[float] = None  # May 14 — BTC price for BTC Market Extension dimension
 _current_btc_1h_slope: Optional[float] = None  # May 14 — BTC 1h EMA20 slope (higher-TF macro context)
+# 🧭 Sep-29 ZONE STAMPS (DECISION_LOG 127) — observe-only readings behind the C (majors soft) / D (laggard pair on a BTC up-day)
+# watch items. Computed once per scan on CLOSED bars; the order stamp refuses a reading older than 30 min (never stale).
+_current_btc_ema50_100_gap_pct: Optional[float] = None
+_current_eth_5m_ret1_pct: Optional[float] = None
+_current_btc_1d_ret_pct: Optional[float] = None
+_zone_stamps_at: float = 0.0
 _current_btc_ema50: Optional[float] = None
 _current_btc_trend_gap_pct: Optional[float] = None  # As of May 6: (EMA13 - EMA50) / EMA50; was EMA20-based before
 _current_btc_adx_prev1: Optional[float] = None  # Aug-22: previous closed bar — arrow = sign(adx - adx_prev1)
@@ -4699,6 +4705,10 @@ class TradingEngine:
             put('entry_btc_atr_pct', lambda: g.get('_current_btc_atr_pct'))
             put('entry_btc_rsi_1h', lambda: g.get('_current_btc_rsi_1h'))
             put('entry_btc_rsi_1h_prev', lambda: g.get('_current_btc_rsi_1h_prev'))
+            # 🧭 Sep-29 zone stamps (scan-wide readings; the pair 1h gap is a per-fill fetch and stays NULL on this path)
+            put('entry_btc_ema50_100_gap_pct', lambda: g.get('_current_btc_ema50_100_gap_pct'))
+            put('entry_eth_5m_ret1_pct', lambda: g.get('_current_eth_5m_ret1_pct'))
+            put('entry_btc_1d_ret_pct', lambda: g.get('_current_btc_1d_ret_pct'))
             # ── scan-state market context (volume / breadth / rank) ──
             if scan:
                 for k, v in scan.items():
@@ -6442,6 +6452,7 @@ class TradingEngine:
                         entry_btc_rsi_prev6=_g.get('_current_btc_rsi_prev6'),
                         entry_btc_atr_pct=_g.get('_current_btc_atr_pct'),
                         entry_btc_rsi_1h=_g.get('_current_btc_rsi_1h'), entry_btc_rsi_1h_prev=_g.get('_current_btc_rsi_1h_prev'),
+                        entry_btc_ema50_100_gap_pct=_g.get('_current_btc_ema50_100_gap_pct'), entry_eth_5m_ret1_pct=_g.get('_current_eth_5m_ret1_pct'), entry_btc_1d_ret_pct=_g.get('_current_btc_1d_ret_pct'),   # 🧭 Sep-29 zone stamps
                         entry_btc_dist_from_ema13_pct=_r((_g.get('_current_btc_price') - _g.get('_current_btc_ema13')) / _g.get('_current_btc_ema13') * 100) if _g.get('_current_btc_price') and _g.get('_current_btc_ema13') else None,
                         entry_bull_pct=_g.get('_market_bull_pct'), entry_bear_pct=_g.get('_market_bear_pct'),
                         # Jul 27 night fix: was stamping the COARSE macro-trend global into
@@ -6495,6 +6506,9 @@ class TradingEngine:
         entry_btc_atr_pct: float = None,
         entry_btc_rsi_1h: float = None,
         entry_btc_rsi_1h_prev: float = None,
+        entry_btc_ema50_100_gap_pct: float = None,   # 🧭 Sep-29 zone stamps — accepted so the flip/door paths' **-splat never drops them
+        entry_eth_5m_ret1_pct: float = None,
+        entry_btc_1d_ret_pct: float = None,
         entry_price_vs_ema5_pct: float = None,
         entry_global_volume_ratio: float = None,
         entry_pair_volume_ratio: float = None,
@@ -8014,6 +8028,16 @@ class TradingEngine:
                 logger.warning(f"[PARTIAL_FILL] {pair}: booking ACTUAL size — qty {quantity}/{_req_qty_snapshot}, notional {notional_value:,.2f} → {_real_notional:,.2f}")
             notional_value = _real_notional
             investment = _real_notional / leverage
+        # 🧭 Sep-29 ZONE STAMPS (DECISION_LOG 127): the D leg needs the PAIR's 1h EMA20/EMA200 gap — one 1h fetch per FILL,
+        # placed HERE, after the exchange order has been placed/filled (deep review B3), so it delays only the DB row, never
+        # the fill. The three scan-wide readings are copied only when fresher than 30 min. All fail-safe to NULL.
+        _z_pair_gap = None
+        try:
+            if bool(getattr(config.trading_config, 'entry_zone_stamps_enabled', True)) and isinstance(pair, str) and pair.endswith('USDT'):
+                _z_pair_gap = closed_ema_gap_pct(await binance_service.get_ohlcv(f"{pair[:-4]}/USDT:USDT", '1h', 260), 20, 200)
+        except Exception:
+            _z_pair_gap = None
+        _zg = globals(); _zfresh = (_leash_time.time() - (_zg.get('_zone_stamps_at') or 0)) <= 1800
         order = Order(
             binance_order_id=binance_order_id,
             backstop_algo_id=_bk_algo_id,
@@ -8079,6 +8103,10 @@ class TradingEngine:
             entry_br_door_age_min=entry_br_door_age_min,
             adx_surge_open=_adx_surge_admit,   # ⚡ Sep-28: admitted through the BTC ADX-surge waiver (same predicate as its sizing)
             entry_mcap_usd=_mcap_usd, entry_cmc_rank=_cmc_rank,   # 💰 Sep-28: cached market cap / CMC rank (NULL if unknown)
+            entry_btc_ema50_100_gap_pct=(entry_btc_ema50_100_gap_pct if entry_btc_ema50_100_gap_pct is not None else (_zg.get('_current_btc_ema50_100_gap_pct') if _zfresh else None)),   # 🧭 Sep-29 zone stamps (observe-only)
+            entry_eth_5m_ret1_pct=(entry_eth_5m_ret1_pct if entry_eth_5m_ret1_pct is not None else (_zg.get('_current_eth_5m_ret1_pct') if _zfresh else None)),
+            entry_btc_1d_ret_pct=(entry_btc_1d_ret_pct if entry_btc_1d_ret_pct is not None else (_zg.get('_current_btc_1d_ret_pct') if _zfresh else None)),
+            entry_pair_1h_ema20_200_gap_pct=_z_pair_gap,
             entry_br_bull_pct_top10=entry_br_bull_pct_top10,
             entry_br_bear_pct_top10=entry_br_bear_pct_top10,
             entry_br_top10_n=entry_br_top10_n,
@@ -11190,6 +11218,21 @@ class TradingEngine:
                         btc_rsi_1h_prev = round(_rsi_1h_prev, 1)
         except Exception as _e:
             logger.debug(f'[BTC_1H_SLOPE] fetch/compute failed: {_e}')
+        # 🧭 Sep-29 ZONE STAMPS (DECISION_LOG 127): three observe-only readings per scan — BTC 5m EMA50/EMA100 gap, ETH last
+        # closed 5m bar return, BTC last closed daily return. Each fetch fails independently to None (never a stale value);
+        # nothing on the trading path reads them. Kill switch: entry_zone_stamps_enabled.
+        global _current_btc_ema50_100_gap_pct, _current_eth_5m_ret1_pct, _current_btc_1d_ret_pct, _zone_stamps_at
+        if bool(getattr(config.trading_config, 'entry_zone_stamps_enabled', True)):
+            try:   # one round-trip for the three (deep review): each result is fail-isolated → None, never a stale value
+                _zr = await asyncio.gather(binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 300), binance_service.get_ohlcv('ETH/USDT:USDT', '5m', 5),
+                                           binance_service.get_ohlcv('BTC/USDT:USDT', '1d', 4), return_exceptions=True)
+            except Exception as _e:
+                _zr = [None, None, None]; logger.debug(f'[ZONE_STAMPS] fetch failed: {_e}')
+            _zr = [(None if isinstance(x, BaseException) else x) for x in _zr]
+            _current_btc_ema50_100_gap_pct = closed_ema_gap_pct(_zr[0], 50, 100)
+            _current_eth_5m_ret1_pct = last_closed_bar_ret_pct(_zr[1])
+            _current_btc_1d_ret_pct = last_closed_bar_ret_pct(_zr[2])
+            _zone_stamps_at = time.time()
         if btc_ema13 is not None and btc_ema50 is not None and btc_ema50 != 0:
             # Trend gap = (EMA13 - EMA50) / EMA50 × 100. EMA13 spans ~65 min on 5m chart;
             # EMA50 spans ~250 min (~4 hours). Gap > 0 = BTC in 4hr uptrend, gap < 0 = downtrend.

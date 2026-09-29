@@ -5790,6 +5790,8 @@
                                         <input type="checkbox" id="config-mcap-fetch-enabled" class="accent-emerald-500"></label>
                                     <label class="flex items-center gap-1 text-xs text-gray-400">every (min)
                                         <input type="number" step="5" min="5" id="config-mcap-refresh-minutes" class="w-14 bg-white/5 border border-emerald-500/40 rounded px-2 py-1 text-emerald-200 text-center" value="30"></label>
+                                    <label class="flex items-center gap-1 text-xs text-violet-300" title="🧭 Sep-29 ZONE STAMPS (DECISION_LOG 127): stamp on every order the four readings behind the momentum-long watch items C (majors soft: BTC 5m EMA50 vs EMA100 gap, ETH last closed 5m bar return) and D (laggard pair on a BTC up-day: BTC last closed daily return, pair 1h EMA20 vs EMA200 gap). Three small fetches per scan + one 1h fetch per fill (after the exchange order). OBSERVE ONLY — no trading rule reads them; off = NULL stamps.">🧭 Zone stamps
+                                        <input type="checkbox" id="config-entry-zone-stamps-enabled" class="accent-violet-500"></label>
                                 <span class="text-xs text-gray-500">(crowded entry → sized down to these; ratio 0 = off; ship 0.90 / 1.0 / 1.0; sub-1× allowed — the PVR≥0.93 read may earn it; ≤0 coerced to 1.0)</span>
                             </div>
                         </div>
@@ -11314,6 +11316,7 @@
             lines.push(`  RSI70 base-breakout (Sep 18): ${th.long_cross_ob_narrow_enabled ? 'ON' : 'OFF'} — BTC RSI >= ${th.long_cross_ob_rsi_min ?? '-'} band waived when BTC 72h < ${th.long_cross_ob_r72_block_min ?? '-'}%; admitted longs sized ${th.long_cross_ob_invest_mult ?? '-'}x / lev ${th.long_cross_ob_lev_mult ?? '-'}x  (cell CROSS_OB_OPEN)`);
             lines.push(`  ⚡ ADX-surge waiver (Sep 28): ${th.long_btc_adx_surge_enabled ? 'ON' : 'OFF'} — BTC ADX floor + RSI bands with floor < ${th.long_btc_adx_surge_band_rsi_max ?? '-'} lifted when BTC ADX jumps ≥ ${th.long_btc_adx_surge_min_delta ?? '-'} and slope > ${th.long_btc_adx_surge_slope_min ?? '-'}; admits sized ${th.long_btc_adx_surge_invest_mult ?? '-'}×/${th.long_btc_adx_surge_lev_mult ?? '-'}×, badge ⚡ ADX SURGE (revert: first 10 fills WR ≤50% or Σ$<0)`);
             lines.push(`  💰 Market cap fetch (Sep 28): ${cfg.mcap_fetch_enabled !== false ? 'ON' : 'OFF'} every ${cfg.mcap_refresh_minutes ?? 30} min (display column + entry_mcap_usd / entry_cmc_rank stamps; no trading rule reads it)`);
+            lines.push(`  🧭 Zone stamps (Sep 29): ${cfg.entry_zone_stamps_enabled !== false ? 'ON' : 'OFF'} — entry_btc_ema50_100_gap_pct / entry_eth_5m_ret1_pct / entry_btc_1d_ret_pct / entry_pair_1h_ema20_200_gap_pct on every order; observe-only for the C/D momentum-long watch items (no trading rule reads them)`);
             lines.push(`  Fast Exit L2: ${th.fast_exit_l2_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_l2_threshold_pct ?? 0.40}%  |  Window ≤ ${th.fast_exit_l2_window_minutes ?? 5}min  |  ATR× ${th.fast_exit_l2_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l2_atr_floor_cap_pct ?? 0.80}%  (May 25 evening: cap protects extreme-ATR pairs)`);
             lines.push(`  EMA Stack Cross Exit: ${th.ema_stack_cross_exit_enabled !== undefined ? th.ema_stack_cross_exit_enabled : false}  |  Handoff at L≥${th.ema_stack_cross_exit_level !== undefined ? th.ema_stack_cross_exit_level : 2}  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)`);
             lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
@@ -20745,6 +20748,7 @@
                 { const _cuo = document.getElementById('config-coin-underlying-only'); if (_cuo) _cuo.checked = config.coin_underlying_only !== false; }
                 { const _e = document.getElementById('config-mcap-fetch-enabled'); if (_e) _e.checked = config.mcap_fetch_enabled !== false; }
                 { const _e = document.getElementById('config-mcap-refresh-minutes'); if (_e && config.mcap_refresh_minutes !== undefined) _e.value = config.mcap_refresh_minutes; }
+                { const _e = document.getElementById('config-entry-zone-stamps-enabled'); if (_e) _e.checked = config.entry_zone_stamps_enabled !== false; }
                 
                 updateInvestmentUnit();
                 updateReserveUnit();
@@ -22303,6 +22307,7 @@
                 coin_underlying_only: !!document.getElementById('config-coin-underlying-only')?.checked,
                 mcap_fetch_enabled: !!document.getElementById('config-mcap-fetch-enabled')?.checked,
                 mcap_refresh_minutes: (() => { const _v = parseFloat(document.getElementById('config-mcap-refresh-minutes')?.value); return (isFinite(_v) && _v >= 5) ? _v : 30; })(),
+                entry_zone_stamps_enabled: (document.getElementById('config-entry-zone-stamps-enabled')?.checked ?? true),
                 bnb_swap_enabled: document.getElementById('config-bnb-swap-enabled').value === 'true',
                 paper_bnb_initial_usd: safeFloat(document.getElementById('config-paper-bnb-initial').value),
                 bnb_check_interval_hours: parseInt(document.getElementById('config-bnb-check-interval').value) || 12,

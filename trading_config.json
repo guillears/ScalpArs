@@ -23,6 +23,7 @@
   "trading_pairs_limit": 50,
   "mcap_fetch_enabled": true,
   "mcap_refresh_minutes": 30.0,
+  "entry_zone_stamps_enabled": true,
   "pair_blacklist": "ALLOUSDT,EIGENUSDT,ESPORTSUSDT,FILUSDT,MUSDT,PAXGUSDT,RAVEUSDT,SYNUSDT,TRUMPUSDT,USDCUSDT,VELVETUSDT,VVVUSDT,XAGUSDT,XAUTUSDT,XAUUSDT,龙虾USDT",
   "no_trade_pairs": "BTCUSDT,ETHUSDT",
   "new_listing_filter_days": 90,

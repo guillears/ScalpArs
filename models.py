@@ -260,6 +260,11 @@ class Order(Base):
     adx_surge_open = Column(Boolean, default=False, nullable=True)  # ⚡ Sep-28 (DECISION_LOG 123): LONG admitted through the BTC ADX-surge waiver (ADX floor / RSI 50-60 bands lifted on an ADX jump + positive slope) — the cohort's identity (CALM3D doors keep their cell tag)
     entry_mcap_usd = Column(Float, nullable=True)   # 💰 Sep-28 (DECISION_LOG 124): pair market cap (USD, circulating; CMC via Binance Info) at entry — cache ≤3× refresh old, NULL if unknown
     entry_cmc_rank = Column(Integer, nullable=True)  # 💰 Sep-28: CoinMarketCap rank at entry (NULL if unknown)
+    # 🧭 Sep-29 ZONE STAMPS (DECISION_LOG 127) — observe-only readings for the C/D momentum-long watch items; no rule reads them
+    entry_btc_ema50_100_gap_pct = Column(Float, nullable=True)      # BTC 5m EMA50 vs EMA100 (%), closed bars   [C]
+    entry_eth_5m_ret1_pct = Column(Float, nullable=True)            # ETH last closed 5m bar return (%)          [C]
+    entry_btc_1d_ret_pct = Column(Float, nullable=True)             # BTC last closed daily bar return (%)       [D]
+    entry_pair_1h_ema20_200_gap_pct = Column(Float, nullable=True)  # pair 1h EMA20 vs EMA200 (%), closed bars   [D]
     # 🐻 Sep 15 gate 60 — Bear-Run Monitor readings at entry (BEARRUN_SHORT fills only, NULL otherwise):
     # r24 / bars-below-EMA20% / 24h efficiency / BTC % above its 24h low at fire time + the BTC gates bypassed.
     entry_bear_r24 = Column(Float, nullable=True)

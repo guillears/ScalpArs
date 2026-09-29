@@ -265,6 +265,9 @@ class Order(Base):
     entry_eth_5m_ret1_pct = Column(Float, nullable=True)            # ETH last closed 5m bar return (%)          [C]
     entry_btc_1d_ret_pct = Column(Float, nullable=True)             # BTC last closed daily bar return (%)       [D]
     entry_pair_1h_ema20_200_gap_pct = Column(Float, nullable=True)  # pair 1h EMA20 vs EMA200 (%), closed bars   [D]
+    # 🪤 Sep-29 FADE LAGGARD gate readings (DECISION_LOG 128) — SPIKE_FADE fills only, NULL otherwise
+    entry_pair_1d_ndi = Column(Float, nullable=True)                # pair Wilder −DI(14), closed daily bars
+    entry_btc_4h_ema50_200_gap_pct = Column(Float, nullable=True)   # BTC 4h EMA50 vs EMA200 (%), closed bars
     # 🐻 Sep 15 gate 60 — Bear-Run Monitor readings at entry (BEARRUN_SHORT fills only, NULL otherwise):
     # r24 / bars-below-EMA20% / 24h efficiency / BTC % above its 24h low at fire time + the BTC gates bypassed.
     entry_bear_r24 = Column(Float, nullable=True)

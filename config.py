@@ -821,6 +821,18 @@ class SignalThresholds(BaseModel):
     # SPELL crash-extreme class (BTC below EMA13 there — separate d6-band question at the
     # fade read).
     spike_fade_max_btc_dist13: float = 0.0
+    # 🪤 Sep-29 FADE LAGGARD gate (DECISION_LOG 128; operator ARMED override at master N=10): block a fade when the pair is in
+    # a DAILY downtrend (Wilder −DI(14), closed daily bars, > ndi_min) while BTC's 4h EMA50 is above its EMA200 (gap % >
+    # btc_gap_min). Mechanism: a spike in a laggard while BTC is bid is a catch-up / squeeze, not exhaustion — the fade
+    # fights it and takes the full −1.5 stop. Evidence: exhaustive-2D strict pass (3,926 survivors vs null 474), master
+    # 10·50%·−0.468·−$562 over 9 windows (STORJ/CHIP/SAND/MANTA all −1.50; kept 61·90%·+0.484), backtest yr3 295 fills·55%·
+    # −0.437, negative in 7/7 months and 5/5 seeds, 41% full-stop rate vs 21% for the rest; forgone wins avg +0.42, max +2.81.
+    # Fail-open on a missing reading. Counter SPIKE_FADE_LAGGARD; stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct.
+    # 🔒 TIGHT REVERT (→ 0): first N≥10 blocked fades, re-simmed from klines under the live fade stack, WR ≥ 66% (sleeve
+    # breakeven) OR Σ > 0 → off. Thresholds frozen (16.1 / 0.0) — never re-tuned on the data that set them.
+    # Young listings (< 42 closed daily bars) have no −DI reading → never gated (fail-open by design; they are a fade staple).
+    spike_fade_lag_ndi_min: float = 0.0           # 0 = off; JSON ships 16.1
+    spike_fade_lag_btc_gap_min: float = 0.0       # BTC 4h EMA50/EMA200 gap % must exceed this (0 = EMA50 above EMA200)
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

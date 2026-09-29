@@ -23,7 +23,7 @@ import warnings; warnings.filterwarnings('ignore')
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-09-29a"  # a: LONG_RSI_MOM_LOADX — momentum longs (unmatched + doors) refused when RSI(12) < RSI two candles ago AND pair ADX < long_rsi_momentum_adx_max (21; declared override at master N=10, DECISION_LOG 126; rule = indicators.rsi_mom_loadx_block; stamps entry_rsi / entry_rsi_prev (= rsi_prev2) / entry_adx). Prior: "2026-09-27b"  # b: CALM3D_BTC_ATR_MIN — NONEXP_CALM3D door longs refused at BTC 5m ATR% < 0.08 (dead tape; operator ARMED override, DECISION_LOG 118; rule = engine calm3d_btc_atr_floor_block). Prior: "2026-09-27a"  # a: FADE_FRESHBREAK stamp proxy applied to PRE-SHIP fills only (opened < 2026-08-10T13:48:19 UTC, commit a10a879) — the live gate reads RSI(12) rsi_prev1 at trigger, the stamp entry_rsi_prev is rsi_prev2, so post-ship fills (which already passed the live gate) were wrongly removed (6 winners, Sep-27 audit). Prior: 2026-09-25c # c: LONG_HEAT_BLOCK re-scoped to bull breadth ≥85 only (BTC slope/RSI legs off, washed-out exemption kept; declared override, DECISION_LOG 116). Prior: 2026-09-25b # b: MOM_SHORT_C1_REGIME — C1 momentum shorts refused when BTC is STRONG_BEAR (operator ARMED override, DECISION_LOG 114; rule = engine mom_short_c1_regime_block). Prior: 2026-09-25a # a: FLIP_FAN_WEAK_BOUNCE — FAN flip-shorts refused when pair EMA13−EMA50 gap < 0 AND EMA20 slope < 0.15 (operator ARMED override at N=8, DECISION_LOG 113; rule = engine flip_fan_weak_bounce); B12 snapshot as-of 09-25. Prior: 2026-09-24b # b: FADE_BRSI 45→50 — the Aug-5 ceiling's own pre-committed revert fired (DECISION_LOG 112); label FADE_BRSI45→FADE_BRSI50. Prior: 2026-09-24a # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
+STACK_VERSION = "2026-09-29b"  # b: FADE_LAGGARD — SPIKE_FADE refused when pair daily Wilder −DI(14) > 16.1 AND BTC 4h EMA50/EMA200 gap > 0 (laggard squeeze; operator ARMED override at master N=10 on 295 backtest fills, DECISION_LOG 128; rule = indicators.fade_laggard_block; inputs = stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct, else the closed-bar feature factory from k5m_full). Prior: "2026-09-29a"  # a: LONG_RSI_MOM_LOADX — momentum longs (unmatched + doors) refused when RSI(12) < RSI two candles ago AND pair ADX < long_rsi_momentum_adx_max (21; declared override at master N=10, DECISION_LOG 126; rule = indicators.rsi_mom_loadx_block; stamps entry_rsi / entry_rsi_prev (= rsi_prev2) / entry_adx). Prior: "2026-09-27b"  # b: CALM3D_BTC_ATR_MIN — NONEXP_CALM3D door longs refused at BTC 5m ATR% < 0.08 (dead tape; operator ARMED override, DECISION_LOG 118; rule = engine calm3d_btc_atr_floor_block). Prior: "2026-09-27a"  # a: FADE_FRESHBREAK stamp proxy applied to PRE-SHIP fills only (opened < 2026-08-10T13:48:19 UTC, commit a10a879) — the live gate reads RSI(12) rsi_prev1 at trigger, the stamp entry_rsi_prev is rsi_prev2, so post-ship fills (which already passed the live gate) were wrongly removed (6 winners, Sep-27 audit). Prior: 2026-09-25c # c: LONG_HEAT_BLOCK re-scoped to bull breadth ≥85 only (BTC slope/RSI legs off, washed-out exemption kept; declared override, DECISION_LOG 116). Prior: 2026-09-25b # b: MOM_SHORT_C1_REGIME — C1 momentum shorts refused when BTC is STRONG_BEAR (operator ARMED override, DECISION_LOG 114; rule = engine mom_short_c1_regime_block). Prior: 2026-09-25a # a: FLIP_FAN_WEAK_BOUNCE — FAN flip-shorts refused when pair EMA13−EMA50 gap < 0 AND EMA20 slope < 0.15 (operator ARMED override at N=8, DECISION_LOG 113; rule = engine flip_fan_weak_bounce); B12 snapshot as-of 09-25. Prior: 2026-09-24b # b: FADE_BRSI 45→50 — the Aug-5 ceiling's own pre-committed revert fired (DECISION_LOG 112); label FADE_BRSI45→FADE_BRSI50. Prior: 2026-09-24a # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 # 🧯 FADE_FRESHBREAK stamp-proxy scope (Sep-27). The live gate reads the RSI(12) of the candle BEFORE the trigger
@@ -37,6 +37,30 @@ G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do n
 FADE_FB_SHIP_UTC = "2026-08-10T13:48:19"   # commit a10a879 (10:48:19 −03). Last pre-ship fade 08-10 10:04, none until the
                                            # B3 reset → ≥3h buffer, so commit-vs-deploy lag / tz cannot misplace a fill
 FADE_FB_RSI_PREV_MIN, FADE_FB_PGAP_MIN = 44.0, -0.40   # live spike_fade_fb_rsi_prev_min / spike_fade_fb_pgap_min
+FADE_LAG_SHIP_UTC = "2026-09-29T20:30:00"   # 🪤 fade laggard gate ship (stamps exist on every fade fill opened after this)
+
+
+def fade_laggard_inputs(df):
+    """🪤 Sep-29 FADE_LAGGARD inputs per row: (pair 1d −DI, BTC 4h EMA50/200 gap) — stamped columns first, feature factory for the
+    SPIKE_FADE rows that lack them (pre-ship fills). Rows the factory cannot price stay NaN → the rule fails open (never blocks)."""
+    ndi = pd.to_numeric(df['entry_pair_1d_ndi'], errors='coerce') if 'entry_pair_1d_ndi' in df else pd.Series(np.nan, index=df.index)
+    gap = pd.to_numeric(df['entry_btc_4h_ema50_200_gap_pct'], errors='coerce') if 'entry_btc_4h_ema50_200_gap_pct' in df else pd.Series(np.nan, index=df.index)
+    # post-ship fills carry the stamps; a post-ship NaN means live FAILED OPEN on that fill (kept it) — never rebuild it here,
+    # else builder/ledger would block a fill the live gate admitted (caveman review). Pre-ship fills: factory (closed-bar klines).
+    pre_ship = df.opened_at.astype(str).str[:19].str.replace(' ', 'T') < FADE_LAG_SHIP_UTC
+    need = (df.entry_strategy.astype(str) == 'SPIKE_FADE') & (ndi.isna() | gap.isna()) & pre_ship
+    if need.any():
+        try:
+            import sys, os
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+            import entry_feature_factory as EF
+            X = EF.features(df.loc[need])
+            ndi.loc[need] = ndi.loc[need].fillna(pd.to_numeric(X['PAIR_1d_ndi'], errors='coerce'))
+            gap.loc[need] = gap.loc[need].fillna(pd.to_numeric(X['BTC_4h_gap_ema50_200'], errors='coerce'))
+        except Exception as e:                                        # noqa: BLE001
+            print(f"WARNING: fade laggard inputs could not be rebuilt ({e}) — FADE_LAGGARD fails open on {int(need.sum())} unstamped fade(s)")
+    return ndi, gap
+
 
 def fade_freshbreak_stamp_block(opened_at, rsi_prev, pgap):
     """Builder FADE_FRESHBREAK: stamp proxy for pre-ship fills; post-ship fills defer to the live gate (never blocked)."""
@@ -156,7 +180,7 @@ def main():
     from types import SimpleNamespace
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from services.trading_engine import long_heat_eval, long_megacap_block, fade_late_arm_cf, flip_fan_weak_bounce, mom_short_c1_regime_block, calm3d_btc_atr_floor_block
-    from services.indicators import rsi_mom_loadx_block
+    from services.indicators import rsi_mom_loadx_block, fade_laggard_block
     # ⏱ Sep-24 frozen fade exit constants for the late-arm CF (live values at ship; builder pins a STACK_VERSION)
     _FADE_TH = SimpleNamespace(spike_fade_late_arm_after_min=15.0, spike_fade_late_arm_peak=0.30,
                                runner_trail_short_arm_peak=0.40, runner_trail_short_atr_mult=0.5,
@@ -175,6 +199,10 @@ def main():
     # 🌫 Sep-27 frozen CALM3D BTC-ATR floor (live value at ship; DECISION_LOG 118)
     _CALM3D_TH = SimpleNamespace(nonexp_calm3d_btc_atr_min=0.08)
     _LOADX_TH = SimpleNamespace(long_rsi_momentum_adx_max=21.0)   # 🧭 Sep-29 freeze (DECISION_LOG 126) — ledger warns if live drifts
+    # 🪤 Sep-29 fade laggard gate (DECISION_LOG 128): frozen thresholds; inputs = the order stamps when present (post-ship fills),
+    # else rebuilt from the closed-bar 5m kline cache by the research feature factory (the exact columns the rule was found on).
+    _LAG_TH = SimpleNamespace(spike_fade_lag_ndi_min=16.1, spike_fade_lag_btc_gap_min=0.0)
+    _lag_ndi, _lag_gap = fade_laggard_inputs(df)
     _off30 = {}
     if os.path.exists("reports/btc_off30d_hourly.csv"):
         _o = pd.read_csv("reports/btc_off30d_hourly.csv")
@@ -212,6 +240,9 @@ def main():
                 elif pd.notna(r.entry_btc_dist_from_ema13_pct) and r.entry_btc_dist_from_ema13_pct > 0: k, why = False, 'FADE_BD13'
                 elif v is not None and v < 2e6: k, why = False, 'FLOOR_2M'
                 elif fade_freshbreak_stamp_block(r.opened_at, r.entry_rsi_prev, r[G]): k, why = False, 'FADE_FRESHBREAK'
+                # 🪤 Sep-29: laggard squeeze — pair daily −DI > 16.1 while BTC 4h EMA50 > EMA200 (indicators.fade_laggard_block; engine
+                # tests it LAST among the fade gates; fail-open on a missing reading). DECISION_LOG 128.
+                elif fade_laggard_block(_LAG_TH, _lag_ndi.get(i), _lag_gap.get(i)): k, why = False, 'FADE_LAGGARD'
             elif strat == 'SPIKE_CHASE':
                 sa = (r.entry_ema5_stretch / r.entry_atr_pct) if (pd.notna(r.entry_atr_pct) and r.entry_atr_pct) else None
                 if v is not None and v < 2e6: k, why = False, 'FLOOR_2M'

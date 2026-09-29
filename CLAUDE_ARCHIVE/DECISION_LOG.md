@@ -4173,3 +4173,41 @@ payload fields, flip path + put() helper); kill switch entry_zone_stamps_enabled
 🔒 BAR (both zones, frozen; thresholds never re-tuned): fresh fills after this ship only; C counts one scan = one window; at fresh
 N ≥ 15 over ≥ 8 windows → BLOCK CANDIDATE only if WR < ML breakeven (~61 %) ∧ avg < 0 at 95 % window-bootstrap ∧ no window ≥ 50 % of
 the loss; else the watch closes. First read at the 20-fill B14 checkpoint.
+
+## 2026-09-29 (128) - 🪤 FADE LAGGARD gate shipped ARMED for SPIKE_FADE (operator override at master N=10; exhaustive-2D strict pass on the other sleeves)
+Strict backtest-first exhaustive 2D pass (Δ≤−0.20 both halves, ≥60 fills/half, master N≥8 ∧ Δ≤−0.10, 5-perm null) on the three
+non-ML sleeves: Spike-Fade 3,926 survivors vs null median 474 (8× — real structure), MOM-short 1,150 vs 540 (survivor cells are
+POSITIVE master cells, e.g. NOT BTC-1d-ADX>49 ∧ NOT REL-5m px>EMA200 22·+0.278 — keep-zones, no block), FLIP-short 6,423 vs 4,638
+(inside the null — nothing). Fade family after dedup: F1 = pair daily Wilder −DI(14) > 16.1 ∧ BTC 4h EMA50 > EMA200 (a spike in a
+pair in a daily downtrend while BTC is bid = laggard catch-up / squeeze, not exhaustion; the fade fights it into the −1.50 stop).
+  MASTER: blocked 10·50%·−0.468·−$562 over 9 windows (STORJ/CHIP/SAND/MANTA all −1.50; forgone 币安人生/EVAA/APT/AR/TST/SAHARA avg
+  +0.30) · kept 61·90%·+0.484·+$2,729 (was 71·85%·+0.350·+$2,166). Per batch: B1 +$123→+$257, B2 +$1,205→+$1,331, B8 +$119→+$49,
+  B9 −$48→+$137, B10 −$214→−$26. Expectancy bar: WR 50% < 66% breakeven ✓ · CI [−0.91,−0.07] ✓ · 9 windows ✓ · concentration 25% ✓ ·
+  N 10 < 15 ✗.
+  BACKTEST yr3 (5 seeds): 295 fills·55%·−0.437 vs rest +0.009; negative in 7/7 months it fires and 5/5 seeds; 120 full stops (41%
+  vs 21% for the rest); forgone wins avg +0.42 (10 above +1%, max +2.81 — no "huge wins"). Converged-feature window Apr–Sep (caveman
+  review caveat: k5m cache starts 2025-12-30, Jan–Mar research features are warm-up biased): 238·53%·−0.501 vs +0.028, 5/5 months,
+  5/5 seeds. Weaker variants fail: −DI alone 25·76%·+0.18 (WR/CI), 15m-slope × flat-6d CI [−0.78,+0.32].
+  Quant position given: rule-compliant = observe (fails only the master N); operator chose ARMED with the declared-override clause.
+BUILD: pure helpers indicators.closed_wilder_ndi (Wilder −DI on closed bars, equals entry_feature_factory._ind.ndi to 4e-4) and
+indicators.fade_laggard_block (fail-open); engine: BTC 4h EMA50/200 gap once per scan (1000 bars — 600 left a 0.044 pp seed bias at a
+sign-boundary threshold; refreshed at most every 15 min, 30-min freshness), per fade signal ONE pair 1d fetch via _fade_pair_1d_ndi
+(60-min per-symbol cache, 4 s wait_for bound so a 429 back-off cannot stall the scan loop) on BOTH fade paths (spike scanner, tested
+last among the fade gates; top-50 hook elif chain); counter SPIKE_FADE_LAGGARD; Order columns entry_pair_1d_ndi /
+entry_btc_4h_ema50_200_gap_pct (+ migration, payloads, open_position params); config spike_fade_lag_ndi_min (default 0 = off, JSON
+16.1) / spike_fade_lag_btc_gap_min (0); UI inputs + load/save (blank → 16.1) + report line + Spike Full Ship line; builder leg
+FADE_LAGGARD (STACK 2026-09-29b; inputs = stamps for post-ship fills, feature factory for pre-ship fills only — a post-ship NaN means
+live failed open and must stay kept); ledger leg with drift warning; tests/test_fade_laggard.py (truth table, fail-open, live −DI ==
+research feature, wiring parity, builder input precedence). Reviews: caveman (rate-limit stall, seed bias, post-ship NaN scope — all
+applied) + deep (10/10 blocked fills agree factory/engine/builder, 0 kept fade affected, ledger 240, fail-open enumerated; SHIP).
+validate_against_master ALL PASS. Ledger TOTAL 250·85%·+$15,375 → 240·87%·+$15,937.
+🔒 TIGHT REVERT (→ 0): first N≥10 blocked fades, re-simulated from 1m klines under the live fade stack (fixed −1.50 SL, late-arm,
+ladder) — WR ≥ 66% (the sleeve's breakeven) OR Σ > 0 → off. Thresholds frozen at 16.1 / 0; never re-tuned on the data that set them.
+Young listings (<42 closed daily bars) are never gated (fail-open by design).
+ALSO in this review: (a) the FAN flip −DI<15 observe (DECISION_LOG 120) is BACKTEST-REFUTED on yr3 (665 flip fills, −DI stamped
+100%): −DI<15 66/seed·68%·−0.086 vs ≥15 67·60%·−0.120, low side better in H1 and 5/9 months, non-monotonic buckets, companion
+∧bear≥76 flips sign between halves; tally continues, no block path. (b) Sizing correction (operator-caught): "sizing can only amplify
+an edge" is wrong at portfolio level — conditional 2× on winning cohorts IS an edge; on the master the ML/flip cells are pointed
+right (ML 2× fills +0.378 vs 1× +0.052, size-weighted +0.333 vs equal-weight +0.309) but on the yr3 year they are not (UNMATCHED
+−0.064, CALM3D −0.077 at 1×; ALL −0.043 → −0.050 size-weighted). Both readings to be shown side by side in the monthly table.
+

@@ -288,6 +288,44 @@ def last_closed_bar_ret_pct(ohlcv):
         return None
 
 
+def closed_wilder_ndi(ohlcv, n: int = 14):
+    """🪤 Sep-29 FADE LAGGARD gate (DECISION_LOG 128): Wilder −DI(n) on CLOSED bars (forming candle dropped) — identical
+    arithmetic to the research feature factory (ewm alpha=1/n, adjust=False; +DM/−DM by the larger move; TR Wilder-smoothed),
+    so a live reading equals the backtest column. Needs ≥ 3n closed bars (200-bar daily fetch ≈ converged). None on any error."""
+    try:
+        rows = [(float(c[2]), float(c[3]), float(c[4])) for c in (ohlcv or [])][:-1]
+        if len(rows) < 3 * n:
+            return None
+        h = pd.Series([r[0] for r in rows]); l = pd.Series([r[1] for r in rows]); c = pd.Series([r[2] for r in rows])
+        tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+        atr = tr.ewm(alpha=1 / n, adjust=False).mean()
+        up, dn = h.diff(), -l.diff()
+        ndm = pd.Series(np.where((dn > up) & (dn > 0), dn, 0.0), index=h.index)
+        v = float((100 * ndm.ewm(alpha=1 / n, adjust=False).mean() / atr).iloc[-1])
+        return round(v, 3) if v == v else None
+    except Exception:
+        return None
+
+
+def fade_laggard_block(th, pair_1d_ndi, btc_4h_gap_pct):
+    """🪤 Sep-29 FADE LAGGARD gate (DECISION_LOG 128; declared override at master N=10 on 295 backtest fills): block a SPIKE_FADE
+    when the pair is in a DAILY downtrend (Wilder −DI(14) on closed daily bars > `spike_fade_lag_ndi_min`) while BTC trends up
+    (4h EMA50 vs EMA200 gap % > `spike_fade_lag_btc_gap_min`, default 0 = EMA50 above EMA200). A spike in a laggard while BTC is
+    bid is a catch-up / short squeeze, not exhaustion: master 10·50%·−0.47 (4 full stops), backtest 295·55%·−0.44 in 7/7 months
+    and 5/5 seeds. ndi_min ≤ 0 / None = off. Fail-OPEN on any missing reading. Pure — engine, pool builder, ledger and tests."""
+    try:
+        nmin = float(getattr(th, 'spike_fade_lag_ndi_min', 0.0) or 0.0)
+        if nmin <= 0 or pair_1d_ndi is None or btc_4h_gap_pct is None:
+            return False
+        gmin = float(getattr(th, 'spike_fade_lag_btc_gap_min', 0.0) or 0.0)
+        ndi, gap = float(pair_1d_ndi), float(btc_4h_gap_pct)
+        if ndi != ndi or gap != gap:
+            return False
+        return ndi > nmin and gap > gmin
+    except (TypeError, ValueError):
+        return False
+
+
 def rsi_mom_loadx_block(th, rsi, rsi_prev2, adx):
     """🧭 Sep-29 LOW-ADX RSI-MOMENTUM gate (DECISION_LOG 126) — block a momentum LONG whose RSI(12) is already BELOW its value
     two candles ago while pair ADX is below `long_rsi_momentum_adx_max`: the EMA-stack signal lags price; RSI falling at the

@@ -1453,6 +1453,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "adx_surge_open": bool(getattr(o, 'adx_surge_open', False) or False),   # ⚡ Sep-28 badge source
             "entry_btc_ema50_100_gap_pct": getattr(o, 'entry_btc_ema50_100_gap_pct', None), "entry_eth_5m_ret1_pct": getattr(o, 'entry_eth_5m_ret1_pct', None),   # 🧭 Sep-29 zone stamps
             "entry_btc_1d_ret_pct": getattr(o, 'entry_btc_1d_ret_pct', None), "entry_pair_1h_ema20_200_gap_pct": getattr(o, 'entry_pair_1h_ema20_200_gap_pct', None),
+            "entry_pair_1d_ndi": getattr(o, 'entry_pair_1d_ndi', None), "entry_btc_4h_ema50_200_gap_pct": getattr(o, 'entry_btc_4h_ema50_200_gap_pct', None),   # 🪤 Sep-29 fade laggard readings
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
             "pattern_fixed_tp_pct": getattr(o, 'pattern_fixed_tp_pct', None),
             "pattern_fixed_sl_pct": getattr(o, 'pattern_fixed_sl_pct', None),
@@ -1759,6 +1760,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "adx_surge_open": bool(getattr(o, 'adx_surge_open', False) or False),   # ⚡ Sep-28 badge source
             "entry_btc_ema50_100_gap_pct": getattr(o, 'entry_btc_ema50_100_gap_pct', None), "entry_eth_5m_ret1_pct": getattr(o, 'entry_eth_5m_ret1_pct', None),   # 🧭 Sep-29 zone stamps
             "entry_btc_1d_ret_pct": getattr(o, 'entry_btc_1d_ret_pct', None), "entry_pair_1h_ema20_200_gap_pct": getattr(o, 'entry_pair_1h_ema20_200_gap_pct', None),
+            "entry_pair_1d_ndi": getattr(o, 'entry_pair_1d_ndi', None), "entry_btc_4h_ema50_200_gap_pct": getattr(o, 'entry_btc_4h_ema50_200_gap_pct', None),   # 🪤 Sep-29 fade laggard readings
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
             "pattern_fixed_tp_pct": getattr(o, 'pattern_fixed_tp_pct', None),
             "pattern_fixed_sl_pct": getattr(o, 'pattern_fixed_sl_pct', None),

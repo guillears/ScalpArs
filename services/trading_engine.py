@@ -15,7 +15,7 @@ from database import AsyncSessionLocal, locked_commit, locked_execute_commit
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, is_leverage_blocked
-from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
+from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, closed_wilder_ndi, fade_laggard_block, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
@@ -89,6 +89,30 @@ _current_btc_ema50_100_gap_pct: Optional[float] = None
 _current_eth_5m_ret1_pct: Optional[float] = None
 _current_btc_1d_ret_pct: Optional[float] = None
 _zone_stamps_at: float = 0.0
+# 🪤 Sep-29 FADE LAGGARD gate (DECISION_LOG 128): BTC 4h EMA50/EMA200 gap on CLOSED bars, refreshed at most every 15 min (1000-bar fetch);
+# None on any failure (never stale — the fade gate refuses a reading older than 30 min and fails OPEN).
+_current_btc_4h_ema50_200_gap_pct: Optional[float] = None
+_btc_4h_gap_at: float = 0.0
+_fade_lag_ndi_cache: Dict[str, tuple] = {}   # symbol → (read_at, −DI) — daily bars change once a day; 60-min TTL
+
+
+async def _fade_pair_1d_ndi(symbol: str):
+    """🪤 pair daily Wilder −DI(14) for the fade laggard gate: cached 60 min per symbol (a re-signalling pair does not re-fetch),
+    the fetch bounded to 4 s (caveman review: a 429 back-off inside get_ohlcv could stall the scan loop ~30 s) — any timeout,
+    error or short history → None → the gate fails OPEN."""
+    now = time.time(); hit = _fade_lag_ndi_cache.get(symbol)
+    if hit and now - hit[0] <= 3600:
+        return hit[1]
+    try:
+        v = closed_wilder_ndi(await asyncio.wait_for(binance_service.get_ohlcv(symbol, '1d', 200), timeout=4.0))
+    except Exception as _e:   # asyncio.TimeoutError included
+        logger.debug(f"[SPIKE_FADE_LAGGARD] {symbol}: 1d fetch failed/timed out (fail-open): {_e}"); return None
+    if v is not None:
+        _fade_lag_ndi_cache[symbol] = (now, v)
+        if len(_fade_lag_ndi_cache) > 600:
+            for k in [k for k, (t, _) in _fade_lag_ndi_cache.items() if now - t > 3600]:
+                _fade_lag_ndi_cache.pop(k, None)
+    return v
 _current_btc_ema50: Optional[float] = None
 _current_btc_trend_gap_pct: Optional[float] = None  # As of May 6: (EMA13 - EMA50) / EMA50; was EMA20-based before
 _current_btc_adx_prev1: Optional[float] = None  # Aug-22: previous closed bar — arrow = sign(adx - adx_prev1)
@@ -6262,6 +6286,7 @@ class TradingEngine:
                     _sp_max_adx = float(getattr(th, 'spike_chase_max_adx', 30.0) or 30.0)
                     _sp_dir = "LONG"
                     _sp_is_fade = False
+                    _sp_lag_ndi, _sp_lag_gap = None, None   # 🪤 Sep-29 fade laggard readings (fade route only)
                     _sp_is_bounce = False
                     if _bounce_trig:
                         # Jul 31 🏀 BOUNCE guards — a dump routes to LONG directly (no
@@ -6374,6 +6399,19 @@ class TradingEngine:
                                 self._record_filter_block("SPIKE_FADE_FRESHBREAK", "SHORT")
                                 logger.info(f"[SPIKE_FADE_FRESHBREAK] {p['pair']}: scanner fade blocked — base RSI {rsi_prev:.1f} < {_sp_fb_rmin} on non-crashed pair (pgap {_sp_pg:+.2f} > {_sp_fb_gmin}) = fresh breakout, not exhaustion | entry_px={ind.get('price')} — re-sim revert row")
                                 continue
+                        # 🪤 Sep-29 FADE LAGGARD gate (DECISION_LOG 128; declared override at master N=10, backtest 295 fills):
+                        # never fade a spike on a pair in a DAILY downtrend (−DI(14) > min) while BTC's 4h EMA50 > EMA200 —
+                        # that spike is a laggard catch-up/squeeze, not exhaustion (master 10·50%·−0.47, 4 full stops;
+                        # backtest 295·55%·−0.44, negative in 7/7 months and 5/5 seeds). One 1d fetch per fade signal
+                        # (closed bars, Wilder −DI = the research feature); fail-OPEN on any missing reading.
+                        _sp_lag_ndi, _sp_lag_gap = None, None
+                        if float(getattr(th, 'spike_fade_lag_ndi_min', 0.0) or 0.0) > 0:
+                            _sp_lag_ndi = await _fade_pair_1d_ndi(p['symbol'])   # cached 60 min, 4 s bound, None = fail-open
+                            _sp_lag_gap = _gl.get('_current_btc_4h_ema50_200_gap_pct') if (time.time() - (_gl.get('_btc_4h_gap_at') or 0)) <= 1800 else None
+                            if fade_laggard_block(th, _sp_lag_ndi, _sp_lag_gap):
+                                self._record_filter_block("SPIKE_FADE_LAGGARD", "SHORT")
+                                logger.info(f"[SPIKE_FADE_LAGGARD] {p['pair']}: scanner fade blocked — pair 1d −DI {_sp_lag_ndi:.1f} > {getattr(th, 'spike_fade_lag_ndi_min', 0)} with BTC 4h EMA50/200 gap {_sp_lag_gap:+.3f}% > {getattr(th, 'spike_fade_lag_btc_gap_min', 0)} (laggard squeeze, not exhaustion) | entry_px={ind.get('price')} pair_rsi={ind.get('rsi')} — re-sim revert row")
+                                continue
                         _sp_dir, _sp_is_fade = "SHORT", True
                         if _sp_regime_fade:
                             logger.info(f"[SPIKE_REGIME_FADE] {p['pair']}: non-chase regime — routing trigger to FADE short")
@@ -6465,6 +6503,7 @@ class TradingEngine:
                         spike_chase_probe=(not _sp_is_fade and not _sp_is_bounce),
                         spike_fade=_sp_is_fade,
                         spike_bounce=_sp_is_bounce,
+                        entry_pair_1d_ndi=(_sp_lag_ndi if _sp_is_fade else None), entry_btc_4h_ema50_200_gap_pct=(_sp_lag_gap if _sp_is_fade else None),   # 🪤 Sep-29 fade laggard stamps
                     )
                     if order:
                         _fired += 1
@@ -6506,6 +6545,7 @@ class TradingEngine:
         entry_btc_atr_pct: float = None,
         entry_btc_rsi_1h: float = None,
         entry_btc_rsi_1h_prev: float = None,
+        entry_pair_1d_ndi: float = None, entry_btc_4h_ema50_200_gap_pct: float = None,   # 🪤 Sep-29 fade laggard stamps (SPIKE_FADE fills only)
         entry_btc_ema50_100_gap_pct: float = None,   # 🧭 Sep-29 zone stamps — accepted so the flip/door paths' **-splat never drops them
         entry_eth_5m_ret1_pct: float = None,
         entry_btc_1d_ret_pct: float = None,
@@ -8107,6 +8147,7 @@ class TradingEngine:
             entry_eth_5m_ret1_pct=(entry_eth_5m_ret1_pct if entry_eth_5m_ret1_pct is not None else (_zg.get('_current_eth_5m_ret1_pct') if _zfresh else None)),
             entry_btc_1d_ret_pct=(entry_btc_1d_ret_pct if entry_btc_1d_ret_pct is not None else (_zg.get('_current_btc_1d_ret_pct') if _zfresh else None)),
             entry_pair_1h_ema20_200_gap_pct=_z_pair_gap,
+            entry_pair_1d_ndi=entry_pair_1d_ndi, entry_btc_4h_ema50_200_gap_pct=entry_btc_4h_ema50_200_gap_pct,   # 🪤 Sep-29 fade laggard readings (SPIKE_FADE fills; NULL otherwise)
             entry_br_bull_pct_top10=entry_br_bull_pct_top10,
             entry_br_bear_pct_top10=entry_br_bear_pct_top10,
             entry_br_top10_n=entry_br_top10_n,
@@ -11233,6 +11274,16 @@ class TradingEngine:
             _current_eth_5m_ret1_pct = last_closed_bar_ret_pct(_zr[1])
             _current_btc_1d_ret_pct = last_closed_bar_ret_pct(_zr[2])
             _zone_stamps_at = time.time()
+        # 🪤 Sep-29 FADE LAGGARD gate (DECISION_LOG 128): BTC 4h EMA50 vs EMA200 on closed bars — the BTC leg of the fade
+        # laggard block. Fetched only while the gate is armed; any failure → None (gate fails open on that scan).
+        global _current_btc_4h_ema50_200_gap_pct, _btc_4h_gap_at
+        if (float(getattr(config.trading_config.thresholds, 'spike_fade_lag_ndi_min', 0.0) or 0.0) > 0
+                and (time.time() - _btc_4h_gap_at) > 900):   # a 4h bar closes every 4 h — refresh at most every 15 min
+            try:   # 1000 bars: EMA200 seed weight (199/201)^999 ≈ 5e-5 (600 bars left ~0.25 % seed bias at a sign-boundary threshold)
+                _current_btc_4h_ema50_200_gap_pct = closed_ema_gap_pct(await binance_service.get_ohlcv('BTC/USDT:USDT', '4h', 1000), 50, 200)
+            except Exception as _e:
+                _current_btc_4h_ema50_200_gap_pct = None; logger.debug(f'[FADE_LAGGARD] BTC 4h fetch failed: {_e}')
+            _btc_4h_gap_at = time.time() if _current_btc_4h_ema50_200_gap_pct is not None else 0.0
         if btc_ema13 is not None and btc_ema50 is not None and btc_ema50 != 0:
             # Trend gap = (EMA13 - EMA50) / EMA50 × 100. EMA13 spans ~65 min on 5m chart;
             # EMA50 spans ~250 min (~4 hours). Gap > 0 = BTC in 4hr uptrend, gap < 0 = downtrend.
@@ -12974,6 +13025,7 @@ class TradingEngine:
             # Caps/sizing/tagging enforced inside open_position (max_open, last-2-slots guard).
             _spike_chase_hit = False
             _spike_fade_hit = False
+            _sc_lag_ndi, _sc_lag_gap = None, None   # 🪤 Sep-29 fade laggard readings (fade signals only)
             try:
                 _sc_th = config.trading_config.thresholds
                 if (signal not in ("LONG", "SHORT")
@@ -13026,6 +13078,12 @@ class TradingEngine:
                                 if _sc_regime_fade:
                                     logger.info(f"[SPIKE_REGIME_FADE] {pair}: non-chase regime ({_sc_reg_now}) — routing trigger to FADE short")
                             if _sc_regime_fade or (_sc_adx is not None and _sc_adx > _sc_max_adx):
+                                # 🪤 Sep-29 FADE LAGGARD gate inputs (hook parity; see the scanner comment / config): one 1d fetch
+                                # per fade signal on closed bars; fail-open on any failure. Read by the elif below.
+                                if (float(getattr(_sc_th, 'spike_fade_lag_ndi_min', 0.0) or 0.0) > 0
+                                        and getattr(_sc_th, 'spike_fade_enabled', False)):
+                                    _sc_lag_ndi = await _fade_pair_1d_ndi(symbol)   # cached 60 min, 4 s bound, None = fail-open
+                                    _sc_lag_gap = globals().get('_current_btc_4h_ema50_200_gap_pct') if (time.time() - (globals().get('_btc_4h_gap_at') or 0)) <= 1800 else None
                                 # Jul 30 PM — fade bRSI ceiling: don't fade an alt spike while
                                 # BTC's own momentum is hot (bRSI > max = market-wide beta ->
                                 # the short gets squeezed; calm BTC = idiosyncratic exhaustion,
@@ -13056,6 +13114,10 @@ class TradingEngine:
                                     # Aug-10 FRESH-BREAKOUT GUARD (hook parity; see config comment)
                                     self._record_filter_block("SPIKE_FADE_FRESHBREAK", "SHORT")
                                     logger.info(f"[SPIKE_FADE_FRESHBREAK] {pair}: fade blocked — base RSI {_sc_prev:.1f} < {getattr(_sc_th, 'spike_fade_fb_rsi_prev_min', 0)} on non-crashed pair = fresh breakout, not exhaustion | entry_px={indicators.get('price')} — re-sim revert row")
+                                elif fade_laggard_block(_sc_th, _sc_lag_ndi, _sc_lag_gap) and getattr(_sc_th, 'spike_fade_enabled', False):
+                                    # 🪤 Sep-29 FADE LAGGARD gate (hook parity; DECISION_LOG 128)
+                                    self._record_filter_block("SPIKE_FADE_LAGGARD", "SHORT")
+                                    logger.info(f"[SPIKE_FADE_LAGGARD] {pair}: fade blocked — pair 1d −DI {_sc_lag_ndi:.1f} > {getattr(_sc_th, 'spike_fade_lag_ndi_min', 0)} with BTC 4h EMA50/200 gap {_sc_lag_gap:+.3f}% > {getattr(_sc_th, 'spike_fade_lag_btc_gap_min', 0)} (laggard squeeze, not exhaustion) | entry_px={indicators.get('price')} pair_rsi={_sc_rsi:.1f} — re-sim revert row")
                                 elif getattr(_sc_th, 'spike_fade_enabled', False):
                                     signal, confidence = "SHORT", "STRONG_BUY"
                                     _spike_fade_hit = True
@@ -13560,6 +13622,7 @@ class TradingEngine:
                         spike_chase_probe=bool(_spike_chase_hit),
                         spike_fade=bool(_spike_fade_hit),
                         spike_bounce=bool(_spike_bounce_hit),
+                        entry_pair_1d_ndi=(_sc_lag_ndi if _spike_fade_hit else None), entry_btc_4h_ema50_200_gap_pct=(_sc_lag_gap if _spike_fade_hit else None),   # 🪤 Sep-29 fade laggard stamps
                         # Jul 27 PM promotion: NONEXP_CALM3D admission (engine router above)
                         nonexp_calm3d=bool(_nonexp_calm3d_hit),
                         # Sep-18 narrowed overbought band: admitted through the RSI≥70 cross band → probe size + own tag

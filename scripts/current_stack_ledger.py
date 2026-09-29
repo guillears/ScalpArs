@@ -335,6 +335,23 @@ def build(rearm_trail=True, entry_age_cap=60.0):
     except Exception as e:                                        # noqa: BLE001
         print(f"  ⚠ could not apply the low-ADX RSI-momentum leg ({e}) — NUMBERS BELOW INCLUDE those longs.")
 
+    try:   # 🪤 Sep-29 fade laggard gate (DECISION_LOG 128) — live parity with build_master_pool STACK 2026-09-29b
+        from services.indicators import fade_laggard_block
+        from scripts.build_master_pool import fade_laggard_inputs
+        import config as _cfg
+        _th = _cfg.trading_config.thresholds
+        if (float(getattr(_th, 'spike_fade_lag_ndi_min', 0) or 0), float(getattr(_th, 'spike_fade_lag_btc_gap_min', 0) or 0)) != (16.1, 0.0):
+            print(f"  ⚠ live spike_fade_lag_ndi_min/btc_gap_min={getattr(_th, 'spike_fade_lag_ndi_min', 0)}/{getattr(_th, 'spike_fade_lag_btc_gap_min', 0)} "
+                  "but build_master_pool.py freezes 16.1/0.0 — stacked pool and this ledger DISAGREE until the builder constant is updated and the pool rebuilt.")
+        _lg_ndi, _lg_gap = fade_laggard_inputs(d)
+        _lg = pd.Series([fade_laggard_block(_th, a, b) for a, b in zip(_lg_ndi, _lg_gap)], index=d.index, dtype=bool)
+        _lg_drop = (d.entry_strategy == "SPIKE_FADE") & _lg
+        if int(_lg_drop.sum()):
+            print(f"  ℹ fade laggard gate: {int(_lg_drop.sum())} fade(s) dropped, ${d.loc[_lg_drop, 'pnl_'].sum():+,.0f}")
+        d = d[~_lg_drop]
+    except Exception as e:                                        # noqa: BLE001
+        print(f"  ⚠ could not apply the fade laggard gate ({e}) — NUMBERS BELOW INCLUDE those fades.")
+
     # bull-run sleeve — the FULL live gate list
     br = d.entry_strategy == "BULLRUN_LONG"
     rearm = d["entry_br_door"].eq("REARM") | ((d.era == "B4") & br)

@@ -41,7 +41,7 @@ def test_live_json_armed_default_off_and_wiring():
     assert eng.count("rsi_prev2=indicators.get('rsi_prev2')") >= 3      # scan loop + revalidate + flip path all feed rsi_prev2 (deep review: the scan never did)
     assert config.SignalThresholds.model_fields["rsi_momentum_filter_enabled"].default is False   # old unscoped leg: default == live
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-09-29a"' in bld and "rsi_mom_loadx_block(_LOADX_TH, r.get('entry_rsi'), r.get('entry_rsi_prev'), r.get('entry_adx'))" in bld
+    assert 'Prior: "2026-09-29a"' in bld and "rsi_mom_loadx_block(_LOADX_TH, r.get('entry_rsi'), r.get('entry_rsi_prev'), r.get('entry_adx'))" in bld
     led = open(os.path.join(ROOT, "scripts", "current_stack_ledger.py")).read()
     assert "rsi_mom_loadx_block(_th, a, b, c)" in led and "!= 21.0" in led
     ui = open(os.path.join(ROOT, "templates", "index.html")).read()

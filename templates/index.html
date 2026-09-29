@@ -20046,7 +20046,7 @@
             if (chev) chev.textContent = collapse ? '▸' : '▾';
             try { localStorage.setItem('manualPanelCollapsed', collapse ? '1' : '0'); } catch (e) {}
         }
-        try { if (localStorage.getItem('manualPanelCollapsed') === '1') toggleManualPanel(true); } catch (e) {}   // panel markup is already parsed when this script runs
+        try { toggleManualPanel(localStorage.getItem('manualPanelCollapsed') !== '0'); } catch (e) { toggleManualPanel(true); }   // collapsed by default; expanded only if the user left it open
         function manualExitModeChanged() {
             const m = document.getElementById('manual-exit-mode')?.value || 'FIXED';
             const sl = document.getElementById('manual-sl'), tp = document.getElementById('manual-tp');

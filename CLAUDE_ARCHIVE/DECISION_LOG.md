@@ -4673,3 +4673,11 @@ SIZING PER SIDE (148, operator): surge_invest_mult / surge_lev_mult split into s
 only after ITS keep bar. UI: toggle labels now read on/off (were a static "on"); ONE CSS rule makes every toggle knob in the app slide
 (peer-checked: never reached the knob nested inside the track — all 29 toggles only changed colour); slots field relabelled
 "Max fills per trigger / side".
+SHORT-DELAY CHECK (148, operator challenged the "+20 min / bounce" story): wider delay sweep, same 148 dumps, HI_ATR, Bear-Run exit, per-event
+mean: +0 +0.059 · +5 +0.043 · +10 +0.089 · +15 +0.018 · +20 +0.176 · +25 +0.128 · +30 +0.094 · +45 +0.010. The curve is NOT smooth
+(+15 is weak between +10 and +20) → +20 is partly a lucky peak; the robust read is "20–30 min beats 0–15" (all three CI > 0). Realistic
+edge ≈ +0.09–0.13 %/trade, not +0.18. Price path after the dump bar (selected alts): mean +0.18 % at 5 min → +0.39 % at 20 min (median
++0.20 %), only 54 % above the close at +20 min — a small average drift up, not a reliable bounce. Delay kept at 20 (centre of the good
+zone; re-picking on the same data = re-fit). Kill bar unchanged.
+WATCH (148, operator): SURGE EMA-stack — SURGE fills need no pair EMA stack (Bear-Run needs the full momentum signal; Bull-Run a dip-reclaim).
+Observe-only; gate in CURRENT_STATE (stack rebuilt from 5m klines at review; 8-13/13-20 signs are not stamped).

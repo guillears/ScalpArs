@@ -118,3 +118,140 @@ def test_two_concurrent_opens_of_one_pair_leave_one_open_row():
     rows, res = asyncio.run(run(Book.locked))
     assert [r for r in rows if r[0] == "QNTUSDT"] == [("QNTUSDT", "bot")] and res[1] is None    # manual waited, saw the bot's row
     assert ("SUIUSDT", "bot2") in rows                                                          # another pair was never held up
+
+
+# ── 🔒 Sep-30 account book lock (position limits / funds race across DIFFERENT pairs) ──
+
+def test_book_lock_serializes_final_sections_across_pairs_and_is_released_on_every_exit():
+    e = _eng()
+
+    async def run():
+        order = []
+
+        async def section(tag, secs):
+            rel = await e._book_hold()
+            order.append((tag, "in"))
+            await asyncio.sleep(secs)
+            order.append((tag, "out"))
+            rel(); rel()                                  # idempotent
+        await asyncio.gather(section("a", 0.2), section("b", 0.0))
+        assert order == [("a", "in"), ("a", "out"), ("b", "in"), ("b", "out")]
+        rel = await e._book_hold(); rel2 = await e._book_hold(); rel2(); rel()      # re-entrant for the holder
+        # a book lock left held by an open that raises / returns early is released by the serialized_per_pair wrapper
+        class X(T.TradingEngine):
+            def __init__(self): pass
+            @T.serialized_per_pair()
+            async def boom(self, db, pair):
+                await self._book_hold(); raise RuntimeError("fail after the book lock")
+            @T.serialized_per_pair()
+            async def early(self, db, pair):
+                await self._book_hold(); return None
+        x = X()
+        try:
+            await x.boom(None, pair="AUSDT")
+        except RuntimeError:
+            pass
+        await x.early(None, pair="BUSDT")
+        rel = await asyncio.wait_for(x._book_hold(), 1.0); rel()                   # free again
+        try:
+            async def hold_long():
+                r = await e._book_hold(); await asyncio.sleep(0.5); r()
+            async def impatient():
+                await asyncio.sleep(0.05); await e._book_hold(0.1)
+            await asyncio.gather(hold_long(), impatient())
+            raise AssertionError("should have timed out")
+        except ValueError as err:
+            assert "being booked right now" in str(err)
+    asyncio.run(run())
+
+
+def test_two_manual_clicks_on_different_pairs_cannot_overshoot_the_cap():
+    """The bug claim through the real decorator + book lock: cap 1, two clicks on different pairs, each checks the count and
+    inserts after its stamp reads. Without the book lock both pass the check (2 rows); with it the second sees the first."""
+    class Book(T.TradingEngine):
+        def __init__(self, use_book):
+            self.rows = []; self.use_book = use_book
+
+        @T.serialized_per_pair(normalize=T.normalize_manual_pair)
+        async def click(self, db, pair, cap=1):
+            await asyncio.sleep(0.1)                                   # the stamp reads
+            rel = (await self._book_hold()) if self.use_book else (lambda: None)
+            if len(self.rows) >= cap:
+                rel(); return "refused"
+            await asyncio.sleep(0.05)                                  # build + flush + commit
+            self.rows.append(pair); rel(); return "opened"
+
+    async def run(use_book):
+        b = Book(use_book)
+        res = await asyncio.gather(b.click(None, pair="QNT"), b.click(None, pair="SUI"))
+        return b.rows, sorted(res)
+    rows, res = asyncio.run(run(False)); assert len(rows) == 2                            # the race: 2 / 1
+    rows, res = asyncio.run(run(True)); assert len(rows) == 1 and res == ["opened", "refused"]
+
+
+def test_both_open_paths_book_under_the_lock():
+    src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    i = src.index("    async def open_position(\n"); j = src.index("\n    async def ", i + 10); bot = src[i:j]
+    assert "if book_changed_refusal(available, _avail_now, investment, self.is_paper_mode):" in bot
+    a, b, c, d = (bot.index("_book_release = await self._book_hold()"), bot.index("[BOOK_CHANGED]"),
+                  bot.index("        order = Order(\n            binance_order_id=binance_order_id,"), bot.index("_book_release()   # 🔒 live: the row is committed"))
+    assert a < b < c < d and bot.index("await locked_commit(db)", c) < d
+    # paper: released only after the bookkeeping writes (save_state), never at the commit (deep review 140)
+    e = bot.index("await self.save_state(db)", d); f = bot.index("            _book_release()\n", e)
+    assert e < f < bot.index("_snap = await db.execute(", e)
+    i = src.index("    async def open_manual_position"); j = src.index("\n    async def ", i + 10); man = src[i:j]
+    a = man.index("_book_release = await self._book_hold(10.0)")
+    assert a < man.index("was opened by the bot while this manual entry") < man.index("manual positions cap reached while") \
+        < man.index("exceeds the available balance after") < man.index("order = Order(") < man.index("await self.save_state(db)") \
+        < man.index("_book_release()   # 🔒 after the bookkeeping writes")
+
+
+
+def test_book_changed_refusal_only_when_free_usdt_fell_and_no_longer_covers():
+    f = T.book_changed_refusal
+    assert f(1000.0, 1000.0, 1200.0, True) is False          # unchanged balance: never refused (even if sized above it)
+    assert f(1000.0, 1500.0, 900.0, True) is False           # balance rose (a close)
+    assert f(1000.0, 950.0, 900.0, True) is False            # fell but still covers
+    assert f(1000.0, 400.0, 900.0, True) is True             # fell and no longer covers → refuse
+    assert f(1000.0, 400.0, 900.0, False) is False           # live: the exchange already funded the order
+    assert f(None, 400.0, 900.0, True) is False and f(1000.0, "x", 900.0, True) is False
+
+
+def test_book_hold_survives_a_flip_style_re_entry_and_is_released_by_the_right_wrapper():
+    """open_position → _maybe_open_flip → open_position: the inner wrapper must neither release the outer open's book hold
+    nor leave its own behind; after an exception the book is free for other tasks."""
+    class X(T.TradingEngine):
+        def __init__(self): pass
+
+        @T.serialized_per_pair()
+        async def outer(self, db, pair, fail=False):
+            await self._book_hold()                      # the outer open is booking
+            await self.inner(db, pair=pair)              # re-enters for the SAME pair (flip)
+            st = self._book_lock_state
+            assert st[1].locked() and st[2] is asyncio.current_task(), "inner wrapper released the outer hold"
+            if fail:
+                raise RuntimeError("outer fails while booking")
+            return "ok"
+
+        @T.serialized_per_pair()
+        async def inner(self, db, pair):
+            await self._book_hold()                      # re-entrant: no-op for the holder
+            return "inner"
+
+    async def run():
+        x = X()
+        assert await x.outer(None, pair="QNTUSDT") == "ok"
+        assert not x._book_lock_state[1].locked()
+        try:
+            await x.outer(None, pair="QNTUSDT", fail=True)
+        except RuntimeError:
+            pass
+        rel = await asyncio.wait_for(x._book_hold(), 1.0); rel()
+    asyncio.run(run())
+
+
+def test_paper_bnb_swaps_move_usdt_only_under_the_book_lock():
+    src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    for name in ("    async def _execute_bnb_swap(", "    async def _execute_bnb_sell(", "    async def _paper_bnb_credit("):
+        i = src.index(name); body = src[i:src.index("\n    async def ", i + 10)]
+        assert body.index("self._book_ctx()") < body.index("async with self._bnb_swap_lock():"), name   # book → bnb, never reverse

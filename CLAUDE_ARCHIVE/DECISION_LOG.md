@@ -4505,3 +4505,30 @@ HEAD (318 columns); the re-entrant flip path (203 re-entries) identical, no dead
 cases; 40×300-task stress: never two holders. Applied: manual wait capped at 45 s (browser/nginx 60 s must answer first), and
 the scan rolls back its session after an open exception (a flushed-but-uncommitted session must not hold SQLite's write lock
 while the next open waits on its pair lock).
+
+## 2026-09-30 (140) - 🔒 Position limits and funds cannot be overshot across different pairs (account book lock)
+BUG (pre-existing; noted by the 139 reviews): the per-pair lock cannot stop two opens on DIFFERENT pairs from both passing
+"slots left?" / "money left?" before either row exists. Reachable cases (bot opens all run in the one scan task, so bot-vs-bot
+cannot race): two manual clicks → manual cap overshoot / paper overspend; a manual fill booked while a bot open is in flight
+→ both sized off the same free USDT (paper).
+FIX: `_book_hold()` — one account-wide lock held only for each open's final section (funds / slot check → insert → commit),
+re-entrant, released by the open wrapper on any exit. Bot: taken right before its Order is built; in paper it refuses
+(filter block BOOK_CHANGED) only when free USDT fell since sizing AND no longer covers the investment — uncontended opens
+are unchanged. Manual: its pair / cap / balance re-checks and insert run under it. Live bot opens are already funded by the
+exchange (no refusal there).
+CAVEMAN REVIEW (140): SHIP — applied: refusal rule extracted (book_changed_refusal) and tested; paper BNB swaps / sells /
+the manual BNB buy now move USDT only under the book lock (order book → bnb), so a top-up cannot land between an open's funds
+check and its commit; manual book wait fixed at 10 s; holds drained before the pair lock. READ BOOK_CHANGED COUNTS AS
+COLLISIONS: a manual fill or a BNB top-up (e.g. during the paper maker wait) that left the sized position unfunded — HEAD
+would have opened it into negative free USDT. Accepted: the check compares raw free USDT, so a fill may eat into the fee
+reserve (not past zero), as it could at sizing time.
+DEEP REVIEW (140): FIX-FIRST → applied. The book released at the commit lined the next open's flush up against the previous
+open's paper bookkeeping (save_state) — a pre-existing SQLite lock inversion that now fired on most back-to-back opens: the
+second one died on "database is locked" AFTER its row was booked (2 simultaneous manual clicks: 10/24 reported failed; HEAD
+0/24). Now paper opens hold the book through recalc → fee → save_state (live bot releases at the commit); the paper auto-sell
+fetches its BNB price before the locks (it stalled opens 10–12 s behind a slow ticker). Reviewer's stress rerun on the final
+code: K2/K3/K5 simultaneous manual clicks 30/45/75 ok, 0 phantom failures; cap 1 / cap 3 exact; funds refusals exact; bot +
+manual all ok. Parity 4,800 uncontended cases identical to HEAD; flip re-entry identical; 10 exception/cancel cases leave both
+locks free. BOOK_CHANGED verified: refuses only opens that HEAD booked into NEGATIVE free USDT (0 refusals on the default
+reserve config). Known, rare: an emergency BNB swap triggered by an open's own fee now fetches its price while that open
+still holds the book.

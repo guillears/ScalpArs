@@ -3,6 +3,7 @@ SCALPARS Trading Platform - Trading Engine
 """
 import asyncio
 import contextlib
+import contextvars
 import functools
 import json
 import logging
@@ -311,6 +312,23 @@ def manual_open_wait_s(tc) -> float:
     return min(45.0, max(20.0, mk + 20.0))   # ≤ 45 s: the browser request (nginx 60 s) must not time out first
 
 
+def book_changed_refusal(available_at_sizing, available_now, investment, is_paper) -> bool:
+    """🔒 Sep-30 the bot's final funds check (paper): refuse only when free USDT FELL since the position was sized AND no longer
+    covers it. Unchanged or risen balance, or a fall that still covers it → open as sized (so an uncontended open is never
+    refused). Live: False — the exchange already accepted and funded the order. Compares raw free USDT: a fill that eats into
+    the fee reserve but not past zero is allowed, as it was at sizing time. Pure."""
+    if not is_paper:
+        return False
+    try:
+        return float(available_now) < float(available_at_sizing) - 0.01 and float(investment) > float(available_now) + 0.01
+    except (TypeError, ValueError):
+        return False
+
+
+# 🔒 Sep-30 book lock releases still pending in the current open (released by serialized_per_pair's wrapper on any exit)
+_BOOK_HOLDS: contextvars.ContextVar = contextvars.ContextVar("_BOOK_HOLDS", default=None)
+
+
 def serialized_per_pair(normalize=None, wait_s=None):
     """🔒 Sep-30 ONE OPEN PER PAIR AT A TIME. open_position checks "pair already open?" early and inserts the order seconds
     later (exchange fill, zone-stamp kline read, …); open_manual_position does the same around its stamp reads. A second open
@@ -324,8 +342,16 @@ def serialized_per_pair(normalize=None, wait_s=None):
         async def wrapper(self, db, *args, **kwargs):
             raw = kwargs['pair'] if 'pair' in kwargs else (args[0] if args else None)
             key = normalize(raw) if normalize else raw
-            async with self._pair_open_guard(key, wait_s() if callable(wait_s) else wait_s):
-                return await fn(self, db, *args, **kwargs)
+            holds = []; tok = _BOOK_HOLDS.set(holds)
+            try:
+                async with self._pair_open_guard(key, wait_s() if callable(wait_s) else wait_s):
+                    try:
+                        return await fn(self, db, *args, **kwargs)
+                    finally:
+                        for _release in list(reversed(holds)):   # a book lock still held (exception / early return): released
+                            _release()                            # here, before the pair lock (reverse acquisition order)
+            finally:
+                _BOOK_HOLDS.reset(tok)
         return wrapper
     return deco
 
@@ -3116,8 +3142,9 @@ class TradingEngine:
 
     async def _paper_bnb_credit(self, db: AsyncSession, amount: float, swap_type: str, bnb_price: float):
         """Locked entry point (manual BNB buy endpoint). See _paper_bnb_credit_unlocked."""
-        async with self._bnb_swap_lock():
-            return await self._paper_bnb_credit_unlocked(db, amount, swap_type, bnb_price)
+        async with self._book_ctx():   # 🔒 book → bnb (paper-only entry point: the manual BNB buy)
+            async with self._bnb_swap_lock():
+                return await self._paper_bnb_credit_unlocked(db, amount, swap_type, bnb_price)
 
     async def _paper_bnb_credit_unlocked(self, db: AsyncSession, amount: float, swap_type: str, bnb_price: float):
         """⛽ Book a paper USDT→BNB purchase of `amount` and return (pre_bnb, post_bnb, pre_usdt, post_usdt), all DB-derived.
@@ -3231,6 +3258,51 @@ class TradingEngine:
             owners.pop(pair, None)
             lock.release()
 
+    async def _book_hold(self, wait_s=None):
+        """🔒 Sep-30 ACCOUNT BOOK LOCK — one open at a time through its final funds / slot check → insert → commit, across ALL
+        pairs (the per-pair lock cannot stop two different pairs from both passing "slots left?" / "money left?" before either
+        row exists: two manual clicks → 9 / 8 manual positions; a manual click inside a bot open → both sized off the same
+        free USDT). Held only for that short section. Returns an idempotent release(); serialized_per_pair's wrapper releases
+        it on every exit path. Re-entrant for the task that holds it."""
+        loop = asyncio.get_running_loop()
+        held = getattr(self, '_book_lock_state', None)
+        if held is None or held[0] is not loop:
+            held = [loop, asyncio.Lock(), None]
+            self._book_lock_state = held
+        me = asyncio.current_task()
+        if me is not None and held[2] is me:
+            return lambda: None
+        try:
+            if wait_s is None:
+                await held[1].acquire()
+            else:
+                await asyncio.wait_for(held[1].acquire(), wait_s)
+        except asyncio.TimeoutError:
+            raise ValueError("another position is being booked right now — try again in a few seconds")
+        held[2] = me
+        done = [False]
+        holds = _BOOK_HOLDS.get()
+
+        def release():
+            if done[0]:
+                return
+            done[0] = True
+            held[2] = None
+            held[1].release()
+            if holds is not None and release in holds:
+                holds.remove(release)
+        if holds is not None:
+            holds.append(release)
+        return release
+
+    @contextlib.asynccontextmanager
+    async def _book_ctx(self, wait_s=None):
+        rel = await self._book_hold(wait_s)
+        try:
+            yield
+        finally:
+            rel()
+
     def _bnb_swap_lock(self) -> asyncio.Lock:
         """One reserve purchase at a time. The fee path, the 15-min wake and the manual buy each read the ledger and then
         book rows; interleaved they settle the same deficit twice and buy past the target (caveman review, reproduced).
@@ -3249,8 +3321,9 @@ class TradingEngine:
         paper_px = None
         if self.is_paper_mode and config.trading_config.bnb_swap_enabled:
             paper_px = await binance_service.get_bnb_price()
-        async with self._bnb_swap_lock():
-            return bool(await self._execute_bnb_swap_unlocked(db, swap_type, paper_px))
+        async with (self._book_ctx() if self.is_paper_mode else contextlib.nullcontext()):   # 🔒 book → bnb (never the reverse)
+            async with self._bnb_swap_lock():
+                return bool(await self._execute_bnb_swap_unlocked(db, swap_type, paper_px))
 
     async def _execute_bnb_swap_unlocked(self, db: AsyncSession, swap_type: str = "scheduled", paper_px=None):
         """The swap itself — sized from the ledger as it is NOW (re-read inside the lock)."""
@@ -3349,10 +3422,12 @@ class TradingEngine:
 
     async def _execute_bnb_sell(self, db: AsyncSession, target_usd: float, swap_type: str = "auto_sell"):
         """Auto-sell under the reserve lock (a sale and a purchase never interleave). See _execute_bnb_sell_unlocked."""
-        async with self._bnb_swap_lock():
-            return await self._execute_bnb_sell_unlocked(db, target_usd, swap_type)
+        paper_px = await binance_service.get_bnb_price() if self.is_paper_mode else None   # REST before the locks (deep review 140)
+        async with (self._book_ctx() if self.is_paper_mode else contextlib.nullcontext()):   # 🔒 book → bnb
+            async with self._bnb_swap_lock():
+                return await self._execute_bnb_sell_unlocked(db, target_usd, swap_type, paper_px)
 
-    async def _execute_bnb_sell_unlocked(self, db: AsyncSession, target_usd: float, swap_type: str = "auto_sell"):
+    async def _execute_bnb_sell_unlocked(self, db: AsyncSession, target_usd: float, swap_type: str = "auto_sell", paper_px=None):
         """Sell EXCESS BNB→USDT down to target_usd (paper or live). Symmetric counterpart of
         _execute_bnb_swap (Jun 22). Reuses the proven manual-sell mechanics: logs a NEGATIVE
         amount_usdt so the reverse-derived paper balance INCREASES by the proceeds, and the
@@ -3371,7 +3446,7 @@ class TradingEngine:
                 logger.info(f"[BNB_SELL] Skipped: excess ${excess:.2f} below ${min_sell:.2f} min")
                 return
 
-            bnb_price = await binance_service.get_bnb_price()
+            bnb_price = paper_px if paper_px is not None else await binance_service.get_bnb_price()
             if bnb_price <= 0:
                 bnb_price = 600.0  # fallback for paper mode
 
@@ -8574,6 +8649,22 @@ class TradingEngine:
         except Exception:
             _z_pair_gap = None
         _zg = globals(); _zfresh = (_leash_time.time() - (_zg.get('_zone_stamps_at') or 0)) <= 1800
+        # 🔒 Sep-30 book lock: final funds check → insert → commit, one open at a time across ALL pairs. The size above was set
+        # from `available` read at sizing time; since then a MANUAL fill (dashboard) or a BNB top-up (15-min wake / a close's
+        # fee path, e.g. during the paper maker wait) can have taken that USDT. book_changed_refusal: refuse only if free USDT
+        # FELL and no longer covers the position — so BOOK_CHANGED counts are collisions, not ordinary opens. Paper only.
+        _book_release = await self._book_hold()
+        if self.is_paper_mode:
+            _avail_now = await self.get_available_balance(db)
+            if book_changed_refusal(available, _avail_now, investment, self.is_paper_mode):
+                logger.warning(f"[BOOK_CHANGED] {pair} {direction}: free USDT fell {available:.2f} → {_avail_now:.2f} while this open "
+                               f"was in flight (a manual fill or a BNB top-up) — ${investment:.2f} no longer covered, not opened")
+                try:
+                    self._record_filter_block("BOOK_CHANGED", direction)
+                except Exception:
+                    pass
+                _book_release()
+                return None
         order = Order(
             binance_order_id=binance_order_id,
             backstop_algo_id=_bk_algo_id,
@@ -8726,6 +8817,8 @@ class TradingEngine:
         db.add(transaction)
 
         await locked_commit(db)
+        if not self.is_paper_mode:
+            _book_release()   # 🔒 live: the row is committed — the next open (any pair) sees it in the counts
         await db.refresh(order)
         # 📓 Sep-18 decision journal: the fill (file-only, never raises)
         try:
@@ -8760,6 +8853,9 @@ class TradingEngine:
             await self._recalculate_paper_balance(db)
             await self._deduct_fee_from_bnb(entry_fee, db)
             await self.save_state(db)
+            # 🔒 paper: released only after the bookkeeping writes (deep review 140) — releasing at the commit lined the next
+            # open's flush up against this save_state and one of them died on "database is locked" AFTER its row was booked
+            _book_release()
 
             _snap = await db.execute(
                 select(func.coalesce(func.sum(Order.investment), 0)).where(
@@ -9080,6 +9176,9 @@ class TradingEngine:
         entry_fee = actual_price * quantity * taker_fee_rate
         _clicked_at = datetime.utcnow()
         _st = await self._manual_entry_stamps(pair, symbol, direction, actual_price)   # 📐 every stamp a momentum fill records (≤ 8 s)
+        # 🔒 book lock (all pairs): the final pair / cap / balance checks → insert → commit run one open at a time, so two clicks
+        # (or a click and a bot open) on DIFFERENT pairs cannot both pass "slots left?" / "money left?" before either row exists
+        _book_release = await self._book_hold(10.0)   # held only for milliseconds by others; keeps the click inside the browser timeout
         # the reads above take up to 8 s: re-check the pair right before the insert (the bot may have opened it meanwhile)
         if ((await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.pair == pair,
                                                                       Order.is_paper == self.is_paper_mode)))).scalar() or 0) > 0:
@@ -9121,6 +9220,7 @@ class TradingEngine:
             await self._recalculate_paper_balance(db)
             await self._deduct_fee_from_bnb(entry_fee, db)
             await self.save_state(db)
+        _book_release()   # 🔒 after the bookkeeping writes (deep review 140: no "database is locked" on a booked row)
         websocket_tracker.force_reset_tracking(pair, actual_price)
         await websocket_tracker.subscribe_pair(pair, actual_price)
         await self.update_orders_cache(db)   # canonical cache entry (stop/exit fields built by the same code as a restart)

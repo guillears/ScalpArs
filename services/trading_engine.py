@@ -6482,10 +6482,10 @@ class TradingEngine:
                     st['refused'].add(pair)
                     self._record_filter_block(why, side)
                     continue
-                _slots = max(1, int(getattr(th, 'surge_max_slots', 3) or 3))
+                _slots = max(1, int(getattr(th, 'surge_max_slots', 4) or 4))
                 _n_open = (await db.execute(select(func.count(Order.id)).where(and_(
                     Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == f"SURGE_{side}")))).scalar() or 0
-                # cap = concurrent open AND fills per trigger (a fill stopped inside the window must not free a 4th entry — review)
+                # cap = concurrent open AND fills per trigger (a fill stopped inside the window must not free an entry beyond the cap — review)
                 if _n_open >= _slots or st['opened'] >= _slots:
                     st['refused'].add(pair)
                     self._record_filter_block("SURGE_MAX_SLOTS", side)
@@ -7385,7 +7385,7 @@ class TradingEngine:
         # (absolute-assign, never re-multiplied; ship 1×/0.05 = 1× probe). Exits = the normal momentum-short stack.
         bearrun_short: bool = False,
         # ⚡ Sep-30 SURGE sleeves (DECISION_LOG 146–148): "LONG"/"SHORT" = a fill from _maybe_open_surge (BTC spike / dump
-        # trigger). Tagged SURGE_LONG / SURGE_SHORT; sized surge_invest_mult × surge_lev_mult (absolute-assign, 1×/1× = normal
+        # trigger). Tagged SURGE_LONG / SURGE_SHORT; sized surge_<side>_invest_mult × surge_<side>_lev_mult (absolute-assign, 1×/1× = normal
         # size); bypasses every alt entry filter and pattern cell like BULLRUN (the trigger + selection replace them) but NOT the
         # no-trade list; direct taker entry with a dislocation guard. Exits: LONG = the Bull-Run exit with surge_long_trail_atr_mult,
         # SHORT = the momentum-short stack (the Bear-Run exit, simulated in DECISION_LOG 147).
@@ -8495,8 +8495,8 @@ class TradingEngine:
         # keep bar reads; the mults are UI fields.
         if _surge:
             _th_sg = config.trading_config.thresholds
-            cell_mult = max(0.1, min(float(getattr(_th_sg, 'surge_invest_mult', 1.0) or 1.0), _inv_cap))
-            cell_lev_mult = max(0.05, min(float(getattr(_th_sg, 'surge_lev_mult', 1.0) or 1.0), _lev_cap))
+            cell_mult = max(0.1, min(float(getattr(_th_sg, f'surge_{direction.lower()}_invest_mult', 1.0) or 1.0), _inv_cap))
+            cell_lev_mult = max(0.05, min(float(getattr(_th_sg, f'surge_{direction.lower()}_lev_mult', 1.0) or 1.0), _lev_cap))
             cell_src = f"SURGE_{direction}"
             _mult_target = "both"
 

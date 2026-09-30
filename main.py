@@ -2953,8 +2953,8 @@ def _surge_monitor_payload():
                 "kill_verdict": str(getattr(_th_s, f'surge_{side.lower()}_kill_verdict', '') or ''),
                 "picks": list(stt.get('picks') or []), "opened": int(stt.get('opened') or 0),
                 "refused": len(st.get('refused') or ()),
-                "invest_mult": float(getattr(_th_s, 'surge_invest_mult', 1.0) or 1.0),
-                "lev_mult": float(getattr(_th_s, 'surge_lev_mult', 1.0) or 1.0),
+                "invest_mult": float(getattr(_th_s, f'surge_{side.lower()}_invest_mult', 1.0) or 1.0),
+                "lev_mult": float(getattr(_th_s, f'surge_{side.lower()}_lev_mult', 1.0) or 1.0),
             }
         return out
     except Exception:

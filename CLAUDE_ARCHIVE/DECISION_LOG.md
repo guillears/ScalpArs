@@ -4667,3 +4667,9 @@ toggled on that page (a stale page can't re-enable a killed side); per-trigger c
 inherits the Bull-Run blacklist. OPEN (not blocking): an engine-level exemption-matrix test (SURGE vs MOMENTUM with the same flags).
 Cap note: the study never capped — SHORT averages 4.6 picks/dump; cap 3 keeps +0.195 %/event but only 432/687 fills (Σ +80 % vs
 +122 %); cap 5 keeps 617 fills / Σ +110 %. LONG: cap 3 cuts 8 fills averaging +1.78 %. Raising surge_max_slots 3 → 5 = operator decision.
+SLOTS (148): surge_max_slots 3 → 4 (operator; first said 5, then 4 after the deep review showed equal_split sizing caps the book at 4
+fills so 5 = 4 in practice). Trade-off accepted: an empty-book trigger can take all 4 slots, momentum waits up to 240 min.
+SIZING PER SIDE (148, operator): surge_invest_mult / surge_lev_mult split into surge_long_* / surge_short_* (all 1.0) — each side raises
+only after ITS keep bar. UI: toggle labels now read on/off (were a static "on"); ONE CSS rule makes every toggle knob in the app slide
+(peer-checked: never reached the knob nested inside the track — all 29 toggles only changed colour); slots field relabelled
+"Max fills per trigger / side".

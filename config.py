@@ -1217,13 +1217,21 @@ class SignalThresholds(BaseModel):
     surge_long_entry_delay_min: float = 0.0      # minutes after the trigger bar CLOSES before a LONG may open
     surge_short_entry_delay_min: float = 20.0    # minutes after the trigger bar closes before a SHORT may open (short the bounce)
     surge_entry_window_min: float = 5.0          # entries allowed from delay to delay + this (then the trigger is spent)
-    surge_max_slots: int = 3                     # max concurrent fills PER SIDE (they also count against max_open_positions)
+    surge_max_slots: int = 4                     # max fills PER TRIGGER and open PER SIDE (also count against max_open_positions).
+    # 3 → 4 (operator, 2026-09-30) = the general book size: the study never capped (SHORT averages 4.6 picks/dump; cap 3 kept Σ +80 %
+    # of +122 %), but equal_split sizing gives each fill ¼ of the book at max_open_positions=4, so a 5th full-size fill can't fund.
+    # 4 = SURGE may take the WHOLE book on an empty-book trigger: momentum then gets NO_BALANCE (only leftover-margin redeploy fills)
+    # until a SURGE fill closes, ≤ surge_max_hold_minutes — operator's call. DECISION_LOG 148.
     # per-side sleeve blacklists (operator 2026-09-30, mirror of bullrun_/bearrun_pair_blacklist): both start with BTC/ETH only (the
     # trigger + its twin). Bull-Run's repeat losers (ONG/ONE/ZEC) are NOT carried over — observed on SURGE fills first (operator).
     surge_long_pair_blacklist: str = "BTCUSDT,ETHUSDT"
     surge_short_pair_blacklist: str = "BTCUSDT,ETHUSDT"
-    surge_invest_mult: float = 1.0               # sizing (absolute-assign, never re-multiplied by cells): 1× = normal trades
-    surge_lev_mult: float = 1.0                  # leverage multiplier: 1× = normal. Raise only after the KEEP bar
+    # sizing PER SIDE (operator 2026-09-30; absolute-assign, never re-multiplied by cells): 1× = normal trades. Raise a side only after
+    # ITS keep bar — the two sides have different evidence (LONG failed the grid bar, SHORT passed).
+    surge_long_invest_mult: float = 1.0
+    surge_long_lev_mult: float = 1.0
+    surge_short_invest_mult: float = 1.0
+    surge_short_lev_mult: float = 1.0
     surge_long_trail_atr_mult: float = 1.0       # SURGE_LONG exit = the Bull-Run exit (bullrun_base_sl_pct / be_arm / be_lock / ladder)
                                                  # with THIS trail (1× ATR = the REARM trail the grid tested)
     surge_max_entry_dislocation_pct: float = 0.3  # skip the fill when price moved > this % from the decision (bull-run 57f guard)

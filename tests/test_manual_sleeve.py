@@ -112,9 +112,12 @@ def test_realtime_intercept_closes_on_sl_and_tp_and_passes_momentum_through(monk
     # SHORT signs
     assert asyncio.run(drive("SHORT", "FIXED", -1.5, 3.0, 102.0)) == ["MANUAL_SL"]
     assert asyncio.run(drive("SHORT", "FIXED", -1.5, 3.0, 96.0)) == ["MANUAL_TP"]
-    # FLOOR: no TP ever
+    # FLOOR: no TP unless given (Sep-30: optional TP on top of the floor stop)
     assert asyncio.run(drive("LONG", "FLOOR", -3.0, None, 110.0)) == []
     assert asyncio.run(drive("LONG", "FLOOR", -3.0, None, 96.0)) == ["MANUAL_SL"]
+    assert asyncio.run(drive("LONG", "FLOOR", -3.0, 5.0, 106.0)) == ["MANUAL_TP"]
+    assert asyncio.run(drive("SHORT", "FLOOR", -3.0, 5.0, 94.0)) == ["MANUAL_TP"]
+    assert asyncio.run(drive("LONG", "FLOOR", -3.0, 5.0, 103.0)) == []            # between the floor stop and the TP: holds
     # MOMENTUM mode is not intercepted by the manual block (whatever else fires, it is not MANUAL_*)
     assert not any(r.startswith("MANUAL_") for r in asyncio.run(drive("LONG", "MOMENTUM", None, None, 98.0)))
     T._open_orders_cache.pop("ZZZUSDT", None)
@@ -216,9 +219,9 @@ def test_momentum_mode_refuses_only_what_the_ema13_exit_would_close_at_once(monk
             def add(self, o): captured.append(o); raise _Accepted()
         return _DB()
 
-    def attempt(direction, ema13, age_s=10, leverage=20, exit_mode="MOMENTUM", **kw):
+    def attempt(direction, ema13, age_s=10, leverage=20, exit_mode="MOMENTUM", tp_pct=None, **kw):
         try:
-            asyncio.run(TE.open_manual_position(eng, db_with(ema13, age_s, **kw), pair="QNTUSDT", direction=direction, investment=100, leverage=leverage, exit_mode=exit_mode))
+            asyncio.run(TE.open_manual_position(eng, db_with(ema13, age_s, **kw), pair="QNTUSDT", direction=direction, investment=100, leverage=leverage, exit_mode=exit_mode, tp_pct=tp_pct))
         except ValueError as e:
             return str(e)
         except _Accepted:                                              # reached db.add = every guard passed
@@ -244,6 +247,14 @@ def test_momentum_mode_refuses_only_what_the_ema13_exit_would_close_at_once(monk
         assert "momentum stack's stop" in attempt("LONG", 266.0, leverage=_hi) and attempt("LONG", 266.0, leverage=_hi - 1) == "ACCEPTED"
         captured.clear(); assert attempt("LONG", 266.0, leverage=50, exit_mode="FLOOR") == "ACCEPTED"
         assert captured[-1].pattern_fixed_sl_pct == T.manual_floor_for_leverage(th, 50) == -1.2 and captured[-1].pattern_fixed_tp_pct is None
+        captured.clear(); assert attempt("LONG", 266.0, leverage=20, exit_mode="FLOOR", tp_pct=8) == "ACCEPTED"   # FLOOR + optional TP
+        assert captured[-1].pattern_fixed_tp_pct == 8.0 and captured[-1].pattern_fixed_sl_pct == T.manual_floor_for_leverage(th, 20)
+        assert "take profit must be > 0" in attempt("LONG", 266.0, exit_mode="FLOOR", tp_pct=0)
+        assert "take profit must be > 0" in attempt("LONG", 266.0, exit_mode="FLOOR", tp_pct=float("nan"))
+        captured.clear(); assert attempt("LONG", 266.0, exit_mode="FLOOR", tp_pct="") == "ACCEPTED"
+        assert captured[-1].pattern_fixed_tp_pct is None
+        captured.clear(); assert attempt("LONG", 266.0, exit_mode="MOMENTUM", tp_pct=8) == "ACCEPTED"          # MOMENTUM ignores a TP
+        assert captured[-1].pattern_fixed_tp_pct is None
         # the gate context lands on the Order itself (behavioural, not a source grep): stub row = NO_TRADE / STRONG_BUY, fan long
         _o = captured[-1]
         assert _o.manual_block_reason == T.PAIR_REASON_AWAITING and _o.manual_setup_rating == "STRONG_BUY" and _o.manual_setup_side == "LONG"

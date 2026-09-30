@@ -9503,7 +9503,7 @@ class TradingEngine:
         contaminates a systematic sleeve's stats (ledger / pool builder / readiness all exclude it; it gets its own row).
         Exit modes: FIXED = custom SL (and optional TP) only, the momentum stack is skipped · MOMENTUM = the momentum exit stack
         (label stays MANUAL; refused only when the live EMA13-cross exit would close it at the first tick — see
-        manual_momentum_first_tick_exit; an unscanned pair has no EMA exits, so its momentum stack = stop + trail) · FLOOR = no TP, hard SL at manual_floor_sl_pct (liquidation protection — a stop-less position is
+        manual_momentum_first_tick_exit; an unscanned pair has no EMA exits, so its momentum stack = stop + trail) · FLOOR = optional TP, hard SL at manual_floor_sl_pct (liquidation protection — a stop-less position is
         never allowed). Own slot lane: counts only against manual_max_open_positions, never against the bot's max_open_positions
         (and the bot's count excludes MANUAL rows). SL/TP are price-move % NET of the round-trip fees (leverage-invariant — the same pnl convention every
         exit uses, so "SL 1.5" fires at ≈ −1.4 % raw price). MAX_HOLD
@@ -9534,16 +9534,18 @@ class TradingEngine:
             if sl_pct in (None, ""):
                 raise ValueError("FIXED mode needs a stop loss (% of price)")
             sl = -abs(float(sl_pct))
+            if not math.isfinite(sl):
+                raise ValueError("stop loss must be a finite number")   # NaN would pass the floor check and leave NO stop
             if sl < floor:
                 raise ValueError(f"stop loss {sl:.2f}% is wider than the widest stop allowed at {leverage:g}×: {floor:.2f}% "
                                  f"(config floor {-abs(float(getattr(th, 'manual_floor_sl_pct', -3.0) or -3.0)):.2f}%; "
                                  f"liquidation ≈ −{manual_liquidation_distance_pct(leverage):.2f}%, the stop must stay within 80% of it)")
-            if tp_pct not in (None, ""):
-                tp = abs(float(tp_pct))
-                if tp <= 0:
-                    raise ValueError("take profit must be > 0")
         elif exit_mode == "FLOOR":
             sl = floor
+        if exit_mode in ("FIXED", "FLOOR") and tp_pct not in (None, ""):   # 🖐 Sep-30: FLOOR takes an optional TP too (operator)
+            tp = abs(float(tp_pct))
+            if not (math.isfinite(tp) and tp > 0):
+                raise ValueError("take profit must be > 0")
         _dup = await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.pair == pair, Order.is_paper == self.is_paper_mode)))
         if (_dup.scalar() or 0) > 0:
             raise ValueError(f"{pair} already has an open position")

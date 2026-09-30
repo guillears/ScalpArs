@@ -4821,3 +4821,10 @@ failures leave one line (same message ≤ once per 6 h). Task prompt = run `venv
 and nothing else. Cadence every 4 h (operator). Dual review applied (8-day re-note flood, sliding mover key, cap swallowing items,
 late market detections, gate-set count by day, verdict memory); idempotence checked on real data (+4 h → nothing, +9 d → only
 the stale-CSV warning). Operator approves the one command once with "Allow always".
+
+## 2026-09-30 (157) - 🖐 MANUAL "Floor stop" takes an optional TP (UI + engine; systematic sleeves untouched)
+Operator: "I want a TP without SL". A stop-less manual position stays forbidden (liquidation protection), so FLOOR = the widest
+leverage-safe stop (manual_floor_sl_pct, ≤ 80 % of the liquidation distance) + an OPTIONAL take-profit, same MANUAL_TP realtime
+intercept as FIXED. Option renamed "Floor stop (+ opt. TP)"; confirm dialog + badge hover show the TP; disabled SL/TP fields are
+never sent; non-finite SL/TP refused (a NaN SL used to pass the floor check = no stop). Dual review: exit isolation verified
+(realtime continue before pattern/ladder paths; candle loop skips FLOOR; TP survives restart via the cache rebuild).

@@ -4681,3 +4681,6 @@ edge ≈ +0.09–0.13 %/trade, not +0.18. Price path after the dump bar (selecte
 zone; re-picking on the same data = re-fit). Kill bar unchanged.
 WATCH (148, operator): SURGE EMA-stack — SURGE fills need no pair EMA stack (Bear-Run needs the full momentum signal; Bull-Run a dip-reclaim).
 Observe-only; gate in CURRENT_STATE (stack rebuilt from 5m klines at review; 8-13/13-20 signs are not stamped).
+FIRST LIVE-TAPE OBSERVATION (148, scored 2026-09-30 14:48 UTC; sleeve NOT yet deployed at the time → hypothetical): DUMP 13:35 UTC,
+picks QNT (ATR 2.15) + MOVR (3.22), short at 14:00 UTC, 1m candle path, Bear-Run exit: QNT +0.750 % (peak +1.08, ladder floor 14:01)
+· MOVR +0.325 % (peak +0.50, trail 14:01); QUICK exit +0.796 / +0.250. = ONE trigger window (window units), 2/2 winners, mean +0.54 %.

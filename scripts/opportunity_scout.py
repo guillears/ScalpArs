@@ -72,6 +72,7 @@ CAND_N, CAND_DAYS, CONFIRM_DAYS = 20, 8, 8
 CONFIRM_EXPIRY_DAYS = 45           # a qualified bucket that gets no 8 fresh days in 45 days expires (never re-fit)
 N_TESTS = 24                       # pre-registered: 12 declared buckets × 2 directions (Bonferroni, fixed — review)
 SCAN_N = 80                        # scan the top-80 eligible pairs so events OUTSIDE the bot's top-50 are recorded as such
+STAMP_MAX_AGE = 40 * 3600_000     # feature stamps only while every input still reaches the event (640 × 5m = 53 h of alt bars)
 MERGE_FLAG_MS = 30 * MIN           # a TREND and an ALT_SPIKE on the same pair/side within 30 min = one ⭐ flag
 DETECT_COLS = ["move_first", "vol_mult", "held_first", "scope", "eff", "in_universe", "rank", "start_ts", "qvol24_event"]
 
@@ -141,12 +142,76 @@ def tcrit(df, conf):
 
 
 # ─────────────────────────────── data ───────────────────────────────
-def k5(sym, last_closed):
-    rows = _retry(EX.fetch_ohlcv, sym, "5m", limit=FETCH)
-    if not rows:
+def k5(sym, last_closed, limit=FETCH):
+    """5m bars from the raw klines endpoint (same data as fetch_ohlcv + the taker-buy base volume `tb`, free)."""
+    raw = _retry(EX.fapiPublicGetKlines, {"symbol": sym.split("/")[0] + "USDT", "interval": "5m", "limit": int(limit)})
+    if not raw:
         return None
-    d = pd.DataFrame(rows, columns=["t", "o", "h", "l", "c", "v"]).drop_duplicates("t").set_index("t")
+    d = pd.DataFrame([[int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]), float(r[9])] for r in raw],
+                     columns=["t", "o", "h", "l", "c", "v", "tb"]).drop_duplicates("t").set_index("t")
     return d[d.index <= last_closed]                   # every series cut at the SAME last closed bar (no forming-bar look-ahead)
+
+
+def _frame(rows):
+    return pd.DataFrame(rows, columns=["t", "o", "h", "l", "c", "v"]).drop_duplicates("t").set_index("t") if rows else None
+
+
+def stamp_features(allv, btc_full, alts, in_now, last_closed):
+    """🧬 Every event not yet stamped gets, ONCE, the bot's own entry_* columns + pre_* move features at its anchor bar
+    (scripts/scout_features.py). Only events ≤ STAMP_MAX_AGE old (every input — 999-bar BTC monitor, 640-bar alts/breadth, ETH —
+    still reaches them); a run whose REQUIRED market inputs failed stamps nothing (retried next hour); a pair event whose 1h/1d
+    reads failed stays unstamped too. Never raises: any failure leaves the rows as they were."""
+    try:
+        if not len(allv):
+            return allv
+        import scout_features as SF
+        allv = allv.drop(columns=[c for c in SF.LEGACY_COLS if c in allv.columns])
+        fv = pd.to_numeric(allv["feat_v"], errors="coerce") if "feat_v" in allv else pd.Series(np.nan, index=allv.index)
+        unst = fv.isna() | (fv < SF.FEAT_VERSION)                        # an older stamp version is re-stamped while still reachable
+        fresh = allv.bar_ts.astype("int64") >= last_closed - STAMP_MAX_AGE
+        pair_ok = allv.apply(lambda r: r["pair"] in ("BTCUSDT", "UNIVERSE")
+                             or (alts.get(r["pair"]) is not None and int(r["bar_ts"]) in alts[r["pair"]].index), axis=1)
+        need = allv.index[unst & fresh & pair_ok]
+        if not len(need) or btc_full is None:
+            return allv
+        h1 = _frame(_retry(EX.fetch_ohlcv, "BTC/USDT:USDT", "1h", limit=1000))
+        h4 = _frame(_retry(EX.fetch_ohlcv, "BTC/USDT:USDT", "4h", limit=1000))
+        d1 = _frame(_retry(EX.fetch_ohlcv, "BTC/USDT:USDT", "1d", limit=10))
+        eth = k5("ETH/USDT:USDT", last_closed, FETCH)
+        if any(x is None for x in (h1, h4, d1, eth)):
+            log("feature stamps skipped this run: a required BTC/ETH read failed (retried next run)"); return allv
+        uni = {p: alts[p] for p in in_now if alts.get(p) is not None}   # the scan's breadth universe: top-limit minus pair_blacklist,
+        uni.update(BTCUSDT=btc_full, ETHUSDT=eth)                        # BTC/ETH INCLUDED (no_trade_pairs still count in breadth)
+        market = (btc_full, h1, h4, d1, eth, uni)
+        firsts = allv.loc[need].groupby("pair").bar_ts.min().to_dict()     # stampable rows only (review: stale OI window)
+        ext = {}
+
+        def extras_for(pair):
+            if pair not in ext:
+                ext[pair] = SF.fetch_pair_extras(EX, _retry, pair, int(firsts.get(pair, last_closed)))
+            return ext[pair]
+        cache, out = {}, {}
+        for i in need:
+            ev = allv.loc[i].to_dict()
+            if ev["pair"] not in ("BTCUSDT", "UNIVERSE"):
+                x = extras_for(ev["pair"])
+                if x.get("k1h") is None or x.get("k1d") is None:
+                    continue                                              # retried next run, never stamped half-empty
+            try:
+                out[i] = SF.event_features(ev, alts, cache, market, extras_for)
+            except Exception as e:
+                log(f"feature stamp failed for {ev['type']} {ev['pair']} {ev['bar_ts']}: {e}")
+        if out:
+            F = pd.DataFrame.from_dict(out, orient="index")
+            for c in F.columns:
+                if c not in allv.columns:
+                    allv[c] = np.nan
+                allv[c] = allv[c].astype(object)
+                allv.loc[F.index, c] = F[c].values
+        log(f"feature stamps: {len(out)} of {int(unst.sum())} unstamped events stamped ({len(need)} stampable)")
+        return allv
+    except Exception as e:
+        log(f"feature stamps failed this run ({e}) — rows left as they were"); return allv
 
 
 def load_cfg():
@@ -775,7 +840,8 @@ def main():
 def run():
     now_ms = int(time.time() * 1000); last_closed = (now_ms // BAR - 1) * BAR
     cfg = load_cfg(); max_open = int((cfg.get("investment") or {}).get("max_open_positions", 4) or 4)
-    btc = k5("BTC/USDT:USDT", last_closed)
+    btc_full = k5("BTC/USDT:USDT", last_closed, 1500)                 # 1500 bars: the 72 h monitor readings need 999 before a stamp
+    btc = btc_full.tail(FETCH) if btc_full is not None else None      # detection + outcomes: the last 640 CLOSED bars
     if btc is None or len(btc) < 400:
         log("BTC fetch failed or too short — no run"); return
     scan, rank, cutoff, limit = bot_universe(cfg)
@@ -827,6 +893,8 @@ def run():
         allv = allv.reset_index()
     else:
         allv = new if len(new) else old
+    allv = stamp_features(allv, btc_full, alts, in_now, last_closed)
+    allv = allv.drop(columns=[c for c in ("sole_gate",) if c in allv.columns])   # renamed closest_set (DECISION_LOG 151)
     if len(allv):
         chk = [bot_check(r, orders, cov, max_open, dec) for r in allv.to_dict("records")]
         allv["bot"] = [c[0] for c in chk]; allv["manual"] = [c[1] for c in chk]; allv["book"] = [c[2] for c in chk]; allv["why"] = [c[3] for c in chk]
@@ -892,6 +960,10 @@ def run():
             L.append("Flagged: " + "; ".join(f"{r.time_utc[11:]} {r.type} {r.pair} {r.side}" for r in m.itertuples()))
     L += ["", "## Missed-move diagnosis — new SLEEVE or loosen a FILTER? (every stored pair event the bot did not trade, with an outcome)", ""]
     L += diagnosis_lines(allv)
+    if "feat_v" in allv:
+        L += ["", f"🧬 Feature stamps: {int(allv.feat_v.notna().sum())} of {len(allv)} stored events carry the bot's own entry_* columns + "
+              "pre_* move features at their entry bar (SCOUT_EVENTS.csv) — ready for scripts/sweep_separators.py-style missed-winner vs "
+              "missed-loser screens once enough days accumulate."]
     L += ["", "## Top movers (largest 4 h moves in the bot's universe, last 24 h)", ""]
     m24 = mv[mv.end_ts.astype("int64") >= now_ms - 24 * 3600_000].copy() if len(mv) else mv
     if len(m24):

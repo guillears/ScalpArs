@@ -35,6 +35,7 @@
             content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 6px); z-index: 60;
         }
         [data-tip].tip-right:hover::after { left: auto; right: 0; }
+        [data-tip].tip-lines:hover::after { white-space: pre-line; }   /* ⚡ SURGE chip: one fact per line */
         [data-tip]:hover::after {
             width: max-content; max-width: 22rem; white-space: normal; line-height: 1.35;
             padding: 8px 10px; border-radius: 8px; font: 500 11px/1.35 ui-sans-serif, system-ui, sans-serif;
@@ -236,7 +237,7 @@
             <span id="btc-off24h-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide cursor-help tip-right" data-tip="BTC distance from its 24h high (gate 57 v2 pullback-phase gate). Red = at/under the gate → sleeve refusing entries (dips kept alive); green = inside range → next reclaim fires.">24h-high --</span>
             <span class="text-gray-600">·</span>
             <span id="bearrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide cursor-help tip-right" data-tip="🐻 Bear-Run Monitor (gate 60): ON = BTC 24h composite (r24 ≤ −4% ∧ bars-below-EMA20 ≥ 50% ∧ efficiency ≥ 0.15, Schmitt band + squeeze latch) → momentum SHORTs bypass the BTC macro gates as BEARRUN_SHORT. Hover values: r24 / below% / eff24 / r6h / off-24h-low.">🐻 --</span>
-            <span id="surge-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide cursor-help tip-right" data-tip="⚡ SURGE sleeves: last BTC spike (LONG) / dump (SHORT) trigger, its entry window and the pairs opened. Hover for details.">⚡ --</span>
+            <span id="surge-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide cursor-help tip-right tip-lines" data-tip="⚡ SURGE sleeves: last BTC spike (LONG) / dump (SHORT) trigger, its entry window and the pairs opened. Hover for details.">⚡ --</span>
             <span id="btc-off24lo-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide cursor-help tip-right" data-tip="BTC distance ABOVE its 24h low (gate 60 bounce-phase gate). Red = above the gate → sleeve refusing bypasses; green = inside range → bypasses granted while the monitor is ON.">24h-low --</span>
             <!-- pair-count cluster kept for the JS writers but folded into the Breadth tooltip (duplicate of Breadth) -->
             <span class="hidden"><span id="regime-pair-count"></span><span id="regime-bull-count"></span><span id="regime-bear-count"></span><span id="regime-neutral-count"></span></span>
@@ -8877,6 +8878,32 @@
             const win = (x.window_close_ms && Date.now() < x.window_close_ms) ? ` · ENTRY WINDOW ${surgeTime(x.window_open_ms, x.window_opens, local)}–${surgeTime(x.window_close_ms, x.window_closes, local)}` : '';
             return `${nm} ${x.enabled ? 'ON' : 'OFF'}${x.last_trigger ? ` · last trigger ${surgeTime(x.last_trigger_ms, x.last_trigger, local, true)} (BTC ${x.btc_move_pct != null ? (x.btc_move_pct >= 0 ? '+' : '') + x.btc_move_pct + '%' : '—'}) · opened ${x.opened}${x.picks && x.picks.length ? ' (' + x.picks.join(', ') + ')' : ''}` : ' · no trigger recorded yet'}${win}${x.enabled ? next : ''}${x.kill_verdict ? ` · kill bar: ${x.kill_verdict}` : ''}`;
         }
+        // ⚡ compact multi-line hover for the header chip (the long one-liners stay on the SURGE table line + exports)
+        function surgeChipTip(sg) {
+            const ok = (b) => (b ? '✓' : '✗');
+            const pc = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(2) + '%');
+            const lv = sg && sg.live;
+            const out = [`⚡ SURGE${lv ? ` · BTC 5m bar ${surgeTime(lv.bar_close_ms, lv.bar_close, true)}` : ''}`];
+            if (!lv) out.push('BTC readings: waiting for the next scan');
+            else {
+                out.push(lv.need_move > 0 ? `Move ${pc(lv.move_pct)} · LONG ≥ +${lv.need_move} ${ok(lv.ok_long_move)} · SHORT ≤ −${lv.need_move} ${ok(lv.ok_short_move)}` : `Move ${pc(lv.move_pct)} · move threshold OFF`);
+                out.push(lv.need_vol > 0 ? `Volume ${lv.vol_mult != null ? Number(lv.vol_mult).toFixed(1) + '×' : '—'} median (≥ ${lv.need_vol}) ${ok(lv.ok_vol)}` : 'Volume leg off');
+                if (lv.long_need_high) out.push(`LONG close at 24h high ${ok(lv.ok_high)} (${pc(lv.off_hi_pct)})`);
+                if (lv.short_need_low) out.push(`SHORT close at 24h low ${ok(lv.ok_low)} (${pc(lv.off_lo_pct)})`);
+            }
+            const side = (x, nm) => {
+                if (!x) return `${nm} —`;
+                // kill verdict "KILLED 2026-10-02 10:00 UTC: why" → keep up to the UTC stamp (the first ':' is inside the time — review)
+                const kv = x.kill_verdict ? ` · ${String(x.kill_verdict).split(' UTC:')[0]}${String(x.kill_verdict).includes(' UTC:') ? ' UTC' : ''}` : '';
+                if (!x.enabled) return `${nm} OFF${kv}`;   // a killed side says why it is OFF (review)
+                const win = (x.window_close_ms && Date.now() < x.window_close_ms) ? ` · WINDOW ${surgeTime(x.window_open_ms, x.window_opens, true)}–${surgeTime(x.window_close_ms, x.window_closes, true)}` : '';
+                const last = x.last_trigger ? `last ${surgeTime(x.last_trigger_ms, x.last_trigger, true, true)} (${pc(x.btc_move_pct)}) · ${x.opened} opened` : 'no trigger yet';
+                const next = (x.next_allowed_ms && Date.now() < x.next_allowed_ms) ? ` · next ${surgeTime(x.next_allowed_ms, x.next_allowed, true)}` : ' · ready';
+                return `${nm} ON · ${last}${win}${next}${kv}`;
+            };
+            out.push(side(sg && sg.long, 'LONG'), side(sg && sg.short, 'SHORT'));
+            return out.join('\n');
+        }
         function doorBadgeHtml(o) {
             const tags = doorBadges(o);
             if (!tags.length) return '';
@@ -9164,14 +9191,14 @@
                 if (_sgChip) {
                     const _sg = data.surge;
                     if (_sg && _sg.long && _sg.short) {
-                        _sgChip.dataset.tip = `⚡ SURGE (local time) — ${surgeLiveStr(_sg.live, true)} || ${surgeSideStr(_sg.long, 'LONG', true)} || ${surgeSideStr(_sg.short, 'SHORT', true)}`;
+                        _sgChip.dataset.tip = surgeChipTip(_sg);
                         const _live = [['L', _sg.long], ['S', _sg.short]].filter(([_, x]) => x.enabled && x.window_close_ms && Date.now() < x.window_close_ms);
                         if (_live.length) {
                             _sgChip.textContent = '⚡ ' + _live.map(([k, x]) => `${k} ${surgeTime(x.window_open_ms, x.window_opens, true).replace(' UTC', '')}`).join(' ');
-                            _sgChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/20 text-yellow-300 uppercase tracking-wide cursor-help tip-right';
+                            _sgChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/20 text-yellow-300 uppercase tracking-wide cursor-help tip-right tip-lines';
                         } else {
                             _sgChip.textContent = `⚡ ${_sg.long.enabled ? 'L' : '·'}${_sg.short.enabled ? 'S' : '·'}`;
-                            _sgChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-400 uppercase tracking-wide cursor-help tip-right';
+                            _sgChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-400 uppercase tracking-wide cursor-help tip-right tip-lines';
                         }
                     } else { _sgChip.textContent = '⚡ --'; }
                 }

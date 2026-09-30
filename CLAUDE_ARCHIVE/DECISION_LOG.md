@@ -4532,3 +4532,15 @@ manual all ok. Parity 4,800 uncontended cases identical to HEAD; flip re-entry i
 locks free. BOOK_CHANGED verified: refuses only opens that HEAD booked into NEGATIVE free USDT (0 refusals on the default
 reserve config). Known, rare: an emergency BNB swap triggered by an open's own fee now fetches its price while that open
 still holds the book.
+
+## 2026-09-30 (141) - 🔒 An open's emergency BNB top-up runs after the book lock is released
+The last gap left by 140: an open's entry fee could trigger an emergency BNB top-up inside _deduct_fee_from_bnb, and the
+top-up's BNB price REST call ran while that open still held the account book lock (every other open's final section waited
+behind a slow ticker). Now the open asks the fee check to REPORT the top-up (defer_swap=True) and runs it right after
+releasing the lock; all other callers (close path, BNB loop) behave as before.
+DUAL REVIEW (141): caveman SHIP (applied: session rollback + refresh of the booked order when the deferred top-up fails) ·
+deep SHIP — a second open during a 12 s top-up waited 10–11 s at HEAD (manual clicks FAILED with "another position is being
+booked"); now 0 s. One top-up per trigger, healthy reserve untouched, 1,200 uncontended opens and the close path identical,
+stress 0 phantom / 0 cap overshoot / 0 negative USDT; a failed price call or swap commit no longer turns a booked open into an
+error. Expected difference: a second open's fee landing before the top-up is sized is folded into it (BNB refills to the full
+target; that fee may briefly be paid from USDT and settled by a fee_settle row). NAV unchanged.

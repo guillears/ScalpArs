@@ -3165,8 +3165,12 @@ class TradingEngine:
         post_bnb = await self._recalculate_paper_bnb(db)
         return pre_bnb, post_bnb, pre_usdt, post_usdt
 
-    async def _deduct_fee_from_bnb(self, fee_usd: float, db: AsyncSession):
+    async def _deduct_fee_from_bnb(self, fee_usd: float, db: AsyncSession, defer_swap: bool = False) -> Optional[bool]:
         """Check BNB reserve after a fee is paid; trigger emergency swap if low.
+
+        🔒 Sep-30 defer_swap=True (an open still holding the account book lock): the emergency swap is NOT run here — its BNB
+        price REST call would run under the lock — and True is returned so the caller runs it right after releasing. Returns
+        False when nothing is owed.
 
         Paper mode: decrements in-memory paper BNB balance and checks threshold.
         Live mode: queries actual Binance BNB balance and checks threshold.
@@ -3222,13 +3226,12 @@ class TradingEngine:
                     )
                     return
                 logger.warning(f"[BNB_EMERGENCY] BNB ${current_bnb:.2f} < real floor ${_real_floor:.2f} (data window <2h) — triggering swap")
-                await self._execute_bnb_swap(db, swap_type="emergency")
-                return
+                return await self._emergency_swap_or_defer(db, defer_swap)
             logger.warning(
                 f"[BNB_EMERGENCY] {'Paper' if self.is_paper_mode else 'Live'} BNB ${current_bnb:.2f} "
                 f"< emergency threshold ${emergency_threshold:.2f} — triggering swap"
             )
-            await self._execute_bnb_swap(db, swap_type="emergency")
+            return await self._emergency_swap_or_defer(db, defer_swap)
 
     @contextlib.asynccontextmanager
     async def _pair_open_guard(self, pair, wait_s=None):
@@ -3313,6 +3316,14 @@ class TradingEngine:
             held = (loop, asyncio.Lock())
             self._bnb_swap_lock_obj = held
         return held[1]
+
+    async def _emergency_swap_or_defer(self, db: AsyncSession, defer: bool) -> bool:
+        """The emergency top-up _deduct_fee_from_bnb decided on: run now, or (defer) report it owed to the caller."""
+        if defer:
+            logger.info("[BNB_EMERGENCY] emergency top-up owed — runs right after the open releases the book lock")
+            return True
+        await self._execute_bnb_swap(db, swap_type="emergency")
+        return False
 
     async def _execute_bnb_swap(self, db: AsyncSession, swap_type: str = "scheduled") -> bool:
         """Execute a USDT→BNB swap (paper or live) under the reserve lock. Paper: True = a purchase was booked (the live
@@ -8851,11 +8862,20 @@ class TradingEngine:
             pre_bnb = self.paper_bnb_balance_usd
 
             await self._recalculate_paper_balance(db)
-            await self._deduct_fee_from_bnb(entry_fee, db)
+            _bnb_swap_owed = await self._deduct_fee_from_bnb(entry_fee, db, defer_swap=True)
             await self.save_state(db)
             # 🔒 paper: released only after the bookkeeping writes (deep review 140) — releasing at the commit lined the next
             # open's flush up against this save_state and one of them died on "database is locked" AFTER its row was booked
             _book_release()
+            if _bnb_swap_owed:   # the emergency top-up (and its BNB price REST call) runs outside the book lock
+                try:
+                    await self._execute_bnb_swap(db, swap_type="emergency")
+                except Exception as _sw_err:
+                    logger.error(f"[BNB_EMERGENCY] deferred top-up after {pair} open failed: {_sw_err}")
+                    try:   # the open is booked: recover the session so the rest of this open (and the caller) keeps working
+                        await db.rollback(); await db.refresh(order)
+                    except Exception:
+                        pass
 
             _snap = await db.execute(
                 select(func.coalesce(func.sum(Order.investment), 0)).where(
@@ -9218,9 +9238,20 @@ class TradingEngine:
         await db.refresh(order)
         if self.is_paper_mode:   # same three calls as open_position (caveman review: BNB fee + persisted state)
             await self._recalculate_paper_balance(db)
-            await self._deduct_fee_from_bnb(entry_fee, db)
+            _bnb_swap_owed = await self._deduct_fee_from_bnb(entry_fee, db, defer_swap=True)
             await self.save_state(db)
+        else:
+            _bnb_swap_owed = False
         _book_release()   # 🔒 after the bookkeeping writes (deep review 140: no "database is locked" on a booked row)
+        if _bnb_swap_owed:   # emergency top-up (BNB price REST call) outside the book lock
+            try:
+                await self._execute_bnb_swap(db, swap_type="emergency")
+            except Exception as _sw_err:
+                logger.error(f"[BNB_EMERGENCY] deferred top-up after the manual {pair} open failed: {_sw_err}")
+                try:   # the position is booked: recover the session so the click does not report an error for it
+                    await db.rollback(); await db.refresh(order)
+                except Exception:
+                    pass
         websocket_tracker.force_reset_tracking(pair, actual_price)
         await websocket_tracker.subscribe_pair(pair, actual_price)
         await self.update_orders_cache(db)   # canonical cache entry (stop/exit fields built by the same code as a restart)

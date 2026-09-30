@@ -255,3 +255,50 @@ def test_paper_bnb_swaps_move_usdt_only_under_the_book_lock():
     for name in ("    async def _execute_bnb_swap(", "    async def _execute_bnb_sell(", "    async def _paper_bnb_credit("):
         i = src.index(name); body = src[i:src.index("\n    async def ", i + 10)]
         assert body.index("self._book_ctx()") < body.index("async with self._bnb_swap_lock():"), name   # book → bnb, never reverse
+
+
+def test_an_opens_emergency_bnb_top_up_runs_after_the_book_lock_is_released(monkeypatch):
+    """Sep-30: the fee paid by an open can trigger an emergency BNB top-up whose price REST call used to run while that open
+    still held the account book lock. With defer_swap the fee check only REPORTS the top-up; the open runs it after release."""
+    e = _eng(); e.is_paper_mode = True; e.paper_bnb_balance_usd = 3.0
+    e._bnb_data_mature = True; e._bnb_emergency_threshold = 25.0; e._bnb_projected_need = 50.0
+    calls = []
+
+    async def swap(db, swap_type="scheduled"):
+        calls.append(swap_type); return True
+    e._execute_bnb_swap = swap
+    monkeypatch.setattr(T.config.trading_config, "bnb_swap_enabled", True)
+    assert asyncio.run(e._deduct_fee_from_bnb(5.0, None, defer_swap=True)) is True and calls == []       # owed, not run
+    e.paper_bnb_balance_usd = 3.0
+    assert not asyncio.run(e._deduct_fee_from_bnb(5.0, None)) and calls == ["emergency"]                 # default: runs now
+    e.paper_bnb_balance_usd = 500.0; calls.clear()
+    assert not asyncio.run(e._deduct_fee_from_bnb(5.0, None, defer_swap=True)) and calls == []          # nothing owed
+    src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    for name, rel in (("    async def open_position(\n", "            _book_release()\n            if _bnb_swap_owed:"),
+                      ("    async def open_manual_position", "        _book_release()   # 🔒 after the bookkeeping writes")):
+        i = src.index(name); body = src[i:src.index("\n    async def ", i + 10)]
+        a = body.index("_bnb_swap_owed = await self._deduct_fee_from_bnb(entry_fee, db, defer_swap=True)")
+        b = body.index(rel); c = body.index('await self._execute_bnb_swap(db, swap_type="emergency")', b)
+        assert a < b < c, name
+
+
+def test_young_batch_floor_branch_also_defers(monkeypatch):
+    e = _eng(); e.is_paper_mode = True; e.paper_bnb_balance_usd = 3.0
+    e._bnb_data_mature = False; e._bnb_emergency_threshold = 115.0; e._bnb_projected_need = 230.0
+    calls = []
+
+    async def swap(db, swap_type="scheduled"):
+        calls.append(swap_type); return True
+    e._execute_bnb_swap = swap
+    monkeypatch.setattr(T.config.trading_config, "bnb_swap_enabled", True)
+    assert asyncio.run(e._deduct_fee_from_bnb(1.0, None, defer_swap=True)) is True and calls == []   # below the real floor: owed
+
+
+def test_a_failed_deferred_top_up_leaves_the_booked_open_usable():
+    """Deep review (141): a swap whose commit fails left the session needing a rollback; the open then raised (manual: an
+    error shown for an opened position). Both open paths now roll back and refresh the booked order in the except."""
+    src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    for name in ("    async def open_position(\n", "    async def open_manual_position"):
+        i = src.index(name); body = src[i:src.index("\n    async def ", i + 10)]
+        j = body.index("deferred top-up after"); blk = body[j:j + 400]
+        assert "await db.rollback(); await db.refresh(order)" in blk, name

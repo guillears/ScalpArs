@@ -4700,3 +4700,22 @@ REVIEWS (SURGE_SHORT exit): deep review swept 1.69 M (peak, ATR) points vs the s
 reason = HARD_TP_LADDER Ln (momentum parity, reports key on it) · ladder independent of the runner arm · missing ATR → surge_atr_min_pct.
 COHORT FLOOR (148, operator): the first trigger's 4 SURGE_SHORT fills (14:50 UTC: QNT/ENA/SOON/MOVR) ran the bugged momentum exit → EXCLUDED
 from every SURGE read (kill bar, keep bar, watches); operator reset the batch. SURGE_COHORT_START 14:00 → 15:30 UTC (after the 9d733e2 exit fix).
+ATR-FLOOR CHECK (148, operator asked 1.5 → 1.0): current exits, live cap 4/trigger, per-event mean — LONG 0.75 −0.150 · 1.0 +0.009 ·
+1.25 +0.123 · 1.5 +0.316; SHORT 0.75 +0.088 · 1.0 +0.186 · 1.25 +0.255 · 1.5 +0.252. The 1.0–1.5 band alone: LONG −0.152 (n=74),
+SHORT +0.089 and it crowds the slots (volume order). KEPT at 1.5. Long exit alternatives (HI_ATR_LEADER, entry 0): Bull-Run 1×ATR
++0.320 best; momentum-long exit +0.224 with test half −0.192 → exit unchanged. SURGE_LONG size: operator keeps NORMAL (1×/1×) —
+probe-size option (lev 0.05) offered and declined; the kill bar at 10 fills is the protection.
+SURGE TRIGGER LEDGER (148, operator: "build another similar for Surge", "take the learnings from the other table"): new table
+surge_triggers (models.SurgeTrigger) — one row per BTC trigger per side: bar close, BTC 30-min move, volume multiple, entry window,
+found-late minutes, status OPEN / FILLED / NO_PICK / MISSED / FOUND_LATE, pairs checked, opened pairs, skips by reason (ATR / leader /
+data / slots / open-refused), restarted flag. Written on the trigger, after EVERY pair decision and at window close. Monitor-ledger
+lessons applied: restart-proof (once per process the engine adopts the latest row → chip + spacing see it, an open window is restored
+with its picks — no double buy, verified on a scratch DB), fills joined at read time EXACTLY on entry_surge_trigger_at, zero-fill
+triggers stay on record (the window unit the kill/keep bars count), FOUND_LATE never consumes the spacing, pre-cohort rows greyed.
+Spacing after a restart now reads the ledger first (a zero-fill trigger no longer lets the next bar re-trigger inside 4 h). UI table
+under the SURGE table + both text exports.
+REVIEWS (ledger): both passes applied — rows stuck OPEN after a restart spanning the window close are finalized on boot
+(FILLED / NO_PICK / MISSED; reproduced + fixed on a scratch DB) · ledger writes in their own short session (never commit / roll
+back the scan session) · UNIQUE(side, bar_close_at) · FOUND_LATE never overwrites an existing row · found_late_min = real minutes ·
+seed unions picks with fills on that trigger (no re-buy) · fills fallback restores only a window still open · no-price pair =
+SURGE_NO_DATA · one write per fill. Note: a trigger while a side is DISABLED records nothing and does not consume its spacing.

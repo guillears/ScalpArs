@@ -1,7 +1,7 @@
 """
 SCALPARS Trading Platform - Database Models
 """
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum as SQLEnum, Text
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum as SQLEnum, Text, UniqueConstraint
 from sqlalchemy.sql import func
 from database import Base
 from datetime import datetime
@@ -1101,6 +1101,35 @@ class MonitorPeriod(Base):
     blocked_1h = Column(Integer, default=0)                      # Aug 23 (18): refused by the BTC 1h-slope gate
     blocked_breadth = Column(Integer, default=0)                 # Sep 19 (57c): refused by the market-breadth minimum
     blocked_age = Column(Integer, default=0)                     # Sep 21 (57l): refused by the REARM entry-age cap
+
+
+class SurgeTrigger(Base):
+    """⚡ Sep 30 — SURGE TRIGGER LEDGER: one row per BTC trigger per side (the WINDOW unit every SURGE rule speaks in).
+    Persisted so triggers with NO fills (all pairs refused, window missed, found late) stay on record, the 4 h spacing survives a
+    restart, and the header chip can show the last trigger after a deploy. Fills are joined at read time on
+    orders.entry_surge_trigger_at == bar_close_at (same side). Written by TradingEngine._update_surge_triggers / _maybe_open_surge.
+    status: OPEN (window pending/running) · FILLED · NO_PICK (pairs judged, none opened) · MISSED (window closed, nothing judged)
+    · FOUND_LATE (trigger seen after its window closed — never consumes the spacing)."""
+    __tablename__ = "surge_triggers"
+    __table_args__ = (UniqueConstraint("side", "bar_close_at", name="uq_surge_trigger_side_bar"),)   # one row per trigger (review)
+    id = Column(Integer, primary_key=True, index=True)
+    side = Column(String(5), nullable=False, index=True)          # LONG / SHORT
+    bar_close_at = Column(DateTime, nullable=False, index=True)   # trigger bar close (naive UTC) = orders.entry_surge_trigger_at
+    btc_move_pct = Column(Float, nullable=True)                   # BTC 30-min return on the trigger bar
+    btc_vol_mult = Column(Float, nullable=True)                   # trigger-bar quote volume ÷ prior-288 median
+    window_opens_at = Column(DateTime, nullable=True)
+    window_closes_at = Column(DateTime, nullable=True)
+    found_late_min = Column(Float, nullable=True)                 # minutes after the bar close the engine first saw it (catch-up)
+    status = Column(String(12), nullable=False, default="OPEN")
+    checked = Column(Integer, default=0)                          # universe pairs judged in the window
+    picked = Column(String(400), nullable=True)                   # pairs OPENED (comma list)
+    refused_atr = Column(Integer, default=0)                      # SURGE_ATR_LOW
+    refused_leader = Column(Integer, default=0)                   # SURGE_NOT_LEADER
+    refused_data = Column(Integer, default=0)                     # SURGE_NO_DATA
+    refused_slots = Column(Integer, default=0)                    # SURGE_MAX_SLOTS
+    refused_open = Column(Integer, default=0)                     # selected but open_position refused (held / cooldown / balance / disloc)
+    restarted = Column(Boolean, default=False)                    # the window spanned a restart (picks/counts kept; a refused pair may be re-counted)
+    created_at = Column(DateTime, nullable=True)
 
 
 class BearMonitorPeriod(Base):

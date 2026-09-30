@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, update, and_, or_, desc, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod, BearMonitorPeriod
+from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod, BearMonitorPeriod, SurgeTrigger
 from database import AsyncSessionLocal, locked_commit, locked_execute_commit
 import config
 from config import save_trading_config, TradingConfig
@@ -6427,6 +6427,42 @@ class TradingEngine:
             logger.info(f"[BEARRUN_REFUSED] {pair}: SHORT would bypass {gate} but refused by {self._bear_refuse} (off24lo {_bearrun_monitor.get('off24lo')}% vs max {getattr(th, 'bearrun_btc_off24lo_max', None)} · r24 {_bearrun_monitor.get('r24')}% · eff24 {_bearrun_monitor.get('eff24')} · breadth bear {globals().get('_market_bear_pct')}/bull {globals().get('_market_bull_pct')} vs floor {getattr(th, 'bearrun_breadth_min', None)})")
         return False
 
+    async def _surge_ledger_upsert(self, db, side, close_ts, only_if_new=False, **fields):
+        """⚡ Upsert the SURGE trigger-ledger row (side, bar close) in its OWN short session (review: a commit / rollback on the scan
+        session could commit or discard unrelated pending scan work). `only_if_new` = never touch an existing row (FOUND_LATE must not
+        overwrite a finished trigger). Returns True when written. Never raises (a ledger failure never blocks a trigger or an entry)."""
+        try:
+            _bc = datetime.utcfromtimestamp(close_ts / 1000)
+            async with AsyncSessionLocal() as _ls:
+                row = (await _ls.execute(select(SurgeTrigger).where(and_(SurgeTrigger.side == side, SurgeTrigger.bar_close_at == _bc)))).scalar_one_or_none()
+                if row is not None and only_if_new:
+                    return False
+                if row is None:
+                    row = SurgeTrigger(side=side, bar_close_at=_bc, status="OPEN", created_at=datetime.utcnow())
+                    _ls.add(row)
+                for k, v in fields.items():
+                    setattr(row, k, v)
+                await locked_commit(_ls)
+            return True
+        except Exception as e:
+            logger.error(f"[SURGE_{side}] ledger write failed: {e}")
+            return False
+
+    async def _surge_ledger_counts(self, db, side, st, status=None):
+        """Persist the window's counts (after EVERY pair decision — a restart mid-window loses nothing; the seed restores them)."""
+        _why = st.get('why') or {}
+        _extra = {'status': status} if status else {}
+        await self._surge_ledger_upsert(
+            db, side, st['close_ts'], checked=int(st.get('n_checked') or 0),
+            picked=",".join(sorted(st.get('opened_pairs') or [])) or None,
+            refused_atr=int(_why.get('SURGE_ATR_LOW', 0)), refused_leader=int(_why.get('SURGE_NOT_LEADER', 0)),
+            refused_data=int(_why.get('SURGE_NO_DATA', 0)), refused_slots=int(_why.get('SURGE_MAX_SLOTS', 0)),
+            refused_open=int(_why.get('OPEN_REFUSED', 0)), **_extra)
+
+    async def _surge_ledger_finalize(self, db, side, st):
+        """Close the ledger row when the entry window has passed: counts + status (FILLED / NO_PICK / MISSED)."""
+        await self._surge_ledger_counts(db, side, st, status=("FILLED" if st.get('opened') else ("NO_PICK" if st.get('judged_any') else "MISSED")))
+
     async def _update_surge_triggers(self, db):
         """⚡ SURGE: evaluate the BTC trigger for both sides (fresh 300-bar fetch, no warm-up state). Every 5m bar that CLOSED since the
         last scan is judged oldest → newest (≤ 6 bars back), so a scan slower than one bar never skips a trigger bar (review). A new
@@ -6438,16 +6474,47 @@ class TradingEngine:
             bars = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 310)   # 295 closed + 6 catch-up views + forming (review)
             now_ms = _leash_time.time() * 1000
             for side in ("LONG", "SHORT"):
+                if not _surge_status[side].get('seeded'):
+                    # Restart-proof (monitor-ledger lesson): once per process, adopt the latest ledger row — the chip / spacing see the
+                    # last trigger after a deploy, and a window still open is RESTORED with its picks (never re-opened, never lost).
+                    _surge_status[side]['seeded'] = True
+                    try:
+                        _row = (await db.execute(select(SurgeTrigger).where(and_(SurgeTrigger.side == side, SurgeTrigger.status != "FOUND_LATE"))
+                                                 .order_by(SurgeTrigger.bar_close_at.desc()).limit(1))).scalar_one_or_none()
+                        if _row is not None:
+                            _cms = (_row.bar_close_at - datetime(1970, 1, 1)).total_seconds() * 1000
+                            _pk = sorted({x for x in (_row.picked or "").split(",") if x} | {p for (p,) in (await db.execute(select(Order.pair).where(and_(
+                                Order.entry_strategy == f"SURGE_{side}", Order.is_paper == self.is_paper_mode,
+                                Order.entry_surge_trigger_at == _row.bar_close_at)))).all()})   # a fill that never reached the ledger counts too
+                            _surge_status[side].update(dict(last_trigger_close_ts=_cms, last_btc_move_pct=_row.btc_move_pct, picks=_pk, opened=len(_pk)))
+                            _wc_ms = ((_row.window_closes_at - datetime(1970, 1, 1)).total_seconds() * 1000) if _row.window_closes_at else 0
+                            if _row.status in ("OPEN", "FILLED") and now_ms < _wc_ms and not _surge_state[side]:
+                                _surge_state[side] = dict(bar_ts=int(_cms) - 300_000, close_ts=int(_cms), btc_move_pct=_row.btc_move_pct,
+                                                          btc_vol_mult=_row.btc_vol_mult, picked=set(_pk), refused=set(), opened=len(_pk),
+                                                          opened_pairs=set(_pk), n_checked=int(_row.checked or 0), judged_any=bool(_row.checked or _pk),
+                                                          why={k: v for k, v in (('SURGE_ATR_LOW', _row.refused_atr), ('SURGE_NOT_LEADER', _row.refused_leader),
+                                                                                  ('SURGE_NO_DATA', _row.refused_data), ('SURGE_MAX_SLOTS', _row.refused_slots),
+                                                                                  ('OPEN_REFUSED', _row.refused_open)) if v})
+                                await self._surge_ledger_upsert(db, side, int(_cms), restarted=True, picked=(",".join(_pk) or None))
+                                logger.warning(f"[SURGE_{side}] restart inside an open entry window — trigger {_row.bar_close_at:%H:%M} UTC restored ({len(_pk)} filled)")
+                            elif _row.status == "OPEN" and now_ms >= _wc_ms:
+                                # the window closed while the bot was down: finalize the row (review — it stayed OPEN forever)
+                                await self._surge_ledger_upsert(db, side, int(_cms), restarted=True, picked=(",".join(_pk) or None),
+                                                                status=("FILLED" if _pk else ("NO_PICK" if _row.checked else "MISSED")))
+                    except Exception as _sd:
+                        logger.warning(f"[SURGE_{side}] ledger seed failed ({_sd}) — fills fallback only")
                 st = _surge_state[side]
                 _enabled = bool(getattr(th, f'surge_{side.lower()}_enabled', False))
-                if st and not st.get('judged_any') and not st.get('miss_flagged'):
+                if st and not st.get('finalized'):
                     _d = float(getattr(th, f'surge_{side.lower()}_entry_delay_min', 0) or 0)
                     _w = max(0.5, float(getattr(th, 'surge_entry_window_min', 5.0) or 5.0))
-                    if now_ms >= st['close_ts'] + (_d + _w) * 60_000 and _enabled:
-                        st['miss_flagged'] = True   # a window that closed before any pair was judged — make it visible
-                        logger.error(f"[SURGE_{side}] entry window CLOSED with no pair judged (trigger found late or scan slower than "
-                                     f"{_w:g} min) — trigger {st.get('btc_move_pct')}% missed")
-                        self._record_filter_block("SURGE_WINDOW_MISSED", side)
+                    if now_ms >= st['close_ts'] + (_d + _w) * 60_000:
+                        st['finalized'] = True
+                        if not st.get('judged_any') and _enabled:   # a window that closed before any pair was judged — make it visible
+                            logger.error(f"[SURGE_{side}] entry window CLOSED with no pair judged (trigger found late or scan slower than "
+                                         f"{_w:g} min) — trigger {st.get('btc_move_pct')}% missed")
+                            self._record_filter_block("SURGE_WINDOW_MISSED", side)
+                        await self._surge_ledger_finalize(db, side, st)
                 _surge_status[side].update(dict(checked_at=now_ms, enabled=_enabled))
                 if not bars or len(bars) < 302:
                     continue
@@ -6463,29 +6530,50 @@ class TradingEngine:
                     spacing_ms = max(0.0, float(getattr(th, 'surge_trigger_spacing_hours', 4.0) or 0.0)) * 3600_000
                     last = float(_surge_status[side].get('last_trigger_close_ts') or 0)
                     _restore = set()
+                    _restored_row = False
                     if not last:
-                        try:   # restart: the latest recorded trigger of this side (its fills carry the trigger bar's close time)
-                            _lt = (await db.execute(select(func.max(Order.entry_surge_trigger_at)).where(and_(
+                        try:   # restart: the latest recorded trigger — the LEDGER (keeps zero-fill triggers), else the fills' stamp
+                            _lt_l = (await db.execute(select(func.max(SurgeTrigger.bar_close_at)).where(and_(
+                                SurgeTrigger.side == side, SurgeTrigger.status != "FOUND_LATE")))).scalar()
+                            _lt_o = (await db.execute(select(func.max(Order.entry_surge_trigger_at)).where(and_(
                                 Order.entry_strategy == f"SURGE_{side}", Order.is_paper == self.is_paper_mode)))).scalar()
+                            _lt = max([x for x in (_lt_l, _lt_o) if x is not None], default=None)
                             last = ((_lt - datetime(1970, 1, 1)).total_seconds() * 1000) if _lt else 0.0
                             if last and abs(last - trig['close_ts']) < 1000:   # the SAME trigger, found again after a restart
                                 _restore = {p for (p,) in (await db.execute(select(Order.pair).where(and_(
                                     Order.entry_strategy == f"SURGE_{side}", Order.is_paper == self.is_paper_mode,
                                     Order.entry_surge_trigger_at == _lt)))).all()}
+                                _restored_row = True
                         except Exception as _sp:
                             logger.warning(f"[SURGE_{side}] spacing lookup failed ({_sp}) — memory only")
-                    if last and not _restore and trig['close_ts'] - last < spacing_ms:
-                        continue
                     _dl = float(getattr(th, f'surge_{side.lower()}_entry_delay_min', 0) or 0)
                     _wl = max(0.5, float(getattr(th, 'surge_entry_window_min', 5.0) or 5.0))
-                    if not _restore and now_ms >= trig['close_ts'] + (_dl + _wl) * 60_000:
+                    _wo = trig['close_ts'] + _dl * 60_000; _wc = _wo + _wl * 60_000
+                    _restored_row = _restored_row and now_ms < _wc   # the fills fallback may only restore a window still open (review)
+                    if last and not _restored_row and trig['close_ts'] - last < spacing_ms:
+                        continue
+                    if not _restored_row and now_ms >= _wc:
                         # found after its entry window closed (slow scan / restart): count it, don't let it block a live one for 4 h
                         if _enabled:
                             logger.error(f"[SURGE_{side}] trigger on the bar closed {datetime.utcfromtimestamp(trig['close_ts'] / 1000):%H:%M} UTC "
                                          f"found {k * 5} min late — its entry window already closed; missed (spacing not consumed)")
                             self._record_filter_block("SURGE_WINDOW_MISSED", side)
+                            await self._surge_ledger_upsert(db, side, trig['close_ts'], only_if_new=True, status="FOUND_LATE", btc_move_pct=trig['btc_move_pct'],
+                                                            btc_vol_mult=trig.get('btc_vol_mult'), found_late_min=round((now_ms - trig['close_ts']) / 60_000, 1),
+                                                            window_opens_at=datetime.utcfromtimestamp(_wo / 1000),
+                                                            window_closes_at=datetime.utcfromtimestamp(_wc / 1000))
                         continue
-                    _surge_state[side] = dict(trig, picked=set(_restore), refused=set(), opened=len(_restore))
+                    if not _enabled:
+                        continue   # a disabled side records nothing (the chip shows it OFF)
+                    _surge_state[side] = dict(trig, picked=set(_restore), refused=set(), opened=len(_restore),
+                                              opened_pairs=set(_restore), n_checked=0, why={})
+                    await self._surge_ledger_upsert(db, side, trig['close_ts'], status="OPEN", btc_move_pct=trig['btc_move_pct'],
+                                                    btc_vol_mult=trig.get('btc_vol_mult'),
+                                                    found_late_min=(round((now_ms - trig['close_ts']) / 60_000, 1) if k else None),
+                                                    window_opens_at=datetime.utcfromtimestamp(_wo / 1000),
+                                                    window_closes_at=datetime.utcfromtimestamp(_wc / 1000),
+                                                    restarted=bool(_restored_row),
+                                                    picked=(",".join(sorted(_restore)) or None))
                     _surge_status[side].update(dict(last_trigger_close_ts=trig['close_ts'], last_btc_move_pct=trig['btc_move_pct'],
                                                     picks=sorted(_restore), opened=len(_restore)))
                     logger.warning(f"[SURGE_{side}] TRIGGER{' (restored after restart)' if _restore else ''}: BTC {trig['btc_move_pct']:+.2f}% "
@@ -6520,10 +6608,14 @@ class TradingEngine:
                 if str(pair).upper() in _bl:
                     continue
                 st['judged_any'] = True   # only a universe pair counts as "judged" (else a missed window would be hidden)
+                st['n_checked'] = st.get('n_checked', 0) + 1
+                _why = st.setdefault('why', {})
                 ok, why, atr, pmove = surge_pair_pick(ohlcv, st['bar_ts'], st['btc_move_pct'], th, side)
                 if not ok:
                     st['refused'].add(pair)
+                    _why[why] = _why.get(why, 0) + 1
                     self._record_filter_block(why, side)
+                    await self._surge_ledger_counts(db, side, st)
                     continue
                 _slots = max(1, int(getattr(th, 'surge_max_slots', 4) or 4))
                 _n_open = (await db.execute(select(func.count(Order.id)).where(and_(
@@ -6531,11 +6623,15 @@ class TradingEngine:
                 # cap = concurrent open AND fills per trigger (a fill stopped inside the window must not free an entry beyond the cap — review)
                 if _n_open >= _slots or st['opened'] >= _slots:
                     st['refused'].add(pair)
+                    _why['SURGE_MAX_SLOTS'] = _why.get('SURGE_MAX_SLOTS', 0) + 1
                     self._record_filter_block("SURGE_MAX_SLOTS", side)
+                    await self._surge_ledger_counts(db, side, st)
                     continue
                 st['picked'].add(pair)   # ONE attempt per pair per trigger (deliberate: the study entered once, at the window)
                 price = float(indicators.get('price') or 0)
                 if price <= 0:
+                    _why['SURGE_NO_DATA'] = _why.get('SURGE_NO_DATA', 0) + 1
+                    await self._surge_ledger_counts(db, side, st)
                     continue
                 # Full entry-column stamping (bull-run lesson): the shared builder + breadth / volume ratios from the live globals
                 _ef = dict(self._flip_entry_fields(indicators, flip_dir=side) or {})
@@ -6560,8 +6656,14 @@ class TradingEngine:
                 )
                 if order:
                     st['opened'] += 1
+                    st.setdefault('opened_pairs', set()).add(pair)
                     _surge_status[side]['opened'] = st['opened']
                     _surge_status[side].setdefault('picks', []).append(pair)
+                    # picks + counts persisted at once, ONE write (a restart inside the window restores them from the ledger / fills)
+                    await self._surge_ledger_counts(db, side, st, status="FILLED")
+                else:
+                    _why['OPEN_REFUSED'] = _why.get('OPEN_REFUSED', 0) + 1   # held / cooldown / balance / disloc (open_position counted why)
+                    await self._surge_ledger_counts(db, side, st)
             except Exception as e:
                 logger.error(f"[SURGE_{side}] {pair}: open failed: {e}")
                 try:

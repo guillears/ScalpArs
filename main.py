@@ -25,7 +25,7 @@ from sqlalchemy import select, and_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -2365,6 +2365,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "bearrun_monitor": None,
             "bearrun_periods": [],
             "surge_rows": [],
+            "surge_triggers": [],
             "surge_monitor": None,
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
@@ -2979,6 +2980,47 @@ def _bearrun_monitor_payload():
         }
     except Exception:
         return None
+
+
+async def _surge_trigger_rows(db, limit=50):
+    """⚡ Sep 30 — SURGE TRIGGER LEDGER table: one row per BTC trigger per side (the WINDOW unit), newest first, with that trigger's
+    fills joined EXACTLY on orders.entry_surge_trigger_at == bar_close_at (same side) — zero-fill triggers stay visible (all pairs
+    refused / window missed / found late). Rows opened before SURGE_COHORT_START are flagged pre_cohort (excluded from every SURGE
+    read). Fail-silent → []."""
+    try:
+        from services.trading_engine import SURGE_COHORT_START as _T0
+        _ts = (await db.execute(select(SurgeTrigger).order_by(SurgeTrigger.bar_close_at.desc()).limit(limit))).scalars().all()
+        if not _ts:
+            return []
+        _fills = (await db.execute(select(Order).where(and_(
+            Order.entry_strategy.in_(('SURGE_LONG', 'SURGE_SHORT')), Order.is_paper == trading_engine.is_paper_mode,
+            Order.entry_surge_trigger_at.isnot(None))))).scalars().all()
+        by = {}
+        for o in _fills:
+            by.setdefault(((o.entry_strategy or '')[6:], o.entry_surge_trigger_at.replace(microsecond=0)), []).append(o)
+        rows = []
+        for t in _ts:
+            g = by.get((t.side, t.bar_close_at.replace(microsecond=0)), [])
+            gc = [o for o in g if o.status == 'CLOSED' and o.pnl_percentage is not None]
+            _w = sum(1 for o in gc if (o.pnl_percentage or 0) > 0)
+            rows.append({
+                'side': t.side, 'bar_close': t.bar_close_at.isoformat() if t.bar_close_at else None,
+                'btc_move': t.btc_move_pct, 'vol_mult': t.btc_vol_mult,
+                'window': (f"{t.window_opens_at:%H:%M}–{t.window_closes_at:%H:%M}" if t.window_opens_at and t.window_closes_at else None),
+                'found_late_min': t.found_late_min, 'status': t.status, 'restarted': bool(t.restarted),
+                'checked': t.checked or 0, 'picked': t.picked or '',
+                'ref_atr': t.refused_atr or 0, 'ref_leader': t.refused_leader or 0, 'ref_data': t.refused_data or 0,
+                'ref_slots': t.refused_slots or 0, 'ref_open': t.refused_open or 0,
+                'fills': len(g), 'open_fills': len(g) - len(gc),
+                'wr': (round(100.0 * _w / len(gc), 1) if gc else None),
+                'avg_pct': (round(sum(o.pnl_percentage or 0 for o in gc) / len(gc), 3) if gc else None),
+                'net': round(sum(o.pnl or 0 for o in gc), 2),
+                'pre_cohort': bool(t.bar_close_at and t.bar_close_at < _T0),
+            })
+        return rows
+    except Exception as _e:
+        logger.debug(f"[PERF] surge trigger ledger skipped: {_e}")
+        return []
 
 
 async def _bearrun_periods_rows(db, limit=50):
@@ -4475,6 +4517,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "bearrun_monitor": _bearrun_monitor_payload(),
             "bearrun_periods": [],
             "surge_rows": [],
+            "surge_triggers": [],
             "surge_monitor": None,
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
@@ -7381,6 +7424,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     # locked ARM bar (probe phase) / KILL bar (armed phase) tracked live. Manual toggles; no auto-flip.
     bearrun_rows = []
     bearrun_periods = await _bearrun_periods_rows(db)
+    surge_triggers = await _surge_trigger_rows(db)
     try:
         _th_bear = config.trading_config.thresholds
         _bear_lev = float(getattr(_th_bear, 'bearrun_lev_mult', 0.05) or 0.05)
@@ -8887,6 +8931,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "bearrun_monitor": _bearrun_monitor_payload(),
         "bearrun_periods": bearrun_periods,
         "surge_rows": surge_rows,
+        "surge_triggers": surge_triggers,
         "surge_monitor": _surge_monitor_payload(),
         "graduation_doors_overlap": graduation_doors_overlap,
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,

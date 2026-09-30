@@ -222,3 +222,30 @@ def test_surge_short_routes_to_its_own_exit_in_both_paths():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert eng.count("surge_short_exit_for(") == 3          # definition + candle path + realtime path
     assert "in ('BULLRUN_LONG', 'SURGE_LONG', 'SURGE_SHORT')" in eng and 'in ("BULLRUN_LONG", "SURGE_LONG", "SURGE_SHORT")' in eng
+
+
+def test_trigger_reports_the_volume_multiple():
+    t = surge_trigger(_btc(1.2, vol_last=10.0), _th(), "LONG")
+    assert t is not None and abs(t["btc_vol_mult"] - 10.0 * 101.2 / 100.0) < 0.05   # quote vol ratio vs the flat-bar median
+
+
+def test_trigger_ledger_is_persisted_and_on_every_surface():
+    from models import SurgeTrigger
+    cols = {c.name for c in SurgeTrigger.__table__.columns}
+    for k in ("side", "bar_close_at", "btc_move_pct", "btc_vol_mult", "window_opens_at", "window_closes_at", "found_late_min",
+              "status", "checked", "picked", "refused_atr", "refused_leader", "refused_data", "refused_slots", "refused_open", "restarted"):
+        assert k in cols, k
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert html.count('id="surge-triggers-body"') == 1
+    assert html.count("## ⚡ SURGE Trigger Ledger") == 2          # clipboard copy + saved-file export
+    main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+    assert main.count('"surge_triggers": []') == 2 and '"surge_triggers": surge_triggers' in main
+
+
+def test_trigger_ledger_one_row_per_trigger():
+    from models import SurgeTrigger
+    uq = [c for c in SurgeTrigger.__table__.constraints if c.__class__.__name__ == "UniqueConstraint"]
+    assert any({col.name for col in c.columns} == {"side", "bar_close_at"} for c in uq)
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert "async with AsyncSessionLocal() as _ls:" in eng          # ledger writes never commit / roll back the scan session
+    assert 'elif _row.status == "OPEN" and now_ms >= _wc_ms:' in eng  # a window that closed during downtime is finalized on boot

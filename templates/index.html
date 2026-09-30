@@ -1506,6 +1506,11 @@
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
                         <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Triggers</th><th class="px-2 py-1 text-left">Gate verdict / pairs</th>
                     </tr></thead><tbody id="surge-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
+                    <h4 class="text-xs font-semibold text-yellow-300 mt-4 mb-1">⚡ SURGE Trigger Ledger (persisted; restart-proof — one row per BTC trigger per side)</h4>
+                    <p class="text-xs text-gray-500 mb-2">Every trigger stays on record, including the ones that opened nothing. Status: OPEN (window pending/running) · FILLED · NO_PICK (pairs checked, none passed / opened) · MISSED (window closed before any pair was checked) · FOUND_LATE (seen after its window — never blocks the next trigger). Skips: ATR = pair ATR below the floor · LDR = not leading BTC · DATA = no bars · SLOT = cap reached · OPEN = selected but refused at open (held / cooldown / balance / price moved). Fills are matched exactly on the trigger bar; grey rows predate the kill-bar cohort (excluded from every SURGE read). ↻ = the window spanned a restart (picks and counts are kept; a pair refused before the restart may be checked — and counted — again).</p>
+                    <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
+                        <th class="px-2 py-1 text-left">Side</th><th class="px-2 py-1 text-left">Bar close (UTC)</th><th class="px-2 py-1 text-right">BTC 30m</th><th class="px-2 py-1 text-right">Vol ×</th><th class="px-2 py-1 text-left">Window</th><th class="px-2 py-1 text-left">Status</th><th class="px-2 py-1 text-right">Checked</th><th class="px-2 py-1 text-right" title="ATR / leader / data / slots / open">Skips ATR/LDR/DATA/SLOT/OPEN</th><th class="px-2 py-1 text-left">Opened</th><th class="px-2 py-1 text-right">Fills</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Net$</th>
+                    </tr></thead><tbody id="surge-triggers-body" class="divide-y divide-white/5"><tr><td colspan="13" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
 
                 <!-- Trailing Confirmation Performance (May 9, 2026) -->
@@ -10876,6 +10881,15 @@
                 lines.push('  KILL BAR (automatic, at the 10th closed fill of a side since the ship): LONG <=3 winners OR mean <=-0.30% · SHORT <=4 winners OR mean <=-0.20% => side OFF. Keep bar: N>=30 cross-window read (DECISION_LOG 146-148)');
             }
 
+            if (perf.surge_triggers && perf.surge_triggers.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## ⚡ SURGE Trigger Ledger (persisted; one row per BTC trigger per side; * = before the kill-bar cohort)\n');
+                lines.push(`${'Side'.padEnd(6)} ${'Bar close UTC'.padEnd(14)} ${'BTC30m'.padStart(7)} ${'Vol×'.padStart(5)} ${'Window'.padEnd(12)} ${'Status'.padEnd(11)} ${'Chk'.padStart(4)} ${'Skip A/L/D/S/O'.padEnd(15)} ${'Opened'.padEnd(28)} ${'Fills'.padStart(5)} ${'WR%'.padStart(5)} ${'avg%'.padStart(8)} ${'Net$'.padStart(9)}`);
+                for (const r of perf.surge_triggers) {
+                    lines.push(`${((r.pre_cohort ? '*' : '') + r.side).padEnd(6)} ${((r.bar_close || '').replace('T', ' ').slice(5, 16) + (r.restarted ? '↻' : '')).padEnd(14)} ${(r.btc_move != null ? ((r.btc_move >= 0 ? '+' : '') + r.btc_move.toFixed(2)) : '-').padStart(7)} ${(r.vol_mult != null ? r.vol_mult.toFixed(1) : '-').padStart(5)} ${((r.window || '-') + (r.found_late_min ? ` +${r.found_late_min}m` : '')).padEnd(12)} ${(r.status || '').padEnd(11)} ${String(r.checked).padStart(4)} ${`${r.ref_atr}/${r.ref_leader}/${r.ref_data}/${r.ref_slots}/${r.ref_open}`.padEnd(15)} ${(r.picked || '-').slice(0, 28).padEnd(28)} ${String(r.fills).padStart(5)} ${(r.wr != null ? r.wr.toFixed(0) : '-').padStart(5)} ${(r.avg_pct != null ? ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$' + (r.net || 0).toFixed(2)).padStart(9)}`);
+                }
+            }
+
             if (perf.spike_fires && perf.spike_fires.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## 🚀 Spike Fires (per-fire — CHASE + FADE, both eras; Jul 27 full ship)\n');
@@ -13290,6 +13304,15 @@
                     }
                 }
                 lines.push('  KILL BAR (automatic, at the 10th closed fill of a side since the ship): LONG <=3 winners OR mean <=-0.30% · SHORT <=4 winners OR mean <=-0.20% => side OFF. Keep bar: N>=30 cross-window read (DECISION_LOG 146-148)');
+            }
+
+            if (perf.surge_triggers && perf.surge_triggers.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## ⚡ SURGE Trigger Ledger (persisted; one row per BTC trigger per side; * = before the kill-bar cohort)\n');
+                lines.push(`${'Side'.padEnd(6)} ${'Bar close UTC'.padEnd(14)} ${'BTC30m'.padStart(7)} ${'Vol×'.padStart(5)} ${'Window'.padEnd(12)} ${'Status'.padEnd(11)} ${'Chk'.padStart(4)} ${'Skip A/L/D/S/O'.padEnd(15)} ${'Opened'.padEnd(28)} ${'Fills'.padStart(5)} ${'WR%'.padStart(5)} ${'avg%'.padStart(8)} ${'Net$'.padStart(9)}`);
+                for (const r of perf.surge_triggers) {
+                    lines.push(`${((r.pre_cohort ? '*' : '') + r.side).padEnd(6)} ${((r.bar_close || '').replace('T', ' ').slice(5, 16) + (r.restarted ? '↻' : '')).padEnd(14)} ${(r.btc_move != null ? ((r.btc_move >= 0 ? '+' : '') + r.btc_move.toFixed(2)) : '-').padStart(7)} ${(r.vol_mult != null ? r.vol_mult.toFixed(1) : '-').padStart(5)} ${((r.window || '-') + (r.found_late_min ? ` +${r.found_late_min}m` : '')).padEnd(12)} ${(r.status || '').padEnd(11)} ${String(r.checked).padStart(4)} ${`${r.ref_atr}/${r.ref_leader}/${r.ref_data}/${r.ref_slots}/${r.ref_open}`.padEnd(15)} ${(r.picked || '-').slice(0, 28).padEnd(28)} ${String(r.fills).padStart(5)} ${(r.wr != null ? r.wr.toFixed(0) : '-').padStart(5)} ${(r.avg_pct != null ? ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$' + (r.net || 0).toFixed(2)).padStart(9)}`);
+                }
             }
 
             if (perf.spike_fires && perf.spike_fires.length > 0) {
@@ -19096,6 +19119,31 @@
                             </tr>`;
                         }).join('');
                     } else { sgBody.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No SURGE fills yet</td></tr>'; }
+                }
+                // ⚡ Sep 30: SURGE trigger ledger
+                const sgtBody = document.getElementById('surge-triggers-body');
+                if (sgtBody) {
+                    if (data.surge_triggers && data.surge_triggers.length > 0) {
+                        sgtBody.innerHTML = data.surge_triggers.map(r => {
+                            const tc = (r.net || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const sc = r.status === 'FILLED' ? 'text-emerald-300' : (r.status === 'OPEN' ? 'text-yellow-300' : (r.status === 'MISSED' || r.status === 'FOUND_LATE' ? 'text-red-400' : 'text-gray-400'));
+                            return `<tr class="hover:bg-white/5${r.pre_cohort ? ' opacity-50' : ''}">
+                                <td class="px-2 py-1.5 ${r.side === 'LONG' ? 'text-emerald-300' : 'text-rose-300'} font-medium">${r.side}</td>
+                                <td class="px-2 py-1.5 text-gray-300 whitespace-nowrap">${(r.bar_close || '').replace('T', ' ').slice(5, 16)}${r.restarted ? ' ↻' : ''}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.btc_move != null ? ((r.btc_move >= 0 ? '+' : '') + r.btc_move.toFixed(2) + '%') : '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.vol_mult != null ? r.vol_mult.toFixed(1) : '—'}</td>
+                                <td class="px-2 py-1.5 text-gray-400 whitespace-nowrap">${r.window || '—'}${r.found_late_min ? ` <span class="text-amber-400">(+${r.found_late_min}m late)</span>` : ''}</td>
+                                <td class="px-2 py-1.5 ${sc} font-semibold">${r.status}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.checked}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.ref_atr}/${r.ref_leader}/${r.ref_data}/${r.ref_slots}/${r.ref_open}</td>
+                                <td class="px-2 py-1.5 text-gray-300">${r.picked || '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.fills}${r.open_fills ? ` (${r.open_fills} open)` : ''}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.wr != null ? r.wr.toFixed(0) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc}">${r.avg_pct != null ? ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc} font-bold">$${(r.net || 0).toFixed(2)}</td>
+                            </tr>`;
+                        }).join('');
+                    } else { sgtBody.innerHTML = '<tr><td colspan="13" class="px-3 py-3 text-center text-gray-500">No SURGE triggers recorded yet</td></tr>'; }
                 }
                 // 🚀 Spike Fires per-fire table (Jul 27 full ship)
                 const spfBody = document.getElementById('spike-fires-body');

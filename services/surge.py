@@ -51,13 +51,13 @@ def surge_trigger(btc_bars, th, side: str) -> Optional[dict]:
         else:
             return None
         mult = _f(th, 'surge_btc_vol_mult', 3.0)
-        if mult > 0:
-            qv = float(bars[-1][5]) * last
-            med = median(float(r[5]) * float(r[4]) for r in window)
-            if not (med > 0 and qv >= mult * med):
-                return None
+        qv = float(bars[-1][5]) * last
+        med = median(float(r[5]) * float(r[4]) for r in window)
+        vol_mult = (qv / med) if med > 0 else None
+        if mult > 0 and not (vol_mult is not None and vol_mult >= mult):
+            return None
         t = int(bars[-1][0])
-        return dict(bar_ts=t, close_ts=t + BAR_MS, btc_move_pct=round(move, 4))
+        return dict(bar_ts=t, close_ts=t + BAR_MS, btc_move_pct=round(move, 4), btc_vol_mult=(round(vol_mult, 2) if vol_mult else None))
     except (TypeError, ValueError, IndexError, ZeroDivisionError):
         return None
 

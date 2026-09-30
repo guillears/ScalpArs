@@ -69,6 +69,7 @@ def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_
         'ema13_prev2': float(ema13.iloc[-3]) if len(ema13) >= 3 and not pd.isna(ema13.iloc[-3]) else None,
         'ema20': float(ema20.iloc[-1]) if not pd.isna(ema20.iloc[-1]) else None,
         'ema20_prev3': float(ema20.iloc[-4]) if len(ema20) >= 4 and not pd.isna(ema20.iloc[-4]) else None,
+        'ema20_prev1': float(ema20.iloc[-2]) if len(ema20) >= 2 and not pd.isna(ema20.iloc[-2]) else None,   # Sep-29: signed EMA5-20 gap one bar back (entry stamp)
         'ema50': float(ema50.iloc[-1]) if not pd.isna(ema50.iloc[-1]) else None,
         'ema50_prev12': float(ema50.iloc[-13]) if len(ema50) >= 13 and not pd.isna(ema50.iloc[-13]) else None,
         'rsi': float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else None,

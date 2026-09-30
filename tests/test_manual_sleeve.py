@@ -5,6 +5,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.ins
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./_x.db")
 
 
+def _synthetic_ohlcv(n, seed=7):
+    rng = np.random.default_rng(seed); c = 100 * np.exp(np.cumsum(rng.normal(0, 0.003, n)))
+    h = c * (1 + rng.uniform(0, 0.002, n)); l = c * (1 - rng.uniform(0, 0.002, n)); o = np.r_[c[0], c[:-1]]
+    return [[1_700_000_000_000 + i * 300_000, float(o[i]), float(h[i]), float(l[i]), float(c[i]), float(1000 + 50 * i)] for i in range(n)]
+
+
 def _engine():
     from services.trading_engine import TradingEngine
     return TradingEngine
@@ -178,6 +184,12 @@ def test_momentum_mode_refuses_only_what_the_ema13_exit_would_close_at_once(monk
     class _Trk: last_price = 268.0
     monkeypatch.setattr(T.websocket_tracker, "get_tracker", lambda p: _Trk())
     monkeypatch.setattr(T.websocket_tracker, "pair_silence_seconds", lambda p: 1.0)
+    _bars = _synthetic_ohlcv(260)                                                  # 📐 the entry stamps fetch klines: never the network in tests
+
+    async def _ohlcv(symbol, tf, n): return _bars[-n:]
+    async def _fr(symbol): return 0.0001
+    monkeypatch.setattr(T.binance_service, "get_ohlcv", _ohlcv)
+    monkeypatch.setattr(T.binance_service, "fetch_funding_rate", _fr)
 
     class _Accepted(Exception): pass
     captured = []
@@ -234,8 +246,9 @@ def test_momentum_mode_refuses_only_what_the_ema13_exit_would_close_at_once(monk
         _o = captured[-1]
         assert _o.manual_block_reason == T.PAIR_REASON_AWAITING and _o.manual_setup_rating == "STRONG_BUY" and _o.manual_setup_side == "LONG"
         assert _o.manual_pair_rsi == 50.0 and _o.manual_pair_adx == 20.0 and _o.manual_gap_5_20 is not None and _o.manual_gap_5_20 >= 0
-        # the bot's own entry_* columns stay EMPTY on a manual fill — that is what keeps it out of every systematic table
-        assert _o.entry_rsi is None and _o.entry_adx is None and _o.entry_gap is None and _o.entry_ema_gap_5_8 is None
+        # 📐 Sep-29: a manual fill now records the bot's entry_* stamps too (operator request); entry_strategy = MANUAL keeps
+        # it out of every systematic read (test_pair_block_reason pins that with every entry_* column populated)
+        assert _o.entry_strategy == "MANUAL" and _o.entry_rsi is not None and _o.entry_adx is not None and _o.entry_gap is not None
         th.ema13_cross_exit_long_enabled = False                                                           # live config today
         assert attempt("LONG", 270.0, ema5=267.0, ema8=268.0) == "ACCEPTED"                                # LONG side disabled → phantom only
     finally:

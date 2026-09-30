@@ -268,6 +268,12 @@ class Order(Base):
     # 🪤 Sep-29 FADE LAGGARD gate readings (DECISION_LOG 128) — SPIKE_FADE fills only, NULL otherwise
     entry_pair_1d_ndi = Column(Float, nullable=True)                # pair Wilder −DI(14), closed daily bars
     entry_btc_4h_ema50_200_gap_pct = Column(Float, nullable=True)   # BTC 4h EMA50 vs EMA200 (%), closed bars
+    # 📐 Sep-29 SIGNED EMA gaps at entry (momentum-scan fills and manual fills; NULL on the flip / bull-run / bounce / spike
+    # paths, which build their own stamps). entry_gap / entry_ema_gap_5_8 are ABSOLUTE, so a fill
+    # with EMA5 under EMA20 (an early turn) was indistinguishable from a stacked one; these keep the sign and one bar of history.
+    entry_gap_5_20_signed_pct = Column(Float, nullable=True)        # (EMA5 − EMA20) / price %, + = EMA5 above
+    entry_gap_5_20_prev_signed_pct = Column(Float, nullable=True)   # same, one 5m bar earlier (EMA5/EMA20 prev1, current price)
+    entry_gap_5_8_signed_pct = Column(Float, nullable=True)         # (EMA5 − EMA8) / EMA8 %, + = EMA5 above
     # 🖐 Sep-29 MANUAL sleeve (operator-opened positions; entry_strategy='MANUAL'; excluded from every systematic read)
     manual_exit_mode = Column(String(12), nullable=True)            # FIXED | MOMENTUM | FLOOR
     manual_note = Column(String(200), nullable=True)                # the operator's hypothesis for the trade

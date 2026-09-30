@@ -194,6 +194,104 @@ def bnb_real_floor_usd(tc, target) -> float:
     return min(floor, max(float(target or 0.0), 0.0))
 
 
+def pair_entry_stamps(indicators, signal) -> dict:
+    """📐 Sep-29 the PAIR-level entry stamps of one indicator snapshot — the exact formulas and rounding the momentum scan
+    passes to open_position, in ONE place: the scan call and the MANUAL sleeve both use this, so a manual fill records
+    what a bot fill records (operator: "the manual buys should record everything that normal buys record"). Adds the
+    signed EMA5−EMA20 / EMA5−EMA8 gaps and the EMA5−EMA20 gap one bar back (entry_gap / entry_ema_gap_5_8 are absolute).
+    Pure; a missing input gives None for the fields that need it."""
+    ind = indicators or {}
+    px = ind.get('price')
+    e5, e8, e13, e20 = ind.get('ema5'), ind.get('ema8'), ind.get('ema13'), ind.get('ema20')
+    out = {}
+    out['entry_gap'] = round(abs((e5 - e20) / px * 100), 4) if (e5 and e20 and px and px > 0) else None
+    out['entry_ema_gap_5_8'] = round(abs((e5 - e8) / e8 * 100), 4) if (e5 and e8 and e8 > 0) else None
+    out['entry_ema_gap_8_13'] = round(abs((e8 - e13) / e13 * 100), 4) if (e8 and e13 and e13 > 0) else None
+    if e5 and px and px > 0:
+        out['entry_ema5_stretch'] = round(abs(px - e5) / px * 100, 4)
+        out['entry_price_vs_ema5_pct'] = round((px - e5) / e5 * 100, 4)
+    else:
+        out['entry_ema5_stretch'] = out['entry_price_vs_ema5_pct'] = None
+    rsi, rsi_p2, adx, adx_p1 = ind.get('rsi'), ind.get('rsi_prev2'), ind.get('adx'), ind.get('adx_prev1')
+    out['entry_rsi'] = round(rsi, 2) if rsi is not None else None
+    out['entry_rsi_prev'] = round(rsi_p2, 2) if rsi_p2 is not None else None     # prev2, as the RSI momentum filter reads it
+    out['entry_adx'] = round(adx, 4) if adx is not None else None
+    out['entry_adx_prev'] = round(adx_p1, 4) if adx_p1 is not None else None
+    out['entry_adx_delta'] = round(adx - adx_p1, 4) if (adx is not None and adx_p1 is not None) else None
+    e20p3 = ind.get('ema20_prev3')
+    out['entry_ema20_slope'] = round(((e20 - e20p3) / e20p3) * 100, 4) if (e20 and e20p3 and e20p3 != 0) else None
+    h20, l20 = ind.get('high_20'), ind.get('low_20')
+    out['entry_range_position'] = round(((px - l20) / (h20 - l20)) * 100, 1) if (h20 and l20 and h20 != l20 and px is not None) else None
+    out['entry_pos_di'], out['entry_neg_di'] = ind.get('pos_di'), ind.get('neg_di')
+    atr = ind.get('atr')
+    out['entry_atr_pct'] = round((atr / px) * 100, 4) if (atr is not None and px and px > 0) else None
+    e50, e50p12 = ind.get('ema50'), ind.get('ema50_prev12')
+    out['entry_ema50_slope'] = round(((e50 - e50p12) / e50p12) * 100, 4) if (e50 is not None and e50p12 is not None and e50p12 != 0) else None
+    out['entry_pair_ema20_ema50_gap_pct'] = round((e13 - e50) / e50 * 100, 4) if (e13 is not None and e50 is not None and e50 != 0) else None   # EMA13 (column misnamed)
+    out['entry_dist_from_ema13_pct'] = round((px - e13) / e13 * 100, 4) if (e13 is not None and px is not None and e13 != 0) else None
+    vol, avg = (ind.get('volume') or 0), (ind.get('avg_volume') or 0)
+    out['entry_pair_volume_ratio'] = round(round(vol / avg, 4) if avg > 0 else 1.0, 4)
+    out['entry_gap_expand_marginal'] = gap_expand_marginal(ind, signal) if signal in ("LONG", "SHORT") else None
+    # 📐 signed gaps (new, every fill)
+    e5p1, e20p1 = ind.get('ema5_prev1'), ind.get('ema20_prev1')
+    out['entry_gap_5_20_signed_pct'] = round((e5 - e20) / px * 100, 4) if (e5 and e20 and px and px > 0) else None
+    out['entry_gap_5_20_prev_signed_pct'] = round((e5p1 - e20p1) / px * 100, 4) if (e5p1 and e20p1 and px and px > 0) else None
+    out['entry_gap_5_8_signed_pct'] = round((e5 - e8) / e8 * 100, 4) if (e5 and e8 and e8 > 0) else None
+    return out
+
+
+def monitor_entry_stamps(bull_mon, bear_mon, now_s) -> dict:
+    """BTC 24h / 72h monitor readings stamped on EVERY fill; a reading older than 30 min (exchange outage) is None, never
+    an old value. Shared by open_position and the MANUAL sleeve. Pure."""
+    def fresh(mon, key, at_key='updated_at'):
+        return mon.get(key) if (now_s - (mon.get(at_key) or 0)) <= 1800 else None
+    return dict(entry_btc_off24h_pct=fresh(bull_mon, 'off24h'), entry_btc_off24lo_pct=fresh(bear_mon, 'off24lo'),
+                entry_btc_r72_pct=fresh(bull_mon, 'r72'), entry_btc_eff72=fresh(bull_mon, 'eff'),
+                entry_btc_above72_pct=fresh(bull_mon, 'above'))
+
+
+def market_entry_stamps(g, signal, indicators, btc_global_enabled, th) -> dict:
+    """📐 Sep-29 the MARKET-level stamps a momentum fill records, rebuilt from the scan's published state (module globals)
+    with the scan's rounding — used by the MANUAL sleeve (the scan passes its own locals). Pure over `g`."""
+    def r(v, n):
+        return round(v, n) if v is not None else None
+    ind = indicators or {}
+    out = dict(
+        entry_btc_adx=r(g.get('_current_btc_adx'), 4), entry_btc_adx_prev=r(g.get('_current_btc_adx_prev'), 4),
+        entry_btc_rsi=r(g.get('_current_btc_rsi'), 1), entry_btc_rsi_prev=r(g.get('_current_btc_rsi_prev'), 1),
+        entry_btc_rsi_prev6=r(g.get('_current_btc_rsi_prev6'), 1), entry_btc_atr_pct=g.get('_current_btc_atr_pct'),
+        entry_btc_rsi_1h=g.get('_current_btc_rsi_1h'), entry_btc_rsi_1h_prev=g.get('_current_btc_rsi_1h_prev'),
+        entry_btc_ema20_slope=g.get('_btc_ema20_slope_pct'), entry_btc_1h_slope=g.get('_current_btc_1h_slope'),
+        entry_btc_trend_gap_pct=g.get('_current_btc_trend_gap_pct'),
+        entry_bull_pct=g.get('_market_bull_pct'), entry_bear_pct=g.get('_market_bear_pct'),
+    )
+    gv = g.get('_global_volume_ratio')
+    out['entry_global_volume_ratio'] = round(gv, 4) if gv is not None else None
+    be13, bpx = g.get('_current_btc_ema13'), g.get('_current_btc_price')
+    out['entry_btc_dist_from_ema13_pct'] = round((bpx - be13) / be13 * 100, 4) if (be13 is not None and bpx is not None and be13 != 0) else None
+    try:
+        out['entry_btc_regime'] = classify_btc_regime(g.get('_current_btc_adx'), g.get('_current_btc_rsi'), g.get('_btc_ema20_slope_pct'))
+    except Exception:
+        out['entry_btc_regime'] = None
+    if btc_global_enabled:
+        out['entry_macro_trend'] = g.get('_current_btc_regime')
+    elif not ind:
+        out['entry_macro_trend'] = None      # no pair indicators → no reading (determine_macro_regime would say NEUTRAL)
+    else:
+        flat = getattr(th, 'macro_trend_flat_threshold_long' if signal == "LONG" else 'macro_trend_flat_threshold_short',
+                       getattr(th, 'macro_trend_flat_threshold', 0.0))
+        out['entry_macro_trend'] = determine_macro_regime(ind.get('ema20'), ind.get('ema20_prev3'), flat)
+    return out
+
+
+def exit_entry_atr_pct(entry_strategy, entry_atr_pct):
+    """The entry ATR the EXIT rules see. MANUAL fills record it like any fill (📐 Sep-29), but their exits were designed and
+    guarded without it: the ATR / quiet-pair stop widening would move a manual stop — at 30–50× possibly past the
+    leverage-aware floor that keeps it inside liquidation. Recording must not change trading, so MANUAL exits see None
+    (their behaviour before the stamp existed); every other fill sees its own stamp."""
+    return None if (entry_strategy or "") == "MANUAL" else entry_atr_pct
+
+
 PAPER_FEE_SETTLE = "fee_settle"   # BnbSwapLog.swap_type of the row that books fees already paid in USDT (reserve was empty)
 
 
@@ -2193,6 +2291,8 @@ class TradingEngine:
         # /api/pairs to show Block Reason column without re-enumerating
         # 40+ filters in UI code (single source of truth).
         self._last_pair_block_reason: Dict[str, str] = PairReasonStash()   # Sep-29: scan-sequence-tagged (see class)
+        self._scan_pair_meta: Dict[str, tuple] = {}   # 📐 Sep-29: pair → (24h volume USD, rank, listing age days) from the last scan
+        self._scan_pair_meta_at: float = 0.0
         # Jun 3: BTC-acceleration-chase filter state (stateful evolution filter).
         # Tracks the BTC EMA20 slope at the most recent LONG that actually opened.
         self._last_long_open_ts: Optional[datetime] = None
@@ -6871,6 +6971,7 @@ class TradingEngine:
         entry_btc_ema50_100_gap_pct: float = None,   # 🧭 Sep-29 zone stamps — accepted so the flip/door paths' **-splat never drops them
         entry_eth_5m_ret1_pct: float = None,
         entry_btc_1d_ret_pct: float = None,
+        entry_gap_5_20_signed_pct: float = None, entry_gap_5_20_prev_signed_pct: float = None, entry_gap_5_8_signed_pct: float = None,   # 📐 Sep-29
         entry_price_vs_ema5_pct: float = None,
         entry_global_volume_ratio: float = None,
         entry_pair_volume_ratio: float = None,
@@ -8476,15 +8577,13 @@ class TradingEngine:
             entry_btc_1d_ret_pct=(entry_btc_1d_ret_pct if entry_btc_1d_ret_pct is not None else (_zg.get('_current_btc_1d_ret_pct') if _zfresh else None)),
             entry_pair_1h_ema20_200_gap_pct=_z_pair_gap,
             entry_pair_1d_ndi=entry_pair_1d_ndi, entry_btc_4h_ema50_200_gap_pct=entry_btc_4h_ema50_200_gap_pct,   # 🪤 Sep-29 fade laggard readings (SPIKE_FADE fills; NULL otherwise)
+            entry_gap_5_20_signed_pct=entry_gap_5_20_signed_pct, entry_gap_5_20_prev_signed_pct=entry_gap_5_20_prev_signed_pct,
+            entry_gap_5_8_signed_pct=entry_gap_5_8_signed_pct,   # 📐 Sep-29 signed gaps (scan fills via pair_entry_stamps; NULL on sleeve paths)
             entry_br_bull_pct_top10=entry_br_bull_pct_top10,
             entry_br_bear_pct_top10=entry_br_bear_pct_top10,
             entry_br_top10_n=entry_br_top10_n,
-            # Sep 16: BTC 24h-range position at entry on every fill (from the monitors' shared 5m fetch, ≤2 min old; None before the first compute)
-            entry_btc_off24h_pct=(_bullrun_monitor.get('off24h') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # deep review: stale monitor (>30 min, exchange outage) → None, never an old reading
-            entry_btc_off24lo_pct=(_bearrun_monitor.get('off24lo') if (_leash_time.time() - (_bearrun_monitor.get('updated_at') or 0)) <= 1800 else None),
-            entry_btc_r72_pct=(_bullrun_monitor.get('r72') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # Sep-18: BTC 72h return at entry (every fill)
-            entry_btc_eff72=(_bullrun_monitor.get('eff') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # Sep-18: monitor 72h trend efficiency at entry (every fill; None when stale)
-            entry_btc_above72_pct=(_bullrun_monitor.get('above') if (_leash_time.time() - (_bullrun_monitor.get('updated_at') or 0)) <= 1800 else None),  # Sep-18: % of 5m bars above EMA20 over 72h
+            # Sep 16/18: BTC 24h / 72h monitor readings on every fill (≤30 min old, else None) — shared with the MANUAL sleeve
+            **monitor_entry_stamps(_bullrun_monitor, _bearrun_monitor, _leash_time.time()),
             entry_long_heat_flags=_lh_flags,          # heat legs ON and true at entry — 0-3 until Sep-25, 0/1 after (breadth leg only)
             entry_btc_off30d_high_pct=_lh_off30d,     # Sep-18: BTC % below its 30-day high (≤0; None if stale/unknown)
             entry_bear_r24=entry_bear_r24, entry_bear_below24=entry_bear_below24, entry_bear_eff24=entry_bear_eff24,
@@ -8913,7 +9012,18 @@ class TradingEngine:
                 raise RuntimeError("exchange market order failed")
             binance_order_id = result['id']; actual_price = float(result['price']); quantity = float(result.get('amount', quantity))
         entry_fee = actual_price * quantity * taker_fee_rate
-        g = globals(); _zfresh = (_leash_time.time() - (g.get('_zone_stamps_at') or 0)) <= 1800
+        _clicked_at = datetime.utcnow()
+        _st = await self._manual_entry_stamps(pair, symbol, direction, actual_price)   # 📐 every stamp a momentum fill records (≤ 8 s)
+        # the reads above take up to 8 s: re-check the pair right before the insert (the bot may have opened it meanwhile)
+        if ((await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.pair == pair,
+                                                                      Order.is_paper == self.is_paper_mode)))).scalar() or 0) > 0:
+            raise ValueError(f"{pair} was opened by the bot while this manual entry was being prepared — not opened twice")
+        # …and the manual cap / balance, which the bot may have used in the same window (deep review)
+        if ((await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
+                                                                      Order.entry_strategy == "MANUAL")))).scalar() or 0) >= _cap:
+            raise ValueError(f"manual positions cap reached while this entry was being prepared ({_cap} — manual_max_open_positions)")
+        if investment > await self.get_available_balance(db):
+            raise ValueError(f"size ${investment:,.0f} exceeds the available balance after the bot's last open — not opened")
         order = Order(
             pair=pair, direction=direction, status="OPEN", entry_price=actual_price, investment=investment, leverage=leverage,
             notional_value=notional_value, quantity=quantity, confidence="STRONG_BUY", entry_strategy="MANUAL",
@@ -8922,22 +9032,17 @@ class TradingEngine:
             # the gate the operator traded through + the pair readings a systematic fill stamps (from the pair's last scan row)
             manual_block_reason=(None if _gc['block_reason'] is None else str(_gc['block_reason'])[:60]),
             manual_setup_rating=(str(_gc['rating'])[:15] if _gc['rating'] else None), manual_setup_side=_gc['side'],
-            # pair readings live in MANUAL-OWNED columns (deep review: writing the bot's entry_* columns leaked manual fills
-            # into every dashboard table keyed on "entry_x is not None" — one bucket's WR moved 40 % → 57 %)
+            # the Top Pairs row's readings at the click (manual_* columns, kept alongside the entry_* stamps below)
             manual_pair_rsi=_gc['rsi'], manual_pair_adx=_gc['adx'], manual_gap_5_20=_gc['gap_5_20'], manual_gap_5_8=_gc['gap_5_8'],
             manual_gap_8_13=_gc['gap_8_13'], manual_px_vs_ema5=_gc['px_vs_ema5'],
             # same TP-ladder seed as open_position (current_tp_level 1 / target = confidence tp_min) — the UI derives its
             # "armed" badge from dynamic_tp_target, so a NULL here painted 🛡 L1 on an unarmed trade (TAO, Sep-29)
             current_tp_level=1, dynamic_tp_target=(float(getattr(config.trading_config.confidence_levels.get("STRONG_BUY"), 'tp_min', 0.4) or 0.4) if exit_mode == "MOMENTUM" else tp),
-            entry_fee=entry_fee, entry_order_type="TAKER", is_paper=self.is_paper_mode, opened_at=datetime.utcnow(), binance_order_id=binance_order_id,
-            # macro context at the click — free stamps so the MANUAL table can be read like any other sleeve
-            entry_btc_rsi=g.get('_current_btc_rsi'), entry_btc_adx=g.get('_current_btc_adx'), entry_btc_ema20_slope=g.get('_btc_ema20_slope_pct'),
-            entry_btc_atr_pct=g.get('_current_btc_atr_pct'), entry_btc_rsi_1h=g.get('_current_btc_rsi_1h'), entry_btc_1h_slope=g.get('_current_btc_1h_slope'),
-            entry_macro_trend=g.get('_current_btc_regime'), entry_bull_pct=g.get('_market_bull_pct'), entry_bear_pct=g.get('_market_bear_pct'),
-            entry_btc_trend_gap_pct=g.get('_current_btc_trend_gap_pct'),
-            entry_btc_ema50_100_gap_pct=(g.get('_current_btc_ema50_100_gap_pct') if _zfresh else None),
-            entry_eth_5m_ret1_pct=(g.get('_current_eth_5m_ret1_pct') if _zfresh else None),
-            entry_btc_1d_ret_pct=(g.get('_current_btc_1d_ret_pct') if _zfresh else None),
+            entry_fee=entry_fee, entry_order_type="TAKER", is_paper=self.is_paper_mode, opened_at=_clicked_at, binance_order_id=binance_order_id,
+            # 📐 Sep-29 (operator: "the manual buys should record everything that normal buys record"): the same entry_* stamps
+            # a momentum fill carries, same formulas (pair_entry_stamps / market_entry_stamps / monitor_entry_stamps). Manual
+            # fills stay out of every systematic read (entry_strategy = MANUAL) and their exits never see the entry ATR.
+            **_st,
         )
         db.add(order)
         await db.flush()
@@ -8956,6 +9061,101 @@ class TradingEngine:
         logger.warning(f"[MANUAL_OPEN] {pair} {direction} ${investment:,.0f}×{leverage:g} @ {actual_price} exit={exit_mode} sl={sl} tp={tp} "
                        f"gate={order.manual_block_reason!r} setup={order.manual_setup_rating}/{order.manual_setup_side} note={order.manual_note!r}")
         return order
+
+    async def _manual_entry_stamps(self, pair: str, symbol: str, direction: str, fill_price: float) -> dict:
+        """📐 Sep-29 every entry stamp a momentum fill records, for a MANUAL fill: the pair's 5m indicators rebuilt exactly
+        as the scan builds them (same fetch, same calculate_indicators arguments), the market readings the scan publishes,
+        the monitor / heat / market-cap / zone / pattern readings open_position adds, the scan's volume / rank / age for the
+        pair, and the funding rate. Sleeve-only fields (bull-run door, bear-run, fade laggard, liquidity cap) stay NULL,
+        as on a momentum fill. Fail-soft: a failing piece leaves its fields NULL, the position still opens."""
+        tc = config.trading_config; th = tc.thresholds; g = globals(); st = {}
+        # the three network reads run TOGETHER, capped at 8 s in all (caveman review: sequential they could hold the manual
+        # open ~21 s — a window in which the bot's own duplicate check cannot see the manual row)
+        async def _get(coro):
+            try:
+                return await asyncio.wait_for(coro, 7.5)   # per read: one hung read never cancels the others (deep review)
+            except Exception as _e:
+                logger.warning(f"[MANUAL_STAMPS] {pair}: read failed ({_e})")
+                return None
+        _want_1h = bool(getattr(tc, 'entry_zone_stamps_enabled', True))
+        try:
+            _k5, _k1h, _fr = await asyncio.wait_for(asyncio.gather(
+                _get(binance_service.get_ohlcv(symbol, '5m', 100)),
+                _get(binance_service.get_ohlcv(symbol, '1h', 260)) if _want_1h else _get(asyncio.sleep(0)),
+                _get(binance_service.fetch_funding_rate(symbol))), 8.0)
+        except Exception as _e:
+            logger.warning(f"[MANUAL_STAMPS] {pair}: exchange reads timed out ({_e}) — those stamps left empty")
+            _k5 = _k1h = _fr = None
+        ind = None
+        try:
+            if _k5:
+                ind = calculate_indicators(_k5, pair_volume_bars=getattr(th, 'pair_volume_lookback_bars', 20),
+                                           global_volume_bars=getattr(th, 'global_volume_lookback_bars', 48))
+                if ind and fill_price and fill_price > 0:
+                    ind = dict(ind, price=float(fill_price))   # price-relative stamps describe the click, as the scan's describe its decision
+        except Exception as _e:
+            logger.warning(f"[MANUAL_STAMPS] {pair}: 5m indicators unavailable ({_e}) — pair stamps left empty")
+        if ind:
+            st.update(pair_entry_stamps(ind, direction))
+        try:
+            st.update(market_entry_stamps(g, direction, ind, bool(getattr(th, 'btc_global_filter_enabled', False)), th))
+        except Exception as _e:
+            logger.warning(f"[MANUAL_STAMPS] {pair}: market stamps failed ({_e})")
+        try:
+            if ind:
+                st['entry_quality_score'] = _calculate_quality_score(direction, ind.get('rsi'), ind.get('adx'), st.get('entry_gap'),
+                                                                     g.get('_market_bull_pct'), g.get('_market_bear_pct'),
+                                                                     g.get('_current_btc_adx'), st.get('entry_ema20_slope'))
+        except Exception:
+            pass
+        now_s = _leash_time.time()
+        st.update(monitor_entry_stamps(_bullrun_monitor, _bearrun_monitor, now_s))
+        _off30d = (_bullrun_monitor.get('off30d') if (now_s - (_bullrun_monitor.get('off30d_at') or 0)) <= 1800 else None)
+        st['entry_btc_off30d_high_pct'] = _off30d
+        try:
+            st['entry_long_heat_flags'] = long_heat_eval(th, st.get('entry_btc_ema20_slope'), st.get('entry_btc_rsi_prev'),
+                                                         st.get('entry_bull_pct'), _off30d)[0]
+        except Exception:
+            st['entry_long_heat_flags'] = None
+        try:
+            from services import mcap_service as _mcs
+            st['entry_mcap_usd'], st['entry_cmc_rank'] = _mcs.get(pair)
+        except Exception:
+            pass
+        _zfresh = (now_s - (g.get('_zone_stamps_at') or 0)) <= 1800
+        for k in ('_current_btc_ema50_100_gap_pct', '_current_eth_5m_ret1_pct', '_current_btc_1d_ret_pct'):
+            st['entry' + k[len('_current'):]] = g.get(k) if _zfresh else None
+        try:
+            if _want_1h and _k1h:
+                st['entry_pair_1h_ema20_200_gap_pct'] = closed_ema_gap_pct(_k1h, 20, 200)
+        except Exception:
+            pass
+        meta = getattr(self, '_scan_pair_meta', {}) or {}
+        if pair in meta and (time.time() - (getattr(self, '_scan_pair_meta_at', 0.0) or 0.0)) <= 1800:
+            st['entry_pair_volume_24h_usd'], st['entry_pair_rank'], st['entry_pair_age_days'] = meta[pair]
+        st['entry_funding_rate'] = round(_fr, 6) if isinstance(_fr, (int, float)) else None
+        # entry_slippage_pct stays NULL: a manual paper fill IS the clicked price (nothing to measure), and a 0.0 would enter
+        # the account-level slippage averages (deep review)
+        try:   # the signature flags every momentum fill carries (observation-only)
+            _bg = g.get('_current_btc_trend_gap_pct')
+            (st['entry_pattern_c1_match'], st['entry_pattern_c2_match'], st['entry_pattern_c3_match'], st['entry_pattern_c4_match'],
+             st['entry_pattern_c5_match'], st['entry_pattern_c6_match'], st['entry_pattern_c7_match'], st['entry_pattern_c8_match'],
+             st['entry_pattern_c9_match'], st['entry_pattern_c_any_match']) = _compute_pattern_c_match(
+                direction=direction, rng_pos=st.get('entry_range_position'), pair_gap=st.get('entry_pair_ema20_ema50_gap_pct'),
+                adx_delta=st.get('entry_adx_delta'), btc_rsi=st.get('entry_btc_rsi'), btc_rsi_prev=st.get('entry_btc_rsi_prev'),
+                btc_adx=st.get('entry_btc_adx'), btc_adx_prev=st.get('entry_btc_adx_prev'), btc_gap=_bg, stretch=st.get('entry_ema5_stretch'),
+                pair_adx=st.get('entry_adx'), btc_atr=st.get('entry_btc_atr_pct'), ema20_slope=st.get('entry_ema20_slope'),
+                ema50_slope=st.get('entry_ema50_slope'))
+            (st['entry_pattern_w1_match'], st['entry_pattern_w2_match'], st['entry_pattern_w3_match'], st['entry_pattern_w4_match'],
+             st['entry_pattern_w5_match'], st['entry_pattern_w6_match'], st['entry_pattern_w_any_match']) = _compute_pattern_w_match(
+                direction=direction, rsi=st.get('entry_rsi'), adx=st.get('entry_adx'), adx_delta=st.get('entry_adx_delta'),
+                stretch=st.get('entry_ema5_stretch'), rng_pos=st.get('entry_range_position'), pair_gap=st.get('entry_pair_ema20_ema50_gap_pct'),
+                btc_rsi=st.get('entry_btc_rsi'), btc_adx=st.get('entry_btc_adx'), btc_atr=st.get('entry_btc_atr_pct'), btc_gap=_bg,
+                pair_vol_ratio=st.get('entry_pair_volume_ratio'))
+        except Exception as _e:
+            logger.debug(f"[MANUAL_STAMPS] {pair}: pattern flags failed ({_e})")
+        st['exit_btc_regime'] = st.get('entry_btc_regime')   # initialised to entry, updated on close — as open_position does
+        return st
 
     async def _stamp_funding_async(self, order_id: int, pair: str, opened_at) -> None:
         """Aug-24 (33): stamp Σ funding on a CLOSED live order from its own session, off the close funnel.
@@ -11310,7 +11510,7 @@ class TradingEngine:
                 dynamic_tp_target=order.dynamic_tp_target,
                 signal_active=is_signal_active,
                 tp_trailing_enabled=exit_conf_config.tp_trailing_enabled if exit_conf_config else True,
-                entry_atr_pct=getattr(order, 'entry_atr_pct', None),  # May 7 Phase 1: ATR-normalized trailing
+                entry_atr_pct=exit_entry_atr_pct(order.entry_strategy, getattr(order, 'entry_atr_pct', None)),  # May 7 Phase 1: ATR-normalized trailing (📐 MANUAL → None)
                 current_stretch=_rt_stretch,  # Jun 1: runner stretch-trail
                 peak_stretch=getattr(order, 'runner_peak_stretch', None),  # Jun 1: runner stretch-trail
                 is_flip=(order.entry_strategy or "").startswith("FLIP:"),  # Jun 14: runner-trail off for flips → normal trailing
@@ -11332,7 +11532,7 @@ class TradingEngine:
                 # 🛡 Aug 19 gate 53: quiet-pair conditional SL — same value in BOTH SL
                 # paths (this monitor + realtime), same lesson as the ROSE fix above.
                 quiet_sl_pct=_quiet_sl_for(order.direction, order.entry_strategy,
-                                           getattr(order, 'entry_atr_pct', None)),
+                                           exit_entry_atr_pct(order.entry_strategy, getattr(order, 'entry_atr_pct', None))),
             )
 
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)
@@ -12153,6 +12353,10 @@ class TradingEngine:
 
             if batch_start + OHLCV_BATCH_SIZE < len(top_pairs):
                 await asyncio.sleep(OHLCV_BATCH_DELAY)
+
+        # 📐 Sep-29: the scanned universe's per-pair volume / rank / listing age, for the MANUAL sleeve's entry stamps
+        self._scan_pair_meta = {r['pair']: (r.get('volume_24h'), r.get('rank'), r.get('age_days')) for r in _collected}
+        self._scan_pair_meta_at = time.time()
 
         # ── Phase 2: Compute global volume ratio and market breadth ──
         if _scan_avg_vol_sum > 0:
@@ -13952,31 +14156,8 @@ class TradingEngine:
                         self._last_pair_block_reason[pair] = _pp_block
                         continue
 
-                # Exploration Analytics (Apr 28) — observation-only fields
-                _entry_pos_di = indicators.get('pos_di')
-                _entry_neg_di = indicators.get('neg_di')
-                _entry_atr_pct = None
-                _atr = indicators.get('atr')
-                if _atr is not None and indicators.get('price') and indicators['price'] > 0:
-                    _entry_atr_pct = round((_atr / indicators['price']) * 100, 4)
-                _entry_ema50_slope = None
-                _ema50 = indicators.get('ema50')
-                _ema50_prev12 = indicators.get('ema50_prev12')
-                if _ema50 is not None and _ema50_prev12 is not None and _ema50_prev12 != 0:
-                    _entry_ema50_slope = round(((_ema50 - _ema50_prev12) / _ema50_prev12) * 100, 4)
-                # Pair EMA13 vs EMA50 gap (observation-only; May 6 — switched from EMA20→EMA13
-                # for consistency with BTC Trend Filter switch). Field name kept for storage compat;
-                # values stored before May 6 deploy use EMA20/EMA50, after use EMA13/EMA50.
-                _entry_pair_ema20_ema50_gap_pct = None
-                _ema13_val = indicators.get('ema13')
-                if _ema13_val is not None and _ema50 is not None and _ema50 != 0:
-                    _entry_pair_ema20_ema50_gap_pct = round((_ema13_val - _ema50) / _ema50 * 100, 4)
-                # May 13 PM: Entry Distance from EMA13 (Late Entry Risk dimension).
-                # Signed: positive = price above EMA13 (LONG chasing), negative = below (SHORT late).
-                _entry_dist_from_ema13_pct = None
-                _entry_price = indicators.get('price')
-                if _ema13_val is not None and _entry_price is not None and _ema13_val != 0:
-                    _entry_dist_from_ema13_pct = round((_entry_price - _ema13_val) / _ema13_val * 100, 4)
+                # Exploration Analytics (Apr 28) — the pair-level fields (DI, ATR %, EMA50 slope, EMA13/EMA50 gap, distance from
+                # EMA13) are computed by pair_entry_stamps (📐 Sep-29) and passed with the other pair stamps below.
                 # May 14: BTC Market Extension / BTC Late Regime Risk dimension.
                 # Signed: positive = BTC price above EMA13 (LONG-risk: chasing market top),
                 # negative = BTC below EMA13 (SHORT-risk: late after capitulation).
@@ -14001,16 +14182,9 @@ class TradingEngine:
                         direction=signal,
                         confidence=confidence,
                         current_price=indicators['price'],
-                        entry_gap=entry_gap,
-                        entry_ema_gap_5_8=entry_ema_gap_5_8,
-                        entry_ema_gap_8_13=entry_ema_gap_8_13,
-                        entry_ema5_stretch=entry_ema5_stretch,
-                        entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
-                        entry_rsi_prev=round(entry_rsi_prev, 2) if entry_rsi_prev is not None else None,
-                        entry_adx=round(entry_adx, 4) if entry_adx is not None else None,
-                        entry_adx_prev=round(entry_adx_prev, 4) if entry_adx_prev is not None else None,
+                        # 📐 Sep-29: every pair-level stamp from ONE helper (same formulas + rounding as before; the MANUAL sleeve uses it too)
+                        **pair_entry_stamps(indicators, signal),
                         entry_macro_trend=entry_regime,
-                        entry_ema20_slope=pair_ema20_slope_pct,
                         entry_btc_ema20_slope=btc_ema20_slope_pct,
                         entry_btc_adx=round(btc_adx, 4) if btc_adx is not None else None,
                         entry_btc_adx_prev=round(btc_adx_prev, 4) if btc_adx_prev is not None else None,
@@ -14020,26 +14194,16 @@ class TradingEngine:
                         entry_btc_atr_pct=btc_atr_pct,
                         entry_btc_rsi_1h=btc_rsi_1h,
                         entry_btc_rsi_1h_prev=btc_rsi_1h_prev,
-                        entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
                         entry_global_volume_ratio=round(_global_volume_ratio, 4),
-                        entry_pair_volume_ratio=round(_pair_volume_ratio, 4),
                         entry_bull_pct=_market_bull_pct,
                         entry_bear_pct=_market_bear_pct,
-                        entry_range_position=round(((indicators['price'] - indicators['low_20']) / (indicators['high_20'] - indicators['low_20'])) * 100, 1) if indicators.get('high_20') and indicators.get('low_20') and indicators['high_20'] != indicators['low_20'] else None,
-                        entry_adx_delta=round(entry_adx - entry_adx_prev, 4) if entry_adx is not None and entry_adx_prev is not None else None,
                         entry_quality_score=entry_quality_score,
                         entry_btc_regime=entry_btc_regime,
                         # entry_btc_trend_gap_pct is handled inside open_position via globals lookup
                         # (see line ~1840 — Order() constructor reads _current_btc_trend_gap_pct directly).
                         # Passing it as a kwarg was a bug — open_position's signature doesn't accept it,
                         # which TypeError'd every scan loop and prevented ALL position openings (May 5).
-                        entry_pos_di=_entry_pos_di,
-                        entry_neg_di=_entry_neg_di,
-                        entry_atr_pct=_entry_atr_pct,
-                        entry_ema50_slope=_entry_ema50_slope,
                         entry_funding_rate=_entry_funding_rate,
-                        entry_pair_ema20_ema50_gap_pct=_entry_pair_ema20_ema50_gap_pct,
-                        entry_dist_from_ema13_pct=_entry_dist_from_ema13_pct,
                         entry_btc_dist_from_ema13_pct=_entry_btc_dist_from_ema13_pct,
                         entry_btc_1h_slope=_current_btc_1h_slope,
                         # May 10: absolute pair 24h USD volume — sourced from binance scan
@@ -14056,7 +14220,6 @@ class TradingEngine:
                         entry_bear_bypass=(",".join(self._bear_bypassed) if (self._bear_pair == pair and self._bear_bypassed) else None),
                         # Jun 8: gap-expanding relaxation A/B tag — True if this entry was admitted
                         # by prev2_only but would have failed the strict prev1 check (MARGINAL cohort).
-                        entry_gap_expand_marginal=gap_expand_marginal(indicators, signal),
                         # Jul 13 GAPFLAT probe: True iff this LONG failed the gap-expanding check but
                         # was let through the ladder by gap_probe_enabled (get_signal only admits a
                         # gap-flat candidate when the probe is on, so this tag is exact). open_position
@@ -16298,7 +16461,7 @@ class TradingEngine:
                 'low_price': order.low_price_since_entry or order.entry_price,
                 'pullback_trigger': conf_config.pullback_trigger,
                 'tp_trailing_enabled': conf_config.tp_trailing_enabled,
-                'entry_atr_pct': getattr(order, 'entry_atr_pct', None),  # May 7 Phase 1: ATR-normalized trailing
+                'entry_atr_pct': exit_entry_atr_pct(order.entry_strategy, getattr(order, 'entry_atr_pct', None)),  # May 7 Phase 1: ATR-normalized trailing (📐 MANUAL → None)
                 'entry_br_door': getattr(order, 'entry_br_door', None),  # Sep-21 (57i): DB-backed so the realtime BR trail keeps its door across the ~1Hz cache rebuild
                 'tp_min': conf_config.tp_min,                            # May 7 Phase 2: early-arm zone check
                 'cached_ema5': pair_ema5s.get(order.pair),

@@ -4446,3 +4446,42 @@ identical to HEAD, suite 346. Reviewed md5: engine b7301626… (then one docstri
   • Not production config: paper_bnb_initial_usd ≥ 1000 makes the real floor ($100) exceed the young-batch target ($50) → the
     wake logs "no swap was possible" hourly and buys nothing. scripts/engine_replay_report.py still zeroes only the all-fill
     rate (neutral: the bot rate defaults to 0).
+
+## 2026-09-30 (138) - 📐 Manual fills record every entry stamp a bot fill records; signed EMA gaps on every fill (operator request)
+ASK: "the manual buys should record everything that normal buys record" — to evaluate the operator's hand-traded early-turn
+setup (gap 5-20 negative but rising, gap 5-8 positive, RSI and ADX rising). Manual fills carried only ~13 of the 96 entry_*
+columns plus manual_* context.
+BUILD: `pair_entry_stamps(indicators, signal)` = the scan's pair-level stamp formulas + rounding in ONE helper; the main scan's
+open_position call now passes `**pair_entry_stamps(...)` (the 20 inline kwargs and their duplicate locals removed; a test
+proves value parity against the verbatim old expressions on 240 synthetic snapshots). `market_entry_stamps` rebuilds the BTC /
+breadth / regime stamps from the scan's published globals with the scan's rounding; `monitor_entry_stamps` is shared by
+open_position and the manual path. `_manual_entry_stamps` fills a manual order with every momentum-fill column: fresh 5m
+indicators (same fetch + calculate_indicators arguments; priced at the click), market readings, monitors, heat flags, market
+cap, zone stamps, 1h pair gap, scan volume/rank/age, funding, Pattern C/W flags. Sleeve-only fields stay NULL, as on a
+momentum fill. Reads run concurrently under one 8 s cap; the pair is re-checked right before the insert (the bot may have
+opened it in that window); opened_at = the click.
+NEW COLUMNS (every fill, bot included): entry_gap_5_20_signed_pct, entry_gap_5_20_prev_signed_pct (one 5m bar earlier; new
+`ema20_prev1` indicator key), entry_gap_5_8_signed_pct — entry_gap / entry_ema_gap_5_8 are absolute, so an early turn was
+indistinguishable from a stacked entry. They ride the orders CSV (model columns).
+EXITS UNCHANGED: the bot's ATR / quiet-pair stop widening and ATR trails read entry_atr_pct — stamping it on manual rows would
+widen manual stops (at 30–50× possibly past the leverage-aware floor). `exit_entry_atr_pct` gives MANUAL rows' exits None
+(orders cache for the realtime path + two candle-loop sites). Analytics: manual rows stay excluded by entry_strategy; the
+dashboard leak test now populates every entry_* column on its manual rows.
+FIRST READ OF THE MANUAL BOOK (reports/MANUAL_TRADES_REVIEW_2026-09-30.md): 18 fills 9/9 −$99.7 (fees $478); QNT 3/0
++$678, rest −$778; one window (23:07–23:18 UTC, BTC RSI 68–75, through BTC gates) 0/4 −$473; early-turn longs 1/3 −$406 and
+all four had EMA5 under EMA8 — the Top Pairs "Gap 5-8" column is absolute. Watchlist only.
+BATCH NOTE (operator, 2026-09-30): the first B15 run (Sep-29 evening) was reset WITHOUT archiving — it served to tune the
+manual sleeve and to loosen the ATR×GAP LONG gate (133). B15 restarted ~00:20 UTC Sep-30; its master-pool era starts there.
+The only record of the discarded run is reports/MANUAL_TRADES_B15_orders_2026-09-30.csv (its 18 MANUAL fills).
+UI SHIP (6f40711, same day): Top Pairs "Gap 5-8" is SIGNED like "Gap 5-20" (+ = EMA5 above EMA8). Stacked-pair threshold
+colouring unchanged (magnitude); unstacked rows show the side in half-tone. Order columns entry_ema_gap_5_8 / manual_gap_5_8
+stay absolute — for the sign in an export use entry_gap_5_8_signed_pct (138).
+DUAL REVIEW (138): caveman FIX-FIRST (sequential reads could hold a manual open ~21 s → concurrent under 8 s + duplicate
+re-check before the insert + open_position signature guard test) · deep FIX-FIRST → applied: fully stamped manual rows moved
+three ACCOUNT-level tables' entry averages (per-15-min avg RSI/ADX/gaps, per-pair avg ATR, period slippage) — those averages
+now read bot entries only and manual entry_slippage_pct stays NULL; the leak test now requires the WHOLE dashboard payload to
+be identical with stamped vs stamp-less manual rows. Per-read timeouts (one hung read no longer blanks the others); manual cap
+and balance re-checked after the read window. Deep review PROVED the live path unchanged: 3,224 indicator snapshots key-for-key
+and 800 open_position runs at HEAD vs new with zero differences in outcome, counters or any of 315 order columns; manual exits
+identical (without the ATR wrapper a manual stop moved −0.65 % → −1.15 %). Open (pre-existing, separate task): open_position's
+own duplicate check → insert window can still produce two OPEN rows for one pair.

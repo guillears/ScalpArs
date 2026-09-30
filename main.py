@@ -3833,7 +3833,8 @@ def _compute_pair_performance(orders):
         slippage_trades = [o for o in trades if o.exit_slippage_pct is not None]
         avg_slippage = round(sum(o.exit_slippage_pct for o in slippage_trades) / len(slippage_trades), 4) if slippage_trades else None
         # May 9: AvgATR% per pair — testing hypothesis "high volatility pairs drive losses"
-        atr_trades = [o.entry_atr_pct for o in trades if o.entry_atr_pct is not None]
+        atr_trades = [o.entry_atr_pct for o in trades if o.entry_atr_pct is not None
+                      and (getattr(o, 'entry_strategy', None) or "") != "MANUAL"]   # 📐 bot entries only (manual stamps since 138)
         avg_atr = round(sum(atr_trades) / len(atr_trades), 3) if atr_trades else None
         rows.append({
             "pair": pair,
@@ -4036,11 +4037,14 @@ def _compute_time_buckets(orders, bucket_minutes=15):
             wins = sum(1 for o in bucket_orders if (o.pnl or 0) > 0)
             longs = sum(1 for o in bucket_orders if o.direction == "LONG")
             shorts = count - longs
-            rsis = [o.entry_rsi for o in bucket_orders if o.entry_rsi is not None]
-            gaps = [o.entry_gap for o in bucket_orders if o.entry_gap is not None]
-            adxs = [o.entry_adx for o in bucket_orders if o.entry_adx is not None]
-            gaps58 = [o.entry_ema_gap_5_8 for o in bucket_orders if o.entry_ema_gap_5_8 is not None]
-            gaps813 = [getattr(o, 'entry_ema_gap_8_13', None) for o in bucket_orders if getattr(o, 'entry_ema_gap_8_13', None) is not None]
+            # 📐 Sep-30: P&L and counts are account-level (MANUAL included); the entry-indicator averages describe the
+            # BOT's entries only — manual fills carry the same stamps since DECISION_LOG 138 and must not move them
+            _sys = [o for o in bucket_orders if (getattr(o, 'entry_strategy', None) or "") != "MANUAL"]
+            rsis = [o.entry_rsi for o in _sys if o.entry_rsi is not None]
+            gaps = [o.entry_gap for o in _sys if o.entry_gap is not None]
+            adxs = [o.entry_adx for o in _sys if o.entry_adx is not None]
+            gaps58 = [o.entry_ema_gap_5_8 for o in _sys if o.entry_ema_gap_5_8 is not None]
+            gaps813 = [getattr(o, 'entry_ema_gap_8_13', None) for o in _sys if getattr(o, 'entry_ema_gap_8_13', None) is not None]
             local_time = bk.astimezone(UTC_MINUS_3)
             result.append({
                 "time": local_time.strftime(_fmt),

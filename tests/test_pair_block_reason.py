@@ -132,7 +132,7 @@ def test_dashboard_analytics_never_include_manual_rows():
                     cell_multiplier=1.0, cell_lev_multiplier=1.0)
         base.update(kw); return models.Order(**base)
 
-    async def run():
+    async def run(stamp_manual=True):
         eng = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with eng.begin() as c:
             await c.run_sync(models.Base.metadata.create_all)
@@ -144,9 +144,22 @@ def test_dashboard_analytics_never_include_manual_rows():
                              entry_atr_pct=0.5, entry_range_position=60.0, entry_btc_regime="HEALTHY_BULL", cell_multiplier_source="UNMATCHED"))
             await db.commit()
             before = json.loads(json.dumps(await main._compute_performance(db), default=str))
+            # 📐 Sep-29: manual fills now carry EVERY entry_* stamp a bot fill carries — populate all of them (a value in each
+            # column) so any dashboard table keyed on an entry_* column that forgot the MANUAL exclusion shows up here
+            from sqlalchemy import Float, Integer, Boolean, String
+            _all_stamps = {}
+            for _c in models.Order.__table__.columns:
+                if not _c.name.startswith("entry_") or _c.name in ("entry_price", "entry_fee", "entry_order_type", "entry_strategy",
+                                                              "entry_slippage_pct"):   # never written on a manual fill (138)
+                    continue
+                _ty = _c.type
+                _all_stamps[_c.name] = (True if isinstance(_ty, Boolean) else 7 if isinstance(_ty, Integer) else 0.37 if isinstance(_ty, Float)
+                                        else ("HEALTHY_BULL" if "regime" in _c.name else "BULLISH" if "trend" in _c.name else "GREEN" if "door" in _c.name else "X")
+                                        if isinstance(_ty, String) else None)
+            _all_stamps = {k: v for k, v in _all_stamps.items() if v is not None} if stamp_manual else {}
             for j, (d, p) in enumerate([("LONG", 0.4), ("SHORT", 0.3), ("LONG", -0.6)]):
-                db.add(order(20 + j, "MANUAL", d, p, manual_exit_mode="MOMENTUM", manual_block_reason="ATR_GAP_LONG", manual_setup_rating="STRONG_BUY",
-                             manual_setup_side="LONG", manual_pair_rsi=54.0, manual_pair_adx=17.0, manual_gap_5_20=0.33))
+                db.add(order(20 + j, "MANUAL", d, p, **{**_all_stamps, **dict(manual_exit_mode="MOMENTUM", manual_block_reason="ATR_GAP_LONG",
+                             manual_setup_rating="STRONG_BUY", manual_setup_side="LONG", manual_pair_rsi=54.0, manual_pair_adx=17.0, manual_gap_5_20=0.33)}))
             await db.commit()
             after = json.loads(json.dumps(await main._compute_performance(db), default=str))
         await eng.dispose()
@@ -156,4 +169,10 @@ def test_dashboard_analytics_never_include_manual_rows():
     assert changed, "the manual fills must at least move the account totals"
     leaks = sorted(changed - ACCOUNT_LEVEL)
     assert not leaks, f"manual fills leaked into systematic analytics: {leaks}"
+    # 📐 deep review (138): ACCOUNT_LEVEL tables may move with the manual P&L, but the entry STAMPS on manual rows must move
+    # NOTHING — the whole payload with fully stamped manual fills equals the payload with stamp-less manual fills (same P&L).
+    # (Caught: per-bucket avg RSI/ADX/gaps, per-pair avg ATR and period slippage read every row.)
+    _, bare = asyncio.run(run(stamp_manual=False))
+    moved = sorted(k for k in set(after) | set(bare) if after.get(k) != bare.get(k))
+    assert not moved, f"manual entry stamps moved dashboard outputs: {moved}"
     assert {"total_trades", "sleeve_performance", "strategy_performance"} <= changed

@@ -182,7 +182,8 @@ async def init_db():
                 if 'entry_cmc_rank' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_cmc_rank INTEGER"))
                 for _zc in ('entry_btc_ema50_100_gap_pct', 'entry_eth_5m_ret1_pct', 'entry_btc_1d_ret_pct', 'entry_pair_1h_ema20_200_gap_pct',   # 🧭 Sep-29 zone stamps
-                            'entry_pair_1d_ndi', 'entry_btc_4h_ema50_200_gap_pct'):   # 🪤 Sep-29 fade laggard readings
+                            'entry_pair_1d_ndi', 'entry_btc_4h_ema50_200_gap_pct',   # 🪤 Sep-29 fade laggard readings
+                            'entry_gap_5_20_signed_pct', 'entry_gap_5_20_prev_signed_pct', 'entry_gap_5_8_signed_pct'):   # 📐 Sep-29 signed gaps
                     if _zc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_zc} FLOAT"))
                 for _mc, _mt in (('manual_exit_mode', 'VARCHAR(12)'), ('manual_note', 'VARCHAR(200)'), ('manual_block_reason', 'VARCHAR(60)'),

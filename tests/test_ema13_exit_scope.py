@@ -24,3 +24,9 @@ def test_momentum_and_other_sleeves_still_eligible():
 
 def test_fail_safe_on_garbage():
     assert applies(object()) is True
+
+
+def test_surge_sleeves_are_excluded():
+    # Sep-30 SOON (1 s) / MOVR (0.5 s): SURGE shorts open with no pair-EMA condition, 20 min after a dump → often above EMA13
+    assert applies("SURGE_SHORT") is False
+    assert applies("SURGE_LONG") is False

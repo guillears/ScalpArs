@@ -96,6 +96,7 @@ def exits(atr):
         "BULLRUN_1ATR": (br("REARM"), 240),
         "BULLRUN_2ATR": (br("GREEN"), 240),
         "BEARRUN":      (bear_run_stop(atr), 240),   # operator: the Bear-Run sleeve's exit (= momentum-short stack + EMA13 cross)
+        "BEARRUN_NOEMA": (bear_run_stop(atr), 240),  # Sep-30 live fix: the same stop/trail/ladder WITHOUT the EMA13 exit (= surge_short_exit_for)
     }
 
 

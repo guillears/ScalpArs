@@ -186,3 +186,39 @@ def test_every_catch_up_view_can_fire_at_the_engine_fetch_size():
         view = rows[:len(rows) - k] if k else rows
         t = surge_trigger(view, _th(), "LONG")
         assert t is not None and t["bar_ts"] == idx * BAR, k
+
+
+def test_surge_short_exit_matches_the_simulated_bear_run_exit():
+    """SURGE_SHORT's own exit = stop −0.70 widened to −1.5×ATR (cap −1.2) · runner arms at 0.40, floor peak − min(0.5×ATR,
+    0.35×peak) (negative floor suppressed) · hard-TP ladder short floor — the exact rule scripts/surge_short_design.py simulated
+    (bear_run_stop), without EMA13. Pinned against the live trading_config.json values."""
+    import config as C
+    th = C.trading_config.thresholds
+    assert (th.runner_trail_short_arm_peak, th.runner_trail_short_atr_mult, th.runner_trail_short_giveback_frac) == (0.4, 0.5, 0.35)
+    f = TE.surge_short_exit_for
+    # below the arm: ATR-widened stop, capped
+    assert f(-0.7, 0.2, 0.5)[0] is False and abs(f(-0.7, 0.2, 0.5)[2] - (-0.75)) < 1e-9     # −1.5×0.5 = −0.75
+    assert f(-0.76, 0.2, 0.5)[:2] == (True, "STOP_LOSS")
+    assert abs(f(0.0, 0.0, 2.0)[2] - (-1.2)) < 1e-9                                         # capped at −1.2
+    assert abs(f(0.0, 0.0, 0.2)[2] - (-0.7)) < 1e-9                                         # never tighter than the base −0.70
+    assert f(-1.21, 0.0, 2.0)[:2] == (True, "STOP_LOSS")
+    # QNT today: peak 1.08, ATR 2.15 → trail 0.702, ladder rung 1.0 → 0.75 wins
+    c, why, line = f(0.74, 1.08, 2.15)
+    assert c is True and why == "HARD_TP_LADDER L1" and abs(line - 0.75) < 1e-9
+    # a lost ATR stamp falls back to the sleeve's selection floor (1.5 %), never a trail sitting on the peak
+    assert TE.surge_short_exit_for(0.0, 0.0, None)[2] == TE.surge_short_exit_for(0.0, 0.0, 1.5)[2]
+    assert TE.surge_short_exit_for(0.6, 0.62, None)[0] is False
+    # MOVR today: peak 0.50, ATR 3.22 → trail 0.325, no ladder rung yet
+    c, why, line = f(0.32, 0.50, 3.22)
+    assert c is True and why == "RUNNER_TRAIL" and abs(line - 0.325) < 1e-9
+    # armed with a huge ATR: the give-back is capped at 0.35×peak, so the floor stays positive (0.41 → 0.2665), as simulated
+    c, why, line = f(0.25, 0.41, 3.0)
+    assert c is True and why == "RUNNER_TRAIL" and abs(line - 0.41 * 0.65) < 1e-9
+    # never an EMA condition in the signature — the exit cannot fire at t+0 on a fresh entry
+    assert f(-0.09, 0.0, 2.0)[0] is False
+
+
+def test_surge_short_routes_to_its_own_exit_in_both_paths():
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert eng.count("surge_short_exit_for(") == 3          # definition + candle path + realtime path
+    assert "in ('BULLRUN_LONG', 'SURGE_LONG', 'SURGE_SHORT')" in eng and 'in ("BULLRUN_LONG", "SURGE_LONG", "SURGE_SHORT")' in eng

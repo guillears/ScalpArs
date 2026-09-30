@@ -4684,3 +4684,17 @@ Observe-only; gate in CURRENT_STATE (stack rebuilt from 5m klines at review; 8-1
 FIRST LIVE-TAPE OBSERVATION (148, scored 2026-09-30 14:48 UTC; sleeve NOT yet deployed at the time → hypothetical): DUMP 13:35 UTC,
 picks QNT (ATR 2.15) + MOVR (3.22), short at 14:00 UTC, 1m candle path, Bear-Run exit: QNT +0.750 % (peak +1.08, ladder floor 14:01)
 · MOVR +0.325 % (peak +0.50, trail 14:01); QUICK exit +0.796 / +0.250. = ONE trigger window (window units), 2/2 winners, mean +0.54 %.
+SURGE_SHORT EXIT FIX (148, operator: "remove the ema13 cross exit for those trades"): first live trigger (BTC bar closed 14:30 UTC)
+filled QNT −1.19 % (stop, never positive) · ENA +0.29 % (runner) · SOON −0.07 % in 1 s · MOVR −0.11 % in 0.5 s — the last two closed by
+the momentum stack's EMA13_CROSS_EXIT on the first tick (a SURGE short has no pair-EMA entry condition; 20 min after a dump 39 % of
+entries sit above EMA13 with EMA5 > EMA8 — the Sep-14 SPIKE_FADE / Sep-29 manual-short bug class). The grid checked EMA13 only on
+1m closes, so it over-credited live by ~2×. Same 148 dumps: as live today +0.078 %/event (WR 43 %) · skip first-tick entries +0.183
+(421 fills) · NO EMA13 exit +0.222 (CI +0.13…+0.31, WR 73 %, train +0.14 / test +0.38, 687 fills) → shipped: surge_short_exit_for =
+Bear-Run stop (−0.70 ATR-widened, cap −1.2) + runner trail + hard-TP ladder short, intercepted FIRST in both exit paths (no
+signal-lost / regime / fast / tick / no-expansion / EMA13 exits touch it) + max hold 240. Haircut expectation ≈ +0.11–0.15 %/fill.
+BEAR-RUN (operator asked to apply the same learning): NOT changed. Its fills are full momentum shorts (price below the EMAs at
+entry) — replay 57 fills: 8 EMA13 exits, none within 5 min (median 21 min), avg −0.57 %. Re-run without EMA13: avg −0.18 % (Δ
++0.39/fill) BUT all 4 improved fills are ONE window (Sep-15 19:33–19:47, AVAX×3 + BCH); the other 3 windows got worse → 1-window
+evidence, replay selection bias → watch item, not a change.
+REVIEWS (SURGE_SHORT exit): deep review swept 1.69 M (peak, ATR) points vs the simulated bear_run_stop — 0 mismatches. Applied: ladder
+reason = HARD_TP_LADDER Ln (momentum parity, reports key on it) · ladder independent of the runner arm · missing ATR → surge_atr_min_pct.

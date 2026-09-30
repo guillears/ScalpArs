@@ -675,7 +675,7 @@ def _ema13_cross_exit_applies(entry_strategy):
         es = (entry_strategy or "")
         if es.startswith("FLIP:"):
             return False
-        if es in ("SPIKE_FADE", "SPIKE_BOUNCE"):
+        if es in ("SPIKE_FADE", "SPIKE_BOUNCE", "SURGE_SHORT", "SURGE_LONG"):   # ⚡ SURGE: no pair-EMA entry condition (Sep-30 SOON/MOVR)
             return False
         return True
     except Exception:
@@ -807,6 +807,48 @@ def _surge_trail_override(entry_strategy):
         return v if v > 0 else 1.0
     except (TypeError, ValueError):
         return 1.0
+
+
+def surge_short_exit_for(pnl, peak_pnl, entry_atr_pct):
+    """⚡ SURGE_SHORT's own exit (operator 2026-09-30, DECISION_LOG 148) — exactly the simulated one: the Bear-Run / momentum-short
+    stop, runner trail and hard-TP ladder, WITHOUT the EMA13-cross exit and the momentum-only exits (signal-lost, regime change,
+    fast exit, tick momentum, no-expansion). Why: a SURGE short opens with NO pair EMA condition, 20 min after a dump, so 39 % of
+    entries sit above EMA13 with EMA5 > EMA8 and the momentum stack closed them on the first tick (SOON 1 s / MOVR 0.5 s, 14:50 UTC);
+    over 148 dumps the no-EMA13 exit = +0.222 %/event (CI +0.13…+0.31, WR 73 %) vs +0.078 as it ran live.
+    Returns (close, reason, stop_line). Stop = STRONG_BUY stop_loss widened to −sl_atr_multiplier×ATR, capped at
+    sl_atr_widen_floor_pct · armed at runner_trail_short_arm_peak → floor = short_trail_floor (negative floor suppressed) and the
+    hard_tp_ladder_short rung floor, the higher wins. Reasons are the momentum stack's own (STOP_LOSS / RUNNER_TRAIL / HARD_TP_LADDER Ln) so
+    every existing matcher knows them; entry_strategy tells the sleeve apart."""
+    th = config.trading_config.thresholds
+    try:
+        pnl = float(pnl); pk = float(peak_pnl or 0.0)
+        atr = float(entry_atr_pct) if entry_atr_pct is not None else 0.0
+        if not atr > 0:   # a lost stamp must not make the trail close at its own peak (review): the sleeve's selection floor
+            atr = float(getattr(th, 'surge_atr_min_pct', 1.5) or 1.5)
+        _conf = config.trading_config.confidence_levels.get("STRONG_BUY")
+        base = float(getattr(_conf, 'stop_loss', -0.70) or -0.70)
+        mult = float(getattr(th, 'sl_atr_multiplier', 1.5) or 0.0)
+        cap = float(getattr(th, 'sl_atr_widen_floor_pct', -1.2) or -1.2)
+        sl = min(base, max(-mult * atr, cap)) if (atr > 0 and mult > 0) else base
+        arm = float(getattr(th, 'runner_trail_short_arm_peak', 0.40) or 0.40)
+        floors = []
+        if pk >= arm - 0.005:
+            tf, _, _ = short_trail_floor(th, pk, atr)
+            if tf is not None and tf >= 0:
+                floors.append((tf, "RUNNER_TRAIL"))
+        if bool(getattr(th, 'hard_tp_enabled', False)):   # the ladder is independent of the runner arm (momentum-stack parity)
+            _rungs = parse_hard_tp_ladder((getattr(th, 'hard_tp_ladder_short', '') or '').strip())
+            if _rungs:
+                lf, lvl = hard_tp_ladder_floor(_rungs, pk)
+                if lf is not None:
+                    floors.append((lf, f"HARD_TP_LADDER L{lvl}"))   # same reason string as the momentum stack (reports key on it)
+        if floors:
+            line, why = max(floors, key=lambda x: x[0])
+        else:
+            line, why = sl, "STOP_LOSS"
+        return (pnl <= line), why, line
+    except Exception:
+        return (float(pnl) <= -0.70 if pnl is not None else False), "STOP_LOSS", -0.70
 
 
 def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct, door=None, trail_mult_override=None):
@@ -11332,7 +11374,7 @@ class TradingEngine:
             # FL / momentum-exit stack / check_exit_conditions so none of the alt exit
             # machinery ever touches them. `continue` sits OUTSIDE the try so a sleeve order
             # can never fall through into the alt chain on an error.
-            if (order.entry_strategy or "") in ("BULLRUN_LONG", "SURGE_LONG"):   # ⚡ SURGE_LONG runs the SAME exit (own trail width)
+            if (order.entry_strategy or "") in ("BULLRUN_LONG", "SURGE_LONG", "SURGE_SHORT"):   # ⚡ SURGE_LONG = same exit (own trail); SURGE_SHORT = its own
                 try:
                     if order.direction == "LONG":
                         _br_raw = (current_price - order.entry_price) * order.quantity
@@ -11344,10 +11386,13 @@ class TradingEngine:
                     _br_peak = max(realtime_peak, _br_pnl)
                     order.peak_pnl = _br_peak
                     order.trough_pnl = min(realtime_trough, _br_pnl)
-                    _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None), getattr(order, 'entry_br_door', None),
-                                                                       trail_mult_override=_surge_trail_override(order.entry_strategy))
+                    if (order.entry_strategy or "") == "SURGE_SHORT":
+                        _br_close, _br_reason, _br_stop = surge_short_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None))
+                    else:
+                        _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None), getattr(order, 'entry_br_door', None),
+                                                                           trail_mult_override=_surge_trail_override(order.entry_strategy))
                     if _br_close:
-                        logger.info(f"[BULLRUN_EXIT] {order.pair}: {_br_reason} fire pnl={_br_pnl:.2f}% peak={_br_peak:.2f}% stop_line={_br_stop:.2f}%")
+                        logger.info(f"[BULLRUN_EXIT] {order.pair} {order.entry_strategy}: {_br_reason} fire pnl={_br_pnl:.2f}% peak={_br_peak:.2f}% stop_line={_br_stop:.2f}%")
                         closed_order = await self.close_position(db, order, current_price, _br_reason)
                         if closed_order:
                             updates.append({
@@ -15102,17 +15147,20 @@ class TradingEngine:
             # are updated inline here (the shared tracking below is skipped for sleeve orders —
             # phantom/shadow columns stay NULL for them, on record). `continue` sits OUTSIDE the
             # try so a sleeve order can never fall through into the alt chain on an error.
-            if (order_info.get('entry_strategy') or '') in ('BULLRUN_LONG', 'SURGE_LONG'):   # ⚡ SURGE_LONG: same exit, own trail width
+            if (order_info.get('entry_strategy') or '') in ('BULLRUN_LONG', 'SURGE_LONG', 'SURGE_SHORT'):   # ⚡ SURGE_LONG: same exit, own trail · SURGE_SHORT: its own
                 try:
                     _br_peak_rt = max(order_info.get('peak_pnl', 0) or 0, pnl_pct)
                     order_info['peak_pnl'] = _br_peak_rt
                     if pnl_pct < (order_info.get('trough_pnl', 0) or 0):
                         order_info['trough_pnl'] = pnl_pct
-                    _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'), order_info.get('entry_br_door'),
-                                                                       trail_mult_override=_surge_trail_override(order_info.get('entry_strategy')))
+                    if (order_info.get('entry_strategy') or '') == 'SURGE_SHORT':
+                        _br_close, _br_reason, _br_stop = surge_short_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'))
+                    else:
+                        _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'), order_info.get('entry_br_door'),
+                                                                           trail_mult_override=_surge_trail_override(order_info.get('entry_strategy')))
                     if _br_close and not order_info.get('_closing_in_progress'):
                         order_info['_closing_in_progress'] = True
-                        logger.warning(f"[REALTIME_BULLRUN_EXIT] {pair} {direction}: {_br_reason} pnl={pnl_pct:.4f}% peak={_br_peak_rt:.4f}% stop_line={_br_stop:.2f}% - CLOSING NOW!")
+                        logger.warning(f"[REALTIME_BULLRUN_EXIT] {pair} {direction} {order_info.get('entry_strategy')}: {_br_reason} pnl={pnl_pct:.4f}% peak={_br_peak_rt:.4f}% stop_line={_br_stop:.2f}% - CLOSING NOW!")
                         try:
                             async with AsyncSessionLocal() as _br_db:
                                 _br_res = await _br_db.execute(

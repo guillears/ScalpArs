@@ -1198,6 +1198,8 @@ class SignalThresholds(BaseModel):
     # walk validated on the operator's trades, 65 / 148 BTC events Jan–Sep, control = same cell 1 day earlier:
     #   SURGE_LONG  (HI_ATR_LEADER · entry at the trigger · Bull-Run exit 1×ATR): +0.32 %/event, CI −0.15…+0.89, top-3 events 113 %.
     #   SURGE_SHORT (HI_ATR · entry +20 min · Bear-Run exit = momentum-short stack): +0.176 %/event, CI +0.10…+0.26, WR 65 %, top-3 22 %.
+    #   → exit replaced 2026-09-30 by surge_short_exit_for (same stop/trail/ladder, NO EMA13 / momentum-only exits): +0.222 %/event,
+    #     CI +0.13…+0.31, WR 73 % (the momentum stack closed 39 % of entries on the first tick live: SOON / MOVR).
     # Trigger = the last CLOSED BTC 5m bar, recomputed from a fresh 300-bar fetch every scan (no warm-up state — bull-run lesson).
     # KILL BARS (automatic, surge_tripwire): first 10 closed fills of a side since it was enabled —
     #   LONG ≤ 3 winners ∨ mean ≤ −0.30 % · SHORT ≤ 4 winners ∨ mean ≤ −0.20 %  → that side's *_enabled is switched OFF and logged.

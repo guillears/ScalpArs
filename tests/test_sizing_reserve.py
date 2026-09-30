@@ -25,6 +25,7 @@ def _setup(monkeypatch, mode="schedule", pct=2.5, usd=15.0, hours=12.0,
     monkeypatch.setattr(inv, "fee_reserve_usd", usd)
     monkeypatch.setattr(inv, "fee_reserve_hours", hours)
     monkeypatch.setattr(te.trading_engine, "_bnb_burn_rate", burn, raising=False)
+    monkeypatch.setattr(te.trading_engine, "_bnb_burn_rate_bot", burn, raising=False)   # Sep-29c: the sizing leg reads the bot-only rate
     monkeypatch.setattr(te.trading_engine, "_bnb_data_mature", mature, raising=False)
 
 
@@ -150,3 +151,26 @@ def test_engine_mirror_parity_with_bnb_held(monkeypatch):
     investment, _, _ = te.trading_engine.calculate_position_size(3000.0, conf, total_portfolio=3000.0)
     _, mirror_tradeable, _ = main._reserve_split(3000.0, 0.0)
     assert abs(investment - mirror_tradeable) < 0.51     # burn leg 240−100 = 140 on both sides
+
+
+def test_burn_leg_reads_the_bot_rate_not_the_account_rate(monkeypatch):
+    """Sep-29c: the dashboard burn rate counts every fee paid (manual fills included); the sizing fee leg reads the BOT-only
+    rate. A manual-only batch (account rate $125.80/hr, bot rate 0, data mature) holds nothing extra back — engine and mirror."""
+    _setup(monkeypatch, burn=0.0, mature=True)
+    inv = config.trading_config.investment
+    monkeypatch.setattr(inv, "mode", "percentage"); monkeypatch.setattr(inv, "percentage", 100.0)
+    monkeypatch.setattr(inv, "max_investment_size", 10**9); monkeypatch.setattr(inv, "min_investment_size", 0.0)
+    conf, level = next((k, v) for k, v in config.trading_config.confidence_levels.items() if v.enabled)
+    monkeypatch.setattr(level, "investment_multiplier", 1.0)
+
+    def both():
+        investment, _, _ = te.trading_engine.calculate_position_size(2900.0, conf, total_portfolio=2900.0)
+        reserve, tradeable, _ = main._reserve_split(2900.0, 0.0)
+        return investment, reserve, tradeable
+    quiet = both()
+    monkeypatch.setattr(te.trading_engine, "_bnb_burn_rate", 125.8, raising=False)        # what the card shows
+    assert both() == quiet and abs(quiet[1] - 72.50) < 0.01                               # pct leg only, on both sides
+    monkeypatch.setattr(te.trading_engine, "_bnb_burn_rate", 0.0, raising=False)
+    monkeypatch.setattr(te.trading_engine, "_bnb_burn_rate_bot", 10.0, raising=False)     # the bot's own fees DO switch the leg on
+    investment, reserve, tradeable = both()
+    assert abs(reserve - 120.0) < 0.01 and abs(investment - tradeable) < 0.51             # 12 h × $10 governs, engine == mirror

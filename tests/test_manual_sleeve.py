@@ -300,3 +300,14 @@ def test_gate_context_is_stamped_automatically():
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read(); assert main.count('"manual_block_reason": getattr(') == 2
     ui = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     assert "function manualPairHint()" in ui and 'id="manual-pair-hint"' in ui and "gate at entry:" in ui
+
+
+def test_manual_panel_always_starts_closed():
+    """Operator, Sep-29: the manual entry panel is closed on every page load — hidden in the markup, folded by the init call,
+    and its state is not remembered per browser."""
+    import os
+    ui = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "index.html"), encoding="utf-8").read()
+    assert '<div id="manual-entry-body" class="hidden">' in ui
+    assert 'id="manual-entry-chevron" class="text-gray-500">▸<' in ui
+    assert "try { toggleManualPanel(true); } catch (e) {}" in ui
+    assert "manualPanelCollapsed" not in ui

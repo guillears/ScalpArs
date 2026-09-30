@@ -769,6 +769,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         trading_engine._bnb_emergency_threshold = 0.0
         trading_engine._bnb_projected_need = 0.0
         trading_engine._bnb_burn_rate = 0.0
+        trading_engine._bnb_burn_rate_bot = 0.0
         trading_engine._last_bnb_check = None
         trading_engine._bnb_usd_last = None  # Sep-11 (review M-1): reset clears the live BNB cache like every other BNB field
 
@@ -870,7 +871,7 @@ def _reserve_split(free_balance: float, deployed_margin: float = 0.0):
     if _fee_pct > 0 and _fee_eq:
         _fee_res = max(_fee_res, _fee_eq * _fee_pct / 100.0)
     _fee_hrs = max(0.0, float(getattr(_inv, 'fee_reserve_hours', 0.0) or 0.0))
-    _burn = float(getattr(trading_engine, '_bnb_burn_rate', 0.0) or 0.0)
+    _burn = float(getattr(trading_engine, '_bnb_burn_rate_bot', 0.0) or 0.0)   # ⛽ Sep-29c: engine mirror (bot fees only)
     # Aug-26: burn leg gated on data maturity — mirror of calculate_position_size (B5 reset artifact)
     if _fee_hrs > 0 and _burn > 0 and getattr(trading_engine, '_bnb_data_mature', False):
         # Sep-11: runway-aware — mirror of calculate_position_size (reserve only what BNB doesn't cover)
@@ -1028,6 +1029,7 @@ async def get_bnb_swaps(db: AsyncSession = Depends(get_db)):
         "status": {
             "bnb_swap_enabled": config.trading_config.bnb_swap_enabled,
             "burn_rate_per_hour": round(trading_engine._bnb_burn_rate, 2),
+            "burn_rate_bot_per_hour": round(float(getattr(trading_engine, '_bnb_burn_rate_bot', 0.0) or 0.0), 2),   # ⛽ bot fills only → sizing fee leg
             "projected_need": round(trading_engine._bnb_projected_need, 2),
             "emergency_threshold": round(trading_engine._bnb_emergency_threshold, 2),
             "data_mature": getattr(trading_engine, '_bnb_data_mature', False),

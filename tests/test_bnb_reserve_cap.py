@@ -178,8 +178,9 @@ def test_swap_is_capped_and_never_drains_the_account(cfg):
 
 
 def test_manual_buy_path_and_the_forecast_scope(cfg):
-    """_paper_bnb_credit is the one ledger path (automatic swap + the manual BNB buy endpoint); the burn forecast reads the
-    systematic book only and yields capped targets, with or without history."""
+    """_paper_bnb_credit is the one ledger path (automatic swap + the manual BNB buy endpoint). The burn rate is the TRUE one
+    (every fee paid, manual fills included — what the dashboard shows); the targets are capped; the bot-only rate is kept
+    apart for the position-sizing fee leg."""
     async def scenario(db):
         e = _engine(need=0.0, threshold=0.0, stub_swap=False)
         await e._recompute_bnb_burn_rate(db)                                                    # no history at all
@@ -194,16 +195,18 @@ def test_manual_buy_path_and_the_forecast_scope(cfg):
         return empty, fees_24h, e, (pre_bnb, post_bnb, pre_usdt, post_usdt), (u, b, rows, nav0, nav)
     empty, fees_24h, e, (pre_bnb, post_bnb, pre_usdt, post_usdt), (u, b, rows, nav0, nav) = _run_db(scenario)
     assert empty == (50.0, 25.0)
-    assert abs(fees_24h - 88.0) < 1e-6                                                          # MANUAL fees are not in the forecast
-    assert e._bnb_projected_need <= 0.10 * 2300.0 + 1e-6 and e._bnb_emergency_threshold <= e._bnb_projected_need
+    assert abs(fees_24h - 314.5) < 1e-6 and abs(e._bnb_burn_rate - 314.5 / 2.5) < 1e-6          # $125.80/hr: what the account really pays
+    assert abs(e._bnb_burn_rate_bot - 88.0 / 2.5) < 1e-6                                        # $35.20/hr: the bot's own fills (sizing leg)
+    cap = 0.10 * (2200.0 + 100.0 - 314.5)
+    assert abs(e._bnb_projected_need - cap) < 1e-6 and abs(e._bnb_emergency_threshold - cap / 2) < 1e-6   # $3,019 / $1,509 uncapped
     assert pre_bnb == 0.0 and abs(post_bnb - 80.0) < 1e-6 and abs(post_usdt - (pre_usdt - 80.0)) < 1e-6
     assert [r.swap_type for r in rows] == [T.PAPER_FEE_SETTLE, "manual"] and abs(nav - nav0) < 1e-6 and abs(b - 80.0) < 1e-6
 
 
 def test_scheduled_wake_refills_an_empty_reserve_on_a_manual_only_batch(cfg):
     """Sep-29b, the state right after the reserve-cap deploy: $2,900 seed all in 5 manual positions, $265.53 of fees paid
-    (reserve $100 + $165.53 from USDT), no systematic fills → burn 0, data never 'mature', 6 h gate closed. The 15-min wake
-    must still refill the reserve — within the min-investment guard — and leave a healthy reserve alone."""
+    (reserve $100 + $165.53 from USDT), no systematic fills, 6 h gate closed, data window under 2 h. The 15-min wake must
+    still refill the reserve — within the min-investment guard — and the burn rate must show the fees really paid."""
     cfg.paper_balance = 2900.0
 
     async def scenario(db):
@@ -224,8 +227,10 @@ def test_scheduled_wake_refills_an_empty_reserve_on_a_manual_only_batch(cfg):
         return (u0, b0, r0, nav0), (u1, b1, r1, nav1), (u2, b2, len(r2)), e
     (u0, b0, r0, n0), (u1, b1, r1, n1), (u2, b2, n_rows2), e = _run_db(scenario)
     assert b0 == 0.0 and r0 == [] and abs(u0 - (2900.0 + 225.0 + 150.0 - 2900.0 - 165.53)) < 1e-6
-    assert e._bnb_burn_rate == 0 and e._bnb_data_mature is False
+    assert e._bnb_burn_rate > 100 and e._bnb_burn_rate_bot == 0 and e._bnb_data_mature is False   # true burn shown; nothing held back from bot sizing
     assert [r.swap_type for r in r1] == [T.PAPER_FEE_SETTLE, "emergency"] and abs(r1[0].amount_usdt - 165.53) < 1e-6
+    # under 2 h of history the refill goes to the $50 dollar floor, never to the extrapolated (even capped) target
+    assert abs(e._bnb_projected_need - 0.10 * (2900.0 + 100.0 + 225.0)) < 1e-6
     assert abs(b1 - 50.0) < 1e-6 and abs(u1 - (u0 - 50.0)) < 1e-6 and abs(n1 - n0) < 1e-6
     assert n_rows2 == 2 and (u2, b2) == (u1, b1)
     assert T.bnb_real_floor_usd(cfg, 50.0) == 25.0 and T.bnb_real_floor_usd(cfg, 20.0) == 20.0 and T.bnb_real_floor_usd(cfg, 0) == 0.0
@@ -271,7 +276,17 @@ def test_forced_check_and_concurrent_triggers(cfg):
         await e.bnb_scheduled_check(db, force=True)
         _, b, rows, _ = await _book(e, db)
         return b, [r.swap_type for r in rows]
-    assert _run_db(forced) == (50.0, [T.PAPER_FEE_SETTLE, "emergency"])
+    assert _run_db(forced) == (50.0, [T.PAPER_FEE_SETTLE, "emergency"])                         # young batch: dollar floor
+
+    async def mature(db):                                                                       # 3 h of history: the capped target rules
+        db.add(_order(1, "MANUAL", 130.0, pnl=0.0, hours_ago=3.0)); await db.commit()
+        e = _wake_engine()
+        await e.bnb_scheduled_check(db)
+        _, b, rows, _ = await _book(e, db)
+        return b, [r.swap_type for r in rows], e._bnb_data_mature, e._bnb_burn_rate, e._bnb_burn_rate_bot
+    b, kinds, is_mature, burn, bot = _run_db(mature)
+    assert is_mature is True and bot == 0 and abs(burn - 130.0 / 3.0) < 0.05                    # $43.33/hr shown; nothing for the sizing leg
+    assert kinds == [T.PAPER_FEE_SETTLE, "emergency"] and abs(b - 300.0) < 1e-6                 # 10 % of $3,000
 
     async def slow_px():
         await asyncio.sleep(0.05); return 600.0
@@ -288,7 +303,7 @@ def test_forced_check_and_concurrent_triggers(cfg):
         Session = async_sessionmaker(eng, expire_on_commit=False)
         async with Session() as db:
             db.add(_order(1, "MANUAL", 265.53, pnl=0.0)); await db.commit()
-        e = _wake_engine(); e._bnb_emergency_threshold = 25.0; e._bnb_projected_need = 50.0
+        e = _wake_engine(); e._bnb_emergency_threshold = 150.0; e._bnb_projected_need = 300.0; e._bnb_data_mature = False
 
         async def wake():
             async with Session() as db: await e.bnb_scheduled_check(db)
@@ -313,11 +328,15 @@ def test_wiring_parity():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert eng.count("bnb_reserve_cap_usd(tc, await self._equity_usd(db))") == 2                 # paper + live swap size guard
     i = eng.index("    async def _recompute_bnb_burn_rate"); j = eng.index("    async def _sync_fee_rates", i)
-    assert eng[i:j].count("_bot_open_filter()") == 3 and "bnb_reserve_targets(" in eng[i:j]      # forecast = systematic fills, capped
-    assert eng.count("self._equity_usd_last = float(") == 3                                       # stamped with every live balance read
+    assert eng[i:j].count("_bot_open_filter()") == 1 and "bnb_reserve_targets(" in eng[i:j]      # true burn, capped; bot-only rate apart
+    assert "_burn = float(getattr(self, '_bnb_burn_rate_bot', 0.0)" in eng and "_burn = float(getattr(self, '_bnb_burn_rate'," not in eng
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+    assert "_burn = float(getattr(trading_engine, '_bnb_burn_rate_bot', 0.0)" in main            # the sizing leg's dashboard mirror
+    assert '"bnb_burn_rate_bot"' in eng and '"burn_rate_bot_per_hour"' in main                   # both payloads carry the bot rate
+    assert eng.count("self._equity_usd_last = float(") == 3                                       # stamped with every live balance read
     assert "bnb_max_reserve_pct_of_equity: Optional[float] = Field(default=None, ge=0, le=50)" in main
     assert "_paper_bnb_credit(db, amount, \"manual\", bnb_price)" in main                        # manual BNB buy uses the same ledger path
     ui = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     assert ui.count("config-bnb-max-reserve-pct") >= 3 and "BNB reserve ceiling (Sep 29)" in ui
     assert ui.count("fee_settle") >= 3                                                           # table badge + amount cell + report line
+    assert "status.bnb_burn_rate_bot" in ui and ui.count("burn_rate_bot_per_hour") >= 2          # config report line; swap report line + tab tooltip

@@ -4410,3 +4410,39 @@ between two fee events. Forced checks refill too; a refused refill writes nothin
 rollback + return; paper price fetched before the lock. Deep review confirmed to the cent on the production state: fee_settle
 165.53 + emergency 47.44 → USDT 100.00 / BNB 47.44 / NAV 3,047.44 unchanged; 10 wakes = 2 rows; live path byte-identical to HEAD.
 PRODUCTION (23:30:25 UTC, 347146b, fee-event path): fee_settle $185.41 + emergency $50.00 → BNB $50.00.
+
+## 2026-09-29 (137) - ⛽ BNB burn rate = every fee the account pays (manual included); bot-only rate kept for the sizing leg (operator-caught)
+SYMPTOM: BNB card "$13.05 · $0.00/hr (no recent bot fees) · Runway ∞" while the reserve was draining from manual fees.
+Operator: "0/hr is not true, is not correct". Correct — 135 took MANUAL fills out of `_bnb_burn_rate` to stop them sizing the
+reserve, and the same number feeds the dashboard, the swap log and the runway, which therefore lied.
+FIX: `_bnb_burn_rate` is again the TRUE burn (all CLOSED fills' fees over the data span) → card, runway, swap log, data
+maturity and the reserve targets; the equity cap from 135 (10 % / 5 %) is what bounds the targets, not hiding fees.
+`_bnb_burn_rate_bot` (systematic fills only) feeds ONLY the position-sizing fee leg (calculate_position_size + its main.py
+mirror), so the bot does not withhold USDT from its own sizing for fees the manual lane pays. Label back to "(no recent fees)".
+CONSEQUENCE: on a manual-heavy batch the reserve target is the cap (~$270–300 on a $3k account) instead of the $50 floor —
+fewer top-ups per manual fill (fees $27–54 each), more USDT parked in BNB. Supersedes the "systematic-only forecast" of 135.
+SAME SHIP (UI, operator): the 🖐 Manual entry panel ALWAYS starts closed on page load — the markup starts hidden and the
+open/closed state is no longer remembered per browser (it used to reopen if it was left open).
+CAVEMAN REVIEW (137): SHIP, findings applied — ① under 2 h of fee history a refill goes to the DOLLAR FLOOR ($50), never to the
+extrapolated target even capped (May-25 rule kept); once mature the capped target rules ② the bot-only rate is on both payloads
+(`bnb_burn_rate_bot`, `burn_rate_bot_per_hour`), both text reports and the BNB tab tooltip ③ one 24 h query computes both rates
+④ sizing test that tells the two rates apart (account $125.80/hr, bot 0 → leg off on engine and mirror) ⑤ panel test.
+ACCEPTED TRADE-OFF: the USDT the bot holds back for the next refill is sized on BOT burn while the reserve drains at the TOTAL
+burn — on a manual-heavy batch the bot may deploy USDT the next refill wanted; the refill then clips to the min-investment guard
+and the fees are paid from USDT (no loss, no negative balance). The $15 / 2.5 %-of-equity fee legs still apply.
+DEEP REVIEW (137): SHIP, no 🔴 — NAV conserved in every scenario, live identical to HEAD, mature pure-systematic batches
+identical to HEAD, suite 346. Reviewed md5: engine b7301626… (then one docstring-only edit), main.py 7183b809…, index.html
+551ad1ec…. ACKNOWLEDGED:
+  • SECOND BEHAVIOUR CHANGE IN THIS SHIP (own line, per one-change-at-a-time): YOUNG-BATCH REFILL = $50 DOLLAR FLOOR. Under 2 h
+    of fee history a refill no longer goes to the capped target. Measured on a pure-systematic 1 h batch ($90 fees, reserve
+    $10): before buys $291.20 (BNB $301.20), now buys $40.00 (BNB $50.00); next bot position $660.76 → $721.99.
+  • Manual fees still reduce bot sizing through the reserve PURCHASE (not the fee leg): manual-only batch wake buys $294.75
+    (before $36.95) → next bot position $735.44 → $672.60 (−8.5 %); mixed batch −1.7 %.
+  • Bot rate and maturity share the all-fill span: manual fills older than the runtime clock can flip the sizing leg on earlier
+    (−1.9 % position) or dilute the bot rate (+2.3 %). Small, two-sided.
+  • Auto-sell: no ping-pong in 30 wakes; with a manual burst the reserve bought at the cap is sold back ~24.5 h later when the
+    burst leaves the window (−$209.80 measured), daily bursts give a sell + re-buy cycle (~7 % of equity swinging between USDT
+    and BNB). Paper-only, NAV-neutral, swap-log noise. WATCH at batch reviews; fix = hysteresis on the sell if it shows up.
+  • Not production config: paper_bnb_initial_usd ≥ 1000 makes the real floor ($100) exceed the young-batch target ($50) → the
+    wake logs "no swap was possible" hourly and buys nothing. scripts/engine_replay_report.py still zeroes only the all-fill
+    rate (neutral: the bot rate defaults to 0).

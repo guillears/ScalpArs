@@ -8,7 +8,7 @@ import math
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
-from sqlalchemy import select, update, and_, or_, desc, func
+from sqlalchemy import select, update, and_, or_, desc, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod, BearMonitorPeriod
@@ -294,8 +294,9 @@ def manual_momentum_first_tick_exit(th, direction, price, ema5, ema8, ema13) -> 
 
 
 def _bot_open_filter():
-    """🖐 Sep-29: SQL clause selecting the BOT's open positions for slot caps — MANUAL rows live in their own lane
-    (manual_max_open_positions); legacy rows with a NULL entry_strategy are momentum and stay in the count."""
+    """🖐 Sep-29: SQL clause selecting the BOT's own orders (everything but the MANUAL sleeve) — used for the slot caps
+    (MANUAL rows live in their own lane, manual_max_open_positions) and for the bot-only fee burn that feeds position
+    sizing. Legacy rows with a NULL entry_strategy are momentum and stay in the count."""
     return or_(Order.entry_strategy.is_(None), Order.entry_strategy != "MANUAL")
 
 
@@ -2157,6 +2158,7 @@ class TradingEngine:
         self._bnb_emergency_threshold: float = 0.0
         self._bnb_projected_need: float = 0.0
         self._bnb_burn_rate: float = 0.0
+        self._bnb_burn_rate_bot: float = 0.0   # ⛽ Sep-29c: systematic fills only — the position-sizing fee leg reads this one
         # May 25 — "data mature" flag gates AUTO-SWAP decisions (not display).
         # True only when oldest closed trade in 24h window is ≥2h old. Below
         # that threshold, burn rate still updates with every closed order
@@ -2585,6 +2587,7 @@ class TradingEngine:
             "paper_balance": self.paper_balance,
             "paper_bnb_balance_usd": round(self.paper_bnb_balance_usd, 2),
             "bnb_burn_rate": round(self._bnb_burn_rate, 2),
+            "bnb_burn_rate_bot": round(float(getattr(self, '_bnb_burn_rate_bot', 0.0) or 0.0), 2),   # ⛽ bot fills only → sizing fee leg
             "bnb_emergency_threshold": round(self._bnb_emergency_threshold, 2),
             "bnb_data_mature": self._bnb_data_mature,
             # May 7 — emit TZ-aware ISO so JS unambiguously interprets as UTC
@@ -3090,6 +3093,11 @@ class TradingEngine:
             return
         
         target = self._bnb_projected_need if self._bnb_projected_need > 0 else tc.paper_bnb_initial_usd * 0.4
+        # ⛽ Sep-29c: under 2 h of fee history the projected need is an extrapolation from a burst (May-25 rule: never act on
+        # it). A refill in that window goes to the DOLLAR FLOOR; the (capped) projected need rules once the data is mature.
+        _dollar_floor = float(getattr(tc, 'bnb_min_balance_usd', 50.0) or 0.0)
+        if not getattr(self, '_bnb_data_mature', False) and _dollar_floor > 0:
+            target = min(target, _dollar_floor)
         
         if self.is_paper_mode:
             current_bnb = await self._recalculate_paper_bnb(db)   # DB truth (the fee that triggered this is already booked)
@@ -3286,8 +3294,12 @@ class TradingEngine:
         """Recompute self._bnb_burn_rate, _bnb_projected_need, _bnb_emergency_threshold
         from CLOSED orders in DB. Returns fees_24h.
 
-        ⛽ Sep-29: the forecast is the SYSTEMATIC book's burn (MANUAL fills excluded — sporadic, operator-sized; their fees
-        are funded by the floor / emergency path like any fee) and both targets are capped by bnb_reserve_targets.
+        ⛽ Sep-29: both targets are capped by bnb_reserve_targets (% of equity). The burn rate is the TRUE one — every fee
+        the account paid, MANUAL fills included (operator, Sep-29c: a "$0.00/hr, runway ∞" card while the reserve drained
+        from manual fees was false). The cap is what keeps a burst of large manual fills from sizing the reserve, not
+        hiding their fees. `_bnb_burn_rate_bot` (systematic fills only) feeds the POSITION-SIZING fee leg alone, so that
+        LEG holds no USDT back for fees the manual lane pays. (The reserve purchase itself — up to the cap, 10 % of equity
+        — still comes out of free USDT, whoever paid the fees: deep review measured −1.7 % to −8.5 % on the next position.)
 
         May 11: extracted from bnb_scheduled_check so the burn-rate metric can be
         refreshed every scan cycle WITHOUT firing the gated swap action. Cheap
@@ -3303,14 +3315,16 @@ class TradingEngine:
         result_24h = await db.execute(
             select(
                 func.coalesce(func.sum(Order.total_fee), 0),
-                func.count(Order.id)
+                func.count(Order.id),
+                func.coalesce(func.sum(case((_bot_open_filter(), Order.total_fee), else_=0)), 0),   # the bot's own fills
             ).where(
-                and_(Order.status == "CLOSED", Order.is_paper == self.is_paper_mode, Order.closed_at >= cutoff_24h, _bot_open_filter())
+                and_(Order.status == "CLOSED", Order.is_paper == self.is_paper_mode, Order.closed_at >= cutoff_24h)
             )
         )
         row_24h = result_24h.one()
         fees_24h = float(row_24h[0] or 0)
         count_24h = int(row_24h[1] or 0)
+        bot_fees_24h = float(row_24h[2] or 0)
 
         result_12h = await db.execute(
             select(
@@ -3318,7 +3332,7 @@ class TradingEngine:
                 func.count(Order.id),
                 func.min(Order.closed_at),
             ).where(
-                and_(Order.status == "CLOSED", Order.is_paper == self.is_paper_mode, Order.closed_at >= cutoff_12h, _bot_open_filter())
+                and_(Order.status == "CLOSED", Order.is_paper == self.is_paper_mode, Order.closed_at >= cutoff_12h)
             )
         )
         row_12h = result_12h.one()
@@ -3332,7 +3346,7 @@ class TradingEngine:
         # burn rate immediately after a restart.
         result_oldest_24h = await db.execute(
             select(func.min(Order.closed_at)).where(
-                and_(Order.status == "CLOSED", Order.is_paper == self.is_paper_mode, Order.closed_at >= cutoff_24h, _bot_open_filter())
+                and_(Order.status == "CLOSED", Order.is_paper == self.is_paper_mode, Order.closed_at >= cutoff_24h)
             )
         )
         oldest_24h = result_oldest_24h.scalar()
@@ -3362,6 +3376,7 @@ class TradingEngine:
             if trade_span_h > span_24h_hours:
                 span_24h_hours = min(24.0, trade_span_h)
             self._bnb_burn_rate = fees_24h / span_24h_hours if span_24h_hours > 0 else 0
+            self._bnb_burn_rate_bot = bot_fees_24h / span_24h_hours if span_24h_hours > 0 else 0
             # Jul 14: HARD FLOOR (operator, $50) — trailing burn is a rear-view mirror (observed
             # 0.32→3.16 $/hr = 10x swing): an idle stretch collapses the runway target to a few
             # dollars, then a trading burst can drain the reserve between 6h checks. The floor
@@ -3370,6 +3385,7 @@ class TradingEngine:
         else:
             span_24h_hours = 0
             self._bnb_burn_rate = 0
+            self._bnb_burn_rate_bot = 0
             self._bnb_data_mature = False
 
         # 12h emergency threshold — same logic, capped at 12h
@@ -3469,9 +3485,9 @@ class TradingEngine:
         fees_24h = await self._recompute_bnb_burn_rate(db)
 
         # ⛽ Sep-29b (operator-caught right after the reserve-cap deploy: BNB $0.00, no swap): an EMPTY paper reserve is
-        # refilled on this 15-min wake. Before, only a fee event or the 6 h routine could top it up — and the routine is
-        # suppressed while the data window is immature, which is PERMANENT on a batch with manual fills only (the forecast
-        # reads the systematic book). The swap keeps every guard: cap, min-investment, $5 minimum.
+        # refilled on this 15-min wake. Before, only a fee event or the 6 h routine could top it up — and the routine
+        # waits for its interval and for 2 h of fee history. The swap keeps every guard: cap, min-investment, $5 minimum,
+        # and under 2 h of history it refills to the dollar floor only.
         if self.is_paper_mode:
             try:
                 _paper_bnb_now = await self._recalculate_paper_bnb(db)
@@ -3541,7 +3557,9 @@ class TradingEngine:
         # window is >= 1h. If this ever trips, the span calculation is broken
         # and we refuse to swap rather than over-spend.
         if self._bnb_burn_rate > fees_24h and fees_24h > 0:
-            logger.error(
+            # under 1 h of history fees/span exceeds the fees by arithmetic — not a broken span; the maturity gate below
+            # would stop the swap anyway, so say it quietly
+            (logger.error if self._bnb_data_mature else logger.info)(
                 f"[BNB_CHECK] Burn rate sanity check failed: "
                 f"${self._bnb_burn_rate:.2f}/hr > ${fees_24h:.2f} total 24h fees. "
                 f"Refusing to swap."
@@ -3689,7 +3707,7 @@ class TradingEngine:
         if _fee_pct > 0 and _fee_eq:
             _fee_res = max(_fee_res, _fee_eq * _fee_pct / 100.0)
         _fee_hrs = max(0.0, float(getattr(tc.investment, 'fee_reserve_hours', 0.0) or 0.0))
-        _burn = float(getattr(self, '_bnb_burn_rate', 0.0) or 0.0)
+        _burn = float(getattr(self, '_bnb_burn_rate_bot', 0.0) or 0.0)   # ⛽ bot fees only: manual fees never shrink bot sizing
         # Aug-26 (B5 boot): gate the burn leg on data maturity — post-reset the runtime clock
         # restarts, so fees/0.5h read $82/hr and the leg locked $979 away from sizing. The swap
         # machinery was already maturity-gated (May-25); the reserve leg must match it.

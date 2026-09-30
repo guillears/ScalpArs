@@ -990,6 +990,8 @@ def check_exit_conditions(
     signal_active: bool = False,
     tp_trailing_enabled: bool = True,
     entry_atr_pct: float = None,  # May 7 Phase 1: ATR-normalized trailing
+    sl_atr_pct=None,              # 🩹 Sep-30: ATR for the STOP widening only (SL_ATR_SAME = entry_atr_pct; None = never widen — MANUAL)
+    sl_atr_same: bool = True,     # True (default) = widen on entry_atr_pct as before; False = widen on sl_atr_pct
     current_stretch: float = None,  # Jun 1: live |price−EMA5| stretch % (runner trail)
     peak_stretch: float = None,     # Jun 1: peak stretch since entry (runner trail)
     is_flip: bool = False,          # Jun 14: Flip Entry — disable runner-trail for flips
@@ -1174,10 +1176,11 @@ def check_exit_conditions(
             _sl_atr_mult = float(getattr(config_module.trading_config.thresholds, 'sl_atr_multiplier', 0.0) or 0.0)
         except Exception:
             _sl_atr_mult = 0.0
-        if _sl_atr_mult > 0 and entry_atr_pct is not None and entry_atr_pct > 0:
-            _atr_sl = -(entry_atr_pct * _sl_atr_mult)
+        _sl_atr = entry_atr_pct if sl_atr_same else sl_atr_pct
+        if _sl_atr_mult > 0 and _sl_atr is not None and _sl_atr > 0:
+            _atr_sl = -(_sl_atr * _sl_atr_mult)
             if _atr_sl < effective_stop_loss:  # more negative = wider
-                logger.debug(f"[ATR_SL_WIDEN] {direction}: SL widened from {effective_stop_loss}% to {_atr_sl}% (ATR {entry_atr_pct}% × {_sl_atr_mult})")
+                logger.debug(f"[ATR_SL_WIDEN] {direction}: SL widened from {effective_stop_loss}% to {_atr_sl}% (ATR {_sl_atr}% × {_sl_atr_mult})")
                 effective_stop_loss = _atr_sl
         # May 23: cap ATR widening at floor. Prevents extreme-ATR pairs
         # (e.g., ATR 2.3% → -3.47% SL) from effectively disabling the SL.
@@ -1392,6 +1395,19 @@ def check_exit_conditions(
                         "trough_pnl": trough_pnl,
                         "tp_level": current_tp_level
                     }
+            # 🩹 Sep-30: an ARMED long runner without an entry ATR (missing, 0 or negative) used to have NO floor here (only the
+            # stretch K-trail, which never fires once stretch goes negative) — two manual QNT runners rode +0.62 / +0.40 to the
+            # −0.70 stop. The break-even lock still applies: exit at the lock level.
+            elif _l_use_atr and _l_ratchet and pnl_pct <= _l_lock:
+                logger.info(f"[RUNNER_TRAIL] {direction} L{current_tp_level}: pnl {pnl_pct:.3f}% <= BE lock {_l_lock:.3f}% "
+                            f"(peak={peak_pnl:.3f}%, no entry ATR) — runner banked at the lock")
+                return {
+                    "should_close": True,
+                    "reason": f"RUNNER_TRAIL L{current_tp_level}",
+                    "peak_pnl": peak_pnl,
+                    "trough_pnl": trough_pnl,
+                    "tp_level": current_tp_level
+                }
             # SIGNED stretch K-trail (matches the validated shadow strpk): fires when the
             # favorable extension retraces to ≤ k× its peak — INCLUDING when price
             # crosses back below EMA5 (signed goes negative). Do NOT use abs() here

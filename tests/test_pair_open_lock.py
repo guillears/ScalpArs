@@ -202,7 +202,7 @@ def test_both_open_paths_book_under_the_lock():
     i = src.index("    async def open_manual_position"); j = src.index("\n    async def ", i + 10); man = src[i:j]
     a = man.index("_book_release = await self._book_hold(10.0)")
     assert a < man.index("was opened by the bot while this manual entry") < man.index("manual positions cap reached while") \
-        < man.index("exceeds the available balance after") < man.index("order = Order(") < man.index("await self.save_state(db)") \
+        < man.index("exceeds the available balance") < man.index("order = Order(") < man.index("await self.save_state(db)") \
         < man.index("_book_release()   # 🔒 after the bookkeeping writes")
 
 

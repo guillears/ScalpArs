@@ -180,6 +180,8 @@ def test_momentum_mode_refuses_only_what_the_ema13_exit_would_close_at_once(monk
 
     async def _bal(db): return 10_000.0
     eng.get_available_balance = _bal
+    async def _bnb(db): return 1_000.0                                 # BNB reserve covers the fee (the fee-aware balance checks)
+    eng._recalculate_paper_bnb = _bnb
 
     class _Trk: last_price = 268.0
     monkeypatch.setattr(T.websocket_tracker, "get_tracker", lambda p: _Trk())

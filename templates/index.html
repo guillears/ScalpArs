@@ -19334,11 +19334,12 @@
                     
                     // Format gap with color
                     const gapValue = p.gap !== null ? p.gap.toFixed(3) + '%' : '-';
-                    const gap58Value = p.gap_5_8 !== null && p.gap_5_8 !== undefined ? p.gap_5_8.toFixed(3) + '%' : '-';
+                    const gap58Value = p.gap_5_8 !== null && p.gap_5_8 !== undefined ? (Math.abs(p.gap_5_8) < 0.0005 ? 0 : p.gap_5_8).toFixed(3) + '%' : '-';   // no "-0.000%"
 
                     // Color coding for EMA based on alignment
-                    const isBullishEMA = p.ema5 > p.ema8 && p.ema8 > p.ema13 && p.ema13 > p.ema20;
-                    const isBearishEMA = p.ema5 < p.ema8 && p.ema8 < p.ema13 && p.ema13 < p.ema20;
+                    // Sep-30: the server judges the stack on the raw EMAs (the displayed EMAs are rounded to 2 decimals)
+                    const isBullishEMA = p.ema_stack !== undefined ? p.ema_stack === 'BULL' : (p.ema5 > p.ema8 && p.ema8 > p.ema13 && p.ema13 > p.ema20);
+                    const isBearishEMA = p.ema_stack !== undefined ? p.ema_stack === 'BEAR' : (p.ema5 < p.ema8 && p.ema8 < p.ema13 && p.ema13 < p.ema20);
                     const emaColorClass = isBullishEMA ? 'text-emerald-400' :
                                          isBearishEMA ? 'text-red-400' : '';
                     const gapColorClass = p.signal === 'LONG' ? 'text-emerald-400' :
@@ -19358,7 +19359,8 @@
                         const gap58Min = parseFloat(th.ema_gap_threshold_short || th.ema_gap_threshold || 0.08);
                         gap58Class = Math.abs(p.gap_5_8) >= gap58Min ? 'text-emerald-400' : 'text-red-400';
                     } else if (p.gap_5_8 != null) {
-                        gap58Class = p.gap_5_8 > 0 ? 'text-emerald-400/50' : p.gap_5_8 < 0 ? 'text-red-400/50' : 'text-gray-400';   // unstacked: side only, like Gap 5-20
+                        const _g58 = Math.abs(p.gap_5_8) < 0.0005 ? 0 : p.gap_5_8;   // colour on the same value the cell shows
+                        gap58Class = _g58 > 0 ? 'text-emerald-400/50' : _g58 < 0 ? 'text-red-400/50' : 'text-gray-400';   // unstacked: side only, like Gap 5-20
                     }
                     if (isBullishEMA && p.rsi != null) {
                         const rsiMin = parseFloat(th.momentum_long_rsi_min || 40);

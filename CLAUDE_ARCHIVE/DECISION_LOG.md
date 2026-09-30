@@ -4544,3 +4544,56 @@ booked"); now 0 s. One top-up per trigger, healthy reserve untouched, 1,200 unco
 stress 0 phantom / 0 cap overshoot / 0 negative USDT; a failed price call or swap commit no longer turns a booked open into an
 error. Expected difference: a second open's fee landing before the top-up is sized is folded into it (BNB refills to the full
 target; that fee may briefly be paid from USDT and settled by a fee_settle row). NAV unchanged.
+
+## 2026-09-30 (142) - 🔒 Remaining open items from today's reviews, fixed in one batch (operator: "fix everything")
+① POSITION RECOVERY RACE (/api/recover-positions, live only): each candidate is now checked and imported under the pair's
+open lock (a position the bot is placing right now is not an orphan — the bot holds that lock from its check to its insert),
+DB first, then a FRESH exchange read (a position closed after the list was read is not imported), one commit per pair,
+skipped pairs reported. ② Top Pairs stack judged on RAW EMAs (`ema_stack` from the server; the displayed EMAs are rounded to
+2 decimals, so sub-$1 stacks tied and read as unstacked). ③ Manual stamps use the scan's RAW BTC EMA20 slope
+(`_btc_ema20_slope_pct_raw`; the published value defaults None → 0.0, which could change entry_btc_regime). ④ Manual final
+balance check counts the part of the entry fee the BNB reserve cannot pay (it is charged to USDT). ⑤ manual_gate_context
+documents that manual_gap_5_8 is absolute while Top Pairs shows it signed. ⑥ Top Pairs never shows "-0.000%".
+LEFT AS IS (deliberate): the sleeve paths' own stamp builder still duplicates pair_entry_stamps formulas (refactor, no bug;
+touching the flip/door stamp path needs its own parity proof); a manual click whose own fee triggers the emergency BNB top-up
+still waits for that top-up's price read before the dashboard answers (pre-existing latency, bounded, no lock held).
+CAVEMAN REVIEW (142): FIX-FIRST → applied: recovery matches the exchange re-read on symbol AND side (hedge mode), catches any
+per-pair error with a rollback and carries on (skipped listed), 20 s lock wait; the manual EARLY balance check counts the
+uncovered fee too (price-free: notional × taker); Top Pairs colours gap 5-8 on the displayed value; tests tightened (raw slope
+preferred, fee check behavioural, failed re-read, hedge leg, BEAR stack).
+
+## 2026-09-30 (143) - 🩹 Manual MOMENTUM runners keep their profit lock (bug from 138, operator-caught)
+BUG: two MANUAL MOMENTUM QNT longs armed the runner (peak +0.62 and +0.397 ≥ arm 0.40; entry ATR 2.2 %) and rode back to
+STOP_LOSS −0.69 (−$110.86, −$138.27). 138 hid the entry ATR from ALL manual exits (to stop ATR stop-widening at 20–50×), but
+the armed-runner floor max(peak − 1×ATR, +0.10 BE lock) reads the same ATR in both exit paths → no floor, and the stretch
+fallback never fires once stretch is negative. (Before 138 manual rows had no ATR at all → same hole, masked on Sep-29 by the
+stretch trail firing.)
+FIX: the profit side reads the REAL ATR (orders cache entry_atr_pct, candle loop); only STOP widening stays hidden for manual
+fills (cache sl_entry_atr_pct + check_exit_conditions(sl_atr_pct=None)). Defensive: an armed LONG runner with no ATR at all now
+exits at the BE lock instead of riding to the stop. Replayed: both QNT trades close at the +0.10 lock. Manual MOMENTUM now uses
+the bot's momentum exits on the profit side (incl. ATR-scaled trails / low-ATR fixed TP); its stop is never widened.
+
+## 2026-09-30 (144) - 📊 BTC impulse read: longs the BTC gates refuse during a BTC push (operator question) — no edge
+Operator (Sep-30 12:30–13:00 UTC BTC +1.9 %, bot blocked by BTC_RSI_ADX_CROSS / BTC_ADX_GATE_HIGH): "when BTC does this, all
+alts follow — the best moment to invest". Replay journal Jun–Sep, refused LONGs of the two gates, stack-lite exit, window units:
+impulse-up (BTC RSI ≥ 70, slope > 0) 1,435 signals / 152 windows / 64 days: WR 57 %, −0.030 per signal, −0.119 per window, 41 %
+positive windows (taken longs same sim −0.034). Aug/Sep per-signal +0.03/+0.04 but per-window flat/negative. No ship, no watch
+gate: at BTC RSI ≥ 70 the move is mostly priced. Untested alternative: an entry at the START of a BTC impulse (a new rule, needs
+its own study). reports/BTC_IMPULSE_REFUSED_2026-09-30.md.
+ADDENDUM (144) — operator follow-up "a BTC-spike sleeve, like Bull-Run but triggered by a BTC spike (MOVR)": event study on 5m
+klines Jan–Sep (reports/BTC_SPIKE_EVENT_STUDY_2026-09-30.md, scripts/btc_spike_event_study.py), units = BTC events, control = the
+same alts 24/48 h earlier. BTC +1.0 %/30 min (166 events): alts −0.073 per event vs control −0.084; LAGGARDS −0.092 and the
+worst 30/60-min drift (they do not catch up). BTC +1.5 % (66 events): alts −0.021 vs control −0.155; FOLLOWERS best at +0.004,
+62 % events positive — breakeven. No sleeve, no watch gate. MOVR (Sep-30, +0.72 %) is one fill in one window.
+DUAL REVIEW (142 + 143): caveman FIX-FIRST ×2 → applied (hedge-safe recovery, per-pair rollback, early fee check, realtime
+no-ATR lock mirror, explicit sl_atr_same flag, QNT replay on real fill sizes) · deep SHIP. Measured: recovery during an in-flight
+bot open HEAD 2 OPEN rows → 1; failed re-read / closed position / commit failure never import; bot opens 1,200 cases identical;
+fee-aware check refuses a $999 click that HEAD booked into −$3.50 USDT; QNT ids 2 / 4 replayed through BOTH exit paths: HEAD
+−0.69 → RUNNER_TRAIL +0.07 / +0.10; manual stops never widened (worst −0.75 on a monitor tick overshoot), bot stops still widen.
+BEHAVIOUR CHANGES TO KNOW (deep review 🟡): ① the no-ATR BE lock applies to ANY armed non-flip LONG with no entry ATR, not only
+manual — 0 of 718 master-pool fills lack an ATR; live RECOVERED rows (ATR NULL) now get the lock. ② manual MOMENTUM rows now
+read their ATR on the whole PROFIT side of the momentum stack, incl. the SHORT runner floor (0.5×ATR, giveback cap 0.35, no
+lock): manual shorts that arm now bank the runner instead of riding to the stop (sweep: 20/72 manual short paths changed, e.g.
+peak 0.45: stop −0.70 → runner +0.25/+0.35). Trailing ATR floor too; FAST_EXIT / ATR_FIXED_TP read it but are OFF in config.
+Left: sub-$1 EMA values still display with 2 decimals (colour now right); flip-helper and exit_btc_regime still read the
+0.0-defaulted BTC slope.

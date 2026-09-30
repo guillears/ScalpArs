@@ -81,6 +81,7 @@ def _calculate_quality_score(direction: str, entry_rsi, entry_adx, entry_gap,
 # Computed at end of each scan, used by next scan cycle as a market regime gate.
 _global_volume_ratio: float = 1.0
 _btc_ema20_slope_pct: float = 0.0
+_btc_ema20_slope_pct_raw: Optional[float] = None   # Sep-30: the scan's value before the 0.0 default (None = unknown), for stamps
 # BTC Trend Filter state (May 5) — EMA20 vs EMA50 medium-term trend.
 # Updated in BTC scan loop. Surfaced in /api/engine/state for header badge.
 _current_btc_ema20: Optional[float] = None
@@ -264,7 +265,7 @@ def market_entry_stamps(g, signal, indicators, btc_global_enabled, th) -> dict:
         entry_btc_rsi=r(g.get('_current_btc_rsi'), 1), entry_btc_rsi_prev=r(g.get('_current_btc_rsi_prev'), 1),
         entry_btc_rsi_prev6=r(g.get('_current_btc_rsi_prev6'), 1), entry_btc_atr_pct=g.get('_current_btc_atr_pct'),
         entry_btc_rsi_1h=g.get('_current_btc_rsi_1h'), entry_btc_rsi_1h_prev=g.get('_current_btc_rsi_1h_prev'),
-        entry_btc_ema20_slope=g.get('_btc_ema20_slope_pct'), entry_btc_1h_slope=g.get('_current_btc_1h_slope'),
+        entry_btc_ema20_slope=g.get('_btc_ema20_slope_pct_raw', g.get('_btc_ema20_slope_pct')), entry_btc_1h_slope=g.get('_current_btc_1h_slope'),
         entry_btc_trend_gap_pct=g.get('_current_btc_trend_gap_pct'),
         entry_bull_pct=g.get('_market_bull_pct'), entry_bear_pct=g.get('_market_bear_pct'),
     )
@@ -273,7 +274,8 @@ def market_entry_stamps(g, signal, indicators, btc_global_enabled, th) -> dict:
     be13, bpx = g.get('_current_btc_ema13'), g.get('_current_btc_price')
     out['entry_btc_dist_from_ema13_pct'] = round((bpx - be13) / be13 * 100, 4) if (be13 is not None and bpx is not None and be13 != 0) else None
     try:
-        out['entry_btc_regime'] = classify_btc_regime(g.get('_current_btc_adx'), g.get('_current_btc_rsi'), g.get('_btc_ema20_slope_pct'))
+        out['entry_btc_regime'] = classify_btc_regime(g.get('_current_btc_adx'), g.get('_current_btc_rsi'),
+                                                      g.get('_btc_ema20_slope_pct_raw', g.get('_btc_ema20_slope_pct')))   # the scan's raw value
     except Exception:
         out['entry_btc_regime'] = None
     if btc_global_enabled:
@@ -288,10 +290,11 @@ def market_entry_stamps(g, signal, indicators, btc_global_enabled, th) -> dict:
 
 
 def exit_entry_atr_pct(entry_strategy, entry_atr_pct):
-    """The entry ATR the EXIT rules see. MANUAL fills record it like any fill (📐 Sep-29), but their exits were designed and
-    guarded without it: the ATR / quiet-pair stop widening would move a manual stop — at 30–50× possibly past the
-    leverage-aware floor that keeps it inside liquidation. Recording must not change trading, so MANUAL exits see None
-    (their behaviour before the stamp existed); every other fill sees its own stamp."""
+    """The entry ATR the STOP-WIDENING rules see (ATR stop widening + quiet-pair stop). MANUAL → None: a widened stop at
+    30–50× could sit past the leverage-aware floor that keeps a manual stop inside liquidation. Every other fill sees its own
+    stamp. 🩹 Sep-30 (operator: two armed QNT manual runners rode +0.62 / +0.40 back to the −0.70 stop): ONLY the stop side
+    is hidden — the profit side (runner trail floor + its break-even lock, trails) reads the real entry_atr_pct. Hiding it
+    everywhere disabled the armed-runner floor, so a manual MOMENTUM trade had no profit lock at all."""
     return None if (entry_strategy or "") == "MANUAL" else entry_atr_pct
 
 
@@ -396,7 +399,9 @@ def manual_gate_context(stash, pair, pd_row, max_age_s: float = 600.0, now=None,
     (MANUAL_NO_GATE = 'NONE' when the pair is enterable, None when the pair has no fresh scan data — the CSV writes None as an
     empty cell, so "enterable" needs its own word); rating/side = the setup's rating and the side of its EMA fan; plus the pair
     readings, computed with the SAME formulas as the bot's entry stamps (gaps absolute, RSI/ADX rounded 2/4) but stored in
-    manual_* columns. px_vs_ema5 uses the FILL price against the scan's EMA5 (≤ 10 min old). Pure; fail-soft to empty fields."""
+    manual_* columns. px_vs_ema5 uses the FILL price against the scan's EMA5 (≤ 10 min old). NOTE: gap_5_8 here is ABSOLUTE,
+    while the Top Pairs table shows it SIGNED since Sep-30 — for the sign use the order's entry_gap_5_8_signed_pct (the side
+    is in manual_setup_side). Pure; fail-soft to empty fields."""
     out = dict(block_reason=None, rating=None, side=None, rsi=None, adx=None, gap_5_8=None, gap_8_13=None, gap_5_20=None, px_vs_ema5=None)
     try:
         if pd_row is None:
@@ -9138,8 +9143,12 @@ class TradingEngine:
         if _n_open >= _cap:
             raise ValueError(f"manual positions cap reached ({_n_open}/{_cap} — manual_max_open_positions)")
         available = await self.get_available_balance(db)
-        if investment > available:
-            raise ValueError(f"size ${investment:,.0f} exceeds available balance ${available:,.0f}")
+        _tc0 = config.trading_config
+        _fee_est = investment * leverage * float(getattr(_tc0, 'taker_fee', _tc0.trading_fee) or 0.0)   # notional × taker: price-free
+        _fee_usdt_est = max(0.0, _fee_est - max(0.0, float(await self._recalculate_paper_bnb(db)))) if self.is_paper_mode else 0.0
+        if investment + _fee_usdt_est > available:   # caveman review: same rule as the final check, so it fails before the reads
+            raise ValueError(f"size ${investment:,.0f}" + (f" (+ ${_fee_usdt_est:,.2f} fee not covered by BNB)" if _fee_usdt_est > 0 else "")
+                             + f" exceeds available balance ${available:,.0f}")
         symbol = f"{pair[:-4]}/USDT:USDT"
         # PRICE SOURCE (Sep-29, QNT 0-second trade lost 0.35 % on the source gap): exits price off the live websocket tick, so
         # the entry must too — the REST ticker can lag a few seconds on a fast pair. Stream price when fresh (≤ 5 s), else REST
@@ -9207,8 +9216,11 @@ class TradingEngine:
         if ((await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode,
                                                                       Order.entry_strategy == "MANUAL")))).scalar() or 0) >= _cap:
             raise ValueError(f"manual positions cap reached while this entry was being prepared ({_cap} — manual_max_open_positions)")
-        if investment > await self.get_available_balance(db):
-            raise ValueError(f"size ${investment:,.0f} exceeds the available balance after the bot's last open — not opened")
+        _avail_final = await self.get_available_balance(db)
+        _fee_from_usdt = max(0.0, entry_fee - max(0.0, float(await self._recalculate_paper_bnb(db)))) if self.is_paper_mode else 0.0
+        if investment + _fee_from_usdt > _avail_final:   # the entry fee the BNB reserve cannot cover is paid from USDT too
+            raise ValueError(f"size ${investment:,.2f}" + (f" (+ ${_fee_from_usdt:,.2f} fee not covered by BNB)" if _fee_from_usdt > 0 else "")
+                             + f" exceeds the available balance ${_avail_final:,.2f} after the bot's last open — not opened")
         order = Order(
             pair=pair, direction=direction, status="OPEN", entry_price=actual_price, investment=investment, leverage=leverage,
             notional_value=notional_value, quantity=quantity, confidence="STRONG_BUY", entry_strategy="MANUAL",
@@ -11707,7 +11719,8 @@ class TradingEngine:
                 dynamic_tp_target=order.dynamic_tp_target,
                 signal_active=is_signal_active,
                 tp_trailing_enabled=exit_conf_config.tp_trailing_enabled if exit_conf_config else True,
-                entry_atr_pct=exit_entry_atr_pct(order.entry_strategy, getattr(order, 'entry_atr_pct', None)),  # May 7 Phase 1: ATR-normalized trailing (📐 MANUAL → None)
+                entry_atr_pct=getattr(order, 'entry_atr_pct', None),  # May 7 Phase 1: ATR-normalized trailing / runner floor (profit side)
+                sl_atr_pct=exit_entry_atr_pct(order.entry_strategy, getattr(order, 'entry_atr_pct', None)), sl_atr_same=False,  # 🩹 stop widening (MANUAL → None)
                 current_stretch=_rt_stretch,  # Jun 1: runner stretch-trail
                 peak_stretch=getattr(order, 'runner_peak_stretch', None),  # Jun 1: runner stretch-trail
                 is_flip=(order.entry_strategy or "").startswith("FLIP:"),  # Jun 14: runner-trail off for flips → normal trailing
@@ -12118,6 +12131,8 @@ class TradingEngine:
         global _current_btc_ema20, _current_btc_ema13, _current_btc_ema50, _current_btc_trend_gap_pct, _current_btc_price, _current_btc_adx_prev1
         _current_btc_regime = btc_regime
         _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
+        global _btc_ema20_slope_pct_raw
+        _btc_ema20_slope_pct_raw = btc_ema20_slope_pct   # the value the scan passes to open_position (None stays None)
         _current_btc_adx = btc_adx
         _current_btc_adx_prev1 = btc_adx_prev  # Aug-22: header arrow = sign(adx - adx_prev1) on closed bars
         _current_btc_rsi = btc_rsi
@@ -15629,7 +15644,7 @@ class TradingEngine:
                     _sl_atr_mult = float(getattr(config.trading_config.thresholds, 'sl_atr_multiplier', 0.0) or 0.0)
                 except Exception:
                     _sl_atr_mult = 0.0
-                _entry_atr_pct = order_info.get('entry_atr_pct')
+                _entry_atr_pct = order_info.get('sl_entry_atr_pct', order_info.get('entry_atr_pct'))   # 🩹 stop side: MANUAL → None
                 if _sl_atr_mult > 0 and _entry_atr_pct is not None and _entry_atr_pct > 0:
                     _atr_sl = -(_entry_atr_pct * _sl_atr_mult)
                     if _atr_sl < effective_sl:  # more negative = wider
@@ -16202,18 +16217,26 @@ class TradingEngine:
                         _rl_arm = float(getattr(_rl_th, 'runner_trail_arm_peak', 0.45) or 0.45)
                         _rl_amin = float(getattr(_rl_th, 'runner_trail_atr_min', 0.0) or 0.0)
                         _rl_atr = order_info.get('entry_atr_pct')
-                        if (current_peak >= _rl_arm - 0.005 and _rl_atr and _rl_atr > 0
-                                and (_rl_amin <= 0 or _rl_atr >= _rl_amin)):
-                            _rl_n = float(getattr(_rl_th, 'runner_trail_atr_mult', 0.5) or 0.5)
-                            if (order_info.get('entry_strategy') or '') == 'SPIKE_BOUNCE':
-                                # Jul 31 🏀 strategy-scoped trail N (dump-inflated entry ATR)
-                                _rl_n = float(getattr(_rl_th, 'spike_bounce_trail_atr_mult', 0.5) or 0.5)
-                            _rl_gb = _rl_n * _rl_atr
-                            _rl_frac = float(getattr(_rl_th, 'runner_trail_giveback_frac', 0.0) or 0.0)
-                            _rl_capped = (_rl_frac > 0 and current_peak > 0 and _rl_frac * current_peak < _rl_gb)
-                            if _rl_capped:
-                                _rl_gb = _rl_frac * current_peak
-                            _rl_raw_floor = current_peak - _rl_gb
+                        _rl_has_atr = bool(_rl_atr and _rl_atr > 0)
+                        # 🩹 Sep-30: an armed LONG with NO entry ATR (older manual rows) still gets the BE lock here — before,
+                        # this block skipped it and only the slow monitor loop could act (minutes of latency)
+                        _rl_lock_only = (not _rl_has_atr and _rl_amin <= 0
+                                         and bool(getattr(_rl_th, 'runner_trail_be_ratchet_enabled', True)))
+                        if (current_peak >= _rl_arm - 0.005 and (_rl_lock_only or (_rl_has_atr
+                                and (_rl_amin <= 0 or _rl_atr >= _rl_amin)))):
+                            if _rl_lock_only:
+                                _rl_gb, _rl_capped, _rl_raw_floor = float('inf'), False, float('-inf')
+                            else:
+                                _rl_n = float(getattr(_rl_th, 'runner_trail_atr_mult', 0.5) or 0.5)
+                                if (order_info.get('entry_strategy') or '') == 'SPIKE_BOUNCE':
+                                    # Jul 31 🏀 strategy-scoped trail N (dump-inflated entry ATR)
+                                    _rl_n = float(getattr(_rl_th, 'spike_bounce_trail_atr_mult', 0.5) or 0.5)
+                                _rl_gb = _rl_n * _rl_atr
+                                _rl_frac = float(getattr(_rl_th, 'runner_trail_giveback_frac', 0.0) or 0.0)
+                                _rl_capped = (_rl_frac > 0 and current_peak > 0 and _rl_frac * current_peak < _rl_gb)
+                                if _rl_capped:
+                                    _rl_gb = _rl_frac * current_peak
+                                _rl_raw_floor = current_peak - _rl_gb
                             _rl_floor = _rl_raw_floor
                             if getattr(_rl_th, 'runner_trail_be_ratchet_enabled', True):
                                 _rl_floor = max(_rl_floor, float(getattr(_rl_th, 'runner_trail_be_lock_pct', 0.10) or 0.10))
@@ -16662,7 +16685,8 @@ class TradingEngine:
                 'low_price': order.low_price_since_entry or order.entry_price,
                 'pullback_trigger': conf_config.pullback_trigger,
                 'tp_trailing_enabled': conf_config.tp_trailing_enabled,
-                'entry_atr_pct': exit_entry_atr_pct(order.entry_strategy, getattr(order, 'entry_atr_pct', None)),  # May 7 Phase 1: ATR-normalized trailing (📐 MANUAL → None)
+                'entry_atr_pct': getattr(order, 'entry_atr_pct', None),  # May 7 Phase 1: ATR-normalized trailing / runner floor (profit side)
+                'sl_entry_atr_pct': exit_entry_atr_pct(order.entry_strategy, getattr(order, 'entry_atr_pct', None)),  # 🩹 stop widening (MANUAL → None)
                 'entry_br_door': getattr(order, 'entry_br_door', None),  # Sep-21 (57i): DB-backed so the realtime BR trail keeps its door across the ~1Hz cache rebuild
                 'tp_min': conf_config.tp_min,                            # May 7 Phase 2: early-arm zone check
                 'cached_ema5': pair_ema5s.get(order.pair),

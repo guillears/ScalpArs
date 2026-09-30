@@ -127,7 +127,7 @@ def test_manual_fill_records_every_field_a_momentum_fill_records(monkeypatch):
     monkeypatch.setattr(mcap_service, "get", lambda p: (1.5e9, 88))
     for k, v in dict(_current_btc_adx=24.123456, _current_btc_adx_prev=23.9, _current_btc_rsi=57.26, _current_btc_rsi_prev=56.04,
                      _current_btc_rsi_prev6=54.0, _current_btc_atr_pct=0.18, _current_btc_rsi_1h=55.0, _current_btc_rsi_1h_prev=54.2,
-                     _btc_ema20_slope_pct=0.031, _current_btc_1h_slope=0.05, _current_btc_trend_gap_pct=0.12, _market_bull_pct=61.0,
+                     _btc_ema20_slope_pct=0.031, _btc_ema20_slope_pct_raw=0.031, _current_btc_1h_slope=0.05, _current_btc_trend_gap_pct=0.12, _market_bull_pct=61.0,
                      _market_bear_pct=22.0, _global_volume_ratio=1.123456, _current_btc_ema13=100.0, _current_btc_price=100.3,
                      _current_btc_regime="BULLISH", _current_btc_ema50_100_gap_pct=0.2, _current_eth_5m_ret1_pct=0.05,
                      _current_btc_1d_ret_pct=1.1, _zone_stamps_at=time.time()).items():
@@ -163,22 +163,17 @@ def test_manual_fill_records_every_field_a_momentum_fill_records(monkeypatch):
     assert st2.get('entry_rsi') is None and st2['entry_btc_adx'] == 24.1235 and st2.get('entry_pair_rank') is None
 
 
-def test_manual_exits_never_see_the_entry_atr():
-    """Recording the ATR must not change a manual trade's exits: the ATR / quiet-pair stop widening and the ATR trails read
-    it, and at 30–50× a widened stop could sit past the leverage-aware floor."""
+def test_manual_stops_never_see_the_entry_atr():
+    """Recording the ATR must not WIDEN a manual trade's stop (ATR stop widening / quiet-pair stop): at 30–50× a widened
+    stop could sit past the leverage-aware floor. The profit side (runner floor, trails) reads the real ATR — hiding it there
+    disabled the armed-runner lock (🩹 Sep-30, see test_manual_runner_lock.py)."""
     assert T.exit_entry_atr_pct("MANUAL", 0.9) is None
     assert T.exit_entry_atr_pct("MOMENTUM", 0.9) == 0.9 and T.exit_entry_atr_pct(None, 0.9) == 0.9 and T.exit_entry_atr_pct("SPIKE_FADE", 1.2) == 1.2
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    i = eng.index("    async def update_orders_cache"); j = eng.index("\n    async def ", i + 10) if "\n    async def " in eng[i + 10:] else len(eng)
-    assert "'entry_atr_pct': exit_entry_atr_pct(order.entry_strategy, getattr(order, 'entry_atr_pct', None))" in eng[i:j]   # realtime path
-    i = eng.index("    async def update_open_positions"); j = eng.index("\n    async def ", i + 10)
-    body = eng[i:j]
-    assert body.count("exit_entry_atr_pct(order.entry_strategy, getattr(order, 'entry_atr_pct', None))") == 2           # candle trail + quiet SL
-    # the two remaining raw reads are strategy-scoped exits a MANUAL row never reaches (bull-run trail, spike backstop)
-    raw = [m.start() for m in re.finditer(r"getattr\(order, 'entry_atr_pct', None\)", body)]
-    scoped = [body[max(0, p - 400):p] for p in raw if "exit_entry_atr_pct(" not in body[p - 60:p]]
-    assert len(scoped) == 2 and "_bullrun_exit_for" in body[body.index("_bullrun_exit_for(_br_pnl"):body.index("_bullrun_exit_for(_br_pnl") + 200]
-
+    i = eng.index("    async def update_open_positions"); j = eng.index("\n    async def ", i + 10); body = eng[i:j]
+    assert "sl_atr_pct=exit_entry_atr_pct(order.entry_strategy, getattr(order, 'entry_atr_pct', None))" in body          # candle stop
+    assert "quiet_sl_pct=_quiet_sl_for(order.direction, order.entry_strategy,\n                                           exit_entry_atr_pct(" in body
+    assert "_entry_atr_pct = order_info.get('sl_entry_atr_pct', order_info.get('entry_atr_pct'))" in eng                  # realtime stop
 
 def test_every_pair_stamp_is_an_open_position_parameter():
     """A key added to pair_entry_stamps but not to open_position's signature would TypeError every scan open."""
@@ -231,4 +226,49 @@ def test_one_hung_read_does_not_cancel_the_others(monkeypatch):
     eng_src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     i = eng_src.index("    async def open_manual_position"); j = eng_src.index("\n    async def ", i + 10); body = eng_src[i:j]
     k = body.index("_st = await self._manual_entry_stamps(")
-    assert "manual positions cap reached while this entry was being prepared" in body[k:] and "exceeds the available balance after" in body[k:]
+    assert "manual positions cap reached while this entry was being prepared" in body[k:] and "exceeds the available balance" in body[k:]
+
+
+def test_manual_balance_check_counts_the_fee_the_bnb_reserve_cannot_pay():
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    i = eng.index("    async def open_manual_position"); body = eng[i:eng.index("\n    async def ", i + 10)]
+    assert "_fee_from_usdt = max(0.0, entry_fee - max(0.0, float(await self._recalculate_paper_bnb(db))))" in body
+    assert "if investment + _fee_from_usdt > _avail_final:" in body
+
+
+def test_manual_stamps_prefer_the_scans_raw_btc_slope():
+    th = T.config.trading_config.thresholds
+    g = dict(_btc_ema20_slope_pct=0.0, _btc_ema20_slope_pct_raw=None, _current_btc_adx=24.0, _current_btc_rsi=55.0)
+    assert T.market_entry_stamps(g, "LONG", None, False, th)['entry_btc_ema20_slope'] is None      # unknown stays unknown
+    g["_btc_ema20_slope_pct_raw"] = 0.05
+    assert T.market_entry_stamps(g, "LONG", None, False, th)['entry_btc_ema20_slope'] == 0.05
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert "_btc_ema20_slope_pct_raw = btc_ema20_slope_pct" in eng
+
+
+def test_manual_fee_aware_balance_refuses_only_when_the_fee_overflows(monkeypatch):
+    """Behavioural: $1,000 × 40 = $40k notional → ~$20 taker fee. Free USDT $1,010: fits when BNB pays the fee, refused when
+    the BNB reserve is empty (the fee would come out of USDT)."""
+    e = T.TradingEngine.__new__(T.TradingEngine); e.is_paper_mode = True
+    async def bal(db): return 1_010.0
+    e.get_available_balance = bal
+    class _Res:
+        def scalar(self): return 0
+    class _DB:
+        async def execute(self, *a, **k): return _Res()
+    class Past(Exception): pass
+    async def boom(*a, **k): raise Past()
+    monkeypatch.setattr(T.binance_service, "get_current_price", boom)
+    monkeypatch.setattr(T.websocket_tracker, "get_tracker", lambda p: None)
+    def attempt(bnb):
+        async def _bnb(db): return bnb
+        e._recalculate_paper_bnb = _bnb
+        try:
+            asyncio.run(e.open_manual_position(_DB(), pair="QNTUSDT", direction="LONG", investment=1000, leverage=40,
+                                               exit_mode="FIXED", sl_pct=1.0))
+        except ValueError as err:
+            return str(err)
+        except Past:
+            return "passed the balance check"
+    assert attempt(100.0) == "passed the balance check"
+    r = attempt(0.0); assert "fee not covered by BNB" in r and "exceeds available balance" in r

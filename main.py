@@ -1258,6 +1258,11 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
             "ema20": round(p.ema20, 2) if p.ema20 else None,
             "gap": gap,
             "gap_5_8": gap_5_8,
+            # Sep-30: the EMA stack judged on the RAW EMAs (the ema5..ema20 fields above are rounded to 2 decimals, so on pairs
+            # priced under ~$1 a real stack could tie and read as unstacked in the table)
+            "ema_stack": ("BULL" if (p.ema5 and p.ema8 and p.ema13 and p.ema20 and p.ema5 > p.ema8 > p.ema13 > p.ema20)
+                          else "BEAR" if (p.ema5 and p.ema8 and p.ema13 and p.ema20 and p.ema5 < p.ema8 < p.ema13 < p.ema20)
+                          else None),
             "rsi": round(p.rsi, 2) if p.rsi else None,
             "adx": round(p.adx, 2) if p.adx else None,
             "signal": p.signal,
@@ -1986,66 +1991,81 @@ async def recover_positions(db: AsyncSession = Depends(get_db)):
     if not positions:
         return {"recovered": 0, "positions": []}
 
-    recovered = []
+    # 🔒 Sep-30: each candidate is checked and imported under the pair's open lock (the bot's open holds it from its duplicate
+    # check to its insert — a position the bot is placing right now is NOT an orphan), DB first, then a FRESH exchange read
+    # (the list above can be stale: a position closed since then must not be imported). One commit per pair.
+    recovered, skipped = [], []
     for pos in positions:
         pair = pos['symbol'].replace('/USDT:USDT', 'USDT')
-        existing = await db.execute(
-            select(Order).where(
-                and_(Order.pair == pair, Order.status == "OPEN", Order.is_paper == False)
-            )
-        )
-        if existing.scalar_one_or_none():
-            continue
+        try:
+            async with trading_engine._pair_open_guard(pair, 20.0):
+                existing = await db.execute(
+                    select(func.count(Order.id)).where(
+                        and_(Order.pair == pair, Order.status == "OPEN", Order.is_paper == False)
+                    )
+                )
+                if (existing.scalar() or 0) > 0:
+                    continue
+                fresh = await binance_service.get_open_positions()
+                if fresh is None:
+                    skipped.append({"pair": pair, "reason": "exchange read failed"}); continue
+                live = next((p for p in fresh if p.get('symbol') == pos['symbol'] and p.get('side') == pos['side']   # hedge mode: same leg
+                             and abs(float(p.get('contracts') or 0)) > 0), None)
+                if live is None:
+                    skipped.append({"pair": pair, "reason": "no longer open on the exchange"}); continue
+                investment = live['margin']
+                leverage = live['leverage']
+                notional = live['notional']
+                quantity = live['contracts']
+                entry_price = live['entry_price']
+                direction = live['side']
 
-        investment = pos['margin']
-        leverage = pos['leverage']
-        notional = pos['notional']
-        quantity = pos['contracts']
-        entry_price = pos['entry_price']
-        direction = pos['side']
+                order = Order(
+                    pair=pair,
+                    direction=direction,
+                    status="OPEN",
+                    entry_price=entry_price,
+                    current_price=live['mark_price'],
+                    investment=abs(investment),
+                    leverage=leverage,
+                    notional_value=abs(notional),
+                    quantity=quantity,
+                    confidence="RECOVERED",
+                    entry_fee=0.0,
+                    entry_order_type="TAKER",
+                    peak_pnl=0.0,
+                    trough_pnl=0.0,
+                    high_price_since_entry=entry_price if direction == "LONG" else None,
+                    low_price_since_entry=entry_price if direction == "SHORT" else None,
+                    is_paper=False,
+                    current_tp_level=1,
+                    dynamic_tp_target=0.0
+                )
+                db.add(order)
+                await db.flush()
+                db.add(Transaction(
+                    order_id=order.id,
+                    pair=pair,
+                    action=f"OPEN_{direction}",
+                    price=entry_price,
+                    quantity=quantity,
+                    investment=abs(investment),
+                    leverage=leverage,
+                    notional_value=abs(notional),
+                    fee=0.0,
+                    order_type="TAKER",
+                    is_paper=False
+                ))
+                await locked_commit(db)
+                recovered.append({"pair": pair, "direction": direction, "entry_price": entry_price, "quantity": quantity})
+        except Exception as e:   # lock wait (the bot is opening it), a failed commit, a bad row: skip THIS pair, keep going
+            try:
+                await db.rollback()   # never let a half-built row ride into the next pair's commit
+            except Exception:
+                pass
+            skipped.append({"pair": pair, "reason": f"{type(e).__name__}: {e}"})
 
-        order = Order(
-            pair=pair,
-            direction=direction,
-            status="OPEN",
-            entry_price=entry_price,
-            current_price=pos['mark_price'],
-            investment=abs(investment),
-            leverage=leverage,
-            notional_value=abs(notional),
-            quantity=quantity,
-            confidence="RECOVERED",
-            entry_fee=0.0,
-            entry_order_type="TAKER",
-            peak_pnl=0.0,
-            trough_pnl=0.0,
-            high_price_since_entry=entry_price if direction == "LONG" else None,
-            low_price_since_entry=entry_price if direction == "SHORT" else None,
-            is_paper=False,
-            current_tp_level=1,
-            dynamic_tp_target=0.0
-        )
-        db.add(order)
-        await db.flush()
-
-        transaction = Transaction(
-            order_id=order.id,
-            pair=pair,
-            action=f"OPEN_{direction}",
-            price=entry_price,
-            quantity=quantity,
-            investment=abs(investment),
-            leverage=leverage,
-            notional_value=abs(notional),
-            fee=0.0,
-            order_type="TAKER",
-            is_paper=False
-        )
-        db.add(transaction)
-        recovered.append({"pair": pair, "direction": direction, "entry_price": entry_price, "quantity": quantity})
-
-    await locked_commit(db)
-    return {"recovered": len(recovered), "positions": recovered}
+    return {"recovered": len(recovered), "positions": recovered, "skipped": skipped}
 
 
 async def _get_actual_fill_price(order) -> float:

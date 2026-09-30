@@ -542,7 +542,8 @@ _bear_last_fire: Dict[str, float] = {}   # pair -> epoch of last BEARRUN_SHORT f
 # fresh BTC 5m fetch every scan (services/surge.py) — only the "which bar already fired" memory lives here, backed by the DB.
 _surge_state: Dict[str, dict] = {"LONG": {}, "SHORT": {}}
 _surge_status: Dict[str, dict] = {"LONG": {}, "SHORT": {}}
-SURGE_COHORT_START = datetime(2026, 9, 30, 14, 0, 0)   # kill-bar cohort: SURGE fills opened from the ship onwards (naive UTC)
+SURGE_COHORT_START = datetime(2026, 9, 30, 15, 30, 0)  # kill-bar cohort (naive UTC): fills opened after the SURGE_SHORT exit fix deployed
+# (9d733e2 pushed 15:09 UTC). The first trigger's 4 fills (14:50 UTC, EMA13 first-tick bug) are excluded — operator reset the batch.
 _breadth_n_bull: int = 0
 _breadth_n_bear: int = 0
 _breadth_n_neutral: int = 0

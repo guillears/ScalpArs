@@ -4698,3 +4698,5 @@ entry) — replay 57 fills: 8 EMA13 exits, none within 5 min (median 21 min), av
 evidence, replay selection bias → watch item, not a change.
 REVIEWS (SURGE_SHORT exit): deep review swept 1.69 M (peak, ATR) points vs the simulated bear_run_stop — 0 mismatches. Applied: ladder
 reason = HARD_TP_LADDER Ln (momentum parity, reports key on it) · ladder independent of the runner arm · missing ATR → surge_atr_min_pct.
+COHORT FLOOR (148, operator): the first trigger's 4 SURGE_SHORT fills (14:50 UTC: QNT/ENA/SOON/MOVR) ran the bugged momentum exit → EXCLUDED
+from every SURGE read (kill bar, keep bar, watches); operator reset the batch. SURGE_COHORT_START 14:00 → 15:30 UTC (after the 9d733e2 exit fix).

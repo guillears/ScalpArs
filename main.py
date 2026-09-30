@@ -21,7 +21,7 @@ from starlette.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import select, and_, func, desc, delete
+from sqlalchemy import select, and_, or_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit
@@ -1901,6 +1901,48 @@ async def export_orders_csv(db: AsyncSession = Depends(get_db)):
         },
     )
 
+
+
+@app.get("/api/decisions/export.csv")
+async def export_decisions_csv(days: int = 3, db: AsyncSession = Depends(get_db)):
+    """🔭 Sep-30 — "Download Decisions CSV": what the bot DECIDED, for the opportunity scout (scripts/opportunity_scout.py).
+    Rows: every fill (OPEN, with strategy), waiver (ADMIT) and lapsed maker entry (EXPIRED) from the decision journal, every
+    refusal (BLOCK) aggregated per 5 min × pair × direction × gate, plus one POSITION_OPEN row per position open RIGHT NOW (the
+    orders export carries closed trades only). Last `days` UTC days (1–7). Read-only; the orders export is unchanged.
+    Rows: OPEN/ADMIT/EXPIRED (journal lines) · BLOCK (per 5 min × pair × dir × gate; pair-less = MARKET) · SCAN (5-min heartbeat =
+    journal coverage) · POSITION (every bot + MANUAL position overlapping the window, open or closed, with `closed`)."""
+    import asyncio as _aio
+    import csv
+    import io
+    from services import decision_journal as _dj
+    try:
+        _dj.flush()                                                    # the current scan's buffered events (same thread as note())
+    except Exception:
+        pass
+    days = max(1, min(7, int(days or 3)))
+    rows = await _aio.to_thread(_dj.export_rows, days)                 # file reads off the event loop
+    try:   # every position (bot + MANUAL) that overlapped the window, with its close time — the journal has no CLOSE event
+        await trading_engine.initialize(db)
+        _since = datetime.utcnow() - timedelta(days=days, hours=24)
+        _pos = (await db.execute(select(Order).where(and_(
+            Order.status.in_(["OPEN", "CLOSED"]), Order.is_paper == trading_engine.is_paper_mode,
+            or_(Order.status == "OPEN", Order.closed_at >= _since))).order_by(Order.opened_at))).scalars().all()
+        for o in _pos:
+            rows.append(dict(t=o.opened_at.strftime('%Y-%m-%dT%H:%M:%S') if o.opened_at else None, e="POSITION", pair=o.pair,
+                             dir=o.direction, strategy=o.entry_strategy or "MOMENTUM", price=o.entry_price,
+                             closed=(o.closed_at.strftime('%Y-%m-%dT%H:%M:%S') if (o.status == "CLOSED" and o.closed_at) else None)))
+    except Exception as _e:
+        logger.warning(f"[DECISIONS_EXPORT] positions skipped: {_e}")
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(_dj.EXPORT_COLS)
+    for r in rows:
+        w.writerow(["" if r.get(c) is None else r.get(c) for c in _dj.EXPORT_COLS])
+    mode = "paper" if trading_engine.is_paper_mode else "live"
+    filename = f"scalpars_decisions_{mode}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                                      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
 
 # Jul 30 — /api/phantom-flips/export.csv REMOVED (phantom tracker retired; last report
 # archived in reports/). The phantom_flips table itself is untouched (frozen history).

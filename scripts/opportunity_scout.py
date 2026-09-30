@@ -21,7 +21,13 @@ OUTCOMES (from the first bar's close; BTC_MOVE / BREADTH_BURST = median over the
   trailing-stop sleeve earns / must survive) · rel60 = pair f60 minus BTC's (pair events) · tbs = +1×ATR before −1×ATR within
   120 min (pair events; same-bar = stop first) · stack = the pair's EMA5/8/13/20 order at detection (UP / DOWN / NONE — a missed
   TREND with an aligned stack means the bot's signal was likely live and something blocked it).
-BOT CHECK (all ~/Downloads/scalpars_orders_*.csv merged; coverage = union of [first opened_at, file time] per export; recomputed for
+BOT CHECK — preferred source: ~/Downloads/scalpars_decisions_paper_*.csv ("Download Decisions CSV" = the bot's decision journal:
+  every fill with its strategy, every refusal per 5 min × pair × gate, 5-min scan heartbeats, every position with open/close
+  times). When its heartbeats cover the window, fills + positions held at the move's start come from it (MANUAL split apart) and a
+  WHY column names the gates that refused that pair/direction while the move ran (top 3), or says "not in the bot's universe" /
+  "maker entry expired" / "no gate fired (no setup)"; BOOK FULL = a BOOK_FULL / NO_BALANCE refusal or ≥ max_open bot positions.
+  Fallback (windows no decisions export covers):
+  (all ~/Downloads/scalpars_orders_*.csv merged; coverage = union of [first opened_at, file time] per export; recomputed for
   EVERY stored row each run so late exports fill old rows): fills of that pair (pair events) or of any pair (market events) in the
   event direction, opened in [start of the measured move, last cluster bar + 60 min] OR already open at its start; MANUAL listed
   apart; book = bot positions open at the event (≥ max_open_positions → "none (BOOK FULL)" — a capacity miss, not a signal miss).
@@ -224,6 +230,62 @@ def load_exports():
     return o, cov
 
 
+CAPACITY_GATES = {"BOOK_FULL", "NO_BALANCE"}
+HOUSEKEEPING = ("BOOK_CHANGED", "REDEPLOY_OPEN", "OPEN_FAILED", "BACKSTOP_PLACE_FAILED", "OPEN_FILTERED")
+
+
+def load_decisions():
+    """Decisions exports merged → (fills, blocks, positions, expired, coverage). Coverage = the 5-min SCAN heartbeats (gaps
+    > 10 min split it: a missing journal day / downtime is 'unknown', never 'none'); files without heartbeats (first export
+    version) fall back to [first row, file time]. Newer exports win duplicates."""
+    frames = []
+    to_ms = lambda s: (pd.to_datetime(s, utc=True, format="ISO8601", errors="coerce") - pd.Timestamp(0, tz="UTC")) // pd.Timedelta(milliseconds=1)
+    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv")):
+        try:
+            d = pd.read_csv(f, low_memory=False)
+            if not len(d) or not {"t", "e", "pair"} <= set(d.columns):
+                continue
+            d["ms"] = to_ms(d["t"]); d = d[d.ms.notna()].copy()
+            d["closed_ms"] = to_ms(d["closed"]) if "closed" in d else np.nan
+            d["exp_ms"] = int(os.path.getmtime(f) * 1000)
+            frames.append(d)
+        except Exception as e:
+            log(f"decisions export skipped ({os.path.basename(f)}): {e}")
+    empty = pd.DataFrame()
+    if not frames:
+        return empty, empty, empty, empty, []
+    a = pd.concat(frames, ignore_index=True).sort_values("exp_ms")      # newest export last → keep="last" wins
+    fills = a[a.e == "OPEN"].drop_duplicates(["t", "pair", "dir"], keep="last")
+    blocks = a[a.e == "BLOCK"].drop_duplicates(["t", "pair", "dir", "gate"], keep="last")
+    blocks = blocks[~blocks.gate.astype(str).str.startswith(HOUSEKEEPING)]
+    pos = a[a.e.isin(["POSITION", "POSITION_OPEN"])].drop_duplicates(["t", "pair", "dir"], keep="last")
+    expired = a[a.e == "EXPIRED"]
+    beats = sorted(set(a[a.e == "SCAN"].ms.astype("int64")))
+    cov = []
+    if beats:
+        for t in beats:
+            if cov and t - cov[-1][1] <= 10 * MIN:
+                cov[-1][1] = t + BAR
+            else:
+                cov.append([t, t + BAR])
+    else:                                                            # first export version: no heartbeats
+        for exp, g in a.groupby("exp_ms"):
+            j = g[~g.e.isin(["POSITION", "POSITION_OPEN"])]
+            if len(j):
+                cov.append([int(j.ms.min()), int(exp)])
+        cov.sort()
+    return fills, blocks, pos, expired, cov
+
+
+def _held_at(pos, t):
+    """positions (from the decisions export) open at time t: opened before t and closed after it (or still open at export)."""
+    if pos is None or not len(pos):
+        return pos
+    closed = pos.closed_ms
+    still_open = closed.isna() & (t <= pos.exp_ms)
+    return pos[(pos.ms < t) & ((closed > t) | still_open)]
+
+
 # ─────────────────────────────── detection ───────────────────────────────
 def ema_stack(c):
     e = [c.ewm(span=n, adjust=False).mean().iloc[-1] for n in (5, 8, 13, 20)]
@@ -390,14 +452,55 @@ def covered(cov, a, b):
     return any(s <= a and b <= e for s, e in cov)
 
 
-def bot_check(row, orders, cov, max_open):
-    """(bot, manual, book) for one stored row — recomputed every run so late exports fill old rows."""
+def bot_check(row, orders, cov, max_open, dec=None):
+    """(bot, manual, book, why) for one stored row — recomputed every run so late exports fill old rows."""
     st_, en_ = row.get("start_ts"), row.get("end_ts")
     if st_ is None or en_ is None or pd.isna(st_) or pd.isna(en_):
-        return "unknown", "", None
+        return "unknown", "", None, ""
     a = int(st_); b = int(en_) + BAR + 60 * MIN                        # start_ts = the close the measured move starts from
+    want = "LONG" if row["side"] == "UP" else "SHORT"
+    pair_ev = row["pair"] not in ("BTCUSDT", "UNIVERSE")
+    if dec is not None and dec[4] and covered(dec[4], a, b):          # ── the decision journal covers this window (heartbeats)
+        fills, blocks, pos, expired, _ = dec
+        dirmask = lambda df: df.dir.astype(str).str.upper().isin([want, "ANY"])
+        g = fills[(fills.ms >= a) & (fills.ms <= b) & (fills.dir.astype(str).str.upper() == want)] if len(fills) else fills
+        held = _held_at(pos, a)
+        if len(held):
+            held = held[held.dir.astype(str).str.upper() == want]
+        if pair_ev:
+            g = g[g.pair == row["pair"]] if len(g) else g
+            held = held[held.pair == row["pair"]] if len(held) else held
+        strat = ([str(x) for x in g.strategy.fillna("MOMENTUM")] if len(g) else []) + \
+                ([str(x) for x in held.strategy.fillna("MOMENTUM")] if len(held) else [])
+        man = [x for x in strat if x == "MANUAL"]; botn = [x for x in strat if x != "MANUAL"]
+        bot = ", ".join(f"{k}×{v}" for k, v in pd.Series(botn).value_counts().items()) if botn else "none"
+        t_ev = int(row["bar_ts"]) + BAR
+        book_now = _held_at(pos, t_ev)
+        book = int((book_now.strategy.astype(str) != "MANUAL").sum()) if len(book_now) else 0
+        why = ""
+        if bot == "none":
+            end_close = int(en_) + BAR                                  # refusals while the move ran, not after it
+            bl = blocks[(blocks.ms >= a - BAR) & (blocks.ms <= end_close) & dirmask(blocks)] if len(blocks) else blocks
+            if len(bl):
+                bl = bl[bl.pair == row["pair"]] if pair_ev else bl
+            n_all = pd.to_numeric(bl.n, errors="coerce").fillna(1) if len(bl) else pd.Series(dtype=float)
+            cap = bl.gate.astype(str).isin(CAPACITY_GATES) if len(bl) else pd.Series(dtype=bool)
+            if book >= max_open or (len(bl) and n_all[cap].sum() > 0):
+                bot = "none (BOOK FULL)"
+            if len(bl):
+                top = bl.assign(n=n_all).groupby("gate").n.sum().sort_values(ascending=False).head(3)
+                why = ", ".join(f"{k}×{int(v)}" for k, v in top.items())
+            elif str(row.get("in_universe")) == "False":
+                why = "not in the bot's universe"
+            elif len(expired) and len(expired[(expired.ms >= a) & (expired.ms <= b) & ((expired.pair == row["pair"]) | (not pair_ev))]):
+                why = "maker entry expired"
+            else:
+                why = "no gate fired (no setup)"
+            if bot == "none (BOOK FULL)" and not why.startswith("book"):
+                why = f"book full ({book} open) · " + why if book >= max_open else "capacity · " + why
+        return bot, (f"manual×{len(man)}" if man else ""), book, why
     if orders is None or not covered(cov, a, b):
-        return "unknown", "", None
+        return "unknown", "", None, ""
     want = "LONG" if row["side"] == "UP" else "SHORT"
     g = orders[((orders.opened_ms >= a) & (orders.opened_ms <= b)) | ((orders.opened_ms < a) & (orders.closed_ms > a))]
     if row["pair"] not in ("BTCUSDT", "UNIVERSE"):
@@ -409,7 +512,7 @@ def bot_check(row, orders, cov, max_open):
     names = ", ".join(f"{s}×{n}" for s, n in bot.entry_strategy.fillna("MOMENTUM").astype(str).value_counts().items()) or "none"
     if names == "none" and book >= max_open:
         names = "none (BOOK FULL)"
-    return names, (f"manual×{len(man)}" if len(man) else ""), book
+    return names, (f"manual×{len(man)}" if len(man) else ""), book, ""
 
 
 def missed_flag(r):
@@ -598,6 +701,7 @@ def run():
     log(f"scan {len(scan)} eligible pairs · bot universe now {len(in_now)} · fetched {got} · #{limit} cutoff ${cutoff/1e6:.0f}M")
     top20 = in_now[:20]
     orders, cov = load_exports()
+    dec = load_decisions()
     old = pd.read_csv(EVENTS_CSV) if os.path.exists(EVENTS_CSV) else pd.DataFrame()
     if len(old) and "start_ts" not in old.columns:                     # v1-format file: set aside, start fresh (review I3)
         os.replace(EVENTS_CSV, EVENTS_CSV + ".v1_bak"); old = pd.DataFrame()
@@ -638,8 +742,8 @@ def run():
     else:
         allv = new if len(new) else old
     if len(allv):
-        chk = [bot_check(r, orders, cov, max_open) for r in allv.to_dict("records")]
-        allv["bot"] = [c[0] for c in chk]; allv["manual"] = [c[1] for c in chk]; allv["book"] = [c[2] for c in chk]
+        chk = [bot_check(r, orders, cov, max_open, dec) for r in allv.to_dict("records")]
+        allv["bot"] = [c[0] for c in chk]; allv["manual"] = [c[1] for c in chk]; allv["book"] = [c[2] for c in chk]; allv["why"] = [c[3] for c in chk]
         allv["missed"] = [missed_flag(r) for r in allv.to_dict("records")]
         allv = dedupe_flags(allv)
         atomic_write(EVENTS_CSV, allv.sort_values("bar_ts").to_csv(index=False))
@@ -648,8 +752,8 @@ def run():
         mold["start_ts"] = mold["start_ts"].astype("int64") + BAR; mold["q24"] = None
     mv = merge_movers(mold, top_movers({p: d for p, d in alts.items() if p in in_now}, now_ms))
     if len(mv):
-        chk = [bot_check(dict(r, bar_ts=r["start_ts"]), orders, cov, max_open) for r in mv.to_dict("records")]
-        mv["bot"] = [c[0] for c in chk]; mv["manual"] = [c[1] for c in chk]
+        chk = [bot_check(dict(r, bar_ts=r["start_ts"]), orders, cov, max_open, dec) for r in mv.to_dict("records")]
+        mv["bot"] = [c[0] for c in chk]; mv["manual"] = [c[1] for c in chk]; mv["why"] = [c[3] for c in chk]
         mv["start_utc"] = pd.to_datetime(mv.start_ts.astype("int64"), unit="ms").dt.strftime("%Y-%m-%d %H:%M")
         mv["end_utc"] = pd.to_datetime(mv.end_ts.astype("int64") + BAR, unit="ms").dt.strftime("%Y-%m-%d %H:%M")
         atomic_write(MOVERS_CSV, mv.sort_values("start_ts").to_csv(index=False))
@@ -658,6 +762,8 @@ def run():
     rep = allv[allv.bar_ts >= now_ms - 24 * 3600_000].copy() if len(allv) else allv
     fmt_t = lambda ms: datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%m-%d %H:%M")
     covtxt = ("order exports cover " + " · ".join(f"{fmt_t(s)}→{fmt_t(e)}" for s, e in cov[-3:]) + " UTC") if cov else "no order export found in ~/Downloads"
+    covtxt = (("decision journal covers " + " · ".join(f"{fmt_t(s)}→{fmt_t(e)}" for s, e in dec[4][-3:]) + " UTC (preferred) · ") if dec[4]
+              else "no Decisions CSV in ~/Downloads (use 'Download Decisions CSV' for the WHY column) · ") + covtxt
     L = [f"# 🔭 Opportunity scout — {datetime.fromtimestamp(now_ms/1000, timezone.utc):%Y-%m-%d %H:%M} UTC (last 24 h)", "",
          "Read-only. Candidates to backtest, never trade signals. Times = the event's first bar close (UTC). Outcomes in the event "
          "direction from that close; MFE/MAE = best / worst excursion (what a trailing exit could capture / had to survive).", "",
@@ -669,7 +775,7 @@ def run():
         L.append("No events in the last 24 h.")
     else:
         L += ["## Events (last 24 h)", "",
-              "| Time UTC | Type | Pair | Dir | Move | Note | Stack | f60 | MFE60 / MAE60 | f120 | rel60 | 2×ATR/1×ATR | Bot | Book | Manual | ⭐ |",
+              "| Time UTC | Type | Pair | Dir | Move | Note | Stack | f60 | MFE60 / MAE60 | f120 | rel60 | 2×ATR/1×ATR | Bot | Why (gates) | Manual | ⭐ |",
               "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for _, e in rep.sort_values("bar_ts").iterrows():
             mvv = e.get("move_first") if pd.notna(e.get("move_first")) else e.get("move_max")
@@ -689,7 +795,7 @@ def run():
             stack = e.get("stack") if isinstance(e.get("stack"), str) else ""
             L.append(f"| {e['time_utc'][5:]} | {e['type']} | {e['pair']} | {e['side']} | {mvtxt} | {' · '.join(note)} | {stack} | "
                      f"{fmt(e.get('f60'))} | {fmt(e.get('mfe60'))} / {fmt(e.get('mae60'))} | {fmt(e.get('f120'))} | {fmt(e.get('rel60'))} | "
-                     f"{e.get('tbs2') if isinstance(e.get('tbs2'), str) else ''} | {e['bot']} | {'' if pd.isna(e.get('book')) else int(e['book'])} | {e.get('manual') if isinstance(e.get('manual'), str) else ''} | "
+                     f"{e.get('tbs2') if isinstance(e.get('tbs2'), str) else ''} | {e['bot']} | {e.get('why') if isinstance(e.get('why'), str) else ''} | {e.get('manual') if isinstance(e.get('manual'), str) else ''} | "
                      f"{'⭐ MISSED?' if e['missed'] else ''} |")
         m = rep[rep.missed]
         L += ["", f"**{len(rep)} events · {int(rep.missed.sum())} ⭐ MISSED?** (bot did nothing, book not full, pair in the bot's universe at the "
@@ -701,10 +807,10 @@ def run():
     m24 = mv[mv.end_ts.astype("int64") >= now_ms - 24 * 3600_000].copy() if len(mv) else mv
     if len(m24):
         m24["abs"] = m24.move_4h.astype(float).abs()
-        L += ["| Pair | Dir | 4 h move | From → to (UTC) | Bot | Manual |", "|---|---|---|---|---|---|"]
+        L += ["| Pair | Dir | 4 h move | From → to (UTC) | Bot | Why (gates) | Manual |", "|---|---|---|---|---|---|---|"]
         for r in m24.sort_values("abs", ascending=False).head(10).itertuples():
             L.append(f"| {r.pair} | {r.side} | {float(r.move_4h):+.2f}% | {r.start_utc[5:]} → {r.end_utc[11:]} | {r.bot} | "
-                     f"{r.manual if isinstance(r.manual, str) else ''} |")
+                     f"{r.why if isinstance(getattr(r, 'why', None), str) else ''} | {r.manual if isinstance(getattr(r, 'manual', None), str) else ''} |")
     else:
         L.append("No data.")
     txt = "\n".join(L) + "\n"

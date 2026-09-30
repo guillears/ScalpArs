@@ -7658,6 +7658,10 @@ class TradingEngine:
             # Jun 18: the REAL cap-cost — a fully-qualified signal we couldn't open because full.
             try: self._cap_skip_counts["flip" if flip_source else "normal"] += 1
             except Exception: pass
+            try:   # 🔭 Sep-30: journal the capacity refusal (file-only — the scout tells 'book full' from 'no signal'; no counter)
+                _djournal.note('BLOCK', gate='BOOK_FULL', dir=direction, pair=pair, room=False)
+            except Exception:
+                pass
             return None
         # Jun 2: this open sits in the "redeploy band" if it's beyond the normal
         # max_open_positions — only reachable because redeploy raised the ceiling.

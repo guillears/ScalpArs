@@ -4738,3 +4738,13 @@ Question: capital idle (65 % of the time only 1 position open; 4 never reached).
   → today's 4-slot book already sits at the ⅓-flat risk budget (the 2× cells deploy the "idle" capital). 3 as-is = coin-flip 50 % DD
   under the haircut → breaks the ruin constraint. NOT shipped; operator informed. Lever for more deployment = more QUALIFIED signals
   (frequency), not bigger slices.
+
+## 2026-09-30 (150) - 🔭 Opportunity scout + "Download Decisions CSV" (tooling; trading unchanged)
+Operator: "monitor to detect things we are not seeing … more frequency, don't lose opportunities". Hourly READ-ONLY scout
+(scripts/opportunity_scout.py, local scheduled task) logs BTC moves / breadth bursts / alt spikes / TREND grinds in the bot's own
+universe (membership judged at event time), their trade-like outcomes (MFE/MAE, 2×ATR-before-1×ATR, vs BTC, EMA stack) and whether
+the bot traded them; evidence per bucket needs ≥20 events on ≥8 days beating a 0.15 % cost (exact t, Bonferroni 24 tests), then a
+frozen confirmation on 8 fresh days (null sim ≈0.5 % false candidates). Bot change (file/export only): GET /api/decisions/export.csv
++ UI button — the decision journal's fills, refusals per 5 min × pair × gate, 5-min scan heartbeats and every position with open/close
+times; the engine now journals a BOOK_FULL line at the max-open cap skip (no counter, no trading change). The scout's WHY column
+names the gates that refused a missed move. Orders export deliberately unchanged (older scripts read it unfiltered).

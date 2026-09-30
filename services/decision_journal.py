@@ -155,3 +155,55 @@ def _rollover(d, today):
         except Exception as e:
             logger.warning(f"[DECISION_JOURNAL] rollover of {name} failed ({e}) — file left as is, trading unaffected")
             continue
+
+
+EXPORT_COLS = ("t", "e", "pair", "dir", "gate", "n", "no_room", "strategy", "price", "conf", "cell", "via", "reason", "closed")
+
+
+def export_rows(days=3, now=None, directory=None):
+    """🔭 Sep-30 — the journal as rows for the "Download Decisions CSV" export (read by scripts/opportunity_scout.py).
+    Last `days` UTC days (1..7). OPEN / ADMIT / EXPIRED kept one per line; BLOCK lines AGGREGATED per 5-minute bucket ×
+    pair × direction × gate (`n` = lines, `no_room` = how many had no free slot; a BLOCK with no pair = pair "MARKET");
+    SCAN lines become one heartbeat row per 5-minute bucket (`n` = scans) so a reader knows which minutes the journal really
+    covers (a missing day / downtime is a gap, not "no action"). Never raises: unreadable files / lines are skipped."""
+    out, agg, beats = [], {}, {}
+    try:
+        days = max(1, min(7, int(days or 3)))
+        now = now or datetime.utcnow()
+        d = directory or _dir()
+        wanted = {(now - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days)}
+        names = sorted(n for n in os.listdir(d) if n.startswith('decisions-') and n[10:20] in wanted)
+    except Exception:
+        return out
+    for name in names:
+        path = os.path.join(d, name)
+        try:
+            opener = gzip.open if name.endswith('.gz') else open
+            with opener(path, 'rt', encoding='utf-8', errors='replace') as f:
+                for line in f:
+                    try:                                              # one bad line never skips the rest of the file
+                        r = json.loads(line)
+                        ev = r.get('e')
+                        if ev in ('BLOCK', 'SCAN'):
+                            t = str(r.get('t', ''))
+                            bucket = f"{t[:14]}{int(t[14:16]) // 5 * 5:02d}:00"
+                            if ev == 'SCAN':
+                                beats[bucket] = beats.get(bucket, 0) + 1
+                                continue
+                            key = (bucket, r.get('pair') or 'MARKET', r.get('dir'), r.get('gate'))
+                            a = agg.setdefault(key, [0, 0])
+                            a[0] += 1
+                            if r.get('room') is False:
+                                a[1] += 1
+                        elif ev in ('OPEN', 'ADMIT', 'EXPIRED'):
+                            out.append({k: r.get(k) for k in EXPORT_COLS if k != 'e'} | {'e': ev})
+                    except Exception:
+                        continue
+        except Exception:
+            continue
+    for (bucket, pair, dr, gate), (n, noroom) in agg.items():
+        out.append(dict(t=bucket, e='BLOCK', pair=pair, dir=dr, gate=gate, n=n, no_room=noroom))
+    for bucket, n in beats.items():
+        out.append(dict(t=bucket, e='SCAN', n=n))
+    out.sort(key=lambda r: str(r.get('t') or ''))
+    return out

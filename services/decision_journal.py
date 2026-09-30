@@ -9,7 +9,10 @@ Design constraints (this bot has had SQLite write-lock incidents — the journal
   * append-only JSONL files, one per UTC day: <dir>/decisions-YYYY-MM-DD.jsonl
     dir = /opt/scalpars-data/journal on the server (survives deploys), ./journal locally
   * events are BUFFERED in memory and written once per scan (flush at the next SCAN header, or when the
-    buffer reaches _MAX_BUFFER) — a handful of small writes per minute
+    buffer reaches _MAX_BUFFER) — a handful of small writes per minute. Sep-30 (4 SURGE fills lost to a deploy restart
+    seconds after they filled): fills and lapsed entries (IMMEDIATE) are written at once, and the buffer is flushed on a
+    graceful shutdown (app lifespan + atexit) — a hard kill (SIGKILL after a stop timeout) can still lose the last scan's
+    refusal lines, never a fill
   * every failure is swallowed: the journal can never raise into the trading path
   * finished days stay PLAIN .jsonl (Sep-25: the EB log bundle silently skips .gz files in this folder, so the
     gzipped days 18-24 Sep were unreachable); legacy .gz days are decompressed back to .jsonl once; files older
@@ -20,6 +23,7 @@ Design constraints (this bot has had SQLite write-lock incidents — the journal
 Events: SCAN (BTC/market state + macro vetoes + monitor), BLOCK (gate + pair + the pair's indicator
 snapshot), ADMIT (a gate waived, e.g. CROSS_OB_OPEN), OPEN (a fill), EXPIRED (maker window lapsed).
 """
+import atexit
 import gzip
 import json
 import logging
@@ -81,6 +85,10 @@ def snapshot(indicators):
         return None
 
 
+IMMEDIATE = ('OPEN', 'EXPIRED')   # rare + decisive for "did the bot trade?" → never left in the buffer (ADMIT can fire per pair per
+# scan while a waiver is active — it rides the scan flush, and the OPEN that follows an admit forces it out, in order)
+
+
 def note(event, **fields):
     """Buffer one event. Never raises."""
     try:
@@ -92,8 +100,8 @@ def note(event, **fields):
                 continue
             rec[k] = {str(kk): _num(vv) for kk, vv in v.items()} if isinstance(v, dict) else _num(v)
         _buffer.append(json.dumps(rec, separators=(',', ':'), ensure_ascii=False))
-        if len(_buffer) >= _MAX_BUFFER:
-            flush()
+        if len(_buffer) >= _MAX_BUFFER or event in IMMEDIATE:
+            flush()                                            # a fill must never wait in memory for the next scan
     except Exception:
         pass
 
@@ -102,7 +110,8 @@ def flush():
     """Write the buffer to today's file. Never raises; on failure the buffer is dropped (bounded memory)."""
     if not _buffer:
         return
-    lines, _buffer[:] = list(_buffer), []
+    lines = _buffer[:]
+    del _buffer[:len(lines)]                                   # a line appended meanwhile is kept, never dropped
     try:
         d = _dir()
         os.makedirs(d, exist_ok=True)
@@ -116,6 +125,9 @@ def flush():
         if time.time() - _state['last_error_at'] > 3600:      # at most one warning an hour
             _state['last_error_at'] = time.time()
             logger.warning(f"[DECISION_JOURNAL] write failed ({e}) — events dropped, trading unaffected")
+
+
+atexit.register(flush)          # interpreter exit (deploy restart, SIGTERM after uvicorn's graceful stop) → nothing left in memory
 
 
 def _rollover(d, today):

@@ -10,6 +10,7 @@ Rule: green suite required before every commit (alongside compile + JS checks).
 """
 import asyncio
 import sys, os
+os.environ.setdefault("SCALPARS_JOURNAL_OFF", "1")   # 📓 Sep-30: tests never write the local decision journal (journal tests opt back in)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest

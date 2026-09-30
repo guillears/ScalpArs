@@ -399,7 +399,14 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("[SHUTDOWN] Stopping background tasks...")
     _stop_terminal_heartbeat()
-    await stop_background_tasks()
+    try:
+        await stop_background_tasks()
+    finally:
+        try:   # 📓 Sep-30: write the decision journal's buffer (a deploy restart used to drop up to one scan of lines)
+            from services import decision_journal as _djs
+            _djs.flush()
+        except Exception:
+            pass
     
     # Save runtime before shutdown (so it persists across server restarts)
     async with AsyncSessionLocal() as db:
@@ -12105,7 +12112,7 @@ def _compute_multiplier_cell_performance(orders):
       ⚠ DRAG — materially below baseline (cell hurt under leverage)
       ✗ HARMFUL — total $ negative (cell broke under leverage; revert immediately)
     """
-    closed = [o for o in orders if (o.status == 'CLOSED')]
+    closed = [o for o in orders if (o.status == 'CLOSED') and (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']  # 🖐 operator (MANUAL) trades never grade a bot cell — baseline included
     if not closed:
         return {"longs": [], "shorts": [], "summary": {}}
 
@@ -12315,7 +12322,7 @@ def _compute_pattern_4cohort_coverage(orders):
     Each cohort row includes N, W, L, WR%, Total $, Avg $/tr, and
     direction split.
     """
-    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None]
+    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None and (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']  # 🖐 operator (MANUAL) trades never grade a bot pattern cohort
     if not closed:
         return {'cohorts': [], 'total': {}}
 
@@ -12432,7 +12439,7 @@ def _compute_pattern_combo_tracker(orders, tracker='C'):
     Falls back to post-hoc Pattern W computation for trades without
     populated w flags (mirrors _compute_pattern_4cohort_coverage logic).
     """
-    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None]
+    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None and (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']  # 🖐 operator (MANUAL) trades never grade a bot pattern cohort
     if not closed:
         return {'rows': [], 'tracker': tracker}
 
@@ -12605,7 +12612,7 @@ def _compute_pattern_cell_performance(orders):
 
     Returns dict with 'rules' (list of per-cell rows) and 'summary' (aggregate uplift).
     """
-    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None]
+    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None and (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']  # 🖐 operator (MANUAL) trades never grade a bot cell — baseline included
     if not closed:
         return {'rules': [], 'summary': {}}
 
@@ -12834,7 +12841,7 @@ def _compute_extension_multiplier_performance(orders):
 
     Returns dict with 'rules' (list of per-cell rows) and 'summary' (aggregate uplift).
     """
-    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None]
+    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None and (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']  # 🖐 operator (MANUAL) trades never grade a bot cell — baseline included
     if not closed:
         return {'rules': [], 'summary': {}}
 
@@ -13010,7 +13017,7 @@ def _compute_btc_1h_slope_btc_adx_multiplier_performance(orders):
     Sister to Extension Multiplier Performance. Groups closed trades by
     cell_multiplier_source starting with "BTC1H_" and computes per-cell verdicts.
     """
-    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None]
+    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None and (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']  # 🖐 operator (MANUAL) trades never grade a bot cell — baseline included
     if not closed:
         return {'rules': [], 'summary': {}}
 

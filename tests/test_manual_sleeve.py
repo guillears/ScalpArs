@@ -337,3 +337,27 @@ def test_manual_panel_always_starts_closed():
     assert 'id="manual-entry-chevron" class="text-gray-500">▸<' in ui
     assert "try { toggleManualPanel(true); } catch (e) {}" in ui
     assert "manualPanelCollapsed" not in ui
+
+
+def test_manual_trades_never_enter_a_bot_cell_baseline():
+    """Sep-30 (operator): the pattern-cell report graded bot cells against a per-direction baseline that counted closed MANUAL
+    trades (no cell tag → 'baseline'). Since Sep-29 the performance endpoint already passes MANUAL-free orders; this pins every
+    cell/pattern report to drop them itself too (defense in depth for any other caller)."""
+    import types
+    import main as M
+    class _O(types.SimpleNamespace):
+        def __getattr__(self, k):                                            # every other Order column reads as NULL
+            return None
+    mk = lambda pct, strat="MOMENTUM", src=None, mult=1.0: _O(
+        status="CLOSED", pnl=pct, pnl_percentage=pct, direction="LONG", entry_strategy=strat, pattern_cell_source=src,
+        cell_multiplier=mult, cell_lev_multiplier=1.0, investment=100.0, leverage=20.0, opened_at=None, closed_at=None)
+    base = [mk(0.2), mk(0.4), mk(0.3, src="W1")]
+    with_manual = base + [mk(11.0, strat="MANUAL")]
+    r1 = M._compute_pattern_cell_performance(base)
+    r2 = M._compute_pattern_cell_performance(with_manual)
+    b = lambda r: [x.get("baseline_avg_pct") for x in r["rules"] if x.get("baseline_avg_pct") is not None]
+    assert b(r1) == b(r2) and b(r1) and abs(b(r1)[0] - 0.3) < 1e-9          # the manual +11 % does not move the ruler
+    for fn in (M._compute_multiplier_cell_performance, M._compute_extension_multiplier_performance,
+               M._compute_btc_1h_slope_btc_adx_multiplier_performance, M._compute_pattern_4cohort_coverage,
+               M._compute_pattern_combo_tracker):
+        assert repr(fn(base)) == repr(fn(with_manual)), fn.__name__          # a MANUAL row changes nothing in any cell report

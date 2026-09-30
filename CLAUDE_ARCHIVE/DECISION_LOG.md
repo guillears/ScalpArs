@@ -4828,3 +4828,14 @@ leverage-safe stop (manual_floor_sl_pct, ≤ 80 % of the liquidation distance) +
 intercept as FIXED. Option renamed "Floor stop (+ opt. TP)"; confirm dialog + badge hover show the TP; disabled SL/TP fields are
 never sent; non-finite SL/TP refused (a NaN SL used to pass the floor check = no stop). Dual review: exit isolation verified
 (realtime continue before pattern/ladder paths; candle loop skips FLOOR; TP survives restart via the cache rebuild).
+
+## 2026-09-30 (158) - 📓 Journal never loses a fill on deploy + MANUAL out of every cell report (tooling; trading unchanged)
+Operator: "why are SURGE fills missing from the Decisions CSV?" Not SURGE being off: the 4 SURGE_SHORT fills (14:50:47–58 UTC)
+were the ONLY bot fills of Sep 27–30 without an OPEN line; the journal buffered lines until the next scan's flush (~2 min) and
+the 14:47:57 push restarted the process ~14:51–14:53 (closes at 14:53/14:57 prove a live process then) → lines lost in memory.
+Fix: OPEN/EXPIRED written immediately (forcing earlier lines out, in order; ADMIT rides the scan flush), buffer flushed on
+graceful shutdown (lifespan, in a finally) + atexit, Procfile --timeout-graceful-shutdown 10 (an open Live Terminal SSE stream
+could hold uvicorn until SIGKILL — then nothing flushes). A hard kill can still lose the last scan's refusal lines, never a fill.
+Tests no longer write the local journal (conftest SCALPARS_JOURNAL_OFF). Also (operator-approved): the 6 cell/pattern reports
+drop entry_strategy=='MANUAL' themselves — defense in depth; since Sep-29 the performance endpoint already passes MANUAL-free
+orders, so the live ruler was not contaminated. Dual review applied.

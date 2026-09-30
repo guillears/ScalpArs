@@ -83,3 +83,33 @@ def test_engine_journal_fails_dedupes_and_never_raises(monkeypatch):
     jf(self, object(), "LONG", "X", "MOMENTUM")                               # garbage → swallowed
     assert [k["gates"] for _, k in got] == ["EMA_STACK+RSI_MAX", "MACRO:BTC_ADX_GATE_LOW+EMA_STACK"]
     assert got[1][1]["n_gates"] == 2
+
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize("event", dj.IMMEDIATE)
+def test_fills_are_written_at_once_and_buffer_flushes(tmp_path, monkeypatch, event):
+    """Sep-30: 4 SURGE fills vanished because a deploy restarted the bot before the next scan flushed the buffer. OPEN / EXPIRED
+    are written immediately (forcing earlier lines out, in order); other lines wait for flush() (per scan, shutdown, atexit)."""
+    monkeypatch.setattr(dj, "_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(dj, "_enabled", lambda: True)
+    monkeypatch.setattr(dj, "_state", dict(dj._state))
+    monkeypatch.setattr(dj, "_buffer", [])
+    files = lambda: [p for p in os.listdir(tmp_path) if p.startswith("decisions-")]
+    dj.note("BLOCK", gate="X", dir="LONG", pair="AUSDT")
+    dj.note("ADMIT", gate="CROSS_OB_OPEN", dir="LONG", pair="AUSDT")
+    assert files() == []                                            # refusals and waivers wait for the scan flush
+    dj.note(event, pair="MOVRUSDT", dir="SHORT", strategy="SURGE_SHORT")
+    lines = open(os.path.join(tmp_path, files()[0])).read().splitlines()
+    assert [json.loads(x)["e"] for x in lines] == ["BLOCK", "ADMIT", event]   # the fill forced the whole buffer out, in order
+    dj.note("BLOCK", gate="Y", dir="LONG", pair="BUSDT")
+    dj.flush()                                                      # what shutdown / atexit call
+    assert len(open(os.path.join(tmp_path, files()[0])).read().splitlines()) == 4 and dj._buffer == []
+
+
+def test_shutdown_paths_flush_the_journal():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    assert "atexit.register(flush)" in open(dj.__file__).read()
+    main_src = open(os.path.join(root, "main.py")).read()
+    assert "await stop_background_tasks()\n    finally:" in main_src and "_djs.flush()" in main_src

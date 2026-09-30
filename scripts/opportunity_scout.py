@@ -17,7 +17,8 @@ EVENTS (pre-declared, deliberately looser than the live sleeves; closed bars onl
                 scope = MARKET (≥ 3 same-direction TRENDs on that bar, or a same-side BREADTH_BURST within 15 min) or PAIR.
   Clusters: same type + pair + direction within 2 h (TREND 4 h) of the cluster's first bar = ONE event, stable across runs.
 OUTCOMES (from the first bar's close; BTC_MOVE / BREADTH_BURST = median over the universe's top 20; pair events = the pair):
-  f30/f60/f120 in the event direction (timestamp lookups) · mfe/mae over 60 and 120 min (best / worst excursion — what a
+  f30/f60/f120 in the event direction (timestamp lookups) · mfe/mae over 60, 120 and 240 min + t_peak_min / mae_before_peak(_x) (pair events: minutes to the 4 h best, the worst point
+  before it incl…excl the peak bar's own wick) (best / worst excursion — what a
   trailing-stop sleeve earns / must survive) · rel60 = pair f60 minus BTC's (pair events) · tbs = +1×ATR before −1×ATR within
   120 min (pair events; same-bar = stop first) · stack = the pair's EMA5/8/13/20 order at detection (UP / DOWN / NONE — a missed
   TREND with an aligned stack means the bot's signal was likely live and something blocked it).
@@ -155,6 +156,32 @@ def k5(sym, last_closed, limit=FETCH):
 
 def _frame(rows):
     return pd.DataFrame(rows, columns=["t", "o", "h", "l", "c", "v"]).drop_duplicates("t").set_index("t") if rows else None
+
+
+def backfill_exit_shape(allv, alts, now_ms):
+    """Stored pair events that left the 26 h detection window before their 4 h exit-shape fields matured (or predate them) get
+    them once from the fetched candles (640 × 5m ≈ 53 h) — outcomes are facts after the move, so a late fill is exact. Never
+    raises; rows whose candles are gone stay empty (the report prints n)."""
+    try:
+        if not len(allv):
+            return allv
+        cols = ("mfe240", "mae240", "t_peak_min", "mae_before_peak", "mae_before_peak_x")
+        for c in cols:
+            if c not in allv:
+                allv[c] = np.nan
+        todo = allv.index[allv.type.isin(["ALT_SPIKE", "TREND"]) & (allv.mfe240.isna() | allv.mae_before_peak_x.isna())
+                          & (allv.bar_ts.astype("int64") + BAR + 240 * MIN <= now_ms)]
+        for i in todo:
+            r = allv.loc[i]; d = alts.get(r["pair"]); t0 = int(r["bar_ts"])
+            if d is None or t0 not in d.index:
+                continue
+            o = _series_outcome(d, t0, 1 if r["side"] == "UP" else -1)
+            if o and "mfe240" in o:
+                for c in cols:
+                    allv.loc[i, c] = round(float(o[c]), 2)
+        return allv
+    except Exception as e:
+        log(f"exit-shape backfill skipped ({e})"); return allv
 
 
 def stamp_features(allv, btc_full, alts, in_now, last_closed):
@@ -471,12 +498,22 @@ def _series_outcome(d, t0, sgn, atr_pct=None):
         t = t0 + h * MIN
         if t in d.index:
             out[f"f{h}"] = sgn * (float(d.c.loc[t]) / ref - 1) * 100
-    for h in (60, 120):
+    for h in (60, 120, 240):
         w = d.loc[t0 + BAR: t0 + h * MIN]
-        if len(w) >= h // 5 - 1:
+        if len(w) >= (h // 5 if h == 240 else h // 5 - 1):   # the 4 h read needs its full 48 bars (a partial pass is never stored)
             fav = (w.h.max() / ref - 1) * 100 if sgn > 0 else (1 - w.l.min() / ref) * 100
             adv = (w.l.min() / ref - 1) * 100 if sgn > 0 else (1 - w.h.max() / ref) * 100
             out[f"mfe{h}"], out[f"mae{h}"] = fav, adv
+            if h == 240:                                   # 📐 exit design: WHEN the best point came and how deep it dipped FIRST
+                best = w.h if sgn > 0 else -w.l                                     # favourable extreme per bar
+                pk = best.idxmax()                                                  # first bar reaching the 4 h best
+                out["t_peak_min"] = (pk - t0) // MIN                                # minutes from the entry close to that bar's close
+                pre = w.loc[:pk]   # bars up to and INCLUDING the peak bar: its own extreme may come after the high → CONSERVATIVE (deeper)
+                # (positive when price never went against the move)
+                out["mae_before_peak"] = ((pre.l.min() / ref - 1) * 100 if sgn > 0 else (1 - pre.h.max() / ref) * 100)
+                ex = w.loc[:pk].iloc[:-1]            # EXCLUDING the peak bar (its wick may come after the high) → the shallow end
+                out["mae_before_peak_x"] = (0.0 if not len(ex) else
+                                            min(0.0, (ex.l.min() / ref - 1) * 100) if sgn > 0 else min(0.0, (1 - ex.h.max() / ref) * 100))
     if atr_pct:
         w = d.loc[t0 + BAR: t0 + 120 * MIN]
         if len(w) >= 23:
@@ -504,7 +541,8 @@ def outcomes(e, btc, alts, top20):
             o = _series_outcome(d, t0, sgn, atr_pct_at(d, t0))
             b = _series_outcome(btc, t0, sgn)
             if o:
-                for k in ("f30", "f60", "f120", "mfe60", "mae60", "mfe120", "mae120", "tbs", "tbs2"):
+                for k in ("f30", "f60", "f120", "mfe60", "mae60", "mfe120", "mae120", "mfe240", "mae240", "t_peak_min", "mae_before_peak",
+                          "mae_before_peak_x", "tbs", "tbs2"):
                     if k in o:
                         res[k] = round(o[k], 2) if isinstance(o[k], float) else o[k]
                 if "f60" in o and b and "f60" in b:
@@ -512,6 +550,7 @@ def outcomes(e, btc, alts, top20):
     else:
         outs = [o for o in (_series_outcome(alts.get(p), t0, sgn) for p in top20) if o]
         for k in ("f30", "f60", "f120", "mfe60", "mae60", "mfe120", "mae120"):
+            # market events: no 4 h shape fields — independent medians across 20 pairs would not describe one path (review)
             v = [o[k] for o in outs if k in o]
             if v:
                 res[k] = round(float(np.median(v)), 2)
@@ -717,6 +756,22 @@ MISS_MEANING = {"FILTER_NEAR": "refused, but 1–2 gates from a trade (closest s
                 "EXECUTION": "the bot wanted it, the maker entry expired → execution"}
 
 
+def _exit_shape(g):
+    """Exit-design shape of a WHOLE cohort (moves ≥ 4 h old only): median best point over 4 h, the dip BEFORE that peak (median and
+    worst quartile) and minutes to the peak — where a stop must sit to survive and how long a trail must hold. All moves, never
+    the Good ones alone: Good = +2×ATR before −1×ATR, so their dip is shallow BY CONSTRUCTION. '–' until moves are 4 h old."""
+    cols = ("mfe240", "mae_before_peak", "mae_before_peak_x", "t_peak_min")
+    if not len(g) or any(c not in g for c in cols):
+        return "–"
+    x = g[list(cols)].apply(pd.to_numeric, errors="coerce").dropna()
+    if not len(x):
+        return "–"
+    cap = (x.t_peak_min >= 235).mean() * 100
+    return (f"{x.mfe240.median():+.1f}% · {x.mae_before_peak_x.median():+.1f}…{x.mae_before_peak.median():+.1f}% / "
+            f"{x.mae_before_peak_x.quantile(0.25):+.1f}…{x.mae_before_peak.quantile(0.25):+.1f}% · "
+            f"{x.t_peak_min.median():.0f} min{' (floor: ' + format(cap, '.0f') + '% still running at 4 h)' if cap >= 10 else ''} (n={len(x)})")
+
+
 def diagnosis_lines(allv):
     """Untraded pair events (ALT_SPIKE / TREND) whose 2×ATR-vs-1×ATR outcome is known, split by WHY the bot missed them:
     FILTER (gates refused it — table per FULL gate set: good moves blocked vs bad moves blocked, overlap-aware), SLEEVE (no gate
@@ -736,11 +791,13 @@ def diagnosis_lines(allv):
         last[k] = int(r.bar_ts); keep.append(i)
     d = d.loc[keep].copy()
     d["day"] = pd.to_datetime(d.bar_ts, unit="ms").dt.date
-    L = ["| Class | Moves | Good (2×ATR first) | Bad (1×ATR stop first) | Neither | Days | Meaning |", "|---|---|---|---|---|---|---|"]
+    L = ["| Class | Moves | Good (2×ATR first) | Bad (1×ATR stop first) | Neither | Days | All moves (n = with 4 h data): median best 4 h · worst point before the peak, excl…incl the peak bar's wick (median / worst quartile) · min to peak | Meaning |",
+         "|---|---|---|---|---|---|---|---|"]
     for c in MISS_MEANING:
         g = d[d.miss_class == c]
         if len(g):
-            L.append(f"| {c} | {len(g)} | {(g.tbs2 == 'TARGET').sum()} | {(g.tbs2 == 'STOP').sum()} | {(g.tbs2 == 'NEITHER').sum()} | {g.day.nunique()} | {MISS_MEANING[c]} |")
+            L.append(f"| {c} | {len(g)} | {(g.tbs2 == 'TARGET').sum()} | {(g.tbs2 == 'STOP').sum()} | {(g.tbs2 == 'NEITHER').sum()} | {g.day.nunique()} | "
+                     f"{_exit_shape(g)} | {MISS_MEANING[c]} |")
     f = d[d.miss_class == "FILTER_NEAR"]
     if len(f):
         rows = []
@@ -896,6 +953,7 @@ def run():
         allv = allv.reset_index()
     else:
         allv = new if len(new) else old
+    allv = backfill_exit_shape(allv, alts, now_ms)
     allv = stamp_features(allv, btc_full, alts, in_now, last_closed)
     allv = allv.drop(columns=[c for c in ("sole_gate",) if c in allv.columns])   # renamed closest_set (DECISION_LOG 151)
     if len(allv):

@@ -4799,3 +4799,14 @@ tabs). Reset now saves a Decisions CSV first (≤ 15 s): a reset deletes the Ord
 journal itself lives in /opt/scalpars-data/journal and survives); if the save fails the operator is asked before resetting; one
 reset at a time (flag cleared in finally). Scout reads decisions exports ≤ 50 days old (daily files pile up; ≥ the 45-day evidence
 expiry). Dual review applied (silent failed pre-save, guard released by timer, body-read timeout, nowrap, tooltip).
+
+## 2026-09-30 (155) - 📐 Scout exit-shape fields: 4 h best/worst, minutes to peak, dip before peak (tooling; trading unchanged)
+Operator: "with the data collected will we know the adequate exit for those trades?" Scout counts can only show the exit TYPE;
+the exit itself is chosen by replaying the stored moves on 1m candles under each candidate exit (the SURGE design method). To
+read stop width / hold time early, pair events now carry mfe240 / mae240, t_peak_min (entry close → first bar at the 4 h best)
+and mae_before_peak (incl. the peak bar's wick, conservative) / mae_before_peak_x (excl., shallow end) — full 48 bars only;
+backfilled from fetched candles for stored rows. Report column per miss class over ALL moves (never Good-only: Good = +2×ATR
+before −1×ATR → shallow by construction), dip shown as a range, "still running at 4 h" share disclosed (median = a floor).
+Market events keep no 4 h shape (independent medians ≠ one path). Outcome fields never feed classification/evidence (verified).
+First read, all 145 stored spike/trend moves: best 4 h +3.1 %, dip before peak −1.6 % median / −2.9 % worst quartile, 90 min to
+peak → a sleeve for these would need an ATR-wide stop and a slow trail, not the momentum exit. Dual review applied.

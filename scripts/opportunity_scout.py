@@ -72,6 +72,7 @@ CAND_N, CAND_DAYS, CONFIRM_DAYS = 20, 8, 8
 CONFIRM_EXPIRY_DAYS = 45           # a qualified bucket that gets no 8 fresh days in 45 days expires (never re-fit)
 N_TESTS = 24                       # pre-registered: 12 declared buckets × 2 directions (Bonferroni, fixed — review)
 SCAN_N = 80                        # scan the top-80 eligible pairs so events OUTSIDE the bot's top-50 are recorded as such
+DECISIONS_MAX_AGE_D = 50        # decisions exports read (by file age): ≥ the 45-day evidence expiry, so no stored event loses its WHY
 STAMP_MAX_AGE = 40 * 3600_000     # feature stamps only while every input still reaches the event (640 × 5m = 53 h of alt bars)
 MERGE_FLAG_MS = 30 * MIN           # a TREND and an ALT_SPIKE on the same pair/side within 30 min = one ⭐ flag
 DETECT_COLS = ["move_first", "vol_mult", "held_first", "scope", "eff", "in_universe", "rank", "start_ts", "qvol24_event"]
@@ -309,6 +310,8 @@ def load_decisions():
     frames = []
     to_ms = lambda s: (pd.to_datetime(s, utc=True, format="ISO8601", errors="coerce") - pd.Timestamp(0, tz="UTC")) // pd.Timedelta(milliseconds=1)
     for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv")):
+        if time.time() - os.path.getmtime(f) > DECISIONS_MAX_AGE_D * 86400:   # daily auto-downloads pile up; older ones add nothing
+            continue                                                      # the stored events still need (events live ≤ 45 days)
         try:
             d = pd.read_csv(f, low_memory=False)
             if not len(d) or not {"t", "e", "pair"} <= set(d.columns):

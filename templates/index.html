@@ -626,6 +626,10 @@
                     <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Copy Split Report</button>
                     <a id="download-orders-csv-btn" href="/api/orders/export.csv" download class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors" title="Download all CLOSED + SIGNAL_EXPIRED orders for current mode (paper/live) as CSV — no row limit, every Order column included. Use for counterfactual analysis, cross-sample re-binning, custom cross-tabs." onclick="this.href='/api/orders/export.csv?t=' + Date.now()">Download Orders CSV</a>
                     <a id="download-decisions-csv-btn" href="/api/decisions/export.csv" download class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium rounded transition-colors" title="🔭 What the bot DECIDED over the last 3 days (decision journal): every fill with its strategy, every refusal aggregated per 5 min × pair × gate, and the positions open right now. Read by the hourly opportunity scout (scripts/opportunity_scout.py) to tell 'no signal' from 'blocked by gate X' from 'book full'. Save it to Downloads." onclick="this.href='/api/decisions/export.csv?days=3&t=' + Date.now()">Download Decisions CSV</a>
+                    <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer whitespace-nowrap" title="🔭 While THIS dashboard tab is open, download the Decisions CSV automatically once a day into your Downloads folder (the scout reads it). Uses your existing login in this browser; nothing is sent anywhere else. The first time, the browser may ask to allow automatic downloads from this site. A download that fails (e.g. the login expired) is retried every 10 minutes. If no file appears in Downloads, allow automatic downloads for this site in the browser settings — the page cannot see a download the browser blocked. Chrome's 'Ask where to save each file' turns it into a Save dialog, and Memory Saver can pause a background tab.">
+                        <input type="checkbox" id="auto-decisions-toggle" onchange="_autoDecToggle(this.checked)" class="accent-sky-600"> Auto daily
+                        <span id="auto-decisions-status" class="text-gray-500"></span>
+                    </label>
                 </div>
 
                 <!-- Period Performance Summary -->
@@ -9417,7 +9421,12 @@
         async function resetBot(direction = 'ALL') {
             // Close the dropdown menu
             document.getElementById('reset-menu').classList.add('hidden');
+            if (window._resetInFlight) { showToast('A reset is already running', 'error'); return; }
+            window._resetInFlight = true;
+            try { await _resetBotInner(direction); } finally { window._resetInFlight = false; }
+        }
 
+        async function _resetBotInner(direction) {
             const modeLabel = isPaperMode ? 'PAPER' : 'LIVE';
             let confirmMsg;
             if (direction === 'ALL') {
@@ -9431,6 +9440,15 @@
             }
 
             if (!confirm(confirmMsg)) return;
+
+            // 🔭 Sep-30: a reset deletes the orders the Decisions CSV reads its POSITION rows from — save the journal first (best effort,
+            // aborted after 15 s; never blocks the reset). The journal lines themselves live outside the DB and survive the reset.
+            try { showToast('Saving Decisions CSV before reset…'); } catch (e) {}
+            try { await _downloadDecisionsCsv(15e3); }
+            catch (e) {                                         // the reset deletes those rows for good — let the operator decide
+                console.warn('pre-reset decisions export failed', e);
+                if (!confirm(`Decisions CSV was NOT saved (${e && e.message ? e.message : 'error'}).\n\nReset anyway?`)) return;
+            }
 
             try {
                 const res = await fetch(`${API_BASE}/api/reset?direction=${direction}`, { method: 'POST' });
@@ -9460,7 +9478,7 @@
                         setTimeout(() => { window.location.reload(); }, 1500);
                     }
                 } else {
-                    showToast('Error resetting: ' + (data.message || 'Unknown error'), 'error');
+                    showToast('Error resetting: ' + (data.message || data.detail || 'Unknown error'), 'error');
                 }
             } catch (e) {
                 console.error('Error resetting bot:', e);
@@ -23689,6 +23707,57 @@
         function submitFundWithdraw(){ return _submitFund('fw', '/api/investors/withdraw-all', 'withdrawal', '−', 'shares_burned', 'fund-withdraw-modal', 'Withdrawal failed'); }
         // opening a modal always starts at the preview step
         function _resetFundModal(prefix, label){ _fundFlow[prefix] = null; const b = document.getElementById(prefix + '-preview'); if (b) b.classList.add('hidden'); const t = document.getElementById(prefix + '-submit-btn'); if (t) t.textContent = label; }
+        // 🔭 Sep-30 AUTO DAILY DECISIONS CSV — while this tab is open, download the decision journal once a day (the opportunity scout
+        // reads it from ~/Downloads). Per-browser preference (localStorage), never sent anywhere. Success-only timestamp: a failed fetch
+        // (login expired, deploy) is retried on the next 10-min tick; a short lock keeps two open tabs from downloading twice.
+        const _AUTO_DEC_ON = 'scalpars.autoDecisions', _AUTO_DEC_LAST = 'scalpars.autoDecisionsLast', _AUTO_DEC_LOCK = 'scalpars.autoDecisionsLock';
+        function _lsGet(k){ try { return localStorage.getItem(k); } catch (e) { return null; } }
+        function _lsSet(k, v){ try { localStorage.setItem(k, v); } catch (e) {} }
+        function _autoDecStatus(msg){
+            const el = document.getElementById('auto-decisions-status'); if (!el) return;
+            const last = +(_lsGet(_AUTO_DEC_LAST) || 0);
+            el.textContent = msg || (_lsGet(_AUTO_DEC_ON) === '1' ? (last ? '· sent ' + new Date(last).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '· pending') : '');
+        }
+        async function _downloadDecisionsCsv(timeoutMs = 60e3){   // throws on any failure (the caller decides whether to retry)
+            const now = Date.now();
+            const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), timeoutMs);
+            let r, blob;
+            try {
+                r = await fetch('/api/decisions/export.csv?days=3&t=' + now, {credentials: 'same-origin', signal: ctl.signal});
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                if (r.redirected || !(r.headers.get('Content-Type') || '').includes('text/csv')) throw new Error('not a CSV (login?)');
+                blob = await r.blob();                        // the timeout covers the body read too
+            } finally { clearTimeout(timer); }
+            if (!blob.size) throw new Error('empty file');
+            const m = (r.headers.get('Content-Disposition') || '').match(/filename="?([^";]+)"?/);
+            const name = m ? m[1] : ('scalpars_decisions_' + (typeof isPaperMode !== 'undefined' && !isPaperMode ? 'live' : 'paper') + '_' + new Date(now).toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-') + '.csv');
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 60e3);
+        }
+        function _autoDecToggle(on){ _lsSet(_AUTO_DEC_ON, on ? '1' : '0'); _autoDecStatus(); if (on) _autoDecTick(); }
+        async function _autoDecTick(){
+            if (_lsGet(_AUTO_DEC_ON) !== '1') return;
+            const now = Date.now();
+            if (now - +(_lsGet(_AUTO_DEC_LAST) || 0) < 23 * 3600e3) return;          // once a day (23 h: drifts earlier, never skips a day)
+            if (now - +(_lsGet(_AUTO_DEC_LOCK) || 0) < 5 * 60e3) return;             // another tab is downloading right now
+            _lsSet(_AUTO_DEC_LOCK, String(now));
+            try {
+                await _downloadDecisionsCsv();
+                _lsSet(_AUTO_DEC_LAST, String(now)); _autoDecStatus();
+            } catch (e) {
+                _autoDecStatus('· failed (' + (e && e.message ? e.message : 'error') + ') — retrying');
+            } finally {
+                if (_lsGet(_AUTO_DEC_LOCK) === String(now)) _lsSet(_AUTO_DEC_LOCK, '0');   // only release our own lock
+            }
+        }
+        (function(){
+            const cb = document.getElementById('auto-decisions-toggle'); if (cb) cb.checked = _lsGet(_AUTO_DEC_ON) === '1';
+            _autoDecStatus();
+            setTimeout(_autoDecTick, 30e3);                  // catch up shortly after the page opens
+            setInterval(_autoDecTick, 10 * 60e3);
+            window.addEventListener('storage', e => { if (e.key === _AUTO_DEC_LAST || e.key === _AUTO_DEC_ON) { const c = document.getElementById('auto-decisions-toggle'); if (c) c.checked = _lsGet(_AUTO_DEC_ON) === '1'; _autoDecStatus(); } });
+        })();
         </script>
 </body>
 </html>

@@ -4790,3 +4790,12 @@ alone.
 Operator: shorten the Pair column so ATR 5m and part of Block Reason show; long names (1000PEPEUSDT) may be cut. Pair name capped at
 5rem inside the cell (ellipsis + full name on hover), cell padding px-4→px-3 on this table only, "Gap / 5-20" and "Gap / 5-8" headers
 on two lines (equal column widths), sticky header made opaque (rows showed through it while scrolling). Mock: table 129–160 px narrower.
+
+## 2026-09-30 (154) - 🔭 Auto daily Decisions CSV + save-before-reset (UI + scout tooling; trading unchanged)
+Operator: "can you automate the daily Decisions CSV?" The scout must never log into the bot, so the dashboard does it: an "Auto
+daily" checkbox (per-browser, localStorage) downloads /api/decisions/export.csv once per 23 h while a dashboard tab is open
+(10-min tick, 60 s fetch timeout, CSV content-type check, success-only timestamp, own-lock cross-tab guard, status synced across
+tabs). Reset now saves a Decisions CSV first (≤ 15 s): a reset deletes the Order rows the export's POSITION rows come from (the
+journal itself lives in /opt/scalpars-data/journal and survives); if the save fails the operator is asked before resetting; one
+reset at a time (flag cleared in finally). Scout reads decisions exports ≤ 50 days old (daily files pile up; ≥ the 45-day evidence
+expiry). Dual review applied (silent failed pre-save, guard released by timer, body-read timeout, nowrap, tooltip).

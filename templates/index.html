@@ -1509,7 +1509,7 @@
                     <h4 class="text-xs font-semibold text-yellow-300 mt-4 mb-1">⚡ SURGE Trigger Ledger (persisted; restart-proof — one row per BTC trigger per side)</h4>
                     <p class="text-xs text-gray-500 mb-2">Every trigger stays on record, including the ones that opened nothing. Status: OPEN (window pending/running) · FILLED · NO_PICK (pairs checked, none passed / opened) · MISSED (window closed before any pair was checked) · FOUND_LATE (seen after its window — never blocks the next trigger). Skips: ATR = pair ATR below the floor · LDR = not leading BTC · DATA = no bars · SLOT = cap reached · OPEN = selected but refused at open (held / cooldown / balance / price moved). Fills are matched exactly on the trigger bar; grey rows predate the kill-bar cohort (excluded from every SURGE read). ↻ = the window spanned a restart (picks and counts are kept; a pair refused before the restart may be checked — and counted — again).</p>
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
-                        <th class="px-2 py-1 text-left">Side</th><th class="px-2 py-1 text-left">Bar close (UTC)</th><th class="px-2 py-1 text-right">BTC 30m</th><th class="px-2 py-1 text-right">Vol ×</th><th class="px-2 py-1 text-left">Window</th><th class="px-2 py-1 text-left">Status</th><th class="px-2 py-1 text-right">Checked</th><th class="px-2 py-1 text-right" title="ATR / leader / data / slots / open">Skips ATR/LDR/DATA/SLOT/OPEN</th><th class="px-2 py-1 text-left">Opened</th><th class="px-2 py-1 text-right">Fills</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Net$</th>
+                        <th class="px-2 py-1 text-left">Side</th><th class="px-2 py-1 text-left">Bar close (local)</th><th class="px-2 py-1 text-right">BTC 30m</th><th class="px-2 py-1 text-right">Vol ×</th><th class="px-2 py-1 text-left">Window (local)</th><th class="px-2 py-1 text-left">Status</th><th class="px-2 py-1 text-right">Checked</th><th class="px-2 py-1 text-right" title="ATR / leader / data / slots / open">Skips ATR/LDR/DATA/SLOT/OPEN</th><th class="px-2 py-1 text-left">Opened</th><th class="px-2 py-1 text-right">Fills</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Net$</th>
                     </tr></thead><tbody id="surge-triggers-body" class="divide-y divide-white/5"><tr><td colspan="13" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
 
@@ -8848,22 +8848,34 @@
                 : `${what} (display-only — strategy identity unchanged)`;
         }
         // ⚡ Sep 30: SURGE live trigger legs (header chip hover, SURGE table line, both text exports) — one formatter for every surface.
-        function surgeLiveStr(lv) {
+        // ⚡ times: local=true → the app's local time (America/Argentina/Buenos_Aires, same as formatTime and the Bull-Run periods
+        // table) for the header chip + SURGE tables; false → UTC (text exports / analysis convention).
+        function surgeTime(ms, utcStr, local, withDate) {
+            if (local && ms) {
+                try {
+                    const o = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'America/Argentina/Buenos_Aires' };   // h23: never "24:05"
+                    if (withDate) { o.month = 'short'; o.day = 'numeric'; }
+                    return new Date(ms).toLocaleString('en-US', o);
+                } catch (e) {}
+            }
+            return utcStr ? `${withDate ? String(utcStr) : String(utcStr).slice(-5)} UTC` : '—';   // UTC keeps the full date where given
+        }
+        function surgeLiveStr(lv, local) {
             if (!lv) return 'BTC readings: waiting for the next scan';
             const sg = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(2) + '%');
             const ok = (b) => (b ? '✓' : '✗');
             const need = lv.need_move;
             const moveTxt = need > 0 ? `30-min move ${sg(lv.move_pct)} (LONG ≥ +${need} ${ok(lv.ok_long_move)} · SHORT ≤ −${need} ${ok(lv.ok_short_move)})` : `30-min move ${sg(lv.move_pct)} (move threshold OFF — no trigger)`;
             const volTxt = lv.need_vol > 0 ? `bar volume ${lv.vol_mult != null ? Number(lv.vol_mult).toFixed(1) + '×' : '—'} median (≥ ${lv.need_vol} ${ok(lv.ok_vol)})` : 'volume leg off';
-            return `BTC 5m bar ${lv.bar_close} UTC · ${moveTxt} · ${volTxt}`
+            return `BTC 5m bar ${surgeTime(lv.bar_close_ms, lv.bar_close, local)} · ${moveTxt} · ${volTxt}`
                 + ` · vs 24h high ${sg(lv.off_hi_pct)}${lv.long_need_high ? ` (LONG needs a close at the high ${ok(lv.ok_high)})` : ''}`
                 + ` · vs 24h low ${sg(lv.off_lo_pct)}${lv.short_need_low ? ` (SHORT needs a close at the low ${ok(lv.ok_low)})` : ''}`;
         }
-        function surgeSideStr(x, nm) {
+        function surgeSideStr(x, nm, local) {
             if (!x) return `${nm} —`;
-            const next = (x.next_allowed_ms && Date.now() < x.next_allowed_ms) ? ` · next ${nm} trigger allowed from ${x.next_allowed} UTC` : ` · ${nm} can trigger now`;
-            const win = (x.window_close_ms && Date.now() < x.window_close_ms) ? ` · ENTRY WINDOW ${x.window_opens}–${x.window_closes} UTC` : '';
-            return `${nm} ${x.enabled ? 'ON' : 'OFF'}${x.last_trigger ? ` · last trigger ${x.last_trigger} UTC (BTC ${x.btc_move_pct != null ? (x.btc_move_pct >= 0 ? '+' : '') + x.btc_move_pct + '%' : '—'}) · opened ${x.opened}${x.picks && x.picks.length ? ' (' + x.picks.join(', ') + ')' : ''}` : ' · no trigger recorded yet'}${win}${x.enabled ? next : ''}${x.kill_verdict ? ` · kill bar: ${x.kill_verdict}` : ''}`;
+            const next = (x.next_allowed_ms && Date.now() < x.next_allowed_ms) ? ` · next ${nm} trigger allowed from ${surgeTime(x.next_allowed_ms, x.next_allowed, local)}` : ` · ${nm} can trigger now`;
+            const win = (x.window_close_ms && Date.now() < x.window_close_ms) ? ` · ENTRY WINDOW ${surgeTime(x.window_open_ms, x.window_opens, local)}–${surgeTime(x.window_close_ms, x.window_closes, local)}` : '';
+            return `${nm} ${x.enabled ? 'ON' : 'OFF'}${x.last_trigger ? ` · last trigger ${surgeTime(x.last_trigger_ms, x.last_trigger, local, true)} (BTC ${x.btc_move_pct != null ? (x.btc_move_pct >= 0 ? '+' : '') + x.btc_move_pct + '%' : '—'}) · opened ${x.opened}${x.picks && x.picks.length ? ' (' + x.picks.join(', ') + ')' : ''}` : ' · no trigger recorded yet'}${win}${x.enabled ? next : ''}${x.kill_verdict ? ` · kill bar: ${x.kill_verdict}` : ''}`;
         }
         function doorBadgeHtml(o) {
             const tags = doorBadges(o);
@@ -9152,10 +9164,10 @@
                 if (_sgChip) {
                     const _sg = data.surge;
                     if (_sg && _sg.long && _sg.short) {
-                        _sgChip.dataset.tip = `⚡ SURGE — ${surgeLiveStr(_sg.live)} || ${surgeSideStr(_sg.long, 'LONG')} || ${surgeSideStr(_sg.short, 'SHORT')}`;
+                        _sgChip.dataset.tip = `⚡ SURGE (local time) — ${surgeLiveStr(_sg.live, true)} || ${surgeSideStr(_sg.long, 'LONG', true)} || ${surgeSideStr(_sg.short, 'SHORT', true)}`;
                         const _live = [['L', _sg.long], ['S', _sg.short]].filter(([_, x]) => x.enabled && x.window_close_ms && Date.now() < x.window_close_ms);
                         if (_live.length) {
-                            _sgChip.textContent = '⚡ ' + _live.map(([k, x]) => `${k} ${x.window_opens}`).join(' ');
+                            _sgChip.textContent = '⚡ ' + _live.map(([k, x]) => `${k} ${surgeTime(x.window_open_ms, x.window_opens, true).replace(' UTC', '')}`).join(' ');
                             _sgChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/20 text-yellow-300 uppercase tracking-wide cursor-help tip-right';
                         } else {
                             _sgChip.textContent = `⚡ ${_sg.long.enabled ? 'L' : '·'}${_sg.short.enabled ? 'S' : '·'}`;
@@ -19119,8 +19131,8 @@
                 if (sgBody) {
                     const sgLine = document.getElementById('surge-monitor-line');
                     if (sgLine && data.surge_monitor) {
-                        const _f = (x, nm) => `${nm} <span class="${x.enabled ? 'text-yellow-300' : 'text-red-400'}">${x.enabled ? 'ON' : 'OFF'}</span>${x.last_trigger ? ` · last trigger ${x.last_trigger} UTC (BTC ${x.btc_move_pct != null ? (x.btc_move_pct >= 0 ? '+' : '') + x.btc_move_pct + '%' : '—'}) · window ${x.window_opens}–${x.window_closes} · opened ${x.opened}${x.picks && x.picks.length ? ' (' + x.picks.join(', ') + ')' : ''} · refused ${x.refused}` : ' · no trigger recorded yet'}`;
-                        sgLine.innerHTML = `${surgeLiveStr(data.surge_monitor.live)}<br>${_f(data.surge_monitor.long, 'LONG')} &nbsp;|&nbsp; ${_f(data.surge_monitor.short, 'SHORT')} · sizing LONG Inv ×${data.surge_monitor.long.invest_mult} Lev ×${data.surge_monitor.long.lev_mult} · SHORT Inv ×${data.surge_monitor.short.invest_mult} Lev ×${data.surge_monitor.short.lev_mult}`;
+                        const _f = (x, nm) => `${nm} <span class="${x.enabled ? 'text-yellow-300' : 'text-red-400'}">${x.enabled ? 'ON' : 'OFF'}</span>${x.last_trigger ? ` · last trigger ${surgeTime(x.last_trigger_ms, x.last_trigger, true, true)} (BTC ${x.btc_move_pct != null ? (x.btc_move_pct >= 0 ? '+' : '') + x.btc_move_pct + '%' : '—'}) · window ${surgeTime(x.window_open_ms, x.window_opens, true)}–${surgeTime(x.window_close_ms, x.window_closes, true)} · opened ${x.opened}${x.picks && x.picks.length ? ' (' + x.picks.join(', ') + ')' : ''} · refused ${x.refused}` : ' · no trigger recorded yet'}`;
+                        sgLine.innerHTML = `(local time) ${surgeLiveStr(data.surge_monitor.live, true)}<br>${_f(data.surge_monitor.long, 'LONG')} &nbsp;|&nbsp; ${_f(data.surge_monitor.short, 'SHORT')} · sizing LONG Inv ×${data.surge_monitor.long.invest_mult} Lev ×${data.surge_monitor.long.lev_mult} · SHORT Inv ×${data.surge_monitor.short.invest_mult} Lev ×${data.surge_monitor.short.lev_mult}`;
                     }
                     if (data.surge_rows && data.surge_rows.length > 0) {
                         sgBody.innerHTML = data.surge_rows.map(r => {
@@ -19148,10 +19160,10 @@
                             const sc = r.status === 'FILLED' ? 'text-emerald-300' : (r.status === 'OPEN' ? 'text-yellow-300' : (r.status === 'MISSED' || r.status === 'FOUND_LATE' ? 'text-red-400' : 'text-gray-400'));
                             return `<tr class="hover:bg-white/5${r.pre_cohort ? ' opacity-50' : ''}">
                                 <td class="px-2 py-1.5 ${r.side === 'LONG' ? 'text-emerald-300' : 'text-rose-300'} font-medium">${r.side}</td>
-                                <td class="px-2 py-1.5 text-gray-300 whitespace-nowrap">${(r.bar_close || '').replace('T', ' ').slice(5, 16)}${r.restarted ? ' ↻' : ''}</td>
+                                <td class="px-2 py-1.5 text-gray-300 whitespace-nowrap">${r.bar_close ? new Date(String(r.bar_close).endsWith('Z') ? r.bar_close : r.bar_close + 'Z').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'America/Argentina/Buenos_Aires' }) : '—'}${r.restarted ? ' ↻' : ''}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-300">${r.btc_move != null ? ((r.btc_move >= 0 ? '+' : '') + r.btc_move.toFixed(2) + '%') : '—'}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-400">${r.vol_mult != null ? r.vol_mult.toFixed(1) : '—'}</td>
-                                <td class="px-2 py-1.5 text-gray-400 whitespace-nowrap">${r.window || '—'}${r.found_late_min ? ` <span class="text-amber-400">(+${r.found_late_min}m late)</span>` : ''}</td>
+                                <td class="px-2 py-1.5 text-gray-400 whitespace-nowrap">${(r.window_open && r.window_close) ? `${surgeTime(Date.parse(r.window_open + 'Z'), null, true)}–${surgeTime(Date.parse(r.window_close + 'Z'), null, true)}` : (r.window || '—')}${r.found_late_min ? ` <span class="text-amber-400">(+${r.found_late_min}m late)</span>` : ''}</td>
                                 <td class="px-2 py-1.5 ${sc} font-semibold">${r.status}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-300">${r.checked}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-400">${r.ref_atr}/${r.ref_leader}/${r.ref_data}/${r.ref_slots}/${r.ref_open}</td>

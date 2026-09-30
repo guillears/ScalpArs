@@ -2951,6 +2951,8 @@ def _surge_monitor_payload():
                 "window_opens": (_dt.utcfromtimestamp(_lt / 1000 + _d * 60).strftime('%H:%M') if _lt else None),
                 "window_closes": (_dt.utcfromtimestamp(_lt / 1000 + (_d + _w) * 60).strftime('%H:%M') if _lt else None),
                 "window_close_ms": (int(_lt + (_d + _w) * 60_000) if _lt else None),   # numeric: the chip compares epochs (midnight-safe)
+                "window_open_ms": (int(_lt + _d * 60_000) if _lt else None),           # epochs → the browser shows the operator's local time
+                "last_trigger_ms": (int(_lt) if _lt else None),
                 "kill_verdict": str(getattr(_th_s, f'surge_{side.lower()}_kill_verdict', '') or ''),
                 "picks": list(stt.get('picks') or []), "opened": int(stt.get('opened') or 0),
                 "refused": len(st.get('refused') or ()),
@@ -2966,7 +2968,7 @@ def _surge_monitor_payload():
         out["live"] = (dict({k: _sgl.get(k) for k in ('move_pct', 'vol_mult', 'off_hi_pct', 'off_lo_pct', 'need_move', 'need_vol',
                                                         'long_need_high', 'short_need_low', 'ok_long_move', 'ok_short_move',
                                                         'ok_vol', 'ok_high', 'ok_low')},
-                            bar_close=_dt.utcfromtimestamp(_sgl['bar_close_ts'] / 1000).strftime('%H:%M'))
+                            bar_close=_dt.utcfromtimestamp(_sgl['bar_close_ts'] / 1000).strftime('%H:%M'), bar_close_ms=int(_sgl['bar_close_ts']))
                        if _fresh and _sgl.get('bar_close_ts') else None)
         return out
     except Exception:
@@ -3017,7 +3019,9 @@ async def _surge_trigger_rows(db, limit=50):
             rows.append({
                 'side': t.side, 'bar_close': t.bar_close_at.isoformat() if t.bar_close_at else None,
                 'btc_move': t.btc_move_pct, 'vol_mult': t.btc_vol_mult,
-                'window': (f"{t.window_opens_at:%H:%M}–{t.window_closes_at:%H:%M}" if t.window_opens_at and t.window_closes_at else None),
+                'window': (f"{t.window_opens_at:%H:%M}–{t.window_closes_at:%H:%M}" if t.window_opens_at and t.window_closes_at else None),   # UTC (text exports)
+                'window_open': t.window_opens_at.isoformat() if t.window_opens_at else None,     # ISO UTC → the UI shows local time
+                'window_close': t.window_closes_at.isoformat() if t.window_closes_at else None,
                 'found_late_min': t.found_late_min, 'status': t.status, 'restarted': bool(t.restarted),
                 'checked': t.checked or 0, 'picked': t.picked or '',
                 'ref_atr': t.refused_atr or 0, 'ref_leader': t.refused_leader or 0, 'ref_data': t.refused_data or 0,

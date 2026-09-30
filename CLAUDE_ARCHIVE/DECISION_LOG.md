@@ -4724,3 +4724,17 @@ volume vs 3× median, vs 24h high/low) with ✓/✗ judged in services.surge.sur
 defaults, then per side: last trigger + opened pairs, an open entry window, next trigger allowed (spacing), kill verdict. Static
 Inv/Lev removed. Same text on the SURGE table line + both exports. Review: freshness on the engine's epoch clock (naive utcnow()
 made it host-timezone dependent).
+
+## 2026-09-30 (149) - 📐 max_open_positions 4 → 3 EVALUATED, NOT SHIPPED (dual review caught the 2× cells) — stays 4
+Question: capital idle (65 % of the time only 1 position open; 4 never reached). Master pool, current stack, excl B1:
+- "Crowded trades are worse" = a Bull-Run artefact: normal sleeves crowded by another normal trade +0.146 %, WR 74 % (n=35); a
+  mom-long crowding filter FAILED the expectancy bar on confidence (upper +0.01 %) → observe only. Bull-Run's 123 recorded fills
+  (older versions incl.) alone: $100 → $23, DD −85 % = the combined book's drawdown source → Bull-Run current-version review OPEN.
+- Flat-size study said ⅓ (3 slots) is the max safe size (P(DD≥50 %) 3 % / 22 % haircut; ½ = 31 % / 72 %; single −3 % gap at ½ = −30 %;
+  Kelly > 1.5 unusable — the sample has no gap/liquidation tail). Operator said "set it to 3".
+- DEEP REVIEW (pre-commit): 135 of 229 normal fills are 2× cells (inv × lev). equal_split × 2 → today a 2× fill is already ½ of the
+  book, at 3 slots ⅔. Re-run WITH real multipliers, 1,000 day-block futures × 100 active days, P(DD ≥ 50 %) measured / 40 % haircut:
+  TODAY 4 slots 1 % / 16 % · 3 slots as-is 10 % / 50 % · 3 slots capped ½ 5 % / 30 % · 3 slots multipliers off 3 % / 18 %.
+  → today's 4-slot book already sits at the ⅓-flat risk budget (the 2× cells deploy the "idle" capital). 3 as-is = coin-flip 50 % DD
+  under the haircut → breaks the ruin constraint. NOT shipped; operator informed. Lever for more deployment = more QUALIFIED signals
+  (frequency), not bigger slices.

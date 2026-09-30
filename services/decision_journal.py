@@ -157,7 +157,7 @@ def _rollover(d, today):
             continue
 
 
-EXPORT_COLS = ("t", "e", "pair", "dir", "gate", "n", "no_room", "strategy", "price", "conf", "cell", "via", "reason", "closed")
+EXPORT_COLS = ("t", "e", "pair", "dir", "gate", "n", "no_room", "strategy", "price", "conf", "cell", "via", "reason", "closed", "src")
 
 
 def export_rows(days=3, now=None, directory=None):
@@ -165,8 +165,10 @@ def export_rows(days=3, now=None, directory=None):
     Last `days` UTC days (1..7). OPEN / ADMIT / EXPIRED kept one per line; BLOCK lines AGGREGATED per 5-minute bucket ×
     pair × direction × gate (`n` = lines, `no_room` = how many had no free slot; a BLOCK with no pair = pair "MARKET");
     SCAN lines become one heartbeat row per 5-minute bucket (`n` = scans) so a reader knows which minutes the journal really
-    covers (a missing day / downtime is a gap, not "no action"). Never raises: unreadable files / lines are skipped."""
-    out, agg, beats = [], {}, {}
+    covers (a missing day / downtime is a gap, not "no action"); FAILS lines (the FULL gate set one candidate failed) aggregate
+    per 5-minute bucket × pair × direction × gate set × source (`gate` = the set joined by "+"; the engine writes an identical
+    set once per 5 min, so a FAILS `n` ≈ 5-minute buckets, not scans). Never raises."""
+    out, agg, beats, fails = [], {}, {}, {}
     try:
         days = max(1, min(7, int(days or 3)))
         now = now or datetime.utcnow()
@@ -184,11 +186,15 @@ def export_rows(days=3, now=None, directory=None):
                     try:                                              # one bad line never skips the rest of the file
                         r = json.loads(line)
                         ev = r.get('e')
-                        if ev in ('BLOCK', 'SCAN'):
+                        if ev in ('BLOCK', 'SCAN', 'FAILS'):
                             t = str(r.get('t', ''))
                             bucket = f"{t[:14]}{int(t[14:16]) // 5 * 5:02d}:00"
                             if ev == 'SCAN':
                                 beats[bucket] = beats.get(bucket, 0) + 1
+                                continue
+                            if ev == 'FAILS':
+                                fk = (bucket, r.get('pair') or '?', r.get('dir'), r.get('gates'), r.get('src'))
+                                fails[fk] = fails.get(fk, 0) + 1
                                 continue
                             key = (bucket, r.get('pair') or 'MARKET', r.get('dir'), r.get('gate'))
                             a = agg.setdefault(key, [0, 0])
@@ -205,5 +211,7 @@ def export_rows(days=3, now=None, directory=None):
         out.append(dict(t=bucket, e='BLOCK', pair=pair, dir=dr, gate=gate, n=n, no_room=noroom))
     for bucket, n in beats.items():
         out.append(dict(t=bucket, e='SCAN', n=n))
+    for (bucket, pair, dr, gates, src), n in fails.items():
+        out.append(dict(t=bucket, e='FAILS', pair=pair, dir=dr, gate=gates, n=n, src=src))
     out.sort(key=lambda r: str(r.get('t') or ''))
     return out

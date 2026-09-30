@@ -1910,7 +1910,8 @@ async def export_decisions_csv(days: int = 3, db: AsyncSession = Depends(get_db)
     refusal (BLOCK) aggregated per 5 min × pair × direction × gate, plus one POSITION_OPEN row per position open RIGHT NOW (the
     orders export carries closed trades only). Last `days` UTC days (1–7). Read-only; the orders export is unchanged.
     Rows: OPEN/ADMIT/EXPIRED (journal lines) · BLOCK (per 5 min × pair × dir × gate; pair-less = MARKET) · SCAN (5-min heartbeat =
-    journal coverage) · POSITION (every bot + MANUAL position overlapping the window, open or closed, with `closed`)."""
+    journal coverage) · FAILS (per 5 min × pair × dir × FULL gate set "A+B+…" × source — which gates must ALL be loosened to free a
+    trade) · POSITION (every bot + MANUAL position overlapping the window, open or closed, with `closed`)."""
     import asyncio as _aio
     import csv
     import io

@@ -4748,3 +4748,20 @@ frozen confirmation on 8 fresh days (null sim ≈0.5 % false candidates). Bot ch
 + UI button — the decision journal's fills, refusals per 5 min × pair × gate, 5-min scan heartbeats and every position with open/close
 times; the engine now journals a BOOK_FULL line at the max-open cap skip (no counter, no trading change). The scout's WHY column
 names the gates that refused a missed move. Orders export deliberately unchanged (older scripts read it unfiltered).
+
+## 2026-09-30 (151) - 🧩 FAILS journal: the FULL gate set per refusal + scout "new SLEEVE or loosen a FILTER?" diagnosis (tooling; trading unchanged)
+Operator: missed moves (ARK, MOVR, BTW…) → "new sleeve, or which filter is blocking?"; and "a trade is often blocked by several gates
+at once". BLOCK lines carry only the FIRST gate, so a per-gate "loosen X" read over-credits X (the candidate may still die on Y).
+Engine now journals one `FAILS` line per refused candidate with the WHOLE fail list (momentum ladder via the Funnel-v2 multi
+recorder, BTC macro veto prepended as MACRO:<gate> and journaled even when macro-suppressed from the counters; flip chain with
+src FLIP:<source>); export aggregates per 5 min × pair × dir × gate set × source. No counter, sizing or gate change.
+Scout classifies every untraded move by the CLOSEST full gate set it was refused with: FILTER_NEAR (1–2 gates, incl. a
+ladder pass refused only by the macro veto = bare MACRO:<gate>, or by one engine-chain BLOCK) · FILTER_FAR (≥3 gates even at its
+closest → sleeve-like) · SLEEVE (never even a refused candidate) · CAPACITY (a capacity gate fired) · EXECUTION (maker expired) ·
+UNIVERSE (outside top-50) · PRE_FAILS (window older than the first FAILS line — not classified). Good = 2×ATR before 1×ATR; ALT_SPIKE
++ TREND on one pair/window = one move. Sets are NECESSARY not sufficient (last-mile ladder + later engine gates unevaluated on a
+failed ladder). Probe-admitted flips and *_DISABLED sleeve switches are not journaled. Deep review: 5 Important applied (macro-only
+line, PRE_FAILS era, near/far split by closest set, sufficiency wording, flip-disabled noise). Decision rule, locked now: a
+FILTER_NEAR set becomes a loosen candidate only when Good clearly beats Bad across many days AND an engine-replay loosening of
+exactly that set wins (then the expectancy bar); good moves piling in FILTER_FAR/SLEEVE → Path-B sleeve backtest (ALT_SPIKE /
+TREND), never a live sleeve from scout counts alone. Evidence starts with the first export after this deploy (history has first-gate BLOCK rows only).

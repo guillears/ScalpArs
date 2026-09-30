@@ -234,6 +234,9 @@ CAPACITY_GATES = {"BOOK_FULL", "NO_BALANCE"}
 HOUSEKEEPING = ("BOOK_CHANGED", "REDEPLOY_OPEN", "OPEN_FAILED", "BACKSTOP_PLACE_FAILED", "OPEN_FILTERED")
 
 
+FAILS_FROM = [None]   # ms from which the decision journal carries FULL gate sets (FAILS lines); set by load_decisions
+
+
 def load_decisions():
     """Decisions exports merged → (fills, blocks, positions, expired, coverage). Coverage = the 5-min SCAN heartbeats (gaps
     > 10 min split it: a missing journal day / downtime is 'unknown', never 'none'); files without heartbeats (first export
@@ -253,13 +256,15 @@ def load_decisions():
             log(f"decisions export skipped ({os.path.basename(f)}): {e}")
     empty = pd.DataFrame()
     if not frames:
-        return empty, empty, empty, empty, []
+        return empty, empty, empty, empty, [], empty
     a = pd.concat(frames, ignore_index=True).sort_values("exp_ms")      # newest export last → keep="last" wins
     fills = a[a.e == "OPEN"].drop_duplicates(["t", "pair", "dir"], keep="last")
     blocks = a[a.e == "BLOCK"].drop_duplicates(["t", "pair", "dir", "gate"], keep="last")
     blocks = blocks[~blocks.gate.astype(str).str.startswith(HOUSEKEEPING)]
     pos = a[a.e.isin(["POSITION", "POSITION_OPEN"])].drop_duplicates(["t", "pair", "dir"], keep="last")
     expired = a[a.e == "EXPIRED"]
+    fails = a[a.e == "FAILS"].drop_duplicates(["t", "pair", "dir", "gate", "src"], keep="last") if "src" in a else a.iloc[0:0]
+    FAILS_FROM[0] = int(fails.ms.min()) + 10 * MIN if len(fails) else None   # first FAILS line ≈ the deploy that started writing them
     beats = sorted(set(a[a.e == "SCAN"].ms.astype("int64")))
     cov = []
     if beats:
@@ -274,7 +279,7 @@ def load_decisions():
             if len(j):
                 cov.append([int(j.ms.min()), int(exp)])
         cov.sort()
-    return fills, blocks, pos, expired, cov
+    return fills, blocks, pos, expired, cov, fails
 
 
 def _held_at(pos, t):
@@ -456,12 +461,12 @@ def bot_check(row, orders, cov, max_open, dec=None):
     """(bot, manual, book, why) for one stored row — recomputed every run so late exports fill old rows."""
     st_, en_ = row.get("start_ts"), row.get("end_ts")
     if st_ is None or en_ is None or pd.isna(st_) or pd.isna(en_):
-        return "unknown", "", None, ""
+        return "unknown", "", None, "", "", "", ""
     a = int(st_); b = int(en_) + BAR + 60 * MIN                        # start_ts = the close the measured move starts from
     want = "LONG" if row["side"] == "UP" else "SHORT"
     pair_ev = row["pair"] not in ("BTCUSDT", "UNIVERSE")
-    if dec is not None and dec[4] and covered(dec[4], a, b):          # ── the decision journal covers this window (heartbeats)
-        fills, blocks, pos, expired, _ = dec
+    if dec is not None and len(dec) > 4 and dec[4] and covered(dec[4], a, b):          # ── the decision journal covers this window (heartbeats)
+        fills, blocks, pos, expired, _, fsets = dec
         dirmask = lambda df: df.dir.astype(str).str.upper().isin([want, "ANY"])
         g = fills[(fills.ms >= a) & (fills.ms <= b) & (fills.dir.astype(str).str.upper() == want)] if len(fills) else fills
         held = _held_at(pos, a)
@@ -477,30 +482,58 @@ def bot_check(row, orders, cov, max_open, dec=None):
         t_ev = int(row["bar_ts"]) + BAR
         book_now = _held_at(pos, t_ev)
         book = int((book_now.strategy.astype(str) != "MANUAL").sum()) if len(book_now) else 0
-        why = ""
+        why = ""; miss = "TRADED" if bot != "none" else ""; sets_txt = ""; best = ""; size = {}
         if bot == "none":
             end_close = int(en_) + BAR                                  # refusals while the move ran, not after it
+            fails_era = FAILS_FROM[0] is not None and a >= FAILS_FROM[0]   # the journal wrote FULL gate sets for this window
+            fs = fsets[(fsets.ms >= a - BAR) & (fsets.ms <= end_close) & dirmask(fsets)] if len(fsets) else fsets
+            if len(fs):
+                fs = fs[fs.pair == row["pair"]] if pair_ev else fs
+            if len(fs):
+                fs = fs[~fs.gate.astype(str).str.contains("_DISABLED")]  # a switched-off sleeve is not a gate to loosen
+            if len(fs):                                                  # FULL gate sets (overlap-aware)
+                lab = fs.gate.astype(str).where(fs.src.astype(str) == "MOMENTUM", fs.src.astype(str) + ":" + fs.gate.astype(str))
+                sn = fs.assign(n=pd.to_numeric(fs.n, errors="coerce").fillna(1), lab=lab).groupby("lab").n.sum().sort_values(ascending=False)
+                sets_txt = "; ".join(f"{k}×{int(v)}" for k, v in sn.head(3).items())
+                size = {k: str(k).split(":", 2)[-1].count("+") + 1 if str(k).startswith("FLIP:") else str(k).count("+") + 1 for k in sn.index}
+                best = min(sn.index, key=lambda k: (size[k], -sn[k]))   # the CLOSEST the move came to a trade (fewest gates)
             bl = blocks[(blocks.ms >= a - BAR) & (blocks.ms <= end_close) & dirmask(blocks)] if len(blocks) else blocks
             if len(bl):
                 bl = bl[bl.pair == row["pair"]] if pair_ev else bl
             n_all = pd.to_numeric(bl.n, errors="coerce").fillna(1) if len(bl) else pd.Series(dtype=float)
             cap = bl.gate.astype(str).isin(CAPACITY_GATES) if len(bl) else pd.Series(dtype=bool)
-            if book >= max_open or (len(bl) and n_all[cap].sum() > 0):
+            cap_fired = bool(len(bl) and n_all[cap].sum() > 0)
+            blocked = bool(len(bl) and n_all[~cap].sum() > 0)
+            refused = bool(sets_txt) or blocked
+            expired_hit = bool(len(expired) and len(expired[(expired.ms >= a) & (expired.ms <= b) & ((expired.pair == row["pair"]) | (not pair_ev))]))
+            if cap_fired or (book >= max_open and not refused):           # a gate refusal outranks "the book was full at the start"
                 bot = "none (BOOK FULL)"
             if len(bl):
                 top = bl.assign(n=n_all).groupby("gate").n.sum().sort_values(ascending=False).head(3)
                 why = ", ".join(f"{k}×{int(v)}" for k, v in top.items())
             elif str(row.get("in_universe")) == "False":
                 why = "not in the bot's universe"
-            elif len(expired) and len(expired[(expired.ms >= a) & (expired.ms <= b) & ((expired.pair == row["pair"]) | (not pair_ev))]):
+            elif expired_hit:
                 why = "maker entry expired"
             else:
                 why = "no gate fired (no setup)"
             if bot == "none (BOOK FULL)" and not why.startswith("book"):
                 why = f"book full ({book} open) · " + why if book >= max_open else "capacity · " + why
-        return bot, (f"manual×{len(man)}" if man else ""), book, why
+            if sets_txt:
+                why = f"gate sets: {sets_txt} · closest: {best}" + (f" · first gates: {why}" if why and not why.startswith(("no gate", "not in")) else "")
+            if not sets_txt and blocked and fails_era:
+                best = "(ladder passed; refused by: " + str(bl.assign(n=n_all)[~cap].groupby("gate").n.sum().idxmax()) + ")"
+            nb = 0 if not best else (1 if best.startswith("(ladder") else size.get(best, 9))
+            miss = ("CAPACITY" if bot == "none (BOOK FULL)" else
+                    "EXECUTION" if expired_hit else                     # the bot wanted it; the maker entry expired
+                    "UNIVERSE" if str(row.get("in_universe")) == "False" else
+                    "PRE_FAILS" if not fails_era else                   # no full gate sets for this window: FILTER vs SLEEVE unknowable
+                    "FILTER_NEAR" if refused and 0 < nb <= 2 else       # 1–2 gates from a trade → loosen candidate
+                    "FILTER_FAR" if refused else                        # ≥3 gates at best → the rules were far from it (sleeve-like)
+                    "SLEEVE")                                           # in universe, never even a refused candidate
+        return bot, (f"manual×{len(man)}" if man else ""), book, why, miss, sets_txt, best
     if orders is None or not covered(cov, a, b):
-        return "unknown", "", None, ""
+        return "unknown", "", None, "", "", "", ""
     want = "LONG" if row["side"] == "UP" else "SHORT"
     g = orders[((orders.opened_ms >= a) & (orders.opened_ms <= b)) | ((orders.opened_ms < a) & (orders.closed_ms > a))]
     if row["pair"] not in ("BTCUSDT", "UNIVERSE"):
@@ -512,7 +545,8 @@ def bot_check(row, orders, cov, max_open, dec=None):
     names = ", ".join(f"{s}×{n}" for s, n in bot.entry_strategy.fillna("MOMENTUM").astype(str).value_counts().items()) or "none"
     if names == "none" and book >= max_open:
         names = "none (BOOK FULL)"
-    return names, (f"manual×{len(man)}" if len(man) else ""), book, ""
+    return names, (f"manual×{len(man)}" if len(man) else ""), book, "", ("TRADED" if not names.startswith("none") else
+                                                                          "CAPACITY" if "BOOK" in names else ""), "", ""
 
 
 def missed_flag(r):
@@ -605,6 +639,58 @@ def evidence(allv, now_ms):
                         trim=trim, lo=lo, hi=hi, mfe60=float(g.mfe60.mean()) if "mfe60" in g and g.mfe60.notna().any() else None,
                         verdict=verdict))
     return sorted(out, key=lambda r: (r["verdict"][0] not in "✅⏳", -r["n"])), state
+
+
+MISS_MEANING = {"FILTER_NEAR": "refused, but 1–2 gates from a trade (closest set) → loosen candidate",
+                "FILTER_FAR": "refused, ≥3 gates even at its closest → the rules were far from it → sleeve-like",
+                "SLEEVE": "in the universe, never even a refused candidate → the rules never saw a setup → new-sleeve territory",
+                "CAPACITY": "book was full → capacity, not signal",
+                "UNIVERSE": "outside the bot's top-50 universe → universe question, not a filter",
+                "EXECUTION": "the bot wanted it, the maker entry expired → execution"}
+
+
+def diagnosis_lines(allv):
+    """Untraded pair events (ALT_SPIKE / TREND) whose 2×ATR-vs-1×ATR outcome is known, split by WHY the bot missed them:
+    FILTER (gates refused it — table per FULL gate set: good moves blocked vs bad moves blocked, overlap-aware), SLEEVE (no gate
+    ever refused it / outside the universe — the current rules never had a setup), CAPACITY (book full). Only windows a decisions
+    export covers are classified. A gate set is worth testing when it blocks clearly more TARGETs than STOPs over many days."""
+    if allv is None or not len(allv) or "miss_class" not in allv or "tbs2" not in allv:
+        return ["Needs a 'Download Decisions CSV' covering the events (and events ≥ 2 h old)."]
+    d = allv[allv.type.isin(["ALT_SPIKE", "TREND"]) & allv.miss_class.isin(list(MISS_MEANING))
+             & allv.tbs2.isin(["TARGET", "STOP", "NEITHER"])].copy()
+    if not len(d):
+        return ["No classified untraded moves yet (needs a decisions export covering them)."]
+    d = d.sort_values("bar_ts"); keep, last = [], {}
+    for i, r in zip(d.index, d.itertuples()):                        # ALT_SPIKE + TREND on the same pair/side/window = ONE move
+        k = (r.pair, r.side)
+        if k in last and int(r.bar_ts) - last[k] < 4 * 3600_000:
+            continue
+        last[k] = int(r.bar_ts); keep.append(i)
+    d = d.loc[keep].copy()
+    d["day"] = pd.to_datetime(d.bar_ts, unit="ms").dt.date
+    L = ["| Class | Moves | Good (2×ATR first) | Bad (1×ATR stop first) | Neither | Days | Meaning |", "|---|---|---|---|---|---|---|"]
+    for c in MISS_MEANING:
+        g = d[d.miss_class == c]
+        if len(g):
+            L.append(f"| {c} | {len(g)} | {(g.tbs2 == 'TARGET').sum()} | {(g.tbs2 == 'STOP').sum()} | {(g.tbs2 == 'NEITHER').sum()} | {g.day.nunique()} | {MISS_MEANING[c]} |")
+    f = d[d.miss_class == "FILTER_NEAR"]
+    if len(f):
+        rows = []
+        for r in f.itertuples():
+            main_set = "" if pd.isna(r.closest_set) else str(r.closest_set)   # the CLOSEST full set the move came to (fewest gates)
+            rows.append((main_set, r.tbs2, r.day))
+        x = pd.DataFrame(rows, columns=["set", "tbs2", "day"])
+        L += ["", "FILTER_NEAR moves by their CLOSEST full gate set. Necessary, not sufficient: loosening the set is required to free the move, "
+              "but last-mile ladder gates and later engine gates were not evaluated on those scans — the engine replay decides:", "",
+              "| Gate set | Moves | Good | Bad | Days | Good − Bad |", "|---|---|---|---|---|---|"]
+        for st_, g in sorted(x.groupby("set"), key=lambda kv: -len(kv[1]))[:12]:
+            good, bad = int((g.tbs2 == "TARGET").sum()), int((g.tbs2 == "STOP").sum())
+            L.append(f"| {st_} | {len(g)} | {good} | {bad} | {g.day.nunique()} | {good - bad:+d} |")
+    pre = int((allv.miss_class == "PRE_FAILS").sum()) if "miss_class" in allv else 0
+    L += ["", "Read: FILTER_NEAR sets that clearly beat Bad over many days → engine-replay test of loosening exactly that set; "
+          "good moves piling up in FILTER_FAR / SLEEVE → new-sleeve backtest (ALT_SPIKE / TREND). Never a live change from these counts alone."
+          + (f" {pre} older events predate the full-gate-set journal (PRE_FAILS) and are left out." if pre else "")]
+    return L
 
 
 def fmt(v):
@@ -744,6 +830,7 @@ def run():
     if len(allv):
         chk = [bot_check(r, orders, cov, max_open, dec) for r in allv.to_dict("records")]
         allv["bot"] = [c[0] for c in chk]; allv["manual"] = [c[1] for c in chk]; allv["book"] = [c[2] for c in chk]; allv["why"] = [c[3] for c in chk]
+        allv["miss_class"] = [c[4] for c in chk]; allv["gate_sets"] = [c[5] for c in chk]; allv["closest_set"] = [c[6] for c in chk]
         allv["missed"] = [missed_flag(r) for r in allv.to_dict("records")]
         allv = dedupe_flags(allv)
         atomic_write(EVENTS_CSV, allv.sort_values("bar_ts").to_csv(index=False))
@@ -753,7 +840,7 @@ def run():
     mv = merge_movers(mold, top_movers({p: d for p, d in alts.items() if p in in_now}, now_ms))
     if len(mv):
         chk = [bot_check(dict(r, bar_ts=r["start_ts"]), orders, cov, max_open, dec) for r in mv.to_dict("records")]
-        mv["bot"] = [c[0] for c in chk]; mv["manual"] = [c[1] for c in chk]; mv["why"] = [c[3] for c in chk]
+        mv["bot"] = [c[0] for c in chk]; mv["manual"] = [c[1] for c in chk]; mv["why"] = [c[3] for c in chk]; mv["miss_class"] = [c[4] for c in chk]
         mv["start_utc"] = pd.to_datetime(mv.start_ts.astype("int64"), unit="ms").dt.strftime("%Y-%m-%d %H:%M")
         mv["end_utc"] = pd.to_datetime(mv.end_ts.astype("int64") + BAR, unit="ms").dt.strftime("%Y-%m-%d %H:%M")
         atomic_write(MOVERS_CSV, mv.sort_values("start_ts").to_csv(index=False))
@@ -803,6 +890,8 @@ def run():
                   "market events; one flag per move)."]
         if len(m):
             L.append("Flagged: " + "; ".join(f"{r.time_utc[11:]} {r.type} {r.pair} {r.side}" for r in m.itertuples()))
+    L += ["", "## Missed-move diagnosis — new SLEEVE or loosen a FILTER? (every stored pair event the bot did not trade, with an outcome)", ""]
+    L += diagnosis_lines(allv)
     L += ["", "## Top movers (largest 4 h moves in the bot's universe, last 24 h)", ""]
     m24 = mv[mv.end_ts.astype("int64") >= now_ms - 24 * 3600_000].copy() if len(mv) else mv
     if len(m24):

@@ -2965,6 +2965,33 @@ class TradingEngine:
             self._record_filter_block("OPEN_KWARG_DROPPED", direction)
         return {k: v for k, v in ef.items() if k in allowed}
 
+    def _journal_fails(self, fails, direction, pair, src, macro=None):
+        """🔭 Sep-30: the FULL list of gates one candidate failed, to the decision journal (file-only, never raises, no counter).
+        BLOCK lines carry only the first gate; this line lets an analysis see the whole failed set (a trade failing A and B is NOT
+        freed by loosening B). NECESSARY, not sufficient: when the ladder fails, its last-mile gates (ADX confidence, conf mode,
+        5/20 gap) and the post-signal engine chain are not evaluated. A ladder PASS refused only by the macro veto = bare MACRO:<gate>. `macro` = the
+        scan's BTC macro veto for that direction (only its FIRST gate is known — later macro gates are not evaluated). Scope: the
+        momentum ladder + the flip chain; a candidate that passes the ladder and dies on a later engine-chain gate (heat, short
+        filters, blacklist) shows up only as a BLOCK line. Identical sets are written once per 5-minute bucket."""
+        try:
+            gates = [str(f) for f in (fails or []) if f]
+            if any(g.endswith("_DISABLED") for g in gates):           # a sleeve switched off is not a gate to loosen
+                return
+            if macro:
+                gates = [f"MACRO:{macro}"] + gates
+            if gates:
+                key = (src, direction, pair, "+".join(gates))
+                bucket = int(time.time() // 300)                     # one line per identical set per 5 min (export buckets = 5 min)
+                seen = getattr(self, '_fails_journal_seen', None)
+                if seen is None or seen[0] != bucket:
+                    seen = self._fails_journal_seen = (bucket, set())
+                if key in seen[1]:
+                    return
+                seen[1].add(key)
+                _djournal.note('FAILS', src=src, dir=direction, pair=pair, gates=key[3], n_gates=len(gates))
+        except Exception:
+            pass
+
     def _record_filter_multi(self, fails, direction: str, pair: str) -> None:
         """Jul 14 FUNNEL v2: honest accounting for one momentum-ladder candidate evaluation.
 
@@ -5538,6 +5565,7 @@ class TradingEngine:
                     logger.warning(f"[FLIPGATE_PROBE] {pair}: admit check errored (fail-open to normal block): {_fg_e}")
                     _fg_admit_tag = None
             if _blocked and _fg_admit_tag is None:
+                self._journal_fails(_flip_fails, flip_dir, pair, f"FLIP:{source}")   # refused flips only (a probe-admitted flip opened)
                 try: self._record_filter_block(_reason, flip_dir)
                 except Exception: pass
                 # Jul 5: same-direction PASS phantom for the decision-gated flip-SHORT blocker.
@@ -12822,6 +12850,8 @@ class TradingEngine:
         def _signal_multi_recorder(fails, direction: str):
             # Jul 14 FUNNEL v2: full fail-list accounting (All-fails / SOLE / Episodes).
             # Mirrors the legacy recorder's BTC-macro suppression so surfaces stay comparable.
+            self._journal_fails(fails, direction, _current_pair_holder.get('pair') or '?', "MOMENTUM",
+                                macro=(_btc_macro_blocks_long if direction == "LONG" else _btc_macro_blocks_short))
             if direction == "LONG" and _btc_macro_blocks_long is not None:
                 return
             if direction == "SHORT" and _btc_macro_blocks_short is not None:
@@ -13015,6 +13045,9 @@ class TradingEngine:
                         _prs[pair] = unrecorded_pair_reason(indicators.get('ema5'), indicators.get('ema8'), indicators.get('ema13'),
                                                             indicators.get('ema20'), _btc_macro_blocks_long, _btc_macro_blocks_short,
                                                             _current_pair_holder.get('first_gate'))
+                if signal in ("LONG", "SHORT"):                  # ladder PASSED: a macro veto alone refuses it → a bare MACRO:<gate> set
+                    self._journal_fails([], signal, pair, "MOMENTUM",
+                                        macro=(_btc_macro_blocks_long if signal == "LONG" else _btc_macro_blocks_short))
                 if signal in ["LONG", "SHORT"]:
                     logger.info(f"[SIGNAL-FOUND] {pair}: {signal} {confidence} - RSI={indicators.get('rsi'):.1f}, ADX={indicators.get('adx')}")
 

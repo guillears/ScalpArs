@@ -21,7 +21,7 @@ from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, is_leverage_blocked
 from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, closed_wilder_ndi, fade_laggard_block, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
-from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings
+from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
 
@@ -12937,6 +12937,10 @@ class TradingEngine:
                 indicators = calculate_indicators(ohlcv, pair_volume_bars=_pair_vol_bars, global_volume_bars=_global_vol_bars)
                 if not indicators:
                     continue
+                try:   # ⚡ Sep-30: the SURGE ATR floor's own reading (Wilder, closed bars) for the Top Pairs "ATR 5m" column
+                    indicators['atr_pct_5m'] = wilder_atr_pct(ohlcv[:-1])
+                except Exception:
+                    indicators['atr_pct_5m'] = None
 
                 # 🌊 Aug-21 gate 57: Bull-Run sleeve hook — independent of the alt signal ladder
                 # (the monitor replaces the entry filters at regime level). Self-gates on
@@ -15076,6 +15080,7 @@ class TradingEngine:
             pair_data.rsi_prev1 = indicators.get('rsi_prev1')
             pair_data.rsi_prev2 = indicators.get('rsi_prev2')
             pair_data.adx = indicators.get('adx')
+            pair_data.atr_pct = indicators.get('atr_pct_5m')
             pair_data.volume_24h = actual_volume_24h
             pair_data.avg_volume = indicators.get('avg_volume')
             pair_data.signal = signal
@@ -15097,6 +15102,7 @@ class TradingEngine:
                 rsi_prev1=indicators.get('rsi_prev1'),
                 rsi_prev2=indicators.get('rsi_prev2'),
                 adx=indicators.get('adx'),
+                atr_pct=indicators.get('atr_pct_5m'),
                 volume_24h=actual_volume_24h,
                 avg_volume=indicators.get('avg_volume'),
                 signal=signal,

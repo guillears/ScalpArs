@@ -1267,6 +1267,7 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
                           else None),
             "rsi": round(p.rsi, 2) if p.rsi else None,
             "adx": round(p.adx, 2) if p.adx else None,
+            "atr_pct": round(p.atr_pct, 2) if getattr(p, 'atr_pct', None) is not None else None,   # ⚡ 5m ATR % (SURGE floor)
             "signal": p.signal,
             "confidence": p.confidence,
             # Sep-29: confidence is the RAW setup rating from get_signal; any later gate can still refuse the entry. True only
@@ -1322,6 +1323,12 @@ async def refresh_pairs(db: AsyncSession = Depends(get_db)):
                     continue
 
                 indicators = calculate_indicators(ohlcv)
+                try:   # ⚡ keep the Top Pairs ATR 5m column on a manual refresh (review: it was nulled until the next scan)
+                    from services.surge import wilder_atr_pct as _wap
+                    if indicators:
+                        indicators['atr_pct_5m'] = _wap(ohlcv[:-1])
+                except Exception:
+                    pass
                 if not indicators:
                     continue
 

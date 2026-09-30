@@ -743,6 +743,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE pair_data ADD COLUMN macro_regime VARCHAR(10)"))
                 if 'volume_ratio' not in pd_columns:
                     connection.execute(text("ALTER TABLE pair_data ADD COLUMN volume_ratio FLOAT"))
+                if 'atr_pct' not in pd_columns:   # ⚡ Sep-30: Top Pairs ATR 5m column (the SURGE ATR floor)
+                    connection.execute(text("ALTER TABLE pair_data ADD COLUMN atr_pct FLOAT"))
                 if 'ema50' not in pd_columns:
                     connection.execute(text("ALTER TABLE pair_data ADD COLUMN ema50 FLOAT"))
 

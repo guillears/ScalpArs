@@ -1048,6 +1048,7 @@ class PairData(Base):
     rsi_prev1 = Column(Float, nullable=True)
     rsi_prev2 = Column(Float, nullable=True)
     adx = Column(Float, nullable=True)
+    atr_pct = Column(Float, nullable=True)   # ⚡ Sep-30: 5m ATR(14) % on CLOSED bars (Wilder) — exactly what the SURGE ATR floor judges
     
     # Signal
     signal = Column(String(10), nullable=True)  # LONG, SHORT, NOTHING

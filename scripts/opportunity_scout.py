@@ -59,6 +59,7 @@ EVENTS_CSV = os.path.join(REPORTS, "SCOUT_EVENTS.csv")
 MOVERS_CSV = os.path.join(REPORTS, "SCOUT_MOVERS.csv")
 EVIDENCE_JSON = os.path.join(REPORTS, "SCOUT_EVIDENCE.json")
 LOCK = os.path.join(REPORTS, ".scout.lock")
+QUIET = False                      # --quiet: print only the new note lines (the scheduled run's single fixed command)
 BAR, MIN = 300_000, 60_000
 FETCH = 640
 EX = ccxt.binanceusdm({"enableRateLimit": True})
@@ -772,6 +773,25 @@ def _exit_shape(g):
             f"{x.t_peak_min.median():.0f} min{' (floor: ' + format(cap, '.0f') + '% still running at 4 h)' if cap >= 10 else ''} (n={len(x)})")
 
 
+def _diag_frame(allv):
+    """Classified untraded pair moves with a known outcome, ALT_SPIKE + TREND on the same pair/side within 4 h = ONE move."""
+    if allv is None or not len(allv) or "miss_class" not in allv or "tbs2" not in allv:
+        return None
+    d = allv[allv.type.isin(["ALT_SPIKE", "TREND"]) & allv.miss_class.isin(list(MISS_MEANING))
+             & allv.tbs2.isin(["TARGET", "STOP", "NEITHER"])].copy()
+    if not len(d):
+        return d
+    d = d.sort_values("bar_ts"); keep, last = [], {}
+    for i, r in zip(d.index, d.itertuples()):
+        k = (r.pair, r.side)
+        if k in last and int(r.bar_ts) - last[k] < 4 * 3600_000:
+            continue
+        last[k] = int(r.bar_ts); keep.append(i)
+    d = d.loc[keep].copy()
+    d["day"] = pd.to_datetime(d.bar_ts, unit="ms").dt.date
+    return d
+
+
 def diagnosis_lines(allv):
     """Untraded pair events (ALT_SPIKE / TREND) whose 2×ATR-vs-1×ATR outcome is known, split by WHY the bot missed them:
     FILTER (gates refused it — table per FULL gate set: good moves blocked vs bad moves blocked, overlap-aware), SLEEVE (no gate
@@ -779,18 +799,9 @@ def diagnosis_lines(allv):
     export covers are classified. A gate set is worth testing when it blocks clearly more TARGETs than STOPs over many days."""
     if allv is None or not len(allv) or "miss_class" not in allv or "tbs2" not in allv:
         return ["Needs a 'Download Decisions CSV' covering the events (and events ≥ 2 h old)."]
-    d = allv[allv.type.isin(["ALT_SPIKE", "TREND"]) & allv.miss_class.isin(list(MISS_MEANING))
-             & allv.tbs2.isin(["TARGET", "STOP", "NEITHER"])].copy()
-    if not len(d):
+    d = _diag_frame(allv)
+    if d is None or not len(d):
         return ["No classified untraded moves yet (needs a decisions export covering them)."]
-    d = d.sort_values("bar_ts"); keep, last = [], {}
-    for i, r in zip(d.index, d.itertuples()):                        # ALT_SPIKE + TREND on the same pair/side/window = ONE move
-        k = (r.pair, r.side)
-        if k in last and int(r.bar_ts) - last[k] < 4 * 3600_000:
-            continue
-        last[k] = int(r.bar_ts); keep.append(i)
-    d = d.loc[keep].copy()
-    d["day"] = pd.to_datetime(d.bar_ts, unit="ms").dt.date
     L = ["| Class | Moves | Good (2×ATR first) | Bad (1×ATR stop first) | Neither | Days | All moves (n = with 4 h data): median best 4 h · worst point before the peak, excl…incl the peak bar's wick (median / worst quartile) · min to peak | Meaning |",
          "|---|---|---|---|---|---|---|---|"]
     for c in MISS_MEANING:
@@ -816,6 +827,159 @@ def diagnosis_lines(allv):
           "good moves piling up in FILTER_FAR / SLEEVE → new-sleeve backtest (ALT_SPIKE / TREND). Never a live change from these counts alone."
           + (f" {pre} older events predate the full-gate-set journal (PRE_FAILS) and are left out." if pre else "")]
     return L
+
+
+NOTES_MD = os.path.join(REPORTS, "SCOUT_NOTES.md")
+NOTES_STATE = os.path.join(REPORTS, ".scout_notes_state.json")
+
+
+def _append_notes(lines, now_ms):
+    if not lines:
+        return
+    hdr = f"\n## {datetime.fromtimestamp(now_ms / 1000, timezone.utc):%Y-%m-%d %H:%M} UTC\n"
+    with open(NOTES_MD, "a", encoding="utf-8") as f:
+        f.write(hdr + "".join(f"- {x}\n" for x in lines))
+
+
+def _load_notes_state():
+    try:
+        with open(NOTES_STATE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def note_failure(msg):
+    """A run that cannot complete leaves ONE line in the notes (the scheduled task no longer reads or edits files itself) —
+    the same message at most once per 6 h (an outage must not flood the notes)."""
+    try:
+        now = int(time.time() * 1000); st = _load_notes_state()
+        if st.get("fail_msg") == msg and now - int(st.get("fail_ms", 0)) < 6 * 3600_000:
+            return
+        _append_notes([f"scout run failed: {msg}"], now)
+        st.update(fail_msg=msg, fail_ms=now); atomic_write(NOTES_STATE, json.dumps(st))
+    except Exception:
+        pass
+
+
+NOTE_MAX_LINES = 12
+NOTE_ITEM_MAX_AGE = 7 * 86400_000      # (c)/(d) only consider items this young; keys live 10 days > this → never re-noted
+
+
+def write_notes(allv, mv, ev, now_ms):
+    """🗒 The notes the scheduled run used to write by hand (DECISION_LOG 156), now deterministic and appended by the script itself,
+    so a run is ONE fixed command (no ad-hoc reads/edits → no permission prompts). Only NEW things (state in
+    reports/.scout_notes_state.json), in priority order: (a) evidence verdict changes, (f) no Decisions CSV newer than 30 h (once per
+    UTC day), (b) BTC moves / breadth bursts since the previous run, (c) ⭐ misses on BTC_MOVE / BREADTH_BURST / TREND with their gate
+    sets (+ a gate set refusing ≥ 2 of those ⭐ moves the same day), (d) untraded 4 h movers ≥ ±10 % (one line per move episode),
+    (e) diagnosis crossings (FILTER_NEAR set Good−Bad ≥ +3 over ≥ 3 days; FILTER_FAR+SLEEVE Good ≥ Bad + 5 — once each).
+    The first run marks the backlog as seen and writes only the last ~4 h. Keys are recorded only for lines actually written
+    (the 12-line cap never swallows an item). Returns the lines written."""
+    st = _load_notes_state()
+    noted = {k: v for k, v in (st.get("noted") or {}).items()
+             if k.startswith("D|") or now_ms - v < NOTE_ITEM_MAX_AGE + 3 * 86400_000}   # diagnosis crossings: once, ever
+    first = "last_run_ms" not in st
+    since = now_ms - 250 * MIN                       # first run only: what counts as "recent" (later runs dedupe by keys)
+    young = now_ms - NOTE_ITEM_MAX_AGE
+    say = lambda ms: (not first) or ms > since          # the very first run marks the backlog as seen, writes only the last ~4 h
+    items = []                                           # (priority, line, key or None)
+    silent = []                                          # keys marked seen without a line (first-run backlog)
+
+    def add(prio, line, key, when=None):
+        if key and key in noted:
+            return
+        if when is not None and not say(when):
+            if key:
+                silent.append(key)
+            return
+        items.append((prio, line, key))
+    t_of = lambda ms: datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%m-%d %H:%M")
+    s_ = lambda v: v if isinstance(v, str) and v and v != "nan" else ""
+    # (a) evidence verdicts
+    prev = st.get("verdicts") or {}; cur = {}
+    for r in ev or []:
+        v = r["verdict"]; cat = ("candidate" if v.startswith("✅") else "qualified" if v.startswith("⏳") else
+                                 "failed" if v.startswith("✗ failed") else "expired" if v.startswith("✗ expired") else "other")
+        cur[r["bucket"]] = cat
+        if cat != "other" and prev.get(r["bucket"]) != cat and not first:
+            items.append((0, f"EVIDENCE — {r['bucket']}: {v} ({r['n']} events · {r['days']} days · mean {fmt(r['mean'])})", None))
+    # (f) stale Decisions CSV
+    files = glob.glob(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv"))
+    newest = max((os.path.getmtime(f) for f in files), default=0) * 1000
+    day = datetime.fromtimestamp(now_ms / 1000, timezone.utc).strftime("%Y-%m-%d")
+    if now_ms - newest > 30 * 3600_000:
+        add(1, "no Decisions CSV newer than 30 h in Downloads — the dashboard's 'Auto daily' download seems off (tab closed or "
+               "downloads blocked)", f"F|{day}")
+    if allv is not None and len(allv):
+        a = allv
+        # (b) market moves since the previous run
+        for r in a[a.type.isin(["BTC_MOVE", "BREADTH_BURST"]) & (a.bar_ts.astype("int64") >= now_ms - 26 * 3600_000)].sort_values("bar_ts").itertuples():
+            mvv = r.move_first if pd.notna(getattr(r, "move_first", np.nan)) else getattr(r, "move_max", np.nan)
+            what = (f"{float(mvv):.0f}% of pairs" if pd.notna(mvv) else "?") if r.type == "BREADTH_BURST" else fmt(mvv)
+            hf = str(getattr(r, "held_first", ""))
+            held = ((" · SURGE trigger held" if hf == "True" else " · below SURGE trigger" if hf == "False" else " · trigger unknown")
+                    if r.type == "BTC_MOVE" else "")
+            add(2, f"{r.type} {r.side} {what} at {t_of(int(r.bar_ts) + BAR)}{held} · bot {s_(getattr(r, 'bot', '')) or 'unknown'}"
+                   + (f" · why: {s_(getattr(r, 'why', ''))}" if s_(getattr(r, 'why', '')) else ""),
+                f"M|{r.type}|{r.side}|{int(r.bar_ts)}", int(r.bar_ts) + BAR)    # keys dedupe; a late detection is still noted
+        # (c) ⭐ misses
+        if "missed" in a:
+            star = a[(a.missed.astype(str) == "True") & a.type.isin(["BTC_MOVE", "BREADTH_BURST", "TREND"])
+                     & (a.bar_ts.astype("int64") >= young)]
+            for r in star.sort_values("bar_ts").itertuples():
+                gs = s_(getattr(r, "gate_sets", "")); why = s_(getattr(r, "why", ""))
+                add(3, f"⭐ missed {r.type} {r.pair} {r.side} at {t_of(int(r.bar_ts) + BAR)} · {s_(getattr(r, 'miss_class', '')) or 'class ?'}"
+                       + (f" · gate sets: {gs}" if gs else (f" · why: {why}" if why else "")),
+                    f"S|{r.type}|{r.pair}|{r.side}|{int(r.bar_ts)}", int(r.bar_ts) + BAR)
+            if "closest_set" in star and not first:            # ⭐ flags often land a day late (the daily Decisions CSV)
+                rec = star[star.bar_ts.astype("int64") >= now_ms - 3 * 86400_000].copy()
+                rec["d"] = pd.to_datetime(rec.bar_ts, unit="ms").dt.strftime("%Y-%m-%d")
+                rec = rec[rec.closest_set.notna() & (rec.closest_set.astype(str).str.len() > 0)]
+                for (dd, gset), n in rec.groupby(["d", rec.closest_set.astype(str)]).size().items():
+                    if n >= 2 and gset != "nan":
+                        add(4, f"gate set {gset} refused {n} ⭐ moves on {dd}", f"G|{dd}|{gset}")
+    # (d) big untraded movers — ONE line per move episode (merge_movers slides start_ts as the move grows)
+    if mv is not None and len(mv):
+        big = mv[(mv.move_4h.astype(float).abs() >= 10) & mv.bot.astype(str).str.startswith("none")
+                 & (mv.end_ts.astype("int64") >= young)]
+        seen_v = [k.split("|") for k in noted if k.startswith("V|")]
+        for r in big.itertuples():
+            s0 = int(r.start_ts)
+            if any(p == r.pair and sd == r.side and abs(int(t) - s0) <= 8 * 3600_000 for _, p, sd, t in seen_v):
+                continue                                  # the same episode, already noted (its window slid)
+            cap = "capacity miss (book full)" if "BOOK" in str(r.bot) else "signal miss"
+            add(5, f"untraded mover {r.pair} {r.side} {float(r.move_4h):+.1f}% ({r.start_utc[5:]}→{r.end_utc[11:]}) · {cap}"
+                   + (f" · why: {s_(getattr(r, 'why', ''))}" if s_(getattr(r, 'why', '')) else ""),
+                f"V|{r.pair}|{r.side}|{s0}", int(r.end_ts) + BAR)
+    # (e) diagnosis crossings (once each)
+    d = _diag_frame(allv)
+    if d is not None and len(d):
+        near = d[(d.miss_class == "FILTER_NEAR") & d.closest_set.notna() & (d.closest_set.astype(str).str.len() > 0)] \
+            if "closest_set" in d else d.iloc[0:0]
+        for gset, g in near.groupby(near.closest_set.astype(str)):
+            good, bad = int((g.tbs2 == "TARGET").sum()), int((g.tbs2 == "STOP").sum())
+            if good - bad >= 3 and g.day.nunique() >= 3:
+                add(6, f"DIAGNOSIS — FILTER_NEAR set {gset}: {good} good vs {bad} bad over {g.day.nunique()} days → engine-replay "
+                       f"loosen test candidate", f"D|NEAR|{gset}", None if not first else 0)
+        fs = d[d.miss_class.isin(["FILTER_FAR", "SLEEVE"])]
+        good, bad = int((fs.tbs2 == "TARGET").sum()), int((fs.tbs2 == "STOP").sum())
+        if good >= bad + 5:
+            add(6, f"DIAGNOSIS — FILTER_FAR/SLEEVE: {good} good vs {bad} bad → new-sleeve backtest territory", "D|SLEEVE",
+                None if not first else 0)
+    items.sort(key=lambda x: x[0])
+    shown = items[:NOTE_MAX_LINES]
+    lines = [x[1] for x in shown]
+    if len(items) > NOTE_MAX_LINES:
+        lines.append(f"… {len(items) - NOTE_MAX_LINES} more next run (see SCOUT_REPORT_latest.md)")
+    _append_notes(lines, now_ms)
+    for _, _, k in shown:                                  # only what was WRITTEN is marked seen (the rest comes next run)
+        if k:
+            noted[k] = now_ms
+    for k in silent:
+        noted[k] = now_ms
+    st.update(last_run_ms=now_ms, noted=noted, verdicts={**prev, **cur})   # an empty evidence run never forgets verdicts
+    atomic_write(NOTES_STATE, json.dumps(st))
+    return lines
 
 
 def fmt(v):
@@ -903,7 +1067,7 @@ def run():
     btc_full = k5("BTC/USDT:USDT", last_closed, 1500)                 # 1500 bars: the 72 h monitor readings need 999 before a stamp
     btc = btc_full.tail(FETCH) if btc_full is not None else None      # detection + outcomes: the last 640 CLOSED bars
     if btc is None or len(btc) < 400:
-        log("BTC fetch failed or too short — no run"); return
+        log("BTC fetch failed or too short — no run"); note_failure("BTC 5m fetch failed or too short (network?)"); return
     scan, rank, cutoff, limit = bot_universe(cfg)
     alts = {}
     for p in scan:
@@ -1055,8 +1219,21 @@ def run():
         else:
             W.append("None confirmed (export orders more often — windows without an export are 'unknown').")
         atomic_write(wk, "\n".join(W) + "\n")
-    print(txt)
+    try:
+        notes = write_notes(allv, mv, ev, now_ms)
+    except Exception as e:
+        notes = [f"(notes failed: {e})"]; log(f"notes failed: {e}")
+    if QUIET:
+        print(f"scout OK {datetime.fromtimestamp(now_ms/1000, timezone.utc):%Y-%m-%d %H:%M} UTC · {len(allv)} stored events · "
+              + (f"{len(notes)} new note line(s):\n" + "\n".join("- " + x for x in notes) if notes else "nothing notable (no note written)"))
+    else:
+        print(txt)
 
 
 if __name__ == "__main__":
-    main()
+    QUIET = "--quiet" in sys.argv
+    try:
+        main()
+    except Exception as _e:
+        note_failure(f"{type(_e).__name__}: {_e}")
+        raise

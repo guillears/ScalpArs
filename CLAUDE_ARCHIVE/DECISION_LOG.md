@@ -4810,3 +4810,14 @@ before −1×ATR → shallow by construction), dip shown as a range, "still runn
 Market events keep no 4 h shape (independent medians ≠ one path). Outcome fields never feed classification/evidence (verified).
 First read, all 145 stored spike/trend moves: best 4 h +3.1 %, dip before peak −1.6 % median / −2.9 % worst quartile, 90 min to
 peak → a sleeve for these would need an ATR-wide stop and a slow trail, not the momentum exit. Dual review applied.
+
+## 2026-09-30 (156) - 🗒 Scout writes its own notes; the scheduled run is ONE fixed command (tooling; trading unchanged)
+Operator: each scheduled run asked for approvals ("Allow always" never matched — the run's Claude improvised a different
+sed/grep/tail each time, and `$VAR` expansion prompts even in Auto). The note rules (evidence verdict changes, stale Decisions
+CSV once a day, BTC moves / breadth bursts, ⭐ misses with gate sets + a gate set refusing ≥2 ⭐ on a day, untraded ≥±10 % movers
+one line per episode, diagnosis crossings once) now live in opportunity_scout.write_notes, deterministic, state in
+reports/.scout_notes_state.json (keys only for lines written; items >7 days old never re-noted; first run marks the backlog seen);
+failures leave one line (same message ≤ once per 6 h). Task prompt = run `venv/bin/python scripts/opportunity_scout.py --quiet`
+and nothing else. Cadence every 4 h (operator). Dual review applied (8-day re-note flood, sliding mover key, cap swallowing items,
+late market detections, gate-set count by day, verdict memory); idempotence checked on real data (+4 h → nothing, +9 d → only
+the stale-CSV warning). Operator approves the one command once with "Allow always".

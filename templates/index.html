@@ -321,24 +321,24 @@
             <div class="glass rounded-xl overflow-hidden">
                 <div class="overflow-x-auto scrollbar-thin max-h-[28rem] overflow-y-auto">
                     <table class="w-full text-sm">
-                        <thead class="bg-white/5 sticky top-0">
+                        <thead class="bg-[#262a40] sticky top-0 z-10">
                             <tr class="text-gray-400 text-left">
-                                <th class="px-4 py-3 font-medium">Pair</th>
-                                <th class="px-4 py-3 font-medium text-right">Volume 24h</th>
-                                <th class="px-4 py-3 font-medium text-right" title="💰 Market cap (circulating, USD) — CoinMarketCap data via Binance's Info panel, refreshed every ~30 min. Hover a value for the CMC rank. '–' = not available (futures-only pair / source down). Display only.">Mcap</th>
-                                <th class="px-4 py-3 font-medium text-right">Price</th>
-                                <th class="px-4 py-3 font-medium text-right">EMA5</th>
-                                <th class="px-4 py-3 font-medium text-right">EMA8</th>
-                                <th class="px-4 py-3 font-medium text-right">EMA13</th>
-                                <th class="px-4 py-3 font-medium text-right">EMA20</th>
-                                <th class="px-4 py-3 font-medium text-right" title="EMA5-EMA20 gap">Gap 5-20</th>
-                                <th class="px-4 py-3 font-medium text-right" title="EMA5-EMA8 gap, signed like Gap 5-20: + = EMA5 above EMA8, − = EMA5 below EMA8">Gap 5-8</th>
-                                <th class="px-4 py-3 font-medium text-right">RSI(12)</th>
-                                <th class="px-4 py-3 font-medium text-right">ADX</th>
-                                <th class="px-4 py-3 font-medium text-right" title="5-minute ATR(14) as % of price, closed candles (Wilder) — the reading the ⚡ SURGE sleeves judge. Yellow = at or above the SURGE ATR floor (only those pairs can be picked when BTC triggers).">ATR 5m</th>
-                                <th class="px-4 py-3 font-medium text-center">Block Reason</th>
-                                <th class="px-4 py-3 font-medium text-center">Confidence</th>
-                                <th class="px-4 py-3 font-medium text-center">Open Positions</th>
+                                <th class="px-3 py-3 font-medium w-[6.5rem] max-w-[6.5rem]">Pair</th>
+                                <th class="px-3 py-3 font-medium text-right">Volume 24h</th>
+                                <th class="px-3 py-3 font-medium text-right" title="💰 Market cap (circulating, USD) — CoinMarketCap data via Binance's Info panel, refreshed every ~30 min. Hover a value for the CMC rank. '–' = not available (futures-only pair / source down). Display only.">Mcap</th>
+                                <th class="px-3 py-3 font-medium text-right">Price</th>
+                                <th class="px-3 py-3 font-medium text-right">EMA5</th>
+                                <th class="px-3 py-3 font-medium text-right">EMA8</th>
+                                <th class="px-3 py-3 font-medium text-right">EMA13</th>
+                                <th class="px-3 py-3 font-medium text-right">EMA20</th>
+                                <th class="px-3 py-3 font-medium text-right" title="EMA5-EMA20 gap">Gap<br>5-20</th>
+                                <th class="px-3 py-3 font-medium text-right" title="EMA5-EMA8 gap, signed like Gap 5-20: + = EMA5 above EMA8, − = EMA5 below EMA8">Gap<br>5-8</th>
+                                <th class="px-3 py-3 font-medium text-right">RSI(12)</th>
+                                <th class="px-3 py-3 font-medium text-right">ADX</th>
+                                <th class="px-3 py-3 font-medium text-right" title="5-minute ATR(14) as % of price, closed candles (Wilder) — the reading the ⚡ SURGE sleeves judge. Yellow = at or above the SURGE ATR floor (only those pairs can be picked when BTC triggers).">ATR 5m</th>
+                                <th class="px-3 py-3 font-medium text-center">Block Reason</th>
+                                <th class="px-3 py-3 font-medium text-center">Confidence</th>
+                                <th class="px-3 py-3 font-medium text-center">Open Positions</th>
                             </tr>
                         </thead>
                         <tbody id="pairs-table-body" class="divide-y divide-white/5">
@@ -19623,22 +19623,22 @@
 
                     return `
                         <tr class="hover:bg-white/5 transition">
-                            <td class="px-4 py-3 font-medium">${p.pair}</td>
-                            <td class="px-4 py-3 text-right font-mono text-sm text-gray-400">$${formatVolume(p.volume_24h || 0)}</td>
-                            <td class="px-4 py-3 text-right font-mono text-sm text-gray-400" title="${p.cmc_rank ? 'CMC rank #' + p.cmc_rank : 'market cap unavailable'}">${p.mcap_usd ? '$' + (p.mcap_usd >= 1e12 ? (p.mcap_usd / 1e12).toFixed(2) + 'T' : formatVolume(p.mcap_usd)) : '–'}</td>
-                            <td class="px-4 py-3 text-right font-mono">${formatPrice(p.price)}</td>
-                            <td class="px-4 py-3 text-right font-mono text-sm ${emaColorClass}">${formatPrice(p.ema5)}</td>
-                            <td class="px-4 py-3 text-right font-mono text-sm ${emaColorClass}">${formatPrice(p.ema8)}</td>
-                            <td class="px-4 py-3 text-right font-mono text-sm ${emaColorClass}">${formatPrice(p.ema13)}</td>
-                            <td class="px-4 py-3 text-right font-mono text-sm ${emaColorClass}">${formatPrice(p.ema20)}</td>
-                            <td class="px-4 py-3 text-right font-mono text-sm ${gapColorClass}">${gapValue}</td>
-                            <td class="px-4 py-3 text-right font-mono text-sm ${gap58Class}">${gap58Value}</td>
-                            <td class="px-4 py-3 text-right font-mono ${rsiClass}">${p.rsi !== null ? p.rsi.toFixed(1) : '-'}</td>
-                            <td class="px-4 py-3 text-right font-mono ${adxClass}">${p.adx !== null ? p.adx.toFixed(1) : '-'}</td>
-                            <td class="px-4 py-3 text-right font-mono ${(p.atr_pct != null && p.atr_pct >= parseFloat((window._cachedConfig?.thresholds || {}).surge_atr_min_pct ?? 1.5)) ? 'text-yellow-300 font-semibold' : 'text-gray-400'}" title="${p.atr_pct != null ? (p.atr_pct >= parseFloat((window._cachedConfig?.thresholds || {}).surge_atr_min_pct ?? 1.5) ? 'SURGE-eligible: ATR at or above the floor' : 'Below the SURGE ATR floor') : 'not scanned yet'}">${p.atr_pct != null ? p.atr_pct.toFixed(2) + '%' : '-'}</td>
-                            <td class="px-4 py-3 text-center">${blockReasonHtml}</td>
-                            <td class="px-4 py-3 text-center whitespace-nowrap ${_confBlocked ? 'text-gray-500' : confidenceClass} font-medium" title="${_confTitle}">${_confBlocked ? '<span class="text-[9px] align-middle mr-0.5 opacity-80">🚫</span>' + _confSafe : (_confSafe || '-')}</td>
-                            <td class="px-4 py-3 text-center">${positionsHtml}</td>
+                            <td class="px-3 py-3 font-medium"><div class="truncate max-w-[5rem]" title="${_escAttr(p.pair)}">${p.pair}</div></td>
+                            <td class="px-3 py-3 text-right font-mono text-sm text-gray-400">$${formatVolume(p.volume_24h || 0)}</td>
+                            <td class="px-3 py-3 text-right font-mono text-sm text-gray-400" title="${p.cmc_rank ? 'CMC rank #' + p.cmc_rank : 'market cap unavailable'}">${p.mcap_usd ? '$' + (p.mcap_usd >= 1e12 ? (p.mcap_usd / 1e12).toFixed(2) + 'T' : formatVolume(p.mcap_usd)) : '–'}</td>
+                            <td class="px-3 py-3 text-right font-mono">${formatPrice(p.price)}</td>
+                            <td class="px-3 py-3 text-right font-mono text-sm ${emaColorClass}">${formatPrice(p.ema5)}</td>
+                            <td class="px-3 py-3 text-right font-mono text-sm ${emaColorClass}">${formatPrice(p.ema8)}</td>
+                            <td class="px-3 py-3 text-right font-mono text-sm ${emaColorClass}">${formatPrice(p.ema13)}</td>
+                            <td class="px-3 py-3 text-right font-mono text-sm ${emaColorClass}">${formatPrice(p.ema20)}</td>
+                            <td class="px-3 py-3 text-right font-mono text-sm ${gapColorClass}">${gapValue}</td>
+                            <td class="px-3 py-3 text-right font-mono text-sm ${gap58Class}">${gap58Value}</td>
+                            <td class="px-3 py-3 text-right font-mono ${rsiClass}">${p.rsi !== null ? p.rsi.toFixed(1) : '-'}</td>
+                            <td class="px-3 py-3 text-right font-mono ${adxClass}">${p.adx !== null ? p.adx.toFixed(1) : '-'}</td>
+                            <td class="px-3 py-3 text-right font-mono ${(p.atr_pct != null && p.atr_pct >= parseFloat((window._cachedConfig?.thresholds || {}).surge_atr_min_pct ?? 1.5)) ? 'text-yellow-300 font-semibold' : 'text-gray-400'}" title="${p.atr_pct != null ? (p.atr_pct >= parseFloat((window._cachedConfig?.thresholds || {}).surge_atr_min_pct ?? 1.5) ? 'SURGE-eligible: ATR at or above the floor' : 'Below the SURGE ATR floor') : 'not scanned yet'}">${p.atr_pct != null ? p.atr_pct.toFixed(2) + '%' : '-'}</td>
+                            <td class="px-3 py-3 text-center">${blockReasonHtml}</td>
+                            <td class="px-3 py-3 text-center whitespace-nowrap ${_confBlocked ? 'text-gray-500' : confidenceClass} font-medium" title="${_confTitle}">${_confBlocked ? '<span class="text-[9px] align-middle mr-0.5 opacity-80">🚫</span>' + _confSafe : (_confSafe || '-')}</td>
+                            <td class="px-3 py-3 text-center">${positionsHtml}</td>
                         </tr>
                     `;
                 }).join('');

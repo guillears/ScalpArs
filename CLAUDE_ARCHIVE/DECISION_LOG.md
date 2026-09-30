@@ -4765,3 +4765,28 @@ line, PRE_FAILS era, near/far split by closest set, sufficiency wording, flip-di
 FILTER_NEAR set becomes a loosen candidate only when Good clearly beats Bad across many days AND an engine-replay loosening of
 exactly that set wins (then the expectancy bar); good moves piling in FILTER_FAR/SLEEVE → Path-B sleeve backtest (ALT_SPIKE /
 TREND), never a live sleeve from scout counts alone. Evidence starts with the first export after this deploy (history has first-gate BLOCK rows only).
+
+## 2026-09-30 (152) - 🧬 Scout feature stamps: every missed move carries the bot's own entry_* columns + pre-move features (tooling; trading unchanged)
+Operator: "what does it register of the winners we missed … all pair data? all macro (BTC) data? … more variables that might
+help define a new sleeve". scripts/scout_features.py stamps every stored scout event ONCE at its anchor bar (= the bar its
+outcomes are measured from → no look-ahead; pinned by a test that adds future bars): ~70 of the bot's entry_* columns under the
+same names via the engine's own pure code (pair_entry_stamps, market_entry_stamps, quality score, heat flags, patterns C/W,
+Bull/Bear-Run monitor formulas, closed-bar zone/laggard helpers, breadth + global volume over the bot's universe) + 28 pre_*
+features the bot does not record (ATR / Bollinger-width percentile vs 24 h, 2 h range, volume build-up, taker-buy share,
+open-interest change 1 h/4 h, 3/7-day extremes, 4 h/24 h return, BTC/ETH 30-min lead before the move, hour/weekday).
+Convention = last CLOSED bar (validate_against_master F2); BTC 1h rebuilt WITH the forming hour from 5m bars (as the live
+1h fetch). Parity on 10 live fills (scripts/scout_features_parity.py): corr 0.94–1.00 on every compared column (BTC 1h RSI 0.998).
+Quantities that differ from the live stamp are NOT pooled under bot names: pre_*_volume_ratio_closed (live = partial forming bar),
+pre_funding_settled (live = predicted), pre_bear_* (live only on bear-bypass fills). Empty by design: market cap / CMC rank (key),
+bull-run br_* door fields, live-only execution fields. Stamps describe the WITH-move trade (UP→LONG) — never pool direction-
+dependent columns with fade/flip fills as-is. Stamp window 40 h (every input still reaches the event); a run with a failed BTC/ETH
+read stamps nothing; FEAT_VERSION re-stamps older versions. No look-ahead pinned by a cut-at-t0 test + a one-bar mutation guard.
+Dual review: 1 bug (W3 fed a renamed column), breadth universe now incl. BTC/ETH as the scan, 1h forming bar, stale-OI window. 203/203 stored events backfilled. Scout fetches: raw klines (taker-buy free), BTC 1500 bars,
+BTC 1h/4h/1d + ETH once per run, per stamped pair 1h/1d/OI/funding once. Use: missed-winner vs missed-loser separator screens
+under the locked discipline (exhaustive 2D + shuffled null + OOS, window units) once weeks of events exist — never a ship from it
+alone.
+
+## 2026-09-30 (153) - 📏 Top Pairs table fits ATR 5m (UI only)
+Operator: shorten the Pair column so ATR 5m and part of Block Reason show; long names (1000PEPEUSDT) may be cut. Pair name capped at
+5rem inside the cell (ellipsis + full name on hover), cell padding px-4→px-3 on this table only, "Gap / 5-20" and "Gap / 5-8" headers
+on two lines (equal column widths), sticky header made opaque (rows showed through it while scrolling). Mock: table 129–160 px narrower.

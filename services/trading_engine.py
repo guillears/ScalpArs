@@ -21,6 +21,7 @@ from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, is_leverage_blocked
 from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, closed_wilder_ndi, fade_laggard_block, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
+from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
 
@@ -103,7 +104,7 @@ _fade_lag_ndi_cache: Dict[str, tuple] = {}   # symbol → (read_at, −DI) — d
 
 PAIR_REASON_PLACEHOLDER = "No EMA Stack"
 PAIR_REASON_AWAITING = "Awaiting scan (no pair data yet)"   # what the Top Pairs row shows when nothing was ever stamped
-_PAIR_REASON_EXCLUDED_PREFIXES = ("FLIP_", "OPEN_", "BACKSTOP_", "BULL_LONG", "BULLRUN_", "BR_", "SPIKE_", "BOUNCE_", "REDEPLOY", "PASS:")
+_PAIR_REASON_EXCLUDED_PREFIXES = ("FLIP_", "OPEN_", "BACKSTOP_", "BULL_LONG", "BULLRUN_", "BR_", "SPIKE_", "BOUNCE_", "REDEPLOY", "PASS:", "SURGE_")
 _PAIR_REASON_ALLOWED = ("SPIKE_GUARD",)                 # momentum-ladder gates that happen to share an excluded prefix
 _PAIR_REASON_NOT_A_BLOCK = ("LONG_HEAT_FAILOPEN",)      # counters that do not refuse the trade
 
@@ -537,6 +538,11 @@ _bearrun_monitor: Dict = {
     'bypasses': 0, 'blk_off24lo': 0, 'blk_blacklist': 0, 'blk_spacing': 0, 'blk_breadth': 0,
 }
 _bear_last_fire: Dict[str, float] = {}   # pair -> epoch of last BEARRUN_SHORT fill (spacing; DB-backed on miss)
+# ⚡ Sep-30 SURGE sleeves: the ACTIVE trigger per side ({} = none) and the UI chip snapshot. The trigger itself is recomputed from a
+# fresh BTC 5m fetch every scan (services/surge.py) — only the "which bar already fired" memory lives here, backed by the DB.
+_surge_state: Dict[str, dict] = {"LONG": {}, "SHORT": {}}
+_surge_status: Dict[str, dict] = {"LONG": {}, "SHORT": {}}
+SURGE_COHORT_START = datetime(2026, 9, 30, 14, 0, 0)   # kill-bar cohort: SURGE fills opened from the ship onwards (naive UTC)
 _breadth_n_bull: int = 0
 _breadth_n_bear: int = 0
 _breadth_n_neutral: int = 0
@@ -791,7 +797,19 @@ def _bullrun_ladder_floor(peak, ladder_str):
         return None
 
 
-def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct, door=None):
+def _surge_trail_override(entry_strategy):
+    """⚡ SURGE_LONG's trail width for the shared Bull-Run exit (surge_long_trail_atr_mult; the study's BULLRUN_1ATR cell). None for
+    every other strategy (= the Bull-Run door rule unchanged)."""
+    if (entry_strategy or "") != "SURGE_LONG":
+        return None
+    try:
+        v = float(getattr(config.trading_config.thresholds, 'surge_long_trail_atr_mult', 1.0) or 1.0)
+        return v if v > 0 else 1.0
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct, door=None, trail_mult_override=None):
     """🌊 Aug-21 gate 57: dedicated BULLRUN_LONG exit check — the ONLY exit logic sleeve
     trades run (both paths intercept BEFORE the alt exit machinery, so FAST_EXIT / tick /
     RSI / signal-lost / gate-53 quiet-SL never touch them; MAX_HOLD + manual still apply
@@ -826,6 +844,8 @@ def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct, door=None):
             _rt = float(getattr(th, 'bullrun_rearm_trail_atr_mult', 0.0) or 0.0)
             if _rt > 0:
                 trail_mult = _rt
+        if trail_mult_override is not None and float(trail_mult_override) > 0:
+            trail_mult = float(trail_mult_override)   # ⚡ SURGE_LONG: the Bull-Run exit with the sleeve's own trail (surge_long_trail_atr_mult)
         pk = float(peak_pnl or 0.0)
         if pk >= arm:
             trail_line = (pk - trail_mult * atr) if atr > 0 else lock
@@ -6364,6 +6384,149 @@ class TradingEngine:
             logger.info(f"[BEARRUN_REFUSED] {pair}: SHORT would bypass {gate} but refused by {self._bear_refuse} (off24lo {_bearrun_monitor.get('off24lo')}% vs max {getattr(th, 'bearrun_btc_off24lo_max', None)} · r24 {_bearrun_monitor.get('r24')}% · eff24 {_bearrun_monitor.get('eff24')} · breadth bear {globals().get('_market_bear_pct')}/bull {globals().get('_market_bull_pct')} vs floor {getattr(th, 'bearrun_breadth_min', None)})")
         return False
 
+    async def _update_surge_triggers(self, db):
+        """⚡ SURGE: evaluate the BTC trigger for both sides (fresh 300-bar fetch, no warm-up state). Every 5m bar that CLOSED since the
+        last scan is judged oldest → newest (≤ 6 bars back), so a scan slower than one bar never skips a trigger bar (review). A new
+        trigger opens that side's entry window; a side re-triggers only ≥ surge_trigger_spacing_hours after its previous TRIGGER
+        (memory, else max(entry_surge_trigger_at) of that side's fills — restart-proof). A restart inside an open window RESTORES that
+        trigger (pairs already filled stay picked) instead of dropping the rest of the window. Never raises."""
+        try:
+            th = config.trading_config.thresholds
+            bars = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 310)   # 295 closed + 6 catch-up views + forming (review)
+            now_ms = _leash_time.time() * 1000
+            for side in ("LONG", "SHORT"):
+                st = _surge_state[side]
+                _enabled = bool(getattr(th, f'surge_{side.lower()}_enabled', False))
+                if st and not st.get('judged_any') and not st.get('miss_flagged'):
+                    _d = float(getattr(th, f'surge_{side.lower()}_entry_delay_min', 0) or 0)
+                    _w = max(0.5, float(getattr(th, 'surge_entry_window_min', 5.0) or 5.0))
+                    if now_ms >= st['close_ts'] + (_d + _w) * 60_000 and _enabled:
+                        st['miss_flagged'] = True   # a window that closed before any pair was judged — make it visible
+                        logger.error(f"[SURGE_{side}] entry window CLOSED with no pair judged (trigger found late or scan slower than "
+                                     f"{_w:g} min) — trigger {st.get('btc_move_pct')}% missed")
+                        self._record_filter_block("SURGE_WINDOW_MISSED", side)
+                _surge_status[side].update(dict(checked_at=now_ms, enabled=_enabled))
+                if not bars or len(bars) < 302:
+                    continue
+                _last_eval = int(_surge_status[side].get('last_eval_bar_ts') or 0)
+                # candidate views: bars[:len-k] makes bars[-2-k] the "last closed" bar for surge_trigger (the forming row is dropped)
+                _ks = [k for k in range(5, -1, -1) if int(bars[len(bars) - 2 - k][0]) > _last_eval]
+                for k in _ks:
+                    view = bars[:len(bars) - k] if k else bars
+                    _surge_status[side]['last_eval_bar_ts'] = int(view[-2][0])
+                    trig = surge_trigger(view, th, side)
+                    if trig is None or trig['bar_ts'] == (_surge_state[side] or {}).get('bar_ts'):
+                        continue
+                    spacing_ms = max(0.0, float(getattr(th, 'surge_trigger_spacing_hours', 4.0) or 0.0)) * 3600_000
+                    last = float(_surge_status[side].get('last_trigger_close_ts') or 0)
+                    _restore = set()
+                    if not last:
+                        try:   # restart: the latest recorded trigger of this side (its fills carry the trigger bar's close time)
+                            _lt = (await db.execute(select(func.max(Order.entry_surge_trigger_at)).where(and_(
+                                Order.entry_strategy == f"SURGE_{side}", Order.is_paper == self.is_paper_mode)))).scalar()
+                            last = ((_lt - datetime(1970, 1, 1)).total_seconds() * 1000) if _lt else 0.0
+                            if last and abs(last - trig['close_ts']) < 1000:   # the SAME trigger, found again after a restart
+                                _restore = {p for (p,) in (await db.execute(select(Order.pair).where(and_(
+                                    Order.entry_strategy == f"SURGE_{side}", Order.is_paper == self.is_paper_mode,
+                                    Order.entry_surge_trigger_at == _lt)))).all()}
+                        except Exception as _sp:
+                            logger.warning(f"[SURGE_{side}] spacing lookup failed ({_sp}) — memory only")
+                    if last and not _restore and trig['close_ts'] - last < spacing_ms:
+                        continue
+                    _dl = float(getattr(th, f'surge_{side.lower()}_entry_delay_min', 0) or 0)
+                    _wl = max(0.5, float(getattr(th, 'surge_entry_window_min', 5.0) or 5.0))
+                    if not _restore and now_ms >= trig['close_ts'] + (_dl + _wl) * 60_000:
+                        # found after its entry window closed (slow scan / restart): count it, don't let it block a live one for 4 h
+                        if _enabled:
+                            logger.error(f"[SURGE_{side}] trigger on the bar closed {datetime.utcfromtimestamp(trig['close_ts'] / 1000):%H:%M} UTC "
+                                         f"found {k * 5} min late — its entry window already closed; missed (spacing not consumed)")
+                            self._record_filter_block("SURGE_WINDOW_MISSED", side)
+                        continue
+                    _surge_state[side] = dict(trig, picked=set(_restore), refused=set(), opened=len(_restore))
+                    _surge_status[side].update(dict(last_trigger_close_ts=trig['close_ts'], last_btc_move_pct=trig['btc_move_pct'],
+                                                    picks=sorted(_restore), opened=len(_restore)))
+                    logger.warning(f"[SURGE_{side}] TRIGGER{' (restored after restart)' if _restore else ''}: BTC {trig['btc_move_pct']:+.2f}% "
+                                   f"in 30 min on the bar closed {datetime.utcfromtimestamp(trig['close_ts'] / 1000):%H:%M} UTC — entry window "
+                                   f"opens {float(getattr(th, f'surge_{side.lower()}_entry_delay_min', 0) or 0):g} min after that close"
+                                   f"{' (found ' + str(k * 5) + ' min late)' if k else ''}")
+        except Exception as e:
+            logger.error(f"[SURGE] trigger update failed: {e}")
+
+    async def _maybe_open_surge(self, db, pair_info, ohlcv, indicators):
+        """⚡ SURGE sleeve entry for one scanned pair, both sides. Inside a side's entry window: universe = top-N TRADEABLE pairs by
+        24 h volume (br_rank — blacklists never take a slot, bull-run lesson), sleeve blacklist, selection judged ONCE per pair per
+        trigger on the pair's closed bars up to the trigger bar (services.surge.surge_pair_pick), per-side slot cap. Opens through
+        open_position(surge_dir=side): normal sizing (surge_invest/lev_mult, absolute-assign), direct taker, the sleeve's own exit.
+        Own try/except per side: can never break the scan."""
+        th = config.trading_config.thresholds
+        now_ms = _leash_time.time() * 1000
+        pair = pair_info.get('pair') or pair_info.get('symbol')
+        for side in ("LONG", "SHORT"):
+            try:
+                st = _surge_state[side]
+                if not st or not bool(getattr(th, f'surge_{side.lower()}_enabled', False)):
+                    continue
+                if not surge_entry_open(now_ms, st['close_ts'], th, side):
+                    continue
+                if pair in st['picked'] or pair in st['refused']:
+                    continue
+                rank = pair_info.get(f'surge_rank_{side.lower()}')   # own tradeable rank (global + no-trade + this side's list skipped)
+                if rank is None or int(rank) > max(1, int(getattr(th, 'surge_universe_size', 20) or 20)):
+                    continue
+                _bl = {x.strip().upper() for x in str(getattr(th, f'surge_{side.lower()}_pair_blacklist', '') or '').split(',') if x.strip()}
+                if str(pair).upper() in _bl:
+                    continue
+                st['judged_any'] = True   # only a universe pair counts as "judged" (else a missed window would be hidden)
+                ok, why, atr, pmove = surge_pair_pick(ohlcv, st['bar_ts'], st['btc_move_pct'], th, side)
+                if not ok:
+                    st['refused'].add(pair)
+                    self._record_filter_block(why, side)
+                    continue
+                _slots = max(1, int(getattr(th, 'surge_max_slots', 3) or 3))
+                _n_open = (await db.execute(select(func.count(Order.id)).where(and_(
+                    Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == f"SURGE_{side}")))).scalar() or 0
+                # cap = concurrent open AND fills per trigger (a fill stopped inside the window must not free a 4th entry — review)
+                if _n_open >= _slots or st['opened'] >= _slots:
+                    st['refused'].add(pair)
+                    self._record_filter_block("SURGE_MAX_SLOTS", side)
+                    continue
+                st['picked'].add(pair)   # ONE attempt per pair per trigger (deliberate: the study entered once, at the window)
+                price = float(indicators.get('price') or 0)
+                if price <= 0:
+                    continue
+                # Full entry-column stamping (bull-run lesson): the shared builder + breadth / volume ratios from the live globals
+                _ef = dict(self._flip_entry_fields(indicators, flip_dir=side) or {})
+                _ef.pop('entry_btc_trend_gap_pct', None)   # not an open_position param (stamped internally)
+                for _k in ('entry_rsi', 'entry_adx', 'entry_atr_pct', 'entry_pair_volume_24h_usd', 'entry_pair_rank',
+                           'entry_bull_pct', 'entry_bear_pct', 'entry_global_volume_ratio', 'entry_pair_volume_ratio'):
+                    _ef.pop(_k, None)
+                _g_now = globals()
+                _pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if indicators.get('avg_volume') else None
+                logger.info(f"[SURGE_{side}] {pair}: selected (rank {rank}, ATR {atr:.2f}%, pair 30-min {pmove:+.2f}% vs BTC "
+                            f"{st['btc_move_pct']:+.2f}%) → opening")
+                order = await self.open_position(
+                    db=db, pair=pair, direction=side, confidence="STRONG_BUY", current_price=price,
+                    entry_rsi=indicators.get('rsi'), entry_adx=indicators.get('adx'),
+                    entry_atr_pct=round(atr, 4), entry_pair_volume_24h_usd=pair_info.get('volume_24h'), entry_pair_rank=rank,
+                    entry_bull_pct=_g_now.get('_market_bull_pct'), entry_bear_pct=_g_now.get('_market_bear_pct'),
+                    entry_global_volume_ratio=_g_now.get('_global_volume_ratio'), entry_pair_volume_ratio=_pvr,
+                    entry_surge_btc_move_pct=st['btc_move_pct'], entry_surge_pair_move_pct=round(pmove, 4),
+                    entry_surge_trigger_at=datetime.utcfromtimestamp(st['close_ts'] / 1000),
+                    surge_dir=side,
+                    **self._sanitize_open_kwargs(_ef, f"SURGE_{side}", side),
+                )
+                if order:
+                    st['opened'] += 1
+                    _surge_status[side]['opened'] = st['opened']
+                    _surge_status[side].setdefault('picks', []).append(pair)
+            except Exception as e:
+                logger.error(f"[SURGE_{side}] {pair}: open failed: {e}")
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
+                self._record_filter_block("OPEN_FAILED_SURGE", side)
+
     async def _maybe_open_bullrun_long(self, db, pair_info, ohlcv, indicators):
         """🌊 Aug-21 gate 57: BULLRUN_LONG sleeve entry — GREEN-gated dip-reclaim on scan-rank
         ≤ N COIN pairs (universe already COIN-only via coin_underlying_only). Entry: dip ≥
@@ -7221,6 +7384,15 @@ class TradingEngine:
         # 24h bear monitor was ON. Tagged entry_strategy="BEARRUN_SHORT"; sized bearrun_invest_mult × bearrun_lev_mult
         # (absolute-assign, never re-multiplied; ship 1×/0.05 = 1× probe). Exits = the normal momentum-short stack.
         bearrun_short: bool = False,
+        # ⚡ Sep-30 SURGE sleeves (DECISION_LOG 146–148): "LONG"/"SHORT" = a fill from _maybe_open_surge (BTC spike / dump
+        # trigger). Tagged SURGE_LONG / SURGE_SHORT; sized surge_invest_mult × surge_lev_mult (absolute-assign, 1×/1× = normal
+        # size); bypasses every alt entry filter and pattern cell like BULLRUN (the trigger + selection replace them) but NOT the
+        # no-trade list; direct taker entry with a dislocation guard. Exits: LONG = the Bull-Run exit with surge_long_trail_atr_mult,
+        # SHORT = the momentum-short stack (the Bear-Run exit, simulated in DECISION_LOG 147).
+        surge_dir: Optional[str] = None,
+        entry_surge_btc_move_pct: Optional[float] = None,
+        entry_surge_pair_move_pct: Optional[float] = None,
+        entry_surge_trigger_at: Optional[datetime] = None,
         # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
         # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
         # lev_mult from gap_probe_* config), tagged cell_src=GAPFLAT_PROBE (own analytics row;
@@ -7285,8 +7457,9 @@ class TradingEngine:
         # Sep-29: Top Pairs 'Block Reason' is the MOMENTUM ladder's — counters recorded while this call works for another
         # sleeve must not name it (read by _record_filter_block; reset to True at every pair iteration of the scan).
         # (bearrun_short is NOT in the list: that fill comes from the momentum ladder's own open, so its refusals are the pair's.)
+        _surge = surge_dir in ("LONG", "SHORT") and surge_dir == direction   # ⚡ SURGE fill (a mismatched direction is never one)
         self._open_ctx_momentum = not (flip_source or bull_long or bullrun_long or bounce_long
-                                       or spike_chase_probe or spike_fade or spike_bounce)
+                                       or spike_chase_probe or spike_fade or spike_bounce or _surge)
         if not self.is_running:
             logger.warning(f"[SKIP] {pair}: Bot not running")
             return None
@@ -7296,7 +7469,7 @@ class TradingEngine:
         # btc_regime → they classified as NEUTRAL and vanished from the BULLISH/BEARISH
         # report sections (all-flips batch => empty tables). Populate both from the live
         # BTC globals, exactly as the momentum path does.
-        if flip_source or bullrun_long:  # Aug 21 gate 57 (post-ship review): sleeve fills were NULL-regime → 100% filed under NEUTRAL, invisible to every BULLISH-filtered view (4th recurrence of the Jun-15 flip bug class)
+        if flip_source or bullrun_long or _surge:  # Aug 21 gate 57 (post-ship review): sleeve fills were NULL-regime → 100% filed under NEUTRAL, invisible to every BULLISH-filtered view (4th recurrence of the Jun-15 flip bug class)
             if not entry_macro_trend:
                 entry_macro_trend = globals().get('_current_btc_regime') or 'NEUTRAL'
             if not entry_btc_regime:
@@ -7720,7 +7893,7 @@ class TradingEngine:
         # tracking rides the Pattern Cell Ship table. Missing 1h → NO admit (fail-closed: the
         # block is the safe state). 🔒 REVERT →99 if live cohort ≤50% WR or net-neg on N≥8.
         _w2_admit = False
-        if direction == "LONG" and not flip_source and not bull_long and not bullrun_long and not bounce_long and _pw2_e and not _pc_any_e:
+        if direction == "LONG" and not flip_source and not bull_long and not bullrun_long and not _surge and not bounce_long and _pw2_e and not _pc_any_e:
             try:
                 _w2r_raw = getattr(config.trading_config.thresholds, 'long_w2_reenable_1h_min', 99.0)
                 _w2r = 99.0 if _w2r_raw is None else float(_w2r_raw)
@@ -7736,7 +7909,7 @@ class TradingEngine:
         # era test (eraB 46%). Cell 1× via the W6 pattern cell; fail-closed on missing data.
         # 🔒 REVERT →99 (off) if live cohort ≤50% WR or net-negative on N≥8.
         _w6_admit = False
-        if direction == "LONG" and not flip_source and not bull_long and not bullrun_long and not bounce_long and _pw6_e and not _pc_any_e and not _w2_admit:
+        if direction == "LONG" and not flip_source and not bull_long and not bullrun_long and not _surge and not bounce_long and _pw6_e and not _pc_any_e and not _w2_admit:
             try:
                 _w6r_raw = getattr(config.trading_config.thresholds, 'long_w6_reenable_1h_max', 99.0)
                 _w6r = 99.0 if _w6r_raw is None else float(_w6r_raw)
@@ -7749,7 +7922,7 @@ class TradingEngine:
                     logger.info(f"[W6_REENABLE] {pair}: W6-matched LONG ADMITTED — BTC 1h {_w6_1h:+.4f}% <= {_w6r}% AND stretch {entry_ema5_stretch:.3f} >= {_w6s} (dip+thrust; cell 1x)")
             except Exception:
                 _w6_admit = False
-        if direction == "LONG" and not flip_source and not bull_long and not bullrun_long and not bounce_long and not spike_chase_probe and not spike_fade and not spike_bounce and not nonexp_calm3d and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e) and not _w2_admit and not _w6_admit:
+        if direction == "LONG" and not flip_source and not bull_long and not bullrun_long and not _surge and not bounce_long and not spike_chase_probe and not spike_fade and not spike_bounce and not nonexp_calm3d and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e) and not _w2_admit and not _w6_admit:
             logger.info(f"[LONG_UNMATCHED_ONLY] {pair}: LONG blocked — matched a pattern (c_any={_pc_any_e}, w_any={_pw_any_e})")
             try:
                 self._record_filter_block("LONG_UNMATCHED_ONLY", "LONG")
@@ -7827,7 +8000,7 @@ class TradingEngine:
         # option-D stack (a +0.10 pattern TP amputates a +17 rider). Router owns spikes.
         # Aug 21 gate 57 (review I1): BULLRUN same exemption — a pattern rule must never block a
         # sleeve fill or stamp fixed TP/SL that would pre-empt the dedicated BR_ exit stack.
-        if spike_chase_probe or spike_fade or spike_bounce or nonexp_calm3d or bullrun_long:
+        if spike_chase_probe or spike_fade or spike_bounce or nonexp_calm3d or bullrun_long or _surge:
             _pcell_inv, _pcell_lev, _pcell_src = None, None, None
             _pcell_fixed_tp, _pcell_fixed_sl, _pcell_block = None, None, False
         # C1 SHORT breadth-scoped de-mux (Jun 28): the C1 capitulation-chase 2× only earns its
@@ -7901,7 +8074,7 @@ class TradingEngine:
                     _pcell_lev = _uq_lev_eff
         # Jun 8: pattern-cell BLOCK action — skip the entry entirely (no order, no exchange
         # call; we're before position sizing / Order creation). Counter PATTERN_CELL_BLOCK.
-        if _pcell_block and not flip_source and not bull_long and not bullrun_long and not bounce_long:
+        if _pcell_block and not flip_source and not bull_long and not bullrun_long and not _surge and not bounce_long:
             logger.info(f"[PATTERN_CELL_BLOCK] {pair} {direction}: entry blocked by pattern-cell rule (signature={_pcell_src})")
             try:
                 self._record_filter_block("PATTERN_CELL_BLOCK", direction)
@@ -7922,7 +8095,7 @@ class TradingEngine:
         # Empty list = filter off. Fail-open: missing regime → no block.
         # Jul 27 (review-2 I-1): spike_fade exempt — a fade is not a momentum short;
         # the router owns it (and this block's phantom would seed a LONG flip into a pump).
-        if direction == "SHORT" and not flip_source and not bull_long and not bounce_long and not spike_fade and _pw1_e:
+        if direction == "SHORT" and not flip_source and not bull_long and not bounce_long and not spike_fade and not _surge and _pw1_e:
             _w1blk = {s.strip() for s in (getattr(config.trading_config.thresholds, 'momentum_short_w1_block_regimes', '') or '').split(',') if s.strip()}
             if entry_btc_regime in _w1blk:
                 logger.info(f"[MOMENTUM_SHORT_W1_REGIME] {pair}: W1 momentum SHORT blocked — regime {entry_btc_regime} in block-list {sorted(_w1blk)}")
@@ -7951,7 +8124,7 @@ class TradingEngine:
         # mom_short_c1_regime_block (pure, shared with the pool builder + ledger). No phantom: the revert read re-prices
         # the [MOM_SHORT_C1_REGIME] log lines (pair, regime, price) on 1m klines.
         if (direction == "SHORT" and not flip_source and not bull_long and not bounce_long and not spike_fade
-                and not bearrun_short and mom_short_c1_regime_block(config.trading_config.thresholds, _pc1_e, entry_btc_regime)):
+                and not bearrun_short and not _surge and mom_short_c1_regime_block(config.trading_config.thresholds, _pc1_e, entry_btc_regime)):
             logger.info(f"[MOM_SHORT_C1_REGIME] {pair}: C1 momentum SHORT blocked — BTC regime {entry_btc_regime} "
                         f"(capitulation already done; bounce risk) px={current_price}")
             try:
@@ -7973,7 +8146,7 @@ class TradingEngine:
         # block's max (1.0 → 0.86 Sep-18); without the exemption the entire fade species is unreachable.
         # (The fade deliberately shorts the climactic move this filter avoids — that IS
         # its thesis, protected by the fixed -0.70 stop + tripwire, not by this block.)
-        if direction == "SHORT" and not flip_source and not bull_long and not bounce_long and not spike_fade:
+        if direction == "SHORT" and not flip_source and not bull_long and not bounce_long and not spike_fade and not _surge:
             _pvmax = float(getattr(config.trading_config.thresholds, 'momentum_short_pair_vol_max', 0.0) or 0.0)
             if _pvmax > 0 and entry_pair_volume_ratio is not None and entry_pair_volume_ratio >= _pvmax:
                 logger.info(f"[MOMENTUM_SHORT_PAIRVOL] {pair}: momentum SHORT blocked — pair-vol {entry_pair_volume_ratio:.2f} >= {_pvmax} (climactic/exhaustion)")
@@ -8002,13 +8175,13 @@ class TradingEngine:
             if (bool(getattr(config.trading_config.thresholds, 'long_heat_block_enabled', False)) and _lh_bmin > 0
                     and float(getattr(config.trading_config.thresholds, 'long_heat_exempt_off30d_max', 0.0) or 0.0) < 0
                     and entry_bull_pct is not None and float(entry_bull_pct) >= _lh_bmin and _lh_off30d is None
-                    and direction == "LONG" and not flip_source and not bullrun_long):
+                    and direction == "LONG" and not flip_source and not bullrun_long and not _surge):
                 logger.warning(f"[LONG_HEAT_FAILOPEN] {pair}: bull {entry_bull_pct}% ≥ {_lh_bmin} but the BTC 30d reading is stale/unknown — not blocked")
                 self._record_filter_block("LONG_HEAT_FAILOPEN", "LONG")
         except Exception:
             pass
         if (_lh_block and direction == "LONG" and not flip_source and not bull_long and not bounce_long
-                and not bullrun_long and not spike_chase_probe and not spike_fade and not spike_bounce
+                and not bullrun_long and not _surge and not spike_chase_probe and not spike_fade and not spike_bounce
                 and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
                          or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe)):
             _lh_t = config.trading_config.thresholds
@@ -8029,7 +8202,7 @@ class TradingEngine:
         # Blocked signals leave NO phantom → the revert read re-sims the [LONG_MEGACAP_BLOCK] log lines on 1m
         # klines at each batch review (re-admit at ≥60% WR ∧ Σ>0 on N≥8 across ≥3 windows).
         if (direction == "LONG" and not flip_source and not bull_long and not bounce_long
-                and not bullrun_long and not spike_chase_probe and not spike_fade and not spike_bounce
+                and not bullrun_long and not _surge and not spike_chase_probe and not spike_fade and not spike_bounce
                 and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
                          or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe)
                 and long_megacap_block(config.trading_config.thresholds, entry_pair_rank)):
@@ -8230,7 +8403,7 @@ class TradingEngine:
         # Same observation-sleeve pattern as BULL_LONG / BOUNCE_LONG.
         if ((gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
              or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe) and direction in ("LONG", "SHORT")
-                and not flip_source and not bull_long and not bounce_long and not bullrun_long and not bearrun_short and not spike_chase_probe and not spike_fade and not spike_bounce and not nonexp_calm3d):
+                and not flip_source and not bull_long and not bounce_long and not bullrun_long and not _surge and not bearrun_short and not spike_chase_probe and not spike_fade and not spike_bounce and not nonexp_calm3d):
             _th_gp2 = config.trading_config.thresholds
             cell_mult = min(1.0, max(0.1, float(getattr(_th_gp2, 'gap_probe_invest_mult', 0.5) or 0.5)))
             cell_lev_mult = min(1.0, max(0.05, float(getattr(_th_gp2, 'gap_probe_lev_mult', 0.05) or 0.05)))
@@ -8277,7 +8450,7 @@ class TradingEngine:
 
         # 🚪 Sep-18 narrowed overbought band — absolute-assign LAST (after the door/spike block) so an admitted LONG is never
         # re-multiplied by UNMATCHED/quiet/CALM3D cells while the cohort is unproven. Sleeves/probes/flips keep their own sizing.
-        if (cross_ob_open and direction == "LONG" and not flip_source and not bull_long and not bounce_long and not bullrun_long
+        if (cross_ob_open and direction == "LONG" and not flip_source and not bull_long and not bounce_long and not bullrun_long and not _surge
                 and not spike_chase_probe and not spike_fade and not spike_bounce
                 and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
                          or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe)):
@@ -8304,7 +8477,7 @@ class TradingEngine:
         except Exception:
             _mcap_usd, _cmc_rank = None, None
         _adx_surge_admit = bool(adx_surge_open and not cross_ob_open and direction == "LONG" and not flip_source and not bull_long
-                                and not bounce_long and not bullrun_long and not spike_chase_probe and not spike_fade and not spike_bounce
+                                and not bounce_long and not bullrun_long and not _surge and not spike_chase_probe and not spike_fade and not spike_bounce
                                 and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
                                          or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe))
         if _adx_surge_admit:
@@ -8316,6 +8489,16 @@ class TradingEngine:
                 cell_src = "NONEXP_CALM3D" if nonexp_calm3d else "ADX_SURGE_OPEN"
                 _mult_target = "both"
                 logger.info(f"[ADX_SURGE_OPEN] {pair} LONG: sized inv={cell_mult}x lev={cell_lev_mult}x (unproven cohort, own row)")
+
+        # ⚡ Sep-30 SURGE sizing — absolute-assign LAST (after every door / band / probe / spike block), same pattern as BULLRUN:
+        # a sleeve fill is never re-multiplied by UNMATCHED/pattern/C1 cells. Operator: normal size (1×/1×) until the kill /
+        # keep bar reads; the mults are UI fields.
+        if _surge:
+            _th_sg = config.trading_config.thresholds
+            cell_mult = max(0.1, min(float(getattr(_th_sg, 'surge_invest_mult', 1.0) or 1.0), _inv_cap))
+            cell_lev_mult = max(0.05, min(float(getattr(_th_sg, 'surge_lev_mult', 1.0) or 1.0), _lev_cap))
+            cell_src = f"SURGE_{direction}"
+            _mult_target = "both"
 
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
@@ -8447,6 +8630,29 @@ class TradingEngine:
         if maker_enabled and (spike_chase_probe or spike_fade or spike_bounce):
             maker_enabled = False
             logger.info(f"[SPIKE_TAKER] {pair} {direction}: maker entry bypassed for spike species — direct taker (latency > fee)")
+        # ⚡ Sep-30 SURGE: direct taker (the study entered at the bar open; a passive limit on a spiking book times out into a worse
+        # fill — the spike 18/18-taker-fallback lesson) + the Bull-Run dislocation guard (57f) on the LIVE price vs the decision price:
+        # a book that ran > surge_max_entry_dislocation_pct away is skipped, not chased. Paper fills at that live price.
+        _sg_live_px = None
+        if _surge:
+            maker_enabled = False
+            try:   # the fresh book: WS trackers exist only for pairs already held, and a SURGE pair never is (PAIR_HELD)
+                _sg_ob = await binance_service.fetch_orderbook(pair.replace('USDT', '/USDT:USDT'))
+                _sg_live_px = float(_sg_ob['best_ask'] if direction == 'LONG' else _sg_ob['best_bid']) if _sg_ob else None
+            except Exception:
+                _sg_live_px = None
+            if not _sg_live_px:
+                try:
+                    _sg_tr = websocket_tracker.get_tracker(pair)
+                    _sg_live_px = float(_sg_tr.last_price) if (_sg_tr and _sg_tr.last_price) else None
+                except Exception:
+                    _sg_live_px = None
+            _sg_max = float(getattr(config.trading_config.thresholds, 'surge_max_entry_dislocation_pct', 0) or 0) or None
+            if _sg_live_px and bullrun_disloc_exceeded(_sg_max, current_price, _sg_live_px):
+                self._record_filter_block("SURGE_DISLOC", direction)
+                logger.warning(f"[SURGE_DISLOC] {pair} {direction}: entry aborted — live {_sg_live_px} is "
+                               f"{abs(_sg_live_px - current_price) / current_price * 100:.2f}% from decision {current_price} (max {_sg_max}%)")
+                return None
         maker_fee_rate = getattr(tc, 'maker_fee', tc.trading_fee)
         taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
 
@@ -8618,6 +8824,10 @@ class TradingEngine:
                 quantity = notional_value / actual_price
             else:
                 entry_order_type = "TAKER"
+                if _surge and _sg_live_px:   # ⚡ SURGE paper taker fills at the live price the guard just checked
+                    actual_price = _sg_live_px
+                    quantity = notional_value / actual_price
+                    entry_fee = notional_value * taker_fee_rate
         
         # Pattern C tracker (May 19, 2026 — observation-only signature flags)
         # Reuse the values already computed above for Pattern Cell rule lookup
@@ -8762,6 +8972,9 @@ class TradingEngine:
             entry_br_off24h=entry_br_off24h,
             entry_br_door=entry_br_door,
             entry_br_door_age_min=entry_br_door_age_min,
+            entry_surge_btc_move_pct=(entry_surge_btc_move_pct if _surge else None),
+            entry_surge_pair_move_pct=(entry_surge_pair_move_pct if _surge else None),
+            entry_surge_trigger_at=(entry_surge_trigger_at if _surge else None),
             adx_surge_open=_adx_surge_admit,   # ⚡ Sep-28: admitted through the BTC ADX-surge waiver (same predicate as its sizing)
             entry_mcap_usd=_mcap_usd, entry_cmc_rank=_cmc_rank,   # 💰 Sep-28: cached market cap / CMC rank (NULL if unknown)
             entry_btc_ema50_100_gap_pct=(entry_btc_ema50_100_gap_pct if entry_btc_ema50_100_gap_pct is not None else (_zg.get('_current_btc_ema50_100_gap_pct') if _zfresh else None)),   # 🧭 Sep-29 zone stamps (observe-only)
@@ -8802,7 +9015,7 @@ class TradingEngine:
             cell_multiplier_capped=cell_capped,
             # Jun 14: Flip Entry sleeve strategy tag (segregates flip P&L from momentum)
             # Jun 18: BULL_LONG tag for the build-side sleeve (real long, normal exit; NOT _is_flip)
-            entry_strategy=("BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),
+            entry_strategy=(f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),
             # Initialize dynamic TP tracking
             current_tp_level=1,
             dynamic_tp_target=conf_config.tp_min,
@@ -8962,7 +9175,7 @@ class TradingEngine:
                 'opened_at': order.opened_at,          # Jul 28 review M-5: spike stale-kill/trail live from t0
                 'entry_atr_pct': entry_atr_pct,        # (both were previously added only at the first cache refresh)
                 'entry_br_door': entry_br_door,        # Sep-21 (57i): the realtime BR exit needs the door for the trail width
-                'entry_strategy': ("BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),  # Sep 15 gate 60: BEARRUN_SHORT twin (momentum exits; label parity with the Order row). Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches; Aug 21: BULLRUN_LONG (gate 57, dedicated BR_ exits)
+                'entry_strategy': (f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),  # Sep 15 gate 60: BEARRUN_SHORT twin (momentum exits; label parity with the Order row). Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches; Aug 21: BULLRUN_LONG (gate 57, dedicated BR_ exits)
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_price': actual_price,
                 'quantity': quantity,
@@ -9421,7 +9634,9 @@ class TradingEngine:
             reason = "FLIP_" + reason
         # Aug 21 gate 57: same funnel-prefix convention for the bull-run sleeve — BR_STOP_LOSS /
         # BR_BREAKEVEN_EXIT / BR_TRAILING_STOP / BR_MAX_HOLD_TIME. Whitelist matchers strip BR_.
-        if reason and (order.entry_strategy or "") == "BULLRUN_LONG" and not reason.startswith("BR_"):
+        # ⚡ Sep-30: SURGE_LONG runs the Bull-Run exit → the same BR_ reasons, so every BR_-aware matcher (urgent close, post-exit
+        # whitelist, recovery) covers it with no new prefix (entry_strategy tells the sleeves apart).
+        if reason and (order.entry_strategy or "") in ("BULLRUN_LONG", "SURGE_LONG") and not reason.startswith("BR_"):
             reason = "BR_" + reason
         # Aug 21 gate 57: stamp per-pair spacing on sleeve CLOSES too (entry stamps on open) —
         # the replay's 2h spacing ran exit-to-entry.
@@ -9440,7 +9655,42 @@ class TradingEngine:
         except Exception:
             pass
         async with _close_lock:
-            return await self._close_position_locked(db, order, current_price, reason)
+            _closed = await self._close_position_locked(db, order, current_price, reason)
+        if _closed is not None and (getattr(_closed, 'entry_strategy', None) or "").startswith("SURGE_"):
+            await self._surge_kill_bar_check(db, _closed.entry_strategy[6:])
+        return _closed
+
+    async def _surge_kill_bar_check(self, db, side: str) -> None:
+        """⚡ SURGE automatic KILL BAR (pre-registered, DECISION_LOG 146–148): once a side has ≥ 10 closed fills opened since the ship
+        (SURGE_COHORT_START), its FIRST 10 by open time are judged by services.surge.surge_tripwire — ONCE: the verdict is persisted in
+        surge_<side>_kill_verdict (config), so a missed 10th-close check (retry path, restart, side OFF) is caught on the next close,
+        and an operator re-enable after a kill is never overridden. A fail switches the side OFF. Never raises."""
+        try:
+            th = config.trading_config.thresholds
+            if side not in ("LONG", "SHORT") or str(getattr(th, f'surge_{side.lower()}_kill_verdict', '') or '').strip():
+                return
+            _cohort = and_(Order.entry_strategy == f"SURGE_{side}", Order.status == "CLOSED", Order.is_paper == self.is_paper_mode,
+                           Order.opened_at >= SURGE_COHORT_START)
+            if ((await db.execute(select(func.count(Order.id)).where(_cohort))).scalar() or 0) < 10:
+                return
+            rows = (await db.execute(select(Order.pnl_percentage).where(_cohort).order_by(Order.opened_at.asc()).limit(10))).scalars().all()
+            why = surge_tripwire(rows, side)
+            _w = sum(1 for p in rows if (p or 0) > 0); _m = sum(float(p or 0) for p in rows) / max(1, len(rows))
+            _stamp = f"{datetime.utcnow():%Y-%m-%d %H:%M} UTC"
+            if why is None:
+                setattr(th, f'surge_{side.lower()}_kill_verdict', f"PASS {_stamp}: {_w}/10 winners, mean {_m:+.3f}%")
+            else:
+                setattr(th, f'surge_{side.lower()}_kill_verdict', f"KILLED {_stamp}: {why}")
+                setattr(th, f'surge_{side.lower()}_enabled', False)
+            from config import save_trading_config as _sg_save_cfg
+            _sg_save_cfg(config.trading_config)
+            if why is None:
+                logger.warning(f"[SURGE_{side}_KILL_BAR] first 10 fills PASSED ({_w}/10 winners, mean {_m:+.3f}%) — side stays ON")
+            else:
+                logger.critical(f"[SURGE_{side}_KILL_BAR] first 10 fills failed the pre-registered bar ({why}) — SURGE_{side} "
+                                f"AUTO-DISABLED; re-enable from the UI only after review")
+        except Exception as e:
+            logger.error(f"[SURGE_{side}_KILL_BAR] check failed (side stays as it was — investigate): {e}")
 
     async def _mark_close_in_progress(self, db: AsyncSession, order_id: int) -> bool:
         """Publish intent-to-close for this order so the monitor reconciler can
@@ -11037,6 +11287,10 @@ class TradingEngine:
             
             # Check max holding time
             max_hold = config.trading_config.investment.max_holding_time_minutes
+            if (order.entry_strategy or "").startswith("SURGE_"):   # ⚡ SURGE: the study's 4 h hold (surge_max_hold_minutes; 0 = global)
+                _sg_mh = int(float(getattr(config.trading_config.thresholds, 'surge_max_hold_minutes', 240) or 0))
+                if _sg_mh > 0:
+                    max_hold = min(max_hold, _sg_mh) if max_hold > 0 else _sg_mh
             if max_hold > 0 and order.opened_at:
                 from datetime import timezone
                 opened = order.opened_at.replace(tzinfo=timezone.utc) if order.opened_at.tzinfo is None else order.opened_at
@@ -11078,7 +11332,7 @@ class TradingEngine:
             # FL / momentum-exit stack / check_exit_conditions so none of the alt exit
             # machinery ever touches them. `continue` sits OUTSIDE the try so a sleeve order
             # can never fall through into the alt chain on an error.
-            if (order.entry_strategy or "") == "BULLRUN_LONG":
+            if (order.entry_strategy or "") in ("BULLRUN_LONG", "SURGE_LONG"):   # ⚡ SURGE_LONG runs the SAME exit (own trail width)
                 try:
                     if order.direction == "LONG":
                         _br_raw = (current_price - order.entry_price) * order.quantity
@@ -11090,7 +11344,8 @@ class TradingEngine:
                     _br_peak = max(realtime_peak, _br_pnl)
                     order.peak_pnl = _br_peak
                     order.trough_pnl = min(realtime_trough, _br_pnl)
-                    _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None), getattr(order, 'entry_br_door', None))
+                    _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None), getattr(order, 'entry_br_door', None),
+                                                                       trail_mult_override=_surge_trail_override(order.entry_strategy))
                     if _br_close:
                         logger.info(f"[BULLRUN_EXIT] {order.pair}: {_br_reason} fire pnl={_br_pnl:.2f}% peak={_br_peak:.2f}% stop_line={_br_stop:.2f}%")
                         closed_order = await self.close_position(db, order, current_price, _br_reason)
@@ -11990,6 +12245,8 @@ class TradingEngine:
                     closed = await self._close_position_locked(
                         db, retry_order, price, reason=retry_order.close_reason or "EXIT_RETRY"
                     )
+                if closed and (getattr(closed, 'entry_strategy', None) or "").startswith("SURGE_"):
+                    await self._surge_kill_bar_check(db, closed.entry_strategy[6:])   # ⚡ the retry path skips close_position
                 if closed:
                     _exit_retry_queue.pop(order_id, None)
                     logger.info(f"[EXIT_RETRY_QUEUE] {retry_order.pair}: Successfully closed on retry {attempt}")
@@ -12074,6 +12331,24 @@ class TradingEngine:
                     _br_n += 1; _rank_p['br_rank'] = _br_n
         except Exception as _bre:
             logger.warning(f"[BULLRUN_LONG] br_rank stamping failed ({_bre}) — falling back to raw rank")
+        # ⚡ Sep-30 SURGE: its OWN tradeable rank per side (deep review) — skips the global blacklist, the no-trade list and that
+        # side's surge blacklist, never the Bull-Run list (a Bull-Run edit must not silently change the SURGE universe).
+        try:
+            _sg_base = set(x.strip().upper() for x in (getattr(config.trading_config, 'pair_blacklist', '') or '').split(',') if x.strip())
+            _sg_base |= set(x.strip().upper() for x in (getattr(config.trading_config, 'no_trade_pairs', '') or '').split(',') if x.strip())
+            for _sg_side in ("long", "short"):
+                _sg_skip = _sg_base | set(x.strip().upper() for x in (getattr(config.trading_config.thresholds, f'surge_{_sg_side}_pair_blacklist', '') or '').split(',') if x.strip())
+                _sg_n = 0
+                for _rank_p in top_pairs:
+                    _sym = str(_rank_p.get('pair') or _rank_p.get('symbol') or '').upper()
+                    if _sym in _sg_skip:
+                        _rank_p[f'surge_rank_{_sg_side}'] = None
+                    else:
+                        _sg_n += 1; _rank_p[f'surge_rank_{_sg_side}'] = _sg_n
+        except Exception as _sge:
+            logger.warning(f"[SURGE] surge_rank stamping failed ({_sge}) — SURGE entries skip this scan (fail-closed)")
+            for _rank_p in top_pairs:
+                _rank_p['surge_rank_long'] = _rank_p['surge_rank_short'] = None
         _blacklist_str = getattr(config.trading_config, 'pair_blacklist', '')
         _blacklist = set(p.strip() for p in _blacklist_str.split(',') if p.strip())
         if _blacklist:
@@ -12232,6 +12507,8 @@ class TradingEngine:
 
         # 🌊 Aug-21 gate 57: refresh the Bull-Run Monitor (self-throttled to 10 min; never raises)
         await self._update_bullrun_monitor(db)
+        # ⚡ Sep-30 SURGE: the BTC spike / dump trigger for this scan (never raises)
+        await self._update_surge_triggers(db)
 
         # ── Phase 1: Collect indicators, signals, and pair regimes for ALL pairs ──
         _collected = []
@@ -12515,6 +12792,10 @@ class TradingEngine:
                     await self._maybe_open_bullrun_long(db, pair_info, ohlcv, indicators)
                 except Exception as _br_err:
                     logger.error(f"[BULLRUN_LONG] {pair}: hook failed: {_br_err}")
+                try:   # ⚡ Sep-30 SURGE sleeves (both sides) — own trigger, independent of the alt ladder
+                    await self._maybe_open_surge(db, pair_info, ohlcv, indicators)
+                except Exception as _sg_err:
+                    logger.error(f"[SURGE] {pair}: hook failed: {_sg_err}")
 
                 rsi_val = indicators.get('rsi')
                 adx_val = indicators.get('adx')
@@ -14821,13 +15102,14 @@ class TradingEngine:
             # are updated inline here (the shared tracking below is skipped for sleeve orders —
             # phantom/shadow columns stay NULL for them, on record). `continue` sits OUTSIDE the
             # try so a sleeve order can never fall through into the alt chain on an error.
-            if (order_info.get('entry_strategy') or '') == 'BULLRUN_LONG':
+            if (order_info.get('entry_strategy') or '') in ('BULLRUN_LONG', 'SURGE_LONG'):   # ⚡ SURGE_LONG: same exit, own trail width
                 try:
                     _br_peak_rt = max(order_info.get('peak_pnl', 0) or 0, pnl_pct)
                     order_info['peak_pnl'] = _br_peak_rt
                     if pnl_pct < (order_info.get('trough_pnl', 0) or 0):
                         order_info['trough_pnl'] = pnl_pct
-                    _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'), order_info.get('entry_br_door'))
+                    _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'), order_info.get('entry_br_door'),
+                                                                       trail_mult_override=_surge_trail_override(order_info.get('entry_strategy')))
                     if _br_close and not order_info.get('_closing_in_progress'):
                         order_info['_closing_in_progress'] = True
                         logger.warning(f"[REALTIME_BULLRUN_EXIT] {pair} {direction}: {_br_reason} pnl={pnl_pct:.4f}% peak={_br_peak_rt:.4f}% stop_line={_br_stop:.2f}% - CLOSING NOW!")

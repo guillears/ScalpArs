@@ -4609,3 +4609,61 @@ Manual fills' manual_block_reason vocabulary follows (may now read BTC_ADX_GATE_
 DUAL REVIEW (145): caveman SHIP (nits applied: NO_EMA_DATA, defence-only comment) · deep SHIP — real scan_and_trade Phases 1–3
 at HEAD vs now on a stubbed universe × 5 BTC states: counters, funnel, phantom seeds, the RSI-OB flip call, open calls and PairData
 rows byte-identical; only the Block Reason changed (veto/live: LINK/SOL/ADA "No EMA Stack" → BTC_ADX_GATE_HIGH).
+
+## 2026-09-30 (146) - ⚡ SURGE sleeve (operator idea: Bull-Run-like, short-term, triggered by a BTC spike) — designed, not shipped
+Operator: 7 manual spike trades this morning, 6 would be positive with the lock fix ("there MUST be something"). Evidence built in
+three rounds (reports/BTC_SPIKE_EVENT_STUDY_2026-09-30.md): v2 5m study (no edge vs control); v3 on 1m bars after the operator's
+trades exposed the 5m simulator (adverse-first mis-scored 3/7) — the candle-path 1m walk reproduces them; spike vs control still
+indistinguishable at 0–45 min. Design grid, 72 pre-declared cells incl. the live Bull-Run exit (operator request): NONE passes the
+bar (both halves > 0, beats control in both, CI > 0, ≥ 20 events). Best family HI_ATR_LEADER (5m ATR ≥ 1.5 % ∧ pair 30-min return >
+BTC's) tops every exit; best cell = entry at the spike + Bull-Run exit (1×ATR trail): +0.32 %/event (train +0.41 / test +0.20;
+control −0.12 / +0.12), CI −0.15…+0.89, 117 fills / 55 events, top 3 events = 113 % of total (fat tail: AGT/BTW/SIREN pumps).
+PRE-REGISTERED WATCH (CURRENT_STATE): the exact cell as an observe-first phantom — no capital until its bar is met.
+
+## 2026-09-30 (147) - ⚡ SURGE-SHORT (operator: "same thing for shorting", BTC 85,632 → 83,964 at 13:35 UTC) — one family passes
+scripts/surge_short_design.py, 1m candle-path walk, 120 pre-declared cells (2 triggers × 4 selections × 3 delays × 5 exits), same bar
+as the long grid. DUMP trigger (BTC 30-min ≤ −1.0 % ∧ volume ≥ 3× median; 148 events): 2 cells pass — HI_ATR (5m ATR ≥ 1.5 %) · entry
++20 min · QUICK exit (−0.50 stop, arm +0.30, floor max(0.5×peak, +0.10), 30 min): +0.085 %/event, CI +0.02…+0.15, train +0.039 /
+test +0.173, control −0.004 / +0.013, WR 54 %, 687 fills, top-3 events 41 % (NOT fat-tailed); neighbour HI_ATR_LEADER same cell
++0.083, CI +0.00…+0.17. KEEP60 same entry: CI +0.03…+0.19 but loses to control in train. BREAKDOWN trigger (strict mirror, 80 events):
+0 pass. CAVEATS: 120 cells ⇒ ~3 CI-positive cells expected by luck; after a 30–50 % in-sample haircut ≈ +0.04–0.06 %/trade.
+Frozen as a watch item; today's dump (13:35 UTC) selects QNT (ATR 2.15) and MOVR (3.22), entry 14:00 UTC — first live observation.
+ADDENDUM (147) — operator: "simulate the Bear-Run exit". BEARRUN_SHORT fills have NO dedicated exit: they close on the live
+momentum-SHORT stack (stop −0.70 widened to −1.5×ATR cap −1.2 · runner arms +0.40, trail peak − min(0.5×ATR, 0.35×peak), BE lock
+OFF, negative floor suppressed · hard-TP ladder short 1.0→0.75 … 4.0→3.2 · EMA13-cross exit, stack flip required). Simulated as a
+6th exit: best short exit — DUMP · HI_ATR · +20 min · BEARRUN: +0.176 %/event, CI +0.10…+0.26, WR 65 %, top-3 22 %, test +0.315 vs
+control −0.002; train +0.103 vs control +0.157 (fails "beats control" in Jan–Apr: this exit on volatile shorts also earns at random
+times). BREAKDOWN · HI_ATR · +10 · BEARRUN +0.160, CI +0.07…+0.25 (train/test +0.125/+0.224 vs control +0.156/−0.109).
+
+## 2026-09-30 (148) - ⚡ SURGE_LONG + SURGE_SHORT BUILT, both sides ON at normal size (operator: "i want both to be built as normal sizing")
+Operator decision after the grids (146/147), paper account ("there is no money at risk"). DISCIPLINE OVERRIDE ACKNOWLEDGED for
+SURGE_LONG: its best cell FAILED the pre-registered grid bar (CI −0.15…+0.89, top-3 events = 113 %) and ships anyway → it carries a
+TIGHTER kill bar than the short side. SURGE_SHORT ships with the Bear-Run exit (the momentum-short stack), not the QUICK exit that
+passed the grid: operator asked every new sleeve to use its sleeve's exit; that cell (+0.176 %/event, CI +0.10…+0.26) failed only
+"beats control" in Jan–Apr — expect ≈ +0.09–0.12 after the 30–50 % haircut.
+SPEC (config.py surge_* block, 21 fields, UI box "⚡ SURGE Sleeves"): trigger on the last CLOSED BTC 5m bar (fresh 300-bar fetch every
+scan, stateless, fail-closed below 295 bars): |30-min return| ≥ 1.0 % ∧ bar quote volume ≥ 3× prior-288 median; LONG also needs a close
+≥ the prior 24 h high; same side ≥ 4 h apart (memory, else the latest SURGE fill in the DB). Universe top-20 tradeable by its OWN per-side rank (surge_rank_long/short: global blacklist + no-trade + that side's list skipped; never the Bull-Run list),
+per-side blacklists, both BTC/ETH only at ship (operator: Bull-Run's ONG/ONE/ZEC stay under OBSERVATION on SURGE fills — per-pair read at the kill bar, add only on SURGE evidence), 5m ATR(14) ≥ 1.5 %, LONG pair 30-min return > BTC's; each pair judged once per trigger on bars up to the trigger
+bar. Entry windows: LONG [0, 5) min after the bar close, SHORT [20, 25). ≤ 3 open per side (plus the global max positions). Sizing
+absolute-assign 1×/1× (cell SURGE_LONG / SURGE_SHORT), every alt filter and pattern cell bypassed, no-trade list NOT bypassed. Direct
+taker (maker bypassed — spike lesson); live-price dislocation guard 0.3 % (SURGE_DISLOC); paper fills at the live WS price. Exits:
+LONG = `_bullrun_exit_for` with trail_mult_override = surge_long_trail_atr_mult (1.0; the grid cell) in BOTH intercepts, BR_ reasons;
+SHORT = the momentum-short stack. Both close at surge_max_hold_minutes = 240 (the study's walk). Columns entry_surge_btc_move_pct /
+entry_surge_pair_move_pct / entry_surge_trigger_at (= the window id). Counters SURGE_ATR_LOW / NOT_LEADER / NO_DATA / MAX_SLOTS /
+DISLOC / WINDOW_MISSED / OPEN_FAILED_SURGE (excluded from the Top Pairs block reason). Table + chip + both text exports; sleeve rows
+Surge-Long / Surge-Short; screen_pool / build_master_pool / ledger treat them as their own sleeve.
+🔒 KILL BARS (automatic, services.surge.surge_tripwire, judged ONCE at the 10th closed fill of a side opened ≥ 2026-09-30 14:00 UTC):
+LONG ≤ 3 winners ∨ mean ≤ −0.30 % · SHORT ≤ 4 winners ∨ mean ≤ −0.20 % → side switched OFF and config saved. KEEP BAR: N ≥ 30 across
+≥ 8 trigger windows, per-window mean > 0, no window/pair ≥ 50 % of P&L → only then consider leverage > 1×.
+Bull-Run lessons applied (15): regime stamps, BR_ badge/trail parity, DB-backed spacing, sign-slip, br_rank universe, stateless
+trigger, warm-up fail-closed, disloc + taker, net-P&L exit, intercept-first both paths, D11/D12, full stamping, chip, slots, prefix.
+REVIEWS (148): caveman + deep, all applied pre-commit — dislocation guard read a WS tracker that never exists for an unheld pair
+(→ fresh order book); single-bar trigger check could skip a bar on a slow scan (→ every bar closed since the last scan, 310-bar fetch
+so all 6 views can fire); a trigger found after its window closed now counts SURGE_WINDOW_MISSED without consuming the 4 h spacing;
+spacing/restart keyed on entry_surge_trigger_at (restart mid-window restores the trigger); kill bar judged once at ≥10 with a
+persisted engine-owned verdict (surge_<side>_kill_verdict), also from the exit-retry path; UI save sends the enabled flags only when
+toggled on that page (a stale page can't re-enable a killed side); per-trigger cap = surge_max_slots; SURGE universe no longer
+inherits the Bull-Run blacklist. OPEN (not blocking): an engine-level exemption-matrix test (SURGE vs MOMENTUM with the same flags).
+Cap note: the study never capped — SHORT averages 4.6 picks/dump; cap 3 keeps +0.195 %/event but only 432/687 fills (Σ +80 % vs
++122 %); cap 5 keeps 617 fills / Σ +110 %. LONG: cap 3 cuts 8 fills averaging +1.78 %. Raising surge_max_slots 3 → 5 = operator decision.

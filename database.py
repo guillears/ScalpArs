@@ -177,6 +177,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_door_age_min FLOAT"))
                 if 'adx_surge_open' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN adx_surge_open BOOLEAN"))
+                for _sg_col, _sg_type in (('entry_surge_btc_move_pct', 'FLOAT'), ('entry_surge_pair_move_pct', 'FLOAT'),
+                                          ('entry_surge_trigger_at', 'DATETIME')):   # ⚡ Sep-30 SURGE sleeves
+                    if _sg_col not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sg_col} {_sg_type}"))
                 if 'entry_mcap_usd' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_mcap_usd FLOAT"))
                 if 'entry_cmc_rank' not in columns:

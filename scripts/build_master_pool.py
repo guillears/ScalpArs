@@ -236,6 +236,8 @@ def main():
         if not r.is_probe and strat != 'MANUAL':
             if strat == 'BEARRUN_SHORT':
                 why = 'BEARRUN_SLEEVE'   # kept, but its OWN sleeve — MOM-short reads must filter entry_strategy == 'MOMENTUM'
+            elif strat in ('SURGE_LONG', 'SURGE_SHORT'):
+                why = 'SURGE_SLEEVE'     # ⚡ Sep-30: kept as its OWN sleeve (BTC spike / dump trigger) — never a momentum row
             elif strat == 'SPIKE_FADE':
                 if v is not None and v >= 20e6: k, why = False, 'FADE_MAXVOL'   # Sep-14 ceiling — engine order: first fade gate
                 elif r.entry_btc_rsi > 50: k, why = False, 'FADE_BRSI50'  # engine uses strict > (50.0 passes); Sep-24 45→50 (DECISION_LOG 112)

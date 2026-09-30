@@ -233,6 +233,7 @@
             <span id="btc-off24h-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide cursor-help tip-right" data-tip="BTC distance from its 24h high (gate 57 v2 pullback-phase gate). Red = at/under the gate → sleeve refusing entries (dips kept alive); green = inside range → next reclaim fires.">24h-high --</span>
             <span class="text-gray-600">·</span>
             <span id="bearrun-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide cursor-help tip-right" data-tip="🐻 Bear-Run Monitor (gate 60): ON = BTC 24h composite (r24 ≤ −4% ∧ bars-below-EMA20 ≥ 50% ∧ efficiency ≥ 0.15, Schmitt band + squeeze latch) → momentum SHORTs bypass the BTC macro gates as BEARRUN_SHORT. Hover values: r24 / below% / eff24 / r6h / off-24h-low.">🐻 --</span>
+            <span id="surge-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 uppercase tracking-wide cursor-help tip-right" data-tip="⚡ SURGE sleeves: last BTC spike (LONG) / dump (SHORT) trigger, its entry window and the pairs opened. Hover for details.">⚡ --</span>
             <span id="btc-off24lo-chip" class="whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-500 tracking-wide cursor-help tip-right" data-tip="BTC distance ABOVE its 24h low (gate 60 bounce-phase gate). Red = above the gate → sleeve refusing bypasses; green = inside range → bypasses granted while the monitor is ON.">24h-low --</span>
             <!-- pair-count cluster kept for the JS writers but folded into the Breadth tooltip (duplicate of Breadth) -->
             <span class="hidden"><span id="regime-pair-count"></span><span id="regime-bull-count"></span><span id="regime-bear-count"></span><span id="regime-neutral-count"></span></span>
@@ -592,6 +593,8 @@
                         <option value="SPIKE_CHASE">🚀 SPIKE_CHASE</option>
                         <option value="SPIKE_FADE">🌊 SPIKE_FADE</option>
                         <option value="SPIKE_BOUNCE">🏀 SPIKE_BOUNCE</option>
+                        <option value="SURGE_LONG">⚡ SURGE_LONG</option>
+                        <option value="SURGE_SHORT">⚡ SURGE_SHORT</option>
                         <!-- Jun 23: removed dead/redundant options post-reset — All flips (==FAN, the only live flip),
                              LONG_UNMATCHED_ONLY / PAIR_RSI_OB / BOUNCE_LONG (all disabled → 0 trades post-reset).
                              Jun 26: BULL_LONG option removed too (sleeve disabled bull_long_enabled=false).
@@ -1492,6 +1495,14 @@
                     <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
                         <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Dates</th><th class="px-2 py-1 text-left">Gate verdict</th>
                     </tr></thead><tbody id="bearrun-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
+                </div>
+                <div class="mt-6 pt-6 border-t border-yellow-900/40">
+                    <h3 class="text-sm font-semibold text-yellow-300 mb-1">⚡ SURGE Sleeves (Sep 30 — BTC spike → SURGE_LONG · BTC dump → SURGE_SHORT, normal size)</h3>
+                    <p class="text-xs text-gray-500 mb-1" id="surge-monitor-line">Triggers: —</p>
+                    <p class="text-xs text-gray-500 mb-3">Kill bar = the LIFETIME first 10 closed fills of each side since the ship (automatic: LONG ≤3 winners ∨ mean ≤ −0.30% · SHORT ≤4 winners ∨ mean ≤ −0.20%). Per-trigger rows are the window units (one trigger = one observation). Keep bar = a N≥30 cross-window read at batch review.</p>
+                    <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-400 border-b border-white/10">
+                        <th class="px-2 py-1 text-left">Cohort</th><th class="px-2 py-1 text-right">N</th><th class="px-2 py-1 text-right">WR%</th><th class="px-2 py-1 text-right">avg%</th><th class="px-2 py-1 text-right">Total$</th><th class="px-2 py-1 text-right">avgPk%</th><th class="px-2 py-1 text-right">Triggers</th><th class="px-2 py-1 text-left">Gate verdict / pairs</th>
+                    </tr></thead><tbody id="surge-body" class="divide-y divide-white/5"><tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">—</td></tr></tbody></table></div>
                 </div>
 
                 <!-- Trailing Confirmation Performance (May 9, 2026) -->
@@ -5382,6 +5393,37 @@
                         </div>
                     </div>
                     <!-- ===== BEAR-RUN SLEEVE BOX END ===== -->
+                    <!-- ===== ⚡ SURGE SLEEVES BOX (Sep 30 · DECISION_LOG 146–148) ===== -->
+                    <div class="border border-yellow-500/25 rounded-xl p-4 bg-yellow-500/[0.03] mt-4">
+                        <label class="text-sm font-semibold text-yellow-300">⚡ SURGE Sleeves — BTC spike (LONG) / dump (SHORT) → top alts, normal size</label>
+                        <p class="text-xs text-gray-500 mt-1 mb-3">Trigger on the last CLOSED BTC 5m bar: 30-min move ≥ X% ∧ bar volume ≥ N× the 24h median (LONG also needs a close at the 24h high). Inside the entry window, the top-N tradeable pairs by volume with 5m ATR ≥ floor are opened (LONG: pair must outrun BTC) as SURGE_LONG / SURGE_SHORT — every alt entry filter and pattern cell is bypassed (the trigger replaces them), the no-trade list is not. Direct taker entry + dislocation guard. Exits: LONG = the Bull-Run exit with its own trail (BR_ reasons) · SHORT = the momentum-short stack (the Bear-Run exit) · both close at the max hold. 🔒 KILL BAR (automatic, at the 10th closed fill of a side): LONG ≤3 winners ∨ mean ≤ −0.30% · SHORT ≤4 winners ∨ mean ≤ −0.20% → that side switches OFF. Evidence: reports/BTC_SPIKE_EVENT_STUDY_2026-09-30.md (LONG failed the grid bar = discipline override; SHORT passed at +0.18%/event).</p>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div title="Master switch for the LONG side (BTC spike → top alts). Auto-switched OFF by the kill bar at the 10th close (≤3 winners ∨ mean ≤ −0.30%)."><label class="block text-xs text-gray-400 mb-1">⚡ SURGE_LONG enabled</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-sg-long-enabled" class="sr-only peer" checked><div class="w-9 h-5 bg-white/10 peer-checked:bg-yellow-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div><span class="ml-2 text-xs text-gray-400">on</span></label></div>
+                            <div title="Master switch for the SHORT side (BTC dump → top alts, +20 min). Auto-switched OFF by the kill bar at the 10th close (≤4 winners ∨ mean ≤ −0.20%)."><label class="block text-xs text-gray-400 mb-1">⚡ SURGE_SHORT enabled</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-sg-short-enabled" class="sr-only peer" checked><div class="w-9 h-5 bg-white/10 peer-checked:bg-yellow-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div><span class="ml-2 text-xs text-gray-400">on</span></label></div>
+                            <div title="LONG trigger also needs the trigger bar to CLOSE at/above BTC's prior 24h high (the breakout — study default)."><label class="block text-xs text-gray-400 mb-1">LONG: BTC closes at 24h high</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-sg-long-24h-high" class="sr-only peer" checked><div class="w-9 h-5 bg-white/10 peer-checked:bg-yellow-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div><span class="ml-2 text-xs text-gray-400">on</span></label></div>
+                            <div title="SHORT trigger also needs a close at/below the prior 24h low. OFF by evidence: the breakdown variant passed 0 of 72 cells."><label class="block text-xs text-gray-400 mb-1">SHORT: BTC closes at 24h low</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-sg-short-24h-low" class="sr-only peer"><div class="w-9 h-5 bg-white/10 peer-checked:bg-yellow-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div><span class="ml-2 text-xs text-gray-400">on</span></label></div>
+                            <div title="LONG selection: the pair's own 30-min return over the trigger bar must beat BTC's (leader)."><label class="block text-xs text-gray-400 mb-1">LONG: pair outruns BTC</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-sg-long-leader" class="sr-only peer" checked><div class="w-9 h-5 bg-white/10 peer-checked:bg-yellow-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div><span class="ml-2 text-xs text-gray-400">on</span></label></div>
+                            <div title="SHORT selection: pair 30-min return below BTC's. OFF by evidence (the winning cell was HI_ATR without the leader test)."><label class="block text-xs text-gray-400 mb-1">SHORT: pair falls faster than BTC</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-sg-short-leader" class="sr-only peer"><div class="w-9 h-5 bg-white/10 peer-checked:bg-yellow-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div><span class="ml-2 text-xs text-gray-400">on</span></label></div>
+                            <div title="Trigger: |BTC 30-min return| on the last closed 5m bar ≥ this % (positive number; the side sets the sign)."><label class="block text-xs text-gray-400 mb-1">BTC 30-min move ≥ %</label><input type="number" step="0.1" min="0" id="config-sg-btc-move" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0"></div>
+                            <div title="Trigger: the bar's quote volume ≥ this × the median of the prior 288 bars (24h). 0 = off."><label class="block text-xs text-gray-400 mb-1">BTC bar volume ≥ × median</label><input type="number" step="0.5" min="0" id="config-sg-vol-mult" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3.0"></div>
+                            <div title="A new trigger of the same side needs this long since the last (DB-backed, restart-proof). 0 = off."><label class="block text-xs text-gray-400 mb-1">Trigger spacing (h)</label><input type="number" step="0.5" min="0" id="config-sg-spacing" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="4.0"></div>
+                            <div title="Candidates = top-N TRADEABLE pairs by 24h volume (blacklisted pairs never use a slot)."><label class="block text-xs text-gray-400 mb-1">Universe (top-N by volume)</label><input type="number" step="1" min="1" id="config-sg-universe" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="20"></div>
+                            <div title="Selection (both sides): pair 5m ATR(14) % at the trigger bar ≥ this (HI_ATR)."><label class="block text-xs text-gray-400 mb-1">Pair 5m ATR ≥ %</label><input type="number" step="0.1" min="0" id="config-sg-atr-min" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.5"></div>
+                            <div title="Minutes after the trigger bar closes before a LONG may open (study: 0)."><label class="block text-xs text-gray-400 mb-1">LONG entry delay (min)</label><input type="number" step="1" min="0" id="config-sg-long-delay" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.0"></div>
+                            <div title="Minutes after the trigger bar closes before a SHORT may open (study: 20 — short the bounce)."><label class="block text-xs text-gray-400 mb-1">SHORT entry delay (min)</label><input type="number" step="1" min="0" id="config-sg-short-delay" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="20.0"></div>
+                            <div title="Entries allowed from the delay to delay + this; then the trigger is spent. A window closing with no pair judged logs SURGE_WINDOW_MISSED."><label class="block text-xs text-gray-400 mb-1">Entry window (min)</label><input type="number" step="0.5" min="0" id="config-sg-window" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="5.0"></div>
+                            <div title="Max concurrent SURGE fills per side (they also count against Max open positions)."><label class="block text-xs text-gray-400 mb-1">Max slots per side</label><input type="number" step="1" min="1" id="config-sg-slots" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3"></div>
+                            <div title="Investment multiplier (absolute-assign; never re-multiplied by pattern cells). 1.0 = normal trades."><label class="block text-xs text-gray-400 mb-1">Inv mult</label><input type="number" step="0.1" min="0.1" id="config-sg-invest-mult" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0"></div>
+                            <div title="Leverage multiplier. 1.0 = normal (operator: raise only after the keep bar)."><label class="block text-xs text-gray-400 mb-1">Lev mult</label><input type="number" step="0.05" min="0.05" id="config-sg-lev-mult" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0"></div>
+                            <div title="SURGE_LONG exit = the Bull-Run exit (its SL / arm / lock / ladder fields) with THIS trail width (study: 1×ATR). SHORT = the momentum-short stack."><label class="block text-xs text-gray-400 mb-1">LONG trail (× ATR)</label><input type="number" step="0.1" min="0" id="config-sg-long-trail" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0"></div>
+                            <div title="Skip the fill when the live price is more than this % from the decision price (bull-run 57f guard). 0 = off."><label class="block text-xs text-gray-400 mb-1">Max entry dislocation %</label><input type="number" step="0.05" min="0" id="config-sg-disloc" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.3"></div>
+                            <div title="Close after this many minutes (the study's 4h walk). 0 = the global max hold."><label class="block text-xs text-gray-400 mb-1">Max hold (min)</label><input type="number" step="15" min="0" id="config-sg-max-hold" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="240"></div>
+                            <div class="md:col-span-2" title="Pairs that never ride SURGE_LONG (comma list). BTC = the trigger, ETH its twin. Bull-Run's losers (ONG/ONE/ZEC) are under observation on SURGE fills first — add here only on SURGE evidence."><label class="block text-xs text-gray-400 mb-1">LONG sleeve blacklist</label><input type="text" id="config-sg-long-blacklist" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="BTCUSDT,ETHUSDT"></div>
+                            <div class="md:col-span-2" title="Pairs that never ride SURGE_SHORT (comma list). BTC = the trigger, ETH its twin."><label class="block text-xs text-gray-400 mb-1">SHORT sleeve blacklist</label><input type="text" id="config-sg-short-blacklist" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-xs" value="BTCUSDT,ETHUSDT"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-3" title="Written by the engine when a side's 10th fill closes (surge_long_kill_verdict / surge_short_kill_verdict). Judged once; re-enabling a killed side from the toggle is respected.">Kill-bar verdict — LONG: <span id="surge-long-verdict" class="text-gray-300">not judged yet</span> · SHORT: <span id="surge-short-verdict" class="text-gray-300">not judged yet</span></p>
+                    </div>
+                    <!-- ===== SURGE SLEEVES BOX END ===== -->
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Regime Change Exit</label>
@@ -8759,7 +8801,7 @@
             const strat = o.entry_strategy || '';
             const fg = src.match(/\+((FGP_(QS|RSI|TG)))/);
             if (fg) tags.push(fg[1]);
-            if (strat.startsWith('SPIKE') || strat.startsWith('FLIP:') || strat === 'BULL_LONG' || strat === 'BOUNCE_LONG' || strat === 'BULLRUN_LONG' || strat === 'BEARRUN_SHORT') return tags;  // Aug 21: sleeve fills take no door/band badges (gate-51 table is strategy-scoped already)
+            if (strat.startsWith('SPIKE') || strat.startsWith('FLIP:') || strat === 'BULL_LONG' || strat === 'BOUNCE_LONG' || strat === 'BULLRUN_LONG' || strat === 'BEARRUN_SHORT' || strat.startsWith('SURGE_')) return tags;  // Aug 21: sleeve fills take no door/band badges (gate-51 table is strategy-scoped already)
             if (src === 'NONEXP_CALM3D') tags.push('CALM3D');
             else if (src.endsWith('_PROBE')) tags.push(src.replace('_PROBE', ''));
             else if (src === 'UNMATCHED') {
@@ -9076,6 +9118,23 @@
                     } else {
                         _beChip.textContent = '🐻 --';
                     }
+                }
+                // ⚡ Sep 30: SURGE chip — a trigger whose entry window is still ahead / open lights it
+                const _sgChip = document.getElementById('surge-chip');
+                if (_sgChip) {
+                    const _sg = data.surge;
+                    if (_sg && _sg.long && _sg.short) {
+                        const _sd = (x, nm) => `${nm} ${x.enabled ? 'ON' : 'OFF'}${x.last_trigger ? ` · last trigger ${x.last_trigger} UTC (BTC ${x.btc_move_pct != null ? (x.btc_move_pct >= 0 ? '+' : '') + x.btc_move_pct + '%' : '—'}) · window ${x.window_opens}–${x.window_closes} UTC · opened ${x.opened}${x.picks && x.picks.length ? ' (' + x.picks.join(', ') + ')' : ''} · refused ${x.refused}` : ' · no trigger since restart'}`;
+                        _sgChip.dataset.tip = `⚡ SURGE sleeves (Inv ×${_sg.long.invest_mult} · Lev ×${_sg.long.lev_mult}) — ${_sd(_sg.long, 'LONG')} || ${_sd(_sg.short, 'SHORT')}`;
+                        const _live = [['L', _sg.long], ['S', _sg.short]].filter(([_, x]) => x.enabled && x.window_close_ms && Date.now() < x.window_close_ms);
+                        if (_live.length) {
+                            _sgChip.textContent = '⚡ ' + _live.map(([k, x]) => `${k} ${x.window_opens}`).join(' ');
+                            _sgChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/20 text-yellow-300 uppercase tracking-wide cursor-help tip-right';
+                        } else {
+                            _sgChip.textContent = `⚡ ${_sg.long.enabled ? 'L' : '·'}${_sg.short.enabled ? 'S' : '·'}`;
+                            _sgChip.className = 'whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-gray-500/20 text-gray-400 uppercase tracking-wide cursor-help tip-right';
+                        }
+                    } else { _sgChip.textContent = '⚡ --'; }
                 }
                 const _loChip = document.getElementById('btc-off24lo-chip');
                 if (_loChip) {
@@ -10797,6 +10856,21 @@
                 lines.push('  ARM BAR (1x probe): first 3 windows >=2 net-positive AND sum>0 => lev x1.0 (manual) · KILL BAR (armed): first 10 fills WR<=45% OR net<0, or 2 consecutive net-negative windows => toggle OFF (gate 60)');
             }
 
+            if ((perf.surge_rows && perf.surge_rows.length > 0) || perf.surge_monitor) {
+                lines.push(`\n${hr2}`);
+                lines.push('## ⚡ SURGE Sleeves (BTC spike -> SURGE_LONG · BTC dump -> SURGE_SHORT, normal size — Sep 30)\n');
+                const _sgm = perf.surge_monitor;
+                const _sgf = (x, nm) => `${nm} ${x.enabled ? 'ON' : 'OFF'}${x.last_trigger ? ` last-trigger=${x.last_trigger}UTC BTC=${x.btc_move_pct != null ? x.btc_move_pct : '-'}% window=${x.window_opens}-${x.window_closes} opened=${x.opened}${x.picks && x.picks.length ? ' [' + x.picks.join(',') + ']' : ''} refused=${x.refused}` : ' no-trigger-since-restart'}`;
+                if (_sgm) lines.push(`  Triggers: ${_sgf(_sgm.long, 'LONG')} | ${_sgf(_sgm.short, 'SHORT')} | sizing Inv x${_sgm.long.invest_mult} Lev x${_sgm.long.lev_mult}`);
+                if (perf.surge_rows && perf.surge_rows.length > 0) {
+                    lines.push(`${'Cohort'.padEnd(58)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Trig'.padStart(5)}  Gate verdict / pairs`);
+                    for (const r of perf.surge_rows) {
+                        lines.push(`${(r.row||'').padEnd(58)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.windows).padStart(5)}  ${r.gate||''}`);
+                    }
+                }
+                lines.push('  KILL BAR (automatic, at the 10th closed fill of a side since the ship): LONG <=3 winners OR mean <=-0.30% · SHORT <=4 winners OR mean <=-0.20% => side OFF. Keep bar: N>=30 cross-window read (DECISION_LOG 146-148)');
+            }
+
             if (perf.spike_fires && perf.spike_fires.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## 🚀 Spike Fires (per-fire — CHASE + FADE, both eras; Jul 27 full ship)\n');
@@ -11393,6 +11467,7 @@
             {
                 const _bt = cfg?.thresholds || {};
                 lines.push(`  🌊 Bull-Run Sleeve (gate 57): ${_bt.bullrun_sleeve_enabled !== false ? `ON — GREEN(r72≥${_bt.bullrun_green_r72_on ?? 10}/${_bt.bullrun_green_r72_off ?? 8} ∧ above≥${_bt.bullrun_green_above_on ?? 56}/${_bt.bullrun_green_above_off ?? 53} ∧ eff≥${_bt.bullrun_green_eff_on ?? 0.10}/${_bt.bullrun_green_eff_off ?? 0.10}) latch ${_bt.bullrun_latch_r6h ?? -3}%/1hEMA50 · top-${_bt.bullrun_universe_size ?? 10} COIN · dip ${_bt.bullrun_dip_atr_mult ?? 0.3}×ATR · ${_bt.bullrun_max_slots ?? 4} slots · Inv ${_bt.bullrun_invest_mult ?? 1}x/Lev ${_bt.bullrun_lev_mult ?? 1}x · SL ${_bt.bullrun_base_sl_pct ?? -0.7}/ATR · BE ${_bt.bullrun_be_arm_pct ?? 1.0}→${_bt.bullrun_be_lock_pct ?? 0.2} · trail ${_bt.bullrun_trail_atr_mult ?? 2.0}×ATR (REARM ${(_bt.bullrun_rearm_trail_atr_mult > 0) ? _bt.bullrun_rearm_trail_atr_mult + '×' : 'same'}) · BTC off-24h gate ${(_bt.bullrun_btc_off24h_max ?? 0) < 0 ? `≤${_bt.bullrun_btc_off24h_max}%` : 'OFF'} · ladder ${(_bt.bullrun_ladder || '').trim() ? _bt.bullrun_ladder : 'OFF'} · blacklist ${(_bt.bullrun_pair_blacklist || '').trim() || 'none'} · BTC≥EMA13 ${_bt.bullrun_btc_ema13_required !== false ? 'ON' : 'off'} · 1h-slope>${(_bt.bullrun_btc_1h_slope_min === null || _bt.bullrun_btc_1h_slope_min === undefined) ? 'off' : _bt.bullrun_btc_1h_slope_min} · breadth ${_bt.bullrun_breadth_enabled === true && (_bt.bullrun_breadth_min > 0) ? `≥${_bt.bullrun_breadth_min}%` : 'off'} · disloc≤${(_bt.bullrun_max_entry_dislocation_pct > 0) ? _bt.bullrun_max_entry_dislocation_pct + '%' : 'off'} · RE-ARM ${_bt.bullrun_rearm_enabled !== false ? `ON(ADX≥${_bt.bullrun_rearm_adx_min ?? 30}↑/stay ${_bt.bullrun_rearm_adx_off ?? 30}, alts r6h>${_bt.bullrun_rearm_alt_r6h_min ?? 1}% & ≥${_bt.bullrun_rearm_alt_above_pct ?? 80}% >1hEMA50, ≤${_bt.bullrun_rearm_max_hours ?? 24}h, only ≤${_bt.bullrun_rearm_after_green_hours ?? 48}h after GREEN, entry-age ≤${(_bt.bullrun_rearm_max_entry_age_min > 0) ? _bt.bullrun_rearm_max_entry_age_min + 'min' : 'off'}/flap ${_bt.bullrun_rearm_flap_merge_min ?? 30}min)` : 'off'}` : 'OFF'}`);
+                lines.push(`  ⚡ SURGE sleeves: LONG ${_bt.surge_long_enabled !== false ? 'ON' : 'OFF'} · SHORT ${_bt.surge_short_enabled !== false ? 'ON' : 'OFF'} · trigger BTC |30m| ≥${_bt.surge_btc_move_pct ?? 1}% ∧ vol ≥${_bt.surge_btc_vol_mult ?? 3}× median${_bt.surge_long_require_24h_high !== false ? ' (LONG: 24h-high close)' : ''}${_bt.surge_short_require_24h_low ? ' (SHORT: 24h-low close)' : ''} · spacing ${_bt.surge_trigger_spacing_hours ?? 4}h · top-${_bt.surge_universe_size ?? 20} ATR≥${_bt.surge_atr_min_pct ?? 1.5}%${_bt.surge_long_require_leader !== false ? ' · LONG leader' : ''}${_bt.surge_short_require_leader ? ' · SHORT leader' : ''} · delay L ${_bt.surge_long_entry_delay_min ?? 0}m / S ${_bt.surge_short_entry_delay_min ?? 20}m · window ${_bt.surge_entry_window_min ?? 5}m · ${_bt.surge_max_slots ?? 3} slots/side · Inv ${_bt.surge_invest_mult ?? 1}x Lev ${_bt.surge_lev_mult ?? 1}x · LONG exit Bull-Run trail ${_bt.surge_long_trail_atr_mult ?? 1}×ATR · SHORT exit momentum-short stack · max hold ${_bt.surge_max_hold_minutes ?? 240}m · disloc ≤${_bt.surge_max_entry_dislocation_pct ?? 0.3}% · blacklist L ${(_bt.surge_long_pair_blacklist || '').trim() || 'none'} / S ${(_bt.surge_short_pair_blacklist || '').trim() || 'none'} · kill verdict L ${(_bt.surge_long_kill_verdict || '').trim() || 'not judged'} / S ${(_bt.surge_short_kill_verdict || '').trim() || 'not judged'}`);
                 lines.push(`  🐻 Bear-Run Sleeve (gate 60): ${_bt.bearrun_sleeve_enabled !== false ? `ON — ${(_bt.bearrun_lev_mult ?? 0.05) < 1 ? `1× PROBE (lev ×${_bt.bearrun_lev_mult ?? 0.05})` : 'ARMED'} · monitor 24h (r24≤−${_bt.bearrun_r24_on ?? 4}/${_bt.bearrun_r24_off ?? 3} ∧ below-EMA20≥${_bt.bearrun_below_on ?? 50}/${_bt.bearrun_below_off ?? 47} ∧ eff24≥${_bt.bearrun_eff_on ?? 0.15}/${_bt.bearrun_eff_off ?? 0.15}) squeeze latch r6h≥+${_bt.bearrun_latch_r6h ?? 3}%${_bt.bearrun_latch_ema50 !== false ? '/1hEMA50' : ''} · BTC off-24h-low gate ${(_bt.bearrun_btc_off24lo_max ?? 0) > 0 ? `≤+${_bt.bearrun_btc_off24lo_max}%` : 'OFF'} · bear-breadth≥${(_bt.bearrun_breadth_min ?? 0) > 0 ? (_bt.bearrun_breadth_min + '%') : 'off'} · bypass ${(_bt.bearrun_bypass_gates || '').trim() || 'none'} · blacklist ${(_bt.bearrun_pair_blacklist || '').trim() || 'none'} · spacing ${_bt.bearrun_pair_spacing_hours ?? 2}h · window merge ${_bt.bearrun_window_merge_minutes ?? 180}min · Inv ${_bt.bearrun_invest_mult ?? 1}x · exits = momentum-short stack` : 'OFF'}`);
             }
 
@@ -13195,6 +13270,21 @@
                     }
                 }
                 lines.push('  ARM BAR (1x probe): first 3 windows >=2 net-positive AND sum>0 => lev x1.0 (manual) · KILL BAR (armed): first 10 fills WR<=45% OR net<0, or 2 consecutive net-negative windows => toggle OFF (gate 60)');
+            }
+
+            if ((perf.surge_rows && perf.surge_rows.length > 0) || perf.surge_monitor) {
+                lines.push(`\n${hr2}`);
+                lines.push('## ⚡ SURGE Sleeves (BTC spike -> SURGE_LONG · BTC dump -> SURGE_SHORT, normal size — Sep 30)\n');
+                const _sgm = perf.surge_monitor;
+                const _sgf = (x, nm) => `${nm} ${x.enabled ? 'ON' : 'OFF'}${x.last_trigger ? ` last-trigger=${x.last_trigger}UTC BTC=${x.btc_move_pct != null ? x.btc_move_pct : '-'}% window=${x.window_opens}-${x.window_closes} opened=${x.opened}${x.picks && x.picks.length ? ' [' + x.picks.join(',') + ']' : ''} refused=${x.refused}` : ' no-trigger-since-restart'}`;
+                if (_sgm) lines.push(`  Triggers: ${_sgf(_sgm.long, 'LONG')} | ${_sgf(_sgm.short, 'SHORT')} | sizing Inv x${_sgm.long.invest_mult} Lev x${_sgm.long.lev_mult}`);
+                if (perf.surge_rows && perf.surge_rows.length > 0) {
+                    lines.push(`${'Cohort'.padEnd(58)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Trig'.padStart(5)}  Gate verdict / pairs`);
+                    for (const r of perf.surge_rows) {
+                        lines.push(`${(r.row||'').padEnd(58)} ${String(r.n).padStart(4)} ${(r.wr != null ? r.wr.toFixed(1) : '-').padStart(6)} ${(r.avg_pct != null ? ((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)) : '-').padStart(8)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(10)} ${(r.avg_peak != null ? ((r.avg_peak>=0?'+':'')+r.avg_peak.toFixed(2)) : '-').padStart(7)} ${String(r.windows).padStart(5)}  ${r.gate||''}`);
+                    }
+                }
+                lines.push('  KILL BAR (automatic, at the 10th closed fill of a side since the ship): LONG <=3 winners OR mean <=-0.30% · SHORT <=4 winners OR mean <=-0.20% => side OFF. Keep bar: N>=30 cross-window read (DECISION_LOG 146-148)');
             }
 
             if (perf.spike_fires && perf.spike_fires.length > 0) {
@@ -18977,6 +19067,31 @@
                         }).join('');
                     } else { beBody.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No sleeve fills yet</td></tr>'; }
                 }
+                // ⚡ Sep 30: SURGE sleeves table + trigger line
+                const sgBody = document.getElementById('surge-body');
+                if (sgBody) {
+                    const sgLine = document.getElementById('surge-monitor-line');
+                    if (sgLine && data.surge_monitor) {
+                        const _f = (x, nm) => `${nm} <span class="${x.enabled ? 'text-yellow-300' : 'text-red-400'}">${x.enabled ? 'ON' : 'OFF'}</span>${x.last_trigger ? ` · last trigger ${x.last_trigger} UTC (BTC ${x.btc_move_pct != null ? (x.btc_move_pct >= 0 ? '+' : '') + x.btc_move_pct + '%' : '—'}) · window ${x.window_opens}–${x.window_closes} · opened ${x.opened}${x.picks && x.picks.length ? ' (' + x.picks.join(', ') + ')' : ''} · refused ${x.refused}` : ' · no trigger since restart'}`;
+                        sgLine.innerHTML = `${_f(data.surge_monitor.long, 'LONG')} &nbsp;|&nbsp; ${_f(data.surge_monitor.short, 'SHORT')} · sizing Inv ×${data.surge_monitor.long.invest_mult} · Lev ×${data.surge_monitor.long.lev_mult}`;
+                    }
+                    if (data.surge_rows && data.surge_rows.length > 0) {
+                        sgBody.innerHTML = data.surge_rows.map(r => {
+                            const tc = (r.total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const gc = (r.gate || '').startsWith('🔴') ? 'text-red-400 font-semibold' : ((r.gate || '').startsWith('🟢') ? 'text-emerald-400 font-semibold' : 'text-gray-400');
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 text-yellow-300 font-medium whitespace-pre">${r.row}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.n}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${r.wr != null ? r.wr.toFixed(1) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc}">${r.avg_pct != null ? ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right ${tc} font-bold">$${(r.total_usd || 0).toFixed(2)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.avg_peak != null ? ((r.avg_peak >= 0 ? '+' : '') + r.avg_peak.toFixed(2)) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.windows}</td>
+                                <td class="px-2 py-1.5 ${gc}">${r.gate || ''}</td>
+                            </tr>`;
+                        }).join('');
+                    } else { sgBody.innerHTML = '<tr><td colspan="8" class="px-3 py-3 text-center text-gray-500">No SURGE fills yet</td></tr>'; }
+                }
                 // 🚀 Spike Fires per-fire table (Jul 27 full ship)
                 const spfBody = document.getElementById('spike-fires-body');
                 if (spfBody) {
@@ -19704,10 +19819,10 @@
                     // +1.0 → lock +0.2 / 2×ATR trail) — the RUNNER/🛡 badges describe the alt
                     // machinery, which can never touch a sleeve trade (operator-caught cosmetic
                     // mislabel on the first live fill). Show the sleeve's true state instead.
-                    if ((o.entry_strategy || '') === 'BULLRUN_LONG') {
+                    if ((o.entry_strategy || '') === 'BULLRUN_LONG' || (o.entry_strategy || '') === 'SURGE_LONG') {   // ⚡ Sep 30: SURGE_LONG runs the same exit (own trail)
                         const _brArm = _rtTh.bullrun_be_arm_pct ?? 1.0;
                         const _brLock = _rtTh.bullrun_be_lock_pct ?? 0.2;
-                        const _brTrail = _rtTh.bullrun_trail_atr_mult ?? 2.0;
+                        const _brTrail = (o.entry_strategy || '') === 'SURGE_LONG' ? (_rtTh.surge_long_trail_atr_mult ?? 1.0) : (_rtTh.bullrun_trail_atr_mult ?? 2.0);
                         const _brArmed = _tpPeak >= _brArm;
                         // Operator (Aug-21): Flag stays EMPTY below the arm (same as every other
                         // trade pre-arm — the Strategy column already says it's a sleeve trade);
@@ -19752,12 +19867,13 @@
                     // Strategy / sleeve badge (matches the Filter by Flip Source names)
                     const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');
                     const _stratRaw = _isFlipStrat ? (o.entry_strategy || '').slice(5) : ((o.entry_strategy || 'MOMENTUM'));
-                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? 'BULLRUN' : _stratRaw === 'BEARRUN_SHORT' ? 'BEARRUN' : _stratRaw;
+                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? 'BULLRUN' : _stratRaw === 'BEARRUN_SHORT' ? 'BEARRUN' : _stratRaw === 'SURGE_LONG' ? 'SURGE-L' : _stratRaw === 'SURGE_SHORT' ? 'SURGE-S' : _stratRaw;
                     const _stratColor = _isFlipStrat ? 'bg-sky-500/20 text-sky-300'
                         : _stratRaw === 'BULL_LONG' ? 'bg-emerald-500/20 text-emerald-300'
                         : _stratRaw === 'BOUNCE_LONG' ? 'bg-amber-500/20 text-amber-300'
                         : _stratRaw === 'BULLRUN_LONG' ? 'bg-cyan-500/20 text-cyan-300'
                         : _stratRaw === 'BEARRUN_SHORT' ? 'bg-rose-500/20 text-rose-300'
+                        : (_stratRaw === 'SURGE_LONG' || _stratRaw === 'SURGE_SHORT') ? 'bg-yellow-500/20 text-yellow-300'
                         : 'bg-gray-500/20 text-gray-400';
                     return `
                         <tr class="hover:bg-white/5 transition">
@@ -19874,12 +19990,13 @@
                     // Strategy / sleeve badge (matches the Filter by Flip Source names)
                     const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');
                     const _stratRaw = _isFlipStrat ? (o.entry_strategy || '').slice(5) : ((o.entry_strategy || 'MOMENTUM'));
-                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? 'BULLRUN' : _stratRaw === 'BEARRUN_SHORT' ? 'BEARRUN' : _stratRaw;
+                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw === 'BULLRUN_LONG' ? 'BULLRUN' : _stratRaw === 'BEARRUN_SHORT' ? 'BEARRUN' : _stratRaw === 'SURGE_LONG' ? 'SURGE-L' : _stratRaw === 'SURGE_SHORT' ? 'SURGE-S' : _stratRaw;
                     const _stratColor = _isFlipStrat ? 'bg-sky-500/20 text-sky-300'
                         : _stratRaw === 'BULL_LONG' ? 'bg-emerald-500/20 text-emerald-300'
                         : _stratRaw === 'BOUNCE_LONG' ? 'bg-amber-500/20 text-amber-300'
                         : _stratRaw === 'BULLRUN_LONG' ? 'bg-cyan-500/20 text-cyan-300'
                         : _stratRaw === 'BEARRUN_SHORT' ? 'bg-rose-500/20 text-rose-300'
+                        : (_stratRaw === 'SURGE_LONG' || _stratRaw === 'SURGE_SHORT') ? 'bg-yellow-500/20 text-yellow-300'
                         : 'bg-gray-500/20 text-gray-400';
                     return `
                         <tr class="hover:bg-white/5 transition">
@@ -21523,6 +21640,39 @@
                     const _e = document.getElementById(_id);
                     if (_e) _e.value = (config.thresholds[_key] !== undefined && config.thresholds[_key] !== null) ? config.thresholds[_key] : _def;
                 }
+                // ⚡ Sep 30: SURGE sleeves box
+                for (const [_id, _key, _def] of [
+                    ['config-sg-long-enabled', 'surge_long_enabled', true],
+                    ['config-sg-short-enabled', 'surge_short_enabled', true],
+                    ['config-sg-long-24h-high', 'surge_long_require_24h_high', true],
+                    ['config-sg-short-24h-low', 'surge_short_require_24h_low', false],
+                    ['config-sg-long-leader', 'surge_long_require_leader', true],
+                    ['config-sg-short-leader', 'surge_short_require_leader', false]
+                ]) { const _e = document.getElementById(_id); if (_e) _e.checked = (config.thresholds[_key] === undefined || config.thresholds[_key] === null) ? _def : !!config.thresholds[_key]; }
+                for (const _sd of ['long', 'short']) {   // engine-written kill verdict (display only) + the toggle state this page loaded
+                    const _v = String(config.thresholds[`surge_${_sd}_kill_verdict`] ?? '').trim();
+                    const _e = document.getElementById(`surge-${_sd}-verdict`);
+                    if (_e) { _e.textContent = _v || 'not judged yet'; _e.className = _v.startsWith('KILLED') ? 'text-red-400 font-semibold' : (_v.startsWith('PASS') ? 'text-emerald-400' : 'text-gray-300'); }
+                }
+                window._sgLoadedEnabled = { long: config.thresholds.surge_long_enabled !== false, short: config.thresholds.surge_short_enabled !== false };
+                { const _e = document.getElementById('config-sg-long-blacklist'); if (_e) _e.value = String(config.thresholds.surge_long_pair_blacklist ?? 'BTCUSDT,ETHUSDT'); }
+                { const _e = document.getElementById('config-sg-short-blacklist'); if (_e) _e.value = String(config.thresholds.surge_short_pair_blacklist ?? 'BTCUSDT,ETHUSDT'); }
+                for (const [_id, _key, _def] of [
+                    ['config-sg-btc-move', 'surge_btc_move_pct', 1.0],
+                    ['config-sg-vol-mult', 'surge_btc_vol_mult', 3.0],
+                    ['config-sg-spacing', 'surge_trigger_spacing_hours', 4.0],
+                    ['config-sg-universe', 'surge_universe_size', 20],
+                    ['config-sg-atr-min', 'surge_atr_min_pct', 1.5],
+                    ['config-sg-long-delay', 'surge_long_entry_delay_min', 0.0],
+                    ['config-sg-short-delay', 'surge_short_entry_delay_min', 20.0],
+                    ['config-sg-window', 'surge_entry_window_min', 5.0],
+                    ['config-sg-slots', 'surge_max_slots', 3],
+                    ['config-sg-invest-mult', 'surge_invest_mult', 1.0],
+                    ['config-sg-lev-mult', 'surge_lev_mult', 1.0],
+                    ['config-sg-long-trail', 'surge_long_trail_atr_mult', 1.0],
+                    ['config-sg-disloc', 'surge_max_entry_dislocation_pct', 0.3],
+                    ['config-sg-max-hold', 'surge_max_hold_minutes', 240]
+                ]) { const _e = document.getElementById(_id); if (_e) _e.value = (config.thresholds[_key] !== undefined && config.thresholds[_key] !== null) ? config.thresholds[_key] : _def; }
                 const _slAtrFloorInput = document.getElementById('config-sl-atr-widen-floor-pct');
                 if (_slAtrFloorInput) {
                     _slAtrFloorInput.value = config.thresholds.sl_atr_widen_floor_pct !== undefined ? config.thresholds.sl_atr_widen_floor_pct : -1.20;
@@ -22971,6 +23121,30 @@
                     bearrun_window_merge_minutes: (function(){ const v = String(document.getElementById('config-be-merge-min')?.value ?? '').trim(); return v === '' ? 180 : safeFloat(v); })(),  // explicit 0 = no merge
                     bearrun_bypass_gates: String(document.getElementById('config-be-bypass-gates')?.value ?? '').trim().toUpperCase(),  // blank = sleeve inert (deliberate)
                     bearrun_pair_blacklist: String(document.getElementById('config-be-blacklist')?.value ?? '').trim().toUpperCase(),  // blank = none
+                    // ⚡ Sep 30 SURGE sleeves — blank numeric fields fall back to the shipped default; an explicit 0 is kept (off where documented)
+                    // ⚡ enabled flags are sent ONLY when toggled on this page — a page loaded before an auto-kill must not re-enable the side
+                    ...((document.getElementById('config-sg-long-enabled')?.checked ?? true) !== (window._sgLoadedEnabled?.long ?? true) ? { surge_long_enabled: document.getElementById('config-sg-long-enabled')?.checked ?? true } : {}),
+                    ...((document.getElementById('config-sg-short-enabled')?.checked ?? true) !== (window._sgLoadedEnabled?.short ?? true) ? { surge_short_enabled: document.getElementById('config-sg-short-enabled')?.checked ?? true } : {}),
+                    surge_long_require_24h_high: document.getElementById('config-sg-long-24h-high')?.checked ?? true,
+                    surge_short_require_24h_low: document.getElementById('config-sg-short-24h-low')?.checked ?? false,
+                    surge_long_require_leader: document.getElementById('config-sg-long-leader')?.checked ?? true,
+                    surge_short_require_leader: document.getElementById('config-sg-short-leader')?.checked ?? false,
+                    surge_btc_move_pct: (function(){ const v = String(document.getElementById('config-sg-btc-move')?.value ?? '').trim(); const x = v === '' ? 1.0 : safeFloat(v); return (x === null || x === undefined || Number.isNaN(x)) ? 1.0 : x; })(),
+                    surge_btc_vol_mult: (function(){ const v = String(document.getElementById('config-sg-vol-mult')?.value ?? '').trim(); const x = v === '' ? 3.0 : safeFloat(v); return (x === null || x === undefined || Number.isNaN(x)) ? 3.0 : x; })(),
+                    surge_trigger_spacing_hours: (function(){ const v = String(document.getElementById('config-sg-spacing')?.value ?? '').trim(); const x = v === '' ? 4.0 : safeFloat(v); return (x === null || x === undefined || Number.isNaN(x)) ? 4.0 : x; })(),
+                    surge_universe_size: (function(){ const v = String(document.getElementById('config-sg-universe')?.value ?? '').trim(); const x = v === '' ? 20 : parseInt(v, 10); return (x === null || x === undefined || Number.isNaN(x)) ? 20 : x; })(),
+                    surge_atr_min_pct: (function(){ const v = String(document.getElementById('config-sg-atr-min')?.value ?? '').trim(); const x = v === '' ? 1.5 : safeFloat(v); return (x === null || x === undefined || Number.isNaN(x)) ? 1.5 : x; })(),
+                    surge_long_entry_delay_min: (function(){ const v = String(document.getElementById('config-sg-long-delay')?.value ?? '').trim(); const x = v === '' ? 0.0 : safeFloat(v); return (x === null || x === undefined || Number.isNaN(x)) ? 0.0 : x; })(),
+                    surge_short_entry_delay_min: (function(){ const v = String(document.getElementById('config-sg-short-delay')?.value ?? '').trim(); const x = v === '' ? 20.0 : safeFloat(v); return (x === null || x === undefined || Number.isNaN(x)) ? 20.0 : x; })(),
+                    surge_entry_window_min: (function(){ const v = String(document.getElementById('config-sg-window')?.value ?? '').trim(); const x = v === '' ? 5.0 : safeFloat(v); return (x === null || x === undefined || Number.isNaN(x)) ? 5.0 : x; })(),
+                    surge_max_slots: (function(){ const v = String(document.getElementById('config-sg-slots')?.value ?? '').trim(); const x = v === '' ? 3 : parseInt(v, 10); return (x === null || x === undefined || Number.isNaN(x)) ? 3 : x; })(),
+                    surge_invest_mult: (function(){ const v = String(document.getElementById('config-sg-invest-mult')?.value ?? '').trim(); const x = v === '' ? 1.0 : safeFloat(v); return (x === null || x === undefined || Number.isNaN(x)) ? 1.0 : x; })(),
+                    surge_lev_mult: (function(){ const v = String(document.getElementById('config-sg-lev-mult')?.value ?? '').trim(); const x = v === '' ? 1.0 : safeFloat(v); return (x === null || x === undefined || Number.isNaN(x)) ? 1.0 : x; })(),
+                    surge_long_trail_atr_mult: (function(){ const v = String(document.getElementById('config-sg-long-trail')?.value ?? '').trim(); const x = v === '' ? 1.0 : safeFloat(v); return (x === null || x === undefined || Number.isNaN(x)) ? 1.0 : x; })(),
+                    surge_max_entry_dislocation_pct: (function(){ const v = String(document.getElementById('config-sg-disloc')?.value ?? '').trim(); const x = v === '' ? 0.3 : safeFloat(v); return (x === null || x === undefined || Number.isNaN(x)) ? 0.3 : x; })(),
+                    surge_max_hold_minutes: (function(){ const v = String(document.getElementById('config-sg-max-hold')?.value ?? '').trim(); const x = v === '' ? 240 : parseInt(v, 10); return (x === null || x === undefined || Number.isNaN(x)) ? 240 : x; })(),
+                    surge_long_pair_blacklist: String(document.getElementById('config-sg-long-blacklist')?.value ?? '').trim().toUpperCase(),  // blank = none
+                    surge_short_pair_blacklist: String(document.getElementById('config-sg-short-blacklist')?.value ?? '').trim().toUpperCase(),  // blank = none
                     trailing_pullback_confirmation_seconds: parseInt(document.getElementById('config-trailing-pullback-confirmation-seconds')?.value || 15) || 0,
                     trailing_early_arm_threshold: safeFloat(document.getElementById('config-trailing-early-arm-threshold')?.value || 0.30),
                     trailing_early_arm_pullback: safeFloat(document.getElementById('config-trailing-early-arm-pullback')?.value || 0.10),

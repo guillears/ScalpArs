@@ -92,3 +92,28 @@ run with the exits still open read +0.004). The operator's winners (NEAR runner 
 +0.72, and the two QNT runners the lock fix now banks at +0.10) came from PAIR SELECTION and manual timing inside one window —
 not from 'buy the top alts when BTC spikes'. Next step = observe-first: manual trades now carry every entry stamp, so the
 selection can be measured across spike windows (bar: ≥ 8 distinct windows before any rule).
+
+## v3 — 1-minute bars, simulator validated on the operator's trades (scripts/btc_spike_follow_1m.py)
+The 5m simulator mis-scored 3 of the operator's 7 spike trades (adverse-first inside a 5m bar that spans +0.9 % and −0.7 %). v3
+walks 1m bars along the candle path (falling candle O→H→L→C, rising O→L→H→C) and reproduces the trades within exit-rule differences.
+Result: the BTC spike alone still does not beat the control at any entry delay (0–45 min).
+
+## ⚡ SURGE sleeve design grid (scripts/surge_sleeve_design.py · reports/SURGE_SLEEVE_GRID_2026-09-30.csv)
+72 pre-declared cells (4 selections × 3 entry delays × 6 exits incl. the live Bull-Run exit at 2×/1× ATR trail), top-20 universe,
+train Jan–Apr / test May–Sep, control = same cell 1 day earlier. Ship bar: positive in both halves, beats control in both, 95 % CI > 0,
+≥ 20 events. PASSED: none.
+```
+          sel  entry         exit  events  fills  per_event            ci  train   test  ctrl_train  ctrl_test  pos_events  fill_wr PASS
+HI_ATR_LEADER      0 BULLRUN_1ATR      55    117      0.320 [-0.15,+0.89]  0.413  0.199      -0.120      0.120          49       56     
+HI_ATR_LEADER     10 BULLRUN_1ATR      55    117      0.278 [-0.21,+0.81]  0.138  0.458      -0.118      0.140          42       48     
+HI_ATR_LEADER     10       KEEP60      55    117      0.263 [-0.04,+0.63]  0.234  0.300       0.172      0.281          45       52     
+HI_ATR_LEADER      0 BULLRUN_2ATR      55    117      0.247 [-0.22,+0.82]  0.321  0.152      -0.138      0.081          51       56     
+HI_ATR_LEADER      0          BOT      55    117      0.224 [-0.15,+0.71]  0.545 -0.192      -0.047     -0.055          44       56     
+HI_ATR_LEADER     10 BULLRUN_2ATR      55    117      0.224 [-0.25,+0.75]  0.083  0.406      -0.101      0.108          42       48     
+HI_ATR_LEADER     10        QUICK      55    117      0.221 [-0.09,+0.68]  0.353  0.050       0.171      0.078          47       47     
+```
+Best family = HI_ATR_LEADER (pair 5m ATR ≥ 1.5 % AND outrunning BTC over the spike's 30 min): top of the table for EVERY exit;
+best cell entry at the spike + Bull-Run exit (1×ATR trail): +0.32 %/event, train +0.41 / test +0.20, control −0.12 / +0.12 — but CI
+−0.15…+0.89 (117 fills / 55 events), WR 56 %, avg win +1.43 vs avg loss −1.20, max fill +11 %, and the top 3 events carry 113 % of
+the total (the rest net negative; AGT/BTW/SIREN pumps ≈ 85 % of P&L). Fat-tailed: most spikes lose small, a few pumps pay.
+Verdict: observe-first candidate (phantom tracking), not a sleeve.

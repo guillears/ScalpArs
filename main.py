@@ -686,6 +686,8 @@ async def get_status(db: AsyncSession = Depends(get_db)):
         }
     except Exception as e:
         logger.debug(f"[STATUS] bearrun chip skipped: {e}")
+    # ⚡ Sep-30 SURGE sleeves chip (both sides)
+    _status["surge"] = _surge_monitor_payload()
     return _status
 
 
@@ -2362,6 +2364,8 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "bearrun_rows": [],
             "bearrun_monitor": None,
             "bearrun_periods": [],
+            "surge_rows": [],
+            "surge_monitor": None,
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -2926,6 +2930,37 @@ async def _bullrun_periods_rows(db, limit=50):
         return []
 
 
+def _surge_monitor_payload():
+    """⚡ Sep-30 SURGE sleeves: per-side trigger state for the header chip and the sleeve table header (in-memory engine globals;
+    the trigger is recomputed every scan, so an empty state after a deploy only means no trigger since the restart)."""
+    try:
+        from services.trading_engine import _surge_state as _sgs, _surge_status as _sgt
+        from datetime import datetime as _dt
+        _th_s = config.trading_config.thresholds
+        out = {}
+        for side in ("LONG", "SHORT"):
+            st = _sgs.get(side) or {}; stt = _sgt.get(side) or {}
+            _lt = stt.get('last_trigger_close_ts')
+            _d = float(getattr(_th_s, f'surge_{side.lower()}_entry_delay_min', 0) or 0)
+            _w = float(getattr(_th_s, 'surge_entry_window_min', 5.0) or 5.0)
+            out[side.lower()] = {
+                "enabled": bool(getattr(_th_s, f'surge_{side.lower()}_enabled', False)),
+                "last_trigger": (_dt.utcfromtimestamp(_lt / 1000).strftime('%Y-%m-%d %H:%M') if _lt else None),
+                "btc_move_pct": stt.get('last_btc_move_pct'),
+                "window_opens": (_dt.utcfromtimestamp(_lt / 1000 + _d * 60).strftime('%H:%M') if _lt else None),
+                "window_closes": (_dt.utcfromtimestamp(_lt / 1000 + (_d + _w) * 60).strftime('%H:%M') if _lt else None),
+                "window_close_ms": (int(_lt + (_d + _w) * 60_000) if _lt else None),   # numeric: the chip compares epochs (midnight-safe)
+                "kill_verdict": str(getattr(_th_s, f'surge_{side.lower()}_kill_verdict', '') or ''),
+                "picks": list(stt.get('picks') or []), "opened": int(stt.get('opened') or 0),
+                "refused": len(st.get('refused') or ()),
+                "invest_mult": float(getattr(_th_s, 'surge_invest_mult', 1.0) or 1.0),
+                "lev_mult": float(getattr(_th_s, 'surge_lev_mult', 1.0) or 1.0),
+            }
+        return out
+    except Exception:
+        return None
+
+
 def _bearrun_monitor_payload():
     """🐻 Sep 15 gate 60: Bear-Run monitor state + flip history for the sleeve table header."""
     try:
@@ -3003,6 +3038,10 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
             return 'BullRun-Long'  # Aug 21 gate 57: own row — must NOT contaminate Mom-Long
         if (o.entry_strategy or '') == 'BEARRUN_SHORT':
             return 'BearRun-Short'  # Sep 15 gate 60: own row — must NOT contaminate Mom-Short (1× probe fills)
+        if (o.entry_strategy or '') == 'SURGE_LONG':
+            return 'Surge-Long'    # ⚡ Sep-30: own rows — BTC spike / dump sleeves never blend into momentum
+        if (o.entry_strategy or '') == 'SURGE_SHORT':
+            return 'Surge-Short'
         if 'FLIP' in (o.entry_strategy or ''):
             return 'Flip-Short' if o.direction == 'SHORT' else 'Flip-Long'
         return 'Mom-Long' if o.direction == 'LONG' else 'Mom-Short'
@@ -3037,7 +3076,7 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
                         if start_balance and start_balance > 0 and window_days and window_days >= 0.5
                         and sum(o.pnl or 0 for o in g) / start_balance > -1 else None),
         }
-    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Manual']   # 🖐 Sep-29: own row
+    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Surge-Long', 'Surge-Short', 'Manual']   # 🖐 Sep-29: own row
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
     all_closed = [o for o in orders if o.pnl_percentage is not None]
     total = stats('Total', all_closed)
@@ -3086,7 +3125,7 @@ def _compute_strategy_performance(orders, start_balance=None, window_days=None):
         }
 
     _pref = ['MOMENTUM', 'FAN_RATIO_GATE', 'BULL_LONG', 'PAIR_RSI_OB', 'BOUNCE_LONG',
-             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT']
+             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT']
 
     def _rank(label):
         head = label.split(' · ')[0]
@@ -4297,7 +4336,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # are their own program; blending full-size spikes would contaminate the
             # sleeve stats the locked gates read. (Probe-era spike rows carry MOMENTUM
             # labels and stay — cohort key for those = cell_multiplier_source.)
-            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'MANUAL')   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
+            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'MANUAL')   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
             orders = [o for o in orders if not _es(o).startswith('FLIP:') and _es(o).upper() not in _SLEEVES]
         else:
             # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side
@@ -4435,6 +4474,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "bearrun_rows": [],
             "bearrun_monitor": _bearrun_monitor_payload(),
             "bearrun_periods": [],
+            "surge_rows": [],
+            "surge_monitor": None,
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -7414,6 +7455,67 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     except Exception as _bear_tbl_err:
         logger.debug(f"[PERF] bearrun table skipped: {_bear_tbl_err}")
 
+    # ⚡ Sep-30 SURGE sleeves (DECISION_LOG 146–148): per side — ALL fills, the pre-registered KILL / KEEP bar on the LIFETIME
+    # first 10 closed fills since the ship (unfiltered query: the dashboard filters must never fake or hide the bar), then
+    # by exit reason and per trigger window (window units — a trigger is ONE observation).
+    surge_rows = []
+    try:
+        from services.trading_engine import SURGE_COHORT_START as _SG_T0
+        from services.surge import surge_tripwire as _sg_trip
+        def _sg_stats(g):
+            _n = len(g)
+            if _n == 0:
+                return {"n": 0, "wr": None, "avg_pct": None, "total_usd": 0.0, "avg_peak": None, "windows": 0}
+            _pks = [o.peak_pnl for o in g if o.peak_pnl is not None]
+            return {"n": _n,
+                    "wr": round(100.0 * sum(1 for o in g if (o.pnl_percentage or 0) > 0) / _n, 1),
+                    "avg_pct": round(sum(o.pnl_percentage or 0 for o in g) / _n, 3),
+                    "total_usd": round(sum(o.pnl or 0 for o in g), 2),
+                    "avg_peak": round(sum(_pks) / len(_pks), 3) if _pks else None,
+                    "windows": len({getattr(o, 'entry_surge_trigger_at', None) or o.opened_at.replace(second=0, microsecond=0)
+                                    for o in g if o.opened_at})}
+        for _side, _lbl in (("LONG", "SURGE_LONG (BTC spike → top alts, Bull-Run exit 1×ATR trail)"),
+                            ("SHORT", "SURGE_SHORT (BTC dump → top alts +20 min, Bear-Run exit)")):
+            _all = [o for o in orders if (o.entry_strategy or '') == f'SURGE_{_side}' and o.pnl_percentage is not None]
+            try:
+                _life = (await db.execute(select(Order).where(and_(
+                    Order.entry_strategy == f'SURGE_{_side}', Order.status == 'CLOSED',
+                    Order.is_paper == trading_engine.is_paper_mode, Order.opened_at >= _SG_T0,
+                )).order_by(Order.opened_at.asc()).limit(10))).scalars().all()
+            except Exception:
+                _life = sorted([o for o in _all if o.opened_at and o.opened_at >= _SG_T0], key=lambda o: o.opened_at)[:10]
+            _lp = [o.pnl_percentage for o in _life]
+            _why = _sg_trip(_lp, _side)
+            _kw, _km = (3, -0.30) if _side == "LONG" else (4, -0.20)
+            _mean = (sum(_lp) / len(_lp)) if _lp else 0.0
+            _eng_v = str(getattr(config.trading_config.thresholds, f'surge_{_side.lower()}_kill_verdict', '') or '').strip()
+            if _eng_v:
+                _gate = (f"🔴 {_eng_v} (engine verdict)" if _eng_v.startswith('KILLED') else f"🟢 {_eng_v} (engine verdict; keep bar: N≥30 cross-window read)")
+            elif len(_lp) < 10:
+                _gate = (f"first {len(_lp)}/10 scored · {sum(1 for p in _lp if p > 0)} winners · mean {_mean:+.3f}% "
+                         f"(auto KILL at 10: ≤{_kw} winners ∨ mean ≤{_km:+.2f}%)")
+            elif _why:
+                _gate = f"🔴 KILL BAR HIT — {_why} (engine verdict pending: recorded at the next close)"
+            else:
+                _gate = f"🟢 kill bar passed — first 10: {sum(1 for p in _lp if p > 0)} winners · mean {_mean:+.3f}% (keep bar: N≥30 cross-window read)"
+            surge_rows.append({"row": _lbl, **_sg_stats(_all), "gate": _gate})
+            if _all:
+                _by_r = {}
+                for o in _all:
+                    _by_r.setdefault(o.close_reason or "?", []).append(o)
+                for _r in sorted(_by_r):
+                    surge_rows.append({"row": f"  {_side[0]} · {_r}", **_sg_stats(_by_r[_r]), "gate": ""})
+                _by_w = {}
+                for o in _all:
+                    _k = getattr(o, 'entry_surge_trigger_at', None)
+                    _by_w.setdefault(_k.strftime('%m-%d %H:%M') if _k else '?', []).append(o)
+                for _w in sorted(_by_w, reverse=True)[:12]:
+                    _g = _by_w[_w]; _bm = next((o.entry_surge_btc_move_pct for o in _g if getattr(o, 'entry_surge_btc_move_pct', None) is not None), None)
+                    surge_rows.append({"row": f"  {_side[0]} · trigger {_w} UTC" + (f" (BTC {_bm:+.2f}%)" if _bm is not None else ""),
+                                       **_sg_stats(_g), "gate": ", ".join(sorted({o.pair for o in _g}))})
+    except Exception as _sg_tbl_err:
+        logger.debug(f"[PERF] surge table skipped: {_sg_tbl_err}")
+
     # Stop Loss Deep Dive + Winning Trades Drawdown
     stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
     winning_trades_drawdown = []
@@ -8784,6 +8886,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "bearrun_rows": bearrun_rows,
         "bearrun_monitor": _bearrun_monitor_payload(),
         "bearrun_periods": bearrun_periods,
+        "surge_rows": surge_rows,
+        "surge_monitor": _surge_monitor_payload(),
         "graduation_doors_overlap": graduation_doors_overlap,
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "flagged_exits": flagged_exits,

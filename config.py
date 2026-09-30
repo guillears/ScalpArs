@@ -1192,6 +1192,46 @@ class SignalThresholds(BaseModel):
     bearrun_invest_mult: float = 1.0             # investment multiplier (absolute-assign: never re-multiplied by pattern cells)
     bearrun_lev_mult: float = 1.0                # leverage multiplier: 1.0 = ARMED (20× base). Shipped 0.05 (1× probe) 2026-09-15 22:30 UTC; ARMED the same evening by operator decision (DISCIPLINE OVERRIDE on record: arm bar was 'first 3 windows ≥2 positive'; evidence = ONE window, 8 fills · 100% · +0.61%/fill on the first live evening). Worst case at 20×: stop −0.7..−1.2% × ~$12k notional = $84-144/fill, 4 slots ≈ $576 ≈ 19% of a $3.1k book in one squeeze. Kill bar applies from fill 1.
     bearrun_window_merge_minutes: float = 180.0  # Sep-15 post-deploy: ON stretches separated by ≤ this many minutes are ONE window (the study's merge unit; the first live evening flickered 7× in 3.7h on the efficiency leg). 0 = every ON stretch is its own row
+    # ⚡ Sep-30 SURGE sleeves (DECISION_LOG 146–148) — BTC-spike followers. Operator (after 7 manual spike trades): "something like
+    # BULLRUN, but short-term, triggered by the BTC spike"; both built at normal size (operator decision; SURGE_LONG FAILED the grid
+    # bar → discipline override, tighter kill bar). Evidence: scripts/surge_sleeve_design.py / surge_short_design.py, 1m candle-path
+    # walk validated on the operator's trades, 65 / 148 BTC events Jan–Sep, control = same cell 1 day earlier:
+    #   SURGE_LONG  (HI_ATR_LEADER · entry at the trigger · Bull-Run exit 1×ATR): +0.32 %/event, CI −0.15…+0.89, top-3 events 113 %.
+    #   SURGE_SHORT (HI_ATR · entry +20 min · Bear-Run exit = momentum-short stack): +0.176 %/event, CI +0.10…+0.26, WR 65 %, top-3 22 %.
+    # Trigger = the last CLOSED BTC 5m bar, recomputed from a fresh 300-bar fetch every scan (no warm-up state — bull-run lesson).
+    # KILL BARS (automatic, surge_tripwire): first 10 closed fills of a side since it was enabled —
+    #   LONG ≤ 3 winners ∨ mean ≤ −0.30 % · SHORT ≤ 4 winners ∨ mean ≤ −0.20 %  → that side's *_enabled is switched OFF and logged.
+    # KEEP BAR (manual): ≥ 8 distinct trigger windows, per-window mean > 0, no window/pair ≥ 50 % of P&L → then raise lev. TO REMOVE:
+    # grep "SURGE_" / "surge_".
+    surge_long_enabled: bool = True              # SURGE_LONG master switch (entries only; the trigger keeps computing)
+    surge_short_enabled: bool = True             # SURGE_SHORT master switch
+    surge_btc_move_pct: float = 1.0              # trigger: |BTC 30-min return| ≥ this % on the last closed 5m bar (positive; sign by side)
+    surge_btc_vol_mult: float = 3.0              # trigger: that bar's quote volume ≥ this × the median of the prior 288 bars (0 = off)
+    surge_long_require_24h_high: bool = True     # LONG trigger also needs the bar to CLOSE at/above the prior 24 h high (breakout)
+    surge_short_require_24h_low: bool = False    # SHORT trigger also needs a close at/below the prior 24 h low (tested weaker: 0/72 cells)
+    surge_trigger_spacing_hours: float = 4.0     # a new trigger of the same side needs this long since the last one (DB-backed)
+    surge_universe_size: int = 20                # candidates = top-N TRADEABLE pairs by 24 h volume (br_rank: blacklists never use a slot)
+    surge_atr_min_pct: float = 1.5               # pair 5m ATR(14) % ≥ this (the HI_ATR selection — both sides)
+    surge_long_require_leader: bool = True       # LONG: the pair's own 30-min return over the trigger bar > BTC's (outrunning BTC)
+    surge_short_require_leader: bool = False     # SHORT: pair 30-min return < BTC's (the backtest winner did NOT need it)
+    surge_long_entry_delay_min: float = 0.0      # minutes after the trigger bar CLOSES before a LONG may open
+    surge_short_entry_delay_min: float = 20.0    # minutes after the trigger bar closes before a SHORT may open (short the bounce)
+    surge_entry_window_min: float = 5.0          # entries allowed from delay to delay + this (then the trigger is spent)
+    surge_max_slots: int = 3                     # max concurrent fills PER SIDE (they also count against max_open_positions)
+    # per-side sleeve blacklists (operator 2026-09-30, mirror of bullrun_/bearrun_pair_blacklist): both start with BTC/ETH only (the
+    # trigger + its twin). Bull-Run's repeat losers (ONG/ONE/ZEC) are NOT carried over — observed on SURGE fills first (operator).
+    surge_long_pair_blacklist: str = "BTCUSDT,ETHUSDT"
+    surge_short_pair_blacklist: str = "BTCUSDT,ETHUSDT"
+    surge_invest_mult: float = 1.0               # sizing (absolute-assign, never re-multiplied by cells): 1× = normal trades
+    surge_lev_mult: float = 1.0                  # leverage multiplier: 1× = normal. Raise only after the KEEP bar
+    surge_long_trail_atr_mult: float = 1.0       # SURGE_LONG exit = the Bull-Run exit (bullrun_base_sl_pct / be_arm / be_lock / ladder)
+                                                 # with THIS trail (1× ATR = the REARM trail the grid tested)
+    surge_max_entry_dislocation_pct: float = 0.3  # skip the fill when price moved > this % from the decision (bull-run 57f guard)
+    surge_max_hold_minutes: int = 240             # close after this many minutes (the study's 4 h walk; 0 = the global max hold)
+    # ENGINE-WRITTEN (never sent by the UI save): the kill bar's one-time verdict per side ("PASS …" / "KILLED …"). Non-empty = judged;
+    # an operator re-enable after a kill stays. Clear it by hand only to re-run the bar on a new cohort.
+    surge_long_kill_verdict: str = ""
+    surge_short_kill_verdict: str = ""
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

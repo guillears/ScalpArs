@@ -73,6 +73,8 @@ SLEEVE_TOGGLE = {
     "SPIKE_FADE":    ["spike_chase_probe_enabled", "spike_fade_enabled"],
     "BULLRUN_LONG":  ["bullrun_sleeve_enabled"],
     "BEARRUN_SHORT": ["bearrun_sleeve_enabled"],
+    "SURGE_LONG":    ["surge_long_enabled"],      # ⚡ Sep-30 SURGE sleeves (own trigger; never momentum)
+    "SURGE_SHORT":   ["surge_short_enabled"],
     "FLIP":          ["flip_entry_enabled"],
     "BOUNCE_LONG":   ["bounce_long_enabled"],     # OFF today — the engine can still stamp the label
     "BULL_LONG":     ["bull_long_enabled"],       # OFF today

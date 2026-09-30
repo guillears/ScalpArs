@@ -1225,10 +1225,11 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
         if p.ema5 and p.ema20 and p.price and p.price > 0:
             gap = round(((p.ema5 - p.ema20) / p.price) * 100, 4)
 
-        # Calculate EMA5-EMA8 gap
+        # Calculate EMA5-EMA8 gap — SIGNED like Gap 5-20 (Sep-30, operator: an absolute value always looked positive, so
+        # "EMA5 above EMA8" could not be read on the table; + = EMA5 above EMA8, − = below). Gate colouring uses the magnitude.
         gap_5_8 = None
         if p.ema5 and p.ema8 and p.ema8 > 0:
-            gap_5_8 = round(abs((p.ema5 - p.ema8) / p.ema8) * 100, 4)
+            gap_5_8 = round(((p.ema5 - p.ema8) / p.ema8) * 100, 4)
 
         # Determine block reason for NO_TRADE / NOTHING signals
         # Block reason: read from engine's per-pair stash (May 26).

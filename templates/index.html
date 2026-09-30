@@ -327,7 +327,7 @@
                                 <th class="px-4 py-3 font-medium text-right">EMA13</th>
                                 <th class="px-4 py-3 font-medium text-right">EMA20</th>
                                 <th class="px-4 py-3 font-medium text-right" title="EMA5-EMA20 gap">Gap 5-20</th>
-                                <th class="px-4 py-3 font-medium text-right" title="EMA5-EMA8 gap (momentum)">Gap 5-8</th>
+                                <th class="px-4 py-3 font-medium text-right" title="EMA5-EMA8 gap, signed like Gap 5-20: + = EMA5 above EMA8, − = EMA5 below EMA8">Gap 5-8</th>
                                 <th class="px-4 py-3 font-medium text-right">RSI(12)</th>
                                 <th class="px-4 py-3 font-medium text-right">ADX</th>
                                 <th class="px-4 py-3 font-medium text-center">Block Reason</th>
@@ -19350,12 +19350,15 @@
                     let gap58Class = 'text-gray-400';
                     let rsiClass = '';
                     let adxClass = '';
+                    // Gap 5-8 is signed (Sep-30); the entry gate compares its SIZE, so colour on the magnitude
                     if (isBullishEMA && p.gap_5_8 != null) {
                         const gap58Min = parseFloat(th.ema_gap_threshold_long || th.ema_gap_threshold || 0.06);
-                        gap58Class = p.gap_5_8 >= gap58Min ? 'text-emerald-400' : 'text-red-400';
+                        gap58Class = Math.abs(p.gap_5_8) >= gap58Min ? 'text-emerald-400' : 'text-red-400';
                     } else if (isBearishEMA && p.gap_5_8 != null) {
                         const gap58Min = parseFloat(th.ema_gap_threshold_short || th.ema_gap_threshold || 0.08);
-                        gap58Class = p.gap_5_8 >= gap58Min ? 'text-emerald-400' : 'text-red-400';
+                        gap58Class = Math.abs(p.gap_5_8) >= gap58Min ? 'text-emerald-400' : 'text-red-400';
+                    } else if (p.gap_5_8 != null) {
+                        gap58Class = p.gap_5_8 > 0 ? 'text-emerald-400/50' : p.gap_5_8 < 0 ? 'text-red-400/50' : 'text-gray-400';   // unstacked: side only, like Gap 5-20
                     }
                     if (isBullishEMA && p.rsi != null) {
                         const rsiMin = parseFloat(th.momentum_long_rsi_min || 40);

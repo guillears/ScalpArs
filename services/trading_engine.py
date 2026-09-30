@@ -2,6 +2,8 @@
 SCALPARS Trading Platform - Trading Engine
 """
 import asyncio
+import contextlib
+import functools
 import json
 import logging
 import math
@@ -290,6 +292,42 @@ def exit_entry_atr_pct(entry_strategy, entry_atr_pct):
     leverage-aware floor that keeps it inside liquidation. Recording must not change trading, so MANUAL exits see None
     (their behaviour before the stamp existed); every other fill sees its own stamp."""
     return None if (entry_strategy or "") == "MANUAL" else entry_atr_pct
+
+
+def normalize_manual_pair(pair) -> str:
+    """'qnt' / 'QNT/USDT' / 'QNT/USDT:USDT' / 'QNTUSDT' → 'QNTUSDT' (the order-row format)."""
+    p = (pair or "").upper().strip().replace("/", "").replace(":USDT", "")
+    return p if p.endswith("USDT") else p + "USDT"
+
+
+def manual_open_wait_s(tc) -> float:
+    """How long a manual click waits for a bot open of the same pair: the bot can hold the pair through a whole maker-entry
+    wait (maker_timeout_seconds) plus the taker fallback and its stamp reads — so maker timeout + 20 s, within [20, 45] s
+    (caveman review: a flat 20 s equalled the live 20 s maker timeout and almost always gave up)."""
+    try:
+        mk = float(getattr(tc, 'maker_timeout_seconds', 0) or 0) if getattr(tc, 'maker_entry_enabled', False) else 0.0
+    except (TypeError, ValueError):
+        mk = 0.0
+    return min(45.0, max(20.0, mk + 20.0))   # ≤ 45 s: the browser request (nginx 60 s) must not time out first
+
+
+def serialized_per_pair(normalize=None, wait_s=None):
+    """🔒 Sep-30 ONE OPEN PER PAIR AT A TIME. open_position checks "pair already open?" early and inserts the order seconds
+    later (exchange fill, zone-stamp kline read, …); open_manual_position does the same around its stamp reads. A second open
+    of the same pair inside that window created TWO OPEN rows for one pair (deep review, reproduced) — and every later
+    scalar_one_or_none() on that pair then raises. Both opens now hold the pair's lock from their check to their insert, so
+    the second one sees the first one's row and refuses. Re-entrant per task: open_position's flip path re-enters
+    open_position for the SAME pair inside the lock. wait_s = seconds to wait before giving up with a ValueError (a number or a
+    zero-argument callable read at call time); None = wait."""
+    def deco(fn):
+        @functools.wraps(fn)
+        async def wrapper(self, db, *args, **kwargs):
+            raw = kwargs['pair'] if 'pair' in kwargs else (args[0] if args else None)
+            key = normalize(raw) if normalize else raw
+            async with self._pair_open_guard(key, wait_s() if callable(wait_s) else wait_s):
+                return await fn(self, db, *args, **kwargs)
+        return wrapper
+    return deco
 
 
 PAPER_FEE_SETTLE = "fee_settle"   # BnbSwapLog.swap_type of the row that books fees already paid in USDT (reserve was empty)
@@ -3164,6 +3202,34 @@ class TradingEngine:
                 f"< emergency threshold ${emergency_threshold:.2f} — triggering swap"
             )
             await self._execute_bnb_swap(db, swap_type="emergency")
+
+    @contextlib.asynccontextmanager
+    async def _pair_open_guard(self, pair, wait_s=None):
+        """Per-pair open lock (see serialized_per_pair). Locks are created per event loop; the owning task may re-enter."""
+        loop = asyncio.get_running_loop()
+        held = getattr(self, '_pair_open_locks', None)
+        if held is None or held[0] is not loop:
+            held = (loop, {}, {})
+            self._pair_open_locks = held
+        _, locks, owners = held
+        me = asyncio.current_task()
+        if pair is None or (me is not None and owners.get(pair) is me):   # re-entry by the task already opening this pair
+            yield
+            return
+        lock = locks.setdefault(pair, asyncio.Lock())
+        try:
+            if wait_s is None:
+                await lock.acquire()
+            else:
+                await asyncio.wait_for(lock.acquire(), wait_s)
+        except asyncio.TimeoutError:
+            raise ValueError(f"{pair} is being opened right now (by the bot or another click) — it will show as an open position if it fills")
+        owners[pair] = me
+        try:
+            yield
+        finally:
+            owners.pop(pair, None)
+            lock.release()
 
     def _bnb_swap_lock(self) -> asyncio.Lock:
         """One reserve purchase at a time. The fee path, the 15-min wake and the manual buy each read the ledger and then
@@ -6940,6 +7006,7 @@ class TradingEngine:
             logger.info(f"[SPIKE_SCANNER] cycle done: {_checked} extended-universe pairs checked, {_fired} probe fires")
     # ===== SPIKE SCANNER END =====
 
+    @serialized_per_pair()
     async def open_position(
         self,
         db: AsyncSession,
@@ -8894,6 +8961,7 @@ class TradingEngine:
 
         return order
     
+    @serialized_per_pair(normalize=normalize_manual_pair, wait_s=lambda: manual_open_wait_s(config.trading_config))
     async def open_manual_position(self, db: AsyncSession, pair: str, direction: str, investment: float, leverage: float,
                                    exit_mode: str = "FIXED", sl_pct=None, tp_pct=None, note: str = None):
         """🖐 Sep-29 MANUAL sleeve (operator-requested research instrument). Opens a position from the dashboard with the given
@@ -8908,9 +8976,7 @@ class TradingEngine:
         (the universal safety net, as for BULLRUN) still applies to every mode. PAPER-ONLY until the broker backstop / partial-
         fill truth of open_position is factored into a shared helper (caveman review) — live mode is refused, never silently
         stop-less. Raises ValueError with a readable message on bad input."""
-        pair = (pair or "").upper().strip().replace("/", "").replace(":USDT", "")
-        if not pair.endswith("USDT"):
-            pair += "USDT"
+        pair = normalize_manual_pair(pair)
         direction = (direction or "").upper().strip()
         if direction not in ("LONG", "SHORT"):
             raise ValueError("direction must be LONG or SHORT")
@@ -14303,6 +14369,10 @@ class TradingEngine:
                     logger.error(f"[OPEN_EXCEPTION] {pair} {signal} {confidence}: open_position raised — cycle continues: {_op_err}", exc_info=True)
                     self._record_filter_block("OPEN_EXCEPTION", signal if signal in ("LONG", "SHORT") else "ANY")
                     order = None
+                    try:   # 🔒 deep review (139): an open that failed after its flush must not keep the SQLite write lock
+                        await db.rollback()   # while the next pair's open waits on its pair lock (mirrors the bull-run path)
+                    except Exception:
+                        pass
 
                 if order:
                     logger.info(f"[DEBUG_OPENED] {pair} {signal} {confidence}: open_position returned order id={order.id}")

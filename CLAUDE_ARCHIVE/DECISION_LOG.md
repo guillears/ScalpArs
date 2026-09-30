@@ -4485,3 +4485,23 @@ and balance re-checked after the read window. Deep review PROVED the live path u
 and 800 open_position runs at HEAD vs new with zero differences in outcome, counters or any of 315 order columns; manual exits
 identical (without the ATR wrapper a manual stop moved −0.65 % → −1.15 %). Open (pre-existing, separate task): open_position's
 own duplicate check → insert window can still produce two OPEN rows for one pair.
+
+## 2026-09-30 (139) - 🔒 One open per pair at a time: bot and manual opens hold the pair's lock from check to insert
+BUG (pre-existing, found by the 138 deep review, reproduced): open_position checks "pair already OPEN?" early and inserts the
+order seconds later (exchange fill, 1h zone-stamp read); open_manual_position does the same around ≤ 8 s of stamp reads. A
+second open of the same pair inside either window created TWO OPEN rows for one pair (double exposure; later
+scalar_one_or_none() on that pair raises). Harness (bot's 1h read delayed 2 s, manual click inside it): 2 OPEN rows.
+FIX: decorator `serialized_per_pair` on both open paths → per-pair asyncio.Lock held from the duplicate check to the insert;
+re-entrant for the task already holding it (open_position's matched-long flip re-enters open_position for the same pair);
+manual gives up with a readable error after maker_timeout_seconds + 20 s (maker entry on) or 20 s, the bot waits. Same harness after the fix: manual 0.5 s into the bot's open
+waits 1.5 s, sees the bot's row, is refused → 1 OPEN row; bot inside the manual window → bot refused → 1 OPEN row. No change
+to gates, sizing or exits (uncontended opens run exactly as before).
+CAVEMAN REVIEW (139): SHIP — applied: manual wait outlasts a bot maker entry (a flat 20 s equalled the live 20 s maker
+timeout), re-entry needs a real task, neutral timeout message, end-to-end two-opens-one-row test through the real decorator.
+Noted, out of scope: /api/recover-positions (live only) inserts without the pair lock; the max-open / manual-cap counts can
+still race across DIFFERENT pairs (per-pair lock does not cover caps).
+DEEP REVIEW (139): SHIP — race cases at HEAD 2/2/2/2/3 OPEN rows → 1 each after the fix; 1,200 uncontended opens identical to
+HEAD (318 columns); the re-entrant flip path (203 re-entries) identical, no deadlock; lock released on 14 exception/cancel
+cases; 40×300-task stress: never two holders. Applied: manual wait capped at 45 s (browser/nginx 60 s must answer first), and
+the scan rolls back its session after an open exception (a flushed-but-uncommitted session must not hold SQLite's write lock
+while the next open waits on its pair lock).

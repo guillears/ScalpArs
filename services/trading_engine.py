@@ -119,6 +119,24 @@ def pair_reason_stampable(filter_name) -> bool:
     return not n.startswith(_PAIR_REASON_EXCLUDED_PREFIXES) and not n.endswith("_CAP_SKIP")
 
 
+def unrecorded_pair_reason(ema5, ema8, ema13, ema20, veto_long, veto_short, first_gate):
+    """🏷 Sep-30 (operator: LINK stacked 5>8>13>20 showed "No EMA Stack"): the Block Reason for a pair whose rating came back
+    empty and NO gate stamped it this scan. "No EMA Stack" is only true when the EMAs are not stacked; a stacked pair was
+    refused by something — the scan-wide BTC veto for that side, else the first gate the ladder reported, else an explicit
+    UNRECORDED_GATE (visible, never a false 'no stack'). Pure."""
+    if any(v is None for v in (ema5, ema8, ema13, ema20)):
+        return "NO_EMA_DATA"                     # not enough candles for the EMAs — not "no stack"
+    try:
+        bull = ema5 > ema8 > ema13 > ema20
+        bear = ema5 < ema8 < ema13 < ema20
+    except TypeError:
+        bull = bear = False
+    if not (bull or bear):
+        return PAIR_REASON_PLACEHOLDER
+    veto = veto_long if bull else veto_short
+    return veto or first_gate or "UNRECORDED_GATE"
+
+
 class PairReasonStash(dict):
     """Per-pair 'Block Reason' behind the Top Pairs table (display only). Every write is tagged with the scan sequence, so
     ① the first decisive gate wins WITHIN a scan (recorder stamps; the ladder's explicit stamps stay unconditional),
@@ -12392,6 +12410,8 @@ class TradingEngine:
             _rsiob_mode = (getattr(config.trading_config.thresholds, 'flip_pair_rsi_ob_btc_adx_high_mode', 'off') or 'off').lower()
             _seed_through = (direction == "LONG" and _btc_macro_blocks_long == "BTC_ADX_GATE_HIGH" and _rsiob_mode != 'off')
             _p0 = _current_pair_holder.get('pair')
+            if _current_pair_holder.get('first_gate') is None:
+                _current_pair_holder['first_gate'] = filter_name   # 🏷 defence only: every recorder branch stamps; this is used if one throws first
             if direction == "LONG" and _btc_macro_blocks_long is not None and not _seed_through:
                 if _p0:
                     self._last_pair_block_reason[_p0] = _btc_macro_blocks_long   # the scan-wide veto IS this pair's reason (display only)
@@ -12407,6 +12427,10 @@ class TradingEngine:
                 self._record_filter_block(filter_name, direction, had_room=_scan_had_room_snapshot)
                 if _p:
                     self._last_pair_block_reason[_p] = filter_name
+            elif _p:
+                # 🏷 Sep-30 (operator: LINK "No EMA Stack" while stacked): seeding the RSI-OB fade THROUGH the BTC-ADX-high veto
+                # skipped the stamp, so the placeholder won — but the veto still refuses this LONG: name it (display only)
+                self._last_pair_block_reason[_p] = _btc_macro_blocks_long
             # Jun 15: phantom — fade the OVERBOUGHT-long RSI block to a SHORT (dedup-pool
             # NP=28% for RSI>65 longs, the data's top fade candidate). Seed ONLY the
             # overbought case (rsi > long_rsi_max), NOT the oversold-long block (those
@@ -12468,6 +12492,7 @@ class TradingEngine:
                 # Stash current pair so the block recorder closure can stamp
                 # _last_pair_block_reason for the UI's Block Reason column.
                 _current_pair_holder['pair'] = pair
+                _current_pair_holder['first_gate'] = None   # 🏷 reset per pair (fallback Block Reason)
                 self._journal_pair = pair; self._journal_ctx = None  # 📓 Phase-1 (signal generation) blocks: pair known, snapshot not yet
                 # Sep-29: NO placeholder wipe here (it blanked the real reason for most of every scan). The placeholder is
                 # written after get_signal, only when nothing was stamped for this pair in this scan.
@@ -12544,7 +12569,10 @@ class TradingEngine:
                 if signal not in ("LONG", "SHORT"):
                     _prs = self._last_pair_block_reason
                     if not (isinstance(_prs, PairReasonStash) and _prs.stamped_this_scan(pair)):
-                        _prs[pair] = PAIR_REASON_PLACEHOLDER   # get_signal rated nothing and no gate recorded: genuinely no setup
+                        # nothing stamped: "No EMA Stack" only if the EMAs really are not stacked (🏷 Sep-30)
+                        _prs[pair] = unrecorded_pair_reason(indicators.get('ema5'), indicators.get('ema8'), indicators.get('ema13'),
+                                                            indicators.get('ema20'), _btc_macro_blocks_long, _btc_macro_blocks_short,
+                                                            _current_pair_holder.get('first_gate'))
                 if signal in ["LONG", "SHORT"]:
                     logger.info(f"[SIGNAL-FOUND] {pair}: {signal} {confidence} - RSI={indicators.get('rsi'):.1f}, ADX={indicators.get('adx')}")
 

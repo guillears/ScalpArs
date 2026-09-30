@@ -176,3 +176,22 @@ def test_dashboard_analytics_never_include_manual_rows():
     moved = sorted(k for k in set(after) | set(bare) if after.get(k) != bare.get(k))
     assert not moved, f"manual entry stamps moved dashboard outputs: {moved}"
     assert {"total_trades", "sleeve_performance", "strategy_performance"} <= changed
+
+
+def test_a_stacked_pair_never_reads_no_ema_stack():
+    """Sep-30 operator: LINK (EMA 14.69 > 14.68 > 14.65 > 14.60, ADX 32.8) showed "No EMA Stack". The BTC-ADX-high veto was
+    active and the RSI-OB fade seeds THROUGH it (mode live), a path that stamped nothing — the placeholder won."""
+    import services.trading_engine as T
+    f = T.unrecorded_pair_reason
+    link = (14.6817, 14.6748, 14.6429, 14.5982)
+    assert f(*link, "BTC_ADX_GATE_HIGH", "BTC_ADX_GATE_HIGH", "PAIR_ADX_MAX") == "BTC_ADX_GATE_HIGH"   # the veto refuses the long
+    assert f(*link, None, None, "PAIR_ADX_MAX") == "PAIR_ADX_MAX"                                     # the ladder's own gate
+    assert f(*link, None, None, None) == "UNRECORDED_GATE"                                            # never a false "no stack"
+    assert f(14.0, 14.1, 14.2, 14.3, "BTC_ADX_GATE_HIGH", "BTC_TREND_FILTER", None) == "BTC_TREND_FILTER"   # bear stack → short veto
+    assert f(14.0, 14.2, 14.1, 14.3, "X", "Y", "Z") == T.PAIR_REASON_PLACEHOLDER                        # really unstacked
+    assert f(None, 1, 2, 3, "X", "Y", "Z") == "NO_EMA_DATA"                                          # no data ≠ no stack
+    import os
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services", "trading_engine.py"), encoding="utf-8").read()
+    i = src.index("        def _signal_block_recorder"); body = src[i:i + 6000]
+    assert "            elif _p:\n" in body and "self._last_pair_block_reason[_p] = _btc_macro_blocks_long" in body       # seed-through names the veto
+    assert "_prs[pair] = unrecorded_pair_reason(" in src and "_current_pair_holder['first_gate'] = None" in src

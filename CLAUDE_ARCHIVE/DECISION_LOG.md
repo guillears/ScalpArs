@@ -4597,3 +4597,15 @@ lock): manual shorts that arm now bank the runner instead of riding to the stop 
 peak 0.45: stop −0.70 → runner +0.25/+0.35). Trailing ATR floor too; FAST_EXIT / ATR_FIXED_TP read it but are OFF in config.
 Left: sub-$1 EMA values still display with 2 decimals (colour now right); flip-helper and exit_btc_regime still read the
 0.0-defaulted BTC slope.
+
+## 2026-09-30 (145) - 🏷 Top Pairs never says "No EMA Stack" for a stacked pair (operator-caught, LINK)
+BUG: LINKUSDT, bull-stacked (14.69 > 14.68 > 14.65 > 14.60), ADX 32.8, showed "No EMA Stack". Under the scan-wide
+BTC_ADX_GATE_HIGH LONG veto with flip_pair_rsi_ob_btc_adx_high_mode = live, the scan's block recorder takes the RSI-OB
+seed-through path, which stamped NO reason; the post-signal fallback then wrote the placeholder. FIX (display only, no counter,
+no gate change): the seed-through path names the LONG veto; the fallback goes through unrecorded_pair_reason — not stacked →
+"No EMA Stack", missing EMAs → "NO_EMA_DATA", stacked → that side's BTC veto / first recorded gate / "UNRECORDED_GATE".
+QNT (same session) was NOT a bug: bear-stacked, and the veto covers SHORTs too (LONG=SHORT=BTC_ADX_GATE_HIGH in the logs).
+Manual fills' manual_block_reason vocabulary follows (may now read BTC_ADX_GATE_HIGH / UNRECORDED_GATE / NO_EMA_DATA).
+DUAL REVIEW (145): caveman SHIP (nits applied: NO_EMA_DATA, defence-only comment) · deep SHIP — real scan_and_trade Phases 1–3
+at HEAD vs now on a stubbed universe × 5 BTC states: counters, funnel, phantom seeds, the RSI-OB flip call, open calls and PairData
+rows byte-identical; only the Block Reason changed (veto/live: LINK/SOL/ADA "No EMA Stack" → BTC_ADX_GATE_HIGH).

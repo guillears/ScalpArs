@@ -36,3 +36,59 @@ Reading: after a BTC spike alts are no better than a random time at +1.0 % (−0
 modestly better at +1.5 % (−0.021 vs −0.155; 55 % vs 36 % events positive) — never positive on average. LAGGARDS (the MOVR type)
 do NOT catch up: 30/60-min returns are the worst of the three groups. FOLLOWERS at +1.5 % are the best cell (+0.004, 62 % events
 positive, 65 events) — breakeven, not an edge. No sleeve from this. The Sep-30 spike itself is not in the cache yet.
+
+## v2 — operator's setup (pre-registered, scripts/btc_spike_follow_study.py)
+Primary: BTC +1.0 %/30 min AND 24 h-high breakout AND volume ≥ 3× median · top-10 tradeable alts by 24 h volume (Bull-Run universe)
+· live LONG momentum exit (stop −0.70; runner arms at +0.40, floor max(peak − 1×ATR, +0.10); 4 h max) · units = events · 95 % CI by
+bootstrap over events · control = same universe, same clock time 1–3 days earlier.
+```
+PRIMARY events (BTC +1.0 %/30 min, 24 h-high breakout, volume ≥ 3× median): 65  (2026-01-02 → 2026-09-21)
+
+== PRIMARY: top-10 tradeable alts, live LONG momentum exit ==
+entry at detection                                         events= 65 fills= 650 | per event -0.058 [95% -0.159,+0.043] positive  48% | fill WR  49% | Jan-Apr -0.094 (n39) May-Sep -0.003 (n26)
+entry +15 min (late)                                       events= 65 fills= 650 | per event +0.015 [95% -0.089,+0.125] positive  37% | fill WR  56% | Jan-Apr -0.034 (n39) May-Sep +0.090 (n26)
+entry +30 min (late)                                       events= 65 fills= 650 | per event -0.090 [95% -0.173,-0.004] positive  38% | fill WR  52% | Jan-Apr -0.058 (n39) May-Sep -0.138 (n26)
+CONTROL: same universe, same clock time 1-3 days earlier   events= 65 fills=1940 | per event -0.060 [95% -0.123,+0.010] positive  37% | fill WR  50% | Jan-Apr -0.066 (n39) May-Sep -0.050 (n26)
+
+== ROBUSTNESS (not the decision) ==
+BTC +1.5 %, breakout + volume · top-10                     events= 34 fills= 340 | per event -0.078 [95% -0.200,+0.044] positive  41% | fill WR  48% | Jan-Apr -0.107 (n20) May-Sep -0.037 (n14)
+BTC +1.0 %, volume only · top-10                           events=145 fills=1450 | per event -0.086 [95% -0.158,-0.012] positive  40% | fill WR  48% | Jan-Apr -0.118 (n82) May-Sep -0.044 (n63)
+BTC +1.0 %, breakout only · top-10                         events= 66 fills= 660 | per event -0.053 [95% -0.150,+0.043] positive  48% | fill WR  49% | Jan-Apr -0.085 (n40) May-Sep -0.003 (n26)
+BTC +1.0 %, no condition · top-10                          events=166 fills=1660 | per event -0.077 [95% -0.145,-0.004] positive  40% | fill WR  49% | Jan-Apr -0.098 (n95) May-Sep -0.048 (n71)
+PRIMARY events · top-20                                    events= 65 fills=1300 | per event -0.048 [95% -0.149,+0.052] positive  42% | fill WR  48% | Jan-Apr -0.066 (n39) May-Sep -0.022 (n26)
+PRIMARY events · top-60                                    events= 65 fills=3900 | per event -0.051 [95% -0.136,+0.037] positive  42% | fill WR  50% | Jan-Apr -0.087 (n39) May-Sep +0.003 (n26)
+
+PRIMARY per event (top-10, entry at detection):
+```
+
+## This morning (2026-09-30), same rule on live Binance prices (scripts/btc_spike_today_check.py)
+```
+BTC events today (primary rule): ['12:35', '12:45', '12:50']
+BTC bars with +1% in 30 min today: ['12:35', '12:40', '12:45', '12:50', '12:55']
+top-10 tradeable by 24h volume now: ['SOLUSDT', 'ZECUSDT', 'QNTUSDT', 'SOXLUSDT', 'XRPUSDT', 'CLUSDT', 'SNDKUSDT', 'SPCXUSDT', 'NEARUSDT', 'HYPEUSDT']
+using event 2026-09-30 12:35:00
+delay_min             0      15     30
+pair     in_top10                     
+CLUSDT   True      0.307  0.939  0.593
+HYPEUSDT True      0.155 -0.700 -0.570
+MOVRUSDT False    -0.700  0.100  0.100
+NEARUSDT True     -0.700 -0.700 -0.700
+QNTUSDT  True     -0.700 -0.700 -0.700
+SNDKUSDT True     -0.210 -0.393 -0.074
+SOLUSDT  True      0.563  0.100 -0.400
+SOXLUSDT True      0.100  0.100 -0.700
+SPCXUSDT True     -0.578 -0.618 -0.651
+XRPUSDT  True     -0.155 -0.700 -0.162
+ZECUSDT  True      0.100  0.592  0.100
+top-10, entry +0 min: avg -0.112  WR 50%  (n10)
+top-10, entry +15 min: avg -0.208  WR 40%  (n10)
+top-10, entry +30 min: avg -0.326  WR 20%  (n10)
+```
+
+Reading: over 65 past spikes the rule is indistinguishable from the control (−0.058 vs −0.060 per event; CI −0.16…+0.04);
+entering 15 min late is the best variant (+0.015, CI −0.09…+0.13, only 37 % of events positive). This morning the mechanical
+rule lost: −0.112 per fill at detection (WR 50 %), −0.208 at +15 min, −0.326 at +30 min (4 h exits completed; an earlier
+run with the exits still open read +0.004). The operator's winners (NEAR runner +0.46, MOVR manual close
++0.72, and the two QNT runners the lock fix now banks at +0.10) came from PAIR SELECTION and manual timing inside one window —
+not from 'buy the top alts when BTC spikes'. Next step = observe-first: manual trades now carry every entry stamp, so the
+selection can be measured across spike windows (bar: ≥ 8 distinct windows before any rule).

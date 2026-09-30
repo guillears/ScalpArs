@@ -4719,3 +4719,8 @@ REVIEWS (ledger): both passes applied — rows stuck OPEN after a restart spanni
 back the scan session) · UNIQUE(side, bar_close_at) · FOUND_LATE never overwrites an existing row · found_late_min = real minutes ·
 seed unions picks with fills on that trigger (no re-buy) · fills fallback restores only a window still open · no-price pair =
 SURGE_NO_DATA · one write per fill. Note: a trigger while a side is DISABLED records nothing and does not consume its spacing.
+SURGE CHIP (148, operator): header hover now shows the LIVE trigger legs on the last closed BTC 5m bar (30-min move vs ±1.0, bar
+volume vs 3× median, vs 24h high/low) with ✓/✗ judged in services.surge.surge_live_readings on UNROUNDED values with the trigger's own
+defaults, then per side: last trigger + opened pairs, an open entry window, next trigger allowed (spacing), kill verdict. Static
+Inv/Lev removed. Same text on the SURGE table line + both exports. Review: freshness on the engine's epoch clock (naive utcnow()
+made it host-timezone dependent).

@@ -62,6 +62,33 @@ def surge_trigger(btc_bars, th, side: str) -> Optional[dict]:
         return None
 
 
+def surge_live_readings(btc_bars, th=None) -> Optional[dict]:
+    """The trigger's legs on the LAST CLOSED BTC 5m bar, for the header chip (display only — the trigger itself is surge_trigger):
+    RAW 30-min move %, bar quote volume ÷ prior-288 median, close vs the prior 24 h high / low (%), plus the thresholds read with
+    surge_trigger's own defaults and the pass flags judged on the UNROUNDED values (review: rounding showed ✓ on a bar that did not
+    fire). None on short / bad data."""
+    try:
+        bars = [r for r in (btc_bars or [])[:-1] if r and len(r) >= 6]
+        if len(bars) < 295:
+            return None
+        c = [float(r[4]) for r in bars]
+        window = bars[-289:-1]
+        hi = max(float(r[2]) for r in window); lo = min(float(r[3]) for r in window)
+        med = median(float(r[5]) * float(r[4]) for r in window)
+        move = (c[-1] / c[-7] - 1) * 100
+        vm = (float(bars[-1][5]) * c[-1] / med) if med > 0 else None
+        need = abs(_f(th, 'surge_btc_move_pct', 1.0)); vneed = _f(th, 'surge_btc_vol_mult', 3.0)
+        vol_ok = (vneed <= 0) or (vm is not None and vm >= vneed)
+        long_high = bool(getattr(th, 'surge_long_require_24h_high', True)); short_low = bool(getattr(th, 'surge_short_require_24h_low', False))
+        return dict(bar_close_ts=int(bars[-1][0]) + BAR_MS, move_pct=move, vol_mult=vm,
+                    off_hi_pct=(c[-1] / hi - 1) * 100, off_lo_pct=(c[-1] / lo - 1) * 100,
+                    need_move=need, need_vol=vneed, long_need_high=long_high, short_need_low=short_low,
+                    ok_long_move=(need > 0 and move >= need), ok_short_move=(need > 0 and move <= -need), ok_vol=vol_ok,
+                    ok_high=(c[-1] >= hi), ok_low=(c[-1] <= lo))
+    except (TypeError, ValueError, IndexError, ZeroDivisionError):
+        return None
+
+
 def surge_entry_open(now_ms: float, close_ts: int, th, side: str) -> bool:
     """Is `now` inside the side's entry window: [trigger close + delay, + delay + window)."""
     delay = max(0.0, _f(th, 'surge_long_entry_delay_min' if side == "LONG" else 'surge_short_entry_delay_min', 0.0 if side == "LONG" else 20.0))

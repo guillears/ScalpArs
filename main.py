@@ -2935,7 +2935,7 @@ def _surge_monitor_payload():
     """⚡ Sep-30 SURGE sleeves: per-side trigger state for the header chip and the sleeve table header (in-memory engine globals;
     the trigger is recomputed every scan, so an empty state after a deploy only means no trigger since the restart)."""
     try:
-        from services.trading_engine import _surge_state as _sgs, _surge_status as _sgt
+        from services.trading_engine import _surge_state as _sgs, _surge_status as _sgt, _surge_live as _sgl
         from datetime import datetime as _dt
         _th_s = config.trading_config.thresholds
         out = {}
@@ -2956,7 +2956,18 @@ def _surge_monitor_payload():
                 "refused": len(st.get('refused') or ()),
                 "invest_mult": float(getattr(_th_s, f'surge_{side.lower()}_invest_mult', 1.0) or 1.0),
                 "lev_mult": float(getattr(_th_s, f'surge_{side.lower()}_lev_mult', 1.0) or 1.0),
+                # next trigger allowed from (4 h spacing after the last recorded trigger)
+                "next_allowed": (_dt.utcfromtimestamp(_lt / 1000 + max(0.0, float(getattr(_th_s, 'surge_trigger_spacing_hours', 4.0) or 0)) * 3600).strftime('%H:%M') if _lt else None),
+                "next_allowed_ms": (int(_lt + max(0.0, float(getattr(_th_s, 'surge_trigger_spacing_hours', 4.0) or 0)) * 3_600_000) if _lt else None),
             }
+        # live trigger legs on the last closed BTC 5m bar (flags judged in services.surge on unrounded values, same defaults as the
+        # trigger). Freshness on the engine's own epoch clock (review: naive utcnow().timestamp() is host-timezone dependent).
+        _fresh = bool(_sgl) and (time.time() * 1000 - float(_sgl.get('at') or 0)) <= 900_000
+        out["live"] = (dict({k: _sgl.get(k) for k in ('move_pct', 'vol_mult', 'off_hi_pct', 'off_lo_pct', 'need_move', 'need_vol',
+                                                        'long_need_high', 'short_need_low', 'ok_long_move', 'ok_short_move',
+                                                        'ok_vol', 'ok_high', 'ok_low')},
+                            bar_close=_dt.utcfromtimestamp(_sgl['bar_close_ts'] / 1000).strftime('%H:%M'))
+                       if _fresh and _sgl.get('bar_close_ts') else None)
         return out
     except Exception:
         return None

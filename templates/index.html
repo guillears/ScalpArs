@@ -8847,6 +8847,24 @@
                 ? `Market context at your MANUAL entry — ${what} Your manual entry bypassed every gate; this badge only tells you which gate state the market was in.`
                 : `${what} (display-only — strategy identity unchanged)`;
         }
+        // ⚡ Sep 30: SURGE live trigger legs (header chip hover, SURGE table line, both text exports) — one formatter for every surface.
+        function surgeLiveStr(lv) {
+            if (!lv) return 'BTC readings: waiting for the next scan';
+            const sg = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(2) + '%');
+            const ok = (b) => (b ? '✓' : '✗');
+            const need = lv.need_move;
+            const moveTxt = need > 0 ? `30-min move ${sg(lv.move_pct)} (LONG ≥ +${need} ${ok(lv.ok_long_move)} · SHORT ≤ −${need} ${ok(lv.ok_short_move)})` : `30-min move ${sg(lv.move_pct)} (move threshold OFF — no trigger)`;
+            const volTxt = lv.need_vol > 0 ? `bar volume ${lv.vol_mult != null ? Number(lv.vol_mult).toFixed(1) + '×' : '—'} median (≥ ${lv.need_vol} ${ok(lv.ok_vol)})` : 'volume leg off';
+            return `BTC 5m bar ${lv.bar_close} UTC · ${moveTxt} · ${volTxt}`
+                + ` · vs 24h high ${sg(lv.off_hi_pct)}${lv.long_need_high ? ` (LONG needs a close at the high ${ok(lv.ok_high)})` : ''}`
+                + ` · vs 24h low ${sg(lv.off_lo_pct)}${lv.short_need_low ? ` (SHORT needs a close at the low ${ok(lv.ok_low)})` : ''}`;
+        }
+        function surgeSideStr(x, nm) {
+            if (!x) return `${nm} —`;
+            const next = (x.next_allowed_ms && Date.now() < x.next_allowed_ms) ? ` · next ${nm} trigger allowed from ${x.next_allowed} UTC` : ` · ${nm} can trigger now`;
+            const win = (x.window_close_ms && Date.now() < x.window_close_ms) ? ` · ENTRY WINDOW ${x.window_opens}–${x.window_closes} UTC` : '';
+            return `${nm} ${x.enabled ? 'ON' : 'OFF'}${x.last_trigger ? ` · last trigger ${x.last_trigger} UTC (BTC ${x.btc_move_pct != null ? (x.btc_move_pct >= 0 ? '+' : '') + x.btc_move_pct + '%' : '—'}) · opened ${x.opened}${x.picks && x.picks.length ? ' (' + x.picks.join(', ') + ')' : ''}` : ' · no trigger recorded yet'}${win}${x.enabled ? next : ''}${x.kill_verdict ? ` · kill bar: ${x.kill_verdict}` : ''}`;
+        }
         function doorBadgeHtml(o) {
             const tags = doorBadges(o);
             if (!tags.length) return '';
@@ -9134,8 +9152,7 @@
                 if (_sgChip) {
                     const _sg = data.surge;
                     if (_sg && _sg.long && _sg.short) {
-                        const _sd = (x, nm) => `${nm} ${x.enabled ? 'ON' : 'OFF'}${x.last_trigger ? ` · last trigger ${x.last_trigger} UTC (BTC ${x.btc_move_pct != null ? (x.btc_move_pct >= 0 ? '+' : '') + x.btc_move_pct + '%' : '—'}) · window ${x.window_opens}–${x.window_closes} UTC · opened ${x.opened}${x.picks && x.picks.length ? ' (' + x.picks.join(', ') + ')' : ''} · refused ${x.refused}` : ' · no trigger since restart'}`;
-                        _sgChip.dataset.tip = `⚡ SURGE sleeves (LONG Inv ×${_sg.long.invest_mult} Lev ×${_sg.long.lev_mult} · SHORT Inv ×${_sg.short.invest_mult} Lev ×${_sg.short.lev_mult}) — ${_sd(_sg.long, 'LONG')} || ${_sd(_sg.short, 'SHORT')}`;
+                        _sgChip.dataset.tip = `⚡ SURGE — ${surgeLiveStr(_sg.live)} || ${surgeSideStr(_sg.long, 'LONG')} || ${surgeSideStr(_sg.short, 'SHORT')}`;
                         const _live = [['L', _sg.long], ['S', _sg.short]].filter(([_, x]) => x.enabled && x.window_close_ms && Date.now() < x.window_close_ms);
                         if (_live.length) {
                             _sgChip.textContent = '⚡ ' + _live.map(([k, x]) => `${k} ${x.window_opens}`).join(' ');
@@ -10870,8 +10887,9 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## ⚡ SURGE Sleeves (BTC spike -> SURGE_LONG · BTC dump -> SURGE_SHORT, normal size — Sep 30)\n');
                 const _sgm = perf.surge_monitor;
-                const _sgf = (x, nm) => `${nm} ${x.enabled ? 'ON' : 'OFF'}${x.last_trigger ? ` last-trigger=${x.last_trigger}UTC BTC=${x.btc_move_pct != null ? x.btc_move_pct : '-'}% window=${x.window_opens}-${x.window_closes} opened=${x.opened}${x.picks && x.picks.length ? ' [' + x.picks.join(',') + ']' : ''} refused=${x.refused}` : ' no-trigger-since-restart'}`;
+                const _sgf = (x, nm) => `${nm} ${x.enabled ? 'ON' : 'OFF'}${x.last_trigger ? ` last-trigger=${x.last_trigger}UTC BTC=${x.btc_move_pct != null ? x.btc_move_pct : '-'}% window=${x.window_opens}-${x.window_closes} opened=${x.opened}${x.picks && x.picks.length ? ' [' + x.picks.join(',') + ']' : ''} refused=${x.refused}` : ' no-trigger-recorded-yet'}`;
                 if (_sgm) lines.push(`  Triggers: ${_sgf(_sgm.long, 'LONG')} | ${_sgf(_sgm.short, 'SHORT')} | sizing LONG Inv x${_sgm.long.invest_mult} Lev x${_sgm.long.lev_mult} / SHORT Inv x${_sgm.short.invest_mult} Lev x${_sgm.short.lev_mult}`);
+                if (_sgm) lines.push(`  Live: ${surgeLiveStr(_sgm.live)} | ${surgeSideStr(_sgm.long, 'LONG')} | ${surgeSideStr(_sgm.short, 'SHORT')}`);
                 if (perf.surge_rows && perf.surge_rows.length > 0) {
                     lines.push(`${'Cohort'.padEnd(58)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Trig'.padStart(5)}  Gate verdict / pairs`);
                     for (const r of perf.surge_rows) {
@@ -13295,8 +13313,9 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## ⚡ SURGE Sleeves (BTC spike -> SURGE_LONG · BTC dump -> SURGE_SHORT, normal size — Sep 30)\n');
                 const _sgm = perf.surge_monitor;
-                const _sgf = (x, nm) => `${nm} ${x.enabled ? 'ON' : 'OFF'}${x.last_trigger ? ` last-trigger=${x.last_trigger}UTC BTC=${x.btc_move_pct != null ? x.btc_move_pct : '-'}% window=${x.window_opens}-${x.window_closes} opened=${x.opened}${x.picks && x.picks.length ? ' [' + x.picks.join(',') + ']' : ''} refused=${x.refused}` : ' no-trigger-since-restart'}`;
+                const _sgf = (x, nm) => `${nm} ${x.enabled ? 'ON' : 'OFF'}${x.last_trigger ? ` last-trigger=${x.last_trigger}UTC BTC=${x.btc_move_pct != null ? x.btc_move_pct : '-'}% window=${x.window_opens}-${x.window_closes} opened=${x.opened}${x.picks && x.picks.length ? ' [' + x.picks.join(',') + ']' : ''} refused=${x.refused}` : ' no-trigger-recorded-yet'}`;
                 if (_sgm) lines.push(`  Triggers: ${_sgf(_sgm.long, 'LONG')} | ${_sgf(_sgm.short, 'SHORT')} | sizing LONG Inv x${_sgm.long.invest_mult} Lev x${_sgm.long.lev_mult} / SHORT Inv x${_sgm.short.invest_mult} Lev x${_sgm.short.lev_mult}`);
+                if (_sgm) lines.push(`  Live: ${surgeLiveStr(_sgm.live)} | ${surgeSideStr(_sgm.long, 'LONG')} | ${surgeSideStr(_sgm.short, 'SHORT')}`);
                 if (perf.surge_rows && perf.surge_rows.length > 0) {
                     lines.push(`${'Cohort'.padEnd(58)} ${'N'.padStart(4)} ${'WR%'.padStart(6)} ${'avg%'.padStart(8)} ${'Total$'.padStart(10)} ${'avgPk%'.padStart(7)} ${'Trig'.padStart(5)}  Gate verdict / pairs`);
                     for (const r of perf.surge_rows) {
@@ -19100,8 +19119,8 @@
                 if (sgBody) {
                     const sgLine = document.getElementById('surge-monitor-line');
                     if (sgLine && data.surge_monitor) {
-                        const _f = (x, nm) => `${nm} <span class="${x.enabled ? 'text-yellow-300' : 'text-red-400'}">${x.enabled ? 'ON' : 'OFF'}</span>${x.last_trigger ? ` · last trigger ${x.last_trigger} UTC (BTC ${x.btc_move_pct != null ? (x.btc_move_pct >= 0 ? '+' : '') + x.btc_move_pct + '%' : '—'}) · window ${x.window_opens}–${x.window_closes} · opened ${x.opened}${x.picks && x.picks.length ? ' (' + x.picks.join(', ') + ')' : ''} · refused ${x.refused}` : ' · no trigger since restart'}`;
-                        sgLine.innerHTML = `${_f(data.surge_monitor.long, 'LONG')} &nbsp;|&nbsp; ${_f(data.surge_monitor.short, 'SHORT')} · sizing LONG Inv ×${data.surge_monitor.long.invest_mult} Lev ×${data.surge_monitor.long.lev_mult} · SHORT Inv ×${data.surge_monitor.short.invest_mult} Lev ×${data.surge_monitor.short.lev_mult}`;
+                        const _f = (x, nm) => `${nm} <span class="${x.enabled ? 'text-yellow-300' : 'text-red-400'}">${x.enabled ? 'ON' : 'OFF'}</span>${x.last_trigger ? ` · last trigger ${x.last_trigger} UTC (BTC ${x.btc_move_pct != null ? (x.btc_move_pct >= 0 ? '+' : '') + x.btc_move_pct + '%' : '—'}) · window ${x.window_opens}–${x.window_closes} · opened ${x.opened}${x.picks && x.picks.length ? ' (' + x.picks.join(', ') + ')' : ''} · refused ${x.refused}` : ' · no trigger recorded yet'}`;
+                        sgLine.innerHTML = `${surgeLiveStr(data.surge_monitor.live)}<br>${_f(data.surge_monitor.long, 'LONG')} &nbsp;|&nbsp; ${_f(data.surge_monitor.short, 'SHORT')} · sizing LONG Inv ×${data.surge_monitor.long.invest_mult} Lev ×${data.surge_monitor.long.lev_mult} · SHORT Inv ×${data.surge_monitor.short.invest_mult} Lev ×${data.surge_monitor.short.lev_mult}`;
                     }
                     if (data.surge_rows && data.surge_rows.length > 0) {
                         sgBody.innerHTML = data.surge_rows.map(r => {

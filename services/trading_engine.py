@@ -21,7 +21,7 @@ from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, is_leverage_blocked
 from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, closed_wilder_ndi, fade_laggard_block, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
-from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire
+from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
 
@@ -542,6 +542,7 @@ _bear_last_fire: Dict[str, float] = {}   # pair -> epoch of last BEARRUN_SHORT f
 # fresh BTC 5m fetch every scan (services/surge.py) — only the "which bar already fired" memory lives here, backed by the DB.
 _surge_state: Dict[str, dict] = {"LONG": {}, "SHORT": {}}
 _surge_status: Dict[str, dict] = {"LONG": {}, "SHORT": {}}
+_surge_live: dict = {}   # the trigger legs on the last closed BTC bar (header chip; display only), refreshed every scan
 SURGE_COHORT_START = datetime(2026, 9, 30, 15, 30, 0)  # kill-bar cohort (naive UTC): fills opened after the SURGE_SHORT exit fix deployed
 # (9d733e2 pushed 15:09 UTC). The first trigger's 4 fills (14:50 UTC, EMA13 first-tick bug) are excluded — operator reset the batch.
 _breadth_n_bull: int = 0
@@ -6473,6 +6474,10 @@ class TradingEngine:
             th = config.trading_config.thresholds
             bars = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 310)   # 295 closed + 6 catch-up views + forming (review)
             now_ms = _leash_time.time() * 1000
+            _lv = surge_live_readings(bars, th)
+            _surge_live.clear()
+            if _lv:
+                _surge_live.update(_lv, at=now_ms)
             for side in ("LONG", "SHORT"):
                 if not _surge_status[side].get('seeded'):
                     # Restart-proof (monitor-ledger lesson): once per process, adopt the latest ledger row — the chip / spacing see the

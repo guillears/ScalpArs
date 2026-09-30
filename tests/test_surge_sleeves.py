@@ -249,3 +249,20 @@ def test_trigger_ledger_one_row_per_trigger():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert "async with AsyncSessionLocal() as _ls:" in eng          # ledger writes never commit / roll back the scan session
     assert 'elif _row.status == "OPEN" and now_ms >= _wc_ms:' in eng  # a window that closed during downtime is finalized on boot
+
+
+def test_live_readings_for_the_chip():
+    from services.surge import surge_live_readings
+    lv = surge_live_readings(_btc(1.2, vol_last=10.0))
+    assert lv is not None and abs(lv["move_pct"] - 1.2) < 1e-6 and lv["vol_mult"] > 9.9 and lv["off_hi_pct"] > 0 and lv["bar_close_ts"] == 299 * BAR
+    assert surge_live_readings(_btc(1.2)[:100]) is None
+    # flags are judged exactly like surge_trigger, on unrounded values (a 0.99996 % move must NOT show ✓ against ≥ 1.0)
+    lv = surge_live_readings(_btc(1.2, vol_last=10.0), _th())
+    assert lv["ok_long_move"] and lv["ok_vol"] and lv["ok_high"] and not lv["ok_short_move"]
+    assert surge_trigger(_btc(1.2, vol_last=10.0), _th(), "LONG") is not None
+    edge = surge_live_readings(_btc(0.99996, vol_last=10.0), _th())
+    assert edge["ok_long_move"] is False and surge_trigger(_btc(0.99996, vol_last=10.0), _th(), "LONG") is None
+    assert surge_live_readings(_btc(1.2), _th(surge_btc_move_pct=0))["ok_long_move"] is False   # threshold 0 = trigger off
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert "Inv ×${_sg.long.invest_mult}" not in html                    # static sizing no longer in the chip hover
+    assert html.count("Live: ${surgeLiveStr(_sgm.live)}") == 2            # both text exports carry the live legs

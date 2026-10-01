@@ -771,6 +771,12 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         if is_paper:
             trading_engine.paper_balance = config.trading_config.paper_balance
             trading_engine.paper_bnb_balance_usd = config.trading_config.paper_bnb_initial_usd
+        else:
+            # 🏦 Oct-1: a LIVE full reset starts a new era — drop the fixed baseline; the next balance read snapshots a fresh one
+            _bs = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+            if _bs is not None:
+                _bs.live_initial_total_usd = None; _bs.live_baseline_at = None
+            _LIVE_FLOW_MEMO.clear()
 
         trading_engine.total_runtime_seconds = 0
         trading_engine.started_at = None
@@ -966,33 +972,27 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         total = balance['usdt_total'] + _open_unrealized_pnl(_live_open) + bnb_usd
         _reserve, _tradeable, _rmode = _reserve_split(usdt_free, balance['usdt_used'])
         _live_open_count = len(_live_open)
-        # Oct-1 (operator: "there will be an initial balance, and also deposits"): the card's Initial Balance / P&L in LIVE.
-        # Same derivation as the performance panel: P&L = closed P&L + open unrealized; external deposits / withdrawals since
-        # the era's first live order are netted out, so initial = equity − P&L − net flows. Fail-soft: None hides the lines.
+        # 🏦 Oct-1 (operator: "there will be an initial balance, and also deposits"): the card's Initial Balance / P&L in LIVE.
+        # FIXED baseline (BotState.live_initial_total_usd, set once — see _live_baseline): P&L = equity − baseline − net external
+        # flows since the baseline, so the Initial Balance never moves and funding / BNB revaluation / fee drift land in P&L.
+        # Fail-soft: a failed balance or transfer read → None → the card hides the two lines.
         _live_pnl = _live_flows = _live_initial = None
         if balance.get('ok', True) and bnb_price > 0:                  # a failed balance read is zeros — never derive from it
             try:
-                _closed_live = float((await db.execute(select(func.coalesce(func.sum(Order.pnl), 0)).where(
-                    and_(Order.status == "CLOSED", Order.is_paper == False)))).scalar() or 0)
-                # open entry fees are already paid (as in paper) → they belong to P&L, not to a dip of the initial balance
-                _live_pnl = round(_closed_live + _open_unrealized_pnl(_live_open)
-                                  - sum(float(getattr(o, "entry_fee", 0) or 0.0) for o in _live_open), 2)
-                _now_m = time.monotonic()
-                if _LIVE_FLOW_MEMO.get("until", 0) > _now_m:              # 90 s memo, failures included (10 s poll × open tabs)
-                    _live_flows = _LIVE_FLOW_MEMO.get("value")
-                else:
-                    try:
-                        _era0 = (await db.execute(select(func.min(Order.opened_at)).where(Order.is_paper == False))).scalar()
-                        _live_flows = 0.0 if _era0 is None else round(sum(a2 for _, a2 in await _external_flow_rows(
-                            db, int(_era0.replace(tzinfo=timezone.utc).timestamp() * 1000))), 2)
-                    except Exception as _fe:
-                        logger.warning(f"[BALANCE] live deposit/withdrawal read failed ({str(_fe)[:60]}) — card lines hidden for 90 s")
-                        _live_flows = None
-                    _LIVE_FLOW_MEMO.update(until=_now_m + 90, value=_live_flows)
-                if _live_flows is None:
-                    _live_pnl = None
-                else:
-                    _live_initial = round(total - _live_pnl - _live_flows, 2)
+                _base, _base_at = await _live_baseline(db, total, _live_open)
+                if _base is not None:
+                    _now_m = time.monotonic(); _key = _base_at.isoformat()
+                    if _LIVE_FLOW_MEMO.get("until", 0) > _now_m and _LIVE_FLOW_MEMO.get("key") == _key:   # 90 s memo, failures included
+                        _live_flows = _LIVE_FLOW_MEMO.get("value")
+                    else:
+                        try:
+                            _live_flows = round(sum(a2 for _, a2 in await _external_flow_rows(
+                                db, int(_base_at.replace(tzinfo=timezone.utc).timestamp() * 1000))), 2)
+                        except Exception as _fe:
+                            logger.warning(f"[BALANCE] live deposit/withdrawal read failed ({str(_fe)[:60]}) — card lines hidden for 90 s")
+                            _live_flows = None
+                        _LIVE_FLOW_MEMO.update(until=_now_m + 90, key=_key, value=_live_flows)
+                    _live_initial, _live_pnl = live_card_numbers(total, _base, _live_flows)
             except Exception as _pe:
                 logger.warning(f"[BALANCE] live P&L unavailable ({str(_pe)[:60]}) — card lines hidden")
                 _live_pnl = _live_flows = _live_initial = None
@@ -1010,9 +1010,9 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "max_open_positions": config.trading_config.investment.max_open_positions,
             "total_portfolio": round(total, 2),
             "starting_balance": None,  # live: no paper seed; chart falls back to reverse-derivation
-            "pnl_vs_start": _live_pnl,          # Oct-1: closed + open unrealized (card colour + P&L line)
-            "net_flows": _live_flows,           # external deposits (+) / withdrawals (−) since the first live order
-            "initial_balance": _live_initial,   # DERIVED: equity (USDT + BNB) − P&L − net flows; drifts a little with BNB price / funding
+            "pnl_vs_start": _live_pnl,          # Oct-1: equity − fixed baseline − net flows (card colour + P&L line)
+            "net_flows": _live_flows,           # external deposits (+) / withdrawals (−) since the baseline
+            "initial_balance": _live_initial,   # FIXED live baseline (USDT + BNB at the snapshot)
             "reserve": _reserve,
             "tradeable": _tradeable,
             "reserve_mode": _rmode,
@@ -1579,7 +1579,46 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
 _FLOW_RECON_SEEN: set = set()
 
 
-_LIVE_FLOW_MEMO = {}   # Oct-1: /api/balance live net-flows memo {until: monotonic s, value: float | None}
+def live_card_numbers(total, baseline, net_flows):
+    """🏦 Pure: (initial, pnl) for the LIVE portfolio card. pnl = equity − fixed baseline − net external flows (deposits +,
+    withdrawals −), so a deposit never reads as profit and a withdrawal never as a loss. (None, None) when any input is missing."""
+    if total is None or baseline is None or net_flows is None:
+        return None, None
+    return round(float(baseline), 2), round(float(total) - float(baseline) - float(net_flows), 2)
+
+
+async def _live_baseline(db: AsyncSession, total_now: float, live_open):
+    """🏦 The live account's FIXED starting balance → (usd, taken_at) or (None, None). Read from BotState; when absent it is set
+    ONCE here (only when the equity is above $1 — fund the futures wallet first): with no live order yet = today's equity, now; with live orders already on file (a live era that predates this
+    column) = back-derived at the first order (equity − closed P&L − open unrealized + open entry fees − flows since then), so
+    the card continues that era instead of restarting it. Cleared only by a LIVE full reset (reset_trading)."""
+    st = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+    if st is None:
+        return None, None
+    if st.live_initial_total_usd is not None and st.live_baseline_at is not None:
+        return float(st.live_initial_total_usd), st.live_baseline_at
+    era0 = (await db.execute(select(func.min(Order.opened_at)).where(Order.is_paper == False))).scalar()
+    if era0 is None:
+        base, at = float(total_now), datetime.utcnow()
+    else:
+        try:
+            binance_service.invalidate_flow_caches()                  # one-time derivation: never bake a stale transfer cache in
+        except Exception:
+            pass
+        closed = float((await db.execute(select(func.coalesce(func.sum(Order.pnl), 0)).where(
+            and_(Order.status == "CLOSED", Order.is_paper == False)))).scalar() or 0)
+        pnl = closed + _open_unrealized_pnl(live_open) - sum(float(getattr(o, "entry_fee", 0) or 0.0) for o in live_open)
+        flows = sum(a2 for _, a2 in await _external_flow_rows(db, int(era0.replace(tzinfo=timezone.utc).timestamp() * 1000)))
+        base, at = float(total_now) - pnl - flows, era0
+    if not (base > 1.0):                                              # an empty / unfunded wallet is never a baseline — retried next poll
+        return None, None
+    st.live_initial_total_usd = round(base, 2); st.live_baseline_at = at
+    await locked_commit(db)                                           # the fair write queue, like every other commit here
+    logger.info(f"[BALANCE] 🏦 live baseline set: ${base:,.2f} at {at.isoformat()} ({'first live order' if era0 else 'no live orders yet'})")
+    return float(st.live_initial_total_usd), at
+
+
+_LIVE_FLOW_MEMO = {}   # Oct-1: /api/balance live net-flows memo {until: monotonic s, key: baseline iso, value: float | None}
 
 
 async def _external_flow_rows(db: AsyncSession, start_ms: int):

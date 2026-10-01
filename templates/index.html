@@ -9578,11 +9578,11 @@
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
                 {   // Oct-1 (operator): white at the starting balance (or when it is unknown), green above it, red below it
                     const _tp = document.getElementById('total-portfolio');
-                    const _d = data.pnl_vs_start != null ? Number(data.pnl_vs_start)   // paper: vs the true seed (an open trade's entry fee counts) · live: closed + unrealized
+                    const _d = data.pnl_vs_start != null ? Number(data.pnl_vs_start)   // paper: vs the true seed (an open trade's entry fee counts) · live: equity − fixed baseline − net deposits
                         : ((data.starting_balance != null && data.total_portfolio != null) ? Number(data.total_portfolio) - Number(data.starting_balance) : 0);
                     const _st = _d > 0.005 ? 'text-emerald-400' : (_d < -0.005 ? 'text-red-400' : 'text-white');
                     ['text-emerald-400', 'text-red-400', 'text-white'].forEach(c => _tp.classList.toggle(c, c === _st));
-                    // Oct-1 (operator): Initial Balance + P&L under Total Trades. Paper: the seed. Live: equity − P&L − net deposits
+                    // Oct-1 (operator): Initial Balance + P&L under Total Trades. Paper: the seed. Live: the FIXED baseline (BotState.live_initial_total_usd)
                     // (deposits / withdrawals since the first live order are shown on the Initial line and never count as P&L).
                     const _pi = document.getElementById('portfolio-initial'), _pp = document.getElementById('portfolio-pnl');
                     if (_pi && _pp) {
@@ -9592,7 +9592,8 @@
                             const _fl = Number(data.net_flows || 0);
                             const _seed = data.initial_balance != null ? Number(data.initial_balance) : Number(data.total_portfolio) - _d - _fl;   // USDT + BNB
                             const _sg = _d > 0.005 ? '+' : (_d < -0.005 ? '-' : '');
-                            const _pct = _seed > 0 ? ` (${_sg}${Math.abs(_d / _seed * 100).toFixed(2)}%)` : '';
+                            const _basis = _seed + _fl;   // capital put in = initial + net deposits (a deposit must not inflate the %)
+                            const _pct = _basis > 0 ? ` (${_sg}${Math.abs(_d / _basis * 100).toFixed(2)}%)` : '';
                             const _cls = _d > 0.005 ? 'text-emerald-400' : (_d < -0.005 ? 'text-red-400' : 'text-gray-500');
                             _pi.textContent = `Initial Balance: ${formatUSD(_seed)}` + (Math.abs(_fl) > 0.005 ? ` · ${_fl > 0 ? 'Net deposits +' : 'Net withdrawals -'}${formatUSD(Math.abs(_fl))}` : '');
                             _pp.innerHTML = `P&amp;L: <span class="${_cls}">${_sg}${formatUSD(Math.abs(_d))}${_pct}</span>`;

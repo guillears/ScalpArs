@@ -951,6 +951,13 @@ class BotState(Base):
     # See CLAUDE.md May 5 entry on Return Multiple bug fix.
     runtime_initial_total_usd = Column(Float, nullable=True)
 
+    # 🏦 Oct-1 — the LIVE account's fixed starting balance (USDT + BNB at that moment) and when it was taken. Snapshotted ONCE
+    # (first valid live balance read; back-derived to the first live order when live trades already exist), cleared only by a
+    # LIVE full reset. The dashboard card's P&L = equity − this − net deposits since live_baseline_at, so funding, BNB
+    # revaluation and fee drift land in P&L and the Initial Balance never moves. Paper never touches it.
+    live_initial_total_usd = Column(Float, nullable=True)
+    live_baseline_at = Column(DateTime, nullable=True)
+
     # 💰 Sep-21 — capital ever issued as FOUNDING shares (NAV 1.0, dividing pre-existing money).
     # MONOTONIC: it only ever increases. The first implementation derived the remaining room from
     # SUM(Investor.total_deposited), which deleting an investor or editing their deposit total

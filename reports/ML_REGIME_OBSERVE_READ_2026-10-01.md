@@ -11,12 +11,12 @@ Master current stack + fresh: 108 momentum longs.
 | slope<0 ∧ burst | 8 | 4 | 75% | +0.252 | [-0.57, +0.72] |
 | slope<0 ∧ alone | 31 | 31 | 77% | +0.179 | [-0.06, +0.42] |
 
-## BTC chop eff72 ≤ 0.007 (master; stamped on 24 fills — unstamped fills are NOT 'rest'; unit = DAY)
+## BTC chop eff72 ≤ 0.007 (master; eff72 = live stamp on 24 fills, validated rebuild on 84, missing on 0; unit = DAY)
 
 | Cohort | N | days | WR | avg % | 95 % day CI |
 |---|---|---|---|---|---|
-| eff72 ≤ 0.007 | 8 | 2 | 38% | -0.551 | [+nan, +nan] |
-| eff72 > 0.007 | 16 | 6 | 75% | +0.220 | [-0.07, +0.67] |
+| eff72 ≤ 0.007 | 13 | 6 | 46% | -0.165 | [-0.51, +1.06] |
+| eff72 > 0.007 | 95 | 52 | 84% | +0.302 | [+0.19, +0.50] |
 
 ## yr3 backtest, post-gate, seeds collapsed (H1 Jan–Apr · H2 May–Sep)
 
@@ -34,8 +34,11 @@ Master current stack + fresh: 108 momentum longs.
 | H2 eff72 ≤ 0.007 | 84 | 32 | 42% | -0.235 | [-0.34, +0.15] |
 | H2 eff72 > 0.007 | 603 | 127 | 60% | -0.074 | [-0.13, +0.01] |
 
-## FRESH-only observe bars (fills after 2026-10-01 02:00 UTC; full-size, non-MANUAL; unstamped excluded)
+## FRESH-only observe bars (fills after 2026-10-01 02:00 UTC; full-size, non-MANUAL; eff72 = live stamp, else the validated rebuild)
 
+- eff72 source on fresh fills: 0 live · 0 rebuilt · 0 none (excluded) · rebuild vs live stamp on 24 fills: corr 0.999 · same tier 96%
 - burst crowding: 0 fresh fills
 - BTC chop eff72 ≤ 0.007: 0 fresh fills
-- comparison (no bar): 0.007 < eff72 ≤ 0.026 → 0 fills avg +nan · eff72 > 0.026 → 0 fills avg +nan
+- sub-line A (pre-declared: the 2nd+ fill of a burst in chop is the WORST cell): chop ∧ 2nd+-burst → 0 fills · 0 windows · chop ∧ not-2nd → 0 fills · its share of the chop tier's loss (1× pct): n/a — narrow-rule bar: chop bar passes ∧ cell N ≥ 6 on ≥ 3 windows ∧ share ≥ 50 % ∧ no window ≥ 50 % of the cell loss
+- sub-line B (comparison only: middle ∧ slope<0 expected ≤ break-even while middle ∧ slope≥0 stays strong): middle ∧ slope<0 → 0 fills · middle ∧ slope≥0 → 0 fills
+- comparison (no bar): 0.007 < eff72 ≤ 0.026 → 0 fills · eff72 > 0.026 → 0 fills

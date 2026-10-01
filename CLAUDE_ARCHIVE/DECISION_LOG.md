@@ -4872,3 +4872,19 @@ is no worse than the middle tier (−0.09 vs −0.08 / −0.08 vs −0.07) → i
 never for an undifferentiated cohort). Registered: block candidate at the operator's 0.007 (inside the backtest's robust range), fresh fills after
 2026-10-01 02:00 UTC (same start as the burst watch), 1×, N ≥ 15 on ≥ 8 days AND ≥ 4 chop episodes ≥ 72 h apart (a 72 h variable carries over
 days), expectancy bar with the 61 % breakeven pinned, DAY bootstrap; >0.026 kept as a comparison line only. Caveman review applied.
+
+## 2026-10-01 (162) - 🌀 BTC-chop watch: eff72 rebuilt for every master fill + two pre-declared sub-lines (no rule change)
+Operator: chop × slope<0 and chop × crowding, per tier, per batch. eff72 REBUILT from BTC 5m klines with the engine formula (864 closed
+bars, |net|/path, 3-dp truncation) for the 84 pre-Sep-20 fills — validated against the 24 live stamps: corr 0.999, same tier 96 %.
+Master (108): ≤0.007 13·6d·46%·−0.16 · middle 33·25d·91%·+0.37 · >0.026 62·34d·81%·+0.26. Per batch what-ifs (live $, in-sample,
+narrative): block all chop +$294 (BASE net −$564 = solo winners JTO/ACT/ONDO +$751 lost, ADA/LIT −$187 saved; B14 +$295; Oct-1 +$563); block
+the whole chop ∧ burst cell +$750 (4 fills 0W: Jul-10 ADA+LIT, Oct-1 WLD+ENA = 2 windows) — but a live rule can only block the 2nd+
+fill of a burst (LIT, WLD) → +$395; block middle ∧ slope<0 −$176 (6W/2L: AAVE/FARTCOIN winners), de-mux middle ∧ slope<0 −$119. yr3 (post-gate, seeds collapsed): chop ∧ burst 15·4d·33%·−0.48 / 25·8d·32%·−0.35 — the worst cell, a thin read (4 and 8 days); middle ∧ slope<0 −0.27/−0.18
+vs middle ∧ slope≥0 +0.10/+0.00; slope adds nothing inside chop; burst is harmless outside chop. Registered (frozen): SUB-LINE A = the 2nd+ fill of a burst in chop
+= expected worst cell; the narrow rule may only be proposed if the chop bar passes AND that cell has N ≥ 6 fresh fills on ≥ 3 windows,
+carries ≥ 50 % of the tier's fresh loss in 1× pct, and no single window carries ≥ 50 % of the cell's loss (deep review: the burst flag is
+symmetric, a live rule cannot block a burst's first fill). SUB-LINE B middle ∧ slope<0 = comparison only (master break-even contradicts the
+backtest). Note: Sep-29 0G/ALGO opened 126 s apart — outside the frozen 120 s burst; definition NOT changed after seeing it.
+scripts/ml_regime_observe_read.py rebuilds eff72 for unstamped fills and prints both sub-lines in the FRESH section.
+Bar amended (0 fresh fills seen): eff72 = live stamp, else the validated rebuild (the live stamp can lag the rebuild by one bar —
+monitor throttle; 1/24 tier miss); the read prints the source split and re-validates the rebuild each run. Caveman review applied.

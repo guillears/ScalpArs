@@ -2462,8 +2462,17 @@ class InvestmentConfig(BaseModel):
     # SPIKE_FADE opened after the deploy with liquidity_capped ∧ entry_liquidity_cap_notional/entry_pair_volume_24h_usd
     # ≈ 0.5% (orders CSV); first 10 of them net Σ$ < 0 ⇒ 0.3. Slippage leg (median |entry_slippage_pct| > 0.15%)
     # counts on LIVE fills only (paper simulates ≈0 slippage).
+    # 🐳 Oct-1 2026 — 0.5 % FOR ALL SPIKE FADES (operator-directed override, DECISION_LOG 165): JSON threshold $10M → $1T again,
+    # so fades on pairs ≥ $10M leave the global 0.1 % cap (the $10M cliff cut DYDX 10-01 from $22.2k to $10.2k: +$76 vs
+    # +$167). Current-stack master + 10-01: fades on ≥ $10M pairs 6·100%·+$532, the 4 capped at 0.1 % left $229 on the table
+    # (+$297 → +$526). ⚠ N = 6 (< every gate) and this re-opens the Sep-19 revert: as originally traded the band was
+    # 18·56%·−$660 — 13 of them (all 8 losers/flat −$1,364, 5 winners +$249) are blocked today by FADE_MAXVOL / FADE_LAGGARD /
+    # FADE_FRESHBREAK / FADE_BD13; the cap level only mattered for SAND (−$361 vs ≈ −$185). FADE_MAXVOL refuses ≥ $20M, so
+    # this touches the $10–20M band, where 0.5 % exceeds the desired ticket (full size; a full stop ≈ −$330…−$425). 🔒 TIGHT REVERT → $10M: SPIKE_FADE on a pair ≥ $10M opened after the deploy, Δ$ = actual −
+    # re-priced at the 0.1 % cap (only fills where it differs count); Σ Δ$ < 0 at N ≥ 5, OR a single such fill losing > $300
+    # (= the first full stop) ⇒ restore 10_000_000.0.
     spike_lowvol_liq_cap_pct: float = 0.5         # spikes on thin pairs: % of 24h vol (0 = off → global pct)
-    spike_lowvol_threshold_usd: float = 10_000_000.0  # "thin" = 24h vol below this (JSON carries $1T = all-spikes since Aug-18)
+    spike_lowvol_threshold_usd: float = 10_000_000.0  # "thin" = 24h vol below this (JSON carries $1T = all spikes: Aug-18→Sep-19, and again since Oct-1)
     # ② Gross-notional cap: Σ(open notional) ≤ balance × max_gross_leverage.
     #    Portfolio liquidation/correlation guard (a -X% correlated dump costs
     #    X% × gross_leverage of the account). 0 = disabled.

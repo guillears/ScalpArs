@@ -4923,3 +4923,36 @@ baseline, which is itself negative (period effect) → "no edge found", not "pro
 trades finish below +50 %. Caveats: survivorship (delisted pumps missing — flatters longs), one 8-month span, funding ignored, stop/trail
 fills at their level inside a 5m bar. Do NOT re-derive or re-propose; re-open only with tick / sub-minute data (cascade shorts, ~10
 events in-sample, not evidence) or delisted pairs. reports/OVERNIGHT_REPORT_2026-10-01.md. Caveman + deep review applied.
+
+## 2026-10-01 (165) - 🐳 Spike-fade liquidity cap: 0.5 % for ALL fades (threshold $10M → $1T; operator-directed override)
+Operator, after DYDX 10-01 (+0.75 %, 2× cell wanted $22,175, the 0.1 % cap on a $10.17M pair cut it to $10,165: +$76 vs +$167):
+"for spike fades lets change all caps to 0.5%". trading_config.json `spike_lowvol_threshold_usd` 10,000,000 → 1e12 (config-only, the
+Aug-18 mechanism; cap pct stays 0.5; the $500k hard ceiling and the gross-leverage cap still apply; momentum / flips keep the global
+0.1 %). Evidence (current-stack master + 10-01): all fades 62·90%·+0.49%·+$2,882; pairs ≥ $10M 6·100%·+$532, the 4 capped at 0.1 %
+(WLFI, MIRA, 龙虾, DYDX) +$297 → +$526 at desired size (+$229). ⚠ Override acknowledged: N = 6, in-sample, paper has no market
+impact; it re-opens the Sep-19 revert (gate 50b) — as originally traded the ≥ $10M band was 18·56%·−$660 (SAND −$361, 龙虾 −$381,
+VTHO −$188); 13 of the 18 (all 8 losers/flat, 5 winners) are blocked today by other fade gates (FADE_MAXVOL / LAGGARD / FRESHBREAK /
+BD13); the cap level only mattered for SAND (−$361 at $24.1k vs ≈ −$185 at 0.1 %). Scope: FADE_MAXVOL refuses ≥ $20M, so the change
+touches the $10–20M band only, where 0.5 % is above the desired ticket (full size; a full stop ≈ −$330…−$425); bounce/chase sleeves OFF. 🔒 TIGHT REVERT → $10M: SPIKE_FADE fills on pairs ≥ $10M opened after the deploy, Δ$ = actual − re-priced at the 0.1 %
+cap (N counts only fills where it differs); Σ Δ$ < 0 at N ≥ 5, OR any single such fill losing > $300 (= the first full stop, a ~40 %
+chance within 5 fills at 90 % WR — deliberately tighter than gate 119) ⇒ restore 10,000,000. Supersedes the unmet Sep-19 revert-of-revert bar. The thin-pair 0.5 → 0.3 gate (119) is unchanged.
+Also read the same day (no change): AAVE flip short −$176 = first fresh fire of watch 48d (TG_SHALLOW 2× with −DI < 15; 1 of 5);
+flip shorts with −DI < 15 ∧ eff72 ≤ 0.010: 4·25%·−$383 vs 25·96%·+$1,770 for the rest (threshold seen after the fact, backtest
+does not confirm) — a lead, registered as an observe line in 166.
+
+## 2026-10-01 (166) - 🌀 Flip-short "weak sellers in chop" registered as a frozen OBSERVE line (no rule, no code)
+Operator, after AAVE flip short −$176 (never green, stopped in 3 min): chop for flips, −DI history, then "yes, register it".
+Master current stack + the post-ledger exports (09-30 pre-reset ONDO +$77 and Oct-1 AAVE; deep review caught ONDO missing — resets
+censor single exports), 29 flip shorts (86%·+0.36%·+$1,387): −DI<15 11·10d·64%·+0.06%·−$8 (all 4 losers; 7 winners +$419) vs
+−DI≥15 18·100%·+$1,395; eff72 tiers ≤0.007 1·0% / middle 11·82% / >0.026 17·94%. The losses sit in the overlap: −DI<15 ∧ eff72 ≤ 0.010
+= 4·4d·25%·−0.63%·−$383 (POWR +$27, DEXE −$132, BR −$102, AAVE −$176); −DI<15 ∧ eff72 > 0.010 = 7·86%·+$375. Per batch block what-if:
+BASE +$105 (1W/1L), B13 +$102, Oct-1 +$176 (+$88 at 1×) = +$383 live / +$295 at 1×; live $, in-sample, narrative only.
+yr3 replay (217 flip shorts, seeds collapsed) does NOT confirm: cell 12·8d·67%·−0.056 vs rest 205·60%·−0.105; per seed 5·−0.54 /
+8·−0.10 / 8·+0.01 / 6·+0.27 / 7·+0.07; −DI alone flips sign between halves; only the extreme slice is bad in both (eff72 ≤ 0.005
+3·0%·−0.89; ≤ 0.007 8·50%·−0.25). The replay under-finds live flip losers (selection-bias memory) → it neither supports nor kills.
+Other sleeves in chop (≤0.007) on the master: spike fade 5·80%·+0.45%, mom short 3·100%. Registered (frozen, 0.010 chosen after seeing
+the 4 fills → they are the hypothesis source, NOT evidence): fresh fills after 2026-10-01 14:06 UTC, 1×, day units, N ≥ 15 on ≥ 8 days
+and ≥ 4 chop episodes, WR < 57% (breakeven pinned from avg win +0.54 / avg loss −0.72 on the 29), avg < 0 at 95% by day, concentration check;
+comparison lines ≤ 0.007 / −DI<15 ∧ >0.010 / −DI≥15. Watch 48d unchanged (AAVE = fresh fire 1 of 5). Caveats: POWR/DEXE are
+rebuild-only eff (the rebuild read AAVE 0.003 vs its 0.009 stamp); at ~1 cell fire a month N ≥ 15 is far off — a tally, not a near-term rule.
+Caveman + deep review applied.

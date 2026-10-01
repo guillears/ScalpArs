@@ -10,6 +10,12 @@ def _fn():
     ns = {}; exec(src[a:b], ns); return ns["live_card_numbers"], src
 
 
+def _split():
+    src = open(os.path.join(ROOT, "main.py")).read()
+    a = src.index("def split_flow_rows("); b = src.index("\n\n\n", a)
+    ns = {}; exec(src[a:b], ns); return ns["split_flow_rows"]
+
+
 def test_deposits_and_withdrawals_are_never_pnl():
     f, _ = _fn()
     assert f(3000.0, 3000.0, 0.0) == (3000.0, 0.0)
@@ -34,3 +40,28 @@ def test_wiring_model_migration_reset():
     assert "await locked_commit(db)" in lb and "await db.commit()" not in lb and "if not (base > 1.0):" in lb
     assert "_bs.live_initial_total_usd = None; _bs.live_baseline_at = None" in src        # only a LIVE full reset clears it
     assert src.index("_bs.live_initial_total_usd = None") > src.index("if is_paper:\n            trading_engine.paper_balance = config.trading_config.paper_balance")
+
+
+def test_flow_rows_are_stored_once_and_new_ones_stay_pending():
+    f = _split(); rows = [(100, 500.0), (200, -300.0), (900, 50.0)]
+    assert f(rows, 0, 500) == (200.0, 200, 50.0)                 # two settled, the newest still pending
+    assert f(rows, 200, 500) == (0.0, 200, 50.0)                 # already stored rows are never added twice
+    assert f(rows, 200, 1000) == (50.0, 900, 0.0)                # the pending one settles later, once
+    assert f([], 200, 1000) == (0.0, 200, 0.0) and f(None, None, 10) == (0.0, 0, 0.0)
+    s1, c1, p1 = f(rows, 0, 500); s2, c2, p2 = f(rows, c1, 1000)
+    assert s1 + s2 == sum(a for _, a in rows) and p2 == 0.0      # stored in two steps == the full sum
+
+
+def test_flows_wiring():
+    src = open(os.path.join(ROOT, "main.py")).read()
+    mdl = open(os.path.join(ROOT, "models.py")).read(); dbs = open(os.path.join(ROOT, "database.py")).read()
+    assert "live_net_flows_usd = Column(Float, nullable=True)" in mdl and "live_flows_cursor_ms = Column(Integer, nullable=True)" in mdl
+    assert "ADD COLUMN live_net_flows_usd FLOAT" in dbs and "ADD COLUMN live_flows_cursor_ms INTEGER" in dbs
+    assert src.count("_live_flows = await _live_net_flows(db, _base_at)") == 1
+    assert "_bs.live_net_flows_usd = None; _bs.live_flows_cursor_ms = None" in src
+    nf = src[src.index("async def _live_net_flows("):src.index("async def _live_baseline(")]
+    assert "await locked_commit(db)" in nf and "await db.commit()" not in nf
+    assert "BotState.live_baseline_at == base_at" in nf and "BotState.live_flows_cursor_ms == old" in nf and "res.rowcount != 1" in nf   # compare-and-swap
+    assert "now_ms - 89 * 86_400_000" in nf
+    import re
+    assert int(re.search(r"LIVE_FLOW_SETTLE_MS = (\d+) \* 60 \* 1000", src).group(1)) * 60 > 600      # settle lag > the 600 s transfer cache

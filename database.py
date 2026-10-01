@@ -760,6 +760,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN live_initial_total_usd FLOAT"))
                 if 'live_baseline_at' not in bs_columns:
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN live_baseline_at DATETIME"))
+                if 'live_net_flows_usd' not in bs_columns:           # 🏦 Oct-1: settled deposits / withdrawals kept locally
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN live_net_flows_usd FLOAT"))
+                if 'live_flows_cursor_ms' not in bs_columns:
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN live_flows_cursor_ms INTEGER"))
                 if 'current_btc_regime' not in bs_columns:
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN current_btc_regime VARCHAR(20)"))
                 if 'btc_regime_started_at' not in bs_columns:

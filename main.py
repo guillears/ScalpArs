@@ -21,7 +21,7 @@ from starlette.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import select, and_, or_, func, desc, delete
+from sqlalchemy import select, and_, or_, func, desc, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit
@@ -776,6 +776,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
             _bs = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
             if _bs is not None:
                 _bs.live_initial_total_usd = None; _bs.live_baseline_at = None
+                _bs.live_net_flows_usd = None; _bs.live_flows_cursor_ms = None
             _LIVE_FLOW_MEMO.clear()
 
         trading_engine.total_runtime_seconds = 0
@@ -986,8 +987,7 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
                         _live_flows = _LIVE_FLOW_MEMO.get("value")
                     else:
                         try:
-                            _live_flows = round(sum(a2 for _, a2 in await _external_flow_rows(
-                                db, int(_base_at.replace(tzinfo=timezone.utc).timestamp() * 1000))), 2)
+                            _live_flows = await _live_net_flows(db, _base_at)
                         except Exception as _fe:
                             logger.warning(f"[BALANCE] live deposit/withdrawal read failed ({str(_fe)[:60]}) — card lines hidden for 90 s")
                             _live_flows = None
@@ -1587,6 +1587,57 @@ def live_card_numbers(total, baseline, net_flows):
     return round(float(baseline), 2), round(float(total) - float(baseline) - float(net_flows), 2)
 
 
+# A transfer is stored only once it is this old: its BNB-swap log row (written seconds after a swap) exists by then, and the lag
+# must stay ABOVE the 10-min transfer-rows cache (binance_service.get_transfer_rows) or the cursor could pass an unseen row.
+# Stored rows are final: a swap leg whose log row was never written stays counted as a flow (fix = edit live_net_flows_usd).
+LIVE_FLOW_SETTLE_MS = 15 * 60 * 1000
+
+
+def split_flow_rows(rows, cursor_ms, cutoff_ms):
+    """🏦 Pure: external transfer rows [(ts_ms, amount)] → (settled_sum, new_cursor_ms, pending_sum). Rows at or before the cursor
+    are already stored (ignored); rows newer than the cursor and no newer than the cutoff are SETTLED (stored once, the cursor
+    moves to the newest of them); rows newer than the cutoff are PENDING (counted live, stored on a later read)."""
+    cur = int(cursor_ms or 0); settled = pending = 0.0; new_cur = cur
+    for ts, amt in rows or []:
+        ts = int(ts)
+        if ts <= cur:
+            continue
+        if ts <= cutoff_ms:
+            settled += float(amt); new_cur = max(new_cur, ts)
+        else:
+            pending += float(amt)
+    return round(settled, 8), new_cur, round(pending, 8)
+
+
+async def _live_net_flows(db: AsyncSession, base_at) -> float:
+    """🏦 Net deposits (+) / withdrawals (−) since the live baseline = the stored settled sum + the still-pending newest rows.
+    Only rows after the cursor are read from Binance (never further back than 89 days — its history limit), so an old deposit
+    never falls out of the exchange's window. The store is a compare-and-swap on (baseline, cursor): a read that raced a live
+    reset or another poll writes nothing. Raises when the transfer read fails or loses that race (the caller hides the lines)."""
+    st = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+    base_ms = int(base_at.replace(tzinfo=timezone.utc).timestamp() * 1000)
+    old = st.live_flows_cursor_ms if st is not None else None
+    cursor = int(old) if old else base_ms - 1                        # −1: a transfer at the baseline millisecond still counts
+    now_ms = int(time.time() * 1000)
+    rows = await _external_flow_rows(db, max(cursor, now_ms - 89 * 86_400_000))
+    settled, new_cur, pending = split_flow_rows(rows, cursor, now_ms - LIVE_FLOW_SETTLE_MS)
+    stored = float(st.live_net_flows_usd or 0.0) if st is not None else 0.0
+    if st is not None and new_cur > cursor:
+        res = await db.execute(update(BotState).where(
+            BotState.id == st.id, BotState.live_baseline_at == base_at,
+            BotState.live_flows_cursor_ms.is_(None) if old is None else BotState.live_flows_cursor_ms == old)
+            .values(live_net_flows_usd=round(stored + settled, 8), live_flows_cursor_ms=new_cur)
+            .execution_options(synchronize_session=False))
+        await locked_commit(db)
+        if res.rowcount != 1:
+            raise RuntimeError("live flows changed under this read — retried next poll")
+        stored = round(stored + settled, 8)
+        logger.info(f"[BALANCE] 🏦 live flows stored: {settled:+,.2f} → total {stored:+,.2f} (cursor {new_cur})")
+    elif st is None:
+        stored = settled
+    return round(stored + pending, 2)
+
+
 async def _live_baseline(db: AsyncSession, total_now: float, live_open):
     """🏦 The live account's FIXED starting balance → (usd, taken_at) or (None, None). Read from BotState; when absent it is set
     ONCE here (only when the equity is above $1 — fund the futures wallet first): with no live order yet = today's equity, now; with live orders already on file (a live era that predates this
@@ -1613,6 +1664,7 @@ async def _live_baseline(db: AsyncSession, total_now: float, live_open):
     if not (base > 1.0):                                              # an empty / unfunded wallet is never a baseline — retried next poll
         return None, None
     st.live_initial_total_usd = round(base, 2); st.live_baseline_at = at
+    st.live_net_flows_usd = 0.0; st.live_flows_cursor_ms = None       # flows restart at the new baseline
     await locked_commit(db)                                           # the fair write queue, like every other commit here
     logger.info(f"[BALANCE] 🏦 live baseline set: ${base:,.2f} at {at.isoformat()} ({'first live order' if era0 else 'no live orders yet'})")
     return float(st.live_initial_total_usd), at

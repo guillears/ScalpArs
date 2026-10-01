@@ -957,6 +957,11 @@ class BotState(Base):
     # revaluation and fee drift land in P&L and the Initial Balance never moves. Paper never touches it.
     live_initial_total_usd = Column(Float, nullable=True)
     live_baseline_at = Column(DateTime, nullable=True)
+    # 🏦 Oct-1 — deposits / withdrawals since the baseline, kept HERE: Binance only serves ~3 months of transfer history, so a
+    # sum re-read from the exchange would silently lose an old deposit (it would reappear as profit). Settled transfers
+    # (older than the settle lag) are added once and the cursor moves past them; only the newest rows are still read live.
+    live_net_flows_usd = Column(Float, nullable=True)
+    live_flows_cursor_ms = Column(Integer, nullable=True)
 
     # 💰 Sep-21 — capital ever issued as FOUNDING shares (NAV 1.0, dividing pre-existing money).
     # MONOTONIC: it only ever increases. The first implementation derived the remaining room from

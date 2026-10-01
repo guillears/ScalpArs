@@ -41,3 +41,7 @@ reports/backtest_cache/
 
 # decision journal files (local dev runs)
 journal/
+
+# large per-trade research outputs (re-run scripts/hot_scalp_backtest.py)
+reports/HOT_SCALP_TRADES_*.csv
+reports/HOT_SCALP_EXCURSIONS_*.csv

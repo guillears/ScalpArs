@@ -4988,3 +4988,40 @@ $2–4M pairs, two days (Aug-3 +$1,026, Aug-6 +$507) carry 61 % of the uplift �
 re-priced: a pre-Oct-1 export with capped fades (0.3 % tickets were still seen Sep-23–27) reads as lived — archive it into the master
 first; ⑤ "today's ticket" = today's CAP on the historical desired notional (balance / multipliers of the time are not normalised).
 Caveman + deep review applied.
+
+## 2026-10-01 (169) - 📦 B15 archived (bot fills only) · 🔥 hot-state hand-scalp research: no sleeve (1-second data, 2,072 episodes)
+B15 = the four runs between operator resets Sep-30 01:07 → Oct-1 18:34: 6 bot fills (ONDO flip +$77, ICP mom short −$101, ENA / WLD mom
+longs −$281 / −$283 = one chop burst, DYDX fade +$76, AAVE flip −$176) = 33%·−$686 as traded, −$596 under stack v2026-10-01b; ledger TOTAL
+258·83%·+$17,581. Excluded: 60 MANUAL fills (own file) and the 4 first-trigger SURGE shorts (EMA13 first-tick bug; cohort floor).
+🔥 Operator's manual MOVR session (Oct-1 16:17 → 18:34, paper, 20–50×, target ≈ +0.6 % / stop −1.2…−1.6 %, median hold 33 s — winners 23 s,
+losers 57 s): 53 trades (32 LONG / 21 SHORT) 38W, Σ +10.3 % (first 40: +9.8 % / +$5,229; last 13 at $200–450k notional: +0.5 % / −$4,006 →
+net +$1,223). All 53 at 5m ATR ≥ 3 %, but only 11 of 53 entries were in the HOT state tested below (none of the shorts) — the closest test of
+what he did is the two-sided follow-up P (⑦). Asked to automate it.
+① Fills are real (ad-hoc reads on the MOVR futures aggTrades tape cached in reports/backtest_cache/k1s/, not a saved report): the simulator
+reproduces 28 / 28 of his target/stop outcomes (±1 s); paper vs tape gap 0.016 %/trade → research cost set to 0.09 % fees + 0.02 % slippage
+(my earlier 0.10 % was 5–10× the master's measured +0.011 % entry slippage; the year engine replay never used it: +0.023 % from its own fill
+model). ② His clicks left mechanical at +0.59 / −1.11: 42 of 53 target-first (79 %) vs 67 % for the hot-state rule on the same tape (ad hoc)
+→ the edge is ENTRY timing. ③ scripts/hot_scalp_backtest.py — 1-second SPOT klines, every hot episode Jan-29 → Sep-27 (5m ATR ≥ 2 %,
+RSI ≥ 70, price ≥ 3 % above EMA5, 24 h vol ≥ $20M): 4,594 episodes, 2,072 with a spot feed (245 pairs, 240 days; 2,044 produced a trade;
+2,520 futures-only NEVER TESTED; spot prices, still-listed pairs only). Nine exits, sequential longs, TRADE-weighted: target-first 64.6 %
+with +0.59 / −1.11 = the no-edge rate 65.3 % (71.8 % needed); net −0.12 … −0.04 %/trade; HOT − control ≈ 0 in every exit; GEM (up ≥ 20 %/24 h
+∧ vol ≥ 3× week) and MOVR-class (≥ $300M ∧ ATR ≥ 3 % ∧ +30 %) identical. Deep review re-implemented the simulator independently: all 82,468
+trades reproduce; stop-first-in-a-second matters on 0.34 % of trades; entry delay 1–2 s changes nothing; the sign holds under trade / day /
+episode / pair weighting. ④ Fixed target, NO stop (5m cache, 4,674 episodes): reached 98 % but 6.6 % fall ≥ 10 % first / 2 % never return →
+negative at 5× and 10× (and by the same arithmetic at higher leverage). ⑤ scripts/hot_dip_separator_screen.py (24 bar features) and
+hot_entry_separator_screen.py (27 second-level features on the 1,307 episodes cached at the time, 196 pairs; EPISODE-weighted; entries in the
+first 5 min of a window are not scored): only pullback depth from the 5-min high replicates across halves (episode-weighted 51 → ~68 %;
+TRADE-weighted 65 % = the no-edge rate), not enough to pay. ⑥ FIRST-DIP (≤ 10 min into the episode ∧ ≥ 3 % below the 5-min high, +2.09 /
+−1.11 or +3.09 / −1.51): +0.20 / +0.30 %/trade episode-weighted in-sample over ~45 cells tried — an ARTEFACT of the weighting (the same
+entries trade-weighted: −0.04 / −0.05) → PRE-REGISTERED (reports/HOT_FIRST_DIP_PREREG_2026-10-01.md) → on the unseen pairs (82 episodes on 24
+pairs, 53 days) +0.05 [−0.27, +0.36] / +0.02 [−0.45, +0.49], trade-weighted −0.20 / −0.26 = NOT confirmed (the test was under-powered —
+≈ 23 % power at +0.20 — so the weighting artefact is the stronger argument). ⑦ scripts/hot_scalp_followups.py (episode→day weighted):
+5-min direction + 15-s pullback, both sides inside the long-side windows, −0.12 … −0.31 (trade-weighted −0.14 … −0.15 both sides); resting buy
+0.5–2 % below the signal −0.13 … −0.33. ⑧ scripts/hot_flow_test.py (per-second taker-buy flow, classes frozen from his 40 trades where pause
+86 % vs chase 45 %): PAUSE − CHASE = −1.7 / −2.4 points (trade-weighted −3.2 / −2.8) → fails; no flow feature separates. Weak LEAD from the
+deep review (≈ 100 further cells looked at — expected by luck): LONG at the FIRST hot second with +2.09 / −1.11, +0.10 %/trade, both halves
+positive but May–Sep interval spans 0, negative on the unseen pairs and under the +0.10 % stress → watch at most.
+Verdict: NO EDGE FOUND on the 2,072 spot-listed episodes (long-side hot state; two-sided only inside those windows); his timing is not
+codified. Do not re-propose the same HOT / first-dip / flow rules without new data; open routes = more recorded manual sessions on other
+pairs, and the 2,520 futures-only episodes. Large per-trade csvs and the 1-second caches are not in git (re-run the scripts).
+Caveman + deep review applied.

@@ -20080,7 +20080,7 @@
                                 return `<span class="px-1.5 py-0.5 rounded text-xs font-medium ${qColor}">${qs}</span>`;
                             })()}</td>
                             <td class="px-4 py-3 text-center">
-                                <button onclick="closeOrder(${o.id})" class="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded text-xs font-medium transition">
+                                <button onclick="closeOrder(${o.id}, this, '${o.pair} ${o.direction}')" class="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded text-xs font-medium transition">
                                     Close
                                 </button>
                             </td>
@@ -20436,8 +20436,43 @@
         }
 
         // Close order manually
-        async function closeOrder(orderId) {
-            if (!confirm('Are you sure you want to close this position?')) return;
+        // Oct-1 (operator): a small in-page confirmation NEXT TO the clicked button (the browser's own confirm() box always opens
+        // at the top of the window and cannot be moved). Resolves true on OK / Enter, false on Cancel / Escape / a click elsewhere.
+        // Safety (it can close a LIVE position): only ONE box exists — opening another resolves the previous one FALSE and drops
+        // its listeners; Enter is never handled at document level (the focused button's own activation decides: Close focused →
+        // confirm, Cancel focused → cancel; a held-key repeat or an Enter typed elsewhere does nothing); scrolling cancels.
+        let _nearConfirmCancel = null;
+        function confirmNear(anchor, msg, okLabel = 'OK') {
+            return new Promise(resolve => {
+                if (_nearConfirmCancel) _nearConfirmCancel();
+                const r = anchor.getBoundingClientRect();
+                const box = document.createElement('div');
+                box.id = 'near-confirm';
+                box.style.cssText = 'position:fixed;z-index:10000;width:230px;background:#1f2333;border:1px solid rgba(255,255,255,0.25);border-radius:10px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,0.6);font-size:12px;color:#e5e7eb;';
+                const t = document.createElement('div'); t.textContent = msg; t.style.marginBottom = '8px';
+                const row = document.createElement('div'); row.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;';
+                const no = document.createElement('button'); no.textContent = 'Cancel'; no.className = 'px-3 py-1 bg-white/10 hover:bg-white/20 text-gray-200 rounded text-xs font-medium';
+                const yes = document.createElement('button'); yes.textContent = okLabel; yes.className = 'px-3 py-1 bg-red-500/30 hover:bg-red-500/50 text-red-200 rounded text-xs font-semibold';
+                row.append(no, yes); box.append(t, row); document.body.appendChild(box);
+                const h = box.offsetHeight || 80;
+                box.style.left = Math.max(8, Math.min(window.innerWidth - 238, r.right - 230)) + 'px';
+                box.style.top = (r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+                let done = false;
+                const finish = v => { if (done) return; done = true; if (_nearConfirmCancel === cancel) _nearConfirmCancel = null; box.remove(); document.removeEventListener('keydown', onKey, true); document.removeEventListener('mousedown', onDown, true); window.removeEventListener('scroll', cancel, true); window.removeEventListener('resize', cancel); resolve(v); };
+                const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); finish(false); } else if (e.key === 'Enter' && (e.repeat || !box.contains(document.activeElement))) { e.preventDefault(); } };
+                const cancel = () => finish(false); _nearConfirmCancel = cancel;
+                window.addEventListener('scroll', cancel, true); window.addEventListener('resize', cancel);
+                const onDown = e => { if (!box.contains(e.target)) finish(false); };
+                no.onclick = () => finish(false); yes.onclick = () => finish(true);
+                document.addEventListener('keydown', onKey, true);
+                setTimeout(() => { if (!done) document.addEventListener('mousedown', onDown, true); }, 0);   // not the click that opened it
+                yes.focus();
+            });
+        }
+
+        async function closeOrder(orderId, btn, label) {
+            const ok = (btn && btn.getBoundingClientRect) ? await confirmNear(btn, `Close ${label || 'this position'}?`, 'Close') : confirm('Are you sure you want to close this position?');
+            if (!ok) return;
             
             try {
                 const res = await fetch(`${API_BASE}/api/orders/close`, {

@@ -275,6 +275,8 @@
                     <p class="text-sm text-gray-400 mb-1">Total Portfolio Value</p>
                     <p id="total-portfolio" class="text-2xl font-bold text-white">$0.00</p>
                     <p id="total-trades-count" class="text-xs text-gray-500 mt-1"></p>
+                    <p id="portfolio-initial" class="text-xs text-gray-500 mt-0.5 hidden"></p>
+                    <p id="portfolio-pnl" class="text-xs text-gray-500 mt-0.5 hidden"></p>
                     <p id="wallet-split" class="text-xs text-gray-500 mt-0.5 hidden"></p>
                 </div>
             </div>
@@ -626,8 +628,8 @@
                     <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Copy Split Report</button>
                     <a id="download-orders-csv-btn" href="/api/orders/export.csv" download class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors" title="Download all CLOSED + SIGNAL_EXPIRED orders for current mode (paper/live) as CSV — no row limit, every Order column included. Use for counterfactual analysis, cross-sample re-binning, custom cross-tabs." onclick="this.href='/api/orders/export.csv?t=' + Date.now()">Download Orders CSV</a>
                     <a id="download-decisions-csv-btn" href="/api/decisions/export.csv" download class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium rounded transition-colors" title="🔭 What the bot DECIDED over the last 3 days (decision journal): every fill with its strategy, every refusal aggregated per 5 min × pair × gate, and the positions open right now. Read by the hourly opportunity scout (scripts/opportunity_scout.py) to tell 'no signal' from 'blocked by gate X' from 'book full'. Save it to Downloads." onclick="this.href='/api/decisions/export.csv?days=3&t=' + Date.now()">Download Decisions CSV</a>
-                    <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer whitespace-nowrap" title="🔭 While THIS dashboard tab is open, download the Decisions CSV automatically once a day into your Downloads folder (the scout reads it). Uses your existing login in this browser; nothing is sent anywhere else. The first time, the browser may ask to allow automatic downloads from this site. A download that fails (e.g. the login expired) is retried every 10 minutes. If no file appears in Downloads, allow automatic downloads for this site in the browser settings — the page cannot see a download the browser blocked. Chrome's 'Ask where to save each file' turns it into a Save dialog, and Memory Saver can pause a background tab.">
-                        <input type="checkbox" id="auto-decisions-toggle" onchange="_autoDecToggle(this.checked)" class="accent-sky-600"> Auto daily
+                    <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer whitespace-nowrap" title="🔭 While THIS dashboard tab is open, download the Decisions CSV automatically twice a day (every ~12 h) into your Downloads folder (the scout reads it). Uses your existing login in this browser; nothing is sent anywhere else. The first time, the browser may ask to allow automatic downloads from this site. A download that fails (e.g. the login expired) is retried every 10 minutes. If no file appears in Downloads, allow automatic downloads for this site in the browser settings — the page cannot see a download the browser blocked. Chrome's 'Ask where to save each file' turns it into a Save dialog, and Memory Saver can pause a background tab.">
+                        <input type="checkbox" id="auto-decisions-toggle" onchange="_autoDecToggle(this.checked)" class="accent-sky-600"> Auto 2×/day
                         <span id="auto-decisions-status" class="text-gray-500"></span>
                     </label>
                 </div>
@@ -9574,12 +9576,28 @@
                 }
                 { const _mp = document.getElementById('manual-entry-panel'); if (_mp && data.manual_max_open_positions != null) _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0); }   // 🖐 cap 0 = manual entry off
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
-                {   // Oct-1 (operator): white at the starting balance (or when it is unknown), green above it, LIGHT red below it
+                {   // Oct-1 (operator): white at the starting balance (or when it is unknown), green above it, red below it
                     const _tp = document.getElementById('total-portfolio');
-                    const _d = data.pnl_vs_start != null ? Number(data.pnl_vs_start)   // paper: vs the true seed (an open trade's entry fee counts)
-                        : ((data.starting_balance != null && data.total_portfolio != null) ? Number(data.total_portfolio) - Number(data.starting_balance) : 0);   // live: no seed → white
-                    const _st = _d > 0.005 ? 'text-emerald-400' : (_d < -0.005 ? 'text-red-300' : 'text-white');
-                    ['text-emerald-400', 'text-red-300', 'text-white'].forEach(c => _tp.classList.toggle(c, c === _st));
+                    const _d = data.pnl_vs_start != null ? Number(data.pnl_vs_start)   // paper: vs the true seed (an open trade's entry fee counts) · live: closed + unrealized
+                        : ((data.starting_balance != null && data.total_portfolio != null) ? Number(data.total_portfolio) - Number(data.starting_balance) : 0);
+                    const _st = _d > 0.005 ? 'text-emerald-400' : (_d < -0.005 ? 'text-red-400' : 'text-white');
+                    ['text-emerald-400', 'text-red-400', 'text-white'].forEach(c => _tp.classList.toggle(c, c === _st));
+                    // Oct-1 (operator): Initial Balance + P&L under Total Trades. Paper: the seed. Live: equity − P&L − net deposits
+                    // (deposits / withdrawals since the first live order are shown on the Initial line and never count as P&L).
+                    const _pi = document.getElementById('portfolio-initial'), _pp = document.getElementById('portfolio-pnl');
+                    if (_pi && _pp) {
+                        const _has = data.pnl_vs_start != null && data.total_portfolio != null;
+                        _pi.classList.toggle('hidden', !_has); _pp.classList.toggle('hidden', !_has);
+                        if (_has) {
+                            const _fl = Number(data.net_flows || 0);
+                            const _seed = data.initial_balance != null ? Number(data.initial_balance) : Number(data.total_portfolio) - _d - _fl;   // USDT + BNB
+                            const _sg = _d > 0.005 ? '+' : (_d < -0.005 ? '-' : '');
+                            const _pct = _seed > 0 ? ` (${_sg}${Math.abs(_d / _seed * 100).toFixed(2)}%)` : '';
+                            const _cls = _d > 0.005 ? 'text-emerald-400' : (_d < -0.005 ? 'text-red-400' : 'text-gray-500');
+                            _pi.textContent = `Initial Balance: ${formatUSD(_seed)}` + (Math.abs(_fl) > 0.005 ? ` · ${_fl > 0 ? 'Net deposits +' : 'Net withdrawals -'}${formatUSD(Math.abs(_fl))}` : '');
+                            _pp.innerHTML = `P&amp;L: <span class="${_cls}">${_sg}${formatUSD(Math.abs(_d))}${_pct}</span>`;
+                        }
+                    }
                 }
                 window._lastTotalPortfolio = data.total_portfolio;  // Aug-14: calendar footer + exports read this (Portfolio-now line)
                 // Live-update the calendar footer span (fixes the render-order race: the
@@ -23719,7 +23737,7 @@
         function submitFundWithdraw(){ return _submitFund('fw', '/api/investors/withdraw-all', 'withdrawal', '−', 'shares_burned', 'fund-withdraw-modal', 'Withdrawal failed'); }
         // opening a modal always starts at the preview step
         function _resetFundModal(prefix, label){ _fundFlow[prefix] = null; const b = document.getElementById(prefix + '-preview'); if (b) b.classList.add('hidden'); const t = document.getElementById(prefix + '-submit-btn'); if (t) t.textContent = label; }
-        // 🔭 Sep-30 AUTO DAILY DECISIONS CSV — while this tab is open, download the decision journal once a day (the opportunity scout
+        // 🔭 Sep-30 AUTO DAILY DECISIONS CSV — while this tab is open, download the decision journal TWICE a day (Oct-1; the opportunity scout
         // reads it from ~/Downloads). Per-browser preference (localStorage), never sent anywhere. Success-only timestamp: a failed fetch
         // (login expired, deploy) is retried on the next 10-min tick; a short lock keeps two open tabs from downloading twice.
         const _AUTO_DEC_ON = 'scalpars.autoDecisions', _AUTO_DEC_LAST = 'scalpars.autoDecisionsLast', _AUTO_DEC_LOCK = 'scalpars.autoDecisionsLock';
@@ -23751,7 +23769,7 @@
         async function _autoDecTick(){
             if (_lsGet(_AUTO_DEC_ON) !== '1') return;
             const now = Date.now();
-            if (now - +(_lsGet(_AUTO_DEC_LAST) || 0) < 23 * 3600e3) return;          // once a day (23 h: drifts earlier, never skips a day)
+            if (now - +(_lsGet(_AUTO_DEC_LAST) || 0) < 11.5 * 3600e3) return;        // twice a day (Oct-1: the scout diagnoses today's moves the same day)
             if (now - +(_lsGet(_AUTO_DEC_LOCK) || 0) < 5 * 60e3) return;             // another tab is downloading right now
             _lsSet(_AUTO_DEC_LOCK, String(now));
             try {

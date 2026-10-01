@@ -1038,6 +1038,63 @@ def merge_movers(old, new):
     return pd.DataFrame(eps)
 
 
+MOVER_STAMP_MIN = 5.0     # % — movers at least this big get the feature stamps (each stamped pair costs 4 extra reads)
+
+
+def mover_anchor(start_ts):
+    """The mover's feature anchor = the last closed bar BEFORE its 4 h window (what the pair looked like before the move)."""
+    return int(start_ts) - BAR
+
+
+def mover_q24(d, anchor):
+    """24 h quote volume over the 288 closed bars ending at the anchor (None when the history does not reach)."""
+    if d is None:
+        return None
+    w = d[d.index <= anchor].tail(288)
+    return float((w.c * w.v).sum()) if len(w) == 288 and int(w.index[-1]) == int(anchor) else None
+
+
+def stamp_movers(mv, alts, rank, btc_full, in_now, last_closed):
+    """🧬 SCOUT_MOVERS gets its 24 h volume (recomputed at the CURRENT anchor whenever the history reaches, so a slid episode never
+    keeps the old one) and, for moves ≥ MOVER_STAMP_MIN %, the same entry_* / pre_* stamps as the events, anchored one bar before
+    the window. An episode whose window slid (merge_movers) loses every old stamp and is stamped again at the new anchor.
+    entry_pair_rank = TODAY's volume rank (as for events — not the rank at the anchor). Works on a copy: a failure returns the
+    input untouched. Never raises."""
+    try:
+        if not len(mv):
+            return mv
+        out = mv.reset_index(drop=True).copy()
+        anchor = out.start_ts.astype("int64").map(mover_anchor)
+        q = pd.to_numeric(out.q24, errors="coerce") if "q24" in out.columns else pd.Series(np.nan, index=out.index)
+        for i in out.index:
+            v = mover_q24(alts.get(out.at[i, "pair"]), int(anchor[i]))
+            if v is not None:
+                q[i] = v
+        out["q24"] = q
+        if "feat_bar_ts" in out.columns:
+            fb = pd.to_numeric(out.feat_bar_ts, errors="coerce")
+            moved = fb.notna() & (fb != anchor)
+            if moved.any():
+                out.loc[moved, [c for c in out.columns if c.startswith(("feat_", "entry_", "pre_"))]] = np.nan
+        big = pd.to_numeric(out.move_4h, errors="coerce").abs() >= MOVER_STAMP_MIN
+        if not big.any():
+            return out
+        base = set(out.columns)
+        view = out[big].assign(type="MOVER", bar_ts=anchor[big], start_ts=anchor[big], qvol24_event=q[big], rank=out.pair[big].map(rank))
+        view = stamp_features(view, btc_full, alts, in_now, last_closed)
+        new = {}
+        for c in view.columns:
+            if c in ("type", "bar_ts", "qvol24_event", "rank", "start_ts") or (c in base and not c.startswith(("feat_", "entry_", "pre_"))):
+                continue
+            col = (out[c] if c in out.columns else pd.Series(np.nan, index=out.index)).astype(object)
+            col.loc[view.index] = view[c].values
+            new[c] = col
+        out = pd.concat([out.drop(columns=[c for c in new if c in out.columns]), pd.DataFrame(new, index=out.index)], axis=1)
+        return out
+    except Exception as e:
+        log(f"mover stamps failed this run ({e}) — rows left as they were"); return mv
+
+
 # ─────────────────────────────── main ───────────────────────────────
 def main():
     os.makedirs(REPORTS, exist_ok=True)
@@ -1136,6 +1193,8 @@ def run():
         mv["bot"] = [c[0] for c in chk]; mv["manual"] = [c[1] for c in chk]; mv["why"] = [c[3] for c in chk]; mv["miss_class"] = [c[4] for c in chk]
         mv["start_utc"] = pd.to_datetime(mv.start_ts.astype("int64"), unit="ms").dt.strftime("%Y-%m-%d %H:%M")
         mv["end_utc"] = pd.to_datetime(mv.end_ts.astype("int64") + BAR, unit="ms").dt.strftime("%Y-%m-%d %H:%M")
+        mv["in_universe"] = True                                      # movers are scanned inside the bot's universe only
+        mv = stamp_movers(mv, alts, rank, btc_full, in_now, last_closed)
         atomic_write(MOVERS_CSV, mv.sort_values("start_ts").to_csv(index=False))
     ev, state = evidence(allv, now_ms)
     atomic_write(EVIDENCE_JSON, json.dumps(state, indent=1))

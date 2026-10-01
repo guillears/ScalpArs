@@ -781,7 +781,7 @@ def _diag_frame(allv):
              & allv.tbs2.isin(["TARGET", "STOP", "NEITHER"])].copy()
     if not len(d):
         return d
-    d = d.sort_values("bar_ts"); keep, last = [], {}
+    d = d.sort_values(["bar_ts", "type"], kind="stable"); keep, last = [], {}
     for i, r in zip(d.index, d.itertuples()):
         k = (r.pair, r.side)
         if k in last and int(r.bar_ts) - last[k] < 4 * 3600_000:
@@ -790,6 +790,15 @@ def _diag_frame(allv):
     d = d.loc[keep].copy()
     d["day"] = pd.to_datetime(d.bar_ts, unit="ms").dt.date
     return d
+
+
+def pair_day_first(g, extra=()):
+    """One row per (pair, side, UTC day[, extra keys]) = that unit's FIRST event (the first chance a bot entering once would
+    have had). The same move is often stored several times — as an ALT_SPIKE and a TREND on one bar, or as repeated signals
+    while a pair runs — and those must not count as independent evidence."""
+    if g is None or not len(g):
+        return g
+    return g.sort_values(["bar_ts", "type"]).drop_duplicates(["pair", "side", "day", *extra], keep="first")
 
 
 def diagnosis_lines(allv):
@@ -802,28 +811,29 @@ def diagnosis_lines(allv):
     d = _diag_frame(allv)
     if d is None or not len(d):
         return ["No classified untraded moves yet (needs a decisions export covering them)."]
-    L = ["| Class | Moves | Good (2×ATR first) | Bad (1×ATR stop first) | Neither | Days | All moves (n = with 4 h data): median best 4 h · worst point before the peak, excl…incl the peak bar's wick (median / worst quartile) · min to peak | Meaning |",
-         "|---|---|---|---|---|---|---|---|"]
+    L = ["| Class | Moves | Good (2×ATR first) | Bad (1×ATR stop first) | Neither | Pair-days: n · good · bad | Days | All moves (n = with 4 h data): median best 4 h · worst point before the peak, excl…incl the peak bar's wick (median / worst quartile) · min to peak | Meaning |",
+         "|---|---|---|---|---|---|---|---|---|"]
     for c in MISS_MEANING:
         g = d[d.miss_class == c]
         if len(g):
-            L.append(f"| {c} | {len(g)} | {(g.tbs2 == 'TARGET').sum()} | {(g.tbs2 == 'STOP').sum()} | {(g.tbs2 == 'NEITHER').sum()} | {g.day.nunique()} | "
+            u = pair_day_first(g)
+            L.append(f"| {c} | {len(g)} | {(g.tbs2 == 'TARGET').sum()} | {(g.tbs2 == 'STOP').sum()} | {(g.tbs2 == 'NEITHER').sum()} | "
+                     f"{len(u)} · {(u.tbs2 == 'TARGET').sum()} · {(u.tbs2 == 'STOP').sum()} | {g.day.nunique()} | "
                      f"{_exit_shape(g)} | {MISS_MEANING[c]} |")
     f = d[d.miss_class == "FILTER_NEAR"]
     if len(f):
-        rows = []
-        for r in f.itertuples():
-            main_set = "" if pd.isna(r.closest_set) else str(r.closest_set)   # the CLOSEST full set the move came to (fewest gates)
-            rows.append((main_set, r.tbs2, r.day))
-        x = pd.DataFrame(rows, columns=["set", "tbs2", "day"])
+        x = f.assign(set=(f["closest_set"] if "closest_set" in f else pd.Series("", index=f.index)).fillna("").astype(str))             # the CLOSEST full set the move came to (fewest gates)
         L += ["", "FILTER_NEAR moves by their CLOSEST full gate set. Necessary, not sufficient: loosening the set is required to free the move, "
-              "but last-mile ladder gates and later engine gates were not evaluated on those scans — the engine replay decides:", "",
-              "| Gate set | Moves | Good | Bad | Days | Good − Bad |", "|---|---|---|---|---|---|"]
+              "but last-mile ladder gates and later engine gates were not evaluated on those scans — the engine replay decides. "
+              "Pair-days = one per pair / side / UTC day (its first event; a pair-day can appear under two sets) — the count to judge by "
+              "WITHIN a day; evidence across time = the Days column (market-wide gates move every pair together):", "",
+              "| Gate set | Moves | Good | Bad | Pair-days | Good | Bad | Days | Good − Bad (pair-days) |", "|---|---|---|---|---|---|---|---|---|"]
         for st_, g in sorted(x.groupby("set"), key=lambda kv: -len(kv[1]))[:12]:
             good, bad = int((g.tbs2 == "TARGET").sum()), int((g.tbs2 == "STOP").sum())
-            L.append(f"| {st_} | {len(g)} | {good} | {bad} | {g.day.nunique()} | {good - bad:+d} |")
+            u = pair_day_first(g); ug, ub = int((u.tbs2 == "TARGET").sum()), int((u.tbs2 == "STOP").sum())
+            L.append(f"| {st_} | {len(g)} | {good} | {bad} | {len(u)} | {ug} | {ub} | {g.day.nunique()} | {ug - ub:+d} |")
     pre = int((allv.miss_class == "PRE_FAILS").sum()) if "miss_class" in allv else 0
-    L += ["", "Read: FILTER_NEAR sets that clearly beat Bad over many days → engine-replay test of loosening exactly that set; "
+    L += ["", "Read (use the PAIR-DAY counts and the Days column — a 2-to-1 target needs more than 33 % good before fees to be worth freeing): FILTER_NEAR sets that clearly beat Bad over many days → engine-replay test of loosening exactly that set; "
           "good moves piling up in FILTER_FAR / SLEEVE → new-sleeve backtest (ALT_SPIKE / TREND). Never a live change from these counts alone."
           + (f" {pre} older events predate the full-gate-set journal (PRE_FAILS) and are left out." if pre else "")]
     return L
@@ -957,14 +967,15 @@ def write_notes(allv, mv, ev, now_ms):
         near = d[(d.miss_class == "FILTER_NEAR") & d.closest_set.notna() & (d.closest_set.astype(str).str.len() > 0)] \
             if "closest_set" in d else d.iloc[0:0]
         for gset, g in near.groupby(near.closest_set.astype(str)):
-            good, bad = int((g.tbs2 == "TARGET").sum()), int((g.tbs2 == "STOP").sum())
+            u = pair_day_first(g)                                   # judged on pair-days, like the report table
+            good, bad = int((u.tbs2 == "TARGET").sum()), int((u.tbs2 == "STOP").sum())
             if good - bad >= 3 and g.day.nunique() >= 3:
-                add(6, f"DIAGNOSIS — FILTER_NEAR set {gset}: {good} good vs {bad} bad over {g.day.nunique()} days → engine-replay "
+                add(6, f"DIAGNOSIS — FILTER_NEAR set {gset}: {good} good vs {bad} bad pair-days over {g.day.nunique()} days → engine-replay "
                        f"loosen test candidate", f"D|NEAR|{gset}", None if not first else 0)
-        fs = d[d.miss_class.isin(["FILTER_FAR", "SLEEVE"])]
+        fs = pair_day_first(d[d.miss_class.isin(["FILTER_FAR", "SLEEVE"])])
         good, bad = int((fs.tbs2 == "TARGET").sum()), int((fs.tbs2 == "STOP").sum())
         if good >= bad + 5:
-            add(6, f"DIAGNOSIS — FILTER_FAR/SLEEVE: {good} good vs {bad} bad → new-sleeve backtest territory", "D|SLEEVE",
+            add(6, f"DIAGNOSIS — FILTER_FAR/SLEEVE: {good} good vs {bad} bad pair-days → new-sleeve backtest territory", "D|SLEEVE",
                 None if not first else 0)
     items.sort(key=lambda x: x[0])
     shown = items[:NOTE_MAX_LINES]

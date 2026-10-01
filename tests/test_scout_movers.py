@@ -86,3 +86,27 @@ def test_failure_returns_the_input_untouched(monkeypatch):
     mv = pd.DataFrame([dict(pair="AAAUSDT", side="UP", move_4h=9.0, start_ts=st, end_ts=st + 47 * BAR, q24=None)])
     out = S.stamp_movers(mv, {"AAAUSDT": d}, {}, None, set(), int(d.index[-1]))
     assert out is mv
+
+
+def test_pair_day_first_collapses_repeats_to_the_first_event():
+    day = 86_400_000; t0 = 1_790_000_000_000 // day * day
+    g = pd.DataFrame([dict(pair="MOVRUSDT", side="UP", type="TREND", bar_ts=t0 + 5 * BAR, day="d1", tbs2="STOP", closest_set="A"),
+                      dict(pair="MOVRUSDT", side="UP", type="ALT_SPIKE", bar_ts=t0 + 5 * BAR, day="d1", tbs2="TARGET", closest_set="A"),
+                      dict(pair="MOVRUSDT", side="UP", type="TREND", bar_ts=t0 + 90 * BAR, day="d1", tbs2="TARGET", closest_set="B"),
+                      dict(pair="MOVRUSDT", side="DOWN", type="TREND", bar_ts=t0 + 95 * BAR, day="d1", tbs2="STOP", closest_set="A"),
+                      dict(pair="MOVRUSDT", side="UP", type="TREND", bar_ts=t0 + 300 * BAR, day="d2", tbs2="STOP", closest_set="A")])
+    u = S.pair_day_first(g)
+    assert len(u) == 3 and list(u.sort_values("bar_ts").tbs2) == ["TARGET", "STOP", "STOP"]     # same bar: ALT_SPIKE sorts first
+    assert len(S.pair_day_first(g, extra=("closest_set",))) == 4                                 # per gate set: A-up-d1, B-up-d1, A-down-d1, A-up-d2
+    assert S.pair_day_first(g.iloc[0:0]) is not None and len(S.pair_day_first(g.iloc[0:0])) == 0
+
+
+def test_diagnosis_lines_carry_pair_day_counts():
+    day = 86_400_000; t0 = 1_790_000_000_000 // day * day
+    rows = [dict(type="TREND", pair="AAAUSDT", side="UP", bar_ts=t0 + i * 60 * BAR, miss_class="FILTER_NEAR", tbs2=o, closest_set="PAIR_ADX_MAX")
+            for i, o in enumerate(["STOP", "TARGET", "TARGET"])]
+    allv = pd.DataFrame(rows)
+    L = S.diagnosis_lines(allv)
+    txt = "\n".join(L)
+    assert "Pair-days: n · good · bad" in txt and "| FILTER_NEAR | 3 | 2 | 1 | 0 | 1 · 0 · 1 |" in txt     # 3 moves = ONE pair-day, first was a stop
+    assert "| PAIR_ADX_MAX | 3 | 2 | 1 | 1 | 0 | 1 |" in txt

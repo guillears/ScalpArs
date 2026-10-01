@@ -4839,3 +4839,22 @@ could hold uvicorn until SIGKILL — then nothing flushes). A hard kill can stil
 Tests no longer write the local journal (conftest SCALPARS_JOURNAL_OFF). Also (operator-approved): the 6 cell/pattern reports
 drop entry_strategy=='MANUAL' themselves — defense in depth; since Sep-29 the performance endpoint already passes MANUAL-free
 orders, so the live ruler was not contaminated. Dual review applied.
+
+## 2026-10-01 (159) - 🔍 BTC 1h slope < 0 as a 2D loser filter for momentum LONGs — REFUTED (observe tally unchanged)
+Operator after WLD/ENA (both −1.0 %, same scan, UNMATCHED 2×, slope −0.07): "what if slope<0 is a 2D variable?". Validation gate
+PASS. scripts/slope_neg_2d_screen.py → reports/SLOPE_NEG_2D_SCREEN_2026-10-01.md. MASTER (current stack + fresh 09-30/10-01 incl.
+WLD/ENA): 108 longs, slope<0 39·77%·+0.19 vs ≥0 69·81%·+0.28; 106 legs → 0 survivors (null 0) — 9 losers cannot form a quadrant.
+BACKTEST yr3 (seeds collapsed to ONE row per trade — the 5 replays of one year are not independent; H1 discover / H2 confirm
++ H2-only interaction; `--pregate` reproduces both): post-gate 561 slope<0 trades → 0 confirmed of 120 legs; pre-gate 660 → 0
+confirmed. (A first pass that pooled the seeds showed 2 pre-gate 'confirmed' slope<0 ∧ pair-RSI-not-rising legs — a seed-pooling
+artefact, caught by the caveman review; that pocket is also the live LOW-ADX RSI-momentum gate's territory.) WLD/ENA had RISING
+pair RSI (+8.3 / +4.9) and breadth 72 — no 2D cell holds them.
+Verdict: no filter; slope<0 stays an observe tally (now 32·63% incl. WLD/ENA). Do not re-run without ≥ 15 new slope<0 fills.
+
+## 2026-10-01 (160) - 👥 ML burst-crowding registered as a frozen OBSERVE item (no code)
+DECISION_LOG 149 called the mom-long crowding read "observe only" but never registered it in CURRENT_STATE (nobody would count
+it). Operator-approved registration: burst = momentum LONG ≤ 2 min from another bot fill (one window). Prior (master current stack
++ 10-01 batch): burst 22·11w·68%·+0.20 vs alone 86·83%·+0.26 (CIs span 0); "another position open at entry" 23·78%·+0.14 vs 85·80%·+0.27.
+Operator follow-up (crowding × BTC 1h slope<0): master 8·4w·75%·+0.25 (ADA/PEPE, SUI/DOT, FET/LTC won; WLD/ENA the only losing
+window); yr3 post-gate slope<0∧burst H1 +0.03 / H2 −0.09 vs slope<0∧alone −0.14 / −0.09 → no interaction, not a filter. Bar: fresh
+fills after 2026-10-01 02:00 UTC, N≥15 over ≥8 windows, expectancy bar (WR < ~61 % ∧ avg<0 at 95 % window-bootstrap) → else close.

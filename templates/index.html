@@ -268,12 +268,12 @@
                 </div>
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">USDT in Open Orders</p>
-                    <p id="usdt-orders" class="text-2xl font-bold text-yellow-400">$0.00</p>
+                    <p id="usdt-orders" class="text-2xl font-bold text-white">$0.00</p>
                     <p id="usdt-orders-count" class="text-xs text-gray-500 mt-1"></p>
                 </div>
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">Total Portfolio Value</p>
-                    <p id="total-portfolio" class="text-2xl font-bold text-emerald-400">$0.00</p>
+                    <p id="total-portfolio" class="text-2xl font-bold text-white">$0.00</p>
                     <p id="total-trades-count" class="text-xs text-gray-500 mt-1"></p>
                     <p id="wallet-split" class="text-xs text-gray-500 mt-0.5 hidden"></p>
                 </div>
@@ -9563,12 +9563,24 @@
                     }
                 }
                 document.getElementById('usdt-orders').textContent = formatUSD(data.usdt_in_orders);
+                {   // Oct-1 (operator): white while flat, yellow while any position is open
+                    const _uo = document.getElementById('usdt-orders');
+                    const _hasOpen = Number(data.open_orders_count || 0) + Number(data.manual_open_count || 0) > 0 || Number(data.usdt_in_orders || 0) > 0.005;
+                    _uo.classList.toggle('text-yellow-400', _hasOpen); _uo.classList.toggle('text-white', !_hasOpen);
+                }
                 const ordCountEl = document.getElementById('usdt-orders-count');
                 if (ordCountEl && data.open_orders_count != null) {
                     ordCountEl.textContent = `Open Positions: ${data.open_orders_count}` + (data.manual_open_count ? ` (+${data.manual_open_count} manual)` : '');
                 }
                 { const _mp = document.getElementById('manual-entry-panel'); if (_mp && data.manual_max_open_positions != null) _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0); }   // 🖐 cap 0 = manual entry off
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
+                {   // Oct-1 (operator): white at the starting balance (or when it is unknown), green above it, LIGHT red below it
+                    const _tp = document.getElementById('total-portfolio');
+                    const _d = data.pnl_vs_start != null ? Number(data.pnl_vs_start)   // paper: vs the true seed (an open trade's entry fee counts)
+                        : ((data.starting_balance != null && data.total_portfolio != null) ? Number(data.total_portfolio) - Number(data.starting_balance) : 0);   // live: no seed → white
+                    const _st = _d > 0.005 ? 'text-emerald-400' : (_d < -0.005 ? 'text-red-300' : 'text-white');
+                    ['text-emerald-400', 'text-red-300', 'text-white'].forEach(c => _tp.classList.toggle(c, c === _st));
+                }
                 window._lastTotalPortfolio = data.total_portfolio;  // Aug-14: calendar footer + exports read this (Portfolio-now line)
                 // Live-update the calendar footer span (fixes the render-order race: the
                 // calendar draws once on load — often BEFORE the first balance fetch — and

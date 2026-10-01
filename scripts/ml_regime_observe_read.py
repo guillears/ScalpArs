@@ -31,7 +31,7 @@ M = LG.build(); sys.argv = _a
 n = lambda d, c: pd.to_numeric(d[c], errors="coerce")
 BURST_S, CHOP = 120, CHOP_ARG
 
-M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL"), M.stack_pnl / n(M, "notional_value") * 100,
+M["pct"] = np.where(M.stack_block_reason.fillna("").str.contains("ARM040|LATE_ARM|FADE_SL"), M.stack_pnl / M.stack_ticket_scale.fillna(1) / n(M, "notional_value") * 100,
                     M.pnl_percentage)
 last = pd.to_datetime(M.opened_at, format="ISO8601").max()
 fr = []

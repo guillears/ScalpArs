@@ -163,8 +163,7 @@ verdict("6 sizing: cell multiplier stamped", R.cell_multiplier.notna().mean() > 
 W = M[M.ts >= A.live_from].groupby("era").ts.agg(["min", "max"])
 RR = R[[((W["min"] <= t) & (t <= W["max"])).any() for t in R.ts]]
 if len(LC) and len(RR):
-    lp = (LC.pnl_percentage * LC.stack_pnl / LC.pnl.replace(0, np.nan)).fillna(LC.pnl_percentage)
-    lp = lp.where(~LC.stack_block_reason.fillna("").str.contains("CF_FADE_CAP05"), LC.pnl_percentage)   # a SIZE re-price: pct unchanged
+    lp = (LC.pnl_percentage * LC.stack_pnl / LC.stack_ticket_scale.fillna(1) / LC.pnl.replace(0, np.nan)).fillna(LC.pnl_percentage)   # ticket re-price (CAP05) is size, not pct
     per = RR.groupby("seed").pnl_percentage.mean()
     inside = per.min() - 0.1 <= lp.mean() <= per.max() + 0.1
     verdict("7 recent window: live (today's rules) inside replay seed range ±0.1", inside, True,

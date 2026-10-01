@@ -943,6 +943,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "max_open_positions": config.trading_config.investment.max_open_positions,
             "total_portfolio": round(total_portfolio, 2),
             "starting_balance": round(starting_balance, 2),
+            # Oct-1: total_portfolio − the TRUE seed (starting_balance above nets the open entry fees) → the card colour
+            "pnl_vs_start": round(float(_closed_pnl) + _open_unrealized_pnl(open_orders) - sum(float(getattr(o, "entry_fee", 0) or 0.0) for o in open_orders), 2),
             "reserve": _reserve,
             "tradeable": _tradeable,
             "reserve_mode": _rmode,

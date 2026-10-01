@@ -4968,3 +4968,23 @@ fade DOLLARS in the master are mixed-ticket → compare fades on Avg P&L %, not 
 The re-price is OPTIMISTIC (same pct on a 1.5–2.2× ticket, no impact haircut). Pure helper fade_cap05_scale + invariants in
 tests/test_fade_cap05.py; replay_fidelity_audit pct guard for the new tag. validate_against_master ALL PASS; tests green.
 Caveman + deep review applied.
+
+## 2026-10-01 (168) - 🐳 Master stack v2026-10-01b: EVERY capped fade re-priced at the 0.5 % ticket (+ stack_ticket_scale)
+Operator: "re-price all of them at 0.5% please". fade_cap05_scale loses its ≥ $10M condition: every kept, non-probe, liquidity-capped
+SPIKE_FADE → stack_pnl × min(desired, 0.5 % × vol, $500k) / notional, applied AFTER the SL15 / late-arm CFs (losers scale too). 58 rows
+scaled (1.12–5.0×, median 2.5): 47 CF_FADE_CAP05 (44 newly tagged + the 3 of 167), 9 CF_FADE_SL15, 2 CF_FADE_LATE_ARM (tags kept). Master fades
+61·90%·+0.48% (pct unchanged): +$2,945 → +$5,473 (winners +$3,410 → +$6,560, losers −$465 → −$1,087); kept Σ +$8,338 → +$10,865.
+⚠ B2 carries +$1,997 of the +$2,528 (79 %: VANRY +$503, TAG +$374, SOON +$347); paper fills have no market impact and the same-pct
+assumption is least credible on $2–5M pairs (tickets up to 5×) → an OPTIMISTIC money view; filter/sleeve decisions stay on Avg P&L %.
+New column stack_ticket_scale: any pct derived from stack_pnl must divide by it — the 12 scripts carrying the
+ARM040|LATE_ARM|FADE_SL pct re-price + replay_fidelity_audit were patched (pct verified identical before/after on all 61 fades).
+current_stack_ledger --batch rows are not re-priced (fresh fades already sit at the live 0.5 % ticket). Kept set unchanged (574 of 718 rows);
+validate_against_master ALL PASS; 434 tests green.
+Reviews applied: ① the scale COMPOUNDS on counterfactual P&L — 5 scaled rows are lived losers the SL15 / late-arm CF turned into
+winners (SOON −$72 → +$249 → +$596, HOLO, SENT, ZEN, PROVE): doubly optimistic; ② upper bound, not an estimate — all 6 losers sit on
+$2–4M pairs, two days (Aug-3 +$1,026, Aug-6 +$507) carry 61 % of the uplift → planning figure ≈ +$1.3–1.8k after the haircut;
+③ current_stack_ledger: the stale 0.1 %-cap overrides retired (HIVE B7 +$125 → +$48, SAND −$185 dead) → ledger TOTAL 252·85%·+$15,573
+→ +$18,177, B2 DCR 5.12 → 8.75 %/day (pure re-price), TOTAL 2.49 → 2.68; CURRENT_STATE pins annotated; ④ --batch rows are NOT
+re-priced: a pre-Oct-1 export with capped fades (0.3 % tickets were still seen Sep-23–27) reads as lived — archive it into the master
+first; ⑤ "today's ticket" = today's CAP on the historical desired notional (balance / multipliers of the time are not normalised).
+Caveman + deep review applied.

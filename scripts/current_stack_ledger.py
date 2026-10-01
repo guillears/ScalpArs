@@ -32,7 +32,7 @@ ERAS = ["BASE", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10"] + [
 RESTORE = [("QTUMUSDT", "2026-09-19T00:00:51"), ("API3USDT", "2026-09-19T06:23:54"),
            ("ZILUSDT", "2026-09-23T09:04:05")]   # Sep-24: B12 fade, live-passed; builder blocks it FADE_FRESHBREAK on
                                                  # stamped rsi_prev 40.6 / pgap −0.05 (same boundary class, +$237)
-FADE_CAP_REPRICE = {("SANDUSDT", "2026-09-19T00:04:12"): -185.0}   # gate 50b cap restored
+FADE_CAP_REPRICE = {}   # Oct-1 (DECISION_LOG 165/168): the 0.1 % cap on pairs ≥ $10M is gone — SAND (blocked by FADE_LAGGARD anyway) and the HIVE B7 +$125 → +$48 down-price were retired; fade tickets now come from the master (stack_ticket_scale)
 
 # 🕐 57l REARM entry-age cap. The door clock is NOT in the trade data for historical fills —
 # `entry_br_door_age_min` only stamps from the 2026-09-21 ship onward — so the episode boundaries
@@ -404,8 +404,6 @@ def build(rearm_trail=True, entry_age_cap=60.0):
 
     for (pair, ts), v in FADE_CAP_REPRICE.items():
         d.loc[(d.pair == pair) & (d.opened_at == ts), "pnl_"] = v
-    hive = (d.pair == "HIVEUSDT") & (d.era == "B7") & (d.pnl_ > 100)
-    d.loc[hive, "pnl_"] = 48.0
 
     # restore live-passed boundary fills the ruler blocks
     # ⚠ these are concatenated AFTER the gate chain, so they bypass the blacklist, the gate-51

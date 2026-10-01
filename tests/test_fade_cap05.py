@@ -1,4 +1,4 @@
-"""🐳 Master-pool CF_FADE_CAP05 ticket scale (DECISION_LOG 165/167) — pure-math invariants."""
+"""🐳 Master-pool CF_FADE_CAP05 ticket scale (DECISION_LOG 165/167/168) — pure-math invariants."""
 import math
 import os
 import sys
@@ -18,7 +18,8 @@ def test_half_percent_and_ceiling_bounds():
 
 
 def test_no_ops():
-    assert f(25_000, 9_999_999, 9_999, True) == 1.0            # thin pair: lived ticket stays
+    assert math.isclose(f(25_000, 4_000_000, 8_000, True), 0.005 * 4_000_000 / 8_000)   # thin pair at the old 0.2 %: re-priced too (168)
+    assert f(25_000, 4_000_000, 20_000, True) == 1.0           # already at the 0.5 % ticket
     assert f(25_000, 15_000_000, 15_000, False) == 1.0         # not capped
     assert f(25_000, 15_000_000, 15_000, None) == 1.0
     assert f(None, 15_000_000, 15_000, True) == 1.0 and f(float("nan"), 15_000_000, 15_000, True) == 1.0
@@ -30,3 +31,18 @@ def test_no_ops():
 def test_loser_scales_symmetrically():
     sc = f(24_000, 12_000_000, 12_000, True)
     assert sc == 2.0 and -100.0 * sc == -200.0
+
+
+def test_master_csv_scale_invariants():
+    """168: the scale lives only on kept, non-probe, capped fades; it never shrinks a ticket; tags stay in the allowed set."""
+    import pandas as pd
+    m = pd.read_csv(os.path.join(os.path.dirname(__file__), "..", "reports", "MASTER_POOL_stacked.csv"), low_memory=False)
+    assert m.stack_ticket_scale.notna().all() and (m.stack_ticket_scale >= 1.0).all()
+    s = m[m.stack_ticket_scale != 1.0]
+    assert len(s) and s.stack_keep.all() and not s.is_probe.any() and (s.entry_strategy == "SPIKE_FADE").all()
+    assert s.liquidity_capped.astype(str).str.lower().eq("true").all()
+    assert m.stack_keep.dtype == bool and m.is_probe.dtype == bool
+    assert set(s.stack_block_reason) <= {"CF_FADE_CAP05", "CF_FADE_SL15", "CF_FADE_LATE_ARM"}   # tripwire: a new CF tag on a scaled fade must be reviewed
+    assert ((s.notional_value * s.stack_ticket_scale) <= 0.005 * s.entry_pair_volume_24h_usd * 1.001).all()
+    u = s[s.stack_block_reason == "CF_FADE_CAP05"]                      # untagged before: lived P&L × scale, so the pct is the lived pct
+    assert ((u.stack_pnl / u.stack_ticket_scale - u.pnl).abs() < 0.02).all()

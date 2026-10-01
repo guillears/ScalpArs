@@ -23,7 +23,7 @@ import warnings; warnings.filterwarnings('ignore')
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-10-01a"  # 10-01a: CF_FADE_CAP05 — kept fades on pairs ≥ $10M throttled by the old 0.1 % cap re-priced at min(desired, 0.5 % × vol) (DECISION_LOG 165/167; 3 rows). Prior 09-29b — b: FADE_LAGGARD — SPIKE_FADE refused when pair daily Wilder −DI(14) > 16.1 AND BTC 4h EMA50/EMA200 gap > 0 (laggard squeeze; operator ARMED override at master N=10 on 295 backtest fills, DECISION_LOG 128; rule = indicators.fade_laggard_block; inputs = stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct, else the closed-bar feature factory from k5m_full). Prior: "2026-09-29a"  # a: LONG_RSI_MOM_LOADX — momentum longs (unmatched + doors) refused when RSI(12) < RSI two candles ago AND pair ADX < long_rsi_momentum_adx_max (21; declared override at master N=10, DECISION_LOG 126; rule = indicators.rsi_mom_loadx_block; stamps entry_rsi / entry_rsi_prev (= rsi_prev2) / entry_adx). Prior: "2026-09-27b"  # b: CALM3D_BTC_ATR_MIN — NONEXP_CALM3D door longs refused at BTC 5m ATR% < 0.08 (dead tape; operator ARMED override, DECISION_LOG 118; rule = engine calm3d_btc_atr_floor_block). Prior: "2026-09-27a"  # a: FADE_FRESHBREAK stamp proxy applied to PRE-SHIP fills only (opened < 2026-08-10T13:48:19 UTC, commit a10a879) — the live gate reads RSI(12) rsi_prev1 at trigger, the stamp entry_rsi_prev is rsi_prev2, so post-ship fills (which already passed the live gate) were wrongly removed (6 winners, Sep-27 audit). Prior: 2026-09-25c # c: LONG_HEAT_BLOCK re-scoped to bull breadth ≥85 only (BTC slope/RSI legs off, washed-out exemption kept; declared override, DECISION_LOG 116). Prior: 2026-09-25b # b: MOM_SHORT_C1_REGIME — C1 momentum shorts refused when BTC is STRONG_BEAR (operator ARMED override, DECISION_LOG 114; rule = engine mom_short_c1_regime_block). Prior: 2026-09-25a # a: FLIP_FAN_WEAK_BOUNCE — FAN flip-shorts refused when pair EMA13−EMA50 gap < 0 AND EMA20 slope < 0.15 (operator ARMED override at N=8, DECISION_LOG 113; rule = engine flip_fan_weak_bounce); B12 snapshot as-of 09-25. Prior: 2026-09-24b # b: FADE_BRSI 45→50 — the Aug-5 ceiling's own pre-committed revert fired (DECISION_LOG 112); label FADE_BRSI45→FADE_BRSI50. Prior: 2026-09-24a # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
+STACK_VERSION = "2026-10-01b"  # 10-01b: EVERY kept capped fade re-priced at the 0.5 % ticket (+ stack_ticket_scale column; DECISION_LOG 168). 10-01a: CF_FADE_CAP05 — kept fades on pairs ≥ $10M throttled by the old 0.1 % cap re-priced at min(desired, 0.5 % × vol) (DECISION_LOG 165/167; 3 rows). Prior 09-29b — b: FADE_LAGGARD — SPIKE_FADE refused when pair daily Wilder −DI(14) > 16.1 AND BTC 4h EMA50/EMA200 gap > 0 (laggard squeeze; operator ARMED override at master N=10 on 295 backtest fills, DECISION_LOG 128; rule = indicators.fade_laggard_block; inputs = stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct, else the closed-bar feature factory from k5m_full). Prior: "2026-09-29a"  # a: LONG_RSI_MOM_LOADX — momentum longs (unmatched + doors) refused when RSI(12) < RSI two candles ago AND pair ADX < long_rsi_momentum_adx_max (21; declared override at master N=10, DECISION_LOG 126; rule = indicators.rsi_mom_loadx_block; stamps entry_rsi / entry_rsi_prev (= rsi_prev2) / entry_adx). Prior: "2026-09-27b"  # b: CALM3D_BTC_ATR_MIN — NONEXP_CALM3D door longs refused at BTC 5m ATR% < 0.08 (dead tape; operator ARMED override, DECISION_LOG 118; rule = engine calm3d_btc_atr_floor_block). Prior: "2026-09-27a"  # a: FADE_FRESHBREAK stamp proxy applied to PRE-SHIP fills only (opened < 2026-08-10T13:48:19 UTC, commit a10a879) — the live gate reads RSI(12) rsi_prev1 at trigger, the stamp entry_rsi_prev is rsi_prev2, so post-ship fills (which already passed the live gate) were wrongly removed (6 winners, Sep-27 audit). Prior: 2026-09-25c # c: LONG_HEAT_BLOCK re-scoped to bull breadth ≥85 only (BTC slope/RSI legs off, washed-out exemption kept; declared override, DECISION_LOG 116). Prior: 2026-09-25b # b: MOM_SHORT_C1_REGIME — C1 momentum shorts refused when BTC is STRONG_BEAR (operator ARMED override, DECISION_LOG 114; rule = engine mom_short_c1_regime_block). Prior: 2026-09-25a # a: FLIP_FAN_WEAK_BOUNCE — FAN flip-shorts refused when pair EMA13−EMA50 gap < 0 AND EMA20 slope < 0.15 (operator ARMED override at N=8, DECISION_LOG 113; rule = engine flip_fan_weak_bounce); B12 snapshot as-of 09-25. Prior: 2026-09-24b # b: FADE_BRSI 45→50 — the Aug-5 ceiling's own pre-committed revert fired (DECISION_LOG 112); label FADE_BRSI45→FADE_BRSI50. Prior: 2026-09-24a # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 # 🧯 FADE_FRESHBREAK stamp-proxy scope (Sep-27). The live gate reads the RSI(12) of the candle BEFORE the trigger
@@ -41,15 +41,15 @@ FADE_LAG_SHIP_UTC = "2026-09-29T20:30:00"   # 🪤 fade laggard gate ship (stamp
 
 
 def fade_cap05_scale(desired, vol, notional, capped, ceiling=500_000.0):
-    """🐳 Oct-1 (DECISION_LOG 165/167): ticket scale for a kept fade the old 0.1 % cap throttled on a pair ≥ $10M — today's size
-    = min(desired, 0.5 % × 24h volume, hard ceiling) / lived notional. 1.0 (no-op) when not capped, < $10M, any input missing /
-    non-positive, or the new ticket is not > 0.1 % bigger (post-deploy fills already sit at 0.5 %). Same pct on a bigger ticket —
-    OPTIMISTIC (no market-impact haircut), like the late-arm CF."""
+    """🐳 Oct-1 (DECISION_LOG 165/167/168): ticket scale for a kept fade that an older liquidity cap (0.1 / 0.2 / 0.3 %) throttled —
+    today's size = min(desired, 0.5 % × 24h volume, hard ceiling) / lived notional, on EVERY pair (operator 10-01: "re-price all
+    of them at 0.5%"). 1.0 (no-op) when not capped, any input missing / non-positive, or the new ticket is not > 0.1 % bigger
+    (fills already at 0.5 %). Same pct on a bigger ticket — OPTIMISTIC (no market-impact haircut; least credible on $2–5M pairs)."""
     try:
         d, v, nv = float(desired), float(vol), float(notional)
     except (TypeError, ValueError):
         return 1.0
-    if str(capped).lower() != 'true' or not all(np.isfinite(x) and x > 0 for x in (d, v, nv)) or v < 10_000_000:
+    if str(capped).lower() != 'true' or not all(np.isfinite(x) and x > 0 for x in (d, v, nv)):
         return 1.0
     new = min(d, 0.005 * v, ceiling)
     return new / nv if new > nv * 1.001 else 1.0
@@ -229,7 +229,7 @@ def main():
         if v is not None and pd.notna(v):
             return float(v)
         return _off30.get(str(r.opened_at)[:13].replace('T', ' ') + ':00')
-    keep, reason, spnl = [], [], []
+    keep, reason, spnl, scale = [], [], [], []
     # door same-pair <=90min re-fire detection (cooldown), computed per era
     df['_ts'] = pd.to_datetime(df.opened_at.str[:19], errors='coerce')
     cooldown_idx = set()
@@ -339,17 +339,17 @@ def main():
             _cf = fade_late_arm_cf(_FADE_TH, r.pnl_percentage, r.peak_pnl, _pmin, _dmin, r.entry_atr_pct)
             if _cf is not None:
                 sp = _cf * abs(p / r.pnl_percentage); why = 'CF_FADE_LATE_ARM'
-        # 🐳 Oct-1 FADE CAP 0.5 % ON ALL PAIRS (DECISION_LOG 165): a kept fade on a pair ≥ $10M that the old 0.1 % cap throttled
-        # is re-priced at today's size = min(desired, 0.5 % × 24h volume) — same pct, bigger ticket. Only rows with no other
-        # CF (their stack_pnl is still the lived P&L, so the scale is exact; a row already tagged SL15 / LATE_ARM is skipped —
-        # none exists ≥ $10M today). Thin-pair fades (< $10M) are NOT re-priced: their lived 0.1 / 0.2 / 0.3 tickets stay
-        # (the Sep-27 0.5 raise was never back-applied; doing so = +$2.5k on 55 fills, least credible on $2–5M pairs) → fade
-        # DOLLARS in the master are mixed-ticket: compare fades on Avg P&L %, not $. current_stack_ledger --batch rows do not
-        # mirror this CF (only a pre-Oct-1 batch fade on a $10–20M pair would differ; none exists).
-        if k and not r.is_probe and strat == 'SPIKE_FADE' and not why:
-            _sc = fade_cap05_scale(r.get('entry_desired_notional'), r.get('entry_pair_volume_24h_usd'), r.get('notional_value'), r.get('liquidity_capped'))
-            if _sc != 1.0:
-                sp = sp * _sc; why = 'CF_FADE_CAP05'
+        # 🐳 Oct-1 FADE CAP 0.5 % ON ALL PAIRS (DECISION_LOG 165/167/168): every kept fade an older cap throttled is re-priced at
+        # today's ticket = min(desired, 0.5 % × 24h volume, ceiling) — same pct, bigger ticket, applied AFTER the SL15 / late-arm
+        # CFs (losers scale too). The scale is stored in stack_ticket_scale: a pct derived from stack_pnl MUST divide by it
+        # (stack_pnl / stack_ticket_scale / notional_value). Untagged rows get the CF_FADE_CAP05 tag; CF-tagged rows keep theirs.
+        # current_stack_ledger --batch rows do not mirror this (a fresh batch fade already sits at the live 0.5 % ticket).
+        tsc = 1.0
+        if k and not r.is_probe and strat == 'SPIKE_FADE':
+            tsc = fade_cap05_scale(r.get('entry_desired_notional'), r.get('entry_pair_volume_24h_usd'), r.get('notional_value'), r.get('liquidity_capped'))
+            if tsc != 1.0:
+                sp = sp * tsc; why = why or 'CF_FADE_CAP05'
+        scale.append(tsc)
         if k and not r.is_probe and (strat.startswith('MOMENTUM') or slv.startswith('MOM')) and str(r.direction) == 'LONG':
             pk, atr = r.peak_pnl, (r.entry_atr_pct if pd.notna(r.entry_atr_pct) else 99)
             if pd.notna(pk) and 0.40 <= pk < 0.45 and pd.notna(r.pnl_percentage) and r.pnl_percentage < max(pk - atr, 0.10) and r.pnl_percentage != 0:
@@ -363,7 +363,7 @@ def main():
                     sp = p / m; why = why or 'CF_SPRINT_DEMUX'
         keep.append(k); reason.append(why); spnl.append(sp if k else 0.0)
     df['stack_keep'] = keep; df['stack_block_reason'] = reason
-    df['stack_pnl'] = np.round(spnl, 2); df['stack_version'] = STACK_VERSION
+    df['stack_pnl'] = np.round(spnl, 2); df['stack_ticket_scale'] = np.round(scale, 6); df['stack_version'] = STACK_VERSION
     df = df.drop(columns=['_ts'])
     out = "reports/MASTER_POOL_stacked.csv"
     df.to_csv(out, index=False)

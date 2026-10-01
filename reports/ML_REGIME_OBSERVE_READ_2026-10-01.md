@@ -11,12 +11,12 @@ Master current stack + fresh: 108 momentum longs.
 | slope<0 ∧ burst | 8 | 4 | 75% | +0.252 | [-0.57, +0.72] |
 | slope<0 ∧ alone | 31 | 31 | 77% | +0.179 | [-0.06, +0.42] |
 
-## BTC chop eff72 ≤ 0.01 (master; stamped on 24 fills — unstamped fills are NOT 'rest'; unit = DAY)
+## BTC chop eff72 ≤ 0.007 (master; stamped on 24 fills — unstamped fills are NOT 'rest'; unit = DAY)
 
 | Cohort | N | days | WR | avg % | 95 % day CI |
 |---|---|---|---|---|---|
-| eff72 ≤ 0.01 | 10 | 3 | 50% | -0.328 | [-1.00, +0.56] |
-| eff72 > 0.01 | 14 | 6 | 71% | +0.171 | [-0.32, +0.62] |
+| eff72 ≤ 0.007 | 8 | 2 | 38% | -0.551 | [+nan, +nan] |
+| eff72 > 0.007 | 16 | 6 | 75% | +0.220 | [-0.07, +0.67] |
 
 ## yr3 backtest, post-gate, seeds collapsed (H1 Jan–Apr · H2 May–Sep)
 
@@ -29,7 +29,13 @@ Master current stack + fresh: 108 momentum longs.
 
 | Cohort | N | days | WR | avg % | 95 % day CI |
 |---|---|---|---|---|---|
-| H1 eff72 ≤ 0.01 | 80 | 27 | 48% | -0.221 | [-0.35, +0.07] |
-| H1 eff72 > 0.01 | 516 | 104 | 58% | -0.076 | [-0.15, +0.03] |
-| H2 eff72 ≤ 0.01 | 100 | 37 | 48% | -0.152 | [-0.28, +0.16] |
-| H2 eff72 > 0.01 | 587 | 125 | 59% | -0.084 | [-0.15, -0.00] |
+| H1 eff72 ≤ 0.007 | 60 | 21 | 50% | -0.177 | [-0.39, +0.13] |
+| H1 eff72 > 0.007 | 536 | 105 | 57% | -0.087 | [-0.16, +0.02] |
+| H2 eff72 ≤ 0.007 | 84 | 32 | 42% | -0.235 | [-0.34, +0.15] |
+| H2 eff72 > 0.007 | 603 | 127 | 60% | -0.074 | [-0.13, +0.01] |
+
+## FRESH-only observe bars (fills after 2026-10-01 02:00 UTC; full-size, non-MANUAL; unstamped excluded)
+
+- burst crowding: 0 fresh fills
+- BTC chop eff72 ≤ 0.007: 0 fresh fills
+- comparison (no bar): 0.007 < eff72 ≤ 0.026 → 0 fills avg +nan · eff72 > 0.026 → 0 fills avg +nan

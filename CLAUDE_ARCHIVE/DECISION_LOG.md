@@ -4858,3 +4858,17 @@ it). Operator-approved registration: burst = momentum LONG ≤ 2 min from anothe
 Operator follow-up (crowding × BTC 1h slope<0): master 8·4w·75%·+0.25 (ADA/PEPE, SUI/DOT, FET/LTC won; WLD/ENA the only losing
 window); yr3 post-gate slope<0∧burst H1 +0.03 / H2 −0.09 vs slope<0∧alone −0.14 / −0.09 → no interaction, not a filter. Bar: fresh
 fills after 2026-10-01 02:00 UTC, N≥15 over ≥8 windows, expectancy bar (WR < ~61 % ∧ avg<0 at 95 % window-bootstrap) → else close.
+
+## 2026-10-01 (161) - 🌀 ML BTC-chop (eff72 ≤ 0.007) registered as a frozen OBSERVE block candidate; >0.026 de-mux NOT a rule
+Operator after WLD/ENA (BTC eff72 0.006 — a 3-day zig-zag tape): "BTC had a high-volatile choppy day, did we evaluate it?". High volatility is not the bad side (master BTC ATR terciles
+8·50%·−0.27 / 8·50%·−0.12 / 8·88%·+0.28, N=8 each — noise); CHOPPINESS is the lead: master eff72 terciles (stamped since Sep-20, 24 fills) ≤0.007 8·38%·−0.55 /
+0.007–0.026 8·88%·+0.40 / >0.026 8·62%·+0.04 — the low tier is only 2 DAYS (Sep-29, Oct-1). yr3 backtest post-gate, seeds collapsed:
+≤0.007 −0.18 (Jan–Apr 60) / −0.24 (May–Sep 84) vs ~−0.07/−0.08 elsewhere; ≤0.010 80·27d·48%·−0.22 / 100·37d·48%·−0.15; gone by
+0.015–0.020. Deep review: nested cuts are not independent and the sub-buckets disagree (0–0.003 +0.05 Jan–Apr / −0.28 May–Sep;
+0.007–0.010 −0.35 / +0.28); the tier-vs-rest gap is NOT significant (day-cluster Δ −0.09 [−0.28,+0.14] / −0.16 [−0.35,+0.08]); days
+overcount a 72 h variable (21 days = 10 episodes, 32 = 18) → a weak lead, observe only. Operator's 3-tier what-if on the 24 stamped master fills: block
+≤0.007 / as-is / de-mux >0.026 → −$288 → +$783 (+$858 from the 2 blocked days, +$213 de-mux = XLM/WIF 2× losers halved +$238 net of the ADA 2× winner −$25) — live $, in-sample, narrative only (NOT evidence toward the bar). Backtest: the >0.026 tier
+is no worse than the middle tier (−0.09 vs −0.08 / −0.08 vs −0.07) → its gain is generic size reduction → not a rule (caps for losers,
+never for an undifferentiated cohort). Registered: block candidate at the operator's 0.007 (inside the backtest's robust range), fresh fills after
+2026-10-01 02:00 UTC (same start as the burst watch), 1×, N ≥ 15 on ≥ 8 days AND ≥ 4 chop episodes ≥ 72 h apart (a 72 h variable carries over
+days), expectancy bar with the 61 % breakeven pinned, DAY bootstrap; >0.026 kept as a comparison line only. Caveman review applied.

@@ -5095,6 +5095,14 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">④ Each line = "at balance ≥ $X, cap leverage to N×" (ascending). Final ceiling = highest tier ≤ equity — de-lever as the account grows (ruin-risk knob, sibling of ②). Leave all blank = off. <span id="lev-schedule-readout" class="text-emerald-400/80"></span></p>
                         </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">🖐 Manual stop by leverage <span class="text-gray-500">(read-only — derived, not a setting)</span></label>
+                            <table class="text-sm font-mono">
+                                <thead><tr class="text-gray-500 text-xs"><th class="text-right pr-4 font-normal">Leverage</th><th class="text-right pr-4 font-normal">Liquidation ≈</th><th class="text-right pr-4 font-normal">Widest stop</th><th class="text-right font-normal">Loss of margin at that stop (fees incl.)</th></tr></thead>
+                                <tbody id="manual-stop-table"></tbody>
+                            </table>
+                            <p class="text-xs text-gray-500 mt-1">A manual position's stop can never be wider than 80% of the distance to liquidation (≈ 100 ÷ leverage − 0.5% maintenance allowance), nor wider than the Manual floor stop setting (<span id="manual-stop-table-floor">−3.00</span>% — the table follows the field as you type; the engine uses the saved value). Checked when the position opens: <b>Floor</b> mode uses this stop · <b>Custom SL/TP</b> refuses a wider typed stop (table values are rounded toward the safe side by up to 0.01) · <b>Momentum</b> mode keeps its own tighter stops and is refused at leverages where they would exceed this limit. Stops are % of price net of fees, so they fire slightly earlier in raw price. Liquidation is an estimate (exchange maintenance tiers vary with size; paper does not simulate liquidation; slippage past the stop is not included). Manual entry is paper-only for now.</p>
+                        </div>
                     </div>
                 <!-- BNB Fee Management -->
                 <div>
@@ -20419,7 +20427,9 @@
             if (!body.pair) { showToast('Pair is required', 'error'); return; }
             if (!(body.investment > 0)) { showToast('Size must be > 0', 'error'); return; }
             if (body.exit_mode === 'FIXED' && !(body.sl_pct > 0)) { showToast('Custom mode needs a stop loss %', 'error'); return; }
-            if (!confirm(`Open ${body.direction} ${body.pair} $${body.investment} × ${body.leverage} (${body.exit_mode}${body.exit_mode === 'FIXED' ? ` SL ${body.sl_pct}%${body.tp_pct ? ' TP ' + body.tp_pct + '%' : ''}` : body.exit_mode === 'FLOOR' ? ` floor stop${body.tp_pct ? ' · TP ' + body.tp_pct + '%' : ' · no TP'}` : ''}) at market?`)) return;
+            // Oct-1 (operator): the same in-page confirmation as Close, next to the Open button (browser confirm() opens at the top)
+            const _ob = g('manual-open-btn'); const _omsg = `Open ${body.direction} ${body.pair} $${body.investment} × ${body.leverage} (${body.exit_mode}${body.exit_mode === 'FIXED' ? ` SL ${body.sl_pct}%${body.tp_pct ? ' TP ' + body.tp_pct + '%' : ''}` : body.exit_mode === 'FLOOR' ? ` floor stop${body.tp_pct ? ' · TP ' + body.tp_pct + '%' : ' · no TP'}` : ''}) at market?`;
+            if (!((_ob && _ob.getBoundingClientRect) ? await confirmNear(_ob, _omsg, 'Open', 'px-3 py-1 bg-amber-500/30 hover:bg-amber-500/50 text-amber-100 rounded text-xs font-semibold') : confirm(_omsg))) return;
             const btn = g('manual-open-btn'); if (btn) btn.disabled = true;
             try {
                 const res = await fetch(`${API_BASE}/api/orders/manual_open`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -20436,13 +20446,37 @@
         }
 
         // Close order manually
+        // Oct-1 (operator): read-only "manual stop by leverage" table in Liquidity & Risk Caps. Mirrors the engine
+        // (services/trading_engine.py manual_floor_for_leverage: MANUAL_LIQ_SAFETY 0.80, MANUAL_MAINT_MARGIN_PCT 0.50) —
+        // tests/test_manual_stop_table.py pins the two constants to the engine's.
+        const MANUAL_LIQ_SAFETY_UI = 0.80, MANUAL_MAINT_MARGIN_PCT_UI = 0.50;
+        function manualStopForLeverage(lev, floorPct) {
+            const cfg = -Math.abs(Number.isFinite(floorPct) && floorPct !== 0 ? floorPct : -3.0);
+            const liq = Math.max(0, 100 / lev - MANUAL_MAINT_MARGIN_PCT_UI);
+            return { liq, stop: Math.max(cfg, -liq * MANUAL_LIQ_SAFETY_UI) };
+        }
+        function renderManualStopTable() {
+            const tb = document.getElementById('manual-stop-table'); if (!tb) return;
+            const raw = parseFloat(document.getElementById('config-manual-floor-sl-pct')?.value);
+            const floorPct = Number.isFinite(raw) && raw !== 0 ? -Math.abs(raw) : -3.0;
+            const fl = document.getElementById('manual-stop-table-floor'); if (fl) fl.textContent = '−' + Math.abs(floorPct).toFixed(2);
+            tb.innerHTML = [5, 10, 20, 25, 30, 40, 50, 75, 100, 125].map(lev => {
+                const r = manualStopForLeverage(lev, floorPct), binds = r.stop === floorPct;
+                return `<tr><td class="text-right pr-4 text-white">${lev}×</td><td class="text-right pr-4 text-gray-400">−${r.liq.toFixed(2)}%</td>` +
+                       `<td class="text-right pr-4 text-amber-200">−${(Math.floor(Math.abs(r.stop) * 100 + 1e-9) / 100).toFixed(2)}%${binds ? ' <span class="text-gray-500 text-xs">(setting)</span>' : ''}</td>` +
+                       `<td class="text-right text-gray-400">−${Math.abs(r.stop * lev).toFixed(0)}%</td></tr>`;
+            }).join('');
+        }
+        document.addEventListener('input', e => { if (e.target && e.target.id === 'config-manual-floor-sl-pct') renderManualStopTable(); });
+        document.addEventListener('DOMContentLoaded', () => renderManualStopTable());   // also drawn if the config load fails (default −3)
+
         // Oct-1 (operator): a small in-page confirmation NEXT TO the clicked button (the browser's own confirm() box always opens
         // at the top of the window and cannot be moved). Resolves true on OK / Enter, false on Cancel / Escape / a click elsewhere.
         // Safety (it can close a LIVE position): only ONE box exists — opening another resolves the previous one FALSE and drops
         // its listeners; Enter is never handled at document level (the focused button's own activation decides: Close focused →
         // confirm, Cancel focused → cancel; a held-key repeat or an Enter typed elsewhere does nothing); scrolling cancels.
         let _nearConfirmCancel = null;
-        function confirmNear(anchor, msg, okLabel = 'OK') {
+        function confirmNear(anchor, msg, okLabel = 'OK', okClass = 'px-3 py-1 bg-red-500/30 hover:bg-red-500/50 text-red-200 rounded text-xs font-semibold') {
             return new Promise(resolve => {
                 if (_nearConfirmCancel) _nearConfirmCancel();
                 const r = anchor.getBoundingClientRect();
@@ -20452,7 +20486,7 @@
                 const t = document.createElement('div'); t.textContent = msg; t.style.marginBottom = '8px';
                 const row = document.createElement('div'); row.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;';
                 const no = document.createElement('button'); no.textContent = 'Cancel'; no.className = 'px-3 py-1 bg-white/10 hover:bg-white/20 text-gray-200 rounded text-xs font-medium';
-                const yes = document.createElement('button'); yes.textContent = okLabel; yes.className = 'px-3 py-1 bg-red-500/30 hover:bg-red-500/50 text-red-200 rounded text-xs font-semibold';
+                const yes = document.createElement('button'); yes.textContent = okLabel; yes.className = okClass;
                 row.append(no, yes); box.append(t, row); document.body.appendChild(box);
                 const h = box.offsetHeight || 80;
                 box.style.left = Math.max(8, Math.min(window.innerWidth - 238, r.right - 230)) + 'px';
@@ -21483,6 +21517,7 @@
                 { const _e=document.getElementById('config-spike-fade-lag-ndi-min'); if(_e && config.thresholds.spike_fade_lag_ndi_min !== undefined) _e.value = config.thresholds.spike_fade_lag_ndi_min; }   // 🪤 Sep-29 fade laggard gate
                 { const _e=document.getElementById('config-spike-fade-lag-btc-gap-min'); if(_e && config.thresholds.spike_fade_lag_btc_gap_min !== undefined) _e.value = config.thresholds.spike_fade_lag_btc_gap_min; }
                 { const _e=document.getElementById('config-manual-floor-sl-pct'); if(_e && config.thresholds.manual_floor_sl_pct !== undefined) _e.value = config.thresholds.manual_floor_sl_pct; }   // 🖐 Sep-29 MANUAL sleeve
+                renderManualStopTable();   // Oct-1: the read-only stop-by-leverage table follows the floor setting
                 { const _e=document.getElementById('config-spike-fade-fb-rsi-prev-min'); if(_e && config.thresholds.spike_fade_fb_rsi_prev_min !== undefined) _e.value = config.thresholds.spike_fade_fb_rsi_prev_min; }
                 { const _e=document.getElementById('config-spike-fade-fb-pgap-min'); if(_e && config.thresholds.spike_fade_fb_pgap_min !== undefined) _e.value = config.thresholds.spike_fade_fb_pgap_min; }
                 { const _e=document.getElementById('config-spike-fade-tripwire-pct'); if(_e && config.thresholds.spike_fade_tripwire_pct !== undefined) _e.value = config.thresholds.spike_fade_tripwire_pct; }

@@ -66,7 +66,7 @@ def test_ui_wiring_parity():
     for i in ("manual-pair", "manual-direction", "manual-investment", "manual-leverage", "manual-exit-mode", "manual-sl", "manual-tp", "manual-note", "manual-open-btn"):
         assert ui.count(f"id=\"{i}\"") == 1, i
     assert "async function openManualPosition()" in ui and "/api/orders/manual_open" in ui
-    assert ui.count("config-manual-floor-sl-pct") == 3 and "Manual sleeve (Sep 29)" in ui
+    assert ui.count("config-manual-floor-sl-pct") == 5 and "Manual sleeve (Sep 29)" in ui   # input + load + save, plus 2 reads by the read-only stop-by-leverage table (Oct-1)
     models = open(os.path.join(ROOT, "models.py")).read(); db = open(os.path.join(ROOT, "database.py")).read()
     assert "manual_exit_mode = Column(String(12)" in models and "manual_note = Column(String(200)" in models
     assert "('manual_exit_mode', 'VARCHAR(12)'), ('manual_note', 'VARCHAR(200)')" in db

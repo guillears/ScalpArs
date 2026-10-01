@@ -4956,3 +4956,15 @@ and ≥ 4 chop episodes, WR < 57% (breakeven pinned from avg win +0.54 / avg los
 comparison lines ≤ 0.007 / −DI<15 ∧ >0.010 / −DI≥15. Watch 48d unchanged (AAVE = fresh fire 1 of 5). Caveats: POWR/DEXE are
 rebuild-only eff (the rebuild read AAVE 0.003 vs its 0.009 stamp); at ~1 cell fire a month N ≥ 15 is far off — a tally, not a near-term rule.
 Caveman + deep review applied.
+
+## 2026-10-01 (167) - 🐳 Master stack v2026-10-01a: fades on pairs ≥ $10M re-priced at the 0.5 % cap (CF_FADE_CAP05)
+Operator: "update master batch with last spike fade change". scripts/build_master_pool.py: a kept, non-probe SPIKE_FADE with no other CF,
+liquidity_capped, 24h volume ≥ $10M → stack_pnl × min(desired, 0.5 % × vol) / notional (same pct, today's ticket). 3 rows: WLFI 08-05
++$93 → +$137, MIRA 08-07 +$94 → +$151, 龙虾 08-17 +$33 → +$71 = +$139; kept set unchanged (718 rows, same keeps); kept Σ +$8,198 →
++$8,338; master fades +$2,806 → +$2,945 (with DYDX 10-01: +$2,882 → +$3,021). pct columns unchanged (the reason tag is not in the pct
+re-price regex, so every read keeps pnl_percentage). Thin-pair fades (< $10M) keep their lived 0.2 / 0.3 tickets — the Sep-27 0.5 raise
+(119) was never back-applied to the master (deep review sized it: +$2.5k on 55 fills = 44 untagged +$2,654, 11 CF-tagged −$126), so
+fade DOLLARS in the master are mixed-ticket → compare fades on Avg P&L %, not $; operator may choose all-slices or as-lived later.
+The re-price is OPTIMISTIC (same pct on a 1.5–2.2× ticket, no impact haircut). Pure helper fade_cap05_scale + invariants in
+tests/test_fade_cap05.py; replay_fidelity_audit pct guard for the new tag. validate_against_master ALL PASS; tests green.
+Caveman + deep review applied.

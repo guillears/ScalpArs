@@ -4880,7 +4880,7 @@ Master (108): ≤0.007 13·6d·46%·−0.16 · middle 33·25d·91%·+0.37 · >0.
 narrative): block all chop +$294 (BASE net −$564 = solo winners JTO/ACT/ONDO +$751 lost, ADA/LIT −$187 saved; B14 +$295; Oct-1 +$563); block
 the whole chop ∧ burst cell +$750 (4 fills 0W: Jul-10 ADA+LIT, Oct-1 WLD+ENA = 2 windows) — but a live rule can only block the 2nd+
 fill of a burst (LIT, WLD) → +$395; block middle ∧ slope<0 −$176 (6W/2L: AAVE/FARTCOIN winners), de-mux middle ∧ slope<0 −$119. yr3 (post-gate, seeds collapsed): chop ∧ burst 15·4d·33%·−0.48 / 25·8d·32%·−0.35 — the worst cell, a thin read (4 and 8 days); middle ∧ slope<0 −0.27/−0.18
-vs middle ∧ slope≥0 +0.10/+0.00; slope adds nothing inside chop; burst is harmless outside chop. Registered (frozen): SUB-LINE A = the 2nd+ fill of a burst in chop
+vs middle ∧ slope≥0 +0.10/+0.00; inside chop the slope cut is NOT neutral (corrected by DECISION_LOG 163: the chop gap appears when BTC 1h slope ≥ 0, −0.24 / −0.28 vs −0.06 / −0.02 outside chop, and vanishes when slope < 0); burst is harmless outside chop. Registered (frozen): SUB-LINE A = the 2nd+ fill of a burst in chop
 = expected worst cell; the narrow rule may only be proposed if the chop bar passes AND that cell has N ≥ 6 fresh fills on ≥ 3 windows,
 carries ≥ 50 % of the tier's fresh loss in 1× pct, and no single window carries ≥ 50 % of the cell's loss (deep review: the burst flag is
 symmetric, a live rule cannot block a burst's first fill). SUB-LINE B middle ∧ slope<0 = comparison only (master break-even contradicts the
@@ -4888,3 +4888,38 @@ backtest). Note: Sep-29 0G/ALGO opened 126 s apart — outside the frozen 120 s 
 scripts/ml_regime_observe_read.py rebuilds eff72 for unstamped fills and prints both sub-lines in the FRESH section.
 Bar amended (0 fresh fills seen): eff72 = live stamp, else the validated rebuild (the live stamp can lag the rebuild by one bar —
 monitor throttle; 1/24 tier miss); the read prints the source split and re-validates the rebuild each run. Caveman review applied.
+
+## 2026-10-01 (163) - 🌀 BTC-chop gate: formal backtest → OBSERVE confirmed, NOT armed (my arm recommendation withdrawn after dual review)
+Operator: "make the backtest to support this". scripts/chop_gate_backtest.py → reports/CHOP_GATE_BACKTEST_2026-10-01.md on the yr3
+engine replay (momentum longs, current gates; trades = same pair, opens ≤ 10 min apart across the 5 seeds → 1,112 trades).
+Chop (eff72 ≤ 0.007) 127 trades · 53 days · 28 episodes vs rest: Δ −0.146; like-for-like tests (same fill-level Δ in observed and
+null): circular-shift p 0.011 (ALL) / 0.12 (Jan–Apr) / 0.026 (May–Sep); day-block bootstrap Δ CI [−0.28, +0.02], P(Δ ≥ 0) 0.036 / 0.107 /
+0.094. Without Aug: p 0.07; without Jul+Aug: p 0.26. Trades taken by ≥ 3 replays: chop ≈ 0 — the gap sits in single/2-seed fills.
+What-if PER SEED (one bot run): R1 block-all-chop +9.6 (1×) / +14.8 (×mult) Σ-% over 9 months (seed 5 ≈ +4) → ≈ +5–7 after the haircut;
+R2 2nd+ burst in chop +3.0 / +3.9 on 8–11 trades per seed.
+Dual review (my first write-up was wrong and I had recommended arming): ① the first permutation test compared chop FILLS with all
+fills on relabelled DAYS (diluted null → p 0.012/0.023 too small); ② the what-if summed the UNION of five replays (~3× one run);
+③ no dose-response (≤ 0.003 is fine in Jan–Apr; the signal is the 0.003–0.007 band; 0.007–0.010 flips sign between halves);
+④ the master is the hypothesis source — its negativity is Sep-29 + Oct-01, the five earlier chop trades netted +$564 (3 winners +$751; the Jul-10 ADA+LIT burst −$187);
+⑤ concentrated in Jul–Aug; ⑥ inside chop the gap appears with BTC 1h slope UP (table in the report, section D); ⑦ no distinct loser mechanism (never-green, peak P&L
+never above 0: 11.0 % vs 12.6 %, report section D); ⑧ per the deep review's ad-hoc read (not in the script) it is not a proxy for an
+existing gate (flat across cells / regime / breadth / ATR) and eff72 in the replay is faithful.
+Versus precedent 126 (LOADX: both halves at 95 %, every seed, monotonic, distinct mechanism, pre-hypothesis master) chop has one half,
+one null seed, no dose-response. Verdict: the frozen OBSERVE bar of 161/162 stands unchanged; no arm; 0.007 not re-tuned. Before any
+promotion: a coded-rule replay with per-seed reporting (re-entry after eff crosses 0.007 is the unmeasured second-order effect).
+
+## 2026-10-01 (164) - 🏃 Runaway-pair / volume-leads / EMA200 lift-off / ride-the-monster: tested, NO sleeve (research only, no code in the bot)
+Operator (MOVR +90 % → +140 %): a sleeve for runaway pairs; then "volume leads price", "EMA200 lift-off + volume", then "ride the
+monster" (small, wide stop, multi-day). 5m/1m klines 2026-01-29 → 09-27, rules pre-declared in the script headers, three review rounds.
+① scripts/runaway_sleeve_design.py v3 and scripts/liftoff_sleeve_design.py v3 (1m candle-path walk, entry 1 min after the trigger
+bar, slippage, clean paired controls, UTC-day units, one-sided Bonferroni over 64 cells): 0 of 64 pass in each; no cell with a 95 % day
+range > 0, none beats its own control (reports/*_SLEEVE_GRID_v3_2026-10-01.csv). The v1 runaway-SHORT "pass" lived in the first 60 s
+after the trigger bar (the bot enters a median 144 s after it). ② scripts/trigger_forward_odds.py: exit-free, runaway longs mean-revert
+over 24 h (−1.86 % at +8 %, −2.70 % at +12 %, both significant by day), volume-leads TOP50 −2.39 %; target-before-stop share 33–41 % vs
+35 % baseline. ③ scripts/monster_ride_test.py (stops −10/−20/−30 %, trails, TP +100 %, holds 3–7 d, entry-WEEK units, bad-tick guard):
+16 of 16 trigger × exit cells negative per trade (−0.23 … −4.92 %), 4 significantly, none positive; only 3 of 16 beat the no-trigger
+baseline, which is itself negative (period effect) → "no edge found", not "proven loser". The trigger does raise monster odds (exit A,
++12 %: 20.5 % reach +50 %, 9.7 % reach +100 % vs baseline 10.5 % / 4.1 %) but 65 % hit the −20 % stop; without a trail half of the +100 %
+trades finish below +50 %. Caveats: survivorship (delisted pumps missing — flatters longs), one 8-month span, funding ignored, stop/trail
+fills at their level inside a 5m bar. Do NOT re-derive or re-propose; re-open only with tick / sub-minute data (cascade shorts, ~10
+events in-sample, not evidence) or delisted pairs. reports/OVERNIGHT_REPORT_2026-10-01.md. Caveman + deep review applied.

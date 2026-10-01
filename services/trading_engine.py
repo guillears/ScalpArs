@@ -409,6 +409,30 @@ def manual_floor_for_leverage(th, leverage) -> float:
     return cfg
 
 
+def leverage_bracket_limit(tiers, leverage, margin):
+    """🪜 Oct-1 — what the exchange's leverage brackets allow for this pair with this MARGIN budget. `tiers` = [(notional_cap,
+    max_leverage), …] (binance_service.get_leverage_brackets). Binance lowers the permitted leverage as the position grows, so
+    the best position a margin can carry is max over tiers of min(margin × min(leverage, tier leverage), tier cap). The margin
+    is never increased. Returns (leverage_eff, notional_allowed, pair_max_leverage, cap_at_requested_leverage) — the last is
+    0.0 when the requested leverage is above the pair's maximum — or None when the table is missing / unusable (no cap). Ties
+    keep the HIGHER leverage (same position, less margin). Pure."""
+    try:
+        rows = sorted((float(c), float(l)) for c, l in (tiers or []) if float(c) > 0 and float(l) >= 1)
+        lev, m = float(leverage), float(margin)
+    except (TypeError, ValueError):
+        return None
+    if not rows or not (lev >= 1) or not (m > 0) or not math.isfinite(lev) or not math.isfinite(m):
+        return None
+    best = None
+    for cap, tl in rows:
+        le = min(lev, tl); n = min(m * le, cap)
+        if best is None or n > best[1] + 1e-9 or (abs(n - best[1]) <= 1e-9 and le > best[0]):
+            best = (le, n)
+    pair_max = max(tl for _, tl in rows)
+    cap_at = max([cap for cap, tl in rows if tl >= lev], default=0.0)
+    return best[0], best[1], pair_max, cap_at
+
+
 MANUAL_NO_GATE = "NONE"   # manual_block_reason of a fill on a pair the bot could enter at that moment
 
 
@@ -8778,6 +8802,33 @@ class TradingEngine:
                 investment = _new_investment
                 _liq_capped = True
 
+        # ③ 🪜 Oct-1 EXCHANGE LEVERAGE BRACKETS (DECISION_LOG 170): Binance caps the position size per leverage tier (MOVR:
+        # $5k at 25×, less leverage for more). Paper ignored it, so small-pair fills were sized beyond what the exchange
+        # accepts. Same margin budget, the largest position the brackets allow (lower leverage when that carries more);
+        # the margin is never increased. No table (no API keys / fetch failed) = no cap, as before. Runs on the margin the
+        # liquidity / gross caps left (conservative: when it lowers the leverage the position can end below those caps too).
+        # cell_lev_multiplier keeps the INTENDED multiplier — read `leverage` / `bracket_capped` on these rows.
+        _brk_capped = False; _brk_max_lev = None; _brk_cap = None
+        if bool(getattr(config.trading_config.investment, 'leverage_bracket_cap_enabled', True)) and investment > 0 and leverage > 0:
+            try:
+                _lim = leverage_bracket_limit((await binance_service.get_leverage_brackets()).get(pair), leverage, investment)
+            except Exception as _be:
+                logger.warning(f"[BRACKET_CAP] {pair}: bracket lookup failed ({str(_be)[:60]}) — no cap applied")
+                _lim = None
+            if _lim is not None:
+                _lev_eff, _n_ok, _brk_max_lev, _brk_cap = _lim
+                if _lev_eff < leverage - 1e-9 or _n_ok < investment * leverage - 0.01:
+                    _lev_eff = float(int(_lev_eff)) if _lev_eff >= 1 else _lev_eff      # the exchange takes whole leverages
+                    _new_inv = min(investment, _n_ok / _lev_eff)
+                    if _new_inv < config.trading_config.investment.min_investment_size:
+                        logger.warning(f"[BRACKET_CAP] {pair} {direction}: brackets allow ${_n_ok:,.0f} at {_lev_eff:g}× → margin "
+                                       f"${_new_inv:.2f} < min ${config.trading_config.investment.min_investment_size:.0f} — skip")
+                        self._record_filter_block('BRACKET_CAP_SKIP', direction)
+                        return None
+                    logger.info(f"[BRACKET_CAP] {pair} {direction}: ${investment * leverage:,.0f} at {leverage:g}× → ${_new_inv * _lev_eff:,.0f} at "
+                                f"{_lev_eff:g}× (pair max {_brk_max_lev:g}×, cap at {leverage:g}× ${_brk_cap:,.0f}; margin ${investment:.2f} → ${_new_inv:.2f})")
+                    investment, leverage, _brk_capped = _new_inv, (int(_lev_eff) if float(_lev_eff).is_integer() else _lev_eff), True
+
         logger.info(f"[TRADE] {pair}: {direction} {confidence} - Investment: ${investment:.2f}, Leverage: {leverage}x")
         
         if investment <= 0:
@@ -9181,6 +9232,7 @@ class TradingEngine:
             entry_desired_notional=_desired_notional,
             entry_liquidity_cap_notional=_liq_cap,
             liquidity_capped=_liq_capped,
+            entry_bracket_max_leverage=_brk_max_lev, entry_bracket_cap_notional=_brk_cap, bracket_capped=_brk_capped,   # 🪜 Oct-1
             entry_slippage_pct=_entry_slippage_pct,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
@@ -9564,6 +9616,22 @@ class TradingEngine:
         if investment + _fee_usdt_est > available:   # caveman review: same rule as the final check, so it fails before the reads
             raise ValueError(f"size ${investment:,.0f}" + (f" (+ ${_fee_usdt_est:,.2f} fee not covered by BNB)" if _fee_usdt_est > 0 else "")
                              + f" exceeds available balance ${available:,.0f}")
+        # 🪜 Oct-1: a manual order the exchange would not accept is REFUSED (never silently resized) — the operator sees the limit
+        _brk_max_lev = _brk_cap = None
+        if bool(getattr(config.trading_config.investment, 'leverage_bracket_cap_enabled', True)):
+            try:
+                _tiers = (await binance_service.get_leverage_brackets()).get(pair)
+            except Exception:
+                _tiers = None
+            _lim = leverage_bracket_limit(_tiers, leverage, investment)
+            if _lim is not None:
+                _, _, _brk_max_lev, _brk_cap = _lim
+                if leverage > _brk_max_lev + 1e-9:
+                    raise ValueError(f"the exchange allows at most {_brk_max_lev:g}× on {pair} (you asked {leverage:g}×)")
+                if investment * leverage > _brk_cap + 0.01:
+                    _alt = "; ".join(f"up to ${c:,.0f} at {l:g}×" for c, l in sorted(_tiers)[:4])
+                    raise ValueError(f"at {leverage:g}× the exchange allows a position of at most ${_brk_cap:,.0f} on {pair} "
+                                     f"(you asked ${investment * leverage:,.0f} = ${investment:,.0f} × {leverage:g}). Brackets: {_alt}")
         symbol = f"{pair[:-4]}/USDT:USDT"
         # PRICE SOURCE (Sep-29, QNT 0-second trade lost 0.35 % on the source gap): exits price off the live websocket tick, so
         # the entry must too — the REST ticker can lag a few seconds on a fast pair. Stream price when fresh (≤ 5 s), else REST
@@ -9640,6 +9708,7 @@ class TradingEngine:
             pair=pair, direction=direction, status="OPEN", entry_price=actual_price, investment=investment, leverage=leverage,
             notional_value=notional_value, quantity=quantity, confidence="STRONG_BUY", entry_strategy="MANUAL",
             cell_multiplier=1.0, cell_lev_multiplier=1.0, cell_multiplier_source=None,   # plain sizing; entry_strategy is the label
+            entry_bracket_max_leverage=_brk_max_lev, entry_bracket_cap_notional=_brk_cap, bracket_capped=False,   # 🪜 Oct-1 (a manual order over the limit is refused)
             pattern_fixed_tp_pct=tp, pattern_fixed_sl_pct=sl, manual_exit_mode=exit_mode, manual_note=((note or "").strip()[:200] or None),
             # the gate the operator traded through + the pair readings a systematic fill stamps (from the pair's last scan row)
             manual_block_reason=(None if _gc['block_reason'] is None else str(_gc['block_reason'])[:60]),

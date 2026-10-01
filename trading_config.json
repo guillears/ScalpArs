@@ -48,6 +48,7 @@
     "max_notional_hard_ceiling": 500000,
     "max_gross_leverage": 25.0,
     "redeploy_leftover_enabled": true,
+    "leverage_bracket_cap_enabled": true,
     "max_open_positions_hard": 10,
     "manual_max_open_positions": 8,
     "leverage_balance_schedule": "0:20, 25000:15",

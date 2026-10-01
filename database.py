@@ -633,6 +633,12 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_liquidity_cap_notional FLOAT"))
                 if 'liquidity_capped' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN liquidity_capped BOOLEAN DEFAULT 0"))
+                if 'entry_bracket_max_leverage' not in columns:       # 🪜 Oct-1 exchange leverage brackets
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_bracket_max_leverage FLOAT"))
+                if 'entry_bracket_cap_notional' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_bracket_cap_notional FLOAT"))
+                if 'bracket_capped' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN bracket_capped BOOLEAN DEFAULT 0"))
                 if 'entry_slippage_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_slippage_pct FLOAT"))
                 # Aug 21 gate 57: Bull-Run Monitor readings at entry (BULLRUN_LONG fills)

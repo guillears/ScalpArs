@@ -2481,6 +2481,11 @@ class InvestmentConfig(BaseModel):
     #    allow opening MORE positions (overrule max_open_positions up to the hard
     #    ceiling) to deploy the freed capital — gated by ② + tradeable margin.
     redeploy_leftover_enabled: bool = False
+    # ⑤ 🪜 Oct-1 EXCHANGE LEVERAGE BRACKETS (DECISION_LOG 170; operator-caught: MOVR max 25× and $5k at 25× on Binance while the
+    # paper manual panel took 50× / $450k). Every order is sized to what the pair's brackets accept (same margin budget, lower
+    # leverage when that carries more; never more margin); a manual order over the limit is refused. Needs the exchange API
+    # keys to read the table — without it nothing is capped (the dashboard shows whether it is loaded).
+    leverage_bracket_cap_enabled: bool = True
     max_open_positions_hard: int = 10  # absolute ceiling when redeploying
     # 🖐 Sep-29 MANUAL sleeve: its own slot lane — manual positions never consume a bot slot and are capped here (balance still binds)
     manual_max_open_positions: int = 8

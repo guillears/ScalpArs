@@ -5084,6 +5084,19 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">③ When ① throttles a slot, open more positions (up to Hard cap) to deploy the freed capital. Default OFF.</p>
                         </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">🪜 Exchange Leverage Brackets</label>
+                            <div class="flex items-center gap-4 py-2">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-leverage-bracket-cap-enabled" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-sky-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">⑤ Size every order to what the exchange accepts for that pair (e.g. MOVR: 25× max, $5k at 25×): same margin, lower leverage or a smaller position; a manual order over the limit is refused. <span id="leverage-brackets-status" class="text-gray-400">table: —</span></p>
+                        </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">④ Balance → Leverage Schedule</label>
                             <div id="lev-schedule-rows" class="space-y-2">
@@ -9115,6 +9128,7 @@
                 window._btcAdxPrev1 = (data.btc_adx_prev1 != null) ? data.btc_adx_prev1 : null;
                 try { renderAdxArrow(); } catch (_) {}
 
+                { const _lbs = document.getElementById('leverage-brackets-status'); if (_lbs && data.leverage_brackets_pairs != null) _lbs.textContent = data.leverage_brackets_pairs > 0 ? `table: loaded for ${data.leverage_brackets_pairs} pairs` : 'table: NOT loaded (no exchange API keys or the read failed) — no cap is applied'; }   // 🪜 Oct-1
                 // Aug-22 (operator): Margin Ratio chip — distance to cross-wallet liquidation (100%)
                 const _mrEl = document.getElementById('margin-ratio-gauge');
                 if (_mrEl) {
@@ -9582,7 +9596,7 @@
                 if (ordCountEl && data.open_orders_count != null) {
                     ordCountEl.textContent = `Open Positions: ${data.open_orders_count}` + (data.manual_open_count ? ` (+${data.manual_open_count} manual)` : '');
                 }
-                { const _mp = document.getElementById('manual-entry-panel'); if (_mp && data.manual_max_open_positions != null) _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0); }   // 🖐 cap 0 = manual entry off
+                { const _mp = document.getElementById('manual-entry-panel'); if (_mp && data.manual_max_open_positions != null) _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0 || data.is_paper === false); }   // 🖐 cap 0 = manual entry off
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
                 {   // Oct-1 (operator): white at the starting balance (or when it is unknown), green above it, red below it
                     const _tp = document.getElementById('total-portfolio');
@@ -11548,7 +11562,7 @@
             lines.push(`  Fee reserve floor: $${inv.fee_reserve_usd ?? 0} (never traded — BNB refuel; 0 = off)`);
             lines.push(`  Fee reserve = max($${inv.fee_reserve_usd ?? 0} min, ${inv.fee_reserve_pct ?? 0}% × equity (schedule tier active → × tradeable target), ${inv.fee_reserve_hours ?? 0}h × BOT-fill burn/hr ($${((status && typeof status.bnb_burn_rate_bot === 'number') ? status.bnb_burn_rate_bot : 0).toFixed(2)}/hr; manual fees excluded from this leg) − BNB held)`);
             lines.push(`  Cooldown After Any Close: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
-            lines.push(`  Liquidity Caps: ① ${inv.max_notional_pct_of_pair_volume || 0}% 24h vol / ceiling $${inv.max_notional_hard_ceiling || 0}  |  ② max gross lev ${inv.max_gross_leverage || 0}×  |  ③ redeploy ${inv.redeploy_leftover_enabled ? 'ON (hard ' + (inv.max_open_positions_hard || 0) + ')' : 'off'}  |  🔒 SPIKE LOWVOL (Aug-3 override): ${(inv.spike_lowvol_liq_cap_pct || 0) > 0 ? `${inv.spike_lowvol_liq_cap_pct}% cap on spike pairs < $${((inv.spike_lowvol_threshold_usd || 0)/1e6).toFixed(0)}M (LIQ2)` : 'off'}`);
+            lines.push(`  Liquidity Caps: ① ${inv.max_notional_pct_of_pair_volume || 0}% 24h vol / ceiling $${inv.max_notional_hard_ceiling || 0}  |  ② max gross lev ${inv.max_gross_leverage || 0}×  |  ③ redeploy ${inv.redeploy_leftover_enabled ? 'ON (hard ' + (inv.max_open_positions_hard || 0) + ')' : 'off'}  |  ⑤ exchange leverage brackets ${inv.leverage_bracket_cap_enabled !== false ? 'ON' : 'off'}  |  🔒 SPIKE LOWVOL (Aug-3 override): ${(inv.spike_lowvol_liq_cap_pct || 0) > 0 ? `${inv.spike_lowvol_liq_cap_pct}% cap on spike pairs < $${((inv.spike_lowvol_threshold_usd || 0)/1e6).toFixed(0)}M (LIQ2)` : 'off'}`);
             if (cfg.pair_blacklist) lines.push(`  Pair Blacklist: ${cfg.pair_blacklist}`);
             if (cfg.no_trade_pairs) lines.push(`  No-Trade Pairs (track-only): ${cfg.no_trade_pairs}`);
 
@@ -21172,6 +21186,7 @@
                 _liqSet('config-manual-max-open-positions', config.investment.manual_max_open_positions, 8);   // 🖐 Sep-29
                 const _rde = document.getElementById('config-redeploy-leftover-enabled');
                 if (_rde) _rde.checked = !!config.investment.redeploy_leftover_enabled;
+                { const _lb = document.getElementById('config-leverage-bracket-cap-enabled'); if (_lb) _lb.checked = config.investment.leverage_bracket_cap_enabled !== false; }   // 🪜 Oct-1 (default ON)
                 // ④ Balance→leverage schedule (per-line rows) + live readout (active tier @ balance)
                 window._levSchedBalance = (typeof config.paper_balance === 'number') ? config.paper_balance : 0;
                 const _levBals = Array.from(document.querySelectorAll('.lev-sched-bal'));
@@ -22888,6 +22903,7 @@
                     max_open_positions_hard: parseInt(document.getElementById('config-max-open-positions-hard')?.value) || 10,
                     manual_max_open_positions: (() => { const _v = parseInt(document.getElementById('config-manual-max-open-positions')?.value); return Number.isFinite(_v) ? Math.max(0, _v) : 8; })(),   // 🖐 Sep-29 (0 = off)
                     redeploy_leftover_enabled: !!document.getElementById('config-redeploy-leftover-enabled')?.checked,
+                    leverage_bracket_cap_enabled: !!document.getElementById('config-leverage-bracket-cap-enabled')?.checked,
                     leverage_balance_schedule: (function(){ const t = []; const bs = document.querySelectorAll('.lev-sched-bal'), ls = document.querySelectorAll('.lev-sched-lev'); for (let i = 0; i < bs.length; i++) { const b = (bs[i].value || '').trim(), l = (ls[i].value || '').trim(); if (b !== '' && l !== '') { const bn = parseFloat(b), ln = parseFloat(l); if (!isNaN(bn) && !isNaN(ln)) t.push([bn, ln]); } } t.sort((a, b) => a[0] - b[0]); return t.map(x => x[0] + ':' + x[1]).join(', '); })()
                 },
                 thresholds: {

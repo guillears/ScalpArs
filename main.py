@@ -659,6 +659,10 @@ async def get_status(db: AsyncSession = Depends(get_db)):
             _status["margin_liq_move_pct"] = ((_mbal - _maint) / _gross_open * 100.0) if _gross_open > 0 else None
         except Exception as _mre:
             logger.debug(f"[STATUS] margin ratio skipped: {_mre}")
+        try:   # 🪜 Oct-1: 0 = bracket table not loaded (no API keys / fetch failed) → no bracket cap is being applied
+            _status["leverage_brackets_pairs"] = len(await binance_service.get_leverage_brackets())
+        except Exception:
+            _status["leverage_brackets_pairs"] = 0
     except Exception as e:
         logger.debug(f"[STATUS] gross gauge skipped: {e}")
         _status["gross_enabled"] = False
@@ -4396,7 +4400,7 @@ def _compute_liquidity_sizing(orders):
         eps = max(1.0, abs(desired) * 1e-6)
         liq_bound = (liq_cap is not None) and (liq_cap < desired - eps)
         ref = liq_cap if liq_cap is not None else desired
-        gross_bound = final < ref - eps
+        gross_bound = (final < ref - eps) and not getattr(o, 'bracket_capped', False)   # 🪜 Oct-1: a later exchange-bracket resize is not the gross cap
         # Aug-3: LIQ2 = the spike low-vol raised cap (0.2%) — derived from the persisted
         # cap-to-volume ratio (>0.11% means the raised pct set the cap, not the global 0.1%).
         _lv_vol = getattr(o, 'entry_pair_volume_24h_usd', None)

@@ -344,6 +344,12 @@ class Order(Base):
     entry_desired_notional = Column(Float, nullable=True)
     entry_liquidity_cap_notional = Column(Float, nullable=True)
     liquidity_capped = Column(Boolean, default=False)
+    # 🪜 Oct-1 exchange leverage brackets (DECISION_LOG 170): the pair's maximum leverage, the largest position the exchange
+    # allows at the leverage the bot asked for (0 = that leverage is above the pair's maximum), and whether the bracket resized
+    # the order (lower leverage and / or smaller position). NULL = no bracket table at the time (no cap applied).
+    entry_bracket_max_leverage = Column(Float, nullable=True)
+    entry_bracket_cap_notional = Column(Float, nullable=True)
+    bracket_capped = Column(Boolean, default=False)
 
     # Pair / BTC EMA20 vs EMA50 gap at EXIT (May 6). Captures multi-hour trend context
     # at close time — diagnostic for REGIME_CHANGE / FL_REGIME_CHANGE: did BTC's actual

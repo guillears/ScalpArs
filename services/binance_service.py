@@ -808,6 +808,53 @@ class BinanceService:
             logger.error(f"[BINANCE] Error fetching price for {symbol}: {e}")
             return 0.0
     
+    async def get_leverage_brackets(self) -> Dict[str, list]:
+        """🪜 Oct-1: the exchange's leverage brackets per pair → {"MOVRUSDT": [(notional_cap, max_leverage), …]} sorted by cap
+        (e.g. MOVR: up to $5k at 25×, then lower leverage for bigger positions). Account-level endpoint (needs the API keys);
+        cached 6 h, a failure keeps the last table and is retried after 10 min. {} when unavailable (no keys / never fetched)
+        — callers then apply NO bracket cap. Called from the order path and the status poll, so it NEVER sleeps out a ban,
+        is single-flight (concurrent callers get the last table at once) and bounded at 6 s. Never raises."""
+        now = time.monotonic(); c = getattr(self, '_lev_brackets', None) or {"at": -1e18, "ok": False, "data": {}}
+        if now - c["at"] < (6 * 3600 if c["ok"] else 600):
+            return c["data"]
+        # stamp BEFORE any await: the next 10 min of callers return the last table instead of queueing behind this fetch
+        self._lev_brackets = {"at": now, "ok": False, "data": c["data"]}
+        if not (settings.binance_api_key and settings.binance_api_secret):
+            if not getattr(self, '_lev_brackets_nokey_logged', False):
+                self._lev_brackets_nokey_logged = True
+                logger.info("[BRACKETS] no exchange API keys — leverage brackets unavailable, no bracket cap is applied")
+            return c["data"]
+        if _ban_until > time.time():                                    # a ban is active: do not call, do not wait
+            return c["data"]
+        try:
+            async def _fetch():
+                await self.load_markets()
+                return await self.exchange.fetch_leverage_tiers()
+            raw = await asyncio.wait_for(_fetch(), timeout=6.0)
+            out = {}
+            for sym, tiers in (raw or {}).items():
+                if not str(sym).endswith(":USDT"):
+                    continue
+                rows = []
+                for t in tiers or []:
+                    cap, lev = t.get("maxNotional"), t.get("maxLeverage")
+                    if cap and lev and float(cap) > 0 and float(lev) >= 1:
+                        rows.append((float(cap), float(lev)))
+                if rows:
+                    out[str(sym).split("/")[0] + "USDT"] = sorted(rows)
+            if not out:
+                raise RuntimeError("empty bracket table")
+            self._lev_brackets = {"at": now, "ok": True, "data": out}
+            logger.info(f"[BRACKETS] leverage brackets loaded for {len(out)} pairs")
+            return out
+        except Exception as e:
+            try:
+                self._detect_ban(e)
+            except Exception:
+                pass
+            logger.warning(f"[BRACKETS] leverage bracket fetch failed ({str(e)[:80] or type(e).__name__}) — keeping the last table ({len(c['data'])} pairs), retry in 10 min")
+            return c["data"]
+
     async def set_leverage(self, symbol: str, leverage: int) -> int:
         """Set leverage for a symbol. Returns actual leverage applied, or 0 on failure."""
         try:

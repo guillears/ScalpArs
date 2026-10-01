@@ -5025,3 +5025,20 @@ Verdict: NO EDGE FOUND on the 2,072 spot-listed episodes (long-side hot state; t
 codified. Do not re-propose the same HOT / first-dip / flow rules without new data; open routes = more recorded manual sessions on other
 pairs, and the 2,520 futures-only episodes. Large per-trade csvs and the 1-second caches are not in git (re-run the scripts).
 Caveman + deep review applied.
+
+## 2026-10-01 (170) - 🪜 Exchange leverage brackets: every order sized to what Binance accepts for the pair (operator-caught)
+Operator, from the Binance leverage dialog: MOVRUSDT max 25×, max position $5,000 at 25× — while the paper manual panel had taken 40–50×
+and $20k–$450k on it all afternoon. The code had NO knowledge of the exchange's per-pair leverage brackets (bot or manual): paper sized
+small pairs beyond what live would accept (live would be rejected or silently de-levered by set_leverage). Shipped:
+binance_service.get_leverage_brackets() (ccxt fetch_leverage_tiers, account endpoint → needs the API keys; 6 h cache, 10 min retry, {}
+when unavailable) · pure leverage_bracket_limit(tiers, leverage, margin) = the largest position the margin can carry, max over tiers of
+min(margin × min(lev, tier lev), tier cap); the margin is never increased; ties keep the higher leverage · open_position block ③ after the
+liquidity / gross caps (tag [BRACKET_CAP]; below min_investment_size → skip + Filter Block BRACKET_CAP_SKIP) · open_manual_position
+REFUSES an order over the pair's max leverage or over the cap at that leverage (message lists the brackets) · Order columns
+entry_bracket_max_leverage / entry_bracket_cap_notional / bracket_capped (+ migration; ride the CSV) · config
+investment.leverage_bracket_cap_enabled = true (config.py, json, UI toggle ⑤ in Liquidity & Risk Caps with a "table loaded for N pairs /
+NOT loaded" status from /api/status, load + save, text-report line). Limits: without API keys on the server the table cannot be read and
+NOTHING is capped (status line says so); the brackets are the account's current ones (not historical); the master batch is NOT re-priced
+(only small / new pairs at 20× with > bracket notional would change — unknown until the table is readable). Consequence for DECISION_LOG
+169: the operator's MOVR session dollars (+$5,229 / +$1,223) were on sizes the exchange does not allow; the percentages stand.
+Tests: tests/test_leverage_brackets.py (sizing invariants + D11/D12 wiring).

@@ -6888,8 +6888,20 @@ class TradingEngine:
                 flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} refused: {_n_open} FRENZY positions open (max {_slots})"
                 return
             if (await db.execute(select(Order.id).where(and_(Order.pair == pair, Order.entry_strategy == "FRENZY_LONG",
-                                                             Order.is_paper == self.is_paper_mode, Order.opened_at >= _bar_dt)))).first() is not None:
+                                                             Order.is_paper == self.is_paper_mode, Order.opened_at > _bar_dt - timedelta(seconds=1))))).first() is not None:   # > t−1s: opened_at is stored to the second (a text compare with ≥ misses the exact second)
                 return   # this bar's entry was already taken (restart / second pass)
+            # Oct-2 (DECISION_LOG 177): at most N FRENZY_LONG entries per pair per UTC day (open or closed; DB-counted = restart-proof). 0 = no cap.
+            _day_cap = max(0, int(float(getattr(th, 'frenzy_max_entries_per_pair_day', 3) or 0)))   # 0 / blank / negative = no cap
+            if _day_cap > 0:
+                _day0 = _bar_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                _n_day = (await db.execute(select(func.count(Order.id)).where(and_(
+                    Order.pair == pair, Order.entry_strategy == "FRENZY_LONG", Order.is_paper == self.is_paper_mode,
+                    Order.opened_at > _day0 - timedelta(seconds=1))))).scalar() or 0
+                if _n_day >= _day_cap:
+                    self._record_filter_block("FRENZY_PAIR_DAY_CAP", "LONG")
+                    flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} refused: {_n_day} entries on this pair today (max {_day_cap})"
+                    logger.info(f"[FRENZY_LONG] {pair}: setup ON but {_n_day} entries already today (max {_day_cap}) — skipped")
+                    return
             price = float(flag.get('live_price') or flag.get('price') or 0)
             if price <= 0:
                 self._record_filter_block("FRENZY_NO_DATA", "LONG")

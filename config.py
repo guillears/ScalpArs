@@ -1267,6 +1267,9 @@ class SignalThresholds(BaseModel):
     frenzy_trail_giveback_pct: float = 1.5       # … and closes this % of price below the best point
     frenzy_max_hold_minutes: int = 720           # 12 h cap (0 = the global max hold)
     frenzy_max_slots: int = 2                    # max FRENZY_LONG open at once (they also count against max open positions)
+    # Oct-2 (DECISION_LOG 177, operator): a ceiling on entries per pair per UTC day. Attempts read (pre-ATR-gate cut, after the fact):
+    # 1st attempt −0.11 %, 2nd +0.14, 3rd +0.92; a cap of 1 was the worst cell, 3 keeps ~97 % of the tested entries. 0 = no cap.
+    frenzy_max_entries_per_pair_day: int = 3
     frenzy_long_invest_mult: float = 1.0         # absolute-assign, never re-multiplied by cells (the JSON ships 2.0 — operator)
     frenzy_long_lev_mult: float = 1.0
     frenzy_max_entry_dislocation_pct: float = 1.0  # skip the fill when the live price is > this % from the decision price

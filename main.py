@@ -3252,6 +3252,7 @@ def _frenzy_monitor_payload():
                 "max_atr": float(getattr(_th, 'frenzy_max_atr_pct', 2.0) or 0), "stop": float(getattr(_th, 'frenzy_stop_pct', 3.0) or 0),
                 "trail_arm": float(getattr(_th, 'frenzy_trail_arm_pct', 5.0) or 0), "trail_give": float(getattr(_th, 'frenzy_trail_giveback_pct', 1.5) or 0),
                 "max_slots": int(getattr(_th, 'frenzy_max_slots', 2) or 0),
+                "max_pair_day": int(getattr(_th, 'frenzy_max_entries_per_pair_day', 3) or 0),
                 "checked": (_dt.utcfromtimestamp(_ca / 1000).strftime('%H:%M') if _ca else None), "checked_ms": (int(_ca) if _ca else None),
                 "shortlisted": _fzs.get('shortlisted'), "unreadable": _fzs.get('unreadable'), "flagged": len(_fzf), "error": _fzs.get('error'),
                 "took_s": _fzs.get('took_s')}

@@ -755,6 +755,7 @@
     "frenzy_trail_giveback_pct": 1.5,
     "frenzy_max_hold_minutes": 720,
     "frenzy_max_slots": 2,
+    "frenzy_max_entries_per_pair_day": 3,
     "frenzy_long_invest_mult": 2.0,
     "frenzy_long_lev_mult": 1.0,
     "frenzy_max_entry_dislocation_pct": 1.0,

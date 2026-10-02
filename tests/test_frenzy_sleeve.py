@@ -136,7 +136,7 @@ def test_config_parity_and_every_surface():
     import config as C
     th = C.trading_config.thresholds
     fields = sorted(k for k in type(th).model_fields if k.startswith("frenzy_"))
-    assert len(fields) == 20
+    assert len(fields) == 21
     cfgj = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert sorted(k for k in cfgj if k.startswith("frenzy_")) == fields                   # every field has a JSON value
     assert type(th).model_fields["frenzy_long_enabled"].default is False                  # OFF in code; the JSON arms it
@@ -246,8 +246,61 @@ def test_exit_through_the_engine_intercept_and_the_late_entry_guard():
     """Behavioural: frenzy_exit_for is what both engine paths call; the entry guard constant exists and FRENZY closes are urgent."""
     import services.trading_engine as TE
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert '"FRENZY_PAIR_DAY_CAP"' in eng and "frenzy_max_entries_per_pair_day" in eng                    # per-pair daily ceiling (DECISION_LOG 177)
     assert TE.FRENZY_ENTRY_MAX_LATE_S == 120 and '"FRENZY_LATE"' in eng and eng.count('"FRENZY_DISLOC"') == 2
     assert eng.count('(order.entry_strategy or "") == "FRENZY_LONG" or reason.startswith(RH_STOP_CLASS)') == 2   # live + paper: every FRENZY close is taker
     assert "self._journal_pair = pair; self._journal_ctx = None" in eng and "await self._frenzy_persist_flags()" in eng
     import models as M
     assert M.FrenzyFlag.__tablename__ == "frenzy_flags"
+
+
+def test_pair_day_cap_counts_todays_frenzy_fills_only():
+    """Behavioural (DECISION_LOG 177): three FRENZY_LONG fills on the pair today refuse the next setup; yesterday's fills, other
+    pairs, other strategies and cap 0 do not."""
+    import asyncio, datetime as dt, time
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    import models, config as C
+    import services.trading_engine as TE
+    bar_open = int(time.time() // 300) * 300_000
+    bar_dt = dt.datetime.utcfromtimestamp(bar_open / 1000); day0 = bar_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    if (bar_dt - day0).total_seconds() < 900:
+        return   # too close to UTC midnight to seat three earlier fills inside the day
+    th = C.trading_config.thresholds
+
+    async def run(rows, cap):
+        eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with eng.begin() as c:
+            await c.run_sync(models.Base.metadata.create_all)
+        old = th.frenzy_max_entries_per_pair_day
+        try:
+            th.frenzy_max_entries_per_pair_day = cap
+            async with async_sessionmaker(eng, expire_on_commit=False)() as db:
+                for pair, strat, when in rows:
+                    db.add(models.Order(pair=pair, direction="LONG", status="CLOSED", is_paper=True, entry_strategy=strat, confidence="STRONG_BUY",
+                                        entry_price=1.0, quantity=1.0, investment=1.0, leverage=20, notional_value=20.0, opened_at=when))
+                await db.commit()
+                e = object.__new__(TE.TradingEngine); e.is_paper_mode = True; blocks = []
+                e._record_filter_block = lambda name, d, had_room=True: blocks.append(name)
+                e._flip_entry_fields = lambda *a, **k: {}
+                e._sanitize_open_kwargs = lambda ef, s, d: ef
+                opened = []
+
+                async def fake_open(**kw):
+                    opened.append(kw["pair"]); return None
+                e.open_position = fake_open
+                flag = dict(pair="FOOUSDT", spike_ts=bar_open - 7_200_000, hours=2.0, vwap=1.0, vs_vwap_pct=1.0, vol_mult=150.0, run_pct=20.0,
+                            atr_pct=1.5, volume_24h=5e7, price=1.0, live_price=1.0)
+                await e._frenzy_open(db, flag, {}, bar_open)
+        finally:
+            th.frenzy_max_entries_per_pair_day = old
+            await eng.dispose()
+        return blocks, opened, flag.get("last_fire")
+    t1 = day0 + dt.timedelta(minutes=5); yday = day0 - dt.timedelta(seconds=1)
+    three = [("FOOUSDT", "FRENZY_LONG", t1)] * 3
+    b, o, lf = asyncio.run(run(three, 3))
+    assert "FRENZY_PAIR_DAY_CAP" in b and o == [] and "3 entries on this pair today (max 3)" in lf
+    assert asyncio.run(run(three, 0))[1] == ["FOOUSDT"] and asyncio.run(run(three, 4))[1] == ["FOOUSDT"]          # 0 = no cap · under the cap
+    assert asyncio.run(run([("FOOUSDT", "FRENZY_LONG", yday)] * 3, 3))[1] == ["FOOUSDT"]                            # yesterday does not count
+    assert asyncio.run(run([("BARUSDT", "FRENZY_LONG", t1)] * 3, 3))[1] == ["FOOUSDT"]                              # another pair
+    assert asyncio.run(run([("FOOUSDT", "MANUAL", t1), ("FOOUSDT", "SURGE_LONG", t1), ("FOOUSDT", None, t1)], 3))[1] == ["FOOUSDT"]   # other strategies
+    assert asyncio.run(run([("FOOUSDT", "FRENZY_LONG", day0)] * 3, 3))[1] == []                                     # a fill in the first second of the day counts

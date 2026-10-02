@@ -5090,3 +5090,21 @@ armed with no verdict), also after the exit-retry queue, and 3-hard-stops stays 
 would reach the exchange backstop (2.5 % − 0.3); ⑦ a save from the UI no longer re-sends the enabled toggles on later saves; ⑧ RH_ reasons
 ride the Stop-Loss deep dive and the HARD_TP shadow. Known and accepted: a stop inside the entry's own 5m bar passes "RSI ≥ entry" trivially
 (as in the tested rule — 0G); the break-even ladder is suspended while held (a hold can reach +0.39 % and still end at its hard stop).
+
+## 2026-10-02 (173) - ⏱ BE-LOCK SHADOW gate 24b (momentum) RESOLVED → archived; table removed · two dashboard tables get a scroll box
+Operator: "this table is not useful … remove it". Adjudicated on the master pool first, against the bar locked on Jul-28 ("ship the single
+best cell ONLY at N ≥ 30 fires · ≥ 5 dates · net > 0 after haircut · Killed$ ≤ ½ Saved$; no cell clears → archive"): 357 kept momentum
+fills, 87 with a touch stamp, 14 eras. Grid arm X {0.15, 0.20, 0.30} × window Y {5, 10, 15 min} × lock L {+0.05, 0.00, −0.15}, Δ = L − actual
+on fills whose post-touch trough reached L: 24 of 27 cells NEGATIVE (arm 0.15: −6.0…−8.4 pts, ~5 winners cut per loser saved; arm 0.20:
+−2.8…−4.9); the only positives are arm 0.30 within 5 min (+0.6…+1.0 pts) on 5–10 fires — far under N ≥ 30. With the +0.10 level added on
+Jul-29 (the gate's full 36 cells): 31 negative, 5 positive — all arm 0.30, 5–24 fires, best +1.19 pts on 16 fires / 15 dates (arm 0.15 ×
++0.10: 47–61 fires, −6.3…−8.2; arm 0.20 × +0.10: 35–46 fires, −2.8…−5.2). Pre-registered CALM3D-only sub-read (arm 0.15 × +0.10, 22 kept
+CALM3D fills): 7 / 8 / 10 fires at 5 / 10 / 15 min, −3.1 / −4.0 / −4.4 pts (1–2 helped vs 6–8 hurt). No cell with N ≥ 30 is positive. Verdict: ARCHIVE. Removed:
+the ⏱ UI table, both text-report export blocks, main._compute_be_lock_shadow + payload key. KEPT: the six belock_* Order columns and the
+engine capture (exit-neutral; the SPIKE_FADE / BOUNCE ordering reads use them, and this adjudication was only possible because they exist).
+Same day, same question from another angle (DECISION_LOG 172 follow-up): a break-even lock inside the recovery hold — 0 effect on the 13
+qualifying stops; on all 134 live stops walked as holds: lock at +0.10 → −3.5 pts, +0.20 → −0.25, +0.30 → −0.5 → not added.
+Also: "Monitor Periods" (commit 112cee5) and "Filter Blocks" tables now scroll inside a fixed-height box with a pinned header.
+Also tested and failed today (scripts/day_after_short_test.py, reports/DAY_AFTER_SHORT_TEST_2026-10-02.md): SHORT at 00:00 UTC every pair
+that gained ≥ 20 / 30 / 50 % the day before, 24 h, stop 10 / 20 / none, real funding — 1,506 pair-days, 0 of 9 cells pass (≈ 60 % fall the
+next day but 26 % move ≥ 30 % against and 4 % double; best 5 % removed → −1.6…−3.9 %/trade).

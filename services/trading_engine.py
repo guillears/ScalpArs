@@ -16231,9 +16231,9 @@ class TradingEngine:
             # the fade quick-lock question (touch 0.20 -> lock -0.15, pre-registered
             # frozen in #24b) needs post-touch trough ordering that peak/trough columns
             # can't resolve; capture is exit-neutral. SPIKE_CHASE stays excluded (own
-            # option-D ecosystem, no lock candidate). The ⏱ shadow TABLE still filters
-            # spikes out (main.py) — the momentum gate stays uncontaminated; the fade
-            # cohort is read from these columns separately at N>=12.
+            # option-D ecosystem, no lock candidate). Oct-2: the momentum ⏱ table and its gate (24b)
+            # were archived — no cell cleared the bar (DECISION_LOG 173); the capture stays (exit-neutral,
+            # the fade / bounce ordering reads and ad-hoc lock studies use these columns).
             # Restart-tainted trades ('_belock_taint', cache reseeded with peak already
             # >= 0.15) are skipped so sequencing stays honest.
             _bl_strat = (order_info.get('entry_strategy') or '')

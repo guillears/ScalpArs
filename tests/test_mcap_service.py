@@ -78,3 +78,12 @@ def test_d11_d12_parity():
     assert "ADD COLUMN entry_mcap_usd FLOAT" in db and "ADD COLUMN entry_cmc_rank INTEGER" in db
     eng = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
     assert "_mcs.get(pair)" in eng and "_mcs.ensure_refresh(" in eng and "entry_mcap_usd=_mcap_usd" in eng
+
+
+def test_refresh_covers_frenzy_flagged_pairs_and_runs_after_the_frenzy_pass():
+    """Oct-2: a FRENZY-flagged pair outside the Top-N had no market cap (APE). The refresh list includes the flagged pairs and is
+    requested AFTER the FRENZY pass, so the first refresh after a deploy already sees the rebuilt flags."""
+    import os
+    eng = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services", "trading_engine.py"), encoding="utf-8").read()
+    assert eng.count("_mcs.ensure_refresh(") == 1 and "_mcs.ensure_refresh(_mcap_pairs + list(_frenzy_flags))" in eng
+    assert eng.index("_mcap_pairs = [p.get('pair') for p in top_pairs]") < eng.index("await self._update_frenzy(db)") < eng.index("_mcs.ensure_refresh(")

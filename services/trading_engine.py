@@ -13036,11 +13036,7 @@ class TradingEngine:
         # Persisted per-trade as entry_pair_rank (read gate for the 50->75 expansion).
         for _rank_i, _rank_p in enumerate(top_pairs):
             _rank_p['rank'] = _rank_i + 1
-        try:   # 💰 Sep-28: background market-cap refresh when due (fire-and-forget, never blocks the scan)
-            from services import mcap_service as _mcs
-            _mcs.ensure_refresh(p.get('pair') for p in top_pairs)
-        except Exception:
-            pass
+        _mcap_pairs = [p.get('pair') for p in top_pairs]   # 💰 the market-cap refresh list (fired after the FRENZY pass, below)
         # Aug-22 (operator-caught): the 🌊 sleeve's "top-N" must be N TRADEABLE pairs — blacklisted pairs
         # (global list AND bullrun_pair_blacklist) must not occupy rank slots, else ONG+ETH+BNB turn
         # top-10 into top-7. br_rank = rank among non-blacklisted pairs (what the replay models).
@@ -13240,6 +13236,13 @@ class TradingEngine:
         await self._update_surge_triggers(db)
         # 🔥 Oct-2 FRENZY: flags + long entries + short observations, once per closed 5m bar (never raises)
         await self._update_frenzy(db)
+        try:   # 💰 Sep-28: background market-cap refresh when due (fire-and-forget, never blocks the scan). Oct-2: AFTER the FRENZY
+            # pass and including its flagged pairs — a flagged pair outside the Top-N had no market cap (APE), and the first
+            # refresh after a deploy would otherwise run before the flags are rebuilt and leave them blank for 30 minutes.
+            from services import mcap_service as _mcs
+            _mcs.ensure_refresh(_mcap_pairs + list(_frenzy_flags))
+        except Exception:
+            pass
 
         # ── Phase 1: Collect indicators, signals, and pair regimes for ALL pairs ──
         _collected = []

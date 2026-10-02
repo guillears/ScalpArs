@@ -5222,3 +5222,13 @@ duplicate requests while one is in flight → guarded · line drawn when the pan
 tests (syntax-checked only); never exercised against the real exchange table in a browser by me.
 Surfaces: services/trading_engine.py (`ManualLimitError`, `manual_bracket_fixes`, the two raises) · main.py (400 with `fixes`, `/api/manual/limits`) ·
 templates/index.html (`showToast` actions, `manualLimitHint`, `manualApplyFix`) · tests/test_manual_limit_fixes.py.
+
+### (186) 2026-10-02 — 🔥 FRENZY status text follows the price ("below" only when it is below) (operator)
+Operator: SAND's hover said "+1.2 % vs its average price" while Block Reason said "below its average price". The check behind that text is a full HOUR
+of 5m closes at or above the spike-anchored average; the text said "below" whenever the hour failed, even with the price back above. Now:
+"below its average price (−2.1 %)" · "back above its average (+1.2 %) · 7 of 12 closes" · "held above 1 h · volume 45× < 100×". Same codes (block
+counters unchanged); `frenzy_walk` also returns `above_streak`. Scout staircase table: same rule, plus "above for the hour, < 2 h since the spike"
+(was mislabelled "volume fading"). Display only.
+Dual review: no bugs. Old vs new on ~52.7k random episodes: every trading field and every (ready, code) identical; the text matched the real price state
+in every case. Applied: shorter texts (the Block Reason cell does not wrap) · two decimals within ±0.05 % so the sign is right · scout early-hour label ·
+streak tests on real computed frames. Surfaces: services/frenzy.py · scripts/scout_staircase.py · tests.

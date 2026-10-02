@@ -103,9 +103,29 @@ def test_lines_notes_and_followed():
     res = ([row, {**row, "pair": "NIGHTUSDT", "hours": 40.0, "volx": 64.0}, {**row, "pair": "GTCUSDT", "in_state": False, "above_hour": False, "volx": 12.0}], 9, 0)
     out = "\n".join(S.lines(res))
     assert "| ★ ON |" in out and "| ON · ⏳ |" in out and "below average" in out and "NOT established" in out and "never a signal" in out
+    back = S.lines(([{**row, "pair": "GTCUSDT", "in_state": False, "above_hour": False, "above_streak": 7}], 9, 0))
+    assert any("| GTCUSDT | back above, 7 of 12 closes |" in x for x in back)                 # price above the line, not yet for an hour
+    held = S.lines(([{**row, "in_state": False, "volx": 40.0}], 9, 0))
+    assert any("| SANDUSDT | above for the hour, volume fading |" in x for x in held)
+    early = S.lines(([{**row, "in_state": False}], 9, 0))                                     # hour held, volume high → only too early
+    assert any("| SANDUSDT | above for the hour, < 2 h since the spike |" in x for x in early)
+    under = S.lines(([{**row, "in_state": False, "above_hour": False, "price": 0.06, "above_streak": 3}], 9, 0))
+    assert any("| SANDUSDT | below average |" in x for x in under)                             # under the line → "below", whatever the count
     items = S.note_items(res, {}, T0)
     assert [k for k, _ in items] == [f"ST|SANDUSDT|{T0}", f"ST|NIGHTUSDT|{T0}", f"ST32|NIGHTUSDT|{T0}"]
     noted = {f"ST|SANDUSDT|{T0 - 3 * 3600_000}": T0, f"ST|NIGHTUSDT|{T0}": T0}          # same episode even if the onset shifted by a few hours
     assert [k for k, _ in S.note_items(res, noted, T0)] == [f"ST32|NIGHTUSDT|{T0}"]
     assert S.note_items(None, {}, T0) == [] and S.note_items(([], 0, 0), {}, T0) == []
     assert S.followed({f"ST|SANDUSDT|{T0}": T0, "S|TREND|XUSDT|UP|1": T0, f"ST|OLDUSDT|{T0}": T0 - 200 * 3600_000}, T0) == ["SANDUSDT"]
+
+
+def test_streak_counts_the_closes_in_a_row_above_the_average():
+    import numpy as np
+    import pandas as pd
+    n = 400; t = np.arange(n) * 300_000; c = np.ones(n); q = np.full(n, 1e3)
+    c[300:] = 1.3; q[300:] = 1e6; c[380:395] = 1.0; c[395:] = 1.4                         # spike, dip under the line, 5 closes back above
+    d = pd.DataFrame(dict(h=c * 1.001, l=c * 0.999, c=c, q=q), index=t)
+    s = S.staircase_state(d, 1e3)
+    assert s["above_streak"] == 5 and not s["above_hour"] and s["price"] > s["vwap"]
+    s = S.staircase_state(d.iloc[:390], 1e3)
+    assert s["above_streak"] == 0 and s["price"] < s["vwap"]

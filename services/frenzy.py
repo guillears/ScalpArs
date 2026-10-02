@@ -51,7 +51,8 @@ def normal_hour_usd(hour_bars, last_closed_ms: int) -> Optional[float]:
 def frenzy_walk(bars, norm_hour, th) -> Optional[dict]:
     """bars = CLOSED 5m OHLCV rows [open_ms, o, h, l, c, v], oldest first. Returns the LIVE episode (the one still running at the
     last bar) or None. Keys: spike_ts (close time of the spike bar), base (price 30 min before it), vwap, price, peak, hours,
-    vol_mult, above_hour, in_state, fresh_on (the last bar is the first state bar after ≥ 1 h off), verified, last_bar_ts,
+    vol_mult, above_hour, above_streak (closes in a row at or above the average price, ending at the last bar), in_state,
+    fresh_on (the last bar is the first state bar after ≥ 1 h off), verified, last_bar_ts,
     vs_vwap_pct, run_pct, gain_pct, off_peak_pct, bar_ret_pct (the last bar's close vs its open, %) and bar_red (close ≤ open). Fail-closed.
     verified = the spike is known to be its episode's FIRST: either the previous episode is fully inside the window and was itself
     verified, or the 25 h before the spike are visible and hold no bar at the state volume (a state bar needs that volume, so an
@@ -105,7 +106,7 @@ def frenzy_walk(bars, norm_hour, th) -> Optional[dict]:
             fresh = bool(state[k] and not any(state[max(0, k - 12):k]))
             base = c[on - 6]; peak = max(h[on:]); price = c[-1]
             return dict(spike_ts=t[on] + BAR_MS, base=base, vwap=vw[-1], price=price, peak=peak,
-                        hours=(t[-1] - t[on]) / HOUR_MS, vol_mult=volx[-1], above_hour=bool(above[-1]), in_state=bool(state[-1]),
+                        hours=(t[-1] - t[on]) / HOUR_MS, vol_mult=volx[-1], above_hour=bool(above[-1]), above_streak=streak, in_state=bool(state[-1]),
                         fresh_on=fresh, verified=verified, last_bar_ts=t[-1],
                         vs_vwap_pct=(price / vw[-1] - 1) * 100 if vw[-1] > 0 else None,
                         run_pct=(peak / base - 1) * 100, gain_pct=(price / base - 1) * 100,
@@ -126,9 +127,16 @@ def frenzy_long_status(ep, atr_pct, volume_24h, th) -> Tuple[bool, str, str]:
     vneed = _f(th, 'frenzy_state_vol_mult', 100.0)
     if not ep.get('in_state'):
         if not ep.get('above_hour'):
-            return False, "FRENZY_BELOW_AVG", "below its average price"
+            # Oct-2 (operator: hover "+1.2 % vs its average" while this said "below"): the check is a full HOUR of closes at or
+            # above the line, so a price already back above it says so. Same code either way (one block counter).
+            # Short: the Block Reason cell does not wrap. Within ±0.05 % two decimals, so the sign shown is the real one.
+            vs, n_up = ep.get('vs_vwap_pct'), int(ep.get('above_streak') or 0)
+            pct = (lambda v: f"{v:+.2f}%" if abs(v) < 0.05 else f"{v:+.1f}%")
+            if vs is not None and vs >= 0 and n_up > 0:
+                return False, "FRENZY_BELOW_AVG", f"back above its average ({pct(vs)}) · {min(n_up, 11)} of 12 closes"
+            return False, "FRENZY_BELOW_AVG", "below its average price" + (f" ({pct(vs)})" if vs is not None else "")
         if ep.get('vol_mult') is None or ep['vol_mult'] < vneed:
-            return False, "FRENZY_VOL_FADED", f"volume {ep.get('vol_mult') or 0:.0f}× < {vneed:.0f}×"
+            return False, "FRENZY_VOL_FADED", f"held above 1 h · volume {ep.get('vol_mult') or 0:.0f}× < {vneed:.0f}×"
         return False, "FRENZY_TOO_EARLY", f"{ep.get('hours') or 0:.1f} h after the spike < {_f(th, 'frenzy_min_hours', 2.0):g} h"
     if not ep.get('fresh_on'):
         return False, "FRENZY_ON", "ON (entry bar passed)"

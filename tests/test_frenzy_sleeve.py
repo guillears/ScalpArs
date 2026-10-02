@@ -56,6 +56,20 @@ def test_setup_needs_an_hour_above_the_average_price_and_re_arms_after_an_hour_o
     b = _bars(after=60, dip_at=30)
     ep = frenzy_walk(b[:320 + 1 + 33], NORM, TH)           # inside / just after the dip: below the average price
     assert not ep["in_state"] and frenzy_long_status(ep, 1.5, 50e6, TH)[1] == "FRENZY_BELOW_AVG"
+    # the text follows the price: under the line → "below …"; back above but not for an hour → "back above … N of 12 closes"
+    for k in range(30, 44):
+        e = frenzy_walk(b[:320 + 1 + k], NORM, TH); code, txt = frenzy_long_status(e, 1.5, 50e6, TH)[1:]
+        assert code == "FRENZY_BELOW_AVG" and not e["above_hour"]
+        if e["vs_vwap_pct"] < 0:
+            assert txt.startswith("below its average price (") and e["above_streak"] == 0
+        else:
+            assert e["above_streak"] >= 1 and txt.startswith("back above its average (+") and txt.endswith(f" · {e['above_streak']} of 12 closes")
+    e = dict(in_state=False, above_hour=False, vs_vwap_pct=None, above_streak=0)
+    assert frenzy_long_status(e, 1.5, 50e6, TH)[2] == "below its average price"
+    e = dict(in_state=False, above_hour=False, vs_vwap_pct=0.4, above_streak=30)       # capped: an unbroken hour would be above_hour
+    assert frenzy_long_status(e, 1.5, 50e6, TH)[2] == "back above its average (+0.4%) · 11 of 12 closes"
+    e = dict(in_state=False, above_hour=False, vs_vwap_pct=-0.004, above_streak=0)
+    assert frenzy_long_status(e, 1.5, 50e6, TH)[2] == "below its average price (-0.00%)"           # just under the line: the sign stays
     fresh = [k for k in range(34, 61) if (frenzy_walk(b[:320 + 1 + k], NORM, TH) or {}).get("fresh_on")]
     assert fresh == [44]                                   # 3 dip bars (30–32) + 12 closes back above → ON again at bar 44, once
 
@@ -63,6 +77,7 @@ def test_setup_needs_an_hour_above_the_average_price_and_re_arms_after_an_hour_o
 def test_volume_and_atr_gates_and_the_24h_floor():
     ep = frenzy_walk(_bars(after=24, run_vol=50_000.0), NORM, TH)         # 60× normal: flagged, setup off
     assert frenzy_flagged(ep, TH) and not ep["in_state"] and frenzy_long_status(ep, 1.5, 50e6, TH)[1] == "FRENZY_VOL_FADED"
+    assert frenzy_long_status(ep, 1.5, 50e6, TH)[2].startswith("held above 1 h · volume ")
     ep = frenzy_walk(_bars(after=24), NORM, TH)
     assert frenzy_long_status(ep, 2.01, 50e6, TH)[1] == "FRENZY_ATR_HIGH" and frenzy_long_status(ep, None, 50e6, TH)[1] == "FRENZY_ATR_HIGH"
     assert frenzy_long_status(ep, 2.0, 50e6, TH)[0] is True

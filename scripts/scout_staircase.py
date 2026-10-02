@@ -43,6 +43,7 @@ def staircase_state(d, norm_hour):
             continue                                                   # inside the previous episode
         pv = (h[on:] + l[on:] + c[on:]) / 3 * q[on:]; vw = np.cumsum(pv) / np.maximum(np.cumsum(q[on:]), 1e-12)
         above = pd.Series(c[on:] >= vw).rolling(12).min().fillna(0).values >= 1          # every close of the last hour ≥ VWAP
+        up = (c[on:] >= vw)[::-1]; streak = int(up.argmin()) if not up.all() else len(up)   # closes in a row ≥ VWAP, ending now
         with np.errstate(invalid="ignore"):
             state = above & (volx[on:] >= STATE_VOLX) & (np.arange(n - on) >= STATE_BARS)
         last = on; end = None
@@ -54,7 +55,7 @@ def staircase_state(d, norm_hour):
         if end is not None:
             i = end; continue
         return dict(onset_ts=int(t[on]), base=float(c[on - 6]), price=float(c[-1]), vwap=float(vw[-1]),
-                    hours=float((t[-1] - t[on]) / 3600_000.0), volx=float(volx[-1]), above_hour=bool(above[-1]),
+                    hours=float((t[-1] - t[on]) / 3600_000.0), volx=float(volx[-1]), above_hour=bool(above[-1]), above_streak=streak,
                     above_share=float((c[on:] >= vw).mean()), in_state=bool(state[-1]),
                     onset_verified=bool(t[on] - t[0] >= GAP_MS + 12 * BAR))
     return None
@@ -114,7 +115,9 @@ def lines(result):
           "| Pair | State | Spike (UTC) | Hours since | Gain since spike | Price vs average | Average price | Last-hour volume | Closes above average | 24 h |",
           "|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
-        st = (("★ ON" if r["volx"] >= TESTED_VOLX else "ON") + (" · ⏳" if r["hours"] >= LATE_HOURS else "")) if r["in_state"] else ("above, volume fading" if r["above_hour"] else "below average")
+        st = ((("★ ON" if r["volx"] >= TESTED_VOLX else "ON") + (" · ⏳" if r["hours"] >= LATE_HOURS else "")) if r["in_state"]
+              else ("above for the hour, volume fading" if r["volx"] < STATE_VOLX else "above for the hour, < 2 h since the spike") if r["above_hour"]
+              else f"back above, {min(r.get('above_streak') or 0, 11)} of 12 closes" if r["price"] >= r["vwap"] and (r.get("above_streak") or 0) > 0 else "below average")
         L.append(f"| {r['pair']} | {st} | {pd.Timestamp(r['onset_ts'] + BAR, unit='ms'):%m-%d %H:%M} | {r['hours']:.1f} | {(r['price'] / r['base'] - 1) * 100:+.0f}% | "
                  f"{(r['price'] / r['vwap'] - 1) * 100:+.1f}% | {r['vwap']:.6g} | {r['volx']:.0f}× | {r['above_share'] * 100:.0f}% | {r['chg24']:+.0f}% |")
     return L

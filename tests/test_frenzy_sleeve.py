@@ -254,7 +254,7 @@ def test_exit_through_the_engine_intercept_and_the_late_entry_guard():
     assert M.FrenzyFlag.__tablename__ == "frenzy_flags"
 
 
-def test_pair_day_cap_counts_todays_frenzy_fills_only():
+def test_pair_day_cap_counts_todays_frenzy_fills_only(monkeypatch):
     """Behavioural (DECISION_LOG 177): three FRENZY_LONG fills on the pair today refuse the next setup; yesterday's fills, other
     pairs, other strategies and cap 0 do not."""
     import asyncio, datetime as dt, time
@@ -266,6 +266,7 @@ def test_pair_day_cap_counts_todays_frenzy_fills_only():
     if (bar_dt - day0).total_seconds() < 900:
         return   # too close to UTC midnight to seat three earlier fills inside the day
     th = C.trading_config.thresholds
+    monkeypatch.setattr(TE, "FRENZY_ENTRY_MAX_LATE_S", 10**6)   # the late-entry guard is not under test (the wall clock is mid-bar)
 
     async def run(rows, cap):
         eng = create_async_engine("sqlite+aiosqlite:///:memory:")

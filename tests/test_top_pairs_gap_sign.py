@@ -69,3 +69,19 @@ def test_top_pairs_stack_is_judged_on_raw_emas():
     assert by["PEPEUSDT"]["ema_stack"] == "BULL" and by["NEARUSDT"]["ema_stack"] is None and by["BONKUSDT"]["ema_stack"] == "BEAR"
     ui = open(os.path.join(root, "templates", "index.html"), encoding="utf-8").read()
     assert "p.ema_stack === 'BULL'" in ui and "p.ema_stack === 'BEAR'" in ui
+
+
+def test_top_pairs_emas_keep_their_digits_on_cheap_pairs():
+    """Oct-2: the EMAs were rounded to 2 decimals, so SAND (0.0634) showed 0.06000 in all four EMA columns."""
+    import os, sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.insert(0, root)
+    os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./_x.db")
+    import main
+    f = main._ema_px
+    assert (f(0.0633512345), f(0.0634987), f(0.14931234), f(2.2031449), f(89.5612349)) == (0.0633512, 0.0634987, 0.149312, 2.20314, 89.5612)
+    assert f(85257.789) == 85257.79 and f(1368.744) == 1368.74 and f(120.036) == 120.04      # from $100 up: 2 decimals, as before
+    assert f(None) is None and f(0) is None and f("x") is None and f(float("nan")) is None and f(float("inf")) is None
+    assert '"ema5": _ema_px(p.ema5), "ema8": _ema_px(p.ema8)' in open(os.path.join(root, "main.py"), encoding="utf-8").read()
+    assert '"ema5": _ema_px(_e5), "ema8": _ema_px(_e8)' in open(os.path.join(root, "main.py"), encoding="utf-8").read()
+    src = open(os.path.join(root, "main.py"), encoding="utf-8").read()
+    assert "round(p.ema5, 2)" not in src and src.count("_ema_px(") >= 9                         # both row builders (scan rows + FRENZY-only rows)

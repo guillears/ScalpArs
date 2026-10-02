@@ -1214,6 +1214,20 @@ async def manual_bnb_sell(data: dict, db: AsyncSession = Depends(get_db)):
 
 # ----- Market Data -----
 
+def _ema_px(v):
+    """An EMA for the Top Pairs table, rounded like a PRICE: 2 decimals from $100 up, else 6 significant digits. (A flat 2 decimals
+    turned every EMA of a sub-$1 pair into the same number — SAND 0.06000 ×4, Oct-2; the page then shows 4 significant digits.)"""
+    try:
+        if not v:
+            return None
+        v = float(v)
+        if v != v or v in (float("inf"), float("-inf")):   # NaN / inf would fail the JSON encoding of the whole response
+            return None
+        return round(v, 2) if abs(v) >= 100 else float(f"{v:.6g}")
+    except (TypeError, ValueError):
+        return None
+
+
 @app.get("/api/pairs")
 async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
     """Get top pairs with indicators.
@@ -1317,13 +1331,10 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
         pairs_data.append({
             "pair": p.pair,
             "price": display_price,
-            "ema5": round(p.ema5, 2) if p.ema5 else None,
-            "ema8": round(p.ema8, 2) if p.ema8 else None,
-            "ema13": round(p.ema13, 2) if p.ema13 else None,
-            "ema20": round(p.ema20, 2) if p.ema20 else None,
+            "ema5": _ema_px(p.ema5), "ema8": _ema_px(p.ema8), "ema13": _ema_px(p.ema13), "ema20": _ema_px(p.ema20),
             "gap": gap,
             "gap_5_8": gap_5_8,
-            # Sep-30: the EMA stack judged on the RAW EMAs (the ema5..ema20 fields above are rounded to 2 decimals, so on pairs
+            # Sep-30: the EMA stack judged on the RAW EMAs (the ema5..ema20 fields above are rounded for display, so on pairs
             # priced under ~$1 a real stack could tie and read as unstacked in the table)
             "ema_stack": ("BULL" if (p.ema5 and p.ema8 and p.ema13 and p.ema20 and p.ema5 > p.ema8 > p.ema13 > p.ema20)
                           else "BEAR" if (p.ema5 and p.ema8 and p.ema13 and p.ema20 and p.ema5 < p.ema8 < p.ema13 < p.ema20)
@@ -1362,8 +1373,7 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
         _mc = _mcap_get(_k)
         pairs_data.append({
             "pair": _k, "price": _px,
-            "ema5": round(_e5, 2) if _e5 else None, "ema8": round(_e8, 2) if _e8 else None,
-            "ema13": round(_e13, 2) if _e13 else None, "ema20": round(_e20, 2) if _e20 else None,
+            "ema5": _ema_px(_e5), "ema8": _ema_px(_e8), "ema13": _ema_px(_e13), "ema20": _ema_px(_e20),
             "gap": (round((_e5 - _e20) / _f['price'] * 100, 4) if (_e5 and _e20 and _f.get('price')) else None),
             "gap_5_8": (round((_e5 - _e8) / _e8 * 100, 4) if (_e5 and _e8) else None),
             "ema_stack": ("BULL" if (_e5 and _e8 and _e13 and _e20 and _e5 > _e8 > _e13 > _e20)

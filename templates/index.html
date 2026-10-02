@@ -307,7 +307,7 @@
             <!-- 🖐 Sep-29 MANUAL sleeve: operator-opened position (bypasses every entry gate; own label MANUAL; own exit mode) -->
             <div class="glass rounded-xl p-4 mb-4" id="manual-entry-panel">
                 <div class="flex flex-wrap items-end gap-3 text-xs">
-                    <button type="button" id="manual-entry-toggle" onclick="toggleManualPanel()" class="text-sm font-semibold text-amber-300 mr-2 hover:text-amber-200 select-none" title="Opens a position NOW at market, bypassing every entry gate and cell multiplier. Labelled MANUAL — never counted in any systematic sleeve. SL/TP are % of price move NET of fees (leverage-invariant, the same pnl every exit uses): 1.5 ≈ −1.4% raw price ≈ −30% of margin at 20×. MAX_HOLD still applies as the universal safety net. The widest stop allowed is leverage-aware: the tighter of the config floor and 80% of the liquidation distance (100/leverage minus 0.5% maintenance margin) — with the default floor: 20× → −3.0%, 30× → −2.3%, 50× → −1.2%, 100× → −0.4%. Paper mode only. Click to collapse / expand.">🖐 Manual entry <span id="manual-entry-chevron" class="text-gray-500">▸</span></button>
+                    <button type="button" id="manual-entry-toggle" onclick="toggleManualPanel()" class="text-sm font-semibold text-amber-300 mr-2 hover:text-amber-200 select-none" title="Opens a position NOW at market, bypassing every entry gate and cell multiplier. Labelled MANUAL — never counted in any systematic sleeve. SL/TP are % of price move NET of fees (leverage-invariant, the same pnl every exit uses): 1.5 ≈ −1.4% raw price ≈ −30% of margin at 20×. MAX_HOLD still applies as the universal safety net. The widest stop allowed is leverage-aware: the tighter of the config floor and 80% of the liquidation distance (100/leverage minus 0.5% maintenance margin) — with the default floor: 20× → −3.0%, 30× → −2.3%, 50× → −1.2%, 100× → −0.4%. Works in paper and in LIVE (live: a real market order + an exchange safety stop; needs the broker backstop on and whole-number leverage). Click to collapse / expand.">🖐 Manual entry <span id="manual-entry-chevron" class="text-gray-500">▸</span></button>
                     <div id="manual-entry-body" class="hidden">
                     <label class="flex flex-col text-gray-400">Pair<input id="manual-pair" type="text" list="manual-pair-list" placeholder="DOGEUSDT" autocomplete="off" oninput="manualPairHint()" class="w-32 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><datalist id="manual-pair-list"></datalist></label>
                     <label class="flex flex-col text-gray-400">Side<select id="manual-direction" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
@@ -5125,7 +5125,7 @@
                                 <thead><tr class="text-gray-500 text-xs"><th class="text-right pr-4 font-normal">Leverage</th><th class="text-right pr-4 font-normal">Liquidation ≈</th><th class="text-right pr-4 font-normal">Widest stop</th><th class="text-right font-normal">Loss of margin at that stop (fees incl.)</th></tr></thead>
                                 <tbody id="manual-stop-table"></tbody>
                             </table>
-                            <p class="text-xs text-gray-500 mt-1">A manual position's stop can never be wider than 80% of the distance to liquidation (≈ 100 ÷ leverage − 0.5% maintenance allowance), nor wider than the Manual floor stop setting (<span id="manual-stop-table-floor">−3.00</span>% — the table follows the field as you type; the engine uses the saved value). Checked when the position opens: <b>Floor</b> mode uses this stop · <b>Custom SL/TP</b> refuses a wider typed stop (table values are rounded toward the safe side by up to 0.01) · <b>Momentum</b> mode keeps its own tighter stops and is refused at leverages where they would exceed this limit. Stops are % of price net of fees, so they fire slightly earlier in raw price. Liquidation is an estimate (exchange maintenance tiers vary with size; paper does not simulate liquidation; slippage past the stop is not included). Manual entry is paper-only for now.</p>
+                            <p class="text-xs text-gray-500 mt-1">A manual position's stop can never be wider than 80% of the distance to liquidation (≈ 100 ÷ leverage − 0.5% maintenance allowance), nor wider than the Manual floor stop setting (<span id="manual-stop-table-floor">−3.00</span>% — the table follows the field as you type; the engine uses the saved value). Checked when the position opens: <b>Floor</b> mode uses this stop · <b>Custom SL/TP</b> refuses a wider typed stop (table values are rounded toward the safe side by up to 0.01) · <b>Momentum</b> mode keeps its own tighter stops and is refused at leverages where they would exceed this limit. Stops are % of price net of fees, so they fire slightly earlier in raw price. Liquidation is an estimate (exchange maintenance tiers vary with size; paper does not simulate liquidation; slippage past the stop is not included). In live the exchange safety stop sits beyond the trade's own stop (own stop + 0.5 %, never past 92 % of the liquidation distance) and a stop too close to it is refused.</p>
                         </div>
                     </div>
                 <!-- BNB Fee Management -->
@@ -9713,7 +9713,8 @@
                 if (ordCountEl && data.open_orders_count != null) {
                     ordCountEl.textContent = `Open Positions: ${data.open_orders_count}` + (data.manual_open_count ? ` (+${data.manual_open_count} manual)` : '');
                 }
-                { const _mp = document.getElementById('manual-entry-panel'); if (_mp && data.manual_max_open_positions != null) _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0 || data.is_paper === false); }   // 🖐 cap 0 = manual entry off
+                window._lastStatusIsPaper = data.is_paper;   // read by the manual-entry confirmation (LIVE warning)
+                { const _mp = document.getElementById('manual-entry-panel'); if (_mp && data.manual_max_open_positions != null) _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0); }   // 🖐 cap 0 = manual entry off (shown in paper AND live since Oct-2)
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
                 {   // Oct-1 (operator): white at the starting balance (or when it is unknown), green above it, red below it
                     const _tp = document.getElementById('total-portfolio');
@@ -20616,7 +20617,8 @@
             if (!(body.investment > 0)) { showToast('Size must be > 0', 'error'); return; }
             if (body.exit_mode === 'FIXED' && !(body.sl_pct > 0)) { showToast('Custom mode needs a stop loss %', 'error'); return; }
             // Oct-1 (operator): the same in-page confirmation as Close, next to the Open button (browser confirm() opens at the top)
-            const _ob = g('manual-open-btn'); const _omsg = `Open ${body.direction} ${body.pair} $${body.investment} × ${body.leverage} (${body.exit_mode}${body.exit_mode === 'FIXED' ? ` SL ${body.sl_pct}%${body.tp_pct ? ' TP ' + body.tp_pct + '%' : ''}` : body.exit_mode === 'FLOOR' ? ` floor stop${body.tp_pct ? ' · TP ' + body.tp_pct + '%' : ' · no TP'}` : ''}) at market?`;
+            const _liveNow = (window._lastStatusIsPaper === false);
+            const _ob = g('manual-open-btn'); const _omsg = `${_liveNow ? '🔴 LIVE — REAL MONEY · ' : ''}Open ${body.direction} ${body.pair} $${body.investment} × ${body.leverage} (${body.exit_mode}${body.exit_mode === 'FIXED' ? ` SL ${body.sl_pct}%${body.tp_pct ? ' TP ' + body.tp_pct + '%' : ''}` : body.exit_mode === 'FLOOR' ? ` floor stop${body.tp_pct ? ' · TP ' + body.tp_pct + '%' : ' · no TP'}` : ''}) at market?`;
             if (!((_ob && _ob.getBoundingClientRect) ? await confirmNear(_ob, _omsg, 'Open', 'px-3 py-1 bg-amber-500/30 hover:bg-amber-500/50 text-amber-100 rounded text-xs font-semibold') : confirm(_omsg))) return;
             const btn = g('manual-open-btn'); if (btn) btn.disabled = true;
             try {
@@ -20629,7 +20631,7 @@
                     showToast(data.detail || 'Manual open failed', 'error');
                 }
             } catch (e) {
-                showToast('Manual open failed: ' + e, 'error');
+                showToast((window._lastStatusIsPaper === false ? '⚠ No answer from the server — in LIVE the order may have been placed: check Open Positions and Binance before retrying. ' : 'Manual open failed: ') + e, 'error');
             } finally { if (btn) btn.disabled = false; }
         }
 

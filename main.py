@@ -2420,6 +2420,9 @@ async def _reconcile_per_symbol(db: AsyncSession) -> list:
     return await _close_orphan_orders(db, still_open_pairs)
 
 
+RECONCILE_MIN_ORDER_AGE_SECONDS = 60   # a just-opened row is never closed as EXTERNAL on a snapshot that may predate its fill
+
+
 async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
     """Close DB orders whose pair is not in binance_pairs (not open on Binance).
 
@@ -2434,6 +2437,15 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
     closed = []
     for order in open_orders:
         if order.pair not in binance_pairs:
+            # Oct-2 (review of the live manual entry): the positions snapshot can predate a fill whose row is already committed —
+            # closing that row as EXTERNAL and cancelling its safety stop would leave a real position naked and unknown. A row
+            # younger than a minute is never judged; a genuine external close is picked up on the next pass.
+            try:
+                if order.opened_at is not None and 0 <= (datetime.utcnow() - order.opened_at.replace(tzinfo=None)).total_seconds() < RECONCILE_MIN_ORDER_AGE_SECONDS:
+                    logger.info(f"[RECONCILE_SKIP] {order.pair} {order.direction}: opened < {RECONCILE_MIN_ORDER_AGE_SECONDS}s ago — not judged against an older snapshot")
+                    continue
+            except Exception:
+                pass
             # Reconciler race guard: the bot publishes closing_in_progress=True
             # + close_initiated_at=NOW() before calling Binance.  If the flag is
             # fresh, skip — the bot's own close path is in flight and will

@@ -67,6 +67,7 @@ async def _insert_open_order(session: AsyncSession, **overrides) -> Order:
         is_paper=False,
         closing_in_progress=False,
         close_initiated_at=None,
+        opened_at=datetime.utcnow() - timedelta(minutes=10),   # Oct-2: a row younger than a minute is never judged (see the last test)
     )
     for k, v in overrides.items():
         setattr(order, k, v)
@@ -203,13 +204,32 @@ async def test_fresh_intent_without_timestamp_is_reconciled():
     print("  [OK] flag set but timestamp NULL — falls through to reconcile (safety)")
 
 
+async def test_just_opened_row_is_not_judged():
+    """Oct-2 (live manual entry review): the positions snapshot can predate a fill whose row is already committed — a row
+    younger than RECONCILE_MIN_ORDER_AGE_SECONDS is never closed as EXTERNAL (its safety stop would be cancelled too)."""
+    engine, SessionLocal = await _setup_db()
+    async with SessionLocal() as s:
+        order = await _insert_open_order(s, opened_at=datetime.utcnow() - timedelta(seconds=5))
+        oid = order.id
+    async with SessionLocal() as s:
+        closed = await _run_reconcile(s)
+        assert len(closed) == 0, f"a 5-second-old row must not be reconciled, got {len(closed)}"
+    async with SessionLocal() as s:
+        after = await _fetch_status(s, oid)
+        assert after.status == "OPEN"
+    assert main.RECONCILE_MIN_ORDER_AGE_SECONDS == 60
+    await engine.dispose()
+    print("  [OK] a just-opened row is not judged against an older snapshot")
+
+
 async def main_test():
     print("Running reconciler race guard tests...\n")
     await test_baseline_no_guard_marks_external_close()
     await test_fresh_intent_is_skipped()
     await test_stale_intent_is_reconciled()
     await test_fresh_intent_without_timestamp_is_reconciled()
-    print("\nAll 4 reconciler race guard tests passed.")
+    await test_just_opened_row_is_not_judged()
+    print("\nAll 5 reconciler race guard tests passed.")
 
 
 if __name__ == "__main__":

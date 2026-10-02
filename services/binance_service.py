@@ -883,9 +883,11 @@ class BinanceService:
         side: str,  # 'buy' or 'sell'
         amount: float,
         leverage: int = 1,
-        is_close: bool = False
+        is_close: bool = False,
+        status: Optional[Dict] = None,
     ) -> Optional[Dict]:
-        """Create a market order"""
+        """Create a market order. `status` (optional dict): status['sent'] is set True right before the order request leaves, so
+        a caller that gets None back can tell "never sent" (refused before the request) from "sent, outcome unknown"."""
         try:
             await self._check_ban()  # Aug-24 M3: private calls respect an active IP ban (close_position delegates here too)
             await self.load_markets()
@@ -923,6 +925,8 @@ class BinanceService:
                 logger.warning(f"[MIN_NOTIONAL_CHECK] {symbol}: pre-check failed ({_m5e}) — proceeding (exchange will validate)")
             # reduceOnly prevents position flip on close orders
             params = {'reduceOnly': True} if is_close else {}
+            if status is not None:
+                status['sent'] = True
             order = await self.exchange.create_order(
                 symbol=symbol,
                 type='market',
@@ -934,6 +938,7 @@ class BinanceService:
             # Aug-24 LIVE M2 fix: a market-order ACK can lack average/price → a 0 used to stamp through and the
             # realtime SL then SKIPS the position (entry_price<=0 guard) = live position with NO stop (GRASS incident).
             _px = float(order.get('average') or order.get('price') or 0)
+            _filled_ref = None   # the filled size from a refetch (the first ACK often reports 0 before the fill is in)
             if _px <= 0:
                 # Aug-25: RETRY the refetch (3x, 0.4s apart) — the single instant refetch kept
                 # finding avgPrice still 0 (fill not yet reported) and control fell through to
@@ -945,6 +950,8 @@ class BinanceService:
                             await asyncio.sleep(0.4)
                         _ref = await self.exchange.fetch_order(order['id'], symbol)
                         _px = float((_ref or {}).get('average') or (_ref or {}).get('price') or 0)
+                        if (_ref or {}).get('filled'):
+                            _filled_ref = _ref.get('filled')
                         if _px > 0:
                             break
                     except Exception as _re:
@@ -963,6 +970,7 @@ class BinanceService:
                 'symbol': symbol,
                 'side': side,
                 'amount': float(order.get('amount') or amount),
+                'filled': float(_filled_ref or order.get('filled') or 0),   # 0 = not reported (callers fall back to 'amount')
                 'price': _px,
                 'cost': float(order.get('cost') or 0),
                 'fee': float((order.get('fee') or {}).get('cost') or 0),

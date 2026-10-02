@@ -418,6 +418,58 @@ def manual_liquidation_distance_pct(leverage) -> float:
     return max(0.0, 100.0 / float(leverage) - MANUAL_MAINT_MARGIN_PCT)
 
 
+MANUAL_BACKSTOP_MARGIN_PCT = 0.5    # a manual trade's exchange safety stop sits this far beyond its own stop (price %)
+MANUAL_BACKSTOP_MIN_GAP_PCT = 0.3   # … and never closer than this to it (else the exchange would fire first) → the open is refused
+MANUAL_FILL_POLL_S = 1.0            # live: after an order call that errored AFTER it was sent, re-read Binance's positions 4× this far apart
+MANUAL_BACKSTOP_LIQ_SHARE = 0.92    # … and never beyond this share of the distance to liquidation (it must fire before liquidation)
+
+
+def manual_own_stop_pct(th, exit_mode, fixed_sl_pct):
+    """The stop a MANUAL trade carries by itself, as a positive % (None = the momentum stack's stops, all inside the bot's own
+    backstop): FIXED / FLOOR → the stored SL · FRENZY → frenzy_stop_pct (0 / missing = 3, as the exit reads it)."""
+    try:
+        m = (exit_mode or "FIXED").upper()
+        if m == "FRENZY":
+            return abs(float(getattr(th, 'frenzy_stop_pct', 3.0) or 3.0)) or 3.0
+        if m in ("FIXED", "FLOOR") and fixed_sl_pct is not None:
+            return abs(float(fixed_sl_pct))
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def order_backstop_pct(th, entry_strategy, manual_exit_mode=None, fixed_sl_pct=None, leverage=None) -> float:
+    """🛡 Distance (price %, positive) of the resting exchange safety stop for an order. Every bot trade: broker_backstop_pct.
+    A MANUAL trade (live, Oct-2): its stops may be wider than that (Floor / Frenzy −3 %), so the safety stop moves to its own stop
+    + MANUAL_BACKSTOP_MARGIN_PCT, never beyond MANUAL_BACKSTOP_LIQ_SHARE of the liquidation distance at its leverage (a safety stop
+    past liquidation never fires). Pure; any bad input → the bot's distance. One function for the open, the re-place after a failed
+    close and the per-scan sweep, so the three can never disagree."""
+    try:
+        base = float(getattr(th, 'broker_backstop_pct', 2.5) or 2.5)
+    except (TypeError, ValueError):
+        base = 2.5
+    if (entry_strategy or "") != "MANUAL":
+        return base
+    try:
+        own = manual_own_stop_pct(th, manual_exit_mode, fixed_sl_pct)
+        want = base if own is None else max(base, own + MANUAL_BACKSTOP_MARGIN_PCT)
+        lev = float(leverage)
+        if lev >= 1.0:
+            cap = manual_liquidation_distance_pct(lev) * MANUAL_BACKSTOP_LIQ_SHARE
+            if cap > 0:
+                want = min(want, cap)
+        return round(want, 4)
+    except (TypeError, ValueError):
+        return base
+
+
+def manual_backstop_stop_floor(is_paper, th, exit_mode, fixed_sl_pct, leverage):
+    """The deepest stop a MANUAL trade's own exit may use in LIVE: just inside ITS resting exchange safety stop. None in paper / backstop off."""
+    if is_paper or not bool(getattr(th, 'broker_backstop_enabled', False)):
+        return None
+    return -(order_backstop_pct(th, "MANUAL", exit_mode, fixed_sl_pct, leverage) - MANUAL_BACKSTOP_MIN_GAP_PCT)
+
+
 def manual_floor_for_leverage(th, leverage) -> float:
     """🖐 Widest stop (price-move %, negative) a MANUAL position may carry at this leverage: the TIGHTER of the configured floor
     (manual_floor_sl_pct) and 80 % of the liquidation distance (100/leverage − maintenance margin). 20× → −3.0 (config binds;
@@ -9898,9 +9950,14 @@ class TradingEngine:
         never allowed). Own slot lane: counts only against manual_max_open_positions, never against the bot's max_open_positions
         (and the bot's count excludes MANUAL rows). SL/TP are price-move % NET of the round-trip fees (leverage-invariant — the same pnl convention every
         exit uses, so "SL 1.5" fires at ≈ −1.4 % raw price). MAX_HOLD
-        (the universal safety net, as for BULLRUN) still applies to every mode. PAPER-ONLY until the broker backstop / partial-
-        fill truth of open_position is factored into a shared helper (caveman review) — live mode is refused, never silently
-        stop-less. Raises ValueError with a readable message on bad input."""
+        (the universal safety net, as for BULLRUN) still applies to every mode.
+        LIVE (Oct-2, DECISION_LOG 181): the same flow with a real market order. Order of operations is the safety design —
+        every validation, the slow entry stamps and the final book-locked checks run BEFORE the order is sent, so nothing can refuse
+        the trade after it filled; an exchange position the bot does not know on that pair refuses the open; the resting exchange
+        safety stop is placed at the fill (order_backstop_pct: beyond the trade's own stop, inside liquidation; the per-scan sweep
+        heals a failed placement) and a stop too close to it is refused up front; a fill that cannot be booked is closed again at
+        market, and the operator is told exactly what is (not) open. Needs the broker backstop switched on and whole-number leverage.
+        Raises ValueError with a readable message on bad input."""
         pair = normalize_manual_pair(pair)
         direction = (direction or "").upper().strip()
         if direction not in ("LONG", "SHORT"):
@@ -9916,9 +9973,13 @@ class TradingEngine:
             raise ValueError("size must be > 0")
         if not (1.0 <= leverage <= 125.0):
             raise ValueError("leverage must be between 1 and 125")
-        if not self.is_paper_mode:
-            raise ValueError("manual entry is paper-only for now (live needs the broker backstop wired — see docstring)")
         th = config.trading_config.thresholds
+        _live = not self.is_paper_mode
+        if _live:
+            if not float(leverage).is_integer():
+                raise ValueError("in live mode the leverage must be a whole number (the exchange accepts no fractions)")
+            if not bool(getattr(th, 'broker_backstop_enabled', False)):
+                raise ValueError("manual entry in live mode needs the exchange safety stop (broker backstop) switched on")
         floor = manual_floor_for_leverage(th, leverage)   # leverage-aware: never wider than 80 % of the liquidation distance
         sl = tp = None
         if exit_mode == "FIXED":
@@ -9942,6 +10003,15 @@ class TradingEngine:
             tp = abs(float(tp_pct))
             if not (math.isfinite(tp) and tp > 0):
                 raise ValueError("take profit must be > 0")
+        if _live:   # the exchange safety stop must sit BEYOND the trade's own stop, or the exchange closes it first
+            _bkp = order_backstop_pct(th, "MANUAL", exit_mode, sl, leverage)
+            _own = manual_own_stop_pct(th, exit_mode, sl)
+            if exit_mode == "MOMENTUM":   # the stack's widest stop (ATR-widened stop / flagged-trade backstop)
+                _own = max(abs(float(getattr(th, 'sl_atr_widen_floor_pct', -1.2) or -1.2)), abs(float(getattr(th, 'fl1_wide_sl_backstop', -1.2) or -1.2)))
+            if _own is not None and _own + MANUAL_BACKSTOP_MIN_GAP_PCT > _bkp + 1e-9:
+                raise ValueError(f"at {leverage:g}× the exchange safety stop can sit at most {_bkp:.2f}% from the entry (liquidation ≈ "
+                                 f"−{manual_liquidation_distance_pct(leverage):.2f}%), too close to this trade's own stop ({_own:.2f}%) — "
+                                 f"lower the leverage or use a tighter stop")
         _dup = await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.pair == pair, Order.is_paper == self.is_paper_mode)))
         if (_dup.scalar() or 0) > 0:
             raise ValueError(f"{pair} already has an open position")
@@ -10020,18 +10090,29 @@ class TradingEngine:
         tc = config.trading_config
         taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
         notional_value = investment * leverage
-        quantity = notional_value / price
-        binance_order_id = None
-        if self.is_paper_mode:
-            actual_price = float(price)
-        else:
-            result = await binance_service.create_market_order(symbol=symbol, side=("buy" if direction == "LONG" else "sell"), amount=quantity, leverage=int(leverage))
-            if not result:
-                raise RuntimeError("exchange market order failed")
-            binance_order_id = result['id']; actual_price = float(result['price']); quantity = float(result.get('amount', quantity))
-        entry_fee = actual_price * quantity * taker_fee_rate
+        binance_order_id = None; _bk_algo_id = None
         _clicked_at = datetime.utcnow()
-        _st = await self._manual_entry_stamps(pair, symbol, direction, actual_price)   # 📐 every stamp a momentum fill records (≤ 8 s)
+        # 📐 every stamp a momentum fill records (≤ 8 s of exchange reads) — taken BEFORE any order: in live nothing slow may sit
+        # between the fill and the booked, stop-protected row. (Paper fills at this same price, so the stamps are unchanged.)
+        _st = await self._manual_entry_stamps(pair, symbol, direction, float(price))
+        if _live:   # the click price is up to 8 s old by now: size the real order off a fresh one
+            _px2 = None
+            try:
+                _trk2 = websocket_tracker.get_tracker(pair); _sil2 = websocket_tracker.pair_silence_seconds(pair)
+                if _trk2 is not None and _trk2.last_price and _trk2.last_price > 0 and _sil2 is not None and _sil2 <= 5.0:
+                    _px2 = float(_trk2.last_price)
+            except Exception:
+                _px2 = None
+            if _px2 is None:
+                try:
+                    _px2 = await binance_service.get_current_price(symbol)
+                except Exception:
+                    _px2 = None
+            if _px2 and _px2 > 0:
+                price = float(_px2)
+        quantity = notional_value / price
+        actual_price = float(price)
+        entry_fee = actual_price * quantity * taker_fee_rate
         # 🔒 book lock (all pairs): the final pair / cap / balance checks → insert → commit run one open at a time, so two clicks
         # (or a click and a bot open) on DIFFERENT pairs cannot both pass "slots left?" / "money left?" before either row exists
         _book_release = await self._book_hold(10.0)   # held only for milliseconds by others; keeps the click inside the browser timeout
@@ -10048,34 +10129,155 @@ class TradingEngine:
         if investment + _fee_from_usdt > _avail_final:   # the entry fee the BNB reserve cannot cover is paid from USDT too
             raise ValueError(f"size ${investment:,.2f}" + (f" (+ ${_fee_from_usdt:,.2f} fee not covered by BNB)" if _fee_from_usdt > 0 else "")
                              + f" exceeds the available balance ${_avail_final:,.2f} after the bot's last open — not opened")
-        order = Order(
-            pair=pair, direction=direction, status="OPEN", entry_price=actual_price, investment=investment, leverage=leverage,
-            notional_value=notional_value, quantity=quantity, confidence="STRONG_BUY", entry_strategy="MANUAL",
-            cell_multiplier=1.0, cell_lev_multiplier=1.0, cell_multiplier_source=None,   # plain sizing; entry_strategy is the label
-            entry_bracket_max_leverage=_brk_max_lev, entry_bracket_cap_notional=_brk_cap, bracket_capped=False,   # 🪜 Oct-1 (a manual order over the limit is refused)
-            pattern_fixed_tp_pct=tp, pattern_fixed_sl_pct=sl, manual_exit_mode=exit_mode, manual_note=((note or "").strip()[:200] or None),
-            # the gate the operator traded through + the pair readings a systematic fill stamps (from the pair's last scan row)
-            manual_block_reason=(None if _gc['block_reason'] is None else str(_gc['block_reason'])[:60]),
-            manual_setup_rating=(str(_gc['rating'])[:15] if _gc['rating'] else None), manual_setup_side=_gc['side'],
-            # the Top Pairs row's readings at the click (manual_* columns, kept alongside the entry_* stamps below)
-            manual_pair_rsi=_gc['rsi'], manual_pair_adx=_gc['adx'], manual_gap_5_20=_gc['gap_5_20'], manual_gap_5_8=_gc['gap_5_8'],
-            manual_gap_8_13=_gc['gap_8_13'], manual_px_vs_ema5=_gc['px_vs_ema5'],
-            # same TP-ladder seed as open_position (current_tp_level 1 / target = confidence tp_min) — the UI derives its
-            # "armed" badge from dynamic_tp_target, so a NULL here painted 🛡 L1 on an unarmed trade (TAO, Sep-29)
-            current_tp_level=1, dynamic_tp_target=(float(getattr(config.trading_config.confidence_levels.get("STRONG_BUY"), 'tp_min', 0.4) or 0.4) if exit_mode == "MOMENTUM" else tp),
-            entry_fee=entry_fee, entry_order_type="TAKER", is_paper=self.is_paper_mode, opened_at=_clicked_at, binance_order_id=binance_order_id,
-            # 📐 Sep-29 (operator: "the manual buys should record everything that normal buys record"): the same entry_* stamps
-            # a momentum fill carries, same formulas (pair_entry_stamps / market_entry_stamps / monitor_entry_stamps). Manual
-            # fills stay out of every systematic read (entry_strategy = MANUAL) and their exits never see the entry ATR.
-            **_st,
-        )
-        db.add(order)
-        await db.flush()
-        db.add(Transaction(order_id=order.id, binance_order_id=binance_order_id, pair=pair, action=f"OPEN_{direction}", price=actual_price,
-                           quantity=quantity, investment=investment, leverage=leverage, notional_value=notional_value, fee=entry_fee,
-                           order_type="TAKER", is_paper=self.is_paper_mode))
-        await locked_commit(db)
-        await db.refresh(order)
+        _committed = False; _filled_live = False; _req_qty = quantity
+        if _live:
+            # 🔴 LIVE — the market order goes out only HERE: every check has passed and the book lock is held. From the fill on,
+            # nothing may leave this function without either a booked row or a flattened position.
+            _all = await binance_service.get_open_positions()   # None = the read FAILED (never taken as "no position")
+            if _all is None:
+                raise ValueError("could not read the open positions from Binance — the order was NOT sent; try again")
+            _pre = next((x for x in _all if x.get('symbol') == symbol), None)
+            if _pre:   # the DB has no open row for this pair (checked above) → an exchange position here is unknown to the bot
+                raise ValueError(f"Binance already holds a {_pre.get('side')} position on {pair} that the bot does not know — "
+                                 f"import or close it first (a second order would net against it)")
+            _sent = {}
+            try:
+                result = await binance_service.create_market_order(symbol=symbol, side=("buy" if direction == "LONG" else "sell"),
+                                                                   amount=quantity, leverage=int(leverage), status=_sent)
+            except BaseException as _oc_err:   # a task cancelled while the request is in flight: never silent
+                if _sent.get('sent'):
+                    logger.critical(f"[MANUAL_OPEN] {pair}: the {direction} order was SENT and the task was interrupted ({_oc_err!r}) before its "
+                                    f"outcome was read — CHECK BINANCE: a position may be open with no row (use Import positions)")
+                raise
+            if not result:
+                if not _sent.get('sent'):   # refused before the request left (leverage the exchange would not set, size under its minimum)
+                    raise ValueError(f"the order for {pair} was NOT sent: the exchange would not set {int(leverage)}× on this pair, or the size is "
+                                     f"under its minimum (see the server log). Nothing was opened")
+                # the request LEFT and its outcome is unknown (timeout / network error): a fill can take a moment to show — look for it
+                _pos = None
+                for _try in range(4):
+                    try:
+                        if _try:
+                            await asyncio.sleep(MANUAL_FILL_POLL_S)
+                        _after = await binance_service.get_open_positions()
+                    except asyncio.CancelledError:
+                        logger.critical(f"[MANUAL_OPEN] {pair}: the {direction} order was SENT, its outcome is unknown and the task was cancelled while "
+                                        f"looking for it — CHECK BINANCE: a position may be open with no row (use Import positions)")
+                        raise
+                    except Exception:
+                        _after = None
+                    if _after is None:
+                        continue
+                    _pos = next((x for x in _after if x.get('symbol') == symbol), None)
+                    if _pos:
+                        break
+                if _pos and _pos.get('side') == direction and float(_pos.get('contracts') or 0) > 0:
+                    logger.critical(f"[MANUAL_OPEN] {pair}: the order call reported an error but Binance shows a {direction} position of "
+                                    f"{_pos.get('contracts')} — booking it from the exchange's own figures")
+                    result = {'id': None, 'price': float(_pos.get('entry_price') or 0), 'amount': float(_pos.get('contracts') or 0)}
+                else:   # never "nothing opened" on a guess: the order may still land
+                    raise RuntimeError(f"⚠ the order for {pair} was sent but its outcome is unknown (the exchange call failed"
+                                       + (f" and Binance shows a {_pos.get('side')} position there" if _pos else " and no position is visible yet")
+                                       + f") — CHECK BINANCE NOW: if a {direction} position on {pair} is open, close it there or use Import positions")
+            _filled_live = True
+        try:
+            if _filled_live:
+                binance_order_id = result.get('id')
+                try:
+                    actual_price = float(result.get('price') or 0)
+                except (TypeError, ValueError):
+                    actual_price = 0.0
+                if actual_price <= 0:   # never book a 0 entry (a 0 entry has no stop): the stops then anchor on the click price
+                    logger.critical(f"[MANUAL_OPEN] {pair}: fill price unavailable — the entry is booked at the click price {price}")
+                    actual_price = float(price)
+                try:
+                    _fq = float(result.get('filled') or 0) or float(result.get('amount') or 0)
+                    if _fq > 0:
+                        quantity = _fq
+                except (TypeError, ValueError):
+                    pass
+                # the ACTUAL size (as the bot's own open books it): a market order can fill short on a thin book
+                _real_notional = float(actual_price) * float(quantity)
+                if float(quantity) < 0.995 * float(_req_qty):
+                    logger.warning(f"[PARTIAL_FILL] {pair} MANUAL: booking the actual size — qty {quantity}/{_req_qty}, notional {notional_value:,.2f} → {_real_notional:,.2f}")
+                notional_value = _real_notional
+                investment = _real_notional / leverage
+                entry_fee = actual_price * quantity * taker_fee_rate
+                _clicked_at = datetime.utcnow()   # live: the hold clock starts at the fill
+                try:   # 🛡 the resting exchange safety stop, at once (a failed placement is counted; the monitor's sweep heals it)
+                    _bk_pct = order_backstop_pct(th, "MANUAL", exit_mode, sl, leverage)
+                    _bk_trigger = actual_price * (1 - _bk_pct / 100.0) if direction == "LONG" else actual_price * (1 + _bk_pct / 100.0)
+                    _bk_algo_id = await binance_service.place_backstop_stop(pair, direction, _bk_trigger)
+                    if _bk_algo_id:
+                        logger.info(f"[BACKSTOP_PLACED] {pair} {direction} MANUAL: algoId={_bk_algo_id} trigger={_bk_trigger:.6g} ({_bk_pct}% from fill {actual_price})")
+                    else:
+                        logger.critical(f"[BACKSTOP_PLACE_FAILED] {pair} {direction} MANUAL: position runs on SOFTWARE stops until the sweep heals it")
+                        self._record_filter_block("BACKSTOP_PLACE_FAILED", direction)
+                except Exception as _bk_err:
+                    logger.critical(f"[BACKSTOP_PLACE_FAILED] {pair} {direction} MANUAL: {_bk_err}")
+            order = Order(
+                pair=pair, direction=direction, status="OPEN", entry_price=actual_price, investment=investment, leverage=leverage,
+                notional_value=notional_value, quantity=quantity, confidence="STRONG_BUY", entry_strategy="MANUAL",
+                cell_multiplier=1.0, cell_lev_multiplier=1.0, cell_multiplier_source=None,   # plain sizing; entry_strategy is the label
+                entry_bracket_max_leverage=_brk_max_lev, entry_bracket_cap_notional=_brk_cap, bracket_capped=False,   # 🪜 Oct-1 (a manual order over the limit is refused)
+                pattern_fixed_tp_pct=tp, pattern_fixed_sl_pct=sl, manual_exit_mode=exit_mode, manual_note=((note or "").strip()[:200] or None),
+                # the gate the operator traded through + the pair readings a systematic fill stamps (from the pair's last scan row)
+                manual_block_reason=(None if _gc['block_reason'] is None else str(_gc['block_reason'])[:60]),
+                manual_setup_rating=(str(_gc['rating'])[:15] if _gc['rating'] else None), manual_setup_side=_gc['side'],
+                # the Top Pairs row's readings at the click (manual_* columns, kept alongside the entry_* stamps below)
+                manual_pair_rsi=_gc['rsi'], manual_pair_adx=_gc['adx'], manual_gap_5_20=_gc['gap_5_20'], manual_gap_5_8=_gc['gap_5_8'],
+                manual_gap_8_13=_gc['gap_8_13'], manual_px_vs_ema5=_gc['px_vs_ema5'],
+                # same TP-ladder seed as open_position (current_tp_level 1 / target = confidence tp_min) — the UI derives its
+                # "armed" badge from dynamic_tp_target, so a NULL here painted 🛡 L1 on an unarmed trade (TAO, Sep-29)
+                current_tp_level=1, dynamic_tp_target=(float(getattr(config.trading_config.confidence_levels.get("STRONG_BUY"), 'tp_min', 0.4) or 0.4) if exit_mode == "MOMENTUM" else tp),
+                entry_fee=entry_fee, entry_order_type="TAKER", is_paper=self.is_paper_mode, opened_at=_clicked_at, binance_order_id=binance_order_id, backstop_algo_id=_bk_algo_id,
+                # 📐 Sep-29 (operator: "the manual buys should record everything that normal buys record"): the same entry_* stamps
+                # a momentum fill carries, same formulas (pair_entry_stamps / market_entry_stamps / monitor_entry_stamps). Manual
+                # fills stay out of every systematic read (entry_strategy = MANUAL) and their exits never see the entry ATR.
+                **_st,
+            )
+            db.add(order)
+            await db.flush()
+            db.add(Transaction(order_id=order.id, binance_order_id=binance_order_id, pair=pair, action=f"OPEN_{direction}", price=actual_price,
+                               quantity=quantity, investment=investment, leverage=leverage, notional_value=notional_value, fee=entry_fee,
+                               order_type="TAKER", is_paper=self.is_paper_mode))
+            await locked_commit(db)
+            _committed = True
+        except BaseException as _book_err:   # BaseException: a task cancelled mid-open (deploy / shutdown) must flatten too
+            if not _filled_live or _committed:
+                raise
+            # the order FILLED but the row could not be written: without a row there are no exits → close it again at market
+            logger.critical(f"[MANUAL_OPEN] {pair}: FILLED on Binance ({direction} {quantity}) but could not be booked ({_book_err!r}) — flattening")
+
+            async def _flatten():
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
+                _ok = None
+                try:
+                    _ok = await binance_service.close_position(symbol, direction, quantity)
+                    if _ok and _bk_algo_id:   # the safety stop stays in place when the close failed
+                        _c = await binance_service.cancel_backstop_stop(pair, _bk_algo_id)
+                        logger.warning(f"[MANUAL_OPEN] {pair}: flattened; safety stop algoId={_bk_algo_id} cancel ok={_c}")
+                except Exception as _fl_err:
+                    logger.critical(f"[MANUAL_OPEN] {pair}: flatten after a failed booking raised: {_fl_err}")
+                return _ok
+            try:
+                _flat = await asyncio.shield(_flatten())
+            except BaseException as _sh_err:
+                logger.critical(f"[MANUAL_OPEN] {pair}: flatten interrupted ({_sh_err!r}) — the position may still be open on Binance")
+                _flat = None
+            if not isinstance(_book_err, Exception):   # CancelledError / KeyboardInterrupt / SystemExit: flattened above, then let it through
+                raise
+            if _flat:
+                raise RuntimeError(f"the order filled on Binance but could not be recorded ({_book_err}); it was closed again at market — nothing is open")
+            raise RuntimeError(f"⚠ the order FILLED on Binance ({direction} {quantity:g} {pair}) but could not be recorded and could NOT be closed — "
+                               f"close it on Binance now, or use Import positions" + (" (its exchange safety stop is in place)" if _bk_algo_id else " (NO safety stop is in place)"))
+        try:   # the row is committed: a failed refresh must never undo a booked, protected position
+            await db.refresh(order)
+        except Exception as _rf_err:
+            logger.warning(f"[MANUAL_OPEN] {pair}: refresh after the commit failed ({_rf_err}) — the row is booked")
         if self.is_paper_mode:   # same three calls as open_position (caveman review: BNB fee + persisted state)
             await self._recalculate_paper_balance(db)
             _bnb_swap_owed = await self._deduct_fee_from_bnb(entry_fee, db, defer_swap=True)
@@ -10092,9 +10294,12 @@ class TradingEngine:
                     await db.rollback(); await db.refresh(order)
                 except Exception:
                     pass
-        websocket_tracker.force_reset_tracking(pair, actual_price)
-        await websocket_tracker.subscribe_pair(pair, actual_price)
-        await self.update_orders_cache(db)   # canonical cache entry (stop/exit fields built by the same code as a restart)
+        try:   # the position is booked: a failure here must not report a failed open (the monitor rebuilds the cache every second)
+            websocket_tracker.force_reset_tracking(pair, actual_price)
+            await websocket_tracker.subscribe_pair(pair, actual_price)
+            await self.update_orders_cache(db)   # canonical cache entry (stop/exit fields built by the same code as a restart)
+        except Exception as _tail_err:
+            logger.error(f"[MANUAL_OPEN] {pair}: booked, but the price-stream / cache set-up failed ({_tail_err}) — the monitor loop picks it up")
         logger.warning(f"[MANUAL_OPEN] {pair} {direction} ${investment:,.0f}×{leverage:g} @ {actual_price} exit={exit_mode} sl={sl} tp={tp} "
                        f"gate={order.manual_block_reason!r} setup={order.manual_setup_rating}/{order.manual_setup_side} note={order.manual_note!r}")
         return order
@@ -10571,7 +10776,8 @@ class TradingEngine:
                 # is never naked while the retry queue grinds (we canceled it pre-close).
                 if bool(getattr(config.trading_config.thresholds, 'broker_backstop_enabled', False)) and not self.is_paper_mode:
                     try:
-                        _bk_pct = float(getattr(config.trading_config.thresholds, 'broker_backstop_pct', 2.5) or 2.5)
+                        _bk_pct = order_backstop_pct(config.trading_config.thresholds, order.entry_strategy, getattr(order, 'manual_exit_mode', None),
+                                                     getattr(order, 'pattern_fixed_sl_pct', None), order.leverage)   # MANUAL: its own distance; every other order: broker_backstop_pct
                         _bk_tr = order.entry_price * (1 - _bk_pct / 100.0) if order.direction == "LONG" else order.entry_price * (1 + _bk_pct / 100.0)
                         _bk_new = await binance_service.place_backstop_stop(order.pair, order.direction, _bk_tr)
                         if _bk_new:
@@ -12029,10 +12235,11 @@ class TradingEngine:
                     continue
             # 🖐 Sep-29 MANUAL FIXED/FLOOR: the operator's SL/TP is the only exit (realtime path); skip every candle-based exit.
             if (order.entry_strategy or "") == "MANUAL" and (getattr(order, 'manual_exit_mode', None) or "FIXED") in ("FIXED", "FLOOR", "FRENZY"):
-                if getattr(order, 'manual_exit_mode', None) == "FRENZY":
-                    # 🔥 Oct-2 MANUAL on the FRENZY exit: the realtime path owns the exit, but (review) the PEAK must reach the DB — a
-                    # restart rebuilt the cache with peak 0 and an armed trail fell back to the bare stop — and a silent websocket
-                    # must not leave the trade without its stop: same candle-path check the sleeve has. Never raises.
+                if True:
+                    # 🖐 MANUAL with its own exit (Custom / Floor / Frenzy): the realtime path owns the exit, but (reviews) the PEAK must
+                    # reach the DB — a restart rebuilt the cache with peak 0 and an armed Frenzy trail fell back to the bare stop — and a
+                    # silent websocket must not leave the trade without its stop (in live only the wide exchange safety stop would
+                    # remain): the same check, on the monitor's price. Never raises.
                     try:
                         _mf_raw = ((current_price - order.entry_price) if order.direction == "LONG" else (order.entry_price - current_price)) * order.quantity
                         _mf_fee = current_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
@@ -12041,17 +12248,24 @@ class TradingEngine:
                         _mf_peak = max(realtime_peak, _mf_pnl)   # realtime_peak already = max(DB peak, cache peak)
                         order.peak_pnl = _mf_peak
                         order.trough_pnl = min(realtime_trough, _mf_pnl)
-                        _mf_close, _mf_why, _mf_line = frenzy_exit_for(_mf_pnl, _mf_peak, config.trading_config.thresholds,
-                                                                       _rh_backstop_floor(getattr(self, 'is_paper_mode', True)), short=(order.direction == "SHORT"))
-                        if _mf_close:
+                        if getattr(order, 'manual_exit_mode', None) == "FRENZY":
+                            _mf_close, _mf_why, _mf_line = frenzy_exit_for(_mf_pnl, _mf_peak, config.trading_config.thresholds,
+                                                                           manual_backstop_stop_floor(getattr(self, 'is_paper_mode', True), config.trading_config.thresholds, "FRENZY", None, order.leverage),
+                                                                           short=(order.direction == "SHORT"))
                             _mf_reason = "MANUAL_TRAIL" if _mf_why == "RUNNER_TRAIL" else "MANUAL_SL"
-                            logger.warning(f"[MANUAL_FRENZY_EXIT] {order.pair} {order.direction}: {_mf_reason} (candle path) pnl={_mf_pnl:.2f}% peak={_mf_peak:.2f}% line={_mf_line:.2f}%")
+                        else:   # FIXED / FLOOR: the operator's SL / TP stored on the row
+                            _mf_tp = getattr(order, 'pattern_fixed_tp_pct', None); _mf_sl = getattr(order, 'pattern_fixed_sl_pct', None)
+                            _mf_reason = ("MANUAL_TP" if (_mf_tp is not None and _mf_pnl >= float(_mf_tp))
+                                          else "MANUAL_SL" if (_mf_sl is not None and _mf_pnl <= float(_mf_sl)) else None)
+                            _mf_close = _mf_reason is not None; _mf_line = float(_mf_sl) if _mf_sl is not None else float('nan')
+                        if _mf_close:
+                            logger.warning(f"[MANUAL_EXIT] {order.pair} {order.direction}: {_mf_reason} (candle path) pnl={_mf_pnl:.2f}% peak={_mf_peak:.2f}% line={_mf_line:.2f}%")
                             closed_order = await self.close_position(db, order, current_price, _mf_reason)
                             if closed_order:
                                 updates.append({"order_id": closed_order.id, "pair": closed_order.pair, "action": "CLOSED",
                                                 "reason": closed_order.close_reason, "pnl": closed_order.pnl, "tp_level": order.current_tp_level or 1})
                     except Exception as _mf_err:
-                        logger.error(f"[MANUAL_FRENZY_EXIT] {order.pair}: monitor-path check failed: {_mf_err}")
+                        logger.error(f"[MANUAL_EXIT] {order.pair}: monitor-path check failed: {_mf_err}")
                     try:
                         await locked_commit(db)
                     except Exception:
@@ -12958,7 +13172,8 @@ class TradingEngine:
                         select(Order).where(and_(Order.status == "OPEN", Order.is_paper == False,
                                                  Order.backstop_algo_id.is_(None))))).scalars().all()
                     for _bko in _bk_rows:
-                        _bk_pct = float(getattr(config.trading_config.thresholds, 'broker_backstop_pct', 2.5) or 2.5)
+                        _bk_pct = order_backstop_pct(config.trading_config.thresholds, _bko.entry_strategy, getattr(_bko, 'manual_exit_mode', None),
+                                                     getattr(_bko, 'pattern_fixed_sl_pct', None), _bko.leverage)   # MANUAL: its own distance; every other order: broker_backstop_pct
                         _bk_tr = _bko.entry_price * (1 - _bk_pct / 100.0) if _bko.direction == "LONG" else _bko.entry_price * (1 + _bk_pct / 100.0)
                         _bk_new = await binance_service.place_backstop_stop(_bko.pair, _bko.direction, _bk_tr)
                         if _bk_new:
@@ -15890,7 +16105,8 @@ class TradingEngine:
                     _mn_tp = order_info.get('pattern_fixed_tp_pct'); _mn_sl = order_info.get('pattern_fixed_sl_pct')
                     if order_info.get('manual_exit_mode') == 'FRENZY':   # 🔥 Oct-2: the FRENZY sleeve's stop + trailing exit, read live from its settings
                         _fz_c, _fz_why, _fz_line = frenzy_exit_for(pnl_pct, _mn_peak, config.trading_config.thresholds,
-                                                                   _rh_backstop_floor(getattr(self, 'is_paper_mode', True)), short=(direction == "SHORT"))
+                                                                   manual_backstop_stop_floor(getattr(self, 'is_paper_mode', True), config.trading_config.thresholds, "FRENZY", None, order_info.get('leverage')),
+                                                                   short=(direction == "SHORT"))
                         _mn_reason = (("MANUAL_TRAIL" if _fz_why == "RUNNER_TRAIL" else "MANUAL_SL") if _fz_c else None)
                         _mn_sl, _mn_tp = round(_fz_line, 4), None   # for the log line
                     else:
@@ -17944,6 +18160,7 @@ class TradingEngine:
                 'pattern_fixed_tp_pct': getattr(order, 'pattern_fixed_tp_pct', None),
                 'pattern_fixed_sl_pct': getattr(order, 'pattern_fixed_sl_pct', None),
                 'manual_exit_mode': getattr(order, 'manual_exit_mode', None),   # 🖐 Sep-29 MANUAL sleeve exit mode
+                'leverage': getattr(order, 'leverage', None),                   # 🖐 live MANUAL: its own safety-stop distance depends on it
             }
 
             if order.pair not in new_cache:

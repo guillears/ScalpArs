@@ -103,6 +103,8 @@ def test_bracket_table_parse_cache_and_failure(monkeypatch):
         B.settings.binance_api_key, B.settings.binance_api_secret = k0, s0
 
 
-def test_manual_panel_hidden_in_live():
+def test_manual_panel_shown_in_live_since_oct2():
+    """The panel was hidden in live while manual entry was paper-only; live entry shipped Oct-2 (DECISION_LOG 181) — only cap 0 hides it."""
     html = open(os.path.join(ROOT, "templates", "index.html")).read()
-    assert "Number(data.manual_max_open_positions) <= 0 || data.is_paper === false" in html
+    assert "_mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0);" in html
+    assert "Number(data.manual_max_open_positions) <= 0 || data.is_paper === false" not in html

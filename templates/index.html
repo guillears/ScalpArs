@@ -32,12 +32,14 @@
            ~1 s still mouse and dies on any movement. Shown below the element, wraps at 22rem. */
         [data-tip] { position: relative; }
         [data-tip]:hover::after {
-            content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 6px); z-index: 60;
+            content: attr(data-tip); position: absolute; left: var(--tip-shift, 0px); top: calc(100% + 6px); z-index: 60;
         }
-        [data-tip].tip-right:hover::after { left: auto; right: 0; }
+        /* Oct-2 (operator): EVERY hover opens to the right of its chip, desktop and mobile (tip-right is now inert). Near the screen
+           edge the box is slid left by just the amount it would overflow (--tip-shift, set on mouse-over / tap by the script below),
+           so it is never cut off and never flipped to the other side. */
         [data-tip].tip-lines:hover::after { white-space: pre-line; }   /* ⚡ SURGE chip: one fact per line */
         [data-tip]:hover::after {
-            width: max-content; max-width: 22rem; white-space: normal; line-height: 1.35;
+            width: max-content; max-width: 22rem; max-width: min(22rem, calc(100vw - 16px)); white-space: normal; line-height: 1.35;
             padding: 8px 10px; border-radius: 8px; font: 500 11px/1.35 ui-sans-serif, system-ui, sans-serif;
             color: #e5e7eb; background: rgba(17, 24, 39, 0.97); border: 1px solid rgba(255,255,255,0.12);
             box-shadow: 0 8px 24px rgba(0,0,0,0.45); pointer-events: none; text-transform: none; letter-spacing: 0;
@@ -8932,6 +8934,27 @@
                 ? `Market context at your MANUAL entry — ${what} Your manual entry bypassed every gate; this badge only tells you which gate state the market was in.`
                 : `${what} (display-only — strategy identity unchanged)`;
         }
+        // Oct 2: hovers open to the right of their chip; when the box (≤ 22rem) would leave the window it is slid left by exactly the
+        // overflow. Set as an inline CSS variable, so the status refresh re-writing className never undoes it mid-hover.
+        // The box width is measured from the text (a short tip must stay under its chip, not be pushed by the 22rem maximum).
+        function _tipShift(e) {
+            const el = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+            if (!el) return;
+            try {
+                const vw = document.documentElement.clientWidth || window.innerWidth;
+                const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+                const cx = (window._tipCx = window._tipCx || document.createElement('canvas').getContext('2d'));
+                cx.font = '500 11px ui-sans-serif, system-ui, sans-serif';
+                const txt = el.dataset.tip || '';
+                const lines = el.classList.contains('tip-lines') ? txt.split('\n') : [txt];
+                const textW = Math.max(...lines.map(l => cx.measureText(l).width)) + 24;   // padding 20 + border 2 + slack
+                const box = Math.min(22 * rem, vw - 16, Math.ceil(textW));
+                const over = el.getBoundingClientRect().left + box + 8 - vw;
+                el.style.setProperty('--tip-shift', (over > 0 ? -Math.ceil(over) : 0) + 'px');
+            } catch (err) { el.style.setProperty('--tip-shift', '0px'); }
+        }
+        document.addEventListener('mouseover', _tipShift);
+        document.addEventListener('pointerover', _tipShift);   // touch: fires on tap for any element
         // 🔥 Oct 2: FRENZY — one formatter for the dashboard line and BOTH text exports (clipboard + saved file)
         function frenzyMonitorStr(m) {
             if (!m) return 'unavailable';

@@ -1247,6 +1247,7 @@ class SignalThresholds(BaseModel):
     # hour of 5m closes ≥ the spike-anchored VWAP ∧ last-hour volume ≥ 100× normal) and the 5m ATR is ≤ frenzy_max_atr_pct. Shorts are
     # OBSERVE-ONLY (every EMA50 / EMA200 break of a flagged pair is logged, no trade — five year tests found no short rule).
     # Evidence, strict ruler (1m bars, gap-aware fills, 0.10 % slippage, costs, funding; scripts/frenzy_long_followup.py):
+    #   (original cut — the limit is 2.5 since DECISION_LOG 179, see frenzy_max_atr_pct below)
     #   ATR ≤ 2 % · stop 3 · trail 5/1.5: ≥ $100M pairs 357 trades · 44 % won · +0.25 %/trade (+0.39 / +0.10) · by day [−0.14, +0.65];
     #   $20–100M pairs (never seen by the cut) 235 · 39 % · +0.10 (+0.27 / −0.09) · [−0.42, +0.61]. Without the ATR gate: +0.05 / −0.08.
     #   NOT established (ranges span zero). Size 2× is the operator's call: one stop ≈ 32 % of the account at 4 slots × 20×.
@@ -1261,7 +1262,11 @@ class SignalThresholds(BaseModel):
     frenzy_max_hours: float = 96.0               # the flag ends this long after the spike (or 24 h without the setup)
     frenzy_min_volume_usd: float = 20000000.0    # 24 h volume floor for the shortlist and the entry
     frenzy_shortlist_change_pct: float = 15.0    # shortlist: pairs up ≥ this % in 24 h (plus pairs already flagged)
-    frenzy_max_atr_pct: float = 2.0              # entry only when 5m ATR(14) ≤ this % (the 3 % stop ≥ 1.5 ATR); 0 = no ATR gate
+    # Oct-2 (DECISION_LOG 179, operator: "2 % seems too low a cap for frenzy pairs"): 2.0 → 2.5. Both sets, strict ruler
+    # (scripts/frenzy_atr_cap_test.py): ≤ 2 % 591 trades +0.20 %/trade (+0.35 / +0.02) · ≤ 2.5 % 1,103 · +0.16 (+0.21 / +0.12) ·
+    # ≤ 3 % 1,517 · +0.06 · no limit −0.01. The 2–2.5 % band is positive on both sets (+0.06 / +0.19); 2.5–3 % loses on both.
+    # Chosen on the same data → optimistic. 0 = no ATR gate.
+    frenzy_max_atr_pct: float = 2.5              # entry only when 5m ATR(14) ≤ this % (the 3 % stop ≥ 1.2 ATR)
     frenzy_stop_pct: float = 3.0                 # stop, % of the position (positive number)
     frenzy_trail_arm_pct: float = 5.0            # the trailing exit arms at this peak %
     frenzy_trail_giveback_pct: float = 1.5       # … and closes this % of price below the best point

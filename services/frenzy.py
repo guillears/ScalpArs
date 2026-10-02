@@ -129,7 +129,7 @@ def frenzy_long_status(ep, atr_pct, volume_24h, th) -> Tuple[bool, str, str]:
     vmin = _f(th, 'frenzy_min_volume_usd', 20e6)
     if volume_24h is None or float(volume_24h) < vmin:
         return False, "FRENZY_VOL24_LOW", f"24 h volume ${(volume_24h or 0) / 1e6:.0f}M < ${vmin / 1e6:.0f}M"
-    amax = _f(th, 'frenzy_max_atr_pct', 2.0)
+    amax = _f(th, 'frenzy_max_atr_pct', 2.5)
     if amax > 0 and (atr_pct is None or float(atr_pct) > amax):
         return False, "FRENZY_ATR_HIGH", (f"ATR {atr_pct:.2f}% > {amax:g}%" if atr_pct is not None else "ATR unreadable")
     return True, "FRENZY_READY", "READY"

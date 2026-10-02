@@ -3259,7 +3259,7 @@ def _frenzy_monitor_payload():
         _ca = _fzs.get('checked_at')
         return {"long_enabled": bool(getattr(_th, 'frenzy_long_enabled', False)), "short_observe": bool(getattr(_th, 'frenzy_short_observe', False)),
                 "invest_mult": float(getattr(_th, 'frenzy_long_invest_mult', 1.0) or 1.0), "lev_mult": float(getattr(_th, 'frenzy_long_lev_mult', 1.0) or 1.0),
-                "max_atr": float(getattr(_th, 'frenzy_max_atr_pct', 2.0) or 0), "stop": float(getattr(_th, 'frenzy_stop_pct', 3.0) or 0),
+                "max_atr": float(getattr(_th, 'frenzy_max_atr_pct', 2.5) or 0), "stop": float(getattr(_th, 'frenzy_stop_pct', 3.0) or 0),
                 "trail_arm": float(getattr(_th, 'frenzy_trail_arm_pct', 5.0) or 0), "trail_give": float(getattr(_th, 'frenzy_trail_giveback_pct', 1.5) or 0),
                 "max_slots": int(getattr(_th, 'frenzy_max_slots', 2) or 0),
                 "max_pair_day": int(getattr(_th, 'frenzy_max_entries_per_pair_day', 3) or 0),

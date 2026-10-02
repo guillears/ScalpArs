@@ -5147,3 +5147,11 @@ Operator: "add the frenzy exit type" to the Manual entry Exit dropdown. `manual_
 Dual review: the peak lived only in the realtime cache (a restart disarmed an armed trail) and a silent websocket left only MAX_HOLD → the candle path now persists the peak and runs the same exit as a backup (harness: restart keeps the trail; a −6 % move seen only by the monitor closes MANUAL_SL; concurrent closes book once).
 Also: error toasts stay 8 s + 1 s per 20 characters (max 20 s), warnings 6 s, click to dismiss · the Top Pairs ATR cell of a flagged pair uses the table's normal colouring again (the FRENZY ATR limit is an ENTRY gate only — the flag never depended on ATR; the limit shows in the status text).
 Research note: EMA200 retest / cross short on frenzy pairs — 0 of 54 cells pass (reports/EMA200_RETEST_SHORT_TEST_2026-10-02.md).
+
+## 2026-10-02 (179) - 🔥 FRENZY ATR entry limit 2.0 → 2.5 % (operator-directed)
+
+Operator: "ATR 2 % seems too low a cap for frenzy pairs, maybe 2.5 or 3". Tested (scripts/frenzy_atr_cap_test.py → reports/FRENZY_ATR_CAP_TEST_2026-10-02.md; same entries, stop 3 · trail 5/1.5, strict ruler; SEEN ≥ $100M + UNSEEN $20–100M):
+by BAND — ≤ 1.5 % +0.55 (179) · 1.5–2 % +0.04 (413) · **2–2.5 % +0.12 (515; SEEN +0.06 / UNSEEN +0.19)** · 2.5–3 % −0.21 (414; negative on both sets) · 3–4 % −0.05 · > 4 % −0.38.
+by CAP — ≤ 2 % 591 trades · +0.20 (+0.35 / +0.02) · by day [−0.15, +0.53] · ≤ 2.5 % 1,103 · +0.16 (+0.21 / +0.12) · [−0.06, +0.40] · ≤ 3 % 1,517 · +0.06 · no limit −0.01.
+Wider stops (4–5 %) on the 2–3 % band ≈ 0. → 2.5 shipped (config default + JSON + UI default); 3 % declined on the evidence. Caveat: the limit is now chosen on both sets (no unseen data left) — the +0.16 is optimistic; ranges still span zero. Roughly doubles the entry count.
+Same-day SCR check: the operator's two manual longs (18:11 UTC) were not FRENZY setups — price 5 % below the spike's average price, volume 74× < 100×, ATR 2.08 %; a second-push test is running (scripts/frenzy_second_push_test.py).

@@ -333,3 +333,18 @@ def test_manual_entry_can_use_the_frenzy_exit():
         assert "FRENZY stop" in str(err)
     # review: the candle path persists the peak (a restart must not disarm the trail) and carries the stop when the websocket is silent
     assert "order.peak_pnl = _mf_peak" in eng and '"MANUAL_TRAIL" if _mf_why == "RUNNER_TRAIL" else "MANUAL_SL"' in eng
+
+
+def test_shipped_atr_limit_is_2_5_everywhere():
+    """DECISION_LOG 179: the ATR entry limit ships at 2.5 % — code default, JSON, rule fallback and the page default agree."""
+    import config as C
+    th = C.trading_config.thresholds
+    assert type(th).model_fields["frenzy_max_atr_pct"].default == 2.5
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_max_atr_pct"] == 2.5
+
+    class Bare:   # no field at all → the rule's own fallback
+        frenzy_state_vol_mult = 100.0; frenzy_min_volume_usd = 20e6
+    ep = frenzy_walk(_bars(after=24), NORM, TH)
+    assert frenzy_long_status(ep, 2.5, 50e6, Bare)[0] is True and frenzy_long_status(ep, 2.51, 50e6, Bare)[2] == "ATR 2.51% > 2.5%"
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert "['config-fz-max-atr', 'frenzy_max_atr_pct', 2.5]" in html and 'id="config-fz-max-atr"' in html

@@ -749,7 +749,7 @@
     "frenzy_max_hours": 96.0,
     "frenzy_min_volume_usd": 20000000.0,
     "frenzy_shortlist_change_pct": 15.0,
-    "frenzy_max_atr_pct": 2.0,
+    "frenzy_max_atr_pct": 2.5,
     "frenzy_stop_pct": 3.0,
     "frenzy_trail_arm_pct": 5.0,
     "frenzy_trail_giveback_pct": 1.5,

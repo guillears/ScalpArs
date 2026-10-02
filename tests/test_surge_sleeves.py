@@ -221,7 +221,7 @@ def test_surge_short_exit_matches_the_simulated_bear_run_exit():
 def test_surge_short_routes_to_its_own_exit_in_both_paths():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert eng.count("surge_short_exit_for(") == 3          # definition + candle path + realtime path
-    assert "in ('BULLRUN_LONG', 'SURGE_LONG', 'SURGE_SHORT')" in eng and 'in ("BULLRUN_LONG", "SURGE_LONG", "SURGE_SHORT")' in eng
+    assert "in ('BULLRUN_LONG', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG')" in eng and 'in ("BULLRUN_LONG", "SURGE_LONG", "SURGE_SHORT", "FRENZY_LONG")' in eng
 
 
 def test_trigger_reports_the_volume_multiple():

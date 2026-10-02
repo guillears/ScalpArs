@@ -265,6 +265,14 @@ class Order(Base):
     entry_surge_btc_move_pct = Column(Float, nullable=True)
     entry_surge_pair_move_pct = Column(Float, nullable=True)
     entry_surge_trigger_at = Column(DateTime, nullable=True)
+    # 🔥 Oct-2 FRENZY sleeve (DECISION_LOG 176): the spike episode behind a FRENZY_LONG fill, read on the entry bar
+    entry_frenzy_spike_at = Column(DateTime, nullable=True)        # close time of the spike bar (naive UTC) = the episode id
+    entry_frenzy_hours = Column(Float, nullable=True)              # hours since the spike
+    entry_frenzy_vwap = Column(Float, nullable=True)               # the spike-anchored VWAP
+    entry_frenzy_vs_vwap_pct = Column(Float, nullable=True)        # entry bar close vs that VWAP (%)
+    entry_frenzy_vol_mult = Column(Float, nullable=True)           # last-hour volume ÷ the pair's normal hour
+    entry_frenzy_run_pct = Column(Float, nullable=True)            # the run's peak vs the price before the spike (%)
+    entry_frenzy_stop_atr = Column(Float, nullable=True)           # the stop as a multiple of the 5m ATR (stop % ÷ ATR %)
     # 🧭 Sep-29 ZONE STAMPS (DECISION_LOG 127) — observe-only readings for the C/D momentum-long watch items; no rule reads them
     entry_btc_ema50_100_gap_pct = Column(Float, nullable=True)      # BTC 5m EMA50 vs EMA100 (%), closed bars   [C]
     entry_eth_5m_ret1_pct = Column(Float, nullable=True)            # ETH last closed 5m bar return (%)          [C]
@@ -1130,6 +1138,42 @@ class MonitorPeriod(Base):
     blocked_1h = Column(Integer, default=0)                      # Aug 23 (18): refused by the BTC 1h-slope gate
     blocked_breadth = Column(Integer, default=0)                 # Sep 19 (57c): refused by the market-breadth minimum
     blocked_age = Column(Integer, default=0)                     # Sep 21 (57l): refused by the REARM entry-age cap
+
+
+class FrenzyFlag(Base):
+    """🔥 Oct-2 — the pairs FRENZY is following right now (rewritten after every 5-minute pass). Only a RESTART SEED: a deploy
+    reads it once so a flagged pair whose 24 h change has cooled is still re-checked; the flag itself is always rebuilt from klines."""
+    __tablename__ = "frenzy_flags"
+
+    pair = Column(String(30), primary_key=True)
+    spike_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FrenzyBreak(Base):
+    """🔥 Oct-2 — FRENZY SHORT OBSERVATIONS (no trade): one row per 5m close below the EMA50 / EMA200 of a FLAGGED pair, with the
+    previous 12 closes at/above the line. The year tests found no short rule; these rows collect live cases with what the bot
+    saw at the break (the outcome is rebuilt from klines at review time). Written by TradingEngine._update_frenzy."""
+    __tablename__ = "frenzy_breaks"
+    __table_args__ = (UniqueConstraint("pair", "line", "bar_close_at", name="uq_frenzy_break"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    pair = Column(String(30), nullable=False, index=True)
+    line = Column(Integer, nullable=False)                        # 50 or 200
+    bar_close_at = Column(DateTime, nullable=False, index=True)   # close of the breaking bar (naive UTC)
+    price = Column(Float, nullable=True)                          # that bar's close
+    spike_at = Column(DateTime, nullable=True)
+    hours = Column(Float, nullable=True)                          # since the spike
+    run_pct = Column(Float, nullable=True)                        # peak vs pre-spike price
+    off_peak_pct = Column(Float, nullable=True)                   # price vs the run's peak
+    vs_vwap_pct = Column(Float, nullable=True)
+    vol_mult = Column(Float, nullable=True)
+    atr_pct = Column(Float, nullable=True)
+    volume_24h = Column(Float, nullable=True)
+    btc_rsi = Column(Float, nullable=True)
+    bull_pct = Column(Float, nullable=True)                       # scan breadth at the break
+    bear_pct = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class SurgeTrigger(Base):

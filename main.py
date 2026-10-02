@@ -25,7 +25,7 @@ from sqlalchemy import select, and_, or_, func, desc, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FrenzyBreak, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -1243,6 +1243,14 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
         .limit(limit)
     )
     pairs = result.scalars().all()
+    try:   # 🔥 a flagged pair that IS scanned but ranks beyond `limit` keeps its real row (signal, confidence, gate) — pinned below
+        from services.trading_engine import _frenzy_flags as _fzf0
+        _fz_miss = [k for k in list(_fzf0) if k not in {p.pair for p in pairs}]
+        if _fz_miss:
+            pairs = list(pairs) + list((await db.execute(select(PairData).where(and_(
+                PairData.updated_at >= _stale_cutoff, PairData.pair.in_(_fz_miss))))).scalars().all())
+    except Exception:
+        pass
     
     # Get open position counts per pair
     positions_result = await db.execute(
@@ -1256,6 +1264,14 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
         from services.mcap_service import get as _mcap_get
     except Exception:
         _mcap_get = lambda _p: (None, None)
+    # 🔥 Oct-2 FRENZY: flagged pairs carry a mark and are PINNED to the top — also when they rank outside the Top-N (those rows are
+    # built from the sleeve's own 5-minute reading: they are followed by FRENZY only, never by the momentum ladder).
+    try:
+        from services.trading_engine import _frenzy_flags as _fzf
+        _fz_now = {k: _frenzy_flag_view(v) for k, v in list(_fzf.items())}
+        _fz_raw = dict(_fzf)
+    except Exception:
+        _fz_now, _fz_raw = {}, {}
     pairs_data = []
     for p in pairs:
         long_count = positions.get((p.pair, "LONG"), 0)
@@ -1326,12 +1342,41 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
             "mcap_usd": _mc[0],     # 💰 Sep-28: cached market cap (None → '–')
             "cmc_rank": _mc[1],
             "block_reason": block_reason,
+            "frenzy": _fz_now.get(p.pair),
             "open_positions": {
                 "long": long_count,
                 "short": short_count
             }
         })
-    
+
+    _have = {r["pair"] for r in pairs_data}
+    for _k, _v in _fz_now.items():   # flagged pairs outside the Top-N: a row from the sleeve's own reading
+        if _k in _have:
+            continue
+        _f = _fz_raw.get(_k) or {}
+        _px = _f.get('live_price') or _f.get('price')
+        _wt = websocket_tracker.trackers.get(_k)
+        if _wt and _wt.last_price and _wt.last_price > 0:
+            _px = _wt.last_price
+        _e5, _e8, _e13, _e20 = (_f.get('ema5'), _f.get('ema8'), _f.get('ema13'), _f.get('ema20'))
+        _mc = _mcap_get(_k)
+        pairs_data.append({
+            "pair": _k, "price": _px,
+            "ema5": round(_e5, 2) if _e5 else None, "ema8": round(_e8, 2) if _e8 else None,
+            "ema13": round(_e13, 2) if _e13 else None, "ema20": round(_e20, 2) if _e20 else None,
+            "gap": (round((_e5 - _e20) / _f['price'] * 100, 4) if (_e5 and _e20 and _f.get('price')) else None),
+            "gap_5_8": (round((_e5 - _e8) / _e8 * 100, 4) if (_e5 and _e8) else None),
+            "ema_stack": ("BULL" if (_e5 and _e8 and _e13 and _e20 and _e5 > _e8 > _e13 > _e20)
+                          else "BEAR" if (_e5 and _e8 and _e13 and _e20 and _e5 < _e8 < _e13 < _e20) else None),
+            "rsi": round(_f['rsi'], 2) if _f.get('rsi') else None, "adx": round(_f['adx'], 2) if _f.get('adx') else None,
+            "atr_pct": _v.get("atr_pct"), "signal": None, "confidence": None, "entry_ready": False, "setup_side": None,
+            "macro_regime": None, "volume_24h": _f.get('volume_24h'), "mcap_usd": _mc[0], "cmc_rank": _mc[1],
+            "block_reason": None, "frenzy": _v, "frenzy_only": True,
+            "open_positions": {"long": positions.get((_k, "LONG"), 0), "short": positions.get((_k, "SHORT"), 0)},
+        })
+    if _fz_now:
+        pairs_data.sort(key=lambda r: 0 if r.get("frenzy") else 1)   # stable: flagged first, each group keeps its volume order
+
     return pairs_data
 
 
@@ -2563,6 +2608,10 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "surge_rows": [],
             "surge_triggers": [],
             "surge_monitor": None,
+            "frenzy_rows": [],
+            "frenzy_flags": [],
+            "frenzy_breaks": [],
+            "frenzy_monitor": None,
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -3191,6 +3240,60 @@ def _bearrun_monitor_payload():
         return None
 
 
+def _frenzy_monitor_payload():
+    """🔥 Oct-2 FRENZY: the sleeve's switches, sizes and last scan (in-memory engine globals; None on any error)."""
+    try:
+        from services.trading_engine import _frenzy_status as _fzs, _frenzy_flags as _fzf
+        from datetime import datetime as _dt
+        _th = config.trading_config.thresholds
+        _ca = _fzs.get('checked_at')
+        return {"long_enabled": bool(getattr(_th, 'frenzy_long_enabled', False)), "short_observe": bool(getattr(_th, 'frenzy_short_observe', False)),
+                "invest_mult": float(getattr(_th, 'frenzy_long_invest_mult', 1.0) or 1.0), "lev_mult": float(getattr(_th, 'frenzy_long_lev_mult', 1.0) or 1.0),
+                "max_atr": float(getattr(_th, 'frenzy_max_atr_pct', 2.0) or 0), "stop": float(getattr(_th, 'frenzy_stop_pct', 3.0) or 0),
+                "trail_arm": float(getattr(_th, 'frenzy_trail_arm_pct', 5.0) or 0), "trail_give": float(getattr(_th, 'frenzy_trail_giveback_pct', 1.5) or 0),
+                "max_slots": int(getattr(_th, 'frenzy_max_slots', 2) or 0),
+                "checked": (_dt.utcfromtimestamp(_ca / 1000).strftime('%H:%M') if _ca else None), "checked_ms": (int(_ca) if _ca else None),
+                "shortlisted": _fzs.get('shortlisted'), "unreadable": _fzs.get('unreadable'), "flagged": len(_fzf), "error": _fzs.get('error'),
+                "took_s": _fzs.get('took_s')}
+    except Exception:
+        return None
+
+
+def _frenzy_flag_view(f):
+    """One flagged pair for the dashboard / exports (rounded; the badge marks: ★ long setup ON, ⏳ still flagged ≥ 32 h)."""
+    from datetime import datetime as _dt
+    _r = lambda v, n=2: (round(float(v), n) if v is not None else None)
+    return {"pair": f.get('pair'), "spike": _dt.utcfromtimestamp(f['spike_ts'] / 1000).strftime('%m-%d %H:%M'), "spike_ms": int(f['spike_ts']),
+            "hours": _r(f.get('hours'), 1), "gain_pct": _r(f.get('gain_pct'), 1), "run_pct": _r(f.get('run_pct'), 1), "off_peak_pct": _r(f.get('off_peak_pct'), 1),
+            "vs_vwap_pct": _r(f.get('vs_vwap_pct'), 2), "vwap": f.get('vwap'), "vol_mult": _r(f.get('vol_mult'), 0), "atr_pct": _r(f.get('atr_pct'), 2),
+            "volume_24h": f.get('volume_24h'), "in_state": bool(f.get('in_state')), "ready": bool(f.get('ready')), "late": bool((f.get('hours') or 0) >= 32),
+            "code": f.get('code'), "text": f.get('text'), "last_fire": f.get('last_fire'), "stale": bool(f.get('misses'))}
+
+
+def _frenzy_flag_rows():
+    """🔥 The pairs flagged right now — long setup ON first, then by volume multiple."""
+    try:
+        from services.trading_engine import _frenzy_flags as _fzf
+        return sorted((_frenzy_flag_view(f) for f in list(_fzf.values())), key=lambda r: (not r["in_state"], -(r["vol_mult"] or 0)))
+    except Exception as _e:
+        logger.debug(f"[PERF] frenzy flags skipped: {_e}")
+        return []
+
+
+async def _frenzy_break_rows(db, limit=400):
+    """🔥 FRENZY SHORT OBSERVATIONS (no trade): the latest EMA50 / EMA200 breaks recorded on flagged pairs, newest first (the
+    dashboard table scrolls; both text exports print every row sent). The full ledger is the frenzy_breaks table."""
+    try:
+        _rs = (await db.execute(select(FrenzyBreak).order_by(FrenzyBreak.bar_close_at.desc()).limit(limit))).scalars().all()
+        return [{"at": r.bar_close_at.strftime('%m-%d %H:%M'), "at_ms": int((r.bar_close_at - datetime(1970, 1, 1)).total_seconds() * 1000),
+                 "pair": r.pair, "line": r.line, "price": r.price, "hours": r.hours, "run_pct": r.run_pct, "off_peak_pct": r.off_peak_pct,
+                 "vs_vwap_pct": r.vs_vwap_pct, "vol_mult": r.vol_mult, "atr_pct": r.atr_pct, "volume_24h": r.volume_24h,
+                 "btc_rsi": r.btc_rsi, "bull_pct": r.bull_pct, "bear_pct": r.bear_pct} for r in _rs]
+    except Exception as _e:
+        logger.debug(f"[PERF] frenzy observations skipped: {_e}")
+        return []
+
+
 async def _surge_trigger_rows(db, limit=50):
     """⚡ Sep 30 — SURGE TRIGGER LEDGER table: one row per BTC trigger per side (the WINDOW unit), newest first, with that trigger's
     fills joined EXACTLY on orders.entry_surge_trigger_at == bar_close_at (same side) — zero-fill triggers stay visible (all pairs
@@ -3295,6 +3398,8 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
             return 'Surge-Long'    # ⚡ Sep-30: own rows — BTC spike / dump sleeves never blend into momentum
         if (o.entry_strategy or '') == 'SURGE_SHORT':
             return 'Surge-Short'
+        if (o.entry_strategy or '') == 'FRENZY_LONG':
+            return 'Frenzy-Long'   # 🔥 Oct-2: own row — volume-frenzy longs never blend into momentum
         if 'FLIP' in (o.entry_strategy or ''):
             return 'Flip-Short' if o.direction == 'SHORT' else 'Flip-Long'
         return 'Mom-Long' if o.direction == 'LONG' else 'Mom-Short'
@@ -3329,7 +3434,7 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
                         if start_balance and start_balance > 0 and window_days and window_days >= 0.5
                         and sum(o.pnl or 0 for o in g) / start_balance > -1 else None),
         }
-    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Surge-Long', 'Surge-Short', 'Manual']   # 🖐 Sep-29: own row
+    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Surge-Long', 'Surge-Short', 'Frenzy-Long', 'Manual']   # 🖐 Sep-29: own row
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
     all_closed = [o for o in orders if o.pnl_percentage is not None]
     total = stats('Total', all_closed)
@@ -3378,7 +3483,7 @@ def _compute_strategy_performance(orders, start_balance=None, window_days=None):
         }
 
     _pref = ['MOMENTUM', 'FAN_RATIO_GATE', 'BULL_LONG', 'PAIR_RSI_OB', 'BOUNCE_LONG',
-             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT']
+             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG']
 
     def _rank(label):
         head = label.split(' · ')[0]
@@ -4589,7 +4694,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # are their own program; blending full-size spikes would contaminate the
             # sleeve stats the locked gates read. (Probe-era spike rows carry MOMENTUM
             # labels and stay — cohort key for those = cell_multiplier_source.)
-            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'MANUAL')   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
+            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'MANUAL')   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
             orders = [o for o in orders if not _es(o).startswith('FLIP:') and _es(o).upper() not in _SLEEVES]
         else:
             # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side
@@ -4731,6 +4836,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "surge_rows": [],
             "surge_triggers": [],
             "surge_monitor": None,
+            "frenzy_rows": [],
+            "frenzy_flags": [],
+            "frenzy_breaks": [],
+            "frenzy_monitor": None,
             "graduation_doors_overlap": None,
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
@@ -7772,6 +7881,44 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     except Exception as _sg_tbl_err:
         logger.debug(f"[PERF] surge table skipped: {_sg_tbl_err}")
 
+    # 🔥 Oct-2 FRENZY sleeve (DECISION_LOG 176): FRENZY_LONG fills (all · by exit · by spike episode) with the review count read on
+    # the LIFETIME closed fills (unfiltered — a dashboard filter must never move it), and the recorded short observations.
+    frenzy_rows = []
+    frenzy_breaks_rows = await _frenzy_break_rows(db)
+    try:
+        def _fz_stats(g):
+            _n = len(g)
+            if _n == 0:
+                return {"n": 0, "wr": None, "avg_pct": None, "total_usd": 0.0, "avg_peak": None, "episodes": 0}
+            _pks = [o.peak_pnl for o in g if o.peak_pnl is not None]
+            return {"n": _n, "wr": round(100.0 * sum(1 for o in g if (o.pnl_percentage or 0) > 0) / _n, 1),
+                    "avg_pct": round(sum(o.pnl_percentage or 0 for o in g) / _n, 3), "total_usd": round(sum(o.pnl or 0 for o in g), 2),
+                    "avg_peak": round(sum(_pks) / len(_pks), 3) if _pks else None,
+                    "episodes": len({(o.pair, getattr(o, 'entry_frenzy_spike_at', None)) for o in g})}
+        _fz_all = [o for o in orders if (o.entry_strategy or '') == 'FRENZY_LONG' and o.pnl_percentage is not None]
+        _fz_life = [float(p) for (p,) in (await db.execute(select(Order.pnl_percentage).where(and_(
+            Order.entry_strategy == 'FRENZY_LONG', Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
+            Order.pnl_percentage.isnot(None))).order_by(Order.closed_at.asc()))).all()]
+        _fz_n = len(_fz_life)
+        _fz_gate = (f"⏳ {_fz_n}/40 closed — review at 40 (no automatic off; operator switch only)" if _fz_n < 40 else
+                    f"📋 REVIEW DUE — first 40: {sum(1 for p in _fz_life[:40] if p > 0)} winners · mean {sum(_fz_life[:40]) / 40:+.3f}% "
+                    f"(keep read: mean > 0 after costs ∧ ≥ 12 winners)")
+        frenzy_rows.append({"row": "FRENZY_LONG (flagged pair, long setup ON, ATR gate · stop / trailing exit)", **_fz_stats(_fz_all), "gate": _fz_gate})
+        if _fz_all:
+            _by_r = {}
+            for o in _fz_all:
+                _by_r.setdefault(o.close_reason or "?", []).append(o)
+            for _r in sorted(_by_r):
+                frenzy_rows.append({"row": f"  {_r}", **_fz_stats(_by_r[_r]), "gate": ""})
+            _by_e = {}
+            for o in _fz_all:
+                _k = getattr(o, 'entry_frenzy_spike_at', None)
+                _by_e.setdefault((o.pair, _k.strftime('%m-%d %H:%M') if _k else '?'), []).append(o)
+            for _e in sorted(_by_e, key=lambda k: k[1], reverse=True)[:12]:
+                frenzy_rows.append({"row": f"  {_e[0]} · spike {_e[1]} UTC", **_fz_stats(_by_e[_e]), "gate": ""})
+    except Exception as _fz_tbl_err:
+        logger.debug(f"[PERF] frenzy table skipped: {_fz_tbl_err}")
+
     # Stop Loss Deep Dive + Winning Trades Drawdown
     stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
     winning_trades_drawdown = []
@@ -9146,6 +9293,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "surge_rows": surge_rows,
         "surge_triggers": surge_triggers,
         "surge_monitor": _surge_monitor_payload(),
+        "frenzy_rows": frenzy_rows,
+        "frenzy_flags": _frenzy_flag_rows(),
+        "frenzy_breaks": frenzy_breaks_rows,
+        "frenzy_monitor": _frenzy_monitor_payload(),
         "graduation_doors_overlap": graduation_doors_overlap,
         "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "flagged_exits": flagged_exits,

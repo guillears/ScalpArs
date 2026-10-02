@@ -1242,6 +1242,35 @@ class SignalThresholds(BaseModel):
     # an operator re-enable after a kill stays. Clear it by hand only to re-run the bar on a new cohort.
     surge_long_kill_verdict: str = ""
     surge_short_kill_verdict: str = ""
+    # 🔥 Oct-2 FRENZY sleeve (DECISION_LOG 176; operator-directed ARMED override, below every promotion gate). A pair is FLAGGED after
+    # a volume spike and followed ≤ frenzy_max_hours; FRENZY_LONG opens when the "staircase" state turns on (≥ 2 h after the spike ∧ an
+    # hour of 5m closes ≥ the spike-anchored VWAP ∧ last-hour volume ≥ 100× normal) and the 5m ATR is ≤ frenzy_max_atr_pct. Shorts are
+    # OBSERVE-ONLY (every EMA50 / EMA200 break of a flagged pair is logged, no trade — five year tests found no short rule).
+    # Evidence, strict ruler (1m bars, gap-aware fills, 0.10 % slippage, costs, funding; scripts/frenzy_long_followup.py):
+    #   ATR ≤ 2 % · stop 3 · trail 5/1.5: ≥ $100M pairs 357 trades · 44 % won · +0.25 %/trade (+0.39 / +0.10) · by day [−0.14, +0.65];
+    #   $20–100M pairs (never seen by the cut) 235 · 39 % · +0.10 (+0.27 / −0.09) · [−0.42, +0.61]. Without the ATR gate: +0.05 / −0.08.
+    #   NOT established (ranges span zero). Size 2× is the operator's call: one stop ≈ 32 % of the account at 4 slots × 20×.
+    # NO automatic off (operator: paper mode). Review at 40 closed fills. Rules: services/frenzy.py. grep "FRENZY" / "frenzy_".
+    frenzy_long_enabled: bool = False            # FRENZY_LONG master switch (default OFF in code; the JSON arms it)
+    frenzy_short_observe: bool = True            # log EMA50 / EMA200 breaks of flagged pairs (never trades)
+    frenzy_spike_ret_pct: float = 5.0            # spike: 30-min return ≥ this % on a closed 5m bar
+    frenzy_spike_vol_mult: float = 20.0          # spike: last-hour volume ≥ this × the pair's normal hour
+    frenzy_spike_min_hour_usd: float = 2000000.0  # spike: last-hour volume ≥ this many USD
+    frenzy_state_vol_mult: float = 100.0         # long setup: last-hour volume ≥ this × normal (the tested level)
+    frenzy_min_hours: float = 2.0                # long setup: earliest, hours after the spike
+    frenzy_max_hours: float = 96.0               # the flag ends this long after the spike (or 24 h without the setup)
+    frenzy_min_volume_usd: float = 20000000.0    # 24 h volume floor for the shortlist and the entry
+    frenzy_shortlist_change_pct: float = 15.0    # shortlist: pairs up ≥ this % in 24 h (plus pairs already flagged)
+    frenzy_max_atr_pct: float = 2.0              # entry only when 5m ATR(14) ≤ this % (the 3 % stop ≥ 1.5 ATR); 0 = no ATR gate
+    frenzy_stop_pct: float = 3.0                 # stop, % of the position (positive number)
+    frenzy_trail_arm_pct: float = 5.0            # the trailing exit arms at this peak %
+    frenzy_trail_giveback_pct: float = 1.5       # … and closes this % of price below the best point
+    frenzy_max_hold_minutes: int = 720           # 12 h cap (0 = the global max hold)
+    frenzy_max_slots: int = 2                    # max FRENZY_LONG open at once (they also count against max open positions)
+    frenzy_long_invest_mult: float = 1.0         # absolute-assign, never re-multiplied by cells (the JSON ships 2.0 — operator)
+    frenzy_long_lev_mult: float = 1.0
+    frenzy_max_entry_dislocation_pct: float = 1.0  # skip the fill when the live price is > this % from the decision price
+    frenzy_pair_blacklist: str = "BTCUSDT,ETHUSDT"
     # 🩹 Oct-2 RECOVERY HOLD (operator-directed ARMED override below every promotion gate; DECISION_LOG 172). A momentum LONG that
     # reaches STOP_LOSS / STOP_LOSS_WIDE while BTC RSI(14, CLOSED 5m bars) is ≥ its entry value ∧ inside [rsi_min, rsi_max] is flagged
     # and held, not closed. Held trades close only on: RH_HARD_STOP (stop − room) · RH_PREMISE_EXIT (RSI < min or < entry, or

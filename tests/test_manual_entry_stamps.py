@@ -15,6 +15,8 @@ NOT_A_MOMENTUM_STAMP = {
     "entry_pair_1d_ndi", "entry_btc_4h_ema50_200_gap_pct", "entry_desired_notional", "entry_liquidity_cap_notional",
     "entry_btc_regime_started_at",
     "entry_surge_btc_move_pct", "entry_surge_pair_move_pct", "entry_surge_trigger_at",   # ⚡ SURGE trigger stamps (sleeve-only)
+    "entry_frenzy_spike_at", "entry_frenzy_hours", "entry_frenzy_vwap", "entry_frenzy_vs_vwap_pct", "entry_frenzy_vol_mult",
+    "entry_frenzy_run_pct", "entry_frenzy_stop_atr",                                       # 🔥 FRENZY episode stamps (sleeve-only)
     "entry_price", "entry_fee", "entry_order_type", "entry_strategy",   # set explicitly by open_manual_position
     "entry_bracket_max_leverage", "entry_bracket_cap_notional",   # 🪜 Oct-1: set explicitly in both open paths (exchange leverage brackets)
     "entry_slippage_pct",   # a manual paper fill IS the clicked price: left NULL so it never enters the slippage averages

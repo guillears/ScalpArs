@@ -181,6 +181,11 @@ async def init_db():
                                           ('entry_surge_trigger_at', 'DATETIME')):   # ⚡ Sep-30 SURGE sleeves
                     if _sg_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sg_col} {_sg_type}"))
+                for _fz_col, _fz_type in (('entry_frenzy_spike_at', 'DATETIME'), ('entry_frenzy_hours', 'FLOAT'), ('entry_frenzy_vwap', 'FLOAT'),
+                                          ('entry_frenzy_vs_vwap_pct', 'FLOAT'), ('entry_frenzy_vol_mult', 'FLOAT'), ('entry_frenzy_run_pct', 'FLOAT'),
+                                          ('entry_frenzy_stop_atr', 'FLOAT')):   # 🔥 Oct-2 FRENZY sleeve
+                    if _fz_col not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_fz_col} {_fz_type}"))
                 if 'entry_mcap_usd' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_mcap_usd FLOAT"))
                 if 'entry_cmc_rank' not in columns:

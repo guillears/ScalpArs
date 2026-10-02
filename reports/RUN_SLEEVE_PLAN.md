@@ -136,3 +136,13 @@ before the run. Least costly: HALF at +3 % (−0.03 per trade, full stops 58 % �
 - Winners median +4.2 %; full stops' median best point +1.2 %; the best 5 % of trades make +484 of the +178 total points.
 - STATUS: candidate "enter only when the signal bar closed at or below its open". As a FILTER it fails the expectancy bar (blocked cohort −0.11, range spans zero)
   → observe-first by the rules; operator decides.
+
+## SECOND PUSH on frenzy pairs (operator's SCR hand trades) — scripts/frenzy_second_push_test.py → FRENZY_SECOND_PUSH_TEST_2026-10-02.md — 0 of 30 cells pass
+Frozen: inside a live episode ≥ 4 h after the spike, a new burst (30-min ≥ +5 % ∧ vol ≥ 20×, none in the prior 2 h); buy NOW or the first 2 % DIP within 60 min;
+exits TP +1 / +2 / +3 with stop 3, trail 3/1.5, 5/1.5; strict ruler. 4,165 pushes on 383 pairs (3,738 gave a dip).
+- Every cell NEGATIVE, most with the by-day range fully below zero: NOW −0.25…−0.33 · DIP −0.15…−0.23. The SCR case (price below the spike's average):
+  NOW −0.34…−0.51 · DIP −0.08…−0.24 (best: trail 5/1.5 −0.08, halves −0.28 / +0.08).
+- TP +1 % wins 71–74 % of the time and still loses: 26–29 % full 3 % stops outweigh it (breakeven win rate ≈ 76 %).
+- Buying the dip beats buying the push by ~0.1, in every split — the operator's instinct is right in direction, not enough in size.
+- No cut rescues it (hours, volume ×, ATR, distance from the average price, run size): best after-the-fact rows ≈ 0.
+- The operator's own minute-level timing is not reproducible from 5m closes. Not built.

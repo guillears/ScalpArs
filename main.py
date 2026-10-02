@@ -1585,6 +1585,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "entry_btc_1d_ret_pct": getattr(o, 'entry_btc_1d_ret_pct', None), "entry_pair_1h_ema20_200_gap_pct": getattr(o, 'entry_pair_1h_ema20_200_gap_pct', None),
             "entry_pair_1d_ndi": getattr(o, 'entry_pair_1d_ndi', None), "entry_btc_4h_ema50_200_gap_pct": getattr(o, 'entry_btc_4h_ema50_200_gap_pct', None),   # 🪤 Sep-29 fade laggard readings
             "manual_exit_mode": getattr(o, 'manual_exit_mode', None), "manual_note": getattr(o, 'manual_note', None),   # 🖐 Sep-29 MANUAL sleeve
+            "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             "manual_block_reason": getattr(o, 'manual_block_reason', None), "manual_setup_rating": getattr(o, 'manual_setup_rating', None), "manual_setup_side": getattr(o, 'manual_setup_side', None),
             "manual_pair_rsi": getattr(o, 'manual_pair_rsi', None), "manual_pair_adx": getattr(o, 'manual_pair_adx', None),
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
@@ -1991,6 +1992,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_btc_1d_ret_pct": getattr(o, 'entry_btc_1d_ret_pct', None), "entry_pair_1h_ema20_200_gap_pct": getattr(o, 'entry_pair_1h_ema20_200_gap_pct', None),
             "entry_pair_1d_ndi": getattr(o, 'entry_pair_1d_ndi', None), "entry_btc_4h_ema50_200_gap_pct": getattr(o, 'entry_btc_4h_ema50_200_gap_pct', None),   # 🪤 Sep-29 fade laggard readings
             "manual_exit_mode": getattr(o, 'manual_exit_mode', None), "manual_note": getattr(o, 'manual_note', None),   # 🖐 Sep-29 MANUAL sleeve
+            "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             "manual_block_reason": getattr(o, 'manual_block_reason', None), "manual_setup_rating": getattr(o, 'manual_setup_rating', None), "manual_setup_side": getattr(o, 'manual_setup_side', None),
             "manual_pair_rsi": getattr(o, 'manual_pair_rsi', None), "manual_pair_adx": getattr(o, 'manual_pair_adx', None),
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
@@ -2211,6 +2213,26 @@ async def close_order(request: ManualCloseRequest, db: AsyncSession = Depends(ge
         raise HTTPException(status_code=500, detail="Failed to close order")
     
     return {"status": "closed", "pnl": closed_order.pnl}
+
+
+class ExitOverrideRequest(BaseModel):
+    order_id: int
+    sl_pct: Optional[float] = None     # SIGNED stop P&L % net of fees (−1.5 = stop below break-even, +0.5 = lock a profit)
+    tp_pct: Optional[float] = None     # target P&L % net of fees
+
+
+@app.post("/api/orders/exit_override")
+async def exit_override(request: ExitOverrideRequest, db: AsyncSession = Depends(get_db)):
+    """✎ Oct-2: replace an open position's exit with the operator's own stop / target (manual AND bot trades)."""
+    try:
+        order = await trading_engine.set_exit_override(db, request.order_id, sl_pct=request.sl_pct, tp_pct=request.tp_pct)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[EXIT_OVERRIDE] failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"exit override failed: {e}")
+    return {"status": "ok", "order_id": order.id, "pair": order.pair, "direction": order.direction,
+            "sl_pct": order.pattern_fixed_sl_pct, "tp_pct": order.pattern_fixed_tp_pct, "strategy": order.entry_strategy}
 
 
 @app.post("/api/orders/manual_open")
@@ -12928,6 +12950,8 @@ def _compute_pattern_cell_performance(orders):
     # Group closed trades by (direction, pattern_cell_source)
     groups = {}
     for o in closed:
+        if getattr(o, 'exit_override_at', None) is not None:
+            continue   # ✎ the operator replaced this trade's exit: its fixed TP/SL are his, not the cell's
         src = getattr(o, 'pattern_cell_source', None)
         if not src:
             continue

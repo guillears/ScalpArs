@@ -43,11 +43,11 @@ def test_floor_and_fixed_semantics_from_config():
 
 def test_exits_never_touch_a_fixed_manual_trade_and_cache_carries_the_mode():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
-    assert eng.count("(order_info.get('entry_strategy') or '') == 'MANUAL'") == 1          # realtime intercept, before BULLRUN
+    assert eng.count("(order_info.get('entry_strategy') or '') == 'MANUAL'") == 2          # realtime intercept (before BULLRUN) + its MANUAL / OVERRIDE label
     assert eng.index("== 'MANUAL'\n                    and (order_info.get('manual_exit_mode')") < eng.index("if (order_info.get('entry_strategy') or '') in ('BULLRUN_LONG', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG'):")
-    assert '(order.entry_strategy or "") == "MANUAL" and (getattr(order, \'manual_exit_mode\', None) or "FIXED") in ("FIXED", "FLOOR", "FRENZY")' in eng   # candle loop skip
+    assert '(order.entry_strategy or "") == "MANUAL" and (getattr(order, \'manual_exit_mode\', None) or "FIXED") in ("FIXED", "FLOOR", "FRENZY"))' in eng   # candle loop branch
     assert "'manual_exit_mode': getattr(order, 'manual_exit_mode', None)" in eng             # cache rebuild
-    assert eng.count('"MANUAL_TP"') == 2 and eng.count('"MANUAL_SL"') == 4 and eng.count('"MANUAL_TRAIL"') == 2   # realtime path + the candle-path backup (custom / floor / Frenzy)
+    assert eng.count('_lbl + "_TP"') == 2 and eng.count('_lbl + "_SL"') == 2 and eng.count('"MANUAL_SL"') == 2 and eng.count('"MANUAL_TRAIL"') == 2   # realtime path + the candle-path backup (custom / floor / Frenzy)
 
 
 def test_manual_is_excluded_from_ledger_and_pool_and_has_own_row():

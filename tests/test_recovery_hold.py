@@ -124,7 +124,7 @@ def test_wiring_cannot_drift():
     assert src.count("rsi_ever_read=_current_btc_rsi_closed_bar_ts is not None") == 2 and src.count("floor_pct=_rh_backstop_floor(getattr(self, 'is_paper_mode', True))") == 2
     # the realtime hold decision sits BEFORE every other realtime exit, the monitor's before every exit but MAX_HOLD
     rt = src[src.index("async def check_realtime_stop_loss"):]
-    assert rt.index("_rh_reason_rt = rh_exit(") < min(rt.index(k) for k in ("PATTERN_FIXED_TP L1", "EMA13_CROSS_EXIT", "FAST_EXIT", "MANUAL_TP", "STOP_LOSS_WIDE L{tp_level}"))
+    assert rt.index("_rh_reason_rt = rh_exit(") < min(rt.index(k) for k in ("PATTERN_FIXED_TP L1", "EMA13_CROSS_EXIT", "FAST_EXIT", '_mn_lbl + "_TP"', "STOP_LOSS_WIDE L{tp_level}"))
     mon = src[src.index("async def update_open_positions"):src.index("async def scan_and_trade")]
     assert mon.index("MAX_HOLD_TIME") < mon.index("_rh_reason_m = rh_exit(") < min(mon.index(k) for k in ("REGIME_CHANGE L", "SIGNAL_LOST L", "check_exit_conditions("))
     # the 1 Hz cache rebuild and the open-time cache entry carry the hold's keys

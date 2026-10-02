@@ -1202,12 +1202,16 @@ class BinanceService:
 
     async def get_position_for_symbol(self, symbol: str) -> Optional[Dict]:
         """Lightweight check: fetch position for a single symbol.
-        Returns dict with position info if open, None if no position or on error."""
+        Returns the position dict if open, None ONLY when Binance answered and there is no position. A FAILED read RAISES
+        (Oct-2, DECISION_LOG 183): it used to return None as well, so "could not read" looked like "position gone" — the close
+        path then booked a still-open trade as closed (its safety stop already cancelled), and the reconciler's per-symbol
+        fallback, which only runs when the exchange is failing, closed every live row as EXTERNAL. Both callers already treat an
+        exception as "still open"."""
         try:
             await self.load_markets()
             positions = await self.exchange.fetch_positions([symbol])
             for pos in positions:
-                contracts = float(pos.get('contracts', 0))
+                contracts = float(pos.get('contracts') or 0)
                 if contracts != 0:
                     return {
                         'symbol': pos['symbol'],
@@ -1220,8 +1224,9 @@ class BinanceService:
                     }
             return None
         except Exception as e:
+            self._detect_ban(e)
             logger.error(f"[BINANCE] Error fetching position for {symbol}: {e}")
-            return None
+            raise
 
     async def get_funding_fees_usd(self, pair: str, start_ms: int, end_ms: int) -> Optional[float]:
         """Aug-24 M6: Σ FUNDING_FEE income for one symbol over [start_ms, end_ms] (negative = paid). None on error."""

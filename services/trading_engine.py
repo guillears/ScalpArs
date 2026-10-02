@@ -431,7 +431,7 @@ def manual_own_stop_pct(th, exit_mode, fixed_sl_pct):
         m = (exit_mode or "FIXED").upper()
         if m == "FRENZY":
             return abs(float(getattr(th, 'frenzy_stop_pct', 3.0) or 3.0)) or 3.0
-        if m in ("FIXED", "FLOOR") and fixed_sl_pct is not None:
+        if m in ("FIXED", "FLOOR") and fixed_sl_pct is not None and float(fixed_sl_pct) < 0:   # a profit-lock stop (≥ 0) is no loss stop
             return abs(float(fixed_sl_pct))
     except (TypeError, ValueError):
         pass
@@ -10304,6 +10304,109 @@ class TradingEngine:
                        f"gate={order.manual_block_reason!r} setup={order.manual_setup_rating}/{order.manual_setup_side} note={order.manual_note!r}")
         return order
 
+    async def set_exit_override(self, db: AsyncSession, order_id: int, sl_pct=None, tp_pct=None):
+        """✎ Oct-2 (DECISION_LOG 182; operator: "a solution to override the current SL and TP system, kind of an edit of the current
+        setting") — replace an OPEN position's exit with the operator's own stop / target, both as P&L % NET of fees (the convention
+        every exit uses). `sl_pct` is SIGNED: −1.5 = stop 1.5 % below break-even, +0.5 = lock half a percent. `tp_pct` > the stop.
+        MANUAL trade → its mode becomes FIXED with these numbers. BOT trade → exit_override_at is stamped and from then on ONLY the
+        stop / target (and the max hold) close it — every other exit of its sleeve is skipped by the same intercept the manual
+        Custom mode uses; it closes as OVERRIDE_SL / OVERRIDE_TP and keeps its strategy label.
+        A position always keeps a stop: when none is given, the current fixed stop stays, else the widest safe stop for its leverage.
+        Refused: a stop wider than that floor · a stop / target the price has already passed (use Close now) · a trade inside a
+        recovery hold · LIVE: a stop closer than 0.3 % to (or beyond) the resting exchange safety stop. Raises ValueError (readable)."""
+        order = (await db.execute(select(Order).where(Order.id == int(order_id)))).scalar_one_or_none()
+        if order is None or order.status != "OPEN":
+            raise ValueError("the position is not open")
+        if bool(order.is_paper) != bool(self.is_paper_mode):
+            raise ValueError("that position belongs to the other mode (paper / live)")
+        th = config.trading_config.thresholds
+
+        def _num(v, name):
+            if v in (None, ""):
+                return None
+            try:
+                x = float(v)
+            except (TypeError, ValueError):
+                raise ValueError(f"{name} must be a number")
+            if not math.isfinite(x):
+                raise ValueError(f"{name} must be a finite number")
+            return x
+        sl = _num(sl_pct, "stop"); tp = _num(tp_pct, "target")
+        if sl is None and tp is None:
+            raise ValueError("give a stop, a target, or both")
+        is_manual = (order.entry_strategy or "") == "MANUAL"
+        floor = manual_floor_for_leverage(th, order.leverage)
+        if not order.leverage or float(order.leverage) <= 0:
+            raise ValueError("this position has no leverage on record — cannot judge a safe stop")
+        if getattr(order, 'closing_in_progress', False) or order.id in _exit_retry_queue:
+            raise ValueError("this position is being closed right now — nothing to edit")
+        if sl is None:   # only a target was typed: keep the fixed stop the trade ALREADY has; never invent one (review: a blank used to
+            # become the −3 % leverage floor on a bot trade whose own stop is −0.7 %)
+            _has_fixed = (is_manual and (order.manual_exit_mode or "FIXED") in ("FIXED", "FLOOR")) or order.exit_override_at is not None
+            if not (_has_fixed and order.pattern_fixed_sl_pct is not None):
+                raise ValueError("type a stop too: this trade has no fixed stop of its own to keep (its current exit is the "
+                                 + ("momentum stack" if is_manual and (order.manual_exit_mode or "") == "MOMENTUM" else
+                                    "Frenzy exit" if is_manual else "bot's own exit") + ")")
+            sl = float(order.pattern_fixed_sl_pct)
+        if sl < floor:
+            raise ValueError(f"stop {sl:.2f}% is wider than the widest stop allowed at {float(order.leverage):g}×: {floor:.2f}% "
+                             f"(liquidation ≈ −{manual_liquidation_distance_pct(order.leverage):.2f}%)")
+        if tp is not None and tp <= sl:
+            raise ValueError("the target must be above the stop")
+        if getattr(order, 'rh_triggered_at', None) is not None and rh_in_hold(th, order.rh_triggered_at, order.peak_pnl):
+            raise ValueError("this trade is inside a recovery hold (its own hard stop / premise / time exits are running) — close it now or wait for the hold to end")
+        # where the trade is NOW (net of fees, the exits' own arithmetic): a level the price already passed would close it at once
+        px = None
+        try:
+            _trk = websocket_tracker.get_tracker(order.pair)
+            if _trk is not None and _trk.last_price and _trk.last_price > 0:
+                px = float(_trk.last_price)
+        except Exception:
+            px = None
+        px = px or (float(order.current_price) if order.current_price else None)
+        pnl_now = None
+        if px and order.entry_price and order.quantity:
+            _raw = ((px - order.entry_price) if order.direction == "LONG" else (order.entry_price - px)) * order.quantity
+            _fee = px * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+            pnl_now = ((_raw - (order.entry_fee or 0) - _fee) / (order.entry_price * order.quantity)) * 100
+        if pnl_now is None:
+            raise ValueError("the current price of this position is not available — try again in a moment")
+        if pnl_now is not None:
+            if sl >= pnl_now:
+                raise ValueError(f"the trade is at {pnl_now:+.2f}% now — a stop at {sl:+.2f}% would close it at once. Use Close now, or a lower stop")
+            if tp is not None and tp <= pnl_now:
+                raise ValueError(f"the trade is at {pnl_now:+.2f}% now — a target at {tp:+.2f}% is already reached. Use Close now, or a higher target")
+        if not self.is_paper_mode and bool(getattr(th, 'broker_backstop_enabled', False)) and sl < 0:
+            # the resting exchange safety stop was placed with the exit this trade had: the new stop must stay inside it
+            _resting = order_backstop_pct(th, order.entry_strategy, getattr(order, 'manual_exit_mode', None), order.pattern_fixed_sl_pct, order.leverage)
+            if order.exit_override_at is not None:   # already edited once: the row no longer tells where the stop was PLACED (it is never
+                # moved) — assume the bot's distance, the tightest it can be (review: repeated edits walked past the real stop)
+                _resting = min(_resting, order_backstop_pct(th, None))
+            if abs(sl) + MANUAL_BACKSTOP_MIN_GAP_PCT > _resting + 1e-9:
+                raise ValueError(f"the exchange safety stop of this position rests {_resting:.2f}% from its entry — a stop at {sl:.2f}% is too close to it "
+                                 f"(it would fire first). Use a stop of at most −{_resting - MANUAL_BACKSTOP_MIN_GAP_PCT:.2f}%")
+        _prev = (f"MANUAL:{order.manual_exit_mode or 'FIXED'}" if is_manual else ("OVERRIDE" if order.exit_override_at is not None else "BOT"))
+        _prev += f" sl={order.pattern_fixed_sl_pct} tp={order.pattern_fixed_tp_pct}"
+        # written ONLY if the row is still open and not closing (a close can commit while this request waits): never mark a
+        # closed trade as overridden
+        _vals = dict(exit_override_prev=_prev[:40], exit_override_at=datetime.utcnow(), pattern_fixed_sl_pct=round(sl, 4),
+                     pattern_fixed_tp_pct=(round(tp, 4) if tp is not None else None))
+        if is_manual:
+            _vals['manual_exit_mode'] = "FIXED"
+        _res = await db.execute(update(Order).where(and_(Order.id == order.id, Order.status == "OPEN", Order.closing_in_progress == False))  # noqa: E712
+                                .values(**_vals).execution_options(synchronize_session=False))
+        await locked_commit(db)
+        if not (_res.rowcount or 0):
+            raise ValueError("the position was closed while this was being saved — nothing changed")
+        await db.refresh(order)
+        try:   # the realtime path reads the cache: rebuild it now (the monitor loop does it every second anyway)
+            await self.update_orders_cache(db)
+        except Exception as _c_err:
+            logger.error(f"[EXIT_OVERRIDE] {order.pair}: saved, cache rebuild failed ({_c_err}) — the monitor loop picks it up")
+        logger.warning(f"[EXIT_OVERRIDE] {order.pair} {order.direction} #{order.id} ({order.entry_strategy or 'MOMENTUM'}): exit replaced by stop {sl:+.2f}% / "
+                       f"target {('%+.2f%%' % tp) if tp is not None else 'none'} (was {_prev}; P&L now {('%+.2f%%' % pnl_now) if pnl_now is not None else 'unknown'})")
+        return order
+
     async def _manual_entry_stamps(self, pair: str, symbol: str, direction: str, fill_price: float) -> dict:
         """📐 Sep-29 every entry stamp a momentum fill records, for a MANUAL fill: the pair's 5m indicators rebuilt exactly
         as the scan builds them (same fetch, same calculate_indicators arguments), the market readings the scan publishes,
@@ -10484,7 +10587,8 @@ class TradingEngine:
             if _prev.startswith("KILLED"):
                 return
             rows = (await db.execute(select(Order.pnl_percentage, Order.rh_trigger_pnl, Order.close_reason).where(and_(
-                Order.rh_triggered_at.isnot(None), Order.status == "CLOSED", Order.is_paper == self.is_paper_mode))
+                Order.rh_triggered_at.isnot(None), Order.status == "CLOSED", Order.is_paper == self.is_paper_mode,
+                Order.exit_override_at.is_(None)))   # ✎ an operator-replaced exit is not the hold's result
                 .order_by(Order.closed_at.asc()))).all()
             why, judged = rh_tripwire([(r[0], r[1], r[2]) for r in rows])
             if not judged or (_prev.startswith("PASS") and why is None):   # after a PASS only a new kill (3 hard stops in a row) is news
@@ -10513,7 +10617,7 @@ class TradingEngine:
             if side not in ("LONG", "SHORT") or str(getattr(th, f'surge_{side.lower()}_kill_verdict', '') or '').strip():
                 return
             _cohort = and_(Order.entry_strategy == f"SURGE_{side}", Order.status == "CLOSED", Order.is_paper == self.is_paper_mode,
-                           Order.opened_at >= SURGE_COHORT_START)
+                           Order.opened_at >= SURGE_COHORT_START, Order.exit_override_at.is_(None))   # ✎ an operator-replaced exit is not the sleeve's result
             if ((await db.execute(select(func.count(Order.id)).where(_cohort))).scalar() or 0) < 10:
                 return
             rows = (await db.execute(select(Order.pnl_percentage).where(_cohort).order_by(Order.opened_at.asc()).limit(10))).scalars().all()
@@ -10642,7 +10746,7 @@ class TradingEngine:
             exit_result = None
 
             _urgent_exit = (order.entry_strategy or "") == "FRENZY_LONG" or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (   # 🩹 RH: the hold's own closes are stop-class; a released trade's close follows its base reason
-                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent; Sep-29 MANUAL_SL/TP too
+                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_", "OVERRIDE_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent; Sep-29 MANUAL_SL/TP too
             ))
 
             for attempt in range(1, max_exit_retries + 1):
@@ -10702,6 +10806,7 @@ class TradingEngine:
                             }
                             break
                     except Exception as _check_err:
+                        # a FAILED read is never "position gone" (get_position_for_symbol raises on error since Oct-2): keep retrying the close
                         logger.warning(f"[EXIT_RETRY] {order.pair}: Position check failed ({_check_err}), continuing retry")
 
                     _retry_tracker = websocket_tracker.get_tracker(order.pair)
@@ -10836,7 +10941,7 @@ class TradingEngine:
             # --- Paper mode: no retry needed, no slippage ---
             _slippage_pct = None
             _urgent_exit_paper = (order.entry_strategy or "") == "FRENZY_LONG" or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (
-                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
+                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_", "OVERRIDE_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
             ))
             if maker_exit_enabled and reason != "MANUAL" and not _urgent_exit_paper:
                 exit_result = await self._simulate_maker_exit_paper(
@@ -12234,7 +12339,11 @@ class TradingEngine:
                         await locked_commit(db)
                     continue
             # 🖐 Sep-29 MANUAL FIXED/FLOOR: the operator's SL/TP is the only exit (realtime path); skip every candle-based exit.
-            if (order.entry_strategy or "") == "MANUAL" and (getattr(order, 'manual_exit_mode', None) or "FIXED") in ("FIXED", "FLOOR", "FRENZY"):
+            # ✎ the operator's own stop / target replaced this trade's exit. The row of a pass already in flight can predate the edit:
+            # the cache (rebuilt by the edit itself) is read too, as the recovery-hold block above does.
+            _ovr_c = cached if (cached and cached.get('exit_override_at') is not None and getattr(order, 'exit_override_at', None) is None) else None
+            _ovr_m = getattr(order, 'exit_override_at', None) is not None or _ovr_c is not None
+            if ((order.entry_strategy or "") == "MANUAL" and (getattr(order, 'manual_exit_mode', None) or "FIXED") in ("FIXED", "FLOOR", "FRENZY")) or _ovr_m:
                 if True:
                     # 🖐 MANUAL with its own exit (Custom / Floor / Frenzy): the realtime path owns the exit, but (reviews) the PEAK must
                     # reach the DB — a restart rebuilt the cache with peak 0 and an armed Frenzy trail fell back to the bare stop — and a
@@ -12248,15 +12357,17 @@ class TradingEngine:
                         _mf_peak = max(realtime_peak, _mf_pnl)   # realtime_peak already = max(DB peak, cache peak)
                         order.peak_pnl = _mf_peak
                         order.trough_pnl = min(realtime_trough, _mf_pnl)
-                        if getattr(order, 'manual_exit_mode', None) == "FRENZY":
+                        _mf_lbl = "MANUAL" if (order.entry_strategy or "") == "MANUAL" else "OVERRIDE"
+                        if getattr(order, 'manual_exit_mode', None) == "FRENZY" and _mf_lbl == "MANUAL" and _ovr_c is None:
                             _mf_close, _mf_why, _mf_line = frenzy_exit_for(_mf_pnl, _mf_peak, config.trading_config.thresholds,
                                                                            manual_backstop_stop_floor(getattr(self, 'is_paper_mode', True), config.trading_config.thresholds, "FRENZY", None, order.leverage),
                                                                            short=(order.direction == "SHORT"))
                             _mf_reason = "MANUAL_TRAIL" if _mf_why == "RUNNER_TRAIL" else "MANUAL_SL"
                         else:   # FIXED / FLOOR: the operator's SL / TP stored on the row
-                            _mf_tp = getattr(order, 'pattern_fixed_tp_pct', None); _mf_sl = getattr(order, 'pattern_fixed_sl_pct', None)
-                            _mf_reason = ("MANUAL_TP" if (_mf_tp is not None and _mf_pnl >= float(_mf_tp))
-                                          else "MANUAL_SL" if (_mf_sl is not None and _mf_pnl <= float(_mf_sl)) else None)
+                            _mf_tp = _ovr_c.get('pattern_fixed_tp_pct') if _ovr_c else getattr(order, 'pattern_fixed_tp_pct', None)
+                            _mf_sl = _ovr_c.get('pattern_fixed_sl_pct') if _ovr_c else getattr(order, 'pattern_fixed_sl_pct', None)
+                            _mf_reason = (_mf_lbl + "_TP" if (_mf_tp is not None and _mf_pnl >= float(_mf_tp))
+                                          else _mf_lbl + "_SL" if (_mf_sl is not None and _mf_pnl <= float(_mf_sl)) else None)
                             _mf_close = _mf_reason is not None; _mf_line = float(_mf_sl) if _mf_sl is not None else float('nan')
                         if _mf_close:
                             logger.warning(f"[MANUAL_EXIT] {order.pair} {order.direction}: {_mf_reason} (candle path) pnl={_mf_pnl:.2f}% peak={_mf_peak:.2f}% line={_mf_line:.2f}%")
@@ -16095,23 +16206,25 @@ class TradingEngine:
 
             # 🖐 Sep-29 MANUAL sleeve, FIXED / FLOOR exit modes: ONLY the operator's SL/TP (pattern_fixed_* on the row) — no
             # alt mechanism may touch it. Mirrors the BULLRUN intercept (continue outside the try). MOMENTUM mode falls through.
-            if ((order_info.get('entry_strategy') or '') == 'MANUAL'
-                    and (order_info.get('manual_exit_mode') or 'FIXED') in ('FIXED', 'FLOOR', 'FRENZY')):
+            _ovr_rt = order_info.get('exit_override_at') is not None   # ✎ the operator's own stop / target replaced this trade's exit
+            if (((order_info.get('entry_strategy') or '') == 'MANUAL'
+                    and (order_info.get('manual_exit_mode') or 'FIXED') in ('FIXED', 'FLOOR', 'FRENZY')) or _ovr_rt):
                 try:
                     _mn_peak = max(order_info.get('peak_pnl', 0) or 0, pnl_pct)
                     order_info['peak_pnl'] = _mn_peak
                     if pnl_pct < (order_info.get('trough_pnl', 0) or 0):
                         order_info['trough_pnl'] = pnl_pct
                     _mn_tp = order_info.get('pattern_fixed_tp_pct'); _mn_sl = order_info.get('pattern_fixed_sl_pct')
-                    if order_info.get('manual_exit_mode') == 'FRENZY':   # 🔥 Oct-2: the FRENZY sleeve's stop + trailing exit, read live from its settings
+                    _mn_lbl = "MANUAL" if (order_info.get('entry_strategy') or '') == 'MANUAL' else "OVERRIDE"
+                    if order_info.get('manual_exit_mode') == 'FRENZY' and _mn_lbl == "MANUAL":   # 🔥 Oct-2: the FRENZY sleeve's stop + trailing exit, read live from its settings
                         _fz_c, _fz_why, _fz_line = frenzy_exit_for(pnl_pct, _mn_peak, config.trading_config.thresholds,
                                                                    manual_backstop_stop_floor(getattr(self, 'is_paper_mode', True), config.trading_config.thresholds, "FRENZY", None, order_info.get('leverage')),
                                                                    short=(direction == "SHORT"))
                         _mn_reason = (("MANUAL_TRAIL" if _fz_why == "RUNNER_TRAIL" else "MANUAL_SL") if _fz_c else None)
                         _mn_sl, _mn_tp = round(_fz_line, 4), None   # for the log line
                     else:
-                        _mn_reason = ("MANUAL_TP" if (_mn_tp is not None and pnl_pct >= float(_mn_tp))
-                                      else "MANUAL_SL" if (_mn_sl is not None and pnl_pct <= float(_mn_sl)) else None)
+                        _mn_reason = (_mn_lbl + "_TP" if (_mn_tp is not None and pnl_pct >= float(_mn_tp))
+                                      else _mn_lbl + "_SL" if (_mn_sl is not None and pnl_pct <= float(_mn_sl)) else None)
                     if _mn_reason and not order_info.get('_closing_in_progress'):
                         order_info['_closing_in_progress'] = True
                         logger.warning(f"[REALTIME_MANUAL_EXIT] {pair} {direction}: {_mn_reason} pnl={pnl_pct:.4f}% sl={_mn_sl} tp={_mn_tp}")
@@ -18161,6 +18274,7 @@ class TradingEngine:
                 'pattern_fixed_sl_pct': getattr(order, 'pattern_fixed_sl_pct', None),
                 'manual_exit_mode': getattr(order, 'manual_exit_mode', None),   # 🖐 Sep-29 MANUAL sleeve exit mode
                 'leverage': getattr(order, 'leverage', None),                   # 🖐 live MANUAL: its own safety-stop distance depends on it
+                'exit_override_at': getattr(order, 'exit_override_at', None),   # ✎ operator exit override (survives the rebuild)
             }
 
             if order.pair not in new_cache:

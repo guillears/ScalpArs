@@ -20275,9 +20275,9 @@
                                 return `<span class="px-1.5 py-0.5 rounded text-xs font-medium ${qColor}">${qs}</span>`;
                             })()}</td>
                             <td class="px-4 py-3 text-center">
-                                <button onclick="closeOrder(${o.id}, this, '${o.pair} ${o.direction}')" class="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded text-xs font-medium transition">
+                                <button onclick="closeOrder(${o.id}, this, '${o.pair} ${o.direction}', ${o.pattern_fixed_sl_pct ?? 'null'}, ${o.pattern_fixed_tp_pct ?? 'null'}, ${o.exit_override_at ? 'true' : 'false'}, ${Number.isFinite(o.pnl_percentage) ? o.pnl_percentage.toFixed(2) : 'null'})" class="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded text-xs font-medium transition">
                                     Close
-                                </button>
+                                </button>${o.exit_override_at ? `<div class="text-[10px] text-sky-300 mt-0.5 whitespace-nowrap cursor-help" title="✎ You replaced this position's exit: it closes only at your stop / target (or the max hold). Click Close to change it.">✎ ${o.pattern_fixed_sl_pct != null ? 'SL ' + (o.pattern_fixed_sl_pct > 0 ? '+' : '') + Number(o.pattern_fixed_sl_pct).toFixed(2) : ''}${o.pattern_fixed_tp_pct != null ? ' TP ' + (o.pattern_fixed_tp_pct > 0 ? '+' : '') + Number(o.pattern_fixed_tp_pct).toFixed(2) : ''}</div>` : ''}
                             </td>
                         </tr>
                     `;
@@ -20694,10 +20694,68 @@
             });
         }
 
-        async function closeOrder(orderId, btn, label) {
-            const ok = (btn && btn.getBoundingClientRect) ? await confirmNear(btn, `Close ${label || 'this position'}?`, 'Close') : confirm('Are you sure you want to close this position?');
-            if (!ok) return;
-            
+        // ✎ Oct-2 (operator): the Close popup offers TWO actions — close now, or replace the position's exit with your own stop / target
+        // (P&L % net of fees; the stop is signed: −1.5 = below break-even, +0.5 = lock a profit). Resolves {action:'close'} |
+        // {action:'edit', sl, tp} | null.
+        function closeChoiceNear(anchor, label, curSl, curTp, isOverride, pnlNow) {
+            return new Promise(resolve => {
+                if (_nearConfirmCancel) _nearConfirmCancel();
+                const r = anchor.getBoundingClientRect();
+                const box = document.createElement('div');
+                box.id = 'near-confirm';
+                box.style.cssText = 'position:fixed;z-index:10000;width:270px;background:#1f2333;border:1px solid rgba(255,255,255,0.25);border-radius:10px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,0.6);color:#e5e7eb;font-size:12px;';
+                const t = document.createElement('div'); t.textContent = `${label || 'This position'}${pnlNow != null ? ' · now ' + (pnlNow >= 0 ? '+' : '') + Number(pnlNow).toFixed(2) + '%' : ''}`; t.style.cssText = 'margin-bottom:8px;font-weight:600;';
+                const hint = document.createElement('div'); hint.style.cssText = 'margin:8px 0 6px;color:#9ca3af;font-size:11px;line-height:1.35;';
+                hint.textContent = 'Or replace its exit: it will close ONLY at your stop or target (P&L %, after fees). Stop is signed: -1.5 below break-even, +0.5 locks a profit. The target is optional; a stop is required unless the trade already has a fixed one.';
+                const mk = (ph, val) => { const i = document.createElement('input'); i.type = 'number'; i.step = '0.1'; i.placeholder = ph; if (val != null) i.value = val;
+                    i.style.cssText = 'width:108px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:4px 6px;color:#e5e7eb;font-size:12px;'; return i; };
+                const slI = mk('Stop P&L %', isOverride ? curSl : null), tpI = mk('Target P&L %', isOverride ? curTp : null);
+                const inputs = document.createElement('div'); inputs.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;'; inputs.append(slI, tpI);
+                const no = document.createElement('button'); no.textContent = 'Cancel'; no.className = 'px-3 py-1 bg-white/10 hover:bg-white/20 text-gray-200 rounded text-xs font-medium';
+                const set = document.createElement('button'); set.textContent = 'Set exit'; set.className = 'px-3 py-1 bg-sky-500/30 hover:bg-sky-500/50 text-sky-100 rounded text-xs font-semibold';
+                const yes = document.createElement('button'); yes.textContent = 'Close now'; yes.className = 'px-3 py-1 bg-red-500/30 hover:bg-red-500/50 text-red-200 rounded text-xs font-semibold';
+                const top = document.createElement('div'); top.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;'; top.append(no, yes);
+                const bottom = document.createElement('div'); bottom.style.cssText = 'display:flex;justify-content:flex-end;'; bottom.append(set);
+                box.replaceChildren(t, top, hint, inputs, bottom); document.body.appendChild(box);
+                const h = box.offsetHeight || 170;
+                box.style.left = Math.max(8, Math.min(window.innerWidth - 278, r.right - 270)) + 'px';
+                box.style.top = (r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+                let done = false;
+                const finish = v => { if (done) return; done = true; if (_nearConfirmCancel === cancel) _nearConfirmCancel = null; box.remove();
+                    document.removeEventListener('keydown', onKey, true); document.removeEventListener('mousedown', onDown, true); resolve(v); };
+                const num = el => { if (el.validity && el.validity.badInput) return NaN;   // a mistyped number ('1,5', '-') reads as '' — never treat it as blank
+                    const v = String(el.value || '').trim(); if (v === '') return null; const x = parseFloat(v); return Number.isFinite(x) ? x : NaN; };
+                const doSet = () => { const sl = num(slI), tp = num(tpI);
+                    if (Number.isNaN(sl) || Number.isNaN(tp)) { showToast('Stop and target must be numbers', 'error'); return; }
+                    if (sl === null && tp === null) { showToast('Type a stop, a target, or both', 'error'); return; }
+                    finish({ action: 'edit', sl, tp }); };
+                const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); finish(null); } else if (e.key === 'Enter' && (document.activeElement === slI || document.activeElement === tpI)) { e.preventDefault(); doSet(); } };
+                const cancel = () => finish(null); _nearConfirmCancel = cancel;   // no scroll / resize dismissal here: a phone keyboard resizes the window while typing
+                const onDown = e => { if (!box.contains(e.target)) finish(null); };
+                no.onclick = () => finish(null); yes.onclick = () => finish({ action: 'close' }); set.onclick = doSet;
+                document.addEventListener('keydown', onKey, true);
+                setTimeout(() => { if (!done) document.addEventListener('mousedown', onDown, true); }, 0);   // not the click that opened it
+            });
+        }
+
+        async function closeOrder(orderId, btn, label, curSl, curTp, isOverride, pnlNow) {
+            let choice;
+            if (btn && btn.getBoundingClientRect) choice = await closeChoiceNear(btn, label, curSl, curTp, isOverride, pnlNow);
+            else choice = confirm('Are you sure you want to close this position?') ? { action: 'close' } : null;
+            if (!choice) return;
+            if (choice.action === 'edit') {
+                try {
+                    const res = await fetch(`${API_BASE}/api/orders/exit_override`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ order_id: orderId, sl_pct: choice.sl, tp_pct: choice.tp }) });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok) {
+                        showToast(`Exit set on ${data.pair} ${data.direction}: stop ${data.sl_pct > 0 ? '+' : ''}${data.sl_pct}%${data.tp_pct != null ? ' · target ' + (data.tp_pct > 0 ? '+' : '') + data.tp_pct + '%' : ' · no target'}`);
+                        loadOpenOrders();
+                    } else { showToast(data.detail || 'Could not set the exit', 'error'); }
+                } catch (e) { showToast('Could not set the exit: ' + e, 'error'); }
+                return;
+            }
+
             try {
                 const res = await fetch(`${API_BASE}/api/orders/close`, {
                     method: 'POST',

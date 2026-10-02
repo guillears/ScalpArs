@@ -10,7 +10,8 @@ for the fixed stop; every close below the 5m EMA50 / EMA200 of a flagged pair is
   state     ≥ frenzy_min_hours after the spike ∧ every 5m close of the last hour ≥ the anchored VWAP ∧ last-hour volume ≥
             frenzy_state_vol_mult × normal.
   entry     the state turns ON after ≥ 1 h off (the first state bar of a stretch) ∧ 24 h volume ≥ frenzy_min_volume_usd ∧
-            5m ATR(14) ≤ frenzy_max_atr_pct, judged on that bar only.
+            5m ATR(14) ≤ frenzy_max_atr_pct ∧ (frenzy_long_skip_green_bar) that signal bar closed at or below its open — judged on
+            that bar only (DECISION_LOG 180: after a red / flat bar +0.47 %/trade, after a green bar −0.11).
   exit      stop −frenzy_stop_pct · once the peak reaches +frenzy_trail_arm_pct, close frenzy_trail_giveback_pct below the best
             price · frenzy_max_hold_minutes. P&L is the caller's net-of-fees % of the position.
 Everything is recomputed from a fresh kline window on every evaluation, so a deploy needs no warm-up; the engine persists only
@@ -51,7 +52,7 @@ def frenzy_walk(bars, norm_hour, th) -> Optional[dict]:
     """bars = CLOSED 5m OHLCV rows [open_ms, o, h, l, c, v], oldest first. Returns the LIVE episode (the one still running at the
     last bar) or None. Keys: spike_ts (close time of the spike bar), base (price 30 min before it), vwap, price, peak, hours,
     vol_mult, above_hour, in_state, fresh_on (the last bar is the first state bar after ≥ 1 h off), verified, last_bar_ts,
-    vs_vwap_pct, run_pct, gain_pct. Fail-closed.
+    vs_vwap_pct, run_pct, gain_pct, off_peak_pct, bar_ret_pct (the last bar's close vs its open, %) and bar_red (close ≤ open). Fail-closed.
     verified = the spike is known to be its episode's FIRST: either the previous episode is fully inside the window and was itself
     verified, or the 25 h before the spike are visible and hold no bar at the state volume (a state bar needs that volume, so an
     older episode whose own spike already left the window cannot still be alive — review: a 5-day frenzy re-anchored on a
@@ -60,6 +61,10 @@ def frenzy_walk(bars, norm_hour, th) -> Optional[dict]:
         if not bars or len(bars) < 40 or not norm_hour or not norm_hour > 0:
             return None
         t = [int(r[0]) for r in bars]; h = [float(r[2]) for r in bars]; l = [float(r[3]) for r in bars]; c = [float(r[4]) for r in bars]
+        try:   # an unreadable open only refuses the ENTRY (fail-closed below) — it must never drop the pair's flag
+            o_last = float(bars[-1][1])
+        except (TypeError, ValueError, IndexError):
+            o_last = 0.0
         q = [float(r[5]) * (h[i] + l[i] + c[i]) / 3.0 for i, r in enumerate(bars)]
         n = len(c)
         ret_min, vol_min, hour_min = _f(th, 'frenzy_spike_ret_pct', 5.0), _f(th, 'frenzy_spike_vol_mult', 20.0), _f(th, 'frenzy_spike_min_hour_usd', 2e6)
@@ -104,7 +109,8 @@ def frenzy_walk(bars, norm_hour, th) -> Optional[dict]:
                         fresh_on=fresh, verified=verified, last_bar_ts=t[-1],
                         vs_vwap_pct=(price / vw[-1] - 1) * 100 if vw[-1] > 0 else None,
                         run_pct=(peak / base - 1) * 100, gain_pct=(price / base - 1) * 100,
-                        off_peak_pct=(price / peak - 1) * 100 if peak > 0 else None)
+                        off_peak_pct=(price / peak - 1) * 100 if peak > 0 else None,
+                        bar_ret_pct=((price / o_last - 1) * 100 if o_last > 0 else None), bar_red=bool(o_last > 0 and price <= o_last))
         return None
     except (TypeError, ValueError, IndexError, ZeroDivisionError):
         return None
@@ -132,6 +138,9 @@ def frenzy_long_status(ep, atr_pct, volume_24h, th) -> Tuple[bool, str, str]:
     amax = _f(th, 'frenzy_max_atr_pct', 2.5)
     if amax > 0 and (atr_pct is None or float(atr_pct) > amax):
         return False, "FRENZY_ATR_HIGH", (f"ATR {atr_pct:.2f}% > {amax:g}%" if atr_pct is not None else "ATR unreadable")
+    if bool(getattr(th, 'frenzy_long_skip_green_bar', True)) and not ep.get('bar_red'):   # fail-closed: an unreadable bar is not red
+        _br = ep.get('bar_ret_pct')
+        return False, "FRENZY_GREEN_BAR", (f"signal candle green ({_br:+.3f}%)" if _br is not None else "signal candle unreadable")
     return True, "FRENZY_READY", "READY"
 
 

@@ -6942,6 +6942,7 @@ class TradingEngine:
                 entry_frenzy_vs_vwap_pct=(round(flag['vs_vwap_pct'], 3) if flag.get('vs_vwap_pct') is not None else None),
                 entry_frenzy_vol_mult=round(flag['vol_mult'], 1), entry_frenzy_run_pct=round(flag['run_pct'], 2),
                 entry_frenzy_stop_atr=(round(_stop / atr, 3) if atr else None),
+                entry_frenzy_bar_ret_pct=(round(flag['bar_ret_pct'], 4) if flag.get('bar_ret_pct') is not None else None),
                 **self._sanitize_open_kwargs(_ef, "FRENZY_LONG", "LONG"),
             )
             flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} " + ("opened" if order else "refused by the open path (slots / balance / cooldown / price moved)")
@@ -7921,6 +7922,7 @@ class TradingEngine:
         entry_frenzy_vol_mult: Optional[float] = None,
         entry_frenzy_run_pct: Optional[float] = None,
         entry_frenzy_stop_atr: Optional[float] = None,
+        entry_frenzy_bar_ret_pct: Optional[float] = None,
         # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
         # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
         # lev_mult from gap_probe_* config), tagged cell_src=GAPFLAT_PROBE (own analytics row;
@@ -9540,6 +9542,7 @@ class TradingEngine:
             entry_frenzy_vwap=(entry_frenzy_vwap if _frenzy else None), entry_frenzy_vs_vwap_pct=(entry_frenzy_vs_vwap_pct if _frenzy else None),
             entry_frenzy_vol_mult=(entry_frenzy_vol_mult if _frenzy else None), entry_frenzy_run_pct=(entry_frenzy_run_pct if _frenzy else None),
             entry_frenzy_stop_atr=(entry_frenzy_stop_atr if _frenzy else None),
+            entry_frenzy_bar_ret_pct=(entry_frenzy_bar_ret_pct if _frenzy else None),
             adx_surge_open=_adx_surge_admit,   # ⚡ Sep-28: admitted through the BTC ADX-surge waiver (same predicate as its sizing)
             entry_mcap_usd=_mcap_usd, entry_cmc_rank=_cmc_rank,   # 💰 Sep-28: cached market cap / CMC rank (NULL if unknown)
             entry_btc_ema50_100_gap_pct=(entry_btc_ema50_100_gap_pct if entry_btc_ema50_100_gap_pct is not None else (_zg.get('_current_btc_ema50_100_gap_pct') if _zfresh else None)),   # 🧭 Sep-29 zone stamps (observe-only)

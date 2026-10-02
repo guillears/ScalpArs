@@ -13,7 +13,7 @@ from services.frenzy import (BAR_MS, frenzy_breaks, frenzy_exit_for, frenzy_flag
 class TH:
     frenzy_spike_ret_pct = 5.0; frenzy_spike_vol_mult = 20.0; frenzy_spike_min_hour_usd = 2e6; frenzy_state_vol_mult = 100.0
     frenzy_min_hours = 2.0; frenzy_max_hours = 96.0; frenzy_min_volume_usd = 20e6; frenzy_max_atr_pct = 2.0
-    frenzy_stop_pct = 3.0; frenzy_trail_arm_pct = 5.0; frenzy_trail_giveback_pct = 1.5
+    frenzy_stop_pct = 3.0; frenzy_trail_arm_pct = 5.0; frenzy_trail_giveback_pct = 1.5; frenzy_long_skip_green_bar = False
 
 
 NORM = 10_000.0   # the pair's normal hourly quote volume in these fixtures
@@ -136,7 +136,7 @@ def test_config_parity_and_every_surface():
     import config as C
     th = C.trading_config.thresholds
     fields = sorted(k for k in type(th).model_fields if k.startswith("frenzy_"))
-    assert len(fields) == 21
+    assert len(fields) == 22
     cfgj = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert sorted(k for k in cfgj if k.startswith("frenzy_")) == fields                   # every field has a JSON value
     assert type(th).model_fields["frenzy_long_enabled"].default is False                  # OFF in code; the JSON arms it
@@ -144,7 +144,8 @@ def test_config_parity_and_every_surface():
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     listed = dict(re.findall(r"\['(config-fz-[a-z0-9-]+)', '(frenzy_[a-z0-9_]+)'", html))
     by_key = {v: k for k, v in listed.items()}
-    by_key.update(frenzy_long_enabled="config-fz-long-enabled", frenzy_short_observe="config-fz-short-observe", frenzy_pair_blacklist="config-fz-blacklist")
+    by_key.update(frenzy_long_enabled="config-fz-long-enabled", frenzy_short_observe="config-fz-short-observe", frenzy_pair_blacklist="config-fz-blacklist",
+                  frenzy_long_skip_green_bar="config-fz-skip-green")
     assert sorted(by_key) == fields                                                       # every field has a UI input
     for key, _id in by_key.items():
         assert html.count(f'id="{_id}"') == 1, _id
@@ -172,7 +173,7 @@ def test_engine_and_api_wiring():
     import models as M
     cols = {c.name for c in M.Order.__table__.columns}
     need = {"entry_frenzy_spike_at", "entry_frenzy_hours", "entry_frenzy_vwap", "entry_frenzy_vs_vwap_pct", "entry_frenzy_vol_mult",
-            "entry_frenzy_run_pct", "entry_frenzy_stop_atr"}
+            "entry_frenzy_run_pct", "entry_frenzy_stop_atr", "entry_frenzy_bar_ret_pct"}
     assert need <= cols and M.FrenzyBreak.__tablename__ == "frenzy_breaks"
     db = open(os.path.join(ROOT, "database.py"), encoding="utf-8").read()
     assert all(f"'{c}'" in db for c in need)                                              # the migration adds every column
@@ -348,3 +349,32 @@ def test_shipped_atr_limit_is_2_5_everywhere():
     assert frenzy_long_status(ep, 2.5, 50e6, Bare)[0] is True and frenzy_long_status(ep, 2.51, 50e6, Bare)[2] == "ATR 2.51% > 2.5%"
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     assert "['config-fz-max-atr', 'frenzy_max_atr_pct', 2.5]" in html and 'id="config-fz-max-atr"' in html
+
+
+def test_long_skips_a_green_signal_candle_when_the_switch_is_on():
+    """DECISION_LOG 180: the setup bar must have closed at or below its open (red / flat). Unreadable → refused (fail-closed)."""
+    class On(TH):
+        frenzy_long_skip_green_bar = True
+    flat0 = _bars(after=24)                               # the fixture's bars open at their close (flat)
+    b = [r[:] for r in flat0]; b[-1][1] = b[-1][4] * 0.995   # the setup bar opened 0.5 % lower → a green candle
+    ep = frenzy_walk(b, NORM, On)
+    assert ep["fresh_on"] and ep["bar_red"] is False and ep["bar_ret_pct"] > 0
+    ok, code, text = frenzy_long_status(ep, 1.5, 50e6, On)
+    assert (ok, code) == (False, "FRENZY_GREEN_BAR") and text.startswith("signal candle green (+")
+    assert frenzy_long_status(ep, 1.5, 50e6, TH)[0] is True                      # switch off → enters after any candle
+    red = [r[:] for r in b]; red[-1][1] = red[-1][4] * 1.001                    # same close, opened higher → a red candle still above the VWAP
+    ep2 = frenzy_walk(red, NORM, On)
+    assert ep2["fresh_on"] and ep2["bar_red"] is True and ep2["bar_ret_pct"] < 0 and frenzy_long_status(ep2, 1.5, 50e6, On) == (True, "FRENZY_READY", "READY")
+    assert frenzy_long_status(frenzy_walk(flat0, NORM, On), 1.5, 50e6, On)[0] is True   # close == open counts as flat → allowed
+    assert frenzy_long_status(dict(ep2, bar_red=None, bar_ret_pct=None), 1.5, 50e6, On)[1] == "FRENZY_GREEN_BAR"   # unreadable → refused
+    assert frenzy_long_status(ep, 9.0, 50e6, On)[1] == "FRENZY_ATR_HIGH"         # the ATR refusal is reported first
+    bad = [r[:] for r in flat0]; bad[-1][1] = "x"                                # an unreadable open keeps the flag and only refuses the entry
+    epb = frenzy_walk(bad, NORM, On)
+    assert epb is not None and frenzy_flagged(epb, On) and epb["bar_red"] is False and frenzy_long_status(epb, 1.5, 50e6, On)[2] == "signal candle unreadable"
+
+    class Missing:   # no field at all → armed
+        frenzy_state_vol_mult = 100.0; frenzy_min_volume_usd = 20e6; frenzy_max_atr_pct = 2.5
+    assert frenzy_long_status(ep, 1.5, 50e6, Missing)[1] == "FRENZY_GREEN_BAR"
+    import config as C
+    assert type(C.trading_config.thresholds).model_fields["frenzy_long_skip_green_bar"].default is True
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_long_skip_green_bar"] is True

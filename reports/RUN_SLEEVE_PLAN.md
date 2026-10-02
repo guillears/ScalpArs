@@ -114,3 +114,25 @@ CROSS (EMA50 crosses below EMA200). 4,514 triggers, strict ruler, stops 2 % / 3 
 - Runs > +200 %: retest within 1 % ≈ zero (−0.39…+0.24, halves disagree: Jan–Apr negative / May–Sep positive, 100–106 trades); retest2 −0.25…−0.73; cross −0.16…−0.58.
 - MOVR 10-02 04:15 cross: +11.2 % with the stop above the line, −2.2 / −3.2 with 2 % / 3 % stops (hit in 2 min); GTC lost with every stop. One case, not a rule.
 - Sixth short rule tested on frenzy pairs, sixth failure. Shorts stay observe-only; the live frenzy_breaks table is the next evidence source.
+
+## FRENZY EXIT — protection between the −3 % stop and the +5 % trail (scripts/frenzy_exit_protection_test.py → FRENZY_EXIT_PROTECTION_TEST_2026-10-02.md)
+Operator after a manual SCR long on the Frenzy exit (18:28 UTC, peak +1.69 %, closed MANUAL_SL −3.03 %, −$76): "trailing at 5 % too risky, no protection in between?"
+Year, 1,103 entries (ATR ≤ 2.5 %), strict ruler: 58 % end at the full stop; 44 % of those had been ≥ +1.5 % first (17 % had been +3–5 %).
+BASE trail 5/1.5 +0.16 (+0.21 / +0.12) · BE at +1.5 % −0.08 · BE +2 % −0.13 · BE +3 % +0.06 · STEP (+2 → −1, +3.5 → +0.5) −0.02 · HALF at +2 % (stop → −1.5) +0.07 ·
+HALF at +3 % +0.13 (+0.19 / +0.07) · TRAIL 4/1.5 +0.11 · 4/2 +0.11 · 3/1.5 0.00 · 3/2 0.00 · 2/2 −0.17. Same order on SEEN and UNSEEN.
+→ every protection tested LOWERS the average: these pairs swing ±2–3 % on the way to the big winners, so a break-even stop is hit (47 % of trades at BE +1.5 %)
+before the run. Least costly: HALF at +3 % (−0.03 per trade, full stops 58 % → 49 %). Not shipped; operator's call.
+
+## FRENZY_LONG SEPARATOR DEEP DIVE (scripts/frenzy_long_separators.py → FRENZY_LONG_SEPARATORS_2026-10-02.md; features csv reports/backtest_cache/frenzy_long_features.csv)
+1,103 trades (ATR ≤ 2.5 %, live exit, strict ruler), 46 entry features (pair, spike, volume, EMA, candle shape, BTC, breadth, funding, hour), all 100 % coverage.
+- 44 of 46 features do NOT separate: quintiles non-monotonic or the sign flips between halves / volume groups (hours, run size, distance from VWAP, volume ×, ATR,
+  RSI, EMA gaps, BTC 1h/4h/24h, BTC vs EMAs, every breadth measure, hour of day, attempt number).
+- ONE family repeats everywhere — the SIGNAL BAR'S SHAPE (bar_body, r5m, bar_upper_wick, green_1h are the same thing): entries after a RED / flat signal bar
+  517 · 45 % won · +0.47 (+0.46 / +0.49) · by day [+0.15, +0.82] · 7 of 9 months; after a GREEN bar 586 · 38 % · −0.11 (−0.06 / −0.15) · [−0.46, +0.23].
+  Threshold 0 (close ≤ open) is not fitted. Out of sample: found on May–Sep → holds Jan–Apr (+0.50 vs −0.19); found on SEEN → holds UNSEEN (+0.46 vs −0.18).
+  SEEN red +0.64 / green −0.24; UNSEEN red +0.26 / green +0.05 (weaker). Shuffle p = 0.008 for the fixed split; but it is the best of 46 features —
+  the full-search luck bar puts it at the 92nd percentile. Mechanism: buying right after a green 5m bar = chasing (the MOVR first-long lesson).
+- 2D screen (990 pairs): best cell +1.59 (67 trades) is BELOW the shuffled best (+1.66) → no 2D rule.
+- Winners median +4.2 %; full stops' median best point +1.2 %; the best 5 % of trades make +484 of the +178 total points.
+- STATUS: candidate "enter only when the signal bar closed at or below its open". As a FILTER it fails the expectancy bar (blocked cohort −0.11, range spans zero)
+  → observe-first by the rules; operator decides.

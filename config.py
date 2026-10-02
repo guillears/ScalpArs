@@ -1267,6 +1267,13 @@ class SignalThresholds(BaseModel):
     # ≤ 3 % 1,517 · +0.06 · no limit −0.01. The 2–2.5 % band is positive on both sets (+0.06 / +0.19); 2.5–3 % loses on both.
     # Chosen on the same data → optimistic. 0 = no ATR gate.
     frenzy_max_atr_pct: float = 2.5              # entry only when 5m ATR(14) ≤ this % (the 3 % stop ≥ 1.2 ATR)
+    # Oct-2 (DECISION_LOG 180, operator "arm it"): the long opens only when its signal bar closed at or below its open. Deep dive of
+    # 46 entry features on 1,103 trades (scripts/frenzy_long_separators.py) — the ONE separator that repeats: after a red / flat bar
+    # 517 trades · 45 % won · +0.47 %/trade (+0.46 / +0.49) · by day [+0.15, +0.82]; after a green bar 586 · 38 % · −0.11. Holds out of
+    # sample both ways (halves, volume groups); threshold 0 not fitted; best of 46 features → 92nd percentile of the search's luck bar.
+    # As a FILTER it is below the expectancy bar (the blocked cohort's range spans zero) → an armed override; the bar's return is
+    # stamped on every fill (entry_frenzy_bar_ret_pct). False = enter after any bar.
+    frenzy_long_skip_green_bar: bool = True
     frenzy_stop_pct: float = 3.0                 # stop, % of the position (positive number)
     frenzy_trail_arm_pct: float = 5.0            # the trailing exit arms at this peak %
     frenzy_trail_giveback_pct: float = 1.5       # … and closes this % of price below the best point

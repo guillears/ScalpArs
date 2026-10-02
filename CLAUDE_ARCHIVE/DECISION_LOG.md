@@ -5202,3 +5202,23 @@ they age; the non-flagged rows keep their volume order. Display only — no entr
 (setup ON first, then volume multiple). Dual review: no correctness findings (the key cannot raise, nothing downstream depends on the order, the page does
 not re-sort); the order test used equal spike times and did not exercise the rule → now uses different times. Surfaces: main.py `get_pairs` sort key ·
 tests/test_frenzy_sleeve.py.
+
+### (185) 2026-10-02 — 🖐🪜 Manual entry over the exchange's position limit: one-click fixes + a live "max size" line (operator)
+Operator hit "at 20× the exchange allows a position of at most $5,000 on MOVRUSDT (you asked $10,000…)" and asked for a friendlier error that gives the
+options directly. Built both parts:
+- **Fix buttons.** The refusal now carries up to two corrections and the toast shows them as buttons: "Keep 20× → size $250 (position $5,000)" and
+  "Keep the $10,000 position → 10×, size $1,000". A button ONLY fills Size and Lev — nothing is opened; the operator still presses Open position. The toast
+  with buttons does not time out. A leverage above the pair's maximum offers "Use N× (this pair's maximum)".
+- **Live line under the inputs** (`manual-limit-hint`): "max size $250 at 20× on MOVRUSDT (position limit $5,000) · limits: …", orange with the arithmetic
+  when the typed order is over the limit. Limits read once per pair from the new `GET /api/manual/limits?pair=` (bracket table already cached by the engine).
+- The order is still REFUSED, never resized (DECISION_LOG 170 unchanged); no sizing, entry or exit rule changed; the bot's own entries are untouched.
+Pure rule `manual_bracket_fixes(tiers, leverage, margin, available)`: sizes rounded DOWN, never a larger position than asked, same-leverage fix never adds
+margin; the same-position fix is dropped when the margin (balance net of the entry fee) is not available.
+**Dual review, applied before the commit:** same-position fix could be offered and then refused for balance (fee not counted) → budget is now net of the fee ·
+a routine confirmation toast could wipe unanswered fix buttons → ignored while they are shown (errors / warnings still replace them) · a stale button after
+the Pair box changed would fill another pair's numbers → refused with a message · an empty limits answer (table not loaded yet) was kept 10 min → 30 s ·
+duplicate requests while one is in flight → guarded · line drawn when the panel is opened · toast fits a phone screen · label number formatting.
+300,000-case property test by the reviewer: no fix is refused by the bracket rule, none grows the position. **Not tested:** the page scripts have no automated
+tests (syntax-checked only); never exercised against the real exchange table in a browser by me.
+Surfaces: services/trading_engine.py (`ManualLimitError`, `manual_bracket_fixes`, the two raises) · main.py (400 with `fixes`, `/api/manual/limits`) ·
+templates/index.html (`showToast` actions, `manualLimitHint`, `manualApplyFix`) · tests/test_manual_limit_fixes.py.

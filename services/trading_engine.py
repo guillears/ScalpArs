@@ -512,6 +512,55 @@ def leverage_bracket_limit(tiers, leverage, margin):
     return best[0], best[1], pair_max, cap_at
 
 
+class ManualLimitError(ValueError):
+    """🪜 Oct-2: a manual order over the exchange's position limit. A ValueError (the endpoint's 400 path) that also carries
+    `fixes` — the one-click corrections the dashboard offers (manual_bracket_fixes)."""
+    def __init__(self, message, fixes=None):
+        super().__init__(message)
+        self.fixes = list(fixes or [])
+
+
+def manual_bracket_fixes(tiers, leverage, margin, available=None):
+    """🪜 Oct-2 (operator: "can the error give me the options directly?") — the corrections for a manual order the exchange's
+    leverage brackets refuse. `tiers` = [(notional_cap, max_leverage), …]. Returns up to two dicts
+    {kind, investment, leverage, notional, label}:
+      KEEP_LEVERAGE  the same leverage (the pair's maximum when the request is above it) with the largest size it allows —
+                     never larger than the size asked
+      KEEP_POSITION  the same position (size × leverage) at the highest leverage whose bracket holds it → more margin;
+                     dropped when that margin is above `available` (the caller passes the balance NET of the entry fee —
+                     the position is the same, so the fee is too)
+    Sizes are rounded DOWN (whole dollars from $10, cents below), so a fix is never itself over the limit. [] when the
+    table is missing / unusable or the order is already inside the limit. Pure."""
+    try:
+        rows = sorted((float(c), float(l)) for c, l in (tiers or []) if float(c) > 0 and float(l) >= 1)
+        lev, m = float(leverage), float(margin)
+        avail = None if available is None else float(available)
+    except (TypeError, ValueError):
+        return []
+    if not rows or not (lev >= 1) or not (m > 0) or not math.isfinite(lev) or not math.isfinite(m):
+        return []
+    usd = lambda x: f"{x:,.2f}".rstrip("0").rstrip(".")                # 250 → "250" · 7.5 → "7.5" · 1000 → "1,000"
+    down = lambda x: float(math.floor(x + 1e-9)) if x >= 10 else math.floor(x * 100 + 1e-9) / 100.0
+    pair_max = max(tl for _, tl in rows); want = m * lev
+    lev_a = min(lev, pair_max); cap_a = max(cap for cap, tl in rows if tl >= lev_a)
+    if lev <= pair_max + 1e-9 and want <= cap_a + 0.01:
+        return []                                                       # already inside the limit
+    out = []
+    size_a = down(min(m, cap_a / lev_a))
+    if size_a >= 1:
+        out.append(dict(kind="KEEP_LEVERAGE", investment=size_a, leverage=lev_a, notional=round(size_a * lev_a, 2),
+                        label=(f"Keep {lev_a:g}×" if lev <= pair_max + 1e-9 else f"Use {lev_a:g}× (this pair's maximum)")
+                              + f" → size ${usd(size_a)} (position ${size_a * lev_a:,.0f})"))
+    holds = [tl for cap, tl in rows if cap + 0.01 >= want and tl < lev]
+    if holds:
+        lev_b = max(holds); size_b = math.floor(want / lev_b * 100 + 1e-9) / 100.0
+        _same = out and abs(out[0]["leverage"] - lev_b) < 1e-9 and abs(out[0]["investment"] - size_b) < 0.005
+        if size_b >= 1 and not _same and (avail is None or size_b <= avail):
+            out.append(dict(kind="KEEP_POSITION", investment=size_b, leverage=lev_b, notional=round(size_b * lev_b, 2),
+                            label=f"Keep the ${want:,.0f} position → {lev_b:g}×, size ${usd(size_b)}"))
+    return out
+
+
 MANUAL_NO_GATE = "NONE"   # manual_block_reason of a fill on a pair the bot could enter at that moment
 
 
@@ -10040,12 +10089,15 @@ class TradingEngine:
             _lim = leverage_bracket_limit(_tiers, leverage, investment)
             if _lim is not None:
                 _, _, _brk_max_lev, _brk_cap = _lim
+                # Oct-2 (operator): the refusal carries the one-click corrections (same leverage · same position). The budget
+                # is the balance net of the entry fee, so a correction offered is not then refused by the balance check above.
                 if leverage > _brk_max_lev + 1e-9:
-                    raise ValueError(f"the exchange allows at most {_brk_max_lev:g}× on {pair} (you asked {leverage:g}×)")
+                    raise ManualLimitError(f"{pair} allows at most {_brk_max_lev:g}× leverage — you asked for {leverage:g}×.",
+                                           manual_bracket_fixes(_tiers, leverage, investment, available - _fee_usdt_est))
                 if investment * leverage > _brk_cap + 0.01:
-                    _alt = "; ".join(f"up to ${c:,.0f} at {l:g}×" for c, l in sorted(_tiers)[:4])
-                    raise ValueError(f"at {leverage:g}× the exchange allows a position of at most ${_brk_cap:,.0f} on {pair} "
-                                     f"(you asked ${investment * leverage:,.0f} = ${investment:,.0f} × {leverage:g}). Brackets: {_alt}")
+                    raise ManualLimitError(f"{pair} allows a position of at most ${_brk_cap:,.0f} at {leverage:g}× — you asked for "
+                                           f"${investment * leverage:,.0f} (${investment:,.10g} × {leverage:g}).",
+                                           manual_bracket_fixes(_tiers, leverage, investment, available - _fee_usdt_est))
         symbol = f"{pair[:-4]}/USDT:USDT"
         # PRICE SOURCE (Sep-29, QNT 0-second trade lost 0.35 % on the source gap): exits price off the live websocket tick, so
         # the entry must too — the REST ticker can lag a few seconds on a fast pair. Stream price when fresh (≤ 5 s), else REST

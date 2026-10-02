@@ -33,6 +33,7 @@ from config import (
 )
 from services.binance_service import binance_service, set_ban_until, set_ban_persist_callback, get_ban_status
 from services.trading_engine import trading_engine, realtime_stop_loss_callback, _open_orders_cache, _cache_lock
+from services.trading_engine import ManualLimitError, normalize_manual_pair
 from services.indicators import calculate_indicators, get_signal
 from services.websocket_tracker import websocket_tracker
 
@@ -2236,6 +2237,22 @@ async def exit_override(request: ExitOverrideRequest, db: AsyncSession = Depends
             "sl_pct": order.pattern_fixed_sl_pct, "tp_pct": order.pattern_fixed_tp_pct, "strategy": order.entry_strategy}
 
 
+@app.get("/api/manual/limits")
+async def manual_limits(pair: str = ""):
+    """🪜 Oct-2: the exchange's position limits for one pair, for the manual-entry panel's "max size" line. Reads the bracket
+    table (cached 6 h; the call that finds it expired refreshes it, bounded at 6 s, never during a ban) — no order, no price.
+    tiers = [[position_limit_usd, max_leverage], …]; [] = no table right now (the panel asks again shortly)."""
+    _pair = normalize_manual_pair(pair)
+    _on = bool(getattr(config.trading_config.investment, 'leverage_bracket_cap_enabled', True))
+    tiers = []
+    if _on and len(_pair) > 4:
+        try:
+            tiers = [[float(c), float(l)] for c, l in ((await binance_service.get_leverage_brackets()).get(_pair) or [])]
+        except Exception:
+            tiers = []
+    return {"pair": _pair, "enabled": _on, "tiers": tiers}
+
+
 @app.post("/api/orders/manual_open")
 async def manual_open(request: ManualOpenRequest, db: AsyncSession = Depends(get_db)):
     """🖐 Sep-29 MANUAL sleeve: open a position from the dashboard (bypasses every entry gate; own label; own exit mode)."""
@@ -2243,6 +2260,8 @@ async def manual_open(request: ManualOpenRequest, db: AsyncSession = Depends(get
         order = await trading_engine.open_manual_position(
             db, pair=request.pair, direction=request.direction, investment=request.investment, leverage=request.leverage,
             exit_mode=request.exit_mode, sl_pct=request.sl_pct, tp_pct=request.tp_pct, note=request.note)
+    except ManualLimitError as e:                # 🪜 over the exchange's position limit: same 400 + the one-click corrections
+        return JSONResponse(status_code=400, content={"detail": str(e), "fixes": e.fixes})
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

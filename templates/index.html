@@ -110,10 +110,10 @@
 </head>
 <body class="text-gray-100 font-sans">
     <!-- Toast Notification -->
-    <div id="toast" class="fixed top-4 right-4 z-50 hidden max-w-2xl cursor-pointer" title="click to dismiss">
-        <div class="glass rounded-lg px-6 py-4 shadow-lg flex items-center space-x-3">
+    <div id="toast" class="fixed top-4 right-4 left-4 sm:left-auto z-50 hidden max-w-2xl cursor-pointer" title="click to dismiss">
+        <div class="glass rounded-lg px-6 py-4 shadow-lg flex items-start sm:items-center space-x-3">
             <span id="toast-icon" class="text-2xl"></span>
-            <span id="toast-message" class="font-medium"></span>
+            <div class="min-w-0"><span id="toast-message" class="font-medium"></span><div id="toast-actions" class="hidden mt-2 flex flex-wrap gap-2"></div></div>
         </div>
     </div>
 
@@ -309,15 +309,16 @@
                 <div class="flex flex-wrap items-end gap-3 text-xs">
                     <button type="button" id="manual-entry-toggle" onclick="toggleManualPanel()" class="text-sm font-semibold text-amber-300 mr-2 hover:text-amber-200 select-none" title="Opens a position NOW at market, bypassing every entry gate and cell multiplier. Labelled MANUAL — never counted in any systematic sleeve. SL/TP are % of price move NET of fees (leverage-invariant, the same pnl every exit uses): 1.5 ≈ −1.4% raw price ≈ −30% of margin at 20×. MAX_HOLD still applies as the universal safety net. The widest stop allowed is leverage-aware: the tighter of the config floor and 80% of the liquidation distance (100/leverage minus 0.5% maintenance margin) — with the default floor: 20× → −3.0%, 30× → −2.3%, 50× → −1.2%, 100× → −0.4%. Works in paper and in LIVE (live: a real market order + an exchange safety stop; needs the broker backstop on and whole-number leverage). Click to collapse / expand.">🖐 Manual entry <span id="manual-entry-chevron" class="text-gray-500">▸</span></button>
                     <div id="manual-entry-body" class="hidden">
-                    <label class="flex flex-col text-gray-400">Pair<input id="manual-pair" type="text" list="manual-pair-list" placeholder="DOGEUSDT" autocomplete="off" oninput="manualPairHint()" class="w-32 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><datalist id="manual-pair-list"></datalist></label>
+                    <label class="flex flex-col text-gray-400">Pair<input id="manual-pair" type="text" list="manual-pair-list" placeholder="DOGEUSDT" autocomplete="off" oninput="manualPairHint(); manualLimitHint()" class="w-32 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><datalist id="manual-pair-list"></datalist></label>
                     <label class="flex flex-col text-gray-400">Side<select id="manual-direction" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
-                    <label class="flex flex-col text-gray-400">Size $<input id="manual-investment" type="number" step="10" min="1" value="500" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
-                    <label class="flex flex-col text-gray-400">Lev<input id="manual-leverage" type="number" step="1" min="1" max="125" value="20" class="w-14 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <label class="flex flex-col text-gray-400">Size $<input id="manual-investment" type="number" step="10" min="1" value="500" oninput="manualLimitHint()" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <label class="flex flex-col text-gray-400">Lev<input id="manual-leverage" type="number" step="1" min="1" max="125" value="20" oninput="manualLimitHint()" class="w-14 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack; refused only when its EMA13-cross exit would close the trade at the first tick (counter-trend entry with the EMA5/EMA8 stack against it) · FLOOR = hard stop at the floor (the widest safe stop for your leverage) + optional TP · FRENZY = the FRENZY sleeve's exit with its CURRENT settings (stop, trailing exit, max hold — see the FRENZY box); no SL / TP to type">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM" selected>Momentum stack</option><option value="FLOOR">Floor stop (+ opt. TP)</option><option value="FRENZY">🔥 Frenzy exit</option></select></label>
                     <label class="flex flex-col text-gray-400">SL %<input id="manual-sl" type="number" step="0.1" min="0" placeholder="1.5" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">TP %<input id="manual-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400 flex-1 min-w-[12rem]">Note (optional)<input id="manual-note" type="text" maxlength="200" placeholder="optional — the gate is recorded automatically" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <button id="manual-open-btn" onclick="openManualPosition()" class="px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-400/60 text-amber-200 hover:bg-amber-500/30 transition font-semibold">Open position</button>
+                    <div id="manual-limit-hint" class="hidden basis-full text-[11px] text-gray-500 -mt-1" title="🪜 The exchange's position limit for this pair at the leverage typed (Binance lowers the leverage it allows as the position grows). An order over the limit is refused, never resized."></div>
                     <div id="manual-pair-hint" class="basis-full text-[11px] text-gray-500 -mt-1" title="What the bot sees for this pair right now — stamped on the order automatically (manual_block_reason / manual_setup_rating / manual_setup_side in the export)"></div>
                     </div>
                 </div>
@@ -8855,10 +8856,28 @@
         }
 
         // Toast notification
-        function showToast(message, type = 'success') {
+        // Oct-2 (operator): `actions` = [{label, onClick}] one-click fixes shown as buttons under the message. A toast with actions
+        // does not time out — it stays until a button or the toast itself is clicked.
+        function showToast(message, type = 'success', actions = null) {
             const toast = document.getElementById('toast');
             const icon = document.getElementById('toast-icon');
             const msg = document.getElementById('toast-message');
+            const act = document.getElementById('toast-actions');
+            const _acts = Array.isArray(actions) ? actions.filter(a => a && a.label && typeof a.onClick === 'function') : [];
+            // a routine confirmation (e.g. a background refresh) must not wipe fix buttons the operator has not answered yet;
+            // an error or a warning still replaces them
+            if (window._toastSticky && !_acts.length && type === 'success' && !toast.classList.contains('hidden')) return;
+            window._toastSticky = _acts.length > 0;
+            if (act) {
+                act.replaceChildren();
+                for (const a of _acts) {
+                    const b = document.createElement('button'); b.type = 'button'; b.textContent = a.label;
+                    b.className = 'px-3 py-1 rounded border border-amber-400/60 bg-amber-500/20 hover:bg-amber-500/40 text-amber-100 text-xs font-semibold';
+                    b.onclick = (ev) => { ev.stopPropagation(); toast.classList.add('hidden'); window._toastSticky = false; if (window._toastTimer) clearTimeout(window._toastTimer); try { a.onClick(); } catch (e) {} };
+                    act.appendChild(b);
+                }
+                act.classList.toggle('hidden', !_acts.length);
+            }
             
             icon.textContent = type === 'success' ? '✓' : (type === 'warning' ? '⚠' : '✗');
             icon.className = type === 'success' ? 'text-2xl text-emerald-400' : (type === 'warning' ? 'text-2xl text-amber-400' : 'text-2xl text-red-400');
@@ -8869,8 +8888,8 @@
             // (max 20 s). A newer toast cancels the older timer, so a quick success never hides a fresh error early. Click to dismiss.
             if (window._toastTimer) clearTimeout(window._toastTimer);
             const _ms = type === 'success' ? 3000 : type === 'warning' ? 6000 : Math.min(20000, 8000 + Math.ceil(String(message || '').length / 20) * 1000);
-            window._toastTimer = setTimeout(() => toast.classList.add('hidden'), _ms);
-            toast.onclick = () => { toast.classList.add('hidden'); if (window._toastTimer) clearTimeout(window._toastTimer); };
+            window._toastTimer = _acts.length ? null : setTimeout(() => toast.classList.add('hidden'), _ms);
+            toast.onclick = () => { toast.classList.add('hidden'); window._toastSticky = false; if (window._toastTimer) clearTimeout(window._toastTimer); };
         }
 
         // Format numbers
@@ -20582,6 +20601,7 @@
             const collapse = (typeof force === 'boolean') ? force : !body.classList.contains('hidden');
             body.classList.toggle('hidden', collapse); body.classList.toggle('contents', !collapse);
             if (chev) chev.textContent = collapse ? '▸' : '▾';
+            if (!collapse) { try { manualLimitHint(); } catch (e) {} }   // a pair the browser restored shows its limit at once
         }
         try { toggleManualPanel(true); } catch (e) {}
         try { manualExitModeChanged(); } catch (e) {}   // default exit = Momentum stack → SL/TP inputs start disabled
@@ -20595,6 +20615,69 @@
             const side = p.setup_side || '';   // computed server-side on the raw EMAs
             el.textContent = p.entry_ready ? `${p.pair}: enterable now — ${p.signal} ${p.confidence || ''} (no gate; will be stamped as gate: NONE)`
                 : `${p.pair}: ${p.confidence && p.confidence !== 'NO_TRADE' ? '🚫 ' + p.confidence + (side ? ' ' + side : '') + ' setup' : (p.confidence || 'no setup')} — gate: ${p.block_reason || '—'} · RSI ${p.rsi ?? '—'} · ADX ${p.adx ?? '—'} (stamped on the order automatically)`;
+        }
+        // 🪜 Oct-2 (operator): "max size" line under the manual inputs — the exchange's position limit for the pair at the leverage
+        // typed, orange when the order typed is over it. Limits are read once per pair (GET /api/manual/limits, kept 10 min).
+        const _manualLimits = {};   // pair → {at, tiers: [[position_limit_usd, max_leverage], …]}
+        const _manualLimitPending = {};   // pair → a request is on its way
+        let _manualLimitTimer = null;
+        function manualPairKey() {
+            let k = (document.getElementById('manual-pair')?.value || '').trim().toUpperCase().replaceAll('/', '').replace(':USDT', '');
+            if (k && !k.endsWith('USDT')) k += 'USDT';                         // same normalisation as the engine
+            return k;
+        }
+        function manualLimitHint() {
+            const el = document.getElementById('manual-limit-hint'); if (!el) return;
+            const k = manualPairKey();
+            const hide = () => { el.classList.add('hidden'); el.textContent = ''; };
+            if (k.length <= 4) return hide();
+            const c = _manualLimits[k];
+            if (!c || Date.now() - c.at > 600000) {
+                if (!c) hide();
+                if (!_manualLimitPending[k]) {
+                    if (_manualLimitTimer) clearTimeout(_manualLimitTimer);
+                    _manualLimitTimer = setTimeout(async () => {               // wait for the typing to stop before asking
+                        if (manualPairKey() !== k || _manualLimitPending[k]) return;
+                        _manualLimitPending[k] = true;
+                        try {
+                            const res = await fetch(`${API_BASE}/api/manual/limits?pair=${encodeURIComponent(k)}`);
+                            if (!res.ok) return;
+                            const d = await res.json(); const tiers = Array.isArray(d.tiers) ? d.tiers : [];
+                            // an empty answer (table not loaded yet) is kept 30 s only, a real table 10 min
+                            _manualLimits[k] = { at: Date.now() - (tiers.length ? 0 : 570000), tiers };
+                            if (manualPairKey() === k) manualLimitHint();
+                        } catch (e) {} finally { delete _manualLimitPending[k]; }
+                    }, 500);
+                }
+                if (!c) return;
+            }
+            const tiers = (c.tiers || []).filter(t => t && t[0] > 0 && t[1] >= 1).sort((a, b) => a[0] - b[0]);
+            if (!tiers.length) return hide();
+            const lev = parseFloat(document.getElementById('manual-leverage')?.value || ''), size = parseFloat(document.getElementById('manual-investment')?.value || '');
+            const usd = v => '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: v >= 10 ? 0 : 2 });
+            const down = v => v >= 10 ? Math.floor(v + 1e-9) : Math.floor(v * 100 + 1e-9) / 100;
+            const pairMax = Math.max(...tiers.map(t => t[1]));
+            const ladder = tiers.slice(0, 4).map(t => `${usd(t[0])} at ${t[1]}×`).join(' · ');
+            let over = false, txt;
+            if (!(lev >= 1)) txt = `${k} position limits: ${ladder}`;
+            else if (lev > pairMax) { over = true; txt = `⚠ ${k} allows at most ${pairMax}× leverage (you typed ${lev}×) · position limits: ${ladder}`; }
+            else {
+                const cap = Math.max(...tiers.filter(t => t[1] >= lev).map(t => t[0]));
+                over = size > 0 && size * lev > cap + 0.01;
+                txt = over ? `⚠ ${usd(size)} × ${lev} = ${usd(size * lev)} is over ${k}'s limit of ${usd(cap)} at ${lev}× — max size ${usd(down(cap / lev))} at ${lev}× · limits: ${ladder}`
+                           : `max size ${usd(down(cap / lev))} at ${lev}× on ${k} (position limit ${usd(cap)}) · limits: ${ladder}`;
+            }
+            el.textContent = txt; el.classList.remove('hidden');
+            el.classList.toggle('text-orange-300', over); el.classList.toggle('text-gray-500', !over);
+        }
+        // one-click fix from a refused order: fills Size and Lev only — the operator still presses Open position
+        function manualApplyFix(f, pair) {
+            if (pair && manualPairKey() !== pair) { showToast(`That fix was for ${pair} — the Pair box now says ${manualPairKey() || 'nothing'}. Nothing changed.`, 'warning'); return; }
+            const sz = document.getElementById('manual-investment'), lv = document.getElementById('manual-leverage');
+            if (sz && f.investment > 0) sz.value = f.investment;
+            if (lv && f.leverage >= 1) lv.value = f.leverage;
+            try { manualLimitHint(); } catch (e) {}
+            try { sz && sz.focus(); } catch (e) {}
         }
         function manualExitModeChanged() {
             const m = document.getElementById('manual-exit-mode')?.value || 'FIXED';
@@ -20628,7 +20711,10 @@
                     showToast(`MANUAL ${data.direction} ${data.pair} opened @ ${data.entry_price} (exit ${data.exit_mode}${data.sl_pct != null ? ' SL ' + data.sl_pct : ''}${data.tp_pct != null ? ' TP ' + data.tp_pct : ''})`);
                     loadOpenOrders(); loadTransactions(); loadBalance();
                 } else {
-                    showToast(data.detail || 'Manual open failed', 'error');
+                    const _fxPair = manualPairKey();
+                    const _fx = (Array.isArray(data.fixes) ? data.fixes : []).filter(f => f && f.label && f.investment > 0 && f.leverage >= 1);
+                    showToast((data.detail || 'Manual open failed') + (_fx.length ? ' Pick a fix (it only fills Size and Lev — nothing is opened):' : ''), 'error',
+                              _fx.map(f => ({ label: f.label, onClick: () => manualApplyFix(f, _fxPair) })));
                 }
             } catch (e) {
                 showToast((window._lastStatusIsPaper === false ? '⚠ No answer from the server — in LIVE the order may have been placed: check Open Positions and Binance before retrying. ' : 'Manual open failed: ') + e, 'error');

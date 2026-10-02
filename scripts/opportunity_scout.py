@@ -1221,6 +1221,18 @@ def run():
          f"OUTSIDE it are recorded as such (membership judged by each pair's 24 h volume AT the event vs today's #{limit} cutoff ${cutoff/1e6:.0f}M). "
          f"{covtxt} — the last stretch before each export is excluded (exports hold closed trades only); outside coverage = 'unknown'.", "",
          "## Evidence so far (every recorded in-universe event)", ""] + evidence_lines(ev) + [""]
+    _stair_notes = []                                  # 🪜 Oct-2 staircase watch (alert only; public data; never breaks the run)
+    try:
+        import scout_staircase as _stair
+        _st_noted = (_load_notes_state().get("noted") or {})
+        _st_res = _stair.scan(EX, last_closed, _retry, extra=_stair.followed(_st_noted, now_ms))
+        _st_sec = _stair.lines(_st_res) + [""]
+        _stair_notes = _stair.note_items(_st_res, _st_noted, now_ms)
+    except Exception as _st_e:
+        log(f"staircase watch failed: {_st_e}")
+        _st_sec = ["## 🪜 Staircase watch", "", "Unavailable this run.", ""]
+    _ev_at = next((i for i, x in enumerate(L) if x.startswith("## Evidence so far")), len(L))
+    L[_ev_at:_ev_at] = _st_sec                         # above the evidence table, so the events / "no events" line keep their place
     if not len(rep):
         L.append("No events in the last 24 h.")
     else:
@@ -1293,6 +1305,15 @@ def run():
         notes = write_notes(allv, mv, ev, now_ms)
     except Exception as e:
         notes = [f"(notes failed: {e})"]; log(f"notes failed: {e}")
+    try:                                               # 🪜 one note per pair per spike episode (keys ST| / ST32| in the notes state)
+        if _stair_notes:
+            _st = _load_notes_state(); _noted = _st.get("noted") or {}
+            _new = [(k, ln) for k, ln in _stair_notes if k not in _noted]
+            if _new:
+                _append_notes([ln for _, ln in _new], now_ms); notes = list(notes) + [ln for _, ln in _new]
+                _noted.update({k: now_ms for k, _ in _new}); _st["noted"] = _noted; atomic_write(NOTES_STATE, json.dumps(_st))
+    except Exception as e:
+        log(f"staircase notes failed: {e}")
     if QUIET:
         print(f"scout OK {datetime.fromtimestamp(now_ms/1000, timezone.utc):%Y-%m-%d %H:%M} UTC · {len(allv)} stored events · "
               + (f"{len(notes)} new note line(s):\n" + "\n".join("- " + x for x in notes) if notes else "nothing notable (no note written)"))

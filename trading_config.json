@@ -738,7 +738,15 @@
     "surge_max_entry_dislocation_pct": 0.3,
     "surge_max_hold_minutes": 240,
     "surge_long_kill_verdict": "",
-    "surge_short_kill_verdict": ""
+    "surge_short_kill_verdict": "",
+    "recovery_hold_enabled": true,
+    "recovery_hold_rsi_min": 60.0,
+    "recovery_hold_rsi_max": 66.0,
+    "recovery_hold_room_pct": 0.5,
+    "recovery_hold_time_min": 30.0,
+    "recovery_hold_max_min": 240.0,
+    "recovery_hold_release_pct": 0.4,
+    "recovery_hold_kill_verdict": ""
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

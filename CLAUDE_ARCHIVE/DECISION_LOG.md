@@ -5042,3 +5042,51 @@ NOTHING is capped (status line says so); the brackets are the account's current 
 (only small / new pairs at 20× with > bracket notional would change — unknown until the table is readable). Consequence for DECISION_LOG
 169: the operator's MOVR session dollars (+$5,229 / +$1,223) were on sizes the exchange does not allow; the percentages stand.
 Tests: tests/test_leverage_brackets.py (sizing invariants + D11/D12 wiring).
+
+## 2026-10-01 (171) - ✗ "BTC within 1.5 % of its 24 h low" (momentum longs) — tested and DROPPED, not registered
+Lead from the overnight screen of the regime columns (−0.12 / −0.16 near the low vs −0.05 / +0.04 above 2.6 %). Re-checked with the chop-test
+method on the operator's question ("is this a better filter than chop / burst?"): off24lo rebuilt for all 108 master momentum longs from
+BTC 5m lows (engine formula; 29 live stamps: corr 1.000, mean abs diff 0.03). MASTER: ≤ 1.5 % = 51·32d·76%·+0.20%·+$2,684 (47 % of the
+sleeve; BASE 14/14 winners) → a block costs $2,684; 1.5–2.6 % 38·79%·+0.19 · > 2.6 % 19·89%·+0.49. yr3 (post-gate, seeds collapsed, 1,112):
+≤ 1.5 % −0.070 / −0.101 vs 1.5–2.6 % −0.094 / −0.144 and > 2.6 % −0.102 / −0.034 → no gap; the overnight gap came from the un-collapsed
+seeds on the pre-gate pool. Chop on the same frames: master 13·46%·−$294, yr3 −0.204 / −0.234 vs −0.074 / −0.077 → chop stays the only
+regime variable visible in both. Verdict: NOT a filter (a switch on ~41–47 % of the sleeve with no separation) — do not re-propose.
+
+
+## 2026-10-02 (172) - 🩹 RECOVERY HOLD shipped ARMED (operator-directed override below every promotion gate) + the tests that led to it
+Origin: ZRO momentum long (B16, 2× UNMATCHED) stopped at −1.10 % in 6 min, +1.03 % above entry 8 min later, +6 % later; the operator:
+"we exited wrong … BTC RSI was above entry … the theory makes sense … build it armed". What was tested first, all on the operator's request:
+- WIDER STOP, non-chop master losers (15, all stop-outs): 11 never back above entry, 13 went lower than the stop; a −1.5 % stop = 8 stop
+  deeper (−4.8 pts) vs ~+1…+3 saved → negative. IMMEDIATE RE-ENTRY at the stop price: ~7 of 15 stopped again → ≈ −1.6 pts before fees.
+- EARLY CUT on a BTC RSI drop (two-sided, every long): year replay 3,591 fills ≈ 0.00 %/fill at every X (losers saved +0.24…+0.44 each,
+  winners cut −0.51…−0.62 each); live master 113 current-stack −0.02…−0.08 %/fill, all-live 338 ≈ 0; 23 variants with floors / entry
+  bands / drop-from-peak: none with a by-day interval above 0 (least bad: entry RSI 55–60, +0.017 %/fill, CI spans 0). DROPPED.
+- HOLD THROUGH THE STOP when BTC RSI(14, closed 5m) ≥ entry: 40 live master stops, 13 back above entry (32 % vs 30 % all stops). By RSI at
+  the stop: < 55 3/12 · 55–60 3/10 · 60–62 3/7 · 62–66 3/6 · > 66 1/5. Year replay (1,412 stops): 25 % back for the condition vs 26 % for
+  all; 60–62 27 %, 62–66 16 % → NOT confirmed. BTC 1 h RSI, ADX, ATR, eff72 at entry: nothing (1 h RSI 60–66 = 30 % back on 37 live stops).
+- Design sim on the 13 live stops in the 60–66 band (scripts/recovery_hold_design.py; band chosen on the same trades → in-sample):
+  V1 break-even +1.41 pts · V2 + premise exit +1.02 · V3 resume-runner +1.75 (7 better / 5 worse); WITHOUT ZRO: +0.37 / −0.02 / +0.31.
+  Per batch (V3): B1 7 +1.20 · B2 1 −0.50 · B3 2 +0.16 · B9 1 −0.06 · B14 1 −0.49 (0G: hard stop first, then +2.1 %) · B16 1 +1.44.
+SHIPPED (V3): services/recovery_hold.py (pure rules) wired into BOTH stop paths (monitor + realtime), close funnel prefix RH_, post-exit
+whitelists (live + restart) and both urgent-exit lists; Order columns entry_btc_rsi_closed (BTC RSI(14) on CLOSED 5m bars — the ruler;
+entry_btc_rsi is the live RSI(12)) + rh_triggered_at / rh_trigger_pnl / rh_btc_rsi / rh_stop_level_pct / rh_hard_stop_pct; config
+recovery_hold_* (enabled true in JSON, band 60–66, room 0.5, time 30 min, max 240, release +0.40) with UI box, 🩹 HOLD badge, "Recovery
+Hold" table + both exports. Trigger: MOMENTUM LONG at STOP_LOSS / STOP_LOSS_WIDE ∧ RSI ≥ entry ∧ in band (fresh reading, else the stop
+closes as before). Held: RH_HARD_STOP (stop − 0.5) · RH_PREMISE_EXIT (RSI < 60 or < entry, or unreadable) · RH_TIME_EXIT (30 min below
+entry / 240 cap) · release at peak ≥ +0.40 → normal stack, RH_-prefixed reason. ⚠ DISCIPLINE OVERRIDE acknowledged: N = 13 in-sample,
+≈ 0 without the trade that prompted it, year replay against it. 🔒 KILL BAR (automatic, rh_tripwire, judged once): 3 RH_HARD_STOP in a
+row, or the first 10 holds Σ(final − at trigger) < 0 → recovery_hold_enabled = False (open holds run to their own exits).
+READ at every batch review: the Recovery Hold table (N · better/worse · Δ pts) + whether one trade carries the total.
+Tests: tests/test_recovery_hold.py (rules, ruler vs pandas, kill bar, whitelist / urgent-list / D11 / D12 drift guards).
+Scripts / reports: recovery_stop_test.py, btc_rsi_cut_test.py, recovery_hold_design.py → reports/RECOVERY_STOP_TEST_, BTC_RSI_CUT_TEST_,
+RECOVERY_HOLD_DESIGN_2026-10-02.md.
+Dual review (172), applied before the commit: ① a restart / deploy dumped every open hold (no BTC reading until the first scan → premise
+exit) → the monitor now refreshes the closed-bar reading itself (background task, one fetch per closed bar, only while a momentum long is
+open) and a process that has never read BTC skips the premise check (hard stop + time still apply); ② the realtime hold decision moved
+ABOVE every other realtime exit (pattern TP/SL, hard TP, fast exit, EMA13 / EMA-stack cross) — it was correct only by today's config;
+③ the 1 Hz cache rebuild and the open-time cache entry now carry the hold's keys; the close funnel reads the flag from the cache when the
+caller's row is stale; ④ RH_ is stripped behind FL_/FLIP_ too; ⑤ kill bar: close order, re-judged at startup (a push ships the repo JSON
+armed with no verdict), also after the exit-retry queue, and 3-hard-stops stays live after a PASS; ⑥ live only: no hold when its hard stop
+would reach the exchange backstop (2.5 % − 0.3); ⑦ a save from the UI no longer re-sends the enabled toggles on later saves; ⑧ RH_ reasons
+ride the Stop-Loss deep dive and the HARD_TP shadow. Known and accepted: a stop inside the entry's own 5m bar passes "RSI ≥ entry" trivially
+(as in the tested rule — 0G); the break-even ladder is suspended while held (a hold can reach +0.39 % and still end at its hard stop).

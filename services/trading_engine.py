@@ -27,14 +27,37 @@ from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, 
 
 def _strip_reason_prefixes(reason):
     """Strip FLIP_ then FL_ then BR_ prefixes from a close reason (the whitelist convention)."""
-    r = reason or ""
+    r = _rh_strip(reason or "")   # 🩹 Oct-2: RH_RUNNER_TRAIL → RUNNER_TRAIL (the hold's own RH_HARD_STOP / _PREMISE / _TIME keep their name)
     if r.startswith("FLIP_"):
         r = r[5:]
     if r.startswith("FL_"):
         r = r[3:]
     if r.startswith("BR_"):  # Aug-21 gate 57: bull-run sleeve exits (BR_STOP_LOSS etc.)
         r = r[3:]
-    return r
+    return _rh_strip(r)   # FL_RH_x (FL_ is added after RH_ in the close path) → x
+
+
+def _rh_backstop_floor(is_paper):
+    """🩹 The deepest hard stop a recovery hold may run to: just inside the resting exchange backstop (live only), so the hold's own
+    stop always fires first. None = no limit (paper, or backstop off)."""
+    th = config.trading_config.thresholds
+    if is_paper or not bool(getattr(th, 'broker_backstop_enabled', False)):
+        return None
+    return -(float(getattr(th, 'broker_backstop_pct', 2.5) or 2.5) - 0.3)
+
+
+def _rh_pnl_pct(direction, entry_price, price, quantity, entry_fee):
+    """P&L % of notional after fees — the same arithmetic as check_exit_conditions and the realtime stop path."""
+    _n = (entry_price or 0.0) * (quantity or 0.0)
+    if _n <= 0:
+        return 0.0
+    _fee = (entry_fee or 0.0) + price * quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+    _raw = (price - entry_price) * quantity if direction == "LONG" else (entry_price - price) * quantity
+    return (_raw - _fee) / _n * 100.0
+
+
+from services.recovery_hold import (RH_STOP_CLASS, closed_rsi as _rh_closed_rsi, rsi_fresh as _rh_rsi_fresh, rh_prefixed as _rh_prefixed,  # noqa: E402
+                                    rh_strip as _rh_strip, rh_trigger_ok, rh_in_hold, rh_exit, rh_tripwire)
 from services import decision_journal as _djournal  # Sep-18 📓 decision journal (file-only, never raises)
 from services.websocket_tracker import websocket_tracker
 
@@ -288,6 +311,9 @@ def market_entry_stamps(g, signal, indicators, btc_global_enabled, th) -> dict:
         entry_btc_trend_gap_pct=g.get('_current_btc_trend_gap_pct'),
         entry_bull_pct=g.get('_market_bull_pct'), entry_bear_pct=g.get('_market_bear_pct'),
     )
+    # 🩹 Oct-2 recovery hold ruler: BTC RSI(14) on CLOSED 5m bars — a stale reading is None, never an old value
+    out['entry_btc_rsi_closed'] = (g.get('_current_btc_rsi_closed')
+                                   if _rh_rsi_fresh(g.get('_current_btc_rsi_closed_bar_ts'), _leash_time.time() * 1000.0) else None)
     gv = g.get('_global_volume_ratio')
     out['entry_global_volume_ratio'] = round(gv, 4) if gv is not None else None
     be13, bpx = g.get('_current_btc_ema13'), g.get('_current_btc_price')
@@ -533,6 +559,8 @@ _current_btc_adx_prev1: Optional[float] = None  # Aug-22: previous closed bar �
 # Module-level BTC indicators for regime classification at exit time
 _current_btc_adx: float = None
 _current_btc_rsi: float = None
+_current_btc_rsi_closed: float = None        # 🩹 Oct-2 recovery hold: BTC RSI(14) on CLOSED 5m bars (the hold's ruler)
+_current_btc_rsi_closed_bar_ts: int = None   # open time (ms) of the last closed bar that reading comes from
 _market_bull_pct: float = 0.0
 _market_bull_pct_top: float = None   # 105: breadth over br_rank ≤ universe_size (observe-only)
 _market_bear_pct_top: float = None
@@ -2606,6 +2634,7 @@ class TradingEngine:
             await self.save_state(db)
 
         await self._recover_post_exit_tracking(db)
+        await self._rh_kill_bar_check(db)   # 🩹 a deploy ships the repo JSON (armed, no verdict) — re-judge from the DB before any new hold
         await self._recover_fade_late_shadow(db)
         self._initialized = True
 
@@ -2643,13 +2672,14 @@ class TradingEngine:
             if not order.close_reason or not order.closed_at:
                 continue
             # Jun 14: strip FLIP_ (then FL_) so flip exits resolve to base reason.
-            _reason_base = order.close_reason
+            _reason_base = _rh_strip(order.close_reason)   # 🩹 Oct-2 recovery hold (same rule as the live registration)
             if _reason_base.startswith("FLIP_"):
                 _reason_base = _reason_base[5:]
             if _reason_base.startswith("FL_"):
                 _reason_base = _reason_base[3:]
             if _reason_base.startswith("BR_"):  # Aug 21 gate 57: bull-run sleeve reasons
                 _reason_base = _reason_base[3:]
+            _reason_base = _rh_strip(_reason_base)   # FL_RH_x → x
             # May 7: added EMA13_CROSS_EXIT and EMA_STACK_CROSS_EXIT to recovery
             # whitelist. Without them, EMA13/EMA_STACK trades that spanned a
             # bot restart never got post_exit_peak_pnl written → silently
@@ -2661,7 +2691,7 @@ class TradingEngine:
             # whitelist at ~line 3663). Without this, Pattern Cell Ship rule trades
             # that close + span a bot restart wouldn't get post_exit_peak_pnl
             # tracked → silently missing from Post-Exit Regret Deep Dive.
-            if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or
+            if not _reason_base.startswith(RH_STOP_CLASS) and not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or
                     _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or
                     _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or
                     _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or
@@ -9233,6 +9263,7 @@ class TradingEngine:
             entry_liquidity_cap_notional=_liq_cap,
             liquidity_capped=_liq_capped,
             entry_bracket_max_leverage=_brk_max_lev, entry_bracket_cap_notional=_brk_cap, bracket_capped=_brk_capped,   # 🪜 Oct-1
+            entry_btc_rsi_closed=(_current_btc_rsi_closed if _rh_rsi_fresh(_current_btc_rsi_closed_bar_ts, _leash_time.time() * 1000.0) else None),   # 🩹 Oct-2
             entry_slippage_pct=_entry_slippage_pct,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
@@ -9411,6 +9442,7 @@ class TradingEngine:
                 'entry_br_door': entry_br_door,        # Sep-21 (57i): the realtime BR exit needs the door for the trail width
                 'entry_strategy': (f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),  # Sep 15 gate 60: BEARRUN_SHORT twin (momentum exits; label parity with the Order row). Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches; Aug 21: BULLRUN_LONG (gate 57, dedicated BR_ exits)
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
+                'entry_btc_rsi_closed': order.entry_btc_rsi_closed,   # 🩹 Oct-2: the realtime hold trigger needs it from t0
                 'entry_price': actual_price,
                 'quantity': quantity,
                 'entry_fee': entry_fee,
@@ -9891,6 +9923,16 @@ class TradingEngine:
         # whitelist, recovery) covers it with no new prefix (entry_strategy tells the sleeves apart).
         if reason and (order.entry_strategy or "") in ("BULLRUN_LONG", "SURGE_LONG") and not reason.startswith("BR_"):
             reason = "BR_" + reason
+        # 🩹 Oct-2 RECOVERY HOLD: every close of a trade that was held is RH_-prefixed here (the single close funnel) so held trades
+        # get their own rows everywhere (RH_RUNNER_TRAIL, RH_HARD_STOP, …). Operator closes and the exchange backstop keep their name.
+        if getattr(order, 'rh_triggered_at', None) is None:   # the caller's row may predate a flag the realtime path just set
+            for _rc in _open_orders_cache.get(order.pair, []):
+                if _rc.get('id') == order.id and _rc.get('rh_triggered_at') is not None:
+                    order.rh_triggered_at = _rc.get('rh_triggered_at')
+                    if getattr(order, 'rh_hard_stop_pct', None) is None:
+                        order.rh_hard_stop_pct = _rc.get('rh_hard_stop_pct')
+                    break
+        reason = _rh_prefixed(reason, getattr(order, 'rh_triggered_at', None) is not None)
         # Aug 21 gate 57: stamp per-pair spacing on sleeve CLOSES too (entry stamps on open) —
         # the replay's 2h spacing ran exit-to-entry.
         if (order.entry_strategy or "") == "BULLRUN_LONG":
@@ -9911,7 +9953,38 @@ class TradingEngine:
             _closed = await self._close_position_locked(db, order, current_price, reason)
         if _closed is not None and (getattr(_closed, 'entry_strategy', None) or "").startswith("SURGE_"):
             await self._surge_kill_bar_check(db, _closed.entry_strategy[6:])
+        if _closed is not None and getattr(_closed, 'rh_triggered_at', None) is not None:
+            await self._rh_kill_bar_check(db)
         return _closed
+
+    async def _rh_kill_bar_check(self, db) -> None:
+        """🩹 RECOVERY HOLD automatic KILL BAR (pre-registered, DECISION_LOG 172; services.recovery_hold.rh_tripwire): 3 RH_HARD_STOP
+        in a row, or the first 10 holds together worse than their plain stops → recovery_hold_enabled=False. Judged ONCE (the verdict
+        is persisted in recovery_hold_kill_verdict, so an operator re-enable after a kill is never overridden). Never raises."""
+        try:
+            th = config.trading_config.thresholds
+            _prev = str(getattr(th, 'recovery_hold_kill_verdict', '') or '').strip()
+            if _prev.startswith("KILLED"):
+                return
+            rows = (await db.execute(select(Order.pnl_percentage, Order.rh_trigger_pnl, Order.close_reason).where(and_(
+                Order.rh_triggered_at.isnot(None), Order.status == "CLOSED", Order.is_paper == self.is_paper_mode))
+                .order_by(Order.closed_at.asc()))).all()
+            why, judged = rh_tripwire([(r[0], r[1], r[2]) for r in rows])
+            if not judged or (_prev.startswith("PASS") and why is None):   # after a PASS only a new kill (3 hard stops in a row) is news
+                return
+            _stamp = f"{datetime.utcnow():%Y-%m-%d %H:%M} UTC"
+            if why is None:
+                th.recovery_hold_kill_verdict = f"PASS {_stamp}: first 10 holds {sum((r[0] or 0) - (r[1] or 0) for r in rows[:10]):+.2f} pts vs their stops"
+                logger.warning(f"[RH_KILL_BAR] {th.recovery_hold_kill_verdict} — recovery hold stays ON")
+            else:
+                th.recovery_hold_kill_verdict = f"KILLED {_stamp}: {why}"
+                th.recovery_hold_enabled = False
+                logger.critical(f"[RH_KILL_BAR] recovery hold failed its pre-registered bar ({why}) — AUTO-DISABLED; open holds keep "
+                                f"running to their own exits; re-enable from the UI only after review")
+            from config import save_trading_config as _rh_save_cfg
+            _rh_save_cfg(config.trading_config)
+        except Exception as e:
+            logger.error(f"[RH_KILL_BAR] check failed (switch stays as it was — investigate): {e}")
 
     async def _surge_kill_bar_check(self, db, side: str) -> None:
         """⚡ SURGE automatic KILL BAR (pre-registered, DECISION_LOG 146–148): once a side has ≥ 10 closed fills opened since the ship
@@ -10051,7 +10124,7 @@ class TradingEngine:
             max_exit_retries = 3
             exit_result = None
 
-            _urgent_exit = any(reason.startswith(p) for p in (
+            _urgent_exit = reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (   # 🩹 RH: the hold's own closes are stop-class; a released trade's close follows its base reason
                 "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent; Sep-29 MANUAL_SL/TP too
             ))
 
@@ -10244,7 +10317,7 @@ class TradingEngine:
         else:
             # --- Paper mode: no retry needed, no slippage ---
             _slippage_pct = None
-            _urgent_exit_paper = any(reason.startswith(p) for p in (
+            _urgent_exit_paper = reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (
                 "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
             ))
             if maker_exit_enabled and reason != "MANUAL" and not _urgent_exit_paper:
@@ -10785,14 +10858,15 @@ class TradingEngine:
             return
         # Jun 14: strip the FLIP_ prefix (then any FL_) so flip exits resolve to their
         # base reason and get post-exit (regret) tracking like the normal exit.
-        _reason_base = reason
+        _reason_base = _rh_strip(reason)   # 🩹 Oct-2: a released hold's close resolves to its base reason (RH_RUNNER_TRAIL → RUNNER_TRAIL)
         if _reason_base.startswith("FLIP_"):
             _reason_base = _reason_base[5:]
         if _reason_base.startswith("FL_"):
             _reason_base = _reason_base[3:]
         if _reason_base.startswith("BR_"):  # Aug 21 gate 57: bull-run sleeve reasons (BR_STOP_LOSS → STOP_LOSS etc.)
             _reason_base = _reason_base[3:]
-        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("LADDER_FLOOR") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("BACKSTOP_STOP")):
+        _reason_base = _rh_strip(_reason_base)   # FL_RH_x → x
+        if not _reason_base.startswith(RH_STOP_CLASS) and not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("LADDER_FLOOR") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("BACKSTOP_STOP")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -11380,6 +11454,35 @@ class TradingEngine:
         for order_id in completed:
             del self._post_exit_tracking[order_id]
 
+    def _rh_maybe_refresh_btc_rsi(self) -> None:
+        """🩹 Keep the recovery hold's BTC reading (RSI(14) on CLOSED 5m bars) current WITHOUT depending on the scan: at boot, when the
+        bot is stopped, or when a scan runs long, the scan-fed reading would go stale and every open hold would exit on a missing
+        premise. One BTC 5m fetch per closed bar, in a background task (single-flight, ≥ 15 s between tries, 8 s timeout)."""
+        try:
+            _now = _leash_time.time()
+            _ts = _current_btc_rsi_closed_bar_ts
+            if _ts is not None and _now * 1000.0 < _ts + 2 * 300_000 + 2_000:      # no newer bar has closed yet
+                return
+            if getattr(self, '_rh_refresh_busy', False) or _now - getattr(self, '_rh_refresh_last_try', 0.0) < 15.0:
+                return
+            self._rh_refresh_busy = True; self._rh_refresh_last_try = _now
+
+            async def _job():
+                global _current_btc_rsi_closed, _current_btc_rsi_closed_bar_ts
+                try:
+                    _bars = await asyncio.wait_for(binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 100), timeout=8.0)
+                    _r, _t = _rh_closed_rsi(_bars or [], _leash_time.time() * 1000.0)
+                    if _r is not None and (_current_btc_rsi_closed_bar_ts is None or _t >= _current_btc_rsi_closed_bar_ts):
+                        _current_btc_rsi_closed, _current_btc_rsi_closed_bar_ts = round(_r, 2), _t
+                except Exception as _e:
+                    logger.debug(f"[RH_BTC_RSI] refresh failed: {_e}")
+                finally:
+                    self._rh_refresh_busy = False
+            asyncio.create_task(_job())
+        except Exception as _e:
+            self._rh_refresh_busy = False
+            logger.debug(f"[RH_BTC_RSI] refresh not started: {_e}")
+
     async def update_open_positions(self, db: AsyncSession) -> List[Dict]:
         """Update all open positions with current prices and check exit conditions"""
         result = await db.execute(
@@ -11390,7 +11493,10 @@ class TradingEngine:
         open_orders = result.scalars().all()
         
         updates = []
-        
+        if any(getattr(_o, 'rh_triggered_at', None) is not None or ((_o.entry_strategy or "MOMENTUM") == "MOMENTUM" and _o.direction == "LONG")
+               for _o in open_orders):
+            self._rh_maybe_refresh_btc_rsi()   # 🩹 only when a hold is open or could trigger; never awaited — the monitor must not wait on the exchange
+
         for order in open_orders:
             # Aug-25 (37) TXN_HOLD verdict fix: the loop used to carry the PREVIOUS order's
             # uncommitted price/peak stamps into THIS order's network awaits — SQLite's write
@@ -11577,6 +11683,34 @@ class TradingEngine:
                         realtime_peak_ema5_gap = max(realtime_peak_ema5_gap, cached.get('peak_ema5_gap', 0))
                         break
 
+            # ─── 🩹 RECOVERY HOLD (Oct-2, DECISION_LOG 172): a held trade is closed ONLY by the hold's own exits (same pure rules as the
+            # realtime path — services/recovery_hold.py) until its peak reaches the release level; then the normal stack resumes.
+            # Sits BEFORE every other exit of the monitor so none of them touches a held trade (MAX_HOLD above still applies). ───
+            _rh_at_m = getattr(order, 'rh_triggered_at', None) or (cached.get('rh_triggered_at') if cached else None)
+            if _rh_at_m is not None:
+                _rh_th_m = config.trading_config.thresholds
+                _rh_pnl_m = _rh_pnl_pct(order.direction, order.entry_price, current_price, order.quantity, order.entry_fee)
+                _rh_peak_m = max(realtime_peak, _rh_pnl_m)
+                if rh_in_hold(_rh_th_m, _rh_at_m, _rh_peak_m):
+                    order.peak_pnl = max(order.peak_pnl or 0.0, _rh_peak_m)
+                    order.trough_pnl = min(order.trough_pnl or 0.0, realtime_trough, _rh_pnl_m)
+                    _rh_hard_m = getattr(order, 'rh_hard_stop_pct', None)
+                    if _rh_hard_m is None and cached:
+                        _rh_hard_m = cached.get('rh_hard_stop_pct')
+                    _rh_reason_m = rh_exit(_rh_th_m, _rh_pnl_m, (datetime.utcnow() - _rh_at_m).total_seconds() / 60.0, _rh_hard_m,
+                                           getattr(order, 'entry_btc_rsi_closed', None), _current_btc_rsi_closed,
+                                           _rh_rsi_fresh(_current_btc_rsi_closed_bar_ts, _leash_time.time() * 1000.0),
+                                           rsi_ever_read=_current_btc_rsi_closed_bar_ts is not None)
+                    if _rh_reason_m:
+                        logger.warning(f"[{_rh_reason_m}] {order.pair} LONG: pnl={_rh_pnl_m:.4f}% hard={_rh_hard_m} btcRSI(closed)={_current_btc_rsi_closed} "
+                                       f"entry={getattr(order, 'entry_btc_rsi_closed', None)} — recovery hold ends")
+                        closed_order = await self.close_position(db, order, current_price, _rh_reason_m)
+                        if closed_order:
+                            updates.append({"order_id": closed_order.id, "pair": closed_order.pair, "action": "CLOSED", "reason": closed_order.close_reason,
+                                            "pnl": closed_order.pnl, "tp_level": order.current_tp_level or 1})
+                    else:
+                        await locked_commit(db)
+                    continue
             # 🖐 Sep-29 MANUAL FIXED/FLOOR: the operator's SL/TP is the only exit (realtime path); skip every candle-based exit.
             if (order.entry_strategy or "") == "MANUAL" and (getattr(order, 'manual_exit_mode', None) or "FIXED") in ("FIXED", "FLOOR"):
                 continue
@@ -12297,6 +12431,30 @@ class TradingEngine:
                         cached['trough_pnl'] = _db_trough
             reason = exit_result.get("reason")
 
+            # ─── 🩹 RECOVERY HOLD trigger (Oct-2): a momentum LONG at its stop while BTC has not weakened is flagged, not closed ───
+            if exit_result.get("should_close") and rh_trigger_ok(
+                    config.trading_config.thresholds, reason, (order.entry_strategy or "MOMENTUM"), order.direction,
+                    (getattr(order, 'rh_triggered_at', None) or (cached.get('rh_triggered_at') if cached else None)) is not None,
+                    bool(order.signal_lost_flagged), exit_result.get("pnl_pct"), exit_result.get("stop_level"), order.peak_pnl,
+                    getattr(order, 'entry_btc_rsi_closed', None), _current_btc_rsi_closed,
+                    _rh_rsi_fresh(_current_btc_rsi_closed_bar_ts, _leash_time.time() * 1000.0), floor_pct=_rh_backstop_floor(getattr(self, 'is_paper_mode', True))):
+                _rh_now = datetime.utcnow()
+                _rh_hard = round(float(exit_result["stop_level"]) - float(getattr(config.trading_config.thresholds, 'recovery_hold_room_pct', 0.5) or 0.5), 4)
+                async with _cache_lock:
+                    for _ci in _open_orders_cache.get(order.pair, []):
+                        if _ci['id'] == order.id:
+                            _ci['rh_triggered_at'] = _rh_now; _ci['rh_hard_stop_pct'] = _rh_hard
+                            break
+                order.rh_triggered_at = _rh_now
+                order.rh_trigger_pnl = round(float(exit_result["pnl_pct"]), 4)
+                order.rh_btc_rsi = _current_btc_rsi_closed
+                order.rh_stop_level_pct = round(float(exit_result["stop_level"]), 4)
+                order.rh_hard_stop_pct = _rh_hard
+                await locked_commit(db)
+                logger.warning(f"[RH_TRIGGER] {order.pair} LONG: {reason} at pnl={exit_result['pnl_pct']:.4f}% converted into a recovery hold — "
+                               f"btcRSI(closed) {order.entry_btc_rsi_closed} → {_current_btc_rsi_closed}, hard stop {_rh_hard}%")
+                continue
+
             # ─── FL1[WIDE_SL] interception: convert STOP_LOSS_WIDE into a flag instead of closing ───
             _fl1_wide_enabled = getattr(config.trading_config.thresholds, 'fl1_for_wide_sl_enabled', True)
             if (exit_result.get("should_close")
@@ -12503,6 +12661,8 @@ class TradingEngine:
                     )
                 if closed and (getattr(closed, 'entry_strategy', None) or "").startswith("SURGE_"):
                     await self._surge_kill_bar_check(db, closed.entry_strategy[6:])   # ⚡ the retry path skips close_position
+                if closed and getattr(closed, 'rh_triggered_at', None) is not None:
+                    await self._rh_kill_bar_check(db)   # 🩹 same for a held trade
                 if closed:
                     _exit_retry_queue.pop(order_id, None)
                     logger.info(f"[EXIT_RETRY_QUEUE] {retry_order.pair}: Successfully closed on retry {attempt}")
@@ -12685,6 +12845,10 @@ class TradingEngine:
         _current_btc_adx = btc_adx
         _current_btc_adx_prev1 = btc_adx_prev  # Aug-22: header arrow = sign(adx - adx_prev1) on closed bars
         _current_btc_rsi = btc_rsi
+        global _current_btc_rsi_closed, _current_btc_rsi_closed_bar_ts   # 🩹 Oct-2 recovery hold (None, None when unreadable → fail closed)
+        _rh_r, _rh_ts = _rh_closed_rsi(btc_ohlcv or [], _leash_time.time() * 1000.0)
+        if _rh_r is not None and (_current_btc_rsi_closed_bar_ts is None or _rh_ts >= _current_btc_rsi_closed_bar_ts):
+            _current_btc_rsi_closed, _current_btc_rsi_closed_bar_ts = round(_rh_r, 2), _rh_ts   # a failed fetch keeps the last reading (rsi_fresh ages it out)
         # BTC Trend Filter state (May 5; switched from EMA20→EMA13 on May 6 for faster reversal detection)
         _current_btc_ema20 = btc_ema20
         _current_btc_ema13 = btc_ema13
@@ -15330,6 +15494,39 @@ class TradingEngine:
             
             pnl_pct = (pnl / entry_notional) * 100
 
+            # ─── 🩹 RECOVERY HOLD (Oct-2, DECISION_LOG 172): a held trade is closed ONLY by the hold's own exits until its peak reaches
+            # the release level (same pure rules as the monitor path — services/recovery_hold.py). Sits BEFORE every other realtime
+            # exit (pattern TP/SL, hard TP, fast exit, EMA13 / EMA-stack cross, stop, trailing) so none of them can touch a held trade,
+            # whatever the config. Keeps the cache peak / trough current (the release test reads the peak). ───
+            _rh_at_rt = order_info.get('rh_triggered_at')
+            _rh_th_rt = config.trading_config.thresholds
+            _rh_fresh_rt = _rh_rsi_fresh(_current_btc_rsi_closed_bar_ts, _leash_time.time() * 1000.0)
+            if _rh_at_rt is not None and rh_in_hold(_rh_th_rt, _rh_at_rt, max(cached_peak_pnl or 0.0, pnl_pct)):
+                if pnl_pct > 0 and pnl_pct > (order_info.get('peak_pnl', 0) or 0):
+                    order_info['peak_pnl'] = pnl_pct; order_info['peak_reached_at'] = datetime.utcnow()
+                if pnl_pct < (order_info.get('trough_pnl', 0) or 0):
+                    order_info['trough_pnl'] = pnl_pct; order_info['trough_reached_at'] = datetime.utcnow()
+                _rh_reason_rt = rh_exit(_rh_th_rt, pnl_pct, (datetime.utcnow() - _rh_at_rt).total_seconds() / 60.0,
+                                        order_info.get('rh_hard_stop_pct'), order_info.get('entry_btc_rsi_closed'),
+                                        _current_btc_rsi_closed, _rh_fresh_rt, rsi_ever_read=_current_btc_rsi_closed_bar_ts is not None)
+                if _rh_reason_rt is not None and not order_info.get('_closing_in_progress'):
+                    order_info['_closing_in_progress'] = True
+                    logger.warning(f"[REALTIME_{_rh_reason_rt}] {pair} LONG: pnl={pnl_pct:.4f}% hard={order_info.get('rh_hard_stop_pct')} "
+                                   f"btcRSI(closed)={_current_btc_rsi_closed} entry={order_info.get('entry_btc_rsi_closed')} — recovery hold ends")
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            order = (await db.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))).scalar_one_or_none()
+                            if order:
+                                closed = await self.close_position(db, order, current_price, _rh_reason_rt)
+                                if closed:
+                                    async with _cache_lock:
+                                        _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                                else:
+                                    logger.warning(f"[REALTIME_{_rh_reason_rt}] {pair}: close_position returned None — will retry next cycle")
+                    except Exception as e:
+                        logger.error(f"[REALTIME_RH_EXIT] Error closing {pair}: {e}")
+                continue   # held — no other exit may close it
+
             # 🖐 Sep-29 MANUAL sleeve, FIXED / FLOOR exit modes: ONLY the operator's SL/TP (pattern_fixed_* on the row) — no
             # alt mechanism may touch it. Mirrors the BULLRUN intercept (continue outside the try). MOMENTUM mode falls through.
             if ((order_info.get('entry_strategy') or '') == 'MANUAL'
@@ -16281,6 +16478,35 @@ class TradingEngine:
                     close_reason = f"STOP_LOSS L{tp_level}"
 
                 _is_flagged_sl = order_info.get('signal_lost_flagged', False)
+
+                # ─── 🩹 RECOVERY HOLD trigger: flag instead of closing (in-memory compare of two cached readings — no I/O before the
+                # decision; anything missing or stale → the stop closes exactly as before) ───
+                if rh_trigger_ok(
+                        _rh_th_rt, close_reason, order_info.get('entry_strategy'), direction, _rh_at_rt is not None, bool(_is_flagged_sl),
+                        pnl_pct, effective_sl, current_peak, order_info.get('entry_btc_rsi_closed'), _current_btc_rsi_closed, _rh_fresh_rt,
+                        floor_pct=_rh_backstop_floor(getattr(self, 'is_paper_mode', True))):
+                    _rh_now_rt = datetime.utcnow()
+                    _rh_hard_rt = round(float(effective_sl) - float(getattr(_rh_th_rt, 'recovery_hold_room_pct', 0.5) or 0.5), 4)
+                    order_info['rh_triggered_at'] = _rh_now_rt
+                    order_info['rh_hard_stop_pct'] = _rh_hard_rt
+                    logger.warning(f"[REALTIME_RH_TRIGGER] {pair} LONG: {close_reason} at pnl={pnl_pct:.4f}% converted into a recovery hold — "
+                                   f"btcRSI(closed) {order_info.get('entry_btc_rsi_closed')} → {_current_btc_rsi_closed}, hard stop {_rh_hard_rt}%")
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            order_db = (await db.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))).scalar_one_or_none()
+                            if order_db and order_db.rh_triggered_at is None:
+                                order_db.rh_triggered_at = _rh_now_rt
+                                order_db.rh_trigger_pnl = round(pnl_pct, 4)
+                                order_db.rh_btc_rsi = _current_btc_rsi_closed
+                                order_db.rh_stop_level_pct = round(float(effective_sl), 4)
+                                order_db.rh_hard_stop_pct = _rh_hard_rt
+                                await locked_commit(db)
+                            elif order_db and order_db.rh_triggered_at is not None:   # the monitor path flagged it first — one record
+                                order_info['rh_triggered_at'] = order_db.rh_triggered_at
+                                order_info['rh_hard_stop_pct'] = order_db.rh_hard_stop_pct
+                    except Exception as e:
+                        logger.error(f"[REALTIME_RH_TRIGGER] Error persisting the hold for {pair}: {e}")
+                    continue
 
                 # ─── FL1[WIDE_SL] interception: convert STOP_LOSS_WIDE into a flag instead of closing ───
                 _fl1_wide_enabled_rt = getattr(config.trading_config.thresholds, 'fl1_for_wide_sl_enabled', True)
@@ -17297,6 +17523,9 @@ class TradingEngine:
                 'signal_lost_flag_pnl': order.signal_lost_flag_pnl,
                 'signal_lost_flagged_at': order.signal_lost_flagged_at,
                 'fl1_origin': order.fl1_origin,
+                'entry_btc_rsi_closed': getattr(order, 'entry_btc_rsi_closed', None),   # 🩹 Oct-2 recovery hold
+                'rh_triggered_at': getattr(order, 'rh_triggered_at', None),
+                'rh_hard_stop_pct': getattr(order, 'rh_hard_stop_pct', None),
                 'fl2_flagged': bool(order.fl2_flagged) if order.fl2_flagged else False,
                 'fl2_flagged_at': order.fl2_flagged_at,
                 'fl2_flag_pnl': order.fl2_flag_pnl,
@@ -17392,6 +17621,11 @@ class TradingEngine:
                                 new_info['fl2_flagged'] = True
                                 new_info['fl2_flagged_at'] = old_info.get('fl2_flagged_at')
                                 new_info['fl2_flag_pnl'] = old_info.get('fl2_flag_pnl')
+                            # 🩹 Oct-2 recovery hold: a flag set by the realtime path must survive the rebuild (this session's Order
+                            # rows may predate the realtime commit) — else the next tick re-decides the stop from scratch.
+                            if old_info.get('rh_triggered_at') is not None and new_info.get('rh_triggered_at') is None:
+                                new_info['rh_triggered_at'] = old_info.get('rh_triggered_at')
+                                new_info['rh_hard_stop_pct'] = old_info.get('rh_hard_stop_pct')
                             # Phase 1 shadow tracking — preserve cross records + pending state
                             for _xkey in (
                                 'first_cross_ema13_at', 'first_cross_ema13_pnl_pct',

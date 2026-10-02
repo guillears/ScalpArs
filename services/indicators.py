@@ -1220,7 +1220,9 @@ def check_exit_conditions(
             "reason": close_reason,
             "peak_pnl": peak_pnl,
             "trough_pnl": trough_pnl,
-            "tp_level": current_tp_level
+            "tp_level": current_tp_level,
+            "stop_level": effective_stop_loss,   # 🩹 Oct-2 recovery hold: the level that was hit (the hold's hard stop sits below it)
+            "pnl_pct": pnl_pct,
         }
     
     # TP extension and trailing stop (skipped when tp_trailing_enabled=False)

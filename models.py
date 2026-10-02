@@ -350,6 +350,16 @@ class Order(Base):
     entry_bracket_max_leverage = Column(Float, nullable=True)
     entry_bracket_cap_notional = Column(Float, nullable=True)
     bracket_capped = Column(Boolean, default=False)
+    # 🩹 Oct-2 RECOVERY HOLD (DECISION_LOG 172): BTC RSI(14) on CLOSED 5m bars at entry (the hold's ruler — entry_btc_rsi is the
+    # live in-progress RSI(12)), and the flag record: when the stop was converted into a hold, the P&L % and closed-bar RSI at
+    # that moment, the stop level that was hit and the hard stop the hold runs to. rh_triggered_at is never cleared (a released
+    # trade stays marked; its close reason is RH_-prefixed).
+    entry_btc_rsi_closed = Column(Float, nullable=True)
+    rh_triggered_at = Column(DateTime, nullable=True)
+    rh_trigger_pnl = Column(Float, nullable=True)
+    rh_btc_rsi = Column(Float, nullable=True)
+    rh_stop_level_pct = Column(Float, nullable=True)
+    rh_hard_stop_pct = Column(Float, nullable=True)
 
     # Pair / BTC EMA20 vs EMA50 gap at EXIT (May 6). Captures multi-hour trend context
     # at close time — diagnostic for REGIME_CHANGE / FL_REGIME_CHANGE: did BTC's actual

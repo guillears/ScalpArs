@@ -1242,6 +1242,22 @@ class SignalThresholds(BaseModel):
     # an operator re-enable after a kill stays. Clear it by hand only to re-run the bar on a new cohort.
     surge_long_kill_verdict: str = ""
     surge_short_kill_verdict: str = ""
+    # 🩹 Oct-2 RECOVERY HOLD (operator-directed ARMED override below every promotion gate; DECISION_LOG 172). A momentum LONG that
+    # reaches STOP_LOSS / STOP_LOSS_WIDE while BTC RSI(14, CLOSED 5m bars) is ≥ its entry value ∧ inside [rsi_min, rsi_max] is flagged
+    # and held, not closed. Held trades close only on: RH_HARD_STOP (stop − room) · RH_PREMISE_EXIT (RSI < min or < entry, or
+    # unreadable) · RH_TIME_EXIT (time_min held ∧ below entry, or max_min) · release at peak ≥ release_pct → normal exit stack, close
+    # reason RH_-prefixed. Evidence (services/recovery_hold.py, scripts/recovery_hold_design.py — IN-SAMPLE, band chosen on the same
+    # 13 live master stops): hold vs stop +1.75 pts total, +0.31 without ZRO (the trade that prompted it), 7 better / 5 worse; the
+    # year replay does NOT confirm (60–66 band: 16–27 % back above entry vs 26 % for all stops).
+    # KILL BAR (automatic, rh_tripwire): 3 RH_HARD_STOP in a row, or the first 10 holds Σ(final − at trigger) < 0 → enabled=False.
+    recovery_hold_enabled: bool = False          # master switch (the JSON arms it)
+    recovery_hold_rsi_min: float = 60.0          # BTC closed-bar RSI at the stop ≥ this …
+    recovery_hold_rsi_max: float = 66.0          # … and ≤ this (above = stretched: XEC −4.1 %, PUMP −2.1 % after the stop)
+    recovery_hold_room_pct: float = 0.5          # hard stop = the stop that was hit − this (the most a hold can add to the loss)
+    recovery_hold_time_min: float = 30.0         # held this long and still below entry → RH_TIME_EXIT
+    recovery_hold_max_min: float = 240.0         # absolute cap on a hold that never released
+    recovery_hold_release_pct: float = 0.40      # peak P&L ≥ this → the hold ends, the normal runner logic takes over
+    recovery_hold_kill_verdict: str = ""         # written by the engine (PASS … / KILLED …); empty = not judged yet
     # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
     # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
     # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT

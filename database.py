@@ -639,6 +639,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_bracket_cap_notional FLOAT"))
                 if 'bracket_capped' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN bracket_capped BOOLEAN DEFAULT 0"))
+                for _rh_col, _rh_type in (('entry_btc_rsi_closed', 'FLOAT'), ('rh_triggered_at', 'DATETIME'), ('rh_trigger_pnl', 'FLOAT'),
+                                          ('rh_btc_rsi', 'FLOAT'), ('rh_stop_level_pct', 'FLOAT'), ('rh_hard_stop_pct', 'FLOAT')):   # 🩹 Oct-2 recovery hold
+                    if _rh_col not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_rh_col} {_rh_type}"))
                 if 'entry_slippage_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_slippage_pct FLOAT"))
                 # Aug 21 gate 57: Bull-Run Monitor readings at entry (BULLRUN_LONG fills)

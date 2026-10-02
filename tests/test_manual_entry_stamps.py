@@ -132,7 +132,8 @@ def test_manual_fill_records_every_field_a_momentum_fill_records(monkeypatch):
                      _btc_ema20_slope_pct=0.031, _btc_ema20_slope_pct_raw=0.031, _current_btc_1h_slope=0.05, _current_btc_trend_gap_pct=0.12, _market_bull_pct=61.0,
                      _market_bear_pct=22.0, _global_volume_ratio=1.123456, _current_btc_ema13=100.0, _current_btc_price=100.3,
                      _current_btc_regime="BULLISH", _current_btc_ema50_100_gap_pct=0.2, _current_eth_5m_ret1_pct=0.05,
-                     _current_btc_1d_ret_pct=1.1, _zone_stamps_at=time.time()).items():
+                     _current_btc_1d_ret_pct=1.1, _zone_stamps_at=time.time(),
+                     _current_btc_rsi_closed=61.5, _current_btc_rsi_closed_bar_ts=int(time.time() * 1000) - 300_000).items():   # 🩹 Oct-2 recovery-hold ruler
         monkeypatch.setattr(T, k, v, raising=False)
     now = T._leash_time.time()
     for k, v in dict(off24h=-0.8, r72=2.1, eff=0.4, above=63.0, updated_at=now, off30d=-6.0, off30d_at=now).items():

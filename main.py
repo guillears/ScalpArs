@@ -1452,6 +1452,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
         cached_flagged = False
         cached_fl2_flagged = False
         cached_fl1_origin = None
+        cached_rh_at = getattr(o, 'rh_triggered_at', None)   # 🩹 Oct-2 recovery hold badge
         # Cache peak/trough are updated by _realtime_callback on every WS tick,
         # while DB peak/trough only get updated on monitor-loop polls. The cache
         # is therefore fresher — use it preferentially for the open-orders display.
@@ -1463,6 +1464,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
                 cached_flagged = ci.get('signal_lost_flagged', False)
                 cached_fl2_flagged = ci.get('fl2_flagged', False)
                 cached_fl1_origin = ci.get('fl1_origin')
+                cached_rh_at = cached_rh_at or ci.get('rh_triggered_at')
                 cached_peak_pnl = ci.get('peak_pnl')
                 cached_fade_late_armed = ci.get('fade_late_armed_at')
                 cached_trough_pnl = ci.get('trough_pnl')
@@ -1575,6 +1577,8 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "signal_lost_flagged": cached_flagged,
             "fl2_flagged": cached_fl2_flagged,
             "fl1_origin": cached_fl1_origin,
+            "rh_triggered_at": cached_rh_at.isoformat() if cached_rh_at else None,   # 🩹 held at its stop (recovery hold)
+            "rh_hard_stop_pct": getattr(o, 'rh_hard_stop_pct', None),
         })
 
     return orders_data
@@ -2541,6 +2545,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "never_positive_deep_dive": [],
             "performance_over_time": [],
             "post_exit_regret_deep_dive": [],
+            "recovery_hold": {"n": 0, "better": 0, "worse": 0, "delta_pct": 0.0, "delta_usd": 0.0, "by_reason": [], "trades": []},
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
@@ -4708,6 +4713,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "never_positive_deep_dive": [],
             "performance_over_time": [],
             "post_exit_regret_deep_dive": [],
+            "recovery_hold": {"n": 0, "better": 0, "worse": 0, "delta_pct": 0.0, "delta_usd": 0.0, "by_reason": [], "trades": []},
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
@@ -7803,7 +7809,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "EMA13_CROSS_EXIT",
             "EMA_STACK_CROSS_EXIT",
         ]
-        _cr_match = lambda cr: any(cr.startswith(p) or cr.startswith(f"FL_{p}") or cr.startswith(f"FLIP_{p}") or cr.startswith(f"BR_{p}") for p in _sl_reason_prefixes)  # Aug 21 gate 57: BR_-prefixed sleeve stops ride the deep dive
+        _cr_match = lambda cr: cr.startswith(("RH_HARD_STOP", "RH_PREMISE_EXIT", "RH_TIME_EXIT")) or any(cr.startswith(p) or cr.startswith(f"FL_{p}") or cr.startswith(f"FLIP_{p}") or cr.startswith(f"BR_{p}") or cr.startswith(f"RH_{p}") for p in _sl_reason_prefixes)  # Aug 21 gate 57: BR_-prefixed sleeve stops ride the deep dive
         sl_orders = [o for o in orders if o.close_reason and (o.pnl or 0) <= 0 and _cr_match(o.close_reason)]
         
         be_active_trades = []
@@ -9122,6 +9128,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "signal_expired_breakdown": _compute_signal_expired_breakdown(signal_expired_orders),
         "by_exit_type": _compute_exit_type_stats(orders),
         "post_exit_regret_deep_dive": post_exit_regret_deep_dive,
+        "recovery_hold": _compute_recovery_hold(orders),
         "hard_tp_shadow": _compute_hard_tp_shadow(orders),
         "hold_time_expectancy": hold_time_expectancy,
         "entry_conditions_by_reason": entry_conditions_by_reason,
@@ -12103,6 +12110,36 @@ def _compute_gap_expand_cohort(orders):
     return {'rows': rows_out}
 
 
+def _compute_recovery_hold(orders):
+    """🩹 Oct-2 RECOVERY HOLD table (DECISION_LOG 172): every closed trade that was held at its stop, against the plain stop it
+    replaced. delta = final P&L % − P&L % at the trigger (what the stop would have booked). Never raises."""
+    out = {"n": 0, "better": 0, "worse": 0, "delta_pct": 0.0, "delta_usd": 0.0, "by_reason": [], "trades": []}
+    try:
+        held = sorted([o for o in orders if getattr(o, 'rh_triggered_at', None) is not None and o.closed_at],
+                      key=lambda o: o.rh_triggered_at)
+        groups = {}
+        for o in held:
+            d = (o.pnl_percentage or 0.0) - (o.rh_trigger_pnl or 0.0)
+            usd = d / 100.0 * (o.notional_value or ((o.entry_price or 0.0) * (o.quantity or 0.0)))
+            out["n"] += 1; out["better"] += 1 if d > 0 else 0; out["worse"] += 1 if d < 0 else 0
+            out["delta_pct"] += d; out["delta_usd"] += usd
+            g = groups.setdefault(o.close_reason or "UNKNOWN", {"n": 0, "delta_pct": 0.0, "delta_usd": 0.0})
+            g["n"] += 1; g["delta_pct"] += d; g["delta_usd"] += usd
+            out["trades"].append({
+                "pair": o.pair, "triggered_at": o.rh_triggered_at.isoformat(), "close_reason": o.close_reason,
+                "btc_rsi_entry": o.entry_btc_rsi_closed, "btc_rsi_trigger": o.rh_btc_rsi,
+                "stop_level": o.rh_stop_level_pct, "hard_stop": o.rh_hard_stop_pct, "trigger_pnl": o.rh_trigger_pnl,
+                "final_pnl": o.pnl_percentage, "delta_pct": round(d, 4), "delta_usd": round(usd, 2),
+                "held_min": round((o.closed_at - o.rh_triggered_at).total_seconds() / 60.0, 1)})
+        out["delta_pct"] = round(out["delta_pct"], 4); out["delta_usd"] = round(out["delta_usd"], 2)
+        out["by_reason"] = [{"reason": k, "n": v["n"], "delta_pct": round(v["delta_pct"], 4), "delta_usd": round(v["delta_usd"], 2)}
+                            for k, v in sorted(groups.items())]
+    except Exception as e:
+        logger.error(f"[RECOVERY_HOLD_TABLE] failed: {e}")
+        out = {"n": 0, "better": 0, "worse": 0, "delta_pct": 0.0, "delta_usd": 0.0, "by_reason": [], "trades": []}
+    return out
+
+
 def _compute_hard_tp_shadow(orders):
     """HARD_TP mechanism shadow (Jul 22; review-fixed Jul 23) — tick-honest CF for the
     exit-mechanism candidates, measured on the post-exit stream of HARD_TP-family fires.
@@ -12116,6 +12153,8 @@ def _compute_hard_tp_shadow(orders):
         if r.startswith("FLIP_"):
             r = r[5:]
         if r.startswith("FL_"):
+            r = r[3:]
+        if r.startswith("RH_") and not r.startswith(("RH_HARD_STOP", "RH_PREMISE_EXIT", "RH_TIME_EXIT")):   # 🩹 a released hold's close → its base reason
             r = r[3:]
         return r
     fires = [o for o in orders

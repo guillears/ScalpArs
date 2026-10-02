@@ -188,7 +188,7 @@ def test_engine_and_api_wiring():
     import models as M
     cols = {c.name for c in M.Order.__table__.columns}
     need = {"entry_frenzy_spike_at", "entry_frenzy_hours", "entry_frenzy_vwap", "entry_frenzy_vs_vwap_pct", "entry_frenzy_vol_mult",
-            "entry_frenzy_run_pct", "entry_frenzy_stop_atr", "entry_frenzy_bar_ret_pct"}
+            "entry_frenzy_run_pct", "entry_frenzy_stop_atr", "entry_frenzy_bar_ret_pct", "entry_frenzy_di_spread"}
     assert need <= cols and M.FrenzyBreak.__tablename__ == "frenzy_breaks"
     db = open(os.path.join(ROOT, "database.py"), encoding="utf-8").read()
     assert all(f"'{c}'" in db for c in need)                                              # the migration adds every column

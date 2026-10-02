@@ -274,6 +274,7 @@ class Order(Base):
     entry_frenzy_run_pct = Column(Float, nullable=True)            # the run's peak vs the price before the spike (%)
     entry_frenzy_stop_atr = Column(Float, nullable=True)           # the stop as a multiple of the 5m ATR (stop % ÷ ATR %)
     entry_frenzy_bar_ret_pct = Column(Float, nullable=True)        # Oct-2 (180): the signal bar's own return, close vs open (%) — ≤ 0 = red / flat
+    entry_frenzy_di_spread = Column(Float, nullable=True)          # Oct-2 (187): +DI − −DI (ADX 14) on the last CLOSED 5m bar (the backtest's value) — OBSERVE-ONLY, 40-fill review. NOT entry_pos_di − entry_neg_di (those read the forming bar)
     # 🧭 Sep-29 ZONE STAMPS (DECISION_LOG 127) — observe-only readings for the C/D momentum-long watch items; no rule reads them
     entry_btc_ema50_100_gap_pct = Column(Float, nullable=True)      # BTC 5m EMA50 vs EMA100 (%), closed bars   [C]
     entry_eth_5m_ret1_pct = Column(Float, nullable=True)            # ETH last closed 5m bar return (%)          [C]

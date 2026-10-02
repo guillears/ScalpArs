@@ -22,7 +22,7 @@ from services.binance_service import binance_service, is_leverage_blocked
 from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, closed_wilder_ndi, fade_laggard_block, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct
-from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd
+from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
 
@@ -6887,6 +6887,7 @@ class TradingEngine:
                     flag = dict(ep, pair=pair, atr_pct=atr, volume_24h=vol24, change_24h=by[pair].get('change_24h'), live_price=by[pair].get('price'),
                                 ready=ready, code=code, text=text, updated_ms=now_ms, misses=0, bar=bar_open,
                                 last_fire=_prev.get('last_fire') if _prev.get('spike_ts') == ep['spike_ts'] else None,
+                                di_spread=(frenzy_di_spread(closed[-300:]) if ready else None),   # 🔬 observe-only entry stamp (DECISION_LOG 187)
                                 **{k: ind.get(k) for k in ('ema5', 'ema8', 'ema13', 'ema20', 'rsi', 'adx')})
                     _frenzy_flags[pair] = flag
                     if _obs:
@@ -7044,6 +7045,7 @@ class TradingEngine:
                 entry_frenzy_vol_mult=round(flag['vol_mult'], 1), entry_frenzy_run_pct=round(flag['run_pct'], 2),
                 entry_frenzy_stop_atr=(round(_stop / atr, 3) if atr else None),
                 entry_frenzy_bar_ret_pct=(round(flag['bar_ret_pct'], 4) if flag.get('bar_ret_pct') is not None else None),
+                entry_frenzy_di_spread=flag.get('di_spread'),
                 **self._sanitize_open_kwargs(_ef, "FRENZY_LONG", "LONG"),
             )
             flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} " + ("opened" if order else "refused by the open path (slots / balance / cooldown / price moved)")
@@ -8024,6 +8026,7 @@ class TradingEngine:
         entry_frenzy_run_pct: Optional[float] = None,
         entry_frenzy_stop_atr: Optional[float] = None,
         entry_frenzy_bar_ret_pct: Optional[float] = None,
+        entry_frenzy_di_spread: Optional[float] = None,
         # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
         # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
         # lev_mult from gap_probe_* config), tagged cell_src=GAPFLAT_PROBE (own analytics row;
@@ -9644,6 +9647,7 @@ class TradingEngine:
             entry_frenzy_vol_mult=(entry_frenzy_vol_mult if _frenzy else None), entry_frenzy_run_pct=(entry_frenzy_run_pct if _frenzy else None),
             entry_frenzy_stop_atr=(entry_frenzy_stop_atr if _frenzy else None),
             entry_frenzy_bar_ret_pct=(entry_frenzy_bar_ret_pct if _frenzy else None),
+            entry_frenzy_di_spread=(entry_frenzy_di_spread if _frenzy else None),
             adx_surge_open=_adx_surge_admit,   # ⚡ Sep-28: admitted through the BTC ADX-surge waiver (same predicate as its sizing)
             entry_mcap_usd=_mcap_usd, entry_cmc_rank=_cmc_rank,   # 💰 Sep-28: cached market cap / CMC rank (NULL if unknown)
             entry_btc_ema50_100_gap_pct=(entry_btc_ema50_100_gap_pct if entry_btc_ema50_100_gap_pct is not None else (_zg.get('_current_btc_ema50_100_gap_pct') if _zfresh else None)),   # 🧭 Sep-29 zone stamps (observe-only)

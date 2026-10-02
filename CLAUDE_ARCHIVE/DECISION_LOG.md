@@ -5232,3 +5232,15 @@ counters unchanged); `frenzy_walk` also returns `above_streak`. Scout staircase 
 Dual review: no bugs. Old vs new on ~52.7k random episodes: every trading field and every (ready, code) identical; the text matched the real price state
 in every case. Applied: shorter texts (the Block Reason cell does not wrap) · two decimals within ±0.05 % so the sign is right · scout early-hour label ·
 streak tests on real computed frames. Surfaces: services/frenzy.py · scripts/scout_staircase.py · tests.
+
+### (187) 2026-10-02 — 🔬 FRENZY: observe-only stamp `entry_frenzy_di_spread` (+DI − −DI on the signal bar) (operator)
+Backtest (reports/FRENZY_LONG_INDICATORS_2026-10-02.md; the bot's RSI 12 / ADX 14 added to the 1,103 FRENZY trades — the earlier deep dive had no ADX):
+on RED / flat signal candles (517) the +DI − −DI fifths run +0.17 / +0.30 / +0.24 / +0.72 / +0.93 %/trade (edges 1.5 / 10 / 16 / 23), same direction in both
+halves (+0.52 / +1.09) and both volume sets, top fifth by day [+0.24, +1.67]. Luck: the best fifth of 6 indicators sits at the 75th percentile of
+day-shuffled data; a steady top-minus-bottom spread as large as DI's (0.76) appears in 32 % of shuffles across the 6 indicators → NOT established.
+All entries: nothing separates; winners vs losers medians equal (RSI 64/64, ADX 31/31, ATR 1.95/1.98). → WATCH ITEM, observe-only: the value is stamped
+on every FRENZY_LONG order (ta ADX 14 on the last CLOSED 5m bar, = the backtest's value; a 300-bar window matches full history to 0.001). No rule reads it.
+Read at the 40-fill review: fills with spread ≥ ~16 vs below, on real fills only. Not the same as entry_pos_di − entry_neg_di (forming bar).
+Dual review: no bugs; applied: column comment (closed bar vs entry_pos_di), sturdier wiring test, 300-bar parity test.
+Same day, tested and rejected (reports/): buying flagged pairs BELOW the average (0 of 15 cells; exit grid 0 of 140; half-sale 0 of 45; RSI/ADX/ATR 0 of 40);
+FRENZY exit alternatives (28-exit grid: only the live exit and stop 3 · TP +5 pass; fixed +1 % target −0.13; half at +1 % +0.21 vs live +0.47).

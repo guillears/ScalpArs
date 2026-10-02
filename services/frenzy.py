@@ -117,6 +117,25 @@ def frenzy_walk(bars, norm_hour, th) -> Optional[dict]:
         return None
 
 
+def frenzy_di_spread(bars) -> Optional[float]:
+    """🔬 Oct-2 OBSERVE-ONLY stamp (DECISION_LOG 187): +DI − −DI on the LAST row of CLOSED 5m bars [open_ms, o, h, l, c, v] — the bot's own
+    ADX(14) (ta ADXIndicator, as services/indicators.py). Positive = up-moves dominate. Backtest (FRENZY_LONG_INDICATORS_2026-10-02.md):
+    on red / flat signal candles the trades with the highest spread did best (+0.17 → +0.93 %/trade, lowest → highest fifth) but the read
+    sits at the 75th percentile of luck → watch item for the 40-fill review, NOT a rule; nothing reads it. None when unreadable."""
+    try:
+        import math
+        import pandas as pd
+        from ta.trend import ADXIndicator
+        if not bars or len(bars) < 60:
+            return None
+        h, l, c = (pd.Series([float(r[k]) for r in bars]) for k in (2, 3, 4))
+        a = ADXIndicator(high=h, low=l, close=c, window=14)
+        v = float(a.adx_pos().iloc[-1] - a.adx_neg().iloc[-1])
+        return round(v, 3) if math.isfinite(v) else None
+    except Exception:
+        return None
+
+
 def frenzy_flagged(ep, th) -> bool:
     """A live episode counts as a FRENZY flag while its spike is verifiable and ≤ frenzy_max_hours old."""
     return bool(ep and ep.get('verified') and ep.get('hours') is not None and ep['hours'] <= _f(th, 'frenzy_max_hours', 96.0))

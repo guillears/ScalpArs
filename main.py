@@ -1385,7 +1385,8 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
             "open_positions": {"long": positions.get((_k, "LONG"), 0), "short": positions.get((_k, "SHORT"), 0)},
         })
     if _fz_now:
-        pairs_data.sort(key=lambda r: 0 if r.get("frenzy") else 1)   # stable: flagged first, each group keeps its volume order
+        # stable sort: flagged first, NEWEST spike on top (operator, Oct-2); the non-flagged rows keep their volume order
+        pairs_data.sort(key=lambda r: (0, -float((r["frenzy"] or {}).get("spike_ms") or 0)) if r.get("frenzy") else (1, 0.0))
 
     return pairs_data
 

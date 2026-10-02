@@ -5195,3 +5195,10 @@ Found by the review of the live manual entry (181). `binance_service.get_positio
 - `close_position` retry loop: close order fails (network / ban) → the position check fails for the same reason → the row was booked CLOSED (`EXIT_ALREADY_CLOSED`) while the position was still open on Binance, its safety stop already cancelled before the close.
 - `_reconcile_per_symbol` (main.py): the fallback that runs ONLY after 5 failed bulk reads, i.e. while the exchange is failing → every live row whose per-symbol read also failed was closed as EXTERNAL_CLOSE and its safety stop cancelled.
 Fix at the source: the helper now RAISES on a failed read and returns None only when Binance answered with no position. Both callers' existing handlers now do what they were written for (close path: keep retrying; reconciler: keep the row OPEN). No other caller exists. Affects every LIVE trade (bot and manual); paper never calls it. Tests: tests/test_position_read_failure.py.
+
+### (184) 2026-10-02 — 🔥 Top Pairs: flagged FRENZY pairs ordered NEWEST SPIKE FIRST (operator)
+Was: flagged pairs pinned on top in 24 h-volume order. Now: pinned on top by spike time, newest first, so a fresh frenzy lands on top and old ones sink as
+they age; the non-flagged rows keep their volume order. Display only — no entry, exit, sizing or filter changes. The FRENZY monitor table keeps its own order
+(setup ON first, then volume multiple). Dual review: no correctness findings (the key cannot raise, nothing downstream depends on the order, the page does
+not re-sort); the order test used equal spike times and did not exercise the rule → now uses different times. Surfaces: main.py `get_pairs` sort key ·
+tests/test_frenzy_sleeve.py.

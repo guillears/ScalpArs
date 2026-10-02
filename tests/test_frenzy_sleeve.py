@@ -195,7 +195,7 @@ def test_flagged_pairs_are_pinned_and_marked_in_the_pairs_payload(monkeypatch):
                                       above_hour=True, in_state=True, fresh_on=False, verified=True, vs_vwap_pct=6.7, run_pct=100.0, gain_pct=60.0,
                                       off_peak_pct=-20.0, atr_pct=1.8, volume_24h=3e8, live_price=1.61, ready=False, code="FRENZY_ON",
                                       text="ON (entry bar passed)", misses=0, ema5=1.6, ema8=1.59, ema13=1.58, ema20=1.57, rsi=61.0, adx=30.0), **kw)
-    monkeypatch.setattr(TE, "_frenzy_flags", {"QNTUSDT": mk("QNTUSDT"), "TINYUSDT": mk("TINYUSDT", in_state=False, text="below its average price", volume_24h=4e7)})
+    monkeypatch.setattr(TE, "_frenzy_flags", {"QNTUSDT": mk("QNTUSDT"), "TINYUSDT": mk("TINYUSDT", in_state=False, text="below its average price", volume_24h=4e7, spike_ts=1_700_000_600_000)})
 
     async def run():
         eng = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -211,8 +211,9 @@ def test_flagged_pairs_are_pinned_and_marked_in_the_pairs_payload(monkeypatch):
             await db.commit()
             return await main.get_pairs(db=db, limit=50), await main._frenzy_break_rows(db)
     rows, breaks = asyncio.run(run())
-    assert [r["pair"] for r in rows] == ["QNTUSDT", "TINYUSDT", "BTCUSDT", "NEARUSDT"]          # flagged first, then by volume
-    q, t = rows[0], rows[1]
+    # flagged first with the NEWEST spike on top (TINY's spike is 10 min later, though it has less volume and is outside the Top list); the rest by volume
+    assert [r["pair"] for r in rows] == ["TINYUSDT", "QNTUSDT", "BTCUSDT", "NEARUSDT"]
+    q, t = rows[1], rows[0]
     assert q["frenzy"]["in_state"] and q["frenzy"]["late"] and not q.get("frenzy_only")
     assert t["frenzy_only"] is True and t["price"] == 1.61 and t["volume_24h"] == 4e7 and t["atr_pct"] == 1.8 and t["signal"] is None
     assert rows[2]["frenzy"] is None

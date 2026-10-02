@@ -45,9 +45,9 @@ def test_exits_never_touch_a_fixed_manual_trade_and_cache_carries_the_mode():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
     assert eng.count("(order_info.get('entry_strategy') or '') == 'MANUAL'") == 1          # realtime intercept, before BULLRUN
     assert eng.index("== 'MANUAL'\n                    and (order_info.get('manual_exit_mode')") < eng.index("if (order_info.get('entry_strategy') or '') in ('BULLRUN_LONG', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG'):")
-    assert '(order.entry_strategy or "") == "MANUAL" and (getattr(order, \'manual_exit_mode\', None) or "FIXED") in ("FIXED", "FLOOR")' in eng   # candle loop skip
+    assert '(order.entry_strategy or "") == "MANUAL" and (getattr(order, \'manual_exit_mode\', None) or "FIXED") in ("FIXED", "FLOOR", "FRENZY")' in eng   # candle loop skip
     assert "'manual_exit_mode': getattr(order, 'manual_exit_mode', None)" in eng             # cache rebuild
-    assert eng.count('"MANUAL_TP"') == 1 and eng.count('"MANUAL_SL"') == 1
+    assert eng.count('"MANUAL_TP"') == 1 and eng.count('"MANUAL_SL"') == 3 and eng.count('"MANUAL_TRAIL"') == 2   # SL: custom / floor + the Frenzy exit
 
 
 def test_manual_is_excluded_from_ledger_and_pool_and_has_own_row():

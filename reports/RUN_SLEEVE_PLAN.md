@@ -106,3 +106,11 @@ Scout "🪜 Staircase watch" (commit 5e53db1): alert-only list of pairs in the s
 ## FRENZY design status (2026-10-02 evening) — see reports/FRENZY_SLEEVE_DESIGN.md (sections 8–9) for the review + follow-up
 Long as first designed fell to +0.05 on the strict ruler (wiped out at 1×/2×). Best version: ATR ≤ 2 % gate (+0.25 seen / +0.10 unseen, ranges span zero).
 Ride-it exit and ATR-scaled stops fail. Shorts observe-only. Operator: long ARMED, no automatic-off rule, wants 2× inv × 1× lev; one stop at 2× = 32 % of the account.
+
+## EMA200 SHORT, second look (scripts/ema200_retest_short_test.py → EMA200_RETEST_SHORT_TEST_2026-10-02.md) — 0 of 54 cells pass
+Operator (MOVR chart, "massive move"). Frozen entries: RETEST (≥ 1 h below EMA200, high within 1 % of the line, red close below it), RETEST2 (within 2 %),
+CROSS (EMA50 crosses below EMA200). 4,514 triggers, strict ruler, stops 2 % / 3 % / above the line (EMA200 + 1 %), 3 trails.
+- Runs +50–200 %: every cell NEGATIVE (retest −0.18…−0.29, retest2 −0.10…−0.24, cross −0.30…−0.43), most with the by-day range fully below zero.
+- Runs > +200 %: retest within 1 % ≈ zero (−0.39…+0.24, halves disagree: Jan–Apr negative / May–Sep positive, 100–106 trades); retest2 −0.25…−0.73; cross −0.16…−0.58.
+- MOVR 10-02 04:15 cross: +11.2 % with the stop above the line, −2.2 / −3.2 with 2 % / 3 % stops (hit in 2 min); GTC lost with every stop. One case, not a rule.
+- Sixth short rule tested on frenzy pairs, sixth failure. Shorts stay observe-only; the live frenzy_breaks table is the next evidence source.

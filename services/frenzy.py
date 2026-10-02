@@ -135,11 +135,12 @@ def frenzy_long_status(ep, atr_pct, volume_24h, th) -> Tuple[bool, str, str]:
     return True, "FRENZY_READY", "READY"
 
 
-def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None) -> Tuple[bool, str, float]:
+def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False) -> Tuple[bool, str, float]:
     """FRENZY_LONG's own exit → (close, reason, line). Stop at −frenzy_stop_pct; once the peak reaches +frenzy_trail_arm_pct the
     line trails frenzy_trail_giveback_pct of PRICE below the best point (peak − giveback × (1 + peak/100)). Reasons are the
     momentum stack's own (STOP_LOSS / RUNNER_TRAIL) so every matcher knows them; entry_strategy tells the sleeve apart.
-    stop_floor (live only): never wider than this — just inside the resting exchange backstop."""
+    stop_floor (live only): never wider than this — just inside the resting exchange backstop.
+    short=True (a MANUAL short on this exit): the give-back is measured from the LOWEST price → peak − giveback × (1 − peak/100)."""
     try:
         pnl = float(pnl); pk = float(peak_pnl or 0.0)
         stop = -abs(_f(th, 'frenzy_stop_pct', 3.0)) or -3.0
@@ -147,7 +148,7 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None) -> Tuple[bool, str, floa
             stop = max(stop, float(stop_floor))
         arm, give = abs(_f(th, 'frenzy_trail_arm_pct', 5.0)), abs(_f(th, 'frenzy_trail_giveback_pct', 1.5))
         if arm > 0 and give > 0 and pk >= arm:
-            line = max(stop, pk - give * (1 + pk / 100.0))
+            line = max(stop, pk - give * ((1 - pk / 100.0) if short else (1 + pk / 100.0)))
             return (pnl <= line), "RUNNER_TRAIL", line
         return (pnl <= stop), "STOP_LOSS", stop
     except (TypeError, ValueError):

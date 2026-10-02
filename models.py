@@ -288,7 +288,7 @@ class Order(Base):
     entry_gap_5_20_prev_signed_pct = Column(Float, nullable=True)   # same, one 5m bar earlier (EMA5/EMA20 prev1, current price)
     entry_gap_5_8_signed_pct = Column(Float, nullable=True)         # (EMA5 − EMA8) / EMA8 %, + = EMA5 above
     # 🖐 Sep-29 MANUAL sleeve (operator-opened positions; entry_strategy='MANUAL'; excluded from every systematic read)
-    manual_exit_mode = Column(String(12), nullable=True)            # FIXED | MOMENTUM | FLOOR
+    manual_exit_mode = Column(String(12), nullable=True)            # FIXED | MOMENTUM | FLOOR | FRENZY
     manual_note = Column(String(200), nullable=True)                # the operator's hypothesis for the trade
     manual_block_reason = Column(String(60), nullable=True)         # Sep-29: gate shown on the Top Pairs row at the click ('NONE' = enterable, NULL = no scan data)
     manual_setup_rating = Column(String(15), nullable=True)         # the pair's rating at the click (STRONG_BUY / VERY_STRONG / NO_TRADE)

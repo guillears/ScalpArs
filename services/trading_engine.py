@@ -9887,7 +9887,9 @@ class TradingEngine:
         """🖐 Sep-29 MANUAL sleeve (operator-requested research instrument). Opens a position from the dashboard with the given
         size/leverage — BYPASSES every entry gate and every cell multiplier — and labels it entry_strategy="MANUAL" so it never
         contaminates a systematic sleeve's stats (ledger / pool builder / readiness all exclude it; it gets its own row).
-        Exit modes: FIXED = custom SL (and optional TP) only, the momentum stack is skipped · MOMENTUM = the momentum exit stack
+        Exit modes: FRENZY (Oct-2) = the FRENZY sleeve's exit read live from its settings — stop frenzy_stop_pct, trailing exit
+        from frenzy_trail_arm_pct giving back frenzy_trail_giveback_pct, frenzy_max_hold_minutes; label stays MANUAL, closes as
+        MANUAL_SL / MANUAL_TRAIL · FIXED = custom SL (and optional TP) only, the momentum stack is skipped · MOMENTUM = the momentum exit stack
         (label stays MANUAL; refused only when the live EMA13-cross exit would close it at the first tick — see
         manual_momentum_first_tick_exit; an unscanned pair has no EMA exits, so its momentum stack = stop + trail) · FLOOR = optional TP, hard SL at manual_floor_sl_pct (liquidation protection — a stop-less position is
         never allowed). Own slot lane: counts only against manual_max_open_positions, never against the bot's max_open_positions
@@ -9901,8 +9903,8 @@ class TradingEngine:
         if direction not in ("LONG", "SHORT"):
             raise ValueError("direction must be LONG or SHORT")
         exit_mode = (exit_mode or "FIXED").upper().strip()
-        if exit_mode not in ("FIXED", "MOMENTUM", "FLOOR"):
-            raise ValueError("exit mode must be FIXED, MOMENTUM or FLOOR")
+        if exit_mode not in ("FIXED", "MOMENTUM", "FLOOR", "FRENZY"):
+            raise ValueError("exit mode must be FIXED, MOMENTUM, FLOOR or FRENZY")
         try:
             investment, leverage = float(investment), float(leverage)
         except (TypeError, ValueError):
@@ -9928,6 +9930,11 @@ class TradingEngine:
                                  f"liquidation ≈ −{manual_liquidation_distance_pct(leverage):.2f}%, the stop must stay within 80% of it)")
         elif exit_mode == "FLOOR":
             sl = floor
+        elif exit_mode == "FRENZY":   # 🔥 the stop is read live by frenzy_exit_for; here only the leverage safety check (never stored as a fixed SL)
+            _fz_sl = -abs(float(getattr(th, 'frenzy_stop_pct', 3.0) or 3.0))
+            if _fz_sl < floor:
+                raise ValueError(f"the FRENZY stop {_fz_sl:.2f}% is wider than the widest stop allowed at {leverage:g}×: {floor:.2f}% "
+                                 f"(liquidation ≈ −{manual_liquidation_distance_pct(leverage):.2f}%) — lower the leverage or use Custom SL/TP")
         if exit_mode in ("FIXED", "FLOOR") and tp_pct not in (None, ""):   # 🖐 Sep-30: FLOOR takes an optional TP too (operator)
             tp = abs(float(tp_pct))
             if not (math.isfinite(tp) and tp > 0):
@@ -11952,7 +11959,7 @@ class TradingEngine:
                 _sg_mh = int(float(getattr(config.trading_config.thresholds, 'surge_max_hold_minutes', 240) or 0))
                 if _sg_mh > 0:
                     max_hold = min(max_hold, _sg_mh) if max_hold > 0 else _sg_mh
-            elif (order.entry_strategy or "") == "FRENZY_LONG":   # 🔥 FRENZY: the tested 12 h cap (frenzy_max_hold_minutes; 0 = global)
+            elif (order.entry_strategy or "") == "FRENZY_LONG" or ((order.entry_strategy or "") == "MANUAL" and getattr(order, 'manual_exit_mode', None) == "FRENZY"):   # 🔥 FRENZY (and a manual trade on the FRENZY exit): the tested 12 h cap (frenzy_max_hold_minutes; 0 = global)
                 _fz_mh = int(float(getattr(config.trading_config.thresholds, 'frenzy_max_hold_minutes', 720) or 0))
                 if _fz_mh > 0:
                     max_hold = min(max_hold, _fz_mh) if max_hold > 0 else _fz_mh
@@ -12018,7 +12025,34 @@ class TradingEngine:
                         await locked_commit(db)
                     continue
             # 🖐 Sep-29 MANUAL FIXED/FLOOR: the operator's SL/TP is the only exit (realtime path); skip every candle-based exit.
-            if (order.entry_strategy or "") == "MANUAL" and (getattr(order, 'manual_exit_mode', None) or "FIXED") in ("FIXED", "FLOOR"):
+            if (order.entry_strategy or "") == "MANUAL" and (getattr(order, 'manual_exit_mode', None) or "FIXED") in ("FIXED", "FLOOR", "FRENZY"):
+                if getattr(order, 'manual_exit_mode', None) == "FRENZY":
+                    # 🔥 Oct-2 MANUAL on the FRENZY exit: the realtime path owns the exit, but (review) the PEAK must reach the DB — a
+                    # restart rebuilt the cache with peak 0 and an armed trail fell back to the bare stop — and a silent websocket
+                    # must not leave the trade without its stop: same candle-path check the sleeve has. Never raises.
+                    try:
+                        _mf_raw = ((current_price - order.entry_price) if order.direction == "LONG" else (order.entry_price - current_price)) * order.quantity
+                        _mf_fee = current_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+                        _mf_notional = order.entry_price * order.quantity if order.quantity > 0 else 1
+                        _mf_pnl = ((_mf_raw - (order.entry_fee or 0) - _mf_fee) / _mf_notional) * 100
+                        _mf_peak = max(realtime_peak, _mf_pnl)   # realtime_peak already = max(DB peak, cache peak)
+                        order.peak_pnl = _mf_peak
+                        order.trough_pnl = min(realtime_trough, _mf_pnl)
+                        _mf_close, _mf_why, _mf_line = frenzy_exit_for(_mf_pnl, _mf_peak, config.trading_config.thresholds,
+                                                                       _rh_backstop_floor(getattr(self, 'is_paper_mode', True)), short=(order.direction == "SHORT"))
+                        if _mf_close:
+                            _mf_reason = "MANUAL_TRAIL" if _mf_why == "RUNNER_TRAIL" else "MANUAL_SL"
+                            logger.warning(f"[MANUAL_FRENZY_EXIT] {order.pair} {order.direction}: {_mf_reason} (candle path) pnl={_mf_pnl:.2f}% peak={_mf_peak:.2f}% line={_mf_line:.2f}%")
+                            closed_order = await self.close_position(db, order, current_price, _mf_reason)
+                            if closed_order:
+                                updates.append({"order_id": closed_order.id, "pair": closed_order.pair, "action": "CLOSED",
+                                                "reason": closed_order.close_reason, "pnl": closed_order.pnl, "tp_level": order.current_tp_level or 1})
+                    except Exception as _mf_err:
+                        logger.error(f"[MANUAL_FRENZY_EXIT] {order.pair}: monitor-path check failed: {_mf_err}")
+                    try:
+                        await locked_commit(db)
+                    except Exception:
+                        pass
                 continue
             # 🌊 Aug-21 gate 57: BULLRUN_LONG dedicated exit path — sleeve trades run ONLY
             # _bullrun_exit_for (+ MAX_HOLD above + manual). Intercept BEFORE NO_EXPANSION /
@@ -15844,15 +15878,21 @@ class TradingEngine:
             # 🖐 Sep-29 MANUAL sleeve, FIXED / FLOOR exit modes: ONLY the operator's SL/TP (pattern_fixed_* on the row) — no
             # alt mechanism may touch it. Mirrors the BULLRUN intercept (continue outside the try). MOMENTUM mode falls through.
             if ((order_info.get('entry_strategy') or '') == 'MANUAL'
-                    and (order_info.get('manual_exit_mode') or 'FIXED') in ('FIXED', 'FLOOR')):
+                    and (order_info.get('manual_exit_mode') or 'FIXED') in ('FIXED', 'FLOOR', 'FRENZY')):
                 try:
                     _mn_peak = max(order_info.get('peak_pnl', 0) or 0, pnl_pct)
                     order_info['peak_pnl'] = _mn_peak
                     if pnl_pct < (order_info.get('trough_pnl', 0) or 0):
                         order_info['trough_pnl'] = pnl_pct
                     _mn_tp = order_info.get('pattern_fixed_tp_pct'); _mn_sl = order_info.get('pattern_fixed_sl_pct')
-                    _mn_reason = ("MANUAL_TP" if (_mn_tp is not None and pnl_pct >= float(_mn_tp))
-                                  else "MANUAL_SL" if (_mn_sl is not None and pnl_pct <= float(_mn_sl)) else None)
+                    if order_info.get('manual_exit_mode') == 'FRENZY':   # 🔥 Oct-2: the FRENZY sleeve's stop + trailing exit, read live from its settings
+                        _fz_c, _fz_why, _fz_line = frenzy_exit_for(pnl_pct, _mn_peak, config.trading_config.thresholds,
+                                                                   _rh_backstop_floor(getattr(self, 'is_paper_mode', True)), short=(direction == "SHORT"))
+                        _mn_reason = (("MANUAL_TRAIL" if _fz_why == "RUNNER_TRAIL" else "MANUAL_SL") if _fz_c else None)
+                        _mn_sl, _mn_tp = round(_fz_line, 4), None   # for the log line
+                    else:
+                        _mn_reason = ("MANUAL_TP" if (_mn_tp is not None and pnl_pct >= float(_mn_tp))
+                                      else "MANUAL_SL" if (_mn_sl is not None and pnl_pct <= float(_mn_sl)) else None)
                     if _mn_reason and not order_info.get('_closing_in_progress'):
                         order_info['_closing_in_progress'] = True
                         logger.warning(f"[REALTIME_MANUAL_EXIT] {pair} {direction}: {_mn_reason} pnl={pnl_pct:.4f}% sl={_mn_sl} tp={_mn_tp}")

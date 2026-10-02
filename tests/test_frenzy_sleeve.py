@@ -160,7 +160,7 @@ def test_config_parity_and_every_surface():
 
 def test_engine_and_api_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert eng.count("frenzy_exit_for(") == 2                                             # candle path + realtime path
+    assert eng.count("frenzy_exit_for(") == 4                                             # sleeve: candle + realtime · MANUAL "Frenzy exit": candle + realtime
     assert "await self._update_frenzy(db)" in eng and eng.count('"FRENZY_LONG" if _frenzy else f"SURGE_{direction}" if _surge') == 2
     assert "_sg_pref = 'frenzy_long' if _frenzy else" in eng and 'cell_src = "FRENZY_LONG" if _frenzy else' in eng
     assert '"SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG")' in eng                           # no pair-EMA exit on a FRENZY fill
@@ -305,3 +305,31 @@ def test_pair_day_cap_counts_todays_frenzy_fills_only(monkeypatch):
     assert asyncio.run(run([("BARUSDT", "FRENZY_LONG", t1)] * 3, 3))[1] == ["FOOUSDT"]                              # another pair
     assert asyncio.run(run([("FOOUSDT", "MANUAL", t1), ("FOOUSDT", "SURGE_LONG", t1), ("FOOUSDT", None, t1)], 3))[1] == ["FOOUSDT"]   # other strategies
     assert asyncio.run(run([("FOOUSDT", "FRENZY_LONG", day0)] * 3, 3))[1] == []                                     # a fill in the first second of the day counts
+
+
+def test_manual_entry_can_use_the_frenzy_exit():
+    """Oct-2 (operator): the manual panel's "🔥 Frenzy exit" — a MANUAL trade closed by the FRENZY stop / trailing exit (live settings)."""
+    f = frenzy_exit_for
+    # a SHORT measures the give-back from its LOWEST price: at +10 % the line is 10 − 1.5 × 0.90, a LONG's is 10 − 1.5 × 1.10
+    assert abs(f(0.0, 10.0, TH, short=True)[2] - (10.0 - 1.5 * 0.90)) < 1e-9 and abs(f(0.0, 10.0, TH)[2] - (10.0 - 1.5 * 1.10)) < 1e-9
+    assert f(-3.0, 0.0, TH, short=True)[:2] == (True, "STOP_LOSS") and f(8.6, 10.0, TH, short=True)[:2] == (True, "RUNNER_TRAIL")
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert 'if exit_mode not in ("FIXED", "MOMENTUM", "FLOOR", "FRENZY"):' in eng
+    assert "in ('FIXED', 'FLOOR', 'FRENZY')):" in eng and 'in ("FIXED", "FLOOR", "FRENZY"):' in eng          # realtime intercept + candle-loop skip
+    assert '"MANUAL_TRAIL" if _fz_why == "RUNNER_TRAIL" else "MANUAL_SL"' in eng and 'short=(direction == "SHORT")' in eng
+    assert "getattr(order, 'manual_exit_mode', None) == \"FRENZY\")" in eng                                   # the 12 h cap applies
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert html.count('<option value="FRENZY">🔥 Frenzy exit</option>') == 1 and "m === 'MOMENTUM' || m === 'FRENZY'" in html
+    # the leverage safety check: the 3 % stop is refused where the widest safe stop is tighter
+    import asyncio, config as C, services.trading_engine as TE
+    e = object.__new__(TE.TradingEngine); e.is_paper_mode = True
+    lev = next((L for L in (20, 25, 33, 50, 75, 100, 125) if TE.manual_floor_for_leverage(C.trading_config.thresholds, L) > -3.0), None)
+    fn = getattr(TE.TradingEngine.open_manual_position, "__wrapped__", None)
+    assert lev and fn is not None
+    try:
+        asyncio.run(fn(e, None, "FOOUSDT", "LONG", 100.0, float(lev), exit_mode="FRENZY"))
+        raise AssertionError("expected the FRENZY stop to be refused at high leverage")
+    except ValueError as err:
+        assert "FRENZY stop" in str(err)
+    # review: the candle path persists the peak (a restart must not disarm the trail) and carries the stop when the websocket is silent
+    assert "order.peak_pnl = _mf_peak" in eng and '"MANUAL_TRAIL" if _mf_why == "RUNNER_TRAIL" else "MANUAL_SL"' in eng

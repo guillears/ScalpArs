@@ -531,7 +531,7 @@ class ManualOpenRequest(BaseModel):   # 🖐 Sep-29 MANUAL sleeve
     direction: str
     investment: float
     leverage: float = 20.0
-    exit_mode: str = "FIXED"          # FIXED | MOMENTUM | FLOOR
+    exit_mode: str = "FIXED"          # FIXED | MOMENTUM | FLOOR | FRENZY
     sl_pct: Optional[float] = None    # price-move %, FIXED mode (sign ignored)
     tp_pct: Optional[float] = None    # price-move %, FIXED or FLOOR mode, optional
     note: Optional[str] = None

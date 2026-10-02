@@ -110,7 +110,7 @@
 </head>
 <body class="text-gray-100 font-sans">
     <!-- Toast Notification -->
-    <div id="toast" class="fixed top-4 right-4 z-50 hidden">
+    <div id="toast" class="fixed top-4 right-4 z-50 hidden max-w-2xl cursor-pointer" title="click to dismiss">
         <div class="glass rounded-lg px-6 py-4 shadow-lg flex items-center space-x-3">
             <span id="toast-icon" class="text-2xl"></span>
             <span id="toast-message" class="font-medium"></span>
@@ -313,7 +313,7 @@
                     <label class="flex flex-col text-gray-400">Side<select id="manual-direction" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
                     <label class="flex flex-col text-gray-400">Size $<input id="manual-investment" type="number" step="10" min="1" value="500" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">Lev<input id="manual-leverage" type="number" step="1" min="1" max="125" value="20" class="w-14 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
-                    <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack; refused only when its EMA13-cross exit would close the trade at the first tick (counter-trend entry with the EMA5/EMA8 stack against it) · FLOOR = hard stop at the floor (the widest safe stop for your leverage) + optional TP">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM" selected>Momentum stack</option><option value="FLOOR">Floor stop (+ opt. TP)</option></select></label>
+                    <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack; refused only when its EMA13-cross exit would close the trade at the first tick (counter-trend entry with the EMA5/EMA8 stack against it) · FLOOR = hard stop at the floor (the widest safe stop for your leverage) + optional TP · FRENZY = the FRENZY sleeve's exit with its CURRENT settings (stop, trailing exit, max hold — see the FRENZY box); no SL / TP to type">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM" selected>Momentum stack</option><option value="FLOOR">Floor stop (+ opt. TP)</option><option value="FRENZY">🔥 Frenzy exit</option></select></label>
                     <label class="flex flex-col text-gray-400">SL %<input id="manual-sl" type="number" step="0.1" min="0" placeholder="1.5" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">TP %<input id="manual-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400 flex-1 min-w-[12rem]">Note (optional)<input id="manual-note" type="text" maxlength="200" placeholder="optional — the gate is recorded automatically" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
@@ -8859,12 +8859,17 @@
             const icon = document.getElementById('toast-icon');
             const msg = document.getElementById('toast-message');
             
-            icon.textContent = type === 'success' ? '✓' : '✗';
-            icon.className = type === 'success' ? 'text-2xl text-emerald-400' : 'text-2xl text-red-400';
+            icon.textContent = type === 'success' ? '✓' : (type === 'warning' ? '⚠' : '✗');
+            icon.className = type === 'success' ? 'text-2xl text-emerald-400' : (type === 'warning' ? 'text-2xl text-amber-400' : 'text-2xl text-red-400');
             msg.textContent = message;
             
             toast.classList.remove('hidden');
-            setTimeout(() => toast.classList.add('hidden'), 3000);
+            // Oct-2 (operator): an error must stay long enough to be read — 3 s for a confirmation, errors 8 s + ~1 s per 20 characters
+            // (max 20 s). A newer toast cancels the older timer, so a quick success never hides a fresh error early. Click to dismiss.
+            if (window._toastTimer) clearTimeout(window._toastTimer);
+            const _ms = type === 'success' ? 3000 : type === 'warning' ? 6000 : Math.min(20000, 8000 + Math.ceil(String(message || '').length / 20) * 1000);
+            window._toastTimer = setTimeout(() => toast.classList.add('hidden'), _ms);
+            toast.onclick = () => { toast.classList.add('hidden'); if (window._toastTimer) clearTimeout(window._toastTimer); };
         }
 
         // Format numbers
@@ -19841,15 +19846,12 @@
                         ? `<span class="text-xs text-yellow-400/80">${_brSafe}</span>`
                         : '<span class="text-gray-500">-</span>';
                     // 🔥 Oct 2 FRENZY: a flagged pair shows the sleeve's own status here (the momentum gate moves to the hover), a badge by its
-                    // name and the ATR cell judged against the FRENZY limit. Flagged pairs are pinned to the top by the server.
+                    // name. The ATR cell keeps the table's own colouring (operator, Oct-2); the FRENZY ATR limit shows in the status text. Pinned by the server.
                     const _fz = p.frenzy || null;
-                    let _fzBadge = '', _fzAtrClass = '';
+                    let _fzBadge = '';
                     if (_fz) {
-                        const _fzMaxAtr = parseFloat((window._cachedConfig?.thresholds || {}).frenzy_max_atr_pct ?? 2);
                         const _fzTip = `FRENZY — spike ${surgeTime(_fz.spike_ms, _fz.spike, true, true)} (${_fz.hours != null ? _fz.hours.toFixed(1) : '?'} h ago) · ${_fz.gain_pct != null ? (_fz.gain_pct >= 0 ? '+' : '') + _fz.gain_pct.toFixed(0) : '?'}% since the spike · ${_fz.vs_vwap_pct != null ? (_fz.vs_vwap_pct >= 0 ? '+' : '') + _fz.vs_vwap_pct.toFixed(1) : '?'}% vs its average price · volume ${_fz.vol_mult != null ? _fz.vol_mult.toFixed(0) : '?'}× normal · ★ = long setup ON · ⏳ = flagged ≥ 32 h${p.frenzy_only ? ' · outside the Top list: followed by FRENZY only' : ''}`;
                         _fzBadge = `<span class="mr-1 cursor-help" title="${_escAttr(_fzTip)}">${frenzyMark(_fz)}</span>`;
-                        const _fzAtr = _fz.atr_pct ?? p.atr_pct;   // the sleeve's own closed-bar reading
-                        _fzAtrClass = (_fzAtr != null && (!_fzMaxAtr || _fzAtr <= _fzMaxAtr)) ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold';
                         blockReasonHtml = `<span class="text-xs whitespace-nowrap ${_fz.ready ? 'text-emerald-400 font-semibold' : 'text-orange-300'}" title="${_escAttr('FRENZY status. Momentum gate: ' + (p.block_reason || (p.frenzy_only ? 'not in the Top list' : 'none')) + (_fz.last_fire ? ' · last setup: ' + _fz.last_fire : ''))}">${_escAttr(_fz.text)}</span>`;
                     }
 
@@ -19867,7 +19869,7 @@
                             <td class="px-3 py-3 text-right font-mono text-sm ${gap58Class}">${gap58Value}</td>
                             <td class="px-3 py-3 text-right font-mono ${rsiClass}">${p.rsi !== null ? p.rsi.toFixed(1) : '-'}</td>
                             <td class="px-3 py-3 text-right font-mono ${adxClass}">${p.adx !== null ? p.adx.toFixed(1) : '-'}</td>
-                            <td class="px-3 py-3 text-right font-mono ${_fzAtrClass || ((p.atr_pct != null && p.atr_pct >= parseFloat((window._cachedConfig?.thresholds || {}).surge_atr_min_pct ?? 1.5)) ? 'text-yellow-300 font-semibold' : 'text-gray-400')}" title="${p.atr_pct != null ? (p.atr_pct >= parseFloat((window._cachedConfig?.thresholds || {}).surge_atr_min_pct ?? 1.5) ? 'SURGE-eligible: ATR at or above the floor' : 'Below the SURGE ATR floor') : 'not scanned yet'}">${p.atr_pct != null ? p.atr_pct.toFixed(2) + '%' : '-'}</td>
+                            <td class="px-3 py-3 text-right font-mono ${(p.atr_pct != null && p.atr_pct >= parseFloat((window._cachedConfig?.thresholds || {}).surge_atr_min_pct ?? 1.5)) ? 'text-yellow-300 font-semibold' : 'text-gray-400'}" title="${p.atr_pct != null ? (p.atr_pct >= parseFloat((window._cachedConfig?.thresholds || {}).surge_atr_min_pct ?? 1.5) ? 'SURGE-eligible: ATR at or above the floor' : 'Below the SURGE ATR floor') : 'not scanned yet'}">${p.atr_pct != null ? p.atr_pct.toFixed(2) + '%' : '-'}</td>
                             <td class="px-3 py-3 text-center">${blockReasonHtml}</td>
                             <td class="px-3 py-3 text-center whitespace-nowrap ${_confBlocked ? 'text-gray-500' : confidenceClass} font-medium" title="${_confTitle}">${_confBlocked ? '<span class="text-[9px] align-middle mr-0.5 opacity-80">🚫</span>' + _confSafe : (_confSafe || '-')}</td>
                             <td class="px-3 py-3 text-center">${positionsHtml}</td>
@@ -20168,10 +20170,10 @@
                     // +1.0 → lock +0.2 / 2×ATR trail) — the RUNNER/🛡 badges describe the alt
                     // machinery, which can never touch a sleeve trade (operator-caught cosmetic
                     // mislabel on the first live fill). Show the sleeve's true state instead.
-                    if ((o.entry_strategy || '') === 'FRENZY_LONG') {   // 🔥 Oct 2: FRENZY runs its own stop + trailing exit — never the 🛡 / RUNNER machinery
+                    if ((o.entry_strategy || '') === 'FRENZY_LONG' || ((o.entry_strategy || '') === 'MANUAL' && o.manual_exit_mode === 'FRENZY')) {   // 🔥 Oct 2: FRENZY (and a manual trade on its exit) runs its own stop + trailing exit — never the 🛡 / RUNNER machinery
                         const _fzArm = _rtTh.frenzy_trail_arm_pct ?? 5, _fzGive = _rtTh.frenzy_trail_giveback_pct ?? 1.5;
                         if (_tpPeak >= _fzArm) {
-                            tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-500/25 text-orange-300" title="🔥 FRENZY trail armed (peak ${_tpPeak.toFixed(2)}% ≥ ${_fzArm}%): closes ${_fzGive}% of price below the best point (now ≈ ${(_tpPeak - _fzGive * (1 + _tpPeak / 100)).toFixed(2)}%). Exits RUNNER_TRAIL; below the arm only the ${_rtTh.frenzy_stop_pct ?? 3}% stop.">🔥 TRAIL</span>`;
+                            tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-500/25 text-orange-300" title="🔥 FRENZY trail armed (peak ${_tpPeak.toFixed(2)}% ≥ ${_fzArm}%): closes ${_fzGive}% of price ${o.direction === 'SHORT' ? 'above' : 'below'} the best point (now ≈ ${(_tpPeak - _fzGive * (1 + (o.direction === 'SHORT' ? -1 : 1) * _tpPeak / 100)).toFixed(2)}%). Exits ${(o.entry_strategy || '') === 'MANUAL' ? 'MANUAL_TRAIL' : 'RUNNER_TRAIL'}; below the arm only the ${_rtTh.frenzy_stop_pct ?? 3}% stop.">🔥 TRAIL</span>`;
                         }
                     } else if ((o.entry_strategy || '') === 'BULLRUN_LONG' || (o.entry_strategy || '') === 'SURGE_LONG') {   // ⚡ Sep 30: SURGE_LONG runs the same exit (own trail)
                         const _brArm = _rtTh.bullrun_be_arm_pct ?? 1.0;
@@ -20216,7 +20218,7 @@
                         tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${bgClass} ${textClass}" title="${title}">${label}</span>`;
                     }
                     }  // close the gate-57 sleeve-badge else
-                    if ((o.entry_strategy || '') === 'MANUAL' && (o.manual_exit_mode || 'FIXED') !== 'MOMENTUM') tpTierBadge = '';   // 🖐 FIXED/FLOOR never trail — no arm badge
+                    if ((o.entry_strategy || '') === 'MANUAL' && !['MOMENTUM', 'FRENZY'].includes(o.manual_exit_mode || 'FIXED')) tpTierBadge = '';   // 🖐 FIXED/FLOOR never trail — no arm badge
 
                     // Strategy / sleeve badge (matches the Filter by Flip Source names)
                     const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');
@@ -20558,7 +20560,9 @@
             if ((o.entry_strategy || '') !== 'MANUAL') return '';
             const m = o.manual_exit_mode || 'FIXED';
             const sl = o.pattern_fixed_sl_pct, tp = o.pattern_fixed_tp_pct;
-            const exitTxt = m === 'MOMENTUM' ? 'exit: MOMENTUM stack (STRONG_BUY stop −0.70%, runner arm +0.40%, EMA13 cross)'
+            const _fzT = window._cachedConfig?.thresholds || {};
+            const exitTxt = m === 'FRENZY' ? `exit: FRENZY — stop −${_fzT.frenzy_stop_pct ?? 3}%, trailing from +${_fzT.frenzy_trail_arm_pct ?? 5}% giving back ${_fzT.frenzy_trail_giveback_pct ?? 1.5}% of price, max ${_fzT.frenzy_max_hold_minutes ?? 720} min (live settings)`
+                : m === 'MOMENTUM' ? 'exit: MOMENTUM stack (STRONG_BUY stop −0.70%, runner arm +0.40%, EMA13 cross)'
                 : m === 'FLOOR' ? `exit: FLOOR — hard SL ${sl != null ? sl.toFixed(2) + '%' : '(config floor)'}${tp != null ? ', TP +' + Number(tp).toFixed(2) + '%' : ', no TP'}`
                 : `exit: CUSTOM — SL ${sl != null ? sl.toFixed(2) + '%' : '—'}${tp != null ? ', TP +' + Number(tp).toFixed(2) + '%' : ', no TP'}`;
             const _e = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -20593,7 +20597,7 @@
         function manualExitModeChanged() {
             const m = document.getElementById('manual-exit-mode')?.value || 'FIXED';
             const sl = document.getElementById('manual-sl'), tp = document.getElementById('manual-tp');
-            if (sl) sl.disabled = (m !== 'FIXED'); if (tp) tp.disabled = (m === 'MOMENTUM');   // FLOOR: floor stop + optional TP
+            if (sl) sl.disabled = (m !== 'FIXED'); if (tp) tp.disabled = (m === 'MOMENTUM' || m === 'FRENZY');   // FLOOR: floor stop + optional TP · FRENZY: its own stop + trail
         }
         async function openManualPosition() {
             const g = id => document.getElementById(id);

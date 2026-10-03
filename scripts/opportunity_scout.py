@@ -344,6 +344,7 @@ def load_decisions():
             d = pd.read_csv(f, low_memory=False)
             if not len(d) or not {"t", "e", "pair"} <= set(d.columns):
                 continue
+            d = d[d.e != "BOOK"]                                              # 📖 Oct-3: order-book research rows — not decisions
             d["ms"] = to_ms(d["t"]); d = d[d.ms.notna()].copy()
             d["closed_ms"] = to_ms(d["closed"]) if "closed" in d else np.nan
             d["exp_ms"] = int(os.path.getmtime(f) * 1000)

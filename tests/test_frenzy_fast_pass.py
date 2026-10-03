@@ -58,7 +58,7 @@ def test_bar_close_task_wiring():
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert "async def frenzy_loop():" in main and "_frenzy_task = asyncio.create_task(frenzy_loop())" in main
-    assert "for task in (_monitor_task, _scan_task, _bnb_swap_task, _nav_task, _frenzy_task):" in main
+    assert "for task in (_monitor_task, _scan_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task):" in main
     assert "(int(_now // 300) + 1) * 300 + 4 - _now" in main                   # ~4 s after every 5-minute close
     assert "if await trading_engine._update_frenzy(db):" in main and "await self._update_frenzy(db, wait=False)" in eng   # task + the scan's non-waiting fallback
     assert "@serialized_per_pair(lane=BOT_OPEN_LANE)" in eng and "_open_ctx_momentum = property(" in eng

@@ -5291,3 +5291,17 @@ Expected latency ≈ 5–10 s (unmeasured on the year: 1-minute data only; read 
   the bot lane behind a scan open) → refused as FRENZY_LATE with its own reason; price-moved refusals report their reason too; the per-fill 1h kline read
   (8 s) and the SURGE / FRENZY fresh-book read (5 s) are bounded because the lane is held there. Tests: nested lane opens never hang, manual opens run
   alongside, _update_frenzy reports whether a pass ran.
+
+### (192) 2026-10-03 — 📖 Order-book recording (research, observe-only) + the MOVR / SAND / AIN 4-day study
+Why: every chart-based version of the operator's clicks fails out of sample; the order book is the one data type never tested, and Binance keeps
+no history of it. Built: (1) every MANUAL open stamps 24 order-book readings on the Order (`manual_ob_*`: spread, $ depth and bid/ask imbalance
+within 0.25 / 0.5 / 1 / 2 % of mid, largest bid / ask wall within 2 %, how far the returned 500 levels reach — a band the book does not reach is
+blank, never biased); read concurrently with the entry stamps, capped at 3 s, never blocks the open. (2) `orderbook_loop` (main.py): once a minute
+(+20 s) the same readings for every pair with an open MANUAL position and every FRENZY-flagged pair (≤ 12) → table `orderbook_snaps`, 14-day
+retention; its own exchange client and throttle (never in front of orders or the scan's reads). (3) Exported as e="BOOK" rows inside the existing
+Decisions CSV (operator: no new button); the scout drops them. Nothing reads any of it for a decision.
+Dual review applied: research client (orders / klines no longer queue behind depth reads), prune lock-first (locked_execute_commit), band reach,
+3-element entries, 6-significant-figure values, CSV built off the event loop, plain-row export query, warning-level commit failures.
+Study (reports/THREE_PAIRS_FOUR_DAYS_2026-10-03.md): buying every frenzy minute on MOVR + SAND + AIN made +$10–12.5k at $20k notional (+2/−3, trail,
+Bull-Run exits) — those pairs rose +88 / +48 / +58 %; the same on the 13 other frenzy pairs of the same 4 days lost $15–24k (trail +$2k). Rules fitted on
+the three ≈ 0 on the other pairs, −0.10 %/trade on the year; strategy-momentum switch (last 1 / 3 / 7 days positive) does not predict the next day.

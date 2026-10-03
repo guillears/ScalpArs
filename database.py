@@ -187,6 +187,10 @@ async def init_db():
                                           ('exit_override_at', 'DATETIME'), ('exit_override_prev', 'VARCHAR(40)')):   # 🔥 Oct-2 FRENZY sleeve · ✎ exit override
                     if _fz_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_fz_col} {_fz_type}"))
+                from services.orderbook_stats import OB_FIELDS as _OBF   # 📖 Oct-3 order-book stamps on manual clicks
+                for _obc in _OBF:
+                    if f"manual_ob_{_obc}" not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN manual_ob_{_obc} FLOAT"))
                 if 'entry_mcap_usd' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_mcap_usd FLOAT"))
                 if 'entry_cmc_rank' not in columns:

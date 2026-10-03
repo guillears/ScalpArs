@@ -274,6 +274,31 @@ class Order(Base):
     entry_frenzy_run_pct = Column(Float, nullable=True)            # the run's peak vs the price before the spike (%)
     entry_frenzy_stop_atr = Column(Float, nullable=True)           # the stop as a multiple of the 5m ATR (stop % ÷ ATR %)
     entry_frenzy_bar_ret_pct = Column(Float, nullable=True)        # Oct-2 (180): the signal bar's own return, close vs open (%) — ≤ 0 = red / flat
+    # 📖 Oct-3 (DECISION_LOG 192): the ORDER BOOK at a MANUAL click (services/orderbook_stats.orderbook_metrics) — OBSERVE-ONLY research stamps
+    manual_ob_spread_pct = Column(Float, nullable=True)
+    manual_ob_top_bid_usd = Column(Float, nullable=True)
+    manual_ob_top_ask_usd = Column(Float, nullable=True)
+    manual_ob_bid_usd_025 = Column(Float, nullable=True)
+    manual_ob_ask_usd_025 = Column(Float, nullable=True)
+    manual_ob_imb_025 = Column(Float, nullable=True)
+    manual_ob_bid_usd_05 = Column(Float, nullable=True)
+    manual_ob_ask_usd_05 = Column(Float, nullable=True)
+    manual_ob_imb_05 = Column(Float, nullable=True)
+    manual_ob_bid_usd_1 = Column(Float, nullable=True)
+    manual_ob_ask_usd_1 = Column(Float, nullable=True)
+    manual_ob_imb_1 = Column(Float, nullable=True)
+    manual_ob_bid_usd_2 = Column(Float, nullable=True)
+    manual_ob_ask_usd_2 = Column(Float, nullable=True)
+    manual_ob_imb_2 = Column(Float, nullable=True)
+    manual_ob_wall_bid_dist_pct = Column(Float, nullable=True)
+    manual_ob_wall_bid_usd = Column(Float, nullable=True)
+    manual_ob_wall_bid_share = Column(Float, nullable=True)
+    manual_ob_wall_ask_dist_pct = Column(Float, nullable=True)
+    manual_ob_wall_ask_usd = Column(Float, nullable=True)
+    manual_ob_wall_ask_share = Column(Float, nullable=True)
+    manual_ob_depth_levels = Column(Float, nullable=True)
+    manual_ob_reach_bid_pct = Column(Float, nullable=True)
+    manual_ob_reach_ask_pct = Column(Float, nullable=True)
     entry_frenzy_di_spread = Column(Float, nullable=True)          # Oct-2 (187): +DI − −DI (ADX 14) on the last CLOSED 5m bar (the backtest's value) — OBSERVE-ONLY, 40-fill review. NOT entry_pos_di − entry_neg_di (those read the forming bar)
     # 🧭 Sep-29 ZONE STAMPS (DECISION_LOG 127) — observe-only readings for the C/D momentum-long watch items; no rule reads them
     entry_btc_ema50_100_gap_pct = Column(Float, nullable=True)      # BTC 5m EMA50 vs EMA100 (%), closed bars   [C]
@@ -1155,6 +1180,44 @@ class FrenzyFlag(Base):
     pair = Column(String(30), primary_key=True)
     spike_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class OrderbookSnap(Base):
+    """📖 Oct-3 (DECISION_LOG 192) — ORDER-BOOK SNAPSHOTS (research, no trade): once a minute for every FRENZY-flagged pair and every pair with an
+    open MANUAL position — the control set for the order-book stamps on the operator's clicks (Binance keeps no historical books). Written by
+    main.orderbook_loop; kept 14 days; exported as BOOK rows inside the Decisions CSV."""
+    __tablename__ = "orderbook_snaps"
+    __table_args__ = (UniqueConstraint("pair", "at", name="uq_orderbook_snap"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    pair = Column(String(30), nullable=False)                      # (pair, at) is the unique index
+    at = Column(DateTime, nullable=False, index=True)              # the minute of the read (naive UTC, seconds = 0; read at ~:20–:35)
+    reason = Column(String(12), nullable=True)                     # FRENZY | MANUAL (why this pair was snapshotted)
+    mid = Column(Float, nullable=True)
+    spread_pct = Column(Float, nullable=True)
+    top_bid_usd = Column(Float, nullable=True)
+    top_ask_usd = Column(Float, nullable=True)
+    bid_usd_025 = Column(Float, nullable=True)
+    ask_usd_025 = Column(Float, nullable=True)
+    imb_025 = Column(Float, nullable=True)
+    bid_usd_05 = Column(Float, nullable=True)
+    ask_usd_05 = Column(Float, nullable=True)
+    imb_05 = Column(Float, nullable=True)
+    bid_usd_1 = Column(Float, nullable=True)
+    ask_usd_1 = Column(Float, nullable=True)
+    imb_1 = Column(Float, nullable=True)
+    bid_usd_2 = Column(Float, nullable=True)
+    ask_usd_2 = Column(Float, nullable=True)
+    imb_2 = Column(Float, nullable=True)
+    wall_bid_dist_pct = Column(Float, nullable=True)
+    wall_bid_usd = Column(Float, nullable=True)
+    wall_bid_share = Column(Float, nullable=True)
+    wall_ask_dist_pct = Column(Float, nullable=True)
+    wall_ask_usd = Column(Float, nullable=True)
+    wall_ask_share = Column(Float, nullable=True)
+    depth_levels = Column(Float, nullable=True)
+    reach_bid_pct = Column(Float, nullable=True)
+    reach_ask_pct = Column(Float, nullable=True)
 
 
 class FrenzyBreak(Base):

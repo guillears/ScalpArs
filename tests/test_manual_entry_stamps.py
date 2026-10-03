@@ -211,7 +211,7 @@ def test_manual_stamp_reads_run_together_and_use_the_click_price(monkeypatch):
 def test_manual_open_rechecks_the_pair_right_before_the_insert():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     i = eng.index("    async def open_manual_position"); j = eng.index("\n    async def ", i + 10); body = eng[i:j]
-    a = body.index("_st = await self._manual_entry_stamps("); b = body.index("was opened by the bot while this manual entry was being prepared"); c = body.index("order = Order(")
+    a = body.index("_st, _obm = await asyncio.gather(self._manual_entry_stamps("); b = body.index("was opened by the bot while this manual entry was being prepared"); c = body.index("order = Order(")
     assert a < b < c and "opened_at=_clicked_at" in body
 
 
@@ -230,7 +230,7 @@ def test_one_hung_read_does_not_cancel_the_others(monkeypatch):
     assert st['entry_funding_rate'] is None
     eng_src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     i = eng_src.index("    async def open_manual_position"); j = eng_src.index("\n    async def ", i + 10); body = eng_src[i:j]
-    k = body.index("_st = await self._manual_entry_stamps(")
+    k = body.index("_st, _obm = await asyncio.gather(self._manual_entry_stamps(")
     assert "manual positions cap reached while this entry was being prepared" in body[k:] and "exceeds the available balance" in body[k:]
 
 

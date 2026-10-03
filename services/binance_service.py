@@ -67,6 +67,9 @@ class BinanceService:
     """Service for interacting with Binance Futures API"""
     
     def __init__(self):
+        # 📖 Oct-3: research reads (order-book snapshots) get their OWN client and throttle — never queued in front of orders (trading
+        # client) nor of the scan / FRENZY kline reads (public client). Created lazily on first use.
+        self.research_exchange = None
         # Public exchange for market data (no auth needed)
         self.public_exchange = ccxt.binanceusdm({
             'enableRateLimit': True,
@@ -457,6 +460,8 @@ class BinanceService:
         await self.exchange.close()
         await self.public_exchange.close()
         await self.spot_exchange.close()
+        if getattr(self, 'research_exchange', None) is not None:
+            await self.research_exchange.close()
     
     @property
     def _last_balance_payload(self):
@@ -1070,6 +1075,25 @@ class BinanceService:
         except Exception as e:
             logger.error(f"[BINANCE] Error getting tick size for {symbol}: {e}")
             return 0.01
+
+    async def fetch_orderbook_depth(self, symbol: str, limit: int = 500) -> Optional[Dict]:
+        """📖 Oct-3: the raw book (bids / asks, best first) for research stamps — {'bids': [[p, q], …], 'asks': […]}. Public endpoint (weight
+        10 at 500 levels). None on any error (never raises); never sleeps out a ban (the caller bounds it with wait_for)."""
+        try:
+            if _ban_until > time.time():
+                return None
+            if self.research_exchange is None:
+                self.research_exchange = ccxt.binanceusdm({'enableRateLimit': True, 'options': {'defaultType': 'future', 'adjustForTimeDifference': True}})
+            if not getattr(self.research_exchange, 'markets', None):
+                await self.research_exchange.load_markets()
+            ob = await self.research_exchange.fetch_order_book(symbol, limit)   # its own client + throttle (deep review)
+            if ob and ob.get('bids') and ob.get('asks'):
+                return {'bids': ob['bids'], 'asks': ob['asks']}
+            return None
+        except Exception as e:
+            self._detect_ban(e)
+            logger.debug(f"[BINANCE] depth read failed for {symbol}: {e}")
+            return None
 
     async def fetch_orderbook(self, symbol: str, limit: int = 5) -> Optional[Dict]:
         """Get best bid/ask from orderbook"""

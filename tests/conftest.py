@@ -30,3 +30,14 @@ async def db():
     async with Session() as session:
         yield session
     await eng.dispose()
+
+
+
+@pytest.fixture(autouse=True)
+def _no_orderbook_network(monkeypatch):
+    """📖 Oct-3: manual opens read the order book (research stamp) — never the network in tests."""
+    from services import binance_service as _bs
+
+    async def _none(*a, **k):
+        return None
+    monkeypatch.setattr(_bs.binance_service, "fetch_orderbook_depth", _none, raising=False)

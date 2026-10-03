@@ -22,6 +22,7 @@ from services.binance_service import binance_service, is_leverage_blocked
 from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, closed_wilder_ndi, fade_laggard_block, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct
+from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
@@ -10268,7 +10269,13 @@ class TradingEngine:
         _clicked_at = datetime.utcnow()
         # 📐 every stamp a momentum fill records (≤ 8 s of exchange reads) — taken BEFORE any order: in live nothing slow may sit
         # between the fill and the booked, stop-protected row. (Paper fills at this same price, so the stamps are unchanged.)
-        _st = await self._manual_entry_stamps(pair, symbol, direction, float(price))
+        async def _ob_read():   # 📖 Oct-3 (DECISION_LOG 192): the order book at the click — research stamp, bounded, never blocks the open
+            try:
+                _raw = await asyncio.wait_for(binance_service.fetch_orderbook_depth(symbol, 500), 3.0)
+                return orderbook_metrics(_raw['bids'], _raw['asks']) if _raw else None
+            except Exception:
+                return None
+        _st, _obm = await asyncio.gather(self._manual_entry_stamps(pair, symbol, direction, float(price)), _ob_read())
         if exit_mode in ("BULLRUN", "BULLRUN_SL"):   # its stop width and trail come from the entry ATR: without a reading the trail would sit at the lock
             try:
                 _br_atr = float((_st or {}).get('entry_atr_pct'))
@@ -10417,6 +10424,7 @@ class TradingEngine:
                 # fills stay out of every systematic read (entry_strategy = MANUAL); their STOP widening never sees the entry ATR
                 # (exit_entry_atr_pct) — only the BULLRUN / BULLRUN_SL modes read it on purpose (stop width + trail, clamped at the leverage floor).
                 **_st,
+                **{f"manual_ob_{_k}": (_obm or {}).get(_k) for _k in OB_FIELDS},   # 📖 the order book at the click (None when unreadable)
             )
             db.add(order)
             await db.flush()

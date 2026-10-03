@@ -24,8 +24,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, or_, func, desc, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import init_db, get_db, AsyncSessionLocal, locked_commit
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FrenzyBreak, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger
+from database import init_db, get_db, AsyncSessionLocal, locked_commit, locked_execute_commit
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FrenzyBreak, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -67,6 +67,7 @@ _monitor_task = None
 _bnb_swap_task = None
 _nav_task = None
 _frenzy_task = None
+_orderbook_task = None
 should_stop = False
 _scan_lock = asyncio.Lock()
 # 💰 Sep-21 — investor/NAV writes are read-modify-write across separate sessions, so two concurrent
@@ -224,6 +225,55 @@ async def frenzy_loop():
             await asyncio.sleep(30)
 
 
+async def orderbook_loop():
+    """📖 Oct-3 (DECISION_LOG 192): once a minute (20 s in, away from the 5-minute-close rush) an order-book snapshot of every pair with an open
+    MANUAL position and every FRENZY-flagged pair (≤ 12) → orderbook_snaps. The control set for the order-book stamps on the operator's clicks
+    (Binance keeps no historical books). Exported as BOOK rows in the Decisions CSV. Research only: nothing reads it for a decision.
+    Kept 14 days. Never stops on an error."""
+    global should_stop
+    from services.orderbook_stats import snapshot_pairs, orderbook_metrics, OB_FIELDS
+    from services.trading_engine import _frenzy_flags
+    await asyncio.sleep(30)
+    _last_prune = 0.0
+    while not should_stop:
+        try:
+            _now = time.time()
+            await asyncio.sleep(max(1.0, (int(_now // 60) + 1) * 60 + 20 - _now))
+            if should_stop:
+                break
+            async with AsyncSessionLocal() as db:
+                _man = [p for (p,) in (await db.execute(select(Order.pair).where(and_(Order.status == "OPEN", Order.entry_strategy == "MANUAL")).distinct())).all()]
+                _pairs = snapshot_pairs(list(_frenzy_flags), _man)
+                if _pairs:
+                    _sem = asyncio.Semaphore(4)
+
+                    async def _one(p):
+                        async with _sem:
+                            try:
+                                _raw = await asyncio.wait_for(binance_service.fetch_orderbook_depth(f"{p[:-4]}/USDT:USDT", 500), 5.0)
+                            except Exception:
+                                _raw = None
+                        return p, (orderbook_metrics(_raw['bids'], _raw['asks']) if _raw else None)
+                    _res = await asyncio.gather(*[_one(p) for p in _pairs])
+                    _at = datetime.utcfromtimestamp(int(time.time() // 60) * 60)
+                    for p, m in _res:
+                        if m:
+                            db.add(OrderbookSnap(pair=p, at=_at, reason=("MANUAL" if p in _man else "FRENZY"), mid=m.get("mid"), **{k: m.get(k) for k in OB_FIELDS}))
+                    try:
+                        await locked_commit(db)
+                    except Exception as _ce:   # e.g. the same minute written twice across a restart (unique pair + minute)
+                        await db.rollback()
+                        (logger.debug if "UNIQUE" in str(_ce).upper() else logger.warning)(f"[ORDERBOOK_LOOP] minute not stored: {_ce}")
+                if time.time() - _last_prune > 3600:   # lock FIRST, then the delete (deep review: execute-then-lock inverts SQLite's write lock)
+                    await locked_execute_commit(db, delete(OrderbookSnap).where(OrderbookSnap.at < datetime.utcnow() - timedelta(days=14)))
+                    _last_prune = time.time()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"[ORDERBOOK_LOOP] error: {e}")
+            await asyncio.sleep(30)
+
+
 async def bnb_swap_loop():
     """Periodic loop to check BNB balance and auto-swap USDT to BNB for fee coverage."""
     global should_stop
@@ -288,7 +338,7 @@ async def nav_snapshot_loop():
 
 async def start_background_tasks():
     """Start background trading tasks"""
-    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, should_stop
     should_stop = False
     
     # Start WebSocket tracker for real-time price tracking
@@ -312,19 +362,20 @@ async def start_background_tasks():
     _bnb_swap_task = asyncio.create_task(bnb_swap_loop())
     _nav_task = asyncio.create_task(nav_snapshot_loop())
     _frenzy_task = asyncio.create_task(frenzy_loop())   # 🔥 Oct-3: FRENZY at the bar close, not after the scan
+    _orderbook_task = asyncio.create_task(orderbook_loop())   # 📖 Oct-3: order-book snapshots (research)
     logger.info("[STARTUP] Monitor, scan, BNB swap, NAV snapshot and FRENZY loops started independently")
 
 
 async def stop_background_tasks():
     """Stop background trading tasks"""
-    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, should_stop
     should_stop = True
 
     # Stop WebSocket tracker
     await websocket_tracker.stop()
     logger.info("[SHUTDOWN] WebSocket price tracker stopped")
 
-    for task in (_monitor_task, _scan_task, _bnb_swap_task, _nav_task, _frenzy_task):
+    for task in (_monitor_task, _scan_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task):
         if task:
             task.cancel()
             try:
@@ -2170,14 +2221,31 @@ async def export_decisions_csv(days: int = 3, db: AsyncSession = Depends(get_db)
                              closed=(o.closed_at.strftime('%Y-%m-%dT%H:%M:%S') if (o.status == "CLOSED" and o.closed_at) else None)))
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] positions skipped: {_e}")
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(_dj.EXPORT_COLS)
-    for r in rows:
-        w.writerow(["" if r.get(c) is None else r.get(c) for c in _dj.EXPORT_COLS])
+    # 📖 Oct-3 (DECISION_LOG 192): the minute order-book snapshots ride this file as BOOK rows (t, pair, src = FRENZY / MANUAL, ob_* columns) —
+    # no separate download (operator). Readers that filter on `e` (the scout) ignore them.
+    from services.orderbook_stats import OB_FIELDS as _OBF
+    _ob_cols = ["ob_mid"] + [f"ob_{k}" for k in _OBF]
+    try:
+        _since_ob = datetime.utcnow() - timedelta(days=days)
+        _sel = [OrderbookSnap.at, OrderbookSnap.pair, OrderbookSnap.reason, OrderbookSnap.mid] + [getattr(OrderbookSnap, k) for k in _OBF]
+        for s in (await db.execute(select(*_sel).where(OrderbookSnap.at >= _since_ob).order_by(OrderbookSnap.at))).all():   # plain rows, no ORM objects (review)
+            rows.append(dict(t=s[0].strftime('%Y-%m-%dT%H:%M:%S'), e="BOOK", pair=s[1], src=s[2], ob_mid=s[3],
+                             **{f"ob_{k}": s[4 + i] for i, k in enumerate(_OBF)}))
+    except Exception as _e:
+        logger.warning(f"[DECISIONS_EXPORT] order-book rows skipped: {_e}")
+    _cols = list(_dj.EXPORT_COLS) + _ob_cols
+
+    def _write_csv():   # off the event loop: up to ~50k BOOK rows (deep review)
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(_cols)
+        for r in rows:
+            w.writerow(["" if r.get(c) is None else r.get(c) for c in _cols])
+        return buf.getvalue()
+    _csv_text = await _aio.to_thread(_write_csv)
     mode = "paper" if trading_engine.is_paper_mode else "live"
     filename = f"scalpars_decisions_{mode}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
-    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+    return StreamingResponse(iter([_csv_text]), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="{filename}"',
                                       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
 

@@ -331,8 +331,8 @@ def test_manual_entry_can_use_the_frenzy_exit():
     assert abs(f(0.0, 10.0, TH, short=True)[2] - (10.0 - 1.5 * 0.90)) < 1e-9 and abs(f(0.0, 10.0, TH)[2] - (10.0 - 1.5 * 1.10)) < 1e-9
     assert f(-3.0, 0.0, TH, short=True)[:2] == (True, "STOP_LOSS") and f(8.6, 10.0, TH, short=True)[:2] == (True, "RUNNER_TRAIL")
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert 'if exit_mode not in ("FIXED", "MOMENTUM", "FLOOR", "FRENZY"):' in eng
-    assert "in ('FIXED', 'FLOOR', 'FRENZY')) or _ovr_rt):" in eng and 'in ("FIXED", "FLOOR", "FRENZY")) or _ovr_m:' in eng   # realtime intercept + candle-loop branch
+    assert 'if exit_mode not in ("FIXED", "MOMENTUM", "FLOOR", "FRENZY", "BULLRUN", "BULLRUN_SL"):' in eng
+    assert "in ('FIXED', 'FLOOR', 'FRENZY', 'BULLRUN', 'BULLRUN_SL')) or _ovr_rt):" in eng and 'in ("FIXED", "FLOOR", "FRENZY", "BULLRUN", "BULLRUN_SL")) or _ovr_m:' in eng   # realtime intercept + candle-loop branch
     assert '"MANUAL_TRAIL" if _fz_why == "RUNNER_TRAIL" else "MANUAL_SL"' in eng and 'short=(direction == "SHORT")' in eng
     assert "getattr(order, 'manual_exit_mode', None) == \"FRENZY\")" in eng                                   # the 12 h cap applies
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()

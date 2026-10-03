@@ -5244,3 +5244,36 @@ Read at the 40-fill review: fills with spread ≥ ~16 vs below, on real fills on
 Dual review: no bugs; applied: column comment (closed bar vs entry_pos_di), sturdier wiring test, 300-bar parity test.
 Same day, tested and rejected (reports/): buying flagged pairs BELOW the average (0 of 15 cells; exit grid 0 of 140; half-sale 0 of 45; RSI/ADX/ATR 0 of 40);
 FRENZY exit alternatives (28-exit grid: only the live exit and stop 3 · TP +5 pass; fixed +1 % target −0.13; half at +1 % +0.21 vs live +0.47).
+
+### (188) 2026-10-03 — 🔎 FRENZY SCALP research (operator: "find the pattern" behind his manual SAND scalps) — nothing shippable; one short observe candidate
+Operator 2026-10-02: 15 manual SAND trades, 13 won, +$2,853 (mostly +1 % target / −3 % floor). Overnight, all on the strict ruler (1-minute bars, costs):
+- His described rule (above avg ∧ RSI 50–70 ∧ ADX ≥ 20 ± volume rising, +1 %): 0 of 12 cells; 74–75 % won in EVERY month vs 78 % breakeven.
+  +1 % before −3 % on a driftless price wins 3/4 = 75 % by chance — the rule sits exactly at the chance rate.
+- Pattern search v1 (1.03 M moments, 518 pairs, 261 days, 39 features, 3,158 cells, Jan–May → Jun–Sep, day-shuffled null): no cell for +1/−3.
+- v2 (six exits, 47 features incl. the pair's own last-3 h scalp record): LONG 0 cells on any exit. Hot hand absent (pair's last-3 h record 95–100 %
+  → next long wins 73.7 %). ONE short cell confirmed: volume > 16.6× ∧ ATR < 1.23 %, +3/−3 (Jun–Sep +0.170) — but its tradeable version is
+  +0.064/trade, by day [−0.013, +0.154], 4 of 9 months negative, dose-response corner flips sign between halves → fails; observe candidate only.
+- His day vs chance: P(≥ 13 of 15 | 75 % coin) ≈ 24 %. Not yet distinguishable from luck at a +1 % target; the stamped manual trades are the
+  evidence path (≥ 30 fills over ≥ 8 days and several pairs).
+Reports: OPERATOR_SCALP_TEST_2026-10-02 · FRENZY_SCALP_PATTERN_SEARCH_2026-10-02 / _V2_2026-10-03 · FRENZY_SHORT_VOLATR_REVIEW_2026-10-03 ·
+FRENZY_TODAY_2026-10-02 (note: its pair list did not apply the 24 h flag end — NIGHT was counted after its flag ended) · FRENZY_SCALP_PLAN.md.
+- Re-entry WHILE the FRENZY setup is ON (operator trade 32, ATR 3.07 %, +5.09 %): the extra re-entries lose (2,719 · −0.17, by day [−0.32, −0.01]);
+  the live FRESH rule (first candle, red/flat, ATR ≤ 2.5 %) re-confirmed +0.35 (+0.28 / +0.42), by day [+0.01, +0.70]; ATR ≤ 3.5 % fresh +0.23 fails.
+  → live FRENZY rules unchanged (FRENZY_REENTRY_WHILE_ON_2026-10-03.md).
+
+### (189) 2026-10-03 — 🧪 FRENZY research program, full redo (operator: "re-do all analysis as a true quant") — reports/FRENZY_RESEARCH_PROGRAM_2026-10-03.md
+A operator record: 84 manual trades, 73 % won, avg +0.71 / −1.05 %, +0.22 %/trade, pair-day CI [−0.01, +0.62], SAND = 60 % of profit, median hold < 1 min.
+F his timing on the tick tape: clicks hit the target first 78 % vs 64–66 % for the same sessions, repeats on SAND; a MOVR-trained tape model does not
+transfer (13 features) → edge real-looking, not codified. B FRENZY long (487 trades, +0.346): close-based stop Δ −0.014 (no); "0–2 % above avg"
+filter fails the expectancy bar (CI); SIZING: one stop ≈ 30 % of the account → 90-day P(account < 25 %) 97 %; 15 % → 61 %; 5 % → 2 %; 2 % → 0 %.
+C pair selection, D walk-forward gradient boosting, E short candidate with a real limit-fill model: all fail. No rule shipped; recommendation to the
+operator: resize FRENZY so one stop ≈ 2–5 % of the account (his decision; nothing changed).
+
+### (190) 2026-10-03 — 🔍 Backtest audit + Bull-Run exit for FRENZY + SAND / MOVR week; 🌊 manual exit modes BULLRUN / BULLRUN_SL (built, uncommitted)
+AUDIT (reports/BACKTEST_AUDIT_FRENZY_2026-10-03.md): flags, fills, costs and the 1-minute ruler check out against live / the tape; ONE material flaw: the
+backtest entered at the signal close, the live FRENZY pass runs after the full scan (~60–120 s later) → FRENZY long +0.346 → +0.089 (1 min) / +0.078 (2 min)
+per trade. The live sleeve as built has ≈ no edge; the fix is execution latency (run the FRENZY entry check at the bar close, before the scan).
+FRENZY with the Bull-Run TP + −3 % stop: −0.081 vs live +0.346 (Δ −0.43, by day [−0.70, −0.18]) → rejected. SAND / MOVR week combinations: large in-sample,
+all negative on the year (E5 × +2/−3 −0.076, 0 of 9 months). His SAND / MOVR entries + a +2/−3 exit beat his own exits; mechanical entries do not.
+Manual modes BULLRUN (the sleeve's exit) and BULLRUN_SL (typed stop until the +1 % arm, then the Bull-Run profit side): dual review applied (live safety-stop
+clamp used the wrong mode for BULLRUN_SL; target-only edit of an armed BULLRUN_SL kept the pre-arm stop; Open Orders badge; 0 % stop refused). Suite 538.

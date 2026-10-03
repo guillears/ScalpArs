@@ -424,13 +424,34 @@ MANUAL_FILL_POLL_S = 1.0            # live: after an order call that errored AFT
 MANUAL_BACKSTOP_LIQ_SHARE = 0.92    # … and never beyond this share of the distance to liquidation (it must fire before liquidation)
 
 
+def manual_bullrun_worst_stop_pct(th):
+    """🌊 Oct-3: the widest stop the Bull-Run exit can use (negative %, as _bullrun_exit_for computes it): bullrun_base_sl_pct widened by
+    sl_atr_multiplier × entry ATR, capped at sl_atr_widen_floor_pct → min(base, cap). None when the widening has no cap (the
+    manual exit then clamps at the leverage floor). Pure; bad input → the base stop."""
+    try:
+        base = float(getattr(th, 'bullrun_base_sl_pct', -0.7) or -0.7)
+        cap = float(getattr(th, 'sl_atr_widen_floor_pct', 0.0) or 0.0)
+        mult = float(getattr(th, 'sl_atr_multiplier', 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return -0.7
+    if mult <= 0:
+        return base
+    return min(base, cap) if cap < 0 else None
+
+
 def manual_own_stop_pct(th, exit_mode, fixed_sl_pct):
     """The stop a MANUAL trade carries by itself, as a positive % (None = the momentum stack's stops, all inside the bot's own
-    backstop): FIXED / FLOOR → the stored SL · FRENZY → frenzy_stop_pct (0 / missing = 3, as the exit reads it)."""
+    backstop): FIXED / FLOOR → the stored SL · FRENZY → frenzy_stop_pct (0 / missing = 3, as the exit reads it) · BULLRUN → the
+    Bull-Run exit's widest stop (no cap → the config floor)."""
     try:
         m = (exit_mode or "FIXED").upper()
         if m == "FRENZY":
             return abs(float(getattr(th, 'frenzy_stop_pct', 3.0) or 3.0)) or 3.0
+        if m == "BULLRUN_SL" and fixed_sl_pct is not None and float(fixed_sl_pct) < 0:   # the operator's stop, stored on the row
+            return abs(float(fixed_sl_pct))
+        if m == "BULLRUN":
+            _w = manual_bullrun_worst_stop_pct(th)
+            return abs(_w) if _w is not None else abs(float(getattr(th, 'manual_floor_sl_pct', -3.0) or -3.0))
         if m in ("FIXED", "FLOOR") and fixed_sl_pct is not None and float(fixed_sl_pct) < 0:   # a profit-lock stop (≥ 0) is no loss stop
             return abs(float(fixed_sl_pct))
     except (TypeError, ValueError):
@@ -468,6 +489,37 @@ def manual_backstop_stop_floor(is_paper, th, exit_mode, fixed_sl_pct, leverage):
     if is_paper or not bool(getattr(th, 'broker_backstop_enabled', False)):
         return None
     return -(order_backstop_pct(th, "MANUAL", exit_mode, fixed_sl_pct, leverage) - MANUAL_BACKSTOP_MIN_GAP_PCT)
+
+
+def manual_bullrun_exit_for(pnl, peak_pnl, entry_atr_pct, th, leverage=None, is_paper=True, custom_sl=None):
+    """🌊 Oct-3 (operator): a MANUAL trade on the Bull-Run sleeve's exit, exactly as the sleeve runs it (_bullrun_exit_for, live settings):
+    stop = bullrun_base_sl_pct widened by sl_atr_multiplier × entry ATR up to sl_atr_widen_floor_pct · at peak ≥ bullrun_be_arm_pct the
+    floor moves to bullrun_be_lock_pct · trail = peak − bullrun_trail_atr_mult × entry ATR · the bullrun_ladder rungs lock profit (the
+    highest floor wins). pnl / peak = net-of-fees % in the trade's direction (LONG and SHORT alike). The stop is never wider than the
+    leverage floor (manual_floor_for_leverage) nor, in live, past the trade's own exchange safety stop. → (close, reason, line);
+    reasons MANUAL_SL (the stop) / MANUAL_TRAIL (break-even lock, trail or ladder floor). Never raises: on error the plain floor check.
+    custom_sl (BULLRUN_SL mode, operator 2026-10-03): the operator's own stop (negative %) replaces the Bull-Run stop until the break-even
+    arms; from the arm on, the Bull-Run profit side runs unchanged."""
+    try:
+        close, why, line = _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct)
+        if custom_sl is not None and float(custom_sl) < 0:
+            _arm = float(getattr(th, 'bullrun_be_arm_pct', 1.0) or 1.0)
+            if float(peak_pnl or 0.0) < _arm:   # not armed: the operator's stop, not the Bull-Run one
+                line = float(custom_sl); close = float(pnl) <= line; why = "STOP_LOSS"
+        if not close and leverage is not None:
+            _cs = float(custom_sl) if (custom_sl is not None and float(custom_sl) < 0) else None   # the safety stop placed for THIS row's mode / stop
+            for _f in (manual_floor_for_leverage(th, leverage),
+                       manual_backstop_stop_floor(is_paper, th, "BULLRUN_SL" if _cs is not None else "BULLRUN", _cs, leverage)):
+                if _f is not None and float(pnl) <= _f:
+                    close, why, line = True, "STOP_LOSS", _f
+                    break
+        return close, (("MANUAL_SL" if why == "STOP_LOSS" else "MANUAL_TRAIL") if close else None), line
+    except Exception:
+        try:
+            _f = manual_floor_for_leverage(th, leverage) if leverage is not None else -0.7
+            return (float(pnl) <= _f), "MANUAL_SL", _f
+        except Exception:
+            return False, "MANUAL_SL", -0.7
 
 
 def manual_floor_for_leverage(th, leverage) -> float:
@@ -9995,7 +10047,9 @@ class TradingEngine:
         """🖐 Sep-29 MANUAL sleeve (operator-requested research instrument). Opens a position from the dashboard with the given
         size/leverage — BYPASSES every entry gate and every cell multiplier — and labels it entry_strategy="MANUAL" so it never
         contaminates a systematic sleeve's stats (ledger / pool builder / readiness all exclude it; it gets its own row).
-        Exit modes: FRENZY (Oct-2) = the FRENZY sleeve's exit read live from its settings — stop frenzy_stop_pct, trailing exit
+        Exit modes: BULLRUN (Oct-3) = the Bull-Run sleeve's exit (manual_bullrun_exit_for: ATR-widened stop, break-even lock, ATR trail, ladder; the
+        GREEN-door trail — a manual trade has no door) · BULLRUN_SL (Oct-3) = the operator's typed stop until the break-even arms, then the same
+        profit side · FRENZY (Oct-2) = the FRENZY sleeve's exit read live from its settings — stop frenzy_stop_pct, trailing exit
         from frenzy_trail_arm_pct giving back frenzy_trail_giveback_pct, frenzy_max_hold_minutes; label stays MANUAL, closes as
         MANUAL_SL / MANUAL_TRAIL · FIXED = custom SL (and optional TP) only, the momentum stack is skipped · MOMENTUM = the momentum exit stack
         (label stays MANUAL; refused only when the live EMA13-cross exit would close it at the first tick — see
@@ -10016,8 +10070,8 @@ class TradingEngine:
         if direction not in ("LONG", "SHORT"):
             raise ValueError("direction must be LONG or SHORT")
         exit_mode = (exit_mode or "FIXED").upper().strip()
-        if exit_mode not in ("FIXED", "MOMENTUM", "FLOOR", "FRENZY"):
-            raise ValueError("exit mode must be FIXED, MOMENTUM, FLOOR or FRENZY")
+        if exit_mode not in ("FIXED", "MOMENTUM", "FLOOR", "FRENZY", "BULLRUN", "BULLRUN_SL"):
+            raise ValueError("exit mode must be FIXED, MOMENTUM, FLOOR, FRENZY, BULLRUN or BULLRUN_SL")
         try:
             investment, leverage = float(investment), float(leverage)
         except (TypeError, ValueError):
@@ -10035,12 +10089,14 @@ class TradingEngine:
                 raise ValueError("manual entry in live mode needs the exchange safety stop (broker backstop) switched on")
         floor = manual_floor_for_leverage(th, leverage)   # leverage-aware: never wider than 80 % of the liquidation distance
         sl = tp = None
-        if exit_mode == "FIXED":
+        if exit_mode in ("FIXED", "BULLRUN_SL"):   # BULLRUN_SL: the operator's stop + the Bull-Run profit side
             if sl_pct in (None, ""):
-                raise ValueError("FIXED mode needs a stop loss (% of price)")
+                raise ValueError(("FIXED" if exit_mode == "FIXED" else "Bull-Run TP + custom SL") + " mode needs a stop loss (% of price)")
             sl = -abs(float(sl_pct))
             if not math.isfinite(sl):
                 raise ValueError("stop loss must be a finite number")   # NaN would pass the floor check and leave NO stop
+            if not sl < 0:
+                raise ValueError("stop loss must be > 0 (% of price)")   # 0 would close at the first tick (FIXED) / be ignored (BULLRUN_SL)
             if sl < floor:
                 raise ValueError(f"stop loss {sl:.2f}% is wider than the widest stop allowed at {leverage:g}×: {floor:.2f}% "
                                  f"(config floor {-abs(float(getattr(th, 'manual_floor_sl_pct', -3.0) or -3.0)):.2f}%; "
@@ -10051,6 +10107,11 @@ class TradingEngine:
             _fz_sl = -abs(float(getattr(th, 'frenzy_stop_pct', 3.0) or 3.0))
             if _fz_sl < floor:
                 raise ValueError(f"the FRENZY stop {_fz_sl:.2f}% is wider than the widest stop allowed at {leverage:g}×: {floor:.2f}% "
+                                 f"(liquidation ≈ −{manual_liquidation_distance_pct(leverage):.2f}%) — lower the leverage or use Custom SL/TP")
+        elif exit_mode == "BULLRUN":   # 🌊 Oct-3: read live by manual_bullrun_exit_for; here only the leverage check of its widest stop
+            _br_w = manual_bullrun_worst_stop_pct(th)
+            if _br_w is not None and _br_w < floor:
+                raise ValueError(f"the Bull-Run stop can reach {_br_w:.2f}%, wider than the widest stop allowed at {leverage:g}×: {floor:.2f}% "
                                  f"(liquidation ≈ −{manual_liquidation_distance_pct(leverage):.2f}%) — lower the leverage or use Custom SL/TP")
         if exit_mode in ("FIXED", "FLOOR") and tp_pct not in (None, ""):   # 🖐 Sep-30: FLOOR takes an optional TP too (operator)
             tp = abs(float(tp_pct))
@@ -10151,6 +10212,13 @@ class TradingEngine:
         # 📐 every stamp a momentum fill records (≤ 8 s of exchange reads) — taken BEFORE any order: in live nothing slow may sit
         # between the fill and the booked, stop-protected row. (Paper fills at this same price, so the stamps are unchanged.)
         _st = await self._manual_entry_stamps(pair, symbol, direction, float(price))
+        if exit_mode in ("BULLRUN", "BULLRUN_SL"):   # its stop width and trail come from the entry ATR: without a reading the trail would sit at the lock
+            try:
+                _br_atr = float((_st or {}).get('entry_atr_pct'))
+            except (TypeError, ValueError):
+                _br_atr = float('nan')
+            if not (math.isfinite(_br_atr) and _br_atr > 0):
+                raise ValueError(f"no ATR reading for {pair} right now — the Bull-Run exit needs it (stop width and trail); pick another exit or retry")
         if _live:   # the click price is up to 8 s old by now: size the real order off a fresh one
             _px2 = None
             try:
@@ -10289,7 +10357,8 @@ class TradingEngine:
                 entry_fee=entry_fee, entry_order_type="TAKER", is_paper=self.is_paper_mode, opened_at=_clicked_at, binance_order_id=binance_order_id, backstop_algo_id=_bk_algo_id,
                 # 📐 Sep-29 (operator: "the manual buys should record everything that normal buys record"): the same entry_* stamps
                 # a momentum fill carries, same formulas (pair_entry_stamps / market_entry_stamps / monitor_entry_stamps). Manual
-                # fills stay out of every systematic read (entry_strategy = MANUAL) and their exits never see the entry ATR.
+                # fills stay out of every systematic read (entry_strategy = MANUAL); their STOP widening never sees the entry ATR
+                # (exit_entry_atr_pct) — only the BULLRUN / BULLRUN_SL modes read it on purpose (stop width + trail, clamped at the leverage floor).
                 **_st,
             )
             db.add(order)
@@ -10398,10 +10467,15 @@ class TradingEngine:
             raise ValueError("this position is being closed right now — nothing to edit")
         if sl is None:   # only a target was typed: keep the fixed stop the trade ALREADY has; never invent one (review: a blank used to
             # become the −3 % leverage floor on a bot trade whose own stop is −0.7 %)
-            _has_fixed = (is_manual and (order.manual_exit_mode or "FIXED") in ("FIXED", "FLOOR")) or order.exit_override_at is not None
+            # BULLRUN_SL keeps its typed stop only BEFORE the break-even armed (deep review: after it, the protected line is higher —
+            # going back to the pre-arm stop would drop the locked profit; the operator must type the stop he wants)
+            _br_unarmed = float(order.peak_pnl or 0.0) < float(getattr(th, 'bullrun_be_arm_pct', 1.0) or 1.0)
+            _has_fixed = (is_manual and ((order.manual_exit_mode or "FIXED") in ("FIXED", "FLOOR")
+                                         or ((order.manual_exit_mode or "") == "BULLRUN_SL" and _br_unarmed))) or order.exit_override_at is not None
             if not (_has_fixed and order.pattern_fixed_sl_pct is not None):
                 raise ValueError("type a stop too: this trade has no fixed stop of its own to keep (its current exit is the "
                                  + ("momentum stack" if is_manual and (order.manual_exit_mode or "") == "MOMENTUM" else
+                                    "Bull-Run exit" if is_manual and (order.manual_exit_mode or "") in ("BULLRUN", "BULLRUN_SL") else
                                     "Frenzy exit" if is_manual else "bot's own exit") + ")")
             sl = float(order.pattern_fixed_sl_pct)
         if sl < floor:
@@ -12399,7 +12473,7 @@ class TradingEngine:
             # the cache (rebuilt by the edit itself) is read too, as the recovery-hold block above does.
             _ovr_c = cached if (cached and cached.get('exit_override_at') is not None and getattr(order, 'exit_override_at', None) is None) else None
             _ovr_m = getattr(order, 'exit_override_at', None) is not None or _ovr_c is not None
-            if ((order.entry_strategy or "") == "MANUAL" and (getattr(order, 'manual_exit_mode', None) or "FIXED") in ("FIXED", "FLOOR", "FRENZY")) or _ovr_m:
+            if ((order.entry_strategy or "") == "MANUAL" and (getattr(order, 'manual_exit_mode', None) or "FIXED") in ("FIXED", "FLOOR", "FRENZY", "BULLRUN", "BULLRUN_SL")) or _ovr_m:
                 if True:
                     # 🖐 MANUAL with its own exit (Custom / Floor / Frenzy): the realtime path owns the exit, but (reviews) the PEAK must
                     # reach the DB — a restart rebuilt the cache with peak 0 and an armed Frenzy trail fell back to the bare stop — and a
@@ -12419,6 +12493,11 @@ class TradingEngine:
                                                                            manual_backstop_stop_floor(getattr(self, 'is_paper_mode', True), config.trading_config.thresholds, "FRENZY", None, order.leverage),
                                                                            short=(order.direction == "SHORT"))
                             _mf_reason = "MANUAL_TRAIL" if _mf_why == "RUNNER_TRAIL" else "MANUAL_SL"
+                        elif getattr(order, 'manual_exit_mode', None) in ("BULLRUN", "BULLRUN_SL") and _mf_lbl == "MANUAL" and _ovr_c is None:   # 🌊 Oct-3
+                            _mf_close, _mf_reason, _mf_line = manual_bullrun_exit_for(_mf_pnl, _mf_peak, getattr(order, 'entry_atr_pct', None),
+                                                                                      config.trading_config.thresholds, order.leverage,
+                                                                                      getattr(self, 'is_paper_mode', True),
+                                                                                      custom_sl=(getattr(order, 'pattern_fixed_sl_pct', None) if getattr(order, 'manual_exit_mode', None) == "BULLRUN_SL" else None))
                         else:   # FIXED / FLOOR: the operator's SL / TP stored on the row
                             _mf_tp = _ovr_c.get('pattern_fixed_tp_pct') if _ovr_c else getattr(order, 'pattern_fixed_tp_pct', None)
                             _mf_sl = _ovr_c.get('pattern_fixed_sl_pct') if _ovr_c else getattr(order, 'pattern_fixed_sl_pct', None)
@@ -16264,7 +16343,7 @@ class TradingEngine:
             # alt mechanism may touch it. Mirrors the BULLRUN intercept (continue outside the try). MOMENTUM mode falls through.
             _ovr_rt = order_info.get('exit_override_at') is not None   # ✎ the operator's own stop / target replaced this trade's exit
             if (((order_info.get('entry_strategy') or '') == 'MANUAL'
-                    and (order_info.get('manual_exit_mode') or 'FIXED') in ('FIXED', 'FLOOR', 'FRENZY')) or _ovr_rt):
+                    and (order_info.get('manual_exit_mode') or 'FIXED') in ('FIXED', 'FLOOR', 'FRENZY', 'BULLRUN', 'BULLRUN_SL')) or _ovr_rt):
                 try:
                     _mn_peak = max(order_info.get('peak_pnl', 0) or 0, pnl_pct)
                     order_info['peak_pnl'] = _mn_peak
@@ -16278,6 +16357,12 @@ class TradingEngine:
                                                                    short=(direction == "SHORT"))
                         _mn_reason = (("MANUAL_TRAIL" if _fz_why == "RUNNER_TRAIL" else "MANUAL_SL") if _fz_c else None)
                         _mn_sl, _mn_tp = round(_fz_line, 4), None   # for the log line
+                    elif order_info.get('manual_exit_mode') in ('BULLRUN', 'BULLRUN_SL') and _mn_lbl == "MANUAL":   # 🌊 Oct-3: the Bull-Run sleeve's exit, live settings
+                        _br_c, _br_why, _br_line = manual_bullrun_exit_for(pnl_pct, _mn_peak, order_info.get('entry_atr_pct'), config.trading_config.thresholds,
+                                                                           order_info.get('leverage'), getattr(self, 'is_paper_mode', True),
+                                                                           custom_sl=(_mn_sl if order_info.get('manual_exit_mode') == 'BULLRUN_SL' else None))
+                        _mn_reason = _br_why if _br_c else None
+                        _mn_sl, _mn_tp = round(_br_line, 4), None   # for the log line
                     else:
                         _mn_reason = (_mn_lbl + "_TP" if (_mn_tp is not None and pnl_pct >= float(_mn_tp))
                                       else _mn_lbl + "_SL" if (_mn_sl is not None and pnl_pct <= float(_mn_sl)) else None)

@@ -290,7 +290,7 @@ class Order(Base):
     entry_gap_5_20_prev_signed_pct = Column(Float, nullable=True)   # same, one 5m bar earlier (EMA5/EMA20 prev1, current price)
     entry_gap_5_8_signed_pct = Column(Float, nullable=True)         # (EMA5 − EMA8) / EMA8 %, + = EMA5 above
     # 🖐 Sep-29 MANUAL sleeve (operator-opened positions; entry_strategy='MANUAL'; excluded from every systematic read)
-    manual_exit_mode = Column(String(12), nullable=True)            # FIXED | MOMENTUM | FLOOR | FRENZY
+    manual_exit_mode = Column(String(12), nullable=True)            # FIXED | MOMENTUM | FLOOR | FRENZY | BULLRUN | BULLRUN_SL
     # ✎ Oct-2 (DECISION_LOG 182): the operator replaced this position's exit with his own stop / target P&L (set from the Close
     # popup). For a BOT trade: from that moment ONLY pattern_fixed_sl_pct / pattern_fixed_tp_pct (+ max hold) close it, and the
     # close reads OVERRIDE_SL / OVERRIDE_TP. For a MANUAL trade the mode simply becomes FIXED. NULL = never overridden.

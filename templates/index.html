@@ -313,7 +313,7 @@
                     <label class="flex flex-col text-gray-400">Side<select id="manual-direction" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
                     <label class="flex flex-col text-gray-400">Size $<input id="manual-investment" type="number" step="10" min="1" value="500" oninput="manualLimitHint()" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">Lev<input id="manual-leverage" type="number" step="1" min="1" max="125" value="20" oninput="manualLimitHint()" class="w-14 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
-                    <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack; refused only when its EMA13-cross exit would close the trade at the first tick (counter-trend entry with the EMA5/EMA8 stack against it) · FLOOR = hard stop at the floor (the widest safe stop for your leverage) + optional TP · FRENZY = the FRENZY sleeve's exit with its CURRENT settings (stop, trailing exit, max hold — see the FRENZY box); no SL / TP to type">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM" selected>Momentum stack</option><option value="FLOOR">Floor stop (+ opt. TP)</option><option value="FRENZY">🔥 Frenzy exit</option></select></label>
+                    <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack; refused only when its EMA13-cross exit would close the trade at the first tick (counter-trend entry with the EMA5/EMA8 stack against it) · FLOOR = hard stop at the floor (the widest safe stop for your leverage) + optional TP · FRENZY = the FRENZY sleeve's exit with its CURRENT settings (stop, trailing exit, max hold — see the FRENZY box); no SL / TP to type · BULL-RUN = the Bull-Run sleeve's exit with its CURRENT settings (stop widened by ATR, break-even lock, ATR trail, profit ladder — exact values in the MANUAL badge hover); no SL / TP to type · BULL-RUN TP + CUSTOM SL = your own stop (type it in SL %) until the break-even arms at +1 %, then the same Bull-Run profit side (lock, ATR trail, ladder); no TP to type">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM" selected>Momentum stack</option><option value="FLOOR">Floor stop (+ opt. TP)</option><option value="FRENZY">🔥 Frenzy exit</option><option value="BULLRUN">🌊 Bull-Run exit</option><option value="BULLRUN_SL">🌊 Bull-Run TP + custom SL</option></select></label>
                     <label class="flex flex-col text-gray-400">SL %<input id="manual-sl" type="number" step="0.1" min="0" placeholder="1.5" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">TP %<input id="manual-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400 flex-1 min-w-[12rem]">Note (optional)<input id="manual-note" type="text" maxlength="200" placeholder="optional — the gate is recorded automatically" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
@@ -20196,7 +20196,8 @@
                         if (_tpPeak >= _fzArm) {
                             tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-500/25 text-orange-300" title="🔥 FRENZY trail armed (peak ${_tpPeak.toFixed(2)}% ≥ ${_fzArm}%): closes ${_fzGive}% of price ${o.direction === 'SHORT' ? 'above' : 'below'} the best point (now ≈ ${(_tpPeak - _fzGive * (1 + (o.direction === 'SHORT' ? -1 : 1) * _tpPeak / 100)).toFixed(2)}%). Exits ${(o.entry_strategy || '') === 'MANUAL' ? 'MANUAL_TRAIL' : 'RUNNER_TRAIL'}; below the arm only the ${_rtTh.frenzy_stop_pct ?? 3}% stop.">🔥 TRAIL</span>`;
                         }
-                    } else if ((o.entry_strategy || '') === 'BULLRUN_LONG' || (o.entry_strategy || '') === 'SURGE_LONG') {   // ⚡ Sep 30: SURGE_LONG runs the same exit (own trail)
+                    } else if ((o.entry_strategy || '') === 'BULLRUN_LONG' || (o.entry_strategy || '') === 'SURGE_LONG'
+                               || ((o.entry_strategy || '') === 'MANUAL' && ['BULLRUN', 'BULLRUN_SL'].includes(o.manual_exit_mode || ''))) {   // 🌊 Oct 3: a manual trade on the Bull-Run exit   // ⚡ Sep 30: SURGE_LONG runs the same exit (own trail)
                         const _brArm = _rtTh.bullrun_be_arm_pct ?? 1.0;
                         const _brLock = _rtTh.bullrun_be_lock_pct ?? 0.2;
                         const _brTrail = (o.entry_strategy || '') === 'SURGE_LONG' ? (_rtTh.surge_long_trail_atr_mult ?? 1.0) : (_rtTh.bullrun_trail_atr_mult ?? 2.0);
@@ -20239,7 +20240,7 @@
                         tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${bgClass} ${textClass}" title="${title}">${label}</span>`;
                     }
                     }  // close the gate-57 sleeve-badge else
-                    if ((o.entry_strategy || '') === 'MANUAL' && !['MOMENTUM', 'FRENZY'].includes(o.manual_exit_mode || 'FIXED')) tpTierBadge = '';   // 🖐 FIXED/FLOOR never trail — no arm badge
+                    if ((o.entry_strategy || '') === 'MANUAL' && !['MOMENTUM', 'FRENZY', 'BULLRUN', 'BULLRUN_SL'].includes(o.manual_exit_mode || 'FIXED')) tpTierBadge = '';   // 🖐 FIXED/FLOOR never trail — no arm badge
 
                     // Strategy / sleeve badge (matches the Filter by Flip Source names)
                     const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');
@@ -20583,6 +20584,8 @@
             const sl = o.pattern_fixed_sl_pct, tp = o.pattern_fixed_tp_pct;
             const _fzT = window._cachedConfig?.thresholds || {};
             const exitTxt = m === 'FRENZY' ? `exit: FRENZY — stop −${_fzT.frenzy_stop_pct ?? 3}%, trailing from +${_fzT.frenzy_trail_arm_pct ?? 5}% giving back ${_fzT.frenzy_trail_giveback_pct ?? 1.5}% of price, max ${_fzT.frenzy_max_hold_minutes ?? 720} min (live settings)`
+                : m === 'BULLRUN_SL' ? `exit: BULL-RUN TP + CUSTOM SL — your stop ${sl != null ? sl.toFixed(2) + '%' : '—'} until break-even arms at +${_fzT.bullrun_be_arm_pct ?? 1}% (locks +${_fzT.bullrun_be_lock_pct ?? 0.2}%), then trail ${_fzT.bullrun_trail_atr_mult ?? 2}×ATR below the peak and ladder ${_fzT.bullrun_ladder || 'off'} (live settings)`
+                : m === 'BULLRUN' ? `exit: BULL-RUN — stop ${_fzT.bullrun_base_sl_pct ?? -0.7}% widened by ${_fzT.sl_atr_multiplier ?? 1.5}×ATR up to ${_fzT.sl_atr_widen_floor_pct ?? -1.2}%, break-even at +${_fzT.bullrun_be_arm_pct ?? 1}% (locks +${_fzT.bullrun_be_lock_pct ?? 0.2}%), trail ${_fzT.bullrun_trail_atr_mult ?? 2}×ATR below the peak, ladder ${_fzT.bullrun_ladder || 'off'} (live settings)`
                 : m === 'MOMENTUM' ? 'exit: MOMENTUM stack (STRONG_BUY stop −0.70%, runner arm +0.40%, EMA13 cross)'
                 : m === 'FLOOR' ? `exit: FLOOR — hard SL ${sl != null ? sl.toFixed(2) + '%' : '(config floor)'}${tp != null ? ', TP +' + Number(tp).toFixed(2) + '%' : ', no TP'}`
                 : `exit: CUSTOM — SL ${sl != null ? sl.toFixed(2) + '%' : '—'}${tp != null ? ', TP +' + Number(tp).toFixed(2) + '%' : ', no TP'}`;
@@ -20682,7 +20685,7 @@
         function manualExitModeChanged() {
             const m = document.getElementById('manual-exit-mode')?.value || 'FIXED';
             const sl = document.getElementById('manual-sl'), tp = document.getElementById('manual-tp');
-            if (sl) sl.disabled = (m !== 'FIXED'); if (tp) tp.disabled = (m === 'MOMENTUM' || m === 'FRENZY');   // FLOOR: floor stop + optional TP · FRENZY: its own stop + trail
+            if (sl) sl.disabled = (m !== 'FIXED' && m !== 'BULLRUN_SL'); if (tp) tp.disabled = (m === 'MOMENTUM' || m === 'FRENZY' || m === 'BULLRUN' || m === 'BULLRUN_SL');   // FLOOR: floor stop + optional TP · FRENZY: its own stop + trail
         }
         async function openManualPosition() {
             const g = id => document.getElementById(id);
@@ -20699,9 +20702,10 @@
             if (!body.pair) { showToast('Pair is required', 'error'); return; }
             if (!(body.investment > 0)) { showToast('Size must be > 0', 'error'); return; }
             if (body.exit_mode === 'FIXED' && !(body.sl_pct > 0)) { showToast('Custom mode needs a stop loss %', 'error'); return; }
+            if (body.exit_mode === 'BULLRUN_SL' && !(body.sl_pct > 0)) { showToast('Bull-Run TP + custom SL needs a stop loss %', 'error'); return; }
             // Oct-1 (operator): the same in-page confirmation as Close, next to the Open button (browser confirm() opens at the top)
             const _liveNow = (window._lastStatusIsPaper === false);
-            const _ob = g('manual-open-btn'); const _omsg = `${_liveNow ? '🔴 LIVE — REAL MONEY · ' : ''}Open ${body.direction} ${body.pair} $${body.investment} × ${body.leverage} (${body.exit_mode}${body.exit_mode === 'FIXED' ? ` SL ${body.sl_pct}%${body.tp_pct ? ' TP ' + body.tp_pct + '%' : ''}` : body.exit_mode === 'FLOOR' ? ` floor stop${body.tp_pct ? ' · TP ' + body.tp_pct + '%' : ' · no TP'}` : ''}) at market?`;
+            const _ob = g('manual-open-btn'); const _omsg = `${_liveNow ? '🔴 LIVE — REAL MONEY · ' : ''}Open ${body.direction} ${body.pair} $${body.investment} × ${body.leverage} (${body.exit_mode}${body.exit_mode === 'FIXED' ? ` SL ${body.sl_pct}%${body.tp_pct ? ' TP ' + body.tp_pct + '%' : ''}` : body.exit_mode === 'FLOOR' ? ` floor stop${body.tp_pct ? ' · TP ' + body.tp_pct + '%' : ' · no TP'}` : body.exit_mode === 'BULLRUN_SL' ? ` SL ${body.sl_pct}% · Bull-Run TP (break-even, ATR trail, ladder)` : body.exit_mode === 'BULLRUN' ? ' Bull-Run stop + TP' : ''}) at market?`;
             if (!((_ob && _ob.getBoundingClientRect) ? await confirmNear(_ob, _omsg, 'Open', 'px-3 py-1 bg-amber-500/30 hover:bg-amber-500/50 text-amber-100 rounded text-xs font-semibold') : confirm(_omsg))) return;
             const btn = g('manual-open-btn'); if (btn) btn.disabled = true;
             try {

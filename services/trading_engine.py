@@ -23,7 +23,7 @@ from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, clo
 from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
-from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES
+from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
 
@@ -6947,6 +6947,8 @@ class TradingEngine:
                 if k in by and k.upper() not in skip and k not in names and (len(names) < 40 or k in _frenzy_flags):   # a flagged pair is never crowded out (Oct-3 review)
                     names.append(k)
             # klines for the whole shortlist CONCURRENTLY (≤ 6 at a time) so the scan is held a few seconds, not one pair after another
+            if _on or _wide:   # 🌊 Oct-3 (DECISION_LOG 194): the market's volume on the bar that just closed, read in parallel (own client)
+                self._frenzy_gvol_start(allp, bar_open - 300_000)
             _sem = asyncio.Semaphore(6)
 
             async def _fz_fetch(_p):
@@ -7091,6 +7093,65 @@ class TradingEngine:
             logger.warning(f"[FRENZY_SHORT_OBS] {pair}: not recorded ({str(e)[:100]})")
             return False
 
+    def _frenzy_gvol_start(self, allp, sig_open):
+        """🌊 Start (once per signal bar; again only if the last read came back empty) the market-volume read for the bar that just closed."""
+        cur = getattr(self, '_fz_gvol_task', None)
+        if cur and cur[0] == sig_open and not (cur[1].done() and (cur[1].cancelled() or (cur[1].exception() is None and cur[1].result() is None))):
+            return   # same bar, still running or already read (a cancelled / empty read is started again)
+        self._fz_gvol_task = (sig_open, asyncio.create_task(self._frenzy_gvol_read(list(allp), sig_open)))
+
+    async def _frenzy_gvol_read(self, allp, sig_open):
+        """🌊 Top-50 pairs by 24 h volume → 60 closed 5m bars each on the research client → services.frenzy.global_volume_ratio on the signal
+        bar. ~3–6 s. Records the reading in _frenzy_status['gvol'] for the monitor. None when < 30 pairs readable (never raises)."""
+        try:
+            top = sorted((p for p in allp if p.get('symbol')), key=lambda p: -(p.get('volume_24h') or 0))[:50]
+            sem = asyncio.Semaphore(10)
+
+            async def _one(p):
+                async with sem:
+                    try:
+                        return p['pair'], await asyncio.wait_for(binance_service.fetch_ohlcv_research(p['symbol'], '5m', 60), 6.0)
+                    except asyncio.CancelledError:
+                        # ccxt shares one load_markets task between callers; a timed-out caller cancels it for all (review) → that pair is
+                        # unread, never a cancelled read task. Our own cancellation still propagates.
+                        if asyncio.current_task().cancelling():
+                            raise
+                        return p['pair'], None
+                    except Exception:
+                        return p['pair'], None
+            got = await asyncio.gather(*[_one(p) for p in top])
+            v = global_volume_ratio({k: b for k, b in got if b}, int(sig_open))
+            _frenzy_status['gvol'] = {"bar": int(sig_open), "value": v, "pairs": sum(1 for _, b in got if b)}
+            if v is None:
+                logger.warning(f"[FRENZY_GVOL] market volume unreadable for bar {datetime.utcfromtimestamp(sig_open / 1000):%H:%M} "
+                               f"({_frenzy_status['gvol']['pairs']} of {len(top)} pairs read)")
+            return v
+        except asyncio.CancelledError:
+            if asyncio.current_task().cancelling():
+                raise
+            return None
+        except Exception as e:
+            logger.warning(f"[FRENZY_GVOL] read failed: {str(e)[:120]}")
+            return None
+
+    async def _frenzy_gvol_value(self, sig_open, wait: bool = True):
+        """The signal bar's market-volume reading; None when missing / failed / cancelled / another bar (never raises CancelledError unless THIS
+        task is being cancelled — review: a cancelled read must never kill frenzy_loop). wait=True waits ≤ 35 s (the read is bounded ~30 s), so the
+        first pair of a bar and the next ones see the same outcome; wait=False (gate off: stamp only) takes it only if already done."""
+        cur = getattr(self, '_fz_gvol_task', None)
+        if not cur or cur[0] != sig_open or cur[1].cancelled():
+            return None
+        if not wait and not cur[1].done():
+            return None
+        try:
+            return await asyncio.wait_for(asyncio.shield(cur[1]), 35.0)
+        except asyncio.CancelledError:
+            if asyncio.current_task().cancelling():
+                raise
+            return None
+        except Exception:
+            return None
+
     async def _frenzy_open(self, db, flag, indicators, bar_open, wide: bool = False):
         """🔥 Open FRENZY_LONG for a flagged pair whose setup turned ON on the bar that just closed. One entry per pair per bar (memory
         + DB: restart-proof), ≤ frenzy_max_slots open at once. Opens through open_position(frenzy_long=True): own size, direct taker
@@ -7125,6 +7186,17 @@ class TradingEngine:
             price = float(flag.get('live_price') or flag.get('price') or 0)
             if price <= 0:
                 self._record_filter_block(f"{_bk}_NO_DATA", "LONG")
+                return
+            # 🌊 Oct-3 (operator ARMED override, DECISION_LOG 194): enter only while the market's volume on the signal bar is below
+            # frenzy_gvol_max (a frenzy in a quiet market is the pair's own story; in a market-wide surge it reverts). Unreadable = no entry.
+            _gvmax = float(getattr(th, 'frenzy_gvol_max', 0) or 0)
+            _gv = await self._frenzy_gvol_value(bar_open - 300_000, wait=_gvmax > 0)   # gate off: stamp only if already read, never wait
+            if _gvmax > 0 and (_gv is None or _gv >= _gvmax):
+                _unread = _gv is None
+                self._record_filter_block(f"{_bk}_GVOL_UNREAD" if _unread else f"{_bk}_GVOL_HIGH", "LONG")
+                _txt = "market volume unreadable" if _unread else f"market volume {_gv:.2f}× normal ≥ {_gvmax:g}×"
+                flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} {'WIDE ' if wide else ''}refused: {_txt}"
+                logger.info(f"[{_es}] {pair}: setup ON but {_txt} — skipped")
                 return
             # The test bought at the open of the bar after the signal. Live must not buy a setup minutes later (a late scan, a retry
             # pass, a restart) nor a price that already left the signal bar's close by more than the dislocation limit (review).
@@ -7164,7 +7236,7 @@ class TradingEngine:
                 entry_frenzy_vol_mult=round(flag['vol_mult'], 1), entry_frenzy_run_pct=round(flag['run_pct'], 2),
                 entry_frenzy_stop_atr=(round(_stop / atr, 3) if atr else None),
                 entry_frenzy_bar_ret_pct=(round(flag['bar_ret_pct'], 4) if flag.get('bar_ret_pct') is not None else None),
-                entry_frenzy_di_spread=flag.get('di_spread'), entry_frenzy_adx_delta=flag.get('adx_delta'), entry_frenzy_vol_trend=flag.get('vol_trend'),
+                entry_frenzy_di_spread=flag.get('di_spread'), entry_frenzy_adx_delta=flag.get('adx_delta'), entry_frenzy_vol_trend=flag.get('vol_trend'), entry_frenzy_gvol=_gv,
                 **self._sanitize_open_kwargs(_ef, _es, "LONG"),
             )
             _why = getattr(self, '_frenzy_open_refusal', None)
@@ -8151,6 +8223,7 @@ class TradingEngine:
         entry_frenzy_di_spread: Optional[float] = None,
         entry_frenzy_adx_delta: Optional[float] = None,
         entry_frenzy_vol_trend: Optional[float] = None,
+        entry_frenzy_gvol: Optional[float] = None,
         # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
         # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
         # lev_mult from gap_probe_* config), tagged cell_src=GAPFLAT_PROBE (own analytics row;
@@ -9787,6 +9860,7 @@ class TradingEngine:
             entry_frenzy_bar_ret_pct=(entry_frenzy_bar_ret_pct if _frenzy else None),
             entry_frenzy_di_spread=(entry_frenzy_di_spread if _frenzy else None),
             entry_frenzy_adx_delta=(entry_frenzy_adx_delta if _frenzy else None), entry_frenzy_vol_trend=(entry_frenzy_vol_trend if _frenzy else None),
+            entry_frenzy_gvol=(entry_frenzy_gvol if _frenzy else None),
             adx_surge_open=_adx_surge_admit,   # ⚡ Sep-28: admitted through the BTC ADX-surge waiver (same predicate as its sizing)
             entry_mcap_usd=_mcap_usd, entry_cmc_rank=_cmc_rank,   # 💰 Sep-28: cached market cap / CMC rank (NULL if unknown)
             entry_btc_ema50_100_gap_pct=(entry_btc_ema50_100_gap_pct if entry_btc_ema50_100_gap_pct is not None else (_zg.get('_current_btc_ema50_100_gap_pct') if _zfresh else None)),   # 🧭 Sep-29 zone stamps (observe-only)

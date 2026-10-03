@@ -44,3 +44,96 @@ def test_wiring():
     assert {"entry_frenzy_adx_delta", "entry_frenzy_vol_trend"} <= cols
     db = open(os.path.join(ROOT, "database.py"), encoding="utf-8").read()
     assert "('entry_frenzy_adx_delta', 'FLOAT')" in db and "('entry_frenzy_vol_trend', 'FLOAT')" in db
+
+
+def test_global_volume_ratio_on_the_closed_signal_bar():
+    from services.frenzy import global_volume_ratio
+    def pair(last_vol, n=60, t0=0):
+        return [[t0 + i * 300_000, 1, 1, 1, 1, (last_vol if i == n - 1 else 100.0)] for i in range(n)]
+    sig = 59 * 300_000
+    bars = {f"P{i}": pair(200.0) for i in range(30)}
+    v = global_volume_ratio(bars, sig)
+    assert v is not None and abs(v - 200.0 / (100.0 * 47 / 48 + 200.0 / 48)) < 1e-3          # Σ bar ÷ Σ 48-bar mean incl. the bar
+    assert global_volume_ratio({f"P{i}": pair(200.0) for i in range(29)}, sig) is None        # < 30 readable pairs
+    assert global_volume_ratio(bars, sig + 300_000) is None                                    # that bar not in the data → unreadable
+    assert global_volume_ratio({**bars, "BAD": [[sig, 1, 1, 1, 1, "x"]]}, sig) == v            # a broken pair is skipped, never raises
+
+
+def test_gvol_gate_wired_fail_closed():
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    i = eng.index("async def _frenzy_open(")
+    body = eng[i:eng.index("async def _maybe_open_surge(", i)]
+    assert "_gv = await self._frenzy_gvol_value(bar_open - 300_000, wait=_gvmax > 0)" in body
+    assert "if _gvmax > 0 and (_gv is None or _gv >= _gvmax):" in body                         # unreadable = no entry
+    assert body.index("_frenzy_gvol_value(") < body.index("FRENZY_ENTRY_MAX_LATE_S")            # the wait counts toward lateness
+    assert "self._frenzy_gvol_start(allp, bar_open - 300_000)" in eng and "entry_frenzy_gvol=_gv" in body
+    import json
+    cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
+    assert cfg["frenzy_gvol_max"] == 1.0
+
+
+def test_gvol_gate_behaviour(monkeypatch):
+    """A busy market (≥ max) and an unreadable one refuse with their own counters; a quiet one reaches the open; 0 = gate off."""
+    import asyncio, time
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    import models, config as C
+    import services.trading_engine as TE
+    th = C.trading_config.thresholds
+    monkeypatch.setattr(TE, "FRENZY_ENTRY_MAX_LATE_S", 10**6)
+    bar_open = int(time.time() // 300) * 300_000
+
+    async def run(gv, gmax, wide=False):
+        eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with eng.begin() as c:
+            await c.run_sync(models.Base.metadata.create_all)
+        old = th.frenzy_gvol_max
+        try:
+            th.frenzy_gvol_max = gmax
+            async with async_sessionmaker(eng, expire_on_commit=False)() as db:
+                e = object.__new__(TE.TradingEngine); e.is_paper_mode = True; blocks = []; opened = []
+                e._record_filter_block = lambda name, d, had_room=True: blocks.append(name)
+                e._flip_entry_fields = lambda *a, **k: {}
+                e._sanitize_open_kwargs = lambda ef, s, d: ef
+
+                async def gvv(sig, wait=True):
+                    return gv
+                e._frenzy_gvol_value = gvv
+
+                async def fake_open(**kw):
+                    opened.append(kw.get("entry_frenzy_gvol")); return None
+                e.open_position = fake_open
+                flag = dict(pair="FOOUSDT", spike_ts=bar_open - 7_200_000, hours=2.0, vwap=1.0, vs_vwap_pct=1.0, vol_mult=150.0, run_pct=20.0,
+                            atr_pct=1.5, volume_24h=5e7, price=1.0, live_price=1.0)
+                await e._frenzy_open(db, flag, {}, bar_open, wide=wide)
+        finally:
+            th.frenzy_gvol_max = old
+            await eng.dispose()
+        return blocks, opened, flag.get("last_fire") or ""
+    b, o, lf = asyncio.run(run(1.3, 1.0))
+    assert "FRENZY_GVOL_HIGH" in b and o == [] and "market volume 1.30× normal ≥ 1×" in lf
+    b, o, lf = asyncio.run(run(None, 1.0, wide=True))
+    assert "FRENZY_WIDE_GVOL_UNREAD" in b and o == [] and "WIDE refused: market volume unreadable" in lf
+    b, o, _ = asyncio.run(run(0.8, 1.0))
+    assert not [x for x in b if "GVOL" in x] and o == [0.8]                                    # quiet: reaches the open, stamped
+    b, o, _ = asyncio.run(run(1.5, 0.0))
+    assert not [x for x in b if "GVOL" in x] and o == [1.5]                                    # 0 = off (still stamped)
+
+
+def test_gvol_value_never_leaks_a_cancelled_read():
+    """Review (Oct-3): a read task that ended CANCELLED (ccxt's shared load_markets) must give None, never raise into frenzy_loop."""
+    import asyncio
+    import services.trading_engine as TE
+
+    async def run():
+        e = object.__new__(TE.TradingEngine)
+        t = asyncio.create_task(asyncio.sleep(10)); await asyncio.sleep(0); t.cancel()
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
+        e._fz_gvol_task = (1000, t)
+        a = await e._frenzy_gvol_value(1000)
+        done = asyncio.create_task(asyncio.sleep(0, result=0.7)); await done
+        e._fz_gvol_task = (1000, done)
+        return a, await e._frenzy_gvol_value(1000), await e._frenzy_gvol_value(2000), await e._frenzy_gvol_value(1000, wait=False)
+    assert asyncio.run(run()) == (None, 0.7, None, 0.7)

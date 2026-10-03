@@ -1295,6 +1295,12 @@ class SignalThresholds(BaseModel):
     frenzy_wide_invest_mult: float = 1.0         # absolute-assign like FRENZY_LONG
     frenzy_wide_lev_mult: float = 0.2            # 20× → 4×: one 3 % stop ≈ 3 % of the account (unproven edge → half FRENZY's risk)
     frenzy_wide_max_slots: int = 2               # max FRENZY_WIDE open at once (they also count against max open positions)
+    # 🌊 Oct-3 (operator ARMED override, DECISION_LOG 194): FRENZY_LONG and FRENZY_WIDE open only while the market's volume on the signal bar
+    # (top-50 by 24 h volume: Σ bar volume ÷ Σ 48-bar mean, CLOSED bar, read at the close) is BELOW this. Year (1,455 first candles, 1-min-late
+    # entry, real costs): < 1.0 +0.225 %/trade (both halves +, random-subset luck 3 %, every leave-one-month-out +), ≥ 1.0 −0.185 (both halves −);
+    # FAILS the 95 % expectancy bar (blocked-side day CI [−0.49, +0.15]) → declared override. Unreadable = no entry. 0 = off.
+    # 🔒 REVERT: first 20 FRENZY + WIDE fills opened under it average < 0 % → set 0.
+    frenzy_gvol_max: float = 0.0
     # 🩹 Oct-2 RECOVERY HOLD (operator-directed ARMED override below every promotion gate; DECISION_LOG 172). A momentum LONG that
     # reaches STOP_LOSS / STOP_LOSS_WIDE while BTC RSI(14, CLOSED 5m bars) is ≥ its entry value ∧ inside [rsi_min, rsi_max] is flagged
     # and held, not closed. Held trades close only on: RH_HARD_STOP (stop − room) · RH_PREMISE_EXIT (RSI < min or < entry, or

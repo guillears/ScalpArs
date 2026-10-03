@@ -5323,3 +5323,19 @@ volume stamp is base×close, the backtest used Binance quote volume). Gate: revi
 62 % · +$630). Master builder v2026-10-03a tags FRENZY_LONG / FRENZY_WIDE as FRENZY_SLEEVE (before, a FRENZY fill fell into the momentum-long gates).
 WATCH (1 sample): SURGE_SHORT on a FRENZY-flagged pair (SAND, the operator's winning long that day).
 
+### (194) 2026-10-03 — 🌊 FRENZY + FRENZY_WIDE market-volume gate ARMED (operator override; hypothesis: "global volume matters")
+Year global volume ratio rebuilt (scripts/frenzy_global_volume_build.py: engine definition — Σ 5m base volume of the day's top-50 ÷ Σ 48-bar mean —
+on CLOSED bars; vs 565 live master stamps Spearman 0.66, same side of 0.7 on 82 %). On all 1,455 FRENZY first candles (LAG 1, live exit, real costs;
+scripts/frenzy_global_volume_test.py, cuts frozen): < 1.0 850 · +0.225 %/trade (+0.275 / +0.183 by half, random-subset luck 3 %), ≥ 1.0 605 · −0.185
+(−0.266 / −0.120); FRENZY part +0.369 / −0.411, WIDE part +0.182 / −0.121. Dose-response steps at 1.0 (every bucket below +, every bucket above −);
+low−high gap + in every leave-one-month-out (+0.32…+0.53), every 8-h UTC block, weekday and weekend; losses unconcentrated (top pair / day 2 %).
+Mechanism: a frenzy in a quiet market is the pair's own story; in a market-wide surge it is the tide and reverts. The live scan value (forming bar,
+last scan) is NOT usable; a one-bar-older closed reading halves the edge (+0.126) → the gate reads the signal bar itself at the close (top-50 klines on
+the research client, ~4 s live). Expectancy bar for the blocked side: WR 36 % < breakeven ✓ · 95 % day CI [−0.49, +0.15] ✗ · days ✓ · N ✓ → fails on
+confidence → operator ARMED override. 🔒 REVERT: first 20 FRENZY + WIDE fills under the gate average < 0 % → frenzy_gvol_max = 0.
+Sizing re-checked on the filtered set (scripts in scratch, numbers here): Kelly 4 %/stop; 15 %/stop (Lev 1) → median 90-day −91 % (−98 % after the
+50 % haircut) → sizes kept (FRENZY 0.32 ≈ 5 %, WIDE 0.2 ≈ 3 %). Exits on the filtered set (scripts/frenzy_global_volume_exits.py): FRENZY exit +0.225
+vs Bull-Run TP + −3 +0.081 (3 of 9 months better) and fixed +2/−3 +0.079 → FRENZY exit kept; FRENZY trail + Bull-Run ladder +0.275 (+0.05, CI spans 0,
+5 of 9) = watch item. Dual review applied: a cancelled shared ccxt load_markets could end the read cancelled and kill frenzy_loop → caught at every
+await; gate off = no wait; one ≤ 35 s wait per bar.
+

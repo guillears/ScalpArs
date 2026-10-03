@@ -168,6 +168,33 @@ def frenzy_vol_trend(bars) -> Optional[float]:
         return None
 
 
+def global_volume_ratio(bars_by_pair, bar_open_ms, lookback: int = 48, min_pairs: int = 30) -> Optional[float]:
+    """🌊 Oct-3 (DECISION_LOG 194): the market's volume on ONE closed 5m bar vs normal — Σ base volume of that bar ÷ Σ each pair's mean volume
+    over the `lookback` bars ending at it (the engine's global volume ratio, but on the CLOSED signal bar, as the year test). bars_by_pair =
+    {pair: [[open_ms, o, h, l, c, v], …]}. A pair counts only when it has that exact bar and the full lookback. None below min_pairs (never raises).
+    Year (scripts/frenzy_global_volume_test.py): FRENZY + WIDE first candles at < 1.0 +0.225 %/trade, at ≥ 1.0 −0.185; a one-bar-older reading
+    halves the edge (+0.126) → the signal bar itself, read at the close."""
+    try:
+        sv = sa = 0.0; n = 0
+        for rows in (bars_by_pair or {}).values():
+            try:
+                ts = [int(r[0]) for r in rows]
+                if bar_open_ms not in ts:
+                    continue
+                j = ts.index(bar_open_ms)
+                if j < lookback - 1:
+                    continue
+                vols = [float(r[5]) for r in rows[j - lookback + 1:j + 1]]
+                a = sum(vols) / lookback
+                if a > 0:
+                    sv += vols[-1]; sa += a; n += 1
+            except (TypeError, ValueError, IndexError):
+                continue
+        return round(sv / sa, 4) if n >= min_pairs and sa > 0 else None
+    except Exception:
+        return None
+
+
 FRENZY_WIDE_CODES = ("FRENZY_ATR_HIGH", "FRENZY_GREEN_BAR")   # the only FRENZY refusals FRENZY-WIDE takes
 
 

@@ -1106,6 +1106,22 @@ class BinanceService:
             logger.debug(f"[BINANCE] depth read failed for {symbol}: {e}")
             return None
 
+    async def fetch_ohlcv_research(self, symbol: str, timeframe: str = '5m', limit: int = 60) -> Optional[List]:
+        """🌊 Oct-3: klines on the RESEARCH client (its own throttle — FRENZY's market-wide volume read at the bar close never queues behind the
+        scan / FRENZY / order reads). One attempt, None on any error (never raises, never sleeps out a ban; the caller bounds it with wait_for)."""
+        try:
+            if _ban_until > time.time():
+                return None
+            if self.research_exchange is None:
+                self.research_exchange = ccxt.binanceusdm({'enableRateLimit': True, 'options': {'defaultType': 'future', 'adjustForTimeDifference': True}})
+            if not getattr(self.research_exchange, 'markets', None):
+                await self.research_exchange.load_markets()
+            return await self.research_exchange.fetch_ohlcv(symbol, timeframe, limit=limit) or None
+        except Exception as e:
+            self._detect_ban(e)
+            logger.debug(f"[BINANCE] research kline read failed for {symbol}: {e}")
+            return None
+
     async def fetch_orderbook(self, symbol: str, limit: int = 5) -> Optional[Dict]:
         """Get best bid/ask from orderbook"""
         try:

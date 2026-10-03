@@ -3414,6 +3414,8 @@ def _frenzy_monitor_payload():
         return {"long_enabled": bool(getattr(_th, 'frenzy_long_enabled', False)), "short_observe": bool(getattr(_th, 'frenzy_short_observe', False)),
                 "invest_mult": float(1.0 if getattr(_th, 'frenzy_long_invest_mult', 1.0) is None else getattr(_th, 'frenzy_long_invest_mult', 1.0)), "lev_mult": float(1.0 if getattr(_th, 'frenzy_long_lev_mult', 1.0) is None else getattr(_th, 'frenzy_long_lev_mult', 1.0)),
                 "wide_enabled": bool(getattr(_th, 'frenzy_wide_enabled', False)), "wide_invest_mult": float(1.0 if getattr(_th, 'frenzy_wide_invest_mult', 1.0) is None else getattr(_th, 'frenzy_wide_invest_mult', 1.0)),
+                "gvol_max": float(getattr(_th, 'frenzy_gvol_max', 0) or 0), "gvol": (_fzs.get('gvol') or {}).get('value'),
+                "gvol_bar": ((_dt.utcfromtimestamp(((_fzs.get('gvol') or {})['bar'] + 300_000) / 1000).strftime('%H:%M')) if (_fzs.get('gvol') or {}).get('bar') else None),
                 "wide_lev_mult": float(1.0 if getattr(_th, 'frenzy_wide_lev_mult', 0.2) is None else getattr(_th, 'frenzy_wide_lev_mult', 0.2)), "wide_max_slots": max(1, int(getattr(_th, 'frenzy_wide_max_slots', 2) or 2)),
                 "max_atr": float(getattr(_th, 'frenzy_max_atr_pct', 2.5) or 0), "stop": float(getattr(_th, 'frenzy_stop_pct', 3.0) or 0),
                 "trail_arm": float(getattr(_th, 'frenzy_trail_arm_pct', 5.0) or 0), "trail_give": float(getattr(_th, 'frenzy_trail_giveback_pct', 1.5) or 0),

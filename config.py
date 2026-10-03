@@ -1261,7 +1261,7 @@ class SignalThresholds(BaseModel):
     frenzy_min_hours: float = 2.0                # long setup: earliest, hours after the spike
     frenzy_max_hours: float = 96.0               # the flag ends this long after the spike (or 24 h without the setup)
     frenzy_min_volume_usd: float = 20000000.0    # 24 h volume floor for the shortlist and the entry
-    frenzy_shortlist_change_pct: float = 15.0    # shortlist: pairs up ≥ this % in 24 h (plus pairs already flagged)
+    frenzy_shortlist_change_pct: float = 15.0    # shortlist: |24 h change| OR 24 h low→high range ≥ this % (Oct-3: range added — MOVR missed), plus pairs already flagged
     # Oct-2 (DECISION_LOG 179, operator: "2 % seems too low a cap for frenzy pairs"): 2.0 → 2.5. Both sets, strict ruler
     # (scripts/frenzy_atr_cap_test.py): ≤ 2 % 591 trades +0.20 %/trade (+0.35 / +0.02) · ≤ 2.5 % 1,103 · +0.16 (+0.21 / +0.12) ·
     # ≤ 3 % 1,517 · +0.06 · no limit −0.01. The 2–2.5 % band is positive on both sets (+0.06 / +0.19); 2.5–3 % loses on both.
@@ -1282,10 +1282,19 @@ class SignalThresholds(BaseModel):
     # Oct-2 (DECISION_LOG 177, operator): a ceiling on entries per pair per UTC day. Attempts read (pre-ATR-gate cut, after the fact):
     # 1st attempt −0.11 %, 2nd +0.14, 3rd +0.92; a cap of 1 was the worst cell, 3 keeps ~97 % of the tested entries. 0 = no cap.
     frenzy_max_entries_per_pair_day: int = 3
-    frenzy_long_invest_mult: float = 1.0         # absolute-assign, never re-multiplied by cells (the JSON ships 2.0 — operator)
-    frenzy_long_lev_mult: float = 1.0
+    frenzy_long_invest_mult: float = 1.0         # absolute-assign, never re-multiplied by cells (Oct-3 operator: JSON 1.0 · lev 0.32 → 20×→6×, one 3 % stop ≈ 5 % of the account; was 2.0/1.0 ≈ 31 %, 90-day MC median −100 %)
+    frenzy_long_lev_mult: float = 1.0            # Oct-3 operator: JSON 0.32 → 20×→6×; 0 = the 0.05 floor (never 20×)
     frenzy_max_entry_dislocation_pct: float = 1.0  # skip the fill when the live price is > this % from the decision price
     frenzy_pair_blacklist: str = "BTCUSDT,ETHUSDT"
+    # 🔥🌐 Oct-3 FRENZY-WIDE (operator; DECISION_LOG 193): the FRENZY first candle FRENZY itself refuses ONLY for its ATR cap or a green
+    # signal candle (everything else identical: flag, hour above the average, volume ≥ frenzy_state_vol_mult, ≥ min hours, 24 h volume,
+    # lateness, dislocation, per-pair day cap, the FRENZY exit). Year backtest (1-min-late entry, real costs): 1,455 entries ≈ 5.7/day,
+    # +0.054 %/trade (+0.052 / +0.056 by half), 6 of 9 months up, day-bootstrap 95 % [−0.14, +0.24] → UNPROVEN, small size, review at 40.
+    # Volume 75× / rising variants all worse (−0.02 to −0.08). Own tag FRENZY_WIDE, own size, own slots.
+    frenzy_wide_enabled: bool = False
+    frenzy_wide_invest_mult: float = 1.0         # absolute-assign like FRENZY_LONG
+    frenzy_wide_lev_mult: float = 0.2            # 20× → 4×: one 3 % stop ≈ 3 % of the account (unproven edge → half FRENZY's risk)
+    frenzy_wide_max_slots: int = 2               # max FRENZY_WIDE open at once (they also count against max open positions)
     # 🩹 Oct-2 RECOVERY HOLD (operator-directed ARMED override below every promotion gate; DECISION_LOG 172). A momentum LONG that
     # reaches STOP_LOSS / STOP_LOSS_WIDE while BTC RSI(14, CLOSED 5m bars) is ≥ its entry value ∧ inside [rsi_min, rsi_max] is flagged
     # and held, not closed. Held trades close only on: RH_HARD_STOP (stop − room) · RH_PREMISE_EXIT (RSI < min or < entry, or

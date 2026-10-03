@@ -151,16 +151,16 @@ def test_config_parity_and_every_surface():
     import config as C
     th = C.trading_config.thresholds
     fields = sorted(k for k in type(th).model_fields if k.startswith("frenzy_"))
-    assert len(fields) == 22
+    assert len(fields) == 26
     cfgj = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert sorted(k for k in cfgj if k.startswith("frenzy_")) == fields                   # every field has a JSON value
     assert type(th).model_fields["frenzy_long_enabled"].default is False                  # OFF in code; the JSON arms it
-    assert cfgj["frenzy_long_enabled"] is True and cfgj["frenzy_long_invest_mult"] == 2.0 and cfgj["frenzy_long_lev_mult"] == 1.0
+    assert cfgj["frenzy_long_enabled"] is True and cfgj["frenzy_long_invest_mult"] == 1.0 and cfgj["frenzy_long_lev_mult"] == 0.32
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     listed = dict(re.findall(r"\['(config-fz-[a-z0-9-]+)', '(frenzy_[a-z0-9_]+)'", html))
     by_key = {v: k for k, v in listed.items()}
     by_key.update(frenzy_long_enabled="config-fz-long-enabled", frenzy_short_observe="config-fz-short-observe", frenzy_pair_blacklist="config-fz-blacklist",
-                  frenzy_long_skip_green_bar="config-fz-skip-green")
+                  frenzy_long_skip_green_bar="config-fz-skip-green", frenzy_wide_enabled="config-fz-wide-enabled")
     assert sorted(by_key) == fields                                                       # every field has a UI input
     for key, _id in by_key.items():
         assert html.count(f'id="{_id}"') == 1, _id
@@ -169,7 +169,7 @@ def test_config_parity_and_every_surface():
     for _id in ("frenzy-monitor-line", "frenzy-flags-body", "frenzy-body", "frenzy-breaks-body"):
         assert html.count(f'id="{_id}"') == 1 and html.count(f"getElementById('{_id}')") == 1
     assert html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2                # clipboard AND saved-file exports
-    for title in ("## 🔥 FRENZY Flagged Pairs (now)", "## 🔥 FRENZY_LONG Fills", "## 🔥 FRENZY Short Observations"):
+    for title in ("## 🔥 FRENZY Flagged Pairs (now)", "## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_WIDE)", "## 🔥 FRENZY Short Observations"):
         assert html.count(title) == 1
     assert '<option value="FRENZY_LONG">' in html and "frenzyMark(_fz)" in html
 
@@ -177,12 +177,12 @@ def test_config_parity_and_every_surface():
 def test_engine_and_api_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert eng.count("frenzy_exit_for(") == 4                                             # sleeve: candle + realtime · MANUAL "Frenzy exit": candle + realtime
-    assert "await self._update_frenzy(db, wait=False)" in eng and eng.count('"FRENZY_LONG" if _frenzy else f"SURGE_{direction}" if _surge') == 2
-    assert "_sg_pref = 'frenzy_long' if _frenzy else" in eng and 'cell_src = "FRENZY_LONG" if _frenzy else' in eng
-    assert '"SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG")' in eng                           # no pair-EMA exit on a FRENZY fill
+    assert "await self._update_frenzy(db, wait=False)" in eng and eng.count('(_fz_es if _frenzy else f"SURGE_{direction}" if _surge') == 2
+    assert "_sg_pref = _fz_es.lower() if _frenzy else" in eng and 'cell_src = _fz_es if _frenzy else' in eng
+    assert '"SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_WIDE")' in eng                           # no pair-EMA exit on a FRENZY fill
     assert "_frenzy_kill" not in eng and "frenzy_kill_verdict" not in eng                 # operator: no automatic off
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
-    assert main.count("'FRENZY_LONG'") >= 5 and "'Frenzy-Long'" in main
+    assert main.count("'FRENZY_LONG'") >= 3 and "'Frenzy-Long'" in main and "'Frenzy-Wide'" in main and main.count("'FRENZY_WIDE'") >= 3
     for key in ('"frenzy_rows"', '"frenzy_flags"', '"frenzy_breaks"', '"frenzy_monitor"'):
         assert main.count(key) == 3, key                                                  # the payload + both fallback payloads
     import models as M
@@ -263,9 +263,9 @@ def test_exit_through_the_engine_intercept_and_the_late_entry_guard():
     """Behavioural: frenzy_exit_for is what both engine paths call; the entry guard constant exists and FRENZY closes are urgent."""
     import services.trading_engine as TE
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert '"FRENZY_PAIR_DAY_CAP"' in eng and "frenzy_max_entries_per_pair_day" in eng                    # per-pair daily ceiling (DECISION_LOG 177)
-    assert TE.FRENZY_ENTRY_MAX_LATE_S == 120 and '"FRENZY_LATE"' in eng and eng.count('"FRENZY_DISLOC"') == 2
-    assert eng.count('(order.entry_strategy or "") == "FRENZY_LONG" or reason.startswith(RH_STOP_CLASS)') == 2   # live + paper: every FRENZY close is taker
+    assert 'f"{_bk}_PAIR_DAY_CAP"' in eng and "frenzy_max_entries_per_pair_day" in eng                    # per-pair daily ceiling (DECISION_LOG 177)
+    assert TE.FRENZY_ENTRY_MAX_LATE_S == 120 and 'f"{_fz_bk}_LATE"' in eng and 'f"{_fz_bk}_DISLOC" if _frenzy else "SURGE_DISLOC"' in eng and 'f"{_bk}_DISLOC"' in eng
+    assert eng.count('(order.entry_strategy or "") in FRENZY_STRATEGIES or reason.startswith(RH_STOP_CLASS)') == 2   # live + paper: every FRENZY close is taker
     assert "self._journal_pair = pair; self._journal_ctx = None" in eng and "await self._frenzy_persist_flags()" in eng
     import models as M
     assert M.FrenzyFlag.__tablename__ == "frenzy_flags"

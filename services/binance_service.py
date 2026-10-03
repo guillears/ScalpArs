@@ -63,6 +63,15 @@ def get_ban_status() -> dict:
     return {"banned": False, "remaining_seconds": 0}
 
 
+def _range_24h_pct(high, low) -> float:
+    """24 h low→high swing in % from a ccxt ticker's high / low; 0.0 when either is missing or not positive (never raises)."""
+    try:
+        h, l = float(high), float(low)
+        return (h / l - 1) * 100 if h > 0 and l > 0 and h >= l else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
 class BinanceService:
     """Service for interacting with Binance Futures API"""
     
@@ -633,7 +642,9 @@ class BinanceService:
                         'pair': symbol.replace('/USDT:USDT', 'USDT'),
                         'price': float(last_price) if last_price is not None else 0.0,
                         'volume_24h': float(quote_volume) if quote_volume is not None else 0.0,
-                        'change_24h': float(percentage) if percentage is not None else 0.0
+                        'change_24h': float(percentage) if percentage is not None else 0.0,
+                        # 🔥 Oct-3: 24 h low→high swing (%) — FRENZY's shortlist also admits pairs that dumped then pumped back (MOVR: change −0.6 %, range 28 %)
+                        'range_24h': _range_24h_pct(ticker.get('high'), ticker.get('low'))
                     })
 
             # New-listing filter: drop pairs listed within the last N days,

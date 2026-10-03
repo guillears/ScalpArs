@@ -5305,3 +5305,21 @@ Dual review applied: research client (orders / klines no longer queue behind dep
 Study (reports/THREE_PAIRS_FOUR_DAYS_2026-10-03.md): buying every frenzy minute on MOVR + SAND + AIN made +$10–12.5k at $20k notional (+2/−3, trail,
 Bull-Run exits) — those pairs rose +88 / +48 / +58 %; the same on the 13 other frenzy pairs of the same 4 days lost $15–24k (trail +$2k). Rules fitted on
 the three ≈ 0 on the other pairs, −0.10 %/trade on the year; strategy-momentum switch (last 1 / 3 / 7 days positive) does not predict the next day.
+
+### (193) 2026-10-03 — 🔥 FRENZY sizing 2×/1× → 1×/0.32 · shortlist adds the 24 h range · 🌐 FRENZY_WIDE sleeve (operator) · B16 archived
+**Sizing.** 10,000 × 90-day day-block bootstrap of FRENZY's year (B3 of FRENZY_LONG_ENGINEERING): one stop costing 31 % (2×/1×) → median −100 %, 98 % below 25 % at
+some point; 16 % → −46 %; 8 % (Lev 0.5) → +75 %, median drawdown 69 %, 14 % ruin; **5 % (Lev 0.32) → +78 %, drawdown 50 %, 2 %**; 3 % → +54 %. Kelly on the backtest
+edge ≈ 7 %/stop; the live edge sits between +0.09 and +0.35 → ~5 %. Operator chose Inv 1 · Lev 0.32 (20× → 6×). SURGE/FRENZY mult: an explicit 0 now = the floor,
+never the 1× default (review). **Shortlist.** |24 h change| ≥ 15 % missed MOVR (change −0.6 %, range 28 %, a READY entry +4.35 % in replay). Now max(|change|,
+range) ≥ 15 %, |change| qualifiers ranked first under the 25 cap, flagged pairs exempt from the 40 follow cap; live check: 12 → 33 qualifying $20M pairs.
+**FRENZY_WIDE.** Takes the fresh FRENZY setups refused only for ATR > 2.5 % or a green signal candle (unreadable ATR refused); same exit, own tag, Inv 1 · Lev
+0.2 (≈ 3 %/stop), ≤ 2 open. Year (1-min-late entry, real costs): 1,455 entries ≈ 5.7/day, +0.054 %/trade (+0.052 / +0.056 by half), 6/9 months, day-bootstrap
+[−0.14, +0.24] — unproven, operator-armed. Volume 75× / 75×+rising / 100×+rising: −0.082 / −0.023 / +0.020 — rejected. Operator's manual-trade traits as
+add-ons (frozen list, random same-size subsets as null): ADX rising +0.108 (luck 28 %), volume rising +0.099 (21 %), RSI∧ADX rising∧+DI +0.160 (25 %),
+ATR ≥ 3 +0.002, first 6 h −0.108 → none passes; ADX-rising and volume-trend stamped observe-only (entry_frenzy_adx_delta, entry_frenzy_vol_trend; the
+volume stamp is base×close, the backtest used Binance quote volume). Gate: review at 40 closed fills, keep if mean > 0 after costs.
+**B16** (10-02 00:18 → 10-03 21:45) archived: 11 bot fills (reports/BASELINE16_batch1002-1003_orders.csv) 64 % won −$1,129 (FRENZY ENJ −$794 at the old
+2× size, SURGE_SHORT SAND −$223, momentum longs 5 · −$281, fades 4/4 +$168); 45 manual fills kept apart (reports/MANUAL_TRADES_B16_orders_2026-10-03.csv,
+62 % · +$630). Master builder v2026-10-03a tags FRENZY_LONG / FRENZY_WIDE as FRENZY_SLEEVE (before, a FRENZY fill fell into the momentum-long gates).
+WATCH (1 sample): SURGE_SHORT on a FRENZY-flagged pair (SAND, the operator's winning long that day).
+

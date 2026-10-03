@@ -136,6 +136,49 @@ def frenzy_di_spread(bars) -> Optional[float]:
         return None
 
 
+def frenzy_adx_delta(bars) -> Optional[float]:
+    """🔬 Oct-3 OBSERVE-ONLY stamp (DECISION_LOG 193): ADX(14) on the last CLOSED 5m bar minus ADX three bars earlier — the backtest's d_adx
+    ("ADX rising", the operator's manual-trade read). On FRENZY-WIDE's year: rising +0.108 %/trade vs +0.054 all, both halves positive, but
+    random subsets of the same size beat it 28 % of the time → a 40-fill watch item, NOT a rule; nothing reads it. None when unreadable."""
+    try:
+        import math
+        import pandas as pd
+        from ta.trend import ADXIndicator
+        if not bars or len(bars) < 60:
+            return None
+        h, l, c = (pd.Series([float(r[k]) for r in bars]) for k in (2, 3, 4))
+        a = ADXIndicator(high=h, low=l, close=c, window=14).adx()
+        v = float(a.iloc[-1] - a.iloc[-4])
+        return round(v, 3) if math.isfinite(v) else None
+    except Exception:
+        return None
+
+
+def frenzy_vol_trend(bars) -> Optional[float]:
+    """🔬 Oct-3 OBSERVE-ONLY stamp (DECISION_LOG 193): quote volume (≈ base volume × close — ccxt bars carry no quote column; the backtest
+    used Binance's own quote volume) of the last 12 CLOSED 5m bars ÷ the 12 before them (> 1 = volume rising,
+    the backtest's vol_trend). FRENZY-WIDE's year: rising +0.099 %/trade, random-subset luck 21 % → watch item only. None when unreadable."""
+    try:
+        if not bars or len(bars) < 24:
+            return None
+        q = [float(r[5]) * float(r[4]) for r in bars[-24:]]
+        prev, last = sum(q[:12]), sum(q[12:])
+        return round(last / prev, 3) if prev > 0 else None
+    except Exception:
+        return None
+
+
+FRENZY_WIDE_CODES = ("FRENZY_ATR_HIGH", "FRENZY_GREEN_BAR")   # the only FRENZY refusals FRENZY-WIDE takes
+
+
+def frenzy_wide_ready(ep, code, th, atr_pct=None) -> bool:
+    """🔥🌐 Oct-3 FRENZY-WIDE: True when FRENZY refused this fresh setup ONLY for its ATR cap or a green signal candle (frenzy_long_status
+    judges those two LAST, so every earlier gate — setup ON, fresh bar, 24 h volume — already passed) and the WIDE switch is on. An UNREADABLE
+    ATR (FRENZY_ATR_HIGH "ATR unreadable") is refused: the backtest always had one — fail closed (review)."""
+    return (bool(getattr(th, 'frenzy_wide_enabled', False)) and bool(ep and ep.get('fresh_on')) and code in FRENZY_WIDE_CODES
+            and atr_pct is not None)
+
+
 def frenzy_flagged(ep, th) -> bool:
     """A live episode counts as a FRENZY flag while its spike is verifiable and ≤ frenzy_max_hours old."""
     return bool(ep and ep.get('verified') and ep.get('hours') is not None and ep['hours'] <= _f(th, 'frenzy_max_hours', 96.0))

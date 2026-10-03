@@ -300,6 +300,8 @@ class Order(Base):
     manual_ob_reach_bid_pct = Column(Float, nullable=True)
     manual_ob_reach_ask_pct = Column(Float, nullable=True)
     entry_frenzy_di_spread = Column(Float, nullable=True)          # Oct-2 (187): +DI − −DI (ADX 14) on the last CLOSED 5m bar (the backtest's value) — OBSERVE-ONLY, 40-fill review. NOT entry_pos_di − entry_neg_di (those read the forming bar)
+    entry_frenzy_adx_delta = Column(Float, nullable=True)          # Oct-3 (193): ADX(14) last closed 5m bar − 3 bars earlier (the backtest's d_adx, 'ADX rising') — OBSERVE-ONLY
+    entry_frenzy_vol_trend = Column(Float, nullable=True)          # Oct-3 (193): quote volume last 12 closed 5m bars ÷ the 12 before (> 1 = rising) — OBSERVE-ONLY
     # 🧭 Sep-29 ZONE STAMPS (DECISION_LOG 127) — observe-only readings for the C/D momentum-long watch items; no rule reads them
     entry_btc_ema50_100_gap_pct = Column(Float, nullable=True)      # BTC 5m EMA50 vs EMA100 (%), closed bars   [C]
     entry_eth_5m_ret1_pct = Column(Float, nullable=True)            # ETH last closed 5m bar return (%)          [C]

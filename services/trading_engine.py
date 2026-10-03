@@ -23,7 +23,7 @@ from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, clo
 from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
-from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread
+from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
 
@@ -772,6 +772,7 @@ SURGE_COHORT_START = datetime(2026, 9, 30, 15, 30, 0)  # kill-bar cohort (naive 
 _frenzy_flags: Dict[str, dict] = {}
 _frenzy_status: dict = {}
 _frenzy_norm_cache: Dict[str, tuple] = {}
+FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE")   # 🔥 Oct-3: both run the FRENZY exit, hold cap and urgent-close path
 FRENZY_ENTRY_MAX_LATE_S = 120   # a long opens only within this many seconds of its signal bar's close (the test entered at the next open)
 # (9d733e2 pushed 15:09 UTC). The first trigger's 4 fills (14:50 UTC, EMA13 first-tick bug) are excluded — operator reset the batch.
 _breadth_n_bull: int = 0
@@ -906,7 +907,7 @@ def _ema13_cross_exit_applies(entry_strategy):
         es = (entry_strategy or "")
         if es.startswith("FLIP:"):
             return False
-        if es in ("SPIKE_FADE", "SPIKE_BOUNCE", "SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG"):   # ⚡ SURGE: no pair-EMA entry condition (Sep-30 SOON/MOVR)
+        if es in ("SPIKE_FADE", "SPIKE_BOUNCE", "SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_WIDE"):   # ⚡ SURGE: no pair-EMA entry condition (Sep-30 SOON/MOVR)
             return False
         return True
     except Exception:
@@ -2600,6 +2601,17 @@ def _compute_pattern_w_match(direction, rsi, adx, adx_delta, stretch,
 
     return (w1, w2, w3, w4, w5, w6,
             w1 or w2 or w3 or w4 or w5 or w6)
+
+
+def frenzy_shortlist(allp, skip, chg: float, vmin: float, cap: int = 25) -> list:
+    """🔥 FRENZY shortlist (pure): pairs with |24 h change| OR 24 h low→high range ≥ chg % and 24 h volume ≥ vmin, not in skip, ASCII names,
+    |change| qualifiers first, then by move, at most cap. The range leg (Oct-3) admits a pair that dumped then pumped back (MOVR: change −0.6 %, range 28 %)."""
+    def _move(p):
+        return max(abs(p.get('change_24h') or 0), p.get('range_24h') or 0)
+    keep = (p for p in allp if str(p['pair']).upper() not in skip and str(p['pair']).isascii()
+            and _move(p) >= chg and (p.get('volume_24h') or 0) >= vmin)
+    # pairs the |change| rule admits rank first (the cap never drops a pair the old rule read), then range-only pairs, biggest move first
+    return [p['pair'] for p in sorted(keep, key=lambda p: (abs(p.get('change_24h') or 0) < chg, -_move(p)))[:cap]]
 
 
 class TradingEngine:
@@ -6875,20 +6887,21 @@ class TradingEngine:
             return False
 
     async def _update_frenzy_pass(self, db):
-        """🔥 FRENZY (DECISION_LOG 176): once per CLOSED 5m bar — shortlist (pairs up ≥ frenzy_shortlist_change_pct in 24 h with ≥
+        """🔥 FRENZY (DECISION_LOG 176): once per CLOSED 5m bar — shortlist (pairs whose |24 h change| OR 24 h low→high range ≥ frenzy_shortlist_change_pct, with ≥
         frenzy_min_volume_usd, plus pairs already flagged), rebuild each pair's spike episode from a fresh 1500-bar window
         (services.frenzy.frenzy_walk), keep the FLAGGED ones in _frenzy_flags, record EMA50 / EMA200 breaks as short observations, and
         open FRENZY_LONG on the bar where the long setup turns on. The same pre-filters as the scan universe apply (new listings,
         Alpha tier, non-COIN perps, blacklists) but NOT the Top-N cut — a flagged pair is followed whatever its volume rank.
         Runs from the bar-close task (main.frenzy_loop) and, as a fallback / retry, inline in the scan — one pass at a time (_update_frenzy);
         its opens and the scan's are serialised by open_position's BOT_OPEN_LANE (slot / gross / sizing checks never race). ~0.5 s per shortlisted pair (the exchange client serialises
-        the kline reads), typically 5–10 s once per 5 minutes, ~30 s at the 40-pair cap right after a deploy. Exits are not held:
+        the kline reads), typically 10–20 s once per 5 minutes (≈ 25 pairs since the Oct-3 range leg), ~30 s at the 40-pair cap right after a deploy. Exits are not held:
         the monitor loop and the websocket path are separate tasks. Never raises."""
         try:
             th = config.trading_config.thresholds; tc = config.trading_config
             _on = bool(getattr(th, 'frenzy_long_enabled', False)); _obs = bool(getattr(th, 'frenzy_short_observe', False))
-            _frenzy_status.update(enabled=_on, observe=_obs)
-            if not (_on or _obs):
+            _wide = bool(getattr(th, 'frenzy_wide_enabled', False))   # 🔥🌐 Oct-3 FRENZY-WIDE: its own switch (the pass runs for it too)
+            _frenzy_status.update(enabled=_on, observe=_obs, wide=_wide)
+            if not (_on or _obs or _wide):
                 _frenzy_flags.clear()
                 return
             now_ms = _leash_time.time() * 1000
@@ -6915,10 +6928,10 @@ class TradingEngine:
             for _src in (getattr(tc, 'pair_blacklist', ''), getattr(tc, 'no_trade_pairs', ''), getattr(th, 'frenzy_pair_blacklist', '')):
                 skip |= {x.strip().upper() for x in str(_src or '').split(',') if x.strip()}
             vmin = float(getattr(th, 'frenzy_min_volume_usd', 20e6) or 0); chg = float(getattr(th, 'frenzy_shortlist_change_pct', 15.0) or 0)
-            # |24 h change|: a pair deep into its episode can be DOWN on the day (MOVR −31 % on day 3) — the walk decides, not the sign
-            names = [p['pair'] for p in sorted((p for p in allp if str(p['pair']).upper() not in skip and str(p['pair']).isascii()
-                                                and abs(p.get('change_24h') or 0) >= chg and (p.get('volume_24h') or 0) >= vmin),
-                                               key=lambda p: -abs(p.get('change_24h') or 0))[:25]]
+            # |24 h change|: a pair deep into its episode can be DOWN on the day (MOVR −31 % on day 3) — the walk decides, not the sign.
+            # 🔥 Oct-3: OR the 24 h low→high range — a pair that dumped then pumped back nets ~0 on the day (MOVR Oct-3: change −0.6 %, range 28 %,
+            # a READY entry never read). The backtest universe had no shortlist at all; this only stops the live bot missing pairs the walk would flag.
+            names = frenzy_shortlist(allp, skip, chg, vmin)
             _follow = list(_frenzy_flags)
             if not _frenzy_status.get('seeded'):   # once per process: pairs recently observed / traded stay in view across a deploy
                 _frenzy_status['seeded'] = True
@@ -6927,11 +6940,11 @@ class TradingEngine:
                     _since = datetime.utcnow() - timedelta(hours=float(getattr(th, 'frenzy_max_hours', 96.0) or 96.0))
                     _follow += [p for (p,) in (await db.execute(select(FrenzyBreak.pair).where(FrenzyBreak.bar_close_at >= _since).distinct())).all()]
                     _follow += [p for (p,) in (await db.execute(select(Order.pair).where(and_(
-                        Order.entry_strategy == "FRENZY_LONG", Order.is_paper == self.is_paper_mode, Order.opened_at >= _since)).distinct())).all()]
+                        Order.entry_strategy.in_(FRENZY_STRATEGIES), Order.is_paper == self.is_paper_mode, Order.opened_at >= _since)).distinct())).all()]
                 except Exception as _se:
                     logger.warning(f"[FRENZY] follow-list seed failed ({str(_se)[:80]}) — shortlist only")
             for k in _follow:
-                if k in by and k.upper() not in skip and k not in names and len(names) < 40:
+                if k in by and k.upper() not in skip and k not in names and (len(names) < 40 or k in _frenzy_flags):   # a flagged pair is never crowded out (Oct-3 review)
                     names.append(k)
             # klines for the whole shortlist CONCURRENTLY (≤ 6 at a time) so the scan is held a few seconds, not one pair after another
             _sem = asyncio.Semaphore(6)
@@ -6981,23 +6994,29 @@ class TradingEngine:
                     except Exception:
                         ind = {}
                     _prev = _frenzy_flags.get(pair) or {}
-                    flag = dict(ep, pair=pair, atr_pct=atr, volume_24h=vol24, change_24h=by[pair].get('change_24h'), live_price=by[pair].get('price'),
+                    flag = dict(ep, pair=pair, atr_pct=atr, volume_24h=vol24, change_24h=by[pair].get('change_24h'), range_24h=by[pair].get('range_24h'), live_price=by[pair].get('price'),
                                 ready=ready, code=code, text=text, updated_ms=now_ms, misses=0, bar=bar_open,
                                 last_fire=_prev.get('last_fire') if _prev.get('spike_ts') == ep['spike_ts'] else None,
-                                di_spread=(frenzy_di_spread(closed[-300:]) if ready else None),   # 🔬 observe-only entry stamp (DECISION_LOG 187)
+                                di_spread=(frenzy_di_spread(closed[-300:]) if (ready or code in FRENZY_WIDE_CODES) else None),   # 🔬 observe-only entry stamp (DECISION_LOG 187)
+                                adx_delta=(frenzy_adx_delta(closed[-300:]) if (ready or code in FRENZY_WIDE_CODES) else None),   # 🔬 Oct-3 observe-only (DECISION_LOG 193)
+                                vol_trend=(frenzy_vol_trend(closed) if (ready or code in FRENZY_WIDE_CODES) else None),
                                 **{k: ind.get(k) for k in ('ema5', 'ema8', 'ema13', 'ema20', 'rsi', 'adx')})
                     _frenzy_flags[pair] = flag
                     if _obs:
                         for _line in frenzy_breaks(closed):
                             if await self._frenzy_record_break(pair, _line, closed[-1], flag):
                                 n_new_breaks += 1
-                    if _on and ep.get('fresh_on'):
-                        if not ready:
-                            self._record_filter_block(code, "LONG")
-                            flag['last_fire'] = f"{datetime.utcfromtimestamp(bar_open / 1000):%m-%d %H:%M} refused: {text}"
-                            logger.info(f"[FRENZY_LONG] {pair}: setup turned ON but refused — {text}")
+                    if ep.get('fresh_on'):
+                        if ready:
+                            if _on:
+                                await self._frenzy_open(db, flag, ind, bar_open)
                         else:
-                            await self._frenzy_open(db, flag, ind, bar_open)
+                            if _on:
+                                self._record_filter_block(code, "LONG")
+                                flag['last_fire'] = f"{datetime.utcfromtimestamp(bar_open / 1000):%m-%d %H:%M} refused: {text}"
+                                logger.info(f"[FRENZY_LONG] {pair}: setup turned ON but refused — {text}")
+                            if frenzy_wide_ready(ep, code, th, atr):   # 🔥🌐 Oct-3: FRENZY refused ONLY for ATR / a green candle → FRENZY-WIDE takes it
+                                await self._frenzy_open(db, flag, ind, bar_open, wide=True)
                 except Exception as _fe:
                     n_bad += 1
                     logger.warning(f"[FRENZY] {pair}: not read this bar ({str(_fe)[:120]})")
@@ -7072,21 +7091,23 @@ class TradingEngine:
             logger.warning(f"[FRENZY_SHORT_OBS] {pair}: not recorded ({str(e)[:100]})")
             return False
 
-    async def _frenzy_open(self, db, flag, indicators, bar_open):
+    async def _frenzy_open(self, db, flag, indicators, bar_open, wide: bool = False):
         """🔥 Open FRENZY_LONG for a flagged pair whose setup turned ON on the bar that just closed. One entry per pair per bar (memory
         + DB: restart-proof), ≤ frenzy_max_slots open at once. Opens through open_position(frenzy_long=True): own size, direct taker
-        at the live price behind the dislocation guard, own exit. Own try/except: can never break the scan."""
+        at the live price behind the dislocation guard, own exit. Own try/except: can never break the scan.
+        wide=True (🔥🌐 Oct-3 FRENZY-WIDE): the same path tagged FRENZY_WIDE — own slots (frenzy_wide_max_slots), own size, own day count."""
         pair = flag['pair']; th = config.trading_config.thresholds
+        _es = "FRENZY_WIDE" if wide else "FRENZY_LONG"; _bk = "FRENZY_WIDE" if wide else "FRENZY"   # strategy tag · block-counter prefix
         try:
             _bar_dt = datetime.utcfromtimestamp(bar_open / 1000)
-            _slots = max(1, int(getattr(th, 'frenzy_max_slots', 2) or 2))   # 0 / blank = the default 2 (the switch is frenzy_long_enabled)
+            _slots = max(1, int(getattr(th, 'frenzy_wide_max_slots' if wide else 'frenzy_max_slots', 2) or 2))   # 0 / blank = the default 2 (the switch is the sleeve's enabled flag)
             _n_open = (await db.execute(select(func.count(Order.id)).where(and_(
-                Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == "FRENZY_LONG")))).scalar() or 0
+                Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == _es)))).scalar() or 0
             if _n_open >= _slots:
-                self._record_filter_block("FRENZY_MAX_SLOTS", "LONG")
-                flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} refused: {_n_open} FRENZY positions open (max {_slots})"
+                self._record_filter_block(f"{_bk}_MAX_SLOTS", "LONG")
+                flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} {'WIDE ' if wide else ''}refused: {_n_open} {_es} positions open (max {_slots})"
                 return
-            if (await db.execute(select(Order.id).where(and_(Order.pair == pair, Order.entry_strategy == "FRENZY_LONG",
+            if (await db.execute(select(Order.id).where(and_(Order.pair == pair, Order.entry_strategy == _es,
                                                              Order.is_paper == self.is_paper_mode, Order.opened_at > _bar_dt - timedelta(seconds=1))))).first() is not None:   # > t−1s: opened_at is stored to the second (a text compare with ≥ misses the exact second)
                 return   # this bar's entry was already taken (restart / second pass)
             # Oct-2 (DECISION_LOG 177): at most N FRENZY_LONG entries per pair per UTC day (open or closed; DB-counted = restart-proof). 0 = no cap.
@@ -7094,30 +7115,30 @@ class TradingEngine:
             if _day_cap > 0:
                 _day0 = _bar_dt.replace(hour=0, minute=0, second=0, microsecond=0)
                 _n_day = (await db.execute(select(func.count(Order.id)).where(and_(
-                    Order.pair == pair, Order.entry_strategy == "FRENZY_LONG", Order.is_paper == self.is_paper_mode,
+                    Order.pair == pair, Order.entry_strategy == _es, Order.is_paper == self.is_paper_mode,
                     Order.opened_at > _day0 - timedelta(seconds=1))))).scalar() or 0
                 if _n_day >= _day_cap:
-                    self._record_filter_block("FRENZY_PAIR_DAY_CAP", "LONG")
-                    flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} refused: {_n_day} entries on this pair today (max {_day_cap})"
-                    logger.info(f"[FRENZY_LONG] {pair}: setup ON but {_n_day} entries already today (max {_day_cap}) — skipped")
+                    self._record_filter_block(f"{_bk}_PAIR_DAY_CAP", "LONG")
+                    flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} {'WIDE ' if wide else ''}refused: {_n_day} entries on this pair today (max {_day_cap})"
+                    logger.info(f"[{_es}] {pair}: setup ON but {_n_day} entries already today (max {_day_cap}) — skipped")
                     return
             price = float(flag.get('live_price') or flag.get('price') or 0)
             if price <= 0:
-                self._record_filter_block("FRENZY_NO_DATA", "LONG")
+                self._record_filter_block(f"{_bk}_NO_DATA", "LONG")
                 return
             # The test bought at the open of the bar after the signal. Live must not buy a setup minutes later (a late scan, a retry
             # pass, a restart) nor a price that already left the signal bar's close by more than the dislocation limit (review).
             _late_s = (_leash_time.time() * 1000 - bar_open) / 1000.0
             if _late_s > FRENZY_ENTRY_MAX_LATE_S:
-                self._record_filter_block("FRENZY_LATE", "LONG")
-                flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} refused: found {_late_s:.0f}s after the bar closed (max {FRENZY_ENTRY_MAX_LATE_S}s)"
-                logger.warning(f"[FRENZY_LONG] {pair}: setup ON but judged {_late_s:.0f}s after the bar closed — skipped (max {FRENZY_ENTRY_MAX_LATE_S}s)")
+                self._record_filter_block(f"{_bk}_LATE", "LONG")
+                flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} {'WIDE ' if wide else ''}refused: found {_late_s:.0f}s after the bar closed (max {FRENZY_ENTRY_MAX_LATE_S}s)"
+                logger.warning(f"[{_es}] {pair}: setup ON but judged {_late_s:.0f}s after the bar closed — skipped (max {FRENZY_ENTRY_MAX_LATE_S}s)")
                 return
             _dmax = float(getattr(th, 'frenzy_max_entry_dislocation_pct', 0) or 0)
             _close = float(flag.get('price') or 0)
             if _dmax > 0 and _close > 0 and abs(price / _close - 1) * 100 > _dmax:
-                self._record_filter_block("FRENZY_DISLOC", "LONG")
-                flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} refused: price moved {(price / _close - 1) * 100:+.2f}% from the signal close (max {_dmax:g}%)"
+                self._record_filter_block(f"{_bk}_DISLOC", "LONG")
+                flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} {'WIDE ' if wide else ''}refused: price moved {(price / _close - 1) * 100:+.2f}% from the signal close (max {_dmax:g}%)"
                 return
             _ef = {}
             if indicators:
@@ -7128,7 +7149,7 @@ class TradingEngine:
                     _ef.pop(_k, None)
             _g = globals(); atr = flag.get('atr_pct'); _stop = abs(float(getattr(th, 'frenzy_stop_pct', 3.0) or 3.0))
             _pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if (indicators and indicators.get('avg_volume')) else None
-            logger.warning(f"[FRENZY_LONG] {pair}: setup ON {flag.get('hours') or 0:.1f} h after the spike ({flag.get('vs_vwap_pct') or 0:+.1f}% vs its average "
+            logger.warning(f"[{_es}] {pair}: setup ON {flag.get('hours') or 0:.1f} h after the spike ({flag.get('vs_vwap_pct') or 0:+.1f}% vs its average "
                            f"price, volume {flag.get('vol_mult') or 0:.0f}× normal, ATR {('%.2f%%' % atr) if atr is not None else 'unreadable'}) → opening")
             self._frenzy_open_refusal = None
             order = await self.open_position(
@@ -7137,26 +7158,26 @@ class TradingEngine:
                 entry_atr_pct=(round(atr, 4) if atr is not None else None), entry_pair_volume_24h_usd=flag.get('volume_24h'), entry_pair_rank=None,
                 entry_bull_pct=_g.get('_market_bull_pct'), entry_bear_pct=_g.get('_market_bear_pct'),
                 entry_global_volume_ratio=_g.get('_global_volume_ratio'), entry_pair_volume_ratio=_pvr,
-                frenzy_long=True, frenzy_bar_open_ms=bar_open, entry_frenzy_spike_at=datetime.utcfromtimestamp(flag['spike_ts'] / 1000),
+                frenzy_long=not wide, frenzy_wide=wide, frenzy_bar_open_ms=bar_open, entry_frenzy_spike_at=datetime.utcfromtimestamp(flag['spike_ts'] / 1000),
                 entry_frenzy_hours=round(flag['hours'], 2), entry_frenzy_vwap=flag['vwap'],
                 entry_frenzy_vs_vwap_pct=(round(flag['vs_vwap_pct'], 3) if flag.get('vs_vwap_pct') is not None else None),
                 entry_frenzy_vol_mult=round(flag['vol_mult'], 1), entry_frenzy_run_pct=round(flag['run_pct'], 2),
                 entry_frenzy_stop_atr=(round(_stop / atr, 3) if atr else None),
                 entry_frenzy_bar_ret_pct=(round(flag['bar_ret_pct'], 4) if flag.get('bar_ret_pct') is not None else None),
-                entry_frenzy_di_spread=flag.get('di_spread'),
-                **self._sanitize_open_kwargs(_ef, "FRENZY_LONG", "LONG"),
+                entry_frenzy_di_spread=flag.get('di_spread'), entry_frenzy_adx_delta=flag.get('adx_delta'), entry_frenzy_vol_trend=flag.get('vol_trend'),
+                **self._sanitize_open_kwargs(_ef, _es, "LONG"),
             )
             _why = getattr(self, '_frenzy_open_refusal', None)
-            flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} " + ("opened" if order else (f"refused: {_why}" if _why else "refused by the open path (slots / balance / cooldown / price moved)"))
+            flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} " + ("WIDE " if wide else "") + ("opened" if order else (f"refused: {_why}" if _why else "refused by the open path (slots / balance / cooldown / price moved)"))
             if not order and not _why:   # a late refusal is already counted as FRENZY_LATE (caveman review: no double count)
-                self._record_filter_block("FRENZY_OPEN_REFUSED", "LONG")
+                self._record_filter_block(f"{_bk}_OPEN_REFUSED", "LONG")
         except Exception as e:
-            logger.error(f"[FRENZY_LONG] {pair}: open failed: {e}")
+            logger.error(f"[{_es}] {pair}: open failed: {e}")
             try:
                 await db.rollback()
             except Exception:
                 pass
-            self._record_filter_block("OPEN_FAILED_FRENZY", "LONG")
+            self._record_filter_block(f"OPEN_FAILED_{_bk}", "LONG")
 
     async def _maybe_open_surge(self, db, pair_info, ohlcv, indicators):
         """⚡ SURGE sleeve entry for one scanned pair, both sides. Inside a side's entry window: universe = top-N TRADEABLE pairs by
@@ -8117,6 +8138,7 @@ class TradingEngine:
         # Tagged FRENZY_LONG; rides the SURGE open path (every alt entry filter and pattern cell bypassed, direct taker, dislocation
         # guard) with its own size (frenzy_long_invest_mult × frenzy_long_lev_mult, absolute-assign) and its own exit (frenzy_exit_for).
         frenzy_long: bool = False,
+        frenzy_wide: bool = False,   # 🔥🌐 Oct-3: the FRENZY open path tagged FRENZY_WIDE (own size fields frenzy_wide_*)
         frenzy_bar_open_ms: Optional[int] = None,   # 🔥 Oct-3: the signal bar's open — lateness re-checked AFTER the bot open lane
         entry_frenzy_spike_at: Optional[datetime] = None,
         entry_frenzy_hours: Optional[float] = None,
@@ -8127,6 +8149,8 @@ class TradingEngine:
         entry_frenzy_stop_atr: Optional[float] = None,
         entry_frenzy_bar_ret_pct: Optional[float] = None,
         entry_frenzy_di_spread: Optional[float] = None,
+        entry_frenzy_adx_delta: Optional[float] = None,
+        entry_frenzy_vol_trend: Optional[float] = None,
         # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
         # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
         # lev_mult from gap_probe_* config), tagged cell_src=GAPFLAT_PROBE (own analytics row;
@@ -8191,7 +8215,9 @@ class TradingEngine:
         # Sep-29: Top Pairs 'Block Reason' is the MOMENTUM ladder's — counters recorded while this call works for another
         # sleeve must not name it (read by _record_filter_block; reset to True at every pair iteration of the scan).
         # (bearrun_short is NOT in the list: that fill comes from the momentum ladder's own open, so its refusals are the pair's.)
-        _frenzy = bool(frenzy_long) and direction == "LONG"   # 🔥 FRENZY fill (LONG only)
+        _frenzy = bool(frenzy_long or frenzy_wide) and direction == "LONG"   # 🔥 FRENZY fill (LONG only) — FRENZY_LONG or FRENZY_WIDE
+        _fz_es = "FRENZY_WIDE" if (_frenzy and frenzy_wide) else "FRENZY_LONG"   # 🔥🌐 Oct-3: the tag, size prefix and cell source
+        _fz_bk = "FRENZY_WIDE" if _fz_es == "FRENZY_WIDE" else "FRENZY"           # its filter-block prefix (FRENZY_LATE / FRENZY_WIDE_LATE …)
         _surge = (surge_dir in ("LONG", "SHORT") and surge_dir == direction) or _frenzy   # ⚡ SURGE fill (a mismatched direction is never one); FRENZY rides the same open path
         self._open_ctx_momentum = not (flip_source or bull_long or bullrun_long or bounce_long
                                        or spike_chase_probe or spike_fade or spike_bounce or _surge)
@@ -9234,10 +9260,12 @@ class TradingEngine:
         # keep bar reads; the mults are UI fields.
         if _surge:
             _th_sg = config.trading_config.thresholds
-            _sg_pref = 'frenzy_long' if _frenzy else f'surge_{direction.lower()}'   # 🔥 FRENZY: its own size fields
-            cell_mult = max(0.1, min(float(getattr(_th_sg, f'{_sg_pref}_invest_mult', 1.0) or 1.0), _inv_cap))
-            cell_lev_mult = max(0.05, min(float(getattr(_th_sg, f'{_sg_pref}_lev_mult', 1.0) or 1.0), _lev_cap))
-            cell_src = "FRENZY_LONG" if _frenzy else f"SURGE_{direction}"
+            _sg_pref = _fz_es.lower() if _frenzy else f'surge_{direction.lower()}'   # 🔥 FRENZY: its own size fields (frenzy_long_* / frenzy_wide_*)
+            # an explicit 0 means "as small as allowed" (the floors), never the 1× default — the mult is this sleeve's risk control (Oct-3 review)
+            _sg_inv = getattr(_th_sg, f'{_sg_pref}_invest_mult', 1.0); _sg_lev = getattr(_th_sg, f'{_sg_pref}_lev_mult', 1.0)
+            cell_mult = max(0.1, min(1.0 if _sg_inv is None else float(_sg_inv), _inv_cap))
+            cell_lev_mult = max(0.05, min(1.0 if _sg_lev is None else float(_sg_lev), _lev_cap))
+            cell_src = _fz_es if _frenzy else f"SURGE_{direction}"
             _mult_target = "both"
 
         investment, leverage, cell_capped = self.calculate_position_size(
@@ -9404,9 +9432,9 @@ class TradingEngine:
         if _frenzy and frenzy_bar_open_ms is not None:   # 🔥 Oct-3 (lane review), just before the order path: _frenzy_open judged lateness BEFORE waiting for the
             _fz_late2 = (_leash_time.time() * 1000 - int(frenzy_bar_open_ms)) / 1000.0   # bot open lane — a scan open can hold it 15–45 s
             if _fz_late2 > FRENZY_ENTRY_MAX_LATE_S:
-                self._record_filter_block("FRENZY_LATE", direction)
+                self._record_filter_block(f"{_fz_bk}_LATE", direction)
                 self._frenzy_open_refusal = f"reached the order {_fz_late2:.0f}s after the bar closed (max {FRENZY_ENTRY_MAX_LATE_S}s)"   # read by _frenzy_open
-                logger.warning(f"[FRENZY_LONG] {pair}: reached the order {_fz_late2:.0f}s after the bar closed (waited for another bot open) — "
+                logger.warning(f"[{_fz_es}] {pair}: reached the order {_fz_late2:.0f}s after the bar closed (waited for another bot open) — "
                                f"skipped (max {FRENZY_ENTRY_MAX_LATE_S}s)")
                 return None
         if _surge:
@@ -9424,10 +9452,10 @@ class TradingEngine:
                     _sg_live_px = None
             _sg_max = float(getattr(config.trading_config.thresholds, 'frenzy_max_entry_dislocation_pct' if _frenzy else 'surge_max_entry_dislocation_pct', 0) or 0) or None
             if _sg_live_px and bullrun_disloc_exceeded(_sg_max, current_price, _sg_live_px):
-                self._record_filter_block("FRENZY_DISLOC" if _frenzy else "SURGE_DISLOC", direction)
+                self._record_filter_block(f"{_fz_bk}_DISLOC" if _frenzy else "SURGE_DISLOC", direction)
                 if _frenzy:
                     self._frenzy_open_refusal = f"price moved {abs(_sg_live_px - current_price) / current_price * 100:.2f}% before the order (max {_sg_max}%)"
-                logger.warning(f"[{'FRENZY' if _frenzy else 'SURGE'}_DISLOC] {pair} {direction}: entry aborted — live {_sg_live_px} is "
+                logger.warning(f"[{_fz_bk if _frenzy else 'SURGE'}_DISLOC] {pair} {direction}: entry aborted — live {_sg_live_px} is "
                                f"{abs(_sg_live_px - current_price) / current_price * 100:.2f}% from decision {current_price} (max {_sg_max}%)")
                 return None
         maker_fee_rate = getattr(tc, 'maker_fee', tc.trading_fee)
@@ -9758,6 +9786,7 @@ class TradingEngine:
             entry_frenzy_stop_atr=(entry_frenzy_stop_atr if _frenzy else None),
             entry_frenzy_bar_ret_pct=(entry_frenzy_bar_ret_pct if _frenzy else None),
             entry_frenzy_di_spread=(entry_frenzy_di_spread if _frenzy else None),
+            entry_frenzy_adx_delta=(entry_frenzy_adx_delta if _frenzy else None), entry_frenzy_vol_trend=(entry_frenzy_vol_trend if _frenzy else None),
             adx_surge_open=_adx_surge_admit,   # ⚡ Sep-28: admitted through the BTC ADX-surge waiver (same predicate as its sizing)
             entry_mcap_usd=_mcap_usd, entry_cmc_rank=_cmc_rank,   # 💰 Sep-28: cached market cap / CMC rank (NULL if unknown)
             entry_btc_ema50_100_gap_pct=(entry_btc_ema50_100_gap_pct if entry_btc_ema50_100_gap_pct is not None else (_zg.get('_current_btc_ema50_100_gap_pct') if _zfresh else None)),   # 🧭 Sep-29 zone stamps (observe-only)
@@ -9800,7 +9829,7 @@ class TradingEngine:
             cell_multiplier_capped=cell_capped,
             # Jun 14: Flip Entry sleeve strategy tag (segregates flip P&L from momentum)
             # Jun 18: BULL_LONG tag for the build-side sleeve (real long, normal exit; NOT _is_flip)
-            entry_strategy=("FRENZY_LONG" if _frenzy else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),
+            entry_strategy=(_fz_es if _frenzy else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),
             # Initialize dynamic TP tracking
             current_tp_level=1,
             dynamic_tp_target=conf_config.tp_min,
@@ -9960,7 +9989,7 @@ class TradingEngine:
                 'opened_at': order.opened_at,          # Jul 28 review M-5: spike stale-kill/trail live from t0
                 'entry_atr_pct': entry_atr_pct,        # (both were previously added only at the first cache refresh)
                 'entry_br_door': entry_br_door,        # Sep-21 (57i): the realtime BR exit needs the door for the trail width
-                'entry_strategy': ("FRENZY_LONG" if _frenzy else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),  # Sep 15 gate 60: BEARRUN_SHORT twin (momentum exits; label parity with the Order row). Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches; Aug 21: BULLRUN_LONG (gate 57, dedicated BR_ exits)
+                'entry_strategy': (_fz_es if _frenzy else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),  # Sep 15 gate 60: BEARRUN_SHORT twin (momentum exits; label parity with the Order row). Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches; Aug 21: BULLRUN_LONG (gate 57, dedicated BR_ exits)
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_btc_rsi_closed': order.entry_btc_rsi_closed,   # 🩹 Oct-2: the realtime hold trigger needs it from t0
                 'entry_price': actual_price,
@@ -10940,7 +10969,7 @@ class TradingEngine:
             max_exit_retries = 3
             exit_result = None
 
-            _urgent_exit = (order.entry_strategy or "") == "FRENZY_LONG" or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (   # 🩹 RH: the hold's own closes are stop-class; a released trade's close follows its base reason
+            _urgent_exit = (order.entry_strategy or "") in FRENZY_STRATEGIES or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (   # 🩹 RH: the hold's own closes are stop-class; a released trade's close follows its base reason
                 "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_", "OVERRIDE_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent; Sep-29 MANUAL_SL/TP too
             ))
 
@@ -11135,7 +11164,7 @@ class TradingEngine:
         else:
             # --- Paper mode: no retry needed, no slippage ---
             _slippage_pct = None
-            _urgent_exit_paper = (order.entry_strategy or "") == "FRENZY_LONG" or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (
+            _urgent_exit_paper = (order.entry_strategy or "") in FRENZY_STRATEGIES or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (
                 "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_", "OVERRIDE_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
             ))
             if maker_exit_enabled and reason != "MANUAL" and not _urgent_exit_paper:
@@ -12468,7 +12497,7 @@ class TradingEngine:
                 _sg_mh = int(float(getattr(config.trading_config.thresholds, 'surge_max_hold_minutes', 240) or 0))
                 if _sg_mh > 0:
                     max_hold = min(max_hold, _sg_mh) if max_hold > 0 else _sg_mh
-            elif (order.entry_strategy or "") == "FRENZY_LONG" or ((order.entry_strategy or "") == "MANUAL" and getattr(order, 'manual_exit_mode', None) == "FRENZY"):   # 🔥 FRENZY (and a manual trade on the FRENZY exit): the tested 12 h cap (frenzy_max_hold_minutes; 0 = global)
+            elif (order.entry_strategy or "") in FRENZY_STRATEGIES or ((order.entry_strategy or "") == "MANUAL" and getattr(order, 'manual_exit_mode', None) == "FRENZY"):   # 🔥 FRENZY (and a manual trade on the FRENZY exit): the tested 12 h cap (frenzy_max_hold_minutes; 0 = global)
                 _fz_mh = int(float(getattr(config.trading_config.thresholds, 'frenzy_max_hold_minutes', 720) or 0))
                 if _fz_mh > 0:
                     max_hold = min(max_hold, _fz_mh) if max_hold > 0 else _fz_mh
@@ -12587,7 +12616,7 @@ class TradingEngine:
             # FL / momentum-exit stack / check_exit_conditions so none of the alt exit
             # machinery ever touches them. `continue` sits OUTSIDE the try so a sleeve order
             # can never fall through into the alt chain on an error.
-            if (order.entry_strategy or "") in ("BULLRUN_LONG", "SURGE_LONG", "SURGE_SHORT", "FRENZY_LONG"):   # ⚡ SURGE_LONG = same exit (own trail); SURGE_SHORT = its own
+            if (order.entry_strategy or "") in ("BULLRUN_LONG", "SURGE_LONG", "SURGE_SHORT") + FRENZY_STRATEGIES:   # ⚡ SURGE_LONG = same exit (own trail); SURGE_SHORT = its own
                 try:
                     if order.direction == "LONG":
                         _br_raw = (current_price - order.entry_price) * order.quantity
@@ -12601,7 +12630,7 @@ class TradingEngine:
                     order.trough_pnl = min(realtime_trough, _br_pnl)
                     if (order.entry_strategy or "") == "SURGE_SHORT":
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None))
-                    elif (order.entry_strategy or "") == "FRENZY_LONG":   # 🔥 its own stop + trailing exit (services.frenzy)
+                    elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
                                                                           _rh_backstop_floor(getattr(self, 'is_paper_mode', True)))
                     else:
@@ -16458,7 +16487,7 @@ class TradingEngine:
             # are updated inline here (the shared tracking below is skipped for sleeve orders —
             # phantom/shadow columns stay NULL for them, on record). `continue` sits OUTSIDE the
             # try so a sleeve order can never fall through into the alt chain on an error.
-            if (order_info.get('entry_strategy') or '') in ('BULLRUN_LONG', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG'):   # ⚡ SURGE_LONG: same exit, own trail · SURGE_SHORT: its own
+            if (order_info.get('entry_strategy') or '') in ('BULLRUN_LONG', 'SURGE_LONG', 'SURGE_SHORT') + FRENZY_STRATEGIES:   # ⚡ SURGE_LONG: same exit, own trail · SURGE_SHORT: its own
                 try:
                     _br_peak_rt = max(order_info.get('peak_pnl', 0) or 0, pnl_pct)
                     order_info['peak_pnl'] = _br_peak_rt
@@ -16466,7 +16495,7 @@ class TradingEngine:
                         order_info['trough_pnl'] = pnl_pct
                     if (order_info.get('entry_strategy') or '') == 'SURGE_SHORT':
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'))
-                    elif (order_info.get('entry_strategy') or '') == 'FRENZY_LONG':   # 🔥 its own stop + trailing exit (services.frenzy)
+                    elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
                                                                           _rh_backstop_floor(getattr(self, 'is_paper_mode', True)))
                     else:

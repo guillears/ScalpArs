@@ -37,10 +37,10 @@ def test_unreadable_input_is_none_never_raises():
 
 def test_wired_as_an_entry_stamp_only():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert "di_spread=(frenzy_di_spread(closed[-300:]) if ready else None)" in eng
+    assert "di_spread=(frenzy_di_spread(closed[-300:]) if (ready or code in FRENZY_WIDE_CODES) else None)" in eng
     assert "entry_frenzy_di_spread=flag.get('di_spread')" in eng and "entry_frenzy_di_spread=(entry_frenzy_di_spread if _frenzy else None)" in eng
     lines = [x.strip() for x in eng.splitlines() if "di_spread" in x and not x.strip().startswith("#")]
-    assert all(("frenzy_di_spread" in x and ("import" in x or "if ready" in x)) or "entry_frenzy_di_spread" in x for x in lines), lines   # no rule reads it
+    assert all(("frenzy_di_spread" in x and ("import" in x or "if (ready or code in FRENZY_WIDE_CODES)" in x)) or "entry_frenzy_di_spread" in x for x in lines), lines   # no rule reads it
     import models as M
     assert "entry_frenzy_di_spread" in {c.name for c in M.Order.__table__.columns}
     assert "('entry_frenzy_di_spread', 'FLOAT')" in open(os.path.join(ROOT, "database.py"), encoding="utf-8").read()

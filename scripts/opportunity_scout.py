@@ -1232,8 +1232,22 @@ def run():
     except Exception as _st_e:
         log(f"staircase watch failed: {_st_e}")
         _st_sec = ["## 🪜 Staircase watch", "", "Unavailable this run.", ""]
+    _fz_notes = []                                     # 🔥 Oct-3 FRENZY watch (every pair FRENZY can be watching; never breaks the run)
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        if ROOT not in sys.path:
+            sys.path.insert(0, ROOT)
+        import scout_frenzy as _fz
+        _fzc = {**cfg, **(cfg.get("thresholds") or {})}
+        _fz_set, _fz_flag, _fz_pairs, _fz_short, _fz_fol = _fz.scan(EX, _retry, _fzc, last_closed, alts, btc_full, now_ms)
+        _fz_hist = _fz.save(_fz_set, _fz_pairs, now_ms)
+        _fz_sec = _fz.lines(_fz_set, _fz_flag, _fz_pairs, _fz_short, _fz_fol, _fzc, _fz_hist) + [""]
+        _fz_notes = _fz.note_items(_fz_set, (_load_notes_state().get("noted") or {}), now_ms)
+    except Exception as _fz_e:
+        log(f"FRENZY watch failed: {_fz_e}")
+        _fz_sec = ["## 🔥 FRENZY watch", "", f"Unavailable this run ({str(_fz_e)[:120]}).", ""]
     _ev_at = next((i for i, x in enumerate(L) if x.startswith("## Evidence so far")), len(L))
-    L[_ev_at:_ev_at] = _st_sec                         # above the evidence table, so the events / "no events" line keep their place
+    L[_ev_at:_ev_at] = _fz_sec + _st_sec                         # above the evidence table, so the events / "no events" line keep their place
     if not len(rep):
         L.append("No events in the last 24 h.")
     else:
@@ -1307,6 +1321,7 @@ def run():
     except Exception as e:
         notes = [f"(notes failed: {e})"]; log(f"notes failed: {e}")
     try:                                               # 🪜 one note per pair per spike episode (keys ST| / ST32| in the notes state)
+        _stair_notes = list(_stair_notes) + list(_fz_notes)   # 🔥 FRENZY mismatches ride the same once-per-key notes
         if _stair_notes:
             _st = _load_notes_state(); _noted = _st.get("noted") or {}
             _new = [(k, ln) for k, ln in _stair_notes if k not in _noted]

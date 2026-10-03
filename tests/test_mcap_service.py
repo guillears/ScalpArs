@@ -86,4 +86,4 @@ def test_refresh_covers_frenzy_flagged_pairs_and_runs_after_the_frenzy_pass():
     import os
     eng = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services", "trading_engine.py"), encoding="utf-8").read()
     assert eng.count("_mcs.ensure_refresh(") == 1 and "_mcs.ensure_refresh(_mcap_pairs + list(_frenzy_flags))" in eng
-    assert eng.index("_mcap_pairs = [p.get('pair') for p in top_pairs]") < eng.index("await self._update_frenzy(db)") < eng.index("_mcs.ensure_refresh(")
+    assert eng.index("_mcap_pairs = [p.get('pair') for p in top_pairs]") < eng.index("await self._update_frenzy(db, wait=False)") < eng.index("_mcs.ensure_refresh(")

@@ -66,6 +66,7 @@ _scan_task = None
 _monitor_task = None
 _bnb_swap_task = None
 _nav_task = None
+_frenzy_task = None
 should_stop = False
 _scan_lock = asyncio.Lock()
 # 💰 Sep-21 — investor/NAV writes are read-modify-write across separate sessions, so two concurrent
@@ -193,6 +194,36 @@ async def scan_loop():
         await asyncio.sleep(scan_backoff)
 
 
+async def frenzy_loop():
+    """🔥 Oct-3 (DECISION_LOG 191): the FRENZY pass ~4 s after EVERY 5-minute close, in its own task — no longer only after the full
+    scan (60–120 s late; the backtest audit: that minute takes the FRENZY long from +0.35 to +0.09 %/trade). Opens stay protected by the
+    per-pair lock and the bot-wide open lane (BOT_OPEN_LANE: one bot open at a time, so slot / gross-room / sizing checks never race the
+    scan's opens). The scan's inline call remains as the fallback / retry pass and never waits for this one. Never stops on an error."""
+    global should_stop
+    await asyncio.sleep(15)   # post-deploy: let initialize() and the first scan start
+    logger.info("[FRENZY_LOOP] started — the FRENZY pass runs ~4 s after every 5-minute close")
+    while not should_stop:
+        try:
+            _now = time.time()
+            await asyncio.sleep(max(1.0, (int(_now // 300) + 1) * 300 + 4 - _now))
+            if should_stop:
+                break
+            _th = config.trading_config.thresholds
+            if not (getattr(_th, 'frenzy_long_enabled', False) or getattr(_th, 'frenzy_short_observe', False)):
+                continue
+            async with AsyncSessionLocal() as db:
+                await trading_engine.initialize(db)
+                if trading_engine.is_running:
+                    _t0 = time.time()
+                    if await trading_engine._update_frenzy(db):
+                        logger.info(f"[FRENZY_LOOP] pass done in {time.time() - _t0:.1f}s ({time.time() % 300:.0f}s into the bar)")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"[FRENZY_LOOP] error: {e}")
+            await asyncio.sleep(30)
+
+
 async def bnb_swap_loop():
     """Periodic loop to check BNB balance and auto-swap USDT to BNB for fee coverage."""
     global should_stop
@@ -257,7 +288,7 @@ async def nav_snapshot_loop():
 
 async def start_background_tasks():
     """Start background trading tasks"""
-    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, should_stop
     should_stop = False
     
     # Start WebSocket tracker for real-time price tracking
@@ -280,19 +311,20 @@ async def start_background_tasks():
     _scan_task = asyncio.create_task(scan_loop())
     _bnb_swap_task = asyncio.create_task(bnb_swap_loop())
     _nav_task = asyncio.create_task(nav_snapshot_loop())
-    logger.info("[STARTUP] Monitor, scan, BNB swap, and NAV snapshot loops started independently")
+    _frenzy_task = asyncio.create_task(frenzy_loop())   # 🔥 Oct-3: FRENZY at the bar close, not after the scan
+    logger.info("[STARTUP] Monitor, scan, BNB swap, NAV snapshot and FRENZY loops started independently")
 
 
 async def stop_background_tasks():
     """Stop background trading tasks"""
-    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, should_stop
     should_stop = True
 
     # Stop WebSocket tracker
     await websocket_tracker.stop()
     logger.info("[SHUTDOWN] WebSocket price tracker stopped")
 
-    for task in (_monitor_task, _scan_task, _bnb_swap_task, _nav_task):
+    for task in (_monitor_task, _scan_task, _bnb_swap_task, _nav_task, _frenzy_task):
         if task:
             task.cancel()
             try:

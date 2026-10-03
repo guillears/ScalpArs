@@ -177,7 +177,7 @@ def test_config_parity_and_every_surface():
 def test_engine_and_api_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert eng.count("frenzy_exit_for(") == 4                                             # sleeve: candle + realtime · MANUAL "Frenzy exit": candle + realtime
-    assert "await self._update_frenzy(db)" in eng and eng.count('"FRENZY_LONG" if _frenzy else f"SURGE_{direction}" if _surge') == 2
+    assert "await self._update_frenzy(db, wait=False)" in eng and eng.count('"FRENZY_LONG" if _frenzy else f"SURGE_{direction}" if _surge') == 2
     assert "_sg_pref = 'frenzy_long' if _frenzy else" in eng and 'cell_src = "FRENZY_LONG" if _frenzy else' in eng
     assert '"SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG")' in eng                           # no pair-EMA exit on a FRENZY fill
     assert "_frenzy_kill" not in eng and "frenzy_kill_verdict" not in eng                 # operator: no automatic off

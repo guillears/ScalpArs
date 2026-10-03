@@ -62,7 +62,7 @@ def test_both_open_paths_are_serialized_with_their_signatures_kept():
     params = inspect.signature(T.TradingEngine.open_position).parameters
     assert "pair" in params and "entry_gap_5_20_signed_pct" in params          # wraps() keeps the real signature
     src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert "    @serialized_per_pair()\n    async def open_position(" in src
+    assert "    @serialized_per_pair(lane=BOT_OPEN_LANE)\n    async def open_position(" in src   # Oct-3: + the bot-wide open lane
     assert "    @serialized_per_pair(normalize=normalize_manual_pair, wait_s=lambda: manual_open_wait_s(config.trading_config))\n    async def open_manual_position(" in src
     # the manual lock key is the order-row pair format, whatever the operator typed
     for raw in ("qnt", "QNT/USDT", "QNT/USDT:USDT", "QNTUSDT", " qntusdt "):

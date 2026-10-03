@@ -5277,3 +5277,13 @@ FRENZY with the Bull-Run TP + −3 % stop: −0.081 vs live +0.346 (Δ −0.43, 
 all negative on the year (E5 × +2/−3 −0.076, 0 of 9 months). His SAND / MOVR entries + a +2/−3 exit beat his own exits; mechanical entries do not.
 Manual modes BULLRUN (the sleeve's exit) and BULLRUN_SL (typed stop until the +1 % arm, then the Bull-Run profit side): dual review applied (live safety-stop
 clamp used the wrong mode for BULLRUN_SL; target-only edit of an armed BULLRUN_SL kept the pre-arm stop; Open Orders badge; 0 % stop refused). Suite 538.
+
+### (191) 2026-10-03 — 🔥⚡ FRENZY entry at the bar close (latency fix) + bot-wide open lane
+Why: the backtest audit (190) — the FRENZY pass ran only after the full scan, so FRENZY longs opened 60–120 s after the signal close (ENJ 79 s);
+that minute takes the backtest edge from +0.35 to +0.09 %/trade. Now main.frenzy_loop runs the pass ~4 s after every 5-minute close in its own task;
+the scan's inline call stays as a non-waiting fallback / retry pass (_update_frenzy(db, wait=False)); one pass at a time (lock).
+Concurrency made safe (both reviews): open_position now takes a bot-wide open lane (BOT_OPEN_LANE) before its pair lock — the slot count, gross room
+and sizing were read before the book lock (and in live the order is placed before it), so a FRENZY open and a scan open on different pairs could both
+take the last slot. Manual opens keep their own lane. Decision-journal pair / snapshot and the Block-Reason scope (_open_ctx_momentum) are task-local
+(ContextVar properties). Known: FRENZY entry stamps (BTC / breadth) now come from the previous scan (≤ 1 bar older) — compare eras with care.
+Expected latency ≈ 5–10 s (unmeasured on the year: 1-minute data only; read it from live fills: entry time − bar close). Tests: test_frenzy_fast_pass.py.

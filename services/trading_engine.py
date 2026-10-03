@@ -374,18 +374,31 @@ def book_changed_refusal(available_at_sizing, available_now, investment, is_pape
         return False
 
 
+# 📓 Oct-3 (DECISION_LOG 191): the decision-journal pair / snapshot are TASK-local. The FRENZY pass now runs in its own task at the bar
+# close (main.frenzy_loop) alongside the scan; a shared attribute would stamp one task's journal lines with the other task's pair.
+_JOURNAL_PAIR_CV: contextvars.ContextVar = contextvars.ContextVar("_journal_pair", default=None)
+_JOURNAL_CTX_CV: contextvars.ContextVar = contextvars.ContextVar("_journal_ctx", default=None)
+_OPEN_CTX_MOMENTUM_CV: contextvars.ContextVar = contextvars.ContextVar("_open_ctx_momentum", default=True)   # Block-Reason stamp scope, per task
+
 # 🔒 Sep-30 book lock releases still pending in the current open (released by serialized_per_pair's wrapper on any exit)
 _BOOK_HOLDS: contextvars.ContextVar = contextvars.ContextVar("_BOOK_HOLDS", default=None)
 
 
-def serialized_per_pair(normalize=None, wait_s=None):
+BOT_OPEN_LANE = "__BOT_OPEN_LANE__"   # 🔒 Oct-3 (DECISION_LOG 191): one BOT open at a time across pairs (see serialized_per_pair lane=)
+
+
+def serialized_per_pair(normalize=None, wait_s=None, lane=None):
     """🔒 Sep-30 ONE OPEN PER PAIR AT A TIME. open_position checks "pair already open?" early and inserts the order seconds
     later (exchange fill, zone-stamp kline read, …); open_manual_position does the same around its stamp reads. A second open
     of the same pair inside that window created TWO OPEN rows for one pair (deep review, reproduced) — and every later
     scalar_one_or_none() on that pair then raises. Both opens now hold the pair's lock from their check to their insert, so
     the second one sees the first one's row and refuses. Re-entrant per task: open_position's flip path re-enters
     open_position for the SAME pair inside the lock. wait_s = seconds to wait before giving up with a ValueError (a number or a
-    zero-argument callable read at call time); None = wait."""
+    zero-argument callable read at call time); None = wait.
+    lane (Oct-3, DECISION_LOG 191): a second, cross-pair lock taken BEFORE the pair lock (always that order → no deadlock), re-entrant
+    per task. open_position uses BOT_OPEN_LANE: the FRENZY pass now opens from its own task at the bar close while the scan opens too,
+    and open_position reads the slot count / gross room / sizing BEFORE the book lock (and in live places the order before it) — two
+    bot opens on different pairs could both pass "one slot left" (both reviews). Manual opens keep their own lane (pair lock only)."""
     def deco(fn):
         @functools.wraps(fn)
         async def wrapper(self, db, *args, **kwargs):
@@ -393,7 +406,10 @@ def serialized_per_pair(normalize=None, wait_s=None):
             key = normalize(raw) if normalize else raw
             holds = []; tok = _BOOK_HOLDS.set(holds)
             try:
-                async with self._pair_open_guard(key, wait_s() if callable(wait_s) else wait_s):
+                async with contextlib.AsyncExitStack() as _lanes:
+                    if lane is not None:
+                        await _lanes.enter_async_context(self._pair_open_guard(lane, None))
+                    await _lanes.enter_async_context(self._pair_open_guard(key, wait_s() if callable(wait_s) else wait_s))
                     try:
                         return await fn(self, db, *args, **kwargs)
                     finally:
@@ -2587,6 +2603,11 @@ def _compute_pattern_w_match(direction, rsi, adx, adx_delta, stretch,
 
 class TradingEngine:
     """Main trading engine that manages positions and executes trades"""
+
+    # 📓 task-local journal context (see _JOURNAL_PAIR_CV): every existing `self._journal_pair = …` / read keeps working unchanged
+    _journal_pair = property(lambda self: _JOURNAL_PAIR_CV.get(), lambda self, v: _JOURNAL_PAIR_CV.set(v))
+    _journal_ctx = property(lambda self: _JOURNAL_CTX_CV.get(), lambda self, v: _JOURNAL_CTX_CV.set(v))
+    _open_ctx_momentum = property(lambda self: _OPEN_CTX_MOMENTUM_CV.get(), lambda self, v: _OPEN_CTX_MOMENTUM_CV.set(v))
     
     def __init__(self):
         # Strong refs to fire-and-forget tasks (funding stamps) — asyncio only keeps weak refs,
@@ -6830,13 +6851,36 @@ class TradingEngine:
         except Exception as e:
             logger.error(f"[SURGE] trigger update failed: {e}")
 
-    async def _update_frenzy(self, db):
+    async def _update_frenzy(self, db, wait=True):
+        """🔥 Oct-3 (DECISION_LOG 191): ONE pass at a time. Two callers — the dedicated bar-close task (main.frenzy_loop, ~4 s after every
+        5-minute close) and the scan's inline call (kept as the fallback / retry pass). The second caller waits, then finds the bar already
+        judged and returns (or runs one of the ≤ 2 retry passes for pairs that could not be read). Why: the inline call ran only AFTER the
+        full scan, 60–120 s after the close, and the backtest audit showed that minute takes the FRENZY long from +0.35 to +0.09 %/trade
+        (BACKTEST_AUDIT_FRENZY_2026-10-03.md). Never raises."""
+        loop = asyncio.get_running_loop()
+        held = getattr(self, '_frenzy_pass_lock_state', None)
+        if held is None or held[0] is not loop:
+            held = (loop, asyncio.Lock())
+            self._frenzy_pass_lock_state = held
+        if not wait and held[1].locked():   # the scan's fallback call: the bar-close task is on it — never hold the scan behind it
+            return False
+        try:
+            async with held[1]:
+                _p0 = (_frenzy_status.get('pass_bar'), _frenzy_status.get('passes'))
+                await self._update_frenzy_pass(db)
+                return (_frenzy_status.get('pass_bar'), _frenzy_status.get('passes')) != _p0   # True = a pass actually ran
+        except Exception as e:
+            logger.error(f"[FRENZY] pass failed: {e}")
+            return False
+
+    async def _update_frenzy_pass(self, db):
         """🔥 FRENZY (DECISION_LOG 176): once per CLOSED 5m bar — shortlist (pairs up ≥ frenzy_shortlist_change_pct in 24 h with ≥
         frenzy_min_volume_usd, plus pairs already flagged), rebuild each pair's spike episode from a fresh 1500-bar window
         (services.frenzy.frenzy_walk), keep the FLAGGED ones in _frenzy_flags, record EMA50 / EMA200 breaks as short observations, and
         open FRENZY_LONG on the bar where the long setup turns on. The same pre-filters as the scan universe apply (new listings,
         Alpha tier, non-COIN perps, blacklists) but NOT the Top-N cut — a flagged pair is followed whatever its volume rank.
-        Runs inline in the scan so its opens never race the scan's own: ~0.5 s per shortlisted pair (the exchange client serialises
+        Runs from the bar-close task (main.frenzy_loop) and, as a fallback / retry, inline in the scan — one pass at a time (_update_frenzy);
+        its opens and the scan's are serialised by open_position's BOT_OPEN_LANE (slot / gross / sizing checks never race). ~0.5 s per shortlisted pair (the exchange client serialises
         the kline reads), typically 5–10 s once per 5 minutes, ~30 s at the 40-pair cap right after a deploy. Exits are not held:
         the monitor loop and the websocket path are separate tasks. Never raises."""
         try:
@@ -7951,7 +7995,7 @@ class TradingEngine:
             logger.info(f"[SPIKE_SCANNER] cycle done: {_checked} extended-universe pairs checked, {_fired} probe fires")
     # ===== SPIKE SCANNER END =====
 
-    @serialized_per_pair()
+    @serialized_per_pair(lane=BOT_OPEN_LANE)
     async def open_position(
         self,
         db: AsyncSession,
@@ -13733,7 +13777,7 @@ class TradingEngine:
         # ⚡ Sep-30 SURGE: the BTC spike / dump trigger for this scan (never raises)
         await self._update_surge_triggers(db)
         # 🔥 Oct-2 FRENZY: flags + long entries + short observations, once per closed 5m bar (never raises)
-        await self._update_frenzy(db)
+        await self._update_frenzy(db, wait=False)   # 🔥 Oct-3: fallback / retry pass only — the bar-close task (main.frenzy_loop) runs it first
         try:   # 💰 Sep-28: background market-cap refresh when due (fire-and-forget, never blocks the scan). Oct-2: AFTER the FRENZY
             # pass and including its flagged pairs — a flagged pair outside the Top-N had no market cap (APE), and the first
             # refresh after a deploy would otherwise run before the flags are rebuilt and leave them blank for 30 minutes.

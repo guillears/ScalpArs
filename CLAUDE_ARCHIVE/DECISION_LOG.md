@@ -5287,3 +5287,7 @@ and sizing were read before the book lock (and in live the order is placed befor
 take the last slot. Manual opens keep their own lane. Decision-journal pair / snapshot and the Block-Reason scope (_open_ctx_momentum) are task-local
 (ContextVar properties). Known: FRENZY entry stamps (BTC / breadth) now come from the previous scan (≤ 1 bar older) — compare eras with care.
 Expected latency ≈ 5–10 s (unmeasured on the year: 1-minute data only; read it from live fills: entry time − bar close). Tests: test_frenzy_fast_pass.py.
+- (191 follow-up, lane review + dual review): FRENZY lateness re-checked inside open_position right before the order path (a FRENZY open can wait for
+  the bot lane behind a scan open) → refused as FRENZY_LATE with its own reason; price-moved refusals report their reason too; the per-fill 1h kline read
+  (8 s) and the SURGE / FRENZY fresh-book read (5 s) are bounded because the lane is held there. Tests: nested lane opens never hang, manual opens run
+  alongside, _update_frenzy reports whether a pass ran.

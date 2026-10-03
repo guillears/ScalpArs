@@ -108,3 +108,58 @@ def test_bot_open_lane_serialises_bot_opens_across_pairs():
         return await asyncio.gather(e.open_position(None, pair="AINUSDT"), e.open_position(None, pair="SANDUSDT"), e.manual(None, pair="MOVRUSDT"))
 
     assert asyncio.run(main()) == ["AINUSDT", "SANDUSDT", "MOVRUSDT"] and state["max"] == 1
+
+
+def test_nested_bot_opens_never_hang_and_manual_runs_alongside():
+    """Lane review: a lane holder re-entering open_position (same pair = the flip path, or another pair) must not deadlock; manual opens
+    do not wait for the bot lane."""
+    log = []
+
+    class _E:
+        _pair_open_guard = T.TradingEngine._pair_open_guard
+
+        @T.serialized_per_pair(lane=T.BOT_OPEN_LANE)
+        async def open_position(self, db, pair, depth=0):
+            log.append(("bot+", pair)); await asyncio.sleep(0.03)
+            if depth == 0:
+                await self.open_position(None, pair=pair, depth=1)            # flip-style re-entry, same pair
+                await self.open_position(None, pair="OTHERUSDT", depth=1)     # another pair from inside the lane
+            log.append(("bot-", pair))
+
+        @T.serialized_per_pair()
+        async def manual(self, db, pair):
+            log.append(("man+", pair)); await asyncio.sleep(0.01); log.append(("man-", pair))
+
+    e = _E()
+
+    async def main():
+        await asyncio.wait_for(asyncio.gather(e.open_position(None, pair="AINUSDT"), e.manual(None, pair="SANDUSDT")), 2.0)
+
+    asyncio.run(main())
+    i_man_end = log.index(("man-", "SANDUSDT")); i_bot_end = max(i for i, x in enumerate(log) if x == ("bot-", "AINUSDT"))
+    assert i_man_end < i_bot_end                                   # the manual open finished while the bot open still held the lane
+
+
+def test_update_frenzy_reports_whether_a_pass_ran(monkeypatch):
+    eng = _eng()
+    monkeypatch.setattr(T, "_frenzy_status", {"pass_bar": None, "passes": 0})
+
+    async def real_pass(db):
+        T._frenzy_status["pass_bar"] = 123; T._frenzy_status["passes"] = int(T._frenzy_status.get("passes") or 0) + 1
+
+    async def done_pass(db):
+        return None                                               # the bar was already judged: nothing changes
+
+    eng._update_frenzy_pass = real_pass
+    assert asyncio.run(eng._update_frenzy(None)) is True
+    eng._update_frenzy_pass = done_pass
+    assert asyncio.run(eng._update_frenzy(None)) is False
+
+
+def test_frenzy_lateness_rechecked_inside_the_open():
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert "frenzy_long=True, frenzy_bar_open_ms=bar_open," in eng
+    assert "if _frenzy and frenzy_bar_open_ms is not None:" in eng and "_fz_late2 > FRENZY_ENTRY_MAX_LATE_S" in eng
+    assert eng.index("_fz_late2 > FRENZY_ENTRY_MAX_LATE_S") < eng.index("binance_order_id = None")   # before the order path (deep review)
+    assert "if not order and not _why:" in eng and "self._frenzy_open_refusal = None" in eng   # a late refusal is reported as such, counted once
+    assert "await asyncio.wait_for(binance_service.get_ohlcv(f\"{pair[:-4]}/USDT:USDT\", '1h', 260), 8.0)" in eng

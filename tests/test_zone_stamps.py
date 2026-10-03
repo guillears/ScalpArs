@@ -42,7 +42,8 @@ def test_observe_only_and_parity():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
     assert eng.count("entry_pair_1h_ema20_200_gap_pct=_z_pair_gap") == 1 and "get_ohlcv('ETH/USDT:USDT', '5m', 5)" in eng
     # deep review B3: the per-fill pair fetch sits AFTER the exchange order (between the fill and the Order row)
-    assert eng.index("'1h', 260), 20, 200)") > eng.index("binance_order_id = None") and eng.index("'1h', 260), 20, 200)") < eng.index("        order = Order(\n            binance_order_id=binance_order_id,")
+    _z = "'1h', 260), 8.0), 20, 200)"   # Oct-3: the read is bounded (the bot open lane is held there)
+    assert eng.index(_z) > eng.index("binance_order_id = None") and eng.index(_z) < eng.index("        order = Order(\n            binance_order_id=binance_order_id,")
     assert "entry_btc_ema50_100_gap_pct=_g.get('_current_btc_ema50_100_gap_pct')" in eng and "put('entry_btc_1d_ret_pct'" in eng
     assert eng.count("getattr(config.trading_config, 'entry_zone_stamps_enabled', True)") == 2   # scan block + open_position only
     # observe-only: no line that touches a zone reading is a gate / sizing / signal statement

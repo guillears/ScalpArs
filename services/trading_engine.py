@@ -7129,13 +7129,14 @@ class TradingEngine:
             _pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if (indicators and indicators.get('avg_volume')) else None
             logger.warning(f"[FRENZY_LONG] {pair}: setup ON {flag.get('hours') or 0:.1f} h after the spike ({flag.get('vs_vwap_pct') or 0:+.1f}% vs its average "
                            f"price, volume {flag.get('vol_mult') or 0:.0f}× normal, ATR {('%.2f%%' % atr) if atr is not None else 'unreadable'}) → opening")
+            self._frenzy_open_refusal = None
             order = await self.open_position(
                 db=db, pair=pair, direction="LONG", confidence="STRONG_BUY", current_price=price,
                 entry_rsi=(indicators or {}).get('rsi'), entry_adx=(indicators or {}).get('adx'),
                 entry_atr_pct=(round(atr, 4) if atr is not None else None), entry_pair_volume_24h_usd=flag.get('volume_24h'), entry_pair_rank=None,
                 entry_bull_pct=_g.get('_market_bull_pct'), entry_bear_pct=_g.get('_market_bear_pct'),
                 entry_global_volume_ratio=_g.get('_global_volume_ratio'), entry_pair_volume_ratio=_pvr,
-                frenzy_long=True, entry_frenzy_spike_at=datetime.utcfromtimestamp(flag['spike_ts'] / 1000),
+                frenzy_long=True, frenzy_bar_open_ms=bar_open, entry_frenzy_spike_at=datetime.utcfromtimestamp(flag['spike_ts'] / 1000),
                 entry_frenzy_hours=round(flag['hours'], 2), entry_frenzy_vwap=flag['vwap'],
                 entry_frenzy_vs_vwap_pct=(round(flag['vs_vwap_pct'], 3) if flag.get('vs_vwap_pct') is not None else None),
                 entry_frenzy_vol_mult=round(flag['vol_mult'], 1), entry_frenzy_run_pct=round(flag['run_pct'], 2),
@@ -7144,8 +7145,9 @@ class TradingEngine:
                 entry_frenzy_di_spread=flag.get('di_spread'),
                 **self._sanitize_open_kwargs(_ef, "FRENZY_LONG", "LONG"),
             )
-            flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} " + ("opened" if order else "refused by the open path (slots / balance / cooldown / price moved)")
-            if not order:
+            _why = getattr(self, '_frenzy_open_refusal', None)
+            flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} " + ("opened" if order else (f"refused: {_why}" if _why else "refused by the open path (slots / balance / cooldown / price moved)"))
+            if not order and not _why:   # a late refusal is already counted as FRENZY_LATE (caveman review: no double count)
                 self._record_filter_block("FRENZY_OPEN_REFUSED", "LONG")
         except Exception as e:
             logger.error(f"[FRENZY_LONG] {pair}: open failed: {e}")
@@ -8114,6 +8116,7 @@ class TradingEngine:
         # Tagged FRENZY_LONG; rides the SURGE open path (every alt entry filter and pattern cell bypassed, direct taker, dislocation
         # guard) with its own size (frenzy_long_invest_mult × frenzy_long_lev_mult, absolute-assign) and its own exit (frenzy_exit_for).
         frenzy_long: bool = False,
+        frenzy_bar_open_ms: Optional[int] = None,   # 🔥 Oct-3: the signal bar's open — lateness re-checked AFTER the bot open lane
         entry_frenzy_spike_at: Optional[datetime] = None,
         entry_frenzy_hours: Optional[float] = None,
         entry_frenzy_vwap: Optional[float] = None,
@@ -9397,10 +9400,18 @@ class TradingEngine:
         # fill — the spike 18/18-taker-fallback lesson) + the Bull-Run dislocation guard (57f) on the LIVE price vs the decision price:
         # a book that ran > surge_max_entry_dislocation_pct away is skipped, not chased. Paper fills at that live price.
         _sg_live_px = None
+        if _frenzy and frenzy_bar_open_ms is not None:   # 🔥 Oct-3 (lane review), just before the order path: _frenzy_open judged lateness BEFORE waiting for the
+            _fz_late2 = (_leash_time.time() * 1000 - int(frenzy_bar_open_ms)) / 1000.0   # bot open lane — a scan open can hold it 15–45 s
+            if _fz_late2 > FRENZY_ENTRY_MAX_LATE_S:
+                self._record_filter_block("FRENZY_LATE", direction)
+                self._frenzy_open_refusal = f"reached the order {_fz_late2:.0f}s after the bar closed (max {FRENZY_ENTRY_MAX_LATE_S}s)"   # read by _frenzy_open
+                logger.warning(f"[FRENZY_LONG] {pair}: reached the order {_fz_late2:.0f}s after the bar closed (waited for another bot open) — "
+                               f"skipped (max {FRENZY_ENTRY_MAX_LATE_S}s)")
+                return None
         if _surge:
             maker_enabled = False
             try:   # the fresh book: WS trackers exist only for pairs already held, and a SURGE pair never is (PAIR_HELD)
-                _sg_ob = await binance_service.fetch_orderbook(pair.replace('USDT', '/USDT:USDT'))
+                _sg_ob = await asyncio.wait_for(binance_service.fetch_orderbook(pair.replace('USDT', '/USDT:USDT')), 5.0)   # bounded: the bot open lane is held
                 _sg_live_px = float(_sg_ob['best_ask'] if direction == 'LONG' else _sg_ob['best_bid']) if _sg_ob else None
             except Exception:
                 _sg_live_px = None
@@ -9413,6 +9424,8 @@ class TradingEngine:
             _sg_max = float(getattr(config.trading_config.thresholds, 'frenzy_max_entry_dislocation_pct' if _frenzy else 'surge_max_entry_dislocation_pct', 0) or 0) or None
             if _sg_live_px and bullrun_disloc_exceeded(_sg_max, current_price, _sg_live_px):
                 self._record_filter_block("FRENZY_DISLOC" if _frenzy else "SURGE_DISLOC", direction)
+                if _frenzy:
+                    self._frenzy_open_refusal = f"price moved {abs(_sg_live_px - current_price) / current_price * 100:.2f}% before the order (max {_sg_max}%)"
                 logger.warning(f"[{'FRENZY' if _frenzy else 'SURGE'}_DISLOC] {pair} {direction}: entry aborted — live {_sg_live_px} is "
                                f"{abs(_sg_live_px - current_price) / current_price * 100:.2f}% from decision {current_price} (max {_sg_max}%)")
                 return None
@@ -9652,7 +9665,7 @@ class TradingEngine:
         _z_pair_gap = None
         try:
             if bool(getattr(config.trading_config, 'entry_zone_stamps_enabled', True)) and isinstance(pair, str) and pair.endswith('USDT'):
-                _z_pair_gap = closed_ema_gap_pct(await binance_service.get_ohlcv(f"{pair[:-4]}/USDT:USDT", '1h', 260), 20, 200)
+                _z_pair_gap = closed_ema_gap_pct(await asyncio.wait_for(binance_service.get_ohlcv(f"{pair[:-4]}/USDT:USDT", '1h', 260), 8.0), 20, 200)   # bounded: the bot open lane is held here (review)
         except Exception:
             _z_pair_gap = None
         _zg = globals(); _zfresh = (_leash_time.time() - (_zg.get('_zone_stamps_at') or 0)) <= 1800

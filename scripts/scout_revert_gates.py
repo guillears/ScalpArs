@@ -20,10 +20,10 @@ GATES (frozen definitions — quoted from CLAUDE_CURRENT_STATE.md / DECISION_LOG
                    that group ≤ 0 → LONG off.
   BEARRUN (200)    windows (fills ≤ 180 min apart = one window) started after 2026-10-04 22:00 UTC: ≥ 5 windows, ≥ 3 positive ∧ Σ > 0 →
                    ARM bar met (bearrun_lev_mult 1.0) — a positive event, not a revert.
-  LOADX (126)      first 8 PAIR_RSI_MOMENTUM_LOADX-blocked LONG signals (journal FAILS lines whose COMPLETE fail set is LOADX alone,
+  LOADX (126)      first 30 (extended from 8 on 2026-10-04, operator) PAIR_RSI_MOMENTUM_LOADX-blocked LONG signals (journal FAILS lines whose COMPLETE fail set is LOADX alone,
                    rank ≤ 10 pairs excluded = mega-cap gate), WINDOW units (one 5-min journal bucket = one scan = one window, value =
                    mean) → WR ≥ 60 % ∨ net > 0 → long_rsi_momentum_adx_max 0.
-  HEAT (116)       first 6 LONG_HEAT_BLOCK fires re-priced → WR ≥ 60 % → legs back to 0.07 / 64 / 80 (second leg — the Jan–Jun
+  HEAT (116)       first 30 (extended from 6 on 2026-10-04, operator) LONG_HEAT_BLOCK fires re-priced → WR ≥ 60 % → legs back to 0.07 / 64 / 80 (second leg — the Jan–Jun
                    engine replay failing the expectancy bar — is manual).
   MEGACAP (110)    LONG_MEGACAP_BLOCK refusals re-priced → ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows → long_megacap_rank_max 0.
 
@@ -70,7 +70,9 @@ SURGE_R72_MAX = 2.7
 # (commit, fallback UTC push time) — deploy = push + 10 min
 DEPLOYS = {"FRENZY_TP3": ("2e36c26", "2026-10-04 19:23:15"), "FRENZY_STRONG": ("181131e", "2026-10-04 14:06:09"),
            "FRENZY_GVOL": ("0d79904", "2026-10-03 22:14:13")}
-SHIPS = {"HEAT": "2026-09-25", "LOADX": "2026-09-29", "MEGACAP": "2026-09-23"}   # ship dates (journal coverage notes)
+SHIPS = {"HEAT": "2026-09-25", "LOADX": "2026-09-29", "MEGACAP": "2026-09-23"}
+# Oct-4 operator: "keep collecting" → trackers extended to 30; (new N, frozen N, frozen verdict) — the frozen first-N verdict stays on record
+EXT_N = {"LOADX": (30, 8, "FIRED (fragile at t+5m)"), "HEAT": (30, 6, "FIRED (6/6 won)")}   # ship dates (journal coverage notes)
 
 
 def log(msg):
@@ -705,7 +707,7 @@ def gate_first_n_signals(code, J, st, n, wr_min, mode, btc, budget, now_ms, need
     kw = dict(or_sum_pos=(mode == "or"), need_sum_pos=(mode == "and"))
     state, wr, s = decide_first_n(v1, n, wr_min, **kw)
     state5 = decide_first_n(v5, n, wr_min, **kw)[0] if len(v5) >= n else None
-    G.update(progress=prog, detail=_sig_detail(items), priced=_priced_txt(items))
+    G.update(progress=prog, detail=_sig_detail(items, len(items) if windows else max(8, n)), priced=_priced_txt(items))
     if state != "collecting" and not all_final:
         G["provisional"] = state
         state = "collecting"
@@ -871,9 +873,9 @@ DEFS = {
                    "∧ rest ≤ 0 → normal size for that group; group ≤ 0 → LONG off", "set surge_long_enabled false", "surge_long_lev_mult"),
     "BEARRUN": ("🐻 BEARRUN probe arm bar (200)", "≥ 5 windows started after 10-04 22:00 with fills, ≥ 3 positive ∧ Σ > 0 (positive event)",
                 "set bearrun_lev_mult 1.0", "bearrun_lev_mult"),
-    "LOADX": ("🧭 LOADX gate (126)", "first 8 LOADX-only refused LONG signals (journal FAILS, rank ≤ 10 excluded), WINDOW units: WR ≥ 60 % ∨ net > 0",
+    "LOADX": ("🧭 LOADX gate (126)", "first 30 LOADX-only refused LONG signals (journal FAILS, rank ≤ 10 excluded), WINDOW units: WR ≥ 60 % ∨ net > 0 · extended from 8 on 10-04 (first 8 had FIRED, fragile at t+5m)",
               "set long_rsi_momentum_adx_max 0", "long_rsi_momentum_adx_max"),
-    "HEAT": ("🫧 Heat re-scope (116)", "first 6 LONG_HEAT_BLOCK fires re-priced: WR ≥ 60 % (2nd leg — Jan–Jun replay expectancy — manual)",
+    "HEAT": ("🫧 Heat re-scope (116)", "first 30 LONG_HEAT_BLOCK fires re-priced: WR ≥ 60 % (2nd leg — Jan–Jun replay expectancy — manual) · extended from 6 on 10-04 (first 6 had FIRED, 6/6 won)",
              "legs back to long_heat_btc_slope_min 0.07 · long_heat_btc_rsi_prev_min 64 · long_heat_bull_pct_min 80", "long_heat_bull_pct_min"),
     "MEGACAP": ("🏦 Mega-cap exclusion (110)", "LONG_MEGACAP_BLOCK refusals re-priced: ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows",
                 "set long_megacap_rank_max 0", "long_megacap_rank_max"),
@@ -936,7 +938,8 @@ def run_section(now_ms=None, noted=None, record_notes=True):
     except Exception as e:
         log(f"btc: {e}")
     budget = Budget(PRICE_BUDGET_S)
-    sig_specs = [("CHOP_BURST", 6, 50.0, "or", None, False), ("LOADX", 8, 60.0, "or", ranks, True), ("HEAT", 6, 60.0, "wr", ranks, False)]
+    sig_specs = [("CHOP_BURST", 6, 50.0, "or", None, False), ("LOADX", EXT_N["LOADX"][0], 60.0, "or", ranks, True),
+                 ("HEAT", EXT_N["HEAT"][0], 60.0, "wr", ranks, False)]
     # phase 1 — which tick days do the unpriced items need? fetch them once
     need = set()
     for code, n, wr, mode, rk, win in sig_specs:
@@ -1024,9 +1027,11 @@ def run_section(now_ms=None, noted=None, record_notes=True):
         title, d, action, ck = DEFS[code]
         stt = _status_text(code, state, G)
         cv = cfg_value(ck)
-        L.append(f"| {title} | {d} | {G.get('progress', '–')} | {stt} | {ck} = {cv if cv is not None else '–'} | {cov.get(code, '–')} |")
+        shown = (f"first {EXT_N[code][1]} (frozen gate): {EXT_N[code][2]} · first {EXT_N[code][0]} (extension): {stt}"
+                 if code in EXT_N and state not in ("nodata", "error") else stt)
+        L.append(f"| {title} | {d} | {G.get('progress', '–')} | {shown} | {ck} = {cv if cv is not None else '–'} | {cov.get(code, '–')} |")
         if state in ("fired", "armbar", "arm_group"):
-            k = f"RG|{code}|{state}"
+            k = f"RG|{code}|n{EXT_N[code][0]}|{state}" if code in EXT_N else f"RG|{code}|{state}"   # N in the key: the frozen-N alert must not mute the extension
             if k not in noted and k not in G.get("noted", []):
                 notes.append((k, f"🔔 Revert gate {title}: {stt[2:].strip()} — {G.get('progress', '')}"))
                 if record_notes:
@@ -1111,6 +1116,8 @@ def selftest():
     chk(_is_final(["tick"], 0, 1) and not _is_final(["1m"], 0, 1) and _is_final(["1m"], 0, FINAL_AFTER_MS + 1), "final rule")
     # status text / notes are once per gate-state
     chk(_status_text("CHOP_BURST", "fired", {}).startswith("🔔 FIRED → set long_chop_burst_block_enabled false"), "status text")
+    chk(EXT_N["LOADX"][0] == 30 and EXT_N["HEAT"][0] == 30, "extension: trackers at 30")
+    chk(f"RG|HEAT|n{EXT_N['HEAT'][0]}|fired" != "RG|HEAT|fired", "extension: note key differs from the frozen-N key")
     print(f"selftest OK — {ok} checks")
 
 

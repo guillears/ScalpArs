@@ -7950,14 +7950,16 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         _closed_w = [w for w in reversed(bearrun_periods) if w.get('end') and (w.get('fills', 0) - w.get('open_fills', 0)) > 0]
         _w_signs = [(w['net'] or 0) > 0 for w in _closed_w]
         if _bear_lev < 1.0:
-            _first3 = _w_signs[:3]
-            _sum3 = sum((w['net'] or 0) for w in _closed_w[:3])
-            if len(_first3) >= 3:
-                _ok = (sum(_first3) >= 2 and _sum3 > 0)
-                _bear_gate = (f"🟢 ARM BAR MET — first 3 windows {sum(_first3)}/3 positive · ${_sum3:+.0f} → set bearrun_lev_mult 1.0 (manual)" if _ok
-                              else f"⚪ arm bar NOT met — first 3 windows {sum(_first3)}/3 positive · ${_sum3:+.0f} (bar: ≥2 ∧ Σ>0) → stays 1× probe; review the windows")
+            # 🐻 Oct-4 (DECISION_LOG 200): RE-PROBE — the arm bar counts ONLY windows that started after the re-probe (2026-10-04 22:00 UTC;
+            # the Sep windows already failed it in the replays) — ≥ 5 closed windows with fills, ≥ 3 positive ∧ Σ > 0 → bearrun_lev_mult 1.0 (manual).
+            _fresh = [w for w in _closed_w if str(w.get('start') or '') >= '2026-10-04T22:00']
+            _pos = sum(1 for w in _fresh if (w['net'] or 0) > 0); _sumf = sum((w['net'] or 0) for w in _fresh)
+            if len(_fresh) >= 5:
+                _ok = (_pos >= 3 and _sumf > 0)
+                _bear_gate = (f"🟢 ARM BAR MET — {len(_fresh)} probe windows since the 10-04 re-probe, {_pos} positive · ${_sumf:+.0f} → set bearrun_lev_mult 1.0 (manual)" if _ok
+                              else f"⚪ arm bar NOT met — {len(_fresh)} probe windows, {_pos} positive · ${_sumf:+.0f} (bar: ≥3 positive ∧ Σ>0) → stays 1× probe")
             else:
-                _bear_gate = f"1× PROBE (lev ×{_bear_lev:g}) · arm bar: {len(_first3)}/3 windows scored, {sum(_first3)} positive · ${_sum3:+.0f} (bar: ≥2 of first 3 ∧ Σ>0)"
+                _bear_gate = f"1× PROBE (lev ×{_bear_lev:g}) since the 10-04 re-probe · arm bar: {len(_fresh)}/5 windows, {_pos} positive · ${_sumf:+.0f} (bar: ≥3 of ≥5 ∧ Σ>0)"
         else:
             # Kill bar reads the LIFETIME first 10 closed fills (unfiltered query — the dashboard's regime/window
             # filters must never fake or hide the bar; same rule as the bull-run twin). Falls back to the view on error.

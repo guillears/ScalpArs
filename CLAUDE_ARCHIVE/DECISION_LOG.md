@@ -5394,3 +5394,18 @@ Operator chose +3/−3 (tie on expectancy, +7 pts win rate → shorter losing st
 momentum-long engine replay is unaffected (it runs the bot's own P&L). Per-sleeve split (FRENZY +4/−2, WIDE +6/−3) pre-registered as an idea
 for the 40-fill review, not shipped. 🔒 REVERT: first 20 FRENZY + WIDE fills under +3 re-priced with +4/−3 on ticks — +4 beats it on average → 4.
 
+### (200) 2026-10-04 — 🐻⚡ SURGE_SHORT OFF · SURGE_LONG and BEARRUN_SHORT to probe size (0.05 → 1×) — operator, on the deep review
+Review (reports/SURGE_BEARRUN_REVIEW_2026-10-04.md, scripts/surge_bearrun_review.py): SURGE rebuilt on REAL TICKS from the bot's own trigger /
+pick / exit code (live 10-02 triggers reproduced 20/20 and 19/20; the SAND short fill exactly; 240/248 yr5 fills matched). SURGE_SHORT 146 triggers
+· 70 % won · −0.094 %/trigger [−0.18, −0.00], both halves −, no entry edge vs refused / no-dump controls, no exit of 37 with CI > 0 (needs 75 % wins,
+gets 70 %). SURGE_LONG 67 triggers · −0.031 [−0.41, +0.38]. BEARRUN (yr4 + yr5 engine replays) 7 windows · −0.24/window, 3/7 +; 0 live fills since
+ship. The design studies' +0.2 came from 1-minute-candle scoring (≈ +0.25–0.28 artefact vs ticks) and, for longs, untradeable pairs (Alpha /
+< 90 days). Sleeve-kill checklist ①–④ run on the replica (sweep_separators.py cannot read these sleeves); nothing rescues SURGE_SHORT.
+Lesson: for minute-scale exits only tick-level backtests count. Shipped: surge_short_enabled false · surge_long_lev_mult 0.05 · bearrun_lev_mult 0.05.
+🔒 SURGE_SHORT reopen: a new design passing on the tick replica (≥ 20 triggers, per-trigger CI > 0, both halves +, beats the no-trigger control).
+🔒 SURGE_LONG probe test (frozen): BTC 3-day return ≤ +2.7 % at the trigger bar (+0.51/trigger on 22, luck 21 %) — after ≥ 8 windows with fills:
+that group mean > 0 with CI > 0 and the rest ≤ 0 → normal size for that group only; that group ≤ 0 → LONG off.
+🔒 BEARRUN probe: ≥ 5 windows (started after 2026-10-04 22:00 UTC) with fills, ≥ 3 positive ∧ Σ > 0 → bearrun_lev_mult 1.0; kill bar unchanged.
+Master: only B16 changes (SAND short removed) −$1,129 → −$906. Review fixes: the Bear-Run arm bar now counts only post-re-probe windows; a blank
+Bear-Run Lev field saves the 0.05 floor (was 1.0 = 20×). Reload open dashboard tabs after the deploy before saving.
+

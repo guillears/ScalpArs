@@ -23949,7 +23949,7 @@
                     bearrun_breadth_min: (function(){ const v = String(document.getElementById('config-be-breadth-min')?.value ?? '').trim(); return v === '' ? 40.0 : safeFloat(v); })(),  // explicit 0 = floor off
                     bearrun_pair_spacing_hours: (function(){ const v = String(document.getElementById('config-be-spacing-hours')?.value ?? '').trim(); return v === '' ? 2.0 : safeFloat(v); })(),  // explicit 0 = spacing off
                     bearrun_invest_mult: safeFloat(document.getElementById('config-be-invest-mult')?.value || 1.0),
-                    bearrun_lev_mult: safeFloat(document.getElementById('config-be-lev-mult')?.value || 1.0),
+                    bearrun_lev_mult: (function(){ const v = String(document.getElementById('config-be-lev-mult')?.value ?? '').trim(); const x = v === '' ? 0.05 : safeFloat(v); return (x > 0) ? x : 0.05; })(),   // blank / 0 → the 0.05 probe floor (review: blank used to save 1.0 = 20×)
                     bearrun_window_merge_minutes: (function(){ const v = String(document.getElementById('config-be-merge-min')?.value ?? '').trim(); return v === '' ? 180 : safeFloat(v); })(),  // explicit 0 = no merge
                     bearrun_bypass_gates: String(document.getElementById('config-be-bypass-gates')?.value ?? '').trim().toUpperCase(),  // blank = sleeve inert (deliberate)
                     bearrun_pair_blacklist: String(document.getElementById('config-be-blacklist')?.value ?? '').trim().toUpperCase(),  // blank = none

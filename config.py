@@ -2118,6 +2118,27 @@ class SignalThresholds(BaseModel):
     # BTC/ETH (rank 1-2) would enter as MAJORS_PROBE despite this gate (off today). ⚠ EVIDENCE SIGN rests on ONE fill: the 9
     # pre-B12 fills were 5W/4L·+$89; B12's XRP −$220 turned the cohort negative (avg% was already negative in every era but B2).
     long_megacap_rank_max: int = 0
+    # 🌀👥 Oct-4 MOMENTUM-LONG CHOP ∧ BURST BLOCK (operator ARMED override — the analysis recommended KEEP OBSERVING; DECISION_LOG 201;
+    # evidence reports/ML_CHOP_BURST_DEEP_2026-10-04.md). Refuse a MOMENTUM long (UNMATCHED + CALM3D doors + CROSS_OB / ADX-surge
+    # admits; every sleeve / probe / spike / flip / bull-run / MANUAL exempt — same guard as the heat / mega-cap blocks) when BTC's
+    # 72 h trend efficiency (bull-run monitor eff, 3-dp truncated = entry_btc_eff72) ≤ long_chop_burst_eff72_max AND another bot
+    # fill (non-MANUAL, non-*_PROBE, open or closed) opened ≤ long_chop_burst_window_s before this decision (= sub-line A, the
+    # 2nd+ fill of a burst in a directionless tape). Evidence: yr4 engine replay (3 seeds, Jan-04→Oct-03) CHOP∧2nd+ 13.7/seed/yr
+    # on 14 days · 12 episodes · 34% WR (ML breakeven 67%) · −0.41 %/trade; block Δ +0.008 %/trade on the sleeve [CI −0.000,
+    # +0.016], shuffled-label null p 0.03; negative in both halves, every seed, every LOMO fold and every sensitivity cell
+    # (eff 0.005–0.015 × 60–300 s). Master (in-sample): LIT Jul-10 BASE −$112, WLD Oct-1 B15 −$283 (2 fills, 0 W). Below the
+    # expectancy bar (N 13.7 < 15/seed, CI touches 0, carries 36 % < 50 % of the chop tier's loss; yr4 shares the tape the 0.007
+    # line came from) → DECLARED OVERRIDE. Mechanism: several alts pop together on a BTC jolt inside a flat 72 h tape and
+    # mean-revert together (stop-loss exits 59 % vs 34 %). Haircut 30–50 % → ≈ +0.004–0.005 %/trade, ≈ 1 refused fill a month.
+    # Fail-OPEN on a stale/unknown eff72 or an unreadable prior-fill gap. The gap is measured at the entry DECISION (the analysis
+    # measured opened_at→opened_at; this fill's opened_at lands seconds later → marginally more blocking at the 120 s edge).
+    # Counter LONG_CHOP_BURST (Top Pairs block reason + Filter Blocks). Stamp entry_chop_burst_prior_fill_s on every momentum
+    # fill. Builder parity: build_master_pool.py CHOP_BURST (frozen 0.007 / 120). Code default OFF; trading_config.json ON.
+    # 🔒 PRE-COMMITTED REVERT: the first 6 refused signals ([LONG_CHOP_BURST] log lines: pair, px, time) re-priced with the
+    # live momentum-long exit replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false.
+    long_chop_burst_block_enabled: bool = False
+    long_chop_burst_eff72_max: float = 0.007
+    long_chop_burst_window_s: float = 120.0
     # 🚪 Sep-18 NARROWED OVERBOUGHT BAND (operator-directed override of the gate-49 three-phase protocol — 2 phases, both
     # rally starts; DECISION_LOG 2026-09-18 (71)). The `70-100:40` band of btc_rsi_adx_filter_long acts as "never long
     # while BTC RSI > 70" (btc_adx_max_long caps ADX at 40). It is now WAIVED when BTC's 72h return < r72_block_min

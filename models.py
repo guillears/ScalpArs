@@ -213,6 +213,10 @@ class Order(Base):
     # % of 5m bars above EMA20 over 72h. Lets any batch be split by how trendy BTC was — the 0.085-0.10 efficiency question.
     entry_btc_eff72 = Column(Float, nullable=True)
     entry_btc_above72_pct = Column(Float, nullable=True)
+    # 🌀👥 Oct-4 CHOP ∧ BURST (DECISION_LOG 201): seconds from the most recent OTHER bot fill (non-MANUAL, non-*_PROBE, this mode,
+    # open or closed) to this MOMENTUM fill's entry decision; NULL if none in the last 10 min or not a momentum fill. With
+    # entry_btc_eff72 it makes the LONG_CHOP_BURST gate's zone (eff72 ≤ 0.007 ∧ gap ≤ 120 s) and its neighbours readable from the CSV.
+    entry_chop_burst_prior_fill_s = Column(Float, nullable=True)
     # May 14 — BTC 1h EMA20 slope at trade entry.
     # Captures multi-hour BTC trend direction (12× longer than 5m slope).
     # Slope = (ema20_1h - ema20_1h_prev3) / ema20_1h_prev3 × 100.

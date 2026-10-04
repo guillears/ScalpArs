@@ -684,6 +684,8 @@ async def init_db():
                 for _bc in ('entry_btc_eff72', 'entry_btc_above72_pct'):  # Sep 18: monitor efficiency / bars-above on every fill
                     if _bc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_bc} FLOAT"))
+                if 'entry_chop_burst_prior_fill_s' not in columns:   # Oct 4 (DECISION_LOG 201): s since the last other bot fill (momentum fills)
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_chop_burst_prior_fill_s FLOAT"))
                 if 'funding_fee_usd' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN funding_fee_usd FLOAT"))
                 # Jun 7: phantom EMA13 cross (records would-have-exited pnl when EMA13

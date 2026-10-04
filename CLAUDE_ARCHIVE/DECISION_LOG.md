@@ -5409,3 +5409,32 @@ that group mean > 0 with CI > 0 and the rest ≤ 0 → normal size for that grou
 Master: only B16 changes (SAND short removed) −$1,129 → −$906. Review fixes: the Bear-Run arm bar now counts only post-re-probe windows; a blank
 Bear-Run Lev field saves the 0.05 floor (was 1.0 = 20×). Reload open dashboard tabs after the deploy before saving.
 
+
+### (201) 2026-10-04 — 🌀👥 Momentum LONG CHOP ∧ BURST block (sub-line A) — operator ARMED override (analysis said KEEP OBSERVING)
+Rule: refuse a MOMENTUM long (UNMATCHED + CALM3D doors + CROSS_OB / ADX-surge admits; sleeves, probes, spikes, flips, bull-run, MANUAL exempt —
+same guard as the heat / mega-cap blocks) when BTC 72 h trend efficiency ≤ 0.007 (bull-run monitor eff, 3-dp truncated, ≤ 30 min old = the value
+stamped as entry_btc_eff72; stale/unknown → fail OPEN) AND another bot fill (any Order row of the mode, open or closed, non-MANUAL, non-*_PROBE)
+opened ≤ 120 s before this DECISION = the 2nd+ fill of a burst in a directionless tape. Evidence (reports/ML_CHOP_BURST_DEEP_2026-10-04.md, yr4
+engine replay, 3 seeds, Jan-04→Oct-03): CHOP∧2nd+ 13.7/seed/yr · 14 days · 12 episodes · 34 % WR (ML breakeven 67 %) · −0.41 %/trade; block
+Δ +0.008 %/trade on the sleeve [−0.000, +0.016], shuffled null p 0.03; same sign in both halves, all seeds, all 10 LOMO folds, all 12
+sensitivity cells (eff 0.005–0.015 × 60–300 s). Mechanism: alts pop together on a BTC volatility jolt inside a flat 72 h tape (BTC ATR 0.23 vs
+0.14, pair ADX 19.5 vs 22.7, pair vol 0.71 vs 0.78) and mean-revert together (stop-loss exits 59 % vs 34 %). Master in-sample: LIT Jul-10
+(BASE, −$112) and WLD Oct-1 (B15, −$283) — 2 fills, 0 W. FAILS the expectancy bar (N 13.7 < 15 per seed, CI touches 0, 36 % < 50 % of the
+chop tier's loss, yr4 shares the tape the 0.007 line came from) → declared operator override; 30–50 % haircut ≈ +0.004–0.005 %/trade, ≈ 1 refused
+fill a month. Timing note: the gap is measured at the entry decision (analysis: opened_at→opened_at); this fill's own opened_at lands seconds later
+→ marginally more blocking at the 120 s edge. A sleeve open still in flight in another task (FRENZY / SURGE lanes) is not yet a row → not seen.
+Shipped: config long_chop_burst_block_enabled (code False / JSON true) · long_chop_burst_eff72_max 0.007 · long_chop_burst_window_s 120 · counter
+LONG_CHOP_BURST (Top Pairs block reason + Filter Blocks) · Order column entry_chop_burst_prior_fill_s on every momentum fill (s since the last other
+bot fill, NULL if none in 10 min) + migration · UI toggle + 2 inputs (momentum-long filter row, next to mega-cap) + settings line in both exports ·
+rule = engine long_chop_burst_block (pure, shared with build_master_pool.py) · master stack 2026-10-04b (LIT + WLD → LONG_CHOP_BURST; validator
+check CB1 recomputes the refused set independently, eff72 rebuild vs live stamp r 0.999). Same ship (UI only): the FRENZY rows of Top Pairs fold
+under one header row — always collapsed on load, header highlighted (not expanded) when a FRENZY pair is READY / just opened a trade.
+Not mirrored: current_stack_ledger --batch rows and screen_pool.py (pool rows carry the master's stack_keep).
+🔒 PRE-COMMITTED REVERT: the first 6 refused signals ([LONG_CHOP_BURST] log lines: pair, px, time) re-priced with the live momentum-long exit
+replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Before/after master table: reports/MASTER_BEFORE_AFTER_2026-10-04.md.
+- (201 addendum, same commit) 🔔 Scout REVERT-GATE TRACKER: scripts/scout_revert_gates.py (hooked in opportunity_scout.py; state reports/SCOUT_REVERT_GATES.json)
+  tracks every open pre-committed gate hourly — LONG_CHOP_BURST (201), FRENZY TP +3 (199), FRENZY strong lev (197), market-volume gate (194),
+  SURGE_LONG probe + BEARRUN arm bar (200), LOADX (126), heat re-scope (116), megacap (110) — refused signals re-priced with the live exit replica
+  on ticks; one 🔔 note per gate when it fires. First run (10-04): heat re-scope FIRED (first 6 blocked 6/6 won, Σ +1.68 %), LOADX fired only at
+  the +1 min entry timing (fragile). Master builder: sleeve sizes FROZEN in STACK 10-04b (pinned by a test against the JSON).
+

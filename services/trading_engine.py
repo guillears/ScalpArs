@@ -1388,6 +1388,53 @@ def long_megacap_block(th, pair_rank):
     return r <= n
 
 
+LONG_CHOP_BURST_STAMP_HORIZON_S = 600   # entry_chop_burst_prior_fill_s is NULL when no other bot fill opened in the last 10 min
+
+
+def long_chop_burst_block(th, eff72, prior_fill_s):
+    """🌀👥 Oct-4 MOMENTUM-LONG CHOP ∧ BURST BLOCK (operator ARMED override; DECISION_LOG 201) — pure rule, shared by the
+    engine gate, scripts/build_master_pool.py and tests (single source of truth).
+
+    True = refuse a MOMENTUM long when BTC's 72 h trend efficiency (the bull-run monitor's `eff`, 3-dp truncated — the exact
+    value stamped as entry_btc_eff72) is ≤ long_chop_burst_eff72_max AND another bot fill opened ≤ long_chop_burst_window_s
+    seconds earlier (= sub-line A of reports/ML_CHOP_BURST_DEEP_2026-10-04.md: the 2nd+ fill of a burst in a directionless
+    72 h tape — alts popping together on a BTC jolt and mean-reverting together).
+    Off when the switch is off or either threshold is ≤ 0 / unreadable. Boundaries inclusive (eff == max and gap == window
+    block). FAIL-OPEN: an unknown eff72 (monitor stale > 30 min / cold start) or an unknown gap never blocks."""
+    if not bool(getattr(th, 'long_chop_burst_block_enabled', False)):
+        return False
+    emax = _finite(getattr(th, 'long_chop_burst_eff72_max', 0.0))
+    win = _finite(getattr(th, 'long_chop_burst_window_s', 0.0))
+    if emax is None or emax <= 0 or win is None or win <= 0:
+        return False
+    e, s = _finite(eff72), _finite(prior_fill_s)
+    if e is None or s is None or e < 0 or s < 0:
+        return False
+    return e <= emax and s <= win
+
+
+async def chop_burst_prior_fill_s(db, is_paper, now):
+    """🌀👥 Oct-4 (DECISION_LOG 201): seconds from the most recent OTHER bot fill to `now` (naive UTC), or None when none opened in the
+    last LONG_CHOP_BURST_STAMP_HORIZON_S. "Other bot fill" mirrors the analysis definition: any Order row of this mode (open or closed),
+    not MANUAL (NULL entry_strategy = legacy momentum, counted) and not a *_PROBE cell fire (cell_multiplier_source /
+    pattern_cell_source). The candidate itself has no row yet (called before its order exists). Rounded to 0.1 s; never negative."""
+    last = (await db.execute(select(func.max(Order.opened_at)).where(and_(
+        Order.is_paper == is_paper,
+        Order.opened_at > now - timedelta(seconds=LONG_CHOP_BURST_STAMP_HORIZON_S + 1),
+        or_(Order.entry_strategy.is_(None), Order.entry_strategy != "MANUAL"),
+        or_(Order.cell_multiplier_source.is_(None), ~Order.cell_multiplier_source.like("%PROBE%")),
+        or_(Order.pattern_cell_source.is_(None), ~Order.pattern_cell_source.like("%PROBE%")),
+    )))).scalar()
+    if last is None:
+        return None
+    if isinstance(last, str):   # SQLite func.max can hand back the raw text
+        last = datetime.fromisoformat(last.replace("T", " ")[:26])
+    if getattr(last, 'tzinfo', None) is not None:
+        last = last.astimezone(timezone.utc).replace(tzinfo=None)
+    gap = max(0.0, (now - last).total_seconds())
+    return round(gap, 1) if gap <= LONG_CHOP_BURST_STAMP_HORIZON_S else None
+
+
 def mom_short_c1_regime_block(th, c1_match, btc_regime):
     """🧊 Sep-25 C1 MOMENTUM-SHORT REGIME BLOCK (operator-directed ARMED override; DECISION_LOG 114) — pure rule, shared
     by the engine gate, scripts/build_master_pool.py, scripts/current_stack_ledger.py and tests.
@@ -9056,6 +9103,44 @@ class TradingEngine:
                 pass
             return None
 
+        # 🌀👥 Oct-4 CHOP ∧ BURST BLOCK (operator ARMED override; config.py long_chop_burst_* evidence comment; DECISION_LOG 201).
+        # Gap stamp (entry_chop_burst_prior_fill_s) = seconds from the most recent OTHER bot fill to THIS decision, on every fill
+        # that will be tagged MOMENTUM (both directions, probes included); NULL when none opened in the last 10 min.
+        # "Other bot fill" mirrors the analysis definition: any Order row of this mode (status any — open or closed), not
+        # MANUAL (NULL entry_strategy = legacy momentum, counted) and not a *_PROBE cell fire (cell_multiplier_source /
+        # pattern_cell_source). Measured at DECISION time: the analysis measured opened_at→opened_at, and this fill's own
+        # opened_at lands a few seconds later, so a fill-to-fill gap of up to ~120 s + open delay can still read ≤ 120 here
+        # (slightly MORE blocking at the knife-edge; documented). A same-scan momentum neighbour is visible: the scan awaits each
+        # open_position (row committed) before it evaluates the next pair. A SLEEVE open still in flight in another task (FRENZY /
+        # SURGE lanes) has no row yet → not seen (fail-open direction; the replay found non-ML neighbours in ≈1 % of bursts).
+        # Not re-checked at the book lock: in live mode the exchange order is already placed there. Any DB error → None → fail-open.
+        _cb_momentum = (not flip_source and not bull_long and not bounce_long and not bullrun_long and not _surge
+                        and not spike_chase_probe and not spike_fade and not spike_bounce and not bearrun_short)
+        _cb_prior_s = None
+        if _cb_momentum:
+            try:
+                _cb_prior_s = await chop_burst_prior_fill_s(db, self.is_paper_mode, datetime.utcnow())
+            except Exception as _cb_err:
+                logger.warning(f"[LONG_CHOP_BURST] {pair}: prior-fill lookup failed ({_cb_err}) — gap unknown, fail-open")
+                _cb_prior_s = None
+        # The gate: momentum LONGs only — the SAME exemption guard as the heat / mega-cap blocks (sleeves, probes, spikes,
+        # flips, bull-run exempt; CALM3D doors and the CROSS_OB / ADX-surge admits are momentum longs and ARE gated).
+        # eff72 = the bull-run monitor reading exactly as stamped (monitor_entry_stamps: ≤ 30 min old, else None → fail-open).
+        _cb_eff = monitor_entry_stamps(_bullrun_monitor, _bearrun_monitor, _leash_time.time()).get('entry_btc_eff72')
+        if (direction == "LONG" and not flip_source and not bull_long and not bounce_long
+                and not bullrun_long and not _surge and not spike_chase_probe and not spike_fade and not spike_bounce
+                and not (gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
+                         or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe)
+                and long_chop_burst_block(config.trading_config.thresholds, _cb_eff, _cb_prior_s)):
+            _cb_t = config.trading_config.thresholds
+            logger.info(f"[LONG_CHOP_BURST] {pair}: momentum LONG blocked — BTC eff72 {_cb_eff} <= {getattr(_cb_t, 'long_chop_burst_eff72_max', 0)} "
+                        f"(chop) and another bot fill {_cb_prior_s}s ago <= {getattr(_cb_t, 'long_chop_burst_window_s', 0)}s (burst) px={current_price}")
+            try:
+                self._record_filter_block("LONG_CHOP_BURST", "LONG")
+            except Exception:
+                pass
+            return None
+
         # === Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3) ===
         # Look up cell multiplier from BOTH pair-level (Pair RSI × Pair ADX) and BTC-level
         # (BTC RSI × BTC ADX) rule strings.  When both match, take HIGHER (max) — not multiply
@@ -9886,6 +9971,7 @@ class TradingEngine:
             **monitor_entry_stamps(_bullrun_monitor, _bearrun_monitor, _leash_time.time()),
             entry_long_heat_flags=_lh_flags,          # heat legs ON and true at entry — 0-3 until Sep-25, 0/1 after (breadth leg only)
             entry_btc_off30d_high_pct=_lh_off30d,     # Sep-18: BTC % below its 30-day high (≤0; None if stale/unknown)
+            entry_chop_burst_prior_fill_s=(_cb_prior_s if _cb_momentum else None),   # 🌀👥 Oct-4 (DECISION_LOG 201): s since the last other bot fill (≤10 min, else None)
             entry_bear_r24=entry_bear_r24, entry_bear_below24=entry_bear_below24, entry_bear_eff24=entry_bear_eff24,
             entry_bear_off24lo=entry_bear_off24lo, entry_bear_bypass=entry_bear_bypass,
             # Jun 8: gap-expanding relaxation A/B cohort tag

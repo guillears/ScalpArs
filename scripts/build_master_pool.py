@@ -23,7 +23,7 @@ import warnings; warnings.filterwarnings('ignore')
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-10-03a"  # 10-03a: FRENZY_LONG / FRENZY_WIDE tagged FRENZY_SLEEVE (own-sleeve observation, never a momentum row; before this a FRENZY fill fell into the momentum-long gates). Prior 10-01b — 10-01b: EVERY kept capped fade re-priced at the 0.5 % ticket (+ stack_ticket_scale column; DECISION_LOG 168). 10-01a: CF_FADE_CAP05 — kept fades on pairs ≥ $10M throttled by the old 0.1 % cap re-priced at min(desired, 0.5 % × vol) (DECISION_LOG 165/167; 3 rows). Prior 09-29b — b: FADE_LAGGARD — SPIKE_FADE refused when pair daily Wilder −DI(14) > 16.1 AND BTC 4h EMA50/EMA200 gap > 0 (laggard squeeze; operator ARMED override at master N=10 on 295 backtest fills, DECISION_LOG 128; rule = indicators.fade_laggard_block; inputs = stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct, else the closed-bar feature factory from k5m_full). Prior: "2026-09-29a"  # a: LONG_RSI_MOM_LOADX — momentum longs (unmatched + doors) refused when RSI(12) < RSI two candles ago AND pair ADX < long_rsi_momentum_adx_max (21; declared override at master N=10, DECISION_LOG 126; rule = indicators.rsi_mom_loadx_block; stamps entry_rsi / entry_rsi_prev (= rsi_prev2) / entry_adx). Prior: "2026-09-27b"  # b: CALM3D_BTC_ATR_MIN — NONEXP_CALM3D door longs refused at BTC 5m ATR% < 0.08 (dead tape; operator ARMED override, DECISION_LOG 118; rule = engine calm3d_btc_atr_floor_block). Prior: "2026-09-27a"  # a: FADE_FRESHBREAK stamp proxy applied to PRE-SHIP fills only (opened < 2026-08-10T13:48:19 UTC, commit a10a879) — the live gate reads RSI(12) rsi_prev1 at trigger, the stamp entry_rsi_prev is rsi_prev2, so post-ship fills (which already passed the live gate) were wrongly removed (6 winners, Sep-27 audit). Prior: 2026-09-25c # c: LONG_HEAT_BLOCK re-scoped to bull breadth ≥85 only (BTC slope/RSI legs off, washed-out exemption kept; declared override, DECISION_LOG 116). Prior: 2026-09-25b # b: MOM_SHORT_C1_REGIME — C1 momentum shorts refused when BTC is STRONG_BEAR (operator ARMED override, DECISION_LOG 114; rule = engine mom_short_c1_regime_block). Prior: 2026-09-25a # a: FLIP_FAN_WEAK_BOUNCE — FAN flip-shorts refused when pair EMA13−EMA50 gap < 0 AND EMA20 slope < 0.15 (operator ARMED override at N=8, DECISION_LOG 113; rule = engine flip_fan_weak_bounce); B12 snapshot as-of 09-25. Prior: 2026-09-24b # b: FADE_BRSI 45→50 — the Aug-5 ceiling's own pre-committed revert fired (DECISION_LOG 112); label FADE_BRSI45→FADE_BRSI50. Prior: 2026-09-24a # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
+STACK_VERSION = "2026-10-04b"  # 10-04b: LONG_CHOP_BURST — MOMENTUM longs refused when BTC eff72 ≤ 0.007 (live stamp entry_btc_eff72, else the validated 864-bar rebuild from the k5m_full BTC cache) AND another kept non-probe non-MANUAL bot fill of the same era opened 0…120 s earlier (sub-line A; operator ARMED override, DECISION_LOG 201; rule = engine long_chop_burst_block). Prior 10-04a — 10-04a: SURGE_SHORT_OFF (surge_short_enabled false) + sleeve fills (FRENZY / WIDE / SURGE_LONG / BEARRUN) re-priced at today's size and the FRENZY +3 TP (DECISION_LOG 200). Prior 10-03a — 10-03a: FRENZY_LONG / FRENZY_WIDE tagged FRENZY_SLEEVE (own-sleeve observation, never a momentum row; before this a FRENZY fill fell into the momentum-long gates). Prior 10-01b — 10-01b: EVERY kept capped fade re-priced at the 0.5 % ticket (+ stack_ticket_scale column; DECISION_LOG 168). 10-01a: CF_FADE_CAP05 — kept fades on pairs ≥ $10M throttled by the old 0.1 % cap re-priced at min(desired, 0.5 % × vol) (DECISION_LOG 165/167; 3 rows). Prior 09-29b — b: FADE_LAGGARD — SPIKE_FADE refused when pair daily Wilder −DI(14) > 16.1 AND BTC 4h EMA50/EMA200 gap > 0 (laggard squeeze; operator ARMED override at master N=10 on 295 backtest fills, DECISION_LOG 128; rule = indicators.fade_laggard_block; inputs = stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct, else the closed-bar feature factory from k5m_full). Prior: "2026-09-29a"  # a: LONG_RSI_MOM_LOADX — momentum longs (unmatched + doors) refused when RSI(12) < RSI two candles ago AND pair ADX < long_rsi_momentum_adx_max (21; declared override at master N=10, DECISION_LOG 126; rule = indicators.rsi_mom_loadx_block; stamps entry_rsi / entry_rsi_prev (= rsi_prev2) / entry_adx). Prior: "2026-09-27b"  # b: CALM3D_BTC_ATR_MIN — NONEXP_CALM3D door longs refused at BTC 5m ATR% < 0.08 (dead tape; operator ARMED override, DECISION_LOG 118; rule = engine calm3d_btc_atr_floor_block). Prior: "2026-09-27a"  # a: FADE_FRESHBREAK stamp proxy applied to PRE-SHIP fills only (opened < 2026-08-10T13:48:19 UTC, commit a10a879) — the live gate reads RSI(12) rsi_prev1 at trigger, the stamp entry_rsi_prev is rsi_prev2, so post-ship fills (which already passed the live gate) were wrongly removed (6 winners, Sep-27 audit). Prior: 2026-09-25c # c: LONG_HEAT_BLOCK re-scoped to bull breadth ≥85 only (BTC slope/RSI legs off, washed-out exemption kept; declared override, DECISION_LOG 116). Prior: 2026-09-25b # b: MOM_SHORT_C1_REGIME — C1 momentum shorts refused when BTC is STRONG_BEAR (operator ARMED override, DECISION_LOG 114; rule = engine mom_short_c1_regime_block). Prior: 2026-09-25a # a: FLIP_FAN_WEAK_BOUNCE — FAN flip-shorts refused when pair EMA13−EMA50 gap < 0 AND EMA20 slope < 0.15 (operator ARMED override at N=8, DECISION_LOG 113; rule = engine flip_fan_weak_bounce); B12 snapshot as-of 09-25. Prior: 2026-09-24b # b: FADE_BRSI 45→50 — the Aug-5 ceiling's own pre-committed revert fired (DECISION_LOG 112); label FADE_BRSI45→FADE_BRSI50. Prior: 2026-09-24a # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 # 🧯 FADE_FRESHBREAK stamp-proxy scope (Sep-27). The live gate reads the RSI(12) of the candle BEFORE the trigger
@@ -84,6 +84,70 @@ def fade_freshbreak_stamp_block(opened_at, rsi_prev, pgap):
         return False
     return (pd.notna(rsi_prev) and rsi_prev < FADE_FB_RSI_PREV_MIN
             and pd.notna(pgap) and pgap > FADE_FB_PGAP_MIN)
+
+BTC5M_CACHE = "reports/backtest_cache/k5m_full/BTCUSDT.csv"
+
+
+def btc_eff72_rebuild(open_ms, T, C):
+    """The engine's bull-run monitor eff (864 closed 5m bars, |net| / path, truncated to 3 dp) at a fill time — the SAME formula as
+    scripts/ml_watchlist_adjudicate.py / ml_regime_observe_read.py eff72_rebuild (validated vs live stamps, corr 0.999). NaN when the
+    history is short or the last closed bar is > 15 min old (a fill past the cache end keeps only its live stamp → fail-open)."""
+    if not len(T):
+        return np.nan
+    i = np.searchsorted(T, open_ms, side="right") - 1
+    if i < 0:
+        return np.nan
+    lc = i - 1 if T[i] + 300_000 > open_ms else i
+    if lc < 999 or open_ms - T[lc] > 15 * 60_000:
+        return np.nan
+    w = C[lc - 863: lc + 1]; d = np.abs(np.diff(w)).sum()
+    return int(abs(w[-1] - w[0]) / d * 1000) / 1000.0 if d > 0 else 0.0
+
+
+def chop_eff72(df):
+    """🌀 Oct-4 eff72 per row: live stamp entry_btc_eff72 first, else the rebuild from the BTC 5m cache (deterministic — no network).
+    Returns (Series, n_rebuilt)."""
+    eff = pd.to_numeric(df['entry_btc_eff72'], errors='coerce') if 'entry_btc_eff72' in df else pd.Series(np.nan, index=df.index)
+    need = eff.isna()
+    if not need.any():
+        return eff, 0
+    try:
+        k = pd.read_csv(BTC5M_CACHE, usecols=["open_time", "c"]).drop_duplicates("open_time").set_index("open_time").sort_index()
+        T, C = k.index.values.astype("int64"), k.c.values
+        om = ((pd.to_datetime(df.loc[need, 'opened_at'].astype(str).str[:19].str.replace('T', ' '), errors='coerce')
+               - pd.Timestamp(0)).dt.total_seconds() * 1000)
+        rb = pd.Series([btc_eff72_rebuild(int(x), T, C) if pd.notna(x) else np.nan for x in om], index=om.index)
+        eff.loc[need] = rb
+        return eff, int(rb.notna().sum())
+    except Exception as e:                                        # noqa: BLE001
+        print(f"WARNING: BTC 5m cache unreadable ({e}) — LONG_CHOP_BURST fails open on {int(need.sum())} unstamped row(s)")
+        return eff, 0
+
+
+def chop_burst_pass(df, keep, eff, th, rule, window_s=120.0):
+    """🌀👥 Oct-4 LONG_CHOP_BURST over the first-pass keep list (engine order: the last momentum-long gate). Per era, in opened_at
+    order: a kept non-probe MOMENTUM LONG is refused when long_chop_burst_block(th, eff72, gap) holds, gap = seconds since the most
+    recent OTHER kept, non-probe, non-MANUAL fill of the same era (0…window_s; a refused fill is no longer a neighbour — live never
+    opened it). Returns the set of refused row indices."""
+    ts = pd.to_datetime(df.opened_at.astype(str).str[:19].str.replace('T', ' '), errors='coerce')
+    kept = pd.Series(keep, index=df.index).astype(bool)
+    nb_ok = kept & ~df.is_probe.astype(bool) & (df.entry_strategy.astype(str) != 'MANUAL') & ts.notna()
+    slv = df.screen_sleeve.astype(str) if 'screen_sleeve' in df else pd.Series('', index=df.index)
+    ml = (nb_ok & (df.entry_strategy.astype(str).str.startswith('MOMENTUM') | slv.str.startswith('MOM'))
+          & (df.direction.astype(str) == 'LONG'))
+    blocked = set()
+    for era in df.era.unique():
+        idx = df.index[(df.era == era) & nb_ok]
+        order = sorted(idx, key=lambda j: (ts[j], j))
+        for j in order:
+            if not ml[j]:
+                continue
+            gaps = [(ts[j] - ts[m]).total_seconds() for m in order
+                    if m != j and m not in blocked and 0 <= (ts[j] - ts[m]).total_seconds() <= window_s]
+            if gaps and rule(th, eff.get(j), min(gaps)):
+                blocked.add(j)
+    return blocked
+
 
 # Era registry (Sep-11: B3/B4/B5 were previously stacked by a one-off — the builder only knew
 # BASE/B1/B2, so the committed MASTER_POOL had B3/B4 rows with NULL stack columns and no B5).
@@ -194,7 +258,7 @@ def main():
     import os, sys
     from types import SimpleNamespace
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from services.trading_engine import long_heat_eval, long_megacap_block, fade_late_arm_cf, flip_fan_weak_bounce, mom_short_c1_regime_block, calm3d_btc_atr_floor_block
+    from services.trading_engine import long_heat_eval, long_megacap_block, long_chop_burst_block, fade_late_arm_cf, flip_fan_weak_bounce, mom_short_c1_regime_block, calm3d_btc_atr_floor_block
     from services.indicators import rsi_mom_loadx_block, fade_laggard_block
     # ⏱ Sep-24 frozen fade exit constants for the late-arm CF (live values at ship; builder pins a STACK_VERSION)
     _FADE_TH = SimpleNamespace(spike_fade_late_arm_after_min=15.0, spike_fade_late_arm_peak=0.30,
@@ -218,6 +282,8 @@ def main():
     # else rebuilt from the closed-bar 5m kline cache by the research feature factory (the exact columns the rule was found on).
     _LAG_TH = SimpleNamespace(spike_fade_lag_ndi_min=16.1, spike_fade_lag_btc_gap_min=0.0)
     _lag_ndi, _lag_gap = fade_laggard_inputs(df)
+    # 🌀👥 Oct-4 frozen chop ∧ burst block (live values at ship; DECISION_LOG 201) — ledger/test pin these to trading_config.json
+    _CB_TH = SimpleNamespace(long_chop_burst_block_enabled=True, long_chop_burst_eff72_max=0.007, long_chop_burst_window_s=120.0)
     _off30 = {}
     if os.path.exists("reports/btc_off30d_hourly.csv"):
         _o = pd.read_csv("reports/btc_off30d_hourly.csv")
@@ -251,8 +317,10 @@ def main():
         if not r.is_probe and strat != 'MANUAL':
             if strat == 'BEARRUN_SHORT':
                 why = 'BEARRUN_SLEEVE'   # kept, but its OWN sleeve — MOM-short reads must filter entry_strategy == 'MOMENTUM'
-            elif strat in ('SURGE_LONG', 'SURGE_SHORT'):
-                why = 'SURGE_SLEEVE'     # ⚡ Sep-30: kept as its OWN sleeve (BTC spike / dump trigger) — never a momentum row
+            elif strat == 'SURGE_SHORT':
+                k, why = False, 'SURGE_SHORT_OFF'   # 🐻⚡ Oct-4 (DECISION_LOG 200): surge_short_enabled = false → today's stack never opens it
+            elif strat == 'SURGE_LONG':
+                why = 'SURGE_SLEEVE'     # ⚡ Sep-30: kept as its OWN sleeve (BTC spike trigger) — never a momentum row; Oct-4: probe size (lev 0.05)
             elif strat in ('FRENZY_LONG', 'FRENZY_WIDE'):
                 why = 'FRENZY_SLEEVE'    # 🔥 Oct-3: OBSERVATION — the volume-frenzy sleeve's own row (40-fill review), never a momentum row
             elif strat == 'SPIKE_FADE':
@@ -364,9 +432,52 @@ def main():
                 if pd.notna(m) and m > 1 and 'UNMATCHED' in str(r.cell_multiplier_source or '').upper():
                     sp = p / m; why = why or 'CF_SPRINT_DEMUX'
         keep.append(k); reason.append(why); spnl.append(sp if k else 0.0)
+    # 🌀👥 Oct-4 LONG_CHOP_BURST (operator ARMED override, DECISION_LOG 201): second pass — needs every row's first-pass keep (the
+    # neighbours are fills of ANY sleeve). Rule = engine long_chop_burst_block with the frozen 0.007 / 120 s.
+    _cb_eff, _cb_nrb = chop_eff72(df)
+    _cb_blk = chop_burst_pass(df, keep, _cb_eff, _CB_TH, long_chop_burst_block, _CB_TH.long_chop_burst_window_s)
+    _pos = {ix: n for n, ix in enumerate(df.index)}
+    for j in _cb_blk:
+        n = _pos[j]; keep[n] = False; reason[n] = 'LONG_CHOP_BURST'; spnl[n] = 0.0
+    print(f"LONG_CHOP_BURST: eff72 = live stamp on {int(pd.to_numeric(df.get('entry_btc_eff72'), errors='coerce').notna().sum())} rows, "
+          f"rebuilt on {_cb_nrb}; refused {len(_cb_blk)}: " + ", ".join(f"{df.at[j, 'pair']}@{str(df.at[j, 'opened_at'])[:19]}({df.at[j, 'era']})" for j in sorted(_cb_blk)))
     df['stack_keep'] = keep; df['stack_block_reason'] = reason
     df['stack_pnl'] = np.round(spnl, 2); df['stack_ticket_scale'] = np.round(scale, 6); df['stack_version'] = STACK_VERSION
     df = df.drop(columns=['_ts'])
+    # 🔥 Oct-4 (DECISION_LOG 193/197/199/200): sleeve fills re-priced at TODAY's size (pct is size-free; $ = pct × today's notional).
+    # Margin today = as-traded margin ÷ its cell multiplier × today's invest mult; leverage today = max(1, round(20 × today's lev mult)) —
+    # FRENZY_LONG 1 × 0.32 (6×), or 0.5 (10×) when its ADX-rising ∧ +DI-above stamps say so; FRENZY_WIDE 1 × 0.2 (4×); SURGE_LONG /
+    # BEARRUN_SHORT 1 × 0.05 (1×). The +3 % FRENZY TP is applied only when the recorded peak reached it (pct → +3.0).
+    # FROZEN with STACK_VERSION (review: never read the live JSON — a later settings change must not silently re-price history; a sizing
+    # change = a new STACK_VERSION with these values updated; tests/test_long_chop_burst.py pins them against trading_config.json)
+    _th = dict(frenzy_long_invest_mult=1.0, frenzy_long_lev_mult=0.32, frenzy_long_lev_mult_strong=0.5, frenzy_wide_invest_mult=1.0,
+               frenzy_wide_lev_mult=0.2, surge_long_invest_mult=1.0, surge_long_lev_mult=0.05, bearrun_invest_mult=1.0, bearrun_lev_mult=0.05,
+               frenzy_tp_pct=3.0)
+    SLEEVE_SIZE_FROZEN = _th
+    def _today(strat, r):
+        if strat == "FRENZY_LONG":
+            strong = (pd.notna(r.get("entry_frenzy_adx_delta")) and pd.notna(r.get("entry_frenzy_di_spread"))
+                      and float(r["entry_frenzy_adx_delta"]) > 0 and float(r["entry_frenzy_di_spread"]) > 0 and float(_th.get("frenzy_long_lev_mult_strong", 0) or 0) > 0)
+            return float(_th.get("frenzy_long_invest_mult", 1.0)), float(_th.get("frenzy_long_lev_mult_strong") if strong else _th.get("frenzy_long_lev_mult", 1.0))
+        if strat == "FRENZY_WIDE":
+            return float(_th.get("frenzy_wide_invest_mult", 1.0)), float(_th.get("frenzy_wide_lev_mult", 1.0))
+        if strat == "SURGE_LONG":
+            return float(_th.get("surge_long_invest_mult", 1.0)), float(_th.get("surge_long_lev_mult", 1.0))
+        if strat == "BEARRUN_SHORT":
+            return float(_th.get("bearrun_invest_mult", 1.0)), float(_th.get("bearrun_lev_mult", 1.0))
+        return None
+    _tp = float(_th.get("frenzy_tp_pct", 0) or 0)
+    for i, r in df.iterrows():
+        strat = str(r.entry_strategy)
+        t = _today(strat, r) if bool(r.stack_keep) else None
+        if t is None or pd.isna(r.get("investment")) or pd.isna(r.get("pnl_percentage")):
+            continue
+        cm = float(r.get("cell_multiplier") or 1.0) or 1.0
+        lev = max(1, int(round(20 * t[1])))
+        pct = float(r.pnl_percentage)
+        if strat.startswith("FRENZY") and _tp > 0 and pd.notna(r.get("peak_pnl")) and float(r.peak_pnl) >= _tp:
+            pct = _tp
+        df.at[i, "stack_pnl"] = round(pct / 100.0 * float(r.investment) / cm * t[0] * lev, 2)
     out = "reports/MASTER_POOL_stacked.csv"
     df.to_csv(out, index=False)
     print(f"MASTER_POOL_stacked.csv written — {len(df)} rows, stack v{STACK_VERSION}\n")

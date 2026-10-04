@@ -5948,6 +5948,12 @@
                                         <input type="number" step="1" id="config-long-heat-exempt-off30d-max" class="w-16 bg-white/5 border border-orange-500/40 rounded px-2 py-1 text-orange-200 text-center" value="-10"></label>
                                     <label class="flex items-center gap-1 text-xs text-amber-300" title="🏦 Sep-23 MEGA-CAP EXCLUSION (operator override, N=10): refuse a momentum LONG (unmatched + CALM3D doors) when the pair's eligible-universe volume rank (entry_pair_rank, raw, before blacklist removal) is <= Rank. Evidence: rank<=10 = 10·50%·-$131 over 9 windows (HYPE 5, SOL 3, ADA 1, XRP 1) vs rank 11-15 = 15·93%·+$1,920. Mega-caps are BTC beta; the unmatched thesis is idiosyncratic flow. Bull-run sleeve keeps the top 10. 0 = off. Fail-open on missing rank. Counter LONG_MEGACAP_BLOCK. REVERT: blocked signals re-simmed from the log >= 60% WR and net>0 on N>=8 across >=3 windows -> 0.">🏦 Mega-cap rank ≤
                                         <input type="number" step="1" id="config-long-megacap-rank-max" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="0"></label>
+                                    <label class="flex items-center gap-1 text-xs text-cyan-300" title="🌀👥 Oct-4 CHOP ∧ BURST BLOCK (operator ARMED override, DECISION_LOG 201): refuse a momentum LONG (unmatched + CALM3D doors + CROSS_OB / ADX-surge admits; sleeves, probes, spikes, flips, bull-run and MANUAL exempt) when BTC's 72h trend efficiency (entry_btc_eff72) is <= eff72 AND another bot fill (non-MANUAL, non-probe) opened <= Window seconds before this decision = the 2nd+ fill of a burst in a directionless tape. Evidence: yr4 replay 13.7 fills/seed/yr · 34% WR · -0.41%/trade on 14 days; master LIT Jul-10 + WLD Oct-1 both lost. Below the expectancy bar (declared override). Fail-open on a stale eff72. Counter LONG_CHOP_BURST; column entry_chop_burst_prior_fill_s on every momentum fill. REVERT: first 6 refused signals re-priced with the live exit replica WR >= 50% or net > 0 -> off.">🌀👥 Chop∧burst block
+                                        <input type="checkbox" id="config-long-chop-burst-block-enabled" class="accent-cyan-500"></label>
+                                    <label class="flex items-center gap-1 text-xs text-gray-400">eff72≤
+                                        <input type="number" step="0.001" min="0" id="config-long-chop-burst-eff72-max" class="w-16 bg-white/5 border border-cyan-500/40 rounded px-2 py-1 text-cyan-200 text-center" value="0.007"></label>
+                                    <label class="flex items-center gap-1 text-xs text-gray-400">Window s≤
+                                        <input type="number" step="10" min="0" id="config-long-chop-burst-window-s" class="w-16 bg-white/5 border border-cyan-500/40 rounded px-2 py-1 text-cyan-200 text-center" value="120"></label>
                                     <span class="text-[11px] text-gray-500 italic" title="🚪 Sep-18 NARROWED OVERBOUGHT BAND (operator override of the gate-49 protocol): the BTC RSI x ADX cross band with RSI floor >= RSI (the 70-100:40 band = never long while BTC RSI > 70) is WAIVED when BTC's 72h return is below 72h% (breakout from a base) and KEPT when BTC is already extended. Evidence: blocked signals 25·83% in two rally starts; BTC history: -1% dip within 4h after RSI>70 = 19% from a base vs 47% when extended. Admitted longs are sized Inv x Lev (ship 1/1; Inv 0 = normal cells), tagged CROSS_OB_OPEN (own multiplier row). Fail-closed on a stale reading. READ at N>=10 fills over >=3 days: WR>=60% and net>0 -> release sizing; WR<=50% or net<0 -> switch off.">🚪 RSI70 base-breakout (CROSS_OB) on/off → set in ⚖️ Sleeve Sizing</span>
                                     <label class="flex items-center gap-1 text-xs text-gray-400">RSI≥
                                         <input type="number" step="1" id="config-long-cross-ob-rsi-min" class="w-16 bg-white/5 border border-sky-500/40 rounded px-2 py-1 text-sky-200 text-center" value="70"></label>
@@ -11699,6 +11705,7 @@
             lines.push(`  Keep ONLY Unmatched Longs (Jun 9): ${th.long_unmatched_only ? 'ON — block all pattern-matched longs' : 'OFF'}  (counter LONG_UNMATCHED_ONLY)  |  W2 re-enable 1h ≥ ${th.long_w2_reenable_1h_min !== undefined ? th.long_w2_reenable_1h_min : 99}%  |  W6 re-enable 1h ≤ ${th.long_w6_reenable_1h_max !== undefined ? th.long_w6_reenable_1h_max : 99}% ∧ stretch ≥ ${th.long_w6_reenable_stretch_min !== undefined ? th.long_w6_reenable_stretch_min : 0.31} (Jul 6: 99 = off; W2 rising / W6 dip+thrust, cell 1×)  |  UNMATCHED de-mux at PVR ≥ ${th.long_unmatched_mult_pvr_max !== undefined ? th.long_unmatched_mult_pvr_max : 0} → Inv ${th.long_unmatched_demux_inv_mult ?? 1}× / Lev ${th.long_unmatched_demux_lev_mult ?? 1}× (Jul 10 crowded entry, targets configurable Jul 26; ratio 0 = off)  |  SPRINT de-mux 1× at gvr > ${th.long_unmatched_sprint_demux_gvr_min ?? 0.74} ∧ BTC-slope > ${th.long_unmatched_sprint_demux_b20slope_min ?? 0.07} (Aug-10 FOMO window, precedence over quiet; 0 = off)  |  QUIET boost Inv ${th.long_unmatched_quiet_mult ?? 0}× / Lev ${th.long_unmatched_quiet_lev_mult ?? 1}× at PVR < ${th.long_unmatched_quiet_pvr_max ?? 0} (Jul 26: 19-0 override; Lev locked 1.0 pending BE-compat; 0 = off)`);
             lines.push(`  Long Heat Block (Sep 18; re-scoped Sep 25 to breadth): ${th.long_heat_block_enabled ? 'ON' : 'OFF'} — BTC slope >= ${(+th.long_heat_btc_slope_min > 0) ? th.long_heat_btc_slope_min : 'off'} & BTC RSI prev >= ${(+th.long_heat_btc_rsi_prev_min > 0) ? th.long_heat_btc_rsi_prev_min : 'off'} & bull% >= ${(+th.long_heat_bull_pct_min > 0) ? th.long_heat_bull_pct_min : 'off'}; exempt when BTC <= ${th.long_heat_exempt_off30d_max ?? '-'}% vs 30d high  (counter LONG_HEAT_BLOCK)`);
             lines.push(`  Mega-cap Exclusion (Sep 23): ${(th.long_megacap_rank_max > 0) ? `ON — momentum LONGs refused at eligible-universe rank <= ${th.long_megacap_rank_max} (bull-run sleeve exempt)` : 'OFF'}  (counter LONG_MEGACAP_BLOCK)`);
+            lines.push(`  Chop ∧ Burst Block (Oct 4): ${th.long_chop_burst_block_enabled ? 'ON' : 'OFF'} — momentum LONGs refused when BTC eff72 <= ${th.long_chop_burst_eff72_max ?? '-'} AND another bot fill opened <= ${th.long_chop_burst_window_s ?? '-'}s earlier (fail-open on stale eff72; revert: first 6 refused re-priced WR >= 50% or net > 0 → off)  (counter LONG_CHOP_BURST)`);
             lines.push(`  RSI70 base-breakout (Sep 18): ${th.long_cross_ob_narrow_enabled ? 'ON' : 'OFF'} — BTC RSI >= ${th.long_cross_ob_rsi_min ?? '-'} band waived when BTC 72h < ${th.long_cross_ob_r72_block_min ?? '-'}%; admitted longs sized ${th.long_cross_ob_invest_mult ?? '-'}x / lev ${th.long_cross_ob_lev_mult ?? '-'}x  (cell CROSS_OB_OPEN)`);
             lines.push(`  ⚡ ADX-surge waiver (Sep 28): ${th.long_btc_adx_surge_enabled ? 'ON' : 'OFF'} — BTC ADX floor + RSI bands with floor < ${th.long_btc_adx_surge_band_rsi_max ?? '-'} lifted when BTC ADX jumps ≥ ${th.long_btc_adx_surge_min_delta ?? '-'} and slope > ${th.long_btc_adx_surge_slope_min ?? '-'}; admits sized ${th.long_btc_adx_surge_invest_mult ?? '-'}×/${th.long_btc_adx_surge_lev_mult ?? '-'}×, badge ⚡ ADX SURGE (revert: first 10 fills WR ≤50% or Σ$<0)`);
             lines.push(`  💰 Market cap fetch (Sep 28): ${cfg.mcap_fetch_enabled !== false ? 'ON' : 'OFF'} every ${cfg.mcap_refresh_minutes ?? 30} min (display column + entry_mcap_usd / entry_cmc_rank stamps; no trading rule reads it)`);
@@ -19755,7 +19762,7 @@
                     if (_dl) { const _opts = data.map(p => `<option value="${p.pair}"></option>`).join(''); if (_dl.innerHTML !== _opts) _dl.innerHTML = _opts; }
                     _manualPairsSnapshot = Object.fromEntries(data.map(p => [p.pair, p])); try { manualPairHint(); } catch (e) {}
                 }
-                let _rowsHtml = data.map(p => {
+                const _rowsArr = data.map(p => {
                     const signalClass = p.signal === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 
                                        p.signal === 'SHORT' ? 'bg-red-500/20 text-red-400' : 
                                        'bg-yellow-500/20 text-yellow-400';
@@ -19852,7 +19859,7 @@
                     }
 
                     return `
-                        <tr class="hover:bg-white/5 transition${_fz ? ' bg-orange-500/[0.05]' : ''}">
+                        <tr class="hover:bg-white/5 transition${_fz ? ' bg-orange-500/[0.05] frenzy-group-row' + (_frenzyGroupExpanded === true ? '' : ' hidden') : ''}">
                             <td class="px-3 py-3 font-medium"><div class="${_fz ? 'whitespace-nowrap' : 'truncate max-w-[5rem]'}" title="${_escAttr(p.pair)}">${_fzBadge}${p.pair}</div></td>
                             <td class="px-3 py-3 text-right font-mono text-sm text-gray-400">$${formatVolume(p.volume_24h || 0)}</td>
                             <td class="px-3 py-3 text-right font-mono text-sm text-gray-400" title="${p.cmc_rank ? 'CMC rank #' + p.cmc_rank : 'market cap unavailable'}">${p.mcap_usd ? '$' + (p.mcap_usd >= 1e12 ? (p.mcap_usd / 1e12).toFixed(2) + 'T' : formatVolume(p.mcap_usd)) : '–'}</td>
@@ -19871,7 +19878,27 @@
                             <td class="px-3 py-3 text-center">${positionsHtml}</td>
                         </tr>
                     `;
-                }).join('');
+                });
+                // 🔥 Oct-4 FRENZY row group (operator): the pinned FRENZY rows fold under ONE header row (Excel-style group). ALWAYS starts
+                // collapsed on every page load; the toggle lives for this page session only (never persisted). The header lights up —
+                // it does NOT auto-expand — when a FRENZY pair is READY or just opened a FRENZY / WIDE trade. Order is the server's
+                // (FRENZY pinned first, newest spike first); every other row renders exactly as before.
+                const _fzIdx = data.map((p, i) => (p.frenzy ? i : -1)).filter(i => i >= 0);
+                let _rowsHtml;
+                if (_fzIdx.length) {
+                    const _fzs = _fzIdx.map(i => data[i].frenzy);
+                    const _nOn = _fzs.filter(f => f.in_state).length, _nReady = _fzs.filter(f => f.ready).length;
+                    const _nJust = _fzs.filter(f => _frenzyJustOpened(f)).length;
+                    const _hot = _nReady > 0 || _nJust > 0;
+                    const _hdr = `<tr id="frenzy-group-header" role="button" tabindex="0" aria-expanded="${_frenzyGroupExpanded === true}" onclick="toggleFrenzyGroup()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleFrenzyGroup();}" class="cursor-pointer select-none transition ${_hot ? 'bg-emerald-500/15 hover:bg-emerald-500/25' : 'bg-orange-500/10 hover:bg-orange-500/15'}" title="Click to show / hide the FRENZY pairs (starts collapsed on every page load). ON = long setup on (★) · READY = an entry can fire now${_hot ? ' — highlighted: a FRENZY pair is READY or just opened a trade' : ''}">`
+                        + `<td colspan="16" class="px-3 py-2 text-left text-sm font-semibold whitespace-nowrap ${_hot ? 'text-emerald-300' : 'text-orange-300'}">`
+                        + `🔥 FRENZY pairs (${_fzIdx.length}) · ${_nOn} ON · ${_nReady} READY${_nJust ? ` · ${_nJust} just opened` : ''}`
+                        + `${_hot ? ' <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse align-middle ml-1"></span>' : ''}`
+                        + ` <span id="frenzy-group-chevron" class="text-gray-400 ml-1">${_frenzyGroupExpanded === true ? '▾' : '▸'}</span></td></tr>`;
+                    _rowsHtml = _hdr + _fzIdx.map(i => _rowsArr[i]).join('') + _rowsArr.filter((_, i) => !data[i].frenzy).join('');
+                } else {
+                    _rowsHtml = _rowsArr.join('');
+                }
                 _setHTMLIfChanged(tbody, _rowsHtml);
                 
                 // Update BTC regime badge
@@ -19933,6 +19960,28 @@
             } catch (e) {
                 console.error('Error loading pairs:', e);
             }
+        }
+
+        // 🔥 Oct-4 FRENZY row group state — page-session only: collapsed on every load (operator), never written to storage.
+        var _frenzyGroupExpanded = false;   // var (hoisted): loadPairs may run before this line executes → undefined = collapsed
+        function toggleFrenzyGroup() {
+            _frenzyGroupExpanded = _frenzyGroupExpanded !== true;
+            const tbody = document.getElementById('pairs-table-body');
+            if (!tbody) return;
+            tbody.querySelectorAll('tr.frenzy-group-row').forEach(r => r.classList.toggle('hidden', !_frenzyGroupExpanded));
+            const chev = document.getElementById('frenzy-group-chevron'); if (chev) chev.textContent = _frenzyGroupExpanded ? '▾' : '▸';
+            const hdr = document.getElementById('frenzy-group-header'); if (hdr) hdr.setAttribute('aria-expanded', String(_frenzyGroupExpanded));
+            tbody._lastHTML = null;   // the next 10 s refresh re-renders from the new state
+        }
+        // A FRENZY / WIDE entry opened on this pair's last signal bar within the last 20 min (last_fire = "MM-DD HH:MM [WIDE ]opened", UTC bar open).
+        function _frenzyJustOpened(f) {
+            const m = /^(\d\d)-(\d\d) (\d\d):(\d\d) (?:WIDE )?opened/.exec((f && f.last_fire) || '');
+            if (!m) return false;
+            const now = new Date();
+            let t = Date.UTC(now.getUTCFullYear(), +m[1] - 1, +m[2], +m[3], +m[4]);
+            if (t - now.getTime() > 86400000) t = Date.UTC(now.getUTCFullYear() - 1, +m[1] - 1, +m[2], +m[3], +m[4]);   // Dec→Jan rollover
+            const age = now.getTime() - t;
+            return age >= -300000 && age <= 20 * 60000;
         }
 
         let _refreshCooldown = null;
@@ -21925,6 +21974,9 @@
                 { const _e=document.getElementById('config-long-unmatched-sprint-b20slope-min'); if(_e && config.thresholds.long_unmatched_sprint_demux_b20slope_min !== undefined) _e.value = config.thresholds.long_unmatched_sprint_demux_b20slope_min; }
                 { const _e=document.getElementById('config-long-heat-block-enabled'); if(_e) _e.checked = (config.thresholds.long_heat_block_enabled === true); }
                 { const _e=document.getElementById('config-long-megacap-rank-max'); if(_e && config.thresholds.long_megacap_rank_max !== undefined) _e.value = config.thresholds.long_megacap_rank_max; }
+                { const _e=document.getElementById('config-long-chop-burst-block-enabled'); if(_e) _e.checked = (config.thresholds.long_chop_burst_block_enabled === true); }
+                { const _e=document.getElementById('config-long-chop-burst-eff72-max'); if(_e && config.thresholds.long_chop_burst_eff72_max !== undefined) _e.value = config.thresholds.long_chop_burst_eff72_max; }
+                { const _e=document.getElementById('config-long-chop-burst-window-s'); if(_e && config.thresholds.long_chop_burst_window_s !== undefined) _e.value = config.thresholds.long_chop_burst_window_s; }
                 { const _e=document.getElementById('config-long-heat-btc-slope-min'); if(_e && config.thresholds.long_heat_btc_slope_min !== undefined) _e.value = config.thresholds.long_heat_btc_slope_min; }
                 { const _e=document.getElementById('config-long-heat-btc-rsi-prev-min'); if(_e && config.thresholds.long_heat_btc_rsi_prev_min !== undefined) _e.value = config.thresholds.long_heat_btc_rsi_prev_min; }
                 { const _e=document.getElementById('config-long-heat-bull-pct-min'); if(_e && config.thresholds.long_heat_bull_pct_min !== undefined) _e.value = config.thresholds.long_heat_bull_pct_min; }
@@ -23570,6 +23622,9 @@
                     long_unmatched_sprint_demux_b20slope_min: (() => { const _v = document.getElementById('config-long-unmatched-sprint-b20slope-min')?.value; return safeFloat(_v === '' || _v == null ? 0.07 : _v); })(),
                     long_heat_block_enabled: ((document.getElementById('config-long-heat-block-enabled') || {}).checked === true),
                     long_megacap_rank_max: (() => { const _v = parseInt((document.getElementById('config-long-megacap-rank-max') || {}).value); return Number.isFinite(_v) && _v >= 0 ? _v : 0; })(),
+                    long_chop_burst_block_enabled: ((document.getElementById('config-long-chop-burst-block-enabled') || {}).checked === true),
+                    long_chop_burst_eff72_max: (() => { const _v = parseFloat((document.getElementById('config-long-chop-burst-eff72-max') || {}).value); return Number.isFinite(_v) && _v >= 0 ? _v : 0.007; })(),
+                    long_chop_burst_window_s: (() => { const _v = parseFloat((document.getElementById('config-long-chop-burst-window-s') || {}).value); return Number.isFinite(_v) && _v >= 0 ? _v : 120; })(),
                     long_heat_btc_slope_min: (() => { const _v = document.getElementById('config-long-heat-btc-slope-min')?.value; return safeFloat(_v === '' || _v == null ? 0 : _v); })(),
                     long_heat_btc_rsi_prev_min: (() => { const _v = document.getElementById('config-long-heat-btc-rsi-prev-min')?.value; return safeFloat(_v === '' || _v == null ? 0 : _v); })(),
                     long_heat_bull_pct_min: (() => { const _v = document.getElementById('config-long-heat-bull-pct-min')?.value; return safeFloat(_v === '' || _v == null ? 85 : _v); })(),

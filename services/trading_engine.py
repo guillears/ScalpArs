@@ -7230,7 +7230,10 @@ class TradingEngine:
                 entry_atr_pct=(round(atr, 4) if atr is not None else None), entry_pair_volume_24h_usd=flag.get('volume_24h'), entry_pair_rank=None,
                 entry_bull_pct=_g.get('_market_bull_pct'), entry_bear_pct=_g.get('_market_bear_pct'),
                 entry_global_volume_ratio=_g.get('_global_volume_ratio'), entry_pair_volume_ratio=_pvr,
-                frenzy_long=not wide, frenzy_wide=wide, frenzy_bar_open_ms=bar_open, entry_frenzy_spike_at=datetime.utcfromtimestamp(flag['spike_ts'] / 1000),
+                frenzy_long=not wide, frenzy_wide=wide, frenzy_bar_open_ms=bar_open,
+                frenzy_strong=(not wide and flag.get('adx_delta') is not None and flag.get('di_spread') is not None
+                               and float(flag['adx_delta']) > 0 and float(flag['di_spread']) > 0),   # 💪 Oct-4 (197): ADX rising ∧ +DI above −DI
+                entry_frenzy_spike_at=datetime.utcfromtimestamp(flag['spike_ts'] / 1000),
                 entry_frenzy_hours=round(flag['hours'], 2), entry_frenzy_vwap=flag['vwap'],
                 entry_frenzy_vs_vwap_pct=(round(flag['vs_vwap_pct'], 3) if flag.get('vs_vwap_pct') is not None else None),
                 entry_frenzy_vol_mult=round(flag['vol_mult'], 1), entry_frenzy_run_pct=round(flag['run_pct'], 2),
@@ -8211,6 +8214,7 @@ class TradingEngine:
         # guard) with its own size (frenzy_long_invest_mult × frenzy_long_lev_mult, absolute-assign) and its own exit (frenzy_exit_for).
         frenzy_long: bool = False,
         frenzy_wide: bool = False,   # 🔥🌐 Oct-3: the FRENZY open path tagged FRENZY_WIDE (own size fields frenzy_wide_*)
+        frenzy_strong: bool = False,   # 💪 Oct-4 (197): FRENZY_LONG with ADX rising ∧ +DI above −DI → frenzy_long_lev_mult_strong
         frenzy_bar_open_ms: Optional[int] = None,   # 🔥 Oct-3: the signal bar's open — lateness re-checked AFTER the bot open lane
         entry_frenzy_spike_at: Optional[datetime] = None,
         entry_frenzy_hours: Optional[float] = None,
@@ -9336,6 +9340,11 @@ class TradingEngine:
             _sg_pref = _fz_es.lower() if _frenzy else f'surge_{direction.lower()}'   # 🔥 FRENZY: its own size fields (frenzy_long_* / frenzy_wide_*)
             # an explicit 0 means "as small as allowed" (the floors), never the 1× default — the mult is this sleeve's risk control (Oct-3 review)
             _sg_inv = getattr(_th_sg, f'{_sg_pref}_invest_mult', 1.0); _sg_lev = getattr(_th_sg, f'{_sg_pref}_lev_mult', 1.0)
+            if _frenzy and _fz_es == "FRENZY_LONG" and frenzy_strong:   # 💪 Oct-4 (197): strong signal bar → its own leverage multiplier (0 = off)
+                _sg_strong = float(getattr(_th_sg, 'frenzy_long_lev_mult_strong', 0) or 0)
+                if _sg_strong > 0:
+                    _sg_lev = _sg_strong
+                    logger.info(f"[FRENZY_LONG] {pair}: ADX rising ∧ +DI above −DI → lev mult {_sg_strong:g} (normal {getattr(_th_sg, 'frenzy_long_lev_mult', 1.0)})")
             cell_mult = max(0.1, min(1.0 if _sg_inv is None else float(_sg_inv), _inv_cap))
             cell_lev_mult = max(0.05, min(1.0 if _sg_lev is None else float(_sg_lev), _lev_cap))
             cell_src = _fz_es if _frenzy else f"SURGE_{direction}"

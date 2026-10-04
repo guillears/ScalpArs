@@ -40,7 +40,9 @@ def test_wired_as_an_entry_stamp_only():
     assert "di_spread=(frenzy_di_spread(closed[-300:]) if (ready or code in FRENZY_WIDE_CODES) else None)" in eng
     assert "entry_frenzy_di_spread=flag.get('di_spread')" in eng and "entry_frenzy_di_spread=(entry_frenzy_di_spread if _frenzy else None)" in eng
     lines = [x.strip() for x in eng.splitlines() if "di_spread" in x and not x.strip().startswith("#")]
-    assert all(("frenzy_di_spread" in x and ("import" in x or "if (ready or code in FRENZY_WIDE_CODES)" in x)) or "entry_frenzy_di_spread" in x for x in lines), lines   # no rule reads it
+    allowed = lambda x: (("frenzy_di_spread" in x and ("import" in x or "if (ready or code in FRENZY_WIDE_CODES)" in x)) or "entry_frenzy_di_spread" in x
+                         or "flag.get('di_spread') is not None" in x or "float(flag['di_spread']) > 0" in x)   # 💪 Oct-4 (197): the ONE rule that reads it (strong-signal leverage)
+    assert all(allowed(x) for x in lines), lines
     import models as M
     assert "entry_frenzy_di_spread" in {c.name for c in M.Order.__table__.columns}
     assert "('entry_frenzy_di_spread', 'FLOAT')" in open(os.path.join(ROOT, "database.py"), encoding="utf-8").read()

@@ -121,7 +121,8 @@ def frenzy_di_spread(bars) -> Optional[float]:
     """🔬 Oct-2 OBSERVE-ONLY stamp (DECISION_LOG 187): +DI − −DI on the LAST row of CLOSED 5m bars [open_ms, o, h, l, c, v] — the bot's own
     ADX(14) (ta ADXIndicator, as services/indicators.py). Positive = up-moves dominate. Backtest (FRENZY_LONG_INDICATORS_2026-10-02.md):
     on red / flat signal candles the trades with the highest spread did best (+0.17 → +0.93 %/trade, lowest → highest fifth) but the read
-    sits at the 75th percentile of luck → watch item for the 40-fill review, NOT a rule; nothing reads it. None when unreadable."""
+    sits at the 75th percentile of luck → watch item for the 40-fill review. 💪 Oct-4 (DECISION_LOG 197, operator override): > 0 together with
+    frenzy_adx_delta > 0 sizes a FRENZY_LONG at frenzy_long_lev_mult_strong. None when unreadable."""
     try:
         import math
         import pandas as pd
@@ -139,7 +140,8 @@ def frenzy_di_spread(bars) -> Optional[float]:
 def frenzy_adx_delta(bars) -> Optional[float]:
     """🔬 Oct-3 OBSERVE-ONLY stamp (DECISION_LOG 193): ADX(14) on the last CLOSED 5m bar minus ADX three bars earlier — the backtest's d_adx
     ("ADX rising", the operator's manual-trade read). On FRENZY-WIDE's year: rising +0.108 %/trade vs +0.054 all, both halves positive, but
-    random subsets of the same size beat it 28 % of the time → a 40-fill watch item, NOT a rule; nothing reads it. None when unreadable."""
+    random subsets of the same size beat it 28 % of the time → a 40-fill watch item. 💪 Oct-4 (DECISION_LOG 197, operator override): > 0
+    together with frenzy_di_spread > 0 sizes a FRENZY_LONG at frenzy_long_lev_mult_strong. None when unreadable."""
     try:
         import math
         import pandas as pd

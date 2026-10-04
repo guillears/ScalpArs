@@ -5363,3 +5363,15 @@ the study's +4 % price − 0.11 → small definitional gap. Sizing re-read on ti
 5.1 % (fixed +4); at 4.8 %/stop the fixed +4 median 90-day +67 % (+3 % after a 50 % haircut), 4 % (11 %) chance of < 25 %.
 🔒 REVERT: first 20 FRENZY + WIDE fills under the TP re-priced with the +5/1.5 trail on ticks — the trail beats it on average → frenzy_tp_pct = 0.
 
+### (197) 2026-10-04 — 💪 FRENZY_LONG strong-signal leverage: ADX rising ∧ +DI above −DI → lev mult 0.5 (10× vs 6×) — operator ARMED override
+Read (real ticks, fixed +4/−3, quiet-market first candles, year): FRENZY kept (ADX 3-bar Δ > 0 ∧ +DI − −DI > 0) 93 · +0.572 %/trade vs the rest
+100 · +0.240 (better 6 of 9 months, every leave-one-month-out, every exit tested; Δ +0.17 day-CI [−0.31, +0.67]; 1 of 11 ADX/DI cuts tried that
+day → family-wise luck not excluded). WIDE: +0.192 vs +0.116 → no multiplier (sim worsens). As a BLOCK it failed (blocked cohort profitable,
+−34 % of total return). Sim (Lev 0.32 base, 4.8 %/stop): FRENZY kept at 1× +38 % median 90 d (+11 % after 50 % haircut) · 1.5× +51 % (+14 %) ·
+2× +60 % (+15 %), worst drop 30 → 44 %. Multiplier bar (N≥30 ∧ WR≥70 ∧ avg≥+0.10 ∧ Σ>0) passes N/avg/Σ, fails WR (53 %; a +4/−3 exit wins ~50 %
+by design — the momentum-era WR leg does not fit this sleeve) → declared override. Operator chose leverage (not investment) and 0.5 (→ 10×,
+≈ 1.67× the normal 6×, one stop ≈ 7.5 % of the account). Shipped: frenzy_long_lev_mult_strong = 0.5 (code 0 = off); FRENZY_WIDE never;
+unreadable readings = normal size; FRENZY table rows "sized-up" vs "normal" with the gate. Review caught an inline comment that swallowed
+entry_frenzy_spike_at (fixed + regression test). 🔒 REVERT: first 10 sized-up FRENZY_LONG fills average below the normal-size FRENZY_LONG
+fills, or below 0 → frenzy_long_lev_mult_strong = 0.
+

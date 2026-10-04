@@ -3416,6 +3416,7 @@ def _frenzy_monitor_payload():
                 "wide_enabled": bool(getattr(_th, 'frenzy_wide_enabled', False)), "wide_invest_mult": float(1.0 if getattr(_th, 'frenzy_wide_invest_mult', 1.0) is None else getattr(_th, 'frenzy_wide_invest_mult', 1.0)),
                 "gvol_max": float(getattr(_th, 'frenzy_gvol_max', 0) or 0), "gvol": (_fzs.get('gvol') or {}).get('value'),
                 "gvol_bar": ((_dt.utcfromtimestamp(((_fzs.get('gvol') or {})['bar'] + 300_000) / 1000).strftime('%H:%M')) if (_fzs.get('gvol') or {}).get('bar') else None),
+                "lev_mult_strong": float(getattr(_th, 'frenzy_long_lev_mult_strong', 0) or 0),
                 "wide_lev_mult": float(1.0 if getattr(_th, 'frenzy_wide_lev_mult', 0.2) is None else getattr(_th, 'frenzy_wide_lev_mult', 0.2)), "wide_max_slots": max(1, int(getattr(_th, 'frenzy_wide_max_slots', 2) or 2)),
                 "max_atr": float(getattr(_th, 'frenzy_max_atr_pct', 2.5) or 0), "stop": float(getattr(_th, 'frenzy_stop_pct', 3.0) or 0),
                 "tp": float(getattr(_th, 'frenzy_tp_pct', 0) or 0),
@@ -8078,6 +8079,15 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                         f"📋 REVIEW DUE — first 40: {sum(1 for p in _fz_life[:40] if p > 0)} winners · mean {sum(_fz_life[:40]) / 40:+.3f}% "
                         f"(keep read: mean > 0 after costs ∧ ≥ 12 winners)")
             frenzy_rows.append({"row": _fz_lbl, **_fz_stats(_fz_all), "gate": _fz_gate})
+            if _fz_es == "FRENZY_LONG" and _fz_all:   # 💪 Oct-4 (197): sized-up (ADX rising ∧ +DI above −DI) vs normal — the revert gate's two cohorts
+                _fz_strong = lambda o: ((getattr(o, 'entry_frenzy_adx_delta', None) or 0) > 0 and (getattr(o, 'entry_frenzy_di_spread', None) or 0) > 0)
+                _fs = [o for o in _fz_all if _fz_strong(o)]; _fn = [o for o in _fz_all if not _fz_strong(o)]
+                _s10 = sorted(_fs, key=lambda o: o.opened_at)[:10]
+                _gate197 = (f"⏳ {len(_s10)}/10 sized-up closed" if len(_s10) < 10 else
+                            f"📋 REVERT CHECK — first 10 sized-up avg {sum(o.pnl_percentage or 0 for o in _s10) / 10:+.3f}% vs normal "
+                            f"{(sum(o.pnl_percentage or 0 for o in _fn) / len(_fn)) if _fn else 0:+.3f}% (revert if below normal or below 0)")
+                frenzy_rows.append({"row": "  💪 sized-up: ADX rising ∧ +DI above −DI (lev ×frenzy_long_lev_mult_strong)", **_fz_stats(_fs), "gate": _gate197})
+                frenzy_rows.append({"row": "  normal size", **_fz_stats(_fn), "gate": ""})
             if _fz_all:
                 _by_r = {}
                 for o in _fz_all:

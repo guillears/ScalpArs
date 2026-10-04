@@ -163,3 +163,29 @@ def test_fixed_tp_wiring():
     assert eng.count('_reason_base.startswith("FRENZY_TP")') == 2               # post-exit tracking (live + recovery whitelists)
     import json
     assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_tp_pct"] == 4.0
+
+
+def test_strong_signal_leverage_wiring():
+    """💪 Oct-4 (197): FRENZY_LONG with ADX rising ∧ +DI above −DI → frenzy_long_lev_mult_strong (absolute); WIDE never; unreadable = normal."""
+    import json
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert "frenzy_strong=(not wide and flag.get('adx_delta') is not None and flag.get('di_spread') is not None" in eng
+    assert "and float(flag['adx_delta']) > 0 and float(flag['di_spread']) > 0)" in eng
+    i = eng.index("if _frenzy and _fz_es == \"FRENZY_LONG\" and frenzy_strong:")
+    assert eng.index("_sg_inv = getattr(_th_sg") < i < eng.index("cell_lev_mult = max(0.05, min(1.0 if _sg_lev is None")   # replaces the lev mult BEFORE the clamp
+    cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
+    assert cfg["frenzy_long_lev_mult_strong"] == 0.5 and cfg["frenzy_long_lev_mult"] == 0.32
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert html.count('id="config-fz-lev-mult-strong"') == 1 and "['config-fz-lev-mult-strong', 'frenzy_long_lev_mult_strong', 0.5]" in html
+
+
+
+def test_frenzy_open_keeps_every_stamp_kwarg():
+    """Oct-4 review: an inline comment once swallowed entry_frenzy_spike_at= (the episode id) — every stamp must be a live kwarg in _frenzy_open."""
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    i = eng.index("async def _frenzy_open("); body = eng[i:eng.index("async def _maybe_open_surge(", i)]
+    code = "\n".join(ln.split("#", 1)[0] for ln in body.splitlines())          # comments stripped
+    for kw in ("entry_frenzy_spike_at=datetime.utcfromtimestamp(flag['spike_ts'] / 1000)", "entry_frenzy_hours=", "entry_frenzy_vwap=",
+               "entry_frenzy_vol_mult=", "entry_frenzy_di_spread=flag.get('di_spread')", "entry_frenzy_adx_delta=flag.get('adx_delta')",
+               "entry_frenzy_gvol=_gv", "frenzy_strong=("):
+        assert kw in code, kw

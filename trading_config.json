@@ -760,6 +760,7 @@
     "frenzy_max_entries_per_pair_day": 3,
     "frenzy_long_invest_mult": 1.0,
     "frenzy_long_lev_mult": 0.32,
+    "frenzy_long_lev_mult_strong": 0.5,
     "frenzy_wide_enabled": true,
     "frenzy_wide_invest_mult": 1.0,
     "frenzy_wide_lev_mult": 0.2,

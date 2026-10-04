@@ -1289,6 +1289,12 @@ class SignalThresholds(BaseModel):
     frenzy_max_entries_per_pair_day: int = 3
     frenzy_long_invest_mult: float = 1.0         # absolute-assign, never re-multiplied by cells (Oct-3 operator: JSON 1.0 · lev 0.32 → 20×→6×, one 3 % stop ≈ 5 % of the account; was 2.0/1.0 ≈ 31 %, 90-day MC median −100 %)
     frenzy_long_lev_mult: float = 1.0            # Oct-3 operator: JSON 0.32 → 20×→6×; 0 = the 0.05 floor (never 20×)
+    # 💪 Oct-4 (operator ARMED override, DECISION_LOG 197): a FRENZY_LONG whose signal bar shows ADX rising (3-bar Δ > 0) ∧ +DI above −DI
+    # (entry_frenzy_adx_delta > 0 ∧ entry_frenzy_di_spread > 0, both read on the closed bar) uses THIS leverage multiplier instead (JSON 0.5 →
+    # 20×→10×, ≈ 1.67× the normal 6×). FRENZY_WIDE never. Unreadable readings = normal size. 0 = off. Year (ticks, fixed +4/−3, quiet market):
+    # FRENZY kept +0.572 vs rest +0.240 (6/9 months, every exit, Δ CI spans 0); sim 1× +38 % → 2× +60 % median 90 d. 🔒 REVERT: first 10
+    # sized-up fills average below the other FRENZY_LONG fills of the same period, or below 0 → 0.
+    frenzy_long_lev_mult_strong: float = 0.0
     frenzy_max_entry_dislocation_pct: float = 1.0  # skip the fill when the live price is > this % from the decision price
     frenzy_pair_blacklist: str = "BTCUSDT,ETHUSDT"
     # 🔥🌐 Oct-3 FRENZY-WIDE (operator; DECISION_LOG 193): the FRENZY first candle FRENZY itself refuses ONLY for its ATR cap or a green

@@ -5385,3 +5385,12 @@ sizing_equity / fee_reserve_burn_usd. Independent audit (reports/AUDIT_SLEEVE_SI
 dropped or changed; load→save round-trip exact; reserve split identical over 46,080 cases; preview = engine sizing on 150 cases (0 mismatch).
 Audit fixes D1 (preview rounding) and D2 (a 0 lev mult can no longer be saved for bull/bounce longs — it meant 20×).
 
+### (199) 2026-10-04 — 🎯 FRENZY / FRENZY_WIDE / manual FRENZY exit: fixed TP +4 → +3 (−3 stop unchanged) — operator
+The operator caught that the FRENZY tick studies priced levels on PRICE minus 0.11 costs (avg loss −3.12) while the bot places them on NET P&L
+(live stops −3.00x). Re-run with the bot's accounting (scripts/frenzy_exit_ticks_botexact.py → reports/FRENZY_EXIT_TICKS_BOTEXACT_2026-10-04.md:
+net levels, 0.09 % fees, fill at the crossing print; 43 exits, 850 quiet-market FRENZY first candles): +6/−3 +0.263 · +3.5/−2 +0.202 · +3/−3
++0.192 (53 % won) · +4/−3 +0.187 (46 %) · old trail +5/1.5 +0.142 · Bull-Run with BE lock −0.018 · +1/−x ≈ 0. Top ~10 exits within noise.
+Operator chose +3/−3 (tie on expectancy, +7 pts win rate → shorter losing streaks; WIDE +0.163 vs +0.145, FRENZY +0.292 vs +0.332). The
+momentum-long engine replay is unaffected (it runs the bot's own P&L). Per-sleeve split (FRENZY +4/−2, WIDE +6/−3) pre-registered as an idea
+for the 40-fill review, not shipped. 🔒 REVERT: first 20 FRENZY + WIDE fills under +3 re-priced with +4/−3 on ticks — +4 beats it on average → 4.
+

@@ -1278,9 +1278,10 @@ class SignalThresholds(BaseModel):
     frenzy_trail_arm_pct: float = 5.0            # the trailing exit arms at this peak %
     frenzy_trail_giveback_pct: float = 1.5       # … and closes this % of price below the best point
     # 🎯 Oct-4 (operator, DECISION_LOG 196): FRENZY_LONG / FRENZY_WIDE fixed take-profit at this net % (0 = off → the trail above). Real-tick year,
-    # 850 quiet-market fills: fixed +4/−3 +0.211 %/trade · 48 % won vs the +5/1.5 trail +0.169 · 42 % (Δ +0.04, 5 of 9 months, CI spans 0).
-    # Also on the MANUAL "FRENZY" exit (operator; closes MANUAL_TP). 🔒 REVERT: first 20 FRENZY + WIDE fills under it re-priced with the trail on 1m
-    # klines — trail beats it on average → 0.
+    # 850 quiet-market fills (old accounting: price levels − 0.11): fixed +4/−3 +0.211 %/trade · 48 % won vs the +5/1.5 trail +0.169 · 42 % (Δ +0.04, 5 of 9 months, CI spans 0).
+    # Also on the MANUAL "FRENZY" exit (operator; closes MANUAL_TP). Oct-4 (DECISION_LOG 199, operator) JSON 4 → 3: bot-exact tick re-run (net
+    # levels, 0.09 % fees) +3/−3 +0.192 · 53 % won vs +4/−3 +0.187 · 46 % (tie, Δ +0.005, 6/9 months) — same expectancy, higher win rate.
+    # 🔒 REVERT: first 20 FRENZY + WIDE fills under +3 re-priced with +4/−3 on ticks — +4 beats it on average → 4.
     frenzy_tp_pct: float = 0.0
     frenzy_max_hold_minutes: int = 720           # 12 h cap (0 = the global max hold)
     frenzy_max_slots: int = 2                    # max FRENZY_LONG open at once (they also count against max open positions)

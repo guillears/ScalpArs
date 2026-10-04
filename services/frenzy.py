@@ -247,8 +247,8 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
     """FRENZY_LONG's own exit → (close, reason, line). use_tp (the FRENZY_LONG / FRENZY_WIDE sleeve AND the MANUAL "FRENZY" exit — operator):
     🎯 Oct-4 (operator, DECISION_LOG 196) a FIXED take-profit at +frenzy_tp_pct net (0 = off) → reason FRENZY_TP, checked before the trail
     (the trail is only the fallback). Real-tick year (scripts/frenzy_exit_ticks.py, 850 quiet-market fills): fixed +4/−3 +0.211 %/trade
-    vs the +5/1.5 trail +0.169 (5 of 9 months better, CI spans 0). A peak that already reached the TP while the close was missed (failed
-    close, feed gap, restart) closes at once (review: never ride a +4 back down to the stop); the trail is only the fallback when tp = 0.
+    vs the +5/1.5 trail +0.169 (5 of 9 months better, CI spans 0); bot-exact re-run (DECISION_LOG 199): +3/−3 +0.192 · +4/−3 +0.187 → operator +3. A peak that already reached the TP while the close was missed (failed
+    close, feed gap, restart) closes at once (review: never ride a +tp back down to the stop); the trail is only the fallback when tp = 0.
     Stop at −frenzy_stop_pct; once the peak reaches +frenzy_trail_arm_pct the
     line trails frenzy_trail_giveback_pct of PRICE below the best point (peak − giveback × (1 + peak/100)). Reasons are the
     momentum stack's own (STOP_LOSS / RUNNER_TRAIL) so every matcher knows them; entry_strategy tells the sleeve apart.

@@ -152,6 +152,7 @@ def test_fixed_take_profit():
     assert frenzy_exit_for(-1.0, 4.3, th, use_tp=True, stop_floor=-2.5)[0] is True
     assert frenzy_exit_for(6.0, 9.0, NS(**{**th.__dict__, "frenzy_tp_pct": 0.0}), use_tp=True)[1] == "RUNNER_TRAIL"   # tp off → trail fallback
     assert frenzy_exit_for(4.5, 4.5, NS(**{**th.__dict__, "frenzy_tp_pct": -4.0}), use_tp=True)[0] is False   # negative = off
+    assert frenzy_exit_for(4.0, 6.0, NS(**{**th.__dict__, "frenzy_tp_pct": 3.0}), use_tp=True) == (True, "FRENZY_TP", 3.0)   # tp < arm: a peak past the arm still takes the TP
     assert frenzy_exit_for(4.5, 4.5, NS(**{**th.__dict__, "frenzy_tp_pct": 0.0}), use_tp=True)[0] is False   # 0 = off → trail
 
 
@@ -162,7 +163,7 @@ def test_fixed_tp_wiring():
     assert eng.count('"FRENZY_TP": "MANUAL_TP"') == 2
     assert eng.count('_reason_base.startswith("FRENZY_TP")') == 2               # post-exit tracking (live + recovery whitelists)
     import json
-    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_tp_pct"] == 4.0
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_tp_pct"] == 3.0
 
 
 def test_strong_signal_leverage_wiring():

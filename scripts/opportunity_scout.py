@@ -1239,9 +1239,14 @@ def run():
             sys.path.insert(0, ROOT)
         import scout_frenzy as _fz
         _fzc = {**cfg, **(cfg.get("thresholds") or {})}
-        _fz_set, _fz_flag, _fz_pairs, _fz_short, _fz_fol = _fz.scan(EX, _retry, _fzc, last_closed, alts, btc_full, now_ms)
+        _fz_set, _fz_flag, _fz_pairs, _fz_short, _fz_fol, _fz_crash = _fz.scan(EX, _retry, _fzc, last_closed, alts, btc_full, now_ms)
         _fz_hist = _fz.save(_fz_set, _fz_pairs, now_ms)
         _fz_sec = _fz.lines(_fz_set, _fz_flag, _fz_pairs, _fz_short, _fz_fol, _fzc, _fz_hist) + [""]
+        try:                                           # 🔻 the crash-short observation never takes the FRENZY section down with it
+            _fz_sec += _fz.crash_lines(_fz_crash, _fz.save_crashes(_fz_crash, _fz_pairs, now_ms))
+        except Exception as _cr_e:
+            log(f"crash-short observation failed: {_cr_e}")
+            _fz_sec += ["## 🔻 Crash-short observation", "", f"Unavailable this run ({str(_cr_e)[:120]}).", ""]
         _fz_notes = _fz.note_items(_fz_set, (_load_notes_state().get("noted") or {}), now_ms)
     except Exception as _fz_e:
         log(f"FRENZY watch failed: {_fz_e}")

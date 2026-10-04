@@ -5339,3 +5339,15 @@ vs Bull-Run TP + −3 +0.081 (3 of 9 months better) and fixed +2/−3 +0.079 →
 5 of 9) = watch item. Dual review applied: a cancelled shared ccxt load_markets could end the read cancelled and kill frenzy_loop → caught at every
 await; gate off = no wait; one ≤ 35 s wait per bar.
 
+### (195) 2026-10-03 — 🔻 Crash-short OBSERVATION pre-registered in the scout (operator: AIN 22:10 UTC "clear short?")
+AIN fell −18.6 % inside ONE 5m bar (22:10 close 0.0387: RSI 13, −18 % vs its spike average, ATR 5.4 %, then the EMA200 at 0.0382), −8 % more
+to 0.0356, then +23 % in one minute (22:18). The "signals" exist only after the drop. Year (frenzy_scalp_moments_v2, frenzy moments ≥ 2 h
+after the spike, next-bar entry): shorting after a 5m drop ≤ −8 % ∧ RSI ≤ 20 loses with fixed targets (+1/−3 −0.60, +2/−2 −0.59); the FRENZY
+trail ≈ 0; the bounce long is worse (−0.31 … −0.86). Only cell kept: 5m drop ≤ −12 %, short with the trail, one per pair per 2 h — 322 cases /
+149 days, +0.23 %/trade (+0.39 / +0.13 by half), day 95 % [−0.32, +0.86], 36 % won → NOT proven (the +0.30 first quoted was without the
+spacing; re-pinned by review). Recorded live by scripts/scout_frenzy.py (reports/SCOUT_CRASH_SHORT.csv), scored with the SAME walk as the
+reference (1m bars, stop 3 % of price, trail from +5 % giving back 1.5 %, gap fills, 0.10 slip + 0.11 costs, 12 h; 24 h volume ≥ $20M).
+🔒 Frozen bar at 30 finished cases: mean > 0 ∧ ≥ 8 days ∧ no pair ≥ 50 % of the gain → only then a backtest-candidate discussion. First case:
+AIN 22:15 close, +5.42 % (trail, 2 min). Same session: the scout's FRENZY watch (every pair FRENZY can watch, every fresh setup, bot match,
+MISMATCH / NOT FOLLOWED flags) — dual-reviewed, commit f68b49d.
+

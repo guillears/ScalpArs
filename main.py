@@ -945,6 +945,21 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
 
 # ----- Balance -----
 
+def _fee_reserve_burn_leg() -> float:
+    """⛽ The fee reserve's burn leg (hours × live bot BNB burn/hr − BNB already held) — mirror of calculate_position_size.
+    0 when the leg is off or the burn data is not mature yet. Shared by _reserve_split and the ⚖️ Sleeve Sizing preview."""
+    _inv = config.trading_config.investment
+    _fee_hrs = max(0.0, float(getattr(_inv, 'fee_reserve_hours', 0.0) or 0.0))
+    _burn = float(getattr(trading_engine, '_bnb_burn_rate_bot', 0.0) or 0.0)   # ⛽ Sep-29c: engine mirror (bot fees only)
+    # Aug-26: burn leg gated on data maturity — mirror of calculate_position_size (B5 reset artifact)
+    if _fee_hrs > 0 and _burn > 0 and getattr(trading_engine, '_bnb_data_mature', False):
+        # Sep-11: runway-aware — mirror of calculate_position_size (reserve only what BNB doesn't cover)
+        _need = _fee_hrs * _burn
+        _have = trading_engine._bnb_held_usd()
+        return _need if _have is None else max(0.0, _need - _have)
+    return 0.0
+
+
 def _reserve_split(free_balance: float, deployed_margin: float = 0.0):
     """Reserve / tradeable split for the balance card (Jul 2, 2026) — MUST mirror the engine's
     safe-reserve formula (trading_engine.calculate_position_size) so the display never drifts from
@@ -974,14 +989,7 @@ def _reserve_split(free_balance: float, deployed_margin: float = 0.0):
         _fee_eq = min(_fee_eq, _sched_tgt_active)
     if _fee_pct > 0 and _fee_eq:
         _fee_res = max(_fee_res, _fee_eq * _fee_pct / 100.0)
-    _fee_hrs = max(0.0, float(getattr(_inv, 'fee_reserve_hours', 0.0) or 0.0))
-    _burn = float(getattr(trading_engine, '_bnb_burn_rate_bot', 0.0) or 0.0)   # ⛽ Sep-29c: engine mirror (bot fees only)
-    # Aug-26: burn leg gated on data maturity — mirror of calculate_position_size (B5 reset artifact)
-    if _fee_hrs > 0 and _burn > 0 and getattr(trading_engine, '_bnb_data_mature', False):
-        # Sep-11: runway-aware — mirror of calculate_position_size (reserve only what BNB doesn't cover)
-        _need = _fee_hrs * _burn
-        _have = trading_engine._bnb_held_usd()
-        _fee_res = max(_fee_res, _need if _have is None else max(0.0, _need - _have))
+    _fee_res = max(_fee_res, _fee_reserve_burn_leg())
     reserve += _fee_res
     reserve = min(reserve, max(0.0, free_balance))
     return round(reserve, 2), round(max(0.0, free_balance - reserve), 2), _inv.reserve_mode
@@ -1044,6 +1052,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "reserve": _reserve,
             "tradeable": _tradeable,
             "reserve_mode": _rmode,
+            "sizing_equity": round(balance + used_margin, 2),               # ⚖️ engine sizing base (USDT free + open margin = open_position's total_portfolio)
+            "fee_reserve_burn_usd": round(_fee_reserve_burn_leg(), 2),       # ⚖️ the burn leg the Sleeve Sizing preview cannot compute client-side
             "is_paper": True
         }
     else:
@@ -1107,6 +1117,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "spot_usdt": spot['usdt'] if spot else None,
             "spot_bnb_usd": spot['bnb_usd'] if spot else None,
             "spot_total": spot['total'] if spot else None,
+            "sizing_equity": round(float(usdt_free or 0.0) + sum(float(o.investment or 0.0) for o in _live_open), 2),   # ⚖️ engine sizing base (USDT free + DB open margin = open_position's total_portfolio)
+            "fee_reserve_burn_usd": round(_fee_reserve_burn_leg(), 2),
             "is_paper": False
         }
 

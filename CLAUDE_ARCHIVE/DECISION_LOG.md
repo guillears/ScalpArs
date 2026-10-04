@@ -5375,3 +5375,13 @@ unreadable readings = normal size; FRENZY table rows "sized-up" vs "normal" with
 entry_frenzy_spike_at (fixed + regression test). 🔒 REVERT: first 10 sized-up FRENZY_LONG fills average below the normal-size FRENZY_LONG
 fills, or below 0 → frenzy_long_lev_mult_strong = 0.
 
+### (198) 2026-10-04 — ⚖️ Sleeve Sizing table (UI only, operator-requested)
+One settings table in "💧 Liquidity & Risk Caps" (above BNB Fee Management): every sleeve's on/off switches, Inv × and Lev × (with sub-rows for
+the momentum cells, C1 de-mux, flip NEGDI / TG cells, FRENZY strong-signal and WIDE), plus a live preview (margin · leverage · notional · stop ·
+"1 stop costs" $ and % of the account, green ≤3 % / amber 3–8 % / red >8 %) and a TOTALS line (all slots filled, gross leverage vs the cap,
+cost if all stop). It is the single place to edit: 49 existing inputs moved in with the SAME ids (load/save untouched); bull_long_* /
+bounce_long_* got their missing UI inputs (D11 complete). main.py: _fee_reserve_burn_leg() helper (identical maths) + /api/balance
+sizing_equity / fee_reserve_burn_usd. Independent audit (reports/AUDIT_SLEEVE_SIZING_TABLE_2026-10-04.md): save payload 727 → 733 keys, none
+dropped or changed; load→save round-trip exact; reserve split identical over 46,080 cases; preview = engine sizing on 150 cases (0 mismatch).
+Audit fixes D1 (preview rounding) and D2 (a 0 lev mult can no longer be saved for bull/bounce longs — it meant 20×).
+

@@ -2899,7 +2899,7 @@ class TradingEngine:
                     _reason_base.startswith("HARD_TP") or  # Jul 20: hard TP cap — regret rows are its revert-gate data
                     _reason_base.startswith("SPIKE_") or  # Jul 27: spike option-D reasons (SL/FLOOR/RSI_COOL) — post-exit rows are the BANANA-watch + fade-looseness read instruments
 
-                    _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or
+                    _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("FRENZY_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or
                     # Jun 14: Flip Entry exits — keep post-exit tracking alive across restart
                     _reason_base.startswith("FLIP_")):
                 continue
@@ -11787,7 +11787,7 @@ class TradingEngine:
         if _reason_base.startswith("BR_"):  # Aug 21 gate 57: bull-run sleeve reasons (BR_STOP_LOSS → STOP_LOSS etc.)
             _reason_base = _reason_base[3:]
         _reason_base = _rh_strip(_reason_base)   # FL_RH_x → x
-        if not _reason_base.startswith(RH_STOP_CLASS) and not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("LADDER_FLOOR") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("BACKSTOP_STOP")):
+        if not _reason_base.startswith(RH_STOP_CLASS) and not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("LADDER_FLOOR") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("FRENZY_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("BACKSTOP_STOP")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -12659,8 +12659,8 @@ class TradingEngine:
                         if getattr(order, 'manual_exit_mode', None) == "FRENZY" and _mf_lbl == "MANUAL" and _ovr_c is None:
                             _mf_close, _mf_why, _mf_line = frenzy_exit_for(_mf_pnl, _mf_peak, config.trading_config.thresholds,
                                                                            manual_backstop_stop_floor(getattr(self, 'is_paper_mode', True), config.trading_config.thresholds, "FRENZY", None, order.leverage),
-                                                                           short=(order.direction == "SHORT"))
-                            _mf_reason = "MANUAL_TRAIL" if _mf_why == "RUNNER_TRAIL" else "MANUAL_SL"
+                                                                           short=(order.direction == "SHORT"), use_tp=True)   # 🎯 fixed TP (196): manual FRENZY exit too (operator)
+                            _mf_reason = {"RUNNER_TRAIL": "MANUAL_TRAIL", "FRENZY_TP": "MANUAL_TP"}.get(_mf_why, "MANUAL_SL")
                         elif getattr(order, 'manual_exit_mode', None) in ("BULLRUN", "BULLRUN_SL") and _mf_lbl == "MANUAL" and _ovr_c is None:   # 🌊 Oct-3
                             _mf_close, _mf_reason, _mf_line = manual_bullrun_exit_for(_mf_pnl, _mf_peak, getattr(order, 'entry_atr_pct', None),
                                                                                       config.trading_config.thresholds, order.leverage,
@@ -12706,7 +12706,7 @@ class TradingEngine:
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None))
                     elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
-                                                                          _rh_backstop_floor(getattr(self, 'is_paper_mode', True)))
+                                                                          _rh_backstop_floor(getattr(self, 'is_paper_mode', True)), use_tp=True)   # 🎯 fixed TP (196)
                     else:
                         _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None), getattr(order, 'entry_br_door', None),
                                                                            trail_mult_override=_surge_trail_override(order.entry_strategy))
@@ -16522,9 +16522,9 @@ class TradingEngine:
                     if order_info.get('manual_exit_mode') == 'FRENZY' and _mn_lbl == "MANUAL":   # 🔥 Oct-2: the FRENZY sleeve's stop + trailing exit, read live from its settings
                         _fz_c, _fz_why, _fz_line = frenzy_exit_for(pnl_pct, _mn_peak, config.trading_config.thresholds,
                                                                    manual_backstop_stop_floor(getattr(self, 'is_paper_mode', True), config.trading_config.thresholds, "FRENZY", None, order_info.get('leverage')),
-                                                                   short=(direction == "SHORT"))
-                        _mn_reason = (("MANUAL_TRAIL" if _fz_why == "RUNNER_TRAIL" else "MANUAL_SL") if _fz_c else None)
-                        _mn_sl, _mn_tp = round(_fz_line, 4), None   # for the log line
+                                                                   short=(direction == "SHORT"), use_tp=True)   # 🎯 fixed TP (196): manual FRENZY exit too (operator)
+                        _mn_reason = ({"RUNNER_TRAIL": "MANUAL_TRAIL", "FRENZY_TP": "MANUAL_TP"}.get(_fz_why, "MANUAL_SL") if _fz_c else None)
+                        _mn_sl, _mn_tp = (None, round(_fz_line, 4)) if _fz_why == "FRENZY_TP" else (round(_fz_line, 4), None)   # for the log line
                     elif order_info.get('manual_exit_mode') in ('BULLRUN', 'BULLRUN_SL') and _mn_lbl == "MANUAL":   # 🌊 Oct-3: the Bull-Run sleeve's exit, live settings
                         _br_c, _br_why, _br_line = manual_bullrun_exit_for(pnl_pct, _mn_peak, order_info.get('entry_atr_pct'), config.trading_config.thresholds,
                                                                            order_info.get('leverage'), getattr(self, 'is_paper_mode', True),
@@ -16571,7 +16571,7 @@ class TradingEngine:
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'))
                     elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
-                                                                          _rh_backstop_floor(getattr(self, 'is_paper_mode', True)))
+                                                                          _rh_backstop_floor(getattr(self, 'is_paper_mode', True)), use_tp=True)   # 🎯 fixed TP (196)
                     else:
                         _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'), order_info.get('entry_br_door'),
                                                                            trail_mult_override=_surge_trail_override(order_info.get('entry_strategy')))

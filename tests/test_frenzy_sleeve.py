@@ -151,7 +151,7 @@ def test_config_parity_and_every_surface():
     import config as C
     th = C.trading_config.thresholds
     fields = sorted(k for k in type(th).model_fields if k.startswith("frenzy_"))
-    assert len(fields) == 27
+    assert len(fields) == 28
     cfgj = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert sorted(k for k in cfgj if k.startswith("frenzy_")) == fields                   # every field has a JSON value
     assert type(th).model_fields["frenzy_long_enabled"].default is False                  # OFF in code; the JSON arms it
@@ -337,7 +337,7 @@ def test_manual_entry_can_use_the_frenzy_exit():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert 'if exit_mode not in ("FIXED", "MOMENTUM", "FLOOR", "FRENZY", "BULLRUN", "BULLRUN_SL"):' in eng
     assert "in ('FIXED', 'FLOOR', 'FRENZY', 'BULLRUN', 'BULLRUN_SL')) or _ovr_rt):" in eng and 'in ("FIXED", "FLOOR", "FRENZY", "BULLRUN", "BULLRUN_SL")) or _ovr_m:' in eng   # realtime intercept + candle-loop branch
-    assert '"MANUAL_TRAIL" if _fz_why == "RUNNER_TRAIL" else "MANUAL_SL"' in eng and 'short=(direction == "SHORT")' in eng
+    assert '{"RUNNER_TRAIL": "MANUAL_TRAIL", "FRENZY_TP": "MANUAL_TP"}.get(_fz_why, "MANUAL_SL")' in eng and 'short=(direction == "SHORT")' in eng
     assert "getattr(order, 'manual_exit_mode', None) == \"FRENZY\")" in eng                                   # the 12 h cap applies
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     assert html.count('<option value="FRENZY">🔥 Frenzy exit</option>') == 1 and "m === 'MOMENTUM' || m === 'FRENZY'" in html
@@ -353,7 +353,7 @@ def test_manual_entry_can_use_the_frenzy_exit():
     except ValueError as err:
         assert "FRENZY stop" in str(err)
     # review: the candle path persists the peak (a restart must not disarm the trail) and carries the stop when the websocket is silent
-    assert "order.peak_pnl = _mf_peak" in eng and '"MANUAL_TRAIL" if _mf_why == "RUNNER_TRAIL" else "MANUAL_SL"' in eng
+    assert "order.peak_pnl = _mf_peak" in eng and '{"RUNNER_TRAIL": "MANUAL_TRAIL", "FRENZY_TP": "MANUAL_TP"}.get(_mf_why, "MANUAL_SL")' in eng
 
 
 def test_shipped_atr_limit_is_2_5_everywhere():

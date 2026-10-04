@@ -137,3 +137,29 @@ def test_gvol_value_never_leaks_a_cancelled_read():
         e._fz_gvol_task = (1000, done)
         return a, await e._frenzy_gvol_value(1000), await e._frenzy_gvol_value(2000), await e._frenzy_gvol_value(1000, wait=False)
     assert asyncio.run(run()) == (None, 0.7, None, 0.7)
+
+
+def test_fixed_take_profit():
+    """🎯 Oct-4 (196): frenzy_tp_pct closes at +tp net (reason FRENZY_TP, before the trail) when use_tp — sleeve AND manual FRENZY exit."""
+    from services.frenzy import frenzy_exit_for
+    th = NS(frenzy_stop_pct=3.0, frenzy_trail_arm_pct=5.0, frenzy_trail_giveback_pct=1.5, frenzy_tp_pct=4.0)
+    assert frenzy_exit_for(4.0, 4.0, th, use_tp=True) == (True, "FRENZY_TP", 4.0)
+    assert frenzy_exit_for(3.99, 3.99, th, use_tp=True)[0] is False
+    assert frenzy_exit_for(-3.0, 1.0, th, use_tp=True) == (True, "STOP_LOSS", -3.0)
+    assert frenzy_exit_for(4.2, 4.2, th, short=True, use_tp=True) == (True, "FRENZY_TP", 4.0)   # a manual SHORT on the FRENZY exit
+    assert frenzy_exit_for(5.5, 7.0, th)[1] == "RUNNER_TRAIL"                   # use_tp False → the trail (kept for completeness)
+    assert frenzy_exit_for(2.0, 4.3, th, use_tp=True) == (True, "FRENZY_TP", 4.0)   # missed TP (peak passed it): close now, never ride to the stop
+    assert frenzy_exit_for(-1.0, 4.3, th, use_tp=True, stop_floor=-2.5)[0] is True
+    assert frenzy_exit_for(6.0, 9.0, NS(**{**th.__dict__, "frenzy_tp_pct": 0.0}), use_tp=True)[1] == "RUNNER_TRAIL"   # tp off → trail fallback
+    assert frenzy_exit_for(4.5, 4.5, NS(**{**th.__dict__, "frenzy_tp_pct": -4.0}), use_tp=True)[0] is False   # negative = off
+    assert frenzy_exit_for(4.5, 4.5, NS(**{**th.__dict__, "frenzy_tp_pct": 0.0}), use_tp=True)[0] is False   # 0 = off → trail
+
+
+def test_fixed_tp_wiring():
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert eng.count("use_tp=True)   # 🎯 fixed TP (196)\n") == 2                # sleeve candle + realtime paths
+    assert eng.count("use_tp=True)   # 🎯 fixed TP (196): manual FRENZY exit too") == 2   # manual candle + realtime paths
+    assert eng.count('"FRENZY_TP": "MANUAL_TP"') == 2
+    assert eng.count('_reason_base.startswith("FRENZY_TP")') == 2               # post-exit tracking (live + recovery whitelists)
+    import json
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_tp_pct"] == 4.0

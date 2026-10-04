@@ -241,8 +241,13 @@ def frenzy_long_status(ep, atr_pct, volume_24h, th) -> Tuple[bool, str, str]:
     return True, "FRENZY_READY", "READY"
 
 
-def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False) -> Tuple[bool, str, float]:
-    """FRENZY_LONG's own exit → (close, reason, line). Stop at −frenzy_stop_pct; once the peak reaches +frenzy_trail_arm_pct the
+def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=False) -> Tuple[bool, str, float]:
+    """FRENZY_LONG's own exit → (close, reason, line). use_tp (the FRENZY_LONG / FRENZY_WIDE sleeve AND the MANUAL "FRENZY" exit — operator):
+    🎯 Oct-4 (operator, DECISION_LOG 196) a FIXED take-profit at +frenzy_tp_pct net (0 = off) → reason FRENZY_TP, checked before the trail
+    (the trail is only the fallback). Real-tick year (scripts/frenzy_exit_ticks.py, 850 quiet-market fills): fixed +4/−3 +0.211 %/trade
+    vs the +5/1.5 trail +0.169 (5 of 9 months better, CI spans 0). A peak that already reached the TP while the close was missed (failed
+    close, feed gap, restart) closes at once (review: never ride a +4 back down to the stop); the trail is only the fallback when tp = 0.
+    Stop at −frenzy_stop_pct; once the peak reaches +frenzy_trail_arm_pct the
     line trails frenzy_trail_giveback_pct of PRICE below the best point (peak − giveback × (1 + peak/100)). Reasons are the
     momentum stack's own (STOP_LOSS / RUNNER_TRAIL) so every matcher knows them; entry_strategy tells the sleeve apart.
     stop_floor (live only): never wider than this — just inside the resting exchange backstop.
@@ -252,6 +257,9 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False) -> Tuple[bo
         stop = -abs(_f(th, 'frenzy_stop_pct', 3.0)) or -3.0
         if stop_floor is not None:
             stop = max(stop, float(stop_floor))
+        tp = _f(th, 'frenzy_tp_pct', 0.0) if use_tp else 0.0   # ≤ 0 = off (never abs(): a negative value must not become an active TP)
+        if tp > 0 and (pnl >= tp or pk >= tp):
+            return True, "FRENZY_TP", tp
         arm, give = abs(_f(th, 'frenzy_trail_arm_pct', 5.0)), abs(_f(th, 'frenzy_trail_giveback_pct', 1.5))
         if arm > 0 and give > 0 and pk >= arm:
             line = max(stop, pk - give * ((1 - pk / 100.0) if short else (1 + pk / 100.0)))

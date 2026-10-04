@@ -3418,6 +3418,7 @@ def _frenzy_monitor_payload():
                 "gvol_bar": ((_dt.utcfromtimestamp(((_fzs.get('gvol') or {})['bar'] + 300_000) / 1000).strftime('%H:%M')) if (_fzs.get('gvol') or {}).get('bar') else None),
                 "wide_lev_mult": float(1.0 if getattr(_th, 'frenzy_wide_lev_mult', 0.2) is None else getattr(_th, 'frenzy_wide_lev_mult', 0.2)), "wide_max_slots": max(1, int(getattr(_th, 'frenzy_wide_max_slots', 2) or 2)),
                 "max_atr": float(getattr(_th, 'frenzy_max_atr_pct', 2.5) or 0), "stop": float(getattr(_th, 'frenzy_stop_pct', 3.0) or 0),
+                "tp": float(getattr(_th, 'frenzy_tp_pct', 0) or 0),
                 "trail_arm": float(getattr(_th, 'frenzy_trail_arm_pct', 5.0) or 0), "trail_give": float(getattr(_th, 'frenzy_trail_giveback_pct', 1.5) or 0),
                 "max_slots": int(getattr(_th, 'frenzy_max_slots', 2) or 0),
                 "max_pair_day": int(getattr(_th, 'frenzy_max_entries_per_pair_day', 3) or 0),
@@ -8066,7 +8067,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "avg_pct": round(sum(o.pnl_percentage or 0 for o in g) / _n, 3), "total_usd": round(sum(o.pnl or 0 for o in g), 2),
                     "avg_peak": round(sum(_pks) / len(_pks), 3) if _pks else None,
                     "episodes": len({(o.pair, getattr(o, 'entry_frenzy_spike_at', None)) for o in g})}
-        for _fz_es, _fz_lbl in (("FRENZY_LONG", "FRENZY_LONG (flagged pair, long setup ON, ATR gate · stop / trailing exit)"),
+        for _fz_es, _fz_lbl in (("FRENZY_LONG", "FRENZY_LONG (flagged pair, long setup ON, ATR gate · stop / fixed TP or trail)"),
                                 ("FRENZY_WIDE", "FRENZY_WIDE (FRENZY's ATR / green-candle refusals · same exit)")):
             _fz_all = [o for o in orders if (o.entry_strategy or '') == _fz_es and o.pnl_percentage is not None]
             _fz_life = [float(p) for (p,) in (await db.execute(select(Order.pnl_percentage).where(and_(

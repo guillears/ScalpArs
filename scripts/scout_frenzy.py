@@ -123,6 +123,7 @@ def _walk_exit(bars, i0, th, short=False, bar_min=5):
     """FRENZY exit in fee-NET space from bars[i0] open → (net %, minutes, how). Low before high inside a bar; a bar opening through the line
     fills at its open."""
     stop = float(getattr(th, "frenzy_stop_pct", 3.0) or 3.0); arm = float(getattr(th, "frenzy_trail_arm_pct", 5.0) or 5.0)
+    tp = 0.0 if short else float(getattr(th, "frenzy_tp_pct", 0.0) or 0.0)   # 🎯 Oct-4 (196): the fixed TP the live bot now runs (longs)
     give = float(getattr(th, "frenzy_trail_giveback_pct", 1.5) or 1.5); cap_min = int(getattr(th, "frenzy_max_hold_minutes", 720) or 720)
     cap = max(1, cap_min // bar_min)
     if i0 >= len(bars):
@@ -136,6 +137,8 @@ def _walk_exit(bars, i0, th, short=False, bar_min=5):
         line_px = (pk_px * (1 + sg * -give / 100) if armed else e * (1 + sg * (COST - stop) / 100))
         if (adverse >= line_px) if short else (adverse <= line_px):
             return net(max(o, line_px) if short else min(o, line_px)), (k - i0 + 1) * bar_min, ("trail" if armed else "stop")
+        if tp > 0 and net(favour) >= tp:                       # adverse side first (above), then the target
+            return tp, (k - i0 + 1) * bar_min, "take profit"
         pk_px = min(pk_px, favour) if short else max(pk_px, favour)
         armed = armed or net(pk_px) >= arm
     n = min(len(bars), i0 + cap) - i0

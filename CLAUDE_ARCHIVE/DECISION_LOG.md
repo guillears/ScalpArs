@@ -5351,3 +5351,15 @@ reference (1m bars, stop 3 % of price, trail from +5 % giving back 1.5 %, gap fi
 AIN 22:15 close, +5.42 % (trail, 2 min). Same session: the scout's FRENZY watch (every pair FRENZY can watch, every fresh setup, bot match,
 MISMATCH / NOT FOLLOWED flags) — dual-reviewed, commit f68b49d.
 
+### (196) 2026-10-04 — 🎯 FRENZY / FRENZY_WIDE / manual FRENZY exit: FIXED take-profit +4 % (−3 % stop) — operator, on the real-tick read
+Exit grid re-run on REAL TICKS (Binance aggTrades, scripts/frenzy_exit_ticks.py → reports/FRENZY_EXIT_TICKS_2026-10-04.md): the 850
+quiet-market FRENZY first candles of the year (global vol < 1.0), entry 1 min after the signal close, 0.11 % costs. Trail +5/1.5 (live) +0.169
+%/trade · 42 % won · FRENZY +0.362 / WIDE +0.112; **fixed +4/−3 +0.211 · 48 %** (+0.32 / +0.12 by half, Δ +0.04 [CI spans 0], 5 of 9 months;
+FRENZY +0.400 / WIDE +0.155); fixed +3 +0.167; trail +3/0.5 +0.099 (the 1-minute walk had said +0.233 — tick noise shakes a 0.5 % trail out;
+that ship was REVERTED before commit); Bull-Run TP with the +0.2 BE lock −0.010, without it +0.122. The 1-minute study overstated every exit
+(trail +5/1.5 +0.225 → +0.169 on ticks). Shipped: frenzy_tp_pct = 4.0 (code default 0 = off → the trail), reason FRENZY_TP (manual: MANUAL_TP),
+checked before the trail; a peak that passed the TP while the close was missed closes at once. TP is NET of fees (≈ +4.06–4.09 % price) vs
+the study's +4 % price − 0.11 → small definitional gap. Sizing re-read on ticks (operator kept Lev 0.32): Kelly 3.1 %/stop (trail) /
+5.1 % (fixed +4); at 4.8 %/stop the fixed +4 median 90-day +67 % (+3 % after a 50 % haircut), 4 % (11 %) chance of < 25 %.
+🔒 REVERT: first 20 FRENZY + WIDE fills under the TP re-priced with the +5/1.5 trail on ticks — the trail beats it on average → frenzy_tp_pct = 0.
+

@@ -754,6 +754,7 @@
     "frenzy_stop_pct": 3.0,
     "frenzy_trail_arm_pct": 5.0,
     "frenzy_trail_giveback_pct": 1.5,
+    "frenzy_tp_pct": 4.0,
     "frenzy_max_hold_minutes": 720,
     "frenzy_max_slots": 2,
     "frenzy_max_entries_per_pair_day": 3,

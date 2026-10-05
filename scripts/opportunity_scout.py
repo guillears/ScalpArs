@@ -1277,6 +1277,14 @@ def run():
     except Exception as _rg_e:
         log(f"revert-gate tracker failed: {_rg_e}")
         _rg_sec = ["## ⏳ Revert gates", "", f"Unavailable this run ({str(_rg_e)[:120]}).", ""]
+    try:                                               # 🌡 Oct-5 heat block × BTC regime observation (pre-registered; reads the tracker's priced heat blocks; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_heat_regime as _hr
+        _rg_sec += _hr.run(now_ms)
+    except Exception as _hr_e:
+        log(f"heat regime observation failed: {_hr_e}")
+        _rg_sec += ["## 🌡 Heat block × BTC regime", "", f"Unavailable this run ({str(_hr_e)[:120]}).", ""]
     _ev_at = next((i for i, x in enumerate(L) if x.startswith("## Evidence so far")), len(L))
     L[_ev_at:_ev_at] = _rg_sec + _fz_sec + _st_sec                         # above the evidence table, so the events / "no events" line keep their place
     if not len(rep):

@@ -5537,3 +5537,17 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   WR, −0.05 %, −1.77 %-pts/yr) → net ≈ +0.3 %-pts/yr ≈ neutral; master −$567 (in-sample); forward 9/10 blocked won. Engine LONG_HEAT_FAILOPEN
   now counts only when every enabled leg fired (review); validator provenance widened to exactly the 4 newly blocked rows (BONK, STX, DOGE,
   PENGU 09-29); ledger frozen tuple updated. Note entry_long_heat_flags counts the 3 legs again from this deploy (breadth-only between Sep-25 and Oct-5).
+- (209) 2026-10-05 🌡 **Filter × BTC-regime matrix → NO regime-conditional filter; two heat near-misses go to the scout OBSERVE-only**
+  (operator: "there must be a macro BTC variable that says which rule makes sense in each period"). yr5 (3 seeds, 181131e): 40 live
+  momentum-LONG refusal gates, 199,015 refused signals priced with the live ML exit on local ticks (99.9995 %), 21 BTC macro splits (daily/4h/1h
+  trend, 1/3/7/30-day returns, off-30d-high, 5m ADX/ATR/RSI, 72h chop, breadth, BTC volume) at sign + tercile, DAY units, both halves,
+  500-round shuffled-day null: full bar 1 observed vs 2.2 null mean (84 % of null rounds ≥), strong tier 0 vs 0.14, loose 32 vs 44.6 → the
+  matrix finds FEWER than chance. Every gate's blocked cohort loses on the year (−0.01…−0.28 %), as do the admitted fills (−0.054 %), so
+  nothing flips sign. Heat: 4h EMA50>EMA200 lead REFUTED (flips between halves, gap CI spans 0, forward 10 won inside the "helps" state);
+  daily golden cross untestable (only since 09-12, 7 days). Near-misses frozen in scripts/scout_heat_regime.py (unit = DAY; source = the
+  revert-gate tracker's priced HEAT_ORIG blocks; the re-scope era's 10 shown as context): BTC daily volume ratio (last closed day ÷ prior
+  30-day mean) LOW ≤ 0.817 (year +0.323 %, 14 days, both halves) vs HIGH > 1.13 (−0.108 %, 21 days) · BTC 72h efficiency ≤ 0.007 chop (+0.315 %,
+  6 days) vs trend (−0.126 %). Review at ≥ 8 days per side; candidate only if removes-winners side > 0 ∧ other < 0 ∧ no day ≥ 50 % of the
+  gain; thresholds never re-fit. Caveat: the year evidence is the re-scope's blocks (bull ≥ 85); the scout reads the live original rule's.
+  Side lead (sleeve level, not a filter): admitted ML fills lose while BTC 1h EMA20 falls (−0.125 %, 144 days, both halves) — overlap with
+  the existing 1h-slope / deadband gates under review. Report: reports/FILTER_REGIME_MATRIX_2026-10-05.md.

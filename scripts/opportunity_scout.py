@@ -1285,6 +1285,14 @@ def run():
     except Exception as _hr_e:
         log(f"heat regime observation failed: {_hr_e}")
         _rg_sec += ["## 🌡 Heat block × BTC regime", "", f"Unavailable this run ({str(_hr_e)[:120]}).", ""]
+    try:                                               # 📉 Oct-5 ML_B1H_NEGFLANK observation (pre-registered; orders exports only; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_b1h_negflank as _nf
+        _rg_sec += _nf.run()
+    except Exception as _nf_e:
+        log(f"B1H negflank observation failed: {_nf_e}")
+        _rg_sec += ["## 📉 ML_B1H_NEGFLANK", "", f"Unavailable this run ({str(_nf_e)[:120]}).", ""]
     _ev_at = next((i for i, x in enumerate(L) if x.startswith("## Evidence so far")), len(L))
     L[_ev_at:_ev_at] = _rg_sec + _fz_sec + _st_sec                         # above the evidence table, so the events / "no events" line keep their place
     if not len(rep):

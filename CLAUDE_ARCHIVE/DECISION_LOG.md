@@ -5551,3 +5551,15 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   gain; thresholds never re-fit. Caveat: the year evidence is the re-scope's blocks (bull ≥ 85); the scout reads the live original rule's.
   Side lead (sleeve level, not a filter): admitted ML fills lose while BTC 1h EMA20 falls (−0.125 %, 144 days, both halves) — overlap with
   the existing 1h-slope / deadband gates under review. Report: reports/FILTER_REGIME_MATRIX_2026-10-05.md.
+- (210) 2026-10-05 📉 **ML_B1H_NEGFLANK registered OBSERVE-only (scout); no gate change** (operator "add it to scout"). Overlap check
+  (reports/H1_EMA20_OVERLAP_2026-10-05.md): the yr5 "BTC 1h EMA20 falling" lead (−0.125 % vs −0.001 %) is the engine's own 1h slope (97.5 %
+  direction agreement; 475/492 falling fills have entry_btc_1h_slope ≤ −0.05) = the negative flank LONG_BTC1H_DEADBAND deliberately admits.
+  Step not dose-response (all deciles ≤ ≈ −0.07 negative); day units fragile (falling-day mean CI touches 0, each half's gap CI spans 0,
+  within-day paired gap +0.001 → "bad days, not bad hours"); best of 21 splits (p 0.027 doesn't survive selection). Master REFUTES the
+  unconditional rule: falling 44 · 77 % · +0.154 % (skip = −6.8 %-pts, 34 winners lost; washed-out 13/13 won; ex washed-out 31 · −0.040 % vs
+  rising +0.174 %). Frozen cohort: CLOSED full-size MOMENTUM LONG (MANUAL / *_PROBE out) opened ≥ 2026-10-06 00:00 UTC with
+  entry_btc_1h_slope ≤ −0.05, judged ex washed-out (entry_btc_off30d_high_pct ≤ −15, shown separately). Bar = the expectancy filter bar
+  (WR < sleeve breakeven — live once ≥ 30 sleeve fills, else master 63.9 % · day-clustered P(mean<0) ≥ 0.95 · ≥ 8 days · N ≥ 15 · no day /
+  pair ≥ 50 % of the loss). A pass → 1hPullback_L cell sizing verdict first, then a dead-band re-scope review (cohort completeness, haircut,
+  revert gate) — never straight to arming. Side flag: 1hPullback_L 2× cell is 94 · 68 % · −0.112 % at 1× on yr5 (CI spans 0) → cell-registry
+  review pending. Code: scripts/scout_b1h_negflank.py (+ opportunity_scout hook).

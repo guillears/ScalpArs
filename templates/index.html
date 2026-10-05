@@ -19894,8 +19894,9 @@
                         blockReasonHtml = `<span class="text-xs whitespace-nowrap ${_fz.ready ? 'text-emerald-400 font-semibold' : 'text-orange-300'}" title="${_escAttr('FRENZY status. Momentum gate: ' + (p.block_reason || (p.frenzy_only ? 'not in the Top list' : 'none')) + (_fz.last_fire ? ' · last setup: ' + _fz.last_fire : ''))}">${_escAttr(_fz.text)}</span>`;
                     }
 
+                    // 🔗 Oct-5 (operator): LINKUSDT row always shaded light grey, so it stands out in the list
                     return `
-                        <tr class="hover:bg-white/5 transition${_fz ? ' bg-orange-500/[0.05] frenzy-group-row' + (_frenzyGroupExpanded === true ? '' : ' hidden') : ''}">
+                        <tr class="${!_fz && p.pair === 'LINKUSDT' ? 'bg-white/[0.07] hover:bg-white/10' : 'hover:bg-white/5'} transition${_fz ? ' bg-orange-500/[0.05] frenzy-group-row' + (_frenzyGroupExpanded === true ? '' : ' hidden') : ''}">
                             <td class="px-3 py-3 font-medium">${_fz   // 🔥 Oct-5 (operator): the badge stays whole, the NAME truncates like every other row — the column width no longer jumps when the FRENZY group opens
                                 ? `<div class="flex items-center max-w-[5rem]"><span class="shrink-0">${_fzBadge}</span><span class="truncate min-w-0 cursor-copy-icon hover:text-orange-300" data-copy-pair="${_escAttr(p.pair)}" title="${_escAttr(p.pair)} — click to copy">${p.pair}</span></div>`
                                 : `<div class="truncate max-w-[5rem] cursor-copy-icon hover:text-orange-300" data-copy-pair="${_escAttr(p.pair)}" title="${_escAttr(p.pair)} — click to copy">${p.pair}</div>`}</td>

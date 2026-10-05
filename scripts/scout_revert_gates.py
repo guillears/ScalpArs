@@ -139,7 +139,7 @@ def deploy_ms(name):
     """push time of the gate's commit (git) + 10 min; the pinned fallback when git is unavailable."""
     h, fb = DEPLOYS[name]
     try:
-        args = ["--grep=" + h[5:], "--fixed-strings", "--reverse", "--since=2026-10-04"] if h.startswith("grep:") else [h]   # grep: the FIRST commit naming it
+        args = ["--grep=" + h[5:], "--fixed-strings", "--reverse"] if h.startswith("grep:") else [h]   # (no --since: it hid every commit here)   # grep: the FIRST commit naming it
         out = subprocess.run(["git", "-C", ROOT, "log", "--format=%ct"] + args, capture_output=True, text=True, timeout=10)
         out.stdout = (out.stdout.strip().splitlines() or [""])[0]
         ct = int(out.stdout.strip())

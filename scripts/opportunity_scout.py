@@ -1293,6 +1293,14 @@ def run():
     except Exception as _nf_e:
         log(f"B1H negflank observation failed: {_nf_e}")
         _rg_sec += ["## 📉 ML_B1H_NEGFLANK", "", f"Unavailable this run ({str(_nf_e)[:120]}).", ""]
+    try:                                               # 🎯 Oct-5 FRENZY / WIDE per-fill exit shadows (pre-registered; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_frenzy_exits as _fx
+        _rg_sec += _fx.run(now_ms)
+    except Exception as _fx_e:
+        log(f"FRENZY exit shadows failed: {_fx_e}")
+        _rg_sec += ["## 🎯 FRENZY / WIDE exit shadows", "", f"Unavailable this run ({str(_fx_e)[:120]}).", ""]
     _ev_at = next((i for i, x in enumerate(L) if x.startswith("## Evidence so far")), len(L))
     L[_ev_at:_ev_at] = _rg_sec + _fz_sec + _st_sec                         # above the evidence table, so the events / "no events" line keep their place
     if not len(rep):

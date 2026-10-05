@@ -5588,3 +5588,30 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   manual BNB buy / sell and config save, with a generation counter so an in-flight recompute never re-caches pre-reset values. Engine
   sizing recomputes its own balance (unchanged). Tests: tests/test_paper_book_cache.py (shared recompute, fresh, TTL / invalidate, in-flight
   invalidate). Not touched: P&L calendar cadence, hidden-tab pause, Live Terminal timers.
+- (213) 2026-10-05 ⚡ **FRENZY entry speed-up, step 1 (engineering; no strategy change)** — operator "build step 1". Live FRENZY fills land a
+  median 12–14 s after the 5m close (exports: FRENZY_LONG 14 s, WIDE 12 s); server logs show the pass starting at +4 s and taking 8–13.6 s:
+  every pass re-read 1,500 5m bars for each of ~16–25 shortlisted pairs through the serialising exchange client and judged pairs only after
+  ALL reads. Year evidence that timing matters (FRENZY_REENTRY_AUDIT / SELECTOR, ticks): FRENZY first entries +0.42 %/trade at 4 s vs +0.39
+  at 12 s (account path +210 % vs +163 %; single trades flip on ~0.1 % entry differences — the estimate is noisy). Shipped: pure
+  services.frenzy.merge_klines (the 1500-bar window rebuilt from the previous pass + a 5-bar tail; None → full read when the tail does not
+  cover the cache's last, previously forming, bar) · engine _frenzy_kl_cache (incremental read; full read with no cache / no join / every
+  12 bars per pair, staggered — compared with the cached window → FRENZY_KL_MISMATCH log + _frenzy_status kl_mismatch / kl_rejoin; pruned
+  to the shortlist; keep = 1500 so a young pair's window grows like a full read) · pairs judged as their reads complete (as_completed; the
+  per-pair body unchanged, re-indented; unfinished reads cancelled on a failed pass). Opening order between two pairs firing on one bar is
+  now read-completion order (BOT_OPEN_LANE still serialises opens). The +4 s settle wait is unchanged. Expected: orders ~5–6 s after the
+  close. Tests: tests/test_frenzy_kl_merge.py (incremental == full read over 39 bars, forming-bar overwrite, ≤ 4 missed bars join, 5-bar /
+  10-bar gaps refused, young pair growth, identical frenzy_walk decisions). Live check vs a fresh full read on 4 pairs: identical windows.
+  Watch after deploy: "[FRENZY_LOOP] pass done in X s (Y s into the bar)" and FRENZY fill delay in the exports; any FRENZY_KL_MISMATCH line.
+- (214) 2026-10-05 🎯 **Scout: FRENZY / WIDE per-fill exit shadows (observe-only)** — scripts/scout_frenzy_exits.py (+ opportunity_scout hook),
+  persisted in reports/SCOUT_FRENZY_EXITS.csv. Every live FRENZY / WIDE fill re-priced from its actual entry on 1m bars (fees in, 12 h cap)
+  under LOCK2 (live) / LOCK3 / EMA20 / EMA50 (+2 floor then 5m close below the EMA) / FIX3, plus two frozen shadows: FRENZY_ATRE_SHADOW
+  (FRENZY_LONG; exit when 5m ATR% < the stamped entry ATR; bar at N ≥ 60 on ≥ 30 days: Δ vs LOCK2 > 0, day CI > 0, > 0 without top 5 / 10,
+  no pair > 35 %, both halves > 0 — reports/FRENZY_ATR_AND_PURE_EMA_EXIT_2026-10-05.md) and TYPE_III_NOTSTRETCHED (vs spike-average ≤ +5 % →
+  EMA50, re-entry #1 on the first red ON bar ≥ 15 min later that UTC day; bar at N ≥ 60 re-entries on ≥ 20 days, same legs —
+  reports/FRENZY_EXIT_SELECTOR_2026-10-05.md). Context: the year studies (FRENZY_REENTRY_STOP_GVOL, _AUDIT, _EXIT_SELECTOR,
+  _ATR_AND_PURE_EMA) found no exit / re-entry / selector that beats the lock over the year (RLC 10-05 is the visible exception; first-entry
+  rides exist — FRENZY 56/201 peak ≥ +15 % — but none is separable at entry); the shadows let live fills confirm or kill that. 8 existing
+  fills: LOCK2 +0.65 · LOCK3 +1.82 · EMA20 +1.44 · EMA50 +0.94 · FIX3 0.00 avg (RLC drives the spread). Note: RLC's re-entry #1 is +1.86 at
+  the next-minute open vs +19.4 at +0.2 % higher entry — the knife-edge the audit flagged. Review fixes before ship: shadows read FIRST entries only (earliest fill of sleeve / pair / UTC day; later fills marked ²); re-entry
+  eligibility = the study's chain rules (FRENZY ON ∧ red ∧ ATR ≤ cap; WIDE fresh bar or ON ∧ red ∧ ATR > cap; live gvr gate NOT applied — stated); pair
+  share on the NET total; 12 h cap in clock time; entry minute flattened to the fill; rows versioned (VER) and final only once CLOSED.

@@ -267,6 +267,7 @@ class Order(Base):
     # ⚡ Sep-30 SURGE sleeves (DECISION_LOG 146–148): the trigger that opened the fill — BTC's 30-min move on the trigger bar, the
     # pair's own 30-min move on that bar (the leader test), and the trigger bar's close time (naive UTC; = the window id).
     entry_surge_btc_move_pct = Column(Float, nullable=True)
+    entry_surge_gvol = Column(Float, nullable=True)   # 🌊 Oct-4: market volume ratio on the SURGE trigger bar (surge_long_gvol_min gate)
     entry_surge_pair_move_pct = Column(Float, nullable=True)
     entry_surge_trigger_at = Column(DateTime, nullable=True)
     # 🔥 Oct-2 FRENZY sleeve (DECISION_LOG 176): the spike episode behind a FRENZY_LONG fill, read on the entry bar
@@ -1267,6 +1268,7 @@ class SurgeTrigger(Base):
     bar_close_at = Column(DateTime, nullable=False, index=True)   # trigger bar close (naive UTC) = orders.entry_surge_trigger_at
     btc_move_pct = Column(Float, nullable=True)                   # BTC 30-min return on the trigger bar
     btc_vol_mult = Column(Float, nullable=True)                   # trigger-bar quote volume ÷ prior-288 median
+    gvol = Column(Float, nullable=True)                           # 🌊 Oct-4: market volume ratio on the trigger bar (LONG gate)
     window_opens_at = Column(DateTime, nullable=True)
     window_closes_at = Column(DateTime, nullable=True)
     found_late_min = Column(Float, nullable=True)                 # minutes after the bar close the engine first saw it (catch-up)

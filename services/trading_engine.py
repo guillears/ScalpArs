@@ -21,7 +21,7 @@ from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, is_leverage_blocked
 from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, closed_wilder_ndi, fade_laggard_block, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
-from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct
+from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
@@ -767,6 +767,7 @@ _surge_state: Dict[str, dict] = {"LONG": {}, "SHORT": {}}
 _surge_status: Dict[str, dict] = {"LONG": {}, "SHORT": {}}
 _surge_live: dict = {}   # the trigger legs on the last closed BTC bar (header chip; display only), refreshed every scan
 SURGE_COHORT_START = datetime(2026, 9, 30, 15, 30, 0)  # kill-bar cohort (naive UTC): fills opened after the SURGE_SHORT exit fix deployed
+SURGE_NOT_A_TRIGGER = ("FOUND_LATE", "GVOL_LOW", "GVOL_UNREAD")   # ledger rows that never opened a window: no spacing, no restore (Oct-4)
 # 🔥 Oct-2 FRENZY sleeve (DECISION_LOG 176): pairs flagged right now (pair → the live episode + its long status, rebuilt from fresh
 # klines once per 5m bar — nothing to restore after a deploy), the scan's own status, and the per-pair normal-hour volume cache.
 _frenzy_flags: Dict[str, dict] = {}
@@ -6807,18 +6808,19 @@ class TradingEngine:
                     # last trigger after a deploy, and a window still open is RESTORED with its picks (never re-opened, never lost).
                     _surge_status[side]['seeded'] = True
                     try:
-                        _row = (await db.execute(select(SurgeTrigger).where(and_(SurgeTrigger.side == side, SurgeTrigger.status != "FOUND_LATE"))
+                        _row = (await db.execute(select(SurgeTrigger).where(and_(SurgeTrigger.side == side, SurgeTrigger.status.notin_(SURGE_NOT_A_TRIGGER)))
                                                  .order_by(SurgeTrigger.bar_close_at.desc()).limit(1))).scalar_one_or_none()
                         if _row is not None:
                             _cms = (_row.bar_close_at - datetime(1970, 1, 1)).total_seconds() * 1000
                             _pk = sorted({x for x in (_row.picked or "").split(",") if x} | {p for (p,) in (await db.execute(select(Order.pair).where(and_(
                                 Order.entry_strategy == f"SURGE_{side}", Order.is_paper == self.is_paper_mode,
                                 Order.entry_surge_trigger_at == _row.bar_close_at)))).all()})   # a fill that never reached the ledger counts too
-                            _surge_status[side].update(dict(last_trigger_close_ts=_cms, last_btc_move_pct=_row.btc_move_pct, picks=_pk, opened=len(_pk)))
+                            _surge_status[side].update(dict(last_trigger_close_ts=_cms, last_btc_move_pct=_row.btc_move_pct, picks=_pk, opened=len(_pk),
+                                                            last_gvol=getattr(_row, 'gvol', None)))
                             _wc_ms = ((_row.window_closes_at - datetime(1970, 1, 1)).total_seconds() * 1000) if _row.window_closes_at else 0
                             if _row.status in ("OPEN", "FILLED") and now_ms < _wc_ms and not _surge_state[side]:
                                 _surge_state[side] = dict(bar_ts=int(_cms) - 300_000, close_ts=int(_cms), btc_move_pct=_row.btc_move_pct,
-                                                          btc_vol_mult=_row.btc_vol_mult, picked=set(_pk), refused=set(), opened=len(_pk),
+                                                          btc_vol_mult=_row.btc_vol_mult, gvol=getattr(_row, 'gvol', None), picked=set(_pk), refused=set(), opened=len(_pk),
                                                           opened_pairs=set(_pk), n_checked=int(_row.checked or 0), judged_any=bool(_row.checked or _pk),
                                                           why={k: v for k, v in (('SURGE_ATR_LOW', _row.refused_atr), ('SURGE_NOT_LEADER', _row.refused_leader),
                                                                                   ('SURGE_NO_DATA', _row.refused_data), ('SURGE_MAX_SLOTS', _row.refused_slots),
@@ -6829,6 +6831,14 @@ class TradingEngine:
                                 # the window closed while the bot was down: finalize the row (review — it stayed OPEN forever)
                                 await self._surge_ledger_upsert(db, side, int(_cms), restarted=True, picked=(",".join(_pk) or None),
                                                                 status=("FILLED" if _pk else ("NO_PICK" if _row.checked else "MISSED")))
+                        # ⏱ the after-fill spacing clock survives a restart (review: the chip said "ready" while the engine still blocked)
+                        _lf_l = (await db.execute(select(func.max(SurgeTrigger.bar_close_at)).where(and_(
+                            SurgeTrigger.side == side, SurgeTrigger.status == "FILLED")))).scalar()
+                        _lf_o = (await db.execute(select(func.max(Order.entry_surge_trigger_at)).where(and_(
+                            Order.entry_strategy == f"SURGE_{side}", Order.is_paper == self.is_paper_mode)))).scalar()
+                        _lf = max([x for x in (_lf_l, _lf_o) if x is not None], default=None)
+                        if _lf is not None:
+                            _surge_status[side]['last_fill_trigger_ts'] = (_lf - datetime(1970, 1, 1)).total_seconds() * 1000
                     except Exception as _sd:
                         logger.warning(f"[SURGE_{side}] ledger seed failed ({_sd}) — fills fallback only")
                 st = _surge_state[side]
@@ -6856,13 +6866,17 @@ class TradingEngine:
                     if trig is None or trig['bar_ts'] == (_surge_state[side] or {}).get('bar_ts'):
                         continue
                     spacing_ms = max(0.0, float(getattr(th, 'surge_trigger_spacing_hours', 4.0) or 0.0)) * 3600_000
-                    last = float(_surge_status[side].get('last_trigger_close_ts') or 0)
+                    # ⏱ Oct-4 (DECISION_LOG 202): surge_spacing_after_fill → the spacing runs from the last trigger that OPENED a position
+                    # (a trigger that bought nothing never blocks the next one — the 18:10 no-pick trigger blocked the 19:00 GTC run).
+                    _after_fill = bool(getattr(th, 'surge_spacing_after_fill', False))
+                    last = float(_surge_status[side].get('last_fill_trigger_ts' if _after_fill else 'last_trigger_close_ts') or 0)
                     _restore = set()
                     _restored_row = False
                     if not last:
                         try:   # restart: the latest recorded trigger — the LEDGER (keeps zero-fill triggers), else the fills' stamp
                             _lt_l = (await db.execute(select(func.max(SurgeTrigger.bar_close_at)).where(and_(
-                                SurgeTrigger.side == side, SurgeTrigger.status != "FOUND_LATE")))).scalar()
+                                SurgeTrigger.side == side, (SurgeTrigger.status == "FILLED") if _after_fill
+                                else SurgeTrigger.status.notin_(SURGE_NOT_A_TRIGGER))))).scalar()
                             _lt_o = (await db.execute(select(func.max(Order.entry_surge_trigger_at)).where(and_(
                                 Order.entry_strategy == f"SURGE_{side}", Order.is_paper == self.is_paper_mode)))).scalar()
                             _lt = max([x for x in (_lt_l, _lt_o) if x is not None], default=None)
@@ -6880,6 +6894,9 @@ class TradingEngine:
                     _restored_row = _restored_row and now_ms < _wc   # the fills fallback may only restore a window still open (review)
                     if last and not _restored_row and trig['close_ts'] - last < spacing_ms:
                         continue
+                    _cur = _surge_state[side]
+                    if _after_fill and _cur and not _cur.get('finalized') and _cur.get('bar_ts') != trig['bar_ts'] and not _restored_row:
+                        continue   # review: a window still pending / open is never replaced (its ledger row would stay OPEN forever)
                     if not _restored_row and now_ms >= _wc:
                         # found after its entry window closed (slow scan / restart): count it, don't let it block a live one for 4 h
                         if _enabled:
@@ -6893,17 +6910,62 @@ class TradingEngine:
                         continue
                     if not _enabled:
                         continue   # a disabled side records nothing (the chip shows it OFF)
+                    # 🌊 Oct-4 (DECISION_LOG 202): LONG needs the market's volume on the trigger bar ≥ surge_long_gvol_min (fail-closed). Read
+                    # (≤ 35 s, once per qualifying bar) even when the gate is off so every LONG trigger carries the reading. A refused trigger
+                    # is recorded but does NOT start the spacing (operator Oct-4: 17:40 refused at 0.74× must not block the 19:00 2.67× one) —
+                    # the year test gated before the spacing (scripts/surge_bearrun_review.py SURGE_GVOL_PRE).
+                    _gv = trig.get('gvol')
+                    if side == "LONG" and not _restore and 'gvol' not in trig:
+                        try:   # a bar already refused (GVOL_*) before a restart is not judged again (review: a 2nd read could open it)
+                            _done = (await db.execute(select(SurgeTrigger.status).where(and_(
+                                SurgeTrigger.side == side, SurgeTrigger.bar_close_at == datetime.utcfromtimestamp(trig['close_ts'] / 1000))))).scalar()
+                        except Exception:
+                            _done = None
+                        if _done in ("GVOL_LOW", "GVOL_UNREAD"):
+                            continue
+                        try:
+                            _tc_s = config.trading_config
+
+                            async def _sg_gvol():
+                                _allp = await binance_service.get_top_futures_pairs(
+                                    5000, new_listing_filter_days=getattr(_tc_s, 'new_listing_filter_days', 0),
+                                    alpha_subtype_filter_enabled=getattr(_tc_s, 'alpha_subtype_filter_enabled', True),
+                                    coin_underlying_only=getattr(_tc_s, 'coin_underlying_only', True))
+                                return (await self._market_gvol_read(list(_allp or []), int(trig['bar_ts'])))[0] if _allp else None
+                            _gv = await asyncio.wait_for(_sg_gvol(), 35.0)   # tickers + klines together ≤ 35 s (review)
+                        except asyncio.CancelledError:
+                            if asyncio.current_task().cancelling():
+                                raise
+                            _gv = None
+                        except Exception as _ge:
+                            logger.warning(f"[SURGE_LONG] market volume read failed ({str(_ge)[:80]})")
+                            _gv = None
+                        trig['gvol'] = _gv
+                    _gok, _gcode = surge_gvol_gate(_gv, th, side) if not _restore else (True, None)
+                    if not _gok:
+                        _gmin = float(getattr(th, 'surge_long_gvol_min', 0) or 0)
+                        self._record_filter_block(_gcode, side)
+                        await self._surge_ledger_upsert(db, side, trig['close_ts'], only_if_new=True,
+                                                        status=("GVOL_LOW" if _gcode == "SURGE_GVOL_LOW" else "GVOL_UNREAD"),
+                                                        btc_move_pct=trig['btc_move_pct'], btc_vol_mult=trig.get('btc_vol_mult'), gvol=_gv,
+                                                        found_late_min=(round((now_ms - trig['close_ts']) / 60_000, 1) if k else None))
+                        _surge_status[side].update(dict(last_refused_ms=trig['close_ts'], last_refused_move=trig['btc_move_pct'],
+                                                        last_refused_gvol=_gv, last_refused=_gcode))   # spacing NOT consumed
+                        logger.warning(f"[SURGE_{side}] trigger BTC {trig['btc_move_pct']:+.2f}% on the bar closed "
+                                       f"{datetime.utcfromtimestamp(trig['close_ts'] / 1000):%H:%M} UTC REFUSED — market volume "
+                                       f"{'unreadable' if _gv is None else f'{_gv:.2f}× normal'} (needs ≥ {_gmin:g}×); no window, spacing not used")
+                        continue
                     _surge_state[side] = dict(trig, picked=set(_restore), refused=set(), opened=len(_restore),
                                               opened_pairs=set(_restore), n_checked=0, why={})
                     await self._surge_ledger_upsert(db, side, trig['close_ts'], status="OPEN", btc_move_pct=trig['btc_move_pct'],
-                                                    btc_vol_mult=trig.get('btc_vol_mult'),
+                                                    btc_vol_mult=trig.get('btc_vol_mult'), **({} if _restore else {'gvol': _gv}),   # a restored window keeps its reading
                                                     found_late_min=(round((now_ms - trig['close_ts']) / 60_000, 1) if k else None),
                                                     window_opens_at=datetime.utcfromtimestamp(_wo / 1000),
                                                     window_closes_at=datetime.utcfromtimestamp(_wc / 1000),
                                                     restarted=bool(_restored_row),
                                                     picked=(",".join(sorted(_restore)) or None))
                     _surge_status[side].update(dict(last_trigger_close_ts=trig['close_ts'], last_btc_move_pct=trig['btc_move_pct'],
-                                                    picks=sorted(_restore), opened=len(_restore)))
+                                                    picks=sorted(_restore), opened=len(_restore), last_gvol=_gv))
                     logger.warning(f"[SURGE_{side}] TRIGGER{' (restored after restart)' if _restore else ''}: BTC {trig['btc_move_pct']:+.2f}% "
                                    f"in 30 min on the bar closed {datetime.utcfromtimestamp(trig['close_ts'] / 1000):%H:%M} UTC — entry window "
                                    f"opens {float(getattr(th, f'surge_{side.lower()}_entry_delay_min', 0) or 0):g} min after that close"
@@ -7148,8 +7210,20 @@ class TradingEngine:
         self._fz_gvol_task = (sig_open, asyncio.create_task(self._frenzy_gvol_read(list(allp), sig_open)))
 
     async def _frenzy_gvol_read(self, allp, sig_open):
-        """🌊 Top-50 pairs by 24 h volume → 60 closed 5m bars each on the research client → services.frenzy.global_volume_ratio on the signal
-        bar. ~3–6 s. Records the reading in _frenzy_status['gvol'] for the monitor. None when < 30 pairs readable (never raises)."""
+        """🌊 FRENZY's market-volume read for the signal bar: records it in _frenzy_status['gvol'] for the monitor (never raises)."""
+        v, n, top_n = await self._market_gvol_read(allp, sig_open)
+        if top_n is None:   # the read itself failed / was cancelled (already logged)
+            return None
+        _frenzy_status['gvol'] = {"bar": int(sig_open), "value": v, "pairs": n}
+        if v is None:
+            logger.warning(f"[FRENZY_GVOL] market volume unreadable for bar {datetime.utcfromtimestamp(sig_open / 1000):%H:%M} "
+                           f"({n} of {top_n} pairs read)")
+        return v
+
+    async def _market_gvol_read(self, allp, sig_open):
+        """🌊 Top-50 pairs by 24 h volume → 60 closed 5m bars each on the research client → services.frenzy.global_volume_ratio on the bar
+        that opened at sig_open. ~3–6 s. Returns (ratio or None, pairs read, pairs asked) — (None, 0, None) when the read itself failed.
+        Shared by FRENZY (signal bar) and SURGE_LONG (trigger bar). Never raises (except this task's own cancellation)."""
         try:
             top = sorted((p for p in allp if p.get('symbol')), key=lambda p: -(p.get('volume_24h') or 0))[:50]
             sem = asyncio.Semaphore(10)
@@ -7168,18 +7242,14 @@ class TradingEngine:
                         return p['pair'], None
             got = await asyncio.gather(*[_one(p) for p in top])
             v = global_volume_ratio({k: b for k, b in got if b}, int(sig_open))
-            _frenzy_status['gvol'] = {"bar": int(sig_open), "value": v, "pairs": sum(1 for _, b in got if b)}
-            if v is None:
-                logger.warning(f"[FRENZY_GVOL] market volume unreadable for bar {datetime.utcfromtimestamp(sig_open / 1000):%H:%M} "
-                               f"({_frenzy_status['gvol']['pairs']} of {len(top)} pairs read)")
-            return v
+            return v, sum(1 for _, b in got if b), len(top)
         except asyncio.CancelledError:
             if asyncio.current_task().cancelling():
                 raise
-            return None
+            return None, 0, None
         except Exception as e:
-            logger.warning(f"[FRENZY_GVOL] read failed: {str(e)[:120]}")
-            return None
+            logger.warning(f"[GVOL] market volume read failed: {str(e)[:120]}")
+            return None, 0, None
 
     async def _frenzy_gvol_value(self, sig_open, wait: bool = True):
         """The signal bar's market-volume reading; None when missing / failed / cancelled / another bar (never raises CancelledError unless THIS
@@ -7367,7 +7437,7 @@ class TradingEngine:
                     entry_atr_pct=round(atr, 4), entry_pair_volume_24h_usd=pair_info.get('volume_24h'), entry_pair_rank=rank,
                     entry_bull_pct=_g_now.get('_market_bull_pct'), entry_bear_pct=_g_now.get('_market_bear_pct'),
                     entry_global_volume_ratio=_g_now.get('_global_volume_ratio'), entry_pair_volume_ratio=_pvr,
-                    entry_surge_btc_move_pct=st['btc_move_pct'], entry_surge_pair_move_pct=round(pmove, 4),
+                    entry_surge_btc_move_pct=st['btc_move_pct'], entry_surge_pair_move_pct=round(pmove, 4), entry_surge_gvol=st.get('gvol'),
                     entry_surge_trigger_at=datetime.utcfromtimestamp(st['close_ts'] / 1000),
                     surge_dir=side,
                     **self._sanitize_open_kwargs(_ef, f"SURGE_{side}", side),
@@ -7376,6 +7446,7 @@ class TradingEngine:
                     st['opened'] += 1
                     st.setdefault('opened_pairs', set()).add(pair)
                     _surge_status[side]['opened'] = st['opened']
+                    _surge_status[side]['last_fill_trigger_ts'] = st['close_ts']   # ⏱ the spacing clock when surge_spacing_after_fill
                     _surge_status[side].setdefault('picks', []).append(pair)
                     # picks + counts persisted at once, ONE write (a restart inside the window restores them from the ledger / fills)
                     await self._surge_ledger_counts(db, side, st, status="FILLED")
@@ -8254,6 +8325,7 @@ class TradingEngine:
         # SHORT = the momentum-short stack (the Bear-Run exit, simulated in DECISION_LOG 147).
         surge_dir: Optional[str] = None,
         entry_surge_btc_move_pct: Optional[float] = None,
+        entry_surge_gvol: Optional[float] = None,
         entry_surge_pair_move_pct: Optional[float] = None,
         entry_surge_trigger_at: Optional[datetime] = None,
         # 🔥 Oct-2 FRENZY sleeve (DECISION_LOG 176): a LONG from _update_frenzy (a flagged pair whose staircase state just turned on).
@@ -9945,6 +10017,7 @@ class TradingEngine:
             entry_br_door=entry_br_door,
             entry_br_door_age_min=entry_br_door_age_min,
             entry_surge_btc_move_pct=(entry_surge_btc_move_pct if _surge else None),
+            entry_surge_gvol=(entry_surge_gvol if _surge else None),
             entry_surge_pair_move_pct=(entry_surge_pair_move_pct if _surge else None),
             entry_surge_trigger_at=(entry_surge_trigger_at if _surge else None),
             entry_frenzy_spike_at=(entry_frenzy_spike_at if _frenzy else None), entry_frenzy_hours=(entry_frenzy_hours if _frenzy else None),
@@ -10977,7 +11050,7 @@ class TradingEngine:
         try:
             th = config.trading_config.thresholds
             _prev = str(getattr(th, 'recovery_hold_kill_verdict', '') or '').strip()
-            if _prev.startswith("KILLED"):
+            if _prev.startswith(("KILLED", "FAILED")):   # judged once (a FAILED verdict without auto-off is not re-written every close)
                 return
             rows = (await db.execute(select(Order.pnl_percentage, Order.rh_trigger_pnl, Order.close_reason).where(and_(
                 Order.rh_triggered_at.isnot(None), Order.status == "CLOSED", Order.is_paper == self.is_paper_mode,
@@ -10990,6 +11063,10 @@ class TradingEngine:
             if why is None:
                 th.recovery_hold_kill_verdict = f"PASS {_stamp}: first 10 holds {sum((r[0] or 0) - (r[1] or 0) for r in rows[:10]):+.2f} pts vs their stops"
                 logger.warning(f"[RH_KILL_BAR] {th.recovery_hold_kill_verdict} — recovery hold stays ON")
+            elif not bool(getattr(th, 'auto_kill_enabled', False)):   # 🛑 Oct-5 operator: never an automatic off
+                th.recovery_hold_kill_verdict = f"FAILED {_stamp}: {why} (no auto-off)"
+                logger.critical(f"[RH_KILL_BAR] recovery hold FAILED its pre-registered bar ({why}) — NOT switched off "
+                                f"(auto_kill_enabled false, operator) — review it")
             else:
                 th.recovery_hold_kill_verdict = f"KILLED {_stamp}: {why}"
                 th.recovery_hold_enabled = False
@@ -11019,13 +11096,18 @@ class TradingEngine:
             _stamp = f"{datetime.utcnow():%Y-%m-%d %H:%M} UTC"
             if why is None:
                 setattr(th, f'surge_{side.lower()}_kill_verdict', f"PASS {_stamp}: {_w}/10 winners, mean {_m:+.3f}%")
-            else:
+            elif bool(getattr(th, 'auto_kill_enabled', False)):
                 setattr(th, f'surge_{side.lower()}_kill_verdict', f"KILLED {_stamp}: {why}")
                 setattr(th, f'surge_{side.lower()}_enabled', False)
+            else:   # 🛑 Oct-5 operator: never an automatic off — the verdict is recorded for review, the side stays as the operator set it
+                setattr(th, f'surge_{side.lower()}_kill_verdict', f"FAILED {_stamp}: {why} (no auto-off)")
             from config import save_trading_config as _sg_save_cfg
             _sg_save_cfg(config.trading_config)
             if why is None:
                 logger.warning(f"[SURGE_{side}_KILL_BAR] first 10 fills PASSED ({_w}/10 winners, mean {_m:+.3f}%) — side stays ON")
+            elif not bool(getattr(th, 'auto_kill_enabled', False)):
+                logger.critical(f"[SURGE_{side}_KILL_BAR] first 10 fills FAILED the pre-registered bar ({why}) — NOT switched off "
+                                f"(auto_kill_enabled false, operator) — review it")
             else:
                 logger.critical(f"[SURGE_{side}_KILL_BAR] first 10 fills failed the pre-registered bar ({why}) — SURGE_{side} "
                                 f"AUTO-DISABLED; re-enable from the UI only after review")

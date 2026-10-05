@@ -1207,11 +1207,21 @@ class SignalThresholds(BaseModel):
     # grep "SURGE_" / "surge_".
     surge_long_enabled: bool = True              # SURGE_LONG master switch (entries only; the trigger keeps computing)
     surge_short_enabled: bool = True             # SURGE_SHORT master switch
-    surge_btc_move_pct: float = 1.0              # trigger: |BTC 30-min return| ≥ this % on the last closed 5m bar (positive; sign by side)
-    surge_btc_vol_mult: float = 3.0              # trigger: that bar's quote volume ≥ this × the median of the prior 288 bars (0 = off)
+    surge_btc_move_pct: float = 0.3              # (Oct-4 option B, was 1.0) trigger: |BTC 30-min return| ≥ this % on the last closed 5m bar (positive; sign by side)
+    surge_btc_vol_mult: float = 5.0              # (Oct-4 option B, was 3.0) trigger: that bar's quote volume ≥ this × the median of the prior 288 bars (0 = off)
+    # 🌊 Oct-4 (operator, DECISION_LOG 202): SURGE_LONG trigger also needs the MARKET's volume on the trigger bar ≥ this × normal (the bot's
+    # global_volume_ratio: top-50 Σ bar volume ÷ Σ 48-bar mean, the FRENZY reading). Year grid (scripts/surge_trigger_grid_report.py, 1-s
+    # walks, today's picks + exit): market volume < 1 lost in EVERY trigger variant (today's rule's variant cells −0.42…−0.50 %/trigger,
+    # CI fully < 0); ≥ 1 ≈ +0.02…+0.07. Unreadable = no window (fail-closed). A refused trigger does NOT use the spacing (gate before the
+    # cooldown — operator: the 17:40 0.74× refusal must not block the 19:00 2.67× trigger). 0 = off.
+    surge_long_gvol_min: float = 1.0
     surge_long_require_24h_high: bool = True     # LONG trigger also needs the bar to CLOSE at/above the prior 24 h high (breakout)
     surge_short_require_24h_low: bool = False    # SHORT trigger also needs a close at/below the prior 24 h low (tested weaker: 0/72 cells)
     surge_trigger_spacing_hours: float = 4.0     # a new trigger of the same side needs this long since the last one (DB-backed)
+    # ⏱ Oct-4 (operator option B, DECISION_LOG 202): the spacing runs from the last trigger that OPENED a position — a trigger that bought
+    # nothing (no pair passed ATR / leader) never blocks the next one. Year grid (0.3 % · 5× · market vol ≥ 1): 131 triggers +0.01 %/trigger
+    # (vs +0.05 with the plain spacing); today it is the only rule that caught the 19:00 GTC run (+7.4 %, the 18:10 no-pick trigger had spent the 4 h).
+    surge_spacing_after_fill: bool = True
     surge_universe_size: int = 20                # candidates = top-N TRADEABLE pairs by 24 h volume (br_rank: blacklists never use a slot)
     surge_atr_min_pct: float = 1.5               # pair 5m ATR(14) % ≥ this (the HI_ATR selection — both sides)
     surge_long_require_leader: bool = True       # LONG: the pair's own 30-min return over the trigger bar > BTC's (outrunning BTC)
@@ -1242,6 +1252,9 @@ class SignalThresholds(BaseModel):
     # an operator re-enable after a kill stays. Clear it by hand only to re-run the bar on a new cohort.
     surge_long_kill_verdict: str = ""
     surge_short_kill_verdict: str = ""
+    # 🛑 Oct-5 (operator: "I don't want an automatic kill bar, never", DECISION_LOG 202): the SURGE and RECOVERY HOLD kill bars still JUDGE
+    # once and write their verdict (FAILED … / PASS …) for review, but switch NOTHING off unless this is True. The decision stays the operator's.
+    auto_kill_enabled: bool = False
     # 🔥 Oct-2 FRENZY sleeve (DECISION_LOG 176; operator-directed ARMED override, below every promotion gate). A pair is FLAGGED after
     # a volume spike and followed ≤ frenzy_max_hours; FRENZY_LONG opens when the "staircase" state turns on (≥ 2 h after the spike ∧ an
     # hour of 5m closes ≥ the spike-anchored VWAP ∧ last-hour volume ≥ 100× normal) and the 5m ATR is ≤ frenzy_max_atr_pct. Shorts are

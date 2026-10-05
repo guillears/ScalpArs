@@ -3363,6 +3363,7 @@ def _surge_monitor_payload():
         for side in ("LONG", "SHORT"):
             st = _sgs.get(side) or {}; stt = _sgt.get(side) or {}
             _lt = stt.get('last_trigger_close_ts')
+            _ls = stt.get('last_fill_trigger_ts') if bool(getattr(_th_s, 'surge_spacing_after_fill', False)) else _lt   # the spacing clock
             _d = float(getattr(_th_s, f'surge_{side.lower()}_entry_delay_min', 0) or 0)
             _w = float(getattr(_th_s, 'surge_entry_window_min', 5.0) or 5.0)
             out[side.lower()] = {
@@ -3376,12 +3377,20 @@ def _surge_monitor_payload():
                 "last_trigger_ms": (int(_lt) if _lt else None),
                 "kill_verdict": str(getattr(_th_s, f'surge_{side.lower()}_kill_verdict', '') or ''),
                 "picks": list(stt.get('picks') or []), "opened": int(stt.get('opened') or 0),
+                # 🌊 Oct-4: market-volume leg (LONG) — the gate value and the last trigger's reading / refusal
+                "gvol_min": (float(getattr(_th_s, 'surge_long_gvol_min', 0) or 0) if side == "LONG" else 0.0),
+                "last_gvol": stt.get('last_gvol'), "last_refused": stt.get('last_refused'),
+                "last_refused_ms": (int(stt['last_refused_ms']) if stt.get('last_refused_ms') else None),
+                "last_refused_at": (_dt.utcfromtimestamp(stt['last_refused_ms'] / 1000).strftime('%Y-%m-%d %H:%M') if stt.get('last_refused_ms') else None),
+                "last_refused_gvol": stt.get('last_refused_gvol'), "last_refused_move": stt.get('last_refused_move'),
                 "refused": len(st.get('refused') or ()),
                 "invest_mult": float(getattr(_th_s, f'surge_{side.lower()}_invest_mult', 1.0) or 1.0),
                 "lev_mult": float(getattr(_th_s, f'surge_{side.lower()}_lev_mult', 1.0) or 1.0),
-                # next trigger allowed from (4 h spacing after the last recorded trigger)
-                "next_allowed": (_dt.utcfromtimestamp(_lt / 1000 + max(0.0, float(getattr(_th_s, 'surge_trigger_spacing_hours', 4.0) or 0)) * 3600).strftime('%H:%M') if _lt else None),
-                "next_allowed_ms": (int(_lt + max(0.0, float(getattr(_th_s, 'surge_trigger_spacing_hours', 4.0) or 0)) * 3_600_000) if _lt else None),
+                # next trigger allowed from (4 h spacing after the last recorded trigger — or, with surge_spacing_after_fill, after the last
+                # trigger that OPENED a position; unknown in memory after a restart → the engine still enforces it from the DB)
+                "spacing_after_fill": bool(getattr(_th_s, 'surge_spacing_after_fill', False)),
+                "next_allowed": (_dt.utcfromtimestamp(_ls / 1000 + max(0.0, float(getattr(_th_s, 'surge_trigger_spacing_hours', 4.0) or 0)) * 3600).strftime('%H:%M') if _ls else None),
+                "next_allowed_ms": (int(_ls + max(0.0, float(getattr(_th_s, 'surge_trigger_spacing_hours', 4.0) or 0)) * 3_600_000) if _ls else None),
             }
         # live trigger legs on the last closed BTC 5m bar (flags judged in services.surge on unrounded values, same defaults as the
         # trigger). Freshness on the engine's own epoch clock (review: naive utcnow().timestamp() is host-timezone dependent).
@@ -3500,7 +3509,7 @@ async def _surge_trigger_rows(db, limit=50):
             _w = sum(1 for o in gc if (o.pnl_percentage or 0) > 0)
             rows.append({
                 'side': t.side, 'bar_close': t.bar_close_at.isoformat() if t.bar_close_at else None,
-                'btc_move': t.btc_move_pct, 'vol_mult': t.btc_vol_mult,
+                'btc_move': t.btc_move_pct, 'vol_mult': t.btc_vol_mult, 'gvol': getattr(t, 'gvol', None),
                 'window': (f"{t.window_opens_at:%H:%M}–{t.window_closes_at:%H:%M}" if t.window_opens_at and t.window_closes_at else None),   # UTC (text exports)
                 'window_open': t.window_opens_at.isoformat() if t.window_opens_at else None,     # ISO UTC → the UI shows local time
                 'window_close': t.window_closes_at.isoformat() if t.window_closes_at else None,

@@ -38,6 +38,39 @@ YEAR0 = 1767225600000   # 2026-01-01
 SPLIT = 1777593600000   # 2026-05-01 (halves, same split as the design grids)
 CFG = json.load(open(os.path.join(ROOT, "trading_config.json"), encoding="utf-8"))
 TH = CFG.get("thresholds", CFG)
+# research override (operator Oct-4: "1 % seems late") — SURGE_MOVE=<pct> re-runs every stage on its own cache dir
+if os.environ.get("SURGE_MOVE"):
+    TH = dict(TH); TH["surge_btc_move_pct"] = float(os.environ["SURGE_MOVE"])
+    OUT = os.path.join(CACHE, f"surge_review_m{os.environ['SURGE_MOVE']}"); os.makedirs(OUT, exist_ok=True)
+# SURGE_HIGH_TOL=<pct>|off — LONG 24h-high rule relaxed to close ≥ prior-24h-high × (1 − tol %) or dropped (operator: "a high from minutes ago blocks it")
+HIGH_TOL = os.environ.get("SURGE_HIGH_TOL")
+if HIGH_TOL:
+    OUT = os.path.join(CACHE, f"surge_review_m{TH['surge_btc_move_pct']}_h{HIGH_TOL}"); os.makedirs(OUT, exist_ok=True)
+# SURGE_VOLX=<mult> — BTC bar volume ≥ this × median (operator: "with volume 5× we should flex the 1 % to 0.3 %")
+if os.environ.get("SURGE_VOLX"):
+    TH = dict(TH); TH["surge_btc_vol_mult"] = float(os.environ["SURGE_VOLX"])
+    OUT = OUT.rstrip("/") + f"_v{os.environ['SURGE_VOLX']}"; os.makedirs(OUT, exist_ok=True)
+    if not HIGH_TOL:
+        HIGH_TOL = "0"
+ON_FILL = os.environ.get("SURGE_SPACING_ON_FILL") == "1"   # Oct-4: the cooldown starts only after a trigger that FILLED (18:10 no-pick lesson)
+if ON_FILL:
+    OUT = OUT.rstrip("/") + "_f"; os.makedirs(OUT, exist_ok=True)
+    if not HIGH_TOL:
+        HIGH_TOL = "0"
+if os.environ.get("SURGE_WINDOW_BARS"):
+    OUT = OUT.rstrip("/") + f"_w{os.environ['SURGE_WINDOW_BARS']}"; os.makedirs(OUT, exist_ok=True)
+    if not HIGH_TOL:
+        HIGH_TOL = "0"
+if os.environ.get("SURGE_GVOL_PRE"):
+    OUT = OUT.rstrip("/") + f"_g{os.environ['SURGE_GVOL_PRE']}"; os.makedirs(OUT, exist_ok=True)
+    if not HIGH_TOL:
+        HIGH_TOL = "0"
+# SURGE_SPACING=<hours> — cooldown between LONG triggers (operator: "4 h cooldown makes no sense while we go up like crazy")
+if os.environ.get("SURGE_SPACING"):
+    TH = dict(TH); TH["surge_trigger_spacing_hours"] = float(os.environ["SURGE_SPACING"])
+    OUT = OUT.rstrip("/") + f"_s{os.environ['SURGE_SPACING']}"; os.makedirs(OUT, exist_ok=True)
+    if not HIGH_TOL:
+        HIGH_TOL = "0"   # spacing ≠ the bot's → the fidelity check must not drop triggers
 
 
 def _set(s):
@@ -108,6 +141,34 @@ def _universe_pairs():
 
 
 CTRL_MODE = False
+_GV_D = None
+
+
+def _gvol_at(t):
+    """market volume ratio at bar t (the bot's global_volume_ratio: top-50 by rolling 24 h quote volume, base volume vs its 48-bar mean)."""
+    global _GV_D
+    if _GV_D is None:   # the LIVE gate's universe: every COIN, non-Alpha USDT perp INCLUDING blacklisted / no-trade pairs and BTC / ETH,
+        _GV_D = {}      # minus listings younger than new_listing_filter_days at the bar (get_top_futures_pairs) — validated vs the scout's live reads
+        ex = json.load(open(os.path.join(CACHE, "exchange_info.json")))
+        for f in glob.glob(os.path.join(K5, "*.csv")):
+            p = os.path.basename(f)[:-4]; info = ex.get(p) or {}
+            if not p.endswith("USDT") or (info and info.get("underlyingType") != "COIN") or \
+                    any("alpha" in str(x).lower() for x in (info.get("underlyingSubType") or [])):
+                continue
+            try:
+                d = _load5(p)
+            except Exception:
+                continue
+            d["v24"] = d.qv.rolling(288, min_periods=250).sum(); d["m48"] = d.vol.rolling(48).mean()
+            _GV_D[p] = (d[["vol", "v24", "m48"]], info.get("onboardDate"))
+    nd = float(CFG.get("new_listing_filter_days", 90) or 0)
+    snap = [(d.at[t, "v24"], d.at[t, "vol"], d.at[t, "m48"]) for d, ob in _GV_D.values()
+            if t in d.index and not (nd > 0 and ob and ob > t - nd * DAY)]
+    snap = [x for x in snap if np.isfinite(x[0]) and np.isfinite(x[2]) and x[2] > 0]
+    top = sorted(snap, key=lambda x: -x[0])[:50]
+    if len(top) < 30:
+        return None
+    return sum(x[1] for x in top) / sum(x[2] for x in top)
 
 
 def events():
@@ -123,20 +184,31 @@ def events():
     med = pd.Series(btc.qv.values).shift(1).rolling(288).median().values
     vm = btc.qv.values / med
     trig = {}
+    gpre = float(os.environ.get("SURGE_GVOL_PRE", "0") or 0)   # Oct-4: LONG market-volume gate applied BEFORE the spacing (refused ≠ cooldown)
     for side in ("LONG", "SHORT"):
         need = float(TH["surge_btc_move_pct"])
         ok = (r30 >= need) if side == "LONG" else (r30 <= -need)
-        if side == "LONG" and TH.get("surge_long_require_24h_high", True):
-            ok &= c >= hi
+        if side == "LONG" and TH.get("surge_long_require_24h_high", True) and HIGH_TOL != "off":
+            if HIGH_TOL and HIGH_TOL.startswith("x"):   # x<min>: the 24 h high EXCLUDING the last <min> minutes (the current move's own highs)
+                k = int(HIGH_TOL[1:]) // 5
+                ok &= c >= pd.Series(btc.h.values).shift(k + 1).rolling(288 - k).max().values
+            else:
+                ok &= c >= hi * (1 - float(HIGH_TOL or 0) / 100)
         if side == "SHORT" and TH.get("surge_short_require_24h_low", False):
             ok &= c <= lo
         ok &= vm >= float(TH["surge_btc_vol_mult"])
+        if side == "LONG" and gpre > 0:
+            ok &= np.array([((_gvol_at(int(x)) or 0) >= gpre) if o else False for x, o in zip(ts, ok)])
         out, last = [], -10**18
         for i in np.where(ok)[0]:
-            if ts[i] < YEAR0 or ts[i] - last < float(TH["surge_trigger_spacing_hours"]) * 3600_000:
-                continue
+            if ts[i] < YEAR0 or (not ON_FILL and ts[i] - last < float(TH["surge_trigger_spacing_hours"]) * 3600_000):
+                continue   # ON_FILL: every qualifying bar is a candidate; the spacing is applied after the picks (only a FILL starts it)
             # fidelity: the bot's own surge_trigger on the same 310-bar view must agree
             view = rows_btc[i - 300:i + 2].tolist()   # ... trigger bar, forming bar
+            if HIGH_TOL and side == "LONG":   # relaxed high rule = not the bot's rule → skip the fidelity check, compute the readings here
+                out.append(dict(side=side, bar_ts=int(ts[i]), close_ts=int(ts[i]) + BAR, btc_move=float(r30[i]), btc_vol_mult=float(vm[i])))
+                last = ts[i]
+                continue
             t = S.surge_trigger(view, th, side)
             if t is None or int(t["bar_ts"]) != int(ts[i]):
                 print(f"  ! trigger mismatch {side} {pd.to_datetime(ts[i], unit='ms')}: replica fires, surge_trigger={t}")
@@ -185,10 +257,16 @@ def events():
     if CTRL_MODE:
         return ranked, bars, th_full, btc
     rows = []
+    WB = int(os.environ.get("SURGE_WINDOW_BARS", "0") or 0)   # Oct-4 operator: "5 minutes alone is wrong" — stay active WB more bars
+    r30_at = dict(zip(ts.tolist(), r30.tolist()))
     for side, evs in trig.items():
+        last_fill = -10**18
         for e in evs:
+            if ON_FILL and e["bar_ts"] - last_fill < float(TH["surge_trigger_spacing_hours"]) * 3600_000:
+                continue
             uni = ranked(e["bar_ts"], side)
             n_open = 0
+            picked = set()
             for rank, p in enumerate(uni, 1):
                 ok, why, atr, pm = S.surge_pair_pick(bars(p, e["bar_ts"]), e["bar_ts"], e["btc_move"], th_full, side)
                 status = "PICK" if ok else why
@@ -197,8 +275,26 @@ def events():
                         status = "SURGE_MAX_SLOTS"
                     else:
                         n_open += 1
+                if status == "PICK":
+                    picked.add(p)
                 rows.append(dict(side=side, trig=e["bar_ts"], btc_move=e["btc_move"], btc_vol_mult=e["btc_vol_mult"], pair=p,
-                                 rank=rank, status=status, atr=atr, pair_move=pm))
+                                 rank=rank, status=status, atr=atr, pair_move=pm, entry_bar=e["bar_ts"]))
+            # later bars of the window: pairs not yet picked, judged on THAT bar (ATR, own 30-min move vs BTC's 30-min move at that bar)
+            for k in range(1, WB + 1):
+                bt = int(e["bar_ts"]) + k * BAR
+                bm = r30_at.get(bt)
+                if bm is None or not np.isfinite(bm) or n_open >= int(TH["surge_max_slots"]):
+                    break
+                for rank, p in enumerate(ranked(bt, side), 1):
+                    if p in picked or n_open >= int(TH["surge_max_slots"]):
+                        continue
+                    ok, why, atr, pm = S.surge_pair_pick(bars(p, bt), bt, bm, th_full, side)
+                    if ok:
+                        n_open += 1; picked.add(p)
+                        rows.append(dict(side=side, trig=e["bar_ts"], btc_move=e["btc_move"], btc_vol_mult=e["btc_vol_mult"], pair=p,
+                                         rank=rank, status="PICK", atr=atr, pair_move=pm, entry_bar=bt))
+            if picked:
+                last_fill = e["bar_ts"]
     F = pd.DataFrame(rows)
     F["trig_at"] = pd.to_datetime(F.trig, unit="ms")
     F.to_csv(os.path.join(OUT, "events_picks.csv"), index=False)
@@ -249,7 +345,8 @@ def fill_list(include_refused=True):
     F = pd.read_csv(os.path.join(OUT, "events_picks.csv"))
     rows = []
     for r in F.itertuples():
-        t = entry_ms(r.side, r.trig)
+        _eb = getattr(r, "entry_bar", None)
+        t = entry_ms(r.side, int(_eb) if _eb is not None and pd.notna(_eb) else r.trig)
         if r.status == "PICK":
             rows.append(dict(kind="PICK", side=r.side, trig=r.trig, pair=r.pair, t_entry=t, atr=r.atr, rank=r.rank, pair_move=r.pair_move))
             rows.append(dict(kind="CONTROL_SAMEPAIR", side=r.side, trig=r.trig, pair=r.pair, t_entry=t - DAY, atr=r.atr, rank=r.rank,

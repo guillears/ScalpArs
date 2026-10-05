@@ -5438,3 +5438,33 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   on ticks; one 🔔 note per gate when it fires. First run (10-04): heat re-scope FIRED (first 6 blocked 6/6 won, Σ +1.68 %), LOADX fired only at
   the +1 min entry timing (fragile). Master builder: sleeve sizes FROZEN in STACK 10-04b (pinned by a test against the JSON).
 
+
+- (202) 2026-10-05 ⚡ **SURGE_LONG option B — trigger 0.3 % · 5× · market volume ≥ 1 · spacing only after a fill · FULL size (operator override).**
+  Trigger (operator, watching BTC +2 % in two hours with SURGE silent, Oct-4 evening): "1 % is late", "the 24 h high should not count the
+  current move", "5 minutes is wrong", "volume, breadth, ADX, market volume all together". Year grid (scripts/surge_trigger_grid_report.py on
+  scripts/surge_bearrun_review.py replicas: today's picks + exit on 1-s aggTrades, entry 60 s after the trigger bar; replica = live rule 67=67
+  triggers, 20/20 live pair statuses, yr5 fills 240/248, one live exit to 0.001 %), report reports/SURGE_TRIGGER_GRID_2026-10-04.md:
+  today's 1 % · 3× · strict · 4 h = 43 triggers −0.031 %/trigger (CI −0.41…+0.37). Market volume (the bot's global_volume_ratio, top-50,
+  bar ÷ 48-bar mean) < 1 lost in EVERY variant (CI < 0); gated BEFORE the cooldown it lifts every move threshold < 1 % (0.75 −0.02→+0.09,
+  0.5 −0.06→+0.11 (9/10 months, 3 triggers carry it), 0.3·5× −0.04→+0.05). Longer entry windows (15–65 min, pairs judged at later bars)
+  flat-to-worse everywhere (1 %: −0.10…−0.23) → the 5-min window stays. 24 h high excl. last hour ≈ strict. 1 h cooldown worse.
+  Option A (0.5 % + market vol) was the quant pick (+0.113 %/trigger, 92/yr); the operator chose option B (0.3 % · 5× + market vol + spacing
+  only after a fill: 131/yr, +0.008 %/trigger, CI −0.21…+0.24 — the only rule that caught Oct-4 19:00 GTC +7.4 %: 17:40/17:45 refused at market
+  volume 0.76/0.79, 18:10 fired with no pick and under the plain spacing blocked 19:00) AND full size (lev mult 0.05 → 1.0) — a declared
+  discipline override (no gate met; year mean ≈ 0) with a TIGHTER revert gate. Bug caught before showing: the replica's market-volume universe
+  dropped blacklisted pairs (the live gate keeps them, + new-listing filter) — fixed, now within 0.08 of the scout's live reads, 0/9 side flips.
+  Shipped: config surge_btc_move_pct 0.3 · surge_btc_vol_mult 5.0 (shared with SURGE_SHORT, which is OFF) · surge_long_lev_mult 1.0 · NEW
+  surge_long_gvol_min 1.0 (services.surge.surge_gvol_gate; LONG only; unreadable = refused; a refused trigger is ledgered GVOL_LOW / GVOL_UNREAD,
+  counted SURGE_GVOL_LOW / SURGE_GVOL_UNREAD and does NOT use the spacing) · NEW surge_spacing_after_fill true (the spacing clock = the last
+  trigger that OPENED a position; restart lookup = FILLED ledger rows + fills) · Order.entry_surge_gvol + surge_triggers.gvol (+ migrations) ·
+  UI input + toggle, chip, ledger column on UI + both exports · engine _market_gvol_read shared with FRENZY. Master: no SURGE_LONG fill → nothing
+  re-prices (frozen size 1.0, STACK_VERSION unchanged). Scout: SURGE_LONG gate replaced (scout_revert_gates.gate_surge_b); new section
+  scripts/scout_surge_obs.py tracks option A on the same tape from the deploy (observe only).
+  🔒 PRE-COMMITTED REVERT (tight, override): the first 15 SURGE_LONG triggers that FILLED after this deploy, mean pnl %/trigger ≤ 0 ⇒
+  surge_long_lev_mult back to 0.05 (probe). Comparison read at 30 option-A triggers (mean/trigger, ≥ 8 days, no trigger ≥ 50 % of the gain).
+  (202, same commit) 🛑 NO AUTOMATIC KILL (operator, Oct-5: "I don't want an automatic kill bar, never"): new auto_kill_enabled (false). The
+  SURGE (per side) and RECOVERY HOLD kill bars still judge once and write their verdict — "FAILED … (no auto-off)" / "PASS …" — and log it
+  CRITICAL for review, but switch nothing off unless auto_kill_enabled is true (UI toggle under the recovery-hold verdict). Every revert gate
+  (scout) is a recommendation; the operator decides. Review findings applied pre-commit (caveman + deep, no blocker): a pending SURGE window
+  is never replaced under after-fill spacing; the after-fill clock + market-volume reading survive a restart; a GVOL-refused bar is not re-judged
+  after a restart; tickers + klines read bounded by 35 s together; option-B gate counts a closed prefix only; scout A rows re-judged per window.

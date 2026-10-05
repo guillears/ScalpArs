@@ -1251,6 +1251,15 @@ def run():
     except Exception as _fz_e:
         log(f"FRENZY watch failed: {_fz_e}")
         _fz_sec = ["## 🔥 FRENZY watch", "", f"Unavailable this run ({str(_fz_e)[:120]}).", ""]
+    try:                                               # ⚡ Oct-4 SURGE early-trigger observation (pre-registered; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_surge_obs as _so
+        _so_bars, _so_obs = _so.scan(EX, _retry, {**cfg, **(cfg.get("thresholds") or {})}, last_closed, alts, btc_full, in_now, now_ms)
+        _fz_sec += _so.lines(_so_bars, _so.save(_so_obs))
+    except Exception as _so_e:
+        log(f"SURGE observation failed: {_so_e}")
+        _fz_sec += ["## ⚡ SURGE early-trigger observation", "", f"Unavailable this run ({str(_so_e)[:120]}).", ""]
     _rg_notes = []                                     # ⏳ Oct-4 revert-gate tracker (every open pre-committed revert / arm gate; never breaks the run)
     try:
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:

@@ -62,6 +62,23 @@ def surge_trigger(btc_bars, th, side: str) -> Optional[dict]:
         return None
 
 
+def surge_gvol_gate(gvol, th, side: str):
+    """🌊 Oct-4 (DECISION_LOG 202): the market-volume leg of a SURGE trigger. Returns (ok, block_code). LONG only (SHORT is never gated);
+    surge_long_gvol_min ≤ 0 = off. Fail-closed: an unreadable reading (None / non-finite) refuses the window. Never raises."""
+    try:
+        gmin = _f(th, 'surge_long_gvol_min', 0.0)
+        if side != "LONG" or gmin <= 0:
+            return True, None
+        if gvol is None:
+            return False, "SURGE_GVOL_UNREAD"
+        g = float(gvol)
+        if g != g or g in (float('inf'), float('-inf')):
+            return False, "SURGE_GVOL_UNREAD"
+        return (True, None) if g >= gmin else (False, "SURGE_GVOL_LOW")
+    except (TypeError, ValueError):
+        return False, "SURGE_GVOL_UNREAD"
+
+
 def surge_live_readings(btc_bars, th=None) -> Optional[dict]:
     """The trigger's legs on the LAST CLOSED BTC 5m bar, for the header chip (display only — the trigger itself is surge_trigger):
     RAW 30-min move %, bar quote volume ÷ prior-288 median, close vs the prior 24 h high / low (%), plus the thresholds read with

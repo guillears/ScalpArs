@@ -15,9 +15,8 @@ GATES (frozen definitions — quoted from CLAUDE_CURRENT_STATE.md / DECISION_LOG
   FRENZY_STRONG (197) first 10 sized-up FRENZY_LONG fills (entry_frenzy_adx_delta > 0 ∧ entry_frenzy_di_spread > 0) average below the
                    other FRENZY_LONG fills of the same period, or below 0 → FIRES (frenzy_long_lev_mult_strong 0).
   FRENZY_GVOL (194) first 20 FRENZY + WIDE fills under the market-volume gate average < 0 → FIRES (frenzy_gvol_max 0).
-  SURGE_LONG (200) probe windows (trigger = entry_surge_trigger_at) since 2026-10-04 22:00 UTC split by BTC 3-day return ≤ +2.7 % at the
-                   trigger bar; at ≥ 8 windows: that group mean > 0 with CI > 0 ∧ the rest ≤ 0 → normal size for that group only;
-                   that group ≤ 0 → LONG off.
+  SURGE_LONG (202) option B at full size (operator override): the first 15 SURGE_LONG triggers that FILLED after the deploy (a closed
+                   prefix; one trigger = the mean of its fills) mean ≤ 0 → FIRES (surge_long_lev_mult 0.05). Supersedes the 200 probe gate.
   BEARRUN (200)    windows (fills ≤ 180 min apart = one window) started after 2026-10-04 22:00 UTC: ≥ 5 windows, ≥ 3 positive ∧ Σ > 0 →
                    ARM bar met (bearrun_lev_mult 1.0) — a positive event, not a revert.
   LOADX (126)      first 30 (extended from 8 on 2026-10-04, operator) PAIR_RSI_MOMENTUM_LOADX-blocked LONG signals (journal FAILS lines whose COMPLETE fail set is LOADX alone,
@@ -69,7 +68,8 @@ PROBE_START = "2026-10-04 22:00"     # DECISION_LOG 200: SURGE_LONG / BEARRUN pr
 SURGE_R72_MAX = 2.7
 # (commit, fallback UTC push time) — deploy = push + 10 min
 DEPLOYS = {"FRENZY_TP3": ("2e36c26", "2026-10-04 19:23:15"), "FRENZY_STRONG": ("181131e", "2026-10-04 14:06:09"),
-           "FRENZY_GVOL": ("0d79904", "2026-10-03 22:14:13")}
+           "FRENZY_GVOL": ("0d79904", "2026-10-03 22:14:13"),
+           "SURGE_B": ("grep:(DECISION_LOG 202)", "2026-10-05 01:30:00")}   # ⚡ Oct-4 option B (found by its commit message)
 SHIPS = {"HEAT": "2026-09-25", "LOADX": "2026-09-29", "MEGACAP": "2026-09-23"}
 # Oct-4 operator: "keep collecting" → trackers extended to 30; (new N, frozen N, frozen verdict) — the frozen first-N verdict stays on record
 EXT_N = {"LOADX": (30, 8, "FIRED (fragile at t+5m)"), "HEAT": (30, 6, "FIRED (6/6 won)")}   # ship dates (journal coverage notes)
@@ -139,7 +139,9 @@ def deploy_ms(name):
     """push time of the gate's commit (git) + 10 min; the pinned fallback when git is unavailable."""
     h, fb = DEPLOYS[name]
     try:
-        out = subprocess.run(["git", "-C", ROOT, "log", "-1", "--format=%ct", h], capture_output=True, text=True, timeout=10)
+        args = ["--grep=" + h[5:], "--fixed-strings", "--reverse", "--since=2026-10-04"] if h.startswith("grep:") else [h]   # grep: the FIRST commit naming it
+        out = subprocess.run(["git", "-C", ROOT, "log", "--format=%ct"] + args, capture_output=True, text=True, timeout=10)
+        out.stdout = (out.stdout.strip().splitlines() or [""])[0]
         ct = int(out.stdout.strip())
         return ct * 1000 + 10 * MIN
     except Exception:
@@ -231,7 +233,7 @@ def boot_ci(x, n=5000, seed=7):
     return float(np.percentile(m, 2.5)), float(np.percentile(m, 97.5))
 
 
-def decide_surge(win, min_windows=8, r72_max=SURGE_R72_MAX):
+def decide_surge(win, min_windows=8, r72_max=SURGE_R72_MAX):   # RETIRED Oct-5 (superseded by decide_surge_b, DECISION_LOG 202) — kept for the record
     """win = [(btc_r72, window_mean)]. Frozen rule (DECISION_LOG 200) after ≥ 8 windows with fills:
     low group (r72 ≤ +2.7) mean > 0 with CI > 0 ∧ rest ≤ 0 → 'arm_group' · low group ≤ 0 → 'fired' (LONG off) · else 'open'."""
     lo = [m for r, m in win if r is not None and np.isfinite(r) and r <= r72_max]
@@ -249,6 +251,15 @@ def decide_surge(win, min_windows=8, r72_max=SURGE_R72_MAX):
     if info["m_lo"] > 0 and np.isfinite(info["ci_lo"][0]) and info["ci_lo"][0] > 0 and (not hi or info["m_hi"] <= 0):
         return "arm_group", info
     return "open", info
+
+
+def decide_surge_b(trigger_means, n=15):
+    """⚡ Oct-4 option B (DECISION_LOG 202) revert gate, pre-committed: the first 15 SURGE_LONG triggers that FILLED since the B deploy
+    (one trigger = the mean of its fills' pnl %) — mean ≤ 0 → 'fired' (leverage back to the 0.05 probe); mean > 0 → 'holds'."""
+    v = list(trigger_means)[:n]
+    if len(v) < n:
+        return "collecting"
+    return "fired" if float(np.mean(v)) <= 0 else "holds"
 
 
 def decide_bearrun(win_means, total_sum, min_windows=5, min_pos=3):
@@ -819,7 +830,7 @@ def gate_frenzy_gvol(orders, st, n=20):
     return state, t0
 
 
-def gate_surge(orders, st, btc):
+def gate_surge(orders, st, btc):   # RETIRED Oct-5 (DECISION_LOG 202) — the SURGE_LONG row is gate_surge_b
     G = st.setdefault("gates", {}).setdefault("SURGE_LONG", {})
     t0 = _ms(PROBE_START)
     f = orders[(orders.entry_strategy.astype(str) == "SURGE_LONG") & (orders.o_ms >= t0)].copy()
@@ -839,6 +850,27 @@ def gate_surge(orders, st, btc):
                      + (f" · {n_open} window(s) still open" if n_open else ""))
     G["detail"] = " · ".join(f"{_fmt_t(t)} 3d {_f(r, '+.1f')} n{k} {m:+.2f}" for r, m, t, k in win[:10])
     return state
+
+
+def gate_surge_b(orders, st):
+    """⚡ option B: SURGE_LONG triggers (fills grouped by entry_surge_trigger_at) opened after the B deploy; a trigger counts once all its fills closed."""
+    G = st.setdefault("gates", {}).setdefault("SURGE_LONG", {})
+    t0 = deploy_ms("SURGE_B")
+    f = orders[(orders.entry_strategy.astype(str) == "SURGE_LONG") & (orders.o_ms >= t0)].copy()
+    f["trig"] = _ms_series(f.entry_surge_trigger_at).values
+    f["trig"] = f.trig.where(np.isfinite(f.trig), f.o_ms)
+    done, n_open = [], 0
+    for trig, g in f.sort_values("o_ms").groupby("trig", sort=True):
+        if not ((g.status.astype(str) == "CLOSED") & g.pnl_percentage.notna()).all():
+            n_open += 1
+            break   # review: the FIRST 15 = a closed prefix — never let a later trigger take the place of one still open
+        done.append((int(trig), float(g.pnl_percentage.mean()), len(g)))
+    vals = [m for _, m, _ in done]
+    state = decide_surge_b(vals)
+    G["progress"] = (f"{min(len(vals), 15)}/15 filled triggers closed" + (f" · mean {np.mean(vals[:15]):+.3f} %/trigger" if vals else "")
+                     + (f" · {sum(1 for v in vals[:15] if v > 0)} positive" if vals else "") + (f" · {n_open} still open" if n_open else ""))
+    G["detail"] = " · ".join(f"{_fmt_t(t)} n{k} {m:+.2f}" for t, m, k in done[:15])
+    return state, t0
 
 
 def gate_bearrun(orders, st):
@@ -869,8 +901,9 @@ DEFS = {
                       "FRENZY_LONG fills of the same period, or < 0", "set frenzy_long_lev_mult_strong 0", "frenzy_long_lev_mult_strong"),
     "FRENZY_GVOL": ("🌊 FRENZY market-volume gate (194)", "first 20 FRENZY + WIDE fills under the gate: avg pnl % < 0", "set frenzy_gvol_max 0",
                     "frenzy_gvol_max"),
-    "SURGE_LONG": ("⚡ SURGE_LONG probe (200)", "≥ 8 trigger windows since 10-04 22:00 split by BTC 3d return ≤ +2.7 %: group > 0 with CI > 0 "
-                   "∧ rest ≤ 0 → normal size for that group; group ≤ 0 → LONG off", "set surge_long_enabled false", "surge_long_lev_mult"),
+    "SURGE_LONG": ("⚡ SURGE_LONG option B (202)", "trigger 0.3 % · 5× · market vol ≥ 1 · spacing after a fill, FULL size (operator override, "
+                   "unproven: year +0.01 %/trigger): the first 15 triggers that filled, mean pnl %/trigger ≤ 0 → revert (supersedes the 200 probe gate)",
+                   "set surge_long_lev_mult 0.05 (back to the probe)", "surge_long_lev_mult"),
     "BEARRUN": ("🐻 BEARRUN probe arm bar (200)", "≥ 5 windows started after 10-04 22:00 with fills, ≥ 3 positive ∧ Σ > 0 (positive event)",
                 "set bearrun_lev_mult 1.0", "bearrun_lev_mult"),
     "LOADX": ("🧭 LOADX gate (126)", "first 30 LOADX-only refused LONG signals (journal FAILS, rank ≤ 10 excluded), WINDOW units: WR ≥ 60 % ∨ net > 0 · extended from 8 on 10-04 (first 8 had FIRED, fragile at t+5m)",
@@ -886,8 +919,6 @@ ORDER = ["CHOP_BURST", "FRENZY_TP3", "FRENZY_STRONG", "FRENZY_GVOL", "SURGE_LONG
 def _status_text(code, state, G):
     action = DEFS[code][2]
     if state == "fired":
-        if code == "SURGE_LONG":
-            return "🔔 FIRED → BTC 3d ≤ +2.7 % group ≤ 0: set surge_long_enabled false"
         return f"🔔 FIRED → {action}" + (" (t+5m entry disagrees — fragile)" if G.get("fragile") else "")
     if state == "arm_group":
         return "🔔 ARM BAR MET → normal size for the BTC 3d ≤ +2.7 % group only (needs a group-scoped size switch)"
@@ -993,7 +1024,17 @@ def run_section(now_ms=None, noted=None, record_notes=True):
             log(f"{code}: {e}")
             res[code] = "error"
             st["gates"].setdefault(code, {})["progress"] = f"error: {str(e)[:100]}"
-    for code, fn in (("SURGE_LONG", lambda: gate_surge(orders, st, btc)), ("BEARRUN", lambda: gate_bearrun(orders, st))):
+    try:
+        res["SURGE_LONG"], _t0 = gate_surge_b(orders, st)
+        cov["SURGE_LONG"] = otxt + f" · counts triggers from {_fmt_t(_t0)} (deploy = push + 10 min)"
+        if newest is None or newest < _t0:
+            res["SURGE_LONG"] = "collecting"
+            st["gates"]["SURGE_LONG"]["progress"] = "no export covers it yet"
+    except Exception as e:
+        log(f"SURGE_LONG: {e}")
+        res["SURGE_LONG"] = "error"
+        st["gates"].setdefault("SURGE_LONG", {})["progress"] = f"error: {str(e)[:100]}"
+    for code, fn in (("BEARRUN", lambda: gate_bearrun(orders, st)),):
         try:
             res[code] = fn()
             cov[code] = otxt + " · windows from 10-04 22:00 UTC"
@@ -1118,6 +1159,10 @@ def selftest():
     chk(_status_text("CHOP_BURST", "fired", {}).startswith("🔔 FIRED → set long_chop_burst_block_enabled false"), "status text")
     chk(EXT_N["LOADX"][0] == 30 and EXT_N["HEAT"][0] == 30, "extension: trackers at 30")
     chk(f"RG|HEAT|n{EXT_N['HEAT'][0]}|fired" != "RG|HEAT|fired", "extension: note key differs from the frozen-N key")
+    chk(decide_surge_b([0.5] * 14) == "collecting", "surge B: < 15 collects")
+    chk(decide_surge_b([-0.1] * 15) == "fired", "surge B: mean ≤ 0 fires")
+    chk(decide_surge_b([1.0] + [-0.05] * 14) == "holds", "surge B: mean > 0 holds")
+    chk(decide_surge_b([-1.0] * 15 + [9.0] * 5) == "fired", "surge B: only the FIRST 15 count")
     print(f"selftest OK — {ok} checks")
 
 

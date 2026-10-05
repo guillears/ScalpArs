@@ -446,12 +446,13 @@ def main():
     df = df.drop(columns=['_ts'])
     # 🔥 Oct-4 (DECISION_LOG 193/197/199/200): sleeve fills re-priced at TODAY's size (pct is size-free; $ = pct × today's notional).
     # Margin today = as-traded margin ÷ its cell multiplier × today's invest mult; leverage today = max(1, round(20 × today's lev mult)) —
-    # FRENZY_LONG 1 × 0.32 (6×), or 0.5 (10×) when its ADX-rising ∧ +DI-above stamps say so; FRENZY_WIDE 1 × 0.2 (4×); SURGE_LONG /
-    # BEARRUN_SHORT 1 × 0.05 (1×). The +3 % FRENZY TP is applied only when the recorded peak reached it (pct → +3.0).
+    # FRENZY_LONG 1 × 0.32 (6×), or 0.5 (10×) when its ADX-rising ∧ +DI-above stamps say so; FRENZY_WIDE 1 × 0.2 (4×);
+    # BEARRUN_SHORT 1 × 0.05 (1×); SURGE_LONG 1 × 1.0 (20×) since Oct-4 option B (DECISION_LOG 202 — the master holds no SURGE_LONG fill, so
+    # nothing re-prices and STACK_VERSION stays). The +3 % FRENZY TP is applied only when the recorded peak reached it (pct → +3.0).
     # FROZEN with STACK_VERSION (review: never read the live JSON — a later settings change must not silently re-price history; a sizing
     # change = a new STACK_VERSION with these values updated; tests/test_long_chop_burst.py pins them against trading_config.json)
     _th = dict(frenzy_long_invest_mult=1.0, frenzy_long_lev_mult=0.32, frenzy_long_lev_mult_strong=0.5, frenzy_wide_invest_mult=1.0,
-               frenzy_wide_lev_mult=0.2, surge_long_invest_mult=1.0, surge_long_lev_mult=0.05, bearrun_invest_mult=1.0, bearrun_lev_mult=0.05,
+               frenzy_wide_lev_mult=0.2, surge_long_invest_mult=1.0, surge_long_lev_mult=1.0, bearrun_invest_mult=1.0, bearrun_lev_mult=0.05,
                frenzy_tp_pct=3.0)
     SLEEVE_SIZE_FROZEN = _th
     def _today(strat, r):

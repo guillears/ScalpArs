@@ -178,7 +178,7 @@ async def init_db():
                 if 'adx_surge_open' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN adx_surge_open BOOLEAN"))
                 for _sg_col, _sg_type in (('entry_surge_btc_move_pct', 'FLOAT'), ('entry_surge_pair_move_pct', 'FLOAT'),
-                                          ('entry_surge_trigger_at', 'DATETIME')):   # ⚡ Sep-30 SURGE sleeves
+                                          ('entry_surge_trigger_at', 'DATETIME'), ('entry_surge_gvol', 'FLOAT')):   # ⚡ Sep-30 SURGE sleeves
                     if _sg_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sg_col} {_sg_type}"))
                 for _fz_col, _fz_type in (('entry_frenzy_spike_at', 'DATETIME'), ('entry_frenzy_hours', 'FLOAT'), ('entry_frenzy_vwap', 'FLOAT'),
@@ -736,6 +736,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_breadth INTEGER DEFAULT 0"))
                 if 'blocked_age' not in _mp_cols:
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_age INTEGER DEFAULT 0"))
+            # 🌊 Oct-4: surge_triggers.gvol (market volume on the trigger bar)
+            if 'surge_triggers' in inspector.get_table_names():
+                if 'gvol' not in [c['name'] for c in inspector.get_columns('surge_triggers')]:
+                    connection.execute(text("ALTER TABLE surge_triggers ADD COLUMN gvol FLOAT"))
             # Sep 19 gate 60: bear_monitor_periods.blocked_breadth (bear-breadth floor refusals)
             if 'bear_monitor_periods' in inspector.get_table_names():
                 _bmp_cols = [c['name'] for c in inspector.get_columns('bear_monitor_periods')]

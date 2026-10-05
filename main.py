@@ -699,7 +699,7 @@ async def get_status(db: AsyncSession = Depends(get_db)):
     # the engine's ② gross cap uses: available + open margin). pct guards div0.
     try:
         _gl = float(getattr(config.trading_config.investment, 'max_gross_leverage', 0.0) or 0.0)
-        _avail = await trading_engine.get_available_balance(db)
+        _avail = (await _paper_book(db))[0] if trading_engine.is_paper_mode else await trading_engine.get_available_balance(db)   # ⚡ Oct-5 shared copy
         _open_margin_r = await db.execute(
             select(func.coalesce(func.sum(Order.investment), 0.0)).where(
                 and_(Order.status == "OPEN", Order.is_paper == trading_engine.is_paper_mode)
@@ -725,7 +725,7 @@ async def get_status(db: AsyncSession = Depends(get_db)):
         try:
             _mr_src = 'paper_est'; _maint = 0.0; _mbal = 0.0
             if trading_engine.is_paper_mode:
-                _pc = await _portfolio_components(db)
+                _pc = await _portfolio_components(db, fresh=False)
                 _maint = _gross_open * 0.005
                 _mbal = float(_pc['free']) + float(_pc['margin']) + float(_pc['unrealized'])
             else:
@@ -890,6 +890,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
             state_row.filter_block_counts_json = None
 
         await locked_commit(db)
+        _paper_book_invalidate()
 
         balance = trading_engine.paper_balance if is_paper else 0
         logger.info(f"[RESET] {mode_label} ALL trading reset. {'Balance: $' + str(balance) + ', ' if is_paper else ''}Timer: 00:00:00")
@@ -927,6 +928,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         if is_paper:
             await trading_engine._recalculate_paper_balance(db)
             await trading_engine.save_state(db)
+            _paper_book_invalidate()
 
         logger.info(f"[RESET] {mode_label} {direction} trades reset. Deleted {len(order_ids)} orders.")
 
@@ -1001,16 +1003,13 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
     await trading_engine.initialize(db)
 
     if trading_engine.is_paper_mode:
-        balance = await trading_engine._recalculate_paper_balance(db)
-        await trading_engine._recalculate_paper_bnb(db)
+        balance, bnb_usd, used_margin = await _paper_book(db)   # ⚡ Oct-5: shared ≤ 4 s snapshot (dashboard read)
         result = await db.execute(
             select(Order).where(
                 and_(Order.status == "OPEN", Order.is_paper == True)
             )
         )
         open_orders = result.scalars().all()
-        used_margin = sum(o.investment for o in open_orders)
-        bnb_usd = trading_engine.paper_bnb_balance_usd
 
         # Starting balance (seed) = current total portfolio − realized P&L. Paper accounting
         # guarantees total_portfolio (free + margin + BNB) = seed + closed_pnl, so subtracting the
@@ -1207,6 +1206,7 @@ async def manual_bnb_buy(data: dict, db: AsyncSession = Depends(get_db)):
         # ⛽ Sep-29: same ledger path as the automatic swap (settles fees already paid in USDT, DB-derived balances)
         await trading_engine._paper_bnb_credit(db, amount, "manual", bnb_price)
         await trading_engine.save_state(db)
+        _paper_book_invalidate()
         return {"ok": True, "bnb_amount": round(amount / bnb_price, 6), "bnb_price": round(bnb_price, 2), "cost_usdt": round(amount, 2)}
     else:
         pre_balance = await binance_service.get_balance()
@@ -1278,6 +1278,7 @@ async def manual_bnb_sell(data: dict, db: AsyncSession = Depends(get_db)):
         await locked_commit(db)
         await trading_engine._recalculate_paper_balance(db)
         await trading_engine.save_state(db)
+        _paper_book_invalidate()
         return {"ok": True, "bnb_amount": round(amount / bnb_price, 6), "bnb_price": round(bnb_price, 2), "proceeds_usdt": round(amount, 2)}
     else:
         pre_balance = await binance_service.get_balance()
@@ -1935,7 +1936,7 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
         # REALIZED equity only (review I2): the day-return back-walk pairs closed-P&L
         # deltas with a closed-P&L baseline — including live unrealized here would make
         # every HISTORICAL day's % drift intraday while positions are open.
-        _pc = await _portfolio_components(db)
+        _pc = await _portfolio_components(db, fresh=False)
         portfolio_now = _pc["realized_equity"]; total_equity_now = _pc["total_equity"]
     except Exception:
         pass
@@ -2053,6 +2054,17 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
             "revisions_by_month": revisions_by_month, "avg7_by_month": avg7_by_month,
             "month_final": month_final,
             "eom_label": (datetime.utcnow() + offset).strftime("%b ") + str(__import__("calendar").monthrange((datetime.utcnow()+offset).year,(datetime.utcnow()+offset).month)[1])}
+
+
+@app.get("/api/orders/closed/sig")
+async def get_closed_orders_sig(db: AsyncSession = Depends(get_db)):
+    """⚡ Oct-5 refresh fix 2 (DECISION_LOG 212): a two-number "has anything closed?" probe for the dashboard's 10-s tick —
+    the full closed list (100 rows × ~40 fields) + the analytics refresh now load only when this changes."""
+    await trading_engine.initialize(db)
+    _w = and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode)
+    n = (await db.execute(select(func.count(Order.id)).where(_w))).scalar() or 0
+    last = (await db.execute(select(Order.id, Order.closed_at).where(_w).order_by(desc(Order.closed_at)).limit(1))).first()
+    return {"sig": f"{trading_engine.is_paper_mode}|{n}|{last[0] if last else ''}|{last[1].isoformat() if last and last[1] else ''}"}
 
 
 @app.get("/api/orders/closed")
@@ -11809,7 +11821,42 @@ def _open_unrealized_pnl(open_orders) -> float:
     return total
 
 
-async def _portfolio_components(db: AsyncSession) -> dict:
+# ⚡ Oct-5 refresh fix 3 (DECISION_LOG 212): the dashboard's 10-s batch hit the paper-book recompute 3× (balance card, investors,
+# status) — ~24 sum queries on the ONE uvicorn worker that also runs the scan loops. Dashboard reads share one result for
+# _PAPER_BOOK_TTL_S; money paths (deposits / withdrawals / NAV snapshots / engine sizing) always pass fresh=True or call the
+# engine directly. The engine recomputes its own balance on every fill / close, so nothing it trades on depends on these reads.
+_PAPER_BOOK = {"t": 0.0, "free": None, "bnb": None, "margin": None, "gen": 0}
+_PAPER_BOOK_TTL_S = 4.0
+_PAPER_BOOK_LOCK = asyncio.Lock()
+
+
+def _paper_book_invalidate():
+    _PAPER_BOOK["t"] = 0.0
+    _PAPER_BOOK["gen"] += 1   # a recompute already in flight must not re-cache pre-reset values (review)
+
+
+async def _paper_book(db: AsyncSession, fresh: bool = False):
+    """(free USDT, BNB reserve USD, open margin) of the PAPER book — one snapshot, so free + margin never straddle a fill / close
+    (review). fresh=False → a ≤ _PAPER_BOOK_TTL_S-old shared copy (dashboard only)."""
+    def _hit():
+        return (not fresh and _PAPER_BOOK["free"] is not None
+                and time.monotonic() - _PAPER_BOOK["t"] < _PAPER_BOOK_TTL_S)
+    if _hit():
+        return _PAPER_BOOK["free"], _PAPER_BOOK["bnb"], _PAPER_BOOK["margin"]
+    async with _PAPER_BOOK_LOCK:   # concurrent batch requests wait for ONE recompute instead of running three
+        if _hit():
+            return _PAPER_BOOK["free"], _PAPER_BOOK["bnb"], _PAPER_BOOK["margin"]
+        gen = _PAPER_BOOK["gen"]
+        free = await trading_engine._recalculate_paper_balance(db)
+        bnb = await trading_engine._recalculate_paper_bnb(db)
+        margin = float((await db.execute(select(func.coalesce(func.sum(Order.investment), 0.0)).where(
+            and_(Order.status == "OPEN", Order.is_paper == True)))).scalar() or 0.0)
+        if gen == _PAPER_BOOK["gen"]:
+            _PAPER_BOOK.update(t=time.monotonic(), free=free, bnb=bnb, margin=margin)
+        return free, bnb, margin
+
+
+async def _portfolio_components(db: AsyncSession, fresh: bool = True) -> dict:
     """Single source of truth for equity components (Jul 2, 2026 review refactor).
 
     Returns {free, margin, unrealized, bnb, realized_equity, total_equity}.
@@ -11822,14 +11869,11 @@ async def _portfolio_components(db: AsyncSession) -> dict:
     or skip the cycle (snapshot loop)."""
     await trading_engine.initialize(db)
     if trading_engine.is_paper_mode:
-        free = await trading_engine._recalculate_paper_balance(db)
-        await trading_engine._recalculate_paper_bnb(db)
+        free, bnb_usd, margin = await _paper_book(db, fresh=fresh)   # one snapshot (free + margin consistent)
         result = await db.execute(
             select(Order).where(and_(Order.status == "OPEN", Order.is_paper == True))
         )
-        open_orders = result.scalars().all()
-        margin = sum(o.investment for o in open_orders)
-        bnb_usd = trading_engine.paper_bnb_balance_usd
+        open_orders = result.scalars().all()   # unrealized P&L of the positions open now
         realized = free + margin + bnb_usd
     else:
         bal = await binance_service.get_balance()
@@ -12047,7 +12091,7 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
     total_shares = await _get_total_shares(db)
     # One components read serves portfolio value AND the reserve split — the previous
     # two-pass version could straddle a monitor-loop commit (review minor).
-    comps = await _portfolio_components(db)
+    comps = await _portfolio_components(db, fresh=False)   # ⚡ Oct-5: the 10-s investors list is a dashboard read
     portfolio_value = comps["total_equity"]
     nav = portfolio_value / total_shares if total_shares > 0 else 1.0
 
@@ -12640,6 +12684,7 @@ async def update_config(config_update: ConfigUpdate):
         import config
         config.trading_config = new_config
         trading_engine._fee_sync_at = 0  # Sep-3 review I1: a config save replaces the global with DISK values — force a fee re-sync on the next 15-min wake so a save can't silently revert synced rates for 24h
+        _paper_book_invalidate()   # paper_balance / paper_bnb_initial_usd may have changed
         return {"status": "success", "message": f"Configuration saved ({len(changes)} change(s))"}
     else:
         raise HTTPException(status_code=500, detail="Failed to save configuration")

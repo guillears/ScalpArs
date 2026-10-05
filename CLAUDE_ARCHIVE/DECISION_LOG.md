@@ -5577,3 +5577,14 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   Jun-9, old exit stack, refute-only) 11 · 36 % · −0.42 % = HARMFUL under the multiplier verdict rule. No trading change (dormant); removes the
   latent 2× that would wake if the UNMATCHED rule changed. Config field, default and engine lookup kept (empty → 1.0×). Verified: a 399-order
   real-CSV SQLite replay of _compute_performance lost exactly the 17 keys, the other 155 keys byte-identical to HEAD; pytest green.
+- (212) 2026-10-05 ⚡ **Dashboard refresh fixes 1–3 (operator: step A, not the calendar / hidden-tab items)** — the dashboard and the trading
+  engine share ONE uvicorn worker / event loop, so every dashboard query delays the scan loops. ① Open orders: 1 s only while the Open tab
+  is showing, 15 s behind other tabs (was 86,400 calls/day); the tab click still loads at once. ② New GET /api/orders/closed/sig (count +
+  newest id/closed_at, mode-scoped): the 10-s batch loads the full closed list (and, through its signature, /api/performance) only when it
+  changes, or every tick while the Closed tab is open; probe failure → full load; the probe signature advances only after a successful load;
+  5-min analytics safety net unchanged. ③ _paper_book(): the paper free USDT + BNB + open margin computed ONCE per ≤ 4 s for dashboard reads
+  (/api/balance, /api/status, investors list, pnl calendar; was 3 recomputes per 10-s tick) behind an asyncio.Lock; money paths (NAV
+  snapshots, deposits / withdrawals / transfers / founding via _get_portfolio_value) stay fresh=True; invalidated on full + partial reset,
+  manual BNB buy / sell and config save, with a generation counter so an in-flight recompute never re-caches pre-reset values. Engine
+  sizing recomputes its own balance (unchanged). Tests: tests/test_paper_book_cache.py (shared recompute, fresh, TTL / invalidate, in-flight
+  invalidate). Not touched: P&L calendar cadence, hidden-tab pause, Live Terminal timers.

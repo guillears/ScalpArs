@@ -7800,6 +7800,7 @@
         // /api/orders/closed is capped at 100 rows, so a count check froze once the
         // batch crossed 100 closed trades and the analytics tables went stale.
         let _lastClosedSig = null;
+        let _lastClosedLiteSig = null;   // ⚡ Oct-5 (212): /api/orders/closed/sig — the 10-s "anything closed?" probe
         let _bnbBurnRate = 0;
         let _lastBnbKey = '';
 
@@ -7897,18 +7898,39 @@
             };
             let _perfDirty = false;
 
+            // ⚡ Oct-5 refresh fix 2 (DECISION_LOG 212): the full closed list (and, through its signature, the analytics refresh)
+            // loads only when the light probe changes — or every tick while the Closed tab is open (its rows' post-exit
+            // columns keep filling after the close). A failed probe falls back to the full load (never a silent stall).
+            async function checkClosedOrders() {
+                if (currentTab === 'closed') return loadClosedOrders();
+                try {
+                    const r = await fetch(`${API_BASE}/api/orders/closed/sig`);
+                    if (!r.ok) throw new Error(r.status);
+                    const sig = (await r.json()).sig;
+                    if (sig === _lastClosedLiteSig) return;
+                    if (await loadClosedOrders()) _lastClosedLiteSig = sig;   // only after a successful full load
+                } catch (e) {
+                    return loadClosedOrders();
+                }
+            }
+
             // Auto-refresh every 10 seconds
             setInterval(() => {
                 if (document.hidden) return;
                 _rfGuard('batch10', async () => {
-                    await Promise.allSettled([loadBalance(), loadPairs(), loadClosedOrders(), loadInvestors(), loadStatus()]);
+                    await Promise.allSettled([loadBalance(), loadPairs(), checkClosedOrders(), loadInvestors(), loadStatus()]);
                     if (currentTab === 'transactions') await loadTransactions();
                 });
             }, 10000);
 
-            // Update open orders every 1 second for faster decision making
+            // Open orders: every 1 s while the Open tab is showing; every 15 s behind other tabs (⚡ Oct-5 refresh fix 1,
+            // DECISION_LOG 212 — was 86,400 calls/day regardless). switchOrdersTab('open') loads at once, so the tab is never stale.
+            let _ooLast = 0;
             setInterval(() => {
                 if (document.hidden) return;
+                const _now = Date.now();
+                if (currentTab !== 'open' && _now - _ooLast < 15000) return;
+                _ooLast = _now;
                 _rfGuard('oo', loadOpenOrders);
             }, 1000);
 
@@ -18433,7 +18455,7 @@
                 
                 if (!data || data.length === 0) {
                     _setHTMLIfChanged(tbody, '<tr><td colspan="19" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>');
-                    return;
+                    return true;
                 }
                 
                 const _renderData = _closedShowAll ? data : data.slice(0, 200);
@@ -18542,8 +18564,10 @@
                 }).join('');
                 if (_hiddenN > 0) _rowsHtml += '<tr><td colspan="19" class="px-4 py-3 text-center"><button class="text-xs text-sky-400 hover:text-sky-300 underline" onclick="_closedShowAll=true; loadClosedOrders()">Show all ' + data.length + ' closed orders (' + _hiddenN + ' older hidden)</button></td></tr>';
                 _setHTMLIfChanged(tbody, _rowsHtml);
+                return true;   // ⚡ Oct-5 (212): success flag — checkClosedOrders only advances its probe signature on a good load
             } catch (e) {
                 console.error('Error loading closed orders:', e);
+                return false;
             }
         }
 

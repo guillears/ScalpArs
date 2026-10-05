@@ -2122,13 +2122,17 @@ class SignalThresholds(BaseModel):
     # [−0.61, −0.03]. Washed-out winner AAVE +$197 stays exempt. Newly blocked vs today 8·38%·−$729; re-admits the old zone's
     # bull 80-85 fills (BONK −$91, STX +$32). No 84.4–86.4 fill exists → the 85 cut is insensitive over that gap. Ledger
     # 252·84%·+$14,205 → 246·85%·+$14,875. Expectancy bar: WR ✓ (45 < 61) · P ✓ (≥0.95) · windows ✓ (8) · N ✗ (11 < 15)
-    # → declared override on sample size only. entry_long_heat_flags now counts the breadth leg only (0/1, was 0-3).
+    # → declared override on sample size only. entry_long_heat_flags now counts the breadth leg only (0/1, was 0-3) [superseded by 208: 0-3 again].
     # 🔒 TIGHT REVERT → restore 0.07 / 64 / 80: first 6 blocked fires re-priced ([LONG_HEAT_BLOCK] log px + 1m klines, live
     # momentum-long exit) WR ≥60%, OR the Jan–Jun engine replay fails the expectancy bar for bull ≥85 momentum longs.
+    # 🔁 Oct-5 REVERT of the Sep-25 re-scope (operator, DECISION_LOG 208): its pre-committed gate FIRED (first 6 blocked fires 6/6 won,
+    # +1.68 %) and the extension kept winning (10 re-priced · 9 won · Σ +2.38 %) → back to the Sep-18 3-leg rule 0.07 / 64 / 80. Master
+    # (in-sample, the re-scope's own design data) −$567: 2026-10-05a +$9,278 → 10-05b. 🔒 REVERT-OF-THE-REVERT (scout HEAT_ADMIT): the first
+    # 10 momentum longs the re-scope WOULD have blocked (bull ≥85, BTC legs not both hot, not washed out) — mean pnl % < 0 → re-scope back.
     long_heat_block_enabled: bool = True
-    long_heat_btc_slope_min: float = 0.0
-    long_heat_btc_rsi_prev_min: float = 0.0
-    long_heat_bull_pct_min: float = 85.0
+    long_heat_btc_slope_min: float = 0.07
+    long_heat_btc_rsi_prev_min: float = 64.0
+    long_heat_bull_pct_min: float = 80.0
     long_heat_exempt_off30d_max: float = -10.0
     # 🏦 Sep-23 MEGA-CAP EXCLUSION (operator override at N=10 — below the N≥30 bar, acknowledged; DECISION_LOG 110).
     # Refuse a momentum LONG (UNMATCHED + NONEXP_CALM3D doors only; every other sleeve/probe/flip/spike and the

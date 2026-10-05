@@ -115,7 +115,7 @@ def test_config_parity_ui_and_builder_freeze():
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
     m = re.search(r"_CB_TH = SimpleNamespace\(long_chop_burst_block_enabled=True, long_chop_burst_eff72_max=([0-9.]+), long_chop_burst_window_s=([0-9.]+)\)", bld)
     assert m and float(m.group(1)) == th["long_chop_burst_eff72_max"] and float(m.group(2)) == th["long_chop_burst_window_s"]
-    assert 'STACK_VERSION = "2026-10-05a"  # 10-05a: UNMATCHED' in bld and '10-04b: LONG_CHOP_BURST' in bld   # 10-05a keeps the 10-04b history
+    assert '10-05a: UNMATCHED' in bld and '10-04b: LONG_CHOP_BURST' in bld   # the STACK_VERSION history keeps every step
     ui = open(os.path.join(ROOT, "templates", "index.html")).read()
     for i in ("config-long-chop-burst-block-enabled", "config-long-chop-burst-eff72-max", "config-long-chop-burst-window-s"):
         assert ui.count(f'id="{i}"') == 1 and ui.count(i) == 3                         # input + load + save

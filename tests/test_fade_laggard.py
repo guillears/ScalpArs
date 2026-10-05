@@ -59,7 +59,7 @@ def test_live_json_armed_and_wiring_parity():
     assert ui.count("config-spike-fade-lag-ndi-min") == 3 and ui.count("config-spike-fade-lag-btc-gap-min") == 3
     assert "Fade laggard gate (Sep 29)" in ui
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert "FADE_LAGGARD" in bld and "spike_fade_lag_ndi_min=16.1" in bld and bld.startswith("#!") and 'STACK_VERSION = "2026-10-05a"' in bld
+    assert "FADE_LAGGARD" in bld and "spike_fade_lag_ndi_min=16.1" in bld and bld.startswith("#!") and 'STACK_VERSION = "2026-10-05b"' in bld
 
 
 def test_builder_inputs_prefer_stamps_and_fail_open():

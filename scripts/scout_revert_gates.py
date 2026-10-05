@@ -72,7 +72,8 @@ SURGE_R72_MAX = 2.7
 DEPLOYS = {"FRENZY_TP3": ("2e36c26", "2026-10-04 19:23:15"), "FRENZY_STRONG": ("181131e", "2026-10-04 14:06:09"),
            "FRENZY_GVOL": ("0d79904", "2026-10-03 22:14:13"),
            "SURGE_B": ("grep:(DECISION_LOG 202)", "2026-10-05 01:30:00"),
-           "FRENZY_LOCK": ("grep:(DECISION_LOG 205)", "2026-10-05 22:00:00")}   # 🎯 Oct-5 lock-then-trail exit (commit message carries the exact string)   # ⚡ Oct-4 option B (found by its commit message)
+           "FRENZY_LOCK": ("grep:(DECISION_LOG 205)", "2026-10-05 22:00:00"),
+           "HEAT_REVERT": ("grep:(DECISION_LOG 208)", "2026-10-05 22:00:00")}   # 🔁 Oct-5 heat re-scope reverted   # 🎯 Oct-5 lock-then-trail exit (commit message carries the exact string)   # ⚡ Oct-4 option B (found by its commit message)
 SHIPS = {"HEAT": "2026-09-25", "LOADX": "2026-09-29", "MEGACAP": "2026-09-23"}
 # Oct-4 operator: "keep collecting" → trackers extended to 30; (new N, frozen N, frozen verdict) — the frozen first-N verdict stays on record
 EXT_N = {"LOADX": (30, 8, "FIRED (fragile at t+5m)"), "HEAT": (30, 6, "FIRED (6/6 won)")}   # ship dates (journal coverage notes)
@@ -306,7 +307,8 @@ def episodes(rows, gap_min=EPISODE_MIN):
 
 # ═══════════════════════════════ data: exports ═══════════════════════════════
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "entry_price", "exit_price", "pnl_percentage",
-              "leverage", "entry_frenzy_adx_delta", "entry_frenzy_di_spread", "entry_surge_trigger_at", "close_reason", "entry_pair_rank")
+              "leverage", "entry_frenzy_adx_delta", "entry_frenzy_di_spread", "entry_surge_trigger_at", "close_reason", "entry_pair_rank",
+              "entry_bull_pct", "entry_btc_ema20_slope", "entry_btc_rsi_prev", "entry_btc_off30d_high_pct", "cell_multiplier_source")
 
 
 def _export_ms(path):
@@ -655,10 +657,16 @@ def _signals_for(J, gate_name, ranks=None, store=None):
             f = f[f.src.astype(str).isin(["MOMENTUM", "nan", "None"])]
         ep = episodes(pd.concat([old, f[["ms", "pair"]]], ignore_index=True))
     else:
-        g = {"CHOP_BURST": "LONG_CHOP_BURST", "HEAT": "LONG_HEAT_BLOCK", "MEGACAP": "LONG_MEGACAP_BLOCK"}[gate_name]
-        ep = episodes(pd.concat([old, J[(J.e == "BLOCK") & (J.gate.astype(str) == g)][["ms", "pair"]]], ignore_index=True))
-    if ranks and gate_name in ("LOADX", "HEAT"):    # these gates run BEFORE the mega-cap block: a rank ≤ 10 pair is refused there anyway
+        g = {"CHOP_BURST": "LONG_CHOP_BURST", "HEAT": "LONG_HEAT_BLOCK", "HEAT_ORIG": "LONG_HEAT_BLOCK", "MEGACAP": "LONG_MEGACAP_BLOCK"}[gate_name]
+        raw = pd.concat([old, J[(J.e == "BLOCK") & (J.gate.astype(str) == g)][["ms", "pair"]]], ignore_index=True)
+        if gate_name in ("HEAT", "HEAT_ORIG"):   # 🔁 (208) split BEFORE the episode fold: the re-scope's blocks end at the commit, the
+            _t = deploy_ms("HEAT_REVERT") - 10 * MIN   # original rule's start 30 min after it (EB deploy margin — review)
+            raw = raw[raw.ms < _t] if gate_name == "HEAT" else raw[raw.ms >= _t + 30 * MIN]
+        ep = episodes(raw)
+    if ranks and gate_name in ("LOADX", "HEAT", "HEAT_ORIG"):    # these gates run BEFORE the mega-cap block: a rank ≤ 10 pair is refused there anyway
         ep = ep[~ep.pair.map(lambda p: ranks.get(p, 999) <= 10)]
+    if not len(ep):   # e.g. HEAT_ORIG right after the revert: no blocked fire yet
+        return pd.DataFrame(columns=["ms", "pair", "key"]).astype({"ms": "int64"})
     ep = ep.astype({"ms": "int64"}).sort_values(["ms", "pair"]).reset_index(drop=True)
     ep["key"] = ep.pair.astype(str) + "|" + ep.ms.astype(str)
     return ep
@@ -917,6 +925,42 @@ def gate_frenzy_gvol(orders, st, n=20):
     return state, t0
 
 
+def decide_heat_admit(vals, n=10):
+    """🔁 (208) revert-of-the-revert: the first n WINDOWS of momentum longs the Sep-25 re-scope WOULD have blocked — mean of the window means < 0 → 'fired'."""
+    v = list(vals)[:n]
+    if len(v) < n:
+        return "collecting"
+    return "fired" if float(np.mean(v)) < 0 else "holds"
+
+
+def gate_heat_admit(orders, st, n=10):
+    """momentum-LONG fills after the revert that the breadth-only re-scope would have refused: bull ≥ 85 ∧ NOT (BTC slope ≥ 0.07 ∧ BTC
+    RSI prev ≥ 64) ∧ not washed out (BTC > −10 % vs its 30d high; unknown counts). Probes / MANUAL excluded."""
+    G = st.setdefault("gates", {}).setdefault("HEAT_ADMIT", {})
+    t0 = deploy_ms("HEAT_REVERT")
+    nn = lambda c: pd.to_numeric(orders[c], errors="coerce") if c in orders else pd.Series(np.nan, index=orders.index)
+    bull, slope, rsi, off = nn("entry_bull_pct"), nn("entry_btc_ema20_slope"), nn("entry_btc_rsi_prev"), nn("entry_btc_off30d_high_pct")
+    src = orders.get("cell_multiplier_source", pd.Series("", index=orders.index)).fillna("").astype(str)
+    m = ((orders.entry_strategy.fillna("MOMENTUM").astype(str) == "MOMENTUM") & (orders.direction.astype(str) == "LONG")
+         & (orders.o_ms >= t0) & ~src.str.endswith("_PROBE") & (bull >= 85) & ~((slope >= 0.07) & (rsi >= 64)) & off.notna() & (off > -10))   # the re-scope failed OPEN on an unknown 30d reading
+    f = orders[m.fillna(False)].sort_values("o_ms")
+    # WINDOW units (review: every input is market-wide → fills in the same 5-min bucket are ONE observation); a closed prefix of windows
+    wins, n_open = [], 0
+    for b_, g in f.groupby(f.o_ms // (5 * MIN) * (5 * MIN), sort=True):
+        if not ((g.status.astype(str) == "CLOSED") & g.pnl_percentage.notna()).all():
+            n_open += 1
+            break
+        wins.append((int(b_), float(g.pnl_percentage.mean()), len(g)))
+        if len(wins) >= n:
+            break
+    vals = [w[1] for w in wins]
+    state = decide_heat_admit(vals, n)
+    G["progress"] = (f"{len(vals)}/{n} windows closed ({sum(w[2] for w in wins)} fills)" + (f" · {sum(1 for v in vals if v > 0)} positive · mean of window means {np.mean(vals):+.3f} %" if vals else "")
+                     + (" · a window still open" if n_open else ""))
+    G["detail"] = " · ".join(f"{_fmt_t(t)} n{k} {_f(v)}" for t, v, k in wins)
+    return state, t0
+
+
 def gate_surge(orders, st, btc):   # RETIRED Oct-5 (DECISION_LOG 202) — the SURGE_LONG row is gate_surge_b
     G = st.setdefault("gates", {}).setdefault("SURGE_LONG", {})
     t0 = _ms(PROBE_START)
@@ -998,12 +1042,18 @@ DEFS = {
                 "set bearrun_lev_mult 1.0", "bearrun_lev_mult"),
     "LOADX": ("🧭 LOADX gate (126)", "first 30 LOADX-only refused LONG signals (journal FAILS, rank ≤ 10 excluded), WINDOW units: WR ≥ 60 % ∨ net > 0 · extended from 8 on 10-04 (first 8 had FIRED, fragile at t+5m)",
               "set long_rsi_momentum_adx_max 0", "long_rsi_momentum_adx_max"),
+    "HEAT_ADMIT": ("🔁 Heat revert check (208)", "first 10 WINDOWS (5-min buckets) of momentum longs the breadth-only re-scope WOULD have blocked (bull ≥ 85, BTC slope/RSI not "
+                   "both hot, not washed out), now admitted by the original 3-leg rule: mean pnl % < 0 → re-scope back", "set long_heat_btc_slope_min 0 · "
+                   "long_heat_btc_rsi_prev_min 0 · long_heat_bull_pct_min 85", "long_heat_bull_pct_min"),
+    "HEAT_ORIG": ("🔥 Heat original rule (208)", "first 15 WINDOWS of LONG_HEAT_BLOCK fires of the ORIGINAL rule (slope ≥ 0.07 ∧ RSI ≥ 64 ∧ bull ≥ 80) after the "
+                  "revert, re-priced with the live exit: WR ≥ 60 % → the block itself is a review candidate", "review switching long_heat_block_enabled off",
+                  "long_heat_block_enabled"),
     "HEAT": ("🫧 Heat re-scope (116)", "first 30 LONG_HEAT_BLOCK fires re-priced: WR ≥ 60 % (2nd leg — Jan–Jun replay expectancy — manual) · extended from 6 on 10-04 (first 6 had FIRED, 6/6 won)",
              "legs back to long_heat_btc_slope_min 0.07 · long_heat_btc_rsi_prev_min 64 · long_heat_bull_pct_min 80", "long_heat_bull_pct_min"),
     "MEGACAP": ("🏦 Mega-cap exclusion (110)", "LONG_MEGACAP_BLOCK refusals re-priced: ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows",
                 "set long_megacap_rank_max 0", "long_megacap_rank_max"),
 }
-ORDER = ["CHOP_BURST", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "SURGE_LONG", "BEARRUN", "LOADX", "HEAT", "MEGACAP"]
+ORDER = ["CHOP_BURST", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "SURGE_LONG", "BEARRUN", "LOADX", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
 
 
 def _status_text(code, state, G):
@@ -1060,7 +1110,7 @@ def run_section(now_ms=None, noted=None, record_notes=True):
         log(f"btc: {e}")
     budget = Budget(PRICE_BUDGET_S)
     sig_specs = [("CHOP_BURST", 6, 50.0, "or", None, False), ("LOADX", EXT_N["LOADX"][0], 60.0, "or", ranks, True),
-                 ("HEAT", EXT_N["HEAT"][0], 60.0, "wr", ranks, False)]
+                 ("HEAT", EXT_N["HEAT"][0], 60.0, "wr", ranks, False), ("HEAT_ORIG", 15, 60.0, "wr", ranks, True)]   # window units (market-wide rule)
     # phase 1 — which tick days do the unpriced items need? fetch them once
     need = set()
     for code, n, wr, mode, rk, win in sig_specs:
@@ -1102,7 +1152,8 @@ def run_section(now_ms=None, noted=None, record_notes=True):
         res["MEGACAP"] = "error"
         st["gates"].setdefault("MEGACAP", {})["progress"] = f"error: {str(e)[:100]}"
     for code, fn in (("FRENZY_LOCK", lambda: gate_frenzy_lock(orders, st, budget, now_ms, None)),
-                     ("FRENZY_STRONG", lambda: gate_frenzy_strong(orders, st)), ("FRENZY_GVOL", lambda: gate_frenzy_gvol(orders, st))):
+                     ("FRENZY_STRONG", lambda: gate_frenzy_strong(orders, st)), ("FRENZY_GVOL", lambda: gate_frenzy_gvol(orders, st)),
+                     ("HEAT_ADMIT", lambda: gate_heat_admit(orders, st))):
         try:
             state, t0 = fn()
             res[code] = state
@@ -1138,7 +1189,7 @@ def run_section(now_ms=None, noted=None, record_notes=True):
     if ftp and "FRENZY_LOCK" in cov:
         srcs = [x.get("src") for x in ftp.values() if x.get("src")]
         cov["FRENZY_LOCK"] += f" · paths: {sum(1 for s in srcs if s == 'tick')} tick / {sum(1 for s in srcs if s != 'tick')} 1m"
-    for code in ("CHOP_BURST", "LOADX", "HEAT", "MEGACAP"):
+    for code in ("CHOP_BURST", "LOADX", "HEAT", "HEAT_ORIG", "MEGACAP"):
         if st["gates"].get(code, {}).get("priced"):
             cov[code] = cov.get(code, "") + " · " + st["gates"][code]["priced"]
     # render
@@ -1160,8 +1211,10 @@ def run_section(now_ms=None, noted=None, record_notes=True):
         cv = cfg_value(ck)
         shown = (f"first {EXT_N[code][1]} (frozen gate): {EXT_N[code][2]} · first {EXT_N[code][0]} (extension): {stt}"
                  if code in EXT_N and state not in ("nodata", "error") else stt)
+        if code == "HEAT" and state not in ("nodata", "error"):   # 🔁 (208) resolved — the extension's blocked set is frozen at the revert
+            shown = f"first {EXT_N['HEAT'][1]} (frozen gate): {EXT_N['HEAT'][2]} → ✅ REVERTED Oct-5 (DECISION_LOG 208) · tally frozen at the revert"
         L.append(f"| {title} | {d} | {G.get('progress', '–')} | {shown} | {ck} = {cv if cv is not None else '–'} | {cov.get(code, '–')} |")
-        if state in ("fired", "armbar", "arm_group"):
+        if state in ("fired", "armbar", "arm_group") and code != "HEAT":   # HEAT resolved (reverted, 208): no further alerts
             k = f"RG|{code}|n{EXT_N[code][0]}|{state}" if code in EXT_N else f"RG|{code}|{state}"   # N in the key: the frozen-N alert must not mute the extension
             if k not in noted and k not in G.get("noted", []):
                 notes.append((k, f"🔔 Revert gate {title}: {stt[2:].strip()} — {G.get('progress', '')}"))
@@ -1261,6 +1314,9 @@ def selftest():
     chk(lock_exit(np.array([-0.09, 1.0]), 3, 2, 2, 3, complete=False) is None, "lock path: running → None")
     chk(decide_lock([0.2] * 20, [0.3] * 20)[0] == "fired", "lock: fixed +3 better fires")
     chk(decide_lock([0.4] * 20, [0.3] * 20)[0] == "holds", "lock: lock better holds")
+    chk(decide_heat_admit([0.3] * 9) == "collecting", "heat admit: < 10 collects")
+    chk(decide_heat_admit([0.3] * 5 + [-0.9] * 5) == "fired", "heat admit: mean < 0 fires")
+    chk(decide_heat_admit([0.3] * 6 + [-0.2] * 4) == "holds", "heat admit: mean > 0 holds")
     print(f"selftest OK — {ok} checks")
 
 

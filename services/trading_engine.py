@@ -9150,13 +9150,18 @@ class TradingEngine:
         except Exception as _lh_err:
             logger.error(f"[LONG_HEAT] eval failed ({_lh_err}) — fail-open")
             _lh_flags, _lh_block = None, False
-        # Sep-25 review: with the BTC legs off the 30d reading is the only other input — a stale/unknown reading at bull ≥ min
-        # fails OPEN (documented), but it is now COUNTED so silent passes (Binance 1h/5m outage, cold start) are visible.
+        # Sep-25 review: a stale/unknown 30d reading fails OPEN (documented) but is COUNTED so silent passes (Binance 1h/5m outage, cold
+        # start) are visible. Oct-5 (208, review): with the BTC legs back, count only when EVERY enabled leg fired (the block would have
+        # applied but for the unknown 30d reading) — else the counter over-counts calm-BTC fills the rule never targets.
         try:
-            _lh_bmin = float(getattr(config.trading_config.thresholds, 'long_heat_bull_pct_min', 0.0) or 0.0)
-            if (bool(getattr(config.trading_config.thresholds, 'long_heat_block_enabled', False)) and _lh_bmin > 0
-                    and float(getattr(config.trading_config.thresholds, 'long_heat_exempt_off30d_max', 0.0) or 0.0) < 0
+            _lh_th = config.trading_config.thresholds
+            _lh_bmin = float(getattr(_lh_th, 'long_heat_bull_pct_min', 0.0) or 0.0)
+            _lh_nlegs = sum(1 for _k in ('long_heat_btc_slope_min', 'long_heat_btc_rsi_prev_min', 'long_heat_bull_pct_min')
+                            if float(getattr(_lh_th, _k, 0.0) or 0.0) > 0)
+            if (bool(getattr(_lh_th, 'long_heat_block_enabled', False)) and _lh_bmin > 0
+                    and float(getattr(_lh_th, 'long_heat_exempt_off30d_max', 0.0) or 0.0) < 0
                     and entry_bull_pct is not None and float(entry_bull_pct) >= _lh_bmin and _lh_off30d is None
+                    and _lh_flags is not None and _lh_flags >= _lh_nlegs
                     and direction == "LONG" and not flip_source and not bullrun_long and not _surge):
                 logger.warning(f"[LONG_HEAT_FAILOPEN] {pair}: bull {entry_bull_pct}% ≥ {_lh_bmin} but the BTC 30d reading is stale/unknown — not blocked")
                 self._record_filter_block("LONG_HEAT_FAILOPEN", "LONG")
@@ -10063,7 +10068,7 @@ class TradingEngine:
             entry_br_top10_n=entry_br_top10_n,
             # Sep 16/18: BTC 24h / 72h monitor readings on every fill (≤30 min old, else None) — shared with the MANUAL sleeve
             **monitor_entry_stamps(_bullrun_monitor, _bearrun_monitor, _leash_time.time()),
-            entry_long_heat_flags=_lh_flags,          # heat legs ON and true at entry — 0-3 until Sep-25, 0/1 after (breadth leg only)
+            entry_long_heat_flags=_lh_flags,          # heat legs ON and true at entry — 0-3 until Sep-25, 0/1 Sep-25→Oct-5 (breadth-only re-scope), 0-3 again after the Oct-5 revert (208)
             entry_btc_off30d_high_pct=_lh_off30d,     # Sep-18: BTC % below its 30-day high (≤0; None if stale/unknown)
             entry_chop_burst_prior_fill_s=(_cb_prior_s if _cb_momentum else None),   # 🌀👥 Oct-4 (DECISION_LOG 201): s since the last other bot fill (≤10 min, else None)
             entry_bear_r24=entry_bear_r24, entry_bear_below24=entry_bear_below24, entry_bear_eff24=entry_bear_eff24,

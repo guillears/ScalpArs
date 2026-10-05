@@ -5521,3 +5521,19 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   liquidation ≈ 4.5–5 % away (AIN WIDE fell −5.6 % within 1 min of its stop, −19 % in 40 min; AIN FRENZY −6.4 % in 4 min); ~+0.2 %/trade
   on ±3 % outcomes → Kelly ≈ 2× equity notional per position — today's 6× FRENZY is already ≈ full Kelly. WIDE: tick study +0.16 vs yr5
   replay −0.10 (sources disagree). Pre-registered review below.
+
+- (208) 2026-10-05 🔁 **LONG_HEAT_BLOCK re-scope REVERTED → the Sep-18 3-leg rule** (operator "revert heat"; follows the re-scope's own
+  pre-committed gate, DECISION_LOG 116, which FIRED: first 6 blocked fires 6/6 won +1.68 %; extension 10 re-priced · 9 won · Σ +2.38 %,
+  ONDO +0.35 / PENGU +0.95 on Oct-5). Live again: BTC EMA20 slope ≥ 0.07 ∧ BTC RSI prev ≥ 64 ∧ bull breadth ≥ 80, washed-out (≤ −10 % vs
+  30d high) exempt. Master read (the re-scope's own in-sample design data, today's sizing): of the 15 re-scope blocks, 3 also blocked by
+  later gates (HYPE megacap, WLD / DOT LOADX — all winners); heat-only 12 · 42 % · −$809; totals re-scope +$9,278 · original rule +$8,711
+  (−$567) · heat off +$8,470. Shipped: config.py defaults + JSON 0.07 / 64 / 80; builder frozen _HEAT_TH (STACK 2026-10-05b, 384 kept ·
+  +$8,711; BONK / STX / PENGU-09-29 blocked again); validate_against_master provenance set + LONG_HEAT_BLOCK (those are real fills).
+  Scout: HEAT (116) frozen at the revert (resolved) · NEW HEAT_ADMIT (revert-of-the-revert: first 10 WINDOWS (5-min buckets — every input
+  is market-wide) of momentum longs the re-scope would have blocked (bull ≥ 85 ∧ BTC legs not both hot ∧ a known 30d reading > −10) — mean
+  of window means < 0 → re-scope back) · NEW HEAT_ORIG (first 15 WINDOWS of original-rule blocks, from commit + 30 min, re-priced with the
+  live exit, WR ≥ 60 % → review the block itself). yr5 read of the revert (operator asked): removes 23 fills/seed (bull 80–85 ∧ BTC hot,
+  −0.09 %, +2.09 %-pts/yr) and re-admits ~41/seed of the re-scope's blocks (80 unique signals priced with the live ML exit replica, 68 %
+  WR, −0.05 %, −1.77 %-pts/yr) → net ≈ +0.3 %-pts/yr ≈ neutral; master −$567 (in-sample); forward 9/10 blocked won. Engine LONG_HEAT_FAILOPEN
+  now counts only when every enabled leg fired (review); validator provenance widened to exactly the 4 newly blocked rows (BONK, STX, DOGE,
+  PENGU 09-29); ledger frozen tuple updated. Note entry_long_heat_flags counts the 3 legs again from this deploy (breadth-only between Sep-25 and Oct-5).

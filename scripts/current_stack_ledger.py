@@ -256,15 +256,16 @@ def build(rearm_trail=True, entry_age_cap=60.0):
     except Exception as e:                                        # noqa: BLE001
         print(f"  ⚠ could not apply the fan-flip weak-bounce block ({e}) — NUMBERS BELOW INCLUDE weak-bounce flips.")
 
-    # 🫧 Sep-25 heat block (re-scoped to bull breadth ≥85 unless washed out) — momentum LONGs, same pure rule as the
+    # 🔥 heat block — Oct-5 (DECISION_LOG 208) back to the Sep-18 3-leg rule (slope ≥ 0.07 ∧ RSI ≥ 64 ∧ bull ≥ 80 unless washed out); the
+    # Sep-25 breadth-only re-scope is reverted. Momentum LONGs, same pure rule as the
     # engine; pool rows are already stack-blocked, this catches --batch rows. Uses the stamped 30d reading (fail-open).
     try:
         from services.trading_engine import long_heat_eval
         import config as _cfg
         _th = _cfg.trading_config.thresholds
         if (float(getattr(_th, 'long_heat_btc_slope_min', 0) or 0), float(getattr(_th, 'long_heat_btc_rsi_prev_min', 0) or 0),
-                float(getattr(_th, 'long_heat_bull_pct_min', 0) or 0), float(getattr(_th, 'long_heat_exempt_off30d_max', 0) or 0)) != (0.0, 0.0, 85.0, -10.0):
-            print("  ⚠ live long_heat_* differs from build_master_pool.py's frozen (0 / 0 / 85 / −10) — "
+                float(getattr(_th, 'long_heat_bull_pct_min', 0) or 0), float(getattr(_th, 'long_heat_exempt_off30d_max', 0) or 0)) != (0.07, 64.0, 80.0, -10.0):
+            print("  ⚠ live long_heat_* differs from build_master_pool.py's frozen (0.07 / 64 / 80 / −10) — "
                   "stacked pool and this ledger DISAGREE until the builder constants are updated and the pool rebuilt.")
         _mlh = (d.entry_strategy == "MOMENTUM") & (d.direction == "LONG")
         _o30 = _n(d, "entry_btc_off30d_high_pct") if "entry_btc_off30d_high_pct" in d else pd.Series(float("nan"), index=d.index)

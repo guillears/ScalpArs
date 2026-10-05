@@ -29,7 +29,10 @@ FAILS = []
 # master fills today's stack refuses ONLY by the Oct-4 LONG_CHOP_BURST gate (stack 2026-10-04b). Those artifacts were built on the
 # 10-04a ledger; a fill a later gate refuses is still a real as-traded fill, so it must not fail a provenance check.
 _P0 = pd.read_csv("reports/MASTER_POOL_stacked.csv", low_memory=False)
-MPROV = pd.concat([M, _P0[(_P0.stack_block_reason == "LONG_CHOP_BURST") & (_P0.status == "CLOSED")]], ignore_index=True)
+# 10-05b: + the LONG_HEAT_BLOCK rows the breadth-only re-scope KEPT (bull < 85) — the 3-leg rule is back (DECISION_LOG 208) and refuses
+# BONK 07-22 / STX 08-24 / DOGE + PENGU 09-29, real fills the 10-04a/10-05a artifacts hold. Heat rows the re-scope already blocked stay out.
+_heat_new = (_P0.stack_block_reason == "LONG_HEAT_BLOCK") & (pd.to_numeric(_P0.entry_bull_pct, errors="coerce") < 85)
+MPROV = pd.concat([M, _P0[((_P0.stack_block_reason == "LONG_CHOP_BURST") | _heat_new) & (_P0.status == "CLOSED")]], ignore_index=True)
 
 
 def check(name, ok, detail):

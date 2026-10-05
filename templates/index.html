@@ -25,6 +25,8 @@
         }
     </script>
     <style>
+        /* 📋 Oct-5 (operator): copy cursor = the standard copy icon (two overlapping squares), not the OS "+" arrow; falls back to `copy` */
+        .cursor-copy-icon { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='%23000' stroke-width='4'%3E%3Crect x='9' y='9' width='12' height='12' rx='2'/%3E%3Cpath d='M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1'/%3E%3C/g%3E%3Cg stroke='%23fff' stroke-width='2'%3E%3Crect x='9' y='9' width='12' height='12' rx='2' fill='%23fff' fill-opacity='0.15'/%3E%3Cpath d='M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1'/%3E%3C/g%3E%3C/svg%3E") 10 10, copy; }
         /* Sep-30: toggle knob slide — the knob is a CHILD of the peer's sibling, which Tailwind's peer-checked: never reaches
            (every toggle's knob stayed left; only the track colour changed). One rule fixes all of them. */
         input.peer:checked + div > div.rounded-full { transform: translateX(1rem); }
@@ -19895,8 +19897,8 @@
                     return `
                         <tr class="hover:bg-white/5 transition${_fz ? ' bg-orange-500/[0.05] frenzy-group-row' + (_frenzyGroupExpanded === true ? '' : ' hidden') : ''}">
                             <td class="px-3 py-3 font-medium">${_fz   // 🔥 Oct-5 (operator): the badge stays whole, the NAME truncates like every other row — the column width no longer jumps when the FRENZY group opens
-                                ? `<div class="flex items-center max-w-[5rem]"><span class="shrink-0">${_fzBadge}</span><span class="truncate min-w-0 cursor-copy hover:text-orange-300" data-copy-pair="${_escAttr(p.pair)}" title="${_escAttr(p.pair)} — click to copy">${p.pair}</span></div>`
-                                : `<div class="truncate max-w-[5rem] cursor-copy hover:text-orange-300" data-copy-pair="${_escAttr(p.pair)}" title="${_escAttr(p.pair)} — click to copy">${p.pair}</div>`}</td>
+                                ? `<div class="flex items-center max-w-[5rem]"><span class="shrink-0">${_fzBadge}</span><span class="truncate min-w-0 cursor-copy-icon hover:text-orange-300" data-copy-pair="${_escAttr(p.pair)}" title="${_escAttr(p.pair)} — click to copy">${p.pair}</span></div>`
+                                : `<div class="truncate max-w-[5rem] cursor-copy-icon hover:text-orange-300" data-copy-pair="${_escAttr(p.pair)}" title="${_escAttr(p.pair)} — click to copy">${p.pair}</div>`}</td>
                             <td class="px-3 py-3 text-right font-mono text-sm text-gray-400">$${formatVolume(p.volume_24h || 0)}</td>
                             <td class="px-3 py-3 text-right font-mono text-sm text-gray-400" title="${p.cmc_rank ? 'CMC rank #' + p.cmc_rank : 'market cap unavailable'}">${p.mcap_usd ? '$' + (p.mcap_usd >= 1e12 ? (p.mcap_usd / 1e12).toFixed(2) + 'T' : formatVolume(p.mcap_usd)) : '–'}</td>
                             <td class="px-3 py-3 text-right font-mono">${formatPrice(p.price)}</td>

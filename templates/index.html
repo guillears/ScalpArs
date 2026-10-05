@@ -19883,7 +19883,9 @@
 
                     return `
                         <tr class="hover:bg-white/5 transition${_fz ? ' bg-orange-500/[0.05] frenzy-group-row' + (_frenzyGroupExpanded === true ? '' : ' hidden') : ''}">
-                            <td class="px-3 py-3 font-medium"><div class="${_fz ? 'whitespace-nowrap' : 'truncate max-w-[5rem]'}" title="${_escAttr(p.pair)}">${_fzBadge}${p.pair}</div></td>
+                            <td class="px-3 py-3 font-medium">${_fz   // 🔥 Oct-5 (operator): the badge stays whole, the NAME truncates like every other row — the column width no longer jumps when the FRENZY group opens
+                                ? `<div class="flex items-center max-w-[5rem]" title="${_escAttr(p.pair)}"><span class="shrink-0">${_fzBadge}</span><span class="truncate min-w-0">${p.pair}</span></div>`
+                                : `<div class="truncate max-w-[5rem]" title="${_escAttr(p.pair)}">${p.pair}</div>`}</td>
                             <td class="px-3 py-3 text-right font-mono text-sm text-gray-400">$${formatVolume(p.volume_24h || 0)}</td>
                             <td class="px-3 py-3 text-right font-mono text-sm text-gray-400" title="${p.cmc_rank ? 'CMC rank #' + p.cmc_rank : 'market cap unavailable'}">${p.mcap_usd ? '$' + (p.mcap_usd >= 1e12 ? (p.mcap_usd / 1e12).toFixed(2) + 'T' : formatVolume(p.mcap_usd)) : '–'}</td>
                             <td class="px-3 py-3 text-right font-mono">${formatPrice(p.price)}</td>

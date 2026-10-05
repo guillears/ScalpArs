@@ -11857,10 +11857,21 @@
             ta.style.position = 'fixed';
             ta.style.left = '-9999px';
             document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
+            try {
+                ta.select();
+                if (!document.execCommand('copy')) throw new Error('copy failed');   // returns false instead of throwing — never report a false "Copied"
+            } finally {
+                document.body.removeChild(ta);
+            }
         }
+
+        // 📋 Oct-5 (operator): click a Top Pairs name to copy it (one delegated listener; rows re-render every refresh)
+        document.addEventListener('click', async (e) => {
+            const el = e.target.closest('[data-copy-pair]');
+            if (!el) return;
+            try { await copyToClipboard(el.dataset.copyPair); showToast(`Copied ${el.dataset.copyPair}`); }
+            catch (_) { showToast('Copy failed', 'error'); }
+        });
 
         // Copy Analytics to clipboard
         async function copyAnalytics() {
@@ -19884,8 +19895,8 @@
                     return `
                         <tr class="hover:bg-white/5 transition${_fz ? ' bg-orange-500/[0.05] frenzy-group-row' + (_frenzyGroupExpanded === true ? '' : ' hidden') : ''}">
                             <td class="px-3 py-3 font-medium">${_fz   // 🔥 Oct-5 (operator): the badge stays whole, the NAME truncates like every other row — the column width no longer jumps when the FRENZY group opens
-                                ? `<div class="flex items-center max-w-[5rem]" title="${_escAttr(p.pair)}"><span class="shrink-0">${_fzBadge}</span><span class="truncate min-w-0">${p.pair}</span></div>`
-                                : `<div class="truncate max-w-[5rem]" title="${_escAttr(p.pair)}">${p.pair}</div>`}</td>
+                                ? `<div class="flex items-center max-w-[5rem]"><span class="shrink-0">${_fzBadge}</span><span class="truncate min-w-0 cursor-copy hover:text-orange-300" data-copy-pair="${_escAttr(p.pair)}" title="${_escAttr(p.pair)} — click to copy">${p.pair}</span></div>`
+                                : `<div class="truncate max-w-[5rem] cursor-copy hover:text-orange-300" data-copy-pair="${_escAttr(p.pair)}" title="${_escAttr(p.pair)} — click to copy">${p.pair}</div>`}</td>
                             <td class="px-3 py-3 text-right font-mono text-sm text-gray-400">$${formatVolume(p.volume_24h || 0)}</td>
                             <td class="px-3 py-3 text-right font-mono text-sm text-gray-400" title="${p.cmc_rank ? 'CMC rank #' + p.cmc_rank : 'market cap unavailable'}">${p.mcap_usd ? '$' + (p.mcap_usd >= 1e12 ? (p.mcap_usd / 1e12).toFixed(2) + 'T' : formatVolume(p.mcap_usd)) : '–'}</td>
                             <td class="px-3 py-3 text-right font-mono">${formatPrice(p.price)}</td>

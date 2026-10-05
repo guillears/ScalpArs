@@ -131,8 +131,19 @@ def _walk_exit(bars, i0, th, short=False, bar_min=5):
     e = float(bars[i0][1]); pk_px = e; armed = False
     sg = -1 if short else 1
     net = lambda px: sg * (px / e - 1) * 100 - COST
+    la = 0.0 if short else float(getattr(th, "frenzy_lock_arm_pct", 0.0) or 0.0)   # 🎯 Oct-5 (205): the live lock-then-trail (longs)
+    lf = min(float(getattr(th, "frenzy_lock_floor_pct", 2.0) or 0.0), la) if la > 0 else 0.0
+    lt = abs(float(getattr(th, "frenzy_lock_trail_pct", 2.0) or 0.0))
+    pk_net = -1e9
     for k in range(i0, min(len(bars), i0 + cap)):
         o, h, l, c = (float(x) for x in bars[k][1:5])
+        if la > 0:   # line from the PRIOR bars' peak; the low first inside a bar (conservative); a bar opening through the line fills at its open
+            line_net = max(lf, pk_net - lt) if pk_net >= la else -stop
+            line_px = e * (1 + (line_net + COST) / 100)
+            if l <= line_px:
+                return net(min(o, line_px)), (k - i0 + 1) * bar_min, ("lock trail" if pk_net >= la else "stop")
+            pk_net = max(pk_net, net(h))
+            continue
         adverse, favour = (h, l) if short else (l, h)            # the bad side first inside a bar (conservative)
         line_px = (pk_px * (1 + sg * -give / 100) if armed else e * (1 + sg * (COST - stop) / 100))
         if (adverse >= line_px) if short else (adverse <= line_px):

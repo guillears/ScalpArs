@@ -115,7 +115,7 @@ def test_config_parity_ui_and_builder_freeze():
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
     m = re.search(r"_CB_TH = SimpleNamespace\(long_chop_burst_block_enabled=True, long_chop_burst_eff72_max=([0-9.]+), long_chop_burst_window_s=([0-9.]+)\)", bld)
     assert m and float(m.group(1)) == th["long_chop_burst_eff72_max"] and float(m.group(2)) == th["long_chop_burst_window_s"]
-    assert 'STACK_VERSION = "2026-10-04b"  # 10-04b: LONG_CHOP_BURST' in bld
+    assert 'STACK_VERSION = "2026-10-05a"  # 10-05a: UNMATCHED' in bld and '10-04b: LONG_CHOP_BURST' in bld   # 10-05a keeps the 10-04b history
     ui = open(os.path.join(ROOT, "templates", "index.html")).read()
     for i in ("config-long-chop-burst-block-enabled", "config-long-chop-burst-eff72-max", "config-long-chop-burst-window-s"):
         assert ui.count(f'id="{i}"') == 1 and ui.count(i) == 3                         # input + load + save
@@ -167,3 +167,7 @@ def test_master_sleeve_sizes_frozen_match_live_json():
     frozen = {k: float(v) for k, v in _re.findall(r"(\w+)=([0-9.]+)", m.group(1))}
     for k, v in frozen.items():
         assert abs(float(th[k]) - v) < 1e-9, k
+    # 10-05a: the UNMATCHED long cell size the master re-prices to == the live pattern-cell rule (and the quiet boost never exceeds it)
+    um = float(_re.search(r"UNMATCHED_LONG_INV_FROZEN = ([0-9.]+)", bld).group(1))
+    rule = [r for r in th["pattern_cell_rules"] if r.get("pattern") == "UNMATCHED" and r.get("direction") == "LONG"][0]
+    assert abs(float(rule["inv_mult"]) - um) < 1e-9 and float(th.get("long_unmatched_quiet_mult", 0)) <= um

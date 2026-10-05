@@ -403,7 +403,7 @@
       {
         "pattern": "UNMATCHED",
         "direction": "LONG",
-        "inv_mult": 2.0,
+        "inv_mult": 1.5,
         "lev_mult": 1.0
       },
       {
@@ -527,7 +527,7 @@
     "long_unmatched_mult_pvr_max": 0.9,
     "long_unmatched_demux_inv_mult": 1.0,
     "long_unmatched_demux_lev_mult": 1.0,
-    "long_unmatched_quiet_mult": 2.0,
+    "long_unmatched_quiet_mult": 1.5,
     "long_unmatched_quiet_lev_mult": 1.0,
     "long_unmatched_quiet_pvr_max": 0.68,
     "flip_short_negdi_mult": 2.0,
@@ -762,6 +762,9 @@
     "frenzy_trail_arm_pct": 5.0,
     "frenzy_trail_giveback_pct": 1.5,
     "frenzy_tp_pct": 3.0,
+    "frenzy_lock_arm_pct": 3.0,
+    "frenzy_lock_floor_pct": 2.0,
+    "frenzy_lock_trail_pct": 2.0,
     "frenzy_max_hold_minutes": 720,
     "frenzy_max_slots": 2,
     "frenzy_max_entries_per_pair_day": 3,

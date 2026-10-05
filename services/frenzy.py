@@ -245,6 +245,7 @@ def frenzy_long_status(ep, atr_pct, volume_24h, th) -> Tuple[bool, str, str]:
 
 def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=False) -> Tuple[bool, str, float]:
     """FRENZY_LONG's own exit → (close, reason, line). use_tp (the FRENZY_LONG / FRENZY_WIDE sleeve AND the MANUAL "FRENZY" exit — operator):
+    🎯 Oct-5 (DECISION_LOG 205) when frenzy_lock_arm_pct > 0: lock +floor at +arm, then trail points below the peak (no fixed TP) — below.
     🎯 Oct-4 (operator, DECISION_LOG 196) a FIXED take-profit at +frenzy_tp_pct net (0 = off) → reason FRENZY_TP, checked before the trail
     (the trail is only the fallback). Real-tick year (scripts/frenzy_exit_ticks.py, 850 quiet-market fills): fixed +4/−3 +0.211 %/trade
     vs the +5/1.5 trail +0.169 (5 of 9 months better, CI spans 0); bot-exact re-run (DECISION_LOG 199): +3/−3 +0.192 · +4/−3 +0.187 → operator +3. A peak that already reached the TP while the close was missed (failed
@@ -259,6 +260,19 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
         stop = -abs(_f(th, 'frenzy_stop_pct', 3.0)) or -3.0
         if stop_floor is not None:
             stop = max(stop, float(stop_floor))
+        # 🎯 Oct-5 (operator, DECISION_LOG 205): LOCK-then-trail — once the peak reaches +frenzy_lock_arm_pct the line jumps to
+        # +frenzy_lock_floor_pct and then trails frenzy_lock_trail_pct POINTS below the peak (never below the floor); no fixed TP. Replaces
+        # the fixed TP while armed (> 0). Real-tick year, bot accounting (scripts/frenzy_trail_v2.py, 850 fills): lock +2 at +3 / trail 2
+        # +0.234 %/trade vs fixed +3/−3 +0.192 (Δ +0.042, CI −0.05…+0.15, 5 of 9 months; −0.011 without its 5 best trades = a runner rule).
+        # Same lines for a MANUAL short (pnl is direction-aware net P&L, the trail is in points).
+        la = _f(th, 'frenzy_lock_arm_pct', 0.0) if use_tp else 0.0
+        if la > 0:
+            if pk >= la:
+                lf = min(_f(th, 'frenzy_lock_floor_pct', 2.0), la)
+                lt = abs(_f(th, 'frenzy_lock_trail_pct', 2.0))
+                line = max(lf, pk - lt)
+                return (pnl <= line), "RUNNER_TRAIL", line
+            return (pnl <= stop), "STOP_LOSS", stop
         tp = _f(th, 'frenzy_tp_pct', 0.0) if use_tp else 0.0   # ≤ 0 = off (never abs(): a negative value must not become an active TP)
         if tp > 0 and (pnl >= tp or pk >= tp):
             return True, "FRENZY_TP", tp

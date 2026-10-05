@@ -151,7 +151,7 @@ def test_config_parity_and_every_surface():
     import config as C
     th = C.trading_config.thresholds
     fields = sorted(k for k in type(th).model_fields if k.startswith("frenzy_"))
-    assert len(fields) == 29
+    assert len(fields) == 32   # +frenzy_lock_arm_pct, _floor_pct, _trail_pct (Oct-5, DECISION_LOG 205)
     cfgj = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert sorted(k for k in cfgj if k.startswith("frenzy_")) == fields                   # every field has a JSON value
     assert type(th).model_fields["frenzy_long_enabled"].default is False                  # OFF in code; the JSON arms it
@@ -398,3 +398,30 @@ def test_long_skips_a_green_signal_candle_when_the_switch_is_on():
     import config as C
     assert type(C.trading_config.thresholds).model_fields["frenzy_long_skip_green_bar"].default is True
     assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_long_skip_green_bar"] is True
+
+
+def test_frenzy_lock_then_trail_exit():
+    """🎯 Oct-5 (DECISION_LOG 205): lock +2 at +3, trail 2 points below the peak; the fixed TP is unused while the lock is armed."""
+    from types import SimpleNamespace as NS
+    from services.frenzy import frenzy_exit_for
+    th = NS(frenzy_stop_pct=3.0, frenzy_tp_pct=3.0, frenzy_lock_arm_pct=3.0, frenzy_lock_floor_pct=2.0, frenzy_lock_trail_pct=2.0,
+            frenzy_trail_arm_pct=5.0, frenzy_trail_giveback_pct=1.5)
+    assert frenzy_exit_for(-3.0, 1.0, th, use_tp=True)[:2] == (True, "STOP_LOSS")          # before the lock: the −3 stop
+    assert frenzy_exit_for(3.1, 3.1, th, use_tp=True)[0] is False                           # +3 reached: NO fixed TP close
+    assert frenzy_exit_for(2.5, 3.5, th, use_tp=True) == (False, "RUNNER_TRAIL", 2.0)       # floor +2
+    assert frenzy_exit_for(1.99, 3.5, th, use_tp=True)[:2] == (True, "RUNNER_TRAIL")        # back to the floor → close
+    assert frenzy_exit_for(8.0, 10.0, th, use_tp=True) == (True, "RUNNER_TRAIL", 8.0)        # trail 2 pts below +10
+    th.frenzy_lock_arm_pct = 0.0                                                             # lock off → the fixed TP returns
+    assert frenzy_exit_for(3.0, 3.0, th, use_tp=True)[:2] == (True, "FRENZY_TP")
+    th.frenzy_lock_arm_pct = 3.0
+    assert frenzy_exit_for(3.0, 3.0, th, use_tp=False)[0] is False                           # non-sleeve callers never use the lock / TP
+
+
+def test_frenzy_lock_short_and_stop_floor():
+    """🎯 (205) review: a manual short on the lock uses the same points-trail on its direction-aware net P&L; a tighter stop_floor applies only before the arm."""
+    from types import SimpleNamespace as NS
+    from services.frenzy import frenzy_exit_for
+    th = NS(frenzy_stop_pct=3.0, frenzy_tp_pct=3.0, frenzy_lock_arm_pct=3.0, frenzy_lock_floor_pct=2.0, frenzy_lock_trail_pct=2.0)
+    assert frenzy_exit_for(5.0, 6.0, th, short=True, use_tp=True) == (False, "RUNNER_TRAIL", 4.0)
+    assert frenzy_exit_for(-2.6, 0.5, th, stop_floor=-2.5, use_tp=True)[:2] == (True, "STOP_LOSS")   # floor tighter than −3 before the arm
+    assert frenzy_exit_for(2.5, 3.5, th, stop_floor=-2.5, use_tp=True) == (False, "RUNNER_TRAIL", 2.0)   # after the arm the lock line rules

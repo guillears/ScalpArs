@@ -3471,6 +3471,8 @@ def _frenzy_monitor_payload():
                 "wide_lev_mult": float(1.0 if getattr(_th, 'frenzy_wide_lev_mult', 0.2) is None else getattr(_th, 'frenzy_wide_lev_mult', 0.2)), "wide_max_slots": max(1, int(getattr(_th, 'frenzy_wide_max_slots', 2) or 2)),
                 "max_atr": float(getattr(_th, 'frenzy_max_atr_pct', 2.5) or 0), "stop": float(getattr(_th, 'frenzy_stop_pct', 3.0) or 0),
                 "tp": float(getattr(_th, 'frenzy_tp_pct', 0) or 0),
+                "lock_arm": float(getattr(_th, 'frenzy_lock_arm_pct', 0) or 0), "lock_floor": float(getattr(_th, 'frenzy_lock_floor_pct', 2.0) or 0),
+                "lock_trail": float(getattr(_th, 'frenzy_lock_trail_pct', 2.0) or 0),
                 "trail_arm": float(getattr(_th, 'frenzy_trail_arm_pct', 5.0) or 0), "trail_give": float(getattr(_th, 'frenzy_trail_giveback_pct', 1.5) or 0),
                 "max_slots": int(getattr(_th, 'frenzy_max_slots', 2) or 0),
                 "max_pair_day": int(getattr(_th, 'frenzy_max_entries_per_pair_day', 3) or 0),

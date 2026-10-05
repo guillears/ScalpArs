@@ -1299,8 +1299,18 @@ class SignalThresholds(BaseModel):
     # 850 quiet-market fills (old accounting: price levels − 0.11): fixed +4/−3 +0.211 %/trade · 48 % won vs the +5/1.5 trail +0.169 · 42 % (Δ +0.04, 5 of 9 months, CI spans 0).
     # Also on the MANUAL "FRENZY" exit (operator; closes MANUAL_TP). Oct-4 (DECISION_LOG 199, operator) JSON 4 → 3: bot-exact tick re-run (net
     # levels, 0.09 % fees) +3/−3 +0.192 · 53 % won vs +4/−3 +0.187 · 46 % (tie, Δ +0.005, 6/9 months) — same expectancy, higher win rate.
-    # 🔒 REVERT: first 20 FRENZY + WIDE fills under +3 re-priced with +4/−3 on ticks — +4 beats it on average → 4.
+    # (the +4/−3 revert gate (199) is RETIRED.) Oct-5: DORMANT while frenzy_lock_arm_pct > 0 (DECISION_LOG 205) — kept as the revert target.
     frenzy_tp_pct: float = 0.0
+    # 🎯 Oct-5 (operator, DECISION_LOG 205): LOCK-THEN-TRAIL exit for FRENZY_LONG / FRENZY_WIDE and the manual "Frenzy" mode. Once the
+    # trade's net P&L peak reaches +lock_arm, the stop jumps to +lock_floor and then trails lock_trail POINTS below the peak (never below the
+    # floor); before that the −frenzy_stop_pct stop. While lock_arm > 0 the fixed TP above is NOT used (set lock_arm 0 to go back to it).
+    # Real-tick year, bot accounting (scripts/frenzy_trail_v2.py, 850 quiet-market fills): +3 → +2 / trail 2 = +0.234 %/trade vs fixed
+    # +3/−3 +0.192 (Δ +0.042, day-CI −0.05…+0.15, 5 of 9 months); trail 1 −0.035 · 1.5 +0.007 · 2.5 +0.016 · 3 −0.010; lock +2.5 −0.007;
+    # ATR trails no better. Without its 5 best trades Δ −0.011 → the gain is ~5 giant runners a year (RLC +17.9 % Oct-5): declared
+    # operator override. 🔒 REVERT: first 20 FRENZY + WIDE fills re-priced on ticks with fixed +3/−3 — +3/−3 averages better → lock_arm 0.
+    frenzy_lock_arm_pct: float = 0.0
+    frenzy_lock_floor_pct: float = 2.0
+    frenzy_lock_trail_pct: float = 2.0
     frenzy_max_hold_minutes: int = 720           # 12 h cap (0 = the global max hold)
     frenzy_max_slots: int = 2                    # max FRENZY_LONG open at once (they also count against max open positions)
     # Oct-2 (DECISION_LOG 177, operator): a ceiling on entries per pair per UTC day. Attempts read (pre-ATR-gate cut, after the fact):
@@ -2075,7 +2085,7 @@ class SignalThresholds(BaseModel):
     # or cumulative dollar-delta vs 2x < 0; TRIPWIRE: any TWO never-positive quiet losses ->
     # immediate revert without waiting for N=8. 3x step / leverage route / boundary move: only at
     # the C5+step-gate merged read (N>=30) with BE-compat on observed losses. 0 = off.
-    long_unmatched_quiet_mult: float = 2.0      # 2026-08-25 operator: 2.5 'too aggressive' → 2.0 (parity with the base UNMATCHED cell); review at next batch read
+    long_unmatched_quiet_mult: float = 1.5      # 2026-08-25 operator: 2.5 'too aggressive' → 2.0 (parity with the base UNMATCHED cell). 2026-10-05 (DECISION_LOG 206): 2.0 → 1.5 with the cell — equal to the cell the take-the-max boost is a no-op (kept as a field for a later re-arm)
     long_unmatched_quiet_lev_mult: float = 1.0  # LEV multiplier — KEEP 1.0 until BE-compat passes
                                                 # on observed quiet losses (locked rule; 19-0 = untestable)
     long_unmatched_quiet_pvr_max: float = 0.68

@@ -5494,3 +5494,24 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   scout_rebound.py (state on BTC 1h: ≤ −15 % below the 30-day high ∧ 3-day > 0; windows persisted reports/SCOUT_REBOUND.csv; live fills
   tallied per window). 🔒 REVIEW at ≥ 3 REBOUND windows with ≥ 10 momentum-long fills: window means > 0 in ≥ 2/3 ∧ pooled > 0 ∧ no window
   ≥ 50 % of the gain → then (only then) a size-up / door for that state is a candidate. Legs frozen (−15 %, 3-day > 0).
+
+- (205) 2026-10-05 🔒 **FRENZY_LONG / FRENZY_WIDE exit = LOCK-THEN-TRAIL** (operator override; also the manual "Frenzy exit" mode). Trigger: RLC
+  FRENZY_WIDE took the fixed +3 % at minute 3 and ran to +17.9 % (B17). Study scripts/frenzy_trail_v2.py on the Oct-4 set (850 quiet-market
+  fills, real ticks, bot accounting): 75 exits incl. new LOCK / FRAC / ATR / STEP / CAP families. Lock +2 at +3, trail 2 points = +0.234 %/
+  trade vs fixed +3/−3 +0.192 (Δ +0.042, day-CI −0.05…+0.15, 5 of 9 months; dose-response trail 1 −0.035 · 1.5 +0.007 · 1.75 +0.017 · 2
+  +0.042 · 2.25 +0.010 · 2.5 +0.016 · 3 −0.010; lock +2.5 −0.007; ATR trails ≤ +0.030) — but Δ −0.011 without its 5 best trades: the gain is
+  ~5 giant runners a year; on two-thirds of +3 touches it banks +2 instead of +3. Fixed +6/−3 +0.263 (robust to dropping its top 10, 36 %
+  WR, CI spans 0) = the other candidate. B17 sample (6 fills): as traded −$25 · fixed +3 +$204 · lock ≈ +$686 (RLC ≈ +15.9, AIN ≈ +7.5
+  approx., MOVR / SAND +2 instead of +3). Shipped: frenzy_lock_arm_pct 3 / _floor_pct 2 / _trail_pct 2 (code default arm 0 = off; JSON 3);
+  services.frenzy.frenzy_exit_for lock branch (replaces the fixed TP while armed; reason RUNNER_TRAIL → MANUAL_TRAIL for manual); UI inputs,
+  🔒 LOCK badge, monitor + export lines. Master: path-dependent → FRENZY rows stay at the +3 TP pricing (not re-priced).
+  🔒 REVERT (scout FRENZY_LOCK gate, replaces FRENZY_TP3): first 20 FRENZY + WIDE fills after the deploy, the lock and fixed +3/−3 BOTH re-priced
+  on ticks with the bot accounting (review: the live P&L carries slippage the replica lacks → shown as the fidelity line, not the decision) —
+  fixed +3/−3 averages better ⇒ frenzy_lock_arm_pct 0 (fixed +3 returns); +6/−3 leading both ⇒ flagged for review. scout_frenzy's FRENZY watch
+  walk prices signals with the lock too. Review findings applied pre-commit (sprint-de-mux double scale, quiet-mult default, gate accounting).
+- (206) 2026-10-05 ⚖️ **UNMATCHED momentum-long cell 2× → 1.5×** (operator; the review recommended 1.5× = the rulebook's DRAG step). Evidence:
+  master-kept UNMATCHED 2× lifetime 65 · 82 % · +$4,300, the 2× adding +$2,155 — 83 % of it BASE (June washed-out window); since B4 12 fills,
+  2× added −$311; B9–B16 8 fills −$726 (2× −$365); yr5 replay UNMATCHED 2× −0.073 %/trade (live hours +0.137). Shipped: pattern_cell_rules
+  UNMATCHED LONG inv_mult 2.0 → 1.5 and long_unmatched_quiet_mult 2.0 → 1.5 (the quiet boost would otherwise take UNMATCHED back to 2×; CALM3D
+  door stays 2×). Master STACK 2026-10-05a: kept UNMATCHED rows above 1.5× re-priced × 1.5 / cm (sprint-de-muxed 1× rows untouched — review catch) → TOTAL +$10,438 → +$9,278 (BASE −$862, B1
+  −$219, B3 −$290; since B4 +$192). 🔒 GATES on the next 15 UNMATCHED fills at 1.5×: WR ≥ 70 % ∧ $ > 0 ⇒ back to 2×; $ < 0 ⇒ 1×; else stay.

@@ -10,7 +10,9 @@ reports/MASTER_POOL_stacked.csv. Never talks to the bot, never changes config. C
 GATES (frozen definitions — quoted from CLAUDE_CURRENT_STATE.md / DECISION_LOG; never re-tuned here):
   CHOP_BURST (201) momentum LONG refused (BLOCK LONG_CHOP_BURST): first 6 refused signals re-priced → WR ≥ 50 % ∨ Σ > 0 → FIRES
                    (long_chop_burst_block_enabled false).
-  FRENZY_TP3 (199) first 20 FRENZY_LONG + FRENZY_WIDE fills opened after the +3 deploy re-priced with fixed +4/−3 on ticks (bot accounting:
+  FRENZY_LOCK (205) first 20 FRENZY_LONG + FRENZY_WIDE fills after the lock-then-trail deploy: live exit vs the old fixed +3/−3 re-priced on
+                   ticks (bot accounting) — +3/−3 averages better → FIRES (frenzy_lock_arm_pct 0); +6/−3 and +4/−3 shown for the record.
+  FRENZY_TP3 (199, RETIRED Oct-5 — superseded by FRENZY_LOCK) first 20 FRENZY_LONG + FRENZY_WIDE fills opened after the +3 deploy re-priced with fixed +4/−3 on ticks (bot accounting:
                    net levels, 0.09 % fees, fill at the crossing print, 12 h cap) → +4/−3 beats the actual average → FIRES (frenzy_tp_pct 4).
   FRENZY_STRONG (197) first 10 sized-up FRENZY_LONG fills (entry_frenzy_adx_delta > 0 ∧ entry_frenzy_di_spread > 0) average below the
                    other FRENZY_LONG fills of the same period, or below 0 → FIRES (frenzy_long_lev_mult_strong 0).
@@ -69,7 +71,8 @@ SURGE_R72_MAX = 2.7
 # (commit, fallback UTC push time) — deploy = push + 10 min
 DEPLOYS = {"FRENZY_TP3": ("2e36c26", "2026-10-04 19:23:15"), "FRENZY_STRONG": ("181131e", "2026-10-04 14:06:09"),
            "FRENZY_GVOL": ("0d79904", "2026-10-03 22:14:13"),
-           "SURGE_B": ("grep:(DECISION_LOG 202)", "2026-10-05 01:30:00")}   # ⚡ Oct-4 option B (found by its commit message)
+           "SURGE_B": ("grep:(DECISION_LOG 202)", "2026-10-05 01:30:00"),
+           "FRENZY_LOCK": ("grep:(DECISION_LOG 205)", "2026-10-05 22:00:00")}   # 🎯 Oct-5 lock-then-trail exit (commit message carries the exact string)   # ⚡ Oct-4 option B (found by its commit message)
 SHIPS = {"HEAT": "2026-09-25", "LOADX": "2026-09-29", "MEGACAP": "2026-09-23"}
 # Oct-4 operator: "keep collecting" → trackers extended to 30; (new N, frozen N, frozen verdict) — the frozen first-N verdict stays on record
 EXT_N = {"LOADX": (30, 8, "FIRED (fragile at t+5m)"), "HEAT": (30, 6, "FIRED (6/6 won)")}   # ship dates (journal coverage notes)
@@ -195,9 +198,19 @@ def decide_megacap(vals, windows, n_min=8, w_min=3, wr_min=60.0):
     return ("fired" if (wr >= wr_min and s > 0) else "collecting"), wr, s
 
 
-def decide_tp(actual, alt, n=20):
+def decide_tp(actual, alt, n=20):   # RETIRED Oct-5 with gate_frenzy_tp (kept for the record / selftest)
     """FRENZY TP: on the first n fills, the alternative exit's average beats the actual average → fired."""
     a, b = list(actual)[:n], list(alt)[:n]
+    if len(a) < n or len(b) < n:
+        return "collecting", float(np.mean(a)) if a else float("nan"), float(np.mean(b)) if b else float("nan")
+    ma, mb = float(np.mean(a)), float(np.mean(b))
+    return ("fired" if mb > ma else "holds"), ma, mb
+
+
+def decide_lock(actual, fixed3, n=20):
+    """🎯 (205) FRENZY lock-then-trail revert gate: on the first n FRENZY + WIDE fills after the deploy, the old fixed +3/−3 (tick re-price)
+    averages better than the live lock exit → 'fired' (frenzy_lock_arm_pct 0 → the fixed TP returns); else 'holds'."""
+    a, b = list(actual)[:n], list(fixed3)[:n]
     if len(a) < n or len(b) < n:
         return "collecting", float(np.mean(a)) if a else float("nan"), float(np.mean(b)) if b else float("nan")
     ma, mb = float(np.mean(a)), float(np.mean(b))
@@ -561,6 +574,20 @@ def price_ml(pair, entry_ms, btc, kwin=None):
     return dict(pct=round(float(pct), 3), how=f"{why} {int((tex - entry_ms) / MIN)}m", src=src)
 
 
+def lock_exit(net, A, Lk, g, sl, tick=True, complete=True):
+    """🎯 (205) the lock-then-trail exit on one NET P&L path (pure, self-tested): −sl stop until the peak of PRIOR prints ≥ A, then
+    max(Lk, peak − g). → (pct, why) · None while the 12 h path is incomplete and no line was hit. tick=False (1m path) fills AT the line."""
+    pkp = np.concatenate([[-np.inf], np.maximum.accumulate(net)[:-1]])
+    line = np.where(pkp >= A, np.maximum(Lk, pkp - g), -float(sl))
+    hit = np.flatnonzero(net <= line)
+    if len(hit):
+        i = int(hit[0]); v = float(net[i]) if tick else float(line[i])
+        return round(v, 3), ("TRAIL" if line[i] > 0 else "SL")
+    if complete:
+        return round(float(net[-1]), 3), "12h cap"
+    return None
+
+
 def price_fixed(pair, entry_ms, E, levels):
     """FRENZY bot-exact fixed exits on one path: levels = [(tp, sl)] → {f'{tp}/{sl}': (pct, why)} + src, or dict(pending=…).
     Net P&L at every print = (p / E − 1) · 100 − 0.09; first print with net ≤ −sl or ≥ +tp closes there; else the last print ≤ 12 h."""
@@ -579,7 +606,15 @@ def price_fixed(pair, entry_ms, E, levels):
     net = (p / float(E) - 1) * 100 - FRENZY_FEES
     out = dict(src=src)
     complete = t[-1] >= entry_ms + FRENZY_HOLD - 2 * MIN
-    for tp, sl in levels:
+    for spec in levels:
+        if spec[0] == "lock":   # 🎯 (205) lock-then-trail: −sl stop until the peak of PRIOR prints ≥ A, then max(L, peak − g)
+            _, A, Lk, g, sl = spec
+            r_ = lock_exit(net, A, Lk, g, sl, src == "tick", complete)
+            if r_ is None:
+                return dict(pending="still running")
+            out[f"lock{A:g}/{Lk:g}/{g:g}"] = r_
+            continue
+        tp, sl = spec
         hit = np.flatnonzero((net <= -sl) | (net >= tp))
         if len(hit):
             i = int(hit[0])
@@ -742,7 +777,7 @@ def gate_megacap(J, st, btc, budget, now_ms, need_days):
     return state
 
 
-def gate_frenzy_tp(orders, st, budget, now_ms, need_days, n=20):
+def gate_frenzy_tp(orders, st, budget, now_ms, need_days, n=20):   # RETIRED Oct-5 (superseded by gate_frenzy_lock, DECISION_LOG 205)
     G = st.setdefault("gates", {}).setdefault("FRENZY_TP3", {})
     store = G.setdefault("items", {})
     t0 = deploy_ms("FRENZY_TP3")
@@ -782,6 +817,58 @@ def gate_frenzy_tp(orders, st, budget, now_ms, need_days, n=20):
                              + ("" if x.get("final") or x.get("alt4") is None else "ᵖ") for x in items[:10])
     if state == "collecting" and len(done) >= n and len(fin) < n:
         G["provisional"] = decide_tp(pa, pb, n)[0]
+    else:
+        G.pop("provisional", None)
+    return state, t0
+
+
+def gate_frenzy_lock(orders, st, budget, now_ms, need_days, n=20):
+    """🎯 (205) first n FRENZY + WIDE fills after the lock deploy: live (lock +2 at +3, trail 2) vs fixed +3/−3 (the revert line), plus
+    fixed +6/−3 and +4/−3 for the record, all re-priced on ticks with the bot's accounting; a tick lock replica is the fidelity check."""
+    G = st.setdefault("gates", {}).setdefault("FRENZY_LOCK", {})
+    store = G.setdefault("items", {})
+    t0 = deploy_ms("FRENZY_LOCK")
+    f = orders[orders.entry_strategy.astype(str).isin(["FRENZY_LONG", "FRENZY_WIDE"]) & (orders.o_ms >= t0)].head(n)
+    items = []
+    for r in f.itertuples():
+        key = f"{str(r.opened_at)[:19]}|{r.pair}"
+        it = store.get(key) or dict(pair=r.pair, t=int(r.o_ms), sleeve=r.entry_strategy)
+        closed = str(r.status) == "CLOSED" and np.isfinite(r.pnl_percentage)
+        it["actual"] = float(r.pnl_percentage) if closed else None
+        if not it.get("final") and np.isfinite(pd.to_numeric(r.entry_price, errors="coerce")):
+            if need_days is not None:
+                need_days.update((r.pair, d) for d in days_of(int(r.o_ms), int(r.o_ms) + FRENZY_HOLD))
+            elif budget.ok():
+                x = price_fixed(r.pair, int(r.o_ms), float(r.entry_price), [(3, 3), (6, 3), (4, 3), ("lock", 3, 2, 2, 3)])
+                if "pending" in x:
+                    it["p"] = x["pending"]
+                else:
+                    it.update(f3=x["3/3"][0], f6=x["6/3"][0], f4=x["4/3"][0], lockrep=x["lock3/2/2"][0], src=x["src"])
+                    it.pop("p", None)
+                    it["final"] = _is_final([x["src"]], int(r.o_ms), now_ms)
+        store[key] = it
+        items.append(it)
+    if need_days is not None:
+        return None
+    done = [x for x in items if x.get("actual") is not None and x.get("f3") is not None]
+    fin = [x for x in done if x.get("final")]
+    # review (Oct-5): decide on the SAME accounting both sides — the tick lock replica vs the tick fixed +3/−3 (the live P&L carries real
+    # slippage / polling the replica does not; it is shown as the fidelity line, never the decision)
+    fin = [x for x in fin if x.get("lockrep") is not None]
+    state, ma, mb = decide_lock([x["lockrep"] for x in fin], [x["f3"] for x in fin], n)
+    if done:
+        m = lambda k: float(np.mean([x[k] for x in done]))
+        best6 = m("f6") > max(m("lockrep"), m("f3"))
+        G["progress"] = (f"{len(done)}/{n} fills re-priced" + (f" ({len(done) - len(fin)} provisional)" if len(done) > len(fin) else "")
+                         + f" · lock (tick) {m('lockrep'):+.2f} % vs fixed +3/−3 (tick) {m('f3'):+.2f} · +6/−3 {m('f6'):+.2f} · +4/−3 {m('f4'):+.2f}"
+                         + f" · live as traded {m('actual'):+.2f} (fidelity)" + (" · ⚑ +6/−3 leads — review" if best6 else "")
+                         + (f" · {len(items) - len(done)} open/pending" if len(items) > len(done) else ""))
+    else:
+        G["progress"] = f"0/{n} fills re-priced" + (f" · {len(items)} open/pending" if items else "")
+    G["detail"] = " · ".join(f"{_fmt_t(x['t'])} {x['pair'].replace('USDT', '')} live {_f(x.get('actual'))} · +3 {_f(x.get('f3'))} · +6 {_f(x.get('f6'))}"
+                             + ("" if x.get("final") or x.get("f3") is None else "ᵖ") for x in items[:10])
+    if state == "collecting" and len(done) >= n and len(fin) < n:
+        G["provisional"] = decide_lock([x["lockrep"] for x in done if x.get("lockrep") is not None], [x["f3"] for x in done if x.get("lockrep") is not None], n)[0]
     else:
         G.pop("provisional", None)
     return state, t0
@@ -901,6 +988,9 @@ DEFS = {
                       "FRENZY_LONG fills of the same period, or < 0", "set frenzy_long_lev_mult_strong 0", "frenzy_long_lev_mult_strong"),
     "FRENZY_GVOL": ("🌊 FRENZY market-volume gate (194)", "first 20 FRENZY + WIDE fills under the gate: avg pnl % < 0", "set frenzy_gvol_max 0",
                     "frenzy_gvol_max"),
+    "FRENZY_LOCK": ("🔒 FRENZY lock exit (205)", "first 20 FRENZY + WIDE fills after the lock deploy, both exits re-priced on ticks with the bot's accounting: "
+                    "the old fixed +3/−3 averages better than the lock (+2 at +3, trail 2 pts) → revert (also shown: +6/−3, +4/−3, live as traded)", "set frenzy_lock_arm_pct 0 (fixed +3 returns)",
+                    "frenzy_lock_arm_pct"),
     "SURGE_LONG": ("⚡ SURGE_LONG option B (202)", "trigger 0.3 % · 5× · market vol ≥ 1 · spacing after a fill, FULL size (operator override, "
                    "unproven: year +0.01 %/trigger): the first 15 triggers that filled, mean pnl %/trigger ≤ 0 → revert (supersedes the 200 probe gate)",
                    "set surge_long_lev_mult 0.05 (back to the probe)", "surge_long_lev_mult"),
@@ -913,7 +1003,7 @@ DEFS = {
     "MEGACAP": ("🏦 Mega-cap exclusion (110)", "LONG_MEGACAP_BLOCK refusals re-priced: ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows",
                 "set long_megacap_rank_max 0", "long_megacap_rank_max"),
 }
-ORDER = ["CHOP_BURST", "FRENZY_TP3", "FRENZY_STRONG", "FRENZY_GVOL", "SURGE_LONG", "BEARRUN", "LOADX", "HEAT", "MEGACAP"]
+ORDER = ["CHOP_BURST", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "SURGE_LONG", "BEARRUN", "LOADX", "HEAT", "MEGACAP"]
 
 
 def _status_text(code, state, G):
@@ -978,7 +1068,7 @@ def run_section(now_ms=None, noted=None, record_notes=True):
             gate_first_n_signals(code, J, st, n, wr, mode, btc, budget, now_ms, need, rk, win)
         except Exception as e:
             log(f"{code} phase 1: {e}")
-    for fn in (lambda: gate_megacap(J, st, btc, budget, now_ms, need), lambda: gate_frenzy_tp(orders, st, budget, now_ms, need)):
+    for fn in (lambda: gate_megacap(J, st, btc, budget, now_ms, need), lambda: gate_frenzy_lock(orders, st, budget, now_ms, need)):
         try:
             fn()
         except Exception as e:
@@ -1011,7 +1101,7 @@ def run_section(now_ms=None, noted=None, record_notes=True):
         log(f"MEGACAP: {e}")
         res["MEGACAP"] = "error"
         st["gates"].setdefault("MEGACAP", {})["progress"] = f"error: {str(e)[:100]}"
-    for code, fn in (("FRENZY_TP3", lambda: gate_frenzy_tp(orders, st, budget, now_ms, None)),
+    for code, fn in (("FRENZY_LOCK", lambda: gate_frenzy_lock(orders, st, budget, now_ms, None)),
                      ("FRENZY_STRONG", lambda: gate_frenzy_strong(orders, st)), ("FRENZY_GVOL", lambda: gate_frenzy_gvol(orders, st))):
         try:
             state, t0 = fn()
@@ -1044,10 +1134,10 @@ def run_section(now_ms=None, noted=None, record_notes=True):
             log(f"{code}: {e}")
             res[code] = "error"
             st["gates"].setdefault(code, {})["progress"] = f"error: {str(e)[:100]}"
-    ftp = st["gates"].get("FRENZY_TP3", {}).get("items", {})
-    if ftp:
+    ftp = st["gates"].get("FRENZY_LOCK", {}).get("items", {})
+    if ftp and "FRENZY_LOCK" in cov:
         srcs = [x.get("src") for x in ftp.values() if x.get("src")]
-        cov["FRENZY_TP3"] += f" · paths: {sum(1 for s in srcs if s == 'tick')} tick / {sum(1 for s in srcs if s != 'tick')} 1m"
+        cov["FRENZY_LOCK"] += f" · paths: {sum(1 for s in srcs if s == 'tick')} tick / {sum(1 for s in srcs if s != 'tick')} 1m"
     for code in ("CHOP_BURST", "LOADX", "HEAT", "MEGACAP"):
         if st["gates"].get(code, {}).get("priced"):
             cov[code] = cov.get(code, "") + " · " + st["gates"][code]["priced"]
@@ -1163,6 +1253,14 @@ def selftest():
     chk(decide_surge_b([-0.1] * 15) == "fired", "surge B: mean ≤ 0 fires")
     chk(decide_surge_b([1.0] + [-0.05] * 14) == "holds", "surge B: mean > 0 holds")
     chk(decide_surge_b([-1.0] * 15 + [9.0] * 5) == "fired", "surge B: only the FIRST 15 count")
+    chk(decide_lock([0.5] * 19, [0.1] * 19)[0] == "collecting", "lock: < 20 collects")
+    chk(lock_exit(np.array([-0.09, 1.0, 3.2, 5.0, 4.0, 2.9]), 3, 2, 2, 3) == (2.9, "TRAIL"), "lock path: +5 peak → trail line +3 → exit 2.9")
+    chk(lock_exit(np.array([-0.09, 2.9, 1.0, -3.05]), 3, 2, 2, 3) == (-3.05, "SL"), "lock path: never armed → −3 stop")
+    chk(lock_exit(np.array([-0.09, 3.0, 2.5, 1.9]), 3, 2, 2, 3) == (1.9, "TRAIL"), "lock path: armed at +3 → floor +2 → exit 1.9")
+    chk(lock_exit(np.array([-0.09, 3.0, 2.5, 1.9]), 3, 2, 2, 3, tick=False) == (2.0, "TRAIL"), "lock path: 1m fallback fills at the line")
+    chk(lock_exit(np.array([-0.09, 1.0]), 3, 2, 2, 3, complete=False) is None, "lock path: running → None")
+    chk(decide_lock([0.2] * 20, [0.3] * 20)[0] == "fired", "lock: fixed +3 better fires")
+    chk(decide_lock([0.4] * 20, [0.3] * 20)[0] == "holds", "lock: lock better holds")
     print(f"selftest OK — {ok} checks")
 
 

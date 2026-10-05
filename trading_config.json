@@ -740,6 +740,7 @@
     "surge_short_invest_mult": 1.0,
     "surge_short_lev_mult": 1.0,
     "surge_long_trail_atr_mult": 1.0,
+    "surge_long_exit_no_lock": true,
     "surge_max_entry_dislocation_pct": 0.3,
     "surge_max_hold_minutes": 240,
     "surge_long_kill_verdict": "",

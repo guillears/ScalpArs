@@ -57,6 +57,10 @@ if ON_FILL:
     OUT = OUT.rstrip("/") + "_f"; os.makedirs(OUT, exist_ok=True)
     if not HIGH_TOL:
         HIGH_TOL = "0"
+if os.environ.get("SURGE_PAIR_COOLDOWN_H"):
+    OUT = OUT.rstrip("/") + f"_p{os.environ['SURGE_PAIR_COOLDOWN_H']}"; os.makedirs(OUT, exist_ok=True)
+    if not HIGH_TOL:
+        HIGH_TOL = "0"
 if os.environ.get("SURGE_WINDOW_BARS"):
     OUT = OUT.rstrip("/") + f"_w{os.environ['SURGE_WINDOW_BARS']}"; os.makedirs(OUT, exist_ok=True)
     if not HIGH_TOL:
@@ -259,8 +263,10 @@ def events():
     rows = []
     WB = int(os.environ.get("SURGE_WINDOW_BARS", "0") or 0)   # Oct-4 operator: "5 minutes alone is wrong" — stay active WB more bars
     r30_at = dict(zip(ts.tolist(), r30.tolist()))
+    PCD = float(os.environ.get("SURGE_PAIR_COOLDOWN_H", "0") or 0) * 3600_000   # Oct-5 operator: "pairs are independent" — per-pair cooldown
     for side, evs in trig.items():
         last_fill = -10**18
+        pair_last = {}
         for e in evs:
             if ON_FILL and e["bar_ts"] - last_fill < float(TH["surge_trigger_spacing_hours"]) * 3600_000:
                 continue
@@ -268,6 +274,8 @@ def events():
             n_open = 0
             picked = set()
             for rank, p in enumerate(uni, 1):
+                if PCD and e["bar_ts"] - pair_last.get(p, -10**18) < PCD:
+                    continue   # this pair was bought < cooldown ago (per-pair cooldown); other pairs stay eligible
                 ok, why, atr, pm = S.surge_pair_pick(bars(p, e["bar_ts"]), e["bar_ts"], e["btc_move"], th_full, side)
                 status = "PICK" if ok else why
                 if ok:
@@ -276,7 +284,7 @@ def events():
                     else:
                         n_open += 1
                 if status == "PICK":
-                    picked.add(p)
+                    picked.add(p); pair_last[p] = e["bar_ts"]
                 rows.append(dict(side=side, trig=e["bar_ts"], btc_move=e["btc_move"], btc_vol_mult=e["btc_vol_mult"], pair=p,
                                  rank=rank, status=status, atr=atr, pair_move=pm, entry_bar=e["bar_ts"]))
             # later bars of the window: pairs not yet picked, judged on THAT bar (ATR, own 30-min move vs BTC's 30-min move at that bar)

@@ -1244,8 +1244,13 @@ class SignalThresholds(BaseModel):
     surge_long_lev_mult: float = 1.0
     surge_short_invest_mult: float = 1.0
     surge_short_lev_mult: float = 1.0
-    surge_long_trail_atr_mult: float = 1.0       # SURGE_LONG exit = the Bull-Run exit (bullrun_base_sl_pct / be_arm / be_lock / ladder)
+    surge_long_trail_atr_mult: float = 1.0       # SURGE_LONG exit = the Bull-Run exit (bullrun_base_sl_pct / be_arm; be_lock + ladder only if surge_long_exit_no_lock is off)
                                                  # with THIS trail (1× ATR = the REARM trail the grid tested)
+    # 🎯 Oct-5 (operator, DECISION_LOG 203): SURGE_LONG exit WITHOUT the +0.2 % break-even lock and the profit ladder — once the trade
+    # reaches bullrun_be_arm_pct (+1 %) the line is peak − surge_long_trail_atr_mult × entry ATR, floored only at the initial stop. Year
+    # grid (1-s ticks, scripts/surge_bearrun_review.py BR_NO_BE_LOCK): option B +0.008 → +0.395 %/trigger (CI −0.06…+0.99, H1 +0.34 /
+    # H2 +0.43), 0.5 % rule +0.11 → +0.69, old 1 % rule −0.03 → +0.29 — fill WR ~48 % → ~34 % (fewer, bigger winners). False = the lock.
+    surge_long_exit_no_lock: bool = True
     surge_max_entry_dislocation_pct: float = 0.3  # skip the fill when price moved > this % from the decision (bull-run 57f guard)
     surge_max_hold_minutes: int = 240             # close after this many minutes (the study's 4 h walk; 0 = the global max hold)
     # ENGINE-WRITTEN (never sent by the UI save): the kill bar's one-time verdict per side ("PASS …" / "KILLED …"). Non-empty = judged;

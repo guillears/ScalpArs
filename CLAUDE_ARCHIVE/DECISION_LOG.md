@@ -5468,3 +5468,16 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   (scout) is a recommendation; the operator decides. Review findings applied pre-commit (caveman + deep, no blocker): a pending SURGE window
   is never replaced under after-fill spacing; the after-fill clock + market-volume reading survive a restart; a GVOL-refused bar is not re-judged
   after a restart; tickers + klines read bounded by 35 s together; option-B gate counts a closed prefix only; scout A rows re-judged per window.
+
+- (203) 2026-10-05 🎯 **SURGE_LONG exit: the Bull-Run exit WITHOUT the +0.2 % break-even lock and the profit ladder** (operator: "keep B, ship
+  the exit"). Year grid on 1-s ticks (scripts/surge_bearrun_review.py walk, 35 exit variants per pick; reports/SURGE_EXIT_OPTB_variants.csv):
+  BR_NO_BE_LOCK (arm at +1 %, line = peak − 1×entry ATR floored only at the initial stop −1.2) vs the live exit — option B 131 triggers
+  +0.008 → +0.395 %/trigger (day-CI −0.06…+0.99; H1 +0.34 / H2 +0.43; fill WR 48 → 34 %; top-3 triggers 91 % of the gain), 0.5 %+mkt vol
+  +0.113 → +0.692 (CI +0.05…+1.57), 0.75 %+mkt vol +0.09 → +0.34, old 1 % −0.03 → +0.29, 0.3 %·5× without mkt vol −0.04 → +0.42 — every
+  trigger rule agrees (same tape: direction confirmed, not 5 independent tests). Mechanism: on ATR ≥ 1.5 % pairs the +0.2 % lock after +1 %
+  is inside one bar's noise → it banks crumbs and cuts the runners. Best of ~35 exits → 30–50 % haircut ≈ +0.2–0.28 %/trigger. No live
+  SURGE fill exists to validate against. Shipped: surge_long_exit_no_lock (code + JSON true) → _bullrun_exit_for(no_lock=True) for
+  SURGE_LONG only (Bull-Run sleeve unchanged; both exit paths: monitor + websocket), UI toggle, export line, test pinning the live line to the
+  replica variant. Scout option-A observation walks the same no-lock exit.
+  🔒 REVERT: rides the option-B gate (first 15 filled triggers mean ≤ 0 → lev 0.05) + an exit check at that review: re-walk the same 15
+  triggers' fills on ticks with the lock (surge_bearrun_review LIVE) — lock better ⇒ surge_long_exit_no_lock false.

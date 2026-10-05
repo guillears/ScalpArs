@@ -1084,7 +1084,18 @@ def surge_short_exit_for(pnl, peak_pnl, entry_atr_pct):
         return (float(pnl) <= -0.70 if pnl is not None else False), "STOP_LOSS", -0.70
 
 
-def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct, door=None, trail_mult_override=None):
+def _surge_no_lock(entry_strategy):
+    """🎯 Oct-5 (DECISION_LOG 203): SURGE_LONG runs the Bull-Run exit WITHOUT the +0.2 % break-even lock and the profit ladder
+    (surge_long_exit_no_lock): once armed, the line is peak − trail×ATR floored only at the initial stop. False for every other strategy."""
+    if (entry_strategy or "") != "SURGE_LONG":
+        return False
+    try:
+        return bool(getattr(config.trading_config.thresholds, 'surge_long_exit_no_lock', False))
+    except Exception:
+        return False
+
+
+def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct, door=None, trail_mult_override=None, no_lock=False):
     """🌊 Aug-21 gate 57: dedicated BULLRUN_LONG exit check — the ONLY exit logic sleeve
     trades run (both paths intercept BEFORE the alt exit machinery, so FAST_EXIT / tick /
     RSI / signal-lost / gate-53 quiet-SL never touch them; MAX_HOLD + manual still apply
@@ -1122,6 +1133,16 @@ def _bullrun_exit_for(pnl, peak_pnl, entry_atr_pct, door=None, trail_mult_overri
         if trail_mult_override is not None and float(trail_mult_override) > 0:
             trail_mult = float(trail_mult_override)   # ⚡ SURGE_LONG: the Bull-Run exit with the sleeve's own trail (surge_long_trail_atr_mult)
         pk = float(peak_pnl or 0.0)
+        if no_lock and pk >= arm:
+            # 🎯 SURGE_LONG (DECISION_LOG 203): no break-even lock, no ladder — the trail may fall back to the initial stop.
+            # Year grid on 1-s ticks: option-B triggers +0.008 → +0.395 %/trigger (both halves +); every trigger rule tested agrees.
+            # An armed trade that gives everything back closes as STOP_LOSS — split it from "never armed" by peak_pnl ≥ arm at review.
+            # atr ≤ 0 never happens here (SURGE picks need ATR ≥ 1.5 %); if it did, the trail uses surge_atr_min_pct like the replica.
+            _a = atr if atr > 0 else float(getattr(th, 'surge_atr_min_pct', 1.5) or 1.5)   # (review) the replica's fallback ATR
+            stop_line = max(sl, pk - trail_mult * _a)
+            if pnl <= stop_line:
+                return True, ("TRAILING_STOP" if stop_line > sl else "STOP_LOSS"), stop_line
+            return False, None, stop_line
         if pk >= arm:
             trail_line = (pk - trail_mult * atr) if atr > 0 else lock
             stop_line = max(lock, trail_line)
@@ -12886,7 +12907,8 @@ class TradingEngine:
                                                                           _rh_backstop_floor(getattr(self, 'is_paper_mode', True)), use_tp=True)   # 🎯 fixed TP (196)
                     else:
                         _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None), getattr(order, 'entry_br_door', None),
-                                                                           trail_mult_override=_surge_trail_override(order.entry_strategy))
+                                                                           trail_mult_override=_surge_trail_override(order.entry_strategy),
+                                                                           no_lock=_surge_no_lock(order.entry_strategy))
                     if _br_close:
                         logger.info(f"[BULLRUN_EXIT] {order.pair} {order.entry_strategy}: {_br_reason} fire pnl={_br_pnl:.2f}% peak={_br_peak:.2f}% stop_line={_br_stop:.2f}%")
                         closed_order = await self.close_position(db, order, current_price, _br_reason)
@@ -16751,7 +16773,8 @@ class TradingEngine:
                                                                           _rh_backstop_floor(getattr(self, 'is_paper_mode', True)), use_tp=True)   # 🎯 fixed TP (196)
                     else:
                         _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'), order_info.get('entry_br_door'),
-                                                                           trail_mult_override=_surge_trail_override(order_info.get('entry_strategy')))
+                                                                           trail_mult_override=_surge_trail_override(order_info.get('entry_strategy')),
+                                                                           no_lock=_surge_no_lock(order_info.get('entry_strategy')))
                     if _br_close and not order_info.get('_closing_in_progress'):
                         order_info['_closing_in_progress'] = True
                         logger.warning(f"[REALTIME_BULLRUN_EXIT] {pair} {direction} {order_info.get('entry_strategy')}: {_br_reason} pnl={pnl_pct:.4f}% peak={_br_peak_rt:.4f}% stop_line={_br_stop:.2f}% - CLOSING NOW!")

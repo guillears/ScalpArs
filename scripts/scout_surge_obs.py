@@ -9,8 +9,8 @@ RULE A (frozen): on a CLOSED BTC 5m bar ① BTC 30-min return ≥ +0.50 % ② ba
   trigger; the next needs 4 h from ANY trigger (a bar failing ④ never starts it). ADX / breadth are shown, never used.
 PICKS   the live SURGE_LONG selection (services.surge.surge_pair_pick): top-20 by 24 h volume at the bar (minus surge_long_pair_blacklist),
         ATR ≥ surge_atr_min_pct, outrunning BTC, ≤ surge_max_slots, in rank order.
-OUTCOME entry 60 s after the bar closes (1m open), today's SURGE_LONG exit (the Bull-Run exit replica of scripts/surge_bearrun_review.py,
-        LIVE) on 1m bars — a stop / trail fills at the crossing (the line) unless the minute OPENED through it (then that open) — net of
+OUTCOME entry 60 s after the bar closes (1m open), today's SURGE_LONG exit (the Bull-Run exit replica of scripts/surge_bearrun_review.py —
+        BR_NO_BE_LOCK while surge_long_exit_no_lock is on, else LIVE) on 1m bars — a stop / trail fills at the crossing (the line) unless the minute OPENED through it (then that open) — net of
         0.09 % fees, 4 h hold. "open" until 4 h have passed. Also shown: whether the LIVE rule (option B's trigger legs) fired on that bar.
 YEAR    scripts/surge_trigger_grid_report.py: A 92 triggers +0.113 %/trigger CI [−0.16, +0.40] (3 triggers carry it) · B 131 triggers
         +0.008 %/trigger → neither proven.
@@ -84,7 +84,8 @@ def _walk(m1, t_entry, atr, now_ms):
             ts.append(t0 + k * 15_000); px.append(p)
     ts, px = np.array(ts, dtype=float), np.array(px, dtype=float)
     pnl = (px / e - 1) * 100 - FEE
-    fn, tp, hold = R.variants("LONG", atr)["LIVE"]
+    _nl = bool((R.TH or {}).get("surge_long_exit_no_lock", False))   # the live SURGE_LONG exit (DECISION_LOG 203: no +0.2 % lock)
+    fn, tp, hold = R.variants("LONG", atr)["BR_NO_BE_LOCK" if _nl else "LIVE"]
     m = ts <= t_entry + HOLD_MIN * MIN
     ts, pnl = ts[m], pnl[m]
     if not len(pnl):

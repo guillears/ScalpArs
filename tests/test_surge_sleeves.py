@@ -125,12 +125,12 @@ def test_config_parity_and_d11_surfaces():
     live_th = live.get("thresholds", live)
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     keys = sorted(f for f in fields if f.startswith("surge_"))
-    assert len(keys) == 28, keys   # +surge_long_gvol_min, +surge_spacing_after_fill (Oct-4)
+    assert len(keys) == 29, keys   # +surge_long_gvol_min, +surge_spacing_after_fill (Oct-4), +surge_long_exit_no_lock (Oct-5)
     for k in keys:
         assert k in live_th, f"{k} missing from trading_config.json"
         assert html.count(k) >= 2, f"{k} not wired to the UI load + save handlers"
     ids = set(re.findall(r'id="(config-sg-[a-z0-9-]+)"', html))
-    assert len(ids) == 26   # +config-sg-gvol-min, +config-sg-spacing-after-fill (Oct-4)
+    assert len(ids) == 27   # +config-sg-gvol-min, +config-sg-spacing-after-fill (Oct-4), +config-sg-long-no-lock (Oct-5)
     for i in ids:
         assert html.count(f"'{i}'") >= 1, f"{i} has an input but no handler"
 

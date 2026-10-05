@@ -1260,6 +1260,14 @@ def run():
     except Exception as _so_e:
         log(f"SURGE observation failed: {_so_e}")
         _fz_sec += ["## ⚡ SURGE early-trigger observation", "", f"Unavailable this run ({str(_so_e)[:120]}).", ""]
+    try:                                               # 🩹 Oct-5 BTC rebound-window observation (pre-registered; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_rebound as _rb
+        _fz_sec += _rb.run(EX, _retry, last_closed)
+    except Exception as _rb_e:
+        log(f"rebound observation failed: {_rb_e}")
+        _fz_sec += ["## 🩹 BTC rebound-window observation", "", f"Unavailable this run ({str(_rb_e)[:120]}).", ""]
     _rg_notes = []                                     # ⏳ Oct-4 revert-gate tracker (every open pre-committed revert / arm gate; never breaks the run)
     try:
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:

@@ -5481,3 +5481,16 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   replica variant. Scout option-A observation walks the same no-lock exit.
   🔒 REVERT: rides the option-B gate (first 15 filled triggers mean ≤ 0 → lev 0.05) + an exit check at that review: re-walk the same 15
   triggers' fills on ticks with the lock (surge_bearrun_review LIVE) — lock better ⇒ surge_long_exit_no_lock false.
+
+- (204) 2026-10-05 🩹 **BTC REBOUND-window observation (scout, observe-only)** + the momentum-long reality check behind it. Operator challenged
+  the yr5 momentum-long year (−0.067 %/trade) against the master batch. Bug hunt on yr5 (all clean): 0 duplicate fills, 0 same-pair
+  overlaps, 0 re-entries < 5 min (cooldown runs on the replay clock), P&L exact vs prices/fees, exit replica 104/104 real exits, as-was
+  config reproduces 7/7 live fills with 0 extras. REAL as-traded momentum longs since Jun-17 (unscreened, no probes): 173 · 69 % · +0.050 %
+  (BASE 35 · 89 % · +0.41; B1–B16 138 · 63 % · −0.042, −$2,102) vs master-kept 116 · +0.225 — the master shows today's filters applied
+  BACKWARDS to the trades they were fitted on (removed 57 · −0.306 = in-sample). yr5 today's config in the live hours +0.036 ≈ the real
+  unscreened +0.05 → the replay is consistent with what the bot actually made. June's difference = BTC 15–24 % below its 30-day high (real
+  ML at ≤ −15 %: 20 · 100 % · +0.61) but the full year says washed-out alone loses (yr5 ≤ −15 %: −0.107, CI < 0, Jan–Apr declines) and the
+  rebound split (≤ −15 % ∧ 3-day > 0) is flat (−0.022, CI −0.15…+0.16, 27 days) vs still-falling −0.145 (CI < 0). → OBSERVE: scripts/
+  scout_rebound.py (state on BTC 1h: ≤ −15 % below the 30-day high ∧ 3-day > 0; windows persisted reports/SCOUT_REBOUND.csv; live fills
+  tallied per window). 🔒 REVIEW at ≥ 3 REBOUND windows with ≥ 10 momentum-long fills: window means > 0 in ≥ 2/3 ∧ pooled > 0 ∧ no window
+  ≥ 50 % of the gain → then (only then) a size-up / door for that state is a candidate. Legs frozen (−15 %, 3-day > 0).

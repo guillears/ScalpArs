@@ -1041,6 +1041,7 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "usdt_in_orders": used_margin,
             "open_orders_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']),   # bot lane (🖐 Sep-29)
             "manual_open_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') == 'MANUAL']),
+            "open_by_sleeve": _open_by_sleeve(open_orders),
             "manual_max_open_positions": getattr(config.trading_config.investment, 'manual_max_open_positions', 8),
             "total_trades_count": _total_trades,
             "max_open_positions": config.trading_config.investment.max_open_positions,
@@ -1102,6 +1103,7 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "usdt_in_orders": balance['usdt_used'],
             "open_orders_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']),   # bot lane (🖐 Sep-29, parity with paper)
             "manual_open_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') == 'MANUAL']),
+            "open_by_sleeve": _open_by_sleeve(_live_open),
             "manual_max_open_positions": getattr(config.trading_config.investment, 'manual_max_open_positions', 8),
             "total_trades_count": (await db.execute(
                 select(func.count(Order.id)).where(Order.is_paper == False))).scalar() or 0,
@@ -3350,6 +3352,34 @@ async def _bullrun_periods_rows(db, limit=50):
     except Exception as _e:
         logger.debug(f"[PERF] bullrun periods skipped: {_e}")
         return []
+
+
+_SLEEVE_LABELS = {   # 🧭 Oct-5 (operator): open positions per sleeve under the "USDT in Open Orders" card
+    ("MOMENTUM", "LONG"): "Momentum Long", ("MOMENTUM", "SHORT"): "Momentum Short", ("SPIKE_FADE", "SHORT"): "Spike Fade Short",
+    ("SPIKE_CHASE", "LONG"): "Spike Chase Long", ("SPIKE_BOUNCE", "LONG"): "Spike Bounce Long", ("BULLRUN_LONG", "LONG"): "Bull-Run Long",
+    ("BEARRUN_SHORT", "SHORT"): "Bear-Run Short", ("SURGE_LONG", "LONG"): "SURGE Long", ("SURGE_SHORT", "SHORT"): "SURGE Short",
+    ("FRENZY_LONG", "LONG"): "FRENZY Long", ("FRENZY_WIDE", "LONG"): "FRENZY WIDE Long",
+    ("BULL_LONG", "LONG"): "Bull Long", ("BOUNCE_LONG", "LONG"): "Bounce Long",
+}
+
+
+def _open_by_sleeve(orders):
+    """[[label, count], …] of OPEN positions by sleeve (FLIP:* sources fold into "Flip <dir>", MANUAL kept apart), most first.
+    Never raises (a bad row only drops out of the breakdown)."""
+    out = {}
+    for o in orders or []:
+        try:
+            st = (getattr(o, 'entry_strategy', None) or 'MOMENTUM'); d = (getattr(o, 'direction', None) or '').upper().strip()
+            if st.startswith('FLIP'):
+                lab = f"Flip {d.title()}".strip()
+            elif st == 'MANUAL':
+                lab = f"Manual {d.title()}".strip()
+            else:
+                lab = _SLEEVE_LABELS.get((st, d)) or f"{st.replace('_', ' ').title()} {d.title()}"
+            out[lab] = out.get(lab, 0) + 1
+        except Exception:
+            continue
+    return sorted(([k, v] for k, v in out.items()), key=lambda kv: (-kv[1], kv[0]))
 
 
 def _surge_monitor_payload():

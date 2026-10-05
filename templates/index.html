@@ -272,6 +272,7 @@
                     <p class="text-sm text-gray-400 mb-1">USDT in Open Orders</p>
                     <p id="usdt-orders" class="text-2xl font-bold text-white">$0.00</p>
                     <p id="usdt-orders-count" class="text-xs text-gray-500 mt-1"></p>
+                    <div id="usdt-orders-sleeves" class="text-xs text-gray-500"></div>
                 </div>
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">Total Portfolio Value</p>
@@ -9722,6 +9723,13 @@
                 const ordCountEl = document.getElementById('usdt-orders-count');
                 if (ordCountEl && data.open_orders_count != null) {
                     ordCountEl.textContent = `Open Positions: ${data.open_orders_count}` + (data.manual_open_count ? ` (+${data.manual_open_count} manual)` : '');
+                }
+                {   // 🧭 Oct-5 (operator): one line per sleeve with open positions, same font / size as "Open Positions"
+                    const _sl = document.getElementById('usdt-orders-sleeves');
+                    if (_sl) {
+                        const _rows = Array.isArray(data.open_by_sleeve) ? data.open_by_sleeve : [];
+                        _sl.replaceChildren(..._rows.filter(Array.isArray).map(([lab, n]) => { const p = document.createElement('p'); p.textContent = `${lab}: ${n}`; return p; }));
+                    }
                 }
                 window._lastStatusIsPaper = data.is_paper;   // read by the manual-entry confirmation (LIVE warning)
                 if (data.sizing_equity != null) { window._ssEquity = Number(data.sizing_equity); window._ssFeeBurn = Number(data.fee_reserve_burn_usd || 0); try { renderSleeveSizing(); } catch (_e) {} }   // ⚖️ Oct-4

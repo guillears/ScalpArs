@@ -5515,3 +5515,9 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   UNMATCHED LONG inv_mult 2.0 → 1.5 and long_unmatched_quiet_mult 2.0 → 1.5 (the quiet boost would otherwise take UNMATCHED back to 2×; CALM3D
   door stays 2×). Master STACK 2026-10-05a: kept UNMATCHED rows above 1.5× re-priced × 1.5 / cm (sprint-de-muxed 1× rows untouched — review catch) → TOTAL +$10,438 → +$9,278 (BASE −$862, B1
   −$219, B3 −$290; since B4 +$192). 🔒 GATES on the next 15 UNMATCHED fills at 1.5×: WR ≥ 70 % ∧ $ > 0 ⇒ back to 2×; $ < 0 ⇒ 1×; else stay.
+
+- (207) 2026-10-05 👁 **WATCHLIST — FRENZY leverage** (operator: "review with more trades"). Proposal on the table: FRENZY_LONG / FRENZY_WIDE
+  to lev 1.0 (20×). Not shipped. Ruin read: at 20× a −3 % stop = $436 ≈ 14.6 % of a ~$3k book (4 open FRENZY/WIDE stops ≈ −58 %),
+  liquidation ≈ 4.5–5 % away (AIN WIDE fell −5.6 % within 1 min of its stop, −19 % in 40 min; AIN FRENZY −6.4 % in 4 min); ~+0.2 %/trade
+  on ±3 % outcomes → Kelly ≈ 2× equity notional per position — today's 6× FRENZY is already ≈ full Kelly. WIDE: tick study +0.16 vs yr5
+  replay −0.10 (sources disagree). Pre-registered review below.

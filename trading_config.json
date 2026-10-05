@@ -414,28 +414,7 @@
         "block": true
       }
     ],
-    "btc_1h_slope_btc_adx_multiplier_rules": [
-      {
-        "name": "1hPullback_L",
-        "direction": "LONG",
-        "slope_min": -0.2,
-        "slope_max": -0.1,
-        "adx_min": 18,
-        "adx_max": 25,
-        "inv_mult": 2.0,
-        "lev_mult": 1.0
-      },
-      {
-        "name": "1hMildRise_S",
-        "direction": "SHORT",
-        "slope_min": 0.0,
-        "slope_max": 0.1,
-        "adx_min": 25,
-        "adx_max": 30,
-        "inv_mult": 2.0,
-        "lev_mult": 1.0
-      }
-    ],
+    "btc_1h_slope_btc_adx_multiplier_rules": [],
     "extension_multiplier_rules": [
       {
         "name": "Ext0.4-0.6_L",

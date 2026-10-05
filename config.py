@@ -2259,6 +2259,8 @@ class SignalThresholds(BaseModel):
     #     N=17 / 76% WR / +0.17% Avg / +$156 / 4 dates / 23% BE-rescue / NP 6%
     # Both pass strict BE-floor + median-win + BE-rescue gates per CLAUDE.md
     # locked May 24 methodology.
+    # Oct-5: both cells retired (DECISION_LOG 211) — dormant since Jun-9 (pattern cells override), live record 11 · 36 % · −0.42 %.
+    # Field + engine lookup kept (empty list → 1.0×); the dashboard editor and perf table were removed.
     btc_1h_slope_btc_adx_multiplier_rules: List = []
     # Entry Quality Score multiplier (May 18 → REMOVED May 21): the Score-based 1D
     # multiplier dimension was retired after cross-batch evidence showed cells

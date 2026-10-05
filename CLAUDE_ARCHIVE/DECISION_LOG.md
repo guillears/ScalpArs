@@ -5563,3 +5563,17 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   pair ≥ 50 % of the loss). A pass → 1hPullback_L cell sizing verdict first, then a dead-band re-scope review (cohort completeness, haircut,
   revert gate) — never straight to arming. Side flag: 1hPullback_L 2× cell is 94 · 68 % · −0.112 % at 1× on yr5 (CI spans 0) → cell-registry
   review pending. Code: scripts/scout_b1h_negflank.py (+ opportunity_scout hook).
+- (211) 2026-10-05 🧹 **Dashboard pruning: 16 retired shadow / counterfactual tables removed · BTC-1h multiplier cells retired** (operator
+  list from reports/UI_TABLE_INVENTORY_2026-10-05.md; #76 Recovery Hold kept on operator choice). Removed from the UI, the render JS, BOTH
+  text exports and the /api/performance compute (17 payload keys): #21 Extension Multiplier Perf · #22 BTC 1h Slope × BTC ADX Multiplier Perf
+  (+ its rule editor; Save no longer sends the field, PUT merges so [] stays on disk) · #25 EMA13 Strict-Mode · #26 EMA13 Cross Disabled-Direction
+  CF · #27 Trailing Min-Profit Gate CF · #28 Gap-Expand MARGINAL vs STRICT · #31 Graduation Doors · #41 Trailing Confirmation · #42 Post-Exit
+  Snapshots · #43 Fast-Exit CF (3 tables) · #67 Leash Shadow · #75 HARD_TP Mechanism Shadow · #77 Post-Exit Regret · #78 Flagged Exits ·
+  #128 Regime-Drift × Outcome · #129 Regime-Change-Exit CF. Model columns, engine stamps and the orders CSV are untouched (analysis scripts keep
+  the data); config help texts that pointed at removed tables reworded. Cells: btc_1h_slope_btc_adx_multiplier_rules → [] (1hPullback_L 2× LONG
+  slope [−0.20, −0.10) ∧ BTC ADX [18, 25) · 1hMildRise_S 2× SHORT, never fired). Review (operator-asked, after the 1h EMA20 overlap flagged a
+  negative yr5 cohort): pattern cells PRIORITY-OVERRIDE every other multiplier dimension and every momentum fill has carried one since ~Jun-10
+  → the cell sized nothing after Jun-9 (139 exports searched; 36 in-zone longs Jul–Sep all UNMATCHED / W / probes); its live record (May-24 →
+  Jun-9, old exit stack, refute-only) 11 · 36 % · −0.42 % = HARMFUL under the multiplier verdict rule. No trading change (dormant); removes the
+  latent 2× that would wake if the UNMATCHED rule changed. Config field, default and engine lookup kept (empty → 1.0×). Verified: a 399-order
+  real-CSV SQLite replay of _compute_performance lost exactly the 17 keys, the other 155 keys byte-identical to HEAD; pytest green.

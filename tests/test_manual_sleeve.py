@@ -357,7 +357,7 @@ def test_manual_trades_never_enter_a_bot_cell_baseline():
     r2 = M._compute_pattern_cell_performance(with_manual)
     b = lambda r: [x.get("baseline_avg_pct") for x in r["rules"] if x.get("baseline_avg_pct") is not None]
     assert b(r1) == b(r2) and b(r1) and abs(b(r1)[0] - 0.3) < 1e-9          # the manual +11 % does not move the ruler
-    for fn in (M._compute_multiplier_cell_performance, M._compute_extension_multiplier_performance,
-               M._compute_btc_1h_slope_btc_adx_multiplier_performance, M._compute_pattern_4cohort_coverage,
+    # Oct-5: the extension / BTC-1h multiplier perf reports were retired with their dashboard tables (DECISION_LOG 211).
+    for fn in (M._compute_multiplier_cell_performance, M._compute_pattern_4cohort_coverage,
                M._compute_pattern_combo_tracker):
         assert repr(fn(base)) == repr(fn(with_manual)), fn.__name__          # a MANUAL row changes nothing in any cell report

@@ -87,11 +87,12 @@ def frenzy_walk(bars, norm_hour, th) -> Optional[dict]:
                 continue                                    # inside the previous episode
             verified = chained or bool(t[on] - t[0] >= VERIFY_MS and not any(
                 volx[k] is not None and volx[k] >= state_vol for k in range(max(0, on - VERIFY_MS // BAR_MS), on)))
-            pv = qq = 0.0; vw = []; above = []; state = []; streak = 0
+            pv = qq = 0.0; vw = []; above = []; state = []; streak = 0; n_up = 0
             for j in range(on, n):
                 pv += (h[j] + l[j] + c[j]) / 3.0 * q[j]; qq += q[j]
                 v = pv / qq if qq > 0 else c[j]; vw.append(v)
                 streak = streak + 1 if c[j] >= v else 0
+                n_up += 1 if c[j] >= v else 0
                 ab = streak >= 12; above.append(ab)
                 state.append(bool(ab and volx[j] is not None and volx[j] >= state_vol and (j - on) >= min_bars))
             last = on; end = None
@@ -111,7 +112,8 @@ def frenzy_walk(bars, norm_hour, th) -> Optional[dict]:
                         vs_vwap_pct=(price / vw[-1] - 1) * 100 if vw[-1] > 0 else None,
                         run_pct=(peak / base - 1) * 100, gain_pct=(price / base - 1) * 100,
                         off_peak_pct=(price / peak - 1) * 100 if peak > 0 else None,
-                        bar_ret_pct=((price / o_last - 1) * 100 if o_last > 0 else None), bar_red=bool(o_last > 0 and price <= o_last))
+                        bar_ret_pct=((price / o_last - 1) * 100 if o_last > 0 else None), bar_red=bool(o_last > 0 and price <= o_last),
+                        above_share=100.0 * n_up / (n - on))   # 🌀 Oct-5 (215): % of the episode's 5m closes at / above the spike-anchored VWAP
         return None
     except (TypeError, ValueError, IndexError, ZeroDivisionError):
         return None
@@ -206,6 +208,20 @@ def frenzy_wide_ready(ep, code, th, atr_pct=None) -> bool:
     ATR (FRENZY_ATR_HIGH "ATR unreadable") is refused: the backtest always had one — fail closed (review)."""
     return (bool(getattr(th, 'frenzy_wide_enabled', False)) and bool(ep and ep.get('fresh_on')) and code in FRENZY_WIDE_CODES
             and atr_pct is not None)
+
+
+def frenzy_wide_choppy(ep, th) -> bool:
+    """🌀 Oct-5 (DECISION_LOG 215, operator ARMED override): True = FRENZY_WIDE refuses this fresh setup because the pump is CHOPPY / FADING —
+    at most frenzy_wide_above_share_min % of the episode's 5m closes (spike bar → signal bar) held at / above the spike-anchored VWAP, i.e. most
+    spike buyers are under water. Year (617 live-gated WIDE first entries, live lock, 12 s entry): blocked 124 · 40 % WR · −0.87 %/trade, all 9
+    months negative; picked independently in both halves; out-of-sample −0.40 % (day CI −0.99…+0.23 → fails only the 95 % leg). 0 = off.
+    FAIL-OPEN: an unreadable share never blocks."""
+    try:
+        mn = _f(th, 'frenzy_wide_above_share_min', 0.0)
+        a = (ep or {}).get('above_share')
+        return bool(mn > 0 and a is not None and float(a) <= mn)
+    except (TypeError, ValueError):
+        return False
 
 
 def frenzy_flagged(ep, th) -> bool:

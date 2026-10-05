@@ -279,6 +279,7 @@ class Order(Base):
     entry_frenzy_run_pct = Column(Float, nullable=True)            # the run's peak vs the price before the spike (%)
     entry_frenzy_stop_atr = Column(Float, nullable=True)           # the stop as a multiple of the 5m ATR (stop % ÷ ATR %)
     entry_frenzy_bar_ret_pct = Column(Float, nullable=True)        # Oct-2 (180): the signal bar's own return, close vs open (%) — ≤ 0 = red / flat
+    entry_frenzy_above_share = Column(Float, nullable=True)        # 🌀 Oct-5 (215): % of the episode's 5m closes at / above the spike VWAP
     # 📖 Oct-3 (DECISION_LOG 192): the ORDER BOOK at a MANUAL click (services/orderbook_stats.orderbook_metrics) — OBSERVE-ONLY research stamps
     manual_ob_spread_pct = Column(Float, nullable=True)
     manual_ob_top_bid_usd = Column(Float, nullable=True)

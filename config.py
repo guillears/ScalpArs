@@ -1335,6 +1335,13 @@ class SignalThresholds(BaseModel):
     frenzy_wide_invest_mult: float = 1.0         # absolute-assign like FRENZY_LONG
     frenzy_wide_lev_mult: float = 0.2            # 20× → 4×: one 3 % stop ≈ 3 % of the account (unproven edge → half FRENZY's risk)
     frenzy_wide_max_slots: int = 2               # max FRENZY_WIDE open at once (they also count against max open positions)
+    # 🌀 Oct-5 (DECISION_LOG 215 — shipped OBSERVE-ONLY, JSON 0: the deep review found the study's fresh bar lagged the engine's, and on the
+    # bars the engine trades the cohort did not separate; frozen candidate 67.8 pending re-validation). FRENZY_WIDE skips a CHOPPY / FADING pump — at most this % of the episode's 5m
+    # closes since the spike held at / above the spike-anchored VWAP (services.frenzy.frenzy_wide_choppy; counter FRENZY_WIDE_CHOPPY).
+    # Year, 617 WIDE first entries: blocked 124 · 40 % WR · −0.87 %/trade (9/9 months negative); kept 493 · +0.35 vs all +0.11; out-of-sample
+    # −0.40 % with the day CI through 0 → declared override. 🔒 REVERT: the first 15 blocked WIDE signals re-priced with the live FRENZY exit
+    # (scout gate WIDE_CHOPPY) average ≥ 0 → set 0. Frozen at 67.8 — never re-fit. 0 = off.
+    frenzy_wide_above_share_min: float = 0.0
     # 🌊 Oct-3 (operator ARMED override, DECISION_LOG 194): FRENZY_LONG and FRENZY_WIDE open only while the market's volume on the signal bar
     # (top-50 by 24 h volume: Σ bar volume ÷ Σ 48-bar mean, CLOSED bar, read at the close) is BELOW this. Year (1,455 first candles, 1-min-late
     # entry, real costs): < 1.0 +0.225 %/trade (both halves +, random-subset luck 3 %, every leave-one-month-out +), ≥ 1.0 −0.185 (both halves −);

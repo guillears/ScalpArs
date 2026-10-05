@@ -23,7 +23,7 @@ from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, clo
 from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
-from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines
+from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
 
@@ -7189,7 +7189,7 @@ class TradingEngine:
                                     flag['last_fire'] = f"{datetime.utcfromtimestamp(bar_open / 1000):%m-%d %H:%M} refused: {text}"
                                     logger.info(f"[FRENZY_LONG] {pair}: setup turned ON but refused — {text}")
                                 if frenzy_wide_ready(ep, code, th, atr):   # 🔥🌐 Oct-3: FRENZY refused ONLY for ATR / a green candle → FRENZY-WIDE takes it
-                                    await self._frenzy_open(db, flag, ind, bar_open, wide=True)
+                                    await self._frenzy_open(db, flag, ind, bar_open, wide=True)   # 🌀 the 215 choppy check runs inside, after slots / day cap / market volume
                     except Exception as _fe:
                         n_bad += 1
                         logger.warning(f"[FRENZY] {pair}: not read this bar ({str(_fe)[:120]})")
@@ -7383,6 +7383,15 @@ class TradingEngine:
                 flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} {'WIDE ' if wide else ''}refused: {_txt}"
                 logger.info(f"[{_es}] {pair}: setup ON but {_txt} — skipped")
                 return
+            # 🌀 Oct-5 (215): WIDE skips a choppy / fading pump — AFTER slots, the pair-day cap and the market-volume gate (review: a block
+            # counted here is a trade that would otherwise have opened, so the scout's WIDE_CHOPPY revert cohort is not padded with refusals
+            # those gates would make anyway). 0 = off (OBSERVE-ONLY since the review: the study's fresh bar lagged the engine's).
+            if wide and frenzy_wide_choppy(flag, th):
+                self._record_filter_block("FRENZY_WIDE_CHOPPY", "LONG")
+                flag['last_fire'] = (f"{_bar_dt:%m-%d %H:%M} WIDE refused: choppy pump — {flag.get('above_share', 0):.0f}% of closes above its "
+                                     f"average (≤ {getattr(th, 'frenzy_wide_above_share_min', 0):g}%)")
+                logger.info(f"[FRENZY_WIDE] {pair}: setup ON but refused — choppy pump ({flag.get('above_share', 0):.1f}% of closes above the spike average)")
+                return
             # The test bought at the open of the bar after the signal. Live must not buy a setup minutes later (a late scan, a retry
             # pass, a restart) nor a price that already left the signal bar's close by more than the dislocation limit (review).
             _late_s = (_leash_time.time() * 1000 - bar_open) / 1000.0
@@ -7425,6 +7434,7 @@ class TradingEngine:
                 entry_frenzy_stop_atr=(round(_stop / atr, 3) if atr else None),
                 entry_frenzy_bar_ret_pct=(round(flag['bar_ret_pct'], 4) if flag.get('bar_ret_pct') is not None else None),
                 entry_frenzy_di_spread=flag.get('di_spread'), entry_frenzy_adx_delta=flag.get('adx_delta'), entry_frenzy_vol_trend=flag.get('vol_trend'), entry_frenzy_gvol=_gv,
+                entry_frenzy_above_share=(round(flag['above_share'], 2) if flag.get('above_share') is not None else None),
                 **self._sanitize_open_kwargs(_ef, _es, "LONG"),
             )
             _why = getattr(self, '_frenzy_open_refusal', None)
@@ -8414,6 +8424,7 @@ class TradingEngine:
         entry_frenzy_di_spread: Optional[float] = None,
         entry_frenzy_adx_delta: Optional[float] = None,
         entry_frenzy_vol_trend: Optional[float] = None,
+        entry_frenzy_above_share: Optional[float] = None,
         entry_frenzy_gvol: Optional[float] = None,
         # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
         # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
@@ -10100,6 +10111,7 @@ class TradingEngine:
             entry_frenzy_bar_ret_pct=(entry_frenzy_bar_ret_pct if _frenzy else None),
             entry_frenzy_di_spread=(entry_frenzy_di_spread if _frenzy else None),
             entry_frenzy_adx_delta=(entry_frenzy_adx_delta if _frenzy else None), entry_frenzy_vol_trend=(entry_frenzy_vol_trend if _frenzy else None),
+            entry_frenzy_above_share=(entry_frenzy_above_share if _frenzy else None),
             entry_frenzy_gvol=(entry_frenzy_gvol if _frenzy else None),
             adx_surge_open=_adx_surge_admit,   # ⚡ Sep-28: admitted through the BTC ADX-surge waiver (same predicate as its sizing)
             entry_mcap_usd=_mcap_usd, entry_cmc_rank=_cmc_rank,   # 💰 Sep-28: cached market cap / CMC rank (NULL if unknown)

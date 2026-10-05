@@ -370,7 +370,7 @@ def load_journal():
                 d[c] = None
         beats.append(d.loc[d.e == "SCAN", "t"])
         g = d.gate.astype(str)
-        keep = (d.dir.astype(str) == "LONG") & (((d.e == "BLOCK") & g.isin(["LONG_CHOP_BURST", "LONG_HEAT_BLOCK", "LONG_MEGACAP_BLOCK"]))
+        keep = (d.dir.astype(str) == "LONG") & (((d.e == "BLOCK") & g.isin(["LONG_CHOP_BURST", "LONG_HEAT_BLOCK", "LONG_MEGACAP_BLOCK", "FRENZY_WIDE_CHOPPY"]))
                                                | ((d.e == "FAILS") & g.str.contains("PAIR_RSI_MOMENTUM_LOADX", regex=False)))
         fr.append(d[keep])
     if not fr:
@@ -961,6 +961,49 @@ def gate_heat_admit(orders, st, n=10):
     return state, t0
 
 
+def decide_wide_choppy(vals, n=15):
+    """🌀 (215) the frozen revert bar: the first n blocked WIDE signals re-priced with the live FRENZY exit average ≥ 0 → FIRED (switch the
+    block off); < 0 → holds. Fewer than n priced → collecting."""
+    if len(vals) < n:
+        return "collecting"
+    return "fired" if float(np.mean(vals[:n])) >= 0 else "holds"
+
+
+def gate_wide_choppy(J, st, now_ms, n=15):
+    """🌀 (215) FRENZY_WIDE_CHOPPY refusals (journal BLOCK lines; one per pair-episode) re-priced as if WIDE had opened: entry at the open of the
+    first full minute after the refusal, the LIVE FRENZY exit (lock: −3 until +3, then max(+2, peak − 2)) on public 1m klines, net of fees, 12 h
+    (scout_frenzy_exits.walk — the same walker as the exit-shadow table). FINAL once 12 h have passed."""
+    import scout_frenzy_exits as FX
+    G = st.setdefault("gates", {}).setdefault("WIDE_CHOPPY", {})
+    store = G.setdefault("items", {})
+    rows = J[(J.e == "BLOCK") & (J.gate.astype(str) == "FRENZY_WIDE_CHOPPY")][["ms", "pair"]] if J is not None and len(J) else pd.DataFrame(columns=["ms", "pair"])
+    old = pd.DataFrame([dict(ms=int(v["t"]), pair=v["pair"]) for v in store.values()], columns=["ms", "pair"])
+    ep = episodes(pd.concat([old, rows], ignore_index=True)) if (len(rows) or len(old)) else rows
+    items = []
+    for r in ep.sort_values("ms").head(n).itertuples():
+        k = f"{r.pair}|{int(r.ms)}"
+        it = store.get(k) or dict(pair=r.pair, t=int(r.ms))
+        if not it.get("final"):
+            try:
+                t_in = (int(r.ms) // MIN + 1) * MIN
+                m1 = [b for b in FX._kl(str(r.pair), "1m", t_in, min(now_ms, t_in + 721 * MIN)) if b[0] + MIN <= now_ms]
+                if m1:
+                    p, _x, how = FX.walk(m1, float(m1[0][1]), "LOCK2")
+                    it.update(sim=p, how=how, final=bool(how != "open"))
+            except Exception as e:
+                log(f"WIDE_CHOPPY price {r.pair}: {str(e)[:80]}")
+            store[k] = it
+        items.append(it)
+    vals = [x["sim"] for x in items if x.get("final") and x.get("sim") is not None]
+    state = decide_wide_choppy(vals, n)
+    pr = [x for x in items if x.get("sim") is not None]
+    G["progress"] = (f"{len(vals)}/{n} blocked signals re-priced (final)" + (f" · {len(pr) - len(vals)} provisional" if len(pr) > len(vals) else "")
+                     + (f" · {sum(1 for v in vals if v > 0)} would have won · mean {np.mean(vals):+.2f} %" if vals else ""))
+    G["detail"] = " · ".join(f"{_fmt_t(x['t'])} {str(x['pair']).replace('USDT', '')} " + (_f(x.get("sim")) if x.get("sim") is not None else "pending")
+                             + ("" if x.get("final") else "ᵖ") for x in items)
+    return state
+
+
 def gate_surge(orders, st, btc):   # RETIRED Oct-5 (DECISION_LOG 202) — the SURGE_LONG row is gate_surge_b
     G = st.setdefault("gates", {}).setdefault("SURGE_LONG", {})
     t0 = _ms(PROBE_START)
@@ -1050,10 +1093,13 @@ DEFS = {
                   "long_heat_block_enabled"),
     "HEAT": ("🫧 Heat re-scope (116)", "first 30 LONG_HEAT_BLOCK fires re-priced: WR ≥ 60 % (2nd leg — Jan–Jun replay expectancy — manual) · extended from 6 on 10-04 (first 6 had FIRED, 6/6 won)",
              "legs back to long_heat_btc_slope_min 0.07 · long_heat_btc_rsi_prev_min 64 · long_heat_bull_pct_min 80", "long_heat_bull_pct_min"),
+    "WIDE_CHOPPY": ("🌀 WIDE choppy-pump block (215)", "first 15 FRENZY_WIDE_CHOPPY refusals (one per pair-episode) re-priced as if WIDE had opened — "
+                    "the live FRENZY exit on 1m klines, entry at the next minute's open: mean ≥ 0 → the block removed winners", "set frenzy_wide_above_share_min 0",
+                    "frenzy_wide_above_share_min"),
     "MEGACAP": ("🏦 Mega-cap exclusion (110)", "LONG_MEGACAP_BLOCK refusals re-priced: ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows",
                 "set long_megacap_rank_max 0", "long_megacap_rank_max"),
 }
-ORDER = ["CHOP_BURST", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "SURGE_LONG", "BEARRUN", "LOADX", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
+ORDER = ["CHOP_BURST", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "LOADX", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
 
 
 def _status_text(code, state, G):
@@ -1144,6 +1190,15 @@ def run_section(now_ms=None, noted=None, record_notes=True):
             log(f"{code}: {e}")
             res[code] = "error"
             st["gates"].setdefault(code, {})["progress"] = f"error: {str(e)[:100]}"
+    try:
+        if SCRIPTS not in sys.path:
+            sys.path.insert(0, SCRIPTS)
+        res["WIDE_CHOPPY"] = gate_wide_choppy(J, st, now_ms)
+        cov["WIDE_CHOPPY"] = jtxt + " · counts refusals from the 215 deploy"
+    except Exception as e:
+        log(f"WIDE_CHOPPY: {e}")
+        res["WIDE_CHOPPY"] = "error"
+        st["gates"].setdefault("WIDE_CHOPPY", {})["progress"] = f"error: {str(e)[:100]}"
     try:
         res["MEGACAP"] = gate_megacap(J, st, btc, budget, now_ms, None)
         cov["MEGACAP"] = jtxt + " · shipped 09-23: earlier refusals only in the EB logs"
@@ -1317,6 +1372,10 @@ def selftest():
     chk(decide_heat_admit([0.3] * 9) == "collecting", "heat admit: < 10 collects")
     chk(decide_heat_admit([0.3] * 5 + [-0.9] * 5) == "fired", "heat admit: mean < 0 fires")
     chk(decide_heat_admit([0.3] * 6 + [-0.2] * 4) == "holds", "heat admit: mean > 0 holds")
+    chk(decide_wide_choppy([0.5] * 14) == "collecting", "WIDE_CHOPPY: 14 signals → collecting")
+    chk(decide_wide_choppy([-3.0] * 10 + [2.0] * 5) == "holds", "WIDE_CHOPPY: blocked set losing → the block holds")
+    chk(decide_wide_choppy([2.0] * 8 + [-3.0] * 5 + [0.5] * 2) == "fired", "WIDE_CHOPPY: blocked set ≥ 0 → FIRED (switch off)")
+    chk(decide_wide_choppy([0.0] * 15) == "fired", "WIDE_CHOPPY: exactly 0 fires (the bar is ≥ 0)")
     print(f"selftest OK — {ok} checks")
 
 

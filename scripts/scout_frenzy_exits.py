@@ -17,6 +17,16 @@ SHADOW 2 — TYPE_III_NOTSTRETCHED (reports/FRENZY_EXIT_SELECTOR_2026-10-05.md, 
   the shadow exit, on which the FRENZY state is ON (services.frenzy.frenzy_walk on the 1500-bar window) and the bar is red / flat; entered at
   the next minute's open, EMA50 shadow exit. BAR (read at N ≥ 60 re-entry #1 fills on ≥ 20 days): re-entry mean > 0 ∧ day-block CI low > 0 ∧
   mean > 0 without the top 5 and the top 10 ∧ no pair > 35 % of the gain ∧ both halves > 0. Otherwise retired; never re-fit the +5.0 %.
+TRACKER 4 — WIDE_CHOPPY_OBS (DECISION_LOG 215, shipped OBSERVE-ONLY): every WIDE first entry from SOFT_FROM tagged by the engine's own stamp
+  entry_frenzy_above_share (% of the episode's 5m closes at / above the spike VWAP at the signal) ≤ 67.8 = "would have been blocked". BAR:
+  at ≥ 15 would-block fills → ARM REVIEW if their mean < 0 ∧ day CI high < 0 ∧ WR < 52 %; RETIRE if their mean ≥ 0; at ≥ 30 without an
+  arm verdict → RETIRE. Frozen at 67.8, never re-fit (re-validation of the study on the engine's fresh bars pending).
+TRACKER 3 — WIDE_BTC_SOFT (reports/FRENZY_REGIME_2026-10-05.md, frozen): every WIDE first entry tagged by BTC's RSI(12) on CLOSED 5m bars at
+  the signal bar (ta.RSIIndicator(close, 12) — the study's ruler, NOT the bot's entry_btc_rsi stamp) ≤ 45 = "soft"; BTC 5m EMA20 slope shown
+  alongside. Year: soft +1.00 / +0.64 %/day (Jan–Apr / May–Sep) vs not soft +0.09 / −0.34 — at the luck level (p 0.11), not a filter.
+  BAR (review candidate only): ≥ 40 fills on ≥ 15 days in EACH state ∧ soft mean of day means > 0 ∧ day-block 95 % CI of the gap
+  (soft − not soft) excludes 0 ∧ the not-soft cohort meets the expectancy bar (WR < 51.7 % breakeven ∧ day CI high < 0). RETIRE if the gap CI
+  still includes 0 at ≥ 60 fills per state. Never armed from this tracker.
 Rows are stored in reports/SCOUT_FRENZY_EXITS.csv (keyed opened_at + pair) so fills survive their export leaving ~/Downloads; a row is FINAL
 once its 12 h (and the re-entry's) have passed. 1m bars are coarser than the year studies' ticks (stated on the table).
 """
@@ -43,7 +53,11 @@ MIN, BAR, H = 60_000, 300_000, 3_600_000
 FEE, CAP_MIN, NOTSTRETCHED_MAX, REENTRY_WAIT_MIN = 0.09, 720, 5.0, 15
 ATRE_N, ATRE_DAYS, NS_N, NS_DAYS, PAIR_MAX = 60, 30, 60, 20, 35.0
 EXITS = ["LOCK2", "LOCK3", "EMA20", "EMA50", "FIX3"]
-VER = 2   # row schema / rules version: rows priced by an older version are recomputed (review)
+VER = 4   # row schema / rules version: rows priced by an older version are recomputed (review) · 3 = + BTC RSI(12) · 4 = + above_share
+SOFT_RSI, SOFT_N, SOFT_DAYS, SOFT_RETIRE_N = 45.0, 40, 15, 60
+SOFT_FROM = "2026-10-06T00:00:00"   # the trackers' cohort floor: WIDE fills opened from their registration (215 / 216)
+CHOPPY_MAX, CHOPPY_N, CHOPPY_RETIRE_N = 67.8, 15, 30   # 🌀 215 observe-only: the frozen choppy-pump candidate on live WIDE fills
+_BTC5 = {}   # per-run cache: BTC 5m klines by window end
 
 
 # ─────────────────────────── pure exit walkers (selftest) ───────────────────────────
@@ -132,7 +146,8 @@ def _kl(sym, tf, start, end):
 
 def _fills():
     fr = []
-    cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "entry_price", "pnl_percentage", "entry_atr_pct", "entry_frenzy_vs_vwap_pct")
+    cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "entry_price", "pnl_percentage", "entry_atr_pct", "entry_frenzy_vs_vwap_pct",
+            "entry_frenzy_above_share")
     for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols)
@@ -147,6 +162,23 @@ def _fills():
     o = o.drop_duplicates(["k", "pair", "direction"], keep="last")
     o = o[o.entry_strategy.astype(str).isin(["FRENZY_LONG", "FRENZY_WIDE"]) & (o.direction.astype(str) == "LONG")]
     return o
+
+
+def btc_soft_reading(t_in):
+    """(RSI(12), EMA20 slope %) of BTC on the CLOSED 5m bars up to the signal bar (the last bar closed at or before the entry). Wilder RSI as
+    ta.RSIIndicator (ewm alpha 1/12, adjust=False). None, None when unreadable."""
+    end = (int(t_in) // BAR) * BAR                     # bars with open < end are closed by the entry
+    if end not in _BTC5:
+        _BTC5[end] = [b for b in _kl("BTCUSDT", "5m", end - 400 * BAR, end) if b[0] + BAR <= end]
+    rows = _BTC5[end]
+    if len(rows) < 100 or rows[-1][0] != end - BAR:   # the SIGNAL bar itself must be there — never read the bar before it (review)
+        return None, None
+    c = pd.Series([r[4] for r in rows], dtype=float)
+    d = c.diff()
+    up = d.clip(lower=0).ewm(alpha=1 / 12, adjust=False).mean(); dn = (-d.clip(upper=0)).ewm(alpha=1 / 12, adjust=False).mean()
+    rsi = float((100 - 100 / (1 + up / dn)).iloc[-1]) if float(dn.iloc[-1]) > 0 else 100.0
+    e20 = c.ewm(span=20, adjust=False).mean()
+    return rsi, float((e20.iloc[-1] / e20.iloc[-2] - 1) * 100)
 
 
 def _cfg():
@@ -181,7 +213,8 @@ def _price(r, th, now_ms, first):
                closed=str(r.status).upper() == "CLOSED",
                actual=float(r.pnl_percentage) if pd.notna(r.pnl_percentage) and str(r.status).upper() == "CLOSED" else None,
                atr_entry=float(r.entry_atr_pct) if pd.notna(r.entry_atr_pct) else None,
-               vs_vwap=float(r.entry_frenzy_vs_vwap_pct) if pd.notna(r.entry_frenzy_vs_vwap_pct) else None)
+               vs_vwap=float(r.entry_frenzy_vs_vwap_pct) if pd.notna(r.entry_frenzy_vs_vwap_pct) else None,
+               above_share=float(r.entry_frenzy_above_share) if pd.notna(r.entry_frenzy_above_share) else None)
     fin = [out["closed"]]
     ema50_exit = None
     for kind in EXITS:
@@ -191,6 +224,9 @@ def _price(r, th, now_ms, first):
             ema50_exit = x                          # the re-entry search starts only from a REAL shadow exit (review)
     if first and out["sleeve"] == "LONG" and out["atr_entry"] is not None:
         p, x, how = walk(m1in, e, "ATRE", b5k, atr0=out["atr_entry"]); out["ATRE"] = p; fin.append(how != "open")
+    out["btc_rsi12"], out["btc_e20_slope"] = btc_soft_reading(t_in) if out["sleeve"] == "WIDE" else (None, None)
+    if out["sleeve"] == "WIDE" and out["btc_rsi12"] is None:
+        fin.append(False)                                 # a WIDE row without its BTC reading stays provisional → retried next run (review)
     out["re1"] = None; out["re1_at"] = None
     atr_max = float(getattr(th, "frenzy_max_atr_pct", 2.5) or 2.5)
     if first and out["vs_vwap"] is not None and out["vs_vwap"] <= NOTSTRETCHED_MAX and ema50_exit is not None:
@@ -279,9 +315,63 @@ def run(now_ms=None):
         ns = fin[fin["first"] & fin.re1.notna()]
         st, tx = bar_check(ns, "re1", NS_N, NS_DAYS)
         L += [f"**NOTSTRETCHED re-entry #1 bar:** {'📋 REVIEW DUE' if st == 'review' else ('❌ fails → retire' if st == 'retire' else '⏳ collecting')} ({tx})"]
+    if "above_share" in fin:
+        st, tx = choppy_check(fin[(fin.sleeve == "WIDE") & fin["first"] & fin.above_share.notna() & (fin.k.astype(str) >= SOFT_FROM)])
+        L += [f"**WIDE_CHOPPY_OBS (215, observe-only — the bot still takes these):** "
+              + {"arm_review": "📋 ARM REVIEW (would-block fills clearly losing)", "retire": "❌ retire the candidate", "collecting": "⏳ collecting"}.get(st, st) + f" ({tx})"]
+    if "btc_rsi12" in fin:
+        st, tx = soft_check(fin[(fin.sleeve == "WIDE") & fin["first"] & fin.btc_rsi12.notna() & (fin.k.astype(str) >= SOFT_FROM)])
+        L += [f"**WIDE_BTC_SOFT tracker (BTC 5m RSI(12) ≤ {SOFT_RSI:g} at the signal; WIDE first entries from {SOFT_FROM[:10]}):** "
+              + {"review": "📋 REVIEW CANDIDATE", "retire": "❌ gap unclear at ≥ 60 per state → retire", "collecting": "⏳ collecting"}.get(st, st) + f" ({tx})"]
     if err:
         L.append(f"_{err} fill(s) not priced this run (klines unavailable) — retried next run._")
     return L + [""]
+
+
+def choppy_check(w):
+    """215 observe-only bar on live WIDE first entries: would-block = stamped above_share ≤ 67.8 (LOCK2 = the live exit's result)."""
+    w = w[w.LOCK2.notna()]
+    wb, kp = w[w.above_share <= CHOPPY_MAX], w[w.above_share > CHOPPY_MAX]
+    mf = lambda g: f"{g.LOCK2.mean():+.2f} %" if len(g) else "–"
+    txt = f"would-block {len(wb)} fills / {wb.day.nunique()} d · {mf(wb)}  vs  kept {len(kp)} · {mf(kp)} (bar: {CHOPPY_N} would-block fills)"
+    if len(wb) < CHOPPY_N:
+        return "collecting", txt
+    ci = day_ci(wb.LOCK2.values, wb.day.values)
+    if wb.LOCK2.mean() < 0 and ci and ci[1] < 0 and (wb.LOCK2 > 0).mean() * 100 < 52:
+        return "arm_review", txt + f" · CI [{ci[0]:+.2f}, {ci[1]:+.2f}]"
+    if wb.LOCK2.mean() >= 0 or len(wb) >= CHOPPY_RETIRE_N:
+        return "retire", txt
+    return "collecting", txt
+
+
+def soft_check(w):
+    """the frozen WIDE_BTC_SOFT bar on WIDE first entries with a BTC RSI(12) reading (LOCK2 = the live exit's result)."""
+    soft = w.btc_rsi12 <= SOFT_RSI
+    a, b = w[soft], w[~soft]
+    na, nb, da, db_ = len(a), len(b), a.day.nunique(), b.day.nunique()
+    mf = lambda g: f"{g.LOCK2.mean():+.2f} %" if len(g) else "–"
+    txt = f"soft {na} fills / {da} d · {mf(a)}  vs  not soft {nb} / {db_} d · {mf(b)}"
+    if min(na, nb) < SOFT_N or min(da, db_) < SOFT_DAYS:
+        return "collecting", txt + f" (bar ≥ {SOFT_N} fills on ≥ {SOFT_DAYS} days per state)"
+    am, bm = a.groupby("day").LOCK2.mean(), b.groupby("day").LOCK2.mean()
+    days = np.array(sorted(set(am.index) | set(bm.index)))
+    rng = np.random.default_rng(7); gaps = []
+    for _ in range(3000):                       # JOINT day-block bootstrap: one draw of days serves both states (they share days — review)
+        dr = rng.choice(days, len(days))
+        ga, gb = am.reindex(dr).dropna(), bm.reindex(dr).dropna()
+        if len(ga) and len(gb):
+            gaps.append(ga.mean() - gb.mean())
+    lo, hi = np.percentile(gaps, [2.5, 97.5])
+    nci = day_ci(b.LOCK2.values, b.day.values)
+    ok = am.mean() > 0 and lo > 0 and (b.LOCK2 > 0).mean() * 100 < 51.7 and nci and nci[1] < 0
+    txt += f" · gap CI [{lo:+.2f}, {hi:+.2f}]"
+    if ok:
+        return "review", txt
+    if min(na, nb) >= SOFT_RETIRE_N and lo <= 0:   # gap unclear OR the wrong way (review) — at 60 per state either retires it
+        return "retire", txt
+    if min(na, nb) >= SOFT_RETIRE_N:
+        return "retire", txt + " · gap clear but the soft / not-soft expectancy legs failed"
+    return "collecting", txt
 
 
 def selftest():
@@ -317,6 +407,15 @@ def selftest():
     chk(walk(gap, 100, "LOCK2")[2] == "12 h cap", "the 12 h cap is clock time — a kline gap cannot stretch it")
     conc = pd.DataFrame(dict(day=[f"d{i}" for i in range(70)], pair=["A"] * 35 + [f"P{i}" for i in range(35)], v=[0.3] * 70))
     chk(bar_check(conc, "v", 60, 30)[0] == "retire", "one pair carrying half the net gain fails the 35 % pair bar")
+    cw = pd.DataFrame(dict(day=[f"d{i}" for i in range(40)], above_share=[50.0] * 20 + [90.0] * 20, LOCK2=[-1.0, -1.2, 0.4, -1.5] * 5 + [0.5] * 20))
+    chk(choppy_check(cw)[0] == "arm_review", "would-block fills clearly losing → arm review")
+    chk(choppy_check(cw.assign(LOCK2=0.3))[0] == "retire", "would-block fills not losing → retire")
+    chk(choppy_check(cw.tail(25))[0] == "collecting", "< 15 would-block fills → collecting")
+    w = pd.DataFrame(dict(day=[f"d{i % 30}" for i in range(100)], btc_rsi12=[40.0] * 50 + [60.0] * 50, LOCK2=[0.8] * 50 + [-0.6] * 50))
+    chk(soft_check(w)[0] == "review", "soft clearly better, not-soft clearly losing → review candidate")
+    chk(soft_check(w.head(60))[0] == "collecting", "< 40 fills in one state → collecting")
+    w2 = w.assign(LOCK2=[0.1, 0.1, -0.1, -0.1] * 25, btc_rsi12=[40.0, 60.0] * 50)   # both states the same mix → no gap
+    chk(soft_check(pd.concat([w2, w2.assign(day=w2.day + "b")]))[0] == "retire", "no gap at ≥ 60 per state → retire")
     print(f"selftest OK ({ok} checks)")
 
 

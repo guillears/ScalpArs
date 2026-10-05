@@ -5615,3 +5615,41 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   the next-minute open vs +19.4 at +0.2 % higher entry — the knife-edge the audit flagged. Review fixes before ship: shadows read FIRST entries only (earliest fill of sleeve / pair / UTC day; later fills marked ²); re-entry
   eligibility = the study's chain rules (FRENZY ON ∧ red ∧ ATR ≤ cap; WIDE fresh bar or ON ∧ red ∧ ATR > cap; live gvr gate NOT applied — stated); pair
   share on the NET total; 12 h cap in clock time; entry minute flattened to the fill; rows versioned (VER) and final only once CLOSED.
+- (215) 2026-10-05 🌀 **FRENZY_WIDE choppy-pump block — ARMED as a declared override** (operator "yes build the WIDE choppy-pump filter").
+  Rule: WIDE refuses a fresh setup when ≤ `frenzy_wide_above_share_min` = 67.8 % of the episode's 5m closes (spike bar → signal bar) held at /
+  above the spike-anchored VWAP (frenzy_walk 'above_share'; services.frenzy.frenzy_wide_choppy; fail-open on a missing reading; counter
+  FRENZY_WIDE_CHOPPY; stamp entry_frenzy_above_share on every FRENZY fill). Evidence (reports/FRENZY_LOSER_SEPARATOR_LEVERAGE_2026-10-05.md;
+  617 live-gated WIDE first entries, live lock, 12 s entry): blocked 124 · 40 % WR (breakeven 52 %) · −0.87 %/trade, day CI [−1.38, −0.34],
+  negative in all 9 months; kept 493 · +0.35 vs all +0.11; picked independently when fitting on either half; OUT-OF-SAMPLE (stitched)
+  −0.40 % with the day CI [−0.99, +0.23] → fails only the 95 % leg → declared override, threshold frozen, never re-fit. In-sample book at real
+  sizing (0.94 × at 4×): +40 % → +303 % (the separator study's OOS + slots estimate +136 %). Live check: none of the 4 live WIDE fills (82–95 %)
+  would have been blocked (ENJ FRENZY_LONG 10-03 at 22 % would be — not a WIDE trade). 🔒 REVERT (scout gate WIDE_CHOPPY in
+  scout_revert_gates): the first 15 refusals (one per pair-episode) re-priced as if WIDE had opened — the live FRENZY lock on 1m klines, entry at
+  the next minute's open — average ≥ 0 → set 0. Leverage: WIDE stays 0.2 — revisit 0.35 only if the revert gate holds AND the first 20
+  post-filter WIDE fills confirm ≈ +0.35 %/trade (filtered book at 0.35: +740 % in-sample but +11 % with a −0.25/trade haircut, DD −72 %).
+  Same session: FRENZY leverage stays 0.32 — May–Sep loses at every leverage (−3 % at 0.32 … −47 % at 1.0); FRENZY regime study running.
+  ⚠ AMENDED BEFORE SHIP (deep review): the study's fresh-ON bar LAGGED the engine's — frenzy_scalp_pattern_search(_v2).py moments
+  `run_ = (run_ + 1 if upm[k] else -1 if run_ > 0 else run_ - 1)` never resets a negative streak, so after m closes below the VWAP it needs
+  12 + m closes above (the engine needs 12). Only 254 of the 617 study WIDE signals are fresh_on in frenzy_walk at that bar; for 298 the
+  engine fired 1–35 bars EARLIER. On the 254 aligned bars the would-block cohort is 18 · 61 % · +0.185 vs kept +0.214 → NO separation. The
+  live above_share itself matches the study feature on the same bar (584/617 same anchor: median |Δ| 0, 0 cross 67.8). → SHIPPED
+  OBSERVE-ONLY: frenzy_wide_above_share_min = 0 in JSON (frozen candidate 67.8); the check moved into _frenzy_open AFTER slots / pair-day
+  cap / market volume (review: a counted block = a trade that would have opened); every FRENZY fill stamps entry_frenzy_above_share; scout
+  WIDE_CHOPPY_OBS tallies live WIDE first entries from 2026-10-06 (≤ 67.8 would-block vs kept; ARM REVIEW at ≥ 15 would-block fills with
+  mean < 0 ∧ day CI high < 0 ∧ WR < 52 %, RETIRE if mean ≥ 0 or no verdict by 30). The scout WIDE_CHOPPY revert gate stays dormant while the
+  threshold is 0. FOLLOW-UP (operator-approved): fix the moments streak bug, rebuild the FRENZY / WIDE year cohort at the engine's fresh_on
+  bars and re-validate today's FRENZY conclusions (edge per trade, lock exit, leverage, choppy filter at the frozen 67.8).
+- (216) 2026-10-05 🧭 **FRENZY leverage stays 0.32 — no "on" regime; WIDE_BTC_SOFT observe-only tracker** (operator: "after the regime analysis
+  decide over the FRENZY leverage"). reports/FRENZY_REGIME_2026-10-05.md: 0 of 34 day-unit regime splits (BTC trend all TFs, BTC returns,
+  off-30d-high, ADX/ATR/RSI, chop, BTC volume, breadth, top-50 > +10 %, dominance proxy, global volume, frenzy froth = flagged pairs /
+  signals per 24 h, weekday, hour) has the same state positive in both halves (shuffled-day null mean 1.52 → below luck). The Jan–Apr vs
+  May–Sep gap is partly luck (week-block p 0.155); the sharpest break is 1 July (Jan–Jun +0.75 %/day, Jul–Sep −0.66; search-corrected p
+  0.077); uniform degradation (134 / 159 entry cohorts, 52 / 65 regime states) driven by the stop rate 37 % → 47 % (59 % Jul–Aug) with spike
+  size, wins and frenzy counts unchanged → unmeasured cause (funding / OI / rotation untested) or variance; regime-sized books add only
+  leverage. Separator study (FRENZY_LOSER_SEPARATOR_LEVERAGE): no FRENZY winner-vs-loser separator; May–Sep loses at every leverage.
+  DECISION: FRENZY lev 0.32 unchanged. 🔒 Pre-registered step-up (refines 207): at the first 20 FRENZY_LONG lock-exit fills → 0.5 only if
+  mean ≥ +0.30 %/trade ∧ stop rate ≤ 45 %; otherwise stays 0.32. WIDE: lev 0.2 (operator) with the 215 filter. New observe-only tracker
+  WIDE_BTC_SOFT in scripts/scout_frenzy_exits.py: WIDE first entries tagged by BTC RSI(12) on closed 5m bars ≤ 45 at the signal (year: soft
+  +1.00 / +0.64 %/day vs not soft +0.09 / −0.34; at the luck level p 0.11; fails the filter bar: not-soft N 424 · 52.4 % vs 51.7 % breakeven ·
+  −0.07 %, day CI [−0.37, +0.22]); review candidate only at ≥ 40 fills on ≥ 15 days per state with soft day-mean > 0, gap CI excluding 0 and
+  the not-soft cohort meeting the expectancy bar; retire if the gap CI still spans 0 at ≥ 60 per state; never armed from the tracker.

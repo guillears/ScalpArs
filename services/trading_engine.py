@@ -23,7 +23,7 @@ from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, clo
 from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
-from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio
+from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
 
@@ -773,6 +773,13 @@ SURGE_NOT_A_TRIGGER = ("FOUND_LATE", "GVOL_LOW", "GVOL_UNREAD")   # ledger rows 
 _frenzy_flags: Dict[str, dict] = {}
 _frenzy_status: dict = {}
 _frenzy_norm_cache: Dict[str, tuple] = {}
+# ⚡ Oct-5 (DECISION_LOG 213): each followed pair's 1500-bar 5m window kept between passes — a pass fetches only the newest
+# FRENZY_KL_TAIL bars (tiny request) and rebuilds the window with services.frenzy.merge_klines; a full read when there is no cache,
+# when the two do not join, and every FRENZY_KL_FULL_EVERY bars per pair (staggered) — that full read is also compared with the
+# cached window (FRENZY_KL_MISMATCH log + _frenzy_status['kl_mismatch']). Same window, same decisions, seconds earlier.
+_frenzy_kl_cache: Dict[str, dict] = {}
+FRENZY_KL_TAIL = 5
+FRENZY_KL_FULL_EVERY = 12
 FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE")   # 🔥 Oct-3: both run the FRENZY exit, hold cap and urgent-close path
 FRENZY_ENTRY_MAX_LATE_S = 120   # a long opens only within this many seconds of its signal bar's close (the test entered at the next open)
 # (9d733e2 pushed 15:09 UTC). The first trigger's 4 fills (14:50 UTC, EMA13 first-tick bug) are excluded — operator reset the batch.
@@ -7081,81 +7088,119 @@ class TradingEngine:
                 self._frenzy_gvol_start(allp, bar_open - 300_000)
             _sem = asyncio.Semaphore(6)
 
+            async def _fz_b5(_p):
+                """the pair's 1500-bar 5m window: incremental from the cache when it joins, else (and every FRENZY_KL_FULL_EVERY bars) a full read."""
+                _sym = by[_p]['symbol']; _c5 = _frenzy_kl_cache.get(_p)
+                _full_due = (_c5 is None) or ((bar_open // 300_000 + sum(map(ord, _p))) % FRENZY_KL_FULL_EVERY == 0)
+                if not _full_due:
+                    _m = merge_klines(_c5['rows'], await binance_service.get_ohlcv(_sym, '5m', FRENZY_KL_TAIL), _c5['keep'])
+                    if _m is not None:
+                        _frenzy_kl_cache[_p] = dict(_c5, rows=_m)
+                        return _m
+                _full = await binance_service.get_ohlcv(_sym, '5m', 1500)
+                if _full:
+                    if _c5 is not None:   # the safety check: would the cached window have matched this full read?
+                        try:
+                            _m = merge_klines(_c5['rows'], _full[-FRENZY_KL_TAIL:], 1500)
+                            if _m is None:   # no join (an outage / FRENZY switched off and on) = the designed fallback, not a disagreement
+                                _frenzy_status['kl_rejoin'] = int(_frenzy_status.get('kl_rejoin') or 0) + 1
+                            else:
+                                _fm = {int(r[0]): r for r in _full}
+                                _bad = sum(1 for r in _m if int(r[0]) in _fm and [float(x) for x in r[1:6]] != [float(x) for x in _fm[int(r[0])][1:6]])
+                                if len(_m) != len(_full):
+                                    _bad = max(_bad, 1)
+                                if _bad:
+                                    _frenzy_status['kl_mismatch'] = int(_frenzy_status.get('kl_mismatch') or 0) + 1
+                                    logger.warning(f"[FRENZY_KL_MISMATCH] {_p}: the cached 5m window differed from a full read on {_bad} bar(s) — replaced by the full read")
+                        except (TypeError, ValueError, IndexError) as _ke:
+                            logger.warning(f"[FRENZY_KL_MISMATCH] {_p}: comparison skipped ({str(_ke)[:60]})")
+                    _frenzy_kl_cache[_p] = dict(rows=[list(r) for r in _full], keep=1500)   # the requested limit: a young pair's window grows like a full read
+                return _full
+
             async def _fz_fetch(_p):
                 if _p in _judged:
                     return _p, None, None, None
                 try:
                     async with _sem:
-                        _b5 = await binance_service.get_ohlcv(by[_p]['symbol'], '5m', 1500)
+                        _b5 = await _fz_b5(_p)
                         _c = _frenzy_norm_cache.get(_p)
                         _h1 = None if (_c and now_ms - _c[0] <= _c[2]) else await binance_service.get_ohlcv(by[_p]['symbol'], '1h', 744)
                     return _p, _b5, _h1, None
                 except Exception as _e:
                     return _p, None, None, _e
-            _got = {r[0]: r for r in await asyncio.gather(*[_fz_fetch(_p) for _p in names])}
             seen = set(); n_bad = 0; n_new_breaks = 0
-            for pair in names:
-                try:
-                    if pair in _judged:   # already read on this bar (a retry pass)
-                        seen.add(pair)
-                        continue
-                    self._journal_pair = pair; self._journal_ctx = None   # 📓 journal lines name THIS pair, not the previous scan's last one
-                    _, b5, _h1, _ferr = _got[pair]
-                    if _ferr is not None:
-                        raise _ferr
-                    closed = [r for r in (b5 or []) if r and len(r) >= 6 and int(r[0]) + 300_000 <= now_ms]
-                    if len(closed) < 300 or int(closed[-1][0]) != bar_open - 300_000:
-                        raise ValueError("5m window missing or not up to the last closed bar")
-                    _nc = _frenzy_norm_cache.get(pair)
-                    if not _nc or now_ms - _nc[0] > _nc[2]:
-                        if not _h1:
-                            raise ValueError("1h window missing")
-                        # refreshed every 6–8 h, staggered per pair so the whole shortlist never re-reads its 1h window on one bar
-                        _nc = (now_ms, normal_hour_usd(_h1, int(closed[-1][0])), (360 + sum(map(ord, pair)) % 120) * 60_000)
-                        _frenzy_norm_cache[pair] = _nc
-                    ep = frenzy_walk(closed, _nc[1], th) if _nc[1] else None
-                    seen.add(pair); _judged.add(pair)   # read successfully (flagged or not)
-                    if not frenzy_flagged(ep, th):
-                        _frenzy_flags.pop(pair, None)
-                        continue
-                    atr = wilder_atr_pct(closed[-300:]); vol24 = by[pair].get('volume_24h')
-                    ready, code, text = frenzy_long_status(ep, atr, vol24, th)
+            # ⚡ Oct-5 (DECISION_LOG 213): judge each pair the moment ITS klines arrive (was: after every pair's read) — a setup that just turned
+            # ON no longer waits for the rest of the shortlist. Judging stays sequential (one db session); only the reads overlap.
+            _fz_tasks = [asyncio.create_task(_fz_fetch(_p)) for _p in names]
+            try:
+                for _fut in asyncio.as_completed(_fz_tasks):
+                    _rec = await _fut
+                    pair = _rec[0]
                     try:
-                        ind = calculate_indicators(b5[-300:], pair_volume_bars=getattr(th, 'pair_volume_lookback_bars', 20),
-                                                   global_volume_bars=getattr(th, 'global_volume_lookback_bars', 48)) or {}
-                    except Exception:
-                        ind = {}
-                    _prev = _frenzy_flags.get(pair) or {}
-                    flag = dict(ep, pair=pair, atr_pct=atr, volume_24h=vol24, change_24h=by[pair].get('change_24h'), range_24h=by[pair].get('range_24h'), live_price=by[pair].get('price'),
-                                ready=ready, code=code, text=text, updated_ms=now_ms, misses=0, bar=bar_open,
-                                last_fire=_prev.get('last_fire') if _prev.get('spike_ts') == ep['spike_ts'] else None,
-                                di_spread=(frenzy_di_spread(closed[-300:]) if (ready or code in FRENZY_WIDE_CODES) else None),   # 🔬 observe-only entry stamp (DECISION_LOG 187)
-                                adx_delta=(frenzy_adx_delta(closed[-300:]) if (ready or code in FRENZY_WIDE_CODES) else None),   # 🔬 Oct-3 observe-only (DECISION_LOG 193)
-                                vol_trend=(frenzy_vol_trend(closed) if (ready or code in FRENZY_WIDE_CODES) else None),
-                                **{k: ind.get(k) for k in ('ema5', 'ema8', 'ema13', 'ema20', 'rsi', 'adx')})
-                    _frenzy_flags[pair] = flag
-                    if _obs:
-                        for _line in frenzy_breaks(closed):
-                            if await self._frenzy_record_break(pair, _line, closed[-1], flag):
-                                n_new_breaks += 1
-                    if ep.get('fresh_on'):
-                        if ready:
-                            if _on:
-                                await self._frenzy_open(db, flag, ind, bar_open)
-                        else:
-                            if _on:
-                                self._record_filter_block(code, "LONG")
-                                flag['last_fire'] = f"{datetime.utcfromtimestamp(bar_open / 1000):%m-%d %H:%M} refused: {text}"
-                                logger.info(f"[FRENZY_LONG] {pair}: setup turned ON but refused — {text}")
-                            if frenzy_wide_ready(ep, code, th, atr):   # 🔥🌐 Oct-3: FRENZY refused ONLY for ATR / a green candle → FRENZY-WIDE takes it
-                                await self._frenzy_open(db, flag, ind, bar_open, wide=True)
-                except Exception as _fe:
-                    n_bad += 1
-                    logger.warning(f"[FRENZY] {pair}: not read this bar ({str(_fe)[:120]})")
-                    try:
-                        await db.rollback()
-                    except Exception:
-                        pass
+                        if pair in _judged:   # already read on this bar (a retry pass)
+                            seen.add(pair)
+                            continue
+                        self._journal_pair = pair; self._journal_ctx = None   # 📓 journal lines name THIS pair, not the previous scan's last one
+                        _, b5, _h1, _ferr = _rec
+                        if _ferr is not None:
+                            raise _ferr
+                        closed = [r for r in (b5 or []) if r and len(r) >= 6 and int(r[0]) + 300_000 <= now_ms]
+                        if len(closed) < 300 or int(closed[-1][0]) != bar_open - 300_000:
+                            raise ValueError("5m window missing or not up to the last closed bar")
+                        _nc = _frenzy_norm_cache.get(pair)
+                        if not _nc or now_ms - _nc[0] > _nc[2]:
+                            if not _h1:
+                                raise ValueError("1h window missing")
+                            # refreshed every 6–8 h, staggered per pair so the whole shortlist never re-reads its 1h window on one bar
+                            _nc = (now_ms, normal_hour_usd(_h1, int(closed[-1][0])), (360 + sum(map(ord, pair)) % 120) * 60_000)
+                            _frenzy_norm_cache[pair] = _nc
+                        ep = frenzy_walk(closed, _nc[1], th) if _nc[1] else None
+                        seen.add(pair); _judged.add(pair)   # read successfully (flagged or not)
+                        if not frenzy_flagged(ep, th):
+                            _frenzy_flags.pop(pair, None)
+                            continue
+                        atr = wilder_atr_pct(closed[-300:]); vol24 = by[pair].get('volume_24h')
+                        ready, code, text = frenzy_long_status(ep, atr, vol24, th)
+                        try:
+                            ind = calculate_indicators(b5[-300:], pair_volume_bars=getattr(th, 'pair_volume_lookback_bars', 20),
+                                                       global_volume_bars=getattr(th, 'global_volume_lookback_bars', 48)) or {}
+                        except Exception:
+                            ind = {}
+                        _prev = _frenzy_flags.get(pair) or {}
+                        flag = dict(ep, pair=pair, atr_pct=atr, volume_24h=vol24, change_24h=by[pair].get('change_24h'), range_24h=by[pair].get('range_24h'), live_price=by[pair].get('price'),
+                                    ready=ready, code=code, text=text, updated_ms=now_ms, misses=0, bar=bar_open,
+                                    last_fire=_prev.get('last_fire') if _prev.get('spike_ts') == ep['spike_ts'] else None,
+                                    di_spread=(frenzy_di_spread(closed[-300:]) if (ready or code in FRENZY_WIDE_CODES) else None),   # 🔬 observe-only entry stamp (DECISION_LOG 187)
+                                    adx_delta=(frenzy_adx_delta(closed[-300:]) if (ready or code in FRENZY_WIDE_CODES) else None),   # 🔬 Oct-3 observe-only (DECISION_LOG 193)
+                                    vol_trend=(frenzy_vol_trend(closed) if (ready or code in FRENZY_WIDE_CODES) else None),
+                                    **{k: ind.get(k) for k in ('ema5', 'ema8', 'ema13', 'ema20', 'rsi', 'adx')})
+                        _frenzy_flags[pair] = flag
+                        if _obs:
+                            for _line in frenzy_breaks(closed):
+                                if await self._frenzy_record_break(pair, _line, closed[-1], flag):
+                                    n_new_breaks += 1
+                        if ep.get('fresh_on'):
+                            if ready:
+                                if _on:
+                                    await self._frenzy_open(db, flag, ind, bar_open)
+                            else:
+                                if _on:
+                                    self._record_filter_block(code, "LONG")
+                                    flag['last_fire'] = f"{datetime.utcfromtimestamp(bar_open / 1000):%m-%d %H:%M} refused: {text}"
+                                    logger.info(f"[FRENZY_LONG] {pair}: setup turned ON but refused — {text}")
+                                if frenzy_wide_ready(ep, code, th, atr):   # 🔥🌐 Oct-3: FRENZY refused ONLY for ATR / a green candle → FRENZY-WIDE takes it
+                                    await self._frenzy_open(db, flag, ind, bar_open, wide=True)
+                    except Exception as _fe:
+                        n_bad += 1
+                        logger.warning(f"[FRENZY] {pair}: not read this bar ({str(_fe)[:120]})")
+                        try:
+                            await db.rollback()
+                        except Exception:
+                            pass
+            finally:
+                for _t in _fz_tasks:   # a cancelled / failed pass never leaves kline reads running
+                    if not _t.done():
+                        _t.cancel()
             for k in list(_frenzy_flags):   # a flagged pair that could not be read keeps its flag for 3 BARS (not passes), then drops
                 if k not in seen:
                     if _frenzy_flags[k].get('miss_bar') != bar_open:
@@ -7167,6 +7212,8 @@ class TradingEngine:
             await self._frenzy_persist_flags()
             for k in [k for k, v in _frenzy_norm_cache.items() if now_ms - v[0] > 24 * 3600_000]:
                 _frenzy_norm_cache.pop(k, None)
+            for k in [k for k in _frenzy_kl_cache if k not in names]:   # ⚡ a pair that left the shortlist re-reads in full if it returns
+                _frenzy_kl_cache.pop(k, None)
             if n_bad and _frenzy_status['passes'] < 3:
                 _frenzy_status['bar'] = None   # some pairs could not be read: one more pass on the next scan (pairs already judged are skipped)
             _frenzy_status.update(checked_at=now_ms, shortlisted=len(names), unreadable=n_bad, flagged=len(_frenzy_flags), error=None,

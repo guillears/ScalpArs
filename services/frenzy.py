@@ -305,3 +305,27 @@ def frenzy_breaks(bars) -> List[int]:
     except (TypeError, ValueError, IndexError):
         return []
     return out
+
+
+def merge_klines(cached, fresh, keep: int):
+    """⚡ Oct-5 (DECISION_LOG 213): the window a full `keep`-bar fetch would return, rebuilt from the previous pass's window (`cached`) and a
+    short fetch of the newest bars (`fresh`, the exchange's own rows — the forming bar included). Fresh rows replace cached rows from their
+    first open on (so the previous pass's forming bar and any late revision are overwritten), then the last `keep` rows are kept.
+    None (→ the caller does a full fetch) when the two do not join: empty input, bad rows, fresh not ascending / not contiguous, or fresh
+    rows that do not cover the cache's last bar (that bar was still forming when it was cached). Pure; never raises."""
+    try:
+        if not cached or not fresh or keep <= 0:
+            return None
+        fo = [int(r[0]) for r in fresh]
+        if any(b - a != BAR_MS for a, b in zip(fo, fo[1:])):
+            return None
+        last_c = int(cached[-1][0])
+        if fo[0] > last_c or fo[-1] < last_c:   # the fresh rows must COVER the cache's last row — it was the previous pass's forming bar
+            return None                           # (review: a tail starting right after it would keep that half-built bar)
+        head = [r for r in cached if int(r[0]) < fo[0]]
+        if head and fo[0] - int(head[-1][0]) != BAR_MS:
+            return None
+        out = head + [list(r) for r in fresh]
+        return out[-keep:]
+    except (TypeError, ValueError, IndexError):
+        return None

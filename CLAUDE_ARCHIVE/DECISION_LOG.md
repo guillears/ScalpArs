@@ -5842,3 +5842,20 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   signals that lose (−0.14 %/trade). Fails the pre-registered bar at both speeds → momentum scan cadence stays. Momentum shorts same pattern.
   Side observation (confounded): FRENZY matched fills +0.109 %/trade when its own API latency fell (entry 14 → 11 s after the close) →
   queued as a separate FRENZY entry-latency study (CURRENT_STATE pending line); operator "apunta el estudio de latencia de FRENZY".
+- (238) 2026-10-06 ⚡🛟 **FRENZY research day close-out + scout ON_SCALP / HYBRID_EXIT observe lines** (operator: "agreguemos a scout",
+  "añádelo al scout"). Studies, all on the engine cohort, pre-registered, unreviewed (negative verdicts, nothing armed):
+  · FRENZY_ON_SCALP_STUDY — "enter immediately on ON, X % is guaranteed, maybe no SL": 1,443 ON bars; +0.3 % within 24 h on 98 %, +1 % within
+    60 min on 81 %, but the misses sink (−4.8 % avg at 60 min, 54 % touch −10 % within 12 h); 0 / 1,205 cells pass (best adj. p 0.63); every
+    no-stop book ruin-prone (P(DD ≥ 50 %) 80–100 %). Strong flag (ADX↑ ∧ +DI > −DI) picks lock runners (+0.67 vs +0.02), not pops.
+  · FRENZY_EXIT_LOCK_VS_BULLRUN — after ORCA 10-06 18:05 (first live strong fill, −3.01, peaked +1.38): lock +0.387 beats BULLRUN (+0.01),
+    BULLRUN −3 stop (+0.13) and the hybrid +1 → +0.2 / lock from +3 (+0.20) on every split (adj. p 1.00); hybrid saves 45 ORCA-type fills
+    (+144) but cuts 59 lock winners (−182); it only wins in months the lock loses. Keep the lock (205).
+  · FRENZY_REGIME_REVIEW — first engine-cohort regime test of FRENZY_LONG: 0 / 35 splits pass (family p 1.00); pre-registered "bearish day"
+    (BTC 1d < 0 ∧ trend gap < 0) −0.06 vs +0.53, gap CI [−1.64, +0.46], fails confidence; the rolling-24 h reading flips sign → confound.
+    ON-scalp tail ruinous in every regime (P(−10 % in 12 h) 48–59 %). ORCA's "HEALTHY_BULL" stamp is not a bug: the classifier reads the 5m
+    EMA20 slope over 15 min (+0.0201 vs the 0.02 CHOPPY_FLAT edge) while BTC fell 1.1 % over 3 h.
+  Scout (scripts/scout_frenzy_exits.py, trackers 10–11): ON_SCALP per pair-episode (deliberate deviation from the study's per-bar line:
+  same-episode bars are correlated; year reference re-derived per episode 502 · +0.105 [−0.33, +0.51]) with the study's full frozen bar incl.
+  P(+3 within 2 h) ≥ 70 %, plus pre- and post-entry first-seconds flow as description (liquidations not available without a live recorder);
+  HYBRID_EXIT re-open bar as in CURRENT_STATE. Dual review applied (no truncated flows stored, streamed archive parsing, finality independent
+  of flow, stuck-row fixes, 418/429 handling, consistent live-only policy, universe tags).

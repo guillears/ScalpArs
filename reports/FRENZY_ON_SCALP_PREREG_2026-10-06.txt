@@ -1,0 +1,62 @@
+FRENZY ON-SCALP — PRE-REGISTRATION (frozen 2026-10-06 18:10 UTC, before ANY outcome of this study was computed)
+Copied verbatim into reports/FRENZY_ON_SCALP_STUDY_2026-10-06.md.
+
+HYPOTHESIS (operator): at the fresh FRENZY ON bar, buy immediately regardless of FRENZY's other filters; price "goes X % above in a short
+period, guaranteed"; take X with a fixed target or a trail, maybe with no stop.
+
+SIGNALS
+- Universe U = reports/FRENZY_ENGINE_COHORT_2026-10-05.csv (engine frenzy_walk fresh-ON bars, blacklists removed, Jan 10 -> Sep 27 2026)
+  inner-joined with reports/FRENZY_WIDE_OVERNIGHT_COHORT_2026-10-06.csv on (pair, t_signal_close), live_elig == True (tradeable universe).
+  Every refusal code kept: FRENZY_READY, FRENZY_GREEN_BAR, FRENZY_ATR_HIGH; gvol-blocked (gvol_live_U2 >= 1 or NaN); dislocation (> 1 %).
+  Not in U (blind spot): FRENZY_VOL24_LOW fresh bars (vol24 < $20M, never in the live sleeve universe), blacklisted pairs.
+- Live-action label: FRENZY_TAKEN = READY & gvol<1 & |disloc|<=1 % ; WIDE_TAKEN = GREEN_BAR & above_streak>12 & gvol<1 & |disloc|<=1 % ;
+  everything else = refused live (reason precedence: gvol, disloc, ATR_HIGH, GREEN_BAR hold-green (streak<=12)).
+- Hours-since-spike buckets: <3, 3-6, 6-12, 12-24, 24-48, >=48 h.
+
+SUBSETS (coordinator/operator addition, declared before outcomes)
+- adx_delta = services.frenzy.frenzy_adx_delta(closed[-300:]), di_spread = services.frenzy.frenzy_di_spread(closed[-300:]), closed = the
+  5m bars [open_ms,o,h,l,c,v] of reports/backtest_cache/k5m_full up to and INCLUDING the ON bar (the engine's closed list at that scan).
+- S0 all ON · S1 adx_delta>0 · S2 di_spread>0 · S3 = S1 & S2 (the live strong comparison, services/trading_engine.py 7737; PRIMARY) ·
+  S4 = not S1 & not S2 (control flank). S3R = S3 & FRENZY_READY = exactly the live 'frenzy_strong' population (reported, not in the family).
+- Screen only: adx_delta tercile x di_spread tercile 3x3 (terciles over U). Non-monotone pattern = confound, not a filter.
+- Parity: recompute both values for the live FRENZY/WIDE fills that carry stamps (B17, Oct 3-6) from public 5m klines; S3 vs live lev 10x/6x.
+
+ENTRY / COSTS / DATA
+- Entry e = first print >= t_signal_close + 12 s (NO dislocation guard; dislocation reported). Path = every later print to entry + 24 h.
+- Ticks (ticks_q, else ticks) when every UTC day of [close-2 min, close+12 s+24 h] is on disk; else public 1m klines (fapi REST), prints
+  L->H->C per bar (pessimistic), entry = the signal-bar close, levels filled at min(level, previous print) on gaps. src column; flagged.
+- net % = (price/e - 1) x 100 - 0.19 (fees 0.09 round trip + slippage 0.10). All levels X / Y / Z below are on this NET scale.
+- Engine parity: the house LOCK2 (frenzy_exit_selector_reprice.all_exits at the same entry) must equal the cohort's LOCK2 column on the
+  non-dislocated tick rows.
+
+PART 1 (descriptive, S0..S4, by refusal code, by hours bucket)
+- MFE / MAE (net) within 5/15/30/60/120/240 min, 12 h. P(MFE>=X within T) for X in {0.3,0.5,1,1.5,2,3,5}, T in {5,15,30,60,120,240 min,12 h,24 h}.
+- P(MFE>=X before MAE<=-Y) for Y in {none,3,5,8} (horizon 24 h; 'none' = reached within 24 h).
+- Non-hitters of X within T: net at T, at 12 h, at 24 h: mean, median, 5 % / 1 % worst, max loss.
+- Hit rates with day-block 95 % CI (UTC signal day = the block, 4000 resamples). 'Guaranteed' = day-CI low >= 95 %.
+
+PART 2 EXIT GRID (frozen)
+- (a/b) TP: X in {0.5,1,1.5,2,3} x T in {15,30,60,120 min} x Y in {none,3,5}: exit at the first of net>=X (fill = that print; 1m: X),
+  net<=-Y (fill = that print; 1m: min(-Y, previous print)), first print >= entry+T (fill = that print). 60 designs.
+- (c) TRAIL: X x Z in {0.3,0.5,1} x T x Y: before arming SL -Y (or none) and time stop T if not armed by T; armed once the prior-print peak
+  >= X; after arming exit at the first print with net <= prior peak - Z (no floor); 12 h cap from entry. 180 designs.
+- (d) LOCK2 = live FRENZY lock (house all_exits, -3 until +3, then max(+2, peak-2), 12 h cap), reference.
+- Family for the selection adjustment = 5 subsets (S0..S4) x 241 exits = 1205 cells. Statistic = mean net % per trade.
+- Per cell: N, days, WR, mean, median, day-block 95 % CI, worst, CVaR 5 %, per month, LOMO (min/max mean leaving one month out), halves
+  Jan-Apr / May-Sep, drop top-5 / top-10, top-pair share of gain.
+- Selection-adjusted p: (i) max-t over the family, joint day-block bootstrap of centred cell means (same statistic both sides, 2000);
+  (ii) timing null: each signal's entry moved to a uniform random moment in [close+30 min, close+12 h] on the same pair, all cells priced on
+  a 1-second L/H/C compression of the same ticks for BOTH observed and null (tick rows only), 100 draws; adjusted p = share of draws whose
+  best family mean >= observed best family mean (1-s pricer).
+- OOS: pick the best cell (N>=20) on Jan-Apr, read it on May-Sep, and vice versa; also within S3 alone.
+- Book: $3k, fixed fraction of equity at (lev 0.2: notional 0.94 x equity, liquidation cap -23.75 % price) and (lev 0.32: 1.21 x equity, cap
+  -15.83 % price) - the house core.book factors; slots: READY signals -> FRENZY lane 2, other codes -> WIDE lane 2 (2+2), pair flat,
+  pair-day cap 3, global cap max_open_positions 4 (stress) and 10 (= max_open_positions_hard, redeploy on). End $, max DD, months.
+  Overlap with today's FRENZY_LONG / WIDE taken fills counted. Ruin: day-block bootstrap of the book's daily return sequence (5000 paths of
+  the same length): P(max DD >= 50 %), worst-5 % DD, and the worst real sequences.
+
+VERDICT GATE (a cell is a candidate only if ALL): N>=30, >=15 days, mean>0 with day-CI low>0, both halves>0, drop-top-10>0, LOMO min>0,
+top pair <50 % of gain, max-t adjusted p<=0.05 AND timing-null adjusted p<=0.10, OOS read>0 both directions, P(book DD>=50 %) <= 5 % at
+lev 0.32. Pass -> OBSERVE-ONLY scout line (frozen rule) then probe size; mean>0 both halves but fails CI/p -> pre-registered observe
+candidate; else refuted. Any projected delta carries the 30-50 % haircut.
+ANECDOTE (out of sample, not in any statistic): GRIFFAINUSDT ON 2026-10-06 17:40 UTC, public klines, real frenzy_walk.

@@ -1,0 +1,46 @@
+FRENZY exit: live lock vs BULLRUN / break-even hybrids — PRE-REGISTRATION (frozen 2026-10-06, before any variant outcome on this cohort was computed)
+
+Trigger: live ORCAUSDT 2026-10-06 18:05:08 FRENZY_LONG strong (10x), peak +1.38 % net, stopped −3.01 % at 18:17:12 (−$212.57).
+Operator: "with the BULLRUN exit it wouldn't have lost."
+
+COHORT (engine bars, frozen)
+  C-FRENZY: wrev/cohort_plus.pkl (= reports/FRENZY_WIDE_OVERNIGHT_COHORT_2026-10-06.csv signals) → sleeve FRENZY ∧ priced (tick/1m/1m_csv)
+            ∧ U2 < 1.0 ∧ live_elig; sequenced by frenzy_engine_cohort_report.sequence on the V0 (LOCK2) exit times → 205 fills
+            (= FRENZY_LONG_LEVERAGE_TRADEABLE_2026-10-06 cohort; reproduced: 205, +0.387).
+  strong flag: services.frenzy frenzy_adx_delta > 0 ∧ frenzy_di_spread > 0 on closed[-300:] 5m bars (flev/strong.pkl, 115 of 205).
+  Splits: ALL (205) · STRONG (115) · NORMAL (90) · WIDE-HG (secondary): sleeve WIDE ∧ code FRENZY_GREEN_BAR ∧ above_streak > 12 ∧
+            priced ∧ U2 < 1 ∧ live_elig, sequenced alone (WIDE slots) → 125 signals before sequencing.
+  Per-trade comparisons use the V0-sequenced fill set for every variant (same trades). Books re-sequence per variant (exit times change slots).
+
+PRICING (unchanged cohort pricer frenzy_engine_cohort_price.prints → frenzy_exit_selector_reprice.prints_for)
+  entry = first print ≥ signal close + 12 s (1 % dislocation guard); real ticks, 1m fallback flagged (src); net = gross − 0.09 fees; levels on
+  net; line checked against the PRIOR-print peak; crossing-print fills (gap fill on 1m); −0.10 slippage on every exit (as the cohort's LOCK2);
+  12 h cap. Parity: V0 must equal the cohort's LOCK2 column.
+
+VARIANTS (frozen; pk = prior-print peak net %, atr = cohort signal-bar ATR % = entry ATR)
+  V0  live lock: line −3; pk ≥ 3 → max(+2, pk − 2).
+  V1  full BULLRUN stack exactly as services/trading_engine._bullrun_exit_for with trading_config.json (GREEN door):
+        SL = min(−0.7, max(−1.5·atr, −1.2))  [bullrun_base_sl_pct −0.7 widened by sl_atr_multiplier 1.5, floored at sl_atr_widen_floor_pct −1.2]
+        pk ≥ 1.0 → line = max(+0.2, pk − 2.0·atr, ladder floor(pk)); ladder 4:3.5 5:4.5 6:5.5 8:7 10:9 12:11 15:13.5 20:18 25:22.5 30:27.
+      V1b (sensitivity row, counted in the selection family): same with a flat −0.7 SL (what the operator quoted).
+  V2  V1 with SL −3 (before the +1 arm).
+  V3  HYBRID: −3; pk ≥ +1 → floor +0.2; pk ≥ +3 → max(+2, pk − 2).
+  V4  as V3 with the BE arm at +1.5.
+  V5  as V3 with the BE floor +0.5.
+
+READ-OUT per variant × split: N, mean %, WR, avg win / loss, Δ vs V0 with day-block bootstrap 95 % CI (2,000), halves (Jan–Apr / May–Sep),
+  per month, mean and Δ without top 5 / top 10; TWO-SIDED anatomy: SAVED = V0 < 0 ∧ variant ≥ 0; CUT = variant exited on its BE/early
+  floor (< V0's lock arm) while V0 ended ≥ +2 (lock win); Σ of each; Δ split on V0-stopped vs V0-not-stopped fills.
+  Books: $3,000 start, live sizing (FRENZY strong 0.5 → 10×, normal 0.32 → 6×, notional = 1.21·L/6 × equity; WIDE 0.2 → 4×, 0.94 × equity),
+  2 slots / sleeve, pair flat, 3 / pair / day, size at entry, compounding in exit order, loss capped at liquidation −(100/L)·0.95 %; max DD.
+  Selection-adjusted p: max-t over the family {V1, V1b, V2, V3, V4, V5} × {ALL, STRONG, NORMAL, WIDE-HG} (24 cells), null = joint per-day
+  sign flip of Δ (5,000 draws).
+
+DECISION BAR (frozen)
+  ARM proposal only if a variant on a split passes EVERY leg: Δ day-CI low > 0 ∧ both halves Δ > 0 ∧ Δ > 0 without its top 5 and top 10 Δ fills
+  ∧ ≥ 6 of 9 months Δ ≥ 0 ∧ SAVED Σ > |CUT Σ| ∧ selection-adjusted p < 0.05 ∧ book final ≥ V0 with max DD no worse than V0 + 5 pt
+  ∧ no pair > 50 % of the Δ gain. Then 40 % haircut + revert gate.
+  CANDIDATE (observe-only scout shadow, frozen bar): Δ mean > 0 ∧ both halves > 0 but fails CI or selection p.
+  Otherwise: keep the lock.
+ANECDOTES (not evidence): live ORCA 18:05 + every bot FRENZY_LONG / FRENZY_WIDE fill in B16/B17/B18 exports, priced from Binance aggTrades
+  at the real fill time and price (0 slippage, paper), each variant; V0 must reproduce the live outcome.

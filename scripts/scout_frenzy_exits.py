@@ -83,6 +83,41 @@ TRACKER 9 — VWAP_STOP (2026-10-06, observe-only; reports/FRENZY_STAIRCASE_STUD
   rows re-price from their stored fields; a stopped fill without a VWAP stamp / live P&L is stored once as excluded. FROZEN gate on the first
   20 stopped fills from GC_FROM: Δ sum > 0 ∧ saved > deeper ∧ Δ sum > 0 on every sleeve with ≥ 5 of the 20 (≥ 1 such sleeve, else collecting)
   ∧ no fill > 50 % of the gain → "candidate for a pre-registered study", else "close the idea". Rows: reports/SCOUT_FRENZY_VWAP_STOP.csv.
+TRACKER 10 — ON_SCALP (2026-10-06, observe-only; the ONE line reports/FRENZY_ON_SCALP_STUDY_2026-10-06.md allows, PREREG
+  reports/FRENZY_ON_SCALP_PREREG_2026-10-06.txt; the study verdict was "not a strategy, expected ≈ 0" — this only watches it forward).
+  COUNTING UNIT = one per pair-EPISODE — a deliberate deviation from the study's per-BAR line (893 bars, +0.136 %/bar): same-episode bars are
+  correlated draws of one pump; ONS_YEAR is re-derived per episode from the study's signal file on the same pricing (502 episodes, +0.105):
+  every FRESH FRENZY ON bar, whatever the live refusal code (READY fills, GREEN_BAR, ATR_HIGH, gvol-blocked, VOL24_LOW, …), found from the
+  journal's FRENZY lines AND the orders exports' FRENZY fills (a READY fill leaves no refusal line), each replayed with the engine's own
+  functions (frenzy_walk on the last 1,499 closed 5m bars → frenzy_flagged → fresh_on on that bar; a catch-up line / fill is mapped to its
+  ON bar through on_bar_ts). STRONG = frenzy_adx_delta(closed[-300:]) > 0 ∧ frenzy_di_spread(closed[-300:]) > 0 at the ON bar, exactly as
+  _frenzy_open sizes strong (the study's S3). Pricing (frozen, the study's S3 TP3/T120/noSL): entry = the first trade print ≥ the ON close
+  + 12 s, 0.09 % fees + 0.10 % slippage, out at the first print ≥ +3 % net (fill at that print), else at the first print ≥ entry + 2 h; NO
+  stop. Ticks once the archive is out, else 1m pseudo prints open → low → high → close (the low before the high = conservative; the TP
+  fills at exactly +3; ᵖ provisional). One per pair-episode (spikes ≤ 30 min apart merged), counted from GC_FROM; earlier = reference.
+  FROZEN bar (the study's, every leg): N ≥ 30 fires on ≥ 15 days ∧ mean > 0 with day-block 95 % CI low > 0 ∧ P(+3 within 2 h) ≥ 70 % ∧
+  forward max drawdown < 50 % of a $3k book at 0.2 sizing (sequential fixed fraction, notional 0.94 × equity, liquidation at −23.75 % price
+  — the PREREG's book factors) → "candidate for a pre-registered probe study (no arming)", shown after the 30–50 % haircut. ADDITIONS
+  (labelled): retire at mean ≤ 0 by 30 / no verdict by 60. Bars outside the study's universe (FRENZY_VOL24_LOW, blacklisted / non-ASCII
+  pairs) are tagged and kept out of the bar. P&L finality alone decides a fire; the flow below fills in later.
+  NEW INFORMATION (description only, no gate), stored on every ON row — strong rows in reports/SCOUT_FRENZY_ON_SCALP.csv, the non-strong
+  ON bars as a control in reports/SCOUT_FRENZY_ON_SCALP_CONTROL.csv (same ruler): the PRE-ENTRY [close, +12 s) taker-buy share / $ volume /
+  move, and the POST-ENTRY (descriptive) first 60 s after the ON close from public aggTrades
+  (price, qty, isBuyerMaker; the tick cache keeps prices only, so: REST fapi/v1/aggTrades while the window is < 2 days old — the
+  endpoint refuses older windows — else the daily aggTrades archive, only the 60-s slice kept): taker-buy share of $ volume, agg / raw trade count, $ volume vs the pair's median 1m $ volume over the prior 24 h and vs
+  normal_hour_usd / 60, max drawdown / run-up vs the ON close, the +12 s print vs the close; and the journal BOOK snapshot (minute-level
+  ob_* columns: imbalance at 0.25 / 0.5 / 1 / 2 %, walls, spread) closest to the close within 60 s after it, flagged minute-level.
+  LIQUIDATIONS: NOT AVAILABLE — Binance publishes no public liquidation history (REST forceOrders returns only the caller's own account);
+  capturing them needs a live recorder (the engine subscribing to the <symbol>@forceOrder stream for FRENZY-ON pairs). Not built.
+TRACKER 11 — HYBRID_EXIT (2026-10-06, observe-only; V3 of reports/FRENZY_EXIT_LOCK_VS_BULLRUN_2026-10-06.md, PREREG
+  reports/FRENZY_EXIT_LOCK_VS_BULLRUN_PREREG_2026-10-06.txt; the report's verdict: keep the lock, Δ −0.18 on the year): HYB = −3 stop; once
+  the prior-print peak (net) reaches +1 the floor is +0.2; from a +3 peak the live lock max(+2, peak − 2) (the highest line wins); 12 h cap.
+  Priced from the ACTUAL entry of every exit-table fill: the HYB column = the table's 1m ruler (next to LOCK2); the bar reads HYB − LOCK2 on
+  the SAME prints (ticks once the archive is out, else 1m provisional), fees 0.09, no slippage on either side (the report charges 0.10 on
+  both exits, so the Δ is unchanged). Own store reports/SCOUT_FRENZY_HYBRID.csv (validated before save; the exit rows' VER untouched).
+  FROZEN re-open bar: ≥ 40 FRENZY_LONG fills opened from GC_FROM on ≥ 20 days ∧ Δ > +0.30 %/fill ∧ day-block 95 % CI low > 0 ∧ > 0 without
+  the top 5 → re-open (a study, never an arm); otherwise "lock holds". Strong / normal split (stamped ADX Δ > 0 ∧ DI > 0) and SAVED (HYB ≥ 0,
+  lock lost) / CUT (lock ≥ +2, HYB out at the +0.2 floor) counts shown.
 Rows are stored in reports/SCOUT_FRENZY_EXITS.csv (keyed opened_at + pair) so fills survive their export leaving ~/Downloads; a row is FINAL
 once its 12 h (and the re-entry's) have passed. 1m bars are coarser than the year studies' ticks (stated on the table).
 """
@@ -105,7 +140,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 from services.frenzy import (frenzy_walk, normal_hour_usd, frenzy_long_status, frenzy_flagged, frenzy_di_spread, frenzy_adx_delta,  # noqa: E402
-                             FRENZY_WIDE_CODES, frenzy_wide_choppy, frenzy_wide_hold_green_block)
+                             FRENZY_WIDE_CODES, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_vol24_at)
 from services.surge import wilder_atr_pct  # noqa: E402
 
 CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_EXITS.csv")
@@ -165,10 +200,13 @@ def walk(m1, e, kind, b5=None, atr0=None):
                 return 3.0, t + MIN, "take profit"
             continue
         armed = pk >= 3
-        line = (max(2.0, pk - trail) if kind.startswith("LOCK") else 2.0) if armed else -3.0
+        if kind == "HYB":                           # 🛟 V3: −3 · +0.2 floor from a +1 peak · the lock from +3 (hyb_line)
+            line = hyb_line(pk)
+        else:
+            line = (max(2.0, pk - trail) if kind.startswith("LOCK") else 2.0) if armed else -3.0
         lpx = e * (1 + (line + FEE) / 100)
         if l <= lpx:
-            return net(min(o, lpx)), t + MIN, ("floor / trail" if armed else "stop")
+            return net(min(o, lpx)), t + MIN, (_hyb_how(line) if kind == "HYB" else "floor / trail" if armed else "stop")
         pk = max(pk, net(h))
         if pk >= 3 and kind in ("EMA20", "EMA50", "ATRE") and (t + MIN) % BAR == 0:
             r = b5c.get(t + MIN - BAR)
@@ -282,7 +320,8 @@ def _kl(sym, tf, start, end):
 def _fills():
     fr = []
     cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "entry_price", "pnl_percentage", "entry_atr_pct", "entry_frenzy_vs_vwap_pct",
-            "entry_frenzy_above_share", "entry_frenzy_bar_ret_pct", "closed_at", "close_reason", "entry_frenzy_vwap", "entry_frenzy_spike_at")
+            "entry_frenzy_above_share", "entry_frenzy_bar_ret_pct", "closed_at", "close_reason", "entry_frenzy_vwap", "entry_frenzy_spike_at",
+            "entry_frenzy_adx_delta", "entry_frenzy_di_spread")
     for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols)
@@ -608,17 +647,19 @@ def run(now_ms=None):
          "LOCK2 = live exit · LOCK3 = 3-pt trail · EMA20/EMA50 = +2 floor then the first 5m close below the EMA · FIX3 = old fixed +3/−3 · "
          "ATR Δ30m = the 30-min ATR change at the signal (ATR_FAST_LOCK3 watch) · "
          "Trackers read FIRST entries only (² = a later fill of its pair-day). Actual = the exit live at the time (the fixed +3 TP shipped 10-04 19:23, the lock 10-05 ~16:00); "
-         "FIX3 fills at exactly ±3 (reference column). ᵖ = not final yet.", ""]
+         "FIX3 fills at exactly ±3 (reference column). HYB = the hybrid V3 (−3 · +0.2 floor from a +1 peak · the lock from +3; HYBRID_EXIT line below). "
+         "ᵖ = not final yet.", ""]
     if not len(allr):
         return L + ["No FRENZY / WIDE fill in the exports yet.", ""] + _extras(now_ms, th, F, J, allr)
+    hmap, hlines = _hyb_safe(now_ms, F, allr)   # 🛟 HYBRID_EXIT: its own store; the exit rows / VER are untouched
     show = allr.tail(15)
-    L += ["| Opened UTC | Pair | Sleeve | ATR | ATR Δ30m | vs avg | Actual | LOCK2 | LOCK3 | EMA20 | EMA50 | FIX3 |",
-          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    L += ["| Opened UTC | Pair | Sleeve | ATR | ATR Δ30m | vs avg | Actual | LOCK2 | HYB | LOCK3 | EMA20 | EMA50 | FIX3 |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     f = lambda v: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.2f}"
     for r in show.itertuples():
         fl = ("" if str(r.final) in ("True", "1", "1.0") else "ᵖ") + ("" if r.first else "²")
         L.append(f"| {str(r.k)[5:16].replace('T', ' ')}{fl} | {str(r.pair).replace('USDT', '')} | {r.sleeve} | {f(r.atr_entry)} | {f(getattr(r, 'atr_chg30', None))} | "
-                 f"{f(r.vs_vwap)} | {f(r.actual)} | {f(r.LOCK2)} | {f(r.LOCK3)} | {f(r.EMA20)} | {f(r.EMA50)} | {f(r.FIX3)} |")
+                 f"{f(r.vs_vwap)} | {f(r.actual)} | {f(r.LOCK2)} | {f(hmap.get((str(r.k), str(r.pair)), (None,))[0])} | {f(r.LOCK3)} | {f(r.EMA20)} | {f(r.EMA50)} | {f(r.FIX3)} |")
     fin = allr[allr.final.astype(str).isin(["True", "1", "1.0"])].copy()
     L += ["", "| Final fills | N | " + " | ".join(EXITS) + " |", "|---|---|" + "---|" * len(EXITS)]
     for nm, g in (("all", fin), ("FRENZY_LONG", fin[fin.sleeve == "LONG"]), ("WIDE", fin[fin.sleeve == "WIDE"])):
@@ -642,6 +683,7 @@ def run(now_ms=None):
             L += bycode_lines(fin[(fin.sleeve == "WIDE") & (fin.k.astype(str) >= GC_FROM)])
         except Exception as _bx:
             L += ["", f"_WIDE_BY_CODE unavailable this run ({str(_bx)[:120]})._"]
+    L += hlines
     if err:
         L.append(f"_{err} fill(s) not priced this run (klines unavailable) — retried next run._")
     return L + [""] + _extras(now_ms, th, F, J, allr)
@@ -1080,7 +1122,8 @@ STALE_D = 7                                     # a row whose ticks are still no
 X_DL, X_TIME_S = 2, 90                          # per-tracker tick downloads / seconds per run (the GREEN_CLOCK budget is separate)
 # WORST-CASE WALL TIME per scout run (trackers 7 – 9, after the exit table): each tracker checks its deadline before every item, a tick download
 # is cut at the deadline, and an item already in flight can still spend its kline calls (≤ 4 × the 20 s urlopen timeout) → GREEN_CLOCK ≤ 180 + 80 s,
-# GVOL_BLOCKED ≤ 90 + 80 s, VWAP_STOP ≤ 90 + 80 s ≈ 10 min absolute worst; the 10-06 dry-run took ~77 s for the whole module with 8 downloads.
+# GVOL_BLOCKED ≤ 90 + 80 s, VWAP_STOP ≤ 90 + 80 s, ON_SCALP ≤ 90 + 160 s (a redirected replay + 1m + 24 h base + aggTrades pages, each ≤ 20 s;
+# the aggTrades pager also stops at the deadline), HYBRID_EXIT ≤ 90 + 80 s (before the exit table) ≈ 16 min absolute worst; the 10-06 dry-run took ~77 s for the module (trackers 7 – 9) with 8 downloads.
 
 
 def _bad_path(path):
@@ -1672,8 +1715,997 @@ def vws_run(now_ms, F):
     return L + [""]
 
 
+# ─────────────────────────── ⚡ tracker 10 (ON_SCALP) — 2026-10-06, observe-only ───────────────────────────
+ONS_CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_ON_SCALP.csv")            # strong ON bars (the cohort + reference rows)
+ONS_CTRL_CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_ON_SCALP_CONTROL.csv")  # non-strong ON bars (control, same ruler) + replay-parity notes
+ONS_VER = 1
+# FROZEN — reports/FRENZY_ON_SCALP_STUDY_2026-10-06.md, "Recommendation" (the only observe line consistent with the PREREG): "ON-scalp S3:
+# fresh ON bar ∧ adx_delta > 0 ∧ di_spread > 0, entry first print ≥ close + 12 s, TP +3 net / 2 h time stop / no stop". Net = the PREREG's
+# scale: (price / entry − 1) × 100 − 0.19 (0.09 fees + 0.10 slippage); TP and time fills = that print (PREREG Part 2 (a/b); 1m: the TP at X).
+ONS_TP, ONS_T_MIN, ONS_COST = 3.0, 120, FEE + SLIP
+# FROZEN bar = the study's own (Recommendation): "N ≥ 30 fresh fires on ≥ 15 days, mean > 0 with day-CI low > 0, P(+3 within 2 h) ≥ 70 %, and a
+# forward book DD < 50 % at 0.2. Then apply the 30–50 % haircut." → candidate for a pre-registered probe study (no arming). ADDITIONS beyond
+# the study (labelled in the output): retire when the mean ≤ 0 at ≥ 30, or with no verdict by 60.
+ONS_N, ONS_DAYS, ONS_RETIRE_N, ONS_DD_MAX, ONS_P3 = 30, 15, 60, 50.0, 70.0
+ONS_HAIRCUT = (0.30, 0.50)
+ONS_BOOK0, ONS_NOTIONAL, ONS_LIQ = 3000.0, 0.94, 23.75   # PREREG "Book": lev 0.2 → notional 0.94 × equity, liquidation cap −23.75 % price
+ONS_FLOW_MS, ONS_PRE_MS, ONS_FLOW_PAGES, ONS_FLOW_GIVEUP_D, ONS_BOOK_LAG_S = 60_000, ENTRY_LAG_MS, 200, 30, 60
+#   the "new information" windows: [close, close + 60 s) post-close and [close, close + 12 s) pre-entry; the REST pager is bounded by the
+#   tracker's deadline (200 pages = 200k agg trades); a truncated read is never stored as ok. Only an archive 404 more than 30 days after
+#   the close is "missing"; every other read / parse failure stays "pending" and is retried.
+ONS_REST_MAX_AGE_MS = 46 * H   # fapi/v1/aggTrades with a time window answers only the recent 2 days (error −4166) → older: the daily archive
+# COUNTING UNIT = one per pair-episode (deliberate deviation from the study's per-BAR S3 line, 893 bars · +0.136: same-episode bars are
+# correlated draws of one pump). Re-derived from reports/FRENZY_ON_SCALP_SIGNALS_2026-10-06.csv on the same pricing (S3, TP3/T120/noSL =
+# +3 when tX3 ≤ 120 min else at120; first strong bar per pair-episode, spike = signal − hours, 30-min merge); the book is approximate (MAE at
+# 2 h on the misses only).
+ONS_YEAR = ("year per pair-EPISODE (re-derived from the study's signal file, S3 strong, TP3/T120/noSL): 502 episodes on 229 days · WR 70 % · "
+            "mean +0.105 %/episode · day CI [−0.33, +0.51] · P(+3 within 2 h) 67.5 % (bar leg ≥ 70 %) · book at 0.2 ≈ $3k → $2.7k, max DD ≈ 58 % "
+            "(approx.) — per bar the study read 893 bars · +0.136 / +0.15; it expects ≈ 0 forward")
+ONS_LIQ_NOTE = ("not available — Binance has no public liquidation history (REST forceOrders is the caller's own account); a live recorder "
+                "(the engine subscribing to <symbol>@forceOrder for FRENZY-ON pairs) would be needed — not built")
+ONS_FLOW_COLS = ("flow_state", "px12_vs_close", "buy_share_60", "n_agg_60", "n_trades_60", "usd_60", "base_1m_usd", "vol_x_24h", "vol_x_norm",
+                 "mdd_60", "mru_60", "buy_share_pre", "usd_pre", "move_pre", "n_agg_pre", "flow_trunc", "flow_src")
+ONS_BOOK_COLS = ("ob_mid", "ob_spread_pct", "ob_imb_025", "ob_imb_05", "ob_imb_1", "ob_imb_2", "ob_bid_usd_1", "ob_ask_usd_1",
+                 "ob_wall_bid_dist_pct", "ob_wall_bid_usd", "ob_wall_bid_share", "ob_wall_ask_dist_pct", "ob_wall_ask_usd", "ob_wall_ask_share")
+ONS_REPLAY_COLS = ("spike_at", "hours", "above_streak", "atr", "vs_vwap", "bar_ret", "vol_mult", "replay_code", "adx_delta", "di_spread",
+                   "strong", "on_close", "nh", "parity", "parity_why")
+_ARCH = {}   # per-run archive cache: (pair, date) → a temp zip path or a terminal state; emptied (files deleted) at the end of ons_run
+
+
+def m1_prints_lh(m1):
+    """1m rows [open_ms, o, h, l, c, …] → pseudo prints o (:00) → l (:15) → h (:30) → c (:59.999): the low BEFORE the high — the conservative
+    order for a no-stop TP-or-time exit (a minute that dips and pops is never credited the pop first). → (t int64, p float)."""
+    if not m1:
+        return np.array([], dtype=np.int64), np.array([], dtype=float)
+    a = np.asarray([r[:5] for r in m1], dtype=float)
+    t = (a[:, :1].astype(np.int64) + np.array([0, 15_000, 30_000, 59_999], dtype=np.int64)).ravel()
+    return t, a[:, [1, 3, 2, 4]].ravel()
+
+
+def onscalp_walk(tt, pp, e, t_e, gap=False):
+    """⚡ the frozen ON-scalp exit on prints from t_e: net = (p / e − 1) × 100 − 0.19; out at the first print with net ≥ +3 (fill = that print;
+    gap=True → 1m pseudo prints, the TP fills at exactly +3), else at the first print ≥ t_e + 2 h (fill = that print); no stop. MFE / MAE on
+    the prints from the entry to the exit (inclusive). → dict(pnl, exit_ms, how ('TP +3' / '2 h' / 'open' / 'no data'), mfe, mae, hit)."""
+    tt = np.asarray(tt, dtype=np.int64); pp = np.asarray(pp, dtype=float)
+    m = tt >= int(t_e)
+    tt, pp = tt[m], pp[m]
+    if not len(pp) or not e:
+        return dict(pnl=None, exit_ms=None, how="no data", mfe=None, mae=None, hit=False)
+    net = (pp / float(e) - 1) * 100 - ONS_COST
+    t_end = int(t_e) + ONS_T_MIN * MIN
+    n = len(net)
+    i_tp = next(iter(np.flatnonzero((net >= ONS_TP) & (tt < t_end))), n)
+    i_t = next(iter(np.flatnonzero(tt >= t_end)), n)
+    i = min(i_tp, i_t)
+    if i >= n:
+        return dict(pnl=float(net[-1]), exit_ms=int(tt[-1]), how="open", mfe=float(net.max()), mae=float(net.min()), hit=False)
+    hit = i == i_tp
+    pnl = (ONS_TP if gap else float(net[i])) if hit else float(net[i])
+    seg = net[:i + 1]
+    return dict(pnl=pnl, exit_ms=int(tt[i]), how=("TP +3" if hit else "2 h"), mfe=float(max(seg.max(), pnl)), mae=float(min(seg.min(), pnl)), hit=bool(hit))
+
+
+def onscalp_flow(T, p, q, m, nraw, t_close, close_px, base_1m_usd, nh):
+    """⚡ aggTrades around the ON close (T ms, price, qty, isBuyerMaker, raw trades per agg row) — description only. POST-CLOSE [close, +60 s):
+    taker-buy share of $ (isBuyerMaker False = the buyer took), agg / raw trade count, $ volume vs the pair's median 1m $ volume (prior 24 h)
+    and vs normal_hour_usd / 60, max drawdown / run-up vs the ON close (price %), the first print ≥ close + 12 s vs the close. PRE-ENTRY
+    [close, +12 s): taker-buy share of $, $ volume, agg count and the move (the last print before +12 s vs the close). Pure."""
+    T = np.asarray(T, dtype=np.int64); p = np.asarray(p, dtype=float); q = np.asarray(q, dtype=float)
+    m = np.asarray(m, dtype=bool); nraw = np.asarray(nraw, dtype=float)
+    w = (T >= int(t_close)) & (T < int(t_close) + ONS_FLOW_MS)
+    pre = (T >= int(t_close)) & (T < int(t_close) + ONS_PRE_MS)
+    usd = p * q
+    tot, tpre = float(usd[w].sum()), float(usd[pre].sum())
+    c = float(close_px) if close_px else None
+    i12 = int(np.searchsorted(T, int(t_close) + ENTRY_LAG_MS, side="left"))
+    px12 = float(p[i12]) if i12 < len(T) and T[i12] < int(t_close) + ONS_FLOW_MS else None
+    lastpre = float(p[np.flatnonzero(pre)[-1]]) if pre.any() else None
+    return dict(n_agg_60=int(w.sum()), n_trades_60=int(nraw[w].sum()), usd_60=tot,
+                buy_share_60=(float(usd[w & ~m].sum()) / tot if tot > 0 else None),
+                base_1m_usd=(float(base_1m_usd) if base_1m_usd else None),
+                vol_x_24h=(tot / float(base_1m_usd) if base_1m_usd else None),
+                vol_x_norm=(tot / (float(nh) / 60) if nh else None),
+                mdd_60=((float(p[w].min()) / c - 1) * 100 if c and w.any() else None),
+                mru_60=((float(p[w].max()) / c - 1) * 100 if c and w.any() else None),
+                px12_vs_close=((px12 / c - 1) * 100 if c and px12 is not None else None),
+                n_agg_pre=int(pre.sum()), usd_pre=tpre, buy_share_pre=(float(usd[pre & ~m].sum()) / tpre if tpre > 0 else None),
+                move_pre=((lastpre / c - 1) * 100 if c and lastpre is not None else None))
+
+
+def onscalp_book(w):
+    """the bar's ruin leg: a $3k book, one fill at a time in entry order, equity × (1 + 0.94 × r / 100) — r = the fill's net %, or the
+    liquidation (−23.75 % price − 0.19 costs) when its MAE crossed it before the exit. → (end equity, max drawdown % of the running peak)."""
+    eq = peak = ONS_BOOK0; dd = 0.0
+    liq = -(ONS_LIQ + ONS_COST)
+    for r, mae in zip(pd.to_numeric(w.pnl, errors="coerce"), pd.to_numeric(w.mae, errors="coerce")):
+        if pd.isna(r):
+            continue
+        rr = liq if (pd.notna(mae) and mae <= liq) else float(r)
+        eq *= max(0.0, 1 + ONS_NOTIONAL * rr / 100)
+        peak = max(peak, eq)
+        dd = max(dd, (1 - eq / peak) * 100 if peak > 0 else 100.0)
+    return eq, dd
+
+
+def onscalp_check(w):
+    """the FROZEN ON_SCALP bar (the study's) on counted, final strong fires (pnl, mae, hit, day, entry order). → (state, text)."""
+    w = w.assign(_x=pd.to_numeric(w.pnl, errors="coerce"))
+    w = w[w._x.notna()].sort_values(["entry_at", "pair"], kind="stable") if "entry_at" in w else w[w._x.notna()]
+    x = w._x
+    n, nd = len(x), w.day.nunique()
+    t = f"{n}/{ONS_N} fires · {nd}/{ONS_DAYS} days"
+    if not n:
+        return "collecting", t
+    ci = day_ci(x.values, w.day.values)
+    eq, dd = onscalp_book(w)
+    p3 = float(w.hit.astype(str).isin(_TRUE).mean() * 100) if "hit" in w else 0.0
+    t += (f" · WR {(x > 0).mean() * 100:.0f} % · mean {x.mean():+.2f} %" + (f" · day CI [{ci[0]:+.2f}, {ci[1]:+.2f}]" if ci else "")
+          + f" · P(+3 within 2 h) {p3:.0f} % (≥ {ONS_P3:g}) · book at 0.2 ${ONS_BOOK0:,.0f} → ${eq:,.0f}, max DD {dd:.0f} % (< {ONS_DD_MAX:.0f})")
+    if n >= ONS_N and x.mean() <= 0:
+        return "retire", t + f" · mean ≤ 0 at ≥ {ONS_N} (addition)"
+    if n >= ONS_N and nd >= ONS_DAYS and x.mean() > 0 and ci and ci[0] > 0 and p3 >= ONS_P3 and dd < ONS_DD_MAX:
+        return "candidate", t + f" · after the {ONS_HAIRCUT[0] * 100:.0f}–{ONS_HAIRCUT[1] * 100:.0f} % haircut {x.mean() * (1 - ONS_HAIRCUT[1]):+.2f} … {x.mean() * (1 - ONS_HAIRCUT[0]):+.2f}"
+    if n >= ONS_RETIRE_N:
+        return "retire", t + f" · no verdict by {ONS_RETIRE_N} (addition)"
+    return "collecting", t
+
+
+def onscalp_universe(pair, code, gates, th):
+    """the study's universe (PREREG: FRENZY_VOL24_LOW bars and blacklisted pairs were NOT in it; Alpha / < 90-day / new listings are screened by
+    the live engine before it judges a pair, so every journal / fill candidate already passed them) → 'ok' or the reason it is out of the bar."""
+    if "FRENZY_VOL24_LOW" in (str(code), *str(gates or "").split(";")):
+        return "VOL24_LOW"
+    if not str(pair).isascii():
+        return "NON_ASCII"
+    bl = set()
+    for nm in ("pair_blacklist", "no_trade_pairs", "frenzy_pair_blacklist"):
+        bl |= {x.strip().upper() for x in str(getattr(th, nm, "") or "").split(",") if x.strip()}
+    return "BLACKLIST" if str(pair).upper() in bl else "ok"
+
+
+def onscalp_first(df, mask):
+    """the first row (by ON close, stable on pair) per pair-episode among mask — the floor / filters are applied BEFORE the dedupe; a bar
+    with no spike (a live-only NO_EPISODE bar) is its own episode. → bool Series."""
+    out = pd.Series(False, index=df.index)
+    if not mask.any():
+        return out
+    ep = episode_keys(df)
+    ep = pd.Series([e if isinstance(e, str) else f"{p}|bar:{k}" for e, p, k in zip(ep, df.pair, df.k)], index=df.index)
+    g = df[mask].assign(_ep=ep[mask]).sort_values(["k", "pair"], kind="stable")
+    out.loc[g.drop_duplicates("_ep").index] = True
+    return out
+
+
+def _ons_masks(df):
+    s = lambda c: df[c].astype(str).isin(_TRUE) if c in df else pd.Series(False, index=df.index)
+    uni = (df["univ"].astype(str) == "ok") if "univ" in df else pd.Series(True, index=df.index)
+    base = s("is_on") & uni
+    return dict(counted=onscalp_first(df, base & s("cohort") & s("strong")), ref=onscalp_first(df, base & ~s("cohort") & s("strong")),
+                control=onscalp_first(df, base & s("cohort") & ~s("strong")))
+
+
+def onscalp_counted(df):
+    """the bar's cohort: strong ON bars from GC_FROM inside the study's universe → the first per pair-episode. → bool Series."""
+    return _ons_masks(df)["counted"]
+
+
+def onscalp_validate(r, strong_file):
+    """raises ValueError on a row that must not be saved: the wrong file for its class, a strong flag that disagrees with its ADX / DI,
+    a final row without a clean exit (a stale row without any exit is final with exit 'no exit (stale)' and no P&L), a TP below +3 or at /
+    after 2 h, a time exit before 2 h, MAE / MFE out of order, a truncated or out-of-range flow stored as ok."""
+    T = lambda v: str(v) in _TRUE
+    if not T(r.get("is_on")):
+        if strong_file:
+            raise ValueError("a non-ON row in the strong file")
+        if not isinstance(r.get("not_on_reason"), str) or not r.get("not_on_reason"):
+            raise ValueError("a non-ON row without its reason")
+        return
+    ad, di = _num(r.get("adx_delta")), _num(r.get("di_spread"))
+    want = bool(ad is not None and di is not None and ad > 0 and di > 0)
+    if T(r.get("strong")) != want:
+        raise ValueError(f"strong {r.get('strong')} ≠ ADXΔ {ad} > 0 ∧ DI {di} > 0")
+    if want != bool(strong_file):
+        raise ValueError("a row in the wrong file for its strong flag")
+    if T(r.get("final")) and r.get("exit_how") != "no exit (stale)":
+        pnl, how = _num(r.get("pnl")), r.get("exit_how")
+        if pnl is None or how not in ("TP +3", "2 h") or not isinstance(r.get("exit_at"), str) or not isinstance(r.get("entry_at"), str):
+            raise ValueError("final row without a clean exit")
+        if how == "TP +3" and pnl < ONS_TP - 1e-9:
+            raise ValueError(f"TP exit at {pnl} < +3")
+        held = _ms(r["exit_at"]) - _ms(r["entry_at"])
+        if (how == "TP +3" and held >= ONS_T_MIN * MIN) or (how == "2 h" and held < ONS_T_MIN * MIN):
+            raise ValueError(f"{how} exit after {held / MIN:.1f} min (the TP must come before 2 h, the time exit at / after it)")
+        mae, mfe = _num(r.get("mae")), _num(r.get("mfe"))
+        if mae is None or mfe is None or not (mae <= pnl + 1e-9 <= mfe + 2e-9):
+            raise ValueError(f"MAE {mae} ≤ pnl {pnl} ≤ MFE {mfe} violated")
+    if str(r.get("flow_state")) == "ok":
+        if T(r.get("flow_trunc")):
+            raise ValueError("a truncated flow stored as ok")
+        b, u = _num(r.get("buy_share_60")), _num(r.get("usd_60"))
+        lo, hi = _num(r.get("mdd_60")), _num(r.get("mru_60"))
+        bp = _num(r.get("buy_share_pre"))
+        if (u is None or u < 0 or (b is not None and not 0 <= b <= 1) or (bp is not None and not 0 <= bp <= 1)
+                or (lo is not None and hi is not None and lo > hi + 1e-12)):
+            raise ValueError("flow reading out of range")
+
+
+def _quarantine(df, bad, path):
+    """bad = [(index, reason)] → write the rows to a timestamped .bad ONCE per row key (k|pair; keys remembered in <path>.bad_keys.json), so a
+    row failing on every run never spawns a new file each run. → (name of the .bad written or None, n new keys)."""
+    side = path + ".bad_keys.json"
+    try:
+        seen = set(json.load(open(side)))
+    except Exception:
+        seen = set()
+    newi = [(i, m_) for i, m_ in bad if f"{df.at[i, 'k']}|{df.at[i, 'pair']}" not in seen]
+    if not newi:
+        return None, 0
+    qp = _bad_path(path)
+    try:
+        df.loc[[i for i, _ in newi]].assign(bad_reason=[m_ for _, m_ in newi]).to_csv(qp, index=False)
+        seen |= {f"{df.at[i, 'k']}|{df.at[i, 'pair']}" for i, _ in newi}
+        tmp = f"{side}.{os.getpid()}.tmp"
+        with open(tmp, "w") as fh:
+            json.dump(sorted(seen), fh)
+        os.replace(tmp, side)
+    except Exception:
+        qp = "(write failed)"
+    return os.path.basename(qp), len(newi)
+
+
+def _aggtrades_rest(sym, t0, t1, deadline):
+    """public aggTrades in [t0, t1] from fapi/v1/aggTrades (the archive's stream: a, p, q, f, l, T, m), paged by fromId (≤ ONS_FLOW_PAGES
+    pages of 1,000; stops at the deadline → 'pending'). → ('ok', T, p, q, m, nraw, truncated) — truncated = the page cap ended the read."""
+    rows, url = [], "https://fapi.binance.com/fapi/v1/aggTrades?"
+    q = dict(symbol=sym, startTime=int(t0), endTime=int(t1), limit=1000)
+    trunc = False
+    for pg in range(ONS_FLOW_PAGES):
+        if time.monotonic() > deadline:
+            return ("pending",) + (None,) * 6
+        r = json.loads(urllib.request.urlopen(url + urllib.parse.urlencode(q), timeout=20).read())
+        rows += [x for x in r if int(x["T"]) <= int(t1)]
+        if len(r) < 1000 or int(r[-1]["T"]) > int(t1):
+            break
+        q = dict(symbol=sym, fromId=int(r[-1]["a"]) + 1, limit=1000)
+        trunc = pg == ONS_FLOW_PAGES - 1
+        time.sleep(0.05)
+    if not rows:
+        return "ok", *(np.array([], dtype=t) for t in (np.int64, float, float, bool, float)), trunc
+    return ("ok", np.array([int(x["T"]) for x in rows], dtype=np.int64), np.array([float(x["p"]) for x in rows]),
+            np.array([float(x["q"]) for x in rows]), np.array([bool(x["m"]) for x in rows]),
+            np.array([int(x["l"]) - int(x["f"]) + 1 for x in rows], dtype=float), trunc)
+
+
+def _read_aggtrades_zip(src, t0, t1, chunk=500_000):
+    """an aggTrades archive zip (path or file object) → (T, p, q, m, nraw) of the rows in [t0, t1], streamed: z.open + read_csv chunks with
+    numeric dtypes (a header line is sniffed), stops once past t1 (the archive is time-ordered). Raises on a bad archive."""
+    out = []
+    with zipfile.ZipFile(src) as z, z.open(z.namelist()[0]) as fh:
+        first = fh.peek(200)[:200].split(b"\n", 1)[0]
+        hdr = 0 if first[:1] and not first[:1].isdigit() else None
+        rd = pd.read_csv(fh, header=hdr, names=["a", "p", "q", "f", "l", "t", "m"], usecols=["p", "q", "f", "l", "t", "m"],
+                         dtype={"p": np.float64, "q": np.float64, "f": np.int64, "l": np.int64, "t": np.int64, "m": str}, chunksize=chunk)
+        for ch in rd:
+            w = ch[(ch.t >= int(t0)) & (ch.t <= int(t1))]
+            if len(w):
+                out.append(w)
+            if len(ch) and int(ch.t.iloc[-1]) > int(t1):
+                break
+    if not out:
+        z_ = np.array([], dtype=np.int64)
+        return z_, np.array([]), np.array([]), np.array([], dtype=bool), np.array([])
+    d = pd.concat(out).sort_values("t", kind="stable")
+    return (d.t.values.astype(np.int64), d.p.values, d.q.values, d.m.astype(str).str.strip().str.lower().isin(["true", "1"]).values,
+            (d.l.values - d.f.values + 1).astype(float))
+
+
+def _aggtrades_archive(sym, t0, t1, now_ms, budget):
+    """the same aggTrades from the public daily archive (data.binance.vision) for a window the REST endpoint no longer serves: each pair-day zip
+    is downloaded ONCE per run into a temp file (reused for every ON bar of that pair-day; ≤ budget['dl'] downloads, deadline-bounded) and
+    streamed. 404 more than ONS_FLOW_GIVEUP_D days after t0 → 'missing'; anything else that fails → 'pending' (retried next run).
+    → ('ok', T, p, q, m, nraw, False) / ('pending' | 'missing', …None)."""
+    date = f"{pd.Timestamp(int(t0), unit='ms'):%Y-%m-%d}"
+    key = (sym, date)
+    if key not in _ARCH:
+        day_end = int(pd.Timestamp(date, tz="UTC").value // 1_000_000) + 86_400_000
+        if now_ms < day_end + TICK_FIRST_TRY_H * H or budget.get("dl", 0) <= 0 or time.monotonic() > budget.get("deadline", float("inf")):
+            return ("pending",) + (None,) * 6
+        q_ = urllib.parse.quote(sym)
+        url = f"https://data.binance.vision/data/futures/um/daily/aggTrades/{q_}/{q_}-aggTrades-{date}.zip"
+        try:
+            resp = urllib.request.urlopen(url, timeout=30)
+        except urllib.error.HTTPError as ex:
+            if ex.code == 404 and now_ms > int(t0) + ONS_FLOW_GIVEUP_D * 86_400_000:
+                _ARCH[key] = "missing"
+            return (_ARCH.get(key, "pending"),) + (None,) * 6
+        except Exception:
+            return ("pending",) + (None,) * 6
+        budget["dl"] -= 1
+        stop_at = min(time.monotonic() + TICK_DL_DEADLINE_S, budget.get("deadline", float("inf")))
+        import tempfile
+        fd, tmp = tempfile.mkstemp(suffix=".zip", prefix="ons_aggtrades_")
+        try:
+            with resp, os.fdopen(fd, "wb") as out:
+                while True:
+                    if time.monotonic() > stop_at:
+                        raise TimeoutError("download deadline")
+                    ch = resp.read(1 << 20)
+                    if not ch:
+                        break
+                    out.write(ch)
+            _ARCH[key] = tmp
+        except Exception:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            return ("pending",) + (None,) * 6
+    v = _ARCH[key]
+    if v == "missing":
+        return ("missing",) + (None,) * 6
+    try:
+        T, p, q, m, nraw = _read_aggtrades_zip(v, t0, t1)
+    except Exception:
+        return ("pending",) + (None,) * 6
+    return "ok", T, p, q, m, nraw, False
+
+
+def _arch_clear():
+    for v in list(_ARCH.values()):
+        if v not in ("missing",):
+            try:
+                os.remove(v)
+            except OSError:
+                pass
+    _ARCH.clear()
+
+
+def _ons_flow(sym, sig, close_px, nh, now_ms, budget):
+    """the flow features of one ON bar (sig = its close ms) → dict incl. flow_state 'ok' / 'pending' / 'missing' and flow_src. REST
+    aggTrades while the window is < 2 days old ("Search window is restricted to recent 2 days only" → 400 → the archive); a REST read the
+    page cap truncated goes to the archive, else stays pending (never stored as ok). Failures → 'pending'; 'missing' only from an archive
+    404 past ONS_FLOW_GIVEUP_D. A rate limit (HTTP 418 / 429) is re-raised so the tracker stops for this run."""
+    if now_ms < sig + ONS_FLOW_MS + 5_000:
+        return dict(flow_state="pending")
+    try:
+        src, st, trunc, rest_trunc = ("rest" if now_ms - sig < ONS_REST_MAX_AGE_MS else "archive"), "pending", False, False
+        if src == "rest":
+            try:
+                st, T, p, q, m, nraw, trunc = _aggtrades_rest(sym, sig, sig + ONS_FLOW_MS - 1, budget["deadline"])
+                if st == "ok" and trunc:
+                    src, rest_trunc = "archive", True            # the page cap cut the minute short → the archive, else wait
+            except urllib.error.HTTPError as ex:
+                if ex.code != 400:
+                    raise
+                src = "archive"
+        if src == "archive":
+            st, T, p, q, m, nraw, trunc = _aggtrades_archive(sym, sig, sig + ONS_FLOW_MS - 1, now_ms, budget)
+        if st != "ok" or trunc:
+            return dict(flow_state=("missing" if st == "missing" else "pending"), flow_trunc=(True if (trunc or rest_trunc) else None))
+        b1 = [b for b in _kl(sym, "1m", sig - 1440 * MIN, sig) if b[0] + MIN <= sig]
+        base = float(np.median([b[5] * (b[2] + b[3] + b[4]) / 3 for b in b1])) if len(b1) >= 60 else None
+    except urllib.error.HTTPError as ex:
+        if ex.code in (418, 429):
+            raise
+        return dict(flow_state="pending")
+    except Exception:
+        return dict(flow_state="pending")
+    return dict(onscalp_flow(T, p, q, m, nraw, sig, close_px, base, nh), flow_state="ok", flow_trunc=False, flow_src=src)
+
+
+def _ons_replay(sym, sig, th, live=False):
+    """the engine replay at the bar closing at sig: → dict(kind='on', …replay fields, parity=True) when frenzy_walk on the 1,499 closed bars says
+    flagged ∧ fresh_on on that bar; kind='redirect' (sig = its ON close) when in state on a later bar (a catch-up line / fill); else
+    kind='not_on' — unless live=True (the bot itself opened a FRENZY fill / logged a non-catch-up FRENZY line on this bar = the live engine
+    judged it a fresh ON bar): then the bar is kept as an ON bar with parity=False and the replay's reason, NO_EPISODE included
+    (normal_hour_usd is cached 6–8 h live, so a borderline volume × can differ — ORCA 10-06 09:40: replay × 99.8 < 100, live opened it).
+    A short 5m / 1h fetch raises (retried next run); a pair listed < ~10 days (the 1h window starts after the requested start) has no
+    normal hour live either → not ON."""
+    closed = [b for b in _kl(sym, "5m", sig - 1499 * BAR, sig - 1) if b[0] + BAR <= sig]
+    if len(closed) < 300 or closed[-1][0] != sig - BAR:
+        raise ValueError("5m window missing")
+    h1 = _kl(sym, "1h", sig - 744 * H, sig)
+    nh = normal_hour_usd(h1, closed[-1][0])
+    if nh is None:
+        if not h1 or int(h1[0][0]) <= sig - 744 * H + H:
+            raise ValueError("1h window short / unreadable")
+        if not live:
+            return dict(kind="not_on", why="NO_NORMAL_HOUR (listed < ~10 days)")
+    ep = frenzy_walk(closed, nh, th) if nh else None
+    why = None
+    if not ep:
+        why = "NO_EPISODE"
+    elif not frenzy_flagged(ep, th):
+        why = "NOT_FLAGGED"
+    elif not ep.get("fresh_on"):
+        on = ep.get("on_bar_ts")
+        if ep.get("in_state") and on is not None and int(on) + BAR < sig:
+            return dict(kind="redirect", sig=int(on) + BAR)
+        why = "FRENZY_ON (in state, no ON bar)" if ep.get("in_state") else "not in state"
+    if why and not live:
+        return dict(kind="not_on", why=why)
+    ep = ep or {}
+    atr = wilder_atr_pct(closed[-300:])
+    code = frenzy_long_status(ep, atr, frenzy_vol24_at(closed), th)[1] if not why else "LIVE_ONLY"
+    di, ad = frenzy_di_spread(closed[-300:]), frenzy_adx_delta(closed[-300:])
+    rn = lambda k, d: round(ep[k], d) if ep.get(k) is not None else None
+    return dict(kind="on", spike_at=(_iso(ep["spike_ts"]) if ep.get("spike_ts") else None), hours=rn("hours", 2),
+                above_streak=(int(ep["above_streak"]) if ep.get("above_streak") is not None else None), atr=atr,
+                vs_vwap=rn("vs_vwap_pct", 3), bar_ret=rn("bar_ret_pct", 4), vol_mult=rn("vol_mult", 1), replay_code=code,
+                adx_delta=ad, di_spread=di, strong=bool(di is not None and ad is not None and ad > 0 and di > 0),
+                on_close=float(closed[-1][4]), nh=nh, parity=not why,
+                parity_why=(f"replay: {why} (volume × {ep.get('vol_mult') or 0:.1f}, streak {ep.get('above_streak')})" if why else None))
+
+
+def _ons_shadow(sym, sig, now_ms, budget):
+    """the frozen ON-scalp pricing of the bar closing at sig: ticks once the archive is out — entry = the first print ≥ close + 12 s, the
+    window then re-anchored at the ACTUAL entry (t_e + 2 h + 2 min) — else (or when the tick walk is still 'open') 1m pseudo prints o → l →
+    h → c from the signal-close minute (entry = its open; PROVISIONAL; final on 1m when the archive is missing / empty / stuck past
+    TICK_GIVEUP_D, or by age after STALE_D days — a stale row that still has no exit is final as 'no exit (stale)', no P&L).
+    → (entry, t_e, walk dict, px_src, tick_state, final). Raises on no 1m data."""
+    slack = 2 * MIN
+    h0 = sig + ENTRY_LAG_MS + ONS_T_MIN * MIN + slack
+    giveup = now_ms > (h0 // 86_400_000 + 1) * 86_400_000 + TICK_GIVEUP_D * 86_400_000
+    stale = now_ms > h0 + STALE_D * 86_400_000
+    st = "pending"
+    if now_ms >= h0:
+        st, tt, pp = _ticks(sym, sig, h0, now_ms, budget)
+        if st == "ok":
+            e, t_e = gc_entry(tt, pp, sig)
+            if e is None:
+                st = "empty"
+            else:
+                h1 = int(t_e) + ONS_T_MIN * MIN + slack
+                if h1 > h0 and now_ms >= h1:
+                    st, tt, pp = _ticks(sym, sig, h1, now_ms, budget)
+                if st == "ok":
+                    w = onscalp_walk(tt, pp, e, t_e)
+                    if w["how"] in ("TP +3", "2 h"):
+                        return e, t_e, w, "tick", st, True
+                    st = "open"                                  # ticks end before the time exit → the 1m / stale path decides
+    m1 = [b for b in _kl(sym, "1m", sig, min(now_ms, h0 + 10 * MIN)) if b[0] + MIN <= now_ms]
+    if not m1 or m1[0][0] != sig:
+        raise ValueError("1m klines unavailable")
+    tt, pp = m1_prints_lh(m1)
+    e = float(m1[0][1])
+    w = onscalp_walk(tt, pp, e, sig, gap=True)
+    fin = bool(now_ms >= h0 and (st == "missing" or (st in ("empty", "open") and giveup) or stale))
+    if fin and w["how"] not in ("TP +3", "2 h"):
+        if not stale:
+            fin = False
+        else:
+            w = dict(w, how="no exit (stale)", pnl=None, hit=False)
+    return e, sig, w, ("1m (age)" if fin and stale and st not in ("missing", "empty") else "1m"), st, fin
+
+
+def _ons_live(J, F, sym, cks):
+    """what the bot did on the candidate bars of this ON row: the journal's FRENZY lines (gate, or OPEN:<strategy>) and any FRENZY fill."""
+    sigs = {c.split("|")[0] for c in cks}
+    g, f = set(), []
+    if J is not None and len(J):
+        js = J[J.pair == sym]
+        for r in js.itertuples():
+            try:
+                if _iso(_ms(r.t) // BAR * BAR) in sigs:
+                    g.add(f"OPEN:{r.strategy}" if r.e == "OPEN" else str(r.gate))
+            except Exception:
+                continue
+    if F is not None and len(F):
+        for r in F[F.pair == sym].itertuples():
+            try:
+                if _iso(_ms(r.k) // BAR * BAR) in sigs:
+                    a = _num(r.pnl_percentage) if str(r.status).upper() == "CLOSED" else None
+                    f.append(f"{str(r.entry_strategy).replace('FRENZY_', '')} {r.k[11:19]}" + (f" {a:+.2f}" if a is not None else ""))
+            except Exception:
+                continue
+    return ";".join(sorted(g)) or None, ";".join(f) or None
+
+
+def _ons_row(rep, sym, sig, now_ms, budget, J, F, prev, cks, src, th):
+    """one ON bar → its stored row (replay fields from rep, priced; the flow once readable — independent of the P&L's finality; a stored
+    flow / book reading is kept)."""
+    k = _iso(sig)
+    prev = prev or {}
+    cks = set(cks) | {c for c in str(prev.get("cand_keys") or "").split(";") if c}
+    gates, fill = _ons_live(J, F, sym, cks)
+    gates = gates or (prev.get("live_gates") if isinstance(prev.get("live_gates"), str) else None)
+    row = dict(k=k, pair=sym, day=k[:10], cohort=k >= GC_FROM, ver=ONS_VER, is_on=True, not_on_reason=None, cand_keys=";".join(sorted(cks)),
+               src=(src or prev.get("src")), **{c: rep.get(c) for c in ONS_REPLAY_COLS},
+               live_gates=gates, live_fill=(fill or prev.get("live_fill")), liq_flow=ONS_LIQ_NOTE)
+    row["univ"] = prev.get("univ") if isinstance(prev.get("univ"), str) else onscalp_universe(sym, rep.get("replay_code"), gates, th)
+    e, t_e, w, px, st, fin = _ons_shadow(sym, sig, now_ms, budget)
+    row.update(entry=e, entry_at=_iso(t_e), pnl=w["pnl"], exit_how=w["how"], exit_at=(_iso(w["exit_ms"]) if w["exit_ms"] else None),
+               mfe=w["mfe"], mae=w["mae"], hit=w["hit"], liq_02=bool(w["mae"] is not None and w["mae"] <= -(ONS_LIQ + ONS_COST)),
+               px_src=px, tick_state=st, final=bool(fin))
+    if str(prev.get("flow_state")) in ("ok", "missing"):
+        row.update({c: prev.get(c) for c in ONS_FLOW_COLS})
+    else:
+        row.update(_ons_flow(sym, sig, rep.get("on_close"), rep.get("nh"), now_ms, budget))
+    for c in ONS_BOOK_COLS + ("book_t", "book_lag_s", "book_level"):
+        row[c] = prev.get(c)
+    return row
+
+
+def _ons_book_scan(need, now_ms):
+    """journal BOOK lines (minute-level ob_* snapshots) for the wanted (minute t, pair) keys, from the decisions exports modified in the last
+    JR_MAX_AGE_D days whose name time is after the earliest wanted minute. → {(t, pair): {col: value}}. Never raises."""
+    out = {}
+    if not need:
+        return out
+    pairs = {p for _, p in need}
+    t_min = min(t for t, _ in need)
+    for f in sorted(glob.glob(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv"))):
+        try:
+            if os.path.getmtime(f) * 1000 < now_ms - JR_MAX_AGE_D * 86_400_000:
+                continue
+            nm = os.path.basename(f)[len("scalpars_decisions_paper_"):-4]
+            if f"{nm[:10]}T{nm[11:].replace('-', ':')}" < t_min:
+                continue
+            with open(f, "rb") as fh:
+                hdr = fh.readline().decode("utf-8", "replace").rstrip("\r\n").split(",")
+                ix = {c: hdr.index(c) for c in ONS_BOOK_COLS if c in hdr}
+                for ln in fh:
+                    if b",BOOK," not in ln:
+                        continue
+                    p = ln.decode("utf-8", "replace").rstrip("\r\n").split(",")
+                    key = (p[0][:19], p[2])
+                    if p[2] in pairs and key in need and key not in out:
+                        out[key] = {c: _num(p[i]) if i < len(p) else None for c, i in ix.items()}
+        except Exception:
+            continue
+    return out
+
+
+def _ons_attach_book(df, now_ms):
+    """the BOOK snapshot closest to each ON close within 60 s after it (minute stamps: the close's own minute, then the next), kept once found."""
+    if not len(df):
+        return df
+    T = lambda v: str(v) in _TRUE
+    want = {}
+    for i, r in df.iterrows():
+        if not T(r.get("is_on")) or isinstance(r.get("book_t"), str) or now_ms > _ms(r.k) + JR_MAX_AGE_D * 86_400_000:
+            continue
+        for lag in range(0, ONS_BOOK_LAG_S + 1, 60):
+            want.setdefault((_iso(_ms(r.k) + lag * 1000), r.pair), []).append((i, lag))
+    got = _ons_book_scan(set(want), now_ms)
+    if not got:
+        return df
+    df = df.copy()
+    for c in ONS_BOOK_COLS + ("book_t", "book_lag_s", "book_level"):
+        if c not in df:
+            df[c] = None
+        df[c] = df[c].astype(object)
+    best = {}
+    for key, lst in want.items():
+        if key in got:
+            for i, lag in lst:
+                if i not in best or lag < best[i][1]:
+                    best[i] = (key, lag)
+    for i, (key, lag) in best.items():
+        for c, v in got[key].items():
+            df.at[i, c] = v
+        df.at[i, "book_t"] = key[0]; df.at[i, "book_lag_s"] = lag; df.at[i, "book_level"] = "minute"
+    return df
+
+
+def _rate_limited(ex):
+    return isinstance(ex, urllib.error.HTTPError) and ex.code in (418, 429)
+
+
+def ons_run(now_ms, th, J, F):
+    try:
+        return _ons_run(now_ms, th, J, F)
+    finally:
+        _arch_clear()
+
+
+def _ons_run(now_ms, th, J, F):
+    """find every fresh ON bar (journal FRENZY lines + FRENZY fills; catch-ups mapped to their ON bar), price new / provisional ones (cohort
+    first, newest first), fill in the flow on final rows still without it, attach the BOOK snapshot, VALIDATE (a failing row → one .bad per
+    row key), save the two files, render the ON_SCALP section."""
+    need = ("k", "pair", "final", "ver", "is_on")
+    old = pd.concat([_load_csv(ONS_CSV, need), _load_csv(ONS_CTRL_CSV, need)], ignore_index=True)
+    prev, resolved = {}, set()
+    for r in old.to_dict("records"):
+        prev[(r["k"], r["pair"])] = r
+        resolved |= {c for c in str(r.get("cand_keys") or "").split(";") if c}
+    cands = {}
+    if J is not None and len(J):
+        for r in J[J.t.astype(str) >= GC_SCAN_FROM].itertuples():
+            try:
+                c_ = cands.setdefault(f"{_iso(_ms(r.t) // BAR * BAR)}|{r.pair}", dict(src=set(), live=False))
+                c_["src"].add("journal"); c_["live"] |= not str(r.gate).startswith("FRENZY_CATCHUP")
+            except Exception:
+                continue
+    if F is not None and len(F):
+        for r in F[F.entry_strategy.astype(str).isin(["FRENZY_LONG", "FRENZY_WIDE"]) & (F.k.astype(str) >= GC_SCAN_FROM)].itertuples():
+            try:
+                c_ = cands.setdefault(f"{_iso(_ms(r.k) // BAR * BAR)}|{r.pair}", dict(src=set(), live=False))
+                c_["src"].add("fill"); c_["live"] = True
+            except Exception:
+                continue
+    budget = {"dl": X_DL, "deadline": time.monotonic() + X_TIME_S}
+    rows, add_ck, err, late, rl = {}, {}, 0, 0, False
+    T = lambda v: str(v) in _TRUE
+    for ck in sorted([c for c in cands if c not in resolved], key=lambda c: (c >= GC_FROM, c), reverse=True):   # cohort first, newest first
+        if time.monotonic() > budget["deadline"]:
+            late += 1
+            continue
+        k0, sym = ck.split("|")
+        src, live = "+".join(sorted(cands[ck]["src"])), cands[ck]["live"]
+        try:
+            sig = _ms(k0)
+            rep = _ons_replay(sym, sig, th, live=live)
+            if rep["kind"] == "redirect":
+                sig = rep["sig"]; src += "→catch-up"
+                key = (_iso(sig), sym)
+                if key in rows or key in prev:
+                    add_ck.setdefault(key, set()).add(ck)
+                    continue
+                rep = _ons_replay(sym, sig, th, live=live)
+                if rep["kind"] != "on":
+                    rep = dict(kind="not_on", why=f"catch-up target not fresh ({rep.get('why', rep['kind'])})"); sig = _ms(k0)
+            key = (_iso(sig), sym)
+            if rep["kind"] == "not_on":
+                rows[(k0, sym)] = dict(k=k0, pair=sym, day=k0[:10], cohort=k0 >= GC_FROM, ver=ONS_VER, is_on=False, not_on_reason=rep["why"],
+                                       cand_keys=ck, src=src, strong=False, final=True)
+                continue
+            if key in rows or (key in prev and T(prev[key].get("final"))):
+                add_ck.setdefault(key, set()).add(ck)
+                continue
+            rows[key] = _ons_row(rep, sym, sig, now_ms, budget, J, F, prev.get(key), {ck}, src, th)
+        except Exception as ex:
+            err += 1
+            if _rate_limited(ex):
+                budget["deadline"] = 0; rl = True               # rate-limited: stop, the rest waits for the next run
+    redo = sorted([kr for kr in prev.items() if kr[0] not in rows and T(kr[1].get("is_on"))],
+                  key=lambda kr: (kr[0][0] >= GC_FROM, kr[0][0], kr[0][1]), reverse=True)   # cohort first, newest first
+    for key, r in redo:
+        fin_ok = T(r.get("final")) and str(r.get("ver")) in (str(ONS_VER), f"{ONS_VER}.0")
+        if fin_ok and str(r.get("flow_state")) in ("ok", "missing"):
+            continue
+        if time.monotonic() > budget["deadline"]:
+            late += 1
+            continue
+        try:
+            if fin_ok:                                          # P&L final, the description-only flow still to come: flow only
+                rows[key] = dict(r, **_ons_flow(key[1], _ms(key[0]), _num(r.get("on_close")), _num(r.get("nh")), now_ms, budget))
+                continue
+            rep = {c: r.get(c) for c in ONS_REPLAY_COLS}
+            rep.update(strong=T(r.get("strong")), on_close=_num(r.get("on_close")), nh=_num(r.get("nh")), parity=T(r.get("parity")))
+            rows[key] = _ons_row(rep, key[1], _ms(key[0]), now_ms, budget, J, F, r, set(), None, th)
+        except Exception as ex:
+            err += 1
+            if _rate_limited(ex):
+                budget["deadline"] = 0; rl = True
+    new = pd.DataFrame(list(rows.values()))
+    allr = pd.concat([old, new], ignore_index=True) if len(new) else old.copy()
+    L = ["## ⚡ ON_SCALP — every fresh FRENZY ON bar with the strong flag, bought at +12 s, TP +3 net / 2 h / no stop (observe-only, registered 2026-10-06)", "",
+         "The one observe line reports/FRENZY_ON_SCALP_STUDY_2026-10-06.md allows (verdict there: not a strategy; expected ≈ 0). Every fresh FRENZY ON bar "
+         "whatever the live refusal code — journal FRENZY lines AND the FRENZY fills (a READY fill leaves no refusal line), replayed with the engine's "
+         "frenzy_walk (catch-ups mapped to their ON bar via on_bar_ts; ‡ = live-only: the bot judged it ON, the replay disagrees). Strong = ADX Δ > 0 ∧ "
+         "DI spread > 0 on closed[-300:] at the ON bar, exactly as _frenzy_open sizes strong. Priced: first trade print ≥ the ON close + 12 s, 0.09 % "
+         "fees + 0.10 % slippage, out at the first print ≥ +3 % net, else at 2 h, NO stop (the tail is the risk — MAE shown). Ticks once the archive "
+         f"is out, else 1m prints open → low → high → close (ᵖ provisional). One per pair-EPISODE (spikes ≤ 30 min apart merged). ¹ = counted (from "
+         f"{GC_FROM[:10]}, inside the study's universe — FRENZY_VOL24_LOW / blacklisted bars are tagged and kept out); earlier rows are reference only. "
+         "Flow columns are DESCRIPTIVE (no gate): pre-entry = [close, +12 s) taker-buy share / move; post-entry = the first 60 s (taker-buy share "
+         "of $, $ volume × the pair's median minute of the prior 24 h, low / high vs the close); book = the journal's minute-level BOOK snapshot.", ""]
+    tail = (([f"_{err} candidate(s) / row(s) not priced this run (klines / trades unavailable" + (", Binance rate limit — stopped" if rl else "")
+              + ") — retried next run._"] if err else [])
+            + ([f"_{late} candidate(s) / row(s) left for the next run (the {X_TIME_S} s time budget was spent or a rate limit stopped it)._"] if late else []))
+    if not len(allr):
+        return L + ["No FRENZY ON bar found yet."] + tail + [""]
+    allr = allr.drop_duplicates(["k", "pair"], keep="last").sort_values(["k", "pair"], kind="stable").reset_index(drop=True)
+    for key, cks in add_ck.items():                               # a later line / fill of an already stored ON bar: remember it was seen
+        m = (allr.k == key[0]) & (allr.pair == key[1])
+        if m.any():
+            i = allr.index[m][0]
+            allr.at[i, "cand_keys"] = ";".join(sorted({c for c in str(allr.at[i, "cand_keys"] or "").split(";") if c} | cks))
+    allr = _ons_attach_book(allr, now_ms)
+    bad = []
+    for i, r in zip(allr.index, allr.to_dict("records")):
+        try:
+            onscalp_validate(r, T(r.get("strong")) and T(r.get("is_on")))
+        except ValueError as ex:
+            bad.append((i, str(ex)))
+    qname = None
+    if bad:
+        qname, _ = _quarantine(allr, bad, ONS_CSV)
+        allr = allr.drop(index=[i for i, _ in bad]).reset_index(drop=True)
+    allr["episode"] = episode_keys(allr)
+    M = _ons_masks(allr)
+    allr["counted"] = M["counted"]
+    S_ = lambda c: allr[c].astype(str).isin(_TRUE) if c in allr else pd.Series(False, index=allr.index)
+    strong = S_("is_on") & S_("strong")
+    _save_csv(allr[strong], ONS_CSV); _save_csv(allr[~strong], ONS_CTRL_CSV)
+    f = lambda v, d=2: "–" if _num(v) is None else f"{float(v):+.{d}f}"
+    pc = lambda v: "–" if _num(v) is None else f"{float(v) * 100:.0f} %"
+    sd = allr[strong]
+    L += ["| ON close UTC | Pair | Code | Live | ADX Δ | DI | Pre-entry 12 s: buy / move | +12 s vs close | Post 60 s: buy | $ × median min | Low / high 60 s | Book imb ±0.5 % | Result | Exit | MAE | Px |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for r in sd.tail(15).itertuples():
+        mk = ("" if T(r.final) else "ᵖ") + ("¹" if T(r.counted) else "") + ("" if T(getattr(r, "parity", True)) else "‡") + ("" if T(r.cohort) else " (ref)")
+        un = str(getattr(r, "univ", "ok"))
+        live = (str(r.live_fill) if isinstance(r.live_fill, str) else str(r.live_gates).replace("FRENZY_", "") if isinstance(r.live_gates, str) else "–")
+        vx = _num(getattr(r, "vol_x_24h", None))
+        flow = str(getattr(r, "flow_state", ""))
+        L.append(f"| {str(r.k)[5:16].replace('T', ' ')}{mk} | {str(r.pair).replace('USDT', '')} | {str(r.replay_code).replace('FRENZY_', '')}"
+                 f"{'' if un in ('ok', 'nan') else ' ⊘' + un} | {live} | {f(r.adx_delta)} | {f(r.di_spread, 1)} | "
+                 f"{pc(getattr(r, 'buy_share_pre', None))} / {f(getattr(r, 'move_pre', None))} | {f(getattr(r, 'px12_vs_close', None))} | "
+                 f"{pc(getattr(r, 'buy_share_60', None))}{'' if flow == 'ok' else ' (' + flow + ')'} | {'–' if vx is None else f'{vx:.1f}×'} | "
+                 f"{f(getattr(r, 'mdd_60', None))} / {f(getattr(r, 'mru_60', None))} | {f(getattr(r, 'ob_imb_05', None))} | "
+                 f"{f(r.pnl)} | {r.exit_how} | {f(r.mae)} | {r.px_src} |")
+    cnt = allr[M["counted"] & S_("final")]
+    st, tx = onscalp_check(cnt)
+    nlo = int((~S_("parity")[cnt.index]).sum()) if len(cnt) else 0
+    lab = {"candidate": "📋 CANDIDATE for a pre-registered probe study (no arming)", "retire": "❌ retire", "collecting": "⏳ collecting"}
+    L += ["", f"**ON_SCALP bar (FROZEN, the study's: N ≥ {ONS_N} fires on ≥ {ONS_DAYS} days ∧ mean > 0 with day-block 95 % CI low > 0 ∧ P(+3 within 2 h) ≥ "
+              f"{ONS_P3:g} % ∧ forward max DD < {ONS_DD_MAX:.0f} % of a ${ONS_BOOK0:,.0f} book at 0.2 sizing (sequential, notional {ONS_NOTIONAL} × equity, "
+              f"liquidation −{ONS_LIQ} % price) → candidate, then the {ONS_HAIRCUT[0] * 100:.0f}–{ONS_HAIRCUT[1] * 100:.0f} % haircut · ADDITIONS: retire at mean ≤ 0 "
+              f"by {ONS_N} / no verdict by {ONS_RETIRE_N}):** " + lab.get(st, st) + f" ({tx} · ‡ live-only {nlo} of {len(cnt)})"]
+    x = pd.to_numeric(cnt.pnl, errors="coerce").dropna()
+    if len(x):
+        wi = x.idxmin(); wr_ = cnt.loc[wi]
+        miss = cnt.loc[x.index][~cnt.loc[x.index].hit.astype(str).isin(_TRUE)]
+        xm = pd.to_numeric(miss.pnl, errors="coerce")
+        L.append(f"- Worst fill: {str(wr_.pair).replace('USDT', '')} {str(wr_.k)[5:16].replace('T', ' ')} {x[wi]:+.2f} % (MAE {f(wr_.mae)}, {wr_.exit_how}) · never touched +3 "
+                 f"within 2 h: {len(miss)} of {len(x)} ({len(miss) / len(x) * 100:.0f} %)" + (f", mean exit {xm.mean():+.2f} %" if len(xm) else "")
+                 + f" · liquidation-deep MAE (≤ −{ONS_LIQ} % price): {int(S_('liq_02')[x.index].sum())}.")
+    else:
+        L.append("- Worst fill / never-touched-+3 share: no counted final fire yet.")
+    rf = allr[M["ref"]]
+    xr = pd.to_numeric(rf[S_("final")[rf.index]].pnl, errors="coerce").dropna()
+    L.append(f"- Reference (before {GC_FROM[:10]}, not counted): {int(M['ref'].sum())} strong pair-episodes, {len(xr)} final" + (f" · WR {(xr > 0).mean() * 100:.0f} % · mean "
+             f"{xr.mean():+.2f} %" if len(xr) else "") + f" · {int((~S_('final')[sd.index]).sum())} strong rows provisional.")
+    cc = allr[M["control"]]
+    xc = pd.to_numeric(cc[S_("final")[cc.index]].pnl, errors="coerce").dropna()
+    L.append(f"- Control (NOT strong, same ruler, first per pair-episode from {GC_FROM[:10]}): {int(M['control'].sum())} episodes, {len(xc)} final"
+             + (f" · WR {(xc > 0).mean() * 100:.0f} % · mean {xc.mean():+.2f} %" if len(xc) else "")
+             + f" · all control rows {int((S_('is_on') & ~S_('strong')).sum())} (reports/SCOUT_FRENZY_ON_SCALP_CONTROL.csv).")
+    un = allr["univ"].astype(str) if "univ" in allr else pd.Series("ok", index=allr.index)
+    outu = allr[S_("is_on") & ~un.isin(["ok", "nan"])]
+    L.append(f"- Outside the study's universe (tagged ⊘, never in the bar): {len(outu)}" + (" (" + ", ".join(f"{k_} {v}" for k_, v in outu.univ.value_counts().items())
+             + f"; {int((S_('strong')[outu.index] & S_('cohort')[outu.index]).sum())} strong in the cohort window)" if len(outu) else "") + ".")
+    fs = allr["flow_state"].astype(str) if "flow_state" in allr else pd.Series("", index=allr.index)
+    tr = S_("flow_trunc")
+    on = allr[S_("is_on") & S_("final") & (fs == "ok") & ~tr & allr.get("pnl", pd.Series(dtype=float)).notna()]
+    if len(on):
+        hit = on.hit.astype(str).isin(_TRUE)
+        a = lambda g, c: f"{pd.to_numeric(g[c], errors='coerce').mean() * 100:.0f} %" if len(g) else "–"
+        b = lambda g, c: f"{pd.to_numeric(g[c], errors='coerce').mean():+.2f} %" if len(g) else "–"
+        L.append(f"- Flow (descriptive, every final ON row with a full flow reading, strong + control; {int(tr.sum())} truncated read(s) excluded): "
+                 f"TP hit {int(hit.sum())} · pre-entry buy {a(on[hit], 'buy_share_pre')} / move {b(on[hit], 'move_pre')} · post 60 s buy "
+                 f"{a(on[hit], 'buy_share_60')} · low {b(on[hit], 'mdd_60')}  vs  missed {int((~hit).sum())} · pre {a(on[~hit], 'buy_share_pre')} / "
+                 f"{b(on[~hit], 'move_pre')} · post {a(on[~hit], 'buy_share_60')} · {b(on[~hit], 'mdd_60')}.")
+    L.append(f"- Liquidations in the first 60 s: {ONS_LIQ_NOTE}.")
+    L.append(f"- Year reference: {ONS_YEAR}.")
+    lo = allr[S_("is_on") & ~S_("parity")]
+    L.append(f"- ‡ Live-only ON bars (the bot opened / judged a fresh ON there, the replay disagrees — normal_hour_usd is cached 6–8 h live; kept, "
+             f"counted when strong): {len(lo)}" + (" (" + "; ".join(f"{str(r.pair).replace('USDT', '')} {str(r.k)[5:16].replace('T', ' ')}: {r.parity_why}"
+                                                                  for r in lo.tail(6).itertuples()) + ")" if len(lo) else "") + ".")
+    no = allr[~S_("is_on")]
+    L.append(f"_Candidates the replay says are NOT a fresh ON bar (journal lines / fills; parity notes, never priced): {len(no)}"
+             + (" (" + "; ".join(f"{str(r.pair).replace('USDT', '')} {str(r.k)[5:16].replace('T', ' ')}: {r.not_on_reason}" for r in no.tail(6).itertuples()) + ")" if len(no) else "")
+             + f" · strong ON rows {int(strong.sum())} · control ON rows {int((S_('is_on') & ~S_('strong')).sum())} · BOOK snapshot attached on "
+             f"{int(allr.get('book_t', pd.Series(dtype=object)).notna().sum())}._")
+    if bad:
+        L.append(f"_⚠ {len(bad)} row(s) failed validation and were dropped" + (f" (quarantined to {qname})" if qname else " (already quarantined earlier)")
+                 + ": " + "; ".join(m_ for _, m_ in bad[:3]) + "._")
+    return L + tail + [""]
+
+
+# ─────────────────────────── 🛟 HYBRID_EXIT (HYB) — 2026-10-06, observe-only per-fill shadow ───────────────────────────
+HYB_CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_HYBRID.csv")   # own store: the exit rows' schema / VER is untouched (no re-pricing)
+HYB_VER = 1
+# FROZEN — V3 of reports/FRENZY_EXIT_LOCK_VS_BULLRUN_2026-10-06.md (PREREG reports/FRENZY_EXIT_LOCK_VS_BULLRUN_PREREG_2026-10-06.txt):
+# "−3; pk ≥ +1 → floor +0.2; pk ≥ +3 → max(+2, pk − 2)", pk = the PRIOR-print peak net %, levels on net (fees 0.09), 12 h cap.
+HYB_ARM, HYB_FLOOR = 1.0, 0.2
+# FROZEN re-open bar (report "Recommendation"): after ≥ 40 live FRENZY_LONG fills on ≥ 20 days (opened from GC_FROM), re-open only if
+# HYB − LOCK2 > +0.30 %/fill ∧ day-block 95 % CI low > 0 ∧ still > 0 without the top 5 fills; otherwise "lock holds".
+HYB_N, HYB_DAYS, HYB_MIN_D = 40, 20, 0.30
+HYB_YEAR = ("year (report §1, 205 FRENZY_LONG engine fills, ticks, 0.10 slip on both): lock +0.387 vs V3 +0.204 → Δ −0.18 [−0.47, +0.11]; "
+            "STRONG Δ −0.19 [−0.61, +0.26], halves −0.49 / +0.07; SAVED 45 (+144) vs CUT 38 (−144) + 21 lock-floor wins cut (−38)")
+
+
+def hyb_line(pk):
+    """the V3 exit line for a prior-print peak pk (net %): −3 below +1, the +0.2 floor from +1, the live lock max(+2, pk − 2) from +3
+    (the highest applicable line wins)."""
+    return max(2.0, pk - 2.0) if pk >= 3 else HYB_FLOOR if pk >= HYB_ARM else -3.0
+
+
+def _hyb_how(line):
+    return "stop" if line <= -3 else "+0.2 floor" if line == HYB_FLOOR else "floor / trail"
+
+
+def walk_ticks_hyb(tt, pp, e, t0):
+    """🛟 V3 on trade prints from t0, net of FEE: a print at / through the line (set by the prints BEFORE it) exits AT that print; 12 h of
+    clock time. → (pnl, exit_ms, how)."""
+    tt = np.asarray(tt, dtype=np.int64); pp = np.asarray(pp, dtype=float)
+    m = tt >= int(t0)
+    tt, pp = tt[m], pp[m]
+    if not len(pp) or not e:
+        return None, None, "no data"
+    net = (pp / float(e) - 1) * 100 - FEE
+    pk = np.maximum.accumulate(np.r_[-1e9, net[:-1]])
+    line = np.where(pk >= 3, np.maximum(2.0, pk - 2.0), np.where(pk >= HYB_ARM, HYB_FLOOR, -3.0))
+    t_end = int(t0) + CAP_MIN * MIN
+    inc = tt < t_end
+    hit = np.flatnonzero((net <= line) & inc)
+    if len(hit):
+        i = int(hit[0])
+        return float(net[i]), int(tt[i]), _hyb_how(float(line[i]))
+    if not inc.all():
+        j = int(np.flatnonzero(inc)[-1]) if inc.any() else 0
+        return float(net[j]), t_end, "12 h cap"
+    return float(net[-1]), int(tt[-1]), "open"
+
+
+def hyb_check(w):
+    """the FROZEN HYBRID_EXIT re-open bar on final FRENZY_LONG fills from GC_FROM (column d = HYB − LOCK2, same ruler). → (state, text)."""
+    d = pd.to_numeric(w.d, errors="coerce")
+    w = w[d.notna()]; d = d.dropna()
+    n, nd = len(d), w.day.nunique()
+    t = f"{n}/{HYB_N} fills · {nd}/{HYB_DAYS} days" + (f" · Δ(HYB − lock) {d.mean():+.2f} %/fill" if n else "")
+    if n < HYB_N or nd < HYB_DAYS:
+        return "collecting", t
+    ci = day_ci(d.values, w.day.values)
+    wo5 = d.sort_values(ascending=False).iloc[5:].mean()
+    t += (f" · day CI [{ci[0]:+.2f}, {ci[1]:+.2f}]" if ci else "") + f" · w/o top 5 {wo5:+.2f}"
+    return ("reopen" if (d.mean() > HYB_MIN_D and ci and ci[0] > 0 and wo5 > 0) else "holds"), t
+
+
+def hyb_anatomy(w):
+    """SAVED = HYB ≥ 0 while the lock lost · CUT = the lock ended ≥ +2 while HYB went out at the +0.2 floor. → (n_saved, Σ, n_cut, Σ)."""
+    h, l = pd.to_numeric(w.HYB_R, errors="coerce"), pd.to_numeric(w.LOCK2_R, errors="coerce")
+    sv = (h >= 0) & (l < 0)
+    ct = (l >= 2) & (w.HYB_how.astype(str) == "+0.2 floor")
+    return int(sv.sum()), float((h - l)[sv].sum()), int(ct.sum()), float((h - l)[ct].sum())
+
+
+def hyb_validate(r):
+    """raises ValueError on a row that must not be saved: a final row without both results, or a Δ that is not HYB − LOCK2 on its ruler."""
+    if str(r.get("final")) not in _TRUE:
+        return
+    h, l, d = _num(r.get("HYB_R")), _num(r.get("LOCK2_R")), _num(r.get("d"))
+    if h is None or l is None or d is None:
+        raise ValueError("final row without HYB / LOCK2 / Δ")
+    if abs(d - (h - l)) > 1e-9:
+        raise ValueError(f"Δ {d} ≠ HYB − LOCK2 {h - l}")
+    if r.get("HYB_how") not in ("stop", "+0.2 floor", "floor / trail", "12 h cap"):
+        raise ValueError(f"final row with exit '{r.get('HYB_how')}'")
+
+
+def _hyb_price(src, now_ms, budget):
+    """one fill (k = opened_at, entry = the actual entry price) → HYB and the lock on the SAME prints: ticks once the archive is out (both on
+    every print), else 1m (the exit table's ruler: low before high inside a minute, the entry minute flattened) — PROVISIONAL; final on 1m
+    when the archive is missing / empty past TICK_GIVEUP_D, or by age after STALE_D days. Fees 0.09, no slippage on either side (the report
+    charges 0.10 on BOTH exits, so the Δ is the same). Raises on no 1m data."""
+    sym, e = src["pair"], float(src["entry"])
+    t0 = _ms(src["k"]); m0 = t0 // MIN * MIN
+    horizon = t0 + CAP_MIN * MIN
+    giveup = now_ms > (horizon // 86_400_000 + 1) * 86_400_000 + TICK_GIVEUP_D * 86_400_000
+    stale = now_ms > horizon + STALE_D * 86_400_000
+    m1 = [b for b in _kl(sym, "1m", m0, min(now_ms, horizon + MIN)) if b[0] + MIN <= now_ms]
+    if not m1 or m1[0][0] != m0:
+        raise ValueError("1m klines unavailable")
+    m1in = [list(b) for b in m1]
+    m1in[0] = [m0, e, max(e, m1in[0][4]), min(e, m1in[0][4]), m1in[0][4], m1in[0][5]]
+    h1, _, hh1 = walk(m1in, e, "HYB"); l1, _, lh1 = walk(m1in, e, "LOCK2")
+    row = dict(src, ver=HYB_VER, HYB_1m=h1, HYB_1m_how=hh1, LOCK2_1m=l1, px_src="1m", tick_state="pending")
+    st = "pending"
+    if now_ms >= horizon + 2 * MIN:
+        st, tt, pp = _ticks(sym, t0, horizon + 2 * MIN, now_ms, budget)
+        if st == "ok" and len(tt):
+            hr, _, hh = walk_ticks_hyb(tt, pp, e, t0); lr, _, lh = _walk_ticks(tt, pp, e, t0)
+            if hr is not None and lr is not None and hh != "open" and lh != "open":
+                row.update(HYB_R=hr, LOCK2_R=lr, HYB_how=hh, d=hr - lr, px_src="tick", tick_state=st, final=True)
+                return row
+        if st == "ok":
+            st = "empty" if not len(tt) else "open"         # ticks end before an exit → the 1m / stale path decides
+    fin = bool(now_ms >= horizon and (st == "missing" or (st in ("empty", "open") and giveup) or stale) and hh1 != "open" and lh1 != "open")
+    row.update(HYB_R=h1, LOCK2_R=l1, HYB_how=hh1, d=(h1 - l1 if h1 is not None and l1 is not None else None),
+               px_src=("1m (age)" if fin and stale and st not in ("missing", "empty") else "1m"), tick_state=st, final=fin)
+    return row
+
+
+def hyb_run(now_ms, F, allr):
+    """price new / provisional fills of the exit table with HYB (own store), validate, save → ({(k, pair): HYB on the table's 1m ruler}, lines)."""
+    old = _load_csv(HYB_CSV, ("k", "pair", "final", "ver"))
+    T = lambda v: str(v) in _TRUE
+    prev = {(r["k"], r["pair"]): r for r in old.to_dict("records")} if len(old) else {}
+    stamps = {}
+    if F is not None and len(F):
+        for r in F.itertuples():
+            ad, di = _num(getattr(r, "entry_frenzy_adx_delta", None)), _num(getattr(r, "entry_frenzy_di_spread", None))
+            stamps[(r.k, r.pair)] = (ad, di)
+    work = []
+    for r in (allr.to_dict("records") if len(allr) else []):
+        key = (str(r["k"]), str(r["pair"]))
+        p = prev.get(key)
+        if p is not None and T(p.get("final")) and str(p.get("ver")) in (str(HYB_VER), f"{HYB_VER}.0"):
+            continue
+        ad, di = stamps.get(key, (None, None))
+        if ad is None and p is not None:
+            ad, di = _num(p.get("adx_delta")), _num(p.get("di_spread"))
+        sl = str(r.get("sleeve"))
+        work.append(dict(k=key[0], pair=key[1], day=key[0][:10], sleeve=sl, entry=float(r["entry"]), cohort=key[0] >= GC_FROM,
+                         adx_delta=ad, di_spread=di,
+                         strong=(None if ad is None or di is None or sl != "LONG" else bool(ad > 0 and di > 0))))
+    work.sort(key=lambda s: (s["cohort"] and s["sleeve"] == "LONG", s["cohort"], s["k"]), reverse=True)   # the FRENZY_LONG cohort first, newest first
+    budget = {"dl": X_DL, "deadline": time.monotonic() + X_TIME_S}; rows, err, late, rl = [], 0, 0, False
+    for s in work:
+        if time.monotonic() > budget["deadline"]:
+            late += 1
+            continue
+        try:
+            rows.append(_hyb_price(s, now_ms, budget))
+        except Exception as ex:
+            err += 1
+            if _rate_limited(ex):
+                budget["deadline"] = 0; rl = True               # rate-limited: stop, the rest waits for the next run
+    new = pd.DataFrame(rows)
+    allh = pd.concat([old, new], ignore_index=True) if len(new) else old.copy()
+    L = []
+    if len(allh):
+        allh = allh.drop_duplicates(["k", "pair"], keep="last").sort_values(["k", "pair"], kind="stable").reset_index(drop=True)
+        bad = []
+        for i, r in zip(allh.index, allh.to_dict("records")):
+            try:
+                hyb_validate(r)
+            except ValueError as ex:
+                bad.append((i, str(ex)))
+        if bad:
+            qn, _ = _quarantine(allh, bad, HYB_CSV)
+            allh = allh.drop(index=[i for i, _ in bad]).reset_index(drop=True)
+            L.append(f"_⚠ HYBRID_EXIT: {len(bad)} row(s) failed validation and were dropped" + (f" (quarantined to {qn})" if qn else " (already quarantined earlier)")
+                     + ": " + "; ".join(m_ for _, m_ in bad[:3]) + "._")
+        _save_csv(allh, HYB_CSV)
+    hmap = {(k, p): (h, T(f_)) for k, p, h, f_ in zip(allh.k, allh.pair, allh.HYB_1m, allh.final)} if len(allh) and "HYB_1m" in allh else {}
+    S_ = lambda c: allh[c].astype(str).isin(_TRUE) if c in allh else pd.Series(False, index=allh.index)
+    lab = {"reopen": "📋 RE-OPEN the hybrid question (observe → a pre-registered study; no arm)", "holds": "🔒 lock holds", "collecting": "⏳ collecting (lock holds)"}
+    if len(allh):
+        lg = allh[(allh.sleeve.astype(str) == "LONG") & S_("final")]
+        cnt = lg[S_("cohort")[lg.index]]
+        st, tx = hyb_check(cnt)
+    else:
+        lg = cnt = pd.DataFrame(columns=["d", "day", "HYB_R", "LOCK2_R", "HYB_how", "strong"]); st, tx = hyb_check(cnt)
+    L = ["", f"**HYBRID_EXIT (HYB = V3 of reports/FRENZY_EXIT_LOCK_VS_BULLRUN_2026-10-06.md, frozen: −3 stop; peak ≥ +{HYB_ARM:g} → +{HYB_FLOOR:g} floor; "
+              f"peak ≥ +3 → the lock max(+2, peak − 2); 12 h; HYB column = the table's 1m ruler; the bar reads HYB − LOCK2 on the SAME prints — ticks once "
+              f"out, else 1m; re-open only if ≥ {HYB_N} FRENZY_LONG fills from {GC_FROM[:10]} on ≥ {HYB_DAYS} days show Δ > +{HYB_MIN_D:.2f} %/fill ∧ "
+              f"day CI low > 0 ∧ > 0 without the top 5):** " + lab.get(st, st) + f" ({tx})"] + L
+    for nm, g in (("cohort", cnt), ("reference (before " + GC_FROM[:10] + ")", lg[~S_("cohort")[lg.index]] if len(lg) else lg)):
+        if not len(g):
+            L.append(f"- FRENZY_LONG {nm}: no final fill yet.")
+            continue
+        sg = g.strong.astype(str).isin(_TRUE); ng = g.strong.astype(str).isin(["False", "0", "0.0"])
+        parts = []
+        for lb, gg in (("strong", g[sg]), ("normal", g[ng]), ("unstamped", g[~sg & ~ng])):
+            if len(gg):
+                parts.append(f"{lb} {len(gg)} · lock {pd.to_numeric(gg.LOCK2_R).mean():+.2f} · HYB {pd.to_numeric(gg.HYB_R).mean():+.2f} · Δ {pd.to_numeric(gg.d).mean():+.2f}")
+        nsv, ssv, nct, sct = hyb_anatomy(g)
+        L.append(f"- FRENZY_LONG {nm}: {len(g)} fills · " + " | ".join(parts) + f" · SAVED (HYB ≥ 0, lock lost) {nsv} (Δ {ssv:+.2f}) · CUT (lock ≥ +2, HYB "
+                 f"out at the +0.2 floor) {nct} (Δ {sct:+.2f}).")
+    if len(allh):
+        lab_ = lambda r: f"{str(r.pair).replace('USDT', '')} {str(r.k)[5:16].replace('T', ' ')} {str(r.sleeve)}"
+        L.append("- Per fill (HYB / lock on the bar's ruler): " + "; ".join(f"{lab_(r)} {_num(r.HYB_R) or 0:+.2f} / {_num(r.LOCK2_R) or 0:+.2f}"
+                                                                          + ("" if T(r.final) else "ᵖ") + f" ({r.px_src})" for r in allh.tail(8).itertuples()) + ".")
+    L.append(f"- Year reference: {HYB_YEAR}.")
+    if err:
+        L.append(f"_HYBRID_EXIT: {err} fill(s) not priced this run (klines unavailable" + (", Binance rate limit — stopped" if rl else "") + ") — retried next run._")
+    if late:
+        L.append(f"_HYBRID_EXIT: {late} fill(s) left for the next run (the {X_TIME_S} s time budget was spent)._")
+    return hmap, L
+
+
+def _hyb_safe(now_ms, F, allr):
+    try:
+        return hyb_run(now_ms, F, allr)
+    except Exception as ex:
+        return {}, ["", f"_HYBRID_EXIT unavailable this run ({str(ex)[:120]})._"]
+
+
 def _extras(now_ms, th, F, J, allr):
-    """trackers 7 – 9 after the exit table, each in its own try/except (one never breaks another or the scout)."""
+    """trackers 7 – 10 after the exit table, each in its own try/except (one never breaks another or the scout)."""
     out = _gc_safe(now_ms, th, F, J, allr)
     Je = J if J is not None else pd.DataFrame(columns=["t", "e", "pair", "gate", "strategy"])
     try:
@@ -1684,6 +2716,10 @@ def _extras(now_ms, th, F, J, allr):
         out += vws_run(now_ms, F)
     except Exception as ex:
         out += ["## 🪜 VWAP_STOP shadow", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
+    try:
+        out += ons_run(now_ms, th, Je, F)
+    except Exception as ex:
+        out += ["## ⚡ ON_SCALP", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
     return out
 
 
@@ -1870,6 +2906,87 @@ def selftest():
     chk(vws_check(vw2.assign(delta=[-0.1] * 19 + [10.0]))[0] == "close", "one fill carrying the gain (and deeper > saved) → close")
     chk(vws_check(vw2.head(19))[0] == "collecting" and vws_check(vw2.assign(final=[True] * 19 + [False]))[0] == "collecting", "< 20 or not final → collecting")
     chk(vws_check(pd.concat([vw2, vw.assign(k="2026-10-30T00:00:00")]))[0] == "candidate", "only the FIRST 20 by open time are read")
+    # 🛟 HYBRID_EXIT (V3): −3 · +0.2 floor from a +1 prior peak · the lock from +3; ticks and 1m
+    chk(hyb_line(0.99) == -3.0 and hyb_line(1.0) == 0.2 and hyb_line(2.9) == 0.2 and hyb_line(3.0) == 2.0 and hyb_line(6.5) == 4.5, "V3 lines")
+    h_ = walk_ticks_hyb(*tk([100, 101.5, 100.2]), 100, t0)
+    chk(h_[2] == "+0.2 floor" and abs(h_[0] - (0.2 - FEE)) < 1e-9, "ORCA shape: peak +1.41 then back → out at the +0.2 floor print")
+    h_ = walk_ticks_hyb(*tk([100, 100.9, 96.9]), 100, t0)
+    chk(h_[2] == "stop" and abs(h_[0] - (-3.1 - FEE)) < 1e-9, "a +0.81 peak never arms → the −3 stop")
+    h_ = walk_ticks_hyb(*tk([100, 101.5, 104, 106, 103.8]), 100, t0)
+    chk(h_[2] == "floor / trail" and abs(h_[0] - (3.8 - FEE)) < 1e-9, "from +3 the lock trails (peak 5.91 → line 3.91)")
+    chk(walk_ticks_hyb(*tk([100, 101.5, 100.5]), 100, t0)[2] == "open", "above the +0.2 floor → open")
+    chk(walk_ticks_hyb(np.array([t0, t0 + 1000, t0 + 800 * MIN]), np.array([100.0, 100.5, 90.0]), 100, t0)[2] == "12 h cap", "12 h clock cap")
+    hm = [[t0, 100, 101.5, 100, 101.2], [t0 + MIN, 101.2, 101.3, 99.0, 99.5]]
+    chk(walk(hm, 100, "HYB")[2] == "+0.2 floor" and abs(walk(hm, 100, "HYB")[0] - 0.2) < 1e-9 and walk(hm, 100, "LOCK2")[2] == "open",
+        "1m: the +0.2 floor set by a prior minute fills at the line; the lock still holds")
+    chk(walk([[t0, 100, 101.5, 96.0, 97]], 100, "HYB")[2] == "stop", "1m: low before high inside a minute → the peak of that minute cannot arm it")
+    hw = pd.DataFrame(dict(day=[f"d{i % 20}" for i in range(40)], d=[0.5, 0.4, 0.6, 0.3] * 10))
+    chk(hyb_check(hw)[0] == "reopen" and hyb_check(hw.head(39))[0] == "collecting" and hyb_check(hw.assign(day="d0"))[0] == "collecting",
+        "re-open at ≥ 40 on ≥ 20 days with Δ > +0.30, CI low > 0, > 0 w/o top 5; else collecting")
+    chk(hyb_check(hw.assign(d=0.25))[0] == "holds" and hyb_check(hw.assign(d=[30.0] * 5 + [-0.5] * 35))[0] == "holds", "Δ ≤ +0.30 / a top-5 lottery → lock holds")
+    an = pd.DataFrame(dict(HYB_R=[0.11, 0.11, 3.5, -3.1], LOCK2_R=[-3.09, 3.9, 3.5, -3.09], HYB_how=["+0.2 floor", "+0.2 floor", "floor / trail", "stop"]))
+    a_ = hyb_anatomy(an)
+    chk(a_[0] == 1 and abs(a_[1] - 3.2) < 1e-9 and a_[2] == 1 and abs(a_[3] + 3.79) < 1e-9, "SAVED / CUT anatomy")
+    # ⚡ ON_SCALP: TP +3 net / 2 h / no stop, costs 0.19, 1m o → l → h → c, the 60-s flow, the frozen bar + the 0.2 book
+    o_ = onscalp_walk(*tv([100, 95, 99, 103.3, 104]), 100, t0)
+    chk(o_["how"] == "TP +3" and abs(o_["pnl"] - (3.3 - 0.19)) < 1e-9 and abs(o_["mae"] - (-5.19)) < 1e-9, "TP at the first print ≥ +3 net (fill = that print), no stop through −5")
+    o_ = onscalp_walk(*tv([100, 101, 102]), 100, t0)
+    chk(o_["how"] == "open" and not o_["hit"], "under 2 h and under +3 → open")
+    o_ = onscalp_walk(np.array([t0, t0 + 60 * MIN, t0 + 120 * MIN, t0 + 121 * MIN]), np.array([100.0, 90.0, 97.0, 110.0]), 100, t0)
+    chk(o_["how"] == "2 h" and abs(o_["pnl"] - (-3.19)) < 1e-9 and o_["exit_ms"] == t0 + 120 * MIN, "time exit at the first print ≥ entry + 2 h (a later pop is not counted)")
+    o_ = onscalp_walk(*tv([100, 104]), 100, t0, gap=True)
+    chk(o_["pnl"] == ONS_TP and o_["mfe"] >= 3.8, "1m pseudo prints: the TP fills at exactly +3")
+    mt, mp = m1_prints_lh([[t0, 100, 104, 95, 101, 5]])
+    chk(list(mp) == [100, 95, 104, 101] and list(mt - t0) == [0, 15_000, 30_000, 59_999], "1m ON-scalp prints: open → low → high → close")
+    chk(onscalp_walk(*m1_prints_lh([[t0, 100, 104, 95, 101, 5]]), 100, t0, gap=True)["mae"] < -5, "the low is printed before the high (conservative MAE)")
+    fl = onscalp_flow([t0 + 1_000, t0 + 13_000, t0 + 30_000, t0 + 61_000], [100, 99, 102, 90], [1, 1, 2, 9], [False, True, False, False], [1, 2, 3, 1],
+                      t0, 100.0, 50.0, 6000.0)
+    chk(fl["n_agg_60"] == 3 and fl["n_trades_60"] == 6 and abs(fl["usd_60"] - 403) < 1e-9 and abs(fl["buy_share_60"] - 304 / 403) < 1e-9,
+        "60-s flow: taker-buy share of $ (isBuyerMaker False = buyer took); a print after 60 s is out")
+    chk(abs(fl["mdd_60"] + 1) < 1e-9 and abs(fl["mru_60"] - 2) < 1e-9 and abs(fl["px12_vs_close"] + 1) < 1e-9 and abs(fl["vol_x_24h"] - 8.06) < 1e-9
+        and abs(fl["vol_x_norm"] - 4.03) < 1e-9, "60-s low / high vs the close, the +12 s print, $ vs the median minute and vs normal hour / 60")
+    ow = pd.DataFrame(dict(day=[f"d{i % 16}" for i in range(32)], pair=[f"P{i}" for i in range(32)], pnl=[3.0, 2.9, -1.0, 3.0] * 8,
+                           mae=[-1.0] * 32, hit=[True, True, False, True] * 8, entry_at=[f"2026-10-{8 + i // 4:02d}T{i % 4:02d}:00:00" for i in range(32)]))
+    chk(onscalp_check(ow)[0] == "candidate", "N ≥ 30 on ≥ 15 days, CI low > 0, small DD → candidate (probe study only)")
+    chk(onscalp_check(ow.assign(hit=[True, False, False, True] * 8))[0] == "collecting", "P(+3 within 2 h) 50 % < 70 % → no candidate (study leg)")
+    chk("haircut" in onscalp_check(ow)[1] and "addition" in onscalp_check(ow.assign(pnl=[3.0, -3.5] * 16))[1], "haircut shown; retire labelled addition")
+    chk(onscalp_check(ow.head(29))[0] == "collecting" and onscalp_check(ow.assign(day="d0"))[0] == "collecting", "< 30 fires / < 15 days → collecting")
+    chk(onscalp_check(ow.assign(pnl=[3.0, -3.5] * 16))[0] == "retire", "mean ≤ 0 at 30 → retire")
+    chk(onscalp_check(ow.assign(mae=[-1.0] * 31 + [-30.0]))[0] == "candidate" and onscalp_book(ow.assign(mae=[-30.0] * 32))[1] >= 50,
+        "liquidation-deep MAE books −23.94 at 0.94 × equity; repeated → DD ≥ 50 %")
+    lq = ow.assign(pnl=[3.0, 2.9, -1.0, 3.0] * 8, mae=[-1.0, -1.0, -25.0, -1.0] * 8)
+    chk(onscalp_check(lq)[0] == "collecting" and "max DD" in onscalp_check(lq)[1], "a positive-mean cohort whose book draws down ≥ 50 % is no candidate")
+    chk(onscalp_check(pd.concat([lq, lq.assign(day=lq.day + "b")]))[0] == "retire", "no verdict by 60 → retire")
+    chk(onscalp_universe("XUSDT", "FRENZY_VOL24_LOW", None, SimpleNamespace()) == "VOL24_LOW"
+        and onscalp_universe("XUSDT", "LIVE_ONLY", "FRENZY_GVOL_HIGH;FRENZY_VOL24_LOW", SimpleNamespace()) == "VOL24_LOW"
+        and onscalp_universe("XUSDT", "FRENZY_READY", None, SimpleNamespace(frenzy_pair_blacklist="ABC, xusdt")) == "BLACKLIST"
+        and onscalp_universe("币安USDT", "FRENZY_READY", None, SimpleNamespace()) == "NON_ASCII"
+        and onscalp_universe("XUSDT", "FRENZY_ATR_HIGH", None, SimpleNamespace()) == "ok", "the study's universe tags")
+    pf = onscalp_flow([t0 + 1_000, t0 + 5_000, t0 + 11_999, t0 + 30_000], [100, 101, 102, 99], [1, 1, 1, 1], [False, True, False, False], [1] * 4,
+                      t0, 100.0, None, None)
+    chk(pf["n_agg_pre"] == 3 and abs(pf["usd_pre"] - 303) < 1e-9 and abs(pf["buy_share_pre"] - 202 / 303) < 1e-9 and abs(pf["move_pre"] - 2.0) < 1e-9,
+        "pre-entry [close, +12 s): buy share of $, $ volume, the last print's move")
+    oc = pd.DataFrame(dict(k=["2026-10-08T01:00:00", "2026-10-08T00:30:00", "2026-10-08T02:00:00", "2026-10-06T23:00:00", "2026-10-08T03:00:00"],
+                           pair=["X", "X", "Y", "Y", "Z"], spike_at=["2026-10-07T20:00:00", "2026-10-07T20:20:00", "2026-10-07T21:00:00",
+                                                                    "2026-10-07T21:00:00", "2026-10-07T22:00:00"],
+                           cohort=[True, True, True, False, True], is_on=True, strong=[True, True, True, True, False]))
+    chk(list(onscalp_counted(oc)) == [False, True, True, False, False], "one per pair-episode (20-min drift merged), floor before the dedupe, strong only")
+    chk(list(onscalp_counted(oc.assign(univ=["ok", "VOL24_LOW", "ok", "ok", "ok"]))) == [True, False, True, False, False],
+        "a bar outside the universe is filtered BEFORE the dedupe (the next bar of the episode counts)")
+    chk(list(onscalp_counted(oc.assign(spike_at=[None] * 5, strong=True))) == [True, True, True, False, True], "no spike (live-only NO_EPISODE) = its own episode")
+    good = dict(is_on=True, strong=True, adx_delta=1.0, di_spread=2.0, final=True, pnl=3.1, exit_how="TP +3", entry_at=_iso(t0), exit_at=_iso(t0 + 5 * MIN),
+                mae=-2.0, mfe=3.1, flow_state="ok", buy_share_60=0.6, usd_60=10.0, mdd_60=-1.0, mru_60=1.0)
+    onscalp_validate(good, True); onscalp_validate(dict(is_on=False, not_on_reason="NOT_FLAGGED"), False)
+    for bad_row, sf, why in ((dict(good, strong=False), True, "strong flag vs ADX / DI"), (dict(good, adx_delta=-1.0, strong=False), True, "wrong file"),
+                             (dict(good, pnl=2.5), True, "TP below +3"), (dict(good, exit_at=_iso(t0 + 200 * MIN)), True, "TP after 2 h"),
+                             (dict(good, exit_how="2 h", pnl=-1.0, exit_at=_iso(t0 + 119 * MIN)), True, "time exit before 2 h"),
+                             (dict(good, mae=4.0), True, "MAE above the result"), (dict(good, buy_share_60=1.4), True, "buy share > 1"),
+                             (dict(good, exit_how="open"), True, "final without a clean exit"), (dict(is_on=False), False, "non-ON without a reason")):
+        try:
+            onscalp_validate(bad_row, sf)
+            chk(False, f"onscalp_validate must raise: {why}")
+        except ValueError:
+            chk(True, why)
     print(f"selftest OK ({ok} checks)")
 
 

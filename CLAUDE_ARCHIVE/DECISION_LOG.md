@@ -5836,3 +5836,9 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   Counters FRENZY_CATCHUP_OPEN / _REFUSED / _MOVED / _STALE / _NO_DATA / _FAILED; stamps entry_frenzy_catchup / _bars / _move_pct; UI
   "ON HH:MM · hace …" (Argentina h23), exports "ON desde MM-DD HH:MM", cohort row "⏪ recuperados (catch-up)" on UI + both exports.
   🔒 PRE-REGISTERED: at 20 catch-up fills — bars ≥ 3 average ≤ 0 → frenzy_catchup_max_bars 2; all average < 0 → 0. Dual review applied.
+- (237) 2026-10-06 📒 **ML scan-cadence test closed (don't build) + FRENZY entry-latency study queued** (reports/ML_SCAN_CADENCE_TEST_2026-10-05.md).
+  yr5 replay, 62 days × 2 seeds, baseline reproduces yr5 314/314: ~60 s cycle −0.127 %/trade (total −23.2 % vs −23.4 %/seed), ~31 s −0.119
+  (total −26.5 %); same-signal timing Δ +0.007 [−0.034, +0.054] at ~31 s, −0.031 at ~60 s; faster scans mainly add short-lived forming-bar
+  signals that lose (−0.14 %/trade). Fails the pre-registered bar at both speeds → momentum scan cadence stays. Momentum shorts same pattern.
+  Side observation (confounded): FRENZY matched fills +0.109 %/trade when its own API latency fell (entry 14 → 11 s after the close) →
+  queued as a separate FRENZY entry-latency study (CURRENT_STATE pending line); operator "apunta el estudio de latencia de FRENZY".

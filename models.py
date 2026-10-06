@@ -279,6 +279,7 @@ class Order(Base):
     entry_frenzy_run_pct = Column(Float, nullable=True)            # the run's peak vs the price before the spike (%)
     entry_frenzy_stop_atr = Column(Float, nullable=True)           # the stop as a multiple of the 5m ATR (stop % ÷ ATR %)
     entry_frenzy_bar_ret_pct = Column(Float, nullable=True)        # Oct-2 (180): the signal bar's own return, close vs open (%) — ≤ 0 = red / flat
+    entry_frenzy_above_streak = Column(Integer, nullable=True)     # 🟢 Oct-6 (231): 5m closes in a row at / above the spike VWAP at the signal bar (WIDE hold-green rule)
     entry_frenzy_above_share = Column(Float, nullable=True)        # 🌀 Oct-5 (215): % of the episode's 5m closes at / above the spike VWAP
     # 📖 Oct-3 (DECISION_LOG 192): the ORDER BOOK at a MANUAL click (services/orderbook_stats.orderbook_metrics) — OBSERVE-ONLY research stamps
     manual_ob_spread_pct = Column(Float, nullable=True)
@@ -516,6 +517,7 @@ class Order(Base):
     cell_multiplier = Column(Float, nullable=False, default=1.0)
     cell_lev_multiplier = Column(Float, nullable=False, default=1.0)
     cell_multiplier_source = Column(String(40), nullable=True)
+    cell_demux_reason = Column(String(32), nullable=True)   # 🏷 Oct-6 (DECISION_LOG 224): C1_DEMUX_BREADTH / UNMATCHED_SPRINT_DEMUX / UNMATCHED_DEMUX_PVR when a de-mux sized the pattern cell down (the source tag alone hides it)
     cell_multiplier_capped = Column(Boolean, nullable=False, default=False)
 
     # May 8: tracks EMA13 cross strict-mode (ema13_cross_requires_stack_flip).

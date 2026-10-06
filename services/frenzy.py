@@ -224,6 +224,27 @@ def frenzy_wide_choppy(ep, th) -> bool:
         return False
 
 
+def frenzy_wide_hold_green_block(ep, code, th) -> Optional[str]:
+    """🟢 Oct-6 (DECISION_LOG 231, operator discipline-override probe): when frenzy_wide_hold_green_streak > 0, FRENZY_WIDE takes ONLY the
+    "hold-green" refusals — FRENZY_GREEN_BAR (ATR within the cap) on a setup whose price had ALREADY closed above the spike VWAP for MORE than
+    that many 5m closes in a row at the signal bar (RLC 10-05: streak 17). → the block counter name, or None (= WIDE may open).
+    FRENZY_ATR_HIGH → "FRENZY_WIDE_ATR_HIGH" (year: −0.53 %/fill, day CI below 0) · a green "reclaim" bar (streak ≤ min: the 12th close lands
+    on the signal bar) → "FRENZY_WIDE_RECLAIM" (year: −0.66 %, 8/9 months negative). Kept hold-green: 124 · +0.43 %, day CI −0.15…+1.01,
+    top 5 days = 96 % of the net — NOT a proven edge. FAIL-CLOSED: an unreadable streak blocks. 0 = off (WIDE as before)."""
+    try:
+        mn = _f(th, 'frenzy_wide_hold_green_streak', 0.0)
+        if mn <= 0:
+            return None
+        if code != "FRENZY_GREEN_BAR":
+            return "FRENZY_WIDE_ATR_HIGH"
+        if (ep or {}).get('bar_ret_pct') is None:   # FRENZY_GREEN_BAR also covers "signal candle unreadable" — fail closed (review)
+            return "FRENZY_WIDE_RECLAIM"
+        s = (ep or {}).get('above_streak')
+        return None if (s is not None and float(s) > mn) else "FRENZY_WIDE_RECLAIM"
+    except (TypeError, ValueError):
+        return "FRENZY_WIDE_RECLAIM"
+
+
 def frenzy_flagged(ep, th) -> bool:
     """A live episode counts as a FRENZY flag while its spike is verifiable and ≤ frenzy_max_hours old."""
     return bool(ep and ep.get('verified') and ep.get('hours') is not None and ep['hours'] <= _f(th, 'frenzy_max_hours', 96.0))

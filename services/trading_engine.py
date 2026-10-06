@@ -23,7 +23,7 @@ from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, clo
 from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
-from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy
+from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
 
@@ -780,6 +780,7 @@ _frenzy_norm_cache: Dict[str, tuple] = {}
 _frenzy_kl_cache: Dict[str, dict] = {}
 FRENZY_KL_TAIL = 5
 FRENZY_KL_FULL_EVERY = 12
+FRENZY_KL_LIMIT = 1500   # bars per full 5m read = the cached window length (the studies' 1499 closed bars + the forming bar)
 FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE")   # 🔥 Oct-3: both run the FRENZY exit, hold cap and urgent-close path
 FRENZY_ENTRY_MAX_LATE_S = 120   # a long opens only within this many seconds of its signal bar's close (the test entered at the next open)
 # (9d733e2 pushed 15:09 UTC). The first trigger's 4 fills (14:50 UTC, EMA13 first-tick bug) are excluded — operator reset the batch.
@@ -7097,11 +7098,11 @@ class TradingEngine:
                     if _m is not None:
                         _frenzy_kl_cache[_p] = dict(_c5, rows=_m)
                         return _m
-                _full = await binance_service.get_ohlcv(_sym, '5m', 1500)
+                _full = await binance_service.get_ohlcv(_sym, '5m', FRENZY_KL_LIMIT)
                 if _full:
                     if _c5 is not None:   # the safety check: would the cached window have matched this full read?
                         try:
-                            _m = merge_klines(_c5['rows'], _full[-FRENZY_KL_TAIL:], 1500)
+                            _m = merge_klines(_c5['rows'], _full[-FRENZY_KL_TAIL:], _c5['keep'])
                             if _m is None:   # no join (an outage / FRENZY switched off and on) = the designed fallback, not a disagreement
                                 _frenzy_status['kl_rejoin'] = int(_frenzy_status.get('kl_rejoin') or 0) + 1
                             else:
@@ -7109,8 +7110,17 @@ class TradingEngine:
                                 _diff = [(r, _fm[int(r[0])]) for r in _m
                                          if int(r[0]) in _fm and [float(x) for x in r[1:6]] != [float(x) for x in _fm[int(r[0])][1:6]]]
                                 _bad = len(_diff)
-                                _len_bad = len(_m) != len(_full)
-                                if _bad or _len_bad:
+                                if not _bad and len(_full) < len(_m):
+                                    # 🔧 Oct-6 (DECISION_LOG 230, review): a full read SHORTER than the joined cached window with every shared bar
+                                    # equal is a truncated read (an exchange hiccup), not new information — keep the longer window (a short
+                                    # window can un-verify a spike: verification needs 25 h visible); the next scheduled full read (≤ 12 bars) checks again.
+                                    # WARNING level: if the read path ever regresses to a capped length this fires on every full read — visible, not hidden.
+                                    _frenzy_status['kl_short'] = int(_frenzy_status.get('kl_short') or 0) + 1
+                                    logger.warning(f"[FRENZY_KL_SHORT] {_p}: full read {len(_full)} bars < cached window {len(_m)} with no differing bar — kept the cache")
+                                    _frenzy_kl_cache[_p] = dict(_c5, rows=_m)
+                                    return _m
+                                if _bad or len(_m) != len(_full):
+                                    _len_bad = len(_m) != len(_full)
                                     _frenzy_status['kl_mismatch'] = int(_frenzy_status.get('kl_mismatch') or 0) + 1
                                     # 🔎 Oct-6 (219) diagnostic: WHICH bar, how many bars back from the newest, and the cached vs full OHLCV values
                                     _newest = int(_full[-1][0])
@@ -7122,7 +7132,11 @@ class TradingEngine:
                                                    + (f" · {_det}" if _det else "") + " — replaced by the full read")
                         except (TypeError, ValueError, IndexError) as _ke:
                             logger.warning(f"[FRENZY_KL_MISMATCH] {_p}: comparison skipped ({str(_ke)[:60]})")
-                    _frenzy_kl_cache[_p] = dict(rows=[list(r) for r in _full], keep=1500)   # the requested limit: a young pair's window grows like a full read
+                    # 🔧 Oct-6 (DECISION_LOG 224/230): keep = the requested limit. Live full reads used to come back at 1000 bars (ccxt ≥ 4.5.40
+                    # cap) while the cache kept 1500 → 1001–1012-bar windows and 293 length-only FRENZY_KL_MISMATCH lines in 12 h; the read now
+                    # returns the full 1500 (binance_service raw klines), so cache, full read and the studies' 1499 closed bars agree. A young
+                    # pair (a short read = its whole history) keeps growing like a full read would.
+                    _frenzy_kl_cache[_p] = dict(rows=[list(r) for r in _full], keep=FRENZY_KL_LIMIT)
                 return _full
 
             async def _fz_fetch(_p):
@@ -7400,6 +7414,16 @@ class TradingEngine:
                                      f"average (≤ {getattr(th, 'frenzy_wide_above_share_min', 0):g}%)")
                 logger.info(f"[FRENZY_WIDE] {pair}: setup ON but refused — choppy pump ({flag.get('above_share', 0):.1f}% of closes above the spike average)")
                 return
+            # 🟢 Oct-6 (231): WIDE takes only hold-green setups (green signal candle on a setup already > N closes above its average) — same
+            # placement as the choppy check, so a block counted here is a trade that would otherwise have opened.
+            _hg = frenzy_wide_hold_green_block(flag, flag.get('code'), th) if wide else None
+            if _hg:
+                self._record_filter_block(_hg, "LONG")
+                _hg_txt = ("ATR above the FRENZY cap" if _hg == "FRENZY_WIDE_ATR_HIGH"
+                           else f"green reclaim — {flag.get('above_streak')} closes above its average (needs > {getattr(th, 'frenzy_wide_hold_green_streak', 0):g})")
+                flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} WIDE refused: {_hg_txt}"
+                logger.info(f"[FRENZY_WIDE] {pair}: setup ON but refused — {_hg_txt}")
+                return
             # The test bought at the open of the bar after the signal. Live must not buy a setup minutes later (a late scan, a retry
             # pass, a restart) nor a price that already left the signal bar's close by more than the dislocation limit (review).
             _late_s = (_leash_time.time() * 1000 - bar_open) / 1000.0
@@ -7443,6 +7467,7 @@ class TradingEngine:
                 entry_frenzy_bar_ret_pct=(round(flag['bar_ret_pct'], 4) if flag.get('bar_ret_pct') is not None else None),
                 entry_frenzy_di_spread=flag.get('di_spread'), entry_frenzy_adx_delta=flag.get('adx_delta'), entry_frenzy_vol_trend=flag.get('vol_trend'), entry_frenzy_gvol=_gv,
                 entry_frenzy_above_share=(round(flag['above_share'], 2) if flag.get('above_share') is not None else None),
+                entry_frenzy_above_streak=(int(flag['above_streak']) if flag.get('above_streak') is not None else None),   # 🟢 Oct-6 (231)
                 **self._sanitize_open_kwargs(_ef, _es, "LONG"),
             )
             _why = getattr(self, '_frenzy_open_refusal', None)
@@ -8433,6 +8458,7 @@ class TradingEngine:
         entry_frenzy_adx_delta: Optional[float] = None,
         entry_frenzy_vol_trend: Optional[float] = None,
         entry_frenzy_above_share: Optional[float] = None,
+        entry_frenzy_above_streak: Optional[int] = None,
         entry_frenzy_gvol: Optional[float] = None,
         # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
         # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
@@ -9056,6 +9082,7 @@ class TradingEngine:
         # WR / −avg where the 2× merely amplifies fat-tail DOA losers). When a C1 SHORT cell would
         # size >1×, KEEP it only inside [lo, hi), else DE-MUX to 1× (sizing only — entry NOT blocked;
         # a 50%-WR cohort must be de-amplified, not blocked). 06-28: AAVE/HYPE −$242/−$186 → +$214.
+        _cell_demux_reason = None   # 🏷 Oct-6 (DECISION_LOG 224): which de-mux sized the pattern cell down → orders.cell_demux_reason
         if (direction == "SHORT" and _pcell_src and 'C1' in str(_pcell_src) and (_pcell_inv or 1.0) > 1.0
                 and getattr(config.trading_config.thresholds, 'c1_short_demux_breadth_enabled', False)):
             _clo = float(getattr(config.trading_config.thresholds, 'c1_short_demux_breadth_lo', 70.0) or 0.0)
@@ -9064,6 +9091,7 @@ class TradingEngine:
                 logger.info(f"[C1_DEMUX_BREADTH] {pair} SHORT: bear%={entry_bear_pct} outside [{_clo},{_chi}) "
                             f"→ de-mux C1 {_pcell_inv}x/{_pcell_lev}x → 1x ({_pcell_src})")
                 _pcell_inv, _pcell_lev = 1.0, 1.0
+                _cell_demux_reason = "C1_DEMUX_BREADTH"
         # UNMATCHED LONG crowded-entry de-mux (Jul 10): the UNMATCHED 2× only earns its multiplier
         # below pair_volume_ratio 0.90 — the ≥0.90 zone is a ✗ HARMFUL sub-cell (pool 10 trades,
         # 60% WR, net-NEGATIVE at both sizings; below 0.90 the sleeve ran 29W/3L). Mechanism:
@@ -9090,6 +9118,7 @@ class TradingEngine:
                             f"∧ BTC-slope {float(_us_slp):+.3f} > {_us_slp_min} (crowd-sprint window, thesis unverifiable) "
                             f"→ de-mux UNMATCHED {_pcell_inv}x/{_pcell_lev}x → 1.0x/1.0x — re-sim read row")
                 _pcell_inv, _pcell_lev = 1.0, 1.0
+                _cell_demux_reason = "UNMATCHED_SPRINT_DEMUX"
             elif _upv_max > 0 and entry_pair_volume_ratio is not None and entry_pair_volume_ratio >= _upv_max:
                 # Jul 26 (operator patron fix): configurable de-mux targets (default 1.0/1.0 =
                 # the original full de-mux). <=0 coerced to 1.0 — a zero would zero the position.
@@ -9100,6 +9129,7 @@ class TradingEngine:
                 logger.info(f"[UNMATCHED_DEMUX_PVR] {pair} LONG: pair-vol ratio {entry_pair_volume_ratio:.2f} >= {_upv_max} "
                             f"(crowded entry) → de-mux UNMATCHED {_pcell_inv}x/{_pcell_lev}x → {_dm_inv}x/{_dm_lev}x")
                 _pcell_inv, _pcell_lev = _dm_inv, _dm_lev
+                _cell_demux_reason = "UNMATCHED_DEMUX_PVR"
             else:
                 # Jul 26 QUIET BOOST (the opposite end of the same PVR ladder; discipline-override
                 # at 19-0, tight revert in config.py). PVR < quiet threshold → invest mult up
@@ -10121,6 +10151,7 @@ class TradingEngine:
             entry_frenzy_di_spread=(entry_frenzy_di_spread if _frenzy else None),
             entry_frenzy_adx_delta=(entry_frenzy_adx_delta if _frenzy else None), entry_frenzy_vol_trend=(entry_frenzy_vol_trend if _frenzy else None),
             entry_frenzy_above_share=(entry_frenzy_above_share if _frenzy else None),
+            entry_frenzy_above_streak=(entry_frenzy_above_streak if _frenzy else None),
             entry_frenzy_gvol=(entry_frenzy_gvol if _frenzy else None),
             adx_surge_open=_adx_surge_admit,   # ⚡ Sep-28: admitted through the BTC ADX-surge waiver (same predicate as its sizing)
             entry_mcap_usd=_mcap_usd, entry_cmc_rank=_cmc_rank,   # 💰 Sep-28: cached market cap / CMC rank (NULL if unknown)
@@ -10162,6 +10193,7 @@ class TradingEngine:
             cell_multiplier=cell_mult,
             cell_lev_multiplier=cell_lev_mult,
             cell_multiplier_source=cell_src,
+            cell_demux_reason=(_cell_demux_reason if (_pcell_src is not None and cell_src == _pcell_src) else None),
             cell_multiplier_capped=cell_capped,
             # Jun 14: Flip Entry sleeve strategy tag (segregates flip P&L from momentum)
             # Jun 18: BULL_LONG tag for the build-side sleeve (real long, normal exit; NOT _is_flip)

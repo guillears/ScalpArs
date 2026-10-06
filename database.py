@@ -177,13 +177,15 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_door_age_min FLOAT"))
                 if 'adx_surge_open' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN adx_surge_open BOOLEAN"))
+                if 'cell_demux_reason' not in columns:   # 🏷 Oct-6 (DECISION_LOG 224)
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN cell_demux_reason VARCHAR(32)"))
                 for _sg_col, _sg_type in (('entry_surge_btc_move_pct', 'FLOAT'), ('entry_surge_pair_move_pct', 'FLOAT'),
                                           ('entry_surge_trigger_at', 'DATETIME'), ('entry_surge_gvol', 'FLOAT')):   # ⚡ Sep-30 SURGE sleeves
                     if _sg_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sg_col} {_sg_type}"))
                 for _fz_col, _fz_type in (('entry_frenzy_spike_at', 'DATETIME'), ('entry_frenzy_hours', 'FLOAT'), ('entry_frenzy_vwap', 'FLOAT'),
                                           ('entry_frenzy_vs_vwap_pct', 'FLOAT'), ('entry_frenzy_vol_mult', 'FLOAT'), ('entry_frenzy_run_pct', 'FLOAT'),
-                                          ('entry_frenzy_stop_atr', 'FLOAT'), ('entry_frenzy_bar_ret_pct', 'FLOAT'), ('entry_frenzy_di_spread', 'FLOAT'), ('entry_frenzy_adx_delta', 'FLOAT'), ('entry_frenzy_vol_trend', 'FLOAT'), ('entry_frenzy_gvol', 'FLOAT'), ('entry_frenzy_above_share', 'FLOAT'),
+                                          ('entry_frenzy_stop_atr', 'FLOAT'), ('entry_frenzy_bar_ret_pct', 'FLOAT'), ('entry_frenzy_di_spread', 'FLOAT'), ('entry_frenzy_adx_delta', 'FLOAT'), ('entry_frenzy_vol_trend', 'FLOAT'), ('entry_frenzy_gvol', 'FLOAT'), ('entry_frenzy_above_share', 'FLOAT'), ('entry_frenzy_above_streak', 'INTEGER'),
                                           ('exit_override_at', 'DATETIME'), ('exit_override_prev', 'VARCHAR(40)')):   # 🔥 Oct-2 FRENZY sleeve · ✎ exit override
                     if _fz_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_fz_col} {_fz_type}"))

@@ -14,6 +14,8 @@ the gate logic inline (the error class behind the d6 double-count incident).
   stack_keep   would TODAY'S entry stack admit this trade?
   stack_block_reason  first gate that catches it (overlap audits: group by this)
   stack_pnl    CF-adjusted P&L for kept trades (arm re-exit, sprint de-mux) — APPROXIMATION
+  stack_pct    P&L % under today's rules for kept trades (NaN when not kept): path CFs + FRENZY +TP move it, size
+               re-prices never do — read pct from here, never from a stack_pnl / pnl ratio
   stack_version  regenerate after EVERY filter ship: ./venv/bin/python scripts/build_master_pool.py
 
 Raw pools stay untouched (ground truth). stack_keep is exact (entry gates);
@@ -444,6 +446,13 @@ def main():
           f"rebuilt on {_cb_nrb}; refused {len(_cb_blk)}: " + ", ".join(f"{df.at[j, 'pair']}@{str(df.at[j, 'opened_at'])[:19]}({df.at[j, 'era']})" for j in sorted(_cb_blk)))
     df['stack_keep'] = keep; df['stack_block_reason'] = reason
     df['stack_pnl'] = np.round(spnl, 2); df['stack_ticket_scale'] = np.round(scale, 6); df['stack_version'] = STACK_VERSION
+    # 📐 stack_pct = the P&L % under today's rules. Size-only re-prices (ticket CAP05, sprint de-mux, UNMATCHED 1.5×, flip cells → 1×,
+    # sleeve sizing) change stack_pnl but NOT the pct, so a pct must never be read off a stack_pnl / pnl ratio. Path CFs (ARM040 /
+    # LATE_ARM / FADE_SL) re-price the pct (same convention as validate_against_master M1); the FRENZY +TP re-price is set below.
+    _cf = df.stack_keep & df.stack_block_reason.fillna("").astype(str).str.contains("ARM040|LATE_ARM|FADE_SL")
+    df['stack_pct'] = np.where(_cf, df.stack_pnl / df.stack_ticket_scale.fillna(1) / pd.to_numeric(df.notional_value, errors="coerce") * 100,
+                               pd.to_numeric(df.pnl_percentage, errors="coerce"))
+    df.loc[~df.stack_keep.astype(bool), 'stack_pct'] = np.nan   # blocked trades have no today's-rules pct (stack_pnl is 0 there)
     df = df.drop(columns=['_ts'])
     # 🔥 Oct-4 (DECISION_LOG 193/197/199/200): sleeve fills re-priced at TODAY's size (pct is size-free; $ = pct × today's notional).
     # Margin today = as-traded margin ÷ its cell multiplier × today's invest mult; leverage today = max(1, round(20 × today's lev mult)) —
@@ -493,6 +502,7 @@ def main():
         pct = float(r.pnl_percentage)
         if strat.startswith("FRENZY") and _tp > 0 and pd.notna(r.get("peak_pnl")) and float(r.peak_pnl) >= _tp:
             pct = _tp
+            df.at[i, "stack_pct"] = pct
         df.at[i, "stack_pnl"] = round(pct / 100.0 * float(r.investment) / cm * t[0] * lev, 2)
     out = "reports/MASTER_POOL_stacked.csv"
     df.to_csv(out, index=False)

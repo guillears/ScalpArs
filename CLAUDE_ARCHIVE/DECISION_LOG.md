@@ -5697,3 +5697,10 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   position / cooldown refusals not replayed); EMA13 had 0 sole-blocker lines in ~8 days of journals (it co-fails with 3–9 gates) → may never
   fill. Pre-registration look (not evidence): pADX 2 windows SOON +0.33 / MUBARAK +0.16. Reviews: caveman + deep, fixes applied
   (registration anchor, per-item try around path/simulate, wording).
+- (222) 2026-10-06 📐 **Master `stack_pct` column + replay_fidelity_audit check 7 fix** (tooling, no stack change; stack_pnl / stack_keep
+  byte-identical). The audit derived live pct as pnl% × stack_pnl / pnl, which treated size-only re-prices (sprint de-mux, UNMATCHED 1.5×,
+  flip → 1×, sleeve sizing) as pct changes: 79 kept rows had their pct cut to ½–¾. build_master_pool now writes stack_pct = P&L % under
+  today's rules (path CFs ARM040 / LATE_ARM / FADE_SL from stack_pnl / ticket / notional, FRENZY +TP = tp, else pnl_percentage; NaN when
+  not kept); the audit reads it. Check 7 (yr5 trimmed fills): MOM-long live −0.021 → −0.036 % (PASS), FLIP −0.213 → −0.237 (WARN), no
+  verdict flips. Test tests/test_master_stack_pct.py. Follow-up (not done): ~13 analysis scripts re-implement the regex pct inline
+  (numerically identical today, miss FRENZY +TP) → switch to stack_pct when next touched.

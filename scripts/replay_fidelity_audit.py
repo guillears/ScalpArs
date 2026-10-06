@@ -9,7 +9,7 @@ Runs every check we know of in one pass and prints PASS / WARN / FAIL with numbe
                      ≫ live rate = replay bug; equal rates = stamp-definition artefact (stamp taken at open ≠ gate input)
   5 mechanics      — exit-reason mix, stop depth p10/median, avg win / avg loss, hold, maker share, fee per trade
   6 sizing         — notional ≤ liquidity cap; cell multipliers present
-  7 recent window  — replay per-seed vs live (today's-rules basis = stack_pnl) over the near-current-code window
+  7 recent window  — replay per-seed vs live (today's-rules basis = the master's stack_pct) over the near-current-code window
 Live control = master pool stack-kept full-size fills (+ optional --batch CSVs), restricted to --live-from for the
 rule-sensitive checks (near-current code). Exit code 0 always; read the verdict column.
   venv/bin/python scripts/replay_fidelity_audit.py --fills reports/backtest_cache/replay/year/yr2_report_fills.csv --sleeve MOM-long
@@ -163,7 +163,7 @@ verdict("6 sizing: cell multiplier stamped", R.cell_multiplier.notna().mean() > 
 W = M[M.ts >= A.live_from].groupby("era").ts.agg(["min", "max"])
 RR = R[[((W["min"] <= t) & (t <= W["max"])).any() for t in R.ts]]
 if len(LC) and len(RR):
-    lp = (LC.pnl_percentage * LC.stack_pnl / LC.stack_ticket_scale.fillna(1) / LC.pnl.replace(0, np.nan)).fillna(LC.pnl_percentage)   # ticket re-price (CAP05) is size, not pct
+    lp = (LC.stack_pct if "stack_pct" in LC else LC.pnl_percentage).fillna(LC.pnl_percentage)   # today's-rules pct from the builder; size re-prices never move it
     per = RR.groupby("seed").pnl_percentage.mean()
     inside = per.min() - 0.1 <= lp.mean() <= per.max() + 0.1
     verdict("7 recent window: live (today's rules) inside replay seed range ±0.1", inside, True,

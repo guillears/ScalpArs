@@ -5874,3 +5874,12 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   Dual review: ship (July frozen-price invariants hold: force_reset adds the pair to subscribed_pairs synchronously before the task).
   NOT fixed: each reconnect still leaves ALL pairs without stream ticks ≈ 6.6 s (5 s close + 1 s backoff + 0.6 s connect); follow-ups
   proposed: lower close_timeout / abort after the close frame + skip the backoff on intentional reconnects, or SUBSCRIBE on the open stream.
+- (241) 2026-10-06 🔌 **Price-stream reconnect gap ≈ 6.6 s → ≈ 1.6–2.2 s** (operator "sí, hazlo"). Every intentional reconnect (new pair,
+  batch healing, prune, staleness / forced heal) left ALL pairs without ticks: websockets close_timeout 5 s (live 14/14 = exactly 5.000 s;
+  measured on Binance fstream: close frame answered at once, TCP held ≈ 6.6 s → the 5 s was always the timeout) + 1 s error backoff +
+  ~0.6–1.2 s connect. Fix (services/websocket_tracker.py): CLOSE_TIMEOUT 1 s (measured 1.001 s, code 1000, no data lost — only Binance's slow
+  TCP teardown is skipped); _reconnect marks the close intentional → the run loop reconnects at once, at most one such skip per 10 s
+  (FAST_RECONNECT_MIN_GAP_S, so no loop can near Binance's 300 connections / 5 min); real errors keep the exponential backoff; the flag is
+  cleared on every new socket / start; _reconnect only clears its own socket (never a newer one: July frozen-price class); the closing socket
+  is never left visible during a missing-pairs reconnect. July invariants (snapshot, _connected_pairs, missing-pairs continue) unchanged.
+  Dual review: ship. Tests tests/test_ws_fast_reconnect.py.

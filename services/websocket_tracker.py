@@ -11,6 +11,8 @@ from datetime import datetime
 import websockets
 from websockets.exceptions import ConnectionClosed
 
+_sleep = asyncio.sleep   # the run loop's sleep (tests patch this, never asyncio itself)
+
 logger = logging.getLogger(__name__)
 
 
@@ -111,6 +113,12 @@ class WebSocketTracker:
     # incident (staleness detection only counted received messages, so a
     # silent stream was invisible to it).
     SILENCE_TIMEOUT = 60
+    # 🔌 Oct-6 (DECISION_LOG 241): every intentional reconnect (a new pair, healing, prune) left ALL pairs without ticks ≈ 6.6 s =
+    # close_timeout 5 s (Binance's close frame arrives at once; the wait is the TLS/TCP teardown, 14/14 live reconnects = exactly 5.000 s)
+    # + the 1 s error backoff + ~0.6–1.2 s connect. Binance holds TCP ~6.6 s (measured), so 1 s only skips its slow teardown (code 1000,
+    # no data lost); an intentional reconnect also skips the error backoff (errors keep it).
+    CLOSE_TIMEOUT = 1.0
+    FAST_RECONNECT_MIN_GAP_S = 10.0   # at most one backoff-free reconnect per 10 s (review: no fast loop can near Binance's 300 conn / 5 min)
 
     def __init__(self):
         self.trackers: Dict[str, PriceTracker] = {}
@@ -119,6 +127,8 @@ class WebSocketTracker:
         self.running = False
         self._task: Optional[asyncio.Task] = None
         self._reconnect_delay = 1  # Start with 1 second
+        self._intentional_reconnect = False   # set by _reconnect(): the next closure skips the error backoff (Oct-6, 241)
+        self._last_fast_reconnect = 0.0       # loop time of the last backoff-free reconnect
         self._max_reconnect_delay = 60  # Max 60 seconds
         self._price_callback = None
         self._open_orders_callback = None
@@ -157,6 +167,7 @@ class WebSocketTracker:
             return
         
         self.running = True
+        self._intentional_reconnect = False
         self._task = asyncio.create_task(self._run_forever())
         logger.info("[WS_TRACKER] WebSocket tracker started")
     
@@ -369,12 +380,17 @@ class WebSocketTracker:
 
     async def _reconnect(self):
         """Reconnect WebSocket with updated subscriptions"""
-        if self.websocket:
+        ws = self.websocket
+        if ws:
+            self._intentional_reconnect = True   # our own close, not a network error: reconnect without the backoff
             try:
-                await self.websocket.close()
-            except:
+                await ws.close()
+            except Exception:
                 pass
-            self.websocket = None
+            # Oct-6 review: the run loop may already have opened the NEXT socket while this close was awaited — only clear our own
+            # (wiping the new one would make later subscribe_pair calls skip their reconnect: the July frozen-price class)
+            if self.websocket is ws:
+                self.websocket = None
     
     def _build_ws_url(self) -> str:
         """Build WebSocket URL with all subscribed streams"""
@@ -410,9 +426,10 @@ class WebSocketTracker:
                     url,
                     ping_interval=20,
                     ping_timeout=10,
-                    close_timeout=5
+                    close_timeout=self.CLOSE_TIMEOUT
                 ) as ws:
                     self.websocket = ws
+                    self._intentional_reconnect = False   # a fresh socket: any earlier intentional close is consumed (review)
                     self._connected_pairs = pairs_snapshot  # what this connection actually streams
                     self._reconnect_delay = 1  # Reset delay on successful connection
                     logger.info(f"[WS_TRACKER] Connected! Tracking: {', '.join(self.subscribed_pairs)}")
@@ -423,6 +440,7 @@ class WebSocketTracker:
                             f"[WS_TRACKER] {len(missing)} pair(s) subscribed during connect "
                             f"({', '.join(sorted(missing))}) — reconnecting with full stream list"
                         )
+                        self.websocket = None   # Oct-6 review: never leave the closing socket visible to _reconnect during the next connect
                         continue  # exits the context manager, which closes ws
 
                     while self.running:
@@ -451,9 +469,19 @@ class WebSocketTracker:
             self.websocket = None
             
             if self.running:
-                # Exponential backoff for reconnection
+                _t = asyncio.get_running_loop().time()
+                if self._intentional_reconnect and _t - self._last_fast_reconnect >= self.FAST_RECONNECT_MIN_GAP_S:
+                    # Oct-6 (241): we closed it ourselves (new pair / healing / prune) — reconnect at once, keep the backoff untouched;
+                    # at most one such skip per FAST_RECONNECT_MIN_GAP_S
+                    self._intentional_reconnect = False
+                    self._last_fast_reconnect = _t
+                    logger.info("[WS_TRACKER] Reconnecting now (intentional reconnect)")
+                    await _sleep(0)
+                    continue
+                self._intentional_reconnect = False
+                # Exponential backoff for reconnection (network / server errors, or a second intentional close within the gap)
                 logger.info(f"[WS_TRACKER] Reconnecting in {self._reconnect_delay}s...")
-                await asyncio.sleep(self._reconnect_delay)
+                await _sleep(self._reconnect_delay)
                 self._reconnect_delay = min(self._reconnect_delay * 2, self._max_reconnect_delay)
     
     async def _handle_message(self, data: dict):

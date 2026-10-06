@@ -5726,3 +5726,15 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   3.14 → 2.79 %/trading day. validate_against_master ALL PASS. Re-escalation: Pattern-W ladder on fresh 1× fires (N≥30 · WR≥70 % ·
   avg ≥ +0.10 % · Σ>0 → 1.5× first, 2.0× after +50 trades). Note the tension: the master's in-sample CALM3D record (90 % WR) is strong;
   the forward 2× fires are not — the ladder decides with fresh data.
+- (226) 2026-10-06 ⚖️ **Momentum-short pair-vol 0.86 KEPT — declared override of its Sep-18 revert gate** (operator: "mantén 0,86 con la
+  excepción, opción 2, con 15 señales"). The frozen gate (kept side PVR < 0.86 < 70 % WR on 15 fresh fills → revert to 1.0) was certain to
+  fire: kept side since 09-18 12:00 = 11 · 36 % · −0.30 % (verified twice; even 4 more wins = 53 % at 15). Evidence against executing it
+  (reports/MOM_SHORT_WINNERS_LOSERS_BTC_MACRO_2026-10-06.md): the removed band's own fills 0.86 ≤ PVR < 1.0 = 15 · 11 d · 40 % · −0.219 %
+  (P avg<0 0.976) vs kept < 0.86 = 37 · 21 d · 73 % · +0.173 % (gap −0.39, day CI −0.72…−0.08; −0.33 outside the washed-out window; in-sample
+  for the Sep-18 ship, ≈ −0.2 after haircut); high PVR is not the BTC-macro effect in disguise (same bull-week share, loses in both states).
+  The recent slump is sleeve-wide and day-clustered (09-29 = 41 % of the kept loss), not caused by the gate. Operator's BTC "bull week"
+  hypothesis H1 (pre-registered: 7d return > 0 ∧ close > daily EMA20 ∧ EMA20 > EMA50) REFUTED at this N: wrong sign in fill units, its
+  day-unit lean is the Jun-18→Jul-2 washed-out window; best short stretch (Aug 24–26, BTC +22 %/7d) was 11/12 winners; settles only with
+  ≥ 8 new bull-week days. Replacement gates (frozen, CURRENT_STATE): ① revert to 1.0 if the scout MS_PVR_BLOCKED Cohort A reaches 15 signals
+  with mean ≥ the kept side's mean over the same period; ② full sleeve review (no auto-kill) if the kept side is below breakeven WR (~59 %)
+  at 20 fills. No config change.

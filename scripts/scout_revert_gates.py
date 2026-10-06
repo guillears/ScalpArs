@@ -30,6 +30,13 @@ GATES (frozen definitions — quoted from CLAUDE_CURRENT_STATE.md / DECISION_LOG
                    re-priced with the live FAN flip-short exit (scripts/flip_exit_replica.py: ATR-widened stop, short runner trail with the
                    0.35 × peak cap, HARD_TP short ladder; taker fee both sides; ATR = Wilder ATR(14) % of the closed 5m bars at the signal;
                    6 h horizon) → mean of window means > 0 → FIRED (review flip_fan_btc_ema13_max → off / flip_fan_pair_adx_min → 0); ≤ 0 → holds.
+  MS_PVR_BLOCKED (226) momentum_short_pair_vol_max 0.86 stays — the Sep-18 kept-side revert (< 70 % on 15 → 1.0) is OVERRIDDEN (operator,
+                   DECISION_LOG 226). Frozen gates: ① REVERT to 1.0 if Cohort A (0.86 ≤ PVR < 1.0 refusals from 10-06 18:00 UTC, journal BLOCK
+                   MOMENTUM_SHORT_PAIRVOL, one per pair-episode, final prices, refusals a live fill of the pair followed ≤ 65 min excluded) reaches
+                   15 signals with mean ≥ the kept side's mean over the same period (kept since 10-06 18:00; < 5 fills → since 09-18 12:00) ·
+                   ② SLEEVE REVIEW (full sleeve-kill checklist, no auto-kill) if the first 20 kept fills since 09-18 12:00 (keys frozen in the state)
+                   are below breakeven WR 59 %. Refusal PVR rebuilt on a 5-s grid of the bucket; re-priced with the live momentum-SHORT exit
+                   replica (scripts/ms_pvr_shadow.py), entry = first print ≥ the earliest consistent refusal second + 35 s (bracket: latest + 35 s).
   HEAT (116)       first 30 (extended from 6 on 2026-10-04, operator) LONG_HEAT_BLOCK fires re-priced → WR ≥ 60 % → legs back to 0.07 / 64 / 80 (second leg — the Jan–Jun
                    engine replay failing the expectancy bar — is manual).
   MEGACAP (110)    LONG_MEGACAP_BLOCK refusals re-priced → ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows → long_megacap_rank_max 0.
@@ -88,6 +95,9 @@ FLIP_SRC = "FLIP:FAN_RATIO_GATE"
 FLIP_GATES = {"FLIP_EMA13_BLOCKED": "FLIP_FAN_BTC_EMA13", "FLIP_PADX_BLOCKED": "FLIP_FAN_PAIR_ADX"}
 FLIP_N = 10                          # first 10 WINDOWS (5-min journal buckets) per gate
 FLIP_REG_MS = 1791244800000          # 2026-10-06 00:00 UTC registration: earlier windows were seen in the 10-06 flip review (in-sample) → excluded
+# 📊 (operator 2026-10-06) momentum shorts refused by the pair-volume ceiling (momentum_short_pair_vol_max 0.86), shadow-priced
+MS_PVR_GATE = "MOMENTUM_SHORT_PAIRVOL"
+MS_PVR_REG_MS = 1791309600000        # 2026-10-06 18:00 UTC registration floor: earlier refusals are shown as reference only
 
 
 def log(msg):
@@ -383,6 +393,8 @@ def load_journal():
         g = d.gate.astype(str)
         keep = (d.dir.astype(str) == "LONG") & (((d.e == "BLOCK") & g.isin(["LONG_CHOP_BURST", "LONG_HEAT_BLOCK", "LONG_MEGACAP_BLOCK", "FRENZY_WIDE_CHOPPY"]))
                                                | ((d.e == "FAILS") & g.str.contains("PAIR_RSI_MOMENTUM_LOADX", regex=False)))
+        # 📊 momentum-short pair-volume refusals (an open_position gate → BLOCK line, first gate = the only one evaluated so far)
+        keep |= (d.e == "BLOCK") & (d.dir.astype(str) == "SHORT") & (g == MS_PVR_GATE)
         # 🔄 (221) FAN flip-short refusals that carry one of the two tracked gates (the sole-blocker cut happens in _signals_for)
         keep |= ((d.e == "FAILS") & (d.dir.astype(str) == "SHORT") & (d.src.astype(str) == FLIP_SRC)
                  & g.str.contains("|".join(FLIP_GATES.values()), regex=True))
@@ -920,6 +932,200 @@ def gate_flip_blocked(code, J, st, budget, now_ms, need_days, n=FLIP_N):
     return state
 
 
+# ═══════════════════════════════ 📊 MS_PVR_BLOCKED (operator 2026-10-06) ═══════════════════════════════
+_MSP = None
+
+
+def _msp():
+    """scripts/ms_pvr_shadow.py (PVR rebuild, the momentum-short exit replica, the kept-side tally) — loaded once."""
+    global _MSP
+    if _MSP is None:
+        if SCRIPTS not in sys.path:
+            sys.path.insert(0, SCRIPTS)
+        import ms_pvr_shadow as S
+        _MSP = S
+    return _MSP
+
+
+def ms_pvr_signals(J, store=None):
+    """MOMENTUM_SHORT_PAIRVOL refusals → DataFrame(ms, pair, key): journal BLOCK lines (dir SHORT), one signal per pair-episode, in time
+    order. The gate sits in open_position after every momentum-short entry gate and before only sizing / balance / book checks, so a
+    BLOCK line = the pair-volume ceiling was the sole blocker of a signal that passed the ladder (sizing refusals not replayed). Stored
+    signals are kept when their export leaves ~/Downloads."""
+    old = pd.DataFrame([dict(ms=int(v["t"]), pair=v["pair"]) for v in (store or {}).values()], columns=["ms", "pair"])
+    new = (J[(J.e == "BLOCK") & (J.dir.astype(str) == "SHORT") & (J.gate.astype(str) == MS_PVR_GATE)][["ms", "pair"]]
+           if J is not None and len(J) else pd.DataFrame(columns=["ms", "pair"]))
+    raw = pd.concat([old, new], ignore_index=True)
+    if not len(raw):
+        return pd.DataFrame(columns=["ms", "pair", "key"]).astype({"ms": "int64"})
+    ep = episodes(raw.astype({"ms": "int64"})).sort_values(["ms", "pair"]).reset_index(drop=True)
+    ep["key"] = ep.pair.astype(str) + "|" + ep.ms.astype(str)
+    return ep
+
+
+def ms_cohort_stats(items, cohorts, final_only=False):
+    """(n, days, wr, mean) of the primary re-price over the items whose PVR class is in `cohorts` (pure, self-tested).
+    Double-count episodes (a live fill of the pair followed the refusal) are excluded."""
+    v = [(x["t"], x["sim1"]) for x in items if x.get("cls") in cohorts and x.get("sim1") is not None and not x.get("dup")
+         and (x.get("final") or not final_only)]
+    if not v:
+        return 0, 0, float("nan"), float("nan")
+    vals = [b for _, b in v]
+    return len(v), len({_fmt_t(a)[:5] for a, _ in v}), _wr(vals), float(np.mean(vals))
+
+
+def ms_followed_by_fill(sig_ms, pair, fills_ms_by_pair):
+    """True when a live momentum-short fill of the same pair opened within the refusal's bucket + EPISODE_MIN (the refused signal and
+    the fill are the same move → pricing both double-counts it). fills_ms_by_pair = {pair: [o_ms, …]} (pure, self-tested)."""
+    lo, hi = int(sig_ms), int(sig_ms) + 5 * MIN + EPISODE_MIN * MIN
+    return any(lo <= int(t) <= hi for t in fills_ms_by_pair.get(pair, ()))
+
+
+def ms_review_first(rows, frozen, n):
+    """② the first n kept fills since 09-18 12:00 as [(key, pnl %)] — a CLOSED prefix in open order (a still-open earlier fill holds the
+    set back); `frozen` (from the state) wins once set, so later-closing fills never rewrite the read (pure, self-tested).
+    rows = iterable of (key, status, pnl %) sorted by open time."""
+    if frozen:
+        return [tuple(x) for x in frozen][:n], True
+    out = []
+    for k, stt, pnl in rows:
+        if str(stt) != "CLOSED" or pnl is None or not np.isfinite(pnl):
+            break
+        out.append((k, float(pnl)))
+        if len(out) >= n:
+            return out, True
+    return out, False
+
+
+def gate_ms_pvr(J, st, budget, now_ms, need_days, orders_fn=None):
+    """📊 MS_PVR_BLOCKED — the momentum shorts the pair-volume ceiling (0.86) REFUSED, re-priced as if opened (observe-only), judged by
+    the frozen DECISION_LOG 226 gates (the Sep-18 kept-side 70 %/15 revert is OVERRIDDEN):
+      ① REVERT to 1.0 if Cohort A (0.86 ≤ PVR < 1.0 refusals from 2026-10-06 18:00 UTC, final prices, double-count episodes excluded)
+        reaches 15 signals with mean ≥ the kept side's mean over the same period (kept fills since 10-06 18:00; < 5 → since 09-18 12:00)
+      ② SLEEVE REVIEW (full sleeve-kill checklist, no auto-kill) if the first 20 kept fills since 09-18 12:00 (keys frozen into the state
+        when N first reaches 20) are below the breakeven WR 59 %.
+    Per signal: the refusal bucket's PVR rebuilt on a 5-s grid (ms_pvr_shadow.refusal_profile: A = every second consistent with the
+    refusal is < 1.0; B ≥ 1.0 context; A~/B~ straddle 1.0); entry = the first print ≥ the earliest consistent second + the live 35-s
+    scan→fill delay (primary) / the latest + 35 s (bracket), taker fee; ATR % and the C1 legs rebuilt from bars CLOSED by the scan + the
+    last print; exit = the live momentum-short replica (ms_pvr_shadow.simulate_ms). Earlier refusals = reference only.
+    Returns 'fired' (①) · 'review' (②) · 'holds' · 'collecting'."""
+    S = _msp()
+    G = st.setdefault("gates", {}).setdefault("MS_PVR_BLOCKED", {})
+    store = G.setdefault("items", {})
+    cfg, diffs = S.live_ms_settings()
+    A_ = (orders_fn or S.load_momentum_shorts)() if need_days is None else None
+    fills = {}
+    if A_ is not None:
+        for p_, t_ in zip(A_.pair, A_.o_ms):
+            fills.setdefault(p_, []).append(int(t_))
+    sig = ms_pvr_signals(J, store)
+    items = []
+    for r in sig.itertuples():
+        it = store.get(r.key) or dict(pair=r.pair, t=int(r.ms), ref=bool(int(r.ms) < MS_PVR_REG_MS))
+        if A_ is not None:
+            it["dup"] = ms_followed_by_fill(int(r.ms), r.pair, fills)
+        if not it.get("final"):
+            if "cls" not in it and budget.ok():
+                pf = S.refusal_profile(r.pair, int(r.ms))
+                if "pending" in pf:
+                    it["p1"] = pf["pending"]
+                else:
+                    it.update(cls=pf["cls"], pvr_lo=pf["lo"], pvr_med=pf["med"], pvr_hi=pf["hi"], scan1=pf["first_ok_ms"], scan5=pf["last_ok_ms"])
+                    it.pop("p1", None)
+            if it.get("scan1") is not None and "atr" not in it and budget.ok():
+                try:
+                    stp = S.entry_stamps(r.pair, int(it["scan1"]))
+                except Exception as e:
+                    stp = None
+                    log(f"MS_PVR stamps {r.pair}: {str(e)[:80]}")
+                if stp:
+                    it.update(atr=stp["atr"], c1=bool(stp["c1"]))
+            if need_days is not None:
+                for k in ("scan1", "scan5"):
+                    if it.get(k):
+                        e_ms = int(it[k]) + S.ENTRY_DELAY_S * 1000
+                        need_days.update((r.pair, d) for d in days_of(e_ms, e_ms + int(cfg["maxhold_min"]) * MIN))
+            elif it.get("atr") is not None and it.get("cls") != "unk" and budget.ok():
+                for off, k in ((1, "scan1"), (5, "scan5")):
+                    if not it.get(k):
+                        continue
+                    e_ms = int(it[k]) + S.ENTRY_DELAY_S * 1000
+                    x = S.price_ms(r.pair, e_ms, int(it[k]), it["atr"], it.get("c1", False), cfg=cfg)
+                    if "pending" in x:
+                        it[f"p{off}"] = x["pending"]
+                        it.pop(f"sim{off}", None)
+                    else:
+                        it.update({f"sim{off}": x["pct"], f"how{off}": x["how"], f"src{off}": x["src"]})
+                        it.pop(f"p{off}", None)
+                srcs = [it.get("src1"), it.get("src5")]
+                it["final"] = bool((all(s is not None for s in srcs) and all(s == "tick" for s in srcs))
+                                   or (srcs[0] is not None and now_ms - int(r.ms) > FINAL_AFTER_MS))
+        store[r.key] = it
+        items.append(it)
+    if need_days is not None:
+        return None
+    cnt = [x for x in items if not x.get("ref")]
+    ref = [x for x in items if x.get("ref")]
+    dups = [x for x in cnt if x.get("dup")]
+    nA, dA, wA, mA = ms_cohort_stats(cnt, ("A", "A~"), final_only=True)
+    nAp, _, _, mAp = ms_cohort_stats(cnt, ("A", "A~"))
+    nAs = ms_cohort_stats(cnt, ("A",), final_only=True)[0]
+    nB, dB, wB, mB = ms_cohort_stats(cnt, ("B", "B~"), final_only=True)
+    nBp = ms_cohort_stats(cnt, ("B", "B~"))[0]
+    # ① revert gate — Cohort A (final, non-duplicate, signal order) vs the kept side over the same period
+    a_vals = [x["sim1"] for x in cnt if x.get("cls") in ("A", "A~") and x.get("sim1") is not None and x.get("final") and not x.get("dup")]
+    kref, klab = S.kept_ref(A_)
+    g1 = S.revert_gate(a_vals, kref["mean"])
+    # ② sleeve review — the first 20 kept fills since 09-18 12:00, frozen into the state at N = 20
+    t0 = int(pd.Timestamp(S.KEPT_FROM).value // 1_000_000)
+    kk = A_[(A_.o_ms >= t0) & (A_.pvr < S.PVR_CEIL) & A_.stack_keep.astype(bool)].sort_values("o_ms")
+    rows = [(f"{str(o)[:19].replace(' ', 'T')}|{p_}", stt, (float(v) if pd.notna(v) else None))
+            for o, p_, stt, v in zip(kk.opened_at, kk.pair, kk.status, kk.pnl_percentage)]
+    first, full = ms_review_first(rows, G.get("review_first20"), S.REVIEW_N)
+    if full and not G.get("review_first20"):
+        G["review_first20"] = [list(x) for x in first]
+        G["review_frozen_at"] = _fmt_t(now_ms, True)
+    g2 = S.review_gate([v for _, v in first])
+    kf, ks = S.kept_tally(A_)
+    state = "fired" if g1 == "fired" else "review" if g2 == "review" else ("holds" if g1 == "holds" else "collecting")
+    G["kept"] = dict(n=ks["n"], wins=ks["wins"], wr=round(ks["wr"], 1) if np.isfinite(ks["wr"]) else None,
+                     mean=round(ks["mean"], 3) if np.isfinite(ks["mean"]) else None, usd=round(ks["sum_usd"], 2),
+                     ref=klab, ref_n=kref["n"], ref_mean=(round(kref["mean"], 3) if np.isfinite(kref["mean"]) else None), g1=g1, g2=g2)
+    G["revalidate"] = ("; ".join(diffs) if diffs else None)
+    wr20 = (100.0 * sum(1 for _, v in first if v > 0) / len(first)) if first else float("nan")
+    g1txt = {"insufficient": f"① insufficient (A {nA}/{S.REVERT_N})", "fired": "① 🔔 FIRED → revert momentum_short_pair_vol_max to 1.0",
+             "holds": "① holds — Cohort A below the kept mean, 0.86 stays"}[g1]
+    g2txt = {"collecting": f"② collecting ({len(first)}/{S.REVIEW_N} kept fills)",
+             "review": f"② 🔔 SLEEVE REVIEW — first {S.REVIEW_N} kept fills {wr20:.0f} % < breakeven {S.BREAKEVEN_WR:.0f} % (full sleeve-kill checklist, no auto-kill)",
+             "holds": f"② holds — first {S.REVIEW_N} kept fills {wr20:.0f} % ≥ {S.BREAKEVEN_WR:.0f} %"}[g2]
+    G["status_txt"] = (f"{g1txt} · {g2txt} · Sep-18 70 %/15 kept-side revert: overridden (DECISION_LOG 226)"
+                       + (" · ⚠ replica re-validate needed" if diffs else ""))
+    G["progress"] = (f"Cohort A (0.86 ≤ PVR < 1.0, what a revert re-admits; final prices): {nA}/{S.REVERT_N} signals"
+                     + (f" ({nA - nAs} straddle 1.0)" if nA > nAs else "")
+                     + (f" · {dA} days · WR {wA:.0f} % · mean {mA:+.3f} %" if nA else "")
+                     + (f" [incl. {nAp - nA} provisional: mean {mAp:+.3f} %]" if nAp > nA else "")
+                     + f" · Cohort B (PVR ≥ 1.0, context): {nB}" + (f" · WR {wB:.0f} % · mean {mB:+.3f} %" if nB else "")
+                     + (f" [+{nBp - nB} provisional]" if nBp > nB else "")
+                     + (f" · {len(dups)} double-count episode(s) excluded (live fill followed)" if dups else "")
+                     + f" ‖ ① kept reference ({klab}): N {kref['n']}" + (f" · mean {kref['mean']:+.3f} %" if kref["n"] else "")
+                     + f" ‖ ② KEPT-SIDE TALLY (momentum shorts PVR < 0.86, stack-kept, from 09-18 12:00, closed): {ks['n']} fills · "
+                     + (f"{ks['wins']} won · WR {ks['wr']:.0f} % · mean {ks['mean']:+.3f} % · ${ks['sum_usd']:+.0f}" if ks["n"] else "–")
+                     + f" · first-{S.REVIEW_N} set {len(first)}/{S.REVIEW_N}" + (f" (frozen {G.get('review_frozen_at')})" if G.get("review_first20") else "")
+                     + (f" · ⚠ replica re-validate needed: {G['revalidate']}" if diffs else ""))
+    fmt = lambda x: (f"{_fmt_t(x['t'])} {str(x['pair']).replace('USDT', '')} [{x.get('cls', '?')} PVR {_f(x.get('pvr_lo'), '.2f')}–{_f(x.get('pvr_hi'), '.2f')}"
+                     + (" C1" if x.get("c1") else "") + "] "
+                     + (f"{x['sim1']:+.2f}/{_f(x.get('sim5'))} ({x.get('how1', '')})" if x.get("sim1") is not None else f"pending ({x.get('p1', '?')})")
+                     + ("" if x.get("final") or x.get("sim1") is None else "ᵖ"))
+    live = [x for x in cnt if not x.get("dup")]
+    G["detail"] = ((" · ".join(fmt(x) for x in live) if live else "no counted refusal yet (floor 10-06 18:00 UTC)")
+                   + (" ‖ double-count (a live fill of the pair followed ≤ 65 min; NOT in the gate count): " + " · ".join(fmt(x) for x in dups) if dups else "")
+                   + (" ‖ pre-floor reference: " + " · ".join(fmt(x) + (" (fill followed)" if x.get("dup") else "") for x in ref) if ref else "")
+                   + " ‖ kept fills: " + " · ".join(f"{str(r_.opened_at)[5:16].replace('T', ' ')} {str(r_.pair).replace('USDT', '')} "
+                                                     f"PVR {r_.pvr:.2f} {r_.pnl_percentage:+.2f}" for r_ in kf.itertuples()))
+    G["priced"] = _priced_txt(cnt)
+    return state
+
+
 def gate_megacap(J, st, btc, budget, now_ms, need_days):
     G = st.setdefault("gates", {}).setdefault("MEGACAP", {})
     store = G.setdefault("items", {})
@@ -1244,6 +1450,19 @@ DEFS = {
                           "if the flip had opened at bucket +1 min (t+5m bracket) with the live FAN flip-short exit (ATR stop, short runner trail, HARD_TP "
                           "ladder, taker fees both sides): mean of window means > 0 → the filter blocked winners · forward windows from 2026-10-06 only", "review flip_fan_pair_adx_min → 0",
                           "flip_fan_pair_adx_min"),
+    "MS_PVR_BLOCKED": ("📊 Mom-short pair-vol ceiling 0.86 (226)", "Sep-18 kept-side revert (< 70 % WR on 15 → 1.0) OVERRIDDEN (DECISION_LOG 226), "
+                       "0.86 stays. ① REVERT to 1.0 if Cohort A — MOMENTUM_SHORT_PAIRVOL refusals (journal BLOCK, one per pair-episode) from 2026-10-06 "
+                       "18:00 UTC with refusal PVR in [0.86, 1.0) (= what a revert re-admits), re-priced with the live momentum-short exit replica, final "
+                       "prices, episodes a live fill of the pair followed ≤ 65 min excluded (double count) — reaches 15 signals with mean ≥ the kept side's "
+                       "mean over the same period (kept fills since 10-06 18:00; < 5 → since 09-18 12:00). ② SLEEVE REVIEW (full sleeve-kill checklist, "
+                       "no auto-kill) if the first 20 kept fills (PVR < 0.86, stack-kept) since 09-18 12:00 — keys frozen at N = 20 — are below "
+                       "breakeven WR 59 %. Cohort B (PVR ≥ 1.0) = context. Scope caveat: the journal BLOCK line cannot tell a BEARRUN_SHORT refusal "
+                       "(it rides the momentum ladder and this gate) from a momentum one — no stamp or log line separates them, so they are counted "
+                       "together (BEARRUN uses the momentum exits). Logging note: PAIRVOL BLOCK lines appear only 09-28 → 09-30 in the exported journals "
+                       "(through 10-06 04:00) while the adjacent open_position gate MOM_SHORT_C1_REGIME logged on 10-05 and kept fills on 10-05/10-06 "
+                       "had PVR 0.43/0.61 — consistent with no ≥ 0.86 candidate reaching the gate, not a logging loss (no engine change since; worth a "
+                       "server-log grep for [MOMENTUM_SHORT_PAIRVOL] to confirm)",
+                       "① set momentum_short_pair_vol_max 1.0 · ② run the sleeve-kill checklist", "momentum_short_pair_vol_max"),
     "HEAT_ADMIT": ("🔁 Heat revert check (208)", "first 10 WINDOWS (5-min buckets) of momentum longs the breadth-only re-scope WOULD have blocked (bull ≥ 85, BTC slope/RSI not "
                    "both hot, not washed out), now admitted by the original 3-leg rule: mean pnl % < 0 → re-scope back", "set long_heat_btc_slope_min 0 · "
                    "long_heat_btc_rsi_prev_min 0 · long_heat_bull_pct_min 85", "long_heat_bull_pct_min"),
@@ -1258,7 +1477,7 @@ DEFS = {
     "MEGACAP": ("🏦 Mega-cap exclusion (110)", "LONG_MEGACAP_BLOCK refusals re-priced: ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows",
                 "set long_megacap_rank_max 0", "long_megacap_rank_max"),
 }
-ORDER = ["CHOP_BURST", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "LOADX", "FLIP_EMA13_BLOCKED", "FLIP_PADX_BLOCKED", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
+ORDER = ["CHOP_BURST", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "LOADX", "FLIP_EMA13_BLOCKED", "FLIP_PADX_BLOCKED", "MS_PVR_BLOCKED", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
 
 
 def _status_text(code, state, G):
@@ -1328,6 +1547,10 @@ def run_section(now_ms=None, noted=None, record_notes=True):
             gate_flip_blocked(fcode, J, st, budget, now_ms, need)
         except Exception as e:
             log(f"{fcode} phase 1: {e}")
+    try:                                                      # 📊 own try — the momentum-short shadow must never break the run
+        gate_ms_pvr(J, st, budget, now_ms, need)
+    except Exception as e:
+        log(f"MS_PVR_BLOCKED phase 1: {e}")
     for fn in (lambda: gate_megacap(J, st, btc, budget, now_ms, need), lambda: gate_frenzy_lock(orders, st, budget, now_ms, need)):
         try:
             fn()
@@ -1366,6 +1589,15 @@ def run_section(now_ms=None, noted=None, record_notes=True):
             log(f"{fcode}: {e}")
             res[fcode] = "error"
             st["gates"].setdefault(fcode, {})["progress"] = f"error: {str(e)[:100]}"
+    try:                                                      # 📊 momentum-short pair-vol ceiling: kept-side revert + refused-signal shadow
+        res["MS_PVR_BLOCKED"] = gate_ms_pvr(J, st, budget, now_ms, None)
+        cov["MS_PVR_BLOCKED"] = (jtxt + " · refusals counted from 10-06 18:00 UTC (journal BLOCK lines exist from ≈ 09-28) · kept side: "
+                                 + otxt + " + reports/MASTER_POOL_stacked.csv · " + _msp().PARITY
+                                 + (" · ⚠ replica re-validate needed" if st["gates"].get("MS_PVR_BLOCKED", {}).get("revalidate") else ""))
+    except Exception as e:
+        log(f"MS_PVR_BLOCKED: {e}")
+        res["MS_PVR_BLOCKED"] = "error"
+        st["gates"].setdefault("MS_PVR_BLOCKED", {})["progress"] = f"error: {str(e)[:100]}"
     try:
         if SCRIPTS not in sys.path:
             sys.path.insert(0, SCRIPTS)
@@ -1420,7 +1652,7 @@ def run_section(now_ms=None, noted=None, record_notes=True):
     if ftp and "FRENZY_LOCK" in cov:
         srcs = [x.get("src") for x in ftp.values() if x.get("src")]
         cov["FRENZY_LOCK"] += f" · paths: {sum(1 for s in srcs if s == 'tick')} tick / {sum(1 for s in srcs if s != 'tick')} 1m"
-    for code in ("CHOP_BURST", "LOADX", "HEAT", "HEAT_ORIG", "MEGACAP") + tuple(FLIP_GATES):
+    for code in ("CHOP_BURST", "LOADX", "HEAT", "HEAT_ORIG", "MEGACAP", "MS_PVR_BLOCKED") + tuple(FLIP_GATES):
         if st["gates"].get(code, {}).get("priced"):
             cov[code] = cov.get(code, "") + " · " + st["gates"][code]["priced"]
     # render
@@ -1428,14 +1660,15 @@ def run_section(now_ms=None, noted=None, record_notes=True):
          "Refused signals are re-priced with the live momentum-LONG exit replica (scripts/ml_exit_optimize.py) at the journal bucket "
          "+1 min (primary) and +5 min (in brackets); FRENZY fills on aggTrades ticks with the bot's accounting. A gate fires only on final "
          "(tick) prices; ᵖ = provisional 1m price. FAN flip-short refusals (🔄) are re-priced the same way with the live flip-short exit "
-         "replica (scripts/flip_exit_replica.py). Decisions are the operator's — this table never changes config.", "",
+         "replica (scripts/flip_exit_replica.py); refused momentum shorts (📊) with the live momentum-short exit replica (scripts/ms_pvr_shadow.py). "
+         "Decisions are the operator's — this table never changes config.", "",
          "| Gate | Definition (frozen) | Progress | Status | Config now | Data coverage |", "|---|---|---|---|---|---|"]
     notes = []
     for code in ORDER:
         G = st["gates"].setdefault(code, {})
         state = res.get(code, "error")
         prev = G.get("state")
-        if state in ("fired", "armbar", "arm_group") and prev != state:
+        if state in ("fired", "armbar", "arm_group", "review") and prev != state:
             G["state_at"] = now_ms
         G["state"] = state
         title, d, action, ck = DEFS[code]
@@ -1443,13 +1676,15 @@ def run_section(now_ms=None, noted=None, record_notes=True):
         cv = cfg_value(ck)
         shown = (f"first {EXT_N[code][1]} (frozen gate): {EXT_N[code][2]} · first {EXT_N[code][0]} (extension): {stt}"
                  if code in EXT_N and state not in ("nodata", "error") else stt)
+        if code == "MS_PVR_BLOCKED" and state not in ("nodata", "error") and G.get("status_txt"):   # 📊 (226) both frozen gates
+            shown = G["status_txt"]
         if code == "HEAT" and state not in ("nodata", "error"):   # 🔁 (208) resolved — the extension's blocked set is frozen at the revert
             shown = f"first {EXT_N['HEAT'][1]} (frozen gate): {EXT_N['HEAT'][2]} → ✅ REVERTED Oct-5 (DECISION_LOG 208) · tally frozen at the revert"
         L.append(f"| {title} | {d} | {G.get('progress', '–')} | {shown} | {ck} = {cv if cv is not None else '–'} | {cov.get(code, '–')} |")
-        if state in ("fired", "armbar", "arm_group") and code != "HEAT":   # HEAT resolved (reverted, 208): no further alerts
+        if state in ("fired", "armbar", "arm_group") + (("review",) if code == "MS_PVR_BLOCKED" else ()) and code != "HEAT":   # HEAT resolved (reverted, 208): no further alerts
             k = f"RG|{code}|n{EXT_N[code][0]}|{state}" if code in EXT_N else f"RG|{code}|{state}"   # N in the key: the frozen-N alert must not mute the extension
             if k not in noted and k not in G.get("noted", []):
-                notes.append((k, f"🔔 Revert gate {title}: {stt[2:].strip()} — {G.get('progress', '')}"))
+                notes.append((k, f"🔔 Revert gate {title}: {(shown if code == 'MS_PVR_BLOCKED' else stt[2:]).strip()} — {G.get('progress', '')}"))
                 if record_notes:
                     G.setdefault("noted", []).append(k)
     L += [""]
@@ -1570,6 +1805,30 @@ def selftest():
     chk(list(flip_sole_blocker(Jt, "FLIP_FAN_PAIR_ADX").pair) == ["CUSDT"], "flip sole-blocker: pADX alone (a joint EMA13+pADX set is excluded)")
     chk(list(_signals_for(Jt, "FLIP_EMA13_BLOCKED").pair) == ["AUSDT"], "flip signals: routed through the sole-blocker cut")
     chk(ORDER.index("FLIP_EMA13_BLOCKED") == ORDER.index("LOADX") + 1 and all(c in DEFS for c in FLIP_GATES), "flip gates wired (ORDER / DEFS)")
+    # 📊 MS_PVR_BLOCKED — BLOCK lines of the pair-volume gate only, SHORT only, one per pair-episode; cohort stats by PVR class
+    Jm = pd.DataFrame(dict(t=["x"] * 5, ms=[0, 20 * MIN, 0, 0, 90 * MIN], e=["BLOCK", "BLOCK", "BLOCK", "FAILS", "BLOCK"],
+                           pair=["AUSDT", "AUSDT", "BUSDT", "CUSDT", "AUSDT"], dir=["SHORT", "SHORT", "LONG", "SHORT", "SHORT"],
+                           gate=[MS_PVR_GATE, MS_PVR_GATE, MS_PVR_GATE, MS_PVR_GATE, MS_PVR_GATE], src=[None] * 5))
+    chk(list(zip(ms_pvr_signals(Jm).pair, ms_pvr_signals(Jm).ms)) == [("AUSDT", 0), ("AUSDT", 90 * MIN)],
+        "ms pvr signals: BLOCK · SHORT · pair-episodes (20-min repeat folded, 90-min repeat new)")
+    its = [dict(t=0, cls="A", sim1=0.4), dict(t=DAY, cls="A~", sim1=-0.6), dict(t=DAY, cls="B", sim1=-0.2), dict(t=0, cls="unk", sim1=1.0),
+           dict(t=0, cls="A", sim1=None)]
+    n_, d_, w_, m_ = ms_cohort_stats(its, ("A", "A~"))
+    chk((n_, d_, round(w_), round(m_, 3)) == (2, 2, 50, -0.1), "ms cohort A: A + A~ priced, days, WR, mean (unk / unpriced excluded)")
+    chk(ms_cohort_stats(its, ("B", "B~"))[0] == 1 and ms_cohort_stats([], ("A",))[0] == 0, "ms cohort B / empty")
+    chk(ms_cohort_stats(its + [dict(t=0, cls="A", sim1=5.0, dup=True)], ("A", "A~"))[0] == 2, "ms cohort: double-count episodes excluded")
+    chk(ms_cohort_stats([dict(t=0, cls="A", sim1=1.0, final=False), dict(t=0, cls="A", sim1=-1.0, final=True)], ("A",), final_only=True)[3] == -1.0,
+        "ms cohort: final_only drops provisional prices")
+    fl = {"AUSDT": [10 * MIN, 500 * MIN]}
+    chk(ms_followed_by_fill(0, "AUSDT", fl) and not ms_followed_by_fill(100 * MIN, "AUSDT", fl) and not ms_followed_by_fill(0, "BUSDT", fl)
+        and not ms_followed_by_fill(11 * MIN, "AUSDT", fl), "ms dup: a fill of the same pair within bucket + 60 min (after the refusal only)")
+    rw = [("k1", "CLOSED", 0.1), ("k2", "OPEN", None), ("k3", "CLOSED", -0.2)]
+    chk(ms_review_first(rw, None, 2) == ([("k1", 0.1)], False), "ms review: a still-open fill holds the first-N set back")
+    chk(ms_review_first([("k1", "CLOSED", 0.1), ("k2", "CLOSED", -0.2), ("k3", "CLOSED", 0.3)], None, 2) == ([("k1", 0.1), ("k2", -0.2)], True),
+        "ms review: first N closed in open order, frozen flag set")
+    chk(ms_review_first([("k9", "CLOSED", 9.0)], [["k1", 0.1], ["k2", -0.2]], 2) == ([("k1", 0.1), ("k2", -0.2)], True),
+        "ms review: a frozen set wins over later data")
+    chk(MS_PVR_REG_MS == _ms("2026-10-06 18:00") and "MS_PVR_BLOCKED" in ORDER and "MS_PVR_BLOCKED" in DEFS, "ms pvr: floor + wiring")
     print(f"selftest OK — {ok} checks")
 
 

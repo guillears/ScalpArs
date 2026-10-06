@@ -1701,6 +1701,7 @@ class SignalThresholds(BaseModel):
     # 2D-verified independent: −DI-hi wins at BOTH +DI levels, W/L spread medians ≈ equal).
     # 🔒 TIGHT REVERT (cell verdict machinery): ✗ HARMFUL (net-neg on N≥5 fresh) → 1.0× ·
     # ⚠ DRAG (Δ$ vs BL <−$1) → 1.5×. Tag [NEGDI15] in 💰 Multiplier Cell Performance — SHORTs.
+    # 2026-10-06 (DECISION_LOG 220): live JSON NEGDI15 + TG_SHALLOW both back to 1.0 (revert gate fired / HARMFUL; yr5 no edge).
     flip_short_negdi_mult: float = 0.0      # invest multi for the cell (0/1 = off; ship 2.0)
     flip_short_negdi_min: float = 15.0      # −DI floor defining the cell (ship 15.0)
     flip_short_negdi_lev_mult: float = 1.0  # leverage multi (ship 1.0 = invest-only; BE-compat unmeasured)

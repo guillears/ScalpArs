@@ -5678,3 +5678,22 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   `max(_bad, 1)` made a length-only difference read as "1 bar" (review's leading hypothesis). No behaviour change: the cache is still replaced
   by every full read. Same session: time-based hold study dropped (operator: "not a technical variable"); RLC "everything improving"
   re-entry signature refuted (FRENZY_RLC_REENTRY_SIGNATURE_2026-10-06.md, 0 / 220).
+- (220) 2026-10-06 🪃 **FLIP 2× cells NEGDI15 + TG_SHALLOW → 1.0×** (operator, "do this too"; review reports/FAN_FLIP_QNT_LOSS_REVIEW_2026-10-06.md
+  + FLIP_OVERNIGHT_FOLLOWUPS_2026-10-06.md). `flip_short_negdi_mult` 2.0 → 1.0: its locked revert gate fired on the QNT/PUMP losses (DL 27/113
+  counting). `flip_short_tg_shallow_mult` 2.0 → 1.0: ✗ HARMFUL as-lived (5 fresh · 60 % · −$164, 2× increment −$188, all PEPE + AAVE).
+  yr5 (warm-up trimmed, parity-corrected) has no edge in either cell (NEGDI15 −0.156 = plain 1×; TG + NEGDI the worst −0.28 %/trade).
+  All flip shorts now 1×. Master: STACK_VERSION 2026-10-06a re-prices every stack-kept FLIP fill above 1× (tagged cells + one pre-tag June ×2 BASE ONDO, −DI 17)
+  at 1× (stack_pnl / cell_multiplier; 7 fills): kept 384 → 384, total +$8,711 → +$8,467 (−$244: BASE −$20, B3 −$121, B6 −$107, B8 −$44, B15 +$49);
+  FLIP SHORT 29 · 86 % · +$1,387 → +$1,143; daily compound (fixed $3k book) 3.25 → 3.14 %/trading day. validate_against_master ALL PASS. CURRENT_STATE: NEGDI15 re-arm line replaced, the superseded
+  Aug-22 line and watch 48d (TG_SHALLOW ∧ −DI<15 sub-cell) deleted as resolved. Re-arm bar: Pattern-W gate on a fresh 1× forward cohort.
+- (221) 2026-10-06 🔄 **Scout: FAN flip filters judged on the signals they BLOCK** (operator: "yes build it"; replaces the mis-specified
+  kept-trade EMA13 / pair-ADX revert reads, FLIP_OVERNIGHT_FOLLOWUPS_2026-10-06.md). New gates FLIP_EMA13_BLOCKED / FLIP_PADX_BLOCKED in
+  scripts/scout_revert_gates.py: journal FAILS lines (SHORT, src FLIP:FAN_RATIO_GATE) whose COMPLETE fail set is exactly that gate, one per
+  pair-episode, re-priced with the new scripts/flip_exit_replica.py (live FAN flip-short exit: stop −max(0.70, min(1.5·ATR, 1.20)), short
+  runner trail, HARD_TP ladder, taker fees; reproduces all 49 live flips, mean |Δ| 0.019 pp; live settings = validated) at bucket +1 min,
+  +5 min bracket, 6 h horizon (180-min NO_EXPANSION close not modelled). Frozen bar: first 10 forward WINDOWS from 2026-10-06 00:00 UTC
+  (earlier windows were in-sample to the review); mean of window means > 0 → REVIEW switching the filter off (review trigger only, looser
+  than the expectancy filter bar; tick-final prices only). Caveats: sole-blocker within _flip_filters is necessary, not sufficient (slot /
+  position / cooldown refusals not replayed); EMA13 had 0 sole-blocker lines in ~8 days of journals (it co-fails with 3–9 gates) → may never
+  fill. Pre-registration look (not evidence): pADX 2 windows SOON +0.33 / MUBARAK +0.16. Reviews: caveman + deep, fixes applied
+  (registration anchor, per-item try around path/simulate, wording).

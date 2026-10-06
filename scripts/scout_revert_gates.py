@@ -24,11 +24,17 @@ GATES (frozen definitions — quoted from CLAUDE_CURRENT_STATE.md / DECISION_LOG
   LOADX (126)      first 30 (extended from 8 on 2026-10-04, operator) PAIR_RSI_MOMENTUM_LOADX-blocked LONG signals (journal FAILS lines whose COMPLETE fail set is LOADX alone,
                    rank ≤ 10 pairs excluded = mega-cap gate), WINDOW units (one 5-min journal bucket = one scan = one window, value =
                    mean) → WR ≥ 60 % ∨ net > 0 → long_rsi_momentum_adx_max 0.
+  FLIP_EMA13_BLOCKED / FLIP_PADX_BLOCKED (221) FAN flip-short entry filters judged on the signals they BLOCK (not the trades they kept):
+                   journal FAILS lines (dir SHORT, src FLIP:FAN_RATIO_GATE) whose COMPLETE fail set is FLIP_FAN_BTC_EMA13 alone / FLIP_FAN_PAIR_ADX
+                   alone (sole blockers), one signal per pair-episode, WINDOW units (5-min buckets — market-wide inputs), first 10 windows,
+                   re-priced with the live FAN flip-short exit (scripts/flip_exit_replica.py: ATR-widened stop, short runner trail with the
+                   0.35 × peak cap, HARD_TP short ladder; taker fee both sides; ATR = Wilder ATR(14) % of the closed 5m bars at the signal;
+                   6 h horizon) → mean of window means > 0 → FIRED (review flip_fan_btc_ema13_max → off / flip_fan_pair_adx_min → 0); ≤ 0 → holds.
   HEAT (116)       first 30 (extended from 6 on 2026-10-04, operator) LONG_HEAT_BLOCK fires re-priced → WR ≥ 60 % → legs back to 0.07 / 64 / 80 (second leg — the Jan–Jun
                    engine replay failing the expectancy bar — is manual).
   MEGACAP (110)    LONG_MEGACAP_BLOCK refusals re-priced → ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows → long_megacap_rank_max 0.
 
-REFUSED-SIGNAL PRICING (CHOP_BURST / LOADX / HEAT / MEGACAP): journal bucket t = the 5-min START of the refusal → entries at t+1 min
+REFUSED-SIGNAL PRICING (CHOP_BURST / LOADX / HEAT / MEGACAP; the 220 flip gates use the same timing / final rule with the flip replica): journal bucket t = the 5-min START of the refusal → entries at t+1 min
 (primary) and t+5 min (sensitivity); one signal per pair-episode (same pair refused again ≤ 60 min later = the same signal). Price = the
 live momentum-LONG exit REPLICA of scripts/ml_exit_optimize.py (evaluate/run_fill, BASE params = today's live stack incl. recovery hold;
 reproduces live exits 104/104 on ticks), taker entry fee, ATR = 14-bar ATR % of the closed 5m bars before entry, recovery-hold RSI ruler =
@@ -77,6 +83,11 @@ DEPLOYS = {"FRENZY_TP3": ("2e36c26", "2026-10-04 19:23:15"), "FRENZY_STRONG": ("
 SHIPS = {"HEAT": "2026-09-25", "LOADX": "2026-09-29", "MEGACAP": "2026-09-23"}
 # Oct-4 operator: "keep collecting" → trackers extended to 30; (new N, frozen N, frozen verdict) — the frozen first-N verdict stays on record
 EXT_N = {"LOADX": (30, 8, "FIRED (fragile at t+5m)"), "HEAT": (30, 6, "FIRED (6/6 won)")}   # ship dates (journal coverage notes)
+# 🔄 (221) FAN flip-short entry filters judged on the signals they BLOCK (gate code → the engine's _flip_filters fail name)
+FLIP_SRC = "FLIP:FAN_RATIO_GATE"
+FLIP_GATES = {"FLIP_EMA13_BLOCKED": "FLIP_FAN_BTC_EMA13", "FLIP_PADX_BLOCKED": "FLIP_FAN_PAIR_ADX"}
+FLIP_N = 10                          # first 10 WINDOWS (5-min journal buckets) per gate
+FLIP_REG_MS = 1791244800000          # 2026-10-06 00:00 UTC registration: earlier windows were seen in the 10-06 flip review (in-sample) → excluded
 
 
 def log(msg):
@@ -372,6 +383,9 @@ def load_journal():
         g = d.gate.astype(str)
         keep = (d.dir.astype(str) == "LONG") & (((d.e == "BLOCK") & g.isin(["LONG_CHOP_BURST", "LONG_HEAT_BLOCK", "LONG_MEGACAP_BLOCK", "FRENZY_WIDE_CHOPPY"]))
                                                | ((d.e == "FAILS") & g.str.contains("PAIR_RSI_MOMENTUM_LOADX", regex=False)))
+        # 🔄 (221) FAN flip-short refusals that carry one of the two tracked gates (the sole-blocker cut happens in _signals_for)
+        keep |= ((d.e == "FAILS") & (d.dir.astype(str) == "SHORT") & (d.src.astype(str) == FLIP_SRC)
+                 & g.str.contains("|".join(FLIP_GATES.values()), regex=True))
         fr.append(d[keep])
     if not fr:
         return pd.DataFrame(columns=["t", "e", "pair", "dir", "gate", "src", "ms"]), None
@@ -576,6 +590,71 @@ def price_ml(pair, entry_ms, btc, kwin=None):
     return dict(pct=round(float(pct), 3), how=f"{why} {int((tex - entry_ms) / MIN)}m", src=src)
 
 
+_FX = None
+
+
+def _flip_replica():
+    """scripts/flip_exit_replica.py + the CURRENT live flip-short exit settings (trading_config.json), loaded once per run."""
+    global _FX
+    if _FX is None:
+        if SCRIPTS not in sys.path:
+            sys.path.insert(0, SCRIPTS)
+        import flip_exit_replica as F
+        s = F.live_settings()
+        if s["diffs"]:
+            log(f"flip exit: live settings differ from the validated 'NOW' era — {'; '.join(s['diffs'])} (live values used)")
+        _FX = (F, s["cfg"])
+    return _FX
+
+
+def _atr5_pct(pair, sig_ms):
+    """Wilder ATR(14) % (ta, as services.indicators) on the pair's CLOSED 5m bars at the signal (bars that closed ≤ the journal bucket
+    start) — the entry_atr_pct the engine stamps at the signal scan."""
+    from ta.volatility import AverageTrueRange
+    k5 = klines(pair, "5m", sig_ms - DAY, sig_ms)
+    if k5 is None or len(k5) < 30:
+        return None
+    a = AverageTrueRange(high=k5.h, low=k5.l, close=k5.c, window=14).average_true_range()
+    v = float(a.iloc[-1] / k5.c.iloc[-1] * 100)
+    return v if np.isfinite(v) and v > 0 else None
+
+
+def price_flip(pair, entry_ms, sig_ms=None, kwin=None):
+    """🔄 (221) the live FAN flip-SHORT exit (scripts/flip_exit_replica.py, live settings) from the first print at entry_ms → dict(pct, how,
+    src) or dict(pending=reason). Entry = that first print (ticks where the day archive exists, else the 1m bar open → src '1m'/'mixed');
+    taker fee BOTH sides (a blocked signal has no maker fill to copy; the replica's timing-jitter validation used the taker basis);
+    stop / trail ATR = Wilder ATR(14) % of the closed 5m bars at the signal (sig_ms = journal bucket start); 6 h horizon (validated)."""
+    F, cfg = _flip_replica()
+    M = _replica(None)
+    sig_ms = int(sig_ms if sig_ms is not None else entry_ms)
+    a, b = kwin or (entry_ms - H, entry_ms + F.HORIZON_MS + 10 * MIN)
+    try:
+        k1 = klines(pair, "1m", a, b)
+        atr = _atr5_pct(pair, sig_ms)
+    except Exception as e:
+        return dict(pending=f"klines: {str(e)[:60]}")
+    if k1 is None or not len(k1) or k1.open_time.max() < entry_ms:
+        return dict(pending="no klines yet")
+    if atr is None:
+        return dict(pending="no 5m ATR")
+    try:                                                      # a corrupt tick archive leaves THIS item pending, never the whole gate
+        _inject_k1(M, pair, k1)
+        bp = M.build_path(pair, entry_ms, F.HORIZON_MS)
+        if bp is None or not len(bp[0]):
+            return dict(pending="no path")
+        t, p, src = bp
+        r = F.simulate(t, p, float(p[0]), atr, F.TAKER, **cfg)
+    except Exception as e:
+        return dict(pending=f"path: {str(e)[:60]}")
+    if r is None:
+        return dict(pending="no path")
+    if r["reason"] == "OPEN_END":
+        if t[-1] < entry_ms + F.HORIZON_MS - 2 * MIN:
+            return dict(pending="still running")
+        r["reason"] = "6h cap"
+    return dict(pct=round(float(r["pnl"]), 3), how=f"{r['reason']} {int((r['t'] - entry_ms) / MIN)}m", src=src, atr=round(atr, 3))
+
+
 def lock_exit(net, A, Lk, g, sl, tick=True, complete=True):
     """🎯 (205) the lock-then-trail exit on one NET P&L path (pure, self-tested): −sl stop until the peak of PRIOR prints ≥ A, then
     max(Lk, peak − g). → (pct, why) · None while the 12 h path is incomplete and no line was hit. tick=False (1m path) fills AT the line."""
@@ -644,6 +723,17 @@ class Budget:
 
 
 # ═══════════════════════════════ gates ═══════════════════════════════
+def flip_sole_blocker(J, fail_name):
+    """🔄 (221) FAN flip-short refusals whose COMPLETE fail set is exactly `fail_name` (journal FAILS · dir SHORT · src FLIP:FAN_RATIO_GATE
+    · gate == fail_name, no other gate joined by '+') → DataFrame(ms, pair). Same honest-cohort rule as LOADX: a signal that also failed
+    another gate would have been refused anyway, so it says nothing about this filter."""
+    if J is None or not len(J):
+        return pd.DataFrame(columns=["ms", "pair"])
+    f = J[(J.e == "FAILS") & (J.dir.astype(str) == "SHORT") & (J.src.astype(str) == FLIP_SRC)]
+    f = f[f.gate.astype(str).str.split("+").map(lambda s: [x.strip() for x in s if x.strip()] == [fail_name])]
+    return f[["ms", "pair"]]
+
+
 def _signals_for(J, gate_name, ranks=None, store=None):
     """refused LONG signals of one gate → DataFrame(ms, pair, key) — pair-episodes, in time order. Signals already stored in the state
     are kept even when their export has left ~/Downloads (a frozen first-N set never shrinks)."""
@@ -656,6 +746,8 @@ def _signals_for(J, gate_name, ranks=None, store=None):
         if "src" in f:
             f = f[f.src.astype(str).isin(["MOMENTUM", "nan", "None"])]
         ep = episodes(pd.concat([old, f[["ms", "pair"]]], ignore_index=True))
+    elif gate_name in FLIP_GATES:
+        ep = episodes(pd.concat([old, flip_sole_blocker(J, FLIP_GATES[gate_name])], ignore_index=True))
     else:
         g = {"CHOP_BURST": "LONG_CHOP_BURST", "HEAT": "LONG_HEAT_BLOCK", "HEAT_ORIG": "LONG_HEAT_BLOCK", "MEGACAP": "LONG_MEGACAP_BLOCK"}[gate_name]
         raw = pd.concat([old, J[(J.e == "BLOCK") & (J.gate.astype(str) == g)][["ms", "pair"]]], ignore_index=True)
@@ -672,8 +764,9 @@ def _signals_for(J, gate_name, ranks=None, store=None):
     return ep
 
 
-def _price_signals(sig, store, n_needed, btc, budget, now_ms, need_days):
-    """price (or reuse stored prices for) the first n_needed signals (None = all). Both entry timings. Returns the list of items."""
+def _price_signals(sig, store, n_needed, btc, budget, now_ms, need_days, pricer=None):
+    """price (or reuse stored prices for) the first n_needed signals (None = all). Both entry timings. Returns the list of items.
+    pricer(pair, entry_ms, sig_ms) → price dict; default = the momentum-LONG replica (price_ml)."""
     live = set(sig.key)
     for k in [k for k in store if k not in live]:      # e.g. a pair whose rank now marks it mega-cap — no longer in the cohort
         store.pop(k, None)
@@ -686,13 +779,18 @@ def _price_signals(sig, store, n_needed, btc, budget, now_ms, need_days):
                 for off in (1, 5):
                     need_days.update((r.pair, d) for d in days_of(int(r.ms) + off * MIN, int(r.ms) + off * MIN + 7 * H))
             elif budget.ok():
-                res = {off: price_ml(r.pair, int(r.ms) + off * MIN, btc, (int(r.ms) - DAY, int(r.ms) + 8 * H)) for off in (1, 5)}
+                if pricer is None:
+                    res = {off: price_ml(r.pair, int(r.ms) + off * MIN, btc, (int(r.ms) - DAY, int(r.ms) + 8 * H)) for off in (1, 5)}
+                else:
+                    res = {off: pricer(r.pair, int(r.ms) + off * MIN, int(r.ms)) for off in (1, 5)}
                 for off, x in res.items():
                     if "pending" in x:
                         it[f"p{off}"] = x["pending"]
                         it.pop(f"sim{off}", None)
                     else:
                         it.update({f"sim{off}": x["pct"], f"how{off}": x["how"], f"src{off}": x["src"]})
+                        if x.get("atr") is not None:                  # 🔄 (221) flip pricer: the 5m ATR % the stop / trail used
+                            it["atr"] = x["atr"]
                         it.pop(f"p{off}", None)
                 srcs = [it.get("src1"), it.get("src5")]
                 # final = both timings on ticks, or the primary priced and 4 days passed (no archive / a timing that never prices)
@@ -762,6 +860,57 @@ def gate_first_n_signals(code, J, st, n, wr_min, mode, btc, budget, now_ms, need
     state, wr, s = decide_first_n(v1, n, wr_min, **kw)
     state5 = decide_first_n(v5, n, wr_min, **kw)[0] if len(v5) >= n else None
     G.update(progress=prog, detail=_sig_detail(items, len(items) if windows else max(8, n)), priced=_priced_txt(items))
+    if state != "collecting" and not all_final:
+        G["provisional"] = state
+        state = "collecting"
+    else:
+        G.pop("provisional", None)
+    G["fragile"] = bool(state in ("fired", "holds") and state5 is not None and state5 != state)
+    return state
+
+
+def decide_flip_blocked(window_means, n=FLIP_N):
+    """🔄 (221) frozen bar for a FAN flip-short entry filter, judged on the signals it BLOCKED: the first n WINDOWS (5-min journal buckets;
+    value = the mean of the window's sole-blocker signals re-priced with the live flip exit) — mean of the window means > 0 → 'fired'
+    (the filter blocked winners → review switching it off); ≤ 0 → 'holds'; fewer than n → 'collecting'."""
+    v = list(window_means)[:n]
+    if len(v) < n:
+        return "collecting"
+    return "fired" if float(np.mean(v)) > 0 else "holds"
+
+
+def gate_flip_blocked(code, J, st, budget, now_ms, need_days, n=FLIP_N):
+    """🔄 (221) FLIP_EMA13_BLOCKED / FLIP_PADX_BLOCKED: sole-blocker refusals of one FAN flip filter (journal FAILS whose complete set is that
+    gate alone; one signal per pair-episode), WINDOW units (EMA13 is market-wide; pair ADX is pair-level, so window clustering is merely
+    conservative there → same-bucket signals = ONE observation). Sole blocker within _flip_filters only = necessary, not sufficient
+    (open_position's slot / existing-position / cooldown refusals are not replayed). EMA13 almost always co-fails with other gates
+    (0 sole-blocker lines in the first ~8 days of journals) → that gate may never reach 10 windows. Windows before FLIP_REG_MS excluded. re-priced as if the flip had opened at bucket +1 min (primary) and +5 min (bracket) with the live FAN
+    flip-short exit (price_flip). A verdict counts on final (tick) prices only; on 1m it is shown as provisional."""
+    G = st.setdefault("gates", {}).setdefault(code, {})
+    store = G.setdefault("items", {})
+    sig = _signals_for(J, code, None, store)
+    sig = sig[sig.ms >= FLIP_REG_MS]                          # forward windows only (registration anchor)
+    bk = sorted(sig.ms.unique())[:n]
+    sig = sig[sig.ms.isin(bk)]
+    items = _price_signals(sig, store, None, None, budget, now_ms, need_days,
+                           pricer=lambda pair, e_ms, s_ms: price_flip(pair, e_ms, s_ms, (s_ms - H, s_ms + 5 * MIN + 6 * H + 10 * MIN)))
+    if need_days is not None:
+        return None
+    byb = {}
+    for x in items:
+        byb.setdefault(x["t"], []).append(x)
+    wins = [byb[b] for b in sorted(byb)]
+    ready = [w for w in wins if all(x.get("sim1") is not None for x in w)]
+    v1 = [float(np.mean([x["sim1"] for x in w])) for w in ready]
+    v5 = [float(np.mean([x["sim5"] for x in w])) for w in ready if all(x.get("sim5") is not None for x in w)]
+    all_final = len(ready) == len(wins) and all(x.get("final") for w in wins for x in w)
+    G["progress"] = (f"{len(ready)}/{n} windows re-priced ({len(items)} sole-blocker signals)" + ("" if all_final or not ready else " (provisional)")
+                     + (f" · {sum(1 for v in v1 if v > 0)} positive · mean of window means {np.mean(v1):+.3f} %" if v1 else "")
+                     + (f" (t+5m: {np.mean(v5):+.3f})" if v5 else ""))
+    G["detail"] = _sig_detail(items, len(items))
+    G["priced"] = _priced_txt(items)
+    state = decide_flip_blocked(v1, n)
+    state5 = decide_flip_blocked(v5, n) if len(v5) >= n else None
     if state != "collecting" and not all_final:
         G["provisional"] = state
         state = "collecting"
@@ -1085,6 +1234,16 @@ DEFS = {
                 "set bearrun_lev_mult 1.0", "bearrun_lev_mult"),
     "LOADX": ("🧭 LOADX gate (126)", "first 30 LOADX-only refused LONG signals (journal FAILS, rank ≤ 10 excluded), WINDOW units: WR ≥ 60 % ∨ net > 0 · extended from 8 on 10-04 (first 8 had FIRED, fragile at t+5m)",
               "set long_rsi_momentum_adx_max 0", "long_rsi_momentum_adx_max"),
+    "FLIP_EMA13_BLOCKED": ("🔄 FAN flip BTC-EMA13 filter (221)", "first 10 WINDOWS (5-min journal buckets) of FAN flip-short refusals whose COMPLETE fail set is "
+                           "FLIP_FAN_BTC_EMA13 alone (BTC > its 5m EMA13 by more than flip_fan_btc_ema13_max; one signal per pair-episode), re-priced as if "
+                           "the flip had opened at bucket +1 min (t+5m bracket) with the live FAN flip-short exit (ATR stop, short runner trail, HARD_TP "
+                           "ladder, taker fees both sides): mean of window means > 0 → the filter blocked winners · forward windows from 2026-10-06 only; may never fill (EMA13 almost always co-fails)", "review flip_fan_btc_ema13_max → off",
+                           "flip_fan_btc_ema13_max"),
+    "FLIP_PADX_BLOCKED": ("🔄 FAN flip pair-ADX floor (221)", "first 10 WINDOWS (5-min journal buckets) of FAN flip-short refusals whose COMPLETE fail set is "
+                          "FLIP_FAN_PAIR_ADX alone (pair ADX < flip_fan_pair_adx_min outside the exempt regimes; one signal per pair-episode), re-priced as "
+                          "if the flip had opened at bucket +1 min (t+5m bracket) with the live FAN flip-short exit (ATR stop, short runner trail, HARD_TP "
+                          "ladder, taker fees both sides): mean of window means > 0 → the filter blocked winners · forward windows from 2026-10-06 only", "review flip_fan_pair_adx_min → 0",
+                          "flip_fan_pair_adx_min"),
     "HEAT_ADMIT": ("🔁 Heat revert check (208)", "first 10 WINDOWS (5-min buckets) of momentum longs the breadth-only re-scope WOULD have blocked (bull ≥ 85, BTC slope/RSI not "
                    "both hot, not washed out), now admitted by the original 3-leg rule: mean pnl % < 0 → re-scope back", "set long_heat_btc_slope_min 0 · "
                    "long_heat_btc_rsi_prev_min 0 · long_heat_bull_pct_min 85", "long_heat_bull_pct_min"),
@@ -1099,7 +1258,7 @@ DEFS = {
     "MEGACAP": ("🏦 Mega-cap exclusion (110)", "LONG_MEGACAP_BLOCK refusals re-priced: ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows",
                 "set long_megacap_rank_max 0", "long_megacap_rank_max"),
 }
-ORDER = ["CHOP_BURST", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "LOADX", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
+ORDER = ["CHOP_BURST", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "LOADX", "FLIP_EMA13_BLOCKED", "FLIP_PADX_BLOCKED", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
 
 
 def _status_text(code, state, G):
@@ -1164,6 +1323,11 @@ def run_section(now_ms=None, noted=None, record_notes=True):
             gate_first_n_signals(code, J, st, n, wr, mode, btc, budget, now_ms, need, rk, win)
         except Exception as e:
             log(f"{code} phase 1: {e}")
+    for fcode in FLIP_GATES:                                  # 🔄 (221) own try each — a flip gate must never break the run
+        try:
+            gate_flip_blocked(fcode, J, st, budget, now_ms, need)
+        except Exception as e:
+            log(f"{fcode} phase 1: {e}")
     for fn in (lambda: gate_megacap(J, st, btc, budget, now_ms, need), lambda: gate_frenzy_lock(orders, st, budget, now_ms, need)):
         try:
             fn()
@@ -1190,6 +1354,18 @@ def run_section(now_ms=None, noted=None, record_notes=True):
             log(f"{code}: {e}")
             res[code] = "error"
             st["gates"].setdefault(code, {})["progress"] = f"error: {str(e)[:100]}"
+    for fcode in FLIP_GATES:                                  # 🔄 (221) FAN flip filters judged on what they BLOCK
+        try:
+            if (J is None or not len(J)) and not st["gates"].get(fcode, {}).get("items"):
+                res[fcode] = "nodata"
+                st["gates"].setdefault(fcode, {})["progress"] = "no decisions export covers it"
+            else:
+                res[fcode] = gate_flip_blocked(fcode, J, st, budget, now_ms, None)
+            cov[fcode] = jtxt + " · FAILS sets start ≈ 09-30 19:00 · sole-blocker sets only"
+        except Exception as e:
+            log(f"{fcode}: {e}")
+            res[fcode] = "error"
+            st["gates"].setdefault(fcode, {})["progress"] = f"error: {str(e)[:100]}"
     try:
         if SCRIPTS not in sys.path:
             sys.path.insert(0, SCRIPTS)
@@ -1244,14 +1420,15 @@ def run_section(now_ms=None, noted=None, record_notes=True):
     if ftp and "FRENZY_LOCK" in cov:
         srcs = [x.get("src") for x in ftp.values() if x.get("src")]
         cov["FRENZY_LOCK"] += f" · paths: {sum(1 for s in srcs if s == 'tick')} tick / {sum(1 for s in srcs if s != 'tick')} 1m"
-    for code in ("CHOP_BURST", "LOADX", "HEAT", "HEAT_ORIG", "MEGACAP"):
+    for code in ("CHOP_BURST", "LOADX", "HEAT", "HEAT_ORIG", "MEGACAP") + tuple(FLIP_GATES):
         if st["gates"].get(code, {}).get("priced"):
             cov[code] = cov.get(code, "") + " · " + st["gates"][code]["priced"]
     # render
     L = ["## ⏳ Revert gates (every open pre-committed revert / arm gate, tracked each run)", "",
          "Refused signals are re-priced with the live momentum-LONG exit replica (scripts/ml_exit_optimize.py) at the journal bucket "
          "+1 min (primary) and +5 min (in brackets); FRENZY fills on aggTrades ticks with the bot's accounting. A gate fires only on final "
-         "(tick) prices; ᵖ = provisional 1m price. Decisions are the operator's — this table never changes config.", "",
+         "(tick) prices; ᵖ = provisional 1m price. FAN flip-short refusals (🔄) are re-priced the same way with the live flip-short exit "
+         "replica (scripts/flip_exit_replica.py). Decisions are the operator's — this table never changes config.", "",
          "| Gate | Definition (frozen) | Progress | Status | Config now | Data coverage |", "|---|---|---|---|---|---|"]
     notes = []
     for code in ORDER:
@@ -1376,6 +1553,23 @@ def selftest():
     chk(decide_wide_choppy([-3.0] * 10 + [2.0] * 5) == "holds", "WIDE_CHOPPY: blocked set losing → the block holds")
     chk(decide_wide_choppy([2.0] * 8 + [-3.0] * 5 + [0.5] * 2) == "fired", "WIDE_CHOPPY: blocked set ≥ 0 → FIRED (switch off)")
     chk(decide_wide_choppy([0.0] * 15) == "fired", "WIDE_CHOPPY: exactly 0 fires (the bar is ≥ 0)")
+    # 🔄 (221) FAN flip filters judged on the BLOCKED signals — first 10 windows, mean of window means > 0 fires
+    chk(decide_flip_blocked([0.5] * 9) == "collecting", "flip blocked: 9 windows → collecting")
+    chk(decide_flip_blocked([0.3] * 5 + [-0.2] * 5) == "fired", "flip blocked: mean > 0 → FIRED (blocked winners)")
+    chk(decide_flip_blocked([0.0] * 10) == "holds", "flip blocked: exactly 0 holds (the bar is > 0)")
+    chk(decide_flip_blocked([-0.9] * 10 + [5.0] * 5) == "holds", "flip blocked: only the FIRST 10 windows count")
+    Jt = pd.DataFrame(dict(
+        t=["x"] * 7, ms=[0, 0, 5 * MIN, 10 * MIN, 15 * MIN, 20 * MIN, 25 * MIN],
+        e=["FAILS", "FAILS", "FAILS", "FAILS", "BLOCK", "FAILS", "FAILS"],
+        pair=["AUSDT", "BUSDT", "CUSDT", "DUSDT", "EUSDT", "FUSDT", "GUSDT"],
+        dir=["SHORT", "SHORT", "SHORT", "LONG", "SHORT", "SHORT", "SHORT"],
+        gate=["FLIP_FAN_BTC_EMA13", "FLIP_FAN_BTC_EMA13+FLIP_FAN_PAIR_ADX", "FLIP_FAN_PAIR_ADX", "FLIP_FAN_BTC_EMA13",
+              "FLIP_FAN_BTC_EMA13", "FLIP_FAN_BTC_EMA13", "FLIP_FAN_BTC_EMA13_X"],
+        src=[FLIP_SRC, FLIP_SRC, FLIP_SRC, FLIP_SRC, FLIP_SRC, "FLIP:PAIR_RSI_OB", FLIP_SRC]))
+    chk(list(flip_sole_blocker(Jt, "FLIP_FAN_BTC_EMA13").pair) == ["AUSDT"], "flip sole-blocker: exact set · SHORT · FAILS · FAN src only")
+    chk(list(flip_sole_blocker(Jt, "FLIP_FAN_PAIR_ADX").pair) == ["CUSDT"], "flip sole-blocker: pADX alone (a joint EMA13+pADX set is excluded)")
+    chk(list(_signals_for(Jt, "FLIP_EMA13_BLOCKED").pair) == ["AUSDT"], "flip signals: routed through the sole-blocker cut")
+    chk(ORDER.index("FLIP_EMA13_BLOCKED") == ORDER.index("LOADX") + 1 and all(c in DEFS for c in FLIP_GATES), "flip gates wired (ORDER / DEFS)")
     print(f"selftest OK — {ok} checks")
 
 

@@ -17,9 +17,10 @@ def test_stack_pct_ignores_size_reprices():
     assert "stack_pct" in M and k.stack_pct.notna().all() and M[M.stack_keep != True].stack_pct.isna().all()
     path = k.stack_block_reason.fillna("").astype(str).str.contains("ARM040|LATE_ARM|FADE_SL")
     th = json.load(open(os.path.join(ROOT, "trading_config.json")))
-    tp = float((th.get("thresholds", th)).get("frenzy_tp_pct", 0) or 0)
-    frenzy_tp = k.entry_strategy.astype(str).str.startswith("FRENZY") & (tp > 0) & (pd.to_numeric(k.peak_pnl, errors="coerce") >= tp)
-    assert np.allclose(k.stack_pct[frenzy_tp], tp)                     # FRENZY rows that reached the TP book the TP
+    t_ = th.get("thresholds", th); arm, fl, tr = (float(t_.get(k_, 0) or 0) for k_ in ("frenzy_lock_arm_pct", "frenzy_lock_floor_pct", "frenzy_lock_trail_pct"))
+    pre = k.opened_at.astype(str).str[:19].str.replace(" ", "T") < "2026-10-05T15:49"
+    frenzy_tp = k.entry_strategy.astype(str).str.startswith("FRENZY") & (arm > 0) & pre & (pd.to_numeric(k.peak_pnl, errors="coerce") >= arm)
+    assert np.allclose(k.stack_pct[frenzy_tp], np.maximum(min(fl, arm), k.peak_pnl[frenzy_tp].astype(float) - tr))   # 10-06c: the live lock (233)
     plain = k[~path & ~frenzy_tp]
     assert np.allclose(plain.stack_pct, plain.pnl_percentage)          # size-only rows keep the live pct
     resized = plain[(plain.stack_pnl - plain.pnl).abs() > 0.05]        # e.g. 2× rows re-priced to 1× / 1.5×

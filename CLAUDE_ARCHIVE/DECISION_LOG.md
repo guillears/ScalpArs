@@ -5805,3 +5805,14 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   test_fade_laggard. Dual review (caveman + deep; lev, path-pct, double rounding, probe guard, parity-skip were deep-review catches, applied).
 - **Not changed (operator question):** the screen keeps 16 rows the master blocks — 12 flips fail-open by design (BASE cohort preservation);
   WLD 06-26 + UNI 07-10 (LONG_RSI_MOM_LOADX) and LIT 07-10 (LONG_CHOP_BURST) are long gates the screen does not carry.
+- (234) 2026-10-06 📦 **B17 archived + master STACK 2026-10-06d** (built on the other session's 10-06c today_size_rule, DECISION_LOG 233) (operator "sí, hazlo"; B18 started ~13:55 UTC). reports/BASELINE17_batch1003-1006_orders.csv =
+  the 13:24 export verbatim (25 closed bot fills, 0 manual / probe / open). Builder 10-06d: ① FRENZY sleeve fills priced with the LIVE lock
+  (DECISION_LOG 205) — fills opened BEFORE the lock deploy (2026-10-05 15:49) with peak ≥ +3 book max(min(2, 3), peak − 2); later fills keep
+  their real pct — replacing the retired fixed +3 TP. B17: SAND 10-04 05:05 (live −3 STOP, peak 3.26) is a CF credit to +2 on a live-stopped fill
+  (exact under the lock on 1m klines); MOVR +2 exact; RLC (+5.37 under the live lock) and AIN 10-04 lower bounds (B17 under the true lock ≈ +$670). ② the WIDE hold-green rule (231)
+  replayed with the engine's own frenzy_wide_hold_green_block on the stamps; streak from entry_frenzy_above_streak, else
+  reports/WIDE_STREAK_REBUILD.csv (frenzy_walk on 1499 public 5m bars; its bar_ret / ATR matched the live stamps to 4 decimals — the streak
+  itself was not stamped before B18), else refused (fail-closed); replayed BEFORE the LONG_CHOP_BURST pass so a refused WIDE fill is never a burst neighbour. ③
+  validate_against_master M1 reads stack_pct (it compared the as-traded −3 with the +3 re-price). Result: B17 25 · 52 % · −$285 as traded →
+  22 · 64 % · +$574 kept; master kept 384 → 406, +$7,458.50 (10-06c) → +$8,032.80; no non-B17 stack column changed; validate ALL PASS. CURRENT_STATE: B16 and B17
+  boundary lines (B16's had been missing). Test tests/test_master_frenzy_lock_wide.py.

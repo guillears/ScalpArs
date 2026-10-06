@@ -5,7 +5,8 @@ Live SURGE_LONG runs option B (0.3 % · 5× · strict 24 h high · market volume
 runner-up, option A, on the same tape so the two can be compared at 30 triggers. Called by scripts/opportunity_scout.py every run.
 
 RULE A (frozen): on a CLOSED BTC 5m bar ① BTC 30-min return ≥ +0.50 % ② bar quote volume ≥ 3× the median of the prior 288 bars
-  ③ close ≥ the prior 24 h high (strict) ④ market volume ≥ 1.0 (the bot's global_volume_ratio over the scout's top-volume frames) → a
+  ③ close ≥ the prior 24 h high (strict) ④ market volume ≥ 1.0 (the engine's reading on the trigger bar: scripts/scout_gvol.py — top-50
+  ranked per bar by 24 h quote volume over the engine's universe, frozen once computed; 2026-10-06 fix, was the scout's top-80 frames) → a
   trigger; the next needs 4 h from ANY trigger (a bar failing ④ never starts it). ADX / breadth are shown, never used.
 PICKS   the live SURGE_LONG selection (services.surge.surge_pair_pick): top-20 by 24 h volume at the bar (minus surge_long_pair_blacklist),
         ATR ≥ surge_atr_min_pct, outrunning BTC, ≤ surge_max_slots, in rank order.
@@ -53,7 +54,8 @@ def _adx(d):
 
 
 def _market(frames, t):
-    """(breadth %, market volume ratio) at bar t over the top-50 frames by rolling 24 h quote volume."""
+    """(breadth %, market volume ratio) at bar t over the top-50 frames by rolling 24 h c·v volume. Only the BREADTH is used (shown, never a
+    leg); the market volume leg reads scout_gvol (the engine's universe + per-bar rank) — this ratio is the scout frames' approximation."""
     snap = []
     for d in frames.values():
         if t in d.index:
@@ -127,11 +129,20 @@ def scan(EX, retry, cfg, last_closed, alts, btc_full, in_now, now_ms):
     bars, obs = [], []
     global LAST_WINDOW
     LAST_WINDOW = (t0, last_closed)   # save() drops recorded A triggers inside this window the run no longer reproduces (review)
+    cand = [int(t) for t in b.index[b.index > t0] if b.at[t, "r30"] >= MOVE and b.at[t, "volx"] >= VOLX]
+    gmap = {}
+    if cand:
+        import scout_gvol as SG
+        gmap = SG.ensure(EX, retry, cfg, cand, now_ms, pre={**(alts or {}), "BTCUSDT": btc_full})
+    unread = gmap_unread(cand, gmap)
+    if unread:   # an unread market volume is NOT a failed leg: nothing fires this run, the stored triggers stay, the window is re-judged next run
+        LAST_WINDOW = None
     for t in b.index[b.index > t0]:
         r = b.loc[t]
         if not (r.r30 >= MOVE and r.volx >= VOLX):
             continue
-        br, gv = _market(frames, t)
+        br, _ = _market(frames, t)
+        gv = float(gmap.get(int(t), np.nan))
         br6, _ = _market(frames, t - 6 * BAR)
         legs = dict(ok_high=bool(r.c >= r.hi), ok_gvol=bool(np.isfinite(gv) and gv >= GVOL))   # ADX / breadth: shown, never used
         i = b.index.get_loc(t)
@@ -145,6 +156,10 @@ def scan(EX, retry, cfg, last_closed, alts, btc_full, in_now, now_ms):
         row["fired"] = bool(row["all"] and t - last_fire >= COOLDOWN_MS)
         if row["all"] and not row["fired"]:
             row["note"] = "cooldown"
+        if unread:   # the cooldown chain is not advanced on a partial read
+            row.update(fired=False, all=False, note=("gvol unread — judged next run" if int(t) in unread else "pending (gvol unread in the window)"))
+            if int(t) in unread:
+                row["ok_gvol"] = None
         bars.append(row)
         if not row["fired"]:
             continue
@@ -178,6 +193,11 @@ def scan(EX, retry, cfg, last_closed, alts, btc_full, in_now, now_ms):
 
 
 LAST_WINDOW = None
+
+
+def gmap_unread(cand, gmap):
+    """the candidate bars whose market volume could not be read this run (empty set = complete)."""
+    return {int(t) for t in cand if int(t) not in (gmap or {})}
 
 
 def save(obs):
@@ -218,7 +238,7 @@ def lines(bars, hist):
               "|---|---|---|---|---|---|---|---|---|"]
         for r in bars:
             L.append(f"| {r['close_utc'][5:]} | {r['r30']:+.2f}% | {r['volx']:.1f} | {r['vs_hi']:+.2f}% {ok(r['ok_high'])} | "
-                     f"{r['gvol'] if r['gvol'] is not None else '–'} {ok(r['ok_gvol'])} | {r['d_adx']:+.1f} | "
+                     f"{r['gvol'] if r['gvol'] is not None else '–'} {ok(r['ok_gvol']) if r['ok_gvol'] is not None else 'unread'} | {r['d_adx']:+.1f} | "
                      f"{r['breadth'] if r['breadth'] is not None else '–'}% ({r['d_breadth'] if r['d_breadth'] is not None else '–'}) | "
                      f"{('🟢 FIRED' + (' (before B deploy — not counted)' if r.get('note') == 'before the B deploy' else '')) if r['fired'] else (r.get('note') or '–')} | {'met' if r['live_rule'] else '–'} |")
     else:

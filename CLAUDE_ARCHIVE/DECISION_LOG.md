@@ -5883,3 +5883,15 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   cleared on every new socket / start; _reconnect only clears its own socket (never a newer one: July frozen-price class); the closing socket
   is never left visible during a missing-pairs reconnect. July invariants (snapshot, _connected_pairs, missing-pairs continue) unchanged.
   Dual review: ship. Tests tests/test_ws_fast_reconnect.py.
+- (242) 2026-10-06 🔭 **Scout market-volume (gvol) now equals the bot's** (operator "hacer esto ya"). The scout ranked the top-50 at RUN time
+  by current tickers (a pumped coin fell #26 → #545 in 6 h; delisted PUMPBTC / 1000000BOB vanished) → wrong readings: API3 06:35 showed
+  0.83 "pass", real 1.11 BLOCK; CAP 13:25 1.01 → 1.29; NMR 13:40 1.70 → 2.11. New scripts/scout_gvol.py (one function for every scout read):
+  universe = all USDT perps incl. SETTLING, coin-only / non-Alpha / ≥ 90 d as of the bar; per-bar top-50 by Σ quote volume over the 288
+  bars ending at it (1h prescreen top-80, 0 misses on 54,300 members); ratio = services.frenzy.global_volume_ratio. Parity on 18 live
+  readings MAE 0.0015, 18/18 same side of 1.0 (deep review rebuilt it independently from raw exchangeInfo + klines). Values frozen once per
+  bar (reports/SCOUT_GVOL_BARS.csv, ≥ 45/50 pairs, ≤ 3 tries); the bot's own reading wins when it exists (fill stamp ≤ 3 min / gate log
+  ≤ 90 s, catch-up fills + catch-up-shadowed log lines excluded; reports/SCOUT_GVOL_LIVE.csv). 418/429 → back-off + stop; one 180 s budget
+  per run; SURGE: an unread gvol fires nothing and deletes nothing (its frozen pick ranking untouched). Engine unchanged. Dual review:
+  ship-with-fixes, all 12 applied. Tests tests/test_scout_gvol.py (32). Same day, research (no change shipped): gvol FORMULA comparison
+  (keep the current FRENZY formula — dashboard Vol / dollar / median versions are not better), rising-volume pre-ON entry (fails, 0/20),
+  will-turn-ON separator (fails out of sample: ON is predictable AUC 0.72, profit is not AUC 0.49), operator manual entries vs bot.

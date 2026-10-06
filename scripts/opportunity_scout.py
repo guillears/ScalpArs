@@ -146,12 +146,13 @@ def tcrit(df, conf):
 
 # ─────────────────────────────── data ───────────────────────────────
 def k5(sym, last_closed, limit=FETCH):
-    """5m bars from the raw klines endpoint (same data as fetch_ohlcv + the taker-buy base volume `tb`, free)."""
+    """5m bars from the raw klines endpoint (same data as fetch_ohlcv + the taker-buy base volume `tb` + the QUOTE volume `q` (field 7), free).
+    `q` feeds the market-volume reading's per-bar top-50 rank (scripts/scout_gvol.py, 2026-10-06 fix) — the engine ranks by quote volume."""
     raw = _retry(EX.fapiPublicGetKlines, {"symbol": sym.split("/")[0] + "USDT", "interval": "5m", "limit": int(limit)})
     if not raw:
         return None
-    d = pd.DataFrame([[int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]), float(r[9])] for r in raw],
-                     columns=["t", "o", "h", "l", "c", "v", "tb"]).drop_duplicates("t").set_index("t")
+    d = pd.DataFrame([[int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5]), float(r[9]), float(r[7])] for r in raw],
+                     columns=["t", "o", "h", "l", "c", "v", "tb", "q"]).drop_duplicates("t").set_index("t")
     return d[d.index <= last_closed]                   # every series cut at the SAME last closed bar (no forming-bar look-ahead)
 
 
@@ -1240,7 +1241,7 @@ def run():
         import scout_frenzy as _fz
         _fzc = {**cfg, **(cfg.get("thresholds") or {})}
         _fz_set, _fz_flag, _fz_pairs, _fz_short, _fz_fol, _fz_crash = _fz.scan(EX, _retry, _fzc, last_closed, alts, btc_full, now_ms)
-        _fz_hist = _fz.save(_fz_set, _fz_pairs, now_ms)
+        _fz_hist = _fz.save(_fz_set, _fz_pairs, now_ms, cfg=_fzc)
         _fz_sec = _fz.lines(_fz_set, _fz_flag, _fz_pairs, _fz_short, _fz_fol, _fzc, _fz_hist) + [""]
         try:                                           # 🔻 the crash-short observation never takes the FRENZY section down with it
             _fz_sec += _fz.crash_lines(_fz_crash, _fz.save_crashes(_fz_crash, _fz_pairs, now_ms))

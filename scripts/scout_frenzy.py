@@ -8,8 +8,10 @@ PAIRS   every pair FRENZY can be watching: the bot's shortlist rule NOW (|24 h c
         exports show it followed in the last 26 h (FRENZY order-book rows, FRENZY_* refusals, FRENZY fills).
 REPLAY  the bot's own pure rules (services.frenzy) on each CLOSED 5m bar of the last 24 h, each on the last 1,500 bars up to it (as live) and the
         pair's normal hour anchored at that bar → every FRESH setup (the first candle the bot may enter): FRENZY (ready) · WIDE (FRENZY refused
-        only for ATR / a green candle) · — (refused by both). Market volume on that bar = services.frenzy.global_volume_ratio over the top-50
-        pairs by 24 h volume (BTC / ETH / blacklisted included, as the live gate).
+        only for ATR / a green candle) · — (refused by both). Market volume on that bar = scripts/scout_gvol.py (engine parity, 2026-10-06 fix):
+        services.frenzy.global_volume_ratio over the top-50 ranked PER SIGNAL BAR by Σ quote volume of the 288 bars ending at it (eligibility
+        as of the signal close; BTC / ETH / blacklisted included, as the live gate), FROZEN the first time it is computed; the bot's own reading
+        (fill stamp / server gate log) wins when known — gvol_src says which.
 OUTCOME the FRENZY exit on 5m bars from the next bar's open, in fee-NET space as live (frenzy_exit_for on net P&L: stop at −stop net, trail armed
         at +arm net, closes give % of price below the best), a bar opening through the line fills at its open; low before high inside a bar
         (conservative); costs 0.11 % (0.09 fees + 0.02 slip). "open" = still running at the last closed bar. These are REPLAY outcomes.
@@ -31,7 +33,12 @@ import os
 import time
 from types import SimpleNamespace
 
+import sys
 import pandas as pd
+
+if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scout_gvol as SG  # noqa: E402  🌊 the market-volume reading (engine parity, per bar, frozen)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BAR = 300_000
@@ -194,7 +201,7 @@ def _klines(EX, retry, sym, tf, n, end_ms):
 
 def scan(EX, retry, cfg, last_closed, alts, btc_full, now_ms):
     """→ (setups, flagged now, pairs actually replayed, shortlist now, followed, crash bars). Never raises past the caller's try."""
-    from services.frenzy import (frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_wide_ready, normal_hour_usd, global_volume_ratio,
+    from services.frenzy import (frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_wide_ready, normal_hour_usd,
                                   frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend)
     from services.indicators import calculate_indicators
     from services.surge import wilder_atr_pct
@@ -209,16 +216,7 @@ def scan(EX, retry, cfg, last_closed, alts, btc_full, now_ms):
     ev, book, beats = _exports(now_ms)
     followed = _followed_pairs(ev, book)
     pairs = list(dict.fromkeys(short + [p for p in sorted(followed) if p in el and p not in skip]))[:45]
-    # market volume: the live gate's universe — top-50 by 24 h volume, BTC / ETH / blacklisted included
-    gv_src = {}
-    for p in [p for p, _ in sorted(el.items(), key=lambda kv: -kv[1]["qv"])[:50]]:
-        d = alts.get(p) if p != "BTCUSDT" else btc_full
-        if d is not None and len(d) >= 400:
-            gv_src[p] = [[int(t), r.o, r.h, r.l, r.c, r.v] for t, r in d.tail(700).iterrows()]
-        else:
-            r = retry(EX.fetch_ohlcv, el[p]["symbol"], "5m", limit=400) or []
-            gv_src[p] = [x for x in r if int(x[0]) <= last_closed]
-            time.sleep(0.05)
+    # market volume: read AFTER the replay, per signal bar and frozen (scout_gvol.ensure) — never the run-time top-50 (2026-10-06 fix)
     gmax = float(cfg.get("frenzy_gvol_max", 0) or 0)
     on_long = bool(cfg.get("frenzy_long_enabled", False)); on_wide = bool(cfg.get("frenzy_wide_enabled", False))
     setups, flagged, crashes, replayed = [], [], [], []
@@ -263,7 +261,7 @@ def scan(EX, retry, cfg, last_closed, alts, btc_full, now_ms):
                     crashes.append(dict(pair=p, signal_close_utc=pd.Timestamp(close_ms, unit="ms", tz="UTC").strftime("%Y-%m-%d %H:%M"), bar_ts=sig,
                                         drop_5m=round(r5, 2), hours=round(ep["hours"], 1), vs_avg=round(ep.get("vs_vwap_pct") or 0, 2),
                                         vol_x=round(ep.get("vol_mult") or 0), atr=(lambda a: round(a, 2) if a is not None else None)(wilder_atr_pct(closed[k - 300:k])),
-                                        rsi=(round(ci["rsi"], 1) if ci.get("rsi") is not None else None), gvol=(lambda v: round(v, 3) if v is not None else None)(global_volume_ratio(gv_src, sig)),
+                                        rsi=(round(ci["rsi"], 1) if ci.get("rsi") is not None else None), gvol=None,
                                         pnl=(round(cp, 2) if cp is not None else None), held_min=cm, exit=ch, run_ms=now_ms))
             if not (ep and ep.get("fresh_on") and frenzy_flagged(ep, th)):
                 continue
@@ -271,13 +269,7 @@ def scan(EX, retry, cfg, last_closed, alts, btc_full, now_ms):
             vol24 = sum(float(r[5]) * (float(r[2]) + float(r[3]) + float(r[4])) / 3 for r in closed[max(0, k - 288):k])
             ready, code, text = frenzy_long_status(ep, atr, vol24, th)
             sleeve = "FRENZY" if ready else ("WIDE" if frenzy_wide_ready(ep, code, SimpleNamespace(**{**cfg, "frenzy_wide_enabled": True}), atr) else "")
-            gv = global_volume_ratio(gv_src, sig)
-            if gmax <= 0:
-                gate = "off"
-            elif close_ms < GVOL_LIVE_MS:
-                gate = "gate not live"
-            else:
-                gate = "unread" if gv is None else ("pass" if gv < gmax else "BLOCK")
+            gv, gate = None, None   # filled after the replay (_apply_gvol)
             pnl, mins, how = _walk_exit(closed, k, th)
             try:
                 ind = calculate_indicators([list(r) for r in closed[k - 300:k]]) or {}
@@ -330,7 +322,124 @@ def scan(EX, retry, cfg, last_closed, alts, btc_full, now_ms):
                                adx=(round(ind["adx"], 1) if ind.get("adx") is not None else None), adx_delta=frenzy_adx_delta(closed[k - 300:k]),
                                di_spread=frenzy_di_spread(closed[k - 300:k]), vol_trend=frenzy_vol_trend(closed[:k]),
                                gap5_8=_e("ema5", "ema8"), gap5_20=_e("ema5", "ema20"), run_ms=now_ms))
+    # 🌊 market volume per signal bar, engine parity, frozen (scripts/scout_gvol.py): this run's bars + any stored row still on the old method
+    need = {int(s["bar_ts"]) for s in setups} | {int(c["bar_ts"]) for c in crashes} | _old_method_bars()
+    pre = dict(alts or {}); pre["BTCUSDT"] = btc_full
+    scout_v = SG.ensure(EX, retry, cfg, need, now_ms, pre=pre)
+    try:
+        live = SG.live_map(SG.update_live(now_ms))
+    except Exception as e:   # the live registry never takes the watch down: scout values only this run
+        SG.log(f"⚠ live market-volume registry unreadable ({str(e)[:100]}) — scout values only this run")
+        live = {}
+    for s in setups:
+        _apply_gvol(s, scout_v, live, gmax)
+    for c in crashes:
+        _apply_gvol(c, scout_v, live, None)
     return setups, flagged, replayed, short, followed, crashes
+
+
+def _gate(gv, close_ms, gmax):
+    if gmax is None:
+        return None
+    if gmax <= 0:
+        return "off"
+    if close_ms < GVOL_LIVE_MS:
+        return "gate not live"
+    return "unread" if gv is None else ("pass" if gv < gmax else "BLOCK")
+
+
+def _apply_gvol(r, scout_v, live, gmax, prev=None):
+    """set gvol_scout (the frozen v2 value — a stored one is never replaced) · gvol_live / gvol_live_pair · gvol (= the bot's own reading when
+    known, else the scout's) · gvol_src · gvol_ver · gvol_gate (gmax None = no gate column: the crash rows). A row with no v2 value and no live
+    reading keeps its stored old-method value, labelled SG.SRC_OLD (gvol_ver 1) — it is recomputed once its bar is in the cache."""
+    bar = int(r["bar_ts"]); close_ms = bar + BAR
+    pv = prev if prev is not None else r
+    pver = _num(pv.get("gvol_ver"))
+    sv = _num(pv.get("gvol_scout")) if pver is not None and pver >= SG.VER else None   # frozen at the first computation
+    if sv is None:
+        sv = scout_v.get(bar)
+    lv = live.get(close_ms)
+    if sv is None and not lv:
+        old = _num(pv.get("gvol")) if (pver is None or pver < SG.VER) else None
+        r.update(gvol_scout=None, gvol_live=None, gvol_live_pair=None, gvol=(round(old, 3) if old is not None else None),
+                 gvol_src=(SG.SRC_OLD if old is not None else "unread"), gvol_ver=(1 if old is not None else SG.VER))
+    else:
+        v, src = SG.resolve(sv, lv[:2] if lv else None)
+        r.update(gvol_scout=(round(sv, 4) if sv is not None else None), gvol_live=(lv[0] if lv else None), gvol_live_pair=(lv[2] if lv else None),
+                 gvol=(round(v, 4) if v is not None else None), gvol_src=src, gvol_ver=SG.VER)
+    if gmax is not None:
+        g = _gate(r["gvol"], close_ms, gmax)
+        r["gvol_gate"] = f"{g} (old method)" if r["gvol_src"] == SG.SRC_OLD and g in ("pass", "BLOCK") else g
+    return r
+
+
+def _gmax(cfg=None):
+    """the live gate threshold: the caller's cfg, else trading_config.json (thresholds)."""
+    if cfg is None:
+        try:
+            import json
+            c = json.load(open(os.path.join(ROOT, "trading_config.json")))
+            cfg = {**c, **(c.get("thresholds") or {})}
+        except Exception:
+            cfg = {}
+    return float(cfg.get("frenzy_gvol_max", 0) or 0)
+
+
+def _num(v):
+    try:
+        v = float(v)
+        return None if v != v else v
+    except (TypeError, ValueError):
+        return None
+
+
+def _old_method_bars(paths=None):
+    """signal bars of stored rows without a v2 scout value: the pre-2026-10-06 run-time method (gvol_ver missing / < VER) or not yet read —
+    computed once (scout_gvol.ensure skips bars already frozen and bars older than its MAX_AGE_MS)."""
+    out = set()
+    for f in (paths or (CSV, CRASH_CSV)):
+        try:
+            d = pd.read_csv(f, usecols=lambda c: c in ("bar_ts", "gvol_ver", "gvol_scout"))
+        except Exception:
+            continue
+        v = pd.to_numeric(d["gvol_ver"], errors="coerce") if "gvol_ver" in d else pd.Series(float("nan"), index=d.index)
+        sc = pd.to_numeric(d["gvol_scout"], errors="coerce") if "gvol_scout" in d else pd.Series(float("nan"), index=d.index)
+        out |= set(d.bar_ts[v.isna() | (v < SG.VER) | sc.isna()].astype("int64").tolist())
+    return out
+
+
+def _regvol(df, gmax, now_ms):
+    """re-apply the market volume to every stored row from the frozen bar cache + the live registry (local files only, no network)."""
+    if not len(df):
+        return df
+    try:
+        scout_v = SG.cached()
+    except Exception as e:
+        SG.log(f"⚠ market-volume cache unreadable ({str(e)[:100]}) — stored values kept as they are")
+        scout_v = {}
+    try:
+        live = SG.live_map(SG.load_live())
+    except Exception as e:
+        SG.log(f"⚠ live market-volume registry unreadable ({str(e)[:100]}) — scout values only")
+        live = {}
+    recs = []
+    for r in df.to_dict("records"):
+        prev = dict(r)
+        recs.append(_apply_gvol(r, scout_v, live, gmax, prev=prev))
+    return pd.DataFrame(recs, columns=list(dict.fromkeys(list(df.columns) + ["gvol_scout", "gvol_live", "gvol_live_pair", "gvol_src", "gvol_ver"])))
+
+
+def _carry_gvol(old, new):
+    """a row this run could not read keeps the stored OLD-METHOD value visible (labelled, out of the gate split) until v2 lands (in place)."""
+    if not len(old) or not len(new) or "gvol" not in old or "gvol" not in new:
+        return
+    ov = pd.to_numeric(old["gvol_ver"], errors="coerce") if "gvol_ver" in old else pd.Series(float("nan"), index=old.index)
+    o1 = old[(ov.isna() | (ov < SG.VER)) & pd.to_numeric(old.gvol, errors="coerce").notna()]
+    o1 = {(a, int(b)): float(v) for a, b, v in zip(o1.pair, o1.bar_ts, o1.gvol)}
+    for i in new.index:
+        k = (new.at[i, "pair"], int(new.at[i, "bar_ts"]))
+        if k in o1 and pd.isna(pd.to_numeric(new.at[i, "gvol"], errors="coerce")):
+            new.at[i, "gvol"] = o1[k]; new.at[i, "gvol_ver"] = 1
 
 
 def save_crashes(crashes, pairs, now_ms):
@@ -351,12 +460,14 @@ def save_crashes(crashes, pairs, now_ms):
                 if pd.isna(r.pnl) and key in kept.index and pd.notna(kept.loc[key, "pnl"]):
                     for c in ("pnl", "held_min", "exit"):
                         new.at[i, c] = kept.loc[key, c]
+            _carry_gvol(old, new)
     if len(new):
         new["gone"] = False
     a = pd.concat([old, new], ignore_index=True) if len(old) else new
     if not len(a):
         return a
     a = a.drop_duplicates(["pair", "bar_ts"], keep="last").sort_values("bar_ts").reset_index(drop=True)
+    a = _regvol(a, None, now_ms)
     a["spaced"] = False; last = {}
     for i, r in a[~a.gone.astype(bool)].iterrows():
         if int(r.bar_ts) - last.get(r.pair, -10**15) > CRASH_GAP_MS:
@@ -400,7 +511,7 @@ def crash_lines(crashes, hist):
     return L + [""]
 
 
-def save(setups, pairs, now_ms):
+def save(setups, pairs, now_ms, cfg=None):
     """reports/SCOUT_FRENZY.csv — one row per pair × signal bar, the latest run wins. A stored row inside this run's 24 h window on a pair this
     run checked that the replay no longer finds is marked superseded (kept for audit, left out of the cohort table)."""
     new = pd.DataFrame(setups)
@@ -414,9 +525,19 @@ def save(setups, pairs, now_ms):
         old.loc[gone, "superseded"] = True
     if len(new):
         new["superseded"] = False
+        if len(old) and {"gvol_scout", "gvol_ver"} <= set(old.columns):   # a stored v2 value is frozen: never overwritten by a later run
+            fz = old[pd.to_numeric(old.gvol_ver, errors="coerce") >= SG.VER].dropna(subset=["gvol_scout"])
+            fz = {(a, int(b)): float(v) for a, b, v in zip(fz.pair, fz.bar_ts, fz.gvol_scout)}
+            for i in new.index:
+                k = (new.at[i, "pair"], int(new.at[i, "bar_ts"]))
+                if k in fz:
+                    new.at[i, "gvol_scout"] = fz[k]; new.at[i, "gvol_ver"] = SG.VER
+        if len(old):
+            _carry_gvol(old, new)
     allr = pd.concat([old, new], ignore_index=True) if len(old) else new
     if len(allr):
         allr = allr.drop_duplicates(["pair", "bar_ts"], keep="last").sort_values("bar_ts")
+        allr = _regvol(allr.reset_index(drop=True), _gmax(cfg), now_ms)
         tmp = CSV + ".tmp"; allr.to_csv(tmp, index=False); os.replace(tmp, CSV)
     return allr
 
@@ -432,8 +553,10 @@ def lines(setups, flagged, pairs, short, followed, cfg, hist=None):
     gmax = float(cfg.get("frenzy_gvol_max", 0) or 0)
     L = ["## 🔥 FRENZY watch (every pair FRENZY can be watching — last 24 h)", "",
          f"{len(pairs)} pairs checked ({len(short)} on the bot's shortlist rule now · {len(followed)} the bot's exports show it followed). Replay of "
-         f"the bot's own rules on closed 5m bars (1,500-bar window, normal hour at each bar). Market volume = top-50 by 24 h volume on the signal "
-         f"bar; gate < {gmax:g}× ({'judged from its deploy' if gmax > 0 else 'OFF'}). Result = REPLAY of the FRENZY exit, fee-net, 5m bars.", ""]
+         f"the bot's own rules on closed 5m bars (1,500-bar window, normal hour at each bar). Market volume = the engine's reading: top-50 ranked "
+         f"PER SIGNAL BAR by 24 h quote volume, base-volume ratio vs the 48-bar mean, frozen once computed; the bot's own value (fill stamp / "
+         f"server gate log) shown when known — the source is on each row. Gate < {gmax:g}× ({'judged from its deploy' if gmax > 0 else 'OFF'}). "
+         f"Result = REPLAY of the FRENZY exit, fee-net, 5m bars.", ""]
     if flagged:
         L += ["**Flagged now:** " + " · ".join(f"{x['pair']} {_f(x['hours'], '.0f')} h{' ON' if x['on'] else ''} ({_f(x['vs_avg'], '+.1f')}% vs avg, "
                                                 f"vol {_f(x['vol_x'], '.0f')}×){'' if x['followed'] else ' — not in the bot exports'}"
@@ -445,7 +568,8 @@ def lines(setups, flagged, pairs, short, followed, cfg, hist=None):
               "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for s in sorted(setups, key=lambda s: s["bar_ts"]):
             res = f"{_f(s['pnl'], '+.2f')}% {s['exit']} ({s['held_min']} min)" if s["pnl"] is not None else s["exit"]
-            gv = f"{_f(s['gvol'], '.2f')}× {s['gvol_gate']}" if s["gvol"] is not None else f"unread ({s['gvol_gate']})"
+            gv = (f"{_f(s['gvol'], '.2f')}× {s['gvol_gate']} · {_SRC_SHORT.get(s.get('gvol_src'), s.get('gvol_src'))}" if s["gvol"] is not None
+                  else f"unread ({s['gvol_gate']})")
             L.append(f"| {s['signal_close_utc'][5:]} | {s['pair']} | {s['hours']} | {s['vol_x']} | {_f(s['vs_avg'], '+.2f')}% | {_f(s['atr'], '.2f')}% | "
                      f"{_f(s['candle'], '+.3f')}% | {_f(s['rsi'], '.0f')} · {_f(s['adx_delta'], '+.1f')} | {s['status_rule']} | {s['sleeve']} | {gv} | {res} | "
                      f"{s['bot']}{' · manual' if s['manual'] else ''} | {s['check']} |")
@@ -454,10 +578,13 @@ def lines(setups, flagged, pairs, short, followed, cfg, hist=None):
         if mm:
             L += [f"**⚠ {len(mm)} to investigate:** " + "; ".join(f"{s['signal_close_utc'][11:]} {s['pair']} {s['sleeve']} — {s['check']}" for s in mm), ""]
     if hist is not None and len(hist):
+        L += gvol_parity_lines(hist, gmax)
         h = hist[hist.pnl.notna() & (hist.exit.astype(str) != "open") & (hist.get("superseded", False) != True)].copy()  # noqa: E712
         if len(h):
             g = pd.to_numeric(h.gvol, errors="coerce")
             h["g"] = g.map(lambda v: "unread" if v != v else ("pass" if gmax <= 0 or v < gmax else "BLOCK"))
+            if "gvol_src" in h:
+                h.loc[h.gvol_src.astype(str) == SG.SRC_OLD, "g"] = "unread"   # an old-method value is not a gate label
 
             def row(nm, z):
                 return f"| {nm} | {len(z)} | {(z.pnl > 0).mean() * 100:.0f}% | {z.pnl.mean():+.3f}% |" if len(z) else f"| {nm} | 0 | – | – |"
@@ -467,9 +594,40 @@ def lines(setups, flagged, pairs, short, followed, cfg, hist=None):
                   row("FRENZY · market vol at / above", h[(h.sleeve == "FRENZY") & (h.g == "BLOCK")]),
                   row("WIDE · market vol below the gate", h[(h.sleeve == "WIDE") & (h.g == "pass")]),
                   row("WIDE · market vol at / above", h[(h.sleeve == "WIDE") & (h.g == "BLOCK")]),
-                  row("market vol unread", h[h.g == "unread"]),
-                  row("refused by both rules", h[h.sleeve == "—"]), ""]
+                  row("market vol unread / old method", h[h.g == "unread"]),
+                  row("refused by both rules", h[h.sleeve == "—"]), "",
+                  "_Market vol: 'old method' = a value from the pre-2026-10-06 run-time ranking — recomputed while ≤ 7 days old, otherwise kept "
+                  "as is and left out of the gate split (counted under unread / old method)._", ""]
     return L
+
+
+_SRC_SHORT = {SG.SRC_STAMP: "live fill", SG.SRC_LOG: "live log", SG.SRC_SCOUT: "scout", SG.SRC_OLD: "old method"}
+
+
+def gvol_parity_lines(hist, gmax):
+    """🌊 the corrected scout value vs the bot's own reading on the bars where both exist (one observation per bar) + the rows whose label the
+    2026-10-06 fix moved across the gate."""
+    if "gvol_scout" not in hist or "gvol_live" not in hist:
+        return []
+    d = hist.copy()
+    d["sv"] = pd.to_numeric(d.gvol_scout, errors="coerce"); d["lv"] = pd.to_numeric(d.gvol_live, errors="coerce")
+    b = d[d.sv.notna() & d.lv.notna()].drop_duplicates("bar_ts").sort_values("bar_ts")
+    ref = gmax if gmax and gmax > 0 else 1.0   # the gate threshold (1.0 when the gate is off)
+    pr = SG.parity(list(zip(b.sv, b.lv)), ref)
+    L = []
+    if pr["n"]:
+        fl = [b.iloc[i] for i in pr["flips"]]
+        L.append(f"**Market-volume parity — corrected scout vs the bot's own reading ({pr['n']} bars with both; live = fill stamp 4 dp or gate "
+                 f"log 2 dp):** mean abs error {pr['mae']:.4f} · max {pr['max']:.4f} · same side of the {ref:g}× gate on {pr['same_side']}/{pr['n']}"
+                 + (" · ⚠ opposite side: " + "; ".join(f"{str(x.signal_close_utc)[5:]} {x.pair} scout {x.sv:.3f} vs live {x.lv:.2f}" for x in fl)
+                    if fl else "") + ".")
+    else:
+        L.append("**Market-volume parity:** no bar yet with both the corrected scout value and the bot's own reading.")
+    n_old = int((d.get("gvol_src", pd.Series(dtype=str)).astype(str) == SG.SRC_OLD).sum())
+    if n_old:
+        L.append(f"{n_old} stored row(s) still carry the old run-time-ranked value — shown as 'old method' and left out of the gate split until "
+                 "the corrected value is computed (retried every run while the bar is ≤ 7 days old).")
+    return L + [""]
 
 
 def note_items(setups, noted, now_ms):

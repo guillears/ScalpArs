@@ -5704,3 +5704,13 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   not kept); the audit reads it. Check 7 (yr5 trimmed fills): MOM-long live −0.021 → −0.036 % (PASS), FLIP −0.213 → −0.237 (WARN), no
   verdict flips. Test tests/test_master_stack_pct.py. Follow-up (not done): ~13 analysis scripts re-implement the regex pct inline
   (numerically identical today, miss FRENZY +TP) → switch to stack_pct when next touched.
+- (223) 2026-10-06 🟢 **Scout: WIDE_BY_CODE + FRENZY_GREEN_CLOCK (observe-only)** (operator: "add it to scout"). Context: FRENZY_LONG skipped
+  RLC 10-05 only for a green signal candle; WIDE took it (FRENZY_VS_WIDE_RLC_CAPTURE_2026-10-06.md). Year (tradeable engine cohort, live lock):
+  WIDE ATR_HIGH half 361 · −0.525 % [−0.83, −0.21] vs green half 204 · +0.013; FRENZY with every green allowed dilutes 0.387 → 0.170;
+  V2 (green when above_streak > 12) +0.418 on added fills but selection-adjusted p 0.98; only V2 ∧ ATR ≤ 1.5 beat the null (23 · +1.96 %,
+  adj p 0.006–0.014, post-hoc, 5 fills after April) → both tracked forward with the pre-registered bars from
+  FRENZY_GREEN_AND_WIDE_ATR_FORMAL_2026-10-06.md (CURRENT_STATE line). Pricing = 12 s after the close + 0.10 slip + 0.09 fees, live lock, tick
+  archive (data.binance.vision, ≤ 4 downloads / run, 180 s budget) else 1m provisional. Dual review: V2 first-per-episode starvation
+  (fixed: floor first, V1/V2 deduped separately), bars aligned to the formal doc, gvol-unknown excluded, crash / file-safety hardening.
+  Selftest 57, pytest 622. Separate pending (not shipped): WIDE ATR_HIGH filter (review running) and split EMA100/EMA200 runner (refuted
+  as a rule; observe line proposed, FRENZY_SPLIT_RUNNER_EMA200_2026-10-06.md).

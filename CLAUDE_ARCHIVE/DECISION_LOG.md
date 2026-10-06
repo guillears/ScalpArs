@@ -5859,3 +5859,9 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   P(+3 within 2 h) ≥ 70 %, plus pre- and post-entry first-seconds flow as description (liquidations not available without a live recorder);
   HYBRID_EXIT re-open bar as in CURRENT_STATE. Dual review applied (no truncated flows stored, streamed archive parsing, finality independent
   of flow, stuck-row fixes, 418/429 handling, consistent live-only policy, universe tags).
+- (239) 2026-10-06 🐻 **FRENZY / WIDE "bearish day" registered as an OBSERVE line, not a filter** (operator: "registra la vigilancia").
+  Operator hypothesis after ORCA 10-06 18:05: FRENZY should not enter on a bearish day. Pre-registered definition: BTC 1-day return < 0 ∧
+  BTC trend gap < 0. Year (engine cohort): bearish 59 fills · 43 days · −0.06 % vs other days +0.53 %; gap CI [−1.64, +0.46], P(mean ≥ 0)
+  0.43 → fails the locked expectancy bar on confidence; blocked side ≈ breakeven (≈ +2 % of trade-sum / year after haircut); the rolling-24 h
+  BTC return reading flips sign (+0.65 when down) → likely confound; WIDE's full review found no macro separator. Promote / retire bars frozen
+  in CURRENT_STATE; fills counted from 2026-10-07; stamps already exist (no code).

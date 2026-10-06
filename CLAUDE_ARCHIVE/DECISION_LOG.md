@@ -5653,3 +5653,22 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   +1.00 / +0.64 %/day vs not soft +0.09 / −0.34; at the luck level p 0.11; fails the filter bar: not-soft N 424 · 52.4 % vs 51.7 % breakeven ·
   −0.07 %, day CI [−0.37, +0.22]); review candidate only at ≥ 40 fills on ≥ 15 days per state with soft day-mean > 0, gap CI excluding 0 and
   the not-soft cohort meeting the expectancy bar; retire if the gap CI still spans 0 at ≥ 60 per state; never armed from the tracker.
+- (217) 2026-10-05 ⚠ **FRENZY studies re-validated on the ENGINE cohort; WIDE kept ON by the operator, on the watchlist** — the P2 moments
+  cohort's fresh bar lagged frenzy_walk (FRENZY_REVALIDATION_ENGINE_BARS_2026-10-05.md; corrected cohort FRENZY_ENGINE_COHORT_2026-10-05.csv,
+  1,819 signals from the real services.frenzy functions; all 8 live FRENZY / WIDE fills fire on the exact bar). Corrected: FRENZY_LONG +0.311
+  %/trade (was +0.391), halves +0.29 / +0.33 (the "May–Sep loses / 1-July break" of 216 was a study artefact); lock beats fixed +3/−3 by
+  +0.23 (CI +0.05…+0.41) → 205 better supported; FRENZY books 0.32 / 0.5 / 0.75 = +84 / +116 / +101 %, DD −39 / −61 / −82 % → stays 0.32 (the
+  216 auto step-up to 0.5 becomes a REVIEW trigger only). WIDE −0.21 %/trade (CI −0.46…+0.03), book at 0.2 −83 %; reclaim bars (above_streak
+  == 12) 383 · −0.53 (9/9 months negative), ATR_HIGH half −0.40; the choppy filter's kept side −0.04 → 215 stays observe-only. WIDE sleeve-kill
+  checklist ①–④ run (FRENZY_WIDE_SLEEVE_CHECKLIST_2026-10-05.md): no entry / regime separator beyond chance; hold-only rule fails 6/7 legs;
+  one observe pocket WIDE_HOLD_GREEN (hold bars, FRENZY refused only for a green candle: 154 · 60 % · +0.56, CI +0.02…+1.07, both halves +).
+  Recommendation was WIDE off (≈ −0.57 % of equity/day at lev 0.2). OPERATOR: WIDE stays ON at 0.2 for now — watchlist + an independent
+  overnight deep re-review of WIDE. Redo of the remaining FRENZY studies (exits, re-entries) on the engine cohort running.
+- (218) 2026-10-06 🧹 **Scout: ATRE + NOTSTRETCHED shadows RETIRED; ATR_FAST_LOCK3 watch added** (operator). Engine-cohort redo
+  (FRENZY_REDO_EXITS_2026-10-05.md): FRENZY ATRE with floor −0.333 vs the lock (CI −0.54…−0.13, both halves −); NOTSTRETCHED first-entry half
+  −0.21 / −0.14 and re-entry of every kind refuted (FRENZY_REDO_REENTRY_2026-10-05.md: ~540 tests, 0 pass; re-entry after a winner 0/64).
+  Lock exit 205 confirmed: FRENZY lock beats fixed +3 by +0.230 (CI +0.06…+0.42), none of 74 alternatives beats it. New observe line
+  ATR_FAST_LOCK3 in scripts/scout_frenzy_exits.py: first entries tagged by the 30-min ATR% change at the signal (study atr_series) > +14.3 % →
+  LOCK3 − LOCK2 read; review at ≥ 30 fast fills on ≥ 15 days only if mean > 0 ∧ day CI > 0 ∧ > 0 without top 5 / 10 ∧ top pair < 50 %;
+  retire if mean ≤ 0 at 30 or no verdict by 60 (year: +0.139 in the top tercile, fails drop-10). RLC 10-05's 30-min ATR change was +1.1 %
+  (not "fast"). Cohort floor: first entries opened from 2026-10-06 00:00 UTC (SOFT_FROM).

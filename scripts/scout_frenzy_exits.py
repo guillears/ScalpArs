@@ -8,15 +8,24 @@ gaps through it), net of 0.09 % fees, 12 h cap — the same accounting as script
   LOCK2   the live exit: −3 until +3, then max(+2, peak − 2)              LOCK3   the same with a 3-pt trail
   EMA20 / EMA50   −3 until +3, then a +2 floor and out at the first 5m close below the 5m EMA20 / EMA50
   FIX3    the old fixed +3 / −3                                             ACTUAL  the bot's own result (the exit live at the time)
-SHADOW 1 — FRENZY_ATRE_SHADOW (reports/FRENZY_ATR_AND_PURE_EMA_EXIT_2026-10-05.md, frozen): FRENZY_LONG first entries only; −3 until +3, then a
+⛔ SHADOWS 1 and 2 RETIRED 2026-10-06 (operator; DECISION_LOG 218): on the engine cohort (reports/FRENZY_REDO_EXITS_2026-10-05.md) ATRE is
+  −0.333 vs the lock (CI −0.54…−0.13, both halves negative) and NOTSTRETCHED's first-entry half is negative (−0.21 / −0.14); re-entry of
+  every kind is refuted (FRENZY_REDO_REENTRY_2026-10-05.md). No longer computed; their old columns stay in the CSV for the record.
+SHADOW 1 (retired) — FRENZY_ATRE_SHADOW (reports/FRENZY_ATR_AND_PURE_EMA_EXIT_2026-10-05.md, frozen): FRENZY_LONG first entries only; −3 until +3, then a
   +2 floor plus an exit at the first 5m close whose ATR% (Wilder 14 on the last 300 closed bars ÷ close, the engine's own ruler) is below the
   signal bar's (the stamped entry_atr_pct); 12 h cap. BAR (read at N ≥ 60 entries on ≥ 30 days): Δ(shadow − LOCK2) mean > 0 ∧ day-block 95 %
   CI low > 0 ∧ mean > 0 without the top 5 and the top 10 ∧ no pair > 35 % of the gain ∧ both halves > 0. Otherwise retired; never re-fit.
-SHADOW 2 — TYPE_III_NOTSTRETCHED (reports/FRENZY_EXIT_SELECTOR_2026-10-05.md, frozen): a FRENZY or WIDE fill whose stamped
+SHADOW 2 (retired) — TYPE_III_NOTSTRETCHED (reports/FRENZY_EXIT_SELECTOR_2026-10-05.md, frozen): a FRENZY or WIDE fill whose stamped
   entry_frenzy_vs_vwap_pct ≤ +5.0 → its EMA50 shadow exit, then RE-ENTRY #1: the first 5m bar of the same UTC day, closing ≥ 15 min after
   the shadow exit, on which the FRENZY state is ON (services.frenzy.frenzy_walk on the 1500-bar window) and the bar is red / flat; entered at
   the next minute's open, EMA50 shadow exit. BAR (read at N ≥ 60 re-entry #1 fills on ≥ 20 days): re-entry mean > 0 ∧ day-block CI low > 0 ∧
   mean > 0 without the top 5 and the top 10 ∧ no pair > 35 % of the gain ∧ both halves > 0. Otherwise retired; never re-fit the +5.0 %.
+TRACKER 5 — ATR_FAST_LOCK3 (reports/FRENZY_REDO_EXITS_2026-10-05.md §5a, frozen, observe-only): every FRENZY / WIDE first entry from
+  SOFT_FROM tagged by the 30-min ATR% change at the signal bar — (ATR% now ÷ ATR% 6 bars earlier − 1) × 100, ATR = EWM(α 1/14) of the true
+  range ÷ close on 5m bars (the study's atr_series) — "fast" when > +14.3 %. Year (engine cohort, pooled): the 3-pt trail beat the lock by
+  +0.139 %/trade in that top tercile (CI +0.00…+0.29, both halves +, 2D null p 0.01) but fails drop-top-10 (−0.065) and walk-forward picked
+  nothing. BAR (read on LOCK3 − LOCK2 for fast fills): ≥ 30 fills on ≥ 15 days → review candidate only if mean > 0 ∧ day CI low > 0 ∧ > 0
+  without the top 5 and top 10 ∧ top pair < 50 % of the net; RETIRE if the mean ≤ 0 at ≥ 30 or no verdict by 60.
 TRACKER 4 — WIDE_CHOPPY_OBS (DECISION_LOG 215, shipped OBSERVE-ONLY): every WIDE first entry from SOFT_FROM tagged by the engine's own stamp
   entry_frenzy_above_share (% of the episode's 5m closes at / above the spike VWAP at the signal) ≤ 67.8 = "would have been blocked". BAR:
   at ≥ 15 would-block fills → ARM REVIEW if their mean < 0 ∧ day CI high < 0 ∧ WR < 52 %; RETIRE if their mean ≥ 0; at ≥ 30 without an
@@ -53,10 +62,11 @@ MIN, BAR, H = 60_000, 300_000, 3_600_000
 FEE, CAP_MIN, NOTSTRETCHED_MAX, REENTRY_WAIT_MIN = 0.09, 720, 5.0, 15
 ATRE_N, ATRE_DAYS, NS_N, NS_DAYS, PAIR_MAX = 60, 30, 60, 20, 35.0
 EXITS = ["LOCK2", "LOCK3", "EMA20", "EMA50", "FIX3"]
-VER = 4   # row schema / rules version: rows priced by an older version are recomputed (review) · 3 = + BTC RSI(12) · 4 = + above_share
+VER = 5   # row schema / rules version: rows priced by an older version are recomputed (review) · 3 = + BTC RSI(12) · 4 = + above_share · 5 = + atr_chg30
 SOFT_RSI, SOFT_N, SOFT_DAYS, SOFT_RETIRE_N = 45.0, 40, 15, 60
 SOFT_FROM = "2026-10-06T00:00:00"   # the trackers' cohort floor: WIDE fills opened from their registration (215 / 216)
 CHOPPY_MAX, CHOPPY_N, CHOPPY_RETIRE_N = 67.8, 15, 30   # 🌀 215 observe-only: the frozen choppy-pump candidate on live WIDE fills
+ATRF_MIN, ATRF_N, ATRF_DAYS, ATRF_RETIRE_N = 14.3, 30, 15, 60   # ⚡ ATR_FAST_LOCK3 watch line (FRENZY_REDO_EXITS_2026-10-05.md, frozen)
 _BTC5 = {}   # per-run cache: BTC 5m klines by window end
 
 
@@ -205,6 +215,14 @@ def _price(r, th, now_ms, first):
         if b5raw[i][0] >= m0 - BAR:               # only bars from the signal bar on are ever read
             atr[i] = wilder_atr_pct(b5raw[max(0, i - 299):i + 1])
     b5["atr"] = atr
+    # ⚡ ATR_FAST_LOCK3: the study's ATR ruler (EWM α 1/14 of the true range ÷ close, over the whole fetched history), signal bar = the last
+    # bar closed by the entry; change vs 6 bars earlier
+    _h = b5.h.values; _l = b5.l.values; _c = b5.c.values
+    _pc = np.r_[_c[0], _c[:-1]]; _tr = np.maximum(_h - _l, np.maximum(abs(_h - _pc), abs(_l - _pc)))
+    _atrp = pd.Series(_tr).ewm(alpha=1 / 14, adjust=False).mean().values / _c * 100
+    _js = int(np.searchsorted(b5.t.values, (t_in // BAR) * BAR - BAR))
+    atr_chg30 = (float(_atrp[_js] / _atrp[_js - 6] - 1) * 100
+                 if _js < len(b5) and int(b5.t.values[_js]) == (t_in // BAR) * BAR - BAR and _js >= 30 else None)
     b5k = b5[["t", "c", "e20", "e50", "atr"]]
     m1in = [list(b) for b in m1 if b[0] >= m0]
     if m1in and m1in[0][0] == m0:   # the entry minute: only its prints AFTER the fill count → flatten it to entry → its close (review)
@@ -222,14 +240,14 @@ def _price(r, th, now_ms, first):
         out[kind] = p; fin.append(how != "open")
         if kind == "EMA50" and how != "open":
             ema50_exit = x                          # the re-entry search starts only from a REAL shadow exit (review)
-    if first and out["sleeve"] == "LONG" and out["atr_entry"] is not None:
-        p, x, how = walk(m1in, e, "ATRE", b5k, atr0=out["atr_entry"]); out["ATRE"] = p; fin.append(how != "open")
+    # ⛔ ATRE shadow retired (218) — no longer priced
+    out["atr_chg30"] = atr_chg30
     out["btc_rsi12"], out["btc_e20_slope"] = btc_soft_reading(t_in) if out["sleeve"] == "WIDE" else (None, None)
     if out["sleeve"] == "WIDE" and out["btc_rsi12"] is None:
         fin.append(False)                                 # a WIDE row without its BTC reading stays provisional → retried next run (review)
     out["re1"] = None; out["re1_at"] = None
     atr_max = float(getattr(th, "frenzy_max_atr_pct", 2.5) or 2.5)
-    if first and out["vs_vwap"] is not None and out["vs_vwap"] <= NOTSTRETCHED_MAX and ema50_exit is not None:
+    if False:   # ⛔ NOTSTRETCHED re-entry shadow retired (218) — the search below is kept only for the record
         h1 = _kl(sym, "1h", m0 - 800 * H, m0)
         cand = [i for i, b in enumerate(b5raw) if b[0] + BAR >= ema50_exit + REENTRY_WAIT_MIN * MIN and b[0] + BAR < day_end]
         for i in cand:
@@ -279,7 +297,15 @@ def run(now_ms=None):
             rows.append(_price(r, th, now_ms, (r.k, r.pair) in firsts))
         except Exception:
             err += 1
-    allr = pd.concat([old, pd.DataFrame(rows)], ignore_index=True) if rows else old
+    new = pd.DataFrame(rows)
+    if len(new) and len(old):   # the retired shadows' recorded values survive a reprice (review): copy them forward
+        keep_cols = [c for c in ("ATRE", "re1", "re1_at") if c in old]
+        if keep_cols:
+            prev = old.drop_duplicates(["k", "pair"], keep="last").set_index(["k", "pair"])[keep_cols]
+            idx = pd.MultiIndex.from_arrays([new.k, new.pair])
+            for c in keep_cols:
+                new[c] = prev[c].reindex(idx).values
+    allr = pd.concat([old, new], ignore_index=True) if rows else old
     if len(allr):
         allr = allr.drop_duplicates(["k", "pair"], keep="last").sort_values("k")
         allr["first"] = [(k, p) in firsts for k, p in zip(allr.k, allr.pair)]   # every stored row's key is in `keys`, so this is complete
@@ -287,34 +313,29 @@ def run(now_ms=None):
     L = ["## 🎯 FRENZY / WIDE exit shadows per fill (pre-registered, OBSERVE only — the live exit stays the lock)", "",
          "Every live FRENZY / WIDE fill re-priced from its ACTUAL entry on 1m bars (fees in, 12 h cap; coarser than the year studies' ticks). "
          "LOCK2 = live exit · LOCK3 = 3-pt trail · EMA20/EMA50 = +2 floor then the first 5m close below the EMA · FIX3 = old fixed +3/−3 · "
-         "ATRE = FRENZY_LONG shadow (exit when 5m ATR drops below the entry bar's) · re-entry #1 = TYPE_III_NOTSTRETCHED (vs spike-average ≤ +5 % "
-         "→ EMA50, then the first eligible ON bar ≥ 15 min later that UTC day — the live market-volume gate is NOT applied). Shadows read FIRST entries "
-         "only (² = a later fill of its pair-day). Actual = the exit live at the time (the fixed +3 TP shipped 10-04 19:23, the lock 10-05 ~16:00); "
+         "ATR Δ30m = the 30-min ATR change at the signal (ATR_FAST_LOCK3 watch) · "
+         "Trackers read FIRST entries only (² = a later fill of its pair-day). Actual = the exit live at the time (the fixed +3 TP shipped 10-04 19:23, the lock 10-05 ~16:00); "
          "FIX3 fills at exactly ±3 (reference column). ᵖ = not final yet.", ""]
     if not len(allr):
         return L + ["No FRENZY / WIDE fill in the exports yet.", ""]
     show = allr.tail(15)
-    L += ["| Opened UTC | Pair | Sleeve | ATR | vs avg | Actual | LOCK2 | LOCK3 | EMA20 | EMA50 | FIX3 | ATRE | Re-entry #1 |",
-          "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    L += ["| Opened UTC | Pair | Sleeve | ATR | ATR Δ30m | vs avg | Actual | LOCK2 | LOCK3 | EMA20 | EMA50 | FIX3 |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     f = lambda v: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.2f}"
     for r in show.itertuples():
         fl = ("" if str(r.final) in ("True", "1", "1.0") else "ᵖ") + ("" if r.first else "²")
-        L.append(f"| {str(r.k)[5:16].replace('T', ' ')}{fl} | {str(r.pair).replace('USDT', '')} | {r.sleeve} | {f(r.atr_entry)} | {f(r.vs_vwap)} | "
-                 f"{f(r.actual)} | {f(r.LOCK2)} | {f(r.LOCK3)} | {f(r.EMA20)} | {f(r.EMA50)} | {f(r.FIX3)} | {f(getattr(r, 'ATRE', None))} | "
-                 f"{(f(r.re1) + ' @' + str(r.re1_at)) if pd.notna(getattr(r, 're1', None)) else '–'} |")
+        L.append(f"| {str(r.k)[5:16].replace('T', ' ')}{fl} | {str(r.pair).replace('USDT', '')} | {r.sleeve} | {f(r.atr_entry)} | {f(getattr(r, 'atr_chg30', None))} | "
+                 f"{f(r.vs_vwap)} | {f(r.actual)} | {f(r.LOCK2)} | {f(r.LOCK3)} | {f(r.EMA20)} | {f(r.EMA50)} | {f(r.FIX3)} |")
     fin = allr[allr.final.astype(str).isin(["True", "1", "1.0"])].copy()
-    L += ["", "| Final fills | N | " + " | ".join(EXITS + ["ATRE (LONG)"]) + " |", "|---|---|" + "---|" * (len(EXITS) + 1)]
+    L += ["", "| Final fills | N | " + " | ".join(EXITS) + " |", "|---|---|" + "---|" * len(EXITS)]
     for nm, g in (("all", fin), ("FRENZY_LONG", fin[fin.sleeve == "LONG"]), ("WIDE", fin[fin.sleeve == "WIDE"])):
         if len(g):
-            L.append(f"| {nm} | {len(g)} | " + " | ".join(f"{g[c].mean():+.2f}" for c in EXITS) + f" | {f(g['ATRE'].mean()) if 'ATRE' in g and g['ATRE'].notna().any() else '–'} |")
-    if "ATRE" in fin:
-        lg = fin[(fin.sleeve == "LONG") & fin["first"] & fin.ATRE.notna()].assign(dA=lambda d: d.ATRE - d.LOCK2)
-        st, tx = bar_check(lg, "dA", ATRE_N, ATRE_DAYS)
-        L += ["", f"**ATRE shadow bar (FRENZY_LONG, Δ vs LOCK2):** {'📋 REVIEW DUE' if st == 'review' else ('❌ fails → retire' if st == 'retire' else '⏳ collecting')} ({tx})"]
-    if "re1" in fin:
-        ns = fin[fin["first"] & fin.re1.notna()]
-        st, tx = bar_check(ns, "re1", NS_N, NS_DAYS)
-        L += [f"**NOTSTRETCHED re-entry #1 bar:** {'📋 REVIEW DUE' if st == 'review' else ('❌ fails → retire' if st == 'retire' else '⏳ collecting')} ({tx})"]
+            L.append(f"| {nm} | {len(g)} | " + " | ".join(f"{g[c].mean():+.2f}" for c in EXITS) + " |")
+    L += ["", "_ATRE and NOTSTRETCHED shadows retired 2026-10-06 (DECISION_LOG 218: evidence reversed on the engine cohort)._"]
+    if "atr_chg30" in fin:
+        st, tx = atrfast_check(fin[fin["first"] & fin.atr_chg30.notna() & (fin.k.astype(str) >= SOFT_FROM)])
+        L += [f"**ATR_FAST_LOCK3 watch (30-min ATR change > +{ATRF_MIN:g} % at the signal → 3-pt trail vs the lock):** "
+              + {"review": "📋 REVIEW CANDIDATE", "retire": "❌ retire", "collecting": "⏳ collecting"}.get(st, st) + f" ({tx})"]
     if "above_share" in fin:
         st, tx = choppy_check(fin[(fin.sleeve == "WIDE") & fin["first"] & fin.above_share.notna() & (fin.k.astype(str) >= SOFT_FROM)])
         L += [f"**WIDE_CHOPPY_OBS (215, observe-only — the bot still takes these):** "
@@ -326,6 +347,28 @@ def run(now_ms=None):
     if err:
         L.append(f"_{err} fill(s) not priced this run (klines unavailable) — retried next run._")
     return L + [""]
+
+
+def atrfast_check(w):
+    """frozen ATR_FAST_LOCK3 bar on first entries with an ATR-change reading: Δ = LOCK3 − LOCK2 on the 'fast' fills."""
+    f = w[(w.atr_chg30 > ATRF_MIN) & w.LOCK2.notna() & w.LOCK3.notna()].assign(d=lambda x: x.LOCK3 - x.LOCK2)
+    n, nd = len(f), f.day.nunique()
+    txt = f"fast fills {n} / {nd} d" + (f" · Δ(3-pt − lock) {f.d.mean():+.2f} %" if n else "") + f" · other fills {len(w) - n} (bar ≥ {ATRF_N} fast fills on ≥ {ATRF_DAYS} days)"
+    if n >= ATRF_RETIRE_N or (n >= ATRF_N and f.d.mean() <= 0):   # retirement is checked BEFORE the days gate (review)
+        ok_days = nd >= ATRF_DAYS
+    elif n < ATRF_N or nd < ATRF_DAYS:
+        return "collecting", txt
+    else:
+        ok_days = True
+    ci = day_ci(f.d.values, f.day.values) if nd >= 3 else None
+    top = f.d.sort_values(ascending=False)
+    pshare = (f.groupby("pair").d.sum().max() / f.d.sum() * 100) if f.d.sum() > 0 else float("inf")
+    txt += (f" · CI [{ci[0]:+.2f}, {ci[1]:+.2f}]" if ci else "") + f" · w/o top5 {top.iloc[5:].mean():+.2f} · w/o top10 {top.iloc[10:].mean():+.2f} · top pair {pshare:.0f} %"
+    if ok_days and f.d.mean() > 0 and ci and ci[0] > 0 and top.iloc[5:].mean() > 0 and top.iloc[10:].mean() > 0 and pshare < 50:
+        return "review", txt
+    if f.d.mean() <= 0 or n >= ATRF_RETIRE_N:
+        return "retire", txt
+    return "collecting", txt
 
 
 def choppy_check(w):
@@ -407,6 +450,13 @@ def selftest():
     chk(walk(gap, 100, "LOCK2")[2] == "12 h cap", "the 12 h cap is clock time — a kline gap cannot stretch it")
     conc = pd.DataFrame(dict(day=[f"d{i}" for i in range(70)], pair=["A"] * 35 + [f"P{i}" for i in range(35)], v=[0.3] * 70))
     chk(bar_check(conc, "v", 60, 30)[0] == "retire", "one pair carrying half the net gain fails the 35 % pair bar")
+    aw = pd.DataFrame(dict(day=[f"d{i}" for i in range(40)], pair=[f"P{i}" for i in range(40)], atr_chg30=[20.0] * 35 + [5.0] * 5,
+                           LOCK2=[2.0] * 40, LOCK3=[2.6, 2.4, 2.8, 2.5] * 10))
+    chk(atrfast_check(aw)[0] == "review", "fast fills where the 3-pt trail beats the lock everywhere → review")
+    chk(atrfast_check(aw.assign(LOCK3=1.5))[0] == "retire", "3-pt trail worse → retire")
+    chk(atrfast_check(aw.head(20))[0] == "collecting", "< 30 fast fills → collecting")
+    big = pd.concat([aw.assign(day=aw.day + s_) for s_ in "ab"], ignore_index=True).assign(LOCK3=[2.4, 2.3] * 40, pair="A")
+    chk(atrfast_check(big)[0] == "retire", "≥ 60 fast fills, one pair carrying everything → retire")
     cw = pd.DataFrame(dict(day=[f"d{i}" for i in range(40)], above_share=[50.0] * 20 + [90.0] * 20, LOCK2=[-1.0, -1.2, 0.4, -1.5] * 5 + [0.5] * 20))
     chk(choppy_check(cw)[0] == "arm_review", "would-block fills clearly losing → arm review")
     chk(choppy_check(cw.assign(LOCK2=0.3))[0] == "retire", "would-block fills not losing → retire")

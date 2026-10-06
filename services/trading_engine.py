@@ -7106,12 +7106,20 @@ class TradingEngine:
                                 _frenzy_status['kl_rejoin'] = int(_frenzy_status.get('kl_rejoin') or 0) + 1
                             else:
                                 _fm = {int(r[0]): r for r in _full}
-                                _bad = sum(1 for r in _m if int(r[0]) in _fm and [float(x) for x in r[1:6]] != [float(x) for x in _fm[int(r[0])][1:6]])
-                                if len(_m) != len(_full):
-                                    _bad = max(_bad, 1)
-                                if _bad:
+                                _diff = [(r, _fm[int(r[0])]) for r in _m
+                                         if int(r[0]) in _fm and [float(x) for x in r[1:6]] != [float(x) for x in _fm[int(r[0])][1:6]]]
+                                _bad = len(_diff)
+                                _len_bad = len(_m) != len(_full)
+                                if _bad or _len_bad:
                                     _frenzy_status['kl_mismatch'] = int(_frenzy_status.get('kl_mismatch') or 0) + 1
-                                    logger.warning(f"[FRENZY_KL_MISMATCH] {_p}: the cached 5m window differed from a full read on {_bad} bar(s) — replaced by the full read")
+                                    # 🔎 Oct-6 (219) diagnostic: WHICH bar, how many bars back from the newest, and the cached vs full OHLCV values
+                                    _newest = int(_full[-1][0])
+                                    _det = "; ".join(f"{datetime.fromtimestamp(int(a_[0]) / 1000, timezone.utc):%m-%d %H:%M} ({(_newest - int(a_[0])) // 300_000} bars back from the forming bar) "
+                                                     f"cached o/h/l/c/v {[round(float(x), 8) for x in a_[1:6]]} vs full {[round(float(x), 8) for x in b_[1:6]]}"
+                                                     for a_, b_ in _diff[:3])
+                                    logger.warning(f"[FRENZY_KL_MISMATCH] {_p}: cached window vs a full read — {_bad} bar(s) differ"
+                                                   + (f", lengths {len(_m)} vs {len(_full)} (first bar {int(_m[0][0])} vs {int(_full[0][0])})" if _len_bad else "")
+                                                   + (f" · {_det}" if _det else "") + " — replaced by the full read")
                         except (TypeError, ValueError, IndexError) as _ke:
                             logger.warning(f"[FRENZY_KL_MISMATCH] {_p}: comparison skipped ({str(_ke)[:60]})")
                     _frenzy_kl_cache[_p] = dict(rows=[list(r) for r in _full], keep=1500)   # the requested limit: a young pair's window grows like a full read

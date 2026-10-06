@@ -5672,3 +5672,9 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   LOCK3 − LOCK2 read; review at ≥ 30 fast fills on ≥ 15 days only if mean > 0 ∧ day CI > 0 ∧ > 0 without top 5 / 10 ∧ top pair < 50 %;
   retire if mean ≤ 0 at 30 or no verdict by 60 (year: +0.139 in the top tercile, fails drop-10). RLC 10-05's 30-min ATR change was +1.1 %
   (not "fast"). Cohort floor: first entries opened from 2026-10-06 00:00 UTC (SOFT_FROM).
+- (219) 2026-10-06 🔎 **FRENZY_KL_MISMATCH diagnostic (logging only)** — the speed-up's (213) full-read check logged "1 bar differs" 31× in an
+  hour on 20 pairs, while two offline reproductions (raw REST and ccxt, 5 pairs × 4 live passes) found identical windows. The warning now
+  names the differing bar(s) (time, bars back from the forming bar, cached vs full OHLCV) and the window lengths when they differ; the old
+  `max(_bad, 1)` made a length-only difference read as "1 bar" (review's leading hypothesis). No behaviour change: the cache is still replaced
+  by every full read. Same session: time-based hold study dropped (operator: "not a technical variable"); RLC "everything improving"
+  re-entry signature refuted (FRENZY_RLC_REENTRY_SIGNATURE_2026-10-06.md, 0 / 220).

@@ -5738,3 +5738,21 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   ≥ 8 new bull-week days. Replacement gates (frozen, CURRENT_STATE): ① revert to 1.0 if the scout MS_PVR_BLOCKED Cohort A reaches 15 signals
   with mean ≥ the kept side's mean over the same period; ② full sleeve review (no auto-kill) if the kept side is below breakeven WR (~59 %)
   at 20 fills. No config change.
+
+
+## 2026-10-06 (227) - 📏 SCREENED_BASELINE v19 — `pnl_current_sizing` re-priced to TODAY's sizing (operator-approved pin)
+- **Why:** `scripts/screen_pool.py` `pnl_current()` still priced UNMATCHED momentum longs at 2× (206 cut them to 1.5×), never applied the
+  Aug-10 crowd-sprint de-mux (global vol > 0.74 ∧ BTC EMA20 slope > 0.07 → 1×), and kept the 3 W1+W2+W1 momentum shorts at 2× (cell
+  de-muxed 2026-07-30; today every SHORT pattern cell is 1×). CALM3D → 1× (225) mirrored too (0 screened rows); flips were already 1× (220).
+- **Rule (engine order):** multiplied momentum SHORT → 1× · CALM3D → 1× · FLIP → 1× · UNMATCHED long: sprint → 1×, else PVR ≥ 0.90 → 1×,
+  else min(cell, 1.5) (1.5 FROZEN = builder UNMATCHED_LONG_INV_FROZEN).
+- **Result (same 82 rows, $ only; WR/avg% unchanged):** ML 37·86%·+0.403% $3,635 → $2,612 (22 rows 2→1.5×, 8 sprint → 1×; 6 PVR already 1×) ·
+  MS 14·86%·+0.400% $756 → $664 (SOL −$47→−$24 · JUP +$186→+$93 · JTO +$46→+$23) · FLIP 31·81%·+0.223% $692 unchanged ·
+  TOTAL 82·84% $5,083 → $3,968 (old live-sized $6,234; live-sized = anchor now). 1×: ML $1,811 · TOTAL $3,167.
+- **Master parity:** row join on (opened_at, pair, direction) — 77/82 kept rows match stack_pnl to the cent. Differences are builder gaps,
+  NOT copied: 5 PVR ≥ 0.90 longs (SUI 06-26, WLD 06-28, ME 07-03, 1000PEPE 07-02, ADA 07-01) 1.5× in master; 3 W2+W1 shorts 2× in master
+  (builder fix queued as a separate task). Filter gap noted: 16 screened rows are master-blocked (12 flips fail-open by design; WLD 06-26 +
+  UNI 07-10 LOADX, LIT 07-10 CHOP_BURST not carried by the screen) — operator question, not changed here.
+- **Guard:** tests/test_screen_pool_sizing.py (22) — every rule + boundary, 1.5 = builder constant, sprint thresholds and "no SHORT cell > 1×"
+  vs live JSON, frozen CSV = pnl_current (explicit JSON thresholds, cwd-independent). Dual review: caveman + deep (W2+W1 short and the cwd
+  dependence were deep-review catches, applied).

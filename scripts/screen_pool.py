@@ -12,7 +12,7 @@ raw 269-flip pool.
 RE-RUN WHEN: a new batch is appended to the raw pool, OR any filter/config changes.
 Then re-freeze and re-pin the checksum in CLAUDE_CURRENT_STATE.md.
 
-VALIDATION ANCHOR (asserted below): MOM-long = 23 · 83% · +$2146 (independently exact).
+VALIDATION ANCHORS (asserted in main(), v19 2026-10-06): ML 37/$2612 · MS 14/$664 · FLIP 31/$692 — $ = pnl_current (today's sizing).
 Flip-short uses the real services.trading_engine._flip_filters with a field-audited `ind`.
 """
 import csv, sys, os
@@ -30,30 +30,48 @@ def nf(x):
     except: return None
 def isflip(r): return 'FLIP' in (r.get('cell_multiplier_source') or r.get('entry_strategy') or '').upper()
 
-def pnl_current(r):
-    """Realized $ under the CURRENT sizing. The COMBINED pool's `pnl` reflects HISTORICAL
-    multipliers; the only cell whose sizing CHANGED this era is C1 SHORT (de-muxed 2x->1x,
-    2026-06-29). Unmatched-long (2x) and W2+W1 (2x) are unchanged. Without this, MOM-short
-    shows -$332 (C1 at 2x) instead of the true -$122 (C1 at 1x). Memory: 'cross-batch re-sims
-    MUST apply C1 demux.'"""
+# Oct-6 — today's UNMATCHED momentum-long cell size (DECISION_LOG 206, 2× → 1.5×). FROZEN like the master builder's
+# UNMATCHED_LONG_INV_FROZEN (a later settings change must not silently re-price the baseline); tests/test_screen_pool_sizing.py
+# pins the two against each other.
+UNMATCHED_LONG_INV = 1.5
+
+def pnl_current(r, t=None):
+    """Realized $ under TODAY's sizing (the `pnl_current_sizing` column). The COMBINED pool's `pnl` carries the HISTORICAL
+    multiplier; every cell whose size changed since is re-priced here, in the engine's order, mirroring
+    scripts/build_master_pool.py STACK 2026-10-06b:
+      · every momentum SHORT cell above 1× → 1×: C1 (2026-06-29) and W2+W1 (2026-07-30) were the last 2× short cells — today's
+        pattern_cell_rules size every SHORT cell at 1× (tests/test_screen_pool_sizing.py pins that against the live JSON)
+      · NONEXP_CALM3D door → 1× (DECISION_LOG 225, 2026-10-06)
+      · every FLIP row above 1× → 1× (NEGDI15 / TG_SHALLOW → 1×, DECISION_LOG 220 — no flip cell sizes above 1× today)
+      · UNMATCHED momentum long: crowd-sprint de-mux (global vol > gvr_min ∧ BTC EMA20 slope > slope_min) → 1×, else the
+        crowded-PVR de-mux (PVR ≥ long_unmatched_mult_pvr_max) → 1×, else the cell's 2× → 1.5× (DECISION_LOG 206; the quiet
+        boost is 1.5 too). Rows that traded at ≤ 1.5× stay as traded (same as the builder).
+    Known builder gaps (not copied — the screen keeps the engine rule): the builder applies neither the PVR de-mux (its
+    "pre-Jul-10 gap": a PVR ≥ 0.90 2× long reads 1× here, 1.5× in the master) nor the W2+W1 short de-mux (3 BASE shorts read
+    1× here, 2× in the master)."""
+    t = th if t is None else t
     p = nf(r.get('pnl')) or 0.0
     src_ = r.get('cell_multiplier_source') or ''
     mult = nf(r.get('cell_multiplier')) or 1.0
-    if src_ == 'C1' and mult == 2.0:
-        return p / 2.0
-    # Jul 10 — UNMATCHED-LONG crowded-entry de-mux (long_unmatched_mult_pvr_max): the 2× cell
-    # sizes at 1× when entry PVR >= threshold (✗ HARMFUL sub-cell: zone 10 trades net-negative
-    # at both sizings). Historical 2× fills in the zone re-price to 1× under the current stack.
-    _upv = float(getattr(th, 'long_unmatched_mult_pvr_max', 0.0) or 0.0)
-    _pvr = nf(r.get('entry_pair_volume_ratio'))
-    if (_upv > 0 and src_ == 'UNMATCHED' and r.get('direction') == 'LONG' and mult > 1.0
-            and _pvr is not None and _pvr >= _upv):
+    if r.get('direction') == 'SHORT' and not src_.startswith('FLIP') and mult > 1.0:
         return p / mult
-    # Jul 3 — flips run 2x live now (FAN_RATIO_GATE:2.0); the pinned flip baseline is at 1x, so
-    # de-mux any multiplied FLIP row to 1x when future batches land (else 1x-historical mixes with
-    # 2x-fresh and the flip net$ silently drifts — review I2; the FLIP anchor is count+$ so a miss fails the freeze).
+    if 'CALM3D' in src_ and mult > 1.0:
+        return p / mult
+    # Jul 3 — de-mux any multiplied FLIP row to 1x (the FLIP anchor is count+$, so a miss fails the freeze).
     if src_.startswith('FLIP') and mult > 1.0:
         return p / mult
+    if src_ == 'UNMATCHED' and r.get('direction') == 'LONG' and mult > 1.0:
+        _gmin = float(getattr(t, 'long_unmatched_sprint_demux_gvr_min', 0.0) or 0.0)
+        _smin = float(getattr(t, 'long_unmatched_sprint_demux_b20slope_min', 0.0) or 0.0)
+        _gvr, _slp = nf(r.get('entry_global_volume_ratio')), nf(r.get('entry_btc_ema20_slope'))
+        if _gmin > 0 and _smin > 0 and _gvr is not None and _slp is not None and _gvr > _gmin and _slp > _smin:
+            return p / mult   # Aug-10 crowd-sprint de-mux (engine: takes precedence over the PVR legs)
+        _upv = float(getattr(t, 'long_unmatched_mult_pvr_max', 0.0) or 0.0)
+        _pvr = nf(r.get('entry_pair_volume_ratio'))
+        if _upv > 0 and _pvr is not None and _pvr >= _upv:
+            return p / mult   # Jul 10 crowded-entry de-mux
+        if mult > UNMATCHED_LONG_INV:
+            return p * UNMATCHED_LONG_INV / mult
     return p
 
 def flip_ind(r):  # field-audited against engine _ff_in (trading_engine.py:3414)
@@ -177,14 +195,15 @@ def main():
     for s in order:
         rs = agg.get(s, [])
         if not rs: print(f"{s:12} N=0"); continue
-        pls=[nf(x.get('pnl_percentage')) for x in rs]; d=[pnl_current(x) for x in rs]  # de-muxed (C1 1x)
+        pls=[nf(x.get('pnl_percentage')) for x in rs]; d=[pnl_current(x) for x in rs]  # today's sizing
         w=sum(1 for p in pls if p>0)
         print(f"{s:12}{len(rs):>4}{w/len(rs)*100:>5.0f}%{sum(d):>+9.0f}")
         tot_n+=len(rs); tot_w+=w; tot_d+=sum(d)
-    print(f"{'TOTAL':12}{tot_n:>4}{tot_w/tot_n*100:>5.0f}%{tot_d:>+9.0f}   (net$ = current sizing, C1 de-muxed to 1x)")
+    print(f"{'TOTAL':12}{tot_n:>4}{tot_w/tot_n*100:>5.0f}%{tot_d:>+9.0f}   (net$ = today's sizing — pnl_current)")
     # Jul 10 (operator-requested dual pricing): the FLIP anchor is 1× BY POLICY (measuring stick);
     # ALSO print the live-sizing counterfactual (TG_SHALLOW + NEGDI15 cells at their live mults,
     # max not stacked) so both numbers are on record at every freeze — anchor ≠ money view.
+    # Oct-6: both cells are 1× live since DECISION_LOG 220 (JSON mults 1.0) → this line now equals the anchor; kept for a re-arm.
     _fs_rows = agg.get('FLIP_SHORT', [])
     _tgm_ = float(getattr(th, 'flip_short_tg_shallow_mult', 0.0) or 0.0)
     _tglo_ = float(getattr(th, 'flip_short_tg_shallow_min', -0.10) or -0.10)
@@ -242,9 +261,14 @@ def main():
     # spike tables; BULLRUN_LONG is never screened here).
     # v18 (2026-09-23): 🏦 LONG_MEGACAP_BLOCK screens 4 rank≤10 momentum longs (HYPE r4 −$31 · HYPE r6 +$52 · SOL r3 +$25 ·
     # HYPE r8 −$77 = −$31): ML 41/$3604 -> 37/$3635. MS/FLIP unchanged (the gate is momentum-LONG only).
-    assert len(ml) == 37 and round(ml_net) == 3635, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 37/$3635 (v18: mega-cap exclusion) — screen wrong, NOT freezing"
+    # v19 (2026-10-06): pnl_current mirrors master STACK 2026-10-06b sizing — UNMATCHED 2× → 1.5× (206) + crowd-sprint de-mux
+    # → 1× (Aug-10, was missing here; 8 longs). Same 37 rows, price only: ML $3635 -> $2612. FLIP unchanged (no CALM3D rows
+    # screen here; the 2 ×2 flips were already 1×); MS see below.
+    assert len(ml) == 37 and round(ml_net) == 2612, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 37/$2612 (v19: 1.5× UNMATCHED + sprint de-mux) — screen wrong, NOT freezing"
     # v15 (2026-09-18): momentum_short_pair_vol_max 1.0 -> 0.86 screens 5 more mom-shorts (MS 19/$794 -> 14/$756).
-    assert len(ms) == 14 and round(ms_net) == 756, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 14/$756 (v15; pair-vol ceiling 0.86) — NOT freezing"
+    # v19 (2026-10-06): the 3 W1+W2+W1 shorts still priced at 2× re-price to 1× (cell de-muxed 2026-07-30; SOL −$47→−$24 ·
+    # JUP +$186→+$93 · JTO +$46→+$23): MS $756 -> $664.
+    assert len(ms) == 14 and round(ms_net) == 664, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 14/$664 (v19; W2+W1 short at 1×) — NOT freezing"
     fl = agg.get('FLIP_SHORT', [])
     fl_net = sum(pnl_current(x) for x in fl)
     # v11 (2026-07-07 era, operator: "we block with fundaments"): SLOPEUP admit REVERTED to hard
@@ -253,8 +277,8 @@ def main():
     # to the core-only cohort. Rewritten revert gate lives in CURRENT_STATE.
     # v12 (Jul 8): BTC trend-gap depth gate (flip_short_btc_trend_gap_min=-0.22) screens 12 more flips (42%WR/-$244)
     assert len(fl) == 31 and round(fl_net) == 692, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 31/$692 (v14, unchanged from v13) — trend-gap gate off? de-mux? NOT freezing"
-    print(f"\n✅ VALIDATION PASSED (v18: ML 37/$3635 + MS 14/$756 + FLIP 31/$692 + 0 pair-vol survivors). Freezing.")
-    # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
+    print(f"\n✅ VALIDATION PASSED (v19: ML 37/$2612 + MS 14/$664 + FLIP 31/$692 + 0 pair-vol survivors). Freezing.")
+    # freeze — add a today's-sizing P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=cols); w.writeheader()

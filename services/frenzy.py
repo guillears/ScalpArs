@@ -52,7 +52,8 @@ def frenzy_walk(bars, norm_hour, th) -> Optional[dict]:
     """bars = CLOSED 5m OHLCV rows [open_ms, o, h, l, c, v], oldest first. Returns the LIVE episode (the one still running at the
     last bar) or None. Keys: spike_ts (close time of the spike bar), base (price 30 min before it), vwap, price, peak, hours,
     vol_mult, above_hour, above_streak (closes in a row at or above the average price, ending at the last bar), in_state,
-    fresh_on (the last bar is the first state bar after ≥ 1 h off), verified, last_bar_ts,
+    fresh_on (the last bar is the first state bar after ≥ 1 h off), verified, last_bar_ts, on_bar_ts (⏪ Oct-6: open ms of the bar the
+    current state stretch turned on — == last_bar_ts exactly when fresh_on; None when not in state),
     vs_vwap_pct, run_pct, gain_pct, off_peak_pct, bar_ret_pct (the last bar's close vs its open, %) and bar_red (close ≤ open). Fail-closed.
     verified = the spike is known to be its episode's FIRST: either the previous episode is fully inside the window and was itself
     verified, or the 25 h before the spike are visible and hold no bar at the state volume (a state bar needs that volume, so an
@@ -105,10 +106,15 @@ def frenzy_walk(bars, norm_hour, th) -> Optional[dict]:
                 i = end; chained = verified; continue
             k = n - 1 - on
             fresh = bool(state[k] and not any(state[max(0, k - 12):k]))
+            on_ts = None   # ⏪ Oct-6 catch-up: the bar the CURRENT state stretch turned on (its first state bar after ≥ 1 h off) — None when not in state
+            if state[k]:
+                for jj in range(k, -1, -1):
+                    if state[jj] and not any(state[max(0, jj - 12):jj]):
+                        on_ts = t[on + jj]; break
             base = c[on - 6]; peak = max(h[on:]); price = c[-1]
             return dict(spike_ts=t[on] + BAR_MS, base=base, vwap=vw[-1], price=price, peak=peak,
                         hours=(t[-1] - t[on]) / HOUR_MS, vol_mult=volx[-1], above_hour=bool(above[-1]), above_streak=streak, in_state=bool(state[-1]),
-                        fresh_on=fresh, verified=verified, last_bar_ts=t[-1],
+                        fresh_on=fresh, verified=verified, last_bar_ts=t[-1], on_bar_ts=on_ts,
                         vs_vwap_pct=(price / vw[-1] - 1) * 100 if vw[-1] > 0 else None,
                         run_pct=(peak / base - 1) * 100, gain_pct=(price / base - 1) * 100,
                         off_peak_pct=(price / peak - 1) * 100 if peak > 0 else None,
@@ -243,6 +249,50 @@ def frenzy_wide_hold_green_block(ep, code, th) -> Optional[str]:
         return None if (s is not None and float(s) > mn) else "FRENZY_WIDE_RECLAIM"
     except (TypeError, ValueError):
         return "FRENZY_WIDE_RECLAIM"
+
+
+FRENZY_CATCHUP_OK, FRENZY_CATCHUP_STALE = "FRENZY_CATCHUP", "FRENZY_CATCHUP_STALE"
+
+
+def frenzy_catchup_check(ep, prev_judged_ms, max_bars) -> Tuple[Optional[str], Optional[int]]:
+    """⏪ Oct-6 FRENZY catch-up (NMRUSDT 10-06: the fresh bar closed while the bot was paused → "ON (entry bar passed)", never entered).
+    → (status, age_bars). status None = nothing to recover: catch-up off (max_bars ≤ 0) · no stored last-judged bar (cold start — never
+    guess) · not in state · fresh_on (the normal path judges it) · the ON bar is at / before prev_judged_ms (a completed pass judged it).
+    FRENZY_CATCHUP = the ON bar fell inside an unjudged window and is ≤ max_bars bars older than the last closed bar → judge it as if fresh.
+    FRENZY_CATCHUP_STALE = unjudged but older than that. prev_judged_ms = open ms of the last 5m bar a COMPLETED pass judged BEFORE this one.
+    Entering on a later ON bar is refuted (−0.49 %/trade, FRENZY_STAIRCASE_STUDY_2026-10-06) — this recovers only the fresh bar itself."""
+    try:
+        mb = int(max_bars or 0)
+        if mb <= 0 or prev_judged_ms is None or not ep or not ep.get('in_state') or ep.get('fresh_on'):
+            return None, None
+        on, last = ep.get('on_bar_ts'), ep.get('last_bar_ts')
+        if on is None or last is None or int(on) <= int(prev_judged_ms) or int(on) >= int(last):
+            return None, None
+        age = int((int(last) - int(on)) // BAR_MS)
+        return (FRENZY_CATCHUP_OK if age <= mb else FRENZY_CATCHUP_STALE), age
+    except (TypeError, ValueError):
+        return None, None
+
+
+def frenzy_catchup_moved(on_close, live_price, max_pct) -> bool:
+    """⏪ True = REFUSE the catch-up: the live price is more than max_pct % from the ON bar's close (not the same trade any more). Fail-closed:
+    a guard switched off (≤ 0) or an unreadable price refuses — a catch-up without the economics check is never taken."""
+    try:
+        mx, c, p = float(max_pct or 0), float(on_close or 0), float(live_price or 0)
+        return not (mx > 0 and c > 0 and p > 0 and abs(p / c - 1) * 100 <= mx)
+    except (TypeError, ValueError):
+        return True
+
+
+def frenzy_vol24_at(bars) -> Optional[float]:
+    """⏪ 24 h quote volume (volume × typical price, the walk's convention) of the 288 closed 5m bars ending at bars[-1] — the catch-up's
+    24 h volume ON the signal bar (the ticker's figure is today's). None when < 288 bars or unreadable."""
+    try:
+        if not bars or len(bars) < 288:
+            return None
+        return sum(float(r[5]) * (float(r[2]) + float(r[3]) + float(r[4])) / 3.0 for r in bars[-288:])
+    except (TypeError, ValueError, IndexError):
+        return None
 
 
 def frenzy_flagged(ep, th) -> bool:

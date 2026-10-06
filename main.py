@@ -211,6 +211,9 @@ async def frenzy_loop():
                 break
             _th = config.trading_config.thresholds
             if not (getattr(_th, 'frenzy_long_enabled', False) or getattr(_th, 'frenzy_short_observe', False) or getattr(_th, 'frenzy_wide_enabled', False)):
+                # ⏪ Oct-6 catch-up: FRENZY fully OFF (paused or not) counts as judged — switching it back on never "catches up" a setup that
+                # turned ON while the operator had FRENZY off (the per-pair unread map is cleared too). Never raises.
+                await trading_engine._frenzy_judged_set(int(time.time() // 300) * 300_000 - 300_000, clear_pairs=True)
                 continue
             async with AsyncSessionLocal() as db:
                 await trading_engine.initialize(db)
@@ -3497,7 +3500,10 @@ def _frenzy_flag_view(f):
             "hours": _r(f.get('hours'), 1), "gain_pct": _r(f.get('gain_pct'), 1), "run_pct": _r(f.get('run_pct'), 1), "off_peak_pct": _r(f.get('off_peak_pct'), 1),
             "vs_vwap_pct": _r(f.get('vs_vwap_pct'), 2), "vwap": f.get('vwap'), "vol_mult": _r(f.get('vol_mult'), 0), "atr_pct": _r(f.get('atr_pct'), 2),
             "volume_24h": f.get('volume_24h'), "in_state": bool(f.get('in_state')), "ready": bool(f.get('ready')), "late": bool((f.get('hours') or 0) >= 32),
-            "code": f.get('code'), "text": f.get('text'), "last_fire": f.get('last_fire'), "stale": bool(f.get('misses'))}
+            "code": f.get('code'), "text": f.get('text'), "last_fire": f.get('last_fire'), "stale": bool(f.get('misses')),
+            # ⏪ Oct-6: CLOSE time (UTC ms) of the bar the current setup turned ON (on_bar_ts + 5 min) — the UI shows "ON since HH:MM" in the
+            # viewer's local time; None when the setup is not ON (the server text stays the fallback)
+            "on_ms": (int(f['on_bar_ts']) + 300_000 if (f.get('in_state') and f.get('on_bar_ts') is not None) else None)}
 
 
 def _frenzy_flag_rows():
@@ -8016,6 +8022,25 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     _by_e.setdefault((o.pair, _k.strftime('%m-%d %H:%M') if _k else '?'), []).append(o)
                 for _e in sorted(_by_e, key=lambda k: k[1], reverse=True)[:12]:
                     frenzy_rows.append({"row": f"  {_e[0]} · spike {_e[1]} UTC", **_fz_stats(_by_e[_e]), "gate": ""})
+        # ⏪ Oct-6 (DECISION_LOG 235): the CATCH-UP cohort — FRENZY_LONG + WIDE fills whose fresh ON bar no pass judged (entry_frenzy_catchup),
+        # with the average bars-late / price move stamps; the pre-registered gate is read on the LIFETIME closed catch-up fills.
+        _cu_rows = [o for o in orders if (o.entry_strategy or '') in ("FRENZY_LONG", "FRENZY_WIDE") and getattr(o, 'entry_frenzy_catchup', None)
+                    and o.pnl_percentage is not None]
+        _cu_life = (await db.execute(select(Order.pnl_percentage, Order.entry_frenzy_catchup_bars).where(and_(
+            Order.entry_strategy.in_(("FRENZY_LONG", "FRENZY_WIDE")), Order.entry_frenzy_catchup.is_(True), Order.status == 'CLOSED',
+            Order.is_paper == trading_engine.is_paper_mode, Order.pnl_percentage.isnot(None))).order_by(Order.closed_at.asc()))).all()
+        _cu_avg = lambda xs: (sum(xs) / len(xs)) if xs else None
+        _cu_b = _cu_avg([o.entry_frenzy_catchup_bars for o in _cu_rows if getattr(o, 'entry_frenzy_catchup_bars', None) is not None])
+        _cu_m = _cu_avg([o.entry_frenzy_catchup_move_pct for o in _cu_rows if getattr(o, 'entry_frenzy_catchup_move_pct', None) is not None])
+        _cu_n = len(_cu_life)
+        if _cu_n < 20:
+            _cu_gate = f"⏳ {_cu_n}/20 closed — review at 20"
+        else:
+            _cu20 = _cu_life[:20]; _k3 = [float(p) for p, b in _cu20 if b is not None and b >= 3]
+            _cu_gate = (f"📋 REVIEW DUE — first 20: all {sum(float(p) for p, _ in _cu20) / 20:+.3f}% · bars ≥ 3 "
+                        f"{(sum(_k3) / len(_k3)) if _k3 else 0:+.3f}% (N {len(_k3)}) — bars≥3 avg ≤ 0 → max bars 2 · all avg < 0 → 0")
+        frenzy_rows.append({"row": "⏪ recuperados (catch-up) — fills on an ON bar no pass judged (pause / restart)", **_fz_stats(_cu_rows),
+                            "gate": (f"avg bars late {_cu_b:.1f} · avg move {_cu_m:+.2f}% vs the ON close · " if _cu_rows and _cu_b is not None and _cu_m is not None else "") + _cu_gate})
     except Exception as _fz_tbl_err:
         logger.debug(f"[PERF] frenzy table skipped: {_fz_tbl_err}")
 

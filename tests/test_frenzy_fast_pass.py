@@ -158,7 +158,7 @@ def test_update_frenzy_reports_whether_a_pass_ran(monkeypatch):
 
 def test_frenzy_lateness_rechecked_inside_the_open():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert "frenzy_long=not wide, frenzy_wide=wide, frenzy_bar_open_ms=bar_open," in eng
+    assert "frenzy_long=not wide, frenzy_wide=wide, frenzy_bar_open_ms=(int(_leash_time.time() * 1000) if _cu else bar_open), frenzy_catchup=_cu," in eng   # ⏪ Oct-6: a catch-up re-checks only the lane wait
     assert "if _frenzy and frenzy_bar_open_ms is not None:" in eng and "_fz_late2 > FRENZY_ENTRY_MAX_LATE_S" in eng
     assert eng.index("_fz_late2 > FRENZY_ENTRY_MAX_LATE_S") < eng.index("binance_order_id = None")   # before the order path (deep review)
     assert "if not order and not _why:" in eng and "self._frenzy_open_refusal = None" in eng   # a late refusal is reported as such, counted once

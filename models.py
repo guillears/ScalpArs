@@ -1,7 +1,7 @@
 """
 SCALPARS Trading Platform - Database Models
 """
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum as SQLEnum, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, DateTime, Enum as SQLEnum, Text, UniqueConstraint
 from sqlalchemy.sql import func
 from database import Base
 from datetime import datetime
@@ -281,6 +281,9 @@ class Order(Base):
     entry_frenzy_bar_ret_pct = Column(Float, nullable=True)        # Oct-2 (180): the signal bar's own return, close vs open (%) — ≤ 0 = red / flat
     entry_frenzy_above_streak = Column(Integer, nullable=True)     # 🟢 Oct-6 (231): 5m closes in a row at / above the spike VWAP at the signal bar (WIDE hold-green rule)
     entry_frenzy_above_share = Column(Float, nullable=True)        # 🌀 Oct-5 (215): % of the episode's 5m closes at / above the spike VWAP
+    entry_frenzy_catchup_bars = Column(Integer, nullable=True)     # ⏪ Oct-6 (235): 5m bars from the ON bar's close to the catch-up decision (NULL = not a catch-up)
+    entry_frenzy_catchup_move_pct = Column(Float, nullable=True)   # ⏪ Oct-6 (235): live price vs the ON bar's close at the decision, signed % (NULL = not a catch-up)
+    entry_frenzy_catchup = Column(Boolean, nullable=True)          # ⏪ Oct-6: True = a CATCH-UP fill (its fresh ON bar fell while the pass was not judging — pause / restart); False = a normal FRENZY fill; NULL = not FRENZY
     # 📖 Oct-3 (DECISION_LOG 192): the ORDER BOOK at a MANUAL click (services/orderbook_stats.orderbook_metrics) — OBSERVE-ONLY research stamps
     manual_ob_spread_pct = Column(Float, nullable=True)
     manual_ob_top_bid_usd = Column(Float, nullable=True)
@@ -1057,6 +1060,13 @@ class BotState(Base):
     # clocks). Format: '{"all": {"F|LONG": n}, "sole": {...}, "episode": {...}}'.
     # _filter_blocked_state (scan-transient edge detector) is intentionally NOT persisted.
     filter_funnel_v2_json = Column(Text, nullable=True)
+
+    # ⏪ Oct-6 FRENZY catch-up: open ms of the last CLOSED 5m bar a completed FRENZY pass judged. Survives pauses and restarts, so the
+    # next pass knows which bars nobody judged (a fresh ON bar inside that window is judged once, late — frenzy_catchup_max_bars).
+    # NULL (cold start / fresh DB) = no catch-up ever on that first pass.
+    frenzy_last_judged_bar_ms = Column(BigInteger, nullable=True)
+    # ⏪ {pair: last bar THAT pair was judged on} for pairs a completed pass could NOT read (all retries failed) — their catch-up horizon
+    frenzy_unjudged_json = Column(Text, nullable=True)
 
     # Last BNB scheduled-check timestamp — persisted across restarts so the
     # check interval is respected across redeployments. Without this, every

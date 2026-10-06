@@ -16,7 +16,7 @@ import asyncio
 # only ever be taken inside this helper.
 db_write_lock = asyncio.Lock()
 
-async def locked_execute_commit(session, statement) -> None:
+async def locked_execute_commit(session, statement):
     """Execute ONE write statement AND commit under a single fair-lock hold. For sessions
     that write via execute(): SQLite takes the file write-lock at EXECUTE time, so executing
     first and queueing at the fair lock afterwards INVERTS priority — the session holds the
@@ -30,8 +30,9 @@ async def locked_execute_commit(session, statement) -> None:
         if _w > 1.0:
             import logging
             logging.getLogger(__name__).warning(f"[DB_QUEUE_SLOW] execute+commit waited {_w:.2f}s in the fair write queue")
-        await session.execute(statement)
+        _res = await session.execute(statement)
         await session.commit()
+        return _res   # ⏪ Oct-6: the result (rowcount) for callers that check a write landed; existing callers ignore it
 
 async def locked_commit(session) -> None:
     """Commit under the process-wide fair write lock. Use for EVERY commit on the SQLite DB."""
@@ -185,7 +186,7 @@ async def init_db():
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sg_col} {_sg_type}"))
                 for _fz_col, _fz_type in (('entry_frenzy_spike_at', 'DATETIME'), ('entry_frenzy_hours', 'FLOAT'), ('entry_frenzy_vwap', 'FLOAT'),
                                           ('entry_frenzy_vs_vwap_pct', 'FLOAT'), ('entry_frenzy_vol_mult', 'FLOAT'), ('entry_frenzy_run_pct', 'FLOAT'),
-                                          ('entry_frenzy_stop_atr', 'FLOAT'), ('entry_frenzy_bar_ret_pct', 'FLOAT'), ('entry_frenzy_di_spread', 'FLOAT'), ('entry_frenzy_adx_delta', 'FLOAT'), ('entry_frenzy_vol_trend', 'FLOAT'), ('entry_frenzy_gvol', 'FLOAT'), ('entry_frenzy_above_share', 'FLOAT'), ('entry_frenzy_above_streak', 'INTEGER'),
+                                          ('entry_frenzy_stop_atr', 'FLOAT'), ('entry_frenzy_bar_ret_pct', 'FLOAT'), ('entry_frenzy_di_spread', 'FLOAT'), ('entry_frenzy_adx_delta', 'FLOAT'), ('entry_frenzy_vol_trend', 'FLOAT'), ('entry_frenzy_gvol', 'FLOAT'), ('entry_frenzy_above_share', 'FLOAT'), ('entry_frenzy_above_streak', 'INTEGER'), ('entry_frenzy_catchup', 'BOOLEAN'), ('entry_frenzy_catchup_bars', 'INTEGER'), ('entry_frenzy_catchup_move_pct', 'FLOAT'),
                                           ('exit_override_at', 'DATETIME'), ('exit_override_prev', 'VARCHAR(40)')):   # 🔥 Oct-2 FRENZY sleeve · ✎ exit override
                     if _fz_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_fz_col} {_fz_type}"))
@@ -802,6 +803,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN filter_funnel_v2_json TEXT"))
                 if 'last_bnb_check_at' not in bs_columns:
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN last_bnb_check_at DATETIME"))
+                if 'frenzy_last_judged_bar_ms' not in bs_columns:   # ⏪ Oct-6 FRENZY catch-up: last 5m bar a completed pass judged
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN frenzy_last_judged_bar_ms BIGINT"))
+                if 'frenzy_unjudged_json' not in bs_columns:      # ⏪ Oct-6: per-pair horizon of pairs a completed pass could not read
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN frenzy_unjudged_json TEXT"))
 
             # Jun 14 — Phantom Flip cohort sub-division (matched-long fade by C/W family)
             if 'phantom_flips' in inspector.get_table_names():

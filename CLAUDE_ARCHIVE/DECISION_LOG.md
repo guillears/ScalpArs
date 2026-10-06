@@ -5824,3 +5824,15 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   CURRENT_STATE. Dual review applied (same-ruler pricing, OHLC pseudo-print order, exit slippage, validate-before-save quarantine, re-price
   from stored fields, 30-min episode merge, catch-up rows labelled, day-concentration leg). Reference rows (pre-floor, not evidence):
   API3 10-06 blocked +3.88 (1m); VWAP 8 stopped fills saved 3 (+14.7) vs deeper 5 (−20.7).
+- (235) 2026-10-06 ⏪ **FRENZY catch-up — a fresh ON bar no pass judged is judged once, late, as of that bar** (operator "construye las tres";
+  "I want automated to work"). NMRUSDT 10-06: fresh bar closed 13:40 UTC while the bot was paused 13:25:03 → 13:53:20 (EB restarts loaded
+  is_running=False) → "ON (entry bar passed)", never judged. Deep review: NMR's market volume on that bar was 1.93×, so frenzy_gvol_max 1.0
+  refuses it on both paths — no gain claimed; the catch-up recovers the unjudged bar with the SAME decision (verified on public klines at
+  k = 2–3: NMR, ARK, Q, PHA; on_bar_ts on 800+ windows). Entering on any later ON bar stays refuted (−0.49 %/trade, staircase study); late
+  vs skip at ≤ 1 % move (FRENZY_REENTRY_NEW_ANGLES angle E): k=1 +0.46, k=3–6 ≈ 0 — harmless, k ≤ 6 beyond the evidence. Mechanism:
+  BotState last-judged bar + per-pair JSON (unread pairs, ON bars already judged — restart-proof once-only); frenzy_walk on_bar_ts;
+  frenzy_catchup_check (max 6 bars); ON bar judged on its own data (walk, ATR, candle, 24 h volume from klines, market volume lazily);
+  live AND order-book price within 1 % of the ON close; lateness check skipped, lane wait re-checked; FRENZY fully off counts as judged.
+  Counters FRENZY_CATCHUP_OPEN / _REFUSED / _MOVED / _STALE / _NO_DATA / _FAILED; stamps entry_frenzy_catchup / _bars / _move_pct; UI
+  "ON HH:MM · hace …" (Argentina h23), exports "ON desde MM-DD HH:MM", cohort row "⏪ recuperados (catch-up)" on UI + both exports.
+  🔒 PRE-REGISTERED: at 20 catch-up fills — bars ≥ 3 average ≤ 0 → frenzy_catchup_max_bars 2; all average < 0 → 0. Dual review applied.

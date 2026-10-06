@@ -755,6 +755,7 @@
     "frenzy_wide_lev_mult": 0.2,
     "frenzy_wide_max_slots": 2,
     "frenzy_gvol_max": 1.0,
+    "frenzy_catchup_max_bars": 6,
     "frenzy_wide_above_share_min": 0.0,
     "frenzy_wide_hold_green_streak": 12.0,
     "frenzy_max_entry_dislocation_pct": 1.0,

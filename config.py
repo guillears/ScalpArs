@@ -1357,6 +1357,19 @@ class SignalThresholds(BaseModel):
     # FAILS the 95 % expectancy bar (blocked-side day CI [−0.49, +0.15]) → declared override. Unreadable = no entry. 0 = off.
     # 🔒 REVERT: first 20 FRENZY + WIDE fills opened under it average < 0 % → set 0.
     frenzy_gvol_max: float = 0.0
+    # ⏪ Oct-6 FRENZY CATCH-UP (operator-approved build): FRENZY_LONG / FRENZY_WIDE get ONE chance per setup — the 5m bar it turns ON. When that
+    # bar closed while no pass judged (bot paused, restarting after a deploy, an outage) the pair showed "ON (entry bar passed)" forever. Live case:
+    # NMRUSDT 2026-10-06, fresh bar closed 13:40 UTC (streak 25, 2.0 h, vol 343×, ATR 2.1 %) while the bot was paused 13:25→13:53. NOTE (deep
+    # review): its market volume on that bar was 1.93× → frenzy_gvol_max 1.0 refuses it on BOTH paths (FRENZY_GVOL_HIGH) — the catch-up
+    # recovers the unjudged bar with the SAME decision (no gain is claimed for NMR). When > 0, the first pass after such a gap judges that ON bar as if fresh (ATR, candle, 24 h volume,
+    # market volume all read ON THAT BAR) if it is ≤ this many 5m bars old, and opens only if the live price is still within
+    # frenzy_max_entry_dislocation_pct of the ON bar's close (FRENZY_CATCHUP_MOVED otherwise; FRENZY_CATCHUP_STALE when older). Never on a
+    # bar a completed pass judged, never on the first pass after a cold start (no stored bar), once per ON bar. Entering on ANY later ON bar is
+    # refuted (−0.49 %/trade, reports/FRENZY_STAIRCASE_STUDY_2026-10-06.md) — this recovers only the unjudged fresh bar. Fills stamped
+    # entry_frenzy_catchup (+ _bars, _move_pct). Evidence (reports/FRENZY_REENTRY_NEW_ANGLES_2026-10-06.md, angle E): late vs skip at ≤ 1 %
+    # move — k=1 +0.46, k=3–6 ≈ 0 (harmless, NOT positive); k ≤ 6 goes beyond the evidence. 🔒 PRE-REGISTERED (§4): review at 20 catch-up
+    # fills — bars ≥ 3 average ≤ 0 → 2; all catch-up fills average < 0 → 0. 0 = off.
+    frenzy_catchup_max_bars: int = 0
     # 🩹 Oct-2 RECOVERY HOLD (operator-directed ARMED override below every promotion gate; DECISION_LOG 172). A momentum LONG that
     # reaches STOP_LOSS / STOP_LOSS_WIDE while BTC RSI(14, CLOSED 5m bars) is ≥ its entry value ∧ inside [rsi_min, rsi_max] is flagged
     # and held, not closed. Held trades close only on: RH_HARD_STOP (stop − room) · RH_PREMISE_EXIT (RSI < min or < entry, or

@@ -23,6 +23,7 @@ from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, clo
 from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
+from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE
 from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
@@ -7050,7 +7051,9 @@ class TradingEngine:
                 await asyncio.sleep((4000 - (now_ms - bar_open)) / 1000.0)
                 now_ms = _leash_time.time() * 1000
             if _frenzy_status.get('pass_bar') != bar_open:
-                _frenzy_status.update(pass_bar=bar_open, passes=0, judged=set())
+                # ⏪ Oct-6 catch-up: the last bar a COMPLETED pass judged BEFORE this bar — captured once per bar, so a retry pass of this bar
+                # (the stored value already moved to it) still recovers a pair the first pass could not read
+                _frenzy_status.update(pass_bar=bar_open, passes=0, judged=set(), catchup_prev=await self._frenzy_judged_get())
             _frenzy_status['passes'] = int(_frenzy_status.get('passes') or 0) + 1
             _frenzy_status['bar'] = bar_open
             _judged = _frenzy_status.setdefault('judged', set())   # pairs read on this bar: a retry pass never re-reads or re-counts them
@@ -7087,6 +7090,8 @@ class TradingEngine:
             # klines for the whole shortlist CONCURRENTLY (≤ 6 at a time) so the scan is held a few seconds, not one pair after another
             if _on or _wide:   # 🌊 Oct-3 (DECISION_LOG 194): the market's volume on the bar that just closed, read in parallel (own client)
                 self._frenzy_gvol_start(allp, bar_open - 300_000)
+            _cu_max = max(0, int(float(getattr(th, 'frenzy_catchup_max_bars', 0) or 0)))   # ⏪ Oct-6 catch-up (0 = off)
+            _cu_prev = _frenzy_status.get('catchup_prev')   # the global horizon; per pair: _frenzy_pair_prev (pairs unreadable since)
             _sem = asyncio.Semaphore(6)
 
             async def _fz_b5(_p):
@@ -7178,6 +7183,9 @@ class TradingEngine:
                             _frenzy_norm_cache[pair] = _nc
                         ep = frenzy_walk(closed, _nc[1], th) if _nc[1] else None
                         seen.add(pair); _judged.add(pair)   # read successfully (flagged or not)
+                        _pp = self._frenzy_pair_prev(pair, _cu_prev)   # ⏪ this pair's catch-up horizon, taken BEFORE its unread record is cleared
+                        self.__dict__.setdefault('_fz_pair_unjudged', {}).pop(pair, None)
+                        self.__dict__.setdefault('_fz_pair_last_ok', {})[pair] = bar_open - 300_000
                         if not frenzy_flagged(ep, th):
                             _frenzy_flags.pop(pair, None)
                             continue
@@ -7212,6 +7220,10 @@ class TradingEngine:
                                     logger.info(f"[FRENZY_LONG] {pair}: setup turned ON but refused — {text}")
                                 if frenzy_wide_ready(ep, code, th, atr):   # 🔥🌐 Oct-3: FRENZY refused ONLY for ATR / a green candle → FRENZY-WIDE takes it
                                     await self._frenzy_open(db, flag, ind, bar_open, wide=True)   # 🌀 the 215 choppy check runs inside, after slots / day cap / market volume
+                            await self._frenzy_mark_on_done(pair, ep.get('on_bar_ts'))   # ⏪ ③ judged normally — a restart never re-judges it as a catch-up
+                        elif (_on or _wide) and _cu_max > 0 and _pp is not None and ep.get('in_state'):   # ⏪ Oct-6: ON, but its fresh bar was never judged → judge THAT bar once
+                            await self._frenzy_catchup(db, pair, ep, closed, _nc[1], flag, by[pair], bar_open, _pp, _cu_max, _on, _wide,
+                                                       allp=allp, live_bars=b5)
                     except Exception as _fe:
                         n_bad += 1
                         logger.warning(f"[FRENZY] {pair}: not read this bar ({str(_fe)[:120]})")
@@ -7231,6 +7243,8 @@ class TradingEngine:
                     if _frenzy_flags[k]['misses'] >= 3 or k not in by or k.upper() in skip:
                         _frenzy_flags.pop(k, None)
             self._journal_pair = None; self._journal_ctx = None
+            self._frenzy_note_unread(names, seen, bar_open - 300_000, _cu_prev)   # ⏪ pairs NOT read on this bar keep their own horizon
+            await self._frenzy_judged_set(bar_open - 300_000)   # ⏪ this bar was judged by a completed pass (survives pauses / restarts)
             await self._frenzy_persist_flags()
             for k in [k for k, v in _frenzy_norm_cache.items() if now_ms - v[0] > 24 * 3600_000]:
                 _frenzy_norm_cache.pop(k, None)
@@ -7314,6 +7328,18 @@ class TradingEngine:
         """🌊 Top-50 pairs by 24 h volume → 60 closed 5m bars each on the research client → services.frenzy.global_volume_ratio on the bar
         that opened at sig_open. ~3–6 s. Returns (ratio or None, pairs read, pairs asked) — (None, 0, None) when the read itself failed.
         Shared by FRENZY (signal bar) and SURGE_LONG (trigger bar). Never raises (except this task's own cancellation)."""
+        got, top_n = await self._market_gvol_bars(allp, 60)
+        if got is None:
+            return None, 0, None
+        try:
+            return global_volume_ratio(got, int(sig_open)), len(got), top_n
+        except Exception as e:
+            logger.warning(f"[GVOL] market volume read failed: {str(e)[:120]}")
+            return None, 0, None
+
+    async def _market_gvol_bars(self, allp, limit: int = 60):
+        """🌊 The top-50 pairs' last `limit` 5m bars on the research client → ({pair: rows} of the pairs read, pairs asked), or (None, None)
+        when the read itself failed / was cancelled. Never raises (except this task's own cancellation)."""
         try:
             top = sorted((p for p in allp if p.get('symbol')), key=lambda p: -(p.get('volume_24h') or 0))[:50]
             sem = asyncio.Semaphore(10)
@@ -7321,7 +7347,7 @@ class TradingEngine:
             async def _one(p):
                 async with sem:
                     try:
-                        return p['pair'], await asyncio.wait_for(binance_service.fetch_ohlcv_research(p['symbol'], '5m', 60), 6.0)
+                        return p['pair'], await asyncio.wait_for(binance_service.fetch_ohlcv_research(p['symbol'], '5m', int(limit)), 6.0)
                     except asyncio.CancelledError:
                         # ccxt shares one load_markets task between callers; a timed-out caller cancels it for all (review) → that pair is
                         # unread, never a cancelled read task. Our own cancellation still propagates.
@@ -7331,15 +7357,14 @@ class TradingEngine:
                     except Exception:
                         return p['pair'], None
             got = await asyncio.gather(*[_one(p) for p in top])
-            v = global_volume_ratio({k: b for k, b in got if b}, int(sig_open))
-            return v, sum(1 for _, b in got if b), len(top)
+            return {k: b for k, b in got if b}, len(top)
         except asyncio.CancelledError:
             if asyncio.current_task().cancelling():
                 raise
-            return None, 0, None
+            return None, None
         except Exception as e:
             logger.warning(f"[GVOL] market volume read failed: {str(e)[:120]}")
-            return None, 0, None
+            return None, None
 
     async def _frenzy_gvol_value(self, sig_open, wait: bool = True):
         """The signal bar's market-volume reading; None when missing / failed / cancelled / another bar (never raises CancelledError unless THIS
@@ -7359,12 +7384,243 @@ class TradingEngine:
         except Exception:
             return None
 
-    async def _frenzy_open(self, db, flag, indicators, bar_open, wide: bool = False):
+    # ── ⏪ Oct-6 FRENZY CATCH-UP (frenzy_catchup_max_bars) ───────────────────────────────────────────────────────────────────────────────
+    # Two records, both in BotState (survive pauses / restarts): ① frenzy_last_judged_bar_ms — the last CLOSED 5m bar a completed pass judged;
+    # ② frenzy_unjudged_json — {pair: the last bar THAT pair was judged on} for pairs a completed pass could NOT read (all retries failed), so a
+    # pair unreadable on its fresh bar is still recovered next bar. A pair's catch-up horizon = min(①, its ② entry). ③ (same JSON, 'on_done')
+    # {pair: ON bar already judged} — written THE MOMENT a fresh bar is judged normally or a catch-up is tried, so a pass cancelled mid-loop
+    # (deploy shutdown: ① not stored) never lets a restarted process re-judge that ON bar as a catch-up.
+    async def _frenzy_judged_get(self):
+        """⏪ ① (the return value) and ② (self._fz_pair_unjudged) — read from BotState once per process, then kept in memory (only this
+        process writes them). None = unknown (cold start / fresh DB / unreadable): the catch-up then does nothing. Never raises."""
+        if getattr(self, '_fz_judged_loaded', False):
+            return getattr(self, '_fz_judged_ms', None)
+        try:
+            async with AsyncSessionLocal() as _js:
+                _row = (await _js.execute(select(BotState.frenzy_last_judged_bar_ms, BotState.frenzy_unjudged_json).limit(1))).first()
+            _v, _u = (_row[0], _row[1]) if _row else (None, None)
+            self._fz_judged_ms = int(_v) if _v else None
+            try:
+                _uj = json.loads(_u) if _u else {}
+                self._fz_pair_unjudged = {str(k): int(v) for k, v in (_uj.get('unread') or {}).items() if v}
+                self._fz_on_done = {str(k): int(v) for k, v in (_uj.get('on_done') or {}).items() if v}
+            except (TypeError, ValueError, AttributeError):
+                self._fz_pair_unjudged = {}; self._fz_on_done = {}
+            self._fz_judged_loaded = True
+        except Exception as e:
+            logger.warning(f"[FRENZY_CATCHUP] last judged bar unreadable ({str(e)[:100]}) — no catch-up this pass")
+            return None
+        return self._fz_judged_ms
+
+    def _frenzy_pair_prev(self, pair, prev_ms):
+        """⏪ The catch-up horizon for ONE pair: the global last-judged bar, or that pair's own last judged bar when a completed pass could not
+        read it since (whichever is older). None when both are unknown."""
+        u = (getattr(self, '_fz_pair_unjudged', None) or {}).get(pair)
+        if u is None:
+            return prev_ms
+        return int(u) if prev_ms is None else min(int(u), int(prev_ms))
+
+    def _frenzy_note_unread(self, names, seen, sig_open_ms, prev_ms) -> None:
+        """⏪ End of a completed pass: every shortlisted pair NOT read on this bar keeps its last judged bar in ② (the first failure wins —
+        its horizon never moves forward while it stays unreadable); a pair read again is removed by the pass itself. Entries > 24 h old drop."""
+        _u = self.__dict__.setdefault('_fz_pair_unjudged', {}); _ok = self.__dict__.setdefault('_fz_pair_last_ok', {})
+        for p in names:
+            if p not in seen and p not in _u:
+                _last = _ok.get(p, prev_ms)
+                if _last is not None:
+                    _u[p] = int(_last)
+        for k in [k for k, v in _u.items() if int(sig_open_ms) - int(v) > 24 * 3600_000]:
+            _u.pop(k, None)
+
+    async def _frenzy_judged_set(self, sig_open_ms: int, clear_pairs: bool = False) -> None:
+        """⏪ Record that a completed pass judged the bar that opened at sig_open_ms (monotonic) + the per-pair map ② (own short session; never
+        raises). clear_pairs=True (FRENZY fully switched off): ② is emptied too — nothing switched off is ever caught up later. A write that
+        touches 0 rows (no BotState row) is logged and NOT marked saved (retried next pass)."""
+        try:
+            _ms = int(sig_open_ms)
+            if clear_pairs:
+                self.__dict__.setdefault('_fz_pair_unjudged', {}).clear()
+            _cur = getattr(self, '_fz_judged_ms', None)
+            self._fz_judged_ms = max(_ms, int(_cur)) if _cur is not None else _ms
+            self._fz_judged_loaded = True
+            _uj = self._frenzy_state_json()
+            if getattr(self, '_fz_judged_saved', None) == (self._fz_judged_ms, _uj):
+                return
+            async with AsyncSessionLocal() as _js:
+                _res = await locked_execute_commit(_js, update(BotState).values(frenzy_last_judged_bar_ms=self._fz_judged_ms, frenzy_unjudged_json=_uj))
+            if _res is not None and getattr(_res, 'rowcount', 1) == 0:
+                logger.warning("[FRENZY_CATCHUP] last judged bar NOT persisted — no BotState row (0 rows updated); retried next pass")
+                return
+            self._fz_judged_saved = (self._fz_judged_ms, _uj)
+        except Exception as e:
+            logger.warning(f"[FRENZY_CATCHUP] last judged bar not persisted ({str(e)[:100]})")
+
+    def _frenzy_state_json(self) -> str:
+        return json.dumps({"unread": dict(sorted((getattr(self, '_fz_pair_unjudged', None) or {}).items())),
+                           "on_done": dict(sorted((getattr(self, '_fz_on_done', None) or {}).items()))})
+
+    async def _frenzy_mark_on_done(self, pair, on_bar_ms) -> None:
+        """⏪ ③ — this pair's ON bar has been judged (normally on its fresh bar, or once as a catch-up): stored at once (own short session,
+        never raises; ~a few writes a day) so a restart can never judge it again. Entries > 48 h old drop."""
+        try:
+            if on_bar_ms is None:
+                return
+            _d = self.__dict__.setdefault('_fz_on_done', {})
+            _d[pair] = max(int(on_bar_ms), int(_d.get(pair) or 0))
+            for k in [k for k, v in _d.items() if int(on_bar_ms) - int(v) > 48 * 3600_000]:
+                _d.pop(k, None)
+            if not getattr(self, '_fz_judged_loaded', False):
+                return   # never overwrite a stored state this process has not read (the next completed pass writes it)
+            async with AsyncSessionLocal() as _js:
+                _res = await locked_execute_commit(_js, update(BotState).values(frenzy_unjudged_json=self._frenzy_state_json()))
+            if _res is not None and getattr(_res, 'rowcount', 1) == 0:
+                logger.warning("[FRENZY_CATCHUP] judged ON bar NOT persisted — no BotState row (0 rows updated)")
+        except Exception as e:
+            logger.warning(f"[FRENZY_CATCHUP] judged ON bar not persisted ({str(e)[:100]})")
+
+    @staticmethod
+    def _frenzy_catchup_bars(prev_ms, sig_open_ms, max_bars) -> list:
+        """⏪ (pure) the unjudged 5m bar opens a catch-up may still use: after prev_ms, before the bar just closed (that one is judged
+        normally), at most max_bars older than it. [] when there is no gap / catch-up is off / prev unknown."""
+        try:
+            if prev_ms is None or int(max_bars or 0) <= 0:
+                return []
+            lo = max(int(prev_ms) + 300_000, int(sig_open_ms) - int(max_bars) * 300_000)
+            return list(range(lo, int(sig_open_ms), 300_000))
+        except (TypeError, ValueError):
+            return []
+
+    def _frenzy_gvol_catchup_start(self, allp, sig_open_ms, max_bars):
+        """⏪ LAZY (first catch-up candidate of a bar): ONE market-volume read covering the last max_bars bars before the bar just closed — every
+        candidate of this bar is inside it. Started again only when the previous read for the same window failed / came back empty."""
+        _key = tuple(range(int(sig_open_ms) - int(max_bars) * 300_000, int(sig_open_ms), 300_000))
+        if not _key:
+            return
+        cur = getattr(self, '_fz_gvol_cu_task', None)
+        if cur and cur[0] == _key and not (cur[1].done() and (cur[1].cancelled() or cur[1].exception() is not None or cur[1].result() is None)):
+            return   # same window, still running or already read
+        self._fz_gvol_cu_task = (_key, asyncio.create_task(self._frenzy_gvol_catchup_read(list(allp), list(_key))))
+
+    async def _frenzy_gvol_catchup_read(self, allp, opens):
+        got, _n = await self._market_gvol_bars(allp, 60 + len(opens) + 2)
+        if got is None:
+            return None
+        return {int(o): global_volume_ratio(got, int(o)) for o in opens}
+
+    async def _frenzy_gvol_catchup_value(self, sig_open, wait: bool = True):
+        """⏪ The market-volume ratio ON a catch-up's ON bar (None = unread / failed / not in the read). Same waiting rules as _frenzy_gvol_value."""
+        cur = getattr(self, '_fz_gvol_cu_task', None)
+        if not cur or int(sig_open) not in cur[0] or cur[1].cancelled():
+            return None
+        if not wait and not cur[1].done():
+            return None
+        try:
+            _d = await asyncio.wait_for(asyncio.shield(cur[1]), 35.0)
+            return (_d or {}).get(int(sig_open))
+        except asyncio.CancelledError:
+            if asyncio.current_task().cancelling():
+                raise
+            return None
+        except Exception:
+            return None
+
+    async def _frenzy_catchup(self, db, pair, ep, closed, norm_hour, flag, info, bar_open, prev_ms, max_bars, long_on, wide_on,
+                              allp=None, live_bars=None):
+        """⏪ Oct-6 FRENZY catch-up for ONE flagged pair (crash-isolated — never raises). The setup is ON but its fresh bar was never judged
+        (services.frenzy.frenzy_catchup_check: ON bar after prev_ms = this pair's catch-up horizon, _frenzy_pair_prev): judge THAT bar as
+        if fresh — the walk, ATR, candle and 24 h volume rebuilt on the window ending at it — and, if READY (or WIDE-eligible), open through
+        _frenzy_open(catchup_now=bar_open): market volume on the ON bar, no signal-bar lateness check, the live price within
+        frenzy_max_entry_dislocation_pct of the ON bar's close (FRENZY_CATCHUP_MOVED — re-checked on the order book inside open_position).
+        Approximations (documented): the 24 h volume is rebuilt from klines (volume × typical price — within a few % of the ticker's quote
+        volume); the normal-hour divisor is the CURRENT one (refreshed every 6–8 h on data ending ≥ 24 h back — ≤ 6 bars of look-ahead into
+        a median of ~720 hours, negligible). Entry stamps (EMA / RSI / ADX) use the SAME convention as the normal path: live_bars[-300:]
+        including the forming bar = the indicators at the decision; the episode stamps (ATR, candle, VWAP, streak) are the ON bar's."""
+        try:
+            th = config.trading_config.thresholds
+            status, age = frenzy_catchup_check(ep, prev_ms, max_bars)
+            if status is None:
+                return
+            _tried = self.__dict__.setdefault('_fz_catchup_tried', {})
+            _key = (pair, ep.get('spike_ts'), ep.get('on_bar_ts'))
+            if _key in _tried or int((getattr(self, '_fz_on_done', None) or {}).get(pair) or 0) >= int(ep.get('on_bar_ts') or 0):
+                return   # tried in this process, or ③ says this ON bar was already judged (normally or as a catch-up, before a restart)
+            # ONE chance per (pair, spike, ON bar): the key is burned HERE, before the rebuild and the market-volume read (intended — a rebuild
+            # that fails or a refusal is final, exactly like the normal fresh bar; a missed bar is never retried on a later, staler bar)
+            _tried[_key] = bar_open
+            for _k in [k for k, v in _tried.items() if bar_open - v > 48 * 3600_000]:
+                _tried.pop(_k, None)
+            on_ms = int(ep['on_bar_ts']); sig = on_ms + 300_000
+            await self._frenzy_mark_on_done(pair, on_ms)   # ③ restart-proof once-only
+            _on_txt = f"{datetime.utcfromtimestamp(sig / 1000):%H:%M}"; _now_txt = f"{datetime.utcfromtimestamp(bar_open / 1000):%m-%d %H:%M}"
+            if status == FRENZY_CATCHUP_STALE:
+                self._record_filter_block("FRENZY_CATCHUP_STALE", "LONG")
+                flag['last_fire'] = f"{_now_txt} ⏪ catch-up refused: ON bar {_on_txt} was not judged and is {age} bars old (max {int(max_bars)})"
+                logger.info(f"[FRENZY_CATCHUP] {pair}: ON bar {_on_txt} was not judged (bot paused/restarting) → refused: {age} bars old (max {int(max_bars)})")
+                return
+            if allp:   # ⏪ lazy: the catch-up market-volume read starts on the first candidate of the bar (in parallel with the rebuild)
+                self._frenzy_gvol_catchup_start(allp, bar_open - 300_000, max_bars)
+            idx = next((i for i in range(len(closed) - 1, -1, -1) if int(closed[i][0]) == on_ms), None)
+            trunc = closed[:idx + 1] if idx is not None else None
+            ep_on = frenzy_walk(trunc, norm_hour, th) if (trunc and len(trunc) >= 300) else None
+            if not (ep_on and ep_on.get('fresh_on') and ep_on.get('spike_ts') == ep.get('spike_ts') and frenzy_flagged(ep_on, th)):
+                self._record_filter_block("FRENZY_CATCHUP_NO_DATA", "LONG"); self._record_filter_block("FRENZY_CATCHUP_REFUSED", "LONG")
+                flag['last_fire'] = f"{_now_txt} ⏪ catch-up refused: ON bar {_on_txt} could not be rebuilt"
+                logger.warning(f"[FRENZY_CATCHUP] {pair}: ON bar {_on_txt} was not judged (bot paused/restarting) → refused: the window ending at it does not rebuild a fresh ON bar")
+                return
+            atr = wilder_atr_pct(trunc[-300:]); vol24 = frenzy_vol24_at(trunc)
+            ready, code, text = frenzy_long_status(ep_on, atr, vol24, th)
+            try:
+                ind = calculate_indicators((live_bars if live_bars else trunc)[-300:], pair_volume_bars=getattr(th, 'pair_volume_lookback_bars', 20),
+                                           global_volume_bars=getattr(th, 'global_volume_lookback_bars', 48)) or {}
+            except Exception:
+                ind = {}
+            _stamp = bool(ready or code in FRENZY_WIDE_CODES)
+            fl = dict(ep_on, pair=pair, atr_pct=atr, volume_24h=vol24, change_24h=info.get('change_24h'), range_24h=info.get('range_24h'),
+                      live_price=info.get('price'), ready=ready, code=code, text=text, updated_ms=_leash_time.time() * 1000, misses=0, bar=sig,
+                      last_fire=None, catchup=True,
+                      di_spread=(frenzy_di_spread(trunc[-300:]) if _stamp else None),
+                      adx_delta=(frenzy_adx_delta(trunc[-300:]) if _stamp else None),
+                      vol_trend=(frenzy_vol_trend(trunc) if _stamp else None),
+                      **{k: ind.get(k) for k in ('ema5', 'ema8', 'ema13', 'ema20', 'rsi', 'adx')})
+            if ready:
+                if long_on:
+                    await self._frenzy_open(db, fl, ind, sig, catchup_now=bar_open)
+            else:
+                if long_on:
+                    self._record_filter_block(code, "LONG")
+                    fl['last_fire'] = f"{datetime.utcfromtimestamp(sig / 1000):%m-%d %H:%M} refused: {text}"
+                if wide_on and frenzy_wide_ready(ep_on, code, th, atr):
+                    await self._frenzy_open(db, fl, ind, sig, wide=True, catchup_now=bar_open)
+            _out = fl.get('last_fire') or f"{datetime.utcfromtimestamp(sig / 1000):%m-%d %H:%M} not taken ({text})"
+            flag['last_fire'] = f"⏪ catch-up · {_out}"
+            if ' opened' not in _out:   # M-8: the shared counters above keep their reasons; this one makes the catch-up cohort's refusals visible
+                self._record_filter_block("FRENZY_CATCHUP_REFUSED", "LONG")
+            _bars_n = int((int(bar_open) - sig) // 300_000)   # the same values the fill stamps (entry_frenzy_catchup_bars / _move_pct)
+            try:
+                _mv_pct = (float(info.get('price')) / float(ep_on['price']) - 1) * 100
+                _mv_txt = f"{_mv_pct:+.2f}%"
+            except (TypeError, ValueError, ZeroDivisionError):
+                _mv_txt = "unreadable"
+            logger.warning(f"[FRENZY_CATCHUP] {pair}: ON bar {_on_txt} was not judged (bot paused/restarting) → "
+                           f"{'opening' if ' opened' in _out else 'refused'} — {_out} · bars {_bars_n} · move {_mv_txt} vs the ON close")
+        except Exception as e:
+            logger.error(f"[FRENZY_CATCHUP] {pair}: failed ({str(e)[:120]})")
+            self._record_filter_block("FRENZY_CATCHUP_FAILED", "LONG")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
+    async def _frenzy_open(self, db, flag, indicators, bar_open, wide: bool = False, catchup_now: Optional[int] = None):
         """🔥 Open FRENZY_LONG for a flagged pair whose setup turned ON on the bar that just closed. One entry per pair per bar (memory
         + DB: restart-proof), ≤ frenzy_max_slots open at once. Opens through open_position(frenzy_long=True): own size, direct taker
         at the live price behind the dislocation guard, own exit. Own try/except: can never break the scan.
-        wide=True (🔥🌐 Oct-3 FRENZY-WIDE): the same path tagged FRENZY_WIDE — own slots (frenzy_wide_max_slots), own size, own day count."""
-        pair = flag['pair']; th = config.trading_config.thresholds
+        wide=True (🔥🌐 Oct-3 FRENZY-WIDE): the same path tagged FRENZY_WIDE — own slots (frenzy_wide_max_slots), own size, own day count.
+        catchup_now (⏪ Oct-6): bar_open is a PAST ON bar's close that no pass judged; catchup_now = this pass's bar. Market volume is read on
+        the ON bar, the signal-bar lateness check is skipped (open_position still refuses a bot-open-lane wait over the 120 s limit
+        after this decision), and the live price must sit within
+        frenzy_max_entry_dislocation_pct of the ON bar's close (FRENZY_CATCHUP_MOVED; fail-closed when that guard is 0)."""
+        pair = flag['pair']; th = config.trading_config.thresholds; _cu = catchup_now is not None
         _es = "FRENZY_WIDE" if wide else "FRENZY_LONG"; _bk = "FRENZY_WIDE" if wide else "FRENZY"   # strategy tag · block-counter prefix
         try:
             _bar_dt = datetime.utcfromtimestamp(bar_open / 1000)
@@ -7377,7 +7633,8 @@ class TradingEngine:
                 return
             if (await db.execute(select(Order.id).where(and_(Order.pair == pair, Order.entry_strategy == _es,
                                                              Order.is_paper == self.is_paper_mode, Order.opened_at > _bar_dt - timedelta(seconds=1))))).first() is not None:   # > t−1s: opened_at is stored to the second (a text compare with ≥ misses the exact second)
-                return   # this bar's entry was already taken (restart / second pass)
+                flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} {'WIDE ' if wide else ''}already entered — a {_es} on this pair opened at / after this bar"
+                return   # this bar's entry was already taken (restart / second pass / a catch-up after a normal fill)
             # Oct-2 (DECISION_LOG 177): at most N FRENZY_LONG entries per pair per UTC day (open or closed; DB-counted = restart-proof). 0 = no cap.
             _day_cap = max(0, int(float(getattr(th, 'frenzy_max_entries_per_pair_day', 3) or 0)))   # 0 / blank / negative = no cap
             if _day_cap > 0:
@@ -7397,7 +7654,10 @@ class TradingEngine:
             # 🌊 Oct-3 (operator ARMED override, DECISION_LOG 194): enter only while the market's volume on the signal bar is below
             # frenzy_gvol_max (a frenzy in a quiet market is the pair's own story; in a market-wide surge it reverts). Unreadable = no entry.
             _gvmax = float(getattr(th, 'frenzy_gvol_max', 0) or 0)
-            _gv = await self._frenzy_gvol_value(bar_open - 300_000, wait=_gvmax > 0)   # gate off: stamp only if already read, never wait
+            if _cu:   # ⏪ catch-up: the ON bar's own reading (one read covering the unjudged bars)
+                _gv = await self._frenzy_gvol_catchup_value(bar_open - 300_000, wait=_gvmax > 0)
+            else:
+                _gv = await self._frenzy_gvol_value(bar_open - 300_000, wait=_gvmax > 0)   # gate off: stamp only if already read, never wait
             if _gvmax > 0 and (_gv is None or _gv >= _gvmax):
                 _unread = _gv is None
                 self._record_filter_block(f"{_bk}_GVOL_UNREAD" if _unread else f"{_bk}_GVOL_HIGH", "LONG")
@@ -7426,15 +7686,29 @@ class TradingEngine:
                 return
             # The test bought at the open of the bar after the signal. Live must not buy a setup minutes later (a late scan, a retry
             # pass, a restart) nor a price that already left the signal bar's close by more than the dislocation limit (review).
+            # ⏪ catch-up: NOT applied — it measures lateness from the signal bar, and a catch-up's ON bar is late by definition (a scan-fallback
+            # pass minutes after the close must not burn the one chance); the ON-bar-close dislocation guard below is its economics check.
             _late_s = (_leash_time.time() * 1000 - bar_open) / 1000.0
-            if _late_s > FRENZY_ENTRY_MAX_LATE_S:
+            if not _cu and _late_s > FRENZY_ENTRY_MAX_LATE_S:
                 self._record_filter_block(f"{_bk}_LATE", "LONG")
                 flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} {'WIDE ' if wide else ''}refused: found {_late_s:.0f}s after the bar closed (max {FRENZY_ENTRY_MAX_LATE_S}s)"
                 logger.warning(f"[{_es}] {pair}: setup ON but judged {_late_s:.0f}s after the bar closed — skipped (max {FRENZY_ENTRY_MAX_LATE_S}s)")
                 return
             _dmax = float(getattr(th, 'frenzy_max_entry_dislocation_pct', 0) or 0)
             _close = float(flag.get('price') or 0)
-            if _dmax > 0 and _close > 0 and abs(price / _close - 1) * 100 > _dmax:
+            if _cu and frenzy_catchup_moved(_close, price, _dmax):   # ⏪ the same trade only: live price still near the ON bar's close
+                self._record_filter_block(f"{_bk}_CATCHUP_MOVED", "LONG")
+                _mv = f"{(price / _close - 1) * 100:+.2f}%" if _close > 0 else "unreadable"
+                flag['last_fire'] = (f"{_bar_dt:%m-%d %H:%M} {'WIDE ' if wide else ''}refused: price moved {_mv} from the ON bar's close "
+                                     f"(max {_dmax:g}%{'' if _dmax > 0 else ' — guard off, catch-up needs it'})")
+                logger.info(f"[{_es}] {pair}: catch-up refused — price moved {_mv} from the ON bar's close (max {_dmax:g}%)")
+                return
+            # ⏪ (235) the catch-up's own stamps: bars from the ON bar's close to this decision · live vs that close (signed %)
+            _cu_bars_n = int((int(catchup_now) - int(bar_open)) // 300_000) if _cu else None
+            _cu_move = round((price / _close - 1) * 100, 4) if (_cu and _close > 0) else None
+            if _cu:
+                flag['catchup_bars'], flag['catchup_move_pct'] = _cu_bars_n, _cu_move
+            if not _cu and _dmax > 0 and _close > 0 and abs(price / _close - 1) * 100 > _dmax:   # ⏪ a catch-up already passed the stricter check above (same reference, fail-closed)
                 self._record_filter_block(f"{_bk}_DISLOC", "LONG")
                 flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} {'WIDE ' if wide else ''}refused: price moved {(price / _close - 1) * 100:+.2f}% from the signal close (max {_dmax:g}%)"
                 return
@@ -7456,7 +7730,10 @@ class TradingEngine:
                 entry_atr_pct=(round(atr, 4) if atr is not None else None), entry_pair_volume_24h_usd=flag.get('volume_24h'), entry_pair_rank=None,
                 entry_bull_pct=_g.get('_market_bull_pct'), entry_bear_pct=_g.get('_market_bear_pct'),
                 entry_global_volume_ratio=_g.get('_global_volume_ratio'), entry_pair_volume_ratio=_pvr,
-                frenzy_long=not wide, frenzy_wide=wide, frenzy_bar_open_ms=bar_open,
+                frenzy_long=not wide, frenzy_wide=wide, frenzy_bar_open_ms=(int(_leash_time.time() * 1000) if _cu else bar_open), frenzy_catchup=_cu,   # ⏪ catch-up: only the bot-open-lane wait counts
+                frenzy_catchup_ref_price=(_close if _cu else None),   # ⏪ open_position re-checks the ORDER BOOK vs the ON close (no 1 % + 1 % stacking)
+                entry_frenzy_catchup_bars=(_cu_bars_n if _cu else None),
+                entry_frenzy_catchup_move_pct=(_cu_move if _cu else None),
                 frenzy_strong=(not wide and flag.get('adx_delta') is not None and flag.get('di_spread') is not None
                                and float(flag['adx_delta']) > 0 and float(flag['di_spread']) > 0),   # 💪 Oct-4 (197): ADX rising ∧ +DI above −DI
                 entry_frenzy_spike_at=datetime.utcfromtimestamp(flag['spike_ts'] / 1000),
@@ -7474,6 +7751,8 @@ class TradingEngine:
             flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} " + ("WIDE " if wide else "") + ("opened" if order else (f"refused: {_why}" if _why else "refused by the open path (slots / balance / cooldown / price moved)"))
             if not order and not _why:   # a late refusal is already counted as FRENZY_LATE (caveman review: no double count)
                 self._record_filter_block(f"{_bk}_OPEN_REFUSED", "LONG")
+            if order and _cu:   # ⏪ the catch-up cohort's own tally (pre-registered review at 20 fills)
+                self._record_filter_block(f"{_bk}_CATCHUP_OPEN", "LONG")
         except Exception as e:
             logger.error(f"[{_es}] {pair}: open failed: {e}")
             try:
@@ -8446,6 +8725,10 @@ class TradingEngine:
         frenzy_wide: bool = False,   # 🔥🌐 Oct-3: the FRENZY open path tagged FRENZY_WIDE (own size fields frenzy_wide_*)
         frenzy_strong: bool = False,   # 💪 Oct-4 (197): FRENZY_LONG with ADX rising ∧ +DI above −DI → frenzy_long_lev_mult_strong
         frenzy_bar_open_ms: Optional[int] = None,   # 🔥 Oct-3: the signal bar's open — lateness re-checked AFTER the bot open lane
+        frenzy_catchup: bool = False,   # ⏪ Oct-6: a catch-up fill (its fresh ON bar was never judged) → entry_frenzy_catchup
+        frenzy_catchup_ref_price: Optional[float] = None,   # ⏪ the ON bar's close: the book price at the order must sit within the dislocation of IT
+        entry_frenzy_catchup_bars: Optional[int] = None,   # ⏪ (235) bars from the ON bar's close to the catch-up decision
+        entry_frenzy_catchup_move_pct: Optional[float] = None,   # ⏪ (235) live vs the ON bar's close at the decision, signed %
         entry_frenzy_spike_at: Optional[datetime] = None,
         entry_frenzy_hours: Optional[float] = None,
         entry_frenzy_vwap: Optional[float] = None,
@@ -9795,7 +10078,8 @@ class TradingEngine:
             _fz_late2 = (_leash_time.time() * 1000 - int(frenzy_bar_open_ms)) / 1000.0   # bot open lane — a scan open can hold it 15–45 s
             if _fz_late2 > FRENZY_ENTRY_MAX_LATE_S:
                 self._record_filter_block(f"{_fz_bk}_LATE", direction)
-                self._frenzy_open_refusal = f"reached the order {_fz_late2:.0f}s after the bar closed (max {FRENZY_ENTRY_MAX_LATE_S}s)"   # read by _frenzy_open
+                self._frenzy_open_refusal = (f"catch-up order reached {_fz_late2:.0f}s after the decision (max {FRENZY_ENTRY_MAX_LATE_S}s)" if frenzy_catchup   # ⏪ its clock = the decision
+                                             else f"reached the order {_fz_late2:.0f}s after the bar closed (max {FRENZY_ENTRY_MAX_LATE_S}s)")   # read by _frenzy_open
                 logger.warning(f"[{_fz_es}] {pair}: reached the order {_fz_late2:.0f}s after the bar closed (waited for another bot open) — "
                                f"skipped (max {FRENZY_ENTRY_MAX_LATE_S}s)")
                 return None
@@ -9819,6 +10103,14 @@ class TradingEngine:
                     self._frenzy_open_refusal = f"price moved {abs(_sg_live_px - current_price) / current_price * 100:.2f}% before the order (max {_sg_max}%)"
                 logger.warning(f"[{_fz_bk if _frenzy else 'SURGE'}_DISLOC] {pair} {direction}: entry aborted — live {_sg_live_px} is "
                                f"{abs(_sg_live_px - current_price) / current_price * 100:.2f}% from decision {current_price} (max {_sg_max}%)")
+                return None
+            # ⏪ Oct-6 catch-up: the book price must ALSO sit within the dislocation of the ON bar's close (else ticker-vs-ON ≤ 1 % plus
+            # book-vs-ticker ≤ 1 % could stack to ~2 %). Book unreadable → the decision price (already checked against the ON close).
+            if _frenzy and frenzy_catchup and frenzy_catchup_ref_price and frenzy_catchup_moved(frenzy_catchup_ref_price, _sg_live_px or current_price, _sg_max or 0):
+                self._record_filter_block(f"{_fz_bk}_CATCHUP_MOVED", direction)
+                _cu_px = _sg_live_px or current_price
+                self._frenzy_open_refusal = f"catch-up: book {(_cu_px / frenzy_catchup_ref_price - 1) * 100:+.2f}% from the ON bar's close at the order (max {_sg_max or 0}%)"
+                logger.warning(f"[{_fz_bk}_CATCHUP_MOVED] {pair}: entry aborted at the order — {self._frenzy_open_refusal}")
                 return None
         maker_fee_rate = getattr(tc, 'maker_fee', tc.trading_fee)
         taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
@@ -10152,6 +10444,9 @@ class TradingEngine:
             entry_frenzy_adx_delta=(entry_frenzy_adx_delta if _frenzy else None), entry_frenzy_vol_trend=(entry_frenzy_vol_trend if _frenzy else None),
             entry_frenzy_above_share=(entry_frenzy_above_share if _frenzy else None),
             entry_frenzy_above_streak=(entry_frenzy_above_streak if _frenzy else None),
+            entry_frenzy_catchup=(bool(frenzy_catchup) if _frenzy else None),   # ⏪ Oct-6: True = catch-up fill · False = normal FRENZY fill
+            entry_frenzy_catchup_bars=(entry_frenzy_catchup_bars if (_frenzy and frenzy_catchup) else None),
+            entry_frenzy_catchup_move_pct=(entry_frenzy_catchup_move_pct if (_frenzy and frenzy_catchup) else None),
             entry_frenzy_gvol=(entry_frenzy_gvol if _frenzy else None),
             adx_surge_open=_adx_surge_admit,   # ⚡ Sep-28: admitted through the BTC ADX-surge waiver (same predicate as its sizing)
             entry_mcap_usd=_mcap_usd, entry_cmc_rank=_cmc_rank,   # 💰 Sep-28: cached market cap / CMC rank (NULL if unknown)

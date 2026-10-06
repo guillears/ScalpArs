@@ -5714,3 +5714,15 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   (fixed: floor first, V1/V2 deduped separately), bars aligned to the formal doc, gvol-unknown excluded, crash / file-safety hardening.
   Selftest 57, pytest 622. Separate pending (not shipped): WIDE ATR_HIGH filter (review running) and split EMA100/EMA200 runner (refuted
   as a rule; observe line proposed, FRENZY_SPLIT_RUNNER_EMA200_2026-10-06.md).
+- (225) 2026-10-06 ✗ **NONEXP_CALM3D door 2× → 1×** (`nonexp_calm3d_invest_mult` 2.0 → 1.0; operator "yes do this", after the
+  LAST12H_ASSESSMENT_2026-10-06.md review). Its locked cell verdict (CURRENT_STATE: N≥5 fresh 2× fires since Sep-23, net-negative ⇒ 1.0×,
+  "one more negative fire trips it") fired with B17 TAO −$201 and SAND −$153: fresh 2× fires since Sep-23 = 14 · 57 % · −$416 as traded
+  (DASH, INJ, TAO, SAND 4 · 25 % · −$436; a Sep-28 cut gives 6 · 50 % · −$391). Note: the CURRENT_STATE tally "4 fires ≈−$565" was already stale — the master held 12 fresh 2× fires at −$62 before B17, so on its literal text the gate had tripped earlier. Counter-read noted, not used: on today's stack (UNI / PEPE / PUMP now refused by the
+  Sep-27 BTC-ATR floor; DOGE / PENGU winners refused by LONG_HEAT_BLOCK) the kept fires are 9 · 67 % · +$154 — not HARMFUL, but not
+  ★ WORKING either (WR < 70 %), so 2× earns no "keep" on any reading; the gate was worded as-traded and does not move at decision time. Ruin angle: one 2× CALM3D
+  stop ≈ 7–8 % of a ~$2.65k book. config.py default 2.0 → 1.0 and the UI save fallback 2.0 → 1.0 (a blank field can no longer re-arm 2×).
+  Master STACK 2026-10-06b: the 20 kept CALM3D rows re-priced stack_pnl ÷ 2 (size-only; stack_pct unchanged) → CALM3D 20 · 90 % · +0.41 %
+  +$1,766 → +$883; master +$8,467 → +$7,584 (−$883: B1 −$60, B2 −$408, B3 −$41, B8 −$120, B12 −$295, B14 +$41); daily compound (fixed $3k)
+  3.14 → 2.79 %/trading day. validate_against_master ALL PASS. Re-escalation: Pattern-W ladder on fresh 1× fires (N≥30 · WR≥70 % ·
+  avg ≥ +0.10 % · Σ>0 → 1.5× first, 2.0× after +50 trades). Note the tension: the master's in-sample CALM3D record (90 % WR) is strong;
+  the forward 2× fires are not — the ladder decides with fresh data.

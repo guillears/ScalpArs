@@ -9519,8 +9519,9 @@ class TradingEngine:
         if spike_chase_probe or spike_fade or spike_bounce or nonexp_calm3d:
             _th_sp = config.trading_config.thresholds
             if nonexp_calm3d:
-                # Jul 27 PM promotion: NONEXP_CALM3D cell (operator Inv 2x / Lev 1x)
-                cell_mult = max(0.1, float(getattr(_th_sp, 'nonexp_calm3d_invest_mult', 2.0) or 2.0))
+                # Jul 27 PM promotion: NONEXP_CALM3D cell (operator Inv 2x / Lev 1x) → Oct-6 (DECISION_LOG 225) back to 1x: its cell
+                # verdict fired. Fallback 1.0 (a missing key or a 0 typed in the UI must never re-arm 2x).
+                cell_mult = max(0.1, float(getattr(_th_sp, 'nonexp_calm3d_invest_mult', 1.0) or 1.0))
                 cell_lev_mult = max(0.05, float(getattr(_th_sp, 'nonexp_calm3d_lev_mult', 1.0) or 1.0))
                 cell_src = "NONEXP_CALM3D"
             elif spike_bounce:

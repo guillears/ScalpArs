@@ -18,5 +18,5 @@ def test_live_json_flip_cells_at_1x():
 
 def test_master_builder_reprices_flips_to_1x():
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-06a"' in bld
+    assert 'STACK_VERSION = "2026-10-06b"' in bld
     assert 'strat.startswith("FLIP")' in bld and 'round(float(r.stack_pnl) / _cm, 2)' in bld

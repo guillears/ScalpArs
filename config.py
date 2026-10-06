@@ -656,7 +656,9 @@ class SignalThresholds(BaseModel):
     # log carries entry_px for the revert re-sim). 🔒 TIGHT REVERT: first 5 blocked candidates re-priced from the
     # log on 1m klines → would-be Σ > 0 ⇒ 0 (off). 0 = leg off (default).
     nonexp_calm3d_btc_atr_min: float = 0.0
-    nonexp_calm3d_invest_mult: float = 2.0        # Jul-31 RE-ESCALATED 1.0→2.0 with the b1h leg (operator-
+    # 2026-10-06 (DECISION_LOG 225): 2.0 → 1.0 — its cell verdict fired (fresh 2× fires since Sep-23: 14·57%·−$416 as traded;
+    #   TAO/SAND B17 −$354). Re-escalate only via the Pattern-W ladder on fresh 1× fires (N≥30·WR≥70%·avg≥+0.10%·Σ>0 → 1.5× first).
+    nonexp_calm3d_invest_mult: float = 1.0        # (history below superseded 10-06, see above) Jul-31 RE-ESCALATED 1.0→2.0 with the b1h leg (operator-
     #   directed DOUBLE staging override: skips the locked 1.5×-first ladder AND the N>=30 W-bar —
     #   evidence = the refined cohort 10·90%·+0.372% (partially in-sample; legs discovered on it).
     #   🔒 TIGHT REVERT = the standard cell verdict machinery at N>=5 fresh 2× fires: ✗ HARMFUL

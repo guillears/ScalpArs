@@ -37,8 +37,13 @@ def test_master_csv_scale_invariants():
     """168: the scale lives only on kept, non-probe, capped fades; it never shrinks a ticket; tags stay in the allowed set."""
     import pandas as pd
     m = pd.read_csv(os.path.join(os.path.dirname(__file__), "..", "reports", "MASTER_POOL_stacked.csv"), low_memory=False)
-    assert m.stack_ticket_scale.notna().all() and (m.stack_ticket_scale >= 1.0).all()
-    s = m[m.stack_ticket_scale != 1.0]
+    assert m.stack_ticket_scale.notna().all()
+    # 10-06c: a path-CF momentum row re-sized by today_size_rule carries the size factor in its ticket scale (its pct is read back as
+    # stack_pnl / scale / notional) — the only non-fade rows allowed a scale ≠ 1 (0 rows at 10-06c)
+    nf = m[(m.stack_ticket_scale != 1.0) & (m.entry_strategy != "SPIKE_FADE")]
+    assert nf.stack_keep.all() and nf.stack_block_reason.astype(str).str.contains("ARM040|LATE_ARM|FADE_SL").all()
+    s = m[(m.stack_ticket_scale != 1.0) & (m.entry_strategy == "SPIKE_FADE")]
+    assert (s.stack_ticket_scale >= 1.0).all()
     assert len(s) and s.stack_keep.all() and not s.is_probe.any() and (s.entry_strategy == "SPIKE_FADE").all()
     assert s.liquidity_capped.astype(str).str.lower().eq("true").all()
     assert m.stack_keep.dtype == bool and m.is_probe.dtype == bool

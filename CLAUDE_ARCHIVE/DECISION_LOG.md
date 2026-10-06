@@ -5756,3 +5756,27 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Guard:** tests/test_screen_pool_sizing.py (22) — every rule + boundary, 1.5 = builder constant, sprint thresholds and "no SHORT cell > 1×"
   vs live JSON, frozen CSV = pnl_current (explicit JSON thresholds, cwd-independent). Dual review: caveman + deep (W2+W1 short and the cwd
   dependence were deep-review catches, applied).
+
+
+## 2026-10-06 (233) - 📏 Master STACK 2026-10-06c — today's cell sizing is ONE rule (`today_size_rule`), shared by the master builder and the screen
+- **Why:** after 227 the screen and the master priced 9 kept rows differently, each copy of "today's sizing" having drifted from the engine:
+  the master kept the 4 W1+W2+W1 momentum shorts at 2× (cell de-muxed 2026-07-30; every SHORT pattern cell is 1× today) and the 5
+  UNMATCHED longs at pair-vol ≥ 0.90 at 1.5× (engine de-muxes to 1×; the builder's "pre-Jul-10 gap"). Deep review then found BOTH
+  copies ignored the cell LEVERAGE multiplier: SOL 06-18 W2+W1 short traded 2× at 30× (cell_lev_multiplier 1.5) → today 1× at 20×.
+- **Ship:** `scripts/build_master_pool.today_size_rule(strat, dir, src, cm, gvr, b20slope, pvr, lev)` — FLIP / CALM3D / momentum SHORT →
+  1/(cm·lev); UNMATCHED long: sprint (gvr > 0.74 ∧ BTC EMA20 slope > 0.07) → 1/(cm·lev), else PVR ≥ 0.90 → 1/(cm·lev), else
+  min(cm, 1.5)/cm · 1/lev; cm ≤ 1 ∧ lev ≤ 1 (incl. probes 0.5×/0.05×) → no-op; sleeves / fades / chase untouched. Constants FROZEN with
+  STACK_VERSION. `screen_pool.pnl_current` = pnl × the same function (no second copy). Sprint de-mux moved from the first pass to the final
+  re-price (an ARM040 row in a sprint window now de-muxes too — latent, 0 rows); factor applied to the UNROUNDED P&L (21 rows ±$0.01 vs the
+  old double rounding); a re-sized path-CF row folds the factor into stack_ticket_scale so `stack_pnl / scale / notional` stays its pct
+  (0 rows); PVR rows tagged CF_PVR_DEMUX.
+- **Result:** master non-probe kept $7,583.59 → $7,458.50 (−$125.09): MOM long 101·75%·+0.147% $2,486.78 → $2,465.32 (SUI −$7.70 · WLD
+  −$16.91 · ME +$32.78 · PEPE −$25.43 · ADA −$4.21) · MOM short 35·74%·+0.195% $703.69 → $600.02 (SOL −$47.26→−$15.75 · JUP $185.54→$92.77
+  · JTO $45.89→$22.95 · LIT B1 $38.94→$19.47). Screen v20: MS $664 → $672 (SOL lev) · TOTAL 82·84% $3,976. Row join screen↔master:
+  0 differences on kept rows (now a test). validate_against_master ALL PASS.
+- **Guard:** tests/test_today_size_scale.py (32: every branch + boundary + lev, frozen constants vs live JSON incl. lev mults and "no SHORT
+  cell > 1× inv or lev", screen uses the shared function, frozen CSV fresh, screen = master on kept rows and FAILS on an un-rebuilt master);
+  test_fade_cap05 ticket-scale contract widened to path-CF momentum rows; 06b→06c pins in test_calm3d_1x / test_flip_cells_1x /
+  test_fade_laggard. Dual review (caveman + deep; lev, path-pct, double rounding, probe guard, parity-skip were deep-review catches, applied).
+- **Not changed (operator question):** the screen keeps 16 rows the master blocks — 12 flips fail-open by design (BASE cohort preservation);
+  WLD 06-26 + UNI 07-10 (LONG_RSI_MOM_LOADX) and LIT 07-10 (LONG_CHOP_BURST) are long gates the screen does not carry.

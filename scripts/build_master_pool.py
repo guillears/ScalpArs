@@ -22,10 +22,11 @@ Raw pools stay untouched (ground truth). stack_keep is exact (entry gates);
 stack_pnl layers mechanism counterfactuals — analyses must say which they used.
 """
 import warnings; warnings.filterwarnings('ignore')
+import re
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-10-06b"  # 10-06b: NONEXP_CALM3D door 2× → 1× (its cell verdict fired: fresh 2× fires since Sep-23 net-negative; operator, DECISION_LOG 225): kept CALM3D rows above 1× re-priced stack_pnl ÷ cell multiplier (size-only; stack_pct unchanged). Prior 10-06a — 10-06a: FLIP short 2× cells NEGDI15 + TG_SHALLOW → 1× (NEGDI15's own revert gate fired, TG_SHALLOW ✗ HARMFUL on real fills; operator, DECISION_LOG 220): every kept FLIP row above 1× (the tagged cells + one pre-tag June ×2 BASE row) re-priced stack_pnl ÷ cell multiplier — no flip cell sizes above 1× today. Prior 10-05b — 10-05b: LONG_HEAT_BLOCK re-scope REVERTED to the Sep-18 3-leg rule (BTC slope ≥ 0.07 ∧ BTC RSI prev ≥ 64 ∧ bull ≥ 80, washed-out exempt; DECISION_LOG 208 — the re-scope's pre-committed gate fired). Prior 10-05a — 10-05a: UNMATCHED momentum-long cell 2× → 1.5× (and the quiet boost 2 → 1.5; operator, DECISION_LOG 206): kept UNMATCHED longs above 1.5× re-priced × 1.5 / cell multiplier (CALM3D door unchanged at 2×; rows the sprint de-mux already set to 1× are left at 1×; known pre-Jul-10 gap: PVR ≥ 0.90 rows are not de-muxed to 1×). The FRENZY lock-then-trail exit (205) is path-dependent → NOT re-priced (kept at the +3 TP pricing; forward read = scout FRENZY_LOCK gate). Prior 10-04b — 10-04b: LONG_CHOP_BURST — MOMENTUM longs refused when BTC eff72 ≤ 0.007 (live stamp entry_btc_eff72, else the validated 864-bar rebuild from the k5m_full BTC cache) AND another kept non-probe non-MANUAL bot fill of the same era opened 0…120 s earlier (sub-line A; operator ARMED override, DECISION_LOG 201; rule = engine long_chop_burst_block). Prior 10-04a — 10-04a: SURGE_SHORT_OFF (surge_short_enabled false) + sleeve fills (FRENZY / WIDE / SURGE_LONG / BEARRUN) re-priced at today's size and the FRENZY +3 TP (DECISION_LOG 200). Prior 10-03a — 10-03a: FRENZY_LONG / FRENZY_WIDE tagged FRENZY_SLEEVE (own-sleeve observation, never a momentum row; before this a FRENZY fill fell into the momentum-long gates). Prior 10-01b — 10-01b: EVERY kept capped fade re-priced at the 0.5 % ticket (+ stack_ticket_scale column; DECISION_LOG 168). 10-01a: CF_FADE_CAP05 — kept fades on pairs ≥ $10M throttled by the old 0.1 % cap re-priced at min(desired, 0.5 % × vol) (DECISION_LOG 165/167; 3 rows). Prior 09-29b — b: FADE_LAGGARD — SPIKE_FADE refused when pair daily Wilder −DI(14) > 16.1 AND BTC 4h EMA50/EMA200 gap > 0 (laggard squeeze; operator ARMED override at master N=10 on 295 backtest fills, DECISION_LOG 128; rule = indicators.fade_laggard_block; inputs = stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct, else the closed-bar feature factory from k5m_full). Prior: "2026-09-29a"  # a: LONG_RSI_MOM_LOADX — momentum longs (unmatched + doors) refused when RSI(12) < RSI two candles ago AND pair ADX < long_rsi_momentum_adx_max (21; declared override at master N=10, DECISION_LOG 126; rule = indicators.rsi_mom_loadx_block; stamps entry_rsi / entry_rsi_prev (= rsi_prev2) / entry_adx). Prior: "2026-09-27b"  # b: CALM3D_BTC_ATR_MIN — NONEXP_CALM3D door longs refused at BTC 5m ATR% < 0.08 (dead tape; operator ARMED override, DECISION_LOG 118; rule = engine calm3d_btc_atr_floor_block). Prior: "2026-09-27a"  # a: FADE_FRESHBREAK stamp proxy applied to PRE-SHIP fills only (opened < 2026-08-10T13:48:19 UTC, commit a10a879) — the live gate reads RSI(12) rsi_prev1 at trigger, the stamp entry_rsi_prev is rsi_prev2, so post-ship fills (which already passed the live gate) were wrongly removed (6 winners, Sep-27 audit). Prior: 2026-09-25c # c: LONG_HEAT_BLOCK re-scoped to bull breadth ≥85 only (BTC slope/RSI legs off, washed-out exemption kept; declared override, DECISION_LOG 116). Prior: 2026-09-25b # b: MOM_SHORT_C1_REGIME — C1 momentum shorts refused when BTC is STRONG_BEAR (operator ARMED override, DECISION_LOG 114; rule = engine mom_short_c1_regime_block). Prior: 2026-09-25a # a: FLIP_FAN_WEAK_BOUNCE — FAN flip-shorts refused when pair EMA13−EMA50 gap < 0 AND EMA20 slope < 0.15 (operator ARMED override at N=8, DECISION_LOG 113; rule = engine flip_fan_weak_bounce); B12 snapshot as-of 09-25. Prior: 2026-09-24b # b: FADE_BRSI 45→50 — the Aug-5 ceiling's own pre-committed revert fired (DECISION_LOG 112); label FADE_BRSI45→FADE_BRSI50. Prior: 2026-09-24a # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
+STACK_VERSION = "2026-10-06c"  # 10-06c: TODAY's cell sizing = ONE pure rule, today_size_scale() (DECISION_LOG 233), shared with scripts/screen_pool.py pnl_current — closes the two gaps vs the engine: W2+W1 momentum shorts 2× → 1× (cell de-muxed 2026-07-30; every SHORT pattern cell is 1× today) and UNMATCHED longs at pair-vol ratio ≥ 0.90 → 1× (the Jul-10 crowded-entry de-mux; was 1.5× here, the "pre-Jul-10 gap"). The rule also strips the cell LEVERAGE multiplier (SOL 06-18 W2+W1 short traded 2× at 30× → 1× at 20×) and applies to the unrounded P&L (single rounding: 21 rows move ±$0.01). The crowd-sprint de-mux moved from the first pass to the final re-price (an ARM040 row in a sprint window now de-muxes too; stack_pct untouched; a re-sized path-CF row folds the factor into stack_ticket_scale so stack_pnl / scale / notional stays its pct). Non-probe kept $7,583.59 → $7,458.50. Prior 10-06b — 10-06b: NONEXP_CALM3D door 2× → 1× (its cell verdict fired: fresh 2× fires since Sep-23 net-negative; operator, DECISION_LOG 225): kept CALM3D rows above 1× re-priced stack_pnl ÷ cell multiplier (size-only; stack_pct unchanged). Prior 10-06a — 10-06a: FLIP short 2× cells NEGDI15 + TG_SHALLOW → 1× (NEGDI15's own revert gate fired, TG_SHALLOW ✗ HARMFUL on real fills; operator, DECISION_LOG 220): every kept FLIP row above 1× (the tagged cells + one pre-tag June ×2 BASE row) re-priced stack_pnl ÷ cell multiplier — no flip cell sizes above 1× today. Prior 10-05b — 10-05b: LONG_HEAT_BLOCK re-scope REVERTED to the Sep-18 3-leg rule (BTC slope ≥ 0.07 ∧ BTC RSI prev ≥ 64 ∧ bull ≥ 80, washed-out exempt; DECISION_LOG 208 — the re-scope's pre-committed gate fired). Prior 10-05a — 10-05a: UNMATCHED momentum-long cell 2× → 1.5× (and the quiet boost 2 → 1.5; operator, DECISION_LOG 206): kept UNMATCHED longs above 1.5× re-priced × 1.5 / cell multiplier (CALM3D door unchanged at 2×; rows the sprint de-mux already set to 1× are left at 1×; known pre-Jul-10 gap: PVR ≥ 0.90 rows are not de-muxed to 1×). The FRENZY lock-then-trail exit (205) is path-dependent → NOT re-priced (kept at the +3 TP pricing; forward read = scout FRENZY_LOCK gate). Prior 10-04b — 10-04b: LONG_CHOP_BURST — MOMENTUM longs refused when BTC eff72 ≤ 0.007 (live stamp entry_btc_eff72, else the validated 864-bar rebuild from the k5m_full BTC cache) AND another kept non-probe non-MANUAL bot fill of the same era opened 0…120 s earlier (sub-line A; operator ARMED override, DECISION_LOG 201; rule = engine long_chop_burst_block). Prior 10-04a — 10-04a: SURGE_SHORT_OFF (surge_short_enabled false) + sleeve fills (FRENZY / WIDE / SURGE_LONG / BEARRUN) re-priced at today's size and the FRENZY +3 TP (DECISION_LOG 200). Prior 10-03a — 10-03a: FRENZY_LONG / FRENZY_WIDE tagged FRENZY_SLEEVE (own-sleeve observation, never a momentum row; before this a FRENZY fill fell into the momentum-long gates). Prior 10-01b — 10-01b: EVERY kept capped fade re-priced at the 0.5 % ticket (+ stack_ticket_scale column; DECISION_LOG 168). 10-01a: CF_FADE_CAP05 — kept fades on pairs ≥ $10M throttled by the old 0.1 % cap re-priced at min(desired, 0.5 % × vol) (DECISION_LOG 165/167; 3 rows). Prior 09-29b — b: FADE_LAGGARD — SPIKE_FADE refused when pair daily Wilder −DI(14) > 16.1 AND BTC 4h EMA50/EMA200 gap > 0 (laggard squeeze; operator ARMED override at master N=10 on 295 backtest fills, DECISION_LOG 128; rule = indicators.fade_laggard_block; inputs = stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct, else the closed-bar feature factory from k5m_full). Prior: "2026-09-29a"  # a: LONG_RSI_MOM_LOADX — momentum longs (unmatched + doors) refused when RSI(12) < RSI two candles ago AND pair ADX < long_rsi_momentum_adx_max (21; declared override at master N=10, DECISION_LOG 126; rule = indicators.rsi_mom_loadx_block; stamps entry_rsi / entry_rsi_prev (= rsi_prev2) / entry_adx). Prior: "2026-09-27b"  # b: CALM3D_BTC_ATR_MIN — NONEXP_CALM3D door longs refused at BTC 5m ATR% < 0.08 (dead tape; operator ARMED override, DECISION_LOG 118; rule = engine calm3d_btc_atr_floor_block). Prior: "2026-09-27a"  # a: FADE_FRESHBREAK stamp proxy applied to PRE-SHIP fills only (opened < 2026-08-10T13:48:19 UTC, commit a10a879) — the live gate reads RSI(12) rsi_prev1 at trigger, the stamp entry_rsi_prev is rsi_prev2, so post-ship fills (which already passed the live gate) were wrongly removed (6 winners, Sep-27 audit). Prior: 2026-09-25c # c: LONG_HEAT_BLOCK re-scoped to bull breadth ≥85 only (BTC slope/RSI legs off, washed-out exemption kept; declared override, DECISION_LOG 116). Prior: 2026-09-25b # b: MOM_SHORT_C1_REGIME — C1 momentum shorts refused when BTC is STRONG_BEAR (operator ARMED override, DECISION_LOG 114; rule = engine mom_short_c1_regime_block). Prior: 2026-09-25a # a: FLIP_FAN_WEAK_BOUNCE — FAN flip-shorts refused when pair EMA13−EMA50 gap < 0 AND EMA20 slope < 0.15 (operator ARMED override at N=8, DECISION_LOG 113; rule = engine flip_fan_weak_bounce); B12 snapshot as-of 09-25. Prior: 2026-09-24b # b: FADE_BRSI 45→50 — the Aug-5 ceiling's own pre-committed revert fired (DECISION_LOG 112); label FADE_BRSI45→FADE_BRSI50. Prior: 2026-09-24a # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
 G = 'entry_pair_ema20_ema50_gap_pct'   # holds EMA13-50 (known misnomer — do not rename)
 
 # 🧯 FADE_FRESHBREAK stamp-proxy scope (Sep-27). The live gate reads the RSI(12) of the candle BEFORE the trigger
@@ -55,6 +56,62 @@ def fade_cap05_scale(desired, vol, notional, capped, ceiling=500_000.0):
         return 1.0
     new = min(d, 0.005 * v, ceiling)
     return new / nv if new > nv * 1.001 else 1.0
+
+
+# 📏 Oct-6 10-06c (DECISION_LOG 233): TODAY's cell sizing, FROZEN with STACK_VERSION (never the live JSON — a later settings change must
+# not silently re-price history; a sizing ship = new STACK_VERSION + these values). tests/test_today_size_scale.py pins them against
+# trading_config.json. ONE source of truth: this builder's stack_pnl AND scripts/screen_pool.py pnl_current (SCREENED_BASELINE).
+UNMATCHED_LONG_INV_FROZEN = 1.5             # 10-05a (DECISION_LOG 206): UNMATCHED long cell 2× → 1.5× (quiet boost 1.5 too)
+UNMATCHED_SPRINT_GVR_MIN_FROZEN = 0.74      # Aug-10 crowd-sprint de-mux: global vol ratio > 0.74 ∧ BTC 5m EMA20 slope > 0.07 → 1×
+UNMATCHED_SPRINT_B20SLOPE_MIN_FROZEN = 0.07
+UNMATCHED_PVR_MAX_FROZEN = 0.90             # Jul-10 crowded-entry de-mux: pair-vol ratio ≥ 0.90 → 1×
+UNMATCHED_LONG_LEV_FROZEN = 1.0             # every re-priced cell's leverage multiplier is 1× today (UNMATCHED LONG rule lev_mult 1.0)
+
+
+_PATH_CF_RE = re.compile(r"ARM040|LATE_ARM|FADE_SL")   # path counterfactuals: their stack_pct is re-derived from stack_pnl
+
+
+def _fnum(x):
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    return v if np.isfinite(v) else None
+
+
+def today_size_rule(strat, direction, src, cm, gvr=None, b20slope=None, pvr=None, lev=None):
+    """(factor, tag): re-prices a MOMENTUM / FLIP fill's $ from its as-traded cell size — invest multiplier `cm` × leverage multiplier
+    `lev` (cell_lev_multiplier; e.g. SOL 06-18 W2+W1 short traded 2× at 30× lev) — to TODAY's size (size-only — the P&L % does not
+    change). Every re-priced cell runs at leverage multiplier 1× today. Engine order = trading_engine open_position pattern-cell block:
+      · FLIP (any cell) → 1×                         (10-06a, DECISION_LOG 220: no flip cell sizes above 1×)
+      · NONEXP_CALM3D door → 1×                      (10-06b, 225)
+      · momentum SHORT (any cell) → 1×               (C1 2026-06-29, W2+W1 2026-07-30: every SHORT pattern cell is 1× today)
+      · UNMATCHED momentum LONG: crowd-sprint → 1×, else pair-vol ≥ 0.90 → 1×, else min(cm, 1.5)   (a missing stamp fails that leg open)
+    tag '' = not a sized cell (sleeves, fades, chase, a fill already at ≤ 1× invest and lev; probes 0.5×/0.05×) → factor 1.0."""
+    cm, lv = _fnum(cm) or 1.0, _fnum(lev) or 1.0
+    if cm <= 1.0 and lv <= 1.0:
+        return 1.0, ''
+    s, src = str(strat or ''), str(src or '')
+    if s.startswith('FLIP') or src.startswith('FLIP'):
+        return 1.0 / (cm * lv), 'FLIP_1X'
+    if s not in ('', 'nan', 'None', 'MOMENTUM'):
+        return 1.0, ''
+    if 'CALM3D' in src:
+        return 1.0 / (cm * lv), 'CALM3D_1X'
+    if str(direction) == 'SHORT':
+        return 1.0 / (cm * lv), 'SHORT_1X'
+    if str(direction) == 'LONG' and src == 'UNMATCHED':
+        g, sl, pv = _fnum(gvr), _fnum(b20slope), _fnum(pvr)
+        if g is not None and sl is not None and g > UNMATCHED_SPRINT_GVR_MIN_FROZEN and sl > UNMATCHED_SPRINT_B20SLOPE_MIN_FROZEN:
+            return 1.0 / (cm * lv), 'SPRINT_DEMUX'
+        if pv is not None and pv >= UNMATCHED_PVR_MAX_FROZEN:
+            return 1.0 / (cm * lv), 'PVR_DEMUX'
+        return min(cm, UNMATCHED_LONG_INV_FROZEN) / cm * UNMATCHED_LONG_LEV_FROZEN / lv, 'UNMATCHED_INV'
+    return 1.0, ''
+
+
+def today_size_scale(strat, direction, src, cm, gvr=None, b20slope=None, pvr=None, lev=None):
+    return today_size_rule(strat, direction, src, cm, gvr, b20slope, pvr, lev)[0]
 
 
 def fade_laggard_inputs(df):
@@ -298,7 +355,6 @@ def main():
             return float(v)
         return _off30.get(str(r.opened_at)[:13].replace('T', ' ') + ':00')
     keep, reason, spnl, scale = [], [], [], []
-    _sprint_demuxed = set()   # 10-05a review: rows already re-priced to 1× by the sprint de-mux — the UNMATCHED 1.5× step must not scale them again
     # door same-pair <=90min re-fire detection (cooldown), computed per era
     df['_ts'] = pd.to_datetime(df.opened_at.str[:19], errors='coerce')
     cooldown_idx = set()
@@ -427,13 +483,7 @@ def main():
             pk, atr = r.peak_pnl, (r.entry_atr_pct if pd.notna(r.entry_atr_pct) else 99)
             if pd.notna(pk) and 0.40 <= pk < 0.45 and pd.notna(r.pnl_percentage) and r.pnl_percentage < max(pk - atr, 0.10) and r.pnl_percentage != 0:
                 sp = max(pk - atr, 0.10) / 100 * abs(p / (r.pnl_percentage / 100)); why = why or 'CF_ARM040'
-            elif (not r.is_door and pd.notna(r.entry_global_volume_ratio) and pd.notna(r.entry_btc_ema20_slope)
-                  and r.entry_global_volume_ratio > 0.74 and r.entry_btc_ema20_slope > 0.07):
-                # engine de-mux only strips a >1x boost on UNMATCHED cells — a trade that
-                # actually sized 1x is untouched (no 2.0 fallback: that halved real 1x P&L)
-                m = pd.to_numeric(r.cell_multiplier, errors='coerce')
-                if pd.notna(m) and m > 1 and 'UNMATCHED' in str(r.cell_multiplier_source or '').upper():
-                    sp = p / m; why = why or 'CF_SPRINT_DEMUX'; _sprint_demuxed.add(i)
+            # (the crowd-sprint de-mux lives in today_size_rule since 10-06c — applied in the final re-price, after stack_pct)
         keep.append(k); reason.append(why); spnl.append(sp if k else 0.0)
     # 🌀👥 Oct-4 LONG_CHOP_BURST (operator ARMED override, DECISION_LOG 201): second pass — needs every row's first-pass keep (the
     # neighbours are fills of ANY sleeve). Rule = engine long_chop_burst_block with the frozen 0.007 / 120 s.
@@ -445,11 +495,12 @@ def main():
     print(f"LONG_CHOP_BURST: eff72 = live stamp on {int(pd.to_numeric(df.get('entry_btc_eff72'), errors='coerce').notna().sum())} rows, "
           f"rebuilt on {_cb_nrb}; refused {len(_cb_blk)}: " + ", ".join(f"{df.at[j, 'pair']}@{str(df.at[j, 'opened_at'])[:19]}({df.at[j, 'era']})" for j in sorted(_cb_blk)))
     df['stack_keep'] = keep; df['stack_block_reason'] = reason
+    _spnl_raw = dict(zip(df.index, spnl))   # 10-06c review: the today's-size factor applies to the UNROUNDED P&L (no double rounding)
     df['stack_pnl'] = np.round(spnl, 2); df['stack_ticket_scale'] = np.round(scale, 6); df['stack_version'] = STACK_VERSION
     # 📐 stack_pct = the P&L % under today's rules. Size-only re-prices (ticket CAP05, sprint de-mux, UNMATCHED 1.5×, flip cells → 1×,
     # sleeve sizing) change stack_pnl but NOT the pct, so a pct must never be read off a stack_pnl / pnl ratio. Path CFs (ARM040 /
     # LATE_ARM / FADE_SL) re-price the pct (same convention as validate_against_master M1); the FRENZY +TP re-price is set below.
-    _cf = df.stack_keep & df.stack_block_reason.fillna("").astype(str).str.contains("ARM040|LATE_ARM|FADE_SL")
+    _cf = df.stack_keep & df.stack_block_reason.fillna("").astype(str).str.contains(_PATH_CF_RE.pattern)
     df['stack_pct'] = np.where(_cf, df.stack_pnl / df.stack_ticket_scale.fillna(1) / pd.to_numeric(df.notional_value, errors="coerce") * 100,
                                pd.to_numeric(df.pnl_percentage, errors="coerce"))
     df.loc[~df.stack_keep.astype(bool), 'stack_pct'] = np.nan   # blocked trades have no today's-rules pct (stack_pnl is 0 there)
@@ -465,7 +516,6 @@ def main():
                frenzy_wide_lev_mult=0.2, surge_long_invest_mult=1.0, surge_long_lev_mult=1.0, bearrun_invest_mult=1.0, bearrun_lev_mult=0.05,
                frenzy_tp_pct=3.0)
     SLEEVE_SIZE_FROZEN = _th
-    UNMATCHED_LONG_INV_FROZEN = 1.5   # 10-05a (DECISION_LOG 206) — pinned against the UNMATCHED LONG pattern-cell rule by tests/test_long_chop_burst.py
     def _today(strat, r):
         if strat == "FRENZY_LONG":
             strong = (pd.notna(r.get("entry_frenzy_adx_delta")) and pd.notna(r.get("entry_frenzy_di_spread"))
@@ -481,24 +531,24 @@ def main():
     _tp = float(_th.get("frenzy_tp_pct", 0) or 0)
     for i, r in df.iterrows():
         strat = str(r.entry_strategy)
-        if (bool(r.stack_keep) and i not in _sprint_demuxed and 'CALM3D' in str(r.get("cell_multiplier_source")) and pd.notna(r.get("stack_pnl"))):
-            _cm = float(r.get("cell_multiplier") or 1.0) or 1.0
-            if _cm > 1.0:   # 10-06b (DECISION_LOG 225): the CALM3D door now sizes at 1×
-                df.at[i, "stack_pnl"] = round(float(r.stack_pnl) / _cm, 2)
-            continue
-        if (bool(r.stack_keep) and i not in _sprint_demuxed and strat.startswith("FLIP") and pd.notna(r.get("stack_pnl"))):
-            # 10-06a: no flip cell sizes above 1× any more (NEGDI15 / TG_SHALLOW were the last; _flip_filters returns 1×),
-            # so every kept flip above 1× — tagged cells AND pre-tag June ×2 rows — is re-priced to 1×.
-            _cm = float(r.get("cell_multiplier") or 1.0) or 1.0
-            if _cm > 1.0:
-                df.at[i, "stack_pnl"] = round(float(r.stack_pnl) / _cm, 2)
-            continue
-        if (bool(r.stack_keep) and i not in _sprint_demuxed and strat in ("nan", "None", "", "MOMENTUM") and str(r.direction) == "LONG"
-                and str(r.get("cell_multiplier_source")) == "UNMATCHED" and pd.notna(r.get("stack_pnl"))):
-            _cm = float(r.get("cell_multiplier") or 1.0) or 1.0
-            if _cm > UNMATCHED_LONG_INV_FROZEN:   # 10-05a: the 2× cell (and the 2× quiet boost) now sizes at 1.5×
-                df.at[i, "stack_pnl"] = round(float(r.stack_pnl) * UNMATCHED_LONG_INV_FROZEN / _cm, 2)
-            continue
+        if bool(r.stack_keep) and not bool(r.is_probe) and pd.notna(r.get("stack_pnl")):
+            # 📏 10-06c: TODAY's cell size (CALM3D / FLIP / momentum SHORT → 1×, UNMATCHED long sprint / PVR → 1× else 1.5×; lev 1×) — one
+            # rule, shared with screen_pool.pnl_current. Size-only: stack_pct (computed above) is not touched.
+            _f, _tag = today_size_rule(strat, r.direction, r.get("cell_multiplier_source"), r.get("cell_multiplier"),
+                                       r.get("entry_global_volume_ratio"), r.get("entry_btc_ema20_slope"), r.get("entry_pair_volume_ratio"),
+                                       r.get("cell_lev_multiplier"))
+            if _tag:
+                _rsn = r.get("stack_block_reason")
+                _rsn = "" if pd.isna(_rsn) else str(_rsn).strip()
+                if _f != 1.0:
+                    df.at[i, "stack_pnl"] = round(float(_spnl_raw[i]) * _f, 2)
+                    if _PATH_CF_RE.search(_rsn):
+                        # a path-CF row's pct is read back as stack_pnl / stack_ticket_scale / notional (validate_against_master M1 and
+                        # ~12 analysis scripts) — fold the size factor into the ticket scale so that formula stays exact (0 rows at 10-06c)
+                        df.at[i, "stack_ticket_scale"] = round(float(r.stack_ticket_scale or 1.0) * _f, 6)
+                if _tag in ("SPRINT_DEMUX", "PVR_DEMUX") and not _rsn:
+                    df.at[i, "stack_block_reason"] = "CF_" + _tag   # label kept from the old first-pass de-mux (CF_SPRINT_DEMUX) + its PVR twin
+                continue
         t = _today(strat, r) if bool(r.stack_keep) else None
         if t is None or pd.isna(r.get("investment")) or pd.isna(r.get("pnl_percentage")):
             continue

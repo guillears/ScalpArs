@@ -5756,3 +5756,27 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Guard:** tests/test_screen_pool_sizing.py (22) — every rule + boundary, 1.5 = builder constant, sprint thresholds and "no SHORT cell > 1×"
   vs live JSON, frozen CSV = pnl_current (explicit JSON thresholds, cwd-independent). Dual review: caveman + deep (W2+W1 short and the cwd
   dependence were deep-review catches, applied).
+- (224) 2026-10-06 🏷 **Logging: FRENZY_KL_MISMATCH only on real bar differences + `cell_demux_reason` stamp** (operator "solve this").
+  293 FRENZY_KL_MISMATCH lines in 12 h were all length-only (cache 1001–1012 bars vs a 1000-bar full read). New Order column
+  cell_demux_reason (C1_DEMUX_BREADTH / UNMATCHED_SPRINT_DEMUX / UNMATCHED_DEMUX_PVR), stamped only when the pattern cell is the final
+  sizing source — ORCA #6 / NIL #9 at 1.0× under a live 2× were the crowd-sprint de-mux, invisible in the CSV until now. No trading change.
+- (230) 2026-10-06 🔧 **FRENZY reads the full 1500-bar 5m window again** (operator "arregla las 1.500 velas"). Deep review found newer
+  ccxt (≥ 4.5.40; requirements allow <4.6) caps fetch_ohlcv at 1000, so live FRENZY saw 999 closed bars while every study used 1499: a
+  spike older than ~58 h dropped out of "verified" (year cohort: FRENZY 17/256 and WIDE 27/812 entry-gated signals had hours > 58 — live
+  could not take them). binance_service.get_ohlcv reads limit > 1000 from the raw fapi klines endpoint (identical rows on 1000 overlapping
+  bars, 4 symbols × 2 timeframes; same retry/ban handler; weight 10). FRENZY cache keep = FRENZY_KL_LIMIT 1500; a full read SHORTER than the
+  joined cache with no differing bar is a truncated read → cache kept, FRENZY_KL_SHORT warning. Engine window = the studies' 1499 closed
+  bars again. Not pinned: ccxt (a downgrade on the server is riskier than the raw read). Dual review: ship.
+- (231) 2026-10-06 🟢 **FRENZY_WIDE = hold-green only** (operator: "agreguemos solo verdes, dejemos leverage como está" → "verdes tipo RLC").
+  `frenzy_wide_hold_green_streak` 0 → 12: WIDE takes only FRENZY_GREEN_BAR refusals (ATR ≤ 2.5) whose price already closed > 12 bars above
+  the spike VWAP at the signal bar (RLC 10-05 streak 17 = kept); blocks ATR_HIGH (year −0.53 %, CI < 0) and green reclaim (−0.66 %, 8/9
+  months negative). Kept: 124 · +0.43 % · day CI −0.15…+1.01 · top 5 days 96 % of the net · selection-adjusted p 0.87 — a DISCIPLINE-OVERRIDE
+  probe, not a proven edge (REVIEW_WIDE_HOLDGREEN_ARM_2026-10-06.md recommended WIDE off as evidence-preferred; HG ≈ off in the year book:
+  $9,784 @0.05 vs $9,741; @0.2 $13,474 / −54 % DD, "not supported now"). Size override acknowledged: lev 0.2 / invest 1.0 kept (review advised
+  the same notional via invest 0.25). Live batch anecdote (N=5): kept MOVR +3.00 / RLC +3.01, blocked AIN×2 / FLUID (all −3). Revert gate in
+  CURRENT_STATE (≤ −1.0 % at 20 / ≤ 0 at 40 / ≤ 0 without top 5 at 60 → WIDE off). WIDE-HG and scout GREEN_CLOCK V2 are the same signals —
+  never two confirmations. Related research same day: entry timing (frenzy_min_hours sweep, wait-for-red) refuted (FRENZY_MINHOURS_AND_WAITRED);
+  near-flat candle dead-band not adopted (FRENZY_FLAT_CANDLE; observe candidate −0.10 < bar ≤ 0 frozen in that report); WIDE full checklist
+  (WIDE_FULL_QUANT_REVIEW). Dual code review: ship (fail-closed on unreadable candle, blank UI field saves 12).
+- (232) 2026-10-06 🧭 **LOADX extension resolved — keep LOADX** (scout gate 126): first 30 LOADX-only refused LONG windows re-priced, 14 won ·
+  Σ −2.11 % (t+5m Σ −3.01) → fails WR ≥ 60 % ∨ net > 0 → the filter stays; tracker done.

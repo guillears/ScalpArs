@@ -72,6 +72,9 @@ def _range_24h_pct(high, low) -> float:
         return 0.0
 
 
+
+OHLCV_CCXT_CAP = 1000   # 🔧 Oct-6 (DECISION_LOG 230): newer ccxt caps fetch_ohlcv here; larger reads go to the raw klines endpoint
+
 class BinanceService:
     """Service for interacting with Binance Futures API"""
     
@@ -783,6 +786,13 @@ class BinanceService:
             return []
         for attempt in range(3):
             try:
+                if limit and int(limit) > OHLCV_CCXT_CAP:
+                    # 🔧 Oct-6 (DECISION_LOG 230): ccxt ≥ 4.5.40 caps fetch_ohlcv at 1000 bars although Binance futures serves up to 1500, so
+                    # the live FRENZY window was 999 closed bars while every study used 1499 (a spike > ~58 h old dropped out of "verified").
+                    # Read the raw endpoint directly — same rows ([open ms, o, h, l, c, v]), independent of the installed ccxt version.
+                    raw = await self.public_exchange.fapiPublicGetKlines({
+                        'symbol': self.public_exchange.market(symbol)['id'], 'interval': timeframe, 'limit': min(int(limit), 1500)})
+                    return [[int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5])] for r in raw or []]
                 ohlcv = await self.public_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
                 return ohlcv
             except (RateLimitExceeded, DDoSProtection, ExchangeNotAvailable) as e:

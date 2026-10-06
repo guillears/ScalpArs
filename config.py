@@ -1344,6 +1344,13 @@ class SignalThresholds(BaseModel):
     # −0.40 % with the day CI through 0 → declared override. 🔒 REVERT: the first 15 blocked WIDE signals re-priced with the live FRENZY exit
     # (scout gate WIDE_CHOPPY) average ≥ 0 → set 0. Frozen at 67.8 — never re-fit. 0 = off.
     frenzy_wide_above_share_min: float = 0.0
+    # 🟢 Oct-6 (DECISION_LOG 231 — operator DISCIPLINE-OVERRIDE probe, lev unchanged 0.2): when > 0, FRENZY_WIDE opens ONLY "hold-green"
+    # setups — FRENZY refused them solely for a green signal candle (ATR ≤ frenzy_max_atr_pct) AND price had already closed above the spike
+    # VWAP for MORE than this many 5m closes in a row (services.frenzy.frenzy_wide_hold_green_block; counters FRENZY_WIDE_ATR_HIGH /
+    # FRENZY_WIDE_RECLAIM). Year (tradeable engine cohort, live lock): kept 124 · +0.43 %/fill, day CI −0.15…+1.01, top 5 days 96 % of the net
+    # (post-hoc, selection-adjusted p 0.87 — NOT proven); dropped ATR_HIGH −0.53 % (CI < 0) and green reclaim −0.66 %. Book @0.2 $13.5k vs WIDE
+    # as-is $1.2k / WIDE off $9.7k. 🔒 REVERT (WIDE off): mean ≤ −1.0 % at 20 fills, ≤ 0 at 40, or ≤ 0 without its top 5 at 60. 0 = off.
+    frenzy_wide_hold_green_streak: float = 0.0
     # 🌊 Oct-3 (operator ARMED override, DECISION_LOG 194): FRENZY_LONG and FRENZY_WIDE open only while the market's volume on the signal bar
     # (top-50 by 24 h volume: Σ bar volume ÷ Σ 48-bar mean, CLOSED bar, read at the close) is BELOW this. Year (1,455 first candles, 1-min-late
     # entry, real costs): < 1.0 +0.225 %/trade (both halves +, random-subset luck 3 %, every leave-one-month-out +), ≥ 1.0 −0.185 (both halves −);

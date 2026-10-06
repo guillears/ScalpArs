@@ -64,6 +64,27 @@ from services.recovery_hold import (RH_STOP_CLASS, closed_rsi as _rh_closed_rsi,
 from services import decision_journal as _djournal  # Sep-18 📓 decision journal (file-only, never raises)
 from services.websocket_tracker import websocket_tracker
 
+
+_WS_SUB_TASKS: set = set()   # strong refs: a fire-and-forget task must not be garbage-collected mid-run
+
+
+def ws_subscribe_background(pair: str) -> "asyncio.Task":
+    """🔌 Oct-6 (DECISION_LOG 240): add `pair` to the live price stream WITHOUT waiting for it. subscribe_pair() closes and reopens the
+    whole WebSocket when the pair is not in the live stream yet, and the close handshake took ~5 s live (GRIFFAIN 20:31:03 booked →
+    20:31:08 answered) — every open (manual click AND bot) waited on it after the position was already booked. The reconnect itself is
+    unchanged (same function, same lock, same stream gap); only the caller stops waiting. A failure is logged; the WS staleness check
+    and the monitor's REST fallback still cover the pair until the stream has it. NO price is passed (review): force_reset_tracking has
+    already seeded the tracker at the entry price, and a late tracker.update(entry) could overwrite a newer live tick."""
+    async def _go():
+        try:
+            await websocket_tracker.subscribe_pair(pair)
+        except Exception as e:   # CancelledError (shutdown) is a BaseException and passes through
+            logger.warning(f"[WS_TRACKER] background subscribe of {pair} failed ({e!r}) — staleness check / REST fallback cover it")
+    t = asyncio.create_task(_go())
+    _WS_SUB_TASKS.add(t)
+    t.add_done_callback(_WS_SUB_TASKS.discard)
+    return t
+
 logger = logging.getLogger(__name__)
 
 OHLCV_BATCH_SIZE = 10
@@ -10628,8 +10649,8 @@ class TradingEngine:
         # Force reset WebSocket tracking for new order (fresh start from entry price)
         # This ensures we track high/low from the actual entry, not from previous orders
         websocket_tracker.force_reset_tracking(pair, actual_price)
-        await websocket_tracker.subscribe_pair(pair, actual_price)
-        
+        ws_subscribe_background(pair)   # 🔌 Oct-6 (240): don't hold the open on the ~5 s stream reconnect
+
         # Fetch current EMA5/13/20 data so the WebSocket tick loop can capture
         # peak EMA5 metrics + price-vs-EMA cross shadow (May 6 Phase 1) immediately
         # before update_orders_cache runs.
@@ -11178,7 +11199,7 @@ class TradingEngine:
                     pass
         try:   # the position is booked: a failure here must not report a failed open (the monitor rebuilds the cache every second)
             websocket_tracker.force_reset_tracking(pair, actual_price)
-            await websocket_tracker.subscribe_pair(pair, actual_price)
+            ws_subscribe_background(pair)   # 🔌 Oct-6 (240): the click is answered without waiting ~5 s for the reconnect
             await self.update_orders_cache(db)   # canonical cache entry (stop/exit fields built by the same code as a restart)
         except Exception as _tail_err:
             logger.error(f"[MANUAL_OPEN] {pair}: booked, but the price-stream / cache set-up failed ({_tail_err}) — the monitor loop picks it up")

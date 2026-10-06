@@ -5865,3 +5865,12 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   0.43 → fails the locked expectancy bar on confidence; blocked side ≈ breakeven (≈ +2 % of trade-sum / year after haircut); the rolling-24 h
   BTC return reading flips sign (+0.65 when down) → likely confound; WIDE's full review found no macro separator. Promote / retire bars frozen
   in CURRENT_STATE; fills counted from 2026-10-07; stamps already exist (no code).
+- (240) 2026-10-06 🔌 **Opens no longer wait for the price-stream reconnect** (operator: manual open confirmation delayed). EB logs: every
+  open of a pair not yet in the live WebSocket waited on websocket_tracker.subscribe_pair → _reconnect → close(); the close always took
+  exactly 5.000 s (websockets close_timeout; 14/14 reconnects in the log), after the position was already booked (GRIFFAIN 20:31:03
+  booked → 20:31:08 answered; EDU 20:50:45 → 20:50:50). Fix: ws_subscribe_background(pair) runs the same subscribe as a background task
+  (strong refs, failure logged), no price passed (force_reset_tracking already seeded the entry; a late update could overwrite a newer
+  tick). No change to the trade (price, size, stop, booking happen before). Bot opens also stop holding the pair lock / BOT_OPEN_LANE ~5 s.
+  Dual review: ship (July frozen-price invariants hold: force_reset adds the pair to subscribed_pairs synchronously before the task).
+  NOT fixed: each reconnect still leaves ALL pairs without stream ticks ≈ 6.6 s (5 s close + 1 s backoff + 0.6 s connect); follow-ups
+  proposed: lower close_timeout / abort after the close frame + skip the backoff on intentional reconnects, or SUBSCRIBE on the open stream.

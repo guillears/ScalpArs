@@ -5816,3 +5816,11 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   validate_against_master M1 reads stack_pct (it compared the as-traded −3 with the +3 re-price). Result: B17 25 · 52 % · −$285 as traded →
   22 · 64 % · +$574 kept; master kept 384 → 406, +$7,458.50 (10-06c) → +$8,032.80; no non-B17 stack column changed; validate ALL PASS. CURRENT_STATE: B16 and B17
   boundary lines (B16's had been missing). Test tests/test_master_frenzy_lock_wide.py.
+- (236) 2026-10-06 👁 **Scout: GVOL_BLOCKED + VWAP_STOP observe lines** (operator "construye las tres"). Live server logs Oct 3–6: of 23 FRENZY
+  activations only 12 traded; 7 were refused by the market-volume gate (194), whose own revert gate reads only the fills it let through — the
+  blocked side was unmeasured. GVOL_BLOCKED prices every refusal as the sleeve with the live lock (WIDE only if hold-green), on the SAME ruler
+  as the let-through comparison; NMR 10-06 (market volume 1.93× on its ON bar) is the class. VWAP_STOP tests the staircase study's (§5) BP
+  k 0.5 stop on live-stopped fills only (CLAUDE.md exit-CF rule), with a real parity replica on non-stopped fills. Both bars frozen in
+  CURRENT_STATE. Dual review applied (same-ruler pricing, OHLC pseudo-print order, exit slippage, validate-before-save quarantine, re-price
+  from stored fields, 30-min episode merge, catch-up rows labelled, day-concentration leg). Reference rows (pre-floor, not evidence):
+  API3 10-06 blocked +3.88 (1m); VWAP 8 stopped fills saved 3 (+14.7) vs deeper 5 (−20.7).

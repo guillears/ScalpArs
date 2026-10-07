@@ -151,7 +151,7 @@ def test_config_parity_and_every_surface():
     import config as C
     th = C.trading_config.thresholds
     fields = sorted(k for k in type(th).model_fields if k.startswith("frenzy_"))
-    assert len(fields) == 35   # +frenzy_catchup_max_bars (Oct-6 catch-up) · +frenzy_lock_arm_pct, _floor_pct, _trail_pct (Oct-5, 205) · +frenzy_wide_above_share_min (Oct-5, 215) · +frenzy_wide_hold_green_streak (Oct-6, 231)
+    assert len(fields) == 41   # +6 frenzy_lite_* (Oct-7, 243) · +frenzy_catchup_max_bars (Oct-6 catch-up) · +frenzy_lock_arm_pct, _floor_pct, _trail_pct (Oct-5, 205) · +frenzy_wide_above_share_min (Oct-5, 215) · +frenzy_wide_hold_green_streak (Oct-6, 231)
     cfgj = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert sorted(k for k in cfgj if k.startswith("frenzy_")) == fields                   # every field has a JSON value
     assert type(th).model_fields["frenzy_long_enabled"].default is False                  # OFF in code; the JSON arms it
@@ -160,7 +160,8 @@ def test_config_parity_and_every_surface():
     listed = dict(re.findall(r"\['(config-fz-[a-z0-9-]+)', '(frenzy_[a-z0-9_]+)'", html))
     by_key = {v: k for k, v in listed.items()}
     by_key.update(frenzy_long_enabled="config-fz-long-enabled", frenzy_short_observe="config-fz-short-observe", frenzy_pair_blacklist="config-fz-blacklist",
-                  frenzy_long_skip_green_bar="config-fz-skip-green", frenzy_wide_enabled="config-fz-wide-enabled")
+                  frenzy_long_skip_green_bar="config-fz-skip-green", frenzy_wide_enabled="config-fz-wide-enabled",
+                  frenzy_lite_enabled="config-fz-lite-enabled")
     assert sorted(by_key) == fields                                                       # every field has a UI input
     for key, _id in by_key.items():
         assert html.count(f'id="{_id}"') == 1, _id
@@ -169,7 +170,7 @@ def test_config_parity_and_every_surface():
     for _id in ("frenzy-monitor-line", "frenzy-flags-body", "frenzy-body", "frenzy-breaks-body"):
         assert html.count(f'id="{_id}"') == 1 and html.count(f"getElementById('{_id}')") == 1
     assert html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2                # clipboard AND saved-file exports
-    for title in ("## 🔥 FRENZY Flagged Pairs (now)", "## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_WIDE)", "## 🔥 FRENZY Short Observations"):
+    for title in ("## 🔥 FRENZY Flagged Pairs (now)", "## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE)", "## 🔥 FRENZY Short Observations"):
         assert html.count(title) == 1
     assert '<option value="FRENZY_LONG">' in html and "frenzyMark(_fz)" in html
 
@@ -179,7 +180,7 @@ def test_engine_and_api_wiring():
     assert eng.count("frenzy_exit_for(") == 4                                             # sleeve: candle + realtime · MANUAL "Frenzy exit": candle + realtime
     assert "await self._update_frenzy(db, wait=False)" in eng and eng.count('(_fz_es if _frenzy else f"SURGE_{direction}" if _surge') == 2
     assert "_sg_pref = _fz_es.lower() if _frenzy else" in eng and 'cell_src = _fz_es if _frenzy else' in eng
-    assert '"SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_WIDE")' in eng                           # no pair-EMA exit on a FRENZY fill
+    assert '"SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")' in eng                           # no pair-EMA exit on a FRENZY fill
     assert "_frenzy_kill" not in eng and "frenzy_kill_verdict" not in eng                 # operator: no automatic off
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert main.count("'FRENZY_LONG'") >= 3 and "'Frenzy-Long'" in main and "'Frenzy-Wide'" in main and main.count("'FRENZY_WIDE'") >= 3

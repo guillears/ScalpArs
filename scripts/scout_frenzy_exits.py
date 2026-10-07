@@ -118,6 +118,20 @@ TRACKER 11 — HYBRID_EXIT (2026-10-06, observe-only; V3 of reports/FRENZY_EXIT_
   FROZEN re-open bar: ≥ 40 FRENZY_LONG fills opened from GC_FROM on ≥ 20 days ∧ Δ > +0.30 %/fill ∧ day-block 95 % CI low > 0 ∧ > 0 without
   the top 5 → re-open (a study, never an arm); otherwise "lock holds". Strong / normal split (stamped ADX Δ > 0 ∧ DI > 0) and SAVED (HYB ≥ 0,
   lock lost) / CUT (lock ≥ +2, HYB out at the +0.2 floor) counts shown.
+TRACKER 12 — FRENZY_LITE watch + LITE_ATR (2026-10-07, DECISION_LOG 243; FRENZY_LITE shipped ARMED as a DECLARED EXCEPTION, no ATR filter,
+  NO automatic off): every FRENZY_LITE fill in the orders exports (own store reports/SCOUT_FRENZY_LITE.csv, keyed opened_at + pair, so a fill
+  survives its export leaving ~/Downloads). P&L = the bot's own closed pnl_percentage (no re-pricing). WATCH LINE (frozen): N closed · days ·
+  WR · avg % · sum vs the review bar — REVIEW DUE at ≥ 40 closed fills on ≥ 15 days; avg < 0 at ≥ 20 closed fills → "⚠ FLAG FOR OPERATOR
+  REVIEW" (a flag, never an auto-off). LITE_ATR (observe-only): the same fills split by the stamped entry ATR (entry_atr_pct = the engine's
+  wilder_atr_pct on the signal window) ≤ 2.5 % vs > 2.5 % (frenzy_max_atr_pct at registration, FROZEN) — N · WR · avg · sum · days per side;
+  the study's ATR > 2.5 cohort was −0.20 %/trade (87 % P(mean < 0), not 95 %), so this is the line that says whether LITE should have FRENZY's
+  ATR cap. No ATR verdict is automatic — the split is read at the 40-fill review. Fills not in the export (or no ATR stamp) → "ATR ?" line.
+TRACKER 13 — LITE_GVOL24_LOW (2026-10-07, operator-approved observe line; reports/FRENZY_LITE_N4_REGIME_2026-10-07.md §6): every CLOSED
+  FRENZY_LITE fill gets the study's dashboard-style market volume (Σ EMA5 ÷ Σ SMA48 of base volume over the per-bar top-50 eligible pairs by
+  24 h quote volume, closed 5m bars) averaged over the 24 h before the START of its 4 h UTC window; split HIGH > 0.996 / LOW ≤ 0.996 (FROZEN).
+  Own write-once store reports/SCOUT_FRENZY_LITE_GVOL24.csv; public klines ≤ 60 s per run, stop on 418 / 429, unreadable → ≤ 3 runs.
+  FROZEN bars: REVIEW (propose arming as a sleeve on/off switch — operator decision) when LOW ≥ 30 fills on ≥ 15 days ∧ LOW avg ≤ HIGH avg
+  − 0.4 ∧ the LOW − HIGH day-block 95 % CI upper < 0; RETIRE when ≥ 30 LOW fills ∧ LOW − HIGH ≥ 0. Never changes trading.
 Rows are stored in reports/SCOUT_FRENZY_EXITS.csv (keyed opened_at + pair) so fills survive their export leaving ~/Downloads; a row is FINAL
 once its 12 h (and the re-entry's) have passed. 1m bars are coarser than the year studies' ticks (stated on the table).
 """
@@ -2704,6 +2718,323 @@ def _hyb_safe(now_ms, F, allr):
         return {}, ["", f"_HYBRID_EXIT unavailable this run ({str(ex)[:120]})._"]
 
 
+# ─────────────────────────── 🪶 tracker 12 (FRENZY_LITE watch + LITE_ATR, DECISION_LOG 243) ───────────────────────────
+LITE_CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_LITE.csv")
+LITE_ATR_CAP = 2.5          # FROZEN: frenzy_max_atr_pct at LITE's registration (2026-10-07) — the split never follows a later config change
+LITE_REVIEW_N, LITE_REVIEW_DAYS = 40, 15   # review due at ≥ 40 closed fills on ≥ 15 days
+LITE_FLAG_N = 20            # avg < 0 at ≥ 20 closed fills → flag for operator review (NOT an auto-off)
+LITE_COLS = ("k", "pair", "day", "closed", "actual", "atr", "hours", "above_streak", "vol_mult", "vs_vwap", "bar_ret", "gvol", "adx_delta", "di_spread")
+
+
+def _lite_fills():
+    """FRENZY_LITE LONG fills in the orders exports (newest export wins per opened_at + pair) → DataFrame in LITE_COLS (never raises on a bad file)."""
+    cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "entry_atr_pct", "entry_frenzy_hours",
+            "entry_frenzy_above_streak", "entry_frenzy_vol_mult", "entry_frenzy_vs_vwap_pct", "entry_frenzy_bar_ret_pct", "entry_frenzy_gvol",
+            "entry_frenzy_adx_delta", "entry_frenzy_di_spread")
+    fr = []
+    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
+        try:
+            d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols)
+        except Exception:
+            continue
+        if {"opened_at", "entry_strategy", "pair"} <= set(d.columns):
+            fr.append(d.assign(_m=os.path.getmtime(f)))
+    if not fr:
+        return pd.DataFrame(columns=list(LITE_COLS))
+    o = pd.concat(fr, ignore_index=True).sort_values("_m", kind="stable").reindex(columns=list(cols) + ["_m"])
+    o = o[(o.entry_strategy.astype(str) == "FRENZY_LITE") & (o.direction.astype(str) == "LONG")]
+    return lite_rows(o)
+
+
+def lite_rows(o):
+    """export rows (orders CSV columns) → tracker rows (pure; the newest row per opened_at + pair wins)."""
+    if not len(o):
+        return pd.DataFrame(columns=list(LITE_COLS))
+    k = o.opened_at.astype(str).str[:19]
+    num = lambda c: pd.to_numeric(o[c], errors="coerce") if c in o else np.nan
+    closed = o.status.astype(str).str.upper().eq("CLOSED") if "status" in o else False
+    out = pd.DataFrame(dict(k=k, pair=o.pair.astype(str), day=k.str[:10], closed=closed,
+                            actual=num("pnl_percentage").where(closed), atr=num("entry_atr_pct"), hours=num("entry_frenzy_hours"),
+                            above_streak=num("entry_frenzy_above_streak"), vol_mult=num("entry_frenzy_vol_mult"), vs_vwap=num("entry_frenzy_vs_vwap_pct"),
+                            bar_ret=num("entry_frenzy_bar_ret_pct"), gvol=num("entry_frenzy_gvol"), adx_delta=num("entry_frenzy_adx_delta"),
+                            di_spread=num("entry_frenzy_di_spread")))
+    return out.drop_duplicates(["k", "pair"], keep="last").reset_index(drop=True)
+
+
+def lite_merge(old, new):
+    """stored rows + this run's export rows → one row per opened_at + pair (the export wins: a fill that closed since updates its row)."""
+    parts = [x for x in (old, new) if x is not None and len(x)]
+    if not parts:
+        return pd.DataFrame(columns=list(LITE_COLS))
+    m = pd.concat(parts, ignore_index=True).reindex(columns=list(LITE_COLS))
+    m["closed"] = m.closed.astype(str).isin(_TRUE + ("true",))
+    return m.drop_duplicates(["k", "pair"], keep="last").sort_values("k").reset_index(drop=True)
+
+
+def lite_stats(w):
+    """closed fills with a P&L → dict(n, days, wr, avg, sum) (avg / wr None when empty)."""
+    a = pd.to_numeric(w.actual, errors="coerce") if len(w) else pd.Series(dtype=float)
+    g = w[a.notna()] if len(w) else w
+    a = a.dropna()
+    n = len(a)
+    return dict(n=n, days=(g.day.nunique() if n else 0), wr=((a > 0).mean() * 100 if n else None), avg=(a.mean() if n else None), sum=(a.sum() if n else 0.0))
+
+
+def lite_watch(w):
+    """the frozen FRENZY_LITE watch line on CLOSED fills → (state, text). state: flag (avg < 0 at ≥ 20 — operator review, never an
+    auto-off) · review (≥ 40 fills on ≥ 15 days) · collecting. A flag outranks a due review (both are said)."""
+    st = lite_stats(w)
+    n, nd, av = st["n"], st["days"], st["avg"]
+    txt = f"{n}/{LITE_REVIEW_N} closed · {nd}/{LITE_REVIEW_DAYS} days" + (f" · WR {st['wr']:.0f} % · avg {av:+.3f} % · sum {st['sum']:+.2f} %" if n else "")
+    due = n >= LITE_REVIEW_N and nd >= LITE_REVIEW_DAYS
+    if n >= LITE_FLAG_N and av is not None and av < 0:
+        return "flag", txt + (" · review due" if due else "")
+    return ("review" if due else "collecting"), txt
+
+
+def lite_atr_split(w):
+    """LITE_ATR: closed fills split by the stamped entry ATR vs the frozen cap → [(label, stats)] (≤ cap · > cap · ATR ? when unstamped)."""
+    atr = pd.to_numeric(w.atr, errors="coerce") if len(w) else pd.Series(dtype=float)
+    out = [(f"ATR ≤ {LITE_ATR_CAP:g} %", lite_stats(w[atr <= LITE_ATR_CAP])), (f"ATR > {LITE_ATR_CAP:g} %", lite_stats(w[atr > LITE_ATR_CAP]))]
+    unk = w[atr.isna()] if len(w) else w
+    if len(unk):
+        out.append(("ATR ? (no stamp)", lite_stats(unk)))
+    return out
+
+
+def lite_lines(w):
+    f = lambda v, d=3: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.{d}f}"
+    st, tx = lite_watch(w)
+    L = ["## 🪶 FRENZY_LITE (DECISION_LOG 243 — declared exception, ARMED, no ATR cap, NO automatic off)", "",
+         f"**FRENZY_LITE watch:** " + {"flag": "⚠ FLAG FOR OPERATOR REVIEW (avg < 0 at ≥ 20 closed fills — not an auto-off)",
+                                       "review": "📋 REVIEW DUE", "collecting": "⏳ collecting"}[st] + f" ({tx}). "
+         f"Bar: review at ≥ {LITE_REVIEW_N} closed fills on ≥ {LITE_REVIEW_DAYS} days; study (HOLD_LOWVOL_EARLY, STACK − F1): 724 · +0.163 %/trade, "
+         "day CI [−0.107, +0.421]; REACHABLE by the engine ≈ 696 fills at +0.134 %/trade (the FRENZY shortlist misses 21 fills avg +1.49 %, "
+         "the pair-level stretch id refuses 8 re-anchors avg −1.23 %) BEFORE the 30–50 % haircut (DECISION_LOG 243).", "",
+         f"**LITE_ATR (observe-only — stamped entry ATR vs {LITE_ATR_CAP:g} %, frozen; study: ATR > 2.5 −0.20 %/trade, not proven):**", "",
+         "| ATR at entry | N | Days | WR | Avg % | Sum % |", "|---|---|---|---|---|---|"]
+    for lab, s_ in lite_atr_split(w):
+        wr = "–" if s_["wr"] is None else f"{s_['wr']:.0f} %"
+        L.append(f"| {lab} | {s_['n']} | {s_['days']} | {wr} | {f(s_['avg'])} | {f(s_['sum'], 2)} |")
+    op = int((~w.closed.astype(bool)).sum()) if len(w) else 0
+    if op:
+        L.append(f"_{op} open FRENZY_LITE fill(s) not counted yet._")
+    return L + [""]
+
+
+def lite_run(now_ms=None):
+    """tracker 12: merge the exports into the store, save (validated: unique keys), → markdown lines."""
+    old = _load_csv(LITE_CSV, ["k", "pair"]) if os.path.exists(LITE_CSV) else pd.DataFrame(columns=list(LITE_COLS))
+    allr = lite_merge(old, _lite_fills())
+    if len(allr):
+        if allr.duplicated(["k", "pair"]).any():
+            raise ValueError("duplicate LITE rows")
+        _save_csv(allr, LITE_CSV)
+    if not len(allr):
+        return ["## 🪶 FRENZY_LITE (DECISION_LOG 243)", "", "No FRENZY_LITE fill in the exports yet (watch: review at ≥ 40 fills on ≥ 15 days; "
+                "avg < 0 at ≥ 20 → operator review; LITE_ATR split ≤ / > 2.5 %).", ""]
+    return lite_lines(allr)
+
+
+# ─────────────────────────── 🪶 tracker 13 (LITE_GVOL24_LOW, operator-approved observe line) ───────────────────────────
+LG_CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_LITE_GVOL24.csv")   # write-once per fill (final rows never recomputed)
+LG_CUT = 0.996              # FROZEN (reports/FRENZY_LITE_N4_REGIME_2026-10-07.md §6: the median of the windows with fills) — never re-fit
+LG_WIN_MS = 4 * H           # the fill's 4 h UTC window; the reading is taken at its START
+LG_TIME_S = 60              # polite: ≤ 60 s of public-kline reads per run
+LG_TRIES = 3                # unreadable → retried next run, at most this many runs, then stored as 'unreadable'
+LG_PRESEL = 80              # pre-selection: the 80 eligible pairs with the largest 48 h quote volume before W (see lite_gv24_run)
+LG_REVIEW_N, LG_REVIEW_DAYS, LG_GAP = 30, 15, 0.4
+LG_YEAR = ("study (§6, 724 N=12 fills): HIGH > 0.996 373 · +0.532 %/fill · WR 59.5 % vs LOW ≤ 0.996 351 · −0.230 · WR 51.6 % "
+           "(both halves: Jan–Apr +0.82, May–Oct +0.72)")
+
+
+class _RateLimited(Exception):
+    pass
+
+
+class _Budget(Exception):
+    pass
+
+
+def gvdash_at(bars_by_pair, onboard, W):
+    """the study's dashboard-style market volume averaged over the 24 h before W (scratchpad/manualall/gvolyear.py → lite_regime/macro.py):
+    per CLOSED 5m bar t: universe = pairs with that bar, a full 288-bar quote-volume history (vol24) and onboard < t + 5 min − 90 d; top 50
+    by vol24; of those, the ones with a 48-bar base-volume mean > 0 (≥ 30 needed) → Σ EMA5(base vol) ÷ Σ SMA48(base vol) (EMA span 5,
+    adjust False, over the fetched history). The value at W = the mean of the per-bar ratios of the 288 bars opening W − 24 h … W − 5 min
+    (≥ 200 readable, else None). bars_by_pair = {pair: [[open_ms, base_vol, quote_vol], …]} ascending; onboard = {pair: ms or 0}. Pure."""
+    try:
+        opens = list(range(int(W) - 288 * BAR, int(W), BAR))
+        cols = {}
+        for p, rows in (bars_by_pair or {}).items():
+            d = pd.DataFrame(rows, columns=["t", "v", "q"]).drop_duplicates("t").set_index("t").sort_index()
+            if not len(d):
+                continue
+            d = d.reindex(range(int(d.index[0]), int(W), BAR))   # missing bars stay NaN (as the study's matrix)
+            cols[p] = pd.DataFrame(dict(v=d.v.astype(float), q=d.q.astype(float),
+                                        a48=d.v.astype(float).rolling(48, min_periods=48).mean(),
+                                        e5=d.v.astype(float).ewm(span=5, adjust=False).mean(),
+                                        v24=d.q.astype(float).rolling(288, min_periods=288).sum()))
+        out = []
+        for t in opens:
+            cand = []
+            for p, c in cols.items():
+                if t not in c.index:
+                    continue
+                r = c.loc[t]
+                ob = int((onboard or {}).get(p) or 0)
+                if np.isfinite(r.v24) and np.isfinite(r.v) and (ob == 0 or ob < t + BAR - 90 * 86_400_000):
+                    cand.append((float(r.v24), p))
+            top = [p for _, p in sorted(cand, reverse=True)[:50]]
+            ok = [p for p in top if np.isfinite(cols[p].loc[t, "a48"]) and cols[p].loc[t, "a48"] > 0]
+            if len(ok) < 30:
+                continue
+            out.append(sum(float(cols[p].loc[t, "e5"]) for p in ok) / sum(float(cols[p].loc[t, "a48"]) for p in ok))
+        return (float(np.mean(out)), len(out)) if len(out) >= 200 else (None, len(out))
+    except Exception:
+        return None, 0
+
+
+def lite_gv24_stats(w):
+    """→ dict per side (n, days, wr, avg) + the day-block 95 % CI of LOW − HIGH (resample DAYS; None when < 3 days or a side is empty)."""
+    w = w[pd.to_numeric(w.gv24, errors="coerce").notna() & pd.to_numeric(w.actual, errors="coerce").notna()].copy()
+    w["gv24"] = pd.to_numeric(w.gv24); w["actual"] = pd.to_numeric(w.actual); w["low"] = w.gv24 <= LG_CUT
+    side = lambda g: dict(n=len(g), days=g.day.nunique(), wr=((g.actual > 0).mean() * 100 if len(g) else None), avg=(g.actual.mean() if len(g) else None))
+    lo, hi = side(w[w.low]), side(w[~w.low])
+    ci = None
+    days = w.day.unique()
+    if lo["n"] and hi["n"] and len(days) >= 3:
+        rng = np.random.default_rng(7); by = {d: g for d, g in w.groupby("day")}; diffs = []
+        for _ in range(3000):
+            g = pd.concat([by[d] for d in rng.choice(days, len(days))])
+            if g.low.any() and (~g.low).any():
+                diffs.append(g[g.low].actual.mean() - g[~g.low].actual.mean())
+        if len(diffs) >= 100:
+            ci = tuple(np.percentile(diffs, [2.5, 97.5]))
+    return lo, hi, ci
+
+
+def lite_gv24_check(w):
+    """the frozen bars → (state, text). review: LOW ≥ 30 fills on ≥ 15 days ∧ LOW avg ≤ HIGH avg − 0.4 ∧ LOW − HIGH day CI upper < 0 →
+    propose arming as a sleeve on/off switch (operator decision) · retire: ≥ 30 LOW fills ∧ LOW − HIGH ≥ 0 · else collecting."""
+    lo, hi, ci = lite_gv24_stats(w)
+    f = lambda v: "–" if v is None else f"{v:+.3f}"
+    gap = (lo["avg"] - hi["avg"]) if (lo["avg"] is not None and hi["avg"] is not None) else None
+    txt = (f"LOW {lo['n']}/{LG_REVIEW_N} fills · {lo['days']}/{LG_REVIEW_DAYS} days · avg {f(lo['avg'])} vs HIGH {hi['n']} · avg {f(hi['avg'])}"
+           + (f" · LOW − HIGH {gap:+.3f}" if gap is not None else "") + (f" · day CI [{ci[0]:+.2f}, {ci[1]:+.2f}]" if ci else ""))
+    if (lo["n"] >= LG_REVIEW_N and lo["days"] >= LG_REVIEW_DAYS and gap is not None and gap <= -LG_GAP and ci and ci[1] < 0):
+        return "review", txt
+    if lo["n"] >= LG_REVIEW_N and gap is not None and gap >= 0:
+        return "retire", txt
+    return "collecting", txt
+
+
+def _lg_get(url, deadline):
+    if time.time() > deadline:
+        raise _Budget("budget")
+    try:
+        return json.loads(urllib.request.urlopen(url, timeout=20).read())
+    except urllib.error.HTTPError as ex:
+        if ex.code in (418, 429):
+            raise _RateLimited(str(ex.code))
+        raise
+
+
+def _lg_window(W, deadline):
+    """public klines → (gv24, n bars) for the window start W (raises _RateLimited / _Budget; other trouble — a socket timeout included —
+    raises too and the caller stores (None, 0) = one try used)."""
+    from concurrent.futures import ThreadPoolExecutor
+    info = _lg_get("https://fapi.binance.com/fapi/v1/exchangeInfo", deadline)
+    elig = {x["symbol"]: int(x.get("onboardDate") or 0) for x in info.get("symbols", [])
+            if x.get("contractType") == "PERPETUAL" and x.get("quoteAsset") == "USDT" and x.get("underlyingType") == "COIN"
+            and not any(t == "Alpha" for t in (x.get("underlyingSubType") or []))
+            and (int(x.get("onboardDate") or 0) == 0 or int(x.get("onboardDate") or 0) < W - 90 * 86_400_000)}
+
+    def h48(sym):   # one symbol's trouble (a 400 on a settling contract, a timeout) = that symbol unread; budget / rate limit propagate
+        q = urllib.parse.urlencode(dict(symbol=sym, interval="1h", endTime=int(W) - 1, limit=48))
+        try:
+            r = _lg_get(f"https://fapi.binance.com/fapi/v1/klines?{q}", deadline)
+        except (_RateLimited, _Budget):
+            raise
+        except Exception:
+            return sym, 0.0
+        return sym, sum(float(x[7]) for x in r) if r else 0.0
+
+    def k5(sym):
+        q = urllib.parse.urlencode(dict(symbol=sym, interval="5m", endTime=int(W) - 1, limit=1500))
+        try:
+            r = _lg_get(f"https://fapi.binance.com/fapi/v1/klines?{q}", deadline)
+        except (_RateLimited, _Budget):
+            raise
+        except Exception:
+            return sym, []
+        return sym, [[int(x[0]), float(x[5]), float(x[7])] for x in r if int(x[0]) + BAR <= W]
+    with ThreadPoolExecutor(8) as ex:
+        vol = dict(ex.map(h48, sorted(elig)))
+        pre = [p for p, _ in sorted(vol.items(), key=lambda kv: -kv[1])[:LG_PRESEL]]
+        bars = dict(ex.map(k5, pre))
+    return gvdash_at(bars, {p: elig.get(p, 0) for p in bars}, W)
+
+
+def lite_gv24_run(now_ms=None):
+    """tracker 13: every CLOSED FRENZY_LITE fill (tracker 12's store) gets its 24 h dashboard market volume at the start of its 4 h UTC
+    window, once (write-once rows; unreadable → retried ≤ 3 runs). Public klines, ≤ 60 s per run, stops on HTTP 418 / 429. APPROXIMATION
+    (stated): the per-bar top-50 is chosen inside the 80 eligible pairs with the largest 48 h quote volume before W (the study ranked the
+    whole cached universe) — a pair outside the top 80 by 48 h volume reaching the per-bar top 50 is rare. Observe-only: never changes trading."""
+    now_ms = int(now_ms or time.time() * 1000)
+    lite = _load_csv(LITE_CSV, ["k", "pair"]) if os.path.exists(LITE_CSV) else pd.DataFrame(columns=list(LITE_COLS))
+    old = _load_csv(LG_CSV, ["k", "pair", "state"]) if os.path.exists(LG_CSV) else pd.DataFrame()
+    rows = {(str(r.k), str(r.pair)): r._asdict() for r in old.itertuples(index=False)} if len(old) else {}
+    deadline = time.time() + LG_TIME_S; cache = {}; stopped = None
+    if len(lite):
+        lite = lite[lite.closed.astype(str).isin(_TRUE + ("true",)) & pd.to_numeric(lite.actual, errors="coerce").notna()]
+    for r in lite.itertuples(index=False):
+        key = (str(r.k), str(r.pair)); cur = rows.get(key)
+        if cur and str(cur.get("state")) in ("ok", "unreadable"):
+            continue   # write-once
+        W = int(pd.Timestamp(str(r.k), tz="UTC").value // 1_000_000) // LG_WIN_MS * LG_WIN_MS
+        tries = int(float((cur or {}).get("tries") or 0))
+        if stopped is None and W not in cache:
+            try:
+                cache[W] = _lg_window(W, deadline)
+            except _RateLimited as ex:
+                stopped = f"rate limited (HTTP {ex})"
+            except _Budget:
+                stopped = "60 s budget used"
+            except Exception:
+                cache[W] = (None, 0)
+        if W not in cache:
+            continue   # not tried this run (budget / rate limit) — no try counted
+        gv, nb = cache[W]; tries += 1
+        st = "ok" if gv is not None else ("unreadable" if tries >= LG_TRIES else "pending")
+        rows[key] = dict(k=key[0], pair=key[1], day=str(r.k)[:10], window_start=pd.Timestamp(W, unit="ms").strftime("%Y-%m-%dT%H:%M"),
+                         gv24=gv, bars=nb, tries=tries, state=st, actual=float(r.actual))
+    allr = pd.DataFrame(list(rows.values()))
+    if len(allr):
+        if allr.duplicated(["k", "pair"]).any():
+            raise ValueError("duplicate LITE_GVOL24 rows")
+        _save_csv(allr.sort_values("k"), LG_CSV)
+    L = [f"**LITE_GVOL24_LOW (observe-only — the 24 h dashboard market volume at the start of the fill's 4 h UTC window, split at {LG_CUT:g} frozen; "
+         f"{LG_YEAR}):**", ""]
+    ok = allr[allr.state.astype(str) == "ok"] if len(allr) else allr
+    if not len(ok):
+        L.append("No closed FRENZY_LITE fill with a reading yet.")
+    else:
+        lo, hi, _ = lite_gv24_stats(ok)
+        fm = lambda v: "–" if v is None else f"{v:+.3f}"
+        fw = lambda v: "–" if v is None else f"{v:.0f} %"
+        L += ["| 24 h market volume | N | Days | WR | Avg % |", "|---|---|---|---|---|",
+              f"| HIGH > {LG_CUT:g} | {hi['n']} | {hi['days']} | {fw(hi['wr'])} | {fm(hi['avg'])} |",
+              f"| LOW ≤ {LG_CUT:g} | {lo['n']} | {lo['days']} | {fw(lo['wr'])} | {fm(lo['avg'])} |"]
+        st, tx = lite_gv24_check(ok)
+        L += ["", "**Status:** " + {"review": "📋 REVIEW — propose arming as a sleeve on/off switch (operator decision)",
+                                    "retire": "❌ RETIRE (LOW not worse than HIGH at ≥ 30 LOW fills)", "collecting": "⏳ collecting"}[st] + f" ({tx})"]
+    pend = int((allr.state.astype(str) == "pending").sum()) if len(allr) else 0
+    unr = int((allr.state.astype(str) == "unreadable").sum()) if len(allr) else 0
+    if pend or unr or stopped:
+        L.append(f"_{pend} pending · {unr} unreadable after {LG_TRIES} tries" + (f" · stopped this run: {stopped}" if stopped else "") + "._")
+    return L + [""]
+
+
 def _extras(now_ms, th, F, J, allr):
     """trackers 7 – 10 after the exit table, each in its own try/except (one never breaks another or the scout)."""
     out = _gc_safe(now_ms, th, F, J, allr)
@@ -2720,6 +3051,14 @@ def _extras(now_ms, th, F, J, allr):
         out += ons_run(now_ms, th, Je, F)
     except Exception as ex:
         out += ["## ⚡ ON_SCALP", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
+    try:   # 🪶 Oct-7 (243) FRENZY_LITE watch + LITE_ATR
+        out += lite_run(now_ms)
+    except Exception as ex:
+        out += ["## 🪶 FRENZY_LITE", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
+    try:   # 🪶 Oct-7 tracker 13 LITE_GVOL24_LOW (operator-approved observe line)
+        out += lite_gv24_run(now_ms)
+    except Exception as ex:
+        out += [f"_LITE_GVOL24_LOW unavailable this run ({str(ex)[:120]})._", ""]
     return out
 
 
@@ -2987,6 +3326,41 @@ def selftest():
             chk(False, f"onscalp_validate must raise: {why}")
         except ValueError:
             chk(True, why)
+    # 🪶 FRENZY_LITE watch + LITE_ATR (243)
+    ex = pd.DataFrame(dict(opened_at=["2026-10-08 01:00:00.123", "2026-10-08 02:00:00", "2026-10-08 02:00:00", "2026-10-09 03:00:00"],
+                           pair=["AUSDT", "BUSDT", "BUSDT", "CUSDT"], direction="LONG", entry_strategy="FRENZY_LITE",
+                           status=["CLOSED", "OPEN", "CLOSED", "CLOSED"], pnl_percentage=[2.0, None, -3.0, 1.0], entry_atr_pct=[1.2, 3.0, 3.0, None]))
+    lr = lite_rows(ex)
+    chk(len(lr) == 3 and list(lr.k) == ["2026-10-08 01:00:00", "2026-10-08 02:00:00", "2026-10-09 03:00:00"], "one row per opened_at + pair (the later export row wins)")
+    chk(bool(lr.closed.iloc[1]) and lr.actual.iloc[1] == -3.0, "an OPEN fill that closed in a newer export updates its row")
+    sp = dict(lite_atr_split(lr))
+    chk(sp["ATR ≤ 2.5 %"]["n"] == 1 and sp["ATR > 2.5 %"]["n"] == 1 and sp["ATR ? (no stamp)"]["n"] == 1, "ATR split ≤ / > 2.5 + unstamped on its own line")
+    chk(abs(lite_stats(lr)["avg"]) < 1e-9 and lite_stats(lr)["days"] == 2 and abs(lite_stats(lr)["sum"]) < 1e-9, "N / days / avg / sum on closed fills")
+    chk(len(lite_merge(lr.assign(closed=lr.closed.astype(str)), lr)) == 3, "store + export merge dedupes by key (stored booleans read back as text)")
+    mk = lambda n, d, v: pd.DataFrame(dict(k=[f"2026-10-{8 + i % d:02d}T{i % 24:02d}:00:00" for i in range(n)], pair=[f"P{i}" for i in range(n)],
+                                           day=[f"d{i % d}" for i in range(n)], closed=True, actual=v, atr=1.0))
+    chk(lite_watch(mk(19, 10, -0.5))[0] == "collecting", "avg < 0 at 19 fills → still collecting")
+    chk(lite_watch(mk(20, 10, -0.5))[0] == "flag", "avg < 0 at ≥ 20 fills → flag for operator review (never an auto-off)")
+    chk(lite_watch(mk(40, 14, 0.3))[0] == "collecting" and lite_watch(mk(40, 15, 0.3))[0] == "review", "review due at ≥ 40 fills on ≥ 15 days")
+    chk(lite_watch(mk(40, 15, -0.1))[0] == "flag" and "review due" in lite_watch(mk(40, 15, -0.1))[1], "a flag outranks a due review (both said)")
+    chk(any("LITE_ATR" in x for x in lite_lines(lr)) and any("open FRENZY_LITE" in x for x in lite_lines(lr.assign(closed=[True, True, False]))),
+        "LITE lines render (split table, open fills noted)")
+    # 🪶 tracker 13 LITE_GVOL24_LOW
+    W0 = 1_790_000_000_000 // LG_WIN_MS * LG_WIN_MS
+    syn = {f"P{j}USDT": [[W0 - (600 - i) * BAR, 100.0 + j, (100.0 + j) * 10] for i in range(600)] for j in range(40)}
+    gv, nb = gvdash_at(syn, {}, W0)
+    chk(gv is not None and abs(gv - 1.0) < 1e-9 and nb == 288, "flat volume → dashboard ratio 1.0 on all 288 bars")
+    syn2 = {k: [r if r[0] < W0 - 2 * H else [r[0], r[1] * 3, r[2] * 3] for r in v] for k, v in syn.items()}
+    chk(gvdash_at(syn2, {}, W0)[0] > 1.05, "a volume surge in the last 2 h lifts the 24 h mean")
+    chk(gvdash_at({k: v for k, v in list(syn.items())[:29]}, {}, W0)[0] is None, "< 30 readable pairs → unreadable")
+    chk(gvdash_at(syn, {k: W0 - 10 * 86_400_000 for k in syn}, W0)[0] is None, "pairs listed < 90 days → not in the universe")
+    mkg = lambda lo_v, hi_v, n=32, d=16: pd.DataFrame(dict(day=[f"d{i % d}" for i in range(2 * n)], gv24=[0.9] * n + [1.1] * n,
+                                                           actual=[lo_v + (0.3 if i % 2 else -0.3) for i in range(n)] + [hi_v + (0.3 if i % 2 else -0.3) for i in range(n)]))
+    chk(lite_gv24_check(mkg(-0.3, 0.5))[0] == "review", "LOW clearly worse (≥ 30 on ≥ 15 days, gap ≤ −0.4, CI < 0) → review")
+    chk(lite_gv24_check(mkg(0.3, 0.1))[0] == "retire", "LOW not worse at ≥ 30 LOW fills → retire")
+    chk(lite_gv24_check(mkg(-0.3, 0.5, n=20))[0] == "collecting", "< 30 LOW fills → collecting")
+    chk(lite_gv24_check(mkg(-0.3, 0.5, d=10))[0] == "collecting", "< 15 days → collecting (no review)")
+    chk(lite_gv24_check(mkg(0.0, 0.2))[0] == "collecting", "gap −0.2 (not ≤ −0.4, not ≥ 0) → collecting")
     print(f"selftest OK ({ok} checks)")
 
 

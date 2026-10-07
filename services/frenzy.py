@@ -251,6 +251,119 @@ def frenzy_wide_hold_green_block(ep, code, th) -> Optional[str]:
         return "FRENZY_WIDE_RECLAIM"
 
 
+def frenzy_gvol_block(gv, th) -> Optional[str]:
+    """🌊 The frenzy_gvol_max gate as a pure rule (DECISION_LOG 194; shared by FRENZY_LONG / WIDE / LITE since 243): None = pass ·
+    "GVOL_UNREAD" (gate on, reading missing / not a number / NaN / ±inf — fail-closed) · "GVOL_HIGH" (reading ≥ frenzy_gvol_max).
+    Gate off (≤ 0) → None (the reading is then only stamped)."""
+    import math
+    try:
+        mx = _f(th, 'frenzy_gvol_max', 0.0)
+        if mx <= 0:
+            return None
+        if gv is None or not math.isfinite(float(gv)):
+            return "GVOL_UNREAD"
+        return "GVOL_HIGH" if float(gv) >= mx else None
+    except (TypeError, ValueError):
+        return "GVOL_UNREAD"
+
+
+# ── 🔥🪶 Oct-7 FRENZY_LITE (DECISION_LOG 243 — operator ARMED as a DECLARED EXCEPTION below the locked gates) ──────────────────────────
+# FRENZY without the ≥ frenzy_state_vol_mult setup volume, limited to the first frenzy_lite_max_hours of the episode: a verified, flagged
+# episode whose price has closed at / above the spike VWAP for ≥ frenzy_lite_min_above_closes 5m closes in a row while the last-hour
+# volume is BELOW frenzy_state_vol_mult (FRENZY would say FRENZY_VOL_FADED), frenzy_min_hours ≤ hours ≤ frenzy_lite_max_hours. ONE entry
+# per above-VWAP stretch (stretch id = open ms of the first bar of the current above streak), JUDGED ONCE: the first just-closed bar that
+# meets the SIGNAL conditions (flagged, not in state, streak, volume < setup ×, hours window, 24 h volume) is the stretch's only chance —
+# refused by ANY later filter (green candle, market volume, dislocation, pair-day cap) or open-path refusal (slots, pair held, late, open
+# refused / failed) = the stretch is done (engine parity with the backtest cohort, reports/FRENZY_LITE_ABOVE_CLOSES_6_VS_12_2026-10-07.md:
+# retrying later bars until a fill turns +0.163 %/trade into −0.005 on 1,992 fills). Only a 24 h volume refusal (a pre-signal condition) and
+# a crash in the LITE path itself leave the stretch open. NO ATR filter (ATR only stamped — the scout's LITE_ATR tracker reads it). Evidence: reports/HOLD_LOWVOL_EARLY_FRENZY_FILTERS_2026-10-06.md
+# "STACK minus F1": 724 fills, +0.163 %/trade at live timing, day CI [−0.107, +0.421], halves +0.156 / +0.168 → UNPROVEN; FRENZY lock exit
+# (HOLD_LOWVOL_EARLY_EXITS_ROUND2_2026-10-06.md). REACHABLE expectation (243 review): the engine's FRENZY shortlist (|24 h change| or range ≥
+# frenzy_shortlist_change_pct, ≤ 25 pairs) cannot reach 21 of the 724 study fills (avg +1.49 %, ~26 % of the P&L) and the engine-pair-level
+# stretch id refuses 8 re-anchor fills (avg −1.23 %) → reachable ≈ 696 fills at +0.134 %/trade BEFORE the 30–50 % in-sample haircut. No automatic off — review at ≥ 40 fills on ≥ 15 days; avg < 0 at ≥ 20 → operator review.
+FRENZY_LITE_READY = "FRENZY_LITE_READY"
+FRENZY_LITE_NEED_DEFAULT, FRENZY_LITE_HMAX_DEFAULT = 12, 16.75
+
+
+def frenzy_lite_need(th) -> int:
+    """🪶 the closes-above requirement actually used: frenzy_lite_min_above_closes, ≤ 0 / unreadable → the shipped 12 (243 review)."""
+    try:
+        n = int(round(float(getattr(th, 'frenzy_lite_min_above_closes', FRENZY_LITE_NEED_DEFAULT))))
+        return n if n >= 1 else FRENZY_LITE_NEED_DEFAULT
+    except (TypeError, ValueError):
+        return FRENZY_LITE_NEED_DEFAULT
+
+
+def frenzy_lite_hmax(th) -> float:
+    """🪶 the episode-age window end actually used: frenzy_lite_max_hours, ≤ frenzy_min_hours / unreadable → the shipped 16.75 (243 review)."""
+    try:
+        h = float(getattr(th, 'frenzy_lite_max_hours', FRENZY_LITE_HMAX_DEFAULT))
+        return h if h > _f(th, 'frenzy_min_hours', 2.0) else FRENZY_LITE_HMAX_DEFAULT
+    except (TypeError, ValueError):
+        return FRENZY_LITE_HMAX_DEFAULT
+FRENZY_LITE_COUNTED = ("FRENZY_LITE_VOL24_LOW", "FRENZY_LITE_GREEN_BAR")   # signal-level refusals of a LITE candidate bar → filter-block counters
+FRENZY_LITE_JUDGES = (FRENZY_LITE_READY, "FRENZY_LITE_GREEN_BAR")   # the bar met the SIGNAL → the stretch is judged NOW, whatever follows (VOL24_LOW is not one)
+FRENZY_LITE_SHOWN = (FRENZY_LITE_READY, "FRENZY_LITE_STRETCH_DONE", "FRENZY_LITE_TOO_EARLY", "FRENZY_LITE_NO_DATA") + FRENZY_LITE_COUNTED   # codes whose text replaces FRENZY's on the monitor
+
+
+def frenzy_lite_stretch_id(ep) -> Optional[int]:
+    """🪶 The current above-VWAP stretch's id = open ms of its FIRST bar: last_bar_ts − (above_streak − 1) × 5 min. None when the price is
+    not above the VWAP on the last bar (streak < 1) or the episode is unreadable."""
+    try:
+        s = int((ep or {}).get('above_streak') or 0); last = (ep or {}).get('last_bar_ts')
+        if s < 1 or last is None:
+            return None
+        return int(last) - (s - 1) * BAR_MS
+    except (TypeError, ValueError):
+        return None
+
+
+def frenzy_lite_status(ep, th, volume_24h, judged_stretch_ms=None, judged_note=None) -> Tuple[bool, str, str]:
+    """🪶 (ready, code, text) for FRENZY_LITE on the just-closed bar of a flagged pair. judged_stretch_ms = the last stretch id this pair
+    already JUDGED (its first signal bar was evaluated — filled or refused; memory + BotState + DB; None = none); judged_note = how that bar
+    ended ("13:40 refused: GREEN_BAR"), shown in the STRETCH_DONE text. Codes in FRENZY_LITE_JUDGES (READY, GREEN_BAR) mean the bar met the
+    signal → the caller marks the stretch judged BEFORE any later filter or the open runs. Fail-closed: any unreadable input refuses. The
+    market-volume gate, slots, the pair-day cap, an open position on the pair and the dislocation guard are judged by the engine at the open
+    (same order as FRENZY). NO ATR check — by design (DECISION_LOG 243)."""
+    try:
+        if not bool(getattr(th, 'frenzy_lite_enabled', False)):
+            return False, "FRENZY_LITE_OFF", "LITE off"
+        if not frenzy_flagged(ep, th):
+            return False, "FRENZY_LITE_NOT_FLAGGED", "LITE: not a verified flag"
+        if ep.get('in_state'):
+            return False, "FRENZY_LITE_IN_STATE", "LITE: FRENZY setup ON (FRENZY / WIDE territory)"
+        need = frenzy_lite_need(th)
+        streak = int(ep.get('above_streak') or 0)
+        vm, hrs = ep.get('vol_mult'), ep.get('hours')
+        tail = f"vol {float(vm):.0f}× · {float(hrs or 0):.1f} h" if vm is not None else f"vol ? · {float(hrs or 0):.1f} h"
+        if streak < need:
+            return False, "FRENZY_LITE_NOT_ABOVE", f"LITE: {streak} of {need} closes above its average"
+        vneed = _f(th, 'frenzy_state_vol_mult', 100.0)
+        if vm is None or float(vm) >= vneed:
+            return False, "FRENZY_LITE_VOL_HIGH", (f"LITE: volume {float(vm):.0f}× ≥ {vneed:.0f}× (FRENZY territory)" if vm is not None else "LITE: volume unreadable")
+        if hrs is None:
+            return False, "FRENZY_LITE_NO_DATA", "LITE: episode age unreadable"
+        hmin, hmax = _f(th, 'frenzy_min_hours', 2.0), frenzy_lite_hmax(th)
+        if float(hrs) < hmin:
+            return False, "FRENZY_LITE_TOO_EARLY", f"LITE: {float(hrs):.1f} h after the spike < {hmin:g} h · vol {float(vm):.0f}×"
+        if float(hrs) > hmax:
+            return False, "FRENZY_LITE_TOO_LATE", f"LITE: window over ({float(hrs):.1f} h > {hmax:g} h)"
+        sid = frenzy_lite_stretch_id(ep)
+        if sid is None:
+            return False, "FRENZY_LITE_NO_DATA", "LITE: stretch unreadable"
+        if judged_stretch_ms is not None and int(judged_stretch_ms) >= sid:
+            return False, "FRENZY_LITE_STRETCH_DONE", (f"LITE: stretch judged at {judged_note} · {tail}" if judged_note else f"LITE: stretch judged · {tail}")
+        vmin = _f(th, 'frenzy_min_volume_usd', 20e6)
+        if volume_24h is None or float(volume_24h) < vmin:
+            return False, "FRENZY_LITE_VOL24_LOW", f"LITE: 24 h volume ${(volume_24h or 0) / 1e6:.0f}M < ${vmin / 1e6:.0f}M"
+        if bool(getattr(th, 'frenzy_long_skip_green_bar', True)) and not ep.get('bar_red'):   # fail-closed: an unreadable bar is not red
+            _br = ep.get('bar_ret_pct')
+            return False, "FRENZY_LITE_GREEN_BAR", (f"LITE: green candle ({_br:+.3f}%) · {tail}" if _br is not None else "LITE: signal candle unreadable")
+        return True, FRENZY_LITE_READY, f"LITE: held above · {tail}"
+    except (TypeError, ValueError, AttributeError):
+        return False, "FRENZY_LITE_NO_DATA", "LITE: unreadable"
+
+
 FRENZY_CATCHUP_OK, FRENZY_CATCHUP_STALE = "FRENZY_CATCHUP", "FRENZY_CATCHUP_STALE"
 
 

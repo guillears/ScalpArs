@@ -5895,3 +5895,19 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   ship-with-fixes, all 12 applied. Tests tests/test_scout_gvol.py (32). Same day, research (no change shipped): gvol FORMULA comparison
   (keep the current FRENZY formula — dashboard Vol / dollar / median versions are not better), rising-volume pre-ON entry (fails, 0/20),
   will-turn-ON separator (fails out of sample: ON is predictable AUC 0.72, profit is not AUC 0.49), operator manual entries vs bot.
+- (243) 2026-10-07 🪶 **FRENZY_LITE sleeve — ARMED as an operator DECLARED EXCEPTION** (operator: "implementarlo armed con 1× y 0,2… exit de
+  frenzy", "sin el filtro de ATR, que quede en scout", "no hagas desactivación automática"). Origin: the manual-trade study's only lead
+  (HOLD_LOWVOL_EARLY) → tick check (+0.115, CI spans 0) → exits round 2 (FRENZY lock best of 47; armed-at-+1 / tight stops worse: winners
+  dip −1…−2 before running) → FRENZY filters on that universe (stack minus ATR: 724 · +0.163 %/trade live timing, CI [−0.107, +0.421], halves
+  +0.156/+0.168, shuffled p > family bar → FAILS the locked bars; hence a declared exception at probe size). Rule: flagged ∧ not in state ∧
+  ≥ 12 closes ≥ spike VWAP ∧ vol < 100× ∧ 2–16.75 h; stretch judged ONCE on its first signal bar (code first retried until a fill → the
+  backtest showed −0.005 on 1,992 fills; fixed before ship + first-bar guarantee on cold start); green-bar / gvol < 1.0 / dislocation /
+  pair-day cap; NO ATR cap (ATR > 2.5 adds ≈ 0 inside the stack; split watched by the scout); FRENZY lock + 12 h; Inv 1× · Lev 0.2 · 2
+  slots. Same day: 4/6/8 vs 12 closes (reports/FRENZY_LITE_ABOVE_CLOSES_6_VS_12_2026-10-07.md) → keep 12 (unconfirmed stretches −1.05…
+  −1.44); N=4 macro study (FRENZY_LITE_N4_REGIME) → no macro cause; side finding 24 h dashboard gvol (high +0.53 vs low −0.23) → scout
+  observe line LITE_GVOL24_LOW, operator chose observe (A) over arming. Latency study (FRENZY_ENTRY_LATENCY_STUDY_2026-10-07): speed not
+  worth building (flat 1–13 s; live ≈ 7.5 s) — the close-vs-live gap was the exit-slip assumption. Deep review: engine parity 2,218 / 2,239
+  study bars judged (0 engine-only; 21 re-anchor bars refused, stricter); the FRENZY shortlist cannot reach 21 fills (+1.49 avg, ~26 % of
+  P&L) → reachable ≈ 696 · +0.134 before haircut; operator: keep the shortlist. One position per pair kept, conflicts counted
+  (FRENZY_PAIR_HELD_BY_LITE). Watchlist, no auto-off: review at 40 fills / 15 days; flag avg < 0 at 20. Dual review: ship-with-fixes, all
+  applied. Tests tests/test_frenzy_lite.py.

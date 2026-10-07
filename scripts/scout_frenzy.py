@@ -289,7 +289,7 @@ def scan(EX, retry, cfg, last_closed, alts, btc_full, now_ms):
             bot_fills = [x for x in fills if x != "MANUAL"]
             want_wide = sleeve == "WIDE"
             mine = [x for x in bot_fills if x == ("FRENZY_WIDE" if want_wide else "FRENZY_LONG")] + \
-                   [x for x in gates if (x.startswith("FRENZY_WIDE") if want_wide else not x.startswith("FRENZY_WIDE"))]
+                   [x for x in gates if (x.startswith("FRENZY_WIDE") if want_wide else not x.startswith(("FRENZY_WIDE", "FRENZY_LITE")))]   # 🪶 243: LITE's own gates never stand in for a LONG record
             covered = any(abs(b - close_ms) <= 2 * BAR for b in beats)
             following = any(abs(t - close_ms) <= 10 * 60_000 for t in book.get(p, ())) or bool(fills or gates)
             live = (on_wide and close_ms >= WIDE_LIVE_MS) if want_wide else on_long

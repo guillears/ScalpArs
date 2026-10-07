@@ -34,4 +34,4 @@ def test_wiring():
     assert "('entry_frenzy_above_streak', 'INTEGER')" in open(os.path.join(ROOT, "database.py")).read()
     ui = open(os.path.join(ROOT, "templates", "index.html")).read()
     assert ui.count("config-fz-wide-hold-streak") == 2 and "['config-fz-wide-hold-streak', 'frenzy_wide_hold_green_streak', 12]" in ui
-    assert "_key === 'frenzy_wide_hold_green_streak') ? Math.round(x) : x" in ui
+    assert "_key === 'frenzy_wide_hold_green_streak' || " in ui and ") ? Math.round(x) : x" in ui

@@ -35,9 +35,9 @@ def test_observe_stamps():
 
 def test_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert 'FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE")' in eng
+    assert 'FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")' in eng
     assert "if frenzy_wide_ready(ep, code, th, atr):" in eng and "await self._frenzy_open(db, flag, ind, bar_open, wide=True)" in eng
-    assert "'frenzy_wide_max_slots' if wide else 'frenzy_max_slots'" in eng and "_sg_pref = _fz_es.lower() if _frenzy else" in eng
+    assert "'frenzy_lite_max_slots' if lite else ('frenzy_wide_max_slots' if wide else 'frenzy_max_slots')" in eng and "_sg_pref = _fz_es.lower() if _frenzy else" in eng
     assert '(order.entry_strategy or "") == "FRENZY_LONG"' not in eng                    # every exit / hold / urgent path takes both tags
     import models as M
     cols = {c.name for c in M.Order.__table__.columns}
@@ -64,7 +64,7 @@ def test_gvol_gate_wired_fail_closed():
     i = eng.index("async def _frenzy_open(")
     body = eng[i:eng.index("async def _maybe_open_surge(", i)]
     assert "_gv = await self._frenzy_gvol_value(bar_open - 300_000, wait=_gvmax > 0)" in body
-    assert "if _gvmax > 0 and (_gv is None or _gv >= _gvmax):" in body                         # unreadable = no entry
+    assert "_gvb = frenzy_gvol_block(_gv, th)" in body and "if _gvb:" in body                   # unreadable = no entry (pure rule, tests/test_frenzy_lite.py)
     assert body.index("_frenzy_gvol_value(") < body.index("FRENZY_ENTRY_MAX_LATE_S")            # the wait counts toward lateness
     assert "self._frenzy_gvol_start(allp, bar_open - 300_000)" in eng and "entry_frenzy_gvol=_gv" in body
     import json
@@ -170,7 +170,7 @@ def test_strong_signal_leverage_wiring():
     """💪 Oct-4 (197): FRENZY_LONG with ADX rising ∧ +DI above −DI → frenzy_long_lev_mult_strong (absolute); WIDE never; unreadable = normal."""
     import json
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert "frenzy_strong=(not wide and flag.get('adx_delta') is not None and flag.get('di_spread') is not None" in eng
+    assert "frenzy_strong=(not (wide or lite) and flag.get('adx_delta') is not None and flag.get('di_spread') is not None" in eng
     assert "and float(flag['adx_delta']) > 0 and float(flag['di_spread']) > 0)" in eng
     i = eng.index("if _frenzy and _fz_es == \"FRENZY_LONG\" and frenzy_strong:")
     assert eng.index("_sg_inv = getattr(_th_sg") < i < eng.index("cell_lev_mult = max(0.05, min(1.0 if _sg_lev is None")   # replaces the lev mult BEFORE the clamp

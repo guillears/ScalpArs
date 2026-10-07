@@ -210,7 +210,8 @@ async def frenzy_loop():
             if should_stop:
                 break
             _th = config.trading_config.thresholds
-            if not (getattr(_th, 'frenzy_long_enabled', False) or getattr(_th, 'frenzy_short_observe', False) or getattr(_th, 'frenzy_wide_enabled', False)):
+            if not (getattr(_th, 'frenzy_long_enabled', False) or getattr(_th, 'frenzy_short_observe', False) or getattr(_th, 'frenzy_wide_enabled', False)
+                    or getattr(_th, 'frenzy_lite_enabled', False)):   # 🪶 Oct-7 (243): LITE runs on the same pass
                 # ⏪ Oct-6 catch-up: FRENZY fully OFF (paused or not) counts as judged — switching it back on never "catches up" a setup that
                 # turned ON while the operator had FRENZY off (the per-pair unread map is cleared too). Never raises.
                 await trading_engine._frenzy_judged_set(int(time.time() // 300) * 300_000 - 300_000, clear_pairs=True)
@@ -3367,7 +3368,7 @@ _SLEEVE_LABELS = {   # 🧭 Oct-5 (operator): open positions per sleeve under th
     ("MOMENTUM", "LONG"): "Momentum Long", ("MOMENTUM", "SHORT"): "Momentum Short", ("SPIKE_FADE", "SHORT"): "Spike Fade Short",
     ("SPIKE_CHASE", "LONG"): "Spike Chase Long", ("SPIKE_BOUNCE", "LONG"): "Spike Bounce Long", ("BULLRUN_LONG", "LONG"): "Bull-Run Long",
     ("BEARRUN_SHORT", "SHORT"): "Bear-Run Short", ("SURGE_LONG", "LONG"): "SURGE Long", ("SURGE_SHORT", "SHORT"): "SURGE Short",
-    ("FRENZY_LONG", "LONG"): "FRENZY Long", ("FRENZY_WIDE", "LONG"): "FRENZY WIDE Long",
+    ("FRENZY_LONG", "LONG"): "FRENZY Long", ("FRENZY_WIDE", "LONG"): "FRENZY WIDE Long", ("FRENZY_LITE", "LONG"): "FRENZY LITE Long",
     ("BULL_LONG", "LONG"): "Bull Long", ("BOUNCE_LONG", "LONG"): "Bounce Long",
 }
 
@@ -3468,6 +3469,7 @@ def _frenzy_monitor_payload():
     """🔥 Oct-2 FRENZY: the sleeve's switches, sizes and last scan (in-memory engine globals; None on any error)."""
     try:
         from services.trading_engine import _frenzy_status as _fzs, _frenzy_flags as _fzf
+        from services.frenzy import frenzy_lite_need as _fz_lite_need, frenzy_lite_hmax as _fz_lite_hmax
         from datetime import datetime as _dt
         _th = config.trading_config.thresholds
         _ca = _fzs.get('checked_at')
@@ -3478,6 +3480,12 @@ def _frenzy_monitor_payload():
                 "gvol_bar": ((_dt.utcfromtimestamp(((_fzs.get('gvol') or {})['bar'] + 300_000) / 1000).strftime('%H:%M')) if (_fzs.get('gvol') or {}).get('bar') else None),
                 "lev_mult_strong": float(getattr(_th, 'frenzy_long_lev_mult_strong', 0) or 0),
                 "wide_lev_mult": float(1.0 if getattr(_th, 'frenzy_wide_lev_mult', 0.2) is None else getattr(_th, 'frenzy_wide_lev_mult', 0.2)), "wide_max_slots": max(1, int(getattr(_th, 'frenzy_wide_max_slots', 2) or 2)),
+                # 🪶 Oct-7 (243) FRENZY_LITE: switch, size, slots, window, closes-above
+                "lite_enabled": bool(getattr(_th, 'frenzy_lite_enabled', False)),
+                "lite_invest_mult": float(1.0 if getattr(_th, 'frenzy_lite_invest_mult', 1.0) is None else getattr(_th, 'frenzy_lite_invest_mult', 1.0)),
+                "lite_lev_mult": float(1.0 if getattr(_th, 'frenzy_lite_lev_mult', 0.2) is None else getattr(_th, 'frenzy_lite_lev_mult', 0.2)),
+                "lite_max_slots": max(1, int(getattr(_th, 'frenzy_lite_max_slots', 2) or 2)),
+                "lite_max_hours": _fz_lite_hmax(_th), "lite_min_above": _fz_lite_need(_th),   # the values the engine USES (≤ 0 / bad → defaults)
                 "max_atr": float(getattr(_th, 'frenzy_max_atr_pct', 2.5) or 0), "stop": float(getattr(_th, 'frenzy_stop_pct', 3.0) or 0),
                 "tp": float(getattr(_th, 'frenzy_tp_pct', 0) or 0),
                 "lock_arm": float(getattr(_th, 'frenzy_lock_arm_pct', 0) or 0), "lock_floor": float(getattr(_th, 'frenzy_lock_floor_pct', 2.0) or 0),
@@ -3501,6 +3509,7 @@ def _frenzy_flag_view(f):
             "vs_vwap_pct": _r(f.get('vs_vwap_pct'), 2), "vwap": f.get('vwap'), "vol_mult": _r(f.get('vol_mult'), 0), "atr_pct": _r(f.get('atr_pct'), 2),
             "volume_24h": f.get('volume_24h'), "in_state": bool(f.get('in_state')), "ready": bool(f.get('ready')), "late": bool((f.get('hours') or 0) >= 32),
             "code": f.get('code'), "text": f.get('text'), "last_fire": f.get('last_fire'), "stale": bool(f.get('misses')),
+            "lite_code": f.get('lite_code'), "lite_ready": bool(f.get('lite_ready')),   # 🪶 Oct-7 (243): FRENZY_LITE's read on the last bar
             # ⏪ Oct-6: CLOSE time (UTC ms) of the bar the current setup turned ON (on_bar_ts + 5 min) — the UI shows "ON since HH:MM" in the
             # viewer's local time; None when the setup is not ON (the server text stays the fallback)
             "on_ms": (int(f['on_bar_ts']) + 300_000 if (f.get('in_state') and f.get('on_bar_ts') is not None) else None)}
@@ -3638,6 +3647,8 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
             return 'Frenzy-Long'   # 🔥 Oct-2: own row — volume-frenzy longs never blend into momentum
         if (o.entry_strategy or '') == 'FRENZY_WIDE':
             return 'Frenzy-Wide'   # 🔥🌐 Oct-3: own row — FRENZY's ATR / green-candle refusals, never blended into FRENZY_LONG
+        if (o.entry_strategy or '') == 'FRENZY_LITE':
+            return 'Frenzy-Lite'   # 🪶 Oct-7 (243): own row — held above, volume below FRENZY's, first ~17 h
         if 'FLIP' in (o.entry_strategy or ''):
             return 'Flip-Short' if o.direction == 'SHORT' else 'Flip-Long'
         return 'Mom-Long' if o.direction == 'LONG' else 'Mom-Short'
@@ -3672,7 +3683,7 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
                         if start_balance and start_balance > 0 and window_days and window_days >= 0.5
                         and sum(o.pnl or 0 for o in g) / start_balance > -1 else None),
         }
-    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Surge-Long', 'Surge-Short', 'Frenzy-Long', 'Frenzy-Wide', 'Manual']   # 🖐 Sep-29: own row
+    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Surge-Long', 'Surge-Short', 'Frenzy-Long', 'Frenzy-Wide', 'Frenzy-Lite', 'Manual']   # 🖐 Sep-29: own row
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
     all_closed = [o for o in orders if o.pnl_percentage is not None]
     total = stats('Total', all_closed)
@@ -3721,7 +3732,7 @@ def _compute_strategy_performance(orders, start_balance=None, window_days=None):
         }
 
     _pref = ['MOMENTUM', 'FAN_RATIO_GATE', 'BULL_LONG', 'PAIR_RSI_OB', 'BOUNCE_LONG',
-             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE']
+             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE']
 
     def _rank(label):
         head = label.split(' · ')[0]
@@ -4846,7 +4857,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # are their own program; blending full-size spikes would contaminate the
             # sleeve stats the locked gates read. (Probe-era spike rows carry MOMENTUM
             # labels and stay — cohort key for those = cell_multiplier_source.)
-            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'MANUAL')   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
+            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'MANUAL')   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
             orders = [o for o in orders if not _es(o).startswith('FLIP:') and _es(o).upper() not in _SLEEVES]
         else:
             # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side
@@ -7991,7 +8002,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "avg_peak": round(sum(_pks) / len(_pks), 3) if _pks else None,
                     "episodes": len({(o.pair, getattr(o, 'entry_frenzy_spike_at', None)) for o in g})}
         for _fz_es, _fz_lbl in (("FRENZY_LONG", "FRENZY_LONG (flagged pair, long setup ON, ATR gate · stop / fixed TP or trail)"),
-                                ("FRENZY_WIDE", "FRENZY_WIDE (FRENZY's ATR / green-candle refusals · same exit)")):
+                                ("FRENZY_WIDE", "FRENZY_WIDE (FRENZY's ATR / green-candle refusals · same exit)"),
+                                ("FRENZY_LITE", "FRENZY_LITE (held above, volume < FRENZY's, ≤ ~17 h · no ATR cap · same exit)")):
             _fz_all = [o for o in orders if (o.entry_strategy or '') == _fz_es and o.pnl_percentage is not None]
             _fz_life = [float(p) for (p,) in (await db.execute(select(Order.pnl_percentage).where(and_(
                 Order.entry_strategy == _fz_es, Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
@@ -8000,6 +8012,15 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             _fz_gate = (f"⏳ {_fz_n}/40 closed — review at 40 (no automatic off; operator switch only)" if _fz_n < 40 else
                         f"📋 REVIEW DUE — first 40: {sum(1 for p in _fz_life[:40] if p > 0)} winners · mean {sum(_fz_life[:40]) / 40:+.3f}% "
                         f"(keep read: mean > 0 after costs ∧ ≥ 12 winners)")
+            if _fz_es == "FRENZY_LITE":   # 🪶 Oct-7 (243) declared exception: review at ≥ 40 fills on ≥ 15 days; avg < 0 at ≥ 20 → operator review (never auto-off)
+                _lt_days = len({d.date() for (d,) in (await db.execute(select(Order.opened_at).where(and_(
+                    Order.entry_strategy == _fz_es, Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
+                    Order.pnl_percentage.isnot(None))))).all() if d is not None})
+                _lt_avg = (sum(_fz_life) / _fz_n) if _fz_n else None
+                _fz_gate = (f"{'📋 REVIEW DUE' if (_fz_n >= 40 and _lt_days >= 15) else '⏳'} {_fz_n}/40 closed on {_lt_days}/15 days"
+                            + (f" · avg {_lt_avg:+.3f}%" if _lt_avg is not None else "")
+                            + (" · ⚠ avg < 0 at ≥ 20 fills → operator review" if (_fz_n >= 20 and _lt_avg is not None and _lt_avg < 0) else "")
+                            + " (declared exception · no automatic off)")
             frenzy_rows.append({"row": _fz_lbl, **_fz_stats(_fz_all), "gate": _fz_gate})
             if _fz_es == "FRENZY_LONG" and _fz_all:   # 💪 Oct-4 (197): sized-up (ADX rising ∧ +DI above −DI) vs normal — the revert gate's two cohorts
                 _fz_strong = lambda o: ((getattr(o, 'entry_frenzy_adx_delta', None) or 0) > 0 and (getattr(o, 'entry_frenzy_di_spread', None) or 0) > 0)

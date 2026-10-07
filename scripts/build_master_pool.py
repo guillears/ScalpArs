@@ -382,8 +382,8 @@ def main():
                 k, why = False, 'SURGE_SHORT_OFF'   # 🐻⚡ Oct-4 (DECISION_LOG 200): surge_short_enabled = false → today's stack never opens it
             elif strat == 'SURGE_LONG':
                 why = 'SURGE_SLEEVE'     # ⚡ Sep-30: kept as its OWN sleeve (BTC spike trigger) — never a momentum row; Oct-4: probe size (lev 0.05)
-            elif strat in ('FRENZY_LONG', 'FRENZY_WIDE'):
-                why = 'FRENZY_SLEEVE'    # 🔥 Oct-3: OBSERVATION — the volume-frenzy sleeve's own row (40-fill review), never a momentum row
+            elif strat in ('FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE'):
+                why = 'FRENZY_SLEEVE'    # 🔥 Oct-3: OBSERVATION — the volume-frenzy sleeve's own row (40-fill review), never a momentum row · 🪶 Oct-7 LITE (243): same (no LITE fill in the master yet → nothing re-prices, STACK_VERSION stays)
             elif strat == 'SPIKE_FADE':
                 if v is not None and v >= 20e6: k, why = False, 'FADE_MAXVOL'   # Sep-14 ceiling — engine order: first fade gate
                 elif r.entry_btc_rsi > 50: k, why = False, 'FADE_BRSI50'  # engine uses strict > (50.0 passes); Sep-24 45→50 (DECISION_LOG 112)
@@ -550,7 +550,7 @@ def main():
     # FROZEN with STACK_VERSION (review: never read the live JSON — a later settings change must not silently re-price history; a sizing
     # change = a new STACK_VERSION with these values updated; tests/test_long_chop_burst.py pins them against trading_config.json)
     _th = dict(frenzy_long_invest_mult=1.0, frenzy_long_lev_mult=0.32, frenzy_long_lev_mult_strong=0.5, frenzy_wide_invest_mult=1.0,
-               frenzy_wide_lev_mult=0.2, surge_long_invest_mult=1.0, surge_long_lev_mult=1.0, bearrun_invest_mult=1.0, bearrun_lev_mult=0.05,
+               frenzy_wide_lev_mult=0.2, frenzy_lite_invest_mult=1.0, frenzy_lite_lev_mult=0.2, surge_long_invest_mult=1.0, surge_long_lev_mult=1.0, bearrun_invest_mult=1.0, bearrun_lev_mult=0.05,
                frenzy_tp_pct=3.0, frenzy_lock_arm_pct=3.0, frenzy_lock_floor_pct=2.0, frenzy_lock_trail_pct=2.0,   # 10-06d: the live lock, DECISION_LOG 205
                frenzy_wide_hold_green_streak=WIDE_HG_STREAK_FROZEN, frenzy_max_atr_pct=WIDE_HG_MAX_ATR_FROZEN)        # 10-06d: WIDE hold-green, DECISION_LOG 231
     SLEEVE_SIZE_FROZEN = _th
@@ -561,6 +561,8 @@ def main():
             return float(_th.get("frenzy_long_invest_mult", 1.0)), float(_th.get("frenzy_long_lev_mult_strong") if strong else _th.get("frenzy_long_lev_mult", 1.0))
         if strat == "FRENZY_WIDE":
             return float(_th.get("frenzy_wide_invest_mult", 1.0)), float(_th.get("frenzy_wide_lev_mult", 1.0))
+        if strat == "FRENZY_LITE":   # 🪶 Oct-7 (243): 1 × 0.2 (4×), never the strong bump
+            return float(_th.get("frenzy_lite_invest_mult", 1.0)), float(_th.get("frenzy_lite_lev_mult", 1.0))
         if strat == "SURGE_LONG":
             return float(_th.get("surge_long_invest_mult", 1.0)), float(_th.get("surge_long_lev_mult", 1.0))
         if strat == "BEARRUN_SHORT":

@@ -1351,6 +1351,26 @@ class SignalThresholds(BaseModel):
     # (post-hoc, selection-adjusted p 0.87 — NOT proven); dropped ATR_HIGH −0.53 % (CI < 0) and green reclaim −0.66 %. Book @0.2 $13.5k vs WIDE
     # as-is $1.2k / WIDE off $9.7k. 🔒 REVERT (WIDE off): mean ≤ −1.0 % at 20 fills, ≤ 0 at 40, or ≤ 0 without its top 5 at 60. 0 = off.
     frenzy_wide_hold_green_streak: float = 0.0
+    # 🪶 Oct-7 FRENZY_LITE (operator ARMED as a DECLARED EXCEPTION below the locked gates, DECISION_LOG 243): FRENZY without the ≥
+    # frenzy_state_vol_mult setup volume, limited to the first frenzy_lite_max_hours of the episode — a verified flagged episode NOT in the
+    # FRENZY state whose price closed at / above the spike VWAP for ≥ frenzy_lite_min_above_closes 5m closes in a row while the last-hour volume
+    # is < frenzy_state_vol_mult, frenzy_min_hours ≤ hours ≤ frenzy_lite_max_hours (services.frenzy.frenzy_lite_status). ONE JUDGEMENT per
+    # above-VWAP stretch: its first signal bar decides — refused by any later filter / the open path = stretch done, no retry (engine parity:
+    # retrying until a fill = 1,992 fills at −0.005 %/trade, reports/FRENZY_LITE_ABOVE_CLOSES_6_VS_12_2026-10-07.md). Same universe / 24 h volume / red-candle / market-volume / dislocation /
+    # pair-day cap as FRENZY, FRENZY's exit; NO ATR filter (ATR stamped only — scout LITE_ATR splits ≤ / > frenzy_max_atr_pct). Own tag
+    # FRENZY_LITE, own size, own slots (they also count against max open positions). Evidence: reports/HOLD_LOWVOL_EARLY_FRENZY_FILTERS_2026-10-06.md
+    # "STACK minus F1": 724 fills, +0.163 %/trade at live timing (12 s late, real costs), day CI [−0.107, +0.421], halves +0.156 / +0.168 →
+    # UNPROVEN; REACHABLE by the engine (243 review): the FRENZY shortlist (|24 h change| or range ≥ frenzy_shortlist_change_pct, ≤ 25 pairs)
+    # cannot reach 21 of the 724 fills (avg +1.49 %, ~26 % of the P&L) and the engine's pair-level stretch id refuses 8 re-anchor fills
+    # (avg −1.23 %) → reachable ≈ 696 fills at +0.134 %/trade BEFORE the 30–50 % in-sample haircut (≈ +0.07…+0.09); exit = FRENZY lock (HOLD_LOWVOL_EARLY_EXITS_ROUND2_2026-10-06.md); ticks
+    # HOLD_LOWVOL_EARLY_TICK_CHECK_2026-10-06.md. NO automatic off: review at ≥ 40 fills on ≥ 15 days; avg < 0 at ≥ 20 fills → flagged for
+    # operator review (scout FRENZY_LITE watch line).
+    frenzy_lite_enabled: bool = False
+    frenzy_lite_invest_mult: float = 1.0         # absolute-assign like FRENZY_WIDE
+    frenzy_lite_lev_mult: float = 0.2            # 20× → 4× (= FRENZY_WIDE): one 3 % stop ≈ 3 % of the account; never the strong-size bump
+    frenzy_lite_max_slots: int = 2               # max FRENZY_LITE open at once (they also count against max open positions)
+    frenzy_lite_max_hours: float = 16.75         # episode age window end (h after the spike) — the study's "first ~17 h" (≤ frenzy_min_hours → 16.75 used)
+    frenzy_lite_min_above_closes: int = 12       # (≤ 0 → 12 used) consecutive 5m closes at / above the spike VWAP (the study's 12 = FRENZY's hour; 6 vs 12 under study)
     # 🌊 Oct-3 (operator ARMED override, DECISION_LOG 194): FRENZY_LONG and FRENZY_WIDE open only while the market's volume on the signal bar
     # (top-50 by 24 h volume: Σ bar volume ÷ Σ 48-bar mean, CLOSED bar, read at the close) is BELOW this. Year (1,455 first candles, 1-min-late
     # entry, real costs): < 1.0 +0.225 %/trade (both halves +, random-subset luck 3 %, every leave-one-month-out +), ≥ 1.0 −0.185 (both halves −);

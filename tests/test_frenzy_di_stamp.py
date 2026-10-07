@@ -42,7 +42,8 @@ def test_wired_as_an_entry_stamp_only():
     lines = [x.strip() for x in eng.splitlines() if "di_spread" in x and not x.strip().startswith("#")]
     allowed = lambda x: (("frenzy_di_spread" in x and ("import" in x or "if (ready or code in FRENZY_WIDE_CODES)" in x
                                                         or "frenzy_di_spread(trunc[-300:]) if _stamp else None" in x)) or "entry_frenzy_di_spread" in x   # ⏪ Oct-6 catch-up: the same stamp on the ON bar
-                         or "flag.get('di_spread') is not None" in x or "float(flag['di_spread']) > 0" in x)   # 💪 Oct-4 (197): the ONE rule that reads it (strong-signal leverage)
+                         or "flag.get('di_spread') is not None" in x or "float(flag['di_spread']) > 0" in x   # 💪 Oct-4 (197): the ONE rule that reads it (strong-signal leverage)
+                         or "flag['di_spread'] = frenzy_di_spread(closed[-300:])" in x)   # 🪶 Oct-7 (243): FRENZY_LITE's stamp on its candidate bar (stamp only, never sized)
     assert all(allowed(x) for x in lines), lines
     import models as M
     assert "entry_frenzy_di_spread" in {c.name for c in M.Order.__table__.columns}

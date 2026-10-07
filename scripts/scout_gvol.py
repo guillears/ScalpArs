@@ -498,8 +498,8 @@ def _get(mid, interval, start, limit, deadline=None):
                     body = e.read().decode("utf-8", "replace")
                 except Exception:
                     body = ""
-                if "-1121" in body:      # Binance "Invalid symbol": a retired symbol has no klines (not ranked at that bar)
-                    return []
+                if "-1121" in body or "-1122" in body:   # "Invalid symbol" (retired) / "Invalid symbol status" (PENDING_TRADING, not listed
+                    return []                            # yet — 10-07 GAIBUSDT aborted every read): no klines → not ranked at that bar
                 raise Abort(f"{mid} {interval}: HTTP 400 {body[:80]}")   # any other 400 = a bad request → nothing frozen
             err = e
         except Exception as e:

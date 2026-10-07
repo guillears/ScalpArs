@@ -74,6 +74,11 @@ TRACKER 8 — GVOL_BLOCKED (2026-10-06, observe-only; DECISION_LOG 194 gate fren
   units; _GVOL_UNREAD on its own line. FROZEN bar: ≥ 20 signals on ≥ 10 days ∧ no day ≥ 50 % of the blocked net → blocked mean ≥ 0 ∧ ≥ the
   let-through mean → "review: the gate removes winners" (flag only); blocked mean ≤ −0.20 → "gate confirmed"; else inconclusive. Rows:
   reports/SCOUT_FRENZY_GVOL_BLOCKED.csv (non-final rows re-priced from their stored fields).
+  GVOL_BAND split (2026-10-07, observe-only; reports/FRENZY_GVOL_THRESHOLD_TEST_2026-10-07.md §6): each blocked row's market-volume reading
+  (scout_gvol live registry first, else the frozen v2 cache; a v2 value freezes when the row is final) → a FROZEN band [1.0,1.1) [1.1,1.2)
+  [1.2,1.5) [1.5,2.0) ≥ 2.0 (columns gvol / gvol_src / gvol_band / gvol_frozen); table per sleeve × band on the counted final rows + the
+  frozen hypothesis "WIDE in [1.0, 1.2) is not a losing cohort" (≥ 20 signals on ≥ 10 days → propose WIDE-only 1.2 iff mean > 0 at day-block
+  P ≥ 0.90 ∧ no day ≥ 50 % of the gain ∧ mean ≥ WIDE let-through − 0.30, else stays at 1.0). Never changes config.
 TRACKER 9 — VWAP_STOP (2026-10-06, observe-only; reports/FRENZY_STAIRCASE_STUDY_2026-10-06.md §3b / §5 "BP k 0.5", NOT established on the
   year: saved 72 (+400) vs deeper 103 (−395)): every FRENZY / WIDE fill the live −3 stop closed (close_reason STOP_LOSS) re-priced as: identical
   to live until the stop, then held and out at the first print after a 5m close that is ≤ −3 % net AND below VWAP × (1 − 0.5 × entry ATR %),
@@ -1121,6 +1126,18 @@ HG_STREAK = 12.0                                # today's WIDE hold-green rule (
 EPISODE_MERGE_MS = 30 * MIN                     # spikes of one pair ≤ 30 min apart = one episode (replay drift: AIN 14:25 vs 14:30)
 GVB_YEAR = ("year (DECISION_LOG 194, 1,455 FRENZY first candles, live exit, real costs): market volume ≥ 1.0 → 605 · −0.185 %/trade vs < 1.0 → "
             "850 · +0.225 (FRENZY −0.411 / +0.369 · WIDE −0.121 / +0.182); the blocked side failed only on confidence (day CI [−0.49, +0.15])")
+# 🌊 GVOL_BAND split (2026-10-07, observe-only; reports/FRENZY_GVOL_THRESHOLD_TEST_2026-10-07.md §6): every COUNTED blocked signal gets a FROZEN
+# market-volume band from its signal bar's reading — the bot's own value (scout_gvol live registry: fill stamp / gate log line, keyed by the
+# signal close) preferred, else the scout's frozen v2 value (scout_gvol cache, keyed by the bar open). A live value freezes at once; a scout-v2
+# value freezes when the row turns final (a late server log can still supply the bot's reading meanwhile). A frozen value is never changed.
+GVB_BANDS = ((1.0, 1.1), (1.1, 1.2), (1.2, 1.5), (1.5, 2.0), (2.0, float("inf")))   # FROZEN
+GVB_HYP_LO, GVB_HYP_HI = 1.0, 1.2              # pre-registered hypothesis band (WIDE only): "WIDE in [1.0, 1.2) is not a losing cohort"
+GVB_HYP_N, GVB_HYP_DAYS, GVB_HYP_P, GVB_HYP_DAY_MAX, GVB_HYP_MARGIN = 20, 10, 0.90, 50.0, 0.30   # FROZEN read / propose legs
+GVB_HYP_BOOT, GVB_HYP_SEED = 4000, 7           # day-block bootstrap (fixed seed, ≥ 2,000 resamples)
+GVB_HYP_UNREAD_MAX = 0.25                      # review: the read is HELD while > 25 % of the counted final WIDE rows have no band (coverage)
+GVB_LITE = {"FRENZY_LITE_GVOL_HIGH": "LITE", "FRENZY_LITE_GVOL_UNREAD": "LITE"}   # LITE uses the same gate (engine f"{_bk}_GVOL_HIGH")
+GVB_BAND_YEAR = ("year (study 2026-10-07, 588 signals, live lock on ticks): WIDE 1.0–1.1 +1.50 %/trade N 21 · FRENZY 1.0–1.1 −0.86 % N 24 · "
+                 "overall the 1.0 line is the best of ten (book +349 %)")
 # 🪜 VWAP_STOP — the study's "BP k 0.5" (reports/FRENZY_STAIRCASE_STUDY_2026-10-06.md §3b / §5, pre-registered there; scratch px.py): after the
 # live −3 stop the position is held and exits at the first print after a 5m close that is BOTH ≤ −3 % net AND below VWAP × (1 − 0.5 × ATR % / 100)
 # (ATR = the fill's stamped entry_atr_pct; unreadable → the study's 2.0), hard floor −12 % net on prints; the lock (+3 → max(+2, peak − 2))
@@ -1267,6 +1284,155 @@ def gvb_check(x, days, passed_mean):
     return "inconclusive", t
 
 
+def gvb_band(v):
+    """market-volume value → its frozen band label ('[1.0, 1.1)' … '≥ 2.0'); < 1.0 (the reading disagrees with the live block) → '< 1.0'; None → None."""
+    v = _num(v)
+    if v is None:
+        return None
+    for lo, hi in GVB_BANDS:
+        if lo <= v < hi:
+            return f"≥ {lo:.1f}" if hi == float("inf") else f"[{lo:.1f}, {hi:.1f})"
+    return "< 1.0"
+
+
+def gvb_freeze_gvol(df, live, scout):
+    """fill / freeze gvol · gvol_src · gvol_band · gvol_frozen on the BLOCKED rows (not the let-through ones). live = {close_ms: (value, src, pair)}
+    (scout_gvol.live_map), scout = {open_ms: value} (scout_gvol.cached). A frozen row is never touched; a live value freezes at once; a scout
+    value is provisional until the row is final, then frozen. Returns a copy."""
+    d = df.copy()
+    for c in ("gvol", "gvol_src", "gvol_band", "gvol_frozen"):
+        if c not in d:
+            d[c] = None
+    d["gvol"] = d["gvol"].astype(object); d["gvol_src"] = d["gvol_src"].astype(object)
+    d["gvol_band"] = d["gvol_band"].astype(object); d["gvol_frozen"] = d["gvol_frozen"].astype(object)
+    for i in d.index[d.gate.astype(str) != GVB_PASSED]:
+        if str(d.at[i, "gvol_frozen"]) in _TRUE:
+            continue
+        try:
+            close = _ms(d.at[i, "k"])
+        except Exception:
+            continue
+        lv = (live or {}).get(close)
+        if lv:
+            v, src, fz = float(lv[0]), str(lv[1]), True
+        else:
+            sv = _num((scout or {}).get(close - BAR))
+            if sv is None:                             # a miss never wipes a provisional value (it freezes once the row is final)
+                pv = _num(d.at[i, "gvol"])
+                if pv is None:
+                    d.at[i, "gvol_frozen"] = False
+                    continue
+                sv = pv
+            v, src, fz = float(sv), "scout v2", str(d.at[i, "final"]) in _TRUE
+        d.at[i, "gvol"], d.at[i, "gvol_src"], d.at[i, "gvol_band"], d.at[i, "gvol_frozen"] = round(v, 4), src, gvb_band(v), fz
+    return d
+
+
+def gvb_lite_bands(J, live, scout, since=None):
+    """FRENZY_LITE market-volume refusals (journal BLOCK lines FRENZY_LITE_GVOL_HIGH / _UNREAD from `since`, one per (t, pair, gate)) → DataFrame
+    (t, pair, gate, gvol, band). The GVOL_BLOCKED replay cannot price LITE (no LITE replay in gvb_take) → counts per band only. Not separately
+    frozen: recomputed each run from the persisted journal (JR_CSV) and scout_gvol's own frozen stores."""
+    cols = ["t", "pair", "gate", "gvol", "band"]
+    if J is None or not len(J):
+        return pd.DataFrame(columns=cols)
+    b = J[(J.e == "BLOCK") & J.gate.isin(list(GVB_LITE))].drop_duplicates(["t", "pair", "gate"])
+    if since:
+        b = b[b.t.astype(str) >= since]
+    rows = []
+    for r in b.itertuples():
+        try:
+            close = _ms(r.t) // BAR * BAR
+        except Exception:
+            continue
+        lv = (live or {}).get(close)
+        v = float(lv[0]) if lv else _num((scout or {}).get(close - BAR))
+        rows.append(dict(t=r.t, pair=r.pair, gate=r.gate, gvol=v, band=(gvb_band(v) if v is not None else "unread")))
+    return pd.DataFrame(rows, columns=cols)
+
+
+def gvb_coverage(cnt):
+    """(read, total) over the counted final rows, and the unread share among the counted final WIDE rows (the hypothesis' eligible pool)."""
+    g = pd.to_numeric(cnt.get("gvol", pd.Series(np.nan, index=cnt.index)), errors="coerce")
+    w = cnt.sleeve == "WIDE"
+    return int(g.notna().sum()), int(len(cnt)), (float(g[w].isna().mean()) if w.any() else 0.0)
+
+
+def gvb_band_table(cnt):
+    """counted + final blocked rows → markdown rows per sleeve × band: N, days, WR, avg lock %, sum."""
+    L = ["| Sleeve | Band | N | Days | WR | Avg lock % | Σ % |", "|---|---|---|---|---|---|---|"]
+    labs = [gvb_band(lo) for lo, _ in GVB_BANDS] + ["< 1.0", "unread"]
+    for sl, nm in (("LONG", "FRENZY_LONG"), ("WIDE", "FRENZY_WIDE")):
+        g = cnt[cnt.sleeve == sl]
+        b = g.gvol_band.where(g.gvol_band.notna(), "unread").astype(str) if "gvol_band" in g else pd.Series("unread", index=g.index)
+        for lab in labs:
+            x = pd.to_numeric(g[b == lab].LOCK, errors="coerce").dropna()
+            if not len(x) and lab in ("< 1.0", "unread"):
+                continue
+            dd = g.loc[x.index, "day"].nunique() if len(x) else 0
+            L.append(f"| {nm} | {lab} | {len(x)} | {dd} | " + (f"{(x > 0).mean() * 100:.0f} % | {x.mean():+.2f} | {x.sum():+.2f} |" if len(x) else "– | – | – |"))
+    return L
+
+
+def gvb_wide_hyp(x, days, lt_mean):
+    """the FROZEN WIDE [1.0, 1.2) hypothesis on the counted, final WIDE band signals' lock % (x) / UTC days; lt_mean = the counted WIDE let-through
+    mean on the same ruler. → (state, text): collecting / propose / stays."""
+    x = pd.Series(np.asarray(x, dtype=float)); days = pd.Series(list(days), index=x.index)
+    ok_ = x.notna(); x, days = x[ok_], days[ok_]
+    n, nd = len(x), days.nunique()
+    t = f"{n}/{GVB_HYP_N} WIDE signals · {nd}/{GVB_HYP_DAYS} days" + (f" · WR {(x > 0).mean() * 100:.0f} % · mean {x.mean():+.2f} %" if n else "")
+    lt = None if lt_mean is None or (isinstance(lt_mean, float) and np.isnan(lt_mean)) else float(lt_mean)
+    t += f" · WIDE let-through mean {lt:+.2f} %" if lt is not None else " · WIDE let-through mean –"
+    if n < GVB_HYP_N or nd < GVB_HYP_DAYS:
+        return "collecting", t
+    g = pd.DataFrame(dict(x=x.values, d=days.values)).groupby("d").x.agg(["sum", "count"])
+    s, c = g["sum"].values, g["count"].values
+    r = np.random.default_rng(GVB_HYP_SEED).integers(0, len(g), (GVB_HYP_BOOT, len(g)))
+    p = float(((s[r].sum(1) / c[r].sum(1)) > 0).mean())
+    net = float(x.sum())
+    share = float(g["sum"].max() / net * 100) if net > 0 else float("inf")
+    t += f" · day-block P(mean > 0) {p:.2f} · top day {('–' if share == float('inf') else f'{share:.0f} %')} of the gain"
+    if lt is None:
+        return "stays", t + " · stays at 1.0 (no let-through baseline)"
+    legs = (x.mean() > 0 and p >= GVB_HYP_P, share < GVB_HYP_DAY_MAX, x.mean() >= lt - GVB_HYP_MARGIN)
+    return ("propose" if all(legs) else "stays"), t
+
+
+def gvb_hyp_hold(state, unread_share):
+    """coverage hold (review): while > GVB_HYP_UNREAD_MAX of the counted final WIDE rows have no band, a read is not made."""
+    return "collecting (coverage)" if state != "collecting" and unread_share > GVB_HYP_UNREAD_MAX else state
+
+
+def _gvb_band_lines(cnt, pcs, prov, lite=None):
+    """the GVOL_BAND sub-section of GVOL_BLOCKED: sleeve × frozen band table + coverage + the frozen WIDE [1.0, 1.2) hypothesis line + LITE counts."""
+    L = ["", f"**🌊 GVOL_BAND split (observe-only, registered 2026-10-07; never changes config):** the counted, final blocked signals above by the "
+              "FROZEN market-volume band of their signal bar (the bot's own reading — fill stamp / gate log — else the scout's frozen v2 value; "
+              "frozen once, never re-read). Same ruler (lock %)." + (f" Provisional counted rows not in the table yet: {len(prov)}." if len(prov) else ""), ""]
+    L += gvb_band_table(cnt)
+    rd, tot, wun = gvb_coverage(cnt)
+    L += ["", f"Coverage: band read for {rd} of {tot} counted final rows · WIDE rows without a band {wun * 100:.0f} % (the hypothesis read is held "
+              f"while > {GVB_HYP_UNREAD_MAX * 100:.0f} %)."]
+    w = cnt[(cnt.sleeve == "WIDE") & pd.to_numeric(cnt.get("gvol", pd.Series(dtype=float)), errors="coerce").between(GVB_HYP_LO, GVB_HYP_HI, inclusive="left")]
+    lt = pd.to_numeric(pcs[pcs.sleeve == "WIDE"].LOCK, errors="coerce").dropna()
+    st, tx = gvb_wide_hyp(pd.to_numeric(w.LOCK, errors="coerce").values, w.day.values, lt.mean() if len(lt) else None)
+    st = gvb_hyp_hold(st, wun)
+    lab = {"collecting": "⏳ collecting", "collecting (coverage)": f"⏳ collecting (coverage — > {GVB_HYP_UNREAD_MAX * 100:.0f} % of WIDE rows unbanded)", "propose": "📋 PROPOSE raising the gate for WIDE alone to 1.2 (operator decision — no auto-change)",
+           "stays": "➖ WIDE stays at 1.0"}
+    L += ["", f"**Pre-registered hypothesis (FROZEN 2026-10-07): \"WIDE in [{GVB_HYP_LO:.1f}, {GVB_HYP_HI:.1f}) is not a losing cohort\"** — read only at ≥ "
+              f"{GVB_HYP_N} counted WIDE signals in the band spanning ≥ {GVB_HYP_DAYS} days; PROPOSE (operator decision) raising WIDE's gate to "
+              f"{GVB_HYP_HI:.1f} iff band mean > 0 with day-block bootstrap P ≥ {GVB_HYP_P:.2f} (seed {GVB_HYP_SEED}, {GVB_HYP_BOOT:,} resamples) ∧ "
+              f"no single day ≥ {GVB_HYP_DAY_MAX:.0f} % of the band's gain ∧ band mean ≥ the WIDE let-through mean (same ruler) − {GVB_HYP_MARGIN:.2f}; "
+              f"otherwise WIDE stays at 1.0. → " + lab.get(st, st) + f" ({tx})",
+          f"- Band year reference: {GVB_BAND_YEAR}."]
+    if lite is not None:
+        hi = lite[lite.gate == "FRENZY_LITE_GVOL_HIGH"]
+        bc = hi.band.value_counts()
+        order = [gvb_band(lo) for lo, _ in GVB_BANDS] + ["< 1.0", "unread"]
+        L.append(f"- FRENZY_LITE (same gate; the GVOL_BLOCKED replay cannot price LITE refusals → counts per band only, from {GC_FROM[:10]}): "
+                 f"{len(hi)} GVOL_HIGH refusals" + (" — " + " · ".join(f"{b} {int(bc[b])}" for b in order if b in bc) if len(hi) else "")
+                 + f" · {int((lite.gate == 'FRENZY_LITE_GVOL_UNREAD').sum())} UNREAD.")
+    return L
+
+
 def _gvb_price(sig, sym, gate, th, now_ms, budget):
     """one journal *_GVOL_* BLOCK line (signal bar closing at sig ms) → the engine replay (would today's sleeve take it? a FRENZY_ON replay in
     state = a catch-up line whose t is not the ON bar) + the activation priced as that sleeve with _lock_shadow. Raises on data trouble."""
@@ -1356,6 +1522,11 @@ def gvb_run(now_ms, th, J, allr, F=None):
         except Exception:
             err += 1
     new = pd.DataFrame(rows)
+    try:                                                       # 🌊 GVOL_BAND sources (read-only, no network): live registry + frozen v2 cache
+        import scout_gvol as _SG
+        _lv, _sc = _SG.live_map(_SG.load_live()), _SG.cached()
+    except Exception:
+        _lv, _sc = {}, {}
     allg = pd.concat([old, new], ignore_index=True) if len(new) else old.copy()
     if len(allg):
         allg = allg.drop_duplicates(["k", "pair", "gate"], keep="last").sort_values(["k", "pair", "gate"], kind="stable").reset_index(drop=True)
@@ -1365,6 +1536,10 @@ def gvb_run(now_ms, th, J, allr, F=None):
             allg.loc[pa & na.notna(), "actual"] = na[pa & na.notna()].astype(float)
         M = gvb_masks(allg)
         allg["episode"], allg["counted"], allg["double"], allg["passed_counted"] = M["episode"], M["counted"], M["double"], M["passed"]
+        try:                                                   # 🌊 GVOL_BAND: the bar's reading frozen per row; a failure keeps the priced rows
+            allg = gvb_freeze_gvol(allg, _lv, _sc)
+        except Exception as _fe:
+            print(f"[scout] GVOL_BAND freeze failed ({str(_fe)[:120]}) — rows kept unbanded this run", file=sys.stderr)
         _save_csv(allg, GVB_CSV)
     L = ["## 🌊 GVOL_BLOCKED — FRENZY / WIDE activations the market-volume gate refused vs the fills it let through, same ruler (observe-only, registered 2026-10-06)", "",
          "Every journal FRENZY_GVOL_HIGH / FRENZY_WIDE_GVOL_HIGH refusal (DECISION_LOG 194 gate, frenzy_gvol_max 1.0; the gate's own revert gate reads only "
@@ -1423,6 +1598,7 @@ def gvb_run(now_ms, th, J, allr, F=None):
     L.append(f"- _GVOL_UNREAD (market volume unreadable — fail-closed; never in the bar): {len(un)} refusals"
              + (f" ({int(S_('cohort')[un.index].sum())} from {GC_FROM[:10]}) · final {len(xu)} · mean {xu.mean():+.2f} %" if len(un) else "") + ".")
     L.append(f"- Year reference: {GVB_YEAR}.")
+    L += _gvb_band_lines(cnt, pcs, allg[S_("counted") & ~S_("final")], gvb_lite_bands(J, _lv, _sc, GC_FROM))
     coh = blk[S_("cohort")[blk.index] & blk.gate.isin(list(GVB_HIGH))]
     L.append(f"_Cohort rows {len(coh)}: counted {int(S_('counted')[coh.index].sum())} · today's sleeve would not trade {int((~S_('would_take')[coh.index]).sum())} · "
              f"provisional {int((~S_('final')[coh.index]).sum())} · let-through rows {int(((allg.gate == GVB_PASSED) & S_('cohort')).sum())}. "
@@ -3410,6 +3586,41 @@ def selftest():
     chk(lite_gv24_check(mkg(-0.3, 0.5, n=20))[0] == "collecting", "< 30 LOW fills → collecting")
     chk(lite_gv24_check(mkg(-0.3, 0.5, d=10))[0] == "collecting", "< 15 days → collecting (no review)")
     chk(lite_gv24_check(mkg(0.0, 0.2))[0] == "collecting", "gap −0.2 (not ≤ −0.4, not ≥ 0) → collecting")
+    # 🌊 GVOL_BAND split (frozen bands, live value first, write-once freeze, the WIDE [1.0, 1.2) hypothesis)
+    chk([gvb_band(v) for v in (1.0, 1.0999, 1.1, 1.2, 1.4999, 1.5, 2.0, 2.92, 0.98, None)] ==
+        ["[1.0, 1.1)", "[1.0, 1.1)", "[1.1, 1.2)", "[1.2, 1.5)", "[1.2, 1.5)", "[1.5, 2.0)", "≥ 2.0", "≥ 2.0", "< 1.0", None], "frozen band edges [lo, hi)")
+    kb = ["2026-10-08T01:00:00", "2026-10-08T02:00:00", "2026-10-08T03:00:00", "2026-10-08T04:00:00"]
+    gz = pd.DataFrame(dict(k=kb, gate=["FRENZY_WIDE_GVOL_HIGH", "FRENZY_GVOL_HIGH", "FRENZY_GVOL_HIGH", GVB_PASSED], final=[False, False, True, True]))
+    cms = [_ms(k) for k in kb]
+    fz = gvb_freeze_gvol(gz, {cms[0]: (1.11, "live gate log", "X"), cms[3]: (0.9, "live fill stamp", "Y")}, {cms[0] - BAR: 1.6, cms[1] - BAR: 1.34, cms[2] - BAR: 2.5})
+    chk(fz.gvol[0] == 1.11 and fz.gvol_band[0] == "[1.1, 1.2)" and fz.gvol_frozen[0] is True, "the bot's live reading wins and freezes at once")
+    chk(fz.gvol_src[1] == "scout v2" and fz.gvol_frozen[1] is False and fz.gvol_frozen[2] is True, "a scout v2 value is provisional until the row is final")
+    chk(fz.gvol[3] is None, "let-through rows get no band")
+    fz2 = gvb_freeze_gvol(fz, {cms[2]: (1.05, "live gate log", "Z")}, {cms[0] - BAR: 3.0, cms[2] - BAR: 1.0})
+    chk(fz2.gvol[0] == 1.11 and fz2.gvol[2] == 2.5, "a frozen value is never changed (later live / scout readings ignored)")
+    chk(fz2.gvol[1] == 1.34 and fz2.gvol_frozen[1] is False, "a miss keeps the provisional value (never wiped)")
+    fz3 = gvb_freeze_gvol(fz2.assign(final=True), {}, {})
+    chk(fz3.gvol[1] == 1.34 and fz3.gvol_frozen[1] is True, "the provisional value freezes once the row is final")
+    chk(gvb_hyp_hold("propose", 0.30) == "collecting (coverage)" and gvb_hyp_hold("stays", 0.25) == "stays" and gvb_hyp_hold("collecting", 0.9) == "collecting",
+        "coverage hold: > 25 % unbanded WIDE rows holds a read")
+    cv = gvb_coverage(pd.DataFrame(dict(sleeve=["WIDE", "WIDE", "LONG", "WIDE"], gvol=[1.1, None, None, 1.3])))
+    chk(cv[0] == 2 and cv[1] == 4 and abs(cv[2] - 1 / 3) < 1e-9, "coverage: read / total, WIDE unread share")
+    jl = pd.DataFrame(dict(t=["2026-10-08T01:00:00", "2026-10-08T01:00:00", "2026-10-08T02:00:00", "2026-10-06T02:00:00"], e="BLOCK",
+                           pair=["A", "A", "B", "C"], gate=["FRENZY_LITE_GVOL_HIGH"] * 2 + ["FRENZY_LITE_GVOL_UNREAD", "FRENZY_LITE_GVOL_HIGH"], strategy=""))
+    lb = gvb_lite_bands(jl, {_ms("2026-10-08T01:00:00"): (1.15, "live gate log", "X")}, {}, GC_FROM)
+    chk(len(lb) == 2 and lb.band.iloc[0] == "[1.1, 1.2)" and lb.band.iloc[1] == "unread", "LITE refusals: one per (t, pair, gate), banded, from the floor")
+    hd = [f"d{i}" for i in range(10) for _ in range(2)]
+    chk(gvb_wide_hyp([0.8, -0.2] * 10, hd, 0.5)[0] == "propose", "band +0.30 > 0, spread, ≥ let-through − 0.30 → propose")
+    chk(gvb_wide_hyp([0.8, -0.2] * 10, hd, 0.7)[0] == "stays", "band below the let-through mean − 0.30 → stays")
+    chk(gvb_wide_hyp([-0.5, 0.1] * 10, hd, -1.0)[0] == "stays", "a losing band → stays")
+    chk(gvb_wide_hyp([5.0] + [0.01] * 19, hd, 0.0)[0] == "stays", "one day ≥ 50 % of the gain → stays")
+    chk(gvb_wide_hyp([0.8, -0.2] * 9, hd[:18], 0.5)[0] == "collecting" and gvb_wide_hyp([0.8] * 20, ["d0"] * 20, 0.5)[0] == "collecting",
+        "< 20 signals / < 10 days → collecting")
+    chk(gvb_wide_hyp([0.8, -0.2] * 10, hd, None)[0] == "stays" and "no let-through baseline" in gvb_wide_hyp([0.8, -0.2] * 10, hd, None)[1],
+        "read reached, no WIDE let-through mean → stays at 1.0 (no let-through baseline)")
+    chk(gvb_wide_hyp([0.8, -0.2] * 10, hd, 0.5)[1] == gvb_wide_hyp([0.8, -0.2] * 10, hd, 0.5)[1], "fixed-seed bootstrap is deterministic")
+    tb = gvb_band_table(pd.DataFrame(dict(sleeve=["WIDE", "WIDE", "LONG"], gvol_band=["[1.0, 1.1)", "[1.0, 1.1)", None], LOCK=[1.0, -3.0, 2.0], day=["a", "b", "a"])))
+    chk(any(x.startswith("| FRENZY_WIDE | [1.0, 1.1) | 2 | 2 | 50 %") for x in tb) and any("| FRENZY_LONG | unread | 1 |" in x for x in tb), "band table per sleeve × band")
     print(f"selftest OK ({ok} checks)")
 
 

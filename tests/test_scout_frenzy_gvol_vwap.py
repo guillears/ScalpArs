@@ -223,3 +223,32 @@ def test_prelock_label(tmp_path, monkeypatch):
     monkeypatch.setattr(X, "_ticks", lambda pair, t0, t1, now, b: ("ok", *tv([100, 98, 96.9, 101, 104, 101.5], t0)))
     txt = "\n".join(X.vws_run(LATER, _F([_fill(o, "SANDUSDT", "FRENZY_LONG", -3.0, "STOP_LOSS", o + 2 * X.MIN)])))
     assert "(ref · † pre-lock exit regime)" in txt and "1 from the pre-lock exit regime" in txt
+
+
+def test_gvol_band_csv_round_trip_keeps_frozen(tmp_path):
+    """🌊 GVOL_BAND (Oct-7 review): an old CSV without the gvol columns loads; frozen values survive a CSV round trip (gvol_frozen read back
+    as bool / str) and later readings never change them; a provisional value is kept on a miss."""
+    ks = ["2026-10-08T01:00:00", "2026-10-08T02:00:00"]
+    old = pd.DataFrame(dict(k=ks, pair=["A", "B"], gate=["FRENZY_WIDE_GVOL_HIGH", "FRENZY_GVOL_HIGH"], final=[True, False], ver=1))
+    p = tmp_path / "g.csv"; old.to_csv(p, index=False)
+    d = X.gvb_freeze_gvol(pd.read_csv(p), {X._ms(ks[0]): (1.11, "live gate log", "A")}, {X._ms(ks[1]) - X.BAR: 1.6})
+    d.to_csv(p, index=False)
+    back = pd.read_csv(p)
+    assert str(back.gvol_frozen[0]) in X._TRUE and str(back.gvol_frozen[1]) not in X._TRUE
+    d2 = X.gvb_freeze_gvol(back, {X._ms(ks[0]): (3.0, "live gate log", "A")}, {})
+    assert d2.gvol[0] == 1.11 and d2.gvol_band[0] == "[1.1, 1.2)" and d2.gvol[1] == 1.6 and d2.gvol_band[1] == "[1.5, 2.0)"
+    X.gvb_freeze_gvol(d2.assign(final=True), {}, {}).to_csv(p, index=False)     # the row turned final → its scout value freezes
+    d3 = X.gvb_freeze_gvol(pd.read_csv(p), {X._ms(ks[1]): (1.05, "live gate log", "B")}, {})
+    assert d3.gvol[1] == 1.6 and str(d3.gvol_frozen[1]) in X._TRUE        # frozen, a later live value ignored
+    lv = X.gvb_freeze_gvol(d2, {X._ms(ks[1]): (1.05, "live gate log", "B")}, {})
+    assert lv.gvol[1] == 1.05 and lv.gvol_src[1] == "live gate log"         # before freezing, the bot's own reading still wins
+
+
+def test_gvol_band_coverage_hold_and_no_baseline():
+    hd = [f"d{i}" for i in range(10) for _ in range(2)]
+    assert X.gvb_hyp_hold(X.gvb_wide_hyp([0.8, -0.2] * 10, hd, 0.5)[0], 0.26) == "collecting (coverage)"
+    assert X.gvb_hyp_hold(X.gvb_wide_hyp([0.8, -0.2] * 10, hd, 0.5)[0], 0.20) == "propose"
+    assert X.gvb_wide_hyp([0.8, -0.2] * 10, hd, None)[0] == "stays"
+    L = X._gvb_band_lines(pd.DataFrame(dict(sleeve=["WIDE"], gvol=[np.nan], gvol_band=[None], LOCK=[1.0], day=["d0"])),
+                          pd.DataFrame(dict(sleeve=[], LOCK=[])), pd.DataFrame(), X.gvb_lite_bands(None, {}, {}))
+    assert any("band read for 0 of 1" in x for x in L) and any("FRENZY_LITE" in x and "counts per band only" in x for x in L)

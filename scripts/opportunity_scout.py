@@ -1294,6 +1294,14 @@ def run():
     except Exception as _nf_e:
         log(f"B1H negflank observation failed: {_nf_e}")
         _rg_sec += ["## 📉 ML_B1H_NEGFLANK", "", f"Unavailable this run ({str(_nf_e)[:120]}).", ""]
+    try:                                               # 🧊 Oct-7 ML_STOP_COOLDOWN (pre-registered) + CLUSTER2_120 (exploratory) — orders exports only; never breaks the run
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_ml_cooldown as _mc
+        _rg_sec += _mc.run(now_ms)
+    except Exception as _mc_e:
+        log(f"ML cooldown observation failed: {_mc_e}")
+        _rg_sec += ["## 🧊 ML cooldown", "", f"Unavailable this run ({str(_mc_e)[:120]}).", ""]
     try:                                               # 🎯 Oct-5 FRENZY / WIDE per-fill exit shadows (pre-registered; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

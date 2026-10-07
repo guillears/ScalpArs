@@ -311,6 +311,8 @@ def test_http_400_invalid_symbol_is_empty_other_400_aborts(monkeypatch):
     monkeypatch.setattr(SG, "_BAN_UNTIL", [0.0]); monkeypatch.setattr(SG, "_STOP", []); monkeypatch.setattr(SG, "_PAUSE", [0.0])
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(_http_error(400, b'{"code":-1121,"msg":"Invalid symbol."}')))
     assert SG._get("GONEUSDT", "5m", T0, 10) == []
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(_http_error(400, b'{"code":-1122,"msg":"Invalid symbol status."}')))
+    assert SG._get("GAIBUSDT", "1h", T0, 10) == []          # a PENDING_TRADING market has no klines (10-07: it aborted every read)
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(_http_error(400, b'{"code":-1100,"msg":"Illegal"}')))
     with pytest.raises(SG.Abort):
         SG._get("XUSDT", "5m", T0, 10)

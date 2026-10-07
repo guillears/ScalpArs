@@ -5942,3 +5942,14 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   own cell_lev_multiplier) and flags "⚠ review" if the FIRST 10 fills OPENED at 0.32 (judged once all 10 closed) average < 0; the operator decides (no auto-off, as for
   the sleeve). trading_config.json 0.32 (config.py default stays 0.2); master builder frozen size 0.32 (no LITE fill in the master yet, so no
   re-price / no STACK bump). Review FRENZY_LITE at 40 fills unchanged.
+- (248) 2026-10-07 🧊🌊 **Two OBSERVE-ONLY scout lines (operator: "build both")** — no trading change. ① ML_STOP_COOLDOWN (scripts/scout_ml_cooldown.py):
+  from the cooldown study (reports/ML_COOLDOWN_STUDY_2026-10-07.md — the operator's blanket 30-min cooldown REFUTED: live blocked 28 · 71 %
+  · +$232; only "30 min after a momentum-long STOP_LOSS* close" was near: replay 49 · 39 % · −0.30 vs −0.06 under the written signature;
+  the study code's regex also caught profitable TRAILING_STOP exits — live cohort identical either way, STOP_LOSS* kept). Sequential,
+  60-min-chain windows, counted from 2026-10-08; frozen expectancy bar → propose arming; CLUSTER2_120 exploratory tally. ② GVOL_BAND: the
+  threshold test (reports/FRENZY_GVOL_THRESHOLD_TEST_2026-10-07.md — keep 1.0; no line beats it OOS; WIDE 1.1 fails the shuffle null)
+  → GVOL_BLOCKED split by frozen band per sleeve (+ LITE counts) and the frozen WIDE [1.0,1.2) hypothesis with a 75 % coverage hold.
+  Bug found while building: the scout's market-volume cache (reports/SCOUT_GVOL_BARS.csv) was never written — a PENDING_TRADING market
+  (GAIBUSDT) answers klines with HTTP 400 −1122, which aborted every read; −1122 now treated like −1121 (no klines, not ranked); verified:
+  NMR 2.92 / ORCA 1.95 / NMR 1.34 / SAND 1.11 reproduced. Dual review: ship-with-fixes (both), all applied. Tests test_scout_ml_cooldown.py,
+  test_scout_gvol.py, test_scout_frenzy_gvol_vwap.py.

@@ -2723,14 +2723,19 @@ LITE_CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_LITE.csv")
 LITE_ATR_CAP = 2.5          # FROZEN: frenzy_max_atr_pct at LITE's registration (2026-10-07) — the split never follows a later config change
 LITE_REVIEW_N, LITE_REVIEW_DAYS = 40, 15   # review due at ≥ 40 closed fills on ≥ 15 days
 LITE_FLAG_N = 20            # avg < 0 at ≥ 20 closed fills → flag for operator review (NOT an auto-off)
-LITE_COLS = ("k", "pair", "day", "closed", "actual", "atr", "hours", "above_streak", "vol_mult", "vs_vwap", "bar_ret", "gvol", "adx_delta", "di_spread")
+LITE_COLS = ("k", "pair", "day", "closed", "actual", "atr", "hours", "above_streak", "vol_mult", "vs_vwap", "bar_ret", "gvol", "adx_delta", "di_spread",
+             "lev")
+# 🪶 Oct-7 (DECISION_LOG 247, operator override at 3 fills): FRENZY_LITE lev 0.2 → 0.32. Results split by size era (the fill's own
+# cell_lev_multiplier); the first LITE_LEV_FLAG_N closed fills at ≥ 0.3 averaging < 0 → "⚠ review" flag — NEVER an automatic revert.
+LITE_LEV_NEW = 0.3          # a fill sized at lev mult ≥ this is the 0.32 era
+LITE_LEV_FLAG_N = 10
 
 
 def _lite_fills():
     """FRENZY_LITE LONG fills in the orders exports (newest export wins per opened_at + pair) → DataFrame in LITE_COLS (never raises on a bad file)."""
     cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "entry_atr_pct", "entry_frenzy_hours",
             "entry_frenzy_above_streak", "entry_frenzy_vol_mult", "entry_frenzy_vs_vwap_pct", "entry_frenzy_bar_ret_pct", "entry_frenzy_gvol",
-            "entry_frenzy_adx_delta", "entry_frenzy_di_spread")
+            "entry_frenzy_adx_delta", "entry_frenzy_di_spread", "cell_lev_multiplier")
     fr = []
     for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
@@ -2757,7 +2762,7 @@ def lite_rows(o):
                             actual=num("pnl_percentage").where(closed), atr=num("entry_atr_pct"), hours=num("entry_frenzy_hours"),
                             above_streak=num("entry_frenzy_above_streak"), vol_mult=num("entry_frenzy_vol_mult"), vs_vwap=num("entry_frenzy_vs_vwap_pct"),
                             bar_ret=num("entry_frenzy_bar_ret_pct"), gvol=num("entry_frenzy_gvol"), adx_delta=num("entry_frenzy_adx_delta"),
-                            di_spread=num("entry_frenzy_di_spread")))
+                            di_spread=num("entry_frenzy_di_spread"), lev=num("cell_lev_multiplier")))
     return out.drop_duplicates(["k", "pair"], keep="last").reset_index(drop=True)
 
 
@@ -2816,10 +2821,42 @@ def lite_lines(w):
     for lab, s_ in lite_atr_split(w):
         wr = "–" if s_["wr"] is None else f"{s_['wr']:.0f} %"
         L.append(f"| {lab} | {s_['n']} | {s_['days']} | {wr} | {f(s_['avg'])} | {f(s_['sum'], 2)} |")
+    L += lite_lev_lines(w)
     op = int((~w.closed.astype(bool)).sum()) if len(w) else 0
     if op:
         L.append(f"_{op} open FRENZY_LITE fill(s) not counted yet._")
     return L + [""]
+
+
+def lite_lev_era(w):
+    """size eras on CLOSED fills → (old_stats, new_stats, flag, first_n_avg): new = fills sized at lev mult ≥ LITE_LEV_NEW (the 0.32 era,
+    DECISION_LOG 247); flag = the FIRST LITE_LEV_FLAG_N closed new-era fills (by open time) average < 0 — an operator-review flag only."""
+    if not len(w):
+        e = lite_stats(w)
+        return e, e, False, None
+    lev = pd.to_numeric(w.lev, errors="coerce") if "lev" in w else pd.Series(np.nan, index=w.index)
+    new = w[lev >= LITE_LEV_NEW]
+    old = w[~(lev >= LITE_LEV_NEW)]
+    # the cohort is FIXED: the first LITE_LEV_FLAG_N new-era fills by OPEN time (open ones included); judged only once all of them closed (review)
+    first = new.assign(_a=pd.to_numeric(new.actual, errors="coerce")).sort_values("k", kind="stable").head(LITE_LEV_FLAG_N)
+    done = len(first) >= LITE_LEV_FLAG_N and first._a.notna().all()
+    fav = first._a.mean() if done else None
+    flag = bool(done and fav < 0)
+    return lite_stats(old), lite_stats(new), bool(flag), fav
+
+
+def lite_lev_lines(w):
+    f = lambda v, d=3: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.{d}f}"
+    o, n, flag, fav = lite_lev_era(w)
+    st = (f"⚠ REVIEW FLAG — the first {LITE_LEV_FLAG_N} fills at 0.32 average {f(fav)} % < 0 (operator decides; NOT an automatic revert)" if flag
+          else (f"✅ the first {LITE_LEV_FLAG_N} fills at 0.32 average {f(fav)} % ≥ 0 — no flag" if fav is not None
+                else f"⏳ {min(n['n'], LITE_LEV_FLAG_N)}/{LITE_LEV_FLAG_N} fills at 0.32 closed"))
+    L = ["", f"**LITE size eras (DECISION_LOG 247 — lev 0.2 → 0.32, operator override at 3 fills; review flag if the first {LITE_LEV_FLAG_N} at "
+         f"0.32 average < 0):** {st}", "", "| Size | N | Days | WR | Avg % | Sum % |", "|---|---|---|---|---|---|"]
+    for lab, s_ in (("lev 0.2 (to 10-07)", o), ("lev ≥ 0.3 (0.32 from 10-07)", n)):
+        wr = "–" if s_["wr"] is None else f"{s_['wr']:.0f} %"
+        L.append(f"| {lab} | {s_['n']} | {s_['days']} | {wr} | {f(s_['avg'])} | {f(s_['sum'], 2)} |")
+    return L
 
 
 def lite_run(now_ms=None):
@@ -3345,6 +3382,18 @@ def selftest():
     chk(lite_watch(mk(40, 15, -0.1))[0] == "flag" and "review due" in lite_watch(mk(40, 15, -0.1))[1], "a flag outranks a due review (both said)")
     chk(any("LITE_ATR" in x for x in lite_lines(lr)) and any("open FRENZY_LITE" in x for x in lite_lines(lr.assign(closed=[True, True, False]))),
         "LITE lines render (split table, open fills noted)")
+    # 🪶 DECISION_LOG 247 size eras (lev 0.2 → 0.32): split by the fill's own lev mult; flag on the FIRST 10 new-era closed fills only
+    era = pd.concat([mk(3, 3, 2.0).assign(lev=0.2), mk(12, 6, -0.5).assign(lev=0.32, k=[f"2026-10-20T{i:02d}:00:00" for i in range(12)])],
+                    ignore_index=True)
+    o_, n_, fl_, fav_ = lite_lev_era(era)
+    chk(o_["n"] == 3 and n_["n"] == 12 and fl_ and abs(fav_ + 0.5) < 1e-9, "size eras split by lev; first 10 at 0.32 avg < 0 → review flag")
+    era2 = era.copy(); era2.loc[era2.lev == 0.32, "actual"] = [0.5] * 10 + [-9.0, -9.0]
+    chk(not lite_lev_era(era2)[2], "the flag reads the FIRST 10 at 0.32 only (later losers don't flag it)")
+    era3 = era.copy(); era3.loc[era3.k == "2026-10-20T00:00:00", "actual"] = np.nan   # the earliest 0.32 fill still open
+    chk(not lite_lev_era(era3)[2] and lite_lev_era(era3)[3] is None, "cohort = first 10 OPENED; judged only once all 10 closed (no shifting set)")
+    chk(not lite_lev_era(mk(9, 3, -1.0).assign(lev=0.32))[2], "< 10 closed at 0.32 → no flag yet")
+    chk(lite_lev_era(mk(3, 3, 1.0))[1]["n"] == 0, "rows without a lev stamp stay in the old era")
+    chk(any("LITE size eras" in x for x in lite_lines(era)), "size-era table renders")
     # 🪶 tracker 13 LITE_GVOL24_LOW
     W0 = 1_790_000_000_000 // LG_WIN_MS * LG_WIN_MS
     syn = {f"P{j}USDT": [[W0 - (600 - i) * BAR, 100.0 + j, (100.0 + j) * 10] for i in range(600)] for j in range(40)}

@@ -5934,3 +5934,11 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   exports; the server text says "HH:MM UTC" as the fallback. The engine's `last_fire` ("MM-DD HH:MM …", UTC) is localised in the UI too
   (flags-table "last setup" column, Top-pairs tooltip, both exports) — the engine string is unchanged (frenzyJustOpened still parses it as
   UTC). Backstop notes carry no time. Display only. Dual review: ship (+ fixes applied). Tests tests/test_frenzy_lite.py.
+- (247) 2026-10-07 🪶⬆ **FRENZY_LITE leverage 0.2 → 0.32 — operator DISCIPLINE-OVERRIDE at 3 fills** (operator: "raise it to 0.32 … we will track
+  it anyways on Scout"). Live: 3/3 won (SAND +1.99, HEMI +1.72, MET +3.04 %, ≈ +$181) — far below any promotion gate (Pattern-W multiplier bar
+  N ≥ 30 ∧ WR ≥ 70 % …); the study expectancy is ≈ +0.13 %/trade reachable, CI spans 0, ≈ +0.07…+0.09 after the haircut. My advice (on record):
+  wait for a pre-committed step-up (20 fills ∧ avg ≥ +0.30 → 0.32). Engine leverage = round(20 × 0.32) = 6× (was 4×): per ~$630 ticket ≈ $3.8k notional — a −3 stop ≈ −$117 (was −$78), the +2 lock ≈ +$72.
+  Locked-rule compliance (override needs a tighter gate): a non-automatic REVIEW FLAG — the scout splits FRENZY_LITE by size era (the fill's
+  own cell_lev_multiplier) and flags "⚠ review" if the FIRST 10 fills OPENED at 0.32 (judged once all 10 closed) average < 0; the operator decides (no auto-off, as for
+  the sleeve). trading_config.json 0.32 (config.py default stays 0.2); master builder frozen size 0.32 (no LITE fill in the master yet, so no
+  re-price / no STACK bump). Review FRENZY_LITE at 40 fills unchanged.

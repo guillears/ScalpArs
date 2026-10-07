@@ -550,7 +550,7 @@ def main():
     # FROZEN with STACK_VERSION (review: never read the live JSON — a later settings change must not silently re-price history; a sizing
     # change = a new STACK_VERSION with these values updated; tests/test_long_chop_burst.py pins them against trading_config.json)
     _th = dict(frenzy_long_invest_mult=1.0, frenzy_long_lev_mult=0.32, frenzy_long_lev_mult_strong=0.5, frenzy_wide_invest_mult=1.0,
-               frenzy_wide_lev_mult=0.2, frenzy_lite_invest_mult=1.0, frenzy_lite_lev_mult=0.2, surge_long_invest_mult=1.0, surge_long_lev_mult=1.0, bearrun_invest_mult=1.0, bearrun_lev_mult=0.05,
+               frenzy_wide_lev_mult=0.2, frenzy_lite_invest_mult=1.0, frenzy_lite_lev_mult=0.32, surge_long_invest_mult=1.0, surge_long_lev_mult=1.0, bearrun_invest_mult=1.0, bearrun_lev_mult=0.05,
                frenzy_tp_pct=3.0, frenzy_lock_arm_pct=3.0, frenzy_lock_floor_pct=2.0, frenzy_lock_trail_pct=2.0,   # 10-06d: the live lock, DECISION_LOG 205
                frenzy_wide_hold_green_streak=WIDE_HG_STREAK_FROZEN, frenzy_max_atr_pct=WIDE_HG_MAX_ATR_FROZEN)        # 10-06d: WIDE hold-green, DECISION_LOG 231
     SLEEVE_SIZE_FROZEN = _th
@@ -561,7 +561,7 @@ def main():
             return float(_th.get("frenzy_long_invest_mult", 1.0)), float(_th.get("frenzy_long_lev_mult_strong") if strong else _th.get("frenzy_long_lev_mult", 1.0))
         if strat == "FRENZY_WIDE":
             return float(_th.get("frenzy_wide_invest_mult", 1.0)), float(_th.get("frenzy_wide_lev_mult", 1.0))
-        if strat == "FRENZY_LITE":   # 🪶 Oct-7 (243): 1 × 0.2 (4×), never the strong bump
+        if strat == "FRENZY_LITE":   # 🪶 Oct-7 (243): 1 × 0.2 (4×) → 0.32 (247, operator override; the master holds no LITE fill yet), never the strong bump
             return float(_th.get("frenzy_lite_invest_mult", 1.0)), float(_th.get("frenzy_lite_lev_mult", 1.0))
         if strat == "SURGE_LONG":
             return float(_th.get("surge_long_invest_mult", 1.0)), float(_th.get("surge_long_lev_mult", 1.0))

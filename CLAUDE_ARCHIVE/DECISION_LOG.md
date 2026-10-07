@@ -5928,3 +5928,9 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   Display only — no trading path reads it (grep-verified). Indicators (EMAs/RSI/ADX/ATR) stay the scan's values on purpose: they are what
   the engine decided on. Dual review: ship-with-fixes (own client, ban detection, pinned FRENZY rows, no network in tests), all applied.
   Tests tests/test_pairs_live_price.py.
+- (246) 2026-10-07 🕒 **FRENZY monitor times in the operator's clock** (operator: "LITE: stretch judged at 19:10 … not my time" — HEMI
+  opened 19:10 UTC = 16:10 Buenos Aires). The LITE judged-bar time now rides as UTC ms (`lite_judged_ms` = the judged bar's CLOSE, same
+  convention as `on_ms`, DECISION_LOG 235); the UI shows it via frenzyOnClock (America/Argentina/Buenos_Aires), with the date in both text
+  exports; the server text says "HH:MM UTC" as the fallback. The engine's `last_fire` ("MM-DD HH:MM …", UTC) is localised in the UI too
+  (flags-table "last setup" column, Top-pairs tooltip, both exports) — the engine string is unchanged (frenzyJustOpened still parses it as
+  UTC). Backstop notes carry no time. Display only. Dual review: ship (+ fixes applied). Tests tests/test_frenzy_lite.py.

@@ -3548,6 +3548,7 @@ def _frenzy_flag_view(f):
             "volume_24h": f.get('volume_24h'), "in_state": bool(f.get('in_state')), "ready": bool(f.get('ready')), "late": bool((f.get('hours') or 0) >= 32),
             "code": f.get('code'), "text": f.get('text'), "last_fire": f.get('last_fire'), "stale": bool(f.get('misses')),
             "lite_code": f.get('lite_code'), "lite_ready": bool(f.get('lite_ready')),   # 🪶 Oct-7 (243): FRENZY_LITE's read on the last bar
+            "lite_judged_ms": f.get('lite_judged_ms'),   # 🕒 Oct-7: when LITE judged the current stretch (UTC ms) — the UI shows it in the operator's clock
             # ⏪ Oct-6: CLOSE time (UTC ms) of the bar the current setup turned ON (on_bar_ts + 5 min) — the UI shows "ON since HH:MM" in the
             # viewer's local time; None when the setup is not ON (the server text stays the fallback)
             "on_ms": (int(f['on_bar_ts']) + 300_000 if (f.get('in_state') and f.get('on_bar_ts') is not None) else None)}

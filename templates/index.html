@@ -8428,14 +8428,32 @@
                 }
                 return 'ON';
             }
-            return f.text || '';
+            return frenzyLiteLocal(f, false) || f.text || '';
+        }
+        // 🕒 Oct-7 (operator: "not my time"): the engine's last_fire starts "MM-DD HH:MM" in UTC (the bar time) → the app's clock, with date.
+        // The engine string itself is unchanged (frenzyJustOpened parses it as UTC). Anything without that prefix passes through.
+        function frenzyLastFireLocal(s) {
+            const t = String(s || '');
+            const m = /^(\d{2})-(\d{2}) (\d{2}):(\d{2})(?= )/.exec(t);
+            if (!m) return t;
+            try {
+                const now = Date.now(), y = new Date(now).getUTCFullYear();
+                let ms = Date.UTC(y, Number(m[1]) - 1, Number(m[2]), Number(m[3]), Number(m[4]));
+                if (ms > now + 2 * 86400000) ms = Date.UTC(y - 1, Number(m[1]) - 1, Number(m[2]), Number(m[3]), Number(m[4]));   // Jan read of a Dec bar
+                return frenzyOnClock(ms, true) + t.slice(m[0].length);
+            } catch (e) { return t; }
+        }
+        // 🕒 Oct-7 (operator: "not my time"): "LITE: stretch judged at HH:MM UTC (…)" → the judged bar in the app's clock (f.lite_judged_ms)
+        function frenzyLiteLocal(f, withDate) {
+            if (!f || f.lite_code !== 'FRENZY_LITE_STRETCH_DONE' || !f.lite_judged_ms || isNaN(Number(f.lite_judged_ms)) || !f.text) return '';
+            try { return f.text.replace(/stretch judged at \d{2}:\d{2}( UTC)?/, `stretch judged at ${frenzyOnClock(f.lite_judged_ms, withDate)}`); } catch (e) { return ''; }
         }
         function frenzyReportStatus(f) {
             if (f && f.code === 'FRENZY_ON' && f.on_ms && !isNaN(Number(f.on_ms))) {
                 try { return `ON desde ${frenzyOnClock(f.on_ms, true)}`; } catch (e) {}
             }
             if (f && f.code === 'FRENZY_ON') return 'ON';
-            return (f && f.text) || '';
+            return frenzyLiteLocal(f, true) || (f && f.text) || '';
         }
         function frenzyMark(f) { return f ? ('🔥' + (f.in_state ? '★' : '') + (f.late ? '⏳' : '')) : ''; }
         function frenzyReportLines(perf, hr2) {
@@ -8448,7 +8466,7 @@
             out.push('\n## 🔥 FRENZY Flagged Pairs (now)\n');
             if (perf.frenzy_flags && perf.frenzy_flags.length) {
                 out.push(`${'Pair'.padEnd(16)} ${'Spike UTC'.padEnd(12)} ${'Hrs'.padStart(5)} ${'Gain%'.padStart(7)} ${'OffPk%'.padStart(7)} ${'vsAvg%'.padStart(7)} ${'Vol×'.padStart(6)} ${'ATR%'.padStart(5)} ${'Vol24h$M'.padStart(9)}  Long status / last setup`);
-                for (const f of perf.frenzy_flags) out.push(`${(frenzyMark(f) + ' ' + f.pair).padEnd(16)} ${(f.spike || '').padEnd(12)} ${(f.hours != null ? f.hours.toFixed(1) : '-').padStart(5)} ${sg(f.gain_pct, 0).padStart(7)} ${sg(f.off_peak_pct, 0).padStart(7)} ${sg(f.vs_vwap_pct, 1).padStart(7)} ${(f.vol_mult != null ? f.vol_mult.toFixed(0) : '-').padStart(6)} ${(f.atr_pct != null ? f.atr_pct.toFixed(2) : '-').padStart(5)} ${(f.volume_24h != null ? (f.volume_24h / 1e6).toFixed(0) : '-').padStart(9)}  ${frenzyReportStatus(f)}${f.last_fire ? ' | ' + f.last_fire : ''}${f.stale ? ' (not read this bar)' : ''}`);
+                for (const f of perf.frenzy_flags) out.push(`${(frenzyMark(f) + ' ' + f.pair).padEnd(16)} ${(f.spike || '').padEnd(12)} ${(f.hours != null ? f.hours.toFixed(1) : '-').padStart(5)} ${sg(f.gain_pct, 0).padStart(7)} ${sg(f.off_peak_pct, 0).padStart(7)} ${sg(f.vs_vwap_pct, 1).padStart(7)} ${(f.vol_mult != null ? f.vol_mult.toFixed(0) : '-').padStart(6)} ${(f.atr_pct != null ? f.atr_pct.toFixed(2) : '-').padStart(5)} ${(f.volume_24h != null ? (f.volume_24h / 1e6).toFixed(0) : '-').padStart(9)}  ${frenzyReportStatus(f)}${f.last_fire ? ' | ' + frenzyLastFireLocal(f.last_fire) : ''}${f.stale ? ' (not read this bar)' : ''}`);
             } else out.push('  none');
             out.push('\n## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE)\n');
             if (perf.frenzy_rows && perf.frenzy_rows.length) {
@@ -17550,7 +17568,7 @@
                             <td class="px-2 py-1.5 text-right ${(f.atr_pct != null && (!_maxAtr || f.atr_pct <= _maxAtr)) ? 'text-emerald-400' : 'text-red-400'}">${f.atr_pct != null ? f.atr_pct.toFixed(2) + '%' : '—'}</td>
                             <td class="px-2 py-1.5 text-right text-gray-400">${f.volume_24h != null ? '$' + (f.volume_24h / 1e6).toFixed(0) + 'M' : '—'}</td>
                             <td class="px-2 py-1.5 ${(f.ready || f.lite_ready) ? 'text-emerald-400 font-semibold' : (f.in_state ? 'text-orange-300' : 'text-gray-400')}">${_fzE(frenzyStatusText(f))}${f.stale ? ' (not read this bar)' : ''}</td>
-                            <td class="px-2 py-1.5 text-gray-400">${_fzE(f.last_fire || '')}</td>
+                            <td class="px-2 py-1.5 text-gray-400">${_fzE(frenzyLastFireLocal(f.last_fire))}</td>
                         </tr>`).join('') : '<tr><td colspan="11" class="px-3 py-3 text-center text-gray-500">No pair is flagged right now</td></tr>';
                     }
                     const fzB = document.getElementById('frenzy-body');
@@ -17989,7 +18007,7 @@
                     if (_fz) {
                         const _fzTip = `FRENZY — spike ${surgeTime(_fz.spike_ms, _fz.spike, true, true)} (${_fz.hours != null ? _fz.hours.toFixed(1) : '?'} h ago) · ${_fz.gain_pct != null ? (_fz.gain_pct >= 0 ? '+' : '') + _fz.gain_pct.toFixed(0) : '?'}% since the spike · ${_fz.vs_vwap_pct != null ? (_fz.vs_vwap_pct >= 0 ? '+' : '') + _fz.vs_vwap_pct.toFixed(1) : '?'}% vs its average price · volume ${_fz.vol_mult != null ? _fz.vol_mult.toFixed(0) : '?'}× normal · ★ = long setup ON · ⏳ = flagged ≥ 32 h${p.frenzy_only ? ' · outside the Top list: followed by FRENZY only' : ''}`;
                         _fzBadge = `<span class="mr-1 cursor-help" title="${_escAttr(_fzTip)}">${frenzyMark(_fz)}</span>`;
-                        blockReasonHtml = `<span class="text-xs whitespace-nowrap ${(_fz.ready || _fz.lite_ready) ? 'text-emerald-400 font-semibold' : 'text-orange-300'}" title="${_escAttr('FRENZY status. Momentum gate: ' + (p.block_reason || (p.frenzy_only ? 'not in the Top list' : 'none')) + (_fz.last_fire ? ' · last setup: ' + _fz.last_fire : ''))}">${_escAttr(frenzyStatusText(_fz))}</span>`;
+                        blockReasonHtml = `<span class="text-xs whitespace-nowrap ${(_fz.ready || _fz.lite_ready) ? 'text-emerald-400 font-semibold' : 'text-orange-300'}" title="${_escAttr('FRENZY status. Momentum gate: ' + (p.block_reason || (p.frenzy_only ? 'not in the Top list' : 'none')) + (_fz.last_fire ? ' · last setup: ' + frenzyLastFireLocal(_fz.last_fire) : ''))}">${_escAttr(frenzyStatusText(_fz))}</span>`;
                     }
 
                     // 🔗 Oct-5 (operator): LINKUSDT row always shaded light grey, so it stands out in the list

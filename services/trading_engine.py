@@ -7605,6 +7605,8 @@ class TradingEngine:
             _done = _dd.get(pair)
             _nt = (getattr(self, '_fz_lite_note', None) or {}).get(pair)
             _note = _nt[1] if (_nt and _done is not None and _nt[0] == _done) else None
+            # 🕒 Oct-7 (operator: "not my time"): the judged bar's time (UTC ms) rides to the UI, which shows it in the operator's clock
+            flag['lite_judged_ms'] = (_nt[2] if (_note and len(_nt) > 2) else None)
             _seen = self.__dict__.setdefault('_fz_lite_seen', {})
             _prev_seen = _seen.get(pair); _seen[pair] = ep.get('last_bar_ts')   # the bars THIS process evaluated (first-bar guarantee)
             ready, code, text = frenzy_lite_status(ep, th, flag.get('volume_24h'), _done, _note)
@@ -7623,6 +7625,7 @@ class TradingEngine:
                 _prev = _dd.get(pair); _marked = True
                 await self._frenzy_lite_mark_done(pair, sid)
                 self.__dict__.setdefault('_fz_lite_note', {})[pair] = (sid, _why_done)
+                flag['lite_judged_ms'] = None   # a backstop note carries no bar time (review)
                 ready, code, text = frenzy_lite_status(ep, th, flag.get('volume_24h'), sid, _why_done)
                 logger.info(f"[FRENZY_LITE] {pair}: stretch {datetime.utcfromtimestamp(sid / 1000):%H:%M} UTC judged without entry — {_why_done}")
             flag['lite_code'], flag['lite_text'], flag['lite_ready'] = code, text, bool(ready)
@@ -7654,7 +7657,8 @@ class TradingEngine:
             if not ready:   # GREEN_BAR: the signal bar closed green → refused, and the stretch is done
                 self._record_filter_block(code, "LONG")
                 flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} LITE refused: {text.replace('LITE: ', '')} — stretch judged"
-                _notes[pair] = (sid, f"{_bar_dt:%H:%M} (refused: GREEN_BAR)")
+                _notes[pair] = (sid, f"{_bar_dt:%H:%M} UTC (refused: GREEN_BAR)", int(bar_open))
+                flag['lite_judged_ms'] = int(bar_open)
                 logger.info(f"[FRENZY_LITE] {pair}: LITE signal{_st} refused — {text} · stretch judged (no retry on later bars)")
                 return
             _opened = True
@@ -7662,7 +7666,8 @@ class TradingEngine:
             await self._frenzy_open(db, flag, ind, bar_open, lite=True)
             _lf = str(flag.get('last_fire') or '')
             _out = _lf.split(' LITE ', 1)[1] if ' LITE ' in _lf else 'refused (no outcome recorded)'
-            _notes[pair] = (sid, f"{_bar_dt:%H:%M} ({_out})")
+            _notes[pair] = (sid, f"{_bar_dt:%H:%M} UTC ({_out})", int(bar_open))
+            flag['lite_judged_ms'] = int(bar_open)
             if 'opened' not in _out:
                 logger.info(f"[FRENZY_LITE] {pair}: stretch{_st} judged — {_out} (no retry on later bars)")
         except Exception as e:

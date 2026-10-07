@@ -214,6 +214,8 @@ def test_lite_eval_one_judgement_per_stretch(monkeypatch):
     assert flag["lite_ready"] and flag["text"].startswith("LITE: held above") and "di_spread" in flag   # the monitor shows LITE's read
     calls, blocks, flag = run(_ep(**NEXT))                                                          # next bar, same stretch
     assert calls == [] and blocks == [] and flag["lite_code"] == "FRENZY_LITE_STRETCH_DONE" and "(opened)" in flag["text"]
+    # 🕒 Oct-7: the judged bar's time rides as UTC ms (the UI shows the operator's clock); the server text says UTC explicitly
+    assert flag["lite_judged_ms"] == int(LAST) + BAR_MS and " UTC (opened)" in flag["text"]
     calls, _, _ = run(_ep(above_streak=12, last_bar_ts=LAST + 40 * BAR_MS))                         # a new stretch
     assert len(calls) == 1 and e._fz_lite_done["FOOUSDT"] == LAST + 29 * BAR_MS
     calls, blocks, flag = run(_ep(above_streak=5))                                                  # not a candidate: no counter spam
@@ -228,6 +230,7 @@ def test_green_bar_then_next_bar_no_entry(monkeypatch):
     assert calls == [] and blocks == ["FRENZY_LITE_GREEN_BAR"] and "stretch judged" in flag["last_fire"] and e._fz_lite_done["FOOUSDT"] == SID
     calls, blocks, flag = run(_ep(**NEXT))                                                          # red next bar — the stretch is done
     assert calls == [] and blocks == [] and flag["lite_code"] == "FRENZY_LITE_STRETCH_DONE" and "(refused: GREEN_BAR)" in flag["text"]
+    assert flag["lite_judged_ms"] == int(LAST) + BAR_MS and " UTC (refused: GREEN_BAR)" in flag["text"]   # 🕒 Oct-7
 
 
 def test_open_path_refusal_then_next_bar_no_entry(monkeypatch):
@@ -286,6 +289,7 @@ def test_first_bar_guarantee_cold_start_mid_stretch(monkeypatch):
     calls, blocks, flag = run(ep, closed=closed, real_prev=True)
     assert calls == [] and blocks == [] and flag["lite_code"] == "FRENZY_LITE_STRETCH_DONE" and "first signal bar not seen" in flag["text"]
     assert e._fz_lite_done["FOOUSDT"] == frenzy_lite_stretch_id(ep)
+    assert flag.get("lite_judged_ms") is None   # 🕒 Oct-7: a backstop note carries no bar time
     nxt = frenzy_walk(rows[:320 + 28], NORM, _th())
     calls, _, flag = run(nxt, closed=rows[:320 + 28], real_prev=True)           # and the stretch stays done
     assert calls == [] and flag["lite_code"] == "FRENZY_LITE_STRETCH_DONE"

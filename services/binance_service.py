@@ -82,6 +82,8 @@ class BinanceService:
         # 📖 Oct-3: research reads (order-book snapshots) get their OWN client and throttle — never queued in front of orders (trading
         # client) nor of the scan / FRENZY kline reads (public client). Created lazily on first use.
         self.research_exchange = None
+        # 💹 Oct-7 (DECISION_LOG 245): dashboard display reads (all-symbols last price) — own client + throttle, created lazily.
+        self.display_exchange = None
         # Public exchange for market data (no auth needed)
         self.public_exchange = ccxt.binanceusdm({
             'enableRateLimit': True,
@@ -474,6 +476,8 @@ class BinanceService:
         await self.spot_exchange.close()
         if getattr(self, 'research_exchange', None) is not None:
             await self.research_exchange.close()
+        if getattr(self, 'display_exchange', None) is not None:
+            await self.display_exchange.close()
     
     @property
     def _last_balance_payload(self):
@@ -1114,6 +1118,33 @@ class BinanceService:
         except Exception as e:
             self._detect_ban(e)
             logger.debug(f"[BINANCE] depth read failed for {symbol}: {e}")
+            return None
+
+    async def fetch_all_prices(self, max_age_s: float = 60.0) -> Optional[Dict[str, float]]:
+        """💹 Oct-7 (DECISION_LOG 245): {symbol: last price} for every futures contract from ONE public call (fapi /ticker/price, weight 2)
+        on the DISPLAY client (its own throttle — never queued in front of the scan / FRENZY / order reads). Rows whose price time is older
+        than max_age_s (halted / settling contracts) are dropped. None on any error or during a ban (never raises, never sleeps out a ban;
+        a ban in the error is recorded for the whole bot)."""
+        try:
+            if _ban_until > time.time():
+                return None
+            if self.display_exchange is None:
+                self.display_exchange = ccxt.binanceusdm({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
+            raw = await self.display_exchange.fapiPublicGetTickerPrice()
+            now_ms = time.time() * 1000.0
+            out = {}
+            for r in raw or []:
+                try:
+                    v = float(r.get('price') or 0)
+                    t = float(r.get('time') or 0)
+                    if v > 0 and (t <= 0 or now_ms - t <= max_age_s * 1000.0):
+                        out[str(r.get('symbol'))] = v
+                except (TypeError, ValueError, AttributeError):
+                    continue
+            return out or None
+        except Exception as e:
+            self._detect_ban(e)
+            logger.debug(f"[BINANCE] display price read failed: {str(e)[:120]}")
             return None
 
     async def fetch_ohlcv_research(self, symbol: str, timeframe: str = '5m', limit: int = 60) -> Optional[List]:

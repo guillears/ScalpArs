@@ -41,3 +41,17 @@ def _no_orderbook_network(monkeypatch):
     async def _none(*a, **k):
         return None
     monkeypatch.setattr(_bs.binance_service, "fetch_orderbook_depth", _none, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _no_display_price_network(monkeypatch):
+    """💹 Oct-7 (DECISION_LOG 245): /api/pairs' live display price never reaches the network in tests (and no real map stays cached)."""
+    from services import binance_service as _bs
+
+    async def _none(*a, **k):
+        return None
+    monkeypatch.setattr(_bs.binance_service, "fetch_all_prices", _none)
+    _m = sys.modules.get("main")
+    if _m is not None and hasattr(_m, "_live_px"):
+        _m._live_px.update(t=0.0, px={})
+        _m._live_px["try"] = 0.0

@@ -5920,3 +5920,11 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   (latency study) is a WICK — paper fills at the wick print, the market is +0.16…+0.19 better a moment later (deep review re-checked 5 on
   public aggTrades). Exception: SPIKE_FADE live proxy −0.32 (p10 −0.80) → 0.10 is too kind there (watch). Dual review: ship-with-fixes,
   all 12 applied. Tests tests/test_scout_stop_slip.py (77).
+- (245) 2026-10-07 💹 **Top-pairs Price column is live for every row** (operator: METUSDT showed 0.3685 vs Binance 0.3699 — "stuck").
+  Rows without a WebSocket tracker (incl. the pinned FRENZY rows) showed the last scan's 5m close, minutes old. Now /api/pairs prefers
+  the WS price → a cached all-symbols last price (BinanceService.fetch_all_prices: fapi /ticker/price, weight 2, its OWN ccxt client so it
+  never queues ahead of scan / FRENZY / order reads; ban-aware + records a ban via _detect_ban; rows older than 60 s dropped) shared by
+  every tab for 4 s (single-flight lock, 3 s timeout, last map kept ≤ 30 s on failure) → the scan close. Read before the DB queries.
+  Display only — no trading path reads it (grep-verified). Indicators (EMAs/RSI/ADX/ATR) stay the scan's values on purpose: they are what
+  the engine decided on. Dual review: ship-with-fixes (own client, ban detection, pinned FRENZY rows, no network in tests), all applied.
+  Tests tests/test_pairs_live_price.py.

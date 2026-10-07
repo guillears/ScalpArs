@@ -1331,6 +1331,41 @@ def _ema_px(v):
         return None
 
 
+# 💹 Oct-7 (DECISION_LOG 245, operator: Top-pairs prices "stuck"): rows without a WebSocket tracker showed the last scan's 5m close,
+# minutes old for pinned FRENZY rows. One public all-symbols price call (fapi /ticker/price, weight 2) cached LIVE_PX_TTL_S — display
+# only, never read by any trading path; its own ccxt client (BinanceService.fetch_all_prices), so it never queues ahead of trading reads.
+# Concurrent dashboard refreshes share one in-flight read; a failed / banned read keeps the last map and a map older than
+# LIVE_PX_MAX_AGE_S is not shown (falls back to the scan close).
+LIVE_PX_TTL_S = 4.0
+LIVE_PX_MAX_AGE_S = 30.0
+_live_px = {"t": 0.0, "try": 0.0, "px": {}}   # t = last successful read · try = last attempt
+_live_px_lock = asyncio.Lock()
+
+
+async def _live_prices() -> dict:
+    """{symbol: last price} from one public all-symbols call, at most every LIVE_PX_TTL_S; {} when unavailable. Never raises."""
+    try:
+        def _cached():
+            return _live_px["px"] if time.time() - _live_px["t"] <= LIVE_PX_MAX_AGE_S else {}
+        if time.time() - _live_px["try"] < LIVE_PX_TTL_S:
+            return _cached()
+        async with _live_px_lock:
+            if time.time() - _live_px["try"] < LIVE_PX_TTL_S:   # another refresh read (or tried) while we waited
+                return _cached()
+            _live_px["try"] = time.time()
+            try:
+                px = await asyncio.wait_for(binance_service.fetch_all_prices(), 3.0)   # own client; ban-aware; None on failure
+            except Exception:   # timeout
+                px = None
+            if px:
+                _live_px["px"] = px
+                _live_px["t"] = time.time()
+                return px
+            return _cached()   # failed / banned: the last map while fresh enough; the next attempt waits LIVE_PX_TTL_S
+    except Exception:
+        return {}
+
+
 @app.get("/api/pairs")
 async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
     """Get top pairs with indicators.
@@ -1347,6 +1382,7 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
     """
     # Validate limit
     limit = min(max(limit, 5), 100)
+    _lpx = await _live_prices()   # 💹 Oct-7: live display price for rows without a WebSocket tracker (read before the DB queries)
 
     # Only show pairs updated in the last 10 minutes — covers normal scan
     # cadence (~60s per cycle) with comfortable margin for slow scans.
@@ -1394,11 +1430,13 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
         long_count = positions.get((p.pair, "LONG"), 0)
         short_count = positions.get((p.pair, "SHORT"), 0)
         _mc = _mcap_get(p.pair)
-        
-        # Use real-time WebSocket price instead of stale OHLCV close
+
+        # Real-time WebSocket price first; else the cached all-symbols price (💹 Oct-7); else the last scan's OHLCV close
         ws_tracker = websocket_tracker.trackers.get(p.pair)
         if ws_tracker and ws_tracker.last_price and ws_tracker.last_price > 0:
             display_price = ws_tracker.last_price
+        elif _lpx.get(p.pair):
+            display_price = _lpx[p.pair]
         else:
             display_price = p.price
         
@@ -1468,7 +1506,7 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
         if _k in _have:
             continue
         _f = _fz_raw.get(_k) or {}
-        _px = _f.get('live_price') or _f.get('price')
+        _px = _lpx.get(_k) or _f.get('live_price') or _f.get('price')   # 💹 Oct-7: the live display price first (pinned FRENZY rows)
         _wt = websocket_tracker.trackers.get(_k)
         if _wt and _wt.last_price and _wt.last_price > 0:
             _px = _wt.last_price

@@ -5911,3 +5911,12 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   P&L) → reachable ≈ 696 · +0.134 before haircut; operator: keep the shortlist. One position per pair kept, conflicts counted
   (FRENZY_PAIR_HELD_BY_LITE). Watchlist, no auto-off: review at 40 fills / 15 days; flag avg < 0 at 20. Dual review: ship-with-fixes, all
   applied. Tests tests/test_frenzy_lite.py.
+- (244) 2026-10-07 🧯 **Scout STOP_SLIP — what every stop exit really costs** (operator: "el deslizamiento de los stops debería estar en
+  scout"). Observe-only tracker (scripts/scout_stop_slip.py, hooked in opportunity_scout as its own try): per stop exit, paper fill vs the
+  stop line (rebuilt from config with the engine formulas, two-sided line check), live proxy (last print at closed_at) vs the line, monitor
+  delay from the crossing that TRIGGERED the exit; write-once reports/SCOUT_STOP_SLIP.csv, network errors never burn tries, weight stop
+  1200, 120 s budget. Paper stop = the print that crossed the line (no slippage model). Dry-run 311 stops: paper ≈ line (mean −0.00);
+  live proxy −0.04 (median −0.01) → the backtests' 0.10 is conservative for most sleeves. FRENZY/WIDE: the "0.18 % below the last print"
+  (latency study) is a WICK — paper fills at the wick print, the market is +0.16…+0.19 better a moment later (deep review re-checked 5 on
+  public aggTrades). Exception: SPIKE_FADE live proxy −0.32 (p10 −0.80) → 0.10 is too kind there (watch). Dual review: ship-with-fixes,
+  all 12 applied. Tests tests/test_scout_stop_slip.py (77).

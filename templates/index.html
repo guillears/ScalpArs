@@ -79,6 +79,8 @@
             background: rgba(255, 255, 255, 0.2);
             border-radius: 3px;
         }
+        /* 👆 Oct-7: orders tab buttons — no iOS double-tap-zoom delay on taps */
+        #tab-transactions, #tab-open, #tab-closed, #tab-bnb-swaps { touch-action: manipulation; }
         .tab-active {
             border-bottom: 2px solid #10b981;
             color: #10b981;
@@ -362,16 +364,16 @@
         <!-- Orders Tabs -->
         <section>
             <div class="flex items-center space-x-8 border-b border-white/10 mb-4">
-                <button onclick="switchOrdersTab('transactions')" id="tab-transactions" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition tab-active">
+                <button onclick="switchOrdersTab('transactions', event)" id="tab-transactions" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition tab-active">
                     Transactions
                 </button>
-                <button onclick="switchOrdersTab('open')" id="tab-open" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition">
+                <button onclick="switchOrdersTab('open', event)" id="tab-open" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition">
                     Open Orders
                 </button>
-                <button onclick="switchOrdersTab('closed')" id="tab-closed" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition">
+                <button onclick="switchOrdersTab('closed', event)" id="tab-closed" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition">
                     Closed Orders
                 </button>
-                <button onclick="switchOrdersTab('bnb-swaps')" id="tab-bnb-swaps" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition">
+                <button onclick="switchOrdersTab('bnb-swaps', event)" id="tab-bnb-swaps" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition">
                     BNB Swaps
                 </button>
             </div>
@@ -7933,14 +7935,19 @@
 
             // Open orders: every 1 s while the Open tab is showing; every 15 s behind other tabs (⚡ Oct-5 refresh fix 1,
             // DECISION_LOG 212 — was 86,400 calls/day regardless). switchOrdersTab('open') loads at once, so the tab is never stale.
+            // 👆 Oct-7: touch devices (pointer: coarse — phones AND tablets; a narrow desktop window keeps 1 s) poll the Open
+            // tab every 3 s: each tick rebuilds the whole tbody, which is what made taps on the other tabs lag / need a 2nd tap.
             let _ooLast = 0;
             setInterval(() => {
                 if (document.hidden) return;
                 const _now = Date.now();
-                if (currentTab !== 'open' && _now - _ooLast < 15000) return;
+                const _ooEvery = currentTab !== 'open' ? 15000 : (_isCoarsePointer() ? 3000 : 0);
+                if (_now - _ooLast < _ooEvery - 50) return;
                 _ooLast = _now;
                 _rfGuard('oo', loadOpenOrders);
             }, 1000);
+            // 👆 Oct-7: the tab-switch load goes through the same in-flight guard + cadence stamp (no duplicate fetch).
+            window._ooRefreshNow = () => { _ooLast = Date.now(); _rfGuard('oo', loadOpenOrders); };
 
             // Jul 22: analytics safety net — loadPerformance() is event-driven (fires when the
             // newest-closed-order signature changes, see loadClosedOrders), but recompute every
@@ -18127,6 +18134,8 @@
             const chev = document.getElementById('frenzy-group-chevron'); if (chev) chev.textContent = _frenzyGroupExpanded ? '▾' : '▸';
             const hdr = document.getElementById('frenzy-group-header'); if (hdr) hdr.setAttribute('aria-expanded', String(_frenzyGroupExpanded));
             tbody._lastHTML = null;   // the next 10 s refresh re-renders from the new state
+            // a queued render carries the old fold state → drop it and re-render from fresh data (written once the tap settles)
+            if (typeof _pendingHTML !== 'undefined' && _pendingHTML.has(tbody)) { _pendingHTML.delete(tbody); try { loadPairs(); } catch (e) {} }
         }
         // A FRENZY / WIDE / LITE entry opened on this pair's last signal bar within the last 20 min (last_fire = "MM-DD HH:MM [WIDE |LITE ]opened", UTC bar open).
         function _frenzyJustOpened(f) {
@@ -18182,7 +18191,19 @@
         }
 
         // Switch orders tab
-        function switchOrdersTab(tab) {
+        // 👆 Oct-7 (operator, mobile): the visual switch is applied synchronously; the data load runs after the new tab has
+        // painted (rAF → setTimeout 0, raced against a 100 ms timeout; runs once). Touch/pen taps fire on pointerup (see
+        // _initOrdersTabTaps); the click that follows the same tap is swallowed by the 600 ms same-tab guard (event
+        // timestamps, monotonic). The switched-to tab's tbody gets ONE immediate write (the finger is on the tab bar, not
+        // over that table) — see _touchExemptWrite.
+        let _ordersTabLast = { tab: null, at: -1e9 };
+        let _ordersTabLoadSeq = 0;
+        var _ORDERS_TAB_TBODY = { transactions: 'transactions-table-body', open: 'open-orders-table-body', closed: 'closed-orders-table-body' };
+        var _touchExemptWrite = { id: null, until: 0 };
+        function switchOrdersTab(tab, ev) {
+            const _ts = (ev && ev.timeStamp > 0) ? ev.timeStamp : performance.now();
+            if (_ordersTabLast.tab === tab && _ts - _ordersTabLast.at >= 0 && _ts - _ordersTabLast.at < 600) return;   // pointerup + click of one tap
+            _ordersTabLast = { tab, at: _ts };
             currentTab = tab;
             
             ['transactions', 'open', 'closed', 'bnb-swaps'].forEach(t => {
@@ -18192,15 +18213,40 @@
             
             document.getElementById(`tab-${tab}`).classList.add('tab-active');
             document.getElementById(`content-${tab}`).classList.remove('hidden');
+            _touchExemptWrite = { id: _ORDERS_TAB_TBODY[tab] || null, until: Date.now() + 3000 };
             
-            // Load fresh data when switching tabs
-            if (tab === 'transactions') loadTransactions();
-            else if (tab === 'open') loadOpenOrders();
-            else if (tab === 'closed') {
-                loadClosedOrders();
-                loadPerformance();
-            } else if (tab === 'bnb-swaps') loadBnbSwaps();
+            // Load fresh data when switching tabs — after the new tab has painted; a newer switch supersedes this load
+            const _seq = ++_ordersTabLoadSeq;
+            let _ran = false;
+            const _load = () => {
+                if (_ran) return;
+                _ran = true;
+                if (_seq !== _ordersTabLoadSeq || currentTab !== tab) return;
+                if (tab === 'transactions') loadTransactions();
+                else if (tab === 'open') { if (typeof window._ooRefreshNow === 'function') window._ooRefreshNow(); else loadOpenOrders(); }
+                else if (tab === 'closed') {
+                    loadClosedOrders();
+                    loadPerformance();
+                } else if (tab === 'bnb-swaps') loadBnbSwaps();
+            };
+            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(_load, 0));
+            setTimeout(_load, 100);   // rAF never fires on a hidden / throttled page — whichever comes first wins
         }
+        (function _initOrdersTabTaps() {
+            const bind = () => {
+                ['transactions', 'open', 'closed', 'bnb-swaps'].forEach(t => {
+                    const b = document.getElementById(`tab-${t}`);
+                    if (!b) return;
+                    b.addEventListener('pointerup', (e) => {
+                        if (e.pointerType === 'mouse' || e.button > 0) return;   // mouse keeps the onclick path
+                        const hit = document.elementFromPoint(e.clientX, e.clientY);
+                        if (!hit || !b.contains(hit)) return;                    // finger slid off the button → no switch
+                        switchOrdersTab(t, e);
+                    });
+                });
+            };
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind); else bind();
+        })();
 
         // Load transactions
         async function loadTransactions() {
@@ -18251,9 +18297,115 @@
         // tick (closed-orders full history every 10s, open orders every 1s), churning DOM
         // nodes until Chrome killed the tab ("Aw, Snap" code 5). String-compare gate = same
         // visuals, near-zero DOM churn when nothing changed. Display-only; no trading logic.
-        function _setHTMLIfChanged(el, html) {
-            if (el && el._lastHTML !== html) { el._lastHTML = html; el.innerHTML = html; }
+        // 👆 Oct-7 (operator, mobile): touch-safe + visible-only renders for the four big tables. Display-only.
+        // ① TOUCH HOLD — while a finger is down, for 300 ms after it lifts, and while a TOUCH-DRIVEN scroll is moving (finger
+        //   down or ≤1.5 s after touchend = momentum; programmatic scrolls such as the live-terminal feed never count), a tbody
+        //   rebuild shifts layout under the finger and iOS Safari cancels the tap ("needs two taps"), and the rebuild is a long
+        //   task the tap waits behind → the write is QUEUED (latest HTML per element wins) and flushed exactly when the hold
+        //   ends. With no finger down a queued write is forced once it is >2 s old. The tbody of the tab just switched to gets
+        //   one immediate write (the finger is on the tab bar). Touch events never fire on a mouse-only desktop → no hold there.
+        // ② OFF-SCREEN HOLD (all devices) — the Top-pairs tbody is not written while its section is off-screen
+        //   (IntersectionObserver); the queued HTML is written the moment it scrolls back into view. The fetch still runs
+        //   every 10 s, so the header BTC badge/ADX, the manual-entry typeahead (_manualPairsSnapshot) and the FRENZY counts
+        //   stay current. The final state is never dropped.
+        var _DEFER_TBODY_IDS = { 'open-orders-table-body': 1, 'transactions-table-body': 1, 'closed-orders-table-body': 1, 'pairs-table-body': 1 };
+        var _touchGate = { active: false, startAt: 0, endAt: -1e12, scrollAt: -1e12, timer: null, due: 0 };
+        var _pendingHTML = new Map();   // element → {html, since} — latest HTML not yet written
+        var _coarseMQ = null;
+        try { _coarseMQ = window.matchMedia ? window.matchMedia('(pointer: coarse)') : null; } catch (e) {}
+        function _isCoarsePointer() { return !!(_coarseMQ && _coarseMQ.matches); }
+        // ms until the touch hold ends: 0 = no hold, Infinity = a finger is down (touchend reschedules)
+        function _touchHoldMs(now) {
+            if (_touchGate.active && now - _touchGate.startAt > 8000) _touchGate.active = false;   // lost touchend → never stall
+            if (_touchGate.active) return Infinity;
+            let ms = Math.max(0, _touchGate.endAt + 300 - now);
+            if (_touchGate.scrollAt > _touchGate.endAt - 50 && now - _touchGate.endAt < 1500)      // momentum of a touch scroll
+                ms = Math.max(ms, _touchGate.scrollAt + 200 - now);
+            return Math.max(0, ms);
         }
+        function _touchHeld(el, now) {
+            const h = _touchHoldMs(now);
+            if (!h) return false;
+            if (h === Infinity) return true;
+            const p = _pendingHTML.get(el);
+            return !(p && now - p.since > 2000);                // max-defer deadline (no finger down)
+        }
+        function _flushPendingHTML() {
+            _touchGate.timer = null;
+            const now = Date.now();
+            for (const [el, p] of Array.from(_pendingHTML)) {
+                if (el._offscreen === true) continue;           // written when it scrolls back into view
+                if (_touchHeld(el, now)) continue;
+                _pendingHTML.delete(el);
+                if (el._lastHTML !== p.html) { el._lastHTML = p.html; el.innerHTML = p.html; }
+            }
+            _scheduleHTMLFlush();
+        }
+        function _scheduleHTMLFlush() {
+            const now = Date.now();
+            let oldest = Infinity;
+            for (const [el, p] of _pendingHTML) if (el._offscreen !== true) oldest = Math.min(oldest, p.since);
+            if (oldest === Infinity) {                          // only off-screen writes queued → the observer flushes them
+                if (_touchGate.timer) { clearTimeout(_touchGate.timer); _touchGate.timer = null; }
+                return;
+            }
+            const h = _touchHoldMs(now);
+            let delay = h === Infinity ? 500 : Math.max(20, h + 20);      // finger down: light poll covers a lost touchend
+            if (h !== Infinity) delay = Math.max(20, Math.min(delay, oldest + 2000 - now + 20));   // max-defer deadline
+            const due = now + delay;
+            if (_touchGate.timer && _touchGate.due <= due) return;          // never push an earlier flush later (no starvation)
+            if (_touchGate.timer) clearTimeout(_touchGate.timer);
+            _touchGate.due = due;
+            _touchGate.timer = setTimeout(_flushPendingHTML, delay);
+        }
+        function _setHTMLIfChanged(el, html) {
+            if (!el) return;
+            const now = Date.now();
+            let defer = false;
+            if (_DEFER_TBODY_IDS[el.id]) {
+                if (el._offscreen === true) defer = true;
+                else if (_touchExemptWrite.id === el.id && now < _touchExemptWrite.until) _touchExemptWrite = { id: null, until: 0 };   // one write
+                else if (_touchHeld(el, now)) defer = true;
+            }
+            if (defer) {
+                if (el._lastHTML === html) _pendingHTML.delete(el);
+                else { const p = _pendingHTML.get(el); _pendingHTML.set(el, { html, since: p ? p.since : now }); }
+                if (el._offscreen !== true) _scheduleHTMLFlush();
+                return;
+            }
+            _pendingHTML.delete(el);
+            if (el._lastHTML !== html) { el._lastHTML = html; el.innerHTML = html; }
+        }
+        (function _initTouchSafeRenders() {
+            const opts = { passive: true, capture: true };
+            document.addEventListener('touchstart', () => { _touchGate.active = true; _touchGate.startAt = Date.now(); }, opts);
+            const end = (e) => {
+                _touchGate.active = !!(e.touches && e.touches.length);
+                _touchGate.endAt = Date.now();
+                if (_pendingHTML.size) _scheduleHTMLFlush();
+            };
+            document.addEventListener('touchend', end, opts);
+            document.addEventListener('touchcancel', end, opts);
+            // capture: scroll does not bubble — this also sees the tables' own horizontal overflow scrollers.
+            // Only a touch-driven scroll (finger down / momentum ≤1.5 s after touchend) is stamped.
+            document.addEventListener('scroll', () => {
+                const now = Date.now();
+                if (!_touchGate.active && now - _touchGate.endAt >= 1500) return;
+                _touchGate.scrollAt = now;
+                if (_pendingHTML.size) _scheduleHTMLFlush();
+            }, opts);
+            const watch = () => {
+                const tb = document.getElementById('pairs-table-body');
+                const sec = tb && tb.closest('section');
+                if (!sec || typeof IntersectionObserver === 'undefined') return;   // no observer → always render (old behaviour)
+                new IntersectionObserver((entries) => {
+                    const vis = entries.some(en => en.isIntersecting);
+                    tb._offscreen = !vis;
+                    if (vis && _pendingHTML.has(tb)) _flushPendingHTML();   // back in view → latest data now (touch hold still applies)
+                }, { rootMargin: '300px 0px' }).observe(sec);
+            };
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+        })();
         let _closedShowAll = false;  // closed-orders table renders latest 200 until expanded
         async function loadOpenOrders() {
             try {

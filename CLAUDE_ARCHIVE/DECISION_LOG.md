@@ -5953,3 +5953,15 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   (GAIBUSDT) answers klines with HTTP 400 −1122, which aborted every read; −1122 now treated like −1121 (no klines, not ranked); verified:
   NMR 2.92 / ORCA 1.95 / NMR 1.34 / SAND 1.11 reproduced. Dual review: ship-with-fixes (both), all applied. Tests test_scout_ml_cooldown.py,
   test_scout_gvol.py, test_scout_frenzy_gvol_vwap.py.
+- (249) 2026-10-08 📱 **Mobile dashboard: tab switch instant, no lost taps** (operator: Open → Transactions slow on mobile, sometimes two taps).
+  Cause: the Open tab rebuilt its table every 1 s and the 10-s batch rebuilt the off-screen pairs table; a tap waited behind those renders and
+  iOS cancels a tap when the layout changes under the finger. templates/index.html only (display): visual tab switch at once, data load after
+  the next frame (rAF raced with a 100 ms timeout, newest-wins); pointerup for touch (finger still over the button; 600 ms same-tab guard by
+  event time); touch-action: manipulation; open-orders poll 3 s on (pointer: coarse), 1 s on desktop, tab-switch load via the 'oo' guard (no
+  duplicate fetch); big-table writes held while a finger is down / 300 ms after / during finger-driven momentum scroll (≤ 1.5 s), never moved
+  later, forced after 2 s with no finger down (8 s lost-touchend reset) — the tab just switched to writes at once; pairs table write held while
+  off-screen (fetch continues: BTC badge, manual pair hints, FRENZY just-opened). Dual review: ship-with-fixes, all 10 applied (scroll
+  starvation by the live terminal's auto-scroll; post-touch latency; FRENZY-toggle re-render). Same session, research (no change shipped):
+  FRENZY "buy every new flag" — X study (91 % reach +1 % but every X/stop negative), flag-trade math (5,376 rules, none OOS; quick TP +0.3 no
+  stop 90 % WR −0.10 %/trade), seconds-delay study (1,680 cells × flag / ON, none) → no mechanical flag rule; only a new data source (order
+  book) could change it.

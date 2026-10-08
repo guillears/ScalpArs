@@ -48,3 +48,9 @@ mcap_cache.json
 # large per-trade research outputs (re-run scripts/hot_scalp_backtest.py)
 reports/HOT_SCALP_TRADES_*.csv
 reports/HOT_SCALP_EXCURSIONS_*.csv
+
+# scout observe-line frozen verdict state (runtime, written by scripts/scout_*.py)
+reports/SCOUT_NEG_DAILYUP_WEAKPAIR.json
+reports/SCOUT_ML_TREND_ALIGNED.json
+reports/SCOUT_ML_PAIR_1H_DOWNTREND.json
+reports/SCOUT_*.json.*

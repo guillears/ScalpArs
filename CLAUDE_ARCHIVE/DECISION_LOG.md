@@ -6103,3 +6103,20 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   current_stack_ledger 304 · +$14,399 · +2.14 %/day → 299 · +$12,743 · +2.02 %/day (B2 +$3,624 → +$1,992). SCREENED_BASELINE untouched
   (no fades / bull-run). Also: a WILLY entry dropped because its trigger was switched off no longer counts as RED_EXPIRED (count=False;
   deep-review minor of 256). Dual review: no Critical; all findings applied; tests/test_master_fade_screen.py (16).
+- (258) 2026-10-08 👁 **Scout OBSERVE lines TREND_ALIGNED + PAIR_1H_DOWNTREND for momentum longs (operator) — no trading change.**
+  Context (research, same day): ML recall trace (reports/MOMENTUM_LONG_RECALL_TRACE_2026-10-08.md) — live's kept +0.19 is post-hoc
+  (204 as traded −0.03; 83 removed by filters fit on them −0.35) and BASE-carried (kept ex-BASE +0.07 [−0.14, +0.28]); bug hunt
+  (reports/MOMENTUM_LONG_BACKTEST_BUGHUNT_2026-10-08.md): independent tick re-walk of 1,784 replay exits (97 % same reason, Δ +0.0007),
+  entries/gates/data/fees clean → NO BUG; corrected ML ≈ −0.061 %/trade [−0.12, −0.01]; entry has no edge (1 h after entry −0.008 %, every
+  simple exit loses). Sleeve-kill checklist (reports/MOMENTUM_LONG_SLEEVE_CHECKLIST_2026-10-08.md): ① no pair-level separator (~20k masks,
+  day-block null, sweep_separators ML cited) ② market dimensions alive as a family: ML loses when BTC/alts fall over 1 h–3 d (~−0.12),
+  flat when rising ③ 17/20 cohorts negative in both halves (uniform → regime cause) ④ ML tracks BTC monthly return / off-30d / vol.
+  Lines: PAIR_1H_DOWNTREND (block side; entry_pair_1h_ema20_200_gap_pct ≤ 0, washed-out exempt; counted from 2026-09-30; yr5 262 · −0.123
+  PASS, master ex-washed 23 · −0.136 P 0.78) · TREND_ALIGNED (keep side; BTC 1h slope > 0 ∧ BTC 4h EMA20 slope > 0 ∧ coin 4h EMA20 > EMA50,
+  4h legs rebuilt at review; washed-out exempt on both lines; counted from 2026-10-07; yr5 150/seed · 71 % · +0.079 vs −0.116, master ex-washed 47 · +0.235 vs 48 · −0.043;
+  post-hoc, haircut ≈ +0.006…+0.035). 🔒 Frozen on the first crossing prefix (N ≥ 15, ≥ 8 days; TREND_ALIGNED needs both sides): DOWNTREND →
+  FILTER CANDIDATE only on the expectancy bar, RETIRE if mean ≥ 0; TREND_ALIGNED → ML-ONLY-IN-ZONE CANDIDATE iff the complement MEETS the
+  filter bar (it is a losing cohort) ∧ keep mean ≥ +0.05, RETIRE if keep mean ≤ complement mean; re-read at 30; never re-fit; if ever armed: revert when the first 10 refused signals re-priced
+  show WR ≥ 61 % or Σ > 0. Counts include fills already seen at registration (DOWNTREND 8 since Sep-30, TREND_ALIGNED B18's 3 — operator
+  choice). DOWNTREND evidence was on the rebuilt 1h gap; on the live stamp yr5 262 · 57 % · −0.119. Pending operator decisions (offered, not made): ML 1×
+  resize (UNMATCHED 1.5 → 1.0, declared override), pause trigger (next 30 full-size ML fills on ≥ 10 days avg < 0 → pause).

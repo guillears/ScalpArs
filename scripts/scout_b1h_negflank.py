@@ -160,7 +160,8 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CACHE = os.path.join(_ROOT, "reports", "backtest_cache")
 DU_CACHE = os.path.join(_CACHE, "scout_dailyup")                       # this line's own appends (1d + 5m BTCUSDT)
 DU_STATE = os.path.join(_ROOT, "reports", "SCOUT_NEG_DAILYUP_WEAKPAIR.json")
-DU_COOLDOWN = os.path.join(DU_CACHE, ".ratelimited_until")                # ms epoch; no request before it (418/429)
+DU_COOLDOWN = os.path.join(DU_CACHE, ".ratelimited_until")                # LEGACY per-line file (read one release, no longer written)
+SHARED_COOLDOWN = os.path.join(_CACHE, ".binance_cooldown_until")        # ms epoch; ONE file for every scout Binance line (the ban is per IP)
 M5_PAGES = 4                                                           # max 5m pages per run (catch-up after a long scout gap)
 D1_WARM_DAYS = 60                                                      # daily EMA20 needs ≥ 60 seeded days before a fill, else UNSCORED
 DU_REVERT = "Pre-committed revert if ever armed: first 10 blocked signals re-priced → WR ≥ 61 % or Σ > 0 → switch the block off"
@@ -249,12 +250,20 @@ def _http_get(url, timeout):
         return json.loads(r.read().decode()), r.headers
 
 
+def _cooldown_paths():
+    """shared file + the legacy per-line files (NEG_DAILYUP, scout_ml_trend_lines) — read for one release."""
+    return [SHARED_COOLDOWN, DU_COOLDOWN, os.path.join(_CACHE, "scout_ml_trend", ".ratelimited_until")]
+
+
 def _cooldown_until():
-    try:
-        with open(DU_COOLDOWN) as f:
-            return int(f.read().strip() or 0)
-    except Exception:
-        return 0
+    out = 0
+    for p in _cooldown_paths():
+        try:
+            with open(p) as f:
+                out = max(out, int(f.read().strip() or 0))
+        except Exception:
+            pass
+    return out
 
 
 def _arm_cooldown(code, retry_after, now_ms):
@@ -262,9 +271,11 @@ def _arm_cooldown(code, retry_after, now_ms):
         secs = int(float(retry_after))
     except (TypeError, ValueError):
         secs = 7200 if code == 418 else 600            # default 2 h for a 418 ban, 10 min for a 429
-    os.makedirs(os.path.dirname(DU_COOLDOWN), exist_ok=True)
-    with open(DU_COOLDOWN, "w") as f:
-        f.write(str(int(now_ms + secs * 1000)))
+    os.makedirs(os.path.dirname(SHARED_COOLDOWN), exist_ok=True)
+    tmp = f"{SHARED_COOLDOWN}.{os.getpid()}.tmp"
+    with open(tmp, "w") as f:
+        f.write(str(int(max(now_ms + secs * 1000, _cooldown_until()))))     # never shortens a longer live ban
+    os.replace(tmp, SHARED_COOLDOWN)
     return secs
 
 
@@ -453,11 +464,42 @@ def crossing_prefix(zone, n_min):
     return None
 
 
-def du_freeze(st, sleeve, now_iso):
+def freeze_hold(last, hold, why=None):
+    """hold = [(Timestamp, label)] — fills that could still change the prefix (an OPEN position, a cache-lagging fill). Any opened
+    ≤ the candidate prefix's last fill defers the freeze (→ True, reason appended to why); later ones cannot change it."""
+    hit = [(t, lab) for t, lab in (hold or []) if pd.notna(t) and t <= last]
+    if hit and why is not None:
+        why.append(f"{len(hit)} fill(s) opened ≤ the crossing prefix's last fill ({last:%m-%d %H:%M}) not final yet: "
+                   + ", ".join(f"{lab} {t:%m-%d %H:%M}" for t, lab in sorted(hit, key=lambda x: x[0])[:5]))
+    return bool(hit)
+
+
+def open_momentum_long_ts():
+    """OPEN full-size momentum LONG positions in the NEWEST orders export (by mtime) → [(opened_at, 'OPEN <pair>')]. Same strategy
+    filter as _orders(empty_is_momentum=True); *_PROBE out. No usable export → []."""
+    fs = sorted(glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")), key=os.path.getmtime)
+    if not fs:
+        return []
+    try:
+        d = pd.read_csv(fs[-1], low_memory=False, usecols=lambda c: c in COLS)
+    except Exception:
+        return []
+    if not {"opened_at", "status", "direction"} <= set(d.columns):
+        return []
+    d = d[(d.status.astype(str).str.upper() == "OPEN") & (d.direction.astype(str) == "LONG")]
+    if "entry_strategy" in d.columns:
+        d = d[d.entry_strategy.fillna("MOMENTUM").astype(str).isin(["MOMENTUM", "", "nan"])]
+    d = d[~d.get("cell_multiplier_source", pd.Series("", index=d.index)).astype(str).str.endswith("_PROBE")]
+    t = pd.to_datetime(d.opened_at.astype(str).str[:19], format="ISO8601", errors="coerce")
+    return [(a, f"OPEN {p}") for a, p in zip(t, d.pair.astype(str)) if pd.notna(a)]
+
+
+def du_freeze(st, sleeve, now_iso, hold=None, why=None):
     """sleeve = the scored counted sleeve (column grp; zone + non-zone). Freezes the verdict of the CROSSING PREFIX (the first fills that
     reached N ≥ 15 ∧ ≥ 8 days, by open time) once into st['first'] — however late the run that sees it — judged with the breakeven of
     the scored sleeve fills opened ≤ the prefix's last fill (fallback 61.8 % until 30). st['reread'] = the first-30 prefix, judged the
-    same way, only on a LATER call than the one that froze 'first'. Frozen entries are never recomputed. → (st, changed)."""
+    same way, only on a LATER call than the one that froze 'first'. Frozen entries are never recomputed. hold / why: freeze_hold.
+    → (st, changed)."""
     key = "reread" if "first" in st else "first"
     if key in st:
         return st, False
@@ -465,6 +507,8 @@ def du_freeze(st, sleeve, now_iso):
     if pre is None:
         return st, False
     last = pre.ts.max()
+    if freeze_hold(last, hold, why):
+        return st, False
     bs = sleeve[sleeve.ts <= last]
     be_live = breakeven_wr(bs.pct) if len(bs) >= BE_MIN_FILLS else None
     be = be_live if be_live is not None else DU_BE_REF
@@ -513,7 +557,7 @@ def _du_row(lab, g):
             f"{g.usd.sum():+,.0f} | {g.pct.min():+.2f} % |")
 
 
-def run_dailyup(now_ms=None, state_path=None, fetch=True, orders=None):
+def run_dailyup(now_ms=None, state_path=None, fetch=True, orders=None, open_ts=None):
     now_ms = now_ms or int(time.time() * 1000)
     o = (_orders(start=None, empty_is_momentum=True) if orders is None else orders).copy()
     cnt_mask = o.ts >= pd.Timestamp(DU_START)
@@ -528,8 +572,10 @@ def run_dailyup(now_ms=None, state_path=None, fetch=True, orders=None):
     zone = cnt[cnt.grp == "zone"].sort_values(["ts", "pair"], kind="stable")
     lag = cache_lag(cnt, m5, d1)
     st, st_ok = du_load_state(state_path, now_ms)
+    why = []
     if st_ok and not lag.any():
-        st, changed = du_freeze(st, sc, pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"))
+        hold = open_momentum_long_ts() if orders is None else list(open_ts or [])
+        st, changed = du_freeze(st, sc, pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"), hold, why)
         if changed:
             du_save_state(st, state_path)
     live_state, live_det = du_verdict(zone[["pct", "day", "pair"]], be)
@@ -552,6 +598,8 @@ def run_dailyup(now_ms=None, state_path=None, fetch=True, orders=None):
         L.append(f"⏸ freezing skipped this run: {int(lag.sum())} counted fill(s) UNSCORED only because the BTC 5m/1d cache lags "
                  f"(5m to {pd.Timestamp(int(m5['T'].max()) if len(m5) else 0, unit='ms'):%m-%d %H:%M}, 1d to "
                  f"{pd.Timestamp(int(d1.index.max()) if len(d1) else 0, unit='ms'):%m-%d}) — re-scored next run.")
+    if why:
+        L.append("⏸ freezing deferred this run: " + " · ".join(why) + " — re-checked next run.")
     if not st_ok:
         L.append("⚠ frozen state corrupt — operator restore needed (reports/SCOUT_NEG_DAILYUP_WEAKPAIR.json.*.bad); freezing skipped this run.")
     if "first" in st:
@@ -572,7 +620,7 @@ def run_dailyup(now_ms=None, state_path=None, fetch=True, orders=None):
 
 
 def selftest_dailyup():
-    global _NET_BLOCKED, DU_COOLDOWN, _http_get, _CACHE, DU_CACHE
+    global _NET_BLOCKED, DU_COOLDOWN, SHARED_COOLDOWN, _http_get, _CACHE, DU_CACHE
     _NET_BLOCKED = True
     ok = 0
 
@@ -609,6 +657,11 @@ def selftest_dailyup():
     st2, ch2 = du_freeze(json.loads(json.dumps(st)), z2, "t2")
     chk(ch2 and st2["first"] == f0 and st2["reread"]["n"] == 30 and st2["reread"]["state"] == "RETIRE",
         "re-read = the first-30 prefix, on a later call; first unchanged")
+    why = []
+    sh, chh = du_freeze({}, z2, "th", [(pd.Timestamp("2026-10-12 00:00"), "OPEN X")], why)
+    chk(not chh and sh == {} and why and "OPEN X" in why[0], "an OPEN momentum long opened ≤ the prefix end defers the freeze")
+    sh, chh = du_freeze({}, z2, "th", [(pd.Timestamp("2026-10-30 00:00"), "OPEN Y")], [])
+    chk(chh and sh["first"] == f0 | {"run_at": "th"}, "an OPEN position opened after the prefix end does not")
     st3, ch3 = du_freeze(st2, z2, "t3")
     chk(not ch3 and st3 == st2, "frozen entries never recomputed")
     nz = pd.DataFrame(dict(ts=[t0 - pd.Timedelta(hours=1 + i) for i in range(30)], pct=[1.0, -3.0] * 15, day="2026-10-09",
@@ -670,7 +723,7 @@ def selftest_dailyup():
         out = "\n".join(run_dailyup(now_ms=1791490000000, state_path=sp, fetch=False, orders=empty))
         chk("COLLECTING (N 0/15" in out, "empty orders frame renders (collecting), never raises")
         # 429 → exactly one request, cooldown persisted (Retry-After honoured), next run makes ZERO requests
-        saved = (DU_COOLDOWN, _http_get)
+        saved = (DU_COOLDOWN, SHARED_COOLDOWN, _http_get)
         calls = []
 
         def _boom(url, timeout):
@@ -678,24 +731,32 @@ def selftest_dailyup():
             raise urllib.error.HTTPError(url, 429, "Too Many Requests", {"Retry-After": "120"}, None)
         try:
             DU_COOLDOWN, _http_get, _NET_BLOCKED = os.path.join(td, ".ratelimited_until"), _boom, False
+            SHARED_COOLDOWN = os.path.join(td, ".binance_cooldown_until")
             far = 1791490000000 + 30 * DD_MS                   # past every cache → both a 5m and a 1d request would be wanted
             _, _, notes = load_btc(far, 1791490000000)
             chk(len(calls) == 1 and abs(_cooldown_until() - (1791490000000 + 120_000)) < 2 and any("429" in x for x in notes),
                 f"429 aborts after ONE request + cooldown written ({len(calls)} calls, {notes})")
             _, _, notes = load_btc(far, 1791490000000 + 60_000)
             chk(len(calls) == 1 and any("cooldown" in x for x in notes), "cooldown live → zero requests")
+            chk(os.path.exists(SHARED_COOLDOWN) and not os.path.exists(DU_COOLDOWN), "429 writes the SHARED cooldown file")
+            os.remove(SHARED_COOLDOWN)
+            for legacy in (DU_COOLDOWN, os.path.join(_CACHE, "scout_ml_trend", ".ratelimited_until")):
+                os.makedirs(os.path.dirname(legacy), exist_ok=True)
+                open(legacy, "w").write(str(1791490000000 + 999_999))
+                _, _, notes = load_btc(far, 1791490000000)
+                chk(len(calls) == 1 and any("cooldown" in x for x in notes), f"legacy cooldown {os.path.basename(os.path.dirname(legacy))} honoured")
+                os.remove(legacy)
 
             def _slow(url, timeout):
                 calls.append(url)
                 time.sleep(3)
-            os.remove(DU_COOLDOWN)
             _http_get = _slow
             t0 = time.monotonic()
             _, _, notes = load_btc(far, 1791490000000, budget_s=1.5)
             chk(len(calls) == 2 and time.monotonic() - t0 < 2.5 and any("wall-clock" in x for x in notes),
                 "hung request cut by the wall-clock budget, no further request")
         finally:
-            DU_COOLDOWN, _http_get = saved
+            DU_COOLDOWN, SHARED_COOLDOWN, _http_get = saved
             _CACHE, DU_CACHE = saved_c
             _NET_BLOCKED = True
     m5w = pd.DataFrame(dict(open_time=[0], c=[1.0], T=[M5_MS]))

@@ -1294,6 +1294,14 @@ def run():
     except Exception as _nf_e:
         log(f"B1H negflank observation failed: {_nf_e}")
         _rg_sec += ["## 📉 ML_B1H_NEGFLANK", "", f"Unavailable this run ({str(_nf_e)[:120]}).", ""]
+    try:                                               # 🧭 Oct-8 PAIR_1H_DOWNTREND + TREND_ALIGNED (pre-registered; orders exports + kline rebuild; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_ml_trend_lines as _mt
+        _rg_sec += _mt.run(now_ms)
+    except Exception as _mt_e:
+        log(f"ML trend observe lines failed: {_mt_e}")
+        _rg_sec += ["## 🧭 ML trend observe lines", "", f"Unavailable this run ({str(_mt_e)[:120]}).", ""]
     try:                                               # 🧊 Oct-7 ML_STOP_COOLDOWN (pre-registered) + CLUSTER2_120 (exploratory) — orders exports only; never breaks the run
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

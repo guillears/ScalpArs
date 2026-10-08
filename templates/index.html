@@ -2377,36 +2377,6 @@
                     <div id="entry-funnel-blockers" class="text-xs text-gray-400 mt-3"></div>
                 </div>
 
-                <!-- Filter Blocks (May 5) — pre-entry filter rejection counters -->
-                <div class="mt-6 pt-6 border-t border-white/10">
-                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Filter Blocks <span class="text-xs text-gray-500 font-normal">(persisted — survives redeploys; sorted by Sole; ↳ rows = sub-rule breakdown)</span></h3>
-                    <p class="text-xs text-gray-500 mb-3">Counts of pre-entry filter rejections. <span class="text-violet-300 font-medium">Honest v2 only (Jul 23 simplification, operator-directed)</span> — the legacy LONG/SHORT/Total Real/All columns were removed from display (the Jul-15 censorship fix made Real≈All everywhere, and sub-rule rows only populate v2; every decision consumes Sole/Epis). Legacy counters still persist server-side — display-only removal. Funnel v2 counts every regime since Jul 15. Engine counters Jul 15: PAIR_HELD (one-position-per-pair skips), COOLDOWN (5-min re-entry), NO_BALANCE (balance-starved). All counters are flushed to DB on every trade / BNB check and restored on startup.</p>
-                    <div class="overflow-x-auto scrollbar-thin max-h-[28rem] overflow-y-auto">
-                        <table class="w-full text-sm">
-                            <thead class="bg-[#262a40] sticky top-0 z-10 shadow-[0_1px_0_rgba(255,255,255,0.1)]">
-                                <tr class="text-gray-400 text-left">
-                                    <th class="px-3 py-2 font-medium border-b border-white/10" rowspan="2">Filter</th>
-                                    <th class="px-3 py-2 font-bold text-center text-violet-300 text-sm bg-violet-900/15 border-l-2 border-violet-500/40 border-b border-white/10" colspan="8" title="Jul 14 Funnel v2 — honest accounting from the evaluate-all pass (momentum ladder only; engine gates show 0)">🎯 Honest (v2)</th>
-                                </tr>
-                                <tr class="text-gray-500 text-[10px] border-b border-white/10">
-                                    <th class="px-2 py-1 text-center text-violet-200 bg-violet-900/10 border-l-2 border-violet-500/40" title="SOLE blocker LONG: the candidate would have TRADED but for this one filter — its true marginal cost in trades">SoleL</th>
-                                    <th class="px-2 py-1 text-center text-violet-300 bg-violet-900/10" title="This filter's SoleL ÷ TOTAL SoleL. Share of sole-blocked LONG candidates owned by this filter.">L%</th>
-                                    <th class="px-2 py-1 text-center text-violet-200 bg-violet-900/10" title="SOLE blocker SHORT">SoleS</th>
-                                    <th class="px-2 py-1 text-center text-violet-300 bg-violet-900/10" title="This filter's SoleS ÷ TOTAL SoleS. Share of sole-blocked SHORT candidates owned by this filter.">S%</th>
-                                    <th class="px-2 py-1 text-center text-violet-100 bg-violet-900/10 font-semibold" title="SOLE blocker total — rank filters by THIS, not by first-fail counts">SoleΣ</th>
-                                    <th class="px-2 py-1 text-center text-violet-300 bg-violet-900/10" title="This filter's SoleΣ ÷ TOTAL SoleΣ. Share of ALL sole-blocked candidates owned by this filter.">T%</th>
-                                    <th class="px-2 py-1 text-center text-sky-300 bg-violet-900/10" title="Blocked EPISODES (edge-triggered per pair+direction — one count per blocked stretch, not per scan tick)">Epis</th>
-                                    <th class="px-2 py-1 text-center text-gray-400 bg-violet-900/10" title="All-fails: how often this filter failed regardless of evaluation order (redundancy indicator)">AllF</th>
-                                </tr>
-                            </thead>
-                            <tbody id="filter-blocks-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>
-                            </tbody>
-                            <tfoot id="filter-blocks-foot" class="border-t border-white/10 sticky bottom-0 bg-[#262a40]"></tfoot>
-                        </table>
-                    </div>
-                </div>
-
                 <!-- Stop Loss Deep Dive -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Stop Loss Deep Dive</h3>
@@ -8621,92 +8591,6 @@
             document.getElementById('timer').textContent = days > 0 ? `${days}d ${hms}` : hms;
         }
 
-        // Filter Blocks renderer (May 5) — populates the Filter Blocks dashboard
-        // table from the filter_block_counts payload returned by /api/status.
-        // Counts are in-memory in the engine and reset on bot restart.
-        function renderFilterBlocks(payload) {
-            const body = document.getElementById('filter-blocks-body');
-            const foot = document.getElementById('filter-blocks-foot');
-            if (!body) return;
-            const rows = (payload && payload.rows) || [];
-            if (!rows.length) {
-                body.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No filter blocks recorded yet</td></tr>';
-                if (foot) foot.innerHTML = '';
-                return;
-            }
-            const cell = (n, color) => n > 0
-                ? `<span class="${color}">${n}</span>`
-                : '<span class="text-gray-600">0</span>';
-            // Pre-compute totals for share-of-total % columns
-            const totL = payload.total_long || 0;
-            const totS = payload.total_short || 0;
-            const totT = payload.total || 0;
-            const pct = (num, denom) => denom > 0 ? ((num / denom) * 100).toFixed(0) + '%' : '—';
-            const pctCell = (num, denom, isHeavy) => {
-                if (denom <= 0) return '<span class="text-gray-600">—</span>';
-                const v = (num / denom) * 100;
-                const cls = v >= 50 ? 'text-violet-300 font-semibold'
-                          : v >= 20 ? 'text-violet-400'
-                          : v > 0   ? 'text-violet-500'
-                          : 'text-gray-600';
-                return `<span class="${cls}">${v.toFixed(0)}%</span>`;
-            };
-            // Sole share denominators (exclude ↳ variant rows — they duplicate the parent)
-            let _soleLDen = 0, _soleSDen = 0;
-            for (const r of rows) { if (!r.is_variant) { _soleLDen += r.sole_long || 0; _soleSDen += r.sole_short || 0; } }
-            body.innerHTML = rows.map(r => {
-                const lRoom = r.long_room || 0, lFull = r.long_full || 0;
-                const sRoom = r.short_room || 0, sFull = r.short_full || 0;
-                const tRoom = r.total_room || 0, tFull = r.total_full || 0;
-                // ↳ variant rows: sub-rule breakdown of a composite filter (v2 columns
-                // only — legacy columns intentionally 0, they live on the parent row).
-                const nameCls = r.is_variant ? 'pl-6 text-violet-400/80 italic' : 'text-gray-300';
-                const nameEsc = String(r.filter).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                return `<tr class="hover:bg-white/5${r.is_variant ? ' opacity-80' : ''}">
-                    <td class="px-3 py-2 font-mono text-xs ${nameCls}">${nameEsc}</td>
-                    <td class="px-2 py-2 text-center bg-violet-900/10 border-l-2 border-violet-500/30">${cell(r.sole_long || 0, 'text-violet-200 font-medium')}</td>
-                    <td class="px-2 py-2 text-center bg-violet-900/10">${pctCell(r.sole_long || 0, _soleLDen)}</td>
-                    <td class="px-2 py-2 text-center bg-violet-900/10">${cell(r.sole_short || 0, 'text-violet-200 font-medium')}</td>
-                    <td class="px-2 py-2 text-center bg-violet-900/10">${pctCell(r.sole_short || 0, _soleSDen)}</td>
-                    <td class="px-2 py-2 text-center bg-violet-900/10 font-bold">${cell(r.sole || 0, 'text-violet-100')}</td>
-                    <td class="px-2 py-2 text-center bg-violet-900/10">${pctCell(r.sole || 0, _soleLDen + _soleSDen)}</td>
-                    <td class="px-2 py-2 text-center bg-violet-900/10">${cell(r.episodes || 0, 'text-sky-300')}</td>
-                    <td class="px-2 py-2 text-center bg-violet-900/10">${cell(r.allf || 0, 'text-gray-400')}</td>
-                </tr>`;
-            }).join('');
-            if (foot) {
-                const tL = totL;
-                const tS = totS;
-                const tT = totT;
-                const tRoom = payload.total_room || 0;
-                const tFull = payload.total_full || 0;
-                // Per-direction room/full totals computed from rows
-                let lRoomT = 0, sRoomT = 0;
-                let soleLT = 0, soleST = 0, episT = 0, allfT = 0;
-                for (const r of rows) {
-                    if (r.is_variant) continue;  // ↳ sub-rule rows duplicate the parent's v2 counts
-                    lRoomT += r.long_room || 0;
-                    sRoomT += r.short_room || 0;
-                    soleLT += r.sole_long || 0; soleST += r.sole_short || 0;
-                    episT += r.episodes || 0; allfT += r.allf || 0;
-                }
-                const totalPctCell = (denom) => denom > 0
-                    ? '<span class="text-violet-200 font-bold">100%</span>'
-                    : '<span class="text-gray-600">—</span>';
-                foot.innerHTML = `<tr>
-                    <td class="px-3 py-2 font-semibold text-gray-400 text-xs uppercase tracking-wide bg-white/5">Total</td>
-                    <td class="px-2 py-2 text-center font-bold text-violet-200 bg-violet-900/15 border-l-2 border-violet-500/40">${soleLT}</td>
-                    <td class="px-2 py-2 text-center bg-violet-900/15">${totalPctCell(soleLT)}</td>
-                    <td class="px-2 py-2 text-center font-bold text-violet-200 bg-violet-900/15">${soleST}</td>
-                    <td class="px-2 py-2 text-center bg-violet-900/15">${totalPctCell(soleST)}</td>
-                    <td class="px-2 py-2 text-center font-bold text-violet-100 bg-violet-900/15">${soleLT + soleST}</td>
-                    <td class="px-2 py-2 text-center bg-violet-900/15">${totalPctCell(soleLT + soleST)}</td>
-                    <td class="px-2 py-2 text-center font-bold text-sky-300 bg-violet-900/15">${episT}</td>
-                    <td class="px-2 py-2 text-center font-bold text-gray-400 bg-violet-900/15">${allfT}</td>
-                </tr>`;
-            }
-        }
-
         // Load bot status
         // Account Balance privacy toggle (CSS blur + localStorage, survives auto-refresh)
         function applyBalancesHidden(hidden) {
@@ -8732,8 +8616,6 @@
                 isRunning = data.is_running;
                 isPaperMode = data.is_paper_mode;
                 runtimeSeconds = data.runtime_seconds;
-                // Stash latest filter block counts for text-export sites (May 5)
-                window._lastFilterBlockCounts = data.filter_block_counts || null;
 
                 updateStatusUI();
                 updateTimer(runtimeSeconds);
@@ -8940,9 +8822,6 @@
                 };
                 // E13 (active filter) — dimmed when filter is OFF
                 renderTrendBadge('btc-trend-badge', 'btc-trend-gap', data.btc_trend_gap_pct, !filterOn);
-
-                // Filter Blocks panel (May 5) — pre-entry filter rejection counters
-                renderFilterBlocks(data.filter_block_counts);
 
                 // Global volume ratio display
                 const gvr = data.global_volume_ratio;
@@ -10048,9 +9927,6 @@
                 }
             }
 
-            // Filter Blocks (May 5) — pre-entry filter rejection counters
-            // Real = block fired with bot having room (filter actually prevented a trade).
-            // Free = block fired at max_open_positions (no trade prevented — filter just logged).
             const _ef1 = perf.entry_funnel;
             if (_ef1) {
                 lines.push(`\n${hr2}`);
@@ -10059,20 +9935,6 @@
                 lines.push(`Opened — NORMAL: ${_ef1.opened_normal} (${_ef1.opened_normal_long||0}L/${_ef1.opened_normal_short||0}S)  |  Opened — FLIP: ${_ef1.opened_flip} (${_ef1.opened_flip_long||0}L/${_ef1.opened_flip_short||0}S)  |  Blocked L/S: ${_ef1.blocked_long}/${_ef1.blocked_short}`);
                 lines.push('Top blockers (room): ' + ((_ef1.top_blockers||[]).map(b=>`${b.filter} ${b.room}(L${b.long}/S${b.short})`).join(' · ') || '—'));
                 if (_ef1.opened_normal===0 && _ef1.blocked_by_filter_room>50) lines.push('=> Signals fire, filters reject them -> flips are the residue. Not a bug, not the 5-cap.');
-            }
-            const _fbc = window._lastFilterBlockCounts;
-            if (_fbc && _fbc.rows && _fbc.rows.length) {
-                lines.push(`\n${hr2}`);
-                lines.push('## Filter Blocks (persisted — survives redeploys)\n');
-                lines.push('Jul 23 (operator): legacy LONG/SHORT/Total Real/All columns removed from display — Honest v2 only (Real≈All since the Jul-15 fix; every decision consumes Sole/Epis). Legacy counters still persist server-side.');
-                lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14, so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc). \u21b3 rows = sub-rule breakdown of a composite filter.');
-                lines.push(`${'Filter'.padEnd(22)} ${'SoleL'.padEnd(6)} ${'L%'.padEnd(5)} ${'SoleS'.padEnd(6)} ${'S%'.padEnd(5)} ${'Sole'.padEnd(6)} ${'T%'.padEnd(5)} ${'Epis'.padEnd(6)} ${'AllF'}`);
-                let _slDen = 0, _ssDen = 0, _episT = 0, _allfT = 0;
-                for (const r of _fbc.rows) { if (!r.is_variant) { _slDen += r.sole_long||0; _ssDen += r.sole_short||0; _episT += r.episodes||0; _allfT += r.allf||0; } }
-                for (const r of _fbc.rows) {
-                    lines.push(`${r.filter.padEnd(22)} ${String(r.sole_long||0).padEnd(6)} ${(_slDen>0?((r.sole_long||0)/_slDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole_short||0).padEnd(6)} ${(_ssDen>0?((r.sole_short||0)/_ssDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole||0).padEnd(6)} ${((_slDen+_ssDen)>0?((r.sole||0)/(_slDen+_ssDen)*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.episodes||0).padEnd(6)} ${String(r.allf||0)}`);
-                }
-                lines.push(`${'TOTAL'.padEnd(22)} ${String(_slDen).padEnd(6)} ${(_slDen>0?'100%':'-').padEnd(5)} ${String(_ssDen).padEnd(6)} ${(_ssDen>0?'100%':'-').padEnd(5)} ${String(_slDen+_ssDen).padEnd(6)} ${((_slDen+_ssDen)>0?'100%':'-').padEnd(5)} ${String(_episT).padEnd(6)} ${String(_allfT)}`);
             }
 
             lines.push(`\n${hr2}`);
@@ -11910,23 +11772,6 @@
                     lines.push(`Opened — NORMAL: ${_ef2.opened_normal} (${_ef2.opened_normal_long||0}L/${_ef2.opened_normal_short||0}S)  |  Opened — FLIP: ${_ef2.opened_flip} (${_ef2.opened_flip_long||0}L/${_ef2.opened_flip_short||0}S)  |  Blocked L/S: ${_ef2.blocked_long}/${_ef2.blocked_short}`);
                     lines.push('Top blockers (room): ' + ((_ef2.top_blockers||[]).map(b=>`${b.filter} ${b.room}(L${b.long}/S${b.short})`).join(' · ') || '—'));
                     if (_ef2.opened_normal===0 && _ef2.blocked_by_filter_room>50) lines.push('=> Signals fire, filters reject them -> flips are the residue. Not a bug, not the 5-cap.');
-                }
-                // --- FILTER BLOCKS (May 5) ---
-                // Real = block fired with bot having room (filter actually prevented a trade).
-                // Free = block fired at max_open_positions (no trade prevented — filter just logged).
-                const _fbc2 = window._lastFilterBlockCounts;
-                if (_fbc2 && _fbc2.rows && _fbc2.rows.length) {
-                    lines.push(`\n${hr2}`);
-                    lines.push('## Filter Blocks (persisted — survives redeploys)\n');
-                    lines.push('Jul 23 (operator): legacy LONG/SHORT/Total Real/All columns removed from display — Honest v2 only (Real≈All since the Jul-15 fix; every decision consumes Sole/Epis). Legacy counters still persist server-side.');
-                    lines.push('Funnel v2 (Jul 14): Sole = candidate would have TRADED but for this ONE filter (true marginal cost — rank by this, not Total). Epis = blocked episodes (edge-triggered per pair+dir, de-inflated of scan ticks). AllF = failed regardless of order (redundancy). Momentum-ladder filters only; engine gates show 0. All counters persist across redeploys; v2 columns accumulate from Jul 14, so cross-column ratios are only valid on data from Jul 14 onward. Table sorted by Sole (desc). \u21b3 rows = sub-rule breakdown of a composite filter.');
-                    lines.push(`${'Filter'.padEnd(22)} ${'SoleL'.padEnd(6)} ${'L%'.padEnd(5)} ${'SoleS'.padEnd(6)} ${'S%'.padEnd(5)} ${'Sole'.padEnd(6)} ${'T%'.padEnd(5)} ${'Epis'.padEnd(6)} ${'AllF'}`);
-                    let _slDen = 0, _ssDen = 0, _episT2 = 0, _allfT2 = 0;
-                    for (const r of _fbc2.rows) { if (!r.is_variant) { _slDen += r.sole_long||0; _ssDen += r.sole_short||0; _episT2 += r.episodes||0; _allfT2 += r.allf||0; } }
-                    for (const r of _fbc2.rows) {
-                        lines.push(`${r.filter.padEnd(22)} ${String(r.sole_long||0).padEnd(6)} ${(_slDen>0?((r.sole_long||0)/_slDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole_short||0).padEnd(6)} ${(_ssDen>0?((r.sole_short||0)/_ssDen*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.sole||0).padEnd(6)} ${((_slDen+_ssDen)>0?((r.sole||0)/(_slDen+_ssDen)*100).toFixed(0)+'%':'-').padEnd(5)} ${String(r.episodes||0).padEnd(6)} ${String(r.allf||0)}`);
-                    }
-                    lines.push(`${'TOTAL'.padEnd(22)} ${String(_slDen).padEnd(6)} ${(_slDen>0?'100%':'-').padEnd(5)} ${String(_ssDen).padEnd(6)} ${(_ssDen>0?'100%':'-').padEnd(5)} ${String(_slDen+_ssDen).padEnd(6)} ${((_slDen+_ssDen)>0?'100%':'-').padEnd(5)} ${String(_episT2).padEnd(6)} ${String(_allfT2)}`);
                 }
 
                 // --- OUTCOME DISTRIBUTION ---

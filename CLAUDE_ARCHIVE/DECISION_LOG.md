@@ -6059,3 +6059,11 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   RETIRE if mean ≥ 0; else keep observing to N ≥ 30, thresholds never re-fit. If ever armed: revert when the first 10 blocked signals re-priced
   show WR ≥ 61 % or Σ > 0. Same day: ML_B18_LOSERS_STUDY offered BTC_HOT_MATURE (BTC ADX ≥ 25 ∧ ATR ≥ 0.15; yr5 out-of-sample PASS, master
   refutes) as a further observe line — not registered (operator chose this one).
+- (254) 2026-10-08 🧹 **Dashboard "Filter Blocks" table removed (operator: Scout makes it redundant) · scout WILLY_TURNOVER_BLOCKED crash
+  fixed.** Display only: UI section, renderFilterBlocks, both text-export blocks and the `filter_block_counts` key of /api/status removed.
+  KEPT: `_record_filter_block` (writes the decision-journal BLOCK lines = Scout's source), the counters + DB persistence, the Entry Funnel
+  (UI + both exports, still fed by `_get_filter_block_summary`), and the D11 rule that every new filter records a counter. Scout fix:
+  tb_price wrote "take profit" into an all-NaN (float64) `how` column — pandas 3 raises → section showed "Unavailable" on the first real
+  row (RLC 10-08 17:30, turnover R 3.21); cast to object + selftest that fails without it. Observed the same day (not yet fixed, offered):
+  WILLY entry A missed GTC (spike 17:30, shortlisted one bar later → the per-pair cold rule skipped it) and the mcap cache is empty after
+  every restart (RLC TURNOVER_UNREAD at 18:24 right after the 85e6a83 deploy). Dual review: no Critical / Important; minors applied.

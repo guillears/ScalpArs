@@ -3328,6 +3328,8 @@ def tb_price(rows, now_ms):
     import scout_willy_hold as WH
     state = {}
     tp, stop, cap = WH.exit_rule("FRENZY_WILLY")
+    rows = rows.copy()
+    rows["how"] = rows["how"].astype(object)   # an all-NaN column reads back as float64 → assigning "take profit" raised (10-08 live run)
     for i, r in rows.iterrows():
         if pd.notna(r.pct) or r.gate != "FRENZY_WILLY_TURNOVER" or str(r.how) == "UNPRICEABLE":
             continue
@@ -4396,6 +4398,24 @@ def selftest():
                            reason=["R=1.734 · A", "mcap / volume unreadable · B", "ON not taken", "R=2.100 · B"], price=["1.0", "2.0", "", "3.0"]))
     tr = tb_rows(ev)
     chk(len(tr) == 3 and list(tr.trig) == ["A", "B", "B"] and abs(tr.R.iloc[0] - 1.734) < 1e-9 and np.isnan(tr.R.iloc[1]), "turnover blocked: rows + trig / R parsed")
+    # 10-08 live crash: tb_rows' all-NaN 'how' column is float64 → writing "take profit" raised. Price it with a stub pricer (no network).
+    import types as _types
+    _fake = _types.ModuleType("scout_willy_hold")
+    _fake.RateLimited = type("RateLimited", (Exception,), {})
+    _fake.exit_rule = lambda s: (1.0, None, 120)
+    _fake.klines_1m = lambda pair, a, b, st: [1]
+    _fake.walk_fixed = lambda m1, d, tp, stop, cap: (0.91, "take profit")
+    _real = sys.modules.get("scout_willy_hold")
+    sys.modules["scout_willy_hold"] = _fake
+    try:
+        _pr = tb_price(tb_rows(ev), _ms("2026-10-11T00:00:00"))
+    finally:
+        if _real is not None:
+            sys.modules["scout_willy_hold"] = _real
+        else:
+            sys.modules.pop("scout_willy_hold", None)
+    chk(list(_pr[_pr.gate == "FRENZY_WILLY_TURNOVER"].how) == ["take profit", "take profit"] and _pr.pct.iloc[0] == 0.91
+        and _pr[_pr.gate == "FRENZY_WILLY_TURNOVER_UNREAD"].pct.isna().all(), "turnover blocked: pricing writes the exit label into an all-NaN 'how' column (no dtype crash); UNREAD not priced")
     chk(willy_expired(ev, 0) == (0, 1), "WILLY events: arms counted from e=WILLY")
     mk = lambda pcts, days: pd.DataFrame(dict(t=[f"2026-10-{10 + (i % days):02d}T{i // days:02d}:00:00" for i in range(len(pcts))], pair="P", gate="FRENZY_WILLY_TURNOVER",
                                               trig="A", R=2.0, price=1.0, pct=pcts, how="x"))

@@ -3241,7 +3241,6 @@ class TradingEngine:
             "breadth_n_bear": _breadth_n_bear,
             "breadth_n_neutral": _breadth_n_neutral,
             "breadth_n_total": _breadth_n_total,
-            "filter_block_counts": self._get_filter_block_summary()
         }
 
     def _record_filter_block(self, filter_name: str, direction: str, had_room: bool = True) -> None:

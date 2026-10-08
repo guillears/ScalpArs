@@ -9143,8 +9143,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
     # Entry Funnel (Jun 17) — answers "why no NORMAL trades, only flips": momentum signals
     # DO fire but the filter stack rejects them; flips are the contrarian residue that opens
-    # on certain blocked signals. Block side = live in-memory filter-block counters (resets on
-    # restart); opened side = the closed pool. blocked_by_filter_room = signals that fired WITH
+    # on certain blocked signals. Block side = the filter-block counters (in memory, DB-persisted across restarts,
+    # cleared by /api/reset); opened side = the closed pool. blocked_by_filter_room = signals that fired WITH
     # room to trade but a filter killed them (vs blocked_at_max = only stopped by the 5-cap).
     try:
         from collections import Counter

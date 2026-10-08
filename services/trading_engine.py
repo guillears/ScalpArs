@@ -1336,6 +1336,24 @@ def _flip_size_mult(source):
 def _flip_lev_mult(source):
     return _flip_registry().get(source, (1.0, 1.0))[1]
 
+def _flip_cell_lev_bump(cur, cell_lev):
+    """Flip multiplier-cell leverage bump (TG_SHALLOW / NEGDI15). The value is RELATIVE to the source's registry lev —
+    open_position multiplies it in (_flip_compose_lev), it never replaces it. A cell configured at ≤ 1.0 (or unreadable)
+    means "no change" and returns `cur` untouched; only an explicit > 1.0 raises it (max with any earlier cell bump).
+    Oct-8 (DECISION_LOG 252): with FAN at registry lev 0.5 a cell at 1.0 must never put the fill back at 20×."""
+    try:
+        c = float(cell_lev)
+    except (TypeError, ValueError):
+        return cur
+    if not (c > 1.0):
+        return cur
+    return max(cur or 1.0, c)
+
+def _flip_compose_lev(registry_lev, cell_lev):
+    """Final flip leverage multiplier before the hard cap / 0.05 floor = registry lev × cell lev (cell None/0 → ×1).
+    FAN_RATIO_GATE:1.0:0.5 with every cell at 1.0 → 0.5 → round(20 × 0.5) = 10× at STRONG_BUY (DECISION_LOG 252)."""
+    return float(registry_lev) * (cell_lev or 1.0)
+
 def btc_adx_surge_waived(th, gate, rule_rsi_min, btc_adx, btc_adx_prev, btc_slope):
     """⚡ Sep-28 BTC ADX-SURGE WAIVER (operator-directed ARMED override, DECISION_LOG 123) — pure rule.
 
@@ -5974,8 +5992,7 @@ class TradingEngine:
                 if (flip_dir == 'SHORT' and _tgm > 1.0 and _btg2 is not None
                         and _tgz <= _btg2 < _tgmax):
                     _flip_cell_mult = max(_flip_cell_mult or 1.0, _tgm)
-                    if _tglev > 1.0:
-                        _flip_cell_lev_mult = max(_flip_cell_lev_mult or 1.0, _tglev)
+                    _flip_cell_lev_mult = _flip_cell_lev_bump(_flip_cell_lev_mult, _tglev)   # relative to the registry lev; 1.0 = no change (252)
                     _flip_cell_tag = (_flip_cell_tag + "+[TG_SHALLOW]") if _flip_cell_tag else "[TG_SHALLOW]"
             except Exception:
                 pass
@@ -5997,8 +6014,7 @@ class TradingEngine:
                 _nd2 = _ff_in.get('neg_di')
                 if (flip_dir == 'SHORT' and _ndm > 1.0 and _nd2 is not None and _nd2 >= _ndmin):
                     _flip_cell_mult = max(_flip_cell_mult or 1.0, _ndm)
-                    if _ndlev > 1.0:
-                        _flip_cell_lev_mult = max(_flip_cell_lev_mult or 1.0, _ndlev)
+                    _flip_cell_lev_mult = _flip_cell_lev_bump(_flip_cell_lev_mult, _ndlev)   # relative to the registry lev; 1.0 = no change (252)
                     _flip_cell_tag = (_flip_cell_tag + "+[NEGDI15]") if _flip_cell_tag else "[NEGDI15]"
             except Exception:
                 pass
@@ -6024,7 +6040,7 @@ class TradingEngine:
             if _fg_admit_tag is not None:
                 _fg_th2 = config.trading_config.thresholds
                 _flip_cell_mult = float(getattr(_fg_th2, 'gap_probe_invest_mult', 0.5) or 0.5)
-                _flip_cell_lev_mult = float(getattr(_fg_th2, 'gap_probe_lev_mult', 0.05) or 0.05)
+                _flip_cell_lev_mult = float(getattr(_fg_th2, 'gap_probe_lev_mult', 0.05) or 0.05)   # composes with the source lev in open_position (252: FAN 0.5 × 0.05 = 0.025 → 0.05 floor = 1×, unchanged today)
                 _flip_cell_tag = "+" + _fg_admit_tag
             async def _open(_db):
                 # Aug-11 CRITICAL FIX: open_position has NO entry_btc_trend_gap_pct param (it
@@ -10568,7 +10584,7 @@ class TradingEngine:
             # row; the ×/L size tag is appended only when the multiplier actually differs from 1.0.
             if flip_cell_tag or (flip_cell_mult and flip_cell_mult != 1.0) or (flip_cell_lev_mult and flip_cell_lev_mult != 1.0):
                 cell_mult = cell_mult * (flip_cell_mult or 1.0)
-                cell_lev_mult = cell_lev_mult * (flip_cell_lev_mult or 1.0)
+                cell_lev_mult = _flip_compose_lev(cell_lev_mult, flip_cell_lev_mult)   # cell lev MULTIPLIES the registry lev (FAN 0.5 × 1.0 = 10×, DECISION_LOG 252)
                 _tag = f"×{flip_cell_mult:g}" if flip_cell_mult and flip_cell_mult != 1.0 else ""
                 _tag += f"L{flip_cell_lev_mult:g}" if flip_cell_lev_mult and flip_cell_lev_mult != 1.0 else ""
                 cell_src = f"FLIP:{flip_source}{flip_cell_tag or ''}{_tag}"

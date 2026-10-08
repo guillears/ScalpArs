@@ -33,7 +33,16 @@ GATES (frozen definitions — quoted from CLAUDE_CURRENT_STATE.md / DECISION_LOG
   SURGE_LONG (202) option B at full size (operator override): the first 15 SURGE_LONG triggers that FILLED after the deploy (a closed
                    prefix; one trigger = the mean of its fills) mean ≤ 0 → FIRES (surge_long_lev_mult 0.05). Supersedes the 200 probe gate.
   BEARRUN (200)    windows (fills ≤ 180 min apart = one window) started after 2026-10-04 22:00 UTC: ≥ 5 windows, ≥ 3 positive ∧ Σ > 0 →
-                   ARM bar met (bearrun_lev_mult 1.0) — a positive event, not a revert.
+                   ARM bar met (bearrun_lev_mult 1.0) — a positive event, not a revert. From 252 (2026-10-08) its fills are at 5× (lev 0.25).
+  ── Oct-8 (DECISION_LOG 252, sizing; fills counted from the deploy = push + 10 min, key SIZING_252) ──
+  BEARRUN_5X (252) bearrun_lev_mult 0.05 → 0.25 (operator declared override at 1 live window): ALL BEARRUN_SHORT fills chained into windows
+                   exactly like the (200) row (fills ≤ 180 min apart); counted = windows from the deploy whose fills are all at 5 ≤ leverage < 20;
+                   FROZEN at the first 3 complete windows (all fills closed and the window can no longer grow: a later fill exists or the newest
+                   export is > 180 min past its last fill): Σ of the window-mean pnl % < 0 → FIRES
+                   ("ROLLBACK: bearrun_lev_mult 0.05"); else holds. The (200) gate still decides full size.
+  FAN_10X (252)    FAN flips 20× → 10× (flip_entry_sources FAN_RATIO_GATE:1.0:0.5): FLIP:FAN_RATIO_GATE fills from the deploy at leverage ≤ 10
+                   (closed prefix, FROZEN at 15): WR ≥ 63 % ∧ avg pnl % ≥ +0.20 → FIRES ("RESTORE 20×"); avg < 0 → REVIEW (sleeve-kill checklist
+                   first, no auto-off); else stays 10×. pnl % is leverage-invariant.
   LOADX (126)      first 30 (extended from 8 on 2026-10-04, operator) PAIR_RSI_MOMENTUM_LOADX-blocked LONG signals (journal FAILS lines whose COMPLETE fail set is LOADX alone,
                    rank ≤ 10 pairs excluded = mega-cap gate), WINDOW units (one 5-min journal bucket = one scan = one window, value =
                    mean) → WR ≥ 60 % ∨ net > 0 → long_rsi_momentum_adx_max 0.
@@ -101,6 +110,7 @@ DEPLOYS = {"FRENZY_TP3": ("2e36c26", "2026-10-04 19:23:15"), "FRENZY_STRONG": ("
            "FRENZY_LOCK": ("grep:(DECISION_LOG 205)", "2026-10-05 22:00:00"),
            "HEAT_REVERT": ("grep:(DECISION_LOG 208)", "2026-10-05 22:00:00"),
            "FRENZY_WILLY": ("grep:(DECISION_LOG 251)", None),   # 🎲 Oct-8 FRENZY_WILLY (declared exception) — its commit message must carry "(DECISION_LOG 251)"; not found → NOW
+           "SIZING_252": ("grep:(DECISION_LOG 252)", None),   # 🐻🔄 Oct-8 sizing: BEARRUN 5× + FAN flips 10× (one commit; its message must carry "(DECISION_LOG 252)"); not found → NOW
            "FRENZY_OCT8": ("grep:(DECISION_LOG 250)", None)}   # 🐻⬆🎯 Oct-8: bearish-day block + ATR 3.0 + fixed TP (one commit; its message must carry "(DECISION_LOG 250)")   # 🔁 Oct-5 heat re-scope reverted   # 🎯 Oct-5 lock-then-trail exit (commit message carries the exact string)   # ⚡ Oct-4 option B (found by its commit message)
 SHIPS = {"HEAT": "2026-09-25", "LOADX": "2026-09-29", "MEGACAP": "2026-09-23"}
 # Oct-4 operator: "keep collecting" → trackers extended to 30; (new N, frozen N, frozen verdict) — the frozen first-N verdict stays on record
@@ -120,6 +130,9 @@ TP3_N, TP3_MARGIN = 20, 3.0                           # TP3_VS_LOCK: first 20 fi
 BB_N, BB_DAYS = 15, 8                                 # BEARISH_BLOCKED: ≥ 15 counted signals on ≥ 8 days, blocked mean > 0 → revert
 BB_CSV = os.path.join(REPORTS, "SCOUT_FRENZY_BEARISH_BLOCKED.csv")
 FRENZY3 = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")
+# ── Oct-8 (DECISION_LOG 252) — FROZEN bars ──
+BR5_LEV_MIN, BR5_LEV_MAX, BR5_WINDOWS, BR_GAP_MIN = 5, 20, 3, 180   # BEARRUN_5X: windows whose fills are all at 5 ≤ lev < 20, first 3 complete, Σ window-mean pnl % < 0 → rollback
+FAN10_N, FAN10_WR, FAN10_AVG, FAN10_LEV_MAX = 15, 63.0, 0.20, 10   # FAN_10X: first 15 closed at lev ≤ 10 → restore / review / stay
 
 
 def log(msg):
@@ -384,6 +397,26 @@ def decide_bearrun(win_means, total_sum, min_windows=5, min_pos=3):
     if len(win_means) < min_windows:
         return "collecting"
     return "armbar" if (sum(1 for m in win_means if m > 0) >= min_pos and total_sum > 0) else "open"
+
+
+def decide_bearrun_5x(window_sums, n=BR5_WINDOWS):
+    """🐻 (252) first n complete 5× windows (window-mean pnl %, in order): Σ of the window means < 0 → 'fired' (rollback to 0.05), else 'holds'."""
+    v = list(window_sums)[:n]
+    tot = float(np.sum(v)) if v else 0.0
+    if len(v) < n:
+        return "collecting", tot
+    return ("fired" if tot < 0 else "holds"), tot
+
+
+def decide_fan_10x(vals, n=FAN10_N, wr_min=FAN10_WR, avg_min=FAN10_AVG):
+    """🔄 (252) first n closed FAN flips at 10×: WR ≥ 63 ∧ avg ≥ +0.20 → 'fired' (restore 20×) · avg < 0 → 'review' · else 'holds' (stay 10×)."""
+    v = list(vals)[:n]
+    wr, m = _wr(v), (float(np.mean(v)) if v else float("nan"))
+    if len(v) < n:
+        return "collecting", wr, m
+    if wr >= wr_min and m >= avg_min:
+        return "fired", wr, m
+    return ("review" if m < 0 else "holds"), wr, m
 
 
 def window_chain(ts_ms, gap_ms):
@@ -1612,6 +1645,75 @@ def gate_bearrun(orders, st):
     return state
 
 
+def bearrun_5x_windows(f, newest_ms, gap_min=BR_GAP_MIN, lev_min=BR5_LEV_MIN, lev_max=BR5_LEV_MAX):
+    """[(start_ms, n_fills, window-mean pnl % or None, complete, at_5x)] — the (200) row's 180-min chain on ALL BEARRUN fills (o_ms
+    sorted); at_5x = every fill of the window has lev_min ≤ leverage < lev_max (a 1×-probe or a later 20× arm fill disqualifies it).
+    complete = every fill closed AND the window can no longer grow (a later window exists, or the newest export is > gap past its last fill)."""
+    f = f.sort_values("o_ms")
+    if not len(f):
+        return []
+    f = f.assign(win=window_chain(f.o_ms.tolist(), gap_min * MIN))
+    out, wins = [], list(f.groupby("win"))
+    for j, (w, g) in enumerate(wins):
+        closed = (g.status.astype(str) == "CLOSED").all() and g.pnl_percentage.notna().all()
+        sealed = j < len(wins) - 1 or (newest_ms is not None and newest_ms - int(g.o_ms.max()) > gap_min * MIN)
+        lv = pd.to_numeric(g.leverage, errors="coerce")
+        at5 = bool(((lv >= lev_min) & (lv < lev_max)).all())
+        out.append((int(g.o_ms.min()), len(g), float(g.pnl_percentage.mean()) if closed else None, bool(closed and sealed), at5))
+    return out
+
+
+def gate_bearrun_5x(orders, st, newest_ms):
+    """🐻 (252) the tight rollback of the 5× override — first 3 complete 5× windows (start ≥ the deploy), Σ of window means, verdict frozen."""
+    G = st.setdefault("gates", {}).setdefault("BEARRUN_5X", {})
+    t0 = deploy_ms("SIZING_252")
+    if G.get("frozen"):
+        z = G["frozen"]
+        G["progress"] = f"FROZEN at {BR5_WINDOWS} windows: Σ window means {z['sum']:+.2f} % · windows {', '.join(z['windows'])}"
+        return z["state"], t0
+    f = orders[(orders.entry_strategy.astype(str) == "BEARRUN_SHORT") & (orders.o_ms >= _ms(PROBE_START))].copy()   # chain = the (200) row's
+    allw = bearrun_5x_windows(f, newest_ms)
+    wins = [w for w in allw if w[0] >= t0 and w[4]]
+    mixed = sum(1 for w in allw if w[0] >= t0 and not w[4])
+    done = []
+    for w in wins:                                                    # closed prefix — a later window never takes the place of an open one
+        if not w[3]:
+            break
+        done.append(w)
+    state, tot = decide_bearrun_5x([w[2] for w in done])
+    if state != "collecting":
+        G["frozen"] = {"state": state, "sum": tot, "windows": [f"{_fmt_t(w[0])} n{w[1]} {w[2]:+.2f}" for w in done[:BR5_WINDOWS]]}
+    G["progress"] = (f"{min(len(done), BR5_WINDOWS)}/{BR5_WINDOWS} complete 5× windows · Σ window means {tot:+.2f} %"
+                     + (f" · {sum(1 for w in done[:BR5_WINDOWS] if w[2] > 0)} positive" if done else "")
+                     + (f" · {len(wins) - len(done)} window(s) still open / growing" if len(wins) > len(done) else "")
+                     + (f" · ⚠ {mixed} window(s) from the deploy not all at 5× (excluded)" if mixed else ""))
+    G["detail"] = " · ".join(f"{_fmt_t(t)} n{k} {_f(m_)}{'' if c else ' (open)'}{'' if a5 else ' (not 5×)'}" for t, k, m_, c, a5 in allw[-8:])
+    return state, t0
+
+
+def gate_fan_10x(orders, st):
+    """🔄 (252) FAN flips at 10× from the deploy — first 15 closed (prefix), verdict frozen in the state."""
+    G = st.setdefault("gates", {}).setdefault("FAN_10X", {})
+    t0 = deploy_ms("SIZING_252")
+    if G.get("frozen"):
+        z = G["frozen"]
+        G["progress"] = f"FROZEN at {FAN10_N}: WR {z['wr']:.0f} % · avg {z['avg']:+.3f} %"
+        return z["state"], t0
+    lev = pd.to_numeric(orders.leverage, errors="coerce")
+    a = orders[(orders.entry_strategy.astype(str) == FLIP_SRC) & (orders.o_ms >= t0)]
+    _al = pd.to_numeric(a.leverage, errors="coerce")
+    hi = int(((_al > FAN10_LEV_MAX) | _al.isna()).sum())          # above 10× or leverage unreadable = not counted at 10×
+    f = orders[(orders.entry_strategy.astype(str) == FLIP_SRC) & (orders.o_ms >= t0) & (lev <= FAN10_LEV_MAX)].head(FAN10_N)
+    vals = _closed_prefix(f)
+    state, wr, m = decide_fan_10x(vals)
+    if state != "collecting":
+        G["frozen"] = {"state": state, "wr": wr, "avg": m}
+    G["progress"] = (f"{len(vals)}/{FAN10_N} FAN flips closed at ≤ 10×" + (f" · WR {wr:.0f} % · avg {m:+.3f} %" if vals else "")
+                     + (f" · {len(f) - len(vals)} later/open" if len(f) > len(vals) else "") + (f" · ⚠ {hi} fill(s) not at ≤ 10× after the deploy (above 10× or leverage unreadable; excluded)" if hi else ""))
+    G["detail"] = " · ".join(f"{_fmt_t(r.o_ms)} {r.pair.replace('USDT', '')} {_f(r.leverage, 'g')}× {_f(r.pnl_percentage)}" for r in f.head(15).itertuples())
+    return state, t0
+
+
 # ═══════════════════════════════ assembly ═══════════════════════════════
 DEFS = {
     "CHOP_BURST": ("🌀👥 Chop∧burst block (201)", "first 6 refused momentum-LONG signals (LONG_CHOP_BURST) re-priced with the live exit replica: "
@@ -1640,8 +1742,17 @@ DEFS = {
     "SURGE_LONG": ("⚡ SURGE_LONG option B (202)", "trigger 0.3 % · 5× · market vol ≥ 1 · spacing after a fill, FULL size (operator override, "
                    "unproven: year +0.01 %/trigger): the first 15 triggers that filled, mean pnl %/trigger ≤ 0 → revert (supersedes the 200 probe gate)",
                    "set surge_long_lev_mult 0.05 (back to the probe)", "surge_long_lev_mult"),
-    "BEARRUN": ("🐻 BEARRUN probe arm bar (200)", "≥ 5 windows started after 10-04 22:00 with fills, ≥ 3 positive ∧ Σ > 0 (positive event)",
+    "BEARRUN": ("🐻 BEARRUN probe arm bar (200)", "≥ 5 windows started after 10-04 22:00 with fills, ≥ 3 positive ∧ Σ > 0 (positive event) · "
+                "from 2026-10-08 (252) fills are at 5× (lev 0.25), not 1× — this gate still decides FULL size (1.0)",
                 "set bearrun_lev_mult 1.0", "bearrun_lev_mult"),
+    "BEARRUN_5X": ("🐻 BEARRUN 5× rollback (252)", "operator declared override 0.05 → 0.25 (5×) at 1 live window (replay 7 windows −0.24 %/window, 3/7 positive): "
+                   "windows chained on ALL BEARRUN_SHORT fills as the (200) row (fills ≤ 180 min apart); counted = windows starting from the 252 deploy whose "
+                   "fills are ALL at 5 ≤ leverage < 20 (a 1× probe or a later 20× arm never pollutes it); FROZEN at the first 3 complete windows: "
+                   "Σ of the window-mean pnl % < 0 → rollback; else holds (the (200) gate still decides full size; kill bar unchanged)",
+                   "ROLLBACK: bearrun_lev_mult 0.05", "bearrun_lev_mult"),
+    "FAN_10X": ("🔄 FAN flips 10× (252)", "FLIP:FAN_RATIO_GATE fills from the 252 deploy at leverage ≤ 10 (closed prefix, pnl % = leverage-invariant), FROZEN at 15: "
+                "WR ≥ 63 % ∧ avg ≥ +0.20 % → restore 20× · avg < 0 → REVIEW the sleeve (sleeve-kill checklist first; no auto-off) · else stay 10×",
+                "RESTORE 20× (registry lev 1.0: flip_entry_sources FAN_RATIO_GATE:1.0)", "flip_entry_sources"),
     "LOADX": ("🧭 LOADX gate (126)", "first 30 LOADX-only refused LONG signals (journal FAILS, rank ≤ 10 excluded), WINDOW units: WR ≥ 60 % ∨ net > 0 · extended from 8 on 10-04 (first 8 had FIRED, fragile at t+5m)",
               "set long_rsi_momentum_adx_max 0", "long_rsi_momentum_adx_max"),
     "FLIP_EMA13_BLOCKED": ("🔄 FAN flip BTC-EMA13 filter (221)", "first 10 WINDOWS (5-min journal buckets) of FAN flip-short refusals whose COMPLETE fail set is "
@@ -1681,7 +1792,7 @@ DEFS = {
     "MEGACAP": ("🏦 Mega-cap exclusion (110)", "LONG_MEGACAP_BLOCK refusals re-priced: ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows",
                 "set long_megacap_rank_max 0", "long_megacap_rank_max"),
 }
-ORDER = ["CHOP_BURST", "BEARISH_BLOCKED", "ATR_RAISE", "TP3_VS_LOCK", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "LOADX", "FLIP_EMA13_BLOCKED", "FLIP_PADX_BLOCKED", "MS_PVR_BLOCKED", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
+ORDER = ["CHOP_BURST", "BEARISH_BLOCKED", "ATR_RAISE", "TP3_VS_LOCK", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "BEARRUN_5X", "FAN_10X", "LOADX", "FLIP_EMA13_BLOCKED", "FLIP_PADX_BLOCKED", "MS_PVR_BLOCKED", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
 
 
 def _status_text(code, state, G):
@@ -1692,6 +1803,10 @@ def _status_text(code, state, G):
         return "🔔 ARM BAR MET → normal size for the BTC 3d ≤ +2.7 % group only (needs a group-scoped size switch)"
     if state == "armbar":
         return f"🔔 ARM BAR MET → {action}"
+    if state == "review" and code == "FAN_10X":
+        return "🔔 REVIEW → the FAN flip sleeve (run the sleeve-kill checklist first; no auto-off)"
+    if state == "holds" and code == "FAN_10X":
+        return "✅ bar resolved — stay 10×"
     if state == "holds":
         return "✅ holds — bar resolved, keep" + (" (t+5m entry disagrees — fragile)" if G.get("fragile") else "")
     if state == "open":
@@ -1824,7 +1939,9 @@ def run_section(now_ms=None, noted=None, record_notes=True):
                      ("HEAT_ADMIT", lambda: gate_heat_admit(orders, st)),
                      ("TP3_VS_LOCK", lambda: gate_tp3_vs_lock(orders, st, budget, now_ms, None)),   # 🎯 (250)
                      ("ATR_RAISE", lambda: gate_atr_raise(orders, J, st)),                         # ⬆ (250)
-                     ("BEARISH_BLOCKED", lambda: gate_bearish_blocked(st))):                       # 🐻 (250)
+                     ("BEARISH_BLOCKED", lambda: gate_bearish_blocked(st)),                        # 🐻 (250)
+                     ("BEARRUN_5X", lambda: gate_bearrun_5x(orders, st, newest)),                 # 🐻 (252)
+                     ("FAN_10X", lambda: gate_fan_10x(orders, st))):                               # 🔄 (252)
         try:
             state, t0 = fn()
             res[code] = state
@@ -1889,7 +2006,7 @@ def run_section(now_ms=None, noted=None, record_notes=True):
         if code == "HEAT" and state not in ("nodata", "error"):   # 🔁 (208) resolved — the extension's blocked set is frozen at the revert
             shown = f"first {EXT_N['HEAT'][1]} (frozen gate): {EXT_N['HEAT'][2]} → ✅ REVERTED Oct-5 (DECISION_LOG 208) · tally frozen at the revert"
         L.append(f"| {title} | {d} | {G.get('progress', '–')} | {shown} | {ck} = {cv if cv is not None else '–'} | {cov.get(code, '–')} |")
-        if state in ("fired", "armbar", "arm_group") + (("review",) if code == "MS_PVR_BLOCKED" else ()) and code != "HEAT":   # HEAT resolved (reverted, 208): no further alerts
+        if state in ("fired", "armbar", "arm_group") + (("review",) if code in ("MS_PVR_BLOCKED", "FAN_10X") else ()) and code != "HEAT":   # HEAT resolved (reverted, 208): no further alerts
             k = f"RG|{code}|n{EXT_N[code][0]}|{state}" if code in EXT_N else f"RG|{code}|{state}"   # N in the key: the frozen-N alert must not mute the extension
             if k not in noted and k not in G.get("noted", []):
                 notes.append((k, f"🔔 Revert gate {title}: {(shown if code == 'MS_PVR_BLOCKED' else stt[2:]).strip()} — {G.get('progress', '')}"))
@@ -2068,6 +2185,58 @@ def selftest():
     chk(abs(deploy_ms("FRENZY_OCT8") - _t) < 60_000, "Oct-8 deploy: no commit found → the floor is NOW (no pinned guess)")
     DEPLOYS["FRENZY_OCT8"] = _orig
     chk(_status_text("ATR_RAISE", "fired", {}).startswith("🔔 FIRED → REVERT (operator decision): frenzy_max_atr_pct back to 2.5"), "atr raise status text")
+    # ── Oct-8 (252) ──
+    chk(decide_bearrun_5x([0.5, -0.2])[0] == "collecting", "br5x: 2 windows collect")
+    chk(decide_bearrun_5x([0.5, -0.2, -0.4]) == ("fired", decide_bearrun_5x([0.5, -0.2, -0.4])[1]) and decide_bearrun_5x([0.5, -0.2, -0.4])[1] < 0, "br5x: Σ < 0 → rollback")
+    chk(decide_bearrun_5x([0.5, -0.2, -0.3])[0] == "holds" and decide_bearrun_5x([0.0, 0.0, 0.0])[0] == "holds", "br5x: Σ ≥ 0 holds (bar is < 0)")
+    chk(decide_bearrun_5x([0.1, 0.1, 0.1, -9, -9])[0] == "holds", "br5x: only the FIRST 3 windows count")
+    _o = pd.DataFrame({"o_ms": [0, 60 * MIN, 400 * MIN, 900 * MIN], "status": ["CLOSED"] * 3 + ["OPEN"], "pnl_percentage": [0.4, 0.6, -0.3, np.nan],
+                       "leverage": [5, 5, 1, 5]})
+    _w = bearrun_5x_windows(_o, 900 * MIN + 1)
+    chk([(w[1], w[3], w[4]) for w in _w] == [(2, True, True), (1, True, False), (1, False, True)] and abs(_w[0][2] - 0.5) < 1e-9,
+        "br5x windows: 180-min chain on all fills, window MEAN pnl %, 1× window flagged not-5×, open window incomplete")
+    _w2 = bearrun_5x_windows(_o.assign(leverage=[5, 20, 5, 5]), 900 * MIN + 1)
+    chk(_w2[0][4] is False, "br5x windows: a 20× (armed) fill disqualifies its window")
+    _bo = pd.DataFrame({"o_ms": [DAY + k * 400 * MIN for k in range(5)], "entry_strategy": ["BEARRUN_SHORT"] * 5, "leverage": [1, 5, 20, 5, 5],
+                        "status": ["CLOSED"] * 5, "pnl_percentage": [5.0, 0.4, 9.0, -0.3, -0.2]})
+    _orig2 = (DEPLOYS["SIZING_252"], PROBE_START)
+    DEPLOYS["SIZING_252"] = ("grep:(NO SUCH COMMIT 0xdeadbeef)", "1970-01-01 00:00:00")
+    try:
+        globals()["PROBE_START"] = "1970-01-01 00:00"
+        _st2 = {}
+        _r = gate_bearrun_5x(_bo, _st2, DAY + 3000 * MIN)
+        _pg = _st2["gates"]["BEARRUN_5X"]["progress"]
+        chk(_r[0] == "fired" and abs(_st2["gates"]["BEARRUN_5X"]["frozen"]["sum"] + 0.1) < 1e-9 and "2 window(s) from the deploy not all at 5×" in _pg,
+            "br5x gate: the 1× and 20× windows are skipped; 3 × 5× windows Σ means −0.1 → rollback, frozen")
+        chk(gate_bearrun_5x(_bo.iloc[:0], _st2, DAY)[0] == "fired", "br5x gate: the frozen verdict is reused")
+    finally:
+        DEPLOYS["SIZING_252"], globals()["PROBE_START"] = _orig2
+    chk(bearrun_5x_windows(_o.iloc[:1], 100 * MIN)[0][3] is False and bearrun_5x_windows(_o.iloc[:1], 200 * MIN)[0][3] is True,
+        "br5x windows: the LAST window is complete only once it can no longer grow (> 180 min past its last fill)")
+    chk(decide_fan_10x([0.5] * 14)[0] == "collecting", "fan10: 14 collects")
+    chk(decide_fan_10x([0.5] * 10 + [-0.2] * 5)[0] == "fired", "fan10: WR 67 % ∧ avg +0.27 → restore 20×")
+    chk(decide_fan_10x([0.5] * 9 + [-0.2] * 6)[0] == "holds", "fan10: WR 60 % < 63 → stay 10×")
+    chk(decide_fan_10x([0.3] * 15)[0] == "fired" and decide_fan_10x([0.19] * 15)[0] == "holds", "fan10: avg +0.20 is the line (0.19 stays)")
+    chk(decide_fan_10x([0.2] * 10 + [-1.0] * 5)[0] == "review", "fan10: avg < 0 → review (even at WR 67 %)")
+    chk(decide_fan_10x([0.2] * 15 + [-9.0] * 5)[0] == "fired", "fan10: only the FIRST 15 count")
+    _fo = pd.DataFrame({"o_ms": [DAY, DAY + 1, DAY + 2], "entry_strategy": [FLIP_SRC] * 3, "leverage": [10, 20, 10], "status": ["CLOSED"] * 3,
+                        "pnl_percentage": [0.5, -1.0, 0.3], "pair": ["AUSDT", "BUSDT", "CUSDT"]})
+    _orig = DEPLOYS["SIZING_252"]
+    DEPLOYS["SIZING_252"] = ("grep:(NO SUCH COMMIT 0xdeadbeef)", "1970-01-01 00:00:00")
+    try:
+        _st = {}
+        chk(gate_fan_10x(_fo, _st)[0] == "collecting" and _st["gates"]["FAN_10X"]["progress"].startswith("2/15")
+            and "1 fill(s) not at ≤ 10×" in _st["gates"]["FAN_10X"]["progress"], "fan10 gate: the 20× fill is excluded and flagged")
+        _st = {}
+        gate_fan_10x(_fo.assign(leverage=[10, np.nan, 10]), _st)
+        chk("1 fill(s) not at ≤ 10×" in _st["gates"]["FAN_10X"]["progress"], "fan10 gate: a NaN-leverage fill is flagged too")
+    finally:
+        DEPLOYS["SIZING_252"] = _orig
+    chk(all(c in ORDER and c in DEFS for c in ("BEARRUN_5X", "FAN_10X")) and "SIZING_252" in DEPLOYS and "5×" in DEFS["BEARRUN"][1],
+        "252 gates wired (ORDER / DEFS / deploy key) · the (200) row notes the 5× fills")
+    chk(_status_text("BEARRUN_5X", "fired", {}).startswith("🔔 FIRED → ROLLBACK: bearrun_lev_mult 0.05"), "br5x status text")
+    chk(_status_text("FAN_10X", "fired", {}).startswith("🔔 FIRED → RESTORE 20×") and "sleeve-kill" in _status_text("FAN_10X", "review", {})
+        and "stay 10×" in _status_text("FAN_10X", "holds", {}), "fan10 status texts")
     print(f"selftest OK — {ok} checks")
 
 

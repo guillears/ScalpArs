@@ -6022,3 +6022,23 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   background (repeat counts flushed ≤ 1/min + on WILLY close; UNREAD rows with no WILLY id). Fixed in passing (all sleeves):
   update_orders_cache no longer drops an order opened after its DB snapshot (≤ 120 s, closed orders never resurrected). Paper ≠ live:
   paper WILLY has no stop; live the exchange backstop (≈ −2.2 %) acts as the stop — stated on the dashboard, exports and scout.
+- (252) 2026-10-08 ⚖️ **Sizing: FAN flips 20× → 10× (registry `FAN_RATIO_GATE:1.0:0.5`) · BEARRUN_SHORT 1× → 5× (`bearrun_lev_mult` 0.05 →
+  0.25) — operator decisions.** ① FAN: risk cut, not a filter — master kept FAN flips 33 · 82 % · +0.26 %/trade · +$881 (all history) but since
+  09-15 8 · 50 % · −0.36 % · −$370 before B18 (9 · 44 % · −0.40 % with B18's PUMP) vs breakeven WR ≈ 63 %. Leverage trace: final lev mult = registry lev × cell lev (cells are relative and all 1.0
+  today; a cell at 2.0 doubles the source → 20×); FGP probe stays 1× (0.05 floor). 🔒 Scout "FAN flips 10× (252)": first 15 FAN fills at ≤ 10× —
+  WR ≥ 63 % ∧ avg ≥ +0.20 % → RESTORE 20× · avg < 0 → REVIEW the sleeve (sleeve-kill checklist first; no auto-off) · else stay 10×. ② BEARRUN:
+  operator DECLARED OVERRIDE at 1 live window (XLM/UNI 10-07 +0.40/+0.68) against the tick replay (yr4+yr5: 7 windows · −0.24 %/window · 3/7 +,
+  reports/SURGE_BEARRUN_REVIEW_2026-10-04.md). 🔒 Scout "BEARRUN 5× rollback (252)": first 3 complete windows at 5× (180-min windows chained as the
+  (200) row) Σ of window-mean pnl % < 0 → back to 0.05; the (200) gate (≥ 5 windows, ≥ 3 + ∧ Σ > 0 → 1.0) still decides full size; kill bar unchanged. Code
+  defaults moved to the live values (bearrun_lev_mult default was 1.0 = 20× if the json key went missing). Master STACK 2026-10-08b in two
+  steps: 10-08a 406 kept $8,149.24 → + B18 at old sizing 416 · $7,698.88 (B18 10 full-size kept −$450 + 2 BEARRUN probes; 6 FRENZY-family fills
+  refused by the bearish-day block) → 10-08b sizing 418 · $7,296.77 (33 of 34 FAN rows halve −$439; BTW 10-06 was bracket-capped at 10× when
+  traded, unchanged; BEARRUN rows 5× and no longer probes +$37). SCREENED_BASELINE v21: FLIP 31 · $692 → $346 (ML / MS unchanged). B18 under
+  today's full stack = 12 kept · −$365.76 (the −$253 shown earlier left out the 0.5 % fade-ticket re-pricing, DECISION_LOG 168: KOMA −$133 →
+  −$266). validate_against_master F2 had dropped to r 0.883 because the BTC 5m cache ended 10-04 → refreshed (+1,368 bars, 1 request, weight
+  10) → ALL CHECKS PASS.
+  Same day, research (no change): ML_B1H_NEGFLANK history — no rule ever BLOCKED falling-1h momentum longs: the btc_1h_slope_min_long floor was
+  never enabled for longs (Jun 3), the Jul-5 dead-band deliberately admits ≤ −0.05, and the 1hPullback_L 2× cell BOOSTED them until retired
+  (211). Master (ex B1, current stack): falling-1h 40 · 72 % · +0.17 % · +$1,011 (washed-out 13 · 100 % · +$1,364; ex washed-out 27 · 59 % ·
+  −0.04 % · −$354 · 16 days; since 09-15 8 · 38 % · −0.15 %). Block ex washed-out → master +$354, B18 +$447; full block −$1,011. Fails the
+  expectancy bar → observe-only stays; the yr5 deep read is in reports/ML_B18_LOSERS_STUDY_2026-10-08.md.

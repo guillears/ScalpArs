@@ -12,7 +12,7 @@ raw 269-flip pool.
 RE-RUN WHEN: a new batch is appended to the raw pool, OR any filter/config changes.
 Then re-freeze and re-pin the checksum in CLAUDE_CURRENT_STATE.md.
 
-VALIDATION ANCHORS (asserted in main(), v20 2026-10-06): ML 37/$2612 · MS 14/$672 · FLIP 31/$692 — $ = pnl_current (today's sizing, master STACK 2026-10-06c rule).
+VALIDATION ANCHORS (asserted in main(), v21 2026-10-08): ML 37/$2612 · MS 14/$672 · FLIP 31/$346 — $ = pnl_current (today's sizing, master STACK 2026-10-08b rule: FAN flips at 10×).
 Flip-short uses the real services.trading_engine._flip_filters with a field-audited `ind`.
 """
 import csv, sys, os
@@ -39,7 +39,7 @@ def pnl_current(r):
     return (nf(r.get('pnl')) or 0.0) * today_size_scale(
         r.get('entry_strategy'), r.get('direction'), r.get('cell_multiplier_source'), r.get('cell_multiplier'),
         r.get('entry_global_volume_ratio'), r.get('entry_btc_ema20_slope'), r.get('entry_pair_volume_ratio'),
-        r.get('cell_lev_multiplier'))
+        r.get('cell_lev_multiplier'), r.get('leverage'))
 
 def flip_ind(r):  # field-audited against engine _ff_in (trading_engine.py:3414)
     a, b = nf(r.get('entry_ema_gap_5_8')), nf(r.get('entry_ema_gap_8_13'))
@@ -245,8 +245,10 @@ def main():
     # phantoms from a single bear Monday, not net-admissible) vs the block's three. FLIP returns
     # to the core-only cohort. Rewritten revert gate lives in CURRENT_STATE.
     # v12 (Jul 8): BTC trend-gap depth gate (flip_short_btc_trend_gap_min=-0.22) screens 12 more flips (42%WR/-$244)
-    assert len(fl) == 31 and round(fl_net) == 692, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 31/$692 (v14, unchanged from v13) — trend-gap gate off? de-mux? NOT freezing"
-    print(f"\n✅ VALIDATION PASSED (v20: ML 37/$2612 + MS 14/$672 + FLIP 31/$692 + 0 pair-vol survivors). Freezing.")
+    # v21 (2026-10-08, master 10-08b, DECISION_LOG 252): FAN flips priced at registry lev 0.5 = 10× (today_size_rule FLIP_FAN_LEV) —
+    # same 31 rows, every one traded at 20× → $ halves: FLIP $692 -> $346. ML/MS unchanged.
+    assert len(fl) == 31 and round(fl_net) == 346, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 31/$346 (v21: FAN at 10×) — trend-gap gate off? de-mux? NOT freezing"
+    print(f"\n✅ VALIDATION PASSED (v21: ML 37/$2612 + MS 14/$672 + FLIP 31/$346 + 0 pair-vol survivors). Freezing.")
     # freeze — add a today's-sizing P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

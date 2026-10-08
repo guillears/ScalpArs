@@ -25,8 +25,15 @@ MOM, FLIP = "MOMENTUM", "FLIP:FAN_RATIO_GATE"
     ((MOM, "SHORT", "W1", 1.0), 1.0, ""),
     ((MOM, "LONG", "NONEXP_CALM3D", 2.0), 0.5, "CALM3D_1X"),                   # DECISION_LOG 225
     ((MOM, "LONG", "NONEXP_CALM3D", 1.0), 1.0, ""),
-    ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE[NEGDI15]×2", 2.0), 0.5, "FLIP_1X"),  # DECISION_LOG 220
-    (("nan", "SHORT", "FLIP:FAN_RATIO_GATE×2", 2.0), 0.5, "FLIP_1X"),          # flip known by its source alone
+    ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE[NEGDI15]×2", 2.0), 0.25, "FLIP_FAN_LEV"),  # 220 size → 1× · 252 FAN lev 20× → 10×
+    (("nan", "SHORT", "FLIP:FAN_RATIO_GATE×2", 2.0), 0.25, "FLIP_FAN_LEV"),          # flip known by its source alone
+    ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE", 1.0), 0.5, "FLIP_FAN_LEV"),              # a 1× FAN fill at 20× → 10× (252)
+    ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE", 1.0, None, None, None, 1.0, 10), 1.0, "FLIP_FAN_LEV"),   # already bracket-capped at 10× → unchanged
+    ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE", 1.0, None, None, None, 1.0, 20), 0.5, "FLIP_FAN_LEV"),
+    ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE", 1.0, None, None, None, 1.0, 15), 10 / 15, "FLIP_FAN_LEV"),  # schedule-capped 15× → 10×
+    ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE+FGP_QS", 0.5, None, None, None, 0.05, 1), 1.0, "FLIP_FAN_LEV"),  # probe 1× stays 1× (0.05 floor)
+    (("FLIP:PAIR_RSI_OB", "SHORT", "FLIP:PAIR_RSI_OB×2", 2.0), 0.5, "FLIP_1X"),      # other flip sources: 220 rule unchanged
+    (("FLIP:PAIR_RSI_OB", "SHORT", "FLIP:PAIR_RSI_OB", 1.0), 1.0, ""),
     ((MOM, "LONG", "UNMATCHED", 2.0, 0.50, 0.01, 0.50), 0.75, "UNMATCHED_INV"),  # DECISION_LOG 206 — 2× → 1.5×
     ((MOM, "LONG", "UNMATCHED", 2.5, 0.50, 0.01, 0.50), 0.6, "UNMATCHED_INV"),   # old 2.5× quiet boost → 1.5×
     ((MOM, "LONG", "UNMATCHED", 1.5, 0.50, 0.01, 0.50), 1.0, "UNMATCHED_INV"),   # already at today's size

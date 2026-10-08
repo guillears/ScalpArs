@@ -77,7 +77,7 @@ def test_b17_archived():
     M = _m()
     assert (M.era == "B17").sum() == 25 and os.path.exists(os.path.join(ROOT, "reports", "BASELINE17_batch1003-1006_orders.csv"))
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-08a"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
+    assert 'STACK_VERSION = "2026-10-08b"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
     assert "WIDE_HG_MAX_ATR_FROZEN = 12.0, 3.0" in bld and "Prior 10-06d — 10-06d:" in bld   # the STACK history keeps every step
 
 

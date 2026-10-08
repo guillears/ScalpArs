@@ -213,7 +213,7 @@ def export_rows(days=3, now=None, directory=None):
                             a[0] += 1
                             if r.get('room') is False:
                                 a[1] += 1
-                        elif ev in ('OPEN', 'ADMIT', 'EXPIRED'):
+                        elif ev in ('OPEN', 'ADMIT', 'EXPIRED', 'WILLY'):   # 🎲 Oct-8 (251): WILLY events (arm / expiry / turnover refusal) one per line
                             out.append({k: r.get(k) for k in EXPORT_COLS if k != 'e'} | {'e': ev})
                     except Exception:
                         continue

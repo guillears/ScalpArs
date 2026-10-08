@@ -16,7 +16,7 @@ NOT_A_MOMENTUM_STAMP = {
     "entry_btc_regime_started_at",
     "entry_surge_btc_move_pct", "entry_surge_pair_move_pct", "entry_surge_trigger_at", "entry_surge_gvol",   # ⚡ SURGE trigger stamps (sleeve-only)
     "entry_frenzy_spike_at", "entry_frenzy_hours", "entry_frenzy_vwap", "entry_frenzy_vs_vwap_pct", "entry_frenzy_vol_mult",
-    "entry_frenzy_run_pct", "entry_frenzy_stop_atr", "entry_frenzy_bar_ret_pct", "entry_frenzy_di_spread", "entry_frenzy_adx_delta", "entry_frenzy_vol_trend", "entry_frenzy_gvol", "entry_frenzy_above_share", "entry_frenzy_above_streak", "entry_frenzy_catchup", "entry_frenzy_catchup_bars", "entry_frenzy_catchup_move_pct",          # 🔥 FRENZY episode stamps (sleeve-only)
+    "entry_frenzy_run_pct", "entry_frenzy_stop_atr", "entry_frenzy_bar_ret_pct", "entry_frenzy_di_spread", "entry_frenzy_adx_delta", "entry_frenzy_vol_trend", "entry_frenzy_gvol", "entry_frenzy_above_share", "entry_frenzy_above_streak", "entry_frenzy_catchup", "entry_frenzy_catchup_bars", "entry_frenzy_catchup_move_pct", "entry_frenzy_willy_trigger", "entry_frenzy_willy_wait_bars",          # 🔥 FRENZY episode stamps (sleeve-only)
     "entry_price", "entry_fee", "entry_order_type", "entry_strategy",   # set explicitly by open_manual_position
     "entry_bracket_max_leverage", "entry_bracket_cap_notional",   # 🪜 Oct-1: set explicitly in both open paths (exchange leverage brackets)
     "entry_slippage_pct",   # a manual paper fill IS the clicked price: left NULL so it never enters the slippage averages
@@ -266,6 +266,9 @@ def test_manual_fee_aware_balance_refuses_only_when_the_fee_overflows(monkeypatc
     async def boom(*a, **k): raise Past()
     monkeypatch.setattr(T.binance_service, "get_current_price", boom)
     monkeypatch.setattr(T.websocket_tracker, "get_tracker", lambda p: None)
+    async def _no_brackets():   # never the network in tests (Oct-8 review: the bracket lookup reached Binance)
+        return {}
+    monkeypatch.setattr(T.binance_service, "get_leverage_brackets", _no_brackets)
     def attempt(bnb):
         async def _bnb(db): return bnb
         e._recalculate_paper_bnb = _bnb

@@ -35,7 +35,7 @@ def test_observe_stamps():
 
 def test_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert 'FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")' in eng
+    assert 'FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY")' in eng
     assert "if frenzy_wide_ready(ep, code, th, atr):" in eng and "await self._frenzy_open(db, flag, ind, bar_open, wide=True)" in eng
     assert "'frenzy_lite_max_slots' if lite else ('frenzy_wide_max_slots' if wide else 'frenzy_max_slots')" in eng and "_sg_pref = _fz_es.lower() if _frenzy else" in eng
     assert '(order.entry_strategy or "") == "FRENZY_LONG"' not in eng                    # every exit / hold / urgent path takes both tags
@@ -170,7 +170,7 @@ def test_strong_signal_leverage_wiring():
     """💪 Oct-4 (197): FRENZY_LONG with ADX rising ∧ +DI above −DI → frenzy_long_lev_mult_strong (absolute); WIDE never; unreadable = normal."""
     import json
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert "frenzy_strong=(not (wide or lite) and flag.get('adx_delta') is not None and flag.get('di_spread') is not None" in eng
+    assert "frenzy_strong=(not (wide or lite or _wl) and flag.get('adx_delta') is not None and flag.get('di_spread') is not None" in eng
     assert "and float(flag['adx_delta']) > 0 and float(flag['di_spread']) > 0)" in eng
     i = eng.index("if _frenzy and _fz_es == \"FRENZY_LONG\" and frenzy_strong:")
     assert eng.index("_sg_inv = getattr(_th_sg") < i < eng.index("cell_lev_mult = max(0.05, min(1.0 if _sg_lev is None")   # replaces the lev mult BEFORE the clamp

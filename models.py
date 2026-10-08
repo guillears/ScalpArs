@@ -1,7 +1,7 @@
 """
 SCALPARS Trading Platform - Database Models
 """
-from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, DateTime, Enum as SQLEnum, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, DateTime, Enum as SQLEnum, Text, UniqueConstraint, Index
 from sqlalchemy.sql import func
 from database import Base
 from datetime import datetime
@@ -29,6 +29,10 @@ class CloseReason(str, Enum):
 class Order(Base):
     """Trading orders table"""
     __tablename__ = "orders"
+    # 🔒 Oct-8 (251, round-3 review): the WILLY global hold reads (status, entry_strategy, is_paper) on EVERY automated open — indexed
+    # (a fresh DB gets it from create_all; an EXISTING orders table gets it from database.py's migration — CREATE INDEX IF NOT EXISTS;
+    # verified Oct-8: PRAGMA index_list(orders) lists ix_orders_status_strategy after init_db on a migrated scratch DB)
+    __table_args__ = (Index("ix_orders_status_strategy", "status", "entry_strategy", "is_paper"),)
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     binance_order_id = Column(String(50), nullable=True)  # Null for paper trades
@@ -262,6 +266,7 @@ class Order(Base):
     # ⚠ the name pins N=10 as of ship; changing `bullrun_universe_size` invalidates historical rows.
     entry_br_door_age_min = Column(Float, nullable=True)  # Sep 21 (57l): minutes the door had been open at entry — the sleeve's own clock, previously invisible to every analysis (it took AWS log archaeology to recover)
     adx_surge_open = Column(Boolean, default=False, nullable=True)  # ⚡ Sep-28 (DECISION_LOG 123): LONG admitted through the BTC ADX-surge waiver (ADX floor / RSI 50-60 bands lifted on an ADX jump + positive slope) — the cohort's identity (CALM3D doors keep their cell tag)
+    entry_vol_mcap_ratio = Column(Float, nullable=True)   # 🔄 Oct-8 (251): 24 h quote volume / market cap at entry (every sleeve; NULL when either is unknown) — the FRENZY_WILLY turnover filter's R
     entry_mcap_usd = Column(Float, nullable=True)   # 💰 Sep-28 (DECISION_LOG 124): pair market cap (USD, circulating; CMC via Binance Info) at entry — cache ≤3× refresh old, NULL if unknown
     entry_cmc_rank = Column(Integer, nullable=True)  # 💰 Sep-28: CoinMarketCap rank at entry (NULL if unknown)
     # ⚡ Sep-30 SURGE sleeves (DECISION_LOG 146–148): the trigger that opened the fill — BTC's 30-min move on the trigger bar, the
@@ -284,6 +289,8 @@ class Order(Base):
     entry_frenzy_catchup_bars = Column(Integer, nullable=True)     # ⏪ Oct-6 (235): 5m bars from the ON bar's close to the catch-up decision (NULL = not a catch-up)
     entry_frenzy_catchup_move_pct = Column(Float, nullable=True)   # ⏪ Oct-6 (235): live price vs the ON bar's close at the decision, signed % (NULL = not a catch-up)
     entry_frenzy_catchup = Column(Boolean, nullable=True)          # ⏪ Oct-6: True = a CATCH-UP fill (its fresh ON bar fell while the pass was not judging — pause / restart); False = a normal FRENZY fill; NULL = not FRENZY
+    entry_frenzy_willy_trigger = Column(String(2), nullable=True)   # 🎲 Oct-8 (251): FRENZY_WILLY entry — 'A' = new flag · 'B' = fresh ON bar FRENZY / WIDE / LITE did not take (NULL = not WILLY)
+    entry_frenzy_willy_wait_bars = Column(Integer, nullable=True)   # 🎲 Oct-8 (251): closed 5m bars from the trigger bar to the first RED bar it opened on (0 = the trigger bar was red)
     # 📖 Oct-3 (DECISION_LOG 192): the ORDER BOOK at a MANUAL click (services/orderbook_stats.orderbook_metrics) — OBSERVE-ONLY research stamps
     manual_ob_spread_pct = Column(Float, nullable=True)
     manual_ob_top_bid_usd = Column(Float, nullable=True)
@@ -1265,6 +1272,31 @@ class FrenzyBreak(Base):
     bull_pct = Column(Float, nullable=True)                       # scan breadth at the break
     bear_pct = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WillyHoldBlock(Base):
+    """🎲 Oct-8 (DECISION_LOG 251) — the FRENZY_WILLY GLOBAL HOLD's refusals: while a FRENZY_WILLY position is open no other automated trade
+    opens. One row per (the open WILLY order, pair, direction, sleeve) — repeat refusals of the same setup during the same hold only bump
+    `repeats` / `last_at`. The scout prices each row under its sleeve's exit (the "cost of the hold"). Rides the decisions export as
+    e=WILLY_HOLD rows (wh_* columns). Written by TradingEngine._willy_hold_record."""
+    __tablename__ = "willy_hold_blocks"
+    __table_args__ = (UniqueConstraint("willy_order_id", "pair", "direction", "sleeve", "is_paper", name="uq_willy_hold_block"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    willy_order_id = Column(Integer, nullable=True, index=True)   # the open FRENZY_WILLY order that held the book (NULL = the read failed: reason UNREAD)
+    reason = Column(String(10), nullable=True)                    # OPEN (a WILLY was open) · UNREAD (the open-WILLY check failed → fail-closed refusal)
+    willy_pair = Column(String(30), nullable=True)
+    pair = Column(String(30), nullable=False, index=True)         # the refused trade
+    direction = Column(String(5), nullable=False)
+    sleeve = Column(String(40), nullable=False)                   # its would-be entry_strategy (MOMENTUM / FLIP:… / FRENZY_LONG / …)
+    signal_at = Column(DateTime, nullable=True)                   # the signal (FRENZY: the signal bar's close; others: the first refusal)
+    first_at = Column(DateTime, nullable=False, index=True)       # first refusal (naive UTC)
+    last_at = Column(DateTime, nullable=True)                     # last repeat
+    price = Column(Float, nullable=True)                          # decision price at the first refusal
+    invest_mult = Column(Float, nullable=True)                    # the size it would have opened with (cell / sleeve multipliers)
+    lev_mult = Column(Float, nullable=True)
+    repeats = Column(Integer, nullable=False, default=1)
+    is_paper = Column(Boolean, nullable=False, default=True)
 
 
 class SurgeTrigger(Base):

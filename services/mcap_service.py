@@ -109,6 +109,56 @@ def get(pair: str) -> Tuple[Optional[float], Optional[int]]:
     return mc, rk
 
 
+async def _fetch_pair(client, pair: str) -> Tuple[Optional[float], Optional[int]]:
+    """one pair's (mcap_usd, cmc_rank) from the endpoint (every lookup candidate, polite pacing) — (None, None) on any failure."""
+    mc, rk = None, None
+    for sym in lookup_candidates(pair):
+        try:
+            r = await client.get(URL, params={"symbol": sym})
+            mc, rk = parse_detail(r.json(), expect=sym) if r.status_code == 200 else (None, None)
+        except Exception:
+            mc, rk = None, None
+        if mc is not None:
+            break
+        await asyncio.sleep(0.15)
+    return mc, rk
+
+
+_one_req: Dict[str, float] = {}   # pair → last one-pair request time (dedupe)
+_one_tasks: set = set()
+ONE_PAIR_DEDUPE_S = 600.0
+
+
+def request_pair(pair: str) -> bool:
+    """🔄 Oct-8 (DECISION_LOG 251): fire-and-forget ONE-pair fetch for a pair whose cap is missing / stale (FRENZY_WILLY arms an entry on a
+    pair the periodic refresh may not have read yet — the turnover filter fails closed without it). At most once per pair per 10 min, never
+    while fetching is disabled, never awaited, never raises. → True when a fetch was started."""
+    try:
+        if not pair or not _enabled():
+            return False
+        v = _cache.get(pair)
+        if v and time.time() - v[2] <= _interval_s():
+            return False   # fresh already
+        if time.time() - _one_req.get(pair, 0.0) < ONE_PAIR_DEDUPE_S:
+            return False
+        _one_req[pair] = time.time()
+
+        async def _one():
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=8.0, headers={"User-Agent": "Mozilla/5.0"}) as client:
+                    mc, rk = await _fetch_pair(client, pair)
+                if mc is not None:
+                    _cache[pair] = (mc, rk, time.time())
+            except Exception:
+                pass
+        t = asyncio.get_running_loop().create_task(_one())
+        _one_tasks.add(t); t.add_done_callback(_one_tasks.discard)
+        return True
+    except Exception:
+        return False
+
+
 async def _refresh(pairs: Iterable[str]) -> None:
     global _running, _last_refresh, _fail_logged_at
     try:
@@ -116,16 +166,7 @@ async def _refresh(pairs: Iterable[str]) -> None:
         ok = fail = 0
         async with httpx.AsyncClient(timeout=8.0, headers={"User-Agent": "Mozilla/5.0"}) as client:
             for pair in pairs:
-                mc, rk = None, None
-                for sym in lookup_candidates(pair):
-                    try:
-                        r = await client.get(URL, params={"symbol": sym})
-                        mc, rk = parse_detail(r.json(), expect=sym) if r.status_code == 200 else (None, None)
-                    except Exception:
-                        mc, rk = None, None
-                    if mc is not None:
-                        break
-                    await asyncio.sleep(0.15)
+                mc, rk = await _fetch_pair(client, pair)
                 if mc is not None:
                     _cache[pair] = (mc, rk, time.time())
                     ok += 1

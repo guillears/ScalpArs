@@ -39,7 +39,7 @@ hold's own RH_HARD_STOP / RH_PREMISE_EXIT / RH_TIME_EXIT keep their name), then 
     flagged trade's ordinary stop: the close funnel adds FL_ to any reason of a flagged trade, so the string exists) · FL_EMERGENCY_SL ·
     FL_DEEP_STOP · PATTERN_FIXED_SL · SPIKE_SL · RH_HARD_STOP
   NOT a stop here (a moving / profit-side line, a signal exit or discretionary): TRAILING_STOP · RUNNER_TRAIL · BREAKEVEN_EXIT ·
-    LADDER_FLOOR · SPIKE_LOCK · HARD_TP* · FRENZY_TP · ATR_FIXED_TP · PATTERN_FIXED_TP · FAST_EXIT · REGIME_CHANGE · SIGNAL_LOST ·
+    LADDER_FLOOR · SPIKE_LOCK · HARD_TP* · FRENZY_TP / FRENZY_TP_LATE · ATR_FIXED_TP · PATTERN_FIXED_TP · FAST_EXIT · REGIME_CHANGE · SIGNAL_LOST ·
     EMA13_CROSS_EXIT · EMA_STACK_CROSS_EXIT · RSI_* · MOMENTUM_EXIT · SLOPE_EXIT · NO_EXPANSION · RECOVERED · RH_PREMISE_EXIT ·
     RH_TIME_EXIT · SPIKE_RSI_COOL · MAX_HOLD_TIME · MANUAL* · OVERRIDE_* · anything else.
   entry_strategy MANUAL is excluded (as in every scout tracker). FL_* stops come from both the polling and realtime paths
@@ -277,6 +277,9 @@ def stop_line(row, cfg):
         return _f(th, "fl1_wide_sl_backstop", -1.2), 0.01, "fl1_wide_sl_backstop"   # realtime + 0.01 · polling 0
     if kind == "FL_DEEP_STOP":
         return _f(th, "fl2_deep_stop", -1.0), 0.01, "fl2_deep_stop"                 # realtime + 0.01 · polling 0
+    if es == "FRENZY_WILLY":   # 🎲 Oct-8 (251): NO stop by default (frenzy_willy_stop_pct 0 = none; > 0 re-arms it — services.frenzy.frenzy_willy_levels)
+        _ws = abs(_f(th, "frenzy_willy_stop_pct", 0.0))
+        return ((-_ws, 0.0, "frenzy_willy_stop_pct") if _ws > 0 else (None, 0.0, "FRENZY_WILLY: no stop (a STOP_LOSS = the live backstop line)"))
     if es in FRENZY_SET:
         return -abs(_f(th, "frenzy_stop_pct", 3.0)) or -3.0, 0.0, "frenzy_stop_pct"
     if es in BR_SET:

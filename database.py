@@ -186,7 +186,7 @@ async def init_db():
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sg_col} {_sg_type}"))
                 for _fz_col, _fz_type in (('entry_frenzy_spike_at', 'DATETIME'), ('entry_frenzy_hours', 'FLOAT'), ('entry_frenzy_vwap', 'FLOAT'),
                                           ('entry_frenzy_vs_vwap_pct', 'FLOAT'), ('entry_frenzy_vol_mult', 'FLOAT'), ('entry_frenzy_run_pct', 'FLOAT'),
-                                          ('entry_frenzy_stop_atr', 'FLOAT'), ('entry_frenzy_bar_ret_pct', 'FLOAT'), ('entry_frenzy_di_spread', 'FLOAT'), ('entry_frenzy_adx_delta', 'FLOAT'), ('entry_frenzy_vol_trend', 'FLOAT'), ('entry_frenzy_gvol', 'FLOAT'), ('entry_frenzy_above_share', 'FLOAT'), ('entry_frenzy_above_streak', 'INTEGER'), ('entry_frenzy_catchup', 'BOOLEAN'), ('entry_frenzy_catchup_bars', 'INTEGER'), ('entry_frenzy_catchup_move_pct', 'FLOAT'),
+                                          ('entry_frenzy_stop_atr', 'FLOAT'), ('entry_frenzy_bar_ret_pct', 'FLOAT'), ('entry_frenzy_di_spread', 'FLOAT'), ('entry_frenzy_adx_delta', 'FLOAT'), ('entry_frenzy_vol_trend', 'FLOAT'), ('entry_frenzy_gvol', 'FLOAT'), ('entry_frenzy_above_share', 'FLOAT'), ('entry_frenzy_above_streak', 'INTEGER'), ('entry_frenzy_catchup', 'BOOLEAN'), ('entry_frenzy_catchup_bars', 'INTEGER'), ('entry_frenzy_catchup_move_pct', 'FLOAT'), ('entry_frenzy_willy_trigger', 'VARCHAR(2)'), ('entry_frenzy_willy_wait_bars', 'INTEGER'), ('entry_vol_mcap_ratio', 'FLOAT'),
                                           ('exit_override_at', 'DATETIME'), ('exit_override_prev', 'VARCHAR(40)')):   # 🔥 Oct-2 FRENZY sleeve · ✎ exit override
                     if _fz_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_fz_col} {_fz_type}"))
@@ -723,6 +723,12 @@ async def init_db():
                 _bs_cols = [c['name'] for c in inspector.get_columns('bot_state')]
                 if 'founding_allocated_usd' not in _bs_cols:
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN founding_allocated_usd FLOAT DEFAULT 0"))
+            if 'orders' in inspector.get_table_names():   # 🔒 Oct-8 (251, round-3): the WILLY hold's per-open read (status, entry_strategy, is_paper)
+                connection.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_status_strategy ON orders (status, entry_strategy, is_paper)"))
+            if 'willy_hold_blocks' in inspector.get_table_names():   # 🔒 Oct-8 (251): the WILLY hold's refusal reason (OPEN / UNREAD)
+                _wh_cols = [c['name'] for c in inspector.get_columns('willy_hold_blocks')]
+                if 'reason' not in _wh_cols:
+                    connection.execute(text("ALTER TABLE willy_hold_blocks ADD COLUMN reason VARCHAR(10)"))
             if 'monitor_periods' in inspector.get_table_names():
                 _mp_cols = [c['name'] for c in inspector.get_columns('monitor_periods')]
                 if 'last_update' not in _mp_cols:

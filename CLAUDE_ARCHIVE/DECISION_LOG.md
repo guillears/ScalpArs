@@ -5980,3 +5980,45 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   $8,032.80 → $8,149.24. Scout: BEARISH_BLOCKED tracker (blocked signals priced as if opened, verdict frozen at the first 15 on ≥ 8 days),
   revert rows ATR_RAISE / TP3_VS_LOCK / BEARISH_BLOCKED, 205 superseded, era notes on the straddling trackers; deploy detection = this
   commit + 10 min (fallback: now). Dual review: ship-with-fixes (both), all applied. Tests tests/test_frenzy_bearish_day.py + master tests.
+- (251) 2026-10-08 🎲 **FRENZY_WILLY sleeve — operator DECLARED EXCEPTION, ARMED below every locked gate (all research says ≈ 0 or
+  negative).** LONG only. Trigger A = a pair newly FRENZY-flagged for an episode (engine view; restart-safe: FrenzyFlag seed + willy_seen
+  JSON + per-pair warm rule — a cold pair fires A only if the spike bar is the bar just closed); trigger B = an episode's fresh ON bar that
+  FRENZY_LONG / WIDE / LITE did not take. A trigger ARMS a pending entry; WILLY opens on the FIRST CLOSED RED 5m BAR (close < open; flat /
+  unreadable ≠ red) from the trigger bar on, within `frenzy_willy_red_max_wait_minutes` 60 (expiry / episode end / unflag → RED_EXPIRED,
+  the episode's A/B is used, no re-arm). Size Inv 1× · Lev 1.0 (20× STRONG_BUY, bracket-capped; 15× ≥ $25k by the balance schedule).
+  Exit: fixed TP +1 % net (FRENZY_TP; peak reached but closing at a loss → FRENZY_TP_LATE) · NO stop (operator; `frenzy_willy_stop_pct` 0 =
+  none; live keeps the exchange backstop) · 120-min cap (MAX_HOLD_TIME). Filters: none beyond pair held / slots 1 / late / dislocation (no
+  gvol, ATR, bearish, pair-day cap). 🔒 GLOBAL HOLD (operator): while any FRENZY_WILLY is open no other AUTOMATED trade opens (every
+  sleeve, incl. WILLY); manual opens allowed; one choke point in open_position (+ first in _frenzy_open), fail-closed
+  (FRENZY_WILLY_HOLD_UNREAD); every block persisted (new table willy_hold_blocks, one row per WILLY order × pair × direction × sleeve +
+  repeat count); a LITE stretch / FRENZY fresh ON bar refused by the hold is NOT consumed (catch-up ≤ 6 bars). Evidence against (operator
+  informed): X study (91 % reach +1 % but every X/stop negative), flag-trade math (5,376 rules, none OOS; quick TP +0.3 no stop 90 % WR
+  −0.10 %/trade), seconds study (1,680 cells, none); TP +1 / SL −3 / 60 min ≈ −0.01…−0.08 %/trade. Ruin math (no stop, 20×, ≈ $12.7k
+  notional on ≈ $2,650): −5 % ≈ −$630 (24 %), −10 % ≈ −$1,270 (48 %), −15 % ≈ −$1,900 (72 %) inside the 120-min cap; paper does not
+  simulate liquidation. New stamps entry_frenzy_willy_trigger (A/B), entry_frenzy_willy_wait_bars. 🔒 Scout (frozen, operator decides, never
+  automatic), counted from this commit + 10 min: REVERT flag — first 20 fills by open time average < 0 once closed → turn WILLY off;
+  REVIEW flag — > 50 % of the first 10 fills close at the 120-min cap at a loss; WILLY_HOLD — blocked trades priced as if opened (FRENZY /
+  WIDE / LITE on 1m klines at +3/−3/12 h; other sleeves = ±3-day sleeve-average proxy) → cost of the hold vs WILLY's own Σ. Splits: A by
+  hours after spike (< 1 / 1–3 / > 3), wait bars (0 / 1–3 / 4+), arms vs expiries. Master builder: FRENZY_SLEEVE, frozen size 1 × 1.0, no +3
+  re-price, no bearish block (no master WILLY rows → STACK unchanged). Dual review ×2 (spec changed mid-build: TP +2 → +1, stop −3 → none,
+  cap 60 → 120, global hold, red-candle entry): findings applied. Tests tests/test_frenzy_willy.py.
+  Same commit, scout OBSERVE line WILLY_A_TURNOVER (operator idea "24 h volume below mcap separates", reports/FRENZY_VOL_MCAP_STUDY_2026-10-08.md):
+  R = entry_pair_volume_24h_usd / entry_mcap_usd (stamped; backtest mcap = endpoint cap × price ratio, checked vs 67 stamped fills, median
+  1.007). FRENZY / WIDE / LITE: REJECTED (383 fills, null p 0.82, OOS fails; R ≤ 1 87 · 56 % · +0.27 vs R > 1 197 · 52 % · +0.04 with the
+  bearish block). WILLY A (1,609 first-flag fills, old WILLY exit −3 / 60 min / immediate): R ≤ 1 1,139 · 75 % · +0.077 vs R > 1 470 · 69 % ·
+  −0.198 [−0.36, −0.04], worse 10/10 months, OOS holds, scan null p 0.052 (0.031 day-shuffled), largely a small-cap proxy (r −0.79), X = 1
+  read post-scan → observe-only, cut frozen at R > 1.0. WILLY B: negative at every R (−0.19) → no filter. 🔒 Frozen at the first crossing of
+  R > 1 N ≥ 15 on ≥ 8 days: ARM CANDIDATE (operator decides) only if WR < WILLY breakeven ∧ day-bootstrap P(mean < 0) ≥ 0.95 ∧ no day/pair
+  ≥ 50 % of the loss. → SUPERSEDED the same day: operator DECLARED OVERRIDE — ARMED as a WILLY FILTER (A and B): entry only if
+  R < `frenzy_willy_max_vol_mcap_ratio` 1.0 (0 = off), read at the red-bar open from the mcap cache; missing/stale → fail-closed (UNREAD);
+  a refused pending stays armed until its 60-min expiry. Below the gates (scan null p 0.052, X read post-scan, old exit, B shows no
+  separation) → tighter revert: 🔒 scout WILLY_TURNOVER_BLOCKED — first 15 turnover-blocked entries on ≥ 8 days priced under WILLY's live
+  exit average > 0 % → REVERT (ratio 0); ≤ −0.20 % → confirmed. New stamp entry_vol_mcap_ratio on EVERY order (all sleeves).
+  Hold semantics (operator: "no other trade until the WILLY trade is closed"): signals of other sleeves refused by the hold are LOST, not
+  delayed (SURGE spacing, bull-run door/episode, spike one-shots, flip phantoms may consume their state) — only the FRENZY fresh ON bar
+  (catch-up ≤ 6 bars) and the LITE stretch (≤ 6 bars, else FRENZY_LITE_HOLD_EXPIRED) are deferred; every refusal is recorded in willy_hold_blocks and priced by the scout.
+  Hold mechanics: no memo (one indexed read per automated open) + re-check under the book lock (paper refuse; live a maker fill that
+  raced a WILLY commit is booked and counted FRENZY_WILLY_HOLD_RACE — refusing would orphan a real position); block rows written in the
+  background (repeat counts flushed ≤ 1/min + on WILLY close; UNREAD rows with no WILLY id). Fixed in passing (all sleeves):
+  update_orders_cache no longer drops an order opened after its DB snapshot (≤ 120 s, closed orders never resurrected). Paper ≠ live:
+  paper WILLY has no stop; live the exchange backstop (≈ −2.2 %) acts as the stop — stated on the dashboard, exports and scout.

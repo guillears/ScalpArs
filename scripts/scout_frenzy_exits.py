@@ -147,6 +147,21 @@ TRACKER 14 — FRENZY_BEARISH_BLOCKED (2026-10-08, DECISION_LOG 250 — the bear
   Rows: reports/SCOUT_FRENZY_BEARISH_BLOCKED.csv. Oct-8 notes: the exit is back on the fixed +3 (frenzy_lock_arm_pct 0) — the lock columns
   (LOCK2 …) and the lock-priced trackers above keep running as shadows (moot for 205; TP3_VS_LOCK in scout_revert_gates is the live mirror);
   WIDE_BY_CODE reads each fill with the ATR cap IN FORCE when it opened (2.5 before the raise, frenzy_max_atr_pct = 3.0 after; wide_cap_at).
+TRACKER 15 — FRENZY_WILLY (2026-10-08, DECISION_LOG 251 — operator-directed DECLARED EXCEPTION, armed against the evidence, NO automatic off).
+  Every FRENZY_WILLY fill from the deploy (the "(DECISION_LOG 251)" commit push + 10 min via scout_revert_gates.deploy_ms; no commit → NOW),
+  split by entry_frenzy_willy_trigger A (new flag) / B (fresh ON bar FRENZY / WIDE / LITE did not take): N, days, WR, avg %, Σ$, worst.
+  FROZEN reads (services.frenzy.frenzy_willy_reads — the dashboard uses the same function): the first 20 fills by open time, once all
+  closed, average < 0 → "REVERT (operator decision): turn FRENZY_WILLY off"; the first 10, once all closed, share closed at the 120-min cap
+  at a loss > 50 % → "REVIEW" (no stop since the operator's Oct-8 change). Splits: A by hours after the spike (< 1 / 1–3 / > 3 h), wait bars
+  to the red entry candle (0 / 1–3 / 4+), red-candle arms vs expired (journal). Rows: reports/SCOUT_FRENZY_WILLY.csv.
+  WILLY_TURNOVER_BLOCKED (operator DECLARED OVERRIDE 2026-10-08 — the turnover filter frenzy_willy_max_vol_mcap_ratio armed on A and B; it
+  replaced the WILLY_A_TURNOVER observe line): every pending WILLY entry refused at a red bar for R = 24 h volume / market cap ≥ cut (one per
+  pending entry, WILLY events from the decisions export) priced as if opened there under WILLY's live exit (TP +1 / no stop / 120 min, 1m
+  klines); UNREAD refusals listed apart. 🔒 frozen at the first crossing (first 15 on ≥ 8 days): mean > 0 % → "REVERT: set
+  frenzy_willy_max_vol_mcap_ratio 0"; ≤ −0.20 % → "filter confirmed". A / B split + the let-through fills beside it. Rows:
+  reports/SCOUT_WILLY_TURNOVER_BLOCKED.csv, state reports/SCOUT_WILLY_TURNOVER_STATE.json.
+TRACKER 16 — WILLY_HOLD (scripts/scout_willy_hold.py): every automated trade the WILLY global hold refused, priced as if opened under its
+  sleeve's exit → the cost of the hold vs WILLY's own Σ$.
 Rows are stored in reports/SCOUT_FRENZY_EXITS.csv (keyed opened_at + pair) so fills survive their export leaving ~/Downloads; a row is FINAL
 once its 12 h (and the re-entry's) have passed. 1m bars are coarser than the year studies' ticks (stated on the table).
 """
@@ -3101,6 +3116,347 @@ def lite_run(now_ms=None):
     return lite_lines(allr)
 
 
+# ─────────────────────────── 🎲 tracker 15 (FRENZY_WILLY, DECISION_LOG 251 — declared exception, no auto-off) ───────────────────────────
+WILLY_CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_WILLY.csv")
+WILLY_COLS = ("k", "pair", "day", "closed", "actual", "usd", "trig", "reason", "hours", "wait", "vol24", "mcap", "notional")
+
+
+def willy_deploy_ms():
+    """the floor = the "(DECISION_LOG 251)" commit time (scout_revert_gates.deploy_ms − its 10 min): no FRENZY_WILLY fill can predate it, so
+    this and the dashboard (every WILLY fill) read the same set. Unavailable → NOW."""
+    try:
+        sd = os.path.join(ROOT, "scripts")
+        if sd not in sys.path:
+            sys.path.insert(0, sd)
+        import scout_revert_gates as _RG
+        return int(_RG.deploy_ms("FRENZY_WILLY")) - 10 * MIN
+    except Exception:
+        return int(time.time() * 1000)
+
+
+def _willy_fills():
+    """FRENZY_WILLY LONG fills in the orders exports (newest export wins per opened_at + pair) → DataFrame in WILLY_COLS."""
+    cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "pnl", "close_reason", "entry_frenzy_willy_trigger",
+            "entry_frenzy_hours", "entry_frenzy_willy_wait_bars", "entry_pair_volume_24h_usd", "entry_mcap_usd", "notional_value")
+    fr = []
+    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
+        try:
+            d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols)
+        except Exception:
+            continue
+        if {"opened_at", "entry_strategy", "pair"} <= set(d.columns):
+            fr.append(d.assign(_m=os.path.getmtime(f)))
+    if not fr:
+        return pd.DataFrame(columns=list(WILLY_COLS))
+    o = pd.concat(fr, ignore_index=True).sort_values("_m", kind="stable").reindex(columns=list(cols) + ["_m"])
+    o = o[(o.entry_strategy.astype(str) == "FRENZY_WILLY") & (o.direction.astype(str) == "LONG")]
+    return willy_rows(o)
+
+
+def willy_rows(o, since_ms=None):
+    """export rows → tracker rows (pure; newest row per opened_at + pair wins; fills opened before since_ms dropped)."""
+    if not len(o):
+        return pd.DataFrame(columns=list(WILLY_COLS))
+    k = o.opened_at.astype(str).str[:19].str.replace(" ", "T")
+    num = lambda c: pd.to_numeric(o[c], errors="coerce") if c in o else np.nan
+    closed = o.status.astype(str).str.upper().eq("CLOSED") if "status" in o else False
+    tg = o.entry_frenzy_willy_trigger.astype(str).str.strip().str.upper() if "entry_frenzy_willy_trigger" in o else "?"
+    out = pd.DataFrame(dict(k=k, pair=o.pair.astype(str), day=k.str[:10], closed=closed, actual=num("pnl_percentage").where(closed),
+                            usd=num("pnl").where(closed), trig=pd.Series(tg, index=o.index).where(lambda x: x.isin(["A", "B"]), "?"),
+                            reason=(o.close_reason.astype(str) if "close_reason" in o else ""), hours=num("entry_frenzy_hours"),
+                            wait=num("entry_frenzy_willy_wait_bars"), vol24=num("entry_pair_volume_24h_usd"), mcap=num("entry_mcap_usd"),
+                            notional=num("notional_value")))
+    if since_ms is not None:
+        out = out[pd.to_datetime(out.k, errors="coerce").map(lambda t: (t.value // 1_000_000) if pd.notna(t) else -1) >= int(since_ms)]
+    return out.drop_duplicates(["k", "pair"], keep="last").reset_index(drop=True)
+
+
+def willy_merge(old, new):
+    parts = [x for x in (old, new) if x is not None and len(x)]
+    if not parts:
+        return pd.DataFrame(columns=list(WILLY_COLS))
+    m = pd.concat(parts, ignore_index=True).reindex(columns=list(WILLY_COLS))
+    m["closed"] = m.closed.astype(str).isin(_TRUE + ("true",))
+    return m.drop_duplicates(["k", "pair"], keep="last").sort_values("k").reset_index(drop=True)
+
+
+def willy_stats(w):
+    """closed fills with a P&L → dict(n, days, wr, avg, usd, worst)."""
+    a = pd.to_numeric(w.actual, errors="coerce") if len(w) else pd.Series(dtype=float)
+    g = w[a.notna()] if len(w) else w
+    a = a.dropna(); n = len(a)
+    u = pd.to_numeric(g.usd, errors="coerce").fillna(0.0) if n else pd.Series(dtype=float)
+    return dict(n=n, days=(g.day.nunique() if n else 0), wr=((a > 0).mean() * 100 if n else None), avg=(a.mean() if n else None),
+                usd=(float(u.sum()) if n else 0.0), worst=(a.min() if n else None))
+
+
+def willy_verdict(w):
+    """the two FROZEN reads — services.frenzy.frenzy_willy_reads (ONE definition, shared with the dashboard)."""
+    from services.frenzy import frenzy_willy_reads
+    if not len(w):
+        return frenzy_willy_reads([])
+    return frenzy_willy_reads(zip(w.k.astype(str), [None if not c else v for c, v in zip(w.closed.astype(bool), pd.to_numeric(w.actual, errors="coerce"))],
+                                  w.reason.astype(str)))
+
+
+def willy_expired(ev, since_ms):
+    """the engine's WILLY events (e=WILLY: arms FRENZY_WILLY_ARMED_A / _B, expiries FRENZY_WILLY_RED_EXPIRED) from the floor → (expired, armed)."""
+    if ev is None or not len(ev):
+        return 0, 0
+    g = ev[ev.t.astype(str) >= pd.Timestamp(int(since_ms), unit="ms").strftime("%Y-%m-%dT%H:%M:%S")]
+    return int((g.gate == "FRENZY_WILLY_RED_EXPIRED").sum()), int(g.gate.isin(["FRENZY_WILLY_ARMED_A", "FRENZY_WILLY_ARMED_B"]).sum())
+
+
+def _safe_willy_events():
+    try:
+        return willy_events()
+    except Exception:
+        return None
+
+
+def _hours_bucket(h):
+    return "?" if h is None or not np.isfinite(h) else ("< 1 h" if h < 1 else ("1–3 h" if h <= 3 else "> 3 h"))
+
+
+def _wait_bucket(b):
+    return "?" if b is None or not np.isfinite(b) else ("0 (red trigger bar)" if b <= 0 else ("1–3" if b <= 3 else "4+"))
+
+
+def willy_lines(w, since_ms=None, J=None):
+    from services.frenzy import frenzy_willy_reads_text, WILLY_HOLD_DEF
+    f = lambda v, d=3: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.{d}f}"
+    exp_n, arm_n = willy_expired(J if (J is not None and len(J) and "e" in J and (J.e == "WILLY").any()) else _safe_willy_events(), since_ms or 0)
+    L = ["## 🎲 FRENZY_WILLY (DECISION_LOG 251 — operator DECLARED EXCEPTION, armed against the evidence, NO automatic off)", "",
+         f"_Fills from {_iso(since_ms) if since_ms else '?'} (the (DECISION_LOG 251) commit). Exit: TP +1 / NO stop / {WILLY_HOLD_DEF}-min cap; entry on "
+         "the first RED 5m candle after the trigger (≤ 60 min); global hold. Research: flag-moment entries have no edge — TP +1 / SL −3 / 60 min "
+         "on the flag cohort ≈ −0.01…−0.08 %/trade; the no-stop / 120-min / red-candle variant was not studied._", "",
+         f"**Frozen reads:** {frenzy_willy_reads_text(willy_verdict(w), WILLY_HOLD_DEF)}.", "",
+         f"**Red-candle arms:** {arm_n} armed · {exp_n} expired (no red candle / turnover-refused until the wait ended; WILLY events, from the floor).", "",
+         "_Paper: no stop · live: the exchange backstop (≈ −2.2 %) acts as the stop — paper and live results differ on deep losers._", "",
+         "| Cohort | N | Days | WR | Avg % | Σ$ | Worst % |", "|---|---|---|---|---|---|---|"]
+    hb = w.hours.map(lambda v: _hours_bucket(float(v)) if pd.notna(v) else "?") if len(w) else pd.Series(dtype=str)
+    wb = w.wait.map(lambda v: _wait_bucket(float(v)) if pd.notna(v) else "?") if len(w) else pd.Series(dtype=str)
+    groups = [("A · new flag", w[w.trig == "A"] if len(w) else w)]
+    groups += [(f"   A · {b} after the spike", w[(w.trig == "A") & (hb == b)]) for b in ("< 1 h", "1–3 h", "> 3 h", "?")] if len(w) else []
+    groups += [("B · ON not taken", w[w.trig == "B"] if len(w) else w), ("? · no trigger stamp", w[~w.trig.isin(["A", "B"])] if len(w) else w)]
+    groups += [(f"wait {b} bars", w[wb == b]) for b in ("0 (red trigger bar)", "1–3", "4+", "?")] if len(w) else []
+    groups += [("All", w)]
+    for lab, g in groups:
+        if (lab.startswith("?") or lab.endswith("? after the spike") or lab == "wait ? bars") and not len(g):
+            continue
+        s_ = willy_stats(g)
+        wr = "–" if s_["wr"] is None else f"{s_['wr']:.0f} %"
+        L.append(f"| {lab} | {s_['n']} | {s_['days']} | {wr} | {f(s_['avg'])} | {s_['usd']:+.2f} | {f(s_['worst'], 2)} |")
+    op = int((~w.closed.astype(bool)).sum()) if len(w) else 0
+    if op:
+        L.append(f"_{op} open FRENZY_WILLY fill(s) not counted yet._")
+    return L + [""]
+
+
+# ── 🔄 WILLY_TURNOVER_BLOCKED (operator DECLARED OVERRIDE 2026-10-08 — the turnover filter's REVERT gate; source
+# reports/FRENZY_VOL_MCAP_STUDY_2026-10-08.md). It replaced the WILLY_A_TURNOVER observe line when the operator ARMED the rule
+# (frenzy_willy_max_vol_mcap_ratio 1.0, A and B). Input: the engine's WILLY events (decisions export e=WILLY): FRENZY_WILLY_TURNOVER (a pending
+# entry refused at a red bar for R ≥ cut — recorded ONCE per pending entry) and FRENZY_WILLY_TURNOVER_UNREAD (mcap / volume unreadable —
+# listed apart, never priced as blocked-by-rule). Each blocked entry is priced AS IF OPENED at that refusal (the first red bar it would have
+# opened on) under WILLY's LIVE exit: TP +1 net / no stop / 120-min cap on cached 1m klines (scripts/scout_willy_hold.py — cache first,
+# ≤ 1,000 used weight / min, stop on 418 / 429). 🔒 Frozen at the first crossing (first 15 blocked on ≥ 8 days, by refusal time):
+# mean > 0 % → "REVERT: set frenzy_willy_max_vol_mcap_ratio 0" · mean ≤ −0.20 % → "filter confirmed" · else "holds (operator decides)".
+TB_CSV = os.path.join(ROOT, "reports", "SCOUT_WILLY_TURNOVER_BLOCKED.csv")
+TB_STATE = os.path.join(ROOT, "reports", "SCOUT_WILLY_TURNOVER_STATE.json")
+TB_N, TB_DAYS, TB_CONFIRM = 15, 8, -0.20
+TB_COLS = ("t", "pair", "gate", "trig", "R", "price", "pct", "how", "tries")
+TB_MAX_TRIES = 3   # a row whose klines fail on 3 runs (or a delisted pair) is marked UNPRICEABLE and skipped — deterministic, never re-tried
+
+
+def willy_events():
+    """the engine's WILLY events (decisions exports, e=WILLY) → DataFrame(t, pair, gate, reason, price) (newest export wins; never raises)."""
+    fr = []
+    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv")):
+        try:
+            d = pd.read_csv(f, dtype=str, keep_default_na=False, low_memory=False, usecols=lambda c: c in ("t", "e", "pair", "gate", "reason", "price"))
+            if "e" in d:
+                fr.append(d[d.e == "WILLY"])
+        except Exception:
+            continue
+    if not fr:
+        return pd.DataFrame(columns=["t", "pair", "gate", "reason", "price"])
+    return pd.concat(fr, ignore_index=True).drop_duplicates(["t", "pair", "gate"]).sort_values("t").reset_index(drop=True)
+
+
+def tb_rows(ev):
+    """WILLY events → blocked-entry rows (pure): one per FRENZY_WILLY_TURNOVER / _UNREAD event; trig + R parsed from the reason."""
+    if not len(ev):
+        return pd.DataFrame(columns=list(TB_COLS))
+    g = ev[ev.gate.isin(["FRENZY_WILLY_TURNOVER", "FRENZY_WILLY_TURNOVER_UNREAD"])].copy()
+    rs = g.reason.astype(str)
+    return pd.DataFrame(dict(t=g.t.astype(str).str[:19], pair=g.pair, gate=g.gate,
+                             trig=rs.str.extract(r"·\s*([AB])\b", expand=False).fillna("?"),
+                             R=pd.to_numeric(rs.str.extract(r"R=([0-9.]+)", expand=False), errors="coerce"),
+                             price=pd.to_numeric(g.price, errors="coerce"), pct=np.nan, how=np.nan, tries=0)).reset_index(drop=True)
+
+
+def tb_merge(old, new):
+    parts = [x for x in (old, new) if x is not None and len(x)]
+    if not parts:
+        return pd.DataFrame(columns=list(TB_COLS))
+    m = pd.concat(parts, ignore_index=True).reindex(columns=list(TB_COLS))
+    m["_k"] = m.pct.notna().astype(int) * 2 + (m.how.astype(str) == "UNPRICEABLE").astype(int) + pd.to_numeric(m.tries, errors="coerce").fillna(0) / 100.0
+    m = m.sort_values("_k", ascending=False, kind="stable").drop_duplicates(["t", "pair", "gate"], keep="first").drop(columns="_k")   # a priced / judged row keeps its state
+    return m.sort_values("t").reset_index(drop=True)
+
+
+def tb_step(state, blocked):
+    """the frozen revert state machine on the RULE-blocked rows (UNREAD and later-filled excluded by the caller), first TB_N by refusal time
+    among the rows that are not UNPRICEABLE → state. A row still waiting for its price inside that window holds the freeze (deterministic)."""
+    st = dict(state or {})
+    if st.get("verdict"):
+        return st
+    c = blocked[blocked.how.astype(str) != "UNPRICEABLE"].sort_values("t", kind="stable").head(TB_N) if len(blocked) else blocked
+    p = pd.to_numeric(c.pct, errors="coerce")
+    if len(c) < TB_N or p.isna().any() or c.t.astype(str).str[:10].nunique() < TB_DAYS:
+        return st
+    m = float(p.mean())
+    v = ("REVERT: set frenzy_willy_max_vol_mcap_ratio 0" if m > 0 else ("filter confirmed" if m <= TB_CONFIRM else "holds (operator decides)"))
+    return dict(verdict=v, mean=m, n=TB_N, days=int(c.t.astype(str).str[:10].nunique()), at=str(c.t.iloc[-1]))
+
+
+def tb_price(rows, now_ms):
+    """price unpriced RULE-blocked rows under WILLY's live exit (1m klines via scout_willy_hold; stops on 418 / 429 / weight)."""
+    sd = os.path.join(ROOT, "scripts")
+    if sd not in sys.path:
+        sys.path.insert(0, sd)
+    import scout_willy_hold as WH
+    state = {}
+    tp, stop, cap = WH.exit_rule("FRENZY_WILLY")
+    for i, r in rows.iterrows():
+        if pd.notna(r.pct) or r.gate != "FRENZY_WILLY_TURNOVER" or str(r.how) == "UNPRICEABLE":
+            continue
+        t = _ms(r.t)
+        if t + cap * MIN + MIN > now_ms:
+            continue
+        start = (t // MIN + (1 if t % MIN else 0)) * MIN
+        try:
+            m1 = WH.klines_1m(str(r.pair), start, start + cap * MIN, state)
+        except WH.RateLimited:
+            break   # a rate-limit stop is never counted as a failed try
+        except Exception:
+            m1 = None
+        pct, how = WH.walk_fixed(m1, "LONG", tp, stop, cap) if m1 else (None, "no data")
+        if pct is not None:
+            rows.at[i, "pct"] = round(float(pct), 4); rows.at[i, "how"] = how
+        else:
+            n = int(pd.to_numeric(r.tries, errors="coerce") or 0) + 1 if pd.notna(pd.to_numeric(r.tries, errors="coerce")) else 1
+            rows.at[i, "tries"] = n
+            if n >= TB_MAX_TRIES:
+                rows.at[i, "how"] = "UNPRICEABLE"
+    return rows
+
+
+def tb_later_filled(rows, w, wait_min=60):
+    """round-3 #13: True per row whose pending entry FILLED later (a WILLY fill on the same pair within the wait after the refusal) — that
+    entry is in the let-through cohort, never a blocked one (pure)."""
+    if not len(rows) or w is None or not len(w):
+        return pd.Series(False, index=rows.index)
+    fills = {}
+    for k, p in zip(w.k.astype(str), w.pair.astype(str)):
+        try:
+            fills.setdefault(p, []).append(_ms(k))
+        except Exception:
+            continue
+    out = []
+    for t, p in zip(rows.t.astype(str), rows.pair.astype(str)):
+        try:
+            tm = _ms(t)
+            out.append(any(tm < f <= tm + wait_min * MIN for f in fills.get(p, ())))
+        except Exception:
+            out.append(False)
+    return pd.Series(out, index=rows.index)
+
+
+def tb_rule_blocked(rows, w):
+    """the RULE-blocked cohort: FRENZY_WILLY_TURNOVER rows whose pending entry never filled (UNREAD + later-filled excluded)."""
+    if not len(rows):
+        return rows
+    lf = tb_later_filled(rows, w)
+    return rows[(rows.gate == "FRENZY_WILLY_TURNOVER") & ~lf]
+
+
+def tb_lines(rows, w, state):
+    f = lambda v, d=3: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.{d}f}"
+    blk = tb_rule_blocked(rows, w)
+    unr = rows[rows.gate == "FRENZY_WILLY_TURNOVER_UNREAD"] if len(rows) else rows
+    n_lf = int(tb_later_filled(rows[rows.gate == "FRENZY_WILLY_TURNOVER"], w).sum()) if len(rows) else 0
+    n_up = int((blk.how.astype(str) == "UNPRICEABLE").sum()) if len(blk) else 0
+    vt = (f"**{state['verdict']}** (frozen {state.get('at', '')[:16]}: first {state['n']} blocked on {state['days']} days average {f(state['mean'])} %)"
+          if state.get("verdict") else f"⏳ {int(pd.to_numeric(blk.pct, errors='coerce').notna().sum()) if len(blk) else 0}/{TB_N} priced blocked "
+          f"entries · {blk.t.astype(str).str[:10].nunique() if len(blk) else 0}/{TB_DAYS} days")
+    L = ["## 🔄 WILLY_TURNOVER_BLOCKED — the turnover filter's revert gate (operator DECLARED OVERRIDE, DECISION_LOG 251)", "",
+         f"**Revert read (frozen at the first crossing):** {vt}. Bar: the first {TB_N} turnover-blocked entries on ≥ {TB_DAYS} days, priced as if "
+         f"opened at the refused red bar under WILLY's live exit (TP +1 / no stop / 120 min, 1m klines), average > 0 % → REVERT; ≤ {TB_CONFIRM:+.2f} % → "
+         "filter confirmed. UNREAD refusals (mcap / volume unknown) are listed apart, never priced as blocked-by-rule. _The study priced the OLD "
+         "WILLY exit (−3 stop / 60 min / immediate entry). Paper: no stop · live: the exchange backstop acts as the stop._", "",
+         "| Cohort | N | Days | Priced | WR | Avg % | Worst % |", "|---|---|---|---|---|---|---|"]
+
+    def row(lab, g, col="pct"):
+        p = pd.to_numeric(g[col], errors="coerce").dropna() if len(g) else pd.Series(dtype=float)
+        wr = "–" if not len(p) else f"{(p > 0).mean() * 100:.0f} %"
+        L.append(f"| {lab} | {len(g)} | {g.t.astype(str).str[:10].nunique() if len(g) else 0} | {len(p)} | {wr} | "
+                 f"{f(p.mean() if len(p) else None)} | {f(p.min() if len(p) else None, 2)} |")
+    row("blocked (R ≥ cut) · all", blk)
+    for tg in ("A", "B"):
+        row(f"blocked · entry {tg}", blk[blk.trig == tg] if len(blk) else blk)
+    lt = w.rename(columns={"k": "t"}).assign(pct=pd.to_numeric(w.actual, errors="coerce")) if len(w) else pd.DataFrame(columns=["t", "pct"])
+    row("let through — WILLY fills (as traded, same live exit)", lt)
+    L.append(f"_{n_lf} refused entr{'y' if n_lf == 1 else 'ies'} later filled (counted in let-through, not blocked) · {n_up} UNPRICEABLE (klines failed {TB_MAX_TRIES} runs / delisted — skipped)._")
+    if len(unr):   # round-3 M5: which pairs have no readable cap (no mcap listing → they stay UNREAD → never enter)
+        _un = unr.pair.astype(str).value_counts()
+        L.append("_UNREAD pairs (mcap / volume unknown — no entry while it lasts): " + ", ".join(f"{p} ×{n}" for p, n in _un.items()) + "._")
+    L.append(f"| UNREAD refusals (not priced) | {len(unr)} | {unr.t.astype(str).str[:10].nunique() if len(unr) else 0} | – | – | – | – |")
+    return L + [""]
+
+
+def tb_run(w, now_ms=None, state_path=TB_STATE):
+    now_ms = now_ms or int(time.time() * 1000)
+    old = _load_csv(TB_CSV, ["t", "pair"]) if os.path.exists(TB_CSV) else pd.DataFrame(columns=list(TB_COLS))
+    rows = tb_merge(old, tb_rows(willy_events()))
+    since = willy_deploy_ms()
+    rows = rows[rows.t.map(lambda x: (_ms(x) or 0) >= since)].reset_index(drop=True) if len(rows) else rows
+    rows = tb_price(rows, now_ms)
+    if len(rows):
+        _save_csv(rows, TB_CSV)
+    try:
+        state = json.load(open(state_path)) if os.path.exists(state_path) else {}
+    except Exception:
+        state = {}
+    new = tb_step(state, tb_rule_blocked(rows, w))
+    if new != state:
+        try:
+            tmp = f"{state_path}.{os.getpid()}.tmp"; json.dump(new, open(tmp, "w"), indent=1); os.replace(tmp, state_path)
+        except Exception:
+            pass
+    return tb_lines(rows, w, new)
+
+
+def willy_run(now_ms=None, J=None):
+    """tracker 15: merge the exports (from the floor) into the store, save (unique keys), → markdown lines."""
+    since = willy_deploy_ms()
+    old = _load_csv(WILLY_CSV, ["k", "pair"]) if os.path.exists(WILLY_CSV) else pd.DataFrame(columns=list(WILLY_COLS))
+    new = _willy_fills()
+    if len(new):
+        new = new[pd.to_datetime(new.k, errors="coerce").map(lambda t: (t.value // 1_000_000) if pd.notna(t) else -1) >= since]
+    allr = willy_merge(old, new)
+    if len(allr):
+        if allr.duplicated(["k", "pair"]).any():
+            raise ValueError("duplicate WILLY rows")
+        _save_csv(allr, WILLY_CSV)
+    out = willy_lines(allr, since, J)
+    try:
+        out += tb_run(allr, now_ms)
+    except Exception as ex:
+        out += ["## 🔄 WILLY_TURNOVER_BLOCKED", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
+    return out
+
+
 # ─────────────────────────── 🪶 tracker 13 (LITE_GVOL24_LOW, operator-approved observe line) ───────────────────────────
 LG_CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_LITE_GVOL24.csv")   # write-once per fill (final rows never recomputed)
 LG_CUT = 0.996              # FROZEN (reports/FRENZY_LITE_N4_REGIME_2026-10-07.md §6: the median of the windows with fills) — never re-fit
@@ -3599,6 +3955,18 @@ def _extras(now_ms, th, F, J, allr):
         out += era_noted(lite_run(now_ms))
     except Exception as ex:
         out += ["## 🪶 FRENZY_LITE", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
+    try:   # 🎲 Oct-8 (251) tracker 15 FRENZY_WILLY (declared exception — frozen revert / cap-loss reads, operator decides)
+        out += willy_run(now_ms, Je)
+    except Exception as ex:
+        out += ["## 🎲 FRENZY_WILLY", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
+    try:   # 🔒 Oct-8 (251) tracker 16 WILLY_HOLD — the cost of the global hold (scripts/scout_willy_hold.py)
+        sd = os.path.join(ROOT, "scripts")
+        if sd not in sys.path:
+            sys.path.insert(0, sd)
+        import scout_willy_hold as _WH
+        out += _WH.run(now_ms)
+    except Exception as ex:
+        out += ["## 🔒 WILLY_HOLD", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
     try:   # 🪶 Oct-7 tracker 13 LITE_GVOL24_LOW (operator-approved observe line)
         out += lite_gv24_run(now_ms)
     except Exception as ex:
@@ -3996,6 +4364,62 @@ def selftest():
     chk(frenzy_long_status(ep_g, 2.7, 1e30, gc_replay_th(d0 - 1, th3, d0))[1] == "FRENZY_ATR_HIGH"
         and frenzy_long_status(ep_g, 2.7, 1e30, gc_replay_th(d0, th3, d0))[1] == "FRENZY_GREEN_BAR", "an ATR-2.7 green bar: ATR_HIGH before the raise, GREEN_BAR after")
     chk(GC_ATR_FROZEN == 2.5, "V2 cohort frozen at ATR ≤ 2.5 in every era")
+    # 🎲 tracker 15 FRENZY_WILLY
+    def _wx(n, pnl, reason="FRENZY_TP", trig="A", status="CLOSED", t0_=0, hours=0.5, wait=0):
+        return pd.DataFrame(dict(opened_at=[f"2026-10-{10 + (t0_ + i) // 24:02d} {(t0_ + i) % 24:02d}:00:00" for i in range(n)], pair=[f"P{t0_ + i}USDT" for i in range(n)],
+                                 direction="LONG", entry_strategy="FRENZY_WILLY", status=status, pnl_percentage=pnl, pnl=[p_ * 6.3 for p_ in ([pnl] * n if not isinstance(pnl, list) else pnl)],
+                                 close_reason=reason, entry_frenzy_willy_trigger=trig, entry_frenzy_hours=hours, entry_frenzy_willy_wait_bars=wait))
+    w1 = willy_merge(None, willy_rows(pd.concat([_wx(12, 1.0), _wx(8, -3.0, "MAX_HOLD_TIME", "B", t0_=12)], ignore_index=True)))
+    rd = willy_verdict(w1)
+    chk(rd["revert"] == "revert" and abs(rd["revert_avg"] - (12 * 1.0 - 8 * 3.0) / 20) < 1e-9, "WILLY: first 20 average < 0 → REVERT (operator decision)")
+    chk(rd["review"] == "ok" and rd["capped_loss_share"] == 0.0, "WILLY: first 10 all TP → cap-loss share 0 % (no review)")
+    w2 = willy_merge(None, willy_rows(pd.concat([_wx(6, -2.0, "MAX_HOLD_TIME"), _wx(14, 1.0, t0_=6)], ignore_index=True)))
+    chk(willy_verdict(w2)["review"] == "review" and abs(willy_verdict(w2)["capped_loss_share"] - 60.0) < 1e-9, "WILLY: 6 of the first 10 at the cap at a loss → REVIEW")
+    w3 = willy_merge(None, willy_rows(pd.concat([_wx(6, 0.3, "MAX_HOLD_TIME"), _wx(4, 1.0, t0_=6)], ignore_index=True)))
+    chk(willy_verdict(w3)["review"] == "ok", "WILLY: a cap close in PROFIT is not a cap loss")
+    chk(willy_verdict(willy_merge(None, willy_rows(pd.concat([_wx(19, 1.0), _wx(1, 0.5, status="OPEN", t0_=19)], ignore_index=True))))["revert"] == "collecting",
+        "WILLY: the 20th fill still open → the revert read waits")
+    chk(willy_verdict(willy_merge(None, willy_rows(_wx(20, 1.0))))["revert"] == "holds", "WILLY: first 20 average ≥ 0 → holds")
+    sp = willy_merge(None, willy_rows(pd.concat([_wx(3, 1.0, trig="A", hours=0.2, wait=0), _wx(2, -3.0, "MAX_HOLD_TIME", "B", t0_=3, wait=5)], ignore_index=True)))
+    chk(willy_stats(sp[sp.trig == "A"])["n"] == 3 and willy_stats(sp[sp.trig == "B"])["worst"] == -3.0 and abs(willy_stats(sp)["usd"] - (3 * 6.3 - 2 * 18.9)) < 1e-9,
+        "WILLY: A / B split, worst, Σ$")
+    chk(len(willy_rows(_wx(3, 1.0), since_ms=int(pd.Timestamp("2026-10-10T01:30:00").value // 1_000_000))) == 1, "WILLY: fills before the floor dropped")
+    Jx = pd.DataFrame(dict(t=["2026-10-10T00:00:00"] * 3, e=["BLOCK"] * 3, pair=["X"] * 3, gate=["FRENZY_WILLY_ARMED_A", "FRENZY_WILLY_RED_EXPIRED", "FRENZY_LATE"], strategy=[""] * 3))
+    chk(willy_expired(Jx, 0) == (1, 1), "WILLY: arms vs expired from the journal")
+    ln = willy_lines(sp, 0, Jx)
+    chk(any("A · < 1 h after the spike" in x for x in ln) and any("wait 0 (red trigger bar) bars" in x for x in ln) and any("wait 4+ bars" in x for x in ln)
+        and any("REVERT" in x or "⏳" in x for x in ln), "WILLY: report lines (hours / wait splits, both reads)")
+    chk(_hours_bucket(0.5) == "< 1 h" and _hours_bucket(3.0) == "1–3 h" and _hours_bucket(3.1) == "> 3 h" and _wait_bucket(2) == "1–3", "WILLY buckets")
+    # 🔄 WILLY_TURNOVER_BLOCKED
+    ev = pd.DataFrame(dict(t=["2026-10-10T01:00:00", "2026-10-10T02:00:00", "2026-10-10T03:00:00", "2026-10-10T03:00:00"], pair=["X", "Y", "Z", "Z"],
+                           gate=["FRENZY_WILLY_TURNOVER", "FRENZY_WILLY_TURNOVER_UNREAD", "FRENZY_WILLY_ARMED_B", "FRENZY_WILLY_TURNOVER"],
+                           reason=["R=1.734 · A", "mcap / volume unreadable · B", "ON not taken", "R=2.100 · B"], price=["1.0", "2.0", "", "3.0"]))
+    tr = tb_rows(ev)
+    chk(len(tr) == 3 and list(tr.trig) == ["A", "B", "B"] and abs(tr.R.iloc[0] - 1.734) < 1e-9 and np.isnan(tr.R.iloc[1]), "turnover blocked: rows + trig / R parsed")
+    chk(willy_expired(ev, 0) == (0, 1), "WILLY events: arms counted from e=WILLY")
+    mk = lambda pcts, days: pd.DataFrame(dict(t=[f"2026-10-{10 + (i % days):02d}T{i // days:02d}:00:00" for i in range(len(pcts))], pair="P", gate="FRENZY_WILLY_TURNOVER",
+                                              trig="A", R=2.0, price=1.0, pct=pcts, how="x"))
+    chk(tb_step({}, mk([0.5] * 15, 8))["verdict"].startswith("REVERT"), "turnover: blocked mean > 0 → REVERT")
+    chk(tb_step({}, mk([-0.5] * 15, 8))["verdict"] == "filter confirmed", "turnover: mean ≤ −0.20 → filter confirmed")
+    chk(tb_step({}, mk([-0.1] * 15, 8))["verdict"].startswith("holds"), "turnover: in between → holds")
+    chk(tb_step({}, mk([0.5] * 15, 7)) == {}, "turnover: < 8 days → not crossed")
+    chk(tb_step({}, mk([0.5] * 14, 8)) == {}, "turnover: < 15 → not crossed")
+    fz = tb_step({}, mk([-0.5] * 15, 8))
+    chk(tb_step(fz, mk([5.0] * 40, 20)) == fz, "turnover: a frozen verdict never moves")
+    un = pd.concat([mk([0.5] * 15, 8), mk([-9.0] * 5, 8).assign(gate="FRENZY_WILLY_TURNOVER_UNREAD")], ignore_index=True)
+    chk(tb_step({}, un[un.gate == "FRENZY_WILLY_TURNOVER"])["verdict"].startswith("REVERT"), "turnover: UNREAD rows never enter the verdict")
+    chk(len(tb_merge(mk([0.5], 1), mk([np.nan], 1))) == 1 and tb_merge(mk([0.5], 1), mk([np.nan], 1)).pct.iloc[0] == 0.5, "turnover: merge keeps the priced row")
+    upr = mk([0.5] * 16, 8); upr.loc[0, "pct"] = np.nan; upr.loc[0, "how"] = "UNPRICEABLE"
+    chk(tb_step({}, upr)["verdict"].startswith("REVERT"), "turnover: an UNPRICEABLE row is skipped — the first 15 priced freeze")
+    wait = mk([0.5] * 16, 8); wait.loc[0, "pct"] = np.nan; wait.loc[0, "how"] = np.nan
+    chk(tb_step({}, wait) == {}, "turnover: a row still waiting for its price holds the freeze (deterministic)")
+    lfw = pd.DataFrame(dict(k=["2026-10-10T00:30:00"], pair=["P"]))
+    lfr = mk([0.5, 0.5], 1)
+    chk(list(tb_later_filled(lfr, lfw)) == [True, False] and len(tb_rule_blocked(lfr, lfw)) == 1, "turnover: a pending that filled later is let-through, not blocked")
+    wl = willy_merge(None, willy_rows(_wx(2, 1.0)))
+    ln_tb = tb_lines(un, wl, {})
+    chk(any("UNREAD pairs" in x and "P ×5" in x for x in ln_tb), "turnover: UNREAD pairs listed by name")
+    chk(any("let through" in x for x in ln_tb) and any("UNREAD refusals" in x for x in ln_tb) and any("blocked · entry A" in x for x in ln_tb), "turnover: report lines")
     print(f"selftest OK ({ok} checks)")
 
 

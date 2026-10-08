@@ -55,3 +55,22 @@ def _no_display_price_network(monkeypatch):
     if _m is not None and hasattr(_m, "_live_px"):
         _m._live_px.update(t=0.0, px={})
         _m._live_px["try"] = 0.0
+
+
+@pytest.fixture(autouse=True)
+def _willy_hold_free(request, monkeypatch):
+    """🔒 Oct-8 (DECISION_LOG 251): the FRENZY_WILLY global hold reads the open-orders cache + the DB and REFUSES when it cannot (fail-closed).
+    Older tests drive the open paths with STUB db objects that cannot answer that read — for those (and for db=None, which would reach the
+    real AsyncSessionLocal) the hold reads 'no WILLY open'. A real SQLAlchemy AsyncSession (in-memory SQLite) always gets the REAL check, and
+    tests marked @pytest.mark.willy_hold get the real check whatever the db (tests/test_frenzy_willy.py)."""
+    if request.node.get_closest_marker("willy_hold"):
+        return
+    import services.trading_engine as _te
+    from sqlalchemy.ext.asyncio import AsyncSession as _AS
+    _real = _te.TradingEngine._willy_hold_state
+
+    async def _narrow(self, db=None):
+        if isinstance(db, _AS):
+            return await _real(self, db)
+        return False, None, None, None
+    monkeypatch.setattr(_te.TradingEngine, "_willy_hold_state", _narrow)

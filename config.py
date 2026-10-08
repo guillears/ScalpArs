@@ -1381,6 +1381,51 @@ class SignalThresholds(BaseModel):
     frenzy_lite_max_slots: int = 2               # max FRENZY_LITE open at once (they also count against max open positions)
     frenzy_lite_max_hours: float = 16.75         # episode age window end (h after the spike) — the study's "first ~17 h" (≤ frenzy_min_hours → 16.75 used)
     frenzy_lite_min_above_closes: int = 12       # (≤ 0 → 12 used) consecutive 5m closes at / above the spike VWAP (the study's 12 = FRENZY's hour; 6 vs 12 under study)
+    # 🎲 Oct-8 FRENZY_WILLY (operator-directed DECLARED EXCEPTION, DECISION_LOG 251 — armed AGAINST the evidence): LONG only, NO filters (no
+    # market-volume / ATR / bearish-day gates). Entry A "NEW FLAG" = the pass bar a pair becomes FRENZY-flagged for an episode (engine flag set,
+    # episode = spike_ts; once per episode, judged before the open whatever the outcome; restart-proof via BotState JSON 'willy_seen' + the
+    # FrenzyFlag seed + a DB backstop; "warm" per pair — the pair was judged by this process on the previous bar, else only a spike on the bar
+    # just closed counts). Entry B "ON NOT TAKEN" = an episode's fresh ON bar on which FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE did not open (any
+    # refusal), decided AFTER them in the same pass, never on a bar where A was attempted; one B fill per episode. Universe = the FRENZY flagged
+    # list (coin-only, ≥ 90 d, non-Alpha, blacklists); refused while the pair holds ANY open position (FRENZY_WILLY_PAIR_HELD), own slots
+    # (FRENZY_WILLY_MAX_SLOTS), FRENZY's dislocation (FRENZY_WILLY_DISLOC) and lateness (FRENZY_WILLY_LATE) guards. Own exit
+    # (services.frenzy.frenzy_willy_exit_for): fixed TP +1 % net (FRENZY_TP; operator Oct-8 change from the specified +2; a missed +1 peak closed
+    # at a loss = FRENZY_TP_LATE) · NO STOP LOSS (operator Oct-8; paper: none at all; live: the resting exchange backstop is kept and the
+    # software line sits just inside it) · 120-min time cap (MAX_HOLD_TIME; operator Oct-8 change from 60). 🔒 GLOBAL HOLD (operator Oct-8):
+    # while ANY FRENZY_WILLY is open NO other automated trade opens — every sleeve, pair, direction, other WILLY entries included (one choke
+    # point: TradingEngine._willy_hold_block in open_position, + _frenzy_open so FRENZY / WIDE / LITE / WILLY name it); MANUAL opens are never
+    # blocked; unreadable → refuse (fail-closed). Counter FRENZY_WILLY_HOLD (+ _UNREAD) + one persisted row per (WILLY, pair, direction, sleeve)
+    # in willy_hold_blocks (repeats counted) — the scout's "cost of the hold". Evidence says ≈ 0 or NEGATIVE:
+    # reports/FRENZY_NEW_FLAG_X_STUDY_2026-10-07.md, FRENZY_FLAG_TRADE_MATH_2026-10-08.md, FRENZY_SECONDS_DELAY_STUDY_2026-10-08.md — flag-moment
+    # entries have no edge; the best similar cell TP +2 / SL −3 / 1 h ≈ −0.04…−0.08 %/trade; TP +1 / SL −3 / 60 min cells on the flag cohort
+    # ≈ −0.01…−0.08 %/trade (1m-resolved, FRENZY_FLAG_TRADE_MATH / x30d) — still ≈ 0 or negative; the no-stop / 120-min variant was NOT studied.
+    # Size 1 × 1.0 = 20× at the 20× base: a win ≈ +$100–125 on a ~$630 ticket; with no stop a −3 % move ≈ −$380 (≈ 14 % of a $2,650 account)
+    # and the loss is bounded only by the 120-min cap (live: the backstop; at 20× a ≈ −5 % move is near liquidation). NO automatic off —
+    # scout FRENZY_WILLY: first 20 closed fills average < 0 → "REVERT (operator decision)"; first 10 fills closed at the 120-min cap at a loss
+    # > 50 % → "REVIEW". Entry waits for the first RED 5m candle (frenzy_willy_red_max_wait_minutes below). Code default OFF; trading_config.json arms it (operator).
+    frenzy_willy_enabled: bool = False
+    frenzy_willy_entry_a: bool = True             # entry A — new flag
+    frenzy_willy_entry_b: bool = True             # entry B — fresh ON bar not taken by FRENZY / WIDE / LITE
+    frenzy_willy_invest_mult: float = 1.0         # absolute-assign (never the strong bump)
+    frenzy_willy_lev_mult: float = 1.0            # 1.0 = 20× at the 20× base (the pair's exchange leverage brackets still cap it)
+    frenzy_willy_tp_pct: float = 1.0              # fixed take profit, net % (≤ 0 / blank → 1.0 used — the exit is the sleeve's definition)
+    frenzy_willy_stop_pct: float = 0.0            # stop, % — 0 / blank = NO STOP (operator Oct-8); > 0 re-arms a stop at −that
+    frenzy_willy_max_hold_minutes: int = 120      # time cap (< 1 / blank → 120 used; never the global hold) — NOT a stop
+    frenzy_willy_max_slots: int = 1               # max FRENZY_WILLY open at once — 1 (the global hold makes it 1 anyway)
+    # 🟥 Oct-8 (operator): A / B no longer open on the trigger bar — the trigger ARMS a pending entry that opens on the FIRST closed RED 5m bar
+    # (close < open; unreadable ≠ red; a red trigger bar opens at once) within this many minutes of the trigger bar while the episode lasts;
+    # else FRENZY_WILLY_RED_EXPIRED (no entry, the episode's A / B one-shot stays used). Guards are judged at the red bar; a global-hold /
+    # pair-held refusal keeps it pending. Fills stamp entry_frenzy_willy_wait_bars. Pending entries persist in BotState ('willy_pending').
+    frenzy_willy_red_max_wait_minutes: int = 60   # (blank / < 0 → 60; 0 = the trigger bar only)
+    # 🔄 Oct-8 TURNOVER FILTER (operator DECLARED OVERRIDE, DECISION_LOG 251; reports/FRENZY_VOL_MCAP_STUDY_2026-10-08.md — "24 h volume must be
+    # below the market cap"): a WILLY entry (A and B) opens only while R = the pair's 24 h quote volume (the value stamped entry_pair_volume_24h_usd)
+    # / its market cap (services.mcap_service.get — in-memory cache, its staleness rule) is BELOW this. Judged at the RED-bar open with the
+    # other guards (arming ignores it); a refusal keeps the entry armed until its wait ends (R can drop), recorded once per pending entry.
+    # FAIL-CLOSED: mcap / volume missing, stale or ≤ 0 → no entry (FRENZY_WILLY_TURNOVER_UNREAD); R ≥ cut → FRENZY_WILLY_TURNOVER. Every order
+    # (all sleeves) stamps entry_vol_mcap_ratio. The study priced the OLD WILLY exit (−3 / 60 min / immediate entry) — below the locked
+    # gates = declared override. 🔒 REVERT (scout WILLY_TURNOVER_BLOCKED, frozen at the first crossing): the first 15 turnover-blocked entries on
+    # ≥ 8 days, priced as if opened under WILLY's live exit, average > 0 % → set 0. 0 = off (code default); trading_config.json 1.0.
+    frenzy_willy_max_vol_mcap_ratio: float = 0.0
     # 🌊 Oct-3 (operator ARMED override, DECISION_LOG 194): FRENZY_LONG and FRENZY_WIDE open only while the market's volume on the signal bar
     # (top-50 by 24 h volume: Σ bar volume ÷ Σ 48-bar mean, CLOSED bar, read at the close) is BELOW this. Year (1,455 first candles, 1-min-late
     # entry, real costs): < 1.0 +0.225 %/trade (both halves +, random-subset luck 3 %, every leave-one-month-out +), ≥ 1.0 −0.185 (both halves −);

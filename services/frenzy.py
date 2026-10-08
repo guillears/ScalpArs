@@ -519,6 +519,162 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
             return False, "STOP_LOSS", -3.0
 
 
+# ── 🎲 Oct-8 FRENZY_WILLY (operator DECLARED EXCEPTION, DECISION_LOG 251) ─────────────────────────────────────────────────────────────
+# LONG only, no filters (no gvol / ATR / bearish gates): entry A = the bar a pair becomes FRENZY-flagged for an episode (engine view),
+# entry B = an episode's fresh ON bar that FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE did not take. Its OWN exit (never FRENZY's TP3):
+# fixed TP +frenzy_willy_tp_pct net · NO stop (operator Oct-8; frenzy_willy_stop_pct 0 = off) · time cap frenzy_willy_max_hold_minutes
+# (120). While a WILLY is open NO other automated trade opens (the global hold, TradingEngine._willy_hold_block). All research says ≈ 0 or
+# negative (reports/FRENZY_NEW_FLAG_X_STUDY_2026-10-07.md, FRENZY_FLAG_TRADE_MATH_2026-10-08.md, FRENZY_SECONDS_DELAY_STUDY_2026-10-08.md).
+FRENZY_WILLY = "FRENZY_WILLY"
+WILLY_TP_DEF, WILLY_HOLD_DEF = 1.0, 120   # 🎯 operator Oct-8: TP +1 (specified +2) · time cap 120 min (specified 60) · no stop
+
+
+def frenzy_willy_levels(th) -> Tuple[float, Optional[float], int]:
+    """(tp %, stop % as a NEGATIVE number or None = NO stop, max hold minutes) the WILLY exit USES. TP blank / ≤ 0 → +1; hold blank / < 1 →
+    120 (the take profit and the time cap ARE the exit — a zero never removes them). Stop: frenzy_willy_stop_pct > 0 → −that; blank / 0 /
+    unreadable → None (operator Oct-8: no stop loss — never a silent fallback to 3)."""
+    tp = _f(th, 'frenzy_willy_tp_pct', WILLY_TP_DEF)
+    st = abs(_f(th, 'frenzy_willy_stop_pct', 0.0))
+    mh = _f(th, 'frenzy_willy_max_hold_minutes', WILLY_HOLD_DEF)
+    return ((tp if tp > 0 else WILLY_TP_DEF), (-st if st > 0 else None), (int(round(mh)) if mh >= 1 else WILLY_HOLD_DEF))
+
+
+def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None) -> Tuple[bool, str, Optional[float]]:
+    """FRENZY_WILLY's own exit → (close, reason, line). Order: TP — pnl ≥ +tp → FRENZY_TP; a peak that already reached +tp while the close was
+    missed (feed gap / failed close / restart) closes at once → FRENZY_TP if the exit pnl ≥ 0 else FRENZY_TP_LATE (never labelled a TP at a
+    loss) · a configured stop (frenzy_willy_stop_pct > 0, none by default) → STOP_LOSS · held ≥ the cap → MAX_HOLD_TIME (line = pnl).
+    stop_floor (LIVE only — None in paper): the line just inside the resting exchange backstop; with no WILLY stop it IS the stop (the
+    exchange-side safety is kept as-is: a controlled close a hair before the backstop order would fire). Paper: no stop at all.
+    P&L = the caller's net-of-fees % of the position."""
+    tp, stop, mh = frenzy_willy_levels(th)
+    try:
+        p = float(pnl); pk = float(peak_pnl or 0.0)
+        if stop_floor is not None:
+            stop = float(stop_floor) if stop is None else max(stop, float(stop_floor))
+        if p >= tp:
+            return True, "FRENZY_TP", tp
+        if pk >= tp:
+            return True, ("FRENZY_TP" if p >= 0 else "FRENZY_TP_LATE"), p
+        if stop is not None and p <= stop:
+            return True, "STOP_LOSS", stop
+        if held_minutes is not None and float(held_minutes) >= mh:
+            return True, "MAX_HOLD_TIME", p
+        return False, "MAX_HOLD_TIME", stop
+    except (TypeError, ValueError):
+        return False, "MAX_HOLD_TIME", stop
+
+
+WILLY_REVERT_N = 20                       # FROZEN: the first 20 fills (by OPEN time) — all closed — average < 0 → REVERT (operator decision)
+WILLY_CAPLOSS_N, WILLY_CAPLOSS_SHARE = 10, 50.0   # FROZEN: the first 10 fills — all closed — share closed at the time cap AT A LOSS > 50 % → REVIEW
+
+
+def frenzy_willy_reads(fills) -> dict:
+    """🎲 The two frozen FRENZY_WILLY reads — ONE definition for the dashboard (main.py) and the scout (scout_frenzy_exits tracker 15).
+    fills = iterable of (opened_key, pnl_pct or None while open, close_reason); the cohorts are the FIRST fills by opened_key (open ones
+    included — a cohort is fixed, never re-picked), each read judged only once all its fills closed.
+    → dict(revert='revert'|'holds'|'collecting', revert_avg, revert_closed, review='review'|'ok'|'collecting', capped_loss_share, review_closed)."""
+    rows = sorted(((str(k), p, str(r or '')) for k, p, r in (fills or [])), key=lambda x: x[0])
+
+    def _num(v):
+        try:
+            v = float(v)
+            return v if v == v else None
+        except (TypeError, ValueError):
+            return None
+    f20 = [(_num(p), r) for _, p, r in rows[:WILLY_REVERT_N]]
+    n20 = sum(1 for p, _ in f20 if p is not None)
+    out = dict(revert="collecting", revert_avg=None, revert_closed=n20, review="collecting", capped_loss_share=None, review_closed=0)
+    if len(f20) >= WILLY_REVERT_N and n20 == WILLY_REVERT_N:
+        out["revert_avg"] = sum(p for p, _ in f20) / WILLY_REVERT_N
+        out["revert"] = "revert" if out["revert_avg"] < 0 else "holds"
+    f10 = [(_num(p), r) for _, p, r in rows[:WILLY_CAPLOSS_N]]
+    n10 = sum(1 for p, _ in f10 if p is not None)
+    out["review_closed"] = n10
+    if len(f10) >= WILLY_CAPLOSS_N and n10 == WILLY_CAPLOSS_N:
+        out["capped_loss_share"] = 100.0 * sum(1 for p, r in f10 if r.startswith("MAX_HOLD_TIME") and p < 0) / WILLY_CAPLOSS_N
+        out["review"] = "review" if out["capped_loss_share"] > WILLY_CAPLOSS_SHARE else "ok"
+    return out
+
+
+def frenzy_willy_reads_text(rd, hold_min=WILLY_HOLD_DEF) -> str:
+    """the dashboard / scout wording of frenzy_willy_reads (both reads, always)."""
+    if rd["revert"] == "revert":
+        a = f"🛑 REVERT (operator decision): turn FRENZY_WILLY off — the first {WILLY_REVERT_N} fills average {rd['revert_avg']:+.3f}% < 0"
+    elif rd["revert"] == "holds":
+        a = f"✅ revert read holds — the first {WILLY_REVERT_N} fills average {rd['revert_avg']:+.3f}% ≥ 0"
+    else:
+        a = f"⏳ revert read {min(rd['revert_closed'], WILLY_REVERT_N)}/{WILLY_REVERT_N} closed"
+    if rd["review"] == "review":
+        b = (f"⚠ REVIEW — {rd['capped_loss_share']:.0f}% of the first {WILLY_CAPLOSS_N} fills closed at the {hold_min}-min cap at a loss "
+             f"(> {WILLY_CAPLOSS_SHARE:g}%)")
+    elif rd["review"] == "ok":
+        b = f"✅ {rd['capped_loss_share']:.0f}% of the first {WILLY_CAPLOSS_N} closed at the {hold_min}-min cap at a loss (≤ {WILLY_CAPLOSS_SHARE:g}%)"
+    else:
+        b = f"⏳ cap-loss read {min(rd['review_closed'], WILLY_CAPLOSS_N)}/{WILLY_CAPLOSS_N} closed"
+    return f"{a} · {b} · no automatic off"
+
+
+WILLY_RED_WAIT_DEF = 60   # frenzy_willy_red_max_wait_minutes default (operator Oct-8: enter after the FIRST RED 5m candle, ≤ 60 min after the trigger)
+
+
+def frenzy_willy_wait_ms(th) -> int:
+    """the red-candle wait window in ms (blank / < 0 / unreadable → 60 min; 0 = only the trigger bar itself)."""
+    w = _f(th, 'frenzy_willy_red_max_wait_minutes', WILLY_RED_WAIT_DEF)
+    return int(round((w if w >= 0 else WILLY_RED_WAIT_DEF) * 60_000))
+
+
+def frenzy_willy_red(ep) -> Optional[bool]:
+    """the closed 5m bar the pass judged is RED (close < open — strictly; a flat bar is not red). None = unreadable (fail-closed: no entry)."""
+    try:
+        v = (ep or {}).get('bar_ret_pct')
+        if v is None:
+            return None
+        v = float(v)
+        return None if v != v else (v < 0)
+    except (TypeError, ValueError):
+        return None
+
+
+def frenzy_willy_pending_clean(v) -> Optional[dict]:
+    """a stored pending entry → its validated dict (trig 'A' / 'B', spike / armed / exp ms ints, why text, blocked flag) or None (dropped)."""
+    try:
+        if not isinstance(v, dict) or v.get('trig') not in ("A", "B"):
+            return None
+        _tw = v.get('turnover')
+        return dict(trig=v['trig'], spike=int(v['spike']), armed=int(v['armed']), exp=int(v['exp']), why=str(v.get('why') or '')[:160],
+                    blocked=bool(v.get('blocked')),
+                    turnover=(_tw if _tw in ("FRENZY_WILLY_TURNOVER", "FRENZY_WILLY_TURNOVER_UNREAD") else None),
+                    tkinds=[k for k in (v.get('tkinds') or []) if k in ("FRENZY_WILLY_TURNOVER", "FRENZY_WILLY_TURNOVER_UNREAD")])
+    except (TypeError, ValueError, KeyError):
+        return None
+
+
+def vol_mcap_ratio(vol24, mcap) -> Optional[float]:
+    """🔄 turnover R = 24 h quote volume / market cap (both USD). None when either is missing / ≤ 0 / not finite. Never raises."""
+    try:
+        v, m = float(vol24), float(mcap)
+        if v != v or m != m or v in (float('inf'),) or m in (float('inf'),) or v <= 0 or m <= 0:
+            return None
+        return round(v / m, 6)
+    except (TypeError, ValueError):
+        return None
+
+
+def frenzy_willy_new_flag(prev_spike_ts, seen_spike_ts, spike_ts) -> bool:
+    """Entry A: True = this pass is the first on which the pair is flagged for THIS episode (spike_ts) — it was not in the engine's flag set
+    with the same spike on the previous judged bar (prev_spike_ts) and no earlier pass / process recorded it (seen_spike_ts: the newest
+    episode this pair was ever seen flagged with — persisted, so a restart or a toggle never fires A for an episode already flagged)."""
+    try:
+        if spike_ts is None:
+            return False
+        s = int(spike_ts)
+        if prev_spike_ts is not None and int(prev_spike_ts) == s:
+            return False
+        return seen_spike_ts is None or s > int(seen_spike_ts)
+    except (TypeError, ValueError):
+        return False
+
+
 def frenzy_breaks(bars) -> List[int]:
     """SHORT observation: which lines (50 / 200) did the LAST closed 5m bar break — a close below the EMA of 5m closes with the
     previous 12 closes all at/above it (the research trigger of scripts/break_short_review.py). [] when none / too few bars."""

@@ -100,6 +100,7 @@ DEPLOYS = {"FRENZY_TP3": ("2e36c26", "2026-10-04 19:23:15"), "FRENZY_STRONG": ("
            "SURGE_B": ("grep:(DECISION_LOG 202)", "2026-10-05 01:30:00"),
            "FRENZY_LOCK": ("grep:(DECISION_LOG 205)", "2026-10-05 22:00:00"),
            "HEAT_REVERT": ("grep:(DECISION_LOG 208)", "2026-10-05 22:00:00"),
+           "FRENZY_WILLY": ("grep:(DECISION_LOG 251)", None),   # 🎲 Oct-8 FRENZY_WILLY (declared exception) — its commit message must carry "(DECISION_LOG 251)"; not found → NOW
            "FRENZY_OCT8": ("grep:(DECISION_LOG 250)", None)}   # 🐻⬆🎯 Oct-8: bearish-day block + ATR 3.0 + fixed TP (one commit; its message must carry "(DECISION_LOG 250)")   # 🔁 Oct-5 heat re-scope reverted   # 🎯 Oct-5 lock-then-trail exit (commit message carries the exact string)   # ⚡ Oct-4 option B (found by its commit message)
 SHIPS = {"HEAT": "2026-09-25", "LOADX": "2026-09-29", "MEGACAP": "2026-09-23"}
 # Oct-4 operator: "keep collecting" → trackers extended to 30; (new N, frozen N, frozen verdict) — the frozen first-N verdict stays on record

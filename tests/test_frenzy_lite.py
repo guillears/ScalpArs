@@ -501,31 +501,31 @@ def test_ui_inputs_load_save_and_reports():
                 "['config-fz-lite-slots', 'frenzy_lite_max_slots', 2]", "['config-fz-lite-max-hours', 'frenzy_lite_max_hours', 16.75]",
                 "['config-fz-lite-min-above', 'frenzy_lite_min_above_closes', 12]"):
         assert html.count(row) == 1, row                                                       # FRENZY_NUM_FIELDS drives load + save
-    assert "_key === 'frenzy_lite_max_slots' || _key === 'frenzy_lite_min_above_closes') ? Math.round(x)" in html   # ints
+    assert "_key === 'frenzy_lite_max_slots' || _key === 'frenzy_lite_min_above_closes' || _key === 'frenzy_willy_max_slots' || _key === 'frenzy_willy_max_hold_minutes' || _key === 'frenzy_willy_red_max_wait_minutes') ? Math.round(x)" in html   # ints
     assert "frenzy_lite_enabled: document.getElementById('config-fz-lite-enabled')?.checked ?? false" in html
     assert "getElementById('config-fz-lite-enabled'); if (_e) _e.checked = config.thresholds.frenzy_lite_enabled === true" in html
     assert html.count('data-ss="fzl"') == 1 and "S.fzl = {" in html                           # ⚖️ Sleeve Sizing row
     # the config text-report line (_buildConfigLines → BOTH exports) and the monitor line (dashboard + BOTH exports)
-    assert "LITE ${_bt.frenzy_lite_enabled === true ? 'ON' : 'OFF'}" in html and "no ATR cap · no auto-off) · market volume" in html
+    assert "LITE ${_bt.frenzy_lite_enabled === true ? 'ON' : 'OFF'}" in html and "no ATR cap · no auto-off) · WILLY ${_bt.frenzy_willy_enabled === true" in html
     assert html.count("lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));") == 2
     assert "LITE ${m.lite_enabled ? 'ON' : 'OFF'}" in html and html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2
-    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE)") == 2            # UI header + the shared export block
-    assert '<option value="FRENZY_LITE">' in html and "strat === 'FRENZY_LITE') return tags" in html
+    assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE · FRENZY_WILLY)") == 2            # UI header + the shared export block
+    assert '<option value="FRENZY_LITE">' in html and "strat === 'FRENZY_LITE' || strat === 'FRENZY_WILLY') return tags" in html
     assert "['FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE'].includes(o.entry_strategy" in html     # FRENZY exit badge
-    assert "(?:WIDE |LITE )?opened/" in html and "f.ready || f.lite_ready" in html
+    assert "(?:WIDE |LITE |WILLY [AB] )?opened/" in html and "f.ready || f.lite_ready" in html
 
 
 def test_engine_and_api_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert 'FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")' in eng            # FRENZY exit / hold cap / urgent close
+    assert 'FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY")' in eng            # FRENZY exit / hold cap / urgent close
     assert "if _lite and not ep.get('in_state'):" in eng and "await self._frenzy_lite_eval(db, pair, ep, flag, ind, closed, bar_open, norm_hour=_nc[1])" in eng
-    assert "if not (_on or _obs or _wide or _lite):" in eng and "if _on or _wide or _lite:" in eng
-    assert '_fz_es = ("FRENZY_LITE" if (_frenzy and frenzy_lite)' in eng                        # tag → frenzy_lite_* size fields
+    assert "if not (_on or _obs or _wide or _lite or _willy):" in eng and "if _on or _wide or _lite or _willy:" in eng
+    assert '"FRENZY_LITE" if (_frenzy and frenzy_lite)' in eng                        # tag → frenzy_lite_* size fields
     i = eng.index("async def _frenzy_lite_eval("); body = eng[i:eng.index("@staticmethod", i)]
     assert "atr" not in re.sub(r'""".*?"""', "", body, flags=re.S).replace("ATR", "")          # no ATR filter in the LITE path
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert "'Frenzy-Lite'" in main and main.count("'FRENZY_LITE'") >= 3 and '("FRENZY_LITE", "LONG"): "FRENZY LITE Long"' in main
-    assert '"lite_enabled": bool(getattr(_th, \'frenzy_lite_enabled\', False))' in main and "getattr(_th, 'frenzy_lite_enabled', False)):" in main
+    assert '"lite_enabled": bool(getattr(_th, \'frenzy_lite_enabled\', False))' in main and "getattr(_th, 'frenzy_lite_enabled', False) or getattr(_th, 'frenzy_willy_enabled', False)):" in main
     assert '("FRENZY_LITE", "FRENZY_LITE (held above' in main and '"lite_ready": bool(f.get(\'lite_ready\'))' in main
 
 

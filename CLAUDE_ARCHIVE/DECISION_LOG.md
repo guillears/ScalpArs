@@ -6078,3 +6078,12 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   thread after each refresh / single-pair fetch; loaded at startup before the first scan with the same 3× staleness rule; fail-safe). Cause
   confirmed: RLC TURNOVER_UNREAD at 18:24:41 = empty cap cache right after the 85e6a83 restart (24 h volume is read fresh each pass, not a
   restart issue). Tests isolate mcap in conftest (no network, tmp path). Dual review: no Critical / Important; minors applied.
+- (256) 2026-10-08 🎲 **FRENZY_WILLY entry B OFF (operator)** — `frenzy_willy_entry_b` false (entry A unchanged). Evidence: tick year on the
+  current WILLY design (reports/FRENZY_TP3_VS_TP4_TICKS_2026-10-08.md, study_tp34_willy.py): B −0.244 %/trade no stop · −0.325 [−0.59, −0.07]
+  with the live ≈ −2.2 % backstop; A +0.135 [−0.02, +0.28] / +0.004. B buys exactly the ON setups FRENZY / WIDE / LITE refuse (by definition, DECISION_LOG 251:
+  gvol, green candle, ATR, bearish day). An entry B already armed when the switch flips is dropped (sweep + red-bar step; same for A). Live so far: 1 B armed (RLC 10-08, turnover-refused, expired), 0 fills. Same day, research (no change): FRENZY
+  exit +3 vs +4 on ticks — rule 199 NOT met (today's stack LONG+WIDE 883: +4 − +3 −0.084 [−0.31, +0.14]; lock ≈ +3; LITE alone leans +4
+  +0.107, CI spans 0 → optional LITE-only check at 40 fills, not registered); entry slip is the bigger lever (no slip +0.180 vs +0.085).
+  5-sleeve $3k compounding (BULLRUN, BEARRUN, FRENZY_LONG/WIDE/LITE, Jan-04→Oct-04, ticks): $29,857 [19,324…38,397], +0.83 %/calendar day,
+  max DD −48.6 %; without BULLRUN and LITE $4,303. Spike-fade H1 review (reports/SPIKE_FADE_H1_REVIEW_2026-10-08.md): no $ bug; replay reproduces only ~29 % of live
+  fades and reads them ~0.4 %/trade worse (trace running); FIX-A sizing leak in the halves script (MOM_LONG / FLIP / MOM_SHORT / FRENZY_LONG), no sign flips.

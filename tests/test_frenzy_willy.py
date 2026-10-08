@@ -881,7 +881,7 @@ def test_sizing_1x_1_0():
 
 # ── config / UI / exports (D11 · D12) ──────────────────────────────────────────────────────────────────────────────────────────────
 
-FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": True, "frenzy_willy_invest_mult": 1.0,
+FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": False, "frenzy_willy_invest_mult": 1.0,
           "frenzy_willy_lev_mult": 1.0, "frenzy_willy_tp_pct": 1.0, "frenzy_willy_stop_pct": 0.0, "frenzy_willy_max_hold_minutes": 120,
           "frenzy_willy_max_slots": 1, "frenzy_willy_red_max_wait_minutes": 60, "frenzy_willy_a_cold_max_bars": 3}
 
@@ -1548,3 +1548,22 @@ def test_index_created_on_an_existing_db(tmp_path, monkeypatch):
         return before, [r[1] for r in sqlite3.connect(dbp).execute("PRAGMA index_list(orders)")]
     before, after = asyncio.run(go())
     assert "ix_orders_status_strategy" not in before and "ix_orders_status_strategy" in after
+
+
+def test_switching_a_trigger_off_drops_its_armed_entries(monkeypatch):
+    """🎲 (256) entry B switched off: an entry B already armed (e.g. restored from BotState after the deploy) never opens — the sweep and the
+    red-bar step both drop it; an armed entry A is untouched."""
+    import services.trading_engine as TE
+    th = _th(); th.frenzy_willy_entry_b = False
+    monkeypatch.setattr(TE.config, "trading_config", NS(thresholds=th))
+    monkeypatch.setattr(TE, "_frenzy_flags", {"AUSDT": {}, "BUSDT": {}})
+    e = _engine(TE)
+    e._fz_willy_pending = {"AUSDT": dict(trig="A", spike=1, armed=BAR_OPEN, exp=BAR_OPEN + 3_600_000, why="", blocked=False),
+                           "BUSDT": dict(trig="B", spike=1, armed=BAR_OPEN, exp=BAR_OPEN + 3_600_000, why="", blocked=False)}
+    asyncio.run(e._frenzy_willy_sweep(BAR_OPEN + BAR_MS, True))
+    assert list(e._fz_willy_pending) == ["AUSDT"]
+    # red-bar step: a B restored after the sweep never reaches the open path
+    sp = LAST - 2 * BAR_MS
+    e._fz_willy_pending["FOOUSDT"] = dict(trig="B", spike=sp, armed=BAR_OPEN, exp=BAR_OPEN + 3_600_000, why="", blocked=False)
+    o, _ = _run(e, dict(spike_ts=sp, bar_ret_pct=-0.5), prev=sp)
+    assert o == [] and "FOOUSDT" not in e._fz_willy_pending

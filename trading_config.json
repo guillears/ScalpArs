@@ -762,7 +762,7 @@
     "frenzy_lite_min_above_closes": 12,
     "frenzy_willy_enabled": true,
     "frenzy_willy_entry_a": true,
-    "frenzy_willy_entry_b": true,
+    "frenzy_willy_entry_b": false,
     "frenzy_willy_invest_mult": 1.0,
     "frenzy_willy_lev_mult": 1.0,
     "frenzy_willy_tp_pct": 1.0,

@@ -1,0 +1,64 @@
+strategy,half,N_mean_seeds,WR_pct,avg_pnl_pct,ci95_lo,ci95_hi,net_usd_flat3k,days,source,usd_seed1,usd_seed2,usd_seed3
+MOM_LONG,H1,304.3,59.8,-0.08,-0.157,-0.002,-5001,121,yr5 replay,-5297.0,-4969.0,-4736.0
+MOM_LONG,H2,256.3,63.6,-0.043,-0.112,0.026,-1659,112,yr5 replay,-1565.0,-1761.0,-1652.0
+MOM_LONG,FY,560.7,61.5,-0.063,-0.116,-0.01,-6660,233,yr5 replay,-6862.0,-6730.0,-6388.0
+MOM_SHORT,H1,103.3,56.8,-0.088,-0.216,0.035,-1328,57,yr5 replay,-1314.0,-1439.0,-1230.0
+MOM_SHORT,H2,58.3,64.0,-0.023,-0.131,0.083,-199,38,yr5 replay,-287.0,-480.0,168.0
+MOM_SHORT,FY,161.7,59.4,-0.064,-0.154,0.021,-1527,95,yr5 replay,-1601.0,-1918.0,-1062.0
+FLIP_SHORT,H1,72.0,58.8,-0.177,-0.35,-0.011,-909,53,yr5 replay,-857.0,-1087.0,-783.0
+FLIP_SHORT,H2,65.0,65.1,-0.091,-0.215,0.037,-471,54,yr5 replay,-701.0,-226.0,-484.0
+FLIP_SHORT,FY,137.0,61.8,-0.137,-0.24,-0.032,-1380,107,yr5 replay,-1559.0,-1313.0,-1267.0
+SPIKE_FADE,H1,156.0,72.0,-0.091,-0.189,0.004,-3299,96,yr5 replay,-4753.0,-2969.0,-2174.0
+SPIKE_FADE,H2,238.3,79.2,0.044,-0.048,0.13,2716,101,yr5 replay,6680.0,1307.0,161.0
+SPIKE_FADE,FY,394.3,76.3,-0.009,-0.08,0.055,-583,197,yr5 replay,1927.0,-1662.0,-2013.0
+BULLRUN,H1,0.0,,,,,0,0,yr5 replay,,,
+BULLRUN,H2,146.7,51.1,0.256,-0.157,0.396,5497,6,yr5 replay,5926.0,2519.0,8047.0
+BULLRUN,FY,146.7,51.1,0.256,-0.157,0.396,5497,6,yr5 replay,5926.0,2519.0,8047.0
+BEARRUN,H1,5.3,56.2,-0.116,-0.619,0.043,-23,3,yr5 replay,13.0,-55.0,-26.0
+BEARRUN,H2,8.0,75.0,0.149,0.034,0.448,44,3,yr5 replay,68.0,27.0,36.0
+BEARRUN,FY,13.3,67.5,0.043,-0.179,0.211,21,6,yr5 replay,81.0,-28.0,10.0
+FRENZY_LONG,H1,103.0,49.8,-0.021,-0.509,0.457,506,66,yr5 replay (+ WIDE fills re-coded by the 3.0 cap),419.0,550.0,550.0
+FRENZY_LONG,H2,85.0,53.3,0.193,-0.409,0.75,1363,58,yr5 replay (+ WIDE fills re-coded by the 3.0 cap),1679.0,1277.0,1134.0
+FRENZY_LONG,FY,188.0,51.4,0.076,-0.288,0.439,1870,124,yr5 replay (+ WIDE fills re-coded by the 3.0 cap),2097.0,1827.0,1685.0
+FRENZY_WIDE,H1,60.0,53.3,0.196,-0.604,0.996,344,44,yr5 replay,344.0,344.0,344.0
+FRENZY_WIDE,H2,46.3,56.8,0.406,-0.606,1.327,551,38,yr5 replay,522.0,609.0,522.0
+FRENZY_WIDE,FY,106.3,54.9,0.288,-0.356,0.905,895,82,yr5 replay,865.0,953.0,865.0
+SURGE_LONG,H1,27.7,60.2,0.048,-0.315,0.438,201,20,yr5 replay (trigger + exit MISMATCHED vs today),926.0,397.0,-720.0
+SURGE_LONG,H2,26.0,50.0,-0.118,-0.632,0.573,-449,19,yr5 replay (trigger + exit MISMATCHED vs today),-535.0,-738.0,-74.0
+SURGE_LONG,FY,53.7,55.3,-0.032,-0.372,0.34,-247,39,yr5 replay (trigger + exit MISMATCHED vs today),392.0,-340.0,-794.0
+SURGE_SHORT,H1,220.3,67.6,-0.115,-0.197,-0.033,-3684,72,yr5 replay (sleeve OFF — reference),-2559.0,-4034.0,-4458.0
+SURGE_SHORT,H2,125.7,76.4,0.026,-0.073,0.117,479,41,yr5 replay (sleeve OFF — reference),172.0,1502.0,-236.0
+SURGE_SHORT,FY,346.0,70.8,-0.064,-0.13,0.004,-3204,113,yr5 replay (sleeve OFF — reference),-2387.0,-2531.0,-4694.0
+MOM_LONG_HEAT_READMIT,H1,13.0,53.8,-0.224,-0.355,0.016,-902,9,HEAT_YR5_SIGNALS_priced (exit replica),,,
+MOM_LONG_HEAT_READMIT,H2,23.7,83.1,0.149,-0.13,0.352,1129,17,HEAT_YR5_SIGNALS_priced (exit replica),,,
+MOM_LONG_HEAT_READMIT,FY,36.7,72.7,0.017,-0.194,0.22,227,26,HEAT_YR5_SIGNALS_priced (exit replica),,,
+MOM_LONG_INCL_READMIT,H1,317.3,59.6,-0.086,-0.16,-0.01,-5903,121,yr5 replay + heat re-admits (exit-replica priced signals),,,
+MOM_LONG_INCL_READMIT,H2,280.0,65.2,-0.027,-0.094,0.041,-530,113,yr5 replay + heat re-admits (exit-replica priced signals),,,
+MOM_LONG_INCL_READMIT,FY,597.3,62.2,-0.058,-0.11,-0.004,-6433,234,yr5 replay + heat re-admits (exit-replica priced signals),,,
+FRENZY_LITE,H1,265.0,56.2,0.266,-0.163,0.668,3089,104,"study cohort (lite_streak K12, ticks), NOT engine replay",,,
+FRENZY_LITE,H2,283.0,56.9,0.289,-0.051,0.622,3589,110,"study cohort (lite_streak K12, ticks), NOT engine replay",,,
+FRENZY_LITE,FY,548.0,56.6,0.278,-0.001,0.534,6678,214,"study cohort (lite_streak K12, ticks), NOT engine replay",,,
+FRENZY_WILLY,H1,698.0,82.5,0.037,-0.155,0.215,3730,130,"study-cohort re-price on ticks (new script), NOT engine replay",,,
+FRENZY_WILLY,H2,565.0,85.7,0.074,-0.159,0.281,6143,135,"study-cohort re-price on ticks (new script), NOT engine replay",,,
+FRENZY_WILLY,FY,1263.0,83.9,0.053,-0.09,0.19,9874,265,"study-cohort re-price on ticks (new script), NOT engine replay",,,
+FRENZY_WILLY_A,H1,572.0,83.4,0.096,-0.098,0.282,8056,130,"idem, trigger A only",,,
+FRENZY_WILLY_A,H2,495.0,86.3,0.131,-0.11,0.345,9495,135,"idem, trigger A only",,,
+FRENZY_WILLY_A,FY,1067.0,84.7,0.112,-0.04,0.255,17551,265,"idem, trigger A only",,,
+FRENZY_WILLY_B,H1,126.0,78.6,-0.235,-0.783,0.25,-4325,77,"idem, trigger B only",,,
+FRENZY_WILLY_B,H2,70.0,81.4,-0.327,-1.062,0.349,-3351,46,"idem, trigger B only",,,
+FRENZY_WILLY_B,FY,196.0,79.6,-0.268,-0.712,0.134,-7677,123,"idem, trigger B only",,,
+XCHECK_FRENZY_TICK_COHORT,H1,110.0,53.6,0.149,-0.332,0.644,717,67,"vol/mcap study FRENZY TODAY+bearish, ticks 8 s (cross-check)",,,
+XCHECK_FRENZY_TICK_COHORT,H2,85.0,57.6,0.361,-0.243,0.927,1345,56,"vol/mcap study FRENZY TODAY+bearish, ticks 8 s (cross-check)",,,
+XCHECK_FRENZY_TICK_COHORT,FY,195.0,55.4,0.241,-0.117,0.61,2062,123,"vol/mcap study FRENZY TODAY+bearish, ticks 8 s (cross-check)",,,
+XCHECK_WIDE_TICK_COHORT,H1,71.0,56.3,0.255,-0.455,0.933,529,50,"idem, WIDE (cross-check)",,,
+XCHECK_WIDE_TICK_COHORT,H2,50.0,50.0,-0.1,-1.06,0.822,-146,39,"idem, WIDE (cross-check)",,,
+XCHECK_WIDE_TICK_COHORT,FY,121.0,53.7,0.108,-0.464,0.673,384,89,"idem, WIDE (cross-check)",,,
+TOTAL_REPLAY_ONLY,H1,844.7,59.8,-0.063,-0.154,0.034,-10409,135,replay sleeves + heat re-admits,,,
+TOTAL_REPLAY_ONLY,H2,953.7,64.7,0.07,-0.026,0.155,8522,136,replay sleeves + heat re-admits,,,
+TOTAL_REPLAY_ONLY,FY,1798.3,62.4,0.008,-0.061,0.073,-1887,271,replay sleeves + heat re-admits,,,
+TOTAL_LIVE_NO_WILLY,H1,1109.7,59.0,0.016,-0.105,0.14,-7320,136,replay + LITE,,,
+TOTAL_LIVE_NO_WILLY,H2,1236.7,62.9,0.12,0.012,0.219,12111,137,replay + LITE,,,
+TOTAL_LIVE_NO_WILLY,FY,2346.3,61.0,0.071,-0.012,0.147,4791,273,replay + LITE,,,
+TOTAL_LIVE_WITH_WILLY,H1,1807.7,68.1,0.024,-0.079,0.13,-3590,136,replay + LITE + WILLY,,,
+TOTAL_LIVE_WITH_WILLY,H2,1801.7,70.0,0.106,0.0,0.203,18255,137,replay + LITE + WILLY,,,
+TOTAL_LIVE_WITH_WILLY,FY,3609.3,69.0,0.065,-0.009,0.133,14665,273,replay + LITE + WILLY,,,

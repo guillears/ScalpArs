@@ -1406,6 +1406,9 @@ class SignalThresholds(BaseModel):
     frenzy_willy_enabled: bool = False
     frenzy_willy_entry_a: bool = True             # entry A — new flag
     frenzy_willy_entry_b: bool = True             # entry B — fresh ON bar not taken by FRENZY / WIDE / LITE
+    # Oct-8 (operator, DECISION_LOG 256): trading_config.json turns entry B OFF — tick year (reports/FRENZY_TP3_VS_TP4_TICKS_2026-10-08.md):
+    # B −0.244 %/trade with no stop, −0.325 [−0.59, −0.07] with the live ≈ −2.2 % backstop (it buys exactly the setups the FRENZY filters reject);
+    # A +0.135 / +0.004. Code default unchanged (the json value wins).
     frenzy_willy_invest_mult: float = 1.0         # absolute-assign (never the strong bump)
     frenzy_willy_lev_mult: float = 1.0            # 1.0 = 20× at the 20× base (the pair's exchange leverage brackets still cap it)
     frenzy_willy_tp_pct: float = 1.0              # fixed take profit, net % (≤ 0 / blank → 1.0 used — the exit is the sleeve's definition)

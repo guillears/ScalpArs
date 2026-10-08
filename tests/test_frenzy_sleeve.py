@@ -151,7 +151,7 @@ def test_config_parity_and_every_surface():
     import config as C
     th = C.trading_config.thresholds
     fields = sorted(k for k in type(th).model_fields if k.startswith("frenzy_"))
-    assert len(fields) == 41   # +6 frenzy_lite_* (Oct-7, 243) · +frenzy_catchup_max_bars (Oct-6 catch-up) · +frenzy_lock_arm_pct, _floor_pct, _trail_pct (Oct-5, 205) · +frenzy_wide_above_share_min (Oct-5, 215) · +frenzy_wide_hold_green_streak (Oct-6, 231)
+    assert len(fields) == 42   # +frenzy_bearish_day_block (Oct-8, 250) · +6 frenzy_lite_* (Oct-7, 243) · +frenzy_catchup_max_bars (Oct-6 catch-up) · +frenzy_lock_arm_pct, _floor_pct, _trail_pct (Oct-5, 205) · +frenzy_wide_above_share_min (Oct-5, 215) · +frenzy_wide_hold_green_streak (Oct-6, 231)
     cfgj = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert sorted(k for k in cfgj if k.startswith("frenzy_")) == fields                   # every field has a JSON value
     assert type(th).model_fields["frenzy_long_enabled"].default is False                  # OFF in code; the JSON arms it
@@ -161,7 +161,7 @@ def test_config_parity_and_every_surface():
     by_key = {v: k for k, v in listed.items()}
     by_key.update(frenzy_long_enabled="config-fz-long-enabled", frenzy_short_observe="config-fz-short-observe", frenzy_pair_blacklist="config-fz-blacklist",
                   frenzy_long_skip_green_bar="config-fz-skip-green", frenzy_wide_enabled="config-fz-wide-enabled",
-                  frenzy_lite_enabled="config-fz-lite-enabled")
+                  frenzy_lite_enabled="config-fz-lite-enabled", frenzy_bearish_day_block="config-fz-bearish-block")
     assert sorted(by_key) == fields                                                       # every field has a UI input
     for key, _id in by_key.items():
         assert html.count(f'id="{_id}"') == 1, _id
@@ -357,19 +357,20 @@ def test_manual_entry_can_use_the_frenzy_exit():
     assert "order.peak_pnl = _mf_peak" in eng and '{"RUNNER_TRAIL": "MANUAL_TRAIL", "FRENZY_TP": "MANUAL_TP"}.get(_mf_why, "MANUAL_SL")' in eng
 
 
-def test_shipped_atr_limit_is_2_5_everywhere():
-    """DECISION_LOG 179: the ATR entry limit ships at 2.5 % — code default, JSON, rule fallback and the page default agree."""
+def test_shipped_atr_limit_code_2_5_json_3_0():
+    """DECISION_LOG 179: the code default / rule fallback stay 2.5 %; Oct-8 (DECISION_LOG 250, operator override vs
+    reports/FRENZY_ATR_CAP_STUDY_2026-10-08.md) the JSON runs 3.0 and the page's blank-field fallback follows the JSON."""
     import config as C
     th = C.trading_config.thresholds
     assert type(th).model_fields["frenzy_max_atr_pct"].default == 2.5
-    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_max_atr_pct"] == 2.5
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_max_atr_pct"] == 3.0
 
     class Bare:   # no field at all → the rule's own fallback
         frenzy_state_vol_mult = 100.0; frenzy_min_volume_usd = 20e6
     ep = frenzy_walk(_bars(after=24), NORM, TH)
     assert frenzy_long_status(ep, 2.5, 50e6, Bare)[0] is True and frenzy_long_status(ep, 2.51, 50e6, Bare)[2] == "ATR 2.51% > 2.5%"
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
-    assert "['config-fz-max-atr', 'frenzy_max_atr_pct', 2.5]" in html and 'id="config-fz-max-atr"' in html
+    assert "['config-fz-max-atr', 'frenzy_max_atr_pct', 3.0]" in html and 'id="config-fz-max-atr"' in html
 
 
 def test_long_skips_a_green_signal_candle_when_the_switch_is_on():

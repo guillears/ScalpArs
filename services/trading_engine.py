@@ -24,7 +24,7 @@ from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE
-from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need
+from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
 
@@ -7947,6 +7947,39 @@ class TradingEngine:
                            'entry_bull_pct', 'entry_bear_pct', 'entry_global_volume_ratio', 'entry_pair_volume_ratio'):
                     _ef.pop(_k, None)
             _g = globals(); atr = flag.get('atr_pct'); _stop = abs(float(getattr(th, 'frenzy_stop_pct', 3.0) or 3.0))
+            # 🐻 Oct-8 (operator declared override, DECISION_LOG 250): no FRENZY / WIDE / LITE entry on a BEARISH DAY (BTC last closed daily return
+            # < 0 ∧ BTC 5m trend gap < 0 — the DECISION_LOG 239 definition). Judged LAST (after slots, pair-day cap, market volume, choppy /
+            # hold-green, lateness and dislocation) so a counted block is a trade that would otherwise have reached open_position (the scout's
+            # FRENZY_BEARISH_BLOCKED revert cohort is not padded). PARITY: the two values are the ones this fill would be stamped with —
+            # entry_btc_1d_ret_pct = the last closed UTC DAILY candle's return (zone stamp, refreshed per scan), used ONLY while the zone stamps
+            # are on and ≤ 30 min old — on BOTH paths (_ef's value or open_position's fallback): a stale / switched-off reading is dropped from
+            # _ef too, so the fill is stamped None and the gate reads UNREAD (a frozen negative value can never block indefinitely);
+            # entry_btc_trend_gap_pct = the global the Order constructor reads (refreshed once per scan; the stamp is read a
+            # moment later inside open_position — a scan landing in between can move it, documented). Undecidable (a leg unreadable while the
+            # other is < 0 or unreadable) → FAIL-OPEN: the entry proceeds, FRENZY_BEARISH_UNREAD counted + logged once per bar.
+            _zfresh = (bool(getattr(config.trading_config, 'entry_zone_stamps_enabled', True))
+                       and (_leash_time.time() - (_g.get('_zone_stamps_at') or 0)) <= 1800)
+            if not _zfresh:
+                _ef.pop('entry_btc_1d_ret_pct', None)
+            _b1d = _ef.get('entry_btc_1d_ret_pct') if _zfresh else None
+            if _b1d is None and _zfresh:
+                _b1d = _g.get('_current_btc_1d_ret_pct')
+            _btg = _g.get('_current_btc_trend_gap_pct')
+            _bb = frenzy_bearish_block(_b1d, _btg, th)
+            _bfmt = lambda v: ("unreadable" if v is None else f"{float(v):+.2f}%".replace('-', '−'))
+            if _bb == "BEARISH_DAY":
+                self._record_filter_block(f"{_bk}_BEARISH_DAY", "LONG")
+                _btxt = f"bearish day (BTC day {_bfmt(_b1d)}, trend gap {_bfmt(_btg)})"   # the last closed UTC daily candle, not a rolling 24 h
+                flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} {_tg}refused: {_btxt}"
+                logger.info(f"[{_es}] {pair}: {_sig} but {_btxt} — skipped ({_bk}_BEARISH_DAY; btc_1d_ret_pct={_b1d} btc_trend_gap_pct={_btg})")
+                return
+            if _bb == "BEARISH_UNREAD":
+                _ub = int(catchup_now) if _cu else int(bar_open)
+                if getattr(self, '_fz_bearish_unread_bar', None) != _ub:   # once per bar (the pass's bar), whatever the number of pairs / sleeves
+                    self._fz_bearish_unread_bar = _ub
+                    self._record_filter_block("FRENZY_BEARISH_UNREAD", "LONG")
+                    logger.warning(f"[{_es}] {pair}: bearish-day gate UNREAD (btc_1d_ret_pct={_b1d} btc_trend_gap_pct={_btg} · zone stamps "
+                                   f"{'fresh' if _zfresh else 'stale / off'}) — fail-open, entries proceed (logged once per bar)")
             _pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if (indicators and indicators.get('avg_volume')) else None
             logger.warning(f"[{_es}] {pair}: {_sig} {flag.get('hours') or 0:.1f} h after the spike ({flag.get('vs_vwap_pct') or 0:+.1f}% vs its average "
                            f"price, volume {flag.get('vol_mult') or 0:.0f}× normal, ATR {('%.2f%%' % atr) if atr is not None else 'unreadable'}) → opening")
@@ -14681,7 +14714,9 @@ class TradingEngine:
             logger.debug(f'[BTC_1H_SLOPE] fetch/compute failed: {_e}')
         # 🧭 Sep-29 ZONE STAMPS (DECISION_LOG 127): three observe-only readings per scan — BTC 5m EMA50/EMA100 gap, ETH last
         # closed 5m bar return, BTC last closed daily return. Each fetch fails independently to None (never a stale value);
-        # nothing on the trading path reads them. Kill switch: entry_zone_stamps_enabled.
+        # nothing on the trading path reads the first two. ⚠ Oct-8 (DECISION_LOG 250): the BTC daily return FEEDS the FRENZY bearish-day gate
+        # (_frenzy_open, frenzy_bearish_day_block) — switching entry_zone_stamps_enabled off (or a stale reading > 30 min) makes that gate
+        # UNREAD = fail-open (no bearish block). Kill switch: entry_zone_stamps_enabled.
         global _current_btc_ema50_100_gap_pct, _current_eth_5m_ret1_pct, _current_btc_1d_ret_pct, _zone_stamps_at
         if bool(getattr(config.trading_config, 'entry_zone_stamps_enabled', True)):
             try:   # one round-trip for the three (deep review): each result is fail-isolated → None, never a stale value

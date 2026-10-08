@@ -267,6 +267,37 @@ def frenzy_gvol_block(gv, th) -> Optional[str]:
         return "GVOL_UNREAD"
 
 
+def _finite_or_none(v) -> Optional[float]:
+    import math
+    try:
+        x = float(v)
+        return x if math.isfinite(x) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def frenzy_bearish_day(btc_1d_ret_pct, btc_trend_gap_pct) -> Optional[bool]:
+    """🐻 Oct-8 (DECISION_LOG 250; definition frozen at its registration, DECISION_LOG 239): a BEARISH DAY = BTC's last closed daily return
+    < 0 ∧ BTC's 5m trend gap (EMA13 − EMA50, %) < 0 — the two values the fill would be stamped with (entry_btc_1d_ret_pct /
+    entry_btc_trend_gap_pct). Three-valued: True (both legs < 0) · False (a READABLE leg is ≥ 0 — decided whatever the other says) · None
+    (not decidable: a leg unreadable / NaN / ±inf and every readable leg < 0)."""
+    r, g = _finite_or_none(btc_1d_ret_pct), _finite_or_none(btc_trend_gap_pct)
+    if (r is not None and r >= 0) or (g is not None and g >= 0):
+        return False
+    if r is None or g is None:
+        return None
+    return True
+
+
+def frenzy_bearish_block(btc_1d_ret_pct, btc_trend_gap_pct, th) -> Optional[str]:
+    """🐻 The frenzy_bearish_day_block gate as a pure rule (FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE): None = pass · "BEARISH_DAY" (refuse)
+    · "BEARISH_UNREAD" (not decidable → FAIL-OPEN: the entry proceeds; the caller counts it). Gate off → None."""
+    if not bool(getattr(th, 'frenzy_bearish_day_block', False)):
+        return None
+    b = frenzy_bearish_day(btc_1d_ret_pct, btc_trend_gap_pct)
+    return "BEARISH_DAY" if b is True else ("BEARISH_UNREAD" if b is None else None)
+
+
 # ── 🔥🪶 Oct-7 FRENZY_LITE (DECISION_LOG 243 — operator ARMED as a DECLARED EXCEPTION below the locked gates) ──────────────────────────
 # FRENZY without the ≥ frenzy_state_vol_mult setup volume, limited to the first frenzy_lite_max_hours of the episode: a verified, flagged
 # episode whose price has closed at / above the spike VWAP for ≥ frenzy_lite_min_above_closes 5m closes in a row while the last-hour

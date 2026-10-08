@@ -5965,3 +5965,18 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   FRENZY "buy every new flag" — X study (91 % reach +1 % but every X/stop negative), flag-trade math (5,376 rules, none OOS; quick TP +0.3 no
   stop 90 % WR −0.10 %/trade), seconds-delay study (1,680 cells × flag / ON, none) → no mechanical flag rule; only a new data source (order
   book) could change it.
+- (250) 2026-10-08 🔥 **FRENZY: bearish-day block ARMED (FRENZY_LONG / WIDE / LITE) · ATR cap 2.5 → 3.0 · exit back to fixed +3 / −3** —
+  operator declared overrides after B18 (FRENZY_LONG 0/3, −$570; all live FRENZY 19 fills: bearish-day 8 · 2 won · −1.76 % · −$583 vs
+  other 11 · −0.10 %). ① Bearish day = BTC last closed UTC daily candle return < 0 ∧ BTC EMA13−EMA50 trend gap < 0 (the stamped values;
+  stale > 30 min / zone stamps off → fail-open + UNREAD). Year evidence (engine cohort, FRENZY + WIDE, live gates): blocking bearish days
+  book $10,254 → $11,055, max DD −48 % → −28 %, both halves improve; the blocked cohort itself ≈ 0 (+0.03 / −0.08 %, CI spans 0) — the gain
+  is avoiding break-even trades + freed slots, hence a declared override. Variants tested: trend-gap-only blocks winners (+0.22 %), 1d-only
+  and either-leg worse → BOTH legs. LITE year: bearish 215 · −0.01 % vs other 509 · +0.24 %. ② ATR 3.0 against the ATR-cap study (keep
+  2.5: 2.5–3 band −0.33 %/fill, OOS fails both ways; with the bearish block 3.0 → $10,000 / −38 % vs 2.5 → $11,055 / −28 %). ③ Fixed +3:
+  B18 lock vs fixed on the 8 FRENZY fills −3.3 % vs ≈ 0 % (lock banked +2 on three +3.06–3.49 peaks); year lock +0.23 vs fixed +0.19
+  (lock's edge = ~5 runners/yr). Master STACK 2026-10-08a: FRENZY fills priced at fixed +3 (peak ≥ 3 → +3; SAND 10-04 verified on ticks:
+  +3 at 05:26 before the −3 at 07:20), era-aware WIDE hold-green ATR cap (2.5 before FRENZY_ATR30_FROM 2026-10-09 00:00 UTC, 3.0 after —
+  pin to the real deploy at the next archive), bearish stack block (no master row affected; B18 rows will be at archive): 406 kept ·
+  $8,032.80 → $8,149.24. Scout: BEARISH_BLOCKED tracker (blocked signals priced as if opened, verdict frozen at the first 15 on ≥ 8 days),
+  revert rows ATR_RAISE / TP3_VS_LOCK / BEARISH_BLOCKED, 205 superseded, era notes on the straddling trackers; deploy detection = this
+  commit + 10 min (fallback: now). Dual review: ship-with-fixes (both), all applied. Tests tests/test_frenzy_bearish_day.py + master tests.

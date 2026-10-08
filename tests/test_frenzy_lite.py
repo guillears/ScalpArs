@@ -416,6 +416,7 @@ def test_frenzy_open_lite_path(monkeypatch):
     import services.trading_engine as TE
     th = C.trading_config.thresholds
     monkeypatch.setattr(TE, "FRENZY_ENTRY_MAX_LATE_S", 10**6)
+    monkeypatch.setattr(TE, "_current_btc_trend_gap_pct", 0.10)   # 🐻 (250) a non-bearish day: the bearish gate passes (its own tests: test_frenzy_bearish_day.py)
     bar_open = int(time.time() // 300) * 300_000
     now = dt.datetime.utcnow()
 

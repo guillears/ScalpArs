@@ -1286,7 +1286,13 @@ class SignalThresholds(BaseModel):
     # (scripts/frenzy_atr_cap_test.py): ≤ 2 % 591 trades +0.20 %/trade (+0.35 / +0.02) · ≤ 2.5 % 1,103 · +0.16 (+0.21 / +0.12) ·
     # ≤ 3 % 1,517 · +0.06 · no limit −0.01. The 2–2.5 % band is positive on both sets (+0.06 / +0.19); 2.5–3 % loses on both.
     # Chosen on the same data → optimistic. 0 = no ATR gate.
-    frenzy_max_atr_pct: float = 2.5              # entry only when 5m ATR(14) ≤ this % (the 3 % stop ≥ 1.2 ATR)
+    # Oct-8 (operator DECLARED OVERRIDE, DECISION_LOG 250): trading_config.json runs 3.0 (this code default stays 2.5) AGAINST the recommendation of
+    # reports/FRENZY_ATR_CAP_STUDY_2026-10-08.md (keep 2.5): with bearish days blocked (frenzy_bearish_day_block) the study's year book at 3.0 was
+    # $10,000 / max DD −38 % vs $11,055 / −28 % at 2.5. Consumers: FRENZY_LONG's ATR gate (frenzy_long_status) and so WIDE's cohort (WIDE takes
+    # FRENZY's ATR / green refusals; its hold-green leg admits green setups with ATR ≤ this, FRENZY_WIDE_ATR_HIGH above it); the monitor / config
+    # report lines; the scout's WIDE_BY_CODE classification (era-aware since Oct-8). NOT the frozen scout constants (LITE_ATR_CAP 2.5, GC V2's
+    # "ATR ≤ 2.5 implied") — those stay at their registration value by design. FRENZY_LITE has no ATR filter.
+    frenzy_max_atr_pct: float = 2.5             # entry only when 5m ATR(14) ≤ this % (the 3 % stop ≥ 1.2 ATR)
     # Oct-2 (DECISION_LOG 180, operator "arm it"): the long opens only when its signal bar closed at or below its open. Deep dive of
     # 46 entry features on 1,103 trades (scripts/frenzy_long_separators.py) — the ONE separator that repeats: after a red / flat bar
     # 517 trades · 45 % won · +0.47 %/trade (+0.46 / +0.49) · by day [+0.15, +0.82]; after a green bar 586 · 38 % · −0.11. Holds out of
@@ -1310,6 +1316,8 @@ class SignalThresholds(BaseModel):
     # +3/−3 +0.192 (Δ +0.042, day-CI −0.05…+0.15, 5 of 9 months); trail 1 −0.035 · 1.5 +0.007 · 2.5 +0.016 · 3 −0.010; lock +2.5 −0.007;
     # ATR trails no better. Without its 5 best trades Δ −0.011 → the gain is ~5 giant runners a year (RLC +17.9 % Oct-5): declared
     # operator override. 🔒 REVERT: first 20 FRENZY + WIDE fills re-priced on ticks with fixed +3/−3 — +3/−3 averages better → lock_arm 0.
+    # Oct-8 (operator, DECISION_LOG 250): trading_config.json lock_arm 3 → 0 — FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE and the manual "FRENZY"
+    # exit are back on the FIXED +frenzy_tp_pct (3.0) take profit / −frenzy_stop_pct stop. The 205 revert gate above is moot (scout trackers keep running).
     frenzy_lock_arm_pct: float = 0.0
     frenzy_lock_floor_pct: float = 2.0
     frenzy_lock_trail_pct: float = 2.0
@@ -1379,6 +1387,18 @@ class SignalThresholds(BaseModel):
     # FAILS the 95 % expectancy bar (blocked-side day CI [−0.49, +0.15]) → declared override. Unreadable = no entry. 0 = off.
     # 🔒 REVERT: first 20 FRENZY + WIDE fills opened under it average < 0 % → set 0.
     frenzy_gvol_max: float = 0.0
+    # 🐻 Oct-8 BEARISH-DAY BLOCK (operator DECLARED OVERRIDE, DECISION_LOG 250; definition frozen at the DECISION_LOG 239 observe line): FRENZY_LONG
+    # (fresh ON and catch-up), FRENZY_WIDE and FRENZY_LITE do not open while BTC's last closed daily return < 0 ∧ BTC's 5m trend gap (EMA13 −
+    # EMA50) < 0 — EXACTLY the values the fill would be stamped with (entry_btc_1d_ret_pct / entry_btc_trend_gap_pct; services.frenzy.
+    # frenzy_bearish_block, judged in _frenzy_open after every other gate, so a counted block is a trade that would otherwise have opened). LITE:
+    # a refusal AFTER the stretch is judged (no retry — like any LITE refusal). Counters FRENZY_BEARISH_DAY / FRENZY_WIDE_BEARISH_DAY /
+    # FRENZY_LITE_BEARISH_DAY. A leg unreadable (and the other not already ≥ 0) → FAIL-OPEN (the entry proceeds; FRENZY_BEARISH_UNREAD counted once
+    # per bar + logged): a stamp outage must not silently switch the sleeves off. Evidence: year engine cohort FRENZY + WIDE, bearish days
+    # blocked at the 2.5 ATR cap → book $10,254 → $11,055, max DD −48 % → −28 %, both halves improve; FRENZY_REGIME_REVIEW bearish 59 · −0.06 %
+    # vs other +0.53 %; LITE year 215 · −0.01 % vs 509 · +0.24 %; live Oct 3–8: 8 bearish fills, 2 won, −1.76 %/fill (−$583) vs 11 other −0.10 %.
+    # Gap CI spans 0 → below the locked expectancy bar = declared override. 🔒 REVERT (scout FRENZY_BEARISH_BLOCKED): at ≥ 15 counted blocked
+    # signals on ≥ 8 days priced as if opened (fixed +3 / −3), blocked mean > 0 → turn this off. False = off.
+    frenzy_bearish_day_block: bool = False
     # ⏪ Oct-6 FRENZY CATCH-UP (operator-approved build): FRENZY_LONG / FRENZY_WIDE get ONE chance per setup — the 5m bar it turns ON. When that
     # bar closed while no pass judged (bot paused, restarting after a deploy, an outage) the pair showed "ON (entry bar passed)" forever. Live case:
     # NMRUSDT 2026-10-06, fresh bar closed 13:40 UTC (streak 25, 2.0 h, vol 343×, ATR 2.1 %) while the bot was paused 13:25→13:53. NOTE (deep

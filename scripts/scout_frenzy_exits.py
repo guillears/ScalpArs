@@ -137,6 +137,16 @@ TRACKER 13 — LITE_GVOL24_LOW (2026-10-07, operator-approved observe line; repo
   Own write-once store reports/SCOUT_FRENZY_LITE_GVOL24.csv; public klines ≤ 60 s per run, stop on 418 / 429, unreadable → ≤ 3 runs.
   FROZEN bars: REVIEW (propose arming as a sleeve on/off switch — operator decision) when LOW ≥ 30 fills on ≥ 15 days ∧ LOW avg ≤ HIGH avg
   − 0.4 ∧ the LOW − HIGH day-block 95 % CI upper < 0; RETIRE when ≥ 30 LOW fills ∧ LOW − HIGH ≥ 0. Never changes trading.
+TRACKER 14 — FRENZY_BEARISH_BLOCKED (2026-10-08, DECISION_LOG 250 — the bearish-day block's REVERT gate). The DECISION_LOG 239 "bearish day"
+  OBSERVE line is now ARMED (frenzy_bearish_day_block, operator declared override) — this tracker replaces its promote / retire tally. Every journal
+  FRENZY_BEARISH_DAY / FRENZY_WIDE_BEARISH_DAY / FRENZY_LITE_BEARISH_DAY refusal from the Oct-8 deploy (push + 10 min, oct8_ms) priced AS IF
+  OPENED, and every FRENZY / WIDE / LITE fill since (the KEPT side) on the same ruler: first print ≥ the signal close + 8 s, the live fixed +3 / −3,
+  0.09 % fees + 0.10 % slippage, 12 h; ticks once out, else 1m provisional. One per pair-episode, DAY units; blocking-reason tally per sleeve +
+  the UNREAD (fail-open) count. FROZEN bar (shared decide_bearish_blocked in scripts/scout_revert_gates.py, also a row of the revert-gate table):
+  ≥ 15 counted signals on ≥ 8 days → blocked mean > 0 → "REVERT (operator decision): turn frenzy_bearish_day_block off"; ≤ 0 → holds.
+  Rows: reports/SCOUT_FRENZY_BEARISH_BLOCKED.csv. Oct-8 notes: the exit is back on the fixed +3 (frenzy_lock_arm_pct 0) — the lock columns
+  (LOCK2 …) and the lock-priced trackers above keep running as shadows (moot for 205; TP3_VS_LOCK in scout_revert_gates is the live mirror);
+  WIDE_BY_CODE reads each fill with the ATR cap IN FORCE when it opened (2.5 before the raise, frenzy_max_atr_pct = 3.0 after; wide_cap_at).
 Rows are stored in reports/SCOUT_FRENZY_EXITS.csv (keyed opened_at + pair) so fills survive their export leaving ~/Downloads; a row is FINAL
 once its 12 h (and the re-entry's) have passed. 1m bars are coarser than the year studies' ticks (stated on the table).
 """
@@ -179,6 +189,8 @@ GC_SCAN_FROM = "2026-10-03T00:00:00"   # journal lines kept / priced from here; 
 # Pre-registered bars: reports/FRENZY_GREEN_AND_WIDE_ATR_FORMAL_2026-10-06.md, end of Study B ("Pre-registered promotion bars", frozen,
 # never re-fit). Shadow pricing there: live lock exit, 12 s entry, 0.10 slippage.
 GC_STREAK = 12                                         # V2 = GREEN_BAR ∧ above_streak > 12 (∧ ATR ≤ 2.5, implied by the GREEN_BAR code)
+GC_ATR_FROZEN = 2.5                                    # ⬆ Oct-8 (250): the cap that made "implied" true at registration — with frenzy_max_atr_pct 3.0 a GREEN_BAR
+#   replay no longer implies ATR ≤ 2.5, so V2 now checks it explicitly (frozen; never follows the config)
 V2_N, V2_DAYS, V2_MEAN, V2_WR, V2_PAIR = 30, 15, 0.30, 55.0, 25.0   # FORMAL bar 1: N ≥ 30 on ≥ 15 days · mean ≥ +0.30 · WR ≥ 55 % · no pair > 25 % of the net
 V2_HAIRCUT, V2_HAIRCUT_MIN, V2_REVERT_N = 0.50, 0.15, 20            # … mean after a 50 % haircut ≥ +0.15 · promote at 0.32, no strong 0.5 · revert if the first 20 average < 0
 W_ATR, W_N, W_WR, W_MEAN, W_PAIR, W_REVERT_N = 1.5, 30, 70.0, 0.50, 25.0, 15   # FORMAL bar 2 (Pattern-W): V2 ∧ ATR ≤ 1.5 · N ≥ 30 · WR ≥ 70 % · mean ≥ +0.50 · CI low > 0 · no pair > 25 % · revert if the first 15 average < 0
@@ -250,6 +262,43 @@ def wide_code(atr, bar_ret, cap):
     except (TypeError, ValueError):
         return None
     return "BOTH" if (hi and green) else "ATR_HIGH" if hi else "GREEN_BAR" if green else "NONE"
+
+
+ATR_CAP_PRE_OCT8 = 2.5   # frenzy_max_atr_pct from DECISION_LOG 179 (Oct-2) until the Oct-8 raise (DECISION_LOG 250) — WIDE_BY_CODE reads fills by era
+
+
+def oct8_ms():
+    """the Oct-8 deploy (bearish-day block + ATR 3.0 + fixed TP; DECISION_LOG 250) = push + 10 min, from scout_revert_gates.deploy_ms (git), else
+    the pinned fallback. One source for every Oct-8 tracker floor (memoised per process)."""
+    if _OCT8:
+        return _OCT8[0]
+    _OCT8.append(_oct8_ms())
+    return _OCT8[0]
+
+
+_OCT8 = []
+
+
+def _oct8_ms():
+    try:
+        sd = os.path.join(ROOT, "scripts")
+        if sd not in sys.path:
+            sys.path.insert(0, sd)
+        import scout_revert_gates as _RG
+        return int(_RG.deploy_ms("FRENZY_OCT8"))
+    except Exception:
+        return int(time.time() * 1000)   # scout_revert_gates unavailable → NOW (never count a pre-deploy row; same rule as its deploy_ms fallback)
+
+
+def wide_cap_at(t_ms, th, deploy_ms=None):
+    """⬆ (250) the FRENZY ATR cap that judged a fill opened at t_ms: 2.5 before the Oct-8 raise, the live config value from it."""
+    d = oct8_ms() if deploy_ms is None else deploy_ms
+    return ATR_CAP_PRE_OCT8 if int(t_ms) < int(d) else float(getattr(th, "frenzy_max_atr_pct", 2.5) or 0)
+
+
+def gc_replay_th(sig_ms, th, deploy_ms=None):
+    """⬆ (250) the thresholds a GREEN_CLOCK parity replay runs with: the live ones with frenzy_max_atr_pct = the cap in force at sig_ms."""
+    return SimpleNamespace(**{**vars(th), "frenzy_max_atr_pct": wide_cap_at(sig_ms, th, deploy_ms)})
 
 
 def gc_entry(tt, pp, sig):
@@ -336,7 +385,7 @@ def _kl(sym, tf, start, end):
     return [out[k] for k in sorted(out)]
 
 
-def _fills():
+def _fills(strategies=("FRENZY_LONG", "FRENZY_WIDE")):
     fr = []
     cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "entry_price", "pnl_percentage", "entry_atr_pct", "entry_frenzy_vs_vwap_pct",
             "entry_frenzy_above_share", "entry_frenzy_bar_ret_pct", "closed_at", "close_reason", "entry_frenzy_vwap", "entry_frenzy_spike_at",
@@ -353,7 +402,7 @@ def _fills():
     o = pd.concat(fr, ignore_index=True).sort_values("_m", kind="stable").reindex(columns=list(cols) + ["_m"])   # an export missing a column never breaks the section
     o["k"] = o.opened_at.astype(str).str[:19]
     o = o.drop_duplicates(["k", "pair", "direction"], keep="last")
-    o = o[o.entry_strategy.astype(str).isin(["FRENZY_LONG", "FRENZY_WIDE"]) & (o.direction.astype(str) == "LONG")]
+    o = o[o.entry_strategy.astype(str).isin(list(strategies)) & (o.direction.astype(str) == "LONG")]
     return o
 
 
@@ -566,7 +615,7 @@ def _price(r, th, now_ms, first, J=None):
     out["code"] = out["code_src"] = out["code_kl"] = out["code_jr"] = None
     out["bar_ret"] = float(r.entry_frenzy_bar_ret_pct) if pd.notna(getattr(r, "entry_frenzy_bar_ret_pct", None)) else None
     if out["sleeve"] == "WIDE":
-        cap = float(getattr(th, "frenzy_max_atr_pct", 2.5) or 0)
+        cap = wide_cap_at(t_in, th)   # ⬆ Oct-8 (250): the cap IN FORCE when the fill opened (2.5 before the raise) — never re-labels old fills
         sig = (t_in // BAR) * BAR - BAR                    # the signal bar = the last bar closed by the entry
         ks = [i for i, b in enumerate(b5raw) if b[0] == sig]
         kl_ret = kl_atr = None
@@ -947,7 +996,10 @@ def _gc_price(sig, sym, th, now_ms, budget, J, F):
     nh = normal_hour_usd(_kl(sym, "1h", sig - 744 * H, sig), closed[-1][0])
     ep = frenzy_walk(closed, nh, th) if nh else None
     atr = wilder_atr_pct(closed[-300:])
-    code = (frenzy_long_status(ep, atr, 1e30, th)[1] if frenzy_flagged(ep, th) else "NOT_FLAGGED") if ep else "NO_EPISODE"   # 24 h volume: the journal line proves it passed
+    # ⬆ Oct-8 (250, review): the parity replay uses the ATR cap IN FORCE at the signal (2.5 before the raise, the live 3.0 after — gc_replay_th),
+    # so a pre-raise line never replays under the new cap; the V2 cohort itself stays frozen at ATR ≤ GC_ATR_FROZEN in every era (no era mixing)
+    th_r = gc_replay_th(sig, th)
+    code = (frenzy_long_status(ep, atr, 1e30, th_r)[1] if frenzy_flagged(ep, th_r) else "NOT_FLAGGED") if ep else "NO_EPISODE"   # 24 h volume: the journal line proves it passed
     di, ad = frenzy_di_spread(closed[-300:]), frenzy_adx_delta(closed[-300:])
     strong = bool(di is not None and ad is not None and ad > 0 and di > 0)
     js = J[(J.pair == sym) & (J.t >= k) & (J.t < k2)] if J is not None and len(J) else pd.DataFrame(columns=["t", "e", "pair", "gate", "strategy"])
@@ -964,7 +1016,7 @@ def _gc_price(sig, sym, th, now_ms, budget, J, F):
     e, t_e, pnl, x_ms, how, px, st, final = _lock_shadow(sym, sig, now_ms, budget)
     return dict(k=k, pair=sym, day=k[:10], cohort=k >= GC_FROM, ver=GC_VER,
                 spike_at=(_iso(ep["spike_ts"]) if ep else None), hours=(round(ep["hours"], 2) if ep else None),
-                above_streak=(int(ep["above_streak"]) if ep else None), v2=bool(ep and int(ep["above_streak"]) > GC_STREAK),
+                above_streak=(int(ep["above_streak"]) if ep else None), v2=bool(ep and int(ep["above_streak"]) > GC_STREAK and atr is not None and atr <= GC_ATR_FROZEN),
                 above_share=(round(ep["above_share"], 1) if ep and ep.get("above_share") is not None else None),
                 vs_vwap=(round(ep["vs_vwap_pct"], 3) if ep and ep.get("vs_vwap_pct") is not None else None),
                 vol_mult=(round(ep["vol_mult"], 1) if ep and ep.get("vol_mult") is not None else None),
@@ -3248,12 +3300,287 @@ def lite_gv24_run(now_ms=None):
     return L + [""]
 
 
+# ─────────────────────────── 🐻 tracker 14 (FRENZY_BEARISH_BLOCKED) — 2026-10-08, the bearish-day block's revert gate ───────────────────────────
+# DECISION_LOG 250 (operator declared override; definition frozen at DECISION_LOG 239): FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE refuse while BTC's
+# last closed daily return < 0 ∧ BTC's 5m trend gap < 0 (counters FRENZY_BEARISH_DAY / FRENZY_WIDE_BEARISH_DAY / FRENZY_LITE_BEARISH_DAY, judged
+# LAST in _frenzy_open, so a refusal line = a trade that would otherwise have reached open_position). Every such journal refusal from the Oct-8
+# deploy is priced AS IF OPENED and the fills the block let through (the KEPT side) on the SAME ruler: entry = the first trade print ≥ the
+# signal bar's close + 8 s (the live FRENZY latency), the live exit now = fixed +3 / −3 net (frenzy_tp_pct 3, lock off), 0.09 % fees + 0.10 %
+# slippage, 12 h cap; ticks once the archive is out, else 1m bars (low before high, PROVISIONAL). One per pair-EPISODE (spikes ≤ 30 min apart
+# merged; the replay's spike for refusals, the fill's stamp for kept fills); DAY units (a market-wide switch: many refusals of one day = one
+# regime). FROZEN bar (scout_revert_gates.decide_bearish_blocked — one source): ≥ 15 counted blocked signals on ≥ 8 days → blocked mean > 0 →
+# "REVERT (operator decision): turn frenzy_bearish_day_block off"; ≤ 0 → holds. Never changes config.
+BB_CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_BEARISH_BLOCKED.csv")
+BB_VER = 1
+BB_GATES = {"FRENZY_BEARISH_DAY": "LONG", "FRENZY_WIDE_BEARISH_DAY": "WIDE", "FRENZY_LITE_BEARISH_DAY": "LITE"}
+BB_UNREAD = "FRENZY_BEARISH_UNREAD"
+BB_LAG_MS, BB_TP, BB_SL = 8_000, 3.0, 3.0
+BB_N_FB, BB_DAYS_FB = 15, 8          # mirrors scout_revert_gates.BB_N / BB_DAYS (used only if that module cannot be imported)
+BB_SLEEVE = {"FRENZY_LONG": "LONG", "FRENZY_WIDE": "WIDE", "FRENZY_LITE": "LITE"}
+
+
+def walk_ticks_fix(tt, pp, e, t0, tp=BB_TP, sl=BB_SL, slip=0.0):
+    """🐻 the live fixed exit on trade prints from t0: the first print whose net P&L (fees in) is ≥ +tp or ≤ −sl closes AT that print (the bot
+    closes at the price it sees); else the last print before 12 h of clock time. slip charged once on the result. → (pnl, exit_ms, how)."""
+    tt = np.asarray(tt, dtype=np.int64); pp = np.asarray(pp, dtype=float)
+    m = tt >= int(t0)
+    tt, pp = tt[m], pp[m]
+    if not len(pp) or not e:
+        return None, None, "no data"
+    net = (pp / float(e) - 1) * 100 - FEE
+    t_end = int(t0) + CAP_MIN * MIN
+    inc = tt < t_end
+    hit = np.flatnonzero(((net >= tp) | (net <= -sl)) & inc)
+    if len(hit):
+        i = int(hit[0])
+        return float(net[i]) - slip, int(tt[i]), ("take profit" if net[i] >= tp else "stop")
+    if not inc.all():
+        j = int(np.flatnonzero(inc)[-1]) if inc.any() else 0
+        return float(net[j]) - slip, t_end, "12 h cap"
+    return float(net[-1]) - slip, int(tt[-1]), "open"
+
+
+def _fix_shadow(sym, sig, now_ms, budget):
+    """a hypothetical (or kept) FRENZY entry on the signal bar closing at sig ms, priced with the fixed +3 / −3: the first print ≥ the close + 8 s,
+    0.09 fees + 0.10 slip, 12 h — ticks once the archive is out, else the open of the signal-close minute on 1m bars (PROVISIONAL; final on 1m
+    only when the ticks never come). → (e, t_e, pnl, x_ms, how, px_src, tick_state, final). Raises on no 1m data."""
+    t_in0 = sig + BB_LAG_MS
+    horizon = t_in0 + CAP_MIN * MIN
+    last_day_end = (horizon // 86_400_000 + 1) * 86_400_000
+    giveup = now_ms > last_day_end + TICK_GIVEUP_D * 86_400_000
+    px = None; st = "pending"; final = False; e = pnl = x_ms = how = None; t_e = None
+    if now_ms >= horizon:
+        st, tt, pp = _ticks(sym, sig, horizon + 2 * MIN, now_ms, budget)
+        if st == "ok":
+            tt_ = np.asarray(tt, dtype=np.int64)
+            i = int(np.searchsorted(tt_, int(t_in0), side="left"))
+            if i < len(tt_):
+                e, t_e = float(np.asarray(pp)[i]), int(tt_[i])
+                pnl, x_ms, how = walk_ticks_fix(tt, pp, e, t_e, slip=SLIP); px = "tick"; final = True
+            else:
+                st = "empty"
+    if px is None:
+        m1 = [b for b in _kl(sym, "1m", sig, min(now_ms, horizon + MIN)) if b[0] + MIN <= now_ms]
+        if not m1 or m1[0][0] != sig:
+            raise ValueError("1m klines unavailable")
+        e = float(m1[0][1]); t_e = sig; pnl, x_ms, how = walk(m1, e, "FIX3"); px = "1m"
+        pnl = pnl - SLIP if pnl is not None else None
+        final = bool(now_ms >= horizon and (st == "missing" or (st == "empty" and giveup)))
+    return e, t_e, pnl, x_ms, how, px, st, final
+
+
+def _bb_spike(sym, sig, th):
+    """the refusal's spike episode from the engine's own walk on the 1,499 closed 5m bars before the signal close → (spike iso | None, hours)."""
+    closed = [b for b in _kl(sym, "5m", sig - 1499 * BAR, sig - 1) if b[0] + BAR <= sig]
+    if len(closed) < 300 or closed[-1][0] != sig - BAR:
+        raise ValueError("5m window missing")
+    nh = normal_hour_usd(_kl(sym, "1h", sig - 744 * H, sig), closed[-1][0])
+    ep = frenzy_walk(closed, nh, th) if nh else None
+    return (_iso(ep["spike_ts"]) if ep else None), (round(ep["hours"], 2) if ep else None)
+
+
+def _bb_price_blocked(t, sym, gate, th, now_ms, budget, d0):
+    sig = _ms(t) // BAR * BAR                 # the journal second → the bar close it judged (a catch-up refusal → the pass's bar = its entry time)
+    k = _iso(sig)
+    sp, hrs = _bb_spike(sym, sig, th)
+    e, t_e, pnl, x_ms, how, px, st, final = _fix_shadow(sym, sig, now_ms, budget)
+    return dict(k=k, pair=sym, day=k[:10], kind="BLOCKED", sleeve=BB_GATES[gate], gate=gate, cohort=sig >= d0, ver=BB_VER, spike_at=sp, hours=hrs,
+                fill_k=None, actual=None, entry=e, entry_at=(_iso(t_e) if t_e else None), px_src=px, tick_state=st, PNL=pnl, exit_how=how,
+                exit_at=(_iso(x_ms) if x_ms else None), final=final)
+
+
+def _bb_price_kept(fk, sym, sleeve, spike, actual, now_ms, budget, d0):
+    sig = _ms(fk) // BAR * BAR
+    k = _iso(sig)
+    e, t_e, pnl, x_ms, how, px, st, final = _fix_shadow(sym, sig, now_ms, budget)
+    return dict(k=k, pair=sym, day=k[:10], kind="KEPT", sleeve=sleeve, gate="KEPT", cohort=_ms(fk) >= d0, ver=BB_VER, spike_at=spike, hours=None,
+                fill_k=str(fk)[:19], actual=actual, entry=e, entry_at=(_iso(t_e) if t_e else None), px_src=px, tick_state=st, PNL=pnl, exit_how=how,
+                exit_at=(_iso(x_ms) if x_ms else None), final=final)
+
+
+def bb_masks(df):
+    """→ (counted, kept_counted, episode): the FIRST row (by time) of each pair-episode among cohort BLOCKED rows / cohort KEPT rows. A row
+    without a spike keys on itself (never merged with another)."""
+    T = lambda c: df[c].astype(str).isin(_TRUE) if c in df else pd.Series(False, index=df.index)
+    ep = episode_keys(df)
+    ep = pd.Series([v if v is not None else f"{p}|{k}|solo" for v, p, k in zip(ep, df.pair, df.k)], index=df.index, dtype=object)
+    out = []
+    for kind in ("BLOCKED", "KEPT"):
+        m = (df.kind.astype(str) == kind) & T("cohort")
+        c = pd.Series(False, index=df.index)
+        if m.any():
+            c.loc[df[m].assign(_ep=ep[m]).sort_values(["k", "pair", "gate"], kind="stable").drop_duplicates("_ep").index] = True
+        out.append(c)
+    return out[0], out[1], ep
+
+
+def bb_tally(J, d0):
+    """the blocking-reason tally from the journal (from the deploy): raw refusal lines per sleeve + the UNREAD (fail-open) bars."""
+    if J is None or not len(J):
+        return {}, 0
+    b = J[J.e == "BLOCK"]
+    b = b[[_ms(t) >= d0 for t in b.t]] if len(b) else b
+    raw = {sl: int((b.gate == g).sum()) for g, sl in BB_GATES.items()}
+    return raw, int((b.gate == BB_UNREAD).sum())
+
+
+def _rg():
+    sd = os.path.join(ROOT, "scripts")
+    if sd not in sys.path:
+        sys.path.insert(0, sd)
+    import scout_revert_gates as _RG
+    return _RG
+
+
+def bb_freeze(df):
+    """🐻 (250, deep review) mark the frozen verdict cohort (column verdict_set): kept as is once any row carries it; else the first crossing
+    (scout_revert_gates.bb_first_crossing over the counted blocked rows in time order) when reached. Never re-frozen."""
+    df = df.copy()
+    T = lambda c: df[c].astype(str).isin(_TRUE) if c in df else pd.Series(False, index=df.index)
+    if T("verdict_set").any():
+        df["verdict_set"] = T("verdict_set")
+        return df
+    df["verdict_set"] = False
+    c = df[T("counted") & (df.kind.astype(str) == "BLOCKED")].sort_values(["k", "pair"], kind="stable")
+    keys = _rg().bb_first_crossing([(ix, d, str(f_) in _TRUE) for ix, d, f_ in zip(c.index, c.day, c.final)])
+    if keys:
+        df.loc[keys, "verdict_set"] = True
+    return df
+
+
+def _bb_decide(x, days, n=None):
+    try:
+        _RG = _rg()
+        return _RG.decide_bearish_blocked(x, days) if n is None else _RG.decide_bearish_blocked(x, days, n=n)
+    except ImportError:
+        v = [(float(a), d) for a, d in zip(x, days) if a is not None and np.isfinite(float(a))]
+        nd = len({d for _, d in v}); m = float(np.mean([a for a, _ in v])) if v else float("nan")
+        return (("fired" if m > 0 else "holds") if len(v) >= BB_N_FB and nd >= BB_DAYS_FB else "collecting"), len(v), nd, m
+
+
+def bb_run(now_ms, th, J, F3):
+    """price new / provisional bearish-day refusals AND the kept fills (same ruler), store, render the FRENZY_BEARISH_BLOCKED section.
+    F3 = the FRENZY_LONG / WIDE / LITE fills (_fills with LITE). Non-final stored rows re-price from their own fields."""
+    d0 = oct8_ms()
+    old = _load_csv(BB_CSV, ("k", "pair", "gate", "final", "ver", "kind"))
+    done = set()
+    if len(old):
+        done = {(a, b, g) for a, b, g, f_, v in zip(old.k, old.pair, old.gate, old.final, old.ver) if str(f_) in _TRUE and str(v) in (str(BB_VER), f"{BB_VER}.0")}
+    work = {}
+    B = (J[(J.e == "BLOCK") & J.gate.isin(list(BB_GATES))].drop_duplicates(["t", "pair", "gate"]) if J is not None and len(J)
+         else pd.DataFrame(columns=["t", "pair", "gate"]))
+    for r in B.itertuples():
+        work[(_iso(_ms(r.t) // BAR * BAR), r.pair, r.gate)] = ("B", (r.t, r.pair, r.gate))
+    acts = {}
+    if F3 is not None and len(F3):
+        P = F3[F3.entry_strategy.astype(str).isin(list(BB_SLEEVE))]
+        P = P[[_ms(k) >= d0 for k in P.k]] if len(P) else P   # by ms (the export key may use a space, the iso floor a 'T')
+        for r in P.itertuples():
+            try:
+                kk = _iso(_ms(r.k) // BAR * BAR)
+                act = float(r.pnl_percentage) if str(r.status).upper() == "CLOSED" and pd.notna(r.pnl_percentage) else None
+                sp = str(r.entry_frenzy_spike_at)[:19].replace(" ", "T") if pd.notna(getattr(r, "entry_frenzy_spike_at", None)) else None
+                acts[(kk, r.pair)] = act
+                work[(kk, r.pair, "KEPT")] = ("K", (r.k, r.pair, BB_SLEEVE[str(r.entry_strategy)], sp, act))
+            except Exception:
+                continue
+    if len(old):
+        for r in old.itertuples():
+            key = (r.k, r.pair, r.gate)
+            if key in done or key in work:
+                continue
+            work[key] = (("K", (r.fill_k, r.pair, r.sleeve, (r.spike_at if isinstance(r.spike_at, str) else None), _num(r.actual)))
+                         if r.gate == "KEPT" else ("B", (r.k, r.pair, r.gate)))
+    order = sorted(work.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2]), reverse=True)
+    budget = {"dl": X_DL, "deadline": time.monotonic() + X_TIME_S}; rows = []; err = late = 0
+    for key, (kind, a) in order:
+        if key in done:
+            continue
+        if time.monotonic() > budget["deadline"]:
+            late += 1
+            continue
+        try:
+            rows.append(_bb_price_blocked(*a, th, now_ms, budget, d0) if kind == "B" else _bb_price_kept(*a, now_ms, budget, d0))
+        except Exception:
+            err += 1
+    new = pd.DataFrame(rows)
+    allb = pd.concat([old, new], ignore_index=True) if len(new) else old.copy()
+    raw, n_unread = bb_tally(J, d0)
+    L = ["## 🐻 FRENZY_BEARISH_BLOCKED — bearish-day refusals priced as if opened vs the fills the block let through (revert gate, DECISION_LOG 250)", "",
+         "frenzy_bearish_day_block (operator declared override; bearish day = BTC last closed daily return < 0 ∧ BTC 5m trend gap < 0, the DECISION_LOG 239 "
+         "definition, the values the fill would be stamped with). Every journal FRENZY_BEARISH_DAY / FRENZY_WIDE_BEARISH_DAY / FRENZY_LITE_BEARISH_DAY refusal "
+         f"from the deploy ({_iso(d0)[:16]} UTC = push + 10 min) and every FRENZY / WIDE / LITE fill since (KEPT side) priced on ONE ruler: first print ≥ "
+         "the signal close + 8 s, the live fixed +3 / −3, 0.09 % fees + 0.10 % slippage, 12 h; ticks once the archive is out, else 1m (ᵖ provisional). "
+         "One per pair-episode (spikes ≤ 30 min apart merged); DAY units. The gate is judged last, so a refusal = a trade that would otherwise have "
+         "reached the open path (open-path refusals — balance / order book — cannot be replayed).", ""]
+    tl = " · ".join(f"{sl} {raw.get(sl, 0)}" for sl in ("LONG", "WIDE", "LITE"))
+    if not len(allb):
+        return L + [f"Blocking-reason tally (raw refusal lines since the deploy): {tl or '–'} · unread (fail-open) {n_unread}.",
+                    "No bearish-day refusal or kept fill yet.", ""] + ([f"_{err} row(s) not priced this run — retried next run._"] if err else [])
+    allb = allb.drop_duplicates(["k", "pair", "gate"], keep="last").sort_values(["k", "pair", "gate"], kind="stable").reset_index(drop=True)
+    if acts and "actual" in allb:
+        kp_ = allb.gate == "KEPT"
+        na = pd.Series([acts.get((k, p)) for k, p in zip(allb.k, allb.pair)], index=allb.index, dtype=object)
+        allb.loc[kp_ & na.notna(), "actual"] = na[kp_ & na.notna()].astype(float)
+    allb["counted"], allb["kept_counted"], allb["episode"] = bb_masks(allb)
+    allb = bb_freeze(allb)
+    _save_csv(allb, BB_CSV)
+    f = lambda v: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.2f}"
+    S_ = lambda c: allb[c].astype(str).isin(_TRUE)
+    blk = allb[allb.kind == "BLOCKED"]
+    L += ["| Signal UTC | Pair | Sleeve | Spike | +3/−3 % | Exit | Px |", "|---|---|---|---|---|---|---|"]
+    for r in blk.tail(15).itertuples():
+        mk = ("" if str(r.final) in _TRUE else "ᵖ") + ("¹" if str(r.counted) in _TRUE else "") + ("" if str(r.cohort) in _TRUE else " (ref)")
+        L.append(f"| {str(r.k)[5:16].replace('T', ' ')}{mk} | {str(r.pair).replace('USDT', '')} | {r.sleeve} | "
+                 f"{str(r.spike_at)[5:16].replace('T', ' ') if isinstance(r.spike_at, str) else '?'} | {f(r.PNL)} | {r.exit_how} | {r.px_src} |")
+    cnt = allb[S_("counted") & S_("final")].sort_values("k", kind="stable")
+    vs = allb[S_("verdict_set")].sort_values("k", kind="stable")
+    if len(vs):   # decided ONCE on the frozen first-crossing set
+        state, n_, nd, m = _bb_decide(pd.to_numeric(vs.PNL, errors="coerce").tolist(), vs.day.tolist(), n=len(vs))
+    else:
+        _, n_, nd, m = _bb_decide(pd.to_numeric(cnt.PNL, errors="coerce").tolist(), cnt.day.tolist())
+        state = "collecting"
+    kc = allb[S_("kept_counted") & S_("final")]
+    xk = pd.to_numeric(kc.PNL, errors="coerce").dropna(); ak = pd.to_numeric(kc.actual, errors="coerce").dropna()
+    lab = {"fired": "🔔 REVERT (operator decision): turn frenzy_bearish_day_block off", "holds": "✅ holds — the blocked side does not average above 0",
+           "collecting": "⏳ collecting"}
+    L += ["", f"**FRENZY_BEARISH_BLOCKED bar (FROZEN: the verdict cohort is frozen at the FIRST crossing — the shortest all-final prefix of counted "
+              "signals with ≥ 15 on ≥ 8 days (column verdict_set) — and decided once: blocked mean > 0 → revert; ≤ 0 → holds; never re-decided on a growing set):** "
+              + lab.get(state, state) + (" · verdict set frozen" if len(vs) else "") + f" ({n_}/15 signals · {nd}/8 days" + (f" · mean {m:+.2f} %" if n_ else "") + ")"]
+    for sl in ("LONG", "WIDE", "LITE"):
+        g = pd.to_numeric(cnt[cnt.sleeve == sl].PNL, errors="coerce").dropna(); p_ = pd.to_numeric(kc[kc.sleeve == sl].PNL, errors="coerce").dropna()
+        L.append(f"- {sl}: blocked {len(g)}" + (f" · mean {g.mean():+.2f} %" if len(g) else "") + f" · kept {len(p_)}" + (f" · mean {p_.mean():+.2f} %" if len(p_) else ""))
+    L.append(f"- KEPT side (non-bearish fills since the deploy, first per pair-episode, same ruler): {len(xk)}" + (f" · mean {xk.mean():+.2f} %" if len(xk) else "")
+             + (f" · live actual {ak.mean():+.2f} % on {len(ak)} (display only)" if len(ak) else "") + ".")
+    L.append(f"- Blocking-reason tally (raw refusal lines since the deploy, before the pair-episode dedupe): {tl} · bearish gate UNREAD (fail-open, entry "
+             f"proceeded; counted once per bar) {n_unread}.")
+    prov = int((S_("counted") & ~S_("final")).sum())
+    L.append(f"_Rows {len(allb)}: blocked {len(blk)} (counted {int(S_('counted').sum())}, {prov} provisional) · kept {int((allb.kind == 'KEPT').sum())}. "
+             "% are leverage-invariant._")
+    if err:
+        L.append(f"_{err} row(s) not priced this run (klines unavailable) — retried next run._")
+    if late:
+        L.append(f"_{late} row(s) left for the next run (the {X_TIME_S} s time budget was spent)._")
+    return L + [""]
+
+
+ERA_NOTE = "_⚠ Era note (DECISION_LOG 250): from 2026-10-08 the bearish-day block also filters FRENZY / WIDE / LITE entries — read the split at review._"
+
+
+def era_noted(lines):
+    """insert the Oct-8 era note right under a section's heading (cohorts that straddle the bearish-day block)."""
+    lines = list(lines)
+    if lines and lines[0].startswith("#"):
+        return lines[:1] + ["", ERA_NOTE] + lines[1:]
+    return [ERA_NOTE] + lines
+
+
 def _extras(now_ms, th, F, J, allr):
     """trackers 7 – 10 after the exit table, each in its own try/except (one never breaks another or the scout)."""
-    out = _gc_safe(now_ms, th, F, J, allr)
+    out = era_noted(_gc_safe(now_ms, th, F, J, allr))
     Je = J if J is not None else pd.DataFrame(columns=["t", "e", "pair", "gate", "strategy"])
     try:
-        out += gvb_run(now_ms, th, Je, allr, F)
+        out += era_noted(gvb_run(now_ms, th, Je, allr, F))
     except Exception as ex:
         out += ["## 🌊 GVOL_BLOCKED", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
     try:
@@ -3261,11 +3588,15 @@ def _extras(now_ms, th, F, J, allr):
     except Exception as ex:
         out += ["## 🪜 VWAP_STOP shadow", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
     try:
-        out += ons_run(now_ms, th, Je, F)
+        out += era_noted(ons_run(now_ms, th, Je, F))
     except Exception as ex:
         out += ["## ⚡ ON_SCALP", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
+    try:   # 🐻 Oct-8 (250) tracker 14 FRENZY_BEARISH_BLOCKED (the bearish-day block's revert gate; LITE fills read here)
+        out += bb_run(now_ms, th, Je, _fills(("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")))
+    except Exception as ex:
+        out += ["## 🐻 FRENZY_BEARISH_BLOCKED", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
     try:   # 🪶 Oct-7 (243) FRENZY_LITE watch + LITE_ATR
-        out += lite_run(now_ms)
+        out += era_noted(lite_run(now_ms))
     except Exception as ex:
         out += ["## 🪶 FRENZY_LITE", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
     try:   # 🪶 Oct-7 tracker 13 LITE_GVOL24_LOW (operator-approved observe line)
@@ -3621,6 +3952,50 @@ def selftest():
     chk(gvb_wide_hyp([0.8, -0.2] * 10, hd, 0.5)[1] == gvb_wide_hyp([0.8, -0.2] * 10, hd, 0.5)[1], "fixed-seed bootstrap is deterministic")
     tb = gvb_band_table(pd.DataFrame(dict(sleeve=["WIDE", "WIDE", "LONG"], gvol_band=["[1.0, 1.1)", "[1.0, 1.1)", None], LOCK=[1.0, -3.0, 2.0], day=["a", "b", "a"])))
     chk(any(x.startswith("| FRENZY_WIDE | [1.0, 1.1) | 2 | 2 | 50 %") for x in tb) and any("| FRENZY_LONG | unread | 1 |" in x for x in tb), "band table per sleeve × band")
+    # 🐻 Oct-8 (250) FRENZY_BEARISH_BLOCKED + the era-aware WIDE cap
+    tt = np.array([t0 + i * 1000 for i in range(6)], dtype=np.int64)
+    r_ = walk_ticks_fix(tt, [100, 101, 103.2, 104, 99, 98], 100.0, t0)
+    chk(r_[2] == "take profit" and abs(r_[0] - (3.2 - FEE)) < 1e-9 and r_[1] == t0 + 2000, "fixed exit: the first print ≥ +3 net closes AT that print")
+    r_ = walk_ticks_fix(tt, [100, 99, 96.8, 104, 99, 98], 100.0, t0, slip=0.10)
+    chk(r_[2] == "stop" and abs(r_[0] - (-3.2 - FEE - 0.10)) < 1e-9, "fixed exit: the first print ≤ −3 net stops there, slip charged once")
+    chk(walk_ticks_fix(tt[:3], [100, 101, 102], 100.0, t0)[2] == "open" and walk_ticks_fix(tt[:1], [100], 100.0, t0 + 10**7)[2] == "no data", "fixed exit: running / no prints")
+    tl = np.array([t0, t0 + CAP_MIN * MIN + 1], dtype=np.int64)
+    chk(walk_ticks_fix(tl, [100, 110], 100.0, t0)[2] == "12 h cap", "fixed exit: 12 h of clock time caps it")
+    d0 = _ms("2026-10-08T12:00:00")
+    chk(wide_cap_at(d0 - 1, SimpleNamespace(frenzy_max_atr_pct=3.0), d0) == 2.5 and wide_cap_at(d0, SimpleNamespace(frenzy_max_atr_pct=3.0), d0) == 3.0,
+        "WIDE_BY_CODE: the cap in force at the fill (2.5 before the raise, the live 3.0 from it)")
+    bz = pd.DataFrame(dict(k=["2026-10-08T13:00:00", "2026-10-08T13:20:00", "2026-10-08T14:00:00", "2026-10-08T11:00:00", "2026-10-08T15:00:00", "2026-10-08T15:05:00"],
+                           pair=["A", "A", "B", "C", "A", "D"], kind=["BLOCKED", "BLOCKED", "BLOCKED", "BLOCKED", "KEPT", "BLOCKED"],
+                           gate=["FRENZY_BEARISH_DAY", "FRENZY_LITE_BEARISH_DAY", "FRENZY_WIDE_BEARISH_DAY", "FRENZY_BEARISH_DAY", "KEPT", "FRENZY_BEARISH_DAY"],
+                           cohort=[True, True, True, False, True, True],
+                           spike_at=["2026-10-08T09:00:00", "2026-10-08T09:10:00", "2026-10-08T08:00:00", "2026-10-08T07:00:00", "2026-10-08T09:00:00", None]))
+    c_, kc_, ep_ = bb_masks(bz)
+    chk(list(c_) == [True, False, True, False, False, True], "bearish: one per pair-episode (A's 2nd refusal merged ≤ 30 min, any sleeve) · pre-deploy not counted · no spike = solo")
+    chk(list(kc_) == [False, False, False, False, True, False] and ep_[0] == ep_[4], "bearish: kept fills counted on their own side (same episode key ruler)")
+    jb = pd.DataFrame(dict(t=["2026-10-08T13:00:04", "2026-10-08T13:05:04", "2026-10-08T13:05:04", "2026-10-08T10:00:00", "2026-10-08T13:10:04"], e="BLOCK",
+                           pair=["A", "B", "B", "C", "D"], gate=["FRENZY_BEARISH_DAY", "FRENZY_LITE_BEARISH_DAY", BB_UNREAD, "FRENZY_BEARISH_DAY", "FRENZY_WIDE_BEARISH_DAY"],
+                           strategy=""))
+    raw_, nu_ = bb_tally(jb, d0)
+    chk(raw_ == {"LONG": 1, "WIDE": 1, "LITE": 1} and nu_ == 1, "bearish tally: raw lines per sleeve from the deploy + UNREAD")
+    st_ = _bb_decide([0.2] * 16, [f"d{i % 8}" for i in range(16)])
+    chk(st_[0] == "fired" and _bb_decide([-0.2] * 16, [f"d{i % 8}" for i in range(16)])[0] == "holds", "bearish bar: the one shared decision (scout_revert_gates)")
+    fzr = pd.DataFrame(dict(k=[f"2026-10-{9 + i // 2:02d}T0{i % 2}:00:00" for i in range(18)], pair=[f"P{i}" for i in range(18)], kind="BLOCKED",
+                            counted=True, final=True, day=[f"d{i // 2}" for i in range(18)]))
+    f1 = bb_freeze(fzr)
+    chk(list(f1.verdict_set) == [True] * 15 + [False] * 3, "bearish freeze: first 15 once 8 days are covered (here 15 on 8 days)")
+    f2 = bb_freeze(pd.concat([pd.DataFrame(dict(k=["2026-10-08T23:30:00"], pair=["EARLY"], kind="BLOCKED", counted=True, final=True, day=["d-1"],
+                                                verdict_set=False)), f1], ignore_index=True))
+    chk(int(f2.verdict_set.sum()) == 15 and not bool(f2.verdict_set.iloc[0]), "bearish freeze: a frozen set is never re-frozen (a late earlier row stays out)")
+    chk(int(bb_freeze(fzr.assign(final=[True] * 3 + [False] + [True] * 14)).verdict_set.sum()) == 0, "bearish freeze: a provisional row in the prefix waits")
+    chk(era_noted(["## X", "", "body"])[:3] == ["## X", "", ERA_NOTE] and era_noted(["body"])[0] == ERA_NOTE, "era note under the heading")
+    chk(set(BB_GATES) == {"FRENZY_BEARISH_DAY", "FRENZY_WIDE_BEARISH_DAY", "FRENZY_LITE_BEARISH_DAY"} and BB_LAG_MS == 8000, "bearish: engine counter names · 8 s entry")
+    th3 = SimpleNamespace(frenzy_max_atr_pct=3.0, frenzy_state_vol_mult=100.0)
+    chk(gc_replay_th(d0 - 1, th3, d0).frenzy_max_atr_pct == 2.5 and gc_replay_th(d0, th3, d0).frenzy_max_atr_pct == 3.0
+        and gc_replay_th(d0, th3, d0).frenzy_state_vol_mult == 100.0, "GREEN_CLOCK replay: the ATR cap in force at the signal, other thresholds live")
+    ep_g = dict(in_state=True, above_hour=True, fresh_on=True, vol_mult=150.0, hours=3.0, bar_red=False, bar_ret_pct=0.2, verified=True)
+    chk(frenzy_long_status(ep_g, 2.7, 1e30, gc_replay_th(d0 - 1, th3, d0))[1] == "FRENZY_ATR_HIGH"
+        and frenzy_long_status(ep_g, 2.7, 1e30, gc_replay_th(d0, th3, d0))[1] == "FRENZY_GREEN_BAR", "an ATR-2.7 green bar: ATR_HIGH before the raise, GREEN_BAR after")
+    chk(GC_ATR_FROZEN == 2.5, "V2 cohort frozen at ATR ≤ 2.5 in every era")
     print(f"selftest OK ({ok} checks)")
 
 

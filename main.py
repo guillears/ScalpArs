@@ -3515,6 +3515,7 @@ def _frenzy_monitor_payload():
                 "invest_mult": float(1.0 if getattr(_th, 'frenzy_long_invest_mult', 1.0) is None else getattr(_th, 'frenzy_long_invest_mult', 1.0)), "lev_mult": float(1.0 if getattr(_th, 'frenzy_long_lev_mult', 1.0) is None else getattr(_th, 'frenzy_long_lev_mult', 1.0)),
                 "wide_enabled": bool(getattr(_th, 'frenzy_wide_enabled', False)), "wide_invest_mult": float(1.0 if getattr(_th, 'frenzy_wide_invest_mult', 1.0) is None else getattr(_th, 'frenzy_wide_invest_mult', 1.0)),
                 "gvol_max": float(getattr(_th, 'frenzy_gvol_max', 0) or 0), "gvol": (_fzs.get('gvol') or {}).get('value'),
+                "bearish_block": bool(getattr(_th, 'frenzy_bearish_day_block', False)),   # 🐻 Oct-8 (250): FRENZY / WIDE / LITE refuse on a bearish day
                 "gvol_bar": ((_dt.utcfromtimestamp(((_fzs.get('gvol') or {})['bar'] + 300_000) / 1000).strftime('%H:%M')) if (_fzs.get('gvol') or {}).get('bar') else None),
                 "lev_mult_strong": float(getattr(_th, 'frenzy_long_lev_mult_strong', 0) or 0),
                 "wide_lev_mult": float(1.0 if getattr(_th, 'frenzy_wide_lev_mult', 0.2) is None else getattr(_th, 'frenzy_wide_lev_mult', 0.2)), "wide_max_slots": max(1, int(getattr(_th, 'frenzy_wide_max_slots', 2) or 2)),

@@ -10,8 +10,21 @@ reports/MASTER_POOL_stacked.csv. Never talks to the bot, never changes config. C
 GATES (frozen definitions — quoted from CLAUDE_CURRENT_STATE.md / DECISION_LOG; never re-tuned here):
   CHOP_BURST (201) momentum LONG refused (BLOCK LONG_CHOP_BURST): first 6 refused signals re-priced → WR ≥ 50 % ∨ Σ > 0 → FIRES
                    (long_chop_burst_block_enabled false).
-  FRENZY_LOCK (205) first 20 FRENZY_LONG + FRENZY_WIDE fills after the lock-then-trail deploy: live exit vs the old fixed +3/−3 re-priced on
+  FRENZY_LOCK (205, SUPERSEDED Oct-8 by TP3_VS_LOCK — the lock is off; kept running for the record) first 20 FRENZY_LONG + FRENZY_WIDE fills after the lock-then-trail deploy: live exit vs the old fixed +3/−3 re-priced on
                    ticks (bot accounting) — +3/−3 averages better → FIRES (frenzy_lock_arm_pct 0); +6/−3 and +4/−3 shown for the record.
+  ── Oct-8 (DECISION_LOG 250, operator declared overrides; fills / refusals counted from the deploy = push + 10 min, key FRENZY_OCT8) ──
+  ATR_RAISE (250)  frenzy_max_atr_pct 2.5 → 3.0 (vs reports/FRENZY_ATR_CAP_STUDY_2026-10-08.md, which said keep 2.5): the first 15 FRENZY_LONG /
+                   FRENZY_WIDE fills with entry_atr_pct in (2.5, 3.0] (= what the raise re-admitted; a closed prefix, live pnl %) average < 0 →
+                   FIRES ("REVERT (operator decision): frenzy_max_atr_pct back to 2.5"). Contrast: the ≤ 2.5 fills of the same period. Blocking
+                   reasons: journal FRENZY_ATR_HIGH / FRENZY_WIDE_ATR_HIGH refusals (ATR > 3.0 or unreadable) per UTC day — COUNT ONLY (not priced).
+  TP3_VS_LOCK (250) the exit is back on the fixed +3 / −3 (frenzy_lock_arm_pct 0): the first 20 FRENZY_LONG / WIDE / LITE fills from the
+                   deploy, both exits re-priced on ticks with the bot's accounting (price_fixed: fixed +3/−3 and the lock −3 → +2 at +3 → peak − 2,
+                   12 h) — paired Δ per fill; Σ lock − Σ fixed > +3 % points (the runners the lock keeps outweigh the +1 it gives back on every
+                   +3 touch) → FIRES ("REVIEW (operator decision): consider the lock again"). Decided on the SAME accounting both sides (the
+                   205 review rule); the live result is the fidelity line. Mirror of FRENZY_LOCK (205), which it SUPERSEDES.
+  BEARISH_BLOCKED (250) frenzy_bearish_day_block: reads scripts/scout_frenzy_exits.py's FRENZY_BEARISH_BLOCKED store (refusals priced as if
+                   opened: first print ≥ close + 8 s, fixed +3/−3, 0.09 % fees + 0.10 % slip, 12 h; one per pair-episode; DAY units): at ≥ 15
+                   counted signals on ≥ 8 days, blocked mean > 0 → FIRES ("REVERT (operator decision): turn frenzy_bearish_day_block off").
   FRENZY_TP3 (199, RETIRED Oct-5 — superseded by FRENZY_LOCK) first 20 FRENZY_LONG + FRENZY_WIDE fills opened after the +3 deploy re-priced with fixed +4/−3 on ticks (bot accounting:
                    net levels, 0.09 % fees, fill at the crossing print, 12 h cap) → +4/−3 beats the actual average → FIRES (frenzy_tp_pct 4).
   FRENZY_STRONG (197) first 10 sized-up FRENZY_LONG fills (entry_frenzy_adx_delta > 0 ∧ entry_frenzy_di_spread > 0) average below the
@@ -86,7 +99,8 @@ DEPLOYS = {"FRENZY_TP3": ("2e36c26", "2026-10-04 19:23:15"), "FRENZY_STRONG": ("
            "FRENZY_GVOL": ("0d79904", "2026-10-03 22:14:13"),
            "SURGE_B": ("grep:(DECISION_LOG 202)", "2026-10-05 01:30:00"),
            "FRENZY_LOCK": ("grep:(DECISION_LOG 205)", "2026-10-05 22:00:00"),
-           "HEAT_REVERT": ("grep:(DECISION_LOG 208)", "2026-10-05 22:00:00")}   # 🔁 Oct-5 heat re-scope reverted   # 🎯 Oct-5 lock-then-trail exit (commit message carries the exact string)   # ⚡ Oct-4 option B (found by its commit message)
+           "HEAT_REVERT": ("grep:(DECISION_LOG 208)", "2026-10-05 22:00:00"),
+           "FRENZY_OCT8": ("grep:(DECISION_LOG 250)", None)}   # 🐻⬆🎯 Oct-8: bearish-day block + ATR 3.0 + fixed TP (one commit; its message must carry "(DECISION_LOG 250)")   # 🔁 Oct-5 heat re-scope reverted   # 🎯 Oct-5 lock-then-trail exit (commit message carries the exact string)   # ⚡ Oct-4 option B (found by its commit message)
 SHIPS = {"HEAT": "2026-09-25", "LOADX": "2026-09-29", "MEGACAP": "2026-09-23"}
 # Oct-4 operator: "keep collecting" → trackers extended to 30; (new N, frozen N, frozen verdict) — the frozen first-N verdict stays on record
 EXT_N = {"LOADX": (30, 8, "FIRED (fragile at t+5m)"), "HEAT": (30, 6, "FIRED (6/6 won)")}   # ship dates (journal coverage notes)
@@ -98,6 +112,13 @@ FLIP_REG_MS = 1791244800000          # 2026-10-06 00:00 UTC registration: earlie
 # 📊 (operator 2026-10-06) momentum shorts refused by the pair-volume ceiling (momentum_short_pair_vol_max 0.86), shadow-priced
 MS_PVR_GATE = "MOMENTUM_SHORT_PAIRVOL"
 MS_PVR_REG_MS = 1791309600000        # 2026-10-06 18:00 UTC registration floor: earlier refusals are shown as reference only
+# ── Oct-8 (DECISION_LOG 250) — FROZEN bars ──
+ATR_OLD, ATR_NEW, ATR_RAISE_N = 2.5, 3.0, 15          # ATR_RAISE: fills with entry_atr_pct in (2.5, 3.0]; first 15 (closed prefix) average < 0 → fires
+ATR_BLOCK_GATES = {"FRENZY_ATR_HIGH": "LONG", "FRENZY_WIDE_ATR_HIGH": "WIDE"}
+TP3_N, TP3_MARGIN = 20, 3.0                           # TP3_VS_LOCK: first 20 fills, Σ lock − Σ fixed > +3.0 % points → review
+BB_N, BB_DAYS = 15, 8                                 # BEARISH_BLOCKED: ≥ 15 counted signals on ≥ 8 days, blocked mean > 0 → revert
+BB_CSV = os.path.join(REPORTS, "SCOUT_FRENZY_BEARISH_BLOCKED.csv")
+FRENZY3 = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")
 
 
 def log(msg):
@@ -170,6 +191,11 @@ def deploy_ms(name):
         ct = int(out.stdout.strip())
         return ct * 1000 + 10 * MIN
     except Exception:
+        if fb is None:
+            # 🐻 (250, review): no pinned guess — until git shows the commit the floor is NOW (nothing before it can be counted; a pinned
+            # time earlier than the real deploy would count lock-era / pre-raise fills as the new rules'). Logged every run it applies.
+            log(f"deploy {name}: commit {h} not found in git — counting from NOW (no fill / refusal counted until the commit exists)")
+            return int(time.time() * 1000)
         return _ms(fb) + 10 * MIN
 
 
@@ -258,6 +284,61 @@ def decide_mean_neg(vals, n=20):
     return ("fired" if m < 0 else "holds"), m
 
 
+def decide_atr_raise(vals, n=ATR_RAISE_N):
+    """⬆ (250) the first n fills the ATR raise re-admitted (entry ATR in (2.5, 3.0], closed prefix, live pnl %): mean < 0 → 'fired'."""
+    v = list(vals)[:n]
+    m = float(np.mean(v)) if v else float("nan")
+    if len(v) < n:
+        return "collecting", m
+    return ("fired" if m < 0 else "holds"), m
+
+
+def atr_band(v):
+    """entry ATR % → 'raise' (2.5 < ATR ≤ 3.0 — re-admitted by the raise) · 'old' (≤ 2.5) · 'above' (> 3.0) · None (unreadable)."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(x):
+        return None
+    return "raise" if ATR_OLD < x <= ATR_NEW else ("old" if x <= ATR_OLD else "above")
+
+
+def decide_tp3_lock(lock, fixed, n=TP3_N, margin=TP3_MARGIN):
+    """🎯 (250) paired, first n fills (same order both lists): Σ lock − Σ fixed > margin % points → 'fired' (review the lock); else 'holds'.
+    → (state, Σ lock − Σ fixed)."""
+    a, b = list(lock)[:n], list(fixed)[:n]
+    d = float(np.sum(a) - np.sum(b)) if a and len(a) == len(b) else float("nan")
+    if len(a) < n or len(b) < n:
+        return "collecting", d
+    return ("fired" if d > margin else "holds"), d
+
+
+def decide_bearish_blocked(x, days, n=BB_N, d_min=BB_DAYS):
+    """🐻 (250) counted, final blocked bearish-day signals priced as if opened (x, in order) and their UTC days: ≥ n signals on ≥ d_min days →
+    mean > 0 → 'fired' (revert: block off) · ≤ 0 → 'holds'; else 'collecting'. → (state, n, days, mean)."""
+    v = [(float(a), d) for a, d in zip(x, days) if a is not None and np.isfinite(float(a))]
+    nd = len({d for _, d in v})
+    m = float(np.mean([a for a, _ in v])) if v else float("nan")
+    if len(v) < n or nd < d_min:
+        return "collecting", len(v), nd, m
+    return ("fired" if m > 0 else "holds"), len(v), nd, m
+
+
+def bb_first_crossing(rows, n=BB_N, d_min=BB_DAYS):
+    """🐻 (250, deep review) the FROZEN verdict cohort: rows = [(key, day, final)] of the counted blocked signals in time order → the keys of
+    the SHORTEST prefix holding ≥ n signals on ≥ d_min distinct days, all of them final (a provisional row inside the prefix holds the
+    freeze back — like a first-N closed prefix); None while not reached. Decided ONCE on that set, never re-decided on a growing one."""
+    days = set()
+    for i, (k, d, fin) in enumerate(rows):
+        if not fin:
+            return None
+        days.add(d)
+        if i + 1 >= n and len(days) >= d_min:
+            return [r[0] for r in rows[:i + 1]]
+    return None
+
+
 def boot_ci(x, n=5000, seed=7):
     """95 % bootstrap CI of the mean (window units) — same ruler as scripts/surge_bearrun_review.py."""
     x = np.asarray(x, float)
@@ -329,7 +410,7 @@ def episodes(rows, gap_min=EPISODE_MIN):
 # ═══════════════════════════════ data: exports ═══════════════════════════════
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "entry_price", "exit_price", "pnl_percentage",
               "leverage", "entry_frenzy_adx_delta", "entry_frenzy_di_spread", "entry_surge_trigger_at", "close_reason", "entry_pair_rank",
-              "entry_bull_pct", "entry_btc_ema20_slope", "entry_btc_rsi_prev", "entry_btc_off30d_high_pct", "cell_multiplier_source")
+              "entry_bull_pct", "entry_btc_ema20_slope", "entry_btc_rsi_prev", "entry_btc_off30d_high_pct", "cell_multiplier_source", "entry_atr_pct")
 
 
 def _export_ms(path):
@@ -395,6 +476,8 @@ def load_journal():
                                                | ((d.e == "FAILS") & g.str.contains("PAIR_RSI_MOMENTUM_LOADX", regex=False)))
         # 📊 momentum-short pair-volume refusals (an open_position gate → BLOCK line, first gate = the only one evaluated so far)
         keep |= (d.e == "BLOCK") & (d.dir.astype(str) == "SHORT") & (g == MS_PVR_GATE)
+        # ⬆ (250) ATR_RAISE blocking-reason tally: FRENZY / WIDE ATR refusals (count only)
+        keep |= (d.e == "BLOCK") & g.isin(list(ATR_BLOCK_GATES))
         # 🔄 (221) FAN flip-short refusals that carry one of the two tracked gates (the sole-blocker cut happens in _signals_for)
         keep |= ((d.e == "FAILS") & (d.dir.astype(str) == "SHORT") & (d.src.astype(str) == FLIP_SRC)
                  & g.str.contains("|".join(FLIP_GATES.values()), regex=True))
@@ -1237,6 +1320,114 @@ def gate_frenzy_lock(orders, st, budget, now_ms, need_days, n=20):
     return state, t0
 
 
+def gate_tp3_vs_lock(orders, st, budget, now_ms, need_days, n=TP3_N):
+    """🎯 (250) mirror of FRENZY_LOCK (205): the first n FRENZY_LONG / WIDE / LITE fills from the Oct-8 deploy (live exit = fixed +3/−3), both
+    exits re-priced on ticks with the bot's accounting (price_fixed) — the decision reads the tick lock replica vs the tick fixed +3/−3 (same
+    accounting, paired); the live result is the fidelity line."""
+    G = st.setdefault("gates", {}).setdefault("TP3_VS_LOCK", {})
+    store = G.setdefault("items", {})
+    t0 = deploy_ms("FRENZY_OCT8")
+    f = orders[orders.entry_strategy.astype(str).isin(list(FRENZY3)) & (orders.o_ms >= t0)].head(n)
+    items = []
+    for r in f.itertuples():
+        key = f"{str(r.opened_at)[:19]}|{r.pair}"
+        it = store.get(key) or dict(pair=r.pair, t=int(r.o_ms), sleeve=r.entry_strategy)
+        closed = str(r.status) == "CLOSED" and np.isfinite(r.pnl_percentage)
+        it["actual"] = float(r.pnl_percentage) if closed else None
+        if not it.get("final") and np.isfinite(pd.to_numeric(r.entry_price, errors="coerce")):
+            if need_days is not None:
+                need_days.update((r.pair, d) for d in days_of(int(r.o_ms), int(r.o_ms) + FRENZY_HOLD))
+            elif budget.ok():
+                x = price_fixed(r.pair, int(r.o_ms), float(r.entry_price), [(3, 3), ("lock", 3, 2, 2, 3)])
+                if "pending" in x:
+                    it["p"] = x["pending"]
+                else:
+                    it.update(f3=x["3/3"][0], lockrep=x["lock3/2/2"][0], src=x["src"])
+                    it.pop("p", None)
+                    it["final"] = _is_final([x["src"]], int(r.o_ms), now_ms)
+        store[key] = it
+        items.append(it)
+    if need_days is not None:
+        return None
+    done = [x for x in items if x.get("f3") is not None and x.get("lockrep") is not None]
+    fin = [x for x in done if x.get("final")]
+    state, d = decide_tp3_lock([x["lockrep"] for x in fin], [x["f3"] for x in fin], n)
+    if done:
+        dd = float(np.sum([x["lockrep"] - x["f3"] for x in done]))
+        la = [x for x in done if x.get("actual") is not None]
+        G["progress"] = (f"{len(done)}/{n} fills re-priced" + (f" ({len(done) - len(fin)} provisional)" if len(done) > len(fin) else "")
+                         + f" · Σ lock {np.sum([x['lockrep'] for x in done]):+.2f} vs Σ fixed +3/−3 {np.sum([x['f3'] for x in done]):+.2f} (ticks) → Δ {dd:+.2f} pts (bar > +{TP3_MARGIN:g})"
+                         + (f" · live as traded Σ {np.sum([x['actual'] for x in la]):+.2f} on {len(la)} closed (fidelity)" if la else "")
+                         + (f" · {len(items) - len(done)} open/pending" if len(items) > len(done) else ""))
+    else:
+        G["progress"] = f"0/{n} fills re-priced" + (f" · {len(items)} open/pending" if items else "")
+    G["detail"] = " · ".join(f"{_fmt_t(x['t'])} {x['pair'].replace('USDT', '')} {str(x.get('sleeve', '')).replace('FRENZY_', '')[:4]} live {_f(x.get('actual'))} · "
+                             f"+3 {_f(x.get('f3'))} · lock {_f(x.get('lockrep'))} · Δ {_f((x['lockrep'] - x['f3']) if x.get('f3') is not None and x.get('lockrep') is not None else None)}"
+                             + ("" if x.get("final") or x.get("f3") is None else "ᵖ") for x in items[:10])
+    if state == "collecting" and len(done) >= n and len(fin) < n:
+        G["provisional"] = decide_tp3_lock([x["lockrep"] for x in done], [x["f3"] for x in done], n)[0]
+    else:
+        G.pop("provisional", None)
+    return state, t0
+
+
+def gate_atr_raise(orders, J, st, n=ATR_RAISE_N):
+    """⬆ (250) the first n FRENZY_LONG / WIDE fills from the Oct-8 deploy with entry ATR in (2.5, 3.0] (live pnl %, closed prefix): mean < 0 →
+    fired. Contrast: the ≤ 2.5 fills of the same period. Blocking reasons: journal ATR_HIGH refusals per UTC day (count only, not priced)."""
+    G = st.setdefault("gates", {}).setdefault("ATR_RAISE", {})
+    t0 = deploy_ms("FRENZY_OCT8")
+    f = orders[orders.entry_strategy.astype(str).isin(["FRENZY_LONG", "FRENZY_WIDE"]) & (orders.o_ms >= t0)].copy()
+    f["band"] = [atr_band(v) for v in f.entry_atr_pct]
+    rz = f[f.band == "raise"].head(n)
+    vals = _closed_prefix(rz)
+    state, m = decide_atr_raise(vals, n)
+    old = f[(f.band == "old") & (f.status.astype(str) == "CLOSED") & f.pnl_percentage.notna()]
+    if len(rz) == n:                                                  # "the same period" = deploy → the n-th re-admitted fill
+        old = old[old.o_ms <= int(rz.o_ms.iloc[-1])]
+    tally = ""
+    if J is not None and len(J) and "gate" in J:
+        b = J[(J.e == "BLOCK") & J.gate.isin(list(ATR_BLOCK_GATES)) & (J.ms >= t0)].drop_duplicates(["ms", "pair", "gate"])
+        if len(b):
+            b = b.assign(day=[_fmt_t(x, True)[5:10] for x in b.ms])
+            tally = " · ATR > 3.0 refusals (count only): " + ", ".join(
+                f"{d_} {int((g_.gate == 'FRENZY_ATR_HIGH').sum())} LONG / {int((g_.gate == 'FRENZY_WIDE_ATR_HIGH').sum())} WIDE" for d_, g_ in b.groupby("day"))
+        else:
+            tally = " · ATR > 3.0 refusals: none in the journal yet"
+    nu = int(f.band.isna().sum())
+    G["progress"] = (f"{len(vals)}/{n} re-admitted (ATR 2.5–3.0) fills closed" + (f" · avg {m:+.2f} % · {sum(1 for v in vals if v > 0)} won" if vals else "")
+                     + f" vs ≤ 2.5 same period {len(old)}" + (f" · avg {old.pnl_percentage.mean():+.2f} %" if len(old) else "")
+                     + (f" · {len(rz) - len(vals)} later/open" if len(rz) > len(vals) else "") + (f" · {nu} fills without an ATR stamp" if nu else "") + tally)
+    G["detail"] = " · ".join(f"{_fmt_t(r.o_ms)} {r.pair.replace('USDT', '')} {str(r.entry_strategy).replace('FRENZY_', '')[:4]} ATR {_f(r.entry_atr_pct, '.2f')} {_f(r.pnl_percentage)}"
+                             for r in rz.head(10).itertuples())
+    return state, t0
+
+
+def gate_bearish_blocked(st):
+    """🐻 (250) reads the FRENZY_BEARISH_BLOCKED store written by scripts/scout_frenzy_exits.py (counted ∧ final rows) → the frozen bar."""
+    G = st.setdefault("gates", {}).setdefault("BEARISH_BLOCKED", {})
+    t0 = deploy_ms("FRENZY_OCT8")
+    if not os.path.exists(BB_CSV):
+        G["progress"] = "no FRENZY_BEARISH_BLOCKED rows yet (scout_frenzy_exits writes them)"
+        return "collecting", t0
+    d = pd.read_csv(BB_CSV)
+    T = lambda c: d[c].astype(str).isin(("True", "1", "1.0")) if c in d else pd.Series(False, index=d.index)
+    c = d[T("counted") & (d.kind.astype(str) == "BLOCKED")] if "kind" in d else d.iloc[0:0]
+    c = c.sort_values("k", kind="stable")
+    v = c[T("verdict_set")[c.index]] if "verdict_set" in c else c.iloc[0:0]   # the frozen first-crossing cohort (written by scout_frenzy_exits)
+    if len(v):
+        state, n_, nd, m = decide_bearish_blocked(pd.to_numeric(v.PNL, errors="coerce").tolist(), v.day.tolist(), n=len(v))
+    else:
+        cf = c[T("final")[c.index]]
+        _, n_, nd, m = decide_bearish_blocked(pd.to_numeric(cf.PNL, errors="coerce").tolist(), cf.day.tolist())
+        state = "collecting"
+    kp = d[T("counted") & T("final") & (d.kind.astype(str) == "KEPT")] if "kind" in d else d.iloc[0:0]
+    km = pd.to_numeric(kp.PNL, errors="coerce").dropna() if len(kp) else pd.Series(dtype=float)
+    prov = int((T("counted") & ~T("final")).sum())
+    G["progress"] = (("VERDICT SET FROZEN (first crossing): " if len(v) else "") + f"{n_}/{BB_N} counted blocked signals · {nd}/{BB_DAYS} days" + (f" · mean {m:+.2f} % (as if opened, fixed +3/−3)" if n_ else "")
+                     + f" · kept side {len(km)}" + (f" · mean {km.mean():+.2f} %" if len(km) else "") + (f" · {prov} provisional" if prov else ""))
+    return state, t0
+
+
 def _closed_prefix(f):
     """pnl % of the leading CLOSED fills (in open order) — a first-N set waits for an earlier fill that is still open."""
     out = []
@@ -1427,12 +1618,24 @@ DEFS = {
     "FRENZY_TP3": ("🎯 FRENZY TP +3 (199)", "first 20 FRENZY + WIDE fills after the +3 deploy re-priced with fixed +4/−3 on ticks (bot accounting): "
                    "+4/−3 avg > actual avg", "set frenzy_tp_pct 4", "frenzy_tp_pct"),
     "FRENZY_STRONG": ("💪 FRENZY strong leverage (197)", "first 10 sized-up FRENZY_LONG fills (ADX Δ > 0 ∧ DI spread > 0) avg < the normal "
-                      "FRENZY_LONG fills of the same period, or < 0", "set frenzy_long_lev_mult_strong 0", "frenzy_long_lev_mult_strong"),
-    "FRENZY_GVOL": ("🌊 FRENZY market-volume gate (194)", "first 20 FRENZY + WIDE fills under the gate: avg pnl % < 0", "set frenzy_gvol_max 0",
+                      "FRENZY_LONG fills of the same period, or < 0 · ⚠ from 2026-10-08 the bearish-day block also filters entries — read the split at review", "set frenzy_long_lev_mult_strong 0", "frenzy_long_lev_mult_strong"),
+    "FRENZY_GVOL": ("🌊 FRENZY market-volume gate (194)", "first 20 FRENZY + WIDE fills under the gate: avg pnl % < 0 · ⚠ from 2026-10-08 the bearish-day block also filters entries — read the split at review", "set frenzy_gvol_max 0",
                     "frenzy_gvol_max"),
-    "FRENZY_LOCK": ("🔒 FRENZY lock exit (205)", "first 20 FRENZY + WIDE fills after the lock deploy, both exits re-priced on ticks with the bot's accounting: "
+    "FRENZY_LOCK": ("🔒 FRENZY lock exit (205 — SUPERSEDED Oct-8 by TP3_VS_LOCK; the lock is off, the row runs for the record)", "first 20 FRENZY + WIDE fills after the lock deploy, both exits re-priced on ticks with the bot's accounting: "
                     "the old fixed +3/−3 averages better than the lock (+2 at +3, trail 2 pts) → revert (also shown: +6/−3, +4/−3, live as traded)", "set frenzy_lock_arm_pct 0 (fixed +3 returns)",
                     "frenzy_lock_arm_pct"),
+    "TP3_VS_LOCK": ("🎯 FRENZY fixed +3 vs the lock (250)", "first 20 FRENZY_LONG / WIDE / LITE fills from the Oct-8 deploy (live exit fixed +3/−3), both exits "
+                    "re-priced on ticks with the bot's accounting (12 h): Σ lock (−3 → +2 at +3 → peak − 2) − Σ fixed +3/−3 > +3 % points → the runners the "
+                    "lock keeps outweigh the +1 it gives back on each +3 touch", "REVIEW (operator decision): consider the lock again (frenzy_lock_arm_pct 3)",
+                    "frenzy_lock_arm_pct"),
+    "ATR_RAISE": ("⬆ FRENZY ATR cap 3.0 (250)", "first 15 FRENZY_LONG / WIDE fills from the Oct-8 deploy with entry ATR in (2.5, 3.0] (what the raise re-admitted; "
+                  "live pnl %, closed prefix): average < 0 · contrast ≤ 2.5 fills same period · ATR > 3.0 refusals per day (count only)",
+                  "REVERT (operator decision): frenzy_max_atr_pct back to 2.5", "frenzy_max_atr_pct"),
+    "BEARISH_BLOCKED": ("🐻 FRENZY bearish-day block (250)", "FRENZY / WIDE / LITE bearish-day refusals (journal *_BEARISH_DAY) from the Oct-8 deploy, priced as if "
+                        "opened (first print ≥ close + 8 s, fixed +3/−3, 0.09 % fees + 0.10 % slip, 12 h; one per pair-episode; DAY units) — store "
+                        "reports/SCOUT_FRENZY_BEARISH_BLOCKED.csv (scout_frenzy_exits): verdict cohort FROZEN at the first crossing — the shortest final prefix "
+                        "with ≥ 15 counted signals on ≥ 8 days (column verdict_set) — decided once: blocked mean > 0",
+                        "REVERT (operator decision): turn frenzy_bearish_day_block off", "frenzy_bearish_day_block"),
     "SURGE_LONG": ("⚡ SURGE_LONG option B (202)", "trigger 0.3 % · 5× · market vol ≥ 1 · spacing after a fill, FULL size (operator override, "
                    "unproven: year +0.01 %/trigger): the first 15 triggers that filled, mean pnl %/trigger ≤ 0 → revert (supersedes the 200 probe gate)",
                    "set surge_long_lev_mult 0.05 (back to the probe)", "surge_long_lev_mult"),
@@ -1477,7 +1680,7 @@ DEFS = {
     "MEGACAP": ("🏦 Mega-cap exclusion (110)", "LONG_MEGACAP_BLOCK refusals re-priced: ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows",
                 "set long_megacap_rank_max 0", "long_megacap_rank_max"),
 }
-ORDER = ["CHOP_BURST", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "LOADX", "FLIP_EMA13_BLOCKED", "FLIP_PADX_BLOCKED", "MS_PVR_BLOCKED", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
+ORDER = ["CHOP_BURST", "BEARISH_BLOCKED", "ATR_RAISE", "TP3_VS_LOCK", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "LOADX", "FLIP_EMA13_BLOCKED", "FLIP_PADX_BLOCKED", "MS_PVR_BLOCKED", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
 
 
 def _status_text(code, state, G):
@@ -1551,7 +1754,8 @@ def run_section(now_ms=None, noted=None, record_notes=True):
         gate_ms_pvr(J, st, budget, now_ms, need)
     except Exception as e:
         log(f"MS_PVR_BLOCKED phase 1: {e}")
-    for fn in (lambda: gate_megacap(J, st, btc, budget, now_ms, need), lambda: gate_frenzy_lock(orders, st, budget, now_ms, need)):
+    for fn in (lambda: gate_megacap(J, st, btc, budget, now_ms, need), lambda: gate_frenzy_lock(orders, st, budget, now_ms, need),
+               lambda: gate_tp3_vs_lock(orders, st, budget, now_ms, need)):
         try:
             fn()
         except Exception as e:
@@ -1616,7 +1820,10 @@ def run_section(now_ms=None, noted=None, record_notes=True):
         st["gates"].setdefault("MEGACAP", {})["progress"] = f"error: {str(e)[:100]}"
     for code, fn in (("FRENZY_LOCK", lambda: gate_frenzy_lock(orders, st, budget, now_ms, None)),
                      ("FRENZY_STRONG", lambda: gate_frenzy_strong(orders, st)), ("FRENZY_GVOL", lambda: gate_frenzy_gvol(orders, st)),
-                     ("HEAT_ADMIT", lambda: gate_heat_admit(orders, st))):
+                     ("HEAT_ADMIT", lambda: gate_heat_admit(orders, st)),
+                     ("TP3_VS_LOCK", lambda: gate_tp3_vs_lock(orders, st, budget, now_ms, None)),   # 🎯 (250)
+                     ("ATR_RAISE", lambda: gate_atr_raise(orders, J, st)),                         # ⬆ (250)
+                     ("BEARISH_BLOCKED", lambda: gate_bearish_blocked(st))):                       # 🐻 (250)
         try:
             state, t0 = fn()
             res[code] = state
@@ -1829,6 +2036,37 @@ def selftest():
     chk(ms_review_first([("k9", "CLOSED", 9.0)], [["k1", 0.1], ["k2", -0.2]], 2) == ([("k1", 0.1), ("k2", -0.2)], True),
         "ms review: a frozen set wins over later data")
     chk(MS_PVR_REG_MS == _ms("2026-10-06 18:00") and "MS_PVR_BLOCKED" in ORDER and "MS_PVR_BLOCKED" in DEFS, "ms pvr: floor + wiring")
+    # ── Oct-8 (250) ──
+    chk(decide_atr_raise([0.5] * 14)[0] == "collecting", "atr raise: 14 collects")
+    chk(decide_atr_raise([-0.1] * 15)[0] == "fired" and decide_atr_raise([0.0] * 15)[0] == "holds", "atr raise: mean < 0 fires, 0 holds")
+    chk(decide_atr_raise([1.0] * 15 + [-9.0] * 5)[0] == "holds", "atr raise: only the FIRST 15 count")
+    chk([atr_band(v) for v in (2.5, 2.5001, 3.0, 3.0001, None, "x", float("nan"), 1.0)] == ["old", "raise", "raise", "above", None, None, None, "old"],
+        "atr band: (2.5, 3.0] = re-admitted, edges exact")
+    chk(decide_tp3_lock([1.0] * 19, [0.0] * 19)[0] == "collecting", "tp3 vs lock: 19 collects")
+    chk(decide_tp3_lock([3.0] * 20, [2.8] * 20) == ("fired", decide_tp3_lock([3.0] * 20, [2.8] * 20)[1]) and decide_tp3_lock([3.0] * 20, [2.8] * 20)[1] > 3,
+        "tp3 vs lock: Σ Δ +4 > +3 fires")
+    chk(decide_tp3_lock([3.0] * 20, [2.85] * 20)[0] == "holds", "tp3 vs lock: Σ Δ +3.0 holds (bar is > +3)")
+    chk(decide_tp3_lock([0.0] * 20 + [99] * 5, [0.0] * 25)[0] == "holds", "tp3 vs lock: only the first 20")
+    dd = [f"d{i}" for i in range(8)] * 2
+    chk(decide_bearish_blocked([0.1] * 14, dd[:14])[0] == "collecting", "bearish: 14 collects")
+    chk(decide_bearish_blocked([0.1] * 15, ["d0"] * 15)[0] == "collecting", "bearish: 15 on 1 day collects (≥ 8 days)")
+    chk(decide_bearish_blocked([0.1] * 16, dd)[0] == "fired", "bearish: mean > 0 on 16/8 → revert")
+    chk(decide_bearish_blocked([0.0] * 16, dd)[0] == "holds" and decide_bearish_blocked([-1.0] * 16, dd)[0] == "holds", "bearish: mean ≤ 0 holds")
+    chk(decide_bearish_blocked([None, float("nan")] + [0.1] * 16, ["x", "y"] + dd)[1] == 16, "bearish: unpriced values ignored")
+    rw = [(f"k{i}", f"d{i % 8}", True) for i in range(20)]
+    chk(bb_first_crossing(rw[:14]) is None and bb_first_crossing(rw) == [f"k{i}" for i in range(15)], "bearish freeze: the first 15 once ≥ 8 days are covered")
+    rw2 = [(f"k{i}", "d0" if i < 14 else f"d{i}", True) for i in range(25)]
+    chk(len(bb_first_crossing(rw2)) == 21, "bearish freeze: 14 on one day → the prefix grows until the 8th day (21 signals)")
+    chk(bb_first_crossing([(k, d, (k != "k3")) for k, d, _ in rw]) is None, "bearish freeze: a provisional row inside the prefix holds the freeze")
+    chk(decide_bearish_blocked([0.1] * 21, [r[1] for r in rw2[:21]], n=21)[0] == "fired", "bearish: the frozen set is decided as a whole")
+    chk(all(c in ORDER and c in DEFS for c in ("BEARISH_BLOCKED", "ATR_RAISE", "TP3_VS_LOCK")) and "FRENZY_OCT8" in DEPLOYS and "SUPERSEDED" in DEFS["FRENZY_LOCK"][0],
+        "Oct-8 gates wired (ORDER / DEFS / deploy key) · 205 marked superseded")
+    _orig = DEPLOYS["FRENZY_OCT8"]
+    DEPLOYS["FRENZY_OCT8"] = ("grep:(NO SUCH COMMIT 0xdeadbeef)", None)
+    _t = time.time() * 1000
+    chk(abs(deploy_ms("FRENZY_OCT8") - _t) < 60_000, "Oct-8 deploy: no commit found → the floor is NOW (no pinned guess)")
+    DEPLOYS["FRENZY_OCT8"] = _orig
+    chk(_status_text("ATR_RAISE", "fired", {}).startswith("🔔 FIRED → REVERT (operator decision): frenzy_max_atr_pct back to 2.5"), "atr raise status text")
     print(f"selftest OK — {ok} checks")
 
 

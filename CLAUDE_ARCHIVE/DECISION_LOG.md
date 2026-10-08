@@ -6042,3 +6042,20 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   (211). Master (ex B1, current stack): falling-1h 40 · 72 % · +0.17 % · +$1,011 (washed-out 13 · 100 % · +$1,364; ex washed-out 27 · 59 % ·
   −0.04 % · −$354 · 16 days; since 09-15 8 · 38 % · −0.15 %). Block ex washed-out → master +$354, B18 +$447; full block −$1,011. Fails the
   expectancy bar → observe-only stays; the yr5 deep read is in reports/ML_B18_LOSERS_STUDY_2026-10-08.md.
+- (253) 2026-10-08 👁 **Scout OBSERVE line NEG_DAILYUP_WEAKPAIR (operator) — no trading change.** Source reports/NEGFLANK_2D_STUDY_2026-10-08.md
+  (conditional search inside NEGFLANK: ~17,700 1D/2D masks on 89 variables (47 stamped, 42 rebuilt), day-block null over the full scan, yr5
+  discovery → halves / LOMO → master confirmation): ZERO survivors (scan p 0.22–0.94; first-half→second-half replication 13/25). Washed-out is
+  NOT a NEGFLANK separator (yr5 washed 59 % · −0.12 vs not 60 % · −0.13; yr5 has 4 washed episodes, only Jun-22→Jul-1 positive = master's
+  whole washed cohort, and it lifted non-NEGFLANK longs too, 6/6); "block NEGFLANK unless washed-out" = −$92 on master ex-B18. Closest family
+  (not a survivor): NEGFLANK ∧ pair EMA13−EMA50 gap ≤ 0.238 ∧ BTC 1d EMA20 slope > 0.281 ("BTC daily uptrend + weak coin trend"): yr5/seed
+  46 · 36 % · −0.385 % vs NEG-not-zone −0.065, no effect outside NEG, both halves, 6 of 7 months; master ex-B1 10 · 50 % · −0.245 % · −$574
+  (ex-B18 7 · 71 % · −$127; Oct-7 = 55 % of the loss); dose-response non-monotone. Rule arithmetic: master 115 · 75 % · +$3,016 → 105 · 77 % ·
+  +$3,590 (+$574, haircut +$287…+$402) · B18 +$447 · yr5 595 · 61 % · −$9,081 → 548 · 64 % · −$5,053 per seed. History: never applied — the
+  pair-trend LONG filter (pair EMA13 < EMA50) was kept OFF Jun-13 (67 · 58 % · −$27 breakeven), C7 countertrend is a deeper zone (≤ −0.50),
+  the ATR×gap block was the opposite end, BTC daily trend was never a momentum-long gate. Expectancy bar: yr5 PASS / master FAIL → observe.
+  🔒 Frozen line (scripts/scout_b1h_negflank.py): counted from 2026-10-07 00:00 UTC (B18 = first window), DAY units; at zone N ≥ 15 on ≥ 8 days
+  → FILTER CANDIDATE (operator decides) only if WR < sleeve breakeven ∧ day-bootstrap P(mean<0) ≥ 0.95 ∧ no day/pair ≥ 50 % of the gross
+  losing-fill loss (judged on the crossing prefix, frozen);
+  RETIRE if mean ≥ 0; else keep observing to N ≥ 30, thresholds never re-fit. If ever armed: revert when the first 10 blocked signals re-priced
+  show WR ≥ 61 % or Σ > 0. Same day: ML_B18_LOSERS_STUDY offered BTC_HOT_MATURE (BTC ADX ≥ 25 ∧ ATR ≥ 0.15; yr5 out-of-sample PASS, master
+  refutes) as a further observe line — not registered (operator chose this one).

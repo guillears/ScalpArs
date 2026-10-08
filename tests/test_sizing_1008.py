@@ -156,4 +156,4 @@ def test_master_builder_frozen_sizing():
     assert B.FLIP_FAN_LEV_FROZEN == float(reg["FAN_RATIO_GATE"][2])
     assert B.BEARRUN_LEV_FROZEN == th["bearrun_lev_mult"]
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
-    assert "bearrun_lev_mult=0.25," in bld and 'STACK_VERSION = "2026-10-08b"' in bld
+    assert "bearrun_lev_mult=0.25," in bld and 'STACK_VERSION = "2026-10-08c"' in bld

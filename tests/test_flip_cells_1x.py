@@ -18,7 +18,7 @@ def test_live_json_flip_cells_at_1x():
 
 def test_master_builder_reprices_flips_to_1x():
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-08b"' in bld
+    assert 'STACK_VERSION = "2026-10-08c"' in bld
     from scripts.build_master_pool import today_size_scale   # 10-06c: one shared sizing rule (tests/test_today_size_scale.py)
     for src in ("FLIP:FAN_RATIO_GATE[NEGDI15]×2", "FLIP:FAN_RATIO_GATE[TG_SHALLOW]×2", "FLIP:FAN_RATIO_GATE×2"):
         # 10-08b (DECISION_LOG 252): size → 1× (×0.5) AND FAN leverage 20× → 10× (×0.5)

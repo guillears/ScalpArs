@@ -6087,3 +6087,19 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   5-sleeve $3k compounding (BULLRUN, BEARRUN, FRENZY_LONG/WIDE/LITE, Jan-04→Oct-04, ticks): $29,857 [19,324…38,397], +0.83 %/calendar day,
   max DD −48.6 %; without BULLRUN and LITE $4,303. Spike-fade H1 review (reports/SPIKE_FADE_H1_REVIEW_2026-10-08.md): no $ bug; replay reproduces only ~29 % of live
   fades and reads them ~0.4 %/trade worse (trace running); FIX-A sizing leak in the halves script (MOM_LONG / FLIP / MOM_SHORT / FRENZY_LONG), no sign flips.
+- (257) 2026-10-08 🧮 **Master STACK 2026-10-08c — spike-fade FRESHBREAK recomputed for pre-ship fades + live blacklists in every era
+  (operator).** Source: reports/SPIKE_FADE_RECALL_TRACE_2026-10-08.md. FADE_FRESHBREAK (shipped a10a879, 2026-08-10 13:48 UTC) could not
+  be screened on pre-ship fades (rsi_prev1 not stamped) → the builder fell back to an rsi_prev2 proxy. Now recomputed from cached 5m klines
+  with the engine's own formula (`_spike_rsi12` scanner path / ta hook path), bar chosen by seconds-into-bar (≤ 20 s → previous bar) and
+  confirmed by the fill's entry_rsi_prev stamp (pgap tie-break on flat closes; ambiguity flagged); missing cache = build error
+  (FadeFreshbreakUnanchored, --allow-proxy to override). Validation: 63/63 pre-ship anchored; post-ship 48/48 recompute = live verdict;
+  independent deep-review recompute 59/59. Fades 73 · 90 % · +$5,898 → 68 · 88 % · +$4,242: refused ZEN 08-02, KSM 08-04, FHE 08-05,
+  XAN 08-08, GRIFFAIN 08-09, SOON 08-06 (+$596), TAG 08-03 (+$481), KAT 08-05, ARC 08-05 + 龙虾 08-17 (blacklist); re-admitted (the proxy
+  wrongly refused them) MET 07-29, SXT 08-02, 1000LUNC 08-04, SXT 08-06 (−$192), BEL 08-09 (−$315). Blacklists frozen + pinned to
+  trading_config.json (global pair_blacklist all sleeves; no_trade_pairs for SPIKE_FADE / CHASE / BOUNCE / FRENZY / SURGE; sleeve lists
+  BULLRUN / BEARRUN / SURGE / FRENZY): 21 BULLRUN_LONG rows on ONG / ONE / ZEC / BTC / ETH refused (−$2,289 net) — ⚠ IN-SAMPLE BY
+  CONSTRUCTION (these fills are the blacklist's founding evidence; the ledger already excluded them) → NOT an improvement. Totals: master
+  418 · +$7,296.77 → 392 · +$7,930.57 (= fades −$1,656 + the in-sample bull-run +$2,290); without bull-run 295 · +$10,118 → 290 · +$8,463;
+  current_stack_ledger 304 · +$14,399 · +2.14 %/day → 299 · +$12,743 · +2.02 %/day (B2 +$3,624 → +$1,992). SCREENED_BASELINE untouched
+  (no fades / bull-run). Also: a WILLY entry dropped because its trigger was switched off no longer counts as RED_EXPIRED (count=False;
+  deep-review minor of 256). Dual review: no Critical; all findings applied; tests/test_master_fade_screen.py (16).

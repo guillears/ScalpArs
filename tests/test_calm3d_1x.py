@@ -18,7 +18,7 @@ def test_calm3d_sizes_1x_everywhere():
 
 def test_master_builder_reprices_calm3d():
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-08b"' in bld
+    assert 'STACK_VERSION = "2026-10-08c"' in bld
     from scripts.build_master_pool import today_size_scale   # 10-06c: one shared sizing rule
     assert today_size_scale("MOMENTUM", "LONG", "NONEXP_CALM3D", 2.0) == 0.5
     assert today_size_scale("MOMENTUM", "LONG", "NONEXP_CALM3D", 1.0) == 1.0

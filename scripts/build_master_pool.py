@@ -27,7 +27,7 @@ import re
 import pandas as pd, numpy as np
 from datetime import datetime
 
-STACK_VERSION = "2026-10-08b"  # 10-08b (DECISION_LOG 252, operator): TODAY's sizing — FAN flips (FLIP:FAN_RATIO_GATE) at registry lev 0.5 = 10× (today_size_rule FLIP_FAN_LEV: as-traded size → 1×, leverage → min(10, the as-traded bracket/schedule cap when one bound) — 20× rows' $ halve, the 10×-bracket-capped BTW 10-06 row is unchanged) · BEARRUN_SHORT at lev 0.25 = 5× (operator declared override; its fills priced at 5× and no longer PROBE_EXEMPT — is_probe follows TODAY's frozen lev, a 1× probe only while bearrun_lev_mult ≤ 0.05) · B18 archived (Oct-6→Oct-8). Prior 10-08a — 10-08a (DECISION_LOG 250, operator declared overrides): FRENZY sleeve fills (LONG / WIDE / LITE, every era) priced at TODAY's FIXED +3 / −3 exit — a fill whose recorded peak_pnl (net, the TP's own basis) reached +3 books +3 (ASSUMPTION: the +3 TP fills first, at the line; a fill live-stopped at −3 before touching +3 never has peak ≥ 3 and stays as traded; 12 h-cap / other closes below +3 keep their actual) — replaces the 10-06d lock pricing · WIDE hold-green ATR cap 2.5 → 3.0 (frenzy_max_atr_pct 3.0; the builder replays no FRENZY_LONG ATR gate — every master FRENZY_LONG fill had ATR ≤ 2.5, and refusals 2.5–3.0 are not in the pool) · FRENZY_BEARISH_DAY: FRENZY / WIDE / LITE fills with entry_btc_1d_ret_pct < 0 ∧ entry_btc_trend_gap_pct < 0 refused (services.frenzy.frenzy_bearish_day; unreadable = kept, fail-open like the engine; judged after hold-green like the engine's last gate, before the chop-burst pass). Prior 10-06d — 10-06d: B17 archived (Oct-3→Oct-6) · FRENZY sleeve fills opened before the live lock (DECISION_LOG 205, deploy 2026-10-05 15:49) priced with the lock — peak ≥ +3 books max(min(+2, +3), peak − 2) — instead of the retired fixed +3 TP (later fills keep their real pct) · FRENZY_WIDE hold-green rule (DECISION_LOG 231) replayed with the engine's own function before the chop-burst pass (streak: stamp entry_frenzy_above_streak, else reports/WIDE_STREAK_REBUILD.csv, else refused = fail-closed) (DECISION_LOG 234). Prior 10-06c — 10-06c: TODAY's cell sizing = ONE pure rule, today_size_scale() (DECISION_LOG 233), shared with scripts/screen_pool.py pnl_current — closes the two gaps vs the engine: W2+W1 momentum shorts 2× → 1× (cell de-muxed 2026-07-30; every SHORT pattern cell is 1× today) and UNMATCHED longs at pair-vol ratio ≥ 0.90 → 1× (the Jul-10 crowded-entry de-mux; was 1.5× here, the "pre-Jul-10 gap"). The rule also strips the cell LEVERAGE multiplier (SOL 06-18 W2+W1 short traded 2× at 30× → 1× at 20×) and applies to the unrounded P&L (single rounding: 21 rows move ±$0.01). The crowd-sprint de-mux moved from the first pass to the final re-price (an ARM040 row in a sprint window now de-muxes too; stack_pct untouched; a re-sized path-CF row folds the factor into stack_ticket_scale so stack_pnl / scale / notional stays its pct). Non-probe kept $7,583.59 → $7,458.50. Prior 10-06b — 10-06b: NONEXP_CALM3D door 2× → 1× (its cell verdict fired: fresh 2× fires since Sep-23 net-negative; operator, DECISION_LOG 225): kept CALM3D rows above 1× re-priced stack_pnl ÷ cell multiplier (size-only; stack_pct unchanged). Prior 10-06a — 10-06a: FLIP short 2× cells NEGDI15 + TG_SHALLOW → 1× (NEGDI15's own revert gate fired, TG_SHALLOW ✗ HARMFUL on real fills; operator, DECISION_LOG 220): every kept FLIP row above 1× (the tagged cells + one pre-tag June ×2 BASE row) re-priced stack_pnl ÷ cell multiplier — no flip cell sizes above 1× today. Prior 10-05b — 10-05b: LONG_HEAT_BLOCK re-scope REVERTED to the Sep-18 3-leg rule (BTC slope ≥ 0.07 ∧ BTC RSI prev ≥ 64 ∧ bull ≥ 80, washed-out exempt; DECISION_LOG 208 — the re-scope's pre-committed gate fired). Prior 10-05a — 10-05a: UNMATCHED momentum-long cell 2× → 1.5× (and the quiet boost 2 → 1.5; operator, DECISION_LOG 206): kept UNMATCHED longs above 1.5× re-priced × 1.5 / cell multiplier (CALM3D door unchanged at 2×; rows the sprint de-mux already set to 1× are left at 1×; known pre-Jul-10 gap: PVR ≥ 0.90 rows are not de-muxed to 1×). The FRENZY lock-then-trail exit (205) is path-dependent → NOT re-priced (kept at the +3 TP pricing; forward read = scout FRENZY_LOCK gate). Prior 10-04b — 10-04b: LONG_CHOP_BURST — MOMENTUM longs refused when BTC eff72 ≤ 0.007 (live stamp entry_btc_eff72, else the validated 864-bar rebuild from the k5m_full BTC cache) AND another kept non-probe non-MANUAL bot fill of the same era opened 0…120 s earlier (sub-line A; operator ARMED override, DECISION_LOG 201; rule = engine long_chop_burst_block). Prior 10-04a — 10-04a: SURGE_SHORT_OFF (surge_short_enabled false) + sleeve fills (FRENZY / WIDE / SURGE_LONG / BEARRUN) re-priced at today's size and the FRENZY +3 TP (DECISION_LOG 200). Prior 10-03a — 10-03a: FRENZY_LONG / FRENZY_WIDE tagged FRENZY_SLEEVE (own-sleeve observation, never a momentum row; before this a FRENZY fill fell into the momentum-long gates). Prior 10-01b — 10-01b: EVERY kept capped fade re-priced at the 0.5 % ticket (+ stack_ticket_scale column; DECISION_LOG 168). 10-01a: CF_FADE_CAP05 — kept fades on pairs ≥ $10M throttled by the old 0.1 % cap re-priced at min(desired, 0.5 % × vol) (DECISION_LOG 165/167; 3 rows). Prior 09-29b — b: FADE_LAGGARD — SPIKE_FADE refused when pair daily Wilder −DI(14) > 16.1 AND BTC 4h EMA50/EMA200 gap > 0 (laggard squeeze; operator ARMED override at master N=10 on 295 backtest fills, DECISION_LOG 128; rule = indicators.fade_laggard_block; inputs = stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct, else the closed-bar feature factory from k5m_full). Prior: "2026-09-29a"  # a: LONG_RSI_MOM_LOADX — momentum longs (unmatched + doors) refused when RSI(12) < RSI two candles ago AND pair ADX < long_rsi_momentum_adx_max (21; declared override at master N=10, DECISION_LOG 126; rule = indicators.rsi_mom_loadx_block; stamps entry_rsi / entry_rsi_prev (= rsi_prev2) / entry_adx). Prior: "2026-09-27b"  # b: CALM3D_BTC_ATR_MIN — NONEXP_CALM3D door longs refused at BTC 5m ATR% < 0.08 (dead tape; operator ARMED override, DECISION_LOG 118; rule = engine calm3d_btc_atr_floor_block). Prior: "2026-09-27a"  # a: FADE_FRESHBREAK stamp proxy applied to PRE-SHIP fills only (opened < 2026-08-10T13:48:19 UTC, commit a10a879) — the live gate reads RSI(12) rsi_prev1 at trigger, the stamp entry_rsi_prev is rsi_prev2, so post-ship fills (which already passed the live gate) were wrongly removed (6 winners, Sep-27 audit). Prior: 2026-09-25c # c: LONG_HEAT_BLOCK re-scoped to bull breadth ≥85 only (BTC slope/RSI legs off, washed-out exemption kept; declared override, DECISION_LOG 116). Prior: 2026-09-25b # b: MOM_SHORT_C1_REGIME — C1 momentum shorts refused when BTC is STRONG_BEAR (operator ARMED override, DECISION_LOG 114; rule = engine mom_short_c1_regime_block). Prior: 2026-09-25a # a: FLIP_FAN_WEAK_BOUNCE — FAN flip-shorts refused when pair EMA13−EMA50 gap < 0 AND EMA20 slope < 0.15 (operator ARMED override at N=8, DECISION_LOG 113; rule = engine flip_fan_weak_bounce); B12 snapshot as-of 09-25. Prior: 2026-09-24b # b: FADE_BRSI 45→50 — the Aug-5 ceiling's own pre-committed revert fired (DECISION_LOG 112); label FADE_BRSI45→FADE_BRSI50. Prior: 2026-09-24a # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
+STACK_VERSION = "2026-10-08c"  # 10-08c (SPIKE_FADE recall trace §E): FADE_FRESHBREAK on pre-ship fades (opened < FADE_FB_SHIP_UTC) judged on the engine's own rsi_prev1 rebuilt from the 5m kline cache (fade_fb_recompute: 99 closed bars + forming close = entry_price, bar anchored by the fill's own rsi_prev2 stamp; scanner path _spike_rsi12, top-50 hook ta RSI; pgap = stamp G) instead of the rsi_prev2 stamp proxy (kept only as the unanchored fallback) — the proxy kept fades the live gate refuses and refused fades it admits · today's pair blacklists applied on every era (stack_pair_blacklist_reason: global pair_blacklist for every bot sleeve, no_trade_pairs for SPIKE_FADE / FRENZY / SURGE, the sleeve lists for BULLRUN / BEARRUN / SURGE / FRENZY; frozen here, pinned to trading_config.json by tests/test_master_fade_screen.py). Prior 10-08b — 10-08b (DECISION_LOG 252, operator): TODAY's sizing — FAN flips (FLIP:FAN_RATIO_GATE) at registry lev 0.5 = 10× (today_size_rule FLIP_FAN_LEV: as-traded size → 1×, leverage → min(10, the as-traded bracket/schedule cap when one bound) — 20× rows' $ halve, the 10×-bracket-capped BTW 10-06 row is unchanged) · BEARRUN_SHORT at lev 0.25 = 5× (operator declared override; its fills priced at 5× and no longer PROBE_EXEMPT — is_probe follows TODAY's frozen lev, a 1× probe only while bearrun_lev_mult ≤ 0.05) · B18 archived (Oct-6→Oct-8). Prior 10-08a — 10-08a (DECISION_LOG 250, operator declared overrides): FRENZY sleeve fills (LONG / WIDE / LITE, every era) priced at TODAY's FIXED +3 / −3 exit — a fill whose recorded peak_pnl (net, the TP's own basis) reached +3 books +3 (ASSUMPTION: the +3 TP fills first, at the line; a fill live-stopped at −3 before touching +3 never has peak ≥ 3 and stays as traded; 12 h-cap / other closes below +3 keep their actual) — replaces the 10-06d lock pricing · WIDE hold-green ATR cap 2.5 → 3.0 (frenzy_max_atr_pct 3.0; the builder replays no FRENZY_LONG ATR gate — every master FRENZY_LONG fill had ATR ≤ 2.5, and refusals 2.5–3.0 are not in the pool) · FRENZY_BEARISH_DAY: FRENZY / WIDE / LITE fills with entry_btc_1d_ret_pct < 0 ∧ entry_btc_trend_gap_pct < 0 refused (services.frenzy.frenzy_bearish_day; unreadable = kept, fail-open like the engine; judged after hold-green like the engine's last gate, before the chop-burst pass). Prior 10-06d — 10-06d: B17 archived (Oct-3→Oct-6) · FRENZY sleeve fills opened before the live lock (DECISION_LOG 205, deploy 2026-10-05 15:49) priced with the lock — peak ≥ +3 books max(min(+2, +3), peak − 2) — instead of the retired fixed +3 TP (later fills keep their real pct) · FRENZY_WIDE hold-green rule (DECISION_LOG 231) replayed with the engine's own function before the chop-burst pass (streak: stamp entry_frenzy_above_streak, else reports/WIDE_STREAK_REBUILD.csv, else refused = fail-closed) (DECISION_LOG 234). Prior 10-06c — 10-06c: TODAY's cell sizing = ONE pure rule, today_size_scale() (DECISION_LOG 233), shared with scripts/screen_pool.py pnl_current — closes the two gaps vs the engine: W2+W1 momentum shorts 2× → 1× (cell de-muxed 2026-07-30; every SHORT pattern cell is 1× today) and UNMATCHED longs at pair-vol ratio ≥ 0.90 → 1× (the Jul-10 crowded-entry de-mux; was 1.5× here, the "pre-Jul-10 gap"). The rule also strips the cell LEVERAGE multiplier (SOL 06-18 W2+W1 short traded 2× at 30× → 1× at 20×) and applies to the unrounded P&L (single rounding: 21 rows move ±$0.01). The crowd-sprint de-mux moved from the first pass to the final re-price (an ARM040 row in a sprint window now de-muxes too; stack_pct untouched; a re-sized path-CF row folds the factor into stack_ticket_scale so stack_pnl / scale / notional stays its pct). Non-probe kept $7,583.59 → $7,458.50. Prior 10-06b — 10-06b: NONEXP_CALM3D door 2× → 1× (its cell verdict fired: fresh 2× fires since Sep-23 net-negative; operator, DECISION_LOG 225): kept CALM3D rows above 1× re-priced stack_pnl ÷ cell multiplier (size-only; stack_pct unchanged). Prior 10-06a — 10-06a: FLIP short 2× cells NEGDI15 + TG_SHALLOW → 1× (NEGDI15's own revert gate fired, TG_SHALLOW ✗ HARMFUL on real fills; operator, DECISION_LOG 220): every kept FLIP row above 1× (the tagged cells + one pre-tag June ×2 BASE row) re-priced stack_pnl ÷ cell multiplier — no flip cell sizes above 1× today. Prior 10-05b — 10-05b: LONG_HEAT_BLOCK re-scope REVERTED to the Sep-18 3-leg rule (BTC slope ≥ 0.07 ∧ BTC RSI prev ≥ 64 ∧ bull ≥ 80, washed-out exempt; DECISION_LOG 208 — the re-scope's pre-committed gate fired). Prior 10-05a — 10-05a: UNMATCHED momentum-long cell 2× → 1.5× (and the quiet boost 2 → 1.5; operator, DECISION_LOG 206): kept UNMATCHED longs above 1.5× re-priced × 1.5 / cell multiplier (CALM3D door unchanged at 2×; rows the sprint de-mux already set to 1× are left at 1×; known pre-Jul-10 gap: PVR ≥ 0.90 rows are not de-muxed to 1×). The FRENZY lock-then-trail exit (205) is path-dependent → NOT re-priced (kept at the +3 TP pricing; forward read = scout FRENZY_LOCK gate). Prior 10-04b — 10-04b: LONG_CHOP_BURST — MOMENTUM longs refused when BTC eff72 ≤ 0.007 (live stamp entry_btc_eff72, else the validated 864-bar rebuild from the k5m_full BTC cache) AND another kept non-probe non-MANUAL bot fill of the same era opened 0…120 s earlier (sub-line A; operator ARMED override, DECISION_LOG 201; rule = engine long_chop_burst_block). Prior 10-04a — 10-04a: SURGE_SHORT_OFF (surge_short_enabled false) + sleeve fills (FRENZY / WIDE / SURGE_LONG / BEARRUN) re-priced at today's size and the FRENZY +3 TP (DECISION_LOG 200). Prior 10-03a — 10-03a: FRENZY_LONG / FRENZY_WIDE tagged FRENZY_SLEEVE (own-sleeve observation, never a momentum row; before this a FRENZY fill fell into the momentum-long gates). Prior 10-01b — 10-01b: EVERY kept capped fade re-priced at the 0.5 % ticket (+ stack_ticket_scale column; DECISION_LOG 168). 10-01a: CF_FADE_CAP05 — kept fades on pairs ≥ $10M throttled by the old 0.1 % cap re-priced at min(desired, 0.5 % × vol) (DECISION_LOG 165/167; 3 rows). Prior 09-29b — b: FADE_LAGGARD — SPIKE_FADE refused when pair daily Wilder −DI(14) > 16.1 AND BTC 4h EMA50/EMA200 gap > 0 (laggard squeeze; operator ARMED override at master N=10 on 295 backtest fills, DECISION_LOG 128; rule = indicators.fade_laggard_block; inputs = stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct, else the closed-bar feature factory from k5m_full). Prior: "2026-09-29a"  # a: LONG_RSI_MOM_LOADX — momentum longs (unmatched + doors) refused when RSI(12) < RSI two candles ago AND pair ADX < long_rsi_momentum_adx_max (21; declared override at master N=10, DECISION_LOG 126; rule = indicators.rsi_mom_loadx_block; stamps entry_rsi / entry_rsi_prev (= rsi_prev2) / entry_adx). Prior: "2026-09-27b"  # b: CALM3D_BTC_ATR_MIN — NONEXP_CALM3D door longs refused at BTC 5m ATR% < 0.08 (dead tape; operator ARMED override, DECISION_LOG 118; rule = engine calm3d_btc_atr_floor_block). Prior: "2026-09-27a"  # a: FADE_FRESHBREAK stamp proxy applied to PRE-SHIP fills only (opened < 2026-08-10T13:48:19 UTC, commit a10a879) — the live gate reads RSI(12) rsi_prev1 at trigger, the stamp entry_rsi_prev is rsi_prev2, so post-ship fills (which already passed the live gate) were wrongly removed (6 winners, Sep-27 audit). Prior: 2026-09-25c # c: LONG_HEAT_BLOCK re-scoped to bull breadth ≥85 only (BTC slope/RSI legs off, washed-out exemption kept; declared override, DECISION_LOG 116). Prior: 2026-09-25b # b: MOM_SHORT_C1_REGIME — C1 momentum shorts refused when BTC is STRONG_BEAR (operator ARMED override, DECISION_LOG 114; rule = engine mom_short_c1_regime_block). Prior: 2026-09-25a # a: FLIP_FAN_WEAK_BOUNCE — FAN flip-shorts refused when pair EMA13−EMA50 gap < 0 AND EMA20 slope < 0.15 (operator ARMED override at N=8, DECISION_LOG 113; rule = engine flip_fan_weak_bounce); B12 snapshot as-of 09-25. Prior: 2026-09-24b # b: FADE_BRSI 45→50 — the Aug-5 ceiling's own pre-committed revert fired (DECISION_LOG 112); label FADE_BRSI45→FADE_BRSI50. Prior: 2026-09-24a # a: CF_FADE_LATE_ARM — SPIKE_FADE never armed, open past 15 min, peak after 15 in [0.30,0.40) → re-priced to the late trail floor (stamps-only, optimistic: exposed late winners not repriced; DECISION_LOG 111). Prior: 2026-09-23a # a: LONG_MEGACAP_BLOCK — momentum longs (unmatched + doors) refused at raw eligible-universe rank ≤ 10 (operator override at N=10, DECISION_LOG 110; rule = engine long_megacap_block). Prior: 2026-09-18b # b: LONG_HEAT_BLOCK — momentum longs (unmatched + doors) refused at BTC slope≥0.07 ∧ BTC RSI prev≥64 ∧ bull≥80 unless BTC ≤−10% vs its 30d high (DECISION_LOG Sep-18 (70); rule = engine long_heat_eval, 30d reading = stamped column else reports/btc_off30d_hourly.csv); era B8 (Sep 16-18) added. Prior: 2026-09-18a # a: MOM_SHORT_PAIRVOL — momentum shorts blocked at pair-vol ratio ≥ 0.86 (ceiling tightened 1.0→0.86, DECISION_LOG Sep-18 (68)). Prior: 2026-09-16a # a: FLIP_FAN_BTC_EMA13 — FAN_RATIO_GATE shorts blocked when BTC dist-EMA13 > -0.08 (Aug-23 live gate, builder gap caught Sep-16). Prior: 2026-09-15a # a: gate 60 BEARRUN_SHORT — 1× probe fills PROBE_EXEMPT, armed fills own-sleeve label (never MOM-short). Prior: 2026-09-14a # a: FADE_MAXVOL — SPIKE_FADE blocked at 24h vol ≥ $20M (Sep-14 operator override, DECISION_LOG 55); engine tests it FIRST among the fade gates. Prior: 2026-08-16a # a: FAKE_BULL_GUARD gate REMOVED (guard reverted by locked gate 47 after forward refutation — 12-block replay 6W/6L). Restores the 2026-08-10c keep-set. NOTE: cap35 (8108a60) is EXIT-side and path-dependent — stack_pnl deliberately NOT re-priced for it (floor-bound CF is optimistic; forward accounting = bound='cap' tallies).
 WIDE_HG_STREAK_FROZEN, WIDE_HG_MAX_ATR_FROZEN = 12.0, 3.0   # frenzy_wide_hold_green_streak (231) / frenzy_max_atr_pct — 2.5 at the 231 ship, 3.0 since 10-08a (DECISION_LOG 250; pinned by tests)
 WIDE_HG_MAX_ATR_PRE_1008 = 2.5                               # 10-08a (deep review): the cap in force BEFORE the raise
 FRENZY_ATR30_FROM = "2026-10-09T00:00:00"                    # 10-08a: fills opened from here are judged at 3.0. CONSERVATIVE (≥ the Oct-8 deploy, push
@@ -207,6 +207,192 @@ def fade_freshbreak_stamp_block(opened_at, rsi_prev, pgap):
     return (pd.notna(rsi_prev) and rsi_prev < FADE_FB_RSI_PREV_MIN
             and pd.notna(pgap) and pgap > FADE_FB_PGAP_MIN)
 
+
+# 🧯 10-08c FADE_FRESHBREAK kline recompute (SPIKE_FADE recall trace §E). The stamp proxy above reads rsi_prev2 where the live gate
+# reads rsi_prev1, so pre-ship fills were screened on the wrong bar BOTH ways (9 kept fades the live gate refuses, 5 blocked fades
+# it admits). The recompute rebuilds the engine's own inputs from the 5m kline cache: the 100-bar get_ohlcv(…, '5m', 100) view
+# = 99 CLOSED bars + the forming bar (close = the fill's entry_price). rsi_prev1 reads closed bars only (forming-bar independent):
+# scanner path (rank > FADE_FB_HOOK_RANK_MAX, the full-universe _spike_scanner_cycle) = TradingEngine._spike_rsi12 → rsi_prev1;
+# top-50 hook path = calculate_indicators()['rsi_prev1'] (ta RSI). pgap = the stamp G (same EMA13/EMA50 source as the live gate),
+# else the recompute's EMA13/EMA50 with the forming close.
+# BAR CHOICE (caveman review): by seconds into the 5m bar — a fill opened ≤ FADE_FB_PREV_BAR_MAX_S s after a boundary was decided in
+# the PREVIOUS bar (the scan → open latency), else in its own bar. Verified on every anchored fade at 10-08c: all 6 fills at 0–20 s
+# match the stamp ONLY on the previous bar, every fill at ≥ 21 s matches on its own bar (PROM 07-29 at 21 s matches both, same
+# verdict). The chosen bar must be CONFIRMED by the fill's own stamp entry_rsi_prev (= ta rsi_prev2 of the same indicator call); if
+# it is not but the other bar is, the other bar is used and flagged 'anchor_override'. When BOTH bars match the rsi_prev2 stamp (flat
+# closes: 14 fades at 10-08c, e.g. SNX / PROM / EGLD) the pgap stamp G breaks the tie (the bar whose recomputed EMA13/50 gap equals
+# it): it agrees with the seconds rule on 13/14 and moves PROM 07-29 (21 s in; pgap −0.7753 = the previous bar exactly) to the
+# previous bar ('pgap_tiebreak'; same verdict either way). Both bars confirmed with DIFFERENT verdicts = 'ambiguous', printed
+# (0 pre-ship rows at 10-08c; post-ship KAIA / QTUM are, but post-ship rows are never re-screened).
+# No confirmed bar (cache gap / no stamp) = a build ERROR unless --allow-proxy (then the legacy stamp proxy, warned): a missing cache
+# must never silently produce a different master under the same STACK_VERSION. Post-ship fills are never re-screened.
+FADE_FB_KLINE_DIRS = ("reports/backtest_cache/k5m_full", "reports/backtest_cache/k5m", "reports/backtest_cache/k5m_ext")
+FADE_FB_HOOK_RANK_MAX = 50        # PINNED historical value: trading_pairs_limit = 50 when the gate shipped (Aug-10) and through every
+                                  # pre-ship fill — the top-50 hook; ranks above it reach the fade via the spike scanner. Do NOT read live config.
+FADE_FB_ANCHOR_TOL = 0.01         # |recomputed rsi_prev2 − stamp| (stamp rounded to 2 dp)
+FADE_FB_PREV_BAR_MAX_S = 20       # ≤ this many seconds into the bar → the decision bar is the previous one (split verified above)
+FADE_FB_PGAP_TIEBREAK = 0.001     # both bars confirm on rsi_prev2 → the one whose recomputed pgap is closer to the stamp G by > this wins
+_M5 = 300_000
+
+
+class FadeFreshbreakUnanchored(SystemExit):
+    """Pre-ship fades the kline recompute cannot anchor — the build refuses to fall back silently (pass --allow-proxy to accept)."""
+
+
+def fade_freshbreak_rule(rsi_prev1, pgap, rmin=None, gmin=None):
+    """The engine's FRESHBREAK predicate (scanner + hook): rsi_prev1 < rmin ∧ pgap > gmin, strict; missing input = pass (fail-open)."""
+    rmin = FADE_FB_RSI_PREV_MIN if rmin is None else rmin
+    gmin = FADE_FB_PGAP_MIN if gmin is None else gmin
+    return bool(rmin > 0 and rsi_prev1 is not None and pd.notna(rsi_prev1) and rsi_prev1 < rmin
+                and pgap is not None and pd.notna(pgap) and pgap > gmin)
+
+
+def fade_fb_load_klines(pair, dirs=FADE_FB_KLINE_DIRS):
+    """Union of the cached 5m klines for a pair (open_time ms, o, h, l, c, vol); None when no cache file exists.
+    Duplicate open_time across the cache dirs: a k5m / k5m_ext file can end on a bar snapshotted while it was still FORMING (lower
+    volume, early close — 7 such bars across the fade pairs at 10-08c, e.g. HEMI / 1000RATS 2026-08-19). The most complete snapshot
+    wins = the larger cumulative volume (a bar's volume only grows while it forms); the open must agree, else the cache is corrupt."""
+    import os
+    fr = [pd.read_csv(os.path.join(d, f"{pair}.csv")) for d in dirs if os.path.exists(os.path.join(d, f"{pair}.csv"))]
+    if not fr:
+        return None
+    d = pd.concat(fr, ignore_index=True)
+    dup = d[d.duplicated("open_time", keep=False)]
+    if len(dup):
+        bad = dup.groupby("open_time").o.nunique()
+        if (bad > 1).any():
+            raise SystemExit(f"FATAL: {pair} 5m cache disagrees on the OPEN of {int((bad > 1).sum())} bar(s) across {dirs} — corrupt cache")
+    return d.sort_values(["open_time", "vol"]).drop_duplicates("open_time", keep="last").reset_index(drop=True)
+
+
+def _fade_fb_bar(k5, ts, cur, px, stamp_rsi_prev2, rank, hook_rank_max):
+    """Engine inputs on decision bar `cur` → dict, or None when the cache lacks the 99-bar view / the stamp does not confirm it."""
+    from services.indicators import calculate_indicators
+    from services.trading_engine import TradingEngine
+    n = int(np.searchsorted(ts, cur))                          # bars strictly before the forming bar
+    if n < 99:
+        return None
+    w = k5.iloc[n - 99:n]
+    if int(w.open_time.iloc[-1]) != cur - _M5 or not (np.diff(w.open_time.values.astype(np.int64)) == _M5).all():
+        return None                                            # gap in the cache → not the engine's 100-bar view
+    ohl = w[["open_time", "o", "h", "l", "c", "vol"]].values.tolist() + [[cur, px, px, px, px, 0.0]]
+    ind = calculate_indicators(ohl)
+    # the anchor compares the ta-RSI rsi_prev2 on EVERY path: the stamp entry_rsi_prev is ind['rsi_prev2'] from calculate_indicators
+    # on both the scanner (`ind = calculate_indicators(ohlcv)`) and the hook — only the GATE's rsi_prev1 differs by path
+    if not ind or ind.get("rsi_prev2") is None or abs(ind["rsi_prev2"] - float(stamp_rsi_prev2)) > FADE_FB_ANCHOR_TOL:
+        return None
+    hook = pd.notna(rank) and float(rank) <= hook_rank_max
+    rp1 = ind.get("rsi_prev1") if hook else TradingEngine._spike_rsi12([float(b[4]) for b in ohl])[1]
+    e13, e50 = ind.get("ema13"), ind.get("ema50")
+    pg = (e13 - e50) / e50 * 100.0 if (e13 is not None and e50) else None
+    return dict(rsi_prev1=rp1, pgap=pg, bar_open_ms=cur, path="hook" if hook else "scanner")
+
+
+def fade_fb_recompute(k5, opened_at, entry_price, stamp_rsi_prev2, rank, hook_rank_max=FADE_FB_HOOK_RANK_MAX, stamp_pgap=None):
+    """Rebuild the live FRESHBREAK inputs for one fade fill → dict(rsi_prev1, pgap, bar_open_ms, shift, path, anchor_override,
+    ambiguous) or None (no stamp-confirmed bar). shift 1 = the previous bar (seconds-into-bar rule, FADE_FB_PREV_BAR_MAX_S)."""
+    if k5 is None or pd.isna(stamp_rsi_prev2) or pd.isna(entry_price):
+        return None
+    t_ms = int(pd.Timestamp(str(opened_at)[:19]).value // 1_000_000)
+    ts = k5.open_time.values.astype(np.int64)
+    floor = (t_ms // _M5) * _M5
+    pref = 1 if (t_ms - floor) / 1000.0 <= FADE_FB_PREV_BAR_MAX_S else 0
+    got = {sh: _fade_fb_bar(k5, ts, floor - sh * _M5, float(entry_price), stamp_rsi_prev2, rank, hook_rank_max) for sh in (pref, 1 - pref)}
+    sh = pref if got[pref] else (1 - pref if got[1 - pref] else None)
+    if sh is None:
+        return None
+    tiebreak, ambiguous = False, False
+    if got[0] and got[1]:
+        has_pg = stamp_pgap is not None and pd.notna(stamp_pgap)
+        if has_pg and all(got[x]["pgap"] is not None for x in (0, 1)):
+            d0, d1 = abs(got[0]["pgap"] - stamp_pgap), abs(got[1]["pgap"] - stamp_pgap)
+            if abs(d0 - d1) > FADE_FB_PGAP_TIEBREAK:       # the pgap stamp names the bar the engine read
+                best = 0 if d0 < d1 else 1
+                tiebreak, sh = best != sh, best
+        pg = lambda g: stamp_pgap if has_pg else g["pgap"]
+        ambiguous = fade_freshbreak_rule(got[0]["rsi_prev1"], pg(got[0])) != fade_freshbreak_rule(got[1]["rsi_prev1"], pg(got[1]))
+    return dict(got[sh], shift=sh, anchor_override=(sh != pref), pgap_tiebreak=tiebreak, ambiguous=ambiguous)
+
+
+def fade_freshbreak_inputs(df, kline_dirs=FADE_FB_KLINE_DIRS, verbose=True, allow_proxy=False):
+    """{row index: recompute dict | None} for every SPIKE_FADE row (post-ship rows only feed the parity print, never a verdict).
+    Raises FadeFreshbreakUnanchored when a pre-ship fade has no stamp-confirmed bar, unless allow_proxy."""
+    out, cache = {}, {}
+    fades = df[df.entry_strategy.astype(str) == "SPIKE_FADE"]
+    for i, r in fades.iterrows():
+        if r.pair not in cache:
+            cache[r.pair] = fade_fb_load_klines(r.pair, kline_dirs)
+        out[i] = fade_fb_recompute(cache[r.pair], r.opened_at, r.get("entry_price"), r.get("entry_rsi_prev"), r.get("entry_pair_rank"),
+                                   stamp_pgap=r.get(G))
+    pre = fades.opened_at.astype(str).str[:19].str.replace(" ", "T") < FADE_FB_SHIP_UTC
+    lab = lambda i: f"{fades.at[i, 'pair']}@{str(fades.at[i, 'opened_at'])[:19]}"
+    miss = [i for i in fades.index[pre] if not out[i]]
+    if verbose:
+        a_pre = [i for i in fades.index[pre] if out[i]]
+        a_post = [i for i in fades.index[~pre] if out[i]]
+        post_blk = [i for i in a_post if fade_freshbreak_rule(out[i]["rsi_prev1"], fades.at[i, G] if pd.notna(fades.at[i, G]) else out[i]["pgap"])]
+        pg = [(out[i]["pgap"], fades.at[i, G]) for i in a_pre + a_post if out[i]["pgap"] is not None and pd.notna(fades.at[i, G])]
+        pg_ok = sum(abs(a - b) < 0.02 for a, b in pg)
+        print(f"FADE_FRESHBREAK recompute: anchored pre-ship {len(a_pre)}/{int(pre.sum())} · post-ship {len(a_post)}/{int((~pre).sum())} "
+              f"(live-admitted, recompute refuses {len(post_blk)}) · previous-bar {sum(1 for i in a_pre + a_post if out[i]['shift'] == 1)} · "
+              f"pgap recompute vs stamp |Δ|<0.02 on {pg_ok}/{len(pg)}")
+        ovr = [lab(i) + (" (pgap tie-break)" if out[i]["pgap_tiebreak"] else "") for i in a_pre + a_post if out[i]["anchor_override"]]
+        amb = [lab(i) for i in a_pre if out[i]["ambiguous"]]
+        if ovr:
+            print(f"NOTE: FADE_FRESHBREAK bar ≠ seconds rule (stamp-confirmed) on {len(ovr)}: " + ", ".join(ovr))
+        if amb:
+            print(f"WARNING: FADE_FRESHBREAK ambiguous pre-ship bar (both bars match the stamp, verdicts differ) on {len(amb)}: " + ", ".join(amb))
+    if miss:
+        msg = (f"FADE_FRESHBREAK recompute unanchored on {len(miss)} pre-ship fade(s): " + ", ".join(lab(i) for i in miss))
+        if not allow_proxy:
+            raise FadeFreshbreakUnanchored(f"FATAL: {msg} — restore the 5m kline cache ({', '.join(kline_dirs)}) or rerun with "
+                                           f"--allow-proxy (legacy rsi_prev2 stamp proxy; the master then differs from STACK_VERSION)")
+        print(f"WARNING: {msg} — --allow-proxy: legacy stamp proxy used")
+    return out
+
+
+def fade_freshbreak_block(opened_at, rec, stamp_rsi_prev2, stamp_pgap):
+    """10-08c builder FADE_FRESHBREAK verdict: post-ship → never (live gate owns it); pre-ship → the engine rule on the kline
+    recompute (pgap = stamp, else recompute); unanchored (only reachable with --allow-proxy) → the legacy rsi_prev2 stamp proxy."""
+    if str(opened_at)[:19].replace(' ', 'T') >= FADE_FB_SHIP_UTC:
+        return False
+    if rec is None:
+        return fade_freshbreak_stamp_block(opened_at, stamp_rsi_prev2, stamp_pgap)
+    return fade_freshbreak_rule(rec["rsi_prev1"], stamp_pgap if (stamp_pgap is not None and pd.notna(stamp_pgap)) else rec["pgap"])
+
+
+# 🚫 10-08c pair blacklists, FROZEN with STACK_VERSION (tests/test_master_fade_screen.py pins them to trading_config.json). The engine
+# drops pair_blacklist pairs from the trading universe before any sleeve sees them (top_pairs, the spike scanner, FRENZY, SURGE);
+# the spike-scanner-fed sleeves (SPIKE_FADE / SPIKE_CHASE / SPIKE_BOUNCE) also skip no_trade_pairs (scanner `cands` filter; the
+# top-50 hook `pair not in _nt_sc`); sleeve lists apply to their own sleeve. Momentum / flip no_trade_pairs = MAJORS_PROBE-only
+# opens, so not applied there. PROBE rows are exempt from every list (main loop): a probe is never a stack trade — it sits on its
+# own full-size-only line and keeps PROBE_EXEMPT (e.g. the B1 USDCUSDT spike-chase probe), as with every other stack gate.
+PAIR_BLACKLIST_FROZEN = frozenset("ALLOUSDT,EIGENUSDT,ESPORTSUSDT,FILUSDT,MUSDT,PAXGUSDT,RAVEUSDT,SYNUSDT,TRUMPUSDT,USDCUSDT,"
+                                  "VELVETUSDT,VVVUSDT,XAGUSDT,XAUTUSDT,XAUUSDT,龙虾USDT".split(","))
+NO_TRADE_PAIRS_FROZEN = frozenset({"BTCUSDT", "ETHUSDT"})
+NO_TRADE_SLEEVES = ("SPIKE_FADE", "SPIKE_CHASE", "SPIKE_BOUNCE", "FRENZY", "SURGE_LONG", "SURGE_SHORT")
+SLEEVE_BLACKLISTS_FROZEN = {
+    "BULLRUN_LONG": frozenset("ONGUSDT,ETHUSDT,BTCUSDT,ONEUSDT,ZECUSDT".split(",")),   # bullrun_pair_blacklist
+    "BEARRUN_SHORT": frozenset({"BTCUSDT", "ETHUSDT"}),                                 # bearrun_pair_blacklist
+    "SURGE_LONG": frozenset({"BTCUSDT", "ETHUSDT"}),                                    # surge_long_pair_blacklist
+    "SURGE_SHORT": frozenset({"BTCUSDT", "ETHUSDT"}),                                   # surge_short_pair_blacklist
+    "FRENZY": frozenset({"BTCUSDT", "ETHUSDT"}),                                        # frenzy_pair_blacklist (+ no_trade_pairs)
+}
+
+
+def stack_pair_blacklist_reason(strat, pair):
+    """First blacklist that refuses `pair` for sleeve `strat` under today's frozen lists ('' = allowed)."""
+    p = str(pair).strip().upper()
+    s = str(strat)
+    if p in {x.upper() for x in PAIR_BLACKLIST_FROZEN}:
+        return "PAIR_BLACKLIST"
+    key = "FRENZY" if s.startswith("FRENZY_") else s
+    if key in NO_TRADE_SLEEVES and p in NO_TRADE_PAIRS_FROZEN:
+        return "PAIR_NO_TRADE"
+    if p in SLEEVE_BLACKLISTS_FROZEN.get(key, ()):
+        return "SLEEVE_PAIR_BLACKLIST"
+    return ""
+
 BTC5M_CACHE = "reports/backtest_cache/k5m_full/BTCUSDT.csv"
 
 
@@ -363,7 +549,7 @@ def load():
                          f"(opened_at, pair, direction) — era boundaries overlap")
     return df
 
-def main():
+def main(allow_proxy=False):
     df = load()
     src = df.cell_multiplier_source.fillna('') + df.pattern_cell_source.fillna('')
     df['is_probe'] = src.str.upper().str.contains('PROBE')
@@ -406,6 +592,7 @@ def main():
     # else rebuilt from the closed-bar 5m kline cache by the research feature factory (the exact columns the rule was found on).
     _LAG_TH = SimpleNamespace(spike_fade_lag_ndi_min=16.1, spike_fade_lag_btc_gap_min=0.0)
     _lag_ndi, _lag_gap = fade_laggard_inputs(df)
+    _fb_rec = fade_freshbreak_inputs(df, allow_proxy=allow_proxy)   # 🧯 10-08c FRESHBREAK kline recompute (pre-ship verdicts; post-ship = parity print only)
     # 🌀👥 Oct-4 frozen chop ∧ burst block (live values at ship; DECISION_LOG 201) — ledger/test pin these to trading_config.json
     _CB_TH = SimpleNamespace(long_chop_burst_block_enabled=True, long_chop_burst_eff72_max=0.007, long_chop_burst_window_s=120.0)
     _off30 = {}
@@ -438,7 +625,11 @@ def main():
             k, why = False, 'MANUAL_EXEMPT'   # 🖐 Sep-29: operator-opened — never a stack trade, never in the ledger
         elif r.is_probe:
             why = 'PROBE_EXEMPT'
-        if not r.is_probe and strat != 'MANUAL':
+        # probes stay PROBE_EXEMPT even on a blacklisted pair (never a stack trade; separate full-size-only line) — deliberate
+        _blr = stack_pair_blacklist_reason(strat, r.pair) if (not r.is_probe and strat != 'MANUAL') else ''
+        if _blr:
+            k, why = False, _blr   # 🚫 10-08c: today's universe / sleeve blacklists refuse the pair before any sleeve gate (engine order)
+        elif not r.is_probe and strat != 'MANUAL':
             if strat == 'BEARRUN_SHORT':
                 why = 'BEARRUN_SLEEVE'   # kept, but its OWN sleeve — MOM-short reads must filter entry_strategy == 'MOMENTUM'
             elif strat == 'SURGE_SHORT':
@@ -452,7 +643,8 @@ def main():
                 elif r.entry_btc_rsi > 50: k, why = False, 'FADE_BRSI50'  # engine uses strict > (50.0 passes); Sep-24 45→50 (DECISION_LOG 112)
                 elif pd.notna(r.entry_btc_dist_from_ema13_pct) and r.entry_btc_dist_from_ema13_pct > 0: k, why = False, 'FADE_BD13'
                 elif v is not None and v < 2e6: k, why = False, 'FLOOR_2M'
-                elif fade_freshbreak_stamp_block(r.opened_at, r.entry_rsi_prev, r[G]): k, why = False, 'FADE_FRESHBREAK'
+                # 🧯 10-08c: pre-ship fills judged on the engine's own rsi_prev1 (kline recompute, stamp-anchored), not the rsi_prev2 proxy
+                elif fade_freshbreak_block(r.opened_at, _fb_rec.get(i), r.entry_rsi_prev, r[G]): k, why = False, 'FADE_FRESHBREAK'
                 # 🪤 Sep-29: laggard squeeze — pair daily −DI > 16.1 while BTC 4h EMA50 > EMA200 (indicators.fade_laggard_block; engine
                 # tests it LAST among the fade gates; fail-open on a missing reading). DECISION_LOG 128.
                 elif fade_laggard_block(_LAG_TH, _lag_ndi.get(i), _lag_gap.get(i)): k, why = False, 'FADE_LAGGARD'
@@ -697,4 +889,5 @@ def main():
         print(f"  {rz:18s} {len(g):3d} · ${g.pnl.sum():+8.2f}")
 
 if __name__ == '__main__':
-    main()
+    import sys as _sys
+    main(allow_proxy='--allow-proxy' in _sys.argv[1:])   # --allow-proxy: accept the legacy FRESHBREAK stamp proxy on unanchored pre-ship fades

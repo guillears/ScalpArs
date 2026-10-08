@@ -8215,7 +8215,7 @@ class TradingEngine:
                 if not enabled:
                     await self._frenzy_willy_expire(_p, "FRENZY_WILLY switched off")
                 elif not bool(getattr(config.trading_config.thresholds, f"frenzy_willy_entry_{str(_pd.get('trig', '')).lower()}", True)):   # 🎲 (256)
-                    await self._frenzy_willy_expire(_p, f"entry {_pd.get('trig')} switched off")
+                    await self._frenzy_willy_expire(_p, f"entry {_pd.get('trig')} switched off", count=False)
                 elif int(bar_open) > int(_pd['exp']):
                     await self._frenzy_willy_expire(_p, "no red 5m candle within the wait")
                 elif _p not in _frenzy_flags and (seen is None or _p in seen):
@@ -8327,7 +8327,7 @@ class TradingEngine:
             if not _pd:
                 return
             if not bool(getattr(th, f"frenzy_willy_entry_{str(_pd.get('trig', '')).lower()}", True)):   # 🎲 (256) a trigger switched off drops its armed entries too
-                await self._frenzy_willy_expire(pair, f"entry {_pd.get('trig')} switched off")
+                await self._frenzy_willy_expire(pair, f"entry {_pd.get('trig')} switched off", count=False)
                 return
             if int(bar_open) > int(_pd['exp']):
                 await self._frenzy_willy_expire(pair, "no red 5m candle within the wait")

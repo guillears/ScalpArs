@@ -6067,3 +6067,14 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   row (RLC 10-08 17:30, turnover R 3.21); cast to object + selftest that fails without it. Observed the same day (not yet fixed, offered):
   WILLY entry A missed GTC (spike 17:30, shortlisted one bar later → the per-pair cold rule skipped it) and the mcap cache is empty after
   every restart (RLC TURNOVER_UNREAD at 18:24 right after the 85e6a83 deploy). Dual review: no Critical / Important; minors applied.
+- (255) 2026-10-08 🎲🩹 **FRENZY_WILLY: late entry A for pairs that join the read late · market-cap cache survives restarts (operator).**
+  ① Live miss: GTCUSDT spike bar closed 17:30 UTC, joined FRENZY's shortlist (|24 h change| or range ≥ 15 %) at the 17:40 pass → the per-pair
+  cold rule (A only when the spike is the bar just closed; added in review to stop stale A after restarts) skipped it. New D11 field
+  `frenzy_willy_a_cold_max_bars` 3 (clamped 0…12; 0 = old rule): a cold pair may arm A when k = (judged bar close − spike close)/5 min ≤ 3.
+  Kept: episode seen-map (BotState, written on mark / arm / expiry) + FrenzyFlag seed + DB fill backstop + fail-closed on unread state; warm
+  pairs and B unchanged; the 60-min red-candle wait counts from arming. Residual (accepted): an A that armed and expired unfilled can re-arm
+  after a restart within the window only if every BotState write AND the FrenzyFlag row were lost. ② mcap_service cache persisted to
+  /opt/scalpars-data/mcap_cache.json (same persistent dir as the DB / journal, outside the app dir EB replaces; atomic write in a worker
+  thread after each refresh / single-pair fetch; loaded at startup before the first scan with the same 3× staleness rule; fail-safe). Cause
+  confirmed: RLC TURNOVER_UNREAD at 18:24:41 = empty cap cache right after the 85e6a83 restart (24 h volume is read fresh each pass, not a
+  restart issue). Tests isolate mcap in conftest (no network, tmp path). Dual review: no Critical / Important; minors applied.

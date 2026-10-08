@@ -1417,6 +1417,12 @@ class SignalThresholds(BaseModel):
     # else FRENZY_WILLY_RED_EXPIRED (no entry, the episode's A / B one-shot stays used). Guards are judged at the red bar; a global-hold /
     # pair-held refusal keeps it pending. Fills stamp entry_frenzy_willy_wait_bars. Pending entries persist in BotState ('willy_pending').
     frenzy_willy_red_max_wait_minutes: int = 60   # (blank / < 0 → 60; 0 = the trigger bar only)
+    # 🕒 Oct-8 (operator-approved fix): entry A for a COLD pair — one this process did not judge on the previous bar (it joined FRENZY's
+    # shortlist late, a restart, FRENZY paused). Evidence: GTCUSDT 2026-10-08 — spike bar closed 17:30 UTC, the pair entered the shortlist
+    # (|24h change| / range ≥ 15 %) only on the 17:40 pass → "already flagged … no entry A" (missed). A cold pair now fires A while its spike
+    # bar closed ≤ this many 5m bars before the bar just closed (k bars late; armed on THAT pass, the red-candle wait counts from arming).
+    # Every episode already seen (persisted willy_seen + FrenzyFlag seed + the DB fill check) still never fires; older than the window never.
+    frenzy_willy_a_cold_max_bars: int = 3         # (blank / < 0 → 3 = 15 min; 0 = the old rule: only a spike on the bar just closed; clamped to ≤ 12 = 1 h)
     # 🔄 Oct-8 TURNOVER FILTER (operator DECLARED OVERRIDE, DECISION_LOG 251; reports/FRENZY_VOL_MCAP_STUDY_2026-10-08.md — "24 h volume must be
     # below the market cap"): a WILLY entry (A and B) opens only while R = the pair's 24 h quote volume (the value stamped entry_pair_volume_24h_usd)
     # / its market cap (services.mcap_service.get — in-memory cache, its staleness rule) is BELOW this. Judged at the RED-bar open with the

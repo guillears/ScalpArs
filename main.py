@@ -453,6 +453,12 @@ async def lifespan(app: FastAPI):
             pass
     set_ban_persist_callback(_persist_ban)
     
+    try:   # 🗄 Oct-8: the market-cap cache survives restarts / deploys (staleness rule applied on load) — before the first scan
+        from services import mcap_service as _mcs_boot
+        _mcs_boot.load_persisted()
+    except Exception as _mce:
+        logger.warning(f"[MCAP] persisted cache load skipped: {_mce}")
+
     logger.info("[STARTUP] Starting background tasks...")
     await start_background_tasks()
     

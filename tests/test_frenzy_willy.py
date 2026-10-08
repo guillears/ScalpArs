@@ -286,6 +286,101 @@ def test_entry_a_once_per_episode_and_warm_rule(monkeypatch):
     assert [x["willy"] for x in _run(e, dict(spike_ts=BAR_OPEN), warm=False)[0]] == ["A"]         # spike bar = the bar just closed
 
 
+def test_cold_a_window_pure():
+    from services.frenzy import frenzy_willy_a_cold_bars, frenzy_willy_late_bars
+    assert frenzy_willy_a_cold_bars(NS()) == 3 and frenzy_willy_a_cold_bars(_th(frenzy_willy_a_cold_max_bars=None)) == 3
+    assert frenzy_willy_a_cold_bars(_th(frenzy_willy_a_cold_max_bars=-1)) == 3 and frenzy_willy_a_cold_bars(_th(frenzy_willy_a_cold_max_bars="x")) == 3
+    assert frenzy_willy_a_cold_bars(_th(frenzy_willy_a_cold_max_bars=0)) == 0 and frenzy_willy_a_cold_bars(_th(frenzy_willy_a_cold_max_bars=5)) == 5
+    assert frenzy_willy_a_cold_bars(_th(frenzy_willy_a_cold_max_bars=12)) == 12 and frenzy_willy_a_cold_bars(_th(frenzy_willy_a_cold_max_bars=13)) == 12
+    assert frenzy_willy_a_cold_bars(_th(frenzy_willy_a_cold_max_bars=10_000)) == 12 and frenzy_willy_a_cold_bars(_th(frenzy_willy_a_cold_max_bars=float("inf"))) == 12
+    assert frenzy_willy_a_cold_bars(_th(frenzy_willy_a_cold_max_bars=float("nan"))) == 3
+    assert frenzy_willy_late_bars(BAR_OPEN, BAR_OPEN) == 0 and frenzy_willy_late_bars(LAST, BAR_OPEN) == 1
+    assert frenzy_willy_late_bars(BAR_OPEN - 3 * BAR_MS, BAR_OPEN) == 3 and frenzy_willy_late_bars(None, BAR_OPEN) is None
+
+
+def test_cold_pair_gtc_late_a_arms(monkeypatch, caplog):
+    """GTCUSDT 2026-10-08: the pair joined FRENZY's read (shortlist) only AFTER its spike bar → cold; the spike bar closed 1 bar before the
+    bar just closed (also 2 — the log's 'spike 17:30' read at 17:40) → A arms on THIS bar, the red-candle wait counts from arming."""
+    import services.trading_engine as TE
+    monkeypatch.setattr(TE.config, "trading_config", NS(thresholds=_th()))
+    for k in (1, 2):
+        e = _engine(TE)
+        sp = BAR_OPEN - k * BAR_MS
+        with caplog.at_level("INFO", logger=TE.logger.name):
+            caplog.clear()
+            o, _ = _run(e, dict(spike_ts=sp, bar_ret_pct=0.4), warm=False)                       # green bar: armed, waits for red
+        assert o == [] and e.marks == [("FOOUSDT", sp)] and e._willy_event_counts.get("FRENZY_WILLY_ARMED_A") == 1
+        pd = e._fz_willy_pending["FOOUSDT"]
+        assert pd["trig"] == "A" and pd["armed"] == BAR_OPEN and pd["exp"] == BAR_OPEN + 3_600_000   # wait from arming, not the spike
+        assert f"[FRENZY_WILLY] FOOUSDT: entry A armed (flag {k} bars late: joined the read late) → waiting for the first red 5m candle" in caplog.text
+        o, _ = _run(e, dict(spike_ts=sp, bar_ret_pct=-0.3), prev=sp, bar_open=BAR_OPEN + BAR_MS)    # next bar red → opens, 1 bar after arming
+        assert [x["willy"] for x in o] == ["A"] and o[0]["wait"] == 1
+
+
+def test_cold_pair_window_edges(monkeypatch, caplog):
+    import services.trading_engine as TE
+    monkeypatch.setattr(TE.config, "trading_config", NS(thresholds=_th()))
+    e = _engine(TE)
+    assert [x["willy"] for x in _run(e, dict(spike_ts=BAR_OPEN - 3 * BAR_MS), warm=False)[0]] == ["A"]   # 3 bars back → arms (red → opens)
+    e = _engine(TE)
+    with caplog.at_level("INFO", logger=TE.logger.name):
+        o, _ = _run(e, dict(spike_ts=BAR_OPEN - 4 * BAR_MS), warm=False)                         # 4 bars back → no A, logged as before
+    assert o == [] and not getattr(e, "_fz_willy_pending", {}) and "FRENZY_WILLY_ARMED_A" not in (getattr(e, "_willy_event_counts", None) or {})
+    assert e.marks == [("FOOUSDT", BAR_OPEN - 4 * BAR_MS)]                                       # marked seen: it never fires later
+    assert "already flagged before this process judged the pair on the previous bar" in caplog.text and "no entry A" in caplog.text
+    assert _run(e, dict(spike_ts=BAR_OPEN - 4 * BAR_MS), prev=BAR_OPEN - 4 * BAR_MS, bar_open=BAR_OPEN + BAR_MS)[0] == []
+    e = _engine(TE)                                                                               # a warm pair is unaffected by the window
+    assert [x["willy"] for x in _run(e, dict(spike_ts=BAR_OPEN - 10 * BAR_MS), warm=True)[0]] == ["A"]
+
+
+def test_cold_window_restart_seen_episode_never_fires(monkeypatch):
+    """restart: a 2-bar-old spike the last process already saw (persisted willy_seen, or the FrenzyFlag seed) → no A, even inside the window."""
+    import services.trading_engine as TE
+    monkeypatch.setattr(TE.config, "trading_config", NS(thresholds=_th()))
+    sp = BAR_OPEN - 2 * BAR_MS
+    e = _engine(TE); e._fz_willy_seen = {"FOOUSDT": sp}                                           # stored willy_seen (or seeded from FrenzyFlag)
+    o, _ = _run(e, dict(spike_ts=sp, bar_ret_pct=-0.5), prev=None, warm=False)
+    assert o == [] and not getattr(e, "_fz_willy_pending", {}) and "FRENZY_WILLY_ARMED_A" not in (getattr(e, "_willy_event_counts", None) or {})
+    sa = dt.datetime.utcfromtimestamp(sp / 1000)
+
+    async def go():
+        eng, SL = await _mem(monkeypatch, None, flags=[("FOOUSDT", sa)])()
+        e2 = object.__new__(TE.TradingEngine)
+        async with SL() as db:
+            await e2._frenzy_willy_seed_from_flags(db)
+        await eng.dispose()
+        return e2._fz_willy_seen
+    seen = asyncio.run(go())
+    e = _engine(TE); e._fz_willy_seen = dict(seen)
+    assert _run(e, dict(spike_ts=sp, bar_ret_pct=-0.5), prev=None, warm=False)[0] == []
+    e = _engine(TE); e._done["A"] = True                                                          # DB backstop: a fill before the restart
+    assert _run(e, dict(spike_ts=sp, bar_ret_pct=-0.5), prev=None, warm=False)[0] == []
+    e = _engine(TE); e._fz_judged_loaded = False                                                  # stored state unread → fail-closed
+    assert _run(e, dict(spike_ts=sp, bar_ret_pct=-0.5), prev=None, warm=False)[0] == [] and e.blocks == ["FRENZY_WILLY_STATE_UNREAD"]
+
+
+def test_cold_window_clamped_to_one_hour(monkeypatch):
+    import services.trading_engine as TE
+    monkeypatch.setattr(TE.config, "trading_config", NS(thresholds=_th(frenzy_willy_a_cold_max_bars=999)))
+    e = _engine(TE)
+    assert [x["willy"] for x in _run(e, dict(spike_ts=BAR_OPEN - 12 * BAR_MS), warm=False)[0]] == ["A"]   # 12 bars = the ceiling
+    e = _engine(TE)
+    assert _run(e, dict(spike_ts=BAR_OPEN - 13 * BAR_MS), warm=False)[0] == []                    # 999 never widens past 1 h
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert 'min="0" max="12" id="config-fz-willy-a-cold"' in html
+    assert "return [_key, (_key === 'frenzy_willy_a_cold_max_bars' && x > 12) ? 12 : (x === null" in html   # the save caps it at 12 too
+    assert "['config-fz-willy-a-cold', 'frenzy_willy_a_cold_max_bars', 3]" in html                      # blank / negative → 3 on save
+
+
+def test_cold_window_zero_is_the_old_rule(monkeypatch):
+    import services.trading_engine as TE
+    monkeypatch.setattr(TE.config, "trading_config", NS(thresholds=_th(frenzy_willy_a_cold_max_bars=0)))
+    e = _engine(TE)
+    assert _run(e, dict(spike_ts=BAR_OPEN - BAR_MS), warm=False)[0] == []                         # 1 bar late → no A
+    e = _engine(TE)
+    assert [x["willy"] for x in _run(e, dict(spike_ts=BAR_OPEN), warm=False)[0]] == ["A"]         # the bar just closed → A
+
+
 def test_entry_a_switch_off_db_backstop_unreadable(monkeypatch):
     import services.trading_engine as TE
     monkeypatch.setattr(TE.config, "trading_config", NS(thresholds=_th()))
@@ -788,7 +883,7 @@ def test_sizing_1x_1_0():
 
 FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": True, "frenzy_willy_invest_mult": 1.0,
           "frenzy_willy_lev_mult": 1.0, "frenzy_willy_tp_pct": 1.0, "frenzy_willy_stop_pct": 0.0, "frenzy_willy_max_hold_minutes": 120,
-          "frenzy_willy_max_slots": 1, "frenzy_willy_red_max_wait_minutes": 60}
+          "frenzy_willy_max_slots": 1, "frenzy_willy_red_max_wait_minutes": 60, "frenzy_willy_a_cold_max_bars": 3}
 
 
 def test_config_d11():
@@ -797,6 +892,7 @@ def test_config_d11():
     assert mf["frenzy_willy_enabled"].default is False
     assert mf["frenzy_willy_tp_pct"].default == 1.0 and mf["frenzy_willy_stop_pct"].default == 0.0 and mf["frenzy_willy_max_hold_minutes"].default == 120
     assert mf["frenzy_willy_max_slots"].default == 1 and mf["frenzy_willy_red_max_wait_minutes"].default == 60
+    assert mf["frenzy_willy_a_cold_max_bars"].default == 3 and "GTCUSDT 2026-10-08" in open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     assert mf["frenzy_willy_entry_a"].default is True and mf["frenzy_willy_entry_b"].default is True
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     for k, v in FIELDS.items():
@@ -810,14 +906,16 @@ def test_config_d11():
 def test_ui_inputs_load_save_and_both_exports():
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     for _id in ("config-fz-willy-enabled", "config-fz-willy-entry-a", "config-fz-willy-entry-b", "config-fz-willy-invest-mult", "config-fz-willy-lev-mult",
-                "config-fz-willy-tp", "config-fz-willy-stop", "config-fz-willy-max-hold", "config-fz-willy-slots", "config-fz-willy-red-wait"):
+                "config-fz-willy-tp", "config-fz-willy-stop", "config-fz-willy-max-hold", "config-fz-willy-slots", "config-fz-willy-red-wait",
+                "config-fz-willy-a-cold"):
         assert html.count(f'id="{_id}"') == 1, _id
     for row in ("['config-fz-willy-invest-mult', 'frenzy_willy_invest_mult', 1.0]", "['config-fz-willy-lev-mult', 'frenzy_willy_lev_mult', 1.0]",
                 "['config-fz-willy-tp', 'frenzy_willy_tp_pct', 1.0]", "['config-fz-willy-stop', 'frenzy_willy_stop_pct', 0]",
                 "['config-fz-willy-max-hold', 'frenzy_willy_max_hold_minutes', 120]", "['config-fz-willy-slots', 'frenzy_willy_max_slots', 1]",
-                "['config-fz-willy-red-wait', 'frenzy_willy_red_max_wait_minutes', 60]"):
+                "['config-fz-willy-red-wait', 'frenzy_willy_red_max_wait_minutes', 60]", "['config-fz-willy-a-cold', 'frenzy_willy_a_cold_max_bars', 3]"):
         assert html.count(row) == 1, row
-    assert "_key === 'frenzy_willy_max_slots' || _key === 'frenzy_willy_max_hold_minutes' || _key === 'frenzy_willy_red_max_wait_minutes') ? Math.round(x)" in html
+    assert "_key === 'frenzy_willy_max_slots' || _key === 'frenzy_willy_max_hold_minutes' || _key === 'frenzy_willy_red_max_wait_minutes' || _key === 'frenzy_willy_a_cold_max_bars') ? Math.round(x)" in html
+    assert "new-flag A for a pair read late ≤ ${_bt.frenzy_willy_a_cold_max_bars ?? 3} candles after its spike" in html
     for k, d in (("enabled", "false"), ("entry-a", "true"), ("entry-b", "true")):
         key = "frenzy_willy_" + k.replace("-", "_")
         assert f"{key}: document.getElementById('config-fz-willy-{k}')?.checked ?? {d}" in html, key
@@ -1243,6 +1341,7 @@ def test_turnover_kinds_recorded_once_despite_flapping(monkeypatch):
     assert "FRENZY_WILLY_TURNOVER" not in (getattr(e, "_willy_event_counts", None) or {})          # a filter block, not a tally event
 
 
+@pytest.mark.mcap_real
 def test_mcap_request_pair_dedupes_and_respects_switch(monkeypatch):
     from services import mcap_service as M
     import config as C

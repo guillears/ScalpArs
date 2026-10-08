@@ -8,11 +8,20 @@ It is UNDOCUMENTED, so everything here is fail-safe by construction:
   · refreshes run as a background task, at most one at a time, every `mcap_refresh_minutes`;
   · any error / missing field / non-positive value → the pair simply has no value (UI shows "–", stamps stay NULL);
   · values older than 3 × the refresh interval are treated as missing (a dead endpoint never serves stale caps forever).
+🗄 Oct-8 persistence (a deploy restart left the cache empty → FRENZY_WILLY's turnover filter read "unreadable" seconds after the restart,
+RLCUSDT 18:24 UTC): after every successful refresh / one-pair fetch the cache is written ATOMICALLY (temp file + os.replace, off the event
+loop) to mcap_cache.json in the persistent data dir — /opt/scalpars-data on the server (outside /var/app/current, so an EB deploy never wipes
+it; the same dir as the SQLite DB, trading_config.json and the decision journal), the repo dir locally. `load_persisted()` runs once at
+startup before the first scan and applies the SAME staleness rule (a value older than 3 × the refresh interval is never loaded, and `get`
+re-checks it). Unreadable / corrupt / missing file → a warning, nothing loaded, startup never blocked.
 """
 import asyncio
+import json
 import logging
 import math
+import os
 import re
+import tempfile
 import time
 from typing import Dict, Iterable, Optional, Tuple
 
@@ -109,6 +118,128 @@ def get(pair: str) -> Tuple[Optional[float], Optional[int]]:
     return mc, rk
 
 
+PERSIST_NAME = "mcap_cache.json"
+_save_lock = None   # asyncio.Lock, created lazily on the running loop: one writer at a time (the newest snapshot always lands last)
+
+
+def _path() -> str:
+    """the persisted cache file: /opt/scalpars-data (survives EB deploys — the established persistent-state dir) when it exists, else '.'."""
+    base = '/opt/scalpars-data' if os.path.isdir('/opt/scalpars-data') else '.'
+    return os.path.join(base, PERSIST_NAME)
+
+
+def _clean_entry(v, now: float, max_age: float):
+    """a stored [mcap_usd, cmc_rank, fetched_at] → the cache tuple, or None (bad / non-positive / non-finite / stale / from the future)."""
+    try:
+        mc, rk, ts = v
+        mc = float(mc); ts = float(ts)
+        if not math.isfinite(mc) or mc <= 0 or not math.isfinite(ts) or ts > now + 60 or now - ts > max_age:
+            return None
+    except (TypeError, ValueError):
+        return None
+    try:   # a bad rank never discards a valid cap (same rule as parse_detail)
+        rk = int(rk) if rk is not None and int(rk) > 0 else None
+    except (TypeError, ValueError, OverflowError):
+        rk = None
+    return (mc, rk, ts)
+
+
+def _write_file(path: str, snapshot: Dict[str, Tuple[Optional[float], Optional[int], float]]) -> None:
+    """atomic write (temp file in the same dir + fsync + os.replace, then a best-effort fsync of the directory) — a crash mid-write never
+    leaves a half file. Raises on I/O errors of the write itself."""
+    d = os.path.dirname(path) or '.'
+    fd, tmp = tempfile.mkstemp(prefix='.mcap_cache.', suffix='.tmp', dir=d)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump({"v": 1, "saved_at": time.time(), "cache": {k: [mc, rk, ts] for k, (mc, rk, ts) in snapshot.items()}}, f, separators=(',', ':'))
+            f.flush(); os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    try:   # best-effort: make the rename itself durable (no directory fds on some platforms — ignored)
+        dfd = os.open(d, os.O_RDONLY)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    except (OSError, AttributeError):
+        pass
+
+
+async def save_persisted() -> bool:
+    """write the current (non-stale) cache to disk in a worker thread — never on the trading path, never raises. → True when written."""
+    global _save_lock
+    try:
+        if os.environ.get("SCALPARS_REPLAY") == "1":
+            return False
+        now, max_age = time.time(), 3 * _interval_s()
+        snap = {k: v for k, v in dict(_cache).items() if v and v[0] is not None and now - v[2] <= max_age}   # snapshot on the loop thread
+        if _save_lock is None:
+            _save_lock = asyncio.Lock()
+        async with _save_lock:
+            await asyncio.to_thread(_write_file, _path(), snap)
+        return True
+    except Exception as e:
+        logger.warning(f"[MCAP] cache not persisted (fail-safe, trading unaffected): {str(e)[:120]}")
+        return False
+
+
+def _sweep_orphans(d: str, max_age_s: float = 600.0) -> int:
+    """best-effort: delete `.mcap_cache.*.tmp` files (a write killed between mkstemp and os.replace) older than 10 min. Never raises."""
+    n = 0
+    try:
+        now = time.time()
+        for name in os.listdir(d):
+            if name.startswith('.mcap_cache.') and name.endswith('.tmp'):
+                try:
+                    fp = os.path.join(d, name)
+                    if now - os.path.getmtime(fp) > max_age_s:
+                        os.unlink(fp); n += 1
+                except OSError:
+                    pass
+    except Exception:
+        pass
+    return n
+
+
+def load_persisted() -> int:
+    """startup, before the first scan: merge the persisted cache into memory under the SAME staleness rule (older than 3 × the refresh
+    interval → not loaded) — a fresher in-memory value is never overwritten. Missing file → 0 quietly; unreadable / corrupt → a warning, 0.
+    Never raises, never touches the network. → the number of pairs loaded."""
+    try:
+        if os.environ.get("SCALPARS_REPLAY") == "1":
+            return 0
+        p = _path()
+        _sweep_orphans(os.path.dirname(p) or '.')
+        if not os.path.isfile(p):
+            return 0
+        with open(p, encoding='utf-8') as f:
+            raw = json.load(f)
+        items = (raw or {}).get("cache") if isinstance(raw, dict) else None
+        if not isinstance(items, dict):
+            raise ValueError("no 'cache' map")
+        now, max_age = time.time(), 3 * _interval_s()
+        n = stale = 0
+        for k, v in items.items():
+            e = _clean_entry(v, now, max_age) if isinstance(k, str) and k else None
+            if e is None:
+                stale += 1
+                continue
+            cur = _cache.get(k)
+            if cur is None or cur[2] < e[2]:
+                _cache[k] = e
+                n += 1
+        logger.info(f"[MCAP] loaded {n} persisted market caps ({stale} stale / invalid skipped)")
+        return n
+    except Exception as e:
+        logger.warning(f"[MCAP] persisted cache ignored (unreadable: {str(e)[:120]}) — caps refill on the first refresh")
+        return 0
+
+
 async def _fetch_pair(client, pair: str) -> Tuple[Optional[float], Optional[int]]:
     """one pair's (mcap_usd, cmc_rank) from the endpoint (every lookup candidate, polite pacing) — (None, None) on any failure."""
     mc, rk = None, None
@@ -150,6 +281,7 @@ def request_pair(pair: str) -> bool:
                     mc, rk = await _fetch_pair(client, pair)
                 if mc is not None:
                     _cache[pair] = (mc, rk, time.time())
+                    await save_persisted()   # 🗄 background: a restart right after still has this cap
             except Exception:
                 pass
         t = asyncio.get_running_loop().create_task(_one())
@@ -173,6 +305,8 @@ async def _refresh(pairs: Iterable[str]) -> None:
                 else:
                     fail += 1
                 await asyncio.sleep(0.15)          # ~50 pairs ≈ 10 s per refresh — polite to the endpoint
+        if ok:
+            await save_persisted()   # 🗄 background task (never the trading path), atomic, fail-safe
         if ok == 0 and fail and time.time() - _fail_logged_at > 3600:
             _fail_logged_at = time.time()
             logger.warning(f"[MCAP] refresh returned no market caps ({fail} pairs) — column shows '–' until it recovers")

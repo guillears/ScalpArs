@@ -675,6 +675,30 @@ def frenzy_willy_new_flag(prev_spike_ts, seen_spike_ts, spike_ts) -> bool:
         return False
 
 
+WILLY_A_COLD_BARS_MAX = 12  # hard ceiling (one hour of 5m bars)
+WILLY_A_COLD_BARS_DEF = 3   # frenzy_willy_a_cold_max_bars default (Oct-8 GTCUSDT miss: a pair that joins FRENZY's read late may still fire A ≤ 3 bars = 15 min after its spike bar)
+
+
+def frenzy_willy_a_cold_bars(th) -> int:
+    """entry A's late window for a COLD pair (not judged by this process on the previous bar), in closed 5m bars between the spike bar's close
+    and the close of the bar just judged. blank / < 0 / unreadable → 3; 0 = the old rule (only a spike on the bar just closed); clamped to
+    ≤ 12 (one hour) so a restart can never fire A for an episode older than an hour that no process saw."""
+    w = _f(th, 'frenzy_willy_a_cold_max_bars', WILLY_A_COLD_BARS_DEF)
+    if w != w or w < 0:
+        return WILLY_A_COLD_BARS_DEF
+    return int(min(w, WILLY_A_COLD_BARS_MAX))
+
+
+def frenzy_willy_late_bars(spike_ts, bar_open) -> Optional[int]:
+    """how many closed 5m bars the spike bar's close (spike_ts) lies before the close of the bar just judged (bar_open = the forming bar's
+    open): 0 = the spike bar IS the bar just closed. None = unreadable (the caller treats it as too late — fail-closed)."""
+    try:
+        d = int(bar_open) - int(spike_ts)
+        return max(0, d // BAR_MS)
+    except (TypeError, ValueError):
+        return None
+
+
 def frenzy_breaks(bars) -> List[int]:
     """SHORT observation: which lines (50 / 200) did the LAST closed 5m bar break — a close below the EMA of 5m closes with the
     previous 12 closes all at/above it (the research trigger of scripts/break_short_review.py). [] when none / too few bars."""

@@ -74,3 +74,16 @@ def _willy_hold_free(request, monkeypatch):
             return await _real(self, db)
         return False, None, None, None
     monkeypatch.setattr(_te.TradingEngine, "_willy_hold_state", _narrow)
+
+
+@pytest.fixture(autouse=True)
+def _mcap_isolated(request, monkeypatch, tmp_path):
+    """🗄 Oct-8: services.mcap_service never fetches from the network or writes the real mcap_cache.json (repo dir / /opt/scalpars-data) in a
+    test — the persist path is ALWAYS a per-test tmp file; request_pair / ensure_refresh are no-ops unless the test is @pytest.mark.mcap_real."""
+    from services import mcap_service as _mcs
+    _p = str(tmp_path / "mcap_cache.json")
+    monkeypatch.setattr(_mcs, "_path", lambda: _p)
+    if request.node.get_closest_marker("mcap_real"):
+        return
+    monkeypatch.setattr(_mcs, "request_pair", lambda pair: False)
+    monkeypatch.setattr(_mcs, "ensure_refresh", lambda pairs: None)

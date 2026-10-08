@@ -25,7 +25,7 @@ from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE
-from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio
+from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
 
@@ -7936,9 +7936,11 @@ class TradingEngine:
     # was not in _frenzy_flags with the same spike_ts on the previous judged bar — a pair that joins the shortlist late is "new" when the engine
     # first reads it flagged). One A per episode, judged BEFORE the open whatever the outcome: the newest episode seen flagged per pair lives in
     # _fz_willy_seen (+ BotState.frenzy_unjudged_json['willy_seen'], survives restarts; kept even while WILLY is off, so switching it on never
-    # fires A for an episode already flagged) + a DB backstop (a FRENZY_WILLY 'A' fill on that pair / spike). COLD pass (the first pass of a
-    # process, or after the pass did not run for > 3 bars): the previous judged bar is unknown → only an episode whose spike bar IS the bar just
-    # closed may fire A (an episode flagged before a restart / while FRENZY was off never fires late). Entry B "ON NOT TAKEN": the episode's
+    # fires A for an episode already flagged) + a DB backstop (a FRENZY_WILLY 'A' fill on that pair / spike). COLD pair (this process did not
+    # judge it on the previous bar — a restart, joined the shortlist late, FRENZY paused): a NEW episode (not in the seen map / FrenzyFlag seed /
+    # DB) may fire A only while its spike bar closed ≤ frenzy_willy_a_cold_max_bars (default 3, clamped ≤ 12 = 1 h) bars before the bar just
+    # closed — armed on that pass, the red-candle wait counting from arming ("flag k bars late: joined the read late"); older episodes never
+    # fire (Oct-8 GTCUSDT fix; 0 = only a spike on the bar just closed). Entry B "ON NOT TAKEN": the episode's
     # fresh ON bar on which FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE opened nothing (DB-read: whatever refused it), decided AFTER them in the same
     # pass; one B FILL per episode (DB). Never on a catch-up bar. Then _frenzy_open(willy=...): slots, any open position on the pair, lateness,
     # dislocation — nothing else.
@@ -8237,7 +8239,9 @@ class TradingEngine:
         else it expires (FRENZY_WILLY_RED_EXPIRED; the A / B one-shot stays used). At the red bar: the turnover filter (R = 24 h volume /
         market cap < frenzy_willy_max_vol_mcap_ratio; unreadable = refused) then the open path's guards (global hold, pair held, slots, late,
         dislocation). Turnover / hold / pair-held refusals and an open-path crash keep it pending (each refusal recorded once per pending).
-        pair_warm = THIS process judged this pair on the previous bar. WILLY's outcome goes to flag['willy_last'] (never FRENZY's last_fire).
+        pair_warm = THIS process judged this pair on the previous bar; a COLD pair's new episode may still fire A while its spike bar closed
+        ≤ frenzy_willy_a_cold_max_bars (3) bars before the bar just closed (0 = only the bar just closed) — armed on THIS bar (the red-candle
+        wait runs from arming). WILLY's outcome goes to flag['willy_last'] (never FRENZY's last_fire).
         Crash-isolated (FRENZY_WILLY_FAILED) — never raises into the pass; a crash never drops a pending entry."""
         try:
             th = config.trading_config.thresholds
@@ -8247,7 +8251,11 @@ class TradingEngine:
             sp = int(sp)
             _seen = (getattr(self, '_fz_willy_seen', None) or {}).get(pair)
             _new = frenzy_willy_new_flag(prev_spike_ms, _seen, sp)
-            _cold_skip = bool(_new and not pair_warm and sp < int(bar_open))   # cold: only a spike on the bar just closed is provably new
+            # cold pair (not judged by THIS process on the previous bar — restart / joined FRENZY's read late / FRENZY paused): A only while the
+            # spike bar closed ≤ frenzy_willy_a_cold_max_bars bars before the bar just closed (Oct-8 GTCUSDT: joined the shortlist the pass after
+            # its spike). The seen map (persisted + FrenzyFlag seed) + the DB fill check still stop any episode already seen; older = never.
+            _late = None if pair_warm else frenzy_willy_late_bars(sp, bar_open)
+            _cold_skip = bool(_new and not pair_warm and (_late is None or _late > frenzy_willy_a_cold_bars(th)))
             if _seen is None or sp > int(_seen):
                 await self._frenzy_willy_mark(pair, sp)   # ⚖ the episode's ONE A judgement — marked before anything else, whatever follows
             _pend = self.__dict__.setdefault('_fz_willy_pending', {})
@@ -8285,15 +8293,16 @@ class TradingEngine:
             if _new and bool(getattr(th, 'frenzy_willy_entry_a', True)) and pair not in _pend:
                 if _cold_skip:
                     logger.info(f"[FRENZY_WILLY] {pair}: episode (spike {_sp_txt}) already flagged before this process judged the pair on the "
-                                f"previous bar (restart / joined the read late / FRENZY paused) — no entry A")
+                                f"previous bar (restart / joined the read late / FRENZY paused) and {_late if _late is not None else '?'} bars old "
+                                f"> the {frenzy_willy_a_cold_bars(th)}-bar late window — no entry A")
                 elif not getattr(self, '_fz_judged_loaded', False):
                     self._record_filter_block("FRENZY_WILLY_STATE_UNREAD", "LONG")
                     logger.warning(f"[FRENZY_WILLY] {pair}: stored episode state unreadable — no entry A (fail-closed)")
                 else:
                     _tried_a = True
                     _d = await self._frenzy_willy_done_db(db, pair, sp, 'A')
-                    if _d is False:
-                        await _arm('A', "new flag")
+                    if _d is False:   # a late cold A arms on THIS bar: its red-candle wait runs from now (arming), not from the spike bar
+                        await _arm('A', f"flag {_late} bars late: joined the read late" if (_late and not pair_warm) else "new flag")
                     elif _d:
                         logger.info(f"[FRENZY_WILLY] {pair}: entry A already taken for the episode (spike {_sp_txt}) — a fill before a restart")
             if (ep.get('fresh_on') and bool(getattr(th, 'frenzy_willy_entry_b', True)) and not _tried_a and pair not in _pend

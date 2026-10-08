@@ -41,6 +41,9 @@ reports/backtest_cache/
 
 # decision journal files (local dev runs)
 journal/
+# market-cap cache persisted by services/mcap_service.py (local dev runs; the server keeps it in /opt/scalpars-data)
+mcap_cache.json
+.mcap_cache.*.tmp
 
 # large per-trade research outputs (re-run scripts/hot_scalp_backtest.py)
 reports/HOT_SCALP_TRADES_*.csv

@@ -53,4 +53,5 @@ reports/HOT_SCALP_EXCURSIONS_*.csv
 reports/SCOUT_NEG_DAILYUP_WEAKPAIR.json
 reports/SCOUT_ML_TREND_ALIGNED.json
 reports/SCOUT_ML_PAIR_1H_DOWNTREND.json
+reports/SCOUT_LITE_OFF30H3.json
 reports/SCOUT_*.json.*

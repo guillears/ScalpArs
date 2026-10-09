@@ -29,7 +29,8 @@ fill (fallback 61.8 % until 30). No freeze while a counted fill is unscored only
 
 BINANCE (TREND_ALIGNED only): cache first; ≤ 2 requests per run (oldest unscored counted fill first: a 5m page or a 4h page per
 symbol); refused while this line's OR NEG_DAILYUP's 418/429 cooldown is live (IP-wide ban), once the last X-MBX-USED-WEIGHT-1M ≥ 900,
-or past the 25 s wall-clock budget; a 418/429 stops the run and persists a cooldown (Retry-After honoured).
+or past the 25 s wall-clock budget; a 418/429 stops the run and persists a cooldown (Retry-After honoured). A page answered with
+another 4xx is final at once (its request slot refunded so the queue keeps moving); 3 other failed attempts on a page → final.
 """
 import glob
 import json
@@ -303,13 +304,15 @@ def _att_path():
 
 
 def load_attempts():
-    """{'done': {'SYM|interval|start': bars}, 'first': {SYM: first 4h open ms seen on a cold page}} — successful pages only."""
+    """{'done': {'SYM|interval|start': bars | 'HTTP <code>' | 'failed×3'}, 'first': {SYM: first 4h open ms seen on a cold page},
+    'fail': {'SYM|interval|start': failed attempts}} — a done page is never re-requested (a 4xx other than 418/429 is final at once;
+    FAIL_MAX other failures → final; a wall-clock hang is not counted)."""
     try:
         with open(_att_path()) as f:
             a = json.load(f)
-        return dict(done=dict(a.get("done") or {}), first=dict(a.get("first") or {}))
+        return dict(done=dict(a.get("done") or {}), first=dict(a.get("first") or {}), fail=dict(a.get("fail") or {}))
     except Exception:
-        return dict(done={}, first={})
+        return dict(done={}, first={}, fail={})
 
 
 def save_attempts(a):
@@ -318,6 +321,16 @@ def save_attempts(a):
     with open(tmp, "w") as f:
         json.dump(a, f)
     os.replace(tmp, _att_path())
+
+
+FAIL_MAX = 3                                        # failed attempts on one page before the leg is UNSCORED for good
+
+
+def _fail(att, key):
+    att.setdefault("fail", {})
+    att["fail"][key] = int(att["fail"].get(key, 0)) + 1
+    if att["fail"][key] >= FAIL_MAX:
+        att["done"][key] = f"failed×{FAIL_MAX}"
 
 
 def _key(sym, pl):
@@ -347,7 +360,10 @@ def _need(sym, t_ms, data, att):
     if pl is None:
         return "final", f"{sym} unreadable with complete inputs"
     if _key(sym, pl) in att["done"]:
-        return "final", f"{sym} {pl[0]} page from {pd.Timestamp(pl[1], unit='ms'):%m-%d %H:%M} already fetched — Binance has no bars there"
+        v = att["done"][_key(sym, pl)]
+        why = (f"Binance answered {v} (permanent client error)" if isinstance(v, str) and v.startswith("HTTP") else
+               f"failed {FAIL_MAX} times" if isinstance(v, str) else "already fetched — Binance has no bars there")
+        return "final", f"{sym} {pl[0]} page from {pd.Timestamp(pl[1], unit='ms'):%m-%d %H:%M} {why}"
     return "fetch", pl
 
 
@@ -407,10 +423,21 @@ def ensure_data(cnt, now_ms, fetch=True, budget_s=BUDGET_S, max_req=MAX_REQ):
                 notes.append(f"{sym} {pl[0]} +{len(d)} bars (weight used {st['used']})")
             except NF.RateLimited as e:
                 st["stop"] = str(e)
+            except urllib.error.HTTPError as e:
+                if 400 <= e.code < 500:                        # permanent client error (bad / delisted symbol) → final now, slot refunded
+                    att["done"][_key(sym, pl)] = f"HTTP {e.code}"
+                    st["n"] -= 1
+                else:
+                    _fail(att, _key(sym, pl))
+                save_attempts(att)
+                notes.append(f"{sym} {pl[0]} fetch failed (HTTP {e.code})")
             except Exception as e:
                 notes.append(f"{sym} {pl[0]} fetch failed ({str(e)[:80]})")
-                if isinstance(e, TimeoutError):
+                if isinstance(e, TimeoutError):                # a hang is the run's budget, not the page's fault → not counted
                     st["stop"] = "wall-clock timeout"
+                else:
+                    _fail(att, _key(sym, pl))
+                    save_attempts(att)
         if st["n"] >= max_req or st["stop"]:
             break
     if st["stop"]:
@@ -877,6 +904,26 @@ def selftest():
                 f"fetch path: 5m page, then a cold 4h page → LIT scored from this line's cache ({calls[n0:]}, gap {gp})")
             ensure_data(lit, t_f + 20 * 60_000)
             chk(len(calls) - n0 == 2, "covered → zero requests")
+
+            # permanently failing pages: a 4xx is final at once (slot refunded, the queue moves on); 3 other failures → final
+            def _q(url, timeout):
+                calls.append(url)
+                if "Q0USDT" in url:
+                    raise urllib.error.HTTPError(url, 400, "Invalid symbol", {}, None)
+                raise urllib.error.HTTPError(url, 503, "busy", {}, None)
+            _http_get = _q
+            q = pd.concat([x0.assign(pair="Q0USDT", b4=0.1), x0.assign(pair="Q1USDT", b4=0.1, ts=x0.ts + pd.Timedelta(hours=1),
+                                                                         t_ms=x0.t_ms + H)], ignore_index=True)
+            n0 = len(calls)
+            ensure_data(q, 1791490000000, max_req=1)
+            fr = final_reasons(q)
+            chk(len(calls) - n0 == 2 and "Q1USDT" in calls[-1] and "HTTP 400" in fr.iloc[0] and fr.iloc[1] == "",
+                f"a 400 on the oldest fill → final, slot refunded, the later fill still requested ({calls[n0:]}, {fr.to_dict()})")
+            for _ in range(FAIL_MAX):
+                ensure_data(q, 1791490000000)
+            fr = final_reasons(q)
+            chk(len(calls) - n0 == 1 + FAIL_MAX and f"failed {FAIL_MAX} times" in fr.iloc[1],
+                f"the 400 page never re-requested; {FAIL_MAX} 5xx failures → final ({len(calls) - n0}, {fr.to_dict()})")
 
             def _slow(url, timeout):
                 calls.append(url)

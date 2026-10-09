@@ -6120,3 +6120,14 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   show WR ≥ 61 % or Σ > 0. Counts include fills already seen at registration (DOWNTREND 8 since Sep-30, TREND_ALIGNED B18's 3 — operator
   choice). DOWNTREND evidence was on the rebuilt 1h gap; on the live stamp yr5 262 · 57 % · −0.119. Pending operator decisions (offered, not made): ML 1×
   resize (UNMATCHED 1.5 → 1.0, declared override), pause trigger (next 30 full-size ML fills on ≥ 10 days avg < 0 → pause).
+- (259) 2026-10-08 👁 **Scout OBSERVE line LITE_OFF30H3 (operator) — no trading change.** Trigger: B19 SKLUSDT FRENZY_LITE 10-08 21:40
+  stopped −3 % in 9 min by a single-minute flush (BTC flat); bought 17 min after a +3.6 % 3-min mini-pump, ~4 % below the local high, at the
+  minimum 12-close stretch with vol_trend 3.88. Study (reports/LITE_ENTRY_SIGNS_STUDY_2026-10-08.md; 548 LITE fills, bearish block,
+  ticks, +3/−3/12 h; three signs pre-stated): S1 bought ≥ 3 % below the 30-min high 120 · 48 % · −0.10 % vs rest +0.38 % (negative both
+  halves + every LOMO, but P(mean<0) 0.64; 724 cohort +0.04); S2 minimum stretch not a separator (78 % of fills); S3 hot volume unstable
+  (1h ≥ 3× 24h avg p 0.04 single-test → 0.47 family-corrected). Every test fails the confidence leg (max 0.82); LITE in-sample twice → no
+  filter. Stops: 31 % are single-minute flushes (median 16 min; 56 % recover to entry within 60 min), twice as common after a mini-pump
+  (52 % vs 24 %) — descriptive only. 🔒 LITE_OFF30H3 (scripts/scout_lite_off30.py): LITE fills from 2026-10-07 (bearish-day fills from before the 250 block
+  shown apart, not counted) bought ≥ 3 % below the 30-min high = max 5m high of the 6 bars ending at the signal bar (the last bar closed
+  ≤ the fill), frozen; breakeven from scored LITE fills (49.9 % fallback until 30), day-bootstrap 4,000 / seed 7; frozen on the first crossing prefix at N ≥ 30 on ≥ 15 days → FILTER CANDIDATE (operator decides) only on the
+  expectancy bar (WR < LITE breakeven, day-bootstrap P ≥ 0.95, no day/pair ≥ 50 % of the gross loss); RETIRE if zone mean ≥ rest mean.

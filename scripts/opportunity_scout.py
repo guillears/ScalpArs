@@ -1302,6 +1302,14 @@ def run():
     except Exception as _mt_e:
         log(f"ML trend observe lines failed: {_mt_e}")
         _rg_sec += ["## 🧭 ML trend observe lines", "", f"Unavailable this run ({str(_mt_e)[:120]}).", ""]
+    try:                                               # 🪶 Oct-8 LITE_OFF30H3 (pre-registered, DECISION_LOG 259; orders exports + 5m klines; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_lite_off30 as _lo
+        _rg_sec += _lo.run(now_ms)
+    except Exception as _lo_e:
+        log(f"LITE_OFF30H3 observe line failed: {_lo_e}")
+        _rg_sec += ["## 🪶 LITE_OFF30H3", "", f"Unavailable this run ({str(_lo_e)[:120]}).", ""]
     try:                                               # 🧊 Oct-7 ML_STOP_COOLDOWN (pre-registered) + CLUSTER2_120 (exploratory) — orders exports only; never breaks the run
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

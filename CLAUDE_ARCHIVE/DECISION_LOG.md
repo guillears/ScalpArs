@@ -6162,3 +6162,15 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   first prefix where HIGH ≥ 1.0 and LOW < 1.0 each reach N ≥ 15 on ≥ 8 days): HIGH meets the expectancy bar ∧ HIGH mean < LOW mean →
   RE-ARM CANDIDATE 1.0 (operator decides); HIGH mean ≥ LOW mean → gate stays off; else keep observing (re-read at 30). The 194 revert row
   is resolved by this change.
+- (264) 2026-10-09 👁 **Scout exit shadow WILLY_TIMECAP (operator hypothesis) — no trading change.** Operator: FRENZY_WILLY should take its
+  +1 % TP within the first 15 or 20 minutes, else close the trade as it is — instead of today's 120-min cap (no stop in paper). Live so far:
+  KAIA 10-09 08:45 +1.01 % (TP in ~1 min) and W 09:05 +1.00 % (TP in ~13 min, dipped −1.2 % first). scripts/scout_willy_timecap.py walks
+  every WILLY fill from its real entry on ticks (1m provisional): LIVE vs CAP15 vs CAP20 (CAP30 / CAP60 context), reporting the TP-hit
+  minute and, for fills without a TP inside the cap, their % at the cap vs their live outcome. 🔒 Frozen at N ≥ 20 closed WILLY fills on
+  ≥ 8 days: CAPx CANDIDATE (operator decides) iff mean Δ(CAPx − LIVE) > 0 ∧ day-bootstrap P(Δ > 0) ≥ 0.90 ∧ no fill > 50 % of Σ Δ ∧ Δ > 0
+  on the no-TP-within-cap fills (TP-before-cap fills must show Δ = 0); both → larger Δ (tie → 15); both ≤ 0 → KEEP 120; else observe
+  (re-read at 40). If adopted: revert when the first 15 fills after the switch sum below what the 120-min exit would have given.
+  P ≥ 0.90 (not the 0.95 of the filter bar) is a deliberate choice for an exit hypothesis the operator decides on; no freeze unless the
+  walker reproduces the live exits. Study reference (yr5 tick WILLY A, 1,067 fills): LIVE 120 +0.135 %/fill vs CAP15 +0.031 / CAP20 +0.067
+  (no-TP-within-15 fills: −1.55 at the cap vs −1.28 live, 60 % still TP later); the freed-slot effect can't close the gap (≈ +2…+10 pts vs
+  −110 / −72).

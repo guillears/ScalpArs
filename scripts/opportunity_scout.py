@@ -1310,6 +1310,14 @@ def run():
     except Exception as _lo_e:
         log(f"LITE_OFF30H3 observe line failed: {_lo_e}")
         _rg_sec += ["## 🪶 LITE_OFF30H3", "", f"Unavailable this run ({str(_lo_e)[:120]}).", ""]
+    try:                                               # ⏱ Oct-9 WILLY_TIMECAP exit shadow (operator hypothesis, DECISION_LOG 264; orders exports + ticks / 1m; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_timecap as _wt
+        _rg_sec += _wt.run(now_ms)
+    except Exception as _wt_e:
+        log(f"WILLY_TIMECAP exit shadow failed: {_wt_e}")
+        _rg_sec += ["## ⏱ WILLY_TIMECAP", "", f"Unavailable this run ({str(_wt_e)[:120]}).", ""]
     try:                                               # 🔁📏 Oct-9 FRENZY_REENTRY_AFTER_WIN + FRENZY_STRETCHED (pre-registered; orders exports only, no Binance; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

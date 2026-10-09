@@ -6131,3 +6131,11 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   shown apart, not counted) bought ≥ 3 % below the 30-min high = max 5m high of the 6 bars ending at the signal bar (the last bar closed
   ≤ the fill), frozen; breakeven from scored LITE fills (49.9 % fallback until 30), day-bootstrap 4,000 / seed 7; frozen on the first crossing prefix at N ≥ 30 on ≥ 15 days → FILTER CANDIDATE (operator decides) only on the
   expectancy bar (WR < LITE breakeven, day-bootstrap P ≥ 0.95, no day/pair ≥ 50 % of the gross loss); RETIRE if zone mean ≥ rest mean.
+- (260) 2026-10-09 🔎 **Spike-fade BTC-RSI ceiling 50 checked — KEEP (no change) · the (112) revert gate now tracked in scout.** Source:
+  reports/SPIKE_FADE_BTC_RSI_CHECK_2026-10-09.md. The band the Sep-24 raise added is (45, 50] (engine blocks when BTC 5m RSI incl. the
+  forming bar is strictly > the ceiling). Live forward since the raise: band 6 · 83 % · +0.11 % · +$234 vs ≤ 45 10 · 100 % · +0.38 %
+  (4 days). Replay: the Aug-5→Sep-24 band loss (−0.17) equals the ≤ 45 fades' (−0.17) → a bad period for all fades, not the band; full
+  year band −0.00 vs rest −0.01, finer bands flat, months co-move; the 9 band fills of the first ceiling-50 era are now refused by
+  FRESHBREAK / BD13. Expectancy bar: fails everywhere (max P 0.84 = the post-raise replay row on 3 days; live N 6). Gate (112): 10 fresh band fades (same-minute fires once) →
+  WR < 55 % ∨ Σ < 0 → back to 45; now 6/10 · 83 % · Σ +0.68 % as traded (+0.67 at today's stack) (caution, not changed: one more −1.5 % stop can flip Σ even at 80 % WR).
+  Scout: row added to scripts/scout_revert_gates.py, frozen at the 10th counted fill.

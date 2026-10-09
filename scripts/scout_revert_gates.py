@@ -43,6 +43,11 @@ GATES (frozen definitions — quoted from CLAUDE_CURRENT_STATE.md / DECISION_LOG
   FAN_10X (252)    FAN flips 20× → 10× (flip_entry_sources FAN_RATIO_GATE:1.0:0.5): FLIP:FAN_RATIO_GATE fills from the deploy at leverage ≤ 10
                    (closed prefix, FROZEN at 15): WR ≥ 63 % ∧ avg pnl % ≥ +0.20 → FIRES ("RESTORE 20×"); avg < 0 → REVIEW (sleeve-kill checklist
                    first, no auto-off); else stays 10×. pnl % is leverage-invariant.
+  FADE_BRSI50 (112) spike_fade_max_btc_rsi 45 → 50 (Sep-24): fresh SPIKE_FADE fills opened from the deploy (commit c0d7fed + 10 min) with
+                   entry_btc_rsi in (45, 50] (the band the raise added — the engine blocks iff the BTC 5m RSI incl. the forming candle is strictly
+                   > the ceiling; the stamp is that reading; DECISION_LOG wrote it "[45,50)"), same-minute fires counted once (one minute = the mean
+                   pnl % of its fills), CLOSED prefix by open time, FROZEN at the 10th counted fire: WR < 55 % ∨ Σ pnl % < 0 → FIRES
+                   ("REVERT: spike_fade_max_btc_rsi back to 45"); else holds.
   LOADX (126)      first 30 (extended from 8 on 2026-10-04, operator) PAIR_RSI_MOMENTUM_LOADX-blocked LONG signals (journal FAILS lines whose COMPLETE fail set is LOADX alone,
                    rank ≤ 10 pairs excluded = mega-cap gate), WINDOW units (one 5-min journal bucket = one scan = one window, value =
                    mean) → WR ≥ 60 % ∨ net > 0 → long_rsi_momentum_adx_max 0.
@@ -104,7 +109,9 @@ FRENZY_FEES, FRENZY_HOLD = 0.09, 12 * H
 PROBE_START = "2026-10-04 22:00"     # DECISION_LOG 200: SURGE_LONG / BEARRUN probe windows count from here
 SURGE_R72_MAX = 2.7
 # (commit, fallback UTC push time) — deploy = push + 10 min
-DEPLOYS = {"FRENZY_TP3": ("2e36c26", "2026-10-04 19:23:15"), "FRENZY_STRONG": ("181131e", "2026-10-04 14:06:09"),
+DEPLOYS = {"FRENZY_TP3": ("2e36c26", "2026-10-04 19:23:15"),
+           "FADE_BRSI50": ("c0d7fed", "2026-09-24 21:36:51"),   # 🔓 Sep-24 (112) fade BTC-RSI ceiling 45 → 50 — commit c0d7fedf 18:36:51 -03
+           "FRENZY_STRONG": ("181131e", "2026-10-04 14:06:09"),
            "FRENZY_GVOL": ("0d79904", "2026-10-03 22:14:13"),
            "SURGE_B": ("grep:(DECISION_LOG 202)", "2026-10-05 01:30:00"),
            "FRENZY_LOCK": ("grep:(DECISION_LOG 205)", "2026-10-05 22:00:00"),
@@ -133,6 +140,9 @@ FRENZY3 = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")
 # ── Oct-8 (DECISION_LOG 252) — FROZEN bars ──
 BR5_LEV_MIN, BR5_LEV_MAX, BR5_WINDOWS, BR_GAP_MIN = 5, 20, 3, 180   # BEARRUN_5X: windows whose fills are all at 5 ≤ lev < 20, first 3 complete, Σ window-mean pnl % < 0 → rollback
 FAN10_N, FAN10_WR, FAN10_AVG, FAN10_LEV_MAX = 15, 63.0, 0.20, 10   # FAN_10X: first 15 closed at lev ≤ 10 → restore / review / stay
+# ── Sep-24 (DECISION_LOG 112) — FROZEN bar: fresh SPIKE_FADE fills in the band the 45 → 50 raise added, same-minute fires once ──
+FB_LO, FB_HI, FB_N, FB_WR = 45.0, 50.0, 10, 55.0       # band (45, 50] (engine blocks iff bRSI > ceiling, strict) · first 10 · WR < 55 ∨ Σ < 0 → back to 45
+FB_STOP = -1.5                                          # the fade's full stop (pnl %) — caution text only, not part of the rule
 
 
 def log(msg):
@@ -419,6 +429,57 @@ def decide_fan_10x(vals, n=FAN10_N, wr_min=FAN10_WR, avg_min=FAN10_AVG):
     return ("review" if m < 0 else "holds"), wr, m
 
 
+def fade_brsi_band(v):
+    """🔓 (112) entry BTC RSI → 'band' (45 < x ≤ 50 — what the raise re-admitted) · 'low' (≤ 45) · 'above' (> 50) · None (unreadable)."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(x):
+        return None
+    return "band" if FB_LO < x <= FB_HI else ("low" if x <= FB_LO else "above")
+
+
+def fade_brsi_fires(f):
+    """🔓 (112) band fills (any order) → counted fires in open order: same-minute fills = ONE fire (value = mean pnl % of its fills).
+    → [dict(m=minute_ms, n, closed, val, rows=[(o_ms, pair, brsi, pnl)])]; closed = every fill of the minute CLOSED with a pnl %."""
+    out = {}
+    for r in f.sort_values("o_ms").itertuples():
+        m = int(r.o_ms) // MIN * MIN
+        g = out.setdefault(m, dict(m=m, rows=[], closed=True))
+        pn = pd.to_numeric(r.pnl_percentage, errors="coerce")
+        c = str(r.status) == "CLOSED" and pn is not None and np.isfinite(pn)
+        g["closed"] = g["closed"] and c
+        g["rows"].append((int(r.o_ms), str(r.pair), float(r.entry_btc_rsi), float(pn) if c else float("nan")))
+    fires = []
+    for m in sorted(out):
+        g = out[m]
+        g["n"] = len(g["rows"])
+        g["val"] = float(np.mean([x[3] for x in g["rows"]])) if g["closed"] else float("nan")
+        fires.append(g)
+    return fires
+
+
+def fade_brsi_prefix(fires):
+    """the leading CLOSED fires (open order) — a later closed fire waits behind an earlier open one."""
+    out = []
+    for g in fires:
+        if not g["closed"]:
+            break
+        out.append(g)
+    return out
+
+
+def decide_fade_brsi(vals, n=FB_N, wr_min=FB_WR):
+    """🔓 (112) first n counted fires (closed prefix, values in open order): WR < 55 % ∨ Σ < 0 → 'fired' (back to 45); else 'holds'.
+    → (state, wr, Σ)."""
+    v = list(vals)[:n]
+    wr, s = _wr(v), (float(np.sum(v)) if v else 0.0)
+    if len(v) < n:
+        return "collecting", wr, s
+    return ("fired" if (wr < wr_min or s < 0) else "holds"), wr, s
+
+
 def window_chain(ts_ms, gap_ms):
     """window index per (sorted) timestamp: a new window when the gap to the previous one exceeds gap_ms."""
     out, cur, prev = [], -1, None
@@ -444,7 +505,8 @@ def episodes(rows, gap_min=EPISODE_MIN):
 # ═══════════════════════════════ data: exports ═══════════════════════════════
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "entry_price", "exit_price", "pnl_percentage",
               "leverage", "entry_frenzy_adx_delta", "entry_frenzy_di_spread", "entry_surge_trigger_at", "close_reason", "entry_pair_rank",
-              "entry_bull_pct", "entry_btc_ema20_slope", "entry_btc_rsi_prev", "entry_btc_off30d_high_pct", "cell_multiplier_source", "entry_atr_pct")
+              "entry_bull_pct", "entry_btc_ema20_slope", "entry_btc_rsi_prev", "entry_btc_off30d_high_pct", "cell_multiplier_source", "entry_atr_pct",
+              "entry_btc_rsi")
 
 
 def _export_ms(path):
@@ -1714,6 +1776,48 @@ def gate_fan_10x(orders, st):
     return state, t0
 
 
+def _fb_fire_txt(g):
+    """one counted fire for the detail list: '09-26 14:05 2Z 48.0 +0.52' (same-minute fills joined, value = their mean)."""
+    names = "+".join(f"{p.replace('USDT', '')} {b:.1f}" for _, p, b, _ in g["rows"])
+    val = _f(g["val"]) if g["closed"] else "open"
+    return f"{_fmt_t(g['m'])} {names} {val}" + (f" (×{g['n']} same minute, mean)" if g["n"] > 1 else "")
+
+
+def gate_fade_brsi(orders, st, n=FB_N):
+    """🔓 (112) SPIKE_FADE fills from the 45 → 50 deploy with entry_btc_rsi in (45, 50], same-minute fires once, closed prefix by open time;
+    verdict FROZEN in the state at the n-th counted fire (later fills / closes never rewrite it)."""
+    G = st.setdefault("gates", {}).setdefault("FADE_BRSI50", {})
+    t0 = deploy_ms("FADE_BRSI50")
+    a = orders[(orders.entry_strategy.astype(str) == "SPIKE_FADE") & (orders.o_ms >= t0)].copy()
+    a["band"] = [fade_brsi_band(v) for v in a.entry_btc_rsi]
+    f = a[a.band == "band"]
+    fires = fade_brsi_fires(f)
+    caution = (f"⚠ caution (not part of the rule): Σ is thin — one more {str(format(FB_STOP, '+.1f')).replace('-', '−')} % stop can turn Σ < 0 and fire the gate even at ≥ 80 % WR")
+    if G.get("frozen"):
+        z = G["frozen"]
+        later = [g for g in fires if g["m"] > z.get("last_m", 0)]
+        G["progress"] = (f"FROZEN at {n}/{n} (on {z.get('frozen_at', '?')}): WR {z['wr']:.0f} % · Σ {z['sum']:+.2f} %"
+                         + (f" · {len(later)} later fire(s) not counted" if later else ""))
+        G["detail"] = f"frozen {n}: " + " · ".join(z["fires"]) + (f" · later (not counted): " + " · ".join(_fb_fire_txt(g) for g in later[-5:]) if later else "")
+        return z["state"], t0
+    pre = fade_brsi_prefix(fires)[:n]
+    vals = [g["val"] for g in pre]
+    state, wr, sm = decide_fade_brsi(vals, n)
+    if state != "collecting":
+        G["frozen"] = {"state": state, "wr": wr, "sum": sm, "fires": [_fb_fire_txt(g) for g in pre], "last_m": pre[-1]["m"],
+                       "frozen_at": _fmt_t(int(time.time() * 1000), True)}
+    nu = int(a.band.isna().sum())
+    oth = a.band.value_counts()
+    tail = len(fires) - len(pre)
+    G["progress"] = (f"{len(pre)}/{n} fires counted (closed prefix, same-minute once)" + (f" · WR {wr:.0f} % · Σ {sm:+.2f} %" if pre else "")
+                     + (f" · {tail} later/open" if tail > 0 else "")
+                     + f" · other fades since the deploy: {int(oth.get('low', 0))} at ≤ 45 · {int(oth.get('above', 0))} above 50"
+                     + (f" · ⚠ {nu} fade(s) with unreadable entry_btc_rsi (excluded)" if nu else "")
+                     + (f" · {caution} (Σ headroom {sm:+.2f} %)" if state == "collecting" and pre else ""))
+    G["detail"] = " · ".join(_fb_fire_txt(g) for g in fires[:15]) + f" · {caution}"
+    return state, t0
+
+
 # ═══════════════════════════════ assembly ═══════════════════════════════
 DEFS = {
     "CHOP_BURST": ("🌀👥 Chop∧burst block (201)", "first 6 refused momentum-LONG signals (LONG_CHOP_BURST) re-priced with the live exit replica: "
@@ -1753,6 +1857,12 @@ DEFS = {
     "FAN_10X": ("🔄 FAN flips 10× (252)", "FLIP:FAN_RATIO_GATE fills from the 252 deploy at leverage ≤ 10 (closed prefix, pnl % = leverage-invariant), FROZEN at 15: "
                 "WR ≥ 63 % ∧ avg ≥ +0.20 % → restore 20× · avg < 0 → REVIEW the sleeve (sleeve-kill checklist first; no auto-off) · else stay 10×",
                 "RESTORE 20× (registry lev 1.0: flip_entry_sources FAN_RATIO_GATE:1.0)", "flip_entry_sources"),
+    "FADE_BRSI50": ("🔓 Fade BTC-RSI ceiling 45 → 50 (112)", "TIGHT RE-REVERT, verbatim: \"fresh fades opened at BTC RSI [45,50) (entry_btc_rsi stamp) "
+                    "at N≥10 — WR<55% ∨ Σ<0 → back to 45; same-minute fires count once.\" Read as the engine's band (45, 50] (fade blocked iff BTC 5m RSI "
+                    "incl. the forming candle > spike_fade_max_btc_rsi, strict; the stamp is that reading): SPIKE_FADE fills from the c0d7fed deploy (+10 min), "
+                    "one fire per open minute (value = mean pnl % of its fills), CLOSED prefix by open time, FROZEN at the 10th fire · ⚠ caution (not part "
+                    "of the rule): Σ is thin — one more −1.5 % stop can flip Σ < 0 even at ≥ 80 % WR",
+                    "REVERT: spike_fade_max_btc_rsi back to 45", "spike_fade_max_btc_rsi"),
     "LOADX": ("🧭 LOADX gate (126)", "first 30 LOADX-only refused LONG signals (journal FAILS, rank ≤ 10 excluded), WINDOW units: WR ≥ 60 % ∨ net > 0 · extended from 8 on 10-04 (first 8 had FIRED, fragile at t+5m)",
               "set long_rsi_momentum_adx_max 0", "long_rsi_momentum_adx_max"),
     "FLIP_EMA13_BLOCKED": ("🔄 FAN flip BTC-EMA13 filter (221)", "first 10 WINDOWS (5-min journal buckets) of FAN flip-short refusals whose COMPLETE fail set is "
@@ -1792,7 +1902,7 @@ DEFS = {
     "MEGACAP": ("🏦 Mega-cap exclusion (110)", "LONG_MEGACAP_BLOCK refusals re-priced: ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows",
                 "set long_megacap_rank_max 0", "long_megacap_rank_max"),
 }
-ORDER = ["CHOP_BURST", "BEARISH_BLOCKED", "ATR_RAISE", "TP3_VS_LOCK", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "BEARRUN_5X", "FAN_10X", "LOADX", "FLIP_EMA13_BLOCKED", "FLIP_PADX_BLOCKED", "MS_PVR_BLOCKED", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
+ORDER = ["CHOP_BURST", "BEARISH_BLOCKED", "ATR_RAISE", "TP3_VS_LOCK", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "BEARRUN_5X", "FAN_10X", "FADE_BRSI50", "LOADX", "FLIP_EMA13_BLOCKED", "FLIP_PADX_BLOCKED", "MS_PVR_BLOCKED", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
 
 
 def _status_text(code, state, G):
@@ -1941,7 +2051,8 @@ def run_section(now_ms=None, noted=None, record_notes=True):
                      ("ATR_RAISE", lambda: gate_atr_raise(orders, J, st)),                         # ⬆ (250)
                      ("BEARISH_BLOCKED", lambda: gate_bearish_blocked(st)),                        # 🐻 (250)
                      ("BEARRUN_5X", lambda: gate_bearrun_5x(orders, st, newest)),                 # 🐻 (252)
-                     ("FAN_10X", lambda: gate_fan_10x(orders, st))):                               # 🔄 (252)
+                     ("FAN_10X", lambda: gate_fan_10x(orders, st)),                                # 🔄 (252)
+                     ("FADE_BRSI50", lambda: gate_fade_brsi(orders, st))):                         # 🔓 (112)
         try:
             state, t0 = fn()
             res[code] = state
@@ -2034,6 +2145,12 @@ def selftest():
         nonlocal ok
         assert cond, msg
         ok += 1
+
+    # every deploy key the gates pass to deploy_ms must be a DEPLOYS key (10-09 review: a stray comment swallowed FRENZY_STRONG → KeyError → silent "error" row)
+    import re as _re
+    _src = open(os.path.abspath(__file__), encoding="utf-8").read()
+    _used = set(_re.findall(r'deploy_ms\("([A-Z0-9_]+)"', _src))
+    chk(_used and _used <= set(DEPLOYS), f"deploy keys missing from DEPLOYS: {sorted(_used - set(DEPLOYS))}")
 
     # CHOP_BURST — first 6, WR ≥ 50 ∨ Σ > 0
     chk(decide_first_n([0.3, -0.5, -0.5], 6, 50)[0] == "collecting", "chop: < 6 collects")
@@ -2237,6 +2354,56 @@ def selftest():
     chk(_status_text("BEARRUN_5X", "fired", {}).startswith("🔔 FIRED → ROLLBACK: bearrun_lev_mult 0.05"), "br5x status text")
     chk(_status_text("FAN_10X", "fired", {}).startswith("🔔 FIRED → RESTORE 20×") and "sleeve-kill" in _status_text("FAN_10X", "review", {})
         and "stay 10×" in _status_text("FAN_10X", "holds", {}), "fan10 status texts")
+    # ── Sep-24 (112) fade BTC-RSI ceiling 45 → 50 ──
+    chk(fade_brsi_band(45.0) == "low" and fade_brsi_band(45.01) == "band" and fade_brsi_band(50.0) == "band" and fade_brsi_band(50.01) == "above"
+        and fade_brsi_band(None) is None and fade_brsi_band("x") is None and fade_brsi_band(np.nan) is None,
+        "fade bRSI band edges: 45 excluded · 50 included · > 50 above · unreadable None")
+    chk(decide_fade_brsi([0.5] * 9)[0] == "collecting", "fade bRSI: 9 fires collect")
+    chk(decide_fade_brsi([0.5] * 6 + [-0.1] * 4)[0] == "holds", "fade bRSI: WR 60 % ∧ Σ +2.6 → holds")
+    chk(decide_fade_brsi([0.5] * 5 + [-0.1] * 5)[0] == "fired", "fade bRSI: WR 50 % < 55 → fires (WR leg, Σ > 0)")
+    chk(decide_fade_brsi([0.2] * 8 + [-1.5] * 2)[0] == "fired" and decide_fade_brsi([0.2] * 8 + [-1.5] * 2)[1] == 80.0,
+        "fade bRSI: Σ −1.4 < 0 → fires at 80 % WR (Σ leg)")
+    chk(decide_fade_brsi([0.15] * 8 + [-0.6] * 2)[0] == "holds", "fade bRSI: Σ exactly 0 holds (bar is < 0)")
+    chk(decide_fade_brsi([0.5] * 10 + [-9.0] * 5)[0] == "holds", "fade bRSI: only the FIRST 10 fires count")
+    _ff = pd.DataFrame({"o_ms": [DAY, DAY + 20_000, DAY + 5 * MIN, DAY + 9 * MIN], "pair": ["AUSDT", "BUSDT", "CUSDT", "DUSDT"],
+                        "entry_btc_rsi": [46.0, 49.0, 47.0, 48.0], "status": ["CLOSED", "CLOSED", "OPEN", "CLOSED"],
+                        "pnl_percentage": [0.5, -1.5, np.nan, 0.3]})
+    _fi = fade_brsi_fires(_ff)
+    chk(len(_fi) == 3 and _fi[0]["n"] == 2 and abs(_fi[0]["val"] + 0.5) < 1e-9, "fade bRSI fires: two fills in one minute = ONE fire (mean pnl %)")
+    chk(len(fade_brsi_prefix(_fi)) == 1, "fade bRSI fires: a later closed fire waits behind an earlier open one (closed prefix)")
+    _ff2 = _ff.assign(status=["CLOSED", "OPEN", "CLOSED", "CLOSED"], pnl_percentage=[0.5, np.nan, 0.2, 0.3])
+    chk(len(fade_brsi_prefix(fade_brsi_fires(_ff2))) == 0, "fade bRSI fires: an open fill inside a minute holds that whole fire")
+    _orig = DEPLOYS["FADE_BRSI50"]
+    DEPLOYS["FADE_BRSI50"] = ("grep:(NO SUCH COMMIT 0xdeadbeef)", "1970-01-01 00:00:00")
+    try:
+        _rs = [44.0, 45.0, 50.5, 46.0, 50.0] + [47.0] * 9          # 44 / 45 / 50.5 out · 46 + 50 in · then 9 more in-band
+        _go = pd.DataFrame({"o_ms": [DAY + k * 10 * MIN for k in range(14)], "pair": [f"P{k}USDT" for k in range(14)],
+                            "entry_strategy": ["SPIKE_FADE"] * 13 + ["FRENZY_LONG"], "entry_btc_rsi": _rs, "status": ["CLOSED"] * 14,
+                            "pnl_percentage": [-9, -9, -9] + [0.3] * 7 + [-1.5] * 2 + [0.3, 0.3]})
+        _st = {}
+        _r = gate_fade_brsi(_go.iloc[:8], _st)
+        chk(_r[0] == "collecting" and _st["gates"]["FADE_BRSI50"]["progress"].startswith("5/10") and "2 at ≤ 45 · 1 above 50" in _st["gates"]["FADE_BRSI50"]["progress"]
+            and "Σ headroom" in _st["gates"]["FADE_BRSI50"]["progress"],
+            "fade bRSI gate: 44 + 45 counted as ≤ 45, 50.5 above, 50 in the band · caution shown while collecting")
+        _st = {}
+        _r = gate_fade_brsi(_go, _st)
+        _z = _st["gates"]["FADE_BRSI50"]["frozen"]
+        chk(_r[0] == "fired" and abs(_z["sum"] - (8 * 0.3 - 3.0)) < 1e-9 and abs(_z["wr"] - 80.0) < 1e-9 and len(_z["fires"]) == 10,
+            "fade bRSI gate: 10th fire freezes · 8W/2 stops Σ −0.6 → FIRES at 80 % WR")
+        _go2 = _go.copy(); _go2["pnl_percentage"] = [0.3] * 14
+        chk(gate_fade_brsi(_go2, _st)[0] == "fired" and "FROZEN at 10/10" in _st["gates"]["FADE_BRSI50"]["progress"],
+            "fade bRSI gate: the frozen verdict is reused (new data never rewrites it)")
+        _go3 = pd.concat([_go, _go.iloc[[12]].assign(o_ms=DAY + 500 * MIN, pair="LATEUSDT")])
+        gate_fade_brsi(_go3, _st)
+        chk("1 later fire(s) not counted" in _st["gates"]["FADE_BRSI50"]["progress"], "fade bRSI gate: later fires listed, not counted")
+        _st = {}
+        _gh = _go.copy(); _gh["pnl_percentage"] = [-9, -9, -9] + [0.3] * 9 + [-1.0, 0.3]   # 9W / 1L Σ +1.7
+        chk(gate_fade_brsi(_gh, _st)[0] == "holds", "fade bRSI gate: 90 % WR ∧ Σ > 0 → holds")
+    finally:
+        DEPLOYS["FADE_BRSI50"] = _orig
+    chk("FADE_BRSI50" in ORDER and "FADE_BRSI50" in DEFS and "entry_btc_rsi" in ORDER_COLS and DEFS["FADE_BRSI50"][3] == "spike_fade_max_btc_rsi",
+        "112 gate wired (ORDER / DEFS / deploy key / ORDER_COLS / config key)")
+    chk(_status_text("FADE_BRSI50", "fired", {}).startswith("🔔 FIRED → REVERT: spike_fade_max_btc_rsi back to 45"), "fade bRSI status text")
     print(f"selftest OK — {ok} checks")
 
 

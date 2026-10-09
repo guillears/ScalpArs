@@ -1310,6 +1310,14 @@ def run():
     except Exception as _lo_e:
         log(f"LITE_OFF30H3 observe line failed: {_lo_e}")
         _rg_sec += ["## 🪶 LITE_OFF30H3", "", f"Unavailable this run ({str(_lo_e)[:120]}).", ""]
+    try:                                               # 🔁📏 Oct-9 FRENZY_REENTRY_AFTER_WIN + FRENZY_STRETCHED (pre-registered; orders exports only, no Binance; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_frenzy_entry_lines as _fe
+        _rg_sec += _fe.run(now_ms)
+    except Exception as _fe_e:
+        log(f"FRENZY entry observe lines failed: {_fe_e}")
+        _rg_sec += ["## 🔁📏 FRENZY entry observe lines", "", f"Unavailable this run ({str(_fe_e)[:120]}).", ""]
     try:                                               # 🧊 Oct-7 ML_STOP_COOLDOWN (pre-registered) + CLUSTER2_120 (exploratory) — orders exports only; never breaks the run
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

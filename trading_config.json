@@ -772,7 +772,7 @@
     "frenzy_willy_red_max_wait_minutes": 60,
     "frenzy_willy_a_cold_max_bars": 3,
     "frenzy_willy_max_vol_mcap_ratio": 1.0,
-    "frenzy_gvol_max": 1.0,
+    "frenzy_gvol_max": 0.0,
     "frenzy_bearish_day_block": true,
     "frenzy_catchup_max_bars": 6,
     "frenzy_wide_above_share_min": 0.0,

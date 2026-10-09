@@ -6139,3 +6139,26 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   FRESHBREAK / BD13. Expectancy bar: fails everywhere (max P 0.84 = the post-raise replay row on 3 days; live N 6). Gate (112): 10 fresh band fades (same-minute fires once) →
   WR < 55 % ∨ Σ < 0 → back to 45; now 6/10 · 83 % · Σ +0.68 % as traded (+0.67 at today's stack) (caution, not changed: one more −1.5 % stop can flip Σ even at 80 % WR).
   Scout: row added to scripts/scout_revert_gates.py, frozen at the 10th counted fill.
+- (261) 2026-10-09 👁 **Scout OBSERVE lines FRENZY_REENTRY_AFTER_WIN + FRENZY_STRETCHED (operator) — no trading change, no study.**
+  Trigger: B19 FRENZY — RLCUSDT 10-08 23:00 +3 % (vs spike VWAP +0.8 %) then RLCUSDT 10-09 03:10 −3 % (same episode, re-entry 2.5 h after
+  the win, vs VWAP +9.0 %); CTSIUSDT 10-09 06:25 −3 % (ATR 2.96, tracked by the 250 ATR_RAISE gate). Operator: track in scout, no filter
+  hunt (scripts/scout_frenzy_entry_lines.py). REENTRY = a FRENZY_LONG / WIDE fill on a pair that already closed a FRENZY-family fill at a
+  profit in the same episode (same spike). STRETCHED = entry vs spike VWAP ≥ 13.0 % — frozen from the master FRENZY_LONG/WIDE distribution
+  only (75th percentile of 15 stamped rows, 12.98 → 13.0, no outcomes used; RLC 03:10 at +8.98 % is NOT in the zone). Counted from the (DECISION_LOG 250) deploy, DAY units, LITE shown apart. 🔒 Frozen on the
+  first crossing prefix (zone N ≥ 15 on ≥ 8 days): FILTER CANDIDATE (operator decides) only on the expectancy bar (WR < FRENZY breakeven,
+  fallback 51.5 % until 30 fills; day-bootstrap P(mean<0) ≥ 0.95; no day/pair ≥ 50 % of the gross loss); RETIRE if zone mean ≥ rest mean.
+- (262) 2026-10-09 ⏳ **FRENZY_STRONG (197) revert gate extended 10 → 20 fills — operator, declared change of a pre-committed gate.**
+  At 4/10 the sized-up FRENZY_LONG fills (ADX Δ > 0 ∧ DI spread > 0, lev 0.5) were all −3 % (avg −3.01 vs normal −1.50). Operator: first
+  see which ENTRY filters improve FRENZY_LONG win rate (scout lines 250 bearish / ATR_RAISE / gvol 194 / 261 re-entry + stretched) before
+  acting on sizing. Decision now at the first 20 sized-up fills (same bar: avg < the normal FRENZY_LONG fills of the same period, or < 0 →
+  revert the strong leverage); the original first-10 read stays visible "on record, superseded". Sizing gates (FRENZY_STRONG, BEARRUN_5X,
+  FAN_10X) moved to the end of the scout gate table — filters first.
+- (263) 2026-10-09 🌊 **FRENZY market-volume gate OFF (operator): frenzy_gvol_max 1.0 → 0 for FRENZY_LONG / WIDE / LITE — measure both
+  sides in scout.** The 194 gate's own revert gate (first 20 let-through FRENZY + WIDE fills average < 0 → set 0) stood at 17/20 · −1.27 %
+  · 5 won, heading to fire; scout GVOL_BLOCKED since 10-07 had blocked 3 · +0.94 % (lock ruler) vs let-through 3 · −1.34 % (live actual); re-priced at
+  today's exit in this commit: blocked 2 · +2.90 % (one per pair-episode) vs let-through 3 · −1.10 %. Year evidence for the gate (< 1.0 +0.225 vs ≥ 1.0 −0.185) never met the 95 % bar. Operator: "leave all
+  trades in and decide with data — measure trades above the gate and below." The reading is still stamped (entry_frenzy_gvol; with the gate
+  off the engine doesn't wait, so scout fills missing stamps from its validated engine-gvol rebuild). 🔒 Scout GVOL_SPLIT (frozen at the
+  first prefix where HIGH ≥ 1.0 and LOW < 1.0 each reach N ≥ 15 on ≥ 8 days): HIGH meets the expectancy bar ∧ HIGH mean < LOW mean →
+  RE-ARM CANDIDATE 1.0 (operator decides); HIGH mean ≥ LOW mean → gate stays off; else keep observing (re-read at 30). The 194 revert row
+  is resolved by this change.

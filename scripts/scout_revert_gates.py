@@ -27,8 +27,10 @@ GATES (frozen definitions — quoted from CLAUDE_CURRENT_STATE.md / DECISION_LOG
                    counted signals on ≥ 8 days, blocked mean > 0 → FIRES ("REVERT (operator decision): turn frenzy_bearish_day_block off").
   FRENZY_TP3 (199, RETIRED Oct-5 — superseded by FRENZY_LOCK) first 20 FRENZY_LONG + FRENZY_WIDE fills opened after the +3 deploy re-priced with fixed +4/−3 on ticks (bot accounting:
                    net levels, 0.09 % fees, fill at the crossing print, 12 h cap) → +4/−3 beats the actual average → FIRES (frenzy_tp_pct 4).
-  FRENZY_STRONG (197) first 10 sized-up FRENZY_LONG fills (entry_frenzy_adx_delta > 0 ∧ entry_frenzy_di_spread > 0) average below the
-                   other FRENZY_LONG fills of the same period, or below 0 → FIRES (frenzy_long_lev_mult_strong 0).
+  FRENZY_STRONG (197) first 20 sized-up FRENZY_LONG fills (entry_frenzy_adx_delta > 0 ∧ entry_frenzy_di_spread > 0) average below the
+                   other FRENZY_LONG fills of the same period, or below 0 → FIRES (frenzy_long_lev_mult_strong 0). EXTENDED 10 → 20 by the
+                   operator 2026-10-09 (DECISION_LOG 262) — a declared change of a pre-committed gate (filters first, then sizing); the
+                   original first-10 read is still computed and shown for the record (superseded, never decides).
   FRENZY_GVOL (194) first 20 FRENZY + WIDE fills under the market-volume gate average < 0 → FIRES (frenzy_gvol_max 0).
   SURGE_LONG (202) option B at full size (operator override): the first 15 SURGE_LONG triggers that FILLED after the deploy (a closed
                    prefix; one trigger = the mean of its fills) mean ≤ 0 → FIRES (surge_long_lev_mult 0.05). Supersedes the 200 probe gate.
@@ -117,11 +119,14 @@ DEPLOYS = {"FRENZY_TP3": ("2e36c26", "2026-10-04 19:23:15"),
            "FRENZY_LOCK": ("grep:(DECISION_LOG 205)", "2026-10-05 22:00:00"),
            "HEAT_REVERT": ("grep:(DECISION_LOG 208)", "2026-10-05 22:00:00"),
            "FRENZY_WILLY": ("grep:(DECISION_LOG 251)", None),   # 🎲 Oct-8 FRENZY_WILLY (declared exception) — its commit message must carry "(DECISION_LOG 251)"; not found → NOW
+           "GVOL_OFF_263": ("grep:(DECISION_LOG 263)", None),   # 🌊 Oct-9 (263) market-volume gate OFF (frenzy_gvol_max 0) — resolves the (194) row; not found → NOW
            "SIZING_252": ("grep:(DECISION_LOG 252)", None),   # 🐻🔄 Oct-8 sizing: BEARRUN 5× + FAN flips 10× (one commit; its message must carry "(DECISION_LOG 252)"); not found → NOW
            "FRENZY_OCT8": ("grep:(DECISION_LOG 250)", None)}   # 🐻⬆🎯 Oct-8: bearish-day block + ATR 3.0 + fixed TP (one commit; its message must carry "(DECISION_LOG 250)")   # 🔁 Oct-5 heat re-scope reverted   # 🎯 Oct-5 lock-then-trail exit (commit message carries the exact string)   # ⚡ Oct-4 option B (found by its commit message)
 SHIPS = {"HEAT": "2026-09-25", "LOADX": "2026-09-29", "MEGACAP": "2026-09-23"}
 # Oct-4 operator: "keep collecting" → trackers extended to 30; (new N, frozen N, frozen verdict) — the frozen first-N verdict stays on record
-EXT_N = {"LOADX": (30, 8, "FIRED (fragile at t+5m)"), "HEAT": (30, 6, "FIRED (6/6 won)")}   # ship dates (journal coverage notes)
+EXT_N = {"LOADX": (30, 8, "FIRED (fragile at t+5m)"), "HEAT": (30, 6, "FIRED (6/6 won)"),
+         "FRENZY_STRONG": (20, 10, None)}   # (262) operator 2026-10-09: 10 → 20; first-10 verdict is LIVE-computed (None → the gate's own read)
+# ship dates (journal coverage notes)
 # 🔄 (221) FAN flip-short entry filters judged on the signals they BLOCK (gate code → the engine's _flip_filters fail name)
 FLIP_SRC = "FLIP:FAN_RATIO_GATE"
 FLIP_GATES = {"FLIP_EMA13_BLOCKED": "FLIP_FAN_BTC_EMA13", "FLIP_PADX_BLOCKED": "FLIP_FAN_PAIR_ADX"}
@@ -1534,30 +1539,45 @@ def _closed_prefix(f):
     return out
 
 
-def gate_frenzy_strong(orders, st, n=10):
+def _strong_read(f, n):
+    """first n sized-up fills (closed prefix) vs the normal fills of the same period (deploy → the n-th sized-up fill once it exists)."""
+    sz = f[f.sized].head(n)
+    vals = _closed_prefix(sz)
+    nm = f[~f.sized & (f.status.astype(str) == "CLOSED") & f.pnl_percentage.notna()]
+    if len(sz) == n:                                                  # "the same period" = deploy → the n-th sized-up fill
+        nm = nm[nm.o_ms <= int(sz.o_ms.iloc[-1])]
+    state, ms, mn = decide_strong(vals, nm.pnl_percentage.tolist(), n)
+    return state, vals, nm, sz, ms, mn
+
+
+def gate_frenzy_strong(orders, st, n=EXT_N["FRENZY_STRONG"][0], n0=EXT_N["FRENZY_STRONG"][1]):
+    """(197) decides at n = 20 (extended by the operator 2026-10-09, DECISION_LOG 262); the original first-n0 = 10 read is computed
+    alongside and stored in G["first_n_txt"] for the record — it never decides."""
     G = st.setdefault("gates", {}).setdefault("FRENZY_STRONG", {})
     t0 = deploy_ms("FRENZY_STRONG")
     f = orders[(orders.entry_strategy.astype(str) == "FRENZY_LONG") & (orders.o_ms >= t0)].copy()
     f["sized"] = (pd.to_numeric(f.entry_frenzy_adx_delta, errors="coerce") > 0) & (pd.to_numeric(f.entry_frenzy_di_spread, errors="coerce") > 0)
-    sz = f[f.sized].head(n)
-    vals = _closed_prefix(sz)
-    nm = f[~f.sized & (f.status.astype(str) == "CLOSED") & f.pnl_percentage.notna()]
-    if len(sz) == n:                                                  # "the same period" = deploy → the 10th sized-up fill
-        nm = nm[nm.o_ms <= int(sz.o_ms.iloc[-1])]
-    state, ms, mn = decide_strong(vals, nm.pnl_percentage.tolist(), n)
+    state, vals, nm, sz, ms, mn = _strong_read(f, n)
+    s0, v0, nm0, _, ms0, mn0 = _strong_read(f, n0)
+    nums0 = (f"{len(v0)}/{n0} closed" + (f" · avg {ms0:+.2f} %" if v0 else "")
+             + f" vs normal {len(nm0)} · " + (f"avg {mn0:+.2f} %" if len(nm0) else "none yet"))
+    G["first_n_txt"] = (f"{'FIRED' if s0 == 'fired' else 'holds'} ({nums0}) — on record, superseded by the {n}-fill extension (262)"
+                        if s0 in ("fired", "holds") else f"collecting ({nums0})")
+    G["first_n_state"] = s0
     lev = pd.to_numeric(sz.leverage, errors="coerce")
     G["progress"] = (f"{len(vals)}/{n} sized-up fills closed" + (f" · avg {ms:+.2f} %" if vals else "")
                      + f" vs normal {len(nm)} · " + (f"avg {mn:+.2f} %" if len(nm) else "none yet")
                      + (f" · sized-up leverage seen {', '.join(sorted({f'{v:g}×' for v in lev.dropna()}))}" if lev.notna().any() else ""))
     G["detail"] = " · ".join(f"{_fmt_t(r.o_ms)} {r.pair.replace('USDT', '')} {'⬆' if r.sized else ''}{_f(r.pnl_percentage)}"
-                             for r in f.head(12).itertuples())
+                             for r in f.head(24).itertuples())
     return state, t0
 
 
 def gate_frenzy_gvol(orders, st, n=20):
     G = st.setdefault("gates", {}).setdefault("FRENZY_GVOL", {})
     t0 = deploy_ms("FRENZY_GVOL")
-    f = orders[orders.entry_strategy.astype(str).isin(["FRENZY_LONG", "FRENZY_WIDE"]) & (orders.o_ms >= t0)].head(n)
+    t_off = deploy_ms("GVOL_OFF_263")                                 # (263) gate switched off → the cohort is capped at the switch
+    f = orders[orders.entry_strategy.astype(str).isin(["FRENZY_LONG", "FRENZY_WIDE"]) & (orders.o_ms >= t0) & (orders.o_ms < t_off)].head(n)
     vals = _closed_prefix(f)
     state, m = decide_mean_neg(vals, n)
     G["progress"] = (f"{len(vals)}/{n} fills closed" + (f" · avg {m:+.2f} % · {sum(1 for v in vals if v > 0)} won" if vals else "")
@@ -1824,9 +1844,10 @@ DEFS = {
                    "WR ≥ 50 % ∨ Σ > 0", "set long_chop_burst_block_enabled false", "long_chop_burst_block_enabled"),
     "FRENZY_TP3": ("🎯 FRENZY TP +3 (199)", "first 20 FRENZY + WIDE fills after the +3 deploy re-priced with fixed +4/−3 on ticks (bot accounting): "
                    "+4/−3 avg > actual avg", "set frenzy_tp_pct 4", "frenzy_tp_pct"),
-    "FRENZY_STRONG": ("💪 FRENZY strong leverage (197)", "first 10 sized-up FRENZY_LONG fills (ADX Δ > 0 ∧ DI spread > 0) avg < the normal "
-                      "FRENZY_LONG fills of the same period, or < 0 · ⚠ from 2026-10-08 the bearish-day block also filters entries — read the split at review", "set frenzy_long_lev_mult_strong 0", "frenzy_long_lev_mult_strong"),
-    "FRENZY_GVOL": ("🌊 FRENZY market-volume gate (194)", "first 20 FRENZY + WIDE fills under the gate: avg pnl % < 0 · ⚠ from 2026-10-08 the bearish-day block also filters entries — read the split at review", "set frenzy_gvol_max 0",
+    "FRENZY_STRONG": ("💪 FRENZY strong leverage (197)", "first 20 sized-up FRENZY_LONG fills (ADX Δ > 0 ∧ DI spread > 0) avg < the normal "
+                      "FRENZY_LONG fills of the same period, or < 0 · EXTENDED 10 → 20 by the operator 2026-10-09 (DECISION_LOG 262), a declared "
+                      "change of a pre-committed gate (filters first, then sizing); the first-10 read is shown for the record · ⚠ from 263 the market-volume gate is off — both arms include high-gvol fills · ⚠ from 2026-10-08 the bearish-day block also filters entries — read the split at review", "set frenzy_long_lev_mult_strong 0", "frenzy_long_lev_mult_strong"),
+    "FRENZY_GVOL": ("🌊 FRENZY market-volume gate (194)", "first 20 FRENZY + WIDE fills under the gate: avg pnl % < 0 · RESOLVED by DECISION_LOG 263 (gate off, frenzy_gvol_max 0): cohort capped at fills opened before the 263 deploy · ⚠ from 2026-10-08 the bearish-day block also filters entries — read the split at review", "set frenzy_gvol_max 0",
                     "frenzy_gvol_max"),
     "FRENZY_LOCK": ("🔒 FRENZY lock exit (205 — SUPERSEDED Oct-8 by TP3_VS_LOCK; the lock is off, the row runs for the record)", "first 20 FRENZY + WIDE fills after the lock deploy, both exits re-priced on ticks with the bot's accounting: "
                     "the old fixed +3/−3 averages better than the lock (+2 at +3, trail 2 pts) → revert (also shown: +6/−3, +4/−3, live as traded)", "set frenzy_lock_arm_pct 0 (fixed +3 returns)",
@@ -1902,7 +1923,11 @@ DEFS = {
     "MEGACAP": ("🏦 Mega-cap exclusion (110)", "LONG_MEGACAP_BLOCK refusals re-priced: ≥ 60 % WR ∧ Σ > 0 on N ≥ 8 across ≥ 3 windows",
                 "set long_megacap_rank_max 0", "long_megacap_rank_max"),
 }
-ORDER = ["CHOP_BURST", "BEARISH_BLOCKED", "ATR_RAISE", "TP3_VS_LOCK", "FRENZY_LOCK", "FRENZY_STRONG", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "BEARRUN_5X", "FAN_10X", "FADE_BRSI50", "LOADX", "FLIP_EMA13_BLOCKED", "FLIP_PADX_BLOCKED", "MS_PVR_BLOCKED", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP"]
+GVOL_RESOLVED = "✅ RESOLVED by 263 (gate off) · tally frozen at the switch"
+RESOLVED_NO_ALERT = ("HEAT", "FRENZY_GVOL")   # resolved rows: shown for the record, never alert
+# operator 2026-10-09 (262): filter / entry gates first, the SIZING gates last
+ORDER = ["CHOP_BURST", "BEARISH_BLOCKED", "ATR_RAISE", "TP3_VS_LOCK", "FRENZY_LOCK", "FRENZY_GVOL", "WIDE_CHOPPY", "SURGE_LONG", "BEARRUN", "FADE_BRSI50", "LOADX", "FLIP_EMA13_BLOCKED", "FLIP_PADX_BLOCKED", "MS_PVR_BLOCKED", "HEAT", "HEAT_ADMIT", "HEAT_ORIG", "MEGACAP",
+         "FRENZY_STRONG", "BEARRUN_5X", "FAN_10X"]
 
 
 def _status_text(code, state, G):
@@ -2114,10 +2139,15 @@ def run_section(now_ms=None, noted=None, record_notes=True):
                  if code in EXT_N and state not in ("nodata", "error") else stt)
         if code == "MS_PVR_BLOCKED" and state not in ("nodata", "error") and G.get("status_txt"):   # 📊 (226) both frozen gates
             shown = G["status_txt"]
+        if code == "FRENZY_STRONG" and state not in ("nodata", "error"):   # 💪 (262) the original 10-fill read stays visible, never decides
+            shown = (f"first {EXT_N[code][1]} (original 197 bar): {G.get('first_n_txt', '–')} · "
+                     f"first {EXT_N[code][0]} (decision, extension 262): {stt}")
+        if code == "FRENZY_GVOL" and state not in ("nodata", "error"):   # 🌊 (263) resolved — gate off, tally frozen at the switch
+            shown = f"{GVOL_RESOLVED} · ({stt})"
         if code == "HEAT" and state not in ("nodata", "error"):   # 🔁 (208) resolved — the extension's blocked set is frozen at the revert
             shown = f"first {EXT_N['HEAT'][1]} (frozen gate): {EXT_N['HEAT'][2]} → ✅ REVERTED Oct-5 (DECISION_LOG 208) · tally frozen at the revert"
         L.append(f"| {title} | {d} | {G.get('progress', '–')} | {shown} | {ck} = {cv if cv is not None else '–'} | {cov.get(code, '–')} |")
-        if state in ("fired", "armbar", "arm_group") + (("review",) if code in ("MS_PVR_BLOCKED", "FAN_10X") else ()) and code != "HEAT":   # HEAT resolved (reverted, 208): no further alerts
+        if state in ("fired", "armbar", "arm_group") + (("review",) if code in ("MS_PVR_BLOCKED", "FAN_10X") else ()) and code not in RESOLVED_NO_ALERT:   # HEAT (208) / FRENZY_GVOL (263) resolved: no further alerts
             k = f"RG|{code}|n{EXT_N[code][0]}|{state}" if code in EXT_N else f"RG|{code}|{state}"   # N in the key: the frozen-N alert must not mute the extension
             if k not in noted and k not in G.get("noted", []):
                 notes.append((k, f"🔔 Revert gate {title}: {(shown if code == 'MS_PVR_BLOCKED' else stt[2:]).strip()} — {G.get('progress', '')}"))
@@ -2404,6 +2434,53 @@ def selftest():
     chk("FADE_BRSI50" in ORDER and "FADE_BRSI50" in DEFS and "entry_btc_rsi" in ORDER_COLS and DEFS["FADE_BRSI50"][3] == "spike_fade_max_btc_rsi",
         "112 gate wired (ORDER / DEFS / deploy key / ORDER_COLS / config key)")
     chk(_status_text("FADE_BRSI50", "fired", {}).startswith("🔔 FIRED → REVERT: spike_fade_max_btc_rsi back to 45"), "fade bRSI status text")
+    # 💪 (262) FRENZY_STRONG extended 10 → 20: decides at 20, the first-10 read is shown for the record, N in the alert key
+    chk(EXT_N["FRENZY_STRONG"][:2] == (20, 10) and "10 → 20" in DEFS["FRENZY_STRONG"][1] and "262" in DEFS["FRENZY_STRONG"][1]
+        and "first-10 read" in DEFS["FRENZY_STRONG"][1] and "EXTENDED 10 → 20" in __doc__, "strong 262: EXT_N / DEFS / docstring")
+    chk(ORDER[-3:] == ["FRENZY_STRONG", "BEARRUN_5X", "FAN_10X"] and len(ORDER) == len(set(ORDER)) and "FRENZY_GVOL" in ORDER[:-3]
+        and "ATR_RAISE" in ORDER[:-3], "ORDER: sizing gates last (FRENZY_STRONG, BEARRUN_5X, FAN_10X); entry filters stay before")
+    chk(f"RG|FRENZY_STRONG|n{EXT_N['FRENZY_STRONG'][0]}|fired" != "RG|FRENZY_STRONG|fired"
+        and f"RG|FRENZY_STRONG|n{EXT_N['FRENZY_STRONG'][0]}|fired" != f"RG|FRENZY_STRONG|n{EXT_N['FRENZY_STRONG'][1]}|fired",
+        "strong 262: alert key carries N=20 (a first-10 alert cannot mute the 20 decision)")
+    _k = 24
+    _so = pd.DataFrame({"o_ms": [DAY + k * MIN for k in range(_k)], "entry_strategy": ["FRENZY_LONG"] * _k, "pair": ["XUSDT"] * _k,
+                        "entry_frenzy_adx_delta": [1.0, -1.0] * 12, "entry_frenzy_di_spread": [1.0] * _k, "leverage": [20] * _k,
+                        "status": ["CLOSED"] * _k, "pnl_percentage": [-0.5, 0.2] * 12})   # 12 sized-up (all −0.5), 12 normal (+0.2)
+    _orig = DEPLOYS["FRENZY_STRONG"]
+    DEPLOYS["FRENZY_STRONG"] = ("grep:(NO SUCH COMMIT 0xdeadbeef)", "1970-01-01 00:00:00")
+    try:
+        _st = {}
+        _r = gate_frenzy_strong(_so, _st)
+        _G = _st["gates"]["FRENZY_STRONG"]
+        chk(_r[0] == "collecting" and _G["progress"].startswith("12/20") and _G["first_n_state"] == "fired"
+            and _G["first_n_txt"].startswith("FIRED (10/10 closed") and "on record, superseded by the 20-fill extension (262)" in _G["first_n_txt"],
+            "strong 262: 10 losing sized-up fills do NOT decide (collecting 12/20); the first-10 would-be FIRED is shown on record")
+        _st = {}
+        gate_frenzy_strong(_so.iloc[:12], _st)
+        chk(_st["gates"]["FRENZY_STRONG"]["first_n_txt"].startswith("collecting (6/10"), "strong 262: first-10 read collecting below 10")
+        _so2 = pd.concat([_so, _so.assign(o_ms=_so.o_ms + 100 * MIN)], ignore_index=True)   # 24 sized-up
+        _st = {}
+        chk(gate_frenzy_strong(_so2, _st)[0] == "fired" and _st["gates"]["FRENZY_STRONG"]["progress"].startswith("20/20"),
+            "strong 262: decides at the 20th sized-up fill")
+    finally:
+        DEPLOYS["FRENZY_STRONG"] = _orig
+    # 🌊 (263) FRENZY_GVOL resolved: cohort capped at the switch, resolved text, never alerts · STRONG def carries the gvol-off warning
+    chk("GVOL_OFF_263" in DEPLOYS and DEPLOYS["GVOL_OFF_263"][1] is None and "FRENZY_GVOL" in RESOLVED_NO_ALERT and "HEAT" in RESOLVED_NO_ALERT
+        and "RESOLVED by DECISION_LOG 263" in DEFS["FRENZY_GVOL"][1] and GVOL_RESOLVED.startswith("✅ RESOLVED by 263 (gate off)"),
+        "gvol 263: deploy key (fallback now) / resolved text / alert exclusion")
+    chk("⚠ from 263 the market-volume gate is off — both arms include high-gvol fills" in DEFS["FRENZY_STRONG"][1], "strong: 263 gvol-off warning")
+    _gv = pd.DataFrame({"o_ms": [DAY + k * MIN for k in range(6)], "entry_strategy": ["FRENZY_LONG"] * 6, "pair": ["XUSDT"] * 6,
+                        "status": ["CLOSED"] * 6, "pnl_percentage": [0.5, 0.5, 0.5, -9.0, -9.0, -9.0]})
+    _orig = (DEPLOYS["FRENZY_GVOL"], DEPLOYS["GVOL_OFF_263"])
+    DEPLOYS["FRENZY_GVOL"] = ("grep:(NO SUCH COMMIT 0xdeadbeef)", "1970-01-01 00:00:00")
+    DEPLOYS["GVOL_OFF_263"] = ("grep:(NO SUCH COMMIT 0xdeadbeef)", "1970-01-01 23:50:00")   # switch push + 10 min = DAY
+    try:
+        _st = {}
+        gate_frenzy_gvol(_gv.assign(o_ms=_gv.o_ms - 3 * MIN), _st)   # 3 fills before DAY, 3 at/after
+        chk(_st["gates"]["FRENZY_GVOL"]["progress"].startswith("3/20 fills closed · avg +0.50 %"),
+            "gvol 263: fills opened after the switch are excluded (tally frozen at the switch)")
+    finally:
+        DEPLOYS["FRENZY_GVOL"], DEPLOYS["GVOL_OFF_263"] = _orig
     print(f"selftest OK — {ok} checks")
 
 

@@ -1440,6 +1440,9 @@ class SignalThresholds(BaseModel):
     # entry, real costs): < 1.0 +0.225 %/trade (both halves +, random-subset luck 3 %, every leave-one-month-out +), ≥ 1.0 −0.185 (both halves −);
     # FAILS the 95 % expectancy bar (blocked-side day CI [−0.49, +0.15]) → declared override. Unreadable = no entry. 0 = off.
     # 🔒 REVERT: first 20 FRENZY + WIDE fills opened under it average < 0 % → set 0.
+    # Oct-9 (operator, DECISION_LOG 263): trading_config.json 1.0 → 0 (gate OFF for FRENZY_LONG / WIDE / LITE) at 17/20 let-through fills · −1.27 %
+    # (the revert gate was heading to fire) — every fill is taken and scout GVOL_SPLIT measures fills with market volume ≥ 1.0 vs < 1.0 (stamp, else
+    # the scout's engine-gvol rebuild); re-arm 1.0 only if the HIGH side meets the expectancy bar and is below LOW (operator decides).
     frenzy_gvol_max: float = 0.0
     # 🐻 Oct-8 BEARISH-DAY BLOCK (operator DECLARED OVERRIDE, DECISION_LOG 250; definition frozen at the DECISION_LOG 239 observe line): FRENZY_LONG
     # (fresh ON and catch-up), FRENZY_WIDE and FRENZY_LITE do not open while BTC's last closed daily return < 0 ∧ BTC's 5m trend gap (EMA13 −

@@ -79,6 +79,10 @@ TRACKER 8 — GVOL_BLOCKED (2026-10-06, observe-only; DECISION_LOG 194 gate fren
   [1.2,1.5) [1.5,2.0) ≥ 2.0 (columns gvol / gvol_src / gvol_band / gvol_frozen); table per sleeve × band on the counted final rows + the
   frozen hypothesis "WIDE in [1.0, 1.2) is not a losing cohort" (≥ 20 signals on ≥ 10 days → propose WIDE-only 1.2 iff mean > 0 at day-block
   P ≥ 0.90 ∧ no day ≥ 50 % of the gain ∧ mean ≥ WIDE let-through − 0.30, else stays at 1.0). Never changes config.
+  🎯 2026-10-09: both sides (blocked AND let-through) are now priced on TODAY's live exit read from trading_config.json (live_exit — fixed +3 /
+  −3 / 12 h since DECISION_LOG 250; first print ≥ close + 8 s, 0.10 slip) and the bar / band table / hypothesis read that column (TODAY); the
+  old lock pricing stays as the labelled reference column LOCK. Stored rows are back-filled (exit leg only, frozen readings untouched); the bar
+  had not crossed (2 / 20), so nothing frozen was re-frozen. ⛔ SUPERSEDED by GVOL_SPLIT from the (DECISION_LOG 263) commit (gate off).
 TRACKER 9 — VWAP_STOP (2026-10-06, observe-only; reports/FRENZY_STAIRCASE_STUDY_2026-10-06.md §3b / §5 "BP k 0.5", NOT established on the
   year: saved 72 (+400) vs deeper 103 (−395)): every FRENZY / WIDE fill the live −3 stop closed (close_reason STOP_LOSS) re-priced as: identical
   to live until the stop, then held and out at the first print after a 5m close that is ≤ −3 % net AND below VWAP × (1 − 0.5 × entry ATR %),
@@ -162,6 +166,19 @@ TRACKER 15 — FRENZY_WILLY (2026-10-08, DECISION_LOG 251 — operator-directed 
   reports/SCOUT_WILLY_TURNOVER_BLOCKED.csv, state reports/SCOUT_WILLY_TURNOVER_STATE.json.
 TRACKER 16 — WILLY_HOLD (scripts/scout_willy_hold.py): every automated trade the WILLY global hold refused, priced as if opened under its
   sleeve's exit → the cost of the hold vs WILLY's own Σ$.
+TRACKER 17 — GVOL_SPLIT (2026-10-09, DECISION_LOG 263 — operator turned the market-volume gate OFF, frenzy_gvol_max 0): every FRENZY_LONG / WIDE /
+  LITE fill from the (DECISION_LOG 263) commit + 10 min (gvol_off_ms; NOW until it exists) split HIGH ≥ 1.0 / LOW < 1.0 by entry_frenzy_gvol, else
+  scout_gvol's per-bar engine rebuild (stamp / rebuilt per fill, agreement shown), else UNSCORED. Per sleeve and all: N · days · WR · avg % · Σ$ ·
+  worst; HIGH by the frozen GVOL_BAND bands. FROZEN verdict once at the first prefix with HIGH and LOW each ≥ 15 on ≥ 8 days: HIGH meets the
+  expectancy bar (WR < breakeven — 51.5 % until 30 —, day-block P(mean < 0) ≥ 0.95 seed 7 · 4,000, no day / pair ≥ 50 % of the gross loss) ∧
+  HIGH mean < LOW mean → "RE-ARM CANDIDATE: frenzy_gvol_max 1.0 (operator decides)"; HIGH mean ≥ LOW mean → "gate stays off"; else observe and
+  ONE re-read at 30 each. Rows reports/SCOUT_FRENZY_GVOL_SPLIT.csv · state reports/SCOUT_FRENZY_GVOL_SPLIT_STATE.json.
+🎯 2026-10-09 TODAY's EXIT: live_exit(th) reads the FRENZY exit from trading_config.json (lock / fixed TP / trail, the frenzy_exit_for order).
+  Lines whose purpose is "what would today's bot have made" price with it — GVOL_BLOCKED (+ GVOL_BAND), GREEN_CLOCK (pre-registered 12 s entry
+  kept), BEARISH_BLOCKED (was hard-coded +3 / −3), and the exit table's LIVE column (actual entry, 1m), which WIDE_CHOPPY_OBS, WIDE_BTC_SOFT
+  and WIDE_BY_CODE now read instead of LOCK2. Exit comparisons stay on their exits: LOCK2 / LOCK3 / EMA / FIX3 / HYB columns, ATR_FAST_LOCK3
+  (LOCK3 − LOCK2), HYBRID_EXIT (HYB − LOCK2), VWAP_STOP (its post-stop leg keeps the lock — a registered stop study), ON_SCALP (its own frozen
+  TP3 / 2 h / no stop). LITE / WILLY / turnover / LITE_GVOL24 read the bot's own P&L (or WILLY's own exit) — no FRENZY re-pricing.
 Rows are stored in reports/SCOUT_FRENZY_EXITS.csv (keyed opened_at + pair) so fills survive their export leaving ~/Downloads; a row is FINAL
 once its 12 h (and the re-entry's) have passed. 1m bars are coarser than the year studies' ticks (stated on the table).
 """
@@ -305,6 +322,36 @@ def _oct8_ms():
         return int(time.time() * 1000)   # scout_revert_gates unavailable → NOW (never count a pre-deploy row; same rule as its deploy_ms fallback)
 
 
+GVOL_OFF_TAG = "(DECISION_LOG 263)"   # the commit that switched the FRENZY market-volume gate OFF (frenzy_gvol_max 1.0 → 0, operator 2026-10-09)
+_GVOFF = []
+
+
+def gvol_off_ms():
+    """the gate-off deploy = the FIRST commit naming GVOL_OFF_TAG (git log --grep, fixed string) + 10 min; no such commit (yet) / git unavailable →
+    NOW (nothing before the real deploy is ever counted — the same rule as scout_revert_gates.deploy_ms). Memoised per process."""
+    if not _GVOFF:
+        try:
+            import subprocess
+            out = subprocess.run(["git", "-C", ROOT, "log", "--format=%ct", "--fixed-strings", "--reverse", "--grep=" + GVOL_OFF_TAG],
+                                 capture_output=True, text=True, timeout=10)
+            _GVOFF.extend([int(out.stdout.strip().splitlines()[0]) * 1000 + 10 * MIN, True])
+        except Exception:
+            _GVOFF.extend([int(time.time() * 1000), False])
+    return _GVOFF[0]
+
+
+def gvol_gate_off_at(t_ms):
+    """True when a signal / fill at t_ms is on or after the gate-off deploy AND that deploy exists in git (until then the live gate is on)."""
+    gvol_off_ms()
+    return bool(_GVOFF[1]) and int(t_ms) >= int(_GVOFF[0])
+
+
+def gvol_off_note():
+    """how the gate-off floor was resolved (for the section text)."""
+    gvol_off_ms()
+    return "the (DECISION_LOG 263) commit + 10 min" if _GVOFF[1] else "NOW — the (DECISION_LOG 263) commit is not in git yet, nothing is counted until it is"
+
+
 def wide_cap_at(t_ms, th, deploy_ms=None):
     """⬆ (250) the FRENZY ATR cap that judged a fill opened at t_ms: 2.5 before the Oct-8 raise, the live config value from it."""
     d = oct8_ms() if deploy_ms is None else deploy_ms
@@ -352,6 +399,98 @@ def _walk_ticks(tt, pp, e, t0):
         j = int(np.flatnonzero(inc)[-1]) if inc.any() else 0
         return float(net[j]), t_end, "12 h cap"
     return float(net[-1]), int(tt[-1]), "open"
+
+
+# ─────────────────────────── 🎯 TODAY's live FRENZY exit, read from trading_config.json (2026-10-09) ───────────────────────────
+# Since 2026-10-08 (DECISION_LOG 250) FRENZY_LONG / WIDE / LITE exit on the FIXED +frenzy_tp_pct / −frenzy_stop_pct / frenzy_max_hold_minutes
+# (frenzy_lock_arm_pct 0 = the lock is off). Every "what would TODAY's bot have made" line prices with live_exit(th) — the same branch order as
+# services.frenzy.frenzy_exit_for(use_tp=True): lock (arm > 0) → fixed TP (tp > 0, the trail only as its fallback) → trail → stop.
+LIVE_LAG_MS = 8_000   # the live ruler's entry: first print ≥ the signal close + 8 s (FRENZY latency study, Oct-7: live ≈ 7.5 s) — the BEARISH_BLOCKED ruler
+
+
+def live_exit(th):
+    """the live FRENZY exit from the config thresholds → dict(mode 'lock' | 'fixed' | 'trail', sl, tp, la, lf, lt, arm, give, cap, label).
+    frenzy_max_hold_minutes 0 / blank (= the engine's global max hold, not readable here) → the tested 12 h (stated in the label)."""
+    g = lambda k, d: float(getattr(th, k, d) if getattr(th, k, d) is not None else d)
+    sl = abs(g("frenzy_stop_pct", 3.0)) or 3.0
+    la, tp = g("frenzy_lock_arm_pct", 0.0), g("frenzy_tp_pct", 0.0)
+    cap_raw = int(round(g("frenzy_max_hold_minutes", CAP_MIN)))
+    cap = cap_raw if cap_raw > 0 else CAP_MIN
+    ex = dict(sl=sl, tp=0.0, la=0.0, lf=0.0, lt=0.0, arm=abs(g("frenzy_trail_arm_pct", 5.0)), give=abs(g("frenzy_trail_giveback_pct", 1.5)), cap=cap)
+    hl = f"{cap / 60:g} h" + ("" if cap_raw > 0 else " (global hold → 12 h assumed)")
+    if la > 0:
+        ex.update(mode="lock", la=la, lf=min(g("frenzy_lock_floor_pct", 2.0), la), lt=abs(g("frenzy_lock_trail_pct", 2.0)))
+        ex["label"] = f"lock −{sl:g} → +{ex['lf']:g} at +{la:g} → peak − {ex['lt']:g} · {hl}"
+    elif tp > 0:
+        ex.update(mode="fixed", tp=tp)
+        ex["label"] = f"fixed +{tp:g} / −{sl:g} · {hl}"
+    else:
+        ex.update(mode="trail")
+        ex["label"] = f"trail −{sl:g} → peak − {ex['give']:g} from +{ex['arm']:g} · {hl}"
+    return ex
+
+
+def _live_lines(pk, ex):
+    """the exit line(s) for a prior-print peak pk (scalar or array) → (line, armed)."""
+    pk = np.asarray(pk, dtype=float)
+    if ex["mode"] == "lock":
+        armed = pk >= ex["la"]
+        return np.where(armed, np.maximum(ex["lf"], pk - ex["lt"]), -ex["sl"]), armed
+    armed = (ex["arm"] > 0) & (ex["give"] > 0) & (pk >= ex["arm"])
+    return np.where(armed, np.maximum(-ex["sl"], pk - ex["give"] * (1 + pk / 100.0)), -ex["sl"]), armed
+
+
+def walk_ticks_live(tt, pp, e, t0, ex, slip=0.0):
+    """🎯 TODAY's live exit (live_exit) on trade prints from t0, net of FEE: the first print at / through a line (or ≥ +tp in fixed mode) exits AT
+    that print (lines set by the prints BEFORE it); else the last print before the cap (clock time). slip charged once. → (pnl, exit_ms, how)."""
+    tt = np.asarray(tt, dtype=np.int64); pp = np.asarray(pp, dtype=float)
+    m = tt >= int(t0)
+    tt, pp = tt[m], pp[m]
+    if not len(pp) or not e:
+        return None, None, "no data"
+    net = (pp / float(e) - 1) * 100 - FEE
+    pk = np.maximum.accumulate(np.r_[-1e9, net[:-1]])
+    line, armed = _live_lines(pk, ex)
+    tph = (net >= ex["tp"]) if ex["mode"] == "fixed" else np.zeros(len(net), bool)
+    t_end = int(t0) + int(ex["cap"]) * MIN
+    inc = tt < t_end
+    hit = np.flatnonzero(((net <= line) | tph) & inc)
+    if len(hit):
+        i = int(hit[0])
+        how = "stop" if (net[i] <= line[i] and not armed[i]) else "floor / trail" if net[i] <= line[i] else "take profit"
+        return float(net[i]) - slip, int(tt[i]), how
+    if not inc.all():
+        j = int(np.flatnonzero(inc)[-1]) if inc.any() else 0
+        return float(net[j]) - slip, t_end, f"{ex['cap'] / 60:g} h cap"
+    return float(net[-1]) - slip, int(tt[-1]), "open"
+
+
+def walk_live(m1, e, ex):
+    """🎯 TODAY's live exit on 1m rows [open_ms, o, h, l, c] (the 1m fallback; the table's conventions: the low before the high inside a minute,
+    a line set by a minute never closes in that minute, a minute opening through a line fills at its open, the TP fills at the line unless the
+    minute opens above it). Net of FEE. → (pnl, exit_ms, how)."""
+    if not m1:
+        return None, None, "no data"
+    net = lambda p: (p / e - 1) * 100 - FEE
+    pk = -1e9
+    t_end = int(m1[0][0]) + int(ex["cap"]) * MIN
+    prev = None
+    for b in m1:
+        t, o, h, l = b[0], b[1], b[2], b[3]
+        if t >= t_end:
+            return net(prev[4]), t_end, f"{ex['cap'] / 60:g} h cap"
+        prev = b
+        line, armed = _live_lines(pk, ex)
+        line, armed = float(line), bool(armed)
+        lpx = e * (1 + (line + FEE) / 100)
+        if l <= lpx:
+            return net(min(o, lpx)), t + MIN, ("floor / trail" if armed else "stop")
+        if ex["mode"] == "fixed":
+            tpx = e * (1 + (ex["tp"] + FEE) / 100)
+            if h >= tpx:
+                return net(max(o, tpx)), t + MIN, "take profit"
+        pk = max(pk, net(h))
+    return net(prev[4]), prev[0] + MIN, (f"{ex['cap'] / 60:g} h cap" if prev[0] + MIN >= t_end else "open")
 
 
 def day_ci(x, days, n=3000, seed=7):
@@ -404,7 +543,7 @@ def _fills(strategies=("FRENZY_LONG", "FRENZY_WIDE")):
     fr = []
     cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "entry_price", "pnl_percentage", "entry_atr_pct", "entry_frenzy_vs_vwap_pct",
             "entry_frenzy_above_share", "entry_frenzy_bar_ret_pct", "closed_at", "close_reason", "entry_frenzy_vwap", "entry_frenzy_spike_at",
-            "entry_frenzy_adx_delta", "entry_frenzy_di_spread")
+            "entry_frenzy_adx_delta", "entry_frenzy_di_spread", "entry_frenzy_gvol", "entry_frenzy_catchup", "pnl")
     for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols)
@@ -624,6 +763,9 @@ def _price(r, th, now_ms, first, J=None):
         out[kind] = p; fin.append(how != "open")
         if kind == "EMA50" and how != "open":
             ema50_exit = x                          # the re-entry search starts only from a REAL shadow exit (review)
+    _lx = live_exit(th)   # 🎯 (2026-10-09) LIVE = TODAY's live exit from the actual entry (config), the ruler of the "what would today's bot make" trackers
+    p, x, how = walk_live(m1in, e, _lx)
+    out["LIVE"], out["live_spec"] = p, _lx["label"]; fin.append(how != "open")
     # ⛔ ATRE shadow retired (218) — no longer priced
     out["atr_chg30"] = atr_chg30
     # 🟢 WIDE_BY_CODE: why LONG refused this WIDE fill (stamps → journal → klines; code_kl = the kline recompute, kept as a parity check)
@@ -686,14 +828,49 @@ def _price(r, th, now_ms, first, J=None):
     return out
 
 
+def live_backfill(allr, ex, now_ms, skip=(), budget=None):
+    """🎯 LIVE (today's live exit) on stored exit-table rows that lack it or were priced under another spec and were NOT re-priced this run (their
+    fill left the exports): the same 1m ruler as _price (from the stored entry price; the entry minute flattened to entry → its close). A row
+    whose LIVE is still open stays without a final LIVE (live_spec unset) and is retried. → (rows, n priced, n failed)."""
+    d = allr.copy()
+    for c in ("LIVE", "live_spec"):
+        if c not in d:
+            d[c] = None
+    d["live_spec"] = d["live_spec"].astype(object)
+    n = err = 0
+    dl = (budget or {}).get("deadline", float("inf"))
+    for i in d.index:
+        if time.monotonic() > dl:   # the run's time budget is spent → the rest next run
+            break
+        if (d.at[i, "k"], d.at[i, "pair"]) in skip or (str(d.at[i, "live_spec"]) == ex["label"] and _num(d.at[i, "LIVE"]) is not None
+                                                           and str(d.at[i, "final"]) in _TRUE):
+            continue
+        try:
+            e = float(d.at[i, "entry"]); t_in = _ms(d.at[i, "k"]); m0 = t_in // MIN * MIN
+            m1 = [list(b) for b in _kl(str(d.at[i, "pair"]), "1m", m0, min(now_ms, m0 + (int(ex["cap"]) + 2) * MIN)) if b[0] + MIN <= now_ms]
+            if not m1:
+                raise ValueError("no 1m")
+            if m1[0][0] == m0:
+                m1[0] = [m0, e, max(e, m1[0][4]), min(e, m1[0][4]), m1[0][4], m1[0][5]]
+            p, _, how = walk_live(m1, e, ex)
+            d.at[i, "LIVE"] = p
+            d.at[i, "live_spec"] = ex["label"] if how != "open" else None
+            n += 1
+        except Exception:
+            err += 1
+    return d, n, err
+
+
 def run(now_ms=None):
     now_ms = int(now_ms or time.time() * 1000)
     old = pd.read_csv(CSV) if os.path.exists(CSV) else pd.DataFrame()
     if len(old) and "ver" not in old:
         old["ver"] = 1
-    done = {(a, b) for a, b, f, v in zip(old.get("k", []), old.get("pair", []), old.get("final", []), old.get("ver", []))
-            if str(f) in ("True", "1", "1.0") and str(v) in (str(VER), f"{VER}.0")}
     th = _cfg(); rows = []; err = 0
+    _spec = live_exit(th)["label"]   # 🎯 a row priced before LIVE existed / under another live exit is re-priced (LIVE = today's exit)
+    done = {(a, b) for a, b, f, v, ls in zip(old.get("k", []), old.get("pair", []), old.get("final", []), old.get("ver", []),
+                                             old.get("live_spec", pd.Series([None] * len(old))))
+            if str(f) in ("True", "1", "1.0") and str(v) in (str(VER), f"{VER}.0") and str(ls) == _spec}
     F = _fills()
     try:
         J = _journal(now_ms)
@@ -723,11 +900,16 @@ def run(now_ms=None):
     allr = pd.concat([old, new], ignore_index=True) if rows else old
     if len(allr):
         allr = allr.drop_duplicates(["k", "pair"], keep="last").sort_values("k")
+        allr, _nl, _el = live_backfill(allr, live_exit(th), now_ms, {(r_["k"], r_["pair"]) for r_ in rows},
+                                       {"deadline": time.monotonic() + X_TIME_S})   # 🎯 rows whose fill left the exports
+        err += _el
         allr["first"] = [(k, p) in firsts for k, p in zip(allr.k, allr.pair)]   # every stored row's key is in `keys`, so this is complete
         tmp = CSV + ".tmp"; allr.to_csv(tmp, index=False); os.replace(tmp, CSV)
-    L = ["## 🎯 FRENZY / WIDE exit shadows per fill (pre-registered, OBSERVE only — the live exit stays the lock)", "",
+    L = ["## 🎯 FRENZY / WIDE exit shadows per fill (pre-registered, OBSERVE only)", "",
+         f"**Live exit today (trading_config.json): {live_exit(th)['label']} = the LIVE column** — the ruler of WIDE_CHOPPY_OBS, WIDE_BTC_SOFT and "
+         "WIDE_BY_CODE since 2026-10-09 (they read LOCK2 while the lock was live). LOCK2 / LOCK3 / EMA / HYB are exit comparisons, kept as shadows.", "",
          "Every live FRENZY / WIDE fill re-priced from its ACTUAL entry on 1m bars (fees in, 12 h cap; coarser than the year studies' ticks). "
-         "LOCK2 = live exit · LOCK3 = 3-pt trail · EMA20/EMA50 = +2 floor then the first 5m close below the EMA · FIX3 = old fixed +3/−3 · "
+         "LIVE = today's live exit (config) · LOCK2 = the lock (live 10-05 ~16:00 → 10-08) · LOCK3 = 3-pt trail · EMA20/EMA50 = +2 floor then the first 5m close below the EMA · FIX3 = old fixed +3/−3 · "
          "ATR Δ30m = the 30-min ATR change at the signal (ATR_FAST_LOCK3 watch) · "
          "Trackers read FIRST entries only (² = a later fill of its pair-day). Actual = the exit live at the time (the fixed +3 TP shipped 10-04 19:23, the lock 10-05 ~16:00); "
          "FIX3 fills at exactly ±3 (reference column). HYB = the hybrid V3 (−3 · +0.2 floor from a +1 peak · the lock from +3; HYBRID_EXIT line below). "
@@ -736,18 +918,19 @@ def run(now_ms=None):
         return L + ["No FRENZY / WIDE fill in the exports yet.", ""] + _extras(now_ms, th, F, J, allr)
     hmap, hlines = _hyb_safe(now_ms, F, allr)   # 🛟 HYBRID_EXIT: its own store; the exit rows / VER are untouched
     show = allr.tail(15)
-    L += ["| Opened UTC | Pair | Sleeve | ATR | ATR Δ30m | vs avg | Actual | LOCK2 | HYB | LOCK3 | EMA20 | EMA50 | FIX3 |",
-          "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    L += ["| Opened UTC | Pair | Sleeve | ATR | ATR Δ30m | vs avg | Actual | LIVE | LOCK2 | HYB | LOCK3 | EMA20 | EMA50 | FIX3 |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     f = lambda v: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.2f}"
     for r in show.itertuples():
         fl = ("" if str(r.final) in ("True", "1", "1.0") else "ᵖ") + ("" if r.first else "²")
         L.append(f"| {str(r.k)[5:16].replace('T', ' ')}{fl} | {str(r.pair).replace('USDT', '')} | {r.sleeve} | {f(r.atr_entry)} | {f(getattr(r, 'atr_chg30', None))} | "
-                 f"{f(r.vs_vwap)} | {f(r.actual)} | {f(r.LOCK2)} | {f(hmap.get((str(r.k), str(r.pair)), (None,))[0])} | {f(r.LOCK3)} | {f(r.EMA20)} | {f(r.EMA50)} | {f(r.FIX3)} |")
+                 f"{f(r.vs_vwap)} | {f(r.actual)} | {f(getattr(r, 'LIVE', None))} | {f(r.LOCK2)} | {f(hmap.get((str(r.k), str(r.pair)), (None,))[0])} | {f(r.LOCK3)} | {f(r.EMA20)} | {f(r.EMA50)} | {f(r.FIX3)} |")
     fin = allr[allr.final.astype(str).isin(["True", "1", "1.0"])].copy()
-    L += ["", "| Final fills | N | " + " | ".join(EXITS) + " |", "|---|---|" + "---|" * len(EXITS)]
+    _ex = (["LIVE"] if "LIVE" in fin else []) + EXITS
+    L += ["", "| Final fills | N | " + " | ".join(_ex) + " |", "|---|---|" + "---|" * len(_ex)]
     for nm, g in (("all", fin), ("FRENZY_LONG", fin[fin.sleeve == "LONG"]), ("WIDE", fin[fin.sleeve == "WIDE"])):
         if len(g):
-            L.append(f"| {nm} | {len(g)} | " + " | ".join(f"{g[c].mean():+.2f}" for c in EXITS) + " |")
+            L.append(f"| {nm} | {len(g)} | " + " | ".join(f"{pd.to_numeric(g[c], errors='coerce').mean():+.2f}" for c in _ex) + " |")
     L += ["", "_ATRE and NOTSTRETCHED shadows retired 2026-10-06 (DECISION_LOG 218: evidence reversed on the engine cohort)._"]
     if "atr_chg30" in fin:
         st, tx = atrfast_check(fin[fin["first"] & fin.atr_chg30.notna() & (fin.k.astype(str) >= SOFT_FROM)])
@@ -794,8 +977,15 @@ def atrfast_check(w):
     return "collecting", txt
 
 
+def _ruler(w):
+    """🎯 the "what would today's bot make" column: LIVE (today's live exit, config) when present, else LOCK2 (the live exit until 2026-10-08)."""
+    return "LIVE" if "LIVE" in w else "LOCK2"
+
+
 def choppy_check(w):
-    """215 observe-only bar on live WIDE first entries: would-block = stamped above_share ≤ 67.8 (LOCK2 = the live exit's result)."""
+    """215 observe-only bar on live WIDE first entries: would-block = stamped above_share ≤ 67.8 (scored on the LIVE exit — today's, config;
+    LOCK2 while the lock was live)."""
+    w = w.assign(LOCK2=pd.to_numeric(w[_ruler(w)], errors="coerce"))   # the bar's code reads the column LOCK2 = the ruler (no other change)
     w = w[w.LOCK2.notna()]
     wb, kp = w[w.above_share <= CHOPPY_MAX], w[w.above_share > CHOPPY_MAX]
     mf = lambda g: f"{g.LOCK2.mean():+.2f} %" if len(g) else "–"
@@ -811,7 +1001,9 @@ def choppy_check(w):
 
 
 def soft_check(w):
-    """the frozen WIDE_BTC_SOFT bar on WIDE first entries with a BTC RSI(12) reading (LOCK2 = the live exit's result)."""
+    """the frozen WIDE_BTC_SOFT bar on WIDE first entries with a BTC RSI(12) reading, scored on the LIVE exit (today's, config; LOCK2 before)."""
+    w = w.assign(LOCK2=pd.to_numeric(w[_ruler(w)], errors="coerce"))
+    w = w[w.LOCK2.notna()]
     soft = w.btc_rsi12 <= SOFT_RSI
     a, b = w[soft], w[~soft]
     na, nb, da, db_ = len(a), len(b), a.day.nunique(), b.day.nunique()
@@ -858,6 +1050,7 @@ def bycode_stats(w):
         n, nd = len(g), g.day.nunique()
         out.append(dict(code=c, n=n, days=nd, wr=((a > 0).mean() * 100 if len(a) else None), act=(a.mean() if len(a) else None),
                         lock=(pd.to_numeric(g.LOCK2, errors="coerce").mean() if n else None),
+                        live=(pd.to_numeric(g.LIVE, errors="coerce").mean() if n and "LIVE" in g else None),
                         src=" ".join(f"{k} {v}" for k, v in g.code_src.fillna("?").value_counts().items()),
                         status=("review" if (c != "UNKNOWN" and n >= BYCODE_N and nd >= BYCODE_DAYS) else "collecting")))
     return out
@@ -867,10 +1060,10 @@ def bycode_lines(w):
     f = lambda v, d=2: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.{d}f}"
     L = ["", f"**WIDE_BY_CODE (observe line — why FRENZY_LONG refused each WIDE fill; every WIDE fill from {GC_FROM[:10]}; "
              f"review due at ≥ {BYCODE_N} fills on ≥ {BYCODE_DAYS} days per code; year: GREEN ≈ +0.01 %/fill, ATR_HIGH ≈ −0.53):**", "",
-         "| Code | N | Days | WR | Avg actual % | Avg LOCK2 % | Source | Status |", "|---|---|---|---|---|---|---|---|"]
+         "| Code | N | Days | WR | Avg actual % | Avg today's exit % | Avg LOCK2 % (old exit, ref) | Source | Status |", "|---|---|---|---|---|---|---|---|---|"]
     for s in bycode_stats(w):
         wr = "–" if s["wr"] is None else f"{s['wr']:.0f} %"
-        L.append(f"| {s['code']} | {s['n']} | {s['days']} | {wr} | {f(s['act'])} | "
+        L.append(f"| {s['code']} | {s['n']} | {s['days']} | {wr} | {f(s['act'])} | {f(s.get('live'))} | "
                  f"{f(s['lock'])} | {s['src'] or '–'} | {'📋 REVIEW DUE' if s['status'] == 'review' else '⏳ collecting'} |")
     lab = lambda m: ", ".join(f"{r.pair} {str(r.k)[5:16]}" for r in m.itertuples())
     if "code_kl" in w:
@@ -892,7 +1085,8 @@ def gc_counted(df):
     apart merged) SEPARATELY inside V2 and inside V1 — a V1 first
     refusal never hides a later V2 refusal of the same spike. → bool Series."""
     s = lambda c: df[c].astype(str).isin(_TRUE)
-    m = s("cohort") & s("eligible") & (df.gvol.astype(str) == "pass") & df.spike_at.notna()
+    off = pd.Series([gvol_gate_off_at(_ms(k_)) for k_ in df.k], index=df.index, dtype=bool)   # 🌊 (263) gate off → gvol no longer gates the count
+    m = s("cohort") & s("eligible") & ((df.gvol.astype(str) == "pass") | off) & df.spike_at.notna()
     out = pd.Series(False, index=df.index)
     if m.any():
         g = df[m].assign(_v2=s("v2")[m], _ep=episode_keys(df)[m]).sort_values(["k", "pair"], kind="stable")
@@ -901,7 +1095,7 @@ def gc_counted(df):
 
 
 def _bar_stats(w):
-    x = pd.to_numeric(w.LOCK, errors="coerce")
+    x = pd.to_numeric(w["TODAY"] if "TODAY" in w else w.LOCK, errors="coerce")   # 🎯 today's live exit when priced (2026-10-09), else the lock
     w = w[x.notna()]; x = x.dropna()
     n, nd = len(x), w.day.nunique()
     st = dict(n=n, nd=nd, x=x, w=w)
@@ -1001,6 +1195,86 @@ def _lock_shadow(sym, sig, now_ms, budget):
     return e, t_e, pnl, x_ms, how, px, st, final
 
 
+def _live_shadow(sym, sig, now_ms, budget, ex, lag_ms=LIVE_LAG_MS, lock=False):
+    """🎯 a hypothetical (or re-priced) FRENZY entry on the signal bar closing at sig ms under TODAY's live exit ex (live_exit): the first print
+    ≥ the close + lag_ms, 0.09 fees + 0.10 slippage, ex's cap — ticks once the archive is out, else the open of the signal-close minute on 1m bars
+    (PROVISIONAL; final on 1m only when the ticks never come). lock=True also returns the OLD lock pricing (_lock_shadow's exact ruler: 12 s,
+    LOCK2) from the SAME prints, as a reference. → dict(today=(e, t_e, pnl, x_ms, how, px, st, final), lock=(…) | None). Raises on no 1m data."""
+    cap = max(int(ex["cap"]), CAP_MIN if lock else 0)
+    horizon_t = sig + lag_ms + int(ex["cap"]) * MIN
+    horizon_l = sig + ENTRY_LAG_MS + CAP_MIN * MIN
+    horizon = max(horizon_t, horizon_l) if lock else horizon_t
+    last_day_end = (horizon // 86_400_000 + 1) * 86_400_000
+    giveup = now_ms > last_day_end + TICK_GIVEUP_D * 86_400_000
+    st = "pending"; T = Lk = None
+    if now_ms >= horizon:
+        st, tt, pp = _ticks(sym, sig, sig + max(lag_ms, ENTRY_LAG_MS) + cap * MIN + 2 * MIN, now_ms, budget)
+        if st == "ok":
+            tt_ = np.asarray(tt, dtype=np.int64)
+            i = int(np.searchsorted(tt_, int(sig) + int(lag_ms), side="left"))
+            if i < len(tt_):
+                e, t_e = float(np.asarray(pp)[i]), int(tt_[i])
+                pnl, x_ms, how = walk_ticks_live(tt, pp, e, t_e, ex, slip=SLIP)
+                T = (e, t_e, pnl, x_ms, how, "tick", st, True)
+                if lock:
+                    el, tl = gc_entry(tt, pp, sig)
+                    if el is not None:
+                        p2, x2, h2 = walk_ticks(tt, pp, el, tl, slip=SLIP)
+                        Lk = (el, tl, p2, x2, h2, "tick", st, True)
+            if T is None or (lock and Lk is None):
+                st = "empty"; T = Lk = None
+    if T is None:   # 1m fallback: the open of the signal-close minute (the lag print is inside it), same slippage — PROVISIONAL
+        m1 = [b for b in _kl(sym, "1m", sig, min(now_ms, horizon + MIN)) if b[0] + MIN <= now_ms]
+        if not m1 or m1[0][0] != sig:
+            raise ValueError("1m klines unavailable")
+        e = float(m1[0][1])
+        fin = bool(now_ms >= horizon and (st == "missing" or (st == "empty" and giveup)))
+        pnl, x_ms, how = walk_live(m1, e, ex)
+        T = (e, sig, (pnl - SLIP if pnl is not None else None), x_ms, how, "1m", st, fin)
+        if lock:
+            p2, x2, h2 = walk(m1, e, "LOCK2")
+            Lk = (e, sig, (p2 - SLIP if p2 is not None else None), x2, h2, "1m", st, fin)
+    return dict(today=T, lock=Lk)
+
+
+TODAY_COLS = ("TODAY", "today_how", "today_exit_at", "today_entry", "today_entry_at", "today_px", "today_final", "exit_spec")
+
+
+def today_fields(T, ex):
+    """a _live_shadow 'today' tuple → the row's TODAY_COLS."""
+    e, t_e, pnl, x_ms, how, px, st, final = T
+    return dict(TODAY=pnl, today_how=how, today_exit_at=(_iso(x_ms) if x_ms else None), today_entry=e, today_entry_at=(_iso(t_e) if t_e else None),
+                today_px=px, today_final=bool(final), exit_spec=ex["label"])
+
+
+def today_backfill(df, sig_of, ex, lag_ms, now_ms, budget, skip=()):
+    """price TODAY's exit on the stored rows that lack it (or were priced under another exit spec, or are still provisional) — only the exit leg
+    (no replay, no other column touched; frozen readings stay). sig_of(row) → the signal close ms. Rows whose key is in skip (just priced) are
+    left alone. → (df copy, n priced, n failed, n late)."""
+    d = df.copy()
+    for c in TODAY_COLS:
+        if c not in d:
+            d[c] = None
+        d[c] = d[c].astype(object)
+    need = [i for i in d.index if (d.at[i, "k"], d.at[i, "pair"], d.at[i, "gate"] if "gate" in d else None) not in skip
+            and (str(d.at[i, "exit_spec"]) != ex["label"] or str(d.at[i, "today_final"]) not in _TRUE)]
+    need.sort(key=lambda i: str(d.at[i, "k"]), reverse=True)
+    n = err = late = 0
+    for i in need:
+        if time.monotonic() > budget.get("deadline", float("inf")):
+            late += 1
+            continue
+        try:
+            T = _live_shadow(str(d.at[i, "pair"]), int(sig_of(d.loc[i])), now_ms, budget, ex, lag_ms)["today"]
+        except Exception:
+            err += 1
+            continue
+        for c, v in today_fields(T, ex).items():
+            d.at[i, c] = v
+        n += 1
+    return d, n, err, late
+
+
 def _gc_price(sig, sym, th, now_ms, budget, J, F):
     """one FRENZY_GREEN_BAR refusal (signal bar closing at sig ms) → the engine replay + the hypothetical FRENZY_LONG priced on the live lock
     with the FORMAL shadow pricing (first print ≥ close + 12 s, 0.10 slippage). Raises on data trouble (the caller keeps the old row)."""
@@ -1027,9 +1301,12 @@ def _gc_price(sig, sym, th, now_ms, budget, J, F):
     slots = max(1, int(float(getattr(th, "frenzy_max_slots", 2) or 2)))
     dcap = max(0, int(float(getattr(th, "frenzy_max_entries_per_pair_day", 3) or 0)))
     parity = code == "FRENZY_GREEN_BAR"
-    eligible = bool(parity and gvol not in ("high", "unread") and long_open < slots and (dcap == 0 or pday < dcap))
-    e, t_e, pnl, x_ms, how, px, st, final = _lock_shadow(sym, sig, now_ms, budget)
-    return dict(k=k, pair=sym, day=k[:10], cohort=k >= GC_FROM, ver=GC_VER,
+    gv_ok = gvol not in ("high", "unread") or gvol_gate_off_at(sig)   # 🌊 (263) from the gate-off deploy the market-volume gate no longer blocks
+    eligible = bool(parity and gv_ok and long_open < slots and (dcap == 0 or pday < dcap))
+    ex = live_exit(th)   # 🎯 (2026-10-09) TODAY's live exit (the pre-registered 12 s entry kept) + the old lock (reference) from the same prints
+    S = _live_shadow(sym, sig, now_ms, budget, ex, ENTRY_LAG_MS, lock=True)
+    e, t_e, pnl, x_ms, how, px, st, final = S["lock"]
+    return dict(k=k, pair=sym, day=k[:10], cohort=k >= GC_FROM, ver=GC_VER, **today_fields(S["today"], ex),
                 spike_at=(_iso(ep["spike_ts"]) if ep else None), hours=(round(ep["hours"], 2) if ep else None),
                 above_streak=(int(ep["above_streak"]) if ep else None), v2=bool(ep and int(ep["above_streak"]) > GC_STREAK and atr is not None and atr <= GC_ATR_FROZEN),
                 above_share=(round(ep["above_share"], 1) if ep and ep.get("above_share") is not None else None),
@@ -1094,21 +1371,30 @@ def gc_run(now_ms, th, F, J, allr):
                 new[c] = np.where(pd.notna(new[c].values), new[c].values, o_)
         slots = max(1, int(float(getattr(th, "frenzy_max_slots", 2) or 2)))
         dcap = max(0, int(float(getattr(th, "frenzy_max_entries_per_pair_day", 3) or 0)))
-        new["eligible"] = (new.parity.astype(str).isin(_TRUE) & ~new.gvol.isin(["high", "unread"])
+        _off = pd.Series([gvol_gate_off_at(_ms(k_)) for k_ in new.k], index=new.index, dtype=bool)
+        new["eligible"] = (new.parity.astype(str).isin(_TRUE) & (~new.gvol.isin(["high", "unread"]) | _off)
                            & (pd.to_numeric(new.long_open) < slots) & ((dcap == 0) | (pd.to_numeric(new.pair_day_n) < dcap)))
     allg = pd.concat([old, new], ignore_index=True) if len(new) else old
+    ex = live_exit(th); n_bf = 0
     if len(allg):
         allg = allg.drop_duplicates(["k", "pair"], keep="last").sort_values("k").reset_index(drop=True)
+        just = {(r_["k"], r_["pair"], None) for r_ in rows}   # 🎯 TODAY's exit back-filled on stored rows (exit leg only; 12 s FORMAL entry)
+        allg, n_bf, e_bf, l_bf = today_backfill(allg, lambda r_: _ms(r_["k"]), ex, ENTRY_LAG_MS, now_ms, budget, skip=just)
+        err += e_bf; late += l_bf
         if len(allr) and "wide_k" in allg:
-            lk = allr.drop_duplicates(["k", "pair"], keep="last").set_index(["k", "pair"]).LOCK2
-            allg["wide_lock2"] = lk.reindex(pd.MultiIndex.from_arrays([allg.wide_k.astype(str), allg.pair])).values
+            ar = allr.drop_duplicates(["k", "pair"], keep="last").set_index(["k", "pair"])
+            ix = pd.MultiIndex.from_arrays([allg.wide_k.astype(str), allg.pair])
+            allg["wide_lock2"] = ar.LOCK2.reindex(ix).values
+            allg["wide_live"] = ar.LIVE.reindex(ix).values if "LIVE" in ar else None
         allg["counted"] = gc_counted(allg)
         tmp = f"{GC_CSV}.{os.getpid()}.tmp"; allg.to_csv(tmp, index=False); os.replace(tmp, GC_CSV)
     L = ["## 🟢 FRENZY_GREEN_CLOCK — green-candle refusals priced as FRENZY_LONG (V2 observe, pre-registered 2026-10-06; never armed from here)", "",
          f"Every journal FRENZY_GREEN_BAR refusal, replayed with the engine's functions (parity = the replay also refuses it for the green candle). "
          f"V2 = above_streak > {GC_STREAK} at the signal (the hour above average was already met → the setup turned ON by clock / volume; RLC 10-05). "
          "Hypothetical LONG priced as pre-registered (reports/FRENZY_GREEN_AND_WIDE_ATR_FORMAL_2026-10-06.md): first trade print ≥ the 5m close + 12 s, "
-         "the live lock exit, 0.09 % fees + 0.10 % slippage, 12 h cap — on ticks once the day's archive is out, else 1m bars (ᵖ provisional). "
+         f"THE LIVE EXIT — since 2026-10-09 read from trading_config.json: **{ex['label']}** (the registration's \"live lock\" was the live exit then; the "
+         "lock is kept beside it as \"lock (old exit, reference)\"; no bar had crossed, nothing was frozen), 0.09 % fees + 0.10 % slippage — on ticks once "
+         "the day's archive is out, else 1m bars (ᵖ provisional). "
          "⚠ Tick pricing can stop on wicks the live poller rides through (CLAUDE.md: exit counterfactuals read on the live-stopped cohort) — a "
          "tick stop here is not proof live would have stopped. ¹ = counted (from the floor, eligible, market volume known to pass, the first refusal "
          "of its spike within V2 and within V1 separately). Not eligible = LONG would still be refused (WIDE's market-volume block on that bar, "
@@ -1116,23 +1402,24 @@ def gc_run(now_ms, th, F, J, allr):
     if not len(allg):
         return L + ["No green-candle refusal in the journals yet.", ""] + ([f"_{err} refusal(s) not priced this run — retried next run._"] if err else [])
     f = lambda v: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.2f}"
-    L += ["| Signal UTC | Pair | Streak | V2 | h after spike | ATR | Candle | Gvol | LONG slots | Eligible | LONG (lock) | Exit | Px | WIDE same bar (actual / lock) |",
-          "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    L += ["| Signal UTC | Pair | Streak | V2 | h after spike | ATR | Candle | Gvol | LONG slots | Eligible | LONG (today) | Exit (today) | LONG lock (old exit, ref) | Px | WIDE same bar (actual / today / lock) |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     T = lambda v: str(v) in _TRUE
     for r in allg.tail(15).itertuples():
-        mk = ("" if T(r.final) else "ᵖ") + ("¹" if T(r.counted) else "") + ("" if T(r.cohort) else " (ref)")
-        wide = f"{f(r.wide_actual)} / {f(getattr(r, 'wide_lock2', None))}" if isinstance(r.wide_k, str) else "none"
+        mk = ("" if (T(r.final) and T(r.today_final)) else "ᵖ") + ("¹" if T(r.counted) else "") + ("" if T(r.cohort) else " (ref)")
+        wide = (f"{f(r.wide_actual)} / {f(getattr(r, 'wide_live', None))} / {f(getattr(r, 'wide_lock2', None))}" if isinstance(r.wide_k, str) else "none")
         L.append(f"| {str(r.k)[5:16].replace('T', ' ')}{mk} | {str(r.pair).replace('USDT', '')} | {'' if pd.isna(r.above_streak) else int(r.above_streak)} | "
                  f"{'✔' if T(r.v2) else '–'} | {'' if pd.isna(r.hours) else f'{r.hours:.1f}'} | "
                  f"{'' if pd.isna(r.atr) else f'{r.atr:.2f}'} | {f(r.bar_ret)} | {r.gvol} | {'' if pd.isna(r.long_open) else int(r.long_open)} | "
                  f"{'✔' if T(r.eligible) else '✗ ' + ('replay ' + str(r.replay_code) if not T(r.parity) else 'gate')} | "
-                 f"{f(r.LOCK)} | {r.exit_how} | {r.px_src} | {wide} |")
+                 f"{f(r.TODAY)} | {r.today_how} | {f(r.LOCK)} | {r.today_px} | {wide} |")
     S_ = lambda c: allg[c].astype(str).isin(_TRUE)
-    cnt = allg[S_("counted") & S_("final")]
+    gfin = S_("final") & S_("today_final") & (allg.exit_spec.astype(str) == ex["label"])
+    cnt = allg[S_("counted") & gfin]
     v2 = cnt[cnt.v2.astype(str).isin(_TRUE)]; v1 = cnt[~cnt.v2.astype(str).isin(_TRUE)]
     lab = {"review": "📋 PROPOSE PROMOTION", "retire": "❌ retire", "collecting": "⏳ collecting"}
     st, tx = gc_check(v2)
-    L += ["", f"**V2 bar (FORMAL bar 1, frozen: N ≥ {V2_N} on ≥ {V2_DAYS} days ∧ mean ≥ +{V2_MEAN:.2f} ∧ day CI low > 0 ∧ WR ≥ {V2_WR:g} % ∧ no pair > "
+    L += ["", f"**V2 bar (FORMAL bar 1, read on TODAY's live exit, frozen: N ≥ {V2_N} on ≥ {V2_DAYS} days ∧ mean ≥ +{V2_MEAN:.2f} ∧ day CI low > 0 ∧ WR ≥ {V2_WR:g} % ∧ no pair > "
               f"{V2_PAIR:g} % ∧ mean after a 50 % haircut ≥ +{V2_HAIRCUT_MIN:.2f} → promote at lev 0.32, no strong multiplier, revert if the first "
               f"{V2_REVERT_N} promoted fills average < 0 · ADDITIONS beyond the pre-registration: > 0 without the top 5; retire if mean ≤ 0 at ≥ 30 or "
               f"no verdict by {GC_RETIRE_N}):** " + lab.get(st, st) + f" ({tx})"]
@@ -1141,27 +1428,27 @@ def gc_run(now_ms, th, F, J, allr):
     L.append(f"**V2 ∧ ATR ≤ {W_ATR:g} (FORMAL bar 2, Pattern-W, frozen: N ≥ {W_N} ∧ WR ≥ {W_WR:g} % ∧ mean ≥ +{W_MEAN:.2f} ∧ day CI low > 0 ∧ no pair > "
              f"{W_PAIR:g} % → propose; revert if the first {W_REVERT_N} average < 0; ~1 year at 0.09 signals / day):** "
              + {"review": "📋 PROPOSE PROMOTION", "collecting": "⏳ collecting"}.get(st, st) + f" ({tx})")
-    x1 = pd.to_numeric(v1.LOCK, errors="coerce").dropna()
+    x1 = pd.to_numeric(v1.TODAY, errors="coerce").dropna()
     ci1 = day_ci(x1.values, v1.loc[x1.index].day.values) if len(x1) else None
     L.append(f"V1 remainder (green refusals with streak ≤ {GC_STREAK}, same pricing, contrast only): {len(x1)} signals / {v1.day.nunique()} d"
              + (f" · WR {(x1 > 0).mean() * 100:.0f} % · mean {x1.mean():+.2f} %" if len(x1) else "")
              + (f" · day CI [{ci1[0]:+.2f}, {ci1[1]:+.2f}]" if ci1 else "") + ".")
     coh = allg[S_("cohort")]
     unk = coh[S_("eligible")[coh.index] & (coh.gvol.astype(str) == "unknown")]
-    xu = pd.to_numeric(unk[unk.final.astype(str).isin(_TRUE)].LOCK, errors="coerce").dropna()
+    xu = pd.to_numeric(unk[gfin[unk.index]].TODAY, errors="coerce").dropna()
     L.append(f"Market volume unknown (WIDE never reached its gvol check on that bar — NOT counted): {len(unk)} signals"
              + (f" ({int(unk.v2.astype(str).isin(_TRUE).sum())} V2) · final {len(xu)} · mean {xu.mean():+.2f} %" if len(xu) else "") + ".")
     ov = cnt[cnt.wide_k.notna()] if "wide_k" in cnt else cnt.iloc[0:0]
     if len(ov):
         L.append(f"Overlap: {len(ov)} of {len(cnt)} counted signals also had a WIDE fill on the same bar (WIDE actual mean "
                  f"{pd.to_numeric(ov.wide_actual, errors='coerce').mean():+.2f} % at lev {getattr(th, 'frenzy_wide_lev_mult', 0.2)} vs the hypothetical "
-                 f"LONG {pd.to_numeric(ov.LOCK, errors='coerce').mean():+.2f} % at lev 0.32).")
+                 f"LONG {pd.to_numeric(ov.TODAY, errors='coerce').mean():+.2f} % at lev 0.32, today's exit).")
     cu = allg[allg.replay_code.astype(str) == "FRENZY_ON"] if "replay_code" in allg else allg.iloc[0:0]   # the replay at t says ON in state, not fresh
     L.append(f"Catch-up / not replayable at t (the journal line's t is not the ON bar — e.g. a pause catch-up; never counted): {len(cu)}"
              + (" (" + ", ".join(f"{str(r.pair).replace('USDT', '')} {str(r.k)[5:16]}" for r in cu.itertuples()) + ")" if len(cu) else "") + ".")
     L.append(f"_Cohort rows {len(coh)}: counted {int(S_('counted')[coh.index].sum())} · not eligible "
              f"{int((~S_('eligible')[coh.index] & ~coh.index.isin(cu.index)).sum())} · catch-up {int(coh.index.isin(cu.index).sum())} · "
-             f"provisional {int((~S_('final')[coh.index]).sum())}._")
+             f"provisional {int((~gfin[coh.index]).sum())}" + (f" · today's exit back-filled on {n_bf} stored row(s) this run" if n_bf else "") + "._")
     if err:
         L.append(f"_{err} refusal(s) not priced this run (klines unavailable) — retried next run._")
     if late:
@@ -1309,7 +1596,8 @@ def gvb_masks(df):
     live FRENZY / WIDE fill — excluded, listed), passed (let-through fills from GC_FROM, first per pair-episode), plus the episode keys."""
     T = lambda c: df[c].astype(str).isin(_TRUE) if c in df else pd.Series(False, index=df.index)
     ep = episode_keys(df)
-    passed = df.gate.astype(str) == GVB_PASSED
+    _off = gvol_off_ms()   # ⛔ superseded (263): a let-through row stored from the gate-off deploy on is never counted
+    passed = (df.gate.astype(str) == GVB_PASSED) & pd.Series([_ms(k_) < _off for k_ in df.k], index=df.index, dtype=bool)
     fills = set(ep[passed & ep.notna()])
     blk = df.gate.isin(list(GVB_HIGH)) & T("would_take") & ~T("catchup") & ep.notna()
     double = blk & ep.isin(fills)
@@ -1329,7 +1617,8 @@ def gvb_counted(df):
 
 
 def gvb_check(x, days, passed_mean):
-    """the FROZEN GVOL_BLOCKED bar on the counted, final blocked signals' lock % (x) and their UTC days. → (state, text)."""
+    """the FROZEN GVOL_BLOCKED bar on the counted, final blocked signals' % (x — TODAY's live exit since 2026-10-09, the lock before) and their
+    UTC days. → (state, text)."""
     x = pd.Series(np.asarray(x, dtype=float)); days = pd.Series(list(days), index=x.index)
     ok_ = x.notna(); x, days = x[ok_], days[ok_]
     n, nd = len(x), days.nunique()
@@ -1424,24 +1713,32 @@ def gvb_coverage(cnt):
     return int(g.notna().sum()), int(len(cnt)), (float(g[w].isna().mean()) if w.any() else 0.0)
 
 
-def gvb_band_table(cnt):
-    """counted + final blocked rows → markdown rows per sleeve × band: N, days, WR, avg lock %, sum."""
-    L = ["| Sleeve | Band | N | Days | WR | Avg lock % | Σ % |", "|---|---|---|---|---|---|---|"]
+def gvb_band_table(cnt, col=None):
+    """counted + final blocked rows → markdown rows per sleeve × band: N, days, WR, avg %, sum on `col` (TODAY = today's live exit), plus the old
+    lock's avg as a reference column when col is not LOCK."""
+    col = col or ("TODAY" if "TODAY" in cnt else "LOCK")   # rows priced before 2026-10-09 carry only the lock
+    ref = col != "LOCK" and "LOCK" in cnt
+    L = ["| Sleeve | Band | N | Days | WR | Avg today % | Σ % |" + (" Avg lock % (old exit, ref) |" if ref else ""),
+         "|---|---|---|---|---|---|---|" + ("---|" if ref else "")]
+    if col == "LOCK":
+        L[0] = L[0].replace("Avg today %", "Avg lock %")
     labs = [gvb_band(lo) for lo, _ in GVB_BANDS] + ["< 1.0", "unread"]
     for sl, nm in (("LONG", "FRENZY_LONG"), ("WIDE", "FRENZY_WIDE")):
         g = cnt[cnt.sleeve == sl]
         b = g.gvol_band.where(g.gvol_band.notna(), "unread").astype(str) if "gvol_band" in g else pd.Series("unread", index=g.index)
         for lab in labs:
-            x = pd.to_numeric(g[b == lab].LOCK, errors="coerce").dropna()
+            x = pd.to_numeric(g[b == lab][col], errors="coerce").dropna()
             if not len(x) and lab in ("< 1.0", "unread"):
                 continue
             dd = g.loc[x.index, "day"].nunique() if len(x) else 0
-            L.append(f"| {nm} | {lab} | {len(x)} | {dd} | " + (f"{(x > 0).mean() * 100:.0f} % | {x.mean():+.2f} | {x.sum():+.2f} |" if len(x) else "– | – | – |"))
+            xl = pd.to_numeric(g[b == lab].LOCK, errors="coerce").dropna() if ref else None
+            L.append(f"| {nm} | {lab} | {len(x)} | {dd} | " + (f"{(x > 0).mean() * 100:.0f} % | {x.mean():+.2f} | {x.sum():+.2f} |" if len(x) else "– | – | – |")
+                     + ((f" {xl.mean():+.2f} |" if len(xl) else " – |") if ref else ""))
     return L
 
 
 def gvb_wide_hyp(x, days, lt_mean):
-    """the FROZEN WIDE [1.0, 1.2) hypothesis on the counted, final WIDE band signals' lock % (x) / UTC days; lt_mean = the counted WIDE let-through
+    """the FROZEN WIDE [1.0, 1.2) hypothesis on the counted, final WIDE band signals' % on TODAY's exit (x; the lock until 2026-10-09) / UTC days; lt_mean = the counted WIDE let-through
     mean on the same ruler. → (state, text): collecting / propose / stays."""
     x = pd.Series(np.asarray(x, dtype=float)); days = pd.Series(list(days), index=x.index)
     ok_ = x.notna(); x, days = x[ok_], days[ok_]
@@ -1469,18 +1766,19 @@ def gvb_hyp_hold(state, unread_share):
     return "collecting (coverage)" if state != "collecting" and unread_share > GVB_HYP_UNREAD_MAX else state
 
 
-def _gvb_band_lines(cnt, pcs, prov, lite=None):
+def _gvb_band_lines(cnt, pcs, prov, lite=None, label=None):
     """the GVOL_BAND sub-section of GVOL_BLOCKED: sleeve × frozen band table + coverage + the frozen WIDE [1.0, 1.2) hypothesis line + LITE counts."""
     L = ["", f"**🌊 GVOL_BAND split (observe-only, registered 2026-10-07; never changes config):** the counted, final blocked signals above by the "
               "FROZEN market-volume band of their signal bar (the bot's own reading — fill stamp / gate log — else the scout's frozen v2 value; "
-              "frozen once, never re-read). Same ruler (lock %)." + (f" Provisional counted rows not in the table yet: {len(prov)}." if len(prov) else ""), ""]
+              "frozen once, never re-read). Same ruler as the bar: TODAY's live exit" + (f" ({label})" if label else "") + "; the old lock beside it for reference." + (f" Provisional counted rows not in the table yet: {len(prov)}." if len(prov) else ""), ""]
     L += gvb_band_table(cnt)
     rd, tot, wun = gvb_coverage(cnt)
     L += ["", f"Coverage: band read for {rd} of {tot} counted final rows · WIDE rows without a band {wun * 100:.0f} % (the hypothesis read is held "
               f"while > {GVB_HYP_UNREAD_MAX * 100:.0f} %)."]
     w = cnt[(cnt.sleeve == "WIDE") & pd.to_numeric(cnt.get("gvol", pd.Series(dtype=float)), errors="coerce").between(GVB_HYP_LO, GVB_HYP_HI, inclusive="left")]
-    lt = pd.to_numeric(pcs[pcs.sleeve == "WIDE"].LOCK, errors="coerce").dropna()
-    st, tx = gvb_wide_hyp(pd.to_numeric(w.LOCK, errors="coerce").values, w.day.values, lt.mean() if len(lt) else None)
+    rc = "TODAY" if "TODAY" in cnt else "LOCK"
+    lt = pd.to_numeric(pcs[pcs.sleeve == "WIDE"][rc], errors="coerce").dropna() if rc in pcs else pd.Series(dtype=float)
+    st, tx = gvb_wide_hyp(pd.to_numeric(w[rc], errors="coerce").values, w.day.values, lt.mean() if len(lt) else None)
     st = gvb_hyp_hold(st, wun)
     lab = {"collecting": "⏳ collecting", "collecting (coverage)": f"⏳ collecting (coverage — > {GVB_HYP_UNREAD_MAX * 100:.0f} % of WIDE rows unbanded)", "propose": "📋 PROPOSE raising the gate for WIDE alone to 1.2 (operator decision — no auto-change)",
            "stays": "➖ WIDE stays at 1.0"}
@@ -1516,8 +1814,10 @@ def _gvb_price(sig, sym, gate, th, now_ms, budget):
     di, ad = frenzy_di_spread(closed[-300:]), frenzy_adx_delta(closed[-300:])
     strong = bool(sleeve == "LONG" and di is not None and ad is not None and ad > 0 and di > 0)
     take, why = (False, "catch-up / not replayable at t") if catchup else gvb_take(sleeve, ep, code, atr, th)
-    e, t_e, pnl, x_ms, how, px, st, final = _lock_shadow(sym, sig, now_ms, budget)
-    return dict(k=k, pair=sym, day=k[:10], sleeve=sleeve, gate=gate, cohort=k >= GC_FROM, ver=GVB_VER,
+    ex = live_exit(th)
+    S = _live_shadow(sym, sig, now_ms, budget, ex, LIVE_LAG_MS, lock=True)   # 🎯 today's exit (8 s) + the old lock (12 s, reference) on the same prints
+    e, t_e, pnl, x_ms, how, px, st, final = S["lock"]
+    return dict(k=k, pair=sym, day=k[:10], sleeve=sleeve, gate=gate, cohort=k >= GC_FROM, ver=GVB_VER, **today_fields(S["today"], ex),
                 spike_at=(_iso(ep["spike_ts"]) if ep else None), hours=(round(ep["hours"], 2) if ep else None),
                 above_streak=(int(ep["above_streak"]) if ep and ep.get("above_streak") is not None else None),
                 vs_vwap=(round(ep["vs_vwap_pct"], 3) if ep and ep.get("vs_vwap_pct") is not None else None),
@@ -1528,13 +1828,15 @@ def _gvb_price(sig, sym, gate, th, now_ms, budget):
                 exit_at=(_iso(x_ms) if x_ms else None), final=final)
 
 
-def _gvb_passed_price(fk, sym, sleeve, spike, actual, now_ms, budget):
-    """one live FRENZY / WIDE fill the gate let through (opened at fk) → priced with the SAME ruler as the blocked side: _lock_shadow at its
-    signal bar (the 5m close the fill was opened on). The live actual is kept for display only."""
+def _gvb_passed_price(fk, sym, sleeve, spike, actual, now_ms, budget, th=None):
+    """one live FRENZY / WIDE fill the gate let through (opened at fk) → priced with the SAME rulers as the blocked side (_live_shadow at its
+    signal bar = the 5m close the fill was opened on: TODAY's exit + the old lock reference). The live actual is kept for display only."""
     sig = _ms(fk) // BAR * BAR
     k = _iso(sig)
-    e, t_e, pnl, x_ms, how, px, st, final = _lock_shadow(sym, sig, now_ms, budget)
-    return dict(k=k, pair=sym, day=k[:10], sleeve=sleeve, gate=GVB_PASSED, cohort=k >= GC_FROM, ver=GVB_VER, spike_at=spike,
+    ex = live_exit(th if th is not None else _cfg())
+    S = _live_shadow(sym, sig, now_ms, budget, ex, LIVE_LAG_MS, lock=True)
+    e, t_e, pnl, x_ms, how, px, st, final = S["lock"]
+    return dict(k=k, pair=sym, day=k[:10], sleeve=sleeve, gate=GVB_PASSED, cohort=k >= GC_FROM, ver=GVB_VER, spike_at=spike, **today_fields(S["today"], ex),
                 replay_code="LIVE_FILL", catchup=False, would_take=True, why="", strong=None,
                 lev=(GVB_WIDE_LEV if sleeve == "WIDE" else GVB_LONG_LEV), fill_k=str(fk)[:19], actual=actual,
                 entry=e, entry_at=(_iso(t_e) if t_e else None), px_src=px, tick_state=st, LOCK=pnl, exit_how=how,
@@ -1558,6 +1860,8 @@ def gvb_run(now_ms, th, J, allr, F=None):
     acts = {}
     if F is not None and len(F):
         P = F[F.entry_strategy.astype(str).isin(["FRENZY_LONG", "FRENZY_WIDE"]) & (F.k.astype(str) >= GC_SCAN_FROM)]
+        _off = gvol_off_ms()   # ⛔ superseded by GVOL_SPLIT: no let-through fill opened from the gate-off deploy is ingested
+        P = P[[_ms(k_) < _off for k_ in P.k]] if len(P) else P
         for r in P.itertuples():
             try:
                 kk = _iso(_ms(r.k) // BAR * BAR)
@@ -1585,7 +1889,7 @@ def gvb_run(now_ms, th, J, allr, F=None):
             late += 1
             continue
         try:
-            rows.append(_gvb_price(_ms(a[0]), a[1], a[2], th, now_ms, budget) if kind == "B" else _gvb_passed_price(*a, now_ms, budget))
+            rows.append(_gvb_price(_ms(a[0]), a[1], a[2], th, now_ms, budget) if kind == "B" else _gvb_passed_price(*a, now_ms, budget, th))
         except Exception:
             err += 1
     new = pd.DataFrame(rows)
@@ -1601,6 +1905,10 @@ def gvb_run(now_ms, th, J, allr, F=None):
             pa = allg.gate == GVB_PASSED
             na = pd.Series([acts.get((k, p)) for k, p in zip(allg.k, allg.pair)], index=allg.index, dtype=object)
             allg.loc[pa & na.notna(), "actual"] = na[pa & na.notna()].astype(float)
+        ex = live_exit(th)                                     # 🎯 (2026-10-09) TODAY's exit on every stored row that lacks it / was priced under another spec
+        just = {(r_["k"], r_["pair"], r_["gate"]) for r_ in rows}
+        allg, n_bf, e_bf, l_bf = today_backfill(allg, lambda r_: _ms(r_["k"]), ex, LIVE_LAG_MS, now_ms, budget, skip=just)
+        err += e_bf; late += l_bf
         M = gvb_masks(allg)
         allg["episode"], allg["counted"], allg["double"], allg["passed_counted"] = M["episode"], M["counted"], M["double"], M["passed"]
         try:                                                   # 🌊 GVOL_BAND: the bar's reading frozen per row; a failure keeps the priced rows
@@ -1608,68 +1916,83 @@ def gvb_run(now_ms, th, J, allr, F=None):
         except Exception as _fe:
             print(f"[scout] GVOL_BAND freeze failed ({str(_fe)[:120]}) — rows kept unbanded this run", file=sys.stderr)
         _save_csv(allg, GVB_CSV)
+    ex = live_exit(th)
+    off = gvol_off_ms()
     L = ["## 🌊 GVOL_BLOCKED — FRENZY / WIDE activations the market-volume gate refused vs the fills it let through, same ruler (observe-only, registered 2026-10-06)", "",
+         f"**⛔ SUPERSEDED by GVOL_SPLIT from the (DECISION_LOG 263) commit ({_iso(off)[:16]} UTC = {gvol_off_note()}) — the "
+         "market-volume gate is OFF (frenzy_gvol_max 0): no new blocks after that; this line keeps its history.**", "",
          "Every journal FRENZY_GVOL_HIGH / FRENZY_WIDE_GVOL_HIGH refusal (DECISION_LOG 194 gate, frenzy_gvol_max 1.0; the gate's own revert gate reads only "
          "the fills it let through). Replayed with the engine's functions: LONG = the replay says READY (lev 0.32, 0.5 strong); WIDE = a fresh ATR_HIGH / "
          f"GREEN_BAR refusal that TODAY's hold-green rule (streak > {HG_STREAK:g}, DECISION_LOG 231) would still take (lev 0.2) — the LATE / DISLOC checks "
-         "after the gate are not replayable. BOTH sides priced with the FORMAL shadow pricing at their signal bar (the let-through fills too — their live "
-         "actual is display-only): first print ≥ the 5m close + 12 s, the live lock exit, 0.09 % fees + 0.10 % slippage, 12 h cap; ticks once the archive "
-         "is out, else 1m bars (ᵖ provisional). ⚠ Tick stops can fire on wicks the live poller rides through. One per pair-episode (spikes ≤ 30 min apart "
-         f"merged); a blocked episode that ALSO had a live fill is excluded (listed). ¹ = counted (from {GC_FROM[:10]}). DAY units (market-wide variable: "
-         "no single day ≥ 50 % of the net). _UNREAD refusals and catch-up lines on their own lines, never in the bar. Earlier rows are reference only.", ""]
+         "after the gate are not replayable. BOTH sides (the let-through fills too — their live actual is display-only) priced at their signal bar on "
+         f"**TODAY's live exit, read from trading_config.json: {ex['label']}** — first print ≥ the 5m close + {LIVE_LAG_MS // 1000} s, 0.09 % fees + 0.10 % "
+         "slippage; ticks once the archive is out, else 1m bars (ᵖ provisional). The bar reads THIS ruler (since 2026-10-09; before it read the lock — "
+         "the bar had not crossed, nothing was frozen). \"Lock (old exit, reference)\" = the exit live 10-05 → 10-08 (−3 until +3, then max(+2, peak − 2); "
+         "the registration's 12 s entry), shown for the record only. ⚠ Tick stops can fire on wicks the live poller rides through. One per pair-episode "
+         f"(spikes ≤ 30 min apart merged); a blocked episode that ALSO had a live fill is excluded (listed). ¹ = counted (from {GC_FROM[:10]}). DAY units "
+         "(market-wide variable: no single day ≥ 50 % of the net). _UNREAD refusals and catch-up lines on their own lines, never in the bar. Earlier rows "
+         "are reference only.", ""]
     if not len(allg):
         return L + ["No market-volume refusal or let-through fill yet.", ""] + ([f"_{err} row(s) not priced this run — retried next run._"] if err else [])
     f = lambda v: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.2f}"
     T = lambda v: str(v) in _TRUE
     S_ = lambda c: allg[c].astype(str).isin(_TRUE)
     blk = allg[allg.gate != GVB_PASSED]
-    L += ["| Signal UTC | Pair | Sleeve | Gate | Replay | Streak | ATR | Would trade today | Lev | Lock % | Exit | Px |",
-          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    nb_off = int((pd.Series([_ms(k) for k in blk.k], index=blk.index, dtype="int64") >= off).sum()) if len(blk) else 0
+    if nb_off:
+        L.append(f"⚠ {nb_off} market-volume refusal(s) signalled after the gate-off deploy — the gate should be off; check frenzy_gvol_max.")
+    L += ["| Signal UTC | Pair | Sleeve | Gate | Replay | Streak | ATR | Would trade today | Lev | Today % | Exit (today) | Lock % (old exit, reference) | Px |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in blk.tail(15).itertuples():
-        mk = ("" if T(r.final) else "ᵖ") + ("¹" if T(r.counted) else "") + ("" if T(r.cohort) else " (ref)")
+        mk = ("" if (T(r.final) and T(r.today_final)) else "ᵖ") + ("¹" if T(r.counted) else "") + ("" if T(r.cohort) else " (ref)")
         wt = ("✗ live fill same episode" if T(r.double) else "✔") if T(r.would_take) else "✗ " + str(r.why if isinstance(r.why, str) else "")
         L.append(f"| {str(r.k)[5:16].replace('T', ' ')}{mk} | {str(r.pair).replace('USDT', '')} | {r.sleeve} | {str(r.gate).replace('FRENZY_', '')} | "
                  f"{str(r.replay_code).replace('FRENZY_', '')} | {'' if pd.isna(r.above_streak) else int(r.above_streak)} | "
-                 f"{'' if pd.isna(r.atr) else f'{r.atr:.2f}'} | {wt} | {r.lev:g} | {f(r.LOCK)} | {r.exit_how} | {r.px_src} |")
-    cnt = allg[S_("counted") & S_("final")]
-    pcs = allg[S_("passed_counted") & S_("final")]
-    xp = pd.to_numeric(pcs.LOCK, errors="coerce").dropna()
+                 f"{'' if pd.isna(r.atr) else f'{r.atr:.2f}'} | {wt} | {r.lev:g} | {f(r.TODAY)} | {r.today_how} | {f(r.LOCK)} | {r.today_px} |")
+    fin = S_("final") & S_("today_final") & (allg.exit_spec.astype(str) == ex["label"])
+    cnt = allg[S_("counted") & fin]
+    pcs = allg[S_("passed_counted") & fin]
+    num = lambda g, c: pd.to_numeric(g[c], errors="coerce").dropna()
+    xp = num(pcs, "TODAY")
     lab = {"review": "📋 REVIEW: the gate removes winners (flag only — no auto-change)", "confirmed": "✅ gate confirmed",
            "inconclusive": "➖ inconclusive", "collecting": "⏳ collecting"}
-    st, tx = gvb_check(pd.to_numeric(cnt.LOCK, errors="coerce").values, cnt.day.values, xp.mean() if len(xp) else None)
-    L += ["", f"**GVOL_BLOCKED bar (FROZEN: at ≥ {GVB_N} counted signals on ≥ {GVB_DAYS} days ∧ no day ≥ {GVB_DAY_MAX:.0f} % of the blocked net — "
-              f"blocked mean ≥ 0 ∧ ≥ the let-through fills' mean on the same ruler (first per pair-episode, since {GC_FROM[:10]}) → review flag; "
-              f"blocked mean ≤ {GVB_CONFIRM:+.2f} → gate confirmed):** " + lab.get(st, st) + f" ({tx})"]
+    st, tx = gvb_check(pd.to_numeric(cnt.TODAY, errors="coerce").values, cnt.day.values, xp.mean() if len(xp) else None)
+    L += ["", f"**GVOL_BLOCKED bar (FROZEN thresholds, read on TODAY's exit — {ex['label']}: at ≥ {GVB_N} counted signals on ≥ {GVB_DAYS} days ∧ no day ≥ "
+              f"{GVB_DAY_MAX:.0f} % of the blocked net — blocked mean ≥ 0 ∧ ≥ the let-through fills' mean on the same ruler (first per pair-episode, since "
+              f"{GC_FROM[:10]}) → review flag; blocked mean ≤ {GVB_CONFIRM:+.2f} → gate confirmed):** " + lab.get(st, st) + f" ({tx})"]
     for sl in ("LONG", "WIDE"):
-        g = pd.to_numeric(cnt[cnt.sleeve == sl].LOCK, errors="coerce").dropna(); p = pd.to_numeric(pcs[pcs.sleeve == sl].LOCK, errors="coerce").dropna()
-        L.append(f"- {sl}: blocked {len(g)}" + (f" · mean {g.mean():+.2f} %" if len(g) else "") + f" · let through {len(p)}" + (f" · mean {p.mean():+.2f} %" if len(p) else ""))
-    pa = pd.to_numeric(pcs.actual, errors="coerce").dropna()
+        g = num(cnt[cnt.sleeve == sl], "TODAY"); p = num(pcs[pcs.sleeve == sl], "TODAY")
+        L.append(f"- {sl} (today's exit): blocked {len(g)}" + (f" · mean {g.mean():+.2f} %" if len(g) else "") + f" · let through {len(p)}" + (f" · mean {p.mean():+.2f} %" if len(p) else ""))
+    xbl, xpl = num(cnt, "LOCK"), num(pcs, "LOCK")
+    L.append(f"- Lock (old exit, reference — not the bar's ruler): blocked {len(xbl)}" + (f" · mean {xbl.mean():+.2f} % · Σ {xbl.sum():+.2f}" if len(xbl) else "")
+             + f" · let through {len(xpl)}" + (f" · mean {xpl.mean():+.2f} %" if len(xpl) else "") + ".")
+    pa = num(pcs, "actual")
     L.append(f"- Let-through live actual (display only, not the bar's ruler): {len(pa)} closed" + (f" · mean {pa.mean():+.2f} %" if len(pa) else "") + ".")
     dbl = blk[S_("double")[blk.index]]
     L.append(f"- Excluded — blocked episode that also had a live fill (no double count): {len(dbl)}"
-             + (" (" + ", ".join(f"{str(r.pair).replace('USDT', '')} {str(r.k)[5:16]}" for r in dbl.itertuples()) + ")" if len(dbl) else "") + ".")
+             + (" (" + ", ".join(f"{str(r.pair).replace('USDT', '')} {str(r.k)[5:16]} today {f(r.TODAY)} / lock {f(r.LOCK)}" for r in dbl.itertuples()) + ")" if len(dbl) else "") + ".")
     cu = blk[S_("catchup")[blk.index]] if "catchup" in blk else blk.iloc[0:0]
     L.append(f"- Catch-up / not replayable at t (the replay at the journal's t says FRENZY_ON in state — the line's t is not the ON bar; never counted): {len(cu)}"
              + (" (" + ", ".join(f"{str(r.pair).replace('USDT', '')} {str(r.k)[5:16]}" for r in cu.itertuples()) + ")" if len(cu) else "") + ".")
     ref = blk[~S_("cohort")[blk.index] & S_("would_take")[blk.index] & ~S_("double")[blk.index] & blk.gate.isin(list(GVB_HIGH))]
     ref = ref.assign(_ep=allg.episode[ref.index]).dropna(subset=["_ep"]).sort_values(["k", "pair"], kind="stable").drop_duplicates("_ep")
-    xr = pd.to_numeric(ref.LOCK, errors="coerce").dropna()
+    xr = num(ref, "TODAY")
     pr = allg[(allg.gate == GVB_PASSED) & ~S_("cohort")].assign(_ep=allg.episode).dropna(subset=["_ep"]).sort_values(["k", "pair"], kind="stable").drop_duplicates("_ep")
-    xpr, apr = pd.to_numeric(pr.LOCK, errors="coerce").dropna(), pd.to_numeric(pr.actual, errors="coerce").dropna()
-    L.append(f"- Reference (before {GC_FROM[:10]}, not counted): blocked {len(xr)} pair-episodes would trade today" + (f" · mean {xr.mean():+.2f} %" if len(xr) else "")
-             + (f" · {int((~S_('final')[ref.index]).sum())} provisional" if len(ref) else "")
+    xpr, apr = num(pr, "TODAY"), num(pr, "actual")
+    L.append(f"- Reference (before {GC_FROM[:10]}, not counted; today's exit): blocked {len(xr)} pair-episodes would trade today" + (f" · mean {xr.mean():+.2f} %" if len(xr) else "")
+             + (f" · {int((~(S_('final') & S_('today_final'))[ref.index]).sum())} provisional" if len(ref) else "")
              + f" · let through {len(xpr)} pair-episodes" + (f" · same ruler {xpr.mean():+.2f} %" if len(xpr) else "")
              + (f" · live actual {apr.mean():+.2f} %" if len(apr) else "") + ".")
     un = blk[blk.gate.isin(list(GVB_UNREAD))]
-    xu = pd.to_numeric(un[S_("final")[un.index]].LOCK, errors="coerce").dropna() if len(un) else pd.Series(dtype=float)
+    xu = num(un[(S_("final") & S_("today_final"))[un.index]], "TODAY") if len(un) else pd.Series(dtype=float)
     L.append(f"- _GVOL_UNREAD (market volume unreadable — fail-closed; never in the bar): {len(un)} refusals"
-             + (f" ({int(S_('cohort')[un.index].sum())} from {GC_FROM[:10]}) · final {len(xu)} · mean {xu.mean():+.2f} %" if len(un) else "") + ".")
-    L.append(f"- Year reference: {GVB_YEAR}.")
-    L += _gvb_band_lines(cnt, pcs, allg[S_("counted") & ~S_("final")], gvb_lite_bands(J, _lv, _sc, GC_FROM))
+             + (f" ({int(S_('cohort')[un.index].sum())} from {GC_FROM[:10]}) · final {len(xu)} · mean {xu.mean():+.2f} % (today's exit)" if len(un) else "") + ".")
+    L.append(f"- Year reference (priced on the exit live then): {GVB_YEAR}.")
+    L += _gvb_band_lines(cnt, pcs, allg[S_("counted") & ~fin], gvb_lite_bands(J, _lv, _sc, GC_FROM), ex["label"])
     coh = blk[S_("cohort")[blk.index] & blk.gate.isin(list(GVB_HIGH))]
     L.append(f"_Cohort rows {len(coh)}: counted {int(S_('counted')[coh.index].sum())} · today's sleeve would not trade {int((~S_('would_take')[coh.index]).sum())} · "
-             f"provisional {int((~S_('final')[coh.index]).sum())} · let-through rows {int(((allg.gate == GVB_PASSED) & S_('cohort')).sum())}. "
-             "% are leverage-invariant (lev shown per row)._")
+             f"provisional {int((~fin[coh.index]).sum())} · let-through rows {int(((allg.gate == GVB_PASSED) & S_('cohort')).sum())}"
+             + (f" · today's exit back-filled on {n_bf} stored row(s) this run" if n_bf else "") + ". % are leverage-invariant (lev shown per row)._")
     if err:
         L.append(f"_{err} row(s) not priced this run (klines unavailable) — retried next run._")
     if late:
@@ -3698,33 +4021,12 @@ def walk_ticks_fix(tt, pp, e, t0, tp=BB_TP, sl=BB_SL, slip=0.0):
     return float(net[-1]) - slip, int(tt[-1]), "open"
 
 
-def _fix_shadow(sym, sig, now_ms, budget):
-    """a hypothetical (or kept) FRENZY entry on the signal bar closing at sig ms, priced with the fixed +3 / −3: the first print ≥ the close + 8 s,
-    0.09 fees + 0.10 slip, 12 h — ticks once the archive is out, else the open of the signal-close minute on 1m bars (PROVISIONAL; final on 1m
+def _fix_shadow(sym, sig, now_ms, budget, ex=None):
+    """a hypothetical (or kept) FRENZY entry on the signal bar closing at sig ms, priced on TODAY's live exit read from trading_config.json
+    (live_exit — the fixed +3 / −3 / 12 h since 2026-10-08; 2026-10-09: read from the config, no longer hard-coded): the first print ≥ the close
+    + 8 s, 0.09 fees + 0.10 slip — ticks once the archive is out, else the open of the signal-close minute on 1m bars (PROVISIONAL; final on 1m
     only when the ticks never come). → (e, t_e, pnl, x_ms, how, px_src, tick_state, final). Raises on no 1m data."""
-    t_in0 = sig + BB_LAG_MS
-    horizon = t_in0 + CAP_MIN * MIN
-    last_day_end = (horizon // 86_400_000 + 1) * 86_400_000
-    giveup = now_ms > last_day_end + TICK_GIVEUP_D * 86_400_000
-    px = None; st = "pending"; final = False; e = pnl = x_ms = how = None; t_e = None
-    if now_ms >= horizon:
-        st, tt, pp = _ticks(sym, sig, horizon + 2 * MIN, now_ms, budget)
-        if st == "ok":
-            tt_ = np.asarray(tt, dtype=np.int64)
-            i = int(np.searchsorted(tt_, int(t_in0), side="left"))
-            if i < len(tt_):
-                e, t_e = float(np.asarray(pp)[i]), int(tt_[i])
-                pnl, x_ms, how = walk_ticks_fix(tt, pp, e, t_e, slip=SLIP); px = "tick"; final = True
-            else:
-                st = "empty"
-    if px is None:
-        m1 = [b for b in _kl(sym, "1m", sig, min(now_ms, horizon + MIN)) if b[0] + MIN <= now_ms]
-        if not m1 or m1[0][0] != sig:
-            raise ValueError("1m klines unavailable")
-        e = float(m1[0][1]); t_e = sig; pnl, x_ms, how = walk(m1, e, "FIX3"); px = "1m"
-        pnl = pnl - SLIP if pnl is not None else None
-        final = bool(now_ms >= horizon and (st == "missing" or (st == "empty" and giveup)))
-    return e, t_e, pnl, x_ms, how, px, st, final
+    return _live_shadow(sym, sig, now_ms, budget, ex if ex is not None else live_exit(_cfg()), BB_LAG_MS)["today"]
 
 
 def _bb_spike(sym, sig, th):
@@ -3741,17 +4043,19 @@ def _bb_price_blocked(t, sym, gate, th, now_ms, budget, d0):
     sig = _ms(t) // BAR * BAR                 # the journal second → the bar close it judged (a catch-up refusal → the pass's bar = its entry time)
     k = _iso(sig)
     sp, hrs = _bb_spike(sym, sig, th)
-    e, t_e, pnl, x_ms, how, px, st, final = _fix_shadow(sym, sig, now_ms, budget)
-    return dict(k=k, pair=sym, day=k[:10], kind="BLOCKED", sleeve=BB_GATES[gate], gate=gate, cohort=sig >= d0, ver=BB_VER, spike_at=sp, hours=hrs,
+    ex = live_exit(th)
+    e, t_e, pnl, x_ms, how, px, st, final = _fix_shadow(sym, sig, now_ms, budget, ex)
+    return dict(k=k, pair=sym, day=k[:10], kind="BLOCKED", sleeve=BB_GATES[gate], gate=gate, cohort=sig >= d0, ver=BB_VER, spike_at=sp, hours=hrs, exit_spec=ex["label"],
                 fill_k=None, actual=None, entry=e, entry_at=(_iso(t_e) if t_e else None), px_src=px, tick_state=st, PNL=pnl, exit_how=how,
                 exit_at=(_iso(x_ms) if x_ms else None), final=final)
 
 
-def _bb_price_kept(fk, sym, sleeve, spike, actual, now_ms, budget, d0):
+def _bb_price_kept(fk, sym, sleeve, spike, actual, now_ms, budget, d0, ex=None):
     sig = _ms(fk) // BAR * BAR
     k = _iso(sig)
-    e, t_e, pnl, x_ms, how, px, st, final = _fix_shadow(sym, sig, now_ms, budget)
-    return dict(k=k, pair=sym, day=k[:10], kind="KEPT", sleeve=sleeve, gate="KEPT", cohort=_ms(fk) >= d0, ver=BB_VER, spike_at=spike, hours=None,
+    ex = ex if ex is not None else live_exit(_cfg())
+    e, t_e, pnl, x_ms, how, px, st, final = _fix_shadow(sym, sig, now_ms, budget, ex)
+    return dict(k=k, pair=sym, day=k[:10], kind="KEPT", sleeve=sleeve, gate="KEPT", cohort=_ms(fk) >= d0, ver=BB_VER, spike_at=spike, hours=None, exit_spec=ex["label"],
                 fill_k=str(fk)[:19], actual=actual, entry=e, entry_at=(_iso(t_e) if t_e else None), px_src=px, tick_state=st, PNL=pnl, exit_how=how,
                 exit_at=(_iso(x_ms) if x_ms else None), final=final)
 
@@ -3858,7 +4162,7 @@ def bb_run(now_ms, th, J, F3):
             late += 1
             continue
         try:
-            rows.append(_bb_price_blocked(*a, th, now_ms, budget, d0) if kind == "B" else _bb_price_kept(*a, now_ms, budget, d0))
+            rows.append(_bb_price_blocked(*a, th, now_ms, budget, d0) if kind == "B" else _bb_price_kept(*a, now_ms, budget, d0, live_exit(th)))
         except Exception:
             err += 1
     new = pd.DataFrame(rows)
@@ -3868,7 +4172,8 @@ def bb_run(now_ms, th, J, F3):
          "frenzy_bearish_day_block (operator declared override; bearish day = BTC last closed daily return < 0 ∧ BTC 5m trend gap < 0, the DECISION_LOG 239 "
          "definition, the values the fill would be stamped with). Every journal FRENZY_BEARISH_DAY / FRENZY_WIDE_BEARISH_DAY / FRENZY_LITE_BEARISH_DAY refusal "
          f"from the deploy ({_iso(d0)[:16]} UTC = push + 10 min) and every FRENZY / WIDE / LITE fill since (KEPT side) priced on ONE ruler: first print ≥ "
-         "the signal close + 8 s, the live fixed +3 / −3, 0.09 % fees + 0.10 % slippage, 12 h; ticks once the archive is out, else 1m (ᵖ provisional). "
+         f"the signal close + 8 s, TODAY's live exit read from trading_config.json ({live_exit(th)['label']}), 0.09 % fees + 0.10 % slippage; ticks once "
+         "the archive is out, else 1m (ᵖ provisional). "
          "One per pair-episode (spikes ≤ 30 min apart merged); DAY units. The gate is judged last, so a refusal = a trade that would otherwise have "
          "reached the open path (open-path refusals — balance / order book — cannot be replayed).", ""]
     tl = " · ".join(f"{sl} {raw.get(sl, 0)}" for sl in ("LONG", "WIDE", "LITE"))
@@ -3881,12 +4186,15 @@ def bb_run(now_ms, th, J, F3):
         na = pd.Series([acts.get((k, p)) for k, p in zip(allb.k, allb.pair)], index=allb.index, dtype=object)
         allb.loc[kp_ & na.notna(), "actual"] = na[kp_ & na.notna()].astype(float)
     allb["counted"], allb["kept_counted"], allb["episode"] = bb_masks(allb)
+    _specs = set(allb.exit_spec.dropna().astype(str)) if "exit_spec" in allb else set()
+    if _specs - {live_exit(th)["label"]}:   # rows priced before the spec was stamped carry none (they ran the same fixed +3 / −3 / 12 h)
+        L.append(f"⚠ Rows priced under another live exit than today's ({' · '.join(sorted(_specs))}) — final rows are never re-priced (the verdict set stays frozen); read the mix at review.")
     allb = bb_freeze(allb)
     _save_csv(allb, BB_CSV)
     f = lambda v: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.2f}"
     S_ = lambda c: allb[c].astype(str).isin(_TRUE)
     blk = allb[allb.kind == "BLOCKED"]
-    L += ["| Signal UTC | Pair | Sleeve | Spike | +3/−3 % | Exit | Px |", "|---|---|---|---|---|---|---|"]
+    L += ["| Signal UTC | Pair | Sleeve | Spike | Today's exit % | Exit | Px |", "|---|---|---|---|---|---|---|"]
     for r in blk.tail(15).itertuples():
         mk = ("" if str(r.final) in _TRUE else "ᵖ") + ("¹" if str(r.counted) in _TRUE else "") + ("" if str(r.cohort) in _TRUE else " (ref)")
         L.append(f"| {str(r.k)[5:16].replace('T', ' ')}{mk} | {str(r.pair).replace('USDT', '')} | {r.sleeve} | "
@@ -3922,6 +4230,330 @@ def bb_run(now_ms, th, J, F3):
     return L + [""]
 
 
+# ─────────────────────────── 🌊 GVOL_SPLIT (2026-10-09, DECISION_LOG 263 — frozen observe tracker) ───────────────────────────
+# The operator switched the FRENZY market-volume gate OFF (frenzy_gvol_max 1.0 → 0: FRENZY_LONG / WIDE / LITE take every trade; the reading is
+# still stamped as entry_frenzy_gvol) — "leave all trades in and decide with data". Every FRENZY_LONG / WIDE / LITE fill opened from the gate-off
+# deploy (gvol_off_ms) split by its market volume at the signal bar: HIGH ≥ 1.0 (what the gate used to block) vs LOW < 1.0; P&L = the bot's own
+# closed pnl_percentage (live, as traded at today's exit) and pnl $. Reading: the stamp first; with the gate off the engine never WAITS for the
+# read (services/trading_engine.py "gate off: stamp only if already read, never wait"), so a missing stamp falls back to scripts/scout_gvol.py's
+# per-bar engine rebuild (validated vs the bot's own reading: MAE 0.0004, 13/13 same side) for the fill's signal bar (signal close = the 5m
+# close the fill opened ≤ 3 min after; a catch-up fill's own bar is another bar → no rebuild); both unavailable → UNSCORED. The side / value /
+# source of a row freeze once read (UNSCORED stays provisional until the bar is 7 days old, then freezes). Stamp-vs-rebuild agreement shown.
+GVS_CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_GVOL_SPLIT.csv")
+GVS_STATE = os.path.join(ROOT, "reports", "SCOUT_FRENZY_GVOL_SPLIT_STATE.json")
+GVS_CUT = 1.0                                   # FROZEN: the gate's old threshold (frenzy_gvol_max 1.0)
+GVS_N1, GVS_N2, GVS_DAYS = 15, 30, 8            # FROZEN reads: first prefix with HIGH and LOW each ≥ 15 closed fills on ≥ 8 days; if that read says
+#   "observe", ONE re-read at the first prefix with each ≥ 30 on ≥ 8 days (then frozen whatever it says)
+GVS_BE_FALLBACK, GVS_BE_MIN_N = 51.5, 30        # FRENZY breakeven WR: |avg loss| ÷ (avg win + |avg loss|) on the prefix's scored closed fills once ≥ 30
+GVS_P, GVS_BOOT, GVS_SEED, GVS_CONC = 0.95, 4000, 7, 50.0   # day-block bootstrap P(mean < 0) ≥ 0.95 (seed 7, 4,000) · no day / pair ≥ 50 % of the gross loss
+GVS_SLEEVES = {"FRENZY_LONG": "LONG", "FRENZY_WIDE": "WIDE", "FRENZY_LITE": "LITE"}
+GVS_LIVE_FILL_MAX_MS = 3 * MIN                  # a fill opened later than this after a 5m close may be a catch-up (its signal bar is another bar)
+GVS_UNSCORED_FREEZE_MS = 7 * 86_400_000         # scout_gvol.MAX_AGE_MS: older bars are never computed → UNSCORED final
+GVS_COLS = ("k", "pair", "sleeve", "day", "closed", "actual", "usd", "stamp", "rebuilt", "gvol", "gvol_src", "side", "band", "frozen", "catchup")
+
+
+def gvs_side(v):
+    v = _num(v)
+    return "UNSCORED" if v is None else "HIGH" if v >= GVS_CUT else "LOW"
+
+
+def gvs_rows(F, since_ms):
+    """FRENZY_LONG / WIDE / LITE fills (the _fills frame) opened from since_ms → the tracker's per-fill rows (no reading resolved yet)."""
+    cols = list(GVS_COLS)
+    if F is None or not len(F):
+        return pd.DataFrame(columns=cols)
+    o = F[F.entry_strategy.astype(str).isin(list(GVS_SLEEVES))]
+    rows = []
+    for r in o.itertuples():
+        try:
+            t = _ms(r.k)
+        except Exception:
+            continue
+        if t < since_ms:
+            continue
+        closed = str(r.status).upper() == "CLOSED" and pd.notna(r.pnl_percentage)
+        cu = getattr(r, "entry_frenzy_catchup", None)
+        cu = bool(str(cu).strip().lower() in ("true", "1", "1.0", "yes") or (_num(cu) or 0) != 0) if cu is not None and pd.notna(cu) else False
+        rows.append(dict(k=_iso(t), pair=str(r.pair), sleeve=GVS_SLEEVES[str(r.entry_strategy)], day=_iso(t)[:10], closed=closed,
+                         actual=(float(r.pnl_percentage) if closed else None), usd=(_num(getattr(r, "pnl", None)) if closed else None),
+                         stamp=_num(getattr(r, "entry_frenzy_gvol", None)), rebuilt=None, gvol=None, gvol_src=None, side=None, band=None,
+                         frozen=False, catchup=cu))
+    return pd.DataFrame(rows, columns=cols)
+
+
+def gvs_sig_bar(k, catchup):
+    """the fill's signal bar OPEN ms (scout_gvol's cache key), or None when the fill may be a catch-up (its reading belongs to another bar)."""
+    t = _ms(k); close = t // BAR * BAR
+    return None if (catchup or t - close > GVS_LIVE_FILL_MAX_MS) else close - BAR
+
+
+def gvs_resolve(df, rebuilt_map, now_ms):
+    """fill gvol / gvol_src / side / band / frozen and the rebuild column. rebuilt_map = {signal bar open ms: value} (scout_gvol.cached / ensure).
+    A frozen row's reading never changes (its rebuild column may still fill in, for the agreement line). Returns a copy."""
+    d = df.copy()
+    for c in ("rebuilt", "gvol", "gvol_src", "side", "band"):
+        d[c] = d[c].astype(object)
+    for i in d.index:
+        sb = gvs_sig_bar(d.at[i, "k"], str(d.at[i, "catchup"]) in _TRUE)
+        rb = _num((rebuilt_map or {}).get(sb)) if sb is not None else None
+        if rb is not None:
+            d.at[i, "rebuilt"] = round(rb, 4)
+        if str(d.at[i, "frozen"]) in _TRUE:
+            continue
+        st = _num(d.at[i, "stamp"])
+        v, src = (st, "stamp") if st is not None else (rb, "rebuilt") if rb is not None else (None, "none")
+        d.at[i, "gvol"], d.at[i, "gvol_src"], d.at[i, "side"] = v, src, gvs_side(v)
+        d.at[i, "band"] = gvb_band(v) if v is not None else None
+        d.at[i, "frozen"] = bool(v is not None or now_ms - _ms(d.at[i, "k"]) > GVS_UNSCORED_FREEZE_MS)
+    return d
+
+
+def gvs_merge(old, new):
+    """stored rows + this run's export rows (keyed k + pair): a stored row keeps its frozen reading; the export refreshes closed / actual / usd
+    (a fill that closed since) and a missing stamp; a stored row whose export left ~/Downloads is kept as is."""
+    if old is None or not len(old):
+        return new.copy()
+    if not len(new):
+        return old.copy()
+    o = old.drop_duplicates(["k", "pair"], keep="last").set_index(["k", "pair"])
+    n = new.drop_duplicates(["k", "pair"], keep="last").set_index(["k", "pair"])
+    out = o.reindex(o.index.union(n.index)).astype(object)
+    for key in n.index:
+        nr = n.loc[key]
+        if key not in o.index:
+            out.loc[key] = nr
+            continue
+        for c in ("closed", "actual", "usd"):
+            if str(nr["closed"]) in _TRUE:
+                out.at[key, c] = nr[c]
+        if _num(out.at[key, "stamp"]) is None and _num(nr["stamp"]) is not None:
+            out.at[key, "stamp"] = nr["stamp"]
+    return out.reset_index().reindex(columns=list(GVS_COLS))
+
+
+def gvs_stats(g):
+    """closed fills of a cohort → dict(n, days, wr, avg, usd, worst) on the live pnl %."""
+    x = pd.to_numeric(g.actual, errors="coerce")
+    g = g[x.notna()]; x = x.dropna()
+    if not len(x):
+        return dict(n=0, days=0, wr=None, avg=None, usd=None, worst=None)
+    return dict(n=len(x), days=g.day.nunique(), wr=(x > 0).mean() * 100, avg=x.mean(), usd=pd.to_numeric(g.usd, errors="coerce").sum(), worst=x.min())
+
+
+def gvs_breakeven(x):
+    """breakeven WR % = |avg loss| ÷ (avg win + |avg loss|) on ≥ 30 closed fills, else the 51.5 % fallback."""
+    x = pd.Series(np.asarray(x, dtype=float)).dropna()
+    w, l = x[x > 0], x[x <= 0]
+    if len(x) < GVS_BE_MIN_N or not len(w) or not len(l):
+        return GVS_BE_FALLBACK, "fallback"
+    return float(abs(l.mean()) / (w.mean() + abs(l.mean())) * 100), f"computed on {len(x)}"
+
+
+def gvs_p_neg(x, days):
+    """day-block bootstrap P(mean < 0): resample UTC days with replacement (seed 7, 4,000), mean = Σ ÷ count of the drawn days."""
+    g = pd.DataFrame(dict(x=np.asarray(x, dtype=float), d=list(days))).dropna().groupby("d").x.agg(["sum", "count"])
+    if not len(g):
+        return None
+    s, c = g["sum"].values, g["count"].values
+    r = np.random.default_rng(GVS_SEED).integers(0, len(g), (GVS_BOOT, len(g)))
+    return float(((s[r].sum(1) / c[r].sum(1)) < 0).mean())
+
+
+def gvs_conc(g):
+    """the largest share (%) of HIGH's gross loss carried by one day and by one pair → (day %, pair %)."""
+    x = pd.to_numeric(g.actual, errors="coerce")
+    lo = g.assign(_l=(-x).clip(lower=0))
+    tot = lo._l.sum()
+    if tot <= 0:
+        return 0.0, 0.0
+    return float(lo.groupby("day")._l.sum().max() / tot * 100), float(lo.groupby("pair")._l.sum().max() / tot * 100)
+
+
+def gvs_decide(prefix):
+    """the FROZEN verdict on a prefix (closed, scored rows). → (verdict 'rearm' | 'stays_off' | 'observe', text)."""
+    sc = prefix[prefix.side.isin(["HIGH", "LOW"])]
+    hi, lo = sc[sc.side == "HIGH"], sc[sc.side == "LOW"]
+    xh, xl = pd.to_numeric(hi.actual, errors="coerce"), pd.to_numeric(lo.actual, errors="coerce")
+    be, be_how = gvs_breakeven(pd.to_numeric(sc.actual, errors="coerce").values)
+    wr = (xh > 0).mean() * 100
+    p = gvs_p_neg(xh.values, hi.day.values)
+    cd, cp = gvs_conc(hi)
+    legs = dict(wr=wr < be, p=(p is not None and p >= GVS_P), conc=(cd < GVS_CONC and cp < GVS_CONC))
+    t = (f"HIGH {len(xh)} on {hi.day.nunique()} d · WR {wr:.0f} % vs breakeven {be:.1f} % ({be_how}) {'✔' if legs['wr'] else '✗'} · P(mean < 0) "
+         f"{p:.3f} {'✔' if legs['p'] else '✗'} · top day {cd:.0f} % / top pair {cp:.0f} % of the gross loss {'✔' if legs['conc'] else '✗'} · "
+         f"HIGH mean {xh.mean():+.2f} % vs LOW mean {xl.mean():+.2f} % (LOW {len(xl)} on {lo.day.nunique()} d)")
+    if all(legs.values()) and xh.mean() < xl.mean():
+        return "rearm", t
+    if xh.mean() >= xl.mean():
+        return "stays_off", t
+    return "observe", t
+
+
+def gvs_first_prefix(df, n_need, d_need=GVS_DAYS):
+    """the shortest prefix (by open time) in which HIGH and LOW each have ≥ n_need closed fills on ≥ d_need days AND every row of the prefix is
+    closed with a frozen reading (an open fill or a still-unscored reading holds the read — deterministic). → the prefix DataFrame or None."""
+    d = df.sort_values(["k", "pair"], kind="stable").reset_index(drop=True)
+    for i in range(len(d)):
+        r = d.iloc[i]
+        if not (str(r.closed) in _TRUE and str(r.frozen) in _TRUE):
+            return None
+        p = d.iloc[:i + 1]
+        h, l = p[p.side == "HIGH"], p[p.side == "LOW"]
+        if len(h) >= n_need and len(l) >= n_need and h.day.nunique() >= d_need and l.day.nunique() >= d_need:
+            return p
+    return None
+
+
+def gvs_hold(df):
+    """why the frozen read cannot advance past a fill: the FIRST fill (open-time order) that is still open or has no frozen reading → text or
+    None. An UNSCORED fill (catch-up / rebuild failed) holds the read until it freezes as UNSCORED 7 days after its bar."""
+    d = df.sort_values(["k", "pair"], kind="stable")
+    for r in d.itertuples():
+        if str(r.closed) not in _TRUE:
+            return f"{r.pair} {str(r.k)[5:16]} ({r.sleeve}) still open"
+        if str(r.frozen) not in _TRUE:
+            why = "catch-up / late fill — no rebuild" if (str(r.catchup) in _TRUE or gvs_sig_bar(r.k, False) is None) else "no stamp, rebuild not available yet"
+            return (f"{r.pair} {str(r.k)[5:16]} ({r.sleeve}) UNSCORED ({why}) — the read waits until it is scored or freezes as UNSCORED "
+                    f"{_iso(_ms(r.k) + GVS_UNSCORED_FREEZE_MS)[:16]} UTC")
+    return None
+
+
+def gvs_step(state, df):
+    """advance the frozen state {'r15': {...}, 'r30': {...}} — each read is decided ONCE and never re-decided; the 30 read only when the 15 read
+    said 'observe'. Returns a new dict."""
+    st = dict(state or {})
+    for key, n in (("r15", GVS_N1), ("r30", GVS_N2)):
+        if key in st:
+            if st[key]["verdict"] != "observe":
+                return st
+            continue
+        p = gvs_first_prefix(df, n)
+        if p is None:
+            return st
+        v, t = gvs_decide(p)
+        st[key] = dict(verdict=v, text=t, n_rows=len(p), last_k=str(p.k.iloc[-1]), last_pair=str(p.pair.iloc[-1]))
+        if v != "observe":
+            return st
+    return st
+
+
+GVS_LAB = {"rearm": f"🔔 RE-ARM CANDIDATE: frenzy_gvol_max {GVS_CUT:.1f} (operator decides)", "stays_off": "✅ gate stays off",
+           "observe": "⏳ keep observing"}
+
+
+def gvs_lines(df, state, off_ms, ex_label=None):
+    f = lambda v, d=2: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.{d}f}"
+    L = ["## 🌊 GVOL_SPLIT — FRENZY / WIDE / LITE fills by market volume at the signal, gate OFF (frozen observe, DECISION_LOG 263)", "",
+         f"Every FRENZY_LONG / WIDE / LITE fill opened from the gate-off deploy ({_iso(off_ms)[:16]} UTC = {gvol_off_note()}) split by the market volume at its signal bar: HIGH ≥ {GVS_CUT:.1f} (what the gate used to block) vs LOW < {GVS_CUT:.1f}. "
+         "Reading = the bot's stamp (entry_frenzy_gvol), else scout_gvol's per-bar engine rebuild (gate off → the engine never waits for the read); "
+         "both missing → UNSCORED. P&L = the bot's own closed pnl % (live, as traded" + (f" — today's exit {ex_label}" if ex_label else "") + ") and $. "
+         "DAY units. Sizes differ by sleeve — compare %.", ""]
+    c = df[df.closed.astype(str).isin(_TRUE)]
+    L += ["| Sleeve | Side | N | Days | WR | Avg % | Σ $ | Worst % |", "|---|---|---|---|---|---|---|---|"]
+    for nm, g in (("all", c), ("LONG", c[c.sleeve == "LONG"]), ("WIDE", c[c.sleeve == "WIDE"]), ("LITE", c[c.sleeve == "LITE"])):
+        for side in ("HIGH", "LOW", "UNSCORED"):
+            s_ = gvs_stats(g[g.side.astype(str) == side])
+            if not s_["n"] and side == "UNSCORED":
+                continue
+            L.append(f"| {nm} | {side} | {s_['n']} | {s_['days']} | " + ("– | – | – | – |" if not s_["n"] else
+                     f"{s_['wr']:.0f} % | {s_['avg']:+.2f} | {s_['usd']:+.2f} | {s_['worst']:+.2f} |"))
+    hi = c[c.side.astype(str) == "HIGH"]
+    if len(hi):
+        L += ["", "HIGH by the frozen GVOL_BAND bands: " + " · ".join(
+            f"{b} {gvs_stats(hi[hi.band == b])['n']} · {f(gvs_stats(hi[hi.band == b])['avg'])} %" for b in [gvb_band(lo) for lo, _ in GVB_BANDS] if (hi.band == b).any()) + "."]
+    src = df.gvol_src.fillna("none").value_counts()
+    both = df[pd.to_numeric(df.stamp, errors="coerce").notna() & pd.to_numeric(df.rebuilt, errors="coerce").notna()]
+    if len(both):
+        a, b = pd.to_numeric(both.stamp).values, pd.to_numeric(both.rebuilt).values
+        agr = f"{len(both)} fills with both · MAE {np.mean(np.abs(a - b)):.4f} · same side of {GVS_CUT:.1f} on {int(((a >= GVS_CUT) == (b >= GVS_CUT)).sum())}/{len(both)}"
+    else:
+        agr = "no fill has both yet"
+    L.append(f"Reading source (all fills): stamp {int(src.get('stamp', 0))} · rebuilt {int(src.get('rebuilt', 0))} · none {int(src.get('none', 0))} · "
+             f"still open {int((~df.closed.astype(str).isin(_TRUE)).sum())}. Stamp vs rebuild: {agr}.")
+    L += ["", f"**GVOL_SPLIT verdict (FROZEN, decided once at the first prefix — by open time, every row closed and read — where HIGH and LOW each reach "
+              f"N ≥ {GVS_N1} on ≥ {GVS_DAYS} days): HIGH meets the expectancy bar (WR < the FRENZY breakeven — {GVS_BE_FALLBACK:g} % until {GVS_BE_MIN_N} "
+              f"fills —, day-block P(mean < 0) ≥ {GVS_P:.2f} (seed {GVS_SEED}, {GVS_BOOT:,}), no day / pair ≥ {GVS_CONC:.0f} % of the gross loss) ∧ HIGH "
+              f"mean < LOW mean → re-arm candidate; HIGH mean ≥ LOW mean → gate stays off; else observe and re-read ONCE at N ≥ {GVS_N2} each "
+              f"(≥ {GVS_DAYS} days).**"]
+    if not state:
+        h, l = c[c.side.astype(str) == "HIGH"], c[c.side.astype(str) == "LOW"]
+        L.append(f"⏳ collecting (HIGH {len(h)}/{GVS_N1} on {h.day.nunique()}/{GVS_DAYS} d · LOW {len(l)}/{GVS_N1} on {l.day.nunique()}/{GVS_DAYS} d).")
+    for key in ("r15", "r30"):
+        if key in state:
+            r = state[key]
+            L.append(f"- {key.replace('r', 'N ≥ ')} read (frozen at {r['n_rows']} fills, last {r['last_k'][5:16]} {r['last_pair']}): {GVS_LAB.get(r['verdict'], r['verdict'])} ({r['text']})")
+    if state.get("r15", {}).get("verdict") == "observe" and "r30" not in state:
+        L.append(f"- ⏳ waiting for the N ≥ {GVS_N2} re-read.")
+    pend = not state or (state.get("r15", {}).get("verdict") == "observe" and "r30" not in state)
+    hold = gvs_hold(df) if pend and len(df) else None
+    if hold:
+        L.append(f"- Read held at: {hold}.")
+    return L + [""]
+
+
+def _gvs_rebuilt(sigs, now_ms):
+    """{signal bar open: engine-rebuild value} from scout_gvol — the frozen cache first; missing bars (≤ 7 d old) computed via its ensure()
+    (its own weight / ban handling, ≤ 60 s) unless reports/backtest_cache/.binance_cooldown_until is in force. Never raises."""
+    sigs = sorted({int(s) for s in sigs if s is not None})
+    if not sigs:
+        return {}
+    try:
+        sd = os.path.join(ROOT, "scripts")
+        if sd not in sys.path:
+            sys.path.insert(0, sd)
+        import scout_gvol as _SG
+        have = _SG.cached(sigs)
+        need = [s for s in sigs if s not in have and s + BAR <= now_ms and s >= now_ms - _SG.MAX_AGE_MS]
+        try:
+            cd = float(open(os.path.join(TICK_CACHE, ".binance_cooldown_until")).read().strip() or 0)
+        except Exception:
+            cd = 0.0
+        if need and time.time() >= cd:
+            import ccxt
+            EX = ccxt.binanceusdm({"enableRateLimit": True})
+
+            def _retry(fn, *a, **kw):
+                for _ in range(2):
+                    try:
+                        return fn(*a, **kw)
+                    except Exception:
+                        time.sleep(1)
+                return None
+            c = json.load(open(os.path.join(ROOT, "trading_config.json")))
+            have = _SG.ensure(EX, _retry, {**c, **(c.get("thresholds") or {})}, sigs, now_ms, budget_s=60)
+        return have
+    except Exception:
+        return {}
+
+
+def gvs_run(now_ms, F3, ex_label=None):
+    off = gvol_off_ms()
+    old = _load_csv(GVS_CSV, ("k", "pair", "side", "frozen"))
+    d = gvs_merge(old if len(old) else None, gvs_rows(F3, off))
+    if len(d):
+        d = d[[_ms(k) >= off for k in d.k]].reset_index(drop=True) if len(d) else d
+    if len(d):
+        sigs = [gvs_sig_bar(k, str(cu) in _TRUE) for k, cu in zip(d.k, d.catchup)]
+        d = gvs_resolve(d, _gvs_rebuilt(sigs, now_ms), now_ms)
+        _save_csv(d, GVS_CSV)
+    try:
+        state = json.load(open(GVS_STATE)) if os.path.exists(GVS_STATE) else {}
+    except Exception:
+        try:
+            os.replace(GVS_STATE, _bad_path(GVS_STATE))
+        except OSError:
+            pass
+        state = {}
+    if len(d):
+        ns = gvs_step(state, d)
+        if ns != state:
+            tmp = f"{GVS_STATE}.{os.getpid()}.tmp"; json.dump(ns, open(tmp, "w"), indent=1); os.replace(tmp, GVS_STATE)
+            state = ns
+    if not len(d):
+        return gvs_lines(pd.DataFrame(columns=list(GVS_COLS)), state, off, ex_label)[:-1] + ["No FRENZY / WIDE / LITE fill since the gate-off deploy yet.", ""]
+    return gvs_lines(d, state, off, ex_label)
+
+
 ERA_NOTE = "_⚠ Era note (DECISION_LOG 250): from 2026-10-08 the bearish-day block also filters FRENZY / WIDE / LITE entries — read the split at review._"
 
 
@@ -3949,6 +4581,10 @@ def _extras(now_ms, th, F, J, allr):
         out += era_noted(ons_run(now_ms, th, Je, F))
     except Exception as ex:
         out += ["## ⚡ ON_SCALP", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
+    try:   # 🌊 Oct-9 (263) GVOL_SPLIT — the market-volume gate is off; HIGH vs LOW on the live fills (frozen verdict)
+        out += gvs_run(now_ms, _fills(("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")), live_exit(th)["label"])
+    except Exception as ex:
+        out += ["## 🌊 GVOL_SPLIT", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
     try:   # 🐻 Oct-8 (250) tracker 14 FRENZY_BEARISH_BLOCKED (the bearish-day block's revert gate; LITE fills read here)
         out += bb_run(now_ms, th, Je, _fills(("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")))
     except Exception as ex:
@@ -4320,8 +4956,11 @@ def selftest():
     chk(gvb_wide_hyp([0.8, -0.2] * 10, hd, None)[0] == "stays" and "no let-through baseline" in gvb_wide_hyp([0.8, -0.2] * 10, hd, None)[1],
         "read reached, no WIDE let-through mean → stays at 1.0 (no let-through baseline)")
     chk(gvb_wide_hyp([0.8, -0.2] * 10, hd, 0.5)[1] == gvb_wide_hyp([0.8, -0.2] * 10, hd, 0.5)[1], "fixed-seed bootstrap is deterministic")
-    tb = gvb_band_table(pd.DataFrame(dict(sleeve=["WIDE", "WIDE", "LONG"], gvol_band=["[1.0, 1.1)", "[1.0, 1.1)", None], LOCK=[1.0, -3.0, 2.0], day=["a", "b", "a"])))
+    tb = gvb_band_table(pd.DataFrame(dict(sleeve=["WIDE", "WIDE", "LONG"], gvol_band=["[1.0, 1.1)", "[1.0, 1.1)", None], LOCK=[1.0, -3.0, 2.0], day=["a", "b", "a"])), col="LOCK")
     chk(any(x.startswith("| FRENZY_WIDE | [1.0, 1.1) | 2 | 2 | 50 %") for x in tb) and any("| FRENZY_LONG | unread | 1 |" in x for x in tb), "band table per sleeve × band")
+    tb2 = gvb_band_table(pd.DataFrame(dict(sleeve=["WIDE", "WIDE"], gvol_band=["[1.0, 1.1)"] * 2, TODAY=[3.0, -3.0], LOCK=[4.0, 1.0], day=["a", "b"])))
+    chk(any(x.startswith("| FRENZY_WIDE | [1.0, 1.1) | 2 | 2 | 50 % | +0.00 | +0.00 | +2.50 |") for x in tb2) and "Avg today %" in tb2[0] and "old exit, ref" in tb2[0],
+        "band table reads TODAY's exit, the lock as a labelled reference column")
     # 🐻 Oct-8 (250) FRENZY_BEARISH_BLOCKED + the era-aware WIDE cap
     tt = np.array([t0 + i * 1000 for i in range(6)], dtype=np.int64)
     r_ = walk_ticks_fix(tt, [100, 101, 103.2, 104, 99, 98], 100.0, t0)
@@ -4440,6 +5079,145 @@ def selftest():
     ln_tb = tb_lines(un, wl, {})
     chk(any("UNREAD pairs" in x and "P ×5" in x for x in ln_tb), "turnover: UNREAD pairs listed by name")
     chk(any("let through" in x for x in ln_tb) and any("UNREAD refusals" in x for x in ln_tb) and any("blocked · entry A" in x for x in ln_tb), "turnover: report lines")
+    # 🎯 2026-10-09 TODAY's live exit (config) — the pricing path of GVOL_BLOCKED / GREEN_CLOCK / BEARISH_BLOCKED / the LIVE column
+    thf = SimpleNamespace(frenzy_stop_pct=3.0, frenzy_tp_pct=3.0, frenzy_lock_arm_pct=0.0, frenzy_lock_floor_pct=2.0, frenzy_lock_trail_pct=2.0,
+                          frenzy_trail_arm_pct=5.0, frenzy_trail_giveback_pct=1.5, frenzy_max_hold_minutes=720)
+    exf, exl = live_exit(thf), live_exit(SimpleNamespace(**{**vars(thf), "frenzy_lock_arm_pct": 3.0}))
+    chk(exf["mode"] == "fixed" and exf["tp"] == 3.0 and exf["sl"] == 3.0 and exf["cap"] == 720 and exf["label"] == "fixed +3 / −3 · 12 h", "live exit: fixed +3 / −3 / 12 h")
+    chk(exl["mode"] == "lock" and exl["la"] == 3.0 and exl["lf"] == 2.0 and exl["lt"] == 2.0, "live exit: lock arm > 0 → the lock (TP ignored, as frenzy_exit_for)")
+    chk(live_exit(SimpleNamespace(**{**vars(thf), "frenzy_max_hold_minutes": 0}))["cap"] == CAP_MIN and live_exit(SimpleNamespace(**{**vars(thf), "frenzy_max_hold_minutes": 60}))["cap"] == 60,
+        "live exit: hold 0 → the 12 h assumed, else the config value")
+    _c = json.load(open(os.path.join(ROOT, "trading_config.json"))); _c = {**_c, **(_c.get("thresholds") or {})}
+    exc = live_exit(_cfg())
+    chk(exc["sl"] == abs(float(_c["frenzy_stop_pct"])) and exc["cap"] == (int(_c["frenzy_max_hold_minutes"]) or CAP_MIN)
+        and exc["mode"] == ("lock" if float(_c["frenzy_lock_arm_pct"]) > 0 else "fixed" if float(_c["frenzy_tp_pct"]) > 0 else "trail")
+        and (exc["mode"] != "fixed" or exc["tp"] == float(_c["frenzy_tp_pct"])), f"live exit READS trading_config.json ({exc['label']})")
+    r_ = walk_ticks_live(tt, [100, 101, 103.2, 104, 99, 98], 100.0, t0, exf)
+    chk(r_[2] == "take profit" and abs(r_[0] - (3.2 - FEE)) < 1e-9 and r_[1] == t0 + 2000, "today's exit: +3 hit first → closes AT that print")
+    r_ = walk_ticks_live(tt, [100, 99, 96.8, 104, 99, 98], 100.0, t0, exf, slip=0.10)
+    chk(r_[2] == "stop" and abs(r_[0] - (-3.2 - FEE - 0.10)) < 1e-9 and r_[1] == t0 + 2000, "today's exit: −3 hit first → stopped there (slip once)")
+    r_ = walk_ticks_live(tl, [100, 110], 100.0, t0, exf)
+    chk(r_[2] == "12 h cap" and abs(r_[0] - (-FEE)) < 1e-9 and r_[1] == t0 + CAP_MIN * MIN, "today's exit: 12 h clock cap (the last print before it)")
+    chk(walk_ticks_live(tl, [100, 110], 100.0, t0, live_exit(SimpleNamespace(**{**vars(thf), "frenzy_max_hold_minutes": 60})))[2] == "1 h cap", "today's exit: the cap follows the config")
+    rng = np.random.default_rng(3); ttr = np.array([t0 + i * 997 for i in range(40_000)], dtype=np.int64)
+    eq_f = eq_l = 0
+    for _ in range(40):
+        ppr = 100 * np.exp(np.cumsum(rng.normal(0, 0.0009, len(ttr))))
+        eq_f += walk_ticks_live(ttr, ppr, ppr[0], t0, exf, slip=SLIP) == walk_ticks_fix(ttr, ppr, ppr[0], t0, slip=SLIP)
+        a_, b_ = walk_ticks_live(ttr, ppr, ppr[0], t0, exl), walk_ticks(ttr, ppr, ppr[0], t0)
+        eq_l += (a_[0] == b_[0] and a_[1] == b_[1] and a_[2] == b_[2])
+    chk(eq_f == 40 and eq_l == 40, "today's exit = the fixed walker on fixed config and = the lock walker on lock config (40 random tapes each)")
+    mm = lambda ps: [[t0 + i * MIN, p_, p_ * 1.004, p_ * 0.996, p_] for i, p_ in enumerate(ps)]
+    eq1 = 0
+    for _ in range(30):
+        ps_ = list(100 * np.exp(np.cumsum(rng.normal(0, 0.004, 800))))
+        b1 = mm(ps_)
+        for j in range(1, len(b1)):
+            b1[j][1] = b1[j - 1][4]                       # no gaps: each minute opens at the previous close
+        x_, y_ = walk_live(b1, 100.0, exf), walk(b1, 100.0, "FIX3")
+        eq1 += abs(x_[0] - y_[0]) < 1e-9 and x_[1] == y_[1] and (x_[2] == y_[2] or {x_[2], y_[2]} == {"12 h cap"})
+        x_, y_ = walk_live(b1, 100.0, exl), walk(b1, 100.0, "LOCK2")
+        eq1 += abs(x_[0] - y_[0]) < 1e-9 and x_[1] == y_[1]
+    chk(eq1 == 60, "1m fallback: today's exit = FIX3 (fixed config, no gaps) and = LOCK2 (lock config)")
+    chk(abs(walk_live(m([100, 96]), 100, exf)[0] + 4.09) < 1e-9 and abs(walk_live(m([100, 104]), 100, exf)[0] - (4 - FEE)) < 1e-9,
+        "1m fallback: a minute opening through the stop / above the TP fills at its open")
+    _orig = (globals()["_ticks"], globals()["_kl"])
+    try:
+        tts = np.array([sig_ := t0] + [t0 + 8_000, t0 + 10_000, t0 + 12_000, t0 + 60_000, t0 + 120_000, t0 + 130_000], dtype=np.int64)
+        pps = np.array([99.0, 100.0, 100.5, 101.0, 103.0, 103.3, 96.0])
+        globals()["_ticks"] = lambda *a_, **k_: ("ok", tts, pps)
+        S_ = _live_shadow("XUSDT", sig_, t0 + 3 * 86_400_000, {}, exf, LIVE_LAG_MS, lock=True)
+        Lk_ = _lock_shadow("XUSDT", sig_, t0 + 3 * 86_400_000, {})
+        chk(S_["today"][0] == 100.0 and S_["today"][4] == "take profit" and abs(S_["today"][2] - ((103.3 / 100 - 1) * 100 - FEE - SLIP)) < 1e-9 and S_["today"][7],
+            "shadow: today's exit enters on the first print ≥ close + 8 s, TP first, slippage, final on ticks")
+        chk(tuple(S_["lock"]) == tuple(Lk_), "shadow: the lock reference = _lock_shadow exactly (12 s entry, LOCK2) from the same prints")
+        globals()["_ticks"] = lambda *a_, **k_: ("pending", None, None)
+        globals()["_kl"] = lambda sym, tf, a_, b_: [[sig_ + i * MIN, 100.0, 100.0, 100.0, 100.0, 1.0] for i in range(3)]
+        S2 = _live_shadow("XUSDT", sig_, sig_ + 3 * MIN, {}, exf, LIVE_LAG_MS)
+        chk(S2["today"][5] == "1m" and not S2["today"][7] and S2["today"][4] == "open" and S2["lock"] is None, "shadow: 1m fallback while the ticks are pending = provisional")
+        bf = pd.DataFrame(dict(k=[_iso(sig_), _iso(sig_)], pair=["XUSDT", "YUSDT"], gate=["G", "G"], TODAY=[None, 1.0], exit_spec=[None, exf["label"]], today_final=[None, True]))
+        globals()["_ticks"] = lambda *a_, **k_: ("ok", tts, pps)
+        bf2, nb_, eb_, lb_ = today_backfill(bf, lambda r: _ms(r["k"]), exf, LIVE_LAG_MS, t0 + 3 * 86_400_000, {})
+        chk(nb_ == 1 and abs(bf2.TODAY.iloc[0] - S_["today"][2]) < 1e-9 and bf2.TODAY.iloc[1] == 1.0 and bf2.exit_spec.iloc[0] == exf["label"],
+            "backfill: a row without today's exit is priced; a final row on the current spec is left alone")
+        bf3, nb3, _, _ = today_backfill(bf2.assign(exit_spec="lock −3 → +2 at +3 → peak − 2 · 12 h"), lambda r: _ms(r["k"]), exf, LIVE_LAG_MS, t0 + 3 * 86_400_000, {})
+        chk(nb3 == 2, "backfill: rows priced under another exit spec are re-priced on today's")
+    finally:
+        globals()["_ticks"], globals()["_kl"] = _orig
+    chk(_ruler(pd.DataFrame(dict(LIVE=[1.0], LOCK2=[2.0]))) == "LIVE" and _ruler(pd.DataFrame(dict(LOCK2=[2.0]))) == "LOCK2", "the today-ruler column: LIVE when priced")
+    cwl = pd.DataFrame(dict(day=[f"d{i}" for i in range(20)], above_share=[50.0] * 20, LOCK2=[0.5] * 20, LIVE=[-1.0, -1.2, 0.4, -1.5] * 5))
+    chk(choppy_check(cwl)[0] == "arm_review" and choppy_check(cwl.drop(columns="LIVE"))[0] == "retire", "WIDE_CHOPPY reads LIVE (today's exit), not LOCK2")
+    chk(_bar_stats(pd.DataFrame(dict(TODAY=[1.0, 2.0], LOCK=[-5.0, -5.0], day=["a", "b"], pair=["P", "Q"])))["mean"] == 1.5, "GREEN_CLOCK bars read TODAY when present")
+    # 🌊 2026-10-09 (263) GVOL_SPLIT
+    chk(gvs_side(1.0) == "HIGH" and gvs_side(0.999) == "LOW" and gvs_side(None) == "UNSCORED" and gvs_side(float("nan")) == "UNSCORED", "split: HIGH ≥ 1.0 / LOW / UNSCORED")
+    Fx = pd.DataFrame(dict(k=["2026-10-10T00:05:04", "2026-10-10T00:10:30", "2026-10-10T00:20:00", "2026-10-10T00:31:00", "2026-10-09T23:00:04"],
+                           pair=["A", "B", "C", "D", "E"], entry_strategy=["FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_LONG", "FRENZY_LONG"],
+                           status=["CLOSED", "CLOSED", "OPEN", "CLOSED", "CLOSED"], pnl_percentage=[3.0, -3.1, None, 1.0, 2.0], pnl=[6.0, -6.2, None, 2.0, 4.0],
+                           entry_frenzy_gvol=[1.2, None, None, None, 0.5], entry_frenzy_catchup=[False, False, False, True, False]))
+    gx = gvs_rows(Fx, _ms("2026-10-10T00:00:00"))
+    chk(list(gx.pair) == ["A", "B", "C", "D"] and list(gx.sleeve) == ["LONG", "WIDE", "LITE", "LONG"] and bool(gx.catchup.iloc[3]), "split: fills from the deploy, sleeves, catch-up flag")
+    b5 = _ms("2026-10-10T00:05:00") - BAR; b10 = _ms("2026-10-10T00:10:00") - BAR; b20 = _ms("2026-10-10T00:20:00") - BAR; b30 = _ms("2026-10-10T00:30:00") - BAR
+    chk(gvs_sig_bar("2026-10-10T00:10:30", False) == b10 and gvs_sig_bar("2026-10-10T00:14:00", False) is None and gvs_sig_bar("2026-10-10T00:10:30", True) is None,
+        "split: the signal bar = the close ≤ 3 min before the fill; a catch-up / late fill gets no rebuild")
+    now_ = _ms("2026-10-10T12:00:00")
+    rx = gvs_resolve(gx, {b5: 1.19, b10: 0.97, b30: 1.5}, now_)
+    chk(list(rx.gvol_src) == ["stamp", "rebuilt", "none", "none"] and list(rx.side) == ["HIGH", "LOW", "UNSCORED", "UNSCORED"] and rx.rebuilt.iloc[0] == 1.19,
+        "split: stamp first, else the rebuild, else UNSCORED (catch-up never rebuilt); the rebuild kept beside a stamp")
+    chk(list(rx.frozen) == [True, True, False, False] and rx.band.iloc[0] == "[1.2, 1.5)", "split: a read freezes; UNSCORED stays provisional; HIGH band")
+    rx2 = gvs_resolve(rx, {b5: 0.5, b10: 1.5, b20: 1.3}, now_)
+    chk(list(rx2.side[:3]) == ["HIGH", "LOW", "HIGH"] and rx2.gvol_src.iloc[2] == "rebuilt", "split: a frozen reading never changes; a provisional one fills in later")
+    chk(bool(gvs_resolve(gx, {}, now_ + 8 * 86_400_000).frozen.iloc[3]), "split: UNSCORED freezes once the bar is past the rebuild's 7 days")
+    mg = gvs_merge(rx2, gvs_rows(Fx.assign(status="CLOSED", pnl_percentage=[3.0, -3.1, 0.7, 1.0, 2.0], pnl=[6.0, -6.2, 1.4, 2.0, 4.0]), _ms("2026-10-10T00:00:00")))
+    chk(mg.set_index("pair").actual["C"] == 0.7 and mg.set_index("pair").side["C"] == "HIGH" and len(mg) == 4, "split: merge refreshes a closed fill, keeps the frozen reading")
+
+    def _sx(hi, lo, d_hi, d_lo, pairs=None):
+        n_ = len(hi) + len(lo)
+        ks = [f"2026-10-{10 + i // 24:02d}T{i % 24:02d}:00:00" for i in range(n_)]
+        return pd.DataFrame(dict(k=ks, pair=(pairs or [f"P{i}" for i in range(n_)]), sleeve="LONG",
+                                 day=[f"d{i % d_hi}" for i in range(len(hi))] + [f"d{i % d_lo}" for i in range(len(lo))], closed=True,
+                                 actual=list(hi) + list(lo), usd=0.0, side=["HIGH"] * len(hi) + ["LOW"] * len(lo), frozen=True, band=None))
+    los = [-3.1] * 11 + [2.9] * 4                                     # HIGH: WR 27 %, clearly negative, spread over 8 days
+    v_, t_ = gvs_decide(_sx(los, [2.9] * 10 + [-3.1] * 5, 8, 8))
+    chk(v_ == "rearm" and "breakeven" in t_, "split verdict: HIGH below breakeven, P(mean<0) ≥ 0.95, spread, HIGH < LOW → RE-ARM CANDIDATE")
+    chk(gvs_decide(_sx([2.9] * 10 + [-3.1] * 5, los, 8, 8))[0] == "stays_off", "split verdict: HIGH mean ≥ LOW mean → gate stays off")
+    chk(gvs_decide(_sx([2.9, -3.1] * 7 + [2.9], [2.9] * 12 + [-3.1] * 3, 8, 8))[0] == "observe", "split verdict: HIGH worse than LOW but not below the expectancy bar → observe")
+    cc = _sx(los, [2.9] * 10 + [-3.1] * 5, 8, 8)
+    cc.loc[cc.side == "HIGH", "day"] = ["d0"] * 8 + [f"d{i}" for i in range(1, 8)]
+    chk(gvs_decide(cc)[0] == "observe" and gvs_conc(cc[cc.side == "HIGH"])[0] >= 50, "split verdict: one day ≥ 50 % of HIGH's gross loss → no re-arm")
+    chk(gvs_breakeven([1.0] * 10)[1] == "fallback" and abs(gvs_breakeven([3.0] * 20 + [-3.0] * 10)[0] - 50.0) < 1e-9, "split: breakeven fallback 51.5 until 30, then computed")
+    chk(gvs_p_neg([-1.0, -2.0], ["a", "b"]) == 1.0 and gvs_p_neg([1.0, -0.5], ["a", "a"]) == 0.0, "split: day-block P(mean < 0)")
+    big = _sx(los, [2.9] * 10 + [-3.1] * 5, 8, 8).sort_values("k")
+    chk(gvs_first_prefix(big, 15) is not None and gvs_first_prefix(big, 16) is None, "split: the first prefix with each side ≥ 15 on ≥ 8 days")
+    op = big.copy(); op.loc[op.index[3], "closed"] = False
+    chk(gvs_first_prefix(op, 15) is None, "split: an open (or unread) fill inside the prefix holds the read")
+    st1 = gvs_step({}, big)
+    chk(st1["r15"]["verdict"] == "rearm" and "r30" not in st1, "split step: decided once at the 15 read")
+    chk(gvs_step(st1, _sx([2.9] * 40, [-3.1] * 40, 9, 9)) == st1, "split step: a frozen verdict is never re-decided")
+    ob = _sx([2.9, -3.1] * 7 + [2.9], [2.9] * 12 + [-3.1] * 3, 8, 8)
+    st2 = gvs_step({}, ob)
+    chk(st2["r15"]["verdict"] == "observe" and "r30" not in st2, "split step: observe at 15 → waits for the 30 read")
+    ob30 = pd.concat([ob, _sx([2.9] * 15, [-3.1] * 15, 8, 8).assign(k=lambda x_: [f"2026-10-2{i // 24}T{i % 24:02d}:00:00" for i in range(30)])], ignore_index=True)
+    st3 = gvs_step(st2, ob30)
+    chk(st3["r15"] == st2["r15"] and st3["r30"]["verdict"] == "stays_off", "split step: the 30 read decided once, the 15 read untouched")
+    lnx = gvs_lines(rx2.assign(usd=0.0), st3, _ms("2026-10-10T00:00:00"), exf["label"])
+    chk(any("| all | HIGH |" in x for x in lnx) and any("Stamp vs rebuild: 1 fills with both" in x for x in lnx) and any("N ≥ 30 read" in x for x in lnx)
+        and any("rebuilt 2" in x for x in lnx), "split: report lines (per sleeve × side, source + agreement, frozen reads)")
+    chk(gvs_hold(big) is None and "still open" in gvs_hold(op), "split: hold reason — an open fill")
+    uh = big.copy(); uh["catchup"] = False; uh.loc[uh.index[2], "frozen"] = False; uh.loc[uh.index[2], "side"] = "UNSCORED"
+    chk("UNSCORED" in gvs_hold(uh) and "freezes as UNSCORED" in gvs_hold(uh), "split: hold reason — an UNSCORED fill names its freeze time")
+    chk(any("Read held at:" in x for x in gvs_lines(uh.assign(gvol_src="stamp", stamp=np.nan, rebuilt=np.nan), {}, 0)), "split: the hold reason is printed while the read waits")
+    _gv = list(_GVOFF)
+    try:
+        _GVOFF[:] = [_ms("2026-10-08T00:00:00"), True]
+        gq = ep.assign(gvol=["unknown", "high", "unknown", "pass", "pass"], eligible=True)
+        chk(list(gc_counted(gq)) == [False, True, True, True, False] and gvol_gate_off_at(_ms("2026-10-08T00:00:00")) and not gvol_gate_off_at(_ms("2026-10-07T23:59:59")),
+            "GREEN_CLOCK: from the gate-off deploy gvol unknown / high no longer blocks the count")
+        _GVOFF[:] = [_ms("2026-10-08T00:00:00"), False]
+        chk(not gvol_gate_off_at(_ms("2026-10-09T00:00:00")), "gate-off treatment only once the 263 commit exists")
+    finally:
+        _GVOFF[:] = _gv
+    lb = pd.DataFrame(dict(k=["2026-10-08T00:00:00"], pair=["X"], entry=[1.0], LIVE=[None], live_spec=[None], final=[False]))
+    chk(live_backfill(lb, exf, t0, (), {"deadline": time.monotonic() - 1})[1:] == (0, 0), "LIVE back-fill stops at the run's deadline")
     print(f"selftest OK ({ok} checks)")
 
 

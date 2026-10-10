@@ -1318,6 +1318,14 @@ def run():
     except Exception as _wt_e:
         log(f"WILLY_TIMECAP exit shadow failed: {_wt_e}")
         _rg_sec += ["## ⏱ WILLY_TIMECAP", "", f"Unavailable this run ({str(_wt_e)[:120]}).", ""]
+    try:                                               # 🎯 Oct-9 WILLY_TP125 exit shadow (DECISION_LOG 265; cache only — runs AFTER WILLY_TIMECAP's fetch pass; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_tp125 as _w125
+        _rg_sec += _w125.run(now_ms)
+    except Exception as _w125_e:
+        log(f"WILLY_TP125 exit shadow failed: {_w125_e}")
+        _rg_sec += ["## 🎯 WILLY_TP125", "", f"Unavailable this run ({str(_w125_e)[:120]}).", ""]
     try:                                               # 🔁📏 Oct-9 FRENZY_REENTRY_AFTER_WIN + FRENZY_STRETCHED (pre-registered; orders exports only, no Binance; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

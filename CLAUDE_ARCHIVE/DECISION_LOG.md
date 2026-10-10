@@ -6174,3 +6174,16 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   walker reproduces the live exits. Study reference (yr5 tick WILLY A, 1,067 fills): LIVE 120 +0.135 %/fill vs CAP15 +0.031 / CAP20 +0.067
   (no-TP-within-15 fills: −1.55 at the cap vs −1.28 live, 60 % still TP later); the freed-slot effect can't close the gap (≈ +2…+10 pts vs
   −110 / −72).
+- (265) 2026-10-09 👁 **Scout exit shadow WILLY_TP125 (operator asked) — no trading change.** Three exit studies on the operator's request
+  (reports/WILLY_TP075_AND_TURNOVER_2026-10-09.md, SPIKE_FADE_FIXED_TP_STUDY_2026-10-09.md, FRENZY_TP2_VS_TP3_TICKS_2026-10-09.md) all
+  kept today's exits: WILLY TP +0.75 loses to +1.00 (−0.076 %/fill, P(better) 0.02, both halves, 8/10 months); the WILLY turnover filter
+  stays (blocked R ≥ 1 +0.026 vs passed +0.182 %/fill, P 0.85); spike-fade fixed TP 0.70–0.90 loses on live fills as TP-only (88 → ~70 %
+  WR, +0.215 → +0.08…+0.17 %/trade) and is a wash as TP + trail; FRENZY TP +2 loses to +3 everywhere (yr5 LONG+WIDE+LITE −$3.3k/yr,
+  P(better) ≤ 0.41). The one level above today's: WILLY TP +1.25 (yr5 A 1,067 fills +0.191 vs +0.135 %/fill, Δ +0.056, P 0.92, H1 +0.059
+  / H2 +0.053) → observe line, not a ship. scripts/scout_willy_tp125.py re-walks every WILLY fill at +1.00 (live) and +1.25 on the same
+  path with WILLY_TIMECAP's walker/cache (cache only, runs after its fetch pass; prints the extra minutes the slot / global hold stays
+  busy, which Δ does not price). 🔒 Frozen at N ≥ 20 closed WILLY fills on ≥ 8 days: TP125 CANDIDATE (operator decides) iff mean Δ > 0 ∧
+  day-bootstrap P(Δ > 0) ≥ 0.90 ∧ no fill > 50 % of Σ Δ (no-LIVE-TP fills must show Δ = 0); mean Δ ≤ 0 → KEEP LIVE TP (+1.00); else
+  observe (re-read at 40); walker parity required (FRENZY_TP_LATE exits excluded and listed; a parity block is shown as operator
+  review). Live TP ≥ +1.25 → no new verdict / freeze; the switch time is stamped once and the revert read runs instead. If adopted: revert when the first 15 fills after the switch sum below what +1.00 would have
+  given. First live read (4 fills, 1 day, 1m provisional): Δ −1.57 pts (ZK took +1 at 55 min, would have closed −1.07 at the cap).

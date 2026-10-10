@@ -18,7 +18,7 @@ def test_hermetic_selftest(capsys):
 
 def test_frozen_rule_pinned():
     assert (WS.SL_MAIN, WS.SL_CONTEXT, WS.N_MIN, WS.DAYS_MIN, WS.REREAD_N, WS.HIT_MIN, WS.HIT_REREAD, WS.P_MIN, WS.SHARE_MAX, WS.PARITY_MIN,
-            WS.BOOT_N, WS.BOOT_SEED) == (4.0, (2.0, 3.0, 5.0, 8.0), 20, 8, 40, 8, 16, 0.90, 0.50, 0.90, 4000, 7)
+            WS.BOOT_N, WS.BOOT_SEED, WS.COMBO) == (4.0, (2.0, 3.0, 5.0, 8.0), 20, 8, 40, 8, 16, 0.90, 0.50, 0.90, 4000, 7, ("T125_S4", 1.25, 4.0))
 
 
 def test_hook_after_timecap_guarded_and_offline():

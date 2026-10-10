@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """🎲➡🔥 Scout — FRENZY_WILLY_EXIT exit shadow (operator hypothesis 2026-10-10, DECISION_LOG 267; OBSERVE only — never changes config).
 
-HYPOTHESIS  FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE should share FRENZY_WILLY-style small fixed targets — a 6-cell grid, operator 2026-10-10:
-            TP +frenzy_willy_tp_pct (1.00) or +1.25 net × stop −2 / −2.5 / −3 net — instead of today's +frenzy_tp_pct / −frenzy_stop_pct
+HYPOTHESIS  FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE should share FRENZY_WILLY-style small fixed targets — a 7-cell grid, operator 2026-10-10:
+            TP +frenzy_willy_tp_pct (1.00) or +1.25 net × stop −2 / −2.5 / −3 net, plus +1.25 / −4 (added the same day, the WILLY
+            insurance candidate) — instead of today's +frenzy_tp_pct / −frenzy_stop_pct
             (+3 / −3); every cell keeps the live cap (frenzy_max_hold_minutes, 12 h). Levels read from trading_config.json. Judged PER SLEEVE.
 COHORT      CLOSED FRENZY_LONG / WIDE / LITE fills in the ~/Downloads orders exports, dedup (opened_at[:19], pair, strategy) — never id; a
             CLOSED row beats an OPEN one — opened ≥ the "(DECISION_LOG 250)" commit (the fixed +3 / −3 exit went live; git unavailable → the
@@ -17,7 +18,7 @@ VERDICT     (FROZEN, pre-registered — PER SLEEVE, computed ONCE on the first p
             N ≥ 15 on ≥ 8 days; deferred while a fill of that sleeve opened ≤ the prefix end is OPEN, unscored-but-not-final or 1m-provisional
             with its tick archive pending; persisted in reports/SCOUT_FRENZY_WILLY_EXIT.json; never re-fit; one re-read at N ≥ 30).
             Per cell, Δ_i = cell_i − LIVE_i. Cell CANDIDATE (operator decides) iff mean Δ > 0 ∧ day-clustered bootstrap P(mean Δ > 0)
-            ≥ 0.95 (4,000, seed 7 — 0.95, not 0.90, because the best of 6 cells is picked: multiple-comparison guard) ∧ no single fill
+            ≥ 0.95 (4,000, seed 7 — 0.95, not 0.90, because the best of 7 cells is picked: multiple-comparison guard) ∧ no single fill
             > 50 % of Σ Δ ∧ walker parity ≥ 90 %; several qualify → the larger mean Δ (tie → grid order); every cell mean Δ ≤ 0 → KEEP +3 / −3;
             else KEEP OBSERVING.
 CAVEATS     Δ is per fill on the SAME entries: a smaller TP frees FRENZY's slots sooner (median hold printed) — the extra trades that
@@ -41,7 +42,7 @@ import scout_willy_hold as WH                       # noqa: E402  (the FRENZY li
 SLEEVES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")
 TP125 = 1.25
 GRID = (("T1_S2", None, 2.0), ("T1_S25", None, 2.5), ("T1_S3", None, 3.0),       # None = frenzy_willy_tp_pct (1.00) from the config
-        ("T125_S2", TP125, 2.0), ("T125_S25", TP125, 2.5), ("T125_S3", TP125, 3.0))
+        ("T125_S2", TP125, 2.0), ("T125_S25", TP125, 2.5), ("T125_S3", TP125, 3.0), ("T125_S4", TP125, 4.0))
 VARS = tuple(g[0] for g in GRID)
 N_MIN, DAYS_MIN, REREAD_N = 15, 8, 30
 P_MIN, SHARE_MAX, PARITY_MIN = 0.95, 0.50, 0.90
@@ -54,7 +55,8 @@ STUDY_REF = ("yr5 tick study (2026-10-10, the reports/FRENZY_TP2_VS_TP3_TICKS_20
              "reproduces their +3 on 100 %; 12 h): every cell is below +3 / −3 in every sleeve except LONG +1/−3 (Δ +0.017, P 0.54). "
              "LONG 564 · +3/−3 +0.084 %/fill · +1: −2 −0.037 / −2.5 −0.011 / −3 +0.101 · +1.25: −2 −0.095 / −2.5 −0.129 / −3 −0.039 · "
              "WIDE 319 · +0.088 · +1: −0.136 / −0.214 / −0.160 · +1.25: −0.042 / −0.156 / −0.062 · LITE 724 · +0.257 · +1: −0.074 / −0.029 / "
-             "−0.016 · +1.25: −0.066 / −0.025 / +0.000 (P(better) 0.00 in every other cell). Winners' trough (fills reaching +3, no stop): LONG avg −2.82 / "
+             "−0.016 · +1.25: −0.066 / −0.025 / +0.000 (P(better) 0.00 in every other cell); +1.25/−4 (269): LONG +0.020 (Δ −0.063, P 0.35; "
+             "H1 +0.155 / H2 −0.143) · WIDE −0.175 (Δ −0.262) · LITE +0.010 (Δ −0.247, P 0.00), 3.2 winners pay a loser. Winners' trough (fills reaching +3, no stop): LONG avg −2.82 / "
              "median −1.94, WIDE −3.14 / −1.78, LITE −2.65 / −1.75")
 REVERT = ("Pre-committed revert if a sleeve ever takes the smaller TP: its first 15 fills after the switch — Σ % below what +3 would have "
           "given on the same fills (this walker) → back to +3.")
@@ -262,7 +264,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     labs = {"LIVE": f"+{live[0]:g} / −{live[1]:g} (live)" if live[1] else f"+{live[0]:g} (live)"}
     labs.update({n: f"+{tp_:g} / −{sl_:g}" for n, (tp_, sl_) in alts.items()})
     L = [f"## 🎲➡🔥 FRENZY_WILLY_TP — should FRENZY / WIDE / LITE take a small fixed target (+{alts['T1_S2'][0]:g} or +{TP125:g}) with a "
-         f"−2 / −2.5 / −3 stop? (DECISION_LOG 267, OBSERVE only, exit shadow grid)", "",
+         f"−2 / −2.5 / −3 stop, or +{TP125:g} / −4? (DECISION_LOG 267 · 269, OBSERVE only, exit shadow grid)", "",
          f"Cohort: CLOSED FRENZY_LONG / WIDE / LITE fills opened ≥ {floor:%Y-%m-%d %H:%M} UTC (the fixed +3 / −3 exit went live), re-walked from "
          f"each fill's own entry on the same path (WILLY_TIMECAP's walker and cache; 1m = provisional) with the bot's accounting. Every exit "
          f"keeps the live {live[2]}-min cap; TP and stop differ per cell. Judged per sleeve.", ""]
@@ -351,7 +353,7 @@ def selftest():
     WT._NET_BLOCKED = True
     try:
         chk((SLEEVES, VARS, N_MIN, DAYS_MIN, REREAD_N, P_MIN, SHARE_MAX, PARITY_MIN, BOOT_N, BOOT_SEED) ==
-            (("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE"), ("T1_S2", "T1_S25", "T1_S3", "T125_S2", "T125_S25", "T125_S3"),
+            (("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE"), ("T1_S2", "T1_S25", "T1_S3", "T125_S2", "T125_S25", "T125_S3", "T125_S4"),
              15, 8, 30, 0.95, 0.50, 0.90, 4000, 7), "pre-registered constants pinned")
         th = {"frenzy_tp_pct": 3.0, "frenzy_stop_pct": 3.0, "frenzy_max_hold_minutes": 720, "frenzy_willy_tp_pct": 1.0,
               "frenzy_willy_stop_pct": 0.0, "frenzy_willy_max_hold_minutes": 120}

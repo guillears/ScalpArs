@@ -6242,3 +6242,16 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   1m walks now book a stop at the bar's open when the bar opens through it (open stored on pages fetched from Oct-10).
   Same session: +1.25 / −4 read on the WILLY yr5 cohort = +0.127 %/fill vs today's +0.135 (Δ −0.008, P 0.46), 2.9 winners pay a
   loser (breakeven 74 %), worst −4.2 vs −25.8 — the same expectancy with the tail capped (to be tracked if the operator asks).
+- (269) 2026-10-10 🎯🛑 **Scout: +1.25 / −4 tracked for WILLY and for FRENZY / WIDE / LITE (operator) — no trading change.** Operator asked how
+  many winners pay a loser at +1.25 / −4 — WILLY yr5 (1,067 A fills): 77 % WR, avg win +1.26 / avg loss −3.59 → 2.9 winners per loser
+  (breakeven 74 %), +0.127 %/fill (H1 +0.115 / H2 +0.141) vs today's +1 / no stop +0.135 (4.7 winners per loser, breakeven 82.5 %),
+  Δ −0.008, P 0.46, worst −4.2 vs −25.8 — the same expectancy with the tail capped. FRENZY yr5 (+3 / −3 today): LONG +0.020 (Δ −0.063,
+  P 0.35, H1 +0.155 / H2 −0.143) · WIDE −0.175 (Δ −0.262) · LITE +0.010 (Δ −0.247, P 0.00) — worse everywhere; 3.2 winners per loser.
+  WILLY: scripts/scout_willy_stop.py carries a SECOND, separate frozen test (state key "combo"): T125_S4 vs today's exit, frozen once at
+  N ≥ 20 on ≥ 8 days (no dipped-fill floor — the TP moves every fill): COMBO CANDIDATE (operator decides) iff mean Δ > 0 ∧ day-bootstrap
+  P ≥ 0.90 ∧ no fill > 50 % of Σ Δ ∧ walker parity ≥ 90 %; mean Δ ≤ 0 → keep today's exit; re-read at 40; revert if adopted when the first
+  15 fills sum below today's exit. FRENZY: +1.25 / −4 added as the 7th cell of the FRENZY_WILLY_TP grid (267), same per-sleeve bar
+  (P ≥ 0.95, best of 7 cells). First live read (walker): WILLY 7 fills +1.25 / −4 +0.355 %/fill vs today's exit +0.513 (LPT / ZK took +1 but not +1.25).
+  The combo is judged vs TODAY's configured exit (the LIVE walk), so it stays right if a stop is ever armed. Not multiplicity-adjusted
+  (P ≥ 0.90, unlike the FRENZY grid's 0.95): it is one pre-registered test, but the WILLY stack now holds four on the same fills
+  (TIMECAP 264, TP125 265, SL4 268, combo 269) — read any single candidate with that in mind.

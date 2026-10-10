@@ -21,6 +21,12 @@ VERDICT     (FROZEN, pre-registered — computed ONCE on the first prefix by (op
             parity (every LIVE walk matches its actual exit, or ≥ 90 % do and every fill that dipped below −4 does; a live STOP_LOSS matches
             within 0.5 pts — the poll price on a dump); mean Δ ≤ 0 → KEEP NO
             STOP; else KEEP OBSERVING.
+COMBO       (DECISION_LOG 269, operator 2026-10-10) a SECOND, separate pre-registered test on the same fills: T125_S4 = TP +1.25 net with a
+            −4 stop (same cap) vs today's exit (TP +frenzy_willy_tp_pct, no stop) — yr5: the same expectancy with the tail capped. Δ_i =
+            T125_S4_i − LIVE_i (today's configured exit; ≡ NOSTOP while no stop is set — every fill can move: the TP changes too, so no dipped-fill floor and no Δ = 0 check). Frozen ONCE (state key
+            "combo") at the first prefix of N ≥ 20 on ≥ 8 days, one re-read at N ≥ 40: COMBO CANDIDATE (operator decides) iff mean Δ > 0 ∧
+            day-clustered P(mean Δ > 0) ≥ 0.90 ∧ no fill > 50 % of Σ Δ ∧ walker parity; mean Δ ≤ 0 → KEEP TODAY'S EXIT; else KEEP OBSERVING.
+            The two tests never share a verdict.
 CAVEAT      Tick prints can stop on wicks the live poller (~2 s) rides through, so a tick-walked stop fires a little more often than live would —
             read the stop rows as slightly pessimistic. On 1m (provisional) a stop books −4, or the bar's open when it opens through the
             stop (open known for pages fetched from Oct-10; older caches book −4), and a bar that both reaches the TP and dips to −4 counts as dipped and stops (conservative). A −4 dip is rare (yr5: 175 of 1,067 fills), so live evidence accrues slowly;
@@ -40,6 +46,7 @@ import scout_b1h_negflank as NF                     # noqa: E402  (bootstrap, fr
 import scout_willy_timecap as WT                    # noqa: E402  (cohort loader, walker, shared caches, attempts ledger)
 
 SL_MAIN = 4.0
+COMBO = ("T125_S4", 1.25, 4.0)                       # (269) TP +1.25 with a −4 stop — its own frozen test
 SL_CONTEXT = (2.0, 3.0, 5.0, 8.0)
 N_MIN, DAYS_MIN, REREAD_N = 20, 8, 40
 HIT_MIN, HIT_REREAD = 8, 16                          # fills that dipped to the stop — the only ones where the stop changes anything
@@ -51,7 +58,8 @@ STUDY_REF = ("yr5 tick study (2026-10-10, the WILLY_TIMECAP study cohort: 1,067 
              "(H1 +0.121 / H2 +0.151), worst fill −25.8 %, 26 fills ≤ −8 % · SL4 80 % · +0.085 (H1 +0.066 / H2 +0.106; Δ −0.050, P(better) "
              "0.18) — cuts 55 of 902 TP closes (−276 pts), catches 120 of 165 cap closes (+225 pts) · SL2 65 % · −0.027 (Δ −0.162, P 0.01) · SL3 75 % · "
              "+0.030 (Δ −0.105) · SL5 81 % · +0.062 (Δ −0.073) · SL6 +0.073 · SL8 84 % · +0.113 (Δ −0.022); the −4 … −8 costs are within "
-             "noise (non-monotonic). Troughs: all −2.25 avg / −1.19 median, winners −1.42 / −0.84, cap closes −6.79 / −5.77")
+             "noise (non-monotonic). +1.25 / −4 (269): 77 % WR · +0.127 (H1 +0.115 / H2 +0.141; Δ −0.008 vs today, P 0.46), worst −4.2, 2.9 "
+             "winners pay a loser (breakeven 74 %). Troughs: all −2.25 avg / −1.19 median, winners −1.42 / −0.84, cap closes −6.79 / −5.77")
 REVERT = ("Pre-committed revert if the −4 stop is ever adopted: the first 15 WILLY fills after the switch — Σ % below what NO stop would have "
           "given on the same fills (this walker) → stop back to 0.")
 
@@ -65,20 +73,22 @@ def score_fill(r, hold, tp, stop, tcache=None):
     t, p = WT.load_ticks(r.pair, WT._days(r.te, hold), tcache, WT._need(r.te, hold))
     if t is not None:
         i, j = np.searchsorted(t, r.te, side="right"), np.searchsorted(t, r.te + (WT._span(hold) + 1) * WT.MIN, side="right")
-        walk, src = (lambda s: WT.walk_ticks(t[i:j], p[i:j], r.te, r.E, tp, s, hold)), "ticks"
+        walk, src = (lambda s, x=tp: WT.walk_ticks(t[i:j], p[i:j], r.te, r.E, x, s, hold)), "ticks"
     else:
         k = WT.load_1m(r.pair)
         need = WT._need_1m(r.te, hold)
         if not (len(k) and np.isin(need, k.open_time.values).all()):
             return None, None
         kk = k[(k.open_time >= need[0]) & (k.open_time <= need[-1])]
-        walk, src = (lambda s: WT.walk_1m(kk, r.te, r.E, tp, s, hold)), "1m"
+        walk, src = (lambda s, x=tp: WT.walk_1m(kk, r.te, r.E, x, s, hold)), "1m"
     live = walk(stop)
     ok, txt = WT.parity(r.why, r.pct, live)
     rec = dict(par_ok=ok, par_txt=txt)
     for name, s in [("LIVE", stop), ("NOSTOP", None)] + [(_name(x), x) for x in (SL_MAIN,) + SL_CONTEXT]:
         v = (live if name == "LIVE" else walk(s))["v"]["LIVE"]
         rec.update({name: v["pct"], f"why_{name}": v["why"], f"min_{name}": v["xmin"], f"worst_{name}": v["worst"]})
+    v = walk(COMBO[2], COMBO[1])["v"]["LIVE"]
+    rec.update({COMBO[0]: v["pct"], f"why_{COMBO[0]}": v["why"], f"min_{COMBO[0]}": v["xmin"], f"worst_{COMBO[0]}": v["worst"]})
     return rec, src
 
 
@@ -141,7 +151,58 @@ def prefix(sc, n_min, hit_min=HIT_MIN):
 STOP_TOL = 0.50                                      # a live STOP books the ~2 s poll price on a dump — reason must match, % within 0.5
 
 
-def parity_gate(pre):
+def combo_verdict(sc):
+    n, nd = len(sc), sc.day.nunique() if len(sc) else 0
+    if n < N_MIN or nd < DAYS_MIN:
+        return "COLLECTING", f"N {n}/{N_MIN} · {nd}/{DAYS_MIN} days", {}
+    d = sc[COMBO[0]].values.astype(float) - sc.LIVE.values.astype(float)     # vs TODAY's exit as configured (≡ NOSTOP while no stop is set)
+    tot, m = float(d.sum()), float(d.mean())
+    p = NF.p_mean_neg(-d, sc.day.values, BOOT_N, BOOT_SEED)
+    share = float(d.max() / tot) if tot > 0 else float("nan")
+    det = (f"N {n} · {nd} d · mean Δ {m:+.3f} pts · Σ Δ {tot:+.2f} · P(Δ>0) {(p if p is not None else float('nan')):.2f} · top fill "
+           f"{(share * 100 if share == share else float('nan')):.0f} % of ΣΔ")
+    if m > 0 and p is not None and p >= P_MIN and share <= SHARE_MAX:
+        return "COMBO CANDIDATE (operator decides)", det, {}
+    if m <= 0:
+        return "KEEP TODAY'S EXIT", det, {}
+    return "KEEP OBSERVING", det, {}
+
+
+def combo_freeze(st, sc, now_iso, hold=None, why=None, cfg=None, dropped=None):
+    """(269) the +1.25 / −4 test's own frozen record under st["combo"]: 'first' once, 'reread' (N ≥ 40) on a later call."""
+    c = st.setdefault("combo", {})
+    key = "reread" if "first" in c else "first"
+    if key in c:
+        return st, False
+    z = sc.sort_values(["ts", "pair"], kind="stable")
+    pre, seen, n_need = None, set(), REREAD_N if key == "reread" else N_MIN
+    for k, d in enumerate(z.day.values, 1):
+        seen.add(d)
+        if k >= n_need and len(seen) >= DAYS_MIN:
+            pre = z.iloc[:k]
+            break
+    if pre is None:
+        return st, False
+    last = pre.ts.max()
+    w2 = []
+    if NF.freeze_hold(last, hold, w2):
+        if why is not None:
+            why.extend(f"+{COMBO[1]:g} / −{COMBO[2]:g}: {x}" for x in w2)
+        return st, False
+    pok, ptxt = parity_gate(pre, require_hits=False)
+    if not pok:
+        if why is not None:
+            why.append(f"+{COMBO[1]:g} / −{COMBO[2]:g}: WALKER PARITY below 90 % — not frozen ({ptxt}; operator review)")
+        return st, False
+    state, det, _ = combo_verdict(pre)
+    c[key] = dict(state=state, detail=det, at=f"{last:%Y-%m-%d %H:%M} UTC", run_at=now_iso, n=len(pre), days=int(pre.day.nunique()),
+                  n_1m=int((pre.src == "1m").sum()), parity=ptxt, config=(dict(tp=cfg[0], stop=cfg[1], hold=cfg[2]) if cfg else None),
+                  dropped_no_data=int(sum(1 for t in (dropped or []) if pd.notna(t) and t <= last)),
+                  keys=[f"{a}|{b}" for a, b in zip(pre.ts.dt.strftime("%Y-%m-%dT%H:%M:%S"), pre.pair.astype(str))])
+    return st, True
+
+
+def parity_gate(pre, require_hits=True):
     if {"why_LIVE", "why", "LIVE", "pct"} <= set(pre.columns):
         stop_ok = ((pre.why_LIVE == "STOP") & (pre.why.astype(str) == "STOP_LOSS")
                    & ((pre.LIVE.astype(float) - pre.pct.astype(float)).abs() <= STOP_TOL)).values
@@ -150,7 +211,7 @@ def parity_gate(pre):
     po = pre.par_ok.astype(bool).values | stop_ok
     hit = (pre.worst_NOSTOP.astype(float) <= -SL_MAIN).values
     txt = f"walker parity {int(po.sum())}/{len(po)} · {int(po[hit].sum())}/{int(hit.sum())} on the fills that dipped to −{SL_MAIN:g}"
-    return bool(po.all() or (po.mean() >= PARITY_MIN and po[hit].all())), txt
+    return bool(po.all() or (po.mean() >= PARITY_MIN and (po[hit].all() or not require_hits))), txt
 
 
 def freeze(st, sc, now_iso, cfg, hold=None, why=None, dropped=None):
@@ -220,7 +281,8 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None):
     if stop:
         L.append(f"ℹ today's config already carries a −{stop:g} stop — LIVE ≠ NOSTOP; the verdict below still compares −{SL_MAIN:g} with NO stop.")
     L += [*HDR, _row("**NO stop (today)**" if not stop else "NO stop", sc, "NOSTOP"), _row(f"**−{SL_MAIN:g} stop**", sc, _name(SL_MAIN))]
-    L += [_row(f"−{s:g} stop (context)", sc, _name(s)) for s in SL_CONTEXT] + [""]
+    L += [_row(f"−{s:g} stop (context)", sc, _name(s)) for s in SL_CONTEXT]
+    L += [_row(f"**TP +{COMBO[1]:g} / −{COMBO[2]:g} (its own test, 269)**", sc, COMBO[0]), ""]
     if len(sc):
         d = sc[_name(SL_MAIN)] - sc.NOSTOP
         hit = sc.worst_NOSTOP.astype(float) <= -SL_MAIN
@@ -253,6 +315,11 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None):
     if ok:
         st, ch = freeze(st, sc, pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"), (tp, stop, hold), hold_list, why,
                         dropped=list(uns[~uns.pend.astype(bool)].ts) if len(uns) else [])
+        st, ch2 = combo_freeze(st, sc, pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"), hold_list, why, (tp, stop, hold),
+                               dropped=list(uns[~uns.pend.astype(bool)].ts) if len(uns) else [])
+        ch = ch or ch2
+        if not st.get("combo"):
+            st.pop("combo", None)
         if ch:
             NF.du_save_state(st, state_path)
     live_state, live_det, _ = verdict(sc)
@@ -273,7 +340,14 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None):
                 L.append(f"**Frozen {'verdict' if k == 'first' else 're-read'} (prefix to {f0['at']}, N {f0['n']} · {f0['days']} d, "
                          f"{f0.get('parity', '')}, {f0.get('n_1m', 0)} on 1m only): {f0['state']}** ({f0['detail']})")
         L.append(f"Live (information only, never re-decides): {live_state} — {live_det}")
-    L += ["Tick prints can stop on wicks the live poller rides through — the stop rows are slightly pessimistic.", REVERT,
+    cs, cd, _ = combo_verdict(sc)
+    c0 = st.get("combo", {}) if ok else {}
+    L.append(f"**+{COMBO[1]:g} / −{COMBO[2]:g} test (269, separate bar: N ≥ {N_MIN} on ≥ {DAYS_MIN} days, Δ vs today's exit; COMBO CANDIDATE iff "
+             f"mean Δ > 0 ∧ P ≥ {P_MIN:.2f} ∧ no fill > {SHARE_MAX * 100:.0f} % of Σ Δ ∧ parity; mean Δ ≤ 0 → keep today's exit):** "
+             + (" · ".join(f"frozen {k} (prefix to {c0[k]['at']}, N {c0[k]['n']}): {c0[k]['state']} ({c0[k]['detail']})" for k in ("first", "reread")
+                           if k in c0) + f" · live: {cs} — {cd}" if c0 else f"⏳ {cs} ({cd})."))
+    L += [f"Pre-committed revert if +{COMBO[1]:g} / −{COMBO[2]:g} is ever adopted: the first 15 WILLY fills after the switch — Σ % below the exit "
+          f"it replaced (+{tp:g}, {'no stop' if not stop else f'−{stop:g}'}) on the same fills (this walker) → back.", "Tick prints can stop on wicks the live poller rides through — the stop rows are slightly pessimistic.", REVERT,
           f"Study reference, not part of the verdict — {STUDY_REF}."]
     return L + [""]
 
@@ -292,7 +366,7 @@ def selftest():
     try:
         chk((SL_MAIN, SL_CONTEXT, N_MIN, DAYS_MIN, REREAD_N, P_MIN, SHARE_MAX, PARITY_MIN, BOOT_N, BOOT_SEED) ==
             (4.0, (2.0, 3.0, 5.0, 8.0), 20, 8, 40, 0.90, 0.50, 0.90, 4000, 7), "pre-registered constants pinned")
-        chk((HIT_MIN, HIT_REREAD, STOP_TOL) == (8, 16, 0.50), "dipped-fill floors + live-stop parity tolerance pinned")
+        chk((HIT_MIN, HIT_REREAD, STOP_TOL) == (8, 16, 0.50) and COMBO == ("T125_S4", 1.25, 4.0), "floors, tolerance and the 269 combo pinned")
         pp = pd.DataFrame(dict(par_ok=[False, True], why_LIVE=["STOP", "TP"], why=["STOP_LOSS", "FRENZY_TP"], LIVE=[-4.0, 1.0], pct=[-4.4, 1.0],
                                worst_NOSTOP=[-6.0, -1.0]))
         chk(parity_gate(pp)[0] and not parity_gate(pp.assign(pct=[-4.7, 1.0]))[0], "a live stop 0.4 below the walk matches; 0.7 does not")
@@ -325,6 +399,18 @@ def selftest():
         chk(verdict(few)[0] == "COLLECTING" and "dipped to −4 3/8" in verdict(few)[1] and not freeze({}, few, "x", (1.0, None, 120))[1],
             "only 3 fills dipped to −4 → no verdict, nothing frozen (a −4 stop changes nothing on the rest)")
         st, ch = freeze({}, coh([0.5] * 20), "now", (1.0, None, 120), [], [])
+        cc = coh([0.0] * 20).assign(T125_S4=0.25, LIVE=0.0)
+        chk(combo_verdict(cc)[0] == "COMBO CANDIDATE (operator decides)" and combo_verdict(cc.assign(T125_S4=-1.0))[0] == "KEEP TODAY'S EXIT"
+            and combo_verdict(cc.iloc[:5])[0] == "COLLECTING", "the +1.25 / −4 test: candidate / keep / collecting")
+        sc_, chc = combo_freeze({}, cc, "now")
+        chk(chc and sc_["combo"]["first"]["state"].startswith("COMBO") and "first" not in sc_, "combo frozen under its own key, not the SL4 one")
+        chk(not combo_freeze(sc_, cc.assign(T125_S4=-1.0), "x")[1], "combo never re-fit (N 20 < 40)")
+        big = pd.concat([cc, cc.assign(pair=[f"Q{i}" for i in range(20)], ts=cc.ts + pd.Timedelta(hours=1))], ignore_index=True)
+        both, chb = combo_freeze({"first": {"state": "KEEP NO STOP", "n": 20}}, big, "now", cfg=(1.0, None, 120))
+        both, chr_ = combo_freeze(both, big, "later", cfg=(1.0, None, 120))
+        chk(chb and chr_ and both["first"]["state"] == "KEEP NO STOP" and 20 <= both["combo"]["first"]["n"] < both["combo"]["reread"]["n"] == 40
+            and both["combo"]["first"]["config"]["tp"] == 1.0 and len(both["combo"]["reread"]["keys"]) == 40,
+            "SL4 and combo frozen side by side; the combo re-read at 40 on a later call")
         chk(ch and st["first"]["state"].startswith("SL4") and not freeze(st, coh([-3.0] * 20), "x", (1.0, None, 120))[1], "frozen once")
         why = []
         chk(not freeze({}, coh([0.5] * 20).assign(par_ok=np.arange(20) != 3), "x", (1.0, None, 120), [], why)[1]
@@ -348,7 +434,8 @@ def selftest():
                                 p=np.array([E, px(-4.5), px(-1.0), px(1.2)], dtype=np.float64))
             sp = os.path.join(td, "s.json")
             out = "\n".join(run(pd.Timestamp("2026-10-09 16:00").value // 10**6, state_path=sp, th={}))
-            chk("KAIAUSDT [ticks] no stop +1.20 (TP @ 30 min, low -4.50) → −4: -4.50 (STOP)" in out and "worst no-stop result so far +1.20 %" in out and "UNSCORED (no path yet): 10-09 12:00 NOKUSDT"
+            chk("+1.25 / −4 test (269" in out and "| **TP +1.25 / −4 (its own test, 269)** | 1 |" in out
+                and "KAIAUSDT [ticks] no stop +1.20 (TP @ 30 min, low -4.50) → −4: -4.50 (STOP)" in out and "worst no-stop result so far +1.20 %" in out and "UNSCORED (no path yet): 10-09 12:00 NOKUSDT"
                 in out and "MANUSDT (MANUAL_TP)" in out and "1/1 match" in out and "COLLECTING" in out and not os.path.exists(sp), f"end-to-end\n{out}")
     finally:
         WT._CACHE, WT.MY_CACHE, WT.EXPORT_GLOB, WT._NET_BLOCKED, WT.deploy_ts = saved

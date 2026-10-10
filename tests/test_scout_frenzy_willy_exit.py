@@ -19,7 +19,8 @@ def test_hermetic_selftest(capsys):
 def test_frozen_rule_pinned():
     assert (FX.SLEEVES, FX.GRID, FX.N_MIN, FX.DAYS_MIN, FX.REREAD_N, FX.P_MIN, FX.SHARE_MAX, FX.PARITY_MIN, FX.BOOT_N, FX.BOOT_SEED) == (
         ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE"),
-        (("T1_S2", None, 2.0), ("T1_S25", None, 2.5), ("T1_S3", None, 3.0), ("T125_S2", 1.25, 2.0), ("T125_S25", 1.25, 2.5), ("T125_S3", 1.25, 3.0)),
+        (("T1_S2", None, 2.0), ("T1_S25", None, 2.5), ("T1_S3", None, 3.0), ("T125_S2", 1.25, 2.0), ("T125_S25", 1.25, 2.5), ("T125_S3", 1.25, 3.0),
+         ("T125_S4", 1.25, 4.0)),
         15, 8, 30, 0.95, 0.50, 0.90, 4000, 7)
 
 

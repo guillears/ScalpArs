@@ -4605,6 +4605,14 @@ def _extras(now_ms, th, F, J, allr):
         out += _WH.run(now_ms)
     except Exception as ex:
         out += ["## 🔒 WILLY_HOLD", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
+    try:   # 🔓 Oct-10 (266) HOLD_FRENZY_EXEMPT — FRENZY / WIDE / LITE refusals by the hold, re-checked (reads the WILLY_HOLD store; AFTER it)
+        sd = os.path.join(ROOT, "scripts")
+        if sd not in sys.path:
+            sys.path.insert(0, sd)
+        import scout_willy_hold_frenzy as _WHF
+        out += _WHF.run(now_ms)
+    except Exception as ex:
+        out += ["## 🔓 HOLD_FRENZY_EXEMPT", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
     try:   # 🪶 Oct-7 tracker 13 LITE_GVOL24_LOW (operator-approved observe line)
         out += lite_gv24_run(now_ms)
     except Exception as ex:

@@ -37,7 +37,7 @@ FEE, SLIP = 0.09, 0.10                 # % round-trip fees + entry slippage (the
 WEIGHT_STOP = 1000                     # stop the network at this used weight per minute (Binance limit 2,400; operator budget ≤ 1,200)
 FRENZY3 = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")
 COLS = ["t", "pair", "dir", "sleeve", "price", "signal_at", "last_at", "repeats", "inv", "lev", "willy_id", "willy_pair",
-        "method", "pct", "exit_how"]
+        "method", "pct", "exit_how", "reason", "exit_ms"]   # reason = the engine's wh_reason (OPEN / UNREAD) · exit_ms = the priced exit minute (266)
 
 
 class RateLimited(Exception):
@@ -74,8 +74,14 @@ def exit_rule(sleeve, th=None):
 def walk_fixed(m1, direction, tp, stop, cap_min):
     """net % on 1m rows [open_ms, o, h, l, c] from the entry minute (entry = its open + SLIP; FEE out). Stop checked before TP inside a minute
     (conservative). → (pct, how) or (None, 'no data')."""
+    pct, how, _ = walk_fixed_t(m1, direction, tp, stop, cap_min)
+    return pct, how
+
+
+def walk_fixed_t(m1, direction, tp, stop, cap_min):
+    """walk_fixed + the exit time (ms: the end of the exit minute; the cap time on a cap; None without data)."""
     if not m1:
-        return None, "no data"
+        return None, "no data", None
     lg = str(direction).upper() != "SHORT"
     e = float(m1[0][1]) * (1 + SLIP / 100 if lg else 1 - SLIP / 100)
     net = lambda p: ((p / e - 1) * 100 if lg else (1 - p / e) * 100) - FEE
@@ -83,14 +89,15 @@ def walk_fixed(m1, direction, tp, stop, cap_min):
     last = None
     for t, o, h, l, c in (r[:5] for r in m1):
         if t >= t_end:
-            return net(last), "cap"
+            return net(last), "cap", int(t_end)
         worst, best = (net(l), net(h)) if lg else (net(h), net(l))
         if stop is not None and worst <= stop:
-            return float(stop), "stop"
+            return float(stop), "stop", int(t) + MIN
         if best >= tp:
-            return float(tp), "take profit"
+            return float(tp), "take profit", int(t) + MIN
         last = c
-    return net(last), ("cap" if int(m1[-1][0]) + MIN >= t_end else "open")
+    done = int(m1[-1][0]) + MIN >= t_end
+    return net(last), ("cap" if done else "open"), (int(t_end) if done else None)
 
 
 def cost_summary(rows, willy_usd):
@@ -114,11 +121,13 @@ def merge(old, new):
     if not parts:
         return pd.DataFrame(columns=COLS)
     m = pd.concat(parts, ignore_index=True).reindex(columns=COLS)
+    for c in ("method", "exit_how", "reason"):           # text columns: an all-NaN read is float64 and refuses "klines 1m" (Oct-9 crash)
+        m[c] = m[c].astype(object)
     k = ["t", "pair", "dir", "sleeve", "willy_id"]
     m["willy_id"] = m.willy_id.astype(str)
-    priced = m[m.pct.notna()].drop_duplicates(k, keep="first").set_index(k)[["method", "pct", "exit_how"]]
+    priced = m[m.pct.notna()].drop_duplicates(k, keep="first").set_index(k)[["method", "pct", "exit_how", "exit_ms"]]
     m = m.drop_duplicates(k, keep="last").set_index(k)
-    for c in ("method", "pct", "exit_how"):
+    for c in ("method", "pct", "exit_how", "exit_ms"):
         m.loc[priced.index, c] = priced[c]
     return m.reset_index().reindex(columns=COLS).sort_values("t").reset_index(drop=True)
 
@@ -163,7 +172,8 @@ def export_rows():
     return pd.DataFrame(dict(t=d.t, pair=d.pair, dir=d.dir, sleeve=d.strategy, price=pd.to_numeric(d.price, errors="coerce"),
                              signal_at=d.wh_signal_at, last_at=d.wh_last_at, repeats=pd.to_numeric(d.wh_repeats, errors="coerce"),
                              inv=pd.to_numeric(d.wh_invest_mult, errors="coerce"), lev=pd.to_numeric(d.wh_lev_mult, errors="coerce"),
-                             willy_id=d.wh_willy_id.astype(str), willy_pair=d.wh_willy_pair, method=np.nan, pct=np.nan, exit_how=np.nan))
+                             willy_id=d.wh_willy_id.astype(str), willy_pair=d.wh_willy_pair, method=np.nan, pct=np.nan, exit_how=np.nan,
+                             reason=(d.wh_reason if "wh_reason" in d else np.nan), exit_ms=np.nan))
 
 
 def orders():
@@ -245,9 +255,10 @@ def price_rows(rows, o, now_ms):
             break
         except Exception:
             continue
-        pct, how = walk_fixed(m1, r.dir, tp, stop, cap)
+        pct, how, xt = walk_fixed_t(m1, r.dir, tp, stop, cap)
         if pct is not None:
             rows.at[i, "pct"] = round(float(pct), 4); rows.at[i, "method"] = "klines 1m"; rows.at[i, "exit_how"] = how
+            rows.at[i, "exit_ms"] = xt
     return rows, state.get("stopped", False)
 
 
@@ -307,6 +318,8 @@ def selftest():
     chk(how == "cap" and pct < -9, "WILLY: no stop — a −10 % trade rides to the 120-min cap")
     pct, how = walk_fixed(m([100, 96]), "LONG", 3.0, -3.0, 720)
     chk(pct == -3.0 and how == "stop", "FRENZY −3 stop")
+    chk(walk_fixed_t(m([100, 96]), "LONG", 3.0, -3.0, 720)[2] == t0 + 2 * MIN and walk_fixed_t(m([100] * 3), "LONG", 3.0, -3.0, 2)[2] == t0 + 2 * MIN
+        and walk_fixed_t(m([100] * 3), "LONG", 3.0, -3.0, 720)[2] is None, "exit time: the stop minute's end · the cap · None while open")
     pct, _ = walk_fixed(m([100, 96]), "SHORT", 3.0, -3.0, 720)
     chk(pct == 3.0, "a SHORT priced the other way")
     chk(walk_fixed([], "LONG", 1, None, 120) == (None, "no data"), "no data")
@@ -319,6 +332,9 @@ def selftest():
     b = pd.DataFrame(dict(t=["T1"], pair=["X"], dir=["LONG"], sleeve=["MOMENTUM"], willy_id=["7"], repeats=[5], pct=[np.nan], method=[np.nan], exit_how=[np.nan]))
     mm = merge(a, b)
     chk(len(mm) == 1 and mm.repeats.iloc[0] == 5 and mm.pct.iloc[0] == 0.4, "merge: one row per setup, the export's repeats, the stored price")
+    fresh = merge(None, b.assign(t=["T2"]))              # every row unpriced → method / exit_how all NaN (the Oct-9 crash shape)
+    fresh.at[0, "method"] = "klines 1m"; fresh.at[0, "exit_how"] = "take profit"; fresh.at[0, "pct"] = 3.0
+    chk(fresh.method.iloc[0] == "klines 1m" and fresh.exit_how.iloc[0] == "take profit", "an all-unpriced merge accepts a text price label")
     for st, w, bad in ((429, None, True), (418, None, True), (200, "1000", True), (200, "999", False), (200, None, False)):
         try:
             rate_check(st, w); chk(not bad, f"rate {st} {w}")

@@ -6187,3 +6187,22 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   observe (re-read at 40); walker parity required (FRENZY_TP_LATE exits excluded and listed; a parity block is shown as operator
   review). Live TP ≥ +1.25 → no new verdict / freeze; the switch time is stamped once and the revert read runs instead. If adopted: revert when the first 15 fills after the switch sum below what +1.00 would have
   given. First live read (4 fills, 1 day, 1m provisional): Δ −1.57 pts (ZK took +1 at 55 min, would have closed −1.07 at the cap).
+- (266) 2026-10-10 🔓 **Scout HOLD_FRENZY_EXEMPT + WILLY_HOLD tracker fix (operator) — no trading change.** Operator: reverse the WILLY global
+  hold for the runners it blocks (MAGIC / BAT 10-09). Facts: the WILLY_HOLD tracker (251) had been crashing ("Invalid value 'klines 1m' for
+  dtype 'float64'" — an all-unpriced merge left the text columns float64) → fixed in scout_willy_hold.merge + selftest; the store now also
+  keeps the engine's wh_reason and each priced exit minute. Its rows: the hold refused 3 setups so far — MAGIC FRENZY_WIDE 10-09 14:50
+  (unpriced until its 12 h window ends; the separate FRENZY-watch replay shows −3 % stop in 25 min), BAT 15:55 = a second FRENZY_WILLY
+  (not a FRENZY trade; +1 % TP) and INIT SPIKE_FADE (proxy ≈ 0). MAGIC's +50 % run was missed by the momentum filters, not by the hold.
+  New scripts/scout_willy_hold_frenzy.py (hooked right after the tracker in scout_frenzy_exits): the bot's own hold refusals of
+  FRENZY_LONG / WIDE / LITE, priced by the tracker (+3 / −3 / 12 h, 1m, fees + slip), re-checked in signal order against the gates the
+  hold pre-empts (it is the FIRST check in _frenzy_open), earlier kept refusals occupying pair / slot / day count as if open: UNREAD
+  check · catch-up took it later (≤ frenzy_catchup_max_bars + 1) · pair held · slots · 5-min cooldown · pair-day cap (LONG / WIDE / LITE)
+  · WIDE hold-green (FRENZY leg ATR_HIGH in the decision journal → out; GREEN_BAR streak unverified, flagged) · bearish day (BTC 1d from
+  the fills' stamps / the B1H daily cache, BTC 5m EMA13−EMA50 rebuilt as the engine reads it — r 0.999, sign 98 % vs 121 fill stamps;
+  undecidable → kept, flagged) · unpriceable after 2 days → out. Blind spots listed (lateness, dislocation, reclaim streak, book /
+  margin caps, a 2nd signal during one WILLY). 🔒 Frozen at N ≥ 15 kept priced setups on ≥ 8 UTC days (DAY units; deferred until the
+  orders AND decisions exports cover each row's catch-up window): EXEMPT CANDIDATE (operator decides) iff mean % > 0 ∧ day-bootstrap
+  P(mean > 0) ≥ 0.90 ∧ no day and no pair > 50 % of Σ; mean ≤ 0 → KEEP THE HOLD; else observe (re-read at 30). If armed: revert when the
+  first 15 FRENZY-family fills opened while a WILLY was open average < 0 %. Other sleeves and WILLY itself keep the hold (not judged).
+  Dual review: caveman + deep, all findings applied (LITE day cap, OPEN rows bounded at export time, export coverage, self-occupancy,
+  cooldown, hold-green, rebuilt BTC gap, UNREAD, unpriceable, pending row, pair-share leg).

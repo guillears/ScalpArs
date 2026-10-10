@@ -6225,3 +6225,20 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   the live exit stops being a fixed TP. If adopted: revert when the sleeve's first 15 fills sum below +3. Shared tick ledger hardened in
   scout_willy_timecap (a too-big archive day's slice is merged across lines and never final for an uncovered window; 12 h 1m pages get
   their own attempts key). Dual review (caveman + deep), findings applied.
+- (268) 2026-10-10 🛑 **Scout exit shadow WILLY_STOP at −4 % (operator) — no trading change.** Operator asked whether WILLY should carry a stop
+  (−2, then −3, −4, −5). yr5 tick sweep (1,067 WILLY A fills, same walker): no stop +0.135 %/fill (worst fill −25.8 %, 26 fills ≤ −8 %) ·
+  −2 −0.027 (Δ −0.162, P 0.01) · −3 +0.030 (Δ −0.105) · −4 +0.085 (Δ −0.050, P 0.18; H1 +0.066 / H2 +0.106; cuts 55 of 902 winners −276
+  pts, catches 120 of 165 losers +225 pts) · −5 +0.062 · −6 +0.073 · −8 +0.113 — every stop loses to none; −4 … −8 differ within noise.
+  Operator chose −4 as INSURANCE (caps one WILLY loss at ≈ −4 % ≈ a fifth of the book at 20×) at a known ≈ 0.05 %/fill cost. Live 7
+  fills: none dipped to −4 (lowest −3.74, ZK), so −4 changes nothing yet; −2 would have cut ZK / CAP / MINA (−8.6 pts on 6 scored fills).
+  scripts/scout_willy_stop.py (hooked after WILLY_TP125; cache only): every WILLY fill re-walked on the same path with no stop vs −4
+  (−2 / −3 / −5 / −8 context), prints the worst no-stop loss so far. 🔒 Frozen at N ≥ 20 on ≥ 8 days AND ≥ 8 fills that dipped to −4
+  (the only fills the stop changes): SL4 CANDIDATE (operator decides) iff mean Δ > 0 ∧ day-bootstrap P ≥ 0.90 ∧ no fill > 50 % of Σ Δ
+  ∧ untouched fills Δ = 0 ∧ walker parity; mean Δ ≤ 0 → KEEP NO STOP; else observe (re-read at 40 with ≥ 16 dipped). If adopted:
+  revert when the first 15 fills after the switch sum below the no-stop walk. MANUAL_* closes excluded. Tick stops read slightly
+  pessimistic (wicks the live poller rides through). −4 is TRACKED, not armed (frenzy_willy_stop_pct stays 0 until the operator arms it).
+  At the yr5 dip rate (16 %) the first verdict lands near ~50 fills, the re-read near ~100; every run also prints the insurance read
+  (worst no-stop loss, losses beyond −4 and the points the stop would have cut off). Live STOP_LOSS fills match the walk within 0.5 pts.
+  1m walks now book a stop at the bar's open when the bar opens through it (open stored on pages fetched from Oct-10).
+  Same session: +1.25 / −4 read on the WILLY yr5 cohort = +0.127 %/fill vs today's +0.135 (Δ −0.008, P 0.46), 2.9 winners pay a
+  loser (breakeven 74 %), worst −4.2 vs −25.8 — the same expectancy with the tail capped (to be tracked if the operator asks).

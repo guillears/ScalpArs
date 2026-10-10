@@ -177,7 +177,9 @@ def walk_1m(k, te, e, tp, stop, hold):
         a = int(itp[0]) if len(itp) else None
         b = int(ist[0]) if len(ist) else None
         if b is not None and (a is None or b <= a):                 # same bar → stop (conservative)
-            out[v] = dict(pct=-float(stop), why="STOP", xmin=(cl[b] - te) / MIN, worst=float(nl[:b + 1].min()))
+            ob = float(k.o.values[b]) if "o" in k and np.isfinite(k.o.values[b]) else np.nan
+            gap = float(net_pct(ob, e)) if np.isfinite(ob) else -float(stop)   # a bar that OPENS through the stop fills at its open
+            out[v] = dict(pct=min(-float(stop), gap), why="STOP", xmin=(cl[b] - te) / MIN, worst=float(nl[:b + 1].min()))
         elif a is not None:
             out[v] = dict(pct=float(tp), why="TP", xmin=(cl[a] - te) / MIN, worst=float(nl[:a + 1].min()))
         else:
@@ -347,13 +349,13 @@ def _need(te, hold):
 
 def _read_k1(path):
     try:
-        d = pd.read_csv(path, usecols=["open_time", "h", "l", "c"])
-        d = d.apply(pd.to_numeric, errors="coerce").dropna()
+        d = pd.read_csv(path, usecols=lambda c: c in ("open_time", "o", "h", "l", "c"))
+        d = d.reindex(columns=["open_time", "o", "h", "l", "c"]).apply(pd.to_numeric, errors="coerce").dropna(subset=["open_time", "h", "l", "c"])
         d["open_time"] = d.open_time.astype("int64")
-        return d
+        return d                                                       # o = the bar's open (NaN in caches written before Oct-10)
     except Exception:
-        return pd.DataFrame({"open_time": pd.Series(dtype="int64"), "h": pd.Series(dtype=float), "l": pd.Series(dtype=float),
-                             "c": pd.Series(dtype=float)})
+        return pd.DataFrame({"open_time": pd.Series(dtype="int64"), "o": pd.Series(dtype=float), "h": pd.Series(dtype=float),
+                             "l": pd.Series(dtype=float), "c": pd.Series(dtype=float)})
 
 
 _K1 = {}                                             # per-run 1m cache (cleared by run(); a pair is dropped when this line appends to it)
@@ -424,8 +426,8 @@ def _fetch_1m(sym, start_ms, limit, now_ms, timeout_s=10.0):
     url = f"https://fapi.binance.com/fapi/v1/klines?symbol={sym}&interval=1m&startTime={int(start_ms)}&limit={int(limit)}"
     rows, headers = _threaded(_http_get, url, timeout_s, now_ms, f"{sym} 1m fetch")
     used = int((headers or {}).get("X-MBX-USED-WEIGHT-1M") or 0)
-    d = pd.DataFrame([(int(x[0]), float(x[2]), float(x[3]), float(x[4])) for x in rows if int(x[0]) + MIN <= now_ms],
-                     columns=["open_time", "h", "l", "c"])
+    d = pd.DataFrame([(int(x[0]), float(x[1]), float(x[2]), float(x[3]), float(x[4])) for x in rows if int(x[0]) + MIN <= now_ms],
+                     columns=["open_time", "o", "h", "l", "c"])
     return d, used
 
 

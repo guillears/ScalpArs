@@ -182,7 +182,7 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None, study=
     tc = {}
     sc_all = scored_frame(o, hold, tp, stop, tc)
     done = WT.load_attempts()["done"]
-    sc_all["pend"] = [(not isinstance(s, str) and not (WT._kk(r.pair, r.te) in done and not WT.ticks_pending(r, hold, done, now_ms, tc)))
+    sc_all["pend"] = [(not isinstance(s, str) and not (WT._kk(r.pair, r.te, WT._span(hold)) in done and not WT.ticks_pending(r, hold, done, now_ms, tc)))
                       or (s == "1m" and WT.ticks_pending(r, hold, done, now_ms, tc)) for s, r in zip(sc_all.src, sc_all.itertuples())]
     sc = sc_all[sc_all.src.notna()].copy()
     uns = sc_all[sc_all.src.isna()]

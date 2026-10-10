@@ -33,7 +33,9 @@ BINANCE     cache first: ticks reports/backtest_cache/{ticks_q,ticks}/<PAIR>/<da
               (backtest_fetch_ticks price-only format: t int64, p float32; temp + rename). A day above 4,000,000 rows keeps only this line's
               fill windows [te − 1 min, te + max(hold, 120) + 2 min] in scout_willy_timecap/ticks_slice (shared cache not written). A 404 = not
               published yet → retried ≥ 3 h later, final only after 3 × 404 AND ≥ 3 days after the day; another 4xx final; timeout / 5xx /
-              empty count as failed attempts (3 → final). Once final, the 1m walk is final.
+              empty count as failed attempts (3 → final). Once final, the 1m walk is final. A too-big day's slice is MERGED with any slice
+              already on disk (prints + windows) and is never final for a fill whose window it does not cover (lines share this ledger:
+              WILLY_TIMECAP / WILLY_TP125 / WILLY_STOP / FRENZY_WILLY_TP, Oct-10).
             · fapi 1m klines — ONE page of max(hold, 120) + 3 bars per fill, once its window closed, inside the 25 s budget; another 4xx is
               final at once (slot refunded); 3 failed / empty / timed-out attempts = final.
             Both refused while the SHARED scout cooldown (NF.SHARED_COOLDOWN) is live; fapi refused once the last X-MBX-USED-WEIGHT-1M ≥ 900;
@@ -515,9 +517,33 @@ def parse_archive(src, windows=None, max_rows=None):
     return t[o], p[o], full is not None
 
 
+def _arch_final(done, key):
+    """an archive day is final for every line only when fully cached or given up — a SLICED day (too big for the shared cache) keeps only
+    the windows asked so far, so another line's fill outside them must still be able to request it (Oct-10 review: the FRENZY_WILLY_TP
+    line shares this ledger)."""
+    return key in done and not str(done[key]).startswith("sliced")
+
+
 def _save_slice(sym, day, t, p, windows):
+    """this line's window slice of a too-big day — MERGED with any slice already on disk (prints and windows), never overwritten."""
     fp = _slice_file(sym, day)
     os.makedirs(os.path.dirname(fp), exist_ok=True)
+    if os.path.exists(fp):
+        try:
+            with np.load(fp) as z:
+                t0, p0 = z["t"].astype(np.int64), z["p"].astype(np.float64)
+                w2 = list(zip(z["w0"].tolist(), z["w1"].tolist())) + list(windows)
+            if len(t0) != len(p0):
+                raise ValueError("old slice t / p length mismatch")
+            t2 = np.concatenate([t0, np.asarray(t, dtype=np.int64)])
+            p2 = np.concatenate([p0, np.asarray(p, dtype=np.float64)])
+            o = np.argsort(t2, kind="stable")                          # trade order kept inside a millisecond (old prints first)
+            t2, p2 = t2[o], p2[o]
+            keep = np.ones(len(t2), dtype=bool)
+            keep[1:] = (t2[1:] != t2[:-1]) | (p2[1:] != p2[:-1])       # exact repeats (the overlap of two slices) collapse
+            t, p, windows = t2[keep], p2[keep], sorted(set((int(a), int(b)) for a, b in w2))
+        except Exception:
+            pass                                                       # unreadable old slice → replaced by this one (locals untouched)
     tmp = fp[:-4] + f".{os.getpid()}.part.npz"
     np.savez_compressed(tmp, t=np.asarray(t, dtype=np.int64), p=np.asarray(p, dtype=np.float64),
                         w0=np.array([a for a, _ in windows], dtype=np.int64), w1=np.array([b for _, b in windows], dtype=np.int64))
@@ -578,13 +604,14 @@ def _ak(sym, day):
     return f"ARCH|{sym}|{day}"
 
 
-def _kk(sym, te):
-    return f"K1M|{sym}|{(int(te) // MIN) * MIN}"
+def _kk(sym, te, span=120):
+    """the 1m-page attempts key; a longer window (another line's 12 h) gets its own key so a 123-bar page never stands in for it."""
+    return f"K1M|{sym}|{(int(te) // MIN) * MIN}" + ("" if int(span) == 120 else f"|{int(span)}")
 
 
 def ticks_pending(r, hold, done, now_ms, cache=None):
     """True while a tick path could still arrive (a needed day not on disk for this fill's window and its archive not final)."""
-    return any(not _have_day(r.pair, d, _need(r.te, hold), cache) and _ak(r.pair, d) not in done for d in _days(r.te, hold))
+    return any(not _have_day(r.pair, d, _need(r.te, hold), cache) and not _arch_final(done, _ak(r.pair, d)) for d in _days(r.te, hold))
 
 
 def _day_end(day):
@@ -626,11 +653,11 @@ def ensure_data(fills, hold, now_ms, fetch=True, budget_s=BUDGET_S, max_req=MAX_
             if _ak(r.pair, d) not in done and int(att["fail"].get(_ak(r.pair, d), 0)) >= FAIL_MAX:
                 _arch_giveup(att, _ak(r.pair, d), d, now_ms)
                 gave_up = gave_up or _ak(r.pair, d) in done
-        days = [d for d in _days(r.te, hold) if not _have_day(r.pair, d, _need(r.te, hold)) and _ak(r.pair, d) not in done]
+        days = [d for d in _days(r.te, hold) if not _have_day(r.pair, d, _need(r.te, hold)) and not _arch_final(done, _ak(r.pair, d))]
         due = [d for d in days if _arch_eligible(d, now_ms, att, _ak(r.pair, d))]
         if due:
             jobs.append(("arch", r, due[0]))
-        if not isinstance(r.src, str) and _kk(r.pair, r.te) not in done and now_ms >= r.te + (_span(hold) + 1) * MIN:
+        if not isinstance(r.src, str) and _kk(r.pair, r.te, _span(hold)) not in done and now_ms >= r.te + (_span(hold) + 1) * MIN:
             jobs.append(("1m", r, None))
     if gave_up:
         save_attempts(att)
@@ -641,8 +668,8 @@ def ensure_data(fills, hold, now_ms, fetch=True, budget_s=BUDGET_S, max_req=MAX_
         return [f"fetching stopped: rate-limit cooldown until {pd.Timestamp(cd, unit='ms'):%m-%d %H:%M} UTC"]
     deadline, seen, n_arch = time.monotonic() + budget_s, set(), 0
     for kind, r, day in jobs:
-        key = _ak(r.pair, day) if kind == "arch" else _kk(r.pair, r.te)
-        if key in seen or key in done or (kind == "arch" and n_arch >= ARCH_PER_RUN):
+        key = _ak(r.pair, day) if kind == "arch" else _kk(r.pair, r.te, _span(hold))
+        if key in seen or (_arch_final(done, key) if kind == "arch" else key in done) or (kind == "arch" and n_arch >= ARCH_PER_RUN):
             continue
         seen.add(key)
         if n >= max_req:
@@ -665,9 +692,11 @@ def ensure_data(fills, hold, now_ms, fetch=True, budget_s=BUDGET_S, max_req=MAX_
                 if len(t) and full:
                     _save_ticks(r.pair, day, t, p)
                     done[key] = int(len(t))
+                    att["fail"].pop(key, None)
                 elif len(t):
                     _save_slice(r.pair, day, t, p, wins)
                     done[key] = f"sliced {len(t)}"
+                    att["fail"].pop(key, None)                         # a later line's re-request starts its own failure count
                 else:
                     _fail(att, key, "empty")
                 notes.append(f"{lab} +{len(t):,} prints" + ("" if full else f" (day > {ARCH_FULL_MAX_ROWS:,} rows: only the "
@@ -858,7 +887,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     done = load_attempts()["done"]
     # lagging = could still change: unscored unless BOTH paths are final (1m page final ∧ every missing tick day's archive final);
     # 1m-provisional while a tick archive is still pending
-    sc_all["pend"] = [(not isinstance(s, str) and not (_kk(r.pair, r.te) in done and not ticks_pending(r, hold, done, now_ms, tc)))
+    sc_all["pend"] = [(not isinstance(s, str) and not (_kk(r.pair, r.te, _span(hold)) in done and not ticks_pending(r, hold, done, now_ms, tc)))
                       or (s == "1m" and ticks_pending(r, hold, done, now_ms, tc)) for s, r in zip(sc_all.src, sc_all.itertuples())]
     sc = sc_all[sc_all.src.notna()].copy()
     uns = sc_all[sc_all.src.isna()]

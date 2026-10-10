@@ -6206,3 +6206,22 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   first 15 FRENZY-family fills opened while a WILLY was open average < 0 %. Other sleeves and WILLY itself keep the hold (not judged).
   Dual review: caveman + deep, all findings applied (LITE day cap, OPEN rows bounded at export time, export coverage, self-occupancy,
   cooldown, hold-green, rebuilt BTC gap, UNREAD, unpriceable, pending row, pair-share leg).
+- (267) 2026-10-10 🎲➡🔥 **Scout exit-shadow grid FRENZY_WILLY_TP (operator) — no trading change.** Operator: should FRENZY_LONG / WIDE / LITE
+  share a WILLY-style small fixed exit — TP +1 or +1.25 with a −2 / −2.5 / −3 stop (12 h cap kept)? yr5 tick study (the TP2-vs-TP3
+  study's entries re-walked with the WILLY_TIMECAP walker — reproduces their +3 on 100 % of fills), %/fill vs today's +3 / −3:
+  LONG 564 · +0.084 · +1: −2 −0.037 / −2.5 −0.011 / −3 +0.101 (Δ +0.017, P 0.54) · +1.25: −0.095 / −0.129 / −0.039 · WIDE 319 · +0.088
+  · +1: −0.136 / −0.214 / −0.160 · +1.25: −0.042 / −0.156 / −0.062 · LITE 724 · +0.257 · +1: −0.074 / −0.029 / −0.016 · +1.25: −0.066 /
+  −0.025 / +0.000 (P(better) 0.00 in every other cell) — every cell loses except LONG +1/−3, a coin flip. Win rates rise to 60–77 % but the small
+  wins don't pay the stops. Winners' trough (fills reaching +3, no stop): LONG avg −2.82 / median −1.94, WIDE −3.14 / −1.78, LITE −2.65 /
+  −1.75; live winners (all exports, 35 FRENZY-family fills): LONG −0.77 (2 winners), WIDE −0.80, LITE −1.47; half of the 10 live LONG
+  losers had reached +1 first. A WILLY-style NO-stop exit for FRENZY was also read: LONG +0.321 (H2 −0.029, P 0.85), WIDE −0.098, LITE
+  −0.060, troughs p5 −7 to −11 %, worst −16 to −21 %. WILLY's own stop sweep (1,067 yr5 A fills): every stop −1 … −8 loses to none
+  (−2: −0.027 vs +0.135, Δ −0.162, P 0.01 — cuts 206 of 902 winners for −622 pts, saves 456 pts on 156 of 165 losers; −3: Δ −0.105;
+  −4: Δ −0.050); WILLY trough: live 7 fills avg −2.05 % (median −2.10), yr5 avg −2.25 (median −1.19, winners −1.42, cap closes −6.79).
+  scripts/scout_frenzy_willy_exit.py (hooked after WILLY_TP125): every CLOSED FRENZY-family fill since the (250) deploy (MANUAL_* closes
+  excluded and listed) re-walked on the same path at +3 / −3 (live) and the 6 grid cells, 12 h cap. 🔒 PER SLEEVE, frozen at N ≥ 15 on
+  ≥ 8 days: cell CANDIDATE (operator decides) iff mean Δ > 0 ∧ day-bootstrap P ≥ 0.95 (0.95, not 0.90: the best of 6 cells is picked) ∧
+  no fill > 50 % of Σ Δ ∧ walker parity ≥ 90 %; several → the larger Δ; all ≤ 0 → KEEP +3 / −3; else observe (re-read at 30); paused if
+  the live exit stops being a fixed TP. If adopted: revert when the sleeve's first 15 fills sum below +3. Shared tick ledger hardened in
+  scout_willy_timecap (a too-big archive day's slice is merged across lines and never final for an uncovered window; 12 h 1m pages get
+  their own attempts key). Dual review (caveman + deep), findings applied.

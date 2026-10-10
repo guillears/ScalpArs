@@ -6255,3 +6255,25 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   The combo is judged vs TODAY's configured exit (the LIVE walk), so it stays right if a stop is ever armed. Not multiplicity-adjusted
   (P ≥ 0.90, unlike the FRENZY grid's 0.95): it is one pre-registered test, but the WILLY stack now holds four on the same fills
   (TIMECAP 264, TP125 265, SL4 268, combo 269) — read any single candidate with that in mind.
+- (270) 2026-10-10 🐛 **FRENZY backtest bug hunt (operator: "results don't add up with live") — NO simulation bug; the quoted numbers were
+  mislabelled — corrected references, no trading change.** reports/FRENZY_BACKTEST_BUGHUNT_2026-10-10.md (validate_against_master
+  passed): rebuilt on the live days (Oct 2–10, 589 pairs, the engine's own services.frenzy functions) the backtest lands on the same
+  signal bar for 31 of 35 live FRENZY fills, all 31 with the same outcome; entry price vs the backtest's 8 s print median +0.03 % (the
+  +0.10 slip is pessimistic); no look-ahead, fees / net-judged ±3 match, no duplicates inside the replay. The 4 others: 3 WIDE fills
+  today's rules refuse (AIN ×2 ATR, FLUID green reclaim) + ORCA 10-06 09:40 from the since-fixed truncated-window live bug (224 / 230).
+  The ERROR was in the references quoted 10-09 / 10-10 (DECISION_LOG 266 – 269 study refs): LONG / WIDE "51 % · +0.084 / +0.088" was the
+  replay WITH the market-volume gate on (off since 263; its refused setups lose −0.24 LONG / −0.42 WIDE per fill) and pooled 3 near-
+  identical seeds (564 / 319 = ≈ 188 / 106 per seed); LITE "+0.257" kept 176 bearish-day fills today's rules block and no slot limit.
+  Corrected (gate off: replay seed 1 + the gate-refused add-back, live-eligible pairs only — Alpha / < 90-day listings removed, which
+  matters: the 20 Alpha WIDE add-back rows average −1.80 — and 26 add-back rows already in the replay not counted twice (the replay's
+  and the engine cohort's market-volume readings disagree on them); LITE bearish removed, eligible): +3 / −3 LONG 320 · 49 % · −0.039 %/fill
+  (H1 −0.198 / H2 +0.182) · WIDE 204 · 49 % · −0.047 (H1 +0.045 / H2 −0.176 — unstable) · LITE 546 · 54 % · +0.267 (≈ +0.23 with LITE's
+  slots / pair-held / day cap) — LONG / WIDE ≈ break-even, only LITE has an edge. The 267 / 269 grid re-run on this cohort: no cell
+  beats +3 / −3 significantly in any sleeve (LONG +1/−3 a tie: Δ −0.017, P 0.44 here, +0.032 without the de-dup; WIDE best Δ −0.113;
+  LITE every Δ ≤ −0.27) — the conclusion stands, the baselines change. Live re-priced on +3 / −3: LONG 15 · 20 % · −1.81 (binomial
+  P 0.022 vs the gate-off backtest, 0.067 after 3-sleeve Bonferroni; live's 20 % WR ≈ 3 % of 8-day yr5 windows, while 1 in 9 nine-day
+  windows is as bad as the backtest's own 32 % on the live days) · WIDE 8 · 38 % · −0.76 (P 0.44) · LITE 12 · 58 % · +0.50 (P 0.71). The
+  backtest's own logic on the live days: LONG 19 · 32 % · −1.11 — live took the worse half by chance (skips = gate, shortlist misses).
+  Half of LONG losers reaching +1 first is normal (47 % in the backtest); only 3 of 9 going +1 → +3 vs 67 % is the bad run. scripts/
+  scout_frenzy_willy_exit.py STUDY_REF + the CURRENT_STATE line corrected. Rule kept for every future reference: quote backtest numbers on
+  TODAY's stack (gate state, bearish block, eligibility, slots), per seed, de-duplicated.

@@ -51,13 +51,17 @@ DEPLOY_GREP = "(DECISION_LOG 250)"
 DEPLOY_PIN = "2026-10-08 13:37:25"                   # 6d3974f commit time (UTC) — used only if git is unavailable
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.path.join(_ROOT, "reports", "SCOUT_FRENZY_WILLY_EXIT.json")
-STUDY_REF = ("yr5 tick study (2026-10-10, the reports/FRENZY_TP2_VS_TP3_TICKS_2026-10-09_fills.csv entries re-walked by this walker — "
-             "reproduces their +3 on 100 %; 12 h): every cell is below +3 / −3 in every sleeve except LONG +1/−3 (Δ +0.017, P 0.54). "
-             "LONG 564 · +3/−3 +0.084 %/fill · +1: −2 −0.037 / −2.5 −0.011 / −3 +0.101 · +1.25: −2 −0.095 / −2.5 −0.129 / −3 −0.039 · "
-             "WIDE 319 · +0.088 · +1: −0.136 / −0.214 / −0.160 · +1.25: −0.042 / −0.156 / −0.062 · LITE 724 · +0.257 · +1: −0.074 / −0.029 / "
-             "−0.016 · +1.25: −0.066 / −0.025 / +0.000 (P(better) 0.00 in every other cell); +1.25/−4 (269): LONG +0.020 (Δ −0.063, P 0.35; "
-             "H1 +0.155 / H2 −0.143) · WIDE −0.175 (Δ −0.262) · LITE +0.010 (Δ −0.247, P 0.00), 3.2 winners pay a loser. Winners' trough (fills reaching +3, no stop): LONG avg −2.82 / "
-             "median −1.94, WIDE −3.14 / −1.78, LITE −2.65 / −1.75")
+STUDY_REF = ("yr5 tick study, CORRECTED 2026-10-10 (DECISION_LOG 270) to today's stack: LONG / WIDE = replay seed 1 (bearish block, live "
+             "eligibility) + the setups the market-volume gate refused (gate off since 263), live-eligible pairs only, rows already in the "
+             "replay not counted twice; LITE = bearish days removed, eligible pairs (no LITE slot limit — the bug hunt puts LITE at ≈ +0.23 "
+             "with slots); one replay seed (not 3 pooled); same walker, +3 reproduced on 100 %; 12 h. %/fill, Δ vs +3 / −3 (P(better)): "
+             "LONG 320 · +3/−3 49 % · −0.039 (H1 −0.198 / H2 +0.182) · +1: −2 −0.121 / −2.5 −0.100 / −3 −0.056 (Δ −0.017, P 0.44) · +1.25: "
+             "−2 −0.200 / −2.5 −0.212 / −3 −0.153 / −4 −0.104 (Δ −0.065) · WIDE 204 · +3/−3 49 % · −0.047 (H1 +0.045 / H2 −0.176) · +1: "
+             "−0.219 / −0.231 / −0.190 · +1.25: −0.166 / −0.198 / −0.160 / −0.210 (best Δ −0.113, P 0.23) · LITE 546 · +3/−3 54 % · +0.267 "
+             "· +1: −0.084 / −0.058 / −0.032 · +1.25: −0.074 / −0.042 / −0.010 / −0.001 (every Δ ≤ −0.27, P ≤ 0.01) — no cell beats +3 / −3 "
+             "significantly in any sleeve; LONG +1/−3 is a tie (Δ −0.017 here, +0.032 on a cohort without the de-dup). (The 2026-10-09 "
+             "reference quoted LONG / WIDE +0.084 / +0.088: gate-on replay, 3 seeds pooled — superseded.) Winners' trough (fills reaching +3, "
+             "no stop; from the OLD gate-on cohort, not re-run): LONG avg −2.82 / median −1.94, WIDE −3.14 / −1.78, LITE −2.65 / −1.75")
 REVERT = ("Pre-committed revert if a sleeve ever takes the smaller TP: its first 15 fills after the switch — Σ % below what +3 would have "
           "given on the same fills (this walker) → back to +3.")
 

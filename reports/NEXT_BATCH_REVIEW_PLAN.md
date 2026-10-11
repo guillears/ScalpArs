@@ -64,13 +64,40 @@ analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every find
 
 ## 1. FRENZY_WILLY
 - Reference numbers below come from the yr5 A 1,067-fill cohort (pre-270 recipe): re-derive them on today's stack, one seed,
-  eligible pairs, de-duplicated before quoting. Four pre-registered tests share the same WILLY fills (TIMECAP, TP125, SL4, combo) —
-  read any single candidate with that in mind; ship at most one WILLY exit change per review.
+  eligible pairs, de-duplicated before quoting. The WILLY exit FAMILY on the same fills: TIMECAP, TP125, SL4, combo +1.25/−4, the
+  6 EMA-cross variants and the runner leg below — every candidate faces a max-statistic shuffled null over the whole family (state
+  the count); ship at most one WILLY exit change per review.
 - [ ] TP: +1 vs +1.25 (Scout WILLY_TP125; yr5 ref +0.135 vs +0.191).
 - [ ] Time cap: is 120 min right or can it be shorter? Use the hold-time distribution of winners vs losers (Scout WILLY_TIMECAP; yr5
       CAP15/20 lose).
 - [ ] Stop besides the time cap: needed? which value? (Scout WILLY_STOP −4 + context −2/−3/−5/−8; combo +1.25/−4 test; yr5: every stop
       costs vs none, −4 ≈ −0.05 %/fill as insurance; +1.25/−4 ≈ today's expectancy with the tail capped).
+
+- [ ] **Price vs EMA13 / EMA20 / EMA50 at entry and at exit** (operator 2026-10-11): the % distance of price from each EMA at WILLY's
+      entry and at its exit, winners vs losers (loser = pnl < 0 whatever the close reason, incl. FRENZY_TP_LATE) (5m CLOSED bars only —
+      the engine's ta EMAIndicator = ewm(span, adjust=False, min_periods=n), seeded on ≥ 300 bars of history; the engine's own window can
+      include the forming bar, so check parity against the stamped entry_dist_from_ema13_pct on every live WILLY fill before use). EMA20 /
+      EMA50 distances are not stamped: entry_pair_ema20_ema50_gap_pct is EMA13 − EMA50 (misnamed) — never use it as an EMA20 read.
+      exit_price_vs_ema5_pct looks corrupt on WILLY rows (+24 … +37 % on +1 % exits) — rebuild exit distances from klines and flag the
+      stamp as a bug (§0c). Only the ENTRY distance is a separator (§0c screen, predicted in 0a+); the exit distance is outcome-
+      conditioned and descriptive only (input for the exit test below).
+- [ ] **EMA-cross exit for WILLY** (operator): exit on the first 5m close below EMA13 / EMA20 / EMA50 (three pre-registered variants,
+      each with and without today's +1 TP kept as a cap), the 120-min cap kept as the backstop, vs today's +1 / no stop / 120 min — same
+      entries, same path (ticks / 1m walker, the bot's accounting, live latency). Pre-registered: the cross counts only from the first 5m
+      close after entry (an entry already below the EMA — LPT / CAP were below EMA13 — fires there; report those fills as their own line).
+      The no-TP variants are a pure EMA cross with no stop at 20×: model liquidation (≈ −4.5 % adverse; 14 % of yr5 WILLY fills dip there)
+      or the live backstop, never paper-infinite. Learnings first: the Scout FRENZY / WIDE shadows (scout_frenzy_exits.py EMA20 / EMA50)
+      arm only after a +3 peak (−3 stop until then, then a +2 floor) — they never act on a +1-TP sleeve and have no EMA13, so they are not
+      evidence for WILLY; the relevant result is reports/FRENZY_ATR_AND_PURE_EMA_EXIT_2026-10-05.md Q2 (a pure EMA20 / EMA50 cross with no
+      stop and no floor was clearly worse than the lock, with liquidation tails). 3 EMAs × 2 = 6 variants → best-of-6 guard (day-bootstrap
+      P ≥ 0.95) AND the family max-statistic null (§1 intro). Two-sided: winners cut before +1 AND cap losers saved; fills the EMA never
+      touches must show Δ = 0 (else the walker is lying). Parity first: reuse the WILLY_TIMECAP walker (it reproduces the live exits).
+- [ ] **What WILLY leaves after its +1** (Claude; a WILLY EXIT test — moved here from §3): over ALL WILLY fills (live + yr5 A 1,067,
+      today's stack), the distribution of the move from the TP exit to 1 / 2 / 4 / 12 h later (max favourable AND max adverse), not chosen
+      examples. Live so far: KAIA +12.5 at 60 min / +18.5 at 120 min after its TP (its "+62.7 %" in the missed-moves table includes the
+      pre-entry run; MAGIC's +50 % had no WILLY fill); LPT / MINA / W were −7.8 / −5.2 / −4.0 at 120 min. A runner leg counts in the WILLY
+      exit family: freeze its rule (size split, its stop or liquidation model at 20×, its cap) before the read, find on H1, confirm on H2;
+      price the longer global hold too (the runner keeps every other sleeve blocked; HOLD_FRENZY_EXEMPT / WILLY_HOLD).
 
 ## 2. FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE
 - Corrected yr5 refs (DL 270, today's stack): +3/−3 LONG 320 · 49 % · −0.039 %/fill · WIDE 204 · 49 % · −0.047 · LITE 546 · 54 % ·
@@ -106,6 +133,26 @@ analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every find
       trusted; read in DAY units, two-sided, both halves. Prior evidence to beat: entering on a later ON bar is refuted (−0.49 %/trade,
       FRENZY_STAIRCASE_STUDY_2026-10-06).
 
+- [ ] **WILLY trigger B re-test — ONE pre-registered run, final either way** (Claude, 2026-10-11): trigger B = an episode's fresh ON bar
+      that FRENZY_LONG / WIDE / LITE did not take (DECISION_LOG 251). OFF since 256 on the yr5 tick year: −0.244 %/trade no stop [−0.68,
+      +0.16] · −0.325 [−0.59, −0.07] with the ≈ −2.2 % backstop; 251 also found B negative at every turnover R (−0.19). That test ALREADY
+      used today's WILLY exit (+1 / no stop / 120 min) and the turnover rule. What changed since: the market-volume gate is OFF (263), so
+      B's population (the refusals of today's stack) differs, and 256 did not model LITE — re-test only for that reason. Rule frozen in
+      the script docstring BEFORE the read: B = fresh ON bars refused by today's FRENZY_LONG / WIDE / LITE (gate off, bearish block, ATR
+      3.0, LITE stretches), turnover R < 1, first strictly red 5m bar within 60 min, today's exit, one seed, eligible pairs, de-duplicated;
+      live cross-check = the journal's FRENZY_* refusals priced as B (not WILLY_HOLD rows — those are hold-blocked setups). Bar: WR below
+      its breakeven WR and mean < 0 with ≥ 95 % confidence in both halves → closed for good, never re-run; the full locked bar (mean > 0
+      with 95 % window-bootstrap confidence, ≥ 8 windows, no window / pair ≥ 50 %, N ≥ 15) → an observe line, never armed directly;
+      anything between → closed (no third test).
+- [ ] **One timeline per FRENZY episode** (Claude): per FRENZY episode — key = (pair, entry_frenzy_spike_at), as in services/frenzy.py
+      (starts at the spike bar, ends after 24 h with no state bar; flag ≤ frenzy_max_hours); SPIKE_FADE and yr5 rows get the key by
+      rebuilding with services.frenzy on klines, never by time proximity — when each sleeve fires (WILLY at the flag / first red, LONG at
+      the ON bar, LITE per stretch, WIDE on green reclaims) and its outcome by phase (minutes / % since the spike, VWAP distance). Turns
+      0a+ into numbers: which phase pays, and whether the four sleeves are one idea at different moments (signal overlap + outcome
+      correlation). Include the refused setups from the decision journal (refusal code per bar), not only fills. The phase cuts
+      (entry_frenzy_hours, entry_frenzy_vs_vwap_pct, minutes since spike) are separator tests: predict them in 0a+ and count them in the
+      §0c screen (null + OOS) — not free extra cuts.
+
 ## 3b. FRENZY losers → FRENZY SHORT opportunity (after §3 finds a loser signature)
 - [ ] Operator 2026-10-11: if §3 isolates a robust LOSER signature on FRENZY_LONG / WIDE / LITE, test SHORTING that signature with a
       fixed TP +1 % or +1.2 % net and a −3 % stop (12 h cap). Mandatory guards: (i) the signature is DISCOVERED and frozen on one half
@@ -126,6 +173,13 @@ analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every find
 ## 5. Every other sleeve (SPIKE_FADE priority, flips, momentum short, bull-run, bear-run, surge)
 - [ ] Full read of everything in CLAUDE_CURRENT_STATE + Scout; any finding → before/after in the three blocks + recommendation.
 - [ ] SPIKE_FADE: high potential and strong in every batch — look for scale-up / more-fills levers as well as risk.
+- [ ] **SPIKE_FADE vs FRENZY on the same pump** (Claude): the engine never holds both on one pair — open_position refuses any second
+      position (generic PAIR_HELD, the counter does not name the holder), a 5-min cooldown follows any close on the pair, LITE / WILLY
+      refuse as *_PAIR_HELD, FRENZY / WIDE as *_PAIR_HELD_BY_LITE, and the WILLY global hold blocks fades. So read it as a pair-occupancy
+      contest, not a hedge: per FRENZY episode (key above), the fades opened inside it and the FRENZY entries refused because a fade held
+      the pair (or the reverse; holder from the fills' open intervals). Price the refused side at its own live exit and the Δ of a priority
+      rule (fade-first vs FRENZY-first), DAY units, two-sided, before → after in the three blocks. Fades blocked by the WILLY hold are counted
+      once, in §6 "WILLY global hold cost".
 
 ## 6. Added by Claude (portfolio-level levers toward the profit target)
 - [ ] **Missed moves:** Scout's missed-move diagnosis (FILTER_NEAR gate sets with more good than bad pair-days, FILTER_FAR / SLEEVE
@@ -135,6 +189,15 @@ analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every find
 - [ ] **Concurrency and ruin:** a today's-stack portfolio run of all sleeves together (daily compound, max drawdown, worst day, open
       exposure) — the profit target only counts if the book survives it.
 - [ ] **Concentration:** per-pair and per-day share of each sleeve's P&L; blacklist candidates (pair-level beats dimension filters).
+- [ ] **Several FRENZY sleeves on one coin** (Claude): per episode (key = pair + entry_frenzy_spike_at), the count of FRENZY-family
+      entries (e.g. CFX 10-10: WILLY +1.01 · LONG −3.00 · LITE +3.01 · LONG −3.01). Today the per-sleeve cap is frenzy_max_entries_per_pair_day
+      = 3 and FRENZY_REENTRY_AFTER_WIN (DECISION_LOG 261) already observes same-pair re-entries — start from them. Candidate rule, defined
+      AT ENTRY (no look-ahead): refuse the k-th (k ≥ 2) FRENZY-family entry of an episode; state the priority first (WILLY enters first by
+      construction → variants WILLY counts / WILLY exempt). The BLOCKED cohort faces the EXPECTANCY bar per sleeve at 1×: WR below the
+      sleeve's breakeven WR, mean < 0 with ≥ 95 % confidence by an EPISODE / day-clustered bootstrap, ≥ 8 distinct episodes, no episode /
+      pair ≥ 50 % of the loss, N ≥ 15; then the 30–50 % haircut, observe-first if below the bar, a pre-committed revert gate. Cohort
+      completeness: add back the entries the pair-day cap, the LITE once-per-stretch rule, pair-held and the WILLY hold already removed.
+      Two-sided: the freed slots / pairs taken by other setups count. Before → after in the three blocks, with the concurrency run.
 - [ ] **Time / regime splits:** hour-of-day, weekday, BTC regime per sleeve, read in DAY units (window-units rule).
 
 ## 7. Sizing — LAST, after the filters (operator 2026-10-11)

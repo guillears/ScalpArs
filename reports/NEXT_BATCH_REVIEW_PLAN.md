@@ -14,6 +14,18 @@ gate / line of that sleeve), the DECISION_LOG entries for that sleeve (operator 
 the sleeve's study reports in reports/, and the relevant memories (refuted lines, cohort floors, known pitfalls). Write a short
 "what we already know / already tried / refuted" box per sleeve so nothing refuted is re-proposed.
 
+**0a+. FRENZY theory first (operator 2026-10-11) — BEFORE any batch analysis.** For FRENZY_LONG, FRENZY_WIDE, FRENZY_LITE and
+FRENZY_WILLY: what market behaviour each one exploits (who is buying / selling at the entry, why price should continue or revert,
+what the spike / VWAP / normal-hour / red-candle / streak / stretch conditions are meant to capture), from services/frenzy.py,
+the design reports (reports/FRENZY_SLEEVE_DESIGN.md and the LITE / WIDE / WILLY studies) and DECISION_LOG. Then: how the four relate
+— is any one just a small derivative of the core FRENZY_LONG setup (same bars, same pairs, correlated outcomes), measured by signal
+overlap and outcome correlation, not asserted. The theory defines which variables SHOULD separate winners from losers (hypotheses
+first, then data): write each sleeve's predicted separators (variable + expected sign) and FREEZE them before the 0c screen runs;
+data-mined separators the theory did not predict need out-of-sample confirmation before they count. Principle (operator): if a
+sleeve's theory is robust it is NOT disabled — the work is finding its correct entries. "Robust" is judged by evidence (theory-
+predicted separators confirmed out-of-sample), not asserted; a sleeve switch-off still follows the SLEEVE-KILL CHECKLIST
+(sweep_separators.py output cited) — the principle orders the work (entries first), it does not remove the checklist.
+
 **0b. Every Scout line, by sleeve, each with a recommendation.** For every Scout section: what it tests · progress vs its frozen bar ·
 data health (parity, unscored / provisional fills, Unavailable sections) · verdict now · recommendation (keep observing / act / retire /
 fix the line).
@@ -37,9 +49,18 @@ fix the line).
 - **Exit / stop counterfactuals:** read on the live-stopped cohort, split saved vs deeper, fills live did not stop must show Δ = 0,
   two-sided, per era.
 - **One change at a time** per sleeve (clean attribution), each with a pre-committed revert gate.
+- **Winners vs losers = 100 % of the available variables** (operator 2026-10-11): every entry_* / stamped column on the fills (and the
+  decision journal where a fill lacks it), 1D at every granularity, exhaustive 2D, and 3D ONLY for triples pre-registered from the
+  0a+ theory or a 2D near-miss (list and count them BEFORE running; never an exhaustive 3D sweep — ~117 entry columns ≈ 6,800 pairs /
+  ≈ 260,000 triples per granularity). Every screen reports how many tests it ran and uses a max-statistic shuffled-label null over ALL
+  tests run (or BH-FDR), then out-of-sample confirmation on the half not used to find it; survivors are a SCREEN, not a ship list
+  (locked gates + theory + haircut still apply) (memory feedback_exhaustive_2d_screen.md). The UI table
+  "Entry Conditions by Strategy" shows only a subset — never treat it as the full screen. Every screen lists the columns it could NOT
+  score (coverage first).
 
-Order of work: 0a learnings → validate_against_master.py → run Scout on the new export → batch watchlist check (every open gate in
-CLAUDE_CURRENT_STATE + every Scout tracker) → 0b Scout line by line → the analyses below → 0c bug gate on every finding → recommendations.
+Order of work: 0a learnings → 0a+ FRENZY theory (predicted separators frozen) → validate_against_master.py → run Scout on the new
+export → batch watchlist check (every open gate in CLAUDE_CURRENT_STATE + every Scout tracker) → 0b Scout line by line → §1–§6
+analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every finding → recommendations.
 
 ## 1. FRENZY_WILLY
 - Reference numbers below come from the yr5 A 1,067-fill cohort (pre-270 recipe): re-derive them on today's stack, one seed,
@@ -63,9 +84,38 @@ CLAUDE_CURRENT_STATE + every Scout tracker) → 0b Scout line by line → the an
       winners LONG −0.77 · WIDE −0.80 · LITE −1.47.
 
 ## 3. FRENZY entry strategy (all FRENZY sleeves incl. WILLY)
-- [ ] Winners vs losers per sleeve on every stamped entry column (sweep_separators-style, exhaustive 2D + null + OOS rules).
+- [ ] Winners vs losers per sleeve — the §0c 100 %-of-variables screen (1D / 2D / pre-registered 3D, null + OOS).
 - [ ] Every FRENZY watchlist / Scout line: GVOL_SPLIT, HOLD_FRENZY_EXEMPT, FRENZY_REENTRY_AFTER_WIN, FRENZY_STRETCHED, LITE_OFF30H3,
       LITE_GVOL24_LOW, FRENZY_STRONG revert gate (197 — Scout-only, scripts/scout_revert_gates.py, not in CURRENT_STATE), ATR cap 3.0 (250), bearish block (250), GREEN_CLOCK, WILLY_TURNOVER_BLOCKED, WILLY_HOLD.
+
+- [ ] **+DI / −DI** (operator): entry_frenzy_di_spread (+DI − −DI, last CLOSED 5m bar) and entry_frenzy_adx_delta (ADX now − 3 bars
+      earlier) — NOT entry_pos_di / entry_neg_di / entry_adx_delta, which read the forming bar. FRENZY_STRONG is not a column: rebuild
+      it as FRENZY_LONG ∧ adx_delta > 0 ∧ di_spread > 0. DI is already partly used (FRENZY_LONG strong fills at lev 0.5 vs 0.32, revert
+      gate 197 in Scout): check the cell registry first, compare in Avg P&L % at 1× (the strong fills carry other leverage), winners vs
+      losers per sleeve.
+- [ ] **Entry timing — first vs second red candle** (operator). As coded: FRENZY_LONG and FRENZY_LITE do NOT wait — they judge ONE
+      signal bar (FRENZY: the fresh ON bar; LITE: the first signal bar of each above-VWAP stretch) and refuse it if it is green (red =
+      close ≤ open, flat counts as red); a refused setup is never retried (LITE marks the stretch judged). FRENZY_WIDE is the GREEN-candle
+      variant (it takes only FRENZY's green-bar refusals, and with hold_green_streak 12 only when > 12 closes in a row were above VWAP;
+      the ATR-high refusals are blocked). Only FRENZY_WILLY waits: it opens on the first STRICTLY red 5m bar (close < open, flat is not
+      red; the trigger bar counts) within 60 min of the trigger (entry_frenzy_willy_wait_bars stores the wait). Test per sleeve: re-price
+      every fill as if it had entered on the NEXT red (WILLY: second red) bar within a pre-registered max wait (60 min, WILLY's own), same
+      exit. Report three cohorts: kept (entry moved) · skipped (no second red within the wait → removed) · added (setups refused today
+      that would fire under the new rule, e.g. FRENZY / LITE green signal bars followed by a red bar; slots / pair-day cap freed by the
+      skipped ones). The replica must reproduce today's live entry bar and price for the fills (parity) before the counterfactual is
+      trusted; read in DAY units, two-sided, both halves. Prior evidence to beat: entering on a later ON bar is refuted (−0.49 %/trade,
+      FRENZY_STAIRCASE_STUDY_2026-10-06).
+
+## 3b. FRENZY losers → FRENZY SHORT opportunity (after §3 finds a loser signature)
+- [ ] Operator 2026-10-11: if §3 isolates a robust LOSER signature on FRENZY_LONG / WIDE / LITE, test SHORTING that signature with a
+      fixed TP +1 % or +1.2 % net and a −3 % stop (12 h cap). Mandatory guards: (i) the signature is DISCOVERED and frozen on one half
+      (by date) only — the §3 screen for this purpose runs on that half alone; the other half and forward fills are never looked at
+      before the freeze. (ii) The short cohort = EVERY fire that matches the signature (winners and losers of the long, plus setups not
+      taken for slots / caps), not the long's losers. (iii) Null: the same short (same TP / SL / 12 h cap) on all FRENZY-flagged bars
+      without the signature, and on shuffled signatures — the signature must beat the generic pump-fade short. (iv) Breakeven WR: TP +1 /
+      SL −3 ≈ 75 %, TP +1.2 ≈ 71 %, plus fees and the FRENZY live ruler (8 s + ≥ 0.10 % slip); pick ONE TP before the out-of-sample read
+      (two TPs = two tests). (v) Expectancy bar (window-clustered bootstrap, ≥ 8 windows, N ≥ 15) and the 30–50 % haircut; below it =
+      observe-only. Before → after in the three blocks.
 
 ## 4. MOMENTUM LONG — make it profitable
 - [ ] Entry strategy in detail vs CURRENT_STATE + Scout watchlist (ML_B1H_NEGFLANK, NEG_DAILYUP_WEAKPAIR, PAIR_1H_DOWNTREND,
@@ -86,3 +136,22 @@ CLAUDE_CURRENT_STATE + every Scout tracker) → 0b Scout line by line → the an
       exposure) — the profit target only counts if the book survives it.
 - [ ] **Concentration:** per-pair and per-day share of each sleeve's P&L; blacklist candidates (pair-level beats dimension filters).
 - [ ] **Time / regime splits:** hour-of-day, weekday, BTC regime per sleeve, read in DAY units (window-units rule).
+
+## 7. Sizing — LAST, after the filters (operator 2026-10-11)
+Run only after §1–§5 have set the entries / exits, on the FILTERED cohorts, with the §6 concurrency / ruin run as the binding check.
+Sizing is judged on the FILTERED cohort with the 30–50 % in-sample haircut applied to the filters' Δ (the filter and the size-up were
+fitted on the same fills). A size-up is a multiplier: it must pass the Pattern W gate (N ≥ 30, WR ≥ 70 %, Avg P&L % ≥ +0.10 %, Total $
+> 0) and be STAGED (e.g. 0.32 → 0.5 → 1.0, next step after +50 fills), with a pre-committed revert gate. Avg P&L % does not change with
+size — compare $, worst day and max drawdown; the ruin line uses −3 % × full leverage × max concurrent FRENZY slots (2 per sleeve, 7 total)
+at once.
+- [ ] **FRENZY_LONG / WIDE / LITE at 1× invest × 1× leverage, like WILLY** (today: LONG lev 0.32 (strong 0.5), WIDE 0.2, LITE 0.32,
+      invest 1.0; WILLY invest 1.0 × lev 1.0). Before → after $ in the three blocks, worst day / max drawdown with all sleeves together,
+      and the ruin line (a −3 stop at full leverage vs the book). Recommend per sleeve, only where the filtered sleeve has a proven edge.
+- [ ] **MOMENTUM LONG invest down to 1×** (operator: frequency used to need the bigger ticket; FRENZY now supplies volume). ML today:
+      base invest 1.0 (lev 20) · UNMATCHED LONG cell inv 1.5 · BTC RSI×ADX long cells 60-65/28-30 inv 2.0 and 60-65/22-25 inv 2.0 × lev
+      1.5 · long_unmatched_quiet 1.5 (no-op, take-the-max) · caps 2.5 invest / 2.0 lev (re-read trading_config.json at review time). Per
+      cell: its promotion / revert history (cell registry) and its multiplier-cell verdict (★ WORKING / ⚠ DRAG / ✗ HARMFUL on ≥ 5 fresh
+      fires) — a WORKING cell is not cut to 1× without evidence. $ and drawdown before → after, and the freed margin / slots for the other
+      sleeves. Only after §4's filter work; a size cut is never the headline fix for ML's profitability (memory feedback_filters_not_sizing)
+      — it is judged per cell on the freed margin / slots and the concurrency run.
+

@@ -6335,3 +6335,15 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   $2,356 / $9,035 / $10,272; with WILLY 10×, LITE 6× / 8× / 10× = $9,035 / $12,160 / $14,615 (max DD −67 / −72 / −77 %, worst day −25 / −31 /
   −36 %). B19 LITE +$100 → ≈ +$167 at 10×; master B18 LITE +$124 → ≈ +$207. Pattern W cannot pass for LITE (54 % WR) → a LITE step-up is an
   operator override. Frozen bars in CURRENT_STATE; read every batch in three blocks.
+- (277) 2026-10-12 ⚖️ **FRENZY_LITE leverage 6× → 8× (`frenzy_lite_lev_mult` 0.32 → 0.4, invest 1.0) — operator DECLARED OVERRIDE ("do it").**
+  Pattern W (N ≥ 30 ∧ WR ≥ 70 % ∧ avg ≥ +0.10 ∧ Σ > 0) cannot pass for a +3/−3 sleeve at 54 % WR — acknowledged. Evidence: LITE is the only
+  FRENZY sleeve positive in all three blocks (B19 11 · 55 % · +0.27 % · master B18 4 · +1.51 % · year 546 · +0.27 %, H1 +0.32 / H2 +0.22);
+  LITE-alone year book 6× $9,236 (DD −48 %, worst day −21 %) → 8× $10,757 (−59 %, −27 %) → 10× $11,142 (−68 %, −33 %): 8× ≈ the growth optimum;
+  B19 $ +100 → +134; per-trade risk one −3 stop ≈ −5.6 to −6 % of the book (8 × 24.4 % margin × 3, + fees / slip; was ≈ −4.4 % at 6×). 🔒 Tighter-than-standard REVERT to 0.32 (frozen): the first
+  20 LITE fills at 0.4 average < 0, OR any UTC day whose LITE fills lose > 25 % of the book (re-derived pre-deploy, review: at 8× the year's LITE days < −15 % happen 7× / 216 d, < −25 % once — −15 % would fire on an ordinary bad day). Counted from this commit + 10 min.
+  Gate measurement (deep review): LITE fills at 0.4 = entry_strategy FRENZY_LITE ∧ cell_lev_multiplier 0.4 ∧ opened ≥ commit + 10 min
+  (cell_lev_multiplier keeps the intended 0.4 when a bracket / liquidity cap lowers `leverage` — report capped fills separately); the day
+  leg's book = start-of-UTC-day total equity from the balance history (fallback: first LITE fill's investment × 4 / 0.975); ≈ the 5th
+  −3 stop in one day. Not yet a Scout line (an era-0.4 tracker in scout_frenzy_exits is queued for the next scout ship) — read at batch reviews.
+  Master STACK 2026-10-08c → 2026-10-12a (build_master_pool SLEEVE_SIZE_FROZEN lite 0.4): 2 kept LITE rows re-priced (MET / HEMI 10-07,
+  +$226 → +$302); kept total $7,833.87 → $7,909.32; validate_against_master ALL PASS. SCREENED_BASELINE unaffected (no FRENZY rows).

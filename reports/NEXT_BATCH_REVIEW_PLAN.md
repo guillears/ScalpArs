@@ -296,12 +296,12 @@ at once.
       live fills at each leverage in all three blocks ($, worst day, max DD, concurrent stops per day, fills past the 20× liquidation
       distance) and read the frozen bars in CURRENT_STATE (WILLY: ≥ 20 fills under −4; LITE: ≥ 30 fills on ≥ 10 days). Year-book refs:
       WILLY 20× / 10× / 6× $2,356 / $9,035 / $10,272; LITE 6× / 8× / 10× (WILLY 10×) $9,035 / $12,160 / $14,615 (DD −67 / −72 / −77 %); LITE-alone book $9,236 / $10,757 / $11,142 (DD −48 / −59 / −68 %) — 8× ≈ growth optimum; B19 +$100 / +$134 / +$167.
-- [ ] **⚖️ DECIDE AT THIS REVIEW — LITE to 8× leverage, 1× invest (operator 2026-10-12: "save it for next batch review, increase LITE
+- [ ] **⚖️ SHIPPED 2026-10-12 (DECISION_LOG 277) — read its revert gate (first 20 LITE fills at 0.4 avg < 0, or a LITE day < −25 % of the book; judge on the recorded leverage / bracket / liquidity-cap columns — thin pairs can fill below 8×) — LITE to 8× leverage, 1× invest (operator 2026-10-12: "save it for next batch review, increase LITE
       to 8x and 1x inv")** = `frenzy_lite_lev_mult` 0.32 → 0.4 (20× base), `frenzy_lite_invest_mult` stays 1.0. Evidence so far: LITE-alone
       year book 6× $9,236 (DD −48 %) → 8× $10,757 (−59 %) → 10× $11,142 (−68 %) — 8× ≈ the growth optimum; B19 +$100 → +$134; master B18
       +$124 → ≈ +$165. Re-read on the extended batch in all three blocks (LITE avg % still > 0? worst day / concurrent LITE stops at 8×) and
       bring the change to the operator; Pattern W (WR ≥ 70 %) cannot pass for LITE → it ships as a declared operator override with a
-      pre-committed revert gate (e.g. first 20 LITE fills at 8× average < 0 or a LITE day worse than −15 % of the book → back to 6×).
+      pre-committed revert gate (first 20 LITE fills at 8× average < 0 or a LITE day worse than −25 % of the book → back to 6×).
 - [ ] **MOMENTUM LONG invest down to 1×** (operator: frequency used to need the bigger ticket; FRENZY now supplies volume). ML today:
       base invest 1.0 (lev 20) · UNMATCHED LONG cell inv 1.5 · BTC RSI×ADX long cells 60-65/28-30 inv 2.0 and 60-65/22-25 inv 2.0 × lev
       1.5 · long_unmatched_quiet 1.5 (no-op, take-the-max) · caps 2.5 invest / 2.0 lev (re-read trading_config.json at review time). Per

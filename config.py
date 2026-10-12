@@ -1382,6 +1382,12 @@ class SignalThresholds(BaseModel):
     frenzy_lite_lev_mult: float = 0.2            # 20× → 4× (= FRENZY_WIDE): one 3 % stop ≈ 3 % of the account; never the strong-size bump
     #   🪶 Oct-7 (DECISION_LOG 247, operator override at 3 fills): trading_config.json runs 0.32 (= FRENZY_LONG normal, ~6×); the default stays
     #   0.2. Scout splits LITE by size era; review FLAG (never an auto-revert) if the first 10 fills at 0.32 average < 0.
+    #   ⚖️ 2026-10-12 (DECISION_LOG 277, operator DECLARED OVERRIDE — Pattern W (WR ≥ 70 %) cannot pass for a +3/−3 sleeve at 54 % WR):
+    #   trading_config.json 0.32 → 0.4 (~8×), invest stays 1.0. Evidence (B19 review): LITE positive in all three blocks (B19 11 · +0.27 %,
+    #   master B18 4 · +1.51 %, year 546 · +0.27 % both halves); LITE-alone year book 6× $9,236 (DD −48 %) → 8× $10,757 (−59 %) → 10× $11,142
+    #   (−68 %) — 8× ≈ the growth optimum; B19 +$100 → +$134. 🔒 REVERT to 0.32: the first 20 LITE fills at 0.4 average < 0, OR any UTC day
+    #   whose LITE fills lose more than 25 % of the book (re-derived before deploy: at 8× the year's LITE
+    #   days < −15 % happen 7× in 216 days, < −25 % once).
     frenzy_lite_max_slots: int = 2               # max FRENZY_LITE open at once (they also count against max open positions)
     frenzy_lite_max_hours: float = 16.75         # episode age window end (h after the spike) — the study's "first ~17 h" (≤ frenzy_min_hours → 16.75 used)
     frenzy_lite_min_above_closes: int = 12       # (≤ 0 → 12 used) consecutive 5m closes at / above the spike VWAP (the study's 12 = FRENZY's hour; 6 vs 12 under study)

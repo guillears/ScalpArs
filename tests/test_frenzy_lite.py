@@ -476,7 +476,7 @@ def test_frenzy_open_lite_path(monkeypatch):
 
 # ── wiring / every surface ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-FIELDS = {"frenzy_lite_enabled": True, "frenzy_lite_invest_mult": 1.0, "frenzy_lite_lev_mult": 0.32, "frenzy_lite_max_slots": 2,   # 0.32: DECISION_LOG 247
+FIELDS = {"frenzy_lite_enabled": True, "frenzy_lite_invest_mult": 1.0, "frenzy_lite_lev_mult": 0.4, "frenzy_lite_max_slots": 2,   # 0.4: DECISION_LOG 277 (0.32: 247)
           "frenzy_lite_max_hours": 16.75, "frenzy_lite_min_above_closes": 12}
 
 

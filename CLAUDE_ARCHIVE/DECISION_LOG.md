@@ -6277,3 +6277,23 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   Half of LONG losers reaching +1 first is normal (47 % in the backtest); only 3 of 9 going +1 → +3 vs 67 % is the bad run. scripts/
   scout_frenzy_willy_exit.py STUDY_REF + the CURRENT_STATE line corrected. Rule kept for every future reference: quote backtest numbers on
   TODAY's stack (gate state, bearish block, eligibility, slots), per seed, de-duplicated.
+- (271) 2026-10-12 🛡 **Paper = live stops + per-order exchange backstop (operator: "whatever we set in configurations should be both live and paper").**
+  Bug (mine, DL 251 design): `_rh_backstop_floor(is_paper)` returned None in paper but −(broker_backstop_pct − 0.3) = −2.2 % net live; the
+  FRENZY / WIDE / LITE / WILLY exits passed it as `stop_floor`, so live would cut FRENZY −3 → −2.2 and give WILLY ("no stop") a −2.2 stop
+  that paper never simulated. B19 WILLY: paper +$1,063 vs −$226 under the live floor; yr5 reachable cohort +0.039 vs −0.054 %/fill. Interim
+  idea (global backstop 4.3) rejected: 96 % of liquidation at 20× and it moved every sleeve's exchange stop. SHIPPED: ① FRENZY / WILLY exits
+  pass no floor — each sleeve's own stop runs in both modes; ② `trading_config.json` frenzy_willy_stop_pct 0 → 4.0 (reachable yr5 532 fills:
+  −4 beats real-money no-stop +0.076 %/fill, P 0.995, both halves, every leave-one-month-out; B19 under −4 +$659) — code default stays 0
+  (json wins); ③ `order_backstop_pct` is per order for bot trades too (new `bot_own_stop_pct`: FRENZY → frenzy_stop_pct, WILLY →
+  frenzy_willy_stop_pct): own + 0.5, ≥ base 2.5, ≤ 0.92 × liquidation distance → FRENZY 3.5 %, WILLY 4.14 % at 20×; other sleeves 2.5 %
+  unchanged; used at open and by the re-place / sweep; ④ `_rh_backstop_floor` and `manual_backstop_stop_floor` are mode-agnostic (recovery
+  hold now floors at −2.2 in paper too; manual stop-edit validation applies in paper); ⑤ scouts (willy_timecap / willy_hold) price own stops,
+  no floor; UI / payload / docstrings say "same stop in paper and live". broker_backstop_pct stays 2.5. Open (operator): WILLY 10× vs 20×
+  (10× best book under every cap; −4 at 20× ≈ −19.5 % of the book per stop), maintenance-margin cache + isolated margin before live (pinned
+  go-live check in CURRENT_STATE). Revert gate: none on the parity part (a bug fix); the −4 WILLY stop rides the WILLY_STOP frozen bar
+  (revert to no stop only if mean Δ < 0 at N ≥ 20 — and then only with a live-equal no-stop design).
+  Dual review (caveman + deep, both "ship with fixes"), applied: manual-open backstop-gap refusal now runs in paper too (was live-only →
+  paper accepted trades live refuses); config.py default frenzy_willy_stop_pct 0 → 4.0 + UI default/labels (0 shows "⚠ no bot stop");
+  stale comments; tests (bull-run leverage-floor boundary with backstop off, manual-sleeve floor cases, per-order distances). Deferred to the
+  go-live check (live-only, latent in paper): WILLY 20× gap 0.23 % < 0.3 rule (choose 18× / 10× or stop ≤ 3.8); persist the placed
+  backstop % per order (pre-deploy rows keep 2.5). Rejected: re-adding a mode-agnostic floor (would silently run WILLY at −3.84).

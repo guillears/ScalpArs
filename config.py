@@ -556,6 +556,10 @@ class SignalThresholds(BaseModel):
     # Paper mode: fully dormant. Arm ONLY at go-live, after the testnet contract test passes.
     broker_backstop_enabled: bool = False
     broker_backstop_pct: float = 2.5   # trigger distance (% of entry px) ≈ caps bot-dead tail at ~50% of one slot's margin at 20x
+    # 🛡 2026-10-12 (DECISION_LOG 271, operator): paper = live. The bot-side −2.2 % floor no longer touches FRENZY / WILLY exits (it was
+    # live-only: WILLY's paper "no stop" was a hidden −2.2 % stop live and FRENZY's −3 became −2.2). Each sleeve's OWN stop applies in
+    # both modes; the exchange safety stop rests per order just beyond it (order_backstop_pct: own stop + 0.5 %, ≥ this value, ≤ 92 % of
+    # the liquidation distance at the order's leverage), so it fires only when the bot cannot act.
     # ⭐ OPTION-D 3-layer exit for SPIKE_CHASE longs (replaces the normal long exit stack):
     # L1 fixed SL (MIRA-1 wicked -0.71 pre +17.4; SWARMS breathed -0.75 pre +0.91 — two
     # documented winner-breaths through -0.70; dud premium ~0.5pp/fire accepted).
@@ -1390,7 +1394,7 @@ class SignalThresholds(BaseModel):
     # list (coin-only, ≥ 90 d, non-Alpha, blacklists); refused while the pair holds ANY open position (FRENZY_WILLY_PAIR_HELD), own slots
     # (FRENZY_WILLY_MAX_SLOTS), FRENZY's dislocation (FRENZY_WILLY_DISLOC) and lateness (FRENZY_WILLY_LATE) guards. Own exit
     # (services.frenzy.frenzy_willy_exit_for): fixed TP +1 % net (FRENZY_TP; operator Oct-8 change from the specified +2; a missed +1 peak closed
-    # at a loss = FRENZY_TP_LATE) · NO STOP LOSS (operator Oct-8; paper: none at all; live: the resting exchange backstop is kept and the
+    # at a loss = FRENZY_TP_LATE) · NO STOP LOSS (operator Oct-8 — superseded by DECISION_LOG 271: −4 in paper and live; then: paper none at all; live: the resting exchange backstop is kept and the
     # software line sits just inside it) · 120-min time cap (MAX_HOLD_TIME; operator Oct-8 change from 60). 🔒 GLOBAL HOLD (operator Oct-8):
     # while ANY FRENZY_WILLY is open NO other automated trade opens — every sleeve, pair, direction, other WILLY entries included (one choke
     # point: TradingEngine._willy_hold_block in open_position, + _frenzy_open so FRENZY / WIDE / LITE / WILLY name it); MANUAL opens are never
@@ -1412,7 +1416,10 @@ class SignalThresholds(BaseModel):
     frenzy_willy_invest_mult: float = 1.0         # absolute-assign (never the strong bump)
     frenzy_willy_lev_mult: float = 1.0            # 1.0 = 20× at the 20× base (the pair's exchange leverage brackets still cap it)
     frenzy_willy_tp_pct: float = 1.0              # fixed take profit, net % (≤ 0 / blank → 1.0 used — the exit is the sleeve's definition)
-    frenzy_willy_stop_pct: float = 0.0            # stop, % — 0 / blank = NO STOP (operator Oct-8); > 0 re-arms a stop at −that
+    frenzy_willy_stop_pct: float = 4.0            # stop, % (DECISION_LOG 271: −4, same in paper and live) — 0 = no bot stop (NOT paper = live: live keeps the exchange backstop)
+    # 🛡 2026-10-12 (DECISION_LOG 271, operator): trading_config.json 0 → 4.0. Paper "no stop" was a hidden −2.2 % stop live; the B19
+    # review (reachable yr5 532 fills): −4 beats real-money no-stop (liquidation at 20×) by +0.076 %/fill (P 0.995), both halves, every
+    # leave-one-month-out; B19 14 fills +$659 (only BAT stops). Same stop in paper and live.
     frenzy_willy_max_hold_minutes: int = 120      # time cap (< 1 / blank → 120 used; never the global hold) — NOT a stop
     frenzy_willy_max_slots: int = 1               # max FRENZY_WILLY open at once — 1 (the global hold makes it 1 anyway)
     # 🟥 Oct-8 (operator): A / B no longer open on the trigger bar — the trigger ARMS a pending entry that opens on the FIRST closed RED 5m bar

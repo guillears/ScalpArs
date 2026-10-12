@@ -244,7 +244,11 @@ def test_momentum_mode_refuses_only_what_the_ema13_exit_would_close_at_once(monk
         # leverage: the stack's widest stop (signal_active_sl) must sit inside the floor
         _sb = T.config.trading_config.confidence_levels.get("STRONG_BUY"); _widest = min(_sb.stop_loss, _sb.signal_active_sl)
         _hi = next(l for l in range(20, 126) if T.manual_floor_for_leverage(th, l) > _widest)             # first leverage whose floor is tighter than the stop
+        monkeypatch.setattr(th, "broker_backstop_enabled", False)                                          # the leverage-floor boundary alone
         assert "momentum stack's stop" in attempt("LONG", 266.0, leverage=_hi) and attempt("LONG", 266.0, leverage=_hi - 1) == "ACCEPTED"
+        monkeypatch.setattr(th, "broker_backstop_enabled", True)                                           # 271: paper refuses what live refuses
+        assert "too close to this trade's own stop" in attempt("LONG", 266.0, leverage=_hi - 1)
+        monkeypatch.setattr(th, "broker_backstop_enabled", False)                                          # the floor cases below, backstop off (monkeypatch restores it)
         captured.clear(); assert attempt("LONG", 266.0, leverage=50, exit_mode="FLOOR") == "ACCEPTED"
         assert captured[-1].pattern_fixed_sl_pct == T.manual_floor_for_leverage(th, 50) == -1.2 and captured[-1].pattern_fixed_tp_pct is None
         captured.clear(); assert attempt("LONG", 266.0, leverage=20, exit_mode="FLOOR", tp_pct=8) == "ACCEPTED"   # FLOOR + optional TP

@@ -61,7 +61,7 @@ def test_levels_defaults():
 
 def test_exit_matches_the_json():
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert frenzy_willy_levels(NS(**cfg)) == (1.0, None, 120) and frenzy_willy_wait_ms(NS(**cfg)) == 3_600_000
+    assert frenzy_willy_levels(NS(**cfg)) == (1.0, -4.0, 120) and frenzy_willy_wait_ms(NS(**cfg)) == 3_600_000
 
 
 def test_red_candle_rule():
@@ -817,7 +817,7 @@ def test_frenzy_open_willy_path(monkeypatch):
     k = o[0]
     assert k["frenzy_willy"] is True and k["entry_frenzy_willy_trigger"] == "A" and k["entry_frenzy_willy_wait_bars"] == 2 and k["frenzy_long"] is False
     assert k["frenzy_wide"] is False and k["frenzy_lite"] is False and k["frenzy_strong"] is False and k["entry_frenzy_gvol"] == 5.0
-    assert k["entry_atr_pct"] == 6.0 and k["entry_frenzy_stop_atr"] is None                       # no stop → no stop/ATR stamp
+    assert k["entry_atr_pct"] == 6.0 and k["entry_frenzy_stop_atr"] == round(4.0 / 6.0, 3)       # DECISION_LOG 271: the −4 stop / ATR stamp
     b, o, r, f = asyncio.run(run([("FOOUSDT", "MOMENTUM", "OPEN", bar_dt - dt.timedelta(minutes=30))]))
     assert b == ["FRENZY_WILLY_PAIR_HELD"] and o == [] and f["_willy_pair_held"] is True and "refused: the pair already has an open position" in f["willy_last"]
     b, o, _, _ = asyncio.run(run([("A", "FRENZY_WILLY", "OPEN", bar_dt - dt.timedelta(minutes=5))]))
@@ -882,7 +882,7 @@ def test_sizing_1x_1_0():
 # ── config / UI / exports (D11 · D12) ──────────────────────────────────────────────────────────────────────────────────────────────
 
 FIELDS = {"frenzy_willy_enabled": True, "frenzy_willy_entry_a": True, "frenzy_willy_entry_b": False, "frenzy_willy_invest_mult": 1.0,
-          "frenzy_willy_lev_mult": 1.0, "frenzy_willy_tp_pct": 1.0, "frenzy_willy_stop_pct": 0.0, "frenzy_willy_max_hold_minutes": 120,
+          "frenzy_willy_lev_mult": 1.0, "frenzy_willy_tp_pct": 1.0, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_max_hold_minutes": 120,
           "frenzy_willy_max_slots": 1, "frenzy_willy_red_max_wait_minutes": 60, "frenzy_willy_a_cold_max_bars": 3}
 
 
@@ -890,7 +890,7 @@ def test_config_d11():
     import config as C
     mf = C.SignalThresholds.model_fields
     assert mf["frenzy_willy_enabled"].default is False
-    assert mf["frenzy_willy_tp_pct"].default == 1.0 and mf["frenzy_willy_stop_pct"].default == 0.0 and mf["frenzy_willy_max_hold_minutes"].default == 120
+    assert mf["frenzy_willy_tp_pct"].default == 1.0 and mf["frenzy_willy_stop_pct"].default == 4.0 and mf["frenzy_willy_max_hold_minutes"].default == 120
     assert mf["frenzy_willy_max_slots"].default == 1 and mf["frenzy_willy_red_max_wait_minutes"].default == 60
     assert mf["frenzy_willy_a_cold_max_bars"].default == 3 and "GTCUSDT 2026-10-08" in open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     assert mf["frenzy_willy_entry_a"].default is True and mf["frenzy_willy_entry_b"].default is True
@@ -910,7 +910,7 @@ def test_ui_inputs_load_save_and_both_exports():
                 "config-fz-willy-a-cold"):
         assert html.count(f'id="{_id}"') == 1, _id
     for row in ("['config-fz-willy-invest-mult', 'frenzy_willy_invest_mult', 1.0]", "['config-fz-willy-lev-mult', 'frenzy_willy_lev_mult', 1.0]",
-                "['config-fz-willy-tp', 'frenzy_willy_tp_pct', 1.0]", "['config-fz-willy-stop', 'frenzy_willy_stop_pct', 0]",
+                "['config-fz-willy-tp', 'frenzy_willy_tp_pct', 1.0]", "['config-fz-willy-stop', 'frenzy_willy_stop_pct', 4.0]",
                 "['config-fz-willy-max-hold', 'frenzy_willy_max_hold_minutes', 120]", "['config-fz-willy-slots', 'frenzy_willy_max_slots', 1]",
                 "['config-fz-willy-red-wait', 'frenzy_willy_red_max_wait_minutes', 60]", "['config-fz-willy-a-cold', 'frenzy_willy_a_cold_max_bars', 3]"):
         assert html.count(row) == 1, row
@@ -923,7 +923,7 @@ def test_ui_inputs_load_save_and_both_exports():
     assert html.count('data-ss="fzy"') == 1 and "S.fzy = {" in html
     assert "WILLY ${_bt.frenzy_willy_enabled === true ? 'ON' : 'OFF'}" in html
     assert "enters on the first red 5m candle ≤ ${_bt.frenzy_willy_red_max_wait_minutes ?? 60} min after the trigger" in html
-    assert "TP +${_bt.frenzy_willy_tp_pct ?? 1} / ${(_bt.frenzy_willy_stop_pct ?? 0) > 0 ? 'SL −' + _bt.frenzy_willy_stop_pct : 'no SL'} / ${_bt.frenzy_willy_max_hold_minutes ?? 120} min" in html
+    assert "TP +${_bt.frenzy_willy_tp_pct ?? 1} / ${(_bt.frenzy_willy_stop_pct ?? 4) > 0 ? 'SL −' + _bt.frenzy_willy_stop_pct : 'no SL'} / ${_bt.frenzy_willy_max_hold_minutes ?? 120} min" in html
     assert "global hold (no other automated open while a WILLY is open; manual exempt) · declared exception" in html
     assert html.count("lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));") == 2
     assert "WILLY ${m.willy_enabled ? 'ON' : 'OFF'}" in html and "first red candle ≤ ${m.willy_red_wait ?? '-'} min" in html and "waiting red · expires ' + frenzyWillyClock(x.exp_ms)" in html
@@ -946,7 +946,7 @@ def test_api_payload_and_sleeve_rows(monkeypatch):
     assert "Frenzy-Willy" in names
     monkeypatch.setattr(M.trading_engine, "_fz_willy_pending", {"FOOUSDT": dict(trig="A", spike=1, armed=2, exp=3, why="", blocked=False)}, raising=False)
     m = M._frenzy_monitor_payload()
-    assert m["willy_tp"] == 1.0 and m["willy_stop"] is None and m["willy_max_hold"] == 120 and m["willy_max_slots"] == 1 and m["willy_red_wait"] == 60
+    assert m["willy_tp"] == 1.0 and m["willy_stop"] == 4.0 and m["willy_max_hold"] == 120 and m["willy_max_slots"] == 1 and m["willy_red_wait"] == 60
     assert m["willy_pending"] == [dict(pair="FOOUSDT", trig="A", armed_ms=2, exp_ms=3, blocked=False)]
     v = M._frenzy_flag_view(dict(pair="X", spike_ts=LAST, willy_last="w", willy_pending=dict(trig="B", armed_ms=1, exp_ms=2)))
     assert v["willy_last"] == "w" and v["willy_pending"]["trig"] == "B"
@@ -988,7 +988,7 @@ def test_scouts_know_willy():
     import scout_willy_hold as WH
     assert RG.DEPLOYS["FRENZY_WILLY"][0] == "grep:(DECISION_LOG 251)"
     assert S._wait_bucket(0) == "0 (red trigger bar)" and S._hours_bucket(2.0) == "1–3 h"
-    assert WH.exit_rule("FRENZY_WILLY") == (1.0, None, 120)
+    assert WH.exit_rule("FRENZY_WILLY") == (1.0, -4.0, 120)   # DECISION_LOG 271: WILLY's own stop frenzy_willy_stop_pct 4.0, paper = live
     src = open(os.path.join(ROOT, "scripts", "scout_stop_slip.py"), encoding="utf-8").read()
     assert 'if es == "FRENZY_WILLY":' in src and "FRENZY_TP / FRENZY_TP_LATE" in src
 
@@ -1256,7 +1256,7 @@ def test_willy_events_not_filter_blocks_and_ui_notes():
     dj = open(os.path.join(ROOT, "services", "decision_journal.py"), encoding="utf-8").read()
     assert "elif ev in ('OPEN', 'ADMIT', 'EXPIRED', 'WILLY'):" in dj
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
-    assert "paper: no stop · live: exchange backstop ≈ −${" in html and "paper: no stop · live: ${m.willy_backstop_live != null" in html
+    assert html.count("'same stop in paper and live' : '⚠ no bot stop (live = exchange backstop only)'") == 2 and "paper: no stop" not in html and "paper: none at all" not in html   # DECISION_LOG 271: one stop in both modes
     assert "${(_bt.frenzy_willy_max_vol_mcap_ratio ?? 0) > 0 ? 'turnover < ' + _bt.frenzy_willy_max_vol_mcap_ratio + '× mcap (unknown mcap = no entry)' : 'turnover filter OFF'}" in html
     assert html.count('id="config-fz-willy-turnover"') == 1 and html.count("['config-fz-willy-turnover', 'frenzy_willy_max_vol_mcap_ratio', 0]") == 1
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()

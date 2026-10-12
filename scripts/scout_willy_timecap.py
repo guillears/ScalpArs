@@ -115,7 +115,8 @@ def levels(th=None):
         except (TypeError, ValueError):
             return d
     tp, st, mh = _f("frenzy_willy_tp_pct", 1.0), abs(_f("frenzy_willy_stop_pct", 0.0)), _f("frenzy_willy_max_hold_minutes", 120)
-    return (tp if tp > 0 else 1.0), (st if st > 0 else None), (int(round(mh)) if mh >= 1 else 120)
+    st = st if st > 0 else None                                      # DECISION_LOG 271: WILLY's own stop, no hidden floor, paper = live
+    return (tp if tp > 0 else 1.0), st, (int(round(mh)) if mh >= 1 else 120)
 
 
 def net_pct(p, e):

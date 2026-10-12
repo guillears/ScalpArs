@@ -15,7 +15,15 @@ def test_safety_stop_distance_per_order():
     import services.trading_engine as T
     class TH: broker_backstop_pct = 2.5; frenzy_stop_pct = 3.0; broker_backstop_enabled = True
     f = T.order_backstop_pct
-    assert f(TH, "MOMENTUM", None, None, 20) == 2.5 and f(TH, None, None, None, None) == 2.5 and f(TH, "FRENZY_LONG", "FRENZY", -3.0, 20) == 2.5   # every bot trade
+    assert f(TH, "MOMENTUM", None, None, 20) == 2.5 and f(TH, None, None, None, None) == 2.5 and f(TH, "MOMENTUM", "FRENZY", -3.0, 20) == 2.5   # bot trades without an own stop
+    # 271: per order — FRENZY / WILLY rest just beyond their own stop (+0.5), ≥ base, ≤ 92 % of liquidation
+    class W(TH): frenzy_willy_stop_pct = 4.0
+    assert f(TH, "FRENZY_LONG", None, None, 20) == 3.5 and f(TH, "FRENZY_WIDE", None, None, 20) == 3.5 and f(TH, "FRENZY_LITE", None, None, 20) == 3.5
+    assert f(W, "FRENZY_WILLY", None, None, 20) == round(T.manual_liquidation_distance_pct(20) * 0.92, 4) == 4.14   # 4.5 capped inside liquidation
+    assert f(W, "FRENZY_WILLY", None, None, 10) == 4.5 and f(TH, "FRENZY_WILLY", None, None, 20) == 2.5             # no WILLY stop → base
+    assert T.bot_own_stop_pct(TH, "FRENZY_LONG") == 3.0 and T.bot_own_stop_pct(W, "FRENZY_WILLY") == 4.0 and T.bot_own_stop_pct(TH, "MOMENTUM") is None
+    class Bad(TH): frenzy_stop_pct = "x"
+    assert T.bot_own_stop_pct(Bad, "FRENZY_LONG") is None and f(Bad, "FRENZY_LONG", None, None, 20) == 2.5        # bad config → base
     assert f(TH, "MANUAL", "FIXED", -1.5, 20) == 2.5                     # own stop 1.5 + 0.5 < the bot's distance → unchanged
     assert f(TH, "MANUAL", "FLOOR", -3.0, 20) == 3.5 and f(TH, "MANUAL", "FRENZY", None, 20) == 3.5   # beyond the 3 % stop, inside liquidation (4.5)
     assert f(TH, "MANUAL", "MOMENTUM", None, 20) == 2.5
@@ -24,7 +32,7 @@ def test_safety_stop_distance_per_order():
     assert f(TH, "MANUAL", "MOMENTUM", None, 50) < 2.5                   # the bot's 2.5 % is past liquidation at 50× → pulled inside it
     assert f(TH, "MANUAL", "FLOOR", "x", "y") == 2.5                     # bad input → the bot's distance
     g = T.manual_backstop_stop_floor
-    assert g(True, TH, "FRENZY", None, 20) is None and abs(g(False, TH, "FRENZY", None, 20) - (-3.2)) < 1e-9
+    assert abs(g(True, TH, "FRENZY", None, 20) - (-3.2)) < 1e-9 and abs(g(False, TH, "FRENZY", None, 20) - (-3.2)) < 1e-9   # 271: paper = live
     class Off(TH): broker_backstop_enabled = False
     assert g(False, Off, "FRENZY", None, 20) is None
 
@@ -200,7 +208,7 @@ def test_wiring_of_the_review_fixes():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert "except BaseException as _book_err:" in eng and "asyncio.shield(_flatten())" in eng and "status=_sent" in eng
     assert "else:   # FIXED / FLOOR: the operator's SL / TP stored on the row" in eng      # the candle-path backup covers every manual exit mode
-    assert eng.count("order_backstop_pct(config.trading_config.thresholds, ") == 2          # the re-place after a failed close + the sweep
+    assert eng.count("order_backstop_pct(config.trading_config.thresholds, ") == 3          # the open (271: per order) + the re-place after a failed close + the sweep
     bs = open(os.path.join(ROOT, "services", "binance_service.py"), encoding="utf-8").read()
     assert "status['sent'] = True" in bs and "'filled': float(order.get('filled') or 0)" in bs
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()

@@ -49,7 +49,9 @@ def test_leverage_floor_clamps_the_stop():
     fl = T.manual_floor_for_leverage(TH, 75)
     assert -1.2 < fl < -0.5
     assert F(fl - 0.01, 0.0, 2.0, TH, leverage=75)[:3] == (True, "MANUAL_SL", fl)  # the −1.2 stop would sit past the floor → the floor fires
-    assert F(fl + 0.01, 0.0, 2.0, TH, leverage=75)[0] is False
+    assert F(fl + 0.01, 0.0, 2.0, TH, leverage=75)[0] == F(fl + 0.01, 0.0, 2.0, TH, leverage=75, is_paper=False)[0]   # 271: paper = live
+    _Off = TH.model_copy(update={"broker_backstop_enabled": False})
+    assert F(fl + 0.01, 0.0, 2.0, _Off, leverage=75)[0] is False and F(fl - 0.01, 0.0, 2.0, _Off, leverage=75)[:2] == (True, "MANUAL_SL")   # the leverage-floor boundary itself
     assert F("x", 0.0, 2.0, TH, leverage=20)[1] == "MANUAL_SL"                     # never raises
 
 

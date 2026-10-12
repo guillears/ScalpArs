@@ -41,11 +41,12 @@ def _strip_reason_prefixes(reason):
     return _rh_strip(r)   # FL_RH_x (FL_ is added after RH_ in the close path) → x
 
 
-def _rh_backstop_floor(is_paper):
-    """🩹 The deepest hard stop a recovery hold may run to: just inside the resting exchange backstop (live only), so the hold's own
-    stop always fires first. None = no limit (paper, or backstop off)."""
+def _rh_backstop_floor(is_paper=None):
+    """🩹 The deepest hard stop a recovery hold may run to: just inside the resting exchange backstop, so the hold's own stop always
+    fires first (FRENZY / WILLY no longer use it — they run their own stop with a per-order backstop beyond it, DECISION_LOG 271). SAME IN PAPER AND LIVE (2026-10-12, DECISION_LOG 271, operator: "whatever we set in
+    configurations should be both live and paper") — is_paper is ignored (kept for the callers' signature). None = backstop off."""
     th = config.trading_config.thresholds
-    if is_paper or not bool(getattr(th, 'broker_backstop_enabled', False)):
+    if not bool(getattr(th, 'broker_backstop_enabled', False)):
         return None
     return -(float(getattr(th, 'broker_backstop_pct', 2.5) or 2.5) - 0.3)
 
@@ -510,9 +511,26 @@ def manual_own_stop_pct(th, exit_mode, fixed_sl_pct):
     return None
 
 
+def bot_own_stop_pct(th, entry_strategy):
+    """🛡 (DECISION_LOG 271) the loss stop a BOT order carries by itself, positive % — None = the sleeve's stops all sit inside
+    broker_backstop_pct (momentum, fades, flips, …). FRENZY_LONG / WIDE / LITE → frenzy_stop_pct (0 / missing = 3, as the exit
+    reads it) · FRENZY_WILLY → frenzy_willy_stop_pct (None when 0 = no stop)."""
+    try:
+        es = entry_strategy or ""
+        if es in ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE"):
+            return abs(float(getattr(th, 'frenzy_stop_pct', 3.0) or 3.0)) or 3.0
+        if es == "FRENZY_WILLY":
+            v = abs(float(getattr(th, 'frenzy_willy_stop_pct', 0.0) or 0.0))
+            return v if v > 0 else None
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
 def order_backstop_pct(th, entry_strategy, manual_exit_mode=None, fixed_sl_pct=None, leverage=None) -> float:
-    """🛡 Distance (price %, positive) of the resting exchange safety stop for an order. Every bot trade: broker_backstop_pct.
-    A MANUAL trade (live, Oct-2): its stops may be wider than that (Floor / Frenzy −3 %), so the safety stop moves to its own stop
+    """🛡 Distance (price %, positive) of the resting exchange safety stop for an order. A bot trade whose own stop sits inside
+    broker_backstop_pct (momentum, fades, flips …): broker_backstop_pct. FRENZY / WIDE / LITE / WILLY (DECISION_LOG 271) and a MANUAL
+    trade (live, Oct-2): their stops may be wider than that (Floor / Frenzy −3 % / WILLY −4 %), so the safety stop moves to its own stop
     + MANUAL_BACKSTOP_MARGIN_PCT, never beyond MANUAL_BACKSTOP_LIQ_SHARE of the liquidation distance at its leverage (a safety stop
     past liquidation never fires). Pure; any bad input → the bot's distance. One function for the open, the re-place after a failed
     close and the per-scan sweep, so the three can never disagree."""
@@ -520,24 +538,30 @@ def order_backstop_pct(th, entry_strategy, manual_exit_mode=None, fixed_sl_pct=N
         base = float(getattr(th, 'broker_backstop_pct', 2.5) or 2.5)
     except (TypeError, ValueError):
         base = 2.5
-    if (entry_strategy or "") != "MANUAL":
+    try:
+        # 🛡 (DECISION_LOG 271) every order — bot and MANUAL — rests its safety stop just BEYOND its own stop (+ margin), never under
+        # broker_backstop_pct and never past MANUAL_BACKSTOP_LIQ_SHARE of the liquidation distance, so the exchange stop only fires
+        # when the bot cannot act and paper (no exchange stop) behaves like live
+        own = (manual_own_stop_pct(th, manual_exit_mode, fixed_sl_pct) if (entry_strategy or "") == "MANUAL"
+               else bot_own_stop_pct(th, entry_strategy))
+        want = base if own is None else max(base, own + MANUAL_BACKSTOP_MARGIN_PCT)
+    except (TypeError, ValueError):
         return base
     try:
-        own = manual_own_stop_pct(th, manual_exit_mode, fixed_sl_pct)
-        want = base if own is None else max(base, own + MANUAL_BACKSTOP_MARGIN_PCT)
         lev = float(leverage)
         if lev >= 1.0:
             cap = manual_liquidation_distance_pct(lev) * MANUAL_BACKSTOP_LIQ_SHARE
             if cap > 0:
                 want = min(want, cap)
-        return round(want, 4)
     except (TypeError, ValueError):
-        return base
+        pass                                                         # unknown leverage → no liquidation cap (the own-stop distance stands)
+    return round(want, 4)
 
 
 def manual_backstop_stop_floor(is_paper, th, exit_mode, fixed_sl_pct, leverage):
-    """The deepest stop a MANUAL trade's own exit may use in LIVE: just inside ITS resting exchange safety stop. None in paper / backstop off."""
-    if is_paper or not bool(getattr(th, 'broker_backstop_enabled', False)):
+    """The deepest stop a MANUAL trade's own exit may use: just inside ITS resting exchange safety stop — paper and live alike (DECISION_LOG
+    271; is_paper ignored). None = backstop off."""
+    if not bool(getattr(th, 'broker_backstop_enabled', False)):
         return None
     return -(order_backstop_pct(th, "MANUAL", exit_mode, fixed_sl_pct, leverage) - MANUAL_BACKSTOP_MIN_GAP_PCT)
 
@@ -547,7 +571,7 @@ def manual_bullrun_exit_for(pnl, peak_pnl, entry_atr_pct, th, leverage=None, is_
     stop = bullrun_base_sl_pct widened by sl_atr_multiplier × entry ATR up to sl_atr_widen_floor_pct · at peak ≥ bullrun_be_arm_pct the
     floor moves to bullrun_be_lock_pct · trail = peak − bullrun_trail_atr_mult × entry ATR · the bullrun_ladder rungs lock profit (the
     highest floor wins). pnl / peak = net-of-fees % in the trade's direction (LONG and SHORT alike). The stop is never wider than the
-    leverage floor (manual_floor_for_leverage) nor, in live, past the trade's own exchange safety stop. → (close, reason, line);
+    leverage floor (manual_floor_for_leverage) nor past the trade's own exchange safety stop (paper = live, DECISION_LOG 271). → (close, reason, line);
     reasons MANUAL_SL (the stop) / MANUAL_TRAIL (break-even lock, trail or ladder floor). Never raises: on error the plain floor check.
     custom_sl (BULLRUN_SL mode, operator 2026-10-03): the operator's own stop (negative %) replaces the Bull-Run stop until the break-even
     arms; from the arm on, the Bull-Run profit side runs unchanged."""
@@ -11209,13 +11233,13 @@ class TradingEngine:
         # Create order record
         # Aug-11 🛡 BROKER BACKSTOP (live only): resting exchange-side STOP_MARKET via the
         # Algo Order API — dead-man's brake for deploy/crash/WS-starve/ban windows. WIDE by
-        # design (broker_backstop_pct from the ACTUAL fill px) so it never races the software
+        # design (per order since 271: broker_backstop_pct, FRENZY / WILLY own stop + 0.5, from the ACTUAL fill px) so it never races the software
         # stops; fires only when the bot cannot act. Failure = position still opens on
         # software stops, but counted + CRITICAL (never silent — the flip-bug lesson).
         if (not self.is_paper_mode and actual_price and actual_price > 0
                 and bool(getattr(config.trading_config.thresholds, 'broker_backstop_enabled', False))):
             try:
-                _bk_pct = float(getattr(config.trading_config.thresholds, 'broker_backstop_pct', 2.5) or 2.5)
+                _bk_pct = order_backstop_pct(config.trading_config.thresholds, (_fz_es if _frenzy else None), None, None, leverage)   # 271: per order
                 _bk_trigger = actual_price * (1 - _bk_pct / 100.0) if direction == "LONG" else actual_price * (1 + _bk_pct / 100.0)
                 _bk_algo_id = await binance_service.place_backstop_stop(pair, direction, _bk_trigger)
                 if _bk_algo_id:
@@ -11781,7 +11805,7 @@ class TradingEngine:
             tp = abs(float(tp_pct))
             if not (math.isfinite(tp) and tp > 0):
                 raise ValueError("take profit must be > 0")
-        if _live:   # the exchange safety stop must sit BEYOND the trade's own stop, or the exchange closes it first
+        if bool(getattr(th, 'broker_backstop_enabled', False)):   # the exchange safety stop must sit BEYOND the trade's own stop, or the exchange closes it first — 271: paper refuses what live refuses
             _bkp = order_backstop_pct(th, "MANUAL", exit_mode, sl, leverage)
             _own = manual_own_stop_pct(th, exit_mode, sl)
             if exit_mode == "MOMENTUM":   # the stack's widest stop (ATR-widened stop / flagged-trade backstop)
@@ -12177,7 +12201,7 @@ class TradingEngine:
                 raise ValueError(f"the trade is at {pnl_now:+.2f}% now — a stop at {sl:+.2f}% would close it at once. Use Close now, or a lower stop")
             if tp is not None and tp <= pnl_now:
                 raise ValueError(f"the trade is at {pnl_now:+.2f}% now — a target at {tp:+.2f}% is already reached. Use Close now, or a higher target")
-        if not self.is_paper_mode and bool(getattr(th, 'broker_backstop_enabled', False)) and sl < 0:
+        if bool(getattr(th, 'broker_backstop_enabled', False)) and sl < 0:   # paper and live alike (DECISION_LOG 271)
             # the resting exchange safety stop was placed with the exit this trade had: the new stop must stay inside it
             _resting = order_backstop_pct(th, order.entry_strategy, getattr(order, 'manual_exit_mode', None), order.pattern_fixed_sl_pct, order.leverage)
             if order.exit_override_at is not None:   # already edited once: the row no longer tells where the stop was PLACED (it is never
@@ -12695,7 +12719,7 @@ class TradingEngine:
                 if bool(getattr(config.trading_config.thresholds, 'broker_backstop_enabled', False)) and not self.is_paper_mode:
                     try:
                         _bk_pct = order_backstop_pct(config.trading_config.thresholds, order.entry_strategy, getattr(order, 'manual_exit_mode', None),
-                                                     getattr(order, 'pattern_fixed_sl_pct', None), order.leverage)   # MANUAL: its own distance; every other order: broker_backstop_pct
+                                                     getattr(order, 'pattern_fixed_sl_pct', None), order.leverage)   # MANUAL / FRENZY / WILLY: own stop + 0.5 (271); every other order: broker_backstop_pct
                         _bk_tr = order.entry_price * (1 - _bk_pct / 100.0) if order.direction == "LONG" else order.entry_price * (1 + _bk_pct / 100.0)
                         _bk_new = await binance_service.place_backstop_stop(order.pair, order.direction, _bk_tr)
                         if _bk_new:
@@ -14233,12 +14257,13 @@ class TradingEngine:
                     order.trough_pnl = min(realtime_trough, _br_pnl)
                     if (order.entry_strategy or "") == "SURGE_SHORT":
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None))
-                    elif (order.entry_strategy or "") == "FRENZY_WILLY":   # 🎲 Oct-8 (251): its OWN exit — TP +1 / no stop / 120 min (never FRENZY's TP3)
+                    elif (order.entry_strategy or "") == "FRENZY_WILLY":   # 🎲 Oct-8 (251): its OWN exit — TP +1 / frenzy_willy_stop_pct / 120 min (never FRENZY's TP3)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
-                                                                                _held_minutes(order.opened_at), _rh_backstop_floor(getattr(self, 'is_paper_mode', True)))
+                                                                                _held_minutes(order.opened_at), None)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live
                     elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
+                        # 271: no hidden floor (stop_floor None) — frenzy_stop_pct, paper = live
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
-                                                                          _rh_backstop_floor(getattr(self, 'is_paper_mode', True)), use_tp=True)   # 🎯 fixed TP (196)
+                                                                          None, use_tp=True)   # 🎯 fixed TP (196)
                     else:
                         _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None), getattr(order, 'entry_br_door', None),
                                                                            trail_mult_override=_surge_trail_override(order.entry_strategy),
@@ -15120,7 +15145,7 @@ class TradingEngine:
                                                  Order.backstop_algo_id.is_(None))))).scalars().all()
                     for _bko in _bk_rows:
                         _bk_pct = order_backstop_pct(config.trading_config.thresholds, _bko.entry_strategy, getattr(_bko, 'manual_exit_mode', None),
-                                                     getattr(_bko, 'pattern_fixed_sl_pct', None), _bko.leverage)   # MANUAL: its own distance; every other order: broker_backstop_pct
+                                                     getattr(_bko, 'pattern_fixed_sl_pct', None), _bko.leverage)   # MANUAL / FRENZY / WILLY: own stop + 0.5 (271); every other order: broker_backstop_pct
                         _bk_tr = _bko.entry_price * (1 - _bk_pct / 100.0) if _bko.direction == "LONG" else _bko.entry_price * (1 + _bk_pct / 100.0)
                         _bk_new = await binance_service.place_backstop_stop(_bko.pair, _bko.direction, _bk_tr)
                         if _bk_new:
@@ -18104,12 +18129,13 @@ class TradingEngine:
                         order_info['trough_pnl'] = pnl_pct
                     if (order_info.get('entry_strategy') or '') == 'SURGE_SHORT':
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'))
-                    elif (order_info.get('entry_strategy') or '') == 'FRENZY_WILLY':   # 🎲 Oct-8 (251): its OWN exit on every tick — TP +1 / no stop / 120 min
+                    elif (order_info.get('entry_strategy') or '') == 'FRENZY_WILLY':   # 🎲 Oct-8 (251): its OWN exit on every tick — TP +1 / frenzy_willy_stop_pct / 120 min
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
-                                                                                _held_minutes(order_info.get('opened_at')), _rh_backstop_floor(getattr(self, 'is_paper_mode', True)))
+                                                                                _held_minutes(order_info.get('opened_at')), None)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live
                     elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
+                        # 271: no hidden floor (stop_floor None) — frenzy_stop_pct, paper = live
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
-                                                                          _rh_backstop_floor(getattr(self, 'is_paper_mode', True)), use_tp=True)   # 🎯 fixed TP (196)
+                                                                          None, use_tp=True)   # 🎯 fixed TP (196)
                     else:
                         _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'), order_info.get('entry_br_door'),
                                                                            trail_mult_override=_surge_trail_override(order_info.get('entry_strategy')),

@@ -484,7 +484,8 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
     Stop at −frenzy_stop_pct; once the peak reaches +frenzy_trail_arm_pct the
     line trails frenzy_trail_giveback_pct of PRICE below the best point (peak − giveback × (1 + peak/100)). Reasons are the
     momentum stack's own (STOP_LOSS / RUNNER_TRAIL) so every matcher knows them; entry_strategy tells the sleeve apart.
-    stop_floor (live only): never wider than this — just inside the resting exchange backstop.
+    stop_floor: optional cap (never wider than this). The engine passes None since DECISION_LOG 271 — the sleeve's own stop runs in
+    paper AND live; the per-order exchange backstop rests just beyond it (order_backstop_pct).
     short=True (a MANUAL short on this exit): the give-back is measured from the LOWEST price → peak − giveback × (1 − peak/100)."""
     try:
         pnl = float(pnl); pk = float(peak_pnl or 0.0)
@@ -542,9 +543,9 @@ def frenzy_willy_levels(th) -> Tuple[float, Optional[float], int]:
 def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None) -> Tuple[bool, str, Optional[float]]:
     """FRENZY_WILLY's own exit → (close, reason, line). Order: TP — pnl ≥ +tp → FRENZY_TP; a peak that already reached +tp while the close was
     missed (feed gap / failed close / restart) closes at once → FRENZY_TP if the exit pnl ≥ 0 else FRENZY_TP_LATE (never labelled a TP at a
-    loss) · a configured stop (frenzy_willy_stop_pct > 0, none by default) → STOP_LOSS · held ≥ the cap → MAX_HOLD_TIME (line = pnl).
-    stop_floor (LIVE only — None in paper): the line just inside the resting exchange backstop; with no WILLY stop it IS the stop (the
-    exchange-side safety is kept as-is: a controlled close a hair before the backstop order would fire). Paper: no stop at all.
+    loss) · a configured stop (frenzy_willy_stop_pct > 0; 4.0 since DECISION_LOG 271) → STOP_LOSS · held ≥ the cap → MAX_HOLD_TIME (line = pnl).
+    stop_floor: optional cap. The engine passes None since DECISION_LOG 271 — WILLY's own stop runs in paper AND live; the per-order
+    exchange backstop rests just beyond it (order_backstop_pct).
     P&L = the caller's net-of-fees % of the position."""
     tp, stop, mh = frenzy_willy_levels(th)
     try:

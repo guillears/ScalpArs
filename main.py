@@ -3582,7 +3582,6 @@ def _frenzy_monitor_payload():
     try:
         from services.trading_engine import _frenzy_status as _fzs, _frenzy_flags as _fzf
         from services.frenzy import frenzy_lite_need as _fz_lite_need, frenzy_lite_hmax as _fz_lite_hmax, frenzy_willy_levels as _fz_willy_levels, frenzy_willy_wait_ms as _fz_willy_wait
-        from services.trading_engine import _rh_backstop_floor as _fz_willy_bs
         from datetime import datetime as _dt
         _th = config.trading_config.thresholds
         _ca = _fzs.get('checked_at')
@@ -3611,7 +3610,7 @@ def _frenzy_monitor_payload():
                 "willy_red_wait": int(_fz_willy_wait(_th) // 60_000),   # 🟥 the red-candle wait the engine USES (minutes)
                 "willy_turnover_max": float(getattr(_th, 'frenzy_willy_max_vol_mcap_ratio', 0) or 0),   # 🔄 0 = off
                 "willy_mcap_fetch": bool(getattr(config.trading_config, 'mcap_fetch_enabled', True)),   # OFF + the filter on → WILLY can't enter
-                "willy_backstop_live": _fz_willy_bs(False),   # paper: no stop · live: the exchange backstop line (None = backstop off)
+                "willy_backstop_live": None,   # DECISION_LOG 271: no hidden floor — WILLY's stop is frenzy_willy_stop_pct, paper = live (key kept for old UIs)
                 "willy_events": dict(sorted((getattr(trading_engine, '_willy_event_counts', None) or {}).items())),   # arms / expiries / turnover
                 "willy_pending": [dict(pair=k, trig=v.get('trig'), armed_ms=v.get('armed'), exp_ms=v.get('exp'), blocked=bool(v.get('blocked')))
                                   for k, v in sorted((getattr(trading_engine, '_fz_willy_pending', None) or {}).items())],   # 🟥 armed, waiting red
@@ -8171,7 +8170,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 _wwb = [getattr(o, 'entry_frenzy_willy_wait_bars', None) for o in _fz_all if getattr(o, 'entry_frenzy_willy_wait_bars', None) is not None]
                 if _wwb:
                     _fz_gate += f" · avg wait {sum(_wwb) / len(_wwb):.1f} bars to the red candle"
-                _fz_gate += " · paper: no stop · live: the exchange backstop acts as the stop"
+                _fz_gate += " · same stop in paper and live (frenzy_willy_stop_pct)"
             frenzy_rows.append({"row": _fz_lbl, **_fz_stats(_fz_all), "gate": _fz_gate})
             if _fz_es == "FRENZY_WILLY" and _fz_all:   # 🎲 (251) entry A (new flag) vs B (ON not taken) — entry_frenzy_willy_trigger
                 for _wt, _wl in (("A", "  A · new flag"), ("B", "  B · fresh ON bar FRENZY / WIDE / LITE did not take")):

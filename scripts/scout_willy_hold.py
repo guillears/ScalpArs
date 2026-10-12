@@ -60,7 +60,7 @@ def exit_rule(sleeve, th=None):
     frenzy_stop_pct / frenzy_max_hold_minutes (the fixed-TP exit since DECISION_LOG 250; a 0 TP → +3, 0 hold → 12 h)."""
     s = str(sleeve or "")
     th = _live_th() if th is None else th
-    if s in FRENZY3:
+    if s in FRENZY3:                                                  # DECISION_LOG 271: each sleeve's own stop, no hidden floor, paper = live
         g = lambda k, d: (float(getattr(th, k, d)) if getattr(th, k, None) not in (None, "") else d)
         tp = g("frenzy_tp_pct", 3.0) or 3.0
         return tp, -abs(g("frenzy_stop_pct", 3.0) or 3.0), int(g("frenzy_max_hold_minutes", 720) or 720)
@@ -306,9 +306,13 @@ def selftest():
         ok += 1
     t0 = 1_790_000_000_000 // MIN * MIN
     m = lambda ps: [[t0 + i * MIN, p, p * 1.001, p * 0.999, p] for i, p in enumerate(ps)]
-    chk(exit_rule("FRENZY_LITE") == (3.0, -3.0, 720) and exit_rule("FRENZY_WILLY") == (1.0, None, 120) and exit_rule("MOMENTUM") is None,
-        "sleeve exits")
     from types import SimpleNamespace as _NS
+    _ws = abs(float(getattr(_live_th(), "frenzy_willy_stop_pct", 0) or 0))
+    chk(exit_rule("FRENZY_LITE") == (3.0, -3.0, 720) and exit_rule("FRENZY_WILLY") == (1.0, (-_ws if _ws > 0 else None), 120)
+        and exit_rule("MOMENTUM") is None, "sleeve exits (DECISION_LOG 271: own stops, no hidden floor)")
+    chk(exit_rule("FRENZY_LONG", _NS(broker_backstop_enabled=True, broker_backstop_pct=2.5))[1] == -3.0
+        and exit_rule("FRENZY_WILLY", _NS(frenzy_willy_stop_pct=4.0, broker_backstop_enabled=True, broker_backstop_pct=2.5))[1] == -4.0,
+        "the backstop never tightens a sleeve's own stop (paper = live)")
     chk(exit_rule("FRENZY_WILLY", _NS(frenzy_willy_tp_pct=2.0, frenzy_willy_max_hold_minutes=90)) == (2.0, None, 90)
         and exit_rule("FRENZY_LONG", _NS(frenzy_tp_pct=4.0, frenzy_stop_pct=2.5, frenzy_max_hold_minutes=600)) == (4.0, -2.5, 600),
         "exits read from the live config (never hardcoded)")

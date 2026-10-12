@@ -766,7 +766,7 @@
     "frenzy_willy_invest_mult": 1.0,
     "frenzy_willy_lev_mult": 1.0,
     "frenzy_willy_tp_pct": 1.0,
-    "frenzy_willy_stop_pct": 0.0,
+    "frenzy_willy_stop_pct": 4.0,
     "frenzy_willy_max_hold_minutes": 120,
     "frenzy_willy_max_slots": 1,
     "frenzy_willy_red_max_wait_minutes": 60,

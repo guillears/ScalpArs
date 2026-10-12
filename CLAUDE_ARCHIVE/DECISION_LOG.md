@@ -6383,3 +6383,40 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   re-levered to today's size carry size_note. B19 under today's stack 51 kept · +$98.85. validate_against_master F2 now scores only fills
   inside the BTC cache (k5m_full BTC's last 5m bar opens 10-08 18:00 → ends 18:05; B19's first fill opened 21:40 — none can be rebuilt; 299/350; a new check fails if more than the newest era is uncovered). SCREENED_BASELINE re-run (screen_pool.py) — unchanged v21: it screens the curated BASE momentum / flip pool, and B19 adds no flip / short and no BASE row. DL 265 (WILLY_TP125 revert read) superseded by 281's OLD_EXIT gate (one revert gate). Defaults: config.py / UI fallbacks moved to the live values (WILLY 0.5 / 1.25 / 90, LONG 0.1, WIDE 0.05, strong 0) so a missing key never re-arms 20×.
   Operator resets → B20 on one config. Normalization by era for any B19 read is in the review plan.
+- (283) 2026-10-12 ⚖️🎯 **Operator DECLARED OVERRIDE "Ship all as asked" (against the evidence, acknowledged): FRENZY TP +3 → +1.5 · FRENZY
+  LONG / WIDE / LITE → 10× · momentum longs 20× → 10× (lev × 0.5; a 2.0-lev cell that sat on the 20× schedule cap goes 20× → 15×, e.g. BTC RSI×ADX 60-65:22-25).** ① `frenzy_tp_pct` 3.0 → 1.5 — FRENZY_LONG / WIDE / LITE AND the manual "FRENZY" exit
+  mode (it reads the same field); stop −3 and the 12 h cap unchanged; WILLY keeps its own +1.25 / −4 / 90. Evidence (yr5 cohort, today's
+  walker, per-fill avg %, +3/−3 → +1.5/−3): LONG B19 −1.368 (27 % WR) → +0.276 (73 %) · master −1.671 → −1.503 · year −0.039 → −0.130 (H1
+  −0.265 / H2 +0.047, P(Δ>0) 0.19); WIDE B19 −1.003 → −0.001 · master −0.006 → −0.002 · year −0.047 → −0.149 (H1 +0.097 / H2 −0.487, P 0.24);
+  LITE B19 +0.270 → −0.549 · master +1.506 → +0.383 · year +0.267 → +0.030 (H1 +0.078 / H2 −0.013, P 0.01) — the year says +1.5 is worse in
+  every sleeve; only B19 LONG / WIDE favour it. 🔒 REVERT the TP (Scout FRENZY_TP_REVERT, `scripts/scout_frenzy_tp_revert.py`, pre-registered
+  today, decided ONCE): pooled LONG+WIDE+LITE and per sleeve, at N ≥ 20 counted fills on ≥ 8 UTC days (counted from this commit + 10 min,
+  git %ct, pin fallback), the old +3 / −3 / 12 h re-walked on the same ticks-first hybrid path beats +1.5 (mean paired Δ > 0 at day-bootstrap
+  P ≥ 0.90, no fill > 50 % of ΣΔ, walker parity ≥ 90 %) OR the new exit's average < 0 while the old averages higher on the same fills (caveman-review fix: never revert into a worse exit) → back to +3. Never frozen on failed parity / integrity
+  (stop / cap fills must show Δ = 0); provisional / open fills hold the freeze. ② `frenzy_long_lev_mult` 0.1 → 0.5 (2× → 10×),
+  `frenzy_wide_lev_mult` 0.05 → 0.5 (1× → 10×), `frenzy_lite_lev_mult` 0.4 → 0.5 (8× → 10×); strong bump stays 0; code defaults stay the
+  safe 0.1 / 0.05 / 0.2. Engine leverage max(1, round(20 × 0.5)) = 10; resting backstop (order_backstop_pct) 3 + 0.5 = 3.5 %, liquidation
+  ≈ 9.5 % at 10× (80 % cap not binding). 10× multiplies the $ of LONG / WIDE's negative year edge by 5× / 10× (vs 2× / 1×); DL 280's Pattern-W
+  re-size bar overridden. LONG / WIDE stay ON (they still block bad LITE entries). 🔒 REVERT per sleeve (LONG / WIDE → 2× / 1×, LITE → 8×):
+  its first 20 fills at 10× average < 0, OR any UTC day whose FRENZY fills lose > 25 % of the book (read at batch reviews). ③ NEW field
+  `momentum_long_lev_mult` (config default 1.0, JSON 0.5): every entry_strategy MOMENTUM ∧ LONG open — UNMATCHED, every LONG pattern cell,
+  CALM3D / CROSS_OB / ADX-surge doors, probes — leverage = max(1, round(20 × cell lev × 0.5)) after the cell's 2.0 cap / floors, then the
+  bracket / schedule caps (pure helpers `trading_engine.momentum_long_lev_factor` / `compose_leverage`; never shorts / FRENZY / SURGE /
+  BULLRUN / BEARRUN / flips / fades / spikes / bull- / bounce-long / manual; ≤ 0 = off, clamped [0.05, 1]). Stamps: `leverage` = effective,
+  `cell_lev_multiplier` = the cell's own (no new column — leverage / 20 / cell lev recovers the factor unless bracket-capped). UI input in
+  Sleeve Sizing (Momentum LONG base row) + load / save + the shared _buildConfigLines export line (both text exports). Evidence: year
+  momentum long −0.063 %/fill (578 fills) → 10× halves the $ risk. De-risking → NO revert gate; re-size up only on fresh-fill evidence.
+  Master STACK 2026-10-12d (FRENZY_TP_FROZEN 1.5, FRENZY sizes 0.5 ×3, MOMENTUM_LONG_LEV_FROZEN 0.5 in the shared today_size_rule — held at a
+  fill's own leverage when already lower): non-probe kept 443 · $8,157.70 → $5,911.96 (MOM-long $3,328 → $1,664 · FRENZY_LONG −$348 → −$358 ·
+  WIDE −$5 → +$210 · LITE +$425 → −$362); SCREENED_BASELINE v22 (ML 37 · $2,612 → $1,306; MS / FLIP unchanged); validate_against_master ALL
+  PASS. Scouts: FRENZY_WILLY_TP grid RE-BASED to count from this commit + 10 min (compares cells vs today's +1.5; nothing had frozen);
+  WILLY_HOLD / HOLD_FRENZY_EXEMPT / LITE_STRETCH_REENTRY / BEARISH_BLOCKED read the exit from config (stored rows keep the exit they were
+  priced at — era mix flagged in their text); TP3_VS_LOCK is a +3-era record (its 20 fills predate this). Research scripts that import
+  today_size_scale (study_yr5_halves_today, study_port7_portfolio, study_ml_checklist_build) now price momentum longs at 10×.
+  ADDENDUM (same commit): B20 archived (reports/BASELINE20_batch1012_orders.csv — export 2026-10-12 18-02, 12 fills, traded −$428.85,
+  under today's stack +$297.49; 3 WILLY fills keep their as-traded % — they already traded +1.25/−4/90, no 10-12 path cache). Pre-existing
+  master bug fixed: `_today_cell_rule` FAN branch re-applied the 0.5 FAN registry to post-252 fills whose `cell_lev_multiplier` already
+  stamps it (traded 10× → priced at 5×; B20 MUBARAK $18.94 → $9.47). Stamped lev ≤ 0.5 is now taken as-is; pre-252 rows unchanged
+  (test rows added). Master non-probe kept 455 · +$6,213.45 (B1…B20 + BASE); SCREENED_BASELINE unchanged (no post-252 FAN rows in it);
+  validate ALL PASS. Caveman-review fixes: FRENZY_TP_REVERT "new avg < 0" leg now also needs old avg > new avg (never revert into a worse
+  exit; nothing had frozen); config export line rounds half-even like the engine; ordering test covers the CROSS_OB / probe blocks.

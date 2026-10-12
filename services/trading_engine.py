@@ -527,6 +527,41 @@ def bot_own_stop_pct(th, entry_strategy):
     return None
 
 
+MOMENTUM_LONG_LEV_MULT_MIN = 0.05   # ⚖️ (DECISION_LOG 283) the floor of momentum_long_lev_mult (0.05 × 20× = 1×)
+
+
+def momentum_long_lev_factor(th, entry_strategy, direction) -> float:
+    """⚖️ 2026-10-12 (DECISION_LOG 283): the leverage factor a MOMENTUM LONG open takes on top of its cell's lev multiplier —
+    th.momentum_long_lev_mult when entry_strategy == "MOMENTUM" and direction == "LONG" (the unmatched path, every LONG pattern cell, the
+    CALM3D / CROSS_OB / ADX-surge doors and the probe paths all open as MOMENTUM), else 1.0 (shorts, FRENZY_* / SURGE_* / BULLRUN /
+    BEARRUN / FLIP:* / SPIKE_* / BULL_LONG / BOUNCE_LONG / MANUAL). A de-lever-only knob: ≤ 0 / blank / unreadable → 1.0 (off), clamped to
+    [MOMENTUM_LONG_LEV_MULT_MIN, 1.0]. Pure."""
+    if (entry_strategy or "") != "MOMENTUM" or str(direction or "").upper() != "LONG":
+        return 1.0
+    try:
+        v = float(getattr(th, 'momentum_long_lev_mult', 1.0))
+    except (TypeError, ValueError):
+        return 1.0
+    if not math.isfinite(v) or v <= 0:
+        return 1.0
+    return min(1.0, max(MOMENTUM_LONG_LEV_MULT_MIN, v))
+
+
+def compose_leverage(base_leverage, cell_lev_multiplier=1.0, apply_lev=True, base_lev_multiplier=1.0):
+    """⚖️ (DECISION_LOG 283) the leverage calculate_position_size opens at BEFORE the balance-schedule ceiling: the confidence level's
+    leverage × the cell lev multiplier (only when the multiplier target applies leverage — unchanged since May 21) × base_lev_multiplier
+    (momentum_long_lev_factor — applied whatever the target, it is not a cell), rounded, ≥ 1. A product of exactly 1 returns
+    base_leverage untouched (the pre-283 behaviour: no rounding when nothing multiplies). Pure."""
+    m = 1.0
+    if apply_lev and cell_lev_multiplier and cell_lev_multiplier != 1.0:
+        m *= float(cell_lev_multiplier)
+    if base_lev_multiplier and base_lev_multiplier != 1.0:
+        m *= float(base_lev_multiplier)
+    if m == 1.0:
+        return base_leverage
+    return max(1, int(round(base_leverage * m)))
+
+
 def order_backstop_pct(th, entry_strategy, manual_exit_mode=None, fixed_sl_pct=None, leverage=None) -> float:
     """🛡 Distance (price %, positive) of the resting exchange safety stop for an order. A bot trade whose own stop sits inside
     broker_backstop_pct (momentum, fades, flips …): broker_backstop_pct. FRENZY / WIDE / LITE / WILLY (DECISION_LOG 271) and a MANUAL
@@ -4401,7 +4436,7 @@ class TradingEngine:
     def calculate_position_size(
         self, available_balance: float, confidence: str, total_portfolio: float = None,
         cell_multiplier: float = 1.0, cell_lev_multiplier: float = 1.0,
-        multiplier_target: str = "investment",
+        multiplier_target: str = "investment", base_lev_multiplier: float = 1.0,
     ) -> Tuple[float, float, bool]:
         """
         Calculate position size and leverage based on config.
@@ -4416,6 +4451,8 @@ class TradingEngine:
             "investment" → only cell_multiplier applies (cell_lev_multiplier treated as 1.0)
             "leverage"   → only cell_lev_multiplier applies (cell_multiplier treated as 1.0)
             "both"       → BOTH apply (compounding — effective notional ≈ inv_mult × lev_mult × base)
+        - base_lev_multiplier (⚖️ 2026-10-12, DECISION_LOG 283) = momentum_long_lev_factor — multiplies the leverage of a MOMENTUM LONG
+          on top of the cell lev multiplier, whatever the target (compose_leverage), BEFORE the balance-schedule ceiling. 1.0 = no change.
 
         Returns:
             Tuple of (investment_amount, leverage, capped_by_balance)
@@ -4549,8 +4586,8 @@ class TradingEngine:
         leverage = conf_level.leverage
 
         # === Premium Multiplier: leverage-side path (active in "leverage" or "both") ===
-        if apply_lev and cell_lev_multiplier and cell_lev_multiplier != 1.0:
-            leverage = max(1, int(round(leverage * cell_lev_multiplier)))
+        # ⚖️ 2026-10-12 (DECISION_LOG 283): × base_lev_multiplier (momentum_long_lev_mult on MOMENTUM LONG opens) — one rounding, pure helper.
+        leverage = compose_leverage(leverage, cell_lev_multiplier, apply_lev, base_lev_multiplier)
 
         # ④ Balance→leverage schedule (Jun 26): final leverage CEILING based on current equity
         # (de-lever-as-you-grow risk knob). Applied AFTER the cell lev-mult so it bounds the
@@ -10824,11 +10861,17 @@ class TradingEngine:
             cell_src = _fz_es if _frenzy else f"SURGE_{direction}"
             _mult_target = "both"
 
+        # 🔒 Oct-8 FRENZY_WILLY GLOBAL HOLD label (DECISION_LOG 251) = the Order's entry_strategy — computed BEFORE the size since 2026-10-12
+        # (DECISION_LOG 283): the momentum-long leverage factor keys on it (entry_strategy MOMENTUM ∧ LONG → momentum_long_lev_mult).
+        _wh_es = (_fz_es if _frenzy else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))))))))
+        _ml_lev = momentum_long_lev_factor(config.trading_config.thresholds, _wh_es, direction)
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
             cell_multiplier=cell_mult, cell_lev_multiplier=cell_lev_mult,
-            multiplier_target=_mult_target,
+            multiplier_target=_mult_target, base_lev_multiplier=_ml_lev,
         )
+        if _ml_lev != 1.0 and investment > 0:
+            logger.info(f"[MOMENTUM_LONG_LEV] {pair} LONG: momentum_long_lev_mult {_ml_lev:g} × cell lev {cell_lev_mult:g} ({cell_src}) → {leverage}x")
         if cell_capped:
             logger.info(
                 f"[CELL_MULT_CAPPED] {pair} {direction}: target multiplier inv={cell_mult}x lev={cell_lev_mult}x via {cell_src} "
@@ -10838,8 +10881,7 @@ class TradingEngine:
             logger.info(f"[CELL_MULT] {pair} {direction}: applied inv={cell_mult}x lev={cell_lev_mult}x via {cell_src} ({_mult_target} target)")
 
         # 🔒 Oct-8 FRENZY_WILLY GLOBAL HOLD (operator, DECISION_LOG 251): while any FRENZY_WILLY is open no automated trade opens — judged here,
-        # on EVERY automated path, once the size is known (the event records it); fail-closed when the open-WILLY read fails.
-        _wh_es = (_fz_es if _frenzy else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))))))))
+        # on EVERY automated path, once the size is known (the event records it); fail-closed when the open-WILLY read fails. (_wh_es above.)
         if await self._willy_hold_block(db, pair, direction, _wh_es, price=current_price, invest_mult=cell_mult, lev_mult=cell_lev_mult,
                                         signal_ms=(frenzy_bar_open_ms if _frenzy else None)):
             if _frenzy:

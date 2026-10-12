@@ -4,10 +4,11 @@
 HYPOTHESIS  FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE should share FRENZY_WILLY-style small fixed targets — a 7-cell grid, operator 2026-10-10:
             TP +frenzy_willy_tp_pct (1.00) or +1.25 net × stop −2 / −2.5 / −3 net, plus +1.25 / −4 (added the same day, the WILLY
             insurance candidate) — instead of today's +frenzy_tp_pct / −frenzy_stop_pct
-            (+3 / −3); every cell keeps the live cap (frenzy_max_hold_minutes, 12 h). Levels read from trading_config.json. Judged PER SLEEVE.
+            (+3 / −3 until DECISION_LOG 283, +1.5 / −3 since); every cell keeps the live cap (frenzy_max_hold_minutes, 12 h). Levels read from trading_config.json. Judged PER SLEEVE.
 COHORT      CLOSED FRENZY_LONG / WIDE / LITE fills in the ~/Downloads orders exports, dedup (opened_at[:19], pair, strategy) — never id; a
-            CLOSED row beats an OPEN one — opened ≥ the "(DECISION_LOG 250)" commit (the fixed +3 / −3 exit went live; git unavailable → the
-            pinned 2026-10-08 13:37 UTC).
+            CLOSED row beats an OPEN one — opened ≥ the "(DECISION_LOG 283)" commit + 10 min (RE-BASED 2026-10-12: today's exit became
+            +1.5 / −3, so the cells are compared with the exit those fills really ran and the parity gate stays meaningful; the +3-era fills
+            from the DL 250 floor are out — nothing had frozen; git unavailable → the PLACEHOLDER pin DEPLOY_PIN + 10 min).
             Manually closed fills (MANUAL_*) are excluded and listed — not the walked exit.
 WALKER      ONE hybrid path per fill (DECISION_LOG 272, load_path / evaluate below — the B19 RE-RUN §9 fix, 28 / 28 live parity): aggTrades
             ticks for each consecutive covered UTC day (scripts/scout_willy_timecap.py's shared caches), then the 1m tail (provisional) after
@@ -22,7 +23,7 @@ VERDICT     (FROZEN, pre-registered — PER SLEEVE, computed ONCE on the first p
             with its tick archive pending; persisted in reports/SCOUT_FRENZY_WILLY_EXIT.json; never re-fit; one re-read at N ≥ 30).
             Per cell, Δ_i = cell_i − LIVE_i. Cell CANDIDATE (operator decides) iff mean Δ > 0 ∧ day-clustered bootstrap P(mean Δ > 0)
             ≥ 0.95 (4,000, seed 7 — 0.95, not 0.90, because the best of 7 cells is picked: multiple-comparison guard) ∧ no single fill
-            > 50 % of Σ Δ ∧ walker parity ≥ 90 %; several qualify → the larger mean Δ (tie → grid order); every cell mean Δ ≤ 0 → KEEP +3 / −3;
+            > 50 % of Σ Δ ∧ walker parity ≥ 90 %; several qualify → the larger mean Δ (tie → grid order); every cell mean Δ ≤ 0 → KEEP today's exit;
             else KEEP OBSERVING.
 CAVEATS     Δ is per fill on the SAME entries: a smaller TP frees FRENZY's slots sooner (median hold printed) — the extra trades that
             would let in are not priced. Tick paths can touch wicks the live poller rides through — read the parity line.
@@ -51,8 +52,10 @@ VARS = tuple(g[0] for g in GRID)
 N_MIN, DAYS_MIN, REREAD_N = 15, 8, 30
 P_MIN, SHARE_MAX, PARITY_MIN = 0.95, 0.50, 0.90
 BOOT_N, BOOT_SEED = 4000, 7
-DEPLOY_GREP = "(DECISION_LOG 250)"
-DEPLOY_PIN = "2026-10-08 13:37:25"                   # 6d3974f commit time (UTC) — used only if git is unavailable
+DEPLOY_GREP = "(DECISION_LOG 283)"                   # RE-BASED 2026-10-12 (was "(DECISION_LOG 250)", the +3 / −3 era): today's exit = +1.5 / −3
+DEPLOY_PIN = "2026-10-12 23:00:00"                   # PLACEHOLDER (UTC) — used only if git cannot find the DL 283 commit (was 6d3974f 2026-10-08 13:37:25)
+DEPLOY_LAG_MIN = 10                                  # the cohort starts 10 min after the commit (deploy lag)
+KEEP_LIVE = "KEEP today's exit"
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.path.join(_ROOT, "reports", "SCOUT_FRENZY_WILLY_EXIT.json")
 STUDY_REF = ("yr5 tick study, CORRECTED 2026-10-10 (DECISION_LOG 270) to today's stack: LONG / WIDE = replay seed 1 (bearish block, live "
@@ -66,17 +69,18 @@ STUDY_REF = ("yr5 tick study, CORRECTED 2026-10-10 (DECISION_LOG 270) to today's
              "significantly in any sleeve; LONG +1/−3 is a tie (Δ −0.017 here, +0.032 on a cohort without the de-dup). (The 2026-10-09 "
              "reference quoted LONG / WIDE +0.084 / +0.088: gate-on replay, 3 seeds pooled — superseded.) Winners' trough (fills reaching +3, "
              "no stop; from the OLD gate-on cohort, not re-run): LONG avg −2.82 / median −1.94, WIDE −3.14 / −1.78, LITE −2.65 / −1.75")
-REVERT = ("Pre-committed revert if a sleeve ever takes the smaller TP: its first 15 fills after the switch — Σ % below what +3 would have "
-          "given on the same fills (this walker) → back to +3.")
+REVERT = ("Pre-committed revert if a sleeve ever takes one of these cells: its first 15 fills after the switch — Σ % below what the exit "
+          "it replaced would have given on the same fills (this walker) → back to that exit. (Today's +1.5 / −3 has its own revert gate: "
+          "Scout FRENZY_TP_REVERT, DECISION_LOG 283.)")
 
 
 def deploy_ts():
     try:
         out = subprocess.run(["git", "-C", _ROOT, "log", "--format=%ct", "--grep=" + DEPLOY_GREP, "--fixed-strings", "--reverse"],
                              capture_output=True, text=True, timeout=10)
-        return pd.Timestamp(int(out.stdout.strip().splitlines()[0]) * 1000, unit="ms")
+        return pd.Timestamp(int(out.stdout.strip().splitlines()[0]) * 1000, unit="ms") + pd.Timedelta(minutes=DEPLOY_LAG_MIN)
     except Exception:
-        return pd.Timestamp(DEPLOY_PIN)
+        return pd.Timestamp(DEPLOY_PIN) + pd.Timedelta(minutes=DEPLOY_LAG_MIN)
 
 
 def _ns(th=None):
@@ -291,7 +295,7 @@ def verdict(sc):
         best = max(qs, key=lambda v: (round(J[v]["mean"], 12), -VARS.index(v)))
         return f"{best} CANDIDATE (operator decides)", det, J
     if all(J[v]["mean"] <= 0 for v in VARS):
-        return "KEEP +3 / −3", det, J
+        return KEEP_LIVE, det, J
     return "KEEP OBSERVING", det, J
 
 
@@ -379,11 +383,11 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     labs.update({n: f"+{tp_:g} / −{sl_:g}" for n, (tp_, sl_) in alts.items()})
     L = [f"## 🎲➡🔥 FRENZY_WILLY_TP — should FRENZY / WIDE / LITE take a small fixed target (+{alts['T1_S2'][0]:g} or +{TP125:g}) with a "
          f"−2 / −2.5 / −3 stop, or +{TP125:g} / −4? (DECISION_LOG 267 · 269, OBSERVE only, exit shadow grid)", "",
-         f"Cohort: CLOSED FRENZY_LONG / WIDE / LITE fills opened ≥ {floor:%Y-%m-%d %H:%M} UTC (the fixed +3 / −3 exit went live), re-walked from "
+         f"Cohort: CLOSED FRENZY_LONG / WIDE / LITE fills opened ≥ {floor:%Y-%m-%d %H:%M} UTC (today's +{live[0]:g} / −{live[1] or 0:g} exit went live — {DEPLOY_GREP} + {DEPLOY_LAG_MIN} min; re-based 2026-10-12), re-walked from "
          f"each fill's own entry on the same hybrid path (ticks first, then the 1m tail — DECISION_LOG 272; WILLY_TIMECAP's caches; a 1m part = provisional; a cell undecided at the path end is not counted for that cell) with the bot's accounting. Every exit "
          f"keeps the live {live[2]}-min cap; TP and stop differ per cell. Judged per sleeve.", ""]
     if paused:
-        L.append("⏸ PAUSED: the live FRENZY exit is not a fixed TP (frenzy_lock_arm_pct > 0 or frenzy_tp_pct ≤ 0) — the '+3 / −3' row below is "
+        L.append("⏸ PAUSED: the live FRENZY exit is not a fixed TP (frenzy_lock_arm_pct > 0 or frenzy_tp_pct ≤ 0) — the '(live)' row below is "
                  "NOT what live trades; no Δ is judged and nothing is frozen until the fixed TP is back.")
     L += [*HDR]
     for sl in SLEEVES:
@@ -431,7 +435,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     L.append(f"Bar (pre-registered, PER SLEEVE, frozen once at the first prefix of N ≥ {N_MIN} closed fills on ≥ {DAYS_MIN} days, never re-fit; "
              f"one re-read at N ≥ {REREAD_N}): per cell Δ = cell − live per fill; cell CANDIDATE (operator decides) iff mean Δ > 0 ∧ "
              f"day-clustered P(mean Δ > 0) ≥ {P_MIN:.2f} ({BOOT_N:,}, seed {BOOT_SEED}) ∧ no fill > {SHARE_MAX * 100:.0f} % of Σ Δ ∧ walker "
-             f"parity ≥ {PARITY_MIN * 100:.0f} % (0.95: the best of {len(VARS)} cells is picked); several → the larger Δ; all ≤ 0 → KEEP +3 / −3; "
+             f"parity ≥ {PARITY_MIN * 100:.0f} % (0.95: the best of {len(VARS)} cells is picked); several → the larger Δ; all ≤ 0 → {KEEP_LIVE}; "
              f"else keep observing.")
     for sl in SLEEVES:
         g = sc[sc.sleeve == sl]
@@ -489,7 +493,7 @@ def selftest():
                                      LIVE=0.0, par_ok=True, src="ticks", notional=1000.0, **{v: d for v in VARS}))
         chk(verdict(coh([1.0] * 15))[0] == "T1_S2 CANDIDATE (operator decides)", "all better, tie → grid order")
         chk(verdict(coh([1.0] * 15).assign(T125_S25=2.0))[0] == "T125_S25 CANDIDATE (operator decides)", "the larger Δ wins")
-        chk(verdict(coh([-1.0] * 15))[0] == "KEEP +3 / −3", "all worse → keep")
+        chk(verdict(coh([-1.0] * 15))[0] == KEEP_LIVE, "all worse → keep today's exit")
         chk(verdict(coh([0.0] * 14 + [5.0]))[0] == "KEEP OBSERVING", "one fill carries Σ → observe")
         chk(verdict(coh([1.0] * 15).assign(par_ok=[False] * 3 + [True] * 12))[0] == "KEEP OBSERVING", "parity < 90 % → no candidate")
         chk(verdict(coh([1.0] * 15).iloc[:5])[0] == "COLLECTING", "N < 15 → collecting")
@@ -580,7 +584,14 @@ def selftest():
             Jd = coh([1.0] * 15).assign(T1_S2=[np.nan] + [1.0] * 14)
             chk("T1_S2 (N 14)" in verdict(Jd)[1] and "T1_S25 (N 15)" in verdict(Jd)[1], "per-cell N printed in the verdict detail")
             sp = os.path.join(td, "s.json")
-            out = "\n".join(run(pd.Timestamp("2026-10-09 23:00").value // 10**6, fetch=False, state_path=sp, th=th))
+            global deploy_ts
+            _dts = deploy_ts
+            deploy_ts = lambda: pd.Timestamp("2026-10-08 13:37:25")   # noqa: E731  (the fixture's fills predate the DL 283 floor)
+            try:
+                out = "\n".join(run(pd.Timestamp("2026-10-09 23:00").value // 10**6, fetch=False, state_path=sp, th=th))
+            finally:
+                deploy_ts = _dts
+            chk(_dts() >= pd.Timestamp("2026-10-12") + pd.Timedelta(minutes=DEPLOY_LAG_MIN), "re-based floor: the DL 283 commit (or pin) + 10 min")
             chk("KAIAUSDT LITE [ticks] live -3.10 (STOP @ 30 min) → +1 / −2 +1.10 / +1 / −2.5 +1.10 / +1 / −3 +1.10 / +1.25 / −2 -3.10" in out
                 and "UNSCORED (no path yet): 10-09 09:00 NOKUSDT LONG" in out and "Excluded: 1 manually closed" in out and "MANUSDT WIDE (MANUAL_TP)" in out and "WILUSDT" not in out and "OLDUSDT" not in out
                 and "1/1 match" in out and "FRENZY_LITE: ⏳ COLLECTING" in out and not os.path.exists(sp), f"end-to-end\n{out}")

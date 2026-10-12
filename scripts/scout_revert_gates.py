@@ -1524,7 +1524,7 @@ def gate_bearish_blocked(st):
     kp = d[T("counted") & T("final") & (d.kind.astype(str) == "KEPT")] if "kind" in d else d.iloc[0:0]
     km = pd.to_numeric(kp.PNL, errors="coerce").dropna() if len(kp) else pd.Series(dtype=float)
     prov = int((T("counted") & ~T("final")).sum())
-    G["progress"] = (("VERDICT SET FROZEN (first crossing): " if len(v) else "") + f"{n_}/{BB_N} counted blocked signals · {nd}/{BB_DAYS} days" + (f" · mean {m:+.2f} % (as if opened, fixed +3/−3)" if n_ else "")
+    G["progress"] = (("VERDICT SET FROZEN (first crossing): " if len(v) else "") + f"{n_}/{BB_N} counted blocked signals · {nd}/{BB_DAYS} days" + (f" · mean {m:+.2f} % (as if opened at the live FRENZY exit when priced — +3/−3 until DL 283, +1.5/−3 after)" if n_ else "")
                      + f" · kept side {len(km)}" + (f" · mean {km.mean():+.2f} %" if len(km) else "") + (f" · {prov} provisional" if prov else ""))
     return state, t0
 
@@ -1852,7 +1852,7 @@ DEFS = {
     "FRENZY_LOCK": ("🔒 FRENZY lock exit (205 — SUPERSEDED Oct-8 by TP3_VS_LOCK; the lock is off, the row runs for the record)", "first 20 FRENZY + WIDE fills after the lock deploy, both exits re-priced on ticks with the bot's accounting: "
                     "the old fixed +3/−3 averages better than the lock (+2 at +3, trail 2 pts) → revert (also shown: +6/−3, +4/−3, live as traded)", "set frenzy_lock_arm_pct 0 (fixed +3 returns)",
                     "frenzy_lock_arm_pct"),
-    "TP3_VS_LOCK": ("🎯 FRENZY fixed +3 vs the lock (250)", "first 20 FRENZY_LONG / WIDE / LITE fills from the Oct-8 deploy (live exit fixed +3/−3), both exits "
+    "TP3_VS_LOCK": ("🎯 FRENZY fixed +3 vs the lock (250 — +3-era record: its 20 fills all predate DL 283; the live TP is +1.5 since, revert gate = Scout FRENZY_TP_REVERT)", "first 20 FRENZY_LONG / WIDE / LITE fills from the Oct-8 deploy (live exit fixed +3/−3), both exits "
                     "re-priced on ticks with the bot's accounting (12 h): Σ lock (−3 → +2 at +3 → peak − 2) − Σ fixed +3/−3 > +3 % points → the runners the "
                     "lock keeps outweigh the +1 it gives back on each +3 touch", "REVIEW (operator decision): consider the lock again (frenzy_lock_arm_pct 3)",
                     "frenzy_lock_arm_pct"),
@@ -1860,7 +1860,7 @@ DEFS = {
                   "live pnl %, closed prefix): average < 0 · contrast ≤ 2.5 fills same period · ATR > 3.0 refusals per day (count only)",
                   "REVERT (operator decision): frenzy_max_atr_pct back to 2.5", "frenzy_max_atr_pct"),
     "BEARISH_BLOCKED": ("🐻 FRENZY bearish-day block (250)", "FRENZY / WIDE / LITE bearish-day refusals (journal *_BEARISH_DAY) from the Oct-8 deploy, priced as if "
-                        "opened (first print ≥ close + 8 s, fixed +3/−3, 0.09 % fees + 0.10 % slip, 12 h; one per pair-episode; DAY units) — store "
+                        "opened (first print ≥ close + 8 s, the live FRENZY exit when priced — fixed +3/−3 until DL 283, +1.5/−3 after; 0.09 % fees + 0.10 % slip, 12 h; one per pair-episode; DAY units) — store "
                         "reports/SCOUT_FRENZY_BEARISH_BLOCKED.csv (scout_frenzy_exits): verdict cohort FROZEN at the first crossing — the shortest final prefix "
                         "with ≥ 15 counted signals on ≥ 8 days (column verdict_set) — decided once: blocked mean > 0",
                         "REVERT (operator decision): turn frenzy_bearish_day_block off", "frenzy_bearish_day_block"),

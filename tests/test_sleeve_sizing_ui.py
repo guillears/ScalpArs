@@ -68,7 +68,7 @@ def test_preview_mirrors_engine_constants():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert "flips now exit via the NORMAL realtime stack" in eng                        # → the preview prices flips at the momentum stop
     assert "target: 'both', stop: momSl, stopNote: momNote, note });" in HTML
-    assert "leverage = max(1, int(round(leverage * cell_lev_multiplier)))" in eng      # the JS uses Python half-even rounding
+    assert "return max(1, int(round(base_leverage * m)))" in eng and "leverage = compose_leverage(leverage, cell_lev_multiplier, apply_lev, base_lev_multiplier)" in eng   # the JS uses Python half-even rounding (compose_leverage, DECISION_LOG 283)
     assert "function _ssPyRound(x)" in HTML and "renderSleeveSizing();" in HTML
     assert "window._ssEquity = Number(data.sizing_equity)" in HTML
 

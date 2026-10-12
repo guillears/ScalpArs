@@ -19,41 +19,63 @@ MOM, FLIP = "MOMENTUM", "FLIP:FAN_RATIO_GATE"
     ((MOM, "SHORT", "W1+W2+W1", 2.0), 0.5, "SHORT_1X"),                        # W2+W1 short de-muxed 2026-07-30
     ((MOM, "SHORT", "W1+W2+W1", 2.0, None, None, None, 1.5), 1 / 3, "SHORT_1X"),  # SOL 06-18: 2× at 30× lev → 1× at 20×
     ((MOM, "SHORT", "W1", 1.0, None, None, None, 1.5), 1 / 1.5, "SHORT_1X"),      # a lev-only boost is stripped too
-    ((MOM, "LONG", "UNMATCHED", 1.0, 0.50, 0.01, 0.50, 1.5), 1 / 1.5, "UNMATCHED_INV"),
-    ((MOM, "LONG", "ADXMAX_PROBE", 0.5, None, None, None, 0.05), 1.0, ""),       # probes never re-priced
+    ((MOM, "LONG", "UNMATCHED", 1.0, 0.50, 0.01, 0.50, 1.5), 1 / 1.5 * 0.5, "UNMATCHED_INV+ML_LEV"),
+    ((MOM, "LONG", "ADXMAX_PROBE", 0.5, None, None, None, 0.05), 1.0, "ML_LEV"),       # probes never re-priced
     ((MOM, "SHORT", "UNMATCHED", 2.0), 0.5, "SHORT_1X"),                       # not the 1.5× long rule
     ((MOM, "SHORT", "W1", 1.0), 1.0, ""),
-    ((MOM, "LONG", "NONEXP_CALM3D", 2.0), 0.5, "CALM3D_1X"),                   # DECISION_LOG 225
-    ((MOM, "LONG", "NONEXP_CALM3D", 1.0), 1.0, ""),
+    ((MOM, "LONG", "NONEXP_CALM3D", 2.0), 0.5 * 0.5, "CALM3D_1X+ML_LEV"),                   # DECISION_LOG 225
+    ((MOM, "LONG", "NONEXP_CALM3D", 1.0), 1.0 * 0.5, "ML_LEV"),
     ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE[NEGDI15]×2", 2.0), 0.25, "FLIP_FAN_LEV"),  # 220 size → 1× · 252 FAN lev 20× → 10×
     (("nan", "SHORT", "FLIP:FAN_RATIO_GATE×2", 2.0), 0.25, "FLIP_FAN_LEV"),          # flip known by its source alone
     ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE", 1.0), 0.5, "FLIP_FAN_LEV"),              # a 1× FAN fill at 20× → 10× (252)
     ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE", 1.0, None, None, None, 1.0, 10), 1.0, "FLIP_FAN_LEV"),   # already bracket-capped at 10× → unchanged
     ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE", 1.0, None, None, None, 1.0, 20), 0.5, "FLIP_FAN_LEV"),
+    ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE", 1.0, None, None, None, 0.5, 10), 1.0, "FLIP_FAN_LEV"),   # post-252 fill stamps 0.5, traded 10× → unchanged (B20 MUBARAK; was halved)
+    ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE", 1.0, None, None, None, 0.5, None), 1.0, "FLIP_FAN_LEV"), # post-252 stamp, no traded lev → no re-scale
     ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE", 1.0, None, None, None, 1.0, 15), 10 / 15, "FLIP_FAN_LEV"),  # schedule-capped 15× → 10×
     ((FLIP, "SHORT", "FLIP:FAN_RATIO_GATE+FGP_QS", 0.5, None, None, None, 0.05, 1), 1.0, "FLIP_FAN_LEV"),  # probe 1× stays 1× (0.05 floor)
     (("FLIP:PAIR_RSI_OB", "SHORT", "FLIP:PAIR_RSI_OB×2", 2.0), 0.5, "FLIP_1X"),      # other flip sources: 220 rule unchanged
     (("FLIP:PAIR_RSI_OB", "SHORT", "FLIP:PAIR_RSI_OB", 1.0), 1.0, ""),
-    ((MOM, "LONG", "UNMATCHED", 2.0, 0.50, 0.01, 0.50), 0.75, "UNMATCHED_INV"),  # DECISION_LOG 206 — 2× → 1.5×
-    ((MOM, "LONG", "UNMATCHED", 2.5, 0.50, 0.01, 0.50), 0.6, "UNMATCHED_INV"),   # old 2.5× quiet boost → 1.5×
-    ((MOM, "LONG", "UNMATCHED", 1.5, 0.50, 0.01, 0.50), 1.0, "UNMATCHED_INV"),   # already at today's size
-    ((MOM, "LONG", "UNMATCHED", 2.0, 0.80, 0.08, 0.50), 0.5, "SPRINT_DEMUX"),    # crowd-sprint → 1×
-    ((MOM, "LONG", "UNMATCHED", 2.0, 0.80, 0.08, 1.20), 0.5, "SPRINT_DEMUX"),    # sprint first (engine order)
-    ((MOM, "LONG", "UNMATCHED", 1.5, 0.80, 0.08, 0.50), 1 / 1.5, "SPRINT_DEMUX"),
-    ((MOM, "LONG", "UNMATCHED", 2.0, 0.74, 0.08, 0.50), 0.75, "UNMATCHED_INV"),  # strict > on global vol
-    ((MOM, "LONG", "UNMATCHED", 2.0, 0.80, 0.07, 0.50), 0.75, "UNMATCHED_INV"),  # strict > on BTC slope
-    ((MOM, "LONG", "UNMATCHED", 2.0, None, 0.08, 0.50), 0.75, "UNMATCHED_INV"),  # missing stamp = fail-open
-    ((MOM, "LONG", "UNMATCHED", 2.0, 0.50, 0.01, 0.90), 0.5, "PVR_DEMUX"),       # crowded entry (≥)
-    ((MOM, "LONG", "UNMATCHED", 2.0, 0.50, 0.01, float("nan")), 0.75, "UNMATCHED_INV"),
-    ((MOM, "LONG", "UNMATCHED", 1.0, 0.80, 0.08, 1.20), 1.0, ""),               # a 1× fill is never re-priced
+    ((MOM, "LONG", "UNMATCHED", 2.0, 0.50, 0.01, 0.50), 0.75 * 0.5, "UNMATCHED_INV+ML_LEV"),  # DECISION_LOG 206 — 2× → 1.5×
+    ((MOM, "LONG", "UNMATCHED", 2.5, 0.50, 0.01, 0.50), 0.6 * 0.5, "UNMATCHED_INV+ML_LEV"),   # old 2.5× quiet boost → 1.5×
+    ((MOM, "LONG", "UNMATCHED", 1.5, 0.50, 0.01, 0.50), 1.0 * 0.5, "UNMATCHED_INV+ML_LEV"),   # already at today's size
+    ((MOM, "LONG", "UNMATCHED", 2.0, 0.80, 0.08, 0.50), 0.5 * 0.5, "SPRINT_DEMUX+ML_LEV"),    # crowd-sprint → 1×
+    ((MOM, "LONG", "UNMATCHED", 2.0, 0.80, 0.08, 1.20), 0.5 * 0.5, "SPRINT_DEMUX+ML_LEV"),    # sprint first (engine order)
+    ((MOM, "LONG", "UNMATCHED", 1.5, 0.80, 0.08, 0.50), 1 / 1.5 * 0.5, "SPRINT_DEMUX+ML_LEV"),
+    ((MOM, "LONG", "UNMATCHED", 2.0, 0.74, 0.08, 0.50), 0.75 * 0.5, "UNMATCHED_INV+ML_LEV"),  # strict > on global vol
+    ((MOM, "LONG", "UNMATCHED", 2.0, 0.80, 0.07, 0.50), 0.75 * 0.5, "UNMATCHED_INV+ML_LEV"),  # strict > on BTC slope
+    ((MOM, "LONG", "UNMATCHED", 2.0, None, 0.08, 0.50), 0.75 * 0.5, "UNMATCHED_INV+ML_LEV"),  # missing stamp = fail-open
+    ((MOM, "LONG", "UNMATCHED", 2.0, 0.50, 0.01, 0.90), 0.5 * 0.5, "PVR_DEMUX+ML_LEV"),       # crowded entry (≥)
+    ((MOM, "LONG", "UNMATCHED", 2.0, 0.50, 0.01, float("nan")), 0.75 * 0.5, "UNMATCHED_INV+ML_LEV"),
+    ((MOM, "LONG", "UNMATCHED", 1.0, 0.80, 0.08, 1.20), 1.0 * 0.5, "ML_LEV"),               # a 1× fill is never re-priced
     (("SPIKE_FADE", "SHORT", "SPIKE_FADE", 2.0), 1.0, ""),                      # fades: ticket scale, not a cell
     (("FRENZY_LONG", "LONG", "FRENZY_LONG", 2.0), 1.0, ""),                     # sleeves: re-priced by _today
     (("BEARRUN_SHORT", "SHORT", "", 2.0), 1.0, ""),
+    # ⚖️ 10-12d (DECISION_LOG 283): momentum_long_lev_mult 0.5 — a 20× momentum long → 10×, never double-counted on a fill already lower
+    ((MOM, "LONG", "UNMATCHED", 1.0, None, None, None, 1.0, 20), 0.5, "ML_LEV"),
+    ((MOM, "LONG", "UNMATCHED", 1.0, None, None, None, 1.0, 10), 1.0, "ML_LEV"),          # traded at 10× already (bracket cap or the factor)
+    ((MOM, "LONG", "UNMATCHED", 1.0, None, None, None, 1.0, 15), 10 / 15, "ML_LEV"),      # schedule-capped 15× → 10×
+    ((MOM, "LONG", "UNMATCHED", 1.0, 0.5, 0.01, 0.5, 1.5, 30), 1 / 3, "UNMATCHED_INV+ML_LEV"),   # 30× (cell lev 1.5) → 20× → 10×
+    ((MOM, "LONG", "UNMATCHED", 1.0, 0.5, 0.01, 0.5, 1.5, 15), 2 / 3, "UNMATCHED_INV+ML_LEV"),   # traded under the factor (20 × 1.5 × 0.5)
+    ((MOM, "LONG", "GAPMIN_PROBE", 0.5, None, None, None, 0.05, 1), 1.0, "ML_LEV"),       # a 1× probe stays 1×
+    (("", "LONG", "UNMATCHED", 1.0), 0.5, "ML_LEV"),                                     # blank strategy = momentum (old exports)
+    (("MOMENTUM", "SHORT", "UNMATCHED", 1.0, None, None, None, 1.0, 20), 1.0, ""),          # shorts never
+    (("FRENZY_LITE", "LONG", "FRENZY_LITE", 1.0, None, None, None, 0.4, 8), 1.0, ""),      # sleeves never (re-priced by _today)
+    (("FLIP:FAN_RATIO_GATE", "LONG", "FLIP:FAN_RATIO_GATE", 1.0, None, None, None, 1.0, 20), 0.5, "FLIP_FAN_LEV"),   # flips: their own rule only
+    (("BULLRUN_LONG", "LONG", "BULLRUN", 1.0, None, None, None, 1.0, 20), 1.0, ""),
 ])
+
 def test_today_size_rule(args, want, tag):
     f, t = today_size_rule(*args)
     assert f == pytest.approx(want) and t == tag
     assert today_size_scale(*args) == pytest.approx(want)
+
+
+def test_momentum_long_lev_frozen_matches_live_json():
+    th = json.load(open(os.path.join(ROOT, "trading_config.json")))
+    th = th.get("thresholds", th)
+    assert th["momentum_long_lev_mult"] == B.MOMENTUM_LONG_LEV_FROZEN == 0.5   # DECISION_LOG 283 (a retune = new STACK_VERSION)
+    assert B.momentum_long_lev_scale(1.0, 1.0, 20) == 0.5 and B.momentum_long_lev_scale(1.0, 1.0, 20, mll=1.0) == 1.0
 
 
 def test_frozen_constants_match_live_json():

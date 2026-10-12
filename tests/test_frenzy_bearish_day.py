@@ -207,7 +207,7 @@ def test_config_values_d11():
     mf = C.SignalThresholds.model_fields
     assert mf["frenzy_bearish_day_block"].default is False and mf["frenzy_max_atr_pct"].default == 2.5 and mf["frenzy_lock_arm_pct"].default == 0.0
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["frenzy_bearish_day_block"] is True and cfg["frenzy_max_atr_pct"] == 3.0 and cfg["frenzy_lock_arm_pct"] == 0.0 and cfg["frenzy_tp_pct"] == 3.0
+    assert cfg["frenzy_bearish_day_block"] is True and cfg["frenzy_max_atr_pct"] == 3.0 and cfg["frenzy_lock_arm_pct"] == 0.0 and cfg["frenzy_tp_pct"] == 1.5   # DECISION_LOG 283 (3.0 at 250)
     src = open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
     assert "DECISION_LOG 250" in src and "FRENZY_ATR_CAP_STUDY_2026-10-08.md" in src and "$10,254 → $11,055" in src
 
@@ -215,10 +215,10 @@ def test_config_values_d11():
 def test_exit_is_the_fixed_tp_for_every_sleeve_with_the_json():
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     th = NS(**cfg)
-    assert frenzy_exit_for(3.0, 3.0, th, use_tp=True) == (True, "FRENZY_TP", 3.0)            # +3 closes (no lock)
-    assert frenzy_exit_for(2.9, 2.9, th, use_tp=True)[0] is False
+    assert frenzy_exit_for(1.5, 1.5, th, use_tp=True) == (True, "FRENZY_TP", 1.5)            # +1.5 closes (DECISION_LOG 283; +3 at 250; no lock)
+    assert frenzy_exit_for(1.4, 1.4, th, use_tp=True)[0] is False
     assert frenzy_exit_for(-3.0, 1.0, th, use_tp=True)[:2] == (True, "STOP_LOSS")
-    assert frenzy_exit_for(2.0, 3.4, th, use_tp=True) == (True, "FRENZY_TP", 3.0)            # a missed +3 peak closes at once, never rides down
+    assert frenzy_exit_for(1.0, 3.4, th, use_tp=True) == (True, "FRENZY_TP", 1.5)            # a missed +1.5 peak closes at once, never rides down
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert 'FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY")' in eng
     assert eng.count("in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)") == 2          # candle + realtime paths

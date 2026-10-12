@@ -1444,7 +1444,7 @@ def gc_run(now_ms, th, F, J, allr):
     if len(ov):
         L.append(f"Overlap: {len(ov)} of {len(cnt)} counted signals also had a WIDE fill on the same bar (WIDE actual mean "
                  f"{pd.to_numeric(ov.wide_actual, errors='coerce').mean():+.2f} % at lev {getattr(th, 'frenzy_wide_lev_mult', 0.2)} vs the hypothetical "
-                 f"LONG {pd.to_numeric(ov.TODAY, errors='coerce').mean():+.2f} % at lev 0.32, today's exit).")
+                 f"LONG {pd.to_numeric(ov.TODAY, errors='coerce').mean():+.2f} % at lev {getattr(th, 'frenzy_long_lev_mult', 0.1)}, today's exit).")   # 283: lev read from config
     cu = allg[allg.replay_code.astype(str) == "FRENZY_ON"] if "replay_code" in allg else allg.iloc[0:0]   # the replay at t says ON in state, not fresh
     L.append(f"Catch-up / not replayable at t (the journal line's t is not the ON bar — e.g. a pause catch-up; never counted): {len(cu)}"
              + (" (" + ", ".join(f"{str(r.pair).replace('USDT', '')} {str(r.k)[5:16]}" for r in cu.itertuples()) + ")" if len(cu) else "") + ".")

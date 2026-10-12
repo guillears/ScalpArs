@@ -1342,6 +1342,14 @@ def run():
     except Exception as _fwx_e:
         log(f"FRENZY_WILLY_TP exit shadow failed: {_fwx_e}")
         _rg_sec += ["## 🎲➡🔥 FRENZY_WILLY_TP", "", f"Unavailable this run ({str(_fwx_e)[:120]}).", ""]
+    try:                                               # 🎯↩ Oct-12 FRENZY_TP_REVERT (the +3 → +1.5 TP revert gate, DECISION_LOG 283; after FRENZY_WILLY_TP's fetch pass; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_frenzy_tp_revert as _ftr
+        _rg_sec += _ftr.run(now_ms)
+    except Exception as _ftr_e:
+        log(f"FRENZY_TP_REVERT revert gate failed: {_ftr_e}")
+        _rg_sec += ["## 🎯↩ FRENZY_TP_REVERT", "", f"Unavailable this run ({str(_ftr_e)[:120]}).", ""]
     try:                                               # 📐🔁 Oct-12 LITE_STRETCH_REENTRY (pre-registered, DECISION_LOG 272; cache only — after FRENZY_WILLY_TP's fetch pass; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

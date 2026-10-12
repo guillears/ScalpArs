@@ -68,9 +68,63 @@ Order of work: 0a learnings → 0a+ FRENZY theory (predicted separators frozen) 
 export → batch watchlist check (every open gate in CLAUDE_CURRENT_STATE + every Scout tracker) → 0b Scout line by line → §1–§6
 analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every finding → recommendations.
 
-## 🏁 NEXT BATCH = B20 (operator reset after the DECISION_LOG 280–282 deploy, 2026-10-12) — the first batch on ONE config (FRENZY −3 /
-## WILLY −4 paper = live, LITE 8×, LONG 2×, WIDE 1×, WILLY 10× +1.25 / −4 / 90). B19 is archived (BASELINE19, master STACK 2026-10-12c,
+## 🔬 WHEN yr6 (2025 + 2026 engine replay, today's config) IS DONE — winners vs losers, EVERY sleeve (operator 2026-10-12)
+Two years on today's exact code = the first data large enough, across regimes (2025 bull · H1 2026 bear · H2 2026), to find real
+winner / loser patterns in FRENZY (LONG / WIDE / LITE / WILLY), MOMENTUM LONG / SHORT, fades, flips, surge, bull-run, bear-run. Method:
+- DISCOVER on one year, CONFIRM on the other (2025 → 2026 and 2026 → 2025) — the first true out-of-sample test we can run; a pattern
+  counts only if it holds in both years (and both halves of each), with the exhaustive 1D / 2D (3D pre-registered) screen + day-block null.
+- Regime first: read every sleeve by regime (bull / bear / chop) — a sleeve that only works in one regime is an on / off switch (window
+  units), not a per-trade filter.
+- Then the usual bars (expectancy bar for filters, Pattern W for size), three blocks (① live batch · ② master per batch · ③ yr6), the
+  30–50 % haircut, observe-first, frozen revert gates. Re-test every open observe line (BTC24H_DOWN, WILLY_BTC1H / DIP_SUB, LITE stretch,
+  GVOL, LITE-after-LONG, …) on yr6 before any arm decision.
+- Exit questions to settle on yr6 (operator 2026-10-12, waiting on purpose): LITE TP +1.25 vs +3 and 10× vs 8× (year study: +3 wins by
+  ≈ 0.3 %/trade under every entry-slip assumption — reports/B19_LITE_TP125 check in DECISION_LOG context) · WILLY TP +1.25 vs +1.5 / +2
+  (year: +1.25 peaks; B19 favoured +1.5 = runner week) · a WILLY SPLIT exit (half at +1.25, half rides a trail) to keep the WR and catch the
+  +20 % runners · WILLY 60 vs 90 min cap. Re-read entry slippage too: the studies assume +0.10 % worse fills than live B19 showed (≈ 0 %).
+- 🔎 BUG HUNT ON THE FRENZY +1.5 / −3 QUESTION (operator 2026-10-12: "the year backtest is wrong … with +1.5 and −3 the WR needed is not
+  high"): the study walker and an independent tick re-walk agree exactly (LONG 63.7 % WR · −0.130, WIDE 63.2 % · −0.149, LITE 67.0 % ·
+  +0.030 at +0.10 % entry slip; 0 % slip: −0.074 / −0.106 / +0.098) vs the 66.7 % break-even of +1.5 / −3. yr6 (the real engine, real fills)
+  is the third, independent check: compare its FRENZY +1.5 / −3 WR and avg with the study's on the same 2026 days; any gap > 2 WR points
+  or > 0.05 %/fill → trace fill by fill before trusting either.
+- 🧭 WHEN DOES A SMALL FRENZY TP WIN? (operator 2026-10-12, from B19: LONG at +1.5 hit 73 % WR — a "bounce to +1.5 then collapse" week).
+  On yr6 (2025 + 2026) label every FRENZY LONG / WIDE / LITE fill by PATH SHAPE on its own ticks: (A) straight to −3 (never +1.5) ·
+  (B) +1.5 first, then −3 ("bounce-and-collapse" — only the small TP saves it) · (C) +1.5 first, then +3 (the small TP cuts a winner) ·
+  (D) +3 / cap. +1.5 beats +3 exactly when B outnumbers C (each B gains +4.5, each C loses −1.5 → B > C / 3). Then find what separates
+  B-heavy windows from C-heavy ones: (i) per fill — every entry variable (1D / 2D, discover-on-one-year → confirm-on-the-other, null);
+  (ii) per DAY / window — market state at entry (BTC 1 h / 4 h / 24 h trend, BTC vs 30-d high, breadth, market volume, number of live
+  FRENZY flags, alt-season / dominance) in day units. If a switch holds in both years, the candidate is an ADAPTIVE EXIT: +1.5 in
+  "bounce-and-collapse" regimes, +3 otherwise — pre-registered, observe-first, three blocks. (Note: the 10-12 test of switching on the
+  sleeve's own last 3 / 5 / 10 results failed — the switch must come from market state, not from recent P&L.)
+- SAME DEPTH FOR EVERY SLEEVE (operator 2026-10-12 "for all sleeves") — each gets its own section, in this order, with the same template:
+  FRENZY LITE · FRENZY WILLY · FRENZY LONG · FRENZY WIDE · MOMENTUM LONG · MOMENTUM SHORT · SPIKE_FADE · FLIP shorts (FAN / others) · SURGE
+  LONG / SHORT · BULL-RUN (GREEN + REARM door / age cap) · BEAR-RUN. Template per sleeve: ① baseline per year AND per MONTH of each year (2025 Jan→Dec, 2026 Jan→Oct) and per regime (N · WR · avg · CI ·
+  halves · $ at today's size) → ② winners vs losers → FILTERS FOR THE LOSERS (every entry variable 1D / 2D / pre-registered 3D, discover-on-one-year → confirm-on-the-
+  other, day-block null) → ③ exit grid (TP / stop / time cap / trail / split exit where it fits; live-stopped-cohort rule for stops) → ④
+  regime switch (BTC trend / 1 h slope / 24 h / breadth / market volume, in day units) → ⑤ sizing (growth-optimal leverage, ruin with real
+  maintenance margin) → ⑥ interactions (slots, one-position-per-coin, WILLY hold, LONG→LITE blocking) → recommendation + frozen revert gate,
+  three blocks (① live batch · ② master per batch · ③ yr6).
+
+- ⚖️🎯 DECISION_LOG 283 (operator declared override, 2026-10-12 "Ship all as asked") — yr6 MUST compare, per sleeve, per year / half /
+  month / regime, three blocks: ① FRENZY LONG / WIDE / LITE exit OLD +3 / −3 / 12 h vs NEW +1.5 / −3 / 12 h on the SAME fills (paired Δ,
+  day-bootstrap, both years; the path-shape A/B/C/D labels above decide it) · ② FRENZY sizes OLD (LONG 2× / WIDE 1× / LITE 8×) vs NEW (10× ×3)
+  — compounding book, max DD, worst UTC day (the 25 %-of-book revert bar), concurrent stops, liquidation distance at real MMR, and the LITE
+  entries LONG / WIDE block · ③ MOMENTUM LONG at 10× (`momentum_long_lev_mult` 0.5) vs 20× — book, DD, growth-optimal leverage; % per fill is
+  unchanged, so the read is $ / ruin only. If yr6 runs on a config snapshot from before 283, re-walk / re-lever its fills to both configs.
+
+## 🏁 NEXT BATCH = B21 (operator reset after the DECISION_LOG 283 deploy, 2026-10-12) — ONE config: FRENZY LONG / WIDE / LITE +1.5 / −3 at
+## 10×, momentum longs at half leverage, WILLY 10× +1.25 / −4 / 90. B20 (10-12 05:08 → 15:15, all pre-283) is archived in BASELINE20; B19 is archived (BASELINE19, master STACK 2026-10-12c,
 ## normalized to today's config); use the normalization table below only when re-reading the archived B19 by era.
+
+### If the batch is NOT reset at the deploy — DECISION_LOG 283 (2026-10-12) changed: FRENZY TP +3 → +1.5 (LONG / WIDE / LITE and the
+### manual FRENZY mode) · FRENZY LONG / WIDE / LITE → 10× · momentum LONG lev × 0.5 (20× → 10× on a 1× cell; a 2.0-lev cell 20× → 15× via the schedule cap) (`momentum_long_lev_mult` 0.5)
+- Tag every fill by era (the "(DECISION_LOG 283)" commit + 10 min); compare on Avg P&L %; $ only normalized to today (LONG $ × 10/2,
+  WIDE × 10/1, LITE × 10/8, momentum long × 10/20 for pre-283 fills — or the fill's own leverage if bracket-capped); FRENZY pre-283 fills:
+  re-walk at +1.5 / −3 / 12 h on their own ticks (never scale the %).
+- Gates to read (post-283 fills only): Scout FRENZY_TP_REVERT (pooled + per sleeve, N ≥ 20 on ≥ 8 days: old beats new at P ≥ 0.90 or new avg
+  < 0 with old avg higher → TP back to +3) · FRENZY 10× revert (per sleeve: first 20 fills at 10× avg < 0, or any UTC day's FRENZY fills > 25 % of the book →
+  LONG / WIDE 2× / 1×, LITE 8×) · FRENZY_WILLY_TP grid (re-based to 283) · momentum long 10×: no gate (de-risking) — report the $ halving
+  and confirm `leverage` = 10 on unmatched fills (20 × cell lev × 0.5; bracket-capped rows flagged).
 
 ## ⚠ NORMALIZE ALL B19 TRADES — the batch is NOT reset across config changes (operator 2026-10-12: "i will not reset the batch, then
 ## you will have to remember to normalize all trades in next B19 analysis")

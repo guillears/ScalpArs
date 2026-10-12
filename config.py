@@ -1322,6 +1322,15 @@ class SignalThresholds(BaseModel):
     # operator override. 🔒 REVERT: first 20 FRENZY + WIDE fills re-priced on ticks with fixed +3/−3 — +3/−3 averages better → lock_arm 0.
     # Oct-8 (operator, DECISION_LOG 250): trading_config.json lock_arm 3 → 0 — FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE and the manual "FRENZY"
     # exit are back on the FIXED +frenzy_tp_pct (3.0) take profit / −frenzy_stop_pct stop. The 205 revert gate above is moot (scout trackers keep running).
+    # 🎯 2026-10-12 (DECISION_LOG 283, operator DECLARED OVERRIDE "Ship all as asked", against the year evidence): trading_config.json
+    #   frenzy_tp_pct 3.0 → 1.5 — FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE AND the manual "FRENZY" exit mode (it reads this same field); stop
+    #   −3 and the 12 h cap unchanged; WILLY keeps its own exit. Per-fill avg % (+3/−3 → +1.5/−3; yr5 cohort, today's walker): LONG B19
+    #   −1.368 → +0.276 · master −1.671 → −1.503 · year −0.039 → −0.130 (H1 −0.265 / H2 +0.047, P(Δ>0) 0.19); WIDE B19 −1.003 → −0.001 ·
+    #   master −0.006 → −0.002 · year −0.047 → −0.149 (H1 +0.097 / H2 −0.487, P 0.24); LITE B19 +0.270 → −0.549 · master +1.506 → +0.383 ·
+    #   year +0.267 → +0.030 (H1 +0.078 / H2 −0.013, P 0.01). 🔒 REVERT to 3.0 (Scout FRENZY_TP_REVERT, scripts/scout_frenzy_tp_revert.py,
+    #   frozen 2026-10-12): pooled LONG+WIDE+LITE and per sleeve, at N ≥ 20 counted fills on ≥ 8 UTC days, decided ONCE — the old +3/−3/12 h
+    #   re-walked on the same fills beats +1.5 (mean paired Δ > 0 at day-bootstrap P ≥ 0.90, no fill > 50 % of ΣΔ, walker parity ≥ 90 %)
+    #   OR the new exit's average < 0 while the old averages higher on the same fills. Never frozen on a failed parity / integrity check; provisional fills hold the freeze.
     frenzy_lock_arm_pct: float = 0.0
     frenzy_lock_floor_pct: float = 2.0
     frenzy_lock_trail_pct: float = 2.0
@@ -1331,7 +1340,7 @@ class SignalThresholds(BaseModel):
     # 1st attempt −0.11 %, 2nd +0.14, 3rd +0.92; a cap of 1 was the worst cell, 3 keeps ~97 % of the tested entries. 0 = no cap.
     frenzy_max_entries_per_pair_day: int = 3
     frenzy_long_invest_mult: float = 1.0         # absolute-assign, never re-multiplied by cells (Oct-3 operator: JSON 1.0 · lev 0.32 → 20×→6×, one 3 % stop ≈ 5 % of the account; was 2.0/1.0 ≈ 31 %, 90-day MC median −100 %)
-    frenzy_long_lev_mult: float = 0.1            # DL 280: 2× (code default = the live value since 10-12, never a 20× fallback); 0 = the 0.05 floor
+    frenzy_long_lev_mult: float = 0.1            # DL 280: 2× code default = the SAFE fallback (a missing key never sizes above 2×); live JSON 0.5 = 10× since DL 283; 0 = the 0.05 floor
     # 💪 Oct-4 (operator ARMED override, DECISION_LOG 197): a FRENZY_LONG whose signal bar shows ADX rising (3-bar Δ > 0) ∧ +DI above −DI
     # (entry_frenzy_adx_delta > 0 ∧ entry_frenzy_di_spread > 0, both read on the closed bar) uses THIS leverage multiplier instead (JSON 0.5 →
     # 20×→10×, ≈ 1.67× the normal 6×). FRENZY_WIDE never. Unreadable readings = normal size. 0 = off. Year (ticks, fixed +4/−3, quiet market):
@@ -1343,6 +1352,13 @@ class SignalThresholds(BaseModel):
     #   they cost the compounding book (year, WILLY new exit 10×: LONG/WIDE 6×/4× $24,880 vs 2×/1× $42,716) yet keep a side effect worth keeping:
     #   an open LONG blocks a LITE entry on the same coin (one position per pair) and those LITE entries lost 8 of 10 on the year. Strong-gate
     #   (197 / 262, 7 / 20 on the revert side) superseded. 🔒 Re-size up only via Pattern W at ≥ 30 fresh fills (WR ≥ 70 % ∧ avg ≥ +0.10 %).
+    # ⚖️ 2026-10-12 (DECISION_LOG 283, operator DECLARED OVERRIDE "Ship all as asked" — the DL 280 Pattern-W re-size bar is overridden):
+    #   trading_config.json frenzy_long_lev_mult 0.1 → 0.5 (2× → 10×), frenzy_wide_lev_mult 0.05 → 0.5 (1× → 10×), frenzy_lite_lev_mult
+    #   0.4 → 0.5 (8× → 10×); strong bump stays 0 (off); invest 1.0. Engine leverage = max(1, round(20 × 0.5)) = 10×; resting exchange
+    #   backstop (order_backstop_pct) = 3 % stop + 0.5 margin = 3.5 % (liquidation ≈ 9.5 % at 10×, cap 80 % of it not binding). 10×
+    #   multiplies the $ of LONG / WIDE's negative year edge (−0.130 / −0.149 %/fill at +1.5/−3) by 5× / 10× vs 2× / 1×. LONG / WIDE stay ON
+    #   (an open LONG still blocks bad LITE entries on the same coin). 🔒 REVERT (per sleeve) LONG / WIDE → 0.1 / 0.05 (2× / 1×), LITE → 0.4
+    #   (8×): the first 20 fills of that sleeve at 10× average < 0, OR any UTC day whose FRENZY (LONG + WIDE + LITE) fills lose > 25 % of the book.
     frenzy_max_entry_dislocation_pct: float = 1.0  # skip the fill when the live price is > this % from the decision price
     frenzy_pair_blacklist: str = "BTCUSDT,ETHUSDT"
     # 🔥🌐 Oct-3 FRENZY-WIDE (operator; DECISION_LOG 193): the FRENZY first candle FRENZY itself refuses ONLY for its ATR cap or a green
@@ -1352,7 +1368,7 @@ class SignalThresholds(BaseModel):
     # Volume 75× / rising variants all worse (−0.02 to −0.08). Own tag FRENZY_WIDE, own size, own slots.
     frenzy_wide_enabled: bool = False
     frenzy_wide_invest_mult: float = 1.0         # absolute-assign like FRENZY_LONG
-    frenzy_wide_lev_mult: float = 0.05           # DL 280: 1× (was 0.2 = 4×); code default = the live value
+    frenzy_wide_lev_mult: float = 0.05           # DL 280: 1× code default = the SAFE fallback; live JSON 0.5 = 10× since DL 283 (gates above)
     frenzy_wide_max_slots: int = 2               # max FRENZY_WIDE open at once (they also count against max open positions)
     # 🌀 Oct-5 (DECISION_LOG 215 — shipped OBSERVE-ONLY, JSON 0: the deep review found the study's fresh bar lagged the engine's, and on the
     # bars the engine trades the cohort did not separate; frozen candidate 67.8 pending re-validation). FRENZY_WIDE skips a CHOPPY / FADING pump — at most this % of the episode's 5m
@@ -1393,6 +1409,10 @@ class SignalThresholds(BaseModel):
     #   (−68 %) — 8× ≈ the growth optimum; B19 +$100 → +$134. 🔒 REVERT to 0.32: the first 20 LITE fills at 0.4 average < 0, OR any UTC day
     #   whose LITE fills lose more than 25 % of the book (re-derived before deploy: at 8× the year's LITE
     #   days < −15 % happen 7× in 216 days, < −25 % once).
+    #   ⚖️ 2026-10-12 (DECISION_LOG 283, operator DECLARED OVERRIDE): trading_config.json 0.4 → 0.5 (8× → 10×) together with frenzy_tp_pct
+    #   3 → 1.5 (LITE year +0.267 → +0.030 %/fill at the new exit). The 277 gate is superseded by the 283 gates (frenzy_long_lev_mult
+    #   comment): revert LITE to 0.4 if its first 20 fills at 10× average < 0 or a UTC day's FRENZY fills lose > 25 % of the book; the TP via
+    #   Scout FRENZY_TP_REVERT.
     frenzy_lite_max_slots: int = 2               # max FRENZY_LITE open at once (they also count against max open positions)
     frenzy_lite_max_hours: float = 16.75         # episode age window end (h after the spike) — the study's "first ~17 h" (≤ frenzy_min_hours → 16.75 used)
     frenzy_lite_min_above_closes: int = 12       # (≤ 0 → 12 used) consecutive 5m closes at / above the spike VWAP (the study's 12 = FRENZY's hour; 6 vs 12 under study)
@@ -2243,6 +2263,17 @@ class SignalThresholds(BaseModel):
     long_unmatched_quiet_lev_mult: float = 1.0  # LEV multiplier — KEEP 1.0 until BE-compat passes
                                                 # on observed quiet losses (locked rule; 19-0 = untestable)
     long_unmatched_quiet_pvr_max: float = 0.68
+    # ⚖️ 2026-10-12 (DECISION_LOG 283, operator "Ship all as asked" — DE-RISKING, no revert gate): MOMENTUM-LONG LEVERAGE multiplier.
+    # Multiplies the leverage of EVERY open whose entry_strategy is MOMENTUM and direction LONG — the UNMATCHED path, every LONG pattern
+    # cell, the doors (NONEXP_CALM3D, CROSS_OB_OPEN, ADX_SURGE_OPEN, quiet / de-mux cells) and the probe paths that open as MOMENTUM —
+    # ON TOP of the cell's own lev multiplier (after its 2.0 hard cap and its floors): leverage = max(1, round(20 × cell_lev × this)),
+    # then the bracket / balance-schedule caps as before (trading_engine.momentum_long_lev_factor / compose_leverage). Never shorts,
+    # FRENZY_* / SURGE_* / BULLRUN / BEARRUN / flips / fades / spikes / bull- or bounce-long / MANUAL. JSON 0.5 → momentum longs 20× → 10×
+    # (a 1×-floor probe stays 1×). Evidence: yr5 year momentum long −0.063 %/fill (578 fills) — 10× halves the $ at risk of an edge the
+    # year does not show. ≤ 0 / blank = 1.0 (off); clamped to [0.05, 1.0] — a de-lever-only knob (scale-up stays a per-cell Pattern W
+    # promotion). Stamps: orders.leverage = the effective leverage; orders.cell_lev_multiplier keeps the CELL's own multiplier.
+    # 🔒 No revert gate (de-risking). Re-size up only on evidence (Pattern W bar on fresh fills at 10×). Code default 1.0 = no change.
+    momentum_long_lev_mult: float = 1.0
     # ⚡ Aug-10 CROWD-SPRINT DE-MUX (operator ship; the 3-era unmatched "Rest" hunt): de-size to
     # 1×/1× when global-vol ratio > gvr_min ∧ BTC EMA20 slope > slope_min — the FOMO window where
     # the fan trigger is beta noise, not pair-specific flow. 3-era window: 19·58%·−$714 pooled

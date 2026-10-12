@@ -163,7 +163,7 @@ def test_fixed_tp_wiring():
     assert eng.count('"FRENZY_TP": "MANUAL_TP"') == 2
     assert eng.count('_reason_base.startswith("FRENZY_TP")') == 2               # post-exit tracking (live + recovery whitelists)
     import json
-    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_tp_pct"] == 3.0
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_tp_pct"] == 1.5   # DECISION_LOG 283 (3.0 since 199)
 
 
 def test_strong_signal_leverage_wiring():
@@ -175,7 +175,7 @@ def test_strong_signal_leverage_wiring():
     i = eng.index("if _frenzy and _fz_es == \"FRENZY_LONG\" and frenzy_strong:")
     assert eng.index("_sg_inv = getattr(_th_sg") < i < eng.index("cell_lev_mult = max(0.05, min(1.0 if _sg_lev is None")   # replaces the lev mult BEFORE the clamp
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["frenzy_long_lev_mult_strong"] == 0.0 and cfg["frenzy_long_lev_mult"] == 0.1   # DECISION_LOG 280
+    assert cfg["frenzy_long_lev_mult_strong"] == 0.0 and cfg["frenzy_long_lev_mult"] == 0.5 and cfg["frenzy_wide_lev_mult"] == 0.5   # DECISION_LOG 283 (280: 0.1 / 0.05)
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     assert html.count('id="config-fz-lev-mult-strong"') == 1 and "['config-fz-lev-mult-strong', 'frenzy_long_lev_mult_strong', 0]" in html
 

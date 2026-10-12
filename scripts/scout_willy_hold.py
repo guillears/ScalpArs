@@ -6,7 +6,8 @@ While a FRENZY_WILLY position is open no other automated trade opens. Every refu
   · keeps the rows from the deploy floor = the "(DECISION_LOG 251)" commit time (git; no FRENZY_WILLY fill or hold row can predate it —
     the dashboard reads every WILLY fill, the same set), else NOW,
   · prices each blocked trade AS IF OPENED under ITS sleeve's current exit, entry = the first 1m open at / after the signal (+ FEE + SLIP):
-      FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE  fixed +3 / −3, 12 h cap (the live FRENZY exit since DECISION_LOG 250)
+      FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE  fixed +frenzy_tp_pct / −frenzy_stop_pct, 12 h cap (read from trading_config.json: +3 / −3
+                                                since DECISION_LOG 250, +1.5 / −3 since DECISION_LOG 283 — a stored row keeps the price it got)
       FRENZY_WILLY                              TP +1 net, NO stop, 120-min cap (its own exit)
       every other sleeve (MOMENTUM, FLIP:*, SPIKE_*, BULLRUN_LONG, SURGE_*, BEARRUN_SHORT …)  PROXY — no kline replica of the momentum /
           flip / spike exit stacks exists in the scout toolset (they need the live BE / trail / EMA ladder state): the row is priced at that
@@ -301,7 +302,7 @@ def run(now_ms=None):
     per, blocked, cost = cost_summary(rows, w_usd)
     L = ["## 🔒 WILLY_HOLD — the cost of the FRENZY_WILLY global hold (DECISION_LOG 251, declared exception, no auto-off)", "",
          f"_Rows from {pd.Timestamp(fl, unit='ms'):%Y-%m-%d %H:%M} UTC (the (DECISION_LOG 251) commit). Blocked trades priced AS IF OPENED: "
-         "FRENZY / WIDE / LITE at the fixed +3 / −3 / 12 h, WILLY at TP +1 / no stop / 120 min (1m klines, FEE 0.09 + SLIP 0.10); other sleeves "
+         f"FRENZY / WIDE / LITE at the live fixed exit when priced (today +{exit_rule('FRENZY_LONG')[0]:g} / {exit_rule('FRENZY_LONG')[1]:g} / {exit_rule('FRENZY_LONG')[2] // 60} h; +3 / −3 before DECISION_LOG 283), WILLY at its own exit (1m klines, FEE 0.09 + SLIP 0.10); other sleeves "
          "at their own ±3-day mean realised % (PROXY — no kline replica of their exit stacks). $ = % × the base notional (median WILLY fill"
          f"{' $%.0f' % base if base == base else ' — none yet'}) × the blocked trade's invest × lev mult._" + (" ⚠ network stopped (418 / 429 / weight) — unpriced rows retry next run." if stopped else ""), ""]
     if not len(rows):
@@ -326,7 +327,9 @@ def selftest():
     m = lambda ps: [[t0 + i * MIN, p, p * 1.001, p * 0.999, p] for i, p in enumerate(ps)]
     from types import SimpleNamespace as _NS
     _ws = abs(float(getattr(_live_th(), "frenzy_willy_stop_pct", 0) or 0))
-    chk(exit_rule("FRENZY_LITE") == (3.0, -3.0, 720) and exit_rule("FRENZY_WILLY") == (float(getattr(_live_th(), "frenzy_willy_tp_pct", 1.0) or 1.0), (-_ws if _ws > 0 else None), int(getattr(_live_th(), "frenzy_willy_max_hold_minutes", 120) or 120))
+    _lt = _live_th()   # DECISION_LOG 283: the FRENZY TP is read from trading_config.json (+1.5 since 283) — never pinned here
+    chk(exit_rule("FRENZY_LITE") == (float(getattr(_lt, "frenzy_tp_pct", 3.0) or 3.0), -abs(float(getattr(_lt, "frenzy_stop_pct", 3.0) or 3.0)),
+                                      int(getattr(_lt, "frenzy_max_hold_minutes", 720) or 720)) and exit_rule("FRENZY_WILLY") == (float(getattr(_live_th(), "frenzy_willy_tp_pct", 1.0) or 1.0), (-_ws if _ws > 0 else None), int(getattr(_live_th(), "frenzy_willy_max_hold_minutes", 120) or 120))
         and exit_rule("MOMENTUM") is None, "sleeve exits (DECISION_LOG 271: own stops, no hidden floor)")
     chk(exit_rule("FRENZY_LONG", _NS(broker_backstop_enabled=True, broker_backstop_pct=2.5))[1] == -3.0
         and exit_rule("FRENZY_WILLY", _NS(frenzy_willy_stop_pct=4.0, broker_backstop_enabled=True, broker_backstop_pct=2.5))[1] == -4.0,

@@ -5,7 +5,8 @@ HYPOTHESIS  FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE should be EXEMPT from the FR
             bounds what they add next to an open WILLY, so if the trades the hold refuses them make money, the hold is costing money there.
             Every other sleeve (and WILLY itself) keeps the hold — not judged here.
 COHORT      the WILLY_HOLD tracker's store (reports/SCOUT_WILLY_HOLD.csv — the bot's own e=WILLY_HOLD refusals, priced AS IF OPENED by
-            scripts/scout_willy_hold.py at the sleeve's live exit, +3 / −3 / 12 h on 1m klines, FEE 0.09 + SLIP 0.10, with the exit minute),
+            scripts/scout_willy_hold.py at the sleeve's live exit WHEN PRICED — +3 / −3 / 12 h until DECISION_LOG 283, +1.5 / −3 / 12 h after;
+            stored rows are not re-priced — on 1m klines, FEE 0.09 + SLIP 0.10, with the exit minute),
             FRENZY_LONG / WIDE / LITE rows only, one per (pair, sleeve, signal bar). This line prices nothing. The hold is the FIRST check in
             _frenzy_open, so a refused setup was never judged by the gates after it. Re-checked in signal order (the bot's own fills, stamps
             and decision journal; EARLIER KEPT refusals count as if open from their signal to their priced exit — 12 h when not known — so the
@@ -334,7 +335,7 @@ def run(now_ms=None, rows=None, orders=None, state_path=None, th=None, ctx=None)
     c = keep[keep.pct.notna()] if len(keep) else keep
     pend = keep[keep.pct.isna()] if len(keep) else keep
     L = ["## 🔓 HOLD_FRENZY_EXEMPT — should FRENZY / WIDE / LITE be exempt from the WILLY global hold? (DECISION_LOG 266, OBSERVE only)", "",
-         "The bot's own WILLY_HOLD refusals of FRENZY_LONG / WIDE / LITE (the WILLY_HOLD tracker's store, priced AS IF OPENED at +3 / −3 / 12 h on "
+         "The bot's own WILLY_HOLD refusals of FRENZY_LONG / WIDE / LITE (the WILLY_HOLD tracker's store, priced AS IF OPENED at the live FRENZY exit when priced — +3 / −3 / 12 h until DECISION_LOG 283, +1.5 / −3 / 12 h after — on "
          "1m klines, fees + slip), re-checked in signal order against the gates the hold pre-empted (unreadable check · catch-up took it later · pair held · slots · "
          "cooldown · pair-day cap · WIDE hold-green · bearish day on rebuilt BTC values · unpriceable); earlier kept refusals occupy pair / slot / "
          "day count. Blind spots: lateness, dislocation, WIDE's reclaim streak, book / margin caps, a 2nd signal during one WILLY.", ""]

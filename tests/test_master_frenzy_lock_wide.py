@@ -21,7 +21,7 @@ def test_frenzy_fixed_tp_pricing():
     books +3 (every era); below +3 the as-traded pct."""
     th = _th()
     tp = float(th["frenzy_tp_pct"])
-    assert float(th["frenzy_lock_arm_pct"]) == 0 and tp == 3.0
+    assert float(th["frenzy_lock_arm_pct"]) == 0 and tp == 1.5   # DECISION_LOG 283 (3.0 at 250)
     M = _m()
     f = M[(M.stack_keep == True) & M.entry_strategy.astype(str).isin(["FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE"])]   # WILLY: own exit (282)
     assert f.peak_pnl.notna().all()
@@ -36,8 +36,11 @@ def test_frenzy_fixed_pct_rule():
     import sys
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
     from build_master_pool import frenzy_fixed_pct as fp
-    assert fp("FRENZY_LONG", 3.0, -3.0) == 3.0 and fp("FRENZY_WIDE", 5.1, 3.47) == 3.0 and fp("FRENZY_LITE", 3.26, -3.0) == 3.0   # peak ≥ 3 books +3
-    assert fp("FRENZY_LONG", 2.99, -3.0) == -3.0 and fp("FRENZY_LONG", None, -1.2) == -1.2 and fp("FRENZY_LONG", float("nan"), 0.4) == 0.4
+    assert fp("FRENZY_LONG", 3.0, -3.0, 3.0) == 3.0 and fp("FRENZY_WIDE", 5.1, 3.47, 3.0) == 3.0 and fp("FRENZY_LITE", 3.26, -3.0, 3.0) == 3.0   # (250) peak ≥ 3 books +3
+    assert fp("FRENZY_LONG", 2.99, -3.0, 3.0) == -3.0
+    # 10-12d (DECISION_LOG 283): the frozen default TP is +1.5 — a peak ≥ +1.5 books +1.5 (a +3 TP fill too); below it the as-traded pct
+    assert fp("FRENZY_LONG", 1.5, -3.0) == 1.5 and fp("FRENZY_WIDE", 3.0, 3.0) == 1.5 and fp("FRENZY_LITE", 1.49, -3.0) == -3.0
+    assert fp("FRENZY_LONG", None, -1.2) == -1.2 and fp("FRENZY_LONG", float("nan"), 0.4) == 0.4
     assert fp("MOMENTUM", 5.0, 1.0) == 1.0                                        # other sleeves never
 
 
@@ -78,7 +81,7 @@ def test_b17_archived():
     M = _m()
     assert (M.era == "B17").sum() == 25 and os.path.exists(os.path.join(ROOT, "reports", "BASELINE17_batch1003-1006_orders.csv"))
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-12c"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
+    assert 'STACK_VERSION = "2026-10-12d"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
     assert "WIDE_HG_MAX_ATR_FROZEN = 12.0, 3.0" in bld and "Prior 10-06d — 10-06d:" in bld   # the STACK history keeps every step
 
 
@@ -109,7 +112,10 @@ def test_willy_priced_at_todays_exit():
     cf = pd.read_csv(os.path.join(ROOT, "reports", "WILLY_EXIT_CF.csv"))
     th = _th()
     assert cf.exit_rule.eq(f"+{float(th['frenzy_willy_tp_pct']):g}/-{abs(float(th['frenzy_willy_stop_pct'])):g}/{int(th['frenzy_willy_max_hold_minutes'])}").all()
-    m = {(str(a)[:19], p): c for a, p, c in zip(cf.opened_at, cf.pair, cf.cf_pct)}
+    # an UNRES row (no path cache yet) keeps its as-traded pct — allowed ONLY for fills opened after the DL 281 deploy (B20+), which already
+    # traded today's +1.25 / −4 / 90 live; an older fill must carry a re-walked cf_pct
+    m = {(str(a)[:19], p): (c if pd.notna(c) else (lp if str(a)[:19] >= "2026-10-12T04:00" else float("nan")))
+         for a, p, c, lp in zip(cf.opened_at, cf.pair, cf.cf_pct, cf.live_pct)}
     assert len(w) >= 14 and all(abs(r.stack_pct - m[(str(r.opened_at)[:19], r.pair)]) < 1e-9 for r in w.itertuples())
     lev = max(1, int(round(20 * float(th["frenzy_willy_lev_mult"]))))            # today's size: 10× at DL 280
     assert all(abs(r.stack_pnl - round(r.stack_pct / 100 * r.investment / (float(r.cell_multiplier or 1) or 1) * lev, 2)) < 0.02 for r in w.itertuples())

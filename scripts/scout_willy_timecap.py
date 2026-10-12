@@ -25,6 +25,44 @@ VERDICT     (FROZEN, pre-registered — computed ONCE on the first prefix by (op
             every fill's LIVE walk matches its actual exit (reason + % within 0.05 pts), or ≥ 90 % match AND every fill without a TP inside
             15 or 20 min matches — else WALKER PARITY FAILED, not frozen. Both qualify → the larger mean Δ (tie → CAP15);
             both mean Δ ≤ 0 → KEEP 120; else KEEP OBSERVING.
+S4 CELLS    (DECISION_LOG 278, operator-approved 2026-10-12, OBSERVE only — the cells above, their cohort and their frozen state are untouched.)
+            CAP60 / CAP90 on today's stop: TP +frenzy_willy_tp_pct (1) · stop −frenzy_willy_stop_pct (4, live in paper and live since
+            DECISION_LOG 271) · close at market at 60 / 90 min if neither line was hit — vs TODAY = the same TP / stop with the
+            frenzy_willy_max_hold_minutes cap (120); all three read from trading_config.json by levels(). Walker = the DECISION_LOG 272 hybrid
+            (scout_frenzy_willy_exit.load_path / evaluate: ticks per covered UTC day, then the 1m tail = provisional; tick ruler = the first
+            print through a line; a cell undecided at the path end is not counted). NOTE: the CAP15 / CAP20 cells above still use this file's
+            single-source score_fill (ticks for the WHOLE window, else 1m for the whole fill) — left as is so their frozen bar keeps the scoring
+            it was registered with. Cohort: CLOSED WILLY fills opened ≥ the "(DECISION_LOG 271)" commit (99b9048, 2026-10-12 01:49:51 UTC)
+            + 10 min = 2026-10-12 01:59:51 UTC (the −4 stop live); git unavailable → the same pinned time; same loader / dedup as above;
+            earlier fills are printed as context (walked with today's −4, never counted).
+            Evidence (reports/B19_WILLY_TIMECAP4.txt, scripts/study_b19_willy_timecap4.py — yr5 live-reachable cohort, re-sequenced, +1 / −4):
+              cap 120  avg +0.054  H1 +0.051 / H2 +0.058  shared book 10× $9,035
+              cap  60  avg +0.069  H1 +0.071 / H2 +0.068  shared book 10× $11,507
+              cap  90  avg +0.075  H1 +0.085 / H2 +0.064  shared book 10× $12,148
+            B19 (14 live fills, own path): 120 +0.404 · 60 +0.402 · 90 +0.473. 15 / 20-min caps lose (+0.040 / +0.036 on the year).
+            Caveat: the best of 7 caps, a small Δ from ~9 changed fills → observe only.
+            T125C60 / T125C90 (operator addition, same change set): TP +1.25 · stop −4 · 60 / 90-min cap, vs the same today (+1 / −4 / 120),
+            same walker, cohort and bar shape (S4_BAR_T125; mean Δ ≤ 0 → KEEP TODAY). Review fixes (same change set): a prefix failing walker
+            parity (< 90 %) or the untouched-integrity leg is NEVER frozen (any verdict); MANUAL_* closes are dropped from the S4 cohort and
+            listed; a cell whose cap is ≥ frenzy_willy_max_hold_minutes is n/a (not walked, judged or frozen); final fills a cell leaves
+            undecided are counted and recorded next to dropped_no_data.
+            Evidence (reports/B19_WILLY_TP075.txt / B19_WILLY_TIMECAP4.txt, yr5 reachable, re-sequenced):
+              +1.25 / −4 / 120  avg +0.105  H1 +0.123 / H2 +0.085  book 10× $13,834
+              +1.25 / −4 /  90  avg +0.124  H1 +0.150 / H2 +0.094  book 10× $18,040
+              +1.25 / −4 /  60  avg +0.097  H1 +0.132 / H2 +0.059  book 10× $13,091  (reports/B19_WILLY_T125C60_LEVERAGE.txt, shared book
+                                                                                     at WILLY 10×)
+              today (+1/−4/120) avg +0.054                         book 10× $9,035
+            B19 (14 fills): +1 / −4 / 120 +0.404 · +1.25 / −4 / 120 +0.435 · +1.25 / −4 / 60 +0.462 (· / 90 +0.447). ZK 10-09 is the one
+            fill that loses its +1 (it reaches ≈ +1.0 only): −1.34 at cap 120, −0.93 at cap 60. Caveat: chosen among many combinations on the
+            same year → observe only.
+            UNTOUCHED (the "fills the cap never touches show Δ = 0" integrity leg, s4_untouched — read from TODAY's walk only): a fill whose
+            outcome the cell cannot change = today hit −4 at ≤ the cell's cap (−4 before +1, so also before +1.25 — the cell's TP must be ≥
+            today's), OR today took its +1 at ≤ the cell's cap on a print whose net is already ≥ the cell's TP (the same first print through
+            both lines; a 1m-bar TP is booked at exactly +1 and so never counts as untouched for +1.25). For CAP60 / CAP90 (same TP) this is
+            simply "today's TP or −4 fired at ≤ the cap". Everything else (today's 120-min close, a TP after the cap, a +1 print below
+            +1.25) is a touched fill and may move.
+            FROZEN BARS (pre-registered 2026-10-12, DECISION_LOG 278) — S4_BAR (CAP60 / CAP90, word for word) and S4_BAR_T125 (T125 cells);
+            state under the keys S4_CAP60 / S4_CAP90 / S4_T125C60 / S4_T125C90 of reports/SCOUT_WILLY_TIMECAP.json.
 BINANCE     cache first: ticks reports/backtest_cache/{ticks_q,ticks}/<PAIR>/<day>.npz (+ legacy scout_willy_timecap/ticks), else 1m klines
             (k1m / k1m_ondemand + this line's scout_willy_timecap/1m). Requests, ≤ 2 per run in all:
             · data.binance.vision daily aggTrades archive — ≤ 1 per run, its own 120 s timeout (outside the 25 s fapi budget), asked only ≥ 24 h
@@ -94,6 +132,31 @@ STUDY_CSV = os.path.join(_ROOT, "reports", "FRENZY_TP3_VS_TP4_TICKS_2026-10-08_w
 REVERT = ("Pre-committed revert if a cap is ever adopted: the first 15 WILLY fills after the switch — Σ % below what the 120-min exit "
           "would have given on the same fills (this walker) → back to 120.")
 _NET_BLOCKED = False                                 # selftest: any fetch attempt raises
+# S4 cells (DECISION_LOG 278) — CAP60 / CAP90 on today's TP / stop, own cohort + own frozen bar
+S4_CELLS = (("CAP60", None, 60), ("CAP90", None, 90),        # (name, TP — None = today's TP from trading_config.json, cap minutes)
+            ("T125C60", 1.25, 60), ("T125C90", 1.25, 90))
+S4_KEY = {n: f"S4_{n}" for n, _, _ in S4_CELLS}
+S4_KEEP = {"CAP60": "KEEP 120", "CAP90": "KEEP 120", "T125C60": "KEEP TODAY", "T125C90": "KEEP TODAY"}
+S4_DEPLOY_GREP = "(DECISION_LOG 271)"
+S4_DEPLOY_PIN = "2026-10-12 01:49:51"                # 99b9048 commit time (UTC) — used only if git is unavailable
+S4_LAG_MIN = 10                                      # the cohort starts 10 min after the commit (deploy lag)
+S4_PARITY_MIN = 0.90
+S4_LABEL = "pre-registered 2026-10-12, DECISION_LOG 278"
+S4_BAR = ("FROZEN BAR (pre-registered 2026-10-12, DECISION_LOG 278). For each cell separately, at the first prefix with N ≥ 20 counted fills "
+          "on ≥ 8 distinct UTC days, decided ONCE: CANDIDATE (operator decides; never automatic) iff all of: the mean paired Δ (cell − today) "
+          "> 0 with day-bootstrap P(Δ > 0) ≥ 0.90 (4,000 resamples, seed 7); no single fill carries > 50 % of Σ Δ; fills the cap never "
+          "touches show Δ = 0 (walker integrity); walker parity vs live ≥ 90 %; else, mean Δ ≤ 0 → KEEP 120; else KEEP OBSERVING. "
+          "Provisional (1m-part) or unpriced fills in the prefix hold the freeze while their tick archive / 1m page is still due. A prefix "
+          "whose walker parity is < 90 % or whose untouched-integrity check fails is never frozen (WALKER PARITY / INTEGRITY FAILED — "
+          "re-checked next run). A cell whose cap is ≥ today's max hold is n/a (not judged, not frozen).")
+S4_BAR_T125 = ("FROZEN BAR (pre-registered 2026-10-12, DECISION_LOG 278). Per cell, N ≥ 20 counted fills on ≥ 8 days: CANDIDATE iff mean "
+               "paired Δ > 0 with day-bootstrap P ≥ 0.90, no fill > 50 % of Σ Δ, untouched fills Δ = 0, walker parity ≥ 90 %; mean Δ ≤ 0 "
+               "→ keep today; else keep observing. Compared against today's +1 / −4 / 120. Untouched (these cells change the TP as well as "
+               "the cap) = fills where neither the TP difference nor the cap changes the outcome: today hit −4 at ≤ the cap (before +1, so "
+               "before +1.25), or today's +1 was taken at ≤ the cap on a print already ≥ +1.25 net. Provisional (1m-part) or unpriced fills "
+               "in the prefix hold the freeze while their tick archive / 1m page is still due. A prefix whose walker parity is < 90 % or "
+               "whose untouched-integrity check fails is never frozen (WALKER PARITY / INTEGRITY FAILED — re-checked next run). A cell whose "
+               "cap is ≥ today's max hold is n/a (not judged, not frozen).")
 
 
 # ─────────────────────────── config / accounting ───────────────────────────
@@ -849,6 +912,275 @@ def scored_frame(o, hold, tp, stop, tcache=None):
     return pd.concat([o.reset_index(drop=True), pd.DataFrame(rows, index=range(len(o)))], axis=1)
 
 
+# ─────────────────────────── S4 cells: CAP60 / CAP90 / T125C60 / T125C90 on today's −4 stop (DECISION_LOG 278) ───────────────────────────
+def _fx():
+    """the DECISION_LOG 272 hybrid walker (load_path / evaluate) — imported lazily: scout_frenzy_willy_exit imports this module."""
+    import scout_frenzy_willy_exit as FX
+    return FX
+
+
+def s4_deploy_ts():
+    """the "(DECISION_LOG 271)" commit time (the −4 stop live, paper = live) + 10 min; git unavailable → the pinned 99b9048 time + 10 min."""
+    try:
+        out = subprocess.run(["git", "-C", _ROOT, "log", "--format=%ct", "--grep=" + S4_DEPLOY_GREP, "--fixed-strings", "--reverse"],
+                             capture_output=True, text=True, timeout=10)
+        t = pd.Timestamp(int(out.stdout.strip().splitlines()[0]) * 1000, unit="ms")
+    except Exception:
+        t = pd.Timestamp(S4_DEPLOY_PIN)
+    return t + pd.Timedelta(minutes=S4_LAG_MIN)
+
+
+def s4_spec(name, tp):
+    """→ (cell TP, cap minutes); a None TP in S4_CELLS = today's TP (trading_config.json)."""
+    _, t, x = next(c for c in S4_CELLS if c[0] == name)
+    return (float(tp) if t is None else float(t)), int(x)
+
+
+def s4_na(name, tp, hold):
+    """a cell whose cap is ≥ today's max hold (frenzy_willy_max_hold_minutes) is n/a: not walked, not judged, not frozen."""
+    return s4_spec(name, tp)[1] >= int(hold)
+
+
+def s4_cells(P, tp, stop, hold):
+    """one hybrid path → dict: today (TP / stop / hold cap) and every S4 cell (its TP, the same stop, its cap; a cell whose cap is ≥ the
+    hold is n/a = NaN, why 'N/A'). None if today is UNRES."""
+    FX = _fx()
+    la = FX.evaluate(P, tp, stop, hold)
+    if la["why"] == "UNRES":
+        return None
+    rec, evs = dict(s4_LIVE=la["pct"], s4_why_LIVE=la["why"], s4_min_LIVE=la["xmin"]), [la]
+    for name, _, _ in S4_CELLS:
+        ctp, x = s4_spec(name, tp)
+        if s4_na(name, tp, hold):                                    # a cap ≥ today's hold is meaningless: n/a, never folded into today
+            rec[f"s4_{name}"], rec[f"s4_why_{name}"], rec[f"s4_min_{name}"] = np.nan, "N/A", np.nan
+            continue
+        b = FX.evaluate(P, ctp, stop, x)
+        evs.append(b)
+        rec[f"s4_{name}"], rec[f"s4_why_{name}"], rec[f"s4_min_{name}"] = b["pct"], b["why"], b["xmin"]
+    rec["s4_n_unres"] = sum(e["why"] == "UNRES" for e in evs)
+    rec["_on_ticks"] = bool(P["n_tick"] > 0 and all(e["why"] != "UNRES" and not e["on_bar"] for e in evs))
+    return rec
+
+
+def s4_score_fill(r, tp, stop, hold, tcache=None):
+    """→ (rec or None, source 'ticks' / 'ticks+1m' / '1m' / None) on ONE hybrid path (DECISION_LOG 272)."""
+    FX = _fx()
+    P = FX.load_path(r.pair, int(r.te), float(r.E), hold, tcache)
+    rec = s4_cells(P, tp, stop, hold)
+    if rec is None:
+        return None, None
+    rec["s4_par_ok"], rec["s4_par_txt"] = parity(r.why, r.pct, {"v": {"LIVE": {"why": rec["s4_why_LIVE"], "pct": rec["s4_LIVE"]}}})
+    return rec, ("ticks" if rec.pop("_on_ticks") else FX.path_src(P))
+
+
+def s4_frame(o, tp, stop, hold, tcache=None):
+    rows = []
+    for r in o.itertuples():
+        w, src = s4_score_fill(r, tp, stop, hold, tcache)
+        rows.append(dict(s4_src=src, **(w or {})))
+    base = o.reset_index(drop=True)
+    if not rows:
+        return base.assign(s4_src=pd.Series(dtype=object))
+    return pd.concat([base, pd.DataFrame(rows, index=range(len(o)))], axis=1)
+
+
+def s4_counted(g, name):
+    """the fills that count for a cell: today scored AND the cell decided."""
+    if not len(g) or "s4_LIVE" not in g:
+        return g.iloc[:0]
+    return g[g.s4_src.notna() & pd.to_numeric(g[f"s4_{name}"], errors="coerce").notna()]
+
+
+def s4_untouched(g, name, tp):
+    """fills whose outcome the cell cannot change, read from TODAY's walk only (see the module doc): today hit its stop at ≤ the cell's cap
+    (and the cell's TP ≥ today's, so the cell cannot have taken a TP first), or today hit its TP at ≤ the cell's cap on a print whose net
+    already reaches the cell's TP (the same first print through both TPs)."""
+    ctp, x = s4_spec(name, tp)
+    m = pd.to_numeric(g.s4_min_LIVE, errors="coerce").values <= x + 1e-9
+    w, live = g.s4_why_LIVE.values, g.s4_LIVE.values.astype(float)
+    return m & (((w == "STOP") & (ctp >= tp - 1e-12)) | ((w == "TP") & (live >= ctp - 1e-12)))
+
+
+def s4_judge(g, name, tp):
+    """g = counted fills → dict(n, days, mean, sum, p, share, integ, n_untouched, par, d, q)."""
+    d = g[f"s4_{name}"].values.astype(float) - g.s4_LIVE.values.astype(float)
+    s = float(d.sum()) if len(d) else 0.0
+    m = float(d.mean()) if len(d) else float("nan")
+    p = NF.p_mean_neg(-d, g.day.values, BOOT_N, BOOT_SEED) if len(d) else None
+    share = float(d.max() / s) if s > 0 else float("nan")
+    untouched = s4_untouched(g, name, tp) if len(g) else np.zeros(0, bool)
+    integ = bool(np.all(np.abs(d[untouched]) < 1e-9))
+    par = float(g.s4_par_ok.astype(bool).mean()) if len(g) else 0.0
+    q = bool(m > 0 and p is not None and p >= P_MIN and s > 0 and share <= SHARE_MAX and integ and par >= S4_PARITY_MIN)
+    return dict(n=int(len(g)), days=int(g.day.nunique()) if len(g) else 0, mean=m, sum=s, p=p, share=share, integ=integ,
+                n_untouched=int(untouched.sum()), par=par, d=d, q=q)
+
+
+def s4_verdict(g, name, tp):
+    """the DECISION_LOG 278 bar on the counted fills g → (state, detail, judge dict)."""
+    n, nd = len(g), g.day.nunique() if len(g) else 0
+    if n < N_MIN or nd < DAYS_MIN:
+        return "COLLECTING", f"N {n}/{N_MIN} · {nd}/{DAYS_MIN} days", {}
+    j = s4_judge(g, name, tp)
+    det = (f"N {n} · {nd} d · mean Δ {j['mean']:+.3f} pts · Σ Δ {j['sum']:+.2f} · P(Δ>0) {(j['p'] if j['p'] is not None else float('nan')):.2f} · "
+           f"top fill {(j['share'] * 100 if j['share'] == j['share'] else float('nan')):.0f} % of ΣΔ · untouched Δ = 0 on "
+           f"{j['n_untouched']} fill(s) {'✓' if j['integ'] else '✗'} · parity {j['par'] * 100:.0f} %")
+    if j["q"]:
+        return f"{name} CANDIDATE (operator decides)", det, j
+    if j["mean"] <= 0:
+        return S4_KEEP[name], det, j
+    return "KEEP OBSERVING", det, j
+
+
+def s4_freeze(st, name, g, now_iso, cfg, hold=None, why=None, dropped=None, undecided=None):
+    """freeze a cell ONCE under st[S4_KEY[name]] at the first prefix (N ≥ 20 counted fills on ≥ 8 UTC days); deferred while a fill opened ≤
+    the prefix end is OPEN, unpriced-but-not-final or 1m-provisional (hold); NEVER frozen while the prefix fails walker parity (< 90 %) or
+    the untouched-integrity check (any verdict, KEEP included). dropped / undecided = open times of final fills with no path / with this
+    cell undecided (recorded ≤ the prefix end). Never touches any other key (the CAP15 / CAP20 frozen verdicts, the other S4 cells)."""
+    key = S4_KEY[name]
+    if key in st:
+        return st, False
+    pre = prefix(g, N_MIN)
+    if pre is None:
+        return st, False
+    last = pre.ts.max()
+    w = []
+    if NF.freeze_hold(last, hold, w):
+        if why is not None:
+            why += [f"{name} — {s}" for s in w]
+        return st, False
+    state, det, j = s4_verdict(pre, name, cfg[0])
+    if j and (j["par"] < S4_PARITY_MIN or not j["integ"]):
+        if why is not None:
+            why.append(f"{name} — WALKER PARITY / INTEGRITY FAILED — not frozen (parity {j['par'] * 100:.0f} %, untouched Δ = 0 "
+                       f"{'✓' if j['integ'] else '✗'})")
+        return st, False
+    ctp, x = s4_spec(name, cfg[0])
+    st[key] = dict(state=state, detail=det, bar=S4_LABEL, at=f"{last:%Y-%m-%d %H:%M} UTC", run_at=now_iso, n=len(pre),
+                   days=int(pre.day.nunique()), dropped_no_data=int(sum(1 for t in (dropped or []) if pd.notna(t) and t <= last)),
+                   undecided_final=int(sum(1 for t in (undecided or []) if pd.notna(t) and t <= last)),
+                   config=dict(tp=cfg[0], stop=cfg[1], hold=cfg[2], cell_tp=ctp, cap=x),
+                   keys=[f"{a}|{b}" for a, b in zip(pre.ts.dt.strftime("%Y-%m-%dT%H:%M:%S"), pre.pair.astype(str))])
+    return st, True
+
+
+def _s4_val(r, n):
+    v = getattr(r, f"s4_{n}")
+    return f"{n} {v:+.2f} ({getattr(r, f's4_why_{n}')}, Δ {v - r.s4_LIVE:+.2f})" if v == v else f"{n} undecided"
+
+
+def _s4_fill_txt(r):
+    return (f"{r.ts:%m-%d %H:%M} {r.pair} [{r.s4_src}{'' if r.s4_src == 'ticks' else ', provisional'}] today {r.s4_LIVE:+.2f} ({r.s4_why_LIVE} @ "
+            f"{r.s4_min_LIVE:.0f} min) → " + " / ".join(_s4_val(r, n) for n, _, _ in S4_CELLS))
+
+
+def s4_section(o, opens, now_ms, levels_, tcache, st, ok):
+    """→ (markdown lines, state, changed). o = the line's closed WILLY fills (≥ the DL 251 floor) with te / E / why / pct."""
+    tp, stop, hold = levels_
+    FX = _fx()
+    floor = s4_deploy_ts()
+    manual = o.why.astype(str).str.upper().str.startswith("MANUAL")          # operator closes: not the walked exit (each = a parity miss)
+    man = o[manual & (o.ts >= floor)]
+    o = o[~manual].reset_index(drop=True)
+    s4 = s4_frame(o, tp, stop, hold, tcache)
+    done = load_attempts()["done"]
+    s4["s4_pend"] = [FX._pending(s, getattr(r, "s4_n_unres", 0), ticks_pending(r, hold, done, now_ms, tcache),
+                                 _kk(r.pair, r.te, _span(hold)) not in done) for s, r in zip(s4.s4_src, s4.itertuples())]
+    coh = s4[s4.ts >= floor]
+    ctx = s4[(s4.ts < floor) & s4.s4_src.notna()]
+    today = f"TP +{tp:g} · {'no stop' if not stop else f'stop −{stop:g}'} · {hold} min"
+
+    def lab(n):
+        ctp, x = s4_spec(n, tp)
+        return f"{n} (+{ctp:g} / −{stop if stop else 0:g} / {x} min)"
+    L = [f"### ⏱ CAP60 / CAP90 / T125C60 / T125C90 on today's stop (DECISION_LOG 278 — OBSERVE only; own cohort + own frozen bar, CAP15 / "
+         f"CAP20 above untouched)", "",
+         f"Cohort: CLOSED {STRATEGY} fills opened ≥ {floor:%Y-%m-%d %H:%M:%S} UTC (the \"{S4_DEPLOY_GREP}\" commit + {S4_LAG_MIN} min: the "
+         f"−4 stop live, paper = live), same loader / dedup as above. Today (trading_config.json): {today}. Cells: the same stop; CAP60 / "
+         f"CAP90 today's TP, T125C60 / T125C90 TP +1.25; closed at market at the cap if neither line was hit. Walker: the DECISION_LOG 272 "
+         f"hybrid (ticks per covered UTC day, then the 1m tail = provisional; tick ruler = the first print through a line); a cell undecided "
+         f"at the path end is not counted. Untouched = today's stop hit ≤ the cell's cap, or today's TP hit ≤ the cell's cap on a print "
+         f"already through the cell's TP (these must show Δ = 0).", "",
+         "| Cell | N counted | days | mean Δ vs today (pts) | Σ Δ | P(Δ>0) day-bootstrap | top fill share of Σ Δ | untouched fills Δ = 0 | parity |",
+         "|---|---|---|---|---|---|---|---|---|"]
+    for n, _, _ in S4_CELLS:
+        g = s4_counted(coh, n)
+        if s4_na(n, tp, hold):
+            L.append(f"| {lab(n)} | n/a (cap ≥ hold {hold} min) | – | – | – | – | – | – | – |")
+            continue
+        if not len(g):
+            L.append(f"| {lab(n)} | 0 | 0 | – | – | – | – | – | – |")
+            continue
+        j = s4_judge(g, n, tp)
+        ptxt = "–" if j["p"] is None else f"{j['p']:.2f}"
+        stxt = "–" if j["share"] != j["share"] else f"{j['share'] * 100:.0f} %"
+        L.append(f"| {lab(n)} | {j['n']} | {j['days']} | {j['mean']:+.3f} | {j['sum']:+.2f} | "
+                 f"{ptxt} | {stxt} | {'✓' if j['integ'] else '✗'} ({j['n_untouched']}) | {j['par'] * 100:.0f} % |")
+    L.append("")
+    sc = coh[coh.s4_src.notna()]
+    if len(sc):
+        L.append("Per fill (counted cohort): " + " · ".join(_s4_fill_txt(r) for r in sc.itertuples()))
+        par = sc.s4_par_ok.astype(bool)
+        L.append(f"Walker parity (today's walk vs the actual exit, reason + % within {PARITY_TOL} pts): {int(par.sum())}/{len(sc)}"
+                 + ("" if par.all() else " — off: " + " · ".join(f"{r.pair} {r.s4_par_txt}" for r in sc[~par].itertuples())))
+    else:
+        L.append("Per fill (counted cohort): none yet — no WILLY fill closed since the −4 stop went live.")
+    uns = coh[coh.s4_src.isna()]
+    if len(man):
+        L.append(f"Excluded: {len(man)} manually closed fill(s) (not the walked exit): "
+                 + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
+
+    def undecided(n):
+        """final fills the cell leaves undecided: today decided, the cell UNRES, no data still due."""
+        if not len(coh) or f"s4_{n}" not in coh:
+            return []
+        m = coh.s4_src.notna() & pd.to_numeric(coh[f"s4_{n}"], errors="coerce").isna() & ~coh.s4_pend.astype(bool)
+        return list(coh[m].ts)
+    if len(uns):
+        L.append("UNPRICED (no path yet): " + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair}" + ("" if r.s4_pend else " (final — no data)")
+                                                      for r in uns.itertuples()))
+    if len(ctx):
+        L.append(f"Context, NOT counted ({len(ctx)} fill(s) opened before the −4 stop went live, walked with today's {today}; parity is vs "
+                 f"what they really did): " + " · ".join(_s4_fill_txt(r) for r in ctx.itertuples()) + " · mean Δ "
+                 + " / ".join(f"{n} {(pd.to_numeric(ctx[f's4_{n}'], errors='coerce') - ctx.s4_LIVE).mean():+.3f}" for n, _, _ in S4_CELLS)
+                 + f" · today avg {ctx.s4_LIVE.mean():+.3f} vs " + " / ".join(f"{n} {pd.to_numeric(ctx[f's4_{n}'], errors='coerce').mean():+.3f}"
+                                                                           for n, _, _ in S4_CELLS) + ".")
+    L += [f"CAP60 / CAP90 — {S4_BAR}", f"T125C60 / T125C90 — {S4_BAR_T125}"]
+    why, changed = [], False
+    hold_l = [x for x in opens if pd.notna(x[0]) and x[0] >= floor] + [
+        (r.ts, f"{'unpriced' if not isinstance(r.s4_src, str) else 'undecided cell' if (getattr(r, 's4_n_unres', 0) or 0) > 0 else '1m-provisional'} {r.pair}")
+        for r in coh.itertuples() if r.s4_pend]
+    if ok and stop:
+        for n, _, _ in S4_CELLS:
+            if s4_na(n, tp, hold):
+                continue
+            st, ch = s4_freeze(st, n, s4_counted(coh, n), pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"), (tp, stop, hold),
+                               hold_l, why, dropped=list(uns[~uns.s4_pend.astype(bool)].ts) if len(uns) else [], undecided=undecided(n))
+            changed |= ch
+    elif ok:
+        why.append("today's WILLY exit has no stop in trading_config.json — the cells are defined on the −4 stop, nothing frozen")
+    for n, _, _ in S4_CELLS:
+        f0 = st.get(S4_KEY[n]) if ok else None
+        nu = len(undecided(n))
+        if s4_na(n, tp, hold) and not f0:
+            L.append(f"{n}: n/a (cap ≥ hold) — today's max hold is {hold} min; not judged, not frozen.")
+            continue
+        v = s4_verdict(s4_counted(coh, n), n, tp)
+        if f0:
+            L.append(f"{n}: **Frozen verdict ({f0['bar']}; prefix to {f0['at']}, frozen on the run of {f0['run_at']}, N {f0['n']} · "
+                     f"{f0['days']} d, {f0.get('dropped_no_data', 0)} final-no-data fill(s) excluded, {f0.get('undecided_final', 0)} final "
+                     f"fill(s) left undecided by this cell, today then TP +{f0['config']['tp']:g} / "
+                     f"stop −{f0['config']['stop']:g} / {f0['config']['hold']} min): {f0['state']}** ({f0['detail']}) · live (information only, "
+                     f"never re-decides): {v[0]} — {v[1]}")
+        else:
+            L.append(f"{n}: ⏳ {v[0]} ({v[1]}){f' · {nu} final fill(s) left undecided by this cell (not counted)' if nu else ''}.")
+    if why:
+        L.append("⏸ S4 freezing deferred this run: " + " · ".join(why) + " — re-checked next run.")
+    L.append("Δ is per fill on the SAME entries: a shorter cap / different TP changes when the one WILLY slot (and the global hold) frees — "
+             "the extra trades are not priced here (the year study's re-sequenced book is the reference for that).")
+    return L, st, changed
+
+
 # ─────────────────────────── rendering ───────────────────────────
 def _vrow(lab, g, v):
     if not len(g):
@@ -954,6 +1286,12 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
                 break
         if changed_any:
             NF.du_save_state(st, state_path)
+    try:                                                       # S4 cells (DECISION_LOG 278): own cohort, own keys in the same state file
+        L4, st, ch4 = s4_section(o.drop(columns=["src"]), opens, now_ms, (tp, stop, hold), tc, st, ok)
+        if ok and ch4:
+            NF.du_save_state(st, state_path)
+    except Exception as e:
+        L4 = [f"### ⏱ CAP60 / CAP90 / T125C60 / T125C90 on today's stop (DECISION_LOG 278) — unavailable this run ({type(e).__name__}: {str(e)[:160]})"]
     live_state, live_det, _ = verdict(sc)
     bar = (f"Bar (pre-registered, frozen once at the first prefix of N ≥ {N_MIN} closed WILLY fills on ≥ {DAYS_MIN} days, never re-fit; "
            f"one re-read at N ≥ {REREAD_N}): per CAP15 / CAP20, Δ = CAPx − LIVE per fill; CAPx CANDIDATE (operator decides) iff mean Δ > 0 ∧ "
@@ -983,6 +1321,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     L.append(REVERT)
     if notes:
         L.append(f"Data: {' · '.join(notes)}.")
+    L += [""] + L4
     if study:
         try:
             L += [""] + study_block()
@@ -1195,6 +1534,127 @@ def selftest():
         chk(not freeze({}, Fp.assign(par_ok=np.arange(n) >= 3), "tq", (1.0, None, 120))[1], "< 90 % parity → not frozen")
         std, chd = freeze({}, Fp, "td", (1.0, None, 120), [], [], dropped=[Fp.ts.iloc[2], pd.Timestamp("2030-01-01")])
         chk(chd and std["first"]["dropped_no_data"] == 1 and "20/20" in std["first"]["parity"], "final-no-data fills ≤ the prefix end recorded")
+        # ── S4 cells (DECISION_LOG 278): CAP60 / CAP90 on the −4 stop, hybrid walker ──
+        chk((S4_CELLS, S4_KEY, S4_PARITY_MIN, S4_LAG_MIN, S4_DEPLOY_GREP)
+            == ((("CAP60", None, 60), ("CAP90", None, 90), ("T125C60", 1.25, 60), ("T125C90", 1.25, 90)),
+                {"CAP60": "S4_CAP60", "CAP90": "S4_CAP90", "T125C60": "S4_T125C60", "T125C90": "S4_T125C90"}, 0.90, 10, "(DECISION_LOG 271)")
+            and S4_BAR.startswith("FROZEN BAR (pre-registered 2026-10-12, DECISION_LOG 278).") and "KEEP 120" in S4_BAR
+            and S4_BAR_T125.startswith("FROZEN BAR (pre-registered 2026-10-12, DECISION_LOG 278).") and "keep today" in S4_BAR_T125
+            and s4_spec("CAP90", 1.0) == (1.0, 90) and s4_spec("T125C60", 1.0) == (1.25, 60),
+            "S4 constants + bar pinned")
+        chk(s4_deploy_ts() == pd.Timestamp("2026-10-12 01:59:51"), f"S4 cohort floor = 99b9048 + 10 min ({s4_deploy_ts()})")
+        chk(levels()[1] == float(rt["frenzy_willy_stop_pct"]) == 4.0, f"today's ruler reads the −4 stop from trading_config.json ({levels()})")
+
+        def _P(tt, pp):                                           # a ticks-only hybrid path (load_path's shape)
+            tt = np.asarray(tt, dtype="int64")
+            nn = net_pct(pp, E) if len(tt) else np.array([], dtype=float)
+            lim = te + 121 * MIN
+            return dict(t=tt, hi=nn, lo=nn, cl=nn, op=np.full(len(tt), np.nan), bar=np.zeros(len(tt), bool), end_ms=lim,
+                        n_tick=len(tt), n_bar=0, tick_end=lim, lim=lim, te=te)
+        nx = lambda px: float(net_pct(px, E))                     # noqa: E731
+        c = s4_cells(_P(te + np.array([10 * MIN, 60 * MIN, 60 * MIN + 1, 90 * MIN, 90 * MIN + 1, 119 * MIN]),
+                        [99.5, 99.0, 98.0, 97.5, 97.0, 96.5]), 1.0, 4.0, 120)
+        chk(c["s4_why_CAP60"] == c["s4_why_CAP90"] == c["s4_why_LIVE"] == "CAP" and abs(c["s4_CAP60"] - nx(99.0)) < 1e-12
+            and abs(c["s4_CAP90"] - nx(97.5)) < 1e-12 and abs(c["s4_LIVE"] - nx(96.5)) < 1e-12 and c["s4_min_CAP60"] == 60.0
+            and c["s4_min_CAP90"] == 90.0 and c["s4_n_unres"] == 0 and c["_on_ticks"],
+            f"S4: the cap fires at exactly 60 / 90 min (a print AT the cap counts, one 1 ms later does not) ({c})")
+        c = s4_cells(_P(te + np.array([20 * MIN, 30 * MIN, 100 * MIN]), [99.0, 95.8, 105.0]), 1.0, 4.0, 120)
+        chk(all(c[f"s4_why_{v}"] == "STOP" and abs(c[f"s4_{v}"] - nx(95.8)) < 1e-12 for v in ("LIVE", "CAP60", "CAP90", "T125C60", "T125C90"))
+            and abs(c["s4_min_LIVE"] - 30) < 1e-9, "S4: −4 before the cap → every cell stops at the same print (Δ = 0)")
+        c = s4_cells(_P(te + np.array([10 * MIN, 40 * MIN, 100 * MIN]), [99.0, tp_px, 90.0]), 1.0, 4.0, 120)
+        chk(all(c[f"s4_why_{v}"] == "TP" and abs(c[f"s4_{v}"] - nx(tp_px)) < 1e-12 for v in ("LIVE", "CAP60", "CAP90")),
+            "S4: TP before the cap → every cell takes the same TP (Δ = 0)")
+        chk(all(c[f"s4_why_{v}"] == "CAP" and abs(c[f"s4_{v}"] - nx(tp_px)) < 1e-12 for v in ("T125C60", "T125C90")),
+            "S4: +1.11 net is a TP for today, not for +1.25 (T125 cells close at their cap on the last print ≤ it; the −4 at 100 min is after)")
+        c = s4_cells(_P(te + np.array([10 * MIN, 40 * MIN, 100 * MIN]), [99.0, 101.5, 90.0]), 1.0, 4.0, 120)
+        chk(all(c[f"s4_why_{v}"] == "TP" and abs(c[f"s4_{v}"] - nx(101.5)) < 1e-12 for v in ("LIVE", "T125C60", "T125C90")),
+            "S4: a print through +1.25 → today and the T125 cells take the same print (Δ = 0)")
+        c = s4_cells(_P(te + np.array([10 * MIN, 30 * MIN, 50 * MIN, 61 * MIN, 95 * MIN]), [99.0, 101.15, 101.18, 98.8, 98.6]), 1.0, 4.0, 120)
+        chk(c["s4_why_LIVE"] == "TP" and c["s4_why_T125C60"] == "CAP" and abs(c["s4_T125C60"] - nx(101.18)) < 1e-12
+            and c["s4_why_T125C90"] == "CAP" and abs(c["s4_T125C90"] - nx(98.8)) < 1e-12 and c["s4_T125C90"] < c["s4_LIVE"],
+            "S4: a ZK-like path (+1.0 reached, +1.25 never) → T125 cells lose today's +1 and close at their cap")
+        c = s4_cells(_P(te + np.array([10 * MIN, 55 * MIN, 75 * MIN]), [99.0, 98.5, tp_px]), 1.0, 4.0, 120)
+        chk(c["s4_why_CAP60"] == "CAP" and abs(c["s4_CAP60"] - nx(98.5)) < 1e-12 and c["s4_why_CAP90"] == c["s4_why_LIVE"] == "TP"
+            and c["s4_CAP90"] == c["s4_LIVE"], "S4: TP at 75 min → CAP60 closes at 60, CAP90 = today")
+        c = s4_cells(_P(te + np.array([59 * MIN, 89 * MIN, 100 * MIN]), [99.8, 99.9, 95.8]), 1.0, 4.0, 120)
+        chk(c["s4_why_LIVE"] == "STOP" and c["s4_why_CAP60"] == c["s4_why_CAP90"] == "CAP" and c["s4_CAP60"] - c["s4_LIVE"] > 3,
+            "S4: a stop after both caps → the caps close earlier (Δ > 0)")
+        c = s4_cells(_P(te + np.array([59 * MIN]), [99.8]), 1.0, 4.0, 60)
+        chk(all(c[f"s4_{v}"] != c[f"s4_{v}"] and c[f"s4_why_{v}"] == "N/A" for v in ("CAP60", "CAP90", "T125C60", "T125C90"))
+            and c["s4_n_unres"] == 0 and s4_na("CAP60", 1.0, 60) and not s4_na("CAP60", 1.0, 61) and s4_na("T125C90", 1.0, 90),
+            "S4: a cap ≥ today's hold → n/a (never folded into today with min()), and never a pending undecided cell")
+        Pu = _P(te + np.array([10 * MIN]), [99.0])
+        Pu.update(end_ms=te + 70 * MIN, tick_end=te + 70 * MIN)
+        cu = s4_cells(Pu, 1.0, 4.0, 120)
+        chk(cu is None, "S4: today undecided at the path end → unpriced")
+        Pu.update(end_ms=te + 121 * MIN)
+        chk(s4_cells(Pu, 1.0, 4.0, 120)["s4_n_unres"] == 0, "S4: a full path decides every cell")
+
+        def s4f(d, wl, ml, days=None, par=True, n=None):
+            n = n or len(d)
+            lv = np.where(np.asarray(wl) == "TP", 1.0, 0.0)          # today's TP booked at +1.00 (below +1.25); cells = today + d
+            d = lv + np.asarray(d, dtype=float)
+            return pd.DataFrame(dict(ts=[pd.Timestamp("2026-10-13") + pd.Timedelta(hours=7 * i) for i in range(n)],
+                                     pair=[f"P{i}" for i in range(n)], day=days if days is not None else [f"D{i % 10}" for i in range(n)],
+                                     s4_src="ticks", s4_LIVE=lv, s4_CAP60=d, s4_CAP90=d, s4_T125C60=d, s4_T125C90=d, s4_why_LIVE=wl,
+                                     s4_min_LIVE=ml, s4_par_ok=par))
+        wl = np.array(["TP"] * 12 + ["CAP"] * 12)
+        ml = np.where(wl == "TP", 5.0, 120.0)
+        g4 = np.where(wl == "TP", 0.0, 1.0)
+        chk(s4_verdict(s4f(g4, wl, ml).iloc[:19], "CAP60", 1.0)[0] == "COLLECTING" and s4_verdict(s4f(g4, wl, ml, days=["D1"] * 24), "CAP60", 1.0)[0] == "COLLECTING",
+            "S4: N < 20 or < 8 days → collecting")
+        v4 = s4_verdict(s4f(g4, wl, ml), "CAP60", 1.0)
+        chk(v4[0] == "CAP60 CANDIDATE (operator decides)" and v4[2]["integ"] and v4[2]["n_untouched"] == 12, f"S4: candidate ({v4[1]})")
+        chk(s4_verdict(s4f(-g4, wl, ml), "CAP90", 1.0)[0] == "KEEP 120", "S4: mean Δ ≤ 0 → KEEP 120")
+        chk(s4_verdict(s4f(np.concatenate([np.zeros(12), np.tile([1.0, -0.8], 6)]), wl, ml), "CAP60", 1.0)[0] == "KEEP OBSERVING",
+            "S4: P(Δ>0) < 0.90 → keep observing")
+        o4 = g4.copy()
+        o4[-1] = 100.0
+        chk(s4_verdict(s4f(o4, wl, ml), "CAP60", 1.0)[0] == "KEEP OBSERVING", "S4: one fill > 50 % of Σ Δ → keep observing")
+        b4 = g4.copy()
+        b4[0] = 0.3
+        vb = s4_verdict(s4f(b4, wl, ml), "CAP60", 1.0)
+        chk(vb[0] == "KEEP OBSERVING" and not vb[2]["integ"], "S4: a cap-untouched fill with Δ ≠ 0 (walker integrity) → never a candidate")
+        chk(s4_verdict(s4f(g4, wl, np.where(wl == "TP", 75.0, 120.0)), "CAP60", 1.0)[2]["n_untouched"] == 0
+            and s4_verdict(s4f(g4, wl, np.where(wl == "TP", 75.0, 120.0)), "CAP90", 1.0)[2]["n_untouched"] == 12,
+            "S4: a TP at 75 min is cap-touched for CAP60, untouched for CAP90")
+        chk(s4_verdict(s4f(g4, wl, ml, par=np.arange(24) >= 3), "CAP60", 1.0)[0] == "KEEP OBSERVING", "S4: walker parity < 90 % → never a candidate")
+        chk(s4_verdict(s4f(g4, wl, ml, par=np.arange(24) >= 2), "CAP60", 1.0)[0].startswith("CAP60 CANDIDATE"), "S4: parity 22/24 ≥ 90 % passes")
+        chk(s4_verdict(s4f(-g4, wl, ml), "T125C90", 1.0)[0] == "KEEP TODAY" and s4_verdict(s4f(g4, wl, ml), "T125C60", 1.0)[2]["n_untouched"] == 0,
+            "S4: T125 mean Δ ≤ 0 → KEEP TODAY; a today-TP print below +1.25 net is touched for T125")
+        ut = pd.DataFrame(dict(s4_why_LIVE=["TP", "TP", "STOP", "STOP", "CAP"], s4_min_LIVE=[30.0, 30.0, 30.0, 70.0, 120.0],
+                               s4_LIVE=[1.30, 1.05, -4.1, -4.1, -1.0]))
+        chk(list(s4_untouched(ut, "T125C60", 1.0)) == [True, False, True, False, False]
+            and list(s4_untouched(ut, "CAP90", 1.0)) == [True, True, True, True, False],
+            "S4 untouched: today's −4 ≤ the cap, or today's TP ≤ the cap on a print through the cell's TP")
+        F4 = s4f(g4, wl, ml)
+        sentinel = {"first": {"state": "KEEP OBSERVING", "n": 20}}
+        why = []
+        s4s, ch = s4_freeze(json.loads(json.dumps(sentinel)), "CAP60", F4, "t0", (1.0, 4.0, 120), [(F4.ts.iloc[4], "1m-provisional Q")], why)
+        chk(not ch and s4s == sentinel and "1m-provisional Q" in why[0] and why[0].startswith("CAP60"),
+            "S4: a 1m-provisional fill in the prefix holds the freeze")
+        s4s, ch = s4_freeze(json.loads(json.dumps(sentinel)), "CAP60", F4, "t1", (1.0, 4.0, 120), [(F4.ts.iloc[22], "unpriced late")])
+        chk(ch and s4s["first"] == sentinel["first"] and s4s["S4_CAP60"]["state"].startswith("CAP60 CANDIDATE") and s4s["S4_CAP60"]["n"] == 20
+            and s4s["S4_CAP60"]["bar"] == S4_LABEL and set(s4s) == {"first", "S4_CAP60"}, "S4: frozen once on the first prefix, CAP15 / CAP20 state untouched")
+        snap4 = json.loads(json.dumps(s4s))
+        s4s, ch = s4_freeze(s4s, "CAP60", F4.assign(s4_CAP60=F4.s4_LIVE - 1.0), "t2", (1.0, 4.0, 120))
+        chk(not ch and s4s == snap4, "S4: a frozen cell is never recomputed")
+        so, cho = freeze({"S4_CAP60": snap4["S4_CAP60"]}, fills(good, tp15), "t3", (1.0, None, 120), [])
+        chk(cho and so["S4_CAP60"] == snap4["S4_CAP60"] and so["first"]["state"].startswith("CAP15"),
+            "S4: the CAP15 / CAP20 freeze never touches the S4 keys")
+        why = []
+        sp, chp = s4_freeze({}, "CAP60", s4f(g4, wl, ml, par=np.arange(24) >= 3), "tp", (1.0, 4.0, 120), [], why)
+        chk(not chp and sp == {} and "WALKER PARITY / INTEGRITY FAILED — not frozen" in why[0] and "parity 85 %" in why[0],
+            f"S4 freeze: parity < 90 % on the prefix → not frozen ({why})")
+        nb = -g4
+        nb[0] = 0.3                                              # KEEP-side verdict (mean ≤ 0) with a broken untouched fill
+        why = []
+        sk, chk_ = s4_freeze({}, "CAP90", s4f(nb, wl, ml), "tk", (1.0, 4.0, 120), [], why)
+        chk(not chk_ and sk == {} and "INTEGRITY FAILED" in why[0] and "✗" in why[0], "S4 freeze: a KEEP verdict with integrity ✗ → not frozen")
+        su, chu = s4_freeze({}, "T125C60", F4, "tu", (1.0, 4.0, 120), [], [], dropped=[F4.ts.iloc[1]],
+                            undecided=[F4.ts.iloc[3], F4.ts.iloc[5], pd.Timestamp("2030-01-01")])
+        chk(chu and su["S4_T125C60"]["undecided_final"] == 2 and su["S4_T125C60"]["dropped_no_data"] == 1,
+            "S4 freeze: final fills left undecided by the cell are recorded (≤ the prefix end) next to dropped_no_data")
         # caches + fetch path in a temp tree
         with tempfile.TemporaryDirectory() as td:
             _CACHE = os.path.join(td, "cache")
@@ -1434,6 +1894,78 @@ def selftest():
                 f"run() freezes at N 20 on ≥ 8 days: no-TP fills at 20 min (−0.49) beat 15 min (−1.09) and the 120 close (−4.09) ({s1['first']['state']})")
             out = "\n".join(run(nowz, orders=zo.assign(pnl_percentage=0.0), fetch=False, state_path=STATE, th={}, open_ts=[], study=False))
             chk(json.load(open(STATE)) == s1 and s1["first"]["state"] in out, "persisted verdict survives a later run unchanged")
+            chk(set(s1) == {"first"} and "CAP60: ⏳ COLLECTING (N 19/20" in out and "Context, NOT counted (1 fill(s)" in out,
+                "existing cells unchanged: the S4 cells add no key below their own N, the pre-floor fill is context only")
+            # S4 end-to-end: 22 fills after the −4 stop went live; one walked on 1m (provisional) holds the freeze until its archive is final
+            rows4, STATE4 = [], os.path.join(td, "S4.json")
+            for i in range(22):
+                ts = pd.Timestamp("2026-10-12 03:00:00") + pd.Timedelta(hours=13 * i)
+                tms = ts.value // 10**6
+                path = [(tms + 2 * MIN, 99.0), (tms + 16 * MIN, 99.6), (tms + 59 * MIN, 99.8), (tms + 89 * MIN, 99.9),
+                        (tms + 119 * MIN, 96.5)] if i % 2 else [(tms + 3 * MIN, tp_px)]
+                pr = f"S{i}USDT"
+                if i == 2:                                        # 1m klines only (no tick day) → provisional; TP booked at +1
+                    ok1 = (tms // MIN) * MIN + np.arange(0, 125) * MIN
+                    k1 = pd.DataFrame(dict(open_time=ok1, o=99.9, h=99.95, l=99.85, c=99.9))
+                    k1.loc[2, "h"] = tp_px
+                    k1.to_csv(os.path.join(_CACHE, "k1m_ondemand", f"{pr}.csv"), index=False)
+                    live = 1.0
+                else:
+                    os.makedirs(os.path.join(_CACHE, "ticks", pr), exist_ok=True)
+                    for dd in _days(tms, 120):
+                        pts = [(a, b) for a, b in path if f"{pd.Timestamp(a, unit='ms'):%Y-%m-%d}" == dd]
+                        np.savez_compressed(os.path.join(_CACHE, "ticks", pr, f"{dd}.npz"),
+                                            t=np.array([a for a, _ in pts], dtype=np.int64), p=np.array([b for _, b in pts], dtype=np.float32))
+                    live = float(net_pct(path[-1][1], 100.0))
+                rows4.append(dict(base, opened_at=f"{ts:%Y-%m-%dT%H:%M:%S}", pair=pr, entry_price=100.0, pnl_percentage=live, pnl=0.0,
+                                  close_reason="MAX_HOLD_TIME" if i % 2 else "FRENZY_TP", closed_at="x", entry_frenzy_willy_trigger="A"))
+            so4 = pd.DataFrame(rows4)
+            out = "\n".join(run(nowz, orders=so4, fetch=False, state_path=STATE4, th={"frenzy_willy_stop_pct": 4.0}, open_ts=[], study=False))
+            s4j = json.load(open(STATE4)) if os.path.exists(STATE4) else {}
+            chk("S4_CAP60" not in s4j and "S4_CAP90" not in s4j and "CAP60 — 1 fill(s) opened" in out and "T125C90 — 1 fill(s) opened" in out and "1m-provisional S2USDT" in out
+                and "S2USDT [1m, provisional]" in out, f"run(): a 1m-provisional fill in the prefix holds the S4 freeze\n{out}")
+            att = load_attempts()
+            t2 = pd.Timestamp("2026-10-13 05:00").value // 10**6
+            for dd in _days(t2, 120):
+                att["done"][_ak("S2USDT", dd)] = "404×3 (selftest)"
+            save_attempts(att)
+            out = "\n".join(run(nowz, orders=so4, fetch=False, state_path=STATE4, th={"frenzy_willy_stop_pct": 4.0}, open_ts=[], study=False))
+            s4j = json.load(open(STATE4))
+            chk(all(s4j[S4_KEY[n]]["state"] == f"{n} CANDIDATE (operator decides)" and s4j[S4_KEY[n]]["n"] == 20
+                    and s4j[S4_KEY[n]]["config"] == dict(tp=1.0, stop=4.0, hold=120, cell_tp=s4_spec(n, 1.0)[0], cap=x) for n, _, x in S4_CELLS)
+                and "CAP60: **Frozen verdict (pre-registered 2026-10-12, DECISION_LOG 278" in out and "| CAP90 (+1 / −4 / 90 min) | 22 |" in out,
+                f"run(): archive final → all four S4 cells frozen (no-TP fills close at 60 / 90 min near flat vs −3.59 at 120) ({s4j})\n{out}")
+            out = "\n".join(run(nowz, orders=so4.assign(pnl_percentage=0.0), fetch=False, state_path=STATE4, th={"frenzy_willy_stop_pct": 4.0},
+                                open_ts=[], study=False))
+            chk(json.load(open(STATE4)) == s4j, "run(): the S4 frozen verdicts survive a later run unchanged")
+            man4 = pd.concat([so4, pd.DataFrame([dict(rows4[1], opened_at="2026-10-14T09:00:00", close_reason="MANUAL_CLOSE", pnl_percentage=0.3)])],
+                             ignore_index=True)
+            STATE5 = os.path.join(td, "S5.json")
+            out = "\n".join(run(nowz, orders=man4, fetch=False, state_path=STATE5, th={"frenzy_willy_stop_pct": 4.0}, open_ts=[], study=False))
+            chk("Excluded: 1 manually closed fill(s) (not the walked exit): 10-14 09:00 S1USDT (MANUAL_CLOSE)" in out
+                and "| CAP90 (+1 / −4 / 90 min) | 22 |" in out
+                and {k: v for k, v in json.load(open(STATE5)).items() if k.startswith("S4_")} == {k: v for k, v in s4j.items() if k.startswith("S4_")},
+                "run(): a MANUAL close is dropped from the S4 cohort and listed (no parity miss, same S4 frozen verdicts)")
+            STATE6 = os.path.join(td, "S6.json")
+            out = "\n".join(run(nowz, orders=so4, fetch=False, state_path=STATE6,
+                                th={"frenzy_willy_stop_pct": 4.0, "frenzy_willy_max_hold_minutes": 90}, open_ts=[], study=False))
+            s6 = json.load(open(STATE6)) if os.path.exists(STATE6) else {}
+            chk("| CAP90 (+1 / −4 / 90 min) | n/a (cap ≥ hold 90 min) |" in out and "T125C90: n/a (cap ≥ hold)" in out
+                and not any(k.startswith("S4_") for k in s6) and "CAP60 — WALKER PARITY / INTEGRITY FAILED — not frozen" in out
+                and "T125C90 — WALKER" not in out and "CAP90 — WALKER" not in out,
+                f"run(): hold 90 → CAP90 / T125C90 n/a (never judged / frozen); CAP60 still judged, and refused on parity (the fills really "
+                f"ran 120 min) ({sorted(s6)})")
+            g_s4 = globals()["s4_section"]
+
+            def _boom4(*a, **k):
+                raise ValueError("selftest")
+            globals()["s4_section"] = _boom4
+            try:
+                out = "\n".join(run(nowz, orders=so4, fetch=False, state_path=os.path.join(td, "S7.json"), th={}, open_ts=[], study=False))
+            finally:
+                globals()["s4_section"] = g_s4
+            chk("### ⏱ CAP60 / CAP90 / T125C60 / T125C90 on today's stop (DECISION_LOG 278) — unavailable this run (ValueError: selftest)" in out,
+                "run(): an S4 failure prints the fallback header naming all four cells, the line still renders")
     finally:
         _CACHE, MY_CACHE, STATE, EXPORT_GLOB, _http_get, _open_url, STUDY_CSV, NF.SHARED_COOLDOWN, NF.DU_COOLDOWN, NF._CACHE = saved
         _NET_BLOCKED = False
@@ -1442,6 +1974,7 @@ def selftest():
 
 if __name__ == "__main__":
     import sys
+    sys.modules.setdefault("scout_willy_timecap", sys.modules[__name__])   # the lazily imported hybrid walker shares THIS module (caches)
     if "--selftest" in sys.argv:
         selftest()
     elif "--build-study-ref" in sys.argv:

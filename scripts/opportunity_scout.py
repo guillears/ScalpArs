@@ -1350,6 +1350,14 @@ def run():
     except Exception as _lsr_e:
         log(f"LITE_STRETCH_REENTRY observe line failed: {_lsr_e}")
         _rg_sec += ["## 📐🔁 LITE_STRETCH_REENTRY", "", f"Unavailable this run ({str(_lsr_e)[:120]}).", ""]
+    try:                                               # 🧭🎲 Oct-12 WILLY_BTC1H (pre-registered, DECISION_LOG 275; ticks / 1m cache only — after WILLY_TIMECAP's fetch pass; BTC 5m via NEG_DAILYUP's fetcher; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_btc1h as _wb1h
+        _rg_sec += _wb1h.run(now_ms)
+    except Exception as _wb1h_e:
+        log(f"WILLY_BTC1H observe line failed: {_wb1h_e}")
+        _rg_sec += ["## 🧭🎲 WILLY_BTC1H", "", f"Unavailable this run ({str(_wb1h_e)[:120]}).", ""]
     try:                                               # 🔁📏 Oct-9 FRENZY_REENTRY_AFTER_WIN + FRENZY_STRETCHED (pre-registered; orders exports only, no Binance; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

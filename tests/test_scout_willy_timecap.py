@@ -29,3 +29,25 @@ def test_scout_hook_is_guarded():
 
 def test_state_file_gitignored():
     assert "reports/SCOUT_WILLY_TIMECAP.json" in open(os.path.join(HERE, ".gitignore")).read().split("\n")
+
+
+def test_s4_cells_pinned():
+    """DECISION_LOG 278: CAP60 / CAP90 on today's −4 stop — own cohort (99b9048 + 10 min), own keys, bar text word for word."""
+    assert (WT.S4_CELLS, WT.S4_PARITY_MIN, WT.S4_LAG_MIN, WT.S4_DEPLOY_GREP, WT.S4_DEPLOY_PIN) == \
+        ((("CAP60", None, 60), ("CAP90", None, 90), ("T125C60", 1.25, 60), ("T125C90", 1.25, 90)), 0.90, 10, "(DECISION_LOG 271)",
+         "2026-10-12 01:49:51")
+    assert WT.S4_KEY == {"CAP60": "S4_CAP60", "CAP90": "S4_CAP90", "T125C60": "S4_T125C60", "T125C90": "S4_T125C90"}
+    assert WT.S4_KEEP == {"CAP60": "KEEP 120", "CAP90": "KEEP 120", "T125C60": "KEEP TODAY", "T125C90": "KEEP TODAY"}
+    for frag in ("N ≥ 20 counted fills on ≥ 8 days", "day-bootstrap P ≥ 0.90", "no fill > 50 % of Σ Δ", "untouched fills Δ = 0",
+                 "walker parity ≥ 90 %", "mean Δ ≤ 0 → keep today", "Compared against today's +1 / −4 / 120",
+                 "hold the freeze while their tick archive / 1m page is still due", "WALKER PARITY / INTEGRITY FAILED"):
+        assert frag in WT.S4_BAR_T125
+    assert WT.S4_LABEL == "pre-registered 2026-10-12, DECISION_LOG 278"
+    for frag in ("at the first prefix with N ≥ 20 counted fills on ≥ 8 distinct UTC days, decided ONCE",
+                 "CANDIDATE (operator decides; never automatic)", "day-bootstrap P(Δ > 0) ≥ 0.90 (4,000 resamples, seed 7)",
+                 "no single fill carries > 50 % of Σ Δ", "fills the cap never touches show Δ = 0 (walker integrity)",
+                 "walker parity vs live ≥ 90 %", "else, mean Δ ≤ 0 → KEEP 120; else KEEP OBSERVING",
+                 "Provisional (1m-part) or unpriced fills in the prefix hold the freeze while their tick archive / 1m page is still due.",
+                 "WALKER PARITY / INTEGRITY FAILED"):
+        assert frag in WT.S4_BAR
+    assert set(WT.S4_KEY.values()).isdisjoint({"first", "reread"})          # never collides with the CAP15 / CAP20 frozen keys

@@ -6347,3 +6347,18 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   −3 stop in one day. Not yet a Scout line (an era-0.4 tracker in scout_frenzy_exits is queued for the next scout ship) — read at batch reviews.
   Master STACK 2026-10-08c → 2026-10-12a (build_master_pool SLEEVE_SIZE_FROZEN lite 0.4): 2 kept LITE rows re-priced (MET / HEMI 10-07,
   +$226 → +$302); kept total $7,833.87 → $7,909.32; validate_against_master ALL PASS. SCREENED_BASELINE unaffected (no FRENZY rows).
+- (278) 2026-10-12 👁 **WILLY exit cells added to Scout WILLY_TIMECAP (operator: "add cap 60 and 90 to scout" + "+1.25 / −4 / 60 and 90
+  combos").** Observe-only cells vs today's +1 / −4 / 120, counted from the DL 271 deploy (−4 live): CAP60 / CAP90 (+1 / −4) and T125C60 /
+  T125C90 (+1.25 / −4). Evidence (yr5 reachable, re-sequenced): +1/−4/120 +0.054 · cap 60 +0.069 · cap 90 +0.075 · +1.25/−4/120 +0.105 ·
+  +1.25/−4/90 +0.124 (both halves +); TP +0.75 loses (−0.005: WR 83 % < its 84 % break-even). B19 (14): +0.404 / +0.402 / +0.473 (90) / +0.435
+  / +0.462 (+1.25/60). Winners close fast (year median 3.6 min, B19 6.7) vs losers 17 min. Chosen among many cells on one year → observe only.
+  Frozen per cell: N ≥ 20 on ≥ 8 days → CANDIDATE iff mean paired Δ > 0 with day-bootstrap P ≥ 0.90 ∧ no fill > 50 % of Σ Δ ∧ untouched
+  fills Δ = 0 ∧ parity ≥ 90 %; Δ ≤ 0 → keep today. Same commit: the WILLY_BTC1H line (DL 275) wired into opportunity_scout.
+  Evidence: reports/B19_WILLY_TIMECAP4.txt, B19_WILLY_TP075.txt, B19_WILLY_F5.txt.
+- (279) 2026-10-12 👁 **WILLY_BTC1H sub-read DIP_SUB (operator approved the 2D follow-up): BTC 1 h rising ∧ WILLY signal red candle ≤ −1.16 %**
+  (entry_frenzy_bar_ret_pct). 2D screen BTC-1h × 31 entry variables (169 tests, H1-frozen cuts, day-block null): best = this cell, year kept
+  119 · 88 % · +0.471 vs blocked −0.066 (H1 +0.51 / H2 +0.42) but family-wise p 0.23 → not a survivor; B19 contradicts (deep 7 · +0.30 vs
+  shallow 7 · +0.52). Observe only, own frozen bar: each side N ≥ 15 on ≥ 8 days → deep ≤ shallow → RETIRED; else CANDIDATE iff day-bootstrap
+  P(deep − shallow > 0) ≥ 0.95 ∧ no day / pair ≥ 50 % of the deep side's gross gain. reports/B19_WILLY_2D_BTC1H.txt. Also checked on 10-12
+  (no change): WILLY TP +1.5 — B19 +0.630 (runners) but year +0.054, H2 ≈ 0, book 10× $5,151 vs +1.25's $13,834 → no; WILLY global hold
+  off → book lower in every setup (≈ 16 refused setups / yr lose) → keep (reports/B19_WILLY_TP15.txt, B19_WILLY_HOLD_TEST.txt).

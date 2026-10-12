@@ -660,7 +660,8 @@ def ensure_data(fills, hold, now_ms, fetch=True, budget_s=BUDGET_S, max_req=MAX_
         due = [d for d in days if _arch_eligible(d, now_ms, att, _ak(r.pair, d))]
         if due:
             jobs.append(("arch", r, due[0]))
-        if not isinstance(r.src, str) and _kk(r.pair, r.te, _span(hold)) not in done and now_ms >= r.te + (_span(hold) + 1) * MIN:
+        if ((not isinstance(r.src, str) or bool(getattr(r, "need_1m", False)))     # (272 review I2) also a scored fill with an undecided
+                and _kk(r.pair, r.te, _span(hold)) not in done and now_ms >= r.te + (_span(hold) + 1) * MIN):   # cell (FRENZY_WILLY_TP)
             jobs.append(("1m", r, None))
     if gave_up:
         save_attempts(att)

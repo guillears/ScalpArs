@@ -191,6 +191,14 @@ def orders():
     return o
 
 
+def _nf():
+    sd = os.path.join(ROOT, "scripts")
+    if sd not in sys.path:
+        sys.path.insert(0, sd)
+    import scout_b1h_negflank as NF
+    return NF
+
+
 def klines_1m(sym, start, end, state):
     """cached 1m klines [open_ms, o, h, l, c] for [start, end) — the cache first, else the public endpoint under the weight budget."""
     os.makedirs(CACHE, exist_ok=True)
@@ -202,6 +210,11 @@ def klines_1m(sym, start, end, state):
             pass
     if state.get("stopped"):
         raise RateLimited("stopped earlier this run")
+    NF = _nf()
+    now = int(time.time() * 1000)
+    if NF._cooldown_until() > now:                     # (272 review M6) the SHARED scout cooldown (the ban is per IP) — no request while live
+        state["stopped"] = True
+        raise RateLimited(f"shared cooldown until {NF._cooldown_until()}")
     out, s = [], int(start)
     while s < end:
         q = urllib.parse.urlencode(dict(symbol=sym, interval="1m", startTime=s, endTime=int(end), limit=1000))
@@ -211,6 +224,11 @@ def klines_1m(sym, start, end, state):
             data = json.loads(r.read())
         except urllib.error.HTTPError as ex:
             state["stopped"] = True
+            if ex.code in (418, 429):                  # arm the shared cooldown (Retry-After honoured) before stopping
+                try:
+                    NF._arm_cooldown(ex.code, (ex.headers or {}).get("Retry-After"), int(time.time() * 1000))
+                except Exception:
+                    pass
             rate_check(ex.code, None)
             raise
         except RateLimited:
@@ -344,6 +362,34 @@ def selftest():
             rate_check(st, w); chk(not bad, f"rate {st} {w}")
         except RateLimited:
             chk(bad, f"rate {st} {w}")
+    # (272 review M6) klines_1m honours and arms the SHARED scout cooldown — no network here (urlopen stubbed)
+    import tempfile as _tf
+    NF = _nf()
+    saved = (NF.SHARED_COOLDOWN, NF._cooldown_paths, CACHE, urllib.request.urlopen)
+    calls = []
+
+    def _boom(url, timeout=None):
+        calls.append(url)
+        raise urllib.error.HTTPError(url, 429, "Too Many Requests", {"Retry-After": "120"}, None)
+    with _tf.TemporaryDirectory() as td:
+        try:
+            globals()["CACHE"] = td
+            NF.SHARED_COOLDOWN = os.path.join(td, ".binance_cooldown_until")
+            NF._cooldown_paths = lambda: [NF.SHARED_COOLDOWN]
+            urllib.request.urlopen = _boom
+            try:
+                klines_1m("XUSDT", t0, t0 + 10 * MIN, {})
+                chk(False, "a 429 must raise")
+            except RateLimited:
+                chk(len(calls) == 1 and NF._cooldown_until() > int(time.time() * 1000) + 100_000, "a 429 arms the shared cooldown (Retry-After 120 s)")
+            try:
+                klines_1m("YUSDT", t0, t0 + 10 * MIN, {})
+                chk(False, "a live cooldown must refuse")
+            except RateLimited:
+                chk(len(calls) == 1, "a live shared cooldown refuses the request before any network call")
+        finally:
+            NF.SHARED_COOLDOWN, NF._cooldown_paths, cache0, urllib.request.urlopen = saved
+            globals()["CACHE"] = cache0
     print(f"selftest OK ({ok} checks)")
 
 

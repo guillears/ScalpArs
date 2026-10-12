@@ -8,6 +8,12 @@ high-potential sleeves; MOMENTUM LONG must become profitable now.
 one seed, eligible pairs, de-duplicated — see memory feedback_backtest_ref_today_stack.md). Columns: N · WR · net $ (and avg %/trade).
 Then a clear recommendation (+ pre-committed revert gate if a change is proposed).**
 
+**🔒 THREE BLOCKS IN EVERY TABLE, EVERY SLEEVE (operator 2026-10-12, corrected after a year-only filter table): every filter, watchlist
+line, exit variant and sizing test is shown as ① current batch · ② master per batch · ③ backtest — for the trades it would BLOCK and
+the trades it KEEPS, before → after (N · WR · avg % · $). Never a "Year:" column alone. When a block cannot be scored (e.g. a live
+stamp missing), say how many fills are unscored — never drop the block. This applies to ALL sleeves (WILLY, FRENZY LONG / WIDE / LITE,
+MOMENTUM LONG / SHORT, flips, SPIKE_FADE, bull-run, bear-run, surge).**
+
 ## 0. Method (operator 2026-10-10: methodical, by sleeve; learnings first; NO recommendation built on a bug)
 **0a. Learnings before any recommendation.** Per sleeve, read everything we already know before analysing: CLAUDE_CURRENT_STATE (every
 gate / line of that sleeve), the DECISION_LOG entries for that sleeve (operator authorised reading the history for this review),
@@ -62,6 +68,37 @@ Order of work: 0a learnings → 0a+ FRENZY theory (predicted separators frozen) 
 export → batch watchlist check (every open gate in CLAUDE_CURRENT_STATE + every Scout tracker) → 0b Scout line by line → §1–§6
 analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every finding → recommendations.
 
+## B19 carry-forward — re-read on the next export (the same batch B19 running longer, more trades) — registered 2026-10-12
+Context: B19 review (reports/B19_RERUN_*.md, verified) + DECISION_LOG 271 (paper = live stops; FRENZY −3 / WILLY −4 in both modes,
+per-order exchange backstop). The next export is B19 extended: re-run every number below on ALL B19 fills (old + new), and show the
+new fills (opened after the 271 deploy, 2026-10-12) as their own line — they are the first trades priced with the same stop live and paper.
+
+**WILLY — recommended exit and leverage (Claude's B19 recommendation; check it still holds with more trades):**
+- **Exit: TP +1 %, SL −4 %, 120-min cap** (live in paper and live since 271). +1.25 is still unproven (Scout WILLY_TP125 / combo
+  +1.25/−4 frozen bars not met). FRENZY LONG / WIDE / LITE stay at +3 / −3 / 12 h.
+  - −4 evidence: on the live-reachable yr5 cohort (532 fills) −4 beats real-money no-stop by +0.076 %/fill (P 0.995, both halves, every
+    leave-one-month-out); B19 under −4 = 14 fills +$659 (only BAT stopped).
+- **Why 10× beats 20× (operator decision pending — WILLY still runs 20×, `frenzy_willy_lev_mult` 1.0; 10× = 0.5):**
+  - at 20× one −4 stop costs ≈ 19.5 % of the book → a few in a row erase the gains even with a positive average (compounding);
+  - yr5 year book: 10× ≈ $9,035, the best result under every position-size cap ($10.3–11.8k) vs 20× ≈ $2,356 uncapped (≈ $9,100 only
+    with a $10k cap);
+  - at 10× the stop is safe from liquidation for any maintenance-margin rate up to 2.5 %; at 20× liquidation on small caps can sit
+    inside −4 %, and the bot-stop vs exchange-backstop gap is only ≈ 0.23 % (< the 0.3 % rule — CURRENT_STATE go-live check ⑥);
+  - growth-optimal (Kelly) leverage ≈ 6×.
+- [ ] Re-check on the extended batch: WILLY fills under TP +1 / −4 / 120 (N · WR · avg % · $) at 20× vs 10× (and 18×); count stops
+      (each −4 at 20× ≈ −19.5 % of the book); are the B19 conclusions (−4 > no stop, +1 ≥ +1.25, 10× > 20×) unchanged?
+- [ ] New-fill parity: every post-271 WILLY / FRENZY stop closes at its own line (−4 / −3) in paper exactly as live would — any fill
+      closing at −2.2 or at a backstop = bug.
+- [ ] **WILLY's exit on ALL FRENZY trades** (operator 2026-10-12): FRENZY LONG / WIDE / LITE priced with WILLY's exit (+1 / −4, also
+      +1 / −2, +1 / −3, +1.25 / −4; 12 h cap) vs today's +3 / −3, each WITH and WITHOUT the market-volume filter (GVOL ≥ 1.0 blocked),
+      in all three blocks (① B19 extended · ② master per batch · ③ backtest). Script: scripts/study_b19_fz_gvol_willyexit.py (re-point
+      EXPORT at the new file). B19 first read (reports/B19_FZ_GVOL_WILLYEXIT.txt): LONG +3/−3 → +1/−4: ① 11 · −1.37 → +0.09 · ② 9 · −1.67
+      → −1.22 · ③ 320 · −0.04 → +0.01 (P 0.63); LONG GVOL<1 with +3/−3: ① 7 · −1.29 · ② 8 · −1.50 · ③ 170 · +0.21. WIDE +1/−4: ① +1.00 ·
+      ② −0.66 · ③ −0.22 (P 0.17). LITE +1/−4: ① −1.28 · ② +1.01 · ③ −0.04 vs +0.27 (P 0.00 — LITE needs its +3).
+- [ ] FRENZY carry-forward (B19 §2–§3 verdict "no change"): re-read GVOL ≥ 1.0 LONG (closest filter, P 0.88 on the year — frozen
+      GVOL_SPLIT bar), LITE −4 stop near-miss (P 0.93), LONG 30-min cap near-miss (P 0.88), the bearish-day block's LITE cost (blocked
+      LITE +0.19 on the year), and the LITE "EMA13/50 gap > 1.87 ∧ not first entry" borderline zone (if the operator registers it).
+
 ## 1. FRENZY_WILLY
 - Reference numbers below come from the yr5 A 1,067-fill cohort (pre-270 recipe): re-derive them on today's stack, one seed,
   eligible pairs, de-duplicated before quoting. The WILLY exit FAMILY on the same fills: TIMECAP, TP125, SL4, combo +1.25/−4, the
@@ -100,6 +137,21 @@ analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every find
       price the longer global hold too (the runner keeps every other sleeve blocked; HOLD_FRENZY_EXEMPT / WILLY_HOLD).
 
 ## 2. FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE
+- [ ] **LITE × bearish-day block (operator 2026-10-12 — review in LITE):** the only Scout line is FRENZY_BEARISH_BLOCKED (the DL 250 revert
+      gate, scripts/scout_frenzy_exits.py, store reports/SCOUT_FRENZY_BEARISH_BLOCKED.csv): every FRENZY / WIDE / LITE bearish-day refusal
+      priced as if opened (+3 / −3 / 12 h, ticks once published), frozen at the first 15 counted blocked signals on ≥ 8 days, blocked mean > 0
+      → block off — POOLED over the three sleeves, NO LITE-only read. B19 tally 3 / 15 counted · 1 / 8 days · mean +0.90 %: LITE MAGIC 10-09
+      14:15 +2.91 (counted) · LITE BAT 10-09 19:40 −3.11 (same episode, not counted) · WIDE BAT 17:40 −3.11 · WIDE KAIA 21:30 +2.91. Year
+      (backtest): blocked LITE 176 · +0.19 % (the block costs LITE ≈ +$1.4k / year; 722 · +0.25 without it vs 546 · +0.27 with it) while
+      blocked LONG −0.15 / WIDE −0.04. Review: split the line per sleeve in all three blocks (① batch · ② master per batch · ③ backtest), read
+      LITE's blocked side on its own, and bring the "remove the block for LITE only" question back to the operator (a LITE-only Scout sub-read
+      with the same frozen bar — added to Scout 2026-10-12, DECISION_LOG 272: read its own tally).
+- [ ] **Small / fast TP on LONG & WIDE — B19 "bug?" check (2026-10-12, operator):** no backtest bug — the backtest's own logic on the B19
+      days reproduces live (LONG 10/11 matched, 9 same outcome under +3/−3 and +1/−2; WIDE 6/6), and the small TP wins there too (LONG +0.14 vs
+      live +0.46). Month by month on the year, LONG +1/−2 beats +3/−3 only in losing months (Jan +0.25, Mar +0.37, Aug +0.27) and loses in
+      winning months (Apr −0.58, Jun −1.25); year WR 62 % vs the 67 % break-even (B19 82 %; B19 reach-+3 27 % vs year 49 %). Adaptive switch
+      (small TP after the last 3 / 5 / 10 closed trades averaged < 0, no look-ahead) never helps (LONG −0.09 / −0.07 / 0.00; WIDE and LITE
+      worse). Re-read on the extended batch: monthly table + the same-days backtest twin, in all three blocks.
 - Corrected yr5 refs (DL 270, today's stack): +3/−3 LONG 320 · 49 % · −0.039 %/fill · WIDE 204 · 49 % · −0.047 · LITE 546 · 54 % ·
   +0.267 (≈ +0.23 with slots / caps); no grid cell beats +3/−3 significantly in any sleeve. Live re-priced on +3/−3: LONG 15 · 20 % ·
   −1.81 · WIDE 8 · 38 % · −0.76 · LITE 12 · 58 % · +0.50. Never quote the retracted +0.084 / +0.088 / +0.257.
@@ -154,6 +206,13 @@ analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every find
       §0c screen (null + OOS) — not free extra cuts.
 
 ## 3b. FRENZY losers → FRENZY SHORT opportunity (after §3 finds a loser signature)
+- [ ] **B19 first read (2026-10-12, operator "LONG converted to SHORT?") — every LONG / WIDE / LITE entry mirrored as a SHORT on the same
+      tick path** (scripts/study_b19_fz_short_mirror.py → reports/B19_FZ_SHORT_MIRROR.txt; 16 pre-declared cells TP 1–3 × stop 2–4, 12 h,
+      + TP1/SL3 2 h). LONG: ① B19 −1.37 long → best short +1.37 (S +3/−3) · ② master −1.67 → +0.45…+2.23 (every cell +) · ③ year −0.04 →
+      every short cell −0.11…−0.35 (P(short better) ≤ 0.37, H2 −0.28…−0.53). WIDE: year −0.05 → −0.18…−0.41. LITE: year +0.27 → −0.27…−0.77
+      (P 0.00 — LITE's long edge is real). Read: the second-wave entry has no direction edge after costs on the year; B19 + master (20
+      LONG fills, ≈ 9 days) are the losing window the long side already shows. Re-read on the extended batch in all three blocks; a SHORT
+      sleeve needs a loser signature or a regime switch that holds out of sample, not the window.
 - [ ] Operator 2026-10-11: if §3 isolates a robust LOSER signature on FRENZY_LONG / WIDE / LITE, test SHORTING that signature with a
       fixed TP +1 % or +1.2 % net and a −3 % stop (12 h cap). Mandatory guards: (i) the signature is DISCOVERED and frozen on one half
       (by date) only — the §3 screen for this purpose runs on that half alone; the other half and forward fills are never looked at
@@ -165,12 +224,22 @@ analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every find
       observe-only. Before → after in the three blocks.
 
 ## 4. MOMENTUM LONG — make it profitable
+- [ ] **Observe lines registered 2026-10-12 (DECISION_LOG 273), arm decision deferred by the operator:** BTC24H_DOWN (block ML when BTC
+      24-h ≤ 0) and ML_ADX_RISING_IN_REGIME (step 2: keep only rising closed-bar ADX on the fills step 1 keeps). Re-read both on the new
+      fills in all three blocks (① batch · ② master per batch · ③ backtest) against their frozen bar in CURRENT_STATE; then bring the
+      arm / observe question back to the operator.
 - [ ] Entry strategy in detail vs CURRENT_STATE + Scout watchlist (ML_B1H_NEGFLANK, NEG_DAILYUP_WEAKPAIR, PAIR_1H_DOWNTREND,
       TREND_ALIGNED, heat lines (heat block × BTC regime, heat re-scope / revert gates), LOADX, LONG_CHOP_BURST, mega-cap, ML cooldown): winners vs losers in current batch, master (per batch) and
       backtest. Start from the MOMENTUM-LONG ANALYSIS PIN in CURRENT_STATE; per DL 204 the master-kept ML figure is in-sample —
       judge ML on as-traded / forward fills. Filters first, not sizing (memory feedback_filters_not_sizing.md). Propose concrete rules with before/after + revert gate.
 
 ## 5. Every other sleeve (SPIKE_FADE priority, flips, momentum short, bull-run, bear-run, surge)
+- [ ] **🌊 Bull-run REARM door AGE CAP (57l, DECISION_LOG 104 / 274) — NEVER TESTED live** (operator 2026-10-12). Shipped 2026-09-21 16:01
+      UTC (`bullrun_rearm_max_entry_age_min` 60, flap-merge 30); 0 REARM episodes since (the door arms only ≤ 48 h after a GREEN end).
+      At every review: list REARM episodes since the ship (logs `[BULLRUN_MONITOR]` + `entry_br_door_age_min` on fills + `blocked_age`
+      refusals); per episode price kept (age < 60 min) vs refused-by-age entries; apply the 57l gate (first 2 episodes with net-negative
+      KEPT fills → age cap 0). The old 3-window REARM gate is superseded (its windows predate the cap) — do not use it to close the door.
+      If there is no REARM / GREEN at all, say so and check the logs for why (memory: absence = logs question).
 - [ ] Full read of everything in CLAUDE_CURRENT_STATE + Scout; any finding → before/after in the three blocks + recommendation.
 - [ ] SPIKE_FADE: high potential and strong in every batch — look for scale-up / more-fills levers as well as risk.
 - [ ] **SPIKE_FADE vs FRENZY on the same pump** (Claude): the engine never holds both on one pair — open_position refuses any second
@@ -210,6 +279,29 @@ at once.
 - [ ] **FRENZY_LONG / WIDE / LITE at 1× invest × 1× leverage, like WILLY** (today: LONG lev 0.32 (strong 0.5), WIDE 0.2, LITE 0.32,
       invest 1.0; WILLY invest 1.0 × lev 1.0). Before → after $ in the three blocks, worst day / max drawdown with all sleeves together,
       and the ruin line (a −3 stop at full leverage vs the book). Recommend per sleeve, only where the filtered sleeve has a proven edge.
+- [ ] **FRENZY leverage / investment OBSERVATION lines — read them all, three blocks each** (operator 2026-10-12: "for frenzies we have
+      in observation too the leverage and investment size"). Today's config (re-read trading_config.json at review time): LONG invest
+      1.0 × lev 0.32 (6×), strong (ADX rising ∧ +DI > −DI) lev 0.5 (10×) · WIDE 1.0 × 0.2 (4×) · LITE 1.0 × 0.32 (6×) · WILLY 1.0 × 1.0
+      (20×; 10× = 0.5 recommended in B19, operator decision pending). Lines to read, each as ① B19 extended · ② master per batch · ③
+      backtest, $ / worst day / max drawdown before → after (avg % does not move with size):
+      · FRENZY LEVERAGE WATCH (CURRENT_STATE, DECISION_LOG 207) — its review condition and candidate step;
+      · strong-leverage gate (DECISION_LOG 197 / 262; 7 / 20 at B19, both legs on the revert side: live strong −1.87 vs normal −1.67;
+        year strong +0.20 vs −0.36) — frozen gate decides;
+      · 1× invest × 1× leverage for LONG / WIDE / LITE (the item above) and the ALL-FRENZY scenario (B19 scenario TP1 / SL2.5 / 20× →
+        book to $0: reports/B19_SCENARIO_ALLFRENZY_TP1_SL25_20X.md);
+      · WILLY 20× vs 18× vs 10× (B19 carry-forward section);
+      · each sizing line read on the exit / filter the review keeps (sizing LAST), with the −3 / −4 stop × full leverage × max concurrent
+        FRENZY slots as the ruin line.
+- [ ] **SIZING OBSERVATIONS (DECISION_LOG 276, operator 2026-10-12): WILLY 20× vs 10× (vs 6×) and LITE 6× vs 8× vs 10×** — price the
+      live fills at each leverage in all three blocks ($, worst day, max DD, concurrent stops per day, fills past the 20× liquidation
+      distance) and read the frozen bars in CURRENT_STATE (WILLY: ≥ 20 fills under −4; LITE: ≥ 30 fills on ≥ 10 days). Year-book refs:
+      WILLY 20× / 10× / 6× $2,356 / $9,035 / $10,272; LITE 6× / 8× / 10× (WILLY 10×) $9,035 / $12,160 / $14,615 (DD −67 / −72 / −77 %); LITE-alone book $9,236 / $10,757 / $11,142 (DD −48 / −59 / −68 %) — 8× ≈ growth optimum; B19 +$100 / +$134 / +$167.
+- [ ] **⚖️ DECIDE AT THIS REVIEW — LITE to 8× leverage, 1× invest (operator 2026-10-12: "save it for next batch review, increase LITE
+      to 8x and 1x inv")** = `frenzy_lite_lev_mult` 0.32 → 0.4 (20× base), `frenzy_lite_invest_mult` stays 1.0. Evidence so far: LITE-alone
+      year book 6× $9,236 (DD −48 %) → 8× $10,757 (−59 %) → 10× $11,142 (−68 %) — 8× ≈ the growth optimum; B19 +$100 → +$134; master B18
+      +$124 → ≈ +$165. Re-read on the extended batch in all three blocks (LITE avg % still > 0? worst day / concurrent LITE stops at 8×) and
+      bring the change to the operator; Pattern W (WR ≥ 70 %) cannot pass for LITE → it ships as a declared operator override with a
+      pre-committed revert gate (e.g. first 20 LITE fills at 8× average < 0 or a LITE day worse than −15 % of the book → back to 6×).
 - [ ] **MOMENTUM LONG invest down to 1×** (operator: frequency used to need the bigger ticket; FRENZY now supplies volume). ML today:
       base invest 1.0 (lev 20) · UNMATCHED LONG cell inv 1.5 · BTC RSI×ADX long cells 60-65/28-30 inv 2.0 and 60-65/22-25 inv 2.0 × lev
       1.5 · long_unmatched_quiet 1.5 (no-op, take-the-max) · caps 2.5 invest / 2.0 lev (re-read trading_config.json at review time). Per

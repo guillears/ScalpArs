@@ -32,3 +32,21 @@ def test_hook_after_timecap_and_guarded():
 
 def test_state_file_gitignored():
     assert "reports/SCOUT_FRENZY_WILLY_EXIT.json" in open(os.path.join(HERE, ".gitignore")).read().split("\n")
+
+
+def test_ensure_data_fetches_1m_page_for_undecided_cell(monkeypatch):
+    """(DECISION_LOG 272 review I2) a scored 'ticks+1m' fill with an undecided cell (need_1m) gets its 1m page; a decided one does not.
+    Hermetic: the fetcher, the ledger and the cooldown are stubbed — no network, no repo state written."""
+    import pandas as pd
+    calls = []
+    monkeypatch.setattr(WT, "load_attempts", lambda: {"done": {}, "fail": {}})
+    monkeypatch.setattr(WT, "save_attempts", lambda att: None)
+    monkeypatch.setattr(WT, "_have_day", lambda *a, **k: True)                  # no archive job
+    monkeypatch.setattr(WT, "_append_1m", lambda *a, **k: None)
+    monkeypatch.setattr(WT.NF, "_cooldown_until", lambda: 0)
+    monkeypatch.setattr(WT, "_fetch_1m", lambda sym, start, n, now, timeout_s=10.0: (calls.append(sym), (pd.DataFrame(), 1))[1])
+    te = 1_791_600_000_000
+    f = pd.DataFrame(dict(pair=["AUSDT", "BUSDT"], te=[te, te], ts=pd.to_datetime([te, te], unit="ms"), src=["ticks+1m", "ticks+1m"],
+                          need_1m=[True, False]))
+    WT.ensure_data(f, 720, te + 2 * 86_400_000, fetch=True)
+    assert calls == ["AUSDT"]

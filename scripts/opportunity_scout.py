@@ -1342,6 +1342,14 @@ def run():
     except Exception as _fwx_e:
         log(f"FRENZY_WILLY_TP exit shadow failed: {_fwx_e}")
         _rg_sec += ["## 🎲➡🔥 FRENZY_WILLY_TP", "", f"Unavailable this run ({str(_fwx_e)[:120]}).", ""]
+    try:                                               # 📐🔁 Oct-12 LITE_STRETCH_REENTRY (pre-registered, DECISION_LOG 272; cache only — after FRENZY_WILLY_TP's fetch pass; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_lite_stretch_reentry as _lsr
+        _rg_sec += _lsr.run(now_ms)
+    except Exception as _lsr_e:
+        log(f"LITE_STRETCH_REENTRY observe line failed: {_lsr_e}")
+        _rg_sec += ["## 📐🔁 LITE_STRETCH_REENTRY", "", f"Unavailable this run ({str(_lsr_e)[:120]}).", ""]
     try:                                               # 🔁📏 Oct-9 FRENZY_REENTRY_AFTER_WIN + FRENZY_STRETCHED (pre-registered; orders exports only, no Binance; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

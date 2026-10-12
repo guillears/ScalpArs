@@ -6297,3 +6297,41 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   stale comments; tests (bull-run leverage-floor boundary with backstop off, manual-sleeve floor cases, per-order distances). Deferred to the
   go-live check (live-only, latent in paper): WILLY 20× gap 0.23 % < 0.3 rule (choose 18× / 10× or stop ≤ 3.8); persist the placed
   backstop % per order (pre-deploy rows keep 2.5). Rejected: re-adding a mode-agnostic floor (would silently run WILLY at −3.84).
+- (272) 2026-10-12 👁 **Scout: LITE_STRETCH_REENTRY observe line + ticks-first rulers for WILLY_TURNOVER_BLOCKED and FRENZY_WILLY_TP
+  (operator "do this").** ① New observe-only line (scripts/scout_lite_stretch_reentry.py): LITE with EMA13 − EMA50 gap > 1.87 % ∧ k_now ≥ 2 —
+  the B19 verifier's one borderline survivor (Welch t, 15-fill floor; year 26 · 19 % · −1.86 vs +0.37, both halves negative); frozen bar in
+  CURRENT_STATE. ② WILLY_TURNOVER_BLOCKED priced ticks first (scripts/scout_frenzy_exits.py tb_walk): OGN 10-10 08:20 was −19.65 % on 1m
+  (the bar held both the TP and a −19 % low); ticks hit TP +1 in 13 s → +1.00. Re-read 5 blocked · 80 % · −0.00 % (was −3.86); ruler now
+  the config exit (+1 / −4 / 120, DL 271), no extra 0.10 slip. ③ FRENZY_WILLY_TP walker (scripts/scout_frenzy_willy_exit.py) = the study's
+  hybrid ticks → 1m tail: B19 28 / 28 scored with live parity (was 20 / 28, CFX 10-10 −3.93 vs live −3.00). Not fixed (noted):
+  scout_willy_timecap.score_fill has the same single-source defect. No engine / config change.
+  ④ (operator "yes add the LITE-only read too") FRENZY_BEARISH_BLOCKED gains a LITE-only frozen sub-read (first 15 counted blocked LITE
+  signals on ≥ 8 days, decided once: blocked LITE mean > 0 → "remove the block for LITE" candidate, operator decides); the pooled DL 250
+  gate is unchanged. Why: year blocked LITE 176 · +0.19 % vs LONG −0.15 / WIDE −0.04 — the pooled gate can keep a block that is wrong for LITE.
+- (273) 2026-10-12 👁 **ML BTC24H_DOWN + ML_ADX_RISING_IN_REGIME registered OBSERVE-ONLY (operator: "save in observation, we will review
+  later in other analysis").** B19 §4 re-run recommended arming BTC24H_DOWN as a live-bleed override; the verifier showed the honest
+  family-wise p ≈ 0.78 (5th of 154 market cuts, picked from the 10-08 checklist scan) and only 2 truly out-of-sample fills since discovery.
+  Operator deferred the arm decision. Both lines carry the frozen bar in CURRENT_STATE (window units, fresh fills from 2026-10-12, all three
+  blocks at each review). Evidence: reports/B19_RERUN_MOMENTUM_LONG.md §3 / §6, reports/B19_RERUN_VERIFY_B.md §3. No engine / config change.
+- (274) 2026-10-12 🌊 **Bull-run REARM: the "revert gate met" read RETRACTED — the age cap (57l, DL 104) has never been tested (operator catch:
+  "we didn't have any bullrun rearmed … the re-arm door duration … never tested").** The B19 §5 re-run and its verifier counted the locked
+  REARM window gate (≤ 1 winning window of the first 3 → close the door) as met (08-25 −$180 · 09-20 +$92 · 09-21 −$354). All three windows
+  predate the 57l entry-age cap (commit ce7de7d, 2026-09-21 16:01 UTC; last REARM fill 15:20 UTC), i.e. they priced the old door; under the
+  age cap their kept fills were positive in every window. Since the ship: 0 REARM episodes / 0 fills (door arms only ≤ 48 h after a GREEN
+  end; no GREEN since 09-19/20; master pool: 0 fills with entry_br_door_age_min stamped). Decision: no config change; the old window gate is
+  superseded for decisions by 57l's own gate (first 2 post-ship REARM episodes, kept fills net-negative → age cap 0), now 0 / 2. The next
+  REARM episode is its first live test — read it per episode (door age per fill, kept vs refused-by-age priced) at the first batch review
+  that contains one. Lesson: before reading any gate, check the mechanism it measures is still the one live (ship dates vs fill dates).
+- (275) 2026-10-12 👁 **WILLY_BTC1H registered OBSERVE-ONLY (operator "do this").** WILLY × BTC 1 h EMA20-slope sign (closed bar): yr5
+  reachable cohort +1 / −4 — kept (slope > 0) 286 · 142 d · 83 % · +0.185 (H1 +0.188 / H2 +0.181) vs blocked (≤ 0) 246 · 145 d · 77 % ·
+  −0.098 (H1 −0.100 / H2 −0.097), P(mean < 0) 0.76; found in a 16-test time / regime screen (Bonferroni 0.24); B19 0 blocked (all 14 WILLY
+  fills slope > 0). Shared year book (not re-sequenced): 20× $2,356 → $29,770 · 10× $9,035 → $21,656 · 6× $10,272 → $15,688 — compounding
+  overstates it. Market-wide → a WILLY on / off switch, DAY units. Frozen bar (CURRENT_STATE): blocked N ≥ 15 on ≥ 8 days → ARM CANDIDATE
+  iff blocked mean < 0 at day-bootstrap P ≥ 0.95 ∧ no day / pair ≥ 50 % of its loss; RETIRE if blocked ≥ kept. Counted from 2026-10-12.
+  Evidence: reports/B19_WILLY_BTC1H.txt (scripts/study_b19_willy_btc1h.py). Scout: scripts/scout_willy_btc1h.py.
+- (276) 2026-10-12 👁 **WILLY 10× and LITE 10× saved as SIZING OBSERVATIONS (operator: "save Willy to 10x as observation, same in Lite").**
+  No config change. Risk per trade = margin (≈ 24 % of the book) × leverage × stop — independent of how many trades are open (operator asked;
+  the book sim already models ≤ 3 open): WILLY 20× one −4 stop ≈ −21 % of the book. Year book (shared FRENZY, +1/−4): WILLY 20× / 10× / 6× =
+  $2,356 / $9,035 / $10,272; with WILLY 10×, LITE 6× / 8× / 10× = $9,035 / $12,160 / $14,615 (max DD −67 / −72 / −77 %, worst day −25 / −31 /
+  −36 %). B19 LITE +$100 → ≈ +$167 at 10×; master B18 LITE +$124 → ≈ +$207. Pattern W cannot pass for LITE (54 % WR) → a LITE step-up is an
+  operator override. Frozen bars in CURRENT_STATE; read every batch in three blocks.

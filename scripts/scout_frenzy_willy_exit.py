@@ -9,8 +9,11 @@ COHORT      CLOSED FRENZY_LONG / WIDE / LITE fills in the ~/Downloads orders exp
             CLOSED row beats an OPEN one — opened ≥ the "(DECISION_LOG 250)" commit (the fixed +3 / −3 exit went live; git unavailable → the
             pinned 2026-10-08 13:37 UTC).
             Manually closed fills (MANUAL_*) are excluded and listed — not the walked exit.
-WALKER      scripts/scout_willy_timecap.py's walker and shared caches (aggTrades ticks, else 1m = provisional) from each fill's own entry, both
-            exits on the SAME path with the bot's accounting (net = gross − 0.045 − 0.045 × exit/entry). Data: WILLY_TIMECAP's ensure_data
+WALKER      ONE hybrid path per fill (DECISION_LOG 272, load_path / evaluate below — the B19 RE-RUN §9 fix, 28 / 28 live parity): aggTrades
+            ticks for each consecutive covered UTC day (scripts/scout_willy_timecap.py's shared caches), then the 1m tail (provisional) after
+            the covered time; every cell whose TP / stop is hit before the path ends is scored, an undecided cell stays unscored (per cell);
+            tick ruler = the first print through a line. All exits on the SAME path with the bot's accounting (net = gross − 0.045 − 0.045 ×
+            exit/entry). Data: WILLY_TIMECAP's ensure_data
             for a 12 h window (its attempts ledger with a 12 h key, ≤ 2 requests per call — 4 per scout run with WILLY_TIMECAP's own call,
             ≤ 1 archive each — shared cooldown, used-weight stop). Paused (nothing frozen) if the live exit is not a fixed TP. Parity: the LIVE walk must
             reproduce each fill's actual exit (reason + % within 0.05 pts) — printed per sleeve.
@@ -40,6 +43,7 @@ import scout_willy_timecap as WT                    # noqa: E402  (walker, cache
 import scout_willy_hold as WH                       # noqa: E402  (the FRENZY live exit from trading_config.json)
 
 SLEEVES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")
+PROVISIONAL = ("1m", "ticks+1m")                    # (272) a fill with a 1m segment: provisional while its tick archive is pending
 TP125 = 1.25
 GRID = (("T1_S2", None, 2.0), ("T1_S25", None, 2.5), ("T1_S3", None, 3.0),       # None = frenzy_willy_tp_pct (1.00) from the config
         ("T125_S2", TP125, 2.0), ("T125_S25", TP125, 2.5), ("T125_S3", TP125, 3.0), ("T125_S4", TP125, 4.0))
@@ -126,29 +130,120 @@ def _prep(o):
     return d.rename(columns={"trig": "sleeve"})
 
 
+# ─────────────────────────── hybrid path (DECISION_LOG 272) ───────────────────────────
+# B19 RE-RUN §9 (reports/B19_RERUN_FRENZY_EXITS.md): the old score_fill needed ONE source for the whole 12 h window — ticks only if every
+# UTC day to te + 12 h had a full tick file, else 1m for the WHOLE fill → 20 / 28 B19 parity (CFX LONG 10-10 15:25 walked on 1m because
+# the 10-11 tick day was missing: its first 1m bar opens through the stop, −3.93 vs live −3.00; 7 fills of 10-11 left unscored though the
+# TP / stop was hit minutes after entry). load_path + evaluate below are the study's (scripts/study_b19_fzexit_common.py, untracked —
+# copied here verbatim so the tracked scouts never import a study) with 28 / 28 B19 live parity: tick prints for each consecutive UTC day
+# with a full-day file (or a covering window slice), then the 1m tail strictly after the covered time; a cell is scored as soon as its
+# TP / stop is hit before the path ends, only a cell still undecided at the path end stays UNRES. Shared by scout_frenzy_exits
+# (WILLY_TURNOVER_BLOCKED) and scout_lite_stretch_reentry. No stop-floor clamp: DECISION_LOG 271 removed the live-only floor (paper = live).
+def load_path(pair, te, E, horizon, tcache=None, k1m=None):
+    """→ dict(t, hi, lo, cl, op, bar, end_ms, n_tick, n_bar, tick_end, lim, te) — net % events strictly after te up to te + horizon (+1 min
+    slack): ticks while consecutive covered days last, then 1m bars (k1m = DataFrame open_time / o / h / l / c, default WT.load_1m)."""
+    MIN, DAY = WT.MIN, WT.DAY_MS
+    lim = te + (horizon + 1) * MIN
+    days = [f"{d:%Y-%m-%d}" for d in pd.date_range(pd.Timestamp(te, unit="ms").normalize(), pd.Timestamp(lim, unit="ms").normalize())]
+    ts, ps, cov = [], [], te
+    for d in days:
+        z = WT._load_day(pair, d, tcache)
+        d0 = int(pd.Timestamp(d).tz_localize("UTC").value // 1_000_000)
+        if z is None:
+            break
+        if z[2] is not None:                                   # window slice: usable only if one window covers the rest of the need
+            w0, w1 = z[2]
+            ok = np.flatnonzero((w0 <= max(cov, d0)) & (w1 >= min(lim, d0 + DAY)))
+            if not len(ok):
+                break
+            ts.append(z[0]); ps.append(z[1]); cov = min(lim, d0 + DAY)
+            continue
+        ts.append(z[0]); ps.append(z[1]); cov = d0 + DAY
+    if ts:
+        t = np.concatenate(ts); p = np.concatenate(ps)
+        i, j = np.searchsorted(t, te, side="right"), np.searchsorted(t, min(cov, lim), side="right")
+        t, p = t[i:j], p[i:j]
+    else:
+        t, p = np.array([], dtype="int64"), np.array([], dtype=float)
+    cov = min(cov, lim) if ts else te
+    net = WT.net_pct(p, E) if len(t) else np.array([], dtype=float)
+    T, HI, LO, CL, OP, BAR = [t], [net], [net], [net], [np.full(len(t), np.nan)], [np.zeros(len(t), bool)]
+    end = cov
+    if cov < lim:                                              # 1m tail (provisional: entry minute skipped, both lines = stop)
+        k = WT.load_1m(pair) if k1m is None else k1m
+        first = max(-(-int(te) // MIN) * MIN if not len(t) else cov, -(-int(cov) // MIN) * MIN)
+        k = k[(k.open_time.values >= first) & (k.open_time.values + MIN <= lim)]
+        if len(k):
+            o = k.open_time.values.astype("int64")
+            gaps = np.flatnonzero(np.diff(o) != MIN)
+            if o[0] != first:
+                k = k.iloc[:0]
+            elif len(gaps):
+                k = k.iloc[:gaps[0] + 1]
+        if len(k):
+            o = k.open_time.values.astype("int64")
+            T.append(o + MIN); HI.append(WT.net_pct(k.h.values, E)); LO.append(WT.net_pct(k.l.values, E))
+            CL.append(WT.net_pct(k.c.values, E))
+            OP.append(WT.net_pct(k.o.values, E) if "o" in k else np.full(len(k), np.nan)); BAR.append(np.ones(len(k), bool))
+            end = int(o[-1] + MIN)
+    return dict(t=np.concatenate(T), hi=np.concatenate(HI), lo=np.concatenate(LO), cl=np.concatenate(CL), op=np.concatenate(OP),
+                bar=np.concatenate(BAR), end_ms=int(end), n_tick=int(len(t)), n_bar=int(sum(len(x) for x in T[1:])),
+                tick_end=int(cov), lim=int(lim), te=int(te))
+
+
+def evaluate(P, tp, sl, cap):
+    """→ dict(why TP / STOP / CAP / UNRES, pct (tick ruler: the first print through the line = the live replica, the engine checks every
+    @trade print), pct_line, xmin, worst, on_bar) — first-touch on the net path. 1m bars: TP booked at the line, a bar touching both lines
+    = stop, a bar opening through the stop fills at its open. Undecided before the path end (or no event in the cap) → UNRES."""
+    MIN = WT.MIN
+    te = P["te"]
+    n = int(np.searchsorted(P["t"], te + cap * MIN, side="right"))
+    hi, lo = P["hi"][:n], P["lo"][:n]
+    itp = np.flatnonzero(hi >= tp)
+    ist = np.flatnonzero(lo <= -sl) if sl else np.array([], dtype=int)
+    a = int(itp[0]) if len(itp) else None
+    b = int(ist[0]) if len(ist) else None
+    if b is not None and (a is None or b <= a):
+        if P["bar"][b]:
+            op = P["op"][b]
+            v = min(-sl, float(op)) if np.isfinite(op) else -sl
+        else:
+            v = float(lo[b])
+        return dict(why="STOP", pct=v, pct_line=-float(sl), xmin=(P["t"][b] - te) / MIN, worst=float(lo[:b + 1].min()), on_bar=bool(P["bar"][b]))
+    if a is not None:
+        v = float(tp) if P["bar"][a] else float(hi[a])
+        return dict(why="TP", pct=v, pct_line=float(tp), xmin=(P["t"][a] - te) / MIN, worst=float(lo[:a + 1].min()), on_bar=bool(P["bar"][a]))
+    if P["end_ms"] < te + cap * MIN or n == 0:
+        return dict(why="UNRES", pct=np.nan, pct_line=np.nan, xmin=np.nan, worst=float(lo.min()) if n else np.nan, on_bar=False)
+    return dict(why="CAP", pct=float(P["cl"][n - 1]), pct_line=float(P["cl"][n - 1]), xmin=float(cap), worst=float(lo.min()),
+                on_bar=bool(P["bar"][n - 1]))
+
+
+def path_src(P):
+    """the fill's source label: 'ticks' (ticks cover the whole window) · 'ticks+1m' (ticks, then the 1m tail — or nothing yet — after the
+    covered time) · '1m' (no tick print). Anything but 'ticks' is PROVISIONAL and keeps the freeze deferral while its archive is pending."""
+    return "ticks" if P["tick_end"] >= P["lim"] else ("ticks+1m" if P["n_tick"] else "1m")
+
+
 # ─────────────────────────── scoring ───────────────────────────
 def score_fill(r, live, alts, tcache=None):
-    """→ (dict or None, source). live = (tp, stop, hold); alts = {name: (tp, stop)} with live's hold. ONE path: ticks, else 1m."""
+    """→ (dict or None, source). live = (tp, stop, hold); alts = {name: (tp, stop)} with live's hold. ONE hybrid path (ticks → 1m tail,
+    DECISION_LOG 272); every cell decided before the path end is scored, an undecided cell is NaN (why UNRES). None when LIVE is UNRES."""
     tp, st, hold = live
-    t, p = WT.load_ticks(r.pair, WT._days(r.te, hold), tcache, WT._need(r.te, hold))
-    if t is not None:
-        i, j = np.searchsorted(t, r.te, side="right"), np.searchsorted(t, r.te + (max(hold, 120) + 1) * WT.MIN, side="right")
-        walk, src = (lambda x, y: WT.walk_ticks(t[i:j], p[i:j], r.te, r.E, x, y, hold)), "ticks"
-    else:
-        k = WT.load_1m(r.pair)
-        need = WT._need_1m(r.te, hold)
-        if not (len(k) and np.isin(need, k.open_time.values).all()):
-            return None, None
-        kk = k[(k.open_time >= need[0]) & (k.open_time <= need[-1])]
-        walk, src = (lambda x, y: WT.walk_1m(kk, r.te, r.E, x, y, hold)), "1m"
-    a = walk(tp, st)
-    la = a["v"]["LIVE"]
-    ok, txt = WT.parity(r.why, r.pct, a)
+    P = load_path(r.pair, int(r.te), float(r.E), hold, tcache)
+    la = evaluate(P, tp, st, hold)
+    if la["why"] == "UNRES":
+        return None, None
+    ok, txt = WT.parity(r.why, r.pct, {"v": {"LIVE": la}})
     rec = dict(LIVE=la["pct"], why_LIVE=la["why"], min_LIVE=la["xmin"], par_ok=ok, par_txt=txt)
+    evs = [la]
     for name, (x, y) in alts.items():
-        b = walk(x, y)["v"]["LIVE"]
+        b = evaluate(P, x, y, hold)
+        evs.append(b)
         rec.update({name: b["pct"], f"why_{name}": b["why"], f"min_{name}": b["xmin"]})
-    return rec, src
+    rec["n_unres"] = sum(e["why"] == "UNRES" for e in evs)      # (272 review I2) undecided cells → the fill stays pending
+    on_ticks = P["n_tick"] > 0 and all(e["why"] != "UNRES" and not e["on_bar"] for e in evs)
+    return rec, ("ticks" if on_ticks else path_src(P))          # (review M8) every cell decided on tick prints → 'ticks' (final)
 
 
 def scored_frame(o, live, alts, tcache=None):
@@ -161,16 +256,26 @@ def scored_frame(o, live, alts, tcache=None):
     return pd.concat([o.reset_index(drop=True), pd.DataFrame(rows, index=range(len(o)))], axis=1)
 
 
+def _pending(src, n_unres, ticks_pend, page_due):
+    """a fill that can still change → holds the freeze: unscored, or any undecided cell (272 review I2), while a tick archive can arrive or
+    its 1m page is still due; a fill with a 1m part (provisional) while a tick archive can arrive. Decided on ticks = final."""
+    n_unres = 0 if n_unres is None or n_unres != n_unres else int(n_unres)
+    if not isinstance(src, str) or n_unres > 0:
+        return bool(ticks_pend or page_due)
+    return bool(src in PROVISIONAL and ticks_pend)
+
+
 # ─────────────────────────── verdict / freeze ───────────────────────────
 def judge(sc, v):
+    par = float(sc.par_ok.astype(bool).mean()) if len(sc) else 0.0     # parity on every scored fill
+    sc = sc[pd.to_numeric(sc[v], errors="coerce").notna()]            # (272) a cell undecided at the path end is not scored for that cell
     d = sc[v].values.astype(float) - sc.LIVE.values.astype(float)
     s = float(d.sum())
     p = NF.p_mean_neg(-d, sc.day.values, BOOT_N, BOOT_SEED) if len(sc) else None
     share = float(d.max() / s) if s > 0 else float("nan")
-    par = float(sc.par_ok.astype(bool).mean()) if len(sc) else 0.0
     m = float(d.mean()) if len(d) else float("nan")
-    return dict(mean=m, sum=s, p=p, share=share, par=par,
-                q=bool(m > 0 and p is not None and p >= P_MIN and share <= SHARE_MAX and par >= PARITY_MIN))
+    return dict(mean=m, sum=s, p=p, share=share, par=par, n=int(len(d)),
+                q=bool(len(d) >= N_MIN and m > 0 and p is not None and p >= P_MIN and share <= SHARE_MAX and par >= PARITY_MIN))   # round-2: per-cell N gate
 
 
 def verdict(sc):
@@ -179,7 +284,7 @@ def verdict(sc):
         return "COLLECTING", f"N {n}/{N_MIN} · {nd}/{DAYS_MIN} days", {}
     J = {v: judge(sc, v) for v in VARS}
     det = f"N {n} · {nd} d · parity {J[VARS[0]]['par'] * 100:.0f} % · " + " · ".join(
-        f"{v}: mean Δ {j['mean']:+.3f} pts · Σ Δ {j['sum']:+.2f} · P(Δ>0) {(j['p'] if j['p'] is not None else float('nan')):.2f} · top fill "
+        f"{v} (N {j['n']}): mean Δ {j['mean']:+.3f} pts · Σ Δ {j['sum']:+.2f} · P(Δ>0) {(j['p'] if j['p'] is not None else float('nan')):.2f} · top fill "
         f"{(j['share'] * 100 if j['share'] == j['share'] else float('nan')):.0f} % of ΣΔ" for v, j in J.items())
     qs = [v for v in VARS if J[v]["q"]]
     if qs:
@@ -218,7 +323,7 @@ def freeze(st, sleeve, sc, now_iso, cfg, hold=None, why=None):
         return st, False
     state, det, _ = verdict(pre)
     s[key] = dict(state=state, detail=det, at=f"{last:%Y-%m-%d %H:%M} UTC", run_at=now_iso, n=len(pre), days=int(pre.day.nunique()),
-                  n_1m=int((pre.src == "1m").sum()), config=cfg,
+                  n_1m=int((pre.src != "ticks").sum()), config=cfg,
                   keys=[f"{a}|{b}" for a, b in zip(pre.ts.dt.strftime("%Y-%m-%dT%H:%M:%S"), pre.pair.astype(str))])
     return st, True
 
@@ -229,6 +334,9 @@ HDR = ["| Sleeve | Exit | N | days | WR | avg % | Σ % | Σ$ at the fill's size 
 
 
 def _row(sl, lab, g, v):
+    if not len(g):
+        return f"| {sl} | {lab} | 0 | – | – | – | – | – | – |"
+    g = g[pd.to_numeric(g[v], errors="coerce").notna()]                 # (272) per cell: only fills whose cell is decided
     if not len(g):
         return f"| {sl} | {lab} | 0 | – | – | – | – | – | – |"
     p = g[v].astype(float)
@@ -254,15 +362,17 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     o = o[~o.why.astype(str).str.upper().str.startswith("MANUAL")].reset_index(drop=True)
     span = live[2]
     tc = {}
-    o["src"] = [score_fill(r, live, alts, tc)[1] for r in o.itertuples()]
-    notes = WT.ensure_data(o, span, now_ms, fetch=fetch)
+    _pre = [score_fill(r, live, alts, tc) for r in o.itertuples()]
+    o["src"] = [x[1] for x in _pre]
+    o["need_1m"] = [bool(x[0] and x[0].get("n_unres", 0)) for x in _pre]   # (272 review I2) a scored fill with an undecided cell still
+    notes = WT.ensure_data(o, span, now_ms, fetch=fetch)                    # needs its 1m page
     if notes:
         tc.clear()
         WT._K1.clear()
     sc_all = scored_frame(o.drop(columns=["src"]), live, alts, tc)
     done = WT.load_attempts()["done"]
-    sc_all["pend"] = [(not isinstance(s, str) and not (WT._kk(r.pair, r.te, WT._span(span)) in done and not WT.ticks_pending(r, span, done, now_ms, tc)))
-                      or (s == "1m" and WT.ticks_pending(r, span, done, now_ms, tc)) for s, r in zip(sc_all.src, sc_all.itertuples())]
+    sc_all["pend"] = [_pending(s, getattr(r, "n_unres", 0), WT.ticks_pending(r, span, done, now_ms, tc),
+                               WT._kk(r.pair, r.te, WT._span(span)) not in done) for s, r in zip(sc_all.src, sc_all.itertuples())]
     sc = sc_all[sc_all.src.notna()].copy()
     uns = sc_all[sc_all.src.isna()]
     labs = {"LIVE": f"+{live[0]:g} / −{live[1]:g} (live)" if live[1] else f"+{live[0]:g} (live)"}
@@ -270,7 +380,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     L = [f"## 🎲➡🔥 FRENZY_WILLY_TP — should FRENZY / WIDE / LITE take a small fixed target (+{alts['T1_S2'][0]:g} or +{TP125:g}) with a "
          f"−2 / −2.5 / −3 stop, or +{TP125:g} / −4? (DECISION_LOG 267 · 269, OBSERVE only, exit shadow grid)", "",
          f"Cohort: CLOSED FRENZY_LONG / WIDE / LITE fills opened ≥ {floor:%Y-%m-%d %H:%M} UTC (the fixed +3 / −3 exit went live), re-walked from "
-         f"each fill's own entry on the same path (WILLY_TIMECAP's walker and cache; 1m = provisional) with the bot's accounting. Every exit "
+         f"each fill's own entry on the same hybrid path (ticks first, then the 1m tail — DECISION_LOG 272; WILLY_TIMECAP's caches; a 1m part = provisional; a cell undecided at the path end is not counted for that cell) with the bot's accounting. Every exit "
          f"keeps the live {live[2]}-min cap; TP and stop differ per cell. Judged per sleeve.", ""]
     if paused:
         L.append("⏸ PAUSED: the live FRENZY exit is not a fixed TP (frenzy_lock_arm_pct > 0 or frenzy_tp_pct ≤ 0) — the '+3 / −3' row below is "
@@ -282,14 +392,16 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     L.append("")
     if len(sc):
         L.append("Per fill: " + " · ".join(
-            f"{r.ts:%m-%d %H:%M} {r.pair} {r.sleeve.replace('FRENZY_', '')} [{r.src}{', provisional' if r.src == '1m' else ''}] live "
-            f"{r.LIVE:+.2f} ({r.why_LIVE} @ {r.min_LIVE:.0f} min) → " + " / ".join(f"{labs[v]} {getattr(r, v):+.2f}" for v in VARS)
+            f"{r.ts:%m-%d %H:%M} {r.pair} {r.sleeve.replace('FRENZY_', '')} [{r.src}{', provisional' if r.src in PROVISIONAL else ''}] live "
+            f"{r.LIVE:+.2f} ({r.why_LIVE} @ {r.min_LIVE:.0f} min) → " + " / ".join(
+                f"{labs[v]} " + (f"{getattr(r, v):+.2f}" if getattr(r, v) == getattr(r, v) else "undecided") for v in VARS)
             for r in sc.itertuples()))
         par = sc.par_ok.astype(bool)
         L.append(f"Walker parity (live walk vs the actual exit, reason + % within {WT.PARITY_TOL} pts): {int(par.sum())}/{len(sc)} match"
                  + ("" if par.all() else " — off: " + " · ".join(f"{r.pair} {r.par_txt}" for r in sc[~par].itertuples())))
-        if (sc.src == "1m").any():
-            L.append(f"⏳ {int((sc.src == '1m').sum())} fill(s) on 1m klines (PROVISIONAL: targets booked exactly; the entry minute's bar is "
+        if sc.src.isin(PROVISIONAL).any():
+            L.append(f"⏳ {int(sc.src.isin(PROVISIONAL).sum())} fill(s) with a 1m segment (ticks first, then 1m klines — DECISION_LOG 272 "
+                     "hybrid; PROVISIONAL on the 1m part: targets booked exactly, a bar touching both lines = stop, the entry minute's bar is "
                      "skipped) — re-walked on aggTrades once the daily archive is out.")
         L.append("")
     if len(man):
@@ -308,7 +420,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
         changed = False
         for sl in SLEEVES:
             g = sc[sc.sleeve == sl]
-            hold_l = [x for x in opens if x[1].endswith(sl)] + [(r.ts, f"{'1m-provisional' if r.src == '1m' else 'unscored'} {r.pair}")
+            hold_l = [x for x in opens if x[1].endswith(sl)] + [(r.ts, f"{'unscored' if not isinstance(r.src, str) else 'undecided cell' if (getattr(r, 'n_unres', 0) or 0) > 0 else '1m-provisional'} {r.pair}")
                                                                for r in sc_all[sc_all.sleeve == sl].itertuples() if r.pend]
             st, ch = freeze(st, sl, g, pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"),
                             dict(live=list(live), alts=alts), hold_l, why)
@@ -416,6 +528,57 @@ def selftest():
                 chk(z["t"].tolist() == [1, 2, 50] and sorted(zip(z["w0"].tolist(), z["w1"].tolist())) == [(0, 10), (40, 60)],
                     "a second line's slice is merged (prints + windows), never overwritten")
             chk(WT._have_day("ZZUSDT", "2026-10-09", (45, 55)) and not WT._have_day("ZZUSDT", "2026-10-09", (20, 30)), "coverage per window")
+            # ── (272) hybrid walk: day 1 = a full tick file, day 2 = 1m klines only (the B19 10-11 situation)
+            th0 = pd.Timestamp("2026-10-09 22:00:00").value // 10**6
+            d2 = pd.Timestamp("2026-10-10").value // 10**6
+
+            def hy(pair, nets, bars=(), bars_from=d2):
+                os.makedirs(os.path.join(WT._CACHE, "ticks_q", pair), exist_ok=True)
+                np.savez_compressed(os.path.join(WT._CACHE, "ticks_q", pair, "2026-10-09.npz"),
+                                    t=(th0 + np.arange(1, len(nets) + 1) * 600_000).astype(np.int64), p=np.array([px(x) for x in nets]))
+                if bars:
+                    os.makedirs(os.path.join(WT.MY_CACHE, "1m"), exist_ok=True)
+                    pd.DataFrame([dict(open_time=bars_from + i * WT.MIN, o=px(o), h=px(h), l=px(l), c=px(c)) for i, (o, h, l, c) in enumerate(bars)]
+                                 ).to_csv(os.path.join(WT.MY_CACHE, "1m", f"{pair}.csv"), index=False)
+                WT._K1.clear()
+                return SimpleNamespace(pair=pair, te=th0, E=E, why="STOP_LOSS", pct=-3.0)
+            from types import SimpleNamespace
+            lv = (3.0, 3.0, 720)
+            al = {"T1_S2": (1.0, 2.0), "T125_S4": (1.25, 4.0)}
+            ra = hy("HYAUSDT", [-1.0, -3.07, 3.5], [(0.0, 0.5, -0.5, 0.0)] * 5)
+            w, s_ = score_fill(SimpleNamespace(**{**vars(ra), "pct": -3.07}), lv, al, {})
+            chk(s_ == "ticks" and w["why_LIVE"] == "STOP" and abs(w["LIVE"] + 3.07) < 1e-6 and w["par_ok"]
+                and w["why_T125_S4"] == "TP" and abs(w["T125_S4"] - 3.5) < 1e-6, f"stop hit on the day-1 ticks → tick-priced; every cell on ticks → 'ticks' (review M8) ({w}, {s_})")
+            rb = hy("HYBUSDT", [-1.0, 1.1, -0.5], [(0.0, 0.5, -0.5, 0.0), (0.2, 3.2, -0.4, 3.1)])
+            w, s_ = score_fill(SimpleNamespace(**{**vars(rb), "why": "FRENZY_TP", "pct": 3.0}), lv, al, {})
+            chk(s_ == "ticks+1m" and w["why_LIVE"] == "TP" and w["LIVE"] == 3.0 and abs(w["min_LIVE"] - (d2 + 2 * WT.MIN - th0) / WT.MIN) < 1e-9
+                and abs(w["T1_S2"] - 1.1) < 1e-6 and w["par_ok"], f"TP in the 1m tail → line-priced; +1 on the ticks before it ({w})")
+            # CFX 10-10 15:25 shape: the stop is crossed on the ticks at −3.02, the 1m bar of that minute OPENS through it (−3.93 on 1m)
+            rc = hy("HYCUSDT", [-1.0, -3.02], [(-0.5, 0.0, -1.0, -0.5)] * 10 + [(-3.93, -3.0, -4.2, -3.5)] + [(-3.5, -3.0, -4.0, -3.5)] * 400,
+                    bars_from=th0)
+            w, s_ = score_fill(rc, lv, al, {})
+            old = WT.walk_1m(WT.load_1m("HYCUSDT"), th0, E, 3.0, 3.0, 720)["v"]["LIVE"]
+            chk(abs(w["LIVE"] + 3.02) < 1e-6 and w["par_ok"] and old["pct"] < -3.9,
+                f"CFX-like: hybrid −3.02 on the ticks; a whole-window 1m walk books the gap open −3.93 ({w['LIVE']} vs {old['pct']})")
+            rd = hy("HYDUSDT", [-1.0, 1.1])
+            chk(score_fill(SimpleNamespace(**{**vars(rd), "why": "FRENZY_TP", "pct": 3.0}), lv, al, {}) == (None, None),
+                "LIVE undecided when the path ends (no 1m tail yet) → unscored")
+            re_ = hy("HYEUSDT", [-1.0, -3.05])
+            w, s_ = score_fill(re_, lv, al, {})
+            chk(s_ == "ticks+1m" and abs(w["LIVE"] + 3.05) < 1e-6 and abs(w["T1_S2"] + 3.05) < 1e-6 and w["why_T125_S4"] == "UNRES"
+                and np.isnan(w["T125_S4"]), "per cell: LIVE / −2 decided on the ticks, −4 still undecided at the path end → NaN for that cell only")
+            jj = pd.DataFrame(dict(day=["a", "b"], LIVE=[0.0, 0.0], par_ok=[True, False], T1_S2=[1.0, np.nan]))
+            chk(judge(jj, "T1_S2")["mean"] == 1.0 and judge(jj, "T1_S2")["par"] == 0.5 and judge(jj, "T1_S2")["n"] == 1,
+                "judge: per-cell NaN dropped (per-cell N), parity on every scored fill")
+            chk(w["n_unres"] == 1 and s_ == "ticks+1m", "the HYE fill carries 1 undecided cell")
+            # (272 review I2 / M8) pending: an undecided cell holds the freeze while data can still come; decided on ticks = final
+            chk(_pending("ticks+1m", 1, False, True) and _pending("ticks+1m", 1, True, False) and not _pending("ticks+1m", 1, False, False)
+                and _pending(None, 0, False, True) and _pending("1m", 0, True, False) and not _pending("1m", 0, False, True)
+                and not _pending("ticks", 0, True, True), "pending: undecided cell / unscored hold while ticks or the 1m page can come")
+            wa, sa = score_fill(SimpleNamespace(**{**vars(ra), "pct": -3.07}), lv, {"T1_S2": (1.0, 2.0)}, {})
+            chk(sa == "ticks" and wa["n_unres"] == 0, f"every cell decided on tick prints → 'ticks' though the window has a 1m part ({sa})")
+            Jd = coh([1.0] * 15).assign(T1_S2=[np.nan] + [1.0] * 14)
+            chk("T1_S2 (N 14)" in verdict(Jd)[1] and "T1_S25 (N 15)" in verdict(Jd)[1], "per-cell N printed in the verdict detail")
             sp = os.path.join(td, "s.json")
             out = "\n".join(run(pd.Timestamp("2026-10-09 23:00").value // 10**6, fetch=False, state_path=sp, th=th))
             chk("KAIAUSDT LITE [ticks] live -3.10 (STOP @ 30 min) → +1 / −2 +1.10 / +1 / −2.5 +1.10 / +1 / −3 +1.10 / +1.25 / −2 -3.10" in out

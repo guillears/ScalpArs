@@ -112,8 +112,8 @@ winner / loser patterns in FRENZY (LONG / WIDE / LITE / WILLY), MOMENTUM LONG / 
   entries LONG / WIDE block · ③ MOMENTUM LONG at 10× (`momentum_long_lev_mult` 0.5) vs 20× — book, DD, growth-optimal leverage; % per fill is
   unchanged, so the read is $ / ruin only. If yr6 runs on a config snapshot from before 283, re-walk / re-lever its fills to both configs.
 
-## 🏁 NEXT BATCH = B21 (operator reset after the DECISION_LOG 283 deploy, 2026-10-12) — ONE config: FRENZY LONG / WIDE / LITE +1.5 / −3 at
-## 10×, momentum longs at half leverage, WILLY 10× +1.25 / −4 / 90. B20 (10-12 05:08 → 15:15, all pre-283) is archived in BASELINE20; B19 is archived (BASELINE19, master STACK 2026-10-12c,
+## 🏁 NEXT BATCH = B21 (operator reset after the DECISION_LOG 283 / 284 deploys, 2026-10-12) — ONE config: FRENZY LONG / WIDE +1.5 / −3 and LITE
+## +3 / −3 (own TP, DL 284), all at 10×, momentum longs at half leverage, WILLY 10× +1.25 / −4 / 90. B20 (10-12 05:08 → 15:15, all pre-283) is archived in BASELINE20; B19 is archived (BASELINE19, master STACK 2026-10-12c,
 ## normalized to today's config); use the normalization table below only when re-reading the archived B19 by era.
 
 ### If the batch is NOT reset at the deploy — DECISION_LOG 283 (2026-10-12) changed: FRENZY TP +3 → +1.5 (LONG / WIDE / LITE and the
@@ -121,7 +121,7 @@ winner / loser patterns in FRENZY (LONG / WIDE / LITE / WILLY), MOMENTUM LONG / 
 - Tag every fill by era (the "(DECISION_LOG 283)" commit + 10 min); compare on Avg P&L %; $ only normalized to today (LONG $ × 10/2,
   WIDE × 10/1, LITE × 10/8, momentum long × 10/20 for pre-283 fills — or the fill's own leverage if bracket-capped); FRENZY pre-283 fills:
   re-walk at +1.5 / −3 / 12 h on their own ticks (never scale the %).
-- Gates to read (post-283 fills only): Scout FRENZY_TP_REVERT (pooled + per sleeve, N ≥ 20 on ≥ 8 days: old beats new at P ≥ 0.90 or new avg
+- Gates to read (post-283 fills only): Scout FRENZY_TP_REVERT (LONG + WIDE pooled + per sleeve — LITE out since DL 284, N ≥ 20 on ≥ 8 days: old beats new at P ≥ 0.90 or new avg
   < 0 with old avg higher → TP back to +3) · FRENZY 10× revert (per sleeve: first 20 fills at 10× avg < 0, or any UTC day's FRENZY fills > 25 % of the book →
   LONG / WIDE 2× / 1×, LITE 8×) · FRENZY_WILLY_TP grid (re-based to 283) · momentum long 10×: no gate (de-risking) — report the $ halving
   and confirm `leverage` = 10 on unmatched fills (20 × cell lev × 0.5; bracket-capped rows flagged).
@@ -382,3 +382,7 @@ at once.
       sleeves. Only after §4's filter work; a size cut is never the headline fix for ML's profitability (memory feedback_filters_not_sizing)
       — it is judged per cell on the freed margin / slots and the concurrency run.
 
+### FRENZY TP per sleeve (DECISION_LOG 284) — read at B21
+- LITE on its own +3, LONG / WIDE on +1.5. 🔒 LITE TP gate: first 20 post-284 LITE fills — +1.5 CF avg > actual +3 avg → LITE back to +1.5 (decided once). Per sleeve, three blocks (B21 · master per batch · year): N · WR · avg % · $ at +1.5 vs +3 (first-
+  touch on the recorded peak for ≤ +3; walked ticks for the year). Track LITE fills whose peak sat in [+1.5, +3) and then stopped (BAT 10-12
+  type) — if they become common, LITE's +3 is wrong; if LONG / WIDE winners keep running clean to +3, theirs is.

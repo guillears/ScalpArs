@@ -19,8 +19,10 @@ def test_stack_pct_ignores_size_reprices():
     th = json.load(open(os.path.join(ROOT, "trading_config.json")))
     t_ = th.get("thresholds", th); tp = float(t_.get("frenzy_tp_pct", 0) or 0)
     assert float(t_.get("frenzy_lock_arm_pct", 0) or 0) == 0                     # 10-08a (250): the lock is off — the fixed TP prices FRENZY
-    frenzy_tp = k.entry_strategy.astype(str).str.startswith("FRENZY") & (tp > 0) & (pd.to_numeric(k.peak_pnl, errors="coerce") >= tp)
-    assert frenzy_tp.sum() > 0 and np.allclose(k.stack_pct[frenzy_tp], tp)       # 10-08a: peak ≥ +3 books +3 (every era)
+    lt = float(t_.get("frenzy_lite_tp_pct", 0) or 0)                       # DECISION_LOG 284: FRENZY_LITE's own TP when > 0
+    tps = pd.Series(np.where((k.entry_strategy.astype(str) == "FRENZY_LITE") & (lt > 0), lt, tp), index=k.index)
+    frenzy_tp = k.entry_strategy.astype(str).str.startswith("FRENZY") & (tps > 0) & (pd.to_numeric(k.peak_pnl, errors="coerce") >= tps)
+    assert frenzy_tp.sum() > 0 and np.allclose(k.stack_pct[frenzy_tp & (k.entry_strategy.astype(str) != "FRENZY_WILLY")], tps[frenzy_tp & (k.entry_strategy.astype(str) != "FRENZY_WILLY")])       # 10-08a: peak ≥ +3 books +3 (every era)
     willy = k.entry_strategy.astype(str) == "FRENZY_WILLY"                     # 10-12c (282): today's WILLY exit re-walked (WILLY_EXIT_CF.csv)
     frenzy_tp = frenzy_tp & ~willy
     plain = k[~path & ~frenzy_tp & ~willy]

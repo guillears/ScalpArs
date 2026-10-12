@@ -101,9 +101,10 @@ def _num(ns, k, d):
         return d
 
 
-def frenzy_levels(th=None):
-    """the FRENZY live exit (tp %, stop % positive or None, hold min) — scout_willy_hold.exit_rule on trading_config.json."""
-    tp, st, cap = WH.exit_rule("FRENZY_LONG", _ns(th))
+def frenzy_levels(th=None, sleeve="FRENZY_LONG"):
+    """the FRENZY live exit (tp %, stop % positive or None, hold min) — scout_willy_hold.exit_rule on trading_config.json. sleeve: FRENZY_LITE
+    runs its own TP (frenzy_lite_tp_pct, DECISION_LOG 284) — LONG / WIDE the shared frenzy_tp_pct."""
+    tp, st, cap = WH.exit_rule(sleeve, _ns(th))
     return float(tp), (abs(float(st)) if st else None), int(cap)
 
 
@@ -232,7 +233,10 @@ def path_src(P):
 # ─────────────────────────── scoring ───────────────────────────
 def score_fill(r, live, alts, tcache=None):
     """→ (dict or None, source). live = (tp, stop, hold); alts = {name: (tp, stop)} with live's hold. ONE hybrid path (ticks → 1m tail,
-    DECISION_LOG 272); every cell decided before the path end is scored, an undecided cell is NaN (why UNRES). None when LIVE is UNRES."""
+    DECISION_LOG 272); every cell decided before the path end is scored, an undecided cell is NaN (why UNRES). None when LIVE is UNRES.
+    live may be {sleeve: (tp, stop, hold)} — each fill walks its own sleeve's live exit (FRENZY_LITE's own TP, DECISION_LOG 284)."""
+    if isinstance(live, dict):
+        live = live.get(getattr(r, "sleeve", None), live["FRENZY_LONG"])
     tp, st, hold = live
     P = load_path(r.pair, int(r.te), float(r.E), hold, tcache)
     la = evaluate(P, tp, st, hold)
@@ -353,6 +357,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     state_path = state_path or STATE
     WT._K1.clear()
     live = frenzy_levels(th)
+    live_by = {s: frenzy_levels(th, s) for s in SLEEVES}   # DECISION_LOG 284: LITE walks its own TP
     _t = _ns(th)
     paused = _num(_t, "frenzy_lock_arm_pct", 0.0) > 0 or _num(_t, "frenzy_tp_pct", 3.0) <= 0
     alts = {n: (float(WT.levels(vars(_t))[0]) if tp_ is None else tp_, sl_) for n, tp_, sl_ in GRID}
@@ -366,20 +371,21 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     o = o[~o.why.astype(str).str.upper().str.startswith("MANUAL")].reset_index(drop=True)
     span = live[2]
     tc = {}
-    _pre = [score_fill(r, live, alts, tc) for r in o.itertuples()]
+    _pre = [score_fill(r, live_by, alts, tc) for r in o.itertuples()]
     o["src"] = [x[1] for x in _pre]
     o["need_1m"] = [bool(x[0] and x[0].get("n_unres", 0)) for x in _pre]   # (272 review I2) a scored fill with an undecided cell still
     notes = WT.ensure_data(o, span, now_ms, fetch=fetch)                    # needs its 1m page
     if notes:
         tc.clear()
         WT._K1.clear()
-    sc_all = scored_frame(o.drop(columns=["src"]), live, alts, tc)
+    sc_all = scored_frame(o.drop(columns=["src"]), live_by, alts, tc)
     done = WT.load_attempts()["done"]
     sc_all["pend"] = [_pending(s, getattr(r, "n_unres", 0), WT.ticks_pending(r, span, done, now_ms, tc),
                                WT._kk(r.pair, r.te, WT._span(span)) not in done) for s, r in zip(sc_all.src, sc_all.itertuples())]
     sc = sc_all[sc_all.src.notna()].copy()
     uns = sc_all[sc_all.src.isna()]
-    labs = {"LIVE": f"+{live[0]:g} / −{live[1]:g} (live)" if live[1] else f"+{live[0]:g} (live)"}
+    labs = {"LIVE": (f"+{live[0]:g} / −{live[1]:g} (live)" if live[1] else f"+{live[0]:g} (live)")
+            + (f" · LITE +{live_by['FRENZY_LITE'][0]:g}" if live_by["FRENZY_LITE"][0] != live[0] else "")}
     labs.update({n: f"+{tp_:g} / −{sl_:g}" for n, (tp_, sl_) in alts.items()})
     L = [f"## 🎲➡🔥 FRENZY_WILLY_TP — should FRENZY / WIDE / LITE take a small fixed target (+{alts['T1_S2'][0]:g} or +{TP125:g}) with a "
          f"−2 / −2.5 / −3 stop, or +{TP125:g} / −4? (DECISION_LOG 267 · 269, OBSERVE only, exit shadow grid)", "",
@@ -427,7 +433,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
             hold_l = [x for x in opens if x[1].endswith(sl)] + [(r.ts, f"{'unscored' if not isinstance(r.src, str) else 'undecided cell' if (getattr(r, 'n_unres', 0) or 0) > 0 else '1m-provisional'} {r.pair}")
                                                                for r in sc_all[sc_all.sleeve == sl].itertuples() if r.pend]
             st, ch = freeze(st, sl, g, pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"),
-                            dict(live=list(live), alts=alts), hold_l, why)
+                            dict(live=(list(live_by[sl]) if sl in live_by else {k: list(v) for k, v in live_by.items()}), alts=alts), hold_l, why)
             changed |= ch
         st = {k: v for k, v in st.items() if v}
         if changed:
@@ -477,6 +483,9 @@ def selftest():
              15, 8, 30, 0.95, 0.50, 0.90, 4000, 7), "pre-registered constants pinned")
         th = {"frenzy_tp_pct": 3.0, "frenzy_stop_pct": 3.0, "frenzy_max_hold_minutes": 720, "frenzy_willy_tp_pct": 1.0,
               "frenzy_willy_stop_pct": 0.0, "frenzy_willy_max_hold_minutes": 120}
+        _two = {**th, "frenzy_tp_pct": 1.5, "frenzy_lite_tp_pct": 3.0}
+        chk(frenzy_levels(_two, "FRENZY_LITE")[0] == 3.0 and frenzy_levels(_two)[0] == 1.5 and frenzy_levels(_two, "FRENZY_WIDE")[0] == 1.5,
+            "LITE walks its own TP (DECISION_LOG 284)")
         chk(frenzy_levels(th) == (3.0, 3.0, 720) and WT.levels(th) == (1.0, None, 120), "both exits read from the config")
         E, te = 100.0, 1_800_000_000_000
         px = lambda net: E * (1 + (net + WT.TAKER) / 100) / (1 - WT.TAKER / 100)   # noqa: E731

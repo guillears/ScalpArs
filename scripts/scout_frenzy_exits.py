@@ -204,6 +204,10 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 from services.frenzy import (frenzy_walk, normal_hour_usd, frenzy_long_status, frenzy_flagged, frenzy_di_spread, frenzy_adx_delta,  # noqa: E402
                              FRENZY_WIDE_CODES, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_vol24_at)
+try:   # 🎯 DECISION_LOG 284: FRENZY_LITE's own TP — the engine's own per-sleeve TP helper (fallback below if an older services/ lacks it)
+    from services.frenzy import frenzy_tp_for as _frenzy_tp_for  # noqa: E402
+except ImportError:   # pragma: no cover
+    _frenzy_tp_for = None
 from services.surge import wilder_atr_pct  # noqa: E402
 
 CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_EXITS.csv")
@@ -410,12 +414,32 @@ def _walk_ticks(tt, pp, e, t0):
 LIVE_LAG_MS = 8_000   # the live ruler's entry: first print ≥ the signal close + 8 s (FRENZY latency study, Oct-7: live ≈ 7.5 s) — the BEARISH_BLOCKED ruler
 
 
-def live_exit(th):
+def frz_sleeve(s):
+    """🎯 DECISION_LOG 284: a stored sleeve ('LITE' / 'FRENZY_LITE' / blank) → the engine's entry_strategy name (None when unknown → shared TP)."""
+    if s is None or (isinstance(s, float) and np.isnan(s)):
+        return None
+    s = str(s).strip()
+    if not s or s.lower() in ("nan", "none"):
+        return None
+    return s if s.startswith("FRENZY_") else f"FRENZY_{s}"
+
+
+def _tp_for(th, sleeve):
+    """🎯 DECISION_LOG 284: FRENZY_LITE's own TP — services.frenzy.frenzy_tp_for (LITE → frenzy_lite_tp_pct when > 0, else frenzy_tp_pct)."""
+    if _frenzy_tp_for is not None:
+        return float(_frenzy_tp_for(th, frz_sleeve(sleeve)))
+    g = lambda k: float(getattr(th, k, 0.0) or 0.0)
+    return g("frenzy_lite_tp_pct") if frz_sleeve(sleeve) == "FRENZY_LITE" and g("frenzy_lite_tp_pct") > 0 else g("frenzy_tp_pct")
+
+
+def live_exit(th, sleeve=None):
     """the live FRENZY exit from the config thresholds → dict(mode 'lock' | 'fixed' | 'trail', sl, tp, la, lf, lt, arm, give, cap, label).
-    frenzy_max_hold_minutes 0 / blank (= the engine's global max hold, not readable here) → the tested 12 h (stated in the label)."""
+    frenzy_max_hold_minutes 0 / blank (= the engine's global max hold, not readable here) → the tested 12 h (stated in the label).
+    🎯 DECISION_LOG 284: FRENZY_LITE's own TP — sleeve (LITE / FRENZY_LITE / LONG / WIDE / None) picks the fixed TP like the engine's
+    frenzy_exit_for(sleeve=entry_strategy); the TP is in the label, so a LITE row stored under the shared-TP label re-prices."""
     g = lambda k, d: float(getattr(th, k, d) if getattr(th, k, d) is not None else d)
     sl = abs(g("frenzy_stop_pct", 3.0)) or 3.0
-    la, tp = g("frenzy_lock_arm_pct", 0.0), g("frenzy_tp_pct", 0.0)
+    la, tp = g("frenzy_lock_arm_pct", 0.0), _tp_for(th, sleeve)
     cap_raw = int(round(g("frenzy_max_hold_minutes", CAP_MIN)))
     cap = cap_raw if cap_raw > 0 else CAP_MIN
     ex = dict(sl=sl, tp=0.0, la=0.0, lf=0.0, lt=0.0, arm=abs(g("frenzy_trail_arm_pct", 5.0)), give=abs(g("frenzy_trail_giveback_pct", 1.5)), cap=cap)
@@ -430,6 +454,39 @@ def live_exit(th):
         ex.update(mode="trail")
         ex["label"] = f"trail −{sl:g} → peak − {ex['give']:g} from +{ex['arm']:g} · {hl}"
     return ex
+
+
+def live_exit_by_sleeve(th):
+    """🎯 DECISION_LOG 284: FRENZY_LITE's own TP — a cached sleeve → live_exit(th, sleeve) callable, for code that prices a mixed set of rows
+    (each row on its own sleeve's exit). Accepted wherever an `ex` dict is (live_backfill / today_backfill / _spec_ok)."""
+    cache = {}
+
+    def f(sleeve=None):
+        s = frz_sleeve(sleeve)
+        if s not in cache:
+            cache[s] = live_exit(th, s)
+        return cache[s]
+    return f
+
+
+def live_exit_labels(th):
+    """🎯 DECISION_LOG 284: the header text of today's live exit — one label, or LONG / WIDE vs LITE when LITE runs its own TP."""
+    lo, li = live_exit(th, "FRENZY_LONG")["label"], live_exit(th, "FRENZY_LITE")["label"]
+    return lo if lo == li else f"LONG / WIDE {lo} · LITE {li}"
+
+
+def _row_ex(ex, sleeve):
+    """an `ex` dict, or a live_exit_by_sleeve callable resolved on the row's sleeve (DECISION_LOG 284)."""
+    return ex(sleeve) if callable(ex) else ex
+
+
+def _spec_ok(df, ex, col="exit_spec"):
+    """🎯 DECISION_LOG 284: per-row 'priced under today's exit for ITS sleeve' mask (ex = a dict or a live_exit_by_sleeve callable)."""
+    if col not in df:
+        return pd.Series(False, index=df.index)
+    sl = df["sleeve"] if "sleeve" in df else pd.Series([None] * len(df), index=df.index)
+    want = [_row_ex(ex, s)["label"] for s in sl]
+    return pd.Series([str(a) == w for a, w in zip(df[col], want)], index=df.index, dtype=bool)
 
 
 def _live_lines(pk, ex):
@@ -765,7 +822,7 @@ def _price(r, th, now_ms, first, J=None):
         out[kind] = p; fin.append(how != "open")
         if kind == "EMA50" and how != "open":
             ema50_exit = x                          # the re-entry search starts only from a REAL shadow exit (review)
-    _lx = live_exit(th)   # 🎯 (2026-10-09) LIVE = TODAY's live exit from the actual entry (config), the ruler of the "what would today's bot make" trackers
+    _lx = live_exit(th, r.entry_strategy)   # 🎯 DECISION_LOG 284: FRENZY_LITE's own TP · (2026-10-09) LIVE = TODAY's live exit from the actual entry (config), the ruler of the "what would today's bot make" trackers
     p, x, how = walk_live(m1in, e, _lx)
     out["LIVE"], out["live_spec"] = p, _lx["label"]; fin.append(how != "open")
     # ⛔ ATRE shadow retired (218) — no longer priced
@@ -844,19 +901,20 @@ def live_backfill(allr, ex, now_ms, skip=(), budget=None):
     for i in d.index:
         if time.monotonic() > dl:   # the run's time budget is spent → the rest next run
             break
-        if (d.at[i, "k"], d.at[i, "pair"]) in skip or (str(d.at[i, "live_spec"]) == ex["label"] and _num(d.at[i, "LIVE"]) is not None
+        exi = _row_ex(ex, d.at[i, "sleeve"] if "sleeve" in d else None)   # 🎯 DECISION_LOG 284: FRENZY_LITE's own TP (per-row sleeve)
+        if (d.at[i, "k"], d.at[i, "pair"]) in skip or (str(d.at[i, "live_spec"]) == exi["label"] and _num(d.at[i, "LIVE"]) is not None
                                                            and str(d.at[i, "final"]) in _TRUE):
             continue
         try:
             e = float(d.at[i, "entry"]); t_in = _ms(d.at[i, "k"]); m0 = t_in // MIN * MIN
-            m1 = [list(b) for b in _kl(str(d.at[i, "pair"]), "1m", m0, min(now_ms, m0 + (int(ex["cap"]) + 2) * MIN)) if b[0] + MIN <= now_ms]
+            m1 = [list(b) for b in _kl(str(d.at[i, "pair"]), "1m", m0, min(now_ms, m0 + (int(exi["cap"]) + 2) * MIN)) if b[0] + MIN <= now_ms]
             if not m1:
                 raise ValueError("no 1m")
             if m1[0][0] == m0:
                 m1[0] = [m0, e, max(e, m1[0][4]), min(e, m1[0][4]), m1[0][4], m1[0][5]]
-            p, _, how = walk_live(m1, e, ex)
+            p, _, how = walk_live(m1, e, exi)
             d.at[i, "LIVE"] = p
-            d.at[i, "live_spec"] = ex["label"] if how != "open" else None
+            d.at[i, "live_spec"] = exi["label"] if how != "open" else None
             n += 1
         except Exception:
             err += 1
@@ -869,10 +927,11 @@ def run(now_ms=None):
     if len(old) and "ver" not in old:
         old["ver"] = 1
     th = _cfg(); rows = []; err = 0
-    _spec = live_exit(th)["label"]   # 🎯 a row priced before LIVE existed / under another live exit is re-priced (LIVE = today's exit)
-    done = {(a, b) for a, b, f, v, ls in zip(old.get("k", []), old.get("pair", []), old.get("final", []), old.get("ver", []),
-                                             old.get("live_spec", pd.Series([None] * len(old))))
-            if str(f) in ("True", "1", "1.0") and str(v) in (str(VER), f"{VER}.0") and str(ls) == _spec}
+    _exs = live_exit_by_sleeve(th)   # 🎯 a row priced before LIVE existed / under another live exit is re-priced (LIVE = today's exit)
+    # 🎯 DECISION_LOG 284: FRENZY_LITE's own TP — each stored row is checked against ITS sleeve's label (a LITE row stored under +1.5 re-prices)
+    done = {(a, b) for a, b, f, v, ls, sl in zip(old.get("k", []), old.get("pair", []), old.get("final", []), old.get("ver", []),
+                                                 old.get("live_spec", pd.Series([None] * len(old))), old.get("sleeve", pd.Series([None] * len(old))))
+            if str(f) in ("True", "1", "1.0") and str(v) in (str(VER), f"{VER}.0") and str(ls) == _exs(sl)["label"]}
     F = _fills()
     try:
         J = _journal(now_ms)
@@ -902,13 +961,13 @@ def run(now_ms=None):
     allr = pd.concat([old, new], ignore_index=True) if rows else old
     if len(allr):
         allr = allr.drop_duplicates(["k", "pair"], keep="last").sort_values("k")
-        allr, _nl, _el = live_backfill(allr, live_exit(th), now_ms, {(r_["k"], r_["pair"]) for r_ in rows},
+        allr, _nl, _el = live_backfill(allr, _exs, now_ms, {(r_["k"], r_["pair"]) for r_ in rows},
                                        {"deadline": time.monotonic() + X_TIME_S})   # 🎯 rows whose fill left the exports
         err += _el
         allr["first"] = [(k, p) in firsts for k, p in zip(allr.k, allr.pair)]   # every stored row's key is in `keys`, so this is complete
         tmp = CSV + ".tmp"; allr.to_csv(tmp, index=False); os.replace(tmp, CSV)
     L = ["## 🎯 FRENZY / WIDE exit shadows per fill (pre-registered, OBSERVE only)", "",
-         f"**Live exit today (trading_config.json): {live_exit(th)['label']} = the LIVE column** — the ruler of WIDE_CHOPPY_OBS, WIDE_BTC_SOFT and "
+         f"**Live exit today (trading_config.json): {live_exit_labels(th)} = the LIVE column** — the ruler of WIDE_CHOPPY_OBS, WIDE_BTC_SOFT and "
          "WIDE_BY_CODE since 2026-10-09 (they read LOCK2 while the lock was live). LOCK2 / LOCK3 / EMA / HYB are exit comparisons, kept as shadows.", "",
          "Every live FRENZY / WIDE fill re-priced from its ACTUAL entry on 1m bars (fees in, 12 h cap; coarser than the year studies' ticks). "
          "LIVE = today's live exit (config) · LOCK2 = the lock (live 10-05 ~16:00 → 10-08) · LOCK3 = 3-pt trail · EMA20/EMA50 = +2 floor then the first 5m close below the EMA · FIX3 = old fixed +3/−3 · "
@@ -1258,8 +1317,9 @@ def today_backfill(df, sig_of, ex, lag_ms, now_ms, budget, skip=()):
         if c not in d:
             d[c] = None
         d[c] = d[c].astype(object)
+    _sl = lambda i: d.at[i, "sleeve"] if "sleeve" in d else None   # 🎯 DECISION_LOG 284: FRENZY_LITE's own TP (ex may be per-sleeve)
     need = [i for i in d.index if (d.at[i, "k"], d.at[i, "pair"], d.at[i, "gate"] if "gate" in d else None) not in skip
-            and (str(d.at[i, "exit_spec"]) != ex["label"] or str(d.at[i, "today_final"]) not in _TRUE)]
+            and (str(d.at[i, "exit_spec"]) != _row_ex(ex, _sl(i))["label"] or str(d.at[i, "today_final"]) not in _TRUE)]
     need.sort(key=lambda i: str(d.at[i, "k"]), reverse=True)
     n = err = late = 0
     for i in need:
@@ -1267,11 +1327,12 @@ def today_backfill(df, sig_of, ex, lag_ms, now_ms, budget, skip=()):
             late += 1
             continue
         try:
-            T = _live_shadow(str(d.at[i, "pair"]), int(sig_of(d.loc[i])), now_ms, budget, ex, lag_ms)["today"]
+            exi = _row_ex(ex, _sl(i))
+            T = _live_shadow(str(d.at[i, "pair"]), int(sig_of(d.loc[i])), now_ms, budget, exi, lag_ms)["today"]
         except Exception:
             err += 1
             continue
-        for c, v in today_fields(T, ex).items():
+        for c, v in today_fields(T, exi).items():
             d.at[i, c] = v
         n += 1
     return d, n, err, late
@@ -1305,7 +1366,7 @@ def _gc_price(sig, sym, th, now_ms, budget, J, F):
     parity = code == "FRENZY_GREEN_BAR"
     gv_ok = gvol not in ("high", "unread") or gvol_gate_off_at(sig)   # 🌊 (263) from the gate-off deploy the market-volume gate no longer blocks
     eligible = bool(parity and gv_ok and long_open < slots and (dcap == 0 or pday < dcap))
-    ex = live_exit(th)   # 🎯 (2026-10-09) TODAY's live exit (the pre-registered 12 s entry kept) + the old lock (reference) from the same prints
+    ex = live_exit(th, "FRENZY_LONG")   # 🎯 DECISION_LOG 284: priced as FRENZY_LONG (its TP) · (2026-10-09) TODAY's live exit (the pre-registered 12 s entry kept) + the old lock (reference) from the same prints
     S = _live_shadow(sym, sig, now_ms, budget, ex, ENTRY_LAG_MS, lock=True)
     e, t_e, pnl, x_ms, how, px, st, final = S["lock"]
     return dict(k=k, pair=sym, day=k[:10], cohort=k >= GC_FROM, ver=GC_VER, **today_fields(S["today"], ex),
@@ -1377,7 +1438,7 @@ def gc_run(now_ms, th, F, J, allr):
         new["eligible"] = (new.parity.astype(str).isin(_TRUE) & (~new.gvol.isin(["high", "unread"]) | _off)
                            & (pd.to_numeric(new.long_open) < slots) & ((dcap == 0) | (pd.to_numeric(new.pair_day_n) < dcap)))
     allg = pd.concat([old, new], ignore_index=True) if len(new) else old
-    ex = live_exit(th); n_bf = 0
+    ex = live_exit(th, "FRENZY_LONG"); n_bf = 0   # 🎯 DECISION_LOG 284: every GREEN_CLOCK row is a hypothetical FRENZY_LONG
     if len(allg):
         allg = allg.drop_duplicates(["k", "pair"], keep="last").sort_values("k").reset_index(drop=True)
         just = {(r_["k"], r_["pair"], None) for r_ in rows}   # 🎯 TODAY's exit back-filled on stored rows (exit leg only; 12 s FORMAL entry)
@@ -1816,7 +1877,7 @@ def _gvb_price(sig, sym, gate, th, now_ms, budget):
     di, ad = frenzy_di_spread(closed[-300:]), frenzy_adx_delta(closed[-300:])
     strong = bool(sleeve == "LONG" and di is not None and ad is not None and ad > 0 and di > 0)
     take, why = (False, "catch-up / not replayable at t") if catchup else gvb_take(sleeve, ep, code, atr, th)
-    ex = live_exit(th)
+    ex = live_exit(th, sleeve)   # 🎯 DECISION_LOG 284: the row's own sleeve's exit (LONG / WIDE)
     S = _live_shadow(sym, sig, now_ms, budget, ex, LIVE_LAG_MS, lock=True)   # 🎯 today's exit (8 s) + the old lock (12 s, reference) on the same prints
     e, t_e, pnl, x_ms, how, px, st, final = S["lock"]
     return dict(k=k, pair=sym, day=k[:10], sleeve=sleeve, gate=gate, cohort=k >= GC_FROM, ver=GVB_VER, **today_fields(S["today"], ex),
@@ -1835,7 +1896,7 @@ def _gvb_passed_price(fk, sym, sleeve, spike, actual, now_ms, budget, th=None):
     signal bar = the 5m close the fill was opened on: TODAY's exit + the old lock reference). The live actual is kept for display only."""
     sig = _ms(fk) // BAR * BAR
     k = _iso(sig)
-    ex = live_exit(th if th is not None else _cfg())
+    ex = live_exit(th if th is not None else _cfg(), sleeve)   # 🎯 DECISION_LOG 284: the fill's own sleeve's exit
     S = _live_shadow(sym, sig, now_ms, budget, ex, LIVE_LAG_MS, lock=True)
     e, t_e, pnl, x_ms, how, px, st, final = S["lock"]
     return dict(k=k, pair=sym, day=k[:10], sleeve=sleeve, gate=GVB_PASSED, cohort=k >= GC_FROM, ver=GVB_VER, spike_at=spike, **today_fields(S["today"], ex),
@@ -1907,7 +1968,7 @@ def gvb_run(now_ms, th, J, allr, F=None):
             pa = allg.gate == GVB_PASSED
             na = pd.Series([acts.get((k, p)) for k, p in zip(allg.k, allg.pair)], index=allg.index, dtype=object)
             allg.loc[pa & na.notna(), "actual"] = na[pa & na.notna()].astype(float)
-        ex = live_exit(th)                                     # 🎯 (2026-10-09) TODAY's exit on every stored row that lacks it / was priced under another spec
+        ex = live_exit_by_sleeve(th)                           # 🎯 DECISION_LOG 284 per-sleeve · (2026-10-09) TODAY's exit on every stored row that lacks it / was priced under another spec
         just = {(r_["k"], r_["pair"], r_["gate"]) for r_ in rows}
         allg, n_bf, e_bf, l_bf = today_backfill(allg, lambda r_: _ms(r_["k"]), ex, LIVE_LAG_MS, now_ms, budget, skip=just)
         err += e_bf; late += l_bf
@@ -1918,7 +1979,8 @@ def gvb_run(now_ms, th, J, allr, F=None):
         except Exception as _fe:
             print(f"[scout] GVOL_BAND freeze failed ({str(_fe)[:120]}) — rows kept unbanded this run", file=sys.stderr)
         _save_csv(allg, GVB_CSV)
-    ex = live_exit(th)
+    ex = live_exit(th, "FRENZY_LONG")   # header label (GVOL_BLOCKED rows are LONG / WIDE only — same TP); the masks read per sleeve (DECISION_LOG 284)
+    exs = live_exit_by_sleeve(th)
     off = gvol_off_ms()
     L = ["## 🌊 GVOL_BLOCKED — FRENZY / WIDE activations the market-volume gate refused vs the fills it let through, same ruler (observe-only, registered 2026-10-06)", "",
          f"**⛔ SUPERSEDED by GVOL_SPLIT from the (DECISION_LOG 263) commit ({_iso(off)[:16]} UTC = {gvol_off_note()}) — the "
@@ -1951,7 +2013,7 @@ def gvb_run(now_ms, th, J, allr, F=None):
         L.append(f"| {str(r.k)[5:16].replace('T', ' ')}{mk} | {str(r.pair).replace('USDT', '')} | {r.sleeve} | {str(r.gate).replace('FRENZY_', '')} | "
                  f"{str(r.replay_code).replace('FRENZY_', '')} | {'' if pd.isna(r.above_streak) else int(r.above_streak)} | "
                  f"{'' if pd.isna(r.atr) else f'{r.atr:.2f}'} | {wt} | {r.lev:g} | {f(r.TODAY)} | {r.today_how} | {f(r.LOCK)} | {r.today_px} |")
-    fin = S_("final") & S_("today_final") & (allg.exit_spec.astype(str) == ex["label"])
+    fin = S_("final") & S_("today_final") & _spec_ok(allg, exs)   # 🎯 DECISION_LOG 284: each row vs its own sleeve's exit
     cnt = allg[S_("counted") & fin]
     pcs = allg[S_("passed_counted") & fin]
     num = lambda g, c: pd.to_numeric(g[c], errors="coerce").dropna()
@@ -4161,7 +4223,7 @@ def _bb_price_blocked(t, sym, gate, th, now_ms, budget, d0):
     sig = _ms(t) // BAR * BAR                 # the journal second → the bar close it judged (a catch-up refusal → the pass's bar = its entry time)
     k = _iso(sig)
     sp, hrs = _bb_spike(sym, sig, th)
-    ex = live_exit(th)
+    ex = live_exit(th, BB_GATES[gate])   # 🎯 DECISION_LOG 284: FRENZY_LITE's own TP (a LITE refusal priced at LITE's TP)
     e, t_e, pnl, x_ms, how, px, st, final = _fix_shadow(sym, sig, now_ms, budget, ex)
     return dict(k=k, pair=sym, day=k[:10], kind="BLOCKED", sleeve=BB_GATES[gate], gate=gate, cohort=sig >= d0, ver=BB_VER, spike_at=sp, hours=hrs, exit_spec=ex["label"],
                 fill_k=None, actual=None, entry=e, entry_at=(_iso(t_e) if t_e else None), px_src=px, tick_state=st, PNL=pnl, exit_how=how,
@@ -4171,7 +4233,7 @@ def _bb_price_blocked(t, sym, gate, th, now_ms, budget, d0):
 def _bb_price_kept(fk, sym, sleeve, spike, actual, now_ms, budget, d0, ex=None):
     sig = _ms(fk) // BAR * BAR
     k = _iso(sig)
-    ex = ex if ex is not None else live_exit(_cfg())
+    ex = ex if ex is not None else live_exit(_cfg(), sleeve)   # 🎯 DECISION_LOG 284: FRENZY_LITE's own TP
     e, t_e, pnl, x_ms, how, px, st, final = _fix_shadow(sym, sig, now_ms, budget, ex)
     return dict(k=k, pair=sym, day=k[:10], kind="KEPT", sleeve=sleeve, gate="KEPT", cohort=_ms(fk) >= d0, ver=BB_VER, spike_at=spike, hours=None, exit_spec=ex["label"],
                 fill_k=str(fk)[:19], actual=actual, entry=e, entry_at=(_iso(t_e) if t_e else None), px_src=px, tick_state=st, PNL=pnl, exit_how=how,
@@ -4338,6 +4400,7 @@ def bb_run(now_ms, th, J, F3):
                          if r.gate == "KEPT" else ("B", (r.k, r.pair, r.gate)))
     order = sorted(work.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2]), reverse=True)
     budget = {"dl": X_DL, "deadline": time.monotonic() + X_TIME_S}; rows = []; err = late = 0
+    exs = live_exit_by_sleeve(th)   # 🎯 DECISION_LOG 284: FRENZY_LITE's own TP — a kept fill priced on its own sleeve's exit
     for key, (kind, a) in order:
         if key in done:
             continue
@@ -4345,7 +4408,7 @@ def bb_run(now_ms, th, J, F3):
             late += 1
             continue
         try:
-            rows.append(_bb_price_blocked(*a, th, now_ms, budget, d0) if kind == "B" else _bb_price_kept(*a, now_ms, budget, d0, live_exit(th)))
+            rows.append(_bb_price_blocked(*a, th, now_ms, budget, d0) if kind == "B" else _bb_price_kept(*a, now_ms, budget, d0, exs(a[2])))
         except Exception:
             err += 1
     new = pd.DataFrame(rows)
@@ -4355,7 +4418,7 @@ def bb_run(now_ms, th, J, F3):
          "frenzy_bearish_day_block (operator declared override; bearish day = BTC last closed daily return < 0 ∧ BTC 5m trend gap < 0, the DECISION_LOG 239 "
          "definition, the values the fill would be stamped with). Every journal FRENZY_BEARISH_DAY / FRENZY_WIDE_BEARISH_DAY / FRENZY_LITE_BEARISH_DAY refusal "
          f"from the deploy ({_iso(d0)[:16]} UTC = push + 10 min) and every FRENZY / WIDE / LITE fill since (KEPT side) priced on ONE ruler: first print ≥ "
-         f"the signal close + 8 s, TODAY's live exit read from trading_config.json ({live_exit(th)['label']}), 0.09 % fees + 0.10 % slippage; ticks once "
+         f"the signal close + 8 s, TODAY's live exit read from trading_config.json ({live_exit_labels(th)}), 0.09 % fees + 0.10 % slippage; ticks once "
          "the archive is out, else 1m (ᵖ provisional). "
          "One per pair-episode (spikes ≤ 30 min apart merged); DAY units. The gate is judged last, so a refusal = a trade that would otherwise have "
          "reached the open path (open-path refusals — balance / order book — cannot be replayed).", ""]
@@ -4370,8 +4433,10 @@ def bb_run(now_ms, th, J, F3):
         allb.loc[kp_ & na.notna(), "actual"] = na[kp_ & na.notna()].astype(float)
     allb["counted"], allb["kept_counted"], allb["episode"] = bb_masks(allb)
     allb["lite_counted"], allb["lite_kept_counted"] = bb_lite_masks(allb, allb["episode"])   # (272) LITE-only counts, its own
-    _specs = set(allb.exit_spec.dropna().astype(str)) if "exit_spec" in allb else set()
-    if _specs - {live_exit(th)["label"]}:   # rows priced before the spec was stamped carry none (they ran the same fixed +3 / −3 / 12 h)
+    # rows priced before the spec was stamped carry none (they ran the same fixed +3 / −3 / 12 h) · 🎯 DECISION_LOG 284: each row vs ITS sleeve's exit
+    _has = allb.exit_spec.notna() if "exit_spec" in allb else pd.Series(False, index=allb.index)
+    _specs = set(allb.exit_spec[_has & ~_spec_ok(allb, exs)].astype(str)) if "exit_spec" in allb else set()
+    if _specs:
         L.append(f"⚠ Rows priced under another live exit than today's ({' · '.join(sorted(_specs))}) — final rows are never re-priced (the verdict set stays frozen); read the mix at review.")
     allb = bb_lite_freeze(bb_freeze(allb))
     _save_csv(allb, BB_CSV)
@@ -4767,7 +4832,7 @@ def _extras(now_ms, th, F, J, allr):
     except Exception as ex:
         out += ["## ⚡ ON_SCALP", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
     try:   # 🌊 Oct-9 (263) GVOL_SPLIT — the market-volume gate is off; HIGH vs LOW on the live fills (frozen verdict)
-        out += gvs_run(now_ms, _fills(("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")), live_exit(th)["label"])
+        out += gvs_run(now_ms, _fills(("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")), live_exit_labels(th))   # 🎯 DECISION_LOG 284: both labels when LITE runs its own TP
     except Exception as ex:
         out += ["## 🌊 GVOL_SPLIT", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
     try:   # 🐻 Oct-8 (250) tracker 14 FRENZY_BEARISH_BLOCKED (the bearish-day block's revert gate; LITE fills read here)
@@ -5405,6 +5470,22 @@ def selftest():
     chk(exc["sl"] == abs(float(_c["frenzy_stop_pct"])) and exc["cap"] == (int(_c["frenzy_max_hold_minutes"]) or CAP_MIN)
         and exc["mode"] == ("lock" if float(_c["frenzy_lock_arm_pct"]) > 0 else "fixed" if float(_c["frenzy_tp_pct"]) > 0 else "trail")
         and (exc["mode"] != "fixed" or exc["tp"] == float(_c["frenzy_tp_pct"])), f"live exit READS trading_config.json ({exc['label']})")
+    # 🎯 DECISION_LOG 284: FRENZY_LITE's own TP — LITE rows price at frenzy_lite_tp_pct (> 0), LONG / WIDE at the shared frenzy_tp_pct
+    _ltp = float(_c.get("frenzy_lite_tp_pct") or 0.0)
+    exc_l = live_exit(_cfg(), "FRENZY_LITE")
+    chk(exc_l["mode"] != "fixed" or exc_l["tp"] == (_ltp if _ltp > 0 else float(_c["frenzy_tp_pct"])), f"live exit LITE READS frenzy_lite_tp_pct ({exc_l['label']})")
+    th3 = SimpleNamespace(**{**vars(thf), "frenzy_tp_pct": 1.5, "frenzy_lite_tp_pct": 3.0})
+    th0 = SimpleNamespace(**{**vars(thf), "frenzy_tp_pct": 1.5, "frenzy_lite_tp_pct": 0.0})
+    chk(live_exit(th3, "FRENZY_LITE")["tp"] == 3.0 and live_exit(th3, "LITE")["tp"] == 3.0 and live_exit(th3, "FRENZY_LONG")["tp"] == 1.5
+        and live_exit(th3, "WIDE")["tp"] == 1.5 and live_exit(th3)["tp"] == 1.5
+        and live_exit(th3, "FRENZY_LITE")["label"] != live_exit(th3, "FRENZY_LONG")["label"], "live exit (284): LITE +3 vs LONG / WIDE +1.5, labels differ")
+    chk(live_exit(th0, "FRENZY_LITE") == live_exit(th0, "FRENZY_LONG") and live_exit_labels(th0) == live_exit(th0)["label"],
+        "live exit (284): frenzy_lite_tp_pct 0 → LITE on the shared TP (same exit, one label)")
+    chk("LITE fixed +3" in live_exit_labels(th3) and "LONG / WIDE fixed +1.5" in live_exit_labels(th3), "live exit (284): header shows both labels")
+    _x3 = live_exit_by_sleeve(th3)
+    _sd = pd.DataFrame(dict(sleeve=["LITE", "LITE", "LONG", None], exit_spec=[live_exit(th3, "FRENZY_LONG")["label"], live_exit(th3, "FRENZY_LITE")["label"],
+                                                                             live_exit(th3, "FRENZY_LONG")["label"], live_exit(th3)["label"]]))
+    chk(list(_spec_ok(_sd, _x3)) == [False, True, True, True], "live exit (284): a LITE row stored under the +1.5 label is NOT current (re-prices)")
     r_ = walk_ticks_live(tt, [100, 101, 103.2, 104, 99, 98], 100.0, t0, exf)
     chk(r_[2] == "take profit" and abs(r_[0] - (3.2 - FEE)) < 1e-9 and r_[1] == t0 + 2000, "today's exit: +3 hit first → closes AT that print")
     r_ = walk_ticks_live(tt, [100, 99, 96.8, 104, 99, 98], 100.0, t0, exf, slip=0.10)

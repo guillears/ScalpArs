@@ -3,7 +3,8 @@
 
 CHANGE      2026-10-12 (operator declared override "Ship all as asked"): FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE take profit frenzy_tp_pct
             +3 → +1.5 (stop −3 and the 12 h cap unchanged; WILLY has its own exit). The manual "FRENZY" exit mode reads the same field (it is
-            not part of this cohort: MANUAL rows are out).
+            not part of this cohort: MANUAL rows are out). 2026-10-12 (DECISION_LOG 284, operator): FRENZY_LITE back on its OWN +3
+            (frenzy_lite_tp_pct) → LITE fills are OUT of this gate; POOLED = LONG + WIDE (nothing had frozen).
 COHORT      CLOSED non-MANUAL FRENZY_LONG / WIDE / LITE fills from the orders exports (scout_frenzy_willy_exit.load_orders: dedup
             (opened_at[:19], pair, strategy), never id; a CLOSED row beats an OPEN one) opened ≥ the "(DECISION_LOG 283)" commit time + 10 min
             (git %ct; git unavailable / not found → the PLACEHOLDER pin DEPLOY_PIN + 10 min — replace the pin with the real commit time).
@@ -13,7 +14,7 @@ WALKER      ONE hybrid path per fill (DECISION_LOG 272: aggTrades ticks per cove
             +3 / −3 / 720 min (OLD_EXIT). Δ = OLD − NEW (pts). Parity: the NEW walk must reproduce the fill's actual exit (reason + % within
             0.05 pts). Integrity: a fill whose NEW exit is the stop or the cap never printed +1.5 before it → OLD (same stop, same cap, a higher
             TP) must equal NEW there (Δ ≡ 0), else the walker is lying.
-BAR         🔒 FROZEN, pre-registered 2026-10-12 (DECISION_LOG 283) — for POOLED (LONG + WIDE + LITE) and per sleeve, ONCE each, on the first
+BAR         🔒 FROZEN, pre-registered 2026-10-12 (DECISION_LOG 283) — for POOLED (LONG + WIDE; LITE out since 284) and per sleeve, ONCE each, on the first
             prefix by (open time, pair) of counted fills reaching N ≥ 20 on ≥ 8 UTC days:
               REVERT the TP to +3  iff  the OLD exit beats the NEW one — mean paired Δ > 0 ∧ day-clustered bootstrap P(mean Δ > 0) ≥ 0.90
                                         (4,000, seed 7) ∧ no single fill > 50 % of Σ Δ ∧ walker parity ≥ 90 % —  OR  the NEW exit's average < 0 while the OLD
@@ -37,7 +38,7 @@ import scout_b1h_negflank as NF                     # noqa: E402  (bootstrap, fr
 import scout_willy_timecap as WT                    # noqa: E402  (caches, data fetcher, parity, accounting)
 import scout_frenzy_willy_exit as FX                # noqa: E402  (loader, DECISION_LOG 272 hybrid walker, live FRENZY exit)
 
-SLEEVES = FX.SLEEVES                                # FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE
+SLEEVES = ("FRENZY_LONG", "FRENZY_WIDE")            # DECISION_LOG 284: FRENZY_LITE is back on its own +3 TP → out of this gate (nothing had frozen)
 GROUPS = ("POOLED",) + SLEEVES
 OLD_EXIT = (3.0, 3.0, 720)                          # (TP %, stop %, cap min) = the FRENZY exit before DECISION_LOG 283
 N_MIN, DAYS_MIN = 20, 8
@@ -183,8 +184,8 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     if open_ts is not None:
         opens = list(open_ts)
     floor = deploy_ts()
-    o = o[o.ts >= floor].reset_index(drop=True)
-    opens = [x for x in opens if pd.notna(x[0]) and x[0] >= floor]
+    o = o[(o.ts >= floor) & o.sleeve.isin(SLEEVES)].reset_index(drop=True)   # 284: FRENZY_LITE runs its own +3 → not in this gate
+    opens = [x for x in opens if pd.notna(x[0]) and x[0] >= floor and str(x[1]).endswith(SLEEVES)]
     man = o[o.why.astype(str).str.upper().str.startswith("MANUAL")]
     o = o[~o.why.astype(str).str.upper().str.startswith("MANUAL")].reset_index(drop=True)
     span = max(int(live[2]), OLD_EXIT[2])
@@ -288,7 +289,7 @@ def selftest():
         ok += 1
     chk((OLD_EXIT, N_MIN, DAYS_MIN, P_MIN, SHARE_MAX, PARITY_MIN, BOOT_N, BOOT_SEED, DEPLOY_GREP, LAG_MIN, GROUPS) ==
         ((3.0, 3.0, 720), 20, 8, 0.90, 0.50, 0.90, 4000, 7, "(DECISION_LOG 283)", 10,
-         ("POOLED", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")), "pre-registered constants pinned")
+         ("POOLED", "FRENZY_LONG", "FRENZY_WIDE")), "pre-registered constants pinned (LITE out since 284)")
     chk(deploy_ts() >= pd.Timestamp("2026-10-12") + pd.Timedelta(minutes=LAG_MIN), "floor = the DL 283 commit (or the pin) + 10 min")
 
     def coh(new, old, n=20, days=8, **kw):
@@ -308,7 +309,7 @@ def selftest():
     st2, ch2 = freeze(st, "POOLED", coh([0.5] * 25, [0.0] * 25, n=25), "x", {})
     chk(not ch2 and st2["POOLED"]["state"] == REVERT, "decided once, never re-fit")
     w = []
-    chk(not freeze({}, "POOLED", coh([0.5] * 20, [1.5] * 20), "x", {}, [(pd.Timestamp("2026-10-13"), "OPEN X FRENZY_LITE")], w)[1] and w,
+    chk(not freeze({}, "POOLED", coh([0.5] * 20, [1.5] * 20), "x", {}, [(pd.Timestamp("2026-10-13"), "OPEN X FRENZY_WIDE")], w)[1] and w,
         "an open fill ≤ the prefix end holds the freeze")
     w = []
     chk(not freeze({}, "POOLED", coh([0.5] * 20, [1.5] * 20, ).assign(untouched=[True] + [False] * 19), "x", {}, None, w)[1]

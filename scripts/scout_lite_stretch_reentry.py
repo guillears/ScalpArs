@@ -22,8 +22,8 @@ EVIDENCE       reports/B19_RERUN_VERIFY_B.md "The LITE separator" (study scripts
 COHORT         CLOSED FRENZY_LITE LONG fills opened ≥ the "(DECISION_LOG 250)" commit (the fixed +3 / −3 exit went live; git unavailable →
                the pinned 2026-10-08 13:37 UTC), dedup (opened_at[:19], pair, entry_strategy) — never id; CLOSED beats OPEN; MANUAL_* closes
                excluded (listed). DAY units.
-PRICING        every fill (zone and rest) RE-WALKED under LITE's live exit (scout_willy_hold.exit_rule('FRENZY_LITE') = frenzy_tp_pct /
-               frenzy_stop_pct / frenzy_max_hold_minutes: +1.5 / −3 / 12 h since DECISION_LOG 283 (+3 / −3 before), the same stop in paper and
+PRICING        every fill (zone and rest) RE-WALKED under LITE's live exit (scout_willy_hold.exit_rule('FRENZY_LITE') = frenzy_lite_tp_pct
+               (else frenzy_tp_pct) / frenzy_stop_pct / frenzy_max_hold_minutes: +3 / −3 / 12 h (DECISION_LOG 284; +1.5 for a few hours under 283), the same stop in paper and
                live since DECISION_LOG 271; fills opened before the DL 283 deploy traded +3 → their walker parity misses on TP exits — informational)
                from the fill's own entry with the ticks-first ruler (scout_frenzy_willy_exit.load_path / evaluate, DECISION_LOG 272: ticks,
                then the 1m tail; tick ruler = first print through the line; bot accounting). Walker parity vs the actual exit printed.

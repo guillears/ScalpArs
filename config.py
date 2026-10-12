@@ -1313,6 +1313,11 @@ class SignalThresholds(BaseModel):
     # levels, 0.09 % fees) +3/−3 +0.192 · 53 % won vs +4/−3 +0.187 · 46 % (tie, Δ +0.005, 6/9 months) — same expectancy, higher win rate.
     # (the +4/−3 revert gate (199) is RETIRED.) Oct-5: DORMANT while frenzy_lock_arm_pct > 0 (DECISION_LOG 205) — kept as the revert target.
     frenzy_tp_pct: float = 0.0
+    # 🎯 2026-10-12 (DECISION_LOG 284, operator "keep LITE TP in 3%"): FRENZY_LITE's OWN fixed take profit; > 0 overrides frenzy_tp_pct for
+    # FRENZY_LITE only (services.frenzy.frenzy_tp_for), ≤ 0 = follow frenzy_tp_pct. JSON 3.0 while LONG / WIDE run +1.5 (283). Evidence:
+    # LITE never "bounces then collapses" — B19 7 winners all reached +3, 6 losers peaked ≤ +0.68 → +1.5 rescues none and halves every
+    # winner: B19 LITE +$123 (+3) → −$550 (+1.5) at today's size · master LITE +$425 → −$259 · year 546 fills +0.267 → +0.030 %/fill.
+    frenzy_lite_tp_pct: float = 0.0
     # 🎯 Oct-5 (operator, DECISION_LOG 205): LOCK-THEN-TRAIL exit for FRENZY_LONG / FRENZY_WIDE and the manual "Frenzy" mode. Once the
     # trade's net P&L peak reaches +lock_arm, the stop jumps to +lock_floor and then trails lock_trail POINTS below the peak (never below the
     # floor); before that the −frenzy_stop_pct stop. While lock_arm > 0 the fixed TP above is NOT used (set lock_arm 0 to go back to it).
@@ -1323,12 +1328,12 @@ class SignalThresholds(BaseModel):
     # Oct-8 (operator, DECISION_LOG 250): trading_config.json lock_arm 3 → 0 — FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE and the manual "FRENZY"
     # exit are back on the FIXED +frenzy_tp_pct (3.0) take profit / −frenzy_stop_pct stop. The 205 revert gate above is moot (scout trackers keep running).
     # 🎯 2026-10-12 (DECISION_LOG 283, operator DECLARED OVERRIDE "Ship all as asked", against the year evidence): trading_config.json
-    #   frenzy_tp_pct 3.0 → 1.5 — FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE AND the manual "FRENZY" exit mode (it reads this same field); stop
+    #   frenzy_tp_pct 3.0 → 1.5 — FRENZY_LONG / FRENZY_WIDE (LITE too until DECISION_LOG 284 gave it frenzy_lite_tp_pct 3) AND the manual "FRENZY" exit mode; stop
     #   −3 and the 12 h cap unchanged; WILLY keeps its own exit. Per-fill avg % (+3/−3 → +1.5/−3; yr5 cohort, today's walker): LONG B19
     #   −1.368 → +0.276 · master −1.671 → −1.503 · year −0.039 → −0.130 (H1 −0.265 / H2 +0.047, P(Δ>0) 0.19); WIDE B19 −1.003 → −0.001 ·
     #   master −0.006 → −0.002 · year −0.047 → −0.149 (H1 +0.097 / H2 −0.487, P 0.24); LITE B19 +0.270 → −0.549 · master +1.506 → +0.383 ·
     #   year +0.267 → +0.030 (H1 +0.078 / H2 −0.013, P 0.01). 🔒 REVERT to 3.0 (Scout FRENZY_TP_REVERT, scripts/scout_frenzy_tp_revert.py,
-    #   frozen 2026-10-12): pooled LONG+WIDE+LITE and per sleeve, at N ≥ 20 counted fills on ≥ 8 UTC days, decided ONCE — the old +3/−3/12 h
+    #   frozen 2026-10-12): pooled LONG+WIDE (LITE out since 284) and per sleeve, at N ≥ 20 counted fills on ≥ 8 UTC days, decided ONCE — the old +3/−3/12 h
     #   re-walked on the same fills beats +1.5 (mean paired Δ > 0 at day-bootstrap P ≥ 0.90, no fill > 50 % of ΣΔ, walker parity ≥ 90 %)
     #   OR the new exit's average < 0 while the old averages higher on the same fills. Never frozen on a failed parity / integrity check; provisional fills hold the freeze.
     frenzy_lock_arm_pct: float = 0.0

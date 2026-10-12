@@ -3616,6 +3616,7 @@ def _frenzy_monitor_payload():
                                   for k, v in sorted((getattr(trading_engine, '_fz_willy_pending', None) or {}).items())],   # 🟥 armed, waiting red
                 "max_atr": float(getattr(_th, 'frenzy_max_atr_pct', 2.5) or 0), "stop": float(getattr(_th, 'frenzy_stop_pct', 3.0) or 0),
                 "tp": float(getattr(_th, 'frenzy_tp_pct', 0) or 0),
+                "lite_tp": float(getattr(_th, 'frenzy_lite_tp_pct', 0) or 0),   # 🎯 DECISION_LOG 284: LITE's own TP (0 = the shared tp)
                 "lock_arm": float(getattr(_th, 'frenzy_lock_arm_pct', 0) or 0), "lock_floor": float(getattr(_th, 'frenzy_lock_floor_pct', 2.0) or 0),
                 "lock_trail": float(getattr(_th, 'frenzy_lock_trail_pct', 2.0) or 0),
                 "trail_arm": float(getattr(_th, 'frenzy_trail_arm_pct', 5.0) or 0), "trail_give": float(getattr(_th, 'frenzy_trail_giveback_pct', 1.5) or 0),

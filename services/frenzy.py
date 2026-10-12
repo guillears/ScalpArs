@@ -474,7 +474,17 @@ def frenzy_long_status(ep, atr_pct, volume_24h, th) -> Tuple[bool, str, str]:
     return True, "FRENZY_READY", "READY"
 
 
-def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=False) -> Tuple[bool, str, float]:
+def frenzy_tp_for(th, sleeve=None) -> float:
+    """🎯 the fixed FRENZY take profit for a sleeve (DECISION_LOG 284, operator): FRENZY_LITE runs frenzy_lite_tp_pct when > 0, every other
+    caller (FRENZY_LONG / FRENZY_WIDE / the manual FRENZY exit, or LITE with frenzy_lite_tp_pct ≤ 0) the shared frenzy_tp_pct. ≤ 0 = off."""
+    if sleeve == "FRENZY_LITE":
+        lt = _f(th, 'frenzy_lite_tp_pct', 0.0)
+        if lt > 0:
+            return lt
+    return _f(th, 'frenzy_tp_pct', 0.0)
+
+
+def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=False, sleeve=None) -> Tuple[bool, str, float]:
     """FRENZY_LONG's own exit → (close, reason, line). use_tp (the FRENZY_LONG / FRENZY_WIDE sleeve AND the MANUAL "FRENZY" exit — operator):
     🎯 Oct-5 (DECISION_LOG 205) when frenzy_lock_arm_pct > 0: lock +floor at +arm, then trail points below the peak (no fixed TP) — below.
     🎯 Oct-4 (operator, DECISION_LOG 196) a FIXED take-profit at +frenzy_tp_pct net (0 = off) → reason FRENZY_TP, checked before the trail
@@ -486,7 +496,8 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
     momentum stack's own (STOP_LOSS / RUNNER_TRAIL) so every matcher knows them; entry_strategy tells the sleeve apart.
     stop_floor: optional cap (never wider than this). The engine passes None since DECISION_LOG 271 — the sleeve's own stop runs in
     paper AND live; the per-order exchange backstop rests just beyond it (order_backstop_pct).
-    short=True (a MANUAL short on this exit): the give-back is measured from the LOWEST price → peak − giveback × (1 − peak/100)."""
+    short=True (a MANUAL short on this exit): the give-back is measured from the LOWEST price → peak − giveback × (1 − peak/100).
+    sleeve: the order's entry_strategy — picks the take profit via frenzy_tp_for (FRENZY_LITE's own TP since DECISION_LOG 284)."""
     try:
         pnl = float(pnl); pk = float(peak_pnl or 0.0)
         stop = -abs(_f(th, 'frenzy_stop_pct', 3.0)) or -3.0
@@ -505,7 +516,7 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
                 line = max(lf, pk - lt)
                 return (pnl <= line), "RUNNER_TRAIL", line
             return (pnl <= stop), "STOP_LOSS", stop
-        tp = _f(th, 'frenzy_tp_pct', 0.0) if use_tp else 0.0   # ≤ 0 = off (never abs(): a negative value must not become an active TP)
+        tp = frenzy_tp_for(th, sleeve) if use_tp else 0.0   # ≤ 0 = off (never abs(): a negative value must not become an active TP)
         if tp > 0 and (pnl >= tp or pk >= tp):
             return True, "FRENZY_TP", tp
         arm, give = abs(_f(th, 'frenzy_trail_arm_pct', 5.0)), abs(_f(th, 'frenzy_trail_giveback_pct', 1.5))

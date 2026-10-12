@@ -742,6 +742,7 @@
     "frenzy_trail_arm_pct": 5.0,
     "frenzy_trail_giveback_pct": 1.5,
     "frenzy_tp_pct": 1.5,
+    "frenzy_lite_tp_pct": 3.0,
     "frenzy_lock_arm_pct": 0.0,
     "frenzy_lock_floor_pct": 2.0,
     "frenzy_lock_trail_pct": 2.0,

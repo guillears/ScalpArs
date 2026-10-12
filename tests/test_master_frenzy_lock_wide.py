@@ -25,9 +25,13 @@ def test_frenzy_fixed_tp_pricing():
     M = _m()
     f = M[(M.stack_keep == True) & M.entry_strategy.astype(str).isin(["FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE"])]   # WILLY: own exit (282)
     assert f.peak_pnl.notna().all()
-    hit = f[f.peak_pnl.astype(float) >= tp]
-    assert len(hit) >= 4 and np.allclose(hit.stack_pct, tp)                     # RLC / MOVR / AIN 10-04 / SAND 10-04 05:05 (stopped −3 live after a +3.26 peak)
-    rest = f[f.peak_pnl.astype(float) < tp]
+    lt = float(th["frenzy_lite_tp_pct"])
+    assert lt == 3.0                                                             # DECISION_LOG 284: LITE's own TP, LONG / WIDE +1.5
+    tps = np.where((f.entry_strategy.astype(str) == "FRENZY_LITE") & (lt > 0), lt, tp)
+    hit = f[f.peak_pnl.astype(float).values >= tps]
+    assert len(hit) >= 4 and np.allclose(hit.stack_pct, np.where(hit.entry_strategy.astype(str) == "FRENZY_LITE", lt, tp))
+    assert ((hit.entry_strategy.astype(str) == "FRENZY_LITE") & np.isclose(hit.stack_pct, 3.0)).any()                     # RLC / MOVR / AIN 10-04 / SAND 10-04 05:05 (stopped −3 live after a +3.26 peak)
+    rest = f[f.peak_pnl.astype(float).values < tps]
     assert len(rest) > 0 and np.allclose(rest.stack_pct, rest.pnl_percentage)    # −3 stops before +3 stay as traded
     assert (np.sign(f.stack_pnl) == np.sign(f.stack_pct)).all()
 
@@ -40,6 +44,8 @@ def test_frenzy_fixed_pct_rule():
     assert fp("FRENZY_LONG", 2.99, -3.0, 3.0) == -3.0
     # 10-12d (DECISION_LOG 283): the frozen default TP is +1.5 — a peak ≥ +1.5 books +1.5 (a +3 TP fill too); below it the as-traded pct
     assert fp("FRENZY_LONG", 1.5, -3.0) == 1.5 and fp("FRENZY_WIDE", 3.0, 3.0) == 1.5 and fp("FRENZY_LITE", 1.49, -3.0) == -3.0
+    # 10-12e (DECISION_LOG 284): FRENZY_LITE's own frozen TP is +3 — a peak in [1.5, 3) keeps its as-traded pct, a peak ≥ 3 books +3
+    assert fp("FRENZY_LITE", 2.2, -3.0) == -3.0 and fp("FRENZY_LITE", 3.1, 3.05) == 3.0 and fp("FRENZY_LONG", 2.2, -3.0) == 1.5
     assert fp("FRENZY_LONG", None, -1.2) == -1.2 and fp("FRENZY_LONG", float("nan"), 0.4) == 0.4
     assert fp("MOMENTUM", 5.0, 1.0) == 1.0                                        # other sleeves never
 
@@ -81,7 +87,7 @@ def test_b17_archived():
     M = _m()
     assert (M.era == "B17").sum() == 25 and os.path.exists(os.path.join(ROOT, "reports", "BASELINE17_batch1003-1006_orders.csv"))
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-12d"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
+    assert 'STACK_VERSION = "2026-10-12e"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
     assert "WIDE_HG_MAX_ATR_FROZEN = 12.0, 3.0" in bld and "Prior 10-06d — 10-06d:" in bld   # the STACK history keeps every step
 
 

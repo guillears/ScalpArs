@@ -6420,3 +6420,23 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   (test rows added). Master non-probe kept 455 · +$6,213.45 (B1…B20 + BASE); SCREENED_BASELINE unchanged (no post-252 FAN rows in it);
   validate ALL PASS. Caveman-review fixes: FRENZY_TP_REVERT "new avg < 0" leg now also needs old avg > new avg (never revert into a worse
   exit; nothing had frozen); config export line rounds half-even like the engine; ordering test covers the CROSS_OB / probe blocks.
+
+## (284) 2026-10-12 — FRENZY_LITE keeps its OWN +3 take profit; LONG / WIDE stay +1.5 (operator: "lets keep lite TP in 3% please")
+- **Why:** reviewing B19 under DL 283 per sleeve — LITE is all-or-nothing: its 7 B19 winners all ran to +3, its 6 losers never passed +0.68
+  before the −3 stop, so +1.5 rescues none and halves every winner. Three blocks agree: ① B19 LITE +$123 (+3, 8×) vs −$550 (+1.5, 10×) ·
+  ② master LITE +$425 vs −$259 · ③ year 546 fills +0.267 vs +0.030 %/fill. LONG / WIDE are the opposite (bounce-then-collapse fills: B19
+  FRENZY_LONG −$218 → +$165), so they keep +1.5. B20's BAT LITE (peak +1.51, then −3) is the one fill +1.5 would have saved.
+- **Change:** new field `frenzy_lite_tp_pct` (config default 0.0 = follow `frenzy_tp_pct`; JSON 3.0). Pure helper
+  `services.frenzy.frenzy_tp_for(th, sleeve)`; `frenzy_exit_for(..., sleeve=)` — both engine sleeve exit paths (candle + realtime) pass the
+  order's entry_strategy; the manual FRENZY exit keeps the shared TP. UI input `config-fz-lite-tp` (FRENZY_NUM_FIELDS load / save), the
+  shared _buildConfigLines export line (both text exports), the realtime position badge, the /api frenzy payload (`lite_tp`). LITE stays 10×.
+- **Master STACK 2026-10-12e:** FRENZY_LITE_TP_FROZEN 3.0 (frenzy_fixed_pct picks the sleeve's frozen TP). Non-probe kept 455 · +$6,213.45 →
+  +$6,797.79; LITE 16 · +$325.52 (B18 +$377 · B19 +$154 · B20 −$206); B19 +$4.29 → +$708.84, B20 +$297.49 → −$11.33 (BAT). LONG 20 ·
+  −$93.63 · WIDE 8 · +$210.08 unchanged. SCREENED_BASELINE unchanged (no FRENZY rows). validate_against_master ALL PASS.
+- **Scouts:** FRENZY_TP_REVERT drops LITE (cohort + groups = POOLED LONG+WIDE, LONG, WIDE; nothing had frozen). FRENZY_WILLY_TP walks each
+  fill under its own sleeve's live exit (LITE +3); scout_willy_hold.exit_rule / LITE_STRETCH_REENTRY / scout_frenzy_exits live_exit are
+  sleeve-aware.
+- **Revert gate (pre-committed, review fix):** on the first 20 LITE fills opened after this deploy, read at batch reviews — if the +1.5
+  counterfactual (recorded peak ≥ +1.5 books +1.5, else as traded) averages higher than the actual +3 exit → LITE back to the shared +1.5
+  (`frenzy_lite_tp_pct` 0). Decided once. LITE's DL 283 10× revert gate stays (first 20 LITE
+  fills at 10× avg < 0, or a UTC day's FRENZY fills < −25 % of the book → 8×).

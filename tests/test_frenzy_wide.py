@@ -158,11 +158,26 @@ def test_fixed_take_profit():
 
 def test_fixed_tp_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert eng.count("use_tp=True)   # 🎯 fixed TP (196)\n") == 2                # sleeve candle + realtime paths
+    assert eng.count("use_tp=True, sleeve=order.entry_strategy)   # 🎯 fixed TP (196) · LITE's own TP (284)\n") + eng.count("use_tp=True, sleeve=order_info.get('entry_strategy'))   # 🎯 fixed TP (196) · LITE's own TP (284)\n") == 2                # sleeve candle + realtime paths
     assert eng.count("use_tp=True)   # 🎯 fixed TP (196): manual FRENZY exit too") == 2   # manual candle + realtime paths
     assert eng.count('"FRENZY_TP": "MANUAL_TP"') == 2
     assert eng.count('_reason_base.startswith("FRENZY_TP")') == 2               # post-exit tracking (live + recovery whitelists)
     import json
+    from services.frenzy import frenzy_tp_for, frenzy_exit_for
+    # DECISION_LOG 284: FRENZY_LITE's own TP (> 0 overrides, ≤ 0 / blank / NaN → the shared one); LONG / WIDE / manual always the shared
+    assert frenzy_tp_for(NS(frenzy_tp_pct=1.5, frenzy_lite_tp_pct=3.0), "FRENZY_LITE") == 3.0
+    assert frenzy_tp_for(NS(frenzy_tp_pct=1.5, frenzy_lite_tp_pct=3.0), "FRENZY_LONG") == 1.5 and frenzy_tp_for(NS(frenzy_tp_pct=1.5, frenzy_lite_tp_pct=3.0), None) == 1.5
+    assert frenzy_tp_for(NS(frenzy_tp_pct=1.5, frenzy_lite_tp_pct=0.0), "FRENZY_LITE") == 1.5 and frenzy_tp_for(NS(frenzy_tp_pct=1.5), "FRENZY_LITE") == 1.5
+    assert frenzy_tp_for(NS(frenzy_tp_pct=1.5, frenzy_lite_tp_pct=float("nan")), "FRENZY_LITE") == 1.5 and frenzy_tp_for(NS(frenzy_tp_pct=1.5, frenzy_lite_tp_pct=None), "FRENZY_LITE") == 1.5
+    _l = NS(frenzy_stop_pct=3.0, frenzy_trail_arm_pct=5.0, frenzy_trail_giveback_pct=1.5, frenzy_tp_pct=1.5, frenzy_lite_tp_pct=3.0, frenzy_lock_arm_pct=0.0)
+    assert frenzy_exit_for(2.0, 2.0, _l, use_tp=True, sleeve="FRENZY_LITE")[0] is False and frenzy_exit_for(2.0, 2.0, _l, use_tp=True, sleeve="FRENZY_LONG") == (True, "FRENZY_TP", 1.5)
+    assert frenzy_exit_for(3.0, 3.0, _l, use_tp=True, sleeve="FRENZY_LITE") == (True, "FRENZY_TP", 3.0) and frenzy_exit_for(2.0, 2.0, _l, use_tp=True)[2] == 1.5   # manual = shared
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
+    assert eng.count("None, use_tp=True, sleeve=order.entry_strategy)") == 1 and eng.count("None, use_tp=True, sleeve=order_info.get('entry_strategy'))") == 1
+    _c = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
+    assert _c["frenzy_lite_tp_pct"] == 3.0 and __import__("config").SignalThresholds.model_fields["frenzy_lite_tp_pct"].default == 0.0
+    _h = open(os.path.join(ROOT, "templates", "index.html")).read()
+    assert _h.count('id="config-fz-lite-tp"') == 1 and "['config-fz-lite-tp', 'frenzy_lite_tp_pct', 0]" in _h and "_bt.frenzy_lite_tp_pct" in _h
     assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_tp_pct"] == 1.5   # DECISION_LOG 283 (3.0 since 199)
 
 

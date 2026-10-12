@@ -14305,7 +14305,7 @@ class TradingEngine:
                     elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
                         # 271: no hidden floor (stop_floor None) — frenzy_stop_pct, paper = live
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
-                                                                          None, use_tp=True)   # 🎯 fixed TP (196)
+                                                                          None, use_tp=True, sleeve=order.entry_strategy)   # 🎯 fixed TP (196) · LITE's own TP (284)
                     else:
                         _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None), getattr(order, 'entry_br_door', None),
                                                                            trail_mult_override=_surge_trail_override(order.entry_strategy),
@@ -18177,7 +18177,7 @@ class TradingEngine:
                     elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
                         # 271: no hidden floor (stop_floor None) — frenzy_stop_pct, paper = live
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
-                                                                          None, use_tp=True)   # 🎯 fixed TP (196)
+                                                                          None, use_tp=True, sleeve=order_info.get('entry_strategy'))   # 🎯 fixed TP (196) · LITE's own TP (284)
                     else:
                         _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'), order_info.get('entry_br_door'),
                                                                            trail_mult_override=_surge_trail_override(order_info.get('entry_strategy')),

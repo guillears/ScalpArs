@@ -64,6 +64,8 @@ def exit_rule(sleeve, th=None):
     if s in FRENZY3:                                                  # DECISION_LOG 271: each sleeve's own stop, no hidden floor, paper = live
         g = lambda k, d: (float(getattr(th, k, d)) if getattr(th, k, None) not in (None, "") else d)
         tp = g("frenzy_tp_pct", 3.0) or 3.0
+        if s == "FRENZY_LITE" and (g("frenzy_lite_tp_pct", 0.0) or 0.0) > 0:   # DECISION_LOG 284: FRENZY_LITE's own TP (= services.frenzy.frenzy_tp_for)
+            tp = g("frenzy_lite_tp_pct", 0.0)
         return tp, -abs(g("frenzy_stop_pct", 3.0) or 3.0), int(g("frenzy_max_hold_minutes", 720) or 720)
     if s == "FRENZY_WILLY":
         sys.path.insert(0, ROOT)
@@ -328,7 +330,7 @@ def selftest():
     from types import SimpleNamespace as _NS
     _ws = abs(float(getattr(_live_th(), "frenzy_willy_stop_pct", 0) or 0))
     _lt = _live_th()   # DECISION_LOG 283: the FRENZY TP is read from trading_config.json (+1.5 since 283) — never pinned here
-    chk(exit_rule("FRENZY_LITE") == (float(getattr(_lt, "frenzy_tp_pct", 3.0) or 3.0), -abs(float(getattr(_lt, "frenzy_stop_pct", 3.0) or 3.0)),
+    chk(exit_rule("FRENZY_LITE") == (float((getattr(_lt, "frenzy_lite_tp_pct", 0) or 0) if float(getattr(_lt, "frenzy_lite_tp_pct", 0) or 0) > 0 else (getattr(_lt, "frenzy_tp_pct", 3.0) or 3.0)), -abs(float(getattr(_lt, "frenzy_stop_pct", 3.0) or 3.0)),
                                       int(getattr(_lt, "frenzy_max_hold_minutes", 720) or 720)) and exit_rule("FRENZY_WILLY") == (float(getattr(_live_th(), "frenzy_willy_tp_pct", 1.0) or 1.0), (-_ws if _ws > 0 else None), int(getattr(_live_th(), "frenzy_willy_max_hold_minutes", 120) or 120))
         and exit_rule("MOMENTUM") is None, "sleeve exits (DECISION_LOG 271: own stops, no hidden floor)")
     chk(exit_rule("FRENZY_LONG", _NS(broker_backstop_enabled=True, broker_backstop_pct=2.5))[1] == -3.0
@@ -337,6 +339,9 @@ def selftest():
     chk(exit_rule("FRENZY_WILLY", _NS(frenzy_willy_tp_pct=2.0, frenzy_willy_max_hold_minutes=90)) == (2.0, None, 90)
         and exit_rule("FRENZY_LONG", _NS(frenzy_tp_pct=4.0, frenzy_stop_pct=2.5, frenzy_max_hold_minutes=600)) == (4.0, -2.5, 600),
         "exits read from the live config (never hardcoded)")
+    _two = _NS(frenzy_tp_pct=1.5, frenzy_lite_tp_pct=3.0, frenzy_stop_pct=3.0, frenzy_max_hold_minutes=720)
+    chk(exit_rule("FRENZY_LITE", _two)[0] == 3.0 and exit_rule("FRENZY_LONG", _two)[0] == 1.5 and exit_rule("FRENZY_WIDE", _two)[0] == 1.5
+        and exit_rule("FRENZY_LITE", _NS(frenzy_tp_pct=1.5, frenzy_lite_tp_pct=0.0))[0] == 1.5, "LITE's own TP (DECISION_LOG 284), 0 = the shared TP")
     pct, how = walk_fixed(m([100, 100.5, 102]), "LONG", 1.0, None, 120)
     chk(pct == 1.0 and how == "take profit", "WILLY TP +1")
     pct, how = walk_fixed(m([100] + [90] * 130), "LONG", 1.0, None, 120)

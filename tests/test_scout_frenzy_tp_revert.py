@@ -23,7 +23,7 @@ def test_hermetic_selftest(capsys):
 def test_frozen_bar_pinned():
     assert (TR.OLD_EXIT, TR.N_MIN, TR.DAYS_MIN, TR.P_MIN, TR.SHARE_MAX, TR.PARITY_MIN, TR.BOOT_N, TR.BOOT_SEED) == \
         ((3.0, 3.0, 720), 20, 8, 0.90, 0.50, 0.90, 4000, 7)
-    assert TR.GROUPS == ("POOLED", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")
+    assert TR.GROUPS == ("POOLED", "FRENZY_LONG", "FRENZY_WIDE") and "FRENZY_LITE" not in TR.SLEEVES   # DECISION_LOG 284: LITE on its own +3
     assert TR.DEPLOY_GREP == "(DECISION_LOG 283)" and TR.LAG_MIN == 10
     assert TR.deploy_ts() >= pd.Timestamp("2026-10-12 00:10")
 

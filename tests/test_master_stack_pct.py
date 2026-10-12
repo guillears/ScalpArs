@@ -21,7 +21,9 @@ def test_stack_pct_ignores_size_reprices():
     assert float(t_.get("frenzy_lock_arm_pct", 0) or 0) == 0                     # 10-08a (250): the lock is off — the fixed TP prices FRENZY
     frenzy_tp = k.entry_strategy.astype(str).str.startswith("FRENZY") & (tp > 0) & (pd.to_numeric(k.peak_pnl, errors="coerce") >= tp)
     assert frenzy_tp.sum() > 0 and np.allclose(k.stack_pct[frenzy_tp], tp)       # 10-08a: peak ≥ +3 books +3 (every era)
-    plain = k[~path & ~frenzy_tp]
+    willy = k.entry_strategy.astype(str) == "FRENZY_WILLY"                     # 10-12c (282): today's WILLY exit re-walked (WILLY_EXIT_CF.csv)
+    frenzy_tp = frenzy_tp & ~willy
+    plain = k[~path & ~frenzy_tp & ~willy]
     assert np.allclose(plain.stack_pct, plain.pnl_percentage)          # size-only rows keep the live pct
     resized = plain[(plain.stack_pnl - plain.pnl).abs() > 0.05]        # e.g. 2× rows re-priced to 1× / 1.5×
     assert len(resized) > 0 and np.allclose(resized.stack_pct, resized.pnl_percentage)

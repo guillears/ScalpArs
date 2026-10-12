@@ -26,7 +26,10 @@ def test_hermetic_selftest(capsys):
 def test_frozen_constants_pinned():
     assert (WB.N_MIN, WB.DAYS_MIN, WB.P_MIN, WB.SHARE_MAX, WB.BOOT_N, WB.BOOT_SEED, WB.EMA_SPAN, WB.WARM_BARS) == \
         (15, 8, 0.95, 0.50, 4000, 7, 20, 100)
-    assert WB.COUNT_START == "2026-10-12 00:00" and WB.STRATEGY == "FRENZY_WILLY"
+    assert WB.COUNT_FROM == "the DECISION_LOG 281 deploy" and WB.STRATEGY == "FRENZY_WILLY"     # (281) was COUNT_START 2026-10-12 00:00
+    assert WB.count_start() == WT.dl281_floor()
+    for s in (WB.BAR, WB.SUB_BAR, WB.__doc__):
+        assert "Counted from the DECISION_LOG 281 deploy (one live exit: today's config, +1.25 / −4 / 90)" in s.replace("\n", " ").replace("               ", "")
     assert WB.ARM_STATE == "ARM CANDIDATE (operator decides; never automatic)"
 
 

@@ -17,10 +17,13 @@ EVIDENCE       reports/B19_WILLY_BTC1H.txt (scripts/study_b19_willy_btc1h.py), y
                B19: all 14 WILLY fills had slope > 0, so 0 blocked.
 COHORT         CLOSED FRENZY_WILLY LONG fills, non-MANUAL (MANUAL_* closes listed, excluded), from the ~/Downloads orders exports
                (scout_willy_timecap's reader / column set and scout_frenzy_willy_exit's preparation), dedup (opened_at[:19], pair,
-               entry_strategy) — never id; a CLOSED row beats an OPEN one. COUNTED: fills opened ≥ 2026-10-12 00:00 UTC (fresh forward).
-               Fills from the WILLY_TIMECAP deploy floor (the "(DECISION_LOG 251)" commit) to 2026-10-12 = the B19 "pre-registration
-               context" line — shown, NEVER counted.
-PRICING        every fill re-walked under WILLY's live exit (scout_willy_hold.exit_rule('FRENZY_WILLY') → +1 / −4 / 120 min today) with the
+               entry_strategy) — never id; a CLOSED row beats an OPEN one. COUNTED (DECISION_LOG 281): fills opened ≥ the DECISION_LOG
+               281 deploy (scout_willy_timecap.dl281_floor = the "(DECISION_LOG 281)" commit + 10 min; commit not found → its placeholder
+               pin 2026-10-12 12:00 UTC + 10 min), so the counted cohort runs ONE live exit (+1.25 / −4 / 90); it was 2026-10-12 00:00
+               before (0 forward fills then, nothing frozen). Fills from the WILLY_TIMECAP deploy floor (the "(DECISION_LOG 251)" commit) to
+               that deploy = the B19 "pre-registration context" line — shown, NEVER counted.
+PRICING        every fill re-walked under WILLY's live exit (scout_willy_hold.exit_rule('FRENZY_WILLY') → +1.25 / −4 / 90 min since
+               DECISION_LOG 281; +1 / −4 / 120 before) with the
                ticks-first hybrid walker (scout_frenzy_willy_exit.load_path / evaluate, DECISION_LOG 272; tick ruler, bot accounting).
                Cache only (WILLY_TIMECAP's fetch pass fills the tick / 1m caches for the same fills). Walker parity vs the actual exit
                printed. Unpriced fills are listed and hold the freeze while their data is still due; a fill with a 1m part (provisional)
@@ -34,10 +37,12 @@ FROZEN BAR     (pre-registered 2026-10-12, DECISION_LOG 275 — never changed la
                   gross loss;
                ③ else KEEP OBSERVING.
                Deferred while any fill ≤ the prefix end is OPEN, unpriced, or provisional (1m part with ticks still due).
+               Counted from the DECISION_LOG 281 deploy (one live exit: today's config, +1.25 / −4 / 90).
                (An empty kept side cannot trigger ①; ② still applies.)
                The frozen record keeps n_unscored_le_prefix (warm-up / lag / gap) so the excluded fills stay on record.
 SUB-READ       🩸 DIP_SUB (pre-registered 2026-10-12, DECISION_LOG 279; OBSERVE only, operator may approve; own state key "dip_sub"):
-               "BTC 1 h rising ∧ WILLY signal red candle ≤ −1.16 %". Among the COUNTED, priced, BTC-rising (slope > 0) fills: deep =
+               "BTC 1 h rising ∧ WILLY signal red candle ≤ −1.16 %". Among the COUNTED (from the DECISION_LOG 281 deploy, one live exit),
+               priced, BTC-rising (slope > 0) fills: deep =
                entry_frenzy_bar_ret_pct ≤ −1.16 (inclusive) · shallow = > −1.16 · missing candle stamp → unscored (never counted).
                Evidence reports/B19_WILLY_2D_BTC1H.txt: year — kept (rising ∧ deep) 119 · 88 % · +0.471 %/fill vs the rest −0.066,
                H1 +0.51 / H2 +0.42; family-wise p 0.23 over 169 tests → NOT a survivor; B19 contradicts it (7 deep-dip fills +0.30 vs 7
@@ -68,7 +73,14 @@ N_MIN, DAYS_MIN = 15, 8
 P_MIN, SHARE_MAX = 0.95, 0.50
 BOOT_N, BOOT_SEED = 4000, 7
 EMA_SPAN, WARM_BARS = 20, 100                       # EMA20 on 1 h closes; ≥ 100 one-hour bars up to the scored bar, else UNSCORED
-COUNT_START = "2026-10-12 00:00"
+COUNT_FROM = "the DECISION_LOG 281 deploy"          # (281) was COUNT_START = "2026-10-12 00:00"; now one live exit per cohort
+
+
+def count_start():
+    """the counted floor = scout_willy_timecap.dl281_floor() (the "(DECISION_LOG 281)" commit + 10 min, or its placeholder pin + 10 min)."""
+    return WT.dl281_floor()
+
+
 STRATEGY = "FRENZY_WILLY"
 H_MS, M5_MS = 3_600_000, 300_000
 LAG_PENDING_MS = 3 * 86_400_000                     # a fill unscored because the BTC cache is behind holds the freeze ≤ 3 days
@@ -86,7 +98,8 @@ BAR = (f"FROZEN bar (pre-registered 2026-10-12, DECISION_LOG 275): at the first 
        f"{N_MIN} on ≥ {DAYS_MIN} distinct UTC days, decided ONCE — ① blocked avg ≥ kept avg → RETIRED; ② else ARM CANDIDATE (operator "
        f"decides; never automatic) iff blocked mean < 0 with day-clustered bootstrap P(mean < 0) ≥ {P_MIN:.2f} ({BOOT_N:,} resamples, seed "
        f"{BOOT_SEED}) ∧ no single day and no single pair carries ≥ {SHARE_MAX * 100:.0f} % of the blocked side's gross loss; ③ else KEEP "
-       f"OBSERVING. Deferred while any fill ≤ the prefix end is OPEN, unpriced, or provisional (1m part with ticks still due).")
+       f"OBSERVING. Deferred while any fill ≤ the prefix end is OPEN, unpriced, or provisional (1m part with ticks still due). "
+       f"Counted from the DECISION_LOG 281 deploy (one live exit: today's config, +1.25 / −4 / 90).")
 ARM_STATE = "ARM CANDIDATE (operator decides; never automatic)"
 # 🩸 DIP_SUB — FROZEN 2026-10-12 (DECISION_LOG 279) — never re-fit
 DIP_COL, DIP_CUT, SUB_KEY = "entry_frenzy_bar_ret_pct", -1.16, "dip_sub"
@@ -99,7 +112,8 @@ SUB_BAR = (f"DIP_SUB frozen bar (pre-registered 2026-10-12, DECISION_LOG 279): a
            f"time) where EACH side reaches N ≥ {N_MIN} on ≥ {DAYS_MIN} distinct UTC days, decided ONCE — ① deep avg ≤ shallow avg → "
            f"RETIRED; ② else {SUB_STATE} iff day-clustered bootstrap P(deep mean − shallow mean > 0) ≥ {P_MIN:.2f} ({BOOT_N:,} resamples, "
            f"seed {BOOT_SEED}) ∧ no single day and no single pair carries ≥ {SHARE_MAX * 100:.0f} % of the deep side's gross gain; ③ else "
-           f"KEEP OBSERVING. Same deferral as the main bar.")
+           f"KEEP OBSERVING. Same deferral as the main bar. Counted from the DECISION_LOG 281 deploy (one live exit: today's config, "
+           f"+1.25 / −4 / 90).")
 
 
 # ─────────────────────────── BTC 1 h EMA20 slope ───────────────────────────
@@ -427,7 +441,7 @@ def _fmt_uns(d):
 
 
 # ─────────────────────────── run ───────────────────────────
-def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, open_ts=None, th=None, floor=None):
+def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, open_ts=None, th=None, floor=None, cstart=None):
     """→ markdown lines (the caller wraps it in its own try). Ticks / 1m: cache only (WILLY_TIMECAP's fetch pass). BTC 5m: cache first,
     then NEG_DAILYUP's rate-limited fetcher (shared cooldown, used-weight stop at 900, 418/429 stop) only when fetch and the cache is
     behind the newest counted fill."""
@@ -439,7 +453,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, o
     if open_ts is not None:
         opens = list(open_ts)
     floor = WT.deploy_ts() if floor is None else pd.Timestamp(floor)
-    cstart = pd.Timestamp(COUNT_START)
+    cstart = count_start() if cstart is None else pd.Timestamp(cstart)
     o = o[o.ts >= floor].reset_index(drop=True)
     opens = [x for x in opens if pd.notna(x[0]) and x[0] >= cstart]             # only a counted-era OPEN row can hold the freeze
     man = o[o.why.astype(str).str.upper().str.startswith("MANUAL")]
@@ -491,14 +505,14 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, o
     L = ["## 🧭🎲 WILLY_BTC1H — FRENZY_WILLY vs BTC 1 h EMA20 slope at entry (pre-registered 2026-10-12, DECISION_LOG 275, OBSERVE only)", "",
          f"Split (frozen): BTC 1 h EMA20 slope of the last CLOSED 1 h bar at entry (5m closes resampled on the hour, no look-ahead; < "
          f"{WARM_BARS} h warm-up or BTC cache behind → UNSCORED, never counted) > 0 → kept, ≤ 0 → blocked. Cohort: CLOSED non-MANUAL "
-         f"FRENZY_WILLY fills opened ≥ {COUNT_START} UTC, every fill re-walked under WILLY's live exit ({lab}) with the ticks-first ruler "
+         f"FRENZY_WILLY fills opened ≥ {cstart:%Y-%m-%d %H:%M} UTC ({COUNT_FROM} + 10 min: one live exit), every fill re-walked under WILLY's live exit ({lab}) with the ticks-first ruler "
          f"(DECISION_LOG 272). Market-wide variable → DAY units (a WILLY on/off switch).", "",
          *HDR, _row("kept (slope > 0)", kept), _row("**blocked (slope ≤ 0)**", blocked),
          _row("UNSCORED (no warmed / current BTC 1 h bar) — never counted", uns[uns.walk.notna()] if len(uns) else uns), ""]
     nx = len(X)
     if nx:
         Xp = X[X.walk.notna()]
-        L.append(f"B19 pre-registration context (fills {floor:%m-%d %H:%M} → {cstart:%m-%d %H:%M} UTC, NEVER counted): kept "
+        L.append(f"B19 pre-registration context (fills {floor:%m-%d %H:%M} → {cstart:%m-%d %H:%M} UTC, before {COUNT_FROM}, NEVER counted): kept "
                  f"{_brief(Xp[Xp.grp == 'kept'])} · blocked {_brief(Xp[Xp.grp == 'blocked'])} · unscored {int((X.grp == 'unscored').sum())} · "
                  f"unpriced {int(X.walk.isna().sum())}.")
     cov = c.slope_status.value_counts() if len(c) else pd.Series(dtype=int)
@@ -584,7 +598,7 @@ def selftest():
         assert c, m
         ok += 1
     saved = (_CACHE, WT._CACHE, WT.MY_CACHE, WT.EXPORT_GLOB, WT._NET_BLOCKED, NF._NET_BLOCKED, socket.socket,
-             NF._CACHE, NF.DU_CACHE, NF.SHARED_COOLDOWN, NF.DU_COOLDOWN, NF.load_btc)
+             NF._CACHE, NF.DU_CACHE, NF.SHARED_COOLDOWN, NF.DU_COOLDOWN, NF.load_btc, WT.S4_DEPLOY_GREP, WT.S4_DEPLOY_PIN)
 
     class _NoNet(socket.socket):
         def connect(self, *a, **k):
@@ -593,8 +607,15 @@ def selftest():
     WT._NET_BLOCKED = NF._NET_BLOCKED = True
     study_ran = False
     try:
-        chk((N_MIN, DAYS_MIN, P_MIN, SHARE_MAX, BOOT_N, BOOT_SEED, EMA_SPAN, WARM_BARS, COUNT_START, STRATEGY) ==
-            (15, 8, 0.95, 0.50, 4000, 7, 20, 100, "2026-10-12 00:00", "FRENZY_WILLY"), "pre-registered constants pinned")
+        chk((N_MIN, DAYS_MIN, P_MIN, SHARE_MAX, BOOT_N, BOOT_SEED, EMA_SPAN, WARM_BARS, COUNT_FROM, STRATEGY) ==
+            (15, 8, 0.95, 0.50, 4000, 7, 20, 100, "the DECISION_LOG 281 deploy", "FRENZY_WILLY"), "pre-registered constants pinned")
+        g281 = WT._git_ct("(DECISION_LOG 281)")
+        chk(count_start() == WT.dl281_floor() == (pd.Timestamp("2026-10-12 12:00") if g281 is None else g281) + pd.Timedelta(minutes=10),
+            f"(281) the counted floor = the DL 281 deploy shared with WILLY_TIMECAP ({count_start()})")
+        chk(all("Counted from the DECISION_LOG 281 deploy (one live exit" in x for x in (BAR, SUB_BAR, __doc__)) and "+1.25 / −4 / 90" in BAR,
+            "(281) bar / DIP_SUB / doc texts carry the DL 281 cohort sentence")
+        WT.S4_DEPLOY_GREP, WT.S4_DEPLOY_PIN = "(no such commit — selftest)", "2026-10-11 23:50:00"     # fixtures: counted from 10-12 00:00
+        chk(count_start() == pd.Timestamp("2026-10-12 00:00"), "fixture floor pinned through the shared WILLY_TIMECAP constants")
         chk("pre-registered 2026-10-12, DECISION_LOG 275" in BAR and "pre-registered 2026-10-12, DECISION_LOG 275" in __doc__, "bar text")
         # ── synthetic BTC 5m: 200 h, a slow sine + trend
         t0 = pd.Timestamp("2026-09-01").value // 10**6
@@ -766,6 +787,10 @@ def selftest():
             chk("reason + % within 0.05 pts): 4/4 · unpriced 1: 10-12 11:00 NOPUSDT ·" in out and "Now: ⏳ COLLECTING (blocked N 1/15" in out and not os.path.exists(sp)
                 and os.path.exists(rp) and len(pd.read_csv(rp)) == 5, f"parity + collecting + rows stored, no state written\n{out}")
 
+            o2 = "\n".join(run(now, fetch=False, state_path=os.path.join(td, "s_cs.json"), rows_path=os.path.join(td, "rows_cs.csv"), th=th,
+                                floor="2026-10-08 15:13:12", cstart="2026-10-12 05:00"))
+            chk("KEPUSDT (ctx)" in o2 and "| kept (slope > 0) | 0 |" in o2 and "opened ≥ 2026-10-12 05:00 UTC (the DECISION_LOG 281 deploy" in o2,
+                f"(281) a fill before the counted floor is context only (never counted)\n{o2}")
             chk("KEPUSDT slope +" in out and "[kept] candle -1.16 (deep)" in out and "| **deep (rising ∧ candle ≤ -1.16 %)** | 1 | 1 | 1 | 100 % | +1.050 %" in out
                 and "DIP_SUB now: ⏳ COLLECTING (deep N 1/15" in out and "pre-registered 2026-10-12, DECISION_LOG 279" in out
                 and "CTXUSDT (ctx) slope +0.0" in out and "no stamp 1" in out, f"DIP_SUB e2e (−1.16 inclusive = deep; ctx fill without a stamp)\n{out}")
@@ -789,7 +814,7 @@ def selftest():
             chk(calls == [], "cache covers the newest counted fill → no fetch")
             run(now, fetch=False, state_path=sp, rows_path=rp, th=th, floor="2026-10-08 15:13:12")
             chk(calls == [], "fetch=False → never")
-            NF.load_btc = saved[-1]
+            NF.load_btc = saved[11]
             # the REAL fetcher: shared cooldown honoured; with no cooldown the network block fails the request cleanly (never raises)
             NF._CACHE, NF.DU_CACHE = os.path.join(td, "nfcache"), os.path.join(td, "nfcache", "scout_dailyup")
             NF.SHARED_COOLDOWN = os.path.join(NF._CACHE, ".binance_cooldown_until")
@@ -856,7 +881,7 @@ def selftest():
             chk(open(sp).read() == raw0 and "Live (information only, never re-decides)" in out, "never re-frozen on a later run")
     finally:
         (_CACHE, WT._CACHE, WT.MY_CACHE, WT.EXPORT_GLOB, WT._NET_BLOCKED, NF._NET_BLOCKED, socket.socket,
-         NF._CACHE, NF.DU_CACHE, NF.SHARED_COOLDOWN, NF.DU_COOLDOWN, NF.load_btc) = saved
+         NF._CACHE, NF.DU_CACHE, NF.SHARED_COOLDOWN, NF.DU_COOLDOWN, NF.load_btc, WT.S4_DEPLOY_GREP, WT.S4_DEPLOY_PIN) = saved
         WT._K1.clear()
     print(f"selftest WILLY_BTC1H OK ({ok} checks{', study parity ran' if study_ran else ''})")
     return study_ran

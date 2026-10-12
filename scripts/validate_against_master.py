@@ -73,8 +73,13 @@ for tf, ms in (("15m", 900_000), ("1h", 3_600_000), ("4h", 14_400_000)):
 
 # F2 — rebuilt BTC RSI vs LIVE stamps on every master fill (shift scan)
 t = pd.to_datetime(M.opened_at.astype(str).str[:19])
+_btc_end = pd.to_datetime(int(k.open_time.max()) + 300_000, unit="ms")   # 10-12 (282): the BTC cache ends before the newest batch —
+_cov = (t <= _btc_end).values                                           # fills past its end cannot be rebuilt (unscored, never scored stale)
+_unc_eras = sorted(set(M.loc[~_cov, "era"].astype(str))) if "era" in M else []
+check("F2 BTC cache covers every era but the newest", len(_unc_eras) <= 1 and (~_cov).mean() <= 0.20,
+      f"uncovered {int((~_cov).sum())}/{len(M)} fills in eras {_unc_eras} — refresh reports/backtest_cache/k5m_full/BTCUSDT.csv")
 for stamp, tf in (("entry_btc_rsi", "5m"), ("entry_btc_rsi_1h", "1h")):
-    s = pd.to_numeric(M[stamp], errors="coerce")
+    s = pd.to_numeric(M[stamp], errors="coerce").where(_cov)
     step = 5 if tf == "5m" else 60
     res = {}
     for sh in (-2, -1, 0, 1, 2):
@@ -83,7 +88,7 @@ for stamp, tf in (("entry_btc_rsi", "5m"), ("entry_btc_rsi_1h", "1h")):
     best = max(res, key=res.get)
     # live reads the FORMING bar → it sits between the last closed bar (shift 0) and the next (+1); both are correct alignments
     check(f"F2 {stamp} vs rebuilt {tf}", best in (0, 1) and res[best] >= 0.9,
-          "r by shift(bars) " + " ".join(f"{k:+d}:{v:.3f}" for k, v in res.items()))
+          "r by shift(bars) " + " ".join(f"{k:+d}:{v:.3f}" for k, v in res.items()) + f" · {int(_cov.sum())}/{len(M)} fills inside the BTC cache")
 
 # C1 — calibration trade dump agrees with the master
 cp = "reports/CALIBRATION_TABLE_trades.csv"

@@ -14257,7 +14257,7 @@ class TradingEngine:
                     order.trough_pnl = min(realtime_trough, _br_pnl)
                     if (order.entry_strategy or "") == "SURGE_SHORT":
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None))
-                    elif (order.entry_strategy or "") == "FRENZY_WILLY":   # 🎲 Oct-8 (251): its OWN exit — TP +1 / frenzy_willy_stop_pct / 120 min (never FRENZY's TP3)
+                    elif (order.entry_strategy or "") == "FRENZY_WILLY":   # 🎲 Oct-8 (251): its OWN exit — frenzy_willy_tp_pct / frenzy_willy_stop_pct / frenzy_willy_max_hold_minutes (+1.25 / −4 / 90 since DL 281; never FRENZY's TP3)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
                                                                                 _held_minutes(order.opened_at), None)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live
                     elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
@@ -18129,7 +18129,7 @@ class TradingEngine:
                         order_info['trough_pnl'] = pnl_pct
                     if (order_info.get('entry_strategy') or '') == 'SURGE_SHORT':
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'))
-                    elif (order_info.get('entry_strategy') or '') == 'FRENZY_WILLY':   # 🎲 Oct-8 (251): its OWN exit on every tick — TP +1 / frenzy_willy_stop_pct / 120 min
+                    elif (order_info.get('entry_strategy') or '') == 'FRENZY_WILLY':   # 🎲 Oct-8 (251): its OWN exit on every tick — frenzy_willy_tp_pct / _stop_pct / _max_hold_minutes (+1.25 / −4 / 90 since DL 281)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
                                                                                 _held_minutes(order_info.get('opened_at')), None)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live
                     elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)

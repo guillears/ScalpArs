@@ -23,7 +23,7 @@ def test_frenzy_fixed_tp_pricing():
     tp = float(th["frenzy_tp_pct"])
     assert float(th["frenzy_lock_arm_pct"]) == 0 and tp == 3.0
     M = _m()
-    f = M[(M.stack_keep == True) & M.entry_strategy.astype(str).str.startswith("FRENZY")]
+    f = M[(M.stack_keep == True) & M.entry_strategy.astype(str).isin(["FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE"])]   # WILLY: own exit (282)
     assert f.peak_pnl.notna().all()
     hit = f[f.peak_pnl.astype(float) >= tp]
     assert len(hit) >= 4 and np.allclose(hit.stack_pct, tp)                     # RLC / MOVR / AIN 10-04 / SAND 10-04 05:05 (stopped −3 live after a +3.26 peak)
@@ -50,7 +50,7 @@ def test_bearish_day_stack_block():
     assert not bb("FRENZY_LONG", None, -0.2) and not bb("FRENZY_LONG", float("nan"), float("nan"))             # unreadable → kept (fail-open)
     assert not bb("MOMENTUM", -0.4, -0.2)
     M = _m()
-    f = M[M.entry_strategy.astype(str).str.startswith("FRENZY")]
+    f = M[M.entry_strategy.astype(str).isin(["FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE"])]   # WILLY is exempt from the bearish block (251)
     r1, g = pd.to_numeric(f.entry_btc_1d_ret_pct, errors="coerce"), pd.to_numeric(f.entry_btc_trend_gap_pct, errors="coerce")
     bear = f[(r1 < 0) & (g < 0)]
     assert len(bear) >= 2 and not (bear.stack_keep == True).any()               # FLUID 10-06 / AIN 10-03: refused (hold-green judged first → its label)
@@ -69,7 +69,8 @@ def test_wide_hold_green_replayed():
     reb = pd.read_csv(os.path.join(ROOT, "reports", "WIDE_STREAK_REBUILD.csv"))
     st = {(a, p): s_ for a, p, s_ in zip(reb.opened_at.astype(str).str[:19], reb.pair, reb.above_streak)}
     assert (pd.to_numeric(kept.entry_atr_pct) <= float(_th()["frenzy_max_atr_pct"])).all() and kept.entry_frenzy_bar_ret_pct.notna().all()   # 3.0 since 10-08a
-    assert all(st[(str(a)[:19], p)] > 12 for a, p in zip(kept.opened_at, kept.pair))
+    stamp = pd.to_numeric(kept.get("entry_frenzy_above_streak"), errors="coerce")       # the builder's order: stamp, else the rebuild
+    assert all((s_ if pd.notna(s_) else st[(str(a)[:19], p)]) > 12 for a, p, s_ in zip(kept.opened_at, kept.pair, stamp))
     assert os.path.exists(os.path.join(ROOT, "reports", "WIDE_STREAK_REBUILD.csv"))
 
 
@@ -77,7 +78,7 @@ def test_b17_archived():
     M = _m()
     assert (M.era == "B17").sum() == 25 and os.path.exists(os.path.join(ROOT, "reports", "BASELINE17_batch1003-1006_orders.csv"))
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-12a"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
+    assert 'STACK_VERSION = "2026-10-12c"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
     assert "WIDE_HG_MAX_ATR_FROZEN = 12.0, 3.0" in bld and "Prior 10-06d — 10-06d:" in bld   # the STACK history keeps every step
 
 
@@ -98,3 +99,17 @@ def test_wide_hold_green_cap_is_era_aware():
     assert red_pre == "FRENZY_WIDE_ATR_HIGH"                                     # the synthetic pre-raise red ATR-2.7 WIDE row is refused
     green_post = frenzy_wide_hold_green_block({"above_streak": 20, "bar_ret_pct": 0.3}, B.wide_hg_code(post, 2.7), th)
     assert green_post is None                                                    # a post-raise hold-green ATR-2.7 WIDE fill is kept
+
+
+def test_willy_priced_at_todays_exit():
+    """10-12c (DECISION_LOG 282): every kept FRENZY_WILLY fill is priced at TODAY's WILLY exit re-walked on its own path
+    (reports/WILLY_EXIT_CF.csv); size at today's frenzy_willy_lev_mult."""
+    M = _m()
+    w = M[(M.stack_keep == True) & (M.entry_strategy.astype(str) == "FRENZY_WILLY")]
+    cf = pd.read_csv(os.path.join(ROOT, "reports", "WILLY_EXIT_CF.csv"))
+    th = _th()
+    assert cf.exit_rule.eq(f"+{float(th['frenzy_willy_tp_pct']):g}/-{abs(float(th['frenzy_willy_stop_pct'])):g}/{int(th['frenzy_willy_max_hold_minutes'])}").all()
+    m = {(str(a)[:19], p): c for a, p, c in zip(cf.opened_at, cf.pair, cf.cf_pct)}
+    assert len(w) >= 14 and all(abs(r.stack_pct - m[(str(r.opened_at)[:19], r.pair)]) < 1e-9 for r in w.itertuples())
+    lev = max(1, int(round(20 * float(th["frenzy_willy_lev_mult"]))))            # today's size: 10× at DL 280
+    assert all(abs(r.stack_pnl - round(r.stack_pct / 100 * r.investment / (float(r.cell_multiplier or 1) or 1) * lev, 2)) < 0.02 for r in w.itertuples())

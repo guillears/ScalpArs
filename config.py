@@ -1331,13 +1331,18 @@ class SignalThresholds(BaseModel):
     # 1st attempt −0.11 %, 2nd +0.14, 3rd +0.92; a cap of 1 was the worst cell, 3 keeps ~97 % of the tested entries. 0 = no cap.
     frenzy_max_entries_per_pair_day: int = 3
     frenzy_long_invest_mult: float = 1.0         # absolute-assign, never re-multiplied by cells (Oct-3 operator: JSON 1.0 · lev 0.32 → 20×→6×, one 3 % stop ≈ 5 % of the account; was 2.0/1.0 ≈ 31 %, 90-day MC median −100 %)
-    frenzy_long_lev_mult: float = 1.0            # Oct-3 operator: JSON 0.32 → 20×→6×; 0 = the 0.05 floor (never 20×)
+    frenzy_long_lev_mult: float = 0.1            # DL 280: 2× (code default = the live value since 10-12, never a 20× fallback); 0 = the 0.05 floor
     # 💪 Oct-4 (operator ARMED override, DECISION_LOG 197): a FRENZY_LONG whose signal bar shows ADX rising (3-bar Δ > 0) ∧ +DI above −DI
     # (entry_frenzy_adx_delta > 0 ∧ entry_frenzy_di_spread > 0, both read on the closed bar) uses THIS leverage multiplier instead (JSON 0.5 →
     # 20×→10×, ≈ 1.67× the normal 6×). FRENZY_WIDE never. Unreadable readings = normal size. 0 = off. Year (ticks, fixed +4/−3, quiet market):
     # FRENZY kept +0.572 vs rest +0.240 (6/9 months, every exit, Δ CI spans 0); sim 1× +38 % → 2× +60 % median 90 d. 🔒 REVERT: first 10
     # sized-up fills average below the other FRENZY_LONG fills of the same period, or below 0 → 0.
     frenzy_long_lev_mult_strong: float = 0.0
+    # ⚖️ 2026-10-12 (DECISION_LOG 280, operator): trading_config.json frenzy_long_lev_mult 0.32 → 0.1 (~2×) and the strong bump 0.5 → 0 (off);
+    #   frenzy_wide_lev_mult 0.2 → 0.05 (~1×). OBSERVATION size: year edge ≈ 0 (LONG −0.04 / WIDE −0.05 %/fill, 320 / 204 fills) — at 6× / 4×
+    #   they cost the compounding book (year, WILLY new exit 10×: LONG/WIDE 6×/4× $24,880 vs 2×/1× $42,716) yet keep a side effect worth keeping:
+    #   an open LONG blocks a LITE entry on the same coin (one position per pair) and those LITE entries lost 8 of 10 on the year. Strong-gate
+    #   (197 / 262, 7 / 20 on the revert side) superseded. 🔒 Re-size up only via Pattern W at ≥ 30 fresh fills (WR ≥ 70 % ∧ avg ≥ +0.10 %).
     frenzy_max_entry_dislocation_pct: float = 1.0  # skip the fill when the live price is > this % from the decision price
     frenzy_pair_blacklist: str = "BTCUSDT,ETHUSDT"
     # 🔥🌐 Oct-3 FRENZY-WIDE (operator; DECISION_LOG 193): the FRENZY first candle FRENZY itself refuses ONLY for its ATR cap or a green
@@ -1347,7 +1352,7 @@ class SignalThresholds(BaseModel):
     # Volume 75× / rising variants all worse (−0.02 to −0.08). Own tag FRENZY_WIDE, own size, own slots.
     frenzy_wide_enabled: bool = False
     frenzy_wide_invest_mult: float = 1.0         # absolute-assign like FRENZY_LONG
-    frenzy_wide_lev_mult: float = 0.2            # 20× → 4×: one 3 % stop ≈ 3 % of the account (unproven edge → half FRENZY's risk)
+    frenzy_wide_lev_mult: float = 0.05           # DL 280: 1× (was 0.2 = 4×); code default = the live value
     frenzy_wide_max_slots: int = 2               # max FRENZY_WIDE open at once (they also count against max open positions)
     # 🌀 Oct-5 (DECISION_LOG 215 — shipped OBSERVE-ONLY, JSON 0: the deep review found the study's fresh bar lagged the engine's, and on the
     # bars the engine trades the cohort did not separate; frozen candidate 67.8 pending re-validation). FRENZY_WIDE skips a CHOPPY / FADING pump — at most this % of the episode's 5m
@@ -1420,13 +1425,20 @@ class SignalThresholds(BaseModel):
     # B −0.244 %/trade with no stop, −0.325 [−0.59, −0.07] with the live ≈ −2.2 % backstop (it buys exactly the setups the FRENZY filters reject);
     # A +0.135 / +0.004. Code default unchanged (the json value wins).
     frenzy_willy_invest_mult: float = 1.0         # absolute-assign (never the strong bump)
-    frenzy_willy_lev_mult: float = 1.0            # 1.0 = 20× at the 20× base (the pair's exchange leverage brackets still cap it)
-    frenzy_willy_tp_pct: float = 1.0              # fixed take profit, net % (≤ 0 / blank → 1.0 used — the exit is the sleeve's definition)
+    frenzy_willy_lev_mult: float = 0.5            # DL 280: 10× at the 20× base (was 1.0 = 20×); default = live so a missing key never re-arms 20×
+    frenzy_willy_tp_pct: float = 1.25             # DL 281: +1.25 (was 1.0); fixed take profit, net % (≤ 0 / blank → 1.0 used by frenzy_willy_levels)
     frenzy_willy_stop_pct: float = 4.0            # stop, % (DECISION_LOG 271: −4, same in paper and live) — 0 = no bot stop (NOT paper = live: live keeps the exchange backstop)
     # 🛡 2026-10-12 (DECISION_LOG 271, operator): trading_config.json 0 → 4.0. Paper "no stop" was a hidden −2.2 % stop live; the B19
     # review (reachable yr5 532 fills): −4 beats real-money no-stop (liquidation at 20×) by +0.076 %/fill (P 0.995), both halves, every
     # leave-one-month-out; B19 14 fills +$659 (only BAT stops). Same stop in paper and live.
-    frenzy_willy_max_hold_minutes: int = 120      # time cap (< 1 / blank → 120 used; never the global hold) — NOT a stop
+    frenzy_willy_max_hold_minutes: int = 90       # DL 281: 90 (was 120); time cap (< 1 / blank → 120 used; never the global hold) — NOT a stop
+    # ⚖️ 2026-10-12 (DECISION_LOG 281, operator DECLARED OVERRIDE — exit chosen among ~15 cells on the same year): trading_config.json
+    #   frenzy_willy_lev_mult 1.0 → 0.5 (10×), frenzy_willy_tp_pct 1.0 → 1.25, frenzy_willy_max_hold_minutes 120 → 90 (stop stays −4, DL 271).
+    #   Evidence (yr5 live-reachable 532, re-sequenced): +1/−4/120 +0.054 → +1.25/−4/90 +0.124 %/fill (H1 +0.150 / H2 +0.094); B19 14: +0.404 →
+    #   +0.447. 20× compounds negatively (−19.5 % of the book per −4 stop) and sits inside liquidation at MMR ≥ 1.5 % ($0 on the year);
+    #   10× safe at any MMR ≤ 2.5 %. Year book (LITE 8×, LONG 2×, WIDE 1×): $42,716 vs today's $3,185 — in-sample, caps not modelled.
+    #   🔒 REVERT the TP / cap (not the 10×): at the first 20 WILLY fills on ≥ 8 days after this deploy, if the old exit (+1/−4/120, Scout shadow
+    #   OLD_EXIT) beats the new one by mean paired Δ > 0 at day-bootstrap P ≥ 0.90, OR the new exit's average < 0. 60-min cap read by Scout T125C60.
     frenzy_willy_max_slots: int = 1               # max FRENZY_WILLY open at once — 1 (the global hold makes it 1 anyway)
     # 🟥 Oct-8 (operator): A / B no longer open on the trigger bar — the trigger ARMS a pending entry that opens on the FIRST closed RED 5m bar
     # (close < open; unreadable ≠ red; a red trigger bar opens at once) within this many minutes of the trigger bar while the episode lasts;

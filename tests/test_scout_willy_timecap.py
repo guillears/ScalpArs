@@ -34,14 +34,16 @@ def test_state_file_gitignored():
 def test_s4_cells_pinned():
     """DECISION_LOG 278: CAP60 / CAP90 on today's −4 stop — own cohort (99b9048 + 10 min), own keys, bar text word for word."""
     assert (WT.S4_CELLS, WT.S4_PARITY_MIN, WT.S4_LAG_MIN, WT.S4_DEPLOY_GREP, WT.S4_DEPLOY_PIN) == \
-        ((("CAP60", None, 60), ("CAP90", None, 90), ("T125C60", 1.25, 60), ("T125C90", 1.25, 90)), 0.90, 10, "(DECISION_LOG 271)",
-         "2026-10-12 01:49:51")
+        ((("CAP60", 1.0, 60), ("CAP90", 1.0, 90), ("T125C60", 1.25, 60), ("T125C90", 1.25, 90)), 0.90, 10, "(DECISION_LOG 281)",
+         "2026-10-12 12:00:00")
     assert WT.S4_KEY == {"CAP60": "S4_CAP60", "CAP90": "S4_CAP90", "T125C60": "S4_T125C60", "T125C90": "S4_T125C90"}
-    assert WT.S4_KEEP == {"CAP60": "KEEP 120", "CAP90": "KEEP 120", "T125C60": "KEEP TODAY", "T125C90": "KEEP TODAY"}
+    assert WT.S4_KEEP == {"CAP60": "KEEP TODAY", "CAP90": "KEEP TODAY", "T125C60": "KEEP TODAY", "T125C90": "KEEP TODAY"}   # (281)
     for frag in ("N ≥ 20 counted fills on ≥ 8 days", "day-bootstrap P ≥ 0.90", "no fill > 50 % of Σ Δ", "untouched fills Δ = 0",
-                 "walker parity ≥ 90 %", "mean Δ ≤ 0 → keep today", "Compared against today's +1 / −4 / 120",
+                 "walker parity ≥ 90 %", "mean Δ ≤ 0 → keep today", "Compared against today's exit (trading_config.json; +1.25 / −4 / 90 from DECISION_LOG 281",
                  "hold the freeze while their tick archive / 1m page is still due", "WALKER PARITY / INTEGRITY FAILED"):
         assert frag in WT.S4_BAR_T125
+    for b in (WT.S4_BAR, WT.S4_BAR_T125):                                       # (281) cohort sentence + n/a rule
+        assert "Counted from the DECISION_LOG 281 deploy (today = +1.25 / −4 / 90)" in b and "identical to today's exit, is n/a" in b
     assert WT.S4_LABEL == "pre-registered 2026-10-12, DECISION_LOG 278"
     for frag in ("at the first prefix with N ≥ 20 counted fills on ≥ 8 distinct UTC days, decided ONCE",
                  "CANDIDATE (operator decides; never automatic)", "day-bootstrap P(Δ > 0) ≥ 0.90 (4,000 resamples, seed 7)",
@@ -51,3 +53,19 @@ def test_s4_cells_pinned():
                  "WALKER PARITY / INTEGRITY FAILED"):
         assert frag in WT.S4_BAR
     assert set(WT.S4_KEY.values()).isdisjoint({"first", "reread"})          # never collides with the CAP15 / CAP20 frozen keys
+
+
+def test_old_exit_revert_gate_pinned():
+    """DECISION_LOG 281: OLD_EXIT (+1 / −4 / 120) vs the new live exit, counted from the DL 281 deploy; frozen revert bar."""
+    assert (WT.OLD_EXIT, WT.OLD_KEY, WT.OLD_LABEL, WT.OLD_REVERT, WT.OLD_KEEP) == \
+        ((1.0, 4.0, 120), "OLD_EXIT", "pre-registered 2026-10-12, DECISION_LOG 281", "REVERT CANDIDATE (operator decides)", "KEEP NEW")
+    for frag in ("FROZEN REVERT BAR (pre-registered 2026-10-12, DECISION_LOG 281)", "N ≥ 20 counted fills on ≥ 8 distinct UTC days",
+                 "mean paired Δ (old − new) > 0 with day-bootstrap P(Δ > 0) ≥ 0.90 (4,000, seed 7)", "no fill > 50 % of ΣΔ",
+                 "walker parity ≥ 90 %", "the new exit's average (walked) < 0", "Else KEEP NEW", "Not frozen on failed parity or integrity",
+                 "hold the freeze while their tick archive / 1m page is still due"):
+        assert frag in WT.OLD_BAR, frag
+    assert WT.s4_na("T125C90", 1.25, 90) == "= today" and WT.s4_na("CAP90", 1.25, 90) == "" and WT.s4_na("CAP90", 1.25, 75) == "cap > hold"
+    assert WT.s4_na("OLD_EXIT", 1.0, 120, 4.0) == "= today" and WT.s4_na("OLD_EXIT", 1.25, 90, 4.0) == ""
+    assert WT.dl281_floor is WT.s4_deploy_ts and WT.S4_DEPLOY_GREP == "(DECISION_LOG 281)"
+    g = WT._git_ct("(DECISION_LOG 281)")
+    assert WT.s4_deploy_ts() == (WT.pd.Timestamp("2026-10-12 12:00:00") if g is None else g) + WT.pd.Timedelta(minutes=10)

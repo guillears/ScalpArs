@@ -6362,3 +6362,24 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   P(deep − shallow > 0) ≥ 0.95 ∧ no day / pair ≥ 50 % of the deep side's gross gain. reports/B19_WILLY_2D_BTC1H.txt. Also checked on 10-12
   (no change): WILLY TP +1.5 — B19 +0.630 (runners) but year +0.054, H2 ≈ 0, book 10× $5,151 vs +1.25's $13,834 → no; WILLY global hold
   off → book lower in every setup (≈ 16 refused setups / yr lose) → keep (reports/B19_WILLY_TP15.txt, B19_WILLY_HOLD_TEST.txt).
+- (280) 2026-10-12 ⚖️ **FRENZY sizing (operator "build it"): WILLY 20× → 10× (`frenzy_willy_lev_mult` 1.0 → 0.5) · LONG 6× → 2× (0.32 → 0.1) with
+  the strong bump off (0.5 → 0) · WIDE 4× → 1× (0.2 → 0.05) · LITE stays 8×.** WILLY: one −4 stop at 20× ≈ −19.5 % of the book (risk = margin ×
+  leverage × stop, independent of open-trade count — operator asked); 20× compounds negatively and liquidation sits inside −4 at MMR ≥ 1.5 %
+  ($0 on the year); 10× safe at MMR ≤ 2.5 %. LONG / WIDE: year edge ≈ 0 (−0.04 / −0.05 %/fill); de-sized, NOT off — an open LONG blocks a LITE
+  entry on the same coin and those LITE entries lost 8 of 10 on the year (book with LONG/WIDE 1× $19.6k vs off $12.9k; operator: keep them ON,
+  "strange but true", memory feedback_keep_long_wide_on). Strong gate (197 / 262, 7 / 20 on the revert side) superseded. Year book (WILLY new
+  exit 10×, LITE 8×): LONG/WIDE 6×/4× $24,880 → 2×/1× $42,716 (in-sample; position caps not modelled). Re-size LONG / WIDE up only via
+  Pattern W at ≥ 30 fresh fills. Master STACK 2026-10-12b.
+- (281) 2026-10-12 🎯 **WILLY exit +1 / −4 / 120 → +1.25 / −4 / 90 (`frenzy_willy_tp_pct` 1.25, `frenzy_willy_max_hold_minutes` 90) — operator
+  DECLARED OVERRIDE (exit chosen among ~15 cells on the same year; observe-first skipped).** yr5 reachable 532 re-sequenced: +0.054 → +0.124
+  %/fill (H1 +0.150 / H2 +0.094); TP +0.75 loses (−0.005: WR 83 % < 84 % break-even), +1.5 / +2 / +3 worse (+0.054 / +0.028 / −0.077, H2 ≤ 0);
+  B19 14: +0.404 → +0.447. Expect 30–50 % less live. 🔒 REVERT the TP / cap (not the 10×): Scout OLD_EXIT shadow (+1/−4/120) counted from this
+  commit + 10 min — at N ≥ 20 on ≥ 8 days, old − new mean Δ > 0 at day-bootstrap P ≥ 0.90 (no fill > 50 %, parity ≥ 90 %) OR the new exit's
+  avg < 0 → revert. 60-min cap read by Scout T125C60 (operator: review 60 later). Scout WILLY_TIMECAP S4 cells and WILLY_BTC1H re-based to
+  count from this deploy (one exit); CAP60 / CAP90 stay +1 / −4 by definition (278); a cell equal to today is n/a.
+- (282) 2026-10-12 📦 **B19 archived + master STACK 2026-10-12c.** `reports/BASELINE19_batch1008-1012_orders.csv` (export 10-12 03:33:22, 51 bot
+  fills, −$53.54 as traded). Every FRENZY_WILLY fill is now priced at TODAY's WILLY exit re-walked on its own ticks-first path
+  (`scripts/build_willy_exit_cf.py` → `reports/WILLY_EXIT_CF.csv`, read by build_master_pool; re-run on any WILLY exit change); FRENZY rows
+  re-levered to today's size carry size_note. B19 under today's stack 51 kept · +$98.85. validate_against_master F2 now scores only fills
+  inside the BTC cache (k5m_full BTC's last 5m bar opens 10-08 18:00 → ends 18:05; B19's first fill opened 21:40 — none can be rebuilt; 299/350; a new check fails if more than the newest era is uncovered). SCREENED_BASELINE re-run (screen_pool.py) — unchanged v21: it screens the curated BASE momentum / flip pool, and B19 adds no flip / short and no BASE row. DL 265 (WILLY_TP125 revert read) superseded by 281's OLD_EXIT gate (one revert gate). Defaults: config.py / UI fallbacks moved to the live values (WILLY 0.5 / 1.25 / 90, LONG 0.1, WIDE 0.05, strong 0) so a missing key never re-arms 20×.
+  Operator resets → B20 on one config. Normalization by era for any B19 read is in the review plan.

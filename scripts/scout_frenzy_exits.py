@@ -3548,11 +3548,13 @@ def _wait_bucket(b):
 
 
 def willy_lines(w, since_ms=None, J=None):
-    from services.frenzy import frenzy_willy_reads_text, WILLY_HOLD_DEF
+    from services.frenzy import frenzy_willy_reads_text, WILLY_HOLD_DEF, frenzy_willy_levels
+    import config as _cfg
+    _wtp, _wst, _wmh = frenzy_willy_levels(_cfg.trading_config.thresholds)   # the LIVE exit (DECISION_LOG 281: +1.25 / −4 / 90)
     f = lambda v, d=3: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.{d}f}"
     exp_n, arm_n = willy_expired(J if (J is not None and len(J) and "e" in J and (J.e == "WILLY").any()) else _safe_willy_events(), since_ms or 0)
     L = ["## 🎲 FRENZY_WILLY (DECISION_LOG 251 — operator DECLARED EXCEPTION, armed against the evidence, NO automatic off)", "",
-         f"_Fills from {_iso(since_ms) if since_ms else '?'} (the (DECISION_LOG 251) commit). Exit: TP +1 / NO stop / {WILLY_HOLD_DEF}-min cap; entry on "
+         f"_Fills from {_iso(since_ms) if since_ms else '?'} (the (DECISION_LOG 251) commit). Exit (live config): TP +{_wtp:g} / {('SL ' + format(_wst, 'g')) if _wst else 'NO stop'} / {_wmh}-min cap; entry on "
          "the first RED 5m candle after the trigger (≤ 60 min); global hold. Research: flag-moment entries have no edge — TP +1 / SL −3 / 60 min "
          "on the flag cohort ≈ −0.01…−0.08 %/trade; the no-stop / 120-min / red-candle variant was not studied._", "",
          f"**Frozen reads:** {frenzy_willy_reads_text(willy_verdict(w), WILLY_HOLD_DEF)}.", "",

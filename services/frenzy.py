@@ -527,7 +527,7 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
 # (120). While a WILLY is open NO other automated trade opens (the global hold, TradingEngine._willy_hold_block). All research says ≈ 0 or
 # negative (reports/FRENZY_NEW_FLAG_X_STUDY_2026-10-07.md, FRENZY_FLAG_TRADE_MATH_2026-10-08.md, FRENZY_SECONDS_DELAY_STUDY_2026-10-08.md).
 FRENZY_WILLY = "FRENZY_WILLY"
-WILLY_TP_DEF, WILLY_HOLD_DEF = 1.0, 120   # 🎯 operator Oct-8: TP +1 (specified +2) · time cap 120 min (specified 60) · no stop
+WILLY_TP_DEF, WILLY_HOLD_DEF = 1.0, 120   # 🎯 operator Oct-8 originals — ONLY the blank / 0 fallbacks of frenzy_willy_levels; the LIVE exit is trading_config.json (+1.25 / −4 / 90 since DECISION_LOG 281)
 
 
 def frenzy_willy_levels(th) -> Tuple[float, Optional[float], int]:

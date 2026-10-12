@@ -68,6 +68,24 @@ Order of work: 0a learnings → 0a+ FRENZY theory (predicted separators frozen) 
 export → batch watchlist check (every open gate in CLAUDE_CURRENT_STATE + every Scout tracker) → 0b Scout line by line → §1–§6
 analyses (§3b only after §3) → §7 sizing last → 0c bug gate on every finding → recommendations.
 
+## 🏁 NEXT BATCH = B20 (operator reset after the DECISION_LOG 280–282 deploy, 2026-10-12) — the first batch on ONE config (FRENZY −3 /
+## WILLY −4 paper = live, LITE 8×, LONG 2×, WIDE 1×, WILLY 10× +1.25 / −4 / 90). B19 is archived (BASELINE19, master STACK 2026-10-12c,
+## normalized to today's config); use the normalization table below only when re-reading the archived B19 by era.
+
+## ⚠ NORMALIZE ALL B19 TRADES — the batch is NOT reset across config changes (operator 2026-10-12: "i will not reset the batch, then
+## you will have to remember to normalize all trades in next B19 analysis")
+B19 keeps running through several live changes, so raw $ mixes sizing / exit eras. Before ANY B19 table: tag every fill with its era by
+opened_at vs the deploy (commit time + 10 min) and normalize to TODAY's rules — and also show "as traded" next to it:
+| era starts | change (DECISION_LOG) | what to normalize |
+|---|---|---|
+| 2026-10-08 ~18:30 | B19 start (deploy 85e6a83) | — |
+| 99b9048 + 10 min (2026-10-12 01:59:51 UTC) | 271: paper = live stops — WILLY −4, FRENZY −3 own stop, per-order backstop | WILLY fills before it ran NO stop in paper → re-walk at −4 (BAT 10-11: −1.38 → −4.00) |
+| 5fc762d + 10 min | 277: LITE 6× → 8× | LITE $ × 8/6 for earlier fills (same %) |
+| the DL 281 commit + 10 min | 280/281: WILLY 20× → 10×, TP +1 → +1.25, cap 120 → 90 · LONG 6× (strong 10×) → 2× (no strong) · WIDE 4× → 1× | WILLY earlier fills: re-walk at +1.25 / −4 / 90 on their own path AND $ × 10/20 (pair-capped fills: their capped notional × 10/lev) · LONG $ × 2/lev · WIDE $ × 1/4 |
+Rules: compare eras on Avg P&L % (leverage-invariant), $ only after normalization; WILLY % itself changes with the exit (re-walk, ticks
+first); report both "as traded" and "normalized to today" in all three blocks; never mix pre-/post-change fills in a gate tally (each gate
+counts from its own deploy). Use scripts/study_b19_whatif_operator.py as the starting point (it already re-prices sizing + the WILLY −4).
+
 ## B19 carry-forward — re-read on the next export (the same batch B19 running longer, more trades) — registered 2026-10-12
 Context: B19 review (reports/B19_RERUN_*.md, verified) + DECISION_LOG 271 (paper = live stops; FRENZY −3 / WILLY −4 in both modes,
 per-order exchange backstop). The next export is B19 extended: re-run every number below on ALL B19 fills (old + new), and show the

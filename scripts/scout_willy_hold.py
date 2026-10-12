@@ -326,7 +326,7 @@ def selftest():
     m = lambda ps: [[t0 + i * MIN, p, p * 1.001, p * 0.999, p] for i, p in enumerate(ps)]
     from types import SimpleNamespace as _NS
     _ws = abs(float(getattr(_live_th(), "frenzy_willy_stop_pct", 0) or 0))
-    chk(exit_rule("FRENZY_LITE") == (3.0, -3.0, 720) and exit_rule("FRENZY_WILLY") == (1.0, (-_ws if _ws > 0 else None), 120)
+    chk(exit_rule("FRENZY_LITE") == (3.0, -3.0, 720) and exit_rule("FRENZY_WILLY") == (float(getattr(_live_th(), "frenzy_willy_tp_pct", 1.0) or 1.0), (-_ws if _ws > 0 else None), int(getattr(_live_th(), "frenzy_willy_max_hold_minutes", 120) or 120))
         and exit_rule("MOMENTUM") is None, "sleeve exits (DECISION_LOG 271: own stops, no hidden floor)")
     chk(exit_rule("FRENZY_LONG", _NS(broker_backstop_enabled=True, broker_backstop_pct=2.5))[1] == -3.0
         and exit_rule("FRENZY_WILLY", _NS(frenzy_willy_stop_pct=4.0, broker_backstop_enabled=True, broker_backstop_pct=2.5))[1] == -4.0,

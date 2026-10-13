@@ -152,6 +152,39 @@ def surge_pair_pick(pair_bars, bar_ts: int, btc_move_pct: float, th, side: str):
         return False, "SURGE_NO_DATA", None, None
 
 
+SURGE_LONG_EMA_GAP = "SURGE_LONG_EMA_GAP"                    # refuse (counter + log tag)
+SURGE_LONG_EMA_GAP_FAILOPEN = "SURGE_LONG_EMA_GAP_FAILOPEN"  # gate on, gap unreadable → the entry proceeds (counted, never a refusal)
+
+
+def _finite(v) -> Optional[float]:
+    import math
+    if v is None or isinstance(v, bool):
+        return None
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    return x if math.isfinite(x) else None
+
+
+def surge_long_ema_gap_block(th, gap_pct) -> Optional[str]:
+    """📐 Oct-13 (DECISION_LOG 287): the SURGE_LONG EMA13−EMA50 gap gate as a pure rule — shared by the engine (_maybe_open_surge),
+    scripts/build_master_pool.py and tests. `gap_pct` = the pair's 5m (EMA13 − EMA50) / EMA50 × 100, i.e. the exact value stamped as
+    entry_pair_ema20_ema50_gap_pct (misnamed column). Returns None = pass · SURGE_LONG_EMA_GAP = refuse (gap < surge_long_min_ema13_50_gap_pct,
+    strict: equal passes) · SURGE_LONG_EMA_GAP_FAILOPEN = gate on but the gap is unreadable (None / NaN / ±inf) → FAIL-OPEN, the entry
+    proceeds and the caller counts it. Threshold None / blank / unreadable = gate OFF (→ None). Never raises."""
+    thr = getattr(th, 'surge_long_min_ema13_50_gap_pct', None)
+    if thr is None or (isinstance(thr, str) and not thr.strip()):
+        return None
+    t = _finite(thr)
+    if t is None:
+        return None
+    g = _finite(gap_pct)
+    if g is None:
+        return SURGE_LONG_EMA_GAP_FAILOPEN
+    return SURGE_LONG_EMA_GAP if g < t else None
+
+
 def surge_tripwire(pnl_pcts, side: str) -> Optional[str]:
     """Automatic KILL BAR on the first 10 closed fills of a side (since it was enabled). Returns the reason to switch the side OFF,
     or None. LONG: ≤ 3 winners ∨ mean ≤ −0.30 %. SHORT: ≤ 4 winners ∨ mean ≤ −0.20 % (LONG failed the grid bar → tighter)."""

@@ -747,8 +747,12 @@ async def init_db():
                     connection.execute(text("ALTER TABLE monitor_periods ADD COLUMN blocked_age INTEGER DEFAULT 0"))
             # 🌊 Oct-4: surge_triggers.gvol (market volume on the trigger bar)
             if 'surge_triggers' in inspector.get_table_names():
-                if 'gvol' not in [c['name'] for c in inspector.get_columns('surge_triggers')]:
+                _sgt_cols = [c['name'] for c in inspector.get_columns('surge_triggers')]
+                if 'gvol' not in _sgt_cols:
                     connection.execute(text("ALTER TABLE surge_triggers ADD COLUMN gvol FLOAT"))
+                # 📐 Oct-13 (DECISION_LOG 287): surge_triggers.refused_ema_gap (SURGE_LONG_EMA_GAP refusals per window)
+                if 'refused_ema_gap' not in _sgt_cols:
+                    connection.execute(text("ALTER TABLE surge_triggers ADD COLUMN refused_ema_gap INTEGER DEFAULT 0"))
             # Sep 19 gate 60: bear_monitor_periods.blocked_breadth (bear-breadth floor refusals)
             if 'bear_monitor_periods' in inspector.get_table_names():
                 _bmp_cols = [c['name'] for c in inspector.get_columns('bear_monitor_periods')]

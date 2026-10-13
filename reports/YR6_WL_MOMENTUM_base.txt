@@ -1,0 +1,154 @@
+# YR6 WL MOMENTUM base · 5483 fills · seeds [np.int64(1), np.int64(2), np.int64(3)]
+
+## A. Sleeve x regime (pooled seeds, day-clustered 95% CI, outcome pct_new)
+sleeve    regime             N  N/seed  days     WR    avg%              CI95   P>0  BE-WR   avgW   avgL
+MOM-long  2025 BULL       2617     872   301  53.1%  -0.187  [-0.229,-0.145]  0.00  68.7%  +0.37  -0.82
+MOM-long  2026-H1 BEAR    1171     390   154  59.4%  -0.085  [-0.153,-0.019]  0.01  66.2%  +0.42  -0.83
+MOM-long  2026-H2 BULL     521     174    79  63.1%  -0.015  [-0.119,+0.101]  0.38  64.4%  +0.44  -0.79
+MOM-long  ALL             4309    1436   534  56.0%  -0.139  [-0.173,-0.106]  0.00  67.4%  +0.40  -0.82
+MOM-short 2025 BULL        705     235   118  57.4%  -0.081  [-0.171,+0.002]  0.03  65.0%  +0.38  -0.70
+MOM-short 2026-H1 BEAR     381     127    73  61.4%  -0.033  [-0.134,+0.063]  0.26  64.7%  +0.36  -0.66
+MOM-short 2026-H2 BULL      88      29    23  53.4%  -0.136  [-0.295,+0.029]  0.05  66.4%  +0.35  -0.70
+MOM-short ALL             1174     391   214  58.4%  -0.070  [-0.133,-0.006]  0.01  65.0%  +0.37  -0.69
+
+way-2 cross-check (csv module, independent of pandas): 8 cells, mismatches = 0
+
+## A2. Per seed avg% (stability)
+  MOM-long  2025 BULL     s1:  884· 55%·-0.171  s2:  863· 52%·-0.207  s3:  870· 53%·-0.183
+  MOM-long  2026-H1 BEAR  s1:  385· 59%·-0.090  s2:  391· 58%·-0.070  s3:  395· 61%·-0.095
+  MOM-long  2026-H2 BULL  s1:  189· 63%·-0.026  s2:  169· 60%·-0.016  s3:  163· 66%·-0.001
+  MOM-short 2025 BULL     s1:  235· 60%·-0.059  s2:  222· 55%·-0.123  s3:  248· 58%·-0.065
+  MOM-short 2026-H1 BEAR  s1:  121· 61%·-0.046  s2:  128· 61%·-0.038  s3:  132· 62%·-0.018
+  MOM-short 2026-H2 BULL  s1:   28· 54%·-0.123  s2:   27· 48%·-0.236  s3:   33· 58%·-0.066
+
+## B. Coverage (non-null share) of every entry_* signal column, per sleeve x regime
+  74 columns at 100 % in every cell (macro: 30, pair: 44)
+  columns below 100 % somewhere:
+                                 MOM-l|2025 BU  MOM-l|2026-H1  MOM-l|2026-H2  MOM-s|2025 BU  MOM-s|2026-H1  MOM-s|2026-H2
+entry_chop_burst_prior_fill_s             0.26           0.23           0.20           0.47           0.36           0.38
+entry_vol_mcap_ratio                      0.90           0.96           0.96           0.88           0.94           0.95
+entry_mcap_usd                            0.90           0.96           0.96           0.88           0.94           0.95
+entry_cmc_rank                            0.90           0.96           0.96           0.88           0.94           0.95
+entry_pair_1h_ema20_200_gap_pct           1.00           0.96           1.00           1.00           1.00           1.00
+  never stamped in the replay (0 %, cannot test): 43 → entry_btc_regime_started_at, entry_funding_rate, entry_br_r72, entry_br_above, entry_br_eff, entry_br_off24h, entry_br_door, entry_br_bull_pct_top10, entry_br_bear_pct_top10, entry_br_top10_n, entry_br_door_age_min, entry_surge_btc_move_pct, entry_surge_gvol, entry_surge_pair_move_pct, entry_surge_trigger_at, entry_frenzy_spike_at, entry_frenzy_hours, entry_frenzy_vwap, entry_frenzy_vs_vwap_pct, entry_frenzy_vol_mult, entry_frenzy_run_pct, entry_frenzy_stop_atr, entry_frenzy_bar_ret_pct, entry_frenzy_above_streak, entry_frenzy_above_share, entry_frenzy_catchup_bars, entry_frenzy_catchup_move_pct, entry_frenzy_catchup, entry_frenzy_willy_trigger, entry_frenzy_willy_wait_bars, entry_frenzy_di_spread, entry_frenzy_adx_delta, entry_frenzy_gvol, entry_frenzy_vol_trend, entry_pair_1d_ndi, entry_btc_4h_ema50_200_gap_pct, entry_bear_r24, entry_bear_below24, entry_bear_eff24, entry_bear_off24lo, entry_bear_bypass, entry_bracket_max_leverage, entry_bracket_cap_notional
+
+## C. Uniformity read — avg% (N) by cohort, MOM-long / MOM-short, per regime (pooled seeds)
+
+### MOM-long
+  [t50]
+    non-top50     2025 BU -0.213 ( 557) | 2026-H1 -0.092 ( 186) | 2026-H2 +0.071 (  64)
+    top50         2025 BU -0.180 (2060) | 2026-H1 -0.084 ( 985) | 2026-H2 -0.027 ( 457)
+  [rank_b]
+    r≤20          2025 BU -0.177 ( 637) | 2026-H1 -0.074 ( 289) | 2026-H2 -0.077 ( 129)
+    r21-50        2025 BU -0.190 (1980) | 2026-H1 -0.089 ( 882) | 2026-H2 +0.005 ( 392)
+  [hour_b]
+    00-07         2025 BU -0.114 ( 793) | 2026-H1 -0.059 ( 417) | 2026-H2 -0.050 ( 148)
+    08-15         2025 BU -0.217 ( 839) | 2026-H1 -0.125 ( 345) | 2026-H2 -0.036 ( 244)
+    16-23         2025 BU -0.220 ( 985) | 2026-H1 -0.079 ( 409) | 2026-H2 +0.065 ( 129)
+  [cellsrc]
+    ADX_SURGE_OPEN2025 BU -0.355 (  36) | 2026-H1 -0.284 (  14) | 2026-H2 -0.475 (   4)
+    NONEXP_CALM3D 2025 BU -0.097 ( 407) | 2026-H1 -0.001 ( 119) | 2026-H2 -0.001 ( 113)
+    UNMATCHED     2025 BU -0.201 (2174) | 2026-H1 -0.092 (1038) | 2026-H2 -0.015 ( 404)
+  [c1]
+    C-any         2025 BU -0.229 ( 113) | 2026-H1 +0.039 (  41) | 2026-H2 +0.159 (  46)
+    no-C          2025 BU -0.185 (2504) | 2026-H1 -0.090 (1130) | 2026-H2 -0.032 ( 475)
+  [wp]
+    W-any         2025 BU -0.068 ( 342) | 2026-H1 +0.010 ( 103) | 2026-H2 -0.040 (  93)
+    no-W          2025 BU -0.205 (2275) | 2026-H1 -0.094 (1068) | 2026-H2 -0.010 ( 428)
+  [conf]
+    STRONG_BUY    2025 BU -0.180 (1447) | 2026-H1 -0.092 ( 624) | 2026-H2 -0.011 ( 261)
+    VERY_STRONG   2025 BU -0.196 (1170) | 2026-H1 -0.078 ( 547) | 2026-H2 -0.019 ( 260)
+  [qs]
+    2             2025 BU -0.160 ( 356) | 2026-H1 -0.099 ( 154) | 2026-H2 -0.172 (  74)
+    3             2025 BU -0.184 ( 734) | 2026-H1 -0.064 ( 312) | 2026-H2 +0.068 ( 149)
+    4             2025 BU -0.231 ( 957) | 2026-H1 -0.109 ( 431) | 2026-H2 -0.021 ( 192)
+    5             2025 BU -0.134 ( 493) | 2026-H1 -0.123 ( 233) | 2026-H2 -0.005 (  84)
+    6             2025 BU -0.135 (  77) | 2026-H1 +0.270 (  41) | 2026-H2 -0.038 (  22)
+  [regime_btc]
+    CHOPPY_WEAK   2025 BU -0.355 (  36) | 2026-H1 -0.314 (  13) | 2026-H2 -0.475 (   4)
+    HEALTHY_BULL  2025 BU -0.200 (1923) | 2026-H1 -0.110 ( 886) | 2026-H2 -0.032 ( 304)
+    STRONG_BULL   2025 BU -0.139 ( 658) | 2026-H1 +0.007 ( 272) | 2026-H2 +0.018 ( 213)
+  [entry_order_type]
+    MAKER         2025 BU -0.174 (1456) | 2026-H1 -0.065 ( 708) | 2026-H2 -0.009 ( 299)
+    TAKER_FALLBACK2025 BU -0.203 (1161) | 2026-H1 -0.116 ( 463) | 2026-H2 -0.023 ( 222)
+  negative-cohort share per regime (cohorts with N>=60):
+    2025 BULL      24/24 cohorts negative
+    2026-H1 BEAR   20/22 cohorts negative
+    2026-H2 BULL   17/22 cohorts negative
+  month avg% (N/seed):  2025-01 -0.18(92) · 2025-02 -0.12(114) · 2025-03 -0.10(103) · 2025-04 -0.31(91) · 2025-05 -0.17(90) · 2025-06 -0.24(59) · 2025-07 -0.10(39) · 2025-08 -0.17(59) · 2025-09 -0.10(60) · 2025-10 -0.35(51) · 2025-11 -0.30(83) · 2025-12 -0.09(23) · 2026-01 -0.12(79) · 2026-02 -0.15(74) · 2026-03 -0.05(68) · 2026-04 +0.05(39) · 2026-05 -0.03(69) · 2026-06 -0.13(70) · 2026-07 -0.04(66) · 2026-08 -0.06(36) · 2026-09 +0.03(56) · 2026-10 +0.03(16)
+
+### MOM-short
+  [t50]
+    non-top50     2025 BU -0.148 (  96) | 2026-H1 -0.009 (  41) | 2026-H2 -0.111 (   6)
+    top50         2025 BU -0.070 ( 609) | 2026-H1 -0.036 ( 340) | 2026-H2 -0.138 (  82)
+  [rank_b]
+    r≤20          2025 BU -0.020 ( 299) | 2026-H1 -0.107 ( 133) | 2026-H2 +0.040 (  41)
+    r21-50        2025 BU -0.126 ( 406) | 2026-H1 +0.006 ( 248) | 2026-H2 -0.290 (  47)
+  [hour_b]
+    00-07         2025 BU -0.064 ( 246) | 2026-H1 -0.053 ( 102) | 2026-H2 -0.322 (  23)
+    08-15         2025 BU -0.112 ( 202) | 2026-H1 +0.044 ( 137) | 2026-H2 -0.059 (  30)
+    16-23         2025 BU -0.074 ( 257) | 2026-H1 -0.094 ( 142) | 2026-H2 -0.080 (  35)
+  [cellsrc]
+    C1            2025 BU -0.118 ( 122) | 2026-H1 -0.040 (  57) | 2026-H2 +0.456 (   7)
+    C4            2025 BU    —         | 2026-H1    —         | 2026-H2 +0.299 (   1)
+    C8            2025 BU -0.064 (   7) | 2026-H1    —         | 2026-H2 -0.353 (   2)
+    PAIR_35-40_30-352025 BU -0.057 (  63) | 2026-H1 +0.150 (  22) | 2026-H2 +0.184 (   5)
+    W1            2025 BU -0.091 ( 272) | 2026-H1 -0.086 ( 152) | 2026-H2 -0.297 (  47)
+    W4            2025 BU -0.049 (  55) | 2026-H1 -0.120 (  22) | 2026-H2 +0.293 (   4)
+    none          2025 BU -0.059 ( 186) | 2026-H1 +0.015 ( 128) | 2026-H2 -0.133 (  22)
+  [c1]
+    C-any         2025 BU -0.089 ( 224) | 2026-H1 +0.034 ( 135) | 2026-H2 +0.043 (  25)
+    no-C          2025 BU -0.077 ( 481) | 2026-H1 -0.071 ( 246) | 2026-H2 -0.208 (  63)
+  [wp]
+    W-any         2025 BU -0.077 ( 668) | 2026-H1 -0.034 ( 349) | 2026-H2 -0.164 (  85)
+    no-W          2025 BU -0.147 (  37) | 2026-H1 -0.026 (  32) | 2026-H2 +0.652 (   3)
+  [conf]
+    STRONG_BUY    2025 BU -0.080 ( 315) | 2026-H1 -0.012 ( 184) | 2026-H2 -0.259 (  35)
+    VERY_STRONG   2025 BU -0.082 ( 390) | 2026-H1 -0.054 ( 197) | 2026-H2 -0.056 (  53)
+  [qs]
+    2             2025 BU -0.243 ( 131) | 2026-H1 -0.017 (  61) | 2026-H2 +0.022 (  14)
+    3             2025 BU +0.009 ( 234) | 2026-H1 -0.041 ( 137) | 2026-H2 -0.038 (  24)
+    4             2025 BU -0.056 ( 268) | 2026-H1 -0.086 ( 133) | 2026-H2 -0.166 (  37)
+    5             2025 BU -0.213 (  61) | 2026-H1 +0.072 (  41) | 2026-H2 -0.384 (  12)
+    6             2025 BU +0.059 (  11) | 2026-H1 +0.266 (   9) | 2026-H2 -0.636 (   1)
+  [regime_btc]
+    HEALTHY_BEAR  2025 BU -0.113 ( 535) | 2026-H1 -0.077 ( 262) | 2026-H2 +0.002 (  43)
+    STRONG_BEAR   2025 BU +0.020 ( 170) | 2026-H1 +0.062 ( 119) | 2026-H2 -0.268 (  45)
+  [entry_order_type]
+    MAKER         2025 BU -0.073 ( 407) | 2026-H1 -0.074 ( 218) | 2026-H2 -0.198 (  63)
+    TAKER_FALLBACK2025 BU -0.091 ( 298) | 2026-H1 +0.021 ( 163) | 2026-H2 +0.018 (  25)
+  negative-cohort share per regime (cohorts with N>=60):
+    2025 BULL      22/24 cohorts negative
+    2026-H1 BEAR   14/20 cohorts negative
+    2026-H2 BULL   4/4 cohorts negative
+  month avg% (N/seed):  2025-01 -0.09(36) · 2025-02 -0.08(41) · 2025-03 -0.14(14) · 2025-04 -0.32(15) · 2025-05 -0.35(28) · 2025-06 +0.08(14) · 2025-07 +0.09(24) · 2025-08 -0.08(17) · 2025-09 +0.16(7) · 2025-10 +0.04(12) · 2025-11 +0.06(25) · 2025-12 -0.37(3) · 2026-01 +0.06(15) · 2026-02 -0.06(27) · 2026-03 -0.13(28) · 2026-04 -0.11(15) · 2026-05 -0.00(14) · 2026-06 +0.06(27) · 2026-07 +0.04(5) · 2026-08 -0.11(14) · 2026-09 -0.25(9) · 2026-10 -0.25(2)
+
+## D. Concentration — share of the regime's NET LOSS (sum of y over losing pairs/days) from top-2 pairs / top day
+  MOM-long  2025 BULL      Σy   -489.1 pts · pairs 179 · top-2 losing pairs CRVUSDT -29.8, TAOUSDT -22.8 = 9% of gross pair-loss · worst day 2025-04-10 -23.1 = 4% of gross day-loss · losing pairs 68% · losing days 67%
+      ex worst-5 pairs: N 2269 avg -0.165  |  ex best-5 pairs: avg -0.200
+  MOM-long  2026-H1 BEAR   Σy    -99.9 pts · pairs 147 · top-2 losing pairs ENAUSDT -10.4, CRVUSDT -9.5 = 10% of gross pair-loss · worst day 2026-01-22 -13.3 = 6% of gross day-loss · losing pairs 55% · losing days 56%
+      ex worst-5 pairs: N 1055 avg -0.051  |  ex best-5 pairs: avg -0.135
+  MOM-long  2026-H2 BULL   Σy     -7.9 pts · pairs 87 · top-2 losing pairs PENGUUSDT -9.2, PUMPUSDT -6.2 = 21% of gross pair-loss · worst day 2026-09-02 -6.8 = 8% of gross day-loss · losing pairs 44% · losing days 53%
+      ex worst-5 pairs: N 423 avg +0.046  |  ex best-5 pairs: avg -0.073
+  MOM-short 2025 BULL      Σy    -57.1 pts · pairs 77 · top-2 losing pairs DOTUSDT -9.1, UNIUSDT -7.6 = 17% of gross pair-loss · worst day 2025-02-26 -8.8 = 6% of gross day-loss · losing pairs 52% · losing days 55%
+      ex worst-5 pairs: N 573 avg -0.040  |  ex best-5 pairs: avg -0.125
+  MOM-short 2026-H1 BEAR   Σy    -12.8 pts · pairs 61 · top-2 losing pairs TAOUSDT -5.4, HYPEUSDT -4.0 = 20% of gross pair-loss · worst day 2026-01-28 -6.8 = 10% of gross day-loss · losing pairs 43% · losing days 53%
+      ex worst-5 pairs: N 315 avg +0.023  |  ex best-5 pairs: avg -0.083
+  MOM-short 2026-H2 BULL   Σy    -12.0 pts · pairs 29 · top-2 losing pairs ENAUSDT -4.7, PENGUUSDT -2.5 = 30% of gross pair-loss · worst day 2026-08-22 -4.8 = 24% of gross day-loss · losing pairs 59% · losing days 65%
+      ex worst-5 pairs: N 66 avg +0.016  |  ex best-5 pairs: avg -0.328
+
+## E. Close-reason mix (share · avg%) per regime — MOM-long
+### MOM-long
+  2025 BULL     RUNNER_TRAIL 47% +0.28 · STOP_LOSS 39% -0.80 · HARD_TP_LADDER 6% +1.09 · RH_PREMISE_EXIT 4% -0.84 · STOP_LOSS_WIDE 3% -1.06 · RH_HARD_STOP 1% -1.45 · NO_EXPANSION 0% -0.03
+                peak≥+0.20 share 64% · losers that peaked ≥+0.20: 23% · avg peak +0.48 · avg trough -0.58
+  2026-H1 BEAR  RUNNER_TRAIL 51% +0.30 · STOP_LOSS 32% -0.80 · HARD_TP_LADDER 9% +1.04 · STOP_LOSS_WIDE 3% -1.10 · RH_PREMISE_EXIT 3% -0.89 · RH_HARD_STOP 1% -1.47 · RH_TIME_EXIT 1% -0.55
+                peak≥+0.20 share 70% · losers that peaked ≥+0.20: 25% · avg peak +0.55 · avg trough -0.56
+  2026-H2 BULL  RUNNER_TRAIL 54% +0.33 · STOP_LOSS 30% -0.76 · HARD_TP_LADDER 9% +1.05 · RH_PREMISE_EXIT 4% -0.71 · STOP_LOSS_WIDE 3% -1.03 · RH_HARD_STOP 0% -1.60 · RH_RUNNER_TRAIL 0% +0.31
+                peak≥+0.20 share 73% · losers that peaked ≥+0.20: 26% · avg peak +0.59 · avg trough -0.52
+### MOM-short
+  2025 BULL     RUNNER_TRAIL 57% +0.37 · EMA13_CROSS_EXIT 24% -0.58 · PATTERN_FIXED_SL 7% -0.72 · STOP_LOSS_WIDE 6% -1.04 · STOP_LOSS 5% -0.84 · HARD_TP_LADDER 1% +0.65
+                peak≥+0.20 share 72% · losers that peaked ≥+0.20: 35% · avg peak +0.38 · avg trough -0.51
+  2026-H1 BEAR  RUNNER_TRAIL 61% +0.36 · EMA13_CROSS_EXIT 28% -0.58 · STOP_LOSS_WIDE 5% -1.00 · PATTERN_FIXED_SL 4% -0.71 · STOP_LOSS 2% -0.82 · HARD_TP_LADDER 0% +0.66
+                peak≥+0.20 share 75% · losers that peaked ≥+0.20: 34% · avg peak +0.38 · avg trough -0.47
+  2026-H2 BULL  RUNNER_TRAIL 52% +0.34 · EMA13_CROSS_EXIT 31% -0.56 · STOP_LOSS_WIDE 14% -1.00 · STOP_LOSS 2% -0.83 · HARD_TP_LADDER 1% +0.72
+                peak≥+0.20 share 66% · losers that peaked ≥+0.20: 27% · avg peak +0.35 · avg trough -0.56

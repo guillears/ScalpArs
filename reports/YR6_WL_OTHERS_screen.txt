@@ -1,0 +1,212 @@
+============================================================================================================================================
+SLEEVE FLIP-short — 735 fills (3 seeds pooled) · 196 days · 164 pairs
+  2025 BULL    :  106.3/seed ·  89 d · WR  63.9% · avg -0.105 [-0.223, +0.006] · BE-WR 72.0% · $-791/seed
+      2025 top-50    :   87.7/seed ·  80 d · WR  63.1% · avg -0.113 [-0.236, -0.000] · BE-WR 71.6% · $-698/seed
+      2025 non-top-50:   18.7/seed ·  24 d · WR  67.9% · avg -0.070 [-0.321, +0.158] · BE-WR 73.8% · $-93/seed
+  2026-H1 BEAR :   92.0/seed ·  70 d · WR  58.7% · avg -0.196 [-0.326, -0.074] · BE-WR 73.5% · $-1,276/seed
+  2026-H2 BULL :   46.7/seed ·  37 d · WR  66.4% · avg -0.062 [-0.217, +0.101] · BE-WR 71.0% · $-204/seed
+  ALL          :  245.0/seed · 196 d · WR  62.4% · avg -0.131 [-0.208, -0.055] · BE-WR 72.4% · $-2,271/seed
+  per-seed avg %:
+seed              1      2      3
+regime                           
+2025 BULL    -0.113 -0.123 -0.079
+2026-H1 BEAR -0.206 -0.268 -0.129
+2026-H2 BULL -0.065  0.003 -0.111
+  coverage: 73 candidate columns (65 numeric + 8 categorical dummies from ['entry_macro_trend', 'entry_btc_regime']); <80 % in some regime: 0 → 
+  [2025 BULL] 1D-macro(day): 89 tests on 89 units · |z|>2: real 2 vs null mean 4.2 (95th 11) · best |z| 2.37 fw-p 0.601 · p<0.05: 2 (chance ≈ 4.5)
+  [2025 BULL] 1D-pair(pair-day): 99 tests on 157 units · |z|>2: real 4 vs null mean 4.6 (95th 12) · best |z| 2.55 fw-p 0.507 · p<0.05: 4 (chance ≈ 5.0)
+  [2025 BULL] 2D quadrants: 3040 tests · |z|>3: real 3 vs null mean 14.2 (95th 41) · best |z| 3.18 fw-p 0.884
+  [2026-H1 BEAR] 1D-macro(day): 89 tests on 70 units · |z|>2: real 5 vs null mean 4.2 (95th 10) · best |z| 2.60 fw-p 0.439 · p<0.05: 5 (chance ≈ 4.5)
+  [2026-H1 BEAR] 1D-pair(pair-day): 97 tests on 129 units · |z|>2: real 8 vs null mean 4.2 (95th 11) · best |z| 3.67 fw-p 0.016 · p<0.05: 10 (chance ≈ 4.9)
+  [2026-H1 BEAR] 2D quadrants: 3046 tests · |z|>3: real 42 vs null mean 14.0 (95th 47) · best |z| 4.42 fw-p 0.036
+  [2026-H2 BULL] 1D-macro(day): 83 tests on 37 units · |z|>2: real 1 vs null mean 3.7 (95th 11) · best |z| 2.09 fw-p 0.812 · p<0.05: 1 (chance ≈ 4.2)
+  [2026-H2 BULL] 1D-pair(pair-day): 95 tests on 66 units · |z|>2: real 3 vs null mean 4.6 (95th 12) · best |z| 2.18 fw-p 0.818 · p<0.05: 2 (chance ≈ 4.8)
+  [2026-H2 BULL] 2D quadrants: 2979 tests · |z|>3: real 10 vs null mean 12.4 (95th 37) · best |z| 3.62 fw-p 0.415
+  ── discovery 2025 BULL (14 survivors) → confirm in 2026-H2 BULL · bear read alongside
+     confirmed 2/14 (underpowered: zone on < 5 days in disc or conf = 0) (chance ≈ 1.4 at P≥0.90 one-sided if no real effect)
+  ── discovery 2026-H2 BULL (17 survivors) → confirm in 2025 BULL · bear read alongside
+     confirmed 2/17 (underpowered: zone on < 5 days in disc or conf = 0) (chance ≈ 1.7 at P≥0.90 one-sided if no real effect)
+  ── discovery 2026-H1 BEAR (40 survivors) → confirm in both bull regimes (bear-discovered: read only) · bear read alongside
+     ✔ [2025 BULL→2026-H2 BULL] 2D entry_atr_pct≥0.5865 ∧ entry_ema20_slope<0.1789: disc z -2.92 p 0.006 fw 0.984 | disc zone 22.7/seed 34d WR 54% avg -0.334 vs rest -0.043 | conf zone 8.7/seed 13.0d WR 46% avg -0.392 vs +0.014 P 0.97 | bear zone 23.3/seed avg -0.202 vs -0.194
+         conc disc: top-2 pairs 27% (MASKUSDT, ARCUSDT) · top day 14% (2025-04-16) · top-2 days 24% · conc conf: top-2 pairs 32% (SOONUSDT, EULUSDT) · top day 19% (2026-09-16) · top-2 days 35%
+     ✔ [2025 BULL→2026-H2 BULL] 2D entry_ema50_slope<0.1819 ∧ entry_btc_above72_pct<49.4: disc z +2.78 p 0.009 fw 0.998 | disc zone 21.3/seed 27d WR 78% avg +0.086 vs rest -0.153 | conf zone 12.0/seed 13.0d WR 75% avg +0.157 vs -0.138 P 0.95 | bear zone 31.3/seed avg -0.199 vs -0.195
+         conc disc: top-2 pairs 43% (CRVUSDT, AGLDUSDT) · top day 23% (2025-12-16) · top-2 days 43% · conc conf: top-2 pairs 47% (FETUSDT, DASHUSDT) · top day 26% (2026-09-25) · top-2 days 47%
+     ✔ [2026-H2 BULL→2025 BULL] 2D entry_btc_rsi<36.55 ∧ entry_ema5_stretch≥0.244: disc z -3.05 p 0.003 fw 0.948 | disc zone 14.3/seed 17d WR 58% avg -0.207 vs rest +0.003 | conf zone 15.0/seed 22.0d WR 51% avg -0.363 vs -0.063 P 0.98 | bear zone 24.7/seed avg +0.028 vs -0.278
+         conc disc: top-2 pairs 27% (SOONUSDT, BTWUSDT) · top day 27% (2026-10-06) · top-2 days 53% · conc conf: top-2 pairs 30% (ZROUSDT, ICPUSDT) · top day 15% (2025-03-16) · top-2 days 30%
+     ✔ [2026-H2 BULL→2025 BULL] 2D entry_btc_rsi<36.55 ∧ entry_price_vs_ema5_pct≥0.2446: disc z -3.05 p 0.003 fw 0.948 | disc zone 14.3/seed 17d WR 58% avg -0.207 vs rest +0.003 | conf zone 15.0/seed 22.0d WR 51% avg -0.363 vs -0.063 P 0.98 | bear zone 24.7/seed avg +0.028 vs -0.278
+         conc disc: top-2 pairs 27% (SOONUSDT, BTWUSDT) · top day 27% (2026-10-06) · top-2 days 53% · conc conf: top-2 pairs 30% (ZROUSDT, ICPUSDT) · top day 15% (2025-03-16) · top-2 days 30%
+============================================================================================================================================
+SLEEVE Spike-Fade — 1832 fills (3 seeds pooled) · 354 days · 347 pairs
+  2025 BULL    :  221.7/seed · 155 d · WR  65.7% · avg +0.018 [-0.166, +0.196] · BE-WR 65.0% · $+1,784/seed
+      2025 top-50    :    0.7/seed ·   1 d · WR   0.0% · avg -1.521 [+nan, +nan] · BE-WR  nan% · $-287/seed
+      2025 non-top-50:  221.0/seed · 155 d · WR  65.9% · avg +0.023 [-0.161, +0.203] · BE-WR 65.0% · $+2,070/seed
+  2026-H1 BEAR :  279.0/seed · 130 d · WR  76.7% · avg -0.010 [-0.091, +0.064] · BE-WR 77.2% · $-265/seed
+  2026-H2 BULL :  110.0/seed ·  69 d · WR  77.0% · avg +0.036 [-0.120, +0.172] · BE-WR 75.1% · $+462/seed
+  ALL          :  610.7/seed · 354 d · WR  72.8% · avg +0.008 [-0.071, +0.088] · BE-WR 72.4% · $+1,980/seed
+  per-seed avg %:
+seed              1      2      3
+regime                           
+2025 BULL     0.109 -0.039 -0.018
+2026-H1 BEAR  0.010 -0.011 -0.030
+2026-H2 BULL  0.067  0.008  0.029
+  coverage: 74 candidate columns (65 numeric + 9 categorical dummies from ['entry_macro_trend', 'entry_btc_regime']); <80 % in some regime: 3 → entry_vol_mcap_ratio 64%/87%/91%, entry_mcap_usd 64%/87%/91%, entry_cmc_rank 64%/87%/91%
+  [2025 BULL] 1D-macro(day): 87 tests on 155 units · |z|>2: real 0 vs null mean 4.1 (95th 12) · best |z| 1.59 fw-p 0.990 · p<0.05: 0 (chance ≈ 4.4)
+  [2025 BULL] 1D-pair(pair-day): 93 tests on 290 units · |z|>2: real 2 vs null mean 4.1 (95th 11) · best |z| 2.11 fw-p 0.766 · p<0.05: 2 (chance ≈ 4.7)
+  [2025 BULL] 1D-lowcov(scored-only): 9 tests on 290 units · |z|>2: real 0 vs null mean 0.3 (95th 2) · best |z| 1.95 fw-p 0.255 · p<0.05: 2 (chance ≈ 0.5)
+  [2025 BULL] 2D quadrants: 3100 tests · |z|>3: real 0 vs null mean 11.1 (95th 38) · best |z| 2.99 fw-p 0.922
+  [2026-H1 BEAR] 1D-macro(day): 90 tests on 130 units · |z|>2: real 9 vs null mean 4.5 (95th 12) · best |z| 2.41 fw-p 0.563 · p<0.05: 10 (chance ≈ 4.5)
+  [2026-H1 BEAR] 1D-pair(pair-day): 103 tests on 358 units · |z|>2: real 13 vs null mean 4.6 (95th 14) · best |z| 3.03 fw-p 0.154 · p<0.05: 13 (chance ≈ 5.2)
+  [2026-H1 BEAR] 2D quadrants: 3109 tests · |z|>3: real 114 vs null mean 13.7 (95th 44) · best |z| 4.81 fw-p 0.006
+  [2026-H2 BULL] 1D-macro(day): 89 tests on 69 units · |z|>2: real 0 vs null mean 4.1 (95th 11) · best |z| 1.60 fw-p 0.996 · p<0.05: 0 (chance ≈ 4.5)
+  [2026-H2 BULL] 1D-pair(pair-day): 101 tests on 154 units · |z|>2: real 2 vs null mean 4.6 (95th 13) · best |z| 2.31 fw-p 0.669 · p<0.05: 3 (chance ≈ 5.1)
+  [2026-H2 BULL] 2D quadrants: 3094 tests · |z|>3: real 3 vs null mean 12.3 (95th 38) · best |z| 3.81 fw-p 0.234
+  ── discovery 2025 BULL (9 survivors) → confirm in 2026-H2 BULL · bear read alongside
+     confirmed 1/9 (underpowered: zone on < 5 days in disc or conf = 0) (chance ≈ 0.9 at P≥0.90 one-sided if no real effect)
+  ── discovery 2026-H2 BULL (16 survivors) → confirm in 2025 BULL · bear read alongside
+     confirmed 0/16 (underpowered: zone on < 5 days in disc or conf = 0) (chance ≈ 1.6 at P≥0.90 one-sided if no real effect)
+  ── discovery 2026-H1 BEAR (48 survivors) → confirm in both bull regimes (bear-discovered: read only) · bear read alongside
+     ✔ [2025 BULL→2026-H2 BULL] 2D entry_pattern_w_any_match<1 ∧ entry_pair_1d_ndi≥19.02: disc z +2.89 p 0.005 fw 0.962 | disc zone 45.0/seed 46d WR 81% avg +0.456 vs rest -0.094 | conf zone 7.3/seed 9.0d WR 95% avg +0.415 vs +0.009 P 0.99 | bear zone 37.3/seed avg +0.204 vs -0.043
+         conc disc: top-2 pairs 57% (USTCUSDT, OMNIUSDT) · top day 24% (2025-10-18) · top-2 days 41% · conc conf: top-2 pairs 100% (SCRTUSDT) · top day 100% (2026-07-06) · top-2 days 100%
+============================================================================================================================================
+SLEEVE SURGE_LONG — 912 fills (3 seeds pooled) · 175 days · 169 pairs
+  2025 BULL    :  127.3/seed ·  85 d · WR  30.1% · avg -0.167 [-0.459, +0.171] · BE-WR 35.8% · $-3,004/seed
+      2025 top-50    :   98.0/seed ·  69 d · WR  29.3% · avg -0.115 [-0.468, +0.279] · BE-WR 33.0% · $-1,591/seed
+      2025 non-top-50:   29.3/seed ·  29 d · WR  33.0% · avg -0.341 [-0.724, +0.079] · BE-WR 46.5% · $-1,413/seed
+  2026-H1 BEAR :   92.3/seed ·  53 d · WR  32.1% · avg -0.058 [-0.368, +0.235] · BE-WR 33.9% · $-753/seed
+  2026-H2 BULL :   84.3/seed ·  37 d · WR  34.4% · avg +0.361 [-0.140, +0.910] · BE-WR 25.9% · $+4,304/seed
+  ALL          :  304.0/seed · 175 d · WR  31.9% · avg +0.013 [-0.199, +0.236] · BE-WR 31.5% · $+546/seed
+  per-seed avg %:
+seed              1      2      3
+regime                           
+2025 BULL    -0.153 -0.156 -0.191
+2026-H1 BEAR  0.084 -0.012 -0.234
+2026-H2 BULL  0.547  0.292  0.241
+  coverage: 74 candidate columns (70 numeric + 4 categorical dummies from ['entry_btc_regime']); <80 % in some regime: 3 → entry_vol_mcap_ratio 78%/87%/92%, entry_mcap_usd 78%/87%/92%, entry_cmc_rank 78%/87%/92%
+  [2025 BULL] 1D-macro(day): 92 tests on 85 units · |z|>2: real 8 vs null mean 3.4 (95th 10) · best |z| 2.48 fw-p 0.369 · p<0.05: 12 (chance ≈ 4.6)
+  [2025 BULL] 1D-pair(pair-day): 94 tests on 143 units · |z|>2: real 12 vs null mean 4.0 (95th 13) · best |z| 3.25 fw-p 0.060 · p<0.05: 15 (chance ≈ 4.7)
+  [2025 BULL] 1D-lowcov(scored-only): 9 tests on 143 units · |z|>2: real 0 vs null mean 0.3 (95th 2) · best |z| 1.42 fw-p 0.579 · p<0.05: 0 (chance ≈ 0.5)
+  [2025 BULL] 2D quadrants: 3093 tests · |z|>3: real 38 vs null mean 16.2 (95th 55) · best |z| 4.01 fw-p 0.212
+  [2026-H1 BEAR] 1D-macro(day): 92 tests on 53 units · |z|>2: real 0 vs null mean 4.4 (95th 12) · best |z| 1.90 fw-p 0.952 · p<0.05: 0 (chance ≈ 4.6)
+  [2026-H1 BEAR] 1D-pair(pair-day): 98 tests on 100 units · |z|>2: real 1 vs null mean 3.6 (95th 14) · best |z| 2.87 fw-p 0.128 · p<0.05: 2 (chance ≈ 4.9)
+  [2026-H1 BEAR] 2D quadrants: 2971 tests · |z|>3: real 1 vs null mean 13.6 (95th 42) · best |z| 3.21 fw-p 0.830
+  [2026-H2 BULL] 1D-macro(day): 91 tests on 37 units · |z|>2: real 3 vs null mean 4.2 (95th 13) · best |z| 2.49 fw-p 0.441 · p<0.05: 4 (chance ≈ 4.5)
+  [2026-H2 BULL] 1D-pair(pair-day): 101 tests on 89 units · |z|>2: real 22 vs null mean 4.7 (95th 15) · best |z| 3.03 fw-p 0.132 · p<0.05: 23 (chance ≈ 5.1)
+  [2026-H2 BULL] 2D quadrants: 2947 tests · |z|>3: real 23 vs null mean 17.8 (95th 53) · best |z| 3.94 fw-p 0.309
+  ── discovery 2025 BULL (52 survivors) → confirm in 2026-H2 BULL · bear read alongside
+     confirmed 15/52 (underpowered: zone on < 5 days in disc or conf = 0) (chance ≈ 5.2 at P≥0.90 one-sided if no real effect)
+  ── discovery 2026-H2 BULL (52 survivors) → confirm in 2025 BULL · bear read alongside
+     confirmed 15/52 (underpowered: zone on < 5 days in disc or conf = 0) (chance ≈ 5.2 at P≥0.90 one-sided if no real effect)
+  ── discovery 2026-H1 BEAR (10 survivors) → confirm in both bull regimes (bear-discovered: read only) · bear read alongside
+     ✔ [2025 BULL→2026-H2 BULL] 1D-pair(pair-day) entry_pair_ema20_ema50_gap_pct <med(2.031): disc z -2.31 p 0.010 fw 0.557 | disc zone 64.3/seed 55d WR 26% avg -0.522 vs rest +0.196 | conf zone 53.3/seed 31.0d WR 31% avg -0.014 vs +1.006 P 0.93 | bear zone 59.7/seed avg -0.082 vs -0.013
+         conc disc: top-2 pairs 11% (FARTCOINUSDT, BNXUSDT) · top day 7% (2025-10-12) · top-2 days 12% · conc conf: top-2 pairs 15% (TACUSDT, BANKUSDT) · top day 7% (2026-07-10) · top-2 days 14%
+     ✔ [2025 BULL→2026-H2 BULL] 1D-pair(pair-day) entry_neg_di <=T1(11.59): disc z +2.35 p 0.010 fw 0.509 | disc zone 48.3/seed 42d WR 34% avg +0.191 vs rest -0.386 | conf zone 18.0/seed 18.0d WR 50% avg +1.473 vs +0.059 P 0.93 | bear zone 25.7/seed avg -0.083 vs -0.048
+         conc disc: top-2 pairs 12% (FUNUSDT, BIOUSDT) · top day 9% (2025-05-12) · top-2 days 15% · conc conf: top-2 pairs 24% (STXUSDT, USELESSUSDT) · top day 28% (2026-09-18) · top-2 days 44%
+     ✔ [2025 BULL→2026-H2 BULL] 1D-pair(pair-day) entry_rsi >=T2(69.07): disc z +2.51 p 0.012 fw 0.399 | disc zone 44.0/seed 43d WR 36% avg +0.200 vs rest -0.361 | conf zone 14.7/seed 18.0d WR 50% avg +1.890 vs +0.039 P 0.97 | bear zone 15.3/seed avg +0.191 vs -0.107
+         conc disc: top-2 pairs 12% (FUNUSDT, FARTCOINUSDT) · top day 10% (2025-05-12) · top-2 days 16% · conc conf: top-2 pairs 29% (TACUSDT, STXUSDT) · top day 24% (2026-09-18) · top-2 days 38%
+     ✔ [2025 BULL→2026-H2 BULL] 1D-pair(pair-day) entry_ema50_slope <med(1.066): disc z -2.41 p 0.014 fw 0.469 | disc zone 64.0/seed 55d WR 26% avg -0.512 vs rest +0.182 | conf zone 51.0/seed 29.0d WR 30% avg -0.045 vs +0.982 P 0.94 | bear zone 54.0/seed avg -0.106 vs +0.010
+         conc disc: top-2 pairs 12% (FARTCOINUSDT, BNXUSDT) · top day 7% (2025-10-12) · top-2 days 12% · conc conf: top-2 pairs 16% (TACUSDT, BANKUSDT) · top day 7% (2026-07-20) · top-2 days 14%
+     ✔ [2025 BULL→2026-H2 BULL] 1D-pair(pair-day) entry_adx_delta >=T2(1.147): disc z +2.32 p 0.026 fw 0.539 | disc zone 44.0/seed 42d WR 34% avg +0.243 vs rest -0.383 | conf zone 12.0/seed 16.0d WR 56% avg +1.404 vs +0.188 P 0.95 | bear zone 20.3/seed avg -0.334 vs +0.020
+         conc disc: top-2 pairs 16% (FARTCOINUSDT, FUNUSDT) · top day 10% (2025-05-12) · top-2 days 18% · conc conf: top-2 pairs 36% (BTRUSDT, TUTUSDT) · top day 28% (2026-08-27) · top-2 days 43%
+     ✔ [2025 BULL→2026-H2 BULL] 1D-macro(day) entry_btc_above72_pct >=T2(54.7): disc z +2.19 p 0.026 fw 0.667 | disc zone 43.7/seed 29d WR 44% avg +0.436 vs rest -0.482 | conf zone 19.3/seed 8.0d WR 45% avg +1.292 vs +0.084 P 0.95 | bear zone 36.0/seed avg +0.003 vs -0.096
+         conc disc: top-2 pairs 23% (ZECUSDT, FLOWUSDT) · top day 10% (2025-11-11) · top-2 days 20% · conc conf: top-2 pairs 24% (BOMEUSDT, BANKUSDT) · top day 27% (2026-09-21) · top-2 days 52%
+     ✔ [2025 BULL→2026-H2 BULL] 1D-pair(pair-day) entry_pos_di <=T1(25.27): disc z -2.06 p 0.028 fw 0.764 | disc zone 45.7/seed 46d WR 28% avg -0.487 vs rest +0.012 | conf zone 38.7/seed 30.0d WR 27% avg -0.312 vs +0.931 P 1.00 | bear zone 45.3/seed avg +0.043 vs -0.154
+         conc disc: top-2 pairs 15% (MEMEFIUSDT, MYXUSDT) · top day 9% (2025-10-12) · top-2 days 16% · conc conf: top-2 pairs 16% (MOVRUSDT, DEXEUSDT) · top day 9% (2026-07-10) · top-2 days 16%
+     ✔ [2025 BULL→2026-H2 BULL] 1D-pair(pair-day) entry_neg_di <med(13.7): disc z +1.99 p 0.030 fw 0.830 | disc zone 61.7/seed 54d WR 31% avg +0.091 vs rest -0.409 | conf zone 30.0/seed 26.0d WR 47% avg +1.358 vs -0.190 P 0.99 | bear zone 35.0/seed avg -0.150 vs -0.001
+         conc disc: top-2 pairs 11% (FARTCOINUSDT, BNXUSDT) · top day 6% (2025-05-12) · top-2 days 12% · conc conf: top-2 pairs 15% (BANKUSDT, PROMUSDT) · top day 24% (2026-09-18) · top-2 days 35%
+     ✔ [2025 BULL→2026-H2 BULL] 1D-pair(pair-day) entry_pattern_w1_match <=T1(0): disc z -2.15 p 0.032 fw 0.687 | disc zone 79.3/seed 71d WR 30% avg -0.357 vs rest +0.147 | conf zone 65.3/seed 35.0d WR 29% avg -0.094 vs +1.925 P 1.00 | bear zone 69.7/seed avg -0.073 vs -0.010
+         conc disc: top-2 pairs 9% (ZECUSDT, MEMEFIUSDT) · top day 6% (2025-10-12) · top-2 days 10% · conc conf: top-2 pairs 12% (TACUSDT, BRUSDT) · top day 7% (2026-07-10) · top-2 days 14%
+     ✔ [2025 BULL→2026-H2 BULL] 1D-macro(day) entry_btc_r72_pct >=T2(3.693): disc z +1.94 p 0.042 fw 0.888 | disc zone 37.7/seed 29d WR 35% avg +0.224 vs rest -0.331 | conf zone 11.0/seed 5.0d WR 39% avg +1.815 vs +0.143 P 0.92 | bear zone 28.0/seed avg -0.127 vs -0.028
+         conc disc: top-2 pairs 24% (ZECUSDT, BANANAS31USDT) · top day 11% (2025-11-11) · top-2 days 21% · conc conf: top-2 pairs 36% (BOMEUSDT, ARPAUSDT) · top day 42% (2026-09-21) · top-2 days 59%
+     ✔ [2025 BULL→2026-H2 BULL] 1D-pair(pair-day) entry_neg_di >=T2(16.54): disc z -1.98 p 0.042 fw 0.840 | disc zone 45.7/seed 44d WR 30% avg -0.483 vs rest +0.010 | conf zone 35.7/seed 24.0d WR 25% avg -0.151 vs +0.736 P 0.96 | bear zone 39.3/seed avg -0.257 vs +0.090
+         conc disc: top-2 pairs 15% (ZECUSDT, MYXUSDT) · top day 7% (2025-08-07) · top-2 days 13% · conc conf: top-2 pairs 18% (TACUSDT, MOVRUSDT) · top day 11% (2026-08-04) · top-2 days 19%
+     ✔ [2025 BULL→2026-H2 BULL] 1D-pair(pair-day) entry_pair_ema20_ema50_gap_pct <=T1(0.4613): disc z -1.96 p 0.048 fw 0.852 | disc zone 41.3/seed 39d WR 25% avg -0.517 vs rest +0.001 | conf zone 39.0/seed 28.0d WR 22% avg -0.250 vs +0.886 P 0.99 | bear zone 36.7/seed avg -0.063 vs -0.054
+         conc disc: top-2 pairs 13% (ZEREBROUSDT, BNXUSDT) · top day 11% (2025-10-12) · top-2 days 19% · conc conf: top-2 pairs 16% (TACUSDT, MOVRUSDT) · top day 7% (2026-08-04) · top-2 days 14%
+     ✔ [2025 BULL→2026-H2 BULL] 2D entry_pair_ema20_ema50_gap_pct≥2.031 ∧ entry_surge_btc_move_pct<0.7293: disc z +3.24 p 0.003 fw 0.846 | disc zone 38.0/seed 29d WR 38% avg +0.466 vs rest -0.436 | conf zone 19.0/seed 18.0d WR 47% avg +1.314 vs +0.084 P 0.93 | bear zone 15.0/seed avg +0.086 vs -0.086
+         conc disc: top-2 pairs 16% (MEMEFIUSDT, ZECUSDT) · top day 10% (2025-09-28) · top-2 days 18% · conc conf: top-2 pairs 22% (STXUSDT, KOMAUSDT) · top day 12% (2026-07-21) · top-2 days 23%
+     ✔ [2025 BULL→2026-H2 BULL] 2D entry_ema50_slope≥1.066 ∧ entry_surge_btc_move_pct<0.7293: disc z +3.20 p 0.003 fw 0.882 | disc zone 38.7/seed 30d WR 38% avg +0.425 vs rest -0.425 | conf zone 21.3/seed 18.0d WR 47% avg +1.243 vs +0.062 P 0.93 | bear zone 20.0/seed avg +0.145 vs -0.114
+         conc disc: top-2 pairs 15% (MEMEFIUSDT, ZECUSDT) · top day 10% (2025-09-28) · top-2 days 18% · conc conf: top-2 pairs 19% (DEXEUSDT, STXUSDT) · top day 16% (2026-07-10) · top-2 days 29%
+     ✔ [2025 BULL→2026-H2 BULL] 2D entry_surge_btc_move_pct<0.7293 ∧ entry_rsi_prev≥60.53: disc z +3.17 p 0.003 fw 0.894 | disc zone 34.3/seed 30d WR 40% avg +0.619 vs rest -0.457 | conf zone 20.3/seed 19.0d WR 52% avg +1.413 vs +0.027 P 0.97 | bear zone 16.3/seed avg +0.113 vs -0.094
+         conc disc: top-2 pairs 19% (MEMEFIUSDT, ZECUSDT) · top day 10% (2025-08-06) · top-2 days 19% · conc conf: top-2 pairs 35% (BANKUSDT, BICOUSDT) · top day 16% (2026-08-17) · top-2 days 27%
+     ✔ [2026-H2 BULL→2025 BULL] 1D-pair(pair-day) entry_pattern_w1_match <=T1(0): disc z -3.03 p 0.004 fw 0.132 | disc zone 65.3/seed 35d WR 29% avg -0.094 vs rest +1.925 | conf zone 79.3/seed 71.0d WR 30% avg -0.357 vs +0.147 P 0.95 | bear zone 69.7/seed avg -0.073 vs -0.010
+         conc disc: top-2 pairs 12% (TACUSDT, BRUSDT) · top day 7% (2026-07-10) · top-2 days 14% · conc conf: top-2 pairs 9% (ZECUSDT, MEMEFIUSDT) · top day 6% (2025-10-12) · top-2 days 10%
+     ✔ [2026-H2 BULL→2025 BULL] 1D-pair(pair-day) entry_rsi_prev <=T1(51.15): disc z -2.66 p 0.004 fw 0.325 | disc zone 29.7/seed 22d WR 16% avg -0.562 vs rest +0.862 | conf zone 25.7/seed 28.0d WR 26% avg -0.439 vs -0.098 P 0.92 | bear zone 28.3/seed avg +0.194 vs -0.169
+         conc disc: top-2 pairs 19% (TACUSDT, DEXEUSDT) · top day 11% (2026-07-10) · top-2 days 20% · conc conf: top-2 pairs 19% (VINEUSDT, ZECUSDT) · top day 8% (2025-10-12) · top-2 days 15%
+     ✔ [2026-H2 BULL→2025 BULL] 1D-pair(pair-day) entry_adx <=T1(20.68): disc z -2.12 p 0.016 fw 0.800 | disc zone 29.0/seed 21d WR 29% avg -0.296 vs rest +0.705 | conf zone 29.3/seed 31.0d WR 35% avg -0.421 vs -0.091 P 0.92 | bear zone 23.0/seed avg -0.158 vs -0.024
+         conc disc: top-2 pairs 16% (DEXEUSDT, BANKUSDT) · top day 11% (2026-08-04) · top-2 days 21% · conc conf: top-2 pairs 20% (MYXUSDT, BANANAS31USDT) · top day 7% (2025-07-11) · top-2 days 14%
+     ✔ [2026-H2 BULL→2025 BULL] 1D-pair(pair-day) entry_pair_ema20_ema50_gap_pct <0: disc z -2.44 p 0.022 fw 0.531 | disc zone 32.7/seed 26d WR 16% avg -0.503 vs rest +0.907 | conf zone 33.7/seed 32.0d WR 28% avg -0.431 vs -0.072 P 0.93 | bear zone 32.0/seed avg -0.158 vs -0.005
+         conc disc: top-2 pairs 18% (TACUSDT, MOVRUSDT) · top day 8% (2026-08-04) · top-2 days 15% · conc conf: top-2 pairs 16% (ZEREBROUSDT, VINEUSDT) · top day 15% (2025-10-12) · top-2 days 24%
+     ✔ [2026-H2 BULL→2025 BULL] 1D-pair(pair-day) entry_pattern_w_any_match <med(0.3333): disc z -2.32 p 0.022 fw 0.621 | disc zone 46.0/seed 31d WR 25% avg -0.244 vs rest +1.087 | conf zone 56.7/seed 54.0d WR 31% avg -0.393 vs +0.014 P 0.93 | bear zone 53.7/seed avg -0.156 vs +0.078
+         conc disc: top-2 pairs 11% (MOVRUSDT, BANKUSDT) · top day 9% (2026-08-02) · top-2 days 17% · conc conf: top-2 pairs 12% (MEMEFIUSDT, ZECUSDT) · top day 8% (2025-10-12) · top-2 days 13%
+     ✔ [2026-H2 BULL→2025 BULL] 1D-pair(pair-day) entry_pattern_w_any_match <=T1(0): disc z -2.32 p 0.022 fw 0.621 | disc zone 46.0/seed 31d WR 25% avg -0.244 vs rest +1.087 | conf zone 56.7/seed 54.0d WR 31% avg -0.393 vs +0.014 P 0.93 | bear zone 53.7/seed avg -0.156 vs +0.078
+         conc disc: top-2 pairs 11% (MOVRUSDT, BANKUSDT) · top day 9% (2026-08-02) · top-2 days 17% · conc conf: top-2 pairs 12% (MEMEFIUSDT, ZECUSDT) · top day 8% (2025-10-12) · top-2 days 13%
+     ✔ [2026-H2 BULL→2025 BULL] 1D-pair(pair-day) entry_adx_delta >=T2(0.5616): disc z +2.18 p 0.030 fw 0.739 | disc zone 26.7/seed 23d WR 50% avg +1.354 vs rest -0.098 | conf zone 59.0/seed 51.0d WR 32% avg +0.095 vs -0.393 P 0.97 | bear zone 33.7/seed avg -0.105 vs -0.031
+         conc disc: top-2 pairs 22% (PROMUSDT, BANKUSDT) · top day 16% (2026-08-27) · top-2 days 30% · conc conf: top-2 pairs 11% (FARTCOINUSDT, FUNUSDT) · top day 7% (2025-05-12) · top-2 days 13%
+     ✔ [2026-H2 BULL→2025 BULL] 1D-pair(pair-day) entry_rsi_prev <med(57.88): disc z -2.23 p 0.034 fw 0.699 | disc zone 45.0/seed 29d WR 24% avg -0.414 vs rest +1.248 | conf zone 52.7/seed 49.0d WR 29% avg -0.409 vs +0.004 P 0.93 | bear zone 50.7/seed avg -0.059 vs -0.056
+         conc disc: top-2 pairs 15% (TACUSDT, DEXEUSDT) · top day 10% (2026-07-10) · top-2 days 18% · conc conf: top-2 pairs 12% (BNXUSDT, VINEUSDT) · top day 9% (2025-10-12) · top-2 days 15%
+     ✔ [2026-H2 BULL→2025 BULL] 1D-pair(pair-day) entry_pattern_w_any_match >=T2(1): disc z +1.97 p 0.048 fw 0.894 | disc zone 38.3/seed 26d WR 46% avg +1.087 vs rest -0.244 | conf zone 70.7/seed 58.0d WR 30% avg +0.014 vs -0.393 P 0.93 | bear zone 38.7/seed avg +0.078 vs -0.156
+         conc disc: top-2 pairs 20% (TACUSDT, BANKUSDT) · top day 15% (2026-09-18) · top-2 days 25% · conc conf: top-2 pairs 13% (FARTCOINUSDT, BIOUSDT) · top day 6% (2025-05-12) · top-2 days 11%
+     ✔ [2026-H2 BULL→2025 BULL] 2D entry_surge_pair_move_pct≥2.939 ∧ entry_atr_pct<2.116: disc z +3.78 p 0.001 fw 0.421 | disc zone 17.7/seed 13d WR 62% avg +2.133 vs rest -0.109 | conf zone 47.7/seed 44.0d WR 34% avg +0.098 vs -0.325 P 0.91 | bear zone 16.0/seed avg -0.490 vs +0.033
+         conc disc: top-2 pairs 44% (BRUSDT, TACUSDT) · top day 43% (2026-09-18) · top-2 days 59% · conc conf: top-2 pairs 16% (FARTCOINUSDT, BIOUSDT) · top day 8% (2025-04-11) · top-2 days 15%
+     ✔ [2026-H2 BULL→2025 BULL] 2D entry_pos_di≥26.14 ∧ entry_btc_off24lo_pct<2.28: disc z +3.45 p 0.002 fw 0.727 | disc zone 21.7/seed 19d WR 52% avg +1.721 vs rest -0.109 | conf zone 24.7/seed 22.0d WR 38% avg +0.474 vs -0.321 P 0.92 | bear zone 14.7/seed avg -0.155 vs -0.039
+         conc disc: top-2 pairs 23% (BICOUSDT, BUSDT) · top day 17% (2026-07-20) · top-2 days 31% · conc conf: top-2 pairs 17% (MOODENGUSDT, CRVUSDT) · top day 19% (2025-05-12) · top-2 days 27%
+     ✔ [2026-H2 BULL→2025 BULL] 2D entry_rsi_prev≥57.88 ∧ entry_atr_pct<2.116: disc z +3.09 p 0.005 fw 0.920 | disc zone 21.7/seed 19d WR 58% avg +1.614 vs rest -0.072 | conf zone 56.0/seed 49.0d WR 34% avg +0.061 vs -0.346 P 0.90 | bear zone 20.3/seed avg -0.154 vs -0.031
+         conc disc: top-2 pairs 32% (PROMUSDT, BUSDT) · top day 20% (2026-07-20) · top-2 days 39% · conc conf: top-2 pairs 14% (FARTCOINUSDT, POPCATUSDT) · top day 6% (2025-06-23) · top-2 days 13%
+     ✔ [2026-H2 BULL→2025 BULL] 2D entry_surge_pair_move_pct≥2.939 ∧ entry_pattern_w_any_match≥0.3333: disc z +3.07 p 0.005 fw 0.928 | disc zone 24.0/seed 22d WR 51% avg +1.698 vs rest -0.171 | conf zone 50.3/seed 48.0d WR 31% avg +0.118 vs -0.353 P 0.96 | bear zone 22.7/seed avg -0.270 vs +0.011
+         conc disc: top-2 pairs 31% (TACUSDT, BANKUSDT) · top day 17% (2026-09-21) · top-2 days 33% · conc conf: top-2 pairs 16% (FARTCOINUSDT, BIOUSDT) · top day 8% (2025-05-12) · top-2 days 15%
+     ✔ [2026-H2 BULL→2025 BULL] 2D entry_rsi_prev≥57.88 ∧ entry_btc_off24lo_pct<2.28: disc z +3.02 p 0.006 fw 0.950 | disc zone 23.0/seed 19d WR 52% avg +1.534 vs rest -0.079 | conf zone 23.3/seed 22.0d WR 41% avg +0.532 vs -0.324 P 0.93 | bear zone 13.3/seed avg +0.197 vs -0.101
+         conc disc: top-2 pairs 22% (BICOUSDT, BUSDT) · top day 22% (2026-07-20) · top-2 days 41% · conc conf: top-2 pairs 18% (MOODENGUSDT, CRVUSDT) · top day 18% (2025-05-12) · top-2 days 25%
+     ✔ [2026-H2 BULL→2025 BULL] 2D entry_adx_delta≥0.0094 ∧ entry_pattern_w_any_match≥0.3333: disc z +3.02 p 0.006 fw 0.950 | disc zone 29.7/seed 26d WR 51% avg +1.476 vs rest -0.244 | conf zone 60.7/seed 54.0d WR 31% avg +0.088 vs -0.399 P 0.95 | bear zone 34.0/seed avg +0.103 vs -0.151
+         conc disc: top-2 pairs 16% (BANKUSDT, PROMUSDT) · top day 21% (2026-09-18) · top-2 days 34% · conc conf: top-2 pairs 11% (FARTCOINUSDT, POPCATUSDT) · top day 7% (2025-05-12) · top-2 days 13%
+============================================================================================================================================
+SLEEVE BullRun-Long — 789 fills (3 seeds pooled) · 14 days · 28 pairs
+  2025 BULL    :  133.0/seed ·   8 d · WR  48.6% · avg -0.033 [-0.178, +0.296] · BE-WR 50.4% · $-627/seed
+      2025 top-50    :  133.0/seed ·   8 d · WR  48.6% · avg -0.033 [-0.178, +0.296] · BE-WR 50.4% · $-627/seed
+  2026-H1 BEAR : no fills
+  2026-H2 BULL :  130.0/seed ·   6 d · WR  48.7% · avg +0.158 [-0.379, +0.513] · BE-WR 41.5% · $+2,903/seed
+  ALL          :  263.0/seed ·  14 d · WR  48.7% · avg +0.061 [-0.189, +0.338] · BE-WR 45.6% · $+2,276/seed
+  per-seed avg %:
+seed              1      2      3
+regime                           
+2025 BULL    -0.093  0.016 -0.021
+2026-H2 BULL  0.051  0.106  0.307
+  coverage: 85 candidate columns (73 numeric + 12 categorical dummies from ['entry_macro_trend', 'entry_btc_regime', 'entry_br_door']); <80 % in some regime: 3 → entry_vol_mcap_ratio 72%/–/68%, entry_mcap_usd 72%/–/68%, entry_cmc_rank 72%/–/68%
+  [2025 BULL] 8 days — below 2×10 day units: macro screen skipped (no power)
+  [2025 BULL] 1D-pair(pair-day): 92 tests on 59 units · |z|>2: real 6 vs null mean 3.7 (95th 11) · best |z| 2.59 fw-p 0.293 · p<0.05: 9 (chance ≈ 4.6)
+  [2025 BULL] 1D-lowcov(scored-only): 9 tests on 59 units · |z|>2: real 0 vs null mean 0.3 (95th 2) · best |z| 1.25 fw-p 0.647 · p<0.05: 0 (chance ≈ 0.5)
+  [2025 BULL] 2D quadrants: 2657 tests · |z|>3: real 18 vs null mean 11.6 (95th 43) · best |z| 3.31 fw-p 0.561
+  [2026-H1 BEAR] 0 days — below 2×10 day units: macro screen skipped (no power)
+  [2026-H2 BULL] 6 days — below 2×10 day units: macro screen skipped (no power)
+  [2026-H2 BULL] 1D-pair(pair-day): 89 tests on 56 units · |z|>2: real 2 vs null mean 3.8 (95th 10) · best |z| 2.81 fw-p 0.186 · p<0.05: 4 (chance ≈ 4.5)
+  [2026-H2 BULL] 1D-lowcov(scored-only): 9 tests on 56 units · |z|>2: real 0 vs null mean 0.4 (95th 3) · best |z| 1.26 fw-p 0.617 · p<0.05: 0 (chance ≈ 0.5)
+  [2026-H2 BULL] 2D quadrants: 2493 tests · |z|>3: real 84 vs null mean 13.7 (95th 56) · best |z| 3.80 fw-p 0.152
+  ── discovery 2025 BULL (34 survivors) → confirm in 2026-H2 BULL · bear read alongside
+     confirmed 1/34 (underpowered: zone on < 5 days in disc or conf = 6) (chance ≈ 3.4 at P≥0.90 one-sided if no real effect)
+  ── discovery 2026-H2 BULL (29 survivors) → confirm in 2025 BULL · bear read alongside
+     confirmed 1/29 (underpowered: zone on < 5 days in disc or conf = 21) (chance ≈ 2.9 at P≥0.90 one-sided if no real effect)
+     ✔ [2025 BULL→2026-H2 BULL] 2D entry_range_position<71.1 ∧ entry_adx_prev≥23.89: disc z +2.98 p 0.005 fw 0.856 | disc zone 32.3/seed 8d WR 67% avg +0.468 vs rest -0.194 | conf zone 18.7/seed 5d WR 64% avg +0.645 vs +0.076 P 0.92
+         conc disc: top-2 pairs 30% (1000PEPEUSDT, ZEREBROUSDT) · top day 44% (2025-04-23) · top-2 days 69% · conc conf: top-2 pairs 31% (AAVEUSDT, ACEUSDT) · top day 36% (2026-08-20) · top-2 days 63%
+     ✔ [2026-H2 BULL→2025 BULL] 1D-pair(pair-day) entry_rsi_prev >=T2(63.87): disc z -1.98 p 0.030 fw 0.870 | disc zone 38.3/seed 6d WR 42% avg -0.261 vs rest +0.333 | conf zone 20.3/seed 6d WR 39% avg -0.243 vs +0.005 P 1.00
+         conc disc: top-2 pairs 31% (HYPEUSDT, BNBUSDT) · top day 37% (2026-08-21) · top-2 days 58% · conc conf: top-2 pairs 26% (BNBUSDT, XRPUSDT) · top day 25% (2025-05-09) · top-2 days 48%
+============================================================================================================================================
+SLEEVE BearRun-Short — 131 fills (3 seeds pooled) · 11 days · 39 pairs
+  2025 BULL    :   27.7/seed ·   4 d · WR  57.8% · avg -0.099 [-0.830, -0.005] · BE-WR 66.7% · $-97/seed
+      2025 top-50    :   23.0/seed ·   4 d · WR  55.1% · avg -0.123 [-0.696, -0.059] · BE-WR 66.2% · $-100/seed
+      2025 non-top-50:    4.7/seed ·   2 d · WR  71.4% · avg +0.018 [-1.025, +0.303] · BE-WR 69.9% · $+3/seed
+  2026-H1 BEAR :    9.3/seed ·   5 d · WR  67.9% · avg +0.037 [-0.325, +0.257] · BE-WR 64.5% · $+12/seed
+  2026-H2 BULL :    6.7/seed ·   2 d · WR  75.0% · avg +0.141 [+0.057, +0.268] · BE-WR 60.5% · $+33/seed
+  ALL          :   43.7/seed ·  11 d · WR  62.6% · avg -0.033 [-0.261, +0.104] · BE-WR 65.6% · $-51/seed
+  per-seed avg %:
+seed              1      2      3
+regime                           
+2025 BULL    -0.110  0.006 -0.174
+2026-H1 BEAR  0.218 -0.108 -0.020
+2026-H2 BULL -0.026  0.241  0.261
+  coverage: 82 candidate columns (70 numeric + 12 categorical dummies from ['entry_btc_regime', 'entry_bear_bypass']); <80 % in some regime: 0 → 
+  [2025 BULL] 4 days — below 2×10 day units: macro screen skipped (no power)
+  [2025 BULL] 1D-pair(pair-day): 93 tests on 32 units · |z|>2: real 19 vs null mean 4.7 (95th 14) · best |z| 3.63 fw-p 0.018 · p<0.05: 17 (chance ≈ 4.7)
+  [2026-H1 BEAR] 5 days — below 2×10 day units: macro screen skipped (no power)
+  [2026-H1 BEAR] 1D-pair(pair-day): no testable zones (≥10 units each side)
+  [2026-H2 BULL] 2 days — below 2×10 day units: macro screen skipped (no power)
+  [2026-H2 BULL] 1D-pair(pair-day): no testable zones (≥10 units each side)
+  ── discovery 2025 BULL (17 survivors) → confirm in 2026-H2 BULL · bear read alongside
+     confirmed 0/14 (underpowered: zone on < 5 days in disc or conf = 14) (chance ≈ 1.4 at P≥0.90 one-sided if no real effect)

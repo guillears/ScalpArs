@@ -1221,6 +1221,21 @@ class SignalThresholds(BaseModel):
     # CI fully < 0); ≥ 1 ≈ +0.02…+0.07. Unreadable = no window (fail-closed). A refused trigger does NOT use the spacing (gate before the
     # cooldown — operator: the 17:40 0.74× refusal must not block the 19:00 2.67× trigger). 0 = off.
     surge_long_gvol_min: float = 1.0
+    # 📐 Oct-13 (operator-approved ARMED filter, DECISION_LOG 287): refuse a SURGE_LONG entry when the pair's 5m EMA13 − EMA50 gap (%)
+    # is BELOW this — the exact value stamped as entry_pair_ema20_ema50_gap_pct (column misnamed: it holds EMA13−EMA50; never rename).
+    # None (blank in the UI) = OFF; 0.0 = armed at 0 (block when EMA13 < EMA50). Strict <: a gap equal to the threshold passes.
+    # FAIL-OPEN: an unreadable gap (None / NaN / ±inf) never blocks — counted SURGE_LONG_EMA_GAP_FAILOPEN. Rule = services.surge
+    # .surge_long_ema_gap_block (shared with scripts/build_master_pool.py and tests). Each block logs [SURGE_LONG_EMA_GAP] with pair,
+    # gap, the would-be entry price and the trigger bar (the revert gate re-prices those candidates).
+    # Evidence — two-year engine replay (yr6a 2025 + yr6 2026, re-priced to today's config; reports/YR6_WL_OTHERS.md,
+    # scripts/study_yr6wl_others_*.py): SURGE_LONG fills with gap < 0 lose in all three regimes (2025 BULL −0.43 vs kept −0.07 ·
+    # 2026-H1 BEAR −0.16 vs −0.01 · 2026-H2 BULL −0.50 vs +0.91 %/fill); discovered in H2 and confirmed in 2025 OOS (P 0.93), split at 0
+    # (no fitted threshold), holds in the 2025 top-50 subset, per seed, leave-one-month-out 22/22, no pair > 6 % of the zone loss; passes
+    # the locked expectancy bar pooled (WR 25.1 % vs breakeven 31.5 %, 95 % day-bootstrap upper −0.137, 85 windows); +36 %-pts/seed
+    # over 2 years, +18…+25 after the 30–50 % haircut. Caveat: no live SURGE_LONG fills yet (no real-fill check).
+    # 🔒 REVERT GATE (pre-committed): re-price the blocked candidates from the [SURGE_LONG_EMA_GAP] log (1m klines / ticks, the
+    # SURGE_LONG exit); revert (field → off) if ≥ 10 blocked over ≥ 5 windows show WR ≥ 31.5 % AND avg > 0.
+    surge_long_min_ema13_50_gap_pct: Optional[float] = None
     surge_long_require_24h_high: bool = True     # LONG trigger also needs the bar to CLOSE at/above the prior 24 h high (breakout)
     surge_short_require_24h_low: bool = False    # SHORT trigger also needs a close at/below the prior 24 h low (tested weaker: 0/72 cells)
     surge_trigger_spacing_hours: float = 4.0     # a new trigger of the same side needs this long since the last one (DB-backed)

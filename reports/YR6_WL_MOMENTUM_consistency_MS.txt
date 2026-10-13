@@ -1,0 +1,50 @@
+# MOM-short: 193 1D splits (thresholds frozen in 2025 BULL) · same sign in all 3 regimes: 50 (coin-flip expectation 48) · P>=0.90 in BOTH bulls: 4 · P>=0.90 in all three: 0
+                                  test  macro  2025 BU_d  2025 BU_Pdir  2025 BU_in  2026-H2_d  2026-H2_Pdir  2026-H2_in  2026-H1_d  2026-H1_Pdir  2026-H1_in  Mall_d  Mall_n  Mkeep_d  Mall_cov
+               entry_pos_di>q67(13.09)  False     +0.115        +0.955      -0.004     +0.170        +0.877      -0.025     +0.148        +0.948      +0.068  +0.338      19   +0.270    +1.000
+          entry_btc_rsi_prev>med(40.4)   True     -0.031        +0.859      -0.119     -0.389        +0.987      -0.301     -0.096        +0.909      -0.095  -0.025      19   -0.057    +1.000
+               entry_bull_pct>q67(8.5)   True     -0.005        +0.856      -0.154        NaN           NaN         NaN     -0.159        +0.986      -0.085     NaN      45      NaN    +1.000
+  entry_global_volume_ratio>q67(0.861)   True     +0.088        +0.858      -0.029     +0.145        +0.932      +0.122     +0.151        +0.854      +0.064  -0.055      19   -0.071    +1.000
+       entry_btc_rsi_closed>med(41.15)   True     -0.020        +0.898      -0.127     -0.201        +0.790      -0.213     -0.117        +0.918      -0.098     NaN       1      NaN    +0.041
+               entry_btc_rsi>q67(40.7)   True     -0.146        +0.870      -0.142     -0.445        +0.901      -0.244     -0.088        +0.789      -0.070  -0.266      18   -0.184    +1.000
+            entry_pattern_w1_match==hi  False     -0.060        +0.781      -0.106     -0.265        +0.966      -0.221     -0.077        +0.840      -0.067  -0.018      30   +0.089    +1.000
+              entry_bear_pct>q67(93.8)   True     +0.113        +0.779      -0.033        NaN           NaN         NaN        NaN           NaN         NaN     NaN       0      NaN    +1.000
+              entry_btc_rsi<=q33(37.4)   True     +0.055        +0.762      -0.043     +0.153        +0.800      -0.007     +0.064        +0.846      +0.041  +0.295      18   +0.238    +1.000
+  entry_price_vs_ema5_pct>q67(-0.1995)  False     +0.067        +0.809      -0.036     +0.252        +0.929      +0.050     +0.043        +0.727      -0.006  -0.092      16   -0.182    +1.000
+       entry_ema5_stretch<=q33(0.1999)  False     +0.067        +0.809      -0.036     +0.252        +0.929      +0.050     +0.043        +0.727      -0.006  -0.092      16   -0.182    +1.000
+       entry_btc_rsi_closed<=q33(39.4)   True     +0.034        +0.715      -0.047     +0.220        +0.827      -0.021     +0.024        +0.754      +0.012     NaN       1      NaN    +0.041
+entry_dist_from_ema13_pct>q67(-0.4815)  False     +0.038        +0.701      -0.056     +0.369        +0.992      +0.120     +0.091        +0.908      +0.022  +0.145      21   +0.100    +1.000
+    entry_vol_mcap_ratio<=q33(0.02935)  False     +0.033        +0.673      -0.082        NaN           NaN         NaN     +0.163        +0.959      +0.115     NaN       0      NaN    +0.000
+                entry_gap<=q33(0.4421)  False     +0.030        +0.667      -0.061     +0.209        +0.806      +0.035     +0.140        +0.963      +0.058  +0.218      16   +0.278    +1.000
+entry_gap_5_20_signed_pct>q67(-0.4421)  False     +0.030        +0.667      -0.061     +0.209        +0.806      +0.035     +0.140        +0.963      +0.058     NaN       0      NaN    +0.061
+ entry_btc_trend_gap_pct<=q33(-0.2136)   True     +0.029        +0.711      -0.051     +0.135        +0.691      -0.087     -0.016        +0.650      -0.014  +0.433      20   +0.470    +1.000
+                     entry_btc_eff72>0   True     +0.057        +0.648      -0.080        NaN           NaN         NaN        NaN           NaN         NaN     NaN      13      NaN    +0.265
+       entry_btc_rsi_closed>q67(42.39)   True     -0.126        +0.999      -0.226     -0.177        +0.646      -0.171     -0.006        +0.838      -0.123     NaN       1      NaN    +0.041
+        entry_btc_rsi_prev<=q33(37.97)   True     +0.026        +0.639      -0.059     +0.280        +0.858      +0.001     +0.057        +0.713      +0.007  +0.197      17   +0.044    +1.000
+
+## Locked EXPECTANCY bar on the blocked (worse) side of the top-5 consistent splits — per regime and master (as traded)
+   sleeve breakeven WR: 2025 BULL 65.0% · 2026-H1 BEAR 64.7% · 2026-H2 BULL 66.4% · master kept 57.6%
+  ▶ entry_pos_di>q67(13.09)  — blocked side = OUT
+     2025 BULL      N   470 days 103 WR 55.5% (BE 65.0%) avg -0.119 [-0.224,-0.022] top-day   7% top-pair   6% of zone loss → bar PASS · kept side avg -0.004 (N 235)
+     2026-H1 BEAR   N   260 days  59 WR 56.9% (BE 64.7%) avg -0.081 [-0.196,+0.030] top-day  10% top-pair  10% of zone loss → bar fail · kept side avg +0.068 (N 121)
+     2026-H2 BULL   N    58 days  15 WR 46.6% (BE 66.4%) avg -0.194 [-0.384,+0.050] top-day  26% top-pair  12% of zone loss → bar fail · kept side avg -0.025 (N 30)
+     master all     N    30 days  20 WR 53.3% (BE 58.7%) avg -0.103 [-0.328,+0.130] top-day  28% top-pair  17% of zone loss → bar fail · kept side avg +0.235 (N 19)
+  ▶ entry_btc_rsi_prev>med(40.4)  — blocked side = IN
+     2025 BULL      N   349 days  80 WR 56.2% (BE 65.0%) avg -0.119 [-0.222,-0.019] top-day  10% top-pair   7% of zone loss → bar PASS · kept side avg -0.044 (N 356)
+     2026-H1 BEAR   N   189 days  48 WR 58.7% (BE 64.7%) avg -0.095 [-0.249,+0.046] top-day  12% top-pair   9% of zone loss → bar fail · kept side avg +0.027 (N 192)
+     2026-H2 BULL   N    50 days  12 WR 40.0% (BE 66.4%) avg -0.301 [-0.516,-0.165] top-day  20% top-pair  19% of zone loss → bar PASS · kept side avg +0.081 (N 38)
+     master all     N    19 days  13 WR 63.2% (BE 58.7%) avg -0.009 [-0.309,+0.218] top-day  27% top-pair  18% of zone loss → bar fail · kept side avg +0.052 (N 30)
+  ▶ entry_bull_pct>q67(8.5)  — blocked side = IN
+     2025 BULL      N   233 days  68 WR 50.2% (BE 65.0%) avg -0.154 [-0.293,-0.019] top-day  13% top-pair   7% of zone loss → bar PASS · kept side avg -0.045 (N 472)
+     2026-H1 BEAR   N   273 days  64 WR 57.5% (BE 64.7%) avg -0.085 [-0.207,+0.032] top-day   9% top-pair  10% of zone loss → bar fail · kept side avg +0.098 (N 108)
+     2026-H2 BULL   N    80 days  22 WR 52.5% (BE 66.4%) avg -0.139 [-0.306,+0.028] top-day  17% top-pair  18% of zone loss → bar fail · kept side avg -0.107 (N 8)
+     master all     N    45 days  26 WR 60.0% (BE 58.7%) avg +0.030 [-0.213,+0.227] top-day  16% top-pair  17% of zone loss → bar fail · kept side avg +0.008 (N 4)
+  ▶ entry_global_volume_ratio>q67(0.861)  — blocked side = OUT
+     2025 BULL      N   470 days  95 WR 54.7% (BE 65.0%) avg -0.107 [-0.204,-0.020] top-day   9% top-pair   7% of zone loss → bar PASS · kept side avg -0.029 (N 235)
+     2026-H1 BEAR   N   295 days  63 WR 58.6% (BE 64.7%) avg -0.062 [-0.178,+0.036] top-day   9% top-pair   9% of zone loss → bar fail · kept side avg +0.064 (N 86)
+     2026-H2 BULL   N    64 days  19 WR 45.3% (BE 66.4%) avg -0.233 [-0.429,+0.014] top-day  21% top-pair  12% of zone loss → bar fail · kept side avg +0.122 (N 24)
+     master all     N    30 days  17 WR 63.3% (BE 58.7%) avg +0.058 [-0.271,+0.357] top-day  36% top-pair  18% of zone loss → bar fail · kept side avg -0.019 (N 19)
+  ▶ entry_btc_rsi_closed>med(41.15)  — blocked side = IN
+     2025 BULL      N   346 days  79 WR 55.5% (BE 65.0%) avg -0.127 [-0.236,-0.024] top-day   9% top-pair   7% of zone loss → bar PASS · kept side avg -0.036 (N 359)
+     2026-H1 BEAR   N   188 days  48 WR 58.5% (BE 64.7%) avg -0.098 [-0.258,+0.042] top-day  12% top-pair   9% of zone loss → bar fail · kept side avg +0.030 (N 193)
+     2026-H2 BULL   N    41 days  11 WR 48.8% (BE 66.4%) avg -0.213 [-0.464,-0.055] top-day  29% top-pair  13% of zone loss → bar PASS · kept side avg -0.070 (N 47)
+     master all     N 1

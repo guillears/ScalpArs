@@ -3701,6 +3701,7 @@ async def _surge_trigger_rows(db, limit=50):
                 'checked': t.checked or 0, 'picked': t.picked or '',
                 'ref_atr': t.refused_atr or 0, 'ref_leader': t.refused_leader or 0, 'ref_data': t.refused_data or 0,
                 'ref_slots': t.refused_slots or 0, 'ref_open': t.refused_open or 0,
+                'ref_gap': getattr(t, 'refused_ema_gap', 0) or 0,   # 📐 Oct-13 SURGE_LONG_EMA_GAP (DECISION_LOG 287)
                 'fills': len(g), 'open_fills': len(g) - len(gc),
                 'wr': (round(100.0 * _w / len(gc), 1) if gc else None),
                 'avg_pct': (round(sum(o.pnl_percentage or 0 for o in gc) / len(gc), 3) if gc else None),

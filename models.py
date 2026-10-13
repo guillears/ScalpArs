@@ -1325,6 +1325,7 @@ class SurgeTrigger(Base):
     refused_data = Column(Integer, default=0)                     # SURGE_NO_DATA
     refused_slots = Column(Integer, default=0)                    # SURGE_MAX_SLOTS
     refused_open = Column(Integer, default=0)                     # selected but open_position refused (held / cooldown / balance / disloc)
+    refused_ema_gap = Column(Integer, default=0)                  # 📐 Oct-13 SURGE_LONG_EMA_GAP (EMA13 − EMA50 gap below surge_long_min_ema13_50_gap_pct; DECISION_LOG 287)
     restarted = Column(Boolean, default=False)                    # the window spanned a restart (picks/counts kept; a refused pair may be re-counted)
     created_at = Column(DateTime, nullable=True)
 

@@ -1,0 +1,40 @@
+## 2025 BULL  (btc_1d_ret scored 100%)
+    sleeve                             N  2617 days 301 WR 53.1% avg -0.187 [-0.229,-0.145] P>0 0.00
+    ① BTC24H_DOWN proxy zone (blocked) N  1372 days 150 WR 55.5% avg -0.169 [-0.224,-0.110] P>0 0.00
+    ① kept                             N  1245 days 151 WR 50.4% avg -0.207 [-0.268,-0.145] P>0 0.00
+    ② ADXΔ<=0 zone within ① kept       N   435 days 112 WR 46.7% avg -0.290 [-0.389,-0.196] P>0 0.00
+    ①+② kept                           N   810 days 135 WR 52.5% avg -0.162 [-0.238,-0.086] P>0 0.00
+    ADXΔ<=0 alone (zone)               N   947 days 233 WR 50.8% avg -0.233 [-0.300,-0.166] P>0 0.00
+    ADXΔ>0 alone (kept)                N  1670 days 273 WR 54.4% avg -0.161 [-0.209,-0.111] P>0 0.00
+## 2026-H1 BEAR  (btc_1d_ret scored 100%)
+    sleeve                             N  1171 days 154 WR 59.4% avg -0.085 [-0.153,-0.019] P>0 0.01
+    ① BTC24H_DOWN proxy zone (blocked) N   624 days  83 WR 61.1% avg -0.077 [-0.163,+0.017] P>0 0.05
+    ① kept                             N   547 days  71 WR 57.4% avg -0.095 [-0.198,+0.000] P>0 0.03
+    ② ADXΔ<=0 zone within ① kept       N   201 days  57 WR 53.7% avg -0.183 [-0.296,-0.073] P>0 0.00
+    ①+② kept                           N   346 days  64 WR 59.5% avg -0.044 [-0.176,+0.070] P>0 0.26
+    ADXΔ<=0 alone (zone)               N   435 days 118 WR 58.6% avg -0.127 [-0.225,-0.022] P>0 0.01
+    ADXΔ>0 alone (kept)                N   736 days 141 WR 59.8% avg -0.060 [-0.137,+0.020] P>0 0.07
+## 2026-H2 BULL  (btc_1d_ret scored 100%)
+    sleeve                             N   521 days  79 WR 63.1% avg -0.015 [-0.119,+0.101] P>0 0.38
+    ① BTC24H_DOWN proxy zone (blocked) N   241 days  36 WR 59.8% avg -0.100 [-0.246,+0.043] P>0 0.07
+    ① kept                             N   280 days  43 WR 66.1% avg +0.058 [-0.080,+0.232] P>0 0.80
+    ② ADXΔ<=0 zone within ① kept       N   108 days  29 WR 58.3% avg -0.057 [-0.266,+0.235] P>0 0.35
+    ①+② kept                           N   172 days  39 WR 70.9% avg +0.131 [-0.019,+0.297] P>0 0.95
+    ADXΔ<=0 alone (zone)               N   199 days  53 WR 58.3% avg -0.092 [-0.225,+0.066] P>0 0.12
+    ADXΔ>0 alone (kept)                N   322 days  71 WR 66.1% avg +0.032 [-0.087,+0.160] P>0 0.68
+## master all (as traded)  (btc_1d_ret scored 12%)
+    sleeve                             N   188 days  75 WR 66.0% avg +0.039 [-0.080,+0.173] P>0 0.74
+    ① BTC24H_DOWN proxy zone (blocked) N     9 days   4 WR 11.1% avg -0.630 [-0.896,-0.343] P>0 0.00
+    ① kept                             N    13 days   4 WR 53.8% avg +0.111 [-0.705,+0.898] P>0 0.69
+    ② ADXΔ<=0 zone within ① kept       N 3
+    ①+② kept                           N    10 days   4 WR 50.0% avg +0.065 [-0.705,+0.888] P>0 0.59
+    ADXΔ<=0 alone (zone)               N    77 days  50 WR 62.3% avg -0.010 [-0.191,+0.180] P>0 0.47
+    ADXΔ>0 alone (kept)                N   111 days  59 WR 68.5% avg +0.073 [-0.058,+0.210] P>0 0.85
+## master ex-BASE  (btc_1d_ret scored 14%)
+    sleeve                             N   153 days  57 WR 60.8% avg -0.046 [-0.188,+0.088] P>0 0.25
+    ① BTC24H_DOWN proxy zone (blocked) N     9 days   4 WR 11.1% avg -0.630 [-0.896,-0.343] P>0 0.00
+    ① kept                             N    13 days   4 WR 53.8% avg +0.111 [-0.705,+0.898] P>0 0.69
+    ② ADXΔ<=0 zone within ① kept       N 3
+    ①+② kept                           N    10 days   4 WR 50.0% avg +0.065 [-0.705,+0.888] P>0 0.59
+    ADXΔ<=0 alone (zone)               N    65 days  39 WR 58.5% avg -0.100 [-0.290,+0.095] P>0 0.16
+    ADXΔ>0 alone (kept)                N    88 days  45 WR 62.5% avg -0.006 [-0.173,+0.158] P>0 0.46

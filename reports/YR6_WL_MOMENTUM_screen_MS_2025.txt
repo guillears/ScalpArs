@@ -1,0 +1,73 @@
+# MOM-short · discovery 2025 BULL (N 705, 118 days, avg -0.081) → confirm 2026-H2 BULL · bear 2026-H1 BEAR
+# 71 columns tested at >= 80 % coverage; low-coverage columns read separately: ['entry_chop_burst_prior_fill_s']
+
+## 1D: 182 valid tests · per-test p<0.05: 6 (expected by luck 9) · p<0.01: 2 (exp 1.8) · family-wise p<0.05: 0 · null 95th pct of max|Δ| = 0.332
+## 2D: top-40 cols → 3120 quadrant tests, 3097 valid · per-test p<0.05: 125 (exp 155) · p<0.01: 13 (exp 31) · family-wise p<0.05: 0 · null 95th pct max|Δ| = 0.408
+
+## Discovery survivors (p_null<0.05 & |Δ|>=0.05): 131
+   confirmed in 2026-H2 BULL (same sign, day-boot P>=0.90): 15 of 131  [luck baseline: a random sign would confirm ~10 % → 13]
+                                                                   test  macro  D_n_in  D_days_in  D_avg_in  D_avg_out  D_delta    D_p   D_fw  C_n_in  C_avg_in  C_avg_out  C_delta  C_p_same  B_avg_in  B_avg_out  B_delta  Mall_n_in  Mall_avg_in  Mall_avg_out  Mkeep_n_in  Mkeep_avg_in  Mkeep_avg_out
+                    entry_btc_rsi>39.3 & entry_gap_expand_marginal<=0.5   True     288         71    -0.180     -0.012   -0.158 +0.010 +1.000      49    -0.285     +0.050   -0.334    +0.967    -0.035     -0.032   -0.003         26       -0.010        +0.071          17        +0.156         +0.188
+                        entry_pair_rank>25 & entry_pattern_w1_match>0.5  False     204         65    -0.184     -0.039   -0.144 +0.015 +1.000      27    -0.354     -0.040   -0.314    +0.981    +0.034     -0.064   +0.098         15       +0.121        -0.013          12        +0.232         +0.145
+                     entry_btc_rsi_prev>40.4 & entry_btc_r72_pct<=-0.79   True     192         37    -0.162     -0.051   -0.187 +0.015 +1.000      21    -0.341     -0.072   -0.269    +0.978    -0.084     -0.013   -0.071          3       -0.050        -0.460           2           NaN            NaN
+                        entry_pair_rank<=25 & entry_pair_age_days<=1552  False     137         47    +0.048     -0.112   +0.160 +0.015 +1.000      30    +0.083     -0.250   +0.333    +0.946    -0.177     +0.002   -0.178         12       +0.035        -0.202           7        +0.257         -0.062
+                    entry_pair_rank>25 & entry_gap_expand_marginal<=0.5  False     295         85    -0.155     -0.028   -0.127 +0.015 +1.000      30    -0.288     -0.058   -0.230    +0.924    +0.037     -0.091   +0.128         21       -0.049        +0.086          17        +0.036         +0.290
+               entry_btc_atr_pct>0.1842 & entry_pair_volume_ratio>0.709   True     166         41    -0.200     -0.044   -0.188 +0.015 +1.000      15    -0.316     -0.100   -0.216    +0.906    +0.074     -0.094   +0.168         15       -0.197        +0.128           7        +0.052         +0.201
+              entry_btc_rsi<=39.3 & entry_btc_ema50_100_gap_pct>-0.0486   True     206         47    +0.077     -0.146   +0.181 +0.020 +1.000      10    +0.333     -0.197   +0.529    +0.973    +0.085     -0.066   +0.151          0          NaN           NaN           0           NaN            NaN
+                          entry_btc_rsi>39.3 & entry_btc_r72_pct<=-0.79   True     196         37    -0.171     -0.046   -0.186 +0.020 +1.000      26    -0.270     -0.081   -0.189    +0.947    -0.059     -0.024   -0.035          5       -0.323        -0.391           4        -0.228         -0.345
+                 entry_btc_rsi>39.3 & entry_global_volume_ratio<=0.7671   True     182         48    -0.171     -0.050   -0.162 +0.025 +1.000      23    -0.486     -0.013   -0.474    +0.996    -0.082     -0.010   -0.072         12       -0.119        +0.076           7        +0.117         +0.186
+              entry_btc_rsi_prev<=40.4 & entry_pair_volume_ratio<=0.709   True     165         52    +0.027     -0.114   +0.132 +0.030 +1.000      20    +0.147     -0.220   +0.367    +0.994    +0.046     -0.052   +0.098         12       +0.045        +0.023          12        +0.045         +0.235
+entry_pair_volume_24h_usd<=2.02e+08 & entry_global_volume_ratio<=0.7671   True     194         59    -0.136     -0.060   -0.145 +0.030 +1.000      18    -0.451     -0.056   -0.395    +0.988    -0.014     -0.050   +0.036          9       +0.223        -0.016           7        +0.322         +0.138
+                                                entry_btc_rsi>q67(40.7)   True     234         65    -0.142     -0.051   -0.146 +0.030 +0.995      49    -0.244     -0.001   -0.244    +0.901    -0.070     -0.014   -0.056         18       -0.064        +0.082          11        +0.122         +0.195
+                       entry_pair_rank>25 & entry_pattern_w2_match<=0.5  False     154         53    -0.193     -0.050   -0.144 +0.035 +1.000       9    -0.400     -0.106   -0.293    +0.997    -0.045     -0.030   -0.015          7       -0.418        +0.102           4        -0.490         +0.254
+                         entry_pair_rank>25 & entry_pair_age_days<=1552  False     216         76    -0.171     -0.041   -0.129 +0.035 +1.000      24    -0.313     -0.070   -0.243    +0.920    -0.017     -0.041   +0.024          8       +0.175        -0.208           8        +0.175         -0.039
+                                                entry_pair_rank>med(25)  False     344         96    -0.136     -0.029   -0.107 +0.050 +1.000      40    -0.264     -0.030   -0.235    +0.936    +0.026     -0.109   +0.136         24       -0.035        +0.089          20        +0.040         +0.330
+
+   top-15 discovery survivors that did NOT confirm:
+                                                               test  macro  D_n_in  D_days_in  D_avg_in  D_avg_out  D_delta    D_p   D_fw  C_n_in  C_avg_in  C_avg_out  C_delta  C_p_same  B_avg_in
+       entry_btc_atr_pct<=0.1842 & entry_global_volume_ratio>0.7671   True     202         55    -0.015     -0.108   +0.191 +0.005 +1.000      28    -0.040     -0.181   +0.141    +0.765    -0.083
+                   entry_btc_rsi_prev6<=45 & entry_quality_score<=3   True     154         52    +0.043     -0.115   +0.174 +0.005 +1.000      23    -0.142     -0.134   -0.008    +0.455    -0.012
+               entry_btc_rsi_closed>41.15 & entry_btc_rsi_prev6<=45   True     146         40    +0.044     -0.114   +0.205 +0.005 +1.000      14    -0.276     -0.110   -0.166    +0.265    -0.072
+                                   entry_btc_1h_slope<=q33(-0.1177)   True     235         47    -0.221     -0.011   -0.237 +0.005 +0.445      41    -0.032     -0.227   +0.195    +0.150    -0.075
+               entry_cmc_rank>34 & entry_btc_trend_gap_pct<=-0.1805   True     138         35    -0.015     -0.130   +0.202 +0.010 +1.000      16    +0.002     -0.194   +0.196    +0.838    -0.037
+entry_btc_ema50_100_gap_pct>-0.0486 & entry_eth_5m_ret1_pct>-0.1041   True     175         49    -0.012     -0.104   +0.206 +0.010 +1.000      13    +0.047     -0.168   +0.215    +0.770    +0.058
+                           entry_pair_volume_24h_usd>q67(3.414e+08)  False     234         57    +0.015     -0.129   +0.144 +0.010 +0.995      18    -0.001     -0.171   +0.170    +0.748    -0.094
+                entry_btc_rsi_closed>41.15 & entry_btc_rsi_prev6>45   True     200         50    -0.252     -0.013   -0.193 +0.010 +1.000      27    -0.180     -0.117   -0.062    +0.616    -0.153
+                   entry_btc_rsi_prev>40.4 & entry_btc_rsi_prev6>45   True     195         49    -0.253     -0.015   -0.223 +0.010 +0.995      27    -0.180     -0.117   -0.062    +0.616    -0.153
+       entry_btc_rsi_1h_prev>46.8 & entry_price_vs_ema5_pct>-0.2392   True     181         57    +0.032     -0.120   +0.181 +0.010 +1.000      29    -0.103     -0.153   +0.049    +0.577    +0.067
+            entry_btc_rsi_1h_prev>46.8 & entry_ema5_stretch<=0.2398   True     182         57    +0.029     -0.119   +0.175 +0.010 +1.000      29    -0.103     -0.153   +0.049    +0.577    +0.061
+              entry_btc_rsi_closed>41.15 & entry_btc_r72_pct<=-0.79   True     200         36    -0.158     -0.050   -0.202 +0.010 +1.000      13    -0.130     -0.138   +0.007    +0.490    -0.101
+                entry_pos_di>12.03 & entry_eth_5m_ret1_pct<=-0.1041   True     185         58    -0.113     -0.070   -0.168 +0.010 +1.000      31    -0.098     -0.157   +0.059    +0.394    -0.077
+                  entry_btc_rsi_prev>40.4 & entry_btc_rsi_prev6<=45   True     154         42    +0.052     -0.118   +0.222 +0.010 +0.995      23    -0.444     -0.028   -0.417    +0.010    -0.068
+    entry_btc_rsi_1h_prev<=46.8 & entry_global_volume_ratio<=0.7671   True     200         42    -0.203     -0.033   -0.167 +0.015 +1.000      24    -0.292     -0.078   -0.214    +0.826    -0.119
+
+## Positive-pocket search: zones (in OR out side of every valid test) holding >= 5 % of 2025 BULL fills and >= 15 days, mean > 0 in 2025 BULL; then the same frozen zone in 2026-H2 BULL / bear / master
+   339 pockets positive in 2025 BULL; of those positive in 2026-H2 BULL too: 62; with D P>0 >= 0.95: 5; both P>=0.90: 0
+                                                                  zone  D_n  D_share  D_avg    D_P  C_n  C_avg   C_lo    C_P  B_n  B_avg  M_n  M_avg  both_pos
+entry_btc_above72_pct<=50.1 & cat__entry_btc_regime==HEALTHY_BEAR<=0.5   74   +0.105 +0.178 +0.960   13 +0.118 -0.208 +0.804   34 +0.104    1    NaN      True
+  entry_btc_above72_pct<=50.1 & cat__entry_btc_regime==STRONG_BEAR>0.5   74   +0.105 +0.178 +0.960   13 +0.118 -0.208 +0.804   34 +0.104    1    NaN      True
+                      entry_btc_rsi_1h>43.8 & entry_btc_r72_pct<=-0.79  118   +0.167 +0.149 +0.960   21 -0.052 -0.224 +0.331   46 +0.119    1    NaN     False
+   cat__entry_btc_regime==HEALTHY_BEAR<=0.5 & entry_pair_age_days>1552   80   +0.113 +0.135 +0.956   24 -0.310 -0.478 +0.014   44 +0.233    7 -0.375     False
+     cat__entry_btc_regime==STRONG_BEAR>0.5 & entry_pair_age_days>1552   80   +0.113 +0.135 +0.956   24 -0.310 -0.478 +0.014   44 +0.233    7 -0.375     False
+                 entry_btc_rsi_1h>43.8 & entry_gap_expand_marginal>0.5   53   +0.075 +0.119 +0.944   10 -0.005 -0.261 +0.500   27 -0.114    2    NaN     False
+                            entry_btc_rsi<=39.3 & entry_btc_adx<=22.59  169   +0.240 +0.107 +0.931   12 +0.152 -0.593 +0.694   45 -0.121    5 +0.236      True
+                 entry_btc_rsi_1h_prev>46.8 & entry_btc_r72_pct<=-0.79  118   +0.167 +0.127 +0.929   25 -0.054 -0.315 +0.349   59 +0.128    4    NaN     False
+         entry_btc_rsi>39.3 & cat__entry_btc_regime==HEALTHY_BEAR<=0.5   73   +0.104 +0.171 +0.915   31 -0.393 -0.656 +0.000   57 +0.034   11 +0.025     False
+           entry_btc_rsi>39.3 & cat__entry_btc_regime==STRONG_BEAR>0.5   73   +0.104 +0.171 +0.915   31 -0.393 -0.656 +0.000   57 +0.034   11 +0.025     False
+            entry_btc_off24h_pct>-1.92 & entry_gap_expand_marginal>0.5   60   +0.085 +0.097 +0.906    8 -0.144 -0.465 +0.252   25 +0.008    4    NaN     False
+                   entry_btc_rsi_1h<=43.8 & entry_btc_rsi_1h_prev>46.8   50   +0.071 +0.173 +0.904    9 -0.046 -0.525 +0.404   26 +0.168    6 -0.156     False
+                 entry_btc_1h_slope>-0.0743 & entry_btc_r72_pct<=-0.79  132   +0.187 +0.102 +0.901   26 -0.069 -0.325 +0.303   56 +0.131    4    NaN     False
+                     entry_btc_adx<=22.59 & entry_pattern_w2_match>0.5   80   +0.113 +0.128 +0.896    3    NaN    NaN    NaN   14 +0.098    1    NaN     False
+   entry_btc_atr_pct>0.1842 & cat__entry_btc_regime==HEALTHY_BEAR<=0.5   67   +0.095 +0.159 +0.892   16 -0.270 -0.589 +0.077   84 +0.091   14 +0.012     False
+     entry_btc_atr_pct>0.1842 & cat__entry_btc_regime==STRONG_BEAR>0.5   67   +0.095 +0.159 +0.892   16 -0.270 -0.589 +0.077   84 +0.091   14 +0.012     False
+   entry_btc_r72_pct<=-0.79 & cat__entry_btc_regime==HEALTHY_BEAR<=0.5   64   +0.091 +0.165 +0.886   30 -0.165 -0.329 +0.121   38 +0.293    7 -0.398     False
+     entry_btc_r72_pct<=-0.79 & cat__entry_btc_regime==STRONG_BEAR>0.5   64   +0.091 +0.165 +0.886   30 -0.165 -0.329 +0.121   38 +0.293    7 -0.398     False
+                   entry_btc_rsi_1h>43.8 & entry_btc_off24h_pct<=-1.92   99   +0.140 +0.134 +0.884   18 -0.359 -0.627 +0.052   42 -0.061    1    NaN     False
+              entry_btc_rsi_1h_prev>46.8 & entry_btc_off24h_pct<=-1.92  103   +0.146 +0.159 +0.876    9 -0.155 -0.605 +0.242   51 +0.010    1    NaN     False
+
+## Low-coverage columns — own read on scored rows only (never zone-vs-rest)
+   entry_chop_burst_prior_fill_s       2025 BULL      scored   47% (N 330) avg -0.070 · >med(12) -0.101 (156) vs <= -0.042 (174) · unscored avg -0.090
+   entry_chop_burst_prior_fill_s       2026-H2 BULL   scored   38% (N 33) avg +0.014 · >med(12) +0.152 (11) vs <= -0.055 (22) · unscored avg -0.227
+   entry_chop_burst_prior_fill_s       2026-H1 BEAR   scored   36% (N 139) avg -0.054 · >med(12) -0.110 (73) vs <= +0.008 (66) · unscored avg -0.022
+
+CSV: /Users/guillearslanian/Downloads/NOFA AI/reports/YR6_WL_MOMENTUM_screen_MS_2025BULL.csv (+ _alltests / _pockets)

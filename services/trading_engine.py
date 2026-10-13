@@ -22,7 +22,7 @@ from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, is_leverage_blocked
 from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, closed_wilder_ndi, fade_laggard_block, calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal, gap_expand_flat, gap_min_band, _rsi_adx_block_rule, rsiceil_band, adxmax_band, adxmax2_band, gminflat_band
 from services.regime import classify_btc_regime
-from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate
+from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate, surge_long_ema_gap_block, SURGE_LONG_EMA_GAP, SURGE_LONG_EMA_GAP_FAILOPEN
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE
 from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio
@@ -6921,7 +6921,7 @@ class TradingEngine:
             picked=",".join(sorted(st.get('opened_pairs') or [])) or None,
             refused_atr=int(_why.get('SURGE_ATR_LOW', 0)), refused_leader=int(_why.get('SURGE_NOT_LEADER', 0)),
             refused_data=int(_why.get('SURGE_NO_DATA', 0)), refused_slots=int(_why.get('SURGE_MAX_SLOTS', 0)),
-            refused_open=int(_why.get('OPEN_REFUSED', 0)), **_extra)
+            refused_open=int(_why.get('OPEN_REFUSED', 0)), refused_ema_gap=int(_why.get(SURGE_LONG_EMA_GAP, 0)), **_extra)
 
     async def _surge_ledger_finalize(self, db, side, st):
         """Close the ledger row when the entry window has passed: counts + status (FILLED / NO_PICK / MISSED)."""
@@ -6963,7 +6963,8 @@ class TradingEngine:
                                                           opened_pairs=set(_pk), n_checked=int(_row.checked or 0), judged_any=bool(_row.checked or _pk),
                                                           why={k: v for k, v in (('SURGE_ATR_LOW', _row.refused_atr), ('SURGE_NOT_LEADER', _row.refused_leader),
                                                                                   ('SURGE_NO_DATA', _row.refused_data), ('SURGE_MAX_SLOTS', _row.refused_slots),
-                                                                                  ('OPEN_REFUSED', _row.refused_open)) if v})
+                                                                                  ('OPEN_REFUSED', _row.refused_open),
+                                                                                  (SURGE_LONG_EMA_GAP, getattr(_row, 'refused_ema_gap', 0))) if v})
                                 await self._surge_ledger_upsert(db, side, int(_cms), restarted=True, picked=(",".join(_pk) or None))
                                 logger.warning(f"[SURGE_{side}] restart inside an open entry window — trigger {_row.bar_close_at:%H:%M} UTC restored ({len(_pk)} filled)")
                             elif _row.status == "OPEN" and now_ms >= _wc_ms:
@@ -8761,6 +8762,25 @@ class TradingEngine:
                 for _k in ('entry_rsi', 'entry_adx', 'entry_atr_pct', 'entry_pair_volume_24h_usd', 'entry_pair_rank',
                            'entry_bull_pct', 'entry_bear_pct', 'entry_global_volume_ratio', 'entry_pair_volume_ratio'):
                     _ef.pop(_k, None)
+                # 📐 Oct-13 (DECISION_LOG 287): SURGE_LONG EMA13−EMA50 gap gate — judged on the EXACT value this fill would be stamped with
+                # (entry_pair_ema20_ema50_gap_pct from _flip_entry_fields; engine parity). Unreadable gap = FAIL-OPEN (counted). The block
+                # log carries the would-be entry price + trigger bar: the pre-committed revert gate re-prices these candidates.
+                if side == "LONG":
+                    _gap_v = _ef.get('entry_pair_ema20_ema50_gap_pct')
+                    _gap_b = surge_long_ema_gap_block(th, _gap_v)
+                    if _gap_b == SURGE_LONG_EMA_GAP:
+                        st['refused'].add(pair)
+                        _why[SURGE_LONG_EMA_GAP] = _why.get(SURGE_LONG_EMA_GAP, 0) + 1
+                        self._record_filter_block(SURGE_LONG_EMA_GAP, "LONG")
+                        logger.info(f"[SURGE_LONG_EMA_GAP] {pair}: refused — EMA13−EMA50 gap {float(_gap_v):+.4f}% < min "
+                                    f"{float(getattr(th, 'surge_long_min_ema13_50_gap_pct')):+.4f}% · would-be entry {price:.8g} · trigger bar close "
+                                    f"{datetime.utcfromtimestamp(st['close_ts'] / 1000):%Y-%m-%d %H:%M} UTC · rank {rank} · ATR {atr:.2f}% · "
+                                    f"pair 30-min {pmove:+.2f}% vs BTC {st['btc_move_pct']:+.2f}%")
+                        await self._surge_ledger_counts(db, side, st)
+                        continue
+                    if _gap_b == SURGE_LONG_EMA_GAP_FAILOPEN:
+                        self._record_filter_block(SURGE_LONG_EMA_GAP_FAILOPEN, "LONG")
+                        logger.warning(f"[SURGE_LONG_EMA_GAP_FAILOPEN] {pair}: EMA13−EMA50 gap unreadable ({_gap_v!r}) — not blocked (fail-open)")
                 _g_now = globals()
                 _pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if indicators.get('avg_volume') else None
                 logger.info(f"[SURGE_{side}] {pair}: selected (rank {rank}, ATR {atr:.2f}%, pair 30-min {pmove:+.2f}% vs BTC "

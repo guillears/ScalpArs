@@ -1,0 +1,6 @@
+1m-path bias on 2026 fills (seed 1): the same fill walked on ticks vs on 1m bars only — same exit rule (FRENZY +3/−3/12 h at the replay config, WILLY +1.25/−4/90).
+
+FRENZY_LITE   N  530 · ticks: WR 55.8 % avg +0.340 stop 44.2 % · 1m: WR 55.8 % avg +0.339 stop 44.2 % · bias (1m − ticks) -0.001 %/fill · exit kind differs on 0.0 %
+FRENZY_LONG   N  336 · ticks: WR 46.4 % avg -0.218 stop 53.6 % · 1m: WR 46.4 % avg -0.218 stop 53.6 % · bias (1m − ticks) +0.001 %/fill · exit kind differs on 0.0 %
+FRENZY_WIDE   N  228 · ticks: WR 51.3 % avg +0.082 stop 48.7 % · 1m: WR 51.3 % avg +0.075 stop 48.7 % · bias (1m − ticks) -0.007 %/fill · exit kind differs on 0.9 %
+FRENZY_WILLY  N  509 · ticks: WR 74.5 % avg +0.069 stop 19.8 % · 1m: WR 74.1 % avg +0.041 stop 20.2 % · bias (1m − ticks) -0.027 %/fill · exit kind differs on 0.4 %

@@ -1,0 +1,48 @@
+# MOM-long · discovery 2026-H1 BEAR (N 1171, 154 days, avg -0.085) → confirm — · bear 2026-H1 BEAR
+# 66 columns tested at >= 80 % coverage; low-coverage columns read separately: ['entry_pattern_c2_match', 'entry_pattern_c5_match', 'entry_chop_burst_prior_fill_s']
+
+## 1D: 186 valid tests · per-test p<0.05: 2 (expected by luck 9) · p<0.01: 0 (exp 1.9) · family-wise p<0.05: 0 · null 95th pct of max|Δ| = 0.266
+## 2D: top-40 cols → 3120 quadrant tests, 3054 valid · per-test p<0.05: 186 (exp 153) · p<0.01: 42 (exp 31) · family-wise p<0.05: 0 · null 95th pct max|Δ| = 0.371
+
+## Discovery survivors (p_null<0.05 & |Δ|>=0.05): 188
+                                                               test  macro  D_n_in  D_days_in  D_avg_in  D_avg_out  D_delta    D_p   D_fw  Mall_n_in  Mall_avg_in  Mall_avg_out
+                   entry_btc_above72_pct<=50 & entry_bear_pct<=19.1   True     346         70    -0.178     -0.047   -0.205 +0.005 +0.985          3       -0.080        -0.186
+              entry_btc_above72_pct>50 & entry_pair_age_days<=944.7   True     295         71    +0.026     -0.123   +0.198 +0.005 +0.990         16       -0.169        -0.185
+                 entry_btc_r72_pct>-0.19 & entry_btc_atr_pct>0.1872   True     230         42    +0.099     -0.130   +0.267 +0.005 +0.585          3       +0.568        -0.206
+                        entry_bear_pct<=19.1 & entry_btc_adx<=22.82   True     279         69    -0.119     -0.075   -0.223 +0.005 +0.940         27       +0.285        -0.002
+               entry_btc_r72_pct>-0.19 & entry_pair_age_days<=944.7   True     303         72    +0.009     -0.118   +0.212 +0.005 +0.965         16       -0.193        -0.153
+                        entry_bear_pct<=19.1 & entry_rsi_prev>57.69   True     294         87    -0.171     -0.056   -0.208 +0.005 +0.970         47       +0.066        +0.030
+                   entry_btc_rsi_prev6>57.6 & entry_rsi_prev<=57.69   True     311        103    -0.165     -0.056   -0.177 +0.005 +1.000         42       -0.048        +0.064
+ entry_btc_r72_pct<=-0.19 & cat__entry_btc_regime==HEALTHY_BULL>0.5   True     455         80    -0.192     -0.018   -0.196 +0.005 +0.995          8       -0.402        -0.125
+                entry_adx_delta<=0.3005 & entry_ema_gap_8_13>0.1319  False     275         95    -0.220     -0.044   -0.176 +0.005 +1.000         38       +0.084        +0.028
+     entry_btc_off30d_high_pct<=-10.4 & entry_vol_mcap_ratio>0.0813   True     258         62    -0.144     -0.071   -0.156 +0.005 +1.000          0          NaN           NaN
+                entry_pair_rank<=31 & entry_gap_expand_marginal>0.5  False     195         84    -0.262     -0.050   -0.212 +0.005 +0.965         30       -0.081        +0.062
+             entry_bear_pct<=19.1 & entry_pair_volume_ratio<=0.7437   True     320         95    -0.140     -0.065   -0.152 +0.005 +1.000         34       +0.311        -0.021
+               entry_btc_above72_pct<=50 & entry_btc_rsi_prev6>57.6   True     308         71    -0.240     -0.030   -0.207 +0.005 +0.985          7       +0.044        -0.213
+                entry_btc_rsi_prev>61.7 & entry_btc_above72_pct<=50   True     315         73    -0.191     -0.046   -0.228 +0.005 +0.900          8       +0.083        -0.226
+ entry_btc_r72_pct<=-0.19 & cat__entry_btc_regime==STRONG_BULL<=0.5   True     460         80    -0.193     -0.016   -0.207 +0.005 +0.970          8       -0.402        -0.125
+                entry_btc_r72_pct<=-0.19 & entry_btc_rsi_prev6>57.6   True     302         69    -0.201     -0.045   -0.197 +0.005 +0.995          7       +0.044        -0.194
+                    entry_btc_r72_pct<=-0.19 & entry_bear_pct<=19.1   True     333         65    -0.138     -0.064   -0.201 +0.005 +0.985          3       -0.080        -0.169
+entry_ema_gap_8_13>0.1319 & cat__entry_btc_regime==STRONG_BULL<=0.5   True     471        116    -0.176     -0.024   -0.173 +0.005 +1.000         49       +0.135        +0.005
+              entry_btc_r72_pct<=-0.19 & entry_btc_rsi_closed>60.31   True     283         64    -0.196     -0.050   -0.260 +0.005 +0.645          5       -0.027        -0.118
+                entry_btc_above72_pct>50 & entry_btc_atr_pct>0.1872   True     198         40    +0.136     -0.130   +0.273 +0.005 +0.520          3       +0.568        -0.224
+                 entry_btc_r72_pct<=-0.19 & entry_btc_rsi_prev>61.7   True     280         62    -0.181     -0.055   -0.316 +0.005 +0.200          9       +0.251        -0.244
+          entry_btc_rsi_prev6>57.6 & entry_pattern_w_any_match<=0.5   True     503        120    -0.166     -0.025   -0.157 +0.010 +1.000         77       +0.012        +0.058
+         entry_btc_above72_pct<=50 & entry_pattern_w_any_match<=0.5   True     578         92    -0.163     -0.010   -0.172 +0.010 +1.000          9       -0.474        -0.121
+                         entry_rsi_prev>57.69 & entry_bull_pct>72.3   True     306         89    -0.180     -0.052   -0.183 +0.010 +1.000         47       +0.054        +0.034
+          entry_btc_rsi_prev>61.7 & entry_pair_volume_ratio<=0.7437   True     269         92    -0.197     -0.052   -0.204 +0.010 +0.985         51       +0.032        +0.042
+ entry_btc_above72_pct<=50 & entry_gap_5_20_prev_signed_pct<=0.3415   True     294         77    -0.228     -0.038   -0.172 +0.010 +1.000          6       -0.569        -0.051
+ entry_btc_rsi_prev6>57.6 & cat__entry_btc_regime==STRONG_BULL<=0.5   True     440        109    -0.172     -0.033   -0.174 +0.010 +1.000         54       -0.094        +0.093
+entry_btc_above72_pct<=50 & cat__entry_btc_regime==HEALTHY_BULL>0.5   True     472         84    -0.204     -0.005   -0.169 +0.010 +1.000          7       -0.687        -0.104
+entry_btc_above72_pct<=50 & cat__entry_btc_regime==STRONG_BULL<=0.5   True     479         84    -0.203     -0.004   -0.183 +0.010 +1.000          7       -0.687        -0.104
+ entry_btc_rsi_prev6>57.6 & cat__entry_btc_regime==HEALTHY_BULL>0.5   True     436        108    -0.170     -0.035   -0.170 +0.010 +1.000         50       -0.070        +0.079
+
+## Low-coverage columns — own read on scored rows only (never zone-vs-rest)
+   entry_pattern_c2_match              2026-H1 BEAR   scored  100% (N 1171) avg -0.085 · >med(0) +nan (0) vs <= -0.085 (1171) · unscored avg +nan
+   entry_pattern_c2_match              2026-H1 BEAR   scored  100% (N 1171) avg -0.085 · >med(0) +nan (0) vs <= -0.085 (1171) · unscored avg +nan
+   entry_pattern_c5_match              2026-H1 BEAR   scored  100% (N 1171) avg -0.085 · >med(0) +nan (0) vs <= -0.085 (1171) · unscored avg +nan
+   entry_pattern_c5_match              2026-H1 BEAR   scored  100% (N 1171) avg -0.085 · >med(0) +nan (0) vs <= -0.085 (1171) · unscored avg +nan
+   entry_chop_burst_prior_fill_s       2026-H1 BEAR   scored   23% (N 272) avg -0.016 · >med(12) -0.104 (128) vs <= +0.062 (144) · unscored avg -0.106
+   entry_chop_burst_prior_fill_s       2026-H1 BEAR   scored   23% (N 272) avg -0.016 · >med(12) -0.104 (128) vs <= +0.062 (144) · unscored avg -0.106
+
+CSV: /Users/guillearslanian/Downloads/NOFA AI/reports/YR6_WL_MOMENTUM_screen_ML_2026BEAR.csv (+ _alltests / _pockets)

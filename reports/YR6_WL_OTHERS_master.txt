@@ -1,0 +1,104 @@
+==================================================================================================================================
+FLIP-short  (master entry_strategy FLIP:FAN_RATIO_GATE)
+  master window 2026-06-17 → 2026-10-12 · all 55 (N  55.0 · WR   65% · avg +0.031 · Σ +1.68 as traded) · kept today's stack N  35.0 · WR   80% · avg +0.233 · Σ +8.17 · 21 d
+  master blocked by today's stack: 20 · N  20.0 · WR   40% · avg -0.325 · Σ -6.49 · reasons {'FLIP_FAN_BTC_EMA13': 12, 'FLIP_FAN_WEAK_BOUNCE': 8}
+  (flip-dead window 2026-07-08 → 08-11 removed from the replay side)
+  replay same window: N  62.0 · WR   68% · avg -0.064 · Σ -3.95 · 47 d · on live-active days only: N  35.3 · WR   67% · avg -0.097 · Σ -3.43 · 25 d
+     2026-H1 BEAR: replay N  15.3 · WR   72% · avg -0.069 · Σ -1.06 · master kept N  18.0 · WR   94% · avg +0.473 · Σ +8.51
+     2026-H2 BULL: replay N  20.0 · WR   63% · avg -0.119 · Σ -2.37 · master kept N  18.0 · WR   67% · avg -0.002 · Σ -0.03
+     washed-out Jun-17→Jul-2   : master kept N  18.0 · WR   94% · avg +0.473 · Σ +8.51 · 9 d | replay N  17.0 · WR   73% · avg -0.061 · Σ -1.04 · 11 d
+     after Jul-2               : master kept N  17.0 · WR   65% · avg -0.020 · Σ -0.34 · 12 d | replay N  18.3 · WR   62% · avg -0.131 · Σ -2.39 · 14 d
+  ② matched (pair, ≤ 20 min): 71 seed-matches · 30 distinct live fills of 55 (25 of 35 kept)
+     kept & matched: live N  62.0 · WR   85% · avg +0.249 · Σ +15.46  vs  replay same entries N  62.0 · WR   69% · avg -0.037 · Σ -2.30 → matched Δ (live − replay) +0.286/fill (median +0.039); entry-px Δ (replay worse +) median +0.063%, |dt| median 59s
+     exit-reason crosstab (live rows × replay cols), kept & matched:
+replay_reason      FLIP_HARD_TP_LADDER  FLIP_RUNNER_TRAIL  FLIP_STOP_LOSS
+live_reason                                                              
+FLIP_RUNNER_TRAIL                    1                 42              10
+FLIP_STOP_LOSS                       0                  0               9
+     replay STOPPED but live did not: 10 seed-matches · live N  10.0 · WR  100% · avg +0.367 · Σ +3.67 · replay N  10.0 · WR    0% · avg -1.070 · Σ -10.70 · live trough median -0.64 vs replay trough median -1.09; replay hold median 21.2 min vs live 9.1
+     distinct live fills · both trail/TP                     :  17 · live +0.506 vs replay +0.375 → Δ +0.131 · Σ Δ +2.23
+     distinct live fills · replay stop, live not (any seed)  :   4 · live +0.333 vs replay -0.903 → Δ +1.236 · Σ Δ +4.94
+     distinct live fills · both stop                         :   4 · live -0.954 vs replay -0.971 → Δ +0.016 · Σ Δ +0.07
+     distinct matched kept fills ≤ Jul-2: 12 · live +0.437 vs replay -0.007 → Δ +0.444 (median +0.319)
+     distinct matched kept fills > Jul-2: 13 · live +0.067 vs replay -0.080 → Δ +0.147 (median +0.033)
+  ③ live kept but NO replay fill on any seed: N  10.0 · WR   70% · avg +0.205 · Σ +2.05 (JTO 06-17, ONDO 06-18, H 06-19, IDOL 06-26, POWR 06-28, CHZ 06-30, DEXE 07-07, DEXE 07-07, AAVE 10-01, MUBARAK 10-12)
+     replay fills with no live fill (active days): N  11.7 · WR   66% · avg -0.145 · Σ -1.70 · 20 d · replay matched: N  23.7 · WR   68% · avg -0.073 · Σ -1.74
+  ④ gap master-kept +0.233 − replay-active -0.097 = +0.331/fill · of which exit-side on the SAME entries (live +0.245 − replay -0.037) = +0.282; the rest is selection (which fills each side took)
+     cross-check Σ: live kept Σ +8.17 over 35 vs replay Σ/seed -3.43 over 35.3/seed
+==================================================================================================================================
+Spike-Fade  (master entry_strategy SPIKE_FADE)
+  master window 2026-07-28 → 2026-10-12 · all 123 (N 123.0 · WR   69% · avg +0.089 · Σ +10.99 as traded) · kept today's stack N  73.0 · WR   89% · avg +0.357 · Σ +26.06 · 42 d
+  master blocked by today's stack: 50 · N  50.0 · WR   46% · avg -0.261 · Σ -13.06 · reasons {'FADE_FRESHBREAK': 30, 'FADE_LAGGARD': 10, 'FADE_MAXVOL': 5, 'FADE_BD13': 2, 'PAIR_BLACKLIST': 2, 'FLOOR_2M': 1}
+  replay same window: N  61.3 · WR   71% · avg -0.069 · Σ -4.21 · 47 d · on live-active days only: N  49.7 · WR   74% · avg +0.014 · Σ +0.68 · 38 d
+     2026-H2 BULL: replay N  49.7 · WR   74% · avg +0.014 · Σ +0.68 · master kept N  70.0 · WR   89% · avg +0.349 · Σ +24.45
+     washed-out Jun-17→Jul-2   : master kept N 0 | replay N 0
+     after Jul-2               : master kept N  73.0 · WR   89% · avg +0.357 · Σ +26.06 · 42 d | replay N  49.7 · WR   74% · avg +0.014 · Σ +0.68 · 38 d
+  ② matched (pair, ≤ 20 min): 87 seed-matches · 36 distinct live fills of 123 (35 of 73 kept)
+     kept & matched: live N  86.0 · WR   81% · avg +0.220 · Σ +18.95  vs  replay same entries N  86.0 · WR   87% · avg +0.255 · Σ +21.91 → matched Δ (live − replay) -0.034/fill (median -0.000); entry-px Δ (replay worse +) median +0.000%, |dt| median 30s
+     exit-reason crosstab (live rows × replay cols), kept & matched:
+replay_reason      HARD_TP_LADDER  RUNNER_TRAIL  RUNNER_TRAIL_LATE  STOP_LOSS
+live_reason                                                                  
+HARD_TP_LADDER                  2             1                  0          1
+RUNNER_TRAIL                    1            54                  2          6
+RUNNER_TRAIL_LATE               0             3                  0          0
+SPIKE_LOCK                      0             0                  6          0
+STOP_LOSS                       1             3                  2          4
+     replay STOPPED but live did not: 7 seed-matches · live N   7.0 · WR  100% · avg +0.439 · Σ +3.07 · replay N   7.0 · WR    0% · avg -1.537 · Σ -10.76 · live trough median -0.50 vs replay trough median -1.53; replay hold median 0.3 min vs live 0.5
+     live STOPPED but replay did not: 6 · live N   6.0 · WR    0% · avg -1.518 · Σ -9.11 · replay N   6.0 · WR  100% · avg +0.353 · Σ +2.12
+     distinct live fills · both trail/TP                     :  26 · live +0.459 vs replay +0.590 → Δ -0.131 · Σ Δ -3.41
+     distinct live fills · replay stop, live not (any seed)  :   4 · live +0.543 vs replay -0.662 → Δ +1.205 · Σ Δ +4.82
+     distinct live fills · live stop, replay not             :   4 · live -1.514 vs replay -0.402 → Δ -1.113 · Σ Δ -4.45
+     distinct live fills · both stop                         :   1 · live -1.497 vs replay -1.551 → Δ +0.054 · Σ Δ +0.05
+     distinct matched kept fills > Jul-2: 35 · live +0.187 vs replay +0.273 → Δ -0.085 (median +0.015)
+  ③ live kept but NO replay fill on any seed: N  38.0 · WR   92% · avg +0.491 · Σ +18.65 (AIN 07-31, TWT 07-30, MET 07-29, PROM 07-28, BEL 08-09, MIRA 08-07, 1000XEC 08-06, 1000LUNC 08-04, SNX 08-04, VANRY 08-03, PIPPIN 08-03, HOLO 08-03, EGLD 08-01, EGLD 08-01, 1000RATS 08-17, XAN 08-16, ARC 08-15, PORTAL 08-14, FORM 08-14, XPL 08-14, TWT 08-13, TAKE 08-12, KAIA 08-27, HIVE 09-15, MERL 09-16, API3 09-19, BTR 09-20, 1000LUNC 09-27, DYDX 10-01, INIT 10-03, RESOLV 10-03, ZRX 10-05, TURTLE 10-08, BRETT 10-07, FLOW 10-07, AEVO 10-11, GRIFFAIN 10-12, GRIFFAIN 10-12)
+     replay fills with no live fill (active days): N  20.7 · WR   56% · avg -0.324 · Σ -6.70 · 23 d · replay matched: N  29.0 · WR   87% · avg +0.255 · Σ +7.38
+  ④ gap master-kept +0.357 − replay-active +0.014 = +0.343/fill · of which exit-side on the SAME entries (live +0.212 − replay +0.255) = -0.043; the rest is selection (which fills each side took)
+     cross-check Σ: live kept Σ +26.06 over 73 vs replay Σ/seed +0.68 over 49.7/seed
+==================================================================================================================================
+BullRun-Long  (master entry_strategy BULLRUN_LONG)
+  master window 2026-08-21 → 2026-09-21 · all 123 (N 123.0 · WR   41% · avg -0.177 · Σ -21.77 as traded) · kept today's stack N 102.0 · WR   48% · avg -0.033 · Σ -3.36 · 8 d
+  master blocked by today's stack: 21 · N  21.0 · WR   10% · avg -0.876 · Σ -18.40 · reasons {'SLEEVE_PAIR_BLACKLIST': 21}
+  replay same window: N  75.3 · WR   41% · avg -0.073 · Σ -5.48 · 4 d · on live-active days only: N  75.3 · WR   41% · avg -0.073 · Σ -5.48 · 4 d
+     2026-H2 BULL: replay N  75.3 · WR   41% · avg -0.073 · Σ -5.48 · master kept N  38.0 · WR   39% · avg +0.040 · Σ +1.52
+     washed-out Jun-17→Jul-2   : master kept N 0 | replay N 0
+     after Jul-2               : master kept N 102.0 · WR   48% · avg -0.033 · Σ -3.36 · 8 d | replay N  75.3 · WR   41% · avg -0.073 · Σ -5.48 · 4 d
+  ② matched (pair, ≤ 20 min): 10 seed-matches · 5 distinct live fills of 123 (5 of 102 kept)
+     kept & matched: live N  10.0 · WR   70% · avg +1.007 · Σ +10.07  vs  replay same entries N  10.0 · WR   70% · avg +1.178 · Σ +11.78 → matched Δ (live − replay) -0.171/fill (median +0.000); entry-px Δ (replay worse +) median -0.075%, |dt| median 394s
+     exit-reason crosstab (live rows × replay cols), kept & matched:
+replay_reason     BR_BREAKEVEN_EXIT  BR_STOP_LOSS  BR_TRAILING_STOP
+live_reason                                                        
+BR_STOP_LOSS                      1             2                 0
+BR_TRAILING_STOP                  0             1                 6
+     live STOPPED but replay did not: 1 · live N   1.0 · WR    0% · avg -1.201 · Σ -1.20 · replay N   1.0 · WR  100% · avg +0.199 · Σ +0.20
+     distinct live fills · both trail/TP                     :   2 · live +2.205 vs replay +2.447 → Δ -0.242 · Σ Δ -0.48
+     distinct live fills · replay stop, live not (any seed)  :   1 · live +0.441 vs replay -0.700 → Δ +1.141 · Σ Δ +1.14
+     distinct live fills · live stop, replay not             :   1 · live -1.201 vs replay -0.501 → Δ -0.701 · Σ Δ -0.70
+     distinct live fills · both stop                         :   1 · live -1.200 vs replay -1.202 → Δ +0.002 · Σ Δ +0.00
+     distinct matched kept fills > Jul-2: 5 · live +0.490 vs replay +0.498 → Δ -0.008 (median +0.002)
+  ③ live kept but NO replay fill on any seed: N  97.0 · WR   47% · avg -0.060 · Σ -5.81 (SOL 08-23, SUI 08-23, LINK 08-23, HYPE 08-23, DOGE 08-23, XRP 08-23, PUMP 08-22, DOGE 08-22, ADA 08-22, DOGE 08-22, HYPE 08-22, SOL 08-22, LINK 08-22, XRP 08-22, PUMP 08-22, DOGE 08-22, SOL 08-22, XRP 08-22, 1000PEPE 08-22, DOGE 08-22, HYPE 08-22, XRP 08-22, SOL 08-21, 1000PEPE 08-21, DOGE 08-21, SOL 08-21, XRP 08-21, HYPE 08-25, PUMP 08-25, PROM 08-25, 1000PEPE 08-25, DOGE 08-25, SOL 08-25, ENA 09-19, UNI 09-19, G 09-19, DOGE 09-19, XRP 09-19, NEAR 09-19, ENA 09-19, XRP 09-19, DOGE 09-19, HYPE 09-19, ENA 09-19, G 09-19, BNB 09-19, G 09-19, DOGE 09-19, NEAR 09-19, XRP 09-19, SOL 09-19, HYPE 09-19, UNI 09-19, NEAR 09-19, HYPE 09-19, XRP 09-19, UNI 09-19, SOL 09-19, G 09-18, SOL 09-18, HYPE 09-18, XRP 09-18, NEAR 09-18, UNI 09-21, XRP 09-21, NEAR 09-21, DOGE 09-21, SUI 09-21, HYPE 09-21, ENA 09-21, NEAR 09-21, XRP 09-21, SOL 09-21, BNB 09-21, DOGE 09-21, AVAX 09-21, NEAR 09-21, SUI 09-21, ENA 09-21, AVAX 09-21, ENA 09-20, NEAR 09-20, AVAX 09-20, XRP 09-20, DOGE 09-20, SOL 09-20, 1000PEPE 09-20, 1000PEPE 09-21, HYPE 09-21, ENA 09-21, UNI 09-21, NEAR 09-21, BNB 09-21, DOGE 09-21, SUI 09-21, XRP 09-21, SOL 09-21)
+     replay fills with no live fill (active days): N  72.0 · WR   40% · avg -0.131 · Σ -9.40 · 4 d · replay matched: N   3.3 · WR   70% · avg +1.178 · Σ +3.93
+  ④ gap master-kept -0.033 − replay-active -0.073 = +0.040/fill · of which exit-side on the SAME entries (live +0.490 − replay +1.178) = -0.688; the rest is selection (which fills each side took)
+     cross-check Σ: live kept Σ -3.36 over 102 vs replay Σ/seed -5.48 over 75.3/seed
+==================================================================================================================================
+BearRun-Short  (master entry_strategy BEARRUN_SHORT)
+  master window 2026-10-07 → 2026-10-07 · all 2 (N   2.0 · WR  100% · avg +0.539 · Σ +1.08 as traded) · kept today's stack N   2.0 · WR  100% · avg +0.539 · Σ +1.08 · 1 d
+  master blocked by today's stack: 0 · N 0 · reasons {}
+  replay same window: N   2.7 · WR   88% · avg +0.268 · Σ +0.71 · 1 d · on live-active days only: N   2.7 · WR   88% · avg +0.268 · Σ +0.71 · 1 d
+     2026-H2 BULL: replay N   2.7 · WR   88% · avg +0.268 · Σ +0.71 · master kept N   2.0 · WR  100% · avg +0.539 · Σ +1.08
+     washed-out Jun-17→Jul-2   : master kept N 0 | replay N 0
+     after Jul-2               : master kept N   2.0 · WR  100% · avg +0.539 · Σ +1.08 · 1 d | replay N   2.7 · WR   88% · avg +0.268 · Σ +0.71 · 1 d
+  ② matched (pair, ≤ 20 min): 6 seed-matches · 2 distinct live fills of 2 (2 of 2 kept)
+     kept & matched: live N   6.0 · WR  100% · avg +0.539 · Σ +3.23  vs  replay same entries N   6.0 · WR  100% · avg +0.462 · Σ +2.77 → matched Δ (live − replay) +0.077/fill (median +0.049); entry-px Δ (replay worse +) median +0.023%, |dt| median 25s
+     exit-reason crosstab (live rows × replay cols), kept & matched:
+replay_reason  RUNNER_TRAIL
+live_reason                
+RUNNER_TRAIL              6
+     distinct live fills · both trail/TP                     :   2 · live +0.539 vs replay +0.462 → Δ +0.077 · Σ Δ +0.15
+     distinct matched kept fills > Jul-2: 2 · live +0.539 vs replay +0.462 → Δ +0.077 (median +0.077)
+  ③ live kept but NO replay fill on any seed: N 0 ()
+     replay fills with no live fill (active days): N   0.7 · WR   50% · avg -0.316 · Σ -0.21 · 1 d · replay matched: N   2.0 · WR  100% · avg +0.462 · Σ +0.92
+  ④ gap master-kept +0.539 − replay-active +0.268 = +0.271/fill · of which exit-side on the SAME entries (live +0.539 − replay +0.462) = +0.077; the rest is selection (which fills each side took)
+     cross-check Σ: live kept Σ +1.08 over 2 vs replay Σ/seed +0.71 over 2.7/seed
+==================================================================================================================================
+SURGE_LONG  (master entry_strategy SURGE_LONG)
+  no master fills — sleeve has no real-fill check (state it)

@@ -1,0 +1,141 @@
+# Replay vs real — overlap 2026-06-18 → 2026-10-13 · master eras BASE, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B12, B13, B14, B15, B16, B17, B18, B19, B20
+
+## MOM-long
+### ① outcome level
+  REAL as-traded (all non-probe), pnl %                     N   188 ( 188.0/seed) · days  75 · WR 66.0% · avg +0.039 [-0.080,+0.173] P>0 0.74
+  REAL stack-kept (today's filters), stack %                N   136 ( 136.0/seed) · days  64 · WR 72.8% · avg +0.160 [+0.017,+0.309] P>0 0.98
+  REAL blocked by today's stack, as traded %                N    52 (  52.0/seed) · days  32 · WR 48.1% · avg -0.276 [-0.472,-0.088] P>0 0.00
+  REPLAY same calendar window (3 seeds)                     N   591 ( 197.0/seed) · days  90 · WR 63.6% · avg -0.004 [-0.101,+0.095] P>0 0.46
+  REPLAY inside live-active era spans only                  N   453 ( 151.0/seed) · days  71 · WR 64.5% · avg +0.027 [-0.085,+0.144] P>0 0.66
+  — ex washed-out window Jun-18→Jul-2:
+  REAL as-traded ex-wash                                    N   167 ( 167.0/seed) · days  62 · WR 61.7% · avg -0.031 [-0.163,+0.100] P>0 0.32
+  REAL kept ex-wash                                         N   116 ( 116.0/seed) · days  51 · WR 68.1% · avg +0.083 [-0.076,+0.254] P>0 0.84
+  REPLAY window ex-wash                                     N   502 ( 167.3/seed) · days  77 · WR 62.0% · avg -0.036 [-0.133,+0.076] P>0 0.25
+  REPLAY live-spans ex-wash                                 N   366 ( 122.0/seed) · days  58 · WR 62.3% · avg -0.010 [-0.135,+0.129] P>0 0.41
+  per era (real kept · real all · replay live-span/seed):
+    BASE  06-18→07-10  kept  32 +0.485 · all  35 +0.411 · replay  46.3/seed +0.093
+    B1    07-11→07-30  kept  15 +0.256 · all  25 +0.140 · replay  42.3/seed -0.120
+    B2    08-01→08-10  kept  10 +0.191 · all  25 -0.086 · replay   6.7/seed +0.072
+    B3    08-11→08-24  kept  22 +0.147 · all  28 +0.117 · replay  14.3/seed +0.146
+    B4    08-24→08-25  kept   1 +0.117 · all   5 -0.171 · replay   0.7/seed -0.857
+    B5    08-26→08-27  kept   3 +0.452 · all   4 +0.354 · replay   3.7/seed -0.214
+    B6    09-11→09-11  kept   2 -0.899 · all   3 -0.566 · replay   0.0/seed +nan
+    B7    09-14→09-15  kept   1 +0.100 · all   2 -0.546 · replay   0.7/seed -0.150
+    B8    09-16→09-18  kept   4 +0.113 · all   5 -0.053 · replay   4.3/seed +0.115
+    B9    09-18→09-19  kept   2 +0.254 · all   3 -0.078 · replay   0.0/seed +nan
+    B10   09-20→09-20  kept   1 +0.100 · all   1 +0.096 · replay   0.0/seed +nan
+    B12   09-21→09-25  kept  15 +0.119 · all  16 +0.068 · replay  12.0/seed +0.104
+    B13   09-27→09-27  kept   3 +0.145 · all   6 -0.276 · replay   3.0/seed +0.255
+    B14   09-28→09-29  kept   4 -0.656 · all   8 -0.535 · replay   5.7/seed +0.062
+    B15   09-30→10-01  kept   1 -0.993 · all   2 -0.996 · replay   1.3/seed -0.878
+    B16   10-02→10-02  kept   5 -0.184 · all   5 -0.184 · replay   2.7/seed +0.031
+    B17   10-05→10-06  kept   6 +0.655 · all   6 +0.655 · replay   5.3/seed +0.668
+    B18   10-07→10-07  kept   3 -0.695 · all   3 -0.695 · replay   0.7/seed -0.694
+    B19   10-09→10-12  kept   4 -0.439 · all   4 -0.439 · replay   1.3/seed -0.843
+    B20   10-12→10-12  kept   2 -0.699 · all   2 -0.699 · replay   0.0/seed +nan
+### ③ trade-level reproduction (same pair+dir, open ±15 min, any seed)
+  real fills reproduced by the replay: 76/188 (40%) · kept 55% · blocked 2% · real winners 46% vs real losers 30%
+  SAME trades (matched 76): real avg +0.233 · replay avg +0.192 · gap real−replay +0.042 (median -0.000) · sign agreement 91%
+  real fills the replay did NOT take: N 112 avg -0.093 (kept +0.074, N 61)
+  replay fills live did NOT take: N 432 (144/seed) avg -0.090 · inside live spans: N 294 avg -0.083 · outside (bot down / reset gaps): -0.106
+### ④ entry_* distributions — REPLAY window (pooled seeds) vs REAL kept (scored rows); sorted by |SMD|
+                                col  macro  real_cov  n_real      med_replay       med_real    smd     ks  ks_crit   sig
+          entry_btc_off30d_high_pct   True    +0.338      46          -4.210         -3.035 +0.820 +0.402   +0.223  True
+               entry_btc_rsi_closed   True    +0.110      15         +60.410        +62.870 +0.593 +0.319   +0.364 False
+               entry_btc_off24h_pct   True    +0.368      50          -0.790         -0.385 +0.503 +0.327   +0.215  True
+              entry_btc_above72_pct   True    +0.324      44         +51.300        +54.350 +0.469 +0.325   +0.227  True
+           entry_gap_5_8_signed_pct  False    +0.154      21          +0.086         +0.078 -0.406 +0.250   +0.312 False
+          entry_gap_5_20_signed_pct  False    +0.154      21          +0.354         +0.311 -0.398 +0.277   +0.312 False
+     entry_gap_5_20_prev_signed_pct  False    +0.154      21          +0.347         +0.325 -0.398 +0.248   +0.312 False
+                  entry_btc_r72_pct   True    +0.338      46          +0.200         +1.370 +0.388 +0.206   +0.223 False
+    entry_pair_1h_ema20_200_gap_pct  False    +0.154      21          +2.224         -0.159 -0.352 +0.200   +0.312 False
+                    entry_btc_eff72   True    +0.324      44          +0.026         +0.034 +0.314 +0.173   +0.227 False
+               entry_btc_1d_ret_pct   True    +0.154      21          +0.171         +0.943 +0.310 +0.360   +0.312  True
+              entry_long_heat_flags  False    +0.338      46          +1.000         +0.000 -0.240 +0.107   +0.223 False
+                     entry_cmc_rank  False    +0.184      25         +38.000        +62.000 -0.218 +0.274   +0.289 False
+                     entry_mcap_usd  False    +0.184      25 +1713517509.708 +971498900.000 -0.209 +0.159   +0.289 False
+              entry_btc_off24lo_pct   True    +0.368      50          +1.470         +1.700 +0.207 +0.166   +0.215 False
+ cat__entry_btc_regime==CHOPPY_WEAK   True    +1.000     136          +0.000         +0.000 +0.171 +0.023   +0.152 False
+          entry_pair_volume_24h_usd  False    +1.000     136   +91655407.342  +96166959.438 +0.157 +0.090   +0.152 False
+ cat__entry_btc_regime==STRONG_BULL   True    +1.000     136          +0.000         +0.000 -0.156 +0.075   +0.152 False
+                entry_quality_score  False    +1.000     136          +4.000         +4.000 -0.151 +0.058   +0.152 False
+                 entry_btc_adx_prev   True    +1.000     136         +26.113        +25.614 -0.135 +0.084   +0.152 False
+        entry_btc_ema50_100_gap_pct   True    +0.154      21          +0.021         +0.080 +0.132 +0.193   +0.312 False
+                      entry_btc_adx   True    +1.000     136         +26.808        +26.333 -0.124 +0.086   +0.152 False
+cat__entry_btc_regime==HEALTHY_BULL   True    +1.000     136          +1.000         +1.000 +0.108 +0.053   +0.152 False
+          entry_pattern_c_any_match  False    +1.000     136          +0.000         +0.000 -0.106 +0.027   +0.152 False
+             entry_pattern_c5_match  False    +1.000     136          +0.000         +0.000 -0.101 +0.005   +0.152 False
+  columns with KS > 5 % critical value: 4/66 · |SMD| ≥ 0.3: 11
+### ⑤ inside the replay window: fills that live ALSO took vs fills live did not take
+  replay fills, live also took = False                      N   432 ( 144.0/seed) · days  82 · WR 60.2% · avg -0.090 [-0.182,+0.002] P>0 0.03
+  replay fills, live also took = True                       N   159 (  53.0/seed) · days  46 · WR 73.0% · avg +0.231 [+0.017,+0.475] P>0 0.98
+
+## MOM-short
+### ① outcome level
+  REAL as-traded (all non-probe), pnl %                     N    49 (  49.0/seed) · days  27 · WR 61.2% · avg +0.028 [-0.191,+0.207] P>0 0.61
+  REAL stack-kept (today's filters), stack %                N    37 (  37.0/seed) · days  21 · WR 73.0% · avg +0.173 [-0.058,+0.405] P>0 0.93
+  REAL blocked by today's stack, as traded %                N    12 (  12.0/seed) · days   9 · WR 25.0% · avg -0.420 [-0.683,-0.169] P>0 0.00
+  REPLAY same calendar window (3 seeds)                     N   109 (  36.3/seed) · days  31 · WR 57.8% · avg -0.079 [-0.223,+0.069] P>0 0.15
+  REPLAY inside live-active era spans only                  N    90 (  30.0/seed) · days  26 · WR 61.1% · avg -0.024 [-0.214,+0.160] P>0 0.41
+  — ex washed-out window Jun-18→Jul-2:
+  REAL as-traded ex-wash                                    N    37 (  37.0/seed) · days  18 · WR 54.1% · avg -0.094 [-0.377,+0.107] P>0 0.19
+  REAL kept ex-wash                                         N    25 (  25.0/seed) · days  12 · WR 68.0% · avg +0.063 [-0.224,+0.344] P>0 0.66
+  REPLAY window ex-wash                                     N    85 (  28.3/seed) · days  22 · WR 51.8% · avg -0.164 [-0.316,-0.006] P>0 0.02
+  REPLAY live-spans ex-wash                                 N    66 (  22.0/seed) · days  17 · WR 54.5% · avg -0.115 [-0.326,+0.088] P>0 0.15
+  per era (real kept · real all · replay live-span/seed):
+    BASE  06-18→07-10  kept  14 +0.400 · all  14 +0.400 · replay   9.0/seed +0.175
+    B1    07-11→07-30  kept   4 +0.072 · all   7 -0.243 · replay   2.7/seed -0.094
+    B2    08-01→08-10  kept   0 +nan · all   0 +nan · replay   0.0/seed +nan
+    B3    08-11→08-24  kept   1 +0.342 · all   2 -0.183 · replay   3.3/seed -0.388
+    B4    08-24→08-25  kept   4 +0.583 · all   7 +0.325 · replay   2.7/seed +0.261
+    B5    08-26→08-27  kept   3 +0.392 · all   4 +0.387 · replay   4.7/seed +0.058
+    B6    09-11→09-11  kept   0 +nan · all   0 +nan · replay   0.0/seed +nan
+    B7    09-14→09-15  kept   0 +nan · all   0 +nan · replay   0.0/seed +nan
+    B8    09-16→09-18  kept   0 +nan · all   2 -0.620 · replay   0.0/seed +nan
+    B9    09-18→09-19  kept   0 +nan · all   0 +nan · replay   0.0/seed +nan
+    B10   09-20→09-20  kept   0 +nan · all   0 +nan · replay   0.0/seed +nan
+    B12   09-21→09-25  kept   0 +nan · all   2 -0.709 · replay   0.7/seed -0.292
+    B13   09-27→09-27  kept   2 -0.061 · all   2 -0.061 · replay   0.0/seed +nan
+    B14   09-28→09-29  kept   6 -0.347 · all   6 -0.347 · replay   4.3/seed -0.333
+    B15   09-30→10-01  kept   1 -0.712 · all   1 -0.712 · replay   1.0/seed +0.317
+    B16   10-02→10-02  kept   0 +nan · all   0 +nan · replay   0.0/seed +nan
+    B17   10-05→10-06  kept   2 -0.207 · all   2 -0.207 · replay   1.7/seed -0.246
+    B18   10-07→10-07  kept   0 +nan · all   0 +nan · replay   0.0/seed +nan
+    B19   10-09→10-12  kept   0 +nan · all   0 +nan · replay   0.0/seed +nan
+    B20   10-12→10-12  kept   0 +nan · all   0 +nan · replay   0.0/seed +nan
+### ③ trade-level reproduction (same pair+dir, open ±15 min, any seed)
+  real fills reproduced by the replay: 27/49 (55%) · kept 68% · blocked 17% · real winners 67% vs real losers 37%
+  SAME trades (matched 27): real avg +0.174 · replay avg +0.081 · gap real−replay +0.094 (median +0.055) · sign agreement 96%
+  real fills the replay did NOT take: N 22 avg -0.152 (kept +0.105, N 12)
+  replay fills live did NOT take: N 60 (20/seed) avg -0.278 · inside live spans: N 41 avg -0.251 · outside (bot down / reset gaps): -0.335
+### ④ entry_* distributions — REPLAY window (pooled seeds) vs REAL kept (scored rows); sorted by |SMD|
+                          col  macro  real_cov  n_real      med_replay        med_real    smd     ks  ks_crit   sig
+        entry_btc_above72_pct   True    +0.297      11         +50.900         +53.400 +0.846 +0.524   +0.468  True
+        entry_btc_off24lo_pct   True    +0.297      11          +0.650          +0.430 -0.737 +0.499   +0.468  True
+    entry_btc_off30d_high_pct   True    +0.297      11          -4.560          -4.770 +0.730 +0.284   +0.468 False
+         entry_btc_off24h_pct   True    +0.297      11          -1.840          -1.690 +0.716 +0.440   +0.468 False
+              entry_btc_eff72   True    +0.297      11          +0.024          +0.023 -0.689 +0.330   +0.468 False
+               entry_mcap_usd  False    +0.243       9 +1902358962.210 +5243058496.850 +0.456 +0.296   +0.509 False
+          entry_btc_rsi_prev6   True    +1.000      37         +42.500         +37.100 -0.442 +0.284   +0.318 False
+        entry_btc_ema20_slope   True    +1.000      37          -0.046          -0.051 -0.375 +0.179   +0.318 False
+entry_btc_dist_from_ema13_pct   True    +1.000      37          -0.115          -0.175 -0.368 +0.275   +0.318 False
+                entry_btc_rsi   True    +1.000      37         +41.000         +39.800 -0.358 +0.244   +0.318 False
+               entry_cmc_rank  False    +0.243       9         +34.000         +20.000 -0.320 +0.238   +0.509 False
+    entry_global_volume_ratio   True    +1.000      37          +0.773          +0.839 +0.314 +0.264   +0.318 False
+            entry_btc_atr_pct   True    +1.000      37          +0.159          +0.171 +0.310 +0.207   +0.318 False
+       entry_pattern_w6_match  False    +1.000      37          +0.000          +0.000 -0.310 +0.122   +0.318 False
+               entry_bull_pct   True    +1.000      37         +12.500         +14.600 +0.295 +0.188   +0.318 False
+       entry_pattern_c6_match  False    +1.000      37          +0.000          +0.000 +0.290 +0.106   +0.318 False
+               entry_bear_pct   True    +1.000      37         +82.600         +80.000 -0.276 +0.259   +0.318 False
+            entry_btc_r72_pct   True    +0.297      11          -1.180          -1.210 -0.267 +0.385   +0.468 False
+                entry_atr_pct  False    +1.000      37          +0.481          +0.458 -0.266 +0.179   +0.318 False
+    entry_pattern_c_any_match  False    +1.000      37          +0.000          +0.000 +0.257 +0.121   +0.318 False
+              entry_pair_rank  False    +1.000      37         +23.000         +28.000 +0.247 +0.195   +0.318 False
+       entry_pattern_w1_match  False    +1.000      37          +1.000          +1.000 -0.247 +0.120   +0.318 False
+            entry_ema_gap_5_8  False    +1.000      37          +0.127          +0.116 -0.243 +0.129   +0.318 False
+    entry_dist_from_ema13_pct  False    +1.000      37          -0.543          -0.490 +0.228 +0.148   +0.318 False
+           entry_ema5_stretch  False    +1.000      37          +0.230          +0.212 -0.228 +0.191   +0.318 False
+  columns with KS > 5 % critical value: 2/62 · |SMD| ≥ 0.3: 14
+### ⑤ inside the replay window: fills that live ALSO took vs fills live did not take
+  replay fills, live also took = False                      N    60 (  20.0/seed) · days  23 · WR 41.7% · avg -0.278 [-0.433,-0.096] P>0 0.00
+  replay fills, live also took = True                       N    49 (  16.3/seed) · days  16 · WR 77.6% · avg +0.165 [-0.056,+0.343] P>0 0.93

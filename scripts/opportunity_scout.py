@@ -1350,6 +1350,14 @@ def run():
     except Exception as _ftr_e:
         log(f"FRENZY_TP_REVERT revert gate failed: {_ftr_e}")
         _rg_sec += ["## 🎯↩ FRENZY_TP_REVERT", "", f"Unavailable this run ({str(_ftr_e)[:120]}).", ""]
+    try:                                               # 🧭📊 Oct-13 LITE_BTC1H_FALLING + LONG_NONTOP50 (pre-registered, DECISION_LOG 288; orders exports + daily top-50 volumes via scout_gvol's budgeted fetcher; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_frenzy_wl_lines as _fwl
+        _rg_sec += _fwl.run(now_ms, EX=EX, retry=_retry)
+    except Exception as _fwl_e:
+        log(f"FRENZY WL observe lines failed: {_fwl_e}")
+        _rg_sec += ["## 🧭📊 FRENZY WL observe lines", "", f"Unavailable this run ({str(_fwl_e)[:120]}).", ""]
     try:                                               # 📐🔁 Oct-12 LITE_STRETCH_REENTRY (pre-registered, DECISION_LOG 272; cache only — after FRENZY_WILLY_TP's fetch pass; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

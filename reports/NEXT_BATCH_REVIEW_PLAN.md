@@ -255,6 +255,16 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
 - [ ] Winners vs losers per sleeve — the §0c 100 %-of-variables screen (1D / 2D / pre-registered 3D, null + OOS).
 - [ ] Every FRENZY watchlist / Scout line: GVOL_SPLIT, HOLD_FRENZY_EXEMPT, FRENZY_REENTRY_AFTER_WIN, FRENZY_STRETCHED, LITE_OFF30H3,
       LITE_GVOL24_LOW, FRENZY_STRONG revert gate (197 — Scout-only, scripts/scout_revert_gates.py, not in CURRENT_STATE), ATR cap 3.0 (250), bearish block (250), GREEN_CLOCK, WILLY_TURNOVER_BLOCKED, WILLY_HOLD.
+- [ ] **LITE_BTC1H_FALLING (DECISION_LOG 288, Scout scripts/scout_frenzy_wl_lines.py):** FRENZY_LITE fills with `entry_btc_1h_slope` ≤ 0
+      vs > 0, actual pnl %, three blocks: ① the batch's LITE fills (zone · rest · unscored = no stamp: N · days · WR · avg %) · ② master per
+      batch (B18 / B19 / B20 / later — say how many LITE fills carry the stamp) · ③ backtest yr6 (2025 −0.674 / H1 +0.321 / H2 −0.495 vs
+      kept +0.088 / +0.166 / +0.457; top-50 subset). Frozen bar at zone N ≥ 20 on ≥ 8 days (RETIRE / FILTER CANDIDATE at WR < 50 % ∧ P ≥ 0.95 /
+      keep). Also read it by BTC regime (the bear half reversed it) before any arm talk.
+- [ ] **LONG_NONTOP50 (DECISION_LOG 288, same script):** FRENZY_LONG fills on pair-days outside top-50(day) ∪ top-50(day − 1) (prior-closed-day
+      quote volume, universe_daily_top50.csv rule; rebuilt from cached daily volumes) vs inside, three blocks: ① batch · ② master per batch
+      (rebuild membership for master fills from reports/backtest_cache/universe_daily_top50.csv; unknown days = unscored, counted) · ③ yr6
+      (non-top-50 −0.273 / −0.351 / −0.516 vs +0.154 / −0.002 / +0.022). Frozen bar at zone N ≥ 20 on ≥ 8 days (breakeven 66.7 % at +1.5 / −3).
+      Also show WIDE the same way (information only — yr6 WIDE non-top-50 −0.15 / −0.23 / −0.62) and WILLY by top-50 (§6.3 of the study).
 
 - [ ] **+DI / −DI** (operator): entry_frenzy_di_spread (+DI − −DI, last CLOSED 5m bar) and entry_frenzy_adx_delta (ADX now − 3 bars
       earlier) — NOT entry_pos_di / entry_neg_di / entry_adx_delta, which read the forming bar. FRENZY_STRONG is not a column: rebuild
@@ -418,3 +428,9 @@ at once.
   (bull 2025 ↔ bull 2026-H2) and check the bear H1 separately. Locked expectancy bar + 30–50 % haircut; list what could not be tested.
 - Questions to answer: does a sleeve only work in one regime (regime switch, not a filter)? which per-pair variables separate within
   a regime? LONG / WIDE size; momentum long; flip short; why the FULL stack ruins in every config (non-FRENZY sleeves sharing the book).
+
+### 🛡 SURGE_LONG EMA-gap filter (DECISION_LOG 287) — read at every batch review
+- Count `SURGE_LONG_EMA_GAP` blocks (and `_FAILOPEN`) from the engine counters / `[SURGE_LONG_EMA_GAP]` log; re-price each blocked candidate
+  from its logged px (ticks first, SURGE_LONG exit). 🔒 REVERT → off if ≥ 10 blocked over ≥ 5 windows show WR ≥ 31.5 % ∧ avg > 0.
+- Three blocks: ① batch SURGE_LONG kept vs blocked · ② master per batch (no SURGE_LONG rows yet) · ③ two-year replay (gap<0 zone per regime).
+

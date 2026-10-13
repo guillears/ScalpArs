@@ -633,6 +633,9 @@ def main(allow_proxy=False):
     _fb_rec = fade_freshbreak_inputs(df, allow_proxy=allow_proxy)   # 🧯 10-08c FRESHBREAK kline recompute (pre-ship verdicts; post-ship = parity print only)
     # 🌀👥 Oct-4 frozen chop ∧ burst block (live values at ship; DECISION_LOG 201) — ledger/test pin these to trading_config.json
     _CB_TH = SimpleNamespace(long_chop_burst_block_enabled=True, long_chop_burst_eff72_max=0.007, long_chop_burst_window_s=120.0)
+    # 📐 Oct-13 frozen SURGE_LONG EMA13−EMA50 gap floor (live value at ship; DECISION_LOG 287) — tests/test_surge_long_ema_gap.py pins it to trading_config.json
+    from services.surge import surge_long_ema_gap_block
+    _SURGE_GAP_TH = SimpleNamespace(surge_long_min_ema13_50_gap_pct=0.0)
     _off30 = {}
     if os.path.exists("reports/btc_off30d_hourly.csv"):
         _o = pd.read_csv("reports/btc_off30d_hourly.csv")
@@ -674,6 +677,10 @@ def main(allow_proxy=False):
                 k, why = False, 'SURGE_SHORT_OFF'   # 🐻⚡ Oct-4 (DECISION_LOG 200): surge_short_enabled = false → today's stack never opens it
             elif strat == 'SURGE_LONG':
                 why = 'SURGE_SLEEVE'     # ⚡ Sep-30: kept as its OWN sleeve (BTC spike trigger) — never a momentum row; Oct-4: probe size (lev 0.05)
+                # 📐 Oct-13 (DECISION_LOG 287): EMA13−EMA50 gap < 0 refused (services.surge.surge_long_ema_gap_block on the stamp G; unreadable =
+                # kept, fail-open like the engine). The master holds NO SURGE_LONG fill at ship → nothing re-prices, STACK_VERSION stays.
+                if surge_long_ema_gap_block(_SURGE_GAP_TH, r.get(G)) == 'SURGE_LONG_EMA_GAP':
+                    k, why = False, 'SURGE_LONG_EMA_GAP'
             elif strat in ('FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_WILLY'):   # 🎲 Oct-8 (251) WILLY: same tag, never a momentum row
                 why = 'FRENZY_SLEEVE'    # 🔥 Oct-3: OBSERVATION — the volume-frenzy sleeve's own row (40-fill review), never a momentum row · 🪶 Oct-7 LITE (243): same (no LITE fill in the master yet → nothing re-prices, STACK_VERSION stays)
             elif strat == 'SPIKE_FADE':

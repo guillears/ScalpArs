@@ -1,0 +1,234 @@
+A. headline per-regime numbers — fills (this study) vs reports/ENGINE_REPLAY_YR6_2Y_TODAY_regimes.csv (reprice script)
+  FLIP-short     2025 BULL     fills:  106.3/seed WR  63.9% avg -0.1053 $-791 | regimes.csv:  106.3  63.9% -0.1053 $-791 | MATCH
+  FLIP-short     2026-H1 BEAR  fills:   92.0/seed WR  58.7% avg -0.1962 $-1,276 | regimes.csv:   92.0  58.7% -0.1962 $-1,276 | MATCH
+  FLIP-short     2026-H2 BULL  fills:   46.7/seed WR  66.4% avg -0.0619 $-204 | regimes.csv:   46.7  66.4% -0.0619 $-204 | MATCH
+  Spike-Fade     2025 BULL     fills:  221.7/seed WR  65.7% avg +0.0181 $+1,784 | regimes.csv:  221.7  65.7% +0.0181 $+1,784 | MATCH
+  Spike-Fade     2026-H1 BEAR  fills:  279.0/seed WR  76.7% avg -0.0100 $-265 | regimes.csv:  279.0  76.7% -0.0100 $-265 | MATCH
+  Spike-Fade     2026-H2 BULL  fills:  110.0/seed WR  77.0% avg +0.0358 $+462 | regimes.csv:  110.0  77.0% +0.0358 $+462 | MATCH
+  SURGE_LONG     2025 BULL     fills:  127.3/seed WR  30.1% avg -0.1669 $-3,004 | regimes.csv:  127.3  30.1% -0.1669 $-3,004 | MATCH
+  SURGE_LONG     2026-H1 BEAR  fills:   92.3/seed WR  32.1% avg -0.0577 $-753 | regimes.csv:   92.3  32.1% -0.0577 $-753 | MATCH
+  SURGE_LONG     2026-H2 BULL  fills:   84.3/seed WR  34.4% avg +0.3610 $+4,304 | regimes.csv:   84.3  34.4% +0.3610 $+4,304 | MATCH
+  BullRun-Long   2025 BULL     fills:  133.0/seed WR  48.6% avg -0.0333 $-627 | regimes.csv:  133.0  48.6% -0.0333 $-627 | MATCH
+  BullRun-Long   2026-H2 BULL  fills:  130.0/seed WR  48.7% avg +0.1579 $+2,903 | regimes.csv:  130.0  48.7% +0.1579 $+2,903 | MATCH
+  BearRun-Short  2025 BULL     fills:   27.7/seed WR  57.8% avg -0.0990 $-97 | regimes.csv:   27.7  57.8% -0.0990 $-97 | MATCH
+  BearRun-Short  2026-H1 BEAR  fills:    9.3/seed WR  67.9% avg +0.0370 $+12 | regimes.csv:    9.3  67.9% +0.0370 $+12 | MATCH
+  BearRun-Short  2026-H2 BULL  fills:    6.7/seed WR  75.0% avg +0.1410 $+33 | regimes.csv:    6.7  75.0% +0.1410 $+33 | MATCH
+
+B. regime-switch read (uniform-degradation test: frozen whole-sleeve tercile cohorts × regime; avg %/fill, N/seed)
+  FLIP-short
+                      cohort   2025 BULL 2026-H1 BEAR 2026-H2 BULL
+                  atr_pct:lo +0.033 (36)  -0.023 (31)  +0.064 (14)
+                 atr_pct:mid -0.034 (42)  -0.217 (25)  -0.028 (14)
+                  atr_pct:hi -0.392 (28)  -0.332 (36)  -0.189 (18)
+                      rsi:lo -0.244 (30)  -0.328 (34)  -0.077 (18)
+                     rsi:mid -0.048 (40)  -0.140 (25)  -0.104 (17)
+                      rsi:hi -0.054 (36)  -0.106 (34)  +0.019 (12)
+                      adx:lo -0.139 (36)  -0.342 (32)  -0.132 (13)
+                     adx:mid -0.125 (37)  -0.072 (28)  +0.124 (15)
+                      adx:hi -0.045 (33)  -0.157 (32)  -0.168 (18)
+      pair_volume_24h_usd:lo -0.308 (17)  -0.154 (45)  -0.014 (20)
+     pair_volume_24h_usd:mid -0.093 (43)  -0.270 (25)  +0.134 (13)
+      pair_volume_24h_usd:hi -0.040 (46)  -0.198 (22)  -0.311 (14)
+ pair_ema20_ema50_gap_pct:lo -0.076 (34)  -0.204 (29)  +0.150 (19)
+pair_ema20_ema50_gap_pct:mid -0.125 (38)  -0.072 (31)  -0.130 (12)
+ pair_ema20_ema50_gap_pct:hi -0.112 (34)  -0.309 (32)  -0.261 (16)
+      dist_from_ema13_pct:lo -0.162 (40)  -0.132 (31)  -0.206 (11)
+     dist_from_ema13_pct:mid -0.069 (38)  -0.128 (29)  +0.004 (15)
+      dist_from_ema13_pct:hi -0.074 (29)  -0.320 (32)  -0.029 (21)
+    2025 BULL: regime avg -0.105 · 94% of 18 cohorts share its sign · worst-5 days carry 30% of losing-day Σ · best-5 days 32% of winning-day Σ · Σ ex best-5 days -16.45/seed vs Σ -11.19/seed
+    2026-H1 BEAR: regime avg -0.196 · 100% of 18 cohorts share its sign · worst-5 days carry 37% of losing-day Σ · best-5 days 40% of winning-day Σ · Σ ex best-5 days -21.91/seed vs Σ -18.05/seed
+    2026-H2 BULL: regime avg -0.062 · 67% of 18 cohorts share its sign · worst-5 days carry 67% of losing-day Σ · best-5 days 54% of winning-day Σ · Σ ex best-5 days -6.71/seed vs Σ -2.89/seed
+    month avg (N/seed): 25-01 +0.20(12) · 25-02 +0.12(15) · 25-03 -0.21(17) · 25-04 -0.89(5) · 25-05 -0.51(6) · 25-06 +0.06(9) · 25-07 -0.21(6) · 25-08 +0.18(7) · 25-09 -0.21(8) · 25-10 -0.05(5) · 25-11 -0.05(10) · 25-12 -0.35(7) · 26-01 -0.21(12) · 26-02 -0.18(16) · 26-03 -0.23(15) · 26-04 -0.09(12) · 26-05 -0.29(17) · 26-06 -0.16(20) · 26-07 -0.00(15) · 26-08 +0.08(10) · 26-09 -0.13(17) · 26-10 -0.31(5)
+    months positive: 5/22
+  Spike-Fade
+                      cohort   2025 BULL 2026-H1 BEAR 2026-H2 BULL
+                  atr_pct:lo +0.067 (80)  +0.013 (78)  +0.152 (46)
+                 atr_pct:mid -0.088 (65) +0.016 (104)  +0.014 (35)
+                  atr_pct:hi +0.057 (77)  -0.055 (98)  -0.121 (29)
+                      rsi:lo -0.196 (67) -0.009 (104)  +0.162 (33)
+                     rsi:mid +0.166 (72)  +0.068 (94)  +0.081 (36)
+                      rsi:hi +0.062 (82)  -0.102 (81)  -0.105 (41)
+                      adx:lo +0.067 (82)  -0.004 (87)  +0.086 (34)
+                     adx:mid +0.040 (71)  -0.078 (95)  -0.114 (37)
+                      adx:hi -0.064 (68)  +0.051 (97)  +0.134 (39)
+      pair_volume_24h_usd:lo -0.058 (64)  -0.009 (92)  +0.089 (48)
+     pair_volume_24h_usd:mid -0.228 (66) -0.000 (105)  +0.015 (32)
+      pair_volume_24h_usd:hi +0.246 (92)  -0.024 (82)  -0.027 (30)
+ pair_ema20_ema50_gap_pct:lo +0.025 (58) -0.021 (112)  +0.073 (33)
+pair_ema20_ema50_gap_pct:mid +0.006 (82)  +0.023 (80)  +0.094 (42)
+ pair_ema20_ema50_gap_pct:hi +0.025 (82)  -0.026 (87)  -0.069 (35)
+      dist_from_ema13_pct:lo +0.112 (72)  +0.044 (85)  +0.134 (46)
+     dist_from_ema13_pct:mid -0.123 (72)  +0.003 (96)  +0.053 (36)
+      dist_from_ema13_pct:hi +0.061 (78)  -0.070 (98)  -0.145 (28)
+    2025 BULL: regime avg +0.018 · 67% of 18 cohorts share its sign · worst-5 days carry 29% of losing-day Σ · best-5 days 26% of winning-day Σ · Σ ex best-5 days -18.41/seed vs Σ +4.00/seed
+    2026-H1 BEAR: regime avg -0.010 · 61% of 18 cohorts share its sign · worst-5 days carry 22% of losing-day Σ · best-5 days 24% of winning-day Σ · Σ ex best-5 days -14.04/seed vs Σ -2.79/seed
+    2026-H2 BULL: regime avg +0.036 · 67% of 18 cohorts share its sign · worst-5 days carry 44% of losing-day Σ · best-5 days 35% of winning-day Σ · Σ ex best-5 days -5.62/seed vs Σ +3.94/seed
+    month avg (N/seed): 25-01 -0.84(2) · 25-02 +0.84(15) · 25-03 +0.49(14) · 25-04 -0.15(16) · 25-05 +0.86(8) · 25-06 -0.33(2) · 25-07 -0.29(17) · 25-08 +0.24(27) · 25-09 +0.01(29) · 25-10 -1.08(11) · 25-11 -0.26(41) · 25-12 +0.18(24) · 26-01 +0.02(45) · 26-02 -0.14(31) · 26-03 -0.10(35) · 26-04 -0.14(37) · 26-05 -0.08(37) · 26-06 +0.10(110) · 26-07 +0.16(50) · 26-08 -0.02(26) · 26-09 -0.18(26) · 26-10 +0.15(8)
+    months positive: 10/22
+  SURGE_LONG
+                      cohort   2025 BULL 2026-H1 BEAR 2026-H2 BULL
+                  atr_pct:lo -0.179 (54)  -0.305 (25)  +0.648 (22)
+                 atr_pct:mid +0.050 (46)  -0.106 (26)  +0.605 (29)
+                  atr_pct:hi -0.509 (27)  +0.128 (41)  -0.041 (33)
+                      rsi:lo -0.359 (29)  +0.006 (37)  -0.317 (35)
+                     rsi:mid -0.460 (43)  -0.115 (32)  +0.565 (27)
+                      rsi:hi +0.158 (56)  -0.080 (23)  +1.190 (22)
+                      adx:lo -0.535 (36)  +0.004 (30)  -0.176 (35)
+                     adx:mid -0.278 (45)  -0.215 (33)  +0.676 (24)
+                      adx:hi +0.222 (47)  +0.053 (29)  +0.816 (25)
+      pair_volume_24h_usd:lo +0.290 (19)  +0.056 (45)  +0.201 (38)
+     pair_volume_24h_usd:mid -0.028 (41)  -0.272 (30)  +0.543 (30)
+      pair_volume_24h_usd:hi -0.377 (68)  +0.011 (17)  +0.398 (16)
+ pair_ema20_ema50_gap_pct:lo -0.444 (35)  -0.190 (33)  -0.353 (34)
+pair_ema20_ema50_gap_pct:mid -0.359 (43)  -0.028 (32)  +0.350 (26)
+ pair_ema20_ema50_gap_pct:hi +0.197 (49)  +0.068 (27)  +1.333 (25)
+      dist_from_ema13_pct:lo -0.170 (30)  -0.123 (39)  -0.412 (32)
+     dist_from_ema13_pct:mid -0.380 (47)  +0.105 (27)  +1.098 (27)
+      dist_from_ema13_pct:hi +0.033 (51)  -0.128 (26)  +0.558 (25)
+    2025 BULL: regime avg -0.167 · 67% of 18 cohorts share its sign · worst-5 days carry 22% of losing-day Σ · best-5 days 66% of winning-day Σ · Σ ex best-5 days -54.50/seed vs Σ -21.25/seed
+    2026-H1 BEAR: regime avg -0.058 · 56% of 18 cohorts share its sign · worst-5 days carry 29% of losing-day Σ · best-5 days 43% of winning-day Σ · Σ ex best-5 days -22.89/seed vs Σ -5.33/seed
+    2026-H2 BULL: regime avg +0.361 · 72% of 18 cohorts share its sign · worst-5 days carry 40% of losing-day Σ · best-5 days 68% of winning-day Σ · Σ ex best-5 days -13.45/seed vs Σ +30.44/seed
+    month avg (N/seed): 25-01 -1.13(5) · 25-02 -0.65(6) · 25-03 +0.10(7) · 25-04 +0.13(17) · 25-05 +0.16(19) · 25-06 +0.56(11) · 25-07 -0.44(12) · 25-08 -0.76(10) · 25-09 +0.22(11) · 25-10 -0.17(19) · 25-11 -0.66(8) · 25-12 -1.23(4) · 26-01 +0.01(5) · 26-02 -0.49(10) · 26-03 +0.15(18) · 26-04 -0.02(25) · 26-05 -0.17(18) · 26-06 +0.03(16) · 26-07 +0.02(27) · 26-08 +0.18(27) · 26-09 +0.76(26) · 26-10 +1.44(4)
+    months positive: 12/22
+  BullRun-Long
+                      cohort   2025 BULL 2026-H1 BEAR 2026-H2 BULL
+                  atr_pct:lo -0.017 (40)            –  +0.254 (47)
+                 atr_pct:mid +0.121 (43)            –  +0.160 (44)
+                  atr_pct:hi -0.182 (49)            –  +0.038 (39)
+                      rsi:lo -0.099 (48)            –  +0.090 (39)
+                     rsi:mid +0.088 (48)            –  +0.445 (39)
+                      rsi:hi -0.107 (36)            –  -0.011 (51)
+                      adx:lo -0.264 (44)            –  +0.125 (43)
+                     adx:mid -0.177 (44)            –  +0.223 (44)
+                      adx:hi +0.337 (45)            –  +0.126 (43)
+      pair_volume_24h_usd:lo -0.085 (23)            –  -0.001 (65)
+     pair_volume_24h_usd:mid +0.100 (57)            –  +0.068 (31)
+      pair_volume_24h_usd:hi -0.152 (54)            –  +0.545 (34)
+ pair_ema20_ema50_gap_pct:lo -0.326 (51)            –  +0.419 (37)
+pair_ema20_ema50_gap_pct:mid +0.075 (40)            –  -0.090 (48)
+ pair_ema20_ema50_gap_pct:hi +0.213 (43)            –  +0.208 (45)
+      dist_from_ema13_pct:lo +0.277 (45)            –  +0.339 (43)
+     dist_from_ema13_pct:mid -0.161 (44)            –  +0.090 (44)
+      dist_from_ema13_pct:hi -0.223 (44)            –  +0.049 (43)
+    2025 BULL: regime avg -0.033 · 61% of 18 cohorts share its sign · worst-5 days carry 96% of losing-day Σ · best-5 days 90% of winning-day Σ · Σ ex best-5 days -15.86/seed vs Σ -4.43/seed
+    2026-H2 BULL: regime avg +0.158 · 83% of 18 cohorts share its sign · worst-5 days carry 39% of losing-day Σ · best-5 days 76% of winning-day Σ · Σ ex best-5 days -10.45/seed vs Σ +20.53/seed
+    month avg (N/seed): 25-03 -0.16(20) · 25-04 -0.00(65) · 25-05 -0.03(48) · 26-08 +0.16(130)
+    months positive: 1/4
+  BearRun-Short
+                      cohort   2025 BULL 2026-H1 BEAR 2026-H2 BULL
+                  atr_pct:lo  +0.059 (8)   -0.082 (6)            –
+                 atr_pct:mid  -0.137 (9)   +0.122 (3)   +0.090 (2)
+                  atr_pct:hi -0.180 (11)            –   +0.078 (3)
+                      rsi:lo  -0.137 (5)   +0.083 (8)            –
+                     rsi:mid -0.093 (12)            –            –
+                      rsi:hi -0.087 (11)            –   +0.106 (4)
+                      adx:lo  -0.275 (8)   +0.113 (6)            –
+                     adx:mid  +0.055 (9)   +0.166 (2)   -0.052 (3)
+                      adx:hi -0.096 (10)            –   +0.233 (3)
+      pair_volume_24h_usd:lo  -0.139 (6)   -0.280 (5)   +0.030 (3)
+     pair_volume_24h_usd:mid -0.096 (11)            –            –
+      pair_volume_24h_usd:hi -0.077 (10)   +0.439 (3)   +0.410 (2)
+ pair_ema20_ema50_gap_pct:lo +0.102 (10)            –   +0.089 (3)
+pair_ema20_ema50_gap_pct:mid  -0.210 (9)   +0.203 (3)   +0.321 (3)
+ pair_ema20_ema50_gap_pct:hi  -0.228 (9)   +0.117 (5)            –
+      dist_from_ema13_pct:lo -0.288 (10)   +0.314 (3)            –
+     dist_from_ema13_pct:mid +0.125 (10)   -0.059 (2)   +0.096 (2)
+      dist_from_ema13_pct:hi  -0.139 (8)   -0.154 (4)   +0.170 (3)
+    2025 BULL: regime avg -0.099 · 78% of 18 cohorts share its sign · worst-5 days carry 97% of losing-day Σ · best-5 days -3161% of winning-day Σ · Σ ex best-5 days +0.00/seed vs Σ -2.74/seed
+    2026-H1 BEAR: regime avg +0.037 · 67% of 12 cohorts share its sign · worst-5 days carry -44% of losing-day Σ · best-5 days 30% of winning-day Σ · Σ ex best-5 days +0.00/seed vs Σ +0.35/seed
+    2026-H2 BULL: regime avg +0.141 · 91% of 11 cohorts share its sign · worst-5 days carry 0% of losing-day Σ · best-5 days 100% of winning-day Σ · Σ ex best-5 days +0.00/seed vs Σ +0.94/seed
+    month avg (N/seed): 25-01 -0.01(24) · 25-03 +0.26(0) · 25-06 -0.88(2) · 25-08 -0.57(1) · 26-01 -0.59(1) · 26-03 -0.01(4) · 26-06 +0.24(4) · 26-09 +0.06(4) · 26-10 +0.27(3)
+    months positive: 4/9
+
+C. confirmation-count null (pair-day units; criterion same sign ∧ z_conf ≥ 1.28 one-sided; 300 shuffles of the confirmation regime)
+  FLIP-short     2025 BULL → 2026-H2 BULL: 6 1D survivors · confirmed 0 vs null mean 0.6 (95th 2) · P(null ≥ real) 1.000
+  FLIP-short     2026-H2 BULL → 2025 BULL: 3 1D survivors · confirmed 1 vs null mean 0.3 (95th 1) · P(null ≥ real) 0.280
+  Spike-Fade     2025 BULL → 2026-H2 BULL: 4 1D survivors · confirmed 0 vs null mean 0.4 (95th 2) · P(null ≥ real) 1.000
+  Spike-Fade     2026-H2 BULL → 2025 BULL: 3 1D survivors · confirmed 0 vs null mean 0.3 (95th 2) · P(null ≥ real) 1.000
+  SURGE_LONG     2025 BULL → 2026-H2 BULL: 27 1D survivors · confirmed 11 vs null mean 2.8 (95th 9) · P(null ≥ real) 0.017
+  SURGE_LONG     2026-H2 BULL → 2025 BULL: 27 1D survivors · confirmed 4 vs null mean 2.3 (95th 9) · P(null ≥ real) 0.207
+  BullRun-Long   2025 BULL → 2026-H2 BULL: 9 1D survivors · confirmed 0 vs null mean 0.9 (95th 3) · P(null ≥ real) 1.000
+  BullRun-Long   2026-H2 BULL → 2025 BULL: 4 1D survivors · confirmed 0 vs null mean 0.4 (95th 2) · P(null ≥ real) 1.000
+  BearRun-Short  2025 BULL → 2026-H2 BULL: 17 1D survivors · confirmed 0 vs null mean 0.0 (95th 0) · P(null ≥ real) 1.000
+
+D. SURGE_LONG candidate: pair EMA13−EMA50 gap < 0 (column entry_pair_ema20_ema50_gap_pct; sign split, no fitted threshold)
+  sleeve breakeven WR (all kept SURGE fills, 1×): avg win +2.331 / avg loss -1.074 → BE-WR 31.5%
+  2025 BULL     gap<0:   33.7/seed ·  32 d · WR   28% · avg -0.431 [-0.709, -0.142] | gap≥0:   93.7/seed ·  70 d · WR   31% · avg -0.072 [-0.455, +0.356] | Δ -0.359 P(Δ<0) 0.93
+      2025 top-50: gap<0   24.7/seed ·  25 d · WR   23% · avg -0.437 [-0.763, -0.013] | gap≥0   73.3/seed ·  57 d · WR   31% · avg -0.007 [-0.475, +0.486]
+      2025 non-top-50: gap<0    9.0/seed ·  10 d · WR   41% · avg -0.415 [-0.934, +0.189] | gap≥0   20.3/seed ·  20 d · WR   30% · avg -0.308 [-0.803, +0.249]
+  2026-H1 BEAR  gap<0:   32.0/seed ·  27 d · WR   31% · avg -0.158 [-0.673, +0.325] | gap≥0:   60.3/seed ·  45 d · WR   33% · avg -0.005 [-0.389, +0.402] | Δ -0.153 P(Δ<0) 0.70
+  2026-H2 BULL  gap<0:   32.7/seed ·  26 d · WR   16% · avg -0.503 [-0.963, +0.088] | gap≥0:   51.7/seed ·  29 d · WR   46% · avg +0.907 [+0.179, +1.751] | Δ -1.411 P(Δ<0) 1.00
+  ALL           gap<0:   98.3/seed ·  85 d · WR   25% · avg -0.366 [-0.624, -0.095] | gap≥0:  205.7/seed · 144 d · WR   35% · avg +0.194 [-0.101, +0.486] | Δ -0.560 P(Δ<0) 1.00
+  dose-response (all regimes, gap bins):
+    gap (-99.0, -1.0] :  70.3/seed · WR   24% · avg -0.436 · 2025 BU -0.36(24) · 2026-H1 -0.15(26) · 2026-H2 -0.87(21)
+    gap (-1.0, -0.5]  :  15.0/seed · WR   20% · avg -0.282 · 2025 BU -0.48(6) · 2026-H1 -0.82(2) · 2026-H2 +0.11(6)
+    gap (-0.5, 0.0]   :  13.0/seed · WR   38% · avg -0.084 · 2025 BU -0.80(4) · 2026-H1 +0.17(4) · 2026-H2 +0.22(5)
+    gap (0.0, 0.5]    :  20.7/seed · WR   32% · avg +0.075 · 2025 BU -0.91(8) · 2026-H1 +0.27(6) · 2026-H2 +1.14(7)
+    gap (0.5, 1.0]    :  20.3/seed · WR   43% · avg +0.184 · 2025 BU -0.32(9) · 2026-H1 -0.14(7) · 2026-H2 +1.61(5)
+    gap (1.0, 2.0]    :  37.0/seed · WR   38% · avg -0.199 · 2025 BU -0.62(13) · 2026-H1 -0.03(15) · 2026-H2 +0.11(9)
+    gap (2.0, 4.0]    :  52.7/seed · WR   32% · avg +0.288 · 2025 BU +0.32(29) · 2026-H1 -0.48(11) · 2026-H2 +0.85(13)
+    gap (4.0, 99.0]   :  75.0/seed · WR   35% · avg +0.357 · 2025 BU +0.07(35) · 2026-H1 +0.21(22) · 2026-H2 +1.08(18)
+  per-seed avg of the gap<0 zone: seed 1 -0.364 vs rest +0.325 · seed 2 -0.280 vs rest +0.152 · seed 3 -0.450 vs rest +0.099
+  [way 1 · all regimes] N 98.3/seed (295 fills) · windows (days) 85 · WR 25.1% vs BE 31.5% → ✓ · avg -0.366, 95% day-bootstrap upper -0.137 → ✓ (one-sided 95 %) · max pair share of loss 6% · max day share 5% → ✓ · N≥15 ✓
+  [way 2 · raw loop] N 98.3/seed (295 fills) · windows (days) 85 · WR 25.1% vs BE 31.5% → ✓ · avg -0.366, 95% day-bootstrap upper -0.139 → ✓ (one-sided 95 %) · max pair share of loss 6% · max day share 5% → ✓ · N≥15 ✓
+  [way 1 · 2025 BULL] N 33.7/seed (101 fills) · windows (days) 32 · WR 27.7% vs BE 31.5% → ✓ · avg -0.431, 95% day-bootstrap upper -0.180 → ✓ (one-sided 95 %) · max pair share of loss 8% · max day share 15% → ✓ · N≥15 ✓
+  [way 1 · 2026-H1 BEAR] N 32.0/seed (96 fills) · windows (days) 27 · WR 31.2% vs BE 31.5% → ✓ · avg -0.158, 95% day-bootstrap upper +0.245 → ✗ (one-sided 95 %) · max pair share of loss 18% · max day share 12% → ✓ · N≥15 ✓
+  [way 1 · 2026-H2 BULL] N 32.7/seed (98 fills) · windows (days) 26 · WR 16.3% vs BE 31.5% → ✓ · avg -0.503, 95% day-bootstrap upper -0.035 → ✓ (one-sided 95 %) · max pair share of loss 10% · max day share 8% → ✓ · N≥15 ✓
+  block gap<0 · 2025 BULL    : sleeve -0.167/fill Σ -21.25/seed → kept -0.072/fill Σ -6.74/seed · ΔΣ +14.51 %-pts/seed (haircut 30–50 % → +7.25 … +10.15)
+  block gap<0 · 2026-H1 BEAR : sleeve -0.058/fill Σ -5.33/seed → kept -0.005/fill Σ -0.28/seed · ΔΣ +5.05 %-pts/seed (haircut 30–50 % → +2.52 … +3.53)
+  block gap<0 · 2026-H2 BULL : sleeve +0.361/fill Σ +30.44/seed → kept +0.907/fill Σ +46.89/seed · ΔΣ +16.44 %-pts/seed (haircut 30–50 % → +8.22 … +11.51)
+  block gap<0 · ALL          : sleeve +0.013/fill Σ +3.87/seed → kept +0.194/fill Σ +39.86/seed · ΔΣ +36.00 %-pts/seed (haircut 30–50 % → +18.00 … +25.20)
+  2025 BULL zone-loss concentration: top pairs ZEREBROUSDT 8%, VINEUSDT 8%, PNUTUSDT 6%
+  2026-H1 BEAR zone-loss concentration: top pairs PIPPINUSDT 18%, AIOTUSDT 12%, MYXUSDT 9%
+  2026-H2 BULL zone-loss concentration: top pairs TACUSDT 10%, MOVRUSDT 8%, BANKUSDT 7%
+  D2 within-trigger-window test: 110 seed-windows on 44 days hold both zones · mean(gap<0) − mean(gap≥0) = -0.839 (day-mean -0.776, 95 % day CI [-1.447, -0.147]) · by regime 2025 BU -0.211 (n 31) · 2026-H1 -0.378 (n 40) · 2026-H2 -1.811 (n 39)
+     windows with no gap<0 pick  :  394 seed-windows · mean window outcome +0.194
+     mixed                       :  110 seed-windows · mean window outcome -0.012
+     all picks gap<0             :  136 seed-windows · mean window outcome -0.325
+
+E. Spike-Fade bear-discovered macro cell in DAY units: entry_bull_pct < 21.72 ∧ entry_btc_atr_pct ≥ 0.1445 (thresholds frozen from the bear screen)
+  2025 BULL    : cell   48.7/seed ·  49 d · WR   66% · avg -0.154 [-0.653, +0.268] | rest  173.0/seed · 131 d · WR   66% · avg +0.067 [-0.111, +0.256] | DAY units: cell-days 39 mean +0.026 vs other days 116 mean +0.122 · fill Δ -0.221 P(Δ<0) 0.82
+  2026-H1 BEAR : cell   78.0/seed ·  68 d · WR   62% · avg -0.279 [-0.432, -0.136] | rest  201.0/seed · 107 d · WR   82% · avg +0.094 [+0.007, +0.177] | DAY units: cell-days 44 mean -0.240 vs other days 86 mean +0.034 · fill Δ -0.373 P(Δ<0) 1.00
+  2026-H2 BULL : cell   13.3/seed ·  12 d · WR   80% · avg +0.119 [-0.417, +0.452] | rest   96.7/seed ·  65 d · WR   77% · avg +0.024 [-0.131, +0.165] | DAY units: cell-days 9 mean +0.092 vs other days 60 mean +0.032 · fill Δ +0.095 P(Δ<0) 0.33
+  Spike-Fade BE-WR 72.4% (avg win +0.579 / loss -1.515); 2025 fades are 100% non-top-50 → exits on 1m bars
+
+F. FLIP-short context
+  BTC ≤ −15 % off 30d high (washed-out state) :   55.3/seed ·  42 d · WR   68% · avg -0.095 [-0.218, +0.027] · by regime 2025 BU -0.003(19) · 2026-H1 -0.149(35) · 2026-H2 +0.013(2)
+  −15 … −8                                    :   56.3/seed ·  50 d · WR   56% · avg -0.196 [-0.347, -0.040] · by regime 2025 BU -0.181(37) · 2026-H1 -0.244(19) · 2026-H2 +0.921(0)
+  > −8                                        :  133.3/seed · 107 d · WR   63% · avg -0.119 [-0.227, -0.013] · by regime 2025 BU -0.087(50) · 2026-H1 -0.216(38) · 2026-H2 -0.072(45)
+  replay flips inside the real washed-out window Jun-17→Jul-2:   17.0/seed ·  11 d · WR   73% · avg -0.061 [-0.197, +0.113]
+  FLIP-short     top-50 share by regime: 2025 BULL 82% · 2026-H1 BEAR 86% · 2026-H2 BULL 82% · stop-loss exit share 38%
+  Spike-Fade     top-50 share by regime: 2025 BULL 0% · 2026-H1 BEAR 3% · 2026-H2 BULL 3% · stop-loss exit share 23%
+  BullRun-Long   top-50 share by regime: 2025 BULL 100% · 2026-H2 BULL 98% · stop-loss exit share 80%
+  SURGE_LONG     top-50 share by regime: 2025 BULL 77% · 2026-H1 BEAR 82% · 2026-H2 BULL 86% · stop-loss exit share 100%
+  BearRun-Short  top-50 share by regime: 2025 BULL 83% · 2026-H1 BEAR 100% · 2026-H2 BULL 100% · stop-loss exit share 12%
+  FLIP stop share by regime × top-50: 2025 BU top50 37% / non 32% · 2026-H1 top50 39% / non 56% · 2026-H2 top50 34% / non 32%
+
+G. power — minimum detectable zone-vs-rest Δ (%/fill) for a 50/50 split at 80 % power, α 5 % two-sided (units as screened)
+  FLIP-short     2025 BULL    : pair-day units  157 → MDE 0.28 · day units   89 → MDE 0.35 · sleeve |avg| 0.11
+  FLIP-short     2026-H1 BEAR : pair-day units  129 → MDE 0.32 · day units   70 → MDE 0.39 · sleeve |avg| 0.20
+  FLIP-short     2026-H2 BULL : pair-day units   66 → MDE 0.44 · day units   37 → MDE 0.48 · sleeve |avg| 0.06
+  Spike-Fade     2025 BULL    : pair-day units  290 → MDE 0.47 · day units  155 → MDE 0.57 · sleeve |avg| 0.02
+  Spike-Fade     2026-H1 BEAR : pair-day units  358 → MDE 0.23 · day units  130 → MDE 0.31 · sleeve |avg| 0.01
+  Spike-Fade     2026-H2 BULL : pair-day units  154 → MDE 0.37 · day units   69 → MDE 0.53 · sleeve |avg| 0.04
+  SURGE_LONG     2025 BULL    : pair-day units  143 → MDE 0.73 · day units   85 → MDE 0.92 · sleeve |avg| 0.17
+  SURGE_LONG     2026-H1 BEAR : pair-day units  100 → MDE 1.32 · day units   53 → MDE 1.00 · sleeve |avg| 0.06
+  SURGE_LONG     2026-H2 BULL : pair-day units   89 → MDE 1.48 · day units   37 → MDE 1.66 · sleeve |avg| 0.36
+  BullRun-Long   2025 BULL    : pair-day units   59 → MDE 0.66 · day units    8 → MDE 1.81 · sleeve |avg| 0.03
+  BullRun-Long   2026-H2 BULL : pair-day units   56 → MDE 0.69 · day units    6 → MDE 1.19 · sleeve |avg| 0.16
+  BearRun-Short  2025 BULL    : pair-day units   32 → MDE 0.53 · day units    4 → MDE 1.45 · sleeve |avg| 0.10
+  BearRun-Short  2026-H1 BEAR : pair-day units   12 → MDE 0.86 · day units    5 → MDE 1.15 · sleeve |avg| 0.04
+  BearRun-Short  2026-H2 BULL : pair-day units    9 → MDE 0.96 · day units    2 → MDE nan · sleeve |avg| 0.14
+
+H. SURGE_LONG gap<0 robustness: leave-one-month-out (Δ = avg kept − avg sleeve, %/fill) and seed-by-seed bar
+  22 months · Δ range +0.141 … +0.210 (weakest without 2026-07) · zone avg range -0.432 … -0.303 (highest without 2026-07) · zone avg < 0 in 22/22
+  zone months negative: 17/21 · 25-02 -1.21(1) · 25-03 -1.20(0) · 25-04 -0.01(5) · 25-05 -1.20(1) · 25-06 -1.24(1) · 25-07 -0.28(2) · 25-08 -0.28(5) · 25-09 -0.55(5) · 25-10 -0.40(9) · 25-11 -0.11(3) · 25-12 -1.44(1) · 26-01 -0.92(2) · 26-02 -0.19(3) · 26-03 +0.01(8) · 26-04 -0.72(7) · 26-05 +0.40(6) · 26-06 +0.06(5) · 26-07 -0.78(13) · 26-08 -0.82(9) · 26-09 +0.24(10) · 26-10 -1.20(1)
+  [seed 1 only (N shown /3)] N 31.0/seed (93 fills) · windows (days) 69 · WR 23.7% vs BE 31.5% → ✓ · avg -0.364, 95% day-bootstrap upper -0.101 → ✓ (one-sided 95 %) · max pair share of loss 5% · max day share 5% → ✓ · N≥15 ✓
+  [seed 2 only (N shown /3)] N 32.7/seed (98 fills) · windows (days) 72 · WR 30.6% vs BE 31.5% → ✓ · avg -0.280, 95% day-bootstrap upper -0.028 → ✓ (one-sided 95 %) · max pair share of loss 6% · max day share 5% → ✓ · N≥15 ✓
+  [seed 3 only (N shown /3)] N 34.7/seed (104 fills) · windows (days) 76 · WR 21.2% vs BE 31.5% → ✓ · avg -0.450, 95% day-bootstrap upper -0.211 → ✓ (one-sided 95 %) · max pair share of loss 7% · max day share 4% → ✓ · N≥15 ✓
+
+I. Spike-Fade cell (entry_bull_pct < 21.72 ∧ entry_btc_atr_pct ≥ 0.1445) on master kept fades + bear concentration
+  master kept fades cell: N 8 · 8 d · WR 100% · avg +0.547
+  master kept fades rest: N 65 · 41 d · WR 88% · avg +0.333
+  bear cell loss concentration: top pair CCUSDT 6% · top-2 pairs 10% · top day 2026-06-08 6%
+  FLIP hi-ATR (entry_atr_pct ≥ 0.698, whole-sleeve T2) on master kept flips: see report (washed-out vs after)

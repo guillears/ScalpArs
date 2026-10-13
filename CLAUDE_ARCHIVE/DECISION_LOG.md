@@ -6471,3 +6471,62 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Gates:** DL 283's LONG / WIDE 10× revert gate is resolved (reverted by the operator before its 20 fills); LITE's 10× gate stays.
 - **Master STACK 2026-10-13a:** SLEEVE_SIZE_FROZEN LONG 0.1 / WIDE 0.05 → non-probe kept 455 · +$6,797.79 → +$6,683.60 (LONG 20 · −$18.76,
   WIDE 8 · +$21.02; B19 +$708.84 → +$581.41, B20 −$11.33 → −$222.63 — B20's three +1.5 LONG wins shrink with the size); validate ALL PASS.
+
+## (287) 2026-10-13 — 🛡 SURGE_LONG EMA13 − EMA50 gap filter ARMED at 0 (operator-approved from the two-year W/L study)
+- **Rule:** refuse a SURGE_LONG entry when the pair's EMA13 − EMA50 gap (%) < `surge_long_min_ema13_50_gap_pct` (new field; config default
+  None = off; trading_config.json 0.0 = armed; strict <, a gap equal to the threshold passes). The gate reads the exact value the fill is
+  stamped with (`entry_pair_ema20_ema50_gap_pct` — misnamed, holds EMA13−EMA50). Pure helper `services.surge.surge_long_ema_gap_block`;
+  engine `_maybe_open_surge` LONG side after selection / slot cap / price check; counter SURGE_LONG_EMA_GAP + log `[SURGE_LONG_EMA_GAP]`
+  (pair, gap, threshold, would-be entry px, trigger bar, rank, ATR, pair-vs-BTC move); unreadable gap → FAIL-OPEN, counter
+  SURGE_LONG_EMA_GAP_FAILOPEN. SURGE trigger ledger gets `refused_ema_gap` (model column + migration + engine + /api + UI table + both
+  text exports, `A/L/D/S/O/G`). UI input `config-sg-long-min-gap` (blank = off) + load / save + the shared export line. Builder SURGE_LONG
+  branch applies the same gate (frozen 0.0) — the master holds no SURGE_LONG row, so nothing re-prices and STACK_VERSION stays 2026-10-13a.
+- **Evidence (yr6a 2025 + yr6 2026 engine replay re-priced to today; reports/YR6_WL_OTHERS.md, scripts/study_yr6wl_others_*.py):** gap < 0
+  fills lose in all three regimes — 2025 BULL −0.43 vs kept −0.07 · 2026-H1 BEAR −0.16 vs −0.01 · 2026-H2 BULL −0.50 vs +0.91 %/fill;
+  discovered in H2 → confirmed in 2025 (P 0.93) and the median version 2025 → H2 (P 0.93); confirmation-count null P 0.017 (2025→H2) /
+  0.21 (H2→2025); same-trigger-window picks gap < 0 do 0.84 worse (CI −1.45…−0.15) = pair effect; holds in the 2025 top-50 subset, per seed,
+  leave-one-month-out 22/22, no pair > 6 % of the zone loss pooled (≤ 18 % inside one half — PIPPIN, H1). Passes the locked EXPECTANCY bar pooled (WR 25.1 % vs breakeven 31.5 %, 95 %
+  day-bootstrap upper −0.137, 85 windows); each bull half passes alone, the bear half fails on confidence only. +36 %-pts/seed over 2 years,
+  +18…+25 after the 30–50 % haircut. Caveat: no live SURGE_LONG fills exist → no real-fill check; split at 0 (no fitted threshold).
+- **🔒 REVERT GATE (pre-committed):** re-price the blocked candidates from the [SURGE_LONG_EMA_GAP] log (ticks first, 1m fallback, the
+  SURGE_LONG exit); revert (field → None / blank) if ≥ 10 blocked over ≥ 5 windows show WR ≥ 31.5 % AND avg > 0. Read at batch reviews.
+
+## (288) 2026-10-13 — 👁 LITE_BTC1H_FALLING + LONG_NONTOP50 registered as Scout observe lines (operator-approved; no live change)
+- **Source:** the yr6 two-year winners-vs-losers study (reports/YR6_WL_FRENZY.md §5–§6, scripts/study_yr6wl_frenzy_*.py; yr6 replay
+  priced at today's exits, seed 1 = analysis, seeds 2+3 + a stdlib recount = second computation). Recommendation there: no config change,
+  two observe lines with pre-committed gates.
+- **LITE_BTC1H_FALLING** — zone = FRENZY_LITE fill with `entry_btc_1h_slope` ≤ 0 (the engine's `_current_btc_1h_slope` = BTC 1h EMA20 vs 3
+  bars ago, %, stamped on every FRENZY fill; the study's exact column and 0 cut). Evidence: 2025 250 fills · 38.8 % · −0.674 %/fill (day CI
+  [−1.07, −0.28]) vs kept +0.088; 2026-H2 86 · −0.495 (P 0.91) vs +0.457; strongest survivor of the screen (day-unit p_adj 0.004, OOS
+  confirmation P 0.975); pooled two years 479 · 42.6 % WR vs 48.7 % breakeven, P 0.989 → passes the expectancy bar pooled only. Against:
+  **reverses in the 2026-H1 bear** (143 · +0.321, gate would have cost $3.2k), weak inside the top-50 (2025 81 · −0.336, P 0.85; two-year
+  top-50 −0.119, P 0.69); the pre-registered "only while BTC > SMA50" mechanism was refuted. → observe only.
+- **LONG_NONTOP50** — zone = FRENZY_LONG fill whose pair-day is outside top-50(day) ∪ top-50(day − 1), top-50(D) = highest quote volume on
+  the closed UTC day D − 1 (the replay's reports/backtest_cache/universe_daily_top50.csv rule, scripts/backtest_phase1_universe.py /
+  backtest_extend_cache.py; the study's top50_pairdays()). FRENZY fills stamp no `entry_pair_rank` (None on the FRENZY path), so the scout
+  rebuilds membership: the universe csv where it covers D, else 1d klines of every USDT perpetual alive that day via scout_gvol's budgeted
+  fetcher (all-or-nothing per refresh, ~530 weight, ≈ 30 s, shared cooldown honoured / armed on 418 / 429), cached in
+  reports/backtest_cache/scout_frenzy_wl/daily_qvol.json. Parity check 2026-10-13: the rebuilt top-50 for 10-11 (10-10 volumes) = the csv
+  list 50 / 50. Evidence: non-top-50 −0.273 / −0.351 / −0.516 vs top-50 +0.154 / −0.002 / +0.022 %/fill (2025 / 2026-H1 / 2026-H2; seeds
+  2+3 agree), P(diff < 0) 0.93 / 0.88 / 0.88, two years 320 · WR 60 % < 66.7 %, P 0.996; ≈ $1.6k over 2 years at 2× before haircut.
+  Against: found post-hoc after the summary table, failed the family-wise null (top50 flag p_adj 1.0 in both LONG screens), 24 h-volume
+  terciles non-monotonic in 2025 / H1 → observe only.
+- **Cohort (both):** CLOSED non-MANUAL fills of the sleeve in the orders exports, dedup (opened_at[:19], pair, entry_strategy), CLOSED beats
+  OPEN, never id; opened ≥ the "(DECISION_LOG 288)" commit + 10 min (pin 2026-10-13 12:00 UTC if git cannot find it). Entry filters → zone
+  vs rest on the fills' actual pnl % (no re-walk). Unscored (no slope stamp / membership unknown) listed apart, never counted; an unknown
+  membership holds the freeze until 7 days after the fill's day.
+- **🔒 FROZEN BAR (pre-registered 2026-10-13), per line, decided ONCE** at the first (open time, pair) prefix where the zone reaches N ≥ 20
+  on ≥ 8 UTC days: zone avg ≥ rest avg → RETIRE; FILTER CANDIDATE (operator decides) iff zone WR < the sleeve's breakeven of TODAY's
+  config exit = stop / (TP + stop) (LITE +3 / −3 → 50 %; LONG +1.5 / −3 → 66.7 %) ∧ day-clustered bootstrap P(zone avg < 0) ≥ 0.95
+  (4,000, seed 7) ∧ no single pair or day ≥ 50 % of the zone's gross loss; else KEEP OBSERVING. Deferred while a sleeve fill opened ≤ the
+  prefix end is OPEN or unscored-pending. A candidate still needs the 30–50 % haircut, the regime read (LITE's bear reversal) and a
+  pre-committed revert (first 10 blocked signals re-priced → WR ≥ breakeven or Σ > 0 → off). State reports/SCOUT_FRENZY_WL_LINES.json
+  (gitignored); hooked in scripts/opportunity_scout.py after FRENZY_TP_REVERT (wrapped); tests/test_scout_frenzy_wl_lines.py.
+- **Pre-floor live info (NOT counted, mixed exits incl. +3 TP era):** LITE 10-07 → 10-12: zone 5 · +0.148 vs rest 13 · +0.229. LONG
+  10-03 → 10-12: non-top-50 13 · 8 % · −2.54 vs top-50 10 · 40 % · −0.56 — direction-consistent with the study, N far below the bar.
+- **Could not be tested / caveats:** the yr6 replay lacks entry_pair_rank, breadth-door, funding, pair-age and gap-5-20 stamps (study §7);
+  2025 non-top-50 fills ran on 1m bars + an mcap proxy (fidelity-suspect, and LITE's 2025 loss sits mostly there); second-order fills (a
+  skipped LITE / LONG frees its slot / pair) are not priced; the live top-50 is rebuilt from TODAY's markets list (a coin delisted > 7 days
+  before the day is not ranked; non-coin / Alpha contracts are ranked, as in the replay's universe); the engine itself ranks by rolling
+  24 h ticker volume, the line by closed-day volume (the replay's rule, kept for parity with the evidence). LONG-blocks-LITE (study Q3) is
+  unaffected — LONG / WIDE stay ON (operator rule).

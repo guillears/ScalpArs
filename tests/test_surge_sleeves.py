@@ -125,12 +125,12 @@ def test_config_parity_and_d11_surfaces():
     live_th = live.get("thresholds", live)
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     keys = sorted(f for f in fields if f.startswith("surge_"))
-    assert len(keys) == 29, keys   # +surge_long_gvol_min, +surge_spacing_after_fill (Oct-4), +surge_long_exit_no_lock (Oct-5)
+    assert len(keys) == 30, keys   # +surge_long_gvol_min, +surge_spacing_after_fill (Oct-4), +surge_long_exit_no_lock (Oct-5), +surge_long_min_ema13_50_gap_pct (Oct-13)
     for k in keys:
         assert k in live_th, f"{k} missing from trading_config.json"
         assert html.count(k) >= 2, f"{k} not wired to the UI load + save handlers"
     ids = set(re.findall(r'id="(config-sg-[a-z0-9-]+)"', html))
-    assert len(ids) == 27   # +config-sg-gvol-min, +config-sg-spacing-after-fill (Oct-4), +config-sg-long-no-lock (Oct-5)
+    assert len(ids) == 28   # +config-sg-gvol-min, +config-sg-spacing-after-fill (Oct-4), +config-sg-long-no-lock (Oct-5), +config-sg-long-min-gap (Oct-13)
     for i in ids:
         assert html.count(f"'{i}'") >= 1, f"{i} has an input but no handler"
 
@@ -233,7 +233,7 @@ def test_trigger_ledger_is_persisted_and_on_every_surface():
     from models import SurgeTrigger
     cols = {c.name for c in SurgeTrigger.__table__.columns}
     for k in ("side", "bar_close_at", "btc_move_pct", "btc_vol_mult", "window_opens_at", "window_closes_at", "found_late_min",
-              "status", "checked", "picked", "refused_atr", "refused_leader", "refused_data", "refused_slots", "refused_open", "restarted"):
+              "status", "checked", "picked", "refused_atr", "refused_leader", "refused_data", "refused_slots", "refused_open", "refused_ema_gap", "restarted"):
         assert k in cols, k
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     assert html.count('id="surge-triggers-body"') == 1

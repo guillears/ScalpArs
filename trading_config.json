@@ -701,6 +701,7 @@
     "surge_btc_move_pct": 0.3,
     "surge_btc_vol_mult": 5.0,
     "surge_long_gvol_min": 1.0,
+    "surge_long_min_ema13_50_gap_pct": 0.0,
     "surge_long_require_24h_high": true,
     "surge_short_require_24h_low": false,
     "surge_trigger_spacing_hours": 4.0,

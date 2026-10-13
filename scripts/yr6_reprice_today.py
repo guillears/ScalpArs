@@ -30,6 +30,8 @@ from services import trading_engine as te  # noqa: E402
 from services.frenzy import frenzy_tp_for  # noqa: E402
 
 ap = argparse.ArgumentParser(); ap.add_argument("--book", type=float, default=2900.0); ap.add_argument("--draws", type=int, default=4000)
+ap.add_argument("--fills", default="ENGINE_REPLAY_YR6_fills.csv"); ap.add_argument("--years", default="2026"); ap.add_argument("--tag", default="YR6_TODAY")
+ap.add_argument("--no-book", action="store_true")
 A = ap.parse_args()
 ENG = te.trading_engine; ENG._bnb_burn_rate = 0.0
 INV = config.trading_config.investment
@@ -130,21 +132,23 @@ def day_ci(g, col):
     return tuple(np.percentile(s[idx].sum(1) / n[idx].sum(1), [2.5, 97.5]))
 
 
-F = pd.read_csv(os.path.join(REP, "ENGINE_REPLAY_YR6_fills.csv"), low_memory=False)
+F = pd.read_csv(os.path.join(REP, A.fills), low_memory=False)
 F["t"] = pd.to_datetime(F.t, format="mixed")
-F = F[F.year.astype(str) == "2026"].reset_index(drop=True)
+F = F[F.year.astype(str).isin(A.years.split(","))].reset_index(drop=True)
+F["regime"] = np.select([F.t < pd.Timestamp("2026-01-04"), F.t < pd.Timestamp("2026-07-01")], ["2025 BULL", "2026-H1 BEAR"], "2026-H2 BULL")
 F["pct_new"] = [reprice_pct(r) for r in F.itertuples()]
 F["nf_old"] = [notional_at(A.book, A.book, r, False)[0] for _, r in F.iterrows()]
 F["nf_new"] = [notional_at(A.book, A.book, r, True)[0] for _, r in F.iterrows()]
 F["usd_old"] = F.pct / 100 * F.nf_old
 F["usd_new"] = F.pct_new / 100 * F.nf_new
 seeds = sorted(F.seed.unique()); ns = len(seeds)
+F.to_csv(os.path.join(REP, f"ENGINE_REPLAY_{A.tag}_fills.csv"), index=False)   # per-fill re-priced rows (pct_new / usd_new / regime) for the W/L study
 # two-way check: the "old" fixed-book $ must equal yr6_tables' usd_fixed (same snapshot sizing for unchanged sleeves)
 _chk = F[~F.entry_strategy.isin(list(FZ_LEV)) & ~((F.entry_strategy == "MOMENTUM") & (F.direction == "LONG"))]
 _dd = (_chk.usd_old - _chk.usd_fixed).abs()
 print(f"check: unchanged-sleeve fixed-book $ vs yr6_tables usd_fixed — max |Δ| {_dd.max():.4f} on {len(_chk)} fills")
 
-L = [f"yr6 2026 RE-PRICED TO TODAY (b0f0682 · DECISION_LOG 283 + 284) — {len(F)} trimmed CLOSED fills · seeds {seeds} · "
+L = [f"yr6 RE-PRICED TO TODAY (443a7b5 · DECISION_LOG 283 + 284 + 286) — {len(F)} trimmed CLOSED fills · seeds {seeds} · "
      f"{F.t.min():%Y-%m-%d} → {F.t.max():%Y-%m-%d}",
      f"Today's FRENZY TP: LONG +{TP_NEW['FRENZY_LONG']:g} · WIDE +{TP_NEW['FRENZY_WIDE']:g} · LITE +{TP_NEW['FRENZY_LITE']:g} (stop −3, 12 h) · "
      f"lev mult {FZ_LEV} · momentum long × {float(TH.momentum_long_lev_mult):g}",
@@ -163,8 +167,17 @@ for sl, g in F.groupby("sleeve"):
              f"{row['avg_new']:+9.3f} [{lo:+.3f}, {hi:+.3f}] {row['usd_new']:+11,.0f} │ {h1:+.3f} / {h2:+.3f}")
 S = pd.DataFrame(rows)
 L.append(f"{'TOTAL':14} {len(F) / ns:7.0f} │ {'':6} {'':9} {S.usd_old.sum():+11,.0f} │ {'':6} {'':9} {'':17} {S.usd_new.sum():+11,.0f}")
-S.to_csv(os.path.join(REP, "ENGINE_REPLAY_YR6_TODAY_sleeves.csv"), index=False)
+S.to_csv(os.path.join(REP, f"ENGINE_REPLAY_{A.tag}_sleeves.csv"), index=False)
 
+# per regime (operator 2026-10-12: 2025 bull · 2026-H1 bear · 2026-H2 bull)
+L += ["", "Per regime — N/seed · WR · avg % (95 % day CI) · $/seed at today's size (fixed book)"]
+RG = []
+for (sl, rg), g in F.groupby(["sleeve", "regime"]):
+    lo, hi = day_ci(g, "pct_new")
+    RG.append(dict(sleeve=sl, regime=rg, n_seed=len(g) / ns, wr=(g.pct_new > 0).mean() * 100, avg=g.pct_new.mean(), ci_lo=lo, ci_hi=hi, usd=g.usd_new.sum() / ns))
+RG = pd.DataFrame(RG); RG.to_csv(os.path.join(REP, f"ENGINE_REPLAY_{A.tag}_regimes.csv"), index=False)
+for sl, g in RG.groupby("sleeve"):
+    L.append(f"  {sl:14} " + " | ".join(f"{r.regime}: {r.n_seed:4.0f} · {r.wr:3.0f} % · {r.avg:+.3f} [{r.ci_lo:+.2f}, {r.ci_hi:+.2f}] · ${r.usd:+,.0f}" for r in g.itertuples()))
 # FRENZY TP detail: how many LONG / WIDE fills the +1.5 changed, and which way
 L += ["", "FRENZY_LONG / WIDE: what +1.5 did to each fill (pooled seeds)"]
 for sl in ("FRENZY_LONG", "FRENZY_WIDE"):
@@ -177,7 +190,7 @@ for sl in ("FRENZY_LONG", "FRENZY_WIDE"):
 M = F.groupby(["sleeve", F.t.dt.strftime("%Y-%m")]).agg(n=("pct", "size"), avg_old=("pct", "mean"), avg_new=("pct_new", "mean"),
                                                          usd_old=("usd_old", "sum"), usd_new=("usd_new", "sum")).reset_index()
 M[["n", "usd_old", "usd_new"]] = M[["n", "usd_old", "usd_new"]] / ns
-M.to_csv(os.path.join(REP, "ENGINE_REPLAY_YR6_TODAY_monthly.csv"), index=False)
+M.to_csv(os.path.join(REP, f"ENGINE_REPLAY_{A.tag}_monthly.csv"), index=False)
 L += ["", "Per month — avg % new (old) · $/seed new — per sleeve"]
 piv = M.pivot(index="t", columns="sleeve", values="avg_new")
 pio = M.pivot(index="t", columns="sleeve", values="avg_old")
@@ -186,6 +199,8 @@ for sl in piv.columns:
     L.append(f"  {sl}: " + " · ".join(f"{m[5:]} {piv.loc[m, sl]:+.2f} ({pio.loc[m, sl]:+.2f}) ${piu.loc[m, sl]:+,.0f}"
                                          for m in piv.index if pd.notna(piv.loc[m, sl])))
 
+if A.no_book:
+    open(os.path.join(REP, f"ENGINE_REPLAY_{A.tag}.txt"), "w").write("\n".join(L) + "\n"); print("\n".join(L)); sys.exit(0)
 # shared compounding book per seed: full stack and FRENZY-only, old vs new
 B = []
 L += ["", f"Shared compounding book from ${A.book:,.0f} (per seed) — old (replay config) → new (today)"]
@@ -197,7 +212,7 @@ for scope, mask in (("FULL STACK", F.sleeve.notna()), ("FRENZY only", F.sleeve.s
         B.append(dict(scope=scope, seed=sd, **{f"old_{k}": v for k, v in o.items()}, **{f"new_{k}": v for k, v in n.items()}))
         L.append(f"  {scope:28} seed {sd}: ${o['end']:>10,.0f} (mdd {o['mdd_pct']:.0f} %, <20 % {o['below20']}) → ${n['end']:>10,.0f} "
                  f"(mdd {n['mdd_pct']:.0f} %, worst day {n['worst_day_pct']:.0f} %, {n['dcr_pct']:+.3f} %/day, <20 % {n['below20']})")
-pd.DataFrame(B).to_csv(os.path.join(REP, "ENGINE_REPLAY_YR6_TODAY_book.csv"), index=False)
+pd.DataFrame(B).to_csv(os.path.join(REP, f"ENGINE_REPLAY_{A.tag}_book.csv"), index=False)
 txt = "\n".join(L)
-open(os.path.join(REP, "ENGINE_REPLAY_YR6_TODAY.txt"), "w").write(txt + "\n")
+open(os.path.join(REP, f"ENGINE_REPLAY_{A.tag}.txt"), "w").write(txt + "\n")
 print(txt)

@@ -6440,3 +6440,23 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   counterfactual (recorded peak ≥ +1.5 books +1.5, else as traded) averages higher than the actual +3 exit → LITE back to the shared +1.5
   (`frenzy_lite_tp_pct` 0). Decided once. LITE's DL 283 10× revert gate stays (first 20 LITE
   fills at 10× avg < 0, or a UTC day's FRENZY fills < −25 % of the book → 8×).
+
+## (285) 2026-10-13 — 👁 WILLY 30-minute exit cells registered as Scout observe lines (operator; no live change)
+- **Question (operator):** a WILLY stop that tightens after X minutes, like spike fade? Or a −2 stop, or a 30-min exit, or both?
+- **Spike fade precedent (DL 111):** a plain time stop was REFUTED; the shipped rule is the LATE ARM (after 15 min the trail arms at +0.30
+  instead of +0.40 — bank a small bounce on a slow fade), i.e. a lower PROFIT line after X, not a tighter stop.
+- **Evidence (yr6 2026 replay, seed 1, 606 WILLY fills at today's +1.25 / −4 / 90, own tick paths, 89 % parity; B19 14 + B20 3 live fills on
+  their own paths at today's size; scripts/study_willy_late_sl.py, study_willy_sl_cap_grid.py, study_willy_late_tp_grid.py →
+  reports/WILLY_LATE_SL_STUDY.txt, WILLY_SL_CAP_GRID.txt, WILLY_LATE_TP_GRID.txt):** winners 74 % (median 4.8 min to TP, median trough
+  −0.86, 22 % dip below −2, 30 % below −1.5); stops 19 % (median 17 min); caps 7 % (avg −1.22). Today avg +0.100 %/fill ($+4,281 fixed
+  book). Stop −2 any cap: −0.06…−0.08 avg (Δ −0.16…−0.18, B19 −$470) → REFUTED. Tighter late stops (36 combos): best −2.5 after 15 Δ +0.008
+  (P 0.62, H2 negative), most negative. Cap 30: Δ −0.013 (P 0.35; H1 +0.15 / H2 −0.04 avg; B19 +$122, B20 +$108). Late TP +0.25 after
+  30 min Δ +0.018 (P 0.79, B19 +$237, B20 $0); +0.30 after 30 Δ +0.022 (P 0.83, B19 +$153, B20 $0); +0.30 after 20 Δ 0.000.
+- **Decision:** keep −4 / 90 live. Register three OBSERVE cells in Scout WILLY_TIMECAP: T125C30, LT30_025, LT30_03, own cohort from this
+  commit + 10 min (B19 / B20 already seen → not counted), frozen bar per cell (N ≥ 20 on ≥ 8 days; mean Δ > 0 ∧ P ≥ 0.90 ∧ no fill > 50 %
+  of ΣΔ ∧ parity ≥ 90 % ∧ integrity → CANDIDATE, operator decides; mean Δ ≤ 0 → KEEP TODAY). Caveat: best of ~75 variants (44 late-stop + 20 stop×cap + 12 late-TP) on one year,
+  bear-half driven → observe only; re-check on the 2025 replay. Why 30 min and not the late-TP grid's +0.4 after 15 min (Δ +0.023, P 0.77,
+  both halves positive): the operator asked about 30 min and the fade analog, and 30 min cuts the fewest late winners (49 vs 105); TP15_0.4
+  stays a study-only number for the 2025 re-check, not a registered cell.
+  The late-TP grid is non-monotonic in X (15 min +0.023 · 20 min ≈ 0 · 25 min mixed · 30 min +0.022) — a confound flag, one more reason
+  for observe-only. Review notes: 1m-tail bars straddling minute 30 are stamped at their close (provisional paths only; ticks exact). Added as a 🔴 IMPORTANT item in reports/NEXT_BATCH_REVIEW_PLAN.md.

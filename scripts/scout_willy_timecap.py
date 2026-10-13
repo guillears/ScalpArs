@@ -66,7 +66,29 @@ S4 CELLS    (DECISION_LOG 278, operator-approved 2026-10-12, OBSERVE only — th
             FROZEN BARS (pre-registered 2026-10-12, DECISION_LOG 278) — S4_BAR (CAP60 / CAP90) and S4_BAR_T125 (T125 cells), with the 281
             cohort / n/a sentences; "KEEP 120" in S4_BAR = keep today's exit (verdict label KEEP TODAY). State under S4_CAP60 / S4_CAP90 /
             S4_T125C60 / S4_T125C90 of reports/SCOUT_WILLY_TIMECAP.json.
-OLD_EXIT    (DECISION_LOG 281, operator-approved 2026-10-12, OBSERVE only) — the REVERT GATE of the WILLY exit change (+1 / −4 / 120 →
+            DL 285 CELLS (operator-approved 2026-10-13, OBSERVE only; the four cells above, OLD_EXIT and their DL 281 floor / frozen state
+            are untouched). Each vs TODAY (levels(): +1.25 / −4 / 90), same hybrid path, same −frenzy_willy_stop_pct stop:
+              T125C30   TP +1.25 · close at market at 30 min.
+              LT30_025  "late take-profit": TP +1.25 until minute 30, then +0.25 (the first print / bar with net ≥ the active line after
+                        minute 30) · cap = today's hold. Spike-fade late-arm analog (DECISION_LOG 111).
+              LT30_03   the same with +0.30 after minute 30.
+            evaluate_late() mirrors FX.evaluate's fill rules (tick TP at the print's net, 1m-bar TP at exactly the line, a bar touching both
+            lines = stop, a bar opening through the stop fills at its open, undecided before the path end = UNRES) with a TP line of +1.25
+            for t ≤ te + 30 min and +Z after (reference: ev() TPx_z in scripts/study_willy_late_sl.py). COHORT: CLOSED non-MANUAL WILLY fills
+            opened ≥ the "(DECISION_LOG 285)" commit + 10 min (git %ct; not found → PLACEHOLDER pin S285_DEPLOY_PIN 2026-10-13 23:00 UTC
+            + 10 min) — registered after B19 / B20 were seen, so earlier fills would be look-ahead: printed as context only. UNTOUCHED:
+            T125C30 = the S4 rule at cap 30; LT30_* = today's exit (TP or −4) fired at ≤ 30 min (same lines until then → Δ must be 0).
+            FROZEN BAR S285_BAR (label "pre-registered 2026-10-13, DECISION_LOG 285"), the S4 judge / freeze helpers, keys S4_T125C30 /
+            S4_LT30_025 / S4_LT30_03 of reports/SCOUT_WILLY_TIMECAP.json; own report subsection.
+            Evidence (2026 yr6 engine replay, seed 1, 606 WILLY fills, today's exit, own tick paths; scripts/study_willy_late_sl.py →
+            reports/WILLY_LATE_SL_STUDY.txt, scripts/study_willy_sl_cap_grid.py → reports/WILLY_SL_CAP_GRID.txt; fixed $2,900 book 10×):
+              today −4 / 90         avg +0.100 %/fill, $+4,281
+              −4 / 30 (T125C30)     avg +0.087 (Δ −0.013, P 0.35, H1 +0.15 / H2 −0.04 avg, Δ$ −543) · B19 Δ$ +122 · B20 Δ$ +108
+              late TP +0.25 @ 30    Δ +0.018 (P 0.79, H1 Δ +0.027 / H2 +0.002, Δ$ +787) · B19 +$237 · B20 $0
+              late TP +0.30 @ 30    Δ +0.022 (P 0.83, H1 Δ +0.031 / H2 +0.004, Δ$ +936) · B19 +$153 · B20 $0
+            Refuted: stop −2 (any cap) Δ −0.16 … −0.18 %/fill; tighter late stops all ≤ ~0; +0.3 after 20 min Δ 0.000. Caveat: the best of
+            ~75 variants (44 late-stop + 20 stop×cap + 12 late-TP) on one year → observe only; the 2025 replay re-check is pending.
+OLD_EXIT   (DECISION_LOG 281, operator-approved 2026-10-12, OBSERVE only) — the REVERT GATE of the WILLY exit change (+1 / −4 / 120 →
             +1.25 / −4 / 90, lev 10×). Same cohort (from the DL 281 deploy), same path: every counted fill walked under the NEW exit (today,
             from config) and the OLD exit (OLD_EXIT = +1 / −4 / 120); Δ = old − new; parity = the new walk vs the actual exit; untouched as
             above with the old TP. FROZEN REVERT BAR (OLD_BAR, pre-registered 2026-10-12, DECISION_LOG 281): first prefix N ≥ 20 counted on
@@ -184,6 +206,24 @@ S4_BAR_T125 = ("FROZEN BAR (pre-registered 2026-10-12, DECISION_LOG 278). Per ce
                "whose untouched-integrity check fails is never frozen (WALKER PARITY / INTEGRITY FAILED — re-checked next run). A cell whose "
                "cap is > today's max hold, or that is identical to today's exit, is n/a (not judged, not frozen). Counted from the "
                "DECISION_LOG 281 deploy (today = +1.25 / −4 / 90).")
+# DECISION_LOG 285 cells (operator-approved 2026-10-13, OBSERVE only) — own counted floor, own frozen keys, judged vs today's exit
+S285_CELLS = (("T125C30", 1.25, 30, None, None),     # (name, TP until the late minute, cap min (None = today's hold), late minute, late TP)
+              ("LT30_025", 1.25, None, 30, 0.25),    # late take-profit: +1.25 until minute 30, then +0.25 (spike-fade late-arm analog, DL 111)
+              ("LT30_03", 1.25, None, 30, 0.30))     # … then +0.30
+S285_NAMES = tuple(c[0] for c in S285_CELLS)
+S285_KEY = {n: f"S4_{n}" for n in S285_NAMES}
+S285_DEPLOY_GREP = "(DECISION_LOG 285)"              # counted from the DL 285 commit (registered after B19 / B20 were seen → no look-ahead)
+S285_DEPLOY_PIN = "2026-10-13 04:05:00"              # ≈ commit time (UTC) of the DL 285 commit — used only if git cannot find it
+S285_LABEL = "pre-registered 2026-10-13, DECISION_LOG 285"
+S285_BAR = ("FROZEN BAR (pre-registered 2026-10-13, DECISION_LOG 285). Per cell (T125C30 / LT30_025 / LT30_03) separately, at the first "
+            "prefix by (open time, pair) with N ≥ 20 counted fills on ≥ 8 distinct UTC days, decided ONCE: CANDIDATE (operator decides; "
+            "never automatic) iff the mean paired Δ (cell − today) > 0 with day-clustered bootstrap P(mean Δ > 0) ≥ 0.90 (4,000 resamples, "
+            "seed 7); no single fill carries > 50 % of Σ Δ; walker parity vs live ≥ 90 %; untouched fills show Δ = 0 (integrity: today's "
+            "exit — TP or −4 — fired at ≤ 30 min with no earlier print through +1.25, and a TP print already ≥ +1.25); mean Δ ≤ 0 → KEEP "
+            "TODAY; else KEEP OBSERVING. Never frozen on failed parity or integrity (WALKER PARITY / INTEGRITY FAILED — re-checked next "
+            "run); provisional (1m-part), unpriced or OPEN fills opened ≤ the prefix end hold the freeze while their data is still due. "
+            "Compared against today's exit (trading_config.json; +1.25 / −4 / 90 from DECISION_LOG 281). Counted from the DECISION_LOG 285 "
+            "commit + 10 min; earlier fills are context only. A cell identical to today's exit (or with cap > today's hold) is n/a.")
 
 
 # ─────────────────────────── config / accounting ───────────────────────────
@@ -988,6 +1028,91 @@ def s4_na(name, tp, hold, stop=None):
     return ""
 
 
+def s285_deploy_ts():
+    """the DL 285 cells' counted floor = the "(DECISION_LOG 285)" commit time + 10 min; git cannot find it → the PLACEHOLDER pin
+    S285_DEPLOY_PIN + 10 min. Independent of the DL 281 floor (the S4 cells / OLD_EXIT keep theirs)."""
+    t = _git_ct(S285_DEPLOY_GREP)
+    return (pd.Timestamp(S285_DEPLOY_PIN) if t is None else t) + pd.Timedelta(minutes=S4_LAG_MIN)
+
+
+def s285_spec(name, hold):
+    """→ dict(tp = the TP until the late minute, cap = minutes (None in S285_CELLS = today's hold), late = minute or None, ztp)."""
+    _, t0, cap, x, z = next(c for c in S285_CELLS if c[0] == name)
+    return dict(tp=float(t0), cap=int(hold) if cap is None else int(cap), late=x, ztp=None if z is None else float(z))
+
+
+def s285_na(name, tp, hold):
+    """'' when judged; 'cap > hold' (cap beyond today's max hold) or '= today' (identical to today's exit: a plain cap cell with today's
+    TP and cap, or a late-TP cell whose late minute is never reached inside today's hold with today's TP)."""
+    s = s285_spec(name, hold)
+    if s["cap"] > int(hold):
+        return "cap > hold"
+    same_tp = abs(s["tp"] - float(tp)) < 1e-12
+    if s["late"] is None:
+        return "= today" if s["cap"] == int(hold) and same_tp else ""
+    return "= today" if int(hold) <= s["late"] and same_tp else ""
+
+
+def _untouched_spec(name, tp):
+    """(cell TP, minute) for the untouched-integrity leg: S4 / OLD_EXIT → (cell TP, cap); T125C30 → (+1.25, 30); LT30_* → (+1.25, 30) —
+    today's exit fired at ≤ 30 min while the lines are still identical."""
+    if name in S285_KEY:
+        _, t0, cap, x, _z = next(c for c in S285_CELLS if c[0] == name)
+        return float(t0), int(cap if x is None else x)
+    return s4_spec(name, tp)
+
+
+def evaluate_late(P, tp, sl, cap, late, ztp):
+    """FX.evaluate with a time-varying TP line (mirror of ev() / TPx_z in scripts/study_willy_late_sl.py — copied, never imported): the
+    line is +tp for t ≤ te + late min and +ztp after; stop −sl throughout. Same fill rules: first touch on the net path; a tick TP books
+    the print's net, a 1m-bar TP books exactly the active line; a bar touching both lines = stop; a bar opening through the stop fills at
+    its open; no event inside the cap → CAP at the last event ≤ the cap; undecided before the path end → UNRES. why LATE_TP = a TP on
+    the late line."""
+    te = P["te"]
+    n = int(np.searchsorted(P["t"], te + cap * MIN, side="right"))
+    t, hi, lo = P["t"][:n], P["hi"][:n], P["lo"][:n]
+    lt = t > te + late * MIN
+    tpl = np.where(lt, float(ztp), float(tp))
+    itp = np.flatnonzero(hi >= tpl)
+    ist = np.flatnonzero(lo <= -sl) if sl else np.array([], dtype=int)
+    a = int(itp[0]) if len(itp) else None
+    b = int(ist[0]) if len(ist) else None
+    if b is not None and (a is None or b <= a):
+        if P["bar"][b]:
+            op = P["op"][b]
+            v = min(-sl, float(op)) if np.isfinite(op) else -sl
+        else:
+            v = float(lo[b])
+        return dict(why="STOP", pct=v, pct_line=-float(sl), xmin=(t[b] - te) / MIN, worst=float(lo[:b + 1].min()), on_bar=bool(P["bar"][b]))
+    if a is not None:
+        v = float(tpl[a]) if P["bar"][a] else float(hi[a])
+        return dict(why="LATE_TP" if lt[a] else "TP", pct=v, pct_line=float(tpl[a]), xmin=(t[a] - te) / MIN, worst=float(lo[:a + 1].min()),
+                    on_bar=bool(P["bar"][a]))
+    if P["end_ms"] < te + cap * MIN or n == 0:
+        return dict(why="UNRES", pct=np.nan, pct_line=np.nan, xmin=np.nan, worst=float(lo.min()) if n else np.nan, on_bar=False)
+    return dict(why="CAP", pct=float(P["cl"][n - 1]), pct_line=float(P["cl"][n - 1]), xmin=float(cap), worst=float(lo.min()),
+                on_bar=bool(P["bar"][n - 1]))
+
+
+def s285_cells(P, tp, stop, hold):
+    """one hybrid path → the DL 285 cells (s4_<name> / s4_why_ / s4_min_), s285_n_unres and _on_ticks285 (today + every judged cell
+    decided on tick prints). Kept apart from s4_cells so the S4 cells' pending / source logic is unchanged. n/a cells → NaN, why N/A."""
+    FX = _fx()
+    la = FX.evaluate(P, tp, stop, hold)
+    rec, evs = {}, [la]
+    for name in S285_NAMES:
+        if s285_na(name, tp, hold):
+            rec[f"s4_{name}"], rec[f"s4_why_{name}"], rec[f"s4_min_{name}"] = np.nan, "N/A", np.nan
+            continue
+        s = s285_spec(name, hold)
+        b = FX.evaluate(P, s["tp"], stop, s["cap"]) if s["late"] is None else evaluate_late(P, s["tp"], stop, s["cap"], s["late"], s["ztp"])
+        evs.append(b)
+        rec[f"s4_{name}"], rec[f"s4_why_{name}"], rec[f"s4_min_{name}"] = b["pct"], b["why"], b["xmin"]
+    rec["s285_n_unres"] = sum(e["why"] == "UNRES" for e in evs)
+    rec["_on_ticks285"] = bool(P["n_tick"] > 0 and all(e["why"] != "UNRES" and not e["on_bar"] for e in evs))
+    return rec
+
+
 def _peak_before_exit(P, tp, stop, cap):
     """the highest net print / bar high strictly BEFORE today's exit event (first-touch, as evaluate) — −inf when the exit is the first
     event; today's CAP exit → the peak over the whole cap. Feeds the untouched-integrity leg only."""
@@ -1032,6 +1157,8 @@ def s4_score_fill(r, tp, stop, hold, tcache=None):
     rec = s4_cells(P, tp, stop, hold)
     if rec is None:
         return None, None
+    rec.update(s285_cells(P, tp, stop, hold))                                # DL 285 cells: own source / pending columns
+    rec["s285_src"] = "ticks" if rec.pop("_on_ticks285") else FX.path_src(P)
     rec["s4_par_ok"], rec["s4_par_txt"] = parity(r.why, r.pct, {"v": {"LIVE": {"why": rec["s4_why_LIVE"], "pct": rec["s4_LIVE"]}}})
     return rec, ("ticks" if rec.pop("_on_ticks") else FX.path_src(P))
 
@@ -1058,8 +1185,9 @@ def s4_untouched(g, name, tp):
     """fills whose outcome the cell cannot change, read from TODAY's walk only (see the module doc): today's exit (TP or stop) fired at ≤ the
     cell's cap, NO print before it reached the cell's TP (s4_peak_LIVE < cell TP), and — for a TP exit — today's TP print itself is ≥ the
     cell's TP (the same first print through both lines). Valid for a cell TP above OR below today's (DECISION_LOG 281: CAP60 +1 vs
-    today +1.25) and for OLD_EXIT (same −4 stop)."""
-    ctp, x = s4_spec(name, tp)
+    today +1.25) and for OLD_EXIT (same −4 stop). DL 285: T125C30 → (+1.25, 30); LT30_* → today's exit at ≤ 30 min (the lines are the same
+    until minute 30), via _untouched_spec."""
+    ctp, x = _untouched_spec(name, tp)
     m = pd.to_numeric(g.s4_min_LIVE, errors="coerce").values <= x + 1e-9
     w, live = g.s4_why_LIVE.values, g.s4_LIVE.values.astype(float)
     pk = pd.to_numeric(g.s4_peak_LIVE, errors="coerce").values.astype(float) < ctp - 1e-12
@@ -1096,7 +1224,7 @@ def s4_verdict(g, name, tp):
     if j["q"]:
         return f"{name} CANDIDATE (operator decides)", det, j
     if j["mean"] <= 0:
-        return S4_KEEP[name], det, j
+        return S4_KEEP.get(name, "KEEP TODAY"), det, j                     # DL 285 cells: mean Δ ≤ 0 → KEEP TODAY
     return "KEEP OBSERVING", det, j
 
 
@@ -1123,7 +1251,7 @@ def s4_freeze(st, name, g, now_iso, cfg, hold=None, why=None, dropped=None, unde
     the prefix end is OPEN, unpriced-but-not-final or 1m-provisional (hold); NEVER frozen while the prefix fails walker parity (< 90 %) or
     the untouched-integrity check (any verdict, KEEP included). dropped / undecided = open times of final fills with no path / with this
     cell undecided (recorded ≤ the prefix end). Never touches any other key (the CAP15 / CAP20 frozen verdicts, the other S4 cells)."""
-    key = OLD_KEY if name == OLD_KEY else S4_KEY[name]
+    key = OLD_KEY if name == OLD_KEY else S285_KEY[name] if name in S285_KEY else S4_KEY[name]
     if key in st:
         return st, False
     pre = prefix(g, N_MIN)
@@ -1141,11 +1269,16 @@ def s4_freeze(st, name, g, now_iso, cfg, hold=None, why=None, dropped=None, unde
             why.append(f"{name} — WALKER PARITY / INTEGRITY FAILED — not frozen (parity {j['par'] * 100:.0f} %, untouched Δ = 0 "
                        f"{'✓' if j['integ'] else '✗'})")
         return st, False
-    ctp, x = s4_spec(name, cfg[0])
-    st[key] = dict(state=state, detail=det, bar=OLD_LABEL if name == OLD_KEY else S4_LABEL, at=f"{last:%Y-%m-%d %H:%M} UTC", run_at=now_iso, n=len(pre),
+    if name in S285_KEY:                                                  # DL 285 cells: own label, late line in the config record
+        sp = s285_spec(name, cfg[2])
+        conf, lab = dict(tp=cfg[0], stop=cfg[1], hold=cfg[2], cell_tp=sp["tp"], cap=sp["cap"], late_min=sp["late"], late_tp=sp["ztp"]), S285_LABEL
+    else:
+        ctp, x = s4_spec(name, cfg[0])
+        conf, lab = dict(tp=cfg[0], stop=cfg[1], hold=cfg[2], cell_tp=ctp, cap=x), (OLD_LABEL if name == OLD_KEY else S4_LABEL)
+    st[key] = dict(state=state, detail=det, bar=lab, at=f"{last:%Y-%m-%d %H:%M} UTC", run_at=now_iso, n=len(pre),
                    days=int(pre.day.nunique()), dropped_no_data=int(sum(1 for t in (dropped or []) if pd.notna(t) and t <= last)),
                    undecided_final=int(sum(1 for t in (undecided or []) if pd.notna(t) and t <= last)),
-                   config=dict(tp=cfg[0], stop=cfg[1], hold=cfg[2], cell_tp=ctp, cap=x),
+                   config=conf,
                    keys=[f"{a}|{b}" for a, b in zip(pre.ts.dt.strftime("%Y-%m-%dT%H:%M:%S"), pre.pair.astype(str))])
     return st, True
 
@@ -1169,11 +1302,15 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok):
     floor = s4_deploy_ts()
     manual = o.why.astype(str).str.upper().str.startswith("MANUAL")          # operator closes: not the walked exit (each = a parity miss)
     man = o[manual & (o.ts >= floor)]
+    man_all = o[manual]
     o = o[~manual].reset_index(drop=True)
     s4 = s4_frame(o, tp, stop, hold, tcache)
     done = load_attempts()["done"]
-    s4["s4_pend"] = [FX._pending(s, getattr(r, "s4_n_unres", 0), ticks_pending(r, hold, done, now_ms, tcache),
-                                 _kk(r.pair, r.te, _span(hold)) not in done) for s, r in zip(s4.s4_src, s4.itertuples())]
+    tpend = [(ticks_pending(r, hold, done, now_ms, tcache), _kk(r.pair, r.te, _span(hold)) not in done) for r in s4.itertuples()]
+    s4["s4_pend"] = [FX._pending(s, getattr(r, "s4_n_unres", 0), a, b) for s, r, (a, b) in zip(s4.s4_src, s4.itertuples(), tpend)]
+    s285_src = s4["s285_src"] if "s285_src" in s4 else pd.Series([None] * len(s4), dtype=object)
+    s4["s285_pend"] = [FX._pending(s if isinstance(s, str) else None, getattr(r, "s285_n_unres", 0), a, b)        # DL 285 cells' own hold
+                       for s, r, (a, b) in zip(s285_src, s4.itertuples(), tpend)]
     coh = s4[s4.ts >= floor]
     ctx = s4[(s4.ts < floor) & s4.s4_src.notna()]
     today = f"TP +{tp:g} · {'no stop' if not stop else f'stop −{stop:g}'} · {hold} min"
@@ -1320,6 +1457,116 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok):
         L.append(f"Revert gate now: ⏳ {vo[0]} ({vo[1]}).")
     if whyo:
         L.append("⏸ revert-gate freezing deferred this run: " + " · ".join(whyo) + " — re-checked next run.")
+    try:                                                          # DL 285 cells: own subsection; a failure here never hides the S4 lines
+        L5, st, ch5 = s285_section(s4, opens, now_ms, levels_, st, ok, man_all)
+        changed |= ch5
+    except Exception as e:
+        L5 = [f"### ⏱ T125C30 / LT30_025 / LT30_03 (DECISION_LOG 285) — unavailable this run ({type(e).__name__}: {str(e)[:160]})"]
+    return L + [""] + L5, st, changed
+
+
+def _s285_fill_txt(r):
+    src = r.s285_src if isinstance(getattr(r, "s285_src", None), str) else r.s4_src
+    return (f"{r.ts:%m-%d %H:%M} {r.pair} [{src}{'' if src == 'ticks' else ', provisional'}] today {r.s4_LIVE:+.2f} ({r.s4_why_LIVE} @ "
+            f"{r.s4_min_LIVE:.0f} min) → " + " / ".join(_s4_val(r, n) for n in S285_NAMES))
+
+
+def s285_section(s4, opens, now_ms, levels_, st, ok, man_all=None):
+    """→ (markdown lines, state, changed): the DECISION_LOG 285 cells on the S4 frame (same hybrid path / today walk / parity), counted
+    from the DL 285 floor; earlier fills = context. Judge / freeze = the S4 helpers under S285_KEY (frozen once per key)."""
+    tp, stop, hold = levels_
+    floor = s285_deploy_ts()
+    coh = s4[s4.ts >= floor]
+    ctx = s4[(s4.ts < floor) & s4.s4_src.notna()]
+    today = f"TP +{tp:g} · {'no stop' if not stop else f'stop −{stop:g}'} · {hold} min"
+
+    def lab(n):
+        sp = s285_spec(n, hold)
+        return (f"{n} (+{sp['tp']:g} / −{stop if stop else 0:g} / {sp['cap']} min)" if sp["late"] is None else
+                f"{n} (+{sp['tp']:g} until {sp['late']} min, then +{sp['ztp']:g} / −{stop if stop else 0:g} / {sp['cap']} min)")
+    L = ["### ⏱ T125C30 / LT30_025 / LT30_03 on today's stop (DECISION_LOG 285 — OBSERVE only; own cohort + own frozen bar; the S4 cells "
+         "and OLD_EXIT above untouched)", "",
+         f"Cohort: CLOSED non-MANUAL {STRATEGY} fills opened ≥ {floor:%Y-%m-%d %H:%M:%S} UTC (the \"{S285_DEPLOY_GREP}\" commit + {S4_LAG_MIN} min"
+         + ("" if _git_ct(S285_DEPLOY_GREP) is not None else f"; commit not found → PLACEHOLDER pin {S285_DEPLOY_PIN} UTC") + "); the cells "
+         f"were registered after B19 / B20 were seen, so earlier fills are context only (look-ahead). Today = {today} (trading_config.json). "
+         "Same hybrid path, today walk and parity as the S4 cells. T125C30 closes at market at 30 min; LT30_* drop the take profit to "
+         "+0.25 / +0.30 from minute 30 on (the first print / 1m bar with net ≥ the active line; a bar TP is booked at exactly the line), "
+         "cap = today's hold. Untouched (Δ must be 0) = today's exit (TP or −4) fired at ≤ 30 min with no earlier print through +1.25 "
+         "and a TP print ≥ +1.25.", "",
+         "| Cell | N counted | days | mean Δ vs today (pts) | Σ Δ | P(Δ>0) day-bootstrap | top fill share of Σ Δ | untouched fills Δ = 0 | parity |",
+         "|---|---|---|---|---|---|---|---|---|"]
+    for n in S285_NAMES:
+        na = s285_na(n, tp, hold)
+        if na:
+            L.append(f"| {lab(n)} | n/a ({na}) | – | – | – | – | – | – | – |")
+            continue
+        g = s4_counted(coh, n)
+        if not len(g):
+            L.append(f"| {lab(n)} | 0 | 0 | – | – | – | – | – | – |")
+            continue
+        j = s4_judge(g, n, tp)
+        L.append(f"| {lab(n)} | {j['n']} | {j['days']} | {j['mean']:+.3f} | {j['sum']:+.2f} | {'–' if j['p'] is None else format(j['p'], '.2f')} | "
+                 f"{'–' if j['share'] != j['share'] else format(j['share'] * 100, '.0f') + ' %'} | {'✓' if j['integ'] else '✗'} "
+                 f"({j['n_untouched']}) | {j['par'] * 100:.0f} % |")
+    L.append("")
+    sc = coh[coh.s4_src.notna()]
+    if len(sc):
+        L.append("Per fill (counted cohort): " + " · ".join(_s285_fill_txt(r) for r in sc.itertuples()))
+        par = sc.s4_par_ok.astype(bool)
+        L.append(f"Walker parity (today's walk vs the actual exit): {int(par.sum())}/{len(sc)}"
+                 + ("" if par.all() else " — off: " + " · ".join(f"{r.pair} {r.s4_par_txt}" for r in sc[~par].itertuples())))
+    else:
+        L.append("Per fill (counted cohort): none yet — no WILLY fill closed since the DECISION_LOG 285 floor.")
+    uns = coh[coh.s4_src.isna()]
+    man = man_all[man_all.ts >= floor] if man_all is not None and len(man_all) else []
+    if len(man):
+        L.append(f"Excluded: {len(man)} manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
+    if len(uns):
+        L.append("UNPRICED (no path yet): " + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair}" + ("" if r.s285_pend else " (final — no data)")
+                                                      for r in uns.itertuples()))
+
+    def undecided(n):
+        if not len(coh) or f"s4_{n}" not in coh:
+            return []
+        m = coh.s4_src.notna() & pd.to_numeric(coh[f"s4_{n}"], errors="coerce").isna() & ~coh.s285_pend.astype(bool) & (coh[f"s4_why_{n}"] != "N/A")
+        return list(coh[m].ts)
+    if len(ctx) and "s285_src" in ctx:
+        judged = [n for n in S285_NAMES if not s285_na(n, tp, hold)]
+        L.append(f"Context, NOT counted ({len(ctx)} fill(s) opened before the DECISION_LOG 285 floor, walked with today's {today}): "
+                 + " · ".join(_s285_fill_txt(r) for r in ctx.itertuples())
+                 + (" · mean Δ " + " / ".join(f"{n} {(pd.to_numeric(ctx[f's4_{n}'], errors='coerce') - ctx.s4_LIVE).mean():+.3f}" for n in judged)
+                    if judged else "") + ".")
+    L.append(S285_BAR)
+    why, changed = [], False
+    hold_l = [x for x in opens if pd.notna(x[0]) and x[0] >= floor] + [
+        (r.ts, f"{'unpriced' if not isinstance(r.s4_src, str) else 'undecided cell' if (getattr(r, 's285_n_unres', 0) or 0) > 0 else '1m-provisional'} {r.pair}")
+        for r in coh.itertuples() if r.s285_pend]
+    if ok and stop:
+        for n in S285_NAMES:
+            if s285_na(n, tp, hold):
+                continue
+            st, ch = s4_freeze(st, n, s4_counted(coh, n), pd.Timestamp(now_ms, unit="ms").strftime("%Y-%m-%d %H:%M UTC"), (tp, stop, hold),
+                               hold_l, why, dropped=list(uns[~uns.s285_pend.astype(bool)].ts) if len(uns) else [], undecided=undecided(n))
+            changed |= ch
+    elif ok:
+        why.append("today's WILLY exit has no stop in trading_config.json — the cells are defined on the −4 stop, nothing frozen")
+    for n in S285_NAMES:
+        f0 = st.get(S285_KEY[n]) if ok else None
+        na = s285_na(n, tp, hold)
+        if na and not f0:
+            L.append(f"{n}: n/a ({na}) — today's exit is {today}; not judged, not frozen.")
+            continue
+        v = s4_verdict(s4_counted(coh, n), n, tp)
+        nu = len(undecided(n))
+        if f0:
+            L.append(f"{n}: **Frozen verdict ({f0['bar']}; prefix to {f0['at']}, frozen on the run of {f0['run_at']}, N {f0['n']} · {f0['days']} d, "
+                     f"{f0.get('dropped_no_data', 0)} final-no-data fill(s) excluded, {f0.get('undecided_final', 0)} final fill(s) left undecided "
+                     f"by this cell, today then TP +{f0['config']['tp']:g} / stop −{f0['config']['stop']:g} / {f0['config']['hold']} min): "
+                     f"{f0['state']}** ({f0['detail']}) · live (information only, never re-decides): {v[0]} — {v[1]}")
+        else:
+            L.append(f"{n}: ⏳ {v[0]} ({v[1]}){f' · {nu} final fill(s) left undecided by this cell (not counted)' if nu else ''}.")
+    if why:
+        L.append("⏸ DL 285 freezing deferred this run: " + " · ".join(why) + " — re-checked next run.")
     return L, st, changed
 
 
@@ -1433,7 +1680,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
         if ok and ch4:
             NF.du_save_state(st, state_path)
     except Exception as e:
-        L4 = [f"### ⏱ CAP60 / CAP90 / T125C60 / T125C90 on today's stop + the DL 281 revert gate (DECISION_LOG 278 / 281) — unavailable this run ({type(e).__name__}: {str(e)[:160]})"]
+        L4 = [f"### ⏱ CAP60 / CAP90 / T125C60 / T125C90 on today's stop + the DL 281 revert gate + T125C30 / LT30_025 / LT30_03 (DECISION_LOG 278 / 281 / 285) — unavailable this run ({type(e).__name__}: {str(e)[:160]})"]
     live_state, live_det, _ = verdict(sc)
     bar = (f"Bar (pre-registered, frozen once at the first prefix of N ≥ {N_MIN} closed WILLY fills on ≥ {DAYS_MIN} days, never re-fit; "
            f"one re-read at N ≥ {REREAD_N}): per CAP15 / CAP20, Δ = CAPx − LIVE per fill; CAPx CANDIDATE (operator decides) iff mean Δ > 0 ∧ "
@@ -1547,6 +1794,7 @@ def study_block():
 # ─────────────────────────── self-test (hermetic) ───────────────────────────
 def selftest():
     global _NET_BLOCKED, _CACHE, MY_CACHE, STATE, EXPORT_GLOB, _http_get, _open_url, STUDY_CSV, S4_DEPLOY_GREP, S4_DEPLOY_PIN
+    global S285_DEPLOY_GREP, S285_DEPLOY_PIN
     ok = 0
 
     def chk(c, m):
@@ -1555,6 +1803,7 @@ def selftest():
         ok += 1
     saved = (_CACHE, MY_CACHE, STATE, EXPORT_GLOB, _http_get, _open_url, STUDY_CSV, NF.SHARED_COOLDOWN, NF.DU_COOLDOWN, NF._CACHE,
              S4_DEPLOY_GREP, S4_DEPLOY_PIN)
+    saved285 = (S285_DEPLOY_GREP, S285_DEPLOY_PIN)
     _NET_BLOCKED = True
     try:
         chk((CAPS, VERDICT_CAPS, N_MIN, DAYS_MIN, REREAD_N, P_MIN, SHARE_MAX, BOOT_N, BOOT_SEED, PARITY_TOL, MAX_REQ, WEIGHT_STOP, BUDGET_S, TAKER)
@@ -1880,8 +2129,102 @@ def selftest():
         c = s4_cells(_P(te + np.array([5 * MIN, 20 * MIN]), [99.0, 101.5]), 1.25, 4.0, 90)
         chk(c["s4_OLD_EXIT"] == c["s4_LIVE"] and list(s4_untouched(pd.DataFrame([c]), OLD_KEY, 1.25)) == [True],
             "walk: a print straight through +1.25 → old = new, untouched")
+        # ── DL 285 cells: T125C30 / LT30_025 / LT30_03 (own floor, own keys, late-TP evaluator) ──
+        chk((S285_CELLS, S285_KEY, S285_LABEL, S285_DEPLOY_GREP, S285_DEPLOY_PIN)
+            == ((("T125C30", 1.25, 30, None, None), ("LT30_025", 1.25, None, 30, 0.25), ("LT30_03", 1.25, None, 30, 0.30)),
+                {"T125C30": "S4_T125C30", "LT30_025": "S4_LT30_025", "LT30_03": "S4_LT30_03"}, "pre-registered 2026-10-13, DECISION_LOG 285",
+                "(DECISION_LOG 285)", "2026-10-13 04:05:00")
+            and S285_BAR.startswith("FROZEN BAR (pre-registered 2026-10-13, DECISION_LOG 285).")
+            and all(f in S285_BAR for f in ("N ≥ 20 counted fills on ≥ 8 distinct UTC days, decided ONCE", "P(mean Δ > 0) ≥ 0.90 (4,000 resamples, seed 7)",
+                                            "no single fill carries > 50 % of Σ Δ", "walker parity vs live ≥ 90 %", "mean Δ ≤ 0 → KEEP TODAY",
+                                            "else KEEP OBSERVING", "Never frozen on failed parity or integrity", "DECISION_LOG 285 commit + 10 min"))
+            and set(S285_KEY.values()).isdisjoint(set(S4_KEY.values()) | {"first", "reread", OLD_KEY}) and len(S4_CELLS) == 4,
+            "DL 285 constants + bar pinned; keys disjoint from the S4 / OLD_EXIT / CAP15-20 keys; the four S4 cells unchanged")
+        g285 = _git_ct("(DECISION_LOG 285)")
+        chk(s285_deploy_ts() == (pd.Timestamp("2026-10-13 04:05:00") if g285 is None else g285) + pd.Timedelta(minutes=10),
+            f"DL 285 floor = the DL 285 commit (or the placeholder pin) + 10 min ({s285_deploy_ts()})")
+        S285_DEPLOY_GREP = "(no such commit — selftest)"
+        chk(s285_deploy_ts() == pd.Timestamp("2026-10-13 04:15:00") and s4_deploy_ts() == (pd.Timestamp("2026-10-12 12:00:00") if g281 is None else g281)
+            + pd.Timedelta(minutes=10), "git cannot find the DL 285 commit → its placeholder pin + 10 min; the DL 281 floor is independent")
+        S285_DEPLOY_GREP = saved285[0]
+        chk(all(s285_na(n, 1.25, 90) == "" for n in S285_NAMES) and s285_na("T125C30", 1.25, 30) == "= today"
+            and s285_na("T125C30", 1.25, 25) == "cap > hold" and s285_na("T125C30", 1.0, 30) == "" and s285_na("LT30_03", 1.25, 30) == "= today"
+            and s285_na("LT30_03", 1.0, 30) == "" and s285_spec("LT30_025", 90) == dict(tp=1.25, cap=90, late=30, ztp=0.25)
+            and s285_spec("T125C30", 90) == dict(tp=1.25, cap=30, late=None, ztp=None),
+            "DL 285 n/a: identical to today (T125C30 at hold 30, LT30 with hold ≤ 30 and today's +1.25) or cap > hold; LT cap = today's hold")
+
+        def _Pt(tt, pp, end=None):                                 # ticks-only path, 90-min horizon
+            P = _P(te + np.asarray(tt, dtype="int64"), pp)
+            if end is not None:
+                P.update(end_ms=te + end, tick_end=te + end)
+            return P
+        ll = lambda P, z: evaluate_late(P, 1.25, 4.0, 90, 30, z)   # noqa: E731
+        Pa = _Pt([10 * MIN, 40 * MIN], [101.5, 100.4])
+        chk(all(ll(Pa, z)["why"] == "TP" and abs(ll(Pa, z)["pct"] - nx(101.5)) < 1e-12 for z in (0.25, 0.30))
+            and ll(Pa, 0.25)["pct"] == _fx().evaluate(Pa, 1.25, 4.0, 90)["pct"], "late TP: a print through +1.25 before minute 30 → the +1.25 TP (= today)")
+        Pb = _Pt([20 * MIN, 30 * MIN, 40 * MIN, 50 * MIN, 89 * MIN], [100.4, 100.42, 100.35, 100.4, 99.0])
+        e25, e03, et = ll(Pb, 0.25), ll(Pb, 0.30), _fx().evaluate(Pb, 1.25, 4.0, 90)
+        chk(nx(100.4) >= 0.30 > nx(100.35) >= 0.25 and e25["why"] == "LATE_TP" and abs(e25["pct"] - nx(100.35)) < 1e-12 and e25["xmin"] == 40.0
+            and e03["why"] == "LATE_TP" and abs(e03["pct"] - nx(100.4)) < 1e-12 and e03["xmin"] == 50.0
+            and et["why"] == "CAP" and abs(et["pct"] - nx(99.0)) < 1e-12,
+            f"late TP: +0.3 net at 20 / exactly 30 min is not late; after 30 the first print ≥ the line books its own net "
+            f"(+0.26 at 40 for +0.25, +0.31 at 50 for +0.30); today closes at 90 ({e25} {e03})")
+        Pc = _Pt([10 * MIN, 40 * MIN], [95.8, 100.5])
+        chk(all(ll(Pc, z)["why"] == "STOP" and abs(ll(Pc, z)["pct"] - nx(95.8)) < 1e-12 for z in (0.25, 0.30)), "late TP: −4 before → stop at that print")
+        Pd = _Pt([10 * MIN, 45 * MIN], [99.5, 99.6], end=60 * MIN)
+        chk(ll(Pd, 0.25)["why"] == "UNRES" and np.isnan(ll(Pd, 0.30)["pct"]) and _fx().evaluate(Pd, 1.25, 4.0, 30)["why"] == "CAP",
+            "late TP: no event before the path end (60 < 90 min) → UNRES; T125C30 is decided at 30")
+        nb_ = 60
+        tb = te + np.arange(1, nb_ + 1) * MIN                      # 1m bars: t = bar close
+        hb, lb_, ob_ = np.full(nb_, -0.2), np.full(nb_, -0.5), np.full(nb_, -0.3)
+        hb[19], hb[34] = 0.5, 0.5                                   # bar closing at 20 min (early line) / at 35 min (late line)
+        Pm = dict(t=tb, hi=hb, lo=lb_, cl=np.full(nb_, -0.3), op=ob_, bar=np.ones(nb_, bool), end_ms=int(te + 91 * MIN), n_tick=0, n_bar=nb_,
+                  tick_end=te, lim=int(te + 91 * MIN), te=te)
+        chk(ll(Pm, 0.25)["why"] == "LATE_TP" and ll(Pm, 0.25)["pct"] == 0.25 and ll(Pm, 0.30)["pct"] == 0.30 and ll(Pm, 0.30)["xmin"] == 35.0
+            and ll(Pm, 0.30)["on_bar"], "late TP on 1m bars: a bar high +0.5 before 30 is not a TP; after 30 the TP is booked at exactly the line")
+        Pm2 = {k: (v.copy() if isinstance(v, np.ndarray) else v) for k, v in Pm.items()}
+        Pm2["lo"][34] = -4.2
+        Pm3 = {k: (v.copy() if isinstance(v, np.ndarray) else v) for k, v in Pm2.items()}
+        Pm3["op"][34] = -4.5
+        chk(ll(Pm2, 0.30)["why"] == "STOP" and ll(Pm2, 0.30)["pct"] == -4.0 and ll(Pm3, 0.25)["pct"] == -4.5,
+            "late TP on 1m bars: a bar touching both lines = stop at −4; a bar opening through the stop fills at its open")
+        c5 = s285_cells(Pb, 1.25, 4.0, 90)
+        chk(c5["s4_why_LT30_025"] == "LATE_TP" and c5["s4_why_LT30_03"] == "LATE_TP" and c5["s4_why_T125C30"] == "CAP"
+            and abs(c5["s4_T125C30"] - nx(100.42)) < 1e-12 and c5["s285_n_unres"] == 0 and c5["_on_ticks285"]
+            and s285_cells(Pd, 1.25, 4.0, 90)["s285_n_unres"] == 3, f"s285_cells on one path ({c5})")
+        ut5 = pd.DataFrame(dict(s4_why_LIVE=["TP", "STOP", "TP", "CAP", "STOP", "TP"], s4_min_LIVE=[20.0, 25.0, 45.0, 90.0, 31.0, 30.0],
+                                s4_LIVE=[1.30, -4.1, 1.30, -1.0, -4.1, 1.26], s4_peak_LIVE=[0.5, 0.9, 0.9, 0.9, 0.9, 0.4]))
+        chk(all(list(s4_untouched(ut5, n, 1.25)) == [True, True, False, False, False, True] for n in S285_NAMES),
+            "DL 285 untouched: today's TP / −4 at ≤ 30 min → untouched (Δ must be 0); a later exit or a cap close may move")
+        F5 = s4f(g4, wl, ml)
+        F5 = F5.assign(s4_LIVE=np.where(wl == "TP", 1.3, 0.0), s4_min_LIVE=np.where(wl == "TP", 10.0, 90.0), s4_peak_LIVE=0.5)
+        F5 = F5.assign(s4_T125C30=F5.s4_LIVE + g4, s4_LT30_025=F5.s4_LIVE - g4, s4_LT30_03=F5.s4_LIVE)
+        chk(s4_verdict(F5, "T125C30", 1.25)[0] == "T125C30 CANDIDATE (operator decides)" and s4_verdict(F5, "T125C30", 1.25)[2]["n_untouched"] == 12
+            and s4_verdict(F5, "LT30_025", 1.25)[0] == "KEEP TODAY" and s4_verdict(F5, "LT30_03", 1.25)[0] == "KEEP TODAY",
+            "DL 285 verdicts on the S4 judge: Δ > 0 → CANDIDATE; mean Δ ≤ 0 → KEEP TODAY")
+        bad5 = F5.assign(s4_LT30_03=F5.s4_LIVE + np.where(np.arange(24) == 0, 0.2, 0.0))
+        vbad = s4_verdict(bad5, "LT30_03", 1.25)
+        why = []
+        chk(not vbad[2]["integ"] and not s4_freeze({}, "LT30_03", bad5, "tx", (1.25, 4.0, 90), [], why)[1] and "LT30_03 — WALKER PARITY / INTEGRITY FAILED" in why[0],
+            "DL 285: an untouched fill (exit ≤ 30 min) with Δ ≠ 0 → integrity ✗, never frozen")
+        why = []
+        chk(not s4_freeze({}, "T125C30", F5, "th", (1.25, 4.0, 90), [(F5.ts.iloc[3], "1m-provisional Q")], why)[1] and why[0].startswith("T125C30 — "),
+            "DL 285: a provisional fill in the prefix holds the freeze")
+        base5 = {"first": {"x": 1}, "S4_CAP60": {"y": 2}, OLD_KEY: {"z": 3}}
+        s5, c5a = s4_freeze(json.loads(json.dumps(base5)), "T125C30", F5, "t5", (1.25, 4.0, 90), [])
+        s5, c5b = s4_freeze(s5, "LT30_025", F5, "t5", (1.25, 4.0, 90), [])
+        chk(c5a and c5b and s5["S4_T125C30"]["state"] == "T125C30 CANDIDATE (operator decides)" and s5["S4_LT30_025"]["state"] == "KEEP TODAY"
+            and s5["S4_T125C30"]["bar"] == s5["S4_LT30_025"]["bar"] == S285_LABEL and s5["S4_T125C30"]["n"] == 20
+            and s5["S4_T125C30"]["config"] == dict(tp=1.25, stop=4.0, hold=90, cell_tp=1.25, cap=30, late_min=None, late_tp=None)
+            and s5["S4_LT30_025"]["config"] == dict(tp=1.25, stop=4.0, hold=90, cell_tp=1.25, cap=90, late_min=30, late_tp=0.25)
+            and all(s5[k] == v for k, v in base5.items()) and "S4_LT30_03" not in s5,
+            "DL 285: each cell frozen once under its own key; the CAP15 / CAP20, S4 and OLD_EXIT keys untouched")
+        snap5 = json.loads(json.dumps(s5))
+        chk(not s4_freeze(s5, "T125C30", F5.assign(s4_T125C30=F5.s4_LIVE - 1.0), "t6", (1.25, 4.0, 90), [])[1] and s5 == snap5,
+            "DL 285: a frozen cell is never recomputed")
         # caches + fetch path in a temp tree
         S4_DEPLOY_GREP, S4_DEPLOY_PIN = "(no such commit — selftest)", "2026-10-12 01:49:51"   # fixtures' floor: 01:59:51 UTC
+        S285_DEPLOY_GREP, S285_DEPLOY_PIN = "(no such commit — selftest)", "2026-10-12 16:00:00"  # DL 285 fixtures' floor: 16:10 UTC
         with tempfile.TemporaryDirectory() as td:
             _CACHE = os.path.join(td, "cache")
             MY_CACHE = os.path.join(_CACHE, "scout_willy_timecap")
@@ -2148,7 +2491,8 @@ def selftest():
             so4 = pd.DataFrame(rows4)
             out = "\n".join(run(nowz, orders=so4, fetch=False, state_path=STATE4, th={"frenzy_willy_stop_pct": 4.0}, open_ts=[], study=False))
             s4j = json.load(open(STATE4)) if os.path.exists(STATE4) else {}
-            chk("S4_CAP60" not in s4j and "S4_CAP90" not in s4j and "CAP60 — 1 fill(s) opened" in out and "T125C90 — 1 fill(s) opened" in out and "1m-provisional S2USDT" in out
+            chk("S4_CAP60" not in s4j and "S4_CAP90" not in s4j and not any(k in s4j for k in S285_KEY.values()) and "T125C30 — 1 fill(s) opened" in out
+                and "CAP60 — 1 fill(s) opened" in out and "T125C90 — 1 fill(s) opened" in out and "1m-provisional S2USDT" in out
                 and "S2USDT [1m, provisional]" in out, f"run(): a 1m-provisional fill in the prefix holds the S4 freeze\n{out}")
             att = load_attempts()
             t2 = pd.Timestamp("2026-10-13 05:00").value // 10**6
@@ -2164,6 +2508,16 @@ def selftest():
             out = "\n".join(run(nowz, orders=so4.assign(pnl_percentage=0.0), fetch=False, state_path=STATE4, th={"frenzy_willy_stop_pct": 4.0},
                                 open_ts=[], study=False))
             chk(json.load(open(STATE4)) == s4j, "run(): the S4 frozen verdicts survive a later run unchanged")
+            chk(s4j["S4_T125C30"]["state"] == "T125C30 CANDIDATE (operator decides)" and s4j["S4_LT30_025"]["state"] == "KEEP TODAY"
+                and s4j["S4_LT30_03"]["state"] == "KEEP TODAY" and all(s4j[S285_KEY[n]]["n"] == 20 and s4j[S285_KEY[n]]["bar"] == S285_LABEL
+                                                                        and s4j[S285_KEY[n]]["keys"][0] == "2026-10-13T05:00:00|S2USDT" for n in S285_NAMES)
+                and "### ⏱ T125C30 / LT30_025 / LT30_03 on today's stop (DECISION_LOG 285" in out
+                and "opened ≥ 2026-10-12 16:10:00 UTC" in out and "PLACEHOLDER pin 2026-10-12 16:00:00 UTC" in out
+                and "Context, NOT counted (2 fill(s) opened before the DECISION_LOG 285 floor" in out
+                and "| T125C30 (+1.25 / −4 / 30 min) | 20 |" in out and "| LT30_03 (+1.25 until 30 min, then +0.3 / −4 / 120 min) | 20 |" in out
+                and "T125C30: **Frozen verdict (pre-registered 2026-10-13, DECISION_LOG 285" in out and S285_BAR in out,
+                f"run(): DL 285 cells counted from their own floor (2 pre-floor fills = context; the 1m fill held the freeze until final), "
+                f"frozen once: T125C30 candidate (no-TP fills close at 30 near flat vs −3.59), LT30_* keep today ({s4j})\n{out}")
             man4 = pd.concat([so4, pd.DataFrame([dict(rows4[1], opened_at="2026-10-14T09:00:00", close_reason="MANUAL_CLOSE", pnl_percentage=0.3)])],
                              ignore_index=True)
             STATE5 = os.path.join(td, "S5.json")
@@ -2216,12 +2570,13 @@ def selftest():
                 out = "\n".join(run(nowz, orders=so4, fetch=False, state_path=os.path.join(td, "S7.json"), th={}, open_ts=[], study=False))
             finally:
                 globals()["s4_section"] = g_s4
-            chk("### ⏱ CAP60 / CAP90 / T125C60 / T125C90 on today's stop + the DL 281 revert gate (DECISION_LOG 278 / 281) — unavailable this run "
-                "(ValueError: selftest)" in out,
+            chk("### ⏱ CAP60 / CAP90 / T125C60 / T125C90 on today's stop + the DL 281 revert gate + T125C30 / LT30_025 / LT30_03 (DECISION_LOG "
+                "278 / 281 / 285) — unavailable this run (ValueError: selftest)" in out,
                 "run(): an S4 failure prints the fallback header naming all four cells, the line still renders")
     finally:
         (_CACHE, MY_CACHE, STATE, EXPORT_GLOB, _http_get, _open_url, STUDY_CSV, NF.SHARED_COOLDOWN, NF.DU_COOLDOWN, NF._CACHE,
          S4_DEPLOY_GREP, S4_DEPLOY_PIN) = saved
+        S285_DEPLOY_GREP, S285_DEPLOY_PIN = saved285
         _NET_BLOCKED = False
     print(f"selftest WILLY_TIMECAP OK ({ok} checks)")
 

@@ -145,8 +145,20 @@ Context: B19 review (reports/B19_RERUN_*.md, verified) + DECISION_LOG 271 (paper
 per-order exchange backstop). The next export is B19 extended: re-run every number below on ALL B19 fills (old + new), and show the
 new fills (opened after the 271 deploy, 2026-10-12) as their own line — they are the first trades priced with the same stop live and paper.
 
+**🔴 IMPORTANT — FRENZY WILLY time-based exit (operator 2026-10-13, DECISION_LOG 285; read at EVERY batch review until frozen):**
+- Read Scout WILLY_TIMECAP cells **T125C30** (close at 30 min), **LT30_025** (after 30 min the TP drops +1.25 → +0.25) and **LT30_03**
+  (→ +0.30) vs today's +1.25 / −4 / 90. Counted from the DL 285 deploy + 10 min; frozen bar N ≥ 20 on ≥ 8 days, mean Δ > 0, day-bootstrap
+  P ≥ 0.90, no fill > 50 % of ΣΔ, parity ≥ 90 %. Report N counted / pending, per-fill Δ, saved vs cut, and the verdict state.
+- Three blocks every time: ① the batch's WILLY fills (own path, today's size) · ② master per batch (B19 / B20 / later) · ③ backtest
+  (yr6 2026 + yr6a 2025 once done — re-run scripts/study_willy_late_sl.py, study_willy_sl_cap_grid.py, study_willy_late_tp_grid.py on 2025).
+- Evidence at registration (2026 replay, 606 fills; reports/WILLY_LATE_SL_STUDY.txt · WILLY_SL_CAP_GRID.txt · WILLY_LATE_TP_GRID.txt):
+  today avg +0.100 %/fill · −4/30 Δ −0.013 (P 0.35; B19 +$122, B20 +$108) · +0.25 after 30 Δ +0.018 (P 0.79; B19 +$237) · +0.30 after 30
+  Δ +0.022 (P 0.83; B19 +$153) — the LT30 cells are bear-half (Jan–Jun) driven, ≈ 0 in Jul–Oct; T125C30 is negative in Jul–Oct (avg −0.04 vs today +0.04). REFUTED: stop −2 (any cap) Δ −0.16…−0.18; tighter late
+  stops ≤ 0; +0.3 after 20 min Δ 0.000. Winners: 74 % of fills, median 4.8 min to TP, median trough −0.86, 22 % dip below −2.
+- Also show: losers' duration (stops median 17 min, caps 90) and the share of WILLY fills still open at 30 min (≈ 20 %).
+
 **WILLY — recommended exit and leverage (Claude's B19 recommendation; check it still holds with more trades):**
-- **Exit: TP +1 %, SL −4 %, 120-min cap** (live in paper and live since 271). +1.25 is still unproven (Scout WILLY_TP125 / combo
+- ~~**Exit: TP +1 %, SL −4 %, 120-min cap**~~ (SUPERSEDED by DECISION_LOG 281: live exit +1.25 / −4 / 90 at 10×) (live in paper and live since 271). +1.25 is still unproven (Scout WILLY_TP125 / combo
   +1.25/−4 frozen bars not met). FRENZY LONG / WIDE / LITE stay at +3 / −3 / 12 h.
   - −4 evidence: on the live-reachable yr5 cohort (532 fills) −4 beats real-money no-stop by +0.076 %/fill (P 0.995, both halves, every
     leave-one-month-out); B19 under −4 = 14 fills +$659 (only BAT stopped).
@@ -386,3 +398,17 @@ at once.
 - LITE on its own +3, LONG / WIDE on +1.5. 🔒 LITE TP gate: first 20 post-284 LITE fills — +1.5 CF avg > actual +3 avg → LITE back to +1.5 (decided once). Per sleeve, three blocks (B21 · master per batch · year): N · WR · avg % · $ at +1.5 vs +3 (first-
   touch on the recorded peak for ≤ +3; walked ticks for the year). Track LITE fills whose peak sat in [+1.5, +3) and then stopped (BAT 10-12
   type) — if they become common, LITE's +3 is wrong; if LONG / WIDE winners keep running clean to +3, theirs is.
+
+## 🧪 TWO-YEAR WINNERS vs LOSERS (operator 2026-10-12 — runs when yr6a 2025 finishes, ETA 2026-10-14 00:00 UTC)
+- Wait for the 2-year analysis before ANY sizing / exit change (operator: LONG / WIDE 2× / 1× proposal parked; yr6 2026 re-priced to
+  today in reports/ENGINE_REPLAY_YR6_TODAY.txt — today's LONG / WIDE 10× ruins the FRENZY book, $17.6k → $508).
+- Regimes (operator-defined, MACRO): **2025 = BULL · 2026-H1 (Jan 4 → Jun 30) = BEAR · 2026-H2 (Jul 1 → Oct 11) = BULL again.**
+- Per sleeve: N · WR · avg % · day-CI · $ per regime and per month (2025 / 2026 / combined), all re-priced to TODAY's config
+  (scripts/yr6_reprice_today.py logic: FRENZY TP first-touch, today's lev).
+- Winners vs losers, per sleeve × regime: every MACRO variable (BTC multi-TF slope / RSI / ADX / trend gap / breadth / eff72 / gvol /
+  dominance-type stamps) and every PAIR variable (entry_* stamps: RSI, ADX, DI, EMA gaps, ATR, volume, vol ratio, range position, age,
+  mcap / turnover) — sign granularity first, then buckets (sweep_separators.py), exhaustive 2D with shuffled null, per-pair and per-window
+  concentration, day units for macro vars. DISCOVER in one regime → CONFIRM out-of-sample in the other same-direction regime
+  (bull 2025 ↔ bull 2026-H2) and check the bear H1 separately. Locked expectancy bar + 30–50 % haircut; list what could not be tested.
+- Questions to answer: does a sleeve only work in one regime (regime switch, not a filter)? which per-pair variables separate within
+  a regime? LONG / WIDE size; momentum long; flip short; why the FULL stack ruins in every config (non-FRENZY sleeves sharing the book).

@@ -69,3 +69,20 @@ def test_old_exit_revert_gate_pinned():
     assert WT.dl281_floor is WT.s4_deploy_ts and WT.S4_DEPLOY_GREP == "(DECISION_LOG 281)"
     g = WT._git_ct("(DECISION_LOG 281)")
     assert WT.s4_deploy_ts() == (WT.pd.Timestamp("2026-10-12 12:00:00") if g is None else g) + WT.pd.Timedelta(minutes=10)
+
+
+def test_s285_cells_pinned():
+    """DECISION_LOG 285: T125C30 / LT30_025 / LT30_03 vs today's exit — own floor (DL 285 commit + 10 min), own keys, bar text pinned."""
+    assert WT.S285_CELLS == (("T125C30", 1.25, 30, None, None), ("LT30_025", 1.25, None, 30, 0.25), ("LT30_03", 1.25, None, 30, 0.30))
+    assert WT.S285_KEY == {"T125C30": "S4_T125C30", "LT30_025": "S4_LT30_025", "LT30_03": "S4_LT30_03"}
+    assert (WT.S285_LABEL, WT.S285_DEPLOY_GREP, WT.S285_DEPLOY_PIN) == \
+        ("pre-registered 2026-10-13, DECISION_LOG 285", "(DECISION_LOG 285)", "2026-10-13 04:05:00")
+    assert set(WT.S285_KEY.values()).isdisjoint(set(WT.S4_KEY.values()) | {"first", "reread", WT.OLD_KEY})
+    for frag in ("FROZEN BAR (pre-registered 2026-10-13, DECISION_LOG 285)", "N ≥ 20 counted fills on ≥ 8 distinct UTC days, decided ONCE",
+                 "P(mean Δ > 0) ≥ 0.90 (4,000 resamples, seed 7)", "no single fill carries > 50 % of Σ Δ", "walker parity vs live ≥ 90 %",
+                 "mean Δ ≤ 0 → KEEP TODAY", "else KEEP OBSERVING", "Never frozen on failed parity or integrity",
+                 "Counted from the DECISION_LOG 285 commit + 10 min"):
+        assert frag in WT.S285_BAR, frag
+    g = WT._git_ct("(DECISION_LOG 285)")
+    assert WT.s285_deploy_ts() == (WT.pd.Timestamp("2026-10-13 04:05:00") if g is None else g) + WT.pd.Timedelta(minutes=10)
+    assert all(WT.s285_na(n, 1.25, 90) == "" for n in WT.S285_NAMES)

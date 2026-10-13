@@ -190,7 +190,7 @@ def test_strong_signal_leverage_wiring():
     i = eng.index("if _frenzy and _fz_es == \"FRENZY_LONG\" and frenzy_strong:")
     assert eng.index("_sg_inv = getattr(_th_sg") < i < eng.index("cell_lev_mult = max(0.05, min(1.0 if _sg_lev is None")   # replaces the lev mult BEFORE the clamp
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["frenzy_long_lev_mult_strong"] == 0.0 and cfg["frenzy_long_lev_mult"] == 0.5 and cfg["frenzy_wide_lev_mult"] == 0.5   # DECISION_LOG 283 (280: 0.1 / 0.05)
+    assert cfg["frenzy_long_lev_mult_strong"] == 0.0 and cfg["frenzy_long_lev_mult"] == 0.1 and cfg["frenzy_wide_lev_mult"] == 0.05   # DECISION_LOG 286 rollback (283: 0.5 / 0.5 for one day)
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     assert html.count('id="config-fz-lev-mult-strong"') == 1 and "['config-fz-lev-mult-strong', 'frenzy_long_lev_mult_strong', 0]" in html
 

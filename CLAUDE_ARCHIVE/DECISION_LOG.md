@@ -6460,3 +6460,14 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   stays a study-only number for the 2025 re-check, not a registered cell.
   The late-TP grid is non-monotonic in X (15 min +0.023 · 20 min ≈ 0 · 25 min mixed · 30 min +0.022) — a confound flag, one more reason
   for observe-only. Review notes: 1m-tail bars straddling minute 30 are stamped at their close (provisional paths only; ticks exact). Added as a 🔴 IMPORTANT item in reports/NEXT_BATCH_REVIEW_PLAN.md.
+
+## (286) 2026-10-13 — ↩ FRENZY LONG / WIDE leverage rolled back to 2× / 1× (operator: "rollback to previous lev levels")
+- **Change:** trading_config.json `frenzy_long_lev_mult` 0.5 → 0.1 (~2×; strong bump stays 0) and `frenzy_wide_lev_mult` 0.5 → 0.05 (~1×) =
+  the DECISION_LOG 280 sizes. Unchanged: LONG / WIDE TP +1.5 / −3 (283), LITE 10× at its own +3 (283 / 284), WILLY 10×, momentum long ×0.5.
+  Code defaults were already the safe 0.1 / 0.05; UI fallbacks 0.1 / 0.05. LONG / WIDE stay ON (they block bad LITE entries).
+- **Why:** yr6 2026 replay re-priced to today (reports/ENGINE_REPLAY_YR6_TODAY.txt, scripts/yr6_reprice_today.py): LONG −0.209 / WIDE
+  −0.149 %/fill at +1.5 (WR 63 % < 66.7 % breakeven) → at 10× the FRENZY-only shared book $2,900 → $508 (−95 % DD, worst day −47 %); with
+  LONG / WIDE at 2× / 1× ≈ $20.8k (−73 % DD) (seed 1). Master per sleeve: LONG −$94 at 10× → −$19 at 2×.
+- **Gates:** DL 283's LONG / WIDE 10× revert gate is resolved (reverted by the operator before its 20 fills); LITE's 10× gate stays.
+- **Master STACK 2026-10-13a:** SLEEVE_SIZE_FROZEN LONG 0.1 / WIDE 0.05 → non-probe kept 455 · +$6,797.79 → +$6,683.60 (LONG 20 · −$18.76,
+  WIDE 8 · +$21.02; B19 +$708.84 → +$581.41, B20 −$11.33 → −$222.63 — B20's three +1.5 LONG wins shrink with the size); validate ALL PASS.

@@ -44,3 +44,13 @@ Shared compounding book from $2,900 (per seed) — old (replay config) → new (
   FULL minus MOM-long & FLIP   seed 1: $    24,571 (mdd -94 %, <20 % 2026-04-16) → $        96 (mdd -98 %, worst day -47 %, -1.209 %/day, <20 % 2026-02-17)
   FULL minus MOM-long & FLIP   seed 2: $     1,239 (mdd -96 %, <20 % 2026-03-19) → $        75 (mdd -98 %, worst day -62 %, -1.292 %/day, <20 % 2026-02-16)
   FULL minus MOM-long & FLIP   seed 3: $       114 (mdd -98 %, <20 % 2026-02-26) → $       103 (mdd -97 %, worst day -48 %, -1.181 %/day, <20 % 2026-02-13)
+
+FRENZY-only shared book variants (seed 1, $2,900, compounding) — scripts/yr6_frenzy_variants.py, 2026-10-13
+DL 283 cfg: LONG/WIDE +1.5 10x · LITE +3 10x · WILLY 10x   $      508  mdd -95%  worst day -47%  -0.631%/day  <20% 2026-02-21
+DL 286 cfg (today): LONG/WIDE +1.5 at 2x/1x · LITE +3 10x · WILLY 10x $   20,787  mdd -73%  worst day -26%  +0.719%/day  <20% never
+LONG/WIDE +3 at 2x/1x · LITE +3 10x · WILLY 10x            $   19,112  mdd -74%  worst day -27%  +0.688%/day  <20% never
+LONG/WIDE +3 at 2x/1x · LITE +3 8x · WILLY 10x (= replay cfg) $   17,611  mdd -72%  worst day -24%  +0.658%/day  <20% never
+LITE +3 10x · WILLY 10x only                               $   26,232  mdd -69%  worst day -24%  +0.804%/day  <20% never
+LITE +3 10x only                                           $   19,636  mdd -50%  worst day -17%  +0.701%/day  <20% never
+WILLY 10x only                                             $    5,096  mdd -68%  worst day -24%  +0.205%/day  <20% never
+LONG/WIDE +1.5 10x only                                    $       96  mdd -97%  worst day -26%  -1.235%/day  <20% 2026-03-01

@@ -1345,7 +1345,7 @@ class SignalThresholds(BaseModel):
     # 1st attempt −0.11 %, 2nd +0.14, 3rd +0.92; a cap of 1 was the worst cell, 3 keeps ~97 % of the tested entries. 0 = no cap.
     frenzy_max_entries_per_pair_day: int = 3
     frenzy_long_invest_mult: float = 1.0         # absolute-assign, never re-multiplied by cells (Oct-3 operator: JSON 1.0 · lev 0.32 → 20×→6×, one 3 % stop ≈ 5 % of the account; was 2.0/1.0 ≈ 31 %, 90-day MC median −100 %)
-    frenzy_long_lev_mult: float = 0.1            # DL 280: 2× code default = the SAFE fallback (a missing key never sizes above 2×); live JSON 0.5 = 10× since DL 283; 0 = the 0.05 floor
+    frenzy_long_lev_mult: float = 0.1            # DL 280: 2× code default = the SAFE fallback (a missing key never sizes above 2×); live JSON 0.1 = 2× again since DL 286 (10× under DL 283 for one day); 0 = the 0.05 floor
     # 💪 Oct-4 (operator ARMED override, DECISION_LOG 197): a FRENZY_LONG whose signal bar shows ADX rising (3-bar Δ > 0) ∧ +DI above −DI
     # (entry_frenzy_adx_delta > 0 ∧ entry_frenzy_di_spread > 0, both read on the closed bar) uses THIS leverage multiplier instead (JSON 0.5 →
     # 20×→10×, ≈ 1.67× the normal 6×). FRENZY_WIDE never. Unreadable readings = normal size. 0 = off. Year (ticks, fixed +4/−3, quiet market):
@@ -1357,6 +1357,8 @@ class SignalThresholds(BaseModel):
     #   they cost the compounding book (year, WILLY new exit 10×: LONG/WIDE 6×/4× $24,880 vs 2×/1× $42,716) yet keep a side effect worth keeping:
     #   an open LONG blocks a LITE entry on the same coin (one position per pair) and those LITE entries lost 8 of 10 on the year. Strong-gate
     #   (197 / 262, 7 / 20 on the revert side) superseded. 🔒 Re-size up only via Pattern W at ≥ 30 fresh fills (WR ≥ 70 % ∧ avg ≥ +0.10 %).
+    #   ↩ 2026-10-13 (DECISION_LOG 286, operator rollback): LONG 0.5 → 0.1 (2×) and WIDE 0.5 → 0.05 (1×) — yr6 2026 re-priced to today
+    #   FRENZY book $508 at LONG / WIDE 10× vs ≈ $20.8k at 2× / 1× (seed 1, reports/ENGINE_REPLAY_YR6_TODAY.txt variants); LITE 10× / WILLY 10× and the +1.5 LONG / WIDE TP unchanged.
     # ⚖️ 2026-10-12 (DECISION_LOG 283, operator DECLARED OVERRIDE "Ship all as asked" — the DL 280 Pattern-W re-size bar is overridden):
     #   trading_config.json frenzy_long_lev_mult 0.1 → 0.5 (2× → 10×), frenzy_wide_lev_mult 0.05 → 0.5 (1× → 10×), frenzy_lite_lev_mult
     #   0.4 → 0.5 (8× → 10×); strong bump stays 0 (off); invest 1.0. Engine leverage = max(1, round(20 × 0.5)) = 10×; resting exchange
@@ -1373,7 +1375,7 @@ class SignalThresholds(BaseModel):
     # Volume 75× / rising variants all worse (−0.02 to −0.08). Own tag FRENZY_WIDE, own size, own slots.
     frenzy_wide_enabled: bool = False
     frenzy_wide_invest_mult: float = 1.0         # absolute-assign like FRENZY_LONG
-    frenzy_wide_lev_mult: float = 0.05           # DL 280: 1× code default = the SAFE fallback; live JSON 0.5 = 10× since DL 283 (gates above)
+    frenzy_wide_lev_mult: float = 0.05           # DL 280: 1× code default = the SAFE fallback; live JSON 0.05 = 1× again since DL 286 (10× under DL 283 for one day)
     frenzy_wide_max_slots: int = 2               # max FRENZY_WIDE open at once (they also count against max open positions)
     # 🌀 Oct-5 (DECISION_LOG 215 — shipped OBSERVE-ONLY, JSON 0: the deep review found the study's fresh bar lagged the engine's, and on the
     # bars the engine trades the cohort did not separate; frozen candidate 67.8 pending re-validation). FRENZY_WIDE skips a CHOPPY / FADING pump — at most this % of the episode's 5m

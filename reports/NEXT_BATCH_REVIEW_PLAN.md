@@ -113,17 +113,19 @@ winner / loser patterns in FRENZY (LONG / WIDE / LITE / WILLY), MOMENTUM LONG / 
   unchanged, so the read is $ / ruin only. If yr6 runs on a config snapshot from before 283, re-walk / re-lever its fills to both configs.
 
 ## 🏁 NEXT BATCH = B21 (operator reset after the DECISION_LOG 283 / 284 deploys, 2026-10-12) — ONE config: FRENZY LONG / WIDE +1.5 / −3 and LITE
-## +3 / −3 (own TP, DL 284), all at 10×, momentum longs at half leverage, WILLY 10× +1.25 / −4 / 90. B20 (10-12 05:08 → 15:15, all pre-283) is archived in BASELINE20; B19 is archived (BASELINE19, master STACK 2026-10-12c,
+## +3 / −3 (own TP, DL 284) — LONG 2× / WIDE 1× (DL 286 rollback), LITE 10×, momentum longs at half leverage, WILLY 10× +1.25 / −4 / 90. B20 (10-12 05:08 → 15:15, all pre-283) is archived in BASELINE20; B19 is archived (BASELINE19, master STACK 2026-10-12c,
 ## normalized to today's config); use the normalization table below only when re-reading the archived B19 by era.
 
 ### If the batch is NOT reset at the deploy — DECISION_LOG 283 (2026-10-12) changed: FRENZY TP +3 → +1.5 (LONG / WIDE / LITE and the
 ### manual FRENZY mode) · FRENZY LONG / WIDE / LITE → 10× · momentum LONG lev × 0.5 (20× → 10× on a 1× cell; a 2.0-lev cell 20× → 15× via the schedule cap) (`momentum_long_lev_mult` 0.5)
-- Tag every fill by era (the "(DECISION_LOG 283)" commit + 10 min); compare on Avg P&L %; $ only normalized to today (LONG $ × 10/2,
-  WIDE × 10/1, LITE × 10/8, momentum long × 10/20 for pre-283 fills — or the fill's own leverage if bracket-capped); FRENZY pre-283 fills:
+- ↩ DECISION_LOG 286 (2026-10-13) rolled LONG / WIDE back to 2× / 1× — a batch spanning it has THREE eras: pre-283 · 283→286 (LONG /
+  WIDE 10×) · post-286 (2× / 1×). Tag by the "(DECISION_LOG 283)" and "(DECISION_LOG 286)" commits + 10 min.
+- Tag every fill by era; compare on Avg P&L %; $ only normalized to today (LONG $ × 2 / traded lev, WIDE × 1 / traded lev,
+  LITE × 10/8, momentum long × 10/20 for pre-283 fills — or the fill's own leverage if bracket-capped); FRENZY pre-283 fills:
   re-walk at +1.5 / −3 / 12 h on their own ticks (never scale the %).
 - Gates to read (post-283 fills only): Scout FRENZY_TP_REVERT (LONG + WIDE pooled + per sleeve — LITE out since DL 284, N ≥ 20 on ≥ 8 days: old beats new at P ≥ 0.90 or new avg
-  < 0 with old avg higher → TP back to +3) · FRENZY 10× revert (per sleeve: first 20 fills at 10× avg < 0, or any UTC day's FRENZY fills > 25 % of the book →
-  LONG / WIDE 2× / 1×, LITE 8×) · FRENZY_WILLY_TP grid (re-based to 283) · momentum long 10×: no gate (de-risking) — report the $ halving
+  < 0 with old avg higher → TP back to +3) · FRENZY 10× revert — LITE only now (first 20 LITE fills at 10× avg < 0, or any UTC day's FRENZY fills > 25 % of the book →
+  LITE 8×; the LONG / WIDE leg was resolved by the DL 286 rollback) · FRENZY_WILLY_TP grid (re-based to 283) · momentum long 10×: no gate (de-risking) — report the $ halving
   and confirm `leverage` = 10 on unmatched fills (20 × cell lev × 0.5; bracket-capped rows flagged).
 
 ## ⚠ NORMALIZE ALL B19 TRADES — the batch is NOT reset across config changes (operator 2026-10-12: "i will not reset the batch, then
@@ -136,6 +138,9 @@ opened_at vs the deploy (commit time + 10 min) and normalize to TODAY's rules �
 | 99b9048 + 10 min (2026-10-12 01:59:51 UTC) | 271: paper = live stops — WILLY −4, FRENZY −3 own stop, per-order backstop | WILLY fills before it ran NO stop in paper → re-walk at −4 (BAT 10-11: −1.38 → −4.00) |
 | 5fc762d + 10 min | 277: LITE 6× → 8× | LITE $ × 8/6 for earlier fills (same %) |
 | the DL 281 commit + 10 min | 280/281: WILLY 20× → 10×, TP +1 → +1.25, cap 120 → 90 · LONG 6× (strong 10×) → 2× (no strong) · WIDE 4× → 1× | WILLY earlier fills: re-walk at +1.25 / −4 / 90 on their own path AND $ × 10/20 (pair-capped fills: their capped notional × 10/lev) · LONG $ × 2/lev · WIDE $ × 1/4 |
+| 61ff976 + 10 min (DL 283) | 283: FRENZY LONG / WIDE / LITE TP +3 → +1.5, all 10× · momentum long lev × 0.5 | FRENZY earlier fills: re-walk at +1.5 (first touch on peak); momentum long $ × 10/20 |
+| b0f0682 + 10 min (DL 284) | 284: LITE own TP back to +3 | LITE fills of the 283 → 284 hours: re-walk at +3 |
+| the DL 286 commit + 10 min | 286: LONG 10× → 2×, WIDE 10× → 1× (rollback) | LONG $ × 2 / traded lev, WIDE $ × 1 / traded lev |
 Rules: compare eras on Avg P&L % (leverage-invariant), $ only after normalization; WILLY % itself changes with the exit (re-walk, ticks
 first); report both "as traded" and "normalized to today" in all three blocks; never mix pre-/post-change fills in a gate tally (each gate
 counts from its own deploy). Use scripts/study_b19_whatif_operator.py as the starting point (it already re-prices sizing + the WILLY −4).
@@ -400,8 +405,9 @@ at once.
   type) — if they become common, LITE's +3 is wrong; if LONG / WIDE winners keep running clean to +3, theirs is.
 
 ## 🧪 TWO-YEAR WINNERS vs LOSERS (operator 2026-10-12 — runs when yr6a 2025 finishes, ETA 2026-10-14 00:00 UTC)
-- Wait for the 2-year analysis before ANY sizing / exit change (operator: LONG / WIDE 2× / 1× proposal parked; yr6 2026 re-priced to
-  today in reports/ENGINE_REPLAY_YR6_TODAY.txt — today's LONG / WIDE 10× ruins the FRENZY book, $17.6k → $508).
+- Wait for the 2-year analysis before further sizing / exit changes. The LONG / WIDE 2× / 1× proposal was EXECUTED early by the operator
+  (DECISION_LOG 286, 2026-10-13) after the yr6 2026 re-price (reports/ENGINE_REPLAY_YR6_TODAY.txt: LONG / WIDE 10× → FRENZY book $508;
+  2× / 1× ≈ $20.8k, variants section) — the 2-year read now checks 2× / 1× holds in 2025 too.
 - Regimes (operator-defined, MACRO): **2025 = BULL · 2026-H1 (Jan 4 → Jun 30) = BEAR · 2026-H2 (Jul 1 → Oct 11) = BULL again.**
 - Per sleeve: N · WR · avg % · day-CI · $ per regime and per month (2025 / 2026 / combined), all re-priced to TODAY's config
   (scripts/yr6_reprice_today.py logic: FRENZY TP first-touch, today's lev).

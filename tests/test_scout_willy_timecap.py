@@ -86,3 +86,23 @@ def test_s285_cells_pinned():
     g = WT._git_ct("(DECISION_LOG 285)")
     assert WT.s285_deploy_ts() == (WT.pd.Timestamp("2026-10-13 04:05:00") if g is None else g) + WT.pd.Timedelta(minutes=10)
     assert all(WT.s285_na(n, 1.25, 90) == "" for n in WT.S285_NAMES)
+
+
+def test_s290_cells_pinned():
+    """DECISION_LOG 290: T130C90 … T150C90 (higher WILLY TP on today's −4 stop + hold) — own floor (DL 290 commit + 10 min), own keys,
+    bar text pinned (family of 5, operator decides)."""
+    assert WT.S290_CELLS == (("T130C90", 1.30), ("T135C90", 1.35), ("T140C90", 1.40), ("T145C90", 1.45), ("T150C90", 1.50))
+    assert WT.S290_KEY == {"T130C90": "S4_T130C90", "T135C90": "S4_T135C90", "T140C90": "S4_T140C90", "T145C90": "S4_T145C90",
+                           "T150C90": "S4_T150C90"}
+    assert (WT.S290_LABEL, WT.S290_DEPLOY_GREP, WT.S290_DEPLOY_PIN) == \
+        ("pre-registered 2026-10-14, DECISION_LOG 290", "(DECISION_LOG 290)", "2026-10-14 05:30:00")
+    assert set(WT.S290_KEY.values()).isdisjoint(set(WT.S4_KEY.values()) | set(WT.S285_KEY.values()) | {"first", "reread", WT.OLD_KEY})
+    for frag in ("FROZEN BAR (pre-registered 2026-10-14, DECISION_LOG 290)", "N ≥ 20 counted fills on ≥ 8 distinct UTC days, decided ONCE",
+                 "P(mean Δ > 0) ≥ 0.90 (4,000 resamples, seed 7)", "no single fill carries > 50 % of Σ Δ", "walker parity vs live ≥ 90 %",
+                 "mean Δ ≤ 0 → KEEP TODAY", "else KEEP OBSERVING", "FAMILY OF 5", "no cell is armed without the operator",
+                 "Never frozen on failed parity or integrity", "Counted from the DECISION_LOG 290 commit + 10 min"):
+        assert frag in WT.S290_BAR, frag
+    g = WT._git_ct("(DECISION_LOG 290)")
+    assert WT.s290_deploy_ts() == (WT.pd.Timestamp("2026-10-14 05:30:00") if g is None else g) + WT.pd.Timedelta(minutes=10)
+    assert all(WT.s290_na(n, 1.25, 90) == "" for n in WT.S290_NAMES) and WT.s290_na("T130C90", 1.30, 90) == "= today"
+    assert WT.s290_spec("T150C90", 90) == (1.50, 90)

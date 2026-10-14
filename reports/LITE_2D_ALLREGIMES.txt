@@ -1,0 +1,22 @@
+LITE 2D separator that holds in ALL THREE regimes (operator 2026-10-14: "is there not a 2D, considering the first half of 2026?").
+64 columns (price, gap, ema_gap_5_8, ema_gap_8_13, rsi, rsi_prev, adx, adx_prev, ema5_stretch, price_vs_ema5_pct, ema20_slope, btc_ema20_slope, btc_adx, btc_adx_prev, btc_rsi, btc_rsi_prev, btc_rsi_prev6, btc_atr_pct, btc_rsi_1h, btc_rsi_1h_prev, global_volume_ratio, pair_volume_ratio, bull_pct, bear_pct, range_position, adx_delta, btc_trend_gap_pct, pos_di, neg_di, atr_pct, ema50_slope, pair_ema20_ema50_gap_pct, dist_from_ema13_pct, btc_dist_from_ema13_pct, btc_off24h_pct, btc_off24lo_pct, btc_off30d_high_pct, btc_r72_pct, btc_eff72, btc_above72_pct, btc_1h_slope, pair_volume_24h_usd, frenzy_hours, frenzy_vwap, frenzy_vs_vwap_pct, frenzy_vol_mult, frenzy_run_pct, frenzy_stop_atr, frenzy_bar_ret_pct, frenzy_above_streak, frenzy_above_share, frenzy_di_spread, frenzy_adx_delta, frenzy_gvol, frenzy_vol_trend, btc_ema50_100_gap_pct, eth_5m_ret1_pct, btc_1d_ret_pct, pair_1h_ema20_200_gap_pct, desired_notional, liquidity_cap_notional, btc_rsi_closed, fee, slippage_pct)
+
+qualifying zones (negative in all 3 regimes, ≥ 15 fills each): observed 1010 · null median 988 (p95 1290) → P(null ≥ observed) 0.455
+best weakest-regime gap: observed -0.587 · null median -0.540 (p5 -0.791) → P(null ≤ observed) 0.305
+
+Top 15 zones (weakest-regime gap first):
+  gap > 0.877 ∧ ema20_slope ≤ 0.294: gaps -1.30 / -0.59 / -0.91 (n 26/17/17) · master zone 0 fills 0W 0L $+0
+  btc_off24h_pct ≤ -0.83 ∧ frenzy_above_streak ≤ 12: gaps -0.50 / -0.53 / -0.51 (n 320/188/105) · master zone 7 fills 4W 3L $+145
+  pair_volume_24h_usd ≤ 7.84e+07 ∧ eth_5m_ret1_pct ≤ 0.0086: gaps -0.43 / -0.45 / -0.50 (n 197/110/75) · master zone 5 fills 2W 3L $-243
+  eth_5m_ret1_pct ≤ 0.0086 ∧ liquidity_cap_notional ≤ 7.84e+04: gaps -0.43 / -0.45 / -0.50 (n 197/110/75) · master zone 5 fills 2W 3L $-243
+  btc_off24h_pct ≤ -0.83 ∧ pair_volume_24h_usd ≤ 7.84e+07: gaps -0.66 / -0.43 / -0.42 (n 163/131/71) · master zone 6 fills 2W 4L $-456
+  btc_off24h_pct ≤ -0.83 ∧ liquidity_cap_notional ≤ 7.84e+04: gaps -0.66 / -0.43 / -0.42 (n 163/131/71) · master zone 6 fills 2W 4L $-456
+  pair_ema20_ema50_gap_pct > 1.94 ∧ frenzy_di_spread ≤ 10: gaps -0.41 / -0.74 / -0.41 (n 131/77/46) · master zone 3 fills 2W 1L $+187
+  adx_delta ≤ -0.248 ∧ btc_off24h_pct ≤ -0.83: gaps -0.54 / -0.41 / -0.55 (n 188/110/68) · master zone 4 fills 4W 0L $+781
+  rsi ≤ 56.4 ∧ adx_prev > 28.3: gaps -0.39 / -0.43 / -0.65 (n 135/69/32) · master zone 1 fills 0W 1L $-212
+  global_volume_ratio > 0.822 ∧ adx_delta ≤ -0.248: gaps -0.42 / -0.39 / -0.67 (n 211/89/74) · master zone 2 fills 1W 1L $-1
+  pair_ema20_ema50_gap_pct > 1.94 ∧ dist_from_ema13_pct ≤ 0.213: gaps -0.39 / -0.43 / -0.41 (n 159/72/32) · master zone 1 fills 0W 1L $-212
+  price_vs_ema5_pct ≤ -0.14 ∧ pair_volume_24h_usd ≤ 7.84e+07: gaps -0.50 / -0.51 / -0.39 (n 179/109/73) · master zone 3 fills 1W 2L $-230
+  price_vs_ema5_pct ≤ -0.14 ∧ liquidity_cap_notional ≤ 7.84e+04: gaps -0.50 / -0.51 / -0.39 (n 179/109/73) · master zone 3 fills 1W 2L $-230
+  adx_prev > 28.3 ∧ adx_delta ≤ -0.248: gaps -0.39 / -0.38 / -0.40 (n 209/88/41) · master zone 2 fills 1W 1L $-17
+  adx_delta ≤ -0.248 ∧ pair_ema20_ema50_gap_pct > 1.94: gaps -0.38 / -0.51 / -0.61 (n 222/96/51) · master zone 3 fills 3W 0L $+582

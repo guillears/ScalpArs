@@ -1,0 +1,47 @@
+WILLY: TP +0.3 or close at 30 min vs today's +1.25 / −4 / 90 (operator 2026-10-13, next-batch item) — master WILLY fills (B19, B20)
+
+Per fill (net %): TODAY +1.25/−4/90 | TP +0.3 from entry | TP +0.3 after 30 min | TP +0.25 after 30 min | close at 30 min
+  B19 2026-10-09 08:45 KAIAUSDT   [ticks] live +1.01 (FRENZY_TP) → +1.26 TP · +0.31 LATE_TP · +1.26 TP · +1.26 TP · +1.26 TP
+  B19 2026-10-09 09:05 WUSDT      [ticks] live +1.00 (FRENZY_TP) → +1.25 TP · +0.30 LATE_TP · +1.25 TP · +1.25 TP · +1.25 TP
+  B19 2026-10-09 14:25 API3USDT   [ticks] live -2.44 (MAX_HOLD_TIM) → -1.48 CAP · +0.30 LATE_TP · -1.48 CAP · +0.27 LATE_TP · -0.78 CAP
+  B19 2026-10-09 16:35 ZKUSDT     [ticks] live +1.02 (FRENZY_TP) → -2.15 CAP · +0.30 LATE_TP · +0.30 LATE_TP · +0.25 LATE_TP · -0.75 CAP
+  B19 2026-10-10 04:30 CAPUSDT    [ticks] live +1.01 (FRENZY_TP) → +1.25 TP · +0.31 LATE_TP · +1.25 TP · +1.25 TP · +1.25 TP
+  B19 2026-10-10 05:20 MINAUSDT   [ticks] live +1.00 (FRENZY_TP) → +1.26 TP · +0.31 LATE_TP · +1.26 TP · +1.26 TP · +1.26 TP
+  B19 2026-10-10 06:45 LPTUSDT    [ticks] live +1.03 (FRENZY_TP) → +1.28 TP · +0.32 LATE_TP · +1.28 TP · +1.28 TP · +1.28 TP
+  B19 2026-10-10 11:35 ORCAUSDT   [ticks] live +1.01 (FRENZY_TP) → +1.29 TP · +0.30 LATE_TP · +1.29 TP · +1.29 TP · +1.29 TP
+  B19 2026-10-10 13:35 CFXUSDT    [ticks] live +1.01 (FRENZY_TP) → +1.26 TP · +0.31 LATE_TP · +1.26 TP · +1.26 TP · +1.26 TP
+  B19 2026-10-10 18:40 CHIPUSDT   [ticks] live +1.00 (FRENZY_TP) → +1.27 TP · +0.30 LATE_TP · +1.27 TP · +1.27 TP · +1.27 TP
+  B19 2026-10-11 11:25 SENTUSDT   [ticks] live +1.03 (FRENZY_TP) → +1.29 TP · +0.34 LATE_TP · +1.29 TP · +1.29 TP · +1.29 TP
+  B19 2026-10-11 15:25 SUSDT      [ticks] live +1.00 (FRENZY_TP) → +1.26 TP · +0.32 LATE_TP · +1.26 TP · +1.26 TP · +1.26 TP
+  B19 2026-10-11 16:05 BATUSDT    [ticks] live -1.38 (MAX_HOLD_TIM) → -4.00 STOP · +0.30 LATE_TP · -4.00 STOP · -4.00 STOP · -4.00 STOP
+  B19 2026-10-11 18:10 WUSDT      [ticks] live +1.00 (FRENZY_TP) → +1.25 TP · +0.30 LATE_TP · +1.25 TP · +1.25 TP · +1.25 TP
+  B20 2026-10-12 05:15 RSRUSDT    [ticks] live +1.28 (FRENZY_TP) → +1.28 TP · +0.33 LATE_TP · +1.28 TP · +1.28 TP · +1.28 TP
+  B20 2026-10-12 10:40 OGNUSDT    [ticks] live -4.03 (STOP_LOSS) → -4.03 STOP · -4.03 STOP · -4.03 STOP · -4.03 STOP · -2.43 CAP
+  B20 2026-10-12 12:55 CAPUSDT    [ticks] live +1.26 (FRENZY_TP) → +1.26 TP · +0.31 LATE_TP · +1.26 TP · +1.26 TP · +1.26 TP
+  B21 2026-10-13 14:35 ZKUSDT     [1m] live +1.26 (FRENZY_TP) → +1.25 TP · +0.30 LATE_TP · +1.25 TP · +1.25 TP · +1.25 TP
+
+Per batch: N · WR · avg % · $ at today's size (UNRES fills excluded and counted)
+  B19:
+    TODAY +1.25/−4/90: 14 ·  79 % · +0.451 · $+397
+    TP +0.3 from entry: 14 · 100 % · +0.309 · $+282
+    TP +0.3 after 30 min: 14 ·  86 % · +0.625 · $+550
+    TP +0.25 after 30 min: 14 ·  93 % · +0.747 · $+634
+    close at 30 min: 14 ·  79 % · +0.600 · $+519
+  B20:
+    TODAY +1.25/−4/90: 3 ·  67 % · -0.497 · $-90
+    TP +0.3 from entry: 3 ·  67 % · -1.133 · $-212
+    TP +0.3 after 30 min: 3 ·  67 % · -0.497 · $-90
+    TP +0.25 after 30 min: 3 ·  67 % · -0.497 · $-90
+    close at 30 min: 3 ·  67 % · +0.036 · $+10
+  B21:
+    TODAY +1.25/−4/90: 1 · 100 % · +1.250 · $+89
+    TP +0.3 from entry: 1 · 100 % · +0.300 · $+21
+    TP +0.3 after 30 min: 1 · 100 % · +1.250 · $+89
+    TP +0.25 after 30 min: 1 · 100 % · +1.250 · $+89
+    close at 30 min: 1 · 100 % · +1.250 · $+89
+  TOTAL:
+    TODAY +1.25/−4/90: 18 ·  78 % · +0.337 · $+397
+    TP +0.3 from entry: 18 ·  94 % · +0.069 · $+92
+    TP +0.3 after 30 min: 18 ·  83 % · +0.473 · $+549
+    TP +0.25 after 30 min: 18 ·  89 % · +0.567 · $+634
+    close at 30 min: 18 ·  78 % · +0.542 · $+618

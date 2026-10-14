@@ -1,0 +1,164 @@
+YR6 LONG/WIDE OFF A/B — seed 1 — A ENGINE_REPLAY_YR6LWA_TODAY_fills.csv (7375 fills) vs B ENGINE_REPLAY_YR6X_2Y_TODAY_fills.csv (6369 fills) · priced at /private/tmp/claude-501/-Users-guillearslanian-Downloads-NOFA-AI/c066304e-3f8a-400a-8ab7-c1fe68ff169b/scratchpad/code_443a7b5
+lev mult {'FRENZY_LONG': 0.1, 'FRENZY_WIDE': 0.05, 'FRENZY_LITE': 0.5, 'FRENZY_WILLY': 0.5} · momentum long × 0.5 · $ = fixed $2,900 book (usd_new) unless 'book'
+matching: shared 6244 · shifted (±120 s) 29 · A-only 1102 · B-only 96 · shared fills with a different pct_new 513 / different closed_at 724
+
+=== 2025 BULL: per sleeve  A (LONG/WIDE ON)  vs  B (OFF) — N · WR · avg % · $ (fixed book, today's size) ===
+sleeve               │                 A                  │                 B                  │    B−A $ │ shared │ A-only N/avg/$ │ B-only N/avg/$ │ shifted A→B $
+BearRun-Short        │    27 ·   59% · -0.110 · $    -105 │    27 ·   59% · -0.110 · $    -105 │       -0 │     27 │    0 +0.00      +0 │    0 +0.00      +0 │     +0→    +0
+BullRun-Long         │   135 ·   47% · -0.093 · $  -1,772 │   138 ·   47% · -0.090 · $  -1,756 │      +16 │    128 │    2 +1.31    +370 │    5 +0.28    +195 │   +121→  +311
+FLIP-short           │   117 ·   63% · -0.113 · $    -932 │   117 ·   63% · -0.112 · $    -929 │       +3 │    117 │    0 +0.00      +0 │    0 +0.00      +0 │     +0→    +0
+FRENZY_LITE          │   828 ·   48% · -0.142 · $  -8,320 │   836 ·   47% · -0.148 · $  -8,737 │     -416 │    822 │    1 +3.05    +216 │    9 +0.35    +221 │   +644→  +650
+FRENZY_LONG          │   270 ·   66% · -0.061 · $    -233 │     0 ·    – ·    –   · $      +0 │     +233 │      0 │  270 -0.06    -233 │    0 +0.00      +0 │     +0→    +0
+FRENZY_WIDE          │   205 ·   63% · -0.168 · $    -243 │     0 ·    – ·    –   · $      +0 │     +243 │      0 │  205 -0.17    -243 │    0 +0.00      +0 │     +0→    +0
+FRENZY_WILLY         │   899 ·   69% · -0.238 · $ -15,097 │   901 ·   68% · -0.247 · $ -15,706 │     -608 │    893 │    0 +0.00      +0 │    2 -1.36    -192 │   -337→  -330
+MOM-long             │   884 ·   55% · -0.171 · $ -13,259 │   892 ·   54% · -0.175 · $ -13,605 │     -347 │    880 │    4 +0.10     +42 │   12 -0.40    -352 │     +0→    +0
+MOM-short            │   235 ·   60% · -0.059 · $  -1,947 │   235 ·   60% · -0.059 · $  -1,975 │      -27 │    235 │    0 +0.00      +0 │    0 +0.00      +0 │     +0→    +0
+SURGE_LONG           │   127 ·   28% · -0.153 · $  -2,755 │   131 ·   31% · -0.125 · $  -2,321 │     +434 │    124 │    3 -1.12    -477 │    7 +0.23    +231 │     +0→    +0
+Spike-Fade           │   223 ·   67% · +0.109 · $  +6,960 │   223 ·   67% · +0.082 · $  +5,906 │   -1,054 │    223 │    0 +0.00      +0 │    0 +0.00      +0 │     +0→    +0
+TOTAL                │  3950 ·   58% · -0.145 · $ -37,703 │  3500 ·   57% · -0.155 · $ -39,227 │   -1,524 │   3449 │  485 -0.10    -325 │   35 -0.04    +103 │   +428→  +632
+TOTAL ex LONG/WIDE   │  3475 ·   57% · -0.150 · $ -37,227 │  3500 ·   57% · -0.155 · $ -39,227 │   -1,999 │   3449 │   10 +0.27    +150 │   35 -0.04    +103 │   +428→  +632
+FRENZY family        │  2202 ·   60% · -0.174 · $ -23,893 │  1737 ·   58% · -0.199 · $ -24,442 │     -549 │   1715 │  476 -0.10    -260 │   11 +0.04     +29 │   +307→  +321
+
+=== 2026-H1 BEAR: per sleeve  A (LONG/WIDE ON)  vs  B (OFF) — N · WR · avg % · $ (fixed book, today's size) ===
+sleeve               │                 A                  │                 B                  │    B−A $ │ shared │ A-only N/avg/$ │ B-only N/avg/$ │ shifted A→B $
+BearRun-Short        │    10 ·   80% · +0.218 · $     +77 │    10 ·   80% · +0.218 · $     +77 │       +0 │     10 │    0 +0.00      +0 │    0 +0.00      +0 │     +0→    +0
+BullRun-Long         │     0 ·    – ·    –   · $      +0 │     0 ·    – ·    –   · $      +0 │       +0 │      0 │    0 +0.00      +0 │    0 +0.00      +0 │     +0→    +0
+FLIP-short           │    95 ·   58% · -0.206 · $  -1,381 │    97 ·   59% · -0.196 · $  -1,341 │      +40 │     94 │    1 -0.91     -65 │    3 -0.12     -25 │     +0→    +0
+FRENZY_LITE          │   370 ·   51% · +0.226 · $  +5,901 │   380 ·   50% · +0.185 · $  +4,973 │     -928 │    368 │    0 +0.00      +0 │   10 -1.31    -928 │   -304→  -303
+FRENZY_LONG          │   229 ·   63% · -0.179 · $    -579 │     0 ·    – ·    –   · $      +0 │     +579 │      0 │  229 -0.18    -579 │    0 +0.00      +0 │     +0→    +0
+FRENZY_WIDE          │   157 ·   65% · -0.080 · $     -89 │     0 ·    – ·    –   · $      +0 │      +89 │      0 │  157 -0.08     -89 │    0 +0.00      +0 │     +0→    +0
+FRENZY_WILLY         │   411 ·   66% · +0.101 · $  +2,946 │   412 ·   66% · +0.104 · $  +3,040 │      +94 │    409 │    0 +0.00      +0 │    1 +1.34     +95 │   +178→  +178
+MOM-long             │   385 ·   59% · -0.090 · $  -3,090 │   391 ·   59% · -0.085 · $  -2,956 │     +134 │    380 │    4 -0.01     -14 │   10 +0.15    +120 │    +10→   +10
+MOM-short            │   121 ·   61% · -0.046 · $    -781 │   121 ·   61% · -0.046 · $    -781 │       +0 │    121 │    0 +0.00      +0 │    0 +0.00      +0 │     +0→    +0
+SURGE_LONG           │    92 ·   36% · +0.084 · $  +1,096 │    96 ·   36% · +0.101 · $  +1,370 │     +274 │     90 │    0 +0.00      +0 │    4 +0.48    +274 │    -12→   -12
+Spike-Fade           │   282 ·   77% · +0.010 · $  +1,363 │   282 ·   77% · +0.010 · $  +1,363 │       +0 │    282 │    0 +0.00      +0 │    0 +0.00      +0 │     +0→    +0
+TOTAL                │  2152 ·   61% · +0.011 · $  +5,464 │  1789 ·   60% · +0.039 · $  +5,745 │     +281 │   1754 │  391 -0.14    -747 │   28 -0.31    -465 │   -128→  -127
+TOTAL ex LONG/WIDE   │  1766 ·   61% · +0.044 · $  +6,132 │  1789 ·   60% · +0.039 · $  +5,745 │     -386 │   1754 │    5 -0.19     -79 │   28 -0.31    -465 │   -128→  -127
+FRENZY family        │  1167 ·   60% · +0.061 · $  +8,180 │   792 ·   58% · +0.143 · $  +8,014 │     -166 │    777 │  386 -0.14    -668 │   11 -1.07    -834 │   -126→  -125
+
+=== 2026-H2 BULL: per sleeve  A (LONG/WIDE ON)  vs  B (OFF) — N · WR · avg % · $ (fixed book, today's size) ===
+sleeve               │                 A                  │                 B                  │    B−A $ │ shared │ A-only N/avg/$ │ B-only N/avg/$ │ shifted A→B $
+BearRun-Short        │     8 ·   62% · -0.026 · $      -7 │     8 ·   62% · -0.026 · $      -7 │       -0 │      8 │    0 +0.00      +0 │    0 +0.00      +0 │     +0→    +0
+BullRun-Long         │   126 ·   47% · +0.051 · $    +915 │   129 ·   52% · +0.177 · $  +3,225 │   +2,309 │    103 │   19 -0.21    -566 │   22 +0.56  +1,744 │    +38→   +38
+FLIP-short           │    48 ·   65% · -0.065 · $    -221 │    48 ·   65% · -0.065 · $    -221 │       +0 │     48 │    0 +0.00      +0 │    0 +0.00      +0 │     +0→    +0
+FRENZY_LITE          │   256 ·   49% · +0.137 · $  +2,485 │   258 ·   49% · +0.080 · $  +1,462 │   -1,023 │    254 │    1 -3.02    -213 │    3 -5.83  -1,236 │   -212→  -212
+FRENZY_LONG          │   124 ·   62% · -0.273 · $    -479 │     0 ·    – ·    –   · $      +0 │     +479 │      0 │  124 -0.27    -479 │    0 +0.00      +0 │     +0→    +0
+FRENZY_WIDE          │    81 ·   60% · -0.282 · $    -161 │     0 ·    – ·    –   · $      +0 │     +161 │      0 │   81 -0.28    -161 │    0 +0.00      +0 │     +0→    +0
+FRENZY_WILLY         │   208 ·   69% · +0.064 · $    +937 │   208 ·   69% · +0.064 · $    +937 │       -0 │    208 │    0 +0.00      +0 │    0 +0.00      +0 │     +0→    +0
+MOM-long             │   189 ·   63% · -0.026 · $    -314 │   193 ·   63% · -0.037 · $    -495 │     -181 │    189 │    0 +0.00      +0 │    4 -0.51    -181 │     +0→    +0
+MOM-short            │    28 ·   54% · -0.123 · $    -488 │    29 ·   55% · -0.106 · $    -435 │      +53 │     28 │    0 +0.00      +0 │    1 +0.37     +53 │     +0→    +0
+SURGE_LONG           │    85 ·   38% · +0.547 · $  +6,569 │    86 ·   38% · +0.553 · $  +6,722 │     +153 │     83 │    1 -0.94    -133 │    2 +0.07     +21 │   -172→  -172
+Spike-Fade           │   120 ·   77% · +0.067 · $  +1,501 │   121 ·   76% · +0.054 · $  +1,331 │     -170 │    120 │    0 +0.00      +0 │    1 -1.49    -170 │     +0→    +0
+TOTAL                │  1273 ·   59% · +0.032 · $ +10,735 │  1080 ·   59% · +0.090 · $ +12,518 │   +1,783 │   1041 │  226 -0.29  -1,552 │   33 -0.25    +231 │   -346→  -346
+TOTAL ex LONG/WIDE   │  1068 ·   58% · +0.091 · $ +11,376 │  1080 ·   59% · +0.090 · $ +12,518 │   +1,143 │   1041 │   21 -0.38    -912 │   33 -0.25    +231 │   -346→  -346
+FRENZY family        │   669 ·   59% · -0.012 · $  +2,782 │   466 ·   58% · +0.073 · $  +2,399 │     -382 │    462 │  206 -0.29    -854 │    3 -5.83  -1,236 │   -212→  -212
+
+=== ALL: per sleeve  A (LONG/WIDE ON)  vs  B (OFF) — N · WR · avg % · $ (fixed book, today's size) ===
+sleeve               │                 A                  │                 B                  │    B−A $ │ shared │ A-only N/avg/$ │ B-only N/avg/$ │ shifted A→B $
+BearRun-Short        │    45 ·   64% · -0.022 · $     -35 │    45 ·   64% · -0.022 · $     -35 │       +0 │     45 │    0 +0.00      +0 │    0 +0.00      +0 │     +0→    +0
+BullRun-Long         │   261 ·   47% · -0.023 · $    -857 │   267 ·   49% · +0.039 · $  +1,469 │   +2,325 │    231 │   21 -0.07    -196 │   27 +0.51  +1,939 │   +159→  +349
+FLIP-short           │   260 ·   62% · -0.138 · $  -2,535 │   262 ·   62% · -0.135 · $  -2,491 │      +43 │    259 │    1 -0.91     -65 │    3 -0.12     -25 │     +0→    +0
+FRENZY_LITE          │  1454 ·   49% · +0.001 · $     +66 │  1474 ·   48% · -0.022 · $  -2,301 │   -2,367 │   1444 │    2 +0.02      +3 │   22 -1.25  -1,944 │   +128→  +135
+FRENZY_LONG          │   623 ·   64% · -0.146 · $  -1,290 │     0 ·    – ·    –   · $      +0 │   +1,290 │      0 │  623 -0.15  -1,290 │    0 +0.00      +0 │     +0→    +0
+FRENZY_WIDE          │   443 ·   63% · -0.157 · $    -493 │     0 ·    – ·    –   · $      +0 │     +493 │      0 │  443 -0.16    -493 │    0 +0.00      +0 │     +0→    +0
+FRENZY_WILLY         │  1518 ·   68% · -0.105 · $ -11,214 │  1521 ·   68% · -0.109 · $ -11,728 │     -514 │   1510 │    0 +0.00      +0 │    3 -0.46     -97 │   -159→  -152
+MOM-long             │  1458 ·   57% · -0.131 · $ -16,663 │  1476 ·   57% · -0.133 · $ -17,056 │     -393 │   1449 │    8 +0.04     +27 │   26 -0.20    -413 │    +10→   +10
+MOM-short            │   384 ·   60% · -0.059 · $  -3,217 │   385 ·   60% · -0.059 · $  -3,191 │      +26 │    384 │    0 +0.00      +0 │    1 +0.37     +53 │     +0→    +0
+SURGE_LONG           │   304 ·   33% · +0.114 · $  +4,910 │   313 ·   35% · +0.130 · $  +5,771 │     +861 │    297 │    4 -1.08    -609 │   13 +0.29    +525 │   -184→  -184
+Spike-Fade           │   625 ·   73% · +0.056 · $  +9,824 │   626 ·   73% · +0.044 · $  +8,600 │   -1,224 │    625 │    0 +0.00      +0 │    1 -1.49    -170 │     +0→    +0
+TOTAL                │  7375 ·   59% · -0.069 · $ -21,503 │  6369 ·   58% · -0.059 · $ -20,963 │     +540 │   6244 │ 1102 -0.15  -2,624 │   96 -0.19    -132 │    -46→  +159
+TOTAL ex LONG/WIDE   │  6309 ·   58% · -0.055 · $ -19,720 │  6369 ·   58% · -0.059 · $ -20,963 │   -1,243 │   6244 │   36 -0.17    -840 │   96 -0.19    -132 │    -46→  +159
+FRENZY family        │  4038 ·   60% · -0.079 · $ -12,932 │  2995 ·   58% · -0.066 · $ -14,029 │   -1,098 │   2954 │ 1068 -0.15  -1,781 │   25 -1.15  -2,041 │    -31→   -17
+
+=== FRENZY_LITE fills only in B (the ones LONG/WIDE kept out in A) — N · WR · avg % [95 % day CI] · $ [95 % day CI] ===
+  2025 BULL     all B-only                         9 ·   56% · +0.347 · $    +221   avg CI [-1.803, +2.362]  $ CI [-1,066, +1,508]
+  2025 BULL     LONG/WIDE held the coin in A       8 ·   50% · +0.006 · $      +4   avg CI [-2.165, +2.183]  $ CI [-1,274, +1,082]
+  2025 BULL     other (path / slots)               1 ·  100% · +3.070 · $    +217   avg CI [+nan, +nan]  $ CI [+nan, +nan]
+  2025 BULL     A-only LITE (lost when OFF)        1 ·  100% · +3.053 · $    +216   avg CI [+nan, +nan]  $ CI [+nan, +nan]
+  2026-H1 BEAR  all B-only                        10 ·   20% · -1.313 · $    -928   avg CI [-2.799, +0.454]  $ CI [-2,225, +213]
+  2026-H1 BEAR  LONG/WIDE held the coin in A      10 ·   20% · -1.313 · $    -928   avg CI [-2.837, +0.431]  $ CI [-2,220, +213]
+  2026-H1 BEAR  other (path / slots)               0 ·    – ·    –   · $      +0   avg CI [+nan, +nan]  $ CI [+nan, +nan]
+  2026-H1 BEAR  A-only LITE (lost when OFF)        0 ·    – ·    –   · $      +0   avg CI [+nan, +nan]  $ CI [+nan, +nan]
+  2026-H2 BULL  all B-only                         3 ·    0% · -5.829 · $  -1,236   avg CI [-11.481, -3.001]  $ CI [-3,284, +0]
+  2026-H2 BULL  LONG/WIDE held the coin in A       3 ·    0% · -5.829 · $  -1,236   avg CI [-11.481, -3.001]  $ CI [-3,284, +0]
+  2026-H2 BULL  other (path / slots)               0 ·    – ·    –   · $      +0   avg CI [+nan, +nan]  $ CI [+nan, +nan]
+  2026-H2 BULL  A-only LITE (lost when OFF)        1 ·    0% · -3.017 · $    -213   avg CI [+nan, +nan]  $ CI [+nan, +nan]
+  ALL           all B-only                        22 ·   32% · -1.250 · $  -1,944   avg CI [-2.797, +0.308]  $ CI [-4,540, +420]
+  ALL           LONG/WIDE held the coin in A      21 ·   29% · -1.456 · $  -2,161   avg CI [-3.082, +0.006]  $ CI [-4,619, +7]
+  ALL           other (path / slots)               1 ·  100% · +3.070 · $    +217   avg CI [+nan, +nan]  $ CI [+nan, +nan]
+  ALL           A-only LITE (lost when OFF)        2 ·   50% · +0.018 · $      +3   avg CI [+nan, +nan]  $ CI [+nan, +nan]
+  sensitivity: without the single worst B-only LITE fill (SKLUSDT 2026-09-20 07:10 -11.48 %, $-812): N 21 · WR 33% · avg -0.763 · $-1,132
+  at TODAY's LONG / WIDE +1.5 TP (replay held them to +3):
+    freed today (holder hit +1.5 before the LITE entry)     3 ·   33% · -0.985 · $    -209  avg CI [-3.005, +3.052]  $ CI [-849, +435]  by regime {'2025 BULL': 1, '2026-H1 BEAR': 2}
+    still blocked today (holder hit +1.5 only after)     5 ·  100% · +3.036 · $  +1,073  avg CI [+3.021, +3.056]  $ CI [+214, +2,146]  by regime {'2025 BULL': 4, '2026-H1 BEAR': 1}
+    still blocked today (holder never reached +1.5)     13 ·    0% · -3.292 · $  -3,025  avg CI [-4.983, -2.087]  $ CI [-5,285, -1,289]  by regime {'2025 BULL': 3, '2026-H1 BEAR': 7, '2026-H2 BULL': 3}
+      2025-02-09 09:00 RPLUSDT      LITE  -3.10 % $ -219 · holder FRENZY_LONG · still blocked today (holder never reached +1.5)
+      2025-04-19 06:05 HIGHUSDT     LITE  +3.02 % $ +213 · holder FRENZY_LONG · still blocked today (holder hit +1.5 only after)
+      2025-06-03 12:05 RPLUSDT      LITE  -3.00 % $ -212 · holder FRENZY_LONG · still blocked today (holder never reached +1.5)
+      2025-06-11 11:05 KAIAUSDT     LITE  +3.06 % $ +216 · holder FRENZY_LONG · still blocked today (holder hit +1.5 only after)
+      2025-06-24 01:30 BRUSDT       LITE  +3.03 % $ +214 · holder FRENZY_LONG · still blocked today (holder hit +1.5 only after)
+      2025-06-28 14:35 BSWUSDT      LITE  -3.01 % $ -212 · holder FRENZY_LONG · still blocked today (holder never reached +1.5)
+      2025-07-14 09:45 KNCUSDT      LITE  -3.00 % $ -212 · holder FRENZY_LONG · freed today (holder hit +1.5 before the LITE entry)
+      2025-09-08 17:35 ATHUSDT      LITE  +3.06 % $ +216 · holder FRENZY_WIDE · still blocked today (holder hit +1.5 only after)
+      2026-01-10 13:15 AKTUSDT      LITE  -3.01 % $ -213 · holder FRENZY_LONG · still blocked today (holder never reached +1.5)
+      2026-01-26 02:50 BEAMXUSDT    LITE  -0.09 % $   -6 · holder FRENZY_LONG · still blocked today (holder never reached +1.5)
+      2026-01-30 13:35 NOMUSDT      LITE  -3.95 % $ -279 · holder FRENZY_LONG · still blocked today (holder never reached +1.5)
+      2026-02-20 20:10 RPLUSDT      LITE  -3.03 % $ -214 · holder FRENZY_LONG · still blocked today (holder never reached +1.5)
+      2026-03-01 02:20 STEEMUSDT    LITE  -0.09 % $   -6 · holder FRENZY_WIDE · still blocked today (holder never reached +1.5)
+      2026-03-10 19:40 AINUSDT      LITE  -3.00 % $ -212 · holder FRENZY_LONG · still blocked today (holder never reached +1.5)
+      2026-03-31 11:25 AIOTUSDT     LITE  +3.02 % $ +214 · holder FRENZY_LONG · still blocked today (holder hit +1.5 only after)
+      2026-04-23 13:25 HIGHUSDT     LITE  -3.04 % $ -215 · holder FRENZY_LONG · still blocked today (holder never reached +1.5)
+      2026-05-15 03:15 POLYXUSDT    LITE  -3.01 % $ -212 · holder FRENZY_LONG · freed today (holder hit +1.5 before the LITE entry)
+      2026-05-23 14:15 GMTUSDT      LITE  +3.05 % $ +216 · holder FRENZY_LONG · freed today (holder hit +1.5 before the LITE entry)
+      2026-08-01 05:15 IDOLUSDT     LITE  -3.00 % $ -212 · holder FRENZY_LONG · still blocked today (holder never reached +1.5)
+      2026-09-03 18:25 FLOCKUSDT    LITE  -3.00 % $ -212 · holder FRENZY_LONG · still blocked today (holder never reached +1.5)
+      2026-09-20 07:10 SKLUSDT      LITE -11.48 % $ -812 · holder FRENZY_LONG · still blocked today (holder never reached +1.5)
+  holder in A of the B-only LITE coins: {'FRENZY_LONG': 19, 'FRENZY_WIDE': 2} · exit mix B-only LITE: {'stop': 13, 'TP': 7, 'cap': 2}
+
+=== NET: B − A per regime (fixed book $, today's size) — LONG/WIDE own $ in A vs everything else's Δ · day-bootstrap 95 % CI of Σ Δ$ ===
+  2025 BULL     LONG/WIDE own $ in A     -475 · Δ rest of book (B − A ex L/W)   -1,999 [-5,505, +1,408] · NET B − A   -1,524 [-4,916, +1,922] · P(B<A) 0.82
+  2026-H1 BEAR  LONG/WIDE own $ in A     -668 · Δ rest of book (B − A ex L/W)     -386 [-1,885, +1,168] · NET B − A     +281 [-1,377, +1,914] · P(B<A) 0.36
+  2026-H2 BULL  LONG/WIDE own $ in A     -640 · Δ rest of book (B − A ex L/W)   +1,143 [-2,843, +6,277] · NET B − A   +1,783 [-1,997, +7,074] · P(B<A) 0.24
+  ALL           LONG/WIDE own $ in A   -1,783 · Δ rest of book (B − A ex L/W)   -1,243 [-6,752, +5,262] · NET B − A     +540 [-4,927, +7,198] · P(B<A) 0.45
+
+=== DECOMPOSITION of B − A (fixed book $): ① LONG/WIDE own fills removed · ② structural rest (B-only − A-only + shifted Δ) · ③ shared-fill re-exit noise · CLEANED net = ① + ② · day-bootstrap 95 % CI ===
+  2025 BULL     ① +475 · ② +156 [-1,934, +2,237] · ③ noise -2,156 [-4,958, +574] (511/3449 shared fills re-exited) · CLEANED NET B − A +631 [-1,530, +2,859] P(B<A) 0.29 · raw -1,524
+  2026-H1 BEAR  ① +668 · ② -386 [-1,936, +1,210] · ③ noise -1 [-3, +0] (2/1754 shared fills re-exited) · CLEANED NET B − A +282 [-1,376, +1,943] P(B<A) 0.37 · raw +281
+  2026-H2 BULL  ① +640 · ② +1,143 [-2,942, +6,479] · ③ noise -0 [-0, +0] (0/1041 shared fills re-exited) · CLEANED NET B − A +1,783 [-2,177, +7,185] P(B<A) 0.25 · raw +1,783
+  ALL           ① +1,783 · ② +913 [-3,932, +6,801] · ③ noise -2,156 [-5,041, +567] (513/6244 shared fills re-exited) · CLEANED NET B − A +2,697 [-2,110, +8,759] P(B<A) 0.17 · raw +540
+  ② by sleeve and cause (ALL regimes): B-only fills split by 'a LONG/WIDE held the coin in A at that moment' vs other (slots / path)
+    BullRun-Long   B-only coin-held   0 (+0.00 %, $+0) · B-only other  27 (+0.51 %, $+1,939) · A-only  21 (-0.07 %, $-196) · shifted Δ $+190 · ② $+2,325
+    FLIP-short     B-only coin-held   1 (+0.35 %, $+25) · B-only other   2 (-0.35 %, $-49) · A-only   1 (-0.91 %, $-65) · shifted Δ $+0 · ② $+40
+    FRENZY_LITE    B-only coin-held  21 (-1.46 %, $-2,161) · B-only other   1 (+3.07 %, $+217) · A-only   2 (+0.02 %, $+3) · shifted Δ $+7 · ② $-1,940
+    FRENZY_WILLY   B-only coin-held   0 (+0.00 %, $+0) · B-only other   3 (-0.46 %, $-97) · A-only   0 (+0.00 %, $+0) · shifted Δ $+7 · ② $-90
+    MOM-long       B-only coin-held   0 (+0.00 %, $+0) · B-only other  26 (-0.20 %, $-413) · A-only   8 (+0.04 %, $+27) · shifted Δ $+0 · ② $-440
+    MOM-short      B-only coin-held   0 (+0.00 %, $+0) · B-only other   1 (+0.37 %, $+53) · A-only   0 (+0.00 %, $+0) · shifted Δ $+0 · ② $+53
+    SURGE_LONG     B-only coin-held   9 (+0.40 %, $+511) · B-only other   4 (+0.03 %, $+14) · A-only   4 (-1.08 %, $-609) · shifted Δ $-0 · ② $+1,135
+    Spike-Fade     B-only coin-held   0 (+0.00 %, $+0) · B-only other   1 (-1.49 %, $-170) · A-only   0 (+0.00 %, $+0) · shifted Δ $+0 · ② $-170
+
+=== shared COMPOUNDING book from $2,900, today's sizing (engine calculate_position_size, gross / liquidity caps, margin locked) ===
+  2025       FRENZY only  A $        85 (mdd -97 %, -0.955 %/d, skip 1556) │ B $       113 (mdd -96 %, -0.878 %/d, skip 1208)
+  2025       FULL         A $       115 (mdd -96 %, -0.875 %/d, skip 3031) │ B $        95 (mdd -97 %, -0.924 %/d, skip 2852)
+  2026       FRENZY only  A $    20,787 (mdd -73 %, +0.719 %/d, skip 0) │ B $    18,293 (mdd -74 %, +0.672 %/d, skip 0)
+  2026       FULL         A $       115 (mdd -98 %, -1.144 %/d, skip 2237) │ B $       114 (mdd -98 %, -1.147 %/d, skip 1910)
+  2026-H1    FRENZY only  A $    14,789 (mdd -73 %, +0.959 %/d, skip 0) │ B $    12,853 (mdd -74 %, +0.876 %/d, skip 0)
+  2026-H1    FULL         A $       115 (mdd -98 %, -1.801 %/d, skip 964) │ B $       114 (mdd -98 %, -1.806 %/d, skip 830)
+  2026-H2    FRENZY only  A $     3,466 (mdd -82 %, +0.174 %/d, skip 0) │ B $     3,060 (mdd -86 %, +0.052 %/d, skip 0)
+  2026-H2    FULL         A $    24,272 (mdd -83 %, +2.087 %/d, skip 0) │ B $    24,401 (mdd -85 %, +2.092 %/d, skip 8)
+  both years FRENZY only  A $        85 (mdd -97 %, -0.542 %/d, skip 3392) │ B $       113 (mdd -96 %, -0.498 %/d, skip 2466)
+  both years FULL         A $       115 (mdd -96 %, -0.497 %/d, skip 6456) │ B $        95 (mdd -97 %, -0.525 %/d, skip 5721)
+
+=== engine refusal counters, seed 1 (meta filter_blocks totals incl. warm-up = upper bound) ===
+  A: FRENZY_LITE_GREEN_BAR 2608 · FRENZY_WILLY_RED_EXPIRED 1759 · FRENZY_GREEN_BAR 1348 · FRENZY_WILLY_TURNOVER 960 · FRENZY_WILLY_HOLD 941 · FRENZY_ATR_HIGH 929 · FRENZY_WIDE_ATR_HIGH 887 · FRENZY_WILLY_TURNOVER_UNREAD 746 · FRENZY_LITE_BEARISH_DAY 506 · FRENZY_WIDE_RECLAIM 469 · FRENZY_BEARISH_DAY 266 · FRENZY_WIDE_BEARISH_DAY 183 · FRENZY_WILLY_DISLOC 101 · FRENZY_LITE_MAX_SLOTS 93 · FRENZY_LITE_PAIR_HELD 92 · FRENZY_LITE_OPEN_REFUSED 85 · FRENZY_WILLY_OPEN_REFUSED 77 · FRENZY_WIDE_OPEN_REFUSED 62 · FRENZY_WIDE_DISLOC 47 · FRENZY_CATCHUP_REFUSED 45 · FRENZY_OPEN_REFUSED 43 · FRENZY_CATCHUP_STALE 32 · FRENZY_LITE_VOL24_LOW 30 · FRENZY_DISLOC 28 · FRENZY_WILLY_PAIR_HELD 24 · FRENZY_LITE_DISLOC 19 · FRENZY_CATCHUP_MOVED 12 · FRENZY_WIDE_CATCHUP_MOVED 10 · FRENZY_PAIR_HELD_BY_LITE 8 · FRENZY_CATCHUP_OPEN 5 · FRENZY_WIDE_PAIR_HELD_BY_LITE 4 · FRENZY_WIDE_PAIR_DAY_CAP 4 · FRENZY_WIDE_CATCHUP_OPEN 3 · FRENZY_MAX_SLOTS 2 · FRENZY_LITE_PAIR_DAY_CAP 1 · FRENZY_BEARISH_UNREAD 1
+  B: FRENZY_LITE_GREEN_BAR 2609 · FRENZY_WILLY_RED_EXPIRED 1759 · FRENZY_WILLY_TURNOVER 960 · FRENZY_WILLY_HOLD 865 · FRENZY_WILLY_TURNOVER_UNREAD 746 · FRENZY_LITE_BEARISH_DAY 506 · FRENZY_WILLY_DISLOC 101 · FRENZY_LITE_MAX_SLOTS 93 · FRENZY_LITE_OPEN_REFUSED 85 · FRENZY_WILLY_OPEN_REFUSED 74 · FRENZY_LITE_PAIR_HELD 66 · FRENZY_LITE_VOL24_LOW 30 · FRENZY_WILLY_PAIR_HELD 22 · FRENZY_LITE_DISLOC 19 · FRENZY_LITE_PAIR_DAY_CAP 1
+
+=== verification 2: stdlib recount from raw replay orders CSVs (own trim / key / sleeve code) vs the pandas pipeline ===
+  raw trimmed fills A 7375 (pipeline 7375) · B 6369 (pipeline 6369)
+  B-only LITE: raw N 30 · WR 36.7% · avg -0.8530  │ pipeline (exact + shifted-excluded) N 22 · WR 31.8% · avg -1.2500  (pipeline B-only excludes 8 shifted LITE fills; pipeline B-only + shifted: N 30 avg -0.8530)
+  A FRENZY_LITE    raw N  1454 avg +0.0006 │ pipeline N  1454 avg +0.0006 OK
+  A FRENZY_LONG    raw N   623 avg -0.1465 │ pipeline N   623 avg -0.1465 OK
+  A FRENZY_WIDE    raw N   443 avg -0.1575 │ pipeline N   443 avg -0.1575 OK
+  A FRENZY_WILLY   raw N  1518 avg -0.1045 │ pipeline N  1518 avg -0.1045 OK
+  B FRENZY_LITE    raw N  1474 avg -0.0221 │ pipeline N  1474 avg -0.0221 OK
+  B FRENZY_WILLY   raw N  1521 avg -0.1091 │ pipeline N  1521 avg -0.1091 OK
+  identity B − A $+540.24 = B-only − A-only + shifted Δ + shared Δ $+540.24

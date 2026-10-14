@@ -1,0 +1,18 @@
+WILLY re-entry after a good / bad exit (operator 2026-10-14). Today's WILLY exit +1.25 / −4 / 90 min, 10×.
+
+① HYPOTHETICAL re-entry on the same pair after each WILLY exit (same exit rule) — N · WR · avg % net per re-entry
+■ BT 2026: 606 first fills · first exits {'TP': 449, 'STOP': 113, 'CAP': 44} · first avg +0.100
+   after TP   ( 449): wait  0 min:  449 ·  69 % · -0.175 (P>0 0.05) | wait  5 min:  449 ·  72 % · -0.056 (P>0 0.30) | wait 15 min:  449 ·  74 % · +0.030 (P>0 0.62)
+   after STOP ( 113): wait  0 min:  113 ·  74 % · +0.098 (P>0 0.70) | wait  5 min:  113 ·  69 % · -0.197 (P>0 0.16) | wait 15 min:  113 ·  70 % · -0.122 (P>0 0.27)
+   after CAP  (  44): wait  0 min:   44 ·  55 % · -0.172 (P>0 0.23) | wait  5 min:   44 ·  48 % · -0.379 (P>0 0.06) | wait 15 min:   44 ·  59 % · -0.036 (P>0 0.46)
+■ MASTER: 18 first fills · first exits {'TP': 14, 'STOP': 2, 'CAP': 2} · first avg +0.337
+   after TP   (  14): wait  0 min:   14 ·  71 % · -0.090 (P>0 0.47) | wait  5 min:   14 ·  64 % · -0.481 (P>0 0.18) | wait 15 min:   14 ·  64 % · -0.543 (P>0 0.19)
+   after STOP (   2): wait  0 min:    2 · 100 % · +1.251 (P>0 nan) | wait  5 min:    2 · 100 % · +1.258 (P>0 nan) | wait 15 min:    2 · 100 % · +1.255 (P>0 nan)
+   after CAP  (   2): wait  0 min:    2 · 100 % · +1.254 (P>0 nan) | wait  5 min:    2 · 100 % · +1.254 (P>0 nan) | wait 15 min:    2 ·  50 % · -0.090 (P>0 nan)
+
+② NATURAL repeats (same pair, previous WILLY fill closed ≤ 6 h before this one's open) — by the previous fill's outcome
+■ BT 2026: 10 repeats of 606 fills
+   after a CAP :   1 · WR   0 % · avg -0.376  (all WILLY avg +0.100)
+   after a STOP:   2 · WR 100 % · avg +1.277  (all WILLY avg +0.100)
+   after a TP  :   7 · WR  57 % · avg -0.076  (all WILLY avg +0.100)
+■ MASTER: 0 repeats of 18 fills

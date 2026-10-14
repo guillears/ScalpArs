@@ -33,7 +33,7 @@ def test_factor_scope(es, d, want):
 
 
 @pytest.mark.parametrize("v,want", [(0.5, 0.5), (1.0, 1.0), (0.0, 1.0), (-0.5, 1.0), (None, 1.0), ("x", 1.0), (float("nan"), 1.0),
-                                    (1.7, 1.0), (0.01, te.MOMENTUM_LONG_LEV_MULT_MIN), (0.25, 0.25)])
+                                    (1.7, 1.0), (0.01, te.MOMENTUM_LONG_LEV_MULT_MIN), (0.25, 0.25), (0.05, 0.05)])   # 0.05 = the live value since 289
 def test_factor_bounds(v, want):
     """de-lever only: ≤ 0 / blank / unreadable = 1.0 (off), clamped to [0.05, 1.0]."""
     assert F(NS(momentum_long_lev_mult=v), "MOMENTUM", "LONG") == want
@@ -49,6 +49,9 @@ def test_factor_bounds(v, want):
     (20, 2.0, False, 0.5, 10),       # target 'investment': the cell lev is inert, the momentum factor still applies
     (20, 2.0, True, 1.0, 40),        # pre-283 behaviour unchanged
     (20, 1.0, True, 1.0, 20),
+    (20, 1.0, True, 0.05, 1),        # 289 live: UNMATCHED 1× cell → 1×
+    (20, 2.0, True, 0.05, 2),        # 289 live: a 2.0-lev cell → 2×
+    (20, 0.05, True, 0.05, 1),       # 289 live: a 1× probe stays 1× (floor 1)
 ])
 def test_compose_leverage(base, cell, apply, ml, want):
     assert te.compose_leverage(base, cell, apply, ml) == want
@@ -89,9 +92,9 @@ def test_config_d11():
     import config as C
     assert C.SignalThresholds.model_fields["momentum_long_lev_mult"].default == 1.0          # code default = no change
     cfg = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
-    assert cfg["momentum_long_lev_mult"] == 0.5                                             # live: 20× → 10×
+    assert cfg["momentum_long_lev_mult"] == 0.05                                            # live: 20× → 1× (DECISION_LOG 289; 283: 0.5 = 10×)
     src = open(os.path.join(ROOT, "config.py"), encoding="utf-8").read()
-    assert "DECISION_LOG 283" in src and "momentum_long_lev_mult: float = 1.0" in src and "No revert gate (de-risking)" in src
+    assert "DECISION_LOG 283" in src and "momentum_long_lev_mult: float = 1.0" in src and "No revert gate (de-risking)" in src and "DECISION_LOG 289" in src
 
 
 def test_ui_d11_and_exports():

@@ -12,7 +12,7 @@ raw 269-flip pool.
 RE-RUN WHEN: a new batch is appended to the raw pool, OR any filter/config changes.
 Then re-freeze and re-pin the checksum in CLAUDE_CURRENT_STATE.md.
 
-VALIDATION ANCHORS (asserted in main(), v22 2026-10-12): ML 37/$1306 · MS 14/$672 · FLIP 31/$346 — $ = pnl_current (today's sizing, master STACK 2026-10-12d rule: FAN flips at 10×, momentum longs at 10× — momentum_long_lev_mult 0.5).
+VALIDATION ANCHORS (asserted in main(), v23 2026-10-14): ML 37/$131 · MS 14/$672 · FLIP 31/$346 — $ = pnl_current (today's sizing, master STACK 2026-10-14a rule: FAN flips at 10×, momentum longs at 1× — momentum_long_lev_mult 0.05, DECISION_LOG 289).
 Flip-short uses the real services.trading_engine._flip_filters with a field-audited `ind`.
 """
 import csv, sys, os
@@ -233,7 +233,9 @@ def main():
     # screen here; the 2 ×2 flips were already 1×); MS see below.
     # v22 (2026-10-12, master 10-12d, DECISION_LOG 283): momentum_long_lev_mult 0.5 — every momentum LONG 20× → 10× (today_size_rule +ML_LEV);
     # same 37 rows, every one traded at 20× → $ halves: ML $2612 -> $1306. MS / FLIP unchanged.
-    assert len(ml) == 37 and round(ml_net) == 1306, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 37/$1306 (v22: 1.5× UNMATCHED + sprint de-mux + 10× momentum longs) — screen wrong, NOT freezing"
+    # v23 (2026-10-14, master 10-14a, DECISION_LOG 289): momentum_long_lev_mult 0.5 → 0.05 — every momentum LONG 20× → 1× (no 2.0-lev
+    # cell among the 37); same 37 rows, $ ÷ 20 vs as-traded (÷ 10 vs v22): ML $1306 -> $131. MS / FLIP unchanged.
+    assert len(ml) == 37 and round(ml_net) == 131, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 37/$131 (v23: 1.5× UNMATCHED + sprint de-mux + 1× momentum longs) — screen wrong, NOT freezing"
     # v15 (2026-09-18): momentum_short_pair_vol_max 1.0 -> 0.86 screens 5 more mom-shorts (MS 19/$794 -> 14/$756).
     # v19 (2026-10-06): the 3 W1+W2+W1 shorts still priced at 2× re-price to 1× (cell de-muxed 2026-07-30; SOL −$47→−$24 ·
     # JUP +$186→+$93 · JTO +$46→+$23): MS $756 -> $664.
@@ -250,7 +252,7 @@ def main():
     # v21 (2026-10-08, master 10-08b, DECISION_LOG 252): FAN flips priced at registry lev 0.5 = 10× (today_size_rule FLIP_FAN_LEV) —
     # same 31 rows, every one traded at 20× → $ halves: FLIP $692 -> $346. ML/MS unchanged.
     assert len(fl) == 31 and round(fl_net) == 346, f"FAIL: FLIP-short {len(fl)}/${fl_net:.0f} != 31/$346 (v21: FAN at 10×) — trend-gap gate off? de-mux? NOT freezing"
-    print(f"\n✅ VALIDATION PASSED (v22: ML 37/$1306 + MS 14/$672 + FLIP 31/$346 + 0 pair-vol survivors). Freezing.")
+    print(f"\n✅ VALIDATION PASSED (v23: ML 37/$131 + MS 14/$672 + FLIP 31/$346 + 0 pair-vol survivors). Freezing.")
     # freeze — add a today's-sizing P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

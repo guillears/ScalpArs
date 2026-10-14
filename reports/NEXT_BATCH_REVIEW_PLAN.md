@@ -113,7 +113,7 @@ winner / loser patterns in FRENZY (LONG / WIDE / LITE / WILLY), MOMENTUM LONG / 
   unchanged, so the read is $ / ruin only. If yr6 runs on a config snapshot from before 283, re-walk / re-lever its fills to both configs.
 
 ## 🏁 NEXT BATCH = B21 (operator reset after the DECISION_LOG 283 / 284 deploys, 2026-10-12) — ONE config: FRENZY LONG / WIDE +1.5 / −3 and LITE
-## +3 / −3 (own TP, DL 284) — LONG 2× / WIDE 1× (DL 286 rollback), LITE 10×, momentum longs at half leverage, WILLY 10× +1.25 / −4 / 90. B20 (10-12 05:08 → 15:15, all pre-283) is archived in BASELINE20; B19 is archived (BASELINE19, master STACK 2026-10-12c,
+## +3 / −3 (own TP, DL 284) — LONG 1× · invest 0.2 and WIDE 1× · invest 0.2 (blocker size, DL 289; 2× / 1× under DL 286), LITE 10×, momentum longs 1× (DL 289; 10× under DL 283), WILLY 10× +1.25 / −4 / 90. B20 (10-12 05:08 → 15:15, all pre-283) is archived in BASELINE20; B19 is archived (BASELINE19, master STACK 2026-10-12c,
 ## normalized to today's config); use the normalization table below only when re-reading the archived B19 by era.
 
 ### If the batch is NOT reset at the deploy — DECISION_LOG 283 (2026-10-12) changed: FRENZY TP +3 → +1.5 (LONG / WIDE / LITE and the
@@ -161,6 +161,16 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
   Δ +0.022 (P 0.83; B19 +$153) — the LT30 cells are bear-half (Jan–Jun) driven, ≈ 0 in Jul–Oct; T125C30 is negative in Jul–Oct (avg −0.04 vs today +0.04). REFUTED: stop −2 (any cap) Δ −0.16…−0.18; tighter late
   stops ≤ 0; +0.3 after 20 min Δ 0.000. Winners: 74 % of fills, median 4.8 min to TP, median trough −0.86, 22 % dip below −2.
 - Also show: losers' duration (stops median 17 min, caps 90) and the share of WILLY fills still open at 30 min (≈ 20 %).
+- **WILLY higher TP (DECISION_LOG 290, operator 2026-10-14):** read Scout cells T130 / T135 / T140 / T145 / T150 (C90) vs today's +1.25 —
+  N counted / pending, per-fill Δ, verdict state; three blocks (batch · master per batch via a +1.30…+1.50 re-walk of every WILLY fill · yr6
+  backtest grid). Prior: yr5 +1.50 worse than +1.25.
+- **Operator question (2026-10-13): which WILLY exit for slow trades — CLOSE AT 30 MIN (T125C30) vs TP → +0.25 AFTER 30 MIN (LT30_025)
+  (+ LT30_03 = TP → +0.30 after 30)?** Baseline today +1.25 / −4 / 90. Master per batch at registration (own paths, today's 10×;
+  reports/WILLY_TP03_CAP30_MASTER.txt, scripts/study_willy_tp03_cap30_master.py): TODAY 18 · 78 % · +0.337 % · +$397 (B19 +$397 · B20 −$90
+  · B21 +$89) · close@30 +$618 (B19 +$519 · B20 +$10 · B21 +$89) · +0.25@30 +$634 (B19 +$634 · B20 −$90 · B21 +$89) · +0.30@30 +$549.
+  Backtest 2026 (606): close@30 Δ −0.013 (P 0.35) · +0.25@30 Δ +0.018 (P 0.79) · +0.30@30 Δ +0.022 (P 0.83). REJECTED: TP +0.3 from
+  entry (total +$92; needs 93 % WR at −4). Re-run the master script on the new batch (it walks every WILLY fill: B19 → latest), report
+  per batch before / after for all three cells + today, the Scout verdict state, and the 2025 backtest re-check.
 
 **WILLY — recommended exit and leverage (Claude's B19 recommendation; check it still holds with more trades):**
 - ~~**Exit: TP +1 %, SL −4 %, 120-min cap**~~ (SUPERSEDED by DECISION_LOG 281: live exit +1.25 / −4 / 90 at 10×) (live in paper and live since 271). +1.25 is still unproven (Scout WILLY_TP125 / combo
@@ -434,3 +444,33 @@ at once.
   from its logged px (ticks first, SURGE_LONG exit). 🔒 REVERT → off if ≥ 10 blocked over ≥ 5 windows show WR ≥ 31.5 % ∧ avg > 0.
 - Three blocks: ① batch SURGE_LONG kept vs blocked · ② master per batch (no SURGE_LONG rows yet) · ③ two-year replay (gap<0 zone per regime).
 
+
+### 🪶 FRENZY LITE — winners vs losers record (2026-10-13/14, operator) — re-check at the next batch, three blocks
+- **Durations (yr6 2026, 624 fills):** winners median 38 min / losers 51 min (master: 48 / 61) — no time separation → **no time rule**:
+  late TP / close-at-X grid (scripts/study_lite_late_tp.py → reports/LITE_LATE_TP.txt) best +1.5 after 60 min Δ +0.036 (P 0.75); master
+  every variant ≤ today (+$318; +1.5@30 −$310). Keep +3 / −3 / 12 h.
+- **Late-in-run / falling ADX / SKL signature** (scripts/study_yr6_lite_late_adx.py → reports/YR6_LITE_LATE_ADX.txt): 2025-only effects,
+  reverse in 2026; master real fills opposite (falling-ADX LITE 73 % / 62 % WR) → refuted.
+- **Frenzy strength:** master winners had stronger frenzies (above-VWAP share 82 % vs 50 %, run 25 % vs 15 %, vol 59× vs 15×, ATR 2 vs 1);
+  backtest: only `entry_frenzy_above_share` low is worse in BOTH bulls (2025 −0.28, H2 −0.16 / bottom tercile −0.42) and reverses in the
+  H1 bear. Candidate observe line **LITE_WEAK_HOLD** (above_share ≤ 43.91, two-year bottom tercile) — NOT registered yet (operator to
+  decide): master before 18 · +$312 → after 14 · +$759 (blocks HEMI +3, C98 / ZK / SKL B19 −3; B21: 0 blocked).
+- **2D in all three regimes** (scripts/study_lite_2d_allregimes.py → reports/LITE_2D_ALLREGIMES.txt): 64 columns, 8,064 quadrant zones;
+  1,010 negative in all 3 regimes vs shuffled null median 988 (P 0.46), best weakest gap −0.59 vs null −0.54 (P 0.31) → **no 2D
+  separator beyond chance**; top zones contradict each other on master fills.
+- **Conclusion at registration:** LITE has no reliable entry filter; its edge is regime / tape (2025 −0.15 vs 2026 +0.23 / +0.14 %/fill).
+  At the batch: re-run the four scripts above with the new LITE fills, read Scout LITE_BTC1H_FALLING, and report LITE per batch (master
+  + current) before / after for LITE_WEAK_HOLD and the two top 2D zones (BTC off24h ≤ −0.83 ∧ pair 24h vol ≤ $78M · ADXΔ ≤ −0.25 ∧ BTC
+  off24h ≤ −0.83) as context only.
+
+### 🧱⚖️ DECISION_LOG 289 gates (2026-10-14) — read at every batch review from the 289 deploy on
+- **FRENZY LONG / WIDE blocker size (invest 0.2 · 1×):** tally LITE fills opened after the deploy. At 20: LITE avg %/fill vs the pre-change
+  +0.33 %/fill (18 fills = 16 master-kept at stack pct + the 2 B21 fills LUMIA / SKL as traded) — below it by more than LITE's own
+  day-bootstrap noise (one-sided 90 %) → REVIEW FLAG only. REVERT LONG lev 0.1 (2×) / WIDE 0.05 (1×) and both invest 1.0 only if a
+  FRENZY_LONG / WIDE setup was refused / skipped for SIZE (the blocker failed to open — check engine counters / logs). Also list every LITE
+  fill on a coin a LONG / WIDE held in the prior 12 h (the block's failure mode). Three blocks (batch · master per batch · backtest). Separately: are LONG / WIDE fills
+  opening at the expected ~0.2 × slot (or the $100 floor below ≈ $2,050 equity)? A `[FRENZY_LONG]` refusal for size = bug.
+- **MOMENTUM LONG at 1× (`momentum_long_lev_mult` 0.05):** count fills since the deploy. At 30: avg % with a day-bootstrap 90 % CI; if the
+  CI is < 0 and no ML observe line (BTC24H_DOWN, ADX_RISING_IN_REGIME, TREND_ALIGNED / PAIR_1H_DOWNTREND, BTC-CHOP, BURST) has reached its
+  candidate bar → momentum longs OFF (sleeve-kill ①–④ already run, DL 289); a line passes → arm it and restore 0.5 (10×). Compare in % only
+  ($ is 1/10 of the pre-289 fills).

@@ -6530,3 +6530,60 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   before the day is not ranked; non-coin / Alpha contracts are ranked, as in the replay's universe); the engine itself ranks by rolling
   24 h ticker volume, the line by closed-day volume (the replay's rule, kept for parity with the evidence). LONG-blocks-LITE (study Q3) is
   unaffected — LONG / WIDE stay ON (operator rule).
+
+## (289) 2026-10-14 — 🧱 FRENZY LONG / WIDE → blocker size · ⚖️ momentum longs → 1× (operator-approved)
+- **Change (trading_config.json only; no new fields, no engine change):** `frenzy_long_lev_mult` 0.1 → 0.05 (2× → 1×) · `frenzy_long_invest_mult`
+  1.0 → 0.2 · `frenzy_wide_invest_mult` 1.0 → 0.2 (`frenzy_wide_lev_mult` already 0.05 = 1×) · `frenzy_long_lev_mult_strong` stays 0 ·
+  `momentum_long_lev_mult` 0.5 → 0.05 (10× → 1× on a 1× cell; a 2.0-lev cell → 2×; probes stay 1×). Positions at a ~$700 slot margin:
+  LONG ~$1,520 → ~$140 · WIDE ~$704 → ~$140 · momentum long ~$7,000 → ~$700. LONG / WIDE stay ON (they block bad LITE entries).
+- **Evidence (FRENZY LONG / WIDE):** two-year LONG/WIDE-off replay (reports/YR6_LWOFF_AB.md): their OWN trades −$1,783 (LONG −$1,290 at 2×,
+  WIDE −$493 at 1×) vs ≈ $1,950 of LITE losses avoided by blocking (18 LITE fills at today's +1.5 TP; LONG holds 19 of the 21 blocks). The block
+  works at any size (one position per pair) → shrink their own P&L ~10× (LONG) / ~5× (WIDE) and keep the block. WIDE-off-only replay pending
+  (WIDE may be switched off).
+- **Evidence (MOMENTUM LONG):** since 2026-10-01 25 real fills ≈ 33 % WR ≈ −0.2 %/fill; two-year replay re-priced to today −0.19 / −0.09 /
+  −0.02 %/fill (2025 / 26-H1 / 26-H2), loss uniform, no separator (reports/YR6_WL_MOMENTUM.md; sleeve-kill checklist ①–④ run). 1× keeps the
+  forward evidence for the ML observe lines at ~1/10 the cost.
+- **Engine checks (services/trading_engine.py, read-only):** (a) FRENZY sizing = absolute-assign `cell_mult = max(0.1, min(invest_mult, cap))`
+  × the equal-split margin ((equity − fee reserve) / 4 slots) in calculate_position_size; the result is then CLAMPED UP to
+  `min_investment_size` ($100), not refused — a trade is refused only when tradeable < $100 (every sleeve alike). So 0.2 × slot < $100 (slot
+  < $500 ⇔ sizing equity below ≈ $2,050 with the 2.5 % fee-reserve leg; higher if the BNB burn leg binds) → the blocker fills at $100 (1×)
+  instead of 0.2 × slot; the LITE block never silently disappears on balance alone. The liquidity / gross / bracket throttles skip only when they
+  cut the margin below $100 — at 1× a $140 margin is $140 notional (gross room ≥ $100 needed; FRENZY's $20M volume floor keeps the liq cap
+  far away). (b) compose_leverage: 20 × 0.05 = 1 → 1×; momentum_long_lev_factor clamps to [0.05, 1] → 0.05 accepted (1× cell → 1×, 2.0 cell →
+  2×, 0.05 probe → floor 1×). (c) order_backstop_pct at 1×: liquidation ≈ 99 % → the 92 % cap never binds; FRENZY backstop 3 + 0.5 = 3.5 %,
+  momentum 2.5 % — sane. (d) probe classification is by `cell_multiplier_source` text (`_PROBE` / `FGP_`) only — engine, /api/performance
+  FULLSIZE filter and the master builder (`is_probe`; the lev-based rule is BEARRUN-only and off while BEARRUN_LEV_FROZEN > 0.05) — so the
+  smaller fills stay full-size rows; nothing changes live behaviour.
+- **⚠ Not changed, reported:** config.py code default `momentum_long_lev_mult` 1.0 (= 20× "off") is larger than the live 0.05 — a missing JSON
+  key would size momentum longs at 20×; the engine also reads ≤ 0 / blank as 1.0. Kept (the JSON always carries the key); change both together
+  if wanted. FRENZY code defaults (invest 1.0 · lev 0.1 / 0.05 = 2× / 1×) stay the safe fallbacks.
+- **🔒 Gates (pre-committed; LONG / WIDE leg re-pinned at review — size cannot change WHICH coins are blocked, so the gate measures the block itself):** FRENZY LONG / WIDE — REVERT to 2× / 1× and invest 1.0 if a FRENZY_LONG / WIDE setup is refused or skipped for SIZE (margin / liquidity / gross / bracket throttle → the blocker failed to open) at any batch review; the LITE-average leg below is a REVIEW FLAG only (one-sided day-bootstrap 90 %), never an automatic revert. Original wording: revert if LITE's first 20 fills after this deploy average below
+  LITE's pre-change master average (+0.33 %/fill on 18 fills, as approved) by more than its own day-bootstrap noise — i.e. LITE's blocking
+  benefit visibly disappears (LITE fills on a coin a LONG / WIDE just held reappear and lose). Anchor source: the 16 master-kept LITE fills
+  (stack pct, today's rules, +0.370 %/fill) + the 2 B21 fills as traded (LUMIA +3.00, SKL −3.02) = 18 · 56 % · +0.33 %/fill · +$312. MOMENTUM LONG — after 30 fills at 1×, if avg < 0 at
+  day-bootstrap 90 % and no ML observe line (BTC24H_DOWN, ADX_RISING_IN_REGIME, TREND_ALIGNED / PAIR_1H_DOWNTREND, BTC-CHOP, BURST) has
+  reached its candidate bar → switch momentum longs OFF (sleeve-kill checklist ①–④ already run); if a line passes its bar → arm it and
+  restore 0.5 (10×).
+- **Master STACK 2026-10-14a** (SLEEVE_SIZE_FROZEN LONG 0.2 × 0.05 · WIDE 0.2 × 0.05; MOMENTUM_LONG_LEV_FROZEN 0.05): non-probe kept 455 ·
+  +$6,683.60 → +$5,276.38 — ML 136 · +$1,563.64 → +$156.35 (avg +0.160 % unchanged) · FRENZY_LONG 20 · −$18.76 → −$1.88 · FRENZY_WIDE 8 ·
+  +$21.02 → +$4.21 · LITE / WILLY / others untouched. Every kept LONG / WIDE row's 0.2 margin ≥ $114 (none hits the $100 floor the builder does
+  not model). Biggest era moves: BASE +$2,384 → +$1,205 · B17 +$311 → −$10 · B1 +$670 → +$395 · B3 +$716 → +$470. validate_against_master
+  ALL PASS. **SCREENED_BASELINE v23:** ML 37·86%·+$131 (was +$1,306) · MS 14·86%·+$672 · FLIP 31·81%·+$346 · TOTAL 82·84%·+$1,148.
+- **Surfaces:** config.py evidence comments + gates; UI tooltips (config-fz-invest-mult / -lev-mult / -wide-invest-mult / -wide-lev-mult
+  (stale "blank → 0.2" fixed to 0.05) / config-momentum-long-lev-mult); tests pin the new JSON values, STACK_VERSION 2026-10-14a and the
+  screen anchor; reports/NEXT_BATCH_REVIEW_PLAN.md carries both gates.
+  Review fixes: the UI save of a BLANK momentum-long leverage box now sends 0.05 (1×), never the 20× fallback (loader / preview fallbacks
+  still read 1 — the JSON always carries the key); LONG / WIDE revert gate re-pinned to the block's own failure (a setup refused for size);
+  example sizes are per a ~$700–760 slot (UNMATCHED momentum cell invest 1.5 → ~$10,600 → ~$1,060).
+
+## (290) 2026-10-14 — 👁 WILLY higher-TP cells T130 / T135 / T140 / T145 / T150 (C90) registered as Scout observe lines (operator; no live change)
+- **Cells (scripts/scout_willy_timecap.py, beside the DL 285 cells):** WILLY TP +1.30 / +1.35 / +1.40 / +1.45 / +1.50 net, stop −4, cap =
+  today's hold (90), vs today's live +1.25 / −4 / 90, walked on each fill's own hybrid path (ticks → 1m tail). Own cohort from the
+  "(DECISION_LOG 290)" commit + 10 min (pin fallback 2026-10-14 05:30 UTC), own keys S4_T130C90 … S4_T150C90.
+- **Integrity:** a fill whose today's exit is the −4 stop or the cap with no print through the cell's TP — or a tick TP whose print already
+  clears the cell's TP — is untouched (Δ ≡ 0); other TP exits (incl. any 1m-bar TP) are touched.
+- **🔒 Frozen bar (pre-registered 2026-10-14):** per cell, decided once at the first prefix of N ≥ 20 counted fills on ≥ 8 UTC days —
+  CANDIDATE (operator decides) iff mean Δ > 0 ∧ day-bootstrap P ≥ 0.90 ∧ no fill > 50 % of ΣΔ ∧ parity ≥ 90 % ∧ integrity; mean Δ ≤ 0 →
+  KEEP TODAY; else KEEP OBSERVING. Family of 5 adjacent cells answers one question — read the best cell's P with that in mind.
+- **Prior evidence:** none at +1.30…+1.45; reports/B19_WILLY_TP15.txt (yr5, −4 stop): +1.25 / 120 avg +0.105 vs +1.50 / 120 +0.054, and
+  +1.25 / 60 +0.097 vs +1.50 / 60 +0.050 — leans against +1.50; the yr6 grids kept +1.25. Observe only.

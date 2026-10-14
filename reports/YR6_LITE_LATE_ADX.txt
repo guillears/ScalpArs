@@ -1,0 +1,45 @@
+LITE late-in-run × falling ADX (operator 2026-10-13, after the SKL 10-13 08:10 LITE stop): yr6 two-year replay re-priced to today
+coverage: hours 100 %, frenzy_adx_delta 100 %, adx_delta 100 % · LITE seed-1 fills 1454 · late cut tercile 9.25 h
+
+■ LATE (hours ≥ 12)
+   2025 BULL         zone  158 (121 d) WR 46.2 % avg -0.215 │ rest  670 avg -0.125 │ gap -0.090 · P(zone worse) 0.62 · label-shuffle p 0.310
+   2025 BULL top-50  zone   63 ( 55 d) WR 44.4 % avg -0.305 │ rest  201 avg +0.074 │ gap -0.379 · P(zone worse) 0.81 · label-shuffle p 0.203
+   2026-H1 BEAR      zone   77 ( 64 d) WR 42.9 % avg -0.125 │ rest  293 avg +0.318 │ gap -0.443 · P(zone worse) 0.89 · label-shuffle p 0.120
+   2026-H2 BULL      zone   62 ( 44 d) WR 51.6 % avg +0.400 │ rest  194 avg +0.053 │ gap +0.347 · P(zone worse) 0.20 · label-shuffle p 0.747
+   ALL               zone  297 (229 d) WR 46.5 % avg -0.063 │ rest 1157 avg +0.017 │ gap -0.080 · P(zone worse) 0.66 · label-shuffle p 0.357
+
+■ LATE tercile (hours ≥ 9.2)
+   2025 BULL         zone  271 (176 d) WR 48.3 % avg -0.092 │ rest  557 avg -0.166 │ gap +0.074 · P(zone worse) 0.38 · label-shuffle p 0.597
+   2025 BULL top-50  zone   98 ( 80 d) WR 48.0 % avg -0.103 │ rest  166 avg +0.034 │ gap -0.137 · P(zone worse) 0.64 · label-shuffle p 0.400
+   2026-H1 BEAR      zone  123 ( 81 d) WR 45.5 % avg +0.066 │ rest  247 avg +0.305 │ gap -0.238 · P(zone worse) 0.79 · label-shuffle p 0.247
+   2026-H2 BULL      zone   95 ( 58 d) WR 50.5 % avg +0.322 │ rest  161 avg +0.029 │ gap +0.293 · P(zone worse) 0.20 · label-shuffle p 0.807
+   ALL               zone  489 (315 d) WR 48.1 % avg +0.028 │ rest  965 avg -0.013 │ gap +0.041 · P(zone worse) 0.40 · label-shuffle p 0.610
+
+■ FRENZY ADXΔ < 0
+   2025 BULL         zone  404 (213 d) WR 44.3 % avg -0.344 │ rest  424 avg +0.050 │ gap -0.394 · P(zone worse) 0.96 · label-shuffle p 0.020
+   2025 BULL top-50  zone  129 ( 97 d) WR 45.0 % avg -0.303 │ rest  135 avg +0.257 │ gap -0.560 · P(zone worse) 0.93 · label-shuffle p 0.087
+   2026-H1 BEAR      zone  187 (110 d) WR 51.9 % avg +0.201 │ rest  183 avg +0.250 │ gap -0.049 · P(zone worse) 0.57 · label-shuffle p 0.420
+   2026-H2 BULL      zone  132 ( 72 d) WR 50.8 % avg +0.188 │ rest  124 avg +0.083 │ gap +0.105 · P(zone worse) 0.40 · label-shuffle p 0.633
+   ALL               zone  723 (395 d) WR 47.4 % avg -0.106 │ rest  731 avg +0.106 │ gap -0.211 · P(zone worse) 0.90 · label-shuffle p 0.077
+
+■ pair ADXΔ < 0
+   2025 BULL         zone  487 (231 d) WR 44.1 % avg -0.354 │ rest  341 avg +0.161 │ gap -0.515 · P(zone worse) 0.99 · label-shuffle p 0.000
+   2025 BULL top-50  zone  157 (114 d) WR 43.9 % avg -0.352 │ rest  107 avg +0.476 │ gap -0.828 · P(zone worse) 0.98 · label-shuffle p 0.020
+   2026-H1 BEAR      zone  223 (119 d) WR 51.6 % avg +0.213 │ rest  147 avg +0.244 │ gap -0.031 · P(zone worse) 0.55 · label-shuffle p 0.433
+   2026-H2 BULL      zone  162 ( 82 d) WR 48.8 % avg +0.097 │ rest   94 avg +0.207 │ gap -0.110 · P(zone worse) 0.61 · label-shuffle p 0.383
+   ALL               zone  872 (432 d) WR 46.9 % avg -0.125 │ rest  582 avg +0.189 │ gap -0.315 · P(zone worse) 0.97 · label-shuffle p 0.020
+
+■ LATE ∧ FRENZY ADXΔ < 0 (SKL)
+   2025 BULL         zone   72 ( 65 d) WR 41.7 % avg -0.503 │ rest  756 avg -0.108 │ gap -0.395 · P(zone worse) 0.85 · label-shuffle p 0.143
+   2025 BULL top-50  zone   28 ( 28 d) WR 35.7 % avg -0.858 │ rest  236 avg +0.083 │ gap -0.941 · P(zone worse) 0.94 · label-shuffle p 0.050
+   2026-H1 BEAR      zone   39 ( 38 d) WR 41.0 % avg -0.392 │ rest  331 avg +0.298 │ gap -0.691 · P(zone worse) 0.91 · label-shuffle p 0.063
+   2026-H2 BULL      zone   34 ( 26 d) WR 58.8 % avg +0.583 │ rest  222 avg +0.069 │ gap +0.513 · P(zone worse) 0.17 · label-shuffle p 0.827
+   ALL               zone  145 (129 d) WR 45.5 % avg -0.219 │ rest 1309 avg +0.025 │ gap -0.244 · P(zone worse) 0.82 · label-shuffle p 0.197
+
+■ LATE ∧ pair ADXΔ < 0
+   2025 BULL         zone   78 ( 75 d) WR 44.9 % avg -0.286 │ rest  750 avg -0.127 │ gap -0.159 · P(zone worse) 0.67 · label-shuffle p 0.327
+   2025 BULL top-50  zone   30 ( 30 d) WR 30.0 % avg -1.141 │ rest  234 avg +0.128 │ gap -1.268 · P(zone worse) 0.99 · label-shuffle p 0.013
+   2026-H1 BEAR      zone   46 ( 44 d) WR 43.5 % avg -0.269 │ rest  324 avg +0.296 │ gap -0.565 · P(zone worse) 0.88 · label-shuffle p 0.103
+   2026-H2 BULL      zone   37 ( 28 d) WR 56.8 % avg +0.613 │ rest  219 avg +0.057 │ gap +0.556 · P(zone worse) 0.15 · label-shuffle p 0.810
+   ALL               zone  161 (147 d) WR 47.2 % avg -0.075 │ rest 1293 avg +0.010 │ gap -0.085 · P(zone worse) 0.63 · label-shuffle p 0.377
+

@@ -155,7 +155,8 @@ def test_config_parity_and_every_surface():
     cfgj = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert sorted(k for k in cfgj if k.startswith("frenzy_")) == fields                   # every field has a JSON value
     assert type(th).model_fields["frenzy_long_enabled"].default is False                  # OFF in code; the JSON arms it
-    assert cfgj["frenzy_long_enabled"] is True and cfgj["frenzy_long_invest_mult"] == 1.0 and cfgj["frenzy_long_lev_mult"] == 0.1   # DECISION_LOG 286 rollback to 2× (283: 10× for one day)
+    assert cfgj["frenzy_long_enabled"] is True and cfgj["frenzy_long_invest_mult"] == 0.2 and cfgj["frenzy_long_lev_mult"] == 0.05   # DECISION_LOG 289 blocker size 0.2 × 1× (286: 1.0 × 2×; 283: 10× for one day)
+    assert cfgj["frenzy_wide_invest_mult"] == 0.2 and cfgj["frenzy_wide_lev_mult"] == 0.05                          # DECISION_LOG 289 WIDE blocker size 0.2 × 1×
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
     listed = dict(re.findall(r"\['(config-fz-[a-z0-9-]+)', '(frenzy_[a-z0-9_]+)'", html))
     by_key = {v: k for k, v in listed.items()}

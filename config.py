@@ -1359,8 +1359,20 @@ class SignalThresholds(BaseModel):
     # Oct-2 (DECISION_LOG 177, operator): a ceiling on entries per pair per UTC day. Attempts read (pre-ATR-gate cut, after the fact):
     # 1st attempt −0.11 %, 2nd +0.14, 3rd +0.92; a cap of 1 was the worst cell, 3 keeps ~97 % of the tested entries. 0 = no cap.
     frenzy_max_entries_per_pair_day: int = 3
-    frenzy_long_invest_mult: float = 1.0         # absolute-assign, never re-multiplied by cells (Oct-3 operator: JSON 1.0 · lev 0.32 → 20×→6×, one 3 % stop ≈ 5 % of the account; was 2.0/1.0 ≈ 31 %, 90-day MC median −100 %)
-    frenzy_long_lev_mult: float = 0.1            # DL 280: 2× code default = the SAFE fallback (a missing key never sizes above 2×); live JSON 0.1 = 2× again since DL 286 (10× under DL 283 for one day); 0 = the 0.05 floor
+    frenzy_long_invest_mult: float = 1.0         # absolute-assign, never re-multiplied by cells (Oct-3 operator: JSON 1.0 · lev 0.32 → 20×→6×, one 3 % stop ≈ 5 % of the account; was 2.0/1.0 ≈ 31 %, 90-day MC median −100 %) · live JSON 0.2 since DL 289 (BLOCKER size, see below)
+    frenzy_long_lev_mult: float = 0.1            # DL 280: 2× code default = the SAFE fallback (a missing key never sizes above 2×); live JSON 0.05 = 1× since DL 289 (0.1 = 2× under DL 280 / 286, 10× under DL 283 for one day); 0 = the 0.05 floor
+    # 🧱 2026-10-14 (DECISION_LOG 289, operator-approved): FRENZY_LONG / FRENZY_WIDE → BLOCKER SIZE. trading_config.json frenzy_long_lev_mult
+    #   0.1 → 0.05 (2× → 1×) and frenzy_long_invest_mult 1.0 → 0.2; frenzy_wide_invest_mult 1.0 → 0.2 (WIDE lev already 0.05 = 1×); strong bump
+    #   stays 0. Position at a ~$700 slot: LONG ~$1,520 → ~$140, WIDE ~$704 → ~$140. Evidence: two-year LONG/WIDE-off replay
+    #   (reports/YR6_LWOFF_AB.md): their OWN trades −$1,783 (LONG −$1,290 at 2×, WIDE −$493 at 1×) vs ≈ $1,950 of LITE losses avoided by
+    #   blocking (18 LITE fills at today's +1.5 TP; LONG holds 19 of the 21 blocks) — the block works at ANY size (one position per pair), so
+    #   shrink their own P&L ~10× (LONG) / ~5× (WIDE) and keep the block. WIDE-off-only replay pending (WIDE may be switched off later).
+    #   ⚠ MIN SIZE: the 0.2 margin is clamped UP to min_investment_size ($100), never refused, when 0.2 × the equal-split slot < $100 — i.e. sizing
+    #   equity below ≈ $2,050 (4 slots, 2.5 % fee reserve) the blocker fills at $100 (1×) instead of 0.2 × slot; a fill is refused only when
+    #   tradeable < $100 (every sleeve alike) → the LITE block never silently disappears on balance alone.
+    #   🔒 REVERT (pre-committed): LONG 0.1 (2×) / WIDE 0.05 (1×) with invest 1.0 again if a FRENZY_LONG / WIDE setup is refused or skipped
+    #   for SIZE (the blocker failed to open). Size cannot change which coins are blocked, so the LITE average (vs +0.33 %/fill on 18 fills)
+    #   is only a REVIEW FLAG (one-sided day-bootstrap 90 %), never an automatic revert.
     # 💪 Oct-4 (operator ARMED override, DECISION_LOG 197): a FRENZY_LONG whose signal bar shows ADX rising (3-bar Δ > 0) ∧ +DI above −DI
     # (entry_frenzy_adx_delta > 0 ∧ entry_frenzy_di_spread > 0, both read on the closed bar) uses THIS leverage multiplier instead (JSON 0.5 →
     # 20×→10×, ≈ 1.67× the normal 6×). FRENZY_WIDE never. Unreadable readings = normal size. 0 = off. Year (ticks, fixed +4/−3, quiet market):
@@ -1389,7 +1401,7 @@ class SignalThresholds(BaseModel):
     # +0.054 %/trade (+0.052 / +0.056 by half), 6 of 9 months up, day-bootstrap 95 % [−0.14, +0.24] → UNPROVEN, small size, review at 40.
     # Volume 75× / rising variants all worse (−0.02 to −0.08). Own tag FRENZY_WIDE, own size, own slots.
     frenzy_wide_enabled: bool = False
-    frenzy_wide_invest_mult: float = 1.0         # absolute-assign like FRENZY_LONG
+    frenzy_wide_invest_mult: float = 1.0         # absolute-assign like FRENZY_LONG · live JSON 0.2 since DL 289 (blocker size, gate at frenzy_long_lev_mult)
     frenzy_wide_lev_mult: float = 0.05           # DL 280: 1× code default = the SAFE fallback; live JSON 0.05 = 1× again since DL 286 (10× under DL 283 for one day)
     frenzy_wide_max_slots: int = 2               # max FRENZY_WIDE open at once (they also count against max open positions)
     # 🌀 Oct-5 (DECISION_LOG 215 — shipped OBSERVE-ONLY, JSON 0: the deep review found the study's fresh bar lagged the engine's, and on the
@@ -2295,6 +2307,15 @@ class SignalThresholds(BaseModel):
     # year does not show. ≤ 0 / blank = 1.0 (off); clamped to [0.05, 1.0] — a de-lever-only knob (scale-up stays a per-cell Pattern W
     # promotion). Stamps: orders.leverage = the effective leverage; orders.cell_lev_multiplier keeps the CELL's own multiplier.
     # 🔒 No revert gate (de-risking). Re-size up only on evidence (Pattern W bar on fresh fills at 10×). Code default 1.0 = no change.
+    # ⚖️ 2026-10-14 (DECISION_LOG 289, operator-approved): JSON 0.5 → 0.05 — momentum longs 10× → 1× (a 1×-cell long 20 × 0.05 = 1×; a 2.0-lev
+    #   cell → 2×; probes stay 1×); position at a ~$700 slot ~$7,000 → ~$700. Evidence: since 2026-10-01 25 real fills ≈ 33 % WR ≈ −0.2 %/fill;
+    #   two-year replay re-priced to today −0.19 / −0.09 / −0.02 %/fill (2025 / 26-H1 / 26-H2), loss uniform, no separator
+    #   (reports/YR6_WL_MOMENTUM.md; sleeve-kill checklist ①–④ run). 1× keeps the forward evidence for the ML observe lines at ~1/10 the cost.
+    #   🔒 GATE (pre-committed): after 30 momentum-long fills at 1×, if avg < 0 at day-bootstrap 90 % and no ML observe line (BTC24H_DOWN,
+    #   ADX_RISING_IN_REGIME, TREND_ALIGNED / PAIR_1H_DOWNTREND, BTC-CHOP, BURST) has reached its candidate bar → switch momentum longs OFF;
+    #   if a line passes its bar → arm it and restore 0.5 (10×).
+    #   ⚠ Code default 1.0 (= 20×, "off") is LARGER than the live 0.05: a missing JSON key would size momentum longs at 20×. Kept as-is (the
+    #   engine reads ≤ 0 / blank as 1.0 too; the JSON always carries the key) — reported in DL 289, change both together if wanted.
     momentum_long_lev_mult: float = 1.0
     # ⚡ Aug-10 CROWD-SPRINT DE-MUX (operator ship; the 3-era unmatched "Rest" hunt): de-size to
     # 1×/1× when global-vol ratio > gvr_min ∧ BTC EMA20 slope > slope_min — the FOMO window where

@@ -1,0 +1,82 @@
+FRENZY_LITE durations + late take-profit / time cap (operator 2026-10-14, the WILLY 30-min analog). Today's LITE exit: +3 / −3 / 12 h
+
+■ BT 2026: 624 fills walked · parity vs replay pct (|Δ| < 0.10): 90 % · src {'ticks': 623, 'ticks+1m': 1}
+   CAP      5 ( 0.8 %) · minutes mean  720.0 / median  720.0 · trough median -1.89 · avg +0.29
+   STOP   285 (45.7 %) · minutes mean   83.8 / median   50.6 · trough median -3.01 · avg -3.02
+   TP     334 (53.5 %) · minutes mean   73.4 / median   37.8 · trough median -1.11 · avg +3.02
+   winners minutes-to-TP: ≤ 15: 24 % · ≤ 30: 42 % · ≤ 60: 67 % · ≤ 120: 84 % · ≤ 240: 93 % · ≤ 480: 99 % · ≤ 720: 100 %
+   losers minutes-to-stop: ≤ 15: 23 % · ≤ 30: 40 % · ≤ 60: 57 % · ≤ 120: 77 % · ≤ 240: 93 % · ≤ 480: 98 % · ≤ 720: 100 %
+   base avg +0.239 %/fill · variant: avg · Δ · P(Δ>0) · H1/H2 Δ (2026 only)
+   LT60_1.5  +0.276 · Δ +0.036 · P 0.75
+   LT120_2   +0.257 · Δ +0.018 · P 0.71
+   LT60_2    +0.255 · Δ +0.016 · P 0.65
+   LT120_1.5 +0.254 · Δ +0.015 · P 0.66
+   LT30_2    +0.245 · Δ +0.006 · P 0.53
+   LT120_1   +0.241 · Δ +0.002 · P 0.52
+   C120      +0.241 · Δ +0.002 · P 0.51
+   LT120_0.5 +0.233 · Δ -0.006 · P 0.44
+   LT240_1.5 +0.224 · Δ -0.015 · P 0.21
+   LT60_1    +0.219 · Δ -0.020 · P 0.36
+   LT240_2   +0.217 · Δ -0.023 · P 0.05
+   LT240_1   +0.217 · Δ -0.023 · P 0.16
+   LT60_0.5  +0.214 · Δ -0.026 · P 0.34
+   LT30_1.5  +0.213 · Δ -0.026 · P 0.35
+   LT240_0.5 +0.208 · Δ -0.032 · P 0.11
+   C240      +0.205 · Δ -0.034 · P 0.12
+   C60       +0.201 · Δ -0.038 · P 0.28
+   LT30_1    +0.144 · Δ -0.095 · P 0.10
+   LT30_0.5  +0.126 · Δ -0.113 · P 0.08
+   C30       +0.088 · Δ -0.151 · P 0.05
+
+■ BT 2025: 7 fills walked · parity vs replay pct (|Δ| < 0.10): 100 % · src {'1m': 6, 'ticks': 1}
+   STOP     5 (71.4 %) · minutes mean   96.8 / median   80.8 · trough median -3.27 · avg -3.00
+   TP       2 (28.6 %) · minutes mean   32.3 / median   32.3 · trough median -1.03 · avg +3.00
+   winners minutes-to-TP: ≤ 15: 50 % · ≤ 30: 50 % · ≤ 60: 100 % · ≤ 120: 100 % · ≤ 240: 100 % · ≤ 480: 100 % · ≤ 720: 100 %
+   losers minutes-to-stop: ≤ 15: 20 % · ≤ 30: 40 % · ≤ 60: 40 % · ≤ 120: 80 % · ≤ 240: 80 % · ≤ 480: 100 % · ≤ 720: 100 %
+   base avg -1.287 %/fill · variant: avg · Δ · P(Δ>0) · H1/H2 Δ (2026 only)
+   C60       -0.124 · Δ +1.162 · P 0.96
+   LT60_1    -0.140 · Δ +1.147 · P 0.96
+   LT30_1.5  -0.210 · Δ +1.077 · P 0.96
+   LT60_0.5  -0.284 · Δ +1.003 · P 0.97
+   LT30_1    -0.425 · Δ +0.861 · P 0.97
+   C30       -0.428 · Δ +0.859 · P 0.96
+   LT60_1.5  -0.638 · Δ +0.648 · P 0.71
+   LT120_1.5 -0.638 · Δ +0.648 · P 0.71
+   LT30_0.5  -0.641 · Δ +0.646 · P 0.97
+   LT120_1   -0.711 · Δ +0.576 · P 0.70
+   LT30_2    -0.715 · Δ +0.571 · P 0.71
+   LT120_0.5 -0.784 · Δ +0.503 · P 0.71
+   C240      -0.910 · Δ +0.377 · P 0.71
+   C120      -1.035 · Δ +0.251 · P 0.70
+   LT60_2    -1.287 · Δ +0.000 · P 0.00
+   LT120_2   -1.287 · Δ +0.000 · P 0.00
+   LT240_0.5 -1.287 · Δ +0.000 · P 0.00
+   LT240_1   -1.287 · Δ +0.000 · P 0.00
+   LT240_1.5 -1.287 · Δ +0.000 · P 0.00
+   LT240_2   -1.287 · Δ +0.000 · P 0.00
+
+■ MASTER LITE (B18–B21) own paths: 18 fills · src {'ticks': 16, '1m': 2}
+   B19 2026-10-11 23:00 WUSDT      live +3.00 base +3.00 TP @ 178 min · trough -2.33
+   B18 2026-10-07 19:10 HEMIUSDT   live +3.00 base +3.01 TP @ 33 min · trough -1.43
+   B21 2026-10-13 05:45 LUMIAUSDT  live +3.00 base +3.00 TP @ 13 min · trough -0.02
+   B19 2026-10-12 00:10 BATUSDT    live -3.00 base -3.00 STOP @ 56 min · trough -3.00
+   B19 2026-10-11 22:15 MAGICUSDT  live +3.00 base +3.00 TP @ 53 min · trough -1.38
+   B19 2026-10-11 05:40 STRKUSDT   live +3.00 base +3.00 TP @ 12 min · trough -0.70
+   B19 2026-10-10 18:10 STRKUSDT   live +3.00 base +3.01 TP @ 6 min · trough -1.06
+   B19 2026-10-10 16:55 CFXUSDT    live +3.00 base +3.01 TP @ 32 min · trough -0.77
+   B19 2026-10-10 11:30 C98USDT    live -3.05 base -3.05 STOP @ 52 min · trough -3.05
+   B19 2026-10-10 05:40 BATUSDT    live +3.00 base +3.01 TP @ 212 min · trough -2.24
+   B19 2026-10-09 23:20 BATUSDT    live +3.00 base +3.03 TP @ 48 min · trough -0.66
+   B20 2026-10-12 06:45 BATUSDT    live -3.00 base -3.00 STOP @ 72 min · trough -3.00
+   B19 2026-10-10 02:50 ZKUSDT     live -3.01 base -3.01 STOP @ 27 min · trough -3.01
+   B18 2026-10-07 19:55 METUSDT    live +3.00 base +3.02 TP @ 72 min · trough -2.32
+   B19 2026-10-10 17:40 CAPUSDT    live -3.01 base -3.01 STOP @ 199 min · trough -3.01
+   B19 2026-10-10 06:10 CAPUSDT    live -3.01 base -3.01 STOP @ 89 min · trough -3.01
+   B19 2026-10-08 21:40 SKLUSDT    live -3.01 base -3.01 STOP @ 10 min · trough -3.01
+   B21 2026-10-13 08:10 SKLUSDT    live -3.02 base -3.00 STOP @ 66 min · trough -3.98
+   per batch $ at today's size — TODAY vs top variants:
+   M B18   base $+379 · LT60_1.5 $+285 · LT120_1.5 $+379 · LT120_1 $+379 · LT240_1.5 $+379 · LT30_1.5 $+191 · C120 $+379 · C240 $+379
+   M B19   base $+158 · LT60_1.5 $-46 · LT120_1.5 $-46 · LT120_1 $-113 · LT240_1.5 $+158 · LT30_1.5 $-282 · C120 $-140 · C240 $+158
+   M B20   base $-206 · LT60_1.5 $-206 · LT120_1.5 $-206 · LT120_1 $-206 · LT240_1.5 $-206 · LT30_1.5 $-206 · C120 $-206 · C240 $-206
+   M B21   base $-13 · LT60_1.5 $-13 · LT120_1.5 $-13 · LT120_1 $-13 · LT240_1.5 $-13 · LT30_1.5 $-13 · C120 $-13 · C240 $-13
+   TOTAL   base $+318 · LT60_1.5 $+20 · LT120_1.5 $+114 · LT120_1 $+47 · LT240_1.5 $+318 · LT30_1.5 $-310 · C120 $+20 · C240 $+318

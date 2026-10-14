@@ -1,5 +1,6 @@
 """DECISION_LOG 225 (2026-10-06): the NONEXP_CALM3D door sizes at 1× (its 2× cell verdict fired). Pins the live JSON, the code
 default, the engine fallback (a missing key or a 0 must never re-arm 2×), the UI save fallback, and the master re-price."""
+import pytest
 import json, os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -18,8 +19,9 @@ def test_calm3d_sizes_1x_everywhere():
 
 def test_master_builder_reprices_calm3d():
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-13a"' in bld
+    assert 'STACK_VERSION = "2026-10-14a"' in bld
     from scripts.build_master_pool import today_size_scale   # 10-06c: one shared sizing rule
-    assert today_size_scale("MOMENTUM", "LONG", "NONEXP_CALM3D", 2.0) == 0.5 * 0.5   # 1× cell × the 10-12d momentum-long 20× → 10× (DECISION_LOG 283)
-    assert today_size_scale("MOMENTUM", "LONG", "NONEXP_CALM3D", 1.0) == 0.5
-    assert today_size_scale("MOMENTUM", "LONG", "NONEXP_CALM3D", 1.0, None, None, None, 1.0, 10) == 1.0   # already traded at 10×
+    assert today_size_scale("MOMENTUM", "LONG", "NONEXP_CALM3D", 2.0) == pytest.approx(0.5 * 0.05)   # 1× cell × the 10-14a momentum-long 20× → 1× (DECISION_LOG 289; 283: × 0.5)
+    assert today_size_scale("MOMENTUM", "LONG", "NONEXP_CALM3D", 1.0) == pytest.approx(0.05)
+    assert today_size_scale("MOMENTUM", "LONG", "NONEXP_CALM3D", 1.0, None, None, None, 1.0, 10) == pytest.approx(0.1)   # traded at 10× → 1×
+    assert today_size_scale("MOMENTUM", "LONG", "NONEXP_CALM3D", 1.0, None, None, None, 1.0, 1) == 1.0   # already traded at 1× → unchanged

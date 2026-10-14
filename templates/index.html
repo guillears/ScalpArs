@@ -259,6 +259,7 @@
                 <h2 class="text-lg font-semibold text-gray-300">Account Balance</h2>
                 <button id="balance-eye-btn" onclick="toggleBalancesHidden()" title="Hide/show balances" class="text-gray-400 hover:text-white transition text-lg leading-none">🐵</button>
             </div>
+            <div id="untracked-alert" class="hidden mb-4 rounded-lg border border-red-500/60 bg-red-500/15 px-4 py-3 text-sm text-red-200 font-semibold"></div>   <!-- 🛡 (DECISION_LOG 292 ②) -->
             <div id="balance-cards" class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">USDT Balance</p>
@@ -4476,6 +4477,14 @@
                             <p class="text-xs text-gray-500 mt-1">Resting exchange stop per live position (algoOrder, close-all). Keep OFF until go-live; testnet-verify first.</p>
                         </div>
                         <div>
+                            <label class="block text-sm text-gray-400 mb-2" title="🛡 DECISION_LOG 292: a LIVE Binance position with NO open bot row (fill booked, then the DB write died — the Aug-25 ghost-PROM class) is detected by the 60 s reconciler (seen twice). Always: CRITICAL log + dashboard alert + new entries on that symbol BLOCKED until it is closed or imported (Recover positions). Alert = never touch it. Flatten = also close it at market (reduce-only).">🛡 Untracked Binance Position</label>
+                            <select id="config-untracked-position-action" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500">
+                                <option value="alert">Alert + block the symbol (default)</option>
+                                <option value="flatten">Alert + block + close it at market</option>
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">Live only. A Binance position the bot has no open row for. Alert never touches it — close it on Binance or import it.</p>
+                        </div>
+                        <div>
                             <label class="block text-sm text-gray-400 mb-2">Max Open Positions (Hard)</label>
                             <input type="number" id="config-max-open-positions-hard" min="1" max="999" step="1" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="10">
                             <p class="text-xs text-gray-500 mt-1">③ Position-count ceiling used only when Redeploy Leftover is ON.</p>
@@ -4922,7 +4931,7 @@
                             <div title="24 h volume floor for the shortlist and the entry. Tested at the 2.5 % ATR limit: +0.18 %/trade on ≥ $100M pairs, +0.15 on $20–100M."><label class="block text-xs text-gray-400 mb-1">24 h volume ≥ $</label><input type="number" step="1000000" min="0" id="config-fz-min-vol" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="20000000"></div>
                             <div title="Pairs whose 24 h change OR 24 h low-to-high range is at least this much are checked for a spike every 5 minutes (pairs already flagged stay in view)."><label class="block text-xs text-gray-400 mb-1">Shortlist: 24 h change or range ≥ %</label><input type="number" step="1" min="0" id="config-fz-shortlist" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="15.0"></div>
                             <div title="The long opens only when the pair's 5-minute ATR is at or below this. Year test, both volume groups: limit 2 % = 591 trades at +0.20 %/trade · 2.5 % = 1,103 at +0.16 · 3 % = 1,517 at +0.06 · no limit −0.01 (the 2.5–3 % band loses). Oct-8 operator override: 3.0 (the ATR-cap study recommended keeping 2.5 — with bearish days blocked its year book was $10,000 / max DD −38 % at 3.0 vs $11,055 / −28 % at 2.5; revert if the first 15 fills with ATR 2.5–3 % average below 0, scout). WIDE takes FRENZY's green-candle refusals up to this cap too. 0 = no ATR gate."><label class="block text-xs text-gray-400 mb-1">Entry: 5m ATR ≤ %</label><input type="number" step="0.1" min="0" id="config-fz-max-atr" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3.0"></div>
-                            <div title="Stop, % of the position. Tests: 2 % was negative, 3 % the only positive setting. Live: held just inside the exchange backstop."><label class="block text-xs text-gray-400 mb-1">Stop %</label><input type="number" step="0.1" min="0" id="config-fz-stop" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3.0"></div>
+                            <div title="Stop, % of the position. Tests: 2 % was negative, 3 % the only positive setting. Live: held just inside the exchange backstop."><label class="block text-xs text-gray-400 mb-1">Stop %</label><input type="number" step="0.1" min="0.1" id="config-fz-stop" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3.0"></div>
                             <div title="The trailing exit starts once the trade has been this far in profit."><label class="block text-xs text-gray-400 mb-1">Trail arms at +%</label><input type="number" step="0.5" min="0" id="config-fz-trail-arm" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="5.0"></div>
                             <div title="…and closes when price falls this % below its best point."><label class="block text-xs text-gray-400 mb-1">Trail gives back %</label><input type="number" step="0.1" min="0" id="config-fz-trail-give" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.5"></div>
                             <div title="🎯 Oct-4 (operator): FRENZY_LONG and FRENZY_WIDE close at this fixed net profit (FRENZY_LITE too when its own take profit below is 0; 0 = off → the trail). Real-tick year, bot-exact accounting: +3 / −3 +0.192 %/trade (53 % won) · +4 / −3 +0.187 (46 %) · the +5 / 1.5 trail +0.142. Operator Oct-4: +3. Used only while &quot;Lock arms at&quot; is 0 (Oct-5). Also used by the manual &quot;Frenzy exit&quot; mode."><label class="block text-xs text-gray-400 mb-1">Take profit at +% (0 = trail)</label><input type="number" step="0.5" min="0" id="config-fz-tp" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3.0"></div>
@@ -4941,7 +4950,7 @@
                             <div title="🎲 Oct-8 (DECISION_LOG 251 — declared exception): FRENZY_WILLY entry A — the 5m bar a pair becomes FRENZY-flagged for an episode (as the bot first sees it; once per episode, never after a restart for an episode already flagged)."><label class="block text-xs text-gray-400 mb-1">WILLY entry A (new flag)</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-fz-willy-entry-a" class="sr-only peer" checked><div class="w-9 h-5 bg-white/10 peer-checked:bg-orange-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div></label></div>
                             <div title="🎲 Oct-8 (DECISION_LOG 251): FRENZY_WILLY entry B — an episode's fresh ON bar on which FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE opened nothing (any refusal). One B fill per episode."><label class="block text-xs text-gray-400 mb-1">WILLY entry B (ON not taken)</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-fz-willy-entry-b" class="sr-only peer" checked><div class="w-9 h-5 bg-white/10 peer-checked:bg-orange-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div></label></div>
                             <div title="🎲 Oct-8 (DECISION_LOG 251): FRENZY_WILLY fixed take profit, net % (its own exit — never FRENZY's +3). Operator: +1. Research on the flag cohort: TP +1 / SL −3 / 60 min ≈ −0.01…−0.08 %/trade (≈ 0 or negative; the no-stop / 120-min variant was not studied). Blank / 0 → 1."><label class="block text-xs text-gray-400 mb-1">WILLY take profit +%</label><input type="number" step="0.25" min="0" id="config-fz-willy-tp" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0"></div>
-                            <div title="🛡 DECISION_LOG 271 (operator): WILLY stop −4 % — one stop for paper and live (the per-order exchange backstop rests just beyond it, capped below liquidation). 0 / blank = no bot stop — NOT paper = live: live keeps only the resting exchange backstop, paper has none; do not use (at 20× ≈ −5 % is near liquidation). Evidence: −4 beats no-stop by +0.076 %/fill on the reachable yr5 cohort (P 0.995)."><label class="block text-xs text-gray-400 mb-1">WILLY stop % (0 = none)</label><input type="number" step="0.1" min="0" id="config-fz-willy-stop" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="4"></div>
+                            <div title="🛡 DECISION_LOG 271 (operator): WILLY stop −4 % — one stop for paper and live (the per-order exchange backstop rests just beyond it, capped below liquidation). 0 / blank is REFUSED since DECISION_LOG 292 (a sleeve never runs without a bot stop; a hand-edited 0 runs 4.0 + CRITICAL log). Evidence: −4 beats no-stop by +0.076 %/fill on the reachable yr5 cohort (P 0.995)."><label class="block text-xs text-gray-400 mb-1">WILLY stop % (&gt; 0)</label><input type="number" step="0.1" min="0.1" id="config-fz-willy-stop" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="4"></div>
                             <div title="🎲 Oct-8 (DECISION_LOG 251, operator: 120): FRENZY_WILLY closes after this many minutes (its own cap — never the global / FRENZY 12 h; not a stop). Blank / 0 → 120."><label class="block text-xs text-gray-400 mb-1">WILLY max hold (min)</label><input type="number" step="5" min="1" id="config-fz-willy-max-hold" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="120"></div>
                             <div title="🎲 Oct-8 (DECISION_LOG 251): max FRENZY_WILLY positions open at once — 1 (the global hold already allows only one: while a WILLY is open no other automated trade opens, WILLY included; manual trades are never blocked)."><label class="block text-xs text-gray-400 mb-1">WILLY max open</label><input type="number" step="1" min="1" id="config-fz-willy-slots" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1"></div>
                             <div title="🟥 Oct-8 (operator, DECISION_LOG 251): FRENZY_WILLY A / B no longer open on the trigger bar — the trigger ARMS an entry that opens on the FIRST closed RED 5m candle (close below open; a red trigger bar opens at once) within this many minutes of the trigger, while the episode lasts; otherwise it expires (no entry, no re-arm). Blank → 60; 0 = the trigger bar only."><label class="block text-xs text-gray-400 mb-1">WILLY wait for a red candle ≤ min</label><input type="number" step="5" min="0" id="config-fz-willy-red-wait" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="60"></div>
@@ -8619,6 +8628,19 @@
                 isRunning = data.is_running;
                 isPaperMode = data.is_paper_mode;
                 runtimeSeconds = data.runtime_seconds;
+                {   // 🛡 (DECISION_LOG 292 ②) Binance positions the bot has no open row for — entries on them are blocked
+                    const _ua = document.getElementById('untracked-alert');
+                    const _ul = Array.isArray(data.untracked_positions) ? data.untracked_positions : [];
+                    if (_ua) {
+                        if (_ul.length) {
+                            _ua.textContent = `⚠ UNTRACKED BINANCE POSITION${_ul.length > 1 ? 'S' : ''}: ` + _ul.map(u => `${u.pair} ${u.side} qty ${u.qty}${u.entry_price ? ' @ ' + u.entry_price : ''} (${u.reason}${u.source === 'BOOKING_FAILED' ? ', fill not booked' : ''})`).join(' · ')
+                                + ` — new entries on ${_ul.length > 1 ? 'these symbols' : 'this symbol'} are BLOCKED. ${data.untracked_position_action === 'flatten' ? 'Auto-flatten is ON.' : 'Close it on Binance or import it (Recover positions).'}`;
+                            _ua.classList.remove('hidden');
+                        } else {
+                            _ua.classList.add('hidden');
+                        }
+                    }
+                }
 
                 updateStatusUI();
                 updateTimer(runtimeSeconds);
@@ -9040,7 +9062,14 @@
         document.getElementById('paper-toggle').addEventListener('change', async (e) => {
             const enabled = !e.target.checked;
             try {
-                await fetch(`${API_BASE}/api/paper-mode?enabled=${enabled}`, { method: 'POST' });
+                const _pmRes = await fetch(`${API_BASE}/api/paper-mode?enabled=${enabled}`, { method: 'POST' });
+                if (!_pmRes.ok) {   // 🛡 (DECISION_LOG 292 ④) the server refused the switch — show why, keep the toggle where it was
+                    let _why = 'Mode switch refused';
+                    try { const _d = await _pmRes.json(); if (_d && _d.detail) _why = String(_d.detail); } catch (_) {}
+                    e.target.checked = !isPaperMode;
+                    showToast(_why, 'error');
+                    return;
+                }
                 isPaperMode = enabled;
                 loadBalance();
                 loadOpenOrders();
@@ -9050,7 +9079,7 @@
                 showToast(enabled ? 'Paper trading mode enabled' : 'Live trading mode enabled');
             } catch (err) {
                 console.error('Error toggling paper mode:', err);
-                e.target.checked = isPaperMode;
+                e.target.checked = !isPaperMode;   // 🛡 (292 ④) checked = LIVE
             }
         });
 
@@ -10752,6 +10781,7 @@
             lines.push(`  🪃 Fan-flip Weak-Bounce (Sep 25): ${th.flip_fan_weak_bounce_enabled ? `ON — FAN flip-SHORT refused when pair EMA13-EMA50 gap < ${th.flip_fan_weak_bounce_gap_max ?? 0}% AND EMA20 slope < ${th.flip_fan_weak_bounce_slope_max ?? 0.15}%` : 'OFF'}  (counter FLIP_FAN_WEAK_BOUNCE)`);
             lines.push(`  🧊 C1 Momentum-Short Regime Block (Sep 25): ${(th.momentum_short_c1_block_regimes || '').trim() ? `ON — C1 momentum SHORTs refused in ${th.momentum_short_c1_block_regimes}` : 'OFF'}  (counter MOM_SHORT_C1_REGIME)`);
             lines.push(`  🛡 Broker Backstop (live safety net): ${th.broker_backstop_enabled === true ? `ON — per order, just beyond each sleeve's own stop (≥ base, ≤ 92 % of liquidation) · resting STOP_MARKET ${th.broker_backstop_pct ?? 2.5}% via algoOrder, close-all, MARK_PRICE+priceProtect (fires => close_reason BACKSTOP_STOP = investigate the outage)` : 'OFF (paper / pre-live)'}`);
+            lines.push(`  🛡 Untracked Binance position (DECISION_LOG 292): ${th.untracked_position_action === 'flatten' ? 'ALERT + BLOCK + FLATTEN at market' : 'ALERT + BLOCK the symbol (never touched)'} · detected by the 60 s live reconcile (seen twice) · currently ${(status && typeof status.untracked_position_count === 'number') ? status.untracked_position_count : '—'} untracked${(status && Array.isArray(status.untracked_positions) && status.untracked_positions.length) ? ' (' + status.untracked_positions.map(u => u.pair + ' ' + u.side + ' ' + u.qty).join(', ') + ')' : ''} · per-order backstop record + re-place on config change · bot opens flatten an unbookable fill · stops ≤ 0 refused`);
             lines.push(`  🏀 SPIKE_BOUNCE (Jul 31, freeze carve-out): ${th.spike_bounce_enabled === true ? 'ON' : (th.spike_tripwire_autodisable === true ? 'OFF (check tripwire!)' : 'OFF (manual)')}  |  Trigger: RSI crash >= ${th.spike_bounce_rsi_crash ?? 25} pts in one 5m candle with prev RSI in [${th.spike_bounce_rsi_prev_min ?? 45}, ${th.spike_bounce_rsi_prev_max ?? 65}], candle <= -${th.spike_bounce_min_candle_pct ?? 0.5}% and vol >= ${th.spike_bounce_min_vol_ratio ?? 5}x avg20 (both surfaces: top-50 hook + scanner)  |  GUARDS: dump cap ${th.spike_bounce_max_dump_pct ?? 3}% (deeper = news class) · bRSI floor >= ${th.spike_bounce_min_btc_rsi ?? 50} (0=off; mirror of the fade ceiling) · pair EMA13-50 gap in (${th.spike_bounce_min_pair_gap ?? -1}%, ${th.spike_bounce_max_pair_gap ?? -0.125}%] (DEEPGAP crashed-pair floor + Aug-5 PGAP healthy-pair ceiling — mildly-weak window, read N>=8 WR>=55 ∧ Σ>0 else OFF for good) · blocked regimes [${th.spike_bounce_blocked_regimes ?? 'STRONG_BEAR,HEALTHY_BEAR'}]  |  LONG full size Inv ${th.spike_bounce_invest_mult ?? 1}x/Lev ${th.spike_bounce_lev_mult ?? 1}x, fixed SL ${th.spike_bounce_sl_pct ?? -0.7}% NO widen, trail ${th.spike_bounce_trail_atr_mult ?? 0.5}xATR (strategy-scoped, LONG global stays 1.0), tripwire ${th.spike_bounce_tripwire_pct ?? -1.5}% ${th.spike_tripwire_autodisable === true ? 'auto-disables' : 'ALERT-ONLY (Aug-5)'}  |  NO max-open, NO auto kill gate (operator: manual review; locked read N>=10 · >=4 dates -> WR>=55% ∧ Σ>0, thresholds frozen)`);
             lines.push(`  DBDOWN Probe (Jul 20): ${th.dbdown_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.dbdown_probe_max_open !== undefined ? th.dbdown_probe_max_open : 3}  (1h flat-DOWN half-band [-0.05,0) opens as 1x DBDOWN_PROBE — graduated execution of the FIRED deadband phantom revert gate)`);
             lines.push(`  DEEPGAP Probe (Jul 30): ${th.deepgap_probe_enabled === true ? 'ON' : 'OFF'}  |  Max Open: ${th.deepgap_probe_max_open !== undefined ? th.deepgap_probe_max_open : 3}  (SHORT-only: momentum-shorts killed ONLY by the deep-gap floor (pair gap <= ${th.momentum_short_pair_gap_min ?? -1.0}%) open as 1x DEEPGAP_PROBE, ALL regimes; graduated from the retired PASS phantom N=17 · 71% · Σ+1.85%; verdict N>=30 with pre-registered bull-family read)`);
@@ -20328,6 +20358,7 @@
                 { const _e=document.getElementById('config-spike-lock-exempt-fade'); if(_e && config.thresholds.spike_lock_exempt_fade !== undefined) _e.checked = config.thresholds.spike_lock_exempt_fade === true; }
                 { const _e=document.getElementById('config-broker-backstop-enabled'); if(_e && config.thresholds.broker_backstop_enabled !== undefined) _e.checked = config.thresholds.broker_backstop_enabled === true; }
                 { const _e=document.getElementById('config-broker-backstop-pct'); if(_e && config.thresholds.broker_backstop_pct !== undefined) _e.value = config.thresholds.broker_backstop_pct; }
+                { const _e=document.getElementById('config-untracked-position-action'); if(_e) _e.value = (config.thresholds.untracked_position_action === 'flatten') ? 'flatten' : 'alert'; }   // 🛡 (292 ②)
                 { const _e=document.getElementById('config-spike-rsi-cool-arm'); if(_e && config.thresholds.spike_rsi_cool_arm !== undefined) _e.value = config.thresholds.spike_rsi_cool_arm; }
                 { const _e=document.getElementById('config-spike-rsi-cool-drop'); if(_e && config.thresholds.spike_rsi_cool_drop !== undefined) _e.value = config.thresholds.spike_rsi_cool_drop; }
                 { const _e=document.getElementById('config-spike-ladder-unarmed'); if(_e && config.thresholds.spike_ladder_unarmed !== undefined) _e.value = config.thresholds.spike_ladder_unarmed; }
@@ -21634,6 +21665,13 @@
         async function saveConfig() {
             if (typeof syncFlipRegistry === 'function') syncFlipRegistry();
             if (window._flipRegistryError) { showToast(window._flipRegistryError, 'error'); return; }   // 252: never save a 1.0 (20×) fallback
+            {   // 🛡 (DECISION_LOG 292 ⑤) never save a FRENZY sleeve without a bot stop (the server refuses it too)
+                for (const [_sid, _sname] of [['config-fz-stop', 'FRENZY stop %'], ['config-fz-willy-stop', 'WILLY stop %']]) {
+                    const _sv = String(document.getElementById(_sid)?.value ?? '').trim();
+                    const _sx = _sv === '' ? NaN : Number(_sv);
+                    if (!(Number.isFinite(_sx) && _sx > 0)) { showToast(`${_sname} must be > 0 — every FRENZY sleeve needs its own stop (not saved)`, 'error'); return; }
+                }
+            }
             const invMode = document.getElementById('config-investment-mode').value;
             const invValue = safeFloat(document.getElementById('config-investment-value').value);
             const resMode = document.getElementById('config-reserve-mode').value;
@@ -21926,6 +21964,7 @@
                     spike_lock_exempt_fade: document.getElementById('config-spike-lock-exempt-fade')?.checked ?? true,
                     broker_backstop_enabled: document.getElementById('config-broker-backstop-enabled')?.checked ?? false,
                     broker_backstop_pct: safeFloat(document.getElementById('config-broker-backstop-pct')?.value ?? 2.5),
+                    untracked_position_action: (document.getElementById('config-untracked-position-action')?.value === 'flatten') ? 'flatten' : 'alert',   // 🛡 (292 ②)
                     spike_rsi_cool_arm: safeFloat(document.getElementById('config-spike-rsi-cool-arm')?.value || 75),
                     spike_rsi_cool_drop: safeFloat(document.getElementById('config-spike-rsi-cool-drop')?.value || 10),
                     spike_ladder_unarmed: (document.getElementById('config-spike-ladder-unarmed')?.value || '1.25:0.25,1.5:0.30,2.0:0.40,3.0:0.60,4.0:0.80'),

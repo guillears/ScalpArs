@@ -37,6 +37,8 @@ class Order(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     binance_order_id = Column(String(50), nullable=True)  # Null for paper trades
     backstop_algo_id = Column(String(30), nullable=True)  # Aug-11 🛡: resting exchange-side STOP_MARKET algoId (live dead-man's brake); rides the CSV via introspection
+    backstop_pct = Column(Float, nullable=True)            # 🛡 (DECISION_LOG 292) the resting backstop's distance actually placed (price %, positive) — live: what Binance holds; paper: what live would hold. Re-placed (live) / re-recorded (paper) when the configured order_backstop_pct moves
+    backstop_trigger_price = Column(Float, nullable=True)  # 🛡 (DECISION_LOG 292) that backstop's trigger price (entry ∓ backstop_pct) — rides the CSV via introspection
     
     # Trade info
     pair = Column(String(20), nullable=False)  # e.g., "BTCUSDT"

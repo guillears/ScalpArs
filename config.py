@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from typing import Dict, List, Optional
 from enum import Enum
 import json
+import logging
 import os
 
 
@@ -556,6 +557,12 @@ class SignalThresholds(BaseModel):
     # Paper mode: fully dormant. Arm ONLY at go-live, after the testnet contract test passes.
     broker_backstop_enabled: bool = False
     broker_backstop_pct: float = 2.5   # trigger distance (% of entry px) ≈ caps bot-dead tail at ~50% of one slot's margin at 20x
+    # 🛡 2026-10-14 (DECISION_LOG 292, go-live audit P7): a LIVE Binance position with no OPEN database row (fill booked, then the DB insert
+    # died — the Aug-25 "ghost PROM" class) is now detected by the 60 s reconciler (seen on 2 consecutive passes): CRITICAL
+    # [UNTRACKED_POSITION], counter UNTRACKED_POSITION, status-payload alert, and new entries on that symbol are BLOCKED until it is gone or
+    # imported. "alert" (default) = never touch it (the operator closes it on Binance or imports it with Recover positions) · "flatten" =
+    # also close it at market (reduce-only). Any other value reads as "alert". Paper: inert (no exchange positions).
+    untracked_position_action: str = "alert"
     # 🛡 2026-10-12 (DECISION_LOG 271, operator): paper = live. The bot-side −2.2 % floor no longer touches FRENZY / WILLY exits (it was
     # live-only: WILLY's paper "no stop" was a hidden −2.2 % stop live and FRENZY's −3 became −2.2). Each sleeve's OWN stop applies in
     # both modes; the exchange safety stop rests per order just beyond it (order_backstop_pct: own stop + 0.5 %, ≥ this value, ≤ 92 % of
@@ -1489,7 +1496,7 @@ class SignalThresholds(BaseModel):
     frenzy_willy_invest_mult: float = 1.0         # absolute-assign (never the strong bump)
     frenzy_willy_lev_mult: float = 0.5            # DL 280: 10× at the 20× base (was 1.0 = 20×); default = live so a missing key never re-arms 20×
     frenzy_willy_tp_pct: float = 1.25             # DL 281: +1.25 (was 1.0); fixed take profit, net % (≤ 0 / blank → 1.0 used by frenzy_willy_levels)
-    frenzy_willy_stop_pct: float = 4.0            # stop, % (DECISION_LOG 271: −4, same in paper and live) — 0 = no bot stop (NOT paper = live: live keeps the exchange backstop)
+    frenzy_willy_stop_pct: float = 4.0            # stop, % (DECISION_LOG 271: −4, same in paper and live) — must be > 0: 0 / blank is refused on save and reset to 4.0 on load (DECISION_LOG 292 ⑤)
     # 🛡 2026-10-12 (DECISION_LOG 271, operator): trading_config.json 0 → 4.0. Paper "no stop" was a hidden −2.2 % stop live; the B19
     # review (reachable yr5 532 fills): −4 beats real-money no-stop (liquidation at 20×) by +0.076 %/fill (P 0.995), both halves, every
     # leave-one-month-out; B19 14 fills +$659 (only BAT stops). Same stop in paper and live.
@@ -3143,10 +3150,24 @@ def load_trading_config() -> TradingConfig:
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:  # Sep-15: non-ASCII pair symbols (龙虾USDT) in the blacklist
                 data = json.load(f)
-                return TradingConfig(**data)
+                return _guard_bot_stops(TradingConfig(**data))
         except Exception as e:
             print(f"Error loading config: {e}")
-    return TradingConfig()
+    return _guard_bot_stops(TradingConfig())
+
+
+def _guard_bot_stops(cfg: TradingConfig) -> TradingConfig:
+    """🛡 (DECISION_LOG 292 ⑤) never run a FRENZY sleeve without a bot stop: a loaded frenzy_stop_pct / frenzy_willy_stop_pct ≤ 0 (or blank /
+    unreadable) falls back to 3.0 / 4.0 and logs CRITICAL. The config save (PUT /api/config) refuses such values, so this only fires on a
+    hand-edited trading_config.json."""
+    try:
+        from services.golive_guards import sanitize_bot_stops
+        for field, bad, used in sanitize_bot_stops(cfg.thresholds):
+            logging.getLogger(__name__).critical(f"[STOP0_GUARD] trading_config.json {field}={bad!r} is not a stop — running {used} instead "
+                                                 f"(never run without a bot stop; fix the config)")
+    except Exception as e:
+        logging.getLogger(__name__).critical(f"[STOP0_GUARD] check failed: {e}")
+    return cfg
 
 
 def save_trading_config(config: TradingConfig) -> bool:

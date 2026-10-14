@@ -1086,6 +1086,61 @@ class BinanceService:
             logger.error(f"[BINANCE] backstop query failed algoId={algo_id}: {e}")
             return None
 
+    async def cancel_all_backstops(self, pair: str) -> bool:
+        """🛡 (DECISION_LOG 292) cancel every resting algo order on one symbol — backstops are the only algo orders this bot places (the
+        same assumption as the -4130 orphan clear above). Used only after an UNTRACKED position on that symbol was flattened, so a stale
+        close-all stop can never hit a future position there. False on error."""
+        try:
+            await self._check_ban()
+            await self.exchange.fapiPrivateDeleteAlgoOpenOrders({'symbol': pair})
+            return True
+        except Exception as e:
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] cancel-all algo orders failed for {pair}: {e}")
+            return False
+
+    async def get_position_mode_dual(self) -> Optional[bool]:
+        """🛡 (DECISION_LOG 292 ④, read-only) True = HEDGE (dual-side) position mode, False = ONE-WAY (what the bot assumes), None = unreadable."""
+        try:
+            await self._check_ban()
+            res = await self.exchange.fapiPrivateGetPositionSideDual()
+            v = (res or {}).get('dualSidePosition')
+            if v is None:
+                return None
+            return v is True or str(v).strip().lower() == 'true'
+        except Exception as e:
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] position-mode read failed: {e}")
+            return None
+
+    async def get_multi_assets_mode(self) -> Optional[bool]:
+        """🛡 (DECISION_LOG 292 ④, read-only) True = Multi-Assets margin mode ON, False = OFF (what the bot assumes), None = unreadable."""
+        try:
+            await self._check_ban()
+            res = await self.exchange.fapiPrivateGetMultiAssetsMargin()
+            v = (res or {}).get('multiAssetsMargin')
+            if v is None:
+                return None
+            return v is True or str(v).strip().lower() == 'true'
+        except Exception as e:
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] Multi-Assets mode read failed: {e}")
+            return None
+
+    async def get_isolated_margin_symbols(self) -> Optional[List[str]]:
+        """🛡 (DECISION_LOG 292 ④, read-only, GET /fapi/v1/symbolConfig) symbols whose margin type is ISOLATED (the bot runs CROSS and never
+        sets it) → [] = all CROSS, None = unreadable."""
+        try:
+            await self._check_ban()
+            res = await self.exchange.fapiPrivateGetSymbolConfig()
+            if not isinstance(res, list):
+                return None
+            return sorted(str(r.get('symbol')) for r in res if isinstance(r, dict) and str(r.get('marginType', '')).upper() == 'ISOLATED')
+        except Exception as e:
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] symbol margin-type read failed: {e}")
+            return None
+
     async def get_tick_size(self, symbol: str) -> float:
         """Get the minimum price increment (tick size) for a symbol"""
         try:

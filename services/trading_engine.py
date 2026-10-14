@@ -27,6 +27,9 @@ from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE
 from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, frenzy_wide_shadow, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
+from services.golive_guards import (backstop_trigger_price, backstop_needs_replace, algo_status_resting, find_untracked_positions,  # 🛡 (DECISION_LOG 292)
+                                   untracked_action, preflight_failures, BACKSTOP_REPLACE_RETRY_S, BACKSTOP_REPRICE_INTERVAL_S, UNTRACKED_CONFIRM_PASSES,
+                                   trigger_already_crossed, BACKSTOP_REPLACE_MAX_PER_PASS, BACKSTOP_HEAL_RETRY_S)
 
 
 def _strip_reason_prefixes(reason):
@@ -164,9 +167,10 @@ _fade_lag_ndi_cache: Dict[str, tuple] = {}   # symbol → (read_at, −DI) — d
 
 PAIR_REASON_PLACEHOLDER = "No EMA Stack"
 PAIR_REASON_AWAITING = "Awaiting scan (no pair data yet)"   # what the Top Pairs row shows when nothing was ever stamped
-_PAIR_REASON_EXCLUDED_PREFIXES = ("FLIP_", "OPEN_", "BACKSTOP_", "BULL_LONG", "BULLRUN_", "BR_", "SPIKE_", "BOUNCE_", "REDEPLOY", "PASS:", "SURGE_", "FRENZY_")
+_PAIR_REASON_EXCLUDED_PREFIXES = ("FLIP_", "OPEN_", "BACKSTOP_", "BULL_LONG", "BULLRUN_", "BR_", "SPIKE_", "BOUNCE_", "REDEPLOY", "PASS:", "SURGE_", "FRENZY_",
+                                  "BOOKING_FAILED")   # 🛡 (292 ③) a live booking failure is an event, not a gate
 _PAIR_REASON_ALLOWED = ("SPIKE_GUARD",)                 # momentum-ladder gates that happen to share an excluded prefix
-_PAIR_REASON_NOT_A_BLOCK = ("LONG_HEAT_FAILOPEN",)      # counters that do not refuse the trade
+_PAIR_REASON_NOT_A_BLOCK = ("LONG_HEAT_FAILOPEN", "UNTRACKED_POSITION", "UNTRACKED_FLATTENED")   # counters that do not refuse the trade (🛡 292 ②: the detection events; UNTRACKED_POSITION_BLOCK IS the pair's refusal)
 
 
 def pair_reason_stampable(filter_name) -> bool:
@@ -455,6 +459,44 @@ def serialized_per_pair(normalize=None, wait_s=None, lane=None):
                 _BOOK_HOLDS.reset(tok)
         return wrapper
     return deco
+
+
+# 🛡 (DECISION_LOG 292 ③) the live fill of the CURRENT open_position call: set once the exchange filled the entry, marked committed once the
+# order row is in the DB. Task-local (each open_position call — including a re-entrant one — gets its own dict).
+_LIVE_FILL_CV: contextvars.ContextVar = contextvars.ContextVar("_LIVE_FILL", default=None)
+
+
+def flatten_unbooked_live_fill(fn):
+    """🛡 (DECISION_LOG 292 ③, go-live audit P7) FLATTEN ON BOOKING FAILURE for BOT opens — the mirror of the MANUAL open's flatten. If the
+    entry FILLED on Binance but open_position leaves without committing the order row (an exception — DB locked, insert error, a task
+    cancelled by a deploy — or a return without booking), there is no row → no exits, no reconcile: a naked "ghost" position (the Aug-25
+    PROM class). The wrapper closes the filled quantity at market (reduce-only) at once; if that fails the symbol is marked untracked
+    (entries blocked, CRITICAL) for the operator. Paper: never armed (no exchange fill). Applied INSIDE serialized_per_pair, so the
+    flatten runs under the pair lock."""
+    @functools.wraps(fn)
+    async def wrapper(self, db, *args, **kwargs):
+        st = {}
+        tok = _LIVE_FILL_CV.set(st)
+        try:
+            res = await fn(self, db, *args, **kwargs)
+        except BaseException as err:
+            if st.get('filled') and not st.get('committed'):
+                await self._flatten_unbooked_fill(db, st, err)
+            raise
+        finally:
+            _LIVE_FILL_CV.reset(tok)
+        if st.get('filled') and not st.get('committed'):
+            await self._flatten_unbooked_fill(db, st, None)
+        return res
+    return wrapper
+
+
+class ModeSwitchRefused(Exception):
+    """🛡 (DECISION_LOG 292 ④) the paper ↔ live switch was refused — .status = the HTTP code the endpoint returns, str() = the reason."""
+    def __init__(self, reason, status=409, checks=None):
+        super().__init__(reason)
+        self.status = status
+        self.checks = checks or []
 
 
 PAPER_FEE_SETTLE = "fee_settle"   # BnbSwapLog.swap_type of the row that books fees already paid in USDT (reserve was empty)
@@ -3244,15 +3286,302 @@ class TradingEngine:
         await self.save_state(db)
         return {"status": "paused", "message": "Bot paused - will still close open positions"}
     
+    # ───────────── 🛡 GO-LIVE GUARDS (2026-10-14, DECISION_LOG 292) ─────────────
+
+    def _note_live_fill(self, pair, symbol, direction, qty, price):
+        """🛡 (292 ③) open_position: the entry FILLED on Binance — from here, leaving without a committed row flattens it."""
+        st = _LIVE_FILL_CV.get()
+        if st is None or self.is_paper_mode:
+            return
+        try:
+            q = float(qty or 0)
+        except (TypeError, ValueError):
+            q = 0.0
+        st.update(filled=True, pair=pair, symbol=symbol, direction=direction, qty=q, price=price)
+
+    async def _flatten_unbooked_fill(self, db, st, err):
+        """🛡 (292 ③) a bot entry FILLED but its row was never committed → close the filled quantity at market (reduce-only) and cancel its
+        backstop. Shielded: a cancelled task (deploy / shutdown) still flattens. Flatten failed → the symbol is marked untracked (entries
+        blocked, CRITICAL; the reconciler keeps it marked while Binance shows it). Never raises."""
+        pair, symbol, direction, qty = st.get('pair'), st.get('symbol'), st.get('direction'), st.get('qty')
+        bk = st.get('bk')
+        st['committed'] = True   # one flatten per fill, whatever happens below
+        logger.critical(f"[BOOKING_FAILED] {pair} {direction}: FILLED on Binance (qty {qty}) but the order row was NOT booked "
+                        f"({err!r}) — flattening at market")
+
+        async def _do():
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            ok = None
+            try:
+                ok = await binance_service.close_position(symbol, direction, qty)
+            except Exception as _fe:
+                logger.critical(f"[BOOKING_FAILED] {pair}: flatten raised: {_fe}")
+                ok = None
+            if ok and bk:   # the safety stop stays in place when the close failed
+                try:
+                    _c = await binance_service.cancel_backstop_stop(pair, bk)
+                    logger.warning(f"[BOOKING_FAILED] {pair}: flattened; safety stop algoId={bk} cancel ok={_c}")
+                except Exception as _ce:
+                    logger.error(f"[BOOKING_FAILED] {pair}: safety stop cancel raised: {_ce}")
+            return ok
+        try:
+            ok = await asyncio.shield(_do())
+        except BaseException as _sh:
+            logger.critical(f"[BOOKING_FAILED] {pair}: flatten interrupted ({_sh!r}) — the position may still be open on Binance")
+            ok = None
+        try:
+            if ok:
+                logger.critical(f"[BOOKING_FAILED_FLATTENED] {pair} {direction}: unbooked fill of {qty} closed again at market — nothing is open")
+                self._record_filter_block("BOOKING_FAILED_FLATTENED", direction or "ANY")
+            else:
+                logger.critical(f"[BOOKING_FAILED_FLATTEN_FAILED] {pair} {direction}: the unbooked fill of {qty} could NOT be closed — "
+                                f"{pair} BLOCKED for new entries; close it on Binance or import it (Recover positions) NOW"
+                                + (" (its exchange safety stop is in place)" if bk else " (NO exchange safety stop)"))
+                self._record_filter_block("BOOKING_FAILED_FLATTEN_FAILED", direction or "ANY")
+                self._mark_untracked(pair, direction, qty, st.get('price'), "NO_ROW", "BOOKING_FAILED")
+        except Exception:
+            pass
+
+    def untracked_block(self, pair):
+        """🛡 (292 ②) the untracked-position record that blocks entries on this pair, or None."""
+        try:
+            return (self.__dict__.get('_untracked_positions') or {}).get(str(pair or '').upper())
+        except Exception:
+            return None
+
+    def _mark_untracked(self, pair, side, qty, entry_price, reason, source):
+        d = self.__dict__.setdefault('_untracked_positions', {})
+        key = str(pair or '').upper()
+        d[key] = {"pair": key, "side": side, "qty": qty, "entry_price": entry_price, "reason": reason, "source": source,
+                  "since": datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()}
+        self.__dict__['_untracked_detect_count'] = int(self.__dict__.get('_untracked_detect_count', 0) or 0) + 1
+
+    def _pair_open_in_flight(self, pair) -> bool:
+        """A bot / manual open holds this pair's lock right now (its fill may predate its row)."""
+        try:
+            held = getattr(self, '_pair_open_locks', None)
+            if not held:
+                return False
+            lk = held[1].get(pair)
+            return bool(lk is not None and lk.locked())
+        except Exception:
+            return False
+
+    async def check_untracked_positions(self, db, binance_positions) -> list:
+        """🛡 (DECISION_LOG 292 ②, go-live audit P7) the INVERSE reconcile: a Binance position with no OPEN live row. Called by the 60 s
+        reconciler with its own positions read (never on a failed read). A candidate becomes untracked after UNTRACKED_CONFIRM_PASSES
+        consecutive sightings (a fill whose row is still being written is never flagged; a pair whose open is in flight is skipped) →
+        CRITICAL [UNTRACKED_POSITION], counter UNTRACKED_POSITION, status payload, entries on the symbol blocked. It clears itself when
+        Binance no longer shows it (closed or imported). untracked_position_action "flatten" also closes NO_ROW positions at market
+        (reduce-only) and clears that symbol's resting algo stops; "alert" (default) never touches them. → the newly confirmed list."""
+        rows = (await db.execute(select(Order.pair, Order.direction).where(and_(Order.status == "OPEN", Order.is_paper == False)))).all()
+        cands = {u['pair']: u for u in find_untracked_positions(binance_positions, [(r[0], r[1]) for r in rows])}
+        seen = self.__dict__.setdefault('_untracked_seen', {})
+        conf = self.__dict__.setdefault('_untracked_positions', {})
+        for p in list(conf):
+            if p not in cands:
+                logger.warning(f"[UNTRACKED_RESOLVED] {p}: no longer an untracked Binance position — entries unblocked")
+                conf.pop(p, None)
+        for p in list(seen):
+            if p not in cands:
+                seen.pop(p, None)
+        new = []
+        for p, u in cands.items():
+            if p in conf:
+                conf[p].update(side=u['side'], qty=u['qty'], entry_price=u['entry_price'], reason=u['reason'])
+                conf[p].pop('flattened', None)   # still on Binance a pass after a flatten (partial / residual) → flatten retries
+                continue
+            if self._pair_open_in_flight(p):
+                seen.pop(p, None)
+                continue
+            seen[p] = int(seen.get(p, 0)) + 1
+            if seen[p] < UNTRACKED_CONFIRM_PASSES:
+                continue
+            seen.pop(p, None)
+            self._mark_untracked(p, u['side'], u['qty'], u['entry_price'], u['reason'], "RECONCILE")
+            new.append(conf[p])
+            logger.critical(f"[UNTRACKED_POSITION] {p} {u['side']} qty={u['qty']} entry={u['entry_price']} ({u['reason']}): Binance holds a "
+                            f"position the bot has NO open row for — new entries on {p} BLOCKED; action={untracked_action(config.trading_config.thresholds)}")
+            self._record_filter_block("UNTRACKED_POSITION", u['side'] or "ANY")
+        if untracked_action(config.trading_config.thresholds) == "flatten":
+            for p, u in list(conf.items()):
+                if u.get('reason') != "NO_ROW" or u.get('flattened'):
+                    continue   # a side mismatch has a DB row on the pair — alert only, never auto-close
+                try:
+                    ok = await binance_service.close_position(p[:-4] + "/USDT:USDT", u.get('side'), u.get('qty'))
+                except Exception as _fe:
+                    logger.critical(f"[UNTRACKED_FLATTEN_FAILED] {p}: {_fe}")
+                    ok = None
+                if ok:
+                    u['flattened'] = True
+                    _c = await binance_service.cancel_all_backstops(p)
+                    logger.critical(f"[UNTRACKED_FLATTENED] {p} {u.get('side')} qty={u.get('qty')}: closed at market (untracked_position_action=flatten); "
+                                    f"resting algo stops cleared ok={_c}")
+                    self._record_filter_block("UNTRACKED_FLATTENED", u.get('side') or "ANY")
+                else:
+                    logger.critical(f"[UNTRACKED_FLATTEN_FAILED] {p} {u.get('side')} qty={u.get('qty')}: could not close — still blocked")
+        return new
+
+    async def _backstop_replace_one(self, pair, direction, old_id, want_pct, want_trig):
+        """🛡 (292 ①) re-place ONE live backstop at a new trigger → (status, algo id): 'replaced' (new id) · 'kept_old' (placement failed, the
+        old stop is confirmed still resting) · 'lost' (placement failed and the old stop is gone or unknown — the caller clears the id so
+        the heal sweep re-places it) · 'crossed' (the new trigger is already through the price: nothing is touched, the old stop stays).
+        Real exchange order: Binance allows ONE close-all stop per side, so the first POST gets -4130 and place_backstop_stop cancels the
+        symbol's algo orders, then places — cancel-all → place, one round-trip (~50–300 ms) with no exchange stop (deep review). That is
+        why a crossed trigger is checked FIRST: -2021 after the clear would leave no stop at all."""
+        mark = await binance_service.get_current_price(pair)
+        if trigger_already_crossed(direction, want_trig, mark):
+            return "crossed", old_id
+        new_id = await binance_service.place_backstop_stop(pair, direction, want_trig)
+        if new_id:
+            if old_id and str(new_id) != str(old_id):
+                if not await binance_service.cancel_backstop_stop(pair, old_id):
+                    logger.error(f"[BACKSTOP_REPLACE] {pair}: new stop algoId={new_id} placed but the old algoId={old_id} could not be "
+                                 f"cancelled — two resting stops (both close-all; the reconciler clears the leftover)")
+            return "replaced", str(new_id)
+        st = await binance_service.query_backstop_stop(old_id) if old_id else None
+        if algo_status_resting(st):
+            return "kept_old", old_id
+        return "lost", None
+
+    async def backstop_reprice_sweep(self, now=None) -> list:
+        """🛡 (DECISION_LOG 292 ①, CURRENT_STATE checklist ⑦) every open row's resting backstop vs the CONFIGURED one (order_backstop_pct at
+        the order's own sleeve / exit mode / leverage, from its entry price). Differs beyond the tolerance (or never recorded) → live:
+        re-place the stop ([BACKSTOP_REPLACE]; at most BACKSTOP_REPLACE_MAX_PER_PASS per pass, a crossed trigger is skipped); paper: update the record only (no exchange call). Rows being closed,
+        without an entry price, or (live) without a resting stop (the heal sweep's job) are skipped. Throttled to one pass per
+        BACKSTOP_REPRICE_INTERVAL_S; a failed live re-place retries per order after BACKSTOP_REPLACE_RETRY_S. → [(order id, status)]."""
+        now = time.monotonic() if now is None else float(now)
+        if now - float(self.__dict__.get('_bk_reprice_at', -1e18)) < BACKSTOP_REPRICE_INTERVAL_S:
+            return []
+        self.__dict__['_bk_reprice_at'] = now
+        th = config.trading_config.thresholds
+        paper = bool(self.is_paper_mode)
+        nxt = self.__dict__.setdefault('_bk_replace_next', {})
+        out = []
+        todo = []
+        async with AsyncSessionLocal() as db:
+            rows = (await db.execute(select(Order).where(and_(Order.status == "OPEN", Order.is_paper == paper)))).scalars().all()
+            for o in rows:
+                if not o.entry_price or o.entry_price <= 0 or getattr(o, 'closing_in_progress', False):
+                    continue
+                if not paper and not o.backstop_algo_id:
+                    continue
+                want = order_backstop_pct(th, o.entry_strategy, getattr(o, 'manual_exit_mode', None), getattr(o, 'pattern_fixed_sl_pct', None), o.leverage)
+                trig = backstop_trigger_price(o.entry_price, o.direction, want)
+                if not backstop_needs_replace(o.backstop_pct, o.backstop_trigger_price, want, trig):
+                    continue
+                if paper:
+                    logger.info(f"[BACKSTOP_REPLACE] {o.pair} {o.direction} (paper record): {o.backstop_pct}% → {want}% trigger {trig:.6g}")
+                    o.backstop_pct, o.backstop_trigger_price = want, trig
+                    out.append((o.id, "paper"))
+                    continue
+                if float(nxt.get(o.id, -1e18)) > now:
+                    continue
+                if len(todo) >= BACKSTOP_REPLACE_MAX_PER_PASS:
+                    continue   # the rest wait for the next pass (≥ 30 s) — never a long stall of the monitor loop
+                todo.append((o.id, o.pair, o.direction, o.backstop_algo_id, o.backstop_pct, want, trig))
+            if out:
+                await locked_commit(db)
+        for oid, pair, direction, old_id, old_pct, want, trig in todo:   # live: the exchange calls run with no DB transaction open
+            status, aid = await self._backstop_replace_one(pair, direction, old_id, want, trig)
+            async with AsyncSessionLocal() as db2:   # a FRESH read: the close path may have acted while the exchange calls ran
+                o = (await db2.execute(select(Order).where(Order.id == oid))).scalar_one_or_none()
+                clean = o is not None and o.status == "OPEN" and not getattr(o, 'closing_in_progress', False) and str(o.backstop_algo_id or '') == str(old_id or '')
+                if status == "replaced":
+                    if not clean and o is not None and o.status == "OPEN":
+                        # the row is closing, or another path re-placed its stop meanwhile — the exchange keeps ONE close-all stop per
+                        # side (the -4130 clear removed every other one), so cancelling ours could leave a still-open position (a close
+                        # that fails and retries) with NO exchange stop: keep ours unless the row's current stop is confirmed resting
+                        _cur = o.backstop_algo_id
+                        clean = (not _cur) or (str(_cur) != str(aid) and not algo_status_resting(await binance_service.query_backstop_stop(_cur)))
+                    if clean:
+                        o.backstop_algo_id, o.backstop_pct, o.backstop_trigger_price = aid, want, trig
+                        await locked_commit(db2)
+                        nxt.pop(oid, None)
+                        logger.warning(f"[BACKSTOP_REPLACE] {pair} {direction}: resting stop moved {old_pct}% → {want}% (trigger {trig:.6g}) "
+                                       f"algoId {old_id} → {aid}")
+                    else:   # the row was closed, or holds another stop that is confirmed resting: ours is not wanted
+                        _c = await binance_service.cancel_backstop_stop(pair, aid)
+                        logger.warning(f"[BACKSTOP_REPLACE] {pair}: row changed during the re-place — new algoId={aid} cancelled ok={_c}")
+                elif status == "crossed":
+                    nxt[oid] = now + BACKSTOP_REPLACE_RETRY_S
+                    logger.warning(f"[BACKSTOP_REPLACE] {pair} {direction}: new trigger {trig:.6g} ({want}%) is already through the price — "
+                                   f"old stop ({old_pct}%, algoId={old_id}) kept; retry in {BACKSTOP_REPLACE_RETRY_S:.0f}s")
+                elif status == "kept_old":
+                    nxt[oid] = now + BACKSTOP_REPLACE_RETRY_S
+                    self._record_filter_block("BACKSTOP_REPLACE_FAILED", direction)
+                    logger.error(f"[BACKSTOP_REPLACE_FAILED] {pair} {direction}: new stop ({want}%) not placed — the old stop ({old_pct}%, "
+                                 f"algoId={old_id}) is still resting; retry in {BACKSTOP_REPLACE_RETRY_S:.0f}s")
+                else:
+                    nxt[oid] = now + BACKSTOP_REPLACE_RETRY_S
+                    self._record_filter_block("BACKSTOP_PLACE_FAILED", direction)
+                    if clean:
+                        o.backstop_algo_id = None   # the heal sweep re-places it on every pass from now on
+                        await locked_commit(db2)
+                    logger.critical(f"[BACKSTOP_REPLACE_FAILED] {pair} {direction}: new stop not placed AND the old one is gone / unreadable — "
+                                    f"the heal sweep re-places it every pass; software stops only until then")
+            out.append((oid, status))
+        return out
+
+    async def live_preflight(self, db) -> list:
+        """🛡 (DECISION_LOG 292 ④) READ-ONLY checks before PAPER → LIVE: API key present · account readable · ONE-WAY position mode ·
+        Multi-Assets OFF · every symbol CROSS margin · open Binance positions readable and every one tracked by an OPEN live row. → failure reasons ([] = pass)."""
+        key_ok = bool(str(getattr(config.settings, 'binance_api_key', '') or '').strip() and str(getattr(config.settings, 'binance_api_secret', '') or '').strip())
+        if not key_ok:
+            return preflight_failures(api_key_present=False, account_ok=True, dual_side=False, multi_assets=False, untracked=[], positions_ok=True)
+        isolated = await binance_service.get_isolated_margin_symbols()   # the bot runs CROSS (operator 10-14) and never sets it per symbol
+        bal = await binance_service.get_balance()
+        dual = await binance_service.get_position_mode_dual()
+        multi = await binance_service.get_multi_assets_mode()
+        positions = await binance_service.get_open_positions()
+        untracked = []
+        if positions is not None:
+            rows = (await db.execute(select(Order.pair, Order.direction).where(and_(Order.status == "OPEN", Order.is_paper == False)))).all()
+            untracked = find_untracked_positions(positions, [(r[0], r[1]) for r in rows])
+        return preflight_failures(api_key_present=True, account_ok=bool((bal or {}).get('ok')), dual_side=dual, multi_assets=multi,
+                                  untracked=untracked, positions_ok=positions is not None, isolated=isolated)
+
+    async def _count_open(self, db, paper: bool) -> int:
+        return int((await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.is_paper == paper)))).scalar() or 0)
+
     async def set_paper_mode(self, enabled: bool, db: AsyncSession):
-        """Toggle paper trading mode"""
+        """Toggle paper trading mode — 🛡 (DECISION_LOG 292 ④) a SAFE switch, never a bare flag flip:
+        PAPER → LIVE refused (ModeSwitchRefused) while the bot runs, while any paper position is OPEN (they would freeze), or when the
+        read-only live pre-flight fails (live_preflight). LIVE → PAPER refused while any LIVE position is OPEN (it would lose its exits).
+        Same mode → no-op. Every switch is logged [MODE_SWITCH]."""
+        enabled = bool(enabled)
+        if enabled == bool(self.is_paper_mode):
+            return {"paper_mode": enabled, "changed": False}
+        if not enabled:   # PAPER → LIVE
+            if self.is_running:
+                raise ModeSwitchRefused("pause the bot before switching to LIVE (a running scan would place real orders mid-switch)", 409)
+            _n = await self._count_open(db, True)
+            if _n:
+                raise ModeSwitchRefused(f"{_n} paper position(s) still OPEN — close them before switching to LIVE (they would freeze)", 409)
+            _fails = await self.live_preflight(db)
+            if _fails:
+                logger.error(f"[MODE_SWITCH_REFUSED] PAPER → LIVE: pre-flight failed: {'; '.join(_fails)}")
+                raise ModeSwitchRefused("LIVE pre-flight failed: " + "; ".join(_fails), 412, _fails)
+        else:              # LIVE → PAPER
+            _n = await self._count_open(db, False)
+            if _n:
+                raise ModeSwitchRefused(f"{_n} LIVE position(s) still OPEN — close them before switching to PAPER (they would lose their exits)", 409)
+            _ut = list((self.__dict__.get('_untracked_positions') or {}).keys())
+            if _ut:
+                raise ModeSwitchRefused(f"untracked Binance position(s) still open on {', '.join(_ut)} — close or import them before switching to PAPER", 409)
         self.is_paper_mode = enabled
         self._bnb_usd_last = None  # Sep-11 (review M-1): a live→paper→live toggle must not reuse a stale live cache
         self._equity_usd_last = None
         if enabled:
             self.paper_balance = config.trading_config.paper_balance
+        self.__dict__.pop('_untracked_positions', None)   # 🛡 (292 ②) the other mode's untracked marks never carry over
+        self.__dict__.pop('_untracked_seen', None)
         await self.save_state(db)
-        return {"paper_mode": enabled}
+        logger.critical(f"[MODE_SWITCH] {'LIVE → PAPER' if enabled else 'PAPER → LIVE (pre-flight passed)'}")
+        return {"paper_mode": enabled, "changed": True}
     
     def get_runtime_seconds(self) -> int:
         """Get total runtime in seconds"""
@@ -3300,6 +3629,11 @@ class TradingEngine:
             "breadth_n_bear": _breadth_n_bear,
             "breadth_n_neutral": _breadth_n_neutral,
             "breadth_n_total": _breadth_n_total,
+            # 🛡 (DECISION_LOG 292 ②) Binance positions with no OPEN DB row (entries on those symbols are blocked) — dashboard alert
+            "untracked_positions": [dict(v) for v in (self.__dict__.get('_untracked_positions') or {}).values()],
+            "untracked_position_count": len(self.__dict__.get('_untracked_positions') or {}),
+            "untracked_detect_count": int(self.__dict__.get('_untracked_detect_count', 0) or 0),
+            "untracked_position_action": untracked_action(config.trading_config.thresholds),
         }
 
     def _record_filter_block(self, filter_name: str, direction: str, had_room: bool = True) -> None:
@@ -9585,6 +9919,7 @@ class TradingEngine:
     # ===== SPIKE SCANNER END =====
 
     @serialized_per_pair(lane=BOT_OPEN_LANE)
+    @flatten_unbooked_live_fill
     async def open_position(
         self,
         db: AsyncSession,
@@ -9801,6 +10136,16 @@ class TradingEngine:
                                        or spike_chase_probe or spike_fade or spike_bounce or _surge)
         if not self.is_running:
             logger.warning(f"[SKIP] {pair}: Bot not running")
+            return None
+        # 🛡 (DECISION_LOG 292 ②) a Binance position on this symbol that the DB does not know (or a fill whose booking AND flatten failed)
+        # blocks every new bot entry on it — adding to an unknown position would merge into it on the exchange (one-way mode)
+        _ut = self.untracked_block(pair) if not self.is_paper_mode else None
+        if _ut is not None:
+            self._record_filter_block("UNTRACKED_POSITION_BLOCK", direction)
+            if _frenzy:
+                self._frenzy_open_refusal = f"untracked Binance position on {pair} ({_ut.get('side')} {_ut.get('qty')}) — resolve it first"
+            logger.critical(f"[UNTRACKED_POSITION_BLOCK] {pair} {direction}: entry refused — Binance holds an untracked {_ut.get('side')} "
+                            f"{_ut.get('qty')} on this symbol ({_ut.get('reason')})")
             return None
 
         # Jun 15: Flip Entry — the flip trigger fires mid-filter-chain, before the
@@ -11197,6 +11542,7 @@ class TradingEngine:
                     entry_fee = result['entry_fee']
                     entry_order_type = result['entry_order_type']
                     quantity = result.get('amount', quantity)
+                    self._note_live_fill(pair, symbol, direction, quantity, actual_price)   # 🛡 (292 ③) from here an unbooked exit flattens
                 else:
                     logger.error(f"[MAKER_ENTRY] {pair}: Both maker and fallback failed")
                     return None
@@ -11209,6 +11555,7 @@ class TradingEngine:
                     binance_order_id = result['id']
                     actual_price = result['price']
                     quantity = result.get('amount', quantity)
+                    self._note_live_fill(pair, symbol, direction, quantity, actual_price)   # 🛡 (292 ③) from here an unbooked exit flattens
                     entry_fee = actual_price * quantity * taker_fee_rate
                     entry_order_type = "TAKER"
                 else:
@@ -11330,6 +11677,20 @@ class TradingEngine:
             except Exception as _bk_err:
                 self._record_filter_block("BACKSTOP_PLACE_FAILED", direction)
                 logger.critical(f"[BACKSTOP_PLACE_FAILED] {pair} {direction}: {_bk_err}")
+        # 🛡 (DECISION_LOG 292 ①) the backstop record on the row: live = what was actually placed (None when placement failed — the
+        # sweep places and records it); paper = what live would have placed (paper = live bookkeeping, no exchange call)
+        _bk_rec_pct = _bk_rec_trig = None
+        try:
+            _st_fill = _LIVE_FILL_CV.get()
+            if _st_fill is not None and _st_fill.get('filled'):
+                _st_fill['bk'] = _bk_algo_id   # a flatten after a failed booking cancels this stop too
+            if (actual_price and actual_price > 0 and bool(getattr(config.trading_config.thresholds, 'broker_backstop_enabled', False))
+                    and (self.is_paper_mode or _bk_algo_id)):
+                _bk_rec_pct = order_backstop_pct(config.trading_config.thresholds, (_fz_es if _frenzy else None), None, None, leverage)
+                _bk_rec_trig = backstop_trigger_price(actual_price, direction, _bk_rec_pct)
+        except Exception as _bkr_err:
+            logger.error(f"[BACKSTOP_RECORD] {pair}: {_bkr_err}")
+            _bk_rec_pct = _bk_rec_trig = None
         # Aug-25 (39) PARTIAL-FILL truth (live HYPE id 16: maker filled 1.0/77.31, quantity was
         # correctly downsized but investment/notional kept the INTENDED $313.90/$6,278 — display
         # wrong AND the gross-notional cap counted a phantom $6.2k against the budget). Recompute
@@ -11385,6 +11746,7 @@ class TradingEngine:
         order = Order(
             binance_order_id=binance_order_id,
             backstop_algo_id=_bk_algo_id,
+            backstop_pct=_bk_rec_pct, backstop_trigger_price=_bk_rec_trig,   # 🛡 (DECISION_LOG 292 ①)
             pair=pair,
             direction=direction,
             status="OPEN",
@@ -11558,6 +11920,9 @@ class TradingEngine:
         db.add(transaction)
 
         await locked_commit(db)
+        _st_fill = _LIVE_FILL_CV.get()
+        if _st_fill is not None:
+            _st_fill['committed'] = True   # 🛡 (292 ③) booked: no flatten from here on, whatever fails later
         if not self.is_paper_mode:
             _book_release()   # 🔒 live: the row is committed — the next open (any pair) sees it in the counts
         await db.refresh(order)
@@ -12136,6 +12501,12 @@ class TradingEngine:
                 **_st,
                 **{f"manual_ob_{_k}": (_obm or {}).get(_k) for _k in OB_FIELDS},   # 📖 the order book at the click (None when unreadable)
             )
+            try:   # 🛡 (DECISION_LOG 292 ①) the backstop record: live = what was placed (none when it failed — the sweep places + records it); paper = what live would place
+                if bool(getattr(th, 'broker_backstop_enabled', False)) and actual_price and float(actual_price) > 0 and (self.is_paper_mode or _bk_algo_id):
+                    order.backstop_pct = order_backstop_pct(th, "MANUAL", exit_mode, sl, leverage)
+                    order.backstop_trigger_price = backstop_trigger_price(actual_price, direction, order.backstop_pct)
+            except Exception as _bkr_err:
+                logger.error(f"[BACKSTOP_RECORD] {pair} MANUAL: {_bkr_err}")
             db.add(order)
             await db.flush()
             db.add(Transaction(order_id=order.id, binance_order_id=binance_order_id, pair=pair, action=f"OPEN_{direction}", price=actual_price,
@@ -12284,8 +12655,11 @@ class TradingEngine:
         if bool(getattr(th, 'broker_backstop_enabled', False)) and sl < 0:   # paper and live alike (DECISION_LOG 271)
             # the resting exchange safety stop was placed with the exit this trade had: the new stop must stay inside it
             _resting = order_backstop_pct(th, order.entry_strategy, getattr(order, 'manual_exit_mode', None), order.pattern_fixed_sl_pct, order.leverage)
-            if order.exit_override_at is not None:   # already edited once: the row no longer tells where the stop was PLACED (it is never
-                # moved) — assume the bot's distance, the tightest it can be (review: repeated edits walked past the real stop)
+            _rec_bk = getattr(order, 'backstop_pct', None)
+            if _rec_bk is not None and float(_rec_bk) > 0:   # 🛡 (292 ①) where the stop RESTS now (the re-price sweep re-centres it ≤ 30 s
+                _resting = min(_resting, float(_rec_bk))     # after an edit): the tighter of the recorded and the configured distance
+            elif order.exit_override_at is not None:   # no record (pre-292 row) and edited once: assume the bot's distance, the
+                # tightest it can be (review: repeated edits walked past the real stop)
                 _resting = min(_resting, order_backstop_pct(th, None))
             if abs(sl) + MANUAL_BACKSTOP_MIN_GAP_PCT > _resting + 1e-9:
                 raise ValueError(f"the exchange safety stop of this position rests {_resting:.2f}% from its entry — a stop at {sl:.2f}% is too close to it "
@@ -12804,6 +13178,7 @@ class TradingEngine:
                         _bk_new = await binance_service.place_backstop_stop(order.pair, order.direction, _bk_tr)
                         if _bk_new:
                             order.backstop_algo_id = _bk_new
+                            order.backstop_pct, order.backstop_trigger_price = _bk_pct, _bk_tr   # 🛡 (292 ①) the record follows the stop
                             await locked_commit(db)  # review fix: persist NOW — reconciler/next close must see the LIVE id, not the canceled one
                             logger.warning(f"[BACKSTOP_REPLACED] {order.pair}: close failed → fresh algoId={_bk_new} guarding the retry window")
                         else:
@@ -15223,20 +15598,34 @@ class TradingEngine:
                     _bk_rows = (await _bk_db.execute(
                         select(Order).where(and_(Order.status == "OPEN", Order.is_paper == False,
                                                  Order.backstop_algo_id.is_(None))))).scalars().all()
+                    _bk_next = self.__dict__.setdefault('_bk_heal_next', {})
+                    _bk_now = time.monotonic()
                     for _bko in _bk_rows:
+                        if float(_bk_next.get(_bko.id, -1e18)) > _bk_now:
+                            continue   # 🛡 (292) a failed placement retries every BACKSTOP_HEAL_RETRY_S, not every pass
                         _bk_pct = order_backstop_pct(config.trading_config.thresholds, _bko.entry_strategy, getattr(_bko, 'manual_exit_mode', None),
                                                      getattr(_bko, 'pattern_fixed_sl_pct', None), _bko.leverage)   # MANUAL / FRENZY / WILLY: own stop + 0.5 (271); every other order: broker_backstop_pct
                         _bk_tr = _bko.entry_price * (1 - _bk_pct / 100.0) if _bko.direction == "LONG" else _bko.entry_price * (1 + _bk_pct / 100.0)
                         _bk_new = await binance_service.place_backstop_stop(_bko.pair, _bko.direction, _bk_tr)
                         if _bk_new:
                             _bko.backstop_algo_id = _bk_new
+                            _bko.backstop_pct, _bko.backstop_trigger_price = _bk_pct, _bk_tr   # 🛡 (292 ①) the record follows the stop
+                            _bk_next.pop(_bko.id, None)
                             logger.warning(f"[BACKSTOP_SWEEP] {_bko.pair}: healed missing backstop algoId={_bk_new}")
                         else:
+                            _bk_next[_bko.id] = _bk_now + BACKSTOP_HEAL_RETRY_S
                             self._record_filter_block("BACKSTOP_PLACE_FAILED", _bko.direction)
                     if _bk_rows:
                         await locked_commit(_bk_db)
             except Exception as _bks_err:
                 logger.error(f"[BACKSTOP_SWEEP] failed: {_bks_err}")
+        # 🛡 (DECISION_LOG 292 ①) RE-PRICE SWEEP: a resting backstop whose configured distance changed (a stop / leverage / backstop setting
+        # moved since it was placed) is re-placed — live: on the exchange; paper: the record only (paper = live bookkeeping). Throttled.
+        if bool(getattr(config.trading_config.thresholds, 'broker_backstop_enabled', False)):
+            try:
+                await self.backstop_reprice_sweep()
+            except Exception as _bkp_err:
+                logger.error(f"[BACKSTOP_REPLACE] sweep failed: {_bkp_err}")
 
         # --- Process exit retry queue (live mode only) ---
         if not self.is_paper_mode and _exit_retry_queue:

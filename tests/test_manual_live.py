@@ -208,7 +208,7 @@ def test_wiring_of_the_review_fixes():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert "except BaseException as _book_err:" in eng and "asyncio.shield(_flatten())" in eng and "status=_sent" in eng
     assert "else:   # FIXED / FLOOR: the operator's SL / TP stored on the row" in eng      # the candle-path backup covers every manual exit mode
-    assert eng.count("order_backstop_pct(config.trading_config.thresholds, ") == 3          # the open (271: per order) + the re-place after a failed close + the sweep
+    assert eng.count("order_backstop_pct(config.trading_config.thresholds, ") == 4          # the open (271: per order) + its record (292) + the re-place after a failed close + the sweep
     bs = open(os.path.join(ROOT, "services", "binance_service.py"), encoding="utf-8").read()
     assert "status['sent'] = True" in bs and "'filled': float(order.get('filled') or 0)" in bs
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()

@@ -217,6 +217,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_br_top10_n INTEGER"))
                 if 'backstop_algo_id' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN backstop_algo_id VARCHAR(30)"))
+                if 'backstop_pct' not in columns:   # 🛡 (DECISION_LOG 292) per-order backstop record
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN backstop_pct FLOAT"))
+                if 'backstop_trigger_price' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN backstop_trigger_price FLOAT"))
                 if 'entry_rsi' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_rsi FLOAT"))
                 if 'trough_pnl' not in columns:

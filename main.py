@@ -134,8 +134,8 @@ async def monitor_loop():
     """
     global should_stop
     logger.info("[MONITOR] Monitor loop started (1s cycle)")
-    _reconcile_counter = 0
     _RECONCILE_INTERVAL = 60
+    _reconcile_counter = _RECONCILE_INTERVAL - 10   # 🛡 (DECISION_LOG 292 ②) the first live reconcile (orphans + untracked positions) ~10 s after startup, not 60
     while not should_stop:
         try:
             # Aug-25 (35): yield to any in-flight close commit — this loop's 1Hz write stream
@@ -815,8 +815,15 @@ async def pause_bot(db: AsyncSession = Depends(get_db)):
 
 @app.post("/api/paper-mode")
 async def set_paper_mode(enabled: bool, db: AsyncSession = Depends(get_db)):
-    """Toggle paper trading mode"""
-    result = await trading_engine.set_paper_mode(enabled, db)
+    """Toggle paper trading mode — 🛡 (DECISION_LOG 292 ④) refused with a 4xx + the reason when unsafe: PAPER → LIVE while the bot runs,
+    while a paper position is OPEN, or when the read-only live pre-flight fails (412); LIVE → PAPER while a live position is OPEN (409)."""
+    from services.trading_engine import ModeSwitchRefused
+    await trading_engine.initialize(db)
+    try:
+        result = await trading_engine.set_paper_mode(enabled, db)
+    except ModeSwitchRefused as e:
+        logger.warning(f"[MODE_SWITCH_REFUSED] → {'PAPER' if enabled else 'LIVE'}: {e}")
+        raise HTTPException(status_code=e.status, detail=str(e))
     return result
 
 
@@ -2670,7 +2677,14 @@ async def _reconcile_open_orders(db: AsyncSession) -> list:
         pair = pos['symbol'].replace('/USDT:USDT', 'USDT')
         binance_pairs.add(pair)
 
-    return await _close_orphan_orders(db, binance_pairs)
+    closed = await _close_orphan_orders(db, binance_pairs)
+    # 🛡 (DECISION_LOG 292 ②) the INVERSE direction: a Binance position with no OPEN DB row (never on a failed read — this branch has a
+    # real positions snapshot). Never breaks the reconcile.
+    try:
+        await trading_engine.check_untracked_positions(db, binance_positions)
+    except Exception as _ut_err:
+        logger.error(f"[UNTRACKED_POSITION] check failed: {_ut_err}")
+    return closed
 
 
 async def _reconcile_per_symbol(db: AsyncSession) -> list:
@@ -12851,7 +12865,14 @@ async def update_config(config_update: ConfigUpdate):
     new_config_data = current_config.model_dump()
     new_config_data.update(update_data)
     new_config = TradingConfig(**new_config_data)
-    
+    # 🛡 (DECISION_LOG 292 ⑤) never save a FRENZY sleeve without a bot stop · ② the untracked-position action is alert | flatten
+    from services.golive_guards import bot_stop_errors, UNTRACKED_ACTIONS
+    _cfg_errs = bot_stop_errors(new_config.thresholds)
+    if str(getattr(new_config.thresholds, 'untracked_position_action', 'alert') or '').strip().lower() not in UNTRACKED_ACTIONS:
+        _cfg_errs.append(f"untracked_position_action must be one of {', '.join(UNTRACKED_ACTIONS)}")
+    if _cfg_errs:
+        raise HTTPException(status_code=400, detail="Configuration NOT saved: " + "; ".join(_cfg_errs))
+
     # Detect changes between old and new config
     def flatten_config(cfg_dict, prefix=""):
         flat = {}

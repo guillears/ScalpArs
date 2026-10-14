@@ -553,7 +553,7 @@ WILLY_TP_DEF, WILLY_HOLD_DEF = 1.0, 120   # 🎯 operator Oct-8 originals — ON
 def frenzy_willy_levels(th) -> Tuple[float, Optional[float], int]:
     """(tp %, stop % as a NEGATIVE number or None = NO stop, max hold minutes) the WILLY exit USES. TP blank / ≤ 0 → +1; hold blank / < 1 →
     120 (the take profit and the time cap ARE the exit — a zero never removes them). Stop: frenzy_willy_stop_pct > 0 → −that; blank / 0 /
-    unreadable → None (operator Oct-8: no stop loss — never a silent fallback to 3)."""
+    unreadable → None — unreachable from the config since DECISION_LOG 292 ⑤ (save refuses ≤ 0, load resets it to 4.0)."""
     tp = _f(th, 'frenzy_willy_tp_pct', WILLY_TP_DEF)
     st = abs(_f(th, 'frenzy_willy_stop_pct', 0.0))
     mh = _f(th, 'frenzy_willy_max_hold_minutes', WILLY_HOLD_DEF)

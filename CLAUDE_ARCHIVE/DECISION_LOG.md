@@ -6628,3 +6628,67 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   Rebuild side-effects (review note): 35 BASE momentum rows' pnl_current_sizing refreshed ÷10 from the SCREENED_BASELINE v23 committed in
   80e7ef1 (HEAD's master copy was stale); 3 B20 WILLY rows resolved from UNRES to ticks (stack_pct rounded to 4 dp). stack_keep / stack_pnl
   moved only on the 8 WIDE rows + the 17 new B21 rows. BTW (B21 WILLY) is priced from 1m bars (first-touch).
+
+## (292) 2026-10-14 — 🛡 Go-live must-fix items 1–5 built (operator-approved); margin mode stays CROSS; kill switch not built
+- **Evidence:** `reports/GO_LIVE_AUDIT_2026-10-14.md` (read-only audit, file:line for every gap): NO-GO until CURRENT_STATE l.3 ⑦ (per-order
+  backstop record / re-place), P7 (no inverse reconcile; bot opens had no flatten-on-booking-failure — only MANUAL did), P1 (paper→live =
+  bare flag flip) and ⑤ (WILLY stop 0 unguarded) were closed. Operator approved items 1–5 on 2026-10-14. Paper = live bookkeeping
+  throughout; every exchange path is live-only and unit-tested with mocks (no network).
+- **① PER-ORDER BACKSTOP RECORD + RE-PLACE:** new Order columns `backstop_pct` / `backstop_trigger_price` (database.py migration; ride the
+  orders CSV as model columns). Set at the bot open, the MANUAL open, the failed-close re-place and the heal sweep — live = what Binance
+  actually holds (left NULL when placement failed; the heal sweep places + records it), paper = what live would hold (no exchange call).
+  New RE-PRICE SWEEP (`TradingEngine.backstop_reprice_sweep`, from the monitor pass, throttled 30 s): configured `order_backstop_pct` (the
+  order's own sleeve / exit mode / leverage, from its entry) vs the record; differs > 0.02 pt or trigger > 0.02 %, or never recorded (rows
+  opened before this ship → re-placed once at deploy, which closes ⑦'s "cancel + re-place at deploy") → live: re-place it (Binance keeps one close-all stop
+  per side, so the real order is CANCEL-ALL → PLACE: the first POST gets -4130 and `place_backstop_stop` clears the symbol and re-places —
+  one round-trip, ~50–300 ms, with no exchange stop; deep review). A new trigger already through the price is NOT re-placed (old stop
+  kept, retry ≥ 60 s — else -2021 after the clear leaves no stop). At most 2 live re-places per pass (never stalls the 1 Hz monitor); place failed → old stop confirmed resting (`algoStatus` NEW) is kept + counter
+  BACKSTOP_REPLACE_FAILED, retry per order ≥ 60 s; old stop gone / unreadable → id cleared so the heal sweep re-places it (CRITICAL,
+  BACKSTOP_PLACE_FAILED; the heal sweep now retries a failed placement every 10 s per order, not every pass). Rows being closed are skipped;
+  the row is re-read in a FRESH session after the exchange calls (closed → the new stop is cancelled; still OPEN but closing, or
+  re-stopped by another path → keep ours unless the row's current stop is confirmed resting — a close that fails and retries must not be
+  left with no exchange stop). The MANUAL exit-edit guard now uses the recorded resting distance (tighter of recorded / configured). Log tag `[BACKSTOP_REPLACE]`.
+  Paper: the record is updated in place (`[BACKSTOP_REPLACE] … (paper record)`).
+- **② UNTRACKED BINANCE POSITIONS:** the 60 s live reconciler (now first run ~10 s after startup) also runs the inverse check
+  (`check_untracked_positions`, only on a real positions snapshot): a Binance position with no OPEN live row on its pair (NO_ROW) or only on
+  the other side (SIDE_MISMATCH), seen on 2 consecutive passes and never while that pair's open is in flight → CRITICAL `[UNTRACKED_POSITION]`
+  (symbol / side / qty / entry; USDT-M only, positions below 5 USDT notional = dust, ignored), counter UNTRACKED_POSITION, status payload `untracked_positions` / `untracked_position_count` /
+  `untracked_detect_count` → red dashboard banner, and every new bot entry on that symbol refused (counter UNTRACKED_POSITION_BLOCK; MANUAL
+  already refused an unknown exchange position). Clears itself when Binance no longer shows it (closed or imported via Recover positions).
+  New D11 field `untracked_position_action` = "alert" (default, never touches the position) | "flatten" (NO_ROW only: reduce-only market
+  close + clear that symbol's algo stops, `[UNTRACKED_FLATTENED]`; still shown a pass later → the flatten retries); any other value reads as alert; config.py default + comment ·
+  trading_config.json "alert" · engine · UI select `config-untracked-position-action` (load / save) · config export line (shared
+  `_buildConfigLines` → both text exports) · PUT /api/config refuses other values. LIVE → PAPER is refused while an untracked position is
+  known; a successful mode switch clears the marks.
+- **③ FLATTEN ON BOOKING FAILURE (bot opens):** decorator `flatten_unbooked_live_fill` on `open_position` (inside the pair / lane locks): the
+  live maker / taker fill is noted; leaving without the committed row (exception, cancelled task, or a return) → reduce-only market close
+  of the filled qty (shielded; DB rolled back), its backstop cancelled on success → CRITICAL `[BOOKING_FAILED_FLATTENED]`; close failed →
+  CRITICAL `[BOOKING_FAILED_FLATTEN_FAILED]`, the backstop is left in place and the symbol is marked untracked (entries blocked; ② keeps it
+  marked while Binance shows it). Committed rows are never flattened. Paper: no-op.
+- **④ SAFE PAPER → LIVE SWITCH:** `set_paper_mode` raises `ModeSwitchRefused` → POST /api/paper-mode returns 409 (bot running · paper
+  position OPEN · LIVE → PAPER with a live OPEN row or a known untracked position) or 412 (pre-flight). Read-only pre-flight
+  (`live_preflight`): API key + secret present · account readable (`get_balance` ok) · ONE-WAY position mode (new
+  `get_position_mode_dual`, GET positionSide/dual) · Multi-Assets OFF (new `get_multi_assets_mode`) · every symbol CROSS margin (new
+  `get_isolated_margin_symbols`, GET /fapi/v1/symbolConfig — any ISOLATED symbol refuses; deep review S2: ③'s deferral rests on CROSS) ·
+  positions readable and every one
+  tracked. Same mode = no-op. `[MODE_SWITCH]` / `[MODE_SWITCH_REFUSED]` logged. The UI toggle now shows the server's reason and stays put.
+- **⑤ STOP-0 GUARD:** PUT /api/config refuses `frenzy_stop_pct` ≤ 0 / `frenzy_willy_stop_pct` ≤ 0 (also blank / NaN / inf) and the UI save
+  refuses them before sending (inputs min 0.1; WILLY label no longer offers "0 = none"). A loaded trading_config.json carrying ≤ 0 runs 3.0 /
+  4.0 with CRITICAL `[STOP0_GUARD]` (`config._guard_bot_stops` in `load_trading_config`). Deliberately UNCONDITIONAL (not only while
+  `broker_backstop_enabled`): with the backstop off a 0 stop means no stop at all, and a conditional load-side fallback would show one value
+  in the UI and run another.
+- **Margin mode: CROSS (operator decision 2026-08-22, DECISION_LOG 2026-08-22 (5) "isolated WITHDRAWN"; re-confirmed 2026-10-14).** No
+  isolated-margin code. CURRENT_STATE checklist ④ ("set ISOLATED") is superseded. ③ maintenance-margin cache / leverage cap is NOT required
+  under CROSS: the audit's failure (a max-20× pair at 20× ISOLATED liquidating at ~2.5 %, inside the backstop) needs isolated margin —
+  under cross the whole wallet backs each position → low risk, DEFERRED; re-open if the operator ever switches to ISOLATED. The cross-book
+  risk the audit names (gross 25× ≈ a ~4 % uniform adverse move to liquidation) is the §4 risk-budget decision, not ③.
+- **Reviews (caveman + deep, both applied pre-commit):** crossed-trigger skip · closing-row keeps our stop unless the current one rests ·
+  2 re-places per pass · heal-sweep 10 s retry · flatten retry · dust / non-USDT skip · isolated-margin pre-flight · stale "0 = no stop"
+  comments. Not changed (noted): manual opens already refuse any unknown exchange position (live read before the order); untracked
+  confirmation stays pass-based (passes are ≈ 60 s apart); a cold start with an empty DB and paper_trading=false still skips the
+  pre-flight → runbook line.
+- **NOT built (operator):** item 6 daily-loss kill switch. Still open from the audit: the written runbook (§ must-fix 8) and the live risk
+  budget (§4 leverage schedule, max_gross_leverage, redeploy) — operator decisions, not code.
+- **Files:** services/golive_guards.py (new, pure rules) · services/trading_engine.py · services/binance_service.py · main.py · models.py ·
+  database.py · config.py · trading_config.json · templates/index.html · tests/test_golive_{backstop_record,untracked,booking_flatten,
+  live_switch,stop0_guard}.py (new) · tests/test_manual_live.py / test_pair_open_lock.py (source pins updated for the new decorator / record).

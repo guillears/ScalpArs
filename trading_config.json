@@ -600,6 +600,7 @@
     "spike_lock_exempt_fade": true,
     "broker_backstop_enabled": true,
     "broker_backstop_pct": 2.5,
+    "untracked_position_action": "alert",
     "nonexp_calm3d_reentry_cooldown_min": 90.0,
     "spike_fade_max_btc_dist13": 0.0,
     "spike_fade_lag_ndi_min": 16.1,

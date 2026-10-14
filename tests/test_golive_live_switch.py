@@ -160,3 +160,75 @@ def test_live_to_paper_refused_while_an_untracked_position_is_known(monkeypatch)
     eng._mark_untracked("FOOUSDT", "LONG", 3.0, 1.0, "NO_ROW", "RECONCILE")
     e = _refused(T, run, True)
     assert e.status == 409 and "FOOUSDT" in str(e) and eng.is_paper_mode is False
+
+
+def test_one_switch_at_a_time_and_start_refused_while_switching(monkeypatch):
+    # 2026-10-14 go-live: repeated toggle clicks ran two PAPER → LIVE pre-flights concurrently (DECISION_LOG 293)
+    T, eng, run, calls, saved = _harness(monkeypatch)
+    gate = {}
+    async def _slow_bal():
+        calls.append("balance"); gate["in"].set(); await gate["go"].wait(); return {"ok": True}
+    monkeypatch.setattr(T.binance_service, "get_balance", _slow_bal)
+    import models
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    async def go():
+        gate["in"], gate["go"] = asyncio.Event(), asyncio.Event()
+        engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool)
+        S = async_sessionmaker(engine, expire_on_commit=False)
+        async with engine.begin() as c:
+            await c.run_sync(models.Base.metadata.create_all)
+        async with S() as s1, S() as s2, S() as s3:
+            first = asyncio.create_task(eng.set_paper_mode(False, s1))
+            await gate["in"].wait()                                   # the first switch is inside its pre-flight
+            assert eng.mode_switch_in_progress()
+            with pytest.raises(T.ModeSwitchRefused) as e2:
+                await eng.set_paper_mode(False, s2)                   # a second click → refused, not a second pre-flight
+            with pytest.raises(T.ModeSwitchRefused) as e3:
+                await eng.start(s3)                                   # start during the switch → refused
+            gate["go"].set()
+            r = await first
+        await engine.dispose()
+        return e2.value, e3.value, r
+    e2, e3, r = asyncio.run(go())
+    assert e2.status == 409 and "already in progress" in str(e2)
+    assert e3.status == 409 and eng.is_running is False
+    assert r == {"paper_mode": False, "changed": True} and calls.count("balance") == 1 and not eng.mode_switch_in_progress()
+
+
+def test_bot_started_during_the_preflight_blocks_the_flip(monkeypatch):
+    T, eng, run, calls, saved = _harness(monkeypatch)
+    async def _bal_and_start():
+        calls.append("balance"); eng.is_running = True; return {"ok": True}   # e.g. a start that slipped in before the lock existed
+    monkeypatch.setattr(T.binance_service, "get_balance", _bal_and_start)
+    e = _refused(T, run, False)
+    assert e.status == 409 and "started during the pre-flight" in str(e) and eng.is_paper_mode is True and saved == []
+
+
+def test_start_endpoint_and_ui_handle_the_refusal():
+    import inspect, main
+    src = inspect.getsource(main.start_bot)
+    assert "ModeSwitchRefused" in src and "HTTPException" in src
+    html = open(os.path.join(ROOT, "templates", "index.html")).read()
+    assert "e.target.disabled = true" in html and "e.target.disabled = false" in html and "Request refused" in html
+
+
+def test_a_failing_or_slow_preflight_releases_the_lock(monkeypatch):
+    T, eng, run, calls, saved = _harness(monkeypatch)
+    async def _boom(): raise RuntimeError("binance down")
+    monkeypatch.setattr(T.binance_service, "get_balance", _boom)
+    with pytest.raises(RuntimeError):
+        asyncio.run(run(False))
+    assert not eng.mode_switch_in_progress() and eng.is_paper_mode is True
+    T, eng, run, calls, saved = _harness(monkeypatch)
+    async def _hang(): await asyncio.sleep(60); return {"ok": True}   # e.g. an IP-ban sleep inside a read
+    monkeypatch.setattr(T.binance_service, "get_balance", _hang)
+    monkeypatch.setattr(T, "MODE_SWITCH_PREFLIGHT_TIMEOUT_S", 0.05)
+    e = _refused(T, run, False)
+    assert e.status == 412 and "timed out" in str(e) and not eng.mode_switch_in_progress() and eng.is_paper_mode is True
+
+
+def test_live_to_paper_refused_while_running(monkeypatch):
+    T, eng, run, calls, saved = _harness(monkeypatch, paper=False, running=True)
+    e = _refused(T, run, True)
+    assert e.status == 409 and "pause the bot before switching to PAPER" in str(e) and eng.is_paper_mode is False and saved == []

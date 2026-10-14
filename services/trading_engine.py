@@ -491,6 +491,9 @@ def flatten_unbooked_live_fill(fn):
     return wrapper
 
 
+MODE_SWITCH_PREFLIGHT_TIMEOUT_S = 30.0   # 🛡 (DECISION_LOG 293) the read-only live pre-flight never holds the switch lock longer
+
+
 class ModeSwitchRefused(Exception):
     """🛡 (DECISION_LOG 292 ④) the paper ↔ live switch was refused — .status = the HTTP code the endpoint returns, str() = the reason."""
     def __init__(self, reason, status=409, checks=None):
@@ -3265,7 +3268,9 @@ class TradingEngine:
         await locked_commit(db)
     
     async def start(self, db: AsyncSession):
-        """Start the trading bot"""
+        """Start the trading bot. Refused (ModeSwitchRefused 409) while a paper ↔ live switch is running."""
+        if self.mode_switch_in_progress():
+            raise ModeSwitchRefused("a paper / live mode switch is in progress — start again in a few seconds", 409)
         self.is_running = True
         self.started_at = datetime.utcnow()
         await self.save_state(db)
@@ -3551,8 +3556,24 @@ class TradingEngine:
         """Toggle paper trading mode — 🛡 (DECISION_LOG 292 ④) a SAFE switch, never a bare flag flip:
         PAPER → LIVE refused (ModeSwitchRefused) while the bot runs, while any paper position is OPEN (they would freeze), or when the
         read-only live pre-flight fails (live_preflight). LIVE → PAPER refused while any LIVE position is OPEN (it would lose its exits).
-        Same mode → no-op. Every switch is logged [MODE_SWITCH]."""
+        Same mode → no-op. Every switch is logged [MODE_SWITCH]. ONE switch at a time (a second request while one runs → 409; the
+        2026-10-14 go-live saw two PAPER → LIVE pre-flights run concurrently from repeated toggle clicks), and a bot start that lands
+        during the pre-flight is caught by a re-check before the flip (start() also refuses while a switch runs)."""
         enabled = bool(enabled)
+        _lk = self.__dict__.get('_mode_switch_lock')
+        if _lk is None:
+            _lk = self.__dict__['_mode_switch_lock'] = asyncio.Lock()
+        if _lk.locked():
+            raise ModeSwitchRefused("a mode switch is already in progress — wait for it to finish", 409)
+        async with _lk:
+            return await self._set_paper_mode_locked(enabled, db)
+
+    def mode_switch_in_progress(self) -> bool:
+        """A paper ↔ live switch holds the lock right now (start() refuses meanwhile)."""
+        _lk = self.__dict__.get('_mode_switch_lock')
+        return bool(_lk is not None and _lk.locked())
+
+    async def _set_paper_mode_locked(self, enabled: bool, db: AsyncSession):
         if enabled == bool(self.is_paper_mode):
             return {"paper_mode": enabled, "changed": False}
         if not enabled:   # PAPER → LIVE
@@ -3561,11 +3582,19 @@ class TradingEngine:
             _n = await self._count_open(db, True)
             if _n:
                 raise ModeSwitchRefused(f"{_n} paper position(s) still OPEN — close them before switching to LIVE (they would freeze)", 409)
-            _fails = await self.live_preflight(db)
+            try:   # bounded: an IP-ban sleep inside a read must never hold the switch lock (and refuse start) for minutes
+                _fails = await asyncio.wait_for(self.live_preflight(db), timeout=MODE_SWITCH_PREFLIGHT_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                logger.error(f"[MODE_SWITCH_REFUSED] PAPER → LIVE: pre-flight timed out after {MODE_SWITCH_PREFLIGHT_TIMEOUT_S:.0f}s")
+                raise ModeSwitchRefused(f"LIVE pre-flight timed out after {MODE_SWITCH_PREFLIGHT_TIMEOUT_S:.0f}s (Binance slow or rate-limited) — try again", 412)
             if _fails:
                 logger.error(f"[MODE_SWITCH_REFUSED] PAPER → LIVE: pre-flight failed: {'; '.join(_fails)}")
                 raise ModeSwitchRefused("LIVE pre-flight failed: " + "; ".join(_fails), 412, _fails)
+            if self.is_running:   # started while the pre-flight's exchange reads ran
+                raise ModeSwitchRefused("the bot was started during the pre-flight — pause it, then switch to LIVE", 409)
         else:              # LIVE → PAPER
+            if self.is_running:   # 293: a running scan could book a live order after the open count below read 0
+                raise ModeSwitchRefused("pause the bot before switching to PAPER (a running scan could place a live order mid-switch)", 409)
             _n = await self._count_open(db, False)
             if _n:
                 raise ModeSwitchRefused(f"{_n} LIVE position(s) still OPEN — close them before switching to PAPER (they would lose their exits)", 409)

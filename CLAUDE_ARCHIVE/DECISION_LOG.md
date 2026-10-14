@@ -6692,3 +6692,19 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Files:** services/golive_guards.py (new, pure rules) · services/trading_engine.py · services/binance_service.py · main.py · models.py ·
   database.py · config.py · trading_config.json · templates/index.html · tests/test_golive_{backstop_record,untracked,booking_flatten,
   live_switch,stop0_guard}.py (new) · tests/test_manual_live.py / test_pair_open_lock.py (source pins updated for the new decorator / record).
+
+## (293) 2026-10-14 — 🛡 Mode switch serialized (found in the first live log review)
+- **Evidence (EB web.stdout.log, go-live 18:36 UTC):** repeated toggle clicks sent 4 POST /api/paper-mode in 10 s; two PAPER → LIVE
+  switches ran their ~4 s read-only pre-flights CONCURRENTLY and both flipped (`[MODE_SWITCH] PAPER → LIVE` at 18:36:21 and 18:36:25 with
+  no LIVE → PAPER between). Outcome harmless (ended LIVE, every switch passed the full pre-flight, no orders), but a start landing inside
+  the pre-flight window could have flipped a RUNNING bot to LIVE (the is_running check ran before the pre-flight's awaits).
+- **Fix:** `set_paper_mode` runs under one asyncio lock — a second request while one runs → 409 "already in progress"; `is_running`
+  re-checked after the pre-flight (started meanwhile → 409, no flip); `start()` → 409 while a switch runs (POST /api/start returns it);
+  UI: the toggle is disabled while the request runs + a "Running live pre-flight checks…" toast; toggleBot shows a refused start instead
+  of flipping its state. Reviews (caveman + deep) applied: the pre-flight is bounded at 30 s (an IP-ban sleep inside a read can no
+  longer hold the lock / refuse start for minutes → 412 "timed out"); LIVE → PAPER is now also refused while the bot RUNS (a running scan
+  could book a live order after the open-count read 0 — pause first, same as PAPER → LIVE); UI: non-JSON proxy errors keep the HTTP
+  status, the status poll never redraws the toggle mid-switch, success sets the toggle explicitly, the disabled toggle is dimmed.
+  Paper behaviour unchanged. Deployed only with no live trade open (operator: "deploy the fix when no trades are
+  open" — a deploy restarts the server).
+- **Files:** services/trading_engine.py · main.py · templates/index.html · tests/test_golive_live_switch.py (+3 tests).

@@ -798,8 +798,12 @@ async def get_status(db: AsyncSession = Depends(get_db)):
 
 @app.post("/api/start")
 async def start_bot(db: AsyncSession = Depends(get_db)):
-    """Start the trading bot"""
-    result = await trading_engine.start(db)
+    """Start the trading bot (409 while a paper / live mode switch is running)"""
+    from services.trading_engine import ModeSwitchRefused
+    try:
+        result = await trading_engine.start(db)
+    except ModeSwitchRefused as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
     ban = get_ban_status()
     if ban["banned"]:
         result["ban_warning"] = f"Binance IP ban active, {ban['remaining_seconds']}s remaining. Bot will wait before scanning."

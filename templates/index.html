@@ -149,7 +149,7 @@
                         <span class="text-sm text-gray-400">Paper</span>
                         <label class="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" id="paper-toggle" class="sr-only peer" checked>
-                            <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                            <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-disabled:opacity-50 peer-disabled:cursor-wait rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
                         </label>
                         <span class="text-sm text-gray-400">Live</span>
                     </div>
@@ -8902,8 +8902,8 @@
                     if (_bw) _bw.title = `Market breadth — ${data.breadth_n_total} pairs scanned: ${data.breadth_n_bull} bull / ${data.breadth_n_bear} bear / ${data.breadth_n_neutral} neutral. L% = share bullish (long admission threshold), S% = share bearish (short).`;
                 }
 
-                // Update paper toggle
-                document.getElementById('paper-toggle').checked = !isPaperMode;
+                // Update paper toggle — never while a switch request is running (🛡 293: it would redraw the old side mid-switch)
+                { const _pt = document.getElementById('paper-toggle'); if (!_pt.disabled) _pt.checked = !isPaperMode; }
                 
                 // Start timer if running — and STOP it if paused (Jul 6: the poll only had the
                 // start branch, so a stale in-flight status response after a Pause click could
@@ -8954,7 +8954,11 @@
             try {
                 const endpoint = isRunning ? '/api/pause' : '/api/start';
                 const res = await fetch(`${API_BASE}${endpoint}`, { method: 'POST' });
-                const data = await res.json();
+                const data = await res.json().catch(() => ({}));   // a proxy 502/504 HTML page must not hide the reason
+                if (!res.ok) {   // 🛡 (DECISION_LOG 293) e.g. start refused while a paper / live switch is running
+                    showToast((data && data.detail) ? String(data.detail) : `Request refused (HTTP ${res.status})`, 'error');
+                    return;
+                }
                 
                 isRunning = !isRunning;
                 updateStatusUI();
@@ -9061,6 +9065,8 @@
         // Toggle paper mode
         document.getElementById('paper-toggle').addEventListener('change', async (e) => {
             const enabled = !e.target.checked;
+            e.target.disabled = true;   // 🛡 (DECISION_LOG 293) one switch at a time — the live pre-flight takes a few seconds
+            showToast(enabled ? 'Switching to paper…' : 'Running live pre-flight checks…');
             try {
                 const _pmRes = await fetch(`${API_BASE}/api/paper-mode?enabled=${enabled}`, { method: 'POST' });
                 if (!_pmRes.ok) {   // 🛡 (DECISION_LOG 292 ④) the server refused the switch — show why, keep the toggle where it was
@@ -9071,6 +9077,7 @@
                     return;
                 }
                 isPaperMode = enabled;
+                e.target.checked = !enabled;   // 🛡 (293) checked = LIVE — a poll may have redrawn the old side mid-switch
                 loadBalance();
                 loadOpenOrders();
                 loadClosedOrders();
@@ -9080,6 +9087,8 @@
             } catch (err) {
                 console.error('Error toggling paper mode:', err);
                 e.target.checked = !isPaperMode;   // 🛡 (292 ④) checked = LIVE
+            } finally {
+                e.target.disabled = false;
             }
         });
 

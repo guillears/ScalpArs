@@ -112,8 +112,8 @@ winner / loser patterns in FRENZY (LONG / WIDE / LITE / WILLY), MOMENTUM LONG / 
   entries LONG / WIDE block · ③ MOMENTUM LONG at 10× (`momentum_long_lev_mult` 0.5) vs 20× — book, DD, growth-optimal leverage; % per fill is
   unchanged, so the read is $ / ruin only. If yr6 runs on a config snapshot from before 283, re-walk / re-lever its fills to both configs.
 
-## 🏁 NEXT BATCH = B21 (operator reset after the DECISION_LOG 283 / 284 deploys, 2026-10-12) — ONE config: FRENZY LONG / WIDE +1.5 / −3 and LITE
-## +3 / −3 (own TP, DL 284) — LONG 1× · invest 0.2 and WIDE 1× · invest 0.2 (blocker size, DL 289; 2× / 1× under DL 286), LITE 10×, momentum longs 1× (DL 289; 10× under DL 283), WILLY 10× +1.25 / −4 / 90. B20 (10-12 05:08 → 15:15, all pre-283) is archived in BASELINE20; B19 is archived (BASELINE19, master STACK 2026-10-12c,
+## 🏁 NEXT BATCH = B22 (B21 archived 2026-10-14 as BASELINE21; config since DL 289 / 291 = FRENZY WIDE OFF, LONG blocker size, momentum longs 1×) — ONE config: FRENZY LONG / WIDE +1.5 / −3 and LITE
+## +3 / −3 (own TP, DL 284) — LONG 1× · invest 0.2 and WIDE 1× · invest 0.2 (blocker size, DL 289; 2× / 1× under DL 286; WIDE OFF since DL 291), LITE 10×, momentum longs 1× (DL 289; 10× under DL 283), WILLY 10× +1.25 / −4 / 90. B20 (10-12 05:08 → 15:15, all pre-283) is archived in BASELINE20; B19 is archived (BASELINE19, master STACK 2026-10-12c,
 ## normalized to today's config); use the normalization table below only when re-reading the archived B19 by era.
 
 ### If the batch is NOT reset at the deploy — DECISION_LOG 283 (2026-10-12) changed: FRENZY TP +3 → +1.5 (LONG / WIDE / LITE and the
@@ -474,3 +474,13 @@ at once.
   CI is < 0 and no ML observe line (BTC24H_DOWN, ADX_RISING_IN_REGIME, TREND_ALIGNED / PAIR_1H_DOWNTREND, BTC-CHOP, BURST) has reached its
   candidate bar → momentum longs OFF (sleeve-kill ①–④ already run, DL 289); a line passes → arm it and restore 0.5 (10×). Compare in % only
   ($ is 1/10 of the pre-289 fills).
+
+### ⛔ DECISION_LOG 291 gate (2026-10-14) — FRENZY_WIDE OFF, read at every batch review from the 291 deploy on
+- **Re-enable WIDE if** (pre-committed): at N ≥ 15 LITE / SURGE fills on coins where WIDE would have fired, over ≥ 8 windows, their
+  average ≤ −1.0 %/fill. Cohort source = the engine's `[FRENZY_WIDE_OFF]` log lines / `FRENZY_WIDE_OFF` counter (pair · bar UTC · signal
+  px · live px · ATR · catch-up flag): a LITE / SURGE fill counts when it opened on that coin while the would-be WIDE position could still
+  have been open (≤ frenzy_max_hold_minutes 720 after the signal bar, and before the TP / stop the WIDE fill would have hit — price it on
+  ticks; when in doubt report both the 12 h window and the priced-exit window). The log is the SETUP cohort (slots, day cap, choppy /
+  hold-green, dislocation not applied) = an upper bound on WIDE fills; cross-check with the replay at the review. Three blocks (batch ·
+  master per batch · backtest). The DL 289 LONG / WIDE blocker-size gate now applies to LONG only.
+- DL 291 gate reading notes (deep review): count `[FRENZY_WIDE_OFF]` log lines deduped by (pair, signal bar) — a restart inside the same 5m bar can log a setup twice; read the ALL column (in a BEARISH regime the counter lands in the SUPP bucket, so the dashboard 'Real' column undercounts); the catch-up shadow only runs while FRENZY LONG is on.

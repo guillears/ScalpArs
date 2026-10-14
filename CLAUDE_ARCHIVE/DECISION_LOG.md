@@ -6587,3 +6587,44 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   KEEP TODAY; else KEEP OBSERVING. Family of 5 adjacent cells answers one question — read the best cell's P with that in mind.
 - **Prior evidence:** none at +1.30…+1.45; reports/B19_WILLY_TP15.txt (yr5, −4 stop): +1.25 / 120 avg +0.105 vs +1.50 / 120 +0.054, and
   +1.25 / 60 +0.097 vs +1.50 / 60 +0.050 — leans against +1.50; the yr6 grids kept +1.25. Observe only.
+
+## (291) 2026-10-14 — ⛔ FRENZY_WIDE switched OFF; FRENZY_LONG stays ON at blocker size (operator-approved)
+- **Change:** trading_config.json `frenzy_wide_enabled` true → false. FRENZY_LONG unchanged (ON, blocker size invest 0.2 · 1×, DL 289);
+  LITE / WILLY unchanged. config.py: evidence comment + revert gate on `frenzy_wide_enabled` (code default already False). UI toggle
+  `config-fz-wide-enabled` existed (load / save wired); both text exports already print `WIDE ON/OFF` from the JSON value.
+- **Evidence (reports/YR6_WIDEOFF_AB.md, two-year engine replay, WIDE-off-only A/B, seed 1, today's pricing):** C − A **cleaned**
+  (shared fills held at their A outcome) +$1,661, 95 % day-bootstrap [+$69, +$3,386], P(C worse) 0.02; with today's SURGE gap gate (DL 287)
+  +$1,254 [−$119, +$2,729], P 0.04 (CI touches 0); raw C − A −$1,265 is shared-fill path noise (LITE −$860 on shared fills). Positive in every
+  regime (+$804 / +$215 / +$235 with the gap gate). WIDE's own 443 trades: 63 % WR · −0.157 %/fill · −$493 at 1× (breakeven WR 67 %).
+  WIDE's pair-blocking hit WINNERS: 2 LITE (+$210) and 5 SURGE (+$911; +$504 after the gap gate).
+- **The LONG-only protection finding:** the bad-LITE protection is FRENZY_LONG's, not WIDE's — LONG keeps out 19 LITE (26 % WR · −1.77 %
+  · −$2,371, avg CI [−3.41, −0.19], now significant at 95 %) and that set is unchanged with WIDE off. The DL 280 rule "LONG and WIDE stay ON"
+  was right for LONG and wrong for WIDE.
+- **Size-adjusted projection:** at today's blocker size (DL 289) WIDE's own loss would be ≈ −$100; the released winners are
+  size-independent → ≈ +$800 pre-haircut, +$400–550 after the 30–50 % in-sample haircut.
+- **Engine observability (new, observe-only):** `services.frenzy.frenzy_wide_shadow` (= frenzy_wide_ready with the switch OFF) → at both
+  WIDE decision points (main pass + catch-up) the engine calls `_frenzy_wide_off_note`: counter `FRENZY_WIDE_OFF` (LONG) + INFO log
+  `[FRENZY_WIDE_OFF] <pair>: WIDE setup would have opened … — <code> · bar <UTC> · signal px · live px · ATR [· catch-up]`. No order, no
+  state change, paper = live; the in-open checks (slots, day cap, market volume, choppy / hold-green, dislocation) are NOT applied → the
+  logged cohort is the setup set, an upper bound on WIDE fills. Before this, an OFF WIDE left only the `[FRENZY_LONG] … refused` line +
+  the shared FRENZY_ATR_HIGH / FRENZY_GREEN_BAR counters (not WIDE-specific). Tests: tests/test_frenzy_wide.py::test_wide_off_shadow_dl291.
+- **Master STACK 2026-10-14b:** every FRENZY_WIDE fill refused `FRENZY_WIDE_OFF` in the first pass (mirrors SURGE_SHORT_OFF). Non-probe kept
+  455 → 447 · +$5,276.38 → +$5,272.17 (the 8 kept WIDE fills · +$4.21 drop; all 12 WIDE rows now FRENZY_WIDE_OFF — 4 were already refused
+  BEARISH_DAY / WIDE_ATR_HIGH / WIDE_RECLAIM); no other row moved (the master cannot show the LITE / SURGE fills WIDE used to block). screen_pool
+  not affected (no WIDE sleeve in SCREENED_BASELINE; not re-run). validate_against_master ALL PASS. The master hold-green replay test was
+  replaced by a WIDE_OFF refusal test (the pass has no kept WIDE row; the rule stays pinned in test_frenzy_wide_hold_green.py).
+- **🔒 REVERT (pre-committed):** re-enable WIDE if, at N ≥ 15 LITE / SURGE fills on coins where WIDE would have fired (FRENZY_WIDE_OFF log)
+  over ≥ 8 windows, their average ≤ −1.0 %/fill. Window of attribution: the LITE / SURGE fill opened on that coin while the would-be WIDE
+  position could still have been open (≤ 720 min after the signal bar, before its priced TP / stop). Measured from the engine log; the replay
+  cross-checks at the review. The DL 289 blocker-size gate now applies to LONG only. Registered in reports/NEXT_BATCH_REVIEW_PLAN.md.
+  ADDENDUM (same commit): B21 archived (reports/BASELINE21_batch1013-1014_orders.csv — export 2026-10-14 17-24-40, 17 bot fills, Oct-13 05:45
+  → Oct-14 15:55, 0 manual); its 2 WILLY fills re-walked into WILLY_EXIT_CF.csv (ZK ticks, BTW 1m). B21 as traded 17 · 53 % · +$42.46 →
+  today's stack 15 kept · 60 % · +$266.43 (WIDE 2 refused FRENZY_WIDE_OFF; momentum longs at 1× −$176.74 → −$17.67; FRENZY LONG blocker
+  −$41.25 → −$0.20; LITE −$14.14; WILLY +$176.90; momentum shorts +$81.14; fade +$40.40). Master non-probe kept 447 · +$5,272.17 → 462 ·
+  +$5,538.60. BTC 5m cache (reports/backtest_cache/k5m_full/BTCUSDT.csv) extended to 2026-10-14 17:20 so validate F2 covers B20 / B21;
+  validate_against_master ALL PASS. 2025 replay re-check of the WILLY late-TP cells (operator 'decide before live'): +0.25 after 30 min
+  Δ −0.016 %/fill (P 0.20, 899 fills; top-50 −0.031), +0.30 after 30 −0.020 (P 0.14), close at 30 −0.008 → NOT implemented; WILLY goes
+  live at +1.25 / −4 / 90; the Scout cells keep observing.
+  Rebuild side-effects (review note): 35 BASE momentum rows' pnl_current_sizing refreshed ÷10 from the SCREENED_BASELINE v23 committed in
+  80e7ef1 (HEAD's master copy was stale); 3 B20 WILLY rows resolved from UNRES to ticks (stack_pct rounded to 4 dp). stack_keep / stack_pnl
+  moved only on the 8 WIDE rows + the 17 new B21 rows. BTW (B21 WILLY) is priced from 1m bars (first-touch).

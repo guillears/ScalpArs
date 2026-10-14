@@ -69,25 +69,25 @@ def test_bearish_day_stack_block():
     assert ((kept.pair == "ENJUSDT") & (pd.to_numeric(kept.entry_btc_1d_ret_pct) < 0)).any()                    # ENJ 10-03: day < 0 but gap > 0 → kept
 
 
-def test_wide_hold_green_replayed():
+def test_wide_off_refused_in_master():
+    """10-14b (DECISION_LOG 291): frenzy_wide_enabled false → EVERY FRENZY_WIDE fill refused FRENZY_WIDE_OFF in the first pass (a blacklisted
+    pair would keep its blacklist reason), never re-priced, never a chop-burst neighbour. Supersedes the 10-06d master hold-green replay test
+    (that pass now sees no kept WIDE row; the rule itself stays pinned by tests/test_frenzy_wide_hold_green.py)."""
+    assert _th()["frenzy_wide_enabled"] is False
     M = _m()
     w = M[M.entry_strategy.astype(str) == "FRENZY_WIDE"]
-    blocked = w[w.stack_block_reason.isin(["FRENZY_WIDE_ATR_HIGH", "FRENZY_WIDE_RECLAIM"])]
-    assert len(blocked) >= 3 and (blocked.stack_keep == False).all() and (blocked.stack_pnl == 0).all() and blocked.stack_pct.isna().all()
-    kept = w[w.stack_keep == True]
-    reb = pd.read_csv(os.path.join(ROOT, "reports", "WIDE_STREAK_REBUILD.csv"))
-    st = {(a, p): s_ for a, p, s_ in zip(reb.opened_at.astype(str).str[:19], reb.pair, reb.above_streak)}
-    assert (pd.to_numeric(kept.entry_atr_pct) <= float(_th()["frenzy_max_atr_pct"])).all() and kept.entry_frenzy_bar_ret_pct.notna().all()   # 3.0 since 10-08a
-    stamp = pd.to_numeric(kept.get("entry_frenzy_above_streak"), errors="coerce")       # the builder's order: stamp, else the rebuild
-    assert all((s_ if pd.notna(s_) else st[(str(a)[:19], p)]) > 12 for a, p, s_ in zip(kept.opened_at, kept.pair, stamp))
-    assert os.path.exists(os.path.join(ROOT, "reports", "WIDE_STREAK_REBUILD.csv"))
+    assert len(w) >= 12 and not (w.stack_keep == True).any() and (w.stack_pnl == 0).all() and w.stack_pct.isna().all()
+    assert set(w.stack_block_reason) <= {"FRENZY_WIDE_OFF", "PAIR_BLACKLIST", "SLEEVE_PAIR_BLACKLIST"} and (w.stack_block_reason == "FRENZY_WIDE_OFF").sum() >= 12
+    bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
+    assert "k, why = False, 'FRENZY_WIDE_OFF'" in bld and (M.stack_version == "2026-10-14b").all()
+    assert os.path.exists(os.path.join(ROOT, "reports", "WIDE_STREAK_REBUILD.csv"))   # the hold-green replay input stays (re-enable path)
 
 
 def test_b17_archived():
     M = _m()
     assert (M.era == "B17").sum() == 25 and os.path.exists(os.path.join(ROOT, "reports", "BASELINE17_batch1003-1006_orders.csv"))
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-14a"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
+    assert 'STACK_VERSION = "2026-10-14b"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
     assert "WIDE_HG_MAX_ATR_FROZEN = 12.0, 3.0" in bld and "Prior 10-06d — 10-06d:" in bld   # the STACK history keeps every step
 
 

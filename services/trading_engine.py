@@ -25,7 +25,7 @@ from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate, surge_long_ema_gap_block, SURGE_LONG_EMA_GAP, SURGE_LONG_EMA_GAP_FAILOPEN
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE
-from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio
+from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, frenzy_wide_shadow, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 
 
@@ -7335,6 +7335,8 @@ class TradingEngine:
                                     logger.info(f"[FRENZY_LONG] {pair}: setup turned ON but refused — {text}")
                                 if frenzy_wide_ready(ep, code, th, atr):   # 🔥🌐 Oct-3: FRENZY refused ONLY for ATR / a green candle → FRENZY-WIDE takes it
                                     await self._frenzy_open(db, flag, ind, bar_open, wide=True)   # 🌀 the 215 choppy check runs inside, after slots / day cap / market volume
+                                elif frenzy_wide_shadow(ep, code, th, atr):   # 👁 DL 291: WIDE is OFF — count / log the setup it would have taken (no trade)
+                                    self._frenzy_wide_off_note(pair, flag, code, bar_open)
                             if flag.pop('_willy_hold', False) and ep.get('on_bar_ts') is not None:
                                 flag['_on_hold_deferred'] = True   # 🎲 WILLY's entry B must not arm on this bar (review #5 / M1)
                                 # 🔒 (251) refused ONLY by the WILLY global hold: the ON bar is NOT judged — the pair's catch-up horizon is put just
@@ -7397,6 +7399,20 @@ class TradingEngine:
                 await db.rollback()
             except Exception:
                 pass
+
+    def _frenzy_wide_off_note(self, pair, flag, code, sig_bar_open_ms, catchup=False) -> None:
+        """👁 2026-10-14 (DECISION_LOG 291): FRENZY_WIDE is switched OFF — a fresh setup it WOULD have taken (services.frenzy.frenzy_wide_shadow)
+        is counted (FRENZY_WIDE_OFF) and logged with pair / signal price / live price / bar time, the cohort the DL 291 revert gate reads
+        (LITE / SURGE fills on these coins). Purely observational: no order, no state change, paper = live. The in-open checks (slots, day cap,
+        market volume, choppy / hold-green, dislocation) are not applied — an upper bound on WIDE fills. Never raises."""
+        try:
+            self._record_filter_block("FRENZY_WIDE_OFF", "LONG")
+            logger.info(f"[FRENZY_WIDE_OFF] {pair}: WIDE setup would have opened (switch OFF, DECISION_LOG 291) — {code} · "
+                        f"bar {datetime.utcfromtimestamp(int(sig_bar_open_ms) / 1000):%Y-%m-%d %H:%M} UTC · "
+                        f"signal px {flag.get('price')} · live px {flag.get('live_price')} · ATR {flag.get('atr_pct')}"
+                        + (" · catch-up" if catchup else ""))
+        except Exception:
+            pass
 
     async def _frenzy_persist_flags(self) -> None:
         """🔥 Rewrite the restart seed (table frenzy_flags) with the pairs flagged now — own short session, never raises."""
@@ -7973,6 +7989,8 @@ class TradingEngine:
                     fl['last_fire'] = f"{datetime.utcfromtimestamp(sig / 1000):%m-%d %H:%M} refused: {text}"
                 if wide_on and frenzy_wide_ready(ep_on, code, th, atr):
                     await self._frenzy_open(db, fl, ind, sig, wide=True, catchup_now=bar_open)
+                elif frenzy_wide_shadow(ep_on, code, th, atr):   # 👁 DL 291: WIDE OFF — the catch-up bar it would have judged (no trade)
+                    self._frenzy_wide_off_note(pair, fl, code, sig, catchup=True)
             _out = fl.get('last_fire') or f"{datetime.utcfromtimestamp(sig / 1000):%m-%d %H:%M} not taken ({text})"
             flag['last_fire'] = f"⏪ catch-up · {_out}"
             if ' opened' not in _out:   # M-8: the shared counters above keep their reasons; this one makes the catch-up cohort's refusals visible

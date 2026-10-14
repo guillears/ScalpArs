@@ -1400,6 +1400,14 @@ class SignalThresholds(BaseModel):
     # lateness, dislocation, per-pair day cap, the FRENZY exit). Year backtest (1-min-late entry, real costs): 1,455 entries ≈ 5.7/day,
     # +0.054 %/trade (+0.052 / +0.056 by half), 6 of 9 months up, day-bootstrap 95 % [−0.14, +0.24] → UNPROVEN, small size, review at 40.
     # Volume 75× / rising variants all worse (−0.02 to −0.08). Own tag FRENZY_WIDE, own size, own slots.
+    # ⛔ 2026-10-14 (DECISION_LOG 291, operator-approved): trading_config.json frenzy_wide_enabled true → false (WIDE OFF; FRENZY_LONG stays ON
+    #   at blocker size, DL 289). Two-year WIDE-off-only A/B (reports/YR6_WIDEOFF_AB.md, seed 1): C − A cleaned +$1,661 (95 % day-bootstrap
+    #   [+$69, +$3,386], P(C worse) 0.02), +$1,254 with today's SURGE gap gate (P 0.04); positive in every regime. WIDE own 443 trades 63 % WR
+    #   −0.157 %/fill (breakeven 67 %); its pair-blocking hit WINNERS (2 LITE +$210, 5 SURGE +$911 / +$504 after the gap gate) — the bad-LITE
+    #   protection is LONG's (19 blocks −$2,371, unchanged with WIDE off). ≈ +$400–550 after haircut at blocker size. While OFF the engine counts /
+    #   logs each setup WIDE would have taken (services.frenzy.frenzy_wide_shadow → counter + log tag FRENZY_WIDE_OFF, no trade).
+    #   🔒 REVERT (pre-committed): re-enable WIDE if, at N ≥ 15 LITE / SURGE fills on coins where WIDE would have fired (FRENZY_WIDE_OFF log)
+    #   over ≥ 8 windows, their average ≤ −1.0 %/fill.
     frenzy_wide_enabled: bool = False
     frenzy_wide_invest_mult: float = 1.0         # absolute-assign like FRENZY_LONG · live JSON 0.2 since DL 289 (blocker size, gate at frenzy_long_lev_mult)
     frenzy_wide_lev_mult: float = 0.05           # DL 280: 1× code default = the SAFE fallback; live JSON 0.05 = 1× again since DL 286 (10× under DL 283 for one day)

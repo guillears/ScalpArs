@@ -164,7 +164,8 @@ def test_catchup_judges_the_on_bar_once_and_is_crash_isolated(monkeypatch):
     assert blocks == ["FRENZY_CATCHUP_FAILED"]
     th.frenzy_max_atr_pct = 0.01                                                                      # FRENZY refuses on ATR (ON bar) …
     calls, blocks, lf, _ = run(T(22))
-    assert calls == [] and blocks == ["FRENZY_ATR_HIGH", "FRENZY_CATCHUP_REFUSED"] and "refused: ATR" in lf   # M-8: shared reason + the cohort's own
+    # M-8: shared reason + the cohort's own · DL 291: WIDE is OFF → the setup it would have taken is counted FRENZY_WIDE_OFF (no trade)
+    assert calls == [] and blocks == ["FRENZY_ATR_HIGH", "FRENZY_WIDE_OFF", "FRENZY_CATCHUP_REFUSED"] and "refused: ATR" in lf
     th.frenzy_wide_enabled = True                                                                     # … and WIDE takes it, also as of the ON bar
     calls, blocks, lf, _ = run(T(22), wide=True)
     assert len(calls) == 1 and calls[0]["wide"] and calls[0]["sig"] == T(24) + BAR_MS and calls[0]["catchup_now"] == now_bar

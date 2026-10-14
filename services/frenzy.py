@@ -216,6 +216,15 @@ def frenzy_wide_ready(ep, code, th, atr_pct=None) -> bool:
             and atr_pct is not None)
 
 
+def frenzy_wide_shadow(ep, code, th, atr_pct=None) -> bool:
+    """👁 2026-10-14 (DECISION_LOG 291, WIDE switched OFF): True when frenzy_wide_enabled is OFF and the setup is one frenzy_wide_ready would
+    have taken with the switch ON (same fresh / code / readable-ATR test). OBSERVE-ONLY — the engine only counts (FRENZY_WIDE_OFF) and logs it
+    for the DL 291 revert gate; nothing opens. The later in-open checks (slots, day cap, market volume, choppy / hold-green, dislocation)
+    are NOT applied, so this is the setup cohort, an upper bound on the fills WIDE would have made."""
+    return (not bool(getattr(th, 'frenzy_wide_enabled', False)) and bool(ep and ep.get('fresh_on')) and code in FRENZY_WIDE_CODES
+            and atr_pct is not None)
+
+
 def frenzy_wide_choppy(ep, th) -> bool:
     """🌀 Oct-5 (DECISION_LOG 215, operator ARMED override): True = FRENZY_WIDE refuses this fresh setup because the pump is CHOPPY / FADING —
     at most frenzy_wide_above_share_min % of the episode's 5m closes (spike bar → signal bar) held at / above the spike-anchored VWAP, i.e. most

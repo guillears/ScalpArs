@@ -206,3 +206,29 @@ def test_frenzy_open_keeps_every_stamp_kwarg():
                "entry_frenzy_vol_mult=", "entry_frenzy_di_spread=flag.get('di_spread')", "entry_frenzy_adx_delta=flag.get('adx_delta')",
                "entry_frenzy_gvol=_gv", "frenzy_strong=("):
         assert kw in code, kw
+
+
+def test_wide_off_shadow_dl291():
+    """⛔ 2026-10-14 (DECISION_LOG 291): WIDE switched OFF in trading_config.json; while OFF the engine counts / logs (FRENZY_WIDE_OFF) every
+    setup frenzy_wide_ready would have taken with the switch ON — observe-only, never an open; ON = the shadow never fires (no double count)."""
+    import json
+    from services.frenzy import frenzy_wide_shadow
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_wide_enabled"] is False
+    assert json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]["frenzy_long_enabled"] is True   # LONG keeps blocking bad LITE
+    off = NS(**{**vars(TH), "frenzy_wide_enabled": False})
+    for code in FRENZY_WIDE_CODES:
+        assert frenzy_wide_shadow(EP, code, off, 6.2) and not frenzy_wide_ready(EP, code, off, 6.2)           # OFF: counted, not taken
+        assert frenzy_wide_ready(EP, code, TH, 6.2) and not frenzy_wide_shadow(EP, code, TH, 6.2)             # ON: taken, not counted
+    assert not frenzy_wide_shadow(EP, "FRENZY_ATR_HIGH", off, None)                                             # same fail-closed ATR
+    assert not frenzy_wide_shadow(dict(EP, fresh_on=False), "FRENZY_ATR_HIGH", off, 6.2)                        # first candle only
+    assert not frenzy_wide_shadow(EP, "FRENZY_LOW_VOLUME", off, 6.2)                                            # other refusals: not WIDE's
+    # the engine helper: one counter + one log line, no order, never raises
+    from services.trading_engine import TradingEngine
+    blocks = []
+    fake = NS(_record_filter_block=lambda n, d: blocks.append((n, d)))
+    TradingEngine._frenzy_wide_off_note(fake, "AINUSDT", dict(price=1.23, live_price=1.24, atr_pct=6.2), "FRENZY_ATR_HIGH", 1_760_000_000_000)
+    assert blocks == [("FRENZY_WIDE_OFF", "LONG")]
+    TradingEngine._frenzy_wide_off_note(fake, "AINUSDT", None, "FRENZY_ATR_HIGH", 0)                           # broken input: swallowed
+    eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert "elif frenzy_wide_shadow(ep, code, th, atr):" in eng and "elif frenzy_wide_shadow(ep_on, code, th, atr):" in eng
+    assert eng.count("self._frenzy_wide_off_note(") == 2

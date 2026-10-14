@@ -976,7 +976,7 @@ def test_columns_migration_and_hold_table():
 
 def test_master_builder_tags_willy_as_frenzy_sleeve():
     src = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
-    assert "elif strat in ('FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_WILLY'):" in src
+    assert "elif strat in ('FRENZY_LONG', 'FRENZY_LITE', 'FRENZY_WILLY'):" in src   # WIDE refused first since 10-14b (FRENZY_WIDE_OFF, DL 291)
     assert "frenzy_willy_invest_mult=1.0, frenzy_willy_lev_mult=0.5" in src and 'if strat == "FRENZY_WILLY":' in src
     assert re.search(r'FRENZY3 = \("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE"\)', src)
 

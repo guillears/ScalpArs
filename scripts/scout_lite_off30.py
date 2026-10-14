@@ -28,6 +28,8 @@ BINANCE            cache first (reports/backtest_cache/k5m_full + this line's ow
                    Dedup prefers a CLOSED row over an OPEN one for the same fill whatever the export order.
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import json
 import os
 import tempfile
@@ -69,7 +71,7 @@ _NET_BLOCKED = False                                # selftest: any fetch attemp
 # ─────────────────────────── orders ───────────────────────────
 def _read_exports():
     fr = []
-    for f in glob.glob(EXPORT_GLOB):
+    for f in _EG.glob_exports(EXPORT_GLOB):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS)
         except Exception:
@@ -127,11 +129,12 @@ def bearish_day(r, g, n):
 
 def open_lite_ts():
     """OPEN FRENZY_LITE LONG positions in the NEWEST export (by mtime) → [(opened_at, 'OPEN <pair>')]; no usable export → []."""
-    fs = sorted(glob.glob(EXPORT_GLOB), key=os.path.getmtime)
+    fs = sorted(_EG.glob_exports(EXPORT_GLOB), key=os.path.getmtime)
     if not fs:
         return []
     try:
-        d = pd.read_csv(fs[-1], low_memory=False, usecols=lambda c: c in COLS)
+        d = pd.concat([pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS)   # 📦 (294) newest paper + newest live export
+                       for f in _EG.newest_per_mode(fs)], ignore_index=True)
     except Exception:
         return []
     if not {"opened_at", "status", "direction", "entry_strategy", "pair"} <= set(d.columns):

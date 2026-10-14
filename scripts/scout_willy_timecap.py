@@ -133,6 +133,8 @@ BINANCE     cache first: ticks reports/backtest_cache/{ticks_q,ticks}/<PAIR>/<da
 Usage: venv/bin/python scripts/scout_willy_timecap.py [--selftest | --build-study-ref]
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import io
 import json
 import os
@@ -386,7 +388,7 @@ def deploy_ts():
 
 def _read_exports():
     fr = []
-    for f in glob.glob(EXPORT_GLOB):
+    for f in _EG.glob_exports(EXPORT_GLOB):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS)
         except Exception:

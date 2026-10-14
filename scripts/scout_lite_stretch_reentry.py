@@ -42,6 +42,8 @@ FROZEN BAR     (pre-registered 2026-10-12 — never changed later; written in th
 Usage: venv/bin/python scripts/scout_lite_stretch_reentry.py [--selftest]
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import os
 import tempfile
 import time
@@ -91,7 +93,7 @@ REVERT = ("Pre-committed revert if ever armed: the first 10 blocked LITE re-entr
 # ─────────────────────────── orders ───────────────────────────
 def _read_exports():
     fr = []
-    for f in glob.glob(EXPORT_GLOB):
+    for f in _EG.glob_exports(EXPORT_GLOB):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS)
         except Exception:
@@ -144,11 +146,12 @@ def k_now(fills, fam):
 
 def open_lite_ts():
     """OPEN FRENZY_LITE LONG positions in the NEWEST export (by mtime) → [(opened_at, 'OPEN <pair>')]."""
-    fs = sorted(glob.glob(EXPORT_GLOB), key=os.path.getmtime)
+    fs = sorted(_EG.glob_exports(EXPORT_GLOB), key=os.path.getmtime)
     if not fs:
         return []
     try:
-        d = pd.read_csv(fs[-1], low_memory=False, usecols=lambda c: c in COLS)
+        d = pd.concat([pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS)   # 📦 (294) newest paper + newest live export
+                       for f in _EG.newest_per_mode(fs)], ignore_index=True)
     except Exception:
         return []
     if not {"opened_at", "status", "direction", "entry_strategy", "pair"} <= set(d.columns):

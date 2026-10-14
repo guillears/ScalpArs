@@ -16,6 +16,8 @@ REVIEW  at ≥ 3 REBOUND windows with ≥ 10 momentum-long fills (a fill counts 
   > 0 in ≥ 2/3 of windows ∧ mean of window means > 0 ∧ no window ≥ 50 % of the positive gain. Never re-fit the −15 % / 3-day legs.
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import os
 import time
 
@@ -69,7 +71,7 @@ def windows(mask_index):
 
 def _orders():
     fr = []
-    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in ("opened_at", "pair", "direction", "entry_strategy", "status",
                                                                           "pnl_percentage", "pnl", "cell_multiplier_source"))

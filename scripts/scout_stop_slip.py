@@ -74,6 +74,8 @@ CLI: python scripts/scout_stop_slip.py [--store PATH] [--dry-run]. It takes repo
 while the scout holds the lock.
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import json
 import os
 import re
@@ -410,7 +412,7 @@ ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_st
 
 def _export_ms(path):
     try:
-        b = os.path.basename(path).rsplit("_paper_", 1)[1][:19]
+        b = (_EG.export_stamp(path) or "").replace("T", "_").replace(":", "-")   # 📦 (294) paper or live filename
         return int(datetime.strptime(b, "%Y-%m-%d_%H-%M-%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
     except Exception:
         return int(os.path.getmtime(path) * 1000)
@@ -428,7 +430,7 @@ def load_stops(dl=None, reports=None):
             fr.append(pd.read_csv(pool, low_memory=False, usecols=lambda c: c in ORDER_COLS).assign(_rank=-1))
         except Exception as e:
             log(f"master pool unreadable: {e}")
-    for i, f in enumerate(sorted(glob.glob(os.path.join(dl, "scalpars_orders_paper_*.csv")), key=_export_ms)):
+    for i, f in enumerate(sorted(_EG.glob_exports(os.path.join(dl, "scalpars_orders_paper_*.csv")), key=_export_ms)):
         try:
             fr.append(pd.read_csv(f, low_memory=False, usecols=lambda c: c in ORDER_COLS).assign(_rank=i))
         except Exception:

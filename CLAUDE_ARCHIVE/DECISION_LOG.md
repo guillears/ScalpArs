@@ -6708,3 +6708,28 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   Paper behaviour unchanged. Deployed only with no live trade open (operator: "deploy the fix when no trades are
   open" — a deploy restarts the server).
 - **Files:** services/trading_engine.py · main.py · templates/index.html · tests/test_golive_live_switch.py (+3 tests).
+
+## (294) 2026-10-14 — 📦 Scout / tracker scripts read LIVE exports (operator: "scout works on live correct?")
+- **Gap:** the in-bot observe machinery (decision journal, observe-only stamps, WIDE shadow log, filter counters) is mode-agnostic,
+  but every Mac-side Scout reader globbed `scalpars_{orders,decisions}_paper_*.csv` only — the dashboard names downloads by mode, so
+  after the 18:36 UTC go-live every live trade (and the 20:17 UTC live decisions export) was invisible to the 4-hour opportunity scout
+  and the ~20 trackers.
+- **Fix (analysis code only — no server change, no deploy):** `scripts/export_glob.py` — `glob_exports(pattern)` = drop-in for
+  glob.glob: paper matches + same-kind LIVE exports downloaded at/after the go-live (filename stamp ≥ 2026-10-14_18-36-30 UTC; the
+  August live-test exports stay out). Live ORDERS exports are read through a filtered copy in `reports/.live_exports/` (gitignored;
+  same basename + mtime) holding only rows with is_paper false and opened_at ≥ 2026-10-14T18:36:30 — a live export also carries every
+  older live row. DECISIONS exports are the mode-agnostic journal → passed as they are. `newest_per_mode` for the 4 readers that took
+  only the newest export (newest paper + newest live, else one mode's rows would vanish); `export_stamp` replaces the paper-only
+  filename parsers (scout_frenzy_exits journal age, `_export_ms` in scout_stop_slip / scout_revert_gates / ms_pvr_shadow).
+  Wired into opportunity_scout.py, ms_pvr_shadow.py, ml_watchlist_adjudicate.py and every scout_*.py that read the exports. Rows keep
+  `is_paper`, so tables can split paper vs live. Not changed: build_unified_pool.py / build_pool_FULL.py (legacy momentum pool tools;
+  batches enter the master via reports/BASELINE<n> archives, where the live batch is handled at archive time).
+- **Tests:** tests/test_export_glob_live.py (filter / cutoff / cache rebuild / decisions pass-through / newest-per-mode / a source
+  scan that no tracker glob is left paper-only); every touched tracker's --selftest green.
+- **Reviews (caveman + deep, applied):** an unreadable live export is skipped LOUDLY (stderr), never silently · only an explicit
+  is_paper true drops a row · per-process temp file · cache dir versioned by filter + go-live stamp · `newest_per_mode` drops a
+  pre-go-live paper export once a live one exists (the stopped paper bot would pin its last state) · scout_willy_hold prices refusals
+  at the LIVE WILLY median notional once live fills exist · sys.path insert once. Known and accepted: $ totals in a few tracker tables
+  (scout_willy_timecap $ column, ms_pvr_shadow sum_usd, scout_ml_cooldown pnl_usd) are "paper + live as traded" — % columns are the
+  yardstick (core principle 3); live-only $ reads are done at batch review. scripts/ml_watchlist_adjudicate.py is local-only
+  (untracked) — rewired on disk, not in this commit.

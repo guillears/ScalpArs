@@ -6,6 +6,8 @@ last CLOSED bar, so each fill is compared at both alignments (closed bar before 
 kept — as scripts/validate_against_master.py F2 accepts shift 0 or +1.
 Usage: venv/bin/python scripts/scout_features_parity.py"""
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import os
 import sys
 import time
@@ -30,7 +32,7 @@ ALIGN = ("entry_rsi", "entry_btc_rsi", "entry_adx", "entry_btc_adx")    # alignm
 def main():
     now = int(time.time() * 1000); last_closed = (now // BAR - 1) * BAR
     frames = [pd.read_csv(os.path.join(SF.ROOT, "reports", "MASTER_POOL_stacked.csv"), low_memory=False)]
-    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             frames.append(pd.read_csv(f, low_memory=False))
         except Exception:

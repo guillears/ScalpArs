@@ -19,6 +19,8 @@ Klines: cached first (reports/cache_willy_hold/), ≤ WEIGHT_STOP used weight pe
 HTTP 418 / 429 (no more network this run; unpriced rows are retried next run). Self-test: venv/bin/python scripts/scout_willy_hold.py --selftest
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import json
 import os
 import sys
@@ -162,7 +164,7 @@ def _ms(s):
 
 def export_rows():
     fr = []
-    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv")):
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv")):
         try:
             d = pd.read_csv(f, dtype=str, keep_default_na=False, low_memory=False)
         except Exception:
@@ -181,7 +183,7 @@ def export_rows():
 
 def orders():
     fr = []
-    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in ("opened_at", "pair", "entry_strategy", "status", "pnl_percentage",
                                                                         "pnl", "notional_value", "direction"))
@@ -295,7 +297,9 @@ def run(now_ms=None):
         tmp = f"{STORE}.{os.getpid()}.tmp"; rows.to_csv(tmp, index=False); os.replace(tmp, STORE)
     w = o[(o.entry_strategy.astype(str) == "FRENZY_WILLY")] if len(o) else o
     w = w[w.opened_at.map(lambda x: (_ms(x) or 0) >= fl)] if len(w) else w
-    base = float(pd.to_numeric(w.notional_value, errors="coerce").median()) if len(w) else float("nan")
+    _wl = w[w.is_paper.astype(str).str.lower().isin(("false", "0"))] if (len(w) and "is_paper" in w.columns) else w.iloc[0:0]
+    _wb = _wl if len(_wl) else w   # 📦 (294) price refusals at the CURRENT book's size: live WILLY fills once any exist, else paper
+    base = float(pd.to_numeric(_wb.notional_value, errors="coerce").median()) if len(_wb) else float("nan")
     wc = w[w.status.astype(str) == "CLOSED"] if len(w) else w
     w_usd = float(pd.to_numeric(wc.pnl, errors="coerce").sum()) if len(wc) else 0.0
     if len(rows):

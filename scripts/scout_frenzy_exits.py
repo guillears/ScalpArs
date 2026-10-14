@@ -185,6 +185,8 @@ Rows are stored in reports/SCOUT_FRENZY_EXITS.csv (keyed opened_at + pair) so fi
 once its 12 h (and the re-entry's) have passed. 1m bars are coarser than the year studies' ticks (stated on the table).
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import io
 import json
 import os
@@ -603,7 +605,7 @@ def _fills(strategies=("FRENZY_LONG", "FRENZY_WIDE")):
     cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "entry_price", "pnl_percentage", "entry_atr_pct", "entry_frenzy_vs_vwap_pct",
             "entry_frenzy_above_share", "entry_frenzy_bar_ret_pct", "closed_at", "close_reason", "entry_frenzy_vwap", "entry_frenzy_spike_at",
             "entry_frenzy_adx_delta", "entry_frenzy_di_spread", "entry_frenzy_gvol", "entry_frenzy_catchup", "pnl")
-    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols)
         except Exception:
@@ -657,7 +659,7 @@ def _journal(now_ms):
             except Exception:
                 pass
     rows = []
-    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv")):
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv")):
         try:
             if os.path.getmtime(f) * 1000 < now_ms - JR_MAX_AGE_D * 86_400_000:
                 continue
@@ -2878,12 +2880,11 @@ def _ons_book_scan(need, now_ms):
         return out
     pairs = {p for _, p in need}
     t_min = min(t for t, _ in need)
-    for f in sorted(glob.glob(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv"))):
+    for f in sorted(_EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv"))):
         try:
             if os.path.getmtime(f) * 1000 < now_ms - JR_MAX_AGE_D * 86_400_000:
                 continue
-            nm = os.path.basename(f)[len("scalpars_decisions_paper_"):-4]
-            if f"{nm[:10]}T{nm[11:].replace('-', ':')}" < t_min:
+            if (_EG.export_stamp(f) or "") < t_min:   # 📦 (294) paper or live filename
                 continue
             with open(f, "rb") as fh:
                 hdr = fh.readline().decode("utf-8", "replace").rstrip("\r\n").split(",")
@@ -3367,7 +3368,7 @@ def _lite_fills():
             "entry_frenzy_above_streak", "entry_frenzy_vol_mult", "entry_frenzy_vs_vwap_pct", "entry_frenzy_bar_ret_pct", "entry_frenzy_gvol",
             "entry_frenzy_adx_delta", "entry_frenzy_di_spread", "cell_lev_multiplier")
     fr = []
-    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols)
         except Exception:
@@ -3526,7 +3527,7 @@ def _willy_fills():
     cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "pnl", "close_reason", "entry_frenzy_willy_trigger",
             "entry_frenzy_hours", "entry_frenzy_willy_wait_bars", "entry_pair_volume_24h_usd", "entry_mcap_usd", "notional_value")
     fr = []
-    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols)
         except Exception:
@@ -3670,7 +3671,7 @@ TB_HOW = {"TP": "take profit", "STOP": "stop", "CAP": "cap"}
 def willy_events():
     """the engine's WILLY events (decisions exports, e=WILLY) → DataFrame(t, pair, gate, reason, price) (newest export wins; never raises)."""
     fr = []
-    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv")):
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv")):
         try:
             d = pd.read_csv(f, dtype=str, keep_default_na=False, low_memory=False, usecols=lambda c: c in ("t", "e", "pair", "gate", "reason", "price"))
             if "e" in d:

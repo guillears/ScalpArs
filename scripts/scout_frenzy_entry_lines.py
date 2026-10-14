@@ -26,6 +26,8 @@ FROZEN VERDICT (per line, NF.du_freeze pattern)  first prefix by (open time, pai
                Deferred while an OPEN FRENZY-family LONG position opened ≤ the prefix end exists in the newest export (NF.freeze_hold).
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import json
 import os
 import subprocess
@@ -102,7 +104,7 @@ def era_line(cnt, off):
 # ─────────────────────────── orders ───────────────────────────
 def _read_exports():
     fr = []
-    for f in glob.glob(EXPORT_GLOB):
+    for f in _EG.glob_exports(EXPORT_GLOB):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS)
         except Exception:
@@ -143,11 +145,12 @@ def family(o):
 
 def open_family_ts():
     """OPEN FRENZY-family LONG positions in the NEWEST export (by mtime) → [(opened_at, 'OPEN <strategy> <pair>')]."""
-    fs = sorted(glob.glob(EXPORT_GLOB), key=os.path.getmtime)
+    fs = sorted(_EG.glob_exports(EXPORT_GLOB), key=os.path.getmtime)
     if not fs:
         return []
     try:
-        d = pd.read_csv(fs[-1], low_memory=False, usecols=lambda c: c in COLS)
+        d = pd.concat([pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS)   # 📦 (294) newest paper + newest live export
+                       for f in _EG.newest_per_mode(fs)], ignore_index=True)
     except Exception:
         return []
     if not {"opened_at", "status", "direction", "entry_strategy", "pair"} <= set(d.columns):

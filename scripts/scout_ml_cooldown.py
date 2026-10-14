@@ -34,6 +34,8 @@ STORE  reports/SCOUT_ML_COOLDOWN.csv, one row per CLOSED fill, WRITE-ONCE (a sto
        with time-pruned queues per run (O(n)); the exports are re-read each run with usecols (a ~1.5k-row read).
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import os
 import re
 import time
@@ -257,7 +259,7 @@ def merge_store(old, new, now_iso):
 def load_orders(paths=None):
     """momentum-LONG bot fills (OPEN / CLOSED, non-probe) from the exports, newest export per (opened_at[:19], pair, direction)."""
     fr = []
-    for f in (paths if paths is not None else glob.glob(os.path.expanduser(EXPORT_GLOB))):
+    for f in (paths if paths is not None else _EG.glob_exports(os.path.expanduser(EXPORT_GLOB))):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS)
             if len(d) and {"opened_at", "pair", "direction", "status", "pnl_percentage"} <= set(d.columns):

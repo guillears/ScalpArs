@@ -55,6 +55,8 @@ SUB-READ       🩸 DIP_SUB (pre-registered 2026-10-12, DECISION_LOG 279; OBSERV
 Usage: venv/bin/python scripts/scout_willy_btc1h.py [--selftest]
 """
 import os
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import tempfile
 import time
 
@@ -206,7 +208,7 @@ def _read_exports():
     """WILLY_TIMECAP's export reader (same glob, same required columns) plus the candle stamp column the DIP_SUB read needs."""
     import glob
     fr = []
-    for f in glob.glob(WT.EXPORT_GLOB):
+    for f in _EG.glob_exports(WT.EXPORT_GLOB):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS)
         except Exception:

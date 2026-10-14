@@ -43,6 +43,8 @@ REVERT      pre-committed if the exemption is ever armed: the first 15 FRENZY-fa
 Usage: venv/bin/python scripts/scout_willy_hold_frenzy.py [--selftest]
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import json
 import os
 import tempfile
@@ -101,7 +103,7 @@ def _cooldown_min():
 def load_decisions(floor=0):
     """the decision journal's FRENZY-leg refusal codes (BLOCK FRENZY_ATR_HIGH / FRENZY_GREEN_BAR) from exports written ≥ floor; attrs newest_ms."""
     fr, newest = [], 0
-    for f in glob.glob(DEC_GLOB):
+    for f in _EG.glob_exports(DEC_GLOB):
         m = os.path.getmtime(f)
         newest = max(newest, int(m * 1000))
         if m * 1000 < floor:
@@ -144,7 +146,7 @@ def btc_1d_at(d1, t_ms):
 
 def load_orders():
     fr = []
-    for f in glob.glob(EXPORT_GLOB):
+    for f in _EG.glob_exports(EXPORT_GLOB):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in OCOLS)
         except Exception:

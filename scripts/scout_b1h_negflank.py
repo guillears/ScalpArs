@@ -15,6 +15,8 @@ BAR (the locked expectancy filter bar, judged on the cohort EXCLUDING washed-out
                  Then the 30–50 % in-sample haircut and a pre-committed revert gate. Never re-fit −0.05 / −15.
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import json
 import os
 import tempfile
@@ -78,7 +80,7 @@ def _orders(start=START, empty_is_momentum=False):
     """CLOSED full-size momentum LONG fills opened ≥ start (None = all). empty_is_momentum: legacy pre-column fills (Apr–Jun, no
     entry_strategy) count as MOMENTUM like study_ml_b18_common (NEG_DAILYUP_WEAKPAIR only — ML_B1H_NEGFLANK keeps its frozen filter)."""
     fr = []
-    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS)
             if len(d) and {"opened_at", "pnl_percentage", "entry_btc_1h_slope"} <= set(d.columns):
@@ -477,11 +479,12 @@ def freeze_hold(last, hold, why=None):
 def open_momentum_long_ts():
     """OPEN full-size momentum LONG positions in the NEWEST orders export (by mtime) → [(opened_at, 'OPEN <pair>')]. Same strategy
     filter as _orders(empty_is_momentum=True); *_PROBE out. No usable export → []."""
-    fs = sorted(glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")), key=os.path.getmtime)
+    fs = sorted(_EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")), key=os.path.getmtime)
     if not fs:
         return []
     try:
-        d = pd.read_csv(fs[-1], low_memory=False, usecols=lambda c: c in COLS)
+        d = pd.concat([pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS)   # 📦 (294) newest paper + newest live export
+                       for f in _EG.newest_per_mode(fs)], ignore_index=True)
     except Exception:
         return []
     if not {"opened_at", "status", "direction"} <= set(d.columns):

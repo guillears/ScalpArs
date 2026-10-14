@@ -42,6 +42,8 @@ Outputs (main project reports/): SCOUT_EVENTS.csv · SCOUT_MOVERS.csv · SCOUT_E
 SCOUT_REPORT_<date>.md · SCOUT_WEEKLY_<iso-week>.md (first run of each ISO week). Usage: venv/bin/python scripts/opportunity_scout.py
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import json
 import os
 import sys
@@ -289,7 +291,7 @@ def bot_universe(cfg):
 def load_exports():
     frames, spans = [], []
     to_ms = lambda s: (pd.to_datetime(s, utc=True, format="ISO8601") - pd.Timestamp(0, tz="UTC")) // pd.Timedelta(milliseconds=1)
-    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):     # the paper bot only (live exports excluded)
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):     # 📦 (294) paper + post-go-live live exports
         try:
             d = pd.read_csv(f, low_memory=False,
                             usecols=lambda c: c in ("opened_at", "closed_at", "pair", "direction", "entry_strategy", "status"))
@@ -338,7 +340,7 @@ def load_decisions():
     version) fall back to [first row, file time]. Newer exports win duplicates."""
     frames = []
     to_ms = lambda s: (pd.to_datetime(s, utc=True, format="ISO8601", errors="coerce") - pd.Timestamp(0, tz="UTC")) // pd.Timedelta(milliseconds=1)
-    for f in glob.glob(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv")):
+    for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv")):
         if time.time() - os.path.getmtime(f) > DECISIONS_MAX_AGE_D * 86400:   # daily auto-downloads pile up; older ones add nothing
             continue                                                      # the stored events still need (events live ≤ 45 days)
         try:
@@ -916,7 +918,7 @@ def write_notes(allv, mv, ev, now_ms):
         if cat != "other" and prev.get(r["bucket"]) != cat and not first:
             items.append((0, f"EVIDENCE — {r['bucket']}: {v} ({r['n']} events · {r['days']} days · mean {fmt(r['mean'])})", None))
     # (f) stale Decisions CSV
-    files = glob.glob(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv"))
+    files = _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv"))
     newest = max((os.path.getmtime(f) for f in files), default=0) * 1000
     day = datetime.fromtimestamp(now_ms / 1000, timezone.utc).strftime("%Y-%m-%d")
     if now_ms - newest > 30 * 3600_000:

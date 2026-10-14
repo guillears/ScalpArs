@@ -28,6 +28,8 @@ Usage:  venv/bin/python scripts/ms_pvr_shadow.py --selftest
                                                                          # realtime short runner (older eras ran other exit stacks)
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import json
 import os
 import sys
@@ -186,7 +188,7 @@ def _export_ms(path):
     """export time from the file name (…_paper_YYYY-MM-DD_HH-MM-SS.csv), else the file's mtime."""
     try:
         from datetime import datetime, timezone
-        b = os.path.basename(path).rsplit("_paper_", 1)[1][:19]
+        b = (_EG.export_stamp(path) or "").replace("T", "_").replace(":", "-")   # 📦 (294) paper or live filename
         return int(datetime.strptime(b, "%Y-%m-%d_%H-%M-%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
     except Exception:
         return int(os.path.getmtime(path) * 1000)
@@ -197,7 +199,7 @@ def load_momentum_shorts(pool=None, exports=None):
     (opened_at to the second, pair, direction) — the newest export wins, the master pool supplies stack_keep where it has the row.
     MANUAL / *_PROBE excluded. → DataFrame sorted by open time with o_ms, src ('master' | export file), in_master."""
     pool = pool or os.path.join(REPORTS, "MASTER_POOL_stacked.csv")
-    fs = sorted(exports if exports is not None else glob.glob(os.path.join(DL, "scalpars_orders_paper_*.csv")), key=_export_ms)
+    fs = sorted(exports if exports is not None else _EG.glob_exports(os.path.join(DL, "scalpars_orders_paper_*.csv")), key=_export_ms)
     fr = []
     if os.path.exists(pool):
         fr.append(pd.read_csv(pool, low_memory=False, usecols=lambda c: c in KEPT_COLS).assign(_rank=-1, src="master"))

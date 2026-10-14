@@ -29,6 +29,8 @@ CRASH   🔻 pre-registered OBSERVATION (operator, 2026-10-03 AIN; DECISION_LOG 
         candidate only if mean > 0 after costs ∧ ≥ 8 distinct days ∧ no pair ≥ 50 % of the gain. Never a trade signal here.
 """
 import glob
+import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
+import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import os
 import time
 from types import SimpleNamespace
@@ -93,7 +95,7 @@ def _eligible(EX, retry, cfg):
 def _exports(now_ms, hours=27):
     """From the decision exports of the last `hours`: FRENZY gate / fill rows, FRENZY order-book minutes per pair, journal heartbeats."""
     rows, book, beats = [], {}, set()
-    for f in sorted(glob.glob(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv"))):
+    for f in sorted(_EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_decisions_paper_*.csv"))):
         if time.time() - os.path.getmtime(f) > 3 * 86400:
             continue
         try:

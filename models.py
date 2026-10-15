@@ -39,6 +39,17 @@ class Order(Base):
     backstop_algo_id = Column(String(30), nullable=True)  # Aug-11 🛡: resting exchange-side STOP_MARKET algoId (live dead-man's brake); rides the CSV via introspection
     backstop_pct = Column(Float, nullable=True)            # 🛡 (DECISION_LOG 292) the resting backstop's distance actually placed (price %, positive) — live: what Binance holds; paper: what live would hold. Re-placed (live) / re-recorded (paper) when the configured order_backstop_pct moves
     backstop_trigger_price = Column(Float, nullable=True)  # 🛡 (DECISION_LOG 292) that backstop's trigger price (entry ∓ backstop_pct) — rides the CSV via introspection
+    # 📏 (DECISION_LOG 295) execution-quality shadow, OBSERVE ONLY (services/exec_shadow.py) — FRENZY / SURGE entries: where the entry cost
+    # comes from (signed, + = cost to us): the book's far side at the order vs the decision price · the book spread · our fill vs the
+    # book · seconds from the decision clock to the book read. Fixed-TP FRENZY closes: a resting post-only limit at the take profit
+    # (same NET target, maker exit fee) — its price, whether the trade's extreme went ≥ 1 tick THROUGH it, and the net % it would book.
+    entry_book_drift_pct = Column(Float, nullable=True)
+    entry_book_spread_pct = Column(Float, nullable=True)
+    entry_fill_vs_book_pct = Column(Float, nullable=True)
+    entry_order_lag_s = Column(Float, nullable=True)
+    shadow_rtp_price = Column(Float, nullable=True)
+    shadow_rtp_filled = Column(Boolean, nullable=True)
+    shadow_rtp_pnl_pct = Column(Float, nullable=True)
     
     # Trade info
     pair = Column(String(20), nullable=False)  # e.g., "BTCUSDT"

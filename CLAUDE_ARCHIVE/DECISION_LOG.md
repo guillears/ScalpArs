@@ -6733,3 +6733,31 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   (scout_willy_timecap $ column, ms_pvr_shadow sum_usd, scout_ml_cooldown pnl_usd) are "paper + live as traded" — % columns are the
   yardstick (core principle 3); live-only $ reads are done at batch review. scripts/ml_watchlist_adjudicate.py is local-only
   (untracked) — rewired on disk, not in this commit.
+
+## (295) 2026-10-15 — 📏 Execution-quality shadow (observe only): entry-cost decomposition + resting-TP shadow
+- **Why:** the reviewed tick study (reports/TICK_STUDY_MAKER_LOCK_2026-10-15.md, 0 candidates) found WILLY's 2026 edge breaks even at
+  ≈ 0.11 % entry cost while the first live entries paid a median 0.22 %, and that a resting take-profit only pays through the live
+  order-book give-back prints cannot show — live WILLY TPs filled +1.12 / +1.09 / +1.08 vs the +1.25 setting (3 of 3, ≈ −0.17).
+  Operator: "build it, reviews, then commit and push". Design: reports/MAKER_TP_ENTRY_DESIGN_2026-10-15.md (Phase 2 shadow).
+- **Entry (FRENZY / SURGE book path, live + paper):** new Order columns `entry_book_drift_pct` (book far side at the order vs the
+  decision price), `entry_book_spread_pct`, `entry_fill_vs_book_pct` (our fill vs that book — paper 0 by construction: paper fills at
+  the book), `entry_order_lag_s` (clock → book read: normal FRENZY = the 5m boundary / signal bar's close, so it includes the ≥ 4 s settle +
+  kline reads + open-lane wait; catch-up = its decision time → split by entry_frenzy_catchup; SURGE = NULL); signed + = cost to us;
+  drift already holds half the spread (total ≈ drift + fill-vs-book — never sum all three); log `[ENTRY_EXEC]`. NULL elsewhere.
+- **Exit (fixed-TP FRENZY sleeves WILLY / LITE / LONG / WIDE, live + paper):** `shadow_rtp_price` (reduce-only post-only limit that
+  books the SAME net TP with the maker exit fee, rounded to the tick away from the entry), `shadow_rtp_filled` (the trade's extreme
+  since entry ≥ 1 tick THROUGH it — a touch is not a fill; NULL = unknown), `shadow_rtp_pnl_pct` (net % at the limit when filled, else
+  the actual net %); log `[RTP_SHADOW]` (with the TP used — the configured TP at close). The tick comes from the ALREADY-LOADED market
+  cache with NO await (the close holds the global close lock), plausibility-guarded (≤ 0.2 % of price; the 0.01 default never prices
+  a shadow) → unknown = NULL; LITE / LONG / WIDE skipped while frenzy_lock_arm_pct > 0 (lock-then-trail replaces the fixed TP).
+  Everything wrapped — the shadow never changes an order and never raises.
+- **Reviews (caveman + deep, applied):** no await on the close (cold-cache 3 s lock hold + shared ccxt load-task cancellation risk
+  removed) · 0.01 tick default rejected · entry stamp lines in their own guard · TP logged · lock-arm skip · lag clock documented.
+  Deep-review hand-check on the live export: ZK / BLUR / RLC WILLY TPs → shadow +1.25 / +1.26 / +1.26 vs +1.12 / +1.09 / +1.08 booked;
+  DEEP LITE +3.01 vs +2.80; STRK / DUSK stops unchanged. BLUR and DEEP sit exactly 1 tick through (coarse ticks) → weigh with care. Known limit: the extreme comes from the bot's price feed (1 Hz-class), so a brief
+  spike through the limit can be missed (conservative) and queue position / partial fills are not modelled.
+- **Read at:** ≥ 10 live WILLY TPs → decide the real resting TP (operator); ≥ 15 live WILLY entries → entry cost vs the 0.11 %
+  break-even, decomposed (drift = latency, spread, fill-vs-book = size / book depth).
+- **Files:** services/exec_shadow.py (new, pure) · services/trading_engine.py · models.py · database.py (7 nullable columns) ·
+  tests/test_exec_shadow.py (new) · tests/test_manual_entry_stamps.py (4 sleeve-only stamps listed). D12: per-trade columns ride the
+  orders CSV; the summary table is read at batch review (no dashboard table in this ship).

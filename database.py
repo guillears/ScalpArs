@@ -221,6 +221,20 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN backstop_pct FLOAT"))
                 if 'backstop_trigger_price' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN backstop_trigger_price FLOAT"))
+                if 'entry_book_drift_pct' not in columns:   # 📏 (DECISION_LOG 295) execution-quality shadow
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_book_drift_pct FLOAT"))
+                if 'entry_book_spread_pct' not in columns:   # 📏 (DECISION_LOG 295) execution-quality shadow
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_book_spread_pct FLOAT"))
+                if 'entry_fill_vs_book_pct' not in columns:   # 📏 (DECISION_LOG 295) execution-quality shadow
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_fill_vs_book_pct FLOAT"))
+                if 'entry_order_lag_s' not in columns:   # 📏 (DECISION_LOG 295) execution-quality shadow
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_order_lag_s FLOAT"))
+                if 'shadow_rtp_price' not in columns:   # 📏 (DECISION_LOG 295) execution-quality shadow
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN shadow_rtp_price FLOAT"))
+                if 'shadow_rtp_filled' not in columns:   # 📏 (DECISION_LOG 295) execution-quality shadow
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN shadow_rtp_filled BOOLEAN"))
+                if 'shadow_rtp_pnl_pct' not in columns:   # 📏 (DECISION_LOG 295) execution-quality shadow
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN shadow_rtp_pnl_pct FLOAT"))
                 if 'entry_rsi' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_rsi FLOAT"))
                 if 'trough_pnl' not in columns:

@@ -21,6 +21,7 @@ NOT_A_MOMENTUM_STAMP = {
     "entry_bracket_max_leverage", "entry_bracket_cap_notional",   # 🪜 Oct-1: set explicitly in both open paths (exchange leverage brackets)
     "entry_slippage_pct",   # a manual paper fill IS the clicked price: left NULL so it never enters the slippage averages
     "entry_chop_burst_prior_fill_s",   # 🌀👥 Oct-4: the LONG_CHOP_BURST gate's own input — a bot decision stamp (DB lookup); MANUAL is never gated
+    "entry_book_drift_pct", "entry_book_spread_pct", "entry_fill_vs_book_pct", "entry_order_lag_s",   # 📏 (295) FRENZY / SURGE book-path execution shadow (sleeve-only)
 }
 
 

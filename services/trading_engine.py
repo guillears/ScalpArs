@@ -24,7 +24,7 @@ from services.indicators import closed_ema_gap_pct, last_closed_bar_ret_pct, clo
 from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate, surge_long_ema_gap_block, SURGE_LONG_EMA_GAP, SURGE_LONG_EMA_GAP_FAILOPEN
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
-from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE
+from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE, frenzy_tp_for
 from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, frenzy_wide_shadow, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 from services.golive_guards import (backstop_trigger_price, backstop_needs_replace, algo_status_resting, find_untracked_positions,  # 🛡 (DECISION_LOG 292)
@@ -77,6 +77,7 @@ def _rh_pnl_pct(direction, entry_price, price, quantity, entry_fee):
 
 from services.recovery_hold import (RH_STOP_CLASS, closed_rsi as _rh_closed_rsi, rsi_fresh as _rh_rsi_fresh, rh_prefixed as _rh_prefixed,  # noqa: E402
                                     rh_strip as _rh_strip, rh_trigger_ok, rh_in_hold, rh_exit, rh_tripwire)
+from services.exec_shadow import entry_book_metrics, resting_tp_shadow, cached_tick   # 📏 (DECISION_LOG 295) execution-quality shadow (observe only)
 from services import decision_journal as _djournal  # Sep-18 📓 decision journal (file-only, never raises)
 from services.websocket_tracker import websocket_tracker
 
@@ -11448,6 +11449,7 @@ class TradingEngine:
         # fill — the spike 18/18-taker-fallback lesson) + the Bull-Run dislocation guard (57f) on the LIVE price vs the decision price:
         # a book that ran > surge_max_entry_dislocation_pct away is skipped, not chased. Paper fills at that live price.
         _sg_live_px = None
+        _eb_bid = _eb_ask = _eb_lag = None   # 📏 (295) execution-quality shadow: the book read just before the order (FRENZY / SURGE only)
         if _frenzy and frenzy_bar_open_ms is not None:   # 🔥 Oct-3 (lane review), just before the order path: _frenzy_open judged lateness BEFORE waiting for the
             _fz_late2 = (_leash_time.time() * 1000 - int(frenzy_bar_open_ms)) / 1000.0   # bot open lane — a scan open can hold it 15–45 s
             if _fz_late2 > FRENZY_ENTRY_MAX_LATE_S:
@@ -11462,6 +11464,13 @@ class TradingEngine:
             try:   # the fresh book: WS trackers exist only for pairs already held, and a SURGE pair never is (PAIR_HELD)
                 _sg_ob = await asyncio.wait_for(binance_service.fetch_orderbook(pair.replace('USDT', '/USDT:USDT')), 5.0)   # bounded: the bot open lane is held
                 _sg_live_px = float(_sg_ob['best_ask'] if direction == 'LONG' else _sg_ob['best_bid']) if _sg_ob else None
+                try:   # 📏 (295) observe only, own guard (never resets the book price above) — the book this order meets + when it was read
+                    if _sg_ob:
+                        _eb_bid, _eb_ask = _sg_ob.get('best_bid'), _sg_ob.get('best_ask')
+                        if frenzy_bar_open_ms is not None:   # normal FRENZY: the 5m boundary (signal bar's close) · catch-up: the decision time
+                            _eb_lag = _leash_time.time() - int(frenzy_bar_open_ms) / 1000.0
+                except Exception:
+                    _eb_bid = _eb_ask = _eb_lag = None
             except Exception:
                 _sg_live_px = None
             if not _sg_live_px:
@@ -11685,6 +11694,16 @@ class TradingEngine:
                     _entry_slippage_pct = round((current_price - actual_price) / current_price * 100, 4)
         except Exception:
             _entry_slippage_pct = None
+        # 📏 (DECISION_LOG 295) where the entry cost comes from — observe only, FRENZY / SURGE book path (None elsewhere / unreadable book)
+        _eb_m = {}
+        if _surge:
+            try:
+                _eb_m = entry_book_metrics(direction, current_price, _eb_bid, _eb_ask, actual_price, _eb_lag)
+                logger.info(f"[ENTRY_EXEC] {pair} {direction} ({_fz_es if _frenzy else 'SURGE'}): drift {_eb_m.get('entry_book_drift_pct')}% · "
+                            f"spread {_eb_m.get('entry_book_spread_pct')}% · fill vs book {_eb_m.get('entry_fill_vs_book_pct')}% · "
+                            f"lag {_eb_m.get('entry_order_lag_s')}s · total vs decision {_entry_slippage_pct}%")
+            except Exception:
+                _eb_m = {}
 
         # Create order record
         # Aug-11 🛡 BROKER BACKSTOP (live only): resting exchange-side STOP_MARKET via the
@@ -11884,6 +11903,8 @@ class TradingEngine:
             entry_bracket_max_leverage=_brk_max_lev, entry_bracket_cap_notional=_brk_cap, bracket_capped=_brk_capped,   # 🪜 Oct-1
             entry_btc_rsi_closed=(_current_btc_rsi_closed if _rh_rsi_fresh(_current_btc_rsi_closed_bar_ts, _leash_time.time() * 1000.0) else None),   # 🩹 Oct-2
             entry_slippage_pct=_entry_slippage_pct,
+            entry_book_drift_pct=_eb_m.get('entry_book_drift_pct'), entry_book_spread_pct=_eb_m.get('entry_book_spread_pct'),   # 📏 (295)
+            entry_fill_vs_book_pct=_eb_m.get('entry_fill_vs_book_pct'), entry_order_lag_s=_eb_m.get('entry_order_lag_s'),
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -13298,6 +13319,25 @@ class TradingEngine:
             exit_fee=exit_fee
         )
 
+        # 📏 (DECISION_LOG 295) resting-TP shadow context — fixed-TP FRENZY sleeves only. NO await (this close holds the global close
+        # lock): the tick comes from the already-loaded market cache, plausibility-guarded; unknown → the shadow stays NULL. Observe only.
+        _rtp_ctx = None
+        try:
+            _rtp_es = order.entry_strategy or ''
+            _rtp_th = config.trading_config.thresholds
+            _rtp_lock = float(getattr(_rtp_th, 'frenzy_lock_arm_pct', 0) or 0) > 0   # lock-then-trail REPLACES the fixed TP (not WILLY)
+            if (_rtp_es == "FRENZY_WILLY" or (_rtp_es in ("FRENZY_LITE", "FRENZY_LONG", "FRENZY_WIDE") and not _rtp_lock)) \
+                    and order.entry_price and order.notional_value:
+                _rtp_tp = frenzy_willy_levels(_rtp_th)[0] if _rtp_es == "FRENZY_WILLY" else frenzy_tp_for(_rtp_th, _rtp_es)
+                _rtp_tick = cached_tick(binance_service.exchange.markets if getattr(binance_service, '_markets_loaded', False) else None,
+                                        order.pair.replace('USDT', '/USDT:USDT'), order.entry_price)
+                if _rtp_tp and _rtp_tp > 0 and _rtp_tick:
+                    _rtp_ctx = (float(_rtp_tp), float(_rtp_tick), (order.entry_fee or 0.0) / order.notional_value * 100.0,
+                                float(getattr(config.trading_config, 'maker_fee', 0.00018)))
+        except Exception as _rtp_err:
+            logger.debug(f"[RTP_SHADOW] {order.pair}: context skipped: {_rtp_err}")
+            _rtp_ctx = None
+
         # ═══════════════════════════════════════════════════════════════
         # PHASE 1: Essential close — commit to DB immediately so the
         # order is never left as a zombie if optional metadata fails.
@@ -13497,6 +13537,18 @@ class TradingEngine:
                 order.closed_at = _close_time
                 order.close_reason = reason
                 order.exit_slippage_pct = _slippage_pct
+                if _rtp_ctx is not None:   # 📏 (295) what a resting post-only TP limit would have booked — observe only, never raises
+                    try:
+                        _rtp_lim, _rtp_fill, _rtp_pnl = resting_tp_shadow(order.direction, order.entry_price, _rtp_ctx[2], _rtp_ctx[0], _rtp_ctx[3],
+                                                                          _rtp_ctx[1], order.high_price_since_entry, order.low_price_since_entry,
+                                                                          pnl_data['pnl_percentage'])
+                        order.shadow_rtp_price, order.shadow_rtp_filled, order.shadow_rtp_pnl_pct = _rtp_lim, _rtp_fill, _rtp_pnl
+                        if _db_attempt == 1:
+                            logger.info(f"[RTP_SHADOW] {order_pair} {_tx_direction} ({order.entry_strategy}, {reason}): TP +{_rtp_ctx[0]}% → resting limit {_rtp_lim} "
+                                        f"{'FILLED' if _rtp_fill else 'not filled' if _rtp_fill is False else 'unknown'} → shadow "
+                                        f"{_rtp_pnl}% vs actual {pnl_data['pnl_percentage']:.4f}%")
+                    except Exception:
+                        pass
                 order.exit_btc_regime = classify_btc_regime(_current_btc_adx, _current_btc_rsi, _btc_ema20_slope_pct)
                 # Exit BTC trend gap at close (May 6, simplified May 7)
                 try:

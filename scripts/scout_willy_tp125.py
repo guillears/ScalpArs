@@ -179,6 +179,8 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None, study=
     o = o[o.ts >= floor].reset_index(drop=True)
     late = o[o.why.astype(str) == "FRENZY_TP_LATE"]                 # restart / feed-gap exits the walker cannot replicate → out, counted
     o = o[o.why.astype(str) != "FRENZY_TP_LATE"].reset_index(drop=True)
+    wlate = o[o.why.astype(str) == "WILLY_LATE_TP"]                  # ⏰ DL 297 late-TP exits (+0.25 after 30 min): a different exit than the
+    o = o[o.why.astype(str) != "WILLY_LATE_TP"].reset_index(drop=True)   # one walked here → out, counted (scored by WILLY_TIMECAP's 297 read)
     tc = {}
     sc_all = scored_frame(o, hold, tp, stop, tc)
     done = WT.load_attempts()["done"]
@@ -194,6 +196,9 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None, study=
     if len(late):
         L.append(f"Excluded: {len(late)} FRENZY_TP_LATE fill(s) (restart / feed-gap exit the walker cannot replicate): "
                  + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair}" for r in late.itertuples()) + ".")
+    if len(wlate):
+        L.append(f"Excluded: {len(wlate)} WILLY_LATE_TP fill(s) (DECISION_LOG 297 late take profit — scored vs the old exit by WILLY_TIMECAP): "
+                 + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair}" for r in wlate.itertuples()) + ".")
     if tp >= TP_ALT - 1e-9:                                         # +1.25 (or higher) is live → no verdict / freeze; the revert read runs
         return L + adopted_block(sc, sc_all, tp, now_ms, state_path) + [""]
     L += [*HDR, _row(f"**{live_lab}**", sc, "LIVE"), _row(f"**TP +{TP_ALT:g}**", sc, "TP125"), ""]
@@ -442,6 +447,11 @@ def selftest():
             os.utime(os.path.join(dl, "scalpars_orders_paper_a.csv"), (1, 1))
             out = "\n".join(run(pd.Timestamp("2026-10-09 16:00").value // 10**6, state_path=os.path.join(td, "late.json"), th={}, study=False))
             chk("Excluded: 1 FRENZY_TP_LATE" in out and "KAIAUSDT A [ticks]" not in out, f"TP_LATE excluded and counted\n{out}")
+            pd.DataFrame([dict(base, opened_at="2026-10-09T08:45:09", pair="KAIAUSDT", pnl_percentage=0.25, close_reason="WILLY_LATE_TP")]
+                         ).to_csv(os.path.join(dl, "scalpars_orders_paper_c.csv"), index=False)
+            os.utime(os.path.join(dl, "scalpars_orders_paper_b.csv"), (2, 2))
+            out = "\n".join(run(pd.Timestamp("2026-10-09 16:00").value // 10**6, state_path=os.path.join(td, "late2.json"), th={}, study=False))
+            chk("Excluded: 1 WILLY_LATE_TP" in out and "KAIAUSDT A [ticks]" not in out, f"DL 297 late-TP fill excluded and counted\n{out}")
     finally:
         STATE, MY_CACHE, WT._CACHE, WT.MY_CACHE, WT.EXPORT_GLOB, WT.STUDY_CSV, WT._NET_BLOCKED = saved
         WT._K1.clear()

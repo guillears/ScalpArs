@@ -17,6 +17,7 @@ for the fixed stop; every close below the 5m EMA50 / EMA200 of a flagged pair is
 Everything is recomputed from a fresh kline window on every evaluation, so a deploy needs no warm-up; the engine persists only
 the NAMES of the flagged pairs (table frenzy_flags) so a cooled pair is re-checked after a restart.
 Quote volume is taken as volume × typical price (the exchange OHLCV rows carry base volume)."""
+import math
 from statistics import median
 from typing import List, Optional, Tuple
 
@@ -493,7 +494,7 @@ def frenzy_tp_for(th, sleeve=None) -> float:
     return _f(th, 'frenzy_tp_pct', 0.0)
 
 
-def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=False, sleeve=None) -> Tuple[bool, str, float]:
+def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=False, sleeve=None, resting_tp=False) -> Tuple[bool, str, float]:
     """FRENZY_LONG's own exit → (close, reason, line). use_tp (the FRENZY_LONG / FRENZY_WIDE sleeve AND the MANUAL "FRENZY" exit — operator):
     🎯 Oct-5 (DECISION_LOG 205) when frenzy_lock_arm_pct > 0: lock +floor at +arm, then trail points below the peak (no fixed TP) — below.
     🎯 Oct-4 (operator, DECISION_LOG 196) a FIXED take-profit at +frenzy_tp_pct net (0 = off) → reason FRENZY_TP, checked before the trail
@@ -506,7 +507,9 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
     stop_floor: optional cap (never wider than this). The engine passes None since DECISION_LOG 271 — the sleeve's own stop runs in
     paper AND live; the per-order exchange backstop rests just beyond it (order_backstop_pct).
     short=True (a MANUAL short on this exit): the give-back is measured from the LOWEST price → peak − giveback × (1 − peak/100).
-    sleeve: the order's entry_strategy — picks the take profit via frenzy_tp_for (FRENZY_LITE's own TP since DECISION_LOG 284)."""
+    sleeve: the order's entry_strategy — picks the take profit via frenzy_tp_for (FRENZY_LITE's own TP since DECISION_LOG 284).
+    resting_tp=True (🎯 DECISION_LOG 296): a resting exchange TP limit is alive for this order — the fixed TP is NOT fired here (the limit
+    books it; the engine runs the through + grace safety net); the stop / trail below are judged exactly as before."""
     try:
         pnl = float(pnl); pk = float(peak_pnl or 0.0)
         stop = -abs(_f(th, 'frenzy_stop_pct', 3.0)) or -3.0
@@ -525,7 +528,7 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
                 line = max(lf, pk - lt)
                 return (pnl <= line), "RUNNER_TRAIL", line
             return (pnl <= stop), "STOP_LOSS", stop
-        tp = frenzy_tp_for(th, sleeve) if use_tp else 0.0   # ≤ 0 = off (never abs(): a negative value must not become an active TP)
+        tp = frenzy_tp_for(th, sleeve) if (use_tp and not resting_tp) else 0.0   # ≤ 0 = off (never abs(): a negative value must not become an active TP) · 🎯 296: a resting TP owns it
         if tp > 0 and (pnl >= tp or pk >= tp):
             return True, "FRENZY_TP", tp
         arm, give = abs(_f(th, 'frenzy_trail_arm_pct', 5.0)), abs(_f(th, 'frenzy_trail_giveback_pct', 1.5))
@@ -560,21 +563,54 @@ def frenzy_willy_levels(th) -> Tuple[float, Optional[float], int]:
     return ((tp if tp > 0 else WILLY_TP_DEF), (-st if st > 0 else None), (int(round(mh)) if mh >= 1 else WILLY_HOLD_DEF))
 
 
-def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None) -> Tuple[bool, str, Optional[float]]:
+def frenzy_willy_late_tp(th) -> Optional[Tuple[float, float]]:
+    """⏰ (DECISION_LOG 297, operator-armed DECLARED EXCEPTION) the WILLY LATE take profit → (minutes, net %) or None = off. From the order's
+    age ≥ frenzy_willy_late_tp_minutes its take profit is frenzy_willy_late_tp_pct instead of the WILLY TP (stop and time cap unchanged).
+    Off when either is ≤ 0 / blank / unreadable, or when the late % is not below the WILLY TP (it would not be a lower target)."""
+    try:
+        mins = float(getattr(th, 'frenzy_willy_late_tp_minutes', 0) or 0)
+        pct = float(getattr(th, 'frenzy_willy_late_tp_pct', 0) or 0)
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(mins) and math.isfinite(pct)) or mins <= 0 or pct <= 0 or pct >= frenzy_willy_levels(th)[0]:
+        return None
+    return mins, pct
+
+
+def frenzy_willy_tp_at(th, held_minutes) -> Tuple[float, str]:
+    """(the WILLY take profit in force at this age, its close reason): the late TP (WILLY_LATE_TP) once the order is ≥ the late minutes old,
+    else the WILLY TP (FRENZY_TP). Unknown age → the WILLY TP. ONE rule for the exit, the resting limit and the sweeps."""
+    late = frenzy_willy_late_tp(th)
+    try:
+        if late is not None and held_minutes is not None and float(held_minutes) >= late[0]:
+            return late[1], "WILLY_LATE_TP"
+    except (TypeError, ValueError):
+        pass
+    return frenzy_willy_levels(th)[0], "FRENZY_TP"
+
+
+def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None, resting_tp=False) -> Tuple[bool, str, Optional[float]]:
     """FRENZY_WILLY's own exit → (close, reason, line). Order: TP — pnl ≥ +tp → FRENZY_TP; a peak that already reached +tp while the close was
     missed (feed gap / failed close / restart) closes at once → FRENZY_TP if the exit pnl ≥ 0 else FRENZY_TP_LATE (never labelled a TP at a
     loss) · a configured stop (frenzy_willy_stop_pct > 0; 4.0 since DECISION_LOG 271) → STOP_LOSS · held ≥ the cap → MAX_HOLD_TIME (line = pnl).
     stop_floor: optional cap. The engine passes None since DECISION_LOG 271 — WILLY's own stop runs in paper AND live; the per-order
     exchange backstop rests just beyond it (order_backstop_pct).
-    P&L = the caller's net-of-fees % of the position."""
+    P&L = the caller's net-of-fees % of the position.
+    ⏰ (DECISION_LOG 297) from age ≥ frenzy_willy_late_tp_minutes the take profit is frenzy_willy_late_tp_pct → WILLY_LATE_TP (current P&L
+    only); the +tp branches below stay (a jump straight past +tp still books FRENZY_TP).
+    resting_tp=True (🎯 DECISION_LOG 296): a resting exchange TP limit is alive — neither TP branch fires here (the limit books the TP; the
+    engine runs the through + grace safety net); stop and time cap are judged exactly as before."""
     tp, stop, mh = frenzy_willy_levels(th)
     try:
         p = float(pnl); pk = float(peak_pnl or 0.0)
         if stop_floor is not None:
             stop = float(stop_floor) if stop is None else max(stop, float(stop_floor))
-        if p >= tp:
+        if p >= tp and not resting_tp:
             return True, "FRENZY_TP", tp
-        if pk >= tp:
+        late_tp, late_reason = frenzy_willy_tp_at(th, held_minutes)
+        if late_reason == "WILLY_LATE_TP" and p >= late_tp and not resting_tp:   # ⏰ (297) late TP: the CURRENT P&L only (a peak before
+            return True, "WILLY_LATE_TP", late_tp                                  # the late minute is no fill at the late target)
+        if pk >= tp and not resting_tp:
             return True, ("FRENZY_TP" if p >= 0 else "FRENZY_TP_LATE"), p
         if stop is not None and p <= stop:
             return True, "STOP_LOSS", stop

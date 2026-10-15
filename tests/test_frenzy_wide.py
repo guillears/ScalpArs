@@ -158,7 +158,7 @@ def test_fixed_take_profit():
 
 def test_fixed_tp_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert eng.count("use_tp=True, sleeve=order.entry_strategy)   # 🎯 fixed TP (196) · LITE's own TP (284)\n") + eng.count("use_tp=True, sleeve=order_info.get('entry_strategy'))   # 🎯 fixed TP (196) · LITE's own TP (284)\n") == 2                # sleeve candle + realtime paths
+    assert eng.count("use_tp=True, sleeve=order.entry_strategy, resting_tp=_rtp_on_m)   # 🎯 fixed TP (196) · LITE's own TP (284)\n") + eng.count("use_tp=True, sleeve=order_info.get('entry_strategy'), resting_tp=_rtp_on_rt)   # 🎯 fixed TP (196) · LITE's own TP (284)\n") == 2                # sleeve candle + realtime paths
     assert eng.count("use_tp=True)   # 🎯 fixed TP (196): manual FRENZY exit too") == 2   # manual candle + realtime paths
     assert eng.count('"FRENZY_TP": "MANUAL_TP"') == 2
     assert eng.count('_reason_base.startswith("FRENZY_TP")') == 2               # post-exit tracking (live + recovery whitelists)
@@ -173,7 +173,7 @@ def test_fixed_tp_wiring():
     assert frenzy_exit_for(2.0, 2.0, _l, use_tp=True, sleeve="FRENZY_LITE")[0] is False and frenzy_exit_for(2.0, 2.0, _l, use_tp=True, sleeve="FRENZY_LONG") == (True, "FRENZY_TP", 1.5)
     assert frenzy_exit_for(3.0, 3.0, _l, use_tp=True, sleeve="FRENZY_LITE") == (True, "FRENZY_TP", 3.0) and frenzy_exit_for(2.0, 2.0, _l, use_tp=True)[2] == 1.5   # manual = shared
     eng = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
-    assert eng.count("None, use_tp=True, sleeve=order.entry_strategy)") == 1 and eng.count("None, use_tp=True, sleeve=order_info.get('entry_strategy'))") == 1
+    assert eng.count("None, use_tp=True, sleeve=order.entry_strategy, resting_tp=_rtp_on_m)") == 1 and eng.count("None, use_tp=True, sleeve=order_info.get('entry_strategy'), resting_tp=_rtp_on_rt)") == 1
     _c = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert _c["frenzy_lite_tp_pct"] == 3.0 and __import__("config").SignalThresholds.model_fields["frenzy_lite_tp_pct"].default == 0.0
     _h = open(os.path.join(ROOT, "templates", "index.html")).read()

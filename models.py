@@ -525,6 +525,12 @@ class Order(Base):
     # Stops removal" for the forensic trail.
     protective_sl_order_id = Column(String(50), nullable=True)
     protective_tp_order_id = Column(String(50), nullable=True)
+    # 🎯 (DECISION_LOG 296) RESTING TAKE-PROFIT — protective_tp_order_id (above, reused) = the live resting reduce-only post-only LIMIT's
+    # orderId while it rests (cleared once it is cancelled / settled). resting_tp_price = its limit (live: what Binance holds; paper: what live
+    # would hold). resting_tp_filled_qty = the quantity it filled (0 at placement; = quantity when the whole TP booked at the limit; a value
+    # in between = a partial fill booked BLENDED with the market remainder). Ride the orders CSV as model columns.
+    resting_tp_price = Column(Float, nullable=True)
+    resting_tp_filled_qty = Column(Float, nullable=True)
 
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3 design).
     # cell_multiplier = the INVESTMENT multiplier ACTUALLY applied to this trade after hard-cap clamping.

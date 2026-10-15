@@ -252,6 +252,8 @@ S290_NAMES = tuple(c[0] for c in S290_CELLS)
 S290_KEY = {n: f"S4_{n}" for n in S290_NAMES}
 S290_DEPLOY_GREP = "(DECISION_LOG 290)"              # counted from the DL 290 commit (registered after B19 / B20 / the yr6 grid were seen)
 S290_DEPLOY_PIN = "2026-10-14 05:30:00"              # ≈ the DL 290 commit time (UTC) — used only if git cannot find the commit
+S297_DEPLOY_GREP = "(DECISION_LOG 297)"              # ⏰ the WILLY late take profit (+0.25 from minute 30) went live with this commit
+S297_FIRST5_FLOOR = -6.0                             # 297 rollback: the first 5 changed trades < −6 pts net vs the old exit
 S290_LABEL = "pre-registered 2026-10-14, DECISION_LOG 290"
 S290_BAR = ("FROZEN BAR (pre-registered 2026-10-14, DECISION_LOG 290). Per cell (T130C90 / T135C90 / T140C90 / T145C90 / T150C90 = TP "
             "+1.30 / +1.35 / +1.40 / +1.45 / +1.50 net, today's −4 stop and today's hold) separately, at the first prefix by (open time, "
@@ -288,6 +290,32 @@ def levels(th=None):
     tp, st, mh = _f("frenzy_willy_tp_pct", 1.0), abs(_f("frenzy_willy_stop_pct", 0.0)), _f("frenzy_willy_max_hold_minutes", 120)
     st = st if st > 0 else None                                      # DECISION_LOG 271: WILLY's own stop, no hidden floor, paper = live
     return (tp if tp > 0 else 1.0), st, (int(round(mh)) if mh >= 1 else 120)
+
+
+def late_levels(th=None):
+    """⏰ (DECISION_LOG 297) the live WILLY late take profit (minutes, net %) or None = off — services/frenzy.frenzy_willy_late_tp semantics
+    (off when either is ≤ 0 or the late % is not below the WILLY TP)."""
+    if th is None:
+        try:
+            with open(CONFIG) as f:
+                th = json.load(f)
+        except Exception:
+            th = {}
+    if isinstance(th, dict) and isinstance(th.get("thresholds"), dict):
+        th = th["thresholds"]
+    try:
+        m, p = float(th.get("frenzy_willy_late_tp_minutes") or 0), float(th.get("frenzy_willy_late_tp_pct") or 0)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if not (np.isfinite(m) and np.isfinite(p)) or m <= 0 or p <= 0 or p >= levels(th)[0]:
+        return None
+    return m, p
+
+
+def s297_deploy_ts():
+    """the 297 counted floor = the "(DECISION_LOG 297)" commit time + 10 min; no commit yet → None (nothing counted: the rule is not live)."""
+    t = _git_ct(S297_DEPLOY_GREP)
+    return None if t is None else t + pd.Timedelta(minutes=S4_LAG_MIN)
 
 
 def net_pct(p, e):
@@ -365,7 +393,7 @@ def walk_1m(k, te, e, tp, stop, hold):
     return dict(v=out, marks=marks, tp_min=float((cl[i[0]] - te) / MIN) if len(i) else float("nan"))
 
 
-LIVE_WHY = {"FRENZY_TP": "TP", "FRENZY_TP_LATE": "TP", "MAX_HOLD_TIME": "CAP", "STOP_LOSS": "STOP"}
+LIVE_WHY = {"FRENZY_TP": "TP", "FRENZY_TP_LATE": "TP", "MAX_HOLD_TIME": "CAP", "STOP_LOSS": "STOP", "WILLY_LATE_TP": "LATE_TP"}   # ⏰ 297: a take-profit-class exit on the late line
 
 
 def parity(why_live, pct_live, w):
@@ -1227,6 +1255,13 @@ def s4_cells(P, tp, stop, hold):
         rec[f"s4_{name}"], rec[f"s4_why_{name}"], rec[f"s4_min_{name}"] = b["pct"], b["why"], b["xmin"]
     rec["s4_n_unres"] = sum(e["why"] == "UNRES" for e in evs)
     rec["_on_ticks"] = bool(P["n_tick"] > 0 and all(e["why"] != "UNRES" and not e["on_bar"] for e in evs))
+    lt = late_levels()                                            # ⏰ DL 297: the live late-TP exit and the OLD exit (= la, today's +tp / −stop / hold)
+    if lt is not None:
+        b = evaluate_late(P, tp, stop, hold, lt[0], lt[1])
+        rec.update(s297_LATE=b["pct"], s297_why_LATE=b["why"], s297_min_LATE=b["xmin"], s297_OLD=la["pct"], s297_why_OLD=la["why"],
+                   s297_changed=bool(la["why"] != "UNRES" and np.isfinite(la["xmin"]) and la["xmin"] > lt[0]))
+    else:
+        rec.update(s297_LATE=np.nan, s297_why_LATE="N/A", s297_min_LATE=np.nan, s297_OLD=la["pct"], s297_why_OLD=la["why"], s297_changed=False)
     return rec
 
 
@@ -1241,7 +1276,10 @@ def s4_score_fill(r, tp, stop, hold, tcache=None):
     rec["s285_src"] = "ticks" if rec.pop("_on_ticks285") else FX.path_src(P)
     rec.update(s290_cells(P, tp, stop, hold))                                # DL 290 cells: own source / pending columns
     rec["s290_src"] = "ticks" if rec.pop("_on_ticks290") else FX.path_src(P)
-    rec["s4_par_ok"], rec["s4_par_txt"] = parity(r.why, r.pct, {"v": {"LIVE": {"why": rec["s4_why_LIVE"], "pct": rec["s4_LIVE"]}}})
+    _fl297 = s297_deploy_ts()                                     # ⏰ a fill under the DL 297 rule is compared with the late-TP walk
+    _late = rec.get("s297_why_LATE") not in (None, "N/A") and _fl297 is not None and pd.Timestamp(r.ts) >= _fl297
+    rec["s4_par_ok"], rec["s4_par_txt"] = parity(r.why, r.pct, {"v": {"LIVE": ({"why": rec["s297_why_LATE"], "pct": rec["s297_LATE"]} if _late
+                                                                              else {"why": rec["s4_why_LIVE"], "pct": rec["s4_LIVE"]})}})
     return rec, ("ticks" if rec.pop("_on_ticks") else FX.path_src(P))
 
 
@@ -1558,7 +1596,49 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok):
         changed |= ch6
     except Exception as e:
         L6 = [f"### ⏱ T130…T150 on today's stop (DECISION_LOG 290) — unavailable this run ({type(e).__name__}: {str(e)[:160]})"]
-    return L + [""] + L5 + [""] + L6, st, changed
+    try:                                                          # ⏰ DL 297 rollback counterfactual: own subsection, never hides the lines above
+        L7 = s297_section(s4)
+    except Exception as e:
+        L7 = [f"### ⏰ WILLY late TP vs the old exit (DECISION_LOG 297) — unavailable this run ({type(e).__name__}: {str(e)[:160]})"]
+    return L + [""] + L5 + [""] + L6 + [""] + L7, st, changed
+
+
+def s297_section(s4, lt=None, floor=None):
+    """⏰ (DECISION_LOG 297) the rollback counterfactual: every live WILLY fill CHANGED by the late rule (still open at the late minute under
+    the OLD +tp / −stop / hold exit, walked on the same path) — its actual booked % vs the old exit's: rescued (Δ > 0) vs capped winners
+    (the old exit took the +tp, the late rule booked less) with points; the two pre-registered rollback gates (first 5 changed trades
+    Σ Δ < −6 pts; first 10 changed trades on ≥ 5 days Σ Δ < 0). Observe only — never changes config."""
+    lt = late_levels() if lt is None else lt
+    floor = s297_deploy_ts() if floor is None else floor
+    L = ["### ⏰ WILLY late take profit vs the old exit (DECISION_LOG 297 — rollback counterfactual, OBSERVE only)", ""]
+    if lt is None:
+        return L + ["Late take profit OFF in trading_config.json — nothing to score."]
+    if floor is None:
+        return L + [f"Not live yet (no \"{S297_DEPLOY_GREP}\" commit found) — no fill counted."]
+    if "s297_changed" not in s4.columns or not len(s4):
+        return L + ["No scored WILLY fill yet."]
+    coh = s4[(s4.ts >= floor) & s4.s4_src.notna()]
+    ch = coh[coh.s297_changed.fillna(False).astype(bool)].sort_values("ts", kind="stable")
+    L.append(f"Cohort: CLOSED {STRATEGY} fills opened ≥ {floor:%Y-%m-%d %H:%M} UTC; CHANGED = still open at minute {lt[0]:g} under the old exit "
+             f"(the same path walked without the late rule); Δ = the fill's booked % − the old exit's %.")
+    if not len(ch):
+        return L + [f"Changed trades: 0 of {len(coh)} scored fill(s) — collecting (gate 1 needs 5, gate 2 needs 10 on ≥ 5 days)."]
+    d = ch.pct.astype(float).values - ch.s297_OLD.astype(float).values
+    res, cap = d > 0, (ch.s297_why_OLD.astype(str).values == "TP") & (d < 0)
+    L.append(f"Changed trades: {len(ch)} · rescued {int(res.sum())} (Σ {d[res].sum():+.2f} pts) · capped winners {int(cap.sum())} "
+             f"(Σ {d[cap].sum():+.2f} pts) · net Σ Δ {d.sum():+.2f} pts (booked Σ {ch.pct.astype(float).sum():+.2f} %).")
+    L.append("Per fill: " + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair} {r.why} {float(r.pct):+.2f} vs old {r.s297_why_OLD} {float(r.s297_OLD):+.2f} "
+                                       f"(Δ {dd:+.2f})" for r, dd in zip(ch.itertuples(), d)))
+    if len(ch) >= 5:
+        g1 = f"{'🔴 ROLLBACK' if d[:5].sum() < S297_FIRST5_FLOOR else '🟢 pass'} (first 5 Σ Δ {d[:5].sum():+.2f} pts vs {S297_FIRST5_FLOOR:+g})"
+    else:
+        g1 = f"⏳ collecting ({len(ch)}/5)"
+    nd = ch.day.iloc[:10].nunique() if len(ch) >= 10 else ch.day.nunique()
+    if len(ch) >= 10 and nd >= 5:
+        g2 = f"{'🔴 ROLLBACK' if d[:10].sum() < 0 else '🟢 pass'} (first 10 Σ Δ {d[:10].sum():+.2f} pts, {nd} days)"
+    else:
+        g2 = f"⏳ collecting ({min(len(ch), 10)}/10 on {nd}/5 days)"
+    return L + [f"Gate 1 (first 5 changed): {g1} · Gate 2 (first 10 changed on ≥ 5 days): {g2}."]
 
 
 def _s285_fill_txt(r):
@@ -2009,6 +2089,25 @@ def selftest():
     saved290 = (S290_DEPLOY_GREP, S290_DEPLOY_PIN)
     _NET_BLOCKED = True
     try:
+        # ⏰ DL 297: the late-TP reason, its levels and the rollback counterfactual
+        chk(LIVE_WHY["WILLY_LATE_TP"] == "LATE_TP" and late_levels({"frenzy_willy_tp_pct": 1.25, "frenzy_willy_late_tp_minutes": 30,
+                                                                     "frenzy_willy_late_tp_pct": 0.25}) == (30.0, 0.25)
+            and late_levels({"frenzy_willy_tp_pct": 1.25, "frenzy_willy_late_tp_minutes": 0, "frenzy_willy_late_tp_pct": 0.25}) is None
+            and late_levels({"frenzy_willy_tp_pct": 1.25, "frenzy_willy_late_tp_minutes": 30, "frenzy_willy_late_tp_pct": 1.25}) is None,
+            "297 late levels + reason map")
+        _t0 = pd.Timestamp("2026-10-16")
+        _f = pd.DataFrame(dict(ts=_t0 + pd.to_timedelta(np.arange(6), "D"), day=[str((_t0 + pd.Timedelta(days=i)).date()) for i in range(6)],
+                               pair=list("ABCDEF"), s4_src="ticks", why=["WILLY_LATE_TP"] * 5 + ["FRENZY_TP"],
+                               pct=[0.25, 0.25, 0.25, 0.25, 0.25, 1.3], s297_OLD=[-4.0, 1.25, 1.25, 1.25, -0.5, 1.3],
+                               s297_why_OLD=["STOP", "TP", "TP", "TP", "CAP", "TP"], s297_changed=[True] * 5 + [False]))
+        _o = "\n".join(s297_section(_f, (30.0, 0.25), _t0 - pd.Timedelta(hours=1)))
+        chk("Changed trades: 5" in _o and "rescued 2 (Σ +5.00 pts)" in _o and "capped winners 3 (Σ -3.00 pts)" in _o and "🟢 pass" in _o
+            and "⏳ collecting (5/10" in _o, f"297 counterfactual: rescued / capped / gate 1\n{_o}")
+        _o2 = "\n".join(s297_section(_f.assign(s297_OLD=[1.25] * 5 + [1.3], s297_why_OLD=["TP"] * 6, pct=[-1.0] * 5 + [1.3]), (30.0, 0.25),
+                                      _t0 - pd.Timedelta(hours=1)))
+        chk("🔴 ROLLBACK (first 5 Σ Δ -11.25" in _o2, f"297 gate 1 fires below −6\n{_o2}")
+        chk("Changed trades: 0 of 1" in "\n".join(s297_section(_f.iloc[5:], (30.0, 0.25), _t0 - pd.Timedelta(hours=1))),
+            "297: an unchanged fill (closed before the late minute) is not a changed trade")
         chk((CAPS, VERDICT_CAPS, N_MIN, DAYS_MIN, REREAD_N, P_MIN, SHARE_MAX, BOOT_N, BOOT_SEED, PARITY_TOL, MAX_REQ, WEIGHT_STOP, BUDGET_S, TAKER)
             == ((15, 20, 30, 60), (15, 20), 20, 8, 40, 0.90, 0.50, 4000, 7, 0.05, 2, 900, 25.0, 0.045), "pre-registered constants pinned")
         for fn in (lambda: _fetch_1m("X", 0, 1, 0), lambda: _fetch_archive("X", "2026-01-01", 0)):  # both refuse while blocked

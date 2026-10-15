@@ -266,6 +266,8 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None):
     o = o[o.ts >= floor].reset_index(drop=True)
     man = o[o.why.astype(str).str.upper().str.startswith("MANUAL")]
     o = o[~o.why.astype(str).str.upper().str.startswith("MANUAL")].reset_index(drop=True)
+    wlate = o[o.why.astype(str) == "WILLY_LATE_TP"]                  # ⏰ DL 297 late-TP exits: a take-profit-class exit of a DIFFERENT rule than
+    o = o[o.why.astype(str) != "WILLY_LATE_TP"].reset_index(drop=True)   # the one walked here → out, counted (scored by WILLY_TIMECAP's 297 read)
     tc = {}
     sc_all = scored_frame(o, hold, tp, stop, tc)
     done = WT.load_attempts()["done"]
@@ -306,6 +308,9 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None):
         L.append("")
     if len(man):
         L.append(f"Excluded: {len(man)} manually closed WILLY fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()))
+    if len(wlate):
+        L.append(f"Excluded: {len(wlate)} WILLY_LATE_TP fill(s) (DECISION_LOG 297 late take profit — scored vs the old exit by WILLY_TIMECAP): "
+                 + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair}" for r in wlate.itertuples()))
     if len(uns):
         L.append("UNSCORED (no path yet): " + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair}" + ("" if r.pend else " (final — no data)")
                                                        for r in uns.itertuples()))
@@ -425,7 +430,8 @@ def selftest():
                         entry_price=E, pnl=1.0, closed_at="x")
             pd.DataFrame([dict(base, opened_at="2026-10-09T08:45:09", pair="KAIAUSDT", pnl_percentage=1.2, close_reason="FRENZY_TP"),
                           dict(base, opened_at="2026-10-09T12:00:00", pair="NOKUSDT", pnl_percentage=1.0, close_reason="FRENZY_TP"),
-                          dict(base, opened_at="2026-10-09T13:00:00", pair="MANUSDT", pnl_percentage=0.5, close_reason="MANUAL_TP")]
+                          dict(base, opened_at="2026-10-09T13:00:00", pair="MANUSDT", pnl_percentage=0.5, close_reason="MANUAL_TP"),
+                          dict(base, opened_at="2026-10-09T14:00:00", pair="LATUSDT", pnl_percentage=0.25, close_reason="WILLY_LATE_TP")]
                          ).to_csv(os.path.join(dl, "scalpars_orders_paper_a.csv"), index=False)
             tk = pd.Timestamp("2026-10-09 08:45:09").value // 10**6
             os.makedirs(os.path.join(WT._CACHE, "ticks_q", "KAIAUSDT"))
@@ -436,7 +442,7 @@ def selftest():
             out = "\n".join(run(pd.Timestamp("2026-10-09 16:00").value // 10**6, state_path=sp, th={}))
             chk("+1.25 / −4 test (269" in out and "| **TP +1.25 / −4 (its own test, 269)** | 1 |" in out
                 and "KAIAUSDT [ticks] no stop +1.20 (TP @ 30 min, low -4.50) → −4: -4.50 (STOP)" in out and "worst no-stop result so far +1.20 %" in out and "UNSCORED (no path yet): 10-09 12:00 NOKUSDT"
-                in out and "MANUSDT (MANUAL_TP)" in out and "1/1 match" in out and "COLLECTING" in out and not os.path.exists(sp), f"end-to-end\n{out}")
+                in out and "MANUSDT (MANUAL_TP)" in out and "Excluded: 1 WILLY_LATE_TP" in out and "LATUSDT" in out and "1/1 match" in out and "COLLECTING" in out and not os.path.exists(sp), f"end-to-end\n{out}")
     finally:
         WT._CACHE, WT.MY_CACHE, WT.EXPORT_GLOB, WT._NET_BLOCKED, WT.deploy_ts = saved
         WT._K1.clear()

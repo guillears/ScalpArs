@@ -65,6 +65,12 @@ def _harness(monkeypatch, action="alert", rows=(), close_ok=True):
         log.append(("cancel_all", pair)); return True
     monkeypatch.setattr(T.binance_service, "close_position", _close)
     monkeypatch.setattr(T.binance_service, "cancel_all_backstops", _cancel_all)
+    async def _ro_orders(pair=None):   # 🎯 (296) the flatten cancels resting reduce-only orders FIRST
+        log.append(("ro_read", pair)); return [{"id": "R1", "pair": pair, "side": "sell", "type": "limit", "price": 2.1, "amount": 5.0, "filled": 0.0, "timestamp": None}]
+    async def _ro_cancel(pair, oid):
+        log.append(("ro_cancel", pair, oid)); return "canceled"
+    monkeypatch.setattr(T.binance_service, "fetch_open_reduce_only_orders", _ro_orders)
+    monkeypatch.setattr(T.binance_service, "cancel_resting_tp", _ro_cancel)
     TE = T.TradingEngine; eng = TE.__new__(TE); eng.is_paper_mode = False
     eng._record_filter_block = lambda name, d, had_room=True: blocks.append((name, d))
 
@@ -128,7 +134,7 @@ def test_flatten_action_closes_no_row_positions_only(monkeypatch):
             await eng.check_untracked_positions(db, [snap[1]])                      # FOO gone after the flatten: not closed twice
         await engine.dispose()
     asyncio.run(go())
-    assert log == [("close", "FOO/USDT:USDT", "LONG", 5.0), ("cancel_all", "FOOUSDT")]   # the SIDE_MISMATCH (has a DB row) is alert-only
+    assert log == [("ro_read", "FOOUSDT"), ("ro_cancel", "FOOUSDT", "R1"), ("close", "FOO/USDT:USDT", "LONG", 5.0), ("cancel_all", "FOOUSDT")]   # 🎯 (296) resting orders cancelled FIRST   # the SIDE_MISMATCH (has a DB row) is alert-only
     assert ("UNTRACKED_FLATTENED", "LONG") in blocks and eng.untracked_block("QUXUSDT")["reason"] == "SIDE_MISMATCH"
 
 

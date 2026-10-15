@@ -6761,3 +6761,134 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Files:** services/exec_shadow.py (new, pure) · services/trading_engine.py · models.py · database.py (7 nullable columns) ·
   tests/test_exec_shadow.py (new) · tests/test_manual_entry_stamps.py (4 sleeve-only stamps listed). D12: per-trade columns ride the
   orders CSV; the summary table is read at batch review (no dashboard table in this ship).
+
+## (296) 2026-10-15 — 🎯 RESTING TAKE-PROFIT built for FRENZY_WILLY + FRENZY_LITE — operator-armed DECLARED EXCEPTION (both switches ON)
+- **Why:** live TP give-back 4/4 — WILLY ZK +1.12 / BLUR +1.09 / RLC +1.08 vs the +1.25 setting, LITE DEEP +2.80 vs +3 (−0.13…−0.22): the
+  software TP fires on the touch and the market order meets a book that already gave way. The 295 shadow on the live export: all 4 would
+  have filled at the target. Design: reports/MAKER_TP_ENTRY_DESIGN_2026-10-15.md §3.
+- **DECLARED EXCEPTION (operator 2026-10-15, explicit):** shipped ARMED (`resting_tp_willy_enabled` / `resting_tp_lite_enabled` true in
+  config.py AND trading_config.json) below the usual evidence bar — N = 4 live TPs; the tick study's Q1 was a wash on prints (queue position
+  and partial fills are only measurable live). The 295 arming plan (≥ 10 live WILLY TPs with shadow_rtp_filled true) is superseded by this
+  decision.
+- **Built:** a reduce-only, post-only (GTX) LIMIT at the price that books the SAME net TP with the MAKER exit fee (exec_shadow.resting_tp_price —
+  the shadow and the real order price the same limit), placed after the fill + backstop + the row COMMIT (an unbooked fill never carries one),
+  recorded on the row: `protective_tp_order_id` (the unused column, reused) · new `resting_tp_price` · `resting_tp_filled_qty` (database.py
+  migration; ride the orders CSV). Placement failure / GTX would-cross → `[RESTING_TP_FAILED]` + counter, the trade runs on its software TP.
+  · Fill detection (monitor + realtime, one gate): query the order only while the price is at / through the limit, ≤ 1 / s / order; FILLED →
+  close booked at the order's average, `FRENZY_TP`, exit type MAKER, maker fee, NO market order. · The software TP becomes the SAFETY NET while
+  a limit is alive: fires only after ≥ `resting_tp_through_ticks` (2) ticks THROUGH for ≥ `resting_tp_grace_s` (3 s) → cancel → market-close
+  ONLY the remainder (reduce-only) → one BLENDED row. · CANCEL-FIRST on every exit: `_close_position_locked` (every close funnel: stops, time
+  cap, manual close, override closes, retry queue, safety net) settles the limit before the backstop cancel and the market order; a cancel that
+  fails while it still rests / an unreadable order → NO market order, the close goes to the retry queue (backstop kept). Reconciler
+  EXTERNAL_CLOSE / BACKSTOP_STOP settles it first (a full fill re-labels the row FRENZY_TP, MAKER); untracked flatten cancels the symbol's
+  reduce-only orders first; an exit override withdraws it. · Blended booking: exit_price = (f·p_lim + r·p_mkt)/Q, exit_fee = f·p_lim·maker +
+  r·p_mkt·taker, calculate_pnl(Q, exit_price, exit_fee) = Σ part P&L exactly; exit_order_type MAKER (all) / MAKER+TAKER (part) / TAKER (none).
+  · Sweeps (monitor pass, 5 s, ≤ 3 live actions): restart re-arm from the row · heal (age-matching price; a leftover limit of ours is ADOPTED,
+  strays on a bot position cancelled; ≥ 30 s retry; a partially filled TP is never re-armed) · switch OFF / override / LITE lock armed →
+  cancel · TP setting changed → cancel + re-place (skipped while the new price is already crossed). Reconciler orphan clean (60 s): a regular
+  reduce-only order on a symbol with no OPEN live row → cancel `[RESTING_TP_ORPHAN]` (not for untracked symbols / opens in flight / < 60 s).
+  · Paper = live: same `resting_tp_price` recorded; books at the limit with the maker fee only when the price trades ≥ 1 tick THROUGH it
+  (no partials modelled — a stated optimism). Switch OFF → paper and live exactly as before (tested).
+- **Logs / counters:** [RESTING_TP_PLACED] [RESTING_TP_FILLED] [RESTING_TP_PARTIAL] [RESTING_TP_CANCELED] [RESTING_TP_FALLBACK]
+  [RESTING_TP_FAILED] [RESTING_TP_ORPHAN] [RESTING_TP_CANCEL_FAILED]; counters RESTING_TP_FAILED / _FALLBACK / _ORPHAN. D12: no dashboard
+  metric (per-trade columns ride the CSV; the config export line carries the switches in both text exports via _buildConfigLines).
+- **D11:** `resting_tp_willy_enabled` (true) · `resting_tp_lite_enabled` (true) · `resting_tp_grace_s` (3.0, 0–60) · `resting_tp_through_ticks`
+  (2, 1–50): config.py + trading_config.json + engine + UI (FRENZY box, next to the WILLY settings) + load / save + export line + PUT /api/config
+  validation (services/resting_tp.config_errors).
+- **🔒 REVERT gate (tighter than standard, per sleeve):** after 15 armed WILLY TPs (LITE: 10), mean booked TP net % ≤ the 295-style market
+  counterfactual (what the software TP's market order would have booked), OR any booked resting-TP close showing an accounting mismatch vs
+  Binance (fill qty / price / fee) → that sleeve's switch OFF.
+- **Reviews (caveman + deep, round 1 — operator "fix all", every item applied with a test):** reconciler books a resting-TP row under the
+  engine close lock with the row RE-READ + commits inside it (a TP fill removes the position before any closing intent → the gate's own
+  close and the reconciler could both book; now `[RECONCILE_RACE_SKIPPED]`), pops the realtime state, and a blocked settle books
+  EXTERNAL_CLOSE with notes `RTP_SETTLE_BLOCKED` · the close re-reads protective_tp_order_id / resting_tp_price / resting_tp_filled_qty
+  under the lock before cancelling (a concurrent late swap's newer id is never overwritten) · every exchange call under the close lock or
+  in the gate is bounded at 3 s (`RTP_IO_TIMEOUT_S`; a timeout = UNKNOWN, never filled / cancelled) · the realtime price callback never
+  awaits REST: the order query and the late swap run as background tasks with a per-order in-flight flag and book their own FILLED /
+  LATE_NOW · unknown ids: a resting-TP sleeve close with NO recorded id cancels the symbol's reduce-only orders first and books their fill;
+  a placement with no answer = 'unknown' → the next heal pass adopts / cancels before placing again; the orphan clean works by ORDER ID
+  (any regular reduce-only order that is not an OPEN live row's recorded TP, ≥ 60 s old, no open / close / resting-TP action in flight on
+  that pair) · stop-class closes (STOP_LOSS, MAX_HOLD_TIME, BACKSTOP*, MANUAL / MANUAL_SL / OVERRIDE_SL) never wait on a blocked cancel:
+  the reduce-only market order for (quantity − recorded fill) goes out, the limit is cancelled + re-read after the close and booked blended;
+  still unreadable → booked on the recorded fill, notes `RTP_FILL_UNVERIFIED` · every other blocked close keeps its stop on Binance, waits
+  in the retry queue with ITS reason stamped (no EXIT_RETRY relabel) · realtime state keyed by order id is validated against pair / open
+  time / mode and cleared on reset and mode switch · sweep: per-row isolation; a sweep LATE_NOW is logged and closed at once ·
+  `cancel_resting_tp` returns Binance's own cancel response (status / executedQty / avgPrice) — no follow-up read after a successful cancel
+  · the open path cancels stray close-side reduce-only limits on the symbol before placing · the gate's GONE write is conditional on the id
+  it read · UI Exit Type table lists `MAKER+TAKER`; the MAKER fee-saving column counts blended rows' maker part (Q·p_blend·taker − fee =
+  exactly f·p_lim·(taker − maker)) · startup clears a legacy protective_tp_order_id (the retired April protective-stops column) on OPEN rows
+  with no resting_tp_price (`[RESTING_TP_LEGACY_CLEARED]`).
+- **Reviews round 2 (caveman #1–#13 + deep B1 / S6 / S7, operator "fix all", each with a test):** reconciler: fill price + backstop status
+  are read BEFORE the close lock (bounded 3 s); under the lock only re-read · settle · backstop cancel (bounded) · commit; earlier rows are
+  committed before the lock and a failed booking is rolled back / expired (never committed by the next row); only rows with something
+  recorded or their sleeve switch ON take the lock · a forced stop-class close is sized from the LIVE position (flat → no market order),
+  the limit reconciled after it, and a limit that turns out to have filled the WHOLE position is booked as its TP (FRENZY_TP /
+  WILLY_LATE_TP, MAKER, slippage vs the limit) — never STOP_LOSS / MAX_HOLD_TIME / MANUAL; the CLOSE_FALLBACK branch reconciles it too ·
+  `place_resting_tp` returns a distinct `crossed` for -5022 / GTX EXPIRED — only `crossed` makes the late swap market-close now; any other
+  refusal (-2022 / -1111 / -4014 / -4164 …) = failed (software late TP runs, heal retries) · switch OFF = exactly as before: no close-path
+  re-read / settle, no reconciler lock, no orphan-clean exchange call unless something is recorded · the symbol probe runs ONLY for an
+  UNKNOWN placement (stamped price · id NULL · fill NULL); a failed probe never blocks a close (RTP_FILL_UNVERIFIED) · a 'gone' cancel with
+  the fill already known → FILLED with no read · the in-flight flag is cleared when a background task cannot start and by a 6 s watchdog ·
+  orphan clean: fresh per-id re-check, a missing timestamp = young, symbols with a Binance position but no OPEN live row never touched (S6)
+  · a pair left with an UNVERIFIED limit is marked dirty: the next open on it (bot or manual) cancels its reduce-only orders first, refused
+  when unreadable · B1: remainders are `round(q − f, 10)` and snapped to the market step before the reduce-only order (ccxt truncates:
+  0.3 − 0.1 = 0.19999… → 0.1 would have left half the position open); after any partial / forced close the LIVE position must be 0 — a
+  residual is closed reduce-only, and one that cannot be closed keeps the row OPEN, re-places the backstop and retries (never booked CLOSED
+  over a live residual) · S7: EXTERNAL_CLOSE of an unknown placement at ≈ its limit price → notes `RTP_UNRECORDED_FILL?`.
+- **Known lock holds (documented, caveman #11 / #13):** the exit-retry queue runs each id's close under the global close lock — up to ~6 s
+  per id (3 bounded exchange calls + the market retries); `_rtp_arm` holds the lock up to ~9 s worst case (stray read + ≤ 5 stray cancels
+  [RTP_STRAY_MAX_PER_PASS] + place, each ≤ 3 s) — other closes wait that long.
+- **First-live-fill checklist (operator / hourly check; builder's list merged with the round-2 deep review's checklist):** ① `[RESTING_TP_PLACED]` within seconds of every WILLY / LITE fill, orderId on the row ② Binance open
+  orders show exactly ONE reduce-only limit per WILLY / LITE position, at resting_tp_price ③ the limit's price books ≥ the net TP (maker
+  fee) on the row's own entry ④ a TP fill → `[RESTING_TP_FILLED]`, exit type MAKER, exit_fee = qty × price × 0.018 %, no market order in
+  the Binance trade history ⑤ the row's exit price / qty / fee match Binance's trade (accounting-mismatch revert gate) ⑥ every stop / time
+  cap / manual close shows `[RESTING_TP_CANCELED]` BEFORE the market order and no reduce-only order left on the symbol after it ⑦ the close-
+  all backstop is cancelled after every resting-TP close ⑧ any `[RESTING_TP_FALLBACK]` → the remainder only, booked blended (MAKER+TAKER
+  when part filled) ⑨ WILLY at minute 30: `[WILLY_LATE_TP]` swap (cancel then a new limit at +0.25) or a market close if already through
+  ⑩ no `[RESTING_TP_ORPHAN]`, `[RESTING_TP_CANCEL_FAILED]`, `[RESTING_TP_RESIDUAL]`, `RTP_FILL_UNVERIFIED` / `RTP_SETTLE_BLOCKED` /
+  `RTP_UNRECORDED_FILL?` notes — any one = investigate the same day ⑪ after a restart: the sweep re-seeds (no duplicate limits; heal
+  ADOPTS instead of placing twice) ⑫ the 295 shadow keeps logging `[RTP_SHADOW]` beside the real booking (the revert gate's counterfactual). ⑬ startup: `[RESTING_TP_LEGACY_CLEARED]` as expected and no OPEN row with protective_tp_order_id but
+  no resting_tp_price ⑭ a partial + close books MAKER+TAKER and the Binance position is exactly 0 afterwards (no CLOSE_VERIFY_FAIL, no
+  `[RESTING_TP_RESIDUAL]`) ⑮ confirm on Binance: reduce-only limits auto-cancel when the position closes, and an oversized reduce-only
+  MARKET is capped (not rejected) ⑯ no software stop close on another position waited > ~3 s behind a reconcile / resting-TP lock hold
+  (lock wait vs `[REALTIME_*EXIT]` timestamps) ⑰ dashboard Exit Type table + both text exports show MAKER+TAKER; paper with the switches
+  OFF is unchanged, ON books a paper TP only ≥ 1 tick through.
+- **Round 3 (final deep review, applied):** BLOCKING — the residual guard and the blocked-close reason stamp now write ON the session's
+  identity-mapped Order (close_reason, re-placed backstop id / pct / trigger) so a same-cycle exit-retry never reads a stale
+  backstop_algo_id=None (which would skip the pre-close backstop cancel and leave a close-all stop on a flat symbol) · the orphan clean
+  keeps a pair dirty when its cancel answered 'error' · the reconciler releases the global close lock on a cancelled task (BaseException).
+  Noted, not changed: residual retry books the whole remainder at the retry's fill (accounting gate catches it); the pre-lock backstop
+  status belongs to the pre-refresh id (edge); a double DB-write failure of an 'unknown' stamp relies on Binance auto-cancel (checklist ⑮).
+- **⚠ Operator note (caveman #11):** a bot position carries exactly ONE resting TP — the open path, the heal pass and the orphan clean
+  CANCEL any other close-side reduce-only regular order on a bot position's symbol, INCLUDING an operator's own manual reduce-only limit
+  placed on Binance (symbols with an UNTRACKED position — the operator's own — are never touched by the orphan clean).
+- **Files:** services/resting_tp.py (new, pure) · services/binance_service.py (place / cancel / fetch / open reduce-only orders) ·
+  services/trading_engine.py · services/frenzy.py (resting_tp flag on the exit functions) · main.py (reconciler, PUT validation) · models.py ·
+  database.py · config.py · trading_config.json · templates/index.html · tests/test_resting_tp.py (new) · source pins updated in
+  tests/test_frenzy_bearish_day.py / test_frenzy_wide.py / test_golive_untracked.py (mocks the pre-flatten cancel).
+
+## (297) 2026-10-15 — ⏰ WILLY LATE TAKE-PROFIT (30 min → +0.25) — operator-armed DECLARED EXCEPTION
+- **Rule:** a FRENZY_WILLY order aged ≥ `frenzy_willy_late_tp_minutes` (30; age = now − opened_at, the fill time) takes profit at
+  `frenzy_willy_late_tp_pct` (+0.25 net) instead of +1.25 → close reason `WILLY_LATE_TP` (current P&L only — a peak before the late minute is
+  no fill at the late target); stop −4 and time cap 90 unchanged. ONE rule (services/frenzy.frenzy_willy_tp_at) used by frenzy_willy_exit_for
+  (both callers: realtime callback and monitor path, paper and live) and the resting TP. ≤ 0 (either) or late % ≥ the WILLY TP = off = today's
+  exit (tested at every age). WILLY_LATE_TP whitelisted beside FRENZY_TP (post-exit tracking + close classification in the engine).
+- **With a resting TP (live):** at the late minute the +1.25 limit is cancelled FIRST (reports filled → booked FRENZY_TP, done); price below
+  the late limit → a new reduce-only post-only limit at the late price for the quantity is placed and recorded; already at / through it (or GTX
+  rejected) → market-close now (WILLY_LATE_TP). Same through + grace safety net on the late limit. Heal / restart sweep places the price that
+  matches the order's AGE. A +1.25 limit that partially filled before the late minute is NOT swapped (the rest runs on the software late TP,
+  booked blended) — known limitation. Paper mirrors it (late limit fills at ≥ 1 tick through; already through → taker at the current price).
+  Logs `[WILLY_LATE_TP]` (swap done / market now, with age and prices).
+- **Evidence (DECLARED EXCEPTION — reports/WILLY_DURATION_30MIN_RESTUDY_2026-10-15.md finds NO candidate):** 2026 tick backtest +0.025 %/fill
+  (P 0.85, 617) · 2025 −0.016 (P 0.20, 899) · 2026-H2 ≈ 0 · master B19–B21 2 rescued / 0 killed · live DUSK would have exited +0.25 vs −3.43.
+- **🔒 ROLLBACK gates:** day-2 operational review (any correctness error → rollback) · the first 5 changed trades (WILLY open at minute 30) < −6
+  points net vs the old +1.25/−4/90 exit · or the first 10 changed trades on ≥ 5 days net < 0.
+- **Reason name:** `WILLY_LATE_TP` (renamed from the draft FRENZY_LATE_TP — never confused with the restart-recovery FRENZY_TP_LATE). Rule order
+  (deep E): a print at/above +1.25 after the late minute still books FRENZY_TP; only then the late line.
+- **Scout (deep F):** scripts/scout_willy_timecap.py knows WILLY_LATE_TP (LATE_TP class), walks post-297 fills with the late rule for parity,
+  and its new `s297_section` scores every CHANGED fill (open at the late minute under the old exit, same path) vs the OLD +1.25/−4/90 exit:
+  rescued vs capped-winner counts and points + both rollback gates (first 5 Σ Δ < −6; first 10 on ≥ 5 days Σ Δ < 0 — read as net vs the
+  old exit). scout_willy_tp125.py / scout_willy_stop.py exclude WILLY_LATE_TP fills (a different exit than they walk), listed. All three
+  --selftest green. Still not built: the open-orders card draws the +1.25 TP line after minute 30.
+- **D11:** `frenzy_willy_late_tp_minutes` (30) · `frenzy_willy_late_tp_pct` (0.25): config.py + trading_config.json + engine + UI (FRENZY_NUM_FIELDS,
+  next to WILLY max hold) + export line + PUT validation (minutes ≥ 0, pct ≥ 0 and < the WILLY TP). tests/test_frenzy_sleeve.py field count 55 → 57.

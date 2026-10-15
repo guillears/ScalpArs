@@ -1509,6 +1509,29 @@ class SignalThresholds(BaseModel):
     #   🔒 REVERT the TP / cap (not the 10×): at the first 20 WILLY fills on ≥ 8 days after this deploy, if the old exit (+1/−4/120, Scout shadow
     #   OLD_EXIT) beats the new one by mean paired Δ > 0 at day-bootstrap P ≥ 0.90, OR the new exit's average < 0. 60-min cap read by Scout T125C60.
     frenzy_willy_max_slots: int = 1               # max FRENZY_WILLY open at once — 1 (the global hold makes it 1 anyway)
+    # 🎯 2026-10-15 RESTING TAKE-PROFIT (DECISION_LOG 296, operator-armed DECLARED EXCEPTION — below the usual evidence bar): a reduce-only,
+    # post-only (GTX) LIMIT rests on Binance at the price that books the SAME net TP with the MAKER exit fee (services/resting_tp.py +
+    # exec_shadow.resting_tp_price). Evidence: live TP give-back 4/4 (WILLY ZK +1.12 / BLUR +1.09 / RLC +1.08 vs +1.25, LITE DEEP +2.80 vs
+    # +3 → −0.13…−0.22); the 295 shadow on the live export: all 4 would have filled at the target. N = 4 live TPs; the tick study's Q1 was
+    # a wash on prints (queue / partial fills are only measurable live). While a resting TP is alive the software TP is the SAFETY NET only:
+    # it fires once the price has been ≥ resting_tp_through_ticks ticks THROUGH the limit for ≥ resting_tp_grace_s (cancel → market-close the
+    # rest → blended booking). Every other exit cancels the limit first. Paper = live: paper books at the limit (maker fee) only when the
+    # price trades ≥ 1 tick through it. OFF = paper and live exactly as before.
+    # 🔒 REVERT per sleeve (switch OFF): after 15 armed WILLY TPs (LITE: 10), mean booked TP net % ≤ the 295-style market counterfactual,
+    # OR any booked resting-TP close shows an accounting mismatch vs Binance.
+    resting_tp_willy_enabled: bool = True         # FRENZY_WILLY (operator 2026-10-15: armed)
+    resting_tp_lite_enabled: bool = True          # FRENZY_LITE (operator 2026-10-15: armed; none while frenzy_lock_arm_pct > 0 — no fixed TP then)
+    resting_tp_grace_s: float = 3.0               # safety net: seconds the price must stay through the limit (0–60)
+    resting_tp_through_ticks: int = 2             # safety net: ticks THROUGH the limit (1–50)
+    # ⏰ 2026-10-15 WILLY LATE TAKE-PROFIT (DECISION_LOG 297, operator-armed DECLARED EXCEPTION — reports/WILLY_DURATION_30MIN_RESTUDY_2026-10-15.md
+    # finds NO candidate): a FRENZY_WILLY order aged ≥ frenzy_willy_late_tp_minutes takes profit at frenzy_willy_late_tp_pct net (WILLY_LATE_TP)
+    # instead of the WILLY TP; stop −4 / time cap 90 unchanged. Evidence: 2026 tick backtest +0.025 %/fill (P 0.85, 617) · 2025 −0.016 (P 0.20,
+    # 899) · 2026-H2 ≈ 0 · master B19–B21 2 rescued / 0 killed · live DUSK would have exited +0.25 vs −3.43. With a resting TP alive the +1.25
+    # limit is swapped for a late limit at the late minute (cancel first; already through → market now). ≤ 0 (either) = off = today's exit.
+    # 🔒 ROLLBACK: day-2 operational review (any correctness error) · first 5 changed trades (WILLY open at the late minute) < −6 points net vs
+    # the old +1.25/−4/90 exit · or the first 10 changed trades on ≥ 5 days net < 0.
+    frenzy_willy_late_tp_minutes: float = 30.0    # order age (minutes since the fill) from which the late TP applies (≤ 0 = off)
+    frenzy_willy_late_tp_pct: float = 0.25        # late take profit, net % (≤ 0 = off; must be below frenzy_willy_tp_pct)
     # 🟥 Oct-8 (operator): A / B no longer open on the trigger bar — the trigger ARMS a pending entry that opens on the FIRST closed RED 5m bar
     # (close < open; unreadable ≠ red; a red trigger bar opens at once) within this many minutes of the trigger bar while the episode lasts;
     # else FRENZY_WILLY_RED_EXPIRED (no entry, the episode's A / B one-shot stays used). Guards are judged at the red bar; a global-hold /

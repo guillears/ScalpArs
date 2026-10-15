@@ -77,7 +77,11 @@ def _rh_pnl_pct(direction, entry_price, price, quantity, entry_fee):
 
 from services.recovery_hold import (RH_STOP_CLASS, closed_rsi as _rh_closed_rsi, rsi_fresh as _rh_rsi_fresh, rh_prefixed as _rh_prefixed,  # noqa: E402
                                     rh_strip as _rh_strip, rh_trigger_ok, rh_in_hold, rh_exit, rh_tripwire)
-from services.exec_shadow import entry_book_metrics, resting_tp_shadow, cached_tick   # 📏 (DECISION_LOG 295) execution-quality shadow (observe only)
+from services.exec_shadow import entry_book_metrics, resting_tp_shadow, cached_tick, resting_tp_price   # 📏 (DECISION_LOG 295) execution-quality shadow (observe only) · 🎯 296 the real limit
+from services.resting_tp import (RTP_SLEEVES, RTP_QUERY_MIN_S, RTP_HEAL_RETRY_S, RTP_SWEEP_EVERY_S, RTP_SWEEP_MAX_ACTIONS, RTP_ORPHAN_MIN_AGE_S,  # 🎯 (DECISION_LOG 296)
+                                  rtp_target, rtp_reason_for_limit, rtp_grace_s, rtp_through_ticks, at_or_through, paper_filled, safety_net,
+                                  is_full, remaining_qty, blend_exit, order_fill, cancel_view, stop_class as rtp_stop_class, ts_key, RTP_IO_TIMEOUT_S,
+                                  RTP_STRAY_MAX_PER_PASS, RTP_BUSY_WATCHDOG_S, rtp_enabled)
 from services import decision_journal as _djournal  # Sep-18 📓 decision journal (file-only, never raises)
 from services.websocket_tracker import websocket_tracker
 
@@ -117,6 +121,7 @@ _close_lock = asyncio.Lock()
 # EXTERNAL_CLOSE, or max retries reached.
 _exit_retry_queue: Dict[int, int] = {}
 _EXIT_RETRY_MAX = 30
+_rtp_rt: Dict[int, Dict] = {}   # 🎯 (DECISION_LOG 296) order id → resting-TP realtime state (first-through clock, query throttle); re-seeded from the row
 
 # Current BTC macro regime, updated by scan_and_trade, read by update_open_positions
 _current_btc_regime: str = "NEUTRAL"
@@ -3133,7 +3138,7 @@ class TradingEngine:
                     _reason_base.startswith("HARD_TP") or  # Jul 20: hard TP cap — regret rows are its revert-gate data
                     _reason_base.startswith("SPIKE_") or  # Jul 27: spike option-D reasons (SL/FLOOR/RSI_COOL) — post-exit rows are the BANANA-watch + fade-looseness read instruments
 
-                    _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("FRENZY_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or
+                    _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("FRENZY_TP") or _reason_base.startswith("WILLY_LATE_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or
                     # Jun 14: Flip Entry exits — keep post-exit tracking alive across restart
                     _reason_base.startswith("FLIP_")):
                 continue
@@ -3416,6 +3421,12 @@ class TradingEngine:
             for p, u in list(conf.items()):
                 if u.get('reason') != "NO_ROW" or u.get('flattened'):
                     continue   # a side mismatch has a DB row on the pair — alert only, never auto-close
+                try:   # 🎯 (DECISION_LOG 296) cancel FIRST: a resting reduce-only order on the symbol must not race the flatten
+                    for _ro in (await self._rtp_io(binance_service.fetch_open_reduce_only_orders(p), f"{p} open reduce-only orders")) or []:
+                        _rc, _ = cancel_view(await self._rtp_io(binance_service.cancel_resting_tp(p, _ro['id']), f"{p} cancel {_ro['id']}"))
+                        logger.warning(f"[RESTING_TP_CANCELED] {p}: reduce-only orderId={_ro['id']} before the untracked flatten — {_rc}")
+                except Exception as _roe:
+                    logger.error(f"[RESTING_TP] {p}: pre-flatten cancel failed ({_roe}) — flattening anyway (reduce-only)")
                 try:
                     ok = await binance_service.close_position(p[:-4] + "/USDT:USDT", u.get('side'), u.get('qty'))
                 except Exception as _fe:
@@ -3532,6 +3543,900 @@ class TradingEngine:
             out.append((oid, status))
         return out
 
+    # ══ 🎯 RESTING TAKE-PROFIT (DECISION_LOG 296) + ⏰ WILLY LATE TP (DECISION_LOG 297) ══════════════════════════════════════════════════
+    # The live order (protective_tp_order_id) / its price (resting_tp_price) / its fill (resting_tp_filled_qty) live on the row; _rtp_rt is
+    # the per-order realtime state (first-through clock, query throttle), re-seeded from the row by the monitor and the sweep after a
+    # restart, validated against the row's pair / open time / mode. Every exchange action that changes the order runs under _close_lock with
+    # the row RE-READ (a close and a sweep never act on the same order at once), every exchange call is bounded (RTP_IO_TIMEOUT_S; a timeout
+    # is UNKNOWN, never filled / canceled), and the realtime price callback never awaits REST (its queries / late swaps run as background
+    # tasks with a per-order in-flight flag). Rules: services/resting_tp.py. Never raises into the open / monitor / close paths.
+    async def _rtp_io(self, coro, what):
+        """One bounded exchange call → its result, or None on a timeout / error (callers treat None as UNKNOWN)."""
+        try:
+            return await asyncio.wait_for(coro, RTP_IO_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            logger.error(f"[RESTING_TP] {what}: no answer in {RTP_IO_TIMEOUT_S:.0f}s — treated as UNKNOWN")
+            return None
+        except Exception as _e:
+            logger.error(f"[RESTING_TP] {what}: {_e!r} — treated as UNKNOWN")
+            return None
+
+    def _rtp_spawn(self, coro):
+        """Background task (the realtime callback never awaits REST); kept referenced until done."""
+        try:
+            t = asyncio.get_running_loop().create_task(coro)
+            tasks = self.__dict__.setdefault('_bg_tasks', set())
+            tasks.add(t)
+            t.add_done_callback(tasks.discard)
+            return t
+        except Exception:
+            try:
+                coro.close()
+            except Exception:
+                pass
+            return None
+
+    def _rtp_busy(self):
+        return self.__dict__.setdefault('_rtp_busy_pairs', {})
+
+    def _rtp_enter(self, pair):
+        b = self._rtp_busy()
+        b[pair] = int(b.get(pair, 0)) + 1
+
+    def _rtp_leave(self, pair):
+        b = self._rtp_busy()
+        n = int(b.get(pair, 0)) - 1
+        if n > 0:
+            b[pair] = n
+        else:
+            b.pop(pair, None)
+
+    def rtp_forget(self, order_id):
+        """Drop an order's realtime resting-TP state (closed elsewhere — the reconciler)."""
+        _rtp_rt.pop(order_id, None)
+
+    def rtp_clear_all(self):
+        """Reset / mode switch: no realtime resting-TP state survives into the other book."""
+        _rtp_rt.clear()
+
+    def rtp_any_switch_on(self) -> bool:
+        th = config.trading_config.thresholds
+        return any(getattr(th, k, False) is True for k in RTP_SLEEVES.values())
+
+    def rtp_row_active(self, o) -> bool:
+        """A row the resting-TP machinery must handle: something recorded on it (id / price / fill), or its sleeve's switch ON. Anything
+        else (switch OFF, nothing recorded) runs exactly as before this ship."""
+        try:
+            return bool(getattr(o, 'protective_tp_order_id', None) or getattr(o, 'resting_tp_price', None) is not None
+                        or float(getattr(o, 'resting_tp_filled_qty', None) or 0) > 0
+                        or rtp_enabled(config.trading_config.thresholds, getattr(o, 'entry_strategy', None)))
+        except Exception:
+            return False
+
+    def _rtp_mark_dirty(self, pair):
+        """A pair that may still carry an UNVERIFIED reduce-only limit (forced close / blocked settle / failed probe): the next open on it — any
+        sleeve — clears the symbol's reduce-only orders first (rtp_preopen_clear)."""
+        self.__dict__.setdefault('_rtp_dirty_pairs', set()).add(str(pair or '').upper())
+
+    async def rtp_preopen_clear(self, pair) -> bool:
+        """Before ANY new open on a pair marked dirty: cancel its reduce-only orders (a leftover limit must never reduce the new position).
+        → True = clear (or not dirty), False = could not verify → the open is refused this pass. Never raises."""
+        p = str(pair or '').upper()
+        dirty = self.__dict__.get('_rtp_dirty_pairs') or set()
+        if self.is_paper_mode or p not in dirty:
+            return True
+        ex = await self._rtp_io(binance_service.fetch_open_reduce_only_orders(p), f"{p} open reduce-only orders (pre-open)")
+        if ex is None:
+            logger.critical(f"[RESTING_TP_PREOPEN] {p}: may carry an unverified reduce-only limit and its open orders are unreadable — open REFUSED")
+            self._record_filter_block("RESTING_TP_PREOPEN_BLOCK", "ANY")
+            return False
+        ok = True
+        for e in ex:
+            c, _ = cancel_view(await self._rtp_io(binance_service.cancel_resting_tp(p, e['id']), f"{p} pre-open cancel {e['id']}"))
+            ok = ok and c in ('canceled', 'gone')
+            logger.warning(f"[RESTING_TP_ORPHAN] {p}: leftover reduce-only orderId={e['id']} cancelled before a new open — {c}")
+        if ok:
+            dirty.discard(p)
+        else:
+            self._record_filter_block("RESTING_TP_PREOPEN_BLOCK", "ANY")
+        return ok
+
+    def _rtp_tick_cached(self, pair, px):
+        try:
+            mk = binance_service.exchange.markets if getattr(binance_service, '_markets_loaded', False) else None
+            return cached_tick(mk, str(pair).replace('USDT', '/USDT:USDT'), px)
+        except Exception:
+            return None
+
+    async def _rtp_tick_for(self, pair, px):
+        t = self._rtp_tick_cached(pair, px)
+        if t:
+            return t
+        await self._rtp_io(binance_service.load_markets(), "load markets")
+        return self._rtp_tick_cached(pair, px)
+
+    @staticmethod
+    def _rtp_entry_fee_pct(o):
+        try:
+            n = float(o.entry_price or 0) * float(o.quantity or 0)
+            return (float(o.entry_fee or 0) / n * 100.0) if n > 0 else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def _rtp_maker():
+        return float(getattr(config.trading_config, 'maker_fee', 0.00018))
+
+    @staticmethod
+    def _rtp_last_price(pair):
+        try:
+            _t = websocket_tracker.get_tracker(pair)
+            return float(_t.last_price) if (_t is not None and _t.last_price and _t.last_price > 0) else None
+        except Exception:
+            return None
+
+    async def _rtp_limit_for(self, o, tp):
+        """→ (limit, tick) that books NET +tp on this row with a maker exit fee, or (None, None)."""
+        tick = await self._rtp_tick_for(o.pair, o.entry_price)
+        ef = self._rtp_entry_fee_pct(o)
+        if not tick or ef is None:
+            return None, None
+        lim = resting_tp_price(o.direction, o.entry_price, ef, tp, self._rtp_maker(), tick)
+        return (lim, tick) if lim else (None, None)
+
+    def _rtp_reason(self, st) -> str:
+        return rtp_reason_for_limit(config.trading_config.thresholds, st.get('es'), st.get('dir'), st.get('entry'), st.get('ef'),
+                                    st.get('px'), self._rtp_maker())
+
+    def _rtp_state(self, order_id, row=None, pair=None, opened_at=None):
+        """The realtime state of an order's resting TP, seeded from its row when missing. None = no resting TP alive (→ the sleeve's own
+        software TP runs exactly as before). Live: alive while the order id is recorded (or the whole TP is recorded filled); paper: while
+        the paper limit is recorded. A state whose pair / open time / mode does not match the order is dropped (ids are reused after a
+        paper reset). No tick in the loaded market cache → not alive (the close path still settles the order first)."""
+        st = _rtp_rt.get(order_id)
+        if st is not None:
+            _p = row.pair if row is not None else pair
+            _o = ts_key(row.opened_at if row is not None else opened_at)
+            if (st.get('paper') != bool(self.is_paper_mode) or (_p is not None and st.get('pair') != _p)
+                    or (_o is not None and st.get('okey') is not None and st.get('okey') != _o)):
+                _rtp_rt.pop(order_id, None)
+                st = None
+            else:
+                return st
+        if row is None:
+            return None
+        try:
+            px = getattr(row, 'resting_tp_price', None)
+            if not px or (getattr(row, 'status', 'OPEN') or 'OPEN') != "OPEN":
+                return None
+            qty = float(row.quantity or 0)
+            filled = float(getattr(row, 'resting_tp_filled_qty', None) or 0)
+            oid = getattr(row, 'protective_tp_order_id', None)
+            full = is_full(qty, filled)
+            if self.is_paper_mode:
+                if filled > 0:
+                    return None
+            elif not oid and not full:
+                return None
+            tick = self._rtp_tick_cached(row.pair, px)
+            if not tick:
+                return None
+            st = dict(pair=row.pair, dir=row.direction, oid=(str(oid) if oid else None), px=float(px), qty=qty, filled=filled, full=full,
+                      avg=None, tick=tick, first=None, last_q=-1e18, es=(row.entry_strategy or ''), opened_at=row.opened_at,
+                      okey=ts_key(row.opened_at), paper=bool(self.is_paper_mode), ef=self._rtp_entry_fee_pct(row),
+                      entry=float(row.entry_price or 0), swap_next=-1e18, busy=False)
+            _rtp_rt[order_id] = st
+            return st
+        except Exception:
+            return None
+
+    async def _rtp_record(self, order_id, only_if_oid=None, **vals):
+        """Persist resting-TP fields on an OPEN row in a short session of its own → rows written. only_if_oid: write only while the row still
+        records THAT order id (never clear a newer id written by a concurrent re-price). Never raises."""
+        try:
+            async with AsyncSessionLocal() as _s:
+                cond = [Order.id == order_id, Order.status == "OPEN"]
+                if only_if_oid is not None:
+                    cond.append(Order.protective_tp_order_id == str(only_if_oid))
+                res = await _s.execute(update(Order).where(and_(*cond)).values(**vals).execution_options(synchronize_session=False))
+                await locked_commit(_s)
+                return int(res.rowcount or 0)
+        except Exception as _e:
+            logger.error(f"[RESTING_TP] order {order_id}: record write failed ({_e}) — the close path re-reads the order on Binance")
+            return 0
+
+    async def _rtp_clear_strays(self, o, keep_id=None, lim=None, tick=None):
+        """Close-side reduce-only LIMITs on o's symbol that are not o's resting TP: one matching (price within ½ tick of `lim`, size ≈ o's) is
+        ADOPTED when o has none recorded; every other is CANCELLED ([RESTING_TP_ORPHAN] — a bot position carries exactly one resting TP;
+        this includes an operator's own reduce-only limit on a bot position). → (ok, adopted id or None); ok False = the read failed."""
+        ex = await self._rtp_io(binance_service.fetch_open_reduce_only_orders(o.pair), f"{o.pair} open reduce-only orders")
+        if ex is None:
+            return False, None
+        side = 'sell' if o.direction == "LONG" else 'buy'
+        qty = float(o.quantity or 0)
+        adopted, n_cancel = None, 0
+        for e in [e for e in ex if e.get('side') == side and e.get('type') == 'limit']:
+            if keep_id and str(e.get('id')) == str(keep_id):
+                continue
+            if (adopted is None and not keep_id and lim and tick and abs(float(e.get('amount') or 0) - qty) <= qty * 0.01 + 1e-12
+                    and abs(float(e.get('price') or 0) - lim) <= tick * 0.5 + 1e-12):
+                adopted = e
+                continue
+            if n_cancel >= RTP_STRAY_MAX_PER_PASS:   # bounded lock hold — the rest go on the next pass
+                logger.warning(f"[RESTING_TP_ORPHAN] {o.pair}: more than {RTP_STRAY_MAX_PER_PASS} strays — the rest next pass")
+                return False, None
+            n_cancel += 1
+            _c, _ = cancel_view(await self._rtp_io(binance_service.cancel_resting_tp(o.pair, e['id']), f"{o.pair} cancel stray {e['id']}"))
+            self._record_filter_block("RESTING_TP_ORPHAN", o.direction)
+            logger.warning(f"[RESTING_TP_ORPHAN] {o.pair}: reduce-only limit orderId={e['id']} @ {e.get('price')} qty {e.get('amount')} on a bot "
+                           f"position that is not its recorded TP — cancel={_c}")
+        return True, adopted
+
+    async def _rtp_place_on(self, db, o, tp, why):
+        """Place (live) / record (paper) the resting TP for row `o` at NET +tp. Caller holds _close_lock with `o` re-read OPEN.
+        → 'placed' · 'paper' · 'rejected' (GTX would cross / Binance refused) · 'unknown' (no answer: it MAY rest — the heal pass adopts or
+        cancels it before placing again; the close path cancels it) · 'failed'."""
+        lim, tick = await self._rtp_limit_for(o, tp)
+        if lim is None:
+            self._record_filter_block("RESTING_TP_FAILED", o.direction)
+            logger.error(f"[RESTING_TP_FAILED] {o.pair} {o.direction} #{o.id} ({why}): no limit price (tick / entry fee unknown) — the software TP runs")
+            return 'failed'
+        if self.is_paper_mode:
+            o.resting_tp_price, o.resting_tp_filled_qty = lim, 0.0
+            await locked_commit(db)
+            _rtp_rt.pop(o.id, None)
+            self._rtp_state(o.id, row=o)
+            logger.info(f"[RESTING_TP_PLACED] {o.pair} {o.direction} #{o.id} ({o.entry_strategy}, {why}, paper record): limit {lim} = net +{tp}% with the maker fee")
+            return 'paper'
+        res = await self._rtp_io(binance_service.place_resting_tp(o.pair, o.direction, float(o.quantity), lim), f"{o.pair} place resting TP")
+        if res and not res.get('rejected') and res.get('id'):
+            o.protective_tp_order_id, o.resting_tp_price, o.resting_tp_filled_qty = str(res['id']), float(res.get('price') or lim), 0.0
+            try:
+                await locked_commit(db)
+            except Exception as _ce:
+                logger.critical(f"[RESTING_TP_PLACED] {o.pair} #{o.id}: limit {res['id']} RESTS on Binance but its id was not saved ({_ce}) — "
+                                f"retrying the record in a fresh session; else the heal pass adopts it / the orphan clean cancels it")
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
+                await self._rtp_record(o.id, protective_tp_order_id=str(res['id']), resting_tp_price=o.resting_tp_price, resting_tp_filled_qty=0.0)
+            _rtp_rt.pop(o.id, None)
+            self._rtp_state(o.id, row=o)
+            logger.info(f"[RESTING_TP_PLACED] {o.pair} {o.direction} #{o.id} ({o.entry_strategy}, {why}): orderId={res['id']} reduce-only post-only "
+                        f"limit {o.resting_tp_price} qty {o.quantity} = net +{tp}% with the maker fee")
+            return 'placed'
+        self._record_filter_block("RESTING_TP_FAILED", o.direction)
+        if res is None:
+            # UNKNOWN placement: stamped as price recorded · id NULL · fill NULL — the ONLY state the close path probes the symbol for
+            o.protective_tp_order_id, o.resting_tp_price, o.resting_tp_filled_qty = None, lim, None
+            try:
+                await locked_commit(db)
+            except Exception:
+                await self._rtp_record(o.id, protective_tp_order_id=None, resting_tp_price=lim, resting_tp_filled_qty=None)
+            _rtp_rt.pop(o.id, None)
+            logger.error(f"[RESTING_TP_FAILED] {o.pair} {o.direction} #{o.id} ({why}): limit {lim} — no answer, UNKNOWN whether it rests; the "
+                         f"heal pass adopts / cancels it, the close path probes the symbol first — the software TP runs meanwhile")
+            return 'unknown'
+        logger.error(f"[RESTING_TP_FAILED] {o.pair} {o.direction} #{o.id} ({why}): limit {lim} not resting "
+                     f"({res.get('error') or 'exchange error'}) — the software TP runs")
+        return 'crossed' if res.get('crossed') else ('rejected' if res.get('rejected') else 'failed')
+
+    async def _rtp_arm(self, db, order):
+        """OPEN path (bot fills, after the commit): the resting TP for an enabled sleeve. Under _close_lock with the row re-read (a close
+        that raced the open never gets a limit after it). Live: stale close-side reduce-only limits on the symbol are cancelled first (a
+        leftover can never ride into this position). Never raises."""
+        try:
+            tgt = rtp_target(config.trading_config.thresholds, order.entry_strategy, 0.0)
+            if tgt is None:
+                return None
+            async with _close_lock:
+                _r = (await db.execute(select(Order.status, Order.closing_in_progress).where(Order.id == order.id))).first()
+                if not _r or _r[0] != "OPEN" or _r[1]:
+                    return None
+                self._rtp_enter(order.pair)
+                try:
+                    if not self.is_paper_mode:
+                        await self._rtp_clear_strays(order)
+                    return await self._rtp_place_on(db, order, tgt[0], "open")
+                finally:
+                    self._rtp_leave(order.pair)
+        except Exception as _e:
+            self._record_filter_block("RESTING_TP_FAILED", getattr(order, 'direction', None) or "ANY")
+            logger.error(f"[RESTING_TP_FAILED] {getattr(order, 'pair', '?')}: arm raised {_e!r} — the software TP runs")
+            return None
+
+    async def _rtp_cancel_read(self, pair, oid, known=None):
+        """Cancel one resting TP and learn its fill → (state, filled, avg, cancel result). The cancel's own response is used when Binance
+        answered it (no follow-up read — a failed read can never block a successful cancel); 'gone' with the fill ALREADY known from the
+        query job (known['full']) → FILLED, no read; otherwise 'gone' / an error → one read (bounded). state None = unknown."""
+        c, cv = cancel_view(await self._rtp_io(binance_service.cancel_resting_tp(pair, oid), f"{pair} cancel {oid}"))
+        if c == 'gone' and known and known.get('full') and str(known.get('oid') or '') == str(oid):
+            return 'FILLED', float(known.get('filled') or known.get('qty') or 0), known.get('avg'), c
+        if c == 'canceled' and cv is not None:
+            _st, _f, _a = order_fill(dict(cv, status=(cv.get('status') or 'CANCELED')))
+            if _st == 'OPEN':   # a 200 that still says NEW — read it to be sure
+                _st = None
+            if _st is not None:
+                return _st, _f, _a, c
+        info = await self._rtp_io(binance_service.fetch_resting_tp(pair, oid), f"{pair} read {oid}")
+        state, f2, a2 = order_fill(info)
+        return state, f2, a2, c
+
+    async def _rtp_settle(self, order, allow_force=False):
+        """CANCEL-FIRST (live): cancel the resting TP (the recorded id; with NO recorded id on a resting-TP sleeve — a placement whose answer
+        or commit was lost — every close-side reduce-only limit on the symbol), learn what it filled, clear the id and record the fill ON
+        `order` (the caller commits). → None (nothing to settle) · {'blocked': True, 'pending': [ids]} (a cancel failed while it may still
+        rest / unreadable) · {'filled', 'avg', 'full', 'lim', 'pending': [ids still unverified — allow_force only]}. A cancel that fails
+        because it just filled is a fill, never an error. allow_force (stop-class closes): a blocked cancel does not block — the unverified
+        ids come back in 'pending' for the post-close reconcile."""
+        oid = getattr(order, 'protective_tp_order_id', None)
+        rec = float(getattr(order, 'resting_tp_filled_qty', None) or 0)
+        qty = float(order.quantity or 0)
+        lim = getattr(order, 'resting_tp_price', None)
+        st = _rtp_rt.get(order.id) or {}
+        ids = [str(oid)] if oid else []
+        if not ids and rec <= 0:
+            # the symbol is probed ONLY for an UNKNOWN placement (price recorded · id NULL · fill NULL — _rtp_place_on); a GTX-rejected /
+            # failed placement or a cleanly cancelled limit never probes, and a failed probe never blocks the close
+            if not (lim is not None and getattr(order, 'resting_tp_filled_qty', None) is None):
+                return None
+            ex = await self._rtp_io(binance_service.fetch_open_reduce_only_orders(order.pair), f"{order.pair} open reduce-only orders (close)")
+            if ex is None:
+                logger.critical(f"[RESTING_TP_CANCEL_FAILED] {order.pair} #{order.id}: unknown placement and the symbol's open orders are "
+                                f"unreadable — closing anyway (reduce-only), flagged RTP_FILL_UNVERIFIED")
+                self._rtp_mark_dirty(order.pair)
+                return {'filled': 0.0, 'avg': lim, 'full': False, 'lim': lim, 'pending': [], 'unverified': True}
+            side = 'sell' if order.direction == "LONG" else 'buy'
+            ids = [str(e['id']) for e in ex if e.get('side') == side]
+            if not ids:
+                return None
+            logger.warning(f"[RESTING_TP_CANCELED] {order.pair} #{order.id}: no recorded id — cancelling {len(ids)} unrecorded reduce-only order(s) first")
+        filled, val, pending = rec, (rec * float(st.get('avg') or lim or 0)), []
+        for _id in ids:
+            state, f2, a2, c = await self._rtp_cancel_read(order.pair, _id, known=dict(st, qty=qty) if st else None)
+            if state is None or (c == 'error' and state in ('OPEN', 'PARTIAL')):
+                logger.critical(f"[RESTING_TP_CANCEL_FAILED] {order.pair} #{order.id}: resting TP {_id} cancel={c} read={state}")
+                pending.append(_id)
+                continue
+            if state == 'FILLED' and f2 <= 0:
+                f2 = qty
+            if _id == (str(oid) if oid else None):
+                add = max(0.0, f2 - rec)   # the recorded fill is part of this order's own fill
+            else:
+                add = f2
+            filled += add
+            val += add * float(a2 or lim or 0)
+            logger.info(f"[RESTING_TP_CANCELED] {order.pair} {order.direction} #{order.id}: orderId={_id} cancel={c} → {state}, filled {f2} @ {a2}")
+        if pending and not allow_force:
+            return {'blocked': True, 'pending': pending}
+        filled = min(filled, qty)
+        avg = (val / filled) if filled > 0 and val > 0 else (st.get('avg') or lim)
+        if oid and str(oid) not in pending:
+            order.protective_tp_order_id = None
+        order.resting_tp_filled_qty = filled
+        full = is_full(qty, filled)
+        return {'filled': (qty if full else filled), 'avg': (float(avg) if avg else None), 'full': full, 'lim': lim, 'pending': pending,
+                'unverified': bool(pending)}
+
+    async def _rtp_reconcile_pending(self, order, rs):
+        """After a FORCED stop-class close / a position found flat: one more bounded cancel + read per still-unverified id → rs updated
+        (filled / avg / pending / unverified / full). Still unreadable → booked on the recorded fill, flagged RTP_FILL_UNVERIFIED."""
+        if not rs or not rs.get('pending'):
+            return rs
+        q = float(order.quantity or 0)
+        f, v, left = float(rs.get('filled') or 0), float(rs.get('filled') or 0) * float(rs.get('avg') or rs.get('lim') or 0), []
+        for _id in rs['pending']:
+            st2, f2, a2, c2 = await self._rtp_cancel_read(order.pair, _id)
+            if st2 is None or (c2 == 'error' and st2 in ('OPEN', 'PARTIAL')):
+                left.append(_id)
+                continue
+            mine = str(_id) == str(getattr(order, 'protective_tp_order_id', None) or '')
+            add = max(0.0, f2 - (float(getattr(order, 'resting_tp_filled_qty', None) or 0) if mine else 0.0))
+            f += add
+            v += add * float(a2 or rs.get('lim') or 0)
+            if mine:
+                order.protective_tp_order_id = None
+        f = min(f, q)
+        full = is_full(q, f)
+        rs.update(filled=(q if full else f), avg=((v / f) if f > 0 and v > 0 else rs.get('avg')), pending=left, unverified=bool(left), full=full)
+        order.resting_tp_filled_qty = rs['filled']
+        if left:
+            self._rtp_mark_dirty(order.pair)
+            logger.critical(f"[RESTING_TP_CANCEL_FAILED] {order.pair} #{order.id}: resting TP {left} still unreadable after the close — booked on the "
+                            f"recorded fill, flagged RTP_FILL_UNVERIFIED (reconcile vs Binance); the next open on {order.pair} clears it first")
+        return rs
+
+    async def _rtp_guard_open_residual(self, db, order, reason):
+        """A close that left a live residual: the row stays OPEN with its reason stamped for the retry queue, and the exchange safety stop is
+        re-placed at once (it was cancelled pre-close). Never raises."""
+        # round-3 review: write ON THE SESSION'S OWN object (expire_on_commit=False keeps it identity-mapped — a same-cycle exit-retry would
+        # otherwise read the stale backstop_algo_id=None / old reason, skip the pre-close backstop cancel and leave a stop on a flat symbol)
+        try:
+            order.close_reason = reason
+            await locked_commit(db)
+        except Exception:
+            pass
+        try:
+            th = config.trading_config.thresholds
+            if bool(getattr(th, 'broker_backstop_enabled', False)):
+                _bk_pct = order_backstop_pct(th, order.entry_strategy, getattr(order, 'manual_exit_mode', None), getattr(order, 'pattern_fixed_sl_pct', None), order.leverage)
+                _bk_tr = backstop_trigger_price(order.entry_price, order.direction, _bk_pct)
+                _bk_new = await self._rtp_io(binance_service.place_backstop_stop(order.pair, order.direction, _bk_tr), f"{order.pair} backstop re-place")
+                if _bk_new:
+                    order.backstop_algo_id, order.backstop_pct, order.backstop_trigger_price = _bk_new, _bk_pct, _bk_tr
+                    try:
+                        await locked_commit(db)
+                    except Exception:   # the object keeps the id either way; record it through a fresh session too
+                        await self._rtp_record(order.id, backstop_algo_id=_bk_new, backstop_pct=_bk_pct, backstop_trigger_price=_bk_tr)
+                else:
+                    self._record_filter_block("BACKSTOP_PLACE_FAILED", order.direction)
+        except Exception as _e:
+            logger.error(f"[RESTING_TP_RESIDUAL] {order.pair}: backstop re-place failed: {_e!r}")
+
+    async def _rtp_live_contracts(self, symbol):
+        """→ (known, contracts): the live position size (bounded read; flat = 0.0). known False = the read failed / timed out."""
+        try:
+            pos = await asyncio.wait_for(binance_service.get_position_for_symbol(symbol), RTP_IO_TIMEOUT_S)
+            return True, (float(pos.get('contracts') or 0) if pos else 0.0)
+        except Exception:
+            return False, 0.0
+
+    @staticmethod
+    def _rtp_qty_snap(symbol, q):
+        """A remainder snapped to the market's amount step from round(q, 10) (ccxt TRUNCATES: 0.19999… → 0.1 would leave half the position
+        open). Markets not loaded or a failed snap → round(q, 10) (never 0 for a non-zero remainder)."""
+        q = round(float(q or 0), 10)
+        if q <= 0:
+            return 0.0
+        try:
+            if getattr(binance_service, '_markets_loaded', False):
+                return float(binance_service.exchange.amount_to_precision(symbol, q))
+        except Exception:
+            # final review: a snap that FAILS (symbol missing from the loaded markets, odd precision) must never zero a stop's market order —
+            # send the 1e-10-rounded remainder (reduce-only: it cannot over-close; a sub-step remainder is rejected → the residual guard)
+            return q
+        return q
+
+    async def _rtp_query_job(self, order_id, close_on_fill=False):
+        """Read the resting TP once (bounded) and update the realtime state: FILLED → full (close_on_fill: book it now) · PARTIAL → record ·
+        GONE (canceled / expired on Binance without us) → record + drop (the software TP takes over). Clears the in-flight flag."""
+        st = _rtp_rt.get(order_id)
+        if st is None:
+            return None
+        try:
+            oid = st.get('oid')
+            info = await self._rtp_io(binance_service.fetch_resting_tp(st['pair'], oid), f"{st['pair']} read {oid}")
+            state, filled, avg = order_fill(info)
+            reason = self._rtp_reason(st)
+            if state == 'FILLED':
+                st.update(full=True, filled=(filled or st['qty']), avg=avg)
+                logger.warning(f"[RESTING_TP_FILLED] {st['pair']} {st['dir']} #{order_id}: orderId={oid} FILLED {st['filled']} @ {avg or st['px']} — booking {reason}")
+                if close_on_fill:
+                    await self._rtp_close_now(order_id, reason)
+                return 'FILLED'
+            if state == 'PARTIAL' and filled > float(st.get('filled') or 0) + 1e-12:
+                st.update(filled=filled, avg=avg)
+                logger.warning(f"[RESTING_TP_PARTIAL] {st['pair']} {st['dir']} #{order_id}: orderId={oid} filled {filled}/{st['qty']} @ {avg or st['px']}")
+                await self._rtp_record(order_id, only_if_oid=oid, resting_tp_filled_qty=filled)
+                return 'PARTIAL'
+            if state == 'GONE':
+                n = await self._rtp_record(order_id, only_if_oid=oid, protective_tp_order_id=None, resting_tp_filled_qty=filled)
+                logger.warning(f"[RESTING_TP_CANCELED] {st['pair']} {st['dir']} #{order_id}: orderId={oid} gone on Binance ({(info or {}).get('status')}) "
+                               f"with {filled} filled — {'the software TP takes over' if n else 'a newer limit is already recorded'}")
+                if _rtp_rt.get(order_id) is st:
+                    _rtp_rt.pop(order_id, None)
+                return 'GONE'
+            return state
+        finally:
+            st['busy'] = False
+
+    async def _rtp_late_job(self, order_id, price, close_now=True):
+        """⏰ (297) the late-minute swap; LATE_NOW → market-close WILLY_LATE_TP now (close_now). Clears the in-flight flag."""
+        st = _rtp_rt.get(order_id)
+        try:
+            r = await self._rtp_reprice(order_id, late=True, price=price)
+            if r == 'LATE_NOW' and close_now:
+                await self._rtp_close_now(order_id, "WILLY_LATE_TP")
+            elif r == 'FILLED' and close_now:
+                _s2 = _rtp_rt.get(order_id)
+                if _s2 is not None:
+                    await self._rtp_close_now(order_id, self._rtp_reason(_s2))
+            return r
+        finally:
+            if st is not None:
+                st['busy'] = False
+
+    async def _rtp_close_now(self, order_id, reason):
+        """Close an order from a resting-TP event outside the exit loops (background job / sweep) at the tracked price."""
+        try:
+            async with AsyncSessionLocal() as s:
+                o = (await s.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))).scalar_one_or_none()
+                if o is None:
+                    return None
+                px = self._rtp_last_price(o.pair) or float(o.current_price or o.entry_price or 0)
+                if not px or px <= 0:
+                    return None
+                return await self.close_position(s, o, px, reason)
+        except Exception as _e:
+            logger.error(f"[RESTING_TP] close-now failed for order {order_id} ({reason}): {_e!r}")
+            return None
+
+    async def _rtp_gate(self, order_id, price, now=None, background=False):
+        """Monitor + realtime hook while a resting TP is alive → (event, close reason) or None. Events: FILLED (live: the limit filled —
+        book it, no market order) · PAPER_FILL (paper: ≥ 1 tick through) · FALLBACK (safety net: ≥ N ticks through for ≥ G s) · LATE_NOW
+        (⏰ 297: the WILLY late target is already through at the swap → market now). Queries the order only while the price is at /
+        through the limit, ≤ 1 per order per RTP_QUERY_MIN_S. background=True (the realtime price callback): NO REST is awaited — the
+        query / late swap run as a background task (per-order in-flight flag) that books its own FILLED / LATE_NOW; the gate reads the
+        cached result. Never raises."""
+        try:
+            st = _rtp_rt.get(order_id)
+            if st is None:
+                return None
+            now_m = time.monotonic() if now is None else float(now)
+            th = config.trading_config.thresholds
+            if st.get('full'):
+                return "FILLED", self._rtp_reason(st)
+            if st.get('busy') and now_m - float(st.get('busy_at', now_m)) > RTP_BUSY_WATCHDOG_S:
+                logger.warning(f"[RESTING_TP] #{order_id}: in-flight flag older than {RTP_BUSY_WATCHDOG_S:g}s — cleared (lost background task)")
+                st['busy'] = False
+            if st.get('busy'):
+                return None   # a background query / swap is in flight — its result books itself
+            # ⏰ (297) the WILLY late minute: swap the +TP limit for the late one (cancel first)
+            if st.get('es') == "FRENZY_WILLY" and now_m >= float(st.get('swap_next', -1e18)):
+                tgt = rtp_target(th, st['es'], _held_minutes(st.get('opened_at')))
+                if tgt is not None and tgt[1] != self._rtp_reason(st):
+                    st['swap_next'] = now_m + 5.0
+                    st['busy'], st['busy_at'] = True, now_m
+                    if background:
+                        if self._rtp_spawn(self._rtp_late_job(order_id, price, close_now=True)) is None:
+                            st['busy'] = False
+                        return None
+                    r = await self._rtp_late_job(order_id, price, close_now=False)
+                    if r == 'LATE_NOW':
+                        return "LATE_NOW", "WILLY_LATE_TP"
+                    st = _rtp_rt.get(order_id)
+                    if st is None:
+                        return None
+                    if st.get('full'):
+                        return "FILLED", self._rtp_reason(st)
+            px, tick, d = st['px'], st['tick'], st['dir']
+            reason = self._rtp_reason(st)
+            if self.is_paper_mode:
+                return ("PAPER_FILL", reason) if paper_filled(d, price, px, tick) else None
+            if st.get('oid') and at_or_through(d, price, px) and now_m - float(st.get('last_q', -1e18)) >= RTP_QUERY_MIN_S:
+                st['last_q'] = now_m
+                st['busy'], st['busy_at'] = True, now_m
+                if background:
+                    if self._rtp_spawn(self._rtp_query_job(order_id, close_on_fill=True)) is None:
+                        st['busy'] = False
+                else:
+                    r = await self._rtp_query_job(order_id)
+                    if r == 'FILLED':
+                        return "FILLED", reason
+                    if r == 'GONE':
+                        return None
+            ft, fire = safety_net(st.get('first'), now_m, d, price, px, tick, rtp_through_ticks(th), rtp_grace_s(th))
+            st['first'] = ft
+            if fire:
+                self._record_filter_block("RESTING_TP_FALLBACK", d or "ANY")
+                logger.warning(f"[RESTING_TP_FALLBACK] {st['pair']} {d} #{order_id}: price {price} ≥ {rtp_through_ticks(th)} ticks through the "
+                               f"limit {px} for {now_m - ft:.1f}s without a fill — cancel, market-close the rest ({reason})")
+                return "FALLBACK", reason
+            return None
+        except Exception as _e:
+            logger.error(f"[RESTING_TP] gate failed for order {order_id}: {_e!r}")
+            return None
+
+    async def _rtp_reprice(self, order_id, late=False, price=None) -> str:
+        """Cancel the resting TP and re-place it at the order's CURRENT target — a TP setting change (sweep) or ⏰ the WILLY late minute
+        (late=True). Under _close_lock, row re-read. → 'replaced' · 'skipped' · 'blocked' · 'FILLED' (the old limit filled — state marked
+        full) · 'partial' (part filled: no re-place, the rest runs on the software TP) · 'LATE_NOW' (late target already through / GTX
+        rejected → the caller market-closes WILLY_LATE_TP) · 'unknown' · 'failed'. A non-late re-price never re-places a crossed limit."""
+        th = config.trading_config.thresholds
+        try:
+            async with _close_lock:
+                async with AsyncSessionLocal() as s:
+                    o = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
+                    if o is None or o.status != "OPEN" or o.closing_in_progress or order_id in _exit_retry_queue:
+                        return 'skipped'
+                    tgt = rtp_target(th, o.entry_strategy, _held_minutes(o.opened_at))
+                    if tgt is None or o.resting_tp_price is None:
+                        return 'skipped'
+                    lim, tick = await self._rtp_limit_for(o, tgt[0])
+                    if lim is None:
+                        return 'failed'
+                    if abs(lim - float(o.resting_tp_price)) <= tick * 0.5:
+                        return 'skipped'   # already at the target (the gate and the sweep both saw the late minute)
+                    cur = price if (price and price > 0) else self._rtp_last_price(o.pair)
+                    crossed = cur is not None and at_or_through(o.direction, cur, lim)
+                    if crossed and not late:
+                        return 'skipped'
+                    old = o.resting_tp_price
+                    if self.is_paper_mode:
+                        if crossed:
+                            o.resting_tp_price = None   # paper = live: the old limit is "cancelled", the late TP closes at market now
+                            await locked_commit(s)
+                            _rtp_rt.pop(order_id, None)
+                            logger.warning(f"[WILLY_LATE_TP] {o.pair} #{o.id} (paper): age {_held_minutes(o.opened_at):.1f} min — late limit {lim} "
+                                           f"already through (price {cur}) → market now")
+                            return 'LATE_NOW'
+                        o.resting_tp_price = lim
+                        await locked_commit(s)
+                        _rtp_rt.pop(order_id, None)
+                        self._rtp_state(order_id, row=o)
+                        logger.warning(f"[{'WILLY_LATE_TP' if late else 'RESTING_TP_PLACED'}] {o.pair} #{o.id} (paper record): limit {old} → {lim} "
+                                       f"(net +{tgt[0]}%, {tgt[1]})")
+                        return 'replaced'
+                    self._rtp_enter(o.pair)
+                    try:
+                        if o.protective_tp_order_id:
+                            r = await self._rtp_settle(o)
+                            if r and r.get('blocked'):
+                                return 'blocked'
+                            await locked_commit(s)
+                            _rtp_rt.pop(order_id, None)
+                            if r and r['full']:
+                                _st = self._rtp_state(order_id, row=o)
+                                if _st is not None:
+                                    _st['avg'] = r.get('avg')
+                                return 'FILLED'
+                            if r and r['filled'] > 0:
+                                logger.warning(f"[RESTING_TP_PARTIAL] {o.pair} #{o.id}: {r['filled']}/{o.quantity} filled before the re-price — no new "
+                                               f"limit, the rest runs on the software TP")
+                                return 'partial'
+                        if crossed:
+                            logger.warning(f"[WILLY_LATE_TP] {o.pair} #{o.id}: age {_held_minutes(o.opened_at):.1f} min — limit {old} cancelled, late "
+                                           f"limit {lim} already through (price {cur}) → market-close now")
+                            return 'LATE_NOW'
+                        res = await self._rtp_place_on(s, o, tgt[0], ("late TP" if late else "re-price"))
+                    finally:
+                        self._rtp_leave(o.pair)
+                    if res == 'placed':
+                        if late:
+                            logger.warning(f"[WILLY_LATE_TP] {o.pair} #{o.id}: age {_held_minutes(o.opened_at):.1f} min — limit {old} → late limit "
+                                           f"{o.resting_tp_price} (net +{tgt[0]}%)")
+                        return 'replaced'
+                    if res == 'crossed' and late:   # only a GTX would-cross (-5022 / EXPIRED) → market now; any other refusal → software late TP + heal
+                        logger.warning(f"[WILLY_LATE_TP] {o.pair} #{o.id}: late limit {lim} would cross → market-close now")
+                        return 'LATE_NOW'
+                    return res if res == 'unknown' else 'failed'
+        except Exception as _e:
+            logger.error(f"[RESTING_TP] re-price failed for order {order_id}: {_e!r}")
+            return 'failed'
+
+    async def _rtp_withdraw(self, order_id, why) -> str:
+        """Cancel (live) / clear (paper) an order's resting TP — switch turned OFF, an operator exit override, a sleeve without a fixed TP.
+        → 'withdrawn' · 'FILLED' (it had filled: the state is marked full, the gate books it) · 'blocked' · 'skipped'."""
+        try:
+            async with _close_lock:
+                async with AsyncSessionLocal() as s:
+                    o = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
+                    if o is None or o.status != "OPEN" or o.closing_in_progress:
+                        return 'skipped'
+                    if self.is_paper_mode:
+                        if o.resting_tp_price is None or float(o.resting_tp_filled_qty or 0) > 0:
+                            return 'skipped'
+                        o.resting_tp_price = None
+                        await locked_commit(s)
+                        _rtp_rt.pop(order_id, None)
+                        logger.warning(f"[RESTING_TP_CANCELED] {o.pair} #{o.id} (paper record): {why}")
+                        return 'withdrawn'
+                    if not o.protective_tp_order_id:
+                        return 'skipped'
+                    self._rtp_enter(o.pair)
+                    try:
+                        r = await self._rtp_settle(o)
+                    finally:
+                        self._rtp_leave(o.pair)
+                    if r and r.get('blocked'):
+                        return 'blocked'
+                    await locked_commit(s)
+                    _rtp_rt.pop(order_id, None)
+                    if r and r['full']:
+                        _st = self._rtp_state(order_id, row=o)
+                        if _st is not None:
+                            _st['avg'] = r.get('avg')
+                        return 'FILLED'
+                    logger.warning(f"[RESTING_TP_CANCELED] {o.pair} #{o.id}: {why}")
+                    return 'withdrawn'
+        except Exception as _e:
+            logger.error(f"[RESTING_TP] withdraw failed for order {order_id}: {_e!r}")
+            return 'failed'
+
+    async def _rtp_heal(self, order_id) -> str:
+        """Place a missing resting TP (restart, earlier failure, an UNKNOWN placement) at the price that matches the order's AGE. Live: the
+        symbol's close-side reduce-only limits are read first — one of ours at that price and size (placed, answer / id lost) is ADOPTED,
+        every other is cancelled ([RESTING_TP_ORPHAN] — includes an operator's own reduce-only limit on a bot position); a price already
+        through the limit is skipped (the software TP owns that moment). → 'placed' · 'paper' · 'crossed' · 'skipped' · 'rejected' ·
+        'unknown' · 'failed'."""
+        th = config.trading_config.thresholds
+        try:
+            async with _close_lock:
+                async with AsyncSessionLocal() as s:
+                    o = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
+                    if (o is None or o.status != "OPEN" or o.closing_in_progress or order_id in _exit_retry_queue or o.protective_tp_order_id
+                            or float(o.resting_tp_filled_qty or 0) > 0 or o.exit_override_at is not None
+                            or (self.is_paper_mode and o.resting_tp_price is not None)):
+                        return 'skipped'
+                    tgt = rtp_target(th, o.entry_strategy, _held_minutes(o.opened_at))
+                    if tgt is None:
+                        return 'skipped'
+                    if self.is_paper_mode:
+                        return await self._rtp_place_on(s, o, tgt[0], "heal")
+                    lim, tick = await self._rtp_limit_for(o, tgt[0])
+                    if lim is None:
+                        return 'failed'
+                    cur = self._rtp_last_price(o.pair)
+                    if cur is not None and at_or_through(o.direction, cur, lim):
+                        return 'crossed'
+                    self._rtp_enter(o.pair)
+                    try:
+                        ok, e = await self._rtp_clear_strays(o, lim=lim, tick=tick)
+                        if not ok:
+                            return 'failed'
+                        if e is not None:
+                            o.protective_tp_order_id, o.resting_tp_price, o.resting_tp_filled_qty = str(e['id']), float(e['price']), float(e.get('filled') or 0)
+                            await locked_commit(s)
+                            _rtp_rt.pop(order_id, None)
+                            self._rtp_state(order_id, row=o)
+                            logger.warning(f"[RESTING_TP_PLACED] {o.pair} #{o.id} (heal): ADOPTED the resting limit orderId={e['id']} @ {e['price']}")
+                            return 'placed'
+                        return await self._rtp_place_on(s, o, tgt[0], "heal")
+                    finally:
+                        self._rtp_leave(o.pair)
+        except Exception as _e:
+            logger.error(f"[RESTING_TP] heal failed for order {order_id}: {_e!r}")
+            return 'failed'
+
+    async def resting_tp_sweep(self, now=None) -> list:
+        """🎯 (296) monitor-pass sweep, throttled to RTP_SWEEP_EVERY_S: re-seeds the realtime state of every resting TP from its row (restart
+        re-arm) · switch OFF / exit override / no fixed TP → cancel · enabled sleeve without one → heal (≥ RTP_HEAL_RETRY_S per order; a
+        partially filled TP is never re-armed) · target moved (a TP setting change, or ⏰ the WILLY late minute) → re-price (LATE_NOW → closed
+        WILLY_LATE_TP at once). Live exchange actions ≤ RTP_SWEEP_MAX_ACTIONS per pass; one row's failure never stops the pass.
+        → [(kind, order id, result)]."""
+        now_m = time.monotonic() if now is None else float(now)
+        if now_m - float(self.__dict__.get('_rtp_sweep_last', -1e18)) < RTP_SWEEP_EVERY_S:
+            return []
+        self.__dict__['_rtp_sweep_last'] = now_m
+        th = config.trading_config.thresholds
+        paper = bool(self.is_paper_mode)
+        heal_next = self.__dict__.setdefault('_rtp_heal_next', {})
+        plan = []
+        async with AsyncSessionLocal() as s:
+            rows = (await s.execute(select(Order).where(and_(Order.status == "OPEN", Order.is_paper == paper, or_(
+                Order.entry_strategy.in_(tuple(RTP_SLEEVES)), Order.protective_tp_order_id.isnot(None), Order.resting_tp_price.isnot(None)))))).scalars().all()
+            for o in rows:
+                try:
+                    if o.closing_in_progress or o.id in _exit_retry_queue:
+                        continue
+                    filled = float(o.resting_tp_filled_qty or 0)
+                    has = bool(o.protective_tp_order_id) if not paper else (o.resting_tp_price is not None and filled <= 0)
+                    tgt = None if o.exit_override_at is not None else rtp_target(th, o.entry_strategy, _held_minutes(o.opened_at))
+                    if has or is_full(o.quantity, filled):
+                        self._rtp_state(o.id, row=o)
+                    if tgt is None:
+                        if has:
+                            plan.append(('withdraw', o.id, None))
+                        continue
+                    if not has:
+                        if filled > 0 or float(heal_next.get(o.id, -1e18)) > now_m:
+                            continue
+                        plan.append(('heal', o.id, None))
+                        continue
+                    lim, tick = await self._rtp_limit_for(o, tgt[0])
+                    if lim and tick and o.resting_tp_price and abs(lim - float(o.resting_tp_price)) > tick * 0.5:
+                        plan.append(('reprice', o.id, tgt[1]))
+                except Exception as _row_e:
+                    logger.error(f"[RESTING_TP] sweep row #{getattr(o, 'id', '?')}: {_row_e!r}")
+        out, acted = [], 0
+        for kind, oid, why in plan:
+            if not paper and acted >= RTP_SWEEP_MAX_ACTIONS:
+                break
+            try:
+                if kind == 'withdraw':
+                    r = await self._rtp_withdraw(oid, "switch OFF / exit override / no fixed TP")
+                elif kind == 'heal':
+                    r = await self._rtp_heal(oid)
+                    if r in ('placed', 'paper'):
+                        heal_next.pop(oid, None)
+                    else:
+                        heal_next[oid] = now_m + RTP_HEAL_RETRY_S
+                else:
+                    r = await self._rtp_reprice(oid, late=(why == "WILLY_LATE_TP"))
+                    if r == 'LATE_NOW':
+                        logger.warning(f"[WILLY_LATE_TP] order #{oid}: sweep — late target already through → market-close now")
+                        await self._rtp_close_now(oid, "WILLY_LATE_TP")
+            except Exception as _act_e:
+                r = 'failed'
+                logger.error(f"[RESTING_TP] sweep {kind} #{oid}: {_act_e!r}")
+            acted += 1
+            out.append((kind, oid, r))
+        return out
+
+    async def resting_tp_orphan_clean(self, db, now=None, positions=None) -> list:
+        """🎯 (296) reconciler (live, ≤ 1 per 60 s): cancel a REGULAR reduce-only order ([RESTING_TP_ORPHAN]) that is nobody's resting TP —
+        by ORDER ID: its id is not the protective_tp_order_id of an OPEN live row (a symbol with no OPEN live row has no recorded id at all).
+        Runs only while a resting-TP switch is ON or an OPEN live row has something recorded (switch OFF = exactly as before). Skipped: an
+        order without a timestamp or younger than RTP_ORPHAN_MIN_AGE_S, a symbol whose open is in flight, a resting-TP action in flight on
+        that pair, a row there being closed, a symbol with an untracked position or with ANY Binance position that has no OPEN live row
+        (`positions`, the reconciler's snapshot — the operator's own), and an id a FRESH read finds recorded (a placement just committed).
+        Note: an operator's own reduce-only order on a bot position is cancelled too (a bot position carries exactly one resting TP).
+        → [(pair, order id, result)]."""
+        if self.is_paper_mode:
+            return []
+        now_m = time.monotonic() if now is None else float(now)
+        if now_m - float(self.__dict__.get('_rtp_orphan_last', -1e18)) < 60.0:
+            return []
+        rows = (await db.execute(select(Order.pair, Order.protective_tp_order_id, Order.closing_in_progress, Order.resting_tp_price,
+                                        Order.resting_tp_filled_qty).where(and_(Order.status == "OPEN", Order.is_paper == False)))).all()  # noqa: E712
+        if not self.rtp_any_switch_on() and not any(r[1] or r[3] is not None or (r[4] or 0) > 0 for r in rows) \
+                and not (self.__dict__.get('_rtp_dirty_pairs') or set()):
+            return []
+        self.__dict__['_rtp_orphan_last'] = now_m
+        ex = await self._rtp_io(binance_service.fetch_open_reduce_only_orders(), "open reduce-only orders (all symbols)")
+        if ex is None:
+            return []
+        open_pairs = {r[0] for r in rows}
+        known = {str(r[1]) for r in rows if r[1]}
+        closing = {r[0] for r in rows if r[2]}
+        unt = self.__dict__.get('_untracked_positions') or {}
+        foreign = set()
+        for _p in positions or []:
+            try:
+                _pp = str(_p.get('symbol') or '').replace('/USDT:USDT', 'USDT').upper()
+                if _pp and _pp not in open_pairs:
+                    foreign.add(_pp)
+            except Exception:
+                continue
+        busy = self._rtp_busy()
+        now_ms = time.time() * 1000.0
+        out = []
+        for e in ex:
+            p = str(e.get('pair') or '').upper()
+            if (not p or str(e.get('id')) in known or p in unt or p in foreign or p in closing or p in busy or self._pair_open_in_flight(p)):
+                continue
+            try:
+                if not e.get('timestamp') or now_ms - float(e['timestamp']) < RTP_ORPHAN_MIN_AGE_S * 1000.0:
+                    continue   # no timestamp = treated as YOUNG
+            except (TypeError, ValueError):
+                continue
+            try:   # a FRESH read: a placement committed after the snapshot above is never cancelled
+                async with AsyncSessionLocal() as _fs:
+                    if (await _fs.execute(select(Order.id).where(and_(Order.status == "OPEN", Order.protective_tp_order_id == str(e['id']))))).first():
+                        continue
+            except Exception:
+                continue
+            c, _ = cancel_view(await self._rtp_io(binance_service.cancel_resting_tp(p, e['id']), f"{p} cancel orphan {e['id']}"))
+            self._record_filter_block("RESTING_TP_ORPHAN", "ANY")
+            logger.warning(f"[RESTING_TP_ORPHAN] {p}: reduce-only {e.get('type')} orderId={e['id']} @ {e.get('price')} qty {e.get('amount')} is no OPEN "
+                           f"live row's resting TP — cancel={c}")
+            out.append((p, e['id'], c))
+        _d = self.__dict__.get('_rtp_dirty_pairs')
+        if _d:   # a dirty pair with no reduce-only order left on Binance is clean again
+            for _p in list(_d):
+                if _p not in {str(e.get('pair') or '').upper() for e in ex} or _p in {o[0] for o in out if o[2] in ('canceled', 'gone')}:   # round-3: an 'error' cancel keeps it dirty
+                    _d.discard(_p)
+        return out
+
+    async def resting_tp_legacy_clear(self) -> int:
+        """🎯 (296, checklist #1) protective_tp_order_id was the retired April protective-stops column: on startup, an OPEN row carrying an id
+        with NO resting_tp_price is a legacy stamp, never a resting TP → cleared ([RESTING_TP_LEGACY_CLEARED]) so it can never block a close.
+        → rows cleared. Never raises."""
+        try:
+            async with AsyncSessionLocal() as s:
+                ids = [r[0] for r in (await s.execute(select(Order.id).where(and_(Order.status == "OPEN", Order.protective_tp_order_id.isnot(None),
+                                                                                   Order.resting_tp_price.is_(None))))).all()]
+                if not ids:
+                    return 0
+                await s.execute(update(Order).where(Order.id.in_(ids)).values(protective_tp_order_id=None).execution_options(synchronize_session=False))
+                await locked_commit(s)
+            logger.warning(f"[RESTING_TP_LEGACY_CLEARED] {len(ids)} OPEN row(s) carried a legacy protective_tp_order_id with no resting TP — cleared: {ids}")
+            return len(ids)
+        except Exception as _e:
+            logger.error(f"[RESTING_TP_LEGACY_CLEARED] failed: {_e!r}")
+            return 0
+
     async def live_preflight(self, db) -> list:
         """🛡 (DECISION_LOG 292 ④) READ-ONLY checks before PAPER → LIVE: API key present · account readable · ONE-WAY position mode ·
         Multi-Assets OFF · every symbol CROSS margin · open Binance positions readable and every one tracked by an OPEN live row. → failure reasons ([] = pass)."""
@@ -3603,6 +4508,7 @@ class TradingEngine:
             if _ut:
                 raise ModeSwitchRefused(f"untracked Binance position(s) still open on {', '.join(_ut)} — close or import them before switching to PAPER", 409)
         self.is_paper_mode = enabled
+        self.rtp_clear_all()   # 🎯 (296) no resting-TP realtime state crosses into the other book
         self._bnb_usd_last = None  # Sep-11 (review M-1): a live→paper→live toggle must not reuse a stale live cache
         self._equity_usd_last = None
         if enabled:
@@ -10177,6 +11083,12 @@ class TradingEngine:
             logger.critical(f"[UNTRACKED_POSITION_BLOCK] {pair} {direction}: entry refused — Binance holds an untracked {_ut.get('side')} "
                             f"{_ut.get('qty')} on this symbol ({_ut.get('reason')})")
             return None
+        # 🎯 (DECISION_LOG 296, round 2 #10) a pair that may still carry an UNVERIFIED reduce-only limit (forced close / blocked settle) has
+        # its reduce-only orders cleared before ANY new open (a leftover limit must never reduce the new position); unverifiable → refused
+        if not self.is_paper_mode and not await self.rtp_preopen_clear(pair):
+            if _frenzy:
+                self._frenzy_open_refusal = f"{pair} may carry a leftover reduce-only limit — refused until it is cleared"
+            return None
 
         # Jun 15: Flip Entry — the flip trigger fires mid-filter-chain, before the
         # momentum path computes entry_regime, so flips arrived with empty macro_trend /
@@ -11976,6 +12888,11 @@ class TradingEngine:
         if not self.is_paper_mode:
             _book_release()   # 🔒 live: the row is committed — the next open (any pair) sees it in the counts
         await db.refresh(order)
+        # 🎯 (DECISION_LOG 296) RESTING TAKE-PROFIT: AFTER the fill, the backstop and the COMMIT (an unbooked fill never carries one — the
+        # 292 ③ flatten has nothing to cancel), only for an enabled sleeve (FRENZY_WILLY / FRENZY_LITE); live places the reduce-only
+        # post-only limit, paper records what live would hold. Failure → [RESTING_TP_FAILED] + counter, the trade runs on its software TP.
+        if _frenzy and (_fz_es in RTP_SLEEVES):
+            await self._rtp_arm(db, order)
         # 📓 Sep-18 decision journal: the fill (file-only, never raises)
         try:
             _djournal.note('OPEN', pair=pair, dir=direction, strategy=getattr(order, 'entry_strategy', None), price=getattr(order, 'entry_price', None),
@@ -12270,6 +13187,9 @@ class TradingEngine:
                 raise ValueError("in live mode the leverage must be a whole number (the exchange accepts no fractions)")
             if not bool(getattr(th, 'broker_backstop_enabled', False)):
                 raise ValueError("manual entry in live mode needs the exchange safety stop (broker backstop) switched on")
+            if not await self.rtp_preopen_clear(pair):   # 🎯 (296, round 2 #10) a leftover reduce-only limit must never reduce this position
+                raise ValueError(f"{pair} may still carry a leftover reduce-only limit from an earlier close that could not be verified — "
+                                 f"try again in a minute (or cancel it on Binance)")
         floor = manual_floor_for_leverage(th, leverage)   # leverage-aware: never wider than 80 % of the liquidation distance
         sl = tp = None
         if exit_mode in ("FIXED", "BULLRUN_SL"):   # BULLRUN_SL: the operator's stop + the Bull-Run profit side
@@ -12732,6 +13652,11 @@ class TradingEngine:
             await self.update_orders_cache(db)
         except Exception as _c_err:
             logger.error(f"[EXIT_OVERRIDE] {order.pair}: saved, cache rebuild failed ({_c_err}) — the monitor loop picks it up")
+        if getattr(order, 'protective_tp_order_id', None) or getattr(order, 'resting_tp_price', None) is not None:
+            # 🎯 (DECISION_LOG 296) the operator's target replaces the sleeve's: the resting TP limit is cancelled now (filled meanwhile →
+            # recorded; the reconciler / close path books it)
+            _w = await self._rtp_withdraw(order.id, "exit override")
+            logger.warning(f"[EXIT_OVERRIDE] {order.pair} #{order.id}: resting TP {_w}")
         logger.warning(f"[EXIT_OVERRIDE] {order.pair} {order.direction} #{order.id} ({order.entry_strategy or 'MOMENTUM'}): exit replaced by stop {sl:+.2f}% / "
                        f"target {('%+.2f%%' % tp) if tp is not None else 'none'} (was {_prev}; P&L now {('%+.2f%%' % pnl_now) if pnl_now is not None else 'unknown'})")
         return order
@@ -13053,8 +13978,53 @@ class TradingEngine:
         # as a bot-initiated close in flight and skip it.  Live mode only —
         # paper mode never hits the reconciler.  See CLAUDE.md "SUIUSDT
         # reconciler race (Apr 16)" for the original incident.
+        _rtp_set = None   # 🎯 (DECISION_LOG 296) the resting TP's settlement for this close: None = none on this order
         if not self.is_paper_mode:
             await self._mark_close_in_progress(db, order.id)
+            # 🎯 (DECISION_LOG 296) CANCEL THE RESTING TP FIRST — every exit (stop, time cap, manual, override, the retry queue, the
+            # FRENZY_TP safety net / fill) passes here: re-read the row's resting-TP fields (a concurrent late swap / re-price may have
+            # written a NEWER id since this row object was loaded) → cancel → learn its fill → clear the id + record the fill NOW (a failed
+            # close / retry must see them) → the market order below takes ONLY the remainder (reduce-only); fully filled → no market order.
+            # A resting-TP sleeve row with NO recorded id (a placement whose answer / commit was lost) has the symbol's reduce-only orders
+            # cancelled first. A blocked cancel: stop-class closes (stop, time cap, backstop, manual) go out anyway for the unfilled rest and
+            # reconcile the limit afterwards; every other close waits in the retry queue with its reason stamped.
+            _rtp_active = self.rtp_row_active(order)   # switch OFF and nothing recorded → exactly the old close (no re-read, no settle)
+            if _rtp_active:
+                try:
+                    await db.refresh(order, attribute_names=['protective_tp_order_id', 'resting_tp_price', 'resting_tp_filled_qty'])
+                except Exception as _rtp_rf:
+                    logger.debug(f"[RESTING_TP] {order.pair} #{order.id}: re-read skipped ({_rtp_rf})")
+            if _rtp_active and (getattr(order, 'protective_tp_order_id', None) or float(getattr(order, 'resting_tp_filled_qty', None) or 0) > 0
+                                or getattr(order, 'resting_tp_price', None) is not None):
+                _rtp_force = rtp_stop_class(reason)
+                try:
+                    _rtp_set = await self._rtp_settle(order, allow_force=_rtp_force)
+                except Exception as _rtp_e:
+                    logger.critical(f"[RESTING_TP_CANCEL_FAILED] {order.pair} #{order.id}: settle raised {_rtp_e!r}")
+                    _rtp_set = ({'filled': float(order.resting_tp_filled_qty or 0), 'avg': order.resting_tp_price, 'full': False,
+                                 'lim': order.resting_tp_price, 'pending': ([str(order.protective_tp_order_id)] if order.protective_tp_order_id else []),
+                                 'unverified': True} if _rtp_force else {'blocked': True})
+                if _rtp_set and _rtp_set.get('blocked'):
+                    _exit_retry_queue.setdefault(order.id, 0)   # the resting TP may still fill: no market order now, the retry queue re-runs this close
+                    try:   # the retry queue re-runs THIS exit, never a generic EXIT_RETRY
+                        order.close_reason = reason   # round-3 review: on the identity-mapped object (a same-cycle retry reads this one)
+                        await locked_commit(db)
+                    except Exception as _rtp_rs:
+                        logger.error(f"[RESTING_TP] {order.pair} #{order.id}: reason stamp failed ({_rtp_rs})")
+                    logger.critical(f"[EXIT_FAILED] {order.pair}: resting TP could not be cancelled / read — {reason} deferred to the retry queue "
+                                    f"(the exchange safety stop stays in place)")
+                    return None
+                if _rtp_set and _rtp_set.get('pending'):
+                    logger.critical(f"[RESTING_TP_FORCED_CLOSE] {order.pair} #{order.id}: {reason} goes out for the unfilled rest although resting "
+                                    f"TP {_rtp_set['pending']} could not be cancelled / read — reduce-only; its fill is reconciled after the close")
+                try:
+                    await locked_commit(db)
+                except Exception as _rtp_ce:
+                    logger.error(f"[RESTING_TP] {order.pair} #{order.id}: settle record commit failed ({_rtp_ce}) — booked with the close below")
+                if _rtp_set and _rtp_set.get('full'):
+                    _rtp_st0 = _rtp_rt.get(order.id) or {}
+                    reason = rtp_reason_for_limit(config.trading_config.thresholds, order.entry_strategy, order.direction, order.entry_price,
+                                                  self._rtp_entry_fee_pct(order), _rtp_set.get('lim') or _rtp_st0.get('px'), self._rtp_maker())
             # Aug-11 🛡: cancel the resting backstop BEFORE our own close order goes out —
             # the dual-close race guard (never let the exchange stop + the bot's close race).
             if getattr(order, 'backstop_algo_id', None):
@@ -13088,17 +14058,51 @@ class TradingEngine:
                 "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_", "OVERRIDE_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent; Sep-29 MANUAL_SL/TP too
             ))
 
+            # 🎯 (DECISION_LOG 296) the resting TP took part (or all) of the position: the market order closes ONLY the remainder; a fully
+            # filled TP sends NO market order — it is booked at the order's average price, MAKER, maker fee.
+            _close_qty = order.quantity
+            symbol = order.pair.replace('USDT', '/USDT:USDT')
+            if _rtp_set and float(_rtp_set.get('filled') or 0) > 0:
+                _close_qty = self._rtp_qty_snap(symbol, remaining_qty(order.quantity, _rtp_set['filled']))   # B1: rounded + snapped to the step
+            if _rtp_set and _rtp_set.get('pending') and not _rtp_set.get('full'):
+                # #3: a FORCED close with an unverified limit is sized from the LIVE position (the limit may have filled more meanwhile — a
+                # reduce-only order larger than the position is refused, -2022); flat → no market order, the limit is reconciled instead
+                _rtp_known, _rtp_live = await self._rtp_live_contracts(symbol)
+                if _rtp_known and _rtp_live <= 0:
+                    _rtp_set = await self._rtp_reconcile_pending(order, _rtp_set)
+                    if not _rtp_set.get('full'):
+                        _rtp_rem_px = await self._fetch_actual_fill_price(order, current_price)
+                        exit_result = {'price': _rtp_rem_px, 'fee_rate': taker_fee_rate, 'exit_order_type': 'TAKER', 'decision_price': current_price}
+                        logger.critical(f"[RESTING_TP_FORCED_CLOSE] {order.pair} #{order.id}: position already flat — no market order; the unfilled rest "
+                                        f"booked at the last close-side trade {_rtp_rem_px}")
+                elif _rtp_known:
+                    _close_qty = min(float(_close_qty), self._rtp_qty_snap(symbol, _rtp_live))
+            if _rtp_set and _rtp_set.get('full') and exit_result is None:
+                reason = rtp_reason_for_limit(config.trading_config.thresholds, order.entry_strategy, order.direction, order.entry_price,
+                                              self._rtp_entry_fee_pct(order), _rtp_set.get('lim'), self._rtp_maker())   # #2: a full limit fill is the TP
+            if exit_result is None and _rtp_set and not _rtp_set.get('full') and float(_close_qty or 0) <= 0:
+                exit_result = {'price': current_price, 'fee_rate': taker_fee_rate, 'exit_order_type': 'TAKER', 'decision_price': current_price}
+                logger.critical(f"[RESTING_TP] {order.pair} #{order.id}: remainder below one amount step — no market order; the residual check guards it")
+            if _rtp_set and _rtp_set.get('full') and exit_result is None:
+                _rtp_px = _rtp_set.get('avg') or _rtp_set.get('lim') or current_price
+                exit_result = {'price': _rtp_px, 'fee_rate': float(getattr(tc, 'maker_fee', 0.00018)), 'exit_order_type': 'MAKER',
+                               'decision_price': (_rtp_set.get('lim') or _rtp_px)}
+                logger.warning(f"[RESTING_TP_FILLED] {order.pair} {order.direction} #{order.id}: the whole TP filled @ {_rtp_px} — booked {reason} "
+                               f"MAKER, no market order")
+
             for attempt in range(1, max_exit_retries + 1):
+                if exit_result is not None:
+                    break   # 🎯 (296) settled by the resting TP
                 if maker_exit_enabled and reason != "MANUAL" and not _urgent_exit:
                     symbol = order.pair.replace('USDT', '/USDT:USDT')
                     exit_result = await self._try_maker_exit(
-                        symbol=symbol, side=order.direction, amount=order.quantity,
+                        symbol=symbol, side=order.direction, amount=_close_qty,
                         pair=order.pair, direction=order.direction, current_price=current_price
                     )
                 else:
                     symbol = order.pair.replace('USDT', '/USDT:USDT')
                     result = await binance_service.close_position(
-                        symbol=symbol, side=order.direction, amount=order.quantity
+                        symbol=symbol, side=order.direction, amount=_close_qty
                     )
                     if result:
                         # Use actual Binance fill price, fall back to WebSocket price only if unavailable
@@ -13161,6 +14165,11 @@ class TradingEngine:
                     binance_pairs = {p['symbol'].replace('/USDT:USDT', 'USDT') for p in positions}
                     if order.pair not in binance_pairs:
                         actual_price = await self._fetch_actual_fill_price(order, current_price)
+                        if _rtp_set and _rtp_set.get('pending'):   # #3: the limit that could not be cancelled is reconciled before booking
+                            _rtp_set = await self._rtp_reconcile_pending(order, _rtp_set)
+                        if _rtp_set and _rtp_set.get('full'):     # the limit closed the position → its TP, never EXTERNAL at the last trade
+                            reason = rtp_reason_for_limit(config.trading_config.thresholds, order.entry_strategy, order.direction, order.entry_price,
+                                                          self._rtp_entry_fee_pct(order), _rtp_set.get('lim'), self._rtp_maker())
                         logger.warning(f"[CLOSE_FALLBACK] {order.pair}: position gone from Binance — closing in DB @ {actual_price} (reason={reason})")
                         order.status = "CLOSED"
                         order.close_reason = reason
@@ -13175,6 +14184,15 @@ class TradingEngine:
                         taker_fee = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
                         notional_at_close = order.quantity * actual_price
                         exit_fee = notional_at_close * taker_fee
+                        _rtp_b = (blend_exit(order.quantity, _rtp_set['filled'], _rtp_set.get('avg') or _rtp_set.get('lim'), actual_price,
+                                             float(getattr(config.trading_config, 'maker_fee', 0.00018)), taker_fee)
+                                  if (_rtp_set and float(_rtp_set.get('filled') or 0) > 0) else None)
+                        if _rtp_b:   # 🎯 (296) the resting TP's part at its own price + maker fee, the rest at the found fill
+                            actual_price, exit_fee = _rtp_b['price'], _rtp_b['fee']
+                            notional_at_close = order.quantity * actual_price
+                            order.exit_price = actual_price   # the booked exit is the blended one
+                            logger.warning(f"[RESTING_TP_PARTIAL] {order.pair} #{order.id}: blended exit {actual_price:.8g} ({_rtp_b['filled_qty']} at the limit "
+                                           f"+ {_rtp_b['rem_qty']} at market)")
                         if order.direction == "LONG":
                             raw_pnl = (actual_price - order.entry_price) * order.quantity
                         else:
@@ -13185,6 +14203,15 @@ class TradingEngine:
                         order.exit_fee = round(exit_fee, 4)
                         order.total_fee = round((order.entry_fee or 0) + exit_fee, 4)
                         order.exit_order_type = "EXTERNAL"
+                        if _rtp_set and not _rtp_set.get('blocked'):   # 🎯 (296)
+                            order.resting_tp_filled_qty = float(_rtp_set.get('filled') or 0)
+                            if _rtp_set.get('full'):
+                                order.exit_order_type = "MAKER"
+                            elif _rtp_b:
+                                order.exit_order_type = _rtp_b['order_type']
+                            if _rtp_set.get('unverified'):
+                                order.notes = ((order.notes + ' · ') if order.notes else '') + 'RTP_FILL_UNVERIFIED'
+                                self._rtp_mark_dirty(order.pair)
                         # Slippage for external close: compare WebSocket decision price vs actual fill
                         if current_price and current_price > 0 and actual_price > 0:
                             if order.direction == "LONG":
@@ -13208,6 +14235,7 @@ class TradingEngine:
                         _exit_retry_queue.pop(order.id, None)
                         await locked_commit(db)
                         await db.refresh(order)
+                        _rtp_rt.pop(order.id, None)   # 🎯 (296)
                         async with _cache_lock:
                             _open_orders_cache[order.pair] = [
                                 o for o in _open_orders_cache.get(order.pair, []) if o['id'] != order.id
@@ -13267,6 +14295,59 @@ class TradingEngine:
             else:
                 _slippage_pct = None
 
+            # 🎯 (DECISION_LOG 296) a forced stop-class close: reconcile the limit that could not be cancelled BEFORE booking (one more bounded
+            # cancel + read per id); still unreadable → booked on the recorded fill, flagged RTP_FILL_UNVERIFIED in notes (revert-gate check).
+            if _rtp_set and _rtp_set.get('pending'):
+                _rtp_set = await self._rtp_reconcile_pending(order, _rtp_set)
+            if _rtp_set and _rtp_set.get('full') and exit_order_type != 'MAKER':
+                # #2: the limit turned out to fill the WHOLE position → booked as the take profit at the limit, MAKER — never as the stop-class
+                # reason that forced the close (the market order then found nothing to close)
+                reason = rtp_reason_for_limit(config.trading_config.thresholds, order.entry_strategy, order.direction, order.entry_price,
+                                              self._rtp_entry_fee_pct(order), _rtp_set.get('lim'), self._rtp_maker())
+                _rtp_lim = float(_rtp_set.get('lim') or _rtp_set.get('avg') or actual_exit_price)
+                actual_exit_price = float(_rtp_set.get('avg') or _rtp_lim)
+                exit_fee_rate, exit_order_type = float(getattr(tc, 'maker_fee', 0.00018)), 'MAKER'
+                notional_at_close = order.quantity * actual_exit_price
+                exit_fee = notional_at_close * exit_fee_rate
+                _slippage_pct = round(((_rtp_lim - actual_exit_price) if order.direction == "LONG" else (actual_exit_price - _rtp_lim)) / _rtp_lim * 100, 4)
+                logger.warning(f"[RESTING_TP_FILLED] {order.pair} #{order.id}: the reconciled limit filled the whole position — booked {reason} MAKER")
+            # B1: after ANY partial / forced resting-TP close the LIVE position must be 0 — a residual (truncated quantity, a fill race) is
+            # closed reduce-only now; still open → the backstop is re-placed and the close retries: never booked CLOSED over a live residual
+            if (_rtp_set and not _rtp_set.get('full') and exit_order_type != 'MAKER'
+                    and (float(_rtp_set.get('filled') or 0) > 0 or _rtp_set.get('unverified') or _rtp_set.get('pending') is not None)):
+                _rk, _rres = await self._rtp_live_contracts(symbol)
+                if _rk and _rres > 0:
+                    logger.critical(f"[RESTING_TP_RESIDUAL] {order.pair} #{order.id}: {_rres} still open after the close — closing it reduce-only")
+                    _r2 = await self._rtp_io(binance_service.close_position(symbol=symbol, side=order.direction, amount=_rres), f"{order.pair} residual close")
+                    _rk2, _rres2 = await self._rtp_live_contracts(symbol)
+                    if _r2 and _rk2 and _rres2 <= 0:
+                        _r_mkt = remaining_qty(order.quantity, float(_rtp_set.get('filled') or 0))
+                        _p2 = float(_r2.get('price') or actual_exit_price)
+                        if _r_mkt > 0 and _rres <= _r_mkt:
+                            actual_exit_price = ((_r_mkt - _rres) * actual_exit_price + _rres * _p2) / _r_mkt
+                            notional_at_close = order.quantity * actual_exit_price
+                            exit_fee = notional_at_close * exit_fee_rate
+                    else:
+                        _exit_retry_queue.setdefault(order.id, 0)
+                        await self._rtp_guard_open_residual(db, order, reason)
+                        logger.critical(f"[RESTING_TP_RESIDUAL] {order.pair} #{order.id}: residual {_rres2 if _rk2 else '?'} could NOT be closed — row "
+                                        f"stays OPEN, backstop re-placed, {reason} retries")
+                        return None
+            # 🎯 (DECISION_LOG 296) BLENDED exit — part filled by the resting TP (its price, maker fee) + the remainder at its market fill
+            # (taker): ONE row; calculate_pnl below with the quantity-weighted price and the summed fee books exactly Σ part P&L.
+            if _rtp_set and float(_rtp_set.get('filled') or 0) > 0 and not _rtp_set.get('full'):
+                _rtp_b = blend_exit(order.quantity, _rtp_set['filled'], _rtp_set.get('avg') or _rtp_set.get('lim'), actual_exit_price,
+                                    float(getattr(tc, 'maker_fee', 0.00018)), exit_fee_rate)
+                if _rtp_b:
+                    logger.warning(f"[RESTING_TP_PARTIAL] {order.pair} {order.direction} #{order.id}: blended exit {_rtp_b['price']:.8g} = "
+                                   f"{_rtp_b['filled_qty']} @ {_rtp_set.get('avg') or _rtp_set.get('lim')} (maker) + {_rtp_b['rem_qty']} @ "
+                                   f"{actual_exit_price} ({exit_order_type}) — reason {reason}")
+                    actual_exit_price, exit_fee, exit_order_type = _rtp_b['price'], _rtp_b['fee'], _rtp_b['order_type']
+                    notional_at_close = order.quantity * actual_exit_price
+                else:
+                    logger.critical(f"[RESTING_TP_PARTIAL] {order.pair} #{order.id}: blend impossible (fill price unknown) — booked at the "
+                                    f"market fill only; reconcile vs Binance")
+
             # POST-CLOSE VERIFICATION: confirm position is actually gone from Binance
             try:
                 await asyncio.sleep(1)  # brief delay for Binance to process
@@ -13285,7 +14366,24 @@ class TradingEngine:
             _urgent_exit_paper = (order.entry_strategy or "") in FRENZY_STRATEGIES or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (
                 "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_", "OVERRIDE_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
             ))
-            if maker_exit_enabled and reason != "MANUAL" and not _urgent_exit_paper:
+            # 🎯 (DECISION_LOG 296) paper = live: a recorded paper resting TP books at ITS limit with the maker fee when the tracked price
+            # trades ≥ 1 tick THROUGH it (a touch is not a fill) — whatever exit got here first (live: the cancel would read it FILLED).
+            _rtp_pp = getattr(order, 'resting_tp_price', None)
+            _rtp_ptick = self._rtp_tick_cached(order.pair, _rtp_pp) if _rtp_pp else None
+            if (_rtp_pp and _rtp_ptick and float(getattr(order, 'resting_tp_filled_qty', None) or 0) <= 0
+                    and paper_filled(order.direction, current_price, _rtp_pp, _rtp_ptick)):
+                reason = rtp_reason_for_limit(config.trading_config.thresholds, order.entry_strategy, order.direction, order.entry_price,
+                                              self._rtp_entry_fee_pct(order), _rtp_pp, self._rtp_maker())
+                actual_exit_price = float(_rtp_pp)
+                exit_fee_rate = float(getattr(tc, 'maker_fee', 0.00018))
+                exit_order_type = 'MAKER'
+                notional_at_close = order.quantity * actual_exit_price
+                exit_fee = notional_at_close * exit_fee_rate
+                order.resting_tp_filled_qty = order.quantity
+                _rtp_set = {'filled': float(order.quantity), 'full': True, 'avg': float(_rtp_pp), 'lim': float(_rtp_pp)}   # recorded in phase 1
+                logger.info(f"[RESTING_TP_FILLED] {order.pair} {order.direction} #{order.id} (paper): price {current_price} ≥ 1 tick through the "
+                            f"limit {_rtp_pp} — booked {reason} at the limit, maker fee")
+            elif maker_exit_enabled and reason != "MANUAL" and not _urgent_exit_paper:
                 exit_result = await self._simulate_maker_exit_paper(
                     pair=order.pair, direction=order.direction, current_price=current_price
                 )
@@ -13395,6 +14493,13 @@ class TradingEngine:
                 order.exit_order_type = exit_order_type
                 order.pnl = pnl_data['pnl']
                 order.pnl_percentage = pnl_data['pnl_percentage']
+                if _rtp_set and not _rtp_set.get('blocked'):   # 🎯 (296) what the resting TP filled rides the row (survives a phase-1 retry re-fetch)
+                    order.resting_tp_filled_qty = float(_rtp_set.get('filled') or 0)
+                    if not _rtp_set.get('pending'):
+                        order.protective_tp_order_id = None
+                    if _rtp_set.get('unverified') and 'RTP_FILL_UNVERIFIED' not in (order.notes or ''):
+                        order.notes = ((order.notes + ' · ') if order.notes else '') + 'RTP_FILL_UNVERIFIED'
+                        self._rtp_mark_dirty(order_pair)   # #10: the next open on this pair clears its reduce-only orders first
 
                 # ─────────────────────────────────────────────────────────────
                 # 🚀 Jul 27 SPIKE_FADE AUTO-TRIPWIRE: a fade closing <= tripwire
@@ -13844,6 +14949,7 @@ class TradingEngine:
         if _strip_reason_prefixes(reason).startswith("RUNNER_TRAIL_LATE"):
             self._seed_fade_late_shadow(order, resumed=False)
         self._rsi3_history.pop(order.id, None)
+        _rtp_rt.pop(order.id, None)   # 🎯 (296) the resting-TP state ends with the row
         if (order.status or '') == "CLOSED":   # 🔒 (251, round-3) the committed close leaves the realtime cache NOW (never a ghost until the rebuild)
             try:
                 async with _cache_lock:
@@ -13874,7 +14980,7 @@ class TradingEngine:
         if _reason_base.startswith("BR_"):  # Aug 21 gate 57: bull-run sleeve reasons (BR_STOP_LOSS → STOP_LOSS etc.)
             _reason_base = _reason_base[3:]
         _reason_base = _rh_strip(_reason_base)   # FL_RH_x → x
-        if not _reason_base.startswith(RH_STOP_CLASS) and not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("LADDER_FLOOR") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("FRENZY_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("BACKSTOP_STOP")):
+        if not _reason_base.startswith(RH_STOP_CLASS) and not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("LADDER_FLOOR") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("FRENZY_TP") or _reason_base.startswith("WILLY_LATE_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("BACKSTOP_STOP")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -14791,19 +15897,26 @@ class TradingEngine:
                     _br_peak = max(realtime_peak, _br_pnl)
                     order.peak_pnl = _br_peak
                     order.trough_pnl = min(realtime_trough, _br_pnl)
+                    # 🎯 (DECISION_LOG 296) a resting TP alive on this order → the sleeve's software TP is the safety net only (_rtp_gate)
+                    _rtp_on_m = ((order.entry_strategy or "") in FRENZY_STRATEGIES) and self._rtp_state(order.id, row=order) is not None
                     if (order.entry_strategy or "") == "SURGE_SHORT":
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None))
-                    elif (order.entry_strategy or "") == "FRENZY_WILLY":   # 🎲 Oct-8 (251): its OWN exit — frenzy_willy_tp_pct / frenzy_willy_stop_pct / frenzy_willy_max_hold_minutes (+1.25 / −4 / 90 since DL 281; never FRENZY's TP3)
+                    elif (order.entry_strategy or "") == "FRENZY_WILLY":   # 🎲 Oct-8 (251): its OWN exit — frenzy_willy_tp_pct / frenzy_willy_stop_pct / frenzy_willy_max_hold_minutes (+1.25 / −4 / 90 since DL 281; never FRENZY's TP3) · ⏰ late TP (297)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
-                                                                                _held_minutes(order.opened_at), None)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live
+                                                                                _held_minutes(order.opened_at), None, resting_tp=_rtp_on_m)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live
                     elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
                         # 271: no hidden floor (stop_floor None) — frenzy_stop_pct, paper = live
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
-                                                                          None, use_tp=True, sleeve=order.entry_strategy)   # 🎯 fixed TP (196) · LITE's own TP (284)
+                                                                          None, use_tp=True, sleeve=order.entry_strategy, resting_tp=_rtp_on_m)   # 🎯 fixed TP (196) · LITE's own TP (284)
                     else:
                         _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None), getattr(order, 'entry_br_door', None),
                                                                            trail_mult_override=_surge_trail_override(order.entry_strategy),
                                                                            no_lock=_surge_no_lock(order.entry_strategy))
+                    if _rtp_on_m and not _br_close:   # 🎯 (296) fill detection / safety net / ⏰ late swap — same gate as the realtime path
+                        _rtp_g = await self._rtp_gate(order.id, current_price)
+                        if _rtp_g:
+                            _br_close, _br_reason, _br_stop = True, _rtp_g[1], _br_pnl
+                            logger.warning(f"[RESTING_TP] {order.pair} #{order.id}: {_rtp_g[0]} → close {_rtp_g[1]} (monitor)")
                     if _br_close:
                         logger.info(f"[BULLRUN_EXIT] {order.pair} {order.entry_strategy}: {_br_reason} fire pnl={_br_pnl:.2f}% peak={_br_peak:.2f}% stop_line={_br_stop:.2f}%")
                         closed_order = await self.close_position(db, order, current_price, _br_reason)
@@ -15707,6 +16820,11 @@ class TradingEngine:
                 await self.backstop_reprice_sweep()
             except Exception as _bkp_err:
                 logger.error(f"[BACKSTOP_REPLACE] sweep failed: {_bkp_err}")
+        # 🎯 (DECISION_LOG 296) RESTING-TP SWEEP: restart re-arm · heal · switch OFF / override → cancel · TP change / ⏰ late minute → re-price
+        try:
+            await self.resting_tp_sweep()
+        except Exception as _rtp_sw_err:
+            logger.error(f"[RESTING_TP] sweep failed: {_rtp_sw_err}")
 
         # --- Process exit retry queue (live mode only) ---
         if not self.is_paper_mode and _exit_retry_queue:
@@ -18677,19 +19795,26 @@ class TradingEngine:
                     order_info['peak_pnl'] = _br_peak_rt
                     if pnl_pct < (order_info.get('trough_pnl', 0) or 0):
                         order_info['trough_pnl'] = pnl_pct
+                    # 🎯 (DECISION_LOG 296) a resting TP alive on this order → the sleeve's software TP is the safety net only (_rtp_gate)
+                    _rtp_on_rt = ((order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES) and self._rtp_state(order_id, pair=pair, opened_at=order_info.get('opened_at')) is not None
                     if (order_info.get('entry_strategy') or '') == 'SURGE_SHORT':
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'))
-                    elif (order_info.get('entry_strategy') or '') == 'FRENZY_WILLY':   # 🎲 Oct-8 (251): its OWN exit on every tick — frenzy_willy_tp_pct / _stop_pct / _max_hold_minutes (+1.25 / −4 / 90 since DL 281)
+                    elif (order_info.get('entry_strategy') or '') == 'FRENZY_WILLY':   # 🎲 Oct-8 (251): its OWN exit on every tick — frenzy_willy_tp_pct / _stop_pct / _max_hold_minutes (+1.25 / −4 / 90 since DL 281) · ⏰ late TP (297)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
-                                                                                _held_minutes(order_info.get('opened_at')), None)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live
+                                                                                _held_minutes(order_info.get('opened_at')), None, resting_tp=_rtp_on_rt)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live
                     elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
                         # 271: no hidden floor (stop_floor None) — frenzy_stop_pct, paper = live
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
-                                                                          None, use_tp=True, sleeve=order_info.get('entry_strategy'))   # 🎯 fixed TP (196) · LITE's own TP (284)
+                                                                          None, use_tp=True, sleeve=order_info.get('entry_strategy'), resting_tp=_rtp_on_rt)   # 🎯 fixed TP (196) · LITE's own TP (284)
                     else:
                         _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'), order_info.get('entry_br_door'),
                                                                            trail_mult_override=_surge_trail_override(order_info.get('entry_strategy')),
                                                                            no_lock=_surge_no_lock(order_info.get('entry_strategy')))
+                    if _rtp_on_rt and not _br_close and not order_info.get('_closing_in_progress'):   # 🎯 (296) fill detection / safety net / ⏰ late swap
+                        _rtp_g = await self._rtp_gate(order_id, current_price, background=True)   # never awaits REST in the price callback
+                        if _rtp_g:
+                            _br_close, _br_reason, _br_stop = True, _rtp_g[1], pnl_pct
+                            logger.warning(f"[RESTING_TP] {pair} #{order_id}: {_rtp_g[0]} → close {_rtp_g[1]} (realtime)")
                     if _br_close and not order_info.get('_closing_in_progress'):
                         order_info['_closing_in_progress'] = True
                         logger.warning(f"[REALTIME_BULLRUN_EXIT] {pair} {direction} {order_info.get('entry_strategy')}: {_br_reason} pnl={pnl_pct:.4f}% peak={_br_peak_rt:.4f}% stop_line={_br_stop:.2f}% - CLOSING NOW!")

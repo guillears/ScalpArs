@@ -34,6 +34,7 @@ from config import (
 from services.binance_service import binance_service, set_ban_until, set_ban_persist_callback, get_ban_status
 from services.trading_engine import trading_engine, realtime_stop_loss_callback, _open_orders_cache, _cache_lock
 from services.trading_engine import ManualLimitError, normalize_manual_pair
+from services.resting_tp import RTP_SLEEVES as _RTP_SLEEVES   # 🎯 (DECISION_LOG 296)
 from services.indicators import calculate_indicators, get_signal
 from services.websocket_tracker import websocket_tracker
 
@@ -400,6 +401,9 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("[STARTUP] Initializing database...")
     await init_db()
+    # 🎯 (DECISION_LOG 296, checklist #1) protective_tp_order_id was the retired April protective-stops column: a legacy id on an OPEN row with no
+    # resting_tp_price is cleared ([RESTING_TP_LEGACY_CLEARED]) so it can never be read as a resting TP / block a close. Never raises.
+    await trading_engine.resting_tp_legacy_clear()
 
     # Jun 1, 2026 — one-time opening-balance seed for the investor ledger.
     # Existing investors predate the ledger (no dated history). Seed ONE OPENING
@@ -938,6 +942,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         trading_engine._bnb_burn_rate_bot = 0.0
         trading_engine._last_bnb_check = None
         trading_engine._bnb_usd_last = None  # Sep-11 (review M-1): reset clears the live BNB cache like every other BNB field
+        trading_engine.rtp_clear_all()   # 🎯 (296) a reset (order ids restart) never inherits resting-TP realtime state
 
         # Reset Filter Block counters (in-memory + persisted)
         trading_engine._filter_block_counts = {}
@@ -985,6 +990,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
             )
         if direction == "LONG":   # 🔒 (251) FRENZY_WILLY is LONG-only: its hold rows + pending / one-shot state go with a LONG reset
             await _willy_reset_state(db, is_paper)
+        trading_engine.rtp_clear_all()   # 🎯 (296) deleted rows never leave resting-TP realtime state behind
 
         await locked_commit(db)
 
@@ -2688,6 +2694,11 @@ async def _reconcile_open_orders(db: AsyncSession) -> list:
         await trading_engine.check_untracked_positions(db, binance_positions)
     except Exception as _ut_err:
         logger.error(f"[UNTRACKED_POSITION] check failed: {_ut_err}")
+    # 🎯 (DECISION_LOG 296) a regular reduce-only order on a symbol with no OPEN live row (a stale resting TP) is cancelled — throttled 60 s
+    try:
+        await trading_engine.resting_tp_orphan_clean(db, positions=binance_positions)   # S6: symbols with a Binance position and no row are never touched
+    except Exception as _rtp_oc_err:
+        logger.error(f"[RESTING_TP_ORPHAN] clean failed: {_rtp_oc_err}")
     return closed
 
 
@@ -2731,7 +2742,14 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
     open_orders = result.scalars().all()
 
     closed = []
+    from sqlalchemy import inspect as _sa_inspect
     for order in open_orders:
+        try:   # 🎯 (296, round 2 #12) a rollback after a failed booking expired every row of this session — re-read before use
+            if _sa_inspect(order).expired_attributes:
+                await db.refresh(order)
+        except Exception as _rf_err:
+            logger.error(f"[RECONCILE] order re-read failed ({_rf_err}) — skipped this pass")
+            continue
         if order.pair not in binance_pairs:
             # Oct-2 (review of the live manual entry): the positions snapshot can predate a fill whose row is already committed —
             # closing that row as EXTERNAL and cancelling its safety stop would leave a real position naked and unknown. A row
@@ -2761,8 +2779,42 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                         f"close-intent stale (age={_age:.1f}s > {CLOSE_INTENT_STALE_SECONDS}s) — "
                         f"proceeding as EXTERNAL_CLOSE (close path likely crashed)"
                     )
+            # 🎯 (DECISION_LOG 296) a row that may carry a resting TP is settled + booked under the engine's close lock with the row RE-READ
+            # (a resting-TP fill removes the position BEFORE any closing intent is published, so the gate's own close can be in flight right
+            # now): already CLOSED / being closed → skipped ([RECONCILE_RACE_SKIPPED]); the booking commits inside the lock — one booking only.
+            # Round 2: the slow reads (fill price, backstop status — the position is already gone) run BEFORE the lock, bounded at 3 s; under
+            # the lock only the re-read, the settle, the backstop cancel and the commit. Rows with nothing recorded and the switch OFF never
+            # take the lock (exactly as before this ship).
+            _rtp_lock, _rtp_pre_px, _rtp_pre_bk = None, None, "unread"
+            if trading_engine.rtp_row_active(order):
+                import services.trading_engine as _rtp_T
+                _rtp_pre_px = await _get_actual_fill_price(order)
+                if getattr(order, 'backstop_algo_id', None):
+                    _rtp_pre_bk = await trading_engine._rtp_io(binance_service.query_backstop_stop(order.backstop_algo_id), f"{order.pair} backstop query")
+                try:
+                    await locked_commit(db)   # earlier rows' bookings are committed first: a rollback below only ever undoes THIS row
+                except Exception as _pc_err:
+                    logger.error(f"[RECONCILE] pre-lock commit failed: {_pc_err}")
+                _rtp_lock = _rtp_T._close_lock
+                await _rtp_lock.acquire()
+                try:
+                    await db.refresh(order)
+                    _skip = order.status != "OPEN" or (order.closing_in_progress and order.close_initiated_at is not None and
+                                                       (datetime.utcnow() - order.close_initiated_at).total_seconds() < CLOSE_INTENT_STALE_SECONDS)
+                except Exception as _rr_err:
+                    logger.error(f"[RECONCILE] {order.pair} #{order.id}: re-read failed ({_rr_err}) — skipped this pass")
+                    _skip = True
+                except BaseException:   # round-3: a cancelled task (shutdown) must never leak the global close lock
+                    _rtp_lock.release()
+                    raise
+                if _skip:
+                    _rtp_lock.release()
+                    logger.warning(f"[RECONCILE_RACE_SKIPPED] {order.pair} #{order.id}: {getattr(order, 'status', '?')} / closing — the bot's own close "
+                                   f"books it (resting-TP fill race)")
+                    continue
+            _rtp_tx = None
             try:
-                exit_price = await _get_actual_fill_price(order)
+                exit_price = _rtp_pre_px if _rtp_pre_px is not None else await _get_actual_fill_price(order)
 
                 # Reconciler simply marks orphan orders as EXTERNAL_CLOSE.
                 # BROKER_SL / BROKER_TP labels were removed Apr 17 with the
@@ -2778,7 +2830,7 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                 # the trade — the software layer was dead at that moment.
                 if getattr(order, 'backstop_algo_id', None):
                     try:
-                        _bk_st = await binance_service.query_backstop_stop(order.backstop_algo_id)
+                        _bk_st = (_rtp_pre_bk if _rtp_pre_bk != "unread" else await binance_service.query_backstop_stop(order.backstop_algo_id))
                         if _bk_st and str(_bk_st.get('algoStatus', '')).upper() == 'TRIGGERED':
                             order.close_reason = "BACKSTOP_STOP"
                             logger.critical(f"[BACKSTOP_FIRED] {order.pair}: resting stop TRIGGERED while the bot was blind — recorded BACKSTOP_STOP (algoId={order.backstop_algo_id})")
@@ -2793,21 +2845,64 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                             # review fix: NOT triggered (or unknown) → the resting stop is an
                             # orphan; cancel best-effort so it can never flatten a FUTURE
                             # position on the same pair at a stale trigger.
-                            await binance_service.cancel_backstop_stop(order.pair, order.backstop_algo_id)
+                            if _rtp_lock is not None:   # under the close lock: bounded (3 s)
+                                await trading_engine._rtp_io(binance_service.cancel_backstop_stop(order.pair, order.backstop_algo_id), f"{order.pair} backstop cancel")
+                            else:
+                                await binance_service.cancel_backstop_stop(order.pair, order.backstop_algo_id)
                             logger.warning(f"[BACKSTOP_ORPHAN_CANCELED] {order.pair}: external close with non-triggered backstop — canceled algoId={order.backstop_algo_id}")
                     except Exception as _bk_q_err:
                         logger.error(f"[BACKSTOP_QUERY_FAILED] {order.pair}: {_bk_q_err}")
+                # 🎯 (DECISION_LOG 296) a resting TP on the row: cancel + read it FIRST — a filled TP is the reason the position is gone
+                _rtp_x = None
+                if _rtp_lock is not None:   # every resting-TP row (an unrecorded placement included — the settle cancels the symbol's reduce-only orders)
+                    try:
+                        _rtp_x = await trading_engine._rtp_settle(order)
+                    except Exception as _rtp_err:
+                        logger.error(f"[RESTING_TP] {order.pair} #{order.id}: reconcile settle raised {_rtp_err!r}")
+                        _rtp_x = None
+                    if _rtp_x and _rtp_x.get('blocked'):
+                        logger.critical(f"[RESTING_TP_CANCEL_FAILED] {order.pair} #{order.id}: position gone, resting TP unreadable — booked as "
+                                        f"{order.close_reason}, notes RTP_SETTLE_BLOCKED; the orphan sweep cancels any leftover — reconcile vs Binance")
+                        order.notes = ((order.notes + ' · ') if order.notes else '') + 'RTP_SETTLE_BLOCKED'   # the revert gate's accounting check finds it
+                        trading_engine._rtp_mark_dirty(order.pair)   # the next open on this pair clears its reduce-only orders first
+                        _rtp_x = None
+                    # S7: an UNKNOWN placement (price recorded · id NULL · fill NULL) whose position vanished at ≈ the limit price → likely filled
+                    try:
+                        if (_rtp_x is None and getattr(order, 'protective_tp_order_id', None) is None and getattr(order, 'resting_tp_price', None)
+                                and getattr(order, 'resting_tp_filled_qty', None) is None and exit_price
+                                and abs(float(exit_price) / float(order.resting_tp_price) - 1) <= 0.001):
+                            order.notes = ((order.notes + ' · ') if order.notes else '') + 'RTP_UNRECORDED_FILL?'
+                            logger.critical(f"[RESTING_TP] {order.pair} #{order.id}: EXTERNAL_CLOSE at {exit_price} ≈ the unknown placement's limit "
+                                            f"{order.resting_tp_price} — likely its fill (notes RTP_UNRECORDED_FILL?)")
+                    except Exception:
+                        pass
+                trading_engine.rtp_forget(order.id)
                 order.closed_at = datetime.utcnow()
                 order.exit_price = exit_price
+                _rtp_taker = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+                _exit_fee_usd = order.exit_price * order.quantity * _rtp_taker
+                if _rtp_x and float(_rtp_x.get('filled') or 0) > 0:
+                    from services.resting_tp import blend_exit as _rtp_blend, rtp_reason_for_limit as _rtp_reason_for
+                    _rtp_b = _rtp_blend(order.quantity, _rtp_x['filled'], _rtp_x.get('avg') or _rtp_x.get('lim'), exit_price,
+                                        float(getattr(config.trading_config, 'maker_fee', 0.00018)), _rtp_taker)
+                    order.resting_tp_filled_qty = float(_rtp_x['filled'])
+                    if _rtp_b:
+                        order.exit_price, _exit_fee_usd, order.exit_order_type = _rtp_b['price'], _rtp_b['fee'], _rtp_b['order_type']
+                        if _rtp_x.get('full'):
+                            order.close_reason = _rtp_reason_for(config.trading_config.thresholds, order.entry_strategy, order.direction, order.entry_price,
+                                                                 trading_engine._rtp_entry_fee_pct(order), _rtp_x.get('lim') or _rtp_b['price'],
+                                                                 float(getattr(config.trading_config, 'maker_fee', 0.00018)))
+                        logger.warning(f"[RESTING_TP_FILLED] {order.pair} #{order.id}: reconcile — {_rtp_b['filled_qty']}/{order.quantity} filled by the "
+                                       f"resting TP → exit {order.exit_price:.8g} ({_rtp_b['order_type']}), reason {order.close_reason}")
                 if order.direction == "LONG":
                     raw = (order.exit_price - order.entry_price) * order.quantity
                 else:
                     raw = (order.entry_price - order.exit_price) * order.quantity
-                fee = (order.entry_fee or 0) + order.exit_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+                fee = (order.entry_fee or 0) + _exit_fee_usd
                 order.pnl = round(raw - fee, 4)
                 notional = order.entry_price * order.quantity if order.quantity else 1
                 order.pnl_percentage = round(((raw - fee) / notional) * 100, 4)
-                order.exit_fee = round(order.exit_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee), 4)
+                order.exit_fee = round(_exit_fee_usd, 4)
                 order.total_fee = round((order.entry_fee or 0) + order.exit_fee, 4)
 
                 tx = Transaction(
@@ -2818,10 +2913,26 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                     fee=order.exit_fee, order_type="EXTERNAL", is_paper=False
                 )
                 db.add(tx)
+                _rtp_tx = tx
+                if _rtp_lock is not None:
+                    await locked_commit(db)   # 🎯 (296) committed INSIDE the close lock — the gate's close re-reads CLOSED and skips
                 closed.append({"pair": order.pair, "direction": order.direction, "pnl": order.pnl, "id": order.id, "strategy": order.entry_strategy})
                 logger.warning(f"[RECONCILE] {order.pair} {order.direction}: closed as EXTERNAL_CLOSE @ {order.exit_price} (not found on Binance)")
             except Exception as e:
                 logger.error(f"[RECONCILE] {order.pair} {order.direction}: failed to close orphan order {order.id}: {e}")
+                # #12: a half-booked row must never ride the next row's commit — drop its Transaction and its pending changes
+                try:
+                    if _rtp_tx is not None and _rtp_tx in db:
+                        db.expunge(_rtp_tx)
+                    if _rtp_lock is not None:
+                        await db.rollback()   # earlier rows were committed before the lock: this undoes only THIS row
+                    else:
+                        db.expire(order)
+                except Exception as _ex_err:
+                    logger.error(f"[RECONCILE] {order.pair}: cleanup after the failed booking: {_ex_err}")
+            finally:
+                if _rtp_lock is not None:
+                    _rtp_lock.release()
 
     if closed:
         await locked_commit(db)
@@ -3179,7 +3290,7 @@ def _compute_exit_type_stats(orders):
     for etype, data in groups.items():
         count = len(data["trades"])
         avg_exit_fee = sum(o.exit_fee or 0 for o in data["trades"]) / count if count else 0
-        if etype == "MAKER":
+        if etype in ("MAKER", "MAKER+TAKER"):   # 🎯 (296) a blended row: Q·p_blend·taker − its fee = exactly the maker part's saving
             hypothetical_taker_exit_fees = sum(
                 ((o.exit_price or o.entry_price) * o.quantity * taker_fee_rate) for o in data["trades"]
             )
@@ -12874,6 +12985,8 @@ async def update_config(config_update: ConfigUpdate):
     _cfg_errs = bot_stop_errors(new_config.thresholds)
     if str(getattr(new_config.thresholds, 'untracked_position_action', 'alert') or '').strip().lower() not in UNTRACKED_ACTIONS:
         _cfg_errs.append(f"untracked_position_action must be one of {', '.join(UNTRACKED_ACTIONS)}")
+    from services.resting_tp import config_errors as _rtp_cfg_errors   # 🎯 (296) resting TP · ⏰ (297) WILLY late TP
+    _cfg_errs.extend(_rtp_cfg_errors(new_config.thresholds))
     if _cfg_errs:
         raise HTTPException(status_code=400, detail="Configuration NOT saved: " + "; ".join(_cfg_errs))
 

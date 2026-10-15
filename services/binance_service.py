@@ -1099,6 +1099,118 @@ class BinanceService:
             logger.error(f"[BINANCE] cancel-all algo orders failed for {pair}: {e}")
             return False
 
+    # ── 🎯 RESTING TAKE-PROFIT (DECISION_LOG 296): a reduce-only, post-only (GTX) LIMIT at the take profit. Never raises into the engine. ──
+    @staticmethod
+    def _rtp_view(order) -> Dict:
+        info = (order or {}).get('info') or {}
+        raw = str(info.get('status') or (order or {}).get('status') or '').upper()
+        return {
+            'id': str((order or {}).get('id') or info.get('orderId') or ''),
+            'status': raw,
+            'filled': float((order or {}).get('filled') or info.get('executedQty') or 0),
+            'amount': float((order or {}).get('amount') or info.get('origQty') or 0),
+            'average': float((order or {}).get('average') or info.get('avgPrice') or 0),
+            'price': float((order or {}).get('price') or info.get('price') or 0),
+        }
+
+    async def place_resting_tp(self, pair: str, direction: str, amount: float, price: float) -> Optional[Dict]:
+        """Place the resting TP: LIMIT, reduceOnly, timeInForce GTX (post-only — Binance rejects / expires it instead of filling as taker),
+        price and amount rounded to the market's precision. → {'id', 'price', 'amount', 'status'} when it RESTS · {'rejected': True,
+        'error'} when Binance refused it (would cross / no position / precision) · None on any other failure."""
+        symbol = pair.replace('USDT', '/USDT:USDT')
+        try:
+            await self._check_ban()
+            await self.load_markets()
+            _px = float(self.exchange.price_to_precision(symbol, price))
+            _amt = float(self.exchange.amount_to_precision(symbol, amount))
+            if not (_px > 0 and _amt > 0):
+                return {'rejected': True, 'error': f'precision rounded to px={_px} amt={_amt}'}
+            side = 'sell' if direction == 'LONG' else 'buy'
+            order = await self.exchange.create_order(symbol=symbol, type='limit', side=side, amount=_amt, price=_px,
+                                                      params={'reduceOnly': True, 'timeInForce': 'GTX'})
+            v = self._rtp_view(order)
+            if v['status'] in ('EXPIRED', 'EXPIRED_IN_MATCH'):   # GTX: Binance expires a post-only order that would take → the price is through
+                return {'rejected': True, 'crossed': True, 'error': f"GTX order {v['id']} came back {v['status']} (would have crossed)"}
+            if v['status'] in ('REJECTED', 'CANCELED'):
+                return {'rejected': True, 'error': f"order {v['id']} came back {v['status']}"}
+            if not v['id']:
+                return None
+            return {'id': v['id'], 'price': v['price'] or _px, 'amount': v['amount'] or _amt, 'status': v['status'] or 'NEW'}
+        except Exception as e:
+            self._detect_ban(e)
+            _m = str(e)
+            logger.error(f"[BINANCE] resting TP place failed for {pair}: {e}")
+            if any(t in _m for t in ('-5022', 'Post Only', 'could not be executed as maker')):   # GTX would take → crossed
+                return {'rejected': True, 'crossed': True, 'error': _m[:200]}
+            if any(t in _m for t in ('-2022', '-1111', '-4014', '-4164', 'ReduceOnly', 'reduceOnly')):   # no position / precision / size
+                return {'rejected': True, 'error': _m[:200]}
+            return None
+
+    async def cancel_resting_tp(self, pair: str, order_id: str):
+        """Cancel the resting TP → {'result': 'canceled', + Binance's cancel response: status / filled (executedQty) / average (avgPrice) /
+        amount} — the caller needs no follow-up read · 'gone' (unknown order: already filled / canceled / expired — the caller READS it) ·
+        'error'."""
+        symbol = pair.replace('USDT', '/USDT:USDT')
+        try:
+            await self._check_ban()
+            await self.load_markets()
+            res = await self.exchange.cancel_order(str(order_id), symbol)
+            v = self._rtp_view(res if isinstance(res, dict) else {})
+            v['result'] = 'canceled'
+            return v
+        except Exception as e:
+            _m = str(e)
+            if any(t in _m for t in ('-2011', 'Unknown order', 'OrderNotFound', 'not exist', 'NOT_FOUND')):
+                return 'gone'
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] resting TP cancel failed for {pair} orderId={order_id}: {e}")
+            return 'error'
+
+    async def fetch_resting_tp(self, pair: str, order_id: str) -> Optional[Dict]:
+        """Read the resting TP → {'id', 'status' (Binance raw: NEW / PARTIALLY_FILLED / FILLED / CANCELED / EXPIRED …), 'filled', 'amount',
+        'average', 'price'} or None when unreadable."""
+        symbol = pair.replace('USDT', '/USDT:USDT')
+        try:
+            await self._check_ban()
+            await self.load_markets()
+            return self._rtp_view(await self.exchange.fetch_order(str(order_id), symbol))
+        except Exception as e:
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] resting TP read failed for {pair} orderId={order_id}: {e}")
+            return None
+
+    async def fetch_open_reduce_only_orders(self, pair: Optional[str] = None) -> Optional[List[Dict]]:
+        """Open REGULAR (non-algo) reduce-only orders — one symbol (weight 1) or all (weight 40). → [{'id', 'pair', 'side', 'type', 'price',
+        'amount', 'filled', 'timestamp'}] or None when unreadable. Entry orders (not reduce-only) are never listed."""
+        try:
+            await self._check_ban()
+            await self.load_markets()
+            if not pair:   # ccxt refuses an all-symbols read unless told the weight (40) is intended
+                try:
+                    self.exchange.options['warnOnFetchOpenOrdersWithoutSymbol'] = False
+                except Exception:
+                    pass
+            rows = await self.exchange.fetch_open_orders(pair.replace('USDT', '/USDT:USDT') if pair else None)
+            out = []
+            for o in rows or []:
+                info = o.get('info') or {}
+                ro = o.get('reduceOnly')
+                if ro is None:
+                    ro = str(info.get('reduceOnly', '')).lower() == 'true'
+                if not ro or str(info.get('closePosition', '')).lower() == 'true':
+                    continue
+                sym = str(o.get('symbol') or '')
+                out.append({'id': str(o.get('id') or info.get('orderId') or ''),
+                            'pair': (sym.split('/')[0] + 'USDT') if '/' in sym else str(info.get('symbol') or ''),
+                            'side': str(o.get('side') or info.get('side') or '').lower(), 'type': str(o.get('type') or info.get('type') or '').lower(),
+                            'price': float(o.get('price') or 0), 'amount': float(o.get('amount') or 0), 'filled': float(o.get('filled') or 0),
+                            'timestamp': o.get('timestamp') or info.get('time')})
+            return out
+        except Exception as e:
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] open reduce-only orders read failed ({pair or 'all symbols'}): {e}")
+            return None
+
     async def get_position_mode_dual(self) -> Optional[bool]:
         """🛡 (DECISION_LOG 292 ④, read-only) True = HEDGE (dual-side) position mode, False = ONE-WAY (what the bot assumes), None = unreadable."""
         try:

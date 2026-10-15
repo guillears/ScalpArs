@@ -45,10 +45,11 @@ def rtp_enabled(th, entry_strategy) -> bool:
     return bool(key and getattr(th, key, False) is True)
 
 
-def rtp_target(th, entry_strategy, held_minutes=None) -> Optional[Tuple[float, str]]:
+def rtp_target(th, entry_strategy, held_minutes=None, lite_tp=None) -> Optional[Tuple[float, str]]:
     """(NET take profit a resting TP books at this order age, the close reason it books) or None = no resting TP for this order (switch off,
     not a resting-TP sleeve, TP off, or FRENZY_LITE while frenzy_lock_arm_pct > 0 — lock-then-trail replaces the fixed TP). FRENZY_WILLY
-    follows its age: the WILLY TP (FRENZY_TP) before frenzy_willy_late_tp_minutes, the late TP (WILLY_LATE_TP, DECISION_LOG 297) after."""
+    follows its age: the WILLY TP (FRENZY_TP) before frenzy_willy_late_tp_minutes, the late TP (WILLY_LATE_TP, DECISION_LOG 297) after.
+    lite_tp (🎯 DECISION_LOG 301 LITE C): the order's stored LITE TP (Order.frenzy_lite_tp_used) — FRENZY_LITE only; None → the config TP."""
     es = str(entry_strategy or "")
     if not rtp_enabled(th, es):
         return None
@@ -59,15 +60,15 @@ def rtp_target(th, entry_strategy, held_minutes=None) -> Optional[Tuple[float, s
         else:
             if (_f(getattr(th, 'frenzy_lock_arm_pct', 0)) or 0) > 0:
                 return None
-            tp, why = frenzy_tp_for(th, es), "FRENZY_TP"
+            tp, why = frenzy_tp_for(th, es, lite_tp), "FRENZY_TP"
         tp = _f(tp)
         return (tp, why) if tp and tp > 0 else None
     except Exception:
         return None
 
 
-def rtp_tp_pct(th, entry_strategy, held_minutes=None) -> Optional[float]:
-    t = rtp_target(th, entry_strategy, held_minutes)
+def rtp_tp_pct(th, entry_strategy, held_minutes=None, lite_tp=None) -> Optional[float]:
+    t = rtp_target(th, entry_strategy, held_minutes, lite_tp)
     return t[0] if t else None
 
 

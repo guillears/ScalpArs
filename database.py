@@ -241,6 +241,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN resting_tp_filled_qty FLOAT"))
                 if 'momentum_long_ref_leverage' not in columns:   # ⚖️ (DECISION_LOG 298) momentum-long paired leverage
                     connection.execute(text("ALTER TABLE orders ADD COLUMN momentum_long_ref_leverage FLOAT"))
+                if 'frenzy_lite_tp_used' not in columns:   # 🎯 (DECISION_LOG 301) LITE C stored take profit
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN frenzy_lite_tp_used FLOAT"))
+                if 'lite_c_zone' not in columns:   # 🎯 (DECISION_LOG 301) LITE C zone flag
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN lite_c_zone BOOLEAN"))
                 if 'entry_rsi' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_rsi FLOAT"))
                 if 'trough_pnl' not in columns:

@@ -1794,6 +1794,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "entry_pair_1d_ndi": getattr(o, 'entry_pair_1d_ndi', None), "entry_btc_4h_ema50_200_gap_pct": getattr(o, 'entry_btc_4h_ema50_200_gap_pct', None),   # 🪤 Sep-29 fade laggard readings
             "manual_exit_mode": getattr(o, 'manual_exit_mode', None), "manual_note": getattr(o, 'manual_note', None),   # 🖐 Sep-29 MANUAL sleeve
             "entry_frenzy_willy_trigger": getattr(o, 'entry_frenzy_willy_trigger', None),   # 🎲 Oct-8 (251): FRENZY_WILLY entry A / B (open-order badge)
+            "frenzy_lite_tp_used": getattr(o, 'frenzy_lite_tp_used', None), "lite_c_zone": getattr(o, 'lite_c_zone', None),   # 🎯 (301) LITE C stored TP / zone
             "entry_frenzy_willy_wait_bars": getattr(o, 'entry_frenzy_willy_wait_bars', None), "entry_vol_mcap_ratio": getattr(o, 'entry_vol_mcap_ratio', None),   # 🟥🔄 (251)
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             "manual_block_reason": getattr(o, 'manual_block_reason', None), "manual_setup_rating": getattr(o, 'manual_setup_rating', None), "manual_setup_side": getattr(o, 'manual_setup_side', None),
@@ -2214,6 +2215,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_pair_1d_ndi": getattr(o, 'entry_pair_1d_ndi', None), "entry_btc_4h_ema50_200_gap_pct": getattr(o, 'entry_btc_4h_ema50_200_gap_pct', None),   # 🪤 Sep-29 fade laggard readings
             "manual_exit_mode": getattr(o, 'manual_exit_mode', None), "manual_note": getattr(o, 'manual_note', None),   # 🖐 Sep-29 MANUAL sleeve
             "entry_frenzy_willy_trigger": getattr(o, 'entry_frenzy_willy_trigger', None),   # 🎲 Oct-8 (251): FRENZY_WILLY entry A / B (closed orders: the A / B split)
+            "frenzy_lite_tp_used": getattr(o, 'frenzy_lite_tp_used', None), "lite_c_zone": getattr(o, 'lite_c_zone', None),   # 🎯 (301) LITE C stored TP / zone
             "entry_frenzy_willy_wait_bars": getattr(o, 'entry_frenzy_willy_wait_bars', None), "entry_vol_mcap_ratio": getattr(o, 'entry_vol_mcap_ratio', None),   # 🟥🔄 (251)
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             "manual_block_reason": getattr(o, 'manual_block_reason', None), "manual_setup_rating": getattr(o, 'manual_setup_rating', None), "manual_setup_side": getattr(o, 'manual_setup_side', None),
@@ -3042,6 +3044,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "surge_triggers": [],
             "surge_monitor": None,
             "frenzy_rows": [],
+            "lite_c_rows": [],
             "frenzy_flags": [],
             "frenzy_breaks": [],
             "frenzy_monitor": None,
@@ -3746,6 +3749,10 @@ def _frenzy_monitor_payload():
                 "max_atr": float(getattr(_th, 'frenzy_max_atr_pct', 2.5) or 0), "stop": float(getattr(_th, 'frenzy_stop_pct', 3.0) or 0),
                 "tp": float(getattr(_th, 'frenzy_tp_pct', 0) or 0),
                 "lite_tp": float(getattr(_th, 'frenzy_lite_tp_pct', 0) or 0),   # 🎯 DECISION_LOG 284: LITE's own TP (0 = the shared tp)
+                "lite_c_enabled": getattr(_th, 'frenzy_lite_c_enabled', False) is True,   # 🎯 DECISION_LOG 301 LITE C
+                "lite_c_vol_mult": float(getattr(_th, 'frenzy_lite_c_vol_mult', 20.0) if getattr(_th, 'frenzy_lite_c_vol_mult', None) is not None else 20.0),
+                "lite_c_btc_slope_min": float(getattr(_th, 'frenzy_lite_c_btc_slope_min', 0.0) if getattr(_th, 'frenzy_lite_c_btc_slope_min', None) is not None else 0.0),
+                "lite_c_tp": float(getattr(_th, 'frenzy_lite_c_tp_pct', 2.0) if getattr(_th, 'frenzy_lite_c_tp_pct', None) is not None else 2.0),
                 "lock_arm": float(getattr(_th, 'frenzy_lock_arm_pct', 0) or 0), "lock_floor": float(getattr(_th, 'frenzy_lock_floor_pct', 2.0) or 0),
                 "lock_trail": float(getattr(_th, 'frenzy_lock_trail_pct', 2.0) or 0),
                 "trail_arm": float(getattr(_th, 'frenzy_trail_arm_pct', 5.0) or 0), "trail_give": float(getattr(_th, 'frenzy_trail_giveback_pct', 1.5) or 0),
@@ -5261,6 +5268,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "surge_triggers": [],
             "surge_monitor": None,
             "frenzy_rows": [],
+            "lite_c_rows": [],
             "frenzy_flags": [],
             "frenzy_breaks": [],
             "frenzy_monitor": None,
@@ -8257,6 +8265,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     # 🔥 Oct-2 FRENZY sleeve (DECISION_LOG 176): FRENZY_LONG fills (all · by exit · by spike episode) with the review count read on
     # the LIFETIME closed fills (unfiltered — a dashboard filter must never move it), and the recorded short observations.
     frenzy_rows = []
+    lite_c_rows = []   # 🎯 (DECISION_LOG 301) LITE C tally (zone vs outside vs pre-301) — filled below, never raises
     frenzy_breaks_rows = await _frenzy_break_rows(db)
     try:
         def _fz_stats(g):
@@ -8341,6 +8350,33 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     _by_e.setdefault((o.pair, _k.strftime('%m-%d %H:%M') if _k else '?'), []).append(o)
                 for _e in sorted(_by_e, key=lambda k: k[1], reverse=True)[:12]:
                     frenzy_rows.append({"row": f"  {_e[0]} · spike {_e[1]} UTC", **_fz_stats(_by_e[_e]), "gate": ""})
+        # 🎯 (DECISION_LOG 301) LITE C tally: closed FRENZY_LITE fills split by Order.lite_c_zone (stamped at entry) — zone (normal LITE TP) ·
+        # outside (LITE C TP, missing readings included) · no stamp (pre-301). N · WR · Σ P&L % · avg P&L % · $ · the stored TP(s) used.
+        # The view follows the dashboard filter like the FRENZY rows; the "lifetime" note reads every closed LITE fill of this mode.
+        try:
+            _lc_th = config.trading_config.thresholds
+            _lc_all = [o for o in orders if (o.entry_strategy or '') == "FRENZY_LITE" and o.pnl_percentage is not None]
+            _lc_life = (await db.execute(select(Order.lite_c_zone, Order.pnl_percentage).where(and_(
+                Order.entry_strategy == "FRENZY_LITE", Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
+                Order.pnl_percentage.isnot(None), Order.lite_c_zone.isnot(None))))).all()
+            for _lz, _lbl in ((True, f"ZONE · vol ≥ {getattr(_lc_th, 'frenzy_lite_c_vol_mult', 20)}× ∧ BTC 1h slope > {getattr(_lc_th, 'frenzy_lite_c_btc_slope_min', 0.0)}% → LITE TP"),
+                              (False, "outside (missing readings included) → LITE C TP"),
+                              (None, "no LITE C stamp (opened before DECISION_LOG 301)")):
+                _g = [o for o in _lc_all if getattr(o, 'lite_c_zone', None) is _lz]
+                if _lz is None and not _g:
+                    continue
+                _n = len(_g)
+                _ps = [float(o.pnl_percentage or 0) for o in _g]
+                _tps = sorted({float(o.frenzy_lite_tp_used) for o in _g if getattr(o, 'frenzy_lite_tp_used', None) is not None})
+                _lf = [float(p) for z, p in _lc_life if z is _lz] if _lz is not None else []
+                lite_c_rows.append({"row": _lbl, "n": _n, "wr": (round(100.0 * sum(1 for p in _ps if p > 0) / _n, 1) if _n else None),
+                                    "sum_pct": round(sum(_ps), 3), "avg_pct": (round(sum(_ps) / _n, 3) if _n else None),
+                                    "total_usd": round(sum(float(o.pnl or 0) for o in _g), 2),
+                                    "tp_used": (" / ".join(f"+{t:g}" for t in _tps) if _tps else ("config" if _n else "")),
+                                    "note": (f"lifetime {len(_lf)} closed · Σ {sum(_lf):+.2f}%" if _lz is not None else "")})
+        except Exception as _lc_err:
+            logger.warning(f"[PERF] LITE C tally skipped: {_lc_err!r}")
+            lite_c_rows = []
         # ⏪ Oct-6 (DECISION_LOG 235): the CATCH-UP cohort — FRENZY_LONG + WIDE fills whose fresh ON bar no pass judged (entry_frenzy_catchup),
         # with the average bars-late / price move stamps; the pre-registered gate is read on the LIFETIME closed catch-up fills.
         _cu_rows = [o for o in orders if (o.entry_strategy or '') in ("FRENZY_LONG", "FRENZY_WIDE") and getattr(o, 'entry_frenzy_catchup', None)
@@ -9439,6 +9475,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "surge_triggers": surge_triggers,
         "surge_monitor": _surge_monitor_payload(),
         "frenzy_rows": frenzy_rows,
+        "lite_c_rows": lite_c_rows,   # 🎯 (DECISION_LOG 301) LITE C tally — UI + both text exports
         "frenzy_flags": _frenzy_flag_rows(),
         "frenzy_breaks": frenzy_breaks_rows,
         "frenzy_monitor": _frenzy_monitor_payload(),

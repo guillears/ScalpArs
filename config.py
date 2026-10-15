@@ -1340,6 +1340,18 @@ class SignalThresholds(BaseModel):
     # LITE never "bounces then collapses" — B19 7 winners all reached +3, 6 losers peaked ≤ +0.68 → +1.5 rescues none and halves every
     # winner: B19 LITE +$123 (+3) → −$550 (+1.5) at today's size · master LITE +$425 → −$259 · year 546 fills +0.267 → +0.030 %/fill.
     frenzy_lite_tp_pct: float = 0.0
+    # 🎯 2026-10-15 "LITE C" (operator, DECISION_LOG 301 — ARMED, DISCIPLINE-OVERRIDE ship below the locked gates; tight revert gate in
+    # CLAUDE_CURRENT_STATE.md): every NEW FRENZY_LITE fill decides its take profit ONCE at entry (services.frenzy.frenzy_lite_c_tp) from the
+    # SAME values stamped on the order — ZONE = entry_frenzy_vol_mult ≥ frenzy_lite_c_vol_mult ∧ entry_btc_1h_slope > frenzy_lite_c_btc_slope_min
+    # → the normal LITE TP (frenzy_lite_tp_pct); otherwise (either value missing / NaN — fail to the LOWER TP) → frenzy_lite_c_tp_pct. Stored on
+    # Order.frenzy_lite_tp_used (+ lite_c_zone); the exits, the resting TP limit and the sweeps read it; NULL (pre-301 order / switch off at
+    # entry) = the config TP. Stop −3 / 12 h / size / slots unchanged; other sleeves untouched. Off → exactly the pre-301 behaviour.
+    # Evidence (scripts/scout_lite_c.py study, 2026-10-15): backtest 2025 Δ +0.116 %/LITE fill (day-bootstrap P 0.99), 2026 +0.019
+    # (P 0.63); master 20 fills +3.00 pts (BTW saved +5, HEMI / MET capped −1 each); live 4 fills +4.63 (EPIC saved +5.43, DEEP capped −0.80).
+    frenzy_lite_c_enabled: bool = False
+    frenzy_lite_c_vol_mult: float = 20.0          # zone: entry volume multiple ≥ this (×)
+    frenzy_lite_c_btc_slope_min: float = 0.0      # zone: entry BTC 1h EMA20 slope (%) STRICTLY above this (0 exactly = outside)
+    frenzy_lite_c_tp_pct: float = 2.0             # outside the zone: this take profit, net % (≤ 0 / blank → the normal LITE TP, never "no TP")
     # 🎯 Oct-5 (operator, DECISION_LOG 205): LOCK-THEN-TRAIL exit for FRENZY_LONG / FRENZY_WIDE and the manual "Frenzy" mode. Once the
     # trade's net P&L peak reaches +lock_arm, the stop jumps to +lock_floor and then trails lock_trail POINTS below the peak (never below the
     # floor); before that the −frenzy_stop_pct stop. While lock_arm > 0 the fixed TP above is NOT used (set lock_arm 0 to go back to it).

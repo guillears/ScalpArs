@@ -534,6 +534,12 @@ class Order(Base):
     # ⚖️ (DECISION_LOG 298) a momentum LONG opened with momentum_long_invest_mult < 1: the PAIRED leverage at the full margin (its notional =
     # margin × leverage = full margin × this). NULL on every other fill and before 298. The master / screen size rule reads it as traded leverage.
     momentum_long_ref_leverage = Column(Float, nullable=True)
+    # 🎯 (DECISION_LOG 301) LITE C — FRENZY_LITE fills only, decided ONCE at entry from the stamped entry_frenzy_vol_mult / entry_btc_1h_slope:
+    # frenzy_lite_tp_used = the take profit this order runs (+3 in the zone vol ≥ 20× ∧ BTC 1h slope > 0, else +2); NULL = LITE C off at entry
+    # or a pre-301 order → the config frenzy_lite_tp_pct (a live position is never re-decided). lite_c_zone = in the zone (True) / outside
+    # (False, missing stamps included); NULL on every non-LITE fill and before 301. Ride the orders CSV as model columns.
+    frenzy_lite_tp_used = Column(Float, nullable=True)
+    lite_c_zone = Column(Boolean, nullable=True)
 
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3 design).
     # cell_multiplier = the INVESTMENT multiplier ACTUALLY applied to this trade after hard-cap clamping.

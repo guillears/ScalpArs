@@ -6951,3 +6951,66 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   scripts/build_master_pool.py · scripts/screen_pool.py · scripts/study_b21_review.py · scripts/study_yr6_wideoff_ab.py ·
   scripts/study_yr6_lwoff_ab.py · scripts/yr6_reprice_today.py · tests/test_momentum_long_size.py (new) · tests/test_momentum_long_lev.py
   (JSON pin 0.05 → 0.25 + 0.2) · tests/test_today_size_scale.py · CLAUDE_CURRENT_STATE.md (momentum-long pin edited in place).
+
+
+## (299) 2026-10-15 — 👁 Scout: ML_MARKET_TURN observe line (operator: "yes register the momentum turn watch line")
+- **Evidence:** reports/ML_IMPULSE_2026-10-15.md (market-impulse score 0–9: 0/46 step-1, 0/26 step-2 pass) + its deep review: the master
+  "score ≥ 7" separation (83 fills +0.23 vs −0.10) is a CLOCK artefact (read one 5-min bar earlier → −0.335, CI excludes 0) and entry
+  selection; what separates the Jun–Oct master momentum longs is the score's 5-min TURN — TURN_UP 42 · 93 % · +0.475 [+0.29, +0.68] /
+  TURN_DN 38 · 47 % · −0.288 [−0.51, −0.06]; TURN_DN negative every month Jul–Oct, TURN_UP positive all 5 months; replay 2026-H2 same sign
+  weak (+0.108 vs −0.105, CIs straddle 0); 2025 / 2026-H1 absent; the turn does not forecast BTC / alts over 15 min on all bars (±1 bps).
+  In-sample hypothesis → OBSERVE ONLY. In-sample per-batch what-if (refuse TURN_DN, master 191 fills): +0.027 → +0.104 %/fill, Σ +5.21 →
+  +15.98 (38 refused, Σ −10.77) — not evidence (same fills that produced the idea).
+- **Line:** definitions, cohort (≥ 2026-10-16 00:00 UTC, day units), gate and retire rule frozen in CURRENT_STATE + scripts/scout_ml_turn.py
+  (rebuilt at batch review from the impulse grids — extend them first; no engine change).
+
+
+## (300) 2026-10-15 — 👁 Scout: LITE_WEAKBTC_BUYBLIP (Z3) observe line (operator: "yes add Z3 watch line and review the study")
+- **Evidence:** reports/LITE_EPIC_ENTRY_2026-10-15.md — EPIC (peak ≥ +2 then −3) is NOT separable from dippers at entry (22,317 tests,
+  0/16 OOS confirmations; perfect-EPIC-filter ceiling +0.34 / +0.31 %/fill); one borderline zone Z3 (BTC 1h RSI prev ≤ 55 ∧ top-10
+  taker-buy 5-min turn > −0.003909) passes the expectancy bar in both backtest years (+0.140 / +0.098 %/fill when refused; WR 40 / 44 % vs
+  50 %), but master −0.45 (4 of 5 refused were +3 winners), screen-wide count not beyond the null p95, value inside LITE_BTC1H_FALLING.
+  In-sample → OBSERVE ONLY. Deep review of the study launched the same day (update CURRENT_STATE / this entry with its corrections).
+- **Line:** zone, cohort (≥ 2026-10-16, day units), gate and retire rule frozen in CURRENT_STATE + scripts/scout_lite_z3.py (rebuilt at batch
+  review from the impulse grid — extend it first; no engine change).
+- **Also (operator decisions today, recorded):** LITE exit stays +3 resting / −3 / 12 h — reports/LITE_PROTECT_2026-10-15.md (33 protection
+  cells incl. the operator's stop move after +2 %: none passes; master −0.30…−0.45) and reports/LITE_EXITOPT_2026-10-15.md (4,347 combos +
+  vol-scaled + entry-conditional, walk-forward: no OOS winner; market-state 2D EPIC vs dippers: 0 separators; at the dip hold = cash-out).
+
+- **(300) update, same day — deep review of reports/LITE_EPIC_ENTRY_2026-10-15.md:** conclusion "EPIC not detectable at entry" HOLDS (all
+  arithmetic reproduced; thresholds = pre-registered label-blind medians; no lookahead). Z3 DEMOTED: fw p 0.057 ± 0.010 (2,000 rotations) /
+  0.062–0.066 (day-block) → not a survivor under the prereg's own rule; K3 / K4 p 0.53 / 0.60; the two legs contradict across years (RSI ≤ 55
+  alone +0.207 2025 / −0.121 2026; the turn split works only 2026-H1); inside LITE_BTC1H_FALLING +0.108 / +0.106, outside +0.032 / −0.008 →
+  "BTC1H_FALLING split by the turn", not independent; the frozen gate (N 15, SE ≈ 0.77) would almost never resolve. → descriptive split inside
+  the BTC1H_FALLING read, no gate (CURRENT_STATE pin rewritten). Screen-wide day-block count p ≈ 0.10 (not beyond chance). Z2 is a genuine K1
+  survivor (fw p 0.030 / 0.040) but fails the 2026 filter test and 0/16 confirmations.
+
+## (301) 2026-10-15 — 🎯 LITE C exit: TP +2 unless vol ≥ 20× ∧ BTC 1h rising — ARMED (operator: "i think we should implement it, and think on the tracking / revert gate"; DISCIPLINE OVERRIDE below the locked gates)
+- **Rule:** each FRENZY_LITE entry decides its TP ONCE at entry and stores it on the order: ZONE = `entry_frenzy_vol_mult` ≥ 20 ∧
+  `entry_btc_1h_slope` > 0 → TP +3 (`frenzy_lite_tp_pct`); everything else (a missing stamp included → fail to the lower TP) → TP +2
+  (`frenzy_lite_c_tp_pct`). Stop −3 / 12 h / 10× / sizing / slots unchanged; resting TP placed at the stored TP; positions open at deploy keep
+  +3; FRENZY_LONG / WIDE / WILLY / manual FRENZY untouched. Config `frenzy_lite_c_enabled` true · `frenzy_lite_c_vol_mult` 20 ·
+  `frenzy_lite_c_btc_slope_min` 0 · `frenzy_lite_c_tp_pct` 2.0. Off → every LITE back on +3 (the revert switch).
+- **Origin:** the LITE visual case review (artifact "LITE Case Review", 26 real trades) — operator spotted vol ≥ 20× 10W/3L vs < 20× 1W/6L on
+  the 20 master fills. Block tests FAIL on the backtest (block vol < 20: 2025 −0.05, 2026 −0.11 %/fill; stretch < 1 % vs VWAP fails too; low
+  vol is the BETTER half in 14 of 22 months; Oct-2026 is one of the flip months). Exhaustive 2D vol × 745 tests: no survivor (fw p 0.45 /
+  0.23). Exit variant priced on the paths (reports/lite_wlsweep/menu.csv, +2/−3 vs +3/−3, −0.2 stop-slip ruler):
+  | per LITE fill Δ vs today | 2025 (828) | 2026 (624) | master (20) | live (4) |
+  | A  +2 only for vol < 20× | +0.019 (P 0.69) | +0.018 (P 0.65) | +4.20 pts | +4.63 pts |
+  | **C  +2 unless vol ≥ 20× ∧ BTC 1h up** | **+0.116 (P 0.99)** | +0.019 (P 0.63) | **+3.00 pts** | **+4.63 pts** |
+  | block outside the C zone | +0.204 | −0.034 | +16.5 | +6.11 |
+  Real trades C: saved BTW (+5.00) and EPIC (+5.43), capped HEMI / MET / DEEP (−2.80), 19 unchanged → 24 fills −0.22 → +7.41.
+- **Honest caveats (recorded at ship):** C's 2025 edge is mostly "+2 helps every LITE in a bad year" (+2 for all LITE: 2025 +0.134,
+  2026 −0.003) applied to ~63 % of fills, NOT a proven vol × BTC interaction (the 2D search says chance); the real-trade gain is two saves;
+  one save (+5) = five capped winners, so reads swing on single trades. Below the locked gates → discipline override with a tighter revert.
+- **🔒 Revert gate (pre-committed; scripts/scout_lite_c.py, read at every batch review; cohort = LITE fills opened after the 301 deploy,
+  outside-zone fills priced vs +3/−3 on 1m klines, same-minute = stop first):** EARLY KILL any time Σ Δ ≤ −4 pts · FIRST READ at 10
+  outside fills Σ Δ ≤ 0 → revert · MAIN READ at 20 outside fills on ≥ 8 UTC days Σ Δ ≤ 0 OR one day / pair ≥ 50 % of the gain → revert,
+  else keep · when the replay is extended past 2026-10, the new months must not be negative for C.
+- **(301) update before ship — pricing-method split (from reports/LITE_REGIME_2026-10-15.md's finding that 2025 non-top-50 fills are
+  1m-priced, −0.225 vs tick −0.017):** C's Δ vs today per LITE fill — 2025 1m-priced 564 fills +0.197 (P 1.00) · 2025 TICK-priced 264
+  −0.057 (P 0.22) · 2026 tick 624 +0.019 (P 0.65). The headline 2025 +0.116 is a 1m stop-first artefact (an ambiguous bar books "reached +2
+  then stopped" = exactly C's save case). On ticks C ≈ break-even; its real support = the 24 real fills (+7.6 pts, mostly EPIC + BTW). The
+  operator was shown this and chose **"ship armed, switch ON"** (options: armed / observe-only [recommended] / don't ship). Revert gate
+  unchanged. Build: services/frenzy.py frenzy_lite_c_tp + tp_override; Order.frenzy_lite_tp_used / lite_c_zone; config default OFF,
+  trading_config.json ON; UI "🎯 LITE C Tally" + both exports; tests/test_lite_c.py.

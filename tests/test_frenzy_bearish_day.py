@@ -222,7 +222,7 @@ def test_exit_is_the_fixed_tp_for_every_sleeve_with_the_json():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert 'FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY")' in eng
     assert eng.count("in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)") == 2          # candle + realtime paths
-    assert eng.count("None, use_tp=True, sleeve=order.entry_strategy, resting_tp=_rtp_on_m)   # 🎯 fixed TP (196)") + eng.count("None, use_tp=True, sleeve=order_info.get('entry_strategy'), resting_tp=_rtp_on_rt)   # 🎯 fixed TP (196)") == 2            # both with use_tp (all 3 sleeves); 271: no hidden floor, paper = live
+    assert eng.count("None, use_tp=True, sleeve=order.entry_strategy, resting_tp=_rtp_on_m, tp_override=getattr(order, 'frenzy_lite_tp_used', None))   # 🎯 fixed TP (196)") + eng.count("None, use_tp=True, sleeve=order_info.get('entry_strategy'), resting_tp=_rtp_on_rt, tp_override=order_info.get('frenzy_lite_tp_used'))   # 🎯 fixed TP (196)") == 2            # both with use_tp (all 3 sleeves); 271: no hidden floor, paper = live
     assert eng.count("# 271: no hidden floor (stop_floor None) — frenzy_stop_pct, paper = live") == 2
     assert eng.count('short=(order.direction == "SHORT"), use_tp=True)') == 1 and eng.count('short=(direction == "SHORT"), use_tp=True)') == 1   # manual FRENZY mode
 

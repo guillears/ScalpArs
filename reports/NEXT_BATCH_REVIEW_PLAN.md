@@ -484,3 +484,15 @@ at once.
   hold-green, dislocation not applied) = an upper bound on WIDE fills; cross-check with the replay at the review. Three blocks (batch ·
   master per batch · backtest). The DL 289 LONG / WIDE blocker-size gate now applies to LONG only.
 - DL 291 gate reading notes (deep review): count `[FRENZY_WIDE_OFF]` log lines deduped by (pair, signal bar) — a restart inside the same 5m bar can log a setup twice; read the ALL column (in a BEARISH regime the counter lands in the SUPP bucket, so the dashboard 'Real' column undercounts); the catch-up shadow only runs while FRENZY LONG is on.
+
+
+## 👁 ML_MARKET_TURN (DECISION_LOG 299) — run at every batch review
+Extend the impulse grids to the batch end (scripts/study_ml_impulse_fetch.py + study_ml_impulse_features.py), then `venv/bin/python scripts/scout_ml_turn.py`; report TURN_UP / TURN_DN / OTHER tallies (fills ≥ 2026-10-16 only, day units) vs the frozen gate in CURRENT_STATE.
+
+## 👁 LITE_WEAKBTC_BUYBLIP / Z3 (DECISION_LOG 300) — run at every batch review
+Extend the impulse grid, then `venv/bin/python scripts/scout_lite_z3.py`; descriptive only (DEMOTED by review): show ZONE vs REST inside the LITE_BTC1H_FALLING read — no gate.
+
+### 🎯 LITE C revert gate (DECISION_LOG 301, ARMED 2026-10-15)
+`venv/bin/python scripts/scout_lite_c.py` — zone (+3) vs outside (+2) tallies; outside fills that closed at +2 priced vs +3/−3 on 1m klines
+(saved / capped / timeout / same, Σ Δ). Verdict vs the frozen gate: EARLY KILL Σ Δ ≤ −4 · FIRST READ 10 outside Σ Δ ≤ 0 · MAIN READ 20 on
+≥ 8 days Σ Δ ≤ 0 or day / pair ≥ 50 % of the gain → revert (`frenzy_lite_c_enabled` false). Report it unprompted with the three blocks.

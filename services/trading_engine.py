@@ -25,6 +25,7 @@ from services.regime import classify_btc_regime
 from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, surge_tripwire, surge_live_readings, wilder_atr_pct, surge_gvol_gate, surge_long_ema_gap_block, SURGE_LONG_EMA_GAP, SURGE_LONG_EMA_GAP_FAILOPEN
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE, frenzy_tp_for
+from services.frenzy import frenzy_lite_c_tp, frenzy_lite_c_enabled, frenzy_lite_tp_override   # 🎯 (DECISION_LOG 301) LITE C
 from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, frenzy_wide_shadow, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 from services.golive_guards import (backstop_trigger_price, backstop_needs_replace, algo_status_resting, find_untracked_positions,  # 🛡 (DECISION_LOG 292)
@@ -3886,7 +3887,7 @@ class TradingEngine:
         that raced the open never gets a limit after it). Live: stale close-side reduce-only limits on the symbol are cancelled first (a
         leftover can never ride into this position). Never raises."""
         try:
-            tgt = rtp_target(config.trading_config.thresholds, order.entry_strategy, 0.0)
+            tgt = rtp_target(config.trading_config.thresholds, order.entry_strategy, 0.0, getattr(order, 'frenzy_lite_tp_used', None))
             if tgt is None:
                 return None
             async with _close_lock:
@@ -4199,7 +4200,7 @@ class TradingEngine:
                     o = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
                     if o is None or o.status != "OPEN" or o.closing_in_progress or order_id in _exit_retry_queue:
                         return 'skipped'
-                    tgt = rtp_target(th, o.entry_strategy, _held_minutes(o.opened_at))
+                    tgt = rtp_target(th, o.entry_strategy, _held_minutes(o.opened_at), getattr(o, 'frenzy_lite_tp_used', None))
                     if tgt is None or o.resting_tp_price is None:
                         return 'skipped'
                     lim, tick = await self._rtp_limit_for(o, tgt[0])
@@ -4318,7 +4319,7 @@ class TradingEngine:
                             or float(o.resting_tp_filled_qty or 0) > 0 or o.exit_override_at is not None
                             or (self.is_paper_mode and o.resting_tp_price is not None)):
                         return 'skipped'
-                    tgt = rtp_target(th, o.entry_strategy, _held_minutes(o.opened_at))
+                    tgt = rtp_target(th, o.entry_strategy, _held_minutes(o.opened_at), getattr(o, 'frenzy_lite_tp_used', None))
                     if tgt is None:
                         return 'skipped'
                     if self.is_paper_mode:
@@ -4371,7 +4372,7 @@ class TradingEngine:
                         continue
                     filled = float(o.resting_tp_filled_qty or 0)
                     has = bool(o.protective_tp_order_id) if not paper else (o.resting_tp_price is not None and filled <= 0)
-                    tgt = None if o.exit_override_at is not None else rtp_target(th, o.entry_strategy, _held_minutes(o.opened_at))
+                    tgt = None if o.exit_override_at is not None else rtp_target(th, o.entry_strategy, _held_minutes(o.opened_at), getattr(o, 'frenzy_lite_tp_used', None))
                     if has or is_full(o.quantity, filled):
                         self._rtp_state(o.id, row=o)
                     if tgt is None:
@@ -12802,6 +12803,21 @@ class TradingEngine:
                     pass
                 _book_release()
                 return None
+        # 🎯 (DECISION_LOG 301) LITE C: a FRENZY_LITE fill's take profit is decided ONCE here from the EXACT values stamped below
+        # (entry_frenzy_vol_mult / entry_btc_1h_slope, the same variables) and stored on the row — paper and live identically. Switch off →
+        # frenzy_lite_tp_used NULL (= the config TP, exactly as before 301); lite_c_zone is stamped on every LITE fill (observe / tally).
+        _lc_tp_used, _lc_zone = None, None
+        if _frenzy and _fz_es == "FRENZY_LITE":
+            _lc_th = config.trading_config.thresholds
+            try:
+                _lc_v, _lc_zone = frenzy_lite_c_tp(_lc_th, entry_frenzy_vol_mult, entry_btc_1h_slope)
+                _lc_tp_used = frenzy_lite_tp_override(_lc_v) if frenzy_lite_c_enabled(_lc_th) else None
+            except Exception as _lc_err:   # never blocks the open; fail to the LOWER TP while the switch is on
+                _lc_zone = None
+                _lc_tp_used = frenzy_lite_tp_override(getattr(_lc_th, 'frenzy_lite_c_tp_pct', None)) if frenzy_lite_c_enabled(_lc_th) else None
+                logger.error(f"[FRENZY_LITE_C] {pair}: TP decision failed ({_lc_err}) — stored {_lc_tp_used}")
+            logger.info(f"[FRENZY_LITE_C] {pair}: vol {entry_frenzy_vol_mult}× · BTC 1h slope {entry_btc_1h_slope} → "
+                        f"{'ZONE' if _lc_zone else 'outside'} · TP {('+' + str(_lc_tp_used) + '% (stored)') if _lc_tp_used is not None else 'config (LITE C off)'}")
         order = Order(
             binance_order_id=binance_order_id,
             backstop_algo_id=_bk_algo_id,
@@ -12915,6 +12931,7 @@ class TradingEngine:
             entry_btc_rsi_closed=(_current_btc_rsi_closed if _rh_rsi_fresh(_current_btc_rsi_closed_bar_ts, _leash_time.time() * 1000.0) else None),   # 🩹 Oct-2
             entry_slippage_pct=_entry_slippage_pct,
             momentum_long_ref_leverage=_ml_ref_lev,   # ⚖️ (DECISION_LOG 298) the paired leverage at the full margin — the master / screen size rule reads it
+            frenzy_lite_tp_used=_lc_tp_used, lite_c_zone=_lc_zone,   # 🎯 (DECISION_LOG 301) LITE C: the TP decided at entry (NULL = config TP) · zone flag
             entry_book_drift_pct=_eb_m.get('entry_book_drift_pct'), entry_book_spread_pct=_eb_m.get('entry_book_spread_pct'),   # 📏 (295)
             entry_fill_vs_book_pct=_eb_m.get('entry_fill_vs_book_pct'), entry_order_lag_s=_eb_m.get('entry_order_lag_s'),
             entry_fee=entry_fee,
@@ -13220,6 +13237,7 @@ class TradingEngine:
                 'pattern_cell_source': _pcell_src,
                 'pattern_fixed_tp_pct': _pcell_fixed_tp,
                 'pattern_fixed_sl_pct': _pcell_fixed_sl,
+                'frenzy_lite_tp_used': _lc_tp_used,   # 🎯 (DECISION_LOG 301) LITE C stored TP (NULL = config TP)
             }
             if pair not in _open_orders_cache:
                 _open_orders_cache[pair] = []
@@ -14527,7 +14545,7 @@ class TradingEngine:
             _rtp_lock = float(getattr(_rtp_th, 'frenzy_lock_arm_pct', 0) or 0) > 0   # lock-then-trail REPLACES the fixed TP (not WILLY)
             if (_rtp_es == "FRENZY_WILLY" or (_rtp_es in ("FRENZY_LITE", "FRENZY_LONG", "FRENZY_WIDE") and not _rtp_lock)) \
                     and order.entry_price and order.notional_value:
-                _rtp_tp = frenzy_willy_levels(_rtp_th)[0] if _rtp_es == "FRENZY_WILLY" else frenzy_tp_for(_rtp_th, _rtp_es)
+                _rtp_tp = frenzy_willy_levels(_rtp_th)[0] if _rtp_es == "FRENZY_WILLY" else frenzy_tp_for(_rtp_th, _rtp_es, getattr(order, 'frenzy_lite_tp_used', None))
                 _rtp_tick = cached_tick(binance_service.exchange.markets if getattr(binance_service, '_markets_loaded', False) else None,
                                         order.pair.replace('USDT', '/USDT:USDT'), order.entry_price)
                 if _rtp_tp and _rtp_tp > 0 and _rtp_tick:
@@ -16008,7 +16026,7 @@ class TradingEngine:
                     elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
                         # 271: no hidden floor (stop_floor None) — frenzy_stop_pct, paper = live
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
-                                                                          None, use_tp=True, sleeve=order.entry_strategy, resting_tp=_rtp_on_m)   # 🎯 fixed TP (196) · LITE's own TP (284)
+                                                                          None, use_tp=True, sleeve=order.entry_strategy, resting_tp=_rtp_on_m, tp_override=getattr(order, 'frenzy_lite_tp_used', None))   # 🎯 fixed TP (196) · LITE's own TP (284) · LITE C stored TP (301)
                     else:
                         _br_close, _br_reason, _br_stop = _bullrun_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None), getattr(order, 'entry_br_door', None),
                                                                            trail_mult_override=_surge_trail_override(order.entry_strategy),
@@ -19906,7 +19924,7 @@ class TradingEngine:
                     elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
                         # 271: no hidden floor (stop_floor None) — frenzy_stop_pct, paper = live
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
-                                                                          None, use_tp=True, sleeve=order_info.get('entry_strategy'), resting_tp=_rtp_on_rt)   # 🎯 fixed TP (196) · LITE's own TP (284)
+                                                                          None, use_tp=True, sleeve=order_info.get('entry_strategy'), resting_tp=_rtp_on_rt, tp_override=order_info.get('frenzy_lite_tp_used'))   # 🎯 fixed TP (196) · LITE's own TP (284) · LITE C stored TP (301)
                     else:
                         _br_close, _br_reason, _br_stop = _bullrun_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'), order_info.get('entry_br_door'),
                                                                            trail_mult_override=_surge_trail_override(order_info.get('entry_strategy')),
@@ -21940,6 +21958,7 @@ class TradingEngine:
                 'manual_exit_mode': getattr(order, 'manual_exit_mode', None),   # 🖐 Sep-29 MANUAL sleeve exit mode
                 'leverage': getattr(order, 'leverage', None),                   # 🖐 live MANUAL: its own safety-stop distance depends on it
                 'exit_override_at': getattr(order, 'exit_override_at', None),   # ✎ operator exit override (survives the rebuild)
+                'frenzy_lite_tp_used': getattr(order, 'frenzy_lite_tp_used', None),   # 🎯 (DECISION_LOG 301) LITE C stored TP (restart-proof)
             }
 
             if order.pair not in new_cache:

@@ -484,17 +484,64 @@ def frenzy_long_status(ep, atr_pct, volume_24h, th) -> Tuple[bool, str, str]:
     return True, "FRENZY_READY", "READY"
 
 
-def frenzy_tp_for(th, sleeve=None) -> float:
+def _fin(v) -> Optional[float]:
+    """float(v) when finite, else None (None / NaN / ±inf / unreadable)."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    return x if math.isfinite(x) else None
+
+
+def frenzy_lite_tp_override(v) -> Optional[float]:
+    """🎯 (DECISION_LOG 301) an order's stored LITE take profit (Order.frenzy_lite_tp_used) when usable — finite and > 0 — else None
+    (a legacy / pre-301 order, LITE C off at its entry, or a corrupt value → the config TP, exactly as before 301)."""
+    x = _fin(v)
+    return x if (x is not None and x > 0) else None
+
+
+def frenzy_lite_c_enabled(th) -> bool:
+    return getattr(th, 'frenzy_lite_c_enabled', False) is True
+
+
+def frenzy_lite_c_tp(th, vol_mult, btc_1h_slope) -> Tuple[float, bool]:
+    """🎯 "LITE C" (operator 2026-10-15, DECISION_LOG 301) → (the take profit a NEW FRENZY_LITE fill runs, in_zone). Decided ONCE at entry
+    from the SAME values stamped on the order (entry_frenzy_vol_mult, entry_btc_1h_slope):
+    ZONE = vol_mult ≥ frenzy_lite_c_vol_mult ∧ btc_1h_slope > frenzy_lite_c_btc_slope_min → the normal LITE TP (frenzy_tp_for);
+    otherwise — either value missing / NaN / unreadable included (fail to the LOWER TP) — frenzy_lite_c_tp_pct.
+    Switch off → the normal LITE TP for every fill (in_zone still reported for the tally). A frenzy_lite_c_tp_pct ≤ 0 / unreadable never
+    becomes "TP off": the normal LITE TP is used instead. Never raises."""
+    base = frenzy_tp_for(th, "FRENZY_LITE")
+    vm, sl = _fin(vol_mult), _fin(btc_1h_slope)
+    vcut = _fin(getattr(th, 'frenzy_lite_c_vol_mult', 20.0))
+    scut = _fin(getattr(th, 'frenzy_lite_c_btc_slope_min', 0.0))
+    vcut = 20.0 if vcut is None else vcut
+    scut = 0.0 if scut is None else scut
+    zone = bool(vm is not None and sl is not None and vm >= vcut and sl > scut)
+    if not frenzy_lite_c_enabled(th) or zone:
+        return base, zone
+    ctp = _fin(getattr(th, 'frenzy_lite_c_tp_pct', 2.0))
+    if base <= 0 or ctp is None or ctp <= 0:              # LITE TP off stays off; an unusable C value → the normal LITE TP
+        return base, zone
+    return min(ctp, base), zone                          # never ABOVE the zone's TP (a LITE TP set below 2 is not inverted)
+
+
+def frenzy_tp_for(th, sleeve=None, tp_override=None) -> float:
     """🎯 the fixed FRENZY take profit for a sleeve (DECISION_LOG 284, operator): FRENZY_LITE runs frenzy_lite_tp_pct when > 0, every other
-    caller (FRENZY_LONG / FRENZY_WIDE / the manual FRENZY exit, or LITE with frenzy_lite_tp_pct ≤ 0) the shared frenzy_tp_pct. ≤ 0 = off."""
+    caller (FRENZY_LONG / FRENZY_WIDE / the manual FRENZY exit, or LITE with frenzy_lite_tp_pct ≤ 0) the shared frenzy_tp_pct. ≤ 0 = off.
+    tp_override (🎯 DECISION_LOG 301 LITE C): the order's stored LITE TP (Order.frenzy_lite_tp_used) — FRENZY_LITE only, used when finite
+    and > 0; None (legacy order / LITE C off at entry) → the config TP above. Ignored for every other sleeve."""
     if sleeve == "FRENZY_LITE":
+        ov = frenzy_lite_tp_override(tp_override)
+        if ov is not None:
+            return ov
         lt = _f(th, 'frenzy_lite_tp_pct', 0.0)
         if lt > 0:
             return lt
     return _f(th, 'frenzy_tp_pct', 0.0)
 
 
-def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=False, sleeve=None, resting_tp=False) -> Tuple[bool, str, float]:
+def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=False, sleeve=None, resting_tp=False, tp_override=None) -> Tuple[bool, str, float]:
     """FRENZY_LONG's own exit → (close, reason, line). use_tp (the FRENZY_LONG / FRENZY_WIDE sleeve AND the MANUAL "FRENZY" exit — operator):
     🎯 Oct-5 (DECISION_LOG 205) when frenzy_lock_arm_pct > 0: lock +floor at +arm, then trail points below the peak (no fixed TP) — below.
     🎯 Oct-4 (operator, DECISION_LOG 196) a FIXED take-profit at +frenzy_tp_pct net (0 = off) → reason FRENZY_TP, checked before the trail
@@ -509,7 +556,8 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
     short=True (a MANUAL short on this exit): the give-back is measured from the LOWEST price → peak − giveback × (1 − peak/100).
     sleeve: the order's entry_strategy — picks the take profit via frenzy_tp_for (FRENZY_LITE's own TP since DECISION_LOG 284).
     resting_tp=True (🎯 DECISION_LOG 296): a resting exchange TP limit is alive for this order — the fixed TP is NOT fired here (the limit
-    books it; the engine runs the through + grace safety net); the stop / trail below are judged exactly as before."""
+    books it; the engine runs the through + grace safety net); the stop / trail below are judged exactly as before.
+    tp_override (🎯 DECISION_LOG 301 LITE C): the order's stored LITE TP — passed through to frenzy_tp_for (FRENZY_LITE only)."""
     try:
         pnl = float(pnl); pk = float(peak_pnl or 0.0)
         stop = -abs(_f(th, 'frenzy_stop_pct', 3.0)) or -3.0
@@ -528,7 +576,7 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
                 line = max(lf, pk - lt)
                 return (pnl <= line), "RUNNER_TRAIL", line
             return (pnl <= stop), "STOP_LOSS", stop
-        tp = frenzy_tp_for(th, sleeve) if (use_tp and not resting_tp) else 0.0   # ≤ 0 = off (never abs(): a negative value must not become an active TP) · 🎯 296: a resting TP owns it
+        tp = frenzy_tp_for(th, sleeve, tp_override) if (use_tp and not resting_tp) else 0.0   # ≤ 0 = off (never abs(): a negative value must not become an active TP) · 🎯 296: a resting TP owns it
         if tp > 0 and (pnl >= tp or pk >= tp):
             return True, "FRENZY_TP", tp
         arm, give = abs(_f(th, 'frenzy_trail_arm_pct', 5.0)), abs(_f(th, 'frenzy_trail_giveback_pct', 1.5))

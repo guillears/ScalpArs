@@ -74,7 +74,8 @@ def test_today_size_rule(args, want, tag):
 def test_momentum_long_lev_frozen_matches_live_json():
     th = json.load(open(os.path.join(ROOT, "trading_config.json")))
     th = th.get("thresholds", th)
-    assert th["momentum_long_lev_mult"] == B.MOMENTUM_LONG_LEV_FROZEN == 0.05   # DECISION_LOG 289 (283: 0.5; a retune = new STACK_VERSION)
+    # DECISION_LOG 298: the master prices the NOTIONAL — the live notional factor = lev mult × invest mult (0.25 × 0.2 = DL 289's 0.05)
+    assert th["momentum_long_lev_mult"] * th.get("momentum_long_invest_mult", 1.0) == pytest.approx(B.MOMENTUM_LONG_LEV_FROZEN) and B.MOMENTUM_LONG_LEV_FROZEN == 0.05
     assert B.momentum_long_lev_scale(1.0, 1.0, 20) == pytest.approx(0.05) and B.momentum_long_lev_scale(1.0, 1.0, 20, mll=1.0) == 1.0
     assert B.momentum_long_lev_scale(2.0, 2.0, 40) == pytest.approx(2 / 40)          # a 2.0-lev cell → 2× (round(20 × 2 × 0.05))
     assert B.momentum_long_lev_scale(0.05, 0.05, 1) == 1.0                           # a 1× probe stays 1×
@@ -136,3 +137,35 @@ def test_screen_and_master_agree_on_kept_rows():
         if mm["stack_keep"] == "True" and abs(float(mm["stack_pnl"]) - float(r["pnl_current_sizing"])) > 0.011:
             diff.append((r["pair"], r["opened_at"], r["pnl_current_sizing"], mm["stack_pnl"]))
     assert not diff, f"screen vs master sizing drift: {diff[:5]}"
+
+
+
+@pytest.mark.parametrize("cl", [1.0, 0.5, 1.5, 2.0, 0.05])
+def test_dl298_post_fill_is_not_rescaled(monkeypatch, cl):
+    """⚖️ DECISION_LOG 298: a post-298 momentum long trades 5× at 0.2 margin — the SAME notional as its paired leverage at the full margin.
+    With the stamp (or, for an unstamped row opened after the 298 commit, the fallback) the size rule prices it EXACTLY like a pre-298 fill
+    that traded at the paired leverage — the 298 step adds no factor; a pre-298 fill is unchanged."""
+    ref = max(1, int(round(20 * cl * 0.05)))
+    traded = max(1, int(round(20 * cl * 0.25)))
+    row = dict(entry_strategy="MOMENTUM", direction="LONG", leverage=traded, cell_lev_multiplier=cl, opened_at="2026-10-16T10:00:00",
+               momentum_long_ref_leverage=ref)
+    assert B.momentum_long_traded_lev(row) == ref
+    assert B.momentum_long_lev_scale(cl, cl, B.momentum_long_traded_lev(row)) == pytest.approx(1.0)        # the ML_LEV part = 1.0
+    pre = B.today_size_rule("MOMENTUM", "LONG", "UNMATCHED", 1.0, lev=cl, traded_lev=ref)
+    post = B.today_size_rule("MOMENTUM", "LONG", "UNMATCHED", 1.0, lev=cl, traded_lev=B.momentum_long_traded_lev(row))
+    assert post == pre
+    # unstamped row opened after the 298 commit → the fallback gives the same leverage
+    monkeypatch.setattr(B, "_DL298_FLOOR", [__import__("pandas").Timestamp("2026-10-15 20:00:00")])
+    row2 = dict(row); row2.pop("momentum_long_ref_leverage")
+    assert B.momentum_long_traded_lev(row2) == pytest.approx(ref)
+    # a pre-298 fill (opened before the commit) and every non-momentum-long row: the as-traded leverage (today's behaviour)
+    row3 = dict(row2, opened_at="2026-10-14T10:00:00", leverage=1)
+    assert B.momentum_long_traded_lev(row3) == 1
+    assert B.momentum_long_traded_lev(dict(row2, direction="SHORT")) == traded and B.momentum_long_traded_lev(dict(row2, entry_strategy="FRENZY_LONG")) == traded
+
+
+def test_dl298_builders_read_the_margin_scaled_leverage():
+    src_b = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
+    src_s = open(os.path.join(ROOT, "scripts", "screen_pool.py"), encoding="utf-8").read()
+    assert 'r.get("cell_lev_multiplier"), momentum_long_traded_lev(r))' in src_b
+    assert "r.get('cell_lev_multiplier'), momentum_long_traded_lev(r))" in src_s

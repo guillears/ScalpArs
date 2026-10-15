@@ -12987,6 +12987,12 @@ async def update_config(config_update: ConfigUpdate):
         _cfg_errs.append(f"untracked_position_action must be one of {', '.join(UNTRACKED_ACTIONS)}")
     from services.resting_tp import config_errors as _rtp_cfg_errors   # 🎯 (296) resting TP · ⏰ (297) WILLY late TP
     _cfg_errs.extend(_rtp_cfg_errors(new_config.thresholds))
+    try:   # ⚖️ (DECISION_LOG 298) the momentum-long margin share: 0.05 – 1 (the UI saves a blank as 1.0 = off)
+        _mli = float(getattr(new_config.thresholds, 'momentum_long_invest_mult', 1.0))
+        if not (math.isfinite(_mli) and 0.05 - 1e-12 <= _mli <= 1.0 + 1e-12):
+            _cfg_errs.append("momentum_long_invest_mult must be from 0.05 to 1 (1 = off)")
+    except (TypeError, ValueError):
+        _cfg_errs.append("momentum_long_invest_mult must be a number from 0.05 to 1")
     if _cfg_errs:
         raise HTTPException(status_code=400, detail="Configuration NOT saved: " + "; ".join(_cfg_errs))
 

@@ -6892,3 +6892,62 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   --selftest green. Still not built: the open-orders card draws the +1.25 TP line after minute 30.
 - **D11:** `frenzy_willy_late_tp_minutes` (30) · `frenzy_willy_late_tp_pct` (0.25): config.py + trading_config.json + engine + UI (FRENZY_NUM_FIELDS,
   next to WILLY max hold) + export line + PUT validation (minutes ≥ 0, pct ≥ 0 and < the WILLY TP). tests/test_frenzy_sleeve.py field count 55 → 57.
+
+## (298) 2026-10-15 — ⚖️ Momentum LONG: the same notional at 5× with 0.2 of the margin (operator-approved "go with 5x")
+- **What:** new D11 field `momentum_long_invest_mult` (code default 1.0 = off; trading_config.json **0.2**) and `momentum_long_lev_mult`
+  0.05 → **0.25** in trading_config.json. Every MOMENTUM LONG open (UNMATCHED, every LONG pattern cell, CALM3D / CROSS_OB / ADX-surge doors,
+  probes — same scope as momentum_long_lev_factor; never shorts / FRENZY / SURGE / Bull-/Bear-Run / flips / fades / spikes / manual) opens
+  at 20 × cell lev × 0.25 = **5×** with **0.2** of the margin → the SAME notional as DL 289's 1× at the full margin. CROSS margin → the same
+  liquidation risk; P&L % (notional-based) unchanged; ~4/5 of the momentum-long margin freed for the other sleeves.
+- **Rule (notional-preserving, not a plain × 0.2):** `TradingEngine.momentum_long_resize` (open_position, right after calculate_position_size)
+  re-runs the same calculate_position_size with the PAIRED leverage (lev mult × invest mult = 0.05) to get the reference notional at the full
+  margin, then sets margin = that notional / the actual leverage (`momentum_long_margin`, never above the full margin). Why: a plain × 0.2
+  would shrink the notional of the rounding / floor cells (a 0.5-lev cell: round(0.5)=0 → 1× today but round(2.5)=2 at 0.25 → 0.4× the
+  notional; a 0.05-floor probe stays 1× → 0.2× the notional). With the rule every cell keeps its DL 289 notional (tested for cell lev 1 / 2
+  / 1.5 / 0.5 / 0.05). Consequence: invest mult alone (lev mult left at 0.05) changes nothing — it is a margin knob paired with the lev mult.
+- **Downstream:** notional_value = investment × leverage and the quantity are unchanged; the liquidity / gross caps work on notional
+  (unchanged); the min-margin guards (liquidity throttle, exchange brackets) compare against `min_investment_size × scale` (scale = new /
+  old margin) so a smaller margin is never refused where today's would pass. calculate_position_size's own $100 floor is applied BEFORE
+  the resize (on the full margin, as today) — the resized margin can sit below $100 by design (the notional is what reaches the book).
+  **Bracket cap:** a pair whose exchange bracket max leverage is below 5× → (review fix ③) momentum_long_bracket_keep retries with the
+  FULL margin and keeps the DL 289 notional when the brackets allow it (a 3×-max pair: full margin at 3×), never above the reference
+  notional or the full margin. A balance → leverage
+  schedule cap below 5× keeps the full margin (never a smaller notional). Log `[MOMENTUM_LONG_INV]` (factor, margin before → after,
+  leverage, paired leverage, notional).
+- **D11:** config.py default 1.0 + evidence comment · trading_config.json 0.2 (with lev 0.25) · engine (momentum_long_inv_factor /
+  momentum_long_margin / momentum_long_resize) · UI: Sleeve Sizing "Momentum LONG — base" row — the read-only invest cell replaced by
+  input `config-momentum-long-invest-mult` (step 0.05, 0.05–1; blank / ≤ 0 saves 1.0 = off), load + save, the sizing preview `_ssSize`
+  takes baseInv (same notional rule) for every momentum-long row (mom_long / unm / quiet / demux / calm3d / crossob / adxs) and the TOTAL
+  line; the lev input's tooltip updated (0.25 = 5× paired with 0.2) · config-export line "Momentum-long margin (Oct 15, DECISION_LOG 298)"
+  in the shared _buildConfigLines (both text exports) · PUT /api/config refuses values outside 0.05–1.
+- **Gate:** the DL 289 gate is unchanged (30 momentum-long fills, avg < 0 at day-bootstrap 90 % ∧ no ML observe line at its bar →
+  momentum longs OFF) — it reads P&L %, which this ship does not change. No new revert gate (same exposure).
+- **Not changed:** the master's MOMENTUM_LONG_LEV_FROZEN stays 0.05 (= the notional factor, still true; the size rule reads post-298
+  fills through momentum_long_ref_leverage — review ①).
+- **Reviews (caveman + deep — engine verified: notional preserved on every MOMENTUM LONG path, 400-case sweep, live set_leverage 5×,
+  backstop 2.5 % inside the 17.9 % clamp; all items applied with tests):** ① BLOCKING — the master / screen size rule
+  (build_master_pool.today_size_rule → momentum_long_lev_scale with traded_lev = the fill's leverage) would have re-priced a post-298 fill
+  (5× at 0.2 margin) × 0.2: new Order column `momentum_long_ref_leverage` (the paired leverage at the full margin; database.py migration;
+  rides the orders CSV; NULL on every other / pre-298 fill), stamped from momentum_long_resize; `build_master_pool.momentum_long_traded_lev`
+  reads it as traded_lev (both builders), and for an unstamped momentum long opened at/after the "(DECISION_LOG 298)" commit falls back to
+  leverage × round(20·cell·0.05) / round(20·cell·0.25) (pre-298 rows unchanged); tests/test_today_size_scale.py pins factor 1.0 for cell
+  1 / 0.5 / 1.5 / 2 / probe and the pre-298 path; scripts/validate_against_master.py ALL CHECKS PASS · ② research scripts
+  (study_b21_review, study_yr6_wideoff_ab, study_yr6_lwoff_ab, yr6_reprice_today) apply the margin step (paired notional) · ③ bracket cap:
+  a resized momentum long whose brackets cap the leverage retries with the FULL margin (momentum_long_bracket_keep) — the DL 289 notional
+  is kept when the brackets allow it at a lower leverage (never above the reference notional / the full margin) · ④ the knobs are PAIRED:
+  notional at the full margin = 20 × lev mult × invest mult (0.25 × 0.2 = 0.05 → 1×) — change them together; back to 10×: lev 0.5 AND
+  invest 1.0 (config comment, both tooltips, a preview note on the momentum row that warns when the product ≠ 0.05) · ⑤ skip logs print the
+  SCALED minimum · ⑥ the reference calculate_position_size call is quiet (no duplicate [LEV_SCHEDULE]) · ⑦ [TRADE] / [ORDER CREATED] carry
+  the margin factor and the paired leverage.
+- **Second-order effect:** ~4/5 of the momentum-long margin is no longer locked → a higher tradeable balance for later opens (any
+  sleeve), bounded as before by max_gross_leverage (25 × equity on notional) and the slot count — exposure per position is unchanged,
+  total book exposure can be higher when the freed margin funds positions that a full-margin book would have refused for balance.
+- **CROSS caveat:** the liquidation equivalence (same notional ⇒ same liquidation distance) holds under CROSS margin (the whole wallet backs
+  each position); the engine's leverage / backstop clamp uses the ISOLATED formula (liquidation ≈ 1/leverage) — conservative at 5×.
+- **Dashboard reading:** margin-based figures now show momentum longs ~5× higher and blend eras — main.py pnl_over_inv (~L3390),
+  total_pnl_percentage (~L5357), avg_leverage (~L5365), long/short P&L % on investment (~L5488). The notional-based Avg P&L % is the
+  yardstick (core principle 3); $ per fill is unchanged.
+- **Files:** services/trading_engine.py · models.py · database.py · config.py · trading_config.json · main.py · templates/index.html ·
+  scripts/build_master_pool.py · scripts/screen_pool.py · scripts/study_b21_review.py · scripts/study_yr6_wideoff_ab.py ·
+  scripts/study_yr6_lwoff_ab.py · scripts/yr6_reprice_today.py · tests/test_momentum_long_size.py (new) · tests/test_momentum_long_lev.py
+  (JSON pin 0.05 → 0.25 + 0.2) · tests/test_today_size_scale.py · CLAUDE_CURRENT_STATE.md (momentum-long pin edited in place).

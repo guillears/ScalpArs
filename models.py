@@ -531,6 +531,9 @@ class Order(Base):
     # in between = a partial fill booked BLENDED with the market remainder). Ride the orders CSV as model columns.
     resting_tp_price = Column(Float, nullable=True)
     resting_tp_filled_qty = Column(Float, nullable=True)
+    # ⚖️ (DECISION_LOG 298) a momentum LONG opened with momentum_long_invest_mult < 1: the PAIRED leverage at the full margin (its notional =
+    # margin × leverage = full margin × this). NULL on every other fill and before 298. The master / screen size rule reads it as traded leverage.
+    momentum_long_ref_leverage = Column(Float, nullable=True)
 
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3 design).
     # cell_multiplier = the INVESTMENT multiplier ACTUALLY applied to this trade after hard-cap clamping.

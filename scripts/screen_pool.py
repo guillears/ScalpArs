@@ -19,7 +19,7 @@ import csv, sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 from services.trading_engine import _flip_filters, long_heat_eval, long_megacap_block, mom_short_c1_regime_block
-from scripts.build_master_pool import today_size_scale   # 📏 10-06c: the master's sizing rule, shared (never re-derived here)
+from scripts.build_master_pool import today_size_scale, momentum_long_traded_lev   # 📏 10-06c: the master's sizing rule, shared (never re-derived here) · ⚖️ DL 298
 
 RAW = "reports/COMBINED_momentum_flip_2026-06-16to28_DEDUP.csv"  # Jul 8: now spans 06-16..07-08 (batches appended; filename kept — all tooling points here)
 OUT = "reports/SCREENED_BASELINE.csv"
@@ -39,7 +39,7 @@ def pnl_current(r):
     return (nf(r.get('pnl')) or 0.0) * today_size_scale(
         r.get('entry_strategy'), r.get('direction'), r.get('cell_multiplier_source'), r.get('cell_multiplier'),
         r.get('entry_global_volume_ratio'), r.get('entry_btc_ema20_slope'), r.get('entry_pair_volume_ratio'),
-        r.get('cell_lev_multiplier'), r.get('leverage'))
+        r.get('cell_lev_multiplier'), momentum_long_traded_lev(r))   # ⚖️ DL 298: a post-298 momentum long's leverage is margin-scaled
 
 def flip_ind(r):  # field-audited against engine _ff_in (trading_engine.py:3414)
     a, b = nf(r.get('entry_ema_gap_5_8')), nf(r.get('entry_ema_gap_8_13'))

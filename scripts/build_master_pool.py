@@ -149,6 +149,56 @@ def momentum_long_lev_scale(cell_lev_today, lev=None, traded_lev=None, mll=None)
     return (min(want, l_base) / l_base) if l_base > 0 else 1.0
 
 
+MOMENTUM_LONG_DL298_LEV = 0.25              # DECISION_LOG 298: momentum_long_lev_mult 0.25 paired with momentum_long_invest_mult 0.2 — the SAME
+DL298_DEPLOY_GREP = "(DECISION_LOG 298)"    # notional as MOMENTUM_LONG_LEV_FROZEN 0.05 at the full margin (5× at 0.2 margin)
+_DL298_FLOOR = []
+
+
+def _dl298_floor():
+    """the "(DECISION_LOG 298)" commit time (UTC, naive) or None (not committed / git unavailable) — cached per process."""
+    if not _DL298_FLOOR:
+        t = None
+        try:
+            import subprocess, os as _os
+            out = subprocess.run(["git", "-C", _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "log", "--format=%ct",
+                                  "--grep=" + DL298_DEPLOY_GREP, "--fixed-strings", "--reverse"], capture_output=True, text=True, timeout=10)
+            t = pd.Timestamp(int(out.stdout.strip().splitlines()[0]), unit="s")
+        except Exception:
+            t = None
+        _DL298_FLOOR.append(t)
+    return _DL298_FLOOR[0]
+
+
+def momentum_long_traded_lev(r):
+    """⚖️ (DECISION_LOG 298) the leverage the size rule must read as a momentum LONG fill's `traded_lev`: since 298 a momentum long opens at 5×
+    with 0.2 of the margin — the SAME notional as the paired leverage at the full margin — so its as-traded leverage overstates its size 5×.
+    · the stamp `momentum_long_ref_leverage` (the paired leverage at the full margin, set by the engine) when present;
+    · else, for a MOMENTUM LONG opened at/after the 298 commit: leverage × round(20 × cell × 0.05) / round(20 × cell × 0.25) (a bracket-
+      capped fill keeps its proportion);
+    · else (every pre-298 fill, every other row) the as-traded leverage — today's behaviour. Pure apart from the cached commit time."""
+    lev = r.get("leverage")
+    s, d = str(r.get("entry_strategy") or ""), str(r.get("direction") or "")
+    if d != "LONG" or s not in ("", "nan", "None", "MOMENTUM"):
+        return lev
+    ref = _fnum(r.get("momentum_long_ref_leverage"))
+    if ref is not None and ref > 0:
+        return ref
+    fl = _dl298_floor()
+    tl = _fnum(lev)
+    if fl is None or tl is None or tl <= 0:
+        return lev
+    try:
+        t = pd.Timestamp(str(r.get("opened_at"))[:19])
+    except Exception:
+        return lev
+    if pd.isna(t) or t < fl:
+        return lev
+    cl = _fnum(r.get("cell_lev_multiplier")) or 1.0
+    ref = max(1, int(round(BASE_LEV_FROZEN * cl * MOMENTUM_LONG_LEV_FROZEN)))
+    intended = max(1, int(round(BASE_LEV_FROZEN * cl * MOMENTUM_LONG_DL298_LEV)))
+    return tl * ref / intended
+
+
 def today_size_rule(strat, direction, src, cm, gvr=None, b20slope=None, pvr=None, lev=None, traded_lev=None):
     """(factor, tag) — the cell rule below (_today_cell_rule) × the momentum-long leverage factor (10-12d, DECISION_LOG 283): every
     MOMENTUM LONG row (strategy MOMENTUM / blank) also takes momentum_long_lev_scale — tag '<cell tag>+ML_LEV' (or 'ML_LEV' alone);
@@ -904,7 +954,7 @@ def main(allow_proxy=False):
             # rule, shared with screen_pool.pnl_current. Size-only: stack_pct (computed above) is not touched.
             _f, _tag = today_size_rule(strat, r.direction, r.get("cell_multiplier_source"), r.get("cell_multiplier"),
                                        r.get("entry_global_volume_ratio"), r.get("entry_btc_ema20_slope"), r.get("entry_pair_volume_ratio"),
-                                       r.get("cell_lev_multiplier"), r.get("leverage"))
+                                       r.get("cell_lev_multiplier"), momentum_long_traded_lev(r))   # ⚖️ DL 298: margin-scaled momentum longs
             if _tag:
                 _rsn = r.get("stack_block_reason")
                 _rsn = "" if pd.isna(_rsn) else str(_rsn).strip()

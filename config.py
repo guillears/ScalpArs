@@ -2355,6 +2355,18 @@ class SignalThresholds(BaseModel):
     #   ⚠ Code default 1.0 (= 20×, "off") is LARGER than the live 0.05: a missing JSON key would size momentum longs at 20×. Kept as-is (the
     #   engine reads ≤ 0 / blank as 1.0 too; the JSON always carries the key) — reported in DL 289, change both together if wanted.
     momentum_long_lev_mult: float = 1.0
+    # ⚖️ 2026-10-15 (DECISION_LOG 298, operator-approved "go with 5x"): momentum_long_invest_mult — the MARGIN share of every MOMENTUM LONG
+    # open (same scope as momentum_long_lev_mult). The NOTIONAL never changes: the open keeps the notional of the PAIRED leverage
+    # (momentum_long_lev_mult × this) at the full margin and locks only notional / leverage (trading_engine.momentum_long_inv_factor /
+    # momentum_long_margin). JSON 0.2 with momentum_long_lev_mult 0.05 → 0.25: 1× at the full margin → 5× at 0.2 margin — same notional,
+    # 5× less margin locked (more free balance for the other sleeves); CROSS margin → the same liquidation risk, the same P&L % (notional-based).
+    # A pair whose bracket max leverage is below 5× keeps the DL 289 notional by using the FULL margin when the brackets allow it (bracket keep);
+    # a balance → leverage schedule cap below 5× keeps the full margin (never a smaller notional). Min-margin guards judge the margin scaled
+    # back (a smaller margin is never refused where today's passes). ≤ 0 / blank / unreadable = 1.0 (off); clamped to [0.05, 1.0].
+    # ⚠ PAIRED KNOBS: notional at the full margin = 20 × momentum_long_lev_mult × momentum_long_invest_mult (today 0.25 × 0.2 = 0.05 → 1×) —
+    # change them TOGETHER; back to 10×: lev 0.5 AND invest 1.0. The invest mult alone (lev left at 0.05) changes nothing.
+    # 🔒 The DL 289 gate is unchanged (30 momentum-long fills, avg < 0 at day-bootstrap 90 % → momentum longs OFF) — it reads P&L %.
+    momentum_long_invest_mult: float = 1.0
     # ⚡ Aug-10 CROWD-SPRINT DE-MUX (operator ship; the 3-era unmatched "Rest" hunt): de-size to
     # 1×/1× when global-vol ratio > gvr_min ∧ BTC EMA20 slope > slope_min — the FOMO window where
     # the fan trigger is beta noise, not pair-specific flow. 3-era window: 19·58%·−$714 pooled

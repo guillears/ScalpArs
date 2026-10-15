@@ -598,6 +598,40 @@ def momentum_long_lev_factor(th, entry_strategy, direction) -> float:
     return min(1.0, max(MOMENTUM_LONG_LEV_MULT_MIN, v))
 
 
+MOMENTUM_LONG_INV_MULT_MIN = 0.05   # ⚖️ (DECISION_LOG 298) the floor of momentum_long_invest_mult
+
+
+def momentum_long_inv_factor(th, entry_strategy, direction) -> float:
+    """⚖️ 2026-10-15 (DECISION_LOG 298): the MARGIN factor of a MOMENTUM LONG open — th.momentum_long_invest_mult when entry_strategy ==
+    "MOMENTUM" and direction == "LONG" (same scope as momentum_long_lev_factor: UNMATCHED, every LONG pattern cell, the CALM3D / CROSS_OB /
+    ADX-surge doors, the probes), else 1.0 (shorts, FRENZY_* / SURGE_* / BULLRUN / BEARRUN / FLIP:* / SPIKE_* / BULL_LONG / BOUNCE_LONG /
+    MANUAL). ≤ 0 / blank / unreadable → 1.0 (off); clamped to [MOMENTUM_LONG_INV_MULT_MIN, 1.0]. It never changes the NOTIONAL: the open
+    keeps the notional the PAIRED leverage (momentum_long_lev_mult × this) gives at the full margin and locks only notional / leverage of
+    margin (momentum_long_margin). Pure."""
+    if (entry_strategy or "") != "MOMENTUM" or str(direction or "").upper() != "LONG":
+        return 1.0
+    try:
+        v = float(getattr(th, 'momentum_long_invest_mult', 1.0))
+    except (TypeError, ValueError):
+        return 1.0
+    if not math.isfinite(v) or v <= 0:
+        return 1.0
+    return min(1.0, max(MOMENTUM_LONG_INV_MULT_MIN, v))
+
+
+def momentum_long_margin(investment, leverage, ref_leverage) -> float:
+    """⚖️ (DECISION_LOG 298) the margin that carries the SAME notional as `investment` at `ref_leverage` (the paired leverage at the full
+    margin) when the position actually opens at `leverage`: investment × ref_leverage / leverage, never above `investment` (a leverage that
+    did not rise — e.g. the balance → leverage schedule capped it — keeps the full margin). Pure."""
+    try:
+        inv, lev, ref = float(investment), float(leverage), float(ref_leverage)
+    except (TypeError, ValueError):
+        return investment
+    if not (inv > 0 and lev > 0 and ref > 0):
+        return investment
+    return min(inv, inv * ref / lev)
+
+
 def compose_leverage(base_leverage, cell_lev_multiplier=1.0, apply_lev=True, base_lev_multiplier=1.0):
     """⚖️ (DECISION_LOG 283) the leverage calculate_position_size opens at BEFORE the balance-schedule ceiling: the confidence level's
     leverage × the cell lev multiplier (only when the multiplier target applies leverage — unchanged since May 21) × base_lev_multiplier
@@ -723,6 +757,31 @@ def leverage_bracket_limit(tiers, leverage, margin):
     pair_max = max(tl for _, tl in rows)
     cap_at = max([cap for cap, tl in rows if tl >= lev], default=0.0)
     return best[0], best[1], pair_max, cap_at
+
+
+def momentum_long_bracket_keep(tiers, leverage, investment, scale, new_inv, lev_eff):
+    """⚖️ (DECISION_LOG 298) a bracket-capped RESIZED momentum long (scale < 1 = margin × scale of the full margin): when the brackets allow the
+    reference notional (investment × leverage = the DL 289 notional) at a lower leverage with the FULL margin (investment / scale), take it —
+    never above the reference notional, never above the full margin. → (margin, leverage_eff) — the reduced-margin result unchanged when the
+    full margin does not carry more. Pure."""
+    try:
+        sc, inv, lev = float(scale), float(investment), float(leverage)
+    except (TypeError, ValueError):
+        return new_inv, lev_eff
+    if not (0 < sc < 1.0 - 1e-12) or not (inv > 0 and lev > 0):
+        return new_inv, lev_eff
+    full, target_n = inv / sc, inv * lev
+    lim = leverage_bracket_limit(tiers, lev, full)
+    if lim is None:
+        return new_inv, lev_eff
+    le = float(int(lim[0])) if lim[0] >= 1 else lim[0]
+    if not le > 0:
+        return new_inv, lev_eff
+    n = min(lim[1], target_n)
+    inv2 = min(full, n / le)
+    if inv2 * le > float(new_inv) * float(lev_eff) + 0.01:
+        return inv2, le
+    return new_inv, lev_eff
 
 
 class ManualLimitError(ValueError):
@@ -5703,10 +5762,31 @@ class TradingEngine:
             balance = await binance_service.get_balance()
             return balance['usdt_free']
     
+    def momentum_long_resize(self, pair, investment, leverage, available, confidence, total_portfolio, cell_mult, cell_lev_mult,
+                             mult_target, entry_strategy, direction, ml_lev) -> Tuple[float, float, Optional[float]]:
+        """⚖️ 2026-10-15 (DECISION_LOG 298) open_position's momentum-long margin step, right after calculate_position_size → (investment,
+        min-margin scale). momentum_long_inv_factor 1.0 (off / not a momentum LONG) → unchanged, scale 1.0. Else the reference = the size the
+        PAIRED leverage (ml_lev × the factor) gives at the full margin (the same calculate_position_size call: cells, doors, the balance →
+        leverage schedule) and the margin becomes that notional / the actual leverage (momentum_long_margin) — the notional is unchanged;
+        scale = new / old margin (the min-margin guards compare against min × scale); ref = the paired leverage at the full margin (stamped
+        on the order as momentum_long_ref_leverage — the master / screen size rule reads it; None when no resize). Logged [MOMENTUM_LONG_INV]."""
+        f = momentum_long_inv_factor(config.trading_config.thresholds, entry_strategy, direction)
+        if f == 1.0 or not (investment and investment > 0 and leverage and leverage > 0):
+            return investment, 1.0, None
+        _ri, ref_lev, _ = self.calculate_position_size(available, confidence, total_portfolio=total_portfolio, cell_multiplier=cell_mult,
+                                                       cell_lev_multiplier=cell_lev_mult, multiplier_target=mult_target,
+                                                       base_lev_multiplier=(ml_lev or 1.0) * f, quiet=True)
+        if not (ref_lev and ref_lev > 0):
+            return investment, 1.0, None
+        new = momentum_long_margin(investment, leverage, ref_lev)
+        logger.info(f"[MOMENTUM_LONG_INV] {pair} LONG: momentum_long_invest_mult {f:g} — margin ${investment:.2f} → ${new:.2f} at {leverage}x "
+                    f"(paired {ref_lev}x at the full margin) · notional ${new * leverage:,.2f} (= ${investment * ref_lev:,.2f})")
+        return new, (new / investment), float(ref_lev)
+
     def calculate_position_size(
         self, available_balance: float, confidence: str, total_portfolio: float = None,
         cell_multiplier: float = 1.0, cell_lev_multiplier: float = 1.0,
-        multiplier_target: str = "investment", base_lev_multiplier: float = 1.0,
+        multiplier_target: str = "investment", base_lev_multiplier: float = 1.0, quiet: bool = False,
     ) -> Tuple[float, float, bool]:
         """
         Calculate position size and leverage based on config.
@@ -5866,8 +5946,9 @@ class TradingEngine:
         _sched_cap = _lookup_leverage_schedule(
             getattr(tc.investment, 'leverage_balance_schedule', ''), _sched_equity)
         if _sched_cap is not None and _sched_cap >= 1 and leverage > _sched_cap:
-            logger.info(f"[LEV_SCHEDULE] leverage {leverage}x -> {int(round(_sched_cap))}x "
-                        f"(equity ${_sched_equity:,.0f}, schedule cap)")
+            if not quiet:   # ⚖️ (298) the momentum-long reference call is silent — one [LEV_SCHEDULE] line per open
+                logger.info(f"[LEV_SCHEDULE] leverage {leverage}x -> {int(round(_sched_cap))}x "
+                            f"(equity ${_sched_equity:,.0f}, schedule cap)")
             leverage = max(1, int(round(_sched_cap)))
 
         return investment, leverage, capped_by_balance
@@ -12197,6 +12278,11 @@ class TradingEngine:
         )
         if _ml_lev != 1.0 and investment > 0:
             logger.info(f"[MOMENTUM_LONG_LEV] {pair} LONG: momentum_long_lev_mult {_ml_lev:g} × cell lev {cell_lev_mult:g} ({cell_src}) → {leverage}x")
+        # ⚖️ 2026-10-15 (DECISION_LOG 298): momentum_long_invest_mult — the SAME notional with less margin locked (momentum_long_resize).
+        # Every downstream guard sees the same notional; the min-margin guards below compare the margin scaled back by _ml_min_scale (a
+        # smaller margin is never refused where today's would pass). CROSS margin → same liquidation risk.
+        investment, _ml_min_scale, _ml_ref_lev = self.momentum_long_resize(pair, investment, leverage, available, confidence, total_portfolio,
+                                                                           cell_mult, cell_lev_mult, _mult_target, _wh_es, direction, _ml_lev)
         if cell_capped:
             logger.info(
                 f"[CELL_MULT_CAPPED] {pair} {direction}: target multiplier inv={cell_mult}x lev={cell_lev_mult}x via {cell_src} "
@@ -12282,10 +12368,10 @@ class TradingEngine:
             # apply throttle: shrink margin to fit the capped notional
             if _final_notional < _desired_notional - 0.01:
                 _new_investment = _final_notional / leverage
-                if _new_investment < _inv_cfg.min_investment_size:
+                if _new_investment < _inv_cfg.min_investment_size * _ml_min_scale:   # ⚖️ (298) the momentum-long margin is judged at today's size
                     logger.warning(
                         f"[LIQ_CAP] {pair} {direction}: {_cap_reason} cap -> ${_new_investment:.2f} margin "
-                        f"< min ${_inv_cfg.min_investment_size:.0f} (pair too thin / no gross room) — skip"
+                        f"< min ${_inv_cfg.min_investment_size * _ml_min_scale:.2f} (pair too thin / no gross room) — skip"
                     )
                     self._record_filter_block('LIQ_CAP_SKIP', direction)  # Jun 2: surface liquidity-below-min rejections in Filter Blocks
                     return None
@@ -12314,16 +12400,29 @@ class TradingEngine:
                 if _lev_eff < leverage - 1e-9 or _n_ok < investment * leverage - 0.01:
                     _lev_eff = float(int(_lev_eff)) if _lev_eff >= 1 else _lev_eff      # the exchange takes whole leverages
                     _new_inv = min(investment, _n_ok / _lev_eff)
-                    if _new_inv < config.trading_config.investment.min_investment_size:
+                    if _ml_min_scale < 1.0 - 1e-12 and _lev_eff > 0:
+                        # ⚖️ (DECISION_LOG 298) a resized momentum long: the reduced margin must not shrink the DL 289 notional when the brackets
+                        # allow it at a lower leverage — retry with the FULL margin, never above the reference notional
+                        try:
+                            _ml_tiers = (await binance_service.get_leverage_brackets()).get(pair)
+                        except Exception:
+                            _ml_tiers = None
+                        _ml_b = momentum_long_bracket_keep(_ml_tiers, leverage, investment, _ml_min_scale, _new_inv, _lev_eff)
+                        if _ml_b != (_new_inv, _lev_eff):
+                            logger.info(f"[BRACKET_CAP] {pair} LONG: momentum long at the full margin keeps ${_ml_b[0] * _ml_b[1]:,.0f} at {_ml_b[1]:g}× "
+                                        f"(reduced margin would give ${_new_inv * _lev_eff:,.0f}; reference ${investment * leverage:,.0f})")
+                            _new_inv, _lev_eff = _ml_b
+                    if _new_inv < config.trading_config.investment.min_investment_size * _ml_min_scale:   # ⚖️ (298) judged at today's size
                         logger.warning(f"[BRACKET_CAP] {pair} {direction}: brackets allow ${_n_ok:,.0f} at {_lev_eff:g}× → margin "
-                                       f"${_new_inv:.2f} < min ${config.trading_config.investment.min_investment_size:.0f} — skip")
+                                       f"${_new_inv:.2f} < min ${config.trading_config.investment.min_investment_size * _ml_min_scale:.2f} — skip")
                         self._record_filter_block('BRACKET_CAP_SKIP', direction)
                         return None
                     logger.info(f"[BRACKET_CAP] {pair} {direction}: ${investment * leverage:,.0f} at {leverage:g}× → ${_new_inv * _lev_eff:,.0f} at "
                                 f"{_lev_eff:g}× (pair max {_brk_max_lev:g}×, cap at {leverage:g}× ${_brk_cap:,.0f}; margin ${investment:.2f} → ${_new_inv:.2f})")
                     investment, leverage, _brk_capped = _new_inv, (int(_lev_eff) if float(_lev_eff).is_integer() else _lev_eff), True
 
-        logger.info(f"[TRADE] {pair}: {direction} {confidence} - Investment: ${investment:.2f}, Leverage: {leverage}x")
+        logger.info(f"[TRADE] {pair}: {direction} {confidence} - Investment: ${investment:.2f}, Leverage: {leverage}x"
+                    + (f" · momentum-long margin ×{_ml_min_scale:.3g} (paired {_ml_ref_lev:g}x at the full margin, DECISION_LOG 298)" if _ml_ref_lev else ""))
         
         if investment <= 0:
             # Jul 15 visibility fix (audit B15): a balance-starved bot previously opened
@@ -12815,6 +12914,7 @@ class TradingEngine:
             entry_bracket_max_leverage=_brk_max_lev, entry_bracket_cap_notional=_brk_cap, bracket_capped=_brk_capped,   # 🪜 Oct-1
             entry_btc_rsi_closed=(_current_btc_rsi_closed if _rh_rsi_fresh(_current_btc_rsi_closed_bar_ts, _leash_time.time() * 1000.0) else None),   # 🩹 Oct-2
             entry_slippage_pct=_entry_slippage_pct,
+            momentum_long_ref_leverage=_ml_ref_lev,   # ⚖️ (DECISION_LOG 298) the paired leverage at the full margin — the master / screen size rule reads it
             entry_book_drift_pct=_eb_m.get('entry_book_drift_pct'), entry_book_spread_pct=_eb_m.get('entry_book_spread_pct'),   # 📏 (295)
             entry_fill_vs_book_pct=_eb_m.get('entry_fill_vs_book_pct'), entry_order_lag_s=_eb_m.get('entry_order_lag_s'),
             entry_fee=entry_fee,
@@ -13130,7 +13230,8 @@ class TradingEngine:
                 self._calm3d_last_fire[pair] = datetime.utcnow()
             _open_orders_cache[pair].append(order_cache_entry)
         
-        logger.info(f"[ORDER CREATED] {pair}: {direction} {confidence} - ID={order.id}, Investment=${investment:.2f}")
+        logger.info(f"[ORDER CREATED] {pair}: {direction} {confidence} - ID={order.id}, Investment=${investment:.2f}"
+                    + (f" · momentum-long margin ×{_ml_min_scale:.3g}, paired {_ml_ref_lev:g}x (DECISION_LOG 298)" if _ml_ref_lev else ""))
 
         # Jun 3: update the BTC-acceleration-chase reference on every LONG that actually
         # opens (blocked LONGs never reach here, so the reference stays the last REAL

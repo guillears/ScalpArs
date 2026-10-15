@@ -73,6 +73,9 @@ def notional_at(equity, available, r, today, open_notional=0.0):
                                               cell_lev_multiplier=clm, multiplier_target="both", base_lev_multiplier=base)
     if inv <= 0 or lev <= 0:
         return 0.0, 0.0, lev
+    if today:   # ⚖️ DL 298: a momentum long opens at the paired notional with a scaled margin (the engine's own step)
+        s0 = r.entry_strategy if isinstance(r.entry_strategy, str) else ""
+        inv = ENG.momentum_long_resize("STUDY", inv, lev, available, r.confidence, equity, cm, clm, "both", s0, r.direction, base)[0]
     notional = inv * lev
     liq_pct = float(INV.max_notional_pct_of_pair_volume or 0)
     vol = pd.to_numeric(pd.Series([r.get("entry_pair_volume_24h_usd")]), errors="coerce").iloc[0]

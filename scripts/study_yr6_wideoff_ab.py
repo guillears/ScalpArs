@@ -428,6 +428,8 @@ def notional_at(equity, available, r, open_notional=0.0):
                                               base_lev_multiplier=te.momentum_long_lev_factor(TH, s, r.direction))
     if inv <= 0 or lev <= 0:
         return 0.0, 0.0
+    inv = ENG.momentum_long_resize("STUDY", inv, lev, available, r.confidence, equity, float(r.cell_multiplier or 1.0), clm, "both", s,
+                                   r.direction, te.momentum_long_lev_factor(TH, s, r.direction))[0]   # ⚖️ DL 298: same notional, margin-scaled
     notional = inv * lev
     liq = float(INV.max_notional_pct_of_pair_volume or 0)
     vol = pd.to_numeric(pd.Series([r.get("entry_pair_volume_24h_usd")]), errors="coerce").iloc[0]

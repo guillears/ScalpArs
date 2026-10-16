@@ -1,0 +1,107 @@
+WILLY THEORY STUDY — PRE-REGISTRATION (frozen 2026-10-16T15:23:32Z, BEFORE any rebuilt signal / alternative entry / cell was priced)
+Coordinator brief 2026-10-16 (operator): first-principles test of the FRENZY_WILLY mechanism, W0–W8, + operator addenda W6b (pair-specific
+vs market-wide red candle; post-entry market path, descriptive) and "every test shows master per batch + live side by side, % and $".
+Today's WILLY: LONG; entry A = a NEW FRENZY flag (B off) → arms; opens on the FIRST CLOSED RED 5m bar within 60 min (trigger bar counts);
+turnover 24 h vol / mcap < 1.0 (refused → stays armed); exit TP +1.25 net resting maker · stop −4 · 90-min cap · late TP +0.25 after 30 min; 10×.
+Thesis: "after a fresh pump the first red candle is profit-taking, not the top; continuation buyers lift it ~1 % more".
+Counter-thesis: "pumps mean-revert; the first red is the start of the unwind; +1.25 / −4 is a short-volatility bet whose edge depends on
+the 1-in-5 stop". Research only: no engine / config / template / test edit, no bot API, no commit. Not reviewed → supports no arm / ship.
+
+DISCLOSURE (known BEFORE this freeze — the cells below are NOT new to the data; their verdicts are read as confirmations / refutations):
+DIP_SUB (deep red ≤ −1.16 better among BTC-rising, DL 279) · WILLY_BTC1H (slope ≤ 0 worse, yr5) · LOWVWAP_SHORTRUN (vs_vwap ≤ 0.10 ∧ run ≤ 10
+= noise; run ≤ 10 BETTER; VWAP leg mildly worse 2026) · turnover R > 1 worse (DL 251) · WILLY 30-min / late-TP / TP-grid studies (DL 285 /
+290 / 297) · WILLY breakeven WR ≈ 77 %. Outcome-free reads before the freeze: the parity table, feature distributions (cut points below
+are round numbers near the pooled terciles of the FEATURES, never of outcomes), the 8 live fills' outcomes (3 stops, 5 TPs).
+
+1. FROZEN INPUTS + CODE (sha256)
+   44a4bde82747e513cbfbaf2051c3020a7fc39daee6bba982ce8efbc4752bbc5d  reports/willy_theory/bars_w.pkl
+   a148aa3fd02b2703afaad245205581eaf0b9a620d58cbab0b2ea0709a401ad89  reports/willy_theory/signals.pkl
+   b86432bf443161e7c65c429601c854346837ef7b3a363dcbd385dbfee91842ab  reports/willy_theory/alt_entries.pkl
+   eb4cfaadacb9302491212b466906d2fc87dd2e54494cdf7193d20b8c8c604863  reports/willy_theory/market.pkl
+   c46606955ae9666de2c655200c8da4e0106fe29dba8d61c44714b8c40312330c  reports/willy_theory/parity_rows.csv
+   16064024a56da774a44246e7be91001ea5221cf48f75bc67b43a8c27ed35c067  reports/ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv
+   4fc676ae9bc2e33455fbe41067eb0da06f9f0ea4d6d280e4958a57218cded9e2  reports/WILLY_LOWVWAP_SHORTRUN_rows.csv
+   0b130a4cee33acdf2028475d0e89990251313e016a928624235cc3da168ca337  reports/WILLY_LOWVWAP_SHORTRUN_live.csv
+   49be4901ae689294267f40ab837c917028bdc583601e1153454a08098421cd03  reports/MASTER_POOL_stacked.csv
+   feffb41e362cb1fb25872cddd905261080f09b5ffe3569d10a5e486579558d2a  /Users/guillearslanian/Downloads/scalpars_orders_live_2026-10-16_13-10-21 (1).csv
+   916c12ca1a4e23e82fe11fbf3b36c8cfb0a727e0c52447a76f03fdab888f2f9a  scripts/study_willy_theory_common.py
+   84a42ca9a5488f6ce4e48d04fc3fd0ef628ef532e2d7abd95e2688982387a4fb  scripts/study_willy_theory_episodes.py
+   4c7b8e873ecdcbc2da35e9fba165747b1c076cc78a2fd7b5a111f48281484e4b  scripts/study_willy_theory_signals.py
+   3904d1d4761884de76fac6b4d3c076f275ce2e591682f739fc64b8def12e55d9  scripts/study_willy_theory_market.py
+   559da9300505677690858b70b208e4d732172204d0359cdda0cc6a4225d6c979  scripts/study_willy_theory_fetch_taker.py
+   e676add197675571f7d42e2f324abff50cb09ce819f4339beb8f64ef8bc350bb  scripts/study_willy_theory_fetch_ctx.py
+
+2. COHORT (built before this freeze, outcome-free)
+   Episodes: scripts/study_willy_theory_episodes.py = study_lite_theory_episodes.build_pair VERBATIM except the spike (lead) bar itself is
+   judged (WILLY arms on it) → 1,991,228 flagged bars · 448 pairs · 7,313 episodes (engine frenzy_walk / normal_hour_usd; normal hour
+   refreshed hourly vs the engine's 6–8 h — declared).
+   Emulator (study_willy_theory_signals.py): engine FRENZY shortlist (|24 h chg| or 24 h range ≥ 15 % ∧ 24 h vol ≥ $20M, 25-cap NOT
+   emulated) · judged = shortlisted or flagged on the previous bar · new episode → warm: arm; cold: arm iff late ≤ 3 bars · first red bar
+   (bar_ret < 0) with T + 5 min ≤ armed + 60 min and R = vol24 / (bapi supply × close) < 1.0 (replay's mcap proxy) · newer episode expires
+   the pending one. Slots / global WILLY hold / pair held NOT emulated (signal level). → 7,172 armed episodes · 4,755 entries
+   (2025 2,374 · 2026-H1 1,581 · 2026-H2 800).
+   PARITY vs replay ENGINE_REPLAY_YR6_2Y_TODAY seed 1 (1,518 WILLY fills): same pair & same red bar 1,244 = 81.9 % (2025 81.9 / 2026 82.0;
+   seeds 2/3 identical) — BELOW the 85 % bar-exact gate. Episode level (same episode, same trigger, the replay entering a LATER red bar —
+   the global WILLY hold / pair-held deferral the signal level cannot emulate): +59 → 85.8 %. Misses: 73 replay trigger 1–3 bars later
+   (cold shortlist join — the 25-pair cap / ticker universe), 99 trigger > 3 bars later, 14 earlier, 29 episode not rebuilt.
+   On matched: spike equal 99.4 %, wait bars 91.0 %, R ratio 1.000, bar_ret identical.
+   ⇒ DECLARED: every headline is shown on BOTH (a) the full rebuilt signal cohort and (b) the bar-exact replay-matched ENGINE cohort
+   (MATCH, 1,244 seed-1 fills); a verdict requires the same sign on (b).
+
+3. PRICING (identical for every set)
+   Entry te = red-bar close + 12 s. E_raw = last tick print ≤ te when that day has ticks, else the 1m open of te's minute; E = E_raw ×
+   (1 + 0.036 %). Path = scout_frenzy_willy_exit.load_path (ticks first, 1m tail); exit = scout_willy_timecap.evaluate_late(P, 1.25, 4, 90,
+   30, 0.25) booked as WILLY_LOWVWAP (TP / LATE_TP at the line; STOP min(print, −4) − 0.20; CAP at the last print). Rulers: RH (hybrid) —
+   VERDICT only on rows whose path is fully tick-covered (src = 'ticks'); R1 (same E, 1m path forced) = REFUTE-ONLY (a sign flip vs RH
+   ticks fails the cell). UNRES dropped on both sides of a paired comparison. Parity check: RH y on MATCH vs the stored
+   WILLY_LOWVWAP_SHORTRUN_rows y (same fill) — reported.
+   Breakeven WR per era = |avg loss| / (avg win + |avg loss|) of today's WILLY entries (RH ticks).
+
+4. BLOCKS (every cell, side by side): ① BT by era 2025 / 2026-H1 / 2026-H2 (+ MATCH) · ② MASTER 19 WILLY fills (B19 / B20 / B21) as traded
+   and re-priced today (WILLY_LOWVWAP rows y) — before / after per trade, totals % and $ (refused = $0) · ③ LIVE 8 fills (live 10-15/16) as
+   traded % / $ and the 1m today re-price (WILLY_LOWVWAP_SHORTRUN_live k1m_today_pct). Master / live features from their stamps + the
+   fetched context (study_willy_theory_fetch_ctx). Master / live are REFUTE-ONLY (N 19 / 8).
+
+5. TESTS (cell names frozen; buckets read two-sided; BLOCK cells = the theory-predicted bad side)
+ W0 selection (paired, same episode, WILLY entries only): Δ = y(WILLY) − y(alt): TRIG (enter at the trigger bar's close, no colour rule) ·
+    FIRST_GREEN (first green bar in the window) · RANDOM (mean of every bar k = 0…12 of the window = the exact random-bar expectation) ·
+    LATE_RANDOM (mean of bars after the WILLY bar). Plus the one-sample drift test (avg y > 0?) and the zero-drift bracket benchmark:
+    P(+1.25 before −4 | martingale) = 4 / 5.25 = 76.2 % ≈ the breakeven WR.
+ W1 the red bar: RED2 (2nd red bar) and ANYRED (mean of all red bars in the window) paired vs WILLY; depth buckets of the entry bar's
+    return: SHALLOW > −0.75 · MID · DEEP ≤ −2.0; BLOCK cells W1_DEEP (≤ −2.0) and W1_SHALLOW (> −0.75).
+ W2 who sells: red-bar quote volume / spike-bar quote volume — BLOCK W2_HEAVY (≥ 1.0); red-bar 5m taker-buy share of quote volume —
+    BLOCK W2_SELLERS (< 45 %); last 1m of the red bar taker-buy share — BLOCK W2_LAST1M_SELL (< 40 %); spike-bar taker share (bucket only).
+    (taker data: fetched 1m klines, study_willy_theory_fetch_taker; unscored ≠ rest — coverage reported.)
+ W3 spike shape: spike_conc (largest 5m return / sum of positive 5m returns of the 30-min run) — BLOCK W3_ONECANDLE (≥ 0.6) and
+    W3_STAIR (≤ 0.4) both read; spike-bar upper wick share — BLOCK W3_WICK (≥ 0.40); spike size spike_ret6 — BLOCK W3_BIG (≥ 10 %);
+    spike volume multiple spike_volx — BLOCK W3_VOLX (≥ 40×); entry below the spike high off_high — BLOCK W3_FARHIGH (≤ −5 %).
+ W4 timing: wait bars 0 / 1 / 2–3 / ≥ 4 — BLOCK W4_WAIT4 (≥ 4); trigger far from the spike (min_from_spike > 60) — BLOCK W4_LATEFLAG;
+    session UTC Asia 0–8 / EU 8–13 / US 13–21 / late 21–24 (bucket only).
+ W5 location: BLOCK W5_BELOWVWAP (vs_vwap ≤ 0); retrace of the pump (peak − entry) / (peak − pre-spike base) — BLOCK W5_RETRACE (≥ 0.35);
+    entry vs pre-spike base — BLOCK W5_SMALLKEEP (vs_base_pct < 8).
+ W6 market support, SIGN first: BLOCK W6_BTC1H_SLOPE (btc_1h_slope ≤ 0) · W6_BTC15 (btc 15m ≤ 0) · W6_BTC1H (btc 1h return ≤ 0) ·
+    W6_BREADTH (top-50 share up over 1 h < 50 %); then buckets.
+ W6b (operator addendum) is the red candle pair-specific or market-wide? At the red bar: BTC same-bar return class (i) IDIO: pair red,
+    BTC bar > +0.02 % (green) · (ii) BETA: BTC bar < −0.02 % (red) · (iii) FLAT: |BTC bar| ≤ 0.02 %; sign first (BTC bar < 0 vs ≥ 0);
+    ETH / SOL same bar; top-50 share red on the same bar (≥ 60 % market red · ≤ 40 % market green); market (BTC + ETH + SOL) 1m taker-buy
+    share in the bar. BLOCK cells W6B_BETA (BTC bar < −0.02), W6B_IDIO (BTC bar > +0.02), W6B_MKTRED (breadth red ≥ 60 %),
+    W6B_MKTSELL (market taker share < 48 %). Per class: die rate (stop share), avg vs breakeven.
+    POST-ENTRY (descriptive, NEVER an entry filter): BTC and top-50 mean return over the next 5 / 15 / 30 min by outcome (TP / LATE_TP /
+    STOP / CAP) and the stop rate by BTC-15m-after sign.
+ W7 coin identity: BLOCK W7_HIGHTURN (R ≥ 0.5 within the live R < 1) · the live filter itself: the R ≥ 1 cohort it refuses (priced at
+    its first red bar) vs kept · BLOCK W7_SMALLCAP (mcap < $100M) · W7_NOTTOP50 (not in the previous day's top-50) · W7_NEWLIST (listed
+    < 180 days).
+ W8 exit fit (on WILLY entries): MFE / MAE within 90 min, time to +1.25, stop speed (≤ 10 min = fast crash, > 10 = slow bleed), what a
+    stopped trade does after the stop (90-min close vs the stop). Exit grid (plain, no late TP): TP {0.5, 0.75, 1.0, 1.25, 1.5, 2, 3} × SL
+    {2, 3, 4, 6, none} × cap {30, 60, 90, 240} + today, on WILLY entries AND on RANDOM bars of the same windows (does the entry add over
+    the geometry?). Frontier read per era; an exit cell is only a candidate if it beats today in all three eras (it is a watch item here;
+    exit changes go through the scout exit-cell machinery, not this study).
+
+6. GATES (locked; a BLOCK cell passes only if ALL hold, on RH ticks)
+   Expectancy filter bar on the blocked cohort at 1×: ① WR < the era-pooled sleeve breakeven WR · ② P(mean < 0) ≥ 0.95 by a DAY-clustered
+   bootstrap (4,000) · ③ ≥ 8 distinct days, no single day or pair ≥ 50 % of the cohort loss · ④ N ≥ 15.
+   Walk-forward both directions: refusing the cohort raises the kept average (Δ per signal > 0) in 2025 AND in 2026 (fit-free cuts, so
+   "train one year, test the other" = same sign in both years), and on MATCH. R1 1m must not flip the sign. Then a 30–50 % haircut on Δ.
+   Master / live: a refusal that cuts the master today-repriced total is flagged (refute-only, N 19).
+   Multiple testing: ~30 BLOCK cells; null = 200 within-era shuffles of y across signals (day blocks kept) → expected false passes reported.
+   A cell failing only on confidence → watch item (frozen threshold), never re-fit.

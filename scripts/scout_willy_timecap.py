@@ -115,7 +115,25 @@ OLD_EXIT   (DECISION_LOG 281, operator-approved 2026-10-12, OBSERVE only) — th
             seed 7), no fill > 50 % of ΣΔ and parity ≥ 90 %, OR the new exit's walked average < 0; else KEEP NEW. Never frozen on failed
             parity / integrity; provisional / unpriced fills hold it while data is due; n/a while today's exit IS the old one. State key
             OLD_EXIT. Own report section "WILLY exit change revert gate (DL 281)".
-BINANCE     cache first: ticks reports/backtest_cache/{ticks_q,ticks}/<PAIR>/<day>.npz (+ legacy scout_willy_timecap/ticks), else 1m klines
+DL 304 FIX (2026-10-16, adversarial review — tracker-only, OBSERVE only; no bar, key, floor or frozen record changed). Since DECISION_LOG
+            297 (live 2026-10-15) the live WILLY exit is +1.25 resting maker TP / −4 / 90 WITH a late TP: from minute 30 the TP is +0.25 and,
+            if the price is already above it then, the engine market-closes at that print. Before this fix every cell (S4, DL 285, DL 290,
+            OLD_EXIT) was judged against FX.evaluate(+1.25, 4, 90) — the exit WITHOUT the late TP — i.e. "vs the old exit", not today's.
+            Now each fill is judged against the exit that was LIVE when it opened (fill_late): opened < the DL 297 floor ("(DECISION_LOG
+            297)" commit + 10 min, s297_deploy_ts) or late TP off → unchanged (plain walk, print booking — the live exit then); opened ≥ it →
+            today = evaluate_late(P, +1.25, 4, 90, 30, +0.25, book="live") and every cell walks the SAME late line with its own TP / cap
+            (_walk): CAP60 / CAP90 (+1), T125C60, OLD_EXIT (+1 / −4 / 120 — so the DL 281 revert gate reads the 281 change alone on today's
+            stack), T125C30 (cap 30 = the late minute: no late line), LT30_03 (its own +0.30 late line), T130C90 … T150C90; LT30_025 IS the
+            live exit → n/a on post-297 fills (its counted cohort ends at the 297 deploy; DL 297's own rollback read is s297_section);
+            T125C90 stays n/a. book="live" = the DL 296 resting-TP booking: a TP books exactly its line, a late-line TP books the print when
+            the first event after the late minute is already ≥ the line (a 1m bar: its open when ≥ the line), else exactly the line; stop /
+            cap unchanged; book="print" (default) unchanged for old callers. s4_late flags a post-297 row (report: today⏰ / new⏰); its TP
+            exits are untouched only for a same-TP cell (line booking), a LATE_TP exit at ≤ the cell's cap with no earlier print through
+            the cell's TP is untouched (same late line). Parity = s4_LIVE (the era's exit) vs the actual exit. Each section prints the
+            comparator split (era_split_line: pre / post N and mean Δ per cell). A verdict frozen before this fix is never re-decided:
+            frozen_cmp_note says whether it was read on post-297 fills with the old comparator; new freezes carry comparator "DL304 era
+            split". late_levels(th) of the run's config feeds the split (run passes it; th=None → trading_config.json).
+BINANCE    cache first: ticks reports/backtest_cache/{ticks_q,ticks}/<PAIR>/<day>.npz (+ legacy scout_willy_timecap/ticks), else 1m klines
             (k1m / k1m_ondemand + this line's scout_willy_timecap/1m). Requests, ≤ 2 per run in all:
             · data.binance.vision daily aggTrades archive — ≤ 1 per run, its own 120 s timeout (outside the 25 s fapi budget), asked only ≥ 24 h
               after the UTC day ended; streamed in the caller's thread to a temp zip (1 MB reads, deadline between reads, temp removed on any
@@ -253,6 +271,7 @@ S290_KEY = {n: f"S4_{n}" for n in S290_NAMES}
 S290_DEPLOY_GREP = "(DECISION_LOG 290)"              # counted from the DL 290 commit (registered after B19 / B20 / the yr6 grid were seen)
 S290_DEPLOY_PIN = "2026-10-14 05:30:00"              # ≈ the DL 290 commit time (UTC) — used only if git cannot find the commit
 S297_DEPLOY_GREP = "(DECISION_LOG 297)"              # ⏰ the WILLY late take profit (+0.25 from minute 30) went live with this commit
+_FL297 = object()                                    # DL 304 sentinel: "not passed → read the DL 297 floor / late TP here"
 S297_FIRST5_FLOOR = -6.0                             # 297 rollback: the first 5 changed trades < −6 pts net vs the old exit
 S290_LABEL = "pre-registered 2026-10-14, DECISION_LOG 290"
 S290_BAR = ("FROZEN BAR (pre-registered 2026-10-14, DECISION_LOG 290). Per cell (T130C90 / T135C90 / T140C90 / T145C90 / T150C90 = TP "
@@ -1151,12 +1170,16 @@ def _untouched_spec(name, tp):
     return s4_spec(name, tp)
 
 
-def evaluate_late(P, tp, sl, cap, late, ztp):
+def evaluate_late(P, tp, sl, cap, late, ztp, book="print"):
     """FX.evaluate with a time-varying TP line (mirror of ev() / TPx_z in scripts/study_willy_late_sl.py — copied, never imported): the
     line is +tp for t ≤ te + late min and +ztp after; stop −sl throughout. Same fill rules: first touch on the net path; a tick TP books
     the print's net, a 1m-bar TP books exactly the active line; a bar touching both lines = stop; a bar opening through the stop fills at
     its open; no event inside the cap → CAP at the last event ≤ the cap; undecided before the path end → UNRES. why LATE_TP = a TP on
-    the late line."""
+    the late line. idx = the deciding event's index on the path (CAP → n, UNRES → None) — feeds the untouched peak only.
+    book="live" (DECISION_LOG 304 — the live WILLY booking since DL 296 / 297, resting maker TP): a TP on the +tp line books exactly the
+    line (the resting limit fills at its price); a late-line TP books the PRINT when the FIRST event after the late minute is already
+    ≥ +ztp (the engine market-closes at that print: a tick → its net, a 1m bar → its open when the open is ≥ the line, else the line),
+    otherwise exactly the +ztp line (the re-priced resting limit). Stop / cap booking unchanged. book="print" (default) = unchanged."""
     te = P["te"]
     n = int(np.searchsorted(P["t"], te + cap * MIN, side="right"))
     t, hi, lo = P["t"][:n], P["hi"][:n], P["lo"][:n]
@@ -1172,29 +1195,70 @@ def evaluate_late(P, tp, sl, cap, late, ztp):
             v = min(-sl, float(op)) if np.isfinite(op) else -sl
         else:
             v = float(lo[b])
-        return dict(why="STOP", pct=v, pct_line=-float(sl), xmin=(t[b] - te) / MIN, worst=float(lo[:b + 1].min()), on_bar=bool(P["bar"][b]))
+        return dict(why="STOP", pct=v, pct_line=-float(sl), xmin=(t[b] - te) / MIN, worst=float(lo[:b + 1].min()), on_bar=bool(P["bar"][b]),
+                    idx=b)
     if a is not None:
-        v = float(tpl[a]) if P["bar"][a] else float(hi[a])
+        if book == "live":
+            i0 = int(np.flatnonzero(lt)[0]) if lt.any() else -1                 # the first event after the late minute
+            if not lt[a] or a != i0:
+                v = float(tpl[a])                                                # resting maker limit: exactly the line
+            elif P["bar"][a]:
+                op = P["op"][a]
+                v = float(op) if np.isfinite(op) and op >= tpl[a] else float(tpl[a])   # already above at the late minute → ≈ the open
+            else:
+                v = float(hi[a])                                                 # already above at the late minute → that print
+        else:
+            v = float(tpl[a]) if P["bar"][a] else float(hi[a])
         return dict(why="LATE_TP" if lt[a] else "TP", pct=v, pct_line=float(tpl[a]), xmin=(t[a] - te) / MIN, worst=float(lo[:a + 1].min()),
-                    on_bar=bool(P["bar"][a]))
+                    on_bar=bool(P["bar"][a]), idx=a)
     if P["end_ms"] < te + cap * MIN or n == 0:
-        return dict(why="UNRES", pct=np.nan, pct_line=np.nan, xmin=np.nan, worst=float(lo.min()) if n else np.nan, on_bar=False)
+        return dict(why="UNRES", pct=np.nan, pct_line=np.nan, xmin=np.nan, worst=float(lo.min()) if n else np.nan, on_bar=False, idx=None)
     return dict(why="CAP", pct=float(P["cl"][n - 1]), pct_line=float(P["cl"][n - 1]), xmin=float(cap), worst=float(lo.min()),
-                on_bar=bool(P["bar"][n - 1]))
+                on_bar=bool(P["bar"][n - 1]), idx=n)
 
 
-def s285_cells(P, tp, stop, hold):
+def _walk(P, tp, stop, cap, late=None):
+    """one cell walk: late None → FX.evaluate (the exit without a late TP, print booking — the pre-DL 297 comparator); late = (minute, %)
+    → evaluate_late with the live booking (DECISION_LOG 304). A late % not below the cell TP is no late line (late_levels semantics)."""
+    if late is None or not float(late[1]) < float(tp):
+        if late is None:
+            return _fx().evaluate(P, tp, stop, cap)
+        return evaluate_late(P, tp, stop, cap, float(cap) + 1.0, tp, book="live")   # no late line, live (line) TP booking
+    return evaluate_late(P, tp, stop, cap, late[0], late[1], book="live")
+
+
+def _peak_before(P, ev, cap):
+    """the highest net print / bar high strictly BEFORE an evaluate_late event (idx); CAP → over the whole cap; −inf when first."""
+    k = ev.get("idx")
+    if k is None:
+        k = int(np.searchsorted(P["t"], P["te"] + cap * MIN, side="right"))
+    return float(P["hi"][:k].max()) if k > 0 else float("-inf")
+
+
+def _s285_same_as_live(s, late):
+    """DECISION_LOG 304: a DL 285 late-TP cell whose late line IS the live late TP (LT30_025 since DL 297) = today's exit on a post-297
+    fill → n/a for that fill (Δ ≡ 0; its counted cohort ends at the DL 297 deploy)."""
+    return (late is not None and s["late"] is not None and abs(float(s["late"]) - float(late[0])) < 1e-9
+            and abs(float(s["ztp"]) - float(late[1])) < 1e-9)
+
+
+def s285_cells(P, tp, stop, hold, late=None):
     """one hybrid path → the DL 285 cells (s4_<name> / s4_why_ / s4_min_), s285_n_unres and _on_ticks285 (today + every judged cell
-    decided on tick prints). Kept apart from s4_cells so the S4 cells' pending / source logic is unchanged. n/a cells → NaN, why N/A."""
-    FX = _fx()
-    la = FX.evaluate(P, tp, stop, hold)
+    decided on tick prints). Kept apart from s4_cells so the S4 cells' pending / source logic is unchanged. n/a cells → NaN, why N/A.
+    late (DECISION_LOG 304) = the live late TP (minute, %) for a fill opened after the DL 297 deploy, else None: today = the live late-TP
+    walk, T125C30 = the live booking at cap 30, LT30_03 = its own late line (+0.30) with the live booking, LT30_025 = today → N/A."""
+    la = _walk(P, tp, stop, hold, late)
     rec, evs = {}, [la]
     for name in S285_NAMES:
-        if s285_na(name, tp, hold):
+        s = s285_spec(name, hold) if not s285_na(name, tp, hold) else None
+        if s is None or _s285_same_as_live(s, late):
             rec[f"s4_{name}"], rec[f"s4_why_{name}"], rec[f"s4_min_{name}"] = np.nan, "N/A", np.nan
             continue
-        s = s285_spec(name, hold)
-        b = FX.evaluate(P, s["tp"], stop, s["cap"]) if s["late"] is None else evaluate_late(P, s["tp"], stop, s["cap"], s["late"], s["ztp"])
+        if late is None:
+            b = (_fx().evaluate(P, s["tp"], stop, s["cap"]) if s["late"] is None
+                 else evaluate_late(P, s["tp"], stop, s["cap"], s["late"], s["ztp"]))
+        else:
+            b = _walk(P, s["tp"], stop, s["cap"], (s["late"], s["ztp"]) if s["late"] is not None else late)
         evs.append(b)
         rec[f"s4_{name}"], rec[f"s4_why_{name}"], rec[f"s4_min_{name}"] = b["pct"], b["why"], b["xmin"]
     rec["s285_n_unres"] = sum(e["why"] == "UNRES" for e in evs)
@@ -1202,18 +1266,18 @@ def s285_cells(P, tp, stop, hold):
     return rec
 
 
-def s290_cells(P, tp, stop, hold):
+def s290_cells(P, tp, stop, hold, late=None):
     """one hybrid path → the DL 290 cells (s4_<name> / s4_why_ / s4_min_: FX.evaluate at the cell's TP, today's stop, today's hold),
-    s290_n_unres and _on_ticks290 (today + every judged cell decided on tick prints). n/a cells → NaN, why N/A."""
-    FX = _fx()
-    la = FX.evaluate(P, tp, stop, hold)
+    s290_n_unres and _on_ticks290 (today + every judged cell decided on tick prints). n/a cells → NaN, why N/A. late (DECISION_LOG 304)
+    = the live late TP for a post-297 fill: today AND every cell walk the late line with the live booking (cell TP until the late minute)."""
+    la = _walk(P, tp, stop, hold, late)
     rec, evs = {}, [la]
     for name in S290_NAMES:
         if s290_na(name, tp, hold):
             rec[f"s4_{name}"], rec[f"s4_why_{name}"], rec[f"s4_min_{name}"] = np.nan, "N/A", np.nan
             continue
         ctp, cap = s290_spec(name, hold)
-        b = FX.evaluate(P, ctp, stop, cap)
+        b = _walk(P, ctp, stop, cap, late)
         evs.append(b)
         rec[f"s4_{name}"], rec[f"s4_why_{name}"], rec[f"s4_min_{name}"] = b["pct"], b["why"], b["xmin"]
     rec["s290_n_unres"] = sum(e["why"] == "UNRES" for e in evs)
@@ -1236,28 +1300,34 @@ def _peak_before_exit(P, tp, stop, cap):
     return float(hi[:k].max()) if k > 0 else float("-inf")
 
 
-def s4_cells(P, tp, stop, hold):
+def s4_cells(P, tp, stop, hold, late=None, lt=_FL297):
     """one hybrid path → dict: today (TP / stop / hold cap), every S4 cell (its TP, the same stop, its cap) and OLD_EXIT (+1 / −4 / 120);
-    an n/a cell (cap > hold, or = today) is NaN with why 'N/A'. None if today is UNRES."""
+    an n/a cell (cap > hold, or = today) is NaN with why 'N/A'. None if today is UNRES.
+    late (DECISION_LOG 304) = the live late TP (minute, %) for a fill opened after the DL 297 deploy, else None. With it, today = the live
+    exit (evaluate_late at today's TP, live booking) and every cell — OLD_EXIT included — walks the same late line with its own TP / cap
+    (the question stays "the cell's TP / cap instead of today's" on today's stack); s4_late flags the row. Without it: unchanged."""
     FX = _fx()
-    la = FX.evaluate(P, tp, stop, hold)
+    la0 = FX.evaluate(P, tp, stop, hold)                          # the exit WITHOUT the late TP (= the live exit before DL 297)
+    la = la0 if late is None else _walk(P, tp, stop, hold, late)
     if la["why"] == "UNRES":
         return None
     rec, evs = dict(s4_LIVE=la["pct"], s4_why_LIVE=la["why"], s4_min_LIVE=la["xmin"],
-                    s4_peak_LIVE=_peak_before_exit(P, tp, stop, hold), s4_onbar_LIVE=bool(la.get("on_bar", False))), [la]
+                    s4_peak_LIVE=_peak_before_exit(P, tp, stop, hold) if late is None else _peak_before(P, la, hold),
+                    s4_onbar_LIVE=bool(la.get("on_bar", False)), s4_late=late is not None), [la]
     for name in [c[0] for c in S4_CELLS] + [OLD_KEY]:
         ctp, x = s4_spec(name, tp)
         if s4_na(name, tp, hold, stop):                              # never folded into today: n/a
             rec[f"s4_{name}"], rec[f"s4_why_{name}"], rec[f"s4_min_{name}"] = np.nan, "N/A", np.nan
             continue
-        b = FX.evaluate(P, ctp, OLD_EXIT[1] if name == OLD_KEY else stop, x)
+        b = _walk(P, ctp, OLD_EXIT[1] if name == OLD_KEY else stop, x, late)
         evs.append(b)
         rec[f"s4_{name}"], rec[f"s4_why_{name}"], rec[f"s4_min_{name}"] = b["pct"], b["why"], b["xmin"]
     rec["s4_n_unres"] = sum(e["why"] == "UNRES" for e in evs)
     rec["_on_ticks"] = bool(P["n_tick"] > 0 and all(e["why"] != "UNRES" and not e["on_bar"] for e in evs))
-    lt = late_levels()                                            # ⏰ DL 297: the live late-TP exit and the OLD exit (= la, today's +tp / −stop / hold)
+    lt = late_levels() if lt is _FL297 else lt                   # ⏰ DL 297: the live late-TP exit and the OLD exit (= la0, today's +tp / −stop / hold)
+    la = la0
     if lt is not None:
-        b = evaluate_late(P, tp, stop, hold, lt[0], lt[1])
+        b = evaluate_late(P, tp, stop, hold, lt[0], lt[1], book="live")   # DL 304: the live booking (resting TP at the line)
         rec.update(s297_LATE=b["pct"], s297_why_LATE=b["why"], s297_min_LATE=b["xmin"], s297_OLD=la["pct"], s297_why_OLD=la["why"],
                    s297_changed=bool(la["why"] != "UNRES" and np.isfinite(la["xmin"]) and la["xmin"] > lt[0]))
     else:
@@ -1265,28 +1335,47 @@ def s4_cells(P, tp, stop, hold):
     return rec
 
 
-def s4_score_fill(r, tp, stop, hold, tcache=None):
-    """→ (rec or None, source 'ticks' / 'ticks+1m' / '1m' / None) on ONE hybrid path (DECISION_LOG 272)."""
+_LT_WARNED = []
+
+
+def fill_late(ts, fl297=_FL297, lt=_FL297):
+    """DECISION_LOG 304 comparator split → the live late TP (minute, %) when the fill opened ≥ the DL 297 floor (commit + 10 min) and the
+    late TP is on in trading_config.json; else None (the fill ran the exit WITHOUT the late TP → the old comparator)."""
+    fl297 = s297_deploy_ts() if fl297 is _FL297 else fl297
+    lt = late_levels() if lt is _FL297 else lt
+    if fl297 is None or lt is None or ts is None or pd.isna(ts):
+        return None
+    if tuple(lt) != (30, 0.25) and not _LT_WARNED:
+        _LT_WARNED.append(1)
+        print(f"  ⚠ DL 304: trading_config late TP {tuple(lt)} ≠ the DL 297 values (30, 0.25) — post-297 fills are re-walked with today's config")
+    return lt if pd.Timestamp(ts) >= fl297 else None
+
+
+def s4_score_fill(r, tp, stop, hold, tcache=None, fl297=_FL297, lt=_FL297):
+    """→ (rec or None, source 'ticks' / 'ticks+1m' / '1m' / None) on ONE hybrid path (DECISION_LOG 272). fl297 = the DL 297 floor, lt =
+    the late TP (late_levels of the run's config) — s4_frame passes both once per run; default = read them here."""
+    lt = late_levels() if lt is _FL297 else lt
     FX = _fx()
     P = FX.load_path(r.pair, int(r.te), float(r.E), _span(hold), tcache)    # max(hold, 120): the old 120-min exit walks the same path
-    rec = s4_cells(P, tp, stop, hold)
+    late = fill_late(r.ts, fl297, lt)
+    rec = s4_cells(P, tp, stop, hold, late, lt)
     if rec is None:
         return None, None
-    rec.update(s285_cells(P, tp, stop, hold))                                # DL 285 cells: own source / pending columns
+    rec.update(s285_cells(P, tp, stop, hold, late))                          # DL 285 cells: own source / pending columns
     rec["s285_src"] = "ticks" if rec.pop("_on_ticks285") else FX.path_src(P)
-    rec.update(s290_cells(P, tp, stop, hold))                                # DL 290 cells: own source / pending columns
+    rec.update(s290_cells(P, tp, stop, hold, late))                          # DL 290 cells: own source / pending columns
     rec["s290_src"] = "ticks" if rec.pop("_on_ticks290") else FX.path_src(P)
-    _fl297 = s297_deploy_ts()                                     # ⏰ a fill under the DL 297 rule is compared with the late-TP walk
-    _late = rec.get("s297_why_LATE") not in (None, "N/A") and _fl297 is not None and pd.Timestamp(r.ts) >= _fl297
-    rec["s4_par_ok"], rec["s4_par_txt"] = parity(r.why, r.pct, {"v": {"LIVE": ({"why": rec["s297_why_LATE"], "pct": rec["s297_LATE"]} if _late
-                                                                              else {"why": rec["s4_why_LIVE"], "pct": rec["s4_LIVE"]})}})
+    # parity: today's walk (s4_LIVE = the exit live when the fill opened — the late-TP walk after the DL 297 deploy) vs the actual exit
+    rec["s4_par_ok"], rec["s4_par_txt"] = parity(r.why, r.pct, {"v": {"LIVE": {"why": rec["s4_why_LIVE"], "pct": rec["s4_LIVE"]}}})
     return rec, ("ticks" if rec.pop("_on_ticks") else FX.path_src(P))
 
 
-def s4_frame(o, tp, stop, hold, tcache=None):
+def s4_frame(o, tp, stop, hold, tcache=None, lt=_FL297):
     rows = []
+    fl297 = s297_deploy_ts()                                       # DECISION_LOG 304: one git read per run
+    lt = late_levels() if lt is _FL297 else lt
     for r in o.itertuples():
-        w, src = s4_score_fill(r, tp, stop, hold, tcache)
+        w, src = s4_score_fill(r, tp, stop, hold, tcache, fl297, lt)
         rows.append(dict(s4_src=src, **(w or {})))
     base = o.reset_index(drop=True)
     if not rows:
@@ -1313,10 +1402,15 @@ def s4_untouched(g, name, tp):
     pk = pd.to_numeric(g.s4_peak_LIVE, errors="coerce").values.astype(float) < ctp - 1e-12
     # deep review (DL 281): a TP booked on a 1m BAR is booked AT the line (today +1.25, a +1 cell +1.00) → never untouched unless the TPs match
     ob = g.s4_onbar_LIVE.astype(bool).values if "s4_onbar_LIVE" in g else np.zeros(len(g), bool)
-    tp_ok = (live >= ctp - 1e-12) & (~ob | (abs(ctp - float(tp)) < 1e-12))
+    # DL 304: a post-297 row (s4_late) books every TP at the line (resting maker) → like a bar TP, untouched only when the TPs match
+    lr = g.s4_late.fillna(False).astype(bool).values if "s4_late" in g else np.zeros(len(g), bool)
+    tp_ok = (live >= ctp - 1e-12) & (~(ob | lr) | (abs(ctp - float(tp)) < 1e-12))
     # DL 290: the cell's cap = today's hold and the same stop → today's CAP close with no print through the cell's TP is untouched too
     cap_ok = (w == "CAP") if name in S290_KEY else np.zeros(len(g), bool)
-    return m & pk & ((w == "STOP") | ((w == "TP") & tp_ok) | cap_ok)
+    # DL 304: a post-297 LATE_TP exit at ≤ the cell's cap with no earlier print through the cell's TP — the cell walks the SAME late line
+    # (S4 / OLD_EXIT / DL 290 cells) to the same event and booking. The DL 285 cells' minute is 30, so their m already excludes it.
+    late_ok = lr & (w == "LATE_TP") & (name not in S285_KEY)
+    return m & pk & ((w == "STOP") | ((w == "TP") & tp_ok) | cap_ok | late_ok)
 
 
 def s4_judge(g, name, tp):
@@ -1404,7 +1498,7 @@ def s4_freeze(st, name, g, now_iso, cfg, hold=None, why=None, dropped=None, unde
     st[key] = dict(state=state, detail=det, bar=lab, at=f"{last:%Y-%m-%d %H:%M} UTC", run_at=now_iso, n=len(pre),
                    days=int(pre.day.nunique()), dropped_no_data=int(sum(1 for t in (dropped or []) if pd.notna(t) and t <= last)),
                    undecided_final=int(sum(1 for t in (undecided or []) if pd.notna(t) and t <= last)),
-                   config=conf,
+                   config=conf, comparator=CMP304,
                    keys=[f"{a}|{b}" for a, b in zip(pre.ts.dt.strftime("%Y-%m-%dT%H:%M:%S"), pre.pair.astype(str))])
     return st, True
 
@@ -1416,12 +1510,67 @@ def _s4_val(r, n):
     return f"{n} {v:+.2f} ({getattr(r, f's4_why_{n}')}, Δ {v - r.s4_LIVE:+.2f})"
 
 
+CMP304 = "DL304 era split"                           # frozen-record marker: Δ per fill vs the exit live when it opened (see the doc)
+
+
+def _late_row(r):
+    v = getattr(r, "s4_late", False)
+    return isinstance(v, (bool, np.bool_)) and bool(v)
+
+
+def _today_tag(r):
+    """'today' for a pre-297 fill (the exit without the late TP), 'today⏰' for a post-297 fill (the live late-TP exit) — DL 304."""
+    return "today⏰" if _late_row(r) else "today"
+
+
+def era_split_line(coh, names, label):
+    """DECISION_LOG 304: the comparator split of a counted cohort, per judged cell → one report line."""
+    if not len(coh) or "s4_LIVE" not in coh:
+        return None
+    lr = coh.s4_late.fillna(False).astype(bool) if "s4_late" in coh else pd.Series(False, index=coh.index)
+    parts = []
+    for n in names:
+        g = s4_counted(coh, n)
+        if not len(g):
+            continue
+        d = pd.to_numeric(g[f"s4_{n}"], errors="coerce") - g.s4_LIVE.astype(float)
+        lg = lr.reindex(g.index).fillna(False).astype(bool)
+        a, b = d[~lg], d[lg]
+        parts.append(f"{n} pre {len(a)}" + (f" (mean Δ {a.mean():+.3f})" if len(a) else "") + f" · post {len(b)}"
+                     + (f" (mean Δ {b.mean():+.3f})" if len(b) else ""))
+    fl = s297_deploy_ts()
+    head = (f"Comparator split (DECISION_LOG 304, {label}): fills opened < the DL 297 floor"
+            + (f" {fl:%Y-%m-%d %H:%M} UTC" if fl is not None else " (not live)") + " are compared with the exit live then (no late TP, "
+            "print booking); fills opened ≥ it (marked today⏰) with the LIVE exit — late TP +0.25 from minute 30, resting-TP line booking, "
+            "the print when already above the late line at minute 30 — and every cell walks that same late line with its own TP / cap. "
+            f"Counted rows: pre {int((~lr[coh.s4_src.notna()]).sum())} · post {int(lr[coh.s4_src.notna()].sum())}.")
+    return head + (" Per cell: " + " | ".join(parts) + "." if parts else "")
+
+
+def frozen_cmp_note(f0, floor297=_FL297):
+    """DECISION_LOG 304: a verdict frozen before the comparator fix is never re-decided — say which comparator it was read on."""
+    if not f0 or f0.get("comparator") == CMP304:
+        return ""
+    fl = s297_deploy_ts() if floor297 is _FL297 else floor297
+    post = 0
+    if fl is not None:
+        for k in f0.get("keys", []):
+            try:
+                post += pd.Timestamp(str(k).split("|")[0]) >= fl
+            except Exception:
+                pass
+    if post:
+        return (f" ⚠ DL 304: frozen BEFORE the comparator fix with {post} post-DL 297 fill(s) read against the exit WITHOUT the late TP "
+                "(not today's live exit) — kept as frozen, not re-decided; the live line is the corrected read (information only).")
+    return " (DL 304: frozen on pre-DL 297 fills only — the comparator live then; unaffected.)"
+
+
 def _s4_fill_txt(r):
-    return (f"{r.ts:%m-%d %H:%M} {r.pair} [{r.s4_src}{'' if r.s4_src == 'ticks' else ', provisional'}] today {r.s4_LIVE:+.2f} ({r.s4_why_LIVE} @ "
+    return (f"{r.ts:%m-%d %H:%M} {r.pair} [{r.s4_src}{'' if r.s4_src == 'ticks' else ', provisional'}] {_today_tag(r)} {r.s4_LIVE:+.2f} ({r.s4_why_LIVE} @ "
             f"{r.s4_min_LIVE:.0f} min) → " + " / ".join(_s4_val(r, n) for n, _, _ in S4_CELLS))
 
 
-def s4_section(o, opens, now_ms, levels_, tcache, st, ok):
+def s4_section(o, opens, now_ms, levels_, tcache, st, ok, lt=_FL297):
     """→ (markdown lines, state, changed). o = the line's closed WILLY fills (≥ the DL 251 floor) with te / E / why / pct."""
     tp, stop, hold = levels_
     FX = _fx()
@@ -1430,7 +1579,8 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok):
     man = o[manual & (o.ts >= floor)]
     man_all = o[manual]
     o = o[~manual].reset_index(drop=True)
-    s4 = s4_frame(o, tp, stop, hold, tcache)
+    lt = late_levels() if lt is _FL297 else lt                   # DL 304: the run's late TP (late_levels of the run's config)
+    s4 = s4_frame(o, tp, stop, hold, tcache, lt)
     done = load_attempts()["done"]
     tpend = [(ticks_pending(r, hold, done, now_ms, tcache), _kk(r.pair, r.te, _span(hold)) not in done) for r in s4.itertuples()]
     s4["s4_pend"] = [FX._pending(s, getattr(r, "s4_n_unres", 0), a, b) for s, r, (a, b) in zip(s4.s4_src, s4.itertuples(), tpend)]
@@ -1474,6 +1624,9 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok):
         L.append(f"| {lab(n)} | {j['n']} | {j['days']} | {j['mean']:+.3f} | {j['sum']:+.2f} | "
                  f"{ptxt} | {stxt} | {'✓' if j['integ'] else '✗'} ({j['n_untouched']}) | {j['par'] * 100:.0f} % |")
     L.append("")
+    _es = era_split_line(coh, [n for n, _, _ in S4_CELLS if not s4_na(n, tp, hold)], "S4 cells")
+    if _es:
+        L.append(_es)
     sc = coh[coh.s4_src.notna()]
     if len(sc):
         L.append("Per fill (counted cohort): " + " · ".join(_s4_fill_txt(r) for r in sc.itertuples()))
@@ -1529,7 +1682,7 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok):
                      f"{f0['days']} d, {f0.get('dropped_no_data', 0)} final-no-data fill(s) excluded, {f0.get('undecided_final', 0)} final "
                      f"fill(s) left undecided by this cell, today then TP +{f0['config']['tp']:g} / "
                      f"stop −{f0['config']['stop']:g} / {f0['config']['hold']} min): {f0['state']}** ({f0['detail']}) · live (information only, "
-                     f"never re-decides): {v[0]} — {v[1]}")
+                     f"never re-decides): {v[0]} — {v[1]}{frozen_cmp_note(f0)}")
         else:
             L.append(f"{n}: ⏳ {v[0]} ({v[1]}){f' · {nu} final fill(s) left undecided by this cell (not counted)' if nu else ''}.")
     if why:
@@ -1556,9 +1709,13 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok):
                   f"{jo['mean']:+.3f} | {jo['sum']:+.2f} | {'–' if jo['p'] is None else format(jo['p'], '.2f')} | "
                   f"{'–' if jo['share'] != jo['share'] else format(jo['share'] * 100, '.0f') + ' %'} | {'✓' if jo['integ'] else '✗'} "
                   f"({jo['n_untouched']}) | {jo['par'] * 100:.0f} % |", ""]
-            L.append("Per fill: " + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair} [{r.s4_src}{'' if r.s4_src == 'ticks' else ', provisional'}] new "
-                                               f"{r.s4_LIVE:+.2f} ({r.s4_why_LIVE} @ {r.s4_min_LIVE:.0f} min) vs " + _s4_val(r, OLD_KEY).replace(OLD_KEY, "old", 1)
+            L.append("Per fill: " + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair} [{r.s4_src}{'' if r.s4_src == 'ticks' else ', provisional'}] "
+                                               f"{'new⏰' if _late_row(r) else 'new'} {r.s4_LIVE:+.2f} ({r.s4_why_LIVE} @ {r.s4_min_LIVE:.0f} min) vs " + _s4_val(r, OLD_KEY).replace(OLD_KEY, "old", 1)
                                                for r in go.itertuples()))
+            _es = era_split_line(coh, [OLD_KEY], "OLD_EXIT — Δ = old − new; post-297 the old +1 / −4 / 120 also carries the live late "
+                                 "TP, so the gate reads the DL 281 change alone on today's stack")
+            if _es:
+                L.append(_es)
         else:
             L.append("Counted: none yet — no WILLY fill closed since the DECISION_LOG 281 deploy.")
         nuo = len(undecided(OLD_KEY))
@@ -1581,7 +1738,7 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok):
         L.append(f"**Frozen revert verdict ({f0['bar']}; prefix to {f0['at']}, frozen on the run of {f0['run_at']}, N {f0['n']} · {f0['days']} d, "
                  f"{f0.get('dropped_no_data', 0)} final-no-data fill(s) excluded, {f0.get('undecided_final', 0)} left undecided by the old exit, "
                  f"new exit then +{f0['config']['tp']:g} / −{f0['config']['stop']:g} / {f0['config']['hold']} min): {f0['state']}** "
-                 f"({f0['detail']}) · live (information only, never re-decides): {vo[0]} — {vo[1]}")
+                 f"({f0['detail']}) · live (information only, never re-decides): {vo[0]} — {vo[1]}{frozen_cmp_note(f0)}")
     elif not na_old:
         L.append(f"Revert gate now: ⏳ {vo[0]} ({vo[1]}).")
     if whyo:
@@ -1597,7 +1754,7 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok):
     except Exception as e:
         L6 = [f"### ⏱ T130…T150 on today's stop (DECISION_LOG 290) — unavailable this run ({type(e).__name__}: {str(e)[:160]})"]
     try:                                                          # ⏰ DL 297 rollback counterfactual: own subsection, never hides the lines above
-        L7 = s297_section(s4)
+        L7 = s297_section(s4, lt)
     except Exception as e:
         L7 = [f"### ⏰ WILLY late TP vs the old exit (DECISION_LOG 297) — unavailable this run ({type(e).__name__}: {str(e)[:160]})"]
     return L + [""] + L5 + [""] + L6 + [""] + L7, st, changed
@@ -1643,7 +1800,7 @@ def s297_section(s4, lt=None, floor=None):
 
 def _s285_fill_txt(r):
     src = r.s285_src if isinstance(getattr(r, "s285_src", None), str) else r.s4_src
-    return (f"{r.ts:%m-%d %H:%M} {r.pair} [{src}{'' if src == 'ticks' else ', provisional'}] today {r.s4_LIVE:+.2f} ({r.s4_why_LIVE} @ "
+    return (f"{r.ts:%m-%d %H:%M} {r.pair} [{src}{'' if src == 'ticks' else ', provisional'}] {_today_tag(r)} {r.s4_LIVE:+.2f} ({r.s4_why_LIVE} @ "
             f"{r.s4_min_LIVE:.0f} min) → " + " / ".join(_s4_val(r, n) for n in S285_NAMES))
 
 
@@ -1685,6 +1842,10 @@ def s285_section(s4, opens, now_ms, levels_, st, ok, man_all=None):
                  f"{'–' if j['share'] != j['share'] else format(j['share'] * 100, '.0f') + ' %'} | {'✓' if j['integ'] else '✗'} "
                  f"({j['n_untouched']}) | {j['par'] * 100:.0f} % |")
     L.append("")
+    _es = era_split_line(coh, [n for n in S285_NAMES if not s285_na(n, tp, hold)], "DL 285 cells")
+    if _es:
+        L.append(_es + " LT30_025 IS the live exit since DL 297 → n/a on post-297 fills (its counted cohort ends at that deploy; the "
+                 "late TP's own rollback read is the DL 297 section below).")
     sc = coh[coh.s4_src.notna()]
     if len(sc):
         L.append("Per fill (counted cohort): " + " · ".join(_s285_fill_txt(r) for r in sc.itertuples()))
@@ -1738,7 +1899,7 @@ def s285_section(s4, opens, now_ms, levels_, st, ok, man_all=None):
             L.append(f"{n}: **Frozen verdict ({f0['bar']}; prefix to {f0['at']}, frozen on the run of {f0['run_at']}, N {f0['n']} · {f0['days']} d, "
                      f"{f0.get('dropped_no_data', 0)} final-no-data fill(s) excluded, {f0.get('undecided_final', 0)} final fill(s) left undecided "
                      f"by this cell, today then TP +{f0['config']['tp']:g} / stop −{f0['config']['stop']:g} / {f0['config']['hold']} min): "
-                     f"{f0['state']}** ({f0['detail']}) · live (information only, never re-decides): {v[0]} — {v[1]}")
+                     f"{f0['state']}** ({f0['detail']}) · live (information only, never re-decides): {v[0]} — {v[1]}{frozen_cmp_note(f0)}")
         else:
             L.append(f"{n}: ⏳ {v[0]} ({v[1]}){f' · {nu} final fill(s) left undecided by this cell (not counted)' if nu else ''}.")
     if why:
@@ -1748,7 +1909,7 @@ def s285_section(s4, opens, now_ms, levels_, st, ok, man_all=None):
 
 def _s290_fill_txt(r):
     src = r.s290_src if isinstance(getattr(r, "s290_src", None), str) else r.s4_src
-    return (f"{r.ts:%m-%d %H:%M} {r.pair} [{src}{'' if src == 'ticks' else ', provisional'}] today {r.s4_LIVE:+.2f} ({r.s4_why_LIVE} @ "
+    return (f"{r.ts:%m-%d %H:%M} {r.pair} [{src}{'' if src == 'ticks' else ', provisional'}] {_today_tag(r)} {r.s4_LIVE:+.2f} ({r.s4_why_LIVE} @ "
             f"{r.s4_min_LIVE:.0f} min) → " + " / ".join(_s4_val(r, n) for n in S290_NAMES))
 
 
@@ -1789,6 +1950,9 @@ def s290_section(s4, opens, now_ms, levels_, st, ok, man_all=None):
                  f"{'–' if j['share'] != j['share'] else format(j['share'] * 100, '.0f') + ' %'} | {'✓' if j['integ'] else '✗'} "
                  f"({j['n_untouched']}) | {j['par'] * 100:.0f} % |")
     L.append("")
+    _es = era_split_line(coh, [n for n in S290_NAMES if not s290_na(n, tp, hold)], "DL 290 cells")
+    if _es:
+        L.append(_es)
     sc = coh[coh.s4_src.notna()]
     if len(sc):
         L.append("Per fill (counted cohort): " + " · ".join(_s290_fill_txt(r) for r in sc.itertuples()))
@@ -1842,7 +2006,7 @@ def s290_section(s4, opens, now_ms, levels_, st, ok, man_all=None):
             L.append(f"{n}: **Frozen verdict ({f0['bar']}; prefix to {f0['at']}, frozen on the run of {f0['run_at']}, N {f0['n']} · {f0['days']} d, "
                      f"{f0.get('dropped_no_data', 0)} final-no-data fill(s) excluded, {f0.get('undecided_final', 0)} final fill(s) left undecided "
                      f"by this cell, today then TP +{f0['config']['tp']:g} / stop −{f0['config']['stop']:g} / {f0['config']['hold']} min): "
-                     f"{f0['state']}** ({f0['detail']}) · live (information only, never re-decides): {v[0]} — {v[1]}")
+                     f"{f0['state']}** ({f0['detail']}) · live (information only, never re-decides): {v[0]} — {v[1]}{frozen_cmp_note(f0)}")
         else:
             L.append(f"{n}: ⏳ {v[0]} ({v[1]}){f' · {nu} final fill(s) left undecided by this cell (not counted)' if nu else ''}.")
     if why:
@@ -1958,7 +2122,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
         if changed_any:
             NF.du_save_state(st, state_path)
     try:                                                       # S4 cells (DECISION_LOG 278): own cohort, own keys in the same state file
-        L4, st, ch4 = s4_section(o.drop(columns=["src"]), opens, now_ms, (tp, stop, hold), tc, st, ok)
+        L4, st, ch4 = s4_section(o.drop(columns=["src"]), opens, now_ms, (tp, stop, hold), tc, st, ok, late_levels(th))
         if ok and ch4:
             NF.du_save_state(st, state_path)
     except Exception as e:
@@ -2498,6 +2662,65 @@ def selftest():
                                 s4_LIVE=[1.30, -4.1, 1.30, -1.0, -4.1, 1.26], s4_peak_LIVE=[0.5, 0.9, 0.9, 0.9, 0.9, 0.4]))
         chk(all(list(s4_untouched(ut5, n, 1.25)) == [True, True, False, False, False, True] for n in S285_NAMES),
             "DL 285 untouched: today's TP / −4 at ≤ 30 min → untouched (Δ must be 0); a later exit or a cap close may move")
+        # ── DL 304: the comparator split (pre-297 fills vs the exit without the late TP; post-297 vs the live late-TP exit) ──
+        LV = (30.0, 0.25)
+        lv = lambda P, z=0.25, t0=1.25: evaluate_late(P, t0, 4.0, 90, 30, z, book="live")   # noqa: E731
+        Pe = _Pt([20 * MIN, 35 * MIN, 50 * MIN, 89 * MIN], [100.4, 100.2, 100.5, 99.0])   # first late print below the line, then through
+        chk(abs(lv(Pb)["pct"] - nx(100.35)) < 1e-12 and lv(Pb)["why"] == "LATE_TP" and ll(Pb, 0.25)["pct"] == lv(Pb)["pct"]
+            and lv(Pe)["why"] == "LATE_TP" and lv(Pe)["pct"] == 0.25 and lv(Pe)["xmin"] == 50.0 and abs(ll(Pe, 0.25)["pct"] - nx(100.5)) < 1e-12
+            and lv(Pa)["why"] == "TP" and lv(Pa)["pct"] == 1.25 and abs(ll(Pa, 0.25)["pct"] - nx(101.5)) < 1e-12
+            and lv(Pb, 0.30)["pct"] == 0.30 and lv(Pc)["pct"] == ll(Pc, 0.25)["pct"],
+            "DL 304 live booking: already above the late line at the first post-30 print → that print; crossing later → exactly +0.25 "
+            "(resting limit); a +1.25 TP → exactly the line; stop unchanged; book='print' default unchanged")
+        Pm4 = {k: (v.copy() if isinstance(v, np.ndarray) else v) for k, v in Pm.items()}
+        Pm4["hi"][30], Pm4["op"][30] = 0.6, 0.45                    # the first bar after minute 30 opens above the line
+        Pm5 = {k: (v.copy() if isinstance(v, np.ndarray) else v) for k, v in Pm4.items()}
+        Pm5["op"][30] = 0.10                                        # … opens below it and trades through
+        chk(lv(Pm4)["pct"] == 0.45 and lv(Pm4)["xmin"] == 31.0 and lv(Pm5)["pct"] == 0.25 and lv(Pm)["pct"] == 0.25 and ll(Pm4, 0.25)["pct"] == 0.25,
+            "DL 304 live booking on 1m bars: first late bar opening above the line → its open; else the line")
+        _f297 = pd.Timestamp("2026-10-15 16:25")
+        chk(fill_late(pd.Timestamp("2026-10-15 16:24"), _f297, LV) is None and fill_late(_f297, _f297, LV) == LV
+            and fill_late(_f297, None, LV) is None and fill_late(_f297, _f297, None) is None,
+            "DL 304 split: opened ≥ the DL 297 floor with the late TP on → the live late comparator; else the old one")
+        c4pre, c4post = s4_cells(Pb, 1.25, 4.0, 90, None, LV), s4_cells(Pb, 1.25, 4.0, 90, LV, LV)
+        chk(c4pre["s4_why_LIVE"] == "CAP" and abs(c4pre["s4_LIVE"] - nx(99.0)) < 1e-12 and not c4pre["s4_late"]
+            and c4pre["s4_why_CAP60"] == "CAP" and c4pre["s4_why_OLD_EXIT"] == "CAP"
+            and c4post["s4_why_LIVE"] == "LATE_TP" and abs(c4post["s4_LIVE"] - nx(100.35)) < 1e-12 and c4post["s4_late"]
+            and all(c4post[f"s4_why_{n}"] == "LATE_TP" and c4post[f"s4_{n}"] == c4post["s4_LIVE"] for n in ("CAP60", "CAP90", "T125C60", OLD_KEY))
+            and np.isnan(c4post["s4_T125C90"]) and c4post["s297_why_OLD"] == "CAP" and c4post["s297_changed"]
+            and c4post["s297_LATE"] == c4post["s4_LIVE"] and c4post["s4_peak_LIVE"] == float(nx(100.42)),
+            f"DL 304 S4 cells: pre-297 = the plain walk; post-297 today = the late walk and every cell carries the late line ({c4post})")
+        c9pre, c9post, c9a = s290_cells(Pb, 1.25, 4.0, 90), s290_cells(Pb, 1.25, 4.0, 90, LV), s290_cells(Pa, 1.25, 4.0, 90, LV)
+        chk(all(c9pre[f"s4_why_{n}"] == "CAP" for n in S290_NAMES)
+            and all(c9post[f"s4_why_{n}"] == "LATE_TP" and abs(c9post[f"s4_{n}"] - nx(100.35)) < 1e-12 for n in S290_NAMES)
+            and [c9a[f"s4_why_{n}"] for n in S290_NAMES] == ["TP", "TP", "TP", "LATE_TP", "LATE_TP"]
+            and np.allclose([c9a[f"s4_{n}"] for n in S290_NAMES], [1.30, 1.35, 1.40, nx(100.4), nx(100.4)], atol=1e-12),
+            "DL 304 DL 290 cells: post-297 each higher-TP cell walks the late line too (cell = evaluate_late(cell TP, −4, 90, 30, +0.25)); a "
+            "+1.41 print at 10 min fills +1.30 / +1.35 / +1.40 at the line (resting); +1.45 / +1.50 take the late line at the first "
+            "post-30 print (+0.31, already above → that print)")
+        c8post = s285_cells(Pb, 1.25, 4.0, 90, LV)
+        chk(c8post["s4_why_LT30_025"] == "N/A" and np.isnan(c8post["s4_LT30_025"]) and c8post["s4_why_LT30_03"] == "LATE_TP"
+            and c8post["s4_LT30_03"] == 0.30 and c8post["s4_why_T125C30"] == "CAP" and abs(c8post["s4_T125C30"] - nx(100.42)) < 1e-12
+            and s285_cells(Pb, 1.25, 4.0, 90)["s4_why_LT30_025"] == "LATE_TP",
+            f"DL 304 DL 285 cells: LT30_025 IS the live exit post-297 → n/a; LT30_03 = its own +0.30 late line, line-booked ({c8post})")
+        ut4 = pd.DataFrame(dict(s4_why_LIVE=["LATE_TP", "LATE_TP", "TP", "TP", "STOP"], s4_min_LIVE=[40.0, 40.0, 10.0, 10.0, 40.0],
+                                s4_LIVE=[0.26, 0.26, 1.25, 1.25, -4.1], s4_peak_LIVE=[0.9, 1.1, 0.5, 0.5, 0.9], s4_onbar_LIVE=False,
+                                s4_late=[True, True, True, True, True]))
+        chk(list(s4_untouched(ut4, "T130C90", 1.25)) == [True, True, False, False, True]
+            and list(s4_untouched(ut4, "CAP60", 1.25)) == [True, False, False, False, True]
+            and list(s4_untouched(ut4, "T125C60", 1.25)) == [True, True, True, True, True]
+            and list(s4_untouched(ut4, "LT30_03", 1.25)) == [False, False, True, True, False],
+            "DL 304 untouched: a post-297 late TP with no earlier print through the cell's TP is untouched (same late line); a line-booked TP "
+            "is untouched only for the same TP; LT30_* keep their 30-min rule")
+        sp = pd.DataFrame(dict(ts=[pd.Timestamp("2026-10-15 10:00"), pd.Timestamp("2026-10-16 10:00")], s4_src=["ticks", "ticks"],
+                               s4_LIVE=[0.0, 0.26], s4_T130C90=[0.1, 0.26], s4_late=[False, True]))
+        es = era_split_line(sp, ["T130C90"], "selftest") or ""
+        chk("Counted rows: pre 1 · post 1" in es and "T130C90 pre 1 (mean Δ +0.100) · post 1 (mean Δ +0.000)" in es,
+            f"DL 304: the report prints the comparator split per cell ({es})")
+        chk("⚠ DL 304" in frozen_cmp_note(dict(keys=["2026-10-16T10:00:00|AUSDT"]), _f297)
+            and "unaffected" in frozen_cmp_note(dict(keys=["2026-10-15T10:00:00|AUSDT"]), _f297)
+            and frozen_cmp_note(dict(keys=["2026-10-16T10:00:00|AUSDT"], comparator=CMP304), _f297) == "",
+            "DL 304: a verdict frozen before the fix is never re-decided — a note says which comparator it was read on")
         F5 = s4f(g4, wl, ml)
         F5 = F5.assign(s4_LIVE=np.where(wl == "TP", 1.3, 0.0), s4_min_LIVE=np.where(wl == "TP", 10.0, 90.0), s4_peak_LIVE=0.5)
         F5 = F5.assign(s4_T125C30=F5.s4_LIVE + g4, s4_LT30_025=F5.s4_LIVE - g4, s4_LT30_03=F5.s4_LIVE)

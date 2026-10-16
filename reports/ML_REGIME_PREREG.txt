@@ -1,0 +1,101 @@
+MOMENTUM-LONG REGIME STUDY — PRE-REGISTRATION (frozen 2026-10-16 ~16:05 UTC, before any regime-variable x ML-outcome table
+and before any per-month / per-week / per-cell ML outcome table was computed)
+
+Operator 2026-10-16: "there is something, you are not digging enough — understand what was different in 2025, in 2026-H1 and in 2026-H2."
+Already seen before freezing (declared): era means at today's exits (2025 −0.187 %/fill N 2617 · 2026-H1 −0.085 N 1171 · 2026-H2 −0.015
+N 521 · master +0.027 N 191), the ML_WINNERS_LOSERS / ML_DOWNTREND_2D (+FOLLOWUP) / ML_IMPULSE / ML_BTCFWD conclusions ("decided by BTC in
+the 15 min after entry", no entry separator), the DT×ADX20-30 conditional Δ by era (+0.002 / +0.033 / +0.039), the LITE regime study
+(nothing usable; part of LITE's 2025 gap was 1m pricing), the share of 2025 / H1 / H2 ML fills on top-50 (tick-priced) pairs
+(78.7 / 84.1 / 87.7 %). Nothing else of the ML outcome has been tabulated for this study.
+
+0. SCOPE  research only. No engine / config / trading_config / templates / tests edit; no commit; no bot API; never touch
+   backtest_cache/replay or scripts/engine_replay*.py (read-only). Binance public only for the 2026-10-14 -> 2026-10-16 5m top-up of
+   BTC + the alt universe (<= ~60 calls, <= 1,200 weight/min shared, pause at 700 used, stop on 418/429, cooldown file honoured),
+   written to reports/ml_regime/fetch/ (outside backtest_cache).
+
+1. COHORT
+   ③ BT: ENGINE_REPLAY_YR6_2Y_TODAY_fills, sleeve MOM-long, CLOSED, non-probe, 3 seeds pooled (study_yr6wl_momentum_common.load_replay),
+      y = pct_new. Eras: 2025 BULL / 2026-H1 BEAR / 2026-H2 BULL. Parity bar: 2617 / 1171 / 521 at −0.187 / −0.085 / −0.015.
+      Pricing flag: tick = top50 (pair on the daily top-50 that day or the day before = tick-priced replay); parity-checked against
+      reports/ML_BTCFWD_exit_rows.csv `src`.
+   ② MASTER: MASTER_POOL_stacked momentum LONG non-probe CLOSED (load_master_mom), y = pnl_percentage as traded (leverage-invariant
+      = 1×), y_stack = today's stack view; batch = `era` column. Parity bar 191 · 64.9 % · +0.027.
+   ① FRESH: the scout_ml_trend_lines.load_orders cohort (>= 2026-09-30, ex-washed; exports via export_glob incl.
+      scalpars_orders_live_2026-10-16_15-19-54 (1).csv), y = pct; plus the subset opened after the last master fill (truly out-of-sample).
+   Master + fresh are REFUTE-ONLY (cross-period rule) and too short for regime work (≈ 1 regime window); reported for the policy table.
+
+2. OUTCOME UNITS  day d = UTC day of entry. Day outcome = pooled avg y of fills entered on d (seeds pooled; also N, WR). Horizons
+   {1d, 3d = [d, d+3), 7d = [d, d+7)} and ISO WEEK (feature at Monday 00:00, outcome = the week's pooled avg). Only days with >= 1 fill.
+
+3. VARIABLES (all at 00:00 UTC of d from data strictly before d)
+   P — TREND PERSISTENCE (NEW, the thing that decides trades; 19 vars). BTC 5m log returns over the prior k days:
+     btc_ac5_{1,3,7}   lag-1 autocorrelation of 5m returns
+     btc_vr3_{1,3,7}   variance ratio VR(3) = var(overlapping 15m sums) / (3 var(5m))   (>1 trending, <1 mean-reverting)
+     btc_vr12_{3,7}    VR(12) (60m vs 5m)
+     btc_ac15_7        lag-1 autocorrelation of non-overlapping 15m returns, 7 d
+     btc_ft_7          mean next-15m BTC return (bps) after 15m windows whose return > +1 sd (7 d) — "does a BTC push continue?"
+     btc_er_{1,7}      intraday efficiency |sum r5| / sum |r5| per day, mean of prior 1 / 7 days
+     alt universe U(d) = top-50 by 30-day avg quote volume ending d-1 (LITE DEV1 definition, BTC + stables excluded); per alt per day
+     from 5m, then cross-sectional MEDIAN, then mean over the prior k days:
+     alt_vr3_{1,3,7}, alt_ac5_{3,7}
+     alt_ft_{3,7}      per alt: mean next-15m return (%) after a 5m bar in that alt's top-decile return over the window
+                       ("do alt 5m pops continue?" = the closest knowable analogue of a momentum-long entry), median across U
+   V — VOLATILITY (NEW, 4): btc_rv5_1, btc_rv5_7 (std of 5m log returns, prior 1 / 7 d), btc_rvchg = rv5_1 / rv5_7, alt_rv5_7 (median).
+   O — OWN ROLLING (3): ml_d3, ml_d7 = avg y of BT ML fills CLOSED in the prior 3 / 7 days; ml_n30 = last 30 closed (seeds pooled).
+   L — REUSED LITE day features (reports/lite_regime/day_features.csv, same no-lookahead build; 24): r1 r3 r7 r30 dma20 dma50 dma200 rv7
+     rvtr off30 br_up3 br_up7 br_ma7 br_ma20 alt_rs7 voltr disp7 fund3(2026 only) spk24 spk72 flags96 ft2 ft12 ftr12.
+   TOTAL 50 (49 testable in 2025).
+
+4. THEORY PREDICTIONS (Q0, signed, written before data)
+   A 5m momentum long buys a coin that has just shown strength and needs that strength to CONTINUE for 15–60 min before a tight stop.
+   It wins when short-horizon returns are persistent (positive autocorrelation / VR > 1, pushes continue) and loses when they mean-revert
+   (pops get sold, stop-first). Predictions: P-family + (btc_ac5, btc_vr3, btc_vr12, btc_ac15, btc_ft, btc_er, alt_vr3, alt_ac5, alt_ft);
+   O-family + only if regimes persist; trend/breadth (r7, dma20, br_ma20, alt_rs7) weak +; rising vol (btc_rvchg) − (transition chop);
+   vol level two-sided; disp7 two-sided; voltr +; fund3 − (crowded longs); spike activity two-sided.
+   PRIMARY (3, each tested alone, no family correction): btc_vr3_7 (+, NAT cut 1.0), alt_ft_7 (+, NAT cut 0), btc_ac5_3 (+, NAT cut 0).
+
+5. CUTS  NAT = natural cut where one exists (AC / ft / returns / dma / alt_rs7 / ml_* -> 0; VR -> 1.0), train-era median otherwise;
+   T3 = train-era terciles. Cuts frozen from the TRAIN era only, never refit on test.
+
+6. Q1 (descriptive, era level) — per era: N, fills/day, WR, avg win, avg loss, breakeven WR, exit-kind mix; per month and per ISO week
+   sleeve avg; tick vs 1m split (2025 deficit share attributable to 1m-priced fills); UNIFORMITY of the era ordering across pattern
+   cells (c_any / w_any / none), top-15 pairs, 4-h hour blocks, ATR terciles (frozen 2025), top50 flag, ADX buckets: count of cells
+   where 2026-H2 > 2025 and H1 > 2025 (≥ 8 days per cell per era to be read). Month eta² vs day-shuffle null. BTC-forward decomposition
+   (diagnostic, NOT knowable): y = a + b·btc_fwd15 per era (btc_fwd15 from ML_BTCFWD_fill_features by key) -> how much of the era gap is
+   "BTC fell after entries more often" (mean btc_fwd15 × b) vs "same BTC path, worse coin outcome" (intercept a).
+
+7. Q2 (screen) per era, units {1d, 3d, 7d, week} × stats {Spearman ρ on day series, NAT split Δ (day-weighted: mean of day means),
+   T3 top−bottom}: 7-day-block shuffle of the outcome series within era, R = 500; FAMILY-WISE p = max-|stat| over all vars × units within
+   the stat family. ERA-DEMEANED POOLED test (outcome minus its era mean, 3 eras pooled, block shuffle within era) for every var.
+   CROSS-ERA CONSISTENCY: count of vars whose NAT 1d Δ has the same sign in all 3 eras vs the shuffle null of that count.
+   WALK-FORWARD: cut + direction from era A, test on era B, all 6 directed pairs; plus H1 <-> H2 inside 2026.
+   PERSISTENCE: lag-1/2/4 autocorrelation of the WEEKLY sleeve avg per era and of the DAILY avg (block-shuffle null); month eta².
+   If weekly outcomes do not persist, no switch is usable regardless of the screen.
+
+8. SELECTION for Q3 / Q4 (frozen rule): the variable with the smallest era-demeaned pooled p among those whose NAT 1d Δ has the same sign
+   in all 3 eras (ties -> theory primary first). If none has pooled p <= 0.05, Q3/Q4 are run on the theory primary btc_vr3_7 (NAT 1.0)
+   and on the selected best anyway, labelled "no-pass, descriptive".
+
+9. Q3 (conditional, limited list, inside each half of the selected split, per era): E1 ADX 20–30 inside PAIR_1H_DOWNTREND (vs rest of
+   DT) · E2 PAIR_1H_DOWNTREND (vs not) · E3 BTC24H_DOWN (k_btc_ret24h < 0) · E4 ADX falling (entry_adx < entry_adx_prev). Source of
+   DT / k_btc_ret24h / ADX: reports/ML_DT2D_features.pkl (same fills). Consistent = same sign in all 3 eras inside the half; same
+   7-day-block shuffle null on the Δ; 8 tests -> Bonferroni 0.00625.
+
+10. Q4 (policy) — (a) SKIP momentum longs on days in the bad side; (b) SIZE 0.5× on bad days. Cut / side from the train era(s).
+    BT: leave-one-era-out (train on the other two eras) + each directed pair. MASTER per batch + FRESH (train = all BT): before/after
+    N, Σ %, avg %, $ (BT usd_new; master pnl as traded), winners skipped, losers avoided, day-bootstrap P(Δ > 0), LOMO min,
+    max single-week share of Δ. Haircut 30–50 % on any projected Δ.
+    USABLE gate (all): ① same sign all 3 eras; ② pooled p <= 0.05 (family-wise if not a primary); ③ skip-policy Δ > 0 in every BT test
+    era with P >= 0.90 and LOMO min > 0; ④ >= 8 distinct weeks on the bad side per era, no single week >= 50 % of Δ; ⑤ weekly outcome
+    persistence or a persistent driver; ⑥ master Δ >= 0 overall (refute-only); ⑦ fresh not contradicting (refute-only).
+    If armed (hypothetically): pre-committed revert gate = first 15 skipped-regime days of live shadow with skipped-fill avg > 0 or
+    kept-fill avg below the skipped-fill avg -> revert. Fails -> no Scout line unless ①–④ pass in 2 of 3 eras (then OBSERVE only, cut frozen).
+
+11. VALIDATION  venv/bin/python scripts/validate_against_master.py at the end.
+
+INPUT HASHES (sha256[:16]):
+  reports/ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv: 16064024a56da774
+  reports/MASTER_POOL_stacked.csv: 49be4901ae689294
+  reports/lite_regime/day_features.csv: 3a9cff696ec1b01c
+  reports/ML_DT2D_features.pkl: d78dbed76a041ef2
+  reports/ML_BTCFWD_fill_features.csv: cad98d54144e7569

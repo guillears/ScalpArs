@@ -7042,3 +7042,33 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   (2025 −0.18 vs −0.19 rest), 7 theory splits + 646-cell screen at luck level; the only consistent axis is coin AGE, which is not a
   downtrend effect (old coins lose equally outside the zone). The line keeps its frozen 1D gate. Follow-up (1h/4h RSI·ADX, EMA-distance
   grid, limited 3-way) running.
+
+## (304) 2026-10-16 — 🎲 WILLY theory + review: no change · TP +2 and turnover 0.5 NOT registered · DL 290 tracker comparator fixed · ML regime: no switch
+- **WILLY theory (reports/WILLY_THEORY_2026-10-16.md, CORRECTED by its adversarial review — see its "Review corrections"):** on ENGINE-matched
+  fills WILLY's entry beats a random window bar by +0.19 /fill (2026 +0.23 / +0.27) — the "counter-thesis wins" headline came from rebuilt
+  signals the engine does not take; engine-matched by era −0.03 / +0.06 / +0.08. Losers are coin-specific dumps (coin −2.8 % 15 min after a
+  stopped entry, BTC flat); a BTC exit could touch ≈ 1 stop in 10. Survivors (bucket reads): large caps worse, 20–25× spikes worse.
+- **TP +2 NOT registered (operator):** the "+0.14/+0.11/+0.10" compared TP +2 without the late TP vs today with it; like-for-like engine-matched
+  +0.03…+0.05, 2026-H2 negative; master 19 +10.82 → +7.91 pts (−$310), live 8 −1.90 → −6.10; yr5 (B19_WILLY_TP15) agrees it is worse.
+- **Turnover 1.0 → 0.5 NOT registered (operator):** engine fills, tick, refusing 0.5–1 = +0.052 / −0.004 / −0.077 by era (band best in 2026-H2).
+- **Tracker fix:** scripts/scout_willy_timecap.py — DL 290 (and any other) cells were measured vs the PRE-297 exit (no late TP); fills opened
+  after the DL 297 deploy are now measured vs the LIVE exit (late TP booked like live), TP cells include the late TP; pre-297 fills keep the old
+  comparator; frozen states untouched.
+- **ML regime (reports/ML_REGIME_2026-10-16.md):** eras differ by stop share (43 → 36 → 33 %), uniform across 29/29 slices (market-wide), ≈ 1/3
+  BTC's post-entry path, rest = 2025 pops fading; 50 knowable-in-advance day variables at luck level (pooled fw p 0.79), weekly results do not
+  persist → no regime switch / sizing / line. Consistent WITHOUT any split: ADX falling (DL 273) −0.07 / −0.07 / −0.12 (pooled p 0.001) and
+  BTC24H_DOWN −0.03 / −0.07 / −0.20 (p 0.05) → re-read the DL 273 lines formally at the next batch review.
+- Also on record: momentum-long PAIR_1H_DOWNTREND follow-up (1h/4h RSI·ADX, full EMA-distance grid 5m/1h/4h, limited 3-way: 1,622 cells,
+  best fw p ≥ 0.78) — NOTHING (reports/ML_DOWNTREND_2D_FOLLOWUP_2026-10-16.md).
+
+## (305) 2026-10-16 — 👁 WILLY_MKTDIP observe line registered · ML "ADX falling ∧ heavy volume" SKIPPED (operator: "register willy, skip ML")
+- **WILLY continuation study (reports/WILLY_CONT_2026-10-16.md, unreviewed):** at the +1.25 touch, 77.7 % reach +2 = exactly the hold
+  breakeven → "always hold for +2" ≈ 0 (+0.07 / +0.04 / −0.16 by era; master B19 −$416; live −$105). Continuation is COIN-driven, not
+  market (market-only models AUC 0.45–0.51 out of sample). Today's late TP is the best of the three choices at minute 30. Keep today's exit.
+- **Registered (observe only):** WILLY_MKTDIP — zone = top-50 breadth of the last closed 5m bar at entry ≤ 0.2979 ∧ entry_ema_gap_8_13 > 1.393 (the study's exact cut);
+  study: 45 / 46 in-zone touches reached +2 by minute 30 vs 76 % (p_fw 0.010 of 28,646 tests; walk-forward 0 confirmations; corner effect;
+  ≈ +0.04 /signal). Master on today's rules: +7.3 → +9.5 % / +$484 → +$631 (CAP, RSR, BTW); live 8: 0 in zone. scripts/scout_willy_mktdip.py
+  (frozen definition + gate in its header; cohort ≥ 2026-10-17 00:00 UTC). Never arms itself.
+- **SKIPPED:** momentum-long "ADX falling ∧ pair volume ratio > 0.695" (reports/ML_ADXFALL_2D_2026-10-16.md) — on TODAY's rules master
+  +19.6 → +21.6 % / +$139 → +$159 (29 skipped, 19 W / 10 L); the +$2,540 first shown was AS-TRADED master (old sizing / trades today's
+  stack blocks) — wrong baseline, corrected. Momentum longs trade ≈ $7 per 1 % today. Also: all 12 theory predictions for ADX-falling × X failed.

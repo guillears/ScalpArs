@@ -499,3 +499,11 @@ Extend the impulse grid, then `venv/bin/python scripts/scout_lite_z3.py`; descri
 
 ### 👁 LITE_OB_THIN (DECISION_LOG 302, long shot)
 `venv/bin/python scripts/scout_lite_ob_thin.py` — needs the Decisions exports covering the batch (BOOK rows; each export carries only 3 days — check there is no gap). Report THIN vs not: N, DIED / RAN, precision vs the 38 % bar, gap + P, verdict.
+
+### 🔁 ML ADX-falling + BTC24H_DOWN formal re-read (DECISION_LOG 304)
+The ML regime study found both DL 273 lines consistent in all three backtest eras with no regime split (ADX falling −0.07/−0.07/−0.12, pooled p 0.001;
+BTC24H_DOWN p 0.05). At the next batch: read both against their FROZEN gates (expectancy bar, window units, three blocks, before/after per batch,
+note live PEPE +1.16 would have been refused by ADX-falling). Re-read only — no new thresholds.
+
+### 👁 WILLY_MKTDIP (DECISION_LOG 305) + WILLY tracker comparator (DECISION_LOG 304)
+`venv/bin/python scripts/scout_willy_mktdip.py` (zone vs rest +2 rates, verdict) and `scripts/scout_willy_timecap.py` (post-297 fills now vs the LIVE exit incl. the late TP; check the split line). Also verify the first post-296 WILLY win booked ≈ +1.25 as a MAKER resting fill (pre-296 wins booked +1.08–1.18 by taker).

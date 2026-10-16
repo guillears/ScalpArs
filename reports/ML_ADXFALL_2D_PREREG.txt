@@ -1,0 +1,82 @@
+ML_ADXFALL_2D — PRE-REGISTRATION (written 2026-10-16 before any outcome table of this study)
+====================================================================================================
+Question (operator): "ADX falling + other variable?" Momentum LONG fills whose coin ADX at entry is below the previous bar's
+(stamp: entry_adx < entry_adx_prev; DL 273 closed-bar rebuild: c_adx_delta ≤ 0) are consistently but mildly worse than ADX-rising
+fills (known: zone − rest −0.07 / −0.07 / −0.12 by era, pooled p 0.001, reports/ML_REGIME_2026-10-16.md Q3; master zone 77 · −0.01
+vs rest +0.05). Is there a SECOND variable X that makes ADX-falling fills clearly losing, or splits them into a losing and a fine
+part, consistently in the 3 backtest eras AND master AND fresh? (The ADX × BTC-24h-down 2×2 is known and NOT re-tested as new.)
+
+Already seen before writing this: the Q3 numbers above (given in the brief) and the feature DISTRIBUTIONS of the 2025 ADX-falling
+zone (cut values below; no outcome column was read). Nothing else.
+
+§0 THEORY (plain English, before tests)
+---------------------------------------
+The momentum long buys a coin that just showed strength on 5m (EMA stack, RSI 50s–60s, ADX). If ADX is already FALLING at that
+moment, the directional move that created the signal is losing force: we are buying late, into a move that is exhausting. A late
+entry is hurt most when the move is ALSO (a) already extended in price, (b) losing momentum on other gauges at the same time, or
+(c) fighting the higher-timeframe trend / BTC. It should NOT matter for things unrelated to move age / exhaustion.
+
+Predicted to SHARPEN the ADX-falling loss (bad side X named; pre-registered primaries P1–P12):
+  P1  RSI already high           entry_rsi > 60.1367            (2025-zone upper tercile)  — exhaustion
+  P2  RSI rolling over           d_rsi_dir ≤ 0                   (RSI ≤ previous bar)       — second oscillator decaying
+  P3  stretched above EMA5       entry_price_vs_ema5_pct > 0.149 (2025-zone median)         — chasing
+  P4  stretched above EMA13      entry_dist_from_ema13_pct > 0.372 (2025-zone median)       — chasing
+  P5  EMA5–EMA20 gap narrowing   c_gap5_20_chg ≤ 0               (closed bar)               — trend fan closing
+  P6  ADX level high             entry_adx > 21.4623             (2025-zone median)         — decaying from a strong trend
+  P7  DI spread shrinking        c_dis_chg ≤ 0                   (closed bar, +DI − −DI)    — directional pressure fading
+  P8  volume fading              c_vol_tr3 ≤ 1                   (Σ vol last 3 closed bars ≤ prior 3)
+  P9  coin 1h trend down         k_slope1h ≤ 0                   (coin 1h EMA20 slope)       — counter-trend bounce fading
+  P10 coin 4h trend down         k_gap4h ≤ 0                     (coin 4h EMA20 vs EMA50)
+  P11 BTC short-term down        m_btc_r15 ≤ 0                   (BTC 15-min return)
+  P12 move already old           c_run_e20 > 8                   (closed bars above EMA20 > 2025-zone median)
+Predicted NOT to matter (controls, read only in the exhaustive screen): hour of day, coin size (mcap / 24h volume / rank / age),
+pattern-cell flags, BTC 30-day position.
+Ambiguity stated up front: P6 could go either way (low ADX falling = no trend at all / chop). Predicted direction: HIGH is worse.
+
+§1 COHORT / BLOCKS (frozen)
+---------------------------
+Frame reports/ML_ADXFALL_features.pkl = reports/ML_DT2D_FU_features.pkl (parity: replay 2617 / 1171 / 521, master 191, fresh 29;
+all momentum longs, not only the downtrend zone) + 5m closed-bar rebuilds (scripts/study_ml_adxfall_build.py; cache + a 9-symbol
+fapi 5m top-up reports/ml_adxfall_fetch/5m for the 10-12 → 10-16 fills). y: replay = pct_new (tick verdict where re-priced), master
+as-traded = y (1×), master stack_keep = y_stack where stack_keep, fresh = y (paper + LIVE, export_glob, incl. the 10-16 15-19-54
+live export). Zone = AF_stamp (primary, what live has); every read repeated with AF_closed (secondary).
+
+§2 PRIMARY TESTS (P1–P12, read FIRST)
+-------------------------------------
+For each Pk: Δin = mean(AF∧X) − mean(AF∧¬X) per era, day-clustered z (study_ml_dt2d_fu_analyse dstats). Also Δrest = AF∧X vs
+everything else.
+PRIMARY PASS (all): ① Δin < 0 in all 3 eras; ② Stouffer z = Σz/√3 ≤ −2.64 (one-sided Bonferroni 0.05/12); ③ master as-traded Δin
+not opposite with ≥ 10 fills each side (refute-only); ④ fresh shown (no gate, N tiny).
+"CLEARLY LOSING" cohort bar for AF∧X (expectancy bar, CLAUDE.md): per era WR < sleeve breakeven WR (computed per era on all
+fills; ≈ 62 %), avg < 0 at ≥ 95 % day-bootstrap, ≥ 8 days, N ≥ 15, no day/pair ≥ 50 % of the loss.
+SELECTIVITY (the operative test because the sleeve itself loses in 2025 / H1): refuse AF∧X → kept avg − refused avg > 0 at
+P ≥ 0.90 (day bootstrap) in EVERY era; two-sided (refused winners counted); master and fresh shown.
+
+§3 EXHAUSTIVE SCREEN (after the primaries)
+------------------------------------------
+Variables: the 106 parent variables (reports/ML_DT2D_screen.csv) minus the zone definers (d_adx_dir, entry_adx_delta) + the
+follow-up n_* (RSI/ADX 1h/4h level + dir, price-vs-EMA grid 5m/1h/4h) + the 17 c_* closed-bar rebuilds + s_dis + s_gap520_chg.
+Cells per variable: 7 quantile ranges frozen on the 2025 AF zone (≤med, >med, T1, T2, T3, ≤q2, >q1; ≤ 3 distinct values → one cell
+per value) + sign cells (≤0 / >0) where 10–90 % of the 2025 zone is ≤ 0. Validity: in and out ≥ 5 % of the zone and ≥ 8 days, every
+era. Stat: C = signed min |z| over the 3 eras (same sign), for Δin and Δrest.
+Null: 200 day-block shuffles of y within era (rng 20261016), family-wise p = share of shuffles whose max |C| ≥ observed.
+Walk-forward both directions: (a) discover 2025 |z| ≥ 1.96 ∧ |Δ| ≥ 0.05 → confirm same sign in H1 AND H2; (b) discover on 2026
+(H1 ∪ H2 pooled) same rule → confirm same sign in 2025. Counts vs the same-shuffle null.
+SURVIVOR = fw-p ≤ 0.05 (Δin or Δrest) OR walk-forward confirmed count above the null 95th with the cell among the confirmed.
+For every survivor and the top 3 cells by |C_in| (labelled even if failing): expectancy bar, selectivity, two-sided refusal Δ,
+LOMO (leave-one-month-out Δ sign on the pooled backtest), pair / day concentration, master per batch before/after (% and $),
+stack_keep, fresh per trade (LIVE rows marked).
+
+§4 DECISION RULE (frozen)
+-------------------------
+An "ADX-falling × X" cell is a CANDIDATE only if it passes ① primary or survivor status, ② selectivity P ≥ 0.90 in every era,
+③ master not refuting, ④ fresh not opposite (N ≥ 5 in AF∧X). Anything less = descriptive. No arm is recommended from this study
+(no-arm-before-review); at most an observe line with a frozen bar; cross-period evidence is refute-only.
+
+§5 HASHES (sha256, appended below at freeze time, before the analysis script was run)
+  frozen 2026-10-16 16:23 UTC
+  98138c402c1e4a161fb1d97aa40a3037a8833660da0b3cd3636a6ae16be2780d  reports/ML_ADXFALL_features.pkl
+  cb999e439d7fe7d5c9519bc3e1ec97b851eda4b9f28bb81681add6cd276d1d4e  reports/ML_DT2D_FU_features.pkl
+  7cf8b4f61e00a4024b83ff5b1e6777a59dc0dbfe066c0160f114ce62a5543508  scripts/study_ml_adxfall_build.py
+  a1eed9e3c20411fde003c2b6472e273f73552222feae59659781809026a23ebd  scripts/study_ml_adxfall_analyse.py
+  prereg body §0–§4 sha256: 025be5d9697d686c3396749c8e83cbe15b3d584bef56e37ef4de0fd8fe39f46e

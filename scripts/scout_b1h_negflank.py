@@ -262,7 +262,8 @@ def _cooldown_until():
     for p in _cooldown_paths():
         try:
             with open(p) as f:
-                out = max(out, int(f.read().strip() or 0))
+                v = float(f.read().strip() or 0)
+                out = max(out, int(v * 1000 if 0 < v < 1e11 else v))   # DL 305 review: some study fetchers write SECONDS (float) → ms
         except Exception:
             pass
     return out

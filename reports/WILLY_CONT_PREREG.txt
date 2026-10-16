@@ -1,0 +1,135 @@
+WILLY CONTINUATION STUDY — PRE-REGISTRATION (written before any outcome table of this study)
+================================================================================================
+Frozen: see the FREEZE line at the bottom (UTC) + sha256 of inputs. Code hashes are appended in a CODE FREEZE block before the
+first outcome table is computed. Research only: no engine / config / templates / tests edits, no commit, no bot API, backtest_cache
+and scripts/engine_replay*.py read-only.
+
+OPERATOR QUESTION
+  "The +1.25 or +2 or the drop after 30 min is due to market conditions — we need to understand WHY a WILLY trade continues
+   bullish or not."
+  Q1  At the moment a WILLY fill first touches +1.25 net: what tells "continues to +2 / +3" vs "stalls / reverses"?
+  Q2  For fills still open at minute 30 (the late-TP drop): what tells "recovers to +1.25" vs "bleeds"?
+  Q3  At entry: is P(continuation) driven by the MARKET (BTC / ETH / SOL / breadth / market taker flow / market volume / regime of
+      the day and hour) or by the COIN (its flow, volume, spike strength, turnover, cap, age)?
+
+STEP 0 — THEORY (plain English), predictions written BEFORE testing
+  A fresh pump continues when NEW buyers keep arriving after our entry: the coin's taker-buy flow stays above 50 %, its volume does
+  not decay, and the market is risk-on (BTC trending up intraday, top-50 breadth up, market taker flow buying). It stalls when the
+  pump's buyers are exhausted (volume decays, sellers take over the tape) or when the market turns down under it.
+  Competing theory (from WILLY_THEORY 2026-10-16, losers = coin-specific dumps with BTC flat): continuation is a COIN phenomenon
+  (attention / supply), and the market barely matters.
+  Predicted signs (+ = more continuation / recovery):
+   Q1 at the touch (closed 1m bars only, before the touch minute):
+    P1  coin taker-buy share, last 5 closed 1m bars ................................. +
+    P2  coin quote volume last 5 min / the 5 min before entry (volume decay) ........... +
+    P3  minutes from entry to the +1.25 touch (slow = drifting, fast = impulsive) ...... − (fast continues)
+    P4  worst net % before the touch (a deep dip first) ................................ + (shallower dip continues)
+    P5  BTC / ETH / SOL return since the entry minute, last 5 min, last 15 min ......... +
+    P6  market taker-buy share (BTC+ETH+SOL quote, last 5 closed 1m bars) .............. +
+    P7  top-50 breadth (share up, last closed 5m bar; mean of last 3) and top-50 aggregate taker share (5 / 15 min) .. +
+    P8  day regime (prior closed days, no look-ahead): BTC r1/r3/r7/dma20 + ; breadth br_up3/br_up7/br_ma7 + ; persistence = lag-1
+        autocorrelation of BTC 15-min (and 5-min) returns over the prior 3 days + (trending tape lets runs run) ; dispersion disp7 + ;
+        market volume voltr + ; prior pumps' follow-through ft2 / ft12 / ftr12 + ; realised vol rv7 / rvtr ± (no prior) ;
+        intraday: BTC return since 00:00 UTC + , BTC 1m realised vol last 60 min vs prior 7 days ± , BTC+ETH+SOL quote volume last
+        60 min vs prior-7-day 60-min mean + , hour of day (EU morning 08–13 UTC −, watch item from WILLY_THEORY).
+    P9  coin entry stamps: spike volume multiple + ; turnover (vol/mcap) − ; mcap − ; pair age − (young coins run) ; run_pct − ;
+        vs_vwap + ; wait bars − .
+   Q2 at minute 30 (open fills only):
+    P10 net % at minute 30 (closer to +1.25 recovers) + ; worst net % so far − (deeper = bleeds) ; best net % so far + ;
+        coin taker share last 5 min + ; coin volume last 5 min / pre-entry − decay ; BTC since entry + ; breadth + ; market taker + .
+   Q3 at entry: the MARKET-only model's held-out AUC vs the COIN-only model's. Pre-registered expectation: COIN ≥ MARKET (the
+      competing theory); the operator's hypothesis is MARKET > COIN.
+
+DATA (cohort = engine signal bars)
+  BT     reports/ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv, sleeve FRENZY_WILLY, CLOSED, non-probe. MAIN = seed 1; seeds 2 / 3 = replication.
+         Eras: 2025 · 2026-H1 · 2026-H2 (split 2026-01-01 / 2026-07-01).
+  MASTER reports/MASTER_POOL_stacked.csv FRENZY_WILLY (19: B19 14 · B20 3 · B21 2), $/pt from reports/willy_theory/ms.pkl.
+  LIVE   ~/Downloads/scalpars_orders_live_2026-10-16_15-19-54 (1).csv FRENZY_WILLY (8).
+  Paths  scout_frenzy_willy_exit.load_path (ticks first, then the 1m tail; 2025 loader patches of study_tick_maker_lock_common),
+         entry E = the replay/master/live entry_price, horizon 90 min. Parity asserted vs reports/WILLY_LOWVWAP_SHORTRUN_rows.csv
+         (plain_why / plain_pct with FX.evaluate(1.25, 4, 90): ≥ 99.9 % identical).
+  VERDICT ruler = tick: ticks cover te → te + 91 min (tick_end ≥ te + 91 min). 1m-tail rows = refute-only (sign of Δ only).
+  Coin 1m taker klines: fetched from Binance public fapi /klines, [entry minute − 9, entry minute + 90) (limit 99, weight 1), cache
+         reports/willy_cont/k1m/<pair>_<startms>.csv, ≤ 1,200 weight/min SHARED: pause while X-MBX-USED-WEIGHT-1M ≥ 700, stop on
+         418 / 429 and arm reports/backtest_cache/.binance_cooldown_until; honour that file before starting.
+  Market 1m: reports/ml_btcfwd_fetch/k1m_taker/{BTC,ETH,SOL}USDT.csv (to 2026-10-15 15:56); master/live from reports/willy_theory/ctx.
+  Breadth 5m: reports/ML_BTCFWD_grid5m.csv.gz (br_up5, agg_tbr5, agg_tbr15 at 5m boundaries; last CLOSED bar ≤ decision);
+         master/live from ctx u5_* (top-50 5m).
+  Day regime: reports/lite_regime/day_features.csv (prior closed days) + persistence computed here from BTC 1m (prior 3 full days).
+  Entry stamps: every entry_* column of the replay fills; MARKET vs COIN split by study_yr6wl_frenzy_common.is_macro plus the
+         computed market variables; COIN = everything pair-level.
+
+EXIT ARMS (coordinator correction 2026-10-16, adversarial review of WILLY_THEORY — applied here from the start)
+  TODAY  resting maker TP +1.25 (books the line) until minute 30; AT minute 30, if the last print ≤ te+30 min is ≥ +0.25 net the
+         order closes AT MARKET at the PRINT (first print after te+30 min; on a 1m tail the next bar's open) — NOT the +0.25 line
+         (DL 297: "already through → market now"); otherwise a resting +0.25 limit (books the line); stop −4 booked min(print, −4)
+         − 0.20; cap 90 = last print. Parity vs scout_willy_timecap.evaluate_late reported (it books the line / first print).
+  HOLD2  identical, but at the +1.25 touch (≤ 30 min) the TP is moved to +2.0 (books the line); the late rule is KEPT (minute 30:
+         market at the print if ≥ +0.25, else +0.25 limit); stop / cap unchanged.  (HOLD3 = same with +3, descriptive.)
+  KEEP   (Q2) the pre-DL-297 exit: +1.25 / −4 / 90, no late rule.   CLOSE30 (Q2) market at the first print after te+30 min.
+  Coordinator correction 3: WILLY_THEORY's "W0: selection adds nothing" does NOT hold on engine fills (entry beats a random window
+  bar by +0.19, 2026 +0.23/+0.27); it is not cited as established here. Correction 1: engine replay fills only (as designed).
+
+LABELS / OUTCOMES
+  Q1 cohort  fills whose path touches +1.25 net at ≤ 30 min before any −4 (today's TP fill).
+     y1 = HOLD2 − TODAY (per touched fill, %-pts at 1×).  Labels: C2_90 = +2 reached before −4 within 90 (path);
+     C2_30 = +2 reached before minute 30 (what HOLD2 actually banks); C3_90 = +3 before −4 within 90.
+     ECONOMIC BAR: holding beats banking iff P(C2_30) > p* = (1.25 − L) / (2.0 − L), L = mean HOLD2 outcome of touched fills that
+     do NOT reach +2 by minute 30 (per era, reported).
+  Q2 cohort  fills open at minute 30 under TODAY (no +1.25 touch ≤ 30, no stop ≤ 30).
+     y2 = KEEP − TODAY;  also CLOSE30 − TODAY.  Label R125 = reaches +1.25 before −4 by minute 90.
+  Q3 cohort  all fills;  label C2_90;  economic y3 = HOLD2 − TODAY (0 for fills that never touch).
+
+TESTS (per question; verdict on the seed-1 tick cohort, era = 2025 / 2026-H1 / 2026-H2)
+  T1  share continuing per era (tick) + the economic bar; HOLD2 / KEEP / CLOSE30 vs TODAY per era with day-block bootstrap.
+  T2  1D: every variable, SIGN first (where 0 is meaningful) then median halves then terciles; Welch t (zone vs rest) per era on
+      y (y1 / y2 / y3) and on the label; era-consistency S = sign-agreeing min |t| across the 3 eras.
+  T3  exhaustive 2D MARKET × COIN (median halves + outer terciles), S as T2; day-block shuffled null (300 perms, within era) over the
+      FULL search (1D + 2D) → family-wise p of max |S|; survivor = p_fw < 0.10. Walk-forward: top 20 by |t| in each discovery era,
+      confirmed if same sign with t ≥ 1.28 in both other eras; count vs the null.
+  T4  shallow models (numpy; sklearn absent): L2 logistic (λ = 1, standardised, train-median imputation) and a depth-3 tree (min
+      leaf 30). Feature sets MARKET / COIN / ALL. Train → test: 2025 → 2026, 2026 → 2025, 2026-H1 → 2026-H2. Held-out AUC on the
+      binary label (Q1 C2_30 · Q2 R125 · Q3 C2_90) vs a null of 200 retrains on day-block-shuffled training labels → p. A model
+      "predicts out of sample" iff p < 0.05 in BOTH 2025→2026 and 2026→2025.
+  T5  DYNAMIC EXIT only if a separator survives (T3 survivor, or T4 predicts OOS with a single-variable rule from it): "at +1.25
+      hold for +2 if X else bank" (Q1) or "at minute 30 keep +1.25 if X else today" (Q2), cut frozen from the discovery era.
+      Bar: Δ vs TODAY > 0 in all 3 eras, day-boot P(Δ > 0) ≥ 0.95 pooled, seeds 2 / 3 same sign, 1m ruler same sign (refute-only),
+      30–50 % in-sample haircut, master per batch + live before/after in % and $. Not met → reported, labelled FAILED.
+  Day units: day-level regime variables are additionally read in DAY units (day means of y) per era — same-day fills = one obs.
+
+WHAT FAILS / NO-SHIP RULES
+  No survivor → "no separator" claim is valid only citing T3 + T4 outputs and the coverage table. Nothing here can arm anything
+  (unreviewed study). Every result is at 1× (net % of notional).
+
+INPUT HASHES (sha256)
+  16064024a56da774a44246e7be91001ea5221cf48f75bc67b43a8c27ed35c067  ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv
+  49be4901ae689294267f40ab837c917028bdc583601e1153454a08098421cd03  MASTER_POOL_stacked.csv
+  feffb41e362cb1fb25872cddd905261080f09b5ffe3569d10a5e486579558d2a  scalpars_orders_live_2026-10-16_15-19-54 (1).csv
+  4fc676ae9bc2e33455fbe41067eb0da06f9f0ea4d6d280e4958a57218cded9e2  WILLY_LOWVWAP_SHORTRUN_rows.csv
+  3a9cff696ec1b01c6e0c07e64070709e9695faa2814bacb0bafe45aab02f1469  day_features.csv
+  52e934db19945cb3430cea3b28e403323a39f725235337a7977a95bbcee69b1e  ML_BTCFWD_grid5m.csv.gz
+  08fbfffcdee65a57c213e955429e39de6cf39037242aae4be091c8c878c57fdd  ms.pkl
+  abdbc322a8176e30ebb11f5b4f5e1520359921cba8600f67a1c48e6470a52368  scout_frenzy_willy_exit.py
+  3a225d06592cd200da41eed01c956f333322020ea01118d7221e5eeb107363bc  scout_willy_timecap.py
+  05f9316f5ee8960bc207fa004b40ba05f3f5585ae1f87438e91d5c16de069830  study_tick_maker_lock_common.py
+  23b02b65cf335d0e9416758c6131579a964a3d50f4c589d54a3b8495dbd32b93  study_yr6wl_frenzy_common.py
+FREEZE 2026-10-16 16:08:57 UTC — design frozen before any outcome table of this study.
+
+CODE FREEZE (sha256, before the first outcome table of this study)
+  2c4e0de7e2e2d81265abea69244b0d24b70f11285ff3e2c85204a19c65283e87  study_willy_cont_fetch.py
+  64137f6dae98e665c1753c3658b4fd045a2d061b2b010497e4a717e5a3a76534  study_willy_cont_build.py
+  97c504eb4b01e9144ac47198292d7ec1e838a3002e3c4a2fed8e26cd75e5c6a6  study_willy_cont_analyse.py
+  rows.pkl built with walker parity 1549/1549 vs WILLY_LOWVWAP_SHORTRUN_rows (plain + evaluate_late); only feature coverage was inspected.
+CODE FREEZE 2026-10-16 16:18:30 UTC
+
+ADDENDUM A (2026-10-16, AFTER the T1–T5 tables — declared post-hoc follow-up, cannot upgrade any verdict by itself)
+  Outcome of T3/T4: one Q1 2D survivor (e_br_up5 ≤ 0.2979 & entry_ema_gap_8_13 > 1.393, p_fw 0.010, WF 0 confirmed); T4 "predicts OOS
+  both directions" for Q2 COIN/ALL logit (R125) and Q3 COIN logit (C2_90). Follow-up reads (scripts/study_willy_cont_followup.py):
+   F1 survivor robustness — cuts re-derived per discovery era (terciles of 2025 → applied to 2026, and 2026 → 2025), 3×3 dose-response
+      grid (terciles × terciles), leave-one-month-out, top pair / day share of the zone, 1m-ruler continuation (refute-only), HOLD3 in zone.
+      "No arm before review": the survivor stays a candidate for an OBSERVE line at most, whatever F1 shows.
+   F2 Q2 / Q3 models — logistic coefficients per training era; the top-|coef| variable that has the same sign in both training eras →
+      single-variable rule cut at the discovery-era median, applied to the other era (pre-registered T5 route); plus the model-score
+      rule "keep +1.25 at minute 30 iff predicted P(R125) is in the training top third" (post-hoc, labelled).
+  5a97af975b1ecf22d278be3f70e6db4b28fde96d0393733c2bf6ba2bc13c2340  study_willy_cont_followup.py (hashed before its run) 16:21:21 UTC
+  f7ef4091a9faeb728dbbfd439ca5e1b26aa35945953c6fffe1ad499b76831473  study_willy_cont_followup.py (rev 2: table-printing fix + exact lower bound only) 16:21:30 UTC

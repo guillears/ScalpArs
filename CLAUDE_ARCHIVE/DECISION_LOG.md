@@ -7082,3 +7082,41 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   reader (scout_b1h_negflank, scout_ml_trend_lines, scout_frenzy_exits, 17 study fetchers) goes through it, imported at module top so a missing
   helper fails loudly. Writers unchanged. tests/test_binance_cooldown.py pins both units and greps every script for fixed-unit parses.
   Trading engine untouched (services/ / main.py import nothing from scripts/).
+
+## (307) 2026-10-16 — 📦 B22 archived (the FIRST LIVE batch) · 🧮 master STACK 2026-10-16a = today's live exits (WILLY late TP + resting TP, LITE C)
+- **Archive:** `reports/BASELINE22_batch1014-1016_LIVE_orders.csv` = export scalpars_orders_live_2026-10-16_19-07-25 (22 CLOSED live bot fills,
+  is_paper false, opened 2026-10-14 21:40 → 2026-10-16 11:58; go-live 2026-10-14 18:36:30 UTC; 0 manual). The decisions-journal export beside
+  it (`…_LIVE_decisions.csv`) is NOT an orders archive → `discover_eras` skips `*_decisions*` (test added). **Paper gap check:** the last
+  B21 fill opened 2026-10-14 15:55:08 (paper export 17-24-40 UTC holds nothing later); the mode-agnostic journal covers 15:50 → 21:45 every hour
+  (SCAN / BLOCK / BOOK rows) with NO OPEN between 15:55:08 and 21:40:09 → there are NO paper fills between B21 and the go-live.
+- **As traded:** 22 · 59 % · Σ −8.51 % · −$206.58 — LITE 4 · 25 % · −6.11 % · −$146.33 · LONG 3 · 67 % · +0.65 % · +$0.65 · WILLY 8 · 63 % ·
+  −5.52 % · −$139.22 · ML 6 · 67 % · +0.94 % · +$3.68 · SURGE_LONG 1 · +1.53 % · +$74.64. Live margins ≈ $250 (paper ≈ $700) → % is the yardstick.
+- **STACK 2026-10-16a (rules shipped since 10-14b, DECISION_LOG 292–306 checked; only these change what is taken / how it exits):**
+  ① WILLY (296 + 297): every WILLY fill re-walked on its own path with the late TP (+0.25 from minute 30) and the resting maker TP (a TP books
+  EXACTLY the line, not the first print through it): `scripts/build_willy_exit_cf.py` now calls scout_willy_timecap.evaluate_late(book="live")
+  (the Scout walker since DL 304); `reports/WILLY_EXIT_CF.csv` exit_rule `+1.25/-4/90/late30@+0.25/rtp`, 27 rows, 0 unresolved; the builder's
+  WILLY_EXIT_FROZEN matches. Assumptions: a touch of the line fills the resting limit (paper needs ≥ 1 tick through; queue / partials not
+  modelled); stops = first print through −4 (unchanged convention — live B22 stops filled −3.79 / −3.86 (DUSK −3.43 is a late TP in the CF), so the walker is ≤ 0.21 pt
+  conservative on stops). ② LITE C (301): each LITE fill at its own TP via services.frenzy.frenzy_lite_c_tp on frozen values
+  (`FRENZY_LITE_C_ENABLED/VOL/SLOPE/TP_FROZEN` True / 20 / 0 / 2; a missing stamp → +2): recorded net peak ≥ the row's TP books it (first-touch
+  as 10-08a / 10-12d), else the as-traded pct. Every master LITE row carries both stamps. ③ LITE resting TP (296): no change — the master already
+  books a LITE TP at the line. ④ ML 5× at 0.2 margin (298): size-only, same notional as 1× → $ unchanged (5 post-298 B22 longs carry
+  momentum_long_ref_leverage 1.0, factor 1; MOMENTUM_LONG_LEV_FROZEN stays 0.05). 292–295 (go-live plumbing / shadows), 299 / 300 / 302 / 305
+  (observe lines), 303 / 304 / 306 (research / tooling) change nothing priced.
+- **B22 under today's stack:** 22 kept · 0 refused · 68 % · Σ +0.17 % · +$12.14 — WILLY 8 · 75 % · −1.50 % · −$31.84 (DUSK −3.43 → late TP +0.25;
+  ZK / BLUR / RLC / PYTH / BAT TPs +1.08…+1.18 → +1.25; STRK −3.79 → −4.00, ICNT −3.86 → −4.00) · LITE 4 · 50 % · −1.47 % · −$35.10 (EPIC −3.43 →
+  +2 saved, DEEP +2.80 → +2 capped, DUSK / ZK as traded) · LONG 3 · +0.65 % · +$0.65 (AGT / ICNT TPs at the +1.5 line) · ML 6 · +0.97 % · +$3.79
+  (OP CF_ARM040 +0.07 → +0.10, the standing builder CF) · SURGE 1 · +$74.64 (EMA-gap filter passes).
+- **Master (non-probe kept):** 462 · 69.0 % · Σ +73.99 % · +$5,538.60 → 484 · 69.6 % · Σ +81.06 % · +$6,001.36. 19 existing rows moved
+  (+$450.62 / +6.90 pts; no keep/refuse flips, no other column changed): LITE C 3 rows +$229.51 (MET / HEMI 10-07 +3 → +2 −$125.75, BTW 10-14
+  −3.00 → +2 +$355.26) · WILLY late TP 2 rows +$235.92 (ZK 10-09 CAP −2.15 → +0.25, API3 10-09 CAP −1.48 → +0.25) · 14 WILLY TPs print → line
+  −$14.81. By batch: B18 +$209.35 → +$83.60 · B19 +$686.71 → +$910.79 · B20 −$179.69 → −$182.28 · B21 +$266.43 → +$621.31 · B22 new +$12.14.
+  By sleeve: WILLY 27 · 85 % · +$673.62 · LITE 24 · 58 % · +$505.79 · FRENZY_LONG 26 · −$1.43 · ML 145 · +$142.47 · SURGE_LONG 1 · +$74.64.
+  ⚠ The LITE C and late-TP gains are IN-SAMPLE (BTW / EPIC / DUSK / ZK / API3 are the fills those rules were built from) — never evidence for them.
+- **Checks:** SCREENED_BASELINE re-run → byte-identical (v23, no sleeve it screens moved; no version bump). validate_against_master ALL CHECKS PASS
+  (F2: B22 is the only era past the BTC 5m cache, 22/391). pytest 1,385 green; pins moved deliberately: STACK_VERSION 2026-10-14b → 2026-10-16a in 6
+  tests; test_master_frenzy_lock_wide (LITE TP per row, WILLY exit_rule + line / late asserts); test_master_stack_pct (LITE C TP); new
+  tests/test_master_lite_c.py (frozen values = trading_config.json, rule, master LITE rows, B22 era); test_master_pool_eras (decisions file ignored).
+- **Files:** scripts/build_master_pool.py · scripts/build_willy_exit_cf.py · reports/WILLY_EXIT_CF.csv · reports/MASTER_POOL_stacked.csv ·
+  reports/BASELINE22_batch1014-1016_LIVE_orders.csv (committed; the _decisions.csv journal stays LOCAL, gitignored — operator 2026-10-16) · tests (above) · CLAUDE_CURRENT_STATE.md (B22 boundary + MASTER STACK pins).
+- **(307) review note:** there is still 0 live evidence of a WILLY resting-TP fill (the 5 B22 WILLY TPs pre-date DL 296 and booked +1.08…+1.18 by taker; the one post-296 WILLY, ICNT, stopped with 0 qty filled) — the master's "+1.25 at the line" is an assumption (≈ +0.69 pt optimistic on B22). First read at the next batch: do post-296 WILLY TPs book ≈ +1.25 as MAKER fills?

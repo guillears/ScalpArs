@@ -27,10 +27,17 @@ def test_frenzy_fixed_tp_pricing():
     assert f.peak_pnl.notna().all()
     lt = float(th["frenzy_lite_tp_pct"])
     assert lt == 3.0                                                             # DECISION_LOG 284: LITE's own TP, LONG / WIDE +1.5
-    tps = np.where((f.entry_strategy.astype(str) == "FRENZY_LITE") & (lt > 0), lt, tp)
+    # 10-16a (DECISION_LOG 301) LITE C: a LITE fill runs +3 inside the zone (vol mult ≥ 20 ∧ BTC 1h slope > 0), else +2 (missing stamp → +2)
+    assert th["frenzy_lite_c_enabled"] is True and float(th["frenzy_lite_c_tp_pct"]) == 2.0
+    vm, bs = pd.to_numeric(f.entry_frenzy_vol_mult, errors="coerce"), pd.to_numeric(f.entry_btc_1h_slope, errors="coerce")
+    zone = (vm >= float(th["frenzy_lite_c_vol_mult"])) & (bs > float(th["frenzy_lite_c_btc_slope_min"]))
+    lite = f.entry_strategy.astype(str) == "FRENZY_LITE"
+    tps = np.where(lite, np.where(zone, lt, float(th["frenzy_lite_c_tp_pct"])), tp)
     hit = f[f.peak_pnl.astype(float).values >= tps]
-    assert len(hit) >= 4 and np.allclose(hit.stack_pct, np.where(hit.entry_strategy.astype(str) == "FRENZY_LITE", lt, tp))
-    assert ((hit.entry_strategy.astype(str) == "FRENZY_LITE") & np.isclose(hit.stack_pct, 3.0)).any()                     # RLC / MOVR / AIN 10-04 / SAND 10-04 05:05 (stopped −3 live after a +3.26 peak)
+    assert len(hit) >= 4 and np.allclose(hit.stack_pct, tps[f.peak_pnl.astype(float).values >= tps])
+    assert ((hit.entry_strategy.astype(str) == "FRENZY_LITE") & np.isclose(hit.stack_pct, 3.0)).any()                     # zone LITE fills (B19 W / MAGIC / STRK …) book +3
+    two = hit[(hit.entry_strategy.astype(str) == "FRENZY_LITE") & np.isclose(hit.stack_pct, 2.0)]
+    assert {"METUSDT", "HEMIUSDT", "BTWUSDT", "DEEPUSDT", "EPICUSDT"} <= set(two.pair)   # 301: capped MET / HEMI / DEEP, saved BTW / EPIC
     rest = f[f.peak_pnl.astype(float).values < tps]
     assert len(rest) > 0 and np.allclose(rest.stack_pct, rest.pnl_percentage)    # −3 stops before +3 stay as traded
     assert (np.sign(f.stack_pnl) == np.sign(f.stack_pct)).all()
@@ -79,7 +86,7 @@ def test_wide_off_refused_in_master():
     assert len(w) >= 12 and not (w.stack_keep == True).any() and (w.stack_pnl == 0).all() and w.stack_pct.isna().all()
     assert set(w.stack_block_reason) <= {"FRENZY_WIDE_OFF", "PAIR_BLACKLIST", "SLEEVE_PAIR_BLACKLIST"} and (w.stack_block_reason == "FRENZY_WIDE_OFF").sum() >= 12
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
-    assert "k, why = False, 'FRENZY_WIDE_OFF'" in bld and (M.stack_version == "2026-10-14b").all()
+    assert "k, why = False, 'FRENZY_WIDE_OFF'" in bld and (M.stack_version == "2026-10-16a").all()
     assert os.path.exists(os.path.join(ROOT, "reports", "WIDE_STREAK_REBUILD.csv"))   # the hold-green replay input stays (re-enable path)
 
 
@@ -87,7 +94,7 @@ def test_b17_archived():
     M = _m()
     assert (M.era == "B17").sum() == 25 and os.path.exists(os.path.join(ROOT, "reports", "BASELINE17_batch1003-1006_orders.csv"))
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-14b"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
+    assert 'STACK_VERSION = "2026-10-16a"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
     assert "WIDE_HG_MAX_ATR_FROZEN = 12.0, 3.0" in bld and "Prior 10-06d — 10-06d:" in bld   # the STACK history keeps every step
 
 
@@ -117,7 +124,14 @@ def test_willy_priced_at_todays_exit():
     w = M[(M.stack_keep == True) & (M.entry_strategy.astype(str) == "FRENZY_WILLY")]
     cf = pd.read_csv(os.path.join(ROOT, "reports", "WILLY_EXIT_CF.csv"))
     th = _th()
-    assert cf.exit_rule.eq(f"+{float(th['frenzy_willy_tp_pct']):g}/-{abs(float(th['frenzy_willy_stop_pct'])):g}/{int(th['frenzy_willy_max_hold_minutes'])}").all()
+    # 10-16a: + the late TP (DECISION_LOG 297) and the resting maker TP (296) — scripts/build_willy_exit_cf.py exit_rule
+    assert th["resting_tp_willy_enabled"] is True and 0 < float(th["frenzy_willy_late_tp_pct"]) < float(th["frenzy_willy_tp_pct"])
+    assert cf.exit_rule.eq(f"+{float(th['frenzy_willy_tp_pct']):g}/-{abs(float(th['frenzy_willy_stop_pct'])):g}/{int(th['frenzy_willy_max_hold_minutes'])}"
+                           f"/late{float(th['frenzy_willy_late_tp_minutes']):g}@+{float(th['frenzy_willy_late_tp_pct']):g}/rtp").all()
+    tpw = float(th["frenzy_willy_tp_pct"])
+    assert np.allclose(cf.cf_pct[cf.cf_why == "TP"], tpw)                        # 296: a resting TP books exactly the line
+    late = cf[cf.cf_why == "LATE_TP"]
+    assert len(late) >= 3 and (late.cf_min >= float(th["frenzy_willy_late_tp_minutes"])).all() and (late.cf_pct >= float(th["frenzy_willy_late_tp_pct"]) - 1e-9).all()   # ZK / API3 10-09, DUSK 10-15
     # an UNRES row (no path cache yet) keeps its as-traded pct — allowed ONLY for fills opened after the DL 281 deploy (B20+), which already
     # traded today's +1.25 / −4 / 90 live; an older fill must carry a re-walked cf_pct
     m = {(str(a)[:19], p): (c if pd.notna(c) else (lp if str(a)[:19] >= "2026-10-12T04:00" else float("nan")))

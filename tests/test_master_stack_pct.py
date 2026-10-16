@@ -20,7 +20,11 @@ def test_stack_pct_ignores_size_reprices():
     t_ = th.get("thresholds", th); tp = float(t_.get("frenzy_tp_pct", 0) or 0)
     assert float(t_.get("frenzy_lock_arm_pct", 0) or 0) == 0                     # 10-08a (250): the lock is off — the fixed TP prices FRENZY
     lt = float(t_.get("frenzy_lite_tp_pct", 0) or 0)                       # DECISION_LOG 284: FRENZY_LITE's own TP when > 0
-    tps = pd.Series(np.where((k.entry_strategy.astype(str) == "FRENZY_LITE") & (lt > 0), lt, tp), index=k.index)
+    # 10-16a (DECISION_LOG 301) LITE C: +lt inside the zone (vol mult ≥ 20 ∧ BTC 1h slope > 0), else the C TP (+2)
+    zone = ((pd.to_numeric(k.entry_frenzy_vol_mult, errors="coerce") >= float(t_["frenzy_lite_c_vol_mult"]))
+            & (pd.to_numeric(k.entry_btc_1h_slope, errors="coerce") > float(t_["frenzy_lite_c_btc_slope_min"])))
+    lt_row = np.where(zone, lt, min(float(t_["frenzy_lite_c_tp_pct"]), lt)) if t_.get("frenzy_lite_c_enabled") else lt
+    tps = pd.Series(np.where((k.entry_strategy.astype(str) == "FRENZY_LITE") & (lt > 0), lt_row, tp), index=k.index)
     frenzy_tp = k.entry_strategy.astype(str).str.startswith("FRENZY") & (tps > 0) & (pd.to_numeric(k.peak_pnl, errors="coerce") >= tps)
     assert frenzy_tp.sum() > 0 and np.allclose(k.stack_pct[frenzy_tp & (k.entry_strategy.astype(str) != "FRENZY_WILLY")], tps[frenzy_tp & (k.entry_strategy.astype(str) != "FRENZY_WILLY")])       # 10-08a: peak ≥ +3 books +3 (every era)
     willy = k.entry_strategy.astype(str) == "FRENZY_WILLY"                     # 10-12c (282): today's WILLY exit re-walked (WILLY_EXIT_CF.csv)

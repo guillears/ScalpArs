@@ -19,6 +19,7 @@ def test_discovery_adds_b6_plus_from_archive_naming(tmp_path, monkeypatch):
     (tmp_path / "reports" / "BASELINE6_batch0911-0930_orders_prereset.csv").write_text("x\n")
     (tmp_path / "reports" / "BASELINE7_batch1001_orders.csv").write_text("x\n")
     (tmp_path / "reports" / "BASELINE6_batch0911-0930_split_report.txt").write_text("x\n")  # ignored
+    (tmp_path / "reports" / "BASELINE7_batch1001_LIVE_decisions.csv").write_text("x\n")    # 10-16a: decisions-journal export beside a batch — ignored
     (tmp_path / "reports" / "BASELINE5_batch0826-0903_orders.csv").write_text("x\n")         # n<6 → fixed list only
     monkeypatch.chdir(tmp_path)
     eras = bmp.discover_eras()

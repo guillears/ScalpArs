@@ -258,15 +258,8 @@ def _cooldown_paths():
 
 
 def _cooldown_until():
-    out = 0
-    for p in _cooldown_paths():
-        try:
-            with open(p) as f:
-                v = float(f.read().strip() or 0)
-                out = max(out, int(v * 1000 if 0 < v < 1e11 else v))   # DL 305 review: some study fetchers write SECONDS (float) → ms
-        except Exception:
-            pass
-    return out
+    import binance_cooldown as _BC                                 # DL 306: unit-robust (seconds or ms) shared reader
+    return max([_BC.read_until_ms(p) for p in _cooldown_paths()] + [0])
 
 
 def _arm_cooldown(code, retry_after, now_ms):

@@ -4755,11 +4755,8 @@ def _gvs_rebuilt(sigs, now_ms):
         import scout_gvol as _SG
         have = _SG.cached(sigs)
         need = [s for s in sigs if s not in have and s + BAR <= now_ms and s >= now_ms - _SG.MAX_AGE_MS]
-        try:
-            cd = float(open(os.path.join(TICK_CACHE, ".binance_cooldown_until")).read().strip() or 0)
-        except Exception:
-            cd = 0.0
-        if need and time.time() >= cd:
+        import binance_cooldown as _BC                                 # DL 306: the file is ms (scouts) or s (studies) — compare in ms
+        if need and not _BC.active(os.path.join(TICK_CACHE, ".binance_cooldown_until")):
             import ccxt
             EX = ccxt.binanceusdm({"enableRateLimit": True})
 

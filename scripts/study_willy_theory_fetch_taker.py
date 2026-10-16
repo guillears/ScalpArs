@@ -4,6 +4,7 @@ red bar (one request, limit ≤ 99 → weight 1). Budget: ≤ 800 weight/min sel
 when ≥ 900), 418/429 → stop + the shared cooldown file reports/backtest_cache/.binance_cooldown_until (honoured before starting).
 Cache: reports/willy_theory/k1m_taker/<pair>_<startms>.csv (re-runs never re-fetch). Input: signals.pkl entries + master + live fills.
 """
+import os as _os_bc, sys as _sys_bc; _sys_bc.path.insert(0, _os_bc.path.dirname(_os_bc.path.abspath(__file__))); import binance_cooldown as _BC  # noqa: E401,E402  (DL 306)
 import os, sys, time, json
 import numpy as np, pandas as pd
 import requests
@@ -20,7 +21,7 @@ PACE_S = 60.0 / 800
 
 def cooldown_until():
     try:
-        return int(open(COOL).read().strip() or 0)
+        return _BC.read_until_ms(COOL)   # DL 306: unit-robust (ms)
     except Exception:  # noqa: BLE001
         return 0
 

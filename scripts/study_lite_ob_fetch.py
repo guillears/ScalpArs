@@ -3,6 +3,7 @@
 taker-buy volume (from 2026-10-03 00:00) for every pair in the BOOK snapshots + BTCUSDT. Public fapi, read-only.
 Budget: limit 1000 (weight 5), pause when X-MBX-USED-WEIGHT-1M > 900, stop on 418/429 and arm reports/backtest_cache/.binance_cooldown_until.
 Output reports/lite_ob/k5m/<PAIR>.csv and reports/lite_ob/k1m/<PAIR>.csv. Resumable (skips a pair/interval already covered)."""
+import os as _os_bc, sys as _sys_bc; _sys_bc.path.insert(0, _os_bc.path.dirname(_os_bc.path.abspath(__file__))); import binance_cooldown as _BC  # noqa: E401,E402  (DL 306)
 import os, sys, time
 import pandas as pd, requests
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -16,7 +17,7 @@ ST = {"w": 0, "calls": 0}
 def get(params):
     if os.path.exists(CD):
         try:
-            if float(open(CD).read().strip() or 0) > time.time():
+            if _BC.active(CD):
                 sys.exit("cooldown active — stop")
         except ValueError:
             pass

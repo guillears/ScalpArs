@@ -4,6 +4,7 @@ series is close-only (ADX impossible from cache), plus 3 parity symbols. ≤ 2 w
 pauses at ≥ 700, stops on 418/429 and arms reports/backtest_cache/.binance_cooldown_until. Writes reports/ml_dt2d_fetch/{1h,4h}/.
     venv/bin/python -W ignore scripts/study_ml_dt2d_fu_fetch.py SYM [SYM ...]
 """
+import os as _os_bc, sys as _sys_bc; _sys_bc.path.insert(0, _os_bc.path.dirname(_os_bc.path.abspath(__file__))); import binance_cooldown as _BC  # noqa: E401,E402  (DL 306)
 import json
 import os
 import sys
@@ -20,7 +21,7 @@ OUT = os.path.join(ROOT, "reports/ml_dt2d_fetch")
 
 def cooldown_live():
     try:
-        return int(open(COOL).read().strip() or 0) > time.time() * 1000
+        return _BC.active(COOL)
     except Exception:
         return False
 

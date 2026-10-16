@@ -232,8 +232,8 @@ def _cooldown_until():
     """the ONE shared scout cooldown (NF.SHARED_COOLDOWN, the ban is per IP) + legacy per-line files (read for one release)."""
     out = NF._cooldown_until()
     try:
-        with open(COOLDOWN) as f:
-            out = max(out, int(f.read().strip() or 0))
+        import binance_cooldown as _BC                             # DL 306: unit-robust
+        out = max(out, _BC.read_until_ms(COOLDOWN))
     except Exception:
         pass
     return out

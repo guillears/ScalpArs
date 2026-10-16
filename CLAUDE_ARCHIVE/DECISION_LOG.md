@@ -7072,3 +7072,13 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **SKIPPED:** momentum-long "ADX falling ∧ pair volume ratio > 0.695" (reports/ML_ADXFALL_2D_2026-10-16.md) — on TODAY's rules master
   +19.6 → +21.6 % / +$139 → +$159 (29 skipped, 19 W / 10 L); the +$2,540 first shown was AS-TRADED master (old sizing / trades today's
   stack blocks) — wrong baseline, corrected. Momentum longs trade ≈ $7 per 1 % today. Also: all 12 theory predictions for ADX-falling × X failed.
+
+## (306) 2026-10-16 — ⏳ Binance cooldown file: one unit-robust reader (research tooling, operator: "do this task here")
+- **Bug:** reports/backtest_cache/.binance_cooldown_until is written in float SECONDS by study fetchers and in MILLISECONDS by the scouts;
+  readers assumed one unit → (a) scout_frenzy_exits._gvs_rebuilt compared time.time() seconds with an ms value → the gvol fetch blocked
+  PERMANENTLY once any scout armed a cooldown; (b) ms-readers ignored a live ban written in seconds; (c) seconds-readers blocked forever on an
+  expired ms value.
+- **Fix:** scripts/binance_cooldown.py (to_ms / read_until_ms / active: value < 1e11 = seconds, else ms; garbage / inf / missing → 0); every
+  reader (scout_b1h_negflank, scout_ml_trend_lines, scout_frenzy_exits, 17 study fetchers) goes through it, imported at module top so a missing
+  helper fails loudly. Writers unchanged. tests/test_binance_cooldown.py pins both units and greps every script for fixed-unit parses.
+  Trading engine untouched (services/ / main.py import nothing from scripts/).

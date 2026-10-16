@@ -10,6 +10,7 @@ Every fill gets k_* features rebuilt from 5m klines (cache only + reports/ml_dt2
 ML_WL_1015 market-impulse features where that file has the fill. Output: reports/ML_DT2D_features.pkl
     venv/bin/python -W ignore scripts/study_ml_dt2d_build.py [--fetch]
 """
+import os as _os_bc, sys as _sys_bc; _sys_bc.path.insert(0, _os_bc.path.dirname(_os_bc.path.abspath(__file__))); import binance_cooldown as _BC  # noqa: E401,E402  (DL 306)
 import glob
 import json
 import os
@@ -149,7 +150,7 @@ def fetch_missing(D):
     now = int(time.time() * 1000)
     for f in COOLDOWNS:
         try:
-            if int(open(f).read().strip() or 0) > now:
+            if _BC.read_until_ms(f) > now:   # DL 306: unit-robust (ms)
                 print("cooldown live — no fetch"); return
         except Exception:
             pass

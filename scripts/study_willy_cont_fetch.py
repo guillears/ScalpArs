@@ -5,6 +5,7 @@ Budget (SHARED with another study): ≤ 1,200 weight/min; pause while X-MBX-USED
 cooldown file reports/backtest_cache/.binance_cooldown_until (honoured before starting and before each call).
 Cache reports/willy_cont/k1m/<pair>_<startms>.csv (re-runs never re-fetch). Pre-registration: reports/WILLY_CONT_PREREG.txt.
 """
+import os as _os_bc, sys as _sys_bc; _sys_bc.path.insert(0, _os_bc.path.dirname(_os_bc.path.abspath(__file__))); import binance_cooldown as _BC  # noqa: E401,E402  (DL 306)
 import os, sys, time
 import pandas as pd
 import requests
@@ -29,7 +30,7 @@ def ms(s):
 
 def cooldown_until():
     try:
-        return int(open(COOL).read().strip() or 0)
+        return _BC.read_until_ms(COOL)   # DL 306: unit-robust (ms)
     except Exception:  # noqa: BLE001
         return 0
 

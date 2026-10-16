@@ -5,6 +5,7 @@ Budget <= 1,200 weight/min: limit 1000 (weight 5), pause when X-MBX-USED-WEIGHT-
 reports/backtest_cache/.binance_cooldown_until. Output reports/lite_at1/k1m/<PAIR>.csv (never backtest_cache). Resumable.
 Refuses to run without reports/LITE_AT1_PREREG.txt.
 """
+import os as _os_bc, sys as _sys_bc; _sys_bc.path.insert(0, _os_bc.path.dirname(_os_bc.path.abspath(__file__))); import binance_cooldown as _BC  # noqa: E401,E402  (DL 306)
 import os, sys, time, json, hashlib
 import numpy as np, pandas as pd, requests
 
@@ -23,7 +24,7 @@ LIVE_CSV = os.path.expanduser("~/Downloads/scalpars_orders_live_2026-10-15_21-18
 def cooldown_check():
     if os.path.exists(CD):
         try:
-            if float(open(CD).read().strip() or 0) > time.time():
+            if _BC.active(CD):
                 raise SystemExit("cooldown active — stop")
         except ValueError:
             pass

@@ -5,6 +5,7 @@ avg quote volume on the latest cached k1d). Public fapi, read-only. Budget: read
 Pre-registration: reports/ML_REGIME_PREREG.txt (section 0).
     venv/bin/python scripts/study_ml_regime_fetch.py
 """
+import os as _os_bc, sys as _sys_bc; _sys_bc.path.insert(0, _os_bc.path.dirname(_os_bc.path.abspath(__file__))); import binance_cooldown as _BC  # noqa: E401,E402  (DL 306)
 import os, sys, time
 import pandas as pd, requests
 
@@ -21,7 +22,7 @@ STATE = {"w": 0, "calls": 0}
 def cooldown_check():
     if os.path.exists(CD):
         try:
-            if float(open(CD).read().strip() or 0) > time.time():
+            if _BC.active(CD):
                 raise SystemExit("cooldown active — stop")
         except ValueError:
             pass

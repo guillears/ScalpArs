@@ -1,0 +1,70 @@
+ML_DOWNTREND_2D — PRE-REGISTRATION (2026-10-16, written before ANY 2D / split outcome table was computed)
+=================================================================================================================
+Operator question: "is there not a 2D with PAIR_1H_DOWNTREND?"  Research only — no engine / config / template / test edits,
+no commit, no bot API, backtest_cache + engine_replay*.py untouched (read-only).
+
+Disclosure of what was SEEN before writing this file (1D zone only, no second variable):
+  · line cohort (scout_ml_trend_lines.load_orders, ≥ 2026-09-30, ex-washed): zone 18 · 33 % · −0.153 % (10 d), rest 11 · 55 % · −0.063 %
+  · replay zone vs rest (stamp): 2025 1530 · −0.183 vs −0.193 · 2026-H1 577 · −0.091 vs −0.084 · 2026-H2 170 · −0.156 vs +0.053
+  · master stamp coverage 13 % (→ rebuild needed).  No 2D cell, split or second-variable number was looked at.
+
+ZONE   DT = coin 1h EMA20 ≤ EMA200: stamped entry_pair_1h_ema20_200_gap_pct ≤ 0; where the stamp is missing, the kline REBUILD
+       (study_negflank2d_features.sym_grid convention: 1h closes from 5m, ewm adjust=False, forming bar = latest close, last 5m bar
+       closed ≤ fill, ≤ 15 min stale) — rebuild sign agreement vs stamp reported. Unscored never counts as rest (excluded, counted).
+
+STEP 0 — THEORY (plain English)
+  A momentum long on a coin whose 1h EMA20 is below its 1h EMA200 is buying a 5m pop inside a larger downtrend.
+  Two stories compete:
+   (a) COUNTER-TREND BOUNCE (fails): the pop runs straight into overhead supply — the falling 1h EMA20/EMA50/EMA200 and the
+       sellers who bought higher. Short-covering lifts it for a few minutes, then the higher-TF trend resumes → our SL.
+       Worse when the coin is DEEP below the EMA200, when the 1h gap is still WIDENING (trend accelerating down), when the
+       price is still BELOW the 1h EMA200 (resistance overhead), when BTC is also falling (no tide), when the coin's 4h trend
+       is down too, and when ADX is falling (no fresh thrust).
+   (b) EARLY REVERSAL (works): the coin has already turned — the 1h gap is NARROWING fast, the price has RECLAIMED the 1h
+       EMA200 (EMA20 just lags), the 4h trend is turning, BTC is rising, volume is expanding, ADX is rising. Then the 5m signal
+       is the first leg of a new trend, not a bounce.
+  So the theory predicts the zone is NOT uniformly bad: it should split by (i) depth, (ii) gap direction (narrowing vs widening),
+  (iii) price vs EMA200, (iv) BTC direction, (v) coin 4h trend, (vi) ADX direction, (vii) volume expansion.
+
+PRE-REGISTERED THEORY PAIRS (tested FIRST; family of 7 → Bonferroni α 0.05/7 = 0.0071 on the 2025 discovery read;
+direction fixed below = the "bad" side inside the zone; cut fixed here, never moved)
+  T1 DEPTH      bad = g1h ≤ −3.0 %   (deep: EMA20 ≥ 3 % below EMA200)          good = −3.0 < g1h ≤ 0
+  T2 NARROWING  bad = Δg1h over the last 4 h ≤ 0 (gap still widening/flat)       good = Δ4h > 0 (narrowing → reversal)
+  T3 RECLAIM    bad = price ≤ 1h EMA200                                         good = price > 1h EMA200
+  T4 BTC 1h     bad = entry_btc_1h_slope ≤ 0                                     good = > 0
+  T5 COIN 4h    bad = coin 4h EMA20 ≤ EMA50 (rebuilt)                            good = > EMA50
+  T6 ADX DIR    bad = entry_adx − entry_adx_prev ≤ 0                             good = > 0
+  T7 VOLUME     bad = entry_pair_volume_ratio ≤ its 2025-zone median (label-blind) good = above
+  For each: inside-zone split Δ = mean(DT ∧ bad) − mean(DT ∧ good) and the block cell DT ∧ bad vs REST (everything else scored).
+  Theory is SUPPORTED only if Δ < 0 in ALL three replay eras (2025 / 2026-H1 / 2026-H2, seeds pooled, day-clustered CI) AND the
+  2025 read beats Bonferroni on the day-block-shuffled null AND master and the fresh line cohort point the same way.
+
+EXHAUSTIVE SCREEN (after the theory pairs)
+  Variables: every numeric entry_* stamp (replay coverage ≥ 90 % in every era, ≥ 2 distinct values; NON_SIGNAL plumbing,
+  pattern flags with < 2 levels excluded), the derived d_* stamps (ADX/RSI/BTC dirs, fan ratio, hour), the rebuilt k_* klines
+  features (g1h Δ1h/Δ4h/Δ24h, price vs 1h EMA20/EMA200, coin 1h slope, coin 4h gap/slope, coin ret 4h/24h, off 24h high,
+  above 24h low, BTC 4h slope, BTC 1h gap20/200, BTC Δg 4h) and the ML_WL_1015 market-impulse features (btc_r*, breadth,
+  dispersion, volumes, rs15/rs60).  Columns failing coverage are LISTED as blind spots, not silently dropped.
+  Cuts: label-blind, computed ONCE on the 2025 replay ZONE fills (median → 2 halves; terciles → T1 / T2 / T3 / T1∪T2 / T2∪T3),
+  then frozen and applied to every other block.  Cells: X-cell inside the zone.
+  Statistics per cell per era: inside-zone Δ_in = mean(DT∧X) − mean(DT∧¬X); block Δ_rest = mean(DT∧X) − mean(not(DT∧X)).
+  Day-clustered z for each.  Validity: cell ≥ 5 % of the zone fills and ≥ 8 days on both sides, in every era.
+  CONSISTENCY SCORE C = min over the 3 eras of the signed z (same sign in all three, else 0); signed both ways (bad / good cell).
+  NULL: 200 day-block shuffles (outcome day-blocks permuted in time order, each era independently, seeds kept together),
+  max C over the whole search per shuffle → family-wise p = share of shuffles whose max C ≥ the observed C.  Also report the
+  count of cells with C ≥ 1.96 vs the null count distribution.
+  WALK-FORWARD: discover on 2025 (cells with 2025 Δ_in p < 0.05, |Δ| ≥ 0.05 %), confirm on 2026-H1 and 2026-H2 (same sign, each),
+  then master (as-traded and stack_keep views) and the fresh line cohort (same sign = "points the same way").
+  Market-wide X (BTC / breadth / regime / ETH / global volume) read in DAY units (Δ on day means) — window-units rule.
+
+BLOCK CANDIDATE BAR (expectancy, sleeve breakeven ≈ 62 % — recomputed per block from current-stack fills)
+  ① WR < breakeven · ② mean < 0 at ≥ 95 % by day-clustered bootstrap · ③ ≥ 8 distinct days, no day / pair ≥ 50 % of the gross
+  loss · ④ N ≥ 15 — on the FRESH + master blocks (the replay is the discovery set).  Plus two-sided refusal Δ (refused winners
+  subtract), LOMO (leave-one-month-out on the replay), 30–50 % in-sample haircut.  A cell passing everything except confidence
+  = observe line with a FROZEN threshold; nothing is armed from this study.
+
+VERDICT ladder:  CANDIDATE (observe line, frozen gate) iff a cell holds in all 3 replay eras + family-wise p < 0.05 (or theory
+  pair beats Bonferroni) + same sign in master AND the fresh cohort.  Otherwise NOTHING (the zone stays a 1D observe line).
+  Cross-period (old master pool) evidence may only REFUTE.  Backtest numbers quoted on today's stack (YR6_2Y_TODAY, today's exits).
+
+SHA-256 of this file is recorded in the deliverable after writing.

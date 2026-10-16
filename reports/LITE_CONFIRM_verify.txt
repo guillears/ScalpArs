@@ -1,0 +1,2 @@
+WAY 2 (independent event loop) vs WAY 1 (vectorized): 160 fills · 34560 cell-ruler checks · mismatches 0
+

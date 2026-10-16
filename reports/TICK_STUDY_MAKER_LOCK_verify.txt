@@ -1,0 +1,17 @@
+Independent re-implementation on 30 tick fills (12 WILLY / 18 LITE; 20 random + 10 targeted MISS / LOCK cases):
+  A L0.8                 30/30 identical
+  B L0.8                 30/30 identical
+  B+worst L0.8           30/30 identical
+  A L1.5                 30/30 identical
+  B L1.5                 30/30 identical
+  B+worst L1.5           30/30 identical
+  A L2.6                 30/30 identical
+  B L2.6                 30/30 identical
+  B+worst L2.6           30/30 identical
+  Q3 base (lat 1.5)      30/30 identical
+  Q3 lock 0.8/0.0        12/12 identical
+  Q3 lock 1.0/0.3        12/12 identical
+  Q2 today T1            30/30 identical
+  Q2 limit P0 10s skip   30/30 identical
+  Q3 lock 1.5/0.0        18/18 identical
+  Q3 lock 2.0/0.5        18/18 identical

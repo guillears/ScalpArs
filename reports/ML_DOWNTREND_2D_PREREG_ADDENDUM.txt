@@ -1,0 +1,48 @@
+ML_DOWNTREND_2D — PRE-REGISTRATION ADDENDUM A (2026-10-16, written before ANY outcome table on the new features)
+=================================================================================================================
+Parent prereg: reports/ML_DOWNTREND_2D_PREREG.txt (sha 79a1f0ff…, unchanged). Same cohort, same blocks, same machinery,
+same cuts rule, same validity rule, same null, same verdict ladder. Research only.
+Disclosure: nothing about the new features has been looked at except that 5m klines with real high/low exist in the caches
+(no coverage, no outcome). Operator extension received mid-design ("why not EMA20 and EMA13 too?") is folded in below,
+also before any outcome table.
+
+WHY: operator coverage question. Gaps in the 106-variable screen: (1) coin RSI14 / ADX14 on 1h and 4h (only 5m RSI/ADX in);
+(2) coin price distance from its EMAs on 5m / 1h / 4h and above/below flags; (3) 3-way combinations.
+
+NEW FEATURES (coin only; all LOOKAHEAD-FREE, from LAST CLOSED bars at the fill time t):
+  · bars: 1h and 4h OHLC aggregated from cached 5m klines (UTC-aligned buckets; a 1h/4h bar is used only if its close time ≤ t;
+    5m "price" = close of the last closed 5m bar ≤ t, ≤ 15 min stale else NaN). Missing hours are forward-filled; a feature is NaN
+    if > 2 hours (1h) / > 1 bar (4h) are missing in its last 42 bars. ADX needs real high/low: any close-only source bar
+    (scout_ml_trend/5m cache) inside the last 42 bars → ADX NaN.
+  · indicators: ta library (engine library, services/indicators.py): RSIIndicator(14), ADXIndicator(14), EMAIndicator(span).
+    Warm-up guard: RSI/ADX need ≥ 100 closed bars of that TF; EMA(span) needs ≥ 2·span closed bars (else NaN).
+  F1  n_rsi1h, n_rsi1h_dir (= value − value one closed 1h bar earlier), n_adx1h, n_adx1h_dir
+  F2  n_rsi4h, n_rsi4h_dir, n_adx4h, n_adx4h_dir
+  F3  n_px_{5m,1h,4h}_e{5,8,13,20,50,100,200} = (price / EMA_span of that TF at its last closed bar − 1) × 100, EXCEPT the four
+      already in the 106 set and therefore not rebuilt: 5m EMA5 (entry_price_vs_ema5_pct), 5m EMA13 (entry_dist_from_ema13_pct),
+      1h EMA20 (k_px_e20), 1h EMA200 (k_px_e200). → 17 new distance variables.
+  F4  above/below flags: for each of the 17 new distances AND the 4 existing ones, the cell pair x > 0 / x ≤ 0 (21 flags).
+  Total new family: 8 RSI/ADX variables + 17 distances (+ 21 sign flags as cells). Coverage per block is reported; unscored
+  fills are excluded from both sides (never "rest"); a variable with < 90 % coverage in any replay era is a listed blind spot,
+  read separately, not in the main family.
+
+CELLS (label-blind, cut ONCE on the 2025 replay DT-zone fills, frozen): median halves + T1/T2/T3/T1∪T2/T2∪T3 (as the parent),
+  plus the sign pair (x ≤ 0 / x > 0) for every *_dir and every distance variable.
+
+TEST A (2D, new family): each cell inside the zone (Δ_in) and as zone∧X vs rest (Δ_rest), per era, day-clustered z,
+  consistency C = signed min |z| over the 3 eras; validity as parent (≥ 5 % of zone and ≥ 8 days both sides, every era).
+  Null: 200 day-block shuffles; family-wise p from max|C| over (i) the new family alone and (ii) the FULL family = the parent's
+  697 cells + the new cells, both on the SAME shuffles. Walk-forward discover 2025 (|z| ≥ 1.96, |Δ| ≥ 0.05) → same sign in
+  2026-H1 AND 2026-H2, count vs the shuffled-null count; then master (as-traded, stack_keep) and fresh pointing.
+
+TEST B (LIMITED 3-way): DT ∧ X_side ∧ T_side, where X_side = the two median halves (sign halves for *_dir and distances) of each
+  new variable, T_side = the BAD / GOOD side of each of the 7 parent theory variables at their prereg cuts (T1 g1h ≤ −3; T2
+  k_g1h_chg4h ≤ 0; T3 k_px_e200 ≤ 0; T4 BTC 1h slope ≤ 0; T5 k_gap4h ≤ 0; T6 d_adx_dir ≤ 0; T7 pair vol ratio ≤ 2025-zone
+  median). Cells = 25 vars × 2 × 7 × 2 = 700 (minus trivial duplicates). Statistic: cell vs the rest of the zone (Δ_in) and
+  vs all other scored fills (Δ_rest); same validity, same 200 shuffles, family-wise p over the 3-way family and over the
+  union (parent + 2D-new + 3-way). Walk-forward as Test A.
+
+VERDICT (unchanged ladder): CANDIDATE (observe line, frozen gate) only if a cell holds in all 3 replay eras + family-wise p < 0.05
+  on the union family + same sign in master AND the fresh cohort. Expectancy bar on master/fresh for any block candidate as parent.
+  Otherwise NOTHING. Three blocks side by side + before/after (per trade, totals % and $, master per batch, current LIVE batch)
+  are shown for the top cells by |C| regardless of verdict. Nothing is armed from this study.

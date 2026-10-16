@@ -1,0 +1,80 @@
+LITE PROTECT STUDY — PRE-REGISTRATION (frozen 2026-10-15T18:40:45Z, BEFORE any cell was priced)
+Operator 2026-10-15 (firm): "what happened to EPIC cannot happen again — maybe in LITE we should arm the transaction earlier, or any other
+analysis." EPIC (live): entry 0.2865 14:55 UTC, peak +2.60 net at 15:11 (target +3), stopped −3.43 at 16:14.
+Today's LITE exit: TP +3 net = a RESTING maker limit (DL 296) / stop −3 / 720 min cap, 10×.
+Code: scripts/study_lite_protect_*.py (common / prereg / cells / report). Research only; no engine / config / template / test edit; no bot
+API; no commit. Cache-only: no Binance call is planned (cohort paths cached; EPIC / DUSK 1m bars already fetched by the fade study).
+Disclosure — read before this freeze: the three refutations this study must NOT re-run as-is: profit lock A ∈ {+1.5, +2} × L ∈ {0, +0.5}
+(TICK_STUDY_MAKER_LOCK: LITE 2026 −0.05…−0.14, P 0.02 for A 1.5); time / late-TP rules (LITE_LATE_TP_RESTUDY: trades at +1…+2 still
+reach +3 71–76 %); fade signals F1–F3 (LITE_FADE: 52–54 % of fired fills recover to +3). The cells below exclude those exact cells
+(A +2 / L +0.5 IS in the P1 grid as the near-target corner — it was priced by the tick study under a 1.5 s lock latency and the tick-study
+walker; it is re-priced here on this study's zero-latency walker and counted, not treated as new evidence). No outcome of any NEW cell
+on the cohort was looked at. The coordinator's operator addition (stop move after +2 % / +1.5 %) was received before this freeze and is
+included as its own family below.
+
+1. FROZEN INPUTS (sha256)
+   7da3c0b6ecaa728f3390149d923faf9084fe243f135c42c05bd1c5d0269ba1ea  reports/LITE_LATE_cohort.csv
+   bd1e10950f88c22cf7c2e92850fe0261cf75ecdcbb8df5d191979e996a2d1bab  reports/LITE_LATE_cell_rows.csv
+   ea6fe752dea1bcffc26154a1b39bd0f6416f6e77836730d58670461941f32d10  reports/TICK_STUDY_2026-10-15_cohort.csv
+   28bf9ed76798c448b215b5ec7fd6f50f495c5a7d072b84934221a3ebbb807157  reports/lite_fade_klines/live/EPICUSDT_1m.csv
+   080eeff46ba18ae6eb6c3b55132f85fb289908dd2929c2b971896e4fa4a8d6ee  reports/lite_fade_klines/live/DUSKUSDT_1m.csv
+   Cohort = reports/LITE_LATE_cohort.csv BT + MASTER (③ BT yr6 2Y_TODAY seed 1 LITE: 2025 828 (top-50 tick 264 · rest 1m 564) ·
+   2026-H1 370 · 2026-H2 256; ② MASTER B18 2 · B19 13 · B20 1 · B21 4). Today's exit per fill re-priced here and ASSERTED equal to the
+   late re-study rows (base_pct S0 / rm_base_pct RM, path tick from those rows). ① LIVE: DEEP (10-14, recorded only — no path),
+   EPIC + DUSK (not in any export; the fade study's fetched 1m bars, entry = the 5m close + 5 s; the 1m replica may differ from live).
+
+2. CELLS (33 unique). Peak = running max of the walker's net % path (ticks → 1m tail). Every rule acts from the event AFTER
+   the one that triggers it (a 1m bar touching both a TP line and a stop line = stop, FX convention; a 1m bar reaching the arm does not
+   also lock on that same bar).
+   (P1) near-target lock — A ∈ {+2.0, +2.25, +2.5} × L ∈ {+0.5, +1.0, +1.5}: once peak ≥ +A, stop −3 → +L. 9 cells.
+   (P2) trailing near target — A ∈ {+2.0, +2.5} × D ∈ {1.0, 1.5}: once peak ≥ +A, stop = max(peak − D, 0) (peak = events before the
+        current one; the 0 floor never binds since A − D ≥ +0.5, stated). 4 cells.
+   (P3) scale-out — f ∈ {33 %, 50 %} of the position sold at +T1 ∈ {+1.5, +2.0} (resting limit), the rest keeps +3 / −3 / 720 (R) or
+        its stop moves to break-even 0 net after the partial fills (B). Booked as the blended P&L on the whole position:
+        f × partial + (1 − f) × rest. 8 cells.
+   (P4) lower resting TP — TP ∈ {+2.0, +2.25, +2.5} instead of +3 (stop / cap unchanged). 3 cells.
+   OPERATOR ADDITION — "Operator's stop move after +2 %" (own report section): "once the trade reaches +X %, move the stop to
+        2 % / 1.5 % / 1 % max", both readings, X ∈ {+2.0, +1.5} — P1+ profit lock: X 2.0 → L +1.0 / +1.5 / +2.0, X 1.5 → L +1.0 / +1.5;
+        P1− tighter loss: X 2.0 and 1.5 → L −1.0 / −1.5 / −2.0. 11 readings = 9 new cells + 2 shared with P1 (A2 L+1, A2 L+1.5).
+   Cells by family: P1: 9 · P2: 4 · P3: 8 · P4: 3 · P1(operator): 9
+   Full list: P1_A2_L0.5, P1_A2_L1, P1_A2_L1.5, P1_A2.25_L0.5, P1_A2.25_L1, P1_A2.25_L1.5, P1_A2.5_L0.5, P1_A2.5_L1, P1_A2.5_L1.5, P2_A2_D1, P2_A2_D1.5, P2_A2.5_D1, P2_A2.5_D1.5, P3_F33_T1.5_R, P3_F33_T1.5_B, P3_F33_T2_R, P3_F33_T2_B, P3_F50_T1.5_R, P3_F50_T1.5_B, P3_F50_T2_R, P3_F50_T2_B, P4_TP2, P4_TP2.25, P4_TP2.5, P1_A2_L2, P1_A2_L-1, P1_A2_L-1.5, P1_A2_L-2, P1_A1.5_L1, P1_A1.5_L1.5, P1_A1.5_L-1, P1_A1.5_L-1.5, P1_A1.5_L-2
+
+3. RULERS. Δ = cell − today on the same fill (net %/fill), today priced under the SAME ruler.
+   S0 = zero slip, prints: a TP-type level (the +3, the lower TP, the T1 partial) books the first print ≥ the level (1m bar: the line);
+        stops / locks / trails book the print through the line (1m bar: min(line, bar open)). = the replay ruler.
+   RM = resting-limit ruler for EVERY TP-type exit (the +3, the lower TP, the T1 partial): limit at the tick-ceiled price whose maker-exit
+        net = the level; fills only when a print trades ≥ 1 tick through; books the maker net (fee 0.018 %). Stops as S0. = today's live
+        TP mechanism (DL 296), so RM is the primary "today".
+   SL = live slip on top of RM: TP-type maker fills 0; lock / trail / break-even stops and the cap (market) −0.20; the −3 stop 0.00
+        (midpoint of the two live LITE stops, EPIC −0.43 / DUSK +0.46). Sensitivity only (not gating): SLp = −3 stop +0.20 (late-study
+        ruler) and SLe = −3 stop −0.43 (EPIC).
+
+4. GATES — a cell is a CANDIDATE only if ALL hold under S0 AND RM AND SL:
+   G1 mean Δ > 0 with day-clustered bootstrap P(mean Δ > 0) ≥ 0.90 (4,000 resamples, seed 7) in 2025 AND in 2026 separately.
+   G2 master Δ (B18–B21 pooled) mean ≥ 0.
+   G3 leave-one-month-out sign-stable within EACH backtest year.
+   G4 no single day and no single pair ≥ 50 % of ΣΔ (pooled and per year).
+   G5 2025 top-50 (tick) subset same sign as the 2025 total.
+   Any projection: 30–50 % in-sample haircut. One year > 0 and the other < 0 (under S0 or RM) = REGIME-DEPENDENT: read the 25 entry-stamped
+   regime variables at SIGN granularity in DAY units vs a 40× day-shuffled null (the late study's procedure) — hypothesis only, never a ship.
+   A candidate → an observe-only Scout line with a frozen live gate + a stated revert gate; never a ship (the operator may arm it as a
+   declared exception).
+   Multiplicity: 33 cells × 3 rulers; at independence P(G1 in both years) ≈ 0.01 → ≈ 0.3 false passes per
+   ruler (cells nested → fewer effective).
+
+5. TWO-SIDED TABLE per cell and block: SAVED (today STOP / CAP improved, n · Σ pts) · KILLED (today TP booked less) · DEEPER (today STOP /
+   CAP worsened) · other gains; the LIVE-STOPPED read (CLAUDE.md, DL 110): among today's STOP fills only — saved vs deeper — and the
+   EXIT-CF rule: every fill that never reaches the cell's trigger (P1 / P2: peak ≥ A strictly before today's exit event; P3 / P4: a print
+   through the T1 / lower-TP threshold up to today's exit event) must show Δ = 0 — ASSERTED per fill, per cell, per ruler.
+   The "EPIC problem" size: of the fills that peaked ≥ +2.0 / +2.5 (strictly before today's exit) without filling +3, the share ending at
+   −3 (STOP) and at the cap, their Σ points, the cost per cohort fill vs exiting at 0, and the +3 share of all fills that reached the level.
+
+6. PARITY: every cell two ways per ruler (WAY 1 vectorized first-touch on per-event line arrays; WAY 2 an independent event loop) → 100 %
+   asserted; today == FX.evaluate (S0) and == W.cell_rm (RM) and == the late rows, asserted; P4 == FX.evaluate(lower TP) (S0) and ==
+   W.cell_rm / W.cell_seg late-TP-at-T=0 (RM), asserted; P1 vs the tick study's C.walk_lock (lat 0): identical count reported (known
+   difference: a 1m bar opening above L that trades through −3 after the arm — walk_lock books −3, this study the L line); walker today vs
+   the replay's recorded pct_new per year (same kind ∧ |Δ| < 0.10).
+
+7. NOT TESTABLE (in advance): live N = 1 recorded (DEEP, no path) + EPIC / DUSK on 1m bars (seconds of entry unknown); the queue position of
+   a resting partial / lower TP (RM = ≥ 1 tick through); slot effects (an earlier exit frees one of LITE's 2 slots); stop-order mechanics
+   (a lock is priced as a stop-market triggered on the print); 2025 non-top-50 fills are 1m bars only (intrabar order unknown).

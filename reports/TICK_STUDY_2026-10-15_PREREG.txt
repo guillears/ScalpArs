@@ -1,0 +1,82 @@
+TICK STUDY 2026-10-15 — PRE-REGISTRATION (frozen 2026-10-15T12:15:53Z, BEFORE any variant was priced)
+Design: reports/MAKER_TP_ENTRY_DESIGN_2026-10-15.md §6 Phase 1 + §7. Code: scripts/study_tick_maker_lock_*.py. Cache-only, research-only.
+
+1. FROZEN INPUTS (sha256)
+   16064024a56da774a44246e7be91001ea5221cf48f75bc67b43a8c27ed35c067  reports/ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv
+   49be4901ae689294267f40ab837c917028bdc583601e1153454a08098421cd03  reports/MASTER_POOL_stacked.csv
+   ea6fe752dea1bcffc26154a1b39bd0f6416f6e77836730d58670461941f32d10  reports/TICK_STUDY_2026-10-15_cohort.csv
+   5e2ab64713a82588879d1579827b8414648dc58605fa5771ea18dfe8e2d33637  reports/backtest_cache/exchange_ticks.json
+   df72af2a23be7afb304439b60803a31bfd211c227893075a7efc332ee9a4ee16  reports/.live_exports/v1_2026-10-14_18-36-30/scalpars_orders_live_2026-10-15_11-49-46.csv
+
+2. COHORTS (frozen file reports/TICK_STUDY_2026-10-15_cohort.csv; one row per fill, key fid = block|sleeve|pair|te)
+   ③ BT     = ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv, sleeve FRENZY_WILLY / FRENZY_LITE, seed 1 only (FRENZY seeds ≈ one path), CLOSED, non-probe,
+              no duplicate (sleeve, pair, opened_at) (asserted — the 2Y_TODAY file is already trimmed). Year split = the replay's regime:
+              "2025" = 2025 BULL (to 2026-01-03, the same 899 WILLY fills as the DL 291 re-check) · "2026" = 2026-H1 BEAR + 2026-H2 BULL.
+              Every 2025 number is also shown top-50 vs not (pair-day in that day's or the prior day's top-50).
+   ② MASTER = MASTER_POOL_stacked.csv, entry_strategy WILLY / LITE, stack_keep True, per batch (era).
+   ① LIVE   = export_glob post-go-live live rows (is_paper False), CLOSED, dedup (opened_at, pair, direction) — newest export wins.
+   Counts: {('BT', 'FRENZY_LITE', '2025'): np.int64(828), ('BT', 'FRENZY_LITE', '2026-H1'): np.int64(370), ('BT', 'FRENZY_LITE', '2026-H2'): np.int64(256), ('BT', 'FRENZY_WILLY', '2025'): np.int64(899), ('BT', 'FRENZY_WILLY', '2026-H1'): np.int64(411), ('BT', 'FRENZY_WILLY', '2026-H2'): np.int64(208), ('LIVE', 'FRENZY_LITE', 'LIVE'): np.int64(1), ('LIVE', 'FRENZY_WILLY', 'LIVE'): np.int64(4), ('MASTER', 'FRENZY_LITE', 'B18'): np.int64(2), ('MASTER', 'FRENZY_LITE', 'B19'): np.int64(13), ('MASTER', 'FRENZY_LITE', 'B20'): np.int64(1), ('MASTER', 'FRENZY_LITE', 'B21'): np.int64(4), ('MASTER', 'FRENZY_WILLY', 'B19'): np.int64(14), ('MASTER', 'FRENZY_WILLY', 'B20'): np.int64(3), ('MASTER', 'FRENZY_WILLY', 'B21'): np.int64(2)}
+
+3. EXECUTION MODEL (common to every question)
+   net % = (p/E − 1)·100 − fee_in − fee_out·p/E (the bot's accounting); taker 0.045 %, maker 0.018 % per side.
+   Today's exits: WILLY TP +1.25 net / stop −4.0 / 90 min; LITE TP +3.0 / stop −3.0 / 720 min. Entry = the fill's own
+   entry price / time (BT: the replay's fill; MASTER / LIVE: the recorded fill, whole-second stamp → ≤ 1 s look-ahead).
+   Paths: Q1 / Q2 RAW aggTrade prints only (full coverage of the window required; a 1m-only or partly-1m fill is EXCLUDED and counted).
+   Q3 + Scout cells: the FX.load_path hybrid (ticks → 1m tail, flagged; 1m share reported, ticks-only re-read shown).
+   Tick size = exchange_ticks.json (today's) unless the prints sit on a coarser grid (then the inferred gap) — counted.
+
+4. Q1 RESTING TAKE-PROFIT (per sleeve)
+   A(L)  = software TP: first print with net ≥ TP → market exit at the prevailing print L s later, taker; L ∈ (0.8, 1.5, 2.6).
+           Stop and cap are market exits L s after their trigger in EVERY arm (same L) — Δ isolates the TP mechanism.
+   B     = reduce-only post-only limit at ceil_tick(E·(TP + 100 + 0.045)/(100 − 0.018)) (net TP with a maker exit). Fills iff a print
+           ≥ limit + 1 tick occurs before the stop trigger and inside the cap; booked at the limit, maker fee. Else the fill runs to its stop /
+           cap (no software TP in B).
+   B_touch = fills on a print ≥ limit (optimistic queue bound, context only).
+   B+    = under the "through" fill rule B+ is IDENTICAL to B (a ≥ 2-tick-through print is also ≥ 1 tick through). B+ is therefore priced
+           as its queue-PESSIMISTIC bound: the limit never fills; the safety net exits at market at (first print ≥ limit + 2 ticks) + 3 s + L.
+   Primary comparison: B − A(L), judged at EVERY L (a candidate must pass at all three L). Reported: fill rate; A-TP fills that B misses
+   (A triggers, B has not filled by A's trigger time) and their B outcome (later maker fill / stop / cap); missed-fill cost Σ(B − A) on
+   them separately; B-only extra fills (B fills, A never reaches its TP).
+   Parity: A at L = 0 must equal FX.evaluate on the same tick path (expect 100 %) and is compared with the replay's recorded outcome
+   (same exit kind ∧ |Δ| < 0.10) → parity %.
+
+5. Q2 MAKER ENTRY (per sleeve, per SIGNAL)
+   Decision D = the 5m bar close the fill belongs to (floor_5m(entry time)); P0 = last print ≤ D. Order time = D + 8.0 s (live ruler).
+   TODAY = taker: first print ≥ D + 8 s, + slip ruler (T0 0 % · T1 0.036 % (primary, paper-measured) · TL live-calibrated = mean live
+           entry_slippage_pct − the backtest's mean 8 s drift, sensitivity only), taker fee; refused if > 1.0 % from P0 (signal = 0).
+   MAKER(x, T, fb) = post-only limit buy at floor_tick(P0·(1 − x/100)), x ∈ (0.0, 0.1); if that would cross (≥ the last print at D + 8 s)
+           it joins at last print − 1 tick. Fills iff a print ≤ limit − 1 tick in (D + 8, D + 8 + T], T ∈ (5, 10, 20) s; maker fee in.
+           Unfilled → fb ∈ (skip = 0 · taker = the TODAY rule at D + 8 + T, same slip ruler, dislocation guard).
+   Exit (both arms) = today's exit from the fill (first print through TP / stop, cap) with the TRIGGER levels of a taker-entry fill
+           (same price ratios as today); booked with the actual entry fee. Δ per SIGNAL = variant − today (skipped / refused = 0).
+   Reported: fill rate, filled-vs-all P&L, cost of missed trades (today's P&L on the signals the variant skips; share that were TPs).
+
+6. Q3 PROFIT LOCK (per sleeve)
+   Once the print net reaches A, the stop becomes L: the first later print with net ≤ L exits at market at the prevailing print 1.5 s
+   later (taker). WILLY A ∈ {+0.6, +0.8, +1.0} × L ∈ {−1.0, 0.0, +0.3}; LITE A ∈ {+1.5, +2.0} × L ∈ {0.0, +0.5}.
+   BASE = today's exit with the SAME execution (stop −sl at touch + 1.5 s; TP at the first print; cap close). A 1m bar books the line
+   (min(line, bar open)) — provisional.
+   Two-sided: SAVED (base STOP / CAP, lock better) and KILLED (base TP, lock exits lower) counts and Σ; fills the lock never arms before the
+   base exit must show Δ = 0 (asserted). EXIT/STOP CF rule: Δ split by the RECORDED (replay / master / live) outcome; the stopped
+   cohort read as saved (lock exit > base) vs deeper (lock exit ≤ base); fills the recorded exit did NOT stop must carry only TP-cut /
+   cap Δ; the CF is re-read on the parity-matched subset (walker base == recorded outcome).
+   Scout cross-check (NOT candidates): T125C30 (close at 30) · LT30_025 · LT30_03 vs today, zero-latency fill rules (as DL 285 / DL 291),
+   on the same paths, two ways (this walker and study_willy_late_sl.ev). Refs: 2025 seed 1 899 fills LT30_025 Δ −0.016 (P 0.20, top-50
+   −0.031), LT30_03 −0.020 (P 0.14), close at 30 −0.008; 2026 (606 fills, older file) T125C30 −0.013 (P 0.35), LT30_025 +0.018 (P 0.79),
+   LT30_03 +0.022 (P 0.83). STOP RULE: a material disagreement (|Δ − ref| > 0.010 %/fill on 2025 or the sign of a ref with |ref| ≥ 0.015
+   flips) halts the report until explained.
+
+7. GATES (pre-registered — a variant is a CANDIDATE only if ALL hold; a candidate becomes an observe-only Scout line, never a ship)
+   G1 Δ %/fill (Q2: per signal) > 0 with day-clustered bootstrap P(mean Δ > 0) ≥ 0.90 (4,000 resamples, seed 7) in BOTH backtest years
+      (2025 and 2026 separately); Q1: at every L.
+   G2 master Δ (all batches pooled, same rule) not negative (mean ≥ 0; n/a if 0 priced fills — stated).
+   G3 leave-one-month-out: every LOMO mean has the sign of the full mean (both years pooled, then per year reported).
+   G4 no single day and no single pair carries ≥ 50 % of ΣΔ (both years pooled).
+   Primary ruler for Q2 = T1; Q2 candidate status under T0 / TL reported (sensitivity, not a second chance).
+   2025 top-50 subset must show the same sign (stated; the brief's coverage rule).
+   Multiplicity: WILLY 30 variant tests (Q1 9, Q2 12, Q3 9) · LITE 25 (Q1 9, Q2 12, Q3 4) = 55
+      in all (+ 3 Scout cross-check cells, not judged). Expected false passes at P ≥ 0.90 × 2 years if independent and null ≈ 0.6.
+   Any projection: 30–50 % in-sample haircut.
+8. NOT TESTABLE (stated in advance): queue position (a print AT the limit may not reach us → through rule); partial fills; book depth /
+   slippage beyond the prevailing print (live TP fills −0.13…−0.22 include it); historic tick-size changes (today's ticks); 1m-only fills
+   (Q1 / Q2 excluded); live block N ≈ 5 with no tick archive for 2026-10-15 (not fetched — gap reported).

@@ -1,0 +1,98 @@
+grid rows 187968 · coverage (share finite):
+     er_15  upsh_15  spike_15  volconc_15  volslope_15  er_30  upsh_30  spike_30  volconc_30  volslope_30  vwap1h  corr15  L1_btc  L2_eth  L3_sol  L4_xrp  L5_zec  L6_top10  L7_brrise  L8_taker  L9_vsurge  SCORE  CONJ  Y_btc  Y_alt
+cov    1.0      1.0       1.0         1.0          1.0    1.0      1.0       1.0         1.0          1.0     1.0     1.0     1.0     1.0     1.0     1.0     1.0       1.0        1.0       1.0        1.0    1.0   1.0    1.0    1.0
+
+common-mask rows 187954 · test months 2025-04..2026-10 · 200 null shifts
+
+
+## STEP 1 — target Y_btc (OOS, walk-forward; spread = oriented top − bottom, bps)
+       item   kind  orient25  orient26     auc  null_auc99  spr_bps  null_absspr99  spr25_bps  spr26_bps   g_a   g_b  STEP1_PASS  dose_rho_2025  dose_gap_2025_bps  dose_rho_2026  dose_gap_2026_bps   g_c
+      er_15   cont   -1.0000   -1.0000 +0.5254     +0.5038  +0.7031        +0.5681    +0.9538    +0.4635  True False       False            NaN                NaN            NaN                NaN   NaN
+    upsh_15   cont   -1.0000   -1.0000 +0.5162     +0.5041  +0.5181        +0.5660    +0.7747    +0.2727  True False       False            NaN                NaN            NaN                NaN   NaN
+   spike_15   cont   +1.0000   +1.0000 +0.5088     +0.5036  +0.1739        +0.6000    +0.3712    -0.0147  True False       False            NaN                NaN            NaN                NaN   NaN
+ volconc_15   cont   +1.0000   +1.0000 +0.5025     +0.5040  -0.0621        +0.5555    +0.8152    -0.9007 False False       False            NaN                NaN            NaN                NaN   NaN
+volslope_15   cont   -0.7778   -0.2000 +0.4993     +0.5031  +0.0043        +0.4405    +0.1118    -0.0984 False False       False            NaN                NaN            NaN                NaN   NaN
+      er_30   cont   -1.0000   -1.0000 +0.5278     +0.5035  +0.8012        +0.6101    +0.5513    +1.0401  True False       False            NaN                NaN            NaN                NaN   NaN
+    upsh_30   cont   -1.0000   -1.0000 +0.5170     +0.5037  +0.7045        +0.6592    +0.8812    +0.5356  True False       False            NaN                NaN            NaN                NaN   NaN
+   spike_30   cont   -0.3333   +1.0000 +0.5040     +0.5037  +0.1128        +0.6777    +0.2970    -0.0632  True False       False            NaN                NaN            NaN                NaN   NaN
+ volconc_30   cont   -0.3333   +0.8000 +0.4980     +0.5043  -0.5104        +0.6919    -0.0412    -0.9589 False False       False            NaN                NaN            NaN                NaN   NaN
+volslope_30   cont   -1.0000   +0.0000 +0.4997     +0.5047  +0.0365        +0.6099    -0.0223    +0.0926 False False       False            NaN                NaN            NaN                NaN   NaN
+     vwap1h   cont   -1.0000   -1.0000 +0.5273     +0.5048  +0.9369        +0.7944    +1.0286    +0.8492  True False       False            NaN                NaN            NaN                NaN   NaN
+     corr15   cont   +1.0000   +1.0000 +0.5039     +0.5036  +1.5947        +1.1208    +1.3354    +1.8425  True False       False            NaN                NaN            NaN                NaN   NaN
+     L1_btc binary   -1.0000   -1.0000 +0.5129     +0.5028  +0.4893        +0.4006    +0.5783    +0.4042  True False       False            NaN                NaN            NaN                NaN   NaN
+     L2_eth binary   +0.3333   -1.0000 +0.5067     +0.5046  +0.1609        +0.3796    -0.1171    +0.4267 False False       False            NaN                NaN            NaN                NaN   NaN
+     L3_sol binary   -1.0000   -1.0000 +0.5146     +0.5034  +0.2914        +0.3782    +0.2858    +0.2968 False False       False            NaN                NaN            NaN                NaN   NaN
+     L4_xrp binary   -1.0000   -1.0000 +0.5122     +0.5036  +0.2984        +0.3424    +0.3543    +0.2450 False False       False            NaN                NaN            NaN                NaN   NaN
+     L5_zec binary   -1.0000   -1.0000 +0.5074     +0.5026  +0.1113        +0.3948    +0.1369    +0.0868 False False       False            NaN                NaN            NaN                NaN   NaN
+   L6_top10 binary   -0.1111   -1.0000 +0.5068     +0.5033  +0.0542        +0.3712    +0.0601    +0.0486 False False       False            NaN                NaN            NaN                NaN   NaN
+  L7_brrise binary   -0.5556   -1.0000 +0.5039     +0.5032  +0.0126        +0.3350    +0.0285    -0.0026 False False       False            NaN                NaN            NaN                NaN   NaN
+   L8_taker binary   -1.0000   -1.0000 +0.5159     +0.5032  +0.4972        +0.3558    +0.3469    +0.6408  True False       False            NaN                NaN            NaN                NaN   NaN
+  L9_vsurge binary   -1.0000   -0.6000 +0.4991     +0.5029  -0.1103        +0.6798    +0.1880    -0.3955 False False       False            NaN                NaN            NaN                NaN   NaN
+      SCORE  score   -1.0000   -1.0000 +0.5192     +0.5044  +0.3676        +0.4668    +0.2872    +0.4444  True False       False        -0.6571            -0.2709        -0.2571            -0.4639 False
+       CONJ binary   +0.1111   -1.0000 +0.5038     +0.5032  +0.0713        +0.4704    +0.1536    -0.0074 False False       False            NaN                NaN            NaN                NaN   NaN
+
+## STEP 1 — target Y_alt (OOS, walk-forward; spread = oriented top − bottom, bps)
+       item   kind  orient25  orient26     auc  null_auc99  spr_bps  null_absspr99  spr25_bps  spr26_bps   g_a   g_b  STEP1_PASS  dose_rho_2025  dose_gap_2025_bps  dose_rho_2026  dose_gap_2026_bps   g_c
+      er_15   cont   -1.0000   -1.0000 +0.5174     +0.5041  +1.2547        +1.1829    +1.7164    +0.8134  True False       False            NaN                NaN            NaN                NaN   NaN
+    upsh_15   cont   -1.0000   -1.0000 +0.5134     +0.5050  +0.8551        +1.1504    +1.4330    +0.3028  True False       False            NaN                NaN            NaN                NaN   NaN
+   spike_15   cont   +1.0000   +1.0000 +0.5077     +0.5040  +1.0362        +1.1640    +1.6867    +0.4144  True False       False            NaN                NaN            NaN                NaN   NaN
+ volconc_15   cont   +1.0000   +1.0000 +0.5027     +0.5041  -0.2092        +1.5411    +0.4394    -0.8292 False False       False            NaN                NaN            NaN                NaN   NaN
+volslope_15   cont   +0.3333   +0.8000 +0.5005     +0.5032  -0.1488        +0.9734    -0.4387    +0.1284 False False       False            NaN                NaN            NaN                NaN   NaN
+      er_30   cont   -1.0000   -1.0000 +0.5169     +0.5045  +1.4937        +1.1149    +1.2882    +1.6901  True False       False            NaN                NaN            NaN                NaN   NaN
+    upsh_30   cont   -1.0000   -1.0000 +0.5146     +0.5045  +1.3640        +1.1234    +2.0866    +0.6732  True False       False            NaN                NaN            NaN                NaN   NaN
+   spike_30   cont   -0.1111   +1.0000 +0.5046     +0.5039  +0.5757        +1.2983    +0.8731    +0.2914  True False       False            NaN                NaN            NaN                NaN   NaN
+ volconc_30   cont   +0.3333   +1.0000 +0.5006     +0.5043  -0.4468        +1.2316    -0.2160    -0.6675 False False       False            NaN                NaN            NaN                NaN   NaN
+volslope_30   cont   -1.0000   +0.0000 +0.5002     +0.5042  +0.1367        +1.1980    +0.0531    +0.2165 False False       False            NaN                NaN            NaN                NaN   NaN
+     vwap1h   cont   -1.0000   -1.0000 +0.5176     +0.5039  +2.0577        +1.4493    +2.6926    +1.4508  True False       False            NaN                NaN            NaN                NaN   NaN
+     corr15   cont   -0.7778   -1.0000 +0.5006     +0.5046  -1.1522        +2.6874    -1.1920    -1.1140 False False       False            NaN                NaN            NaN                NaN   NaN
+     L1_btc binary   -0.7778   -1.0000 +0.5068     +0.5028  +0.5047        +0.8004    +0.3065    +0.6941 False False       False            NaN                NaN            NaN                NaN   NaN
+     L2_eth binary   -0.3333   -1.0000 +0.5067     +0.5032  +0.4233        +0.8087    +0.1739    +0.6617 False False       False            NaN                NaN            NaN                NaN   NaN
+     L3_sol binary   -0.7778   -1.0000 +0.5090     +0.5031  +0.3628        +0.8082    +0.1957    +0.5225 False False       False            NaN                NaN            NaN                NaN   NaN
+     L4_xrp binary   -1.0000   -1.0000 +0.5095     +0.5033  +0.5984        +0.8531    +0.6379    +0.5607 False False       False            NaN                NaN            NaN                NaN   NaN
+     L5_zec binary   -1.0000   -1.0000 +0.5057     +0.5033  +0.0765        +0.7541    +0.1666    -0.0097 False False       False            NaN                NaN            NaN                NaN   NaN
+   L6_top10 binary   +0.5556   -1.0000 +0.5001     +0.5029  -0.1623        +0.7476    -0.5958    +0.2522 False False       False            NaN                NaN            NaN                NaN   NaN
+  L7_brrise binary   -0.3333   -1.0000 +0.5023     +0.5028  -0.1776        +0.7051    -0.0067    -0.3409 False False       False            NaN                NaN            NaN                NaN   NaN
+   L8_taker binary   -0.7778   -1.0000 +0.5083     +0.5030  +0.6115        +0.6793    -0.0519    +1.2456 False False       False            NaN                NaN            NaN                NaN   NaN
+  L9_vsurge binary   +0.7778   +1.0000 +0.4986     +0.5030  -0.1960        +1.2444    -0.0638    -0.3223 False False       False            NaN                NaN            NaN                NaN   NaN
+      SCORE  score   -1.0000   -1.0000 +0.5147     +0.5030  +0.5679        +1.0564    +0.4271    +0.7024  True False       False        -0.4286            -0.4039        -0.8286            -0.7244 False
+       CONJ binary   +0.5556   -1.0000 +0.4996     +0.5024  -0.1283        +0.8572    -0.2647    +0.0021 False False       False            NaN                NaN            NaN                NaN   NaN
+
+## SCORE dose-response (OOS test months; mean Y in %, P(up), P(>=+0.10), P(<=-0.10))
+
+Y_btc 2025
+         n  mean_bps  P_up  P_up10  P_dn10
+<=2  34426     0.276 0.516   0.257   0.232
+3     6929     0.252 0.504   0.243   0.232
+4     5840    -0.243 0.479   0.222   0.238
+5     6132    -0.311 0.489   0.220   0.238
+6     7133    -0.614 0.476   0.213   0.242
+>=7  18731     0.005 0.479   0.236   0.253
+
+Y_btc 2026
+         n  mean_bps  P_up  P_up10  P_dn10
+<=2  36646     0.234 0.515   0.255   0.235
+3     7470    -0.280 0.494   0.229   0.232
+4     6384     0.053 0.503   0.224   0.230
+5     6095    -0.544 0.471   0.219   0.241
+6     7139     0.177 0.492   0.226   0.232
+>=7  19110    -0.230 0.473   0.234   0.261
+
+Y_alt 2025
+         n  mean_bps  P_up  P_up10  P_dn10
+<=2  34426     0.650 0.520   0.403   0.368
+3     6929     0.175 0.508   0.386   0.378
+4     5840    -0.506 0.496   0.371   0.382
+5     6132    -1.427 0.486   0.366   0.390
+6     7133    -1.834 0.481   0.356   0.391
+>=7  18731     0.246 0.488   0.372   0.395
+
+Y_alt 2026
+         n  mean_bps  P_up  P_up10  P_dn10
+<=2  36646     0.060 0.512   0.367   0.349
+3     7470    -0.285 0.508   0.356   0.349
+4     6384    -0.475 0.497   0.346   0.349
+5     6095    -0.488 0.487   0.343   0.359
+6     7139    -0.317 0.499   0.342   0.349
+>=7  19110    -0.665 0.485   0.341   0.369
+
+STEP1 passers: none

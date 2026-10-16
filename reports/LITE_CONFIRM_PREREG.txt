@@ -1,0 +1,71 @@
+LITE CONFIRMATION ENTRY — PRE-REGISTRATION (frozen 2026-10-15T19:39:23Z, BEFORE any cell was priced)
+Operator 2026-10-15 (firm): "+1 % peak is too much compared with our historic trades — I'm 99 % sure we are arming the transaction wrong."
+Context (already known, not new evidence): LITE_PROTECT rows — peak < +0.5 % = 15.6 % (2025) / 14.6 % (2026) / 25 % (master), all losers;
+LITE_EPIC_ENTRY: 105 entry features cannot separate them at entry. Prior entry-timing refutations NOT re-run: entry delay 1–13 s flat
+(FRENZY_ENTRY_LATENCY_STUDY 10-07); passive maker / pullback-limit entry (TICK_STUDY_MAKER_LOCK Q2: LITE skip variants lose in 2026);
+entry filters (LITE_FADE). This study tests the opposite side of Q2: a BUY-STOP ABOVE the decision price (momentum confirmation).
+Code: scripts/study_lite_confirm_*.py. Research only; no engine / config / template / test edit; no bot API; no commit; cache-only.
+No outcome of any cell below was looked at before this freeze.
+
+1. FROZEN INPUTS (sha256)
+   9158e67fc50cce3f88334ecc9f295c0c261a8677c0f28bdf6d097f308994fd7d  reports/LITE_PROTECT_rows.csv
+   ea6fe752dea1bcffc26154a1b39bd0f6416f6e77836730d58670461941f32d10  reports/TICK_STUDY_2026-10-15_cohort.csv
+   28bf9ed76798c448b215b5ec7fd6f50f495c5a7d072b84934221a3ebbb807157  reports/lite_fade_klines/live/EPICUSDT_1m.csv
+   080eeff46ba18ae6eb6c3b55132f85fb289908dd2929c2b971896e4fa4a8d6ee  reports/lite_fade_klines/live/DUSKUSDT_1m.csv
+   Cohort = the frozen TICK_STUDY_2026-10-15 LITE cohort as priced in reports/LITE_PROTECT_rows.csv (③ BT yr6 2Y_TODAY seed 1: 2025 828
+   (top-50 ticks 264 · rest 1m 564) · 2026-H1 369 · 2026-H2 255; ② MASTER B18 2 · B19 13 · B20 1 · B21 4). Decision price = the row's E
+   (the replay fill's decision price; master: the recorded entry). Paths = FX.load_path (ticks → 1m tail), events strictly AFTER te,
+   horizon extended to 780 min (W max + 12 h). ① LIVE: DEEP (tick cache), EPIC + DUSK (fetched 1m bars, entry = 5m close + 5 s);
+   ZK (live LITE) has no export row / no path → described only.
+
+2. CELLS — 48 confirmation + 6 follow-through = 54 pre-registered cells (rulers below are sensitivity, not extra cells).
+   (CF) BUY-STOP: trigger c ∈ {+0.25, +0.5, +0.75, +1} % above the decision price (gross price), valid W ∈ {5, 15, 30, 60} min after
+        the decision. Entry = the FIRST print ≥ trigger (ticks; a 1m bar: max(trigger, bar open), flagged) + a market-buy slip s.
+        Not triggered inside W → NO TRADE (0 per signal). Exits after the entry (events from the one AFTER the entry print; 12 h cap from
+        the entry; 1m bar of entry: its remainder is not walked — flagged):
+          A = +3 resting / −3 / 12 h relative to the NEW entry (as today);
+          B = anchored to the DECISION price: resting TP at today's limit (decision +3.06 gross), stop at decision −3 net line;
+          C = TP +3 from the new entry, stop at the decision −3 line.
+        4 c × 4 W × 3 anchorings = 48.
+   (FT) FOLLOW-THROUGH exit twin: enter at the decision as today; at minute k ∈ {3, 5, 10} after the decision, if today's exit
+        has not happened and the peak so far (max net % vs E over prints ≤ te + k) < +p, p ∈ {+0.3, +0.5}, exit at market
+        at the last print ≤ te + k (1m: that bar's close). 3 × 2 = 6.
+
+3. RULERS.
+   TP: RM = resting maker limit (today, DL 296; fills on a print ≥ 1 tick through, books maker net) — PRIMARY; S0 = first print ≥ line
+       (taker) — sensitivity. Stops: the print through the line (1m: min(line, open)), no extra slip (today's convention in LITE_PROTECT).
+   Entry slip for CF: s ∈ {+0.1, +0.25} % (live ENTRY_EXEC / entry_slippage_pct band ≈ +0.1 … +0.27); s = 0 shown
+       for reference only. Every CF headline TWO ways:
+         CONSERVATIVE = variant pays s, today pays 0 (the replay's today);
+         SYMMETRIC    = today ALSO pays the same s on its market entry (live today does pay ≈ +0.27).
+       PRIMARY gate ruler = RM, s = +0.25, CONSERVATIVE (the harshest); the gate must also hold RM s = +0.10 conservative.
+   FT exit slip: 0 and −0.20 (live market exit) — PRIMARY −0.20.
+
+4. METRICS per cell, per block (③ 2025 / 2025 top-50 tick / 2026-H1 / 2026-H2 / 2026 / tick-only subset; ② master per batch B18–B21 +
+   pooled; ① live): N signals, trigger rate, per SIGNAL avg % (skips = 0) and Σ, per FILL (triggered) WR / avg, Δ per signal vs today
+   with a day-clustered bootstrap (4,000, seed 7) P(Δ > 0) and 95 % CI.
+   TWO-SIDED per cell: dead-on-arrival losers avoided (not triggered, today < 0: n · Σ points saved) · winners missed (not triggered, today
+   TP: n · Σ points lost) · winners entered higher (triggered, today TP: Σ points given up) · triggered losers (Δ points) · trigger rate by
+   today's peak bucket (< +0.5 / +0.5…+1 / ≥ +1).
+   Concentration: largest day / pair share of ΣΔ; leave-one-month-out sign stability per year; neighbourhood (±1 step in c and in W, same
+   anchoring) mean Δ per year.
+
+5. GATES — a cell is a CANDIDATE only if ALL hold (PRIMARY ruler, and the RM s +0.10 conservative ruler):
+   G1 mean Δ/signal > 0 with day-bootstrap P ≥ 0.90 in 2025 AND in 2026 separately.
+   G2 master (B18–B21 pooled) mean Δ ≥ 0.
+   G3 leave-one-month-out sign-stable within each backtest year.
+   G4 no single day / pair ≥ 50 % of ΣΔ (pooled BT).
+   G5 every existing ±1 neighbour (c, W; same anchoring) has mean Δ > 0 in both years (a lone cell = overfit).
+   One year > 0 and the other < 0 = REGIME-DEPENDENT (no ship). Any projection: 30–50 % in-sample haircut.
+   A candidate → observe-only Scout line with a frozen gate; strong in every block → said plainly (the operator may arm it as a declared
+   exception) with a revert gate. Multiplicity: 54 cells; at independence P(G1 both years) ≈ 0.01 → ≈ 0.5 false
+   passes (cells nested → fewer effective).
+
+6. PARITY: c = 0 / W = ∞ (entry at the decision, no slip) must reproduce today per fill EXACTLY (RM and S0, |Δ| < 1e-9 vs the frozen rows) —
+   ASSERTED per fill. WAY 2: an independent event loop re-prices a random 150-fill sample + targeted fills for every CF cell (RM / S0,
+   s 0 / +0.25) and every FT cell → asserted identical.
+
+7. NOT TESTABLE (in advance): order-book slip of a stop-triggered market buy (prints only; ruled by s); stop-order trigger latency (a
+   software trigger on the price stream adds ≈ the live 8 s; priced at the print); queue position of the resting TP; 2025 non-top-50 fills on
+   1m bars (trigger minute known, intrabar order not); live N = 3 priced (EPIC / DUSK on 1m); ZK has no data; slot effects (a skipped signal
+   frees one of LITE's 2 slots for a later signal — not modelled, per-signal accounting only).

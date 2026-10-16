@@ -1,0 +1,79 @@
+LITE W/L FULL SWEEP — PRE-REGISTRATION (frozen 2026-10-15 19:43:51 UTC, before any feature x outcome table of this study was computed)
+Operator 2026-10-15: "nothing separates winners vs losers? you are not looking at ALL our variables, not doing 2D, macro + pair."
+
+0. SCOPE  research only; no engine/config/trading_config/templates/tests edit; no commit; no bot API; cache-first.
+
+1. COHORT  frozen TICK_STUDY cohort via reports/LITE_PROTECT_rows.csv: BT 2025 828 / 2026-H1 369 / 2026-H2 255 (=1,452) + MASTER 20
+   (B18-B21) + LIVE closed LITE fills in ~/Downloads/scalpars_orders_live_2026-10-15_19-34-32.csv (DEEP, DUSK, EPIC; ZK only if closed in a
+   newer export — none found at freeze). Tick-only subset = src in {ticks, ticks+1m}.
+2. OUTCOME Y1  y = rm_base_pct (today's exit: +3 resting maker TP / -3 / 12 h, RM0 ruler); WIN = y > 0. Live = booked pnl_percentage.
+3. VARIABLES  (a) EVERY entry_* column present in the replay LITE seed-1 fills or the master/live exports. Pre-declared exclusions only:
+   price-level / sizing / bookkeeping / constant (entry_price, entry_frenzy_vwap, entry_desired_notional, entry_fee, entry_slippage_pct
+   [modelled in replay], entry_strategy, entry_order_type, entry_frenzy_catchup [constant 0], entry_frenzy_spike_at [= te - hours],
+   entry_bracket_* [master-only sizing]). Columns with 0 % coverage in every block are LISTED as could-not-test. entry_liquidity_cap_notional
+   is kept (pair-liquidity proxy). Categorical (strings, or < 10 distinct values) = per-level reads.
+   (b) rebuilt features of reports/lite_epic_entry/features.csv: 5m-kline family B (14), episode C (4), market D (29).
+   (c) EXTRA market columns of ML_IMPULSE / ML_BTCFWD grids not used before (every non-target column; Y_*, fwd*, stale_list excluded; L* legs
+   kept as binary), read at floor(entry, 5m) (grid is lookahead-free at t).
+   (d) NEW rebuilt (cache only): BTC multi-TF from cached BTC 1m (last CLOSED bar): 1h ADX14, 1h EMA20/50 gap, 4h RSI14, 4h ADX14,
+   4h EMA20/50 gap, 4h EMA50/200 gap, 1d RSI14, 1d close vs EMA20, 1d prev-day return, 7d return; PAIR daily from backtest_cache/k1d (prev
+   closed day): 1d RSI14, prev-day return, 7d return, close vs 30d high, prev-day quote-volume rank among cached k1d coins, pair age days
+   (first k1d bar; rows where the first bar is the cache start 2025-01-01 are censored -> unscored unless censor >= 180 d); funding: last
+   cached funding rate <= entry (cache starts ~2025-12-30 -> 2026 only; low-coverage read).
+   FAMILY tags: MACRO (BTC/ETH/breadth/market volume/regime/time-of-day/grid), PAIR (pair indicators, volume, liquidity, mcap, age, rank,
+   funding, 5m-kline rebuild), EPISODE (frenzy_* stamps, k_now/k_all/prior_*).
+4. COVERAGE RULE  every test uses SCORED fills only (zone vs rest-of-scored); a column < 80 % covered in any BT year is flagged and read on
+   its scored subset; unscored is never "rest".
+5. SCREEN  1D: numeric (>= 10 distinct) at sign (if both signs >= 15 per year), median, lower tercile (<= q33), upper tercile (> q67);
+   categorical per level. Cuts = label-blind quantiles of all scored BT fills. 2D (EXHAUSTIVE, every pair of variables): each variable's
+   binary split (numeric > median, binary == 1, multi-level = modal level), 4 quadrants, quadrant vs rest-of-scored-on-both. Min 15 fills
+   inside and outside in EACH year. Blocks reported separately: 1D, 2D MACRO x MACRO, 2D MACRO x (PAIR u EPISODE), 2D (PAIR u EPISODE)^2.
+   STAT  Welch t of y (zone vs rest) per year (2025, 2026); S = max(min(t25, t26), min(-t25, -t26)) (direction-consistent strength).
+   Also t for 2026-H1 / H2 and a 3-period sign-consistency flag (sweep_separators style).
+   NULL  day-block shuffle WITHIN year (fills sorted by time; days permuted; outcomes laid back in order), R = 500, SAME statistic, SAME
+   full search. Family-wise p = share of null max-S >= observed (overall and per block); excess count of tests with S >= 2.5 vs null p95.
+   SURVIVOR = overall family-wise p <= 0.05.
+   DISCOVER -> CONFIRM: top 10 distinct tests by |t| in year A, confirmed in year B iff same sign and one-sided p <= 0.05; both directions;
+   null expectation = same procedure on 100 day-shuffles of A. Repeated on the tick-only subset.
+   A copy of sweep_separators.py with a LITE option (scripts/study_lite_wlsweep_sweepsep.py) is run as a cross-check (era A 2025 / B 2026).
+6. FILTER BAR (for any survivor that is a LOSER zone)  refuse-zone per signal: WR < LITE breakeven (|avg loss|/(avg win+|avg loss|) on
+   kept fills, ~50 %), avg < 0 with P >= 0.95 by day-clustered bootstrap (2,000), >= 8 days, no day / pair >= 50 % of zone loss, N >= 15 —
+   in BOTH years; two-sided (winners refused), LOMO min, master + live (refute-only), 30-50 % haircut. Pass -> observe-only Scout line with
+   frozen gate; never armed from this study.
+7. MASTER (20) + LIVE (3)  descriptive quadrant tables for the top 2D tests (N, WR, avg per quadrant); 23 trades cannot validate a cell,
+   can refute one pointing the wrong way.
+8. Every headline two ways (matrix screen vs independent pandas loop on a sample; filter numbers recomputed from raw rows);
+   scripts/validate_against_master.py at the end.
+
+FROZEN INPUT HASHES (sha256):
+9158e67fc50cce3f88334ecc9f295c0c261a8677c0f28bdf6d097f308994fd7d  reports/LITE_PROTECT_rows.csv
+16064024a56da774a44246e7be91001ea5221cf48f75bc67b43a8c27ed35c067  reports/ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv
+8c8bbc7e38faa4ecdca5ac27880328ca2ee766e4440a546133ddd719cd23c427  reports/lite_epic_entry/features.csv
+ba94dc666ce80eb831b228dde5ffa5fca2d83852067a75e454ef18f9e9bad57a  reports/LITE_FADE_entry_rows.csv
+fb233065f0f4db5ab3b396edd83ddd3fc7f88b3c684cb77f43f4e0087cd38320  reports/ML_IMPULSE_grid5m.csv.gz
+52e934db19945cb3430cea3b28e403323a39f725235337a7977a95bbcee69b1e  reports/ML_BTCFWD_grid5m.csv.gz
+339699a9f31c42c840fe3917f7df3377bd499ebc9b0223e955b630e348b0429c  reports/ml_btcfwd_fetch/k1m_taker/BTCUSDT.csv
+0c24816d69236b5df5086202775f7ba040257b36867353fe501f31899cc273c4  reports/lite_exitopt/price_BT.npz
+e29fd9107a881d88c969832511580ffa35553d06cfbc640c76ad63c219baab33  /Users/guillearslanian/Downloads/scalpars_orders_live_2026-10-15_19-34-32.csv
+
+──────── ADDENDUM 2026-10-15 19:43:51 UTC (operator, explicit, priority — registered BEFORE any exit-menu cell was priced) ────────
+"maybe the analysis drives in trades that should have +1 % / -1 % and trades that are fine with +3 % / -3 % — not only winners vs losers."
+A1. OUTCOME Y2  for each fill, price a FROZEN exit menu on its own path (FX.load_path tick / 1m path, study_lite_exitopt_common.walk_all,
+    mode RM = resting maker TP, 12 h cap; ruler LS = live slip -0.20 on stop / cap exits, TP books the resting limit):
+    M = {+1/-1, +1.5/-1.5, +2/-2, +3/-3 (today), +1/-3, +2/-3, +3/-2}  -> 7 cells x 1,452 BT + 20 master + 3 live fills.
+    Parity: the +3/-3 RM0 value must equal rm_base_pct on every BT / master fill (assert); walk_loop (way 2) on every fill x cell.
+    Record per fill the per-exit P&L vector and the arg-max exit.
+A2. SCREEN Y2  same full variable set and 1D/2D/blocks/null/discover-confirm/tick-only design as section 5, with outcome
+    D1 = P(+1/-1) - P(+3/-3) and D15 = P(+1.5/-1.5) - P(+3/-3) (LS ruler); zone stat = Welch t of D inside vs outside. Positive zone =
+    "tight wins", negative = "runner (keep +3/-3)". Two screens (D1, D15), each with its own null (R = 300).
+A3. POLICY TEST, walk-forward, folds F1 2025 -> 2026, F2 2026-H1 -> 2026-H2, F3 2026 -> 2025. On TRAIN only: rank 1D + 2D zones by train t
+    of D1 and D15 (zone N >= 30 train; positive zones only = "use tight inside"); policies P1..P10 = the top 10 by rank (no tuning on test),
+    exit E_Z = whichever of {+1/-1, +1.5/-1.5} the zone was ranked on. Rule: entry in Z -> E_Z, else +3/-3.
+    MODEL policies: (i) L2 logistic (C = 0.1, standardized, train-median imputed) on the top 10 1D variables by train |t| of D1, label =
+    P(+1/-1) > P(+3/-3), assign +1/-1 if p > 0.5; (ii) depth-2 tree (min leaf 50) same inputs/label.
+    Report OOS delta %/fill vs always-today on ALL test fills, day-bootstrap CI (2,000), P(delta > 0), in-sample delta (overfit gap), two-sided
+    (fills switched that gained / lost), concentration (top day / pair share of the gain), LOMO min, tick-only test fills, neighbours (zone
+    cuts at q45 / q55 instead of the median, or q28 / q38 for terciles), master (20) + live (3) refute-only.
+    GATE (all must hold): delta > 0 with P >= 0.90 in ALL three folds, master delta not negative, tick-only delta > 0 in all folds, neighbours
+    positive. Pass -> observe-only Scout line (state the engine work needed to pick the exit per trade at entry); never armed from this study.
+    CELL COUNT: pricing 7 x 1,475 = 10,325 fill-exits; policy cells = 3 folds x (10 zone policies + 2 models) = 36 OOS evaluations.

@@ -7014,3 +7014,31 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   operator was shown this and chose **"ship armed, switch ON"** (options: armed / observe-only [recommended] / don't ship). Revert gate
   unchanged. Build: services/frenzy.py frenzy_lite_c_tp + tp_override; Order.frenzy_lite_tp_used / lite_c_zone; config default OFF,
   trading_config.json ON; UI "🎯 LITE C Tally" + both exports; tests/test_lite_c.py.
+
+## (302) 2026-10-16 — 📖 LITE order book at +1: NO recorder build · one free long-shot watch line LITE_OB_THIN (operator: "go with 1 + 3, and add the free watch line too")
+- **Studies (all 2026-10-15):** reports/LITE_AT1_2026-10-15.md — at the +1 touch nothing separates "dies at −3" from "runs" (262 vars incl.
+  at-touch RSI/ADX/EMA, 4.1 M tests, fw p 0.13–1.00, 0/160 walk-forward, classifier AUC at chance); after +1 only 16–22 % die (bank-at-+1
+  breakeven ≈ 25 %) → every protect rule loses in 2026 (−0.21…−0.37 /fill); winners' post-touch dip reaches −2.98, so no stop level spares
+  them. reports/LITE_OB_2026-10-15.md — minute books (since 10-03) BEFORE the touch identical (fw p 1.00); post-touch "ask depth shrinks"
+  (fw p 0.018) FAILED the adversarial review (post-hoc mask; BR put back → p 0.23; within-dying ρ 0.94 with the synchronous price fall; bid
+  depth thins as much → general liquidity thinning, not ask-specific; "emulated confirmation" mostly the same trades).
+- **Decision:** the live order-book recorder is NOT built; LITE C (301) stays the LITE lever. One free observe line from data the bot already
+  records: scripts/scout_lite_ob_thin.py (frozen definition + gate in its header and CURRENT_STATE). Feature = TOTAL bid+ask depth within
+  1 % (chosen AFTER the review; the study's pre-registered recorder candidate was ask-only) — in-sample 7/10 died vs 0/13, so the 23 study
+  touches never count (cohort ≥ 2026-10-16), and if the gate is met the rule study must first show THIN beats "mid fell P1→P2" alone.
+  Data: the Decisions export carries only 3 days of BOOK rows (DB keeps 14) → keep the auto Decisions download on / download every ≤ 3 days.
+  Review numbers (p 0.23 with BR back, ρ 0.94, bid thinning; winners' post-touch dip −2.98) are recorded in the addenda of
+  reports/LITE_OB_2026-10-15.md and reports/LITE_AT1_2026-10-15.md.
+
+## (303) 2026-10-16 — 📝 Refuted, recorded so they are not re-proposed (research only, no change)
+- **WILLY low-VWAP ∧ short-run** (vs_vwap ≤ 0.10 ∧ run ≤ 10, frozen from the live batch where 3/3 losers matched): reports/WILLY_LOWVWAP_SHORTRUN_2026-10-16.md
+  — tick backtest zone 341 · 77 % · +0.024 vs rest +0.028, filter bar fails every era, refusing −0.010 /fill, short-run leg points the WRONG
+  way, TP +1.0 on the zone +0.001; master zone 9 · 8 wins (refusing −$870). NOISE, no watch line.
+- **WILLY exhaustive 2D on today's exit (late TP incl.), tick-only:** reports/WILLY_2D_2026-10-16.md — 27,984 tests, every family below the
+  null median, fw p ≥ 0.94, 0 walk-forward confirmations. NOTHING. WILLY ≈ +0.03 /fill at 78 % WR vs 77.3 % breakeven; the loss tail is the
+  −4 stop. **WILLY stop −3 / −2.5 / −3.5 vs −4** (tick, today's exit): worse in every era (−3: −0.06 / −0.07 / −0.17 per fill); master
+  +9.33 → −0.84 % (2 winners that dipped −3.4 / −3.7 killed). Keep −4.
+- **Momentum-long PAIR_1H_DOWNTREND × X (2D, theory-first):** reports/ML_DOWNTREND_2D_2026-10-16.md — zone not a stable loser in backtest
+  (2025 −0.18 vs −0.19 rest), 7 theory splits + 646-cell screen at luck level; the only consistent axis is coin AGE, which is not a
+  downtrend effect (old coins lose equally outside the zone). The line keeps its frozen 1D gate. Follow-up (1h/4h RSI·ADX, EMA-distance
+  grid, limited 3-way) running.

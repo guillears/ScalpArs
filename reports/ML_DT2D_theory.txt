@@ -1,0 +1,56 @@
+# ML_DOWNTREND_2D — pre-registered THEORY pairs (inside the DT zone: BAD side vs GOOD side)
+T7 cut frozen from the 2025 replay zone (label-blind): 0.7549
+
+| hypothesis | block | BAD n·d·WR·avg | GOOD n·WR·avg | Δ bad−good [day-boot 95 %] | P(Δ<0) | DT∧BAD vs rest avg | X unscored |
+|---|---|---|---|---|---|---|---|
+| T1 DEPTH g1h ≤ −3 % | 2025 BULL | 1106·179·54 %·-0.192 | 424·52 %·-0.157 | -0.035 [-0.15,+0.08] · block-null p 0.2559 | 0.71 | -0.192 vs -0.183 | 0 |
+| T1 DEPTH g1h ≤ −3 % | 2026-H1 BEAR | 393·90·54 %·-0.131 | 184·65 %·-0.007 | -0.124 [-0.32,+0.07] | 0.90 | -0.131 vs -0.062 | 0 |
+| T1 DEPTH g1h ≤ −3 % | 2026-H2 BULL | 79·29·56 %·-0.034 | 91·46 %·-0.262 | +0.228 [-0.07,+0.61] | 0.08 | -0.034 vs -0.012 | 0 |
+| T1 DEPTH g1h ≤ −3 % | master as-traded | 37·28·57 %·-0.081 | 29·66 %·+0.009 | -0.090 [-0.46,+0.28] | 0.70 | -0.081 vs +0.053 | 0 |
+| T1 DEPTH g1h ≤ −3 % | master stack_keep | 27·22·59 %·-0.027 | 23·65 %·+0.045 | -0.071 [-0.54,+0.41] | 0.62 | -0.027 vs +0.181 | 0 |
+| T1 DEPTH g1h ≤ −3 % | fresh | 12·8·33 %·-0.050 | 6·33 %·-0.358 | +0.308 [-0.52,+1.38] | 0.24 | -0.050 vs -0.167 | 0 |
+| T2 NARROWING Δg1h 4h ≤ 0 (widening) | 2025 BULL | 726·162·54 %·-0.167 | 804·53 %·-0.197 | +0.030 [-0.08,+0.14] · block-null p 0.7491 | 0.28 | -0.167 vs -0.194 | 0 |
+| T2 NARROWING Δg1h 4h ≤ 0 (widening) | 2026-H1 BEAR | 293·85·62 %·-0.040 | 284·53 %·-0.144 | +0.104 [-0.09,+0.30] | 0.16 | -0.040 vs -0.100 | 0 |
+| T2 NARROWING Δg1h 4h ≤ 0 (widening) | 2026-H2 BULL | 75·25·47 %·-0.252 | 95·54 %·-0.080 | -0.171 [-0.48,+0.11] | 0.87 | -0.252 vs +0.025 | 0 |
+| T2 NARROWING Δg1h 4h ≤ 0 (widening) | master as-traded | 28·20·61 %·-0.010 | 38·61 %·-0.064 | +0.054 [-0.31,+0.45] | 0.38 | -0.010 vs +0.034 | 0 |
+| T2 NARROWING Δg1h 4h ≤ 0 (widening) | master stack_keep | 22·17·64 %·+0.059 | 28·61 %·-0.035 | +0.095 [-0.38,+0.53] | 0.33 | +0.059 vs +0.156 | 0 |
+| T2 NARROWING Δg1h 4h ≤ 0 (widening) | fresh | 7·4·43 %·-0.142 | 11·27 %·-0.159 | +0.017 [-0.87,+1.03] | 0.45 | -0.142 vs -0.111 | 0 |
+| T3 RECLAIM price ≤ 1h EMA200 | 2025 BULL | 1440·215·53 %·-0.176 | 90·49 %·-0.287 | +0.110 [-0.09,+0.28] · block-null p 0.8941 | 0.12 | -0.176 vs -0.200 | 0 |
+| T3 RECLAIM price ≤ 1h EMA200 | 2026-H1 BEAR | 524·109·56 %·-0.095 | 53·68 %·-0.054 | -0.041 [-0.28,+0.18] | 0.62 | -0.095 vs -0.077 | 0 |
+| T3 RECLAIM price ≤ 1h EMA200 | 2026-H2 BULL | 133·39·52 %·-0.129 | 37·46 %·-0.254 | +0.125 [-0.25,+0.47] | 0.27 | -0.129 vs +0.024 | 0 |
+| T3 RECLAIM price ≤ 1h EMA200 | master as-traded | 54·38·59 %·-0.037 | 12·67 %·-0.061 | +0.025 [-0.42,+0.51] | 0.48 | -0.037 vs +0.052 | 0 |
+| T3 RECLAIM price ≤ 1h EMA200 | master stack_keep | 39·30·62 %·+0.032 | 11·64 %·-0.085 | +0.117 [-0.41,+0.65] | 0.37 | +0.032 vs +0.183 | 0 |
+| T3 RECLAIM price ≤ 1h EMA200 | fresh | 15·9·40 %·-0.044 | 3·0 %·-0.694 | +0.650 [+0.15,+1.29] | 0.01 | -0.044 vs -0.198 | 0 |
+| T4 BTC 1h slope ≤ 0 | 2025 BULL | 721·134·54 %·-0.181 | 809·52 %·-0.184 | +0.002 [-0.11,+0.12] · block-null p 0.5367 | 0.48 | -0.181 vs -0.189 | 0 |
+| T4 BTC 1h slope ≤ 0 | 2026-H1 BEAR | 302·67·61 %·-0.060 | 275·54 %·-0.126 | +0.066 [-0.12,+0.26] | 0.26 | -0.060 vs -0.094 | 0 |
+| T4 BTC 1h slope ≤ 0 | 2026-H2 BULL | 64·21·42 %·-0.174 | 106·56 %·-0.145 | -0.028 [-0.37,+0.45] | 0.59 | -0.174 vs +0.007 | 0 |
+| T4 BTC 1h slope ≤ 0 | master as-traded | 23·16·57 %·-0.016 | 43·63 %·-0.055 | +0.039 [-0.41,+0.54] | 0.45 | -0.016 vs +0.033 | 0 |
+| T4 BTC 1h slope ≤ 0 | master stack_keep | 19·12·63 %·+0.078 | 31·61 %·-0.038 | +0.116 [-0.45,+0.77] | 0.34 | +0.078 vs +0.151 | 0 |
+| T4 BTC 1h slope ≤ 0 | fresh | 5·3·40 %·+0.323 | 13·31 %·-0.335 | +0.658 [-0.34,+3.05] | 0.14 | +0.323 vs -0.210 | 0 |
+| T5 COIN 4h EMA20 ≤ EMA50 | 2025 BULL | 1437·215·52 %·-0.193 | 93·68 %·-0.029 | -0.164 [-0.36,+0.03] · block-null p 0.0440 | 0.95 | -0.193 vs -0.180 | 0 |
+| T5 COIN 4h EMA20 ≤ EMA50 | 2026-H1 BEAR | 533·108·57 %·-0.096 | 44·59 %·-0.035 | -0.061 [-0.45,+0.30] | 0.62 | -0.096 vs -0.076 | 0 |
+| T5 COIN 4h EMA20 ≤ EMA50 | 2026-H2 BULL | 139·43·53 %·-0.101 | 31·39 %·-0.404 | +0.303 [-0.12,+0.67] | 0.08 | -0.101 vs +0.016 | 0 |
+| T5 COIN 4h EMA20 ≤ EMA50 | master as-traded | 56·38·59 %·-0.048 | 10·70 %·-0.000 | -0.048 [-0.51,+0.45] | 0.60 | -0.048 vs +0.059 | 0 |
+| T5 COIN 4h EMA20 ≤ EMA50 | master stack_keep | 42·31·62 %·+0.012 | 8·62 %·-0.025 | +0.037 [-0.46,+0.61] | 0.45 | +0.012 vs +0.196 | 0 |
+| T5 COIN 4h EMA20 ≤ EMA50 | fresh | 15·9·27 %·-0.183 | 3·67 %·-0.001 | -0.181 [-0.88,+1.03] | 0.59 | -0.183 vs -0.049 | 0 |
+| T6 ADX falling (adx − prev ≤ 0) | 2025 BULL | 525·151·51 %·-0.223 | 1005·54 %·-0.162 | -0.062 [-0.16,+0.04] · block-null p 0.0830 | 0.87 | -0.223 vs -0.178 | 0 |
+| T6 ADX falling (adx − prev ≤ 0) | 2026-H1 BEAR | 192·70·61 %·-0.057 | 385·56 %·-0.108 | +0.051 [-0.14,+0.25] | 0.33 | -0.057 vs -0.091 | 0 |
+| T6 ADX falling (adx − prev ≤ 0) | 2026-H2 BULL | 56·21·43 %·-0.295 | 114·54 %·-0.088 | -0.208 [-0.49,+0.10] | 0.91 | -0.295 vs +0.019 | 0 |
+| T6 ADX falling (adx − prev ≤ 0) | master as-traded | 23·17·57 %·-0.121 | 43·63 %·+0.001 | -0.122 [-0.47,+0.22] | 0.76 | -0.121 vs +0.048 | 0 |
+| T6 ADX falling (adx − prev ≤ 0) | master stack_keep | 16·12·56 %·-0.111 | 34·65 %·+0.062 | -0.173 [-0.60,+0.28] | 0.79 | -0.111 vs +0.174 | 0 |
+| T6 ADX falling (adx − prev ≤ 0) | fresh | 4·3·50 %·+0.016 | 14·29 %·-0.201 | +0.217 [-0.57,+1.40] | 0.29 | +0.016 vs -0.140 | 0 |
+| T7 VOLUME pair vol ratio ≤ 0.755 (2025-zone median) | 2025 BULL | 766·186·53 %·-0.193 | 764·54 %·-0.172 | -0.021 [-0.11,+0.08] · block-null p 0.3083 | 0.65 | -0.193 vs -0.184 | 0 |
+| T7 VOLUME pair vol ratio ≤ 0.755 (2025-zone median) | 2026-H1 BEAR | 320·88·61 %·-0.084 | 257·53 %·-0.100 | +0.016 [-0.17,+0.20] | 0.43 | -0.084 vs -0.086 | 0 |
+| T7 VOLUME pair vol ratio ≤ 0.755 (2025-zone median) | 2026-H2 BULL | 74·31·54 %·-0.126 | 96·48 %·-0.179 | +0.053 [-0.21,+0.27] | 0.32 | -0.126 vs +0.003 | 0 |
+| T7 VOLUME pair vol ratio ≤ 0.755 (2025-zone median) | master as-traded | 32·25·59 %·-0.022 | 34·62 %·-0.059 | +0.037 [-0.32,+0.42] | 0.42 | -0.022 vs +0.037 | 0 |
+| T7 VOLUME pair vol ratio ≤ 0.755 (2025-zone median) | master stack_keep | 27·22·63 %·+0.045 | 23·61 %·-0.039 | +0.084 [-0.36,+0.57] | 0.33 | +0.045 vs +0.164 | 0 |
+| T7 VOLUME pair vol ratio ≤ 0.755 (2025-zone median) | fresh | 10·7·30 %·-0.250 | 8·38 %·-0.031 | -0.219 [-1.24,+0.66] | 0.65 | -0.250 vs -0.049 | 0 |
+
+## verdict per hypothesis (supported = Δ<0 in all 3 eras ∧ 2025 block-null p < 0.0071 (Bonferroni 7) ∧ master + fresh Δ<0)
+- T1 DEPTH g1h ≤ −3 %: eras all bad-worse False · 2025 p 0.2559 · master & fresh bad-worse False → not supported  [2025 BULL:− 2026-H1 B:− 2026-H2 B:+ master as:− master st:− fresh:+]
+- T2 NARROWING Δg1h 4h ≤ 0 (widening): eras all bad-worse False · 2025 p 0.7491 · master & fresh bad-worse False → not supported  [2025 BULL:+ 2026-H1 B:+ 2026-H2 B:− master as:+ master st:+ fresh:+]
+- T3 RECLAIM price ≤ 1h EMA200: eras all bad-worse False · 2025 p 0.8941 · master & fresh bad-worse False → not supported  [2025 BULL:+ 2026-H1 B:− 2026-H2 B:+ master as:+ master st:+ fresh:+]
+- T4 BTC 1h slope ≤ 0: eras all bad-worse False · 2025 p 0.5367 · master & fresh bad-worse False → not supported  [2025 BULL:+ 2026-H1 B:+ 2026-H2 B:− master as:+ master st:+ fresh:+]
+- T5 COIN 4h EMA20 ≤ EMA50: eras all bad-worse False · 2025 p 0.0440 · master & fresh bad-worse True → not supported  [2025 BULL:− 2026-H1 B:− 2026-H2 B:+ master as:− master st:+ fresh:−]
+- T6 ADX falling (adx − prev ≤ 0): eras all bad-worse False · 2025 p 0.0830 · master & fresh bad-worse False → not supported  [2025 BULL:− 2026-H1 B:+ 2026-H2 B:− master as:− master st:− fresh:+]
+- T7 VOLUME pair vol ratio ≤ 0.755 (2025-zone median): eras all bad-worse False · 2025 p 0.3083 · master & fresh bad-worse False → not supported  [2025 BULL:− 2026-H1 B:+ 2026-H2 B:+ master as:+ master st:+ fresh:−]

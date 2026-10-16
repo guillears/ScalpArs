@@ -1,0 +1,74 @@
+LITE COIN-FADE EXIT / WEAK-ENTRY STUDY — PRE-REGISTRATION (frozen 2026-10-15T15:49:13Z, BEFORE any cell was priced and before any kline was fetched)
+Operator 2026-10-15: two live LITE trades (EPIC 14:55 UTC, DUSK 15:05 UTC) peaked then collapsed — "something changed in the market or the
+pair that might have triggered an earlier exit". Today's LITE exit: TP +3 net / stop −3 / 720 min, 10× (resting TP being added, DL 295/296).
+Code: scripts/study_lite_fade_*.py (common / prereg / fetch / cells / report). Research only; no engine / config / template / test edit.
+Disclosure: read before this freeze — the brief's EPIC / DUSK facts (they motivated the grid; the grid is the brief's verbatim), the LITE late
+re-study (trades at +1…+2 still reach +3 71–76 % of the time; no time rule passes), the maker-lock refutation (A +1.5/+2 × L 0/+0.5 —
+NOT re-tested here; the BE action below is signal-gated, not a profit lock), LITE_2D_ALLREGIMES (entry screen, no separator beat its null).
+No fade-signal or entry-condition outcome on the cohort was looked at.
+
+1. FROZEN INPUTS (sha256)
+   7da3c0b6ecaa728f3390149d923faf9084fe243f135c42c05bd1c5d0269ba1ea  reports/LITE_LATE_cohort.csv
+   bd1e10950f88c22cf7c2e92850fe0261cf75ecdcbb8df5d191979e996a2d1bab  reports/LITE_LATE_cell_rows.csv
+   ea6fe752dea1bcffc26154a1b39bd0f6416f6e77836730d58670461941f32d10  reports/TICK_STUDY_2026-10-15_cohort.csv
+   Cohort = reports/LITE_LATE_cohort.csv BT + MASTER (③ BT yr6 2Y_TODAY seed 1 LITE: 2025 828 · 2026-H1 370 · 2026-H2 256; ② MASTER B18 2 ·
+   B19 13 · B20 1 · B21 4). Today's exit per fill = the LITE late re-study walker rows (S0 base_pct / RM rm_base_pct / path tick), re-priced
+   here and asserted equal. ① LIVE: DUSK (closed, booked −2.54) priced on fetched 1m bars; EPIC (open) DESCRIBED only; DEEP (10-14) has no
+   5m window in the cache — fetched like the rest.
+
+2. DATA. The cache klines carry no taker-buy volume → fetch 5m klines (fapi /klines, all 12 fields; volume = QUOTE volume field 7,
+   taker-buy share = field 9 / field 5) for each fill's window [D − 210 bars, D + 146 bars) (D = the 5m close just before
+   entry), budget ≤ 1,200 weight/min (read x-mbx-used-weight-1m, pause > 900, stop on 418/429, respect / write
+   reports/backtest_cache/.binance_cooldown_until), stored in reports/lite_fade_klines/ (outside backtest_cache). BTC = cached 1m closes
+   (2025 + 2026 caches) + a fetched 1m tail for the master / live days. A fill without a complete 5m window = UNSCORED (listed, Δ = 0 not
+   assumed — excluded and counted).
+
+3. EXIT SIGNALS (family E, 16 signals × 2 actions = 32 cells). Evaluated at every 5m close c after entry while today's exit is
+   still open (exit time > c), only once the running peak (max net % of the walker path, events ≤ c) ≥ +A, A ∈ (1.0, 1.5). No lookahead.
+   peak time tpk = first event at the running max; peak bar = the 5m bar containing tpk; cur = net % of the 5m close at c.
+   F1 volume fade (V ∈ (0.5, 0.75), G ∈ (1.0, 1.5)): mean quote volume of the 5m bars AFTER the peak bar closed by c (≥ 1 bar) < V × VREF, VREF =
+      mean quote volume of the 50 bars before the signal bar (pre-entry); AND cur ≤ peak − G (net points).
+   F2 relative weakness (R ∈ (1.0, 1.5)): (cur − peak) − BTC % return from the 1m close of the peak minute to the 1m close at c ≤ −R.
+      (coin return in net points ≈ price % × E / peak price, < 4 % relative difference, stated.)
+   F3 reversal bar (X ∈ (1.0, 1.5)): the 5m bar closing at c (close > tpk) has return (c/o − 1) ≤ −X % AND taker-buy share < 0.45.
+   Actions at the first firing close τ: EXIT = market at the first print after τ (1m bar: its open); BE = stop line −3 → 0 from τ
+   (already ≤ 0 at τ → the first print after τ). Implemented as the late study's late-stop walkers at a per-fill τ (EXIT line +∞, BE 0).
+   Cells: F1_A<a>_V<v>_G<g>_<act> · F2_A<a>_R<r>_<act> · F3_A<a>_X<x>_<act>.
+
+4. ENTRY FILTER (family N, 8 cells, judged as FILTERS on the blocked cohort's own today-exit outcome):
+   signal bar = the last closed 5m bar at entry (open D − 5 min). HV(M) = its quote volume ≥ M × VREF ∧ its return ≤ -0.3 %,
+   M ∈ (3.0, 4.0). RD(D) = RSI14(Wilder, ewm 1/14, closed 5m bars from the window start) at the signal bar − RSI two bars earlier ≤ −D,
+   D ∈ (8.0, 12.0). Cells: E_M<m>_OR_D<d> (refuse if HV(m) ∨ RD(d), the brief's filter, 4 cells) + the 4 single components E_M<m>, E_D<d>
+   (diagnostic, counted, same bar).
+   (Slot effect not modelled: a refused LITE frees one of 2 LITE slots.)
+
+5. RULERS. Δ = cell − today on the same fill (net %/fill), today priced under the SAME ruler.
+   S0 = zero slip (prints; TP at the first print through, as the replay).
+   RM = resting-maker TP (late re-study W.cell_rm: +3 limit fills when traded ≥ 1 tick through, maker fee; stops / signal exits at the print).
+   SL = live slip: TP / CAP / signal EXIT / BE stop −0.20, today's −3 STOP +0.20 (the late-study ruler; BE is a stop-market, charged −0.20).
+   Entry filter: the blocked fills' today outcome under each ruler.
+
+6. GATES — exit cell CANDIDATE only if ALL hold under S0 AND RM AND SL:
+   G1 mean Δ > 0 with day-clustered bootstrap P(mean Δ > 0) ≥ 0.90 (4,000 resamples, seed 7) in 2025 AND in 2026 separately.
+   G2 master Δ (B18–B21 pooled) mean ≥ 0.
+   G3 leave-one-month-out sign-stable within EACH backtest year.
+   G4 no single day and no single pair ≥ 50 % of ΣΔ (pooled and per year).
+   G5 2025 top-50 (tick) subset same sign as the 2025 total.
+   TWO-SIDED report per cell: SAVED (today STOP/CAP fills improved) vs KILLED (today TP fills cut) vs DEEPER — counts and points, and the
+   recovery hurdle: share of the fired fills that today goes on to +3 (the late study's 71–76 % for +1…+2 trades).
+   EXIT-CF rule: every fill on which the signal never fires while today's exit is open must show Δ = 0 (asserted, all rulers, both ways).
+   Entry cell CANDIDATE only if, in 2025 AND 2026 separately AND pooled BT, the blocked cohort meets the EXPECTANCY bar under S0, RM and SL:
+   WR < LITE's breakeven WR (|avg loss| / (avg win + |avg loss|) of all scored fills of that block, that ruler) ∧ day-bootstrap
+   P(mean < 0) ≥ 0.95 ∧ ≥ 8 distinct days ∧ no day / pair ≥ 50 % of the cohort loss ∧ N ≥ 15; master blocked sum ≤ 0 (Δ not negative).
+   Any projection: 30–50 % in-sample haircut. A candidate → an observe-only Scout line with a frozen gate; never a ship.
+   Multiplicity: 32 exit cells × 3 rulers + 8 entry cells; at independence P(G1 both years) ≈ 0.01 → ≈ 0.3 false exit passes
+   per ruler (cells nested → fewer effective).
+
+7. PARITY: every exit cell priced two ways per ruler (S0: W.ev_sl vs W.cell_seg; RM: W.cell_rm vs W.cell_seg rm=) → 100 % asserted; today
+   re-priced == the late-study rows (base_pct / rm_base_pct) asserted; walker today vs the replay's recorded pct_new reported per year; the
+   entry features re-computed for 20 random fills from the CACHED k5m_full (open/close/volume, no taker) → sb_ret / sb_vmult / RSI must
+   match the fetched klines (< 1e-6 relative); signal-bar RSI vs the fills' stamped entry RSI (window 12 engine ruler) reported, not gated.
+
+8. NOT TESTABLE (in advance): live N = 1 closed (DUSK) + 1 open (EPIC) → describe only; 2025 non-top-50 fills = 1m paths (F-signals use 5m
+   klines for all, the path for the peak); slot effects of earlier exits / refused entries; queue of a resting TP; the engine does not stamp
+   taker-buy share or post-entry volume today (a Scout line would need a shadow logger).

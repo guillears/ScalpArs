@@ -1,0 +1,111 @@
+LITE OB STUDY — PRE-REGISTRATION (frozen 2026-10-15, written BEFORE any book-feature x outcome table was computed)
+=====================================================================================================================
+Question: do FRENZY_LITE trades that touch +1 % and then die at the -3 stop look different in the ORDER BOOK around the +1 touch
+than the ones that go on to the C take-profit (+2, or +3 inside the C zone)? Same question at entry (dead-on-arrival vs not).
+Status: hint-finder for the live recorder (DECISION_LOG 302). NOT a ship / arm decision whatever the result.
+
+DATA
+- Book: BOOK rows of every ~/Downloads/scalpars_decisions_*.csv, dedup (t, pair) -> reports/lite_ob/book.pkl
+  (177,430 rows, 81 pairs, 2026-10-03 16:00 -> 2026-10-15 19:25 UTC). Engine (main.py orderbook loop): the snapshot labelled
+  minute M is taken at ~M:20 s (sleep to minute + 20 s, label = floor(now) to the minute), 500-level depth.
+- Price: Binance 1m klines with taker-buy volume (reports/lite_ob/k1m), 5m klines for the episode rebuild (reports/lite_ob/k5m).
+
+DEFINITIONS (net % = WT.net_pct on the fill price E, the LITE_AT1 convention; levels = O.rm_levels maker TP thresholds)
+- C exit: tp = +3 if entry_frenzy_vol_mult >= 20 and BTC 1h EMA20 slope (3 h) > 0 else +2; resting maker TP; stop -3 (+ -0.20 slip);
+  12 h cap. For emulated signals vol_mult / slope come from the rebuilt episode / BTC 1h EMA20 on 5m-derived hourly closes.
+- TOUCH minute k = the first 1m bar (open_time k) whose net high >= +1.00 before C exits.
+- OUTCOME (primary, among touches): DIE = C exits at the stop after the touch; GO = C exits at its TP. CAP / UNRES excluded.
+  Secondary (real trades only, descriptive): the as-traded close (STOP_LOSS vs TP) and the raw peak.
+- ENTRY OUTCOME: DOA = C stop without ever touching +1 net; NOT-DOA = touched +1 or TP. CAP / UNRES excluded.
+- Real trades that never touch +1 net (e.g. SKL / CAP if so) are shown descriptively anchored at their peak minute, never in the test.
+
+SNAPSHOTS (book minute labels; snapshot taken ~20 s into the labelled minute)
+- PRE  = label k-1 (certainly before the touch minute opens)          <- PRIMARY
+- AT   = label k   (~20 s into the touch minute; may be before or after the touch print: ambiguous)
+- P1, P2, P3 = labels k+1, k+2, k+3
+- ENT  = label floor(te) (the entry minute, ~7-12 s after the fill); ENTPRE = label floor(te)-1.
+  A snapshot missing for a label = feature missing (no interpolation, no nearest-neighbour).
+
+FEATURES (12 levels per snapshot)
+  imb_05, imb_1, imb_2                         (bid$ - ask$)/(bid$ + ask$) within 0.5 / 1 / 2 % of mid
+  lg_ask_1, lg_bid_1                           log10 $ within 1 % (ask / bid)
+  wall_ask_dist, lg_wall_ask_usd, wall_ask_share   largest ask level within 2 %: distance %, log10 $, share of side $ within 2 %
+  wall_bid_dist, lg_wall_bid_usd, wall_bid_share   same for bids
+  spread                                       spread %
+ + change vs ENT (difference; log-ratio for the lg_ $ features)   -> 12 "dE_" features
+ + change vs the previous minute's snapshot                        -> 12 "dP_" features
+ => 36 per snapshot. TOUCH family = 36 x {PRE, AT, P1, P2, P3} = 180 features.
+ ENTRY family = 12 levels at ENT + 12 changes ENT vs ENTPRE = 24 features (outcome DOA vs NOT-DOA).
+
+TESTS (per family; run separately on REAL, EMULATED, POOLED-dedup (an emulated signal matching a real fill on pair & 5m bar counts once,
+the real trade's row kept))
+- per feature: median DIE vs GO, Mann-Whitney rank-sum two-sided p (normal approx with tie correction), N per side.
+- family-wise: DAY-block permutation null (rows sorted by time, UTC-day blocks of the outcome vector shuffled as blocks and re-assigned
+  positionally, LITE_AT1 convention), 2,000 draws; statistic = max |z| over the family; per-feature fw-p = P(null max |z| >= |z_f|).
+- 2D: only if a sample has >= 40 touches with >= 10 in each class; otherwise stated as not run.
+- Pass for "hint" (to name a feature for the live recorder's pre-registered list): fw-p <= 0.10 on the pooled sample AND same sign of the
+  median difference on REAL and on EMULATED. Nothing here can pass as a ship; N is small by construction.
+
+EMULATED SIGNALS (more N)
+- Pairs = the 81 BOOK pairs. Episodes rebuilt with services.frenzy.frenzy_walk / normal_hour_usd on the fetched 5m klines (the
+  lite_theory episode builder, unchanged logic); signals = study_lite_theory_signals.emulate with TODAY's params (need 12, 2-16.75 h,
+  vol < 100, red bar, 24 h vol >= $20M), not bearish (frenzy_bearish_block). Entry te = signal bar close + 12 s, E = open of the first
+  1m bar at/after te (+ the taker entry slip convention of the theory study is NOT added: E = print, as in the 1m live path).
+- Kept for the touch test: signals with T >= 2026-10-03 16:00, a touch, a resolved C outcome, and a PRE or AT snapshot for that pair.
+- Correspondence with real fills: same pair and |te_real - te_emul| <= 5 min.
+
+BLIND SPOTS DECLARED UP FRONT: minute resolution (the book can change many times inside a minute; the touch print and the snapshot are up to
+60 s apart), no trade side / aggressor per print beyond the 1m taker-buy volume, no queue / cancel dynamics, no book beyond 500 levels, no
+spoofing detection, depth band readings set to missing when the 500 levels do not reach the band.
+
+ADDENDUM D1 (operator clarification, 2026-10-15 ~22:35 UTC, declared BEFORE any feature x outcome table was computed) — DESCRIPTIVE ONLY
+- Every touch table also shows THREE groups side by side: G1 = touched +1 then died at the stop (= DIE); G2 = touched +1, reached +2
+  (the +2 maker threshold) but NOT +3; G3 = touched +1 and reached +3 (the +3 maker threshold).
+- G2 / G3 are read on a separate walk with a resting +3 TP and the -3 stop (independent of C's exit, so outside-zone trades that C closes
+  at +2 are still split by whether price went on to +3 before -3). A GO trade whose +3 walk ends at the stop / cap / unresolved = G2.
+- Per-group medians (and N) per feature are descriptive. The primary test is unchanged: DIE vs GO (= G2 + G3 pooled), same family /
+  permutation null. No G2-vs-G3 test enters the family-wise count.
+
+ADDENDUM D2 (operator: ORDER BOOK x MACRO, 2026-10-15 ~22:40 UTC, declared BEFORE any book x outcome or book x macro table was computed)
+Sample: touches with a resolved C outcome (DIE vs GO), POOLED (real + non-matching emulated); REAL and EMUL shown descriptively.
+4 book features (median split on the pooled touch sample, low <= median < high):
+  B1 imbalance within 1 % at PRE                                  PRE_imb_1
+  B2 ask $ within 1 % at PRE vs the entry minute (pair-normalised) PRE_dE_lg_ask_1
+  B3 ask-wall "distance x size" = wall_ask_share / wall_ask_dist at PRE (big AND near = high)
+  B4 bid-depth change over the next 1-3 min = lg_bid_1 at P3 (else P2, else P1) minus PRE_lg_bid_1
+4 macro splits:
+  M1 BTC move from the entry minute to the touch-minute open (1m closes) <= 0 / > 0
+  M2 BTC 1h EMA20 3-h slope at the touch (hourly closes) <= 0 / > 0
+  M3 LITE C zone in / out (vol_mult >= 20 and BTC 1h slope at entry > 0)
+  M4 market buyer share = BTC 1m taker-buy quote share over the 5 bars before the touch minute, median split
+=> 16 combos (B x M), each a 2 x 2 of 4 quadrants. Per quadrant: N, G1 died / G2 +2 / G3 +3, die-rate.
+Statistic per quadrant: two-proportion z of die-rate (quadrant vs the rest of the combo's scored rows). Family = all 64 quadrants of the
+16 combos; family-wise p = day-block permutation of the outcome vector (same scheme as the main test, 2,000 draws) of max |z|.
+Quadrants with < 5 touches are descriptive only (shown, flagged, still inside the max but called out). N is small: a pass here is at most a
+recorder hint, never a filter.
+
+ADDENDUM D3 (operator: "we have much more macro variables", 2026-10-15 ~22:50 UTC, declared BEFORE any book x outcome table was read)
+EXPLORATORY exhaustive book x macro screen. D2 (16 combos) stays the PRIMARY book x macro test. At this N the D3 screen is a RANKING of
+candidates for the live recorder's pre-registration, NOT evidence.
+- Sample: POOLED touches (DIE vs GO), same as D2.
+- Book side: all 180 touch features + B1..B4 (184). Macro side, every market variable scorable on BOTH real and emulated touches,
+  computed from public klines (BTC/ETH/SOL 1m + BTC 5m/1h) at the entry minute (_e) and at the touch minute (_t):
+    BTC / ETH / SOL move since entry; BTC/ETH/SOL last-5 and last-15-min move at the touch; BTC RSI14 5m and 1h; BTC ADX14 5m and 1h;
+    BTC EMA13-EMA50 gap 5m; BTC EMA50-EMA200 gap 1h; BTC 1h EMA20 3-h slope; BTC off-24h-high %; BTC 72-h return (r72); BTC 72-h
+    efficiency ratio (eff72 = |net 72 h move| / sum |5m moves|); BTC 1-day return (last closed day); market (BTC+ETH+SOL) quote volume
+    last 5 min vs the entry 5 min and vs the pre-entry 60-min average; BTC 5-bar taker-buy share; breadth grid br_up5 / agg_tbr5
+    (reports/ML_BTCFWD_grid5m.csv.gz, ends 2026-10-13 00:05 -> partial coverage, reported); C zone; LITE vol_mult; episode hours.
+  The entry_* stamps of the real trades (BTC regime, global volume, etc.) exist only on the real fills (~15 touches) -> NOT screened
+  (coverage too low); listed as a blind spot.
+- Each (book, macro) combo: both median splits (pooled sample), 4 quadrants, two-proportion z of die-rate vs the rest of the combo's
+  scored rows; quadrants with N < 5 are not eligible for the ranking (shown only). Family-wise p = day-block permutation (1,000 draws)
+  of the max |z| over the FULL eligible search. Top 15 listed with per-cell N and G1 / G2 / G3 counts.
+- Required fetch: ETHUSDT / SOLUSDT 1m (and BTC 1m already) from 2026-10-03, same budget rules.
+
+ADDENDUM D4 (POST-HOC validity check, written AFTER the first family-test output was seen — declared as such, not a re-fit)
+The first run showed snapshots AT / P1..P3 can fall AT or AFTER the C exit minute (e.g. a TP filled in the touch minute), which leaks the
+outcome into the "after-touch" features. Correction: a snapshot at label k+off is used only if k+off < the C exit bar index (strictly
+before the exit minute); otherwise that row's feature is set missing. The family tests are re-run on the masked data; the masked result
+is the headline, the unmasked one is kept for transparency. Also reported: the top feature on the INDEPENDENT emulated subset (emulated
+touches that match no real fill) and its rank correlation with the price path at the same snapshot (net close of the snapshot minute,
+bid-wall distance) to show whether it is a price proxy.

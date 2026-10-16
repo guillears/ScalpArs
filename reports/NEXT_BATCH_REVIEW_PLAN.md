@@ -496,3 +496,6 @@ Extend the impulse grid, then `venv/bin/python scripts/scout_lite_z3.py`; descri
 `venv/bin/python scripts/scout_lite_c.py` — zone (+3) vs outside (+2) tallies; outside fills that closed at +2 priced vs +3/−3 on 1m klines
 (saved / capped / timeout / same, Σ Δ). Verdict vs the frozen gate: EARLY KILL Σ Δ ≤ −4 · FIRST READ 10 outside Σ Δ ≤ 0 · MAIN READ 20 on
 ≥ 8 days Σ Δ ≤ 0 or day / pair ≥ 50 % of the gain → revert (`frenzy_lite_c_enabled` false). Report it unprompted with the three blocks.
+
+### 👁 LITE_OB_THIN (DECISION_LOG 302, long shot)
+`venv/bin/python scripts/scout_lite_ob_thin.py` — needs the Decisions exports covering the batch (BOOK rows; each export carries only 3 days — check there is no gap). Report THIN vs not: N, DIED / RAN, precision vs the 38 % bar, gap + P, verdict.

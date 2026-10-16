@@ -1,0 +1,119 @@
+LITE EXIT OPTIMIZATION — PRE-REGISTRATION (frozen 2026-10-15T18:57:15Z, BEFORE any combination was priced)
+Operator 2026-10-15 (firm): "it's not possible that there is not a better exit combination; we cannot be comfortable with trades like
+EPIC again" (EPIC: peaked +2.60 net, stopped −3.43). Today's LITE exit: TP +3 net as a RESTING maker limit / stop −3 / 12 h cap, 10×.
+Code: scripts/study_lite_exitopt_*.py. Research only: no engine / config / trading_config.json / template / test edit, no bot API, no commit.
+Cache-first: no Binance call is planned (BT / master paths cached; EPIC / DUSK 1m + 5m bars fetched earlier by the fade study; DEEP 10-14
+tick day cached).
+Disclosure — read before this freeze (summaries only, no new outcome): TICK_STUDY_MAKER_LOCK (locks lose), LITE_LATE_TP_RESTUDY,
+LITE_FADE, LITE_PROTECT (33 single-family rules, none passes; for every EPIC ~5 dip-and-recover to +3; 2025 gains live on 1m-priced fills).
+Looked at before this freeze, outcome-free: path event counts of 5 fills, the stamp coverage / distribution of entry_atr_pct,
+entry_frenzy_stop_atr (= 3 / ATR), entry_frenzy_bar_ret_pct, entry_frenzy_vol_mult, entry_frenzy_vs_vwap_pct, entry_frenzy_hours
+(BT 100 %, master 20 / 20 via the paper exports; ATR median ≈ 1.5–1.7 %), the live exports (only DEEP is exported; EPIC / DUSK are not;
+ZK is in no export → not testable). No outcome of any new combination, no market-state × outcome table, was looked at.
+
+1. FROZEN INPUTS (sha256)
+   9158e67fc50cce3f88334ecc9f295c0c261a8677c0f28bdf6d097f308994fd7d  reports/LITE_PROTECT_rows.csv
+   16064024a56da774a44246e7be91001ea5221cf48f75bc67b43a8c27ed35c067  reports/ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv
+   ea6fe752dea1bcffc26154a1b39bd0f6416f6e77836730d58670461941f32d10  reports/TICK_STUDY_2026-10-15_cohort.csv
+   28bf9ed76798c448b215b5ec7fd6f50f495c5a7d072b84934221a3ebbb807157  reports/lite_fade_klines/live/EPICUSDT_1m.csv
+   080eeff46ba18ae6eb6c3b55132f85fb289908dd2929c2b971896e4fa4a8d6ee  reports/lite_fade_klines/live/DUSKUSDT_1m.csv
+   588057d2c3975a196b2370f92899de816cf51b2d52e77a2f28b8df9d173ae0fb  reports/lite_fade_klines/live/EPICUSDT_5m.csv
+   488f2cdcfc0e7c7b33d61f3a5a079ae078d93d918315fbfc8aaa70031186b52f  reports/lite_fade_klines/live/DUSKUSDT_5m.csv
+   52e934db19945cb3430cea3b28e403323a39f725235337a7977a95bbcee69b1e  reports/ML_BTCFWD_grid5m.csv.gz
+   339699a9f31c42c840fe3917f7df3377bd499ebc9b0223e955b630e348b0429c  reports/ml_btcfwd_fetch/k1m_taker/BTCUSDT.csv
+   Cohort = the LITE rows of the frozen TICK_STUDY_2026-10-15 cohort as walked by LITE_PROTECT (reports/LITE_PROTECT_rows.csv, meta
+   columns only: today's S0 / RM results per fill are re-priced here and ASSERTED equal): ③ BT yr6 2Y_TODAY seed 1: 2025 828 (top-50
+   tick 264 · rest 1m 564) · 2026-H1 369 · 2026-H2 255; ② MASTER B18–B21 20. ① LIVE: DEEP (10-14, cached tick day), EPIC + DUSK (fetched
+   1m bars, entry = 5m close + 5 s, the LITE_PROTECT convention; ATR from their fetched 5m bars, Wilder ATR14 % of the last closed bar,
+   services/surge.wilder_atr_pct). ZK: no export → could not test.
+   TICK-ONLY subset = fills whose path source is 'ticks' or 'ticks+1m' (2025 top-50 264, all 2026, all master).
+
+2. WALKER (one per fill, all combinations at once, vectorized; way 2 = an independent event loop, asserted equal on a random sample of
+   fills × combinations, plus FX.evaluate on every no-protection combination (S0) and LITE_PROTECT eval_v on its P1 / P2 / P4 cells).
+   Path = FX.load_path (ticks → 1m tail), net % of notional. First touch; a stop and a TP on the same event = stop; an arm acts from the
+   NEXT event; a 1m bar's stop books min(line, bar open); a tick stop books the print. Cap: the last event's close at te + cap.
+   Protection: once the running peak reaches A (arm), the stop line becomes max(−stop, L) (lock) and, with a trail, max(that, peak − D)
+   (peak = running max up to the previous event).
+
+3. RULERS. S0 (first print, taker) · RM0 (TP = resting maker limit: fills on a print ≥ limit + 0.5 tick, books the maker net; other
+   exits at the print / bar rule, zero slip) · **LS = PRIMARY** (RM0 + −0.20 on every non-TP exit: stop, lock, trail, cap) · LSe (RM0 +
+   −0.43 on stop / lock / trail exits, −0.20 cap; the EPIC sensitivity). Today is priced under the SAME ruler in every Δ.
+
+4. SEARCH SPACE (4347 combinations + conditional rules)
+   (J) JOINT FIXED — 3024: TP ∈ {2.0, 2.25, 2.5, 2.75, 3.0, 3.5, 4.0} × stop ∈ {1.5, 2.0, 2.5, 3.0, 3.5, 4.0} × lock ∈ {none, (A, L)
+       ∈ (1.5, 0), (2.0, 0.5), (2.0, 1.0), (2.5, 1.0), (2.5, 1.5)} × trail ∈ {none, peak − D, D ∈ 1.0, 1.5, 2.0} × cap ∈ {12 h, 4 h, 2 h}.
+       A trail arms with the lock's A; with lock none it arms at A = +2.0 with no floor above −stop. A lock whose A ≥ TP never arms
+       (kept: duplicates of no-lock). Today = TP 3.0 / stop 3.0 / none / none / 12 h (in the grid).
+   (V) VOLATILITY-SCALED — 1323: ATR = entry_atr_pct (5m, stamped). TP = clip(k_tp·ATR, 1.5, 5), stop = clip(k_sl·ATR, 1, 5),
+       k_tp, k_sl ∈ {1.0, 1.5, … 4.0} × lockV ∈ {none, (A = 0.67·TP, L = 0), (A = 0.67·TP, L = 0.33·TP)} × trailV ∈ {none, D = clip(m·ATR,
+       0.5, 4), m ∈ 1, 2} (arms with lockV's A, else at 0.67·TP) × cap ∈ {12 h, 4 h, 2 h}.
+   (E) ENTRY-CONDITIONAL — PRIMARY variable chosen by economic logic before looking: entry ATR (a noisier coin needs wider exits).
+       3 regimes at the TRAIN set's ATR terciles; each regime gets its own SEL-A / SEL-B combination from J ∪ V on the train fills of
+       that regime. SECONDARY (reported, never the verdict alone): entry_frenzy_vs_vwap_pct, entry_frenzy_hours, entry_frenzy_bar_ret_pct,
+       2 regimes each at the train median.
+   (M) MARKET-STATE-CONDITIONAL PROTECTION — see section 9 (operator addition, received before this freeze).
+
+5. SELECTION (on TRAIN only). Objective = mean Δ %/fill vs today under LS. SEL-A = argmax (ties → fewest changed dimensions vs today,
+   then grid order). SEL-B = argmax of the neighbourhood mean (the combination and its ±1-step neighbours in each ordinal dimension:
+   J: TP, stop, lock list order, trail list order, cap; V: k_tp, k_sl, lockV, trailV, cap). Grids searched: J, V, J ∪ V, E → 4 grids ×
+   2 selectors = 8 procedures (+ M if a separator survives). Multiple procedures = more chances of a lucky pass: disclosed; the
+   gates below must hold for the reported procedure, and the count of passing procedures is reported against ~0.4 expected by chance.
+
+6. WALK-FORWARD FOLDS (BT block). (a) train 2025 → test 2026 · (b) train 2026-H1 → test 2026-H2 · (c) train 2026 → test 2025 ·
+   (d) expanding monthly: for each month m from 2025-04 to 2026-10, train = every BT month < m, test = m; the OOS Δ concatenated.
+   Every fold also run TICK-ONLY (train and test restricted to tick fills). Reported per procedure: the selected combination per fold,
+   its TEST Δ %/fill vs today (day-clustered bootstrap P and 95 % CI), the in-sample best on the TEST period itself and the DEFLATION
+   (in-sample best Δ − OOS Δ), and the train Δ of the selected combination.
+
+7. GATES (all must hold for a procedure to produce a candidate; LS ruler)
+   G1  folds (a), (b), (c): OOS Δ > 0 and P ≥ 0.90 in EVERY fold.
+   G2  expanding monthly (d): concatenated OOS Δ > 0, P ≥ 0.90.
+   G3  tick-only folds (a), (b), (c): OOS Δ > 0 in every fold.
+   G4  the FINAL combination (the procedure applied to ALL BT fills): master (20) Δ ≥ 0; LIVE (DEEP, EPIC, DUSK; scored where resolved)
+       ΣΔ ≥ 0 — reported, N = 3.
+   G5  neighbourhood stability: ≥ 75 % of the final combination's ±1-step neighbours have mean OOS Δ (over folds a, b, c) > 0.
+   G6  leave-one-month-out: every LOMO mean of the BT OOS Δ (folds a + c, i.e. each fill out of sample once) > 0; no single day / pair
+       carries ≥ 50 % of ΣΔ.
+   G7  LSe sensitivity: folds (a), (b), (c) OOS Δ > 0.
+   Reporting: SAVED (today STOP / CAP, Δ > 0) vs KILLED (today TP, Δ < 0) with counts and points, plus DEEPER (today STOP, Δ < 0) and
+   GAINED (today TP, Δ > 0); EPIC / DUSK / DEEP outcome per final combination. 30–50 % in-sample haircut on any in-sample figure.
+   Exit-counterfactual sanity: a combination equal to today must give Δ = 0 on every fill (asserted); a protection that never arms
+   while today's exit is open (and has today's TP / stop / cap) must give Δ = 0 (asserted).
+   Parity: today vs the replay's recorded pct (rec_pct) — match rate per era, and today vs LITE_PROTECT base_pct / rm_base_pct (asserted).
+
+8. NO-GO. If no procedure passes, the report says "none beats today out of sample" and gives the deflation (in-sample − OOS gap). No
+   arm / ship recommendation from this study (unreviewed).
+
+9. MARKET-STATE-CONDITIONAL PROTECTION (operator addition 2026-10-15, received and frozen here BEFORE pricing): "there must be a 2D of
+   what was going on in the MARKET too, before deciding to cut the winners."
+   Decision moments (no lookahead; market data = bars CLOSED at or before the moment):
+     (i)  the first event where the running peak reaches A, A ∈ {2.0, 2.5}, while today's exit is still open;
+     (ii) the first 1m close after (i) at which the trade's net % ≤ peak − 1.0 (peak = running max so far), while today's exit is open
+          (the "dip" moment — the EPIC-vs-dipper moment; Step A uses the FIRST such close, Step B re-checks at each 1m close).
+   → 4 decision sets: (i)A2.0, (i)A2.5, (ii)A2.0, (ii)A2.5. One row per fill per set.
+   Variables (12; sources: reports/ml_btcfwd_fetch/k1m_taker BTC 1m, reports/ml_btcfwd_fetch/k5m_taker top-50 5m with taker-buy,
+   reports/ML_BTCFWD_grid5m.csv.gz breadth, the coin's own 1m bars from the cache / its 5m taker file):
+     MARKET (read in DAY units): btc_r5, btc_r15 (BTC % over the last 5 / 15 closed 1m bars) · btc_since_entry (BTC % from the entry
+       minute to the decision minute) · br_up5 (top-50 breadth, grid5m at the last 5m boundary) · br_chg15 (br_up5 now − 15 min earlier)
+       · top10_up15 (share of the top-10 non-BTC members by the previous day's rank with a positive 15-min return) · agg_tbr15 (grid5m
+       aggregate taker-buy share, last 15 min) · mkt_vol_ratio (members' summed quote volume in the last closed 5m bar / its mean over
+       the previous 24 h).
+     COIN (fill units): coin_vs_btc (moment (ii): coin net % change since the peak − BTC % change since the peak minute; moment (i): the
+       same over the last 15 min, since peak = now) · coin_vol_ratio (coin 1m volume over the last 5 closed minutes / its mean 5-min
+       volume over the 60 min before entry) · coin_tbr (coin taker-buy share of its closed 5m bars since the peak; at (i) the last 15
+       min; NaN where the coin has no 5m taker file) · coin_rsi_chg (RSI14 on 5m closes built from the coin's 1m bars: now − at the peak
+       bar; at (i) now − 15 min earlier).
+   Outcome under today's exit (RM0): reach +3 (TP), end −3 (STOP), final %. "Failing" = higher P(end −3).
+   STEP A (the separator screen): for each set, among fills with the variable scored: 1D splits at SIGN / natural pivot (signed vars 0;
+     shares 0.5; ratios 1.0), at the MEDIAN, and OUTER TERCILES (top vs bottom third); 2D: every pair of the 12 variables (66) at the
+     pivot and at the median → 4 quadrants each (quadrant vs the rest). Total per set 12 × 3 + 66 × 2 × 4 = 564; × 4 sets = 2,256 tests.
+     Statistic = z of P(end −3) (side / quadrant vs the rest); tests that involve any MARKET variable are computed in DAY units (each
+     (day, side) one observation: the day-mean of the stop indicator); coin-only tests in fill units. Minimum: ≥ 20 fills and ≥ 8 days
+     per side / quadrant, else not scored. Null: ≥ 200 day-block shuffles of the outcome (each day's outcomes moved to another day,
+     cyclically filled), the SAME statistic, family-wise max |z| over all 2,256 tests. Survivor = family-wise rank p ≤ 0.05 AND the
+     "failing" side's stop-rate higher in BOTH 2025 and 2026 (thresholds re-derived on each year) AND on tick-only fills. Also reported:
+     the protection break-even stop rate (a lock at L pays only if P(stop) / P(TP) > (3 − L) / (L + 3) in that cell).
+   STEP B (only for Step-A survivors): rule = at the decision moment, if the state is in the failing cell → protect, else today's exit.
+     Protections: lock L = 0, lock L = +1.0, trail D = 1.0, exit at the next event (market). 4 per survivor per moment. Priced on the
+     same walker / rulers, selected and gated exactly like section 5–7 (cell thresholds re-derived on each fold's train set).
+   If no separator survives Step A, Step B is not run and the report says so.

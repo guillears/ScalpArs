@@ -1,0 +1,42 @@
+SURGE_LONG TRAIL ATR-SIZE CAP — PRE-REGISTRATION
+written 2026-10-15 15:34:59 UTC, before any variant was priced.
+Trigger: operator 2026-10-15 (live STRK SURGE_LONG peak +3.54 % -> +1.80 %, trail line +1.59 %): "should the trail (peak - 1x ATR) have a cap based on ATR size".
+
+TODAY (control, DECISION_LOG 203): initial stop = min(bullrun_base_sl_pct -0.7, max(-1.5 x ATR, -1.2)) (= -1.2 on every ATR >= 1.5 pick);
+arm at peak >= +1.0 (net); after arming line = max(initial stop, peak - 1.0 x entry ATR %); no BE lock / ladder; max hold 240 min.
+All P&L net of 0.09 % fees; peak starts at 0; exit at the first print whose net P&L <= line.
+
+VARIANTS (arm, initial stop, hold unchanged; only the post-arm trail distance d changes; line = max(initial stop, peak - d)):
+  CAP_1.00   d = min(ATR, 1.00)
+  CAP_1.25   d = min(ATR, 1.25)
+  CAP_1.50   d = min(ATR, 1.50)
+  CAP_2.00   d = min(ATR, 2.00)
+  TIER_A2.0_K0.60   d = ATR if ATR < 2.0 else 0.60 x ATR
+  TIER_A2.0_K0.75   d = ATR if ATR < 2.0 else 0.75 x ATR
+  TIER_A2.5_K0.60   d = ATR if ATR < 2.5 else 0.60 x ATR
+  TIER_A2.5_K0.75   d = ATR if ATR < 2.5 else 0.75 x ATR
+  TIGHT_P3   d = ATR while peak < 3 %, then 0.5 x ATR
+  TIGHT_P5   d = ATR while peak < 5 %, then 0.5 x ATR
+MULTIPLICITY: 10 cells tested. Best-of-10 is reported as such; a pass by one cell is read against that count.
+
+COHORT: SURGE_LONG CLOSED fills of reports/ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv with entry_pair_ema20_ema50_gap_pct (= EMA13-EMA50) >= 0
+(today's armed filter, DL 287); 3 seeds pooled; periods 2025 BULL / 2026-H1 BEAR / 2026-H2 BULL (the file's regime column).
+Path: 1-s-resolution aggTrade ticks (reports/backtest_cache/ticks_q, ticks) from the replay's own entry time + entry price; fills without
+ticks fall back to 1m klines (k1m, O->L->H->C if green else O->H->L->C) and are FLAGGED; fills with neither are dropped and counted.
+PARITY GATE (before any variant is read): walker TODAY vs the replay's pct_new within +-0.10 on >= 85 % of tick-walked fills, else STOP.
+Master (MASTER_POOL_stacked.csv) and live (export_glob) SURGE_LONG fills: described only.
+
+UNITS / STATS: Delta = variant - today per fill. Day-clustered bootstrap (resample UTC days, 5000 draws) for mean Delta CI and
+P(Delta > 0). Never-armed fills (walk peak < +1.0) must have Delta = 0 exactly (asserted).
+TWO-SIDED: SAVED = fills with Delta > 0 (count, sum points); KILLED = fills with Delta < 0 (count, sum points); top-10 runners (today's
+largest wins) shown under every cell. Concentration: top day and top pair share of the positive Sigma-Delta. Leave-one-month-out mean Delta.
+Primary read on the parity-matched fills too (fills where walker TODAY != replay are a separate line — replica-artefact guard).
+SLIP: zero slip and live slip (every exit is a market order: -0.17 on the exit; entry +0.03) — uniform per fill, so Delta is slip-invariant
+(stated, shown).
+
+GATE (frozen): a cell is a CANDIDATE only if ALL of:
+  1. mean Delta > 0 with day-bootstrap P(Delta > 0) >= 0.90 in 2025 AND separately in 2026 (H1+H2 pooled);
+  2. leave-one-month-out: mean Delta keeps its sign with every single month removed (pooled two years);
+  3. no single day and no single pair >= 50 % of the positive Sigma-Delta;
+  4. then a 30-50 % in-sample haircut is applied to the reported Delta.
+One-year-only pass = regime-dependent, NOT a candidate. A candidate becomes an observe-only Scout line with this frozen gate; never a ship.

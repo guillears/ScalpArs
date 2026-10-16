@@ -1,0 +1,92 @@
+LITE EPIC ENTRY — PRE-REGISTRATION (frozen 2026-10-15 19:18:43 UTC, BEFORE any feature × outcome table was computed)
+Operator 2026-10-15: the exit side is exhausted (LITE_EXITOPT: 4,347 combos, no OOS winner; at the dip moment hold = cash-out; no
+market-state separator EPIC vs dippers). Question: does the ENTRY tell EPIC-type trades apart, and what would avoiding them be worth?
+Code: scripts/study_lite_epic_entry_*.py. Report: reports/LITE_EPIC_ENTRY_2026-10-15.md. Research only: no engine / config /
+trading_config.json / template / test edit, no bot API, no commit. Cache-only (no Binance call planned: cohort 5m klines with taker-buy
+already in reports/lite_fade_klines/, market grids cached).
+Disclosure — read before this freeze: LITE_EXITOPT, LITE_PROTECT, LITE_FADE (entry cuts heavy-red-bar ≥3× vol ∧ ≤ −0.3 % near-miss;
+RSI drop ≥ 8 flips by year), LITE_2D_ALLREGIMES (2D on pct, null-level: 1,010 zones vs null median 988, P 0.455), YR6_WL_FRENZY_* (LITE
+btc_1h_slope ≤ 0 → observe line DL 288), CURRENT_STATE LITE observe lines (STRETCH_REENTRY gap > 1.87 ∧ k_now ≥ 2; OFF30H3; BTC1H_FALLING).
+Those cuts are CITED, not re-run as-is; their variables enter the exhaustive screen only as ordinary columns. Looked at before freeze,
+outcome-free: stamp coverage / distinct counts of the yr6 LITE entry_* columns, grid column names, export contents (live LITE: DEEP is
+exported; EPIC / DUSK are not (newest live export 14:50 UTC) → features from the fetched klines; ZK LITE: in no export → not testable).
+
+1. FROZEN INPUTS (sha256, reports/)
+   LITE_PROTECT_rows.csv: 9158e67fc50cce3f
+   TICK_STUDY_2026-10-15_cohort.csv: ea6fe752dea1bcff
+   lite_exitopt/moments.csv: 62502427b1bf1c47
+   lite_exitopt/live.csv: 7c4fe12a61ebeaa2
+   LITE_FADE_entry_rows.csv: ba94dc666ce80eb8
+   ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv: 16064024a56da774
+   ML_IMPULSE_grid5m.csv.gz: fb233065f0f4db5a
+   ML_BTCFWD_grid5m.csv.gz: 52e934db19945cb3
+   lite_fade_klines/live/EPICUSDT_5m.csv: 588057d2c3975a19
+   lite_fade_klines/live/DUSKUSDT_5m.csv: 488f2cdcfc0e7c7b
+
+2. COHORT (frozen, no re-selection)
+   ③ BT = the 1,452 LITE rows of TICK_STUDY_2026-10-15 as walked by LITE_PROTECT (2025 828 · 2026-H1 369 · 2026-H2 255); TICK-ONLY =
+   src in (ticks, ticks+1m) (2025 top-50 264 + all 2026). ② MASTER = the 20 B18–B21 LITE fills (same rows file). ① LIVE = DEEP (export),
+   EPIC + DUSK (fetched 5m bars; entry = 5m close + 5 s; their market grid rows at floor(te, 5m)). ZK: could not test.
+   Outcomes = today's exit (+3 resting maker TP / −3 / 12 h), RM ruler = rm_base_pct / rm_base_why (resting-TP ruler); LS ruler = RM with
+   −0.20 extra on STOP and CAP (the LITE_EXITOPT live-slip ruler). No outcome is re-priced here.
+
+3. CLASSES (fixed definitions; peak = peak_all, net %, under today's exit)
+   EPIC   = peak_all ≥ +2.0 ∧ (rm_base_why == STOP ∨ rm_base_pct ≤ −2.5)
+   DIPPER = moments A2_reach ∧ A2_dip_t present (a 1m close ≥ 1.0 below the running peak after +2) ∧ rm_base_why == TP
+   WIN    = rm_base_why == TP (DIPPER ⊂ WIN)      LOSS = rm_base_why == STOP      CAP = 12 h cap
+   NAL    = never-armed loss = peak_all < +2.0 ∧ STOP (DUSK type)
+   Sanity (must reproduce LITE_EXITOPT): EPIC 2025 ≈ 93 / 828, 2026 ≈ 64 / 624; DIPPER 158 / 137 → else STOP and report.
+
+4. FEATURES AT ENTRY (no lookahead: 5m bars CLOSED ≤ floor(te, 5m); grids at t5 = floor(te, 5m) use bars closed ≤ t5)
+   A. every numeric stamped entry_* column of the yr6 fills (BT) / paper exports (master) / live export (DEEP) with BT coverage ≥ 80 % in
+      EACH year block and ≥ 10 distinct values (or 2-valued 0/1), excluding sizing / price-level / bookkeeping columns (entry_price,
+      entry_frenzy_vwap, entry_desired_notional, entry_liquidity_cap_notional, entry_fee, entry_slippage_pct, entry_quality_score,
+      entry_pattern_*). Coverage table per block (2025 / H1 / H2 / master / live) printed FIRST; an unscored fill is never "rest".
+   B. rebuilt from reports/lite_fade_klines/k5m (signal bar = last closed 5m bar, open = floor(te,5m) − 5 min): sb_ret, sb_vmult (quote vol
+      vs mean of 50 prior bars), sb_tbshare, rsi_sb, rsi_drop (LITE_FADE definitions, re-computed and ASSERTED equal to
+      LITE_FADE_entry_rows), plus NEW: tb3 (taker-buy share of the last 3 closed bars), v3mult (mean quote vol of last 3 vs the 50-bar ref),
+      r1h / r4h (close of signal bar vs close 12 / 48 bars earlier, %), off_spk (signal close vs the max 5m high since the spike bar,
+      spike = te − entry_frenzy_hours·3600 s, %), bars_since_hi (5m bars since that post-spike high), off12h (vs max high of last 144 bars),
+      red6 (red bars among the last 6), range_pos12 (close position in the last 12 bars' range).
+   C. episode: k_now = 1 + earlier non-WILLY FRENZY fills (yr6 seed 1, sleeves FRENZY_LONG / WIDE / LITE) on the same pair whose spike
+      (te − hours·3600 s) is within ±10 min of this fill's spike and whose entry is strictly earlier; k_all (incl. WILLY); prior_win /
+      prior_loss = an earlier same-episode fill already CLOSED ≥ 0 / < 0 before te. (BT only; master/live k_now from exports where possible,
+      else unscored.)
+   D. market (DAY units): IMPULSE grid SCORE, er_15, upsh_15, top10_up, br_trend, br_trend_d15, top10_tbr, vsurge, volconc_15, corr15;
+      BTCFWD grid tbr15, btc_m5, btc_r15, btc_r60, dhi_4h, dlo_4h, dhi_24h, rv_ratio, br_up5, agg_tbr15, hour; TURNS (value at t5 minus
+      value at t5 − 5 min): d_SCORE, d_br_trend, d_top10_up, d_top10_tbr, d_br_up5, d_agg_tbr15, d_er_15, d_btc_r15. Forward targets
+      (Y_*, fwd*) and the L* legs are EXCLUDED.
+   Feature families A–D are the whole space; nothing is added after results.
+
+5. SCREEN (primary) — cuts are LABEL-BLIND quantiles of ALL BT fills (pooled): sign (when each side ≥ 10 % of scored fills), median,
+   lower tercile, upper tercile (each "zone vs rest of scored"); 2D = every feature pair at the median → 4 quadrants (zone vs rest of
+   jointly scored). Zone ≥ 15 fills in the contrast set in each year.
+   Contrasts: K1 EPIC vs DIPPER (primary) · K2 EPIC vs WIN · K3 EPIC vs all other fills (the population a filter faces) · K4 LOSS vs WIN
+   (all losers incl. NAL) — K4 is context, not the question.
+   Statistic per test and year: two-proportion z of the EPIC (K4: LOSS) rate, zone minus rest. Year-consistent score S = min(z_2025,
+   z_2026) (2026 = H1 ∪ H2), enrichment direction (positive = zone holds MORE EPICs; that is what a filter could refuse). Also reported:
+   the anti-direction (min(−z25, −z26), zone holds FEWER EPICs).
+   NULL: 500 label rotations — within each year block the fills are time-ordered and the class-label vector is circularly shifted by a
+   uniform offset in [10 %, 90 %] of the block length (keeps day-clustering of labels, breaks feature ↔ label). Same statistic, same
+   search. Family-wise p of a test = share of rotations whose max S over ALL tests (1D ∪ 2D, per contrast) ≥ the observed S.
+   SURVIVOR = family-wise p ≤ 0.05 in K1, K2 or K3. Also reported: observed count of tests with S ≥ 1.96 vs the null median count.
+   Market-variable tests also report distinct zone days; a market-variable survivor needs ≥ 8 zone days per year.
+
+6. DISCOVER / CONFIRM (secondary): pick the top test on 2025 alone (max z, its own rotation null for family-wise p), confirm on 2026
+   (one-sided z ≥ 1.645 in the same direction) — and vice versa; repeated on the TICK-ONLY subset. A model view too: L2 logistic
+   (λ = 1, standardized features, missing → mean + missing flag, numpy Newton) trained on one year → AUC on the other for K3 (EPIC vs
+   all); null AUC = the same fit on 200 rotations. "Can we tell at entry" = OOS AUC beyond the rotation p95 in BOTH directions.
+
+7. FILTER TEST (only for survivors; the top-3 K3 tests by S are also shown, labelled NOT survivors, for the record)
+   "Refuse when zone" per SIGNAL (skips = 0; a refused fill frees no slot — not modelled): Δ %/fill vs today = −Σ zone pct / N_all, RM and
+   LS rulers, per year, pooled, tick-only, master, live. Expectancy bar on the refused cohort: ① WR < LITE breakeven (per year, |avg loss|
+   / (avg win + |avg loss|) from all fills, ≈ 50 %) ② avg < 0 at 95 % by DAY-cluster bootstrap (2,000) ③ ≥ 8 distinct days, no day and
+   no pair ≥ 50 % of the cohort loss ④ N ≥ 15 — in EACH year. Two-sided: EPICs avoided vs WINs refused (count and points). Leave-one-
+   month-out Δ (every month dropped in turn; all must stay > 0). 30–50 % haircut on any in-sample Δ. A pass → OBSERVE-ONLY Scout line
+   with this frozen gate (no arm). A fail → none.
+
+8. CEILING: a perfect EPIC filter (refuse every EPIC, nothing else): Δ %/fill per year / tick-only / master under RM and LS; same for a
+   perfect NAL filter and a perfect LOSS filter (context).
+
+9. VALIDATION: every headline two ways (screen counts by matrix algebra AND an independent per-test loop on ≥ 200 random tests + every
+   survivor / top test; class counts recomputed from LITE_PROTECT_rows AND from moments.csv); validate_against_master.py at the end.

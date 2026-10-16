@@ -1,0 +1,50 @@
+WILLY 2D WINNERS-vs-LOSERS SCREEN — PRE-REGISTRATION (frozen 2026-10-16, written BEFORE any outcome table of this study)
+Script: scripts/study_willy_2d_screen.py   Deliverable: reports/WILLY_2D_2026-10-16.md
+Research only. Cache-only. No engine/config/template/test edits. No Binance calls planned (live outcomes = as traded).
+
+1. COHORT (verdict cohort)
+   - reports/WILLY_LOWVWAP_SHORTRUN_rows.csv, block BT, seed 1, tick_priced == True (today's WILLY exit: resting maker TP +1.25,
+     stop -4 booked min(print,-4)-0.2, 90-min cap, late TP +0.25 after 30 min; parity-asserted vs WILLY_DURATION_cell_rows).
+   - y = booked % per fill (fee-net, leverage-invariant). Eras: 2025 (tick) · 2026-H1 · 2026-H2.
+   - Joined 1:1 on (seed, pair, opened_at) to reports/ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv entry_* stamps (join must be 100 %).
+   - Seeds 2/3 tick fills = replication of headline numbers only. 2025 1m-priced fills = REFUTE-ONLY (never support).
+2. VARIABLES (label-blind)
+   - PAIR: every entry_* column scored on >= 80 % of the cohort and with >= 2 values, that is not macro (study_yr6wl_frenzy_common.is_macro),
+     minus EXCL = {entry_frenzy_vwap, entry_desired_notional, entry_liquidity_cap_notional, entry_slippage_pct, entry_frenzy_catchup*,
+     *_started_at, *_spike_at, *_trigger_at}; + derived hour (UTC), lvol24 = log10(24h volume), fz_age_min (open - spike), k_ep (1 + earlier
+     WILLY fills of the same pair+spike episode, seed 1, all pricing), top50f.
+   - MACRO: entry_* macro stamps (is_macro) + the YR6 ex-ante daily market panel (reports/YR6_WL_FRENZY_regime_daily_panel.csv, 18 vars:
+     BTC returns/vol/SMA gaps/off-30d-high, alt breadth/returns/dispersion/pump share/alt-season), joined by UTC day.
+   - Coverage table lists every variable with % scored on the cohort, master 19 and live 8, and every could-not-test item.
+3. CUTS (label-blind, on the POOLED tick cohort x values, no outcome used, frozen): median; q33 / q67; binary flags at their value;
+   sign split when both signs >= 5 %.
+   1D zones: x>med, x<=med, x<=q33, x>q67, (x>0, x<=0), flag on/off.
+   2D zones, EXHAUSTIVE over all unordered variable pairs: 4 median quadrants + 4 outer-tercile corners (lo/lo, lo/hi, hi/lo, hi/hi).
+   Eligibility (same in observed and null): zone >= 10 fills and >= 5 distinct days AND rest >= 10 fills in EVERY era. Identical masks deduped.
+4. FAMILIES
+   F1 PAIR      = 1D pair + PAIR x PAIR (fill units)
+   F2 PAIR x MACRO (fill units; macro leg constant within a window -> day-block null penalises it)
+   F3 MACRO     = 1D macro + MACRO x MACRO in DAY units (unit = UTC day with >= 1 cohort fill; x = day-mean, y = day-mean; cuts on pooled day values;
+                  eligibility >= 8 zone days and >= 8 rest days per era)
+5. STATISTIC: per era Welch t (zone vs rest inside the era). S = direction-consistent min t: if all three era t share a sign,
+   S = sign * min|t_e|, else 0.
+6. NULL: 300 day-block shuffles WITHIN era (each day's outcome vector replaced by a randomly permuted donor day's of the same era,
+   shuffled, cycled to size) for F1/F2; 300 day-label permutations within era for F3. The SAME full search is re-run on each shuffle;
+   family-wise p = share of null max|S| >= observed |S|. Raw count of tests with |S| >= 1.0 / >= 1.5 reported vs null median.
+7. WALK-FORWARD: discover on one era (top 20 tests by |t| in that era, per family), confirm = same sign with t >= 1.28 in BOTH other eras.
+   Confirmed count vs the null's distribution of the same count (same 300 shuffles) -> p.
+8. SURVIVOR = FW p < 0.10 in any family. For every survivor AND the top 5 per family by |S| regardless:
+   - expectancy filter bar (loser zones): (1) zone WR < WILLY breakeven WR (computed on the cohort, about 77 %), (2) day-clustered bootstrap
+     P(zone mean < 0) >= 0.95, (3) >= 8 distinct days and no single day or pair >= 50 % of the zone's gross loss, (4) N >= 15;
+     then 30-50 % in-sample haircut.
+   - winner zones: multiplier gate N>=30, WR>=70 %, avg>=+0.10 %, total>0 (reported, not a ship path in this study).
+   - two-sided refusal delta per WILLY fill (saved losers + lost winners), per era, + leave-one-month-out sign, pair/day concentration,
+     seeds 2/3 sign, 2025 1m-priced sign (refute-only).
+9. VERDICT RULE (fixed now)
+   CANDIDATE   = FW p < 0.05 AND walk-forward confirmed AND expectancy bar passes AND seeds 2/3 same sign AND 2025-1m does not reverse.
+   OBSERVE LINE = FW p < 0.10, or walk-forward-confirmed zone that passes bar items (1)(3)(4) -> pre-registered observe threshold, frozen.
+   NOTHING     = otherwise.
+10. THREE BLOCKS for the top candidates: (1) backtest per era (tick verdict; 2025 1m refute-only), (2) master 19 WILLY fills per batch
+    (B19/B20/B21; y = today's exit walk from the rows file, $ = as traded), (3) live batch 8 fills (~/Downloads/scalpars_orders_live_2026-10-16_13-10-21 (1).csv),
+    per trade before (as traded) / after (refused -> 0) in % and $. Panel variables are not available after the cache end (2026-10-11):
+    those fills are listed as NOT SCORED, never as "rest".

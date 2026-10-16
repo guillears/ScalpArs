@@ -1,0 +1,70 @@
+ML MARKET-IMPULSE STUDY — PRE-REGISTRATION (written 2026-10-15 18:39:36 UTC, before any feature was scored against a forward return and
+before any filter cell was priced)
+
+Operator 2026-10-15: "measure the STRENGTH of BTC rising at entry to estimate if it will continue for 15 minutes or it's just a
+spike — with breadth increasing, or with ETH, SOL, ZEC, XRP, or top-10 analysis — to see if the whole market turned bullish."
+Prior work tested 25 market features ONE AT A TIME (reports/ML_BTCFWD_FOLLOWUP_2026-10-15.md: 0.3-1.5 bps OOS, none useful at
+fills). NEW ANGLE here = CONJUNCTION / MARKET-WIDE IMPULSE QUALITY. Nothing is shipped; a pass = observe-only Scout line.
+
+DATA (no lookahead: every feature at time t uses only bars CLOSED at or before t; asserted on 300 random t by recomputing with
+every bar after t deleted)
+  BTC/ETH/SOL 1m with taker-buy: reports/ml_btcfwd_fetch/k1m_taker (reused).  XRP/ZEC 1m with taker-buy: fetched now into
+  reports/ml_impulse_fetch/k1m_taker (budget rule).  Top-50 5m with taker-buy quote: reports/ml_btcfwd_fetch/k5m_taker
+  (+ live-window top-up into reports/ml_impulse_fetch/k5m_taker).  Top-10 1m closes: cache k1m (both caches) + live-window
+  top-up.  Membership = the PREVIOUS UTC day's universe_daily_top50 list (both caches) minus BTC / USDC / PAXG / XAUT / FDUSD;
+  TOP-10 = its 10 highest-volume members (ETH/SOL/XRP/ZEC may be among them - legs overlap by design). After the last list
+  (2026-10-11) the last list is reused (stale, flagged; live window only).
+
+SAMPLE / TARGETS (Step 1): every 5m boundary t from 2025-01-01 to the end of data.
+  Y_btc = BTC close of the 1m bar ending t+15 / close of the 1m bar ending t - 1 (%)            (as prior study)
+  Y_alt = equal-weight mean over top-50 members of close(5m bar ending t+15)/close(5m bar ending t) - 1 (%), >= 25 members.
+
+FEATURES
+ (I1) BTC spike-vs-trend, W in {15, 30} 1m bars ending at t (d_i = 1m close-to-close changes):
+   er_W       efficiency ratio = (c_t - c_t-W) / sum|d_i|   (signed, -1..1)
+   upsh_W     share of the W bars with d_i > 0
+   spike_W    max(d_i, 0) / sum max(d_i, 0)  (share of the up-path carried by the single biggest up bar; NaN if no up bar)
+   volconc_W  max 1m volume / sum volume over W   (one burst)
+   volslope_W log( volume of last W/3 bars / volume of first W/3 bars )   (rising profile)
+   vwap1h     c_t / VWAP(60 bars, typical price) - 1 (%)
+ (I3) corr15  mean pairwise Pearson correlation of the 15 1m log-returns of the TOP-10 (members with >= 14 valid returns,
+              >= 6 members, else NaN) - market-wide co-movement.
+ (I2) MARKET IMPULSE SCORE = number of TRUE legs (0-9), NaN if any leg is NaN:
+   L1 btc    BTC r15 > 0 AND er_15 >= q_er, q_er = median er_15 over 2025-01-01..2025-03-31 5m bars with r15 > 0 (frozen from
+             features only, strictly before the first test month; logged by the feature script)
+   L2 eth    ETH r15 > 0        L3 sol  SOL r15 > 0        L4 xrp  XRP r15 > 0        L5 zec  ZEC r15 > 0   (1m closes)
+   L6 top10  share of TOP-10 with close(5m bar ending t)/close(5m bar ending t-15) > 1 is >= 0.70 (>= 7 valid members)
+   L7 brrise top-50 trend breadth B(t) = share with close(t)/close(t-60 min) > 1 (5m closes, >= 25 members); B(t) - B(t-15) > 0
+   L8 taker  TOP-10 aggregate taker-buy quote / quote volume over the last 3 closed 5m bars > 0.5
+   L9 vsurge top-50 quote volume of the last 3 closed 5m bars / (top-50 quote volume of the last 288 closed 5m bars / 96) >= 1.5
+   CONJ = (BTC r15 > 0) AND L6 AND L7          ("BTC up AND top-10 >= 70 % up AND breadth rising")
+   SPIKE = (BTC r15 > 0) AND spike_15 >= its 2025-01..03 all-bar 80th pct AND er_15 < q_er   ("BTC rise carried by one bar")
+
+STEP 1 — all bars, walk-forward strictly forward (test months 2025-04 .. last; train = all months strictly before)
+ Scored items (23) x 2 targets = 46 tests: 11 I1 + corr15 + 9 legs (binary) + SCORE + CONJ  (SPIKE descriptive in step 1).
+ Continuous features: training fixes sign (Spearman vs target) and quintile cuts; OOS spread = mean Y in top - bottom training
+ quintile (bps), OOS AUC(Y>0) on the signed feature. Binary items (legs, CONJ): OOS spread = mean Y(TRUE) - mean Y(FALSE),
+ sign from training. SCORE: OOS AUC of the training-oriented score; dose-response on buckets {<=2, 3, 4, 5, 6, >=7}.
+ Null: target circularly shifted by a random whole number of days (7 .. N-7), 200x, whole walk-forward re-run per shift.
+ STEP-1 PASS per item/target, ALL of: (a) pooled OOS AUC(Y>0) > null 99th pct (binary items: |spread| > null 99th of |spread|);
+ (b) training-oriented OOS spread >= 2.0 bps in 2025 AND in 2026 test months (same orientation both years);
+ (c) SCORE only: dose-response monotone — Spearman(bucket level, bucket mean Y) >= +0.8 in the oriented direction in BOTH
+ years, and the >=7 vs <=2 gap >= 2 bps both years. A real effect may be continuation OR reversal; the orientation is learned
+ walk-forward and must agree in both years. A Step-1 pass on EITHER target makes that item's Step-2 cells gate-eligible.
+
+STEP 2 — MOMENTUM LONG filter, per SIGNAL (refused fill = 0), P&L at 1x, three blocks:
+ ① live (scripts/export_glob.py; N tiny, descriptive) · ② master MOMENTUM LONG closed non-probe: today's stack via the replica
+ (reports/ML_BTCFWD_exit_rows.csv `base`, master replica parity 82.7 % - caveat) AND as-traded, plus stack_keep subset ·
+ ③ replay reports/ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv MOM-long 2025 / 2026-H1 / 2026-H2 (replica `base` AND engine pct_new).
+ Cells (26): SCORE refuse <= k, k = 1..6 (6) · SCORE refuse >= k, k = 4..8 (5) · CONJ: enter only on CONJ (1), refuse on CONJ (1)
+ · SPIKE refuse (1) · the 12 continuous I1/I3 features: refuse the worst 2025 all-bar quintile of the feature signed by its 2025
+ Spearman vs Y_alt (12). Gate-eligible only if the item passed Step 1 in the direction the cell uses; all others EXPLORATORY.
+ CANDIDATE gate (all): G1 Δ %/signal > 0 with day-bootstrap P >= 0.90 in 2025 AND in 2026 (replica);
+ G2 Δ master (today's stack) >= 0 and Δ master stack_keep >= 0; G3 refused − kept avg < 0 in 2025, 2026-H1, 2026-H2, master;
+ G4 EXPECTANCY bar on the refused cohort (2025, 2026, master): WR < sleeve breakeven WR, window-clustered (day) bootstrap
+ P(avg < 0) >= 0.95 (month-clustered also reported), >= 8 distinct days, no single day / pair >= 50 % of the refused loss, N >= 15;
+ G5 WINDOW UNITS: no single month >= 50 % of the positive Δ per year, leave-one-month-out min Δ > 0 per year;
+ G6 two-sided: losers refused vs winners refused (count, sum %) reported; Δ must survive a 30-50 % haircut (Δ x 0.5 > 0).
+ A pass -> observe-only Scout line with a frozen gate + the list of what the engine must stamp at entry.
+ Multiplicity: 46 Step-1 tests, 26 Step-2 cells = 72; expected lucky passes at the 99th pct ≈ 0.5 (Step 1).
+ Also reported: the live PEPE momentum-long winner's score and features. validate_against_master.py at the end.

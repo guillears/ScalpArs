@@ -1,0 +1,139 @@
+LITE AT-+1 DECISION STUDY — PRE-REGISTRATION (frozen 2026-10-15 21:27 UTC, before any feature x outcome table)
+=====================================================================================================================
+Operator question: "+1 % is too much to drop — we must identify them." Decide AT THE MOMENT a FRENZY_LITE fill first touches +1 % net,
+using only information that exists at that moment (post-entry), whether to bank / tighten / trail vs let today's exit run.
+Research only: no engine / config / template / test edit, no bot API, no commit / push.
+
+INPUTS (sha256)
+  reports/lite_wlsweep/matrix.csv          6b33c202902486ed03ba4a1de39654012321bf2b2b0948c481aea091920f7423
+  reports/lite_wlsweep/menu.csv            c1f8294dfc89e8e152141c4ad5ef52958e3807f588243da6b382224fad7a640a
+  reports/LITE_PROTECT_rows.csv            9158e67fc50cce3f88334ecc9f295c0c261a8677c0f28bdf6d097f308994fd7d
+  ~/Downloads/scalpars_orders_live_2026-10-15_21-18-32.csv   53840d1b476f675d4f8808329a86710ab9300b482c5f59964e1afa133722b144
+  reports/ML_BTCFWD_grid5m.csv.gz          52e934db19945cb3430cea3b28e403323a39f725235337a7977a95bbcee69b1e  (breadth br_up5, agg_tbr5/15)
+  reports/ml_btcfwd_fetch/k1m_taker/BTCUSDT.csv 339699a9f31c42c840fe3917f7df3377bd499ebc9b0223e955b630e348b0429c
+  reports/ml_btcfwd_fetch/k1m_taker/ETHUSDT.csv af7056acfa39d0714eef9408e7a072c5b39b1ef6a33784a1c9428eaf543a3756
+  reports/ml_btcfwd_fetch/k1m_taker/SOLUSDT.csv 5087bc91f3afa70bb9596f07cd92040fe4abc79e1a4eaaa44cc299ed1e414d59
+  reports/lite_fade_klines/btc1m/BTCUSDT.csv    2671c531a6c8f787e1abe9e560ba0f6079fa4e84d33b47c1d132905fa26af434
+  reports/backtest_cache/exchange_ticks.json    5e2ab64713a82588879d1579827b8414648dc58605fa5771ea18dfe8e2d33637
+  NEW DATA (fetched after this freeze, before any table; hashes appended in reports/lite_at1/fetch_manifest.txt):
+  coin 1m klines WITH taker-buy volume (Binance public fapi/v1/klines) for every cohort fill, window
+  [min(te - 65 min, spike_at - 5 min), te + 725 min], stored under reports/lite_at1/k1m/<PAIR>.csv. Budget <= 1,200 weight/min,
+  read x-mbx-used-weight-1m, stop on 418/429, honour/arm reports/backtest_cache/.binance_cooldown_until. BTC/ETH/SOL 1m taker for the live
+  ZK window (cache ends 15:56 UTC) under reports/lite_at1/k1m/. A fill whose symbol returns no klines (delisted) falls back to the cached
+  1m (no taker -> flow features NaN) and is listed.
+
+COHORT
+  Frozen LITE cohort: matrix.csv block BT (2025: 828, 2026: 624) + MASTER (20) + 4 live (DEEP 10-14, EPIC, DUSK, ZK 10-15; entries from
+  the live export). Live/master = refute-only. Discovery/confirmation = backtest years only.
+
+BASELINE "C" (DECISION_LOG 301, LITE C): TP +3 if entry_frenzy_vol_mult >= 20 AND entry_btc_1h_slope > 0, else TP +2; stop -3; cap
+  720 min; resting maker TP; -0.2 slip on stop / cap / any market exit. Reported level = menu.csv (M3_3 / M2_3 per fill by the C zone).
+  For every Δ, C and the policy are priced by THE SAME 1m walker on the same fetched 1m path (so path-source differences cancel);
+  parity of the 1m-walker C vs menu C is reported (agreement %).
+
+PATH / PRICING RULES (1m)
+  Net % = the bot's paper net (WT.net_pct: gross - 0.045 entry taker - 0.045 x exit/entry). Bars from the first full minute after te
+  (entry minute skipped, house convention). Resting maker TP: fills on a bar whose high >= the RM threshold (limit + 0.5 tick through),
+  books the maker net. Stop: bar low <= line -> min(line, bar open) - 0.2. Bar touching both TP and stop = STOP first. Cap: close of the
+  last bar <= te + 720 min, -0.2. Path ending before resolution = UNRES (excluded, listed).
+  TOUCH EVENT: first 1m bar (k) whose high >= +1.00 % net (= entry x (1 + 1 % + fees)) while C is still open. If bar k also hits C's
+  stop or C's TP, C exits in bar k and every at-close policy has Δ = 0 (cannot act). Decisions act at the CLOSE of bar k (features use
+  only bars closed by then; 5m data = last 5m bar closed by then; breadth grid = row with t <= close_k - 5 min).
+
+POLICIES (vs C; non-touch fills Δ = 0)
+  P1    bank +1 always: a resting maker limit at +1 from entry (= the +1 TP / -3 stop / 12 h exit; touches bar k regardless of C's TP).
+  P1c   bank at the touch-bar close (market, -0.2) for every touch fill.
+  P2    = P1c only inside a feature zone.
+  P3_L  at the touch close move the stop to L in {0 (break-even), +0.3, -1}; C's TP stays; stop-type exit -0.2; all touch fills and
+        inside a zone.
+  P4_D  at the touch close arm a trail: line = running max high (through the previous bar) - D, D in {0.5, 0.8, 1.0}, floor -3,
+        C's TP stays; all touch fills and inside a zone.
+  Zoneable policies (screened): P2, P3_L0, P3_L0.3, P3_L-1, P4_D0.5, P4_D0.8, P4_D1.0 (7).
+
+FEATURES (at the touch-bar close; no lookahead)
+  1 speed     min_to_touch (close_k - te, min) · mae_pre (min net low before/at bar k)
+  2 coin flow tb_k (taker-buy share of bar k) · tb5 (last 5 1m bars) · d_tb5 (tb5 - the 5 1m bars before entry) · tb5m (last closed 5m
+              bar) · vr_k (bar-k volume / mean 1m volume of the 5 bars before entry) · vr5 (last-5 volume / entry-5 volume) · ngreen_frac
+              (green 1m bars entry..k / bars)
+  3 structure dvwap (close_k vs the stamped spike VWAP, %) · newhigh (max high entry..k > episode high spike_at..entry, 0/1) ·
+              uwick_k (upper wick of bar k as % of close) · dhi_epi (close_k vs max(episode high, post-entry high), %) · cl_k (net % at close)
+  4 market    btc_r_since / eth_r_since / sol_r_since (return entry -> close_k) · btc_r5 / btc_r15 (last 5 / 15 min) · eth_r15 · sol_r15 ·
+              btc_slope1h_t (EMA20 1h slope vs 3 bars back on closed 1h bars at close_k, the engine formula) · br_up5 / agg_tbr5 (grid row)
+  5 entry     entry_frenzy_vol_mult · entry_btc_1h_slope · entry_frenzy_hours · entry_atr_pct (interaction axes) · Czone (TP3 cell 0/1)
+
+SCREEN
+  Cuts: label-blind quantiles of each feature over the touch fills (screen: pooled years; walk-forward: the discovery year only).
+  1D: q in {0.2, 0.33, 0.5, 0.67, 0.8}, side <= / > ; x Czone {all, TP3 cell, TP2 cell}.
+  2D (exhaustive, every feature pair incl. entry stamps x at-touch): q in {0.33, 0.5, 0.67} per axis, both sides, AND x Czone {all, TP3,
+  TP2} (= 3D with the C zone). Every zone x 7 zoneable policies. Minimum zone size: >= 20 touch fills in EACH year.
+  Statistic per test: Δ per LITE fill (policy - C, 0 outside the zone / non-touch) per year; S = min(t_2025, t_2026) (direction-
+  consistent positive). Null: >= 300 day-block shuffles (days permuted, outcomes laid back in time order, per year; all policies' Δ
+  shuffled jointly) of the SAME full search -> family-wise p = share of null maxima >= observed (per test: share of null max >= its S).
+  Walk-forward: discover on 2025 (best S by t_2025 alone, cuts from 2025) -> confirm on 2026 at the frozen cut; and the reverse.
+  Then master + live as refute-only (before/after per trade).
+
+PASS (an observe-only candidate, never an arm): family-wise p <= 0.05 AND walk-forward confirms in BOTH directions (Δ > 0 with t >= 2 in
+  the held-out year at the frozen cut) AND the 2026 Δ stays > 0 after a 50 % haircut AND master Δ not negative. Per-pair concentration
+  (no pair >= 50 % of the gain) and window/day concentration reported. Anything less = no candidate.
+UNCONDITIONAL policies (P1, P1c, P3_L*, P4_D* on all touch fills) are reported with day-block bootstrap CIs per year; a pass needs
+  Δ > 0 with 95 % confidence in BOTH years.
+
+ADDENDUM A1 (coordinator / operator, frozen 2026-10-15 21:35 UTC — before any feature x outcome or policy-outcome table was produced;
+only the fetch was running)
+  A1.1 PRICING SWITCH (supersedes "PATH / PRICING RULES (1m)" for pricing): every policy and C are priced on the SAME hybrid path the
+       menu used (FX.load_path: tick prints while covered days last, then the 1m tail), so C must equal menu.csv per fill (asserted,
+       mismatches listed). Touch event = first event (tick or bar) with high >= +1.00 net; the decision time T = the close of the 1m bar
+       containing it (ceil to the minute). Events up to T run under C (C may still exit there → Δ = 0); bank = last event close <= T
+       (-0.2); stop move / trail act on events after T (trail high = running max of event highs through the previous event). Parity:
+       with T forced = the touch event, P3/P4 must equal study_lite_exitopt_common.walk_loop (A = +1, L / D) — asserted.
+       Pure-1m fetched paths are used only for live ZK / EPIC / DUSK (no tick cache) and for the features.
+  A1.2 EVERY HEADLINE TWICE: all fills, and TICK-priced only (matrix src in {ticks, ticks+1m}). A rule must hold on the tick-only set;
+       the 1m-only set can only refute. The screen statistic S is computed on the TICK-ONLY set (2025 tick subset + 2026), with the
+       all-fill S reported alongside; the null is run on the tick-only search.
+  A1.3 Features from ticks where the touch window is tick-covered (speed / structure / path shape); taker-buy shares always from the
+       fetched 1m klines (ticks carry no side).
+  A1.4 PATH SHAPE family (6): r3 / r5 (sum of the last 3 / 5 closed 1m bar returns at T, %), pb05 (max pullback in net points between
+       the first +0.5 and the touch), s08 (seconds spent >= +0.8 net before the touch; 1m paths: bars with high >= 0.8 x 60), and
+       nbars_1m (minutes entry → T).
+  A1.5 CLASSIFIER: label die = C's result for the touch fill <= 0 (stop / negative cap) vs goes on. Standardised features (median-imputed,
+       train-fold stats), L2 logistic (C = 0.1) and a decision tree (depth 3, min leaf 20); walk-forward 2025→2026 and 2026→2025
+       (tick-only and all). AUC vs a 300x shuffled-label null (same fit). Policy: bank at T (P2 execution) when P(die) > thr, thr chosen
+       on the TRAIN fold to maximise train Δ (grid of train-score quantiles 0.5..0.95); report held-out Δ per LITE fill.
+  A1.6 Final report: before/after per trade for master + the 4 live trades for the best policy, even if it fails the gate (labelled).
+
+ADDENDUM B (coordinator / operator, frozen 2026-10-15T21:44:37Z — before any feature x outcome, tier or policy-outcome table; the fetch was
+still running, no pricing run on the full cohort had been done; a 40-fill smoke test of the walker printed parity flags only)
+  B.1 TIERS (net, on the pricing path = ticks where covered, peak over the holding window under C up to and including C's exit event;
+      a STOP exit on an ambiguous 1m bar does not count that bar's high — stop-first):
+      T0 = peak < +1 · T1 = +1 <= peak < +2 · T2 = +2 <= peak < +3 · T3 = peak >= +3 (outside the C zone C exits at +2, so T2 there
+      = "T2 or better"). Tier counts per year / tick-only / master / live reported FIRST.
+  B.2 QUESTIONS. (b) MAIN: at the +1 touch, T1 vs T2+T3 among acted touch fills (label for the classifier = T1; the earlier "C <= 0"
+      label is reported as a secondary). (a) AT ENTRY: T0 vs T1–T3 and T1 vs the rest (two binary models + screens). Policies at entry:
+      T0-zone → SKIP (Δ = −C); T1-zone → TP +1 from entry (Δ = P1 − C). (c) T2 vs T3 at a +2 touch: DROPPED by the operator (declared
+      change — "we already separated +2 from +3", LITE C shipped). Baseline everywhere = shipped C; every result reported separately
+      for the two sub-cohorts (inside the C zone → bank competes with +3; outside → with +2).
+  B.3 3D = SIDE FIRST: the cohort is split by the C zone (inside / outside) FIRST; within each side the 1D and the exhaustive 2D screens
+      run separately, each side with its OWN full-search day-block null (fw-p per side), tick-only verdict, walk-forward 2025↔2026.
+      (Pooled "all" side kept as a secondary line.)
+  B.4 VARIABLE UNIVERSE = EVERY variable: the 188 of reports/lite_wlsweep/variables.csv + every numeric entry_* column of matrix.csv
+      not in it (e.g. entry_gap_5_20_signed_pct / _prev, entry_gap_5_8_signed_pct, entry_br_*, entry_bear_*, entry_frenzy_catchup*,
+      entry_funding_rate, entry_pair_rank ...; execution columns entry_slippage_pct / book / order_lag excluded as post-decision noise is
+      NOT assumed — they are included where scored) + DERIVED directions: pair RSI dir (entry_rsi − entry_rsi_prev), BTC RSI 5m dir
+      (rsi − rsi_prev), 30m dir (rsi − rsi_prev6), 1h dir (rsi_1h − rsi_1h_prev), ADX dir (adx − adx_prev), BTC ADX dir, gap_5_20 dir
+      (signed − prev signed), DI spread (pos_di − neg_di) + AT-TOUCH recomputed from the fetched 1m (and 5m aggregated from it): RSI14
+      1m / 5m and their 1-bar direction, ADX14 1m / 5m and direction, EMA5/8/13/20 gaps (5-8, 8-13, 5-20, % of price) and widening
+      (gap now − gap 3 bars ago), distance from EMA13, pair 1m / 5m volume at touch vs the 60-min average before entry, MARKET volume at
+      the touch vs at entry (BTC+ETH+SOL 1m quote volume, last 5 min vs the 5 min before entry; 60-min ratio). LITE_GVOL24_LOW's 24 h
+      market-volume average: rebuilt only if its definition is reproducible from cached data, else listed as a blind spot.
+      Screen at the touch: 1D on every variable; exhaustive 2D = every (any variable) x (at-touch variable) pair. Screen at entry: 1D on
+      every entry variable + exhaustive 2D over entry-variable pairs. Coverage table: every variable, tested y/n, % scored, best result
+      per side. Variables scored on < 50 % of a side's fills get their own line and are excluded from the 2D (blind-spot list).
+  B.5 COMPUTE ADJUSTMENT (declared now, before any table): with ~250 variables the 2D cuts are q in {0.33, 0.67} per axis (4 side
+      combos x 4 cut combos = 16 cells per pair) instead of {0.33, 0.5, 0.67}; 1D keeps q in {0.2, 0.33, 0.5, 0.67, 0.8}. Null R = 300
+      on every side / set unless runtime forces 200 (declared in the report if so). Minimum zone size 15 acted fills per year per side
+      (side halves the cohort) — changed from 20 before any table.
+
+ADDENDUM C (2026-10-15T21:53:55Z) — definitional bug fix, declared: the first tier table tiered on the taker-net peak, so every C +2 / +3
+  maker fill (taker-net high ~1.98 / ~2.98) was labelled one tier too low (181 "T1" fills had booked C's +2). Fixed: +2 / +3 tiers use the
+  resting-maker fill thresholds of a +2 / +3 limit (the same level C's TP fills at); +1 stays the touch definition. Only the tier
+  descriptives had been printed (no screen, classifier or walk-forward output was produced or read); the R=300 run was killed and re-run.

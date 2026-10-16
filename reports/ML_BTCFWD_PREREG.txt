@@ -1,0 +1,131 @@
+ML BTC-FORWARD FOLLOW-UP — PRE-REGISTRATION (written 2026-10-15 15:44 UTC, before any Arm-A score or Arm-B variant was priced)
+
+Finding followed up (reports/ML_WINNERS_LOSERS_2026-10-15.md): a momentum long's outcome is decided by BTC's move in the
+~15 min AFTER entry (BTC up >= 0.10 % -> WR 77-88 %; down >= 0.10 % -> 32-48 %). Nothing stamped at entry predicted it;
+waiting for BTC to confirm is worse (reports/ML_DELAY_BTC_CONFIRM_2026-10-15.md). Operator 2026-10-15: "find a variable as
+filter, or exit optimization." Nothing is shipped from this study; a pass = an observe-only Scout line with a frozen gate.
+
+DATA
+  * BTCUSDT / ETHUSDT / SOLUSDT 1m klines WITH taker-buy base volume: reports/ml_btcfwd_fetch/k1m_taker (Binance top-up — the
+    cache's k1m/k5m hold o,h,l,c,vol,qvol only and ticks_q hold t,p,q only, so taker side is a real gap).
+  * top-50 members 5m klines with taker-buy quote volume: reports/ml_btcfwd_fetch/k5m_taker (membership spans of the
+    PREVIOUS-UTC-day top-50 list, both caches' universe_daily_top50.csv; equal weight for breadth, quote-volume weight for the
+    aggregate taker ratio). Members without data at a bar are skipped; a bar needs >= 25 members or the breadth feature is NaN.
+  * BTC/ETH ticks_q (aggTrades t,p,q) for Arm-B BTC-since-entry (1m close fallback).
+  * Funding / open interest / liquidations / order book: NOT cached for BTC/ETH/SOL (funding/ has alts only, no OI at all) ->
+    could-not-test (stated, not fetched: not a feature of the operator's question's core and not cheaply historical).
+
+ARM A — PREDICT BTC'S NEXT 15 MIN (filter)
+ Step 1 (independent of our trades). Sample = every 5m boundary t (UTC) from 2025-01-01 to the end of fetched data; 1m grid
+ for the BTC-only features as a sensitivity. Target fwd15 = BTC close of the 1m bar ending at t+15 min / BTC close of the 1m
+ bar ending at t - 1 (in %); also the class DOWN = fwd15 <= -0.10 % and UP = fwd15 > 0. All features use bars CLOSED at or
+ before t (no lookahead; asserted by deleting every bar after t on a sample of 500 t).
+ Features (F = 25 pre-declared, plus 2 controls already tested at the fill level = 27 scored):
+   tbr1, tbr5, tbr15        BTC taker-buy ratio (taker-buy base vol / vol) over the prior 1 / 5 / 15 1m bars
+   tbr15_dev                tbr15 - BTC taker-buy ratio over the prior 24 h
+   btc_m1, btc_m5           BTC return over the prior 1 / 5 min
+   btc_acc1, btc_acc5       btc_m1 - previous 1-min return; btc_m5 - previous 5-min return (acceleration)
+   dhi_1h, dhi_4h, dhi_24h  close / rolling high of the prior 60 / 240 / 1440 1m bars - 1 (%)
+   dlo_1h, dlo_4h, dlo_24h  close / rolling low - 1 (%)
+   rv_ratio                 std of 1m returns over 1 h / over 24 h
+   eth_lead1, eth_lead5     ETH 1 / 5 min return - BTC's
+   sol_lead1, sol_lead5     SOL 1 / 5 min return - BTC's
+   br_up5, br_acc5          share of top-50 (ex-BTC) whose last closed 5m bar rose; br_up5 - the same one bar earlier
+   agg_tbr5, agg_tbr15      top-50 (ex-BTC) aggregate taker-buy QUOTE / quote volume over the last 1 / 3 closed 5m bars
+   hour, dow                UTC hour-of-day (24 levels) and day-of-week (7 levels) — target-encoded on the training months
+   controls: btc_r15, btc_r60 (BTC return over the prior 15 / 60 min; the earlier study's tested features)
+ Walk-forward: test months = every calendar month from 2025-04 on; train = all months strictly before it. Per feature the
+ training data fixes (a) the sign (Spearman sign of feature vs fwd15) and (b) the quintile cut points; hour/dow use the
+ training-month mean fwd15 per level as the score. OOS metrics pooled over the test months and also per year (2025 / 2026):
+   * OOS AUC for UP (fwd15 > 0) and for DOWN (fwd15 <= -0.10) on the signed score,
+   * OOS rank IC (Spearman, signed score vs fwd15), mean of per-month ICs and its sign consistency,
+   * effect size: OOS mean fwd15 in the top minus bottom training-quintile, in bps of BTC; P(DOWN) in the bottom quintile
+     vs the base rate.
+ Multivariate check (pre-declared, one model): ridge-regularised linear regression of fwd15 on all 25 standardised features
+ (hour/dow target-encoded), same walk-forward -> OOS AUC / IC.
+ Null: target circularly shifted by a random whole number of days (>= 7, < N days - 7) 200x, the full walk-forward re-run
+ per shift (feature/target autocorrelation preserved) -> per feature the null 95th and 99th percentile of OOS AUC(UP) and IC.
+ STEP-1 PASS ("real OOS predictability") per feature, ALL of:
+   (a) pooled OOS AUC(UP) above the null 99th percentile (multiplicity: 27 features -> 99th, not 95th),
+   (b) OOS mean IC > 0 in 2025 test months AND in 2026 test months separately,
+   (c) |top - bottom quintile| OOS mean fwd15 >= 2.0 bps in BOTH years.
+ Step 2 (only Step-1 passers, plus the multivariate score if it passes (a)-(c)). Entry filter on MOMENTUM LONG: computed at
+ the fill's entry time t0 (last bars closed <= t0). Blocked zones frozen from the 2025 all-bar distribution (never fitted on
+ trades): Z1 = signed score in the worst (lowest predicted fwd15) 2025 quintile; Z2 = worst 2025 decile. Cells = features x 2.
+ Blocks: (1) live MOMENTUM LONG via scripts/export_glob.py (descriptive) · (2) master MASTER_POOL_stacked.csv MOMENTUM LONG
+ non-probe, as-traded (pnl_percentage) and stack_keep (stack_pct), per batch; BASE-era rows are the SCREENED_BASELINE rows ·
+ (3) backtest reports/ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv MOM-long (pct_new) 2025 BULL / 2026-H1 BEAR / 2026-H2 BULL.
+ Expectancy bar on the BLOCKED cohort (each block, 1x): WR < the sleeve's breakeven WR (block, current stack); avg < 0 with
+ window(day)-clustered bootstrap P >= 0.95; >= 8 distinct days; no day or pair >= 50 % of the cohort loss; N >= 15.
+ Filter delta per signal = -y on blocked, 0 on kept (skip = 0).
+
+ARM B — EXIT OPTIMISATION WITH POST-ENTRY INFORMATION (decidable live, no lookahead)
+ Today's momentum-long exit stack (trading_config.json read 2026-10-15, identical exit keys to the frozen yr6 config): stop
+ -0.70 / -1.00 while the 5m core signal is on, widened to -1.5 x ATR % capped at -1.2; recovery hold; hard-TP ladder
+ 1.25:0.25 ... 4.0:0.80; runner trail arm +0.40, floor max(peak - 1.0 x ATR %, +0.10); no-expansion 180 min. OFF: EMA13-cross
+ exit (long), fast exit, signal-lost exit, tick-momentum exit, regime-change exit, BE levels. => the "hold through an EMA-cross
+ exit" mirror has nothing to suspend; the mirror acts on the earliest LIVE exits instead (stop width, runner giveback / lock).
+ Pricing: the tick-level replica scripts/ml_exit_optimize_yr5.py (variant BASE, parity 89 % on the replay) imported read-only,
+ data accessors re-pointed (in-process) exactly as scripts/study_ml_delay_common.py does; this study copies the replica's
+ evaluate() with two hooks (a stop-line override and a runner-giveback override from tick index iT on) and ASSERTS the copy
+ with no hook == RX.evaluate on every fill. Paths on 1m bars are flagged (src) and a tick-only sensitivity is reported.
+ Decision clock: minute k in {1, 2, 3, 5, 8} after the fill (T = t0 + k min); the rule only acts on fills still open at T
+ under BASE (others: delta = 0, ASSERTED).
+ State at T: BTC return since entry = last BTC tick <= T / last BTC tick <= t0 - 1 (ticks_q; 1m close fallback);
+ pair net P&L at T = the replica path's net at the last tick <= T; breadth change since entry = top-50 mean return from the
+ last closed 5m bar <= t0 to the last closed 5m bar <= T (k in {5, 8} only).
+ Conditions: Bx = BTC since entry <= -x, x in {0.05, 0.10, 0.15}; Py = P&L <= y, y in {-0.2, 0.0, +0.2}; Bx&Py (9);
+             BR = breadth change <= 0 (k 5, 8); BR&P0 (k 5, 8).
+ Actions: (i) EXIT at market at T: price = pair price at T x (1 - slip), net of taker fee; (ii) TIGHTEN the stop line to
+          max(stop, -z) from T on, z in {0.3, 0.5} (exit at T if already below).
+ Mirror (iii): BTC since entry >= +x, x in {0.10, 0.15} at minute k -> from T on: M_SL = stop line fixed at the cap -1.2;
+          M_TR = runner giveback 1.5 x ATR % (was 1.0) and lock +0.10 kept; M_BOTH = both.
+ Cells: exit/tighten 5 k x 15 conditions x 3 actions = 225; breadth 2 k x 2 conditions x 3 actions = 12; mirror 5 k x 2 x
+        x 3 actions = 30 -> 267 cells. (Py-only exit cells repeat the earlier study's grid on the replica — counted, not new.)
+ Slip: rule-triggered market exits (i) and tightened-stop exits (ii) pay 0.10 % (primary; live ruler) on top of the replica
+       price; 0.17 % and 0.02 % sensitivities. BASE exits unchanged (conservative to the rule). Mirror: no extra slip
+       (its exits are the same stop / trail exits as BASE).
+ Two-sided: per cell, affected fills split SAVED (delta > 0) vs KILLED (delta < 0), counts and summed points, and by BASE
+ outcome (base winner / base loser); STOP-width cells read on the BASE-stopped cohort vs the rest (stop-CF rule).
+
+GATES (both arms, all must hold for a CANDIDATE)
+  1. delta % per fill (Arm A: per signal, skip = 0) > 0 with day-bootstrap P >= 0.90 in 2025 AND in 2026 (H1+H2 pooled)
+     separately (2,000 rounds, UTC-day clusters; seeds share the day cluster).
+  2. master delta not negative: as-traded AND stack_keep.
+  3. leave-one-month-out: delta sign positive with each calendar month removed, 2025 and 2026 separately.
+  4. no single day and no single pair carries >= 50 % of the positive sum delta (backtest, per year).
+  5. Arm A also: the expectancy bar on the blocked cohort in 2025, 2026 and master as-traded.
+  6. multiplicity: Arm A step-2 cells and Arm B's 267 cells are counted and flagged (P >= 0.90 in two independent years by
+     luck ~ 1 % per cell -> ~ 3 lucky Arm-B passes expected; the master leg is the guard).
+  One-year-only pass = REGIME-DEPENDENT: reported with the day-level regime variable that separates the years at SIGN
+  granularity in DAY units (BTC 24 h return sign, BTC 7 d return sign, BTC 30 d trend sign, BTC realized-vol above/below its
+  median), each vs a day-shuffled null (500x) — hypothesis only, never a ship.
+  Any projection carries a 30-50 % in-sample haircut. Candidate -> observe-only Scout line with a frozen live gate.
+
+
+=== ARM B2 — EXTENSION (appended 2026-10-15 16:16 UTC, before any B2 cell was priced) ===
+Operator 2026-10-15: "if we cannot predict the entry, optimize the EXIT once we know whether BTC kept rising — exit after 15 min,
+or lower the TP / tighten the SL when it's clearly not a runner." Arm-A step-1 and Arm-B results existed when this was written
+(Arm B: 0 / 267 candidates; Arm A 1m sensitivity: 0 step-1 passers) — B2 thresholds below are the operator's, not fitted.
+Same replica, populations, BTC-since-entry definition (ticks, 1m fallback), slip rule and gates 1-4 as Arm B.
+
+B2.1 CONDITIONAL TABLE (descriptive, no gate). Fills still open under BASE at minute k in {5, 10, 15, 20}; buckets
+  BTC since entry: <= -0.10 / (-0.10, 0] / (0, +0.10) / >= +0.10 %   x   own net P&L at k: < -0.3 / [-0.3, 0) / [0, +0.3) / >= +0.3
+  x   peak-so-far at k: < +0.20 / >= +0.20.  Per bucket: N, P(final win), avg final %, avg remaining move (final - P&L at k),
+  share of each BASE exit reason. Blocks: live · master (all + per batch for k = 15) · backtest 2025 / 2026-H1 / 2026-H2.
+B2.2 ACTION CELLS at k in {10, 15} on fills still open, condition NB0 = BTC since entry <= 0 or NB5 = <= +0.05 %:
+  (a) EXIT at market (rule slip 0.10, sens 0.02 / 0.17);
+  (b) TPx: from T on, the hard-TP ladder and the runner trail are switched off and replaced by a fixed TP at +x net,
+      x in {0.2, 0.3, 0.5} (TP exit = limit: no rule slip; taker exit fee kept, conservative); stop unchanged;
+  (c) SLz: stop line raised to max(stop, -z) from T on, z in {0.3, 0.5, 0.0 (= break-even)} (tightened-stop exits pay the slip,
+      no recovery hold);
+  (d) TPx + SLz, all 9 pairs.
+  -> 2 k x 2 conditions x (1 + 3 + 3 + 9) = 64 cells.
+  Today's stack (verified in trading_config.json / the replica): EMA13-cross (long), signal-lost, fast exit, BE levels are OFF;
+  the live "earliest exits" are the runner trail (arm +0.40, floor max(peak - 1.0 x ATR, +0.10)) and the stop.
+B2.3 MIRROR at k in {10, 15} when BTC since entry >= +0.10 %: for N in {10, 15} minutes from T
+  S_TR  = runner-trail exits suspended (ladder + stop kept);  S_TRSL = runner-trail suspended AND stop held at the cap -1.2
+  -> 2 k x 2 N x 2 = 8 cells.   B2 total = 72 cells (study total 267 + 72 = 339 exit cells).
+Gates: identical to Arm B (both years P >= 0.90, master as-traded and stack_keep not negative, LOMO, no day / pair >= 50 %),
+exit-CF delta = 0 asserted on fills closed at T, two-sided SAVED vs KILLED, base-stopped vs not-stopped split for stop cells,
+regime-dependence reported for one-year-only passes. Multiplicity: 72 cells -> ~0.7 lucky gate-1 passes expected.

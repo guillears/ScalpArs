@@ -1,0 +1,59 @@
+ML DELAYED-ENTRY BTC-CONFIRMATION — PRE-REGISTRATION (written 2026-10-15 15:22 UTC, before any delayed entry was priced)
+
+Question (operator 2026-10-15): momentum-long winners are trades where BTC rises >= 0.10 % in the 15 min AFTER entry.
+Rule tested: wait D minutes after the signal, enter only if BTC rose >= X % over the wait (and the pair's signal is still
+valid). Nothing is shipped from this study; a pass = an observe-only Scout line with a frozen gate.
+
+POPULATIONS (signal = a fill's entry time t0; MOMENTUM LONG, closed, non-probe, % at 1x)
+  (3) backtest: reports/ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv sleeve MOM-long, seeds 1-3 pooled, periods
+      2025 BULL / 2026-H1 BEAR / 2026-H2 BULL (column `regime`). Clusters = UTC day of t0 (seeds share a day cluster).
+  (2) master: reports/MASTER_POOL_stacked.csv MOMENTUM LONG non-probe (BASE era rows are the SCREENED_BASELINE rows the pool
+      already carries). Two views: as-traded (pnl_percentage, all) and stack_keep (stack_keep True; base = stack_pct).
+      Per batch (era) table.
+  (1) live: post-go-live LIVE exports via scripts/export_glob.py (1 fill expected, 1000PEPE) — descriptive only.
+
+PRICING (no new exit logic: the existing tick-level momentum-long exit replica scripts/ml_exit_optimize_yr5.py, variant
+BASE = today's live ML exit stack, imported read-only; yr6 frozen config exit keys verified identical to yr5's)
+  * parity first: replica BASE at the ORIGINAL entry (t0, E0, recorded fee type, stamped ATR %, stamped BTC closed RSI) vs
+    the replay's own pct_new. Parity = share within |0.05| AND sign agreement. If either < 85 % on the replay -> STOP, report.
+    Master parity reported as a check (replica BASE vs stack_pct on stack_keep fills; AS-WAS replica vs pnl_percentage).
+  * delayed entry at T = t0 + D: price E_D = p(T) * E0 / p(t0) where p(.) = last traded price at/before the time (ticks;
+    1m fallback = close of the last 1m bar CLOSED at/before the time; identical source for both ends). This carries the
+    fill's own maker/taker execution edge over to the delayed fill; fee type = the fill's own. ATR % at T and BTC closed
+    RSI at T are recomputed at T (no lookahead). Exit path starts at T.
+  * TODAY baseline per signal, two ways: (a) MODEL = replica at D = 0 (primary, same apparatus as the delayed price);
+    (b) ENGINE = the replay's pct_new (master: stack_pct / pnl_percentage).
+  * no data for a needed path -> that signal is dropped from that block's comparison for every cell (coverage reported).
+
+CONDITIONS
+  * BTC return over [t0, t0+D] from BTCUSDT 1m closes: close of the last 1m bar closed at/before t0+D over the same at/before t0.
+  * signal validity at t0+D, primary: services.indicators.calculate_indicators + get_signal (engine functions, read-only) on the
+    5m OHLCV the engine would read at t0+D (99 closed 5m bars + the forming bar built from ticks_q, else 1m), thresholds from
+    the frozen yr6 config; valid = get_signal(...) == 'LONG'. Fidelity check: the same recompute AT t0 must return LONG on
+    >= 80 % of replay fills; if < 80 %, the PROXY becomes primary: EMA5 > EMA8 > EMA13 > EMA20 and price > EMA5 on the same
+    bars. Both are reported either way. The engine-chain gates after get_signal (BTC macro gates, LOADX, heat, rank, slots,
+    blacklist) are NOT recomputed (could-not-test).
+
+GRID (cells)
+  D in {5, 10, 15} min x X in {0.05, 0.10, 0.15} %:
+    A[D,X] = BTC >= X AND signal valid at t0+D   (9 rule cells)
+    B[D,X] = BTC >= X, no validity check          (9 rule cells)
+  Controls (not candidates): C[D] = wait D, no BTC condition, no validity check; CV[D] = wait D + validity only.
+  Multiplicity: 18 rule cells -> flagged in the report (a cell passing P >= 0.90 in two independent years by luck alone ~ 1 %
+  per cell, ~ 17 % somewhere in the family).
+
+METRICS (every block, every cell)
+  per SIGNAL (skip = 0): N signals, fill rate, Sum, avg/signal, delta/signal vs TODAY (model and engine) with day-bootstrap
+  95 % CI and P(delta > 0) (2,000 rounds, UTC-day clusters).
+  per FILL: N, WR, avg %.
+  wait cost: avg % the pair moved over the wait (p(t0+D)/p(t0) - 1) on all signals and on the taken ones.
+  two-sided: skipped signals' TODAY result split into saved losers (Sum of skipped today < 0) vs missed winners (Sum of
+  skipped today > 0); taken signals' delta (price-of-waiting on the trades kept).
+
+GATE (all must hold for a cell to be a CANDIDATE)
+  1. delta/signal (MODEL) > 0 with P >= 0.90 in 2025 AND in 2026 (H1+H2 pooled) separately; ENGINE view same sign in both.
+  2. master not negative: delta/signal (MODEL) >= 0 on master as-traded AND on master stack_keep.
+  3. leave-one-month-out: delta sign positive with every single calendar month removed, in 2025 and in 2026 separately.
+  4. no single day and no single pair carries >= 50 % of the cell's positive Sum delta (backtest, per year).
+  5. one-year-only pass = regime-dependent, not a candidate.
+  Any projection carries a 30-50 % in-sample haircut. Candidate -> observe-only Scout line with a frozen gate; else "no".

@@ -345,6 +345,11 @@ def frenzy_lite_hmax(th) -> float:
 FRENZY_LITE_COUNTED = ("FRENZY_LITE_VOL24_LOW", "FRENZY_LITE_GREEN_BAR")   # signal-level refusals of a LITE candidate bar → filter-block counters
 FRENZY_LITE_JUDGES = (FRENZY_LITE_READY, "FRENZY_LITE_GREEN_BAR")   # the bar met the SIGNAL → the stretch is judged NOW, whatever follows (VOL24_LOW is not one)
 FRENZY_LITE_SHOWN = (FRENZY_LITE_READY, "FRENZY_LITE_STRETCH_DONE", "FRENZY_LITE_TOO_EARLY", "FRENZY_LITE_NO_DATA") + FRENZY_LITE_COUNTED   # codes whose text replaces FRENZY's on the monitor
+# 🔁 2026-10-19 FRENZY_LITE_RETRY (operator DECLARED OVERRIDE, DECISION_LOG 316): a LITE stretch refused ONLY for a green signal candle gets ONE
+# pending retry — the first red / flat closed 5m bar within frenzy_lite_retry_wait_minutes of the green bar's close on which the SAME stretch is
+# still LITE-READY opens FRENZY_LITE_RETRY (own sleeve, own size, LITE's exit, no sleeve slot limit). LITE itself stays judged once.
+FRENZY_LITE_RETRY = "FRENZY_LITE_RETRY"
+FRENZY_LITE_FAMILY = ("FRENZY_LITE", FRENZY_LITE_RETRY)   # LITE's exit / TP (LITE C) / resting TP / pair-day cap / PAIR_HELD_BY_LITE scope
 
 
 def frenzy_lite_stretch_id(ep) -> Optional[int]:
@@ -403,6 +408,221 @@ def frenzy_lite_status(ep, th, volume_24h, judged_stretch_ms=None, judged_note=N
         return True, FRENZY_LITE_READY, f"LITE: held above · {tail}"
     except (TypeError, ValueError, AttributeError):
         return False, "FRENZY_LITE_NO_DATA", "LITE: unreadable"
+
+
+LITE_RETRY_WAIT_DEF = 15   # frenzy_lite_retry_wait_minutes default — the deep dive's S15r (frozen; never re-fit, DECISION_LOG 316)
+LITE_RETRY_OPEN, LITE_RETRY_WAIT, LITE_RETRY_DROP = "OPEN", "WAIT", "DROP"
+
+
+def frenzy_lite_retry_enabled(th) -> bool:
+    """🔁 the retry switch — strictly True (a missing / non-bool value = off)."""
+    return getattr(th, 'frenzy_lite_retry_enabled', False) is True
+
+
+def frenzy_lite_retry_wait_ms(th) -> int:
+    """🔁 the retry window after the green bar's close, ms: frenzy_lite_retry_wait_minutes; ≤ 0 / blank / unreadable / non-finite → 15."""
+    w = _fin(getattr(th, 'frenzy_lite_retry_wait_minutes', LITE_RETRY_WAIT_DEF))
+    if w is None or w <= 0:
+        w = LITE_RETRY_WAIT_DEF
+    return int(round(w * 60_000))
+
+
+def frenzy_lite_retry_pending(sid, spike_ms, green_close_ms, green_ret_pct, th) -> Optional[dict]:
+    """🔁 the pending retry a GREEN_BAR refusal records: stretch id, episode spike, the green bar's CLOSE (= the pass bar, UTC ms), the expiry
+    (green close + the wait) and the green bar's return. None when an id is unreadable (no retry — fail closed)."""
+    try:
+        g = int(green_close_ms)
+        return dict(sid=int(sid), spike=int(spike_ms), green=g, exp=g + frenzy_lite_retry_wait_ms(th),
+                    ret=(round(float(green_ret_pct), 4) if _fin(green_ret_pct) is not None else None))
+    except (TypeError, ValueError):
+        return None
+
+
+def frenzy_lite_retry_pending_clean(v) -> Optional[dict]:
+    """🔁 a stored pending retry (BotState JSON 'lite_retry') → its validated dict, or None (dropped)."""
+    try:
+        if not isinstance(v, dict):
+            return None
+        r = _fin(v.get('ret'))
+        return dict(sid=int(v['sid']), spike=int(v['spike']), green=int(v['green']), exp=int(v['exp']), ret=r)
+    except (TypeError, ValueError, KeyError):
+        return None
+
+
+LONG4_FIRST_N, LONG4_FIRST_MIN_REC, LONG4_MAIN_N, LONG4_MAIN_DAYS = 10, 3, 20, 8          # 🔒 frozen revert gate (DECISION_LOG 317)
+LONG4_SIZE_N, LONG4_SIZE_DAYS, LONG4_SIZE_P, LONG4_SIZE_WR, LONG4_SIZE_SHARE = 20, 8, 0.80, 73.0, 0.50   # 🔒 frozen re-sizing read (317)
+
+
+def frenzy_long_stop4_gate(fills, stop4_min=3.5, boot_n=2000, seed=7):
+    """🔒 (DECISION_LOG 317) FRENZY_LONG −4 LIVE: the frozen revert gate + the re-sizing read → (verdict, text). Display only (operator acts).
+    fills = iterables of (opened_at, pair, pnl_percentage, entry_frenzy_stop_pct, touch3_at, touch3_recovered_tp) of CLOSED FRENZY_LONG fills.
+    Live −4 fills = stamp ≥ stop4_min. REVERT (→ frenzy_long_stop_pct 0): among the first 10 that touched −3 (by touch time) with a KNOWN
+    outcome (touch3_recovered_tp None = unknown → excluded, shown) fewer than 3 recovered to the TP · or on the FROZEN main sample = the
+    shortest prefix of touches with ≥ 20 touches AND ≥ 8 UTC days, Σ(booked − (−3)) < 0 (the −3 stop would have booked ≈ −3 on each; the
+    exact −3 walk is scripts/scout_long_stop4.py). RE-SIZE read (only while the revert gate holds): ≥ 20 live −4 fills on ≥ 8 days, avg > 0 with
+    day-bootstrap P ≥ 0.80 ∧ WR ≥ 73 % (+1.5 / −4 breakeven) ∧ no day / pair ≥ 50 % of the gain → PROPOSE one size step. Never raises."""
+    try:
+        f = [(a, str(p), float(x), t, r) for a, p, x, st, t, r in (fills or [])
+             if a is not None and _fin(x) is not None and _fin(st) is not None and float(st) >= stop4_min]
+        n = len(f)
+        tch = sorted([z for z in f if z[3] is not None], key=lambda z: z[3])
+        unk = [z for z in tch if z[4] is None]   # (dual review) recovered unknown (outcome not recorded) — never counted either way
+        first = [z for z in tch if z[4] is not None][:LONG4_FIRST_N]
+        rec = sum(1 for z in first if z[4] is True)
+        head = f"−4 live: {n} fills · {len(tch)} touched −3" + (f" ({len(unk)} unknown outcome)" if unk else "")
+        if len(first) >= LONG4_FIRST_N and rec < LONG4_FIRST_MIN_REC:
+            return "REVERT", f"🛑 REVERT to −3 — {rec}/{LONG4_FIRST_N} first −3 touches recovered to the TP (< {LONG4_FIRST_MIN_REC}) · {head}"
+        main, _dset = None, set()   # (dual review) FROZEN main sample = the SHORTEST prefix of touches (by touch time) with ≥ 20 AND ≥ 8 UTC days
+        for k, z in enumerate(tch):
+            _dset.add(z[3].date())
+            if k + 1 >= LONG4_MAIN_N and len(_dset) >= LONG4_MAIN_DAYS:
+                main = tch[:k + 1]
+                break
+        if main is not None:
+            edge = sum(z[2] + 3.0 for z in main)
+            if edge < 0:
+                return "REVERT", f"🛑 REVERT to −3 — first {len(main)} touches on {len(_dset)} days: Σ(live − (−3)) {edge:+.2f} pts < 0 · {head}"
+        txt = (f"⏳ {head} · first-10 recovered {rec}/{len(first)} (revert if < {LONG4_FIRST_MIN_REC} of 10) · touches {len(tch)}/{LONG4_MAIN_N} on "
+               f"{len(_dset)}/{LONG4_MAIN_DAYS} days" + (" · main read passed" if main is not None else ""))
+        days = sorted({z[0].date() for z in f})
+        if n < LONG4_SIZE_N or len(days) < LONG4_SIZE_DAYS:
+            return "COLLECTING", txt + f" · re-size read at {LONG4_SIZE_N} fills on {LONG4_SIZE_DAYS} days"
+        pn = [z[2] for z in f]
+        avg = sum(pn) / n
+        wr = 100.0 * sum(1 for x in pn if x > 0) / n
+        import random
+        rnd = random.Random(seed); byd = {}
+        for z in f:
+            byd.setdefault(z[0].date(), []).append(z[2])
+        dl = list(byd.values()); pos = 0
+        for _ in range(boot_n):
+            smp = [x for _ in dl for x in dl[rnd.randrange(len(dl))]]
+            pos += (sum(smp) / len(smp)) > 0
+        pboot = pos / boot_n
+        gain = sum(x for x in pn if x > 0)
+        dsh = max(sum(x for x in v if x > 0) for v in dl) / gain if gain > 0 else 1.0
+        byp = {}
+        for z in f:
+            byp[z[1]] = byp.get(z[1], 0.0) + max(z[2], 0.0)
+        psh = (max(byp.values()) / gain) if gain > 0 else 1.0
+        ok = avg > 0 and pboot >= LONG4_SIZE_P and wr >= LONG4_SIZE_WR and dsh < LONG4_SIZE_SHARE and psh < LONG4_SIZE_SHARE
+        return (("RESIZE" if ok else "HOLD"), txt + f" · re-size read: avg {avg:+.3f}% P {pboot:.2f} WR {wr:.0f}% day share {dsh:.0%} pair share {psh:.0%} → "
+                + ("PROPOSE one size step (operator decides; revert if the next 15 average < 0 or a day loses > 10 % of the book)" if ok else "hold blocker size"))
+    except Exception:
+        return "COLLECTING", "gate unreadable"
+
+
+def frenzy_long_stop_config_errors(th, base_leverage=20.0) -> list:
+    """🛑 (DECISION_LOG 317) PUT /api/config refusals: frenzy_long_stop_pct must be 0 (= the shared frenzy_stop_pct) or 1–10 % · (dual review)
+    and the LONG exchange backstop at LONG's MAX leverage (base_leverage × max(frenzy_long_lev_mult, frenzy_long_lev_mult_strong) — the
+    sleeves open at the STRONG_BUY level) must stay ≥ MANUAL_BACKSTOP_MIN_GAP_PCT beyond the stop (a liquidation-capped backstop inside the
+    stop would fire first)."""
+    v = _fin(getattr(th, 'frenzy_long_stop_pct', 0.0))
+    if v is None or not (v == 0 or 1.0 <= v <= 10.0):
+        return ["frenzy_long_stop_pct must be 0 (= the shared FRENZY stop) or a number from 1 to 10"]
+    try:
+        from services.trading_engine import order_backstop_pct, MANUAL_BACKSTOP_MIN_GAP_PCT
+        mults = [m for m in (_fin(getattr(th, 'frenzy_long_lev_mult', 0.05)), _fin(getattr(th, 'frenzy_long_lev_mult_strong', 0.0))) if m and m > 0]
+        lev = max(1, int(round(float(base_leverage or 20.0) * (max(mults) if mults else 1.0))))
+        stop = frenzy_stop_for(th, "FRENZY_LONG")
+        if order_backstop_pct(th, "FRENZY_LONG", leverage=lev) - stop < MANUAL_BACKSTOP_MIN_GAP_PCT - 1e-9:
+            return [f"frenzy_long_stop_pct {stop:g} % is too wide for FRENZY_LONG at {lev}×: its exchange backstop "
+                    f"({order_backstop_pct(th, 'FRENZY_LONG', leverage=lev):g} %, capped by liquidation) must sit ≥ {MANUAL_BACKSTOP_MIN_GAP_PCT:g} % beyond it"]
+    except Exception:
+        return ["frenzy_long_stop_pct: the backstop distance could not be checked"]
+    return []
+
+
+def frenzy_lite_retry_config_errors(th) -> list:
+    """🔁 PUT /api/config refusals for the FRENZY_LITE_RETRY fields (DECISION_LOG 316)."""
+    errs = []
+    if not isinstance(getattr(th, 'frenzy_lite_retry_enabled', False), bool):
+        errs.append("frenzy_lite_retry_enabled must be true or false")
+    w = _fin(getattr(th, 'frenzy_lite_retry_wait_minutes', LITE_RETRY_WAIT_DEF))
+    if w is None or not (5 <= w <= 60):
+        errs.append("frenzy_lite_retry_wait_minutes must be a number from 5 to 60 (the frozen rule is 15)")
+    for k in ('frenzy_lite_retry_invest_mult', 'frenzy_lite_retry_lev_mult'):
+        v = getattr(th, k, None)
+        if v is not None and (_fin(v) is None or _fin(v) < 0):
+            errs.append(f"{k} must be a number ≥ 0 (blank = 1.0)")
+    return errs
+
+
+LITE_RETRY_KILL_SUM, LITE_RETRY_FIRST_N, LITE_RETRY_MAIN_N, LITE_RETRY_MAIN_DAYS = -6.0, 10, 20, 10   # 🔒 frozen gates (DECISION_LOG 316)
+
+
+def frenzy_lite_retry_gate(retry_fills, lite_fills) -> Tuple[str, str]:
+    """🔒 (DECISION_LOG 316) the FRENZY_LITE_RETRY frozen gates, read on CLOSED fills → (verdict, text). retry_fills / lite_fills = iterables of
+    (opened_at datetime, pnl_percentage) of this mode's closed FRENZY_LITE_RETRY / FRENZY_LITE fills. Verdicts: COLLECTING · OFF (early kill:
+    Σ pnl% ≤ −6 pts at any N · first read: the first 10 fills average < 0 · main read failed) · STEP_UP (main read at 20 fills on ≥ 10 UTC days:
+    avg > 0 ∧ ≥ the same-period live FRENZY_LITE avg = LITE fills opened at / after the first retry fill → lev 0.2 → 0.4; the main sample is
+    FROZEN = the shortest prefix with ≥ 20 fills AND ≥ 10 distinct UTC days). Display only —
+    the operator switches (no automatic off). Never raises."""
+    try:
+        rf = sorted([(a, float(p)) for a, p in (retry_fills or []) if a is not None and _fin(p) is not None], key=lambda x: x[0])
+        n = len(rf)
+        if n == 0:
+            return "COLLECTING", "⏳ 0/20 closed — gates: kill Σ ≤ −6 pts · first read 10 (avg < 0 → off) · main read 20 on ≥ 10 days (vs live LITE → 8×)"
+        ssum = sum(p for _, p in rf)
+        if ssum <= LITE_RETRY_KILL_SUM:
+            return "OFF", f"🛑 EARLY KILL — Σ {ssum:+.2f} pts ≤ {LITE_RETRY_KILL_SUM:g} on {n} fills → switch FRENZY_LITE_RETRY OFF (operator)"
+        first = rf[:LITE_RETRY_FIRST_N]
+        if n >= LITE_RETRY_FIRST_N and sum(p for _, p in first) / len(first) < 0:
+            return "OFF", f"🛑 FIRST READ — first {LITE_RETRY_FIRST_N} avg {sum(p for _, p in first) / len(first):+.3f}% < 0 → switch OFF (operator)"
+        main, _dset = None, set()   # (dual review) the FROZEN sample = the SHORTEST prefix with ≥ 20 fills AND ≥ 10 distinct UTC days
+        for k, (a, _) in enumerate(rf):
+            _dset.add(a.date())
+            if k + 1 >= LITE_RETRY_MAIN_N and len(_dset) >= LITE_RETRY_MAIN_DAYS:
+                main = rf[:k + 1]
+                break
+        if main is None:
+            return "COLLECTING", (f"⏳ {n}/{LITE_RETRY_MAIN_N} closed on {len(_dset)}/{LITE_RETRY_MAIN_DAYS} days · Σ {ssum:+.2f} pts"
+                                  f" · avg {ssum / n:+.3f}% (kill Σ ≤ −6 · first read at 10 · declared override)")
+        t0 = main[0][0]
+        lt = [float(p) for a, p in (lite_fills or []) if a is not None and a >= t0 and _fin(p) is not None]
+        mavg = sum(p for _, p in main) / len(main)
+        lavg = (sum(lt) / len(lt)) if lt else None
+        ok = mavg > 0 and lavg is not None and mavg >= lavg
+        return (("STEP_UP" if ok else "OFF"),
+                f"📋 MAIN READ — first {len(main)} fills (≥ {LITE_RETRY_MAIN_N} on ≥ {LITE_RETRY_MAIN_DAYS} days) avg {mavg:+.3f}% vs live LITE same period "
+                + (f"{lavg:+.3f}% ({len(lt)} fills)" if lavg is not None else "n/a (no LITE fills)")
+                + (" → STEP UP lev 0.2 → 0.4 (8×, operator)" if ok else " → switch OFF (operator)"))
+    except Exception:
+        return "COLLECTING", "gate unreadable"
+
+
+def frenzy_lite_retry_step(ep, th, volume_24h, pending, bar_close_ms) -> Tuple[str, str, str]:
+    """🔁 (action, code, text) for a pending FRENZY_LITE_RETRY on the closed 5m bar whose CLOSE is bar_close_ms (the pass bar). Pure, never raises.
+    DROP  FRENZY_LITE_RETRY_EXPIRED       the bar closed after the window (green close + frenzy_lite_retry_wait_minutes)
+          FRENZY_LITE_RETRY_ENDED         the episode is no longer flagged / a different spike
+          FRENZY_LITE_RETRY_BROKEN        the stretch broke (a close below the spike VWAP → a different stretch id, or none)
+          FRENZY_LITE_RETRY_WINDOW_OVER   LITE's episode-age window passed (frenzy_lite_max_hours)
+          FRENZY_LITE_RETRY_OFF           LITE switched off (the retry re-reads LITE's own status)
+    OPEN  the SAME stretch is FRENZY_LITE_READY on this bar (red / flat candle ∧ every frenzy_lite_status check, read as if unjudged)
+    WAIT  anything else (a green candle, volume ≥ the setup ×, FRENZY in state, 24 h volume low, unreadable) — skipped; the next bar may open.
+    A bar at / before the green bar's close never acts (WAIT)."""
+    try:
+        p = pending or {}
+        b = int(bar_close_ms)
+        if b <= int(p['green']):
+            return LITE_RETRY_WAIT, "FRENZY_LITE_RETRY_SAME_BAR", "LITE retry: the green bar itself"
+        if b > int(p['exp']):
+            return LITE_RETRY_DROP, "FRENZY_LITE_RETRY_EXPIRED", "LITE retry: no red / flat READY bar within the window"
+        if not frenzy_flagged(ep, th) or (ep or {}).get('spike_ts') is None or int(ep['spike_ts']) != int(p['spike']):
+            return LITE_RETRY_DROP, "FRENZY_LITE_RETRY_ENDED", "LITE retry: the episode ended"
+        sid = frenzy_lite_stretch_id(ep)
+        if sid is None or int(sid) != int(p['sid']):
+            return LITE_RETRY_DROP, "FRENZY_LITE_RETRY_BROKEN", "LITE retry: the stretch broke (a close below the spike average)"
+        ok, code, text = frenzy_lite_status(ep, th, volume_24h, None)
+        if ok:
+            return LITE_RETRY_OPEN, code, text
+        if code == "FRENZY_LITE_TOO_LATE":
+            return LITE_RETRY_DROP, "FRENZY_LITE_RETRY_WINDOW_OVER", text
+        if code == "FRENZY_LITE_OFF":
+            return LITE_RETRY_DROP, "FRENZY_LITE_RETRY_OFF", text
+        return LITE_RETRY_WAIT, code, text
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return LITE_RETRY_WAIT, "FRENZY_LITE_RETRY_NO_DATA", "LITE retry: unreadable"
 
 
 FRENZY_CATCHUP_OK, FRENZY_CATCHUP_STALE = "FRENZY_CATCHUP", "FRENZY_CATCHUP_STALE"
@@ -526,12 +746,24 @@ def frenzy_lite_c_tp(th, vol_mult, btc_1h_slope) -> Tuple[float, bool]:
     return min(ctp, base), zone                          # never ABOVE the zone's TP (a LITE TP set below 2 is not inverted)
 
 
+def frenzy_stop_for(th, sleeve=None) -> float:
+    """🛑 (DECISION_LOG 317, operator DECLARED OVERRIDE 2026-10-19) the loss stop a FRENZY exit uses, positive %: FRENZY_LONG runs
+    frenzy_long_stop_pct when > 0 (live 4.0); every other caller — FRENZY_WIDE / FRENZY_LITE / FRENZY_LITE_RETRY / the MANUAL "FRENZY" exit
+    (sleeve None) — and LONG with 0 / blank / unreadable runs the shared frenzy_stop_pct (0 / missing → 3). Never raises."""
+    base = abs(_f(th, 'frenzy_stop_pct', 3.0)) or 3.0
+    if sleeve == "FRENZY_LONG":
+        v = _fin(getattr(th, 'frenzy_long_stop_pct', 0.0))
+        if v is not None and v > 0:
+            return v
+    return base
+
+
 def frenzy_tp_for(th, sleeve=None, tp_override=None) -> float:
     """🎯 the fixed FRENZY take profit for a sleeve (DECISION_LOG 284, operator): FRENZY_LITE runs frenzy_lite_tp_pct when > 0, every other
     caller (FRENZY_LONG / FRENZY_WIDE / the manual FRENZY exit, or LITE with frenzy_lite_tp_pct ≤ 0) the shared frenzy_tp_pct. ≤ 0 = off.
     tp_override (🎯 DECISION_LOG 301 LITE C): the order's stored LITE TP (Order.frenzy_lite_tp_used) — FRENZY_LITE only, used when finite
     and > 0; None (legacy order / LITE C off at entry) → the config TP above. Ignored for every other sleeve."""
-    if sleeve == "FRENZY_LITE":
+    if sleeve in FRENZY_LITE_FAMILY:   # 🔁 (316) FRENZY_LITE_RETRY runs LITE's exit exactly (its own stored LITE C TP included)
         ov = frenzy_lite_tp_override(tp_override)
         if ov is not None:
             return ov
@@ -551,6 +783,7 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
     Stop at −frenzy_stop_pct; once the peak reaches +frenzy_trail_arm_pct the
     line trails frenzy_trail_giveback_pct of PRICE below the best point (peak − giveback × (1 + peak/100)). Reasons are the
     momentum stack's own (STOP_LOSS / RUNNER_TRAIL) so every matcher knows them; entry_strategy tells the sleeve apart.
+    sleeve also picks the STOP (🛑 DECISION_LOG 317): FRENZY_LONG → frenzy_long_stop_pct when > 0, else frenzy_stop_pct (frenzy_stop_for).
     stop_floor: optional cap (never wider than this). The engine passes None since DECISION_LOG 271 — the sleeve's own stop runs in
     paper AND live; the per-order exchange backstop rests just beyond it (order_backstop_pct).
     short=True (a MANUAL short on this exit): the give-back is measured from the LOWEST price → peak − giveback × (1 − peak/100).
@@ -560,7 +793,7 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
     tp_override (🎯 DECISION_LOG 301 LITE C): the order's stored LITE TP — passed through to frenzy_tp_for (FRENZY_LITE only)."""
     try:
         pnl = float(pnl); pk = float(peak_pnl or 0.0)
-        stop = -abs(_f(th, 'frenzy_stop_pct', 3.0)) or -3.0
+        stop = -frenzy_stop_for(th, sleeve)   # 🛑 (317) FRENZY_LONG: frenzy_long_stop_pct when > 0 · everyone else (manual FRENZY included): frenzy_stop_pct
         if stop_floor is not None:
             stop = max(stop, float(stop_floor))
         # 🎯 Oct-5 (operator, DECISION_LOG 205): LOCK-then-trail — once the peak reaches +frenzy_lock_arm_pct the line jumps to

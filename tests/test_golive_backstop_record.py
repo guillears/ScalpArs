@@ -108,7 +108,7 @@ def test_paper_records_the_configured_backstop_without_exchange_calls(monkeypatc
     assert sorted(x[1] for x in out) == ["paper", "paper"]
     assert r["WILUSDT"].backstop_pct == 4.5 and abs(r["WILUSDT"].backstop_trigger_price - 95.5) < 1e-9     # 10×: own 4 + 0.5
     assert r["MOMUSDT"].backstop_pct == 2.5 and r["MOMUSDT"].backstop_trigger_price == 48.75                 # unchanged
-    assert r["OLDUSDT"].backstop_pct == 3.5 and abs(r["OLDUSDT"].backstop_trigger_price - 9.65) < 1e-9
+    assert r["OLDUSDT"].backstop_pct == 4.5 and abs(r["OLDUSDT"].backstop_trigger_price - 9.55) < 1e-9     # 🛑 (317) FRENZY_LONG own stop 4 + 0.5
 
 
 def test_live_replace_places_new_then_cancels_old(monkeypatch):

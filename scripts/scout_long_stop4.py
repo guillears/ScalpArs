@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """👁 Scout — LONG_STOP4 observe line (DECISION_LOG 315, operator 2026-10-19: "add LONG_STOP4 and LITE_GREEN_RETRY watch lines").
 OBSERVE ONLY — never changes config, never calls the bot API.
+LIVE −4 NOTE (2026-10-19, DECISION_LOG 317): live FRENZY_LONG now runs −4 (frenzy_long_stop_pct) from the DL 317 deploy. A fill stamped
+entry_frenzy_stop_pct ≥ 3.5 is a LIVE −4 fill: the −4 walk is its live replica (parity vs booked) and the −3 walk becomes the SHADOW; its
+"live-stopped" membership = the −3 walk stopped (it TOUCHED −3) — so Δ still reads −4 minus −3 on the same cohort and the frozen gate below
+is unchanged. Fills without the stamp (pre-317) keep the original reading (booked = −3).
 
 Origin: reports/FRENZY_REALFILLS_EXIT_RUNNER_2026-10-19.md §A3 / §G. On the real fills 5 of the 9 FRENZY_LONG fills stopped at −3 came
 back to +1.5 without touching −4 (+0.67 vs +0.02 %/fill, LODO picks −4 in 13/13 folds, Δ +0.65 [+0.08, +1.36]); the 2-year backtest
@@ -388,7 +392,19 @@ def load_orders(pattern="~/Downloads/scalpars_orders_paper_*.csv", cols=None):
 
 
 COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "entry_price", "pnl_percentage", "pnl",
-        "notional_value", "close_reason", "is_paper")
+        "notional_value", "close_reason", "is_paper", "entry_frenzy_stop_pct")
+LIVE4_MIN_STOP = 3.5   # 🛑 (317) entry_frenzy_stop_pct ≥ this = the fill ran the live −4 stop
+
+
+def is_live4(entry_stop_pct) -> bool:
+    """🛑 (317) True = the fill ran the LIVE −4 stop (stamp ≥ 3.5); a missing / unreadable stamp = the pre-317 −3 era."""
+    v = _num(entry_stop_pct)
+    return bool(np.isfinite(v) and v >= LIVE4_MIN_STOP)
+
+
+def cohort_stopped(live4, close_reason, pnl_pct, base_why) -> bool:
+    """the gate's "live-stopped" membership: pre-317 = the booked stop (live_stopped) · live −4 = the −3 walk stopped (the fill TOUCHED −3)."""
+    return (str(base_why) == "STOP") if live4 else live_stopped(close_reason, pnl_pct)
 
 
 def fills(start=COHORT_START):
@@ -481,9 +497,12 @@ def main(argv=None):
         bk = _num(r.get("pnl_percentage"))
         notl = _num(r.get("notional_value"))
         notl = notl if np.isfinite(notl) and notl > 0 else NOTIONAL_FALLBACK
+        _l4 = is_live4(r.get("entry_frenzy_stop_pct"))   # 🛑 (317) live −4 fill: the −4 walk is the live replica, the −3 walk the shadow
+        _rep = s["shadow"] if _l4 else s["base"]
         rows.append(dict(day=r["_k"][:10], opened_at=r["_k"], pair=r["pair"], booked=bk, close_reason=r.get("close_reason"),
-                         live_stopped=live_stopped(r.get("close_reason"), bk), notional=notl, prov=bool(P["n_bar"] > 0),
-                         usd=s["delta"] * notl / 100, sign_flag=bool(np.isfinite(bk) and np.sign(bk) != np.sign(s["base"])), **s))
+                         live_stopped=cohort_stopped(_l4, r.get("close_reason"), bk, s["base_why"]), live4=_l4, replica=_rep,
+                         notional=notl, prov=bool(P["n_bar"] > 0),
+                         usd=s["delta"] * notl / 100, sign_flag=bool(np.isfinite(bk) and np.sign(bk) != np.sign(_rep)), **s))
     d = pd.DataFrame(rows)
     print(f"  scored {len(d)} · pending {len(pend)}{(' (' + bud.why + ')') if bud.why else ''} · unresolved {unres} · "
           f"fapi requests {bud.requests} (weight {bud.used}) · archives fetched {bud.archives}")
@@ -492,8 +511,8 @@ def main(argv=None):
     if not len(d):
         print(f"  verdict: collecting (0/{GATE_STOPS} stops on 0/{GATE_DAYS} days)")
         return
-    print(f"  parity walker(−3) vs booked: mean |Δ| {(d.base - d.booked).abs().mean():.2f} pp · sign disagreements "
-          f"{int(d.sign_flag.sum())}/{len(d)} · 1m-provisional {int(d.prov.sum())}")
+    print(f"  parity live replica (walker −3 pre-317 · −4 on live −4 fills) vs booked: mean |Δ| {(d.replica - d.booked).abs().mean():.2f} pp · "
+          f"sign disagreements {int(d.sign_flag.sum())}/{len(d)} · live −4 fills {int(d.live4.sum())} · 1m-provisional {int(d.prov.sum())}")
     for x in d.itertuples():
         mark = "■" if x.live_stopped else "·"
         print(f"    {mark} {x.opened_at} {x.pair:12s} booked {x.booked:+.2f} ({x.close_reason}) · −3 {x.base:+.2f} {x.base_why:4s} · "

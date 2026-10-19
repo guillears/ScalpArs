@@ -245,6 +245,14 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN frenzy_lite_tp_used FLOAT"))
                 if 'lite_c_zone' not in columns:   # 🎯 (DECISION_LOG 301) LITE C zone flag
                     connection.execute(text("ALTER TABLE orders ADD COLUMN lite_c_zone BOOLEAN"))
+                for _lr_col in ('entry_frenzy_retry_wait_min', 'entry_frenzy_retry_green_ret', 'entry_frenzy_stop_pct'):   # 🔁 (DECISION_LOG 316) FRENZY_LITE_RETRY stamps · 🛑 (317) stop at entry
+                    if _lr_col not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_lr_col} FLOAT"))
+                from services.touch_snapshot import TOUCH_LEVELS as _TL, TOUCH_FIELDS as _TF   # 🛑👁 (DECISION_LOG 317) touch snapshots
+                for _tc, _tt in ([('entry_btc_price', 'FLOAT')] + [(f"touch{_lv}_{_f}", {'at': 'DATETIME', 'recovered_tp': 'BOOLEAN'}.get(_f, 'FLOAT'))
+                                                                   for _lv in _TL for _f in _TF]):
+                    if _tc not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_tc} {_tt}"))
                 if 'entry_rsi' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_rsi FLOAT"))
                 if 'trough_pnl' not in columns:

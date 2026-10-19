@@ -1327,6 +1327,14 @@ class SignalThresholds(BaseModel):
     # stamped on every fill (entry_frenzy_bar_ret_pct). False = enter after any bar.
     frenzy_long_skip_green_bar: bool = True
     frenzy_stop_pct: float = 3.0                 # stop, % of the position (positive number)
+    # 🛑 2026-10-19 (DECISION_LOG 317, operator DECLARED OVERRIDE "build LONG -4 live"): FRENZY_LONG's OWN stop (positive %), used ONLY for
+    # FRENZY_LONG fills (services.frenzy.frenzy_stop_for); 0 / blank = the shared frenzy_stop_pct. FRENZY_WIDE / FRENZY_LITE /
+    # FRENZY_LITE_RETRY and the MANUAL "FRENZY" exit stay on frenzy_stop_pct (LITE's real −3 touches recovered 0/8). The LONG exchange
+    # backstop follows it (order_backstop_pct: own stop + MANUAL_BACKSTOP_MARGIN_PCT 0.5 → 4.5 %, liquidation-capped). Evidence:
+    # scripts/scout_long_stop4.py / reports/FRENZY_REALFILLS_EXIT_RUNNER_2026-10-19.md (LONG −3 touches recover often — the LONG_STOP4 watch).
+    # 🔒 REVERT to 0 (−3) if, among the first 10 FRENZY_LONG fills that touch −3, fewer than 3 recover to the TP before −4; or if after 20
+    # such touches on ≥ 8 UTC days the live −4 result is net negative vs the −3 walk on the same fills. Code default 0; trading_config.json 4.0.
+    frenzy_long_stop_pct: float = 0.0
     frenzy_trail_arm_pct: float = 5.0            # the trailing exit arms at this peak %
     frenzy_trail_giveback_pct: float = 1.5       # … and closes this % of price below the best point
     # 🎯 Oct-4 (operator, DECISION_LOG 196): FRENZY_LONG / FRENZY_WIDE fixed take-profit at this net % (0 = off → the trail above). Real-tick year,
@@ -1477,6 +1485,21 @@ class SignalThresholds(BaseModel):
     frenzy_lite_max_slots: int = 2               # max FRENZY_LITE open at once (they also count against max open positions)
     frenzy_lite_max_hours: float = 16.75         # episode age window end (h after the spike) — the study's "first ~17 h" (≤ frenzy_min_hours → 16.75 used)
     frenzy_lite_min_above_closes: int = 12       # (≤ 0 → 12 used) consecutive 5m closes at / above the spike VWAP (the study's 12 = FRENZY's hour; 6 vs 12 under study)
+    # 🔁 2026-10-19 FRENZY_LITE_RETRY (operator DECLARED OVERRIDE below the locked gates, DECISION_LOG 316): a LITE stretch refused ONLY for a
+    # GREEN signal candle (FRENZY_LITE_GREEN_BAR) records ONE pending retry; the first red / flat closed 5m bar within
+    # frenzy_lite_retry_wait_minutes of the green bar's close on which the SAME stretch is still LITE-READY (services.frenzy.frenzy_lite_retry_step)
+    # opens FRENZY_LITE_RETRY through every LITE open filter (WILLY hold, pair held, LITE-family pair-day cap, market volume, lateness, 1 %
+    # dislocation, bearish day, global caps) — any refusal there ends it. LITE's exit (LITE C TP decided at entry, −frenzy_stop_pct, 12 h,
+    # backstop, resting TP). NO sleeve slot limit (operator); never consumes LITE's frenzy_lite_max_slots. Evidence BOTH ways
+    # (reports/LITE_GREEN_RETRY_DEEP_2026-10-19.md): real era S15r 43 added fills +0.34 %/fill +$380 (P 0.78, LODO 16/18 days, in-sample
+    # best of 10 cells → 30–50 % haircut) vs the two-year backtest S15r 1,711 added fills −0.089 %/fill (P 0.09) — REFUTED there; the
+    # operator distrusts the backtest. 🔒 Gates (frozen, operator decides): EARLY KILL Σ pnl% of FRENZY_LITE_RETRY fills ≤ −6 pts → off ·
+    # FIRST READ at 10 fills avg < 0 → off · MAIN READ at 20 fills on ≥ 10 UTC days: avg > 0 ∧ ≥ same-period live FRENZY_LITE avg → lev 0.4
+    # (8×), else off. Never re-fit the 15 minutes. Code default OFF; trading_config.json arms it.
+    frenzy_lite_retry_enabled: bool = False
+    frenzy_lite_retry_wait_minutes: float = 15.0  # (≤ 0 / blank → 15) window after the green bar's close (5–60 accepted on save; the frozen rule is 15)
+    frenzy_lite_retry_invest_mult: float = 1.0   # absolute-assign like LITE
+    frenzy_lite_retry_lev_mult: float = 0.2      # 0.2 = 4× (LITE runs 0.4 = 8×); step-up to 0.4 only through the MAIN READ gate above
     # 🎲 Oct-8 FRENZY_WILLY (operator-directed DECLARED EXCEPTION, DECISION_LOG 251 — armed AGAINST the evidence): LONG only, NO filters (no
     # market-volume / ATR / bearish-day gates). Entry A "NEW FLAG" = the pass bar a pair becomes FRENZY-flagged for an episode (engine flag set,
     # episode = spike_ts; once per episode, judged before the open whatever the outcome; restart-proof via BotState JSON 'willy_seen' + the
@@ -1533,6 +1556,7 @@ class SignalThresholds(BaseModel):
     # OR any booked resting-TP close shows an accounting mismatch vs Binance.
     resting_tp_willy_enabled: bool = True         # FRENZY_WILLY (operator 2026-10-15: armed)
     resting_tp_lite_enabled: bool = True          # FRENZY_LITE (operator 2026-10-15: armed; none while frenzy_lock_arm_pct > 0 — no fixed TP then)
+    resting_tp_lite_retry_enabled: bool = True    # 🔁 FRENZY_LITE_RETRY (DECISION_LOG 316): LITE's resting TP, own switch for attribution (same revert gate as LITE's)
     # 🎯 2026-10-19 (DECISION_LOG 310, operator "do it"): the same resting limit for EVERY fixed take-profit line. Evidence: AGT MANUAL FIXED
     # +2 (10-19, 10×, $5k notional) — software TP on the +2.00 touch, market sell filled 0.61 % lower → +1.38 booked; post-296 WILLY/LITE maker
     # fills booked the target exactly (ZIL +1.27, DUSK +2.00, AVA +2.02) vs the pre-296 taker give-back 0.08–0.22. Target read from the ROW

@@ -26,6 +26,10 @@ from services.surge import surge_trigger, surge_entry_open, surge_pair_pick, sur
 from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE, frenzy_tp_for
 from services.frenzy import frenzy_lite_c_tp, frenzy_lite_c_enabled, frenzy_lite_tp_override   # 🎯 (DECISION_LOG 301) LITE C
+from services.frenzy import frenzy_stop_for   # 🛑 (DECISION_LOG 317) FRENZY_LONG's own stop
+from services.touch_snapshot import TOUCH_LEVELS, touch_mark, touch_features, touch_snapshot, touch_outcome   # 🛑👁 (317) observe-only touch snapshots
+from services.frenzy import (FRENZY_LITE_RETRY, FRENZY_LITE_FAMILY, frenzy_lite_retry_enabled, frenzy_lite_retry_pending,  # 🔁 (DECISION_LOG 316)
+                             frenzy_lite_retry_pending_clean, frenzy_lite_retry_step, LITE_RETRY_OPEN, LITE_RETRY_DROP)
 from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, frenzy_wide_shadow, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 from services.golive_guards import (backstop_heal_skip_inflight, backstop_trigger_price, backstop_needs_replace, algo_status_resting, find_untracked_positions,  # 🛡 (DECISION_LOG 292)
@@ -566,12 +570,14 @@ def manual_own_stop_pct(th, exit_mode, fixed_sl_pct):
 
 def bot_own_stop_pct(th, entry_strategy):
     """🛡 (DECISION_LOG 271) the loss stop a BOT order carries by itself, positive % — None = the sleeve's stops all sit inside
-    broker_backstop_pct (momentum, fades, flips, …). FRENZY_LONG / WIDE / LITE → frenzy_stop_pct (0 / missing = 3, as the exit
+    broker_backstop_pct (momentum, fades, flips, …). FRENZY_WIDE / LITE / LITE_RETRY → frenzy_stop_pct (−3) · FRENZY_LONG → its OWN
+    frenzy_long_stop_pct when > 0 (−4 live since DL 317; services.frenzy.frenzy_stop_for) else frenzy_stop_pct (0 / missing = 3, as the exit
     reads it) · FRENZY_WILLY → frenzy_willy_stop_pct (None when 0 = no stop)."""
     try:
         es = entry_strategy or ""
-        if es in ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE"):
-            return abs(float(getattr(th, 'frenzy_stop_pct', 3.0) or 3.0)) or 3.0
+        if es in ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_LITE_RETRY"):   # 🔁 (316) the retry runs LITE's stop
+            float(getattr(th, 'frenzy_stop_pct', 3.0) or 3.0)   # an unreadable shared stop → None (the bot's base distance), as before 317
+            return frenzy_stop_for(th, es)   # 🛑 (317) FRENZY_LONG: frenzy_long_stop_pct when > 0 → its backstop rests at that stop + MANUAL_BACKSTOP_MARGIN_PCT
         if es == "FRENZY_WILLY":
             v = abs(float(getattr(th, 'frenzy_willy_stop_pct', 0.0) or 0.0))
             return v if v > 0 else None
@@ -986,7 +992,7 @@ _frenzy_kl_cache: Dict[str, dict] = {}
 FRENZY_KL_TAIL = 5
 FRENZY_KL_FULL_EVERY = 12
 FRENZY_KL_LIMIT = 1500   # bars per full 5m read = the cached window length (the studies' 1499 closed bars + the forming bar)
-FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY")   # 🔥 Oct-3: all run the FRENZY sleeve exit intercept, hold cap and urgent-close path (🪶 Oct-7 LITE, DECISION_LOG 243 · 🎲 Oct-8 WILLY, 251 — its OWN exit / hold cap, see frenzy_willy_exit_for)
+FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY") + (FRENZY_LITE_RETRY,)   # 🔁 (316) + FRENZY_LITE_RETRY (LITE's exit) · 🔥 Oct-3: all run the FRENZY sleeve exit intercept, hold cap and urgent-close path (🪶 Oct-7 LITE, DECISION_LOG 243 · 🎲 Oct-8 WILLY, 251 — its OWN exit / hold cap, see frenzy_willy_exit_for)
 FRENZY_ENTRY_MAX_LATE_S = 120   # a long opens only within this many seconds of its signal bar's close (the test entered at the next open)
 # (9d733e2 pushed 15:09 UTC). The first trigger's 4 fills (14:50 UTC, EMA13 first-tick bug) are excluded — operator reset the batch.
 _breadth_n_bull: int = 0
@@ -1121,7 +1127,7 @@ def _ema13_cross_exit_applies(entry_strategy):
         es = (entry_strategy or "")
         if es.startswith("FLIP:"):
             return False
-        if es in ("SPIKE_FADE", "SPIKE_BOUNCE", "SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY"):   # ⚡ SURGE: no pair-EMA entry condition (Sep-30 SOON/MOVR) · 🪶 243 LITE · 🎲 251 WILLY
+        if es in ("SPIKE_FADE", "SPIKE_BOUNCE", "SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY") or es == FRENZY_LITE_RETRY:   # ⚡ SURGE: no pair-EMA entry condition (Sep-30 SOON/MOVR) · 🪶 243 LITE · 🎲 251 WILLY
             return False
         return True
     except Exception:
@@ -8770,6 +8776,8 @@ class TradingEngine:
                                                        allp=allp, live_bars=b5)
                         if _lite and not ep.get('in_state'):   # 🪶 Oct-7 (243): FRENZY_LITE — held above, volume below FRENZY's; the just-closed bar only (no catch-up)
                             await self._frenzy_lite_eval(db, pair, ep, flag, ind, closed, bar_open, norm_hour=_nc[1])
+                        if pair in (getattr(self, '_fz_lite_retry', None) or {}):   # 🔁 (316) a pending LITE green-bar retry: this bar may open it (in state = skipped)
+                            await self._frenzy_lite_retry_eval(db, pair, ep, flag, ind, closed, bar_open)
                         # 🎲 Oct-8 (251): FRENZY_WILLY LAST — after FRENZY / WIDE / LITE decided this bar (B reads what they did). Runs whatever its
                         # switch: the 'seen' episode map is kept up to date so switching WILLY on never fires A for an episode already flagged.
                         await self._frenzy_willy_eval(db, pair, ep, flag, ind, bar_open, _prev.get('spike_ts'), _willy,
@@ -8794,6 +8802,7 @@ class TradingEngine:
                     if _frenzy_flags[k]['misses'] >= 3 or k not in by or k.upper() in skip:
                         _frenzy_flags.pop(k, None)
             await self._frenzy_willy_sweep(bar_open, _willy, seen)   # 🎲 (251) pending red-candle entries: episode over / wait passed / WILLY off → expire
+            await self._frenzy_lite_retry_sweep(bar_open, seen)   # 🔁 (316) pending LITE retries: window passed / episode over / switched off → drop
             self._journal_pair = None; self._journal_ctx = None
             self._frenzy_note_unread(names, seen, bar_open - 300_000, _cu_prev)   # ⏪ pairs NOT read on this bar keep their own horizon
             await self._frenzy_judged_set(bar_open - 300_000)   # ⏪ this bar was judged by a completed pass (survives pauses / restarts)
@@ -9017,6 +9026,18 @@ class TradingEngine:
                                     _dst[str(k)] = _pv
                         except (TypeError, ValueError):
                             continue
+                # 🔁 (316) pending FRENZY_LITE_RETRY entries (restart-safe; memory wins for a pair it already holds; an expired one is
+                # dropped by its own clock at the first pass that sees it)
+                _lr = self.__dict__.setdefault('_fz_lite_retry', {})
+                try:
+                    _lrj = _uj.get('lite_retry') or {}
+                    _lrj = _lrj.items() if isinstance(_lrj, dict) else ()
+                except Exception:
+                    _lrj = ()
+                for k, v in _lrj:
+                    _pv = frenzy_lite_retry_pending_clean(v)
+                    if _pv and str(k) not in _lr:
+                        _lr[str(k)] = _pv
             except (TypeError, ValueError, AttributeError):
                 self._fz_pair_unjudged = {}; self._fz_on_done = {}
             self._fz_judged_loaded = True
@@ -9084,7 +9105,8 @@ class TradingEngine:
                            "lite_done": dict(sorted((getattr(self, '_fz_lite_done', None) or {}).items())),   # 🪶 (243) LITE judged stretches
                            "willy_seen": dict(sorted((getattr(self, '_fz_willy_seen', None) or {}).items())),   # 🎲 (251) newest episode seen flagged per pair
                            "willy_b_used": dict(sorted((getattr(self, '_fz_willy_b_used', None) or {}).items())),   # 🎲 entry B armed per episode
-                           "willy_pending": dict(sorted((getattr(self, '_fz_willy_pending', None) or {}).items()))})   # 🎲 armed, waiting for a red candle
+                           "willy_pending": dict(sorted((getattr(self, '_fz_willy_pending', None) or {}).items())),   # 🎲 armed, waiting for a red candle
+                           "lite_retry": dict(sorted((getattr(self, '_fz_lite_retry', None) or {}).items()))})   # 🔁 (316) pending LITE green-bar retries
 
     def _frenzy_willy_defer_on(self, pair, on_bar_ms) -> None:
         """🔒 (251) an ON bar refused ONLY by the WILLY global hold stays UNJUDGED: the pair's catch-up horizon (② the per-pair unread map) is
@@ -9155,7 +9177,7 @@ class TradingEngine:
         the stretch judged with note "DB unreadable" — fail closed, 243 review)."""
         try:
             _t = datetime.utcfromtimestamp(int(stretch_ms) / 1000)
-            return (await db.execute(select(Order.id).where(and_(Order.pair == pair, Order.entry_strategy == "FRENZY_LITE",
+            return (await db.execute(select(Order.id).where(and_(Order.pair == pair, Order.entry_strategy.in_(FRENZY_LITE_FAMILY),   # (dual review) + the retry
                                                                  Order.is_paper == self.is_paper_mode,
                                                                  Order.opened_at > _t - timedelta(seconds=1))))).first() is not None
         except Exception as e:
@@ -9270,7 +9292,9 @@ class TradingEngine:
                 flag['last_fire'] = f"{_bar_dt:%m-%d %H:%M} LITE refused: {text.replace('LITE: ', '')} — stretch judged"
                 _notes[pair] = (sid, f"{_bar_dt:%H:%M} UTC (refused: GREEN_BAR)", int(bar_open))
                 flag['lite_judged_ms'] = int(bar_open)
-                logger.info(f"[FRENZY_LITE] {pair}: LITE signal{_st} refused — {text} · stretch judged (no retry on later bars)")
+                logger.info(f"[FRENZY_LITE] {pair}: LITE signal{_st} refused — {text} · stretch judged (no LITE retry on later bars)")
+                if code == "FRENZY_LITE_GREEN_BAR":   # 🔁 (316) ONLY a green-candle refusal arms the separate FRENZY_LITE_RETRY (LITE stays judged)
+                    await self._frenzy_lite_retry_arm(pair, ep, sid, bar_open)
                 return
             _opened = True
             flag['last_fire'] = None   # 🪶 (243 review) the outcome note must come from THIS open, never an older last_fire
@@ -9286,6 +9310,204 @@ class TradingEngine:
             self._record_filter_block("FRENZY_LITE_FAILED", "LONG")
             if _marked and not _opened:   # our own exception before the open ran never costs the stretch
                 await self._frenzy_lite_mark_done(pair, None, restore=True, prev=_prev)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
+    # ── 🔁 2026-10-19 FRENZY_LITE_RETRY (operator DECLARED OVERRIDE, DECISION_LOG 316) ──────────────────────────────────────────────────
+    # A LITE stretch refused ONLY for a green signal candle keeps LITE's one judgement (the stretch stays consumed for LITE) and records ONE
+    # pending retry {sid, spike, green (the green bar's close, UTC ms), exp (green + frenzy_lite_retry_wait_minutes), ret} in _fz_lite_retry
+    # (+ BotState.frenzy_unjudged_json['lite_retry'] — restart-safe). On each later pass bar ≤ exp: services.frenzy.frenzy_lite_retry_step reads
+    # the SAME stretch through LITE's own status (as if unjudged): READY (red / flat ∧ every LITE check) → ONE open attempt through
+    # _frenzy_open(lite_retry=…) — every LITE open filter re-checked; any refusal there ENDS the retry (counted with the FRENZY_LITE_RETRY_
+    # prefix + journal BLOCK row). Green / volume-high / in-state / 24 h-volume bars are skipped. Expiry / episode end / stretch break /
+    # LITE window over → dropped (FRENZY_LITE_RETRY_EXPIRED / _ENDED / _BROKEN / _WINDOW_OVER). The pending entry is removed BEFORE the open
+    # (one attempt, never doubled by a restart; the open path's DB check stops a same-bar duplicate).
+    @staticmethod
+    def _frenzy_entry_stop_pct(es) -> Optional[float]:
+        """🛑 (DECISION_LOG 317) the loss stop (positive %) a FRENZY fill runs at its entry — stamped as entry_frenzy_stop_pct: WILLY its own
+        frenzy_willy_stop_pct (None = no stop), every other sleeve frenzy_stop_for (LONG −4 since 317). Never raises."""
+        try:
+            th = config.trading_config.thresholds
+            if es == "FRENZY_WILLY":
+                _s = frenzy_willy_levels(th)[1]
+                return abs(float(_s)) if _s is not None else None
+            return round(float(frenzy_stop_for(th, es)), 4)
+        except Exception:
+            return None
+
+    # ── 🛑👁 (DECISION_LOG 317) TOUCH SNAPSHOTS — observe only (services/touch_snapshot.py). Markers live in memory per order id (both the
+    # realtime and the monitor path note readings — no I/O); the monitor writes a touched level's snapshot on the row ONCE (the row is
+    # committed with the monitor's own updates); the close writes any snapshot still missing + the outcome. Never raises, never decides.
+    def _touch_note(self, order_id, pnl, peak_before, price) -> None:
+        try:
+            touch_mark(self.__dict__.setdefault('_touch_mk', {}).setdefault(order_id, {}), pnl, peak_before, _leash_time.time() * 1000, price)
+        except Exception:
+            pass
+
+    def _touch_prune(self, open_ids) -> None:
+        """(dual review) drop the markers of orders no longer open (a close path that never finalized) — bounded memory. Never raises."""
+        try:
+            mk = getattr(self, '_touch_mk', None)
+            if mk:
+                for k in [k for k in mk if k not in open_ids]:
+                    mk.pop(k, None)
+        except Exception:
+            pass
+
+    def _touch_write(self, order) -> None:
+        """write the snapshot of every touched level not yet on the row (features from the FRENZY kline cache / flag / BTC globals)."""
+        try:
+            mk = (getattr(self, '_touch_mk', None) or {}).get(order.id) or {}
+            for lv in TOUCH_LEVELS:
+                m = mk.get(lv)
+                if not m or getattr(order, f'touch{lv}_at', None) is not None:
+                    continue
+                _g = globals()
+                _kc = (_frenzy_kl_cache.get(order.pair) or {}).get('rows')
+                _fl = _frenzy_flags.get(order.pair) or {}
+                _em = int(order.opened_at.timestamp() * 1000) if order.opened_at.tzinfo else int((order.opened_at - datetime(1970, 1, 1)).total_seconds() * 1000)
+                feats = touch_features(_kc, m.get('price'), m['ms'], _em, vwap=_fl.get('vwap'), btc_now=_g.get('_current_btc_price'),
+                                       btc_entry=getattr(order, 'entry_btc_price', None), btc_1h_slope=_g.get('_current_btc_1h_slope'))
+                for k, v in touch_snapshot(m, order.opened_at, feats).items():
+                    setattr(order, f'touch{lv}_{k}', v)
+                logger.info(f"[TOUCH{lv}] {order.pair} #{order.id} {order.entry_strategy}: first −{lv}% touch after "
+                            f"{getattr(order, f'touch{lv}_min', None)} min (observe only)")
+        except Exception as e:
+            logger.debug(f"[TOUCH] {getattr(order, 'pair', '?')}: snapshot skipped ({str(e)[:80]})")
+
+    def _touch_finalize(self, order, final_pnl, reason) -> None:
+        """at the close: a touched level's missing snapshot + the outcome (recovered_tp / min_after); the markers are dropped."""
+        try:
+            if (order.entry_strategy or "") not in FRENZY_STRATEGIES:
+                return
+            self._touch_note(order.id, final_pnl, order.peak_pnl or 0, order.exit_price)
+            self._touch_write(order)
+            mk = (self.__dict__.setdefault('_touch_mk', {})).pop(order.id, None) or {}
+            th = config.trading_config.thresholds
+            tp = (frenzy_willy_levels(th)[0] if order.entry_strategy == "FRENZY_WILLY"
+                  else frenzy_tp_for(th, order.entry_strategy, getattr(order, 'frenzy_lite_tp_used', None)))
+            for lv in TOUCH_LEVELS:
+                if getattr(order, f'touch{lv}_at', None) is None:
+                    continue
+                rec, mn = touch_outcome(mk.get(lv), final_pnl, reason, tp, getattr(order, 'trough_pnl', None))
+                setattr(order, f'touch{lv}_recovered_tp', rec)
+                setattr(order, f'touch{lv}_min_after', mn)
+        except Exception as e:
+            logger.debug(f"[TOUCH] {getattr(order, 'pair', '?')}: outcome skipped ({str(e)[:80]})")
+
+    async def _frenzy_lite_retry_save(self) -> None:
+        """🔁 persist the pending retries in BotState.frenzy_unjudged_json at once (own short session, never raises)."""
+        try:
+            if not getattr(self, '_fz_judged_loaded', False):   # never overwrite a stored state this process has not read (the next completed pass writes it)
+                logger.warning("[FRENZY_LITE_RETRY] stored FRENZY state not read yet — this pending-retry change is NOT persisted now "
+                               "(the next completed pass writes it; a restart before then restores the older state)")
+                return
+            async with AsyncSessionLocal() as _js:
+                _res = await locked_execute_commit(_js, update(BotState).values(frenzy_unjudged_json=self._frenzy_state_json()))
+            if _res is not None and getattr(_res, 'rowcount', 1) == 0:
+                logger.warning("[FRENZY_LITE_RETRY] state NOT persisted — no BotState row (0 rows updated)")
+        except Exception as e:
+            logger.warning(f"[FRENZY_LITE_RETRY] state not persisted ({str(e)[:100]})")
+
+    async def _frenzy_lite_retry_arm(self, pair, ep, sid, bar_open) -> None:
+        """🔁 a GREEN_BAR refusal of LITE's one judgement → ONE pending retry (switch on only). Never raises."""
+        try:
+            th = config.trading_config.thresholds
+            if not frenzy_lite_retry_enabled(th):
+                return
+            _pd = frenzy_lite_retry_pending(sid, (ep or {}).get('spike_ts'), bar_open, (ep or {}).get('bar_ret_pct'), th)
+            if not _pd:
+                return
+            self.__dict__.setdefault('_fz_lite_retry', {})[pair] = _pd
+            try:
+                _djournal.note('LITE_RETRY', gate="FRENZY_LITE_RETRY_ARMED", dir="LONG", pair=pair,
+                               reason=f"green {_pd['ret']}% · until {datetime.utcfromtimestamp(_pd['exp'] / 1000):%H:%M} UTC")
+            except Exception:
+                pass
+            logger.info(f"[FRENZY_LITE_RETRY] {pair}: green refusal (bar {(_pd['ret'] if _pd['ret'] is not None else float('nan')):+.3f}%) → armed — "
+                        f"first red / flat READY bar of the same stretch until {datetime.utcfromtimestamp(_pd['exp'] / 1000):%H:%M} UTC")
+            await self._frenzy_lite_retry_save()
+        except Exception as e:
+            logger.warning(f"[FRENZY_LITE_RETRY] {pair}: not armed ({str(e)[:100]})")
+
+    async def _frenzy_lite_retry_drop(self, pair, code, why, count=True) -> None:
+        """🔁 end a pending retry without an entry: counter `code` (+ journal BLOCK row) when count, log, persist. Never raises."""
+        try:
+            _pd = (self.__dict__.setdefault('_fz_lite_retry', {})).pop(pair, None)
+            try:
+                (_frenzy_flags.get(pair) or {}).pop('lite_retry_pending', None)   # (dual review) no stale "armed" text on the monitor
+            except Exception:
+                pass
+            if _pd is None:
+                return
+            if count:
+                _jp = getattr(self, '_journal_pair', None)
+                self._journal_pair = pair
+                self._record_filter_block(code, "LONG")
+                self._journal_pair = _jp
+            logger.info(f"[FRENZY_LITE_RETRY] {pair}: dropped — {why} ({code})")
+            await self._frenzy_lite_retry_save()
+        except Exception as e:
+            logger.warning(f"[FRENZY_LITE_RETRY] {pair}: drop failed ({str(e)[:100]})")
+
+    async def _frenzy_lite_retry_sweep(self, bar_open, seen=None) -> None:
+        """🔁 end of a pass: a pending retry whose window passed, whose pair was READ this pass and is no longer flagged, or with the retry /
+        LITE switched off, is dropped. A pair NOT read this pass waits for its own clock only."""
+        th = config.trading_config.thresholds
+        for _p, _pd in list((getattr(self, '_fz_lite_retry', None) or {}).items()):
+            try:
+                if not frenzy_lite_retry_enabled(th) or not bool(getattr(th, 'frenzy_lite_enabled', False)):
+                    await self._frenzy_lite_retry_drop(_p, "FRENZY_LITE_RETRY_OFF", "FRENZY_LITE / its retry switched off", count=False)
+                elif int(bar_open) > int(_pd['exp']):
+                    await self._frenzy_lite_retry_drop(_p, "FRENZY_LITE_RETRY_EXPIRED", "no red / flat READY bar within the window")
+                elif _p not in _frenzy_flags and (seen is None or _p in seen):
+                    await self._frenzy_lite_retry_drop(_p, "FRENZY_LITE_RETRY_ENDED", "the pair is no longer FRENZY-flagged (episode over)")
+            except Exception:
+                continue
+
+    async def _frenzy_lite_retry_eval(self, db, pair, ep, flag, ind, closed, bar_open) -> None:
+        """🔁 a pending FRENZY_LITE_RETRY for ONE flagged pair on the bar that just closed (crash-isolated — never raises into the pass)."""
+        try:
+            th = config.trading_config.thresholds
+            _pd = (getattr(self, '_fz_lite_retry', None) or {}).get(pair)
+            if not _pd:
+                return
+            if not frenzy_lite_retry_enabled(th):
+                await self._frenzy_lite_retry_drop(pair, "FRENZY_LITE_RETRY_OFF", "switched off", count=False)
+                return
+            act, code, text = frenzy_lite_retry_step(ep, th, flag.get('volume_24h'), _pd, bar_open)
+            _bar_txt = f"{datetime.utcfromtimestamp(int(bar_open) / 1000):%m-%d %H:%M}"
+            if act == LITE_RETRY_DROP:
+                flag['lite_retry_last'] = f"{_bar_txt} LITE RETRY dropped: {text}"
+                await self._frenzy_lite_retry_drop(pair, code, text, count=(code != "FRENZY_LITE_RETRY_OFF"))   # (dual review) a switch-off is not a block
+                return
+            flag['lite_retry_pending'] = dict(green_ms=int(_pd['green']), exp_ms=int(_pd['exp']))
+            if act != LITE_RETRY_OPEN:
+                flag['lite_retry_last'] = f"{_bar_txt} LITE RETRY armed · waiting ({text})"
+                return
+            # ⚖ the ONE attempt: removed (and persisted) BEFORE the open — a refusal or a crash in the open path ends it
+            (self.__dict__.setdefault('_fz_lite_retry', {})).pop(pair, None)
+            await self._frenzy_lite_retry_save()
+            flag.pop('lite_retry_pending', None)
+            flag['di_spread'] = frenzy_di_spread(closed[-300:]); flag['adx_delta'] = frenzy_adx_delta(closed[-300:])   # the stamps LITE gets
+            flag['vol_trend'] = frenzy_vol_trend(closed)
+            flag['lite_retry_last'] = None
+            _ok = await self._frenzy_open(db, flag, ind, bar_open, lite_retry=_pd)
+            flag.pop('_willy_hold', None)   # (dual review) the retry ends on a hold refusal — never leave the marker for FRENZY's ON-bar deferral
+            _out = str(flag.get('lite_retry_last') or '')
+            try:
+                _djournal.note('LITE_RETRY', gate=("FRENZY_LITE_RETRY_OPENED" if _ok else "FRENZY_LITE_RETRY_REFUSED"), dir="LONG", pair=pair,
+                               reason=_out[:120] or None)
+            except Exception:
+                pass
+            if not _ok:
+                logger.info(f"[FRENZY_LITE_RETRY] {pair}: red bar READY but refused — {_out or 'no outcome recorded'} (retry ended)")
+        except Exception as e:
+            logger.error(f"[FRENZY_LITE_RETRY] {pair}: failed ({str(e)[:120]})")
+            self._record_filter_block("FRENZY_LITE_RETRY_FAILED", "LONG")
+            (self.__dict__.setdefault('_fz_lite_retry', {})).pop(pair, None)   # one attempt: our own crash ends it too (documented, DL 316)
             try:
                 await db.rollback()
             except Exception:
@@ -9642,7 +9864,7 @@ class TradingEngine:
         try:
             _t = datetime.utcfromtimestamp(int(bar_open) / 1000)
             return (await db.execute(select(Order.id).where(and_(
-                Order.pair == pair, Order.entry_strategy.in_(("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")),
+                Order.pair == pair, Order.entry_strategy.in_(("FRENZY_LONG", "FRENZY_WIDE") + FRENZY_LITE_FAMILY),   # (dual review) + FRENZY_LITE_RETRY
                 Order.is_paper == self.is_paper_mode, Order.opened_at > _t - timedelta(seconds=1))))).first() is not None
         except Exception as e:
             logger.warning(f"[FRENZY_WILLY] {pair}: FRENZY / WIDE / LITE fill check unreadable ({str(e)[:80]}) — no B entry")
@@ -9898,7 +10120,8 @@ class TradingEngine:
                 pass
 
     async def _frenzy_open(self, db, flag, indicators, bar_open, wide: bool = False, catchup_now: Optional[int] = None,
-                           lite: bool = False, willy: Optional[str] = None, willy_note: Optional[str] = None, willy_wait_bars: Optional[int] = None):
+                           lite: bool = False, willy: Optional[str] = None, willy_note: Optional[str] = None, willy_wait_bars: Optional[int] = None,
+                           lite_retry: Optional[dict] = None):
         """🔥 Open FRENZY_LONG for a flagged pair whose setup turned ON on the bar that just closed. One entry per pair per bar (memory
         + DB: restart-proof), ≤ frenzy_max_slots open at once. Opens through open_position(frenzy_long=True): own size, direct taker
         at the live price behind the dislocation guard, own exit. Own try/except: can never break the scan.
@@ -9913,15 +10136,24 @@ class TradingEngine:
         willy='A' / 'B' (🎲 Oct-8 FRENZY_WILLY, DECISION_LOG 251 — declared exception, NO filters): tagged FRENZY_WILLY — own slots
         (frenzy_willy_max_slots), own size (frenzy_willy_*), refused while the pair holds ANY open position (FRENZY_WILLY_PAIR_HELD), the same
         lateness + dislocation guards (FRENZY_WILLY_LATE / _DISLOC); NO pair-day cap, NO market-volume gate (stamped only), NO bearish-day
-        block, never a catch-up, never the strong bump. Returns True when a position opened (every refusal returns None / False)."""
+        block, never a catch-up, never the strong bump. Returns True when a position opened (every refusal returns None / False).
+        lite_retry={pending} (🔁 2026-10-19 FRENZY_LITE_RETRY, DECISION_LOG 316 — declared override): tagged FRENZY_LITE_RETRY — LITE's filters
+        (WILLY hold, pair held = FRENZY_LITE_RETRY_PAIR_HELD, the LITE-family pair-day cap, market volume, lateness, dislocation, bearish day) but
+        NO sleeve slot limit (operator; global caps in open_position still apply) and never LITE's slots; own size (frenzy_lite_retry_*), LITE's
+        exit; stamps the wait from the green bar's close and the green bar's return. Outcome text → flag['lite_retry_last']."""
         pair = flag['pair']; th = config.trading_config.thresholds; _cu = catchup_now is not None
         _wl = willy in ("A", "B")   # 🎲 (251)
-        _es = "FRENZY_WILLY" if _wl else ("FRENZY_LITE" if lite else ("FRENZY_WIDE" if wide else "FRENZY_LONG")); _bk = "FRENZY" if _es == "FRENZY_LONG" else _es   # strategy tag · block-counter prefix
-        _tg = f"WILLY {willy} " if _wl else ("LITE " if lite else ("WIDE " if wide else ""))   # last_fire prefix (the dashboard's "just opened" matcher knows them all)
+        _lr = bool(lite_retry) and not _wl   # 🔁 (316)
+        if _lr:
+            lite = True   # 🔁 a LITE-family open (pair held, LITE-family day cap, never the strong bump); _lr then lifts the slot limit and re-tags it
+        _es = "FRENZY_WILLY" if _wl else (FRENZY_LITE_RETRY if _lr else ("FRENZY_LITE" if lite else ("FRENZY_WIDE" if wide else "FRENZY_LONG"))); _bk = "FRENZY" if _es == "FRENZY_LONG" else _es   # strategy tag · block-counter prefix
+        _tg = f"WILLY {willy} " if _wl else ("LITE RETRY " if _lr else ("LITE " if lite else ("WIDE " if wide else "")))   # last_fire prefix (the dashboard's "just opened" matcher knows them all)
         _sig = "LITE signal" if lite else "setup ON"   # 🪶 (243 review) log wording — FRENZY / WIDE keep "setup ON" (scripts/scout_gvol.py parses it)
+        if _lr:
+            _sig = "LITE retry — red / flat bar after a green refusal"
         if _wl:
             _sig = f"entry {willy} — {willy_note or ('new flag' if willy == 'A' else 'ON not taken')}"   # 🎲 (251) e.g. "entry A — red candle (−0.21%) · 2 bars after the trigger"
-        _lfk = 'willy_last' if _wl else 'last_fire'   # 🎲 (251 review) WILLY's outcome never overwrites FRENZY / WIDE / LITE's last_fire
+        _lfk = 'willy_last' if _wl else ('lite_retry_last' if _lr else 'last_fire')   # 🎲 (251 review) WILLY's / 🔁 the retry's outcome never overwrites FRENZY / WIDE / LITE's last_fire
         try:
             _bar_dt = datetime.utcfromtimestamp(bar_open / 1000)
             # 🔒 (251) the WILLY global hold FIRST — FRENZY / WIDE / LITE / WILLY name it (FRENZY_WILLY_HOLD), never a pair / slot refusal
@@ -9935,9 +10167,9 @@ class TradingEngine:
                 return False
             _sdef = 1 if _wl else 2   # 🎲 WILLY: 0 / blank → 1 (the global hold allows one anyway)
             _slots = max(1, int(getattr(th, 'frenzy_willy_max_slots' if _wl else ('frenzy_lite_max_slots' if lite else ('frenzy_wide_max_slots' if wide else 'frenzy_max_slots')), _sdef) or _sdef))   # 0 / blank = the sleeve default (2; WILLY 1)
-            _n_open = (await db.execute(select(func.count(Order.id)).where(and_(
-                Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == _es)))).scalar() or 0
-            if _n_open >= _slots:
+            _n_open = 0 if _lr else ((await db.execute(select(func.count(Order.id)).where(and_(
+                Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == _es)))).scalar() or 0)   # 🔁 (316) the retry: NO sleeve slot limit (operator)
+            if not _lr and _n_open >= _slots:
                 self._record_filter_block(f"{_bk}_MAX_SLOTS", "LONG")
                 flag[_lfk] = f"{_bar_dt:%m-%d %H:%M} {_tg}refused: {_n_open} {_es} positions open (max {_slots})"
                 return
@@ -9956,7 +10188,7 @@ class TradingEngine:
                 flag[_lfk] = f"{_bar_dt:%m-%d %H:%M} {_tg}refused: the pair already has an open position"
                 logger.info(f"[{_es}] {pair}: {_sig} but the pair already has an open position — skipped")
                 return
-            if not (lite or _wl) and (await db.execute(select(Order.id).where(and_(Order.pair == pair, Order.status == "OPEN", Order.entry_strategy == "FRENZY_LITE",
+            if not (lite or _wl) and (await db.execute(select(Order.id).where(and_(Order.pair == pair, Order.status == "OPEN", Order.entry_strategy.in_(FRENZY_LITE_FAMILY),
                                                                           Order.is_paper == self.is_paper_mode)))).first() is not None:
                 # 🪶 (243 review, operator: count it — the one-position-per-pair rule is unchanged) FRENZY / WIDE (fresh ON or catch-up) on a pair
                 # an open FRENZY_LITE holds: open_position would refuse it as PAIR_HELD; counted here under its own name so the cost of LITE
@@ -9969,8 +10201,10 @@ class TradingEngine:
             _day_cap = 0 if _wl else max(0, int(float(getattr(th, 'frenzy_max_entries_per_pair_day', 3) or 0)))   # 0 / blank / negative = no cap · 🎲 WILLY: none (no filters)
             if _day_cap > 0:
                 _day0 = _bar_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                # 🔁 (316) LITE and its retry share ONE pair-day count (a retry is a LITE-family entry); every other sleeve counts its own tag
+                _day_es = FRENZY_LITE_FAMILY if (lite or _lr) else (_es,)
                 _n_day = (await db.execute(select(func.count(Order.id)).where(and_(
-                    Order.pair == pair, Order.entry_strategy == _es, Order.is_paper == self.is_paper_mode,
+                    Order.pair == pair, Order.entry_strategy.in_(_day_es), Order.is_paper == self.is_paper_mode,
                     Order.opened_at > _day0 - timedelta(seconds=1))))).scalar() or 0
                 if _n_day >= _day_cap:
                     self._record_filter_block(f"{_bk}_PAIR_DAY_CAP", "LONG")
@@ -10055,7 +10289,7 @@ class TradingEngine:
                     _ef.pop(_k, None)
             _g = globals(); atr = flag.get('atr_pct')
             _wsl = frenzy_willy_levels(th)[1] if _wl else None
-            _stop = ((abs(_wsl) if _wsl is not None else None) if _wl else abs(float(getattr(th, 'frenzy_stop_pct', 3.0) or 3.0)))   # 🎲 WILLY: its own stop — None = no stop (stamp NULL)
+            _stop = ((abs(_wsl) if _wsl is not None else None) if _wl else frenzy_stop_for(th, _es))   # 🛑 (317) LONG's own stop   # 🎲 WILLY: its own stop — None = no stop (stamp NULL)
             # 🐻 Oct-8 (operator declared override, DECISION_LOG 250): no FRENZY / WIDE / LITE entry on a BEARISH DAY (BTC last closed daily return
             # < 0 ∧ BTC 5m trend gap < 0 — the DECISION_LOG 239 definition). Judged LAST (after slots, pair-day cap, market volume, choppy /
             # hold-green, lateness and dislocation) so a counted block is a trade that would otherwise have reached open_position (the scout's
@@ -10105,6 +10339,9 @@ class TradingEngine:
                 entry_global_volume_ratio=_g.get('_global_volume_ratio'), entry_pair_volume_ratio=_pvr,
                 frenzy_long=not (wide or lite or _wl), frenzy_wide=(wide and not _wl), frenzy_lite=(lite and not _wl), frenzy_willy=_wl,
                 entry_frenzy_willy_trigger=(willy if _wl else None), entry_frenzy_willy_wait_bars=(willy_wait_bars if _wl else None), frenzy_bar_open_ms=(int(_leash_time.time() * 1000) if _cu else bar_open), frenzy_catchup=_cu,   # ⏪ catch-up: only the bot-open-lane wait counts
+                frenzy_lite_retry=_lr,   # 🔁 (316) the retry rides lite=True (LITE-family open) and is tagged FRENZY_LITE_RETRY by open_position
+                entry_frenzy_retry_wait_min=(round((int(bar_open) - int(lite_retry['green'])) / 60_000.0, 2) if _lr else None),
+                entry_frenzy_retry_green_ret=((lite_retry or {}).get('ret') if _lr else None),
                 frenzy_catchup_ref_price=(_close if _cu else None),   # ⏪ open_position re-checks the ORDER BOOK vs the ON close (no 1 % + 1 % stacking)
                 entry_frenzy_catchup_bars=(_cu_bars_n if _cu else None),
                 entry_frenzy_catchup_move_pct=(_cu_move if _cu else None),
@@ -11128,6 +11365,9 @@ class TradingEngine:
         frenzy_wide: bool = False,   # 🔥🌐 Oct-3: the FRENZY open path tagged FRENZY_WIDE (own size fields frenzy_wide_*)
         frenzy_lite: bool = False,   # 🪶 Oct-7 (243): the FRENZY open path tagged FRENZY_LITE (own size fields frenzy_lite_*; never the strong bump)
         frenzy_willy: bool = False,   # 🎲 Oct-8 (251): the FRENZY open path tagged FRENZY_WILLY (own size fields frenzy_willy_*; never the strong bump)
+        frenzy_lite_retry: bool = False,   # 🔁 (316): with frenzy_lite=True → tagged FRENZY_LITE_RETRY (own size fields frenzy_lite_retry_*; LITE's exit)
+        entry_frenzy_retry_wait_min: Optional[float] = None,   # 🔁 (316) minutes from the green bar's close to the entry bar's close
+        entry_frenzy_retry_green_ret: Optional[float] = None,   # 🔁 (316) the refused green bar's return, %
         entry_frenzy_willy_trigger: Optional[str] = None,   # 🎲 (251) 'A' = new flag · 'B' = fresh ON bar FRENZY / WIDE / LITE did not take
         entry_frenzy_willy_wait_bars: Optional[int] = None,   # 🎲 (251) closed 5m bars from the trigger to the red entry bar (0 = the trigger bar was red)
         frenzy_strong: bool = False,   # 💪 Oct-4 (197): FRENZY_LONG with ADX rising ∧ +DI above −DI → frenzy_long_lev_mult_strong
@@ -11215,7 +11455,7 @@ class TradingEngine:
         # sleeve must not name it (read by _record_filter_block; reset to True at every pair iteration of the scan).
         # (bearrun_short is NOT in the list: that fill comes from the momentum ladder's own open, so its refusals are the pair's.)
         _frenzy = bool(frenzy_long or frenzy_wide or frenzy_lite or frenzy_willy) and direction == "LONG"   # 🔥 FRENZY fill (LONG only) — FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE / FRENZY_WILLY
-        _fz_es = ("FRENZY_WILLY" if (_frenzy and frenzy_willy) else "FRENZY_LITE" if (_frenzy and frenzy_lite) else "FRENZY_WIDE" if (_frenzy and frenzy_wide) else "FRENZY_LONG")   # 🔥🌐 Oct-3 / 🪶 Oct-7 / 🎲 Oct-8: the tag, size prefix and cell source
+        _fz_es = ("FRENZY_WILLY" if (_frenzy and frenzy_willy) else FRENZY_LITE_RETRY if (_frenzy and frenzy_lite and frenzy_lite_retry) else "FRENZY_LITE" if (_frenzy and frenzy_lite) else "FRENZY_WIDE" if (_frenzy and frenzy_wide) else "FRENZY_LONG")   # 🔥🌐 Oct-3 / 🪶 Oct-7 / 🎲 Oct-8: the tag, size prefix and cell source
         _fz_bk = "FRENZY" if _fz_es == "FRENZY_LONG" else _fz_es                  # its filter-block prefix (FRENZY_LATE / FRENZY_WIDE_LATE / FRENZY_LITE_LATE …)
         _surge = (surge_dir in ("LONG", "SHORT") and surge_dir == direction) or _frenzy   # ⚡ SURGE fill (a mismatched direction is never one); FRENZY rides the same open path
         self._open_ctx_momentum = not (flip_source or bull_long or bullrun_long or bounce_long
@@ -12875,7 +13115,7 @@ class TradingEngine:
         # (entry_frenzy_vol_mult / entry_btc_1h_slope, the same variables) and stored on the row — paper and live identically. Switch off →
         # frenzy_lite_tp_used NULL (= the config TP, exactly as before 301); lite_c_zone is stamped on every LITE fill (observe / tally).
         _lc_tp_used, _lc_zone = None, None
-        if _frenzy and _fz_es == "FRENZY_LITE":
+        if _frenzy and _fz_es in FRENZY_LITE_FAMILY:   # 🔁 (316) the retry decides its LITE C TP the same way, from its OWN stamps
             _lc_th = config.trading_config.thresholds
             try:
                 _lc_v, _lc_zone = frenzy_lite_c_tp(_lc_th, entry_frenzy_vol_mult, entry_btc_1h_slope)
@@ -12966,6 +13206,10 @@ class TradingEngine:
             entry_frenzy_catchup=(bool(frenzy_catchup) if _frenzy else None),   # ⏪ Oct-6: True = catch-up fill · False = normal FRENZY fill
             entry_frenzy_willy_trigger=(entry_frenzy_willy_trigger if (_frenzy and _fz_es == "FRENZY_WILLY" and entry_frenzy_willy_trigger in ("A", "B")) else None),   # 🎲 (251)
             entry_frenzy_willy_wait_bars=(int(entry_frenzy_willy_wait_bars) if (_frenzy and _fz_es == "FRENZY_WILLY" and entry_frenzy_willy_wait_bars is not None) else None),
+            entry_frenzy_retry_wait_min=(entry_frenzy_retry_wait_min if (_frenzy and _fz_es == FRENZY_LITE_RETRY) else None),   # 🔁 (316)
+            entry_frenzy_stop_pct=(self._frenzy_entry_stop_pct(_fz_es) if _frenzy else None),   # 🛑 (317) the stop this FRENZY fill runs at entry
+            entry_btc_price=(globals().get('_current_btc_price') if _frenzy else None),   # 🛑👁 (317) the touch snapshots' BTC-since-entry base
+            entry_frenzy_retry_green_ret=(entry_frenzy_retry_green_ret if (_frenzy and _fz_es == FRENZY_LITE_RETRY) else None),
             entry_frenzy_catchup_bars=(entry_frenzy_catchup_bars if (_frenzy and frenzy_catchup) else None),
             entry_frenzy_catchup_move_pct=(entry_frenzy_catchup_move_pct if (_frenzy and frenzy_catchup) else None),
             entry_frenzy_gvol=(entry_frenzy_gvol if _frenzy else None),
@@ -14410,6 +14654,7 @@ class TradingEngine:
                         order.exit_fee = round(exit_fee, 4)
                         order.total_fee = round((order.entry_fee or 0) + exit_fee, 4)
                         order.exit_order_type = "EXTERNAL"
+                        self._touch_finalize(order, order.pnl_percentage, order.close_reason)   # 🛑👁 (317) observe-only touch outcome
                         if _rtp_set and not _rtp_set.get('blocked'):   # 🎯 (296)
                             order.resting_tp_filled_qty = float(_rtp_set.get('filled') or 0)
                             if _rtp_set.get('full'):
@@ -14631,7 +14876,7 @@ class TradingEngine:
             _rtp_es = order.entry_strategy or ''
             _rtp_th = config.trading_config.thresholds
             _rtp_lock = float(getattr(_rtp_th, 'frenzy_lock_arm_pct', 0) or 0) > 0   # lock-then-trail REPLACES the fixed TP (not WILLY)
-            if (_rtp_es == "FRENZY_WILLY" or (_rtp_es in ("FRENZY_LITE", "FRENZY_LONG", "FRENZY_WIDE") and not _rtp_lock)) \
+            if (_rtp_es == "FRENZY_WILLY" or (_rtp_es in ("FRENZY_LITE", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE_RETRY") and not _rtp_lock)) \
                     and order.entry_price and order.notional_value:
                 _rtp_tp = frenzy_willy_levels(_rtp_th)[0] if _rtp_es == "FRENZY_WILLY" else frenzy_tp_for(_rtp_th, _rtp_es, getattr(order, 'frenzy_lite_tp_used', None))
                 _rtp_tick = cached_tick(binance_service.exchange.markets if getattr(binance_service, '_markets_loaded', False) else None,
@@ -14849,6 +15094,7 @@ class TradingEngine:
                 order.closed_at = _close_time
                 order.close_reason = reason
                 order.exit_slippage_pct = _slippage_pct
+                self._touch_finalize(order, pnl_data['pnl_percentage'], reason)   # 🛑👁 (317) observe-only touch outcome (never raises)
                 if _rtp_ctx is not None:   # 📏 (295) what a resting post-only TP limit would have booked — observe only, never raises
                     try:
                         _rtp_lim, _rtp_fill, _rtp_pnl = resting_tp_shadow(order.direction, order.entry_price, _rtp_ctx[2], _rtp_ctx[0], _rtp_ctx[3],
@@ -15812,6 +16058,7 @@ class TradingEngine:
             )
         )
         open_orders = result.scalars().all()
+        self._touch_prune({_o.id for _o in open_orders})   # 🛑👁 (317, dual review) markers only for orders still open
         
         updates = []
         if any(getattr(_o, 'rh_triggered_at', None) is not None or ((_o.entry_strategy or "MOMENTUM") == "MOMENTUM" and _o.direction == "LONG")
@@ -16109,6 +16356,9 @@ class TradingEngine:
                     _br_fee = current_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
                     _br_notional = order.entry_price * order.quantity if order.quantity > 0 else 1
                     _br_pnl = ((_br_raw - (order.entry_fee or 0) - _br_fee) / _br_notional) * 100
+                    if (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🛑👁 (317) touch markers + the snapshot written on the row (observe only)
+                        self._touch_note(order.id, _br_pnl, realtime_peak, current_price)
+                        self._touch_write(order)
                     _br_peak = max(realtime_peak, _br_pnl)
                     order.peak_pnl = _br_peak
                     order.trough_pnl = min(realtime_trough, _br_pnl)
@@ -20016,6 +20266,8 @@ class TradingEngine:
             # try so a sleeve order can never fall through into the alt chain on an error.
             if (order_info.get('entry_strategy') or '') in ('BULLRUN_LONG', 'SURGE_LONG', 'SURGE_SHORT') + FRENZY_STRATEGIES:   # ⚡ SURGE_LONG: same exit, own trail · SURGE_SHORT: its own
                 try:
+                    if (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES and not order_info.get('_closing_in_progress'):   # 🛑👁 (317) first −2 / −3 touch marker (memory only, observe; never for a row being closed)
+                        self._touch_note(order_id, pnl_pct, order_info.get('peak_pnl', 0) or 0, current_price)
                     _br_peak_rt = max(order_info.get('peak_pnl', 0) or 0, pnl_pct)
                     order_info['peak_pnl'] = _br_peak_rt
                     if pnl_pct < (order_info.get('trough_pnl', 0) or 0):

@@ -151,7 +151,7 @@ def test_config_parity_and_every_surface():
     import config as C
     th = C.trading_config.thresholds
     fields = sorted(k for k in type(th).model_fields if k.startswith("frenzy_"))
-    assert len(fields) == 61   # +frenzy_lite_c_enabled, _vol_mult, _btc_slope_min, _tp_pct (Oct-15, 301) · +frenzy_willy_late_tp_minutes, _pct (Oct-15, 297) · +frenzy_lite_tp_pct (Oct-12, 284) · +frenzy_willy_a_cold_max_bars (Oct-8, GTCUSDT late-A fix) · +11 frenzy_willy_* (Oct-8, 251; incl. the red-candle wait + the turnover filter) · +frenzy_bearish_day_block (Oct-8, 250) · +6 frenzy_lite_* (Oct-7, 243) · +frenzy_catchup_max_bars (Oct-6 catch-up) · +frenzy_lock_arm_pct, _floor_pct, _trail_pct (Oct-5, 205) · +frenzy_wide_above_share_min (Oct-5, 215) · +frenzy_wide_hold_green_streak (Oct-6, 231)
+    assert len(fields) == 66   # +frenzy_long_stop_pct (Oct-19, 317) · +frenzy_lite_retry_enabled, _wait_minutes, _invest_mult, _lev_mult (Oct-19, 316) · +frenzy_lite_c_enabled, _vol_mult, _btc_slope_min, _tp_pct (Oct-15, 301) · +frenzy_willy_late_tp_minutes, _pct (Oct-15, 297) · +frenzy_lite_tp_pct (Oct-12, 284) · +frenzy_willy_a_cold_max_bars (Oct-8, GTCUSDT late-A fix) · +11 frenzy_willy_* (Oct-8, 251; incl. the red-candle wait + the turnover filter) · +frenzy_bearish_day_block (Oct-8, 250) · +6 frenzy_lite_* (Oct-7, 243) · +frenzy_catchup_max_bars (Oct-6 catch-up) · +frenzy_lock_arm_pct, _floor_pct, _trail_pct (Oct-5, 205) · +frenzy_wide_above_share_min (Oct-5, 215) · +frenzy_wide_hold_green_streak (Oct-6, 231)
     cfgj = json.load(open(os.path.join(ROOT, "trading_config.json")))["thresholds"]
     assert sorted(k for k in cfgj if k.startswith("frenzy_")) == fields                   # every field has a JSON value
     assert type(th).model_fields["frenzy_long_enabled"].default is False                  # OFF in code; the JSON arms it
@@ -164,7 +164,8 @@ def test_config_parity_and_every_surface():
                   frenzy_long_skip_green_bar="config-fz-skip-green", frenzy_wide_enabled="config-fz-wide-enabled",
                   frenzy_lite_enabled="config-fz-lite-enabled", frenzy_bearish_day_block="config-fz-bearish-block",
                   frenzy_willy_enabled="config-fz-willy-enabled", frenzy_willy_entry_a="config-fz-willy-entry-a", frenzy_willy_entry_b="config-fz-willy-entry-b",
-                  frenzy_lite_c_enabled="config-fz-lite-c-enabled")   # 🎯 (301) LITE C toggle
+                  frenzy_lite_c_enabled="config-fz-lite-c-enabled",   # 🎯 (301) LITE C toggle
+                  frenzy_lite_retry_enabled="config-fz-lite-retry-enabled")   # 🔁 (316) FRENZY_LITE_RETRY toggle
     assert sorted(by_key) == fields                                                       # every field has a UI input
     for key, _id in by_key.items():
         assert html.count(f'id="{_id}"') == 1, _id
@@ -173,7 +174,7 @@ def test_config_parity_and_every_surface():
     for _id in ("frenzy-monitor-line", "frenzy-flags-body", "frenzy-body", "frenzy-breaks-body"):
         assert html.count(f'id="{_id}"') == 1 and html.count(f"getElementById('{_id}')") == 1
     assert html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2                # clipboard AND saved-file exports
-    for title in ("## 🔥 FRENZY Flagged Pairs (now)", "## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE · FRENZY_WILLY)", "## 🔥 FRENZY Short Observations"):
+    for title in ("## 🔥 FRENZY Flagged Pairs (now)", "## 🔥 FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE · FRENZY_WILLY) · 🔁 FRENZY_LITE_RETRY", "## 🔥 FRENZY Short Observations"):
         assert html.count(title) == 1
     assert '<option value="FRENZY_LONG">' in html and "frenzyMark(_fz)" in html
 

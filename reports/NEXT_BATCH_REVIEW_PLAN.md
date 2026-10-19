@@ -1,6 +1,24 @@
 # Next batch review — operator plan (registered 2026-10-10)
 
 Run all of this when the operator sends the next batch export (`scalpars_orders_paper_*.csv` + decisions).
+
+## ⭐ Operator priorities — next batch review (2026-10-19)
+① **FRENZY_LITE_RETRY step-up read (DECISION_LOG 316)** — "is LITE retry ready for 8× same as LITE": frozen gate on its CLOSED fills —
+   EARLY KILL Σ pnl% ≤ −6 pts → off · FIRST READ 10 fills avg < 0 → off · MAIN READ 20 fills on ≥ 10 UTC days: avg > 0 ∧ ≥ the
+   same-period live FRENZY_LITE avg → lev 0.2 → 0.4 (8×), else off (FRENZY Fills row prints the live verdict). Plus parity vs the
+   LITE_GREEN_RETRY scout (`venv/bin/python scripts/scout_lite_green_retry.py`): same green refusals → same entry bar / outcome?
+   Never re-fit the 15 min.
+② **FRENZY_LONG −4 live (DECISION_LOG 317)** — its revert gate (back to −3 if < 3 of the first 10 −3 touches recover to the TP before −4,
+   or at 20 touches on ≥ 8 days the −4 result is net negative vs the −3 walk) + `scripts/scout_long_stop4.py` (live −4 vs −3 shadow) +
+   the **touch2_* / touch3_* split-SL observation**: which features at −2 / −3 separate recovered vs deeper on the live −4 LONG trades —
+   frozen splits touch3_min < 5 vs ≥ 5 · entry_adx ≥ 36 vs < 36 · touch3_vs_ema50_pct > 0 vs ≤ 0 · touch3_btc_since_entry_pct > 0 vs ≤ 0,
+   then the −2 set and RSI / ADX / VWAP / vol ratio / ATR / BTC 1h (goal: "close at −2/−3 if X, else hold to −4"; research only, locked
+   gates). **LONG RE-SIZING read** — only if −4 performs well: ≥ 20 live LONG −4 fills on ≥ 8 days with the revert gate NOT fired, avg
+   %/fill > 0 at day-bootstrap P ≥ 0.80 ∧ WR ≥ ≈ 73 % (+1.5/−4 breakeven) ∧ no day / pair ≥ 50 % of the gain → propose ONE step (blocker
+   invest 0.2 · lev 0.05 ≈ $100 → invest 1.0 · lev 0.05 ≈ 5× the $, or the operator's step; revert if the next 15 fills average < 0 or a
+   UTC day's LONG fills lose > 10 % of the book). The blocker role is size-independent (LITE is refused on any held pair).
+③ **Then EVERY open watchlist gate in CLAUDE_CURRENT_STATE.md and every scout tracker** — run each scout script and report tallies vs
+   bars unprompted (the standing batch-watchlist rule).
 Goal stated by the operator: make the bot highly profitable going forward (≈ 10 %/day ambition) — FRENZY and SPIKE_FADE are the
 high-potential sleeves; MOMENTUM LONG must become profitable now.
 

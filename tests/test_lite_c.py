@@ -196,7 +196,7 @@ def test_entry_decision_uses_the_stamped_values_and_every_consumer_reads_the_row
     # decided from the SAME variables the Order constructor stamps (entry_frenzy_vol_mult / entry_btc_1h_slope), LITE only, before Order(
     i = eng.index("_lc_v, _lc_zone = frenzy_lite_c_tp(_lc_th, entry_frenzy_vol_mult, entry_btc_1h_slope)")
     j = eng.index("        order = Order(\n            binance_order_id=binance_order_id,")
-    assert i < j and 'if _frenzy and _fz_es == "FRENZY_LITE":' in eng[i - 600:i]
+    assert i < j and 'if _frenzy and _fz_es in FRENZY_LITE_FAMILY:' in eng[i - 600:i]   # 🔁 (316) LITE + its retry (FRENZY_LITE_RETRY)
     assert "entry_btc_1h_slope=entry_btc_1h_slope," in eng[j:j + 6000]
     assert "entry_frenzy_vol_mult=(entry_frenzy_vol_mult if _frenzy else None)" in eng[j:j + 9000]
     assert "frenzy_lite_tp_used=_lc_tp_used, lite_c_zone=_lc_zone," in eng[j:j + 12000]

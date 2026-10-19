@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """👁 Scout — LITE_GREEN_RETRY observe line (DECISION_LOG 315, operator 2026-10-19: "add LONG_STOP4 and LITE_GREEN_RETRY watch lines").
 OBSERVE ONLY (low prior) — never changes config, never calls the bot API.
+PARITY NOTE (2026-10-19, DECISION_LOG 316): live FRENZY_LITE_RETRY fills now exist (operator armed the 15-min rule at 4×) — at the read,
+compare this shadow cohort vs the live FRENZY_LITE_RETRY fills (same refusals → same entry bar?). The frozen gate below is unchanged.
 
 Origin: reports/FRENZY_REALFILLS_EXIT_RUNNER_2026-10-19.md §F2 / §G. FRENZY_LITE judges an above-VWAP stretch ONCE: a green signal candle
 (FRENZY_LITE_GREEN_BAR) consumes the stretch. Replica (real era, T100): 92 of 184 stretches were consumed by a green bar; letting the next

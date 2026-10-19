@@ -7372,3 +7372,116 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   slots / WILLY hold (a shadow fill must be a trade the live engine could take — supersedes the deep dive's "flag only" line, noted in the
   report) · ④ both cohorts start 2026-10-19 17:00 UTC (frozen; the realfills report's §G said 16:00) · ⑤ tests 18 + 21; LONG_STOP4 cache
   folders ticks/ + klines/. Research fetchers' cooldown overwrite / 403 handling left as is (not run again).
+
+## (316) 2026-10-19 — 🔁 FRENZY_LITE_RETRY sleeve (LITE green-bar retry, 15 min, 4×) — operator DECLARED OVERRIDE
+
+- **Operator (2026-10-19):** "build LITE green retry 15 min … with leverage 4 instead of 8, if things go well put it at the same size … call
+  it FRENZY_LITE_RETRY … no limit of slots". A DECLARED OVERRIDE below the locked gates — the two-year backtest refutes it; the operator
+  distrusts the backtest and arms it on the real-era read, at half LITE's leverage, with a frozen kill / step-up gate.
+- **Evidence both ways (reports/LITE_GREEN_RETRY_DEEP_2026-10-19.md):**
+  - FOR — real era (2026-10-02 → 10-19, replica 27/28 LITE fill-bar parity): S15r (first red / flat READY bar of the same stretch ≤ 15 min
+    after the green close, LITE status + open filters re-checked) 43 added fills · +0.34 %/fill [day CI −0.65, +1.26] · Δ +$380
+    [−663, +1,344] P 0.78 (operator brief: +$353, P 0.77); LODO picks S15r on 16/18 days, held-out Δ +$227 P 0.66. In-sample best of a
+    10-cell family → 30–50 % haircut applies (≈ +0.17…+0.24 %/fill expected at best).
+  - AGAINST — two-year backtest (2025-01 → 2026-10-11, engine-function enumeration, 92 % V0 parity with the yr6 replay): S15r 1,711 added
+    fills · −0.089 %/fill [−0.22, +0.04], Δ −$4,023 P 0.09; 10 of 22 months positive; reachable-episode sensitivity −0.036 (still < 0).
+    SXr (no window) −0.109 on 1,927. DL 243's 1,992-fill "retry every refused bar" study (−0.005 vs +0.163) and the B19 green-only test
+    (−0.20 on 719) both point the same way. Mechanism read: retry fills sit higher above the spike VWAP (+2.9 vs +1.9 %) — the green
+    refusal filters the STRETCH and the later red bar inherits it.
+- **Mechanism shipped (engine, services/trading_engine.py + services/frenzy.py):**
+  - LITE is unchanged: its stretch is still judged ONCE (`_frenzy_lite_mark_done` before the candle check). ONLY a FRENZY_LITE_GREEN_BAR
+    refusal (switch on) records ONE pending retry `{sid, spike, green close, exp = green + frenzy_lite_retry_wait_minutes, green ret}` in
+    `_fz_lite_retry` + BotState.frenzy_unjudged_json['lite_retry'] (restart-safe, merged on load like the WILLY pendings).
+  - Each later pass bar (`frenzy_lite_retry_step`, pure): bar after the window → drop FRENZY_LITE_RETRY_EXPIRED · not flagged / other spike →
+    _ENDED · stretch id changed (a close below the spike VWAP) → _BROKEN · LITE window over → _WINDOW_OVER · LITE off → _OFF (uncounted) ·
+    LITE status READY on the same stretch (red / flat ∧ ≥ 12 closes ∧ vol < 100× ∧ 2–16.75 h ∧ 24 h volume) → ONE open attempt · anything
+    else (green / vol high / in state / 24 h low) → skipped. First qualifying bar only.
+  - The attempt goes through `_frenzy_open(lite_retry=…)` (a LITE-family open): WILLY global hold · pair held by ANY position
+    (FRENZY_LITE_RETRY_PAIR_HELD) · the LITE-FAMILY pair-day cap (LITE + RETRY share the ≤ 3 count — a retry is a FRENZY family entry;
+    LITE's own count now includes retry fills too) · market-volume gate (when armed) · lateness · 1 % dislocation · bearish day · then
+    open_position (global max open / hard cap / min investment / every risk guard). Any refusal ENDS the retry (counter with the
+    FRENZY_LITE_RETRY_ prefix + journal BLOCK row; ARMED / OPENED / REFUSED journal lines e=LITE_RETRY). The pending is removed BEFORE the
+    open — one attempt; our own crash in the path ends it too (FRENZY_LITE_RETRY_FAILED; documented choice).
+  - NO sleeve slot limit (operator); never counts in / against frenzy_lite_max_slots. FRENZY / WIDE refuse a pair held by a retry as
+    *_PAIR_HELD_BY_LITE (family scope).
+- **Size:** frenzy_lite_retry_invest_mult 1.0 · frenzy_lite_retry_lev_mult 0.2 (= 4×; LITE 0.4 = 8×), the generic sleeve sizing path
+  (`_sg_pref = _fz_es.lower()` → frenzy_lite_retry_*).
+- **Exit = LITE's exactly:** LITE C TP decided once at entry from the fill's OWN stamps (frenzy_lite_tp_used / lite_c_zone), −frenzy_stop_pct,
+  12 h cap (FRENZY_STRATEGIES), broker backstop (bot_own_stop_pct / order_backstop_pct = LITE's), resting maker TP with its own switch
+  `resting_tp_lite_retry_enabled` (true), resting-TP shadow context. Stamps: every LITE stamp + entry_frenzy_retry_wait_min /
+  entry_frenzy_retry_green_ret (new Order columns + migration).
+- **Surfaces (D11 / D12):** config.py defaults (switch False, 15, 1.0, 0.2, rtp True) + trading_config.json (switch TRUE — operator armed) +
+  config_errors (wait 5–60, mults ≥ 0, bool switch) · UI: ⚖️ Sleeve Sizing row (toggle + Inv / Lev), "LITE retry window" input, "LITE
+  RETRY resting TP" toggle, load + save · FRENZY Fills row with the live gate text, LITE C tally RETRY rows, Performance by Sleeve
+  (Frenzy-Lite-Retry after Frenzy-Lite) and by Strategy (FRENZY_LITE_RETRY · L), open-by-sleeve label, strategy filter option, monitor
+  line + config line + flagged-pairs 🔁 outcome — both text exports via the shared blocks. Master builder: its own FRENZY_SLEEVE row
+  (LITE's TP / bearish / 4× size), no master fill yet → MASTER_POOL_stacked.csv byte-identical, validate_against_master ALL PASS.
+  scripts/scout_lite_green_retry.py keeps running as the parity check (docstring note only; gate unchanged).
+- **🔒 Frozen gates (shown live in the FRENZY Fills row; NOT automated — the operator switches):** EARLY KILL Σ pnl% of FRENZY_LITE_RETRY
+  fills ≤ −6 pts → off · FIRST READ at 10 closed fills: avg < 0 → off · MAIN READ at 20 closed fills on ≥ 10 UTC days: avg > 0 ∧ ≥ the
+  same-period live FRENZY_LITE avg (LITE fills opened at / after the first retry fill) → step lev 0.2 → 0.4 (8×), else off. Never re-fit
+  the 15 minutes.
+- **Tests:** tests/test_frenzy_lite_retry.py (31). Existing registry / grep tests updated for the new field count, switch set and the LITE
+  C family condition (test_frenzy_sleeve, test_resting_tp, test_resting_tp_fixed_all, test_lite_c, test_manual_entry_stamps).
+
+- **Dual review applied (caveman SHIP · deep FIX-FIRST), pre-commit:** ① main read = the FROZEN shortest prefix with ≥ 20 fills AND
+  ≥ 10 distinct UTC days (a fast 20-fill burst on < 10 days no longer freezes a sample that never qualifies; same-period LITE from its first
+  fill) · ② a LITE-off drop is not counted as a block · ③ the WILLY-hold marker is popped after the retry's open (never leaks into FRENZY's
+  ON-bar deferral) and the stale "armed" monitor text is cleared on every drop / sweep · ④ the LITE judged-stretch DB backstop and WILLY B's
+  "did FRENZY / WIDE / LITE open" check include FRENZY_LITE_RETRY (FRENZY_LITE_FAMILY) · ⑤ a pending-retry change made before this process
+  read the stored FRENZY state logs a WARNING (not persisted until the next completed pass) · ⑥ CURRENT_STATE LITE line: the ≤ 3 /
+  pair-day cap is shared with FRENZY_LITE_RETRY.
+## (317) 2026-10-19 — 🛑 FRENZY_LONG stop −4 LIVE (operator DECLARED OVERRIDE) + 👁 −2 / −3 touch snapshots (observe-only, split-SL research)
+
+- **Operator (2026-10-19):** "build LONG -4 live, and register the four items in observation too for next batch review" · "evaluate in
+  LONGs speed of the drop, entry ADX, price vs 5m EMA50 at the touch, BTC since entry — among ALL other points — at −2 % and at −3 %;
+  goal: understand which recover and which not, so we can split the SL in future".
+- **Evidence both ways (DL 315 / reports/FRENZY_REALFILLS_EXIT_RUNNER_2026-10-19.md §A3):** FOR — on the real fills 5 of the 9
+  FRENZY_LONG fills stopped at −3 came back to +1.5 without touching −4 (+0.67 vs +0.02 %/fill, LODO −4 in 13/13 folds, Δ +0.65
+  [+0.08, +1.36]). AGAINST — the two-year backtest (18 % saved, Δ −0.003, 2026-H2 −0.25). At blocker size (≈ $100) ≈ $1/day either way.
+  Shipped below the locked gates by operator declaration; the LONG_STOP4 scout keeps reading the counterfactual.
+- **Mechanism:** new field `frenzy_long_stop_pct` (code 0 = the shared `frenzy_stop_pct`; trading_config.json 4.0) used ONLY by FRENZY_LONG
+  fills through `services.frenzy.frenzy_stop_for(th, sleeve)` → frenzy_exit_for (monitor + realtime exits, sleeve = entry_strategy),
+  bot_own_stop_pct → order_backstop_pct (the LONG exchange backstop moves 3.5 → 4.5 % = stop + MANUAL_BACKSTOP_MARGIN_PCT 0.5, liquidation-
+  capped; at LONG's 1× trivially safe; the per-scan backstop re-price sweep moves OPEN LONG backstops on deploy) and the stop/ATR stamp.
+  WIDE / LITE / LITE_RETRY and the MANUAL "FRENZY" exit stay on frenzy_stop_pct −3 (LITE's real −3 touches recovered 0/8). The exit reads
+  the config live (FRENZY convention): an OPEN LONG switches to −4 at deploy. New stamp `entry_frenzy_stop_pct` (every FRENZY fill; WILLY
+  its own stop). UI "LONG stop % (0 = shared)" + FRENZY_NUM_FIELDS load / save, config_errors (0 or 1–10), monitor / config text lines,
+  Sleeve Sizing LONG stop, open-row exit badges per order.
+- **LONG_STOP4 scout:** live −4 fills (entry_frenzy_stop_pct ≥ 3.5) read as live −4 vs a −3 SHADOW — the −4 walk is the parity replica,
+  "live-stopped" = the −3 walk stopped (touched −3); Δ and the frozen gate unchanged. Pre-317 fills keep the original reading.
+- **🔒 REVERT gate (frozen; shown in the FRENZY_LONG FRENZY Fills row via services.frenzy.frenzy_long_stop4_gate; the operator switches):**
+  back to −3 (frenzy_long_stop_pct 0) if, among the first 10 live −4 FRENZY_LONG fills that touch −3, fewer than 3 recover to the TP before
+  −4 (touches with an unknown outcome excluded, shown); or if on the FROZEN main sample — the first −3 touches by touch time, the shortest
+  prefix with ≥ 20 touches AND ≥ 8 UTC days — the live −4 result is net negative vs the −3 walk on the same fills (dashboard proxy
+  Σ(booked − (−3)); the exact −3 walk = LONG_STOP4).
+- **🔒 RE-SIZING read (decided only if −4 performs well):** at ≥ 20 live FRENZY_LONG fills on ≥ 8 UTC days under −4 with the revert gate NOT
+  fired: avg %/fill > 0 with day-bootstrap P ≥ 0.80 ∧ WR ≥ the +1.5/−4 breakeven (≈ 73 %) ∧ no day / pair ≥ 50 % of the gain → PROPOSE
+  ONE step up (operator decides): blocker size (invest 0.2 · lev 0.05 = 1×, ≈ $100) → invest 1.0 · lev 0.05 (≈ 5× the $, or the
+  operator's step), own revert: back to blocker size if the next 15 fills at the new size average < 0 or any UTC day's LONG fills lose
+  > 10 % of the book. The blocker role is size-independent (the engine refuses LITE on any held pair).
+- **👁 Touch snapshots (OBSERVE ONLY, services/touch_snapshot.py):** every FRENZY-family fill records ONCE at its first −2 % and −3 % net
+  touch (touch2_* / touch3_*, 13 Order columns each + entry_btc_price): at · min (entry → touch) · peak_before · vs_ema50_pct ·
+  rsi · adx (vs entry_adx) · vs_vwap_pct (spike VWAP) · vol_ratio (last closed 5m vol / entry bar vol) · atr_pct · btc_since_entry_pct ·
+  btc_1h_slope; at the close recovered_tp (a TP-class close or net ≥ TP after the touch) · min_after. Data = memory only (FRENZY kline
+  cache — last CLOSED bar, ≤ 5 min old —, FRENZY flag VWAP, scan-refreshed BTC price / 1h slope; no REST). Markers are noted by the
+  realtime AND monitor paths; the monitor writes the row; the close writes a missing snapshot + the outcome. A restart loses the in-memory
+  markers (the snapshot already on the row stays; recovered_tp then reads the close reason only). Never changes an exit. Aggregates:
+  "👁 touched −N%" rows under every FRENZY sleeve in FRENZY Fills (both exports); per-fill columns ride the orders CSV.
+- **Frozen questions for the next batch review (split-SL design):** on the live −4 LONG trades, does each split separate recovered vs
+  deeper — touch3_min < 5 vs ≥ 5 · entry_adx ≥ 36 vs < 36 · touch3_vs_ema50_pct > 0 vs ≤ 0 · touch3_btc_since_entry_pct > 0 vs ≤ 0 — and the
+  same at −2 (plus RSI / ADX / VWAP / volume / ATR / BTC 1h). Candidate rule form "close at −2 / −3 if X, else hold to −4" — research only,
+  under the locked gates.
+- **Master builder:** unchanged for the stop (LONG fills stay as traded; the −4 counterfactual is LONG_STOP4's); validate_against_master
+  ALL PASS. Tests: tests/test_frenzy_long_stop4_live.py (12); test_golive_backstop_record (LONG backstop 4.5), test_frenzy_sleeve (field
+  count), test_manual_entry_stamps (sleeve-only stamps) updated.
+- **Dual review applied (caveman SHIP · deep FIX-FIRST), pre-commit:** ① the main revert read is a FROZEN first-N sample (shortest prefix of
+  −3 touches with ≥ 20 touches and ≥ 8 UTC days) · ② touch3_recovered_tp None = UNKNOWN — excluded from the first-10 count and shown ·
+  ③ the reconciler's EXTERNAL_CLOSE / BACKSTOP_STOP booking (main.py) now finalizes the touch outcome too (3 booking paths) · ④ touch
+  markers: the realtime path skips a row being closed and the monitor prunes markers of orders no longer open (bounded memory) · ⑤ pair
+  fields are None when the FRENZY kline cache's last closed bar closed > 10 min before the touch; "BTC since entry" has scan-interval
+  resolution (the BTC price is refreshed once per scan, not per tick) · ⑥ config save refuses a frenzy_long_stop_pct whose LONG exchange
+  backstop at LONG's MAX leverage (STRONG_BUY leverage × max(lev mult, strong lev mult)) would sit < MANUAL_BACKSTOP_MIN_GAP_PCT (0.3)
+  beyond the stop · ⑦ master builder: NOT re-priced (output unchanged → STACK_VERSION stays 2026-10-19a); FRENZY_LONG fills before the
+  DL 317 deploy traded −3 and later ones −4, both AS TRADED — LONG master stats must be read split by entry_frenzy_stop_pct (NULL / 3 vs 4)
+  · ⑧ bot_own_stop_pct docstring names LITE_RETRY (−3) and LONG's own stop.

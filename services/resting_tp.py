@@ -12,7 +12,7 @@ Mechanism (reports/MAKER_TP_ENTRY_DESIGN_2026-10-15.md §3):
     THROUGH the limit for ≥ resting_tp_grace_s → cancel the limit, market-close ONLY the rest (reduce-only), book a blended exit
   * every other exit cancels the limit FIRST, re-reads its fill, closes only the remainder and books blended (one Order row)
   * paper = live bookkeeping: the paper TP books at the limit with the maker fee only when the tracked price trades ≥ 1 tick THROUGH it
-Switches per sleeve (resting_tp_willy_enabled / resting_tp_lite_enabled / resting_tp_frenzy_long_enabled); OFF → paper and live behave
+Switches per sleeve (resting_tp_willy_enabled / resting_tp_lite_enabled / resting_tp_frenzy_long_enabled / resting_tp_lite_retry_enabled); OFF → paper and live behave
 exactly as before this ship.
 🎯 DECISION_LOG 310 — every FIXED take-profit line: the operator's MANUAL trades in FIXED or FLOOR mode with a TP > 0 (resting_tp_manual_enabled,
 reason MANUAL_TP — incl. a mid-trade edit to FIXED), any bot trade whose exit the operator overrode with a TP > 0 (resting_tp_override_enabled,
@@ -24,7 +24,8 @@ import math
 from typing import Dict, Optional, Tuple
 
 RTP_SLEEVES = {"FRENZY_WILLY": "resting_tp_willy_enabled", "FRENZY_LITE": "resting_tp_lite_enabled",
-               "FRENZY_LONG": "resting_tp_frenzy_long_enabled"}   # 🎯 310: + FRENZY_LONG (fixed frenzy_tp_pct) · never FRENZY_WIDE (off)
+               "FRENZY_LONG": "resting_tp_frenzy_long_enabled",   # 🎯 310: + FRENZY_LONG (fixed frenzy_tp_pct) · never FRENZY_WIDE (off)
+               "FRENZY_LITE_RETRY": "resting_tp_lite_retry_enabled"}   # 🔁 316: LITE's resting TP, own switch (attribution)
 RTP_MANUAL_KEY, RTP_OVERRIDE_KEY = "resting_tp_manual_enabled", "resting_tp_override_enabled"   # 🎯 (310) the operator's own fixed TPs
 RTP_SWITCHES = tuple(RTP_SLEEVES.values()) + (RTP_MANUAL_KEY, RTP_OVERRIDE_KEY)
 RTP_ROW_STRATEGIES = tuple(RTP_SLEEVES) + ("MANUAL",)   # the sweep's row filter (+ every row with an exit override)
@@ -113,7 +114,7 @@ def rtp_target(th, entry_strategy, held_minutes=None, lite_tp=None) -> Optional[
     """(NET take profit a resting TP books at this order age, the close reason it books) or None = no resting TP for this order (switch off,
     not a resting-TP sleeve, TP off, or FRENZY_LITE while frenzy_lock_arm_pct > 0 — lock-then-trail replaces the fixed TP). FRENZY_WILLY
     follows its age: the WILLY TP (FRENZY_TP) before frenzy_willy_late_tp_minutes, the late TP (WILLY_LATE_TP, DECISION_LOG 297) after.
-    lite_tp (🎯 DECISION_LOG 301 LITE C): the order's stored LITE TP (Order.frenzy_lite_tp_used) — FRENZY_LITE only; None → the config TP."""
+    lite_tp (🎯 DECISION_LOG 301 LITE C): the order's stored LITE TP (Order.frenzy_lite_tp_used) — FRENZY_LITE / FRENZY_LITE_RETRY only; None → the config TP."""
     es = str(entry_strategy or "")
     if not rtp_enabled(th, es):
         return None

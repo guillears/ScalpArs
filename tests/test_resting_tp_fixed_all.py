@@ -96,7 +96,7 @@ def test_reasons_switches_and_config_errors():
     assert rtp_row_enabled(th, _r()) and not rtp_row_enabled(_th(resting_tp_manual_enabled=False), _r())
     assert rtp_row_enabled(th, _r(entry_strategy="MOMENTUM", exit_override_at=NOW())) and not rtp_row_enabled(th, _r(entry_strategy="MOMENTUM"))
     assert set(RTP_SWITCHES) == {"resting_tp_willy_enabled", "resting_tp_lite_enabled", "resting_tp_frenzy_long_enabled",
-                                 "resting_tp_manual_enabled", "resting_tp_override_enabled"}
+                                 "resting_tp_manual_enabled", "resting_tp_override_enabled", "resting_tp_lite_retry_enabled"}   # 🔁 (316)
     assert "MANUAL" in RTP_ROW_STRATEGIES and "FRENZY_LONG" in RTP_ROW_STRATEGIES
     assert config_errors(th) == []
     for k in ("resting_tp_manual_enabled", "resting_tp_override_enabled", "resting_tp_frenzy_long_enabled"):

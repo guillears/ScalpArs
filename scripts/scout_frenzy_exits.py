@@ -3662,7 +3662,25 @@ def willy_lines(w, since_ms=None, J=None):
 TB_CSV = os.path.join(ROOT, "reports", "SCOUT_WILLY_TURNOVER_BLOCKED.csv")
 TB_STATE = os.path.join(ROOT, "reports", "SCOUT_WILLY_TURNOVER_STATE.json")
 TB_N, TB_DAYS, TB_CONFIRM = 15, 8, -0.20
-TB_COLS = ("t", "pair", "gate", "trig", "R", "price", "pct", "how", "tries", "src", "final", "entry", "err")
+TB_COLS = ("t", "pair", "gate", "trig", "R", "price", "pct", "how", "tries", "src", "final", "entry", "err", "vol24", "mcap")
+# 🏷 (DECISION_LOG 314, operator 2026-10-19 "add the mcap split to the watch line"): the blocked / let-through cohorts are ALSO split by market
+# cap — the backtest put the whole filter value below $50M (blocked −0.24 vs kept +0.15) and showed it rarely fires above $200M (8 / 1,609).
+# The WILLY event carries R only, so a blocked row's mcap = its 24 h futures quote volume at the refusal (Σ the 288 5m klines closed before
+# the refusal's bar — public fapi, weight 2, cached on the row; 1h bars were dropped pre-commit: they left out the spike hour) ÷ R — the bot's own two inputs, reconstructed. Let-through fills use their entry_mcap_usd.
+# OBSERVE-ONLY: the revert gate (TB_N / TB_DAYS / TB_CONFIRM, all mcaps pooled) is unchanged; the split is reported, never gated.
+TB_MCAP_BUCKETS = ((0.0, 50e6, "< $50M"), (50e6, 100e6, "$50–100M"), (100e6, 200e6, "$100–200M"), (200e6, float("inf"), "≥ $200M"))
+TB_VOL_MAX_FETCH = 20     # 5m-kline requests per run for the blocked rows' 24 h volume (weight 2 each)
+# ⚖ (DECISION_LOG 314) OVERRIDE GATE v2 — the v1 gate above FIRED on 2026-10-18 (15 blocked · +0.153 %, day-CI [−0.70, +1.16]); the operator
+# KEPT the filter at 1.0 (declared override, 2026-10-19 "lets keep tracking that") on reports/WILLY_TURNOVER_REPRICE_2026-10-19.md (backtest
+# under today's live entry + exit: blocked 477 · 72.5 % · −0.237 vs kept 1,093 · 79 % · +0.084, P(blocked < 0) 0.996, every mcap bucket
+# < $200M negative; best of 12 R × mcap cells, null p 0.004; in-sample → haircut). v2 counts EVERY refusal / fill since the filter was armed
+# (TB2_FROM = 2026-10-08 — operator: "consider all the trades that were already rejected, do not start from 0"; the 15 v1 rows INCLUDED) and compares the blocked average with the let-through WILLY fills of the SAME period: at ≥ TB2_N blocked on ≥ TB2_DAYS
+# days → blocked avg ≥ let-through avg → "REVERT: set frenzy_willy_max_vol_mcap_ratio 0" · blocked avg ≤ let-through avg − TB2_MARGIN →
+# "filter confirmed" · else hold and re-read ONCE at TB2_N2 with the same rule (then "holds (operator decides)"). Frozen at the first verdict.
+# Calibration (backtest): wrong-revert ≈ 25 % at N 30 / 17 % at N 60 if the filter works; 50 % if it is useless.
+TB2_FROM = "2026-10-08T00:00:00"   # the filter's arming day (DECISION_LOG 251) — the v1 sample counts (operator)
+TB2_N, TB2_N2, TB2_DAYS, TB2_MARGIN = 30, 60, 10, 0.20
+TB2_STATE = os.path.join(ROOT, "reports", "SCOUT_WILLY_TURNOVER_STATE_V2.json")
 TB_MAX_TRIES = 3   # a row whose klines fail on 3 runs (or a delisted pair) is marked UNPRICEABLE and skipped — deterministic, never re-tried
 TB_TICK_DL = 2     # (272) aggTrades day archives this tracker may download per run (data.binance.vision, not the fapi weight)
 TB_HOW = {"TP": "take profit", "STOP": "stop", "CAP": "cap"}
@@ -3696,6 +3714,68 @@ def tb_rows(ev):
                              entry=np.nan)).reset_index(drop=True)
 
 
+def tb_vol24(pair, t_ms, used=None):
+    """the pair's 24 h futures quote volume over the 288 5m bars up to t_ms's bar (public fapi klines, weight 2) → float or None. Honours the
+    shared Binance cooldown; a 418 / 429 arms nothing here and stops the caller (returns None and flags used['stop']). Never raises."""
+    used = {} if used is None else used
+    try:
+        import binance_cooldown as _BC
+        if used.get("stop") or _BC.active(os.path.join(TICK_CACHE, ".binance_cooldown_until")):
+            used["stop"] = True
+            return None
+        # operator check 10-19: closed 1h bars left out the spike hour itself (rebuilt mcap 0.23–0.27× the engine's stamp on ERA / GTC) →
+        # the 288 5m bars CLOSED before the refusal's bar (the refusal comes ~6 s after the red bar closes, so the red / spike bars are in the
+        # window and nothing after the refusal is — deep review: the first 5m version took the next, after-refusal bar)
+        end = (int(t_ms) // 300_000) * 300_000
+        url = f"https://fapi.binance.com/fapi/v1/klines?symbol={pair}&interval=5m&startTime={end - 288 * 300_000}&endTime={end - 1}&limit=288"
+        with urllib.request.urlopen(url, timeout=10) as r:
+            rows = json.loads(r.read().decode())
+            if int(r.headers.get("X-MBX-USED-WEIGHT-1M") or 0) >= 700:
+                used["stop"] = True
+        if len(rows) < 240:
+            return None
+        return float(sum(float(x[7]) for x in rows)) * 288.0 / len(rows)
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 418, 429):
+            used["stop"] = True
+        if e.code in (418, 429):                                # deep review: arm the SHARED cooldown so later scouts / studies stand down
+            try:
+                import scout_b1h_negflank as _NF
+                _NF._arm_cooldown(e.code, (e.headers or {}).get("Retry-After"), int(time.time() * 1000))
+            except Exception:
+                pass
+        return None
+    except Exception:
+        return None
+
+
+def tb_fill_mcap(rows, max_fetch=TB_VOL_MAX_FETCH):
+    """(314) blocked FRENZY_WILLY_TURNOVER rows without an mcap: vol24 (tb_vol24) ÷ R → mcap, stored on the row (fetched once). Never raises."""
+    if not len(rows):
+        return rows
+    rows = rows.reindex(columns=list(dict.fromkeys(list(TB_COLS) + list(rows.columns)))).copy()
+    used, n = {}, 0
+    for i, r in rows.iterrows():
+        if r.gate != "FRENZY_WILLY_TURNOVER" or pd.notna(pd.to_numeric(r.mcap, errors="coerce")):
+            continue
+        R = pd.to_numeric(r.R, errors="coerce")
+        if not (pd.notna(R) and R > 0) or n >= max_fetch or used.get("stop"):
+            continue
+        v = tb_vol24(str(r.pair), _ms(r.t), used)
+        n += 1
+        if v and v > 0:
+            rows.at[i, "vol24"], rows.at[i, "mcap"] = round(v, 2), round(v / float(R), 2)
+        time.sleep(0.2)
+    return rows
+
+
+def tb_mcap_bucket(m):
+    m = pd.to_numeric(m, errors="coerce")
+    if pd.isna(m) or m <= 0:
+        return "mcap unknown"
+    return next(lab for lo, hi, lab in TB_MCAP_BUCKETS if lo <= m < hi)
+
+
 def tb_merge(old, new):
     parts = [x for x in (old, new) if x is not None and len(x)]
     if not parts:
@@ -3721,6 +3801,38 @@ def tb_step(state, blocked):
     m = float(p.mean())
     v = ("REVERT: set frenzy_willy_max_vol_mcap_ratio 0" if m > 0 else ("filter confirmed" if m <= TB_CONFIRM else "holds (operator decides)"))
     return dict(verdict=v, mean=m, n=TB_N, days=int(c.t.astype(str).str[:10].nunique()), at=str(c.t.iloc[-1]))
+
+
+def tb2_step(state, blocked, lt):
+    """(314) the override gate v2 (pure): blocked = RULE-blocked rows (priced, final, not UNPRICEABLE), lt = let-through WILLY fills
+    (columns t, pct) — both filtered here to t ≥ TB2_FROM. → state (frozen once it holds a verdict)."""
+    st = dict(state or {})
+    if st.get("verdict"):
+        return st
+    b = blocked[(blocked.t.astype(str).str[:19] >= TB2_FROM) & (blocked.how.astype(str) != "UNPRICEABLE")] if len(blocked) else blocked
+    stage = TB2_N2 if st.get("held_at_30") else TB2_N
+    b = b.sort_values("t", kind="stable").head(stage)           # deep review: a FROZEN first-N sample (like v1) — later rows never hold the read
+    bp = pd.to_numeric(b.pct, errors="coerce") if len(b) else pd.Series(dtype=float)
+    if len(b) and ("final" in b) and not b.final.astype(str).isin(_TRUE).all():
+        return st                                               # a provisional price inside the sample holds the read
+    n, nd = int(bp.notna().sum()), (b.t.astype(str).str[:10].nunique() if len(b) else 0)
+    if len(b) < stage or nd < TB2_DAYS or bp.isna().any():
+        return st
+    t_last = str(b.t.astype(str).str[:19].iloc[-1])
+    l = lt[(lt.t.astype(str).str[:19] >= TB2_FROM) & (lt.t.astype(str).str[:19] <= t_last)] if len(lt) else lt   # same period as the sample
+    lp = pd.to_numeric(l.pct, errors="coerce").dropna() if len(l) else pd.Series(dtype=float)
+    if not len(lp):
+        return st
+    bm, lm = float(bp.mean()), float(lp.mean())
+    if bm >= lm:
+        v = "REVERT: set frenzy_willy_max_vol_mcap_ratio 0"
+    elif bm <= lm - TB2_MARGIN:
+        v = "filter confirmed"
+    elif stage == TB2_N:
+        return dict(st, held_at_30=True, at30=dict(n=n, days=int(nd), blocked=bm, let_through=lm))
+    else:
+        v = "holds (operator decides)"
+    return dict(st, verdict=v, n=n, days=int(nd), blocked=bm, let_through=lm, n_lt=int(len(lp)), at=str(b.t.iloc[-1]))
 
 
 def _tb_k1m(m1):
@@ -3903,6 +4015,13 @@ def tb_lines(rows, w, state):
         row(f"blocked · entry {tg}", blk[blk.trig == tg] if len(blk) else blk)
     lt = w.rename(columns={"k": "t"}).assign(pct=pd.to_numeric(w.actual, errors="coerce")) if len(w) else pd.DataFrame(columns=["t", "pct"])
     row("let through — WILLY fills (as traded, same live exit)", lt)
+    # 🏷 (314) the same two cohorts split by market cap (observe-only, never gated)
+    for lab in [b[2] for b in TB_MCAP_BUCKETS] + ["mcap unknown"]:
+        bm = blk[blk.mcap.map(tb_mcap_bucket) == lab] if len(blk) and "mcap" in blk else blk.iloc[0:0]
+        lm = lt[lt["mcap"].map(tb_mcap_bucket) == lab] if len(lt) and "mcap" in lt else lt.iloc[0:0]
+        if len(bm) or len(lm):
+            row(f"🏷 {lab} · blocked", bm)
+            row(f"🏷 {lab} · let through", lm)
     if len(blk):   # (272) per row: the price, the exit and the ruler that priced it
         L.append("Blocked rows: " + " · ".join(
             f"{str(r.t)[5:16].replace('T', ' ')} {r.pair} {r.trig} "
@@ -3918,6 +4037,17 @@ def tb_lines(rows, w, state):
         _un = unr.pair.astype(str).value_counts()
         L.append("_UNREAD pairs (mcap / volume unknown — no entry while it lasts): " + ", ".join(f"{p} ×{n}" for p, n in _un.items()) + "._")
     L.append(f"| UNREAD refusals (not priced) | {len(unr)} | {unr.t.astype(str).str[:10].nunique() if len(unr) else 0} | – | – | – | – |")
+    s2 = state.get("_v2") or {}
+    b2 = blk[blk.t.astype(str).str[:19] >= TB2_FROM] if len(blk) else blk
+    l2 = lt[lt.t.astype(str).str[:19] >= TB2_FROM] if len(lt) else lt
+    b2p, l2p = pd.to_numeric(b2.pct, errors="coerce").dropna() if len(b2) else [], pd.to_numeric(l2.pct, errors="coerce").dropna() if len(l2) else []
+    L.append(f"**⚖ Override gate v2 (DECISION_LOG 314 — v1 fired 10-18, operator KEPT the filter):** "
+             + (f"**{s2['verdict']}** (frozen: {s2['n']} blocked on {s2['days']} days avg {f(s2['blocked'])} % vs let-through {f(s2['let_through'])} %)"
+                if s2.get("verdict") else
+                f"⏳ since {TB2_FROM[:16]} UTC: blocked {len(b2p)}/{TB2_N2 if s2.get('held_at_30') else TB2_N} on "
+                f"{b2.t.astype(str).str[:10].nunique() if len(b2) else 0}/{TB2_DAYS} days · avg {f(np.mean(b2p) if len(b2p) else None)} % vs let-through "
+                f"{len(l2p)} · {f(np.mean(l2p) if len(l2p) else None)} %" + (" · held at 30 → re-read at 60" if s2.get("held_at_30") else ""))
+             + f". Rule: blocked avg ≥ let-through → REVERT · ≤ let-through − {TB2_MARGIN:.2f} → confirmed · else hold → re-read once at {TB2_N2}.")
     return L + [""]
 
 
@@ -3928,6 +4058,7 @@ def tb_run(w, now_ms=None, state_path=TB_STATE):
     since = willy_deploy_ms()
     rows = rows[rows.t.map(lambda x: (_ms(x) or 0) >= since)].reset_index(drop=True) if len(rows) else rows
     rows = tb_price(rows, now_ms, w=w)
+    rows = tb_fill_mcap(rows)   # 🏷 (314) mcap split — observe-only
     if len(rows):
         _save_csv(rows, TB_CSV)
     try:
@@ -3940,7 +4071,20 @@ def tb_run(w, now_ms=None, state_path=TB_STATE):
             tmp = f"{state_path}.{os.getpid()}.tmp"; json.dump(new, open(tmp, "w"), indent=1); os.replace(tmp, state_path)
         except Exception:
             pass
-    return tb_lines(rows, w, new)
+    # ⚖ (314) override gate v2 — its own state file (the v1 verdict stays on record, untouched)
+    v2_path = TB2_STATE if state_path == TB_STATE else f"{state_path}.v2"
+    try:
+        s2 = json.load(open(v2_path)) if os.path.exists(v2_path) else {}
+    except Exception:
+        s2 = {}
+    lt = w.rename(columns={"k": "t"}).assign(pct=pd.to_numeric(w.actual, errors="coerce")) if len(w) else pd.DataFrame(columns=["t", "pct"])
+    n2 = tb2_step(s2, tb_rule_blocked(rows, w), lt)
+    if n2 != s2:
+        try:
+            tmp = f"{v2_path}.{os.getpid()}.tmp"; json.dump(n2, open(tmp, "w"), indent=1); os.replace(tmp, v2_path)
+        except Exception:
+            pass
+    return tb_lines(rows, w, dict(new, _v2=n2))
 
 
 def willy_run(now_ms=None, J=None):

@@ -7269,3 +7269,46 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   (Deep review, applied BEFORE the freeze: the worst check first divided the fill's own $ by a fixed $1,225 — it would drift toward DROP as
   the live notional grows with the balance; the "× 0.5 > $0" haircut test was a no-op; LONG-only guard; 403 stops the run; the study module
   no longer creates its cache dir at import. Sanity-run worst −13.2 % used the old fill-$ basis.) ETA ~4–6 weeks (≈ 0.8–1.2 adds/day). Tests: tests/test_scout_willy_avgdown.py.
+
+## (314) 2026-10-19 — 🏷 WILLY turnover watch line split by market cap (operator: "yes add the mcap split to the watch line") · ⚠ its revert gate had FIRED
+- **Question (operator):** the WILLY turnover filter (24 h vol / mcap < 1, DL 251) blocks big coins like AGT ($300M vol / $271M mcap,
+  R 1.11) — should it apply only to small caps? Note: the rule is WILLY-only (LITE / LONG never used it).
+- **Backtest split (reports/FRENZY_VOL_MCAP_STUDY_2026-10-08_fills.csv, WILLY A, OLD exit +1/−3/60, %/fill):** < $50M kept 360 · +0.15 vs
+  blocked 374 · −0.24 (the whole filter value) · $50–100M kept 295 · +0.04 vs blocked 67 · +0.21 · $100–200M kept 208 · +0.06 vs blocked
+  21 · −0.74 · ≥ $200M kept 276 · +0.04 vs blocked 8 · −0.01 (it almost never fires on big coins). "Only below $100M / $50M" ≈ 0 gain.
+- **Built (observe-only):** scripts/scout_frenzy_exits.py WILLY_TURNOVER_BLOCKED now reports blocked / let-through by mcap bucket
+  (< $50M / $50–100M / $100–200M / ≥ $200M / unknown). The WILLY event carries only R, so a blocked row's mcap = its 24 h futures quote
+  volume (Σ the 288 5m klines up to the refusal's bar, public fapi, weight 2, ≤ 20 requests / run, cooldown honoured, 403/418/429 stop)
+  ÷ R, stored on the row (columns vol24, mcap). Let-through fills use entry_mcap_usd. The revert gate is UNCHANGED (pooled, frozen).
+  Tests: tests/test_scout_turnover_mcap_split.py (buckets, vol ÷ R, no refetch, failure → unknown, lines + gate constants).
+- **⚠ Found while building it:** the filter's own frozen revert gate FIRED on 2026-10-18 08:25 (reports/SCOUT_WILLY_TURNOVER_STATE.json):
+  first 15 turnover-blocked entries on 8 days, priced under WILLY's live exit (ticks first) → avg **+0.153 %** (80 % WR; let-through 31
+  fills −0.084 %) → **"REVERT: set frenzy_willy_max_vol_mcap_ratio 0"**. It was not surfaced at the time (missed in the hourly / batch
+  reads). Live split: blocked < $50M 12 · 75 % · −0.08 · $50–100M 2 · +1.00 · ≥ $200M 1 · +1.25 (AGT-type) · let-through < $50M 4 · −1.38 ·
+  $50–100M 5 · −2.55 · $100–200M 13 · +1.08 · ≥ $200M 9 · +0.19. Config change pending the operator (pre-committed gate = revert).
+- **Operator decision 2026-10-19 ("lets keep tracking that"; "consider all the trades that were already rejected, do not start from 0"):**
+  KEEP the filter at 1.0 for every mcap — a DECLARED OVERRIDE of the fired v1 gate, on reports/WILLY_TURNOVER_REPRICE_2026-10-19.md (the
+  10-08 WILLY A cohort re-priced under TODAY's live entry — first red bar ≤ 60 min, +8 s, 0.035 % slip, 1 % dislocation — and exit — +1.25
+  maker TP, late +0.25 from min 30, −4, 90 min — all on ticks; walker parity 5/5 live, 27/27 master): breakeven WR 77.3 %; kept 1,093 · 79 % ·
+  +0.084 [−0.03, +0.20] vs blocked 477 · 72.5 % · −0.237 [−0.42, −0.06], P(blocked < 0) 0.996, top pair 3 % / day 2 %, 8 / 10 months, both
+  2026 halves; stop rate 24.5 vs 17.4 %; per mcap blocked < $50M 382 · −0.19 · $50–100M 67 · −0.27 · $100–200M 21 · −1.01 · ≥ $200M 7 ·
+  −0.25 (noise); R × mcap grid: R ≥ 1 all mcaps = best of 12 (+0.072 %/WILLY fill, null p 0.004), every mcap restriction / higher cut lower.
+  In-sample (same rows, new pricing) → haircut to ≈ +0.04–0.05; no 2025 rows. Live v1 sample re-walked: blocked +0.130 vs let-through
+  +0.104 — indistinguishable; P(a 15-fill blocked avg ≥ +0.13 | backtest true) ≈ 28 %.
+- **🔒 v2 gate (scripts/scout_frenzy_exits.py tb2_step, state reports/SCOUT_WILLY_TURNOVER_STATE_V2.json; v1 verdict kept on record):** ALL
+  rule-blocked entries since the arming day 2026-10-08 (the 15 v1 rows INCLUDED, operator) vs the let-through WILLY fills of the same
+  period. At ≥ 30 blocked on ≥ 10 days: blocked avg ≥ let-through avg → REVERT (set 0) · blocked ≤ let-through − 0.20 → filter confirmed ·
+  else hold and re-read ONCE at 60 (then "holds, operator decides"). Frozen at the first verdict. Calibration (backtest): wrong revert ≈ 25 %
+  at 30 / 17 % at 60 if the filter works, 50 % if useless. Known bias: blocked rows are walker-priced at the line, let-through as booked
+  (10-19 booked −0.084 vs walker +0.104) → re-walk the let-through with scripts/study_willy_turnover_reprice_live.py before acting.
+  Now: blocked 15/30 on 8/10 days · +0.153 vs let-through 31 · −0.084 (booked). Tests: tests/test_scout_turnover_mcap_split.py (6).
+- **mcap rebuild check (operator: "the blocked ones register mcap correct?"):** v1 of the rebuild (24 CLOSED 1h bars) left out the spike
+  hour → vs the engine's own entry_mcap_usd-implied supply on the same pairs only 9/14 within ±20 % (ERA 0.23×, GTC 10-12 0.27×). Fixed
+  pre-commit to the 288 5m bars up to the refusal's bar → 13/14 within ±20 %, median 0.96×, every row in the same mcap bucket the engine's
+  stamp gives (STBL has no engine stamp to compare). Live split with the corrected mcaps: blocked < $50M 12 · $50–100M 2 (RLC, OGN) ·
+  ≥ $200M 1 (STRK).
+- **Dual review (caveman pass clean · deep FIX-FIRST) — applied pre-commit:** C1 the 5m window took the bar AFTER the refusal → now exactly
+  the 288 5m bars closed before the refusal's bar (startTime end − 288×5m, endTime end − 1; unit test with a stubbed urlopen) · G1 the v2
+  read is a FROZEN first-N sample like v1 (first 30, then first 60 by refusal time; let-through cut at the sample's last refusal) — later
+  provisional rows never hold it · D2 the study's live script switched to the same 5m window and re-run: bucket counts unchanged · 418/429
+  in tb_vol24 now arms the shared cooldown · stale 1h comments fixed. 8 tests in tests/test_scout_turnover_mcap_split.py.

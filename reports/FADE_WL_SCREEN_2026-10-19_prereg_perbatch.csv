@@ -1,0 +1,99 @@
+hypothesis,batch,N,W,L,sum_pct,pairs,losers
+H1 infl>=2 (24h vol >= 2x prior-7d avg),B1,1,0,1,-0.24,AIN,AIN
+H1 infl>=2 (24h vol >= 2x prior-7d avg),B16,1,1,0,0.29,RESOLV,
+H1 infl>=2 (24h vol >= 2x prior-7d avg),B2,3,2,1,-0.29,"BEL,SWARMS,RESOLV",BEL
+H1 infl>=2 (24h vol >= 2x prior-7d avg),B3,2,2,0,1.38,"CHILLGUY,CFG",
+H2 24h vol in low tercile (BT T1),B1,2,1,1,0.12,"AIN,TWT",AIN
+H2 24h vol in low tercile (BT T1),B10,2,1,1,-0.77,"ENSO,BTR",ENSO
+H2 24h vol in low tercile (BT T1),B13,2,2,0,0.72,"1000RATS,BEAMX",
+H2 24h vol in low tercile (BT T1),B16,2,2,0,0.79,"AZTEC,PARTI",
+H2 24h vol in low tercile (BT T1),B17,1,1,0,0.3,ZRX,
+H2 24h vol in low tercile (BT T1),B18,3,2,1,-0.71,"TURTLE,BRETT,KOMA",KOMA
+H2 24h vol in low tercile (BT T1),B19,2,2,0,0.51,"AEVO,SUPER",
+H2 24h vol in low tercile (BT T1),B2,10,9,1,4.46,"SWARMS,SENT,QNT,SXT,1000XEC,PIPPIN,HOLO,SXT,EGLD,EGLD",SXT
+H2 24h vol in low tercile (BT T1),B3,12,10,2,2.23,"CHILLGUY,SOON,CFG,1000RATS,XAN,ARC,PORTAL,PORTAL,FORM,TWT,TAKE,RECALL","PORTAL,FORM"
+H2 24h vol in low tercile (BT T1),B5,1,1,0,0.53,KAIA,
+H2 24h vol in low tercile (BT T1),B6,1,1,0,0.79,SYRUP,
+H2 24h vol in low tercile (BT T1),B9,2,2,0,1.73,"API3,QTUM",
+H3 turnover V/mcap >= BT median,B1,3,3,0,2.83,"TLM,PROM,PROM",
+H3 turnover V/mcap >= BT median,B10,2,1,1,-0.77,"ENSO,BTR",ENSO
+H3 turnover V/mcap >= BT median,B12,1,1,0,1.21,ZIL,
+H3 turnover V/mcap >= BT median,B15,1,1,0,0.75,DYDX,
+H3 turnover V/mcap >= BT median,B16,3,3,0,1.41,"INIT,RESOLV,PARTI",
+H3 turnover V/mcap >= BT median,B17,1,1,0,0.27,ORDI,
+H3 turnover V/mcap >= BT median,B18,3,2,1,-0.92,"TURTLE,FLOW,KOMA",KOMA
+H3 turnover V/mcap >= BT median,B2,7,5,2,-0.32,"BEL,SWARMS,MIRA,SXT,RESOLV,PIPPIN,SXT","BEL,SXT"
+H3 turnover V/mcap >= BT median,B20,2,2,0,0.45,"GRIFFAIN,GRIFFAIN",
+H3 turnover V/mcap >= BT median,B21,1,1,0,0.29,PARTI,
+H3 turnover V/mcap >= BT median,B3,8,7,1,2.09,"CHILLGUY,XAN,TLM,PORTAL,PORTAL,SQD,TAKE,RECALL",PORTAL
+H3 turnover V/mcap >= BT median,B7,2,2,0,0.77,"KNC,HIVE",
+H3 turnover V/mcap >= BT median,B8,1,1,0,0.43,MERL,
+H4 pair 1h EMA20>EMA200 (1h uptrend),B15,1,1,0,0.75,DYDX,
+H4 pair 1h EMA20>EMA200 (1h uptrend),B16,4,4,0,1.65,"INIT,RESOLV,AZTEC,PARTI",
+H4 pair 1h EMA20>EMA200 (1h uptrend),B17,1,1,0,0.3,ZRX,
+H4 pair 1h EMA20>EMA200 (1h uptrend),B18,1,0,1,-1.5,KOMA,KOMA
+H4 pair 1h EMA20>EMA200 (1h uptrend),B19,1,1,0,0.25,AEVO,
+H4 pair 1h EMA20>EMA200 (1h uptrend),B21,1,1,0,0.29,PARTI,
+H5 DI spread (+DI - -DI) >= BT T2,B1,1,1,0,1.15,TLM,
+H5 DI spread (+DI - -DI) >= BT T2,B12,1,1,0,0.27,COMP,
+H5 DI spread (+DI - -DI) >= BT T2,B13,2,2,0,0.91,"1000RATS,2Z",
+H5 DI spread (+DI - -DI) >= BT T2,B16,2,2,0,0.79,"AZTEC,PARTI",
+H5 DI spread (+DI - -DI) >= BT T2,B17,2,2,0,0.63,"ORDI,VTHO",
+H5 DI spread (+DI - -DI) >= BT T2,B18,1,1,0,0.5,BRETT,
+H5 DI spread (+DI - -DI) >= BT T2,B19,1,1,0,0.25,AEVO,
+H5 DI spread (+DI - -DI) >= BT T2,B2,2,2,0,1.26,"EGLD,EGLD",
+H5 DI spread (+DI - -DI) >= BT T2,B20,1,1,0,0.17,GRIFFAIN,
+H5 DI spread (+DI - -DI) >= BT T2,B3,4,3,1,0.95,"CFG,PORTAL,PORTAL,TAKE",PORTAL
+H5 DI spread (+DI - -DI) >= BT T2,B6,1,1,0,0.79,SYRUP,
+H5 DI spread (+DI - -DI) >= BT T2,B7,1,1,0,0.34,KNC,
+H5 DI spread (+DI - -DI) >= BT T2,B8,1,1,0,0.43,MERL,
+H5 DI spread (+DI - -DI) >= BT T2,B9,1,1,0,0.69,QTUM,
+H6 ADX<20 and rising (fresh ignition),B13,2,2,0,0.72,"1000RATS,BEAMX",
+H6 ADX<20 and rising (fresh ignition),B16,1,1,0,0.57,INIT,
+H6 ADX<20 and rising (fresh ignition),B2,9,8,1,3.77,"BEL,SWARMS,SENT,MIRA,1000XEC,WLFI,1000LUNC,SXT,EGLD",BEL
+H6 ADX<20 and rising (fresh ignition),B20,1,1,0,0.28,GRIFFAIN,
+H6 ADX<20 and rising (fresh ignition),B3,5,5,0,2.18,"CHILLGUY,STORJ,PORTAL,TWT,RECALL",
+H6 ADX<20 and rising (fresh ignition),B7,1,1,0,0.34,KNC,
+H7 range position >= 95,B1,1,1,0,1.16,PROM,
+H7 range position >= 95,B13,1,1,0,0.52,2Z,
+H7 range position >= 95,B16,1,1,0,0.57,INIT,
+H7 range position >= 95,B18,1,1,0,0.29,FLOW,
+H7 range position >= 95,B19,2,2,0,0.72,"SUPER,ARX",
+H7 range position >= 95,B2,7,6,1,5.08,"SENT,MIRA,SXT,1000LUNC,SNX,VANRY,HOLO",SXT
+H7 range position >= 95,B20,1,1,0,0.28,GRIFFAIN,
+H7 range position >= 95,B3,5,4,1,-0.0,"SOON,1000RATS,XPL,SQD,PLUME",PLUME
+H8 BTC 5m RSI < 40 (weak BTC),B1,3,2,1,2.07,"AIN,TLM,PROM",AIN
+H8 BTC 5m RSI < 40 (weak BTC),B10,1,1,0,0.73,BTR,
+H8 BTC 5m RSI < 40 (weak BTC),B12,2,2,0,1.44,"PROVE,ZIL",
+H8 BTC 5m RSI < 40 (weak BTC),B13,2,2,0,0.68,"1000LUNC,1000RATS",
+H8 BTC 5m RSI < 40 (weak BTC),B15,1,1,0,0.75,DYDX,
+H8 BTC 5m RSI < 40 (weak BTC),B17,1,1,0,0.36,VTHO,
+H8 BTC 5m RSI < 40 (weak BTC),B19,2,2,0,0.71,"AEVO,ARX",
+H8 BTC 5m RSI < 40 (weak BTC),B2,7,7,0,7.49,"SENT,RESOLV,1000XEC,WLFI,1000LUNC,VANRY,EGLD",
+H8 BTC 5m RSI < 40 (weak BTC),B20,1,1,0,0.28,GRIFFAIN,
+H8 BTC 5m RSI < 40 (weak BTC),B3,6,4,2,-1.68,"SOON,XAN,TLM,PORTAL,PORTAL,FORM","PORTAL,FORM"
+H8 BTC 5m RSI < 40 (weak BTC),B5,1,1,0,0.53,KAIA,
+H8 BTC 5m RSI < 40 (weak BTC),B6,1,1,0,0.79,SYRUP,
+H8 BTC 5m RSI < 40 (weak BTC),B7,2,2,0,0.77,"KNC,HIVE",
+H8 BTC 5m RSI < 40 (weak BTC),B9,2,2,0,1.73,"API3,QTUM",
+H9 = gate 41h HEALTHY_BEAR & btc_trend_gap>=-0.13,B13,1,1,0,0.4,1000RATS,
+H9 = gate 41h HEALTHY_BEAR & btc_trend_gap>=-0.13,B16,1,1,0,0.24,AZTEC,
+H9 = gate 41h HEALTHY_BEAR & btc_trend_gap>=-0.13,B17,1,1,0,0.36,VTHO,
+H9 = gate 41h HEALTHY_BEAR & btc_trend_gap>=-0.13,B18,1,1,0,0.29,TURTLE,
+H9 = gate 41h HEALTHY_BEAR & btc_trend_gap>=-0.13,B2,4,4,0,2.02,"RESOLV,WLFI,1000LUNC,EGLD",
+H9 = gate 41h HEALTHY_BEAR & btc_trend_gap>=-0.13,B3,3,1,2,-2.63,"SOON,PORTAL,PLUME","PORTAL,PLUME"
+H9 = gate 41h HEALTHY_BEAR & btc_trend_gap>=-0.13,B9,1,1,0,0.69,QTUM,
+H10 hot tape BTC 1h RSI >= 70,B17,1,1,0,0.3,ZRX,
+H10 hot tape BTC 1h RSI >= 70,B9,1,1,0,0.69,QTUM,
+H11 mcap < $50M,B1,4,3,1,2.59,"AIN,TLM,PROM,PROM",AIN
+H11 mcap < $50M,B10,2,1,1,-0.77,"ENSO,BTR",ENSO
+H11 mcap < $50M,B16,3,3,0,1.41,"INIT,RESOLV,PARTI",
+H11 mcap < $50M,B18,2,1,1,-1.21,"TURTLE,KOMA",KOMA
+H11 mcap < $50M,B19,1,1,0,0.25,AEVO,
+H11 mcap < $50M,B2,7,5,2,-0.32,"BEL,SWARMS,MIRA,SXT,RESOLV,PIPPIN,SXT","BEL,SXT"
+H11 mcap < $50M,B20,2,2,0,0.45,"GRIFFAIN,GRIFFAIN",
+H11 mcap < $50M,B21,1,1,0,0.29,PARTI,
+H11 mcap < $50M,B3,7,6,1,1.7,"CHILLGUY,XAN,TLM,PORTAL,PORTAL,TAKE,RECALL",PORTAL
+H11 mcap < $50M,B7,2,2,0,0.77,"KNC,HIVE",
+H11 mcap < $50M,B8,1,1,0,0.43,MERL,
+H11 mcap < $50M,B9,1,1,0,1.03,API3,

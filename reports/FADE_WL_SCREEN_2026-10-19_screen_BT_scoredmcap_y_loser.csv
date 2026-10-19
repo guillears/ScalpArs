@@ -1,0 +1,7 @@
+test,kind,col_a,op_a,thr_a,col_b,op_b,thr_b,family,n_zone,n_rest,days_zone,days_rest,ok,y,zone_mean,rest_mean,z,fw_p
+d_turnover<med(0.07528),1D,d_turnover,lt,0.07528131487788307,,,,pair,268.0,269.0,183,173,True,y_loser,0.29104477,0.23791821,1.3886068,0.41
+d_turnover>=T2(0.1249),1D,d_turnover,ge,0.12490311697481936,,,,pair,179.0,358.0,131,215,True,y_loser,0.23463687,0.2793296,-1.0938401,0.68
+d_log_mcap<med(7.853),1D,d_log_mcap,lt,7.853305001441366,,,,pair,268.0,269.0,170,182,True,y_loser,0.2835821,0.24535316,0.9711328,0.7366666666666667
+d_log_mcap>=T2(8.008),1D,d_log_mcap,ge,8.007962285948564,,,,pair,179.0,358.0,137,208,True,y_loser,0.24022347,0.27653632,-0.89844173,0.8366666666666667
+d_turnover<=T1(0.04326),1D,d_turnover,le,0.043259715243590235,,,,pair,179.0,358.0,133,204,True,y_loser,0.2849162,0.25418994,0.760057,0.8866666666666667
+d_log_mcap<=T1(7.607),1D,d_log_mcap,le,7.607388564208412,,,,pair,179.0,358.0,126,213,True,y_loser,0.25698325,0.26815644,-0.25944474,1.0

@@ -1,0 +1,9 @@
+variant,cohort,N,windows,days,WR,BE_WR,avg,ci,P_gt0,sum_pct,usd,top_pair_share,top_day_share,avg 2025 BULL,avg 2026-H1 BEAR,avg 2026-H2 BULL,N 2025 BULL,N 2026-H1 BEAR,N 2026-H2 BULL
+TOP2_MOVERS,ADDED at triggers TODAY also filled,13,13,13,7.7,32.5,-0.717,"[-1.13, -0.17]",0.007,-9.3,-206,0.26,0.19,-0.62,-0.835,-0.589,6,6,1
+TOP2_MOVERS,ADDED at triggers TODAY left empty,35,31,29,37.1,35.5,0.047,"[-0.46, +0.65]",0.556,1.7,37,3.11,3.11,0.412,0.165,-0.752,13,14,8
+TOP3_MOVERS,ADDED at triggers TODAY also filled,20,18,18,10.0,31.9,-0.701,"[-1.11, -0.19]",0.006,-14.0,-310,0.17,0.14,-0.752,-0.927,-0.145,8,8,4
+TOP3_MOVERS,ADDED at triggers TODAY left empty,35,31,29,37.1,35.5,0.047,"[-0.46, +0.65]",0.556,1.7,37,3.11,3.11,0.412,0.165,-0.752,13,14,8
+WINDOW_10M,ADDED at triggers TODAY also filled,31,28,26,25.8,41.4,-0.427,"[-0.95, +0.17]",0.074,-13.2,-293,0.24,0.27,-0.442,-0.085,-1.204,14,12,5
+WINDOW_10M,ADDED at triggers TODAY left empty,50,46,45,40.0,32.0,0.236,"[-0.24, +0.74]",0.821,11.8,261,0.5,0.56,0.255,-0.119,0.582,25,13,12
+WINDOW_15M,ADDED at triggers TODAY also filled,50,42,38,30.0,35.0,-0.163,"[-0.65, +0.38]",0.257,-8.1,-180,0.38,0.47,-0.236,0.343,-1.227,22,20,8
+WINDOW_15M,ADDED at triggers TODAY left empty,73,67,61,37.0,33.2,0.111,"[-0.28, +0.52]",0.699,8.1,180,0.72,0.82,0.06,-0.004,0.433,36,23,14

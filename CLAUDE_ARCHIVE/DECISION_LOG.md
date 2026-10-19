@@ -7225,3 +7225,25 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   one `[SPIKE_MCAP] … no write` line · ③ cosmetic: the WILLY-expiry comment back above its function; pytest.ini marker text.
   Accepted (LOW): a spike backfill whose fetch fails uses the pair's shared 10-min one-pair slot → a WILLY request_pair on the same pair
   is deduped for 10 min (same as a failed WILLY fetch; only while the provider is failing). Shutdown CancelledError propagates (harmless).
+
+## (312) 2026-10-19 — 👁 SPIKE_FADE high-mcap size cut → WATCHLIST (operator: "keep it in watchlist please for spike fades")
+- **Question (operator):** after the KMNO 10-17 fade (−2.13 %, −$252 = −20.7 % of the $1.2k live account; mcap ≈ $328–332M, 24 h vol $17.8M
+  = 2.15× its 7-day avg, book ±1 % ≈ $55k), lower the size or the cap on HIGH-mcap fades only (not all fades).
+- **Evidence (reports/FADE_SIZE_MCAP_2026-10-19.md §8 + threshold sweep, $1,225 account, impact model size^0.55 calibrated on KMNO):**
+  master ≥ $200M 9/9 won (+0.46 %), ≥ $300M 5/5; backtest WR rises with mcap (≥ $200M 75 %, ≥ $300M 79 %, ≥ $1B 83 %). Halving at
+  ≥ $X vs today, UNKNOWN mcap → 2× (master paper / ½ / full; backtest paper / ½ / full): $100M −605 / −325 / −46 (simplified impact model;
+  study model −599 / −324 / −48); −898 / +1,435 / +3,768 · $200M −249 / −144 / −40; −442 / +826 / +2,093 · **$300M −134 / −81 / −28;
+  −463 / +266 / +995** (UNKNOWN → 1×: −453 / −316 / −180; −1,583 / +677 / +2,937) · $400M+ misses KMNO. KMNO −254 → −112 at ≥ $100–300M.
+  A tighter volume cap on high mcap is worse than halving (0.05 % cap at ≥ $200M: master −371 / −232 / −93, KMNO −179; at ≥ $300M:
+  −176 / −110 / −44). No rule reduces the worst single fade (−23.7 % of
+  acct, a low-volume coin). Full W/L screen (reports/FADE_WL_SCREEN_2026-10-19.md): no entry separator beyond chance; KMNO looked like
+  a typical winner; the loss came after entry (third-party $107k sweep, then +10 % in 9 h — the stop was right).
+- **Decision:** no change. The candidate "1× if mcap ≥ $300M, 2× below" (unknown-mcap handling to be decided at promotion; both priced
+  above) is WATCHLISTED with a frozen gate in CLAUDE_CURRENT_STATE 41i (cohort: fades opened after the 4353aa9 deploy 2026-10-19 05:08 UTC,
+  KMNO excluded; mcap from the DL 311 stamp): PROMOTE (operator decides) at ≥ $300M live fades N ≥ 10 on ≥ 5 days with avg < 0 OR any
+  single loss > 4 % of the account (deliberate live-bleed override of the 1-sample rule); RETIRE at N ≥ 15 with avg ≥ +0.25 % and no loss
+  > 4 %; at N ≥ 30 with neither → RETIRE. It is the concrete rule the DL 311 $200M gate would reopen. The report's §8 "final
+  recommendation" (min(0.6× ticket, 0.05 % vol)) was DECLINED by the operator ("spike fade is one of our best performing sleeves"). ⚠ $300M sits just under KMNO's
+  $328M (fitted to the one loser) — an operator line, not evidence. Not watched but available: 1× when 24 h vol < $5M (master paper /
+  ½ / full −493 / +375 / +1,243 with the bracket cap; worst fade −24 → −10 % of acct; backtest better with impact in 2025 and 2026; in-sample threshold).
+  Rejected: a cut on HIGH-volume fades (best and cheapest-to-fill fades; worse in every scenario).

@@ -1,0 +1,199 @@
+{
+"1000000MOGUSDT": null,
+"1000CHEEMSUSDT": {
+"symbol": "1000cheems",
+"mc": 84071233.50186615,
+"cs": 187495034775.398,
+"rk": 270
+},
+"1000RATSUSDT": null,
+"1000WHYUSDT": null,
+"A2ZUSDT": null,
+"ACXUSDT": null,
+"AERGOUSDT": null,
+"AIUSDT": {
+"symbol": "ai",
+"mc": 12116512.4612,
+"cs": 624562498.0,
+"rk": 890
+},
+"AMBUSDT": null,
+"APTUSDT": {
+"symbol": "apt",
+"mc": 692950059.27,
+"cs": 884993690.0,
+"rk": 68
+},
+"AWEUSDT": {
+"symbol": "awe",
+"mc": 122042266.38089,
+"cs": 1942420283.0,
+"rk": 165
+},
+"AZTECUSDT": null,
+"BANUSDT": null,
+"BDXNUSDT": null,
+"BIDUSDT": null,
+"BROCCOLIF3BUSDT": null,
+"BSWUSDT": null,
+"CKBUSDT": {
+"symbol": "ckb",
+"mc": 76986805.39416,
+"cs": 49733078420.0,
+"rk": 293
+},
+"CROSSUSDT": null,
+"DAMUSDT": null,
+"DRIFTUSDT": null,
+"DUSDT": null,
+"EPTUSDT": null,
+"FIOUSDT": null,
+"FLUXUSDT": {
+"symbol": "flux",
+"mc": 30219543.1128,
+"cs": 422060658.0,
+"rk": 544
+},
+"FRAXUSDT": {
+"symbol": "frax",
+"mc": 26256105.783,
+"cs": 99681495.0,
+"rk": 593
+},
+"GMXUSDT": {
+"symbol": "gmx",
+"mc": 90674371.62,
+"cs": 10680138.0,
+"rk": 261
+},
+"HAEDALUSDT": {
+"symbol": "haedal",
+"mc": 9890833.33942,
+"cs": 541666667.0,
+"rk": 974
+},
+"HIPPOUSDT": null,
+"HOOKUSDT": null,
+"ICXUSDT": null,
+"IMXUSDT": {
+"symbol": "imx",
+"mc": 305400000.0,
+"cs": 2000000000.0,
+"rk": 103
+},
+"KDAUSDT": null,
+"LOKAUSDT": null,
+"LQTYUSDT": {
+"symbol": "lqty",
+"mc": 18715010.1804,
+"cs": 97170354.0,
+"rk": 722
+},
+"LRCUSDT": null,
+"LUNA2USDT": null,
+"MBOXUSDT": null,
+"MEMEFIUSDT": null,
+"MILKUSDT": null,
+"MLNUSDT": null,
+"MOCAUSDT": {
+"symbol": "moca",
+"mc": 35785112.7997181,
+"cs": 4233186230.0,
+"rk": 494
+},
+"MYROUSDT": null,
+"NEIROETHUSDT": null,
+"NFPUSDT": null,
+"NKNUSDT": null,
+"NULSUSDT": null,
+"OMNIUSDT": null,
+"OMUSDT": null,
+"PORT3USDT": null,
+"PUMPBTCUSDT": null,
+"QUICKUSDT": {
+"symbol": "quick",
+"mc": 5144753.26192,
+"cs": 770172644.0,
+"rk": 1233
+},
+"RSRUSDT": {
+"symbol": "rsr",
+"mc": 128349180.88382,
+"cs": 68089751132.0,
+"rk": 162
+},
+"SANTOSUSDT": {
+"symbol": "santos",
+"mc": 14250000.0,
+"cs": 30000000.0,
+"rk": 829
+},
+"SCRTUSDT": null,
+"SFPUSDT": {
+"symbol": "sfp",
+"mc": 122850000.0,
+"cs": 500000000.0,
+"rk": 164
+},
+"SKYAIUSDT": null,
+"SQDUSDT": {
+"symbol": "sqd",
+"mc": 21671139.47103,
+"cs": 1195319331.0,
+"rk": 661
+},
+"STBLUSDT": {
+"symbol": "stbl",
+"mc": 15953000.0,
+"cs": 700000000.0,
+"rk": 786
+},
+"STGUSDT": null,
+"STORJUSDT": null,
+"SXPUSDT": null,
+"SYRUPUSDT": {
+"symbol": "syrup",
+"mc": 238729142.9656,
+"cs": 1244677492.0,
+"rk": 115
+},
+"TANSSIUSDT": null,
+"TOKENUSDT": null,
+"TWTUSDT": {
+"symbol": "twt",
+"mc": 195027715.6555,
+"cs": 429860515.0,
+"rk": 129
+},
+"USTCUSDT": {
+"symbol": "ustc",
+"mc": 27375250.56968,
+"cs": 5575407448.0,
+"rk": 579
+},
+"UXLINKUSDT": null,
+"VANRYUSDT": null,
+"VICUSDT": null,
+"VINEUSDT": null,
+"WOOUSDT": {
+"symbol": "woo",
+"mc": 20625435.25224,
+"cs": 1888776122.0,
+"rk": 686
+},
+"XVSUSDT": {
+"symbol": "xvs",
+"mc": 49212697.248,
+"cs": 16448094.0,
+"rk": 391
+},
+"YALAUSDT": null,
+"ZKJUSDT": null,
+"ZRXUSDT": {
+"symbol": "zrx",
+"mc": 91287470.0712,
+"cs": 848396562.0,
+"rk": 259
+},
+"\u9f99\u867eUSDT": null
+}

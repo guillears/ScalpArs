@@ -12,12 +12,22 @@ Mechanism (reports/MAKER_TP_ENTRY_DESIGN_2026-10-15.md §3):
     THROUGH the limit for ≥ resting_tp_grace_s → cancel the limit, market-close ONLY the rest (reduce-only), book a blended exit
   * every other exit cancels the limit FIRST, re-reads its fill, closes only the remainder and books blended (one Order row)
   * paper = live bookkeeping: the paper TP books at the limit with the maker fee only when the tracked price trades ≥ 1 tick THROUGH it
-Switches per sleeve (resting_tp_willy_enabled / resting_tp_lite_enabled); OFF → paper and live behave exactly as before this ship.
+Switches per sleeve (resting_tp_willy_enabled / resting_tp_lite_enabled / resting_tp_frenzy_long_enabled); OFF → paper and live behave
+exactly as before this ship.
+🎯 DECISION_LOG 310 — every FIXED take-profit line: the operator's MANUAL trades in FIXED or FLOOR mode with a TP > 0 (resting_tp_manual_enabled,
+reason MANUAL_TP — incl. a mid-trade edit to FIXED), any bot trade whose exit the operator overrode with a TP > 0 (resting_tp_override_enabled,
+reason OVERRIDE_TP), and FRENZY_LONG (resting_tp_frenzy_long_enabled, FRENZY_TP; none while frenzy_lock_arm_pct > 0). The target is derived
+from the ROW alone (rtp_row_target: entry_strategy · manual_exit_mode · pattern_fixed_tp_pct · exit_override_at) — restart-proof.
+Evidence: AGT MANUAL FIXED +2 (2026-10-19) software TP on the touch, market sell 0.61 % lower → +1.38 booked.
 Every helper is total (never raises on bad input)."""
 import math
 from typing import Dict, Optional, Tuple
 
-RTP_SLEEVES = {"FRENZY_WILLY": "resting_tp_willy_enabled", "FRENZY_LITE": "resting_tp_lite_enabled"}
+RTP_SLEEVES = {"FRENZY_WILLY": "resting_tp_willy_enabled", "FRENZY_LITE": "resting_tp_lite_enabled",
+               "FRENZY_LONG": "resting_tp_frenzy_long_enabled"}   # 🎯 310: + FRENZY_LONG (fixed frenzy_tp_pct) · never FRENZY_WIDE (off)
+RTP_MANUAL_KEY, RTP_OVERRIDE_KEY = "resting_tp_manual_enabled", "resting_tp_override_enabled"   # 🎯 (310) the operator's own fixed TPs
+RTP_SWITCHES = tuple(RTP_SLEEVES.values()) + (RTP_MANUAL_KEY, RTP_OVERRIDE_KEY)
+RTP_ROW_STRATEGIES = tuple(RTP_SLEEVES) + ("MANUAL",)   # the sweep's row filter (+ every row with an exit override)
 RTP_QUERY_MIN_S = 1.0          # at most one order query per order per second (fill detection, only while the price is at / through)
 RTP_HEAL_RETRY_S = 30.0        # a failed placement retries per order no sooner than this
 RTP_SWEEP_EVERY_S = 5.0        # heal / switch-off / re-price sweep cadence
@@ -43,6 +53,60 @@ def _f(v) -> Optional[float]:
 def rtp_enabled(th, entry_strategy) -> bool:
     key = RTP_SLEEVES.get(str(entry_strategy or ""))
     return bool(key and getattr(th, key, False) is True)
+
+
+def _on(th, key) -> bool:
+    return getattr(th, key, False) is True
+
+
+def rtp_fixed_reason(row) -> Optional[str]:
+    """🎯 (310) The close reason of an operator-owned fixed TP on this row, from the row alone: MANUAL → MANUAL_TP · any other row with an
+    exit override → OVERRIDE_TP (the label both exit paths book) · None = a sleeve TP (FRENZY_TP / WILLY_LATE_TP). Never raises."""
+    try:
+        if str(getattr(row, 'entry_strategy', None) or "") == "MANUAL":
+            return "MANUAL_TP"
+        return "OVERRIDE_TP" if getattr(row, 'exit_override_at', None) is not None else None
+    except Exception:
+        return None
+
+
+def rtp_row_enabled(th, row) -> bool:
+    """The switch that governs THIS row's resting TP is ON (MANUAL → resting_tp_manual_enabled · an overridden bot row →
+    resting_tp_override_enabled · else the sleeve's own switch)."""
+    why = rtp_fixed_reason(row)
+    if why == "MANUAL_TP":
+        return _on(th, RTP_MANUAL_KEY)
+    if why == "OVERRIDE_TP":
+        return _on(th, RTP_OVERRIDE_KEY)
+    return rtp_enabled(th, getattr(row, 'entry_strategy', None))
+
+
+def rtp_row_target(th, row, held_minutes=None) -> Optional[Tuple[float, str]]:
+    """🎯 (310) The resting TP this ROW should carry now → (NET tp %, close reason) or None (= withdraw / none). Restart-proof: read from the
+    row only. MANUAL: manual_exit_mode FIXED (None = FIXED, the exits' own default) or FLOOR (its optional TP) with pattern_fixed_tp_pct > 0
+    → MANUAL_TP; MOMENTUM / FRENZY / BULLRUN(_SL) or TP ≤ 0 / None → None. An exit override on a bot row: its pattern_fixed_tp_pct > 0 → OVERRIDE_TP,
+    no TP → None (the sleeve's own TP is replaced, never kept). Otherwise the sleeve rule (rtp_target, incl. the LITE C stored TP). Never raises."""
+    try:
+        why = rtp_fixed_reason(row)
+        if why is None:
+            return rtp_target(th, getattr(row, 'entry_strategy', None), held_minutes, getattr(row, 'frenzy_lite_tp_used', None))
+        if not rtp_row_enabled(th, row):
+            return None
+        if why == "MANUAL_TP" and str(getattr(row, 'manual_exit_mode', None) or "FIXED").upper() not in ("FIXED", "FLOOR"):   # FLOOR's optional TP is a fixed line too (Sep-30; AGT #22 10-19)
+            return None
+        tp = _f(getattr(row, 'pattern_fixed_tp_pct', None))
+        return (tp, why) if tp and tp > 0 else None
+    except Exception:
+        return None
+
+
+def rtp_row_reason(th, row, limit_px, maker_fee_rate, entry_fee_pct=None) -> str:
+    """Which take profit a RECORDED limit on this row books: the operator's (MANUAL_TP / OVERRIDE_TP) or the sleeve's (rtp_reason_for_limit)."""
+    why = rtp_fixed_reason(row)
+    if why:
+        return why
+    return rtp_reason_for_limit(th, getattr(row, 'entry_strategy', None), getattr(row, 'direction', None), getattr(row, 'entry_price', None),
+                                entry_fee_pct, limit_px, maker_fee_rate)
 
 
 def rtp_target(th, entry_strategy, held_minutes=None, lite_tp=None) -> Optional[Tuple[float, str]]:
@@ -102,9 +166,9 @@ def rtp_through_ticks(th) -> int:
 
 
 def config_errors(th) -> list:
-    """PUT /api/config refusals for the four fields."""
+    """PUT /api/config refusals for the resting-TP fields."""
     errs = []
-    for k in ('resting_tp_willy_enabled', 'resting_tp_lite_enabled'):
+    for k in RTP_SWITCHES:
         if not isinstance(getattr(th, k, False), bool):
             errs.append(f"{k} must be true or false")
     g = _f(getattr(th, 'resting_tp_grace_s', None))

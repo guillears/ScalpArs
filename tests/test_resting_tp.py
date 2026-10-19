@@ -136,7 +136,8 @@ def _setup(monkeypatch, paper=False, rows=(), place=None, fetch=None, cancel="ca
     th = T.config.trading_config.thresholds
     _kw = dict(frenzy_willy_tp_pct=1.25, frenzy_willy_stop_pct=4.0, frenzy_willy_max_hold_minutes=90, frenzy_lite_tp_pct=3.0,
                frenzy_lock_arm_pct=0.0, resting_tp_willy_enabled=True, resting_tp_lite_enabled=True, resting_tp_grace_s=3.0,
-               resting_tp_through_ticks=2, frenzy_willy_late_tp_minutes=30.0, frenzy_willy_late_tp_pct=0.25, broker_backstop_enabled=True)
+               resting_tp_through_ticks=2, frenzy_willy_late_tp_minutes=30.0, frenzy_willy_late_tp_pct=0.25, broker_backstop_enabled=True,
+               resting_tp_frenzy_long_enabled=False, resting_tp_manual_enabled=False, resting_tp_override_enabled=False)   # 🎯 (310) the 296 scope; the 310 switches: tests/test_resting_tp_fixed_all.py
     _kw.update(th_kw or {})
     for k, v in _kw.items():
         monkeypatch.setattr(th, k, v, raising=False)
@@ -633,7 +634,8 @@ def test_every_exit_path_cancels_first_source_pins():
     # both exit paths: the same WILLY / FRENZY exit with the resting flag, then the same gate
     assert eng.count("_held_minutes(order.opened_at), None, resting_tp=_rtp_on_m)") == 1
     assert eng.count("_held_minutes(order_info.get('opened_at')), None, resting_tp=_rtp_on_rt)") == 1
-    assert eng.count("await self._rtp_gate(order.id, current_price)") == 1 and eng.count("await self._rtp_gate(order_id, current_price, background=True)") == 1
+    # 🎯 (310) + the operator-TP branch (MANUAL FIXED / override) of each path: the same gate, monitor awaits, realtime in the background
+    assert eng.count("await self._rtp_gate(order.id, current_price)") == 2 and eng.count("await self._rtp_gate(order_id, current_price, background=True)") == 2
     assert "await self.resting_tp_sweep()" in eng
     # WILLY_LATE_TP whitelisted wherever FRENZY_TP is
     assert eng.count('startswith("FRENZY_TP") or _reason_base.startswith("WILLY_LATE_TP")') == 2

@@ -1533,6 +1533,14 @@ class SignalThresholds(BaseModel):
     # OR any booked resting-TP close shows an accounting mismatch vs Binance.
     resting_tp_willy_enabled: bool = True         # FRENZY_WILLY (operator 2026-10-15: armed)
     resting_tp_lite_enabled: bool = True          # FRENZY_LITE (operator 2026-10-15: armed; none while frenzy_lock_arm_pct > 0 — no fixed TP then)
+    # 🎯 2026-10-19 (DECISION_LOG 310, operator "do it"): the same resting limit for EVERY fixed take-profit line. Evidence: AGT MANUAL FIXED
+    # +2 (10-19, 10×, $5k notional) — software TP on the +2.00 touch, market sell filled 0.61 % lower → +1.38 booked; post-296 WILLY/LITE maker
+    # fills booked the target exactly (ZIL +1.27, DUSK +2.00, AVA +2.02) vs the pre-296 taker give-back 0.08–0.22. Target read from the ROW
+    # (services/resting_tp.rtp_row_target) — restart-proof; an operator TP edit re-prices at once (withdraw → place), a switch away from a fixed
+    # TP withdraws. 🔒 REVERT per switch: after 10 armed fills, mean booked TP net % ≤ the market counterfactual, or any accounting mismatch vs Binance.
+    resting_tp_manual_enabled: bool = True        # MANUAL trades in FIXED or FLOOR mode with a TP > 0 (MANUAL_TP; FRENZY / BULLRUN / MOMENTUM = none)
+    resting_tp_override_enabled: bool = True      # a bot trade whose exit the operator overrode with a TP > 0 (OVERRIDE_TP; an override with no TP = none)
+    resting_tp_frenzy_long_enabled: bool = True   # FRENZY_LONG (fixed frenzy_tp_pct; none while frenzy_lock_arm_pct > 0) — never FRENZY_WIDE (off)
     resting_tp_grace_s: float = 3.0               # safety net: seconds the price must stay through the limit (0–60)
     resting_tp_through_ticks: int = 2             # safety net: ticks THROUGH the limit (1–50)
     # ⏰ 2026-10-15 WILLY LATE TAKE-PROFIT (DECISION_LOG 297, operator-armed DECLARED EXCEPTION — reports/WILLY_DURATION_30MIN_RESTUDY_2026-10-15.md

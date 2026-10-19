@@ -2884,16 +2884,16 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                 _rtp_taker = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
                 _exit_fee_usd = order.exit_price * order.quantity * _rtp_taker
                 if _rtp_x and float(_rtp_x.get('filled') or 0) > 0:
-                    from services.resting_tp import blend_exit as _rtp_blend, rtp_reason_for_limit as _rtp_reason_for
+                    from services.resting_tp import blend_exit as _rtp_blend, rtp_row_reason as _rtp_reason_for   # 🎯 (310) MANUAL_TP / OVERRIDE_TP
                     _rtp_b = _rtp_blend(order.quantity, _rtp_x['filled'], _rtp_x.get('avg') or _rtp_x.get('lim'), exit_price,
                                         float(getattr(config.trading_config, 'maker_fee', 0.00018)), _rtp_taker)
                     order.resting_tp_filled_qty = float(_rtp_x['filled'])
                     if _rtp_b:
                         order.exit_price, _exit_fee_usd, order.exit_order_type = _rtp_b['price'], _rtp_b['fee'], _rtp_b['order_type']
                         if _rtp_x.get('full'):
-                            order.close_reason = _rtp_reason_for(config.trading_config.thresholds, order.entry_strategy, order.direction, order.entry_price,
-                                                                 trading_engine._rtp_entry_fee_pct(order), _rtp_x.get('lim') or _rtp_b['price'],
-                                                                 float(getattr(config.trading_config, 'maker_fee', 0.00018)))
+                            order.close_reason = _rtp_reason_for(config.trading_config.thresholds, order, _rtp_x.get('lim') or _rtp_b['price'],
+                                                                 float(getattr(config.trading_config, 'maker_fee', 0.00018)),
+                                                                 trading_engine._rtp_entry_fee_pct(order))
                         logger.warning(f"[RESTING_TP_FILLED] {order.pair} #{order.id}: reconcile — {_rtp_b['filled_qty']}/{order.quantity} filled by the "
                                        f"resting TP → exit {order.exit_price:.8g} ({_rtp_b['order_type']}), reason {order.close_reason}")
                 if order.direction == "LONG":

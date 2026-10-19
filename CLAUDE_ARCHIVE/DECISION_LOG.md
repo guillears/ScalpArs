@@ -7148,3 +7148,47 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **🔒 Gates:** the DL 283 "→ 0.4 if the first 20 at 10× < 0" gate is RESOLVED (done by operator). New: back to 10× only via the DL 276 bar
   (≥ 30 LITE fills on ≥ 10 days, avg > 0 at day-bootstrap P ≥ 0.90 ∧ the 10× book's worst day > −20 %). Down to 6× (0.32) if the first 20 LITE
   fills at 8× average < 0 OR a UTC day's FRENZY fills lose > 25 % of the book.
+
+## (310) 2026-10-19 — 🎯 Resting maker TP for every fixed take-profit (manual FIXED, operator TP edits, FRENZY_LONG) (operator: "do it" … "commit and push")
+- **Scope (extends DL 296 beyond FRENZY_WILLY / FRENZY_LITE):** ① MANUAL trades whose `manual_exit_mode` is FIXED (None = FIXED) or FLOOR (its optional TP) with
+  `pattern_fixed_tp_pct` > 0 → reason MANUAL_TP, incl. a mid-trade edit (set_exit_override → FIXED tp X); MOMENTUM / FRENZY /
+  BULLRUN(_SL) or TP ≤ 0 / none → no limit (withdrawn). ② any bot trade whose exit the operator overrode with a TP > 0 → limit at THAT TP,
+  reason OVERRIDE_TP (was: any override withdrew the limit); an override without a TP still withdraws. ③ FRENZY_LONG at its fixed
+  `frenzy_tp_pct` (FRENZY_TP; none while `frenzy_lock_arm_pct` > 0 — same as LITE). Not FRENZY_WIDE (off). Out of scope: trailing / ladder exits
+  (SURGE, SPIKE_FADE, MOMENTUM runners, BULLRUN).
+- **Mechanism:** services/resting_tp.py `rtp_row_target(th, row, held)` — the target from the ROW alone (entry_strategy · manual_exit_mode ·
+  pattern_fixed_tp_pct · exit_override_at · frenzy_lite_tp_used) → restart-proof; `rtp_fixed_reason` / `rtp_row_reason` (MANUAL_TP /
+  OVERRIDE_TP, else the 296 sleeve reason); `rtp_row_enabled` (MANUAL → `resting_tp_manual_enabled`, overridden bot row →
+  `resting_tp_override_enabled`, else the sleeve switch); RTP_SLEEVES + FRENZY_LONG (`resting_tp_frenzy_long_enabled`). Engine: open (bot fill +
+  NEW manual open, after the commit / backstop / cache) → `_rtp_arm`; `set_exit_override` → withdraw (cancel-first, as 296) then `_rtp_heal`
+  at once = place / re-price within the call (the 5 s sweep is the backstop); sweep row filter + MANUAL rows + every `exit_override_at` row,
+  target = rtp_row_target (place / re-price / withdraw); heal no longer skips an override by itself; the realtime state carries `why`
+  (re-seeded when the row's owner changes) — no WILLY late swap on an operator TP; both exit paths' MANUAL / OVERRIDE FIXED branch: with a
+  resting TP alive the software TP is the safety net only (`_rtp_gate`, ≥ resting_tp_through_ticks for ≥ resting_tp_grace_s, monitor
+  awaits / realtime in the background), the stop unchanged; `_rtp_alive` is total (an error = "none" → stop + software TP as before). Close
+  path / reconciler / paper booking unchanged except the reason (`rtp_row_reason`): cancel FIRST, remainder only, blended MAKER / MAKER+TAKER;
+  paper books at the limit with the maker fee only ≥ 1 tick through. DL 308 guard untouched. Bounded I/O (RTP_IO_TIMEOUT_S,
+  RTP_SWEEP_MAX_ACTIONS) as 296; reduce-only GTX only.
+- **Evidence:** AGTUSDT MANUAL LONG 2026-10-19 03:12 (10×, ~$5,006 notional): FLOOR tp1 → FIXED tp 2 at 03:13; software TP fired on the
+  +2.00 touch, the market sell filled 0.61 % lower → +1.38 booked (MANUAL_TP, TAKER). Post-296 WILLY / LITE maker fills booked the target
+  exactly (ZIL +1.27, DUSK +2.00, AVA +2.02) vs the pre-296 taker give-back 0.08–0.22. Declared operator extension (mechanical execution fix,
+  no entry / exit-level change).
+- **Config (D11):** `resting_tp_manual_enabled` / `resting_tp_override_enabled` / `resting_tp_frenzy_long_enabled` — config.py default true +
+  evidence comment, trading_config.json true, UI toggles (config-rtp-manual-enabled / -override-enabled / -frenzy-long-enabled, load + save),
+  config-export line, config_errors (bool). grace / through ticks reused.
+- **Tests:** tests/test_resting_tp_fixed_all.py (19: pure rules, arm, sweep place / re-price / withdraw, operator edit live AGT replay,
+  WILLY override, restart re-seed, gate reasons, no late swap on an override, manual close cancel-first blended, full fill MANUAL_TP /
+  OVERRIDE_TP maker, paper parity, realtime safety net + stop, source pins, config / UI parity); 296 harness pins the 296 scope (new switches
+  off) · gate-count pins 1 → 2 · LITE C target pin moved to rtp_row_target. Suite 1,409 green.
+- **🔒 REVERT per switch:** after 10 armed fills of that switch's cohort, mean booked TP net % ≤ the market counterfactual (296 method), OR any
+  resting-TP close with an accounting mismatch vs Binance → that switch OFF.
+- **FLOOR included (operator review 2026-10-19):** FLOOR's optional TP is a fixed line (AGT #22 opened FLOOR tp 2.0) — same exit branch as FIXED in both paths.
+  A live manual / overridden position now has any OTHER close-side reduce-only limit on its symbol cancelled when the resting TP is armed /
+  healed (the 296 rule: a position carries exactly one resting TP) — an operator's hand-placed Binance limit on such a position is removed.
+- **Dual review (caveman SHIP · deep SHIP, 1,409 green on repo + staged copy) — applied pre-commit:** ① deep M1: `set_exit_override` now
+  cancels the resting TP BEFORE writing the override; a limit that filled meanwhile keeps its own reason (FRENZY_TP / MANUAL_TP) and the
+  edit is refused ("the take profit already filled") — test added · ② caveman: `_rtp_reprice` never runs the WILLY late swap on an operator
+  TP (`late and rtp_fixed_reason(o) is None`) · ③ FLOOR included (operator's AGT #22 was FLOOR tp 2); tooltip / docstrings aligned ·
+  known, accepted: a blocked cancel during an exchange outage leaves the old limit's safety net at the old price until the 5 s sweep
+  retries (deep L2); a stray-cancel partial fill is not recorded (deep L4, pre-existing since 296). At deploy the sweep arms every open
+  MANUAL FIXED/FLOOR-with-TP, overridden-with-TP and FRENZY_LONG row and cancels the operator's own reduce-only limits on those symbols.

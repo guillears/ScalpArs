@@ -82,7 +82,8 @@ from services.exec_shadow import entry_book_metrics, resting_tp_shadow, cached_t
 from services.resting_tp import (RTP_SLEEVES, RTP_QUERY_MIN_S, RTP_HEAL_RETRY_S, RTP_SWEEP_EVERY_S, RTP_SWEEP_MAX_ACTIONS, RTP_ORPHAN_MIN_AGE_S,  # 🎯 (DECISION_LOG 296)
                                   rtp_target, rtp_reason_for_limit, rtp_grace_s, rtp_through_ticks, at_or_through, paper_filled, safety_net,
                                   is_full, remaining_qty, blend_exit, order_fill, cancel_view, stop_class as rtp_stop_class, ts_key, RTP_IO_TIMEOUT_S,
-                                  RTP_STRAY_MAX_PER_PASS, RTP_BUSY_WATCHDOG_S, rtp_enabled)
+                                  RTP_STRAY_MAX_PER_PASS, RTP_BUSY_WATCHDOG_S, rtp_enabled,
+                                  RTP_SWITCHES, RTP_ROW_STRATEGIES, rtp_row_target, rtp_row_enabled, rtp_row_reason, rtp_fixed_reason)   # 🎯 (310) every fixed TP
 from services import decision_journal as _djournal  # Sep-18 📓 decision journal (file-only, never raises)
 from services.websocket_tracker import websocket_tracker
 
@@ -3661,7 +3662,7 @@ class TradingEngine:
 
     def rtp_any_switch_on(self) -> bool:
         th = config.trading_config.thresholds
-        return any(getattr(th, k, False) is True for k in RTP_SLEEVES.values())
+        return any(getattr(th, k, False) is True for k in RTP_SWITCHES)   # 🎯 (310) + manual / override / FRENZY_LONG
 
     def rtp_row_active(self, o) -> bool:
         """A row the resting-TP machinery must handle: something recorded on it (id / price / fill), or its sleeve's switch ON. Anything
@@ -3669,7 +3670,7 @@ class TradingEngine:
         try:
             return bool(getattr(o, 'protective_tp_order_id', None) or getattr(o, 'resting_tp_price', None) is not None
                         or float(getattr(o, 'resting_tp_filled_qty', None) or 0) > 0
-                        or rtp_enabled(config.trading_config.thresholds, getattr(o, 'entry_strategy', None)))
+                        or rtp_row_enabled(config.trading_config.thresholds, o))   # 🎯 (310) MANUAL / override rows by their own switch
         except Exception:
             return False
 
@@ -3745,6 +3746,8 @@ class TradingEngine:
         return (lim, tick) if lim else (None, None)
 
     def _rtp_reason(self, st) -> str:
+        if st.get('why'):   # 🎯 (310) the operator's fixed TP (MANUAL_TP / OVERRIDE_TP), stamped from the row at seed time
+            return st['why']
         return rtp_reason_for_limit(config.trading_config.thresholds, st.get('es'), st.get('dir'), st.get('entry'), st.get('ef'),
                                     st.get('px'), self._rtp_maker())
 
@@ -3758,7 +3761,8 @@ class TradingEngine:
             _p = row.pair if row is not None else pair
             _o = ts_key(row.opened_at if row is not None else opened_at)
             if (st.get('paper') != bool(self.is_paper_mode) or (_p is not None and st.get('pair') != _p)
-                    or (_o is not None and st.get('okey') is not None and st.get('okey') != _o)):
+                    or (_o is not None and st.get('okey') is not None and st.get('okey') != _o)
+                    or (row is not None and st.get('why') != rtp_fixed_reason(row))):   # 🎯 (310) an override since the seed → re-seed
                 _rtp_rt.pop(order_id, None)
                 st = None
             else:
@@ -3784,11 +3788,20 @@ class TradingEngine:
             st = dict(pair=row.pair, dir=row.direction, oid=(str(oid) if oid else None), px=float(px), qty=qty, filled=filled, full=full,
                       avg=None, tick=tick, first=None, last_q=-1e18, es=(row.entry_strategy or ''), opened_at=row.opened_at,
                       okey=ts_key(row.opened_at), paper=bool(self.is_paper_mode), ef=self._rtp_entry_fee_pct(row),
-                      entry=float(row.entry_price or 0), swap_next=-1e18, busy=False)
+                      entry=float(row.entry_price or 0), swap_next=-1e18, busy=False,
+                      why=rtp_fixed_reason(row))   # 🎯 (310) MANUAL_TP / OVERRIDE_TP — no WILLY late swap on an operator TP
             _rtp_rt[order_id] = st
             return st
         except Exception:
             return None
+
+    def _rtp_alive(self, order_id, row=None, pair=None, opened_at=None) -> bool:
+        """🎯 (310) A resting TP is alive on this order (the operator-TP exit branches): _rtp_state, but TOTAL — an error reads as "none" so the
+        stop / software TP of that branch always runs."""
+        try:
+            return self._rtp_state(order_id, row=row, pair=pair, opened_at=opened_at) is not None
+        except Exception:
+            return False
 
     async def _rtp_record(self, order_id, only_if_oid=None, **vals):
         """Persist resting-TP fields on an OPEN row in a short session of its own → rows written. only_if_oid: write only while the row still
@@ -3887,7 +3900,7 @@ class TradingEngine:
         that raced the open never gets a limit after it). Live: stale close-side reduce-only limits on the symbol are cancelled first (a
         leftover can never ride into this position). Never raises."""
         try:
-            tgt = rtp_target(config.trading_config.thresholds, order.entry_strategy, 0.0, getattr(order, 'frenzy_lite_tp_used', None))
+            tgt = rtp_row_target(config.trading_config.thresholds, order, 0.0)   # 🎯 (310) the row's own fixed TP (sleeve / MANUAL FIXED)
             if tgt is None:
                 return None
             async with _close_lock:
@@ -4143,7 +4156,7 @@ class TradingEngine:
             if st.get('busy'):
                 return None   # a background query / swap is in flight — its result books itself
             # ⏰ (297) the WILLY late minute: swap the +TP limit for the late one (cancel first)
-            if st.get('es') == "FRENZY_WILLY" and now_m >= float(st.get('swap_next', -1e18)):
+            if st.get('es') == "FRENZY_WILLY" and not st.get('why') and now_m >= float(st.get('swap_next', -1e18)):   # 🎯 (310) never on an operator TP
                 tgt = rtp_target(th, st['es'], _held_minutes(st.get('opened_at')))
                 if tgt is not None and tgt[1] != self._rtp_reason(st):
                     st['swap_next'] = now_m + 5.0
@@ -4200,7 +4213,8 @@ class TradingEngine:
                     o = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
                     if o is None or o.status != "OPEN" or o.closing_in_progress or order_id in _exit_retry_queue:
                         return 'skipped'
-                    tgt = rtp_target(th, o.entry_strategy, _held_minutes(o.opened_at), getattr(o, 'frenzy_lite_tp_used', None))
+                    tgt = rtp_row_target(th, o, _held_minutes(o.opened_at))   # 🎯 (310) row-derived (MANUAL FIXED / override / sleeve)
+                    late = late and rtp_fixed_reason(o) is None   # 🎯 (310) review: never a WILLY late swap on an operator TP (stale state after a blocked withdraw)
                     if tgt is None or o.resting_tp_price is None:
                         return 'skipped'
                     lim, tick = await self._rtp_limit_for(o, tgt[0])
@@ -4316,10 +4330,11 @@ class TradingEngine:
                 async with AsyncSessionLocal() as s:
                     o = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
                     if (o is None or o.status != "OPEN" or o.closing_in_progress or order_id in _exit_retry_queue or o.protective_tp_order_id
-                            or float(o.resting_tp_filled_qty or 0) > 0 or o.exit_override_at is not None
+                            or float(o.resting_tp_filled_qty or 0) > 0
                             or (self.is_paper_mode and o.resting_tp_price is not None)):
                         return 'skipped'
-                    tgt = rtp_target(th, o.entry_strategy, _held_minutes(o.opened_at), getattr(o, 'frenzy_lite_tp_used', None))
+                    # 🎯 (310) an exit override no longer skips by itself: the row's target decides (override with a TP → OVERRIDE_TP limit)
+                    tgt = rtp_row_target(th, o, _held_minutes(o.opened_at))
                     if tgt is None:
                         return 'skipped'
                     if self.is_paper_mode:
@@ -4351,7 +4366,7 @@ class TradingEngine:
 
     async def resting_tp_sweep(self, now=None) -> list:
         """🎯 (296) monitor-pass sweep, throttled to RTP_SWEEP_EVERY_S: re-seeds the realtime state of every resting TP from its row (restart
-        re-arm) · switch OFF / exit override / no fixed TP → cancel · enabled sleeve without one → heal (≥ RTP_HEAL_RETRY_S per order; a
+        re-arm) · switch OFF / no fixed TP (🎯 310: rtp_row_target — a MANUAL row off FIXED or TP 0, an override without a TP) → cancel · enabled sleeve without one → heal (≥ RTP_HEAL_RETRY_S per order; a
         partially filled TP is never re-armed) · target moved (a TP setting change, or ⏰ the WILLY late minute) → re-price (LATE_NOW → closed
         WILLY_LATE_TP at once). Live exchange actions ≤ RTP_SWEEP_MAX_ACTIONS per pass; one row's failure never stops the pass.
         → [(kind, order id, result)]."""
@@ -4365,14 +4380,15 @@ class TradingEngine:
         plan = []
         async with AsyncSessionLocal() as s:
             rows = (await s.execute(select(Order).where(and_(Order.status == "OPEN", Order.is_paper == paper, or_(
-                Order.entry_strategy.in_(tuple(RTP_SLEEVES)), Order.protective_tp_order_id.isnot(None), Order.resting_tp_price.isnot(None)))))).scalars().all()
+                Order.entry_strategy.in_(RTP_ROW_STRATEGIES), Order.exit_override_at.isnot(None),   # 🎯 (310) + MANUAL rows + every overridden row
+                Order.protective_tp_order_id.isnot(None), Order.resting_tp_price.isnot(None)))))).scalars().all()
             for o in rows:
                 try:
                     if o.closing_in_progress or o.id in _exit_retry_queue:
                         continue
                     filled = float(o.resting_tp_filled_qty or 0)
                     has = bool(o.protective_tp_order_id) if not paper else (o.resting_tp_price is not None and filled <= 0)
-                    tgt = None if o.exit_override_at is not None else rtp_target(th, o.entry_strategy, _held_minutes(o.opened_at), getattr(o, 'frenzy_lite_tp_used', None))
+                    tgt = rtp_row_target(th, o, _held_minutes(o.opened_at))   # 🎯 (310) an override with a TP re-prices to it; without one → withdraw
                     if has or is_full(o.quantity, filled):
                         self._rtp_state(o.id, row=o)
                     if tgt is None:
@@ -4395,7 +4411,7 @@ class TradingEngine:
                 break
             try:
                 if kind == 'withdraw':
-                    r = await self._rtp_withdraw(oid, "switch OFF / exit override / no fixed TP")
+                    r = await self._rtp_withdraw(oid, "switch OFF / no fixed TP (exit mode / override / TP 0)")
                 elif kind == 'heal':
                     r = await self._rtp_heal(oid)
                     if r in ('placed', 'paper'):
@@ -13660,6 +13676,9 @@ class TradingEngine:
             await self.update_orders_cache(db)   # canonical cache entry (stop/exit fields built by the same code as a restart)
         except Exception as _tail_err:
             logger.error(f"[MANUAL_OPEN] {pair}: booked, but the price-stream / cache set-up failed ({_tail_err}) — the monitor loop picks it up")
+        # 🎯 (DECISION_LOG 310) a MANUAL FIXED trade with a TP: the resting maker TP, AFTER the fill, the backstop and the commit (the same
+        # _rtp_arm as a bot fill — under _close_lock, row re-read; failure → [RESTING_TP_FAILED], the software TP runs). Never raises.
+        await self._rtp_arm(db, order)
         logger.warning(f"[MANUAL_OPEN] {pair} {direction} ${investment:,.0f}×{leverage:g} @ {actual_price} exit={exit_mode} sl={sl} tp={tp} "
                        f"gate={order.manual_block_reason!r} setup={order.manual_setup_rating}/{order.manual_setup_side} note={order.manual_note!r}")
         return order
@@ -13761,6 +13780,14 @@ class TradingEngine:
                      pattern_fixed_tp_pct=(round(tp, 4) if tp is not None else None))
         if is_manual:
             _vals['manual_exit_mode'] = "FIXED"
+        if getattr(order, 'protective_tp_order_id', None) or getattr(order, 'resting_tp_price', None) is not None:
+            # 🎯 (DECISION_LOG 296; 310 deep review M1) the operator's target replaces the resting TP: cancel it FIRST, before the override is
+            # written — a limit that filled meanwhile is booked under the reason it was placed for (FRENZY_TP / MANUAL_TP, never OVERRIDE_TP)
+            # and the edit is refused (the position is flat). A blocked cancel → the override still saves (the sweep retries the cancel).
+            _w = await self._rtp_withdraw(order.id, "exit override")
+            logger.warning(f"[EXIT_OVERRIDE] {order.pair} #{order.id}: resting TP {_w}")
+            if _w == 'FILLED':
+                raise ValueError("the take profit already filled — the position is closing, nothing changed")
         _res = await db.execute(update(Order).where(and_(Order.id == order.id, Order.status == "OPEN", Order.closing_in_progress == False))  # noqa: E712
                                 .values(**_vals).execution_options(synchronize_session=False))
         await locked_commit(db)
@@ -13771,11 +13798,17 @@ class TradingEngine:
             await self.update_orders_cache(db)
         except Exception as _c_err:
             logger.error(f"[EXIT_OVERRIDE] {order.pair}: saved, cache rebuild failed ({_c_err}) — the monitor loop picks it up")
-        if getattr(order, 'protective_tp_order_id', None) or getattr(order, 'resting_tp_price', None) is not None:
-            # 🎯 (DECISION_LOG 296) the operator's target replaces the sleeve's: the resting TP limit is cancelled now (filled meanwhile →
-            # recorded; the reconciler / close path books it)
-            _w = await self._rtp_withdraw(order.id, "exit override")
-            logger.warning(f"[EXIT_OVERRIDE] {order.pair} #{order.id}: resting TP {_w}")
+        try:
+            # 🎯 (DECISION_LOG 310) the operator's NEW fixed TP gets its own resting limit at once (MANUAL → FIXED tp / a bot override with a
+            # TP; withdraw above + place here = the re-price) — the heal path: under _close_lock, row re-read, a price already through the
+            # limit is skipped (the software TP owns it), a partially filled old limit is never re-armed. Any failure → the software TP (and
+            # the 5 s sweep retries ≥ RTP_HEAL_RETRY_S later). No TP → nothing placed (the withdraw above already cancelled).
+            await db.refresh(order)
+            if rtp_row_target(config.trading_config.thresholds, order, _held_minutes(getattr(order, 'opened_at', None))) is not None:
+                _h = await self._rtp_heal(order.id)
+                logger.warning(f"[EXIT_OVERRIDE] {order.pair} #{order.id}: resting TP at the new target — {_h}")
+        except Exception as _rtp_ov_e:
+            logger.error(f"[EXIT_OVERRIDE] {order.pair} #{order.id}: resting TP placement failed ({_rtp_ov_e!r}) — the software TP runs")
         logger.warning(f"[EXIT_OVERRIDE] {order.pair} {order.direction} #{order.id} ({order.entry_strategy or 'MOMENTUM'}): exit replaced by stop {sl:+.2f}% / "
                        f"target {('%+.2f%%' % tp) if tp is not None else 'none'} (was {_prev}; P&L now {('%+.2f%%' % pnl_now) if pnl_now is not None else 'unknown'})")
         return order
@@ -14142,8 +14175,8 @@ class TradingEngine:
                     logger.error(f"[RESTING_TP] {order.pair} #{order.id}: settle record commit failed ({_rtp_ce}) — booked with the close below")
                 if _rtp_set and _rtp_set.get('full'):
                     _rtp_st0 = _rtp_rt.get(order.id) or {}
-                    reason = rtp_reason_for_limit(config.trading_config.thresholds, order.entry_strategy, order.direction, order.entry_price,
-                                                  self._rtp_entry_fee_pct(order), _rtp_set.get('lim') or _rtp_st0.get('px'), self._rtp_maker())
+                    reason = rtp_row_reason(config.trading_config.thresholds, order, _rtp_set.get('lim') or _rtp_st0.get('px'), self._rtp_maker(),
+                                                  self._rtp_entry_fee_pct(order))
             # Aug-11 🛡: cancel the resting backstop BEFORE our own close order goes out —
             # the dual-close race guard (never let the exchange stop + the bot's close race).
             if getattr(order, 'backstop_algo_id', None):
@@ -14197,8 +14230,8 @@ class TradingEngine:
                 elif _rtp_known:
                     _close_qty = min(float(_close_qty), self._rtp_qty_snap(symbol, _rtp_live))
             if _rtp_set and _rtp_set.get('full') and exit_result is None:
-                reason = rtp_reason_for_limit(config.trading_config.thresholds, order.entry_strategy, order.direction, order.entry_price,
-                                              self._rtp_entry_fee_pct(order), _rtp_set.get('lim'), self._rtp_maker())   # #2: a full limit fill is the TP
+                reason = rtp_row_reason(config.trading_config.thresholds, order, _rtp_set.get('lim'), self._rtp_maker(),
+                                              self._rtp_entry_fee_pct(order))   # #2: a full limit fill is the TP
             if exit_result is None and _rtp_set and not _rtp_set.get('full') and float(_close_qty or 0) <= 0:
                 exit_result = {'price': current_price, 'fee_rate': taker_fee_rate, 'exit_order_type': 'TAKER', 'decision_price': current_price}
                 logger.critical(f"[RESTING_TP] {order.pair} #{order.id}: remainder below one amount step — no market order; the residual check guards it")
@@ -14287,8 +14320,8 @@ class TradingEngine:
                         if _rtp_set and _rtp_set.get('pending'):   # #3: the limit that could not be cancelled is reconciled before booking
                             _rtp_set = await self._rtp_reconcile_pending(order, _rtp_set)
                         if _rtp_set and _rtp_set.get('full'):     # the limit closed the position → its TP, never EXTERNAL at the last trade
-                            reason = rtp_reason_for_limit(config.trading_config.thresholds, order.entry_strategy, order.direction, order.entry_price,
-                                                          self._rtp_entry_fee_pct(order), _rtp_set.get('lim'), self._rtp_maker())
+                            reason = rtp_row_reason(config.trading_config.thresholds, order, _rtp_set.get('lim'), self._rtp_maker(),
+                                                          self._rtp_entry_fee_pct(order))
                         logger.warning(f"[CLOSE_FALLBACK] {order.pair}: position gone from Binance — closing in DB @ {actual_price} (reason={reason})")
                         order.status = "CLOSED"
                         order.close_reason = reason
@@ -14421,8 +14454,8 @@ class TradingEngine:
             if _rtp_set and _rtp_set.get('full') and exit_order_type != 'MAKER':
                 # #2: the limit turned out to fill the WHOLE position → booked as the take profit at the limit, MAKER — never as the stop-class
                 # reason that forced the close (the market order then found nothing to close)
-                reason = rtp_reason_for_limit(config.trading_config.thresholds, order.entry_strategy, order.direction, order.entry_price,
-                                              self._rtp_entry_fee_pct(order), _rtp_set.get('lim'), self._rtp_maker())
+                reason = rtp_row_reason(config.trading_config.thresholds, order, _rtp_set.get('lim'), self._rtp_maker(),
+                                              self._rtp_entry_fee_pct(order))
                 _rtp_lim = float(_rtp_set.get('lim') or _rtp_set.get('avg') or actual_exit_price)
                 actual_exit_price = float(_rtp_set.get('avg') or _rtp_lim)
                 exit_fee_rate, exit_order_type = float(getattr(tc, 'maker_fee', 0.00018)), 'MAKER'
@@ -14491,8 +14524,8 @@ class TradingEngine:
             _rtp_ptick = self._rtp_tick_cached(order.pair, _rtp_pp) if _rtp_pp else None
             if (_rtp_pp and _rtp_ptick and float(getattr(order, 'resting_tp_filled_qty', None) or 0) <= 0
                     and paper_filled(order.direction, current_price, _rtp_pp, _rtp_ptick)):
-                reason = rtp_reason_for_limit(config.trading_config.thresholds, order.entry_strategy, order.direction, order.entry_price,
-                                              self._rtp_entry_fee_pct(order), _rtp_pp, self._rtp_maker())
+                reason = rtp_row_reason(config.trading_config.thresholds, order, _rtp_pp, self._rtp_maker(),
+                                        self._rtp_entry_fee_pct(order))   # 🎯 (310) MANUAL_TP / OVERRIDE_TP on an operator TP
                 actual_exit_price = float(_rtp_pp)
                 exit_fee_rate = float(getattr(tc, 'maker_fee', 0.00018))
                 exit_order_type = 'MAKER'
@@ -15983,8 +16016,16 @@ class TradingEngine:
                         else:   # FIXED / FLOOR: the operator's SL / TP stored on the row
                             _mf_tp = _ovr_c.get('pattern_fixed_tp_pct') if _ovr_c else getattr(order, 'pattern_fixed_tp_pct', None)
                             _mf_sl = _ovr_c.get('pattern_fixed_sl_pct') if _ovr_c else getattr(order, 'pattern_fixed_sl_pct', None)
-                            _mf_reason = (_mf_lbl + "_TP" if (_mf_tp is not None and _mf_pnl >= float(_mf_tp))
+                            # 🎯 (DECISION_LOG 310) a resting TP alive on this row (MANUAL FIXED / override TP) → the software TP is the
+                            # safety net only (_rtp_gate: fill / ≥ N ticks through for ≥ G s); the stop is unchanged (the close cancels first)
+                            _rtp_on_mf = _ovr_c is None and self._rtp_alive(order.id, row=order)
+                            _mf_reason = (_mf_lbl + "_TP" if (_mf_tp is not None and not _rtp_on_mf and _mf_pnl >= float(_mf_tp))
                                           else _mf_lbl + "_SL" if (_mf_sl is not None and _mf_pnl <= float(_mf_sl)) else None)
+                            if _rtp_on_mf and _mf_reason is None:
+                                _rtp_g = await self._rtp_gate(order.id, current_price)
+                                if _rtp_g:
+                                    _mf_reason = _rtp_g[1]
+                                    logger.warning(f"[RESTING_TP] {order.pair} #{order.id}: {_rtp_g[0]} → close {_rtp_g[1]} (monitor, operator TP)")
                             _mf_close = _mf_reason is not None; _mf_line = float(_mf_sl) if _mf_sl is not None else float('nan')
                         if _mf_close:
                             logger.warning(f"[MANUAL_EXIT] {order.pair} {order.direction}: {_mf_reason} (candle path) pnl={_mf_pnl:.2f}% peak={_mf_peak:.2f}% line={_mf_line:.2f}%")
@@ -19882,8 +19923,15 @@ class TradingEngine:
                         _mn_reason = _br_why if _br_c else None
                         _mn_sl, _mn_tp = round(_br_line, 4), None   # for the log line
                     else:
-                        _mn_reason = (_mn_lbl + "_TP" if (_mn_tp is not None and pnl_pct >= float(_mn_tp))
+                        # 🎯 (DECISION_LOG 310) a resting TP alive (MANUAL FIXED / override TP) → the software TP is the safety net only
+                        _rtp_on_mn = self._rtp_alive(order_id, pair=pair, opened_at=order_info.get('opened_at'))
+                        _mn_reason = (_mn_lbl + "_TP" if (_mn_tp is not None and not _rtp_on_mn and pnl_pct >= float(_mn_tp))
                                       else _mn_lbl + "_SL" if (_mn_sl is not None and pnl_pct <= float(_mn_sl)) else None)
+                        if _rtp_on_mn and _mn_reason is None and not order_info.get('_closing_in_progress'):
+                            _rtp_g = await self._rtp_gate(order_id, current_price, background=True)   # never awaits REST in the price callback
+                            if _rtp_g:
+                                _mn_reason = _rtp_g[1]
+                                logger.warning(f"[RESTING_TP] {pair} #{order_id}: {_rtp_g[0]} → close {_rtp_g[1]} (realtime, operator TP)")
                     if _mn_reason and not order_info.get('_closing_in_progress'):
                         order_info['_closing_in_progress'] = True
                         logger.warning(f"[REALTIME_MANUAL_EXIT] {pair} {direction}: {_mn_reason} pnl={pnl_pct:.4f}% sl={_mn_sl} tp={_mn_tp}")

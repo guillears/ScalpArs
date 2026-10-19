@@ -28,7 +28,7 @@ from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_v
 from services.frenzy import frenzy_lite_c_tp, frenzy_lite_c_enabled, frenzy_lite_tp_override   # 🎯 (DECISION_LOG 301) LITE C
 from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, frenzy_wide_shadow, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
-from services.golive_guards import (backstop_trigger_price, backstop_needs_replace, algo_status_resting, find_untracked_positions,  # 🛡 (DECISION_LOG 292)
+from services.golive_guards import (backstop_heal_skip_inflight, backstop_trigger_price, backstop_needs_replace, algo_status_resting, find_untracked_positions,  # 🛡 (DECISION_LOG 292)
                                    untracked_action, preflight_failures, BACKSTOP_REPLACE_RETRY_S, BACKSTOP_REPRICE_INTERVAL_S, UNTRACKED_CONFIRM_PASSES,
                                    trigger_already_crossed, BACKSTOP_REPLACE_MAX_PER_PASS, BACKSTOP_HEAL_RETRY_S)
 
@@ -16913,9 +16913,12 @@ class TradingEngine:
                                                  Order.backstop_algo_id.is_(None))))).scalars().all()
                     _bk_next = self.__dict__.setdefault('_bk_heal_next', {})
                     _bk_now = time.monotonic()
+                    _bk_utc = datetime.utcnow()
                     for _bko in _bk_rows:
                         if float(_bk_next.get(_bko.id, -1e18)) > _bk_now:
                             continue   # 🛡 (292) a failed placement retries every BACKSTOP_HEAL_RETRY_S, not every pass
+                        if backstop_heal_skip_inflight(getattr(_bko, 'closing_in_progress', False), getattr(_bko, 'close_initiated_at', None), _bk_utc):
+                            continue   # 🛡 (308) the bot's own close is in flight — it nulled the id on purpose; never race a stop into it
                         _bk_pct = order_backstop_pct(config.trading_config.thresholds, _bko.entry_strategy, getattr(_bko, 'manual_exit_mode', None),
                                                      getattr(_bko, 'pattern_fixed_sl_pct', None), _bko.leverage)   # MANUAL / FRENZY / WILLY: own stop + 0.5 (271); every other order: broker_backstop_pct
                         _bk_tr = _bko.entry_price * (1 - _bk_pct / 100.0) if _bko.direction == "LONG" else _bko.entry_price * (1 + _bk_pct / 100.0)

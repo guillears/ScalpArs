@@ -21,6 +21,11 @@ BACKSTOP_REPRICE_INTERVAL_S = 30.0       # the re-price check runs at most every
 ALGO_RESTING_STATUSES = ("NEW",)         # Binance algo order statuses that are still resting on the book
 BACKSTOP_REPLACE_MAX_PER_PASS = 2        # live re-places per sweep pass (~4 exchange calls each) — a config change never stalls the 1 Hz monitor
 BACKSTOP_HEAL_RETRY_S = 10.0             # the heal sweep retries a FAILED placement at most every 10 s per order (was every pass)
+# the heal sweep leaves an order alone while the bot's OWN close is in flight (close_position nulls the backstop id right before its market
+# close — KMNOUSDT 2026-10-17 00:32: the sweep re-placed into the gap and Binance answered -4509 on the now-flat symbol). The real gap is
+# ~1–3 s (cancel → market close → CLOSED commit), so the grace is kept SHORT: a close that raised or failed is healed again after 20 s
+# (review: a long grace would stretch any no-stop window on a failed close). DECISION_LOG 308.
+BACKSTOP_CLOSE_GRACE_S = 20.0
 
 # ② the action on a confirmed untracked position
 UNTRACKED_ACTIONS = ("alert", "flatten")
@@ -193,3 +198,16 @@ def sanitize_bot_stops(th) -> List[Tuple[str, object, float]]:
                 continue
             fixed.append((field, v, safe))
     return fixed
+
+
+def backstop_heal_skip_inflight(closing_in_progress, close_initiated_at, now_utc, grace_s=BACKSTOP_CLOSE_GRACE_S) -> bool:
+    """🛡 (DECISION_LOG 308) True = the heal sweep must NOT re-place this order's backstop now: the bot's own close is in flight
+    (closing_in_progress set within grace_s seconds). Missing / unreadable timestamp or a flag older than grace_s → heal (never leave a
+    position without its exchange stop on uncertain state). Never raises."""
+    try:
+        if not bool(closing_in_progress) or close_initiated_at is None:
+            return False
+        age = (now_utc - close_initiated_at).total_seconds()
+        return -float(grace_s) < age < float(grace_s)          # a small clock skew counts as in flight; a far-future stamp → heal
+    except Exception:
+        return False

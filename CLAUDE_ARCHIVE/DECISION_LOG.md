@@ -7120,3 +7120,17 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Files:** scripts/build_master_pool.py · scripts/build_willy_exit_cf.py · reports/WILLY_EXIT_CF.csv · reports/MASTER_POOL_stacked.csv ·
   reports/BASELINE22_batch1014-1016_LIVE_orders.csv (committed; the _decisions.csv journal stays LOCAL, gitignored — operator 2026-10-16) · tests (above) · CLAUDE_CURRENT_STATE.md (B22 boundary + MASTER STACK pins).
 - **(307) review note:** there is still 0 live evidence of a WILLY resting-TP fill (the 5 B22 WILLY TPs pre-date DL 296 and booked +1.08…+1.18 by taker; the one post-296 WILLY, ICNT, stopped with 0 qty filled) — the master's "+1.25 at the line" is an assumption (≈ +0.69 pt optimistic on B22). First read at the next batch: do post-296 WILLY TPs book ≈ +1.25 as MAKER fills?
+
+## (308) 2026-10-19 — 🛡 Backstop heal sweep skips an order whose own close is in flight (operator: "review the race fix, then commit and push")
+- **Bug (live, harmless so far):** close_position cancels the Binance backstop and commits backstop_algo_id=None right before its market close;
+  the monitor's BACKSTOP SWEEP (own session) selected the OPEN row with a NULL id and re-placed a stop into that ~1–3 s gap → Binance −4509
+  ("GTE only with open positions") on KMNOUSDT 2026-10-17 00:32 and INJUSDT 2026-10-18 04:07 (position already flat; closePosition/GTE
+  stops auto-cancel, so no exposure).
+- **Fix:** services/golive_guards.backstop_heal_skip_inflight(closing_in_progress, close_initiated_at, now) — skip while the order's close
+  was published within BACKSTOP_CLOSE_GRACE_S = 20 s (short on purpose: the real gap is seconds, and a long grace would stretch any no-stop
+  window on a failed close); missing / unreadable / far-future timestamp → heal. Wired into the sweep after the throttle check.
+  _close_position_locked publishes closing_in_progress (committed) BEFORE the backstop cancel on every close path (both reviews traced it;
+  source-order test pins it). tests/test_backstop_heal_inflight.py (5).
+- **Reviews:** caveman + deep — ship. Applied: grace 120 → 20 s, None timestamp → heal, far-future clock → heal. Noted (pre-existing, out of
+  scope): closing_in_progress is never reset after a failed close (re-price / resting-TP sweeps skip such a row); an exception between the
+  backstop cancel and the failed-close re-place is not caught (the 20 s heal now bounds that gap).

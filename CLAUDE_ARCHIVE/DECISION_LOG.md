@@ -7134,3 +7134,17 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Reviews:** caveman + deep — ship. Applied: grace 120 → 20 s, None timestamp → heal, far-future clock → heal. Noted (pre-existing, out of
   scope): closing_in_progress is never reset after a failed close (re-price / resting-TP sweeps skip such a row); an exception between the
   backstop cancel and the failed-close re-place is not caught (the 20 s heal now bounds that gap).
+
+## (309) 2026-10-19 — 🪶 FRENZY_LITE back to 8× (`frenzy_lite_lev_mult` 0.5 → 0.4) (operator: "set frenzy lite back to 8x please, commit and push")
+- **Change:** trading_config.json `frenzy_lite_lev_mult` 0.5 → 0.4 (10× → 8×, invest 1.0 unchanged). config.py default (0.2) and UI shipped
+  default untouched (already wired, D11 complete since 243). Stop / TP (LITE C) / slots / resting TP unchanged — % per trade unchanged.
+- **Why (operator decision, sizing study reports/SIZING_FADE_WILLY_LITE_2026-10-16.md):** LITE is not under-sized; on the live ≈ $1.2k account
+  one −3 % stop at 10× costs 30 % of that trade's margin (24 % at 8×), two slots can stop together; 8× was the growth optimum of the LITE-alone year book (6×/8×/10× =
+  $9,236 / $10,757 / $11,142, DD −48 / −59 / −68 %) — 10× adds ~4 % growth for +9 pts of drawdown. LITE fills at 10× so far (master + B23 live,
+  as traded): 11 · −0.47 %/fill (the DL 283 revert gate reads 20 fills; not reached — this is the operator's call, not that gate firing).
+- **Master STACK 2026-10-19a:** SLEEVE_SIZE_FROZEN frenzy_lite_lev_mult 0.5 → 0.4; size-only — 24 kept LITE rows stack_pnl × 0.8 (+ size_note),
+  no other column / keep flag moves. Non-probe kept 484 · 69.6 % · Σ +81.06 % (unchanged) · +$6,001.36 → +$5,900.20 (−$101.16). validate ALL PASS;
+  1,390 tests green; stack-version pins updated.
+- **🔒 Gates:** the DL 283 "→ 0.4 if the first 20 at 10× < 0" gate is RESOLVED (done by operator). New: back to 10× only via the DL 276 bar
+  (≥ 30 LITE fills on ≥ 10 days, avg > 0 at day-bootstrap P ≥ 0.90 ∧ the 10× book's worst day > −20 %). Down to 6× (0.32) if the first 20 LITE
+  fills at 8× average < 0 OR a UTC day's FRENZY fills lose > 25 % of the book.

@@ -1,0 +1,121 @@
+sleeve,layer,cell,z,n_zone,run5_zone,run5_rest
+FRENZY_LONG,1D,entry_pos_di ≤ 26.82 (lo),2.142,90.0,43.333,30.168
+FRENZY_LONG,1D,h_hrs_since_7d_low > 146.3 (hi),2.142,90.0,43.333,30.168
+FRENZY_LONG,1D,b_off24h_high > -0.5125 (hi),2.142,90.0,43.333,30.168
+FRENZY_LONG,1D,entry_btc_off24h_pct > -0.51 (hi),1.97,89.0,42.697,30.556
+FRENZY_LONG,1D,entry_btc_trend_gap_pct > 0.0634 (med),1.967,134.0,40.299,28.889
+FRENZY_LONG,1D,entry_frenzy_bar_ret_pct > -0.8707 (med),1.967,134.0,40.299,28.889
+FRENZY_LONG,1D,entry_frenzy_bar_ret_pct > -0.5488 (hi),1.871,90.0,42.222,30.726
+FRENZY_LONG,1D,entry_frenzy_vol_mult > 122.6 (hi),1.871,90.0,42.222,30.726
+FRENZY_LONG,1D,entry_pair_1h_ema20_200_gap_pct > 26.15 (hi),1.871,90.0,42.222,30.726
+FRENZY_LONG,1D,h_prevday_ret > 8.7 (med),1.711,134.0,39.552,29.63
+FRENZY_LONG,1D,h_range24 > 38.3 (med),1.711,134.0,39.552,29.63
+FRENZY_LONG,1D,entry_eth_5m_ret1_pct > 0.0021 (med),1.711,134.0,39.552,29.63
+FRENZY_LONG,1D,entry_eth_5m_ret1_pct > 0 (sign),1.702,137.0,39.416,29.545
+FRENZY_LONG,1D,h_prevday_ret > 17.16 (hi),1.698,89.0,41.573,31.111
+FRENZY_LONG,1D,entry_btc_trend_gap_pct > 0.1321 (hi),1.599,90.0,41.111,31.285
+FRENZY_LONG,2D,entry_btc_ema50_100_gap_pct > 0.0628 ∧ entry_eth_5m_ret1_pct > 0.0021,3.52,62.0,53.226,28.986
+FRENZY_LONG,2D,entry_btc_trend_gap_pct > 0.0634 ∧ entry_eth_5m_ret1_pct > 0.0021,3.331,71.0,50.704,28.788
+FRENZY_LONG,2D,b_1h_ema20_slope3 > 0.06975 ∧ entry_eth_5m_ret1_pct > 0.0021,3.216,62.0,51.613,29.469
+FRENZY_LONG,2D,entry_btc_1h_slope > 0.0693 ∧ entry_eth_5m_ret1_pct > 0.0021,3.216,62.0,51.613,29.469
+FRENZY_LONG,2D,entry_btc_rsi_1h_prev > 55.3 ∧ entry_eth_5m_ret1_pct > 0.0021,3.159,60.0,51.667,29.665
+FRENZY_LONG,2D,entry_frenzy_bar_ret_pct > -0.8707 ∧ entry_range_position > 67.1,3.155,70.0,50.0,29.146
+FRENZY_LONG,2D,entry_pos_di ≤ 30.4 ∧ h_prevday_ret > 8.7,3.153,65.0,50.769,29.412
+FRENZY_LONG,2D,entry_btc_trend_gap_pct > 0.0634 ∧ entry_pair_volume_ratio ≤ 0.9732,3.04,71.0,49.296,29.293
+FRENZY_LONG,2D,h_off24h_high ≤ -4.764 ∧ h_prevday_ret > 8.7,2.99,74.0,48.649,29.231
+FRENZY_LONG,2D,h_prevday_ret > 8.7 ∧ x_vs24high_after ≤ -4.764,2.99,74.0,48.649,29.231
+FRENZY_LONG,2D,entry_eth_5m_ret1_pct > 0.0021 ∧ entry_pair_volume_ratio ≤ 0.9732,2.973,64.0,50.0,29.756
+FRENZY_LONG,2D,entry_btc_trend_gap_pct > 0.0634 ∧ entry_frenzy_bar_ret_pct > -0.8707,2.973,64.0,50.0,29.756
+FRENZY_LONG,2D,entry_ema_gap_5_8 ≤ 0.3953 ∧ entry_eth_5m_ret1_pct > 0.0021,2.916,67.0,49.254,29.703
+FRENZY_LONG,2D,entry_pair_ema20_ema50_gap_pct ≤ 3.309 ∧ h_prevday_closepos > 0.7054,2.863,70.0,48.571,29.648
+FRENZY_LONG,2D,entry_btc_off24lo_pct ≤ 1.44 ∧ h_1h_gap20_50 > 7.271,2.863,70.0,48.571,29.648
+FRENZY_LITE,1D,entry_btc_r72_pct > 1.065 (med),4.026,413.0,41.162,27.845
+FRENZY_LITE,1D,b_ret72 > 1.06 (med),3.44,413.0,40.194,28.814
+FRENZY_LITE,1D,b_ret72 > 2.139 (hi),3.279,275.0,42.182,30.672
+FRENZY_LITE,1D,entry_btc_r72_pct > 2.17 (hi),3.124,275.0,41.818,30.853
+FRENZY_LITE,1D,b_4h_gap20_50 > 0 (sign),3.015,436.0,39.22,29.231
+FRENZY_LITE,1D,b_4h_rsi > 54.32 (med),3.001,413.0,39.467,29.54
+FRENZY_LITE,1D,entry_btc_above72_pct > 54.2 (hi),2.969,275.0,41.455,31.034
+FRENZY_LITE,1D,b_1h_gap20_50 > 0.4528 (hi),2.969,275.0,41.455,31.034
+FRENZY_LITE,1D,b_ret24 > 1.217 (hi),2.969,275.0,41.455,31.034
+FRENZY_LITE,1D,b_4h_gap20_50 > 0.1741 (med),2.855,413.0,39.225,29.782
+FRENZY_LITE,1D,b_ret24 > 0 (sign),2.836,559.0,37.746,27.715
+FRENZY_LITE,1D,entry_btc_r72_pct > 0 (sign),2.72,540.0,37.778,28.322
+FRENZY_LITE,1D,entry_btc_off30d_high_pct > -6.05 (med),2.708,413.0,38.983,30.024
+FRENZY_LITE,1D,b_1h_ema20_slope3 > 0 (sign),2.642,575.0,37.391,27.888
+FRENZY_LITE,1D,entry_btc_1h_slope > 0 (sign),2.59,576.0,37.326,28.0
+FRENZY_LITE,2D,entry_btc_r72_pct > 1.065 ∧ h_1h_ema20_slope3 ≤ 2.536,4.947,190.0,49.474,30.031
+FRENZY_LITE,2D,entry_btc_off30d_high_pct > -6.05 ∧ entry_btc_r72_pct > 1.065,4.579,250.0,46.0,29.514
+FRENZY_LITE,2D,b_ret72 > 1.06 ∧ h_1h_ema20_slope3 ≤ 2.536,4.387,188.0,47.872,30.564
+FRENZY_LITE,2D,b_4h_gap20_50 > 0.1741 ∧ entry_btc_r72_pct > 1.065,4.384,272.0,44.853,29.422
+FRENZY_LITE,2D,entry_btc_r72_pct > 1.065 ∧ entry_frenzy_adx_delta > 0.147,4.365,196.0,47.449,30.476
+FRENZY_LITE,2D,entry_btc_r72_pct > 1.065 ∧ entry_frenzy_hours > 6.71,4.365,196.0,47.449,30.476
+FRENZY_LITE,2D,entry_btc_r72_pct > 1.065 ∧ entry_frenzy_above_streak ≤ 12,4.331,350.0,42.857,28.361
+FRENZY_LITE,2D,b_ret72 > 1.06 ∧ entry_btc_off30d_high_pct > -6.05,4.26,250.0,45.2,29.861
+FRENZY_LITE,2D,b_4h_rsi > 54.32 ∧ entry_btc_r72_pct > 1.065,4.247,332.0,43.072,28.745
+FRENZY_LITE,2D,entry_btc_r72_pct > 1.065 ∧ entry_pair_volume_ratio > 0.6569,4.177,204.0,46.569,30.547
+FRENZY_LITE,2D,entry_adx_delta > -0.249 ∧ entry_btc_r72_pct > 1.065,4.099,200.0,46.5,30.671
+FRENZY_LITE,2D,b_4h_gap20_50 > 0.1741 ∧ b_ret72 > 1.06,4.073,272.0,44.118,29.783
+FRENZY_LITE,2D,entry_btc_r72_pct > 1.065 ∧ entry_frenzy_di_spread > 10.71,4.061,211.0,45.972,30.569
+FRENZY_LITE,2D,entry_btc_r72_pct > 1.065 ∧ h_1h_px_vs_ema20 ≤ 8.253,4.01,191.0,46.597,30.866
+FRENZY_LITE,2D,b_ret24 > 0.6036 ∧ entry_btc_r72_pct > 1.065,3.999,276.0,43.841,29.818
+FRENZY_WILLY,1D,h_4h_rsi > 75.59 (hi),3.002,299.0,41.806,31.658
+FRENZY_WILLY,1D,x_log_mcap > 8.333 (med),2.661,448.0,39.286,30.804
+FRENZY_WILLY,1D,entry_mcap_usd > 2.154e+08 (med),2.661,448.0,39.286,30.804
+FRENZY_WILLY,1D,entry_eth_5m_ret1_pct > 0 (sign),2.595,478.0,38.912,30.622
+FRENZY_WILLY,1D,entry_eth_5m_ret1_pct > 0.01275 (med),2.381,448.0,38.839,31.25
+FRENZY_WILLY,1D,entry_range_position > 80.1 (hi),2.314,298.0,40.268,32.441
+FRENZY_WILLY,1D,x_log_vol24 > 7.897 (hi),2.26,299.0,40.134,32.496
+FRENZY_WILLY,1D,entry_pair_volume_24h_usd > 7.889e+07 (hi),2.26,299.0,40.134,32.496
+FRENZY_WILLY,1D,x_weekday ≤ 2 (lo),2.246,394.0,39.086,31.873
+FRENZY_WILLY,1D,h_4h_gap20_50 > 0 (sign),2.177,645.0,37.209,29.482
+FRENZY_WILLY,1D,h_hrs_since_7d_low > 139.1 (hi),2.111,299.0,39.799,32.663
+FRENZY_WILLY,1D,entry_bear_pct ≤ 17.13 (lo),2.111,299.0,39.799,32.663
+FRENZY_WILLY,1D,b_4h_rsi > 58.29 (hi),2.111,299.0,39.799,32.663
+FRENZY_WILLY,1D,b_4h_rsi > 52.42 (med),2.101,448.0,38.393,31.696
+FRENZY_WILLY,1D,entry_btc_off30d_high_pct > -6.595 (med),2.101,448.0,38.393,31.696
+FRENZY_WILLY,2D,x_hour > 12.25 ∧ x_log_mcap > 8.333,4.135,211.0,46.919,31.387
+FRENZY_WILLY,2D,entry_mcap_usd > 2.154e+08 ∧ x_hour > 12.25,4.135,211.0,46.919,31.387
+FRENZY_WILLY,2D,entry_btc_off30d_high_pct > -6.595 ∧ x_hour > 12.25,4.135,211.0,46.919,31.387
+FRENZY_WILLY,2D,entry_frenzy_run_pct ≤ 10.86 ∧ h_1h_ema20_slope3 > 2.235,3.731,207.0,45.894,31.785
+FRENZY_WILLY,2D,entry_dist_from_ema13_pct ≤ 2.861 ∧ h_1h_ema20_slope3 > 2.235,3.469,170.0,46.471,32.369
+FRENZY_WILLY,2D,entry_btc_adx ≤ 22.89 ∧ entry_eth_5m_ret1_pct > 0.01275,3.437,209.0,44.976,32.023
+FRENZY_WILLY,2D,entry_dist_from_ema13_pct ≤ 2.861 ∧ entry_pair_ema20_ema50_gap_pct > 4.184,3.41,116.0,49.138,32.949
+FRENZY_WILLY,2D,entry_dist_from_ema13_pct ≤ 2.861 ∧ h_1h_px_vs_ema20 > 10.73,3.347,107.0,49.533,33.08
+FRENZY_WILLY,2D,h_up_from_7d_low > 39.19 ∧ x_log_mcap > 8.333,3.342,242.0,43.802,31.804
+FRENZY_WILLY,2D,entry_mcap_usd > 2.154e+08 ∧ h_up_from_7d_low > 39.19,3.342,242.0,43.802,31.804
+FRENZY_WILLY,2D,entry_eth_5m_ret1_pct > 0.01275 ∧ entry_price_vs_ema5_pct ≤ 0.593,3.331,229.0,44.105,31.934
+FRENZY_WILLY,2D,entry_frenzy_willy_wait_bars > 1 ∧ x_weekday ≤ 3,3.31,198.0,44.949,32.235
+FRENZY_WILLY,2D,entry_mcap_usd > 2.154e+08 ∧ h_ret7d > 23.34,3.304,240.0,43.75,31.86
+FRENZY_WILLY,2D,h_ret7d > 23.34 ∧ x_log_mcap > 8.333,3.304,240.0,43.75,31.86
+FRENZY_WILLY,2D,h_1h_gap20_50 > 2.47 ∧ x_weekday ≤ 3,3.286,235.0,43.83,31.921
+POOLED,1D,b_4h_rsi > 53.43 (med),3.687,995.0,38.693,30.823
+POOLED,1D,entry_btc_above72_pct > 51.7 (med),3.63,991.0,38.648,30.9
+POOLED,1D,entry_btc_r72_pct > 0.89 (med),3.442,991.0,38.446,31.1
+POOLED,1D,entry_btc_off30d_high_pct > -6.25 (med),3.438,994.0,38.431,31.093
+POOLED,1D,b_ret72 > 1.968 (hi),3.416,664.0,39.91,32.178
+POOLED,1D,b_off24h_high > -0.8227 (med),3.311,995.0,38.291,31.225
+POOLED,1D,entry_btc_r72_pct > 0 (sign),3.308,1231.0,37.53,30.263
+POOLED,1D,entry_btc_r72_pct > 2.01 (hi),3.252,663.0,39.668,32.304
+POOLED,1D,b_off24h_high > -0.5272 (hi),3.216,664.0,39.608,32.329
+POOLED,1D,b_ret72 > 0 (sign),3.215,1225.0,37.469,30.418
+POOLED,1D,entry_btc_off24h_pct > -0.81 (med),3.188,993.0,38.167,31.363
+POOLED,1D,b_ret72 > 0.8472 (med),3.123,995.0,38.09,31.426
+POOLED,1D,b_4h_rsi > 58.76 (hi),3.116,664.0,39.458,32.404
+POOLED,1D,entry_eth_5m_ret1_pct > 0 (sign),3.098,1039.0,37.921,31.303
+POOLED,1D,h_off24h_high > -4.399 (med),3.028,995.0,37.99,31.526
+POOLED,2D,entry_btc_above72_pct > 51.7 ∧ h_off24h_high > -4.399,4.811,505.0,43.564,31.763
+POOLED,2D,entry_btc_above72_pct > 51.7 ∧ x_vs24high_after > -4.399,4.811,505.0,43.564,31.763
+POOLED,2D,entry_btc_off30d_high_pct > -6.25 ∧ x_vs24high_after > -4.399,4.622,523.0,43.021,31.812
+POOLED,2D,entry_btc_off30d_high_pct > -6.25 ∧ h_off24h_high > -4.399,4.622,523.0,43.021,31.812
+POOLED,2D,b_4h_rsi > 53.43 ∧ entry_btc_off30d_high_pct > -6.25,4.561,715.0,41.259,31.113
+POOLED,2D,b_4h_rsi > 53.43 ∧ h_off24h_high > -4.399,4.528,520.0,42.885,31.883
+POOLED,2D,b_4h_rsi > 53.43 ∧ x_vs24high_after > -4.399,4.528,520.0,42.885,31.883
+POOLED,2D,b_1h_gap20_50 > 0.119 ∧ h_off24h_high > -4.399,4.405,491.0,42.974,32.067
+POOLED,2D,b_1h_gap20_50 > 0.119 ∧ x_vs24high_after > -4.399,4.405,491.0,42.974,32.067
+POOLED,2D,entry_btc_off30d_high_pct > -6.25 ∧ entry_range_position > 69,4.392,502.0,42.829,32.035
+POOLED,2D,entry_btc_r72_pct > 0.89 ∧ h_off24h_high > -4.399,4.255,492.0,42.683,32.155
+POOLED,2D,entry_btc_r72_pct > 0.89 ∧ x_vs24high_after > -4.399,4.255,492.0,42.683,32.155
+POOLED,2D,entry_btc_off30d_high_pct > -6.25 ∧ entry_btc_r72_pct > 0.89,4.246,622.0,41.479,31.702
+POOLED,2D,b_4h_rsi > 53.43 ∧ entry_btc_above72_pct > 51.7,4.228,755.0,40.53,31.23
+POOLED,2D,entry_btc_above72_pct > 51.7 ∧ entry_btc_off30d_high_pct > -6.25,4.219,590.0,41.695,31.834

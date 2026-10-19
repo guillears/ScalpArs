@@ -505,5 +505,12 @@ The ML regime study found both DL 273 lines consistent in all three backtest era
 BTC24H_DOWN p 0.05). At the next batch: read both against their FROZEN gates (expectancy bar, window units, three blocks, before/after per batch,
 note live PEPE +1.16 would have been refused by ADX-falling). Re-read only — no new thresholds.
 
+### 👁 LONG_STOP4 + LITE_GREEN_RETRY (DECISION_LOG 315)
+`venv/bin/python scripts/scout_long_stop4.py` — FRENZY_LONG fills ≥ 2026-10-19 17:00: −3 vs −4 walker per fill, live-stopped / saved / deeper,
+mean Δ + day-bootstrap P, integrity (Δ = 0 on non-stopped fills; violations listed), reverse-parity list, frozen verdict (READ at 15 stops on 8 days).
+`venv/bin/python scripts/scout_lite_green_retry.py` — needs the Decisions exports covering the batch (3 days each — check for gaps): GREEN_BAR
+refusals → next red bar shadow fills / no-fill reasons / replica mismatches, mean vs the same-period live LITE mean, frozen verdict (READ at 20 on 10 days).
+Both are tick-first: re-run once the batch's aggTrades archives are published (≥ 6 h after each UTC day) so 1m-provisional rows upgrade.
+
 ### 👁 WILLY_MKTDIP (DECISION_LOG 305) + WILLY tracker comparator (DECISION_LOG 304) + WILLY_AVGDOWN (DECISION_LOG 313)
 `venv/bin/python scripts/scout_willy_mktdip.py` (zone vs rest +2 rates, verdict) and `scripts/scout_willy_timecap.py` (post-297 fills now vs the LIVE exit incl. the late TP; check the split line). Also verify the first post-296 WILLY win booked ≈ +1.25 as a MAKER resting fill (pre-296 wins booked +1.08–1.18 by taker). Run `venv/bin/python scripts/scout_willy_avgdown.py` (averaging-down shadow: adds / add-leg Σ$ / worst % acct / parity flags, frozen verdict).

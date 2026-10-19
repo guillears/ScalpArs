@@ -7312,3 +7312,63 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   read is a FROZEN first-N sample like v1 (first 30, then first 60 by refusal time; let-through cut at the sample's last refusal) — later
   provisional rows never hold it · D2 the study's live script switched to the same 5m window and re-run: bucket counts unchanged · 418/429
   in tb_vol24 now arms the shared cooldown · stale 1h comments fixed. 8 tests in tests/test_scout_turnover_mcap_split.py.
+
+## (315) 2026-10-19 — 👁 LONG_STOP4 + LITE_GREEN_RETRY observe lines (operator: "add LONG_STOP4 and LITE_GREEN_RETRY watch lines")
+- **Source:** reports/FRENZY_REALFILLS_EXIT_RUNNER_2026-10-19.md (§A3 stop width, §F2 green bar, §G proposed frozen gates; scripts
+  scripts/study_frenzy_realfills_*.py). Recommendation there: nothing to ship; register two observe-only lines. No engine / config / UI change.
+- **LONG_STOP4 evidence:** real fills (master B16–B22 + live B23), read on the LIVE-STOPPED cohort on ticks: 9 FRENZY_LONG fills stopped at
+  −3 → at −4 5 saved (ORCA 10-06, MAGIC 10-11, BAT 10-13, ICNT 10-16, AGT 10-18 00:30) / 4 deeper (−4.12); +0.67 vs +0.02 %/fill; LODO over
+  the stop axis picks −4 in 13/13 folds, Δ +0.65 [+0.08, +1.36] (P 0.99); Δ = 0.000 on every fill not stopped. **Backtest refutes**
+  (yr6, 623 LONG): only 18 % of −3 stops saved at −4 (vs 56 % real), Δ −0.003 [−0.09, +0.09], 2026-H2 −0.25 [−0.36, −0.13] (P 0.00);
+  a ≥ 5/9 count at an 18 % base rate has p ≈ 0.02 → the real era is unusual. At blocker size ($100) ≈ $1/day either way. LITE is the
+  opposite (11/11 of its −3 stops go deeper; −4 = −0.39). A wider stop holds the pair longer → changes which LITE entries the LONG blocks.
+- **LONG_STOP4 line:** `scripts/scout_long_stop4.py` — cohort CLOSED FRENZY_LONG fills opened ≥ 2026-10-19 17:00 UTC (paper + live via
+  export_glob, dedup (opened_at, pair, direction), MANUAL closes excluded; the 9 motivating stops never count). Each fill re-walked from its
+  fill price on its own path — ticks first (shared tick caches, else the data.binance.vision aggTrades archive, no API weight; 1-second
+  bars), else public fapi 1m (stop-first, flagged provisional) — with the study walker copied verbatim (gross lines, same-bar stop + TP =
+  stop, gap fills at the open; entry taker 0.045, resting maker TP 0.018 at the line (DL 310), stop / cap taker + 0.03 slip): −4 shadow vs
+  the same walker at today's −3; parity vs booked printed. Diagnostic run on the real era (--since 2026-10-02, 32 exported fills): AGT 10-18
+  −3.12 STOP → −4 +1.44 TP exactly as the study; the same 5 saved fills; 9 pre-DL 283 (+3 TP era) live stops the +1.5 walker does not stop
+  are printed as reverse parity and kept out of the saved share.
+- **🔒 LONG_STOP4 frozen gate (never re-fit −4):** READ at ≥ 15 live-stopped fills on ≥ 8 UTC days. CANDIDATE (operator decides) only if
+  saved share (live stops the −3 walker confirms that the −4 shadow turns into TP) ≥ 50 % ∧ mean Δ over ALL cohort LONG fills > 0 with
+  day-bootstrap P ≥ 0.90 ∧ Δ = 0 on every fill the live −3 did not stop (violations printed) ∧ no day > 50 % of ΣΔ; next step then =
+  re-price the LITE entries a longer LONG hold would block + 30–50 % in-sample haircut. RETIRE if saved share ≤ 25 % or mean Δ ≤ 0 at the read.
+- **LITE_GREEN_RETRY evidence:** replica (real era, T100): 92 of 184 LITE stretches were consumed by a green candle (63 traded); letting the
+  next red bar of the same stretch trade adds 48 fills at +0.23 % → +$295 [−761, +1,287], P 0.72 (retry-every-bar +$499, P 0.81). Prior:
+  DECISION_LOG 243's 1,992-fill study refuted "retry later bars" (+0.163 → −0.005 %/trade) — that is why the green bar consumes the stretch.
+  Example: AGT 10-16 02:00 refused green → next red 02:15 → +2 by 02:22, +3 by 02:46 on 1m. Low prior → observe only.
+- **LITE_GREEN_RETRY line:** `scripts/scout_lite_green_retry.py` — cohort every FRENZY_LITE_GREEN_BAR refusal in the decisions journals
+  (paper + live decision exports via export_glob) with refusal time ≥ 2026-10-19 17:00 UTC, dedup (bucket, pair). The episode is rebuilt
+  with the engine's own services.frenzy code (frenzy_walk on the 1,499 closed 5m bars + normal_hour_usd on 1h, public klines); the refused
+  bar must rebuild to GREEN_BAR (else REPLICA_MISMATCH, listed). Shadow = the next bar of the SAME stretch (same spike, same stretch id =
+  closes still ≥ the spike VWAP) that frenzy_lite_status rates READY (red / flat, vol < 100×, 2 h ≤ age ≤ 16.75 h, ≥ 12 closes above, 24 h
+  volume ≥ $20M); no fill (counted) if BROKEN / EPISODE_ENDED / WINDOW_OVER first, or the READY bar is refused by the reconstructible open
+  checks (WILLY hold ≤ 6 bars, bearish day, pair held, 2 LITE slots, pair-day cap 3, dislocation > 1 %). Entry close + 8 s first print ×
+  1.001, LITE C (+3 if vol ≥ 20× ∧ BTC 1h EMA20 slope > 0 else +2) / −3 / 12 h maker TP, the same walker, $2,450. NOT reconstructed: the
+  ≤ 25-pair shortlist, market-volume gate, first-bar guarantee / restarts, the 6–8 h normal-hour cache, ticker 24 h volume (rebuilt
+  288 × v × typical). Diagnostic (--since 2026-10-15, 15 journal refusals): 0 mismatches; AGT 10-16 02:00 → entry 02:20:08 (bar 02:15)
+  → +2.94 TP at 24 min; 7 shadow fills on 4 days, −0.52 %/fill (4 stops on 10-15), 6 bearish-day / 1 broken no-fills.
+- **🔒 LITE_GREEN_RETRY frozen gate (never re-fit):** READ at ≥ 20 shadow fills on ≥ 10 UTC days. CANDIDATE only if shadow mean > 0 with
+  day-bootstrap P ≥ 0.90 ∧ ≥ the same-period live FRENZY_LITE mean (booked, orders exports) ∧ no day or pair ≥ 50 % of the gain. RETIRE if
+  the mean ≤ 0 at the read.
+- **Both:** Binance budget — aggTrades archives ≤ 4 per run (≥ 6 h after the UTC day, 404 retried ≥ 6 h later, > 600 MB skipped); fapi
+  paced, stop at X-MBX-USED-WEIGHT-1M ≥ 700, shared cooldown honoured / armed on 418-429, 403 stops the run; per-run caps; incomplete windows
+  stay PENDING; caches reports/backtest_cache/scout_long_stop4/ and scout_lite_green_retry/. First frozen runs 2026-10-19 16:51 UTC: 0 / 0
+  (cohort starts 17:00). Tests: tests/test_scout_long_stop4.py (18, incl. walker parity with the study source) +
+  tests/test_scout_lite_green_retry.py (20).
+- **LITE_GREEN_RETRY deep dive (reports/LITE_GREEN_RETRY_DEEP_2026-10-19.md, operator "make a deep dive"):** DL 243 never tested the
+  narrow rule (it retried EVERY refused bar, old lock exit); the B19 review's green-only test (no status re-check, +3/−3) was −0.20 on
+  719. Exact operator rule (next red/flat bar of the same stretch, LITE status + open filters re-checked, LITE C, today's size, slots /
+  pair-held / WILLY hold modelled): real era 49 added fills · +0.16 % · +$218 [−934, +1,251], P 0.67 (best cell S15r +$380, LODO +$227;
+  top-5 removed −0.16; per batch +187 / +129 / −105 / −131 / 0 / +162 / −110 / +86) · TWO-YEAR 1,927 added fills · −0.109 % [−0.23,
+  +0.02] · −$5,661, P(>0) 0.04, every period negative and below today's LITE, every window negative. Mechanism: retry fills sit higher
+  above the spike VWAP (+2.9 vs +1.9 %) — the green refusal filters the STRETCH, the later red bar inherits it. Decision: LITE unchanged;
+  the scout stays observe-only, low prior; its read additionally requires WR ≥ LITE C breakeven; never re-fit the window.
+- **Dual review (caveman pass + deep FIX-FIRST) — applied pre-commit:** ① green-retry scout: old non-fill rows (SIGNAL_EXPIRED) counted as
+  open FOREVER → permanent false PAIR_HELD refusals; now only OPEN / CLOSED rows, an OPEN row ends at opened + 12 h · ② the frozen gate
+  text now carries WR ≥ 58 % (LITE C breakeven, in the code since pre-commit) in the docstring / DL / CURRENT_STATE, printed in the gate
+  line · ③ shadow-entry open filters FROZEN as refusals: LITE status, bearish-day, pair-day cap, 1 % dislocation AND pair held / LITE
+  slots / WILLY hold (a shadow fill must be a trade the live engine could take — supersedes the deep dive's "flag only" line, noted in the
+  report) · ④ both cohorts start 2026-10-19 17:00 UTC (frozen; the realfills report's §G said 16:00) · ⑤ tests 18 + 21; LONG_STOP4 cache
+  folders ticks/ + klines/. Research fetchers' cooldown overwrite / 403 handling left as is (not run again).

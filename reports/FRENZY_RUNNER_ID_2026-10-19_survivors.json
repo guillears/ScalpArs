@@ -1,0 +1,17 @@
+{
+ "FRENZY_LITE": [
+  "b_ret24 > 1.217 (hi)",
+  "b_ret24 > 0 (sign)",
+  "entry_btc_r72_pct > 1.065 \u2227 h_1h_ema20_slope3 \u2264 2.536",
+  "b_ret72 > 1.06 \u2227 h_1h_ema20_slope3 \u2264 2.536",
+  "entry_btc_r72_pct > 1.065 \u2227 h_1h_px_vs_ema20 \u2264 8.253",
+  "b_ret24 > 0.6036 \u2227 entry_btc_r72_pct > 1.065",
+  "T5 BTC tailwind (1h slope>0 \u2227 4h EMA20>50)"
+ ],
+ "FRENZY_WILLY": [
+  "h_4h_gap20_50 > 0 (sign)"
+ ],
+ "POOLED": [
+  "T8 stretched vs spike VWAP \u2265 13 % [fewer]"
+ ]
+}

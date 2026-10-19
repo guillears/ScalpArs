@@ -1,0 +1,7 @@
+line,sleeve,N,days,WR,avg,sum,rest_N,rest_WR,rest_avg,unscored
+LITE_BTC1H_FALLING (slope ≤ 0),FRENZY_LITE,8,6,75.0,0.809,6.48,20,55.0,0.194,0
+"LITE_STRETCH_REENTRY (gap > 1.87 ∧ k ≥ 2, k = all FRENZY fills incl. WILLY — approx.)",FRENZY_LITE,5,4,60.0,0.491,2.45,23,60.9,0.344,0
+GVOL_SPLIT LITE (entry_frenzy_gvol ≥ 1.0),FRENZY_LITE,4,3,75.0,1.365,5.46,14,57.1,0.066,10
+WILLY_BTC1H blocked side (slope ≤ 0),FRENZY_WILLY,11,3,63.6,-0.834,-9.18,20,90.0,0.625,0
+"WILLY DIP_SUB deep red bar (≤ −1.16), all slopes",FRENZY_WILLY,14,8,85.7,0.506,7.09,17,76.5,-0.222,0
+GVOL_SPLIT LONG (entry_frenzy_gvol ≥ 1.0),FRENZY_LONG,2,2,50.0,-0.752,-1.5,9,66.7,-0.001,18

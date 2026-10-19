@@ -1,0 +1,7 @@
+block,sleeve,walker,N,within_005,same_sign,walker_avg,book_avg
+BT vs pct_new,FRENZY_LONG,x15,603,0.925,0.992,-0.103,-0.156
+REAL x0 vs booked/stack,FRENZY_LONG,x0,29,0.931,1.0,0.103,0.118
+BT vs pct_new,FRENZY_LITE,x3,1427,0.79,0.978,0.005,-0.005
+REAL x0 vs booked/stack,FRENZY_LITE,x0,28,0.929,1.0,0.357,0.37
+BT vs pct_new,FRENZY_WILLY,x0,1482,0.655,0.933,-0.119,-0.108
+REAL x0 vs booked/stack,FRENZY_WILLY,x0,31,1.0,1.0,0.105,0.107

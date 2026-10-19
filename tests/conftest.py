@@ -79,7 +79,7 @@ def _willy_hold_free(request, monkeypatch):
 @pytest.fixture(autouse=True)
 def _mcap_isolated(request, monkeypatch, tmp_path):
     """🗄 Oct-8: services.mcap_service never fetches from the network or writes the real mcap_cache.json (repo dir / /opt/scalpars-data) in a
-    test — the persist path is ALWAYS a per-test tmp file; request_pair / ensure_refresh are no-ops unless the test is @pytest.mark.mcap_real."""
+    test — the persist path is ALWAYS a per-test tmp file; request_pair / ensure_refresh / fetch_pair_now (cache-only) are no-ops unless the test is @pytest.mark.mcap_real."""
     from services import mcap_service as _mcs
     _p = str(tmp_path / "mcap_cache.json")
     monkeypatch.setattr(_mcs, "_path", lambda: _p)
@@ -87,3 +87,7 @@ def _mcap_isolated(request, monkeypatch, tmp_path):
         return
     monkeypatch.setattr(_mcs, "request_pair", lambda pair: False)
     monkeypatch.setattr(_mcs, "ensure_refresh", lambda pairs: None)
+
+    async def _no_fetch(pair, timeout_s=20.0):   # 🏷 (311) the post-fill one-pair backfill never touches the network in a test
+        return _mcs.get(pair)
+    monkeypatch.setattr(_mcs, "fetch_pair_now", _no_fetch)

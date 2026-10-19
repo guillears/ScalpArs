@@ -1294,6 +1294,7 @@
                                     <th class="px-2 py-1 text-left">Regime</th>
                                     <th class="px-2 py-1 text-right">Peak%</th>
                                     <th class="px-2 py-1 text-right">RSImax</th>
+                                    <th class="px-2 py-1 text-right" title="🏷 (DECISION_LOG 311) entry market cap (entry_mcap_usd) — observe-only; a fade on a pair outside the cache is stamped right after its fill">Mcap</th>
                                     <th class="px-2 py-1 text-center">Armed</th>
                                     <th class="px-2 py-1 text-left">Exit</th>
                                     <th class="px-2 py-1 text-right">P&L %</th>
@@ -1301,7 +1302,7 @@
                                 </tr>
                             </thead>
                             <tbody id="spike-fires-body" class="divide-y divide-white/5">
-                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No spike fires in this window</td></tr>
+                                <tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No spike fires in this window</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -8472,6 +8473,12 @@
             if (f && f.code === 'FRENZY_ON') return 'ON';
             return frenzyLiteLocal(f, true) || (f && f.text) || '';
         }
+        // 🏷 (DECISION_LOG 311) Spike Fires Mcap cell — UI table + both text exports share it ($332M · $1.25B · '—' when unknown)
+        function spikeMcapTxt(v, none) {
+            const n = Number(v);
+            if (v == null || !isFinite(n) || n <= 0) return none ?? '—';
+            return n >= 1e9 ? '$' + (n / 1e9).toFixed(2) + 'B' : '$' + (n / 1e6).toFixed(0) + 'M';
+        }
         // 🟥 Oct-8 (251): a pending WILLY entry's expiry in the operator's clock (same convention as the other FRENZY monitor times)
         function frenzyWillyClock(ms) { try { return frenzyOnClock(ms, false); } catch (e) { return '?'; } }
         function frenzyWillyPendingText(f) {
@@ -10338,9 +10345,9 @@
             if (perf.spike_fires && perf.spike_fires.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## 🚀 Spike Fires (per-fire — CHASE + FADE, both eras; Jul 27 full ship)\n');
-                lines.push(`${'Time'.padEnd(17)} ${'Pair'.padEnd(14)} ${'Species'.padEnd(12)} ${'ADX'.padStart(6)} ${'ATR%'.padStart(6)} ${'Rng'.padStart(4)} ${'Regime'.padEnd(8)} ${'Peak%'.padStart(7)} ${'RSImx'.padStart(6)} ${'Arm'.padEnd(4)} ${'Exit'.padEnd(18)} ${'P&L%'.padStart(7)} ${'P&L$'.padStart(9)}`);
+                lines.push(`${'Time'.padEnd(17)} ${'Pair'.padEnd(14)} ${'Species'.padEnd(12)} ${'ADX'.padStart(6)} ${'ATR%'.padStart(6)} ${'Rng'.padStart(4)} ${'Regime'.padEnd(8)} ${'Peak%'.padStart(7)} ${'RSImx'.padStart(6)} ${'Mcap'.padStart(8)} ${'Arm'.padEnd(4)} ${'Exit'.padEnd(18)} ${'P&L%'.padStart(7)} ${'P&L$'.padStart(9)}`);
                 for (const r of perf.spike_fires) {
-                    lines.push(`${(r.opened_at || '').slice(5, 16).padEnd(17)} ${(r.pair || '').padEnd(14)} ${((r.species || '') + (r.direction === 'SHORT' ? '·S' : '')).padEnd(12)} ${(r.adx != null ? r.adx.toFixed(1) : '-').padStart(6)} ${(r.atr_pct != null ? r.atr_pct.toFixed(2) : '-').padStart(6)} ${(r.rngpos != null ? r.rngpos.toFixed(0) : '-').padStart(4)} ${(r.btc_regime || '-').padEnd(8)} ${(r.peak_pnl != null ? ((r.peak_pnl >= 0 ? '+' : '') + r.peak_pnl.toFixed(2)) : '-').padStart(7)} ${(r.spike_rsi_max != null ? r.spike_rsi_max.toFixed(0) : '-').padStart(6)} ${(r.armed ? 'Y' : '·').padEnd(4)} ${(r.close_reason || 'OPEN').padEnd(18)} ${(r.pnl_pct != null ? ((r.pnl_pct >= 0 ? '+' : '') + r.pnl_pct.toFixed(2)) : '-').padStart(7)} ${(r.pnl_usd != null ? '$' + r.pnl_usd.toFixed(2) : '-').padStart(9)}`);
+                    lines.push(`${(r.opened_at || '').slice(5, 16).padEnd(17)} ${(r.pair || '').padEnd(14)} ${((r.species || '') + (r.direction === 'SHORT' ? '·S' : '')).padEnd(12)} ${(r.adx != null ? r.adx.toFixed(1) : '-').padStart(6)} ${(r.atr_pct != null ? r.atr_pct.toFixed(2) : '-').padStart(6)} ${(r.rngpos != null ? r.rngpos.toFixed(0) : '-').padStart(4)} ${(r.btc_regime || '-').padEnd(8)} ${(r.peak_pnl != null ? ((r.peak_pnl >= 0 ? '+' : '') + r.peak_pnl.toFixed(2)) : '-').padStart(7)} ${(r.spike_rsi_max != null ? r.spike_rsi_max.toFixed(0) : '-').padStart(6)} ${spikeMcapTxt(r.mcap_usd, '-').padStart(8)} ${(r.armed ? 'Y' : '·').padEnd(4)} ${(r.close_reason || 'OPEN').padEnd(18)} ${(r.pnl_pct != null ? ((r.pnl_pct >= 0 ? '+' : '') + r.pnl_pct.toFixed(2)) : '-').padStart(7)} ${(r.pnl_usd != null ? '$' + r.pnl_usd.toFixed(2) : '-').padStart(9)}`);
                 }
             }
 
@@ -12484,9 +12491,9 @@
             if (perf.spike_fires && perf.spike_fires.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## 🚀 Spike Fires (per-fire — CHASE + FADE, both eras; Jul 27 full ship)\n');
-                    lines.push(`${'Time'.padEnd(17)} ${'Pair'.padEnd(14)} ${'Species'.padEnd(12)} ${'ADX'.padStart(6)} ${'ATR%'.padStart(6)} ${'Rng'.padStart(4)} ${'Regime'.padEnd(8)} ${'Peak%'.padStart(7)} ${'RSImx'.padStart(6)} ${'Arm'.padEnd(4)} ${'Exit'.padEnd(18)} ${'P&L%'.padStart(7)} ${'P&L$'.padStart(9)}`);
+                    lines.push(`${'Time'.padEnd(17)} ${'Pair'.padEnd(14)} ${'Species'.padEnd(12)} ${'ADX'.padStart(6)} ${'ATR%'.padStart(6)} ${'Rng'.padStart(4)} ${'Regime'.padEnd(8)} ${'Peak%'.padStart(7)} ${'RSImx'.padStart(6)} ${'Mcap'.padStart(8)} ${'Arm'.padEnd(4)} ${'Exit'.padEnd(18)} ${'P&L%'.padStart(7)} ${'P&L$'.padStart(9)}`);
                     for (const r of perf.spike_fires) {
-                        lines.push(`${(r.opened_at || '').slice(5, 16).padEnd(17)} ${(r.pair || '').padEnd(14)} ${((r.species || '') + (r.direction === 'SHORT' ? '·S' : '')).padEnd(12)} ${(r.adx != null ? r.adx.toFixed(1) : '-').padStart(6)} ${(r.atr_pct != null ? r.atr_pct.toFixed(2) : '-').padStart(6)} ${(r.rngpos != null ? r.rngpos.toFixed(0) : '-').padStart(4)} ${(r.btc_regime || '-').padEnd(8)} ${(r.peak_pnl != null ? ((r.peak_pnl >= 0 ? '+' : '') + r.peak_pnl.toFixed(2)) : '-').padStart(7)} ${(r.spike_rsi_max != null ? r.spike_rsi_max.toFixed(0) : '-').padStart(6)} ${(r.armed ? 'Y' : '·').padEnd(4)} ${(r.close_reason || 'OPEN').padEnd(18)} ${(r.pnl_pct != null ? ((r.pnl_pct >= 0 ? '+' : '') + r.pnl_pct.toFixed(2)) : '-').padStart(7)} ${(r.pnl_usd != null ? '$' + r.pnl_usd.toFixed(2) : '-').padStart(9)}`);
+                        lines.push(`${(r.opened_at || '').slice(5, 16).padEnd(17)} ${(r.pair || '').padEnd(14)} ${((r.species || '') + (r.direction === 'SHORT' ? '·S' : '')).padEnd(12)} ${(r.adx != null ? r.adx.toFixed(1) : '-').padStart(6)} ${(r.atr_pct != null ? r.atr_pct.toFixed(2) : '-').padStart(6)} ${(r.rngpos != null ? r.rngpos.toFixed(0) : '-').padStart(4)} ${(r.btc_regime || '-').padEnd(8)} ${(r.peak_pnl != null ? ((r.peak_pnl >= 0 ? '+' : '') + r.peak_pnl.toFixed(2)) : '-').padStart(7)} ${(r.spike_rsi_max != null ? r.spike_rsi_max.toFixed(0) : '-').padStart(6)} ${spikeMcapTxt(r.mcap_usd, '-').padStart(8)} ${(r.armed ? 'Y' : '·').padEnd(4)} ${(r.close_reason || 'OPEN').padEnd(18)} ${(r.pnl_pct != null ? ((r.pnl_pct >= 0 ? '+' : '') + r.pnl_pct.toFixed(2)) : '-').padStart(7)} ${(r.pnl_usd != null ? '$' + r.pnl_usd.toFixed(2) : '-').padStart(9)}`);
                     }
                 }
 
@@ -17635,6 +17642,7 @@
                                 <td class="px-2 py-1.5 text-gray-400">${r.btc_regime || '—'}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-300">${r.peak_pnl != null ? ((r.peak_pnl >= 0 ? '+' : '') + r.peak_pnl.toFixed(2)) : '—'}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-400">${r.spike_rsi_max != null ? r.spike_rsi_max.toFixed(0) : '—'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${spikeMcapTxt(r.mcap_usd)}</td>
                                 <td class="px-2 py-1.5 text-center">${r.armed ? '<span class="text-orange-400">⚡</span>' : '<span class="text-gray-600">·</span>'}</td>
                                 <td class="px-2 py-1.5 text-gray-400">${r.close_reason || 'OPEN'}</td>
                                 <td class="px-2 py-1.5 text-right ${pnlCls}">${r.pnl_pct != null ? ((r.pnl_pct >= 0 ? '+' : '') + r.pnl_pct.toFixed(2) + '%') : '—'}</td>
@@ -17642,7 +17650,7 @@
                             </tr>`;
                         }).join('');
                     } else {
-                        spfBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No spike fires in this window</td></tr>';
+                        spfBody.innerHTML = '<tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No spike fires in this window</td></tr>';
                     }
                 }
                 // Performance by Pair Listing Age (Jul 13 — 180->90 step-down read gate)

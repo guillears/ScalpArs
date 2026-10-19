@@ -7192,3 +7192,36 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   known, accepted: a blocked cancel during an exchange outage leaves the old limit's safety net at the old price until the 5 s sweep
   retries (deep L2); a stray-cancel partial fill is not recorded (deep L4, pre-existing since 296). At deploy the sweep arms every open
   MANUAL FIXED/FLOOR-with-TP, overridden-with-TP and FRENZY_LONG row and cancels the operator's own reduce-only limits on those symbols.
+
+## (311) 2026-10-19 — 🏷 SPIKE_FADE entry mcap stamp (observe-only) (operator: "add the mcap stamp")
+- **Why:** the KMNOUSDT 2026-10-17 live fade (−$254, −20.7 % of the account) carried `entry_mcap_usd` = NULL although its cap was ≈ $332M —
+  the open path stamps market cap only from the in-memory cache (Top-N scan pairs + FRENZY flags, plus WILLY's one-pair fetch), and spike
+  pairs are often outside it. `reports/FADE_SIZE_MCAP_2026-10-19.md` §8: master fades ≥ $200M won 9/9 (worst +0.27 %); every master loser
+  sat < $100M mcap and < $4.2M 24 h volume; KMNO's risk was ticket vs book depth, not mcap. An mcap size rule ("1× ≥ $200M, 2× below",
+  mcap ladder) was REJECTED (worse than today on master). The stamp makes the ≥ $200M cohort measurable going forward.
+- **Mechanism (observe-only — never blocks, delays or resizes a fill):** the open path is unchanged (cache read `mcap_service.get`, no
+  network). AFTER the fill, the booking commit and `db.refresh(order)`, a SPIKE_FADE / SPIKE_CHASE / SPIKE_BOUNCE row (same `open_position`
+  path — all three covered) still missing `entry_mcap_usd` schedules ONE background task (`TradingEngine._spike_mcap_schedule`, never
+  awaited). The task calls the new `mcap_service.fetch_pair_now(pair)`: cached value first (no request), else it awaits the SAME shared
+  one-pair fetch WILLY's `request_pair` uses (same in-flight task per pair, same 10-min per-pair dedupe, same 8 s HTTP timeout, same cache +
+  atomic persistence; wait bounded at 20 s). On a value it runs one guarded UPDATE (id + pair + opened_at + still-NULL — a paper reset reuses
+  ids, a stamp is never overwritten) of `entry_mcap_usd`, `entry_cmc_rank`, `entry_vol_mcap_ratio` (row's 24 h volume ÷ cap). Any failure /
+  timeout / fetch OFF / replay → stamps stay NULL, one `[SPIKE_MCAP]` log line, never raises. `request_pair` refactored onto the shared
+  `_start_one` (same contract: True only when a fetch was started).
+- **Latency:** zero on the order path (a synchronous `create_task` after the commit; the HTTP call runs after the fill).
+- **D12:** the three are existing Order columns → the orders CSV carries them. Spike Fires table (`/api/performance` `spike_fires[].mcap_usd`)
+  gains an **Mcap** column on the UI table and BOTH text exports (shared `spikeMcapTxt`, $332M / $1.25B / '—').
+- **Tests:** tests/test_fade_mcap_stamp.py (16): backfill stamps the row and leaves size / price / status; cached cap → no backfill, no
+  request; all three spike species; provider None / raise / timeout → NULL, no raise; never overwrites / never hits a reused id; schedule
+  returns at once while the fetch hangs; replay never schedules; `fetch_pair_now` cache-hit (no request), shared in-flight + dedupe + cache
+  fill, bounded timeout, failure, fetch OFF; source pins (post-commit, not awaited, no network in open_position, observe-only lines); D12
+  surfaces. conftest stubs `fetch_pair_now` to cache-only unless `@pytest.mark.mcap_real`. Suite 1,426 green.
+- **🔭 Watch gate (CURRENT_STATE 41i):** if ≥ $200M fades reach 10 with a negative avg P&L %, or any single ≥ $200M fade loses > 4 % of the
+  account → reopen an mcap / book-depth size rule.
+- **Dual review (caveman SHIP · deep FIX-FIRST) — applied pre-commit:** ① deep HIGH: the guarded UPDATE matched `opened_at` by
+  equality, but production rows take opened_at from the server default (stored without microseconds) while the refreshed datetime binds
+  with `.000000` → rowcount 0 on every real row, silently. Now a ±1 s window (`opened_at.between`); regression test inserts the row with
+  the server default (fails on the old guard, passes now) → 17 tests in tests/test_fade_mcap_stamp.py · ② a rowcount-0 outcome now logs
+  one `[SPIKE_MCAP] … no write` line · ③ cosmetic: the WILLY-expiry comment back above its function; pytest.ini marker text.
+  Accepted (LOW): a spike backfill whose fetch fails uses the pair's shared 10-min one-pair slot → a WILLY request_pair on the same pair
+  is deduped for 10 min (same as a failed WILLY fetch; only while the provider is failing). Shutdown CancelledError propagates (harmless).

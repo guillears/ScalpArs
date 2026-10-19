@@ -7949,6 +7949,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 "btc_regime": getattr(o, 'entry_btc_regime', None),
                 "peak_pnl": getattr(o, 'peak_pnl', None),
                 "spike_rsi_max": getattr(o, 'spike_rsi_max', None),
+                "mcap_usd": getattr(o, 'entry_mcap_usd', None),   # 🏷 (311) entry market cap (fades: post-fill backfill when the cache missed)
                 "armed": bool(getattr(o, 'spike_armed', False)),
                 "close_reason": o.close_reason,
                 "pnl_pct": o.pnl_percentage,

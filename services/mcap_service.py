@@ -257,21 +257,30 @@ async def _fetch_pair(client, pair: str) -> Tuple[Optional[float], Optional[int]
 
 _one_req: Dict[str, float] = {}   # pair → last one-pair request time (dedupe)
 _one_tasks: set = set()
+_one_inflight: Dict[str, "asyncio.Task"] = {}   # 🏷 (311) pair → the running one-pair fetch (shared by request_pair and fetch_pair_now)
 ONE_PAIR_DEDUPE_S = 600.0
 
 
-def request_pair(pair: str) -> bool:
-    """🔄 Oct-8 (DECISION_LOG 251): fire-and-forget ONE-pair fetch for a pair whose cap is missing / stale (FRENZY_WILLY arms an entry on a
-    pair the periodic refresh may not have read yet — the turnover filter fails closed without it). At most once per pair per 10 min, never
-    while fetching is disabled, never awaited, never raises. → True when a fetch was started."""
+def _start_one(pair: str):
+    """the shared one-pair fetch: an in-flight task for the pair is reused; otherwise a new one starts only when fetching is enabled, the
+    cached value is not fresh, and the pair was not requested in the last ONE_PAIR_DEDUPE_S. → (task or None, started_now).
+    Must run on the event loop; never raises."""
     try:
         if not pair or not _enabled():
-            return False
+            return None, False
+        t = _one_inflight.get(pair)
+        if t is not None:
+            try:
+                if not t.done():
+                    return t, False
+            except Exception:
+                pass
+            _one_inflight.pop(pair, None)   # finished (or not a real task): forget it
         v = _cache.get(pair)
         if v and time.time() - v[2] <= _interval_s():
-            return False   # fresh already
+            return None, False   # fresh already
         if time.time() - _one_req.get(pair, 0.0) < ONE_PAIR_DEDUPE_S:
-            return False
+            return None, False
         _one_req[pair] = time.time()
 
         async def _one():
@@ -286,9 +295,38 @@ def request_pair(pair: str) -> bool:
                 pass
         t = asyncio.get_running_loop().create_task(_one())
         _one_tasks.add(t); t.add_done_callback(_one_tasks.discard)
-        return True
+        _one_inflight[pair] = t
+        t.add_done_callback(lambda _t, _p=pair: _one_inflight.pop(_p, None) if _one_inflight.get(_p) is _t else None)
+        return t, True
     except Exception:
-        return False
+        return None, False
+
+
+def request_pair(pair: str) -> bool:
+    """🔄 Oct-8 (DECISION_LOG 251): fire-and-forget ONE-pair fetch for a pair whose cap is missing / stale (FRENZY_WILLY arms an entry on a
+    pair the periodic refresh may not have read yet — the turnover filter fails closed without it). At most once per pair per 10 min, never
+    while fetching is disabled, never awaited, never raises. → True when a fetch was started."""
+    return _start_one(pair)[1]
+
+
+async def fetch_pair_now(pair: str, timeout_s: float = 20.0) -> Tuple[Optional[float], Optional[int]]:
+    """🏷 Oct-19 (DECISION_LOG 311): (mcap_usd, cmc_rank) for ONE pair, for a POST-FILL backfill (never the order path). The cached value
+    when present (no request); else awaits the SAME shared one-pair fetch request_pair uses (same 10-min per-pair dedupe, same in-flight
+    task, same cache + persistence), bounded by `timeout_s` (the fetch itself keeps running if the wait times out). (None, None) on any
+    failure / timeout / fetching disabled / replay. Never raises."""
+    try:
+        mc, rk = get(pair)
+        if mc is not None:
+            return mc, rk
+        t, _new = _start_one(pair)
+        if t is not None:
+            try:
+                await asyncio.wait_for(asyncio.shield(t), timeout=max(0.1, float(timeout_s)))
+            except (asyncio.TimeoutError, Exception):
+                pass
+        return get(pair)
+    except Exception:
+        return None, None
 
 
 async def _refresh(pairs: Iterable[str]) -> None:

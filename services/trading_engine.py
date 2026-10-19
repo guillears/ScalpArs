@@ -3895,6 +3895,58 @@ class TradingEngine:
                      f"({res.get('error') or 'exchange error'}) — the software TP runs")
         return 'crossed' if res.get('crossed') else ('rejected' if res.get('rejected') else 'failed')
 
+    SPIKE_MCAP_STRATEGIES = ("SPIKE_FADE", "SPIKE_CHASE", "SPIKE_BOUNCE")
+
+    def _spike_mcap_schedule(self, order) -> bool:
+        """🏷 Oct-19 (DECISION_LOG 311) OBSERVE-ONLY: a SPIKE_FADE / SPIKE_CHASE / SPIKE_BOUNCE fill whose open-path cache read found no market
+        cap (spike pairs are often outside the Top-N refresh list — KMNOUSDT 10-17 fade stamped NULL) gets ONE background backfill AFTER the
+        fill + commit: the order is already booked at its size and price, nothing here can delay, block or resize it. Never raises.
+        → True when a backfill task was scheduled."""
+        try:
+            import os as _os
+            if _os.environ.get("SCALPARS_REPLAY") == "1":
+                return False
+            if getattr(order, 'entry_strategy', None) not in self.SPIKE_MCAP_STRATEGIES or getattr(order, 'entry_mcap_usd', None) is not None:
+                return False
+            if getattr(order, 'id', None) is None:
+                return False
+            t = asyncio.get_running_loop().create_task(self._spike_mcap_backfill(
+                order.id, order.pair, getattr(order, 'opened_at', None), getattr(order, 'entry_pair_volume_24h_usd', None),
+                order.entry_strategy))
+            _ts = self.__dict__.setdefault('_spike_mcap_tasks', set())
+            _ts.add(t); t.add_done_callback(_ts.discard)
+            return True
+        except Exception:
+            return False
+
+    async def _spike_mcap_backfill(self, order_id, pair, opened_at, vol24, strategy) -> bool:
+        """🏷 (311) the post-fill half: the shared one-pair mcap fetch (services.mcap_service.fetch_pair_now — cache first, the same 10-min
+        per-pair dedupe / in-flight task / persistence as WILLY's request_pair, bounded wait), then ONE guarded UPDATE of this row's
+        entry_mcap_usd / entry_cmc_rank / entry_vol_mcap_ratio — only while the row is still this fill (id + pair + opened_at: a paper reset
+        reuses ids) and still unstamped. Any failure → the stamps stay NULL, one log line, never raises. → True when the row was stamped."""
+        try:
+            from services import mcap_service as _mcs
+            mc, rk = await _mcs.fetch_pair_now(pair)
+            if mc is None:
+                logger.info(f"[SPIKE_MCAP] {pair} {strategy} #{order_id}: market cap unavailable — entry_mcap_usd stays NULL (observe-only, trade unaffected)")
+                return False
+            conds = [Order.id == order_id, Order.pair == pair, Order.entry_mcap_usd.is_(None)]
+            if opened_at is not None:   # deep review: a ±1 s window, not equality — the server-default opened_at is stored without
+                # microseconds ('… 04:23:10') while the refreshed datetime binds as '… 04:23:10.000000' → equality never matched a real row
+                conds.append(Order.opened_at.between(opened_at - timedelta(seconds=1), opened_at + timedelta(seconds=1)))
+            async with AsyncSessionLocal() as _ms:
+                res = await locked_execute_commit(_ms, update(Order).where(and_(*conds)).values(
+                    entry_mcap_usd=mc, entry_cmc_rank=rk, entry_vol_mcap_ratio=vol_mcap_ratio(vol24, mc)))
+            ok = bool(getattr(res, 'rowcount', 0))
+            if ok:
+                logger.info(f"[SPIKE_MCAP] {pair} {strategy} #{order_id}: post-fill stamp mcap ${mc / 1e6:,.0f}M" + (f" · CMC #{rk}" if rk else ""))
+            else:
+                logger.info(f"[SPIKE_MCAP] {pair} {strategy} #{order_id}: row moved / already stamped — no write")
+            return ok
+        except Exception as e:
+            logger.warning(f"[SPIKE_MCAP] {pair} #{order_id}: post-fill mcap stamp failed (observe-only, trade unaffected): {str(e)[:120]}")
+            return False
+
     async def _rtp_arm(self, db, order):
         """OPEN path (bot fills, after the commit): the resting TP for an enabled sleeve. Under _close_lock with the row re-read (a close
         that raced the open never gets a limit after it). Live: stale close-side reduce-only limits on the symbol are cancelled first (a
@@ -13021,6 +13073,9 @@ class TradingEngine:
         if not self.is_paper_mode:
             _book_release()   # 🔒 live: the row is committed — the next open (any pair) sees it in the counts
         await db.refresh(order)
+        # 🏷 (DECISION_LOG 311) OBSERVE-ONLY: a SPIKE_* fill with no cached market cap → post-fill background stamp (never awaited here)
+        if spike_fade or spike_chase_probe or spike_bounce:
+            self._spike_mcap_schedule(order)
         # 🎯 (DECISION_LOG 296) RESTING TAKE-PROFIT: AFTER the fill, the backstop and the COMMIT (an unbooked fill never carries one — the
         # 292 ③ flatten has nothing to cancel), only for an enabled sleeve (FRENZY_WILLY / FRENZY_LITE); live places the reduce-only
         # post-only limit, paper records what live would hold. Failure → [RESTING_TP_FAILED] + counter, the trade runs on its software TP.

@@ -7247,3 +7247,25 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   $328M (fitted to the one loser) — an operator line, not evidence. Not watched but available: 1× when 24 h vol < $5M (master paper /
   ½ / full −493 / +375 / +1,243 with the bracket cap; worst fade −24 → −10 % of acct; backtest better with impact in 2025 and 2026; in-sample threshold).
   Rejected: a cut on HIGH-volume fades (best and cheapest-to-fill fades; worse in every scenario).
+
+## (313) 2026-10-19 — 👁 WILLY_AVGDOWN observe line (averaging-down shadow) (operator: "add the watchlist yes")
+- **Question (operator):** average down (in-trade martingale) on a losing trade, per sleeve; refocused from "re-entry after a loss".
+- **Evidence (reports/AVERAGE_DOWN_2026-10-19.md, walker scripts/study_reentry_after_loss_avgdown.py; master STACK 2026-10-19a + live B22/B23 +
+  yr6 backtest 3 seeds):** no sleeve earns averaging down. MOM_LONG / MOM_SHORT / FLIP_SHORT BT add-leg CIs < 0; SPIKE_FADE infeasible at
+  $1,225 and worst trade −23…−123 % of the account; BULLRUN / SURGE / LITE / FRENZY_LONG sign flips or immaterial. **FRENZY_WILLY is the only
+  candidate:** AD1 (1× add at net −2.00) add leg master +0.79 % (11 adds) / backtest +0.19 (~230 adds/seed); BT AD1 +$1,008 / +1,008 /
+  +1,059 per seed, CI [−548, +2,556] spans 0; the master gain is all B19 (B20 −$50, B22 −$44); BAT carries 35 %; LIVE −$145 on 6 adds
+  (4 of them stop losers run on to −4); worst trade −7.6 → −11.8 % of the account. AD2 (2× true martingale, −15.9 %/trade) and sequence
+  martingale (double the next trade after a loss: no reliable post-loss effect in BT, DD × 1.5–3) are REJECTED.
+- **Decision:** no trading change. Observe-only shadow line registered: `scripts/scout_willy_avgdown.py` (walker = the study's
+  walk_fixed AD1 at X 2.00 on ticks-else-public-1m; cohort CLOSED FRENZY_WILLY paper + live fills opened ≥ 2026-10-19 13:00 UTC).
+  Shadow ADD = first touch of net −2.00 % → 1× the original size at that price (+0.03 % slip, taker fees); merged exit TP +1.25 from the
+  NEW average (late +0.25 from minute 30, DL 297), the original −4 stop PRICE, 90-min cap, stop-first on 1m bars. Add leg = merged −
+  the original's own walk, % of the original notional; $ at the fill's notional; worst trade vs a $1,225 account (no balance column).
+  Sanity run on the live go-live cohort (10-14 → 10-19): 6 adds, Σ −$143.60 (study −$145), worst −13.2 % acct; 1 parity sign flag
+  (DUSK 10-15, booked −3.43 vs walker +0.25 late TP — pre-DL 297 fill).
+- **🔒 Frozen gate (never re-fit):** READ at N ≥ 30 shadow adds on ≥ 8 distinct UTC days. DISCUSS AD1 (operator decides; NEVER AD2) only if
+  add-leg mean > 0 with day-bootstrap P ≥ 0.95 ∧ total gain > 0 ∧ no pair ≥ 50 % of the total gain ∧ no shadow trade worse than −12 % of the account, measured SIZING-INVARIANTLY (merged % of notional × the reference $2,300 WILLY notional ÷ $1,225, i.e. merged ≤ −6.39 % of notional fails); the 50 % haircut is reported for the discussion (as a pass test it equals 'gain > 0'); otherwise at N ≥ 30 → DROP the line.
+  (Deep review, applied BEFORE the freeze: the worst check first divided the fill's own $ by a fixed $1,225 — it would drift toward DROP as
+  the live notional grows with the balance; the "× 0.5 > $0" haircut test was a no-op; LONG-only guard; 403 stops the run; the study module
+  no longer creates its cache dir at import. Sanity-run worst −13.2 % used the old fill-$ basis.) ETA ~4–6 weeks (≈ 0.8–1.2 adds/day). Tests: tests/test_scout_willy_avgdown.py.

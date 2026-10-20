@@ -335,6 +335,31 @@
                     </div>
                 </div>
             </div>
+            <!-- ➕ (DECISION_LOG 324, operator 2026-10-20) ADD TO AN OPEN POSITION — opened by the ➕ button on an Open Orders row. Adds margin at the
+                 row's own leverage INSIDE the same row (one quantity, one average entry, one stop / target, one exchange safety stop) — never a
+                 second position in the Binance app (one-way mode nets it into the bot's row and the bot's exits sell it: BTW 10-20). Fixed-level
+                 exits only (manual Custom / Floor, or any exit you edited); the stop / target P&L % then apply to the NEW average entry. -->
+            <div id="add-position-modal" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="add-position-modal-title" onclick="addModalBackdropClick(event)">
+                <div class="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl border border-emerald-500/30 bg-[#1f2333] p-4 shadow-2xl">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 id="add-position-modal-title" class="text-sm font-semibold text-emerald-300" title="Adds size to this position at market, at its own leverage, inside the same tracked row. The stop / target stay the same P&amp;L % (net of fees) but are re-based on the NEW average entry, so their prices move. Live: Binance must hold exactly this trade (an extra position opened in the app is refused — close it there first); the resting take profit is cancelled before the order and re-placed after it, the exchange safety stop is moved to the new average.">➕ Add to position</h3>
+                        <button type="button" id="add-position-close" onclick="closeAddModal()" class="px-2 py-0.5 rounded text-gray-400 hover:text-white hover:bg-white/10" title="Close (Esc)" aria-label="Close">✕</button>
+                    </div>
+                    <div class="text-xs space-y-1">
+                        <div id="add-pos-head" class="font-semibold text-gray-200"></div>
+                        <div id="add-pos-now" class="text-gray-400"></div>
+                    </div>
+                    <div class="flex flex-wrap items-end gap-3 text-xs mt-3">
+                        <label class="flex flex-col text-gray-400">Add $ (margin)<input id="add-pos-investment" type="number" step="10" min="1" value="" placeholder="100" oninput="addPreviewSoon()" class="w-24 bg-white/5 border border-emerald-500/40 rounded px-2 py-1 text-emerald-200"></label>
+                        <label class="flex flex-col text-gray-400" title="An add always uses the position's own leverage">Lev<input id="add-pos-leverage" type="text" readonly tabindex="-1" class="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-gray-400"></label>
+                        <div id="add-pos-max" class="text-[11px] text-gray-500 pb-1"></div>
+                    </div>
+                    <div id="add-pos-preview" class="mt-3 text-[11px] text-gray-300 space-y-0.5"></div>
+                    <div id="add-pos-risk" class="mt-1 text-[11px] text-gray-400" title="Loss if the stop fires on the NEW total size. Stops are P&amp;L % NET of fees (the engine closes when the trade's net-of-fees P&amp;L reaches the stop), so the round-trip fee is already inside this figure. Slippage past the stop is not included. Account = the latest total portfolio shown on the dashboard."></div>
+                    <div id="add-pos-refusal" class="mt-1 text-[11px] text-red-400"></div>
+                    <div class="flex justify-end mt-3"><button id="add-pos-btn" onclick="submitAddPosition()" disabled class="px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-400/60 text-emerald-200 hover:bg-emerald-500/30 transition font-semibold disabled:opacity-40 disabled:cursor-not-allowed">Add to position</button></div>
+                </div>
+            </div>
             <div class="glass rounded-xl overflow-hidden">
                 <div class="overflow-x-auto scrollbar-thin max-h-[28rem] overflow-y-auto">
                     <table class="w-full text-sm">
@@ -8034,7 +8059,7 @@
             (perfs || []).forEach(p => { const t = (p && p.origin_touched) || null; if (t) { n += (t.n || 0); pnl += (t.pnl || 0); } });
             const base = `View: ${ORIGIN_LABELS[v] || 'All trades'}` + (v === 'ALL' ? ' (bot + manual; matches the balance)' : ' (the other side\'s P&L taken out of the account)');
             const scope = (perfs || []).length > 1 ? ' (BULLISH + BEARISH regimes; NEUTRAL not counted)' : '';
-            return v === 'MANUAL' ? base : `${base} · Bot trades touched by you (exit edited / closed by hand)${scope}: ${n} · ${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)}`;
+            return v === 'MANUAL' ? base : `${base} · Bot trades touched by you (exit edited / closed by hand / ➕ size added)${scope}: ${n} · ${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)}`;
         }
         function setOriginView(v) {
             if (!ORIGIN_VIEWS.includes(v)) v = 'ALL';
@@ -18469,6 +18494,8 @@
                 const data = await res.json();
                 
                 const tbody = document.getElementById('open-orders-table-body');
+                window._openOrdersById = {};   // ➕ (DECISION_LOG 324) the add pop-up reads the row it was opened from
+                (data || []).forEach(o => { if (o && o.id != null) window._openOrdersById[o.id] = o; });
                 
                 if (!data || data.length === 0) {
                     _setHTMLIfChanged(tbody, '<tr><td colspan="19" class="px-4 py-8 text-center text-gray-500">No open orders</td></tr>');
@@ -18704,7 +18731,7 @@
                             <td class="px-4 py-3 text-center">
                                 <button onclick="closeOrder(${o.id}, this, '${o.pair} ${o.direction}', ${o.pattern_fixed_sl_pct ?? 'null'}, ${o.pattern_fixed_tp_pct ?? 'null'}, ${o.exit_override_at ? 'true' : 'false'}, ${Number.isFinite(o.pnl_percentage) ? o.pnl_percentage.toFixed(2) : 'null'})" class="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded text-xs font-medium transition">
                                     Close
-                                </button>${o.exit_override_at ? `<div class="text-[10px] text-sky-300 mt-0.5 whitespace-nowrap cursor-help" title="✎ You replaced this position's exit: it closes only at your stop / target (or the max hold). Click Close to change it.">✎ ${o.pattern_fixed_sl_pct != null ? 'SL ' + (o.pattern_fixed_sl_pct > 0 ? '+' : '') + Number(o.pattern_fixed_sl_pct).toFixed(2) : ''}${o.pattern_fixed_tp_pct != null ? ' TP ' + (o.pattern_fixed_tp_pct > 0 ? '+' : '') + Number(o.pattern_fixed_tp_pct).toFixed(2) : ''}</div>` : ''}
+                                </button>${addButtonHtml(o)}${o.exit_override_at ? `<div class="text-[10px] text-sky-300 mt-0.5 whitespace-nowrap cursor-help" title="✎ You replaced this position's exit: it closes only at your stop / target (or the max hold). Click Close to change it.">✎ ${o.pattern_fixed_sl_pct != null ? 'SL ' + (o.pattern_fixed_sl_pct > 0 ? '+' : '') + Number(o.pattern_fixed_sl_pct).toFixed(2) : ''}${o.pattern_fixed_tp_pct != null ? ' TP ' + (o.pattern_fixed_tp_pct > 0 ? '+' : '') + Number(o.pattern_fixed_tp_pct).toFixed(2) : ''}</div>` : ''}${addBadgeHtml(o)}
                             </td>
                         </tr>
                     `;
@@ -19071,6 +19098,117 @@
             setCls(z != null ? z : 0);
         }
         try { manualExitModeChanged(); } catch (e) {}   // default exit = Momentum stack → SL/TP inputs start disabled
+        // ➕ (DECISION_LOG 324) ADD TO POSITION — the ➕ button on an Open Orders row (enabled only for a fixed-level exit: add_block from
+        // /api/orders/open says why not), its badge "➕N", and the pop-up: live preview from GET /api/manual/add_preview (debounced 300 ms; no
+        // order is sent), confirm → POST /api/manual/add. Esc / ✕ / backdrop close it, like the 🖐 pop-up.
+        const _addPx = v => (v == null || !Number.isFinite(Number(v))) ? '—' : Number(v) >= 1000 ? formatPrice(v) : Number(v) >= 1 ? Number(v).toFixed(4) : Number(v).toPrecision(5);   // finer than formatPrice: an average entry moves in the 3rd-4th decimal
+        const _addDetail = (d, fb) => { const x = d && d.detail; if (Array.isArray(x)) return x.map(e => (e && e.msg) ? e.msg : JSON.stringify(e)).join('; ') || fb; return x ? String(x) : fb; };   // a 422 detail is a list of {msg, …}
+        const _addEsc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        function addButtonHtml(o) {
+            const why = o.add_block;
+            const tip = why ? `➕ Add is off for this trade: ${why}` : '➕ Add to this position — same row, same leverage; the stop / target are re-based on the new average entry';
+            return `<span class="inline-block ml-1" title="${_addEsc(tip)}"><button type="button" onclick="openAddModal(${Number(o.id)}, this)" ${why ? 'disabled' : ''} aria-label="Add to position" class="px-2 py-1 rounded text-xs font-medium transition ${why ? 'bg-white/5 text-gray-500 cursor-not-allowed' : 'bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300'}">➕</button></span>`;
+        }
+        function addBadgeHtml(o) {
+            const n = Number(o.manual_add_count || 0); if (!(n > 0)) return '';
+            const tot = Number(o.manual_add_investment || 0);
+            const t = `You added to this position ${n}× — $${tot.toFixed(2)} margin in total${o.manual_added_at ? ' · last ' + formatTime(o.manual_added_at) : ''} (size, average entry and invested include it)`;
+            return `<div class="text-[10px] text-emerald-300 mt-0.5 whitespace-nowrap cursor-help" title="${_addEsc(t)}">➕${n}</div>`;
+        }
+        let _addModalOrderId = null, _addModalReturnFocus = null, _addBackdropDown = false, _addPreviewTimer = null, _addPreviewSeq = 0, _addLastPreview = null, _addBusy = false;
+        function addModalIsOpen() { const m = document.getElementById('add-position-modal'); return !!(m && !m.classList.contains('hidden')); }
+        function openAddModal(orderId, btn) {
+            const m = document.getElementById('add-position-modal'); if (!m) return;
+            const o = (window._openOrdersById || {})[orderId];
+            if (!o) { showToast('That position is no longer open', 'error'); return; }
+            if (o.add_block) { showToast(o.add_block, 'error'); return; }
+            if (!addModalIsOpen()) _addModalReturnFocus = btn || document.activeElement;
+            _addModalOrderId = orderId; _addLastPreview = null;
+            const usd = v => '$' + Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+            document.getElementById('add-pos-head').textContent = `${o.pair} · ${o.direction} · #${o.id}`;
+            document.getElementById('add-pos-now').textContent = `Now: size ${Number(o.quantity).toLocaleString('en-US', { maximumFractionDigits: 8 })} · avg entry ${_addPx(o.entry_price)} · invested ${usd(o.investment)} · position ${usd(o.notional_value)}`
+                + (o.pattern_fixed_sl_pct != null ? ` · stop ${o.pattern_fixed_sl_pct > 0 ? '+' : ''}${Number(o.pattern_fixed_sl_pct).toFixed(2)}%` : '')
+                + (o.pattern_fixed_tp_pct != null && o.pattern_fixed_tp_pct > 0 ? ` · TP +${Number(o.pattern_fixed_tp_pct).toFixed(2)}%` : '');
+            document.getElementById('add-pos-leverage').value = `${o.leverage}×`;
+            ['add-pos-preview', 'add-pos-risk', 'add-pos-refusal', 'add-pos-max'].forEach(id => { document.getElementById(id).textContent = ''; });
+            document.getElementById('add-pos-btn').disabled = true;
+            m.classList.remove('hidden'); m.classList.add('flex');
+            const inp = document.getElementById('add-pos-investment');
+            try { inp.focus(); inp.select(); } catch (e) {}
+            addPreviewSoon();
+        }
+        function closeAddModal() {
+            const m = document.getElementById('add-position-modal'); if (!m || !addModalIsOpen()) return;
+            m.classList.add('hidden'); m.classList.remove('flex');
+            _addModalOrderId = null; _addPreviewSeq++; clearTimeout(_addPreviewTimer);
+            const back = (_addModalReturnFocus && document.contains(_addModalReturnFocus) && _addModalReturnFocus !== document.body) ? _addModalReturnFocus : null;
+            _addModalReturnFocus = null;
+            try { back && back.focus(); } catch (e) {}
+        }
+        document.addEventListener('mousedown', e => { const m = document.getElementById('add-position-modal'); _addBackdropDown = !!(m && e.target === m && !document.getElementById('near-confirm')); }, true);
+        function addModalBackdropClick(e) { if (e.target === e.currentTarget && _addBackdropDown) closeAddModal(); _addBackdropDown = false; }
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented && addModalIsOpen()) { e.preventDefault(); closeAddModal(); } });
+        function addPreviewSoon() {
+            clearTimeout(_addPreviewTimer);
+            document.getElementById('add-pos-btn').disabled = true;   // never confirm against a preview of an older amount
+            _addPreviewTimer = setTimeout(addPreview, 300);
+        }
+        async function addPreview() {
+            if (_addModalOrderId == null) return;
+            const amt = parseFloat(document.getElementById('add-pos-investment')?.value || '');
+            const prev = document.getElementById('add-pos-preview'), risk = document.getElementById('add-pos-risk'), ref = document.getElementById('add-pos-refusal'), mx = document.getElementById('add-pos-max'), btn = document.getElementById('add-pos-btn');
+            const seq = ++_addPreviewSeq;
+            const q = `order_id=${encodeURIComponent(_addModalOrderId)}&add_investment=${encodeURIComponent(amt > 0 ? amt : 0)}`;
+            let d;
+            try {
+                const res = await fetch(`${API_BASE}/api/manual/add_preview?${q}`);
+                d = await res.json();
+                if (!res.ok) throw new Error(_addDetail(d, res.statusText));
+            } catch (e) {
+                if (seq !== _addPreviewSeq) return;
+                ref.textContent = 'Preview unavailable: ' + e; btn.disabled = true; return;
+            }
+            if (seq !== _addPreviewSeq || _addModalOrderId == null) return;   // a newer amount was typed / the pop-up closed
+            _addLastPreview = d;
+            const usd = v => v == null ? '—' : '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: Math.abs(v) >= 100 ? 0 : 2 });
+            mx.textContent = d.max_add_investment != null ? `max ≈ ${usd(d.max_add_investment)}` + (d.max_add_bracket != null ? ` (tier cap ${usd(d.max_add_bracket)} · free ${usd(d.available)})` : ` (free ${usd(d.available)})`) : '';
+            if (amt > 0 && d.new_avg_entry != null) {
+                prev.innerHTML = `<div>Price now <span class="font-mono">${_addPx(d.price)}</span> · adds ${usd(d.add_notional)} position (fee ≈ ${usd(d.add_fee)})</div>`
+                    + `<div>New avg entry <span class="font-mono text-white">${_addPx(d.new_avg_entry)}</span> · size <span class="font-mono">${Number(d.new_qty).toLocaleString('en-US', { maximumFractionDigits: 8 })}</span> · invested ${usd(d.new_invested)} · position ${usd(d.new_notional)}</div>`
+                    + `<div>Stop ${d.stop_pct != null ? (d.stop_pct > 0 ? '+' : '') + Number(d.stop_pct).toFixed(2) + '%' : '—'} → <span class="font-mono text-red-300">${d.stop_price != null ? _addPx(d.stop_price) : '—'}</span>`
+                    + ` · TP ${d.tp_pct != null && d.tp_pct > 0 ? '+' + Number(d.tp_pct).toFixed(2) + '%' : 'none'}${d.tp_price != null ? ` → <span class="font-mono text-emerald-300">${_addPx(d.tp_price)}</span>` : ''}`
+                    + `${d.pnl_now != null ? ` · after the add ${d.pnl_now >= 0 ? '+' : ''}${Number(d.pnl_now).toFixed(2)}%` : ''}</div>`;
+                const y = Number(d.risk_usd_at_stop), acct = Number(window._lastTotalPortfolio);
+                const z = (acct > 0 && Number.isFinite(y)) ? y / acct * 100 : null;
+                risk.classList.toggle('text-red-400', z != null && z >= 10); risk.classList.toggle('text-amber-300', z != null && z >= 5 && z < 10); risk.classList.toggle('text-gray-400', !(z != null && z >= 5));
+                risk.textContent = !Number.isFinite(y) ? '' : (y > 0 ? `Risk at the stop ≈ −${usd(y)}${z != null ? ` (${z.toFixed(z >= 10 ? 0 : 1)} % of the account)` : ''}`
+                                                                      : `The stop locks a profit of ≈ ${usd(-y)} on the new size`);
+            } else { prev.textContent = amt > 0 ? '' : 'Type the margin to add ($).'; risk.textContent = ''; }
+            ref.textContent = (d.refusal && !(!(amt > 0) && /^the amount to add/.test(d.refusal))) ? '⛔ ' + d.refusal : '';   // an empty amount is not an error
+            btn.disabled = !(amt > 0) || !!d.refusal || _addBusy;
+        }
+        async function submitAddPosition() {
+            const btn = document.getElementById('add-pos-btn');
+            const amt = parseFloat(document.getElementById('add-pos-investment')?.value || '');
+            if (_addModalOrderId == null || !(amt > 0) || _addBusy || !_addLastPreview || _addLastPreview.refusal) return;
+            _addBusy = true; btn.disabled = true; const label = btn.textContent; btn.textContent = 'Adding…';
+            try {
+                const res = await fetch(`${API_BASE}/api/manual/add`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order_id: _addModalOrderId, add_investment: amt }) });
+                const d = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    showToast(`➕ Added $${amt} to ${d.pair} ${d.direction} — avg entry ${_addPx(d.entry_price)}, invested $${Number(d.investment).toFixed(2)}`);
+                    if (d.warning) showToast('➕ ' + d.warning, 'error');   // booked — never add again because of this
+                    closeAddModal();
+                    loadOpenOrders();
+                } else {
+                    const _msg = _addDetail(d, 'Could not add to the position');
+                    showToast(_msg, 'error');
+                    document.getElementById('add-pos-refusal').textContent = '⛔ ' + _msg;
+                }
+            } catch (e) { showToast('Could not add to the position: ' + e, 'error'); }
+            finally { _addBusy = false; btn.textContent = label; if (addModalIsOpen()) addPreviewSoon(); }
+        }
         let _manualPairsSnapshot = {};   // pair → latest /api/pairs row (filled by loadPairs)
         function manualPairHint() {
             const el = document.getElementById('manual-pair-hint'); if (!el) return;

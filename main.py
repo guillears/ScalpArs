@@ -34,6 +34,7 @@ from config import (
 from services.binance_service import binance_service, set_ban_until, set_ban_persist_callback, get_ban_status, LIVE_CARD_TRANSFER_CACHE_S
 from services.trading_engine import trading_engine, realtime_stop_loss_callback, _open_orders_cache, _cache_lock
 from services.trading_engine import ManualLimitError, normalize_manual_pair
+from services.position_add import add_exit_refusal as _add_exit_refusal   # ➕ (DECISION_LOG 324)
 from services.resting_tp import RTP_SLEEVES as _RTP_SLEEVES   # 🎯 (DECISION_LOG 296)
 from services.golive_guards import RECONCILE_INTERVAL_TICKS, RECONCILE_FALLBACK_AFTER_SKIPS, RECONCILE_FALLBACK_EVERY   # 🔎 (DECISION_LOG 321)
 from services.indicators import calculate_indicators, get_signal
@@ -1801,6 +1802,13 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "frenzy_lite_tp_used": getattr(o, 'frenzy_lite_tp_used', None), "lite_c_zone": getattr(o, 'lite_c_zone', None),   # 🎯 (301) LITE C stored TP / zone
             "entry_frenzy_willy_wait_bars": getattr(o, 'entry_frenzy_willy_wait_bars', None), "entry_vol_mcap_ratio": getattr(o, 'entry_vol_mcap_ratio', None),   # 🟥🔄 (251)
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
+            # ➕ (DECISION_LOG 324) add to position: the badge (count / Σ margin / last add) + whether the ➕ button is enabled (a fixed-level exit
+            # only; add_block = the reason shown on a disabled button — the engine re-checks everything at the click)
+            "manual_add_count": getattr(o, 'manual_add_count', None), "manual_add_investment": getattr(o, 'manual_add_investment', None),
+            "manual_added_at": (o.manual_added_at.isoformat() if getattr(o, 'manual_added_at', None) else None),
+            "add_block": _add_exit_refusal(getattr(o, 'entry_strategy', None), getattr(o, 'manual_exit_mode', None), getattr(o, 'exit_override_at', None))
+                         or (None if getattr(o, 'pattern_fixed_sl_pct', None) is not None else "this trade has no fixed stop on record — set one first, then add")
+                         or ("this position is being closed right now" if getattr(o, 'closing_in_progress', False) else None),
             "manual_block_reason": getattr(o, 'manual_block_reason', None), "manual_setup_rating": getattr(o, 'manual_setup_rating', None), "manual_setup_side": getattr(o, 'manual_setup_side', None),
             "manual_pair_rsi": getattr(o, 'manual_pair_rsi', None), "manual_pair_adx": getattr(o, 'manual_pair_adx', None),
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
@@ -2255,6 +2263,9 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "frenzy_lite_tp_used": getattr(o, 'frenzy_lite_tp_used', None), "lite_c_zone": getattr(o, 'lite_c_zone', None),   # 🎯 (301) LITE C stored TP / zone
             "entry_frenzy_willy_wait_bars": getattr(o, 'entry_frenzy_willy_wait_bars', None), "entry_vol_mcap_ratio": getattr(o, 'entry_vol_mcap_ratio', None),   # 🟥🔄 (251)
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
+            # ➕ (DECISION_LOG 324) size added by the operator (the row's qty / avg entry / invested already include it)
+            "manual_add_count": getattr(o, 'manual_add_count', None), "manual_add_investment": getattr(o, 'manual_add_investment', None),
+            "manual_added_at": (o.manual_added_at.isoformat() if getattr(o, 'manual_added_at', None) else None),
             "manual_block_reason": getattr(o, 'manual_block_reason', None), "manual_setup_rating": getattr(o, 'manual_setup_rating', None), "manual_setup_side": getattr(o, 'manual_setup_side', None),
             "manual_pair_rsi": getattr(o, 'manual_pair_rsi', None), "manual_pair_adx": getattr(o, 'manual_pair_adx', None),
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
@@ -2503,6 +2514,8 @@ async def close_order(request: ManualCloseRequest, db: AsyncSession = Depends(ge
     closed_order = await trading_engine.close_position(db, order, current_price, "MANUAL")
     
     if not closed_order:
+        if getattr(order, '_close_aborted_size_changed', False):   # ➕ (DECISION_LOG 324 C1) an add committed between the read above and the close
+            raise HTTPException(status_code=409, detail="the position just changed size (an add) — nothing was closed; press Close again")
         raise HTTPException(status_code=500, detail="Failed to close order")
     
     return {"status": "closed", "pnl": closed_order.pnl}
@@ -2526,6 +2539,44 @@ async def exit_override(request: ExitOverrideRequest, db: AsyncSession = Depends
         raise HTTPException(status_code=500, detail=f"exit override failed: {e}")
     return {"status": "ok", "order_id": order.id, "pair": order.pair, "direction": order.direction,
             "sl_pct": order.pattern_fixed_sl_pct, "tp_pct": order.pattern_fixed_tp_pct, "strategy": order.entry_strategy}
+
+
+class ManualAddRequest(BaseModel):   # ➕ (DECISION_LOG 324)
+    order_id: int
+    add_investment: float             # USD margin to add, at the position's own leverage
+
+
+@app.post("/api/manual/add")
+async def manual_add(request: ManualAddRequest, db: AsyncSession = Depends(get_db)):
+    """➕ (DECISION_LOG 324): add size to an OPEN position with a fixed-level exit, inside its own row (never a second position). 400 =
+    the readable refusal (nothing sent / nothing changed); 500 = an order whose outcome needs the operator (the text says what to check)."""
+    try:
+        order = await trading_engine.add_to_position(db, request.order_id, request.add_investment)
+    except ManualLimitError as e:
+        return JSONResponse(status_code=400, content={"detail": str(e), "fixes": e.fixes})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[MANUAL_ADD] failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"add to position failed: {e}")
+    return {"ok": True, "status": "added", "order_id": order.id, "pair": order.pair, "direction": order.direction, "quantity": order.quantity,
+            "entry_price": order.entry_price, "investment": round(float(order.investment or 0), 2), "leverage": order.leverage,
+            "notional_value": round(float(order.notional_value or 0), 2), "sl_pct": order.pattern_fixed_sl_pct, "tp_pct": order.pattern_fixed_tp_pct,
+            "manual_add_count": order.manual_add_count, "manual_add_investment": order.manual_add_investment,
+            "manual_added_at": (order.manual_added_at.isoformat() if order.manual_added_at else None),
+            "warning": getattr(order, '_add_warning', None)}   # (324 round-2 R6) booked, but a follow-up step (stop / TP) failed
+
+
+@app.get("/api/manual/add_preview")
+async def manual_add_preview(order_id: int, add_investment: float = 0.0, db: AsyncSession = Depends(get_db)):
+    """➕ (DECISION_LOG 324): what an add would make of the position at the live price (new average entry, size, invested, stop / TP prices
+    on the new average, the loss at the stop, the most that can be added) and the refusal the add would raise now (null = would go). No
+    order is sent; the live Binance position check runs only at the click."""
+    try:
+        return await trading_engine.manual_add_preview(db, order_id, add_investment)
+    except Exception as e:
+        logger.error(f"[MANUAL_ADD] preview failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"add preview failed: {e}")
 
 
 @app.get("/api/manual/limits")

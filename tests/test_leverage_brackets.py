@@ -57,7 +57,7 @@ def test_wiring_d11_d12():
     assert "leverage_bracket_cap_enabled: !!document.getElementById('config-leverage-bracket-cap-enabled')?.checked" in html
     assert "leverage-brackets-status" in html and "exchange leverage brackets ${inv.leverage_bracket_cap_enabled" in html
     eng = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
-    assert eng.count("leverage_bracket_limit(") == 4 and "_record_filter_block('BRACKET_CAP_SKIP', direction)" in eng   # def + bot + manual + momentum_long_bracket_keep (DL 298)
+    assert eng.count("leverage_bracket_limit(") == 5 and "_record_filter_block('BRACKET_CAP_SKIP', direction)" in eng   # def + bot + manual + momentum_long_bracket_keep (DL 298) + ➕ add (DL 324)
     assert eng.count("entry_bracket_max_leverage=_brk_max_lev") == 2
     mdl = open(os.path.join(ROOT, "models.py")).read(); dbs = open(os.path.join(ROOT, "database.py")).read()
     for c in ("entry_bracket_max_leverage", "entry_bracket_cap_notional", "bracket_capped"):

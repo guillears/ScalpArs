@@ -1168,7 +1168,7 @@ def test_dirty_pair_is_cleared_before_any_new_open(monkeypatch):
     monkeypatch.setattr(T.binance_service, "fetch_open_reduce_only_orders", _none)
     assert asyncio.run(eng.rtp_preopen_clear("WILUSDT")) is False and "RESTING_TP_PREOPEN_BLOCK" in blocks
     eng_src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert eng_src.count("await self.rtp_preopen_clear(pair)") == 2                 # bot open AND manual open
+    assert eng_src.count("await self.rtp_preopen_clear(pair)") == 3                 # bot open AND manual open AND ➕ add (DL 324)
 
 
 def test_reconciler_failed_row_never_rides_the_next_commit(monkeypatch):

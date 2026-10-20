@@ -7616,3 +7616,153 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   - **Round 2:** no defects. Known small gap: Period Performance's live base can still hold the other side's OPEN unrealized P&L.
   - RECOVERED = MANUAL also catches a bot position whose row was lost (rare, documented).
 - Tests: tests/test_origin_view.py (classification, touched, perf + calendar invariants incl. EOM projection, wiring). Inline JS node --check OK.
+
+## (324) 2026-10-20 — ➕ Add to an open position (operator)
+- **What:** a ➕ button on every OPEN row in Open Orders (live and paper), next to Close. It adds margin at the row's own leverage INSIDE the
+  same tracked row: one quantity, one average entry, one stop / target, one exchange safety stop. Engine `TradingEngine.add_to_position`
+  (+ `manual_add_preview`, `_manual_add_check`); pure math in `services/position_add.py`.
+- **Why:** the 🖐 pop-up refuses a pair that already has an open row, so the operator added size in the Binance app. One-way mode netted that
+  quantity into the bot's position and the bot's exits sold it (BTW 2026-10-20, see 322). With ➕ the whole position stays in one row.
+- **Scope / refusals** (readable 400s; nothing is sent):
+  - The row must be OPEN, in the current mode, not closing, not in the exit-retry queue, not inside a recovery hold, and with no
+    partially filled resting TP.
+  - **Fixed-level exits only:** MANUAL FIXED / FLOOR (NULL mode = FIXED), or ANY row with an exit override (`exit_override_at`). Momentum /
+    FRENZY / Bull-Run / Bull-Run+SL manual rows and un-overridden bot rows are refused: "switch this trade to a fixed stop/target first
+    (✏️ Close → Set exit), then add". Their peak / trail state is in % of the old entry. A row needs a fixed stop on record.
+  - Size: add > 0; the total after the add must fit the tier cap at the row's leverage WITH the 5 % headroom (319). The message gives
+    the most that can still be added; a pair that now allows less than the row's leverage refuses any add. Free balance ≥ add (+ the
+    paper fee BNB cannot cover). Under Binance's minimum notional (market table, else $5) → refused. Live: whole-number leverage and the
+    broker backstop switched on (as the manual open).
+  - Stop safety: the projected average uses the live price (websocket ≤ 5 s fresh, else REST). The row's fixed stop / target (P&L % net of
+    fees) apply to the NEW average. Refused if the projected P&L is ≤ stop + 0.15 (would stop out at once) or ≥ the TP (would take profit
+    at once), or if the stop would sit closer than 0.3 % to the safety stop.
+  - **Live position check before anything is sent:** `get_open_positions` None → "the order was NOT sent". The symbol must hold exactly this
+    trade: same side, size within max(1 step, 0.5 %). More (an app position netted in), less, the other side, or no position →
+    "Binance holds X {pair} but this trade is Y — close the extra in the Binance app first". The two are never mixed.
+- **Order of operations (live; pair lock + book lock, as the manual open):**
+  1. Positions read.
+  2. Resting TP withdrawn. 'FILLED' → refused ("the take profit already filled"); blocked / failed → refused (never add beside an
+     unknown limit). A dirty pair's leftover reduce-only orders are then cleared (`rtp_preopen_clear`).
+  3. Market order: same side, NOT reduce-only, `leverage=int(row.leverage)`, `status=` for sent-detection. Not sent → refused. Sent with
+     an unknown outcome → positions polled 4×. If the position grew, the add is booked from the exchange delta (qty = after − before,
+     price = the two position averages). Otherwise RuntimeError "CHECK BINANCE NOW" and the row is unchanged.
+  4. Guarded UPDATE (id, OPEN, not closing) + Transaction `ADD_{dir}`. 0 rows (closed meanwhile) or a failed commit → the ADDED quantity
+     is flattened at market reduce-only (shielded) + CRITICAL. The original position, row and safety stop stay as they were.
+  5. Safety stop re-placed on the new average via `_backstop_replace_one` (pct = `order_backstop_pct` for the row, trigger =
+     `backstop_trigger_price` on the new entry). replaced → id / pct / trigger recorded; lost → id cleared (the heal sweep places it);
+     kept_old / error → the old stop rests (the re-price sweep moves it). lost / kept_old / error = `BACKSTOP_PLACE_FAILED` + CRITICAL;
+     crossed → warning (sweep retries).
+  6. Resting TP re-placed for the new size / target (`_rtp_heal`) when `rtp_row_target` gives one.
+  7. Cache: the cached entry / qty / fee / peak / trough are re-based first, then `update_orders_cache`. The rebuild keeps
+     max(peak) / min(trough) of the old cache, which would otherwise carry the old entry's peak.
+  8. `[MANUAL_ADD]` log line: qty, average entry, invested before → after; stop / TP prices on the new average; safety-stop and TP outcomes.
+  - While the row changes size, the resting-TP heal sweep and the backstop re-price sweep skip it (their per-order "next" time is pushed
+    120 s and restored / cleared after). A refusal after the TP was withdrawn re-heals the unchanged row's TP.
+  - **Paper:** the same checks and math, filled at the live price, no exchange call at all. Backstop pct / trigger are recorded on the new
+    average (what live would place). Paper balance / BNB fee / state go through the same three calls as the manual open.
+- **Math** (`add_fill_math`): quantity = q + fq · entry = (q·e + fq·fp)/(q + fq) · investment += fq·fp/lev · notional = new qty × new entry
+  · entry_fee += fq·fp·taker. fq is the ACTUAL fill (partial-fill aware). A 0 / unreadable fill price → the click price + CRITICAL.
+  peak_pnl / trough_pnl are re-derived from high / low_price_since_entry against the new entry (LONG peak at the high, SHORT at the low),
+  clamped around the P&L now; both = the P&L now when the extremes are missing. Fixed-level exits never use them to exit; they are display
+  and research only. `opened_at` (hold clock, MAX_HOLD) and `binance_order_id` (the first fill) are unchanged.
+- **Columns (D11/D12 — ride the orders CSV):** `manual_add_count` INTEGER (NULL = never) · `manual_add_investment` FLOAT (Σ margin added) ·
+  `manual_added_at` DATETIME (last add), with a migration in database.py. `/api/orders/open` and `/api/orders/closed` return them;
+  open orders also return `add_block`, the reason the ➕ is disabled. `services/origin_view.bot_touched` / `touched_summary` count a BOT row
+  with `manual_added_at` as "touched by you" (label updated in the export line). Transactions: `ADD_LONG` / `ADD_SHORT` are read only
+  by /api/transactions (display). No ledger / report filters OPEN_ / CLOSE_ actions, so an add is never counted as an open.
+- **API:** POST `/api/manual/add` {order_id, add_investment} → {ok, order summary}, 400 = refusal, 500 = an outcome to check on Binance.
+  GET `/api/manual/add_preview?order_id=&add_investment=` → price, new qty / avg entry / invested / notional, stop + TP prices on the new
+  average, risk at the stop, max addable (tier cap and free balance), refusal (null = would go). No order, no position read. An empty
+  amount still returns the max.
+- **UI:** the ➕ button (disabled + tooltip "Add is off for this trade: …" when add_block is set) and a "➕N" badge (title: total $ added,
+  last add). The pop-up is styled like the 🖐 one: pair / side / now (size, avg entry, invested, stop / TP), "Add $ (margin)" + the
+  read-only leverage, a 300 ms debounced preview, the risk line "Risk at the stop ≈ −$Y (Z % of the account)" (amber ≥ 5 %, red ≥ 10 %,
+  account = window._lastTotalPortfolio), the max addable, and the refusal in red. "Add to position" is disabled while the preview
+  refuses or is stale. Esc / ✕ / backdrop close it; after a successful add the open orders refresh.
+- **Not done / known:** the spec's "✏️ exit-edit button" does not exist in this UI; exit edit lives in the Close pop-up ("Set exit"), so
+  the ➕ sits next to Close and the refusal names "✏️ Close → Set exit". The live entry fee of an add is the taker estimate (as for every
+  fill). A closePosition backstop still flattens any app quantity on the symbol (322); the add's position check refuses to mix, it does
+  not fix that.
+- Tests: tests/test_position_add.py (18): math, stop / TP price inversion, scope, every refusal (trailing exit, closing, retry queue,
+  netted app qty, wrong side, read failure → not sent, no position, bracket cap, leverage above the pair max, balance, minimum notional,
+  would-stop / would-TP at once, TP filled on withdraw, blocked withdraw), the live order of calls, partial fill, unknown outcome
+  (booked from the exchange / CHECK BINANCE / not sent), closed meanwhile + commit failure → added qty flattened reduce-only, backstop
+  lost / kept_old, paper makes no exchange call and moves free USDT by exactly the margin, ADD_ transaction, preview endpoint, wiring,
+  origin view. Pins updated: test_leverage_brackets (leverage_bracket_limit call count 4 → 5), test_resting_tp (rtp_preopen_clear
+  call count 2 → 3). Inline JS node --check OK; full suite green.
+- **Reviews (caveman + deep), all applied pre-commit:**
+  - **C1 — a close decided before an add (critical).** `_close_position_locked` notes the size and add count of the caller's object at entry. Live: right after `_mark_close_in_progress`; paper: at lock entry. Both run before the resting-TP settle and the pre-close backstop cancel. Then `_close_size_changed` re-reads the row.
+    - **Changed:** `[MANUAL_ADD_CLOSE_ABORT]` is logged, `closing_in_progress` is cleared and the caller's object is refreshed (qty, entry, fees, invested, notional, safety-stop id, adds). The close returns None, which every caller already treats as "not closed" (no retry-queue entry), so the next tick re-decides on the new average. The manual Close endpoint answers 409 "the position just changed size … press Close again".
+    - **Unchanged:** the safety-stop id is still refreshed, so the pre-close cancel hits the stop that actually rests.
+    - A failed `_mark_close_in_progress` (it fails open) is now also logged at the call site.
+    - Result: the added coins are never sold short of the row or labelled foreign by 322. Tested live and paper with a stale object: no exchange call, flag cleared; a fresh close then takes the whole new size with a blended P&L, and no `[RESIDUAL_NOT_OURS]`.
+  - **C2 — cache re-base timing.** The cache entry (entry, qty, fee, re-derived peak / trough) is re-based under `_cache_lock` right after the booking commit, before the safety-stop re-place and the TP heal. The canonical rebuild still runs at the end. Tested.
+  - **I1 — unknown order outcome.** When the 4 quick reads find nothing, a background re-check runs `ADD_RECHECK_POLLS` (3) × `ADD_RECHECK_POLL_S` (15 s).
+    - Growth within 10 % of the requested qty over what the row holds now (0 if it closed) → that delta is flattened reduce-only, under the pair lock, with a CRITICAL log.
+    - Any other growth → CRITICAL alert only (it may be the operator's).
+    - New adds on the row are refused while the re-check runs. After it ends, the next add's live position check guards any later surprise. Tested.
+  - **I2 — TP partly filled during the withdraw.** After the withdraw (and again right before the order) `resting_tp_filled_qty` is re-read. If it is above 0 the add is refused: "the resting take profit filled in part (X of Y) … the rest keeps its stop and the software take profit". The add does not re-arm the TP. Tested.
+  - **I3 — a TP re-healed by a sweep during the add.**
+    - Execution side: `_rtp_heal(from_sweep=True)` (the sweep's call) returns 'skipped' under `_close_lock` while the row is in the add hold (`_add_hold`), so a heal planned before the hold cannot place the old TP. Non-sweep callers are unaffected.
+    - Pre-order guard: right before the order the row's TP id (live) / price (paper) is re-read. If one reappeared it is withdrawn once more; if it is still there the add is refused. Tested both paths.
+  - **I4 — safety-stop record vs a close in flight.** The record UPDATE also requires `closing_in_progress == False`. If 0 rows match, or the write fails, a newly placed stop is cancelled, so a close-all stop never survives onto the next position. Tested.
+  - **I5 — leverage mismatch.** The pre-check compares Binance's position leverage with the row's (`binance_position_leverage`: the reported leverage when > 1, else notional / initial margin, else unknown → not judged). A gap over 15 % refuses: "the leverage on Binance is N×, this trade is M× — not added". The order's `set_leverage` would otherwise re-lever the whole position. Tested.
+  - **M1:** an ACK without price / fill → both are taken from the position delta (Binance averages before / after, `add_fill_price_from_positions`), then the old fallbacks apply. Tested.
+  - **M2:** before the "could NOT be closed again" alarm the live size is re-read against what the row expects (its qty if OPEN, else 0). If the extra is already gone → WARNING plus a calm message. Tested.
+  - **M3 (UI):** a 422 `detail` list is joined into its messages (`_addDetail`), in the preview and in the submit.
+  - **M4:** the preview reuses a live balance read up to 2 s old (`_add_bal_cache`); the add itself always reads fresh. Tested.
+  - **M5 — not changed, on purpose.** The book hold stays until the booking commit. Releasing it after the funds check would let a bot or manual open spend the same free USDT before the add is booked, and paper books no exchange margin to stop that. The reason is documented in the code.
+  - Tests: tests/test_position_add.py now 30 (12 new). Full suite green; inline JS node --check OK.
+- **Round-2 reviews (no critical), all applied:**
+  - **R1 — stale cache rebuild.** `update_orders_cache` and the monitor pass load now read with `populate_existing=True`. The sessions keep objects across commits; autoflush flushes the session's own pending edits first. An add committed mid-pass is no longer rebuilt from the identity-mapped OLD entry / qty / fee / peak. Tested with a stale object in the same session.
+  - **R2 — late-add re-check vs a new position.** Each look (position read + row reads + flatten) runs inside the pair's open lock. Binance contracts are compared with Σ qty of ALL OPEN rows on the pair + side (this mode), and the delta is recomputed inside the lock.
+    - Any OTHER open row on the pair → CRITICAL alert only, never a flatten.
+    - A failed flatten is re-read before the alarm (as M2).
+    - Tested: a row opened in the window is never flattened.
+  - **R3 — flaky test.** Each harness call gets its own DB file, and the re-check tasks are cancelled and awaited before the dispose. Full suite green on 3 consecutive runs.
+  - **R4 — paper close race.** Paper never publishes `closing_in_progress`, so the paper add's guarded UPDATE + Transaction + commit now run under `_close_lock`. Every close holds that lock from its size check to its booking, so an add and a close are atomic to each other.
+    - Chosen over a second size check because a re-check still leaves a window between the check and the booking.
+    - The wait is bounded (`ADD_PAPER_CLOSE_LOCK_WAIT_S` 5 s → "a close is being booked right now"): a paper close can take the book lock (BNB emergency top-up) while the add holds it, and the timeout breaks that cycle.
+    - Tested: nothing is booked while a close holds the lock, and the timeout refusal works.
+  - **R5 — size check SELECT.** A failed SELECT now rolls back (Postgres aborts the transaction). One round trip now returns size, adds and `backstop_algo_id`; the id is applied with `set_committed_value`. Tested.
+  - **R6 — failures after booking.** Everything after the booking commit is wrapped. A failure is logged CRITICAL and returned as `warning` in the 200 answer (UI toast), never a 500, which would invite a duplicate add. The book lock, `_add_hold` and the sweep "next" markers are always cleared in a `finally`. Tested.
+  - **R7:** the backstop re-price sweep (right before the exchange call) and the backstop heal sweep skip rows in `_add_hold`.
+  - **R8:** `set_exit_override` refuses while an add holds the row ("an add is in progress on this trade — try again in a few seconds"). Tested.
+  - **R9:** if `_mark_close_in_progress` failed open, the size check re-runs right before the live market order. An abort there comes after the TP settle / backstop cancel; both are healed by their sweeps (the cancelled stop's id was nulled). Wiring-tested.
+  - **R10 — known limit.** The late-add re-check is memory-only, so a deploy / restart drops it. The operator was already told CHECK BINANCE, and the next add's live position check refuses a size mismatch.
+  - Tests: tests/test_position_add.py now 36 (6 new). Full suite green on 3 consecutive runs; inline JS node --check OK.
+- **Round-3 reviews (verdict was DO-NOT-SHIP; all fixed or documented):**
+  - **#1 🔴 Paper deadlock — fixed by re-ordering, not by timeouts.** The add held the book lock while its TP withdraws waited on `_close_lock` (no timeout). A paper close that holds `_close_lock` can take the book lock (BNB emergency top-up via `_book_ctx`), so the two waited on each other forever.
+    - New order: the first check runs WITHOUT the book lock (an early refusal only, using the ≤ 2 s balance cache). The live position check and the withdraws (incl. the I3 re-check loop) also run with no book lock.
+    - The book lock is taken only after that. Every check is re-run under it (price, tier cap, fresh funds, stop / target levels), and the row must still have the same size and add count. The lock is held to the booking commit, so M5 still holds.
+    - The add now never waits on `_close_lock` unbounded while holding the book lock. The only remaining book → close wait is the paper booking, bounded by `ADD_PAPER_CLOSE_LOCK_WAIT_S`.
+    - Chosen over bounding every withdraw: a timed-out withdraw leaves an unknown TP state, while the re-order removes the cycle.
+    - Tested against a close that holds `_close_lock` and then takes the book lock: no hang. With the old order restored, the test fails.
+  - **#2 🟡 Safety-stop id race.** The close's NULL write after its pre-close cancel is now guarded (`UPDATE … WHERE backstop_algo_id == <the id it cancelled>`). A newer id written meanwhile (an add's re-place, the re-price sweep) is kept and re-read into the object. Tested: the close-intent flag fails, an add commits during the cancel → the row keeps Y, and the R9 re-check aborts the stale close (no market order).
+  - **#3 🟡 Late-add re-check.** A pair-lock wait timeout (a bot maker open can hold the lock ≤ 45 s) now skips only that look (WARNING); the next poll continues. Tested.
+  - **#4 🔵 Interrupted after booking.** The post-booking block also catches BaseException (CancelledError / KeyboardInterrupt / SystemExit): logged CRITICAL, warning set, re-raised. Cancellation is never swallowed. The `finally` still releases the book lock and clears the hold / sweep markers.
+    - What the endpoint returns then: NO response. Its handlers catch Exception only, so no 500 is built for a booked add; the operator sees the ➕N badge and the new size on refresh.
+    - Tested: re-raised, row booked, markers cleared.
+  - **#5 🔵 C1 abort and caller-side edits.** `pending_column_originals` (via `committed_state`, free when nothing is pending) snapshots the caller's in-memory column edits at close entry (e.g. `shadow_peak_stretch_at_close`). On an abort they are reset in memory first (`set_committed_value`, so autoflush has nothing to write) and written back in the flag-clear UPDATE, which matters in live because the close-intent commit already flushed them. `rh_triggered_at` / `rh_hard_stop_pct` (realtime-truth copies) are never rolled back. Tested live and paper.
+  - **#6 — documented, not changed.** A REALTIME close decided on the cached OLD average just before the add's cache re-base loads a fresh row in its own session, so `_close_size_changed` sees no change. That close then sells the whole NEW size (never "foreign") at the moment the old average's level fired. The fix would mean threading the decision's cached qty through ~20 realtime close sites, which is not a small clean change. Window: the ms between the add's commit and its cache re-base (C2).
+  - **#7 — known edges (documented):**
+    - **M-b:** one monitor pass that loaded the row before the add can write its peak / trough once; display-only for fixed-level exits.
+    - **M-c:** after a C1 abort the cache's closing flag can lag ~1 s, until the next rebuild.
+    - **I1 ± 10 %:** an operator app position within 10 % of the add's size, opened in the re-check window with no other row on the pair, would be taken for the late add and flattened.
+    - **ACK-no-fill-then-reject:** an ACK with no fill / price that is later rejected: M1 reads the position delta; if it has not grown, the add is booked at the requested qty and click price (the old fallback). The row would then hold MORE than Binance until the operator corrects it; the next add's position check refuses that mismatch. Unhandled edge, accepted (an ACKed market order that never fills is not expected on Binance).
+  - Tests: tests/test_position_add.py now 40 (4 new + 2 extended). Full suite green on 3 consecutive runs; inline JS node --check OK (no UI change this round).
+- **Round-4 reviews (verdict SHIP once applied; no critical):**
+  - **I-1 — Binance position read again under the book lock.** Right before the order, Binance's position is read again with the same checks (`_add_live_precheck`: one position, same side, size within max(1 step, 0.5 %), I5 leverage). A failed read → "the order was NOT sent". `pre_qty` / `pre_entry` come from THIS read, so the unknown-outcome delta and the M1 price use fresh values. Tested: an app quantity, a leverage change or a failed read between the two reads → refused with nothing sent; a fresh size of 1004 gives a delta of +500, not +504.
+  - **#2 — `pending_column_originals`.** Keys whose committed value is NO_VALUE (expired / never loaded, then set) are skipped, so an abort never writes NULL (or anything) over an unknown DB value. Tested.
+  - **#3 — error after a successful commit.** If a cancel / error lands inside `locked_commit` AFTER the DB commit succeeded, a fresh read of the row's add count and qty runs before any flatten (shielded). If the row already shows the add → NOT flattened, CRITICAL logged. A CancelledError is re-raised; any other error raises "the add was recorded … do NOT add again". The not-booked `finally` re-heals the TP for the new size and clears the markers; the re-price sweep moves the safety stop. Tested for both an error and a cancel. ⚠ Not airtight: if that fresh re-read ITSELF fails (commit succeeded + a cancel inside the commit + a failed DB read, all at once), the added qty is still flattened while the row says it was added — accepted as vanishingly rare (final-gate review).
+  - **#4 — orphan safety stop.** An unrecorded new safety stop whose cancel fails is now `[BACKSTOP_ORPHAN_UNCANCELED]` CRITICAL + a `BACKSTOP_ORPHAN_UNCANCELED` counter (was a WARNING). Tested.
+  - **#5 — newer stop id during a close.** When the close's guarded NULL write finds a newer stop id (0 rows):
+    - If the size changed (an add), the close aborts and keeps that stop.
+    - Otherwise (a re-price) the close continues and cancels the newer id too (guarded NULL again), so no close-all stop survives the CLOSED booking.
+    - Tested: X then Y cancelled, then the market close.
+  - **#6:** the I1 refusal text now reads "up to ~2–3 min incl. pair-lock waits".
+  - **#7 — known edges (documented):**
+    - **R9 window:** when the close-intent flag write fails (a DB error), an add can commit inside the close (between the R9 size re-check and the market order). The close then sells the old size and the added qty is left with no row. Rare (needs a failed flag write AND an add within ms).
+    - **Abort write-back:** the C1 abort writes back the caller's load-time values for the columns it changed. That can overwrite a concurrent display-only peak / trough write made by another session in the same instant.
+  - **Pre-existing, NOT changed here (separate issue):** a paper BOT open holds the book lock while FRENZY `_rtp_arm` takes `_close_lock`, and a paper close's emergency BNB swap takes the book lock under `_close_lock` → the same book ↔ close lock cycle the ➕ add had (round-3 #1). To be fixed in its own change.
+  - Tests: tests/test_position_add.py now 45 (5 new). Full suite green on 3 consecutive runs; inline JS node --check OK.

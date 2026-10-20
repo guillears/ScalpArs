@@ -14,6 +14,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, update, and_, or_, desc, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value   # ➕ (324 R5)
+from sqlalchemy import inspect as sa_inspect   # ➕ (324 round-3 #5)
+from sqlalchemy.orm.base import NO_VALUE   # ➕ (324 round-4)
 
 from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, FrenzyBreak, FrenzyFlag, WillyHoldBlock
 from database import AsyncSessionLocal, locked_commit, locked_execute_commit
@@ -36,6 +39,9 @@ from services.golive_guards import (backstop_heal_skip_inflight, backstop_trigge
                                    untracked_action, preflight_failures, BACKSTOP_REPLACE_RETRY_S, BACKSTOP_REPRICE_INTERVAL_S, UNTRACKED_CONFIRM_PASSES,
                                    trigger_already_crossed, BACKSTOP_REPLACE_MAX_PER_PASS, BACKSTOP_HEAL_RETRY_S,
                                    residual_own_qty)   # 🧍 (DECISION_LOG 322)
+from services.position_add import (add_exit_refusal, add_fill_math, add_preview_math, add_level_refusal, bracket_max_add_margin,  # ➕ (DECISION_LOG 324)
+                                   pnl_pct_net, price_at_pnl, qty_matches, rederive_peak_trough, ADD_MIN_NOTIONAL_USD,
+                                   add_fill_price_from_positions, binance_position_leverage, ADD_LEV_TOL, ADD_RECHECK_QTY_TOL)
 
 
 def _strip_reason_prefixes(reason):
@@ -397,6 +403,33 @@ def exit_entry_atr_pct(entry_strategy, entry_atr_pct):
     return None if (entry_strategy or "") == "MANUAL" else entry_atr_pct
 
 
+_CLOSE_ABORT_KEEP = frozenset({'rh_triggered_at', 'rh_hard_stop_pct'})   # truth copied from the realtime cache onto the caller's row: never rolled back
+
+
+def pending_column_originals(obj) -> dict:
+    """➕ (DECISION_LOG 324 round-3 #5) {column: its last COMMITTED value} for every column attribute of `obj` with a pending in-memory change
+    (e.g. a close-time stamp the caller set before the close, shadow_peak_stretch_at_close) — so a close that ABORTS can put them back instead of
+    committing them onto a row that stays OPEN. The realtime-truth copies in _CLOSE_ABORT_KEEP are left alone. Not an ORM object → {}. Pure."""
+    try:
+        st = sa_inspect(obj)
+        if not st.modified:   # the common case: nothing pending → no per-column walk on every close
+            return {}
+        keys = [k for k in st.committed_state.keys() if k in st.mapper.column_attrs and k not in _CLOSE_ABORT_KEEP]
+    except Exception:
+        return {}
+    out = {}
+    for k in keys:
+        try:
+            if st.committed_state.get(k, NO_VALUE) is NO_VALUE:   # (round-4) expired / never loaded, then set: the DB value is UNKNOWN here —
+                continue                                          # never write NULL (or anything) over it
+            h = st.attrs[k].history
+        except Exception:
+            continue
+        if h.has_changes() and h.deleted:
+            out[k] = h.deleted[0]
+    return out
+
+
 def normalize_manual_pair(pair) -> str:
     """'qnt' / 'QNT/USDT' / 'QNT/USDT:USDT' / 'QNTUSDT' → 'QNTUSDT' (the order-row format)."""
     p = (pair or "").upper().strip().replace("/", "").replace(":USDT", "")
@@ -531,6 +564,9 @@ def manual_liquidation_distance_pct(leverage) -> float:
 MANUAL_BACKSTOP_MARGIN_PCT = 0.5    # a manual trade's exchange safety stop sits this far beyond its own stop (price %)
 MANUAL_BACKSTOP_MIN_GAP_PCT = 0.3   # … and never closer than this to it (else the exchange would fire first) → the open is refused
 MANUAL_FILL_POLL_S = 1.0            # live: after an order call that errored AFTER it was sent, re-read Binance's positions 4× this far apart
+ADD_RECHECK_POLLS = 3               # ➕ (DECISION_LOG 324 review I1) an add sent with an unknown outcome is re-checked this many times …
+ADD_RECHECK_POLL_S = 15.0           # … this far apart (≈ 45 s); a late fill of the add is flattened reduce-only
+ADD_PAPER_CLOSE_LOCK_WAIT_S = 5.0   # ➕ (324 round-2 R4) a paper add books under _close_lock; it waits at most this long for a close in flight
 MANUAL_BACKSTOP_LIQ_SHARE = 0.92    # … and never beyond this share of the distance to liquidation (it must fire before liquidation)
 
 
@@ -3586,6 +3622,8 @@ class TradingEngine:
             if out:
                 await locked_commit(db)
         for oid, pair, direction, old_id, old_pct, want, trig in todo:   # live: the exchange calls run with no DB transaction open
+            if oid in (self.__dict__.get('_add_hold') or ()):
+                continue   # ➕ (324 round-2 R7) an add is re-placing this stop itself (its size / entry are changing) — right before the exchange call
             status, aid = await self._backstop_replace_one(pair, direction, old_id, want, trig)
             async with AsyncSessionLocal() as db2:   # a FRESH read: the close path may have acted while the exchange calls ran
                 o = (await db2.execute(select(Order).where(Order.id == oid))).scalar_one_or_none()
@@ -4392,7 +4430,7 @@ class TradingEngine:
             logger.error(f"[RESTING_TP] withdraw failed for order {order_id}: {_e!r}")
             return 'failed'
 
-    async def _rtp_heal(self, order_id) -> str:
+    async def _rtp_heal(self, order_id, from_sweep: bool = False) -> str:
         """Place a missing resting TP (restart, earlier failure, an UNKNOWN placement) at the price that matches the order's AGE. Live: the
         symbol's close-side reduce-only limits are read first — one of ours at that price and size (placed, answer / id lost) is ADOPTED,
         every other is cancelled ([RESTING_TP_ORPHAN] — includes an operator's own reduce-only limit on a bot position); a price already
@@ -4401,6 +4439,8 @@ class TradingEngine:
         th = config.trading_config.thresholds
         try:
             async with _close_lock:
+                if from_sweep and order_id in (self.__dict__.get('_add_hold') or ()):
+                    return 'skipped'   # ➕ (324 review I3) an add is changing this row's size: a sweep heal planned before it must not place the OLD TP
                 async with AsyncSessionLocal() as s:
                     o = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
                     if (o is None or o.status != "OPEN" or o.closing_in_progress or order_id in _exit_retry_queue or o.protective_tp_order_id
@@ -4487,7 +4527,7 @@ class TradingEngine:
                 if kind == 'withdraw':
                     r = await self._rtp_withdraw(oid, "switch OFF / no fixed TP (exit mode / override / TP 0)")
                 elif kind == 'heal':
-                    r = await self._rtp_heal(oid)
+                    r = await self._rtp_heal(oid, from_sweep=True)
                     if r in ('placed', 'paper'):
                         heal_next.pop(oid, None)
                     else:
@@ -14027,6 +14067,8 @@ class TradingEngine:
             raise ValueError("this position has no leverage on record — cannot judge a safe stop")
         if getattr(order, 'closing_in_progress', False) or order.id in _exit_retry_queue:
             raise ValueError("this position is being closed right now — nothing to edit")
+        if order.id in (self.__dict__.get('_add_hold') or ()):   # ➕ (324 round-2 R8) the add re-bases the stop / target on the new average itself
+            raise ValueError("an add is in progress on this trade — try again in a few seconds")
         if sl is None:   # only a target was typed: keep the fixed stop the trade ALREADY has; never invent one (review: a blank used to
             # become the −3 % leverage floor on a bot trade whose own stop is −0.7 %)
             # BULLRUN_SL keeps its typed stop only BEFORE the break-even armed (deep review: after it, the protected line is higher —
@@ -14119,6 +14161,758 @@ class TradingEngine:
             logger.error(f"[EXIT_OVERRIDE] {order.pair} #{order.id}: resting TP placement failed ({_rtp_ov_e!r}) — the software TP runs")
         logger.warning(f"[EXIT_OVERRIDE] {order.pair} {order.direction} #{order.id} ({order.entry_strategy or 'MOMENTUM'}): exit replaced by stop {sl:+.2f}% / "
                        f"target {('%+.2f%%' % tp) if tp is not None else 'none'} (was {_prev}; P&L now {('%+.2f%%' % pnl_now) if pnl_now is not None else 'unknown'})")
+        return order
+
+    # ── ➕ (DECISION_LOG 324) ADD TO AN OPEN POSITION ────────────────────────────────────────────────────────────────────────────────
+    # Operator 2026-10-20: the 🖐 pop-up refuses a pair that already has an open row, so size was added in the Binance app — one-way mode
+    # netted it into the bot's position and the bot's exits sold it (BTW, DECISION_LOG 322). The ➕ adds to the TRACKED row instead: one
+    # row, one quantity, one average entry, one stop / target, one exchange safety stop. Only FIXED-LEVEL exits (MANUAL FIXED / FLOOR, any
+    # operator exit override) — a trailing / peak exit keeps its state in % of the old entry. Pure math: services/position_add.py.
+
+    async def _add_live_price(self, pair, symbol):
+        """The price an add is judged / sized at — the same source as the manual open: the websocket tick when ≤ 5 s fresh, else REST."""
+        price = None
+        try:
+            _trk = websocket_tracker.get_tracker(pair)
+            _sil = websocket_tracker.pair_silence_seconds(pair)
+            if _trk is not None and _trk.last_price and _trk.last_price > 0 and _sil is not None and _sil <= 5.0:
+                price = float(_trk.last_price)
+        except Exception:
+            price = None
+        if price is None:
+            try:
+                price = await binance_service.get_current_price(symbol)
+            except Exception:
+                price = None
+        try:
+            return float(price) if price and float(price) > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _add_market_limits(symbol):
+        """(amount step, min order notional) from the LOADED market table — never a network call; unknown → (0, ADD_MIN_NOTIONAL_USD)."""
+        step, min_cost = 0.0, ADD_MIN_NOTIONAL_USD
+        try:
+            if getattr(binance_service, '_markets_loaded', False):
+                ex = binance_service.exchange
+                m = ex.market(symbol) or {}
+                p = (m.get('precision') or {}).get('amount')
+                if p is not None:
+                    p = float(p)
+                    step = p if getattr(ex, 'precisionMode', None) == 4 else 10 ** -p   # 4 = ccxt TICK_SIZE (the step itself)
+                c = ((m.get('limits') or {}).get('cost') or {}).get('min')
+                if c:
+                    min_cost = float(c)
+        except Exception:
+            pass
+        return step, min_cost
+
+    async def _manual_add_check(self, db: AsyncSession, order_id, add_investment, ctx: dict, preview: bool = False) -> dict:
+        """➕ (324) every refusal of an add, in order, filling `ctx` as it goes (the preview shows whatever was computed before a refusal):
+        order · symbol · price · pv (add_preview_math) · max_add_bracket · max_add_investment · available · backstop_pct / backstop_trigger.
+        Raises ValueError (readable). No order is sent here; reads: the row, the price (websocket / REST), the cached bracket table, the
+        balance."""
+        try:
+            oid = int(order_id)
+        except (TypeError, ValueError):
+            raise ValueError("order id must be a number")
+        order = (await db.execute(select(Order).where(Order.id == oid).execution_options(populate_existing=True))).scalar_one_or_none()
+        if order is None or order.status != "OPEN":
+            raise ValueError("the position is not open")
+        ctx['order'] = order
+        if bool(order.is_paper) != bool(self.is_paper_mode):
+            raise ValueError("that position belongs to the other mode (paper / live)")
+        if getattr(order, 'closing_in_progress', False) or order.id in _exit_retry_queue:
+            raise ValueError("this position is being closed right now — nothing to add to")
+        th = config.trading_config.thresholds
+        if getattr(order, 'rh_triggered_at', None) is not None and rh_in_hold(th, order.rh_triggered_at, order.peak_pnl):
+            raise ValueError("this trade is inside a recovery hold (its own hard stop / premise / time exits are running) — nothing can be added")
+        _why = add_exit_refusal(order.entry_strategy, getattr(order, 'manual_exit_mode', None), getattr(order, 'exit_override_at', None))
+        if _why:
+            raise ValueError(_why)
+        if float(getattr(order, 'resting_tp_filled_qty', None) or 0) > 0:
+            raise ValueError("its resting take profit already filled in part — the position is closing in pieces; nothing can be added")
+        if order.pattern_fixed_sl_pct is None:
+            raise ValueError("this trade has no fixed stop on record — set one first (✏️ Close → Set exit), then add")
+        if oid in (self.__dict__.get('_add_unresolved') or {}):   # (review I1) an earlier add's late fill is still being looked for
+            raise ValueError("an earlier add on this trade was sent with an unknown outcome and is still being checked on Binance (up to ~2–3 min incl. pair-lock waits) — try again after")
+        try:   # judged AFTER the price / limits below, so the preview still shows the most that can be added for an empty amount
+            add = float(add_investment)
+            _add_err = None if (math.isfinite(add) and add > 0) else "the amount to add must be > 0"
+        except (TypeError, ValueError):
+            add, _add_err = 0.0, "the amount to add must be a number"
+        try:
+            lev = float(order.leverage or 0)
+        except (TypeError, ValueError):
+            lev = 0.0
+        if not lev >= 1.0:
+            raise ValueError("this position has no leverage on record — nothing can be added")
+        live = not self.is_paper_mode
+        _bk_on = bool(getattr(th, 'broker_backstop_enabled', False))
+        if live:
+            if not lev.is_integer():
+                raise ValueError(f"this position runs {lev:g}× — the exchange accepts whole-number leverage only")
+            if not _bk_on:
+                raise ValueError("adding in live mode needs the exchange safety stop (broker backstop) switched on")
+        if not (order.entry_price and order.entry_price > 0 and order.quantity and order.quantity > 0):
+            raise ValueError("this position has no entry price / size on record — nothing can be added")
+        pair = order.pair
+        symbol = f"{pair[:-4]}/USDT:USDT"
+        ctx['symbol'] = symbol
+        price = await self._add_live_price(pair, symbol)
+        if price is None:
+            raise ValueError(f"no price for {pair} right now — try again in a moment")
+        ctx['price'] = price
+        tc = config.trading_config
+        tf = float(getattr(tc, 'taker_fee', tc.trading_fee) or 0.0)
+        sl, tp = float(order.pattern_fixed_sl_pct), order.pattern_fixed_tp_pct
+        pv = add_preview_math(order.direction, order.quantity, order.entry_price, order.investment or 0.0, order.entry_fee or 0.0, lev, add, price, tf, sl, tp) if _add_err is None else None
+        if pv is not None:
+            ctx['pv'] = pv
+        # 🪜 the exchange's tier cap at THIS leverage, with the same 5 % headroom every order path sizes against (DECISION_LOG 319)
+        cap = None
+        if bool(getattr(tc.investment, 'leverage_bracket_cap_enabled', True)):
+            try:
+                _tiers = bracket_tiers_with_headroom((await binance_service.get_leverage_brackets()).get(pair))
+            except Exception:
+                _tiers = None
+            _lim = leverage_bracket_limit(_tiers, lev, add if _add_err is None else 1.0)   # only the cap AT this leverage is read (margin-free)
+            if _lim is not None:
+                _, _, _pmax, cap = _lim
+                if lev > _pmax + 1e-9:
+                    ctx['max_add_bracket'] = ctx['max_add_investment'] = 0.0
+                    raise ValueError(f"{pair} allows at most {_pmax:g}× now and this trade runs {lev:g}× — nothing can be added at this leverage")
+        _mb = bracket_max_add_margin(cap, lev, order.quantity, price)
+        ctx['max_add_bracket'] = _mb
+        if preview and not self.is_paper_mode:   # (review M4) the 300 ms-debounced preview reuses a live balance read ≤ 2 s old; the add reads fresh
+            _bc = self.__dict__.get('_add_bal_cache')
+            if _bc and time.monotonic() - _bc[0] <= 2.0:
+                available = _bc[1]
+            else:
+                available = float(await self.get_available_balance(db) or 0.0)
+                self.__dict__['_add_bal_cache'] = (time.monotonic(), available)
+        else:
+            available = float(await self.get_available_balance(db) or 0.0)
+        _bnb = max(0.0, float(await self._recalculate_paper_bnb(db))) if self.is_paper_mode else 0.0
+        _fee_usdt = max(0.0, pv['add_fee'] - _bnb) if (self.is_paper_mode and pv is not None) else 0.0
+        ctx['available'] = available
+        _cands = [x for x in (_mb, max(0.0, available - _fee_usdt)) if x is not None]
+        ctx['max_add_investment'] = min(_cands) if _cands else None
+        if _add_err:
+            raise ValueError(_add_err)
+        if _mb is not None and add > _mb + 0.01:
+            raise ValueError(f"{pair} allows a position of at most ${cap:,.0f} at {lev:g}× (5 % under Binance's tier cap) and this trade already holds "
+                             f"${order.quantity * price:,.0f} — at most ${_mb:,.2f} more can be added")
+        if add + _fee_usdt > available:
+            raise ValueError(f"add ${add:,.2f}" + (f" (+ ${_fee_usdt:,.2f} fee not covered by BNB)" if _fee_usdt > 0 else "")
+                             + f" exceeds the available balance ${available:,.2f}")
+        _step, _min_cost = self._add_market_limits(symbol)
+        ctx['amount_step'] = _step
+        if pv['add_notional'] < _min_cost:
+            raise ValueError(f"add ${add:,.2f} × {lev:g}× = ${pv['add_notional']:,.2f} is under Binance's minimum order (${_min_cost:g}) — add more")
+        _lvl = add_level_refusal(pv['pnl_now'], sl, tp)
+        if _lvl:
+            raise ValueError(_lvl)
+        if _bk_on:   # the resting exchange safety stop is re-placed on the NEW average: the trade's own stop must stay inside it (paper = live, 271)
+            _bkp = order_backstop_pct(th, order.entry_strategy, getattr(order, 'manual_exit_mode', None), sl, lev)
+            if sl < 0 and abs(sl) + MANUAL_BACKSTOP_MIN_GAP_PCT > _bkp + 1e-9:
+                raise ValueError(f"the exchange safety stop of this position rests {_bkp:.2f}% from its entry — its stop ({sl:.2f}%) is too close to it; "
+                                 f"tighten the stop first (✏️ Close → Set exit), then add")
+            ctx['backstop_pct'] = _bkp
+            ctx['backstop_trigger'] = backstop_trigger_price(pv['entry_price'], order.direction, _bkp)
+        return ctx
+
+    async def manual_add_preview(self, db: AsyncSession, order_id, add_investment) -> dict:
+        """➕ (324) GET /api/manual/add_preview: what an add would make of the row at the live price — no order, no lock. `refusal` = the
+        text the add itself would raise right now (None = it would go through, subject to the live position check at the click)."""
+        ctx, refusal = {}, None
+        try:
+            await self._manual_add_check(db, order_id, add_investment, ctx, preview=True)
+        except ValueError as e:
+            refusal = str(e)
+        o, pv = ctx.get('order'), ctx.get('pv') or {}
+
+        def _r(v, n=2):
+            try:
+                x = float(v)
+                return round(x, n) if math.isfinite(x) else None
+            except (TypeError, ValueError):
+                return None
+        _sl = getattr(o, 'pattern_fixed_sl_pct', None) if o is not None else None
+        _tp = getattr(o, 'pattern_fixed_tp_pct', None) if o is not None else None
+        return {
+            "order_id": getattr(o, 'id', None), "pair": getattr(o, 'pair', None), "direction": getattr(o, 'direction', None),
+            "leverage": getattr(o, 'leverage', None), "quantity": getattr(o, 'quantity', None), "entry_price": getattr(o, 'entry_price', None),
+            "investment": _r(getattr(o, 'investment', None)), "notional_value": _r(getattr(o, 'notional_value', None)),
+            "manual_add_count": getattr(o, 'manual_add_count', None), "manual_add_investment": _r(getattr(o, 'manual_add_investment', None)),
+            "price": ctx.get('price'), "add_investment": _r(add_investment) if pv else None,
+            "add_qty": pv.get('add_qty'), "add_notional": _r(pv.get('add_notional')), "add_fee": _r(pv.get('add_fee'), 4),
+            "new_qty": pv.get('quantity'), "new_avg_entry": pv.get('entry_price'), "new_invested": _r(pv.get('investment')),
+            "new_notional": _r(pv.get('notional_value')), "pnl_now": _r(pv.get('pnl_now'), 3),
+            "stop_pct": _sl, "tp_pct": _tp, "stop_price": pv.get('stop_price'), "tp_price": pv.get('tp_price'),
+            "risk_usd_at_stop": _r(pv.get('risk_usd_at_stop')),
+            "max_add_investment": _r(ctx.get('max_add_investment')), "max_add_bracket": _r(ctx.get('max_add_bracket')),
+            "available": _r(ctx.get('available')), "backstop_pct": ctx.get('backstop_pct'), "backstop_trigger": ctx.get('backstop_trigger'),
+            "refusal": refusal,
+        }
+
+    async def add_to_position(self, db: AsyncSession, order_id, add_investment):
+        """➕ (DECISION_LOG 324) add `add_investment` USD margin to an OPEN position at its own leverage, keeping ONE tracked row.
+        The pair's open lock (serialized_per_pair: no open / add of the same pair can interleave) and the account book lock are held as in
+        open_manual_position. Order of operations — LIVE: Binance positions read (the symbol must hold exactly this row: same side, size
+        within max(1 step, 0.5 %); an operator app position netted in → refused, never mixed) → the resting TP withdrawn (FILLED → refused)
+        → the market order (same side, NOT reduce-only, the row's leverage) → the guarded row UPDATE + an ADD_{dir} Transaction (closed
+        meanwhile / commit failed → the ADDED quantity is flattened reduce-only) → the exchange safety stop re-placed on the new average →
+        the resting TP re-placed for the new size / target → cache. PAPER: same checks and math, filled at the live price, no exchange call.
+        Raises ValueError (readable refusal) / RuntimeError (a sent order whose outcome needs the operator)."""
+        try:
+            oid = int(order_id)
+        except (TypeError, ValueError):
+            raise ValueError("order id must be a number")
+        row = (await db.execute(select(Order.pair).where(Order.id == oid))).first()
+        if row is None:
+            raise ValueError("the position is not open")
+        return await self._add_to_position_locked(db, row[0], oid, add_investment)
+
+    async def _add_pos_read(self, symbol):
+        """➕ one Binance position read for the add path → (side, contracts, entry_price) of the symbol, (None, 0.0, None) when flat, or None
+        when the read FAILED. Never raises."""
+        try:
+            _all = await binance_service.get_open_positions()
+        except Exception:
+            return None
+        if _all is None:
+            return None
+        _p = next((x for x in _all if x.get('symbol') == symbol), None)
+        if _p is None:
+            return (None, 0.0, None)
+        try:
+            return (_p.get('side'), float(_p.get('contracts') or 0), (float(_p.get('entry_price') or 0) or None))
+        except (TypeError, ValueError):
+            return (_p.get('side'), 0.0, None)
+
+    async def _add_live_precheck(self, symbol, pair, direction, row_qty, lev, step):
+        """➕ (324) the LIVE position check of an add → (contracts, entry_price) of the symbol, or ValueError (nothing is sent). Binance must hold
+        exactly this trade: one position, same side, size within max(1 step, 0.5 %) of the row (an app position netted in → refused, never
+        mixed), and (review I5) at the row's leverage (the order sets it on the symbol — another leverage would be re-levered). A FAILED read
+        (None) is never taken as "no position". Run once before the TP withdraw and again under the book lock right before the order (round-4)."""
+        _all = await binance_service.get_open_positions()   # None = the read FAILED (never "no position")
+        if _all is None:
+            raise ValueError("could not read the open positions from Binance — the order was NOT sent; try again")
+        _ex = [x for x in _all if x.get('symbol') == symbol]
+        if not _ex:
+            raise ValueError(f"Binance shows no {pair} position but this trade is {direction} {row_qty:g} — nothing added "
+                             f"(if it was closed in the app, the reconciler books it within seconds)")
+        if len(_ex) > 1:
+            raise ValueError(f"Binance holds more than one {pair} position (hedge mode?) — nothing added")
+        _x = _ex[0]
+        try:
+            _xq = float(_x.get('contracts') or 0)
+        except (TypeError, ValueError):
+            _xq = 0.0
+        if _x.get('side') != direction or not qty_matches(_xq, row_qty, step):
+            raise ValueError(f"Binance holds {_x.get('side')} {_xq:g} {pair} but this trade is {direction} {row_qty:g} — "
+                             f"close the extra in the Binance app first (an app position is never mixed into a bot row)")
+        _xlev = binance_position_leverage(_x)
+        if _xlev is not None and abs(_xlev - float(lev)) > ADD_LEV_TOL * float(lev):
+            raise ValueError(f"the leverage on Binance is {_xlev:g}×, this trade is {float(lev):g}× — not added (an add never re-levers the position)")
+        try:
+            _xe = float(_x.get('entry_price') or 0) or None
+        except (TypeError, ValueError):
+            _xe = None
+        return _xq, _xe
+
+    async def _add_unknown_recheck(self, oid, pair, symbol, direction, req_qty, step):
+        """➕ (DECISION_LOG 324 review I1, round-2 R2) an add order SENT with an unknown outcome that had not shown after the 4 quick reads can
+        still land. Polls ADD_RECHECK_POLLS × ADD_RECHECK_POLL_S. Each look runs INSIDE the pair's open lock (no open / add of the pair can
+        interleave) and compares Binance's contracts with Σ quantity of ALL OPEN rows on the pair + side (this mode):
+          • another OPEN row on the pair (a new position opened in the window) → CRITICAL alert only, NEVER a flatten;
+          • growth ≈ the add's requested qty (within ADD_RECHECK_QTY_TOL) → that delta flattened reduce-only + CRITICAL (a failed flatten is
+            re-read before the alarm, as M2);
+          • any other growth → CRITICAL alert only (could be the operator's own app position).
+        New adds on the row are refused while this runs. Memory-only: a deploy / restart drops it (the operator was told CHECK BINANCE, and
+        the next add's live position check refuses a mismatch). Never raises."""
+        paper = bool(self.is_paper_mode)
+        try:
+            for _i in range(ADD_RECHECK_POLLS):
+                await asyncio.sleep(ADD_RECHECK_POLL_S)
+                _guard = contextlib.AsyncExitStack()
+                try:   # (round-3 #3) a bot maker open can hold the pair lock up to 45 s: a lock wait that times out skips THIS look only
+                    await _guard.enter_async_context(self._pair_open_guard(pair, 30.0))
+                except ValueError:
+                    logger.warning(f"[MANUAL_ADD] {pair} #{oid}: late-add re-check look {_i + 1}/{ADD_RECHECK_POLLS} skipped — the pair is being opened right now")
+                    continue
+                async with _guard:
+                    _r = await self._add_pos_read(symbol)
+                    if _r is None:
+                        continue
+                    try:
+                        async with AsyncSessionLocal() as _s:
+                            _rows = (await _s.execute(select(Order.id, Order.direction, Order.quantity).where(and_(
+                                Order.pair == pair, Order.status == "OPEN", Order.is_paper == paper)))).all()
+                    except Exception:
+                        continue
+                    _others = [r for r in _rows if r[0] != oid]
+                    if _others:
+                        if _r[0] == direction and _r[1] > sum(float(r[2] or 0) for r in _rows if r[1] == direction) + max(step or 0.0, 1e-12):
+                            logger.critical(f"[MANUAL_ADD] {pair} #{oid}: Binance holds {_r[1]:g} and another OPEN row (#{_others[0][0]}) exists on the pair — "
+                                            f"a late fill of the earlier add cannot be told apart: NOT touched; CHECK BINANCE")
+                        return
+                    if _r[0] != direction:
+                        continue
+                    _rq = sum(float(r[2] or 0) for r in _rows if r[1] == direction)
+                    _delta = float(_r[1]) - _rq
+                    if _delta <= max(step or 0.0, 1e-12):
+                        continue
+                    if abs(_delta - float(req_qty)) > max(step or 0.0, ADD_RECHECK_QTY_TOL * float(req_qty)):
+                        logger.critical(f"[MANUAL_ADD] {pair} #{oid}: Binance holds {_r[1]:g} vs the row's {_rq:g} (+{_delta:g}, not the add's {float(req_qty):g}) — "
+                                        f"NOT touched (could be your own app position); CHECK BINANCE")
+                        return
+                    logger.critical(f"[MANUAL_ADD] {pair} #{oid}: the add with the unknown outcome LANDED late (+{_delta:g} over the row's {_rq:g}) — "
+                                    f"flattening it reduce-only (the row never took it)")
+                    try:
+                        _ok = await binance_service.close_position(symbol, direction, _delta)
+                    except Exception as _fe:
+                        _ok = None
+                        logger.critical(f"[MANUAL_ADD] {pair}: late-add flatten raised {_fe!r}")
+                    if _ok:
+                        logger.critical(f"[MANUAL_ADD] {pair} #{oid}: late add of {_delta:g} closed again at market — the trade is as booked")
+                        return
+                    _r2 = await self._add_pos_read(symbol)
+                    if _r2 is not None and (_r2[0] != direction or _r2[1] <= _rq + max(step or 0.0, 0.005 * max(_rq, _delta))):
+                        logger.warning(f"[MANUAL_ADD] {pair} #{oid}: the late-add flatten failed but Binance now holds {_r2[1]:g} (row {_rq:g}) — the extra is gone")
+                    else:
+                        logger.critical(f"[MANUAL_ADD] {pair} #{oid}: late add of {_delta:g} could NOT be closed — close {_delta:g} {pair} on Binance now")
+                    return
+            logger.warning(f"[MANUAL_ADD] {pair} #{oid}: the add with the unknown outcome did not land within "
+                           f"{ADD_RECHECK_POLLS * ADD_RECHECK_POLL_S:.0f} s — nothing to undo (the next add's position check guards any later surprise)")
+        except asyncio.CancelledError:
+            logger.critical(f"[MANUAL_ADD] {pair} #{oid}: late-add re-check cancelled — CHECK BINANCE for a position larger than the row")
+            raise
+        except Exception as _e:
+            logger.critical(f"[MANUAL_ADD] {pair} #{oid}: late-add re-check failed ({_e!r}) — CHECK BINANCE for a position larger than the row")
+        finally:
+            (self.__dict__.get('_add_unresolved') or {}).pop(oid, None)
+
+    @serialized_per_pair(normalize=normalize_manual_pair, wait_s=lambda: manual_open_wait_s(config.trading_config))
+    async def _add_to_position_locked(self, db: AsyncSession, pair: str, order_id: int, add_investment):
+        # 🔒 (round-3 #1) the book lock is NOT held here: the resting-TP withdraws below take _close_lock (no timeout), and a paper close holding
+        # _close_lock can take the book lock (BNB emergency top-up) — book → close here + close → book there froze every paper close. The book
+        # lock is taken AFTER the withdraws, then every check is re-run under it and held to the booking commit (review M5: the funds check and
+        # the booking stay atomic against other opens). This first check only refuses early (nothing is touched before it).
+        _book_release = lambda: None
+        ctx = await self._manual_add_check(db, order_id, add_investment, {}, preview=True)   # early refusal only (≤ 2 s balance cache, M4); re-run fresh below
+        order, pv, price, symbol = ctx['order'], ctx['pv'], ctx['price'], ctx['symbol']
+        if order.pair != pair:   # the row read before the lock: an id reused after a paper reset between the two reads
+            raise ValueError("the position changed while the add was being prepared — nothing added")
+        oid, direction, live, paper = order.id, order.direction, not self.is_paper_mode, bool(self.is_paper_mode)
+        th = config.trading_config.thresholds
+        tc = config.trading_config
+        tf = float(getattr(tc, 'taker_fee', tc.trading_fee) or 0.0)
+        lev = float(order.leverage)
+        _step = ctx.get('amount_step') or 0.0
+        sl, tp = float(order.pattern_fixed_sl_pct), order.pattern_fixed_tp_pct
+        before = dict(qty=float(order.quantity), entry=float(order.entry_price), inv=float(order.investment or 0.0), fee=float(order.entry_fee or 0.0),
+                      bk_id=order.backstop_algo_id, count=int(order.manual_add_count or 0), added=float(order.manual_add_investment or 0.0),
+                      high=order.high_price_since_entry, low=order.low_price_since_entry, es=order.entry_strategy, mode=getattr(order, 'manual_exit_mode', None))
+        # the resting-TP heal sweep and the backstop re-price sweep must not act on this row while it changes size (they would place a
+        # TP / stop for the OLD size / entry between the withdraw and the UPDATE): both skip an order whose "next" time is in the future, and
+        # (review I3) a sweep heal already PLANNED before this point is skipped at execution by the add hold (_rtp_heal from_sweep)
+        _now_m = time.monotonic()
+        _rtp_next = self.__dict__.setdefault('_rtp_heal_next', {}); _bk_next = self.__dict__.setdefault('_bk_replace_next', {})
+        _rtp_prev, _bk_prev = _rtp_next.get(oid), _bk_next.get(oid)
+        _rtp_next[oid] = max(float(_rtp_prev or -1e18), _now_m + 120.0); _bk_next[oid] = max(float(_bk_prev or -1e18), _now_m + 120.0)
+        _hold = self.__dict__.setdefault('_add_hold', set()); _hold.add(oid)
+        tp_touched = booked = filled_live = False
+        fq = fp = None; add_oid = None; m = None; _req = None
+
+        async def _withdraw_tp(why):
+            _w = await self._rtp_withdraw(oid, why)
+            logger.warning(f"[MANUAL_ADD] {pair} #{oid}: resting TP {_w} ({why})")
+            if _w == 'FILLED':
+                raise ValueError("the take profit already filled — the position is closing, nothing added")
+            if _w not in ('withdrawn', 'skipped'):
+                raise ValueError(f"the resting take profit could not be cancelled ({_w}) — nothing added; try again in a moment")
+        try:
+            pre_qty = pre_entry = None
+            if live:
+                pre_qty, pre_entry = await self._add_live_precheck(symbol, pair, direction, before['qty'], lev, _step)
+            # a. the resting TP comes off FIRST: a limit sized / priced for the old position must never rest beside the new one
+            if order.protective_tp_order_id or order.resting_tp_price is not None:
+                tp_touched = True
+                await _withdraw_tp("add to position")
+                # (review I2) a TP that filled IN PART between the pre-check and the cancel: the position is now smaller than the row says —
+                # refused; the row keeps its stop + software TP (the close books the recorded fill); the TP is not re-armed by this add
+                _rr = (await db.execute(select(Order.status, Order.resting_tp_filled_qty).where(Order.id == oid))).first()
+                if _rr is not None and float(_rr[1] or 0) > 0:
+                    tp_touched = False
+                    raise ValueError(f"the resting take profit filled in part ({float(_rr[1]):g} of {before['qty']:g}) while the add was being prepared — "
+                                     f"nothing added; the rest keeps its stop and the software take profit")
+            if live and not await self.rtp_preopen_clear(pair):   # a leftover reduce-only limit of an earlier close must never reduce this add
+                raise ValueError(f"{pair} may still carry a leftover reduce-only limit that could not be verified — nothing added; try again in a minute")
+            # (review I3) right before the order: the row must still be open and carry NO resting TP (a sweep heal planned before the hold
+            # may have re-placed one at the old size) — one more withdraw, then refuse if a TP is still there
+            for _pass in (1, 2):
+                _st = (await db.execute(select(Order.status, Order.closing_in_progress, Order.protective_tp_order_id, Order.resting_tp_price,
+                                               Order.resting_tp_filled_qty).where(Order.id == oid))).first()
+                if _st is None or _st[0] != "OPEN" or _st[1]:
+                    raise ValueError("the position started closing while the add was being prepared — nothing added")
+                if float(_st[4] or 0) > 0:
+                    tp_touched = False
+                    raise ValueError(f"the resting take profit filled in part ({float(_st[4]):g} of {before['qty']:g}) while the add was being prepared — "
+                                     f"nothing added; the rest keeps its stop and the software take profit")
+                _tp_back = bool(_st[2]) if live else (_st[3] is not None)
+                if not _tp_back:
+                    break
+                if _pass == 2:
+                    raise ValueError("a resting take profit was re-placed while the add was being prepared and could not be cleared — nothing added; try again")
+                tp_touched = True
+                logger.warning(f"[MANUAL_ADD] {pair} #{oid}: a resting TP reappeared before the order — withdrawing it again")
+                await _withdraw_tp("add to position (re-check)")
+            # 🔒 (round-3 #1) the book lock from here to the booking commit; every check re-run against the settled book (price, tier cap, funds,
+            # stop / target levels). The row must still be the one the withdraws and the live position check were made for.
+            _book_release = await self._book_hold(10.0)
+            ctx = await self._manual_add_check(db, oid, add_investment, {})
+            order, pv, price = ctx['order'], ctx['pv'], ctx['price']
+            if order.pair != pair or abs(float(order.quantity) - before['qty']) > 1e-12 or int(order.manual_add_count or 0) != before['count']:
+                raise ValueError("the position changed while the add was being prepared — nothing added")
+            # b. the order (LIVE) / the paper fill at the live price
+            if live:
+                # (round-4 I-1) the position is read AGAIN under the book lock, right before the order: an app quantity netted in (or a leverage
+                # change) since the first read is refused with nothing sent; the unknown-outcome / M1 deltas use THIS read's size and average
+                pre_qty, pre_entry = await self._add_live_precheck(symbol, pair, direction, before['qty'], lev, _step)
+                _req = pv['add_qty']
+                _sent = {}
+                try:
+                    result = await binance_service.create_market_order(symbol=symbol, side=("buy" if direction == "LONG" else "sell"),
+                                                                       amount=_req, leverage=int(lev), status=_sent)
+                except BaseException as _oc_err:
+                    if _sent.get('sent'):
+                        logger.critical(f"[MANUAL_ADD] {pair}: the add order was SENT and the task was interrupted ({_oc_err!r}) before its outcome was "
+                                        f"read — CHECK BINANCE: the position may be larger than the row ({before['qty']:g})")
+                    raise
+                if not result:
+                    if not _sent.get('sent'):
+                        raise ValueError(f"the add order for {pair} was NOT sent: the exchange would not set {int(lev)}× on this pair, or the size is "
+                                         f"under its minimum (see the server log). Nothing was added")
+                    _pos = None; _grew = False
+                    for _try in range(4):   # the request LEFT and its outcome is unknown: a fill can take a moment to show — look for it
+                        try:
+                            if _try:
+                                await asyncio.sleep(MANUAL_FILL_POLL_S)
+                            _pos = await self._add_pos_read(symbol)
+                        except asyncio.CancelledError:
+                            logger.critical(f"[MANUAL_ADD] {pair}: the add order was SENT, its outcome is unknown and the task was cancelled while looking "
+                                            f"for it — CHECK BINANCE: the position may be larger than the row ({before['qty']:g})")
+                            raise
+                        if _pos is None:
+                            continue
+                        _grew = _pos[0] == direction and _pos[1] > pre_qty + max(_step, 1e-12)
+                        if _grew:
+                            break
+                    if _grew:
+                        _cq = _pos[1]
+                        fq = _cq - pre_qty
+                        fp = add_fill_price_from_positions(pre_qty, pre_entry, _cq, _pos[2])
+                        logger.critical(f"[MANUAL_ADD] {pair}: the order call reported an error but the Binance position grew {pre_qty:g} → {_cq:g} — "
+                                        f"booking the add from the exchange's own figures")
+                        result = {'id': None, 'price': fp or 0.0, 'filled': fq}
+                    else:   # never "nothing added" on a guess: the order may still land → a bounded background re-check (review I1)
+                        _unres = self.__dict__.setdefault('_add_unresolved', {})
+                        if oid not in _unres:
+                            _unres[oid] = asyncio.ensure_future(self._add_unknown_recheck(oid, pair, symbol, direction, _req, _step))
+                        raise RuntimeError(f"⚠ the add order for {pair} was sent but its outcome is unknown (the exchange call failed and the position "
+                                           f"has not grown yet) — CHECK BINANCE NOW: if the {pair} position is larger than {before['qty']:g}, close the "
+                                           f"extra there; the row was NOT changed. The bot re-checks for ≈{ADD_RECHECK_POLLS * ADD_RECHECK_POLL_S:.0f} s and "
+                                           f"closes a late fill of this add itself")
+                filled_live = True
+                add_oid = result.get('id')
+                try:
+                    fp = float(result.get('price') or 0)
+                except (TypeError, ValueError):
+                    fp = 0.0
+                try:
+                    _rep_fq = float(result.get('filled') or 0)
+                except (TypeError, ValueError):
+                    _rep_fq = 0.0
+                fq = _rep_fq
+                if not (fp > 0 and math.isfinite(fp)) or not (fq > 0 and math.isfinite(fq)):
+                    # (review M1) the ACK carried no price / fill: the exchange's position averages before / after give both
+                    _pa = await self._add_pos_read(symbol)
+                    if _pa is not None and _pa[0] == direction and _pa[1] > pre_qty + max(_step, 1e-12):
+                        _dq = _pa[1] - pre_qty
+                        if not (fq > 0 and math.isfinite(fq)):
+                            fq = _dq
+                        if not (fp > 0 and math.isfinite(fp)):
+                            fp = add_fill_price_from_positions(pre_qty, pre_entry, _pa[1], _pa[2]) or 0.0
+                        logger.warning(f"[MANUAL_ADD] {pair}: the ACK lacked price / fill — taken from the position delta (+{_dq:g} @ {fp:g})")
+                if not (fq and fq > 0 and math.isfinite(fq)):
+                    try:
+                        fq = float(result.get('amount') or 0) or _req
+                    except (TypeError, ValueError):
+                        fq = _req
+                if fq < 0.995 * _req:
+                    logger.warning(f"[PARTIAL_FILL] {pair} MANUAL_ADD: booking the actual size — qty {fq}/{_req}")
+            else:
+                fq, fp = pv['add_qty'], price
+            if not (fp and fp > 0 and math.isfinite(fp)):   # never book a 0 price into the average (the stop would anchor on nothing)
+                logger.critical(f"[MANUAL_ADD] {pair}: fill price unavailable — the add is booked at the click price {price}")
+                fp = price
+            # c. the new row values (pure math) + d. the guarded UPDATE + the ADD_ Transaction
+            m = add_fill_math(before['qty'], before['entry'], before['inv'], before['fee'], lev, fq, fp, tf)
+            _pnl_now = pnl_pct_net(direction, m['entry_price'], m['quantity'], m['entry_fee'], fp, tf)
+            _pk, _tr = rederive_peak_trough(direction, m['entry_price'], m['quantity'], m['entry_fee'], before['high'], before['low'], _pnl_now, tf)
+            _vals = dict(quantity=m['quantity'], entry_price=m['entry_price'], investment=m['investment'], notional_value=m['notional_value'],
+                         entry_fee=m['entry_fee'], peak_pnl=round(_pk, 4), trough_pnl=round(_tr, 4),
+                         manual_add_count=before['count'] + 1, manual_add_investment=round(before['added'] + m['add_margin'], 6),
+                         manual_added_at=datetime.utcnow())
+            if paper and bool(getattr(th, 'broker_backstop_enabled', False)):   # paper: the record of what live would re-place (292 ①)
+                _bkp = order_backstop_pct(th, before['es'], before['mode'], sl, lev)
+                _vals.update(backstop_pct=_bkp, backstop_trigger_price=backstop_trigger_price(m['entry_price'], direction, _bkp))
+            # (round-2 R4) PAPER never publishes closing_in_progress, so the guarded UPDATE alone cannot see a paper close in flight: the paper
+            # booking runs under _close_lock (every close holds it from its size check to its booking) → an add and a close are atomic to
+            # each other. Bounded wait: a paper close can take the book lock (BNB emergency top-up) while this add holds it — the timeout
+            # breaks that cycle (the add gives up, its book lock is released, the close completes). Live: closing_in_progress guards it.
+            _cl_held = False
+            if paper:
+                try:
+                    await asyncio.wait_for(_close_lock.acquire(), ADD_PAPER_CLOSE_LOCK_WAIT_S)
+                    _cl_held = True
+                except asyncio.TimeoutError:
+                    raise ValueError("a close is being booked right now — nothing added; try again in a moment")
+            try:
+                _res = await db.execute(update(Order).where(and_(Order.id == oid, Order.status == "OPEN", Order.closing_in_progress == False))  # noqa: E712
+                                        .values(**_vals).execution_options(synchronize_session=False))
+                if not (_res.rowcount or 0):   # closed / closing meanwhile (a close can commit while the order is in flight)
+                    if paper:
+                        raise ValueError("the position was closed while the add was being prepared — nothing added")
+                    raise RuntimeError("the position was closed while the add was being sent")
+                db.add(Transaction(order_id=oid, binance_order_id=(str(add_oid) if add_oid is not None else None), pair=pair, action=f"ADD_{direction}",
+                                   price=fp, quantity=fq, investment=m['add_margin'], leverage=lev, notional_value=m['add_notional'], fee=m['add_fee'],
+                                   order_type="TAKER", is_paper=paper))
+                await locked_commit(db)
+                booked = True
+            finally:
+                if _cl_held:
+                    _close_lock.release()
+        except BaseException as _add_err:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            if not (filled_live and not booked):
+                raise
+            # the add FILLED but the row could not take it: those coins have no row → close exactly the ADDED quantity again (reduce-only;
+            # the original position, its row and its safety stop stay as they were)
+            logger.critical(f"[MANUAL_ADD] {pair}: the add FILLED on Binance ({direction} {fq}) but could not be booked ({_add_err!r}) — checking the row, then flattening the added quantity")
+
+            async def _flatten():
+                # (round-4) a cancel / error can land inside locked_commit AFTER the DB commit succeeded: the row may already hold the add →
+                # flattening then would leave the row larger than Binance. A FRESH read decides (a failed read → flatten, as before).
+                try:
+                    async with AsyncSessionLocal() as _vs:
+                        _vr = (await _vs.execute(select(Order.manual_add_count, Order.quantity).where(Order.id == oid))).first()
+                    if (_vr is not None and m is not None and int(_vr[0] or 0) == before['count'] + 1
+                            and abs(float(_vr[1] or 0) - float(m['quantity'])) <= 1e-9 * max(1.0, float(m['quantity']))):
+                        return 'RECORDED'
+                except Exception as _vr_err:
+                    logger.error(f"[MANUAL_ADD] {pair}: row re-read before the flatten failed ({_vr_err!r}) — flattening")
+                try:
+                    return await binance_service.close_position(symbol, direction, fq)
+                except Exception as _fl_err:
+                    logger.critical(f"[MANUAL_ADD] {pair}: flatten of the added quantity raised: {_fl_err}")
+                    return None
+            try:
+                _flat = await asyncio.shield(_flatten())
+            except BaseException as _sh_err:
+                logger.critical(f"[MANUAL_ADD] {pair}: flatten interrupted ({_sh_err!r}) — the added {fq} may still be open on Binance")
+                _flat = None
+            if _flat == 'RECORDED':
+                logger.critical(f"[MANUAL_ADD] {pair} #{oid}: the add IS recorded on the row (qty {m['quantity']:g}, add #{before['count'] + 1}) although the "
+                                f"booking step reported {_add_err!r} — NOT flattened; the sweeps re-place the safety stop / take profit for the new size")
+                if not isinstance(_add_err, Exception):
+                    raise
+                raise RuntimeError(f"the add was recorded (the {pair} position is now {m['quantity']:g}) but its follow-up steps did not run "
+                                   f"({_add_err}) — do NOT add again; the safety stop / take profit are re-placed by the sweeps")
+            if not isinstance(_add_err, Exception):
+                raise
+            if _flat:
+                raise RuntimeError(f"the add filled on Binance but could not be recorded ({_add_err}); the added {fq:g} {pair} was closed again "
+                                   f"at market — the trade is as it was")
+            # (review M2) before the alarm: is the extra still there? Someone (a close, the operator) may have flattened it meanwhile
+            _expect = None
+            try:
+                _rs = (await db.execute(select(Order.status, Order.quantity).where(Order.id == oid))).first()
+                _expect = float(_rs[1] or 0) if (_rs is not None and _rs[0] == "OPEN") else 0.0
+            except Exception:
+                _expect = None
+            _now_pos = await self._add_pos_read(symbol)
+            if _expect is not None and _now_pos is not None and (_now_pos[0] != direction or _now_pos[1] <= _expect + max(_step, 0.005 * max(_expect, fq))):
+                logger.warning(f"[MANUAL_ADD] {pair}: the flatten of the added {fq:g} failed but Binance now holds {_now_pos[1]:g} {_now_pos[0] or ''} "
+                               f"(the row expects {_expect:g}) — the extra is already gone")
+                raise RuntimeError(f"the add filled on Binance but could not be recorded ({_add_err}); Binance already shows no extra quantity "
+                                   f"({_now_pos[1]:g} {pair}) — nothing added, check the position once")
+            raise RuntimeError(f"⚠ the add FILLED on Binance ({direction} {fq:g} {pair}) but could not be recorded and could NOT be closed again — "
+                               f"close {fq:g} {pair} on Binance now (the row still holds {before['qty']:g})")
+        finally:
+            if not booked:
+                _book_release()
+                if tp_touched:   # refused / failed after the TP came off: put the (unchanged) row's TP back — skipped when the row closed
+                    try:
+                        await self._rtp_heal(oid)
+                    except Exception as _hl_err:
+                        logger.error(f"[MANUAL_ADD] {pair} #{oid}: resting TP re-heal after a refused add failed ({_hl_err!r}) — the sweep retries")
+                _hold.discard(oid)
+                for _d, _p in ((_rtp_next, _rtp_prev), (_bk_next, _bk_prev)):
+                    if _p is None:
+                        _d.pop(oid, None)
+                    else:
+                        _d[oid] = _p
+        # ── booked: the row holds the whole position ──
+        # (round-2 R6) from here the add IS booked: a failure in any step below must never surface as a failed add (the operator would add
+        # again → a duplicate). It is logged CRITICAL and returned as `warning`; the hold / sweep markers are always cleared.
+        _post_warning = None
+        _bk_txt = _tp_txt = "not reached"
+        try:
+            try:
+                await db.refresh(order)
+            except Exception as _rf_err:
+                logger.warning(f"[MANUAL_ADD] {pair}: refresh after the commit failed ({_rf_err}) — the add is booked")
+            # (review C2) the realtime cache is re-based AT ONCE (before the slow safety-stop / TP calls): the tick path prices the trade off the
+            # cached entry / qty / fee — and the rebuild keeps max(peak) / min(trough) of the OLD entry's cache
+            try:
+                async with _cache_lock:
+                    for _ci in _open_orders_cache.get(pair, []):
+                        if _ci.get('id') == oid:
+                            _ci.update(entry_price=m['entry_price'], quantity=m['quantity'], entry_fee=m['entry_fee'],
+                                       peak_pnl=float(_vals['peak_pnl']), trough_pnl=float(_vals['trough_pnl']))
+            except Exception as _c0_err:
+                logger.error(f"[MANUAL_ADD] {pair}: cache re-base failed ({_c0_err}) — the monitor loop rebuilds it")
+            _bnb_swap_owed = False
+            if paper:   # same bookkeeping as the manual open (BNB fee + persisted state)
+                try:
+                    await self._recalculate_paper_balance(db)
+                    _bnb_swap_owed = await self._deduct_fee_from_bnb(m['add_fee'], db, defer_swap=True)
+                    await self.save_state(db)
+                except Exception as _pb_err:
+                    logger.error(f"[MANUAL_ADD] {pair}: paper bookkeeping after the add failed ({_pb_err}) — the next balance sync corrects it")
+            _book_release()
+            if _bnb_swap_owed:
+                try:
+                    await self._execute_bnb_swap(db, swap_type="emergency")
+                except Exception as _sw_err:
+                    logger.error(f"[BNB_EMERGENCY] deferred top-up after the {pair} add failed: {_sw_err}")
+                    try:
+                        await db.rollback(); await db.refresh(order)
+                    except Exception:
+                        pass
+            # e. the exchange safety stop on the NEW average (live). A failed re-place is counted; the sweeps heal / re-price it.
+            _bk_txt = "paper record" if paper else "off"
+            if live and bool(getattr(th, 'broker_backstop_enabled', False)):
+                _want = order_backstop_pct(th, before['es'], before['mode'], sl, lev)
+                _trig = backstop_trigger_price(m['entry_price'], direction, _want)
+                try:
+                    _bst, _aid = await self._backstop_replace_one(pair, direction, before['bk_id'], _want, _trig)
+                except Exception as _bk_err:
+                    _bst, _aid = 'error', before['bk_id']
+                    logger.critical(f"[BACKSTOP_PLACE_FAILED] {pair} {direction} MANUAL_ADD: re-place raised {_bk_err!r}")
+                _bk_vals = None
+                if _bst == 'replaced':
+                    _bk_vals = dict(backstop_algo_id=_aid, backstop_pct=_want, backstop_trigger_price=_trig)
+                    logger.warning(f"[BACKSTOP_REPLACE] {pair} {direction} MANUAL_ADD: safety stop moved to the new average — {_want}% trigger {_trig:.6g} "
+                                   f"algoId {before['bk_id']} → {_aid}")
+                elif _bst == 'lost':
+                    _bk_vals = dict(backstop_algo_id=None)   # the heal sweep places it (BACKSTOP_HEAL_RETRY_S)
+                    logger.critical(f"[BACKSTOP_PLACE_FAILED] {pair} {direction} MANUAL_ADD: no exchange safety stop rests now — SOFTWARE stops until the heal sweep places it")
+                    self._record_filter_block("BACKSTOP_PLACE_FAILED", direction)
+                elif _bst == 'crossed':
+                    logger.warning(f"[BACKSTOP_REPLACE] {pair} {direction} MANUAL_ADD: the new trigger {_trig:.6g} is already through the price — the old stop "
+                                   f"(algoId={before['bk_id']}) stays; the re-price sweep retries")
+                else:   # kept_old / error: the old stop (old entry) still rests — the re-price sweep moves it
+                    logger.critical(f"[BACKSTOP_PLACE_FAILED] {pair} {direction} MANUAL_ADD: the safety stop was NOT moved to the new average ({_bst}) — "
+                                    f"the old one (algoId={before['bk_id']}) rests; the re-price sweep retries")
+                    self._record_filter_block("BACKSTOP_PLACE_FAILED", direction)
+                if _bk_vals is not None:
+                    _r2 = None
+                    try:   # (review I4) written only while the row is open AND not being closed — a close in flight cancels the id it reads
+                        _r2 = await db.execute(update(Order).where(and_(Order.id == oid, Order.status == "OPEN", Order.closing_in_progress == False))  # noqa: E712
+                                               .values(**_bk_vals).execution_options(synchronize_session=False))
+                        await locked_commit(db)
+                    except Exception as _bkw_err:
+                        logger.error(f"[MANUAL_ADD] {pair}: safety stop record failed ({_bkw_err})")
+                        try:
+                            await db.rollback()
+                        except Exception:
+                            pass
+                    if not ((_r2.rowcount if _r2 is not None else 0) or 0) and _bst == 'replaced' and _aid:
+                        # not recorded (closed / closing meanwhile, or the write failed): a close-all stop nobody tracks must never survive onto
+                        # the next position on this symbol → cancel it (a still-open row is healed by the sweep: no recorded id → re-placed)
+                        try:
+                            _c = await binance_service.cancel_backstop_stop(pair, _aid)
+                        except Exception as _cx:
+                            _c = None
+                            logger.error(f"[MANUAL_ADD] {pair}: cancel of the unrecorded safety stop algoId={_aid} raised {_cx!r}")
+                        if _c:
+                            logger.warning(f"[MANUAL_ADD] {pair}: the new safety stop algoId={_aid} was not recorded (row closed / closing / write failed) — cancelled")
+                        else:   # (round-4) a close-all stop nobody tracks is resting: it would flatten the NEXT position on this symbol
+                            logger.critical(f"[BACKSTOP_ORPHAN_UNCANCELED] {pair} {direction}: the add's new safety stop algoId={_aid} is NOT recorded on any row "
+                                            f"and could NOT be cancelled — cancel it on Binance (it would close the next {pair} position)")
+                            self._record_filter_block("BACKSTOP_ORPHAN_UNCANCELED", direction)
+                    try:
+                        await db.refresh(order)
+                    except Exception:
+                        pass
+                _bk_txt = f"{_bst} {_want}% @ {_trig:.6g}" if _trig else str(_bst)
+            _rtp_next.pop(oid, None); _bk_next.pop(oid, None)   # the sweeps may act on the row again (again in the finally)
+            # f. the resting TP for the new size at the new target (heal path: _close_lock, row re-read, a crossed limit is skipped)
+            _tp_txt = "none"
+            try:
+                if rtp_row_target(th, order, _held_minutes(getattr(order, 'opened_at', None))) is not None:
+                    _tp_txt = await self._rtp_heal(oid)
+            except Exception as _tp_err:
+                _tp_txt = f"failed ({_tp_err!r})"
+                logger.error(f"[MANUAL_ADD] {pair} #{oid}: resting TP placement failed ({_tp_err!r}) — the software TP runs; the sweep retries")
+            _hold.discard(oid)
+            # g. the canonical cache rebuild (stop / exit fields built by the same code as a restart)
+            try:
+                await self.update_orders_cache(db)
+            except Exception as _c_err:
+                logger.error(f"[MANUAL_ADD] {pair}: booked, cache rebuild failed ({_c_err}) — the monitor loop picks it up")
+            _sp = _tpp = None
+            try:
+                _sp = price_at_pnl(direction, m['entry_price'], m['quantity'], m['entry_fee'], sl, tf)
+                _tpp = price_at_pnl(direction, m['entry_price'], m['quantity'], m['entry_fee'], tp, tf) if (tp is not None and float(tp) > 0) else None
+            except Exception:
+                pass
+            logger.warning(f"[MANUAL_ADD] {pair} {direction} #{oid} ({before['es'] or 'MOMENTUM'}): +{fq:g} @ {fp:g} (${m['add_margin']:,.2f} × {lev:g}) · qty "
+                           f"{before['qty']:g} → {m['quantity']:g} · avg entry {before['entry']:g} → {m['entry_price']:.6g} · invested ${before['inv']:,.2f} → "
+                           f"${m['investment']:,.2f} · stop {sl:+.2f}% @ {(_sp or 0):.6g} · TP " + (f"{float(tp):+.2f}% @ {(_tpp or 0):.6g}" if _tpp else "none")
+                           + f" · safety stop {_bk_txt} · resting TP {_tp_txt} · add #{before['count'] + 1}")
+        except Exception as _post_err:
+            _post_warning = (f"the add is booked, but a follow-up step failed ({_post_err!r}) — the sweeps re-place the safety stop / take profit; "
+                             f"check the position")
+            logger.critical(f"[MANUAL_ADD] {pair} #{oid}: BOOKED, post-booking step failed: {_post_err!r} — the sweeps heal the stop / TP")
+        except BaseException as _post_cx:
+            # (round-3 #4) CancelledError (client gone / shutdown) or KeyboardInterrupt / SystemExit AFTER the booking commit: the add IS booked.
+            # Logged CRITICAL and re-raised (a cancellation is never swallowed). The endpoint then sends NO response at all — its handlers catch
+            # Exception only, so no 500 is built for a booked add; the operator sees the ➕N badge and the new size on the next refresh. The
+            # finally below still releases the book lock and clears the hold / sweep markers; the sweeps heal a stop / TP not yet re-placed.
+            _post_warning = f"the add is booked, but its follow-up steps were interrupted ({_post_cx!r}) — the sweeps re-place the safety stop / take profit"
+            logger.critical(f"[MANUAL_ADD] {pair} #{oid}: BOOKED, post-booking steps interrupted ({_post_cx!r}) — the sweeps heal the stop / TP")
+            try:
+                order._add_warning = _post_warning
+            except Exception:
+                pass
+            raise
+        finally:
+            _book_release()
+            _hold.discard(oid)
+            _rtp_next.pop(oid, None); _bk_next.pop(oid, None)
+        try:
+            order._add_warning = _post_warning
+        except Exception:
+            pass
         return order
 
     async def _manual_entry_stamps(self, pair: str, symbol: str, direction: str, fill_price: float) -> dict:
@@ -14408,6 +15202,69 @@ class TradingEngine:
                     return False
         return False
 
+    async def _close_size_changed(self, db: AsyncSession, order, seen_qty, seen_adds, reason, dirty0=None) -> bool:
+        """➕ (DECISION_LOG 324 review C1) True = the row's size changed (an add) after the caller loaded `order`: this close was decided on the
+        OLD average and would sell the OLD quantity (the added coins then read as FOREIGN to the 322 residual logic → left with no stop).
+        Then: closing_in_progress cleared, the caller's object refreshed (qty / entry / fees / invested / notional / safety stop / adds), the
+        object marked `_close_aborted_size_changed` (the manual Close endpoint says "press Close again"), [MANUAL_ADD_CLOSE_ABORT] logged —
+        every caller treats None as "not closed" (no retry queue entry; the realtime cache was re-based by the add itself, the monitor rebuilds
+        it every pass). False = unchanged — the safety-stop id is still refreshed (the add / re-price sweep may have moved it). Never raises."""
+        _cols = ['quantity', 'entry_price', 'entry_fee', 'investment', 'notional_value', 'backstop_algo_id', 'manual_add_count']
+        try:   # (round-2 R5) one round trip: size, adds and the resting safety-stop id
+            row = (await db.execute(select(Order.quantity, Order.manual_add_count, Order.backstop_algo_id).where(Order.id == order.id))).first()
+        except Exception as _e:
+            logger.debug(f"[MANUAL_ADD_CLOSE_CHECK] {getattr(order, 'pair', '?')} #{getattr(order, 'id', '?')}: re-read skipped ({_e})")
+            try:   # a failed statement aborts the transaction on Postgres — never leave the close running in an aborted txn
+                await db.rollback()
+            except Exception:
+                pass
+            return False
+        if row is None:
+            return False
+        changed = False
+        try:
+            if seen_qty is not None and row[0] is not None and abs(float(row[0]) - float(seen_qty)) > 1e-9 * max(1.0, abs(float(row[0]))):
+                changed = True
+            if int(row[1] or 0) != int(seen_adds or 0) and ('manual_add_count' in order.__dict__):
+                changed = True
+        except (TypeError, ValueError):
+            changed = False
+        if not changed:
+            try:   # the id the add / the re-price sweep may have moved, set as the committed value (no extra read, nothing marked dirty)
+                set_committed_value(order, 'backstop_algo_id', row[2])
+            except Exception:
+                pass
+            return False
+        # (round-3 #5) the caller's in-memory edits made for THIS close (dirty0 = their committed originals) must not ride the flag-clear commit
+        # onto a row that stays OPEN: reset in memory FIRST (set_committed_value clears the pending change, so autoflush has nothing to write),
+        # and written back in the same UPDATE (live: the close-intent commit already flushed them). Never the realtime-truth copies.
+        _restore = {k: v for k, v in (dirty0 or {}).items() if k not in ('closing_in_progress', 'close_initiated_at')}
+        for _k, _v in _restore.items():
+            try:
+                set_committed_value(order, _k, _v)
+            except Exception:
+                pass
+        try:
+            await db.execute(update(Order).where(Order.id == order.id).values(closing_in_progress=False, close_initiated_at=None, **_restore))
+            await locked_commit(db)
+        except Exception as _ce:
+            logger.error(f"[MANUAL_ADD_CLOSE_ABORT] {order.pair} #{order.id}: could not clear closing_in_progress ({_ce}) — the next close re-sets it; the reconciler treats a flag older than 120 s as stale")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+        try:
+            await db.refresh(order, attribute_names=_cols + ['closing_in_progress', 'close_initiated_at'])
+        except Exception:
+            pass
+        try:
+            order._close_aborted_size_changed = True
+        except Exception:
+            pass
+        logger.warning(f"[MANUAL_ADD_CLOSE_ABORT] {order.pair} #{order.id}: {reason} was decided on qty {seen_qty} but the row now holds {row[0]} "
+                       f"(add #{row[1]}) — NOT closed; the next tick re-evaluates on the new average")
+        return True
+
     async def _close_position_locked(
         self,
         db: AsyncSession,
@@ -14418,6 +15275,11 @@ class TradingEngine:
         """Internal close logic, must be called under _close_lock."""
         if order.status != "OPEN":
             return None
+        # ➕ (DECISION_LOG 324 review C1) what the CALLER decided on: the size / add count of the object it holds. A monitor pass loads its
+        # rows at the pass start and a realtime close can wait on _close_lock — an add committed meanwhile changes qty / entry / fee.
+        # Read from the instance dict (never a lazy load); unknown → the check is skipped.
+        _seen_qty, _seen_adds = order.__dict__.get('quantity'), order.__dict__.get('manual_add_count')
+        _dirty0 = pending_column_originals(order)   # (round-3 #5) what the caller changed in memory before this close — rolled back on an abort
         
         # Re-verify from DB to prevent race between polling loop and real-time monitor
         fresh_check = await db.execute(
@@ -14439,8 +15301,16 @@ class TradingEngine:
         # paper mode never hits the reconciler.  See CLAUDE.md "SUIUSDT
         # reconciler race (Apr 16)" for the original incident.
         _rtp_set = None   # 🎯 (DECISION_LOG 296) the resting TP's settlement for this close: None = none on this order
+        if self.is_paper_mode and await self._close_size_changed(db, order, _seen_qty, _seen_adds, reason, _dirty0):   # ➕ (324 C1) paper: at lock entry
+            return None
         if not self.is_paper_mode:
-            await self._mark_close_in_progress(db, order.id)
+            _close_marked = await self._mark_close_in_progress(db, order.id)
+            if not _close_marked:   # fails OPEN (the close proceeds) — said once more at the call site
+                logger.warning(f"[CLOSE_INTENT_FAIL] {order.pair} #{order.id}: closing_in_progress NOT published — closing anyway ({reason})")
+            # ➕ (324 C1) the size this close was decided on vs the row NOW — BEFORE the resting-TP settle and the pre-close backstop cancel:
+            # an add committed after the caller loaded the row → abort (flag cleared); the next tick re-decides on the new average.
+            if await self._close_size_changed(db, order, _seen_qty, _seen_adds, reason, _dirty0):
+                return None
             # 🎯 (DECISION_LOG 296) CANCEL THE RESTING TP FIRST — every exit (stop, time cap, manual, override, the retry queue, the
             # FRENZY_TP safety net / fill) passes here: re-read the row's resting-TP fields (a concurrent late swap / re-price may have
             # written a NEWER id since this row object was loaded) → cancel → learn its fill → clear the id + record the fill NOW (a failed
@@ -14489,13 +15359,42 @@ class TradingEngine:
             # the dual-close race guard (never let the exchange stop + the bot's close race).
             if getattr(order, 'backstop_algo_id', None):
                 try:
-                    _bkc_ok = await binance_service.cancel_backstop_stop(order.pair, order.backstop_algo_id)
-                    logger.info(f"[BACKSTOP_CANCELED] {order.pair}: algoId={order.backstop_algo_id} ok={_bkc_ok} (pre-close)")
+                    _bkc_id = order.backstop_algo_id
+                    _bkc_ok = await binance_service.cancel_backstop_stop(order.pair, order.backstop_algo_id)   # (== _bkc_id)
+                    logger.info(f"[BACKSTOP_CANCELED] {order.pair}: algoId={_bkc_id} ok={_bkc_ok} (pre-close)")
                     if _bkc_ok:
                         # review fix: null + commit so a failed close leaves a NULL id the
                         # sweep can heal (a dead algoId would read as 'protected' while naked)
-                        order.backstop_algo_id = None
+                        # ➕ (324 round-3 #2) GUARDED: only the id this close cancelled is cleared — an add (or the re-price sweep) that re-placed
+                        # the stop meanwhile wrote a NEWER id, which must stay recorded (else it rests untracked and the heal sweep stacks a 2nd one)
+                        _bkc_res = await db.execute(update(Order).where(and_(Order.id == order.id, Order.backstop_algo_id == _bkc_id))
+                                                    .values(backstop_algo_id=None).execution_options(synchronize_session=False))
                         await locked_commit(db)
+                        if _bkc_res.rowcount:
+                            set_committed_value(order, 'backstop_algo_id', None)
+                        else:
+                            logger.warning(f"[BACKSTOP_CANCELED] {order.pair} #{order.id}: the row's stop id moved past algoId={_bkc_id} during the close "
+                                           f"(an add / re-place) — the newer id is kept")
+                            try:
+                                await db.refresh(order, attribute_names=['backstop_algo_id'])
+                            except Exception:
+                                pass
+                            # (round-4) the newer id came from an add → the size changed: abort here, KEEPING that stop (R9 / C1). Otherwise
+                            # (a re-price) the close continues: the newer close-all stop is cancelled too, so none survives the CLOSED booking.
+                            if await self._close_size_changed(db, order, _seen_qty, _seen_adds, reason, _dirty0):
+                                return None
+                            _bkc_new = getattr(order, 'backstop_algo_id', None)
+                            if _bkc_new:
+                                if await binance_service.cancel_backstop_stop(order.pair, _bkc_new):
+                                    _bkc_res2 = await db.execute(update(Order).where(and_(Order.id == order.id, Order.backstop_algo_id == _bkc_new))
+                                                                 .values(backstop_algo_id=None).execution_options(synchronize_session=False))
+                                    await locked_commit(db)
+                                    if _bkc_res2.rowcount:
+                                        set_committed_value(order, 'backstop_algo_id', None)
+                                    logger.info(f"[BACKSTOP_CANCELED] {order.pair}: newer algoId={_bkc_new} ok=True (pre-close)")
+                                else:
+                                    self._record_filter_block("BACKSTOP_CANCEL_FAILED", order.direction)
+                                    logger.error(f"[BACKSTOP_CANCEL_FAILED] {order.pair}: newer algoId={_bkc_new} could not be cancelled before the close")
                     else:
                         self._record_filter_block("BACKSTOP_CANCEL_FAILED", order.direction)
                 except Exception as _bkc_err:
@@ -14550,6 +15449,11 @@ class TradingEngine:
                 logger.warning(f"[RESTING_TP_FILLED] {order.pair} {order.direction} #{order.id}: the whole TP filled @ {_rtp_px} — booked {reason} "
                                f"MAKER, no market order")
 
+            # ➕ (324 round-2 R9) the flag was NOT published, so an add's guarded UPDATE could still commit: one more size check right before the
+            # market order (cheap). An abort here comes after the TP settle / backstop cancel — both are healed by their sweeps (the cancelled
+            # stop's id was nulled), and the next tick re-decides on the new average.
+            if not _close_marked and exit_result is None and await self._close_size_changed(db, order, _seen_qty, _seen_adds, reason, _dirty0):
+                return None
             for attempt in range(1, max_exit_retries + 1):
                 if exit_result is not None:
                     break   # 🎯 (296) settled by the resting TP
@@ -16097,10 +17001,10 @@ class TradingEngine:
 
     async def update_open_positions(self, db: AsyncSession) -> List[Dict]:
         """Update all open positions with current prices and check exit conditions"""
-        result = await db.execute(
+        result = await db.execute(   # ➕ (324 R1) fresh row values at the pass start, never a stale identity-mapped object (autoflush first)
             select(Order).where(
                 and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)
-            )
+            ).execution_options(populate_existing=True)
         )
         open_orders = result.scalars().all()
         self._touch_prune({_o.id for _o in open_orders})   # 🛑👁 (317, dual review) markers only for orders still open
@@ -17310,6 +18214,8 @@ class TradingEngine:
                             continue   # 🛡 (292) a failed placement retries every BACKSTOP_HEAL_RETRY_S, not every pass
                         if backstop_heal_skip_inflight(getattr(_bko, 'closing_in_progress', False), getattr(_bko, 'close_initiated_at', None), _bk_utc):
                             continue   # 🛡 (308) the bot's own close is in flight — it nulled the id on purpose; never race a stop into it
+                        if _bko.id in (self.__dict__.get('_add_hold') or ()):
+                            continue   # ➕ (324 round-2 R7) an add is moving this row's stop to the new average — never place one for the old entry
                         _bk_pct = order_backstop_pct(config.trading_config.thresholds, _bko.entry_strategy, getattr(_bko, 'manual_exit_mode', None),
                                                      getattr(_bko, 'pattern_fixed_sl_pct', None), _bko.leverage)   # MANUAL / FRENZY / WILLY: own stop + 0.5 (271); every other order: broker_backstop_pct
                         _bk_tr = _bko.entry_price * (1 - _bk_pct / 100.0) if _bko.direction == "LONG" else _bko.entry_price * (1 + _bk_pct / 100.0)
@@ -22143,10 +23049,13 @@ class TradingEngine:
         """Update the open orders cache for real-time stop loss checking.
         Includes peak_pnl and breakeven config for break-even SL logic."""
         global _open_orders_cache
+        # ➕ (DECISION_LOG 324 round-2 R1) populate_existing: the sessions keep objects across commits (expire_on_commit=False) and the monitor
+        # pass loaded these rows at its start — without it an add committed mid-pass is rebuilt from the identity-mapped OLD entry / qty / fee /
+        # peak (overwriting the add's re-base until the next pass). Autoflush flushes this session's own pending edits before the read.
         result = await db.execute(
             select(Order).where(
                 and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)
-            )
+            ).execution_options(populate_existing=True)
         )
         orders = result.scalars().all()
         

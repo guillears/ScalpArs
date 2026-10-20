@@ -387,6 +387,12 @@ class Order(Base):
     # close reads OVERRIDE_SL / OVERRIDE_TP. For a MANUAL trade the mode simply becomes FIXED. NULL = never overridden.
     exit_override_at = Column(DateTime, nullable=True)
     exit_override_prev = Column(String(40), nullable=True)          # what the exit was before (e.g. "BOT", "MANUAL:MOMENTUM", "FIXED sl=-3 tp=None")
+    # ➕ (DECISION_LOG 324) the operator ADDED size to this open position (Open Orders ➕): the row's quantity / entry_price (qty-weighted
+    # average) / investment / notional_value / entry_fee already include every add; each add also writes an ADD_{dir} Transaction row.
+    # NULL = never added. A BOT row with manual_added_at set counts as "touched by you" (services/origin_view.bot_touched).
+    manual_add_count = Column(Integer, nullable=True)               # number of adds
+    manual_add_investment = Column(Float, nullable=True)            # Σ margin added (USD, the actual fills / leverage)
+    manual_added_at = Column(DateTime, nullable=True)               # last add (UTC)
     manual_note = Column(String(200), nullable=True)                # the operator's hypothesis for the trade
     manual_block_reason = Column(String(60), nullable=True)         # Sep-29: gate shown on the Top Pairs row at the click ('NONE' = enterable, NULL = no scan data)
     manual_setup_rating = Column(String(15), nullable=True)         # the pair's rating at the click (STRONG_BUY / VERY_STRONG / NO_TRADE)

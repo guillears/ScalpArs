@@ -7521,3 +7521,14 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Review (caveman, pre-commit):** the [FLOW_READ] INFO line logs only when the re-read finds a different row set (count / newest row) or ≥ 10 min after the last line — the card re-reads every 60 s and one line/min would flood the hourly log reviews; test added (7 tests).
 - **Deep review (SHIP) nits applied:** settle-lag comment names both cache ages; get_transfer_rows docstring states the change/10-min log throttle; the throttle state is per start_ms key (≤ 8 keys) so the 600 s callers never flip the card's signature. Tests 7; full suite 1545+.
 - **Display tweak (operator 2026-10-20 "only put invested, without the ( )"):** the live card line is now just "Invested: $X"; the breakdown ($start start + $deposits deposits / withdrawals) moved to the hover tooltip (cleared on the paper branch). Dual review: diff 7 lines, inline JS node --check OK, 7 card tests green.
+
+## (319) 2026-10-20 — 🪜 Order sizing keeps 5 % headroom under Binance's leverage-tier caps (found in the hourly log review)
+- **Bug (live, no money lost):** SOLVUSDT SPIKE_FADE short 2026-10-20 07:22 UTC — desired $25,721 at 20× (2× ticket on the ≈ $2.6k
+  account after the deposit); the bracket cap resized it to exactly the tier line, "$10,000 at 10×" (SOLV tiers $5k@20× / $10k@10×);
+  Binance rejected −2027 "Exceeded the maximum allowable position at current leverage" (market fill + rounding land a hair above the
+  line) → missed fade, no position. With the larger account, sleeve tickets now reach these caps more often.
+- **Fix:** `bracket_tiers_with_headroom` (BRACKET_CAP_SAFETY 0.95) scales each tier's max notional before the ORDER paths size
+  against it — bot open path, the momentum-long keep path and the manual open path. The pure limit functions stay exact (display /
+  existing tests unchanged). Costs ≤ 5 % of a capped position; uncapped positions are untouched.
+- Tests: tests/test_bracket_headroom.py (SOLV case lands under $10k; helper total; wiring). Full suite green.
+- **Review (pre-commit):** /api/manual/limits (the manual panel's 'max size' line) now shows the same headroom-scaled tiers, so the panel never offers a size the server refuses; test added.

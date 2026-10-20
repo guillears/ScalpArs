@@ -743,6 +743,21 @@ def manual_floor_for_leverage(th, leverage) -> float:
     return cfg
 
 
+# 🪜 (DECISION_LOG 319) headroom under each tier's max notional: sizing EXACTLY to the cap (SOLVUSDT fade 2026-10-20 07:22, $10,000 at
+# 10× on a $10,000 tier) was rejected by Binance −2027 "Exceeded the maximum allowable position at current leverage" — the market fill
+# + rounding land a hair above the line. 5 % below the cap never trips it and costs at most 5 % of a capped position.
+BRACKET_CAP_SAFETY = 0.95
+
+
+def bracket_tiers_with_headroom(tiers, safety=BRACKET_CAP_SAFETY):
+    """(319) Pure: the exchange tiers with each max notional scaled by `safety` — what the ORDER paths size against (the pure
+    limit functions stay exact for display / tests). Bad rows pass through untouched; None / empty → as given. Never raises."""
+    try:
+        return [(float(c) * float(safety), l) for c, l in (tiers or [])] if tiers else tiers
+    except (TypeError, ValueError):
+        return tiers
+
+
 def leverage_bracket_limit(tiers, leverage, margin):
     """🪜 Oct-1 — what the exchange's leverage brackets allow for this pair with this MARGIN budget. `tiers` = [(notional_cap,
     max_leverage), …] (binance_service.get_leverage_brackets). Binance lowers the permitted leverage as the position grows, so
@@ -12700,7 +12715,7 @@ class TradingEngine:
         _brk_capped = False; _brk_max_lev = None; _brk_cap = None
         if bool(getattr(config.trading_config.investment, 'leverage_bracket_cap_enabled', True)) and investment > 0 and leverage > 0:
             try:
-                _lim = leverage_bracket_limit((await binance_service.get_leverage_brackets()).get(pair), leverage, investment)
+                _lim = leverage_bracket_limit(bracket_tiers_with_headroom((await binance_service.get_leverage_brackets()).get(pair)), leverage, investment)   # (319) 5 % headroom
             except Exception as _be:
                 logger.warning(f"[BRACKET_CAP] {pair}: bracket lookup failed ({str(_be)[:60]}) — no cap applied")
                 _lim = None
@@ -12713,7 +12728,7 @@ class TradingEngine:
                         # ⚖️ (DECISION_LOG 298) a resized momentum long: the reduced margin must not shrink the DL 289 notional when the brackets
                         # allow it at a lower leverage — retry with the FULL margin, never above the reference notional
                         try:
-                            _ml_tiers = (await binance_service.get_leverage_brackets()).get(pair)
+                            _ml_tiers = bracket_tiers_with_headroom((await binance_service.get_leverage_brackets()).get(pair))   # (319)
                         except Exception:
                             _ml_tiers = None
                         _ml_b = momentum_long_bracket_keep(_ml_tiers, leverage, investment, _ml_min_scale, _new_inv, _lev_eff)
@@ -13685,7 +13700,7 @@ class TradingEngine:
         _brk_max_lev = _brk_cap = None
         if bool(getattr(config.trading_config.investment, 'leverage_bracket_cap_enabled', True)):
             try:
-                _tiers = (await binance_service.get_leverage_brackets()).get(pair)
+                _tiers = bracket_tiers_with_headroom((await binance_service.get_leverage_brackets()).get(pair))   # (319) the same 5 % headroom
             except Exception:
                 _tiers = None
             _lim = leverage_bracket_limit(_tiers, leverage, investment)

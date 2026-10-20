@@ -2519,7 +2519,8 @@ async def manual_limits(pair: str = ""):
     tiers = []
     if _on and len(_pair) > 4:
         try:
-            tiers = [[float(c), float(l)] for c, l in ((await binance_service.get_leverage_brackets()).get(_pair) or [])]
+            from services.trading_engine import bracket_tiers_with_headroom as _bth   # (319) the panel shows the SAME 5 % headroom the order path applies
+            tiers = [[float(c), float(l)] for c, l in (_bth((await binance_service.get_leverage_brackets()).get(_pair)) or [])]
         except Exception:
             tiers = []
     return {"pair": _pair, "enabled": _on, "tiers": tiers}

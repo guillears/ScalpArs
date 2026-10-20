@@ -17,6 +17,15 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    %/fill > 0 at day-bootstrap P ≥ 0.80 ∧ WR ≥ ≈ 73 % (+1.5/−4 breakeven) ∧ no day / pair ≥ 50 % of the gain → propose ONE step (blocker
    invest 0.2 · lev 0.05 ≈ $100 → invest 1.0 · lev 0.05 ≈ 5× the $, or the operator's step; revert if the next 15 fills average < 0 or a
    UTC day's LONG fills lose > 10 % of the book). The blocker role is size-independent (LITE is refused on any held pair).
+②b **👁 LITE / LITE_RETRY 4-h state split (DECISION_LOG 327; study reports/LITE_TIMECAP_2026-10-20.md: no cap 1–8 h beats 12 h)** —
+   every real LITE + LITE_RETRY fill still open at 4 h, split ABOVE vs BELOW entry at 4 h (frozen T = 4 h, net-of-fee P&L at the 4-h
+   mark): its actual outcome by 12 h vs a market close at 4 h (taker + 0.10 slip, ticks first). REVISIT the 720-min cap only when
+   ≥ 15 such fills exist; a cap ships only if the closed-at-4-h counterfactual beats holding on real fills (day-bootstrap, haircut,
+   revert gate). Backtest (frozen ref): below-entry hold −0.67 vs close −1.20; above-entry +0.011/trade on LITE_RETRY only (noise).
+②c **👁 SPIKE_FADE live execution (DECISION_LOG 327; live 0/2: KMNO 10-17 −2.13 %, SOLV 10-20 ≈ −1.8 %)** — per live fade: entry drift
+   ([ENTRY_EXEC] / decision vs fill), stop slippage ([EXIT_SLIPPAGE]), size vs target (CELL_MULT_CAPPED by balance?), live avg %/fill
+   vs master +0.09 % (124 fills · 69 % WR). 🔒 REVIEW (fade sizing / entry timing) if the first 10 live fades average < −0.5 %/fill OR
+   their median stop slippage exceeds the backtest's assumption. Observe-only; the $200M/$300M mcap line (41i) runs alongside.
 ③ **Then EVERY open watchlist gate in CLAUDE_CURRENT_STATE.md and every scout tracker** — run each scout script and report tallies vs
    bars unprompted (the standing batch-watchlist rule).
 Goal stated by the operator: make the bot highly profitable going forward (≈ 10 %/day ambition) — FRENZY and SPIKE_FADE are the

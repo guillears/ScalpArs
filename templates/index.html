@@ -326,8 +326,9 @@
                     <label class="flex flex-col text-gray-400">Size $<input id="manual-investment" type="number" step="10" min="1" value="500" oninput="manualLimitHint()" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">Lev<input id="manual-leverage" type="number" step="1" min="1" max="125" value="20" oninput="manualLimitHint()" class="w-14 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack; refused only when its EMA13-cross exit would close the trade at the first tick (counter-trend entry with the EMA5/EMA8 stack against it) · FLOOR = hard stop at the floor (the widest safe stop for your leverage) + optional TP · FRENZY = the FRENZY sleeve's exit with its CURRENT settings (stop, trailing exit, max hold — see the FRENZY box); no SL / TP to type · BULL-RUN = the Bull-Run sleeve's exit with its CURRENT settings (stop widened by ATR, break-even lock, ATR trail, profit ladder — exact values in the MANUAL badge hover); no SL / TP to type · BULL-RUN TP + CUSTOM SL = your own stop (type it in SL %) until the break-even arms at +1 %, then the same Bull-Run profit side (lock, ATR trail, ladder); no TP to type">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM" selected>Momentum stack</option><option value="FLOOR">Floor stop (+ opt. TP)</option><option value="FRENZY">🔥 Frenzy exit</option><option value="BULLRUN">🌊 Bull-Run exit</option><option value="BULLRUN_SL">🌊 Bull-Run TP + custom SL</option></select></label>
-                    <label class="flex flex-col text-gray-400">SL %<input id="manual-sl" type="number" step="0.1" min="0" placeholder="1.5" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
-                    <label class="flex flex-col text-gray-400">TP %<input id="manual-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <div class="flex flex-col text-gray-400" title="⇄ (DECISION_LOG 326) type the stop / target in % (P&amp;L net of fees, what the engine uses) or in $ (= Size × Lev × % / 100, exactly). The order always carries the %. Remembered in this browser.">Unit<div id="manual-sltp-unit" role="group" aria-label="Stop / target unit" class="flex rounded border border-amber-500/40 overflow-hidden"><button type="button" id="manual-sltp-unit-pct" onclick="manualSetSlTpUnit('pct')" aria-pressed="true" class="px-2 py-1 text-xs">%</button><button type="button" id="manual-sltp-unit-usd" onclick="manualSetSlTpUnit('usd')" aria-pressed="false" class="px-2 py-1 text-xs border-l border-amber-500/40">$</button></div></div>
+                    <label class="flex flex-col text-gray-400"><span class="whitespace-nowrap"><span id="manual-sl-unit-lbl">SL %</span> <span id="manual-sl-conv" class="text-[10px] text-gray-500"></span></span><input id="manual-sl" type="number" step="0.1" min="0" placeholder="1.5" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <label class="flex flex-col text-gray-400"><span class="whitespace-nowrap"><span id="manual-tp-unit-lbl">TP %</span> <span id="manual-tp-conv" class="text-[10px] text-gray-500"></span></span><input id="manual-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <div id="manual-limit-hint" class="hidden basis-full text-[11px] text-gray-500 -mt-1" title="🪜 The exchange's position limit for this pair at the leverage typed (Binance lowers the leverage it allows as the position grows). An order over the limit is refused, never resized."></div>
                     <div id="manual-pair-hint" class="basis-full text-[11px] text-gray-500 -mt-1" title="What the bot sees for this pair right now — stamped on the order automatically (manual_block_reason / manual_setup_rating / manual_setup_side in the export)"></div>
                     <div id="manual-risk-line" class="basis-full text-[11px] text-gray-400" title="Loss if the stop fires. SL / stop % are P&amp;L net of fees (the engine closes when the trade's net-of-fees P&amp;L reaches the stop), so the round-trip fee is already inside this figure — no fee is added on top. Slippage past the stop is not included. Account = the latest total portfolio shown on the dashboard."></div>
@@ -19034,6 +19035,110 @@
                 + (o.manual_pair_rsi != null ? ` · pair RSI ${Number(o.manual_pair_rsi).toFixed(1)} / ADX ${o.manual_pair_adx != null ? Number(o.manual_pair_adx).toFixed(1) : '—'}` : '');
             return `Manual entry · ${exitTxt} (% of price, net of fees)${gateTxt}${o.manual_note ? ' · note: ' + String(o.manual_note).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) : ''}`;
         }
+        // ⇄ SLTP-UNITS BEGIN — (DECISION_LOG 326, operator 2026-10-20) "% | $" switch for the stop / target inputs. The SERVER stays in %:
+        // the engine's SL / TP are P&L % NET of fees on the position notional (pnl_percentage = net pnl / (entry × qty) × 100), so
+        // $ = notional × % / 100 exactly and % = $ / notional × 100 (rounded to 4 dp, as set_exit_override stores it). Signs are kept
+        // (the exit editor's stop is signed: −$90 = below break-even, +$30 = locks a profit). Only a % is ever sent to the API.
+        function slTpUsdFromPct(pct, notional) {
+            const p = Number(pct), n = Number(notional);
+            return (Number.isFinite(p) && Number.isFinite(n) && n > 0) ? n * p / 100 : null;
+        }
+        function slTpPctFromUsd(usd, notional) {
+            const u = Number(usd), n = Number(notional);
+            if (!(Number.isFinite(u) && Number.isFinite(n) && n > 0)) return null;
+            const r = Math.round(u / n * 100 * 1e4) / 1e4;
+            return r === 0 ? 0 : r;   // never −0
+        }
+        function slTpFmtUsd(v, signed) {
+            if (v == null || v === '') return '—';
+            const x = Number(v); if (!Number.isFinite(x)) return '—';
+            const s = signed ? (x < 0 ? '−' : x > 0 ? '+' : '') : (x < 0 ? '−' : '');
+            return s + '$' + Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        function slTpFmtPct(v, signed) {
+            if (v == null || v === '') return '—';
+            const x = Number(v); if (!Number.isFinite(x)) return '—';
+            const s = signed ? (x < 0 ? '−' : x > 0 ? '+' : '') : (x < 0 ? '−' : '');
+            return s + Math.abs(x).toFixed(Math.abs(x) < 0.1 && x !== 0 ? 4 : 2) + ' %';
+        }
+        // the unit a typed value is in → its value in the other unit, for a typed-value conversion when the toggle flips. `exactPct` =
+        // the % a field held before it was shown in $ (restored when the $ was not edited, so a round trip never drifts).
+        // ok:false = NOT convertible (no notional / not a number) → the caller must refuse the switch, never relabel the value (326 I1).
+        function slTpConvertTyped(value, fromUnit, toUnit, notional, exactPct) {
+            const s = String(value ?? '').trim(); if (s === '' || fromUnit === toUnit) return { value: s, pct: null, ok: true };
+            const x = parseFloat(s); if (!Number.isFinite(x)) return { value: s, pct: null, ok: false };
+            if (toUnit === 'usd') { const u = slTpUsdFromPct(x, notional); return u == null ? { value: s, pct: null, ok: false } : { value: String(Math.round(u * 100) / 100), pct: x, ok: true }; }
+            if (exactPct != null && Number.isFinite(Number(exactPct))) return { value: String(Number(exactPct)), pct: Number(exactPct), ok: true };
+            const p = slTpPctFromUsd(x, notional); return p == null ? { value: s, pct: null, ok: false } : { value: String(p), pct: p, ok: true };
+        }
+        // ⇄ SLTP-UNITS END
+        // remembered per browser and per form (manual entry · exit editor); default %. Storage can throw (private window) → %.
+        function slTpGetUnit(form) { try { return localStorage.getItem('sltpUnit.' + form) === 'usd' ? 'usd' : 'pct'; } catch (e) { return 'pct'; } }
+        function slTpSaveUnit(form, unit) { try { localStorage.setItem('sltpUnit.' + form, unit === 'usd' ? 'usd' : 'pct'); } catch (e) {} }
+        // the exact % a $-shown field came from — only while neither the $ shown nor the notional changed since the conversion
+        function slTpExactPct(el, notional) {
+            if (!el || el.dataset.usdShown == null || el.dataset.usdShown !== el.value || el.dataset.notional !== String(notional)) return null;
+            const p = Number(el.dataset.pct); return Number.isFinite(p) ? p : null;
+        }
+        function slTpPaintToggle(pctBtn, usdBtn, unit) {
+            [[pctBtn, 'pct'], [usdBtn, 'usd']].forEach(([b, u]) => { if (!b) return; const on = unit === u;
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+                b.style.background = on ? 'rgba(255,255,255,0.18)' : 'transparent'; b.style.color = on ? '#ffffff' : '#9ca3af'; });
+        }
+        // 🖐 manual entry: SL / TP typed in % or $ (notional = Size × Lev). The SL is typed POSITIVE in both units (the server makes it negative).
+        let _manualSlTpUnit = slTpGetUnit('manual');
+        function manualNotional() {
+            const size = parseFloat(document.getElementById('manual-investment')?.value || ''), lev = parseFloat(document.getElementById('manual-leverage')?.value || '');
+            return (size > 0 && lev >= 1) ? size * lev : null;
+        }
+        // the % a manual SL / TP field means right now (null = blank, NaN = a mistyped number, or $ typed without Size × Lev)
+        function manualFieldPct(id) {
+            const el = document.getElementById(id); if (!el) return null;
+            if (el.validity && el.validity.badInput) return NaN;   // '1,5' / '-' read as '' — never treat it as blank (326 review)
+            const s = String(el.value || '').trim(); if (s === '') return null;
+            const x = parseFloat(s); if (!Number.isFinite(x)) return NaN;
+            if (_manualSlTpUnit !== 'usd') return x;
+            const n = manualNotional(), ex = slTpExactPct(el, n); if (ex != null) return ex;
+            const p = slTpPctFromUsd(x, n); return p == null ? NaN : p;
+        }
+        function manualSetSlTpUnit(unit) {
+            unit = unit === 'usd' ? 'usd' : 'pct';
+            const n = manualNotional();
+            if (unit === _manualSlTpUnit) { manualSlTpPaint(); return; }
+            // 326 I1: no Size × Lev → no conversion is possible in EITHER direction; switching anyway would relabel a typed $ as % (100× risk)
+            if (n == null) { showToast('Type Size and Lev first — % and $ convert on Size × Lev (the unit was not changed)', 'error'); return; }
+            const els = ['manual-sl', 'manual-tp'].map(id => document.getElementById(id)).filter(Boolean);
+            const conv = els.map(el => slTpConvertTyped(el.value, _manualSlTpUnit, unit, n, unit === 'pct' ? slTpExactPct(el, n) : null));
+            if (els.some(el => el.validity && el.validity.badInput) || conv.some(c => !c.ok)) { showToast('Fix the SL / TP first — it is not a number (the unit was not changed)', 'error'); return; }
+            els.forEach((el, i) => { const c = conv[i];
+                el.value = c.value;
+                if (unit === 'usd' && c.pct != null) { el.dataset.pct = String(c.pct); el.dataset.usdShown = c.value; el.dataset.notional = String(n); }
+                else { delete el.dataset.pct; delete el.dataset.usdShown; delete el.dataset.notional; }
+            });
+            _manualSlTpUnit = unit; slTpSaveUnit('manual', unit);
+            manualSlTpPaint();
+            try { manualRiskLine(); } catch (e) {}
+        }
+        function manualSlTpPaint() {
+            const usd = _manualSlTpUnit === 'usd';
+            slTpPaintToggle(document.getElementById('manual-sltp-unit-pct'), document.getElementById('manual-sltp-unit-usd'), _manualSlTpUnit);
+            const sl = document.getElementById('manual-sl-unit-lbl'), tp = document.getElementById('manual-tp-unit-lbl');
+            if (sl) sl.textContent = usd ? 'SL $' : 'SL %'; if (tp) tp.textContent = usd ? 'TP $' : 'TP %';
+            const si = document.getElementById('manual-sl'), ti = document.getElementById('manual-tp');
+            if (si) { si.step = usd ? '0.01' : '0.1'; si.placeholder = usd ? '$' : '1.5'; }   // cents never trip the step-mismatch outline
+            if (ti) { ti.step = usd ? '0.01' : '0.1'; ti.placeholder = 'opt.'; }
+        }
+        // the "= …" line under each typed SL / TP: the other unit, live
+        function manualSlTpConv() {
+            const n = manualNotional();
+            [['manual-sl', 'manual-sl-conv'], ['manual-tp', 'manual-tp-conv']].forEach(([id, cid]) => {
+                const el = document.getElementById(id), c = document.getElementById(cid); if (!el || !c) return;
+                const s = String(el.value || '').trim(), x = parseFloat(s);
+                if (el.disabled || s === '' || !Number.isFinite(x)) { c.textContent = ''; return; }
+                if (n == null) { c.textContent = '= ? (type Size × Lev)'; return; }
+                c.textContent = _manualSlTpUnit === 'usd' ? `= ${slTpFmtPct(manualFieldPct(id))}` : `= ${slTpFmtUsd(slTpUsdFromPct(x, n))}`;
+            });
+        }
         // 🖐 Oct-20 (operator, DECISION_LOG 320): the manual form is a pop-up opened by the 🖐 button in the Top Pairs header (was a
         // full-width fold-out bar). Same element ids, so every handler (limit hint, pair hint, exit-mode enabling, submit, one-click fixes)
         // is unchanged. Closes on Esc, ✕, a click on the backdrop, and after a successful open; focus returns to where it was.
@@ -19043,6 +19148,7 @@
             const m = document.getElementById('manual-entry-modal'); if (!m) return;
             if (!manualModalIsOpen()) _manualModalReturnFocus = document.activeElement;
             m.classList.remove('hidden'); m.classList.add('flex');
+            try { manualSlTpPaint(); } catch (e) {}   // ⇄ (326) the remembered % / $ unit
             try { manualExitModeChanged(); } catch (e) {}
             try { manualPairHint(); } catch (e) {}
             try { manualLimitHint(); } catch (e) {}   // a pair the browser restored shows its limit at once
@@ -19066,6 +19172,7 @@
         // total portfolio the dashboard has (window._lastTotalPortfolio); unknown → the % part is omitted. Amber ≥ 5 %, red ≥ 10 %.
         function manualRiskLine() {
             const el = document.getElementById('manual-risk-line'); if (!el) return;
+            try { manualSlTpConv(); } catch (e) {}   // ⇄ (326) the "= …" line under SL / TP
             const g = id => document.getElementById(id);
             const size = parseFloat(g('manual-investment')?.value || ''), lev = parseFloat(g('manual-leverage')?.value || '');
             const mode = g('manual-exit-mode')?.value || 'FIXED';
@@ -19078,9 +19185,9 @@
             const floorCfg = Number(th.manual_floor_sl_pct ?? -3);   // the SAVED floor (what the engine checks), not an unsaved edit
             const levFloor = Math.abs(manualStopForLeverage(lev, floorCfg).stop);   // widest stop allowed at this leverage (engine mirror)
             if (mode === 'FIXED' || mode === 'BULLRUN_SL') {
-                const s = parseFloat(g('manual-sl')?.value || '');
-                if (s > 0) { stop = s; stopTxt = `−${s} % stop`; }
-                else stopTxt = 'stop (type SL %)';
+                const s = manualFieldPct('manual-sl');   // ⇄ (326) a $ stop → its % on Size × Lev (the % the order will carry)
+                if (s > 0) { stop = s; stopTxt = _manualSlTpUnit === 'usd' ? `−${slTpFmtUsd(slTpUsdFromPct(s, pos))} stop (= −${slTpFmtPct(s)})` : `−${s} % stop`; }
+                else stopTxt = _manualSlTpUnit === 'usd' ? 'stop (type SL $)' : 'stop (type SL %)';
             } else if (mode === 'FLOOR') { stop = levFloor; stopTxt = `−${(Math.floor(levFloor * 100 + 1e-9) / 100).toFixed(2)} % floor stop`; }
             else if (mode === 'FRENZY') { const f = Number(th.frenzy_stop_pct); if (f > 0) { stop = f; stopTxt = `−${f} % Frenzy stop`; } }
             else if (mode === 'BULLRUN') { const w = Math.abs(Number(th.sl_atr_widen_floor_pct ?? -1.2)); if (w > 0) { stop = Math.min(w, levFloor); stopTxt = `−${stop} % Bull-Run stop (widest, ATR-widened)`; } }
@@ -19089,12 +19196,14 @@
                 el.textContent = stopTxt ? `Position ${usd(pos)} · risk at the ${stopTxt}` : `Position ${usd(pos)} · stop set by the ${modeName} exit`;
                 setCls(0); return;
             }
-            const y = pos * stop / 100;
+            const y = slTpUsdFromPct(stop, pos);   // the same helper as the $ field → the line agrees with a typed $ stop exactly
             const acct = Number(window._lastTotalPortfolio);
             const z = acct > 0 ? y / acct * 100 : null;
             const tooWide = (mode === 'FIXED' || mode === 'BULLRUN_SL' || mode === 'FRENZY') && stop > levFloor + 1e-9;   // the engine refuses it (manual_floor_for_leverage)
-            el.textContent = `Position ${usd(pos)} · risk at the ${stopTxt} ≈ −${usd(y)}${z != null ? ` (${z.toFixed(z >= 10 ? 0 : 1)} % of the account)` : ''}`
-                + (tooWide ? ` · ⚠ wider than the −${(Math.floor(levFloor * 100 + 1e-9) / 100).toFixed(2)} % allowed at ${lev}× — the open will be refused` : '');
+            const _yTxt = (_manualSlTpUnit === 'usd' && (mode === 'FIXED' || mode === 'BULLRUN_SL')) ? slTpFmtUsd(y) : usd(y);   // $ mode: to the cent, as typed
+            const _lf = Math.floor(levFloor * 100 + 1e-9) / 100;
+            el.textContent = `Position ${usd(pos)} · risk at the ${stopTxt} ≈ −${_yTxt.replace(/^−/, '')}${z != null ? ` (${z.toFixed(z >= 10 ? 0 : 1)} % of the account)` : ''}`
+                + (tooWide ? ` · ⚠ wider than the −${_lf.toFixed(2)} % (−${slTpFmtUsd(slTpUsdFromPct(_lf, pos))} on this position) allowed at ${lev}× — the open will be refused` : '');
             setCls(z != null ? z : 0);
         }
         try { manualExitModeChanged(); } catch (e) {}   // default exit = Momentum stack → SL/TP inputs start disabled
@@ -19127,8 +19236,9 @@
             const usd = v => '$' + Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
             document.getElementById('add-pos-head').textContent = `${o.pair} · ${o.direction} · #${o.id}`;
             document.getElementById('add-pos-now').textContent = `Now: size ${Number(o.quantity).toLocaleString('en-US', { maximumFractionDigits: 8 })} · avg entry ${_addPx(o.entry_price)} · invested ${usd(o.investment)} · position ${usd(o.notional_value)}`
-                + (o.pattern_fixed_sl_pct != null ? ` · stop ${o.pattern_fixed_sl_pct > 0 ? '+' : ''}${Number(o.pattern_fixed_sl_pct).toFixed(2)}%` : '')
-                + (o.pattern_fixed_tp_pct != null && o.pattern_fixed_tp_pct > 0 ? ` · TP +${Number(o.pattern_fixed_tp_pct).toFixed(2)}%` : '');
+                // ⇄ (326) the stop / TP in both units: $ = notional (entry × quantity, the pnl base) × % / 100
+                + (o.pattern_fixed_sl_pct != null ? ` · stop ${o.pattern_fixed_sl_pct > 0 ? '+' : ''}${Number(o.pattern_fixed_sl_pct).toFixed(2)}% (${slTpFmtUsd(slTpUsdFromPct(o.pattern_fixed_sl_pct, Number(o.entry_price) * Number(o.quantity)), true)})` : '')
+                + (o.pattern_fixed_tp_pct != null && o.pattern_fixed_tp_pct > 0 ? ` · TP +${Number(o.pattern_fixed_tp_pct).toFixed(2)}% (${slTpFmtUsd(slTpUsdFromPct(o.pattern_fixed_tp_pct, Number(o.entry_price) * Number(o.quantity)), true)})` : '');
             document.getElementById('add-pos-leverage').value = `${o.leverage}×`;
             ['add-pos-preview', 'add-pos-risk', 'add-pos-refusal', 'add-pos-max'].forEach(id => { document.getElementById(id).textContent = ''; });
             document.getElementById('add-pos-btn').disabled = true;
@@ -19178,6 +19288,9 @@
                     + `<div>Stop ${d.stop_pct != null ? (d.stop_pct > 0 ? '+' : '') + Number(d.stop_pct).toFixed(2) + '%' : '—'} → <span class="font-mono text-red-300">${d.stop_price != null ? _addPx(d.stop_price) : '—'}</span>`
                     + ` · TP ${d.tp_pct != null && d.tp_pct > 0 ? '+' + Number(d.tp_pct).toFixed(2) + '%' : 'none'}${d.tp_price != null ? ` → <span class="font-mono text-emerald-300">${_addPx(d.tp_price)}</span>` : ''}`
                     + `${d.pnl_now != null ? ` · after the add ${d.pnl_now >= 0 ? '+' : ''}${Number(d.pnl_now).toFixed(2)}%` : ''}</div>`;
+                const _nN = Number(d.new_qty) * Number(d.new_avg_entry);   // ⇄ (326) the new total size's notional (the pnl base after the add)
+                prev.innerHTML += `<div id="add-pos-sltp-usd" class="text-gray-400">On the new size (${slTpFmtUsd(_nN)}): stop ${d.stop_pct != null ? slTpFmtPct(d.stop_pct, true) + ' = ' + slTpFmtUsd(slTpUsdFromPct(d.stop_pct, _nN), true) : '—'}`
+                    + ` · TP ${d.tp_pct != null && d.tp_pct > 0 ? slTpFmtPct(d.tp_pct, true) + ' = ' + slTpFmtUsd(slTpUsdFromPct(d.tp_pct, _nN), true) : 'none'}</div>`;
                 const y = Number(d.risk_usd_at_stop), acct = Number(window._lastTotalPortfolio);
                 const z = (acct > 0 && Number.isFinite(y)) ? y / acct * 100 : null;
                 risk.classList.toggle('text-red-400', z != null && z >= 10); risk.classList.toggle('text-amber-300', z != null && z >= 5 && z < 10); risk.classList.toggle('text-gray-400', !(z != null && z >= 5));
@@ -19299,16 +19412,21 @@
                 investment: parseFloat(g('manual-investment')?.value || '0'),
                 leverage: parseFloat(g('manual-leverage')?.value || '20'),
                 exit_mode: g('manual-exit-mode')?.value || 'FIXED',
-                sl_pct: (g('manual-sl')?.disabled || g('manual-sl')?.value === '') ? null : parseFloat(g('manual-sl').value),
-                tp_pct: (g('manual-tp')?.disabled || g('manual-tp')?.value === '') ? null : parseFloat(g('manual-tp').value),   // a disabled field is never sent
+                // ⇄ (326) always the % — a $ typed is converted on Size × Lev (4 dp); a disabled field is never sent
+                sl_pct: (g('manual-sl')?.disabled || (g('manual-sl')?.value === '' && !g('manual-sl')?.validity?.badInput)) ? null : manualFieldPct('manual-sl'),
+                tp_pct: (g('manual-tp')?.disabled || (g('manual-tp')?.value === '' && !g('manual-tp')?.validity?.badInput)) ? null : manualFieldPct('manual-tp'),
             };
             if (!body.pair) { showToast('Pair is required', 'error'); return; }
+            if (Number.isNaN(body.sl_pct) || Number.isNaN(body.tp_pct)) {   // 326 review: a mistyped SL / TP or a $ with no Size × Lev is refused, never dropped
+                showToast((_manualSlTpUnit === 'usd' && manualNotional() == null) ? 'Type Size and Lev first — a $ stop / target converts on Size × Lev' : 'SL / TP must be numbers', 'error'); return; }
+            const _slTpUsdNote = (_manualSlTpUnit === 'usd' && (body.sl_pct != null || body.tp_pct != null))
+                ? ` [in $ on the ${slTpFmtUsd(body.investment * body.leverage)} position: ${body.sl_pct != null ? 'SL ' + slTpFmtUsd(slTpUsdFromPct(body.sl_pct, body.investment * body.leverage)) + ' = ' + slTpFmtPct(body.sl_pct) : ''}${body.sl_pct != null && body.tp_pct != null ? ' · ' : ''}${body.tp_pct != null ? 'TP ' + slTpFmtUsd(slTpUsdFromPct(body.tp_pct, body.investment * body.leverage)) + ' = ' + slTpFmtPct(body.tp_pct) : ''}]` : '';
             if (!(body.investment > 0)) { showToast('Size must be > 0', 'error'); return; }
             if (body.exit_mode === 'FIXED' && !(body.sl_pct > 0)) { showToast('Custom mode needs a stop loss %', 'error'); return; }
             if (body.exit_mode === 'BULLRUN_SL' && !(body.sl_pct > 0)) { showToast('Bull-Run TP + custom SL needs a stop loss %', 'error'); return; }
             // Oct-1 (operator): the same in-page confirmation as Close, next to the Open button (browser confirm() opens at the top)
             const _liveNow = (window._lastStatusIsPaper === false);
-            const _ob = g('manual-open-btn'); const _omsg = `${_liveNow ? '🔴 LIVE — REAL MONEY · ' : ''}Open ${body.direction} ${body.pair} $${body.investment} × ${body.leverage} (${body.exit_mode}${body.exit_mode === 'FIXED' ? ` SL ${body.sl_pct}%${body.tp_pct ? ' TP ' + body.tp_pct + '%' : ''}` : body.exit_mode === 'FLOOR' ? ` floor stop${body.tp_pct ? ' · TP ' + body.tp_pct + '%' : ' · no TP'}` : body.exit_mode === 'BULLRUN_SL' ? ` SL ${body.sl_pct}% · Bull-Run TP (break-even, ATR trail, ladder)` : body.exit_mode === 'BULLRUN' ? ' Bull-Run stop + TP' : ''}) at market?`;
+            const _ob = g('manual-open-btn'); const _omsg = `${_liveNow ? '🔴 LIVE — REAL MONEY · ' : ''}Open ${body.direction} ${body.pair} $${body.investment} × ${body.leverage} (${body.exit_mode}${body.exit_mode === 'FIXED' ? ` SL ${body.sl_pct}%${body.tp_pct ? ' TP ' + body.tp_pct + '%' : ''}` : body.exit_mode === 'FLOOR' ? ` floor stop${body.tp_pct ? ' · TP ' + body.tp_pct + '%' : ' · no TP'}` : body.exit_mode === 'BULLRUN_SL' ? ` SL ${body.sl_pct}% · Bull-Run TP (break-even, ATR trail, ladder)` : body.exit_mode === 'BULLRUN' ? ' Bull-Run stop + TP' : ''}) at market?${_slTpUsdNote}`;
             if (!((_ob && _ob.getBoundingClientRect) ? await confirmNear(_ob, _omsg, 'Open', 'px-3 py-1 bg-amber-500/30 hover:bg-amber-500/50 text-amber-100 rounded text-xs font-semibold') : confirm(_omsg))) return;
             const btn = g('manual-open-btn'); if (btn) btn.disabled = true;
             try {
@@ -19321,7 +19439,7 @@
                 } else {
                     const _fxPair = manualPairKey();
                     const _fx = (Array.isArray(data.fixes) ? data.fixes : []).filter(f => f && f.label && f.investment > 0 && f.leverage >= 1);
-                    showToast((data.detail || 'Manual open failed') + (_fx.length ? ' Pick a fix (it only fills Size and Lev — nothing is opened):' : ''), 'error',
+                    showToast((data.detail || 'Manual open failed') + _slTpUsdNote + (_fx.length ? ' Pick a fix (it only fills Size and Lev — nothing is opened):' : ''), 'error',
                               _fx.map(f => ({ label: f.label, onClick: () => manualApplyFix(f, _fxPair) })));
                 }
             } catch (e) {
@@ -19668,7 +19786,9 @@
         // ✎ Oct-2 (operator): the Close popup offers TWO actions — close now, or replace the position's exit with your own stop / target
         // (P&L % net of fees; the stop is signed: −1.5 = below break-even, +0.5 = lock a profit). Resolves {action:'close'} |
         // {action:'edit', sl, tp} | null.
-        function closeChoiceNear(anchor, label, curSl, curTp, isOverride, pnlNow) {
+        // ⇄ (DECISION_LOG 326) a "% | $" switch types the stop / target in $ on the position's CURRENT notional (entry × quantity, the
+        // engine's pnl base): the signed $ (−$90 below break-even, +$30 locks a profit) is converted to the signed % before it is sent.
+        function closeChoiceNear(anchor, label, curSl, curTp, isOverride, pnlNow, notional) {
             return new Promise(resolve => {
                 if (_nearConfirmCancel) _nearConfirmCancel();
                 const r = anchor.getBoundingClientRect();
@@ -19681,13 +19801,50 @@
                 const mk = (ph, val) => { const i = document.createElement('input'); i.type = 'number'; i.step = '0.1'; i.placeholder = ph; if (val != null) i.value = val;
                     i.style.cssText = 'width:108px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:4px 6px;color:#e5e7eb;font-size:12px;'; return i; };
                 const slI = mk('Stop P&L %', isOverride ? curSl : null), tpI = mk('Target P&L %', isOverride ? curTp : null);
-                const inputs = document.createElement('div'); inputs.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;'; inputs.append(slI, tpI);
+                slI.id = 'exit-ovr-sl'; tpI.id = 'exit-ovr-tp';
+                const nOk = Number.isFinite(Number(notional)) && Number(notional) > 0;
+                let unit = nOk ? slTpGetUnit('exit') : 'pct';
+                const uRow = document.createElement('div'); uRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;color:#9ca3af;font-size:11px;';
+                const uLbl = document.createElement('span'); uLbl.textContent = nOk ? `Unit (position ${slTpFmtUsd(notional)}):` : 'Unit:';
+                const uGrp = document.createElement('div'); uGrp.id = 'exit-ovr-unit'; uGrp.setAttribute('role', 'group'); uGrp.setAttribute('aria-label', 'Stop / target unit');
+                uGrp.style.cssText = 'display:flex;border:1px solid rgba(255,255,255,0.2);border-radius:6px;overflow:hidden;';
+                const mkU = (id, txt) => { const b = document.createElement('button'); b.type = 'button'; b.id = id; b.textContent = txt; b.style.cssText = 'padding:1px 8px;font-size:11px;'; return b; };
+                const uPct = mkU('exit-ovr-unit-pct', '%'), uUsd = mkU('exit-ovr-unit-usd', '$');
+                uUsd.style.borderLeft = '1px solid rgba(255,255,255,0.2)';
+                if (!nOk) { uUsd.disabled = true; uUsd.title = 'The position size is not known here — type the stop / target in %'; uUsd.style.opacity = '0.4'; }
+                uGrp.append(uPct, uUsd); uRow.append(uLbl, uGrp);
+                const mkC = id => { const c = document.createElement('div'); c.id = id; c.style.cssText = 'font-size:10px;color:#9ca3af;min-height:13px;'; return c; };
+                const slC = mkC('exit-ovr-sl-conv'), tpC = mkC('exit-ovr-tp-conv');
+                const col = (i, c) => { const d = document.createElement('div'); d.style.cssText = 'display:flex;flex-direction:column;'; d.append(i, c); return d; };
+                const inputs = document.createElement('div'); inputs.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;'; inputs.append(col(slI, slC), col(tpI, tpC));
+                const n = nOk ? Number(notional) : null;
+                // the signed % a field means right now (null blank · NaN not a number)
+                const fieldPct = el => { if (el.validity && el.validity.badInput) return NaN;
+                    const v = String(el.value || '').trim(); if (v === '') return null; const x = parseFloat(v); if (!Number.isFinite(x)) return NaN;
+                    if (unit !== 'usd') return x; const ex = slTpExactPct(el, n); if (ex != null) return ex; const p = slTpPctFromUsd(x, n); return p == null ? NaN : p; };
+                const paint = () => { slTpPaintToggle(uPct, uUsd, unit);
+                    slI.placeholder = unit === 'usd' ? 'Stop $ (signed)' : 'Stop P&L %'; tpI.placeholder = unit === 'usd' ? 'Target $' : 'Target P&L %';
+                    slI.step = tpI.step = unit === 'usd' ? '0.01' : '0.1'; };
+                const conv = () => [[slI, slC], [tpI, tpC]].forEach(([i, c]) => { const p = fieldPct(i);
+                    c.textContent = (p == null || Number.isNaN(p) || n == null) ? '' : unit === 'usd' ? `= ${slTpFmtPct(p, true)}` : `= ${slTpFmtUsd(slTpUsdFromPct(p, n), true)}`; });
+                const setUnit = u => { if (u === unit || (u === 'usd' && !nOk)) return;
+                    const cv = [slI, tpI].map(i => slTpConvertTyped(i.value, unit, u, n, u === 'pct' ? slTpExactPct(i, n) : null));
+                    if ([slI, tpI].some(i => i.validity && i.validity.badInput) || cv.some(c => !c.ok)) { showToast('Fix the stop / target first — it is not a number (the unit was not changed)', 'error'); return; }
+                    [slI, tpI].forEach((i, k) => { const c = cv[k]; i.value = c.value;
+                        if (u === 'usd' && c.pct != null) { i.dataset.pct = String(c.pct); i.dataset.usdShown = c.value; i.dataset.notional = String(n); }
+                        else { delete i.dataset.pct; delete i.dataset.usdShown; delete i.dataset.notional; } });
+                    unit = u; slTpSaveUnit('exit', u); paint(); conv(); };
+                uPct.onclick = () => setUnit('pct'); uUsd.onclick = () => setUnit('usd');
+                if (unit === 'usd') [slI, tpI].forEach(i => { if (i.value === '') return; const c = slTpConvertTyped(i.value, 'pct', 'usd', n, null); i.value = c.value;   // the current stop / target arrive in %
+                    if (c.pct != null) { i.dataset.pct = String(c.pct); i.dataset.usdShown = c.value; i.dataset.notional = String(n); } });
+                slI.addEventListener('input', conv); tpI.addEventListener('input', conv);
+                paint(); conv();
                 const no = document.createElement('button'); no.textContent = 'Cancel'; no.className = 'px-3 py-1 bg-white/10 hover:bg-white/20 text-gray-200 rounded text-xs font-medium';
                 const set = document.createElement('button'); set.textContent = 'Set exit'; set.className = 'px-3 py-1 bg-sky-500/30 hover:bg-sky-500/50 text-sky-100 rounded text-xs font-semibold';
                 const yes = document.createElement('button'); yes.textContent = 'Close now'; yes.className = 'px-3 py-1 bg-red-500/30 hover:bg-red-500/50 text-red-200 rounded text-xs font-semibold';
                 const top = document.createElement('div'); top.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;'; top.append(no, yes);
                 const bottom = document.createElement('div'); bottom.style.cssText = 'display:flex;justify-content:flex-end;'; bottom.append(set);
-                box.replaceChildren(t, top, hint, inputs, bottom); document.body.appendChild(box);
+                box.replaceChildren(t, top, hint, uRow, inputs, bottom); document.body.appendChild(box);
                 const h = box.offsetHeight || 170;
                 box.style.left = Math.max(8, Math.min(window.innerWidth - 278, r.right - 270)) + 'px';
                 box.style.top = (r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
@@ -19696,10 +19853,10 @@
                     document.removeEventListener('keydown', onKey, true); document.removeEventListener('mousedown', onDown, true); resolve(v); };
                 const num = el => { if (el.validity && el.validity.badInput) return NaN;   // a mistyped number ('1,5', '-') reads as '' — never treat it as blank
                     const v = String(el.value || '').trim(); if (v === '') return null; const x = parseFloat(v); return Number.isFinite(x) ? x : NaN; };
-                const doSet = () => { const sl = num(slI), tp = num(tpI);
+                const doSet = () => { const sl = num(slI) === null ? null : fieldPct(slI), tp = num(tpI) === null ? null : fieldPct(tpI);   // ⇄ always the % (4 dp from $)
                     if (Number.isNaN(sl) || Number.isNaN(tp)) { showToast('Stop and target must be numbers', 'error'); return; }
                     if (sl === null && tp === null) { showToast('Type a stop, a target, or both', 'error'); return; }
-                    finish({ action: 'edit', sl, tp }); };
+                    finish({ action: 'edit', sl, tp, unit, notional: n, slUsd: unit === 'usd' && sl != null ? parseFloat(slI.value) : null, tpUsd: unit === 'usd' && tp != null ? parseFloat(tpI.value) : null }); };
                 const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); finish(null); } else if (e.key === 'Enter' && (document.activeElement === slI || document.activeElement === tpI)) { e.preventDefault(); doSet(); } };
                 const cancel = () => finish(null); _nearConfirmCancel = cancel;   // no scroll / resize dismissal here: a phone keyboard resizes the window while typing
                 const onDown = e => { if (!box.contains(e.target)) finish(null); };
@@ -19711,18 +19868,35 @@
 
         async function closeOrder(orderId, btn, label, curSl, curTp, isOverride, pnlNow) {
             let choice;
-            if (btn && btn.getBoundingClientRect) choice = await closeChoiceNear(btn, label, curSl, curTp, isOverride, pnlNow);
+            const _oRow = (window._openOrdersById || {})[orderId];   // ⇄ (326) the $ unit needs the position's notional = entry × quantity (the pnl base)
+            const _oNotional = _oRow ? Number(_oRow.entry_price) * Number(_oRow.quantity) : null;
+            if (btn && btn.getBoundingClientRect) choice = await closeChoiceNear(btn, label, curSl, curTp, isOverride, pnlNow, _oNotional);
             else choice = confirm('Are you sure you want to close this position?') ? { action: 'close' } : null;
             if (!choice) return;
             if (choice.action === 'edit') {
+                // ⇄ (326) typed in $: every message carries both units (the server's limits are in %)
+                const _both = (p) => p == null ? '' : `${slTpFmtPct(p, true)} = ${slTpFmtUsd(slTpUsdFromPct(p, choice.notional), true)}`;
+                const _usdNote = (choice.unit === 'usd' && choice.notional > 0)
+                    ? ` [you typed${choice.sl != null ? ' stop ' + _both(choice.sl) : ''}${choice.tp != null ? ' · target ' + _both(choice.tp) : ''} on the ${slTpFmtUsd(choice.notional)} position]` : '';
+                if (choice.unit === 'usd') {   // 326 review: a $ typed was converted on the size the pop-up opened with — an ➕ add / refresh since then moves the %
+                    const _r = (window._openOrdersById || {})[orderId], _nNow = _r ? Number(_r.entry_price) * Number(_r.quantity) : NaN;
+                    if (!(_nNow > 0) || Math.abs(_nNow - choice.notional) > 1e-9 * Math.max(1, Math.abs(choice.notional))) {
+                        const _np = v => _nNow > 0 ? `${slTpFmtUsd(v, true)} is now ${slTpFmtPct(slTpPctFromUsd(v, _nNow), true)}.` : `${slTpFmtUsd(v, true)}.`;
+                        showToast(`The position size changed (${slTpFmtUsd(choice.notional)} → ${_nNow > 0 ? slTpFmtUsd(_nNow) : 'no longer open'}) — check the stop again; nothing was sent.`
+                            + (choice.slUsd != null ? ' Stop ' + _np(choice.slUsd) : '') + (choice.tpUsd != null ? ' Target ' + _np(choice.tpUsd) : ''), 'error');
+                        return;
+                    }
+                }
                 try {
                     const res = await fetch(`${API_BASE}/api/orders/exit_override`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ order_id: orderId, sl_pct: choice.sl, tp_pct: choice.tp }) });
                     const data = await res.json().catch(() => ({}));
                     if (res.ok) {
-                        showToast(`Exit set on ${data.pair} ${data.direction}: stop ${data.sl_pct > 0 ? '+' : ''}${data.sl_pct}%${data.tp_pct != null ? ' · target ' + (data.tp_pct > 0 ? '+' : '') + data.tp_pct + '%' : ' · no target'}`);
+                        const _dn = choice.notional;   // the same entry × quantity the $ was converted on
+                        const _u = p => (choice.unit === 'usd' && _dn > 0 && p != null) ? ` (${slTpFmtUsd(slTpUsdFromPct(p, _dn), true)})` : '';
+                        showToast(`Exit set on ${data.pair} ${data.direction}: stop ${data.sl_pct > 0 ? '+' : ''}${data.sl_pct}%${_u(data.sl_pct)}${data.tp_pct != null ? ' · target ' + (data.tp_pct > 0 ? '+' : '') + data.tp_pct + '%' + _u(data.tp_pct) : ' · no target'}`);
                         loadOpenOrders();
-                    } else { showToast(data.detail || 'Could not set the exit', 'error'); }
+                    } else { showToast((data.detail || 'Could not set the exit') + _usdNote, 'error'); }
                 } catch (e) { showToast('Could not set the exit: ' + e, 'error'); }
                 return;
             }

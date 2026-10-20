@@ -7783,3 +7783,56 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   this is not a deadlock.
 - Tests: tests/test_paper_open_bnb_deadlock.py (source order, real-engine locks: new order finishes / old order deadlocks, lock-order
   model); tests/test_pair_open_lock.py anchor updated.
+
+## (326) 2026-10-20 — % / $ switch for SL and TP inputs (operator)
+- **UI only (templates/index.html), no backend change — the server stays in %.** The engine's SL / TP are P&L % NET of fees on the
+  position notional (`calculate_pnl`: pnl_percentage = net pnl / (entry × qty) × 100; the exit loops use the same base), so
+  $ = notional × % / 100 exactly. A $ typed is converted to the % (rounded to 4 dp, as `set_exit_override` stores `round(sl, 4)`) and
+  only the % is ever sent. Shared helpers (`// ⇄ SLTP-UNITS` block): `slTpUsdFromPct`, `slTpPctFromUsd`, `slTpConvertTyped`,
+  `slTpFmtUsd` / `slTpFmtPct`; unit remembered per browser and per form (`localStorage` `sltpUnit.manual` / `sltpUnit.exit`, try/catch,
+  default %). Flipping the unit converts the typed values; a % shown in $ and flipped back unedited (same notional) restores its exact %
+  (no cent-rounding drift, e.g. 1.5 % on $333 → $5 → 1.5).
+- **🖐 manual entry:** segmented toggle `manual-sltp-unit` (`-pct` / `-usd`) before SL / TP; labels `manual-sl-unit-lbl` /
+  `manual-tp-unit-lbl` read "SL $" / "TP $"; live "= …" text next to each label (`manual-sl-conv` / `manual-tp-conv`). Notional = Size × Lev;
+  the SL is typed positive in both units (the server makes it negative). Switching to $ without Size × Lev is refused (toast). Submit and
+  `manualRiskLine()` read the field through the same `manualFieldPct()`; the risk $ = `slTpUsdFromPct(stop, pos)` → it matches a typed $
+  stop to the cent. The "⚠ wider than … allowed at N×" warning and a server refusal carry both units in $ mode (the Open confirmation too).
+- **✎ Set exit (Close pop-up, POST /api/orders/exit_override):** toggle `exit-ovr-unit` (`-pct` / `-usd`), inputs `exit-ovr-sl` /
+  `exit-ovr-tp`, "= …" lines `exit-ovr-sl-conv` / `-tp-conv`. Notional = the open row's entry_price × quantity (from
+  `window._openOrdersById`; unknown → $ disabled, % only). The stop stays SIGNED in $ (−$90 below break-even, +$30 locks a profit). The
+  current override arrives in % and is shown in $ when the remembered unit is $. Success / refusal toasts add the $ when typed in $.
+- **➕ Add pop-up:** no SL / TP inputs, so both units are shown: the "Now" line adds the stop / TP $ on the current notional; the preview
+  adds `add-pos-sltp-usd` "On the new size ($N): stop −1.50 % = −$X · TP …" with N = new_qty × new_avg_entry (= the server's
+  risk_usd_at_stop base).
+- **Accepted gap:** for a NEW manual entry the $ is computed on the intended notional (Size × Lev); the real fill quantity is rounded to the
+  pair's step, so the stop's realised $ can differ by that rounding (the % is what the engine enforces). No config field (D11 n/a), no
+  analytics table (D12 n/a).
+- Tests: tests/test_sl_tp_units_ui.py (17: wiring in the three places, % submitted, guarded storage, engine pnl base pin, node runs of the
+  conversion math, the manual form round trip and the exit editor signed $ → % submit, plus the review cases below). Inline JS node
+  --check OK; full suite green.
+- **Reviews (caveman + deep; DO-NOT-SHIP until I1, fixed):**
+  - **I1 🔴 (both):** the manual $ → % switch with Size or Lev empty/0 relabelled a typed $ as % without converting ($2 stop at 500×1 →
+    clear Size → % → "2" = 2 % → retype 500×20 → sl_pct 2 = $200, 100×). Fix: `slTpConvertTyped` returns ok:false when it cannot
+    convert, and `manualSetSlTpUnit` refuses the switch in BOTH directions when Size × Lev is unknown (or a field is mistyped) — the unit
+    and the typed values stay. The submit refuses a $ SL / TP with no Size × Lev ("Type Size and Lev first"). Node tests: both directions,
+    the repro ($2 stays $2 = 0.02 % at 500×20), the submit guard.
+  - **Exit editor:** before sending, the row is re-read from `window._openOrdersById`; if entry × qty changed since the $ was converted (an
+    ➕ add / refresh landed) and the operator typed $, nothing is sent: "The position size changed ($6,000 → $7,500) — check the stop
+    again … Stop −$90.00 is now −1.20 %". % typed → no check (the % does not depend on the size).
+  - **M:** $ inputs step 0.01 (cents no longer trip the step-mismatch outline) · `slTpFmtUsd` / `slTpFmtPct`(null / NaN / '') → '—' ·
+    a mistyped SL / TP (badInput: '1,5') is refused at submit and blocks a unit switch, never dropped as blank · test: the
+    ManualLimitError one-click fix in $ mode keeps the $, recomputes the % on the new Size × Lev and refreshes the risk line · test: $ →
+    % on a non-round notional ($17.29 on $1,234.56 → 1.4005 %) · test: % mode payloads are byte-for-byte the pre-326 expressions (5 cases).
+  - **Cosmetic:** the "= …" conversion moved next to the SL / TP label, so the inputs stay aligned with their neighbours.
+  - **M1 (accepted, live qty step):** the exchange truncates the quantity to the step, so the real notional ≤ Size × Lev and the realised $
+    at the stop ≤ the typed $ (always the smaller-loss side). Example BTCUSDT (step 0.001 BTC) at $67,000: $500 × 20 = $10,000 → 0.14925
+    → 0.149 BTC = $9,983; a typed $150 stop = 1.5 % → realised ≈ $149.75 (−$0.25).
+- **Accepted (final verification):** the Set-exit size check only knows the last open-orders poll (an ➕ add from another device before the next poll passes) · a fill-price correction alone also refuses (fails safe) · a unit switch with no Size × Lev is refused even with empty SL/TP.
+
+## (327) 2026-10-20 — 👁 Two watch lines: LITE 4-h state split · SPIKE_FADE live execution (operator: "add both watch lines")
+- **LITE / LITE_RETRY time cap:** the operator wanted to shorten the 12-h cap (A #46 open > 4 h). Study reports/LITE_TIMECAP_2026-10-20.md:
+  - **Real fills:** they cannot test it (0 of 31 closed real fills lasted > 4 h). The one cap-affected real fill, CTR, hit its +2 TP at 3 h 40.
+  - **Backtest (~1,450 LITE fills × 3 seeds):** every cap from 1 to 8 h is ≤ 12 h — in both years and with every month left out; 4 h = −0.027 %/fill [−0.059, +0.004]. At 4 h the cap changes 85 fills: 43 later hit the TP, 34 the stop. "Close at 4 h if below entry" is also negative.
+  - **Decision: keep 720 min.** Observe line: real fills open at 4 h, split by sign at 4 h, actual vs a 4-h close; revisit at ≥ 15 such fills. Least-cost option if ever wanted: 8 h (−0.002 %/fill).
+- **SPIKE_FADE live execution:** live fades are 0/2 (KMNO −2.13 %, SOLV ≈ −1.8 %) vs master 124 · 69 % · +0.09 %, so no sleeve change (N = 2). Observe line: entry drift, stop slippage, size vs target, live avg vs master. Review gate: first 10 live fades avg < −0.5 %/fill OR median stop slippage > the backtest assumption.
+- Where: CLAUDE_CURRENT_STATE.md (LITE block + 41j) · reports/NEXT_BATCH_REVIEW_PLAN.md operator priorities ②b / ②c. No code or config change.

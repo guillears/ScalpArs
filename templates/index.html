@@ -9223,10 +9223,13 @@
                             const _cls = _d > 0.005 ? 'text-emerald-400' : (_d < -0.005 ? 'text-red-400' : 'text-gray-500');
                             if (!data.is_paper && data.invested != null) {   // 🏦 (318, operator) LIVE: "Invested: $X ($start start + $deposits deposits)"; P&L = equity − invested, % on invested
                                 const _inv = Number(data.invested);
-                                _pi.textContent = `Invested: ${formatUSD(_inv)}` + (Math.abs(_fl) > 0.005
-                                    ? ` (${formatUSD(_seed)} start ${_fl > 0 ? '+' : '-'} ${formatUSD(Math.abs(_fl))} ${_fl > 0 ? 'deposits' : 'withdrawals'})` : ` (${formatUSD(_seed)} start)`);
+                                _pi.textContent = `Invested: ${formatUSD(_inv)}`;   // (318, operator) the breakdown moved to the hover tooltip
+                                _pi.title = Math.abs(_fl) > 0.005
+                                    ? `${formatUSD(_seed)} start ${_fl > 0 ? '+' : '-'} ${formatUSD(Math.abs(_fl))} ${_fl > 0 ? 'deposits' : 'withdrawals'}` : `${formatUSD(_seed)} start`;
+                                _pi.style.cursor = 'help';
                             } else {
                                 _pi.textContent = `Initial Balance: ${formatUSD(_seed)}` + (Math.abs(_fl) > 0.005 ? ` · ${_fl > 0 ? 'Net deposits +' : 'Net withdrawals -'}${formatUSD(Math.abs(_fl))}` : '');
+                                _pi.title = ''; _pi.style.cursor = '';
                             }
                             _pp.innerHTML = `P&amp;L: <span class="${_cls}">${_sg}${formatUSD(Math.abs(_d))}${_pct}</span>`;
                         }

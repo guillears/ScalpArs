@@ -2028,7 +2028,7 @@ async def _external_flow_rows(db: AsyncSession, start_ms: int, max_age_s=None):
 
 
 @app.get("/api/pnl-calendar")
-async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(get_db)):
+async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: AsyncSession = Depends(get_db)):
     """Daily P&L Calendar (Jun 11, 2026 — Option A: computed live from CLOSED orders;
     paper resets clear it together with the orders table by design — each reset is a
     new rule-regime experiment. In live mode orders are never deleted, so this gives
@@ -2036,11 +2036,16 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
 
     tz_offset_min: minutes to ADD to UTC to get the operator's local day boundary
     (e.g. UTC-3 -> -180). Day-return % baseline = portfolio value back-walked from the
-    current value minus subsequent days' P&L (deposits/withdrawals not modeled)."""
+    current value minus subsequent days' P&L (deposits/withdrawals not modeled).
+
+    origin (🤖 DECISION_LOG 323): ALL · BOT · MANUAL — the calendar of the account as if only that side had traded: the other side's
+    P&L is taken out of the realized equity, so every day %, compounded %, balance walk and projection is that side's own."""
+    from services.origin_view import norm_origin, origin_keep
+    _origin = norm_origin(origin)
     await trading_engine.initialize(db)
 
     result = await db.execute(
-        select(Order.closed_at, Order.pnl, Order.pnl_percentage)
+        select(Order.closed_at, Order.pnl, Order.pnl_percentage, Order.entry_strategy, Order.confidence)
         .where(and_(
             Order.status == "CLOSED",
             Order.is_paper == trading_engine.is_paper_mode,
@@ -2051,7 +2056,11 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
     offset = timedelta(minutes=tz_offset_min)
     days: Dict[str, dict] = {}
     pcts_by_day: Dict[str, list] = {}
-    for closed_at, pnl, pnl_pct in rows:
+    _origin_out_pnl = 0.0   # (323) realized P&L of the side the view leaves out — removed from the equity below
+    for closed_at, pnl, pnl_pct, _es, _conf in rows:
+        if not origin_keep(_es, _conf, _origin):
+            _origin_out_pnl += (pnl or 0.0)
+            continue
         d = (closed_at + offset).date().isoformat()
         e = days.setdefault(d, {"pnl": 0.0, "trades": 0, "wins": 0})
         e["pnl"] += (pnl or 0.0)
@@ -2070,6 +2079,13 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
         portfolio_now = _pc["realized_equity"]; total_equity_now = _pc["total_equity"]
     except Exception:
         pass
+    portfolio_real = portfolio_now   # (323) the real account — the "Portfolio now" line always shows this
+    if _origin != 'ALL':
+        if portfolio_now is not None:
+            portfolio_now = portfolio_now - _origin_out_pnl
+        # review: the live equity also carries the OTHER side's open unrealized P&L — a filtered view projects from its realized
+        # equity only (never another side's open trades)
+        total_equity_now = portfolio_now
     # Aug-27 PHASE 2 (operator: deposits/withdrawals polluted the day-%): Modified-Dietz
     # day returns. External transfers (Binance income, live only) are bucketed per LOCAL day;
     # each flow joins that day's return base weighted by the fraction of the day it was
@@ -2172,6 +2188,8 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
         revisions = revisions_by_month.get(_cur_mk, [])
         avg7 = avg7_by_month.get(_cur_mk, [])
     return {"days": days, "portfolio_now": round(portfolio_now, 2) if portfolio_now is not None else None,
+            "portfolio_real": round(portfolio_real, 2) if portfolio_real is not None else None,
+            "origin": _origin, "origin_out_pnl": round(_origin_out_pnl, 2),
             "revisions": revisions, "avg7": avg7, "ship_marks": _SHIP_MARKS,
             # Aug-22 (operator caught MTD→EOM $2,790/$3,462 vs $4k+ on every other row): the other period rows
             # compound from LIVE TOTAL equity (incl. open unrealized); this cell compounded the month's rate from
@@ -3019,8 +3037,12 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
 async def get_performance(regime: str = None, window_hours: int = None,
                           from_date: str = None, to_date: str = None,
                           flip_source: str = None, direction: str = None, cell_source: str = None,
-                          db: AsyncSession = Depends(get_db)):
+                          origin: str = None, db: AsyncSession = Depends(get_db)):
     """Get closed orders performance metrics, optionally filtered by macro trend regime and/or time window.
+
+    origin: str (Oct-20, DECISION_LOG 323) — ALL (default) · BOT (the bot's own entries; trades the operator edited / closed by hand
+                  stay in, counted in origin_touched) · MANUAL (🖐 pop-up entries + positions adopted from Binance). A filtered view's
+                  return multiple / daily compound keep the REAL starting capital and drop only the other side's P&L.
 
     window_hours: int — restrict to trades closed within the last N hours (e.g., 24=last day, 168=last week).
                   None / 0 / negative = no time filter (default).
@@ -3042,7 +3064,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
     try:
         return await _compute_performance(db, regime=regime, window_hours=window_hours,
                                           from_date=from_date, to_date=to_date, flip_source=flip_source,
-                                          direction=direction, cell_source=cell_source)
+                                          direction=direction, cell_source=cell_source, origin=origin)
     except Exception as e:
         logger.error(f"[PERF] Unhandled error in get_performance: {e}\n{traceback.format_exc()}")
         return {
@@ -5059,12 +5081,22 @@ def _compute_liquidity_sizing(orders):
 
 async def _compute_performance(db: AsyncSession, regime: str = None, window_hours: int = None,
                                 from_date: str = None, to_date: str = None, flip_source: str = None,
-                                direction: str = None, cell_source: str = None):
+                                direction: str = None, cell_source: str = None, origin: str = None):
+    from services.origin_view import norm_origin, origin_keep, touched_summary
+    _origin = norm_origin(origin)
     result = await db.execute(
         select(Order)
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
     )
     all_orders = result.scalars().all()
+    # 🤖 (DECISION_LOG 323) All · Bot · Manual: filter the WHOLE book first (every table — regime / funnel / flip logs included — reads
+    # one side only). The P&L of the side left out (all time) is kept aside: it sits in the real balance, so the initial-balance
+    # derivations below remove it and the return multiple / daily compound start from the real capital.
+    _origin_out_pnl = 0.0
+    if _origin != 'ALL':
+        _keep_ids = {id(o) for o in all_orders if origin_keep(getattr(o, 'entry_strategy', None), getattr(o, 'confidence', None), _origin)}
+        _origin_out_pnl = sum((o.pnl or 0) for o in all_orders if id(o) not in _keep_ids)
+        all_orders = [o for o in all_orders if id(o) in _keep_ids]
     # Jun 14: Flip Entry sleeve — flips stay IN all_orders so they appear in every
     # momentum/diagnostic table (Closing Reason Summary etc.) labeled by their FLIP_*
     # close reason (operator choice: full visibility over KPI purity — note this blends
@@ -5168,6 +5200,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         _cutoff = datetime.utcnow() - timedelta(hours=window_hours)
         orders = [o for o in orders if o.closed_at and o.closed_at >= _cutoff]
         signal_expired_orders = [o for o in signal_expired_orders if o.closed_at and o.closed_at >= _cutoff]
+
+    if _origin == 'MANUAL':
+        signal_expired_orders = []   # (323) aborted maker entries are the bot's
+    _origin_touched = touched_summary(orders) if _origin != 'MANUAL' else {"n": 0, "pnl": 0.0}
 
     # Apply flip-source filter if requested (Jun 16). Slices the pool by entry_strategy so every
     # downstream table re-computes for ONE flip sleeve in isolation — the per-source evaluation
@@ -5283,6 +5319,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "avg_leverage": 0,
             "return_multiple": early_return_multiple,
             "daily_compound_return": 0,
+            "origin": _origin, "origin_touched": {"n": 0, "pnl": 0.0}, "origin_out_pnl": round(_origin_out_pnl, 2),   # (323) an empty view still says which view it is
             "runtime_days": round(trading_engine.get_runtime_seconds() / 86400.0, 2),
             "by_confidence": {},
             "by_macro_trend": macro_trend_performance,
@@ -5452,13 +5489,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # See CLAUDE.md May 5 — Return Multiple fix.
         _bnb_now = (trading_engine.paper_bnb_balance_usd or 0)
         current_balance = trading_engine.paper_balance + used_margin + _bnb_now
-        initial_balance = current_balance - total_pnl
+        initial_balance = current_balance - total_pnl - _origin_out_pnl   # (323) the left-out side's P&L is in the balance too
     else:
         balance = await binance_service.get_balance()
         bnb_price = await binance_service.get_bnb_price()
         bnb_usd = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
         current_balance = balance['usdt_total'] + bnb_usd
-        initial_balance = current_balance - total_pnl
+        initial_balance = current_balance - total_pnl - _origin_out_pnl   # (323)
 
     # Aug-27 (operator-caught): the reverse-derived initial (current − pnl) assumes NO external
     # flows — a live withdrawal shrinks 'initial' and fabricates return (observed: $3k out →
@@ -5479,7 +5516,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             _era_start = _era_row or (datetime.utcnow() - timedelta(days=runtime_days))
             _flow_start_ms = int(_era_start.replace(tzinfo=timezone.utc).timestamp() * 1000)
             _net_flows = sum(a2 for _, a2 in await _external_flow_rows(db, _flow_start_ms))
-            initial_balance = current_balance - total_pnl - _net_flows
+            initial_balance = current_balance - total_pnl - _origin_out_pnl - _net_flows
         except Exception as _fl_err:
             logger.warning(f"[PERF] net-transfer fetch failed ({str(_fl_err)[:60]}) — return multiple uses legacy (flow-blind) derivation")
     # multiple = 1 + pnl/initial — algebraically identical to current/initial when flows are
@@ -9497,6 +9534,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "avg_duration_short": calc_avg_duration(shorts),
         "avg_leverage": round(avg_leverage, 2),
         "return_multiple": round(return_multiple, 4),
+        "origin": _origin, "origin_touched": _origin_touched,   # 🤖 (323) the view + bot trades the operator edited / closed by hand
+        "origin_out_pnl": round(_origin_out_pnl, 2),             # (323) realized P&L of the side left out — the UI takes it out of the balance
         "daily_compound_return": round(daily_compound_return, 4),
         "runtime_days": round(runtime_days, 2),
         "by_confidence": confidence_performance,

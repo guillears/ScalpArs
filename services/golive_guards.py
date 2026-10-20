@@ -294,3 +294,26 @@ def close_fill_vwap(trades, direction, since_ms, exclude_order_ids=(), entry_ms=
         v += a * p
         n += 1
     return (v / q, q, n) if q > 0 else None
+
+
+# ⑦ residual sweep after a resting-TP close sells only the row's OWN shortfall (DECISION_LOG 322 — BTW #48 2026-10-20 sold the operator's
+# 2,779 app-held BTW at the bot's stop)
+
+
+def residual_own_qty(residual, own_open_qty, our_filled, row_qty) -> float:
+    """→ how much of the live residual after this row's close is the row's OWN (the sweep closes only that; never raises).
+    own_open_qty = what the row still held before its market close (quantity − resting-TP fill, UNsnapped — a close snapped down to the
+    step leaves the difference, which is ours); our_filled = what that close filled. NOT reported (0 / None — the maker path, a lost
+    answer, an unverified resting-TP fill) → the WHOLE residual is treated as ours, exactly as before 322: never leave our own coins
+    without a stop (both reviews) — only a confirmed fill lets the sweep leave anything alone."""
+    try:
+        r = float(residual or 0)
+        q = float(row_qty or 0)
+        if not (r > 0) or not (q > 0) or math.isnan(r) or math.isinf(r):
+            return 0.0
+        f = float(our_filled or 0)
+        if f > 0 and not math.isnan(f):
+            return min(r, max(0.0, float(own_open_qty or 0) - f))
+        return r
+    except (TypeError, ValueError):
+        return 0.0

@@ -1237,24 +1237,83 @@ def test_remaining_quantity_precision_b1():
             bs.exchange, bs._markets_loaded = saved
 
 
+def _fetch_by_id(oid):
+    """(322) per-id reads: the market close 'm1' is final with 3 short of the 6 asked; anything else is the cancelled resting TP."""
+    if str(oid) == "m1":
+        return {"status": "FILLED", "filled": 3.0, "amount": 6.0, "average": 96.0}
+    return {"status": "CANCELED", "filled": 4.0, "amount": 10.0, "average": LIM}
+
+
+def _short_fill(monkeypatch, T, sweep_reports_fill=True):
+    """(322) the market close reports it filled 3 less than asked — that 3 is the row's OWN residual (the sweep closes only that).
+    sweep_reports_fill False: the residual sweep's own order reports no fill (judged on the live position only)."""
+    _orig = T.binance_service.close_position
+    n = {"i": 0}
+    async def _c(symbol, side, amount):
+        r = await _orig(symbol=symbol, side=side, amount=amount)
+        n["i"] += 1
+        return dict(r, filled=(amount - 3.0) if n["i"] == 1 else (amount if sweep_reports_fill else 0.0)) if r else r
+    monkeypatch.setattr(T.binance_service, "close_position", _c)
+
+
 def test_residual_after_a_partial_close_is_closed_or_guarded(monkeypatch):
     # B1: after a partial close the live position must be 0 — a residual is closed reduce-only; one that cannot be closed keeps the row
     # OPEN, re-places the backstop and retries (never booked CLOSED over a live residual)
+    T, eng, engine, S, seed, read, log, blocks = _setup(monkeypatch, rows=[_row_with_rtp()], close_px=96.0, pos=[3.0, None],
+                                                        fetch=_fetch_by_id)
+    _short_fill(monkeypatch, T)
+    async def go():
+        await seed(); c = await _close(eng, T, S, "STOP_LOSS", 96.0); r = await read(); await engine.dispose(); return c, r
+    c, r = asyncio.run(go())
+    assert [x[3] for x in log if x[0] == "market_close"] == [6.0, 3.0] and r[1].status == "CLOSED"
+    T, eng, engine, S, seed, read, log, blocks = _setup(monkeypatch, rows=[_row_with_rtp()], close_px=96.0, pos=[3.0, 3.0],
+                                                        fetch=_fetch_by_id)
+    async def _bk(pair, d, trig):
+        log.append(("bk_place", pair)); return "B2"
+    monkeypatch.setattr(T.binance_service, "place_backstop_stop", _bk)
+    _short_fill(monkeypatch, T, sweep_reports_fill=False)
+    async def go2():
+        await seed(); c = await _close(eng, T, S, "STOP_LOSS", 96.0); r = await read(); await engine.dispose(); return c, r
+    c, r = asyncio.run(go2())
+    assert c is None and r[1].status == "OPEN" and ("bk_place", "WILUSDT") in log and 1 in T._exit_retry_queue and r[1].backstop_algo_id == "B2"
+
+
+def test_residual_with_unknown_fill_is_still_swept(monkeypatch):
+    """(322 review) the close did not report its fill → the whole residual is treated as ours (never left without a stop)."""
     T, eng, engine, S, seed, read, log, blocks = _setup(monkeypatch, rows=[_row_with_rtp()], close_px=96.0, pos=[3.0, None],
                                                         fetch={"status": "CANCELED", "filled": 4.0, "amount": 10.0, "average": LIM})
     async def go():
         await seed(); c = await _close(eng, T, S, "STOP_LOSS", 96.0); r = await read(); await engine.dispose(); return c, r
     c, r = asyncio.run(go())
     assert [x[3] for x in log if x[0] == "market_close"] == [6.0, 3.0] and r[1].status == "CLOSED"
+
+
+def test_unconfirmed_sweep_beside_an_operator_position_never_retries(monkeypatch):
+    """(322 deep review) our close left 3 (confirmed), the operator holds 5 more; the sweep of our 3 is not confirmed (no fill reported,
+    the operator added meanwhile) → the row is booked, never re-queued (a retry would re-send the full remainder into their coins)."""
+    T, eng, engine, S, seed, read, log, blocks = _setup(monkeypatch, rows=[_row_with_rtp()], close_px=96.0, pos=[8.0, 9.0],
+                                                        fetch=_fetch_by_id)
+    _short_fill(monkeypatch, T, sweep_reports_fill=False)
+    T._exit_retry_queue.pop(1, None)
+    async def go():
+        await seed(); c = await _close(eng, T, S, "STOP_LOSS", 96.0); r = await read(); await engine.dispose(); return c, r
+    c, r = asyncio.run(go())
+    assert [x[3] for x in log if x[0] == "market_close"] == [6.0, 3.0] and r[1].status == "CLOSED" and 1 not in T._exit_retry_queue
+
+
+def test_residual_that_is_not_ours_is_left_alone(monkeypatch):
+    """(322) BTW #48: our close filled everything it was asked; 3 more on Binance belong to the operator → no sweep, the row books CLOSED."""
     T, eng, engine, S, seed, read, log, blocks = _setup(monkeypatch, rows=[_row_with_rtp()], close_px=96.0, pos=[3.0, 3.0],
                                                         fetch={"status": "CANCELED", "filled": 4.0, "amount": 10.0, "average": LIM})
-    async def _bk(pair, d, trig):
-        log.append(("bk_place", pair)); return "B2"
-    monkeypatch.setattr(T.binance_service, "place_backstop_stop", _bk)
-    async def go2():
+    _orig = T.binance_service.close_position
+    async def _full(symbol, side, amount):
+        r = await _orig(symbol=symbol, side=side, amount=amount)
+        return dict(r, filled=amount) if r else r
+    monkeypatch.setattr(T.binance_service, "close_position", _full)
+    async def go():
         await seed(); c = await _close(eng, T, S, "STOP_LOSS", 96.0); r = await read(); await engine.dispose(); return c, r
-    c, r = asyncio.run(go2())
-    assert c is None and r[1].status == "OPEN" and ("bk_place", "WILUSDT") in log and 1 in T._exit_retry_queue and r[1].backstop_algo_id == "B2"
+    c, r = asyncio.run(go())
+    assert [x[3] for x in log if x[0] == "market_close"] == [6.0] and r[1].status == "CLOSED"
 
 
 def test_residual_guard_writes_on_the_session_object_round3(monkeypatch):

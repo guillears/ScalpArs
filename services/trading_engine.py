@@ -34,7 +34,8 @@ from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, fre
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 from services.golive_guards import (backstop_heal_skip_inflight, backstop_trigger_price, backstop_needs_replace, algo_status_resting, find_untracked_positions,  # 🛡 (DECISION_LOG 292)
                                    untracked_action, preflight_failures, BACKSTOP_REPLACE_RETRY_S, BACKSTOP_REPRICE_INTERVAL_S, UNTRACKED_CONFIRM_PASSES,
-                                   trigger_already_crossed, BACKSTOP_REPLACE_MAX_PER_PASS, BACKSTOP_HEAL_RETRY_S)
+                                   trigger_already_crossed, BACKSTOP_REPLACE_MAX_PER_PASS, BACKSTOP_HEAL_RETRY_S,
+                                   residual_own_qty)   # 🧍 (DECISION_LOG 322)
 
 
 def _strip_reason_prefixes(reason):
@@ -14576,6 +14577,8 @@ class TradingEngine:
                             'fee_rate': taker_fee_rate,
                             'exit_order_type': 'TAKER',
                             'decision_price': current_price,  # WebSocket price at decision time for slippage calc
+                            'filled': float(result.get('filled') or 0),   # (322) what OUR close filled — a residual beyond it is not ours
+                            'order_id': result.get('id'),                 # (322) re-read before a residual sweep when the fill looks short
                         }
                     else:
                         exit_result = None
@@ -14771,22 +14774,54 @@ class TradingEngine:
                 exit_fee = notional_at_close * exit_fee_rate
                 _slippage_pct = round(((_rtp_lim - actual_exit_price) if order.direction == "LONG" else (actual_exit_price - _rtp_lim)) / _rtp_lim * 100, 4)
                 logger.warning(f"[RESTING_TP_FILLED] {order.pair} #{order.id}: the reconciled limit filled the whole position — booked {reason} MAKER")
+            _foreign_left = 0.0   # (322) a live quantity on the symbol that is NOT this row's (operator app position) — never swept
             # B1: after ANY partial / forced resting-TP close the LIVE position must be 0 — a residual (truncated quantity, a fill race) is
             # closed reduce-only now; still open → the backstop is re-placed and the close retries: never booked CLOSED over a live residual
             if (_rtp_set and not _rtp_set.get('full') and exit_order_type != 'MAKER'
                     and (float(_rtp_set.get('filled') or 0) > 0 or _rtp_set.get('unverified') or _rtp_set.get('pending') is not None)):
                 _rk, _rres = await self._rtp_live_contracts(symbol)
-                if _rk and _rres > 0:
-                    logger.critical(f"[RESTING_TP_RESIDUAL] {order.pair} #{order.id}: {_rres} still open after the close — closing it reduce-only")
+                # 🧍 (DECISION_LOG 322) only OUR shortfall is swept: the operator may hold the same pair in the Binance app (BTW #48 2026-10-20 —
+                # the sweep sold their 2,779 at the bot's stop). With a CONFIRMED fill of our close, ours = what it left unfilled and the rest
+                # stays untouched (the untracked check alerts); fill unknown / resting TP unverified → the whole residual, as before (never naked).
+                _own_open = remaining_qty(order.quantity, float(_rtp_set.get('filled') or 0))
+                _our_f = None if _rtp_set.get('unverified') else (exit_result or {}).get('filled')   # unverified TP → unknown → all ours
+                # review: a fill that looks SHORT may still be completing — re-read our close order once (bounded, only here, only when a
+                # residual exists); not final / unreadable → unknown (the whole residual is swept, never left naked)
+                if _rk and _rres > 0 and _our_f and float(_our_f) < _own_open * 0.999 and (exit_result or {}).get('order_id'):
+                    _cv = await self._rtp_io(binance_service.fetch_resting_tp(order.pair, exit_result['order_id']), f"{order.pair} close fill re-read")
+                    _cst = str((_cv or {}).get('status') or '').upper()
+                    _our_f = float((_cv or {}).get('filled') or 0) if _cst in ('FILLED', 'CANCELED', 'EXPIRED', 'CLOSED') else None
+                _own_left = residual_own_qty(_rres if _rk else 0.0, _own_open, _our_f, order.quantity)
+                _foreign = max(0.0, float(_rres or 0) - _own_left) if _rk else 0.0
+                _foreign_left = _foreign
+                if _rk and _foreign > 0:
+                    logger.critical(f"[RESIDUAL_NOT_OURS] {order.pair} #{order.id}: {_foreign:g} of the {_rres:g} still on Binance after the close is not this "
+                                    f"row's (operator app position?) — left untouched; the untracked-position check alerts")
+                _own_snap = self._rtp_qty_snap(symbol, _own_left) if _rk and _own_left > 0 else 0.0   # below one step = dust, never swept
+                if _rk and _own_snap > 0:
+                    _rres = _own_snap
+                    _ok_left = _foreign + max(0.0, _own_left - _own_snap)   # what may legitimately stay: the foreign part + our sub-step dust
+                    logger.critical(f"[RESTING_TP_RESIDUAL] {order.pair} #{order.id}: {_rres} of ours still open after the close"
+                                    f"{f' (live {_rres + _foreign:g}, {_foreign:g} not ours)' if _foreign > 0 else ''} — closing it reduce-only")
                     _r2 = await self._rtp_io(binance_service.close_position(symbol=symbol, side=order.direction, amount=_rres), f"{order.pair} residual close")
                     _rk2, _rres2 = await self._rtp_live_contracts(symbol)
-                    if _r2 and _rk2 and _rres2 <= 0:
+                    # deep review: with an operator position on the symbol the live size can move under us — the sweep is judged on ITS OWN
+                    # reported fill first; the position check uses a tight tolerance (sizes are step-quantised, never a % of a foreign lot)
+                    _sw_fill_ok = bool(_r2) and float((_r2 or {}).get('filled') or 0) >= _rres * 0.999
+                    if _r2 and (_sw_fill_ok or (_rk2 and _rres2 <= _ok_left * (1 + 1e-6) + 1e-9)):
                         _r_mkt = remaining_qty(order.quantity, float(_rtp_set.get('filled') or 0))
                         _p2 = float(_r2.get('price') or actual_exit_price)
                         if _r_mkt > 0 and _rres <= _r_mkt:
                             actual_exit_price = ((_r_mkt - _rres) * actual_exit_price + _rres * _p2) / _r_mkt
                             notional_at_close = order.quantity * actual_exit_price
                             exit_fee = notional_at_close * exit_fee_rate
+                    elif _foreign > 0:
+                        # (322, deep review) an operator position shares the symbol: a retry would re-send the row's FULL remainder reduce-only
+                        # into THEIR coins, and the close-all backstop would flatten them too — book the row and alert instead (our unconfirmed
+                        # part is at most the shortfall just sent)
+                        logger.critical(f"[RESIDUAL_SWEEP_UNCONFIRMED] {order.pair} #{order.id}: the sweep of {_rres:g} of ours was not confirmed "
+                                        f"(live {_rres2 if _rk2 else '?'}, {_foreign:g} is the operator's) — row booked, NO retry / backstop; "
+                                        f"check {order.pair} on Binance")
                     else:
                         _exit_retry_queue.setdefault(order.id, 0)
                         await self._rtp_guard_open_residual(db, order, reason)
@@ -14814,7 +14849,9 @@ class TradingEngine:
                 positions = await binance_service.get_open_positions()
                 if positions is not None:
                     binance_pairs = {p['symbol'].replace('/USDT:USDT', 'USDT') for p in positions}
-                    if order.pair in binance_pairs:
+                    if order.pair in binance_pairs and _foreign_left > 0:   # (322) the operator's own position on the pair — expected
+                        logger.warning(f"[CLOSE_VERIFY] {order.pair}: Binance still holds {_foreign_left:g} that is not this row's (operator app position) — expected")
+                    elif order.pair in binance_pairs:
                         logger.critical(f"[CLOSE_VERIFY_FAIL] {order.pair}: Position still open on Binance after close — will be caught by retry queue or next reconciliation")
                     else:
                         logger.info(f"[CLOSE_VERIFY_OK] {order.pair}: Position confirmed closed on Binance")

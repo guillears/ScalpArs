@@ -7574,3 +7574,45 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   - **Not changed:** the reconcile's own timeout (inline in the monitor loop; ccxt timeout applies, unchanged); the pre-lock read is still unbounded (predates this ship).
 - Tests: tests/test_external_close_fill.py (14: VWAP, TP exclusion, entry anchor, qty cap, tz, since window, cadence + fallback pace,
   retry, wiring); test_resting_tp.py stub signature. Full suite green.
+
+## (322) 2026-10-20 — 🧍 Residual sweep sells only the bot's OWN leftover (operator's app position on the same pair)
+- **Incident:** BTW #48 (MANUAL row, 2,714, resting TP armed) hit its −3 % stop at 15:13 UTC. The bot closed its 2,714, then the B1
+  residual check read the live position at 2,779 and sold it reduce-only. Those 2,779 were the operator's own position, opened directly in
+  the Binance app (operator confirmed). One-way mode nets both into one position. The second sale's P&L is in no DB row.
+- **Fix:**
+  - `services/golive_guards.residual_own_qty` decides what is the bot's own. Only with a CONFIRMED fill of our market close is the residual split: own = what the row held before the close − what the close filled; the rest is left untouched with a CRITICAL `[RESIDUAL_NOT_OURS]` (the untracked-position check then alerts and blocks bot entries on that pair).
+  - If the fill is unknown (maker path, lost answer) or the resting TP is unverified, the WHOLE residual is still swept, as before: we never leave our own coins without a stop.
+  - An own part below one step is dust and is not swept.
+  - The success check allows the foreign part plus that dust to remain.
+  - The close_position path's exit_result carries `filled` + `order_id`. Only when a residual exists AND the reported fill looks
+    short is our close order re-read (bounded); a non-final or unreadable answer → unknown → the whole residual is swept. (A re-read
+    inside create_market_order was dropped in review: it added up to 0.8 s to every stop.)
+  - The sweep counts as done when its own reported fill covers what it sent, or the live size ≤ the foreign part + dust (tight tolerance).
+  - Sweep NOT confirmed while an operator position shares the symbol → `[RESIDUAL_SWEEP_UNCONFIRMED]` CRITICAL, row booked, NO retry
+    and NO backstop: a retry would re-send the full remainder reduce-only into the operator's coins, and the close-all backstop would
+    flatten them. Trade-off accepted: our unconfirmed shortfall can sit without a stop until the operator acts.
+  - POST-CLOSE VERIFY logs a WARNING (not CLOSE_VERIFY_FAIL) when the live quantity is the operator's.
+- **Reviews:**
+  - **Round 1 (caveman + deep):** "unknown fill → foreign if > 10 %" could leave our own coins naked → reverted to "unknown = ours" · filled under-reporting → re-read · unverified TP → treated as unknown.
+  - **Known and NOT fixed here (operator told):** the broker backstop is `closePosition=true`, so on a trigger it flattens the whole netted position including the operator's app quantity; and an exit retry after a lost ACK can re-send a reduce-only close into the operator's position. Rule for now: do not hold an app position on a pair the bot holds. A quantity-bounded backstop is the candidate fix.
+  - **Round 2 (caveman + deep):** the re-read moved out of create_market_order · the sweep is judged on its own fill · no retry beside an operator position · VERIFY log · `_foreign_left` defined on every path. Round-3 verification: no defects.
+- Tests: tests/test_residual_not_ours.py; tests/test_resting_tp.py (B1 test now reports a short fill; new: unknown fill still swept, operator residual left alone).
+
+## (323) 2026-10-20 — 🤖 Dashboard switch All · 🤖 Bot · 🖐 Manual (calendar + Closed Orders Performance + both exports)
+- **Operator:** "see real BOT numbers" without the manual trades. One switch in the calendar header (right, before the month arrows)
+  drives the calendar AND Closed Orders Performance. Default **All**; the choice is remembered per browser (localStorage, try/catch). The
+  Performance title shows a tag ("🤖 Bot only · N touched by you (±$X)"); clicking it scrolls to the switch.
+- **Classification (services/origin_view.py):**
+  - MANUAL = entry_strategy 'MANUAL' (🖐 pop-up) or confidence 'RECOVERED' (a position adopted from Binance = the operator's app trade).
+  - BOT = the rest. A bot trade whose exit the operator edited (`exit_override_at`) or closed in the app (`EXTERNAL_CLOSE`) stays BOT, by operator choice, and is counted in `origin_touched`.
+- **Math:** a filtered view = the account as if only that side had traded, with the same capital and transfers.
+  - `/api/performance?origin=`: the filter is applied after regime/window; the other side's P&L is subtracted from all three initial-balance derivations, so the return multiple and daily compound start from the real capital.
+  - `/api/pnl-calendar?origin=`: the other side's rows are skipped, and realized + total equity are reduced by their P&L, so day %, compounded %, the balance walk and the EOM projection are that side's own. `portfolio_real` is returned; the "Portfolio now" line keeps showing the real account.
+  - Tests pin it: the BOT view of a mixed book == the book that never had the manual trades (performance + calendar).
+- **Never filtered:** balance, live P&L card, open orders, investors.
+- **D12:** both text exports (copyAnalytics + copySplitReport) pass `origin`, list it under ACTIVE FILTERS and print a "View: … · Bot trades touched by you: N · $X" line.
+- **Reviews:**
+  - **Round 1:** the origin filter moved onto the WHOLE book at load, so regime / funnel / flip tables follow the view too; the other side's P&L is taken ALL-TIME (it sits in the real balance) · filtered calendar views project from realized equity (never the other side's open trades) · Period Performance base minus `origin_out_pnl` · the empty-view payload carries origin · a fast toggle never paints an older calendar · the projection label names the view · the split report's touched count covers BULLISH + BEARISH only (labelled).
+  - **Round 2:** no defects. Known small gap: Period Performance's live base can still hold the other side's OPEN unrealized P&L.
+  - RECOVERED = MANUAL also catches a bot position whose row was lost (rare, documented).
+- Tests: tests/test_origin_view.py (classification, touched, perf + calendar invariants incl. EOM projection, wiring). Inline JS node --check OK.

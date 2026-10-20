@@ -545,6 +545,13 @@
                     📅 Daily P&L Calendar <span id="pnl-cal-chevron" class="text-xs text-gray-500">▼</span>
                 </h2>
                 <div class="flex items-center gap-3 text-sm">
+                    <!-- 🤖 (DECISION_LOG 323) All · Bot · Manual — drives the calendar AND Closed Orders Performance (one switch, one view) -->
+                    <div id="origin-switch" class="inline-flex rounded-md border border-white/10 overflow-hidden text-xs" role="group"
+                         title="Which trades the calendar and the Performance section count. All = everything (matches your balance) · Bot = the bot's own entries (trades whose exit you edited or closed by hand stay in, counted as 'touched') · Manual = your 🖐 entries + positions adopted from Binance. Your balance, the live P&L card, open orders and investors always show everything.">
+                        <button type="button" data-origin="ALL" onclick="setOriginView('ALL')" class="px-2 py-0.5">All</button>
+                        <button type="button" data-origin="BOT" onclick="setOriginView('BOT')" class="px-2 py-0.5 border-l border-white/10">🤖 Bot</button>
+                        <button type="button" data-origin="MANUAL" onclick="setOriginView('MANUAL')" class="px-2 py-0.5 border-l border-white/10">🖐 Manual</button>
+                    </div>
                     <button type="button" onclick="pnlCalNav(-1)" class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10">‹</button>
                     <span id="pnl-cal-month-label" class="text-gray-200 font-semibold w-28 text-center"></span>
                     <button type="button" onclick="pnlCalNav(1)" class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10">›</button>
@@ -573,7 +580,7 @@
 
         <!-- Performance Metrics -->
         <section>
-            <h2 class="text-lg font-semibold text-gray-300 mb-4">Closed Orders Performance</h2>
+            <h2 class="text-lg font-semibold text-gray-300 mb-4">Closed Orders Performance <span id="origin-view-tag" class="hidden ml-2 text-xs font-normal px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 cursor-pointer" onclick="document.getElementById('origin-switch').scrollIntoView({behavior: 'smooth', block: 'center'})" title="View set by the All · Bot · Manual switch above the calendar — click to go there"></span></h2>
             <div class="glass rounded-xl p-6">
                 <p class="text-xs text-gray-500 mb-4">All metrics below are calculated from closed orders only</p>
 
@@ -7989,6 +7996,57 @@
             });
         });
 
+        // ===== 🤖 Origin view (DECISION_LOG 323): All · Bot · Manual — one switch for the calendar + Closed Orders Performance =====
+        const ORIGIN_VIEWS = ['ALL', 'BOT', 'MANUAL'];
+        const ORIGIN_LABELS = { ALL: 'All trades', BOT: '🤖 Bot only', MANUAL: '🖐 Manual only' };
+        function _originView() {
+            let v = 'ALL';
+            try { v = localStorage.getItem('scalpars_origin_view') || window._originViewMem || 'ALL'; } catch (e) { v = window._originViewMem || 'ALL'; }
+            return ORIGIN_VIEWS.includes(v) ? v : 'ALL';
+        }
+        function _originParam(sep) {   // '' for All (the default request is unchanged), else `${sep}origin=BOT|MANUAL`
+            const v = _originView();
+            return v === 'ALL' ? '' : `${sep}origin=${v}`;
+        }
+        function _paintOriginSwitch() {
+            const v = _originView();
+            document.querySelectorAll('#origin-switch [data-origin]').forEach(b => {
+                const on = b.getAttribute('data-origin') === v;
+                b.className = 'px-2 py-0.5' + (b.getAttribute('data-origin') !== 'ALL' ? ' border-l border-white/10' : '')
+                    + (on ? ' bg-sky-500/25 text-sky-200 font-semibold' : ' bg-white/5 text-gray-400 hover:bg-white/10');
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+        }
+        function _paintOriginTag(touched) {
+            const tag = document.getElementById('origin-view-tag');
+            if (!tag) return;
+            const v = _originView();
+            if (v === 'ALL') { tag.classList.add('hidden'); tag.textContent = ''; return; }
+            let t = ORIGIN_LABELS[v];
+            if (v === 'BOT' && touched && touched.n > 0) {
+                t += ` · ${touched.n} touched by you (${touched.pnl >= 0 ? '+' : '−'}$${Math.abs(touched.pnl).toFixed(2)})`;
+            }
+            tag.textContent = t;
+            tag.classList.remove('hidden');
+        }
+        function _originReportLine(v, perfs) {   // 🤖 (323) BOTH text exports: the view + bot trades the operator touched
+            let n = 0, pnl = 0;
+            (perfs || []).forEach(p => { const t = (p && p.origin_touched) || null; if (t) { n += (t.n || 0); pnl += (t.pnl || 0); } });
+            const base = `View: ${ORIGIN_LABELS[v] || 'All trades'}` + (v === 'ALL' ? ' (bot + manual; matches the balance)' : ' (the other side\'s P&L taken out of the account)');
+            const scope = (perfs || []).length > 1 ? ' (BULLISH + BEARISH regimes; NEUTRAL not counted)' : '';
+            return v === 'MANUAL' ? base : `${base} · Bot trades touched by you (exit edited / closed by hand)${scope}: ${n} · ${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)}`;
+        }
+        function setOriginView(v) {
+            if (!ORIGIN_VIEWS.includes(v)) v = 'ALL';
+            try { localStorage.setItem('scalpars_origin_view', v); } catch (e) { /* private window: the choice lasts this page only */ }
+            window._originViewMem = v;
+            _paintOriginSwitch();
+            _paintOriginTag(null);
+            loadPnlCalendar();
+            loadPerformance();   // a newer request supersedes an older one (_perfGen)
+        }
+        document.addEventListener('DOMContentLoaded', _paintOriginSwitch);
+
         // ===== Daily P&L Calendar (Jun 11, 2026) =====
         let pnlCalData = null;           // {days: {'YYYY-MM-DD': {pnl, trades, wins, wr, day_return_pct}}}
         let pnlCalYear = null, pnlCalMonth = null;  // displayed month (1-12), local
@@ -7996,9 +8054,11 @@
 
         function loadPnlCalendar() {
             const tzOffsetMin = -new Date().getTimezoneOffset(); // e.g. UTC-3 -> -180
-            fetch(`${API_BASE}/api/pnl-calendar?tz_offset_min=${tzOffsetMin}`)
+            const _calGen = (window._pnlCalGen = (window._pnlCalGen || 0) + 1);   // (323) a fast view toggle never paints the older answer
+            fetch(`${API_BASE}/api/pnl-calendar?tz_offset_min=${tzOffsetMin}${_originParam('&')}`)
                 .then(r => r.json())
                 .then(d => {
+                    if (_calGen !== window._pnlCalGen) return;
                     pnlCalData = d;
                     const now = new Date();
                     const curIdx = now.getFullYear() * 12 + (now.getMonth() + 1);
@@ -8292,7 +8352,7 @@
                 // available if ever re-rendered).
                 `<div class="flex items-center gap-6 flex-wrap text-xs bg-white/[0.03] rounded-lg px-4 py-3" title="EOM projection: 'balance by ${d.eom_label}' back-computed from closed orders at MTD rate. Δ vs 3d/7d ago = the improvement signal — is the month getting better or worse as days settle?">` +
                 `<div><span class="text-gray-500">Portfolio now:</span> <span id="eom-portfolio-now" class="text-emerald-300 font-bold text-sm">${window._lastTotalPortfolio != null ? '$' + Math.round(window._lastTotalPortfolio).toLocaleString('en-US') : '—'}</span></div>` +
-                `<div><span class="text-gray-500">Projected by ${d.eom_label}:</span> <span class="text-blue-300 font-bold text-sm">$${Math.round(nowP).toLocaleString('en-US')}</span></div>` +
+                `<div><span class="text-gray-500">Projected by ${d.eom_label}${_originView() !== 'ALL' ? ` (${ORIGIN_LABELS[_originView()]})` : ''}:</span> <span class="text-blue-300 font-bold text-sm">$${Math.round(nowP).toLocaleString('en-US')}</span></div>` +
                 `<div><span class="text-gray-500">Δ vs 3d ago:</span> <span class="${cls(d3)} font-medium">${fmt(d3)}</span></div>` +
                 `<div><span class="text-gray-500">Δ vs 7d ago:</span> <span class="${cls(d7)} font-medium">${fmt(d7)}</span></div>` +
                 `</div>`;
@@ -11079,6 +11139,8 @@
                 if (_flipSrc1) _params1.push(`flip_source=${encodeURIComponent(_flipSrc1)}`);
                 if (_cellSrc1) _params1.push(`cell_source=${encodeURIComponent(_cellSrc1)}`);
                 if (_dir1) _params1.push(`direction=${encodeURIComponent(_dir1)}`);
+                const _ov1 = _originView();
+                if (_ov1 !== 'ALL') _params1.push(`origin=${_ov1}`);   // 🤖 (323) the export reports the view on screen
                 const _dirBadge = document.getElementById('direction-filter-badge');
                 if (_dirBadge) _dirBadge.textContent = _dir1 ? `${_dir1}s only` : '';
                 // (Pair Rank Performance block removed here — it was a stray duplicate that ran
@@ -11115,8 +11177,10 @@
                     if (_flipSrc1) _fbits.push(`sleeve=${_flipSrc1}`);
                     if (_cellSrc1) _fbits.push(`cell=${_cellSrc1}`);
                     if (_dir1) _fbits.push(`direction=${_dir1}`);
+                    if (_ov1 !== 'ALL') _fbits.push(`view=${ORIGIN_LABELS[_ov1]}`);
                     if (_fbits.length) lines.push(`⚠ ACTIVE FILTERS (this report is a SLICE, not the full book): ${_fbits.join(' · ')}`);
                 }
+                lines.push(_originReportLine(_ov1, [perf]));
                 if (regimeFilter) lines.push(`Filter: ${regimeFilter} trades only`);
                 if (windowFilter === 'custom') {
                     const _from = (document.getElementById('window-from-date') || {}).value || '';
@@ -12722,7 +12786,8 @@
                 const _flipSrcSplit = (document.getElementById('flip-source-filter') || {}).value || '';
                 const _cellSrcSplit = (document.getElementById('cell-source-filter') || {}).value || '';
                 const _dirSplit = (document.getElementById('direction-filter') || {}).value || '';
-                const _winSuffix = _buildWindowQuery('&') + (_flipSrcSplit ? `&flip_source=${encodeURIComponent(_flipSrcSplit)}` : '') + (_cellSrcSplit ? `&cell_source=${encodeURIComponent(_cellSrcSplit)}` : '') + (_dirSplit ? `&direction=${encodeURIComponent(_dirSplit)}` : '');
+                const _ov2 = _originView();
+                const _winSuffix = _buildWindowQuery('&') + (_flipSrcSplit ? `&flip_source=${encodeURIComponent(_flipSrcSplit)}` : '') + (_cellSrcSplit ? `&cell_source=${encodeURIComponent(_cellSrcSplit)}` : '') + (_dirSplit ? `&direction=${encodeURIComponent(_dirSplit)}` : '') + _originParam('&');
                 const [perfBullRes, perfBearRes, cfgRes, logRes, statusRes, bnbRes, invRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance?regime=BULLISH${_winSuffix}`),
                     fetch(`${API_BASE}/api/performance?regime=BEARISH${_winSuffix}`),
@@ -12754,8 +12819,10 @@
                     if (_flipSrcSplit) _fbits.push(`sleeve=${_flipSrcSplit}`);
                     if (_cellSrcSplit) _fbits.push(`cell=${_cellSrcSplit}`);
                     if (_dirSplit) _fbits.push(`direction=${_dirSplit}`);
+                    if (_ov2 !== 'ALL') _fbits.push(`view=${ORIGIN_LABELS[_ov2]}`);
                     if (_fbits.length) lines.push(`⚠ ACTIVE FILTERS (this report is a SLICE, not the full book): ${_fbits.join(' · ')}`);
                 }
+                lines.push(_originReportLine(_ov2, [perfBull, perfBear]));
                 if (windowFilter === 'custom') {
                     const _from = (document.getElementById('window-from-date') || {}).value || '';
                     const _to = (document.getElementById('window-to-date') || {}).value || '';
@@ -12887,6 +12954,8 @@
                 if (flipSourceFilter) params.push(`flip_source=${encodeURIComponent(flipSourceFilter)}`);
                 if (cellSourceFilter) params.push(`cell_source=${encodeURIComponent(cellSourceFilter)}`);
                 if (directionFilter) params.push(`direction=${encodeURIComponent(directionFilter)}`);
+                const _ovPerf = _originView();
+                if (_ovPerf !== 'ALL') params.push(`origin=${_ovPerf}`);   // 🤖 (323)
                 const queryStr = params.length ? '?' + params.join('&') : '';
                 const badge = document.getElementById('regime-filter-badge');
                 badge.textContent = regimeFilter ? `Showing ${regimeFilter} trades only` : '';
@@ -12921,6 +12990,7 @@
                 const data = await res.json();
                 const balData = balRes.ok ? await balRes.json() : null;
                 if (_myGen !== _perfGen) return;  // Sep-7 hygiene: a newer filter request superseded this one — drop the stale payload
+                _paintOriginTag(data.origin_touched);   // 🤖 (323)
                 if (data._error) console.warn('[Performance API error]', data._error);
                 // Jul 30 — data-driven Cell/Door options (distinct non-probe cell tags in the
                 // closed book, server-computed). Rebuild the optgroup preserving the selection.
@@ -12944,7 +13014,9 @@
                 // Period Performance table
                 const ppBody = document.getElementById('period-performance-body');
                 // Projected Balance: current balance × (1 + DCR)^days
-                const _ppCurrentBal = balData ? (balData.total_portfolio || ((balData.usdt_balance || 0) + (balData.usdt_in_orders || 0))) : null;
+                const _ppRealBal = balData ? (balData.total_portfolio || ((balData.usdt_balance || 0) + (balData.usdt_in_orders || 0))) : null;
+                // 🤖 (323, deep review) a Bot / Manual view projects from that side's own account (the other side's realized P&L taken out)
+                const _ppCurrentBal = (_ppRealBal != null && data.origin && data.origin !== 'ALL') ? (_ppRealBal - (data.origin_out_pnl || 0)) : _ppRealBal;
                 const _ppDCR = (data.daily_compound_return || 0) / 100; // convert % to decimal
                 const _ppDaysMap = {'Last 6h': 0.25, 'Last 12h': 0.5, '1 Day': 1, '2 Days': 2, '3 Days': 3, '5 Days': 5, '7 Days': 7, '15 Days': 15, '30 Days': 30, 'Total': null};
                 const _ppProjected = (r) => {

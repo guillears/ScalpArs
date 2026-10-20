@@ -4063,7 +4063,7 @@ class TradingEngine:
         order.resting_tp_filled_qty = filled
         full = is_full(qty, filled)
         return {'filled': (qty if full else filled), 'avg': (float(avg) if avg else None), 'full': full, 'lim': lim, 'pending': pending,
-                'unverified': bool(pending)}
+                'unverified': bool(pending), 'ids': list(ids)}   # ids (321): the TP order ids settled — their trades are not the close's fill
 
     async def _rtp_reconcile_pending(self, order, rs):
         """After a FORCED stop-class close / a position found flat: one more bounded cancel + read per still-unverified id → rs updated
@@ -6992,31 +6992,24 @@ class TradingEngine:
             'entry_order_type': 'TAKER_FALLBACK',
         }
 
-    async def _fetch_actual_fill_price(self, order, fallback_price: float) -> float:
-        """Fetch the actual fill price from Binance trade history for an externally closed order."""
+    async def _fetch_actual_fill_price(self, order, fallback_price: float, exclude_ids=()) -> float:
+        """Fetch the actual fill price from Binance trade history for an externally closed order: the qty-weighted average of every
+        close-side trade since the order opened (🔎 DECISION_LOG 321 — was the newest of 10 unbounded trades; Aug-25 DOGE lesson kept:
+        only this order's lifetime counts). The row's resting TP fills are left out (settled + blended separately)."""
+        from services.golive_guards import close_fill_vwap, fill_trades_since_ms, utc_ms
         symbol = order.pair.replace('USDT', '/USDT:USDT')
         try:
-            trades = await binance_service.fetch_my_trades(symbol, limit=10)
-            if trades:
-                close_side = 'sell' if order.direction == 'LONG' else 'buy'
-                # Aug-25 live (DOGE id 5, -$160 recorded vs -$35 real): with no time bound this
-                # grabbed YESTERDAY'S fill for the same pair. Only trades from this order's
-                # lifetime qualify, newest first.
-                _lo_ms = 0
-                try:
-                    if order.opened_at is not None:
-                        _lo_ms = int((order.opened_at - datetime(1970, 1, 1)).total_seconds() * 1000) - 60000
-                except Exception:
-                    _lo_ms = 0
-                relevant = [t for t in trades if t['side'] == close_side
-                            and (t.get('timestamp') or 0) >= _lo_ms]
-                if relevant:
-                    latest = max(relevant, key=lambda t: (t.get('timestamp') or 0))
-                    logger.info(
-                        f"[FILL_PRICE] {order.pair}: Found actual fill @ {latest['price']} "
-                        f"(side={latest['side']}, time={latest['datetime']})"
-                    )
-                    return latest['price']
+            _op_ms = utc_ms(order.opened_at)
+            since = fill_trades_since_ms(_op_ms, int(time.time() * 1000))
+            trades = await binance_service.fetch_my_trades(symbol, limit=1000, since=since)
+            _ex = [getattr(order, 'protective_tp_order_id', None), *(exclude_ids or ())]   # the settle clears the row's id — callers pass it
+            _rest = float(order.quantity or 0) - float(getattr(order, 'resting_tp_filled_qty', None) or 0)   # newest trades up to what was still open (C1)
+            got = close_fill_vwap(trades, order.direction, since, _ex, _op_ms, _rest if _rest > 0 else None) if trades else None
+            if got:
+                logger.info(f"[FILL_PRICE] {order.pair}: actual fill @ {got[0]:.8g} (VWAP of {got[2]} close trade(s), qty {got[1]:g})")
+                return got[0]
+            logger.warning(f"[FILL_PRICE] {order.pair}: trade history since {since} returned "
+                           f"{'an error' if trades is None else f'{len(trades)} trade(s)'} — no close trade")
         except Exception as e:
             logger.warning(f"[FILL_PRICE] {order.pair}: Could not fetch trade history: {e}")
 
@@ -14537,7 +14530,7 @@ class TradingEngine:
                 if _rtp_known and _rtp_live <= 0:
                     _rtp_set = await self._rtp_reconcile_pending(order, _rtp_set)
                     if not _rtp_set.get('full'):
-                        _rtp_rem_px = await self._fetch_actual_fill_price(order, current_price)
+                        _rtp_rem_px = await self._fetch_actual_fill_price(order, current_price, [*((_rtp_set or {}).get('ids') or ()), *((_rtp_set or {}).get('pending') or ())])
                         exit_result = {'price': _rtp_rem_px, 'fee_rate': taker_fee_rate, 'exit_order_type': 'TAKER', 'decision_price': current_price}
                         logger.critical(f"[RESTING_TP_FORCED_CLOSE] {order.pair} #{order.id}: position already flat — no market order; the unfilled rest "
                                         f"booked at the last close-side trade {_rtp_rem_px}")
@@ -14601,7 +14594,7 @@ class TradingEngine:
                         _check_pos = await binance_service.get_position_for_symbol(symbol)
                         if _check_pos is None:
                             # Position gone — close succeeded on Binance, fetch actual fill price
-                            actual_price = await self._fetch_actual_fill_price(order, current_price)
+                            actual_price = await self._fetch_actual_fill_price(order, current_price, [*((_rtp_set or {}).get('ids') or ()), *((_rtp_set or {}).get('pending') or ())])
                             logger.info(
                                 f"[EXIT_ALREADY_CLOSED] {order.pair}: Position gone after attempt {attempt}, "
                                 f"close succeeded on Binance (fill={actual_price}). Skipping retries."
@@ -14630,7 +14623,7 @@ class TradingEngine:
                         raise RuntimeError("Binance API error — cannot determine position state")
                     binance_pairs = {p['symbol'].replace('/USDT:USDT', 'USDT') for p in positions}
                     if order.pair not in binance_pairs:
-                        actual_price = await self._fetch_actual_fill_price(order, current_price)
+                        actual_price = await self._fetch_actual_fill_price(order, current_price, [*((_rtp_set or {}).get('ids') or ()), *((_rtp_set or {}).get('pending') or ())])
                         if _rtp_set and _rtp_set.get('pending'):   # #3: the limit that could not be cancelled is reconciled before booking
                             _rtp_set = await self._rtp_reconcile_pending(order, _rtp_set)
                         if _rtp_set and _rtp_set.get('full'):     # the limit closed the position → its TP, never EXTERNAL at the last trade

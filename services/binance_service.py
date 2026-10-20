@@ -1538,12 +1538,12 @@ class BinanceService:
             logger.warning(f"[FUNDING] income fetch failed for {pair}: {e}")
             return None
 
-    async def fetch_my_trades(self, symbol: str, limit: int = 5) -> Optional[List[Dict]]:
-        """Fetch recent trades for a symbol from Binance.
+    async def fetch_my_trades(self, symbol: str, limit: int = 5, since: Optional[int] = None) -> Optional[List[Dict]]:
+        """Fetch recent trades for a symbol from Binance (since = startTime ms: trades from then on, oldest first).
         Returns list of trade dicts, or None on error."""
         try:
             await self.load_markets()
-            trades = await self.exchange.fetch_my_trades(symbol, limit=limit)
+            trades = await self.exchange.fetch_my_trades(symbol, since=since, limit=limit)
             return [
                 {
                     'price': float(t.get('price', 0)),
@@ -1553,6 +1553,7 @@ class BinanceService:
                     'timestamp': t.get('timestamp'),
                     'datetime': t.get('datetime'),
                     'fee': t.get('fee', {}),
+                    'order': t.get('order'),   # (321) the Binance orderId — the reconciler leaves the row's resting-TP fills out
                 }
                 for t in trades
             ]

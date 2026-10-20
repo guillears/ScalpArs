@@ -9,6 +9,7 @@ tests pin the money-safety rules without a running engine.
   ⑤ stop-0 guard                                     → bot_stop_errors · sanitize_bot_stops
 """
 import math
+from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional, Tuple
 
 # ① a configured backstop that moved less than this (price-% points) is left resting — order_backstop_pct rounds to 4 decimals, so
@@ -29,7 +30,7 @@ BACKSTOP_CLOSE_GRACE_S = 20.0
 
 # ② the action on a confirmed untracked position
 UNTRACKED_ACTIONS = ("alert", "flatten")
-UNTRACKED_CONFIRM_PASSES = 2             # seen on 2 consecutive reconcile passes (≈ 60 s apart) before it is called untracked
+UNTRACKED_CONFIRM_PASSES = 2             # seen on 2 consecutive reconcile passes (≈ 15 s apart since DL 321) before it is called untracked
 UNTRACKED_MIN_NOTIONAL_USD = 5.0         # a leftover below Binance's 5 USDT min notional is dust, not a position — never blocks a symbol
 
 # ⑤ the stop a FRENZY-family sleeve falls back to when a loaded config carries ≤ 0 (never run without a bot stop)
@@ -211,3 +212,85 @@ def backstop_heal_skip_inflight(closing_in_progress, close_initiated_at, now_utc
         return -float(grace_s) < age < float(grace_s)          # a small clock skew counts as in flight; a far-future stamp → heal
     except Exception:
         return False
+
+
+# ⑥ external-close detection + fill price (DECISION_LOG 321 — BR/A 2026-10-20: both Binance-app closes booked at the fallback price)
+RECONCILE_INTERVAL_TICKS = 15            # monitor passes (≈1 s each) between live reconciles — an app close leaves the dashboard in ≈15 s (was 60)
+RECONCILE_FALLBACK_AFTER_SKIPS = 20      # failed bulk position reads before the per-symbol fallback — ≈5 min, as before at the 60 s cadence
+RECONCILE_FALLBACK_EVERY = 4             # … then the fallback runs every 4th failed pass (≈60 s — the old pace; one read per open row)
+FILL_LOOKBACK_PAD_MS = 60_000            # trades this far before opened_at still count (opened_at is stamped after the fill)
+FILL_MAX_WINDOW_MS = int(6.9 * 86_400_000)   # Binance userTrades serves ≤ 7 days per window — an older position reads its last 6.9 days
+
+
+def fill_trades_since_ms(opened_at_ms, now_ms) -> int:
+    """the startTime for the close-fill read: the order's own lifetime (padded), never further back than one Binance window."""
+    lo = int(now_ms) - FILL_MAX_WINDOW_MS
+    try:
+        return max(int(opened_at_ms) - FILL_LOOKBACK_PAD_MS, lo)
+    except (TypeError, ValueError):
+        return lo
+
+
+def utc_ms(dt) -> Optional[int]:
+    """a DB timestamp → epoch ms (naive = UTC, as utcnow() writes it; an aware one is converted) · None when unreadable."""
+    try:
+        if dt is None:
+            return None
+        if getattr(dt, 'tzinfo', None) is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return int((dt - datetime(1970, 1, 1)).total_seconds() * 1000)
+    except Exception:
+        return None
+
+
+def close_fill_vwap(trades, direction, since_ms, exclude_order_ids=(), entry_ms=None, max_qty=None) -> Optional[Tuple[float, float, int]]:
+    """the real exit of an externally closed position → (qty-weighted avg price, qty, n trades) or None. Every close-side trade of the
+    order's lifetime counts (a manual close fills in several pieces — the old read took ONE trade); trades of the excluded order ids
+    (the row's resting TP, which the reconciler books separately via blend_exit) are left out. Unreadable trades are skipped.
+    entry_ms (the row's opened_at): the lifetime starts at this row's OWN entry fill — the earliest entry-side trade within the pad of
+    opened_at; close-side trades before it belong to an earlier lifetime — so a previous same-pair trade closed < pad before this open
+    never blends in (review: LITE_RETRY / manual re-entries).
+    max_qty (the row's quantity minus its recorded resting-TP fill): trades are taken NEWEST first up to it (the app close is the last
+    thing that happened) — a TP partial whose id was already cleared, or anything older, never biases the remainder's price (deep review
+    C1). The returned qty is what was covered (≤ max_qty)."""
+    side = 'sell' if str(direction).upper() == 'LONG' else 'buy'
+    skip = {str(i) for i in (exclude_order_ids or ()) if i is not None}
+    rows = []
+    for t in trades or ():
+        try:
+            ts = int(t.get('timestamp') or 0)
+            if ts < int(since_ms):
+                continue
+            p, a = float(t.get('price') or 0), float(t.get('amount') or 0)
+            if not (p > 0 and a > 0) or math.isnan(p) or math.isnan(a) or math.isinf(p) or math.isinf(a):
+                continue
+            rows.append((ts, t.get('side'), p, a, t.get('order')))
+        except (TypeError, ValueError, AttributeError, OverflowError):
+            continue
+    lo = int(since_ms)
+    if entry_ms is not None:
+        ent = [ts for ts, sd, _, _, _ in rows if sd != side and sd in ('buy', 'sell') and abs(ts - int(entry_ms)) <= FILL_LOOKBACK_PAD_MS]
+        if ent:   # this row's entry = the entry-side fill nearest opened_at; a close-side trade before it belongs to an earlier lifetime
+            near = min(ent, key=lambda ts: abs(ts - int(entry_ms)))
+            prior = [ts for ts, sd, _, _, _ in rows if sd == side and ts < near]
+            if prior:
+                lo = max(lo, max(prior) + 1)
+    try:
+        cap = float(max_qty) if max_qty is not None else None
+        if cap is not None and not (cap > 0) or (cap is not None and math.isinf(cap)):
+            cap = None
+    except (TypeError, ValueError):
+        cap = None
+    q = v = 0.0
+    n = 0
+    for ts, sd, p, a, oid in sorted(rows, key=lambda r: r[0], reverse=True):
+        if sd != side or ts < lo or (oid is not None and str(oid) in skip):
+            continue
+        if cap is not None:
+            a = min(a, cap - q)
+            if a <= 0:
+                break
+        q += a
+        v += a * p
+        n += 1
+    return (v / q, q, n) if q > 0 else None

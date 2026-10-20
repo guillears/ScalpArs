@@ -7550,3 +7550,27 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   A stop wider than the leverage floor (Custom / Bull-Run+SL / Frenzy) adds "⚠ … the open will be refused". Amber ≥ 5 %, red ≥ 10 %.
 - Tests: tests/test_manual_modal_ui.py (button in header, modal inputs, no note, risk line + wiring, Esc/close); test_manual_sleeve.py
   pins updated (no manual-note id; pop-up starts hidden). Inline JS node --check OK; full suite green.
+
+## (321) 2026-10-20 — 🔎 Positions closed in the Binance app: real fill price + 15 s detection (operator)
+- **Trigger:** the operator closed A #40 and BR #41 in the Binance app. The reconciler booked them at 14:21:25 / 14:22:30 UTC (≤ ~65 s after
+  the close: it ran every 60 monitor ticks), both at the FALLBACK price ("[FILL_PRICE] … no trade history match"). The old read was
+  `fetch_my_trades(limit=10)` with no time bound, taking the newest close-side trade; it matched nothing on either close.
+- **① Cadence:** reconcile every 15 ticks (`RECONCILE_INTERVAL_TICKS`, services/golive_guards.py) — an app close leaves the dashboard
+  in ≈15 s. The per-symbol fallback starts after 20 failed bulk reads (≈5 min, as before), then runs every 4th failed pass (≈60 s, the
+  old pace — never 4× more per-row reads during a ban). `UNTRACKED_CONFIRM_PASSES` stays 2 (now ≈15–30 s; opens hold the pair lock
+  through their row commit, so a slow commit is never flagged). Weight ≈ +15/min (positionRisk 5).
+- **② Fill price** (`close_fill_vwap`, main `_get_actual_fill_price`, engine `_fetch_actual_fill_price`):
+  - The price is the qty-weighted average of the NEWEST close-side trades of this row's lifetime, capped at the qty still open (quantity − resting-TP fill).
+  - The trades are read with `since` = opened_at − 60 s (at most 6.9 days back) and limit 1000.
+  - The lifetime starts at this row's own entry fill (the entry-side trade nearest opened_at), so a same-pair close < 60 s before a re-entry never blends in.
+  - The row's resting-TP order ids are excluded: main uses the id captured before the settle; the engine uses the `ids` / `pending` that `_rtp_settle` now returns.
+  - If the reconciler's settle cancelled TP ids that the pre-lock read had not excluded, it re-reads once, bounded.
+  - Coverage < 98 % → one re-read after 2 s, in case Binance has not indexed the trade yet.
+  - If nothing is found, the bot falls back to the WS price as before, and the log now says what Binance returned.
+  - `fetch_my_trades` gained `since` and returns the trade's `order` id.
+- **Reviews (pre-commit):**
+  - **Caveman:** the 60 s pad blended a previous same-pair close → entry anchor added · an unknown-placement TP could be counted twice → post-settle re-read · the fallback ran every pass → throttled · blocked settle → pending ids excluded · tz-aware opened_at → utc_ms.
+  - **Deep:** C1, a TP partial whose id was already cleared biased the remainder toward the TP price → newest-first qty cap · I3, trade history not yet indexed at the 15 s cadence → 2 s retry · limit 500 → 1000.
+  - **Not changed:** the reconcile's own timeout (inline in the monitor loop; ccxt timeout applies, unchanged); the pre-lock read is still unbounded (predates this ship).
+- Tests: tests/test_external_close_fill.py (14: VWAP, TP exclusion, entry anchor, qty cap, tz, since window, cadence + fallback pace,
+  retry, wiring); test_resting_tp.py stub signature. Full suite green.

@@ -1029,7 +1029,7 @@ def test_close_fallback_reconciles_the_limit_before_booking(monkeypatch):
     async def _fail(symbol, side, amount):
         log.append(("market_close_fail", amount)); return None
     monkeypatch.setattr(T.binance_service, "close_position", _fail)
-    async def _px(order, cp):
+    async def _px(order, cp, exclude_ids=()):   # (321) the settled TP ids ride along
         return 96.0
     eng._fetch_actual_fill_price = _px
     async def go():

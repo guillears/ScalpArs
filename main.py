@@ -35,6 +35,7 @@ from services.binance_service import binance_service, set_ban_until, set_ban_per
 from services.trading_engine import trading_engine, realtime_stop_loss_callback, _open_orders_cache, _cache_lock
 from services.trading_engine import ManualLimitError, normalize_manual_pair
 from services.resting_tp import RTP_SLEEVES as _RTP_SLEEVES   # 🎯 (DECISION_LOG 296)
+from services.golive_guards import RECONCILE_INTERVAL_TICKS, RECONCILE_FALLBACK_AFTER_SKIPS, RECONCILE_FALLBACK_EVERY   # 🔎 (DECISION_LOG 321)
 from services.indicators import calculate_indicators, get_signal
 from services.websocket_tracker import websocket_tracker
 
@@ -131,11 +132,11 @@ async def monitor_loop():
     
     Runs independently of scan_loop so stop-loss monitoring is never
     blocked by slow API calls in scan_and_trade.
-    Also runs periodic reconciliation every ~60s (live mode only).
+    Also runs periodic reconciliation every ~15s (live mode only; DECISION_LOG 321 — was ~60s).
     """
     global should_stop
     logger.info("[MONITOR] Monitor loop started (1s cycle)")
-    _RECONCILE_INTERVAL = 60
+    _RECONCILE_INTERVAL = RECONCILE_INTERVAL_TICKS   # 🔎 (DECISION_LOG 321) ≈15 s: a position closed in the Binance app leaves the dashboard fast (was 60)
     _reconcile_counter = _RECONCILE_INTERVAL - 10   # 🛡 (DECISION_LOG 292 ②) the first live reconcile (orphans + untracked positions) ~10 s after startup, not 60
     while not should_stop:
         try:
@@ -2636,22 +2637,36 @@ async def recover_positions(db: AsyncSession = Depends(get_db)):
     return {"recovered": len(recovered), "positions": recovered, "skipped": skipped}
 
 
-async def _get_actual_fill_price(order) -> float:
-    """Try to fetch the actual fill price from Binance trade history for an order.
-    Falls back to current WebSocket price or entry price if trade history unavailable."""
+async def _get_actual_fill_price(order, exclude_ids=(), rest_qty=None, retry=True) -> float:
+    """The real exit of an externally closed position, from Binance trade history: the qty-weighted average of the NEWEST close-side
+    trades of this row's lifetime, up to the quantity still open (quantity − recorded resting-TP fill, or rest_qty) (🔎 DECISION_LOG 321 —
+    the old read took the newest of 10 trades with no time bound and matched nothing on the 2026-10-20 BR/A app closes). The row's
+    resting TP fills (protective_tp_order_id + exclude_ids) are left out — the reconciler blends them in via blend_exit. Trades not yet
+    indexed (< 98 % covered) → one re-read after 2 s (retry). Falls back to the last WebSocket price, then the entry price."""
+    from services.golive_guards import close_fill_vwap, fill_trades_since_ms, utc_ms
     symbol = order.pair.replace('USDT', '/USDT:USDT')
     try:
-        trades = await binance_service.fetch_my_trades(symbol, limit=10)
-        if trades:
-            close_side = 'sell' if order.direction == 'LONG' else 'buy'
-            relevant = [t for t in trades if t['side'] == close_side]
-            if relevant:
-                latest = relevant[-1]
-                logger.info(
-                    f"[FILL_PRICE] {order.pair}: Found actual fill @ {latest['price']} "
-                    f"(side={latest['side']}, time={latest['datetime']})"
-                )
-                return latest['price']
+        _op_ms = utc_ms(order.opened_at)
+        _want = float(rest_qty) if rest_qty is not None else (float(order.quantity or 0) - float(getattr(order, 'resting_tp_filled_qty', None) or 0))
+        _excl = [getattr(order, 'protective_tp_order_id', None), *(exclude_ids or ())]
+        got, trades, since = None, None, None
+        for _try in range(2 if retry else 1):
+            if _try:
+                await asyncio.sleep(2.0)
+            since = fill_trades_since_ms(_op_ms, int(time.time() * 1000))
+            trades = await binance_service.fetch_my_trades(symbol, limit=1000, since=since)
+            got = close_fill_vwap(trades, order.direction, since, _excl, _op_ms, _want if _want > 0 else None) if trades else None
+            if got and (_want <= 0 or got[1] >= _want * 0.98):
+                break
+        if got:
+            px, qty, n = got
+            if _want > 0 and qty < _want * 0.98:
+                logger.warning(f"[FILL_PRICE] {order.pair} #{getattr(order, 'id', '?')}: close trades cover only {qty:g} of {_want:g} — booked on what was found")
+            logger.info(f"[FILL_PRICE] {order.pair}: actual fill @ {px:.8g} (VWAP of {n} close trade(s), qty {qty:g} of {_want:g})")
+            return px
+        _sides = sorted({str(t.get('side')) for t in (trades or [])})
+        logger.warning(f"[FILL_PRICE] {order.pair}: trade history since {since} returned "
+                       f"{'an error' if trades is None else f'{len(trades)} trade(s), sides {_sides}'} — no close trade")
     except Exception as e:
         logger.warning(f"[FILL_PRICE] {order.pair}: Could not fetch trade history: {e}")
 
@@ -2692,7 +2707,10 @@ async def _reconcile_open_orders(db: AsyncSession) -> list:
 
     if binance_positions is None:
         _reconcile_skip_counter += 1
-        if _reconcile_skip_counter >= 5:
+        # (321) ≈5 min of failed reads at the 15 s cadence, as before; then the per-symbol fallback runs every 4th pass (≈60 s, the old pace —
+        # one read per open row must not run 4× faster during a ban)
+        if (_reconcile_skip_counter >= RECONCILE_FALLBACK_AFTER_SKIPS
+                and (_reconcile_skip_counter - RECONCILE_FALLBACK_AFTER_SKIPS) % RECONCILE_FALLBACK_EVERY == 0):
             logger.critical(
                 f"[RECONCILE] get_open_positions() failed {_reconcile_skip_counter} consecutive times — "
                 f"falling back to per-symbol position checks"
@@ -2806,8 +2824,9 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
             # Round 2: the slow reads (fill price, backstop status — the position is already gone) run BEFORE the lock, bounded at 3 s; under
             # the lock only the re-read, the settle, the backstop cancel and the commit. Rows with nothing recorded and the switch OFF never
             # take the lock (exactly as before this ship).
-            _rtp_lock, _rtp_pre_px, _rtp_pre_bk = None, None, "unread"
+            _rtp_lock, _rtp_pre_px, _rtp_pre_bk, _rtp_pre_id = None, None, "unread", None
             if trading_engine.rtp_row_active(order):
+                _rtp_pre_id = getattr(order, 'protective_tp_order_id', None)   # (321) the settle clears it — its fills stay out of the VWAP
                 import services.trading_engine as _rtp_T
                 _rtp_pre_px = await _get_actual_fill_price(order)
                 if getattr(order, 'backstop_algo_id', None):
@@ -2897,6 +2916,15 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                                             f"{order.resting_tp_price} — likely its fill (notes RTP_UNRECORDED_FILL?)")
                     except Exception:
                         pass
+                # 🔎 (321, review) the settle cancelled TP ids the pre-lock read did not leave out (an unrecorded placement / a cleared id):
+                # their fills are blended below via blend_exit — re-read the remainder's price without them (bounded; else the pre-lock price)
+                _rtp_extra = [i for i in ((_rtp_x or {}).get('ids') or []) if str(i) != str(_rtp_pre_id or '')]
+                _rtp_rest = float(order.quantity or 0) - float((_rtp_x or {}).get('filled') or 0)
+                if _rtp_extra and float((_rtp_x or {}).get('filled') or 0) > 0 and _rtp_rest > 0:
+                    _px2 = await trading_engine._rtp_io(_get_actual_fill_price(order, [_rtp_pre_id, *_rtp_extra], rest_qty=_rtp_rest, retry=False),
+                                                        f"{order.pair} fill re-read")
+                    if _px2:
+                        exit_price = _px2
                 trading_engine.rtp_forget(order.id)
                 order.closed_at = datetime.utcnow()
                 order.exit_price = exit_price

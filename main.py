@@ -1806,6 +1806,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             # only; add_block = the reason shown on a disabled button — the engine re-checks everything at the click)
             "manual_add_count": getattr(o, 'manual_add_count', None), "manual_add_investment": getattr(o, 'manual_add_investment', None),
             "manual_added_at": (o.manual_added_at.isoformat() if getattr(o, 'manual_added_at', None) else None),
+            "imported_at": (o.imported_at.isoformat() if getattr(o, 'imported_at', None) else None), "import_source": getattr(o, 'import_source', None),   # 📥 (328) badge
             "add_block": _add_exit_refusal(getattr(o, 'entry_strategy', None), getattr(o, 'manual_exit_mode', None), getattr(o, 'exit_override_at', None))
                          or (None if getattr(o, 'pattern_fixed_sl_pct', None) is not None else "this trade has no fixed stop on record — set one first, then add")
                          or ("this position is being closed right now" if getattr(o, 'closing_in_progress', False) else None),
@@ -2266,6 +2267,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             # ➕ (DECISION_LOG 324) size added by the operator (the row's qty / avg entry / invested already include it)
             "manual_add_count": getattr(o, 'manual_add_count', None), "manual_add_investment": getattr(o, 'manual_add_investment', None),
             "manual_added_at": (o.manual_added_at.isoformat() if getattr(o, 'manual_added_at', None) else None),
+            "imported_at": (o.imported_at.isoformat() if getattr(o, 'imported_at', None) else None), "import_source": getattr(o, 'import_source', None),   # 📥 (328) badge
             "manual_block_reason": getattr(o, 'manual_block_reason', None), "manual_setup_rating": getattr(o, 'manual_setup_rating', None), "manual_setup_side": getattr(o, 'manual_setup_side', None),
             "manual_pair_rsi": getattr(o, 'manual_pair_rsi', None), "manual_pair_adx": getattr(o, 'manual_pair_adx', None),
             "pattern_cell_source": getattr(o, 'pattern_cell_source', None),
@@ -2577,6 +2579,45 @@ async def manual_add_preview(order_id: int, add_investment: float = 0.0, db: Asy
     except Exception as e:
         logger.error(f"[MANUAL_ADD] preview failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"add preview failed: {e}")
+
+
+class ManualImportRequest(BaseModel):   # 📥 (DECISION_LOG 328)
+    pair: str
+    direction: str
+    exit_mode: str = "FLOOR"
+    sl_pct: Optional[float] = None            # P&L % net of fees, typed positive (the engine makes it negative) — FIXED / BULLRUN_SL
+    tp_pct: Optional[float] = None            # P&L % net of fees — FIXED / FLOOR (optional)
+
+
+@app.get("/api/manual/import_candidates")
+async def manual_import_candidates():
+    """📥 (DECISION_LOG 328): the Binance positions the bot does NOT track (confirmed UNTRACKED NO_ROW, from the reconciler's state + its
+    last positions snapshot — no exchange read here; snapshot_age_s says how old the figures are). Live only ([] in paper)."""
+    try:
+        return {"candidates": trading_engine.import_candidates(), "is_paper": bool(trading_engine.is_paper_mode)}
+    except Exception as e:
+        logger.error(f"[MANUAL_IMPORT] candidates failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"import candidates failed: {e}")
+
+
+@app.post("/api/manual/import")
+async def manual_import(request: ManualImportRequest, db: AsyncSession = Depends(get_db)):
+    """📥 (DECISION_LOG 328): book ONE app-opened Binance position as a 🖐 MANUAL row (exit mode + resting exchange safety stop). 400 = the
+    readable refusal (nothing written, nothing left on the exchange); 500 = a booking failure (the text says what is on Binance)."""
+    try:
+        order = await trading_engine.import_binance_position(db, pair=request.pair, direction=request.direction, exit_mode=request.exit_mode,
+                                                             sl_pct=request.sl_pct, tp_pct=request.tp_pct)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[MANUAL_IMPORT] failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"import failed: {e}")
+    return {"ok": True, "status": "imported", "order_id": order.id, "pair": order.pair, "direction": order.direction, "quantity": order.quantity,
+            "entry_price": order.entry_price, "leverage": order.leverage, "investment": round(float(order.investment or 0), 2),
+            "notional_value": round(float(order.notional_value or 0), 2), "entry_fee": order.entry_fee, "exit_mode": order.manual_exit_mode,
+            "sl_pct": order.pattern_fixed_sl_pct, "tp_pct": order.pattern_fixed_tp_pct, "backstop_pct": order.backstop_pct,
+            "backstop_trigger_price": order.backstop_trigger_price, "resting_tp_price": getattr(order, 'resting_tp_price', None),
+            "imported_at": (order.imported_at.isoformat() if order.imported_at else None), "import_source": order.import_source}
 
 
 @app.get("/api/manual/limits")

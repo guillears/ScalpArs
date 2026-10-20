@@ -7,7 +7,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def test_open_paths_do_not_await_the_reconnect():
     src = open(os.path.join(ROOT, "services", "trading_engine.py")).read()
-    assert src.count("ws_subscribe_background(pair)") == 2
+    assert src.count("ws_subscribe_background(pair)") == 3   # bot open · 🖐 manual open · 📥 import (DECISION_LOG 328)
     assert "await websocket_tracker.subscribe_pair(pair, actual_price)" not in src
 
 

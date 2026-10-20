@@ -7836,3 +7836,85 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   - **Decision: keep 720 min.** Observe line: real fills open at 4 h, split by sign at 4 h, actual vs a 4-h close; revisit at ≥ 15 such fills. Least-cost option if ever wanted: 8 h (−0.002 %/fill).
 - **SPIKE_FADE live execution:** live fades are 0/2 (KMNO −2.13 %, SOLV ≈ −1.8 %) vs master 124 · 69 % · +0.09 %, so no sleeve change (N = 2). Observe line: entry drift, stop slippage, size vs target, live avg vs master. Review gate: first 10 live fades avg < −0.5 %/fill OR median stop slippage > the backtest assumption.
 - Where: CLAUDE_CURRENT_STATE.md (LITE block + 41j) · reports/NEXT_BATCH_REVIEW_PLAN.md operator priorities ②b / ②c. No code or config change.
+
+## (328) 2026-10-20 — 📥 Import an app-opened Binance position (operator)
+- **Why:** the operator opens positions directly in the Binance app. The reconciler sees them as UNTRACKED (check_untracked_positions →
+  CRITICAL [UNTRACKED_POSITION] NO_ROW, entries on that pair blocked, untracked_position_action "alert") but they have no row: no stop /
+  target management, not in the tables. POST /api/recover-positions (bulk, bare RECOVERED rows: no exit, no safety stop, no UI) stays as
+  it was; the 📥 import is the one-position, operator-confirmed path.
+- **Engine — `TradingEngine.import_binance_position(db, pair, direction, exit_mode, sl_pct, tp_pct)`** (live only; paper → "import works
+  in live mode only"; broker backstop must be on). Under the pair's open lock (serialized_per_pair, the 🖐 wait) and, from the final checks
+  to the commit, the account book lock. Order: DB (no OPEN row on the pair, any side → "the bot already holds {pair}; use ➕ Add"; the
+  manual cap counts imported rows like 🖐 ones) → Binance positions read (None → "could not read Binance — nothing imported"; exactly one
+  position on the symbol, this side, contracts > 0, notional ≥ UNTRACKED_MIN_NOTIONAL_USD; leverage = binance_position_leverage, whole
+  number ≥ 1 within 0.1 %, unknown → refused) → the SAME exit checks as the 🖐 pop-up (extracted from open_manual_position into
+  `manual_exit_levels` + `manual_momentum_refusal`, both paths call them; all six modes allowed as in 🖐) → a stop / target the price
+  already passed, net of fees on the imported entry, refused → the 🖐 entry stamps (at the import; Bull-Run modes need the ATR) → [book
+  lock] DB re-check → open orders on the symbol, regular + algo (new `binance_service.count_symbol_open_orders`: fetch_open_orders +
+  GET /fapi/v1/openAlgoOrders; unreadable → refused; ANY → "this position has its own orders on Binance (N) — cancel them in the app
+  first, or the bot's stop/TP would race them") → exchange safety stop at order_backstop_pct (a failed placement REFUSES the import —
+  nothing is open by the bot, so nothing to heal) → positions RE-READ (side / size within max(1 step, 0.5 %) / entry within 0.5 %;
+  changed, closed or unreadable → the stop is cancelled, nothing written) → row + OPEN_{dir} Transaction committed (a booking failure →
+  fresh-session check, then the stop is cancelled, RuntimeError) → `_rtp_arm` (a fixed TP: FIXED / FLOOR with TP) → update_orders_cache
+  → price stream (force_reset_tracking + ws_subscribe_background) → untracked state of the pair cleared (`_untracked_positions` +
+  `_untracked_seen`) → counter MANUAL_IMPORT + `[MANUAL_IMPORT]` log line with every value.
+- **Row:** entry_strategy MANUAL, confidence STRONG_BUY, manual_exit_mode / pattern_fixed_sl_pct / tp_pct per the mode, entry = Binance's
+  average entry, qty = contracts, notional = qty × entry, investment = notional / leverage, entry_fee = ESTIMATE (taker × entry notional;
+  the app order's real fee is not read — DL 330 auto-record will provide it), opened_at = imported_at = the import time (Binance's real
+  open time is not read: tracking starts at the import), import_source "BINANCE_APP", backstop_algo_id / pct / trigger recorded.
+- **New columns** `orders.imported_at` (DATETIME) + `orders.import_source` (VARCHAR 20) — models.py + database.py migration; they ride
+  the orders CSV (D12). /api/orders/open and /api/orders/closed carry them (badge).
+- **API:** GET /api/manual/import_candidates (the confirmed NO_ROW positions from the reconciler's state, joined with the reconciler's last
+  positions snapshot — new `_untracked_snapshot`, stored by check_untracked_positions — no exchange read; leverage / notional / margin /
+  mark / unrealized P&L / floor stop / widest stop accepted (`manual_max_stop_pct`: the leverage floor and 0.3 % inside the safety stop's
+  liquidation cap) / snapshot_age_s / importable + why_not; [] in paper) · POST /api/manual/import → row summary, 400 = the refusal text.
+- **UI:** banner `#import-candidates-banner` above the orders tabs, only while candidates exist, refreshed from loadOpenOrders (≥ 5 s
+  apart): "📱 Binance holds {PAIR} {SIDE} {qty} (≈ $N, L×) that the bot does not track — [📥 Import]". Pop-up `#import-position-modal`
+  styled like 🖐: read-only position facts, the 🖐 exit options and labels (Floor default), SL / TP with the DL 326 ⇄ % / $ switch
+  (notional = quantity × entry; the shared slTp* helpers, unit remembered as 'import'), a live risk line (manualRiskLine pattern: risk at
+  the stop ≈ −$Y (Z % of the account), ⚠ when wider than the widest stop accepted), a "what will happen" line, confirmNear → POST →
+  toast + refresh. Esc / ✕ / backdrop close. 📥 badge next to the strategy badge in Open and Closed orders (hover: imported at …).
+- **Decisions beyond the spec:** (a) a failed safety-stop placement refuses the import (the 🖐 open keeps a filled position and lets the
+  sweep heal; here nothing was bought, so refusing is free); (b) the reconciler's untracked FLATTEN skips a pair whose open lock is held
+  (an import in flight is never flattened under it); (c) the 🖐 entry stamps are taken at the import (needed by the Bull-Run modes; the
+  readings describe the import moment, MANUAL rows stay out of every systematic read); (d) no balance / bracket check (the position and
+  its margin already exist); (e) the import refuses any open order on the symbol, including a non-reduce-only entry limit.
+- **Accepted gaps:** an order the operator places in the app between the orders list and the commit is not seen (the next reconcile and
+  the stop sweeps run as for any manual row); the entry fee is an estimate until DL 330; the opened time is the import time.
+- origin_view: imported rows are MANUAL via entry_strategy; RECOVERED → MANUAL unchanged. No config field (D11 n/a); no analytics table
+  (D12: the two columns ride the CSV).
+- Tests: tests/test_manual_import.py (every refusal incl. paper / pair held / read fail / side / no position / dust / leverage unknown +
+  fractional / own orders / floor + backstop gap / stop + TP passed / changed before commit (4 variants, stop cancelled) / cap / stop
+  placement failure / commit failure / pair lock; happy path call order + row fields + untracked cleared; SHORT FLOOR; MOMENTUM
+  first-tick; candidates + snapshot + no flatten under the lock; endpoints; schema; UI wiring + node --check + node risk-line math).
+  tests/test_manual_sleeve.py source pin follows the extraction.
+- **Reviews (caveman + deep: SHIP, no critical / important; the small fixes applied):**
+  - **1 — cancel during the stop placement:** `place_backstop_stop` runs shielded. A task cancelled mid-request waits up to 15 s for the
+    outcome, withdraws the stop it placed and re-raises. Outcome unknown → CRITICAL "a stop may rest on Binance with NO row". A call that
+    returned None (it can still have been accepted after a timeout) re-counts the symbol's orders. An algo order there, or an unreadable
+    count → CRITICAL + refusal "A stop MAY rest on Binance … check {pair}'s TP/SL orders in the app".
+  - **2 — commit error + failed "is it booked?" re-read:** the stop is KEPT. CRITICAL "row may exist without stop / stop may exist without
+    row — check {pair}", RuntimeError tells the operator to check Open Orders. The stop is withdrawn only when the re-read surely shows no row.
+  - **3 — untracked flatten loop (latent, flatten mode only):** before each close, the mark must still be the same entry
+    (`conf.get(p) is u`) and the pair must have no OPEN live row (DB). Otherwise skipped; a failed re-check skips this pass.
+  - **4 — UI:** the risk line warns for every mode with a known stop vs max_stop_pct (Floor, Frenzy, Bull-Run; Momentum vs the leverage
+    floor), using the engine's figures from the candidate payload (new: `bullrun_worst_stop_pct`, `frenzy_stop_pct`, `momentum_stop_pct`,
+    `floor_exceeds_max`). At a leverage where even the Floor stop is refused (e.g. 100×), the pop-up opens on Custom SL/TP with a toast
+    saying why, and the banner adds "import needs a custom stop at {lev}×".
+  - **5 — own-orders refusal:** "N open order(s) on {pair} (yours or a leftover) — cancel them in the Binance app first …". When the pair
+    is in `_rtp_dirty_pairs`, it adds "the bot's last close on this pair may have left a reduce-only limit".
+  - **6 — Esc under the Import confirmation:** already safe (confirmNear consumes Escape in the capture phase). Added a
+    `!document.getElementById('near-confirm')` guard anyway.
+  - **7 — cleanups:** the dead `floor =` line in open_manual_position is gone (nothing read it). open_manual_position uses
+    `MANUAL_EXIT_MODES` (message unchanged; the test_frenzy_sleeve source pin follows).
+  - **8 — accepted notes:**
+    - The -4130 recovery in `place_backstop_stop` (clear the symbol's algo orders, retry) could cancel an operator TP / SL placed in the
+      ~100 ms between our order count and our placement. Accepted (logged by the service).
+    - The leverage must be reported by ccxt (`leverage`, or notional / initialMargin). The first live import confirms it; unknown → refused.
+    - A MOMENTUM-mode import of a position already in profit may be closed at once by the stack's profit exits (never at a loss: the
+      stop / TP-passed checks refuse that side).
+    - A FRENZY-mode import's 12-h clock (frenzy_max_hold_minutes) starts at the import (opened_at = import time).
+  - Tests: +8 in tests/test_manual_import.py (46 in all): cancel mid-placement withdraws the stop; a failed placement that may have landed;
+    a commit error with an unreadable row keeps the stop; the flatten re-check (row appears / mark replaced mid-loop); the candidate flags
+    at 100×; the bot-leftover message; the UI fixes (static + node risk line for Floor / Bull-Run).
+- **Final verification (SHIP), noted not fixed:** a cancel whose shielded placement then returns None is not re-counted (rare; a stop may rest unlogged) · a cancel during the 'changed' withdraw can report "could NOT be withdrawn" for a stop already withdrawn · the UI risk line does not flag MOMENTUM's 1.2 % stop vs the backstop gap at very high leverage (the engine still refuses).

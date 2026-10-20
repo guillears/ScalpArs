@@ -673,8 +673,10 @@ def test_hold_choke_point_in_open_position_and_not_manual():
     m0 = eng.index("    async def open_manual_position("); m1 = eng.index("\n    async def ", m0 + 10)
     assert "_willy_hold" not in eng[m0:m1]                                                          # MANUAL opens are never blocked
     # every automated open path reaches open_position (no other OPEN Order construction)
-    _oc = [m.start() for m in re.finditer(r"order = Order\(", eng)]   # SIGNAL_EXPIRED record · open_position · open_manual_position
-    assert len(_oc) == 3 and eng[_oc[0]:_oc[0] + 200].count('status="SIGNAL_EXPIRED"') == 1 and i < _oc[1] < j and m0 < _oc[2] < m1
+    _oc = [m.start() for m in re.finditer(r"order = Order\(", eng)]   # SIGNAL_EXPIRED record · open_position · open_manual_position · 📥 import (328)
+    k0 = eng.index("    async def import_binance_position("); k1 = eng.index("\n    async def ", k0 + 10)
+    assert len(_oc) == 4 and eng[_oc[0]:_oc[0] + 200].count('status="SIGNAL_EXPIRED"') == 1 and i < _oc[1] < j and m0 < _oc[2] < m1
+    assert k0 < _oc[3] < k1 and "_willy_hold" not in eng[k0:k1]                                    # the import books an app position: never held
     # the hold's sleeve label = the Order's entry_strategy for every sleeve flag combination
     expr = body[body.index("_wh_es = ") + len("_wh_es = "):body.index("\n", body.index("_wh_es = "))]
     base = dict(_frenzy=False, _fz_es="FRENZY_LONG", _surge=False, direction="LONG", bearrun_short=False, bullrun_long=False, spike_bounce=False,

@@ -393,6 +393,12 @@ class Order(Base):
     manual_add_count = Column(Integer, nullable=True)               # number of adds
     manual_add_investment = Column(Float, nullable=True)            # Σ margin added (USD, the actual fills / leverage)
     manual_added_at = Column(DateTime, nullable=True)               # last add (UTC)
+    # 📥 (DECISION_LOG 328) a position the operator opened in the BINANCE APP and imported from the dashboard (📥 Import): the row is a 🖐
+    # MANUAL trade (entry_strategy MANUAL) from the import on. opened_at = imported_at = the import time (Binance's real open time is not
+    # read — tracking starts here); entry_price / quantity = Binance's position; entry_fee = an ESTIMATE (taker × entry notional).
+    # NULL = not imported. Both ride the orders CSV (D12).
+    imported_at = Column(DateTime, nullable=True)                   # when the row was created from the Binance position (UTC)
+    import_source = Column(String(20), nullable=True)               # 'BINANCE_APP' (services.position_import.IMPORT_SOURCE_BINANCE_APP)
     manual_note = Column(String(200), nullable=True)                # the operator's hypothesis for the trade
     manual_block_reason = Column(String(60), nullable=True)         # Sep-29: gate shown on the Top Pairs row at the click ('NONE' = enterable, NULL = no scan data)
     manual_setup_rating = Column(String(15), nullable=True)         # the pair's rating at the click (STRONG_BUY / VERY_STRONG / NO_TRADE)

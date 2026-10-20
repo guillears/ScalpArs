@@ -218,6 +218,9 @@ async def init_db():
                 for _ad_col, _ad_type in (('manual_add_count', 'INTEGER'), ('manual_add_investment', 'FLOAT'), ('manual_added_at', 'DATETIME')):   # ➕ (DECISION_LOG 324) add to position
                     if _ad_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ad_col} {_ad_type}"))
+                for _im_col, _im_type in (('imported_at', 'DATETIME'), ('import_source', 'VARCHAR(20)')):   # 📥 (DECISION_LOG 328) import from Binance
+                    if _im_col not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_im_col} {_im_type}"))
                 if 'backstop_algo_id' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN backstop_algo_id VARCHAR(30)"))
                 if 'backstop_pct' not in columns:   # 🛡 (DECISION_LOG 292) per-order backstop record

@@ -1245,6 +1245,24 @@ class BinanceService:
             logger.error(f"[BINANCE] open reduce-only orders read failed ({pair or 'all symbols'}): {e}")
             return None
 
+    async def count_symbol_open_orders(self, pair: str) -> Optional[Dict]:
+        """📥 (DECISION_LOG 328, read-only) every open order on ONE symbol, of any kind: REGULAR orders (limits / stops, reduce-only or not —
+        weight 1) + ALGO (conditional) orders (GET /fapi/v1/openAlgoOrders — where the app's position TP / SL and the bot's backstops live,
+        weight 1). → {'regular': n, 'algo': n, 'total': n} or None when either read failed (never taken as "none")."""
+        try:
+            await self._check_ban()
+            await self.load_markets()
+            rows = await self.exchange.fetch_open_orders(pair.replace('USDT', '/USDT:USDT'))
+            algo = await self.exchange.fapiPrivateGetOpenAlgoOrders({'symbol': pair})
+            if isinstance(algo, dict):   # tolerate a wrapped list ({'orders': [...]}) as well as the plain list
+                algo = algo.get('orders') or algo.get('rows') or []
+            n_reg, n_algo = len(rows or []), len(algo or [])
+            return {'regular': n_reg, 'algo': n_algo, 'total': n_reg + n_algo}
+        except Exception as e:
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] open orders read failed for {pair}: {e}")
+            return None
+
     async def get_position_mode_dual(self) -> Optional[bool]:
         """🛡 (DECISION_LOG 292 ④, read-only) True = HEDGE (dual-side) position mode, False = ONE-WAY (what the bot assumes), None = unreadable."""
         try:

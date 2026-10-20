@@ -7532,3 +7532,21 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   existing tests unchanged). Costs ≤ 5 % of a capped position; uncapped positions are untouched.
 - Tests: tests/test_bracket_headroom.py (SOLV case lands under $10k; helper total; wiring). Full suite green.
 - **Review (pre-commit):** /api/manual/limits (the manual panel's 'max size' line) now shows the same headroom-scaled tiers, so the panel never offers a size the server refuses; test added.
+
+## (320) 2026-10-20 — 🖐 Manual entry moved to a pop-up (🖐 button) · Note field removed · live risk line (operator)
+- **UI only (templates/index.html), no backend change.** The full-width "🖐 Manual entry ▸" bar is gone; a small 🖐 button (title
+  "Manual entry") sits next to "Refresh Now" in the Top Pairs header and opens a centered modal with the SAME inputs / ids (Pair, Side,
+  Size $, Lev, Exit, SL %, TP %, the max-size and gate-context hints, Open position) — limit hint, pair hint, exit-mode enabling, the
+  submit and the ManualLimitError one-click fixes are unchanged (a fix click re-opens the pop-up if it was closed). Closes on Esc (not
+  when Esc only dismissed the Open confirmation), ✕, backdrop click, and after a successful open; focus returns to the opener.
+  Manual cap 0 now hides the 🖐 button (and closes the pop-up). toggleManualPanel removed.
+- **Note input removed:** `note` is no longer sent (ManualOpenRequest.note is Optional → stored NULL). Historic notes still show in the
+  MANUAL badge hover; the `manual_note` column stays.
+- **Live risk line** above Open: "Position $X · risk at the −S % stop ≈ −$Y (Z % of the account)", X = size × lev, Y = X × S/100,
+  account = window._lastTotalPortfolio (omitted when unknown). No fee is added: manual stops are P&L % NET of fees (the engine's
+  arithmetic), so the round-trip fee is already inside Y (tooltip says so; slippage excluded). Stops per mode: Custom / Bull-Run+SL =
+  typed SL · Floor = the leverage-aware floor (manualStopForLeverage on the saved manual_floor_sl_pct) · Frenzy = frenzy_stop_pct ·
+  Bull-Run = widest ATR-widened stop (sl_atr_widen_floor_pct, capped by the leverage floor) · Momentum = "stop set by the Momentum exit".
+  A stop wider than the leverage floor (Custom / Bull-Run+SL / Frenzy) adds "⚠ … the open will be refused". Amber ≥ 5 %, red ≥ 10 %.
+- Tests: tests/test_manual_modal_ui.py (button in header, modal inputs, no note, risk line + wiring, Esc/close); test_manual_sleeve.py
+  pins updated (no manual-note id; pop-up starts hidden). Inline JS node --check OK; full suite green.

@@ -63,7 +63,7 @@ def test_manual_is_excluded_from_ledger_and_pool_and_has_own_row():
 
 def test_ui_wiring_parity():
     ui = open(os.path.join(ROOT, "templates", "index.html")).read()
-    for i in ("manual-pair", "manual-direction", "manual-investment", "manual-leverage", "manual-exit-mode", "manual-sl", "manual-tp", "manual-note", "manual-open-btn"):
+    for i in ("manual-pair", "manual-direction", "manual-investment", "manual-leverage", "manual-exit-mode", "manual-sl", "manual-tp", "manual-open-btn"):   # manual-note removed Oct-20 (DECISION_LOG 320)
         assert ui.count(f"id=\"{i}\"") == 1, i
     assert "async function openManualPosition()" in ui and "/api/orders/manual_open" in ui
     assert ui.count("config-manual-floor-sl-pct") == 5 and "Manual sleeve (Sep 29)" in ui   # input + load + save, plus 2 reads by the read-only stop-by-leverage table (Oct-1)
@@ -333,13 +333,12 @@ def test_gate_context_is_stamped_automatically():
 
 
 def test_manual_panel_always_starts_closed():
-    """Operator, Sep-29: the manual entry panel is closed on every page load — hidden in the markup, folded by the init call,
-    and its state is not remembered per browser."""
+    """Operator, Sep-29: the manual entry form is closed on every page load. Oct-20 (DECISION_LOG 320): it is a pop-up — hidden in the
+    markup, opened only by the 🖐 button, and its state is not remembered per browser."""
     import os
     ui = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "index.html"), encoding="utf-8").read()
-    assert '<div id="manual-entry-body" class="hidden">' in ui
-    assert 'id="manual-entry-chevron" class="text-gray-500">▸<' in ui
-    assert "try { toggleManualPanel(true); } catch (e) {}" in ui
+    assert 'id="manual-entry-modal" class="fixed inset-0 z-40 hidden ' in ui
+    assert "manual-entry-body" not in ui and "toggleManualPanel" not in ui
     assert "manualPanelCollapsed" not in ui
 
 

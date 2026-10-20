@@ -308,13 +308,19 @@
                     <button id="refresh-btn" onclick="refreshPairs()" class="px-3 py-1 glass rounded-lg hover:bg-white/10 transition">
                         Refresh Now
                     </button>
+                    <button type="button" id="manual-entry-btn" onclick="openManualModal()" class="px-2 py-1 glass rounded-lg hover:bg-white/10 transition text-amber-300" title="Manual entry" aria-label="Manual entry">🖐</button>
                 </div>
             </div>
-            <!-- 🖐 Sep-29 MANUAL sleeve: operator-opened position (bypasses every entry gate; own label MANUAL; own exit mode) -->
-            <div class="glass rounded-xl p-4 mb-4" id="manual-entry-panel">
-                <div class="flex flex-wrap items-end gap-3 text-xs">
-                    <button type="button" id="manual-entry-toggle" onclick="toggleManualPanel()" class="text-sm font-semibold text-amber-300 mr-2 hover:text-amber-200 select-none" title="Opens a position NOW at market, bypassing every entry gate and cell multiplier. Labelled MANUAL — never counted in any systematic sleeve. SL/TP are % of price move NET of fees (leverage-invariant, the same pnl every exit uses): 1.5 ≈ −1.4% raw price ≈ −30% of margin at 20×. MAX_HOLD still applies as the universal safety net. The widest stop allowed is leverage-aware: the tighter of the config floor and 80% of the liquidation distance (100/leverage minus 0.5% maintenance margin) — with the default floor: 20× → −3.0%, 30× → −2.3%, 50× → −1.2%, 100× → −0.4%. Works in paper and in LIVE (live: a real market order + an exchange safety stop; needs the broker backstop on and whole-number leverage). Click to collapse / expand.">🖐 Manual entry <span id="manual-entry-chevron" class="text-gray-500">▸</span></button>
-                    <div id="manual-entry-body" class="hidden">
+            <!-- 🖐 Sep-29 MANUAL sleeve: operator-opened position (bypasses every entry gate; own label MANUAL; own exit mode).
+                 Oct-20 (operator, DECISION_LOG 320): the form lives in a pop-up opened by the 🖐 button in the Top Pairs header; the Note field
+                 is gone (historic notes still show in the MANUAL badge hover); a live risk line sits above the Open button. -->
+            <div id="manual-entry-modal" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="manual-entry-modal-title" onclick="manualModalBackdropClick(event)">
+                <div class="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-amber-500/30 bg-[#1f2333] p-4 shadow-2xl" oninput="manualRiskLine()" onchange="manualRiskLine()">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 id="manual-entry-modal-title" class="text-sm font-semibold text-amber-300" title="Opens a position NOW at market, bypassing every entry gate and cell multiplier. Labelled MANUAL — never counted in any systematic sleeve. SL/TP are % of price move NET of fees (leverage-invariant, the same pnl every exit uses): 1.5 ≈ −1.4% raw price ≈ −30% of margin at 20×. MAX_HOLD still applies as the universal safety net. The widest stop allowed is leverage-aware: the tighter of the config floor and 80% of the liquidation distance (100/leverage minus 0.5% maintenance margin) — with the default floor: 20× → −3.0%, 30× → −2.3%, 50× → −1.2%, 100× → −0.4%. Works in paper and in LIVE (live: a real market order + an exchange safety stop; needs the broker backstop on and whole-number leverage).">🖐 Manual entry</h3>
+                        <button type="button" id="manual-entry-close" onclick="closeManualModal()" class="px-2 py-0.5 rounded text-gray-400 hover:text-white hover:bg-white/10" title="Close (Esc)" aria-label="Close">✕</button>
+                    </div>
+                    <div class="flex flex-wrap items-end gap-3 text-xs">
                     <label class="flex flex-col text-gray-400">Pair<input id="manual-pair" type="text" list="manual-pair-list" placeholder="DOGEUSDT" autocomplete="off" oninput="manualPairHint(); manualLimitHint()" class="w-32 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><datalist id="manual-pair-list"></datalist></label>
                     <label class="flex flex-col text-gray-400">Side<select id="manual-direction" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
                     <label class="flex flex-col text-gray-400">Size $<input id="manual-investment" type="number" step="10" min="1" value="500" oninput="manualLimitHint()" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
@@ -322,10 +328,10 @@
                     <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack; refused only when its EMA13-cross exit would close the trade at the first tick (counter-trend entry with the EMA5/EMA8 stack against it) · FLOOR = hard stop at the floor (the widest safe stop for your leverage) + optional TP · FRENZY = the FRENZY sleeve's exit with its CURRENT settings (stop, trailing exit, max hold — see the FRENZY box); no SL / TP to type · BULL-RUN = the Bull-Run sleeve's exit with its CURRENT settings (stop widened by ATR, break-even lock, ATR trail, profit ladder — exact values in the MANUAL badge hover); no SL / TP to type · BULL-RUN TP + CUSTOM SL = your own stop (type it in SL %) until the break-even arms at +1 %, then the same Bull-Run profit side (lock, ATR trail, ladder); no TP to type">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM" selected>Momentum stack</option><option value="FLOOR">Floor stop (+ opt. TP)</option><option value="FRENZY">🔥 Frenzy exit</option><option value="BULLRUN">🌊 Bull-Run exit</option><option value="BULLRUN_SL">🌊 Bull-Run TP + custom SL</option></select></label>
                     <label class="flex flex-col text-gray-400">SL %<input id="manual-sl" type="number" step="0.1" min="0" placeholder="1.5" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">TP %<input id="manual-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
-                    <label class="flex flex-col text-gray-400 flex-1 min-w-[12rem]">Note (optional)<input id="manual-note" type="text" maxlength="200" placeholder="optional — the gate is recorded automatically" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
-                    <button id="manual-open-btn" onclick="openManualPosition()" class="px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-400/60 text-amber-200 hover:bg-amber-500/30 transition font-semibold">Open position</button>
                     <div id="manual-limit-hint" class="hidden basis-full text-[11px] text-gray-500 -mt-1" title="🪜 The exchange's position limit for this pair at the leverage typed (Binance lowers the leverage it allows as the position grows). An order over the limit is refused, never resized."></div>
                     <div id="manual-pair-hint" class="basis-full text-[11px] text-gray-500 -mt-1" title="What the bot sees for this pair right now — stamped on the order automatically (manual_block_reason / manual_setup_rating / manual_setup_side in the export)"></div>
+                    <div id="manual-risk-line" class="basis-full text-[11px] text-gray-400" title="Loss if the stop fires. SL / stop % are P&amp;L net of fees (the engine closes when the trade's net-of-fees P&amp;L reaches the stop), so the round-trip fee is already inside this figure — no fee is added on top. Slippage past the stop is not included. Account = the latest total portfolio shown on the dashboard."></div>
+                    <div class="basis-full flex justify-end"><button id="manual-open-btn" onclick="openManualPosition()" class="px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-400/60 text-amber-200 hover:bg-amber-500/30 transition font-semibold">Open position</button></div>
                     </div>
                 </div>
             </div>
@@ -9200,7 +9206,7 @@
                 }
                 window._lastStatusIsPaper = data.is_paper;   // read by the manual-entry confirmation (LIVE warning)
                 if (data.sizing_equity != null) { window._ssEquity = Number(data.sizing_equity); window._ssFeeBurn = Number(data.fee_reserve_burn_usd || 0); try { renderSleeveSizing(); } catch (_e) {} }   // ⚖️ Oct-4
-                { const _mp = document.getElementById('manual-entry-panel'); if (_mp && data.manual_max_open_positions != null) _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0); }   // 🖐 cap 0 = manual entry off (shown in paper AND live since Oct-2)
+                { const _mp = document.getElementById('manual-entry-btn'); if (_mp && data.manual_max_open_positions != null) { _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0); if (_mp.classList.contains('hidden')) { try { closeManualModal(); } catch (e) {} } } }   // 🖐 cap 0 = manual entry off (shown in paper AND live since Oct-2) · Oct-20: hides the 🖐 button (and closes the pop-up)
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
                 {   // Oct-1 (operator): white at the starting balance (or when it is unknown), green above it, red below it
                     const _tp = document.getElementById('total-portfolio');
@@ -18929,15 +18935,69 @@
                 + (o.manual_pair_rsi != null ? ` · pair RSI ${Number(o.manual_pair_rsi).toFixed(1)} / ADX ${o.manual_pair_adx != null ? Number(o.manual_pair_adx).toFixed(1) : '—'}` : '');
             return `Manual entry · ${exitTxt} (% of price, net of fees)${gateTxt}${o.manual_note ? ' · note: ' + String(o.manual_note).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) : ''}`;
         }
-        function toggleManualPanel(force) {   // click the title to fold / unfold the form; ALWAYS folded on page load (operator, Sep-29)
-            const body = document.getElementById('manual-entry-body'), chev = document.getElementById('manual-entry-chevron');
-            if (!body) return;
-            const collapse = (typeof force === 'boolean') ? force : !body.classList.contains('hidden');
-            body.classList.toggle('hidden', collapse); body.classList.toggle('contents', !collapse);
-            if (chev) chev.textContent = collapse ? '▸' : '▾';
-            if (!collapse) { try { manualLimitHint(); } catch (e) {} }   // a pair the browser restored shows its limit at once
+        // 🖐 Oct-20 (operator, DECISION_LOG 320): the manual form is a pop-up opened by the 🖐 button in the Top Pairs header (was a
+        // full-width fold-out bar). Same element ids, so every handler (limit hint, pair hint, exit-mode enabling, submit, one-click fixes)
+        // is unchanged. Closes on Esc, ✕, a click on the backdrop, and after a successful open; focus returns to where it was.
+        let _manualModalReturnFocus = null, _manualBackdropDown = false;
+        function manualModalIsOpen() { const m = document.getElementById('manual-entry-modal'); return !!(m && !m.classList.contains('hidden')); }
+        function openManualModal() {
+            const m = document.getElementById('manual-entry-modal'); if (!m) return;
+            if (!manualModalIsOpen()) _manualModalReturnFocus = document.activeElement;
+            m.classList.remove('hidden'); m.classList.add('flex');
+            try { manualExitModeChanged(); } catch (e) {}
+            try { manualPairHint(); } catch (e) {}
+            try { manualLimitHint(); } catch (e) {}   // a pair the browser restored shows its limit at once
+            try { manualRiskLine(); } catch (e) {}
+            try { document.getElementById('manual-pair')?.focus(); } catch (e) {}
         }
-        try { toggleManualPanel(true); } catch (e) {}
+        function closeManualModal() {
+            const m = document.getElementById('manual-entry-modal'); if (!m || !manualModalIsOpen()) return;
+            m.classList.add('hidden'); m.classList.remove('flex');
+            const back = (_manualModalReturnFocus && document.contains(_manualModalReturnFocus) && _manualModalReturnFocus !== document.body) ? _manualModalReturnFocus : document.getElementById('manual-entry-btn');
+            _manualModalReturnFocus = null;
+            try { back && back.focus(); } catch (e) {}
+        }
+        // backdrop click closes — only when the press STARTED on the backdrop and was not the click that dismissed an Open confirmation
+        document.addEventListener('mousedown', e => { const m = document.getElementById('manual-entry-modal'); _manualBackdropDown = !!(m && e.target === m && !document.getElementById('near-confirm')); }, true);
+        function manualModalBackdropClick(e) { if (e.target === e.currentTarget && _manualBackdropDown) closeManualModal(); _manualBackdropDown = false; }
+        // Esc closes — unless the Open confirmation consumed it (confirmNear preventDefault()s its own Escape)
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented && manualModalIsOpen()) { e.preventDefault(); closeManualModal(); } });
+        // Live risk line above the Open button: position = size × lev; loss at the stop = position × stop % / 100. Stops are P&L % NET of
+        // fees (the engine's own arithmetic), so the round-trip fee is already inside the figure — none is added. Account = the latest
+        // total portfolio the dashboard has (window._lastTotalPortfolio); unknown → the % part is omitted. Amber ≥ 5 %, red ≥ 10 %.
+        function manualRiskLine() {
+            const el = document.getElementById('manual-risk-line'); if (!el) return;
+            const g = id => document.getElementById(id);
+            const size = parseFloat(g('manual-investment')?.value || ''), lev = parseFloat(g('manual-leverage')?.value || '');
+            const mode = g('manual-exit-mode')?.value || 'FIXED';
+            const th = window._cachedConfig?.thresholds || {};
+            const usd = v => '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: v >= 100 ? 0 : 2 });
+            const setCls = z => { el.classList.toggle('text-red-400', z >= 10); el.classList.toggle('text-amber-300', z >= 5 && z < 10); el.classList.toggle('text-gray-400', !(z >= 5)); };
+            if (!(size > 0) || !(lev >= 1)) { el.textContent = 'Position — · type Size and Lev to see the risk'; setCls(0); return; }
+            const pos = size * lev;
+            let stop = null, stopTxt = '';
+            const floorCfg = Number(th.manual_floor_sl_pct ?? -3);   // the SAVED floor (what the engine checks), not an unsaved edit
+            const levFloor = Math.abs(manualStopForLeverage(lev, floorCfg).stop);   // widest stop allowed at this leverage (engine mirror)
+            if (mode === 'FIXED' || mode === 'BULLRUN_SL') {
+                const s = parseFloat(g('manual-sl')?.value || '');
+                if (s > 0) { stop = s; stopTxt = `−${s} % stop`; }
+                else stopTxt = 'stop (type SL %)';
+            } else if (mode === 'FLOOR') { stop = levFloor; stopTxt = `−${(Math.floor(levFloor * 100 + 1e-9) / 100).toFixed(2)} % floor stop`; }
+            else if (mode === 'FRENZY') { const f = Number(th.frenzy_stop_pct); if (f > 0) { stop = f; stopTxt = `−${f} % Frenzy stop`; } }
+            else if (mode === 'BULLRUN') { const w = Math.abs(Number(th.sl_atr_widen_floor_pct ?? -1.2)); if (w > 0) { stop = Math.min(w, levFloor); stopTxt = `−${stop} % Bull-Run stop (widest, ATR-widened)`; } }
+            const modeName = { MOMENTUM: 'Momentum', FRENZY: 'Frenzy', BULLRUN: 'Bull-Run', BULLRUN_SL: 'Bull-Run', FLOOR: 'floor', FIXED: 'custom' }[mode] || mode;
+            if (stop == null) {
+                el.textContent = stopTxt ? `Position ${usd(pos)} · risk at the ${stopTxt}` : `Position ${usd(pos)} · stop set by the ${modeName} exit`;
+                setCls(0); return;
+            }
+            const y = pos * stop / 100;
+            const acct = Number(window._lastTotalPortfolio);
+            const z = acct > 0 ? y / acct * 100 : null;
+            const tooWide = (mode === 'FIXED' || mode === 'BULLRUN_SL' || mode === 'FRENZY') && stop > levFloor + 1e-9;   // the engine refuses it (manual_floor_for_leverage)
+            el.textContent = `Position ${usd(pos)} · risk at the ${stopTxt} ≈ −${usd(y)}${z != null ? ` (${z.toFixed(z >= 10 ? 0 : 1)} % of the account)` : ''}`
+                + (tooWide ? ` · ⚠ wider than the −${(Math.floor(levFloor * 100 + 1e-9) / 100).toFixed(2)} % allowed at ${lev}× — the open will be refused` : '');
+            setCls(z != null ? z : 0);
+        }
         try { manualExitModeChanged(); } catch (e) {}   // default exit = Momentum stack → SL/TP inputs start disabled
         let _manualPairsSnapshot = {};   // pair → latest /api/pairs row (filled by loadPairs)
         function manualPairHint() {
@@ -19010,13 +19070,16 @@
             const sz = document.getElementById('manual-investment'), lv = document.getElementById('manual-leverage');
             if (sz && f.investment > 0) sz.value = f.investment;
             if (lv && f.leverage >= 1) lv.value = f.leverage;
+            if (!manualModalIsOpen()) openManualModal();   // Oct-20: the form is a pop-up — bring it back to show the fix
             try { manualLimitHint(); } catch (e) {}
+            try { manualRiskLine(); } catch (e) {}
             try { sz && sz.focus(); } catch (e) {}
         }
         function manualExitModeChanged() {
             const m = document.getElementById('manual-exit-mode')?.value || 'FIXED';
             const sl = document.getElementById('manual-sl'), tp = document.getElementById('manual-tp');
             if (sl) sl.disabled = (m !== 'FIXED' && m !== 'BULLRUN_SL'); if (tp) tp.disabled = (m === 'MOMENTUM' || m === 'FRENZY' || m === 'BULLRUN' || m === 'BULLRUN_SL');   // FLOOR: floor stop + optional TP · FRENZY: its own stop + trail
+            try { manualRiskLine(); } catch (e) {}
         }
         async function openManualPosition() {
             const g = id => document.getElementById(id);
@@ -19028,7 +19091,6 @@
                 exit_mode: g('manual-exit-mode')?.value || 'FIXED',
                 sl_pct: (g('manual-sl')?.disabled || g('manual-sl')?.value === '') ? null : parseFloat(g('manual-sl').value),
                 tp_pct: (g('manual-tp')?.disabled || g('manual-tp')?.value === '') ? null : parseFloat(g('manual-tp').value),   // a disabled field is never sent
-                note: (g('manual-note')?.value || '').trim() || null,
             };
             if (!body.pair) { showToast('Pair is required', 'error'); return; }
             if (!(body.investment > 0)) { showToast('Size must be > 0', 'error'); return; }
@@ -19044,6 +19106,7 @@
                 const data = await res.json().catch(() => ({}));
                 if (res.ok) {
                     showToast(`MANUAL ${data.direction} ${data.pair} opened @ ${data.entry_price} (exit ${data.exit_mode}${data.sl_pct != null ? ' SL ' + data.sl_pct : ''}${data.tp_pct != null ? ' TP ' + data.tp_pct : ''})`);
+                    closeManualModal();   // Oct-20: the pop-up closes after a successful open
                     loadOpenOrders(); loadTransactions(); loadBalance();
                 } else {
                     const _fxPair = manualPairKey();

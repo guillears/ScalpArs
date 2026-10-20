@@ -274,7 +274,7 @@ def test_an_opens_emergency_bnb_top_up_runs_after_the_book_lock_is_released(monk
     e.paper_bnb_balance_usd = 500.0; calls.clear()
     assert not asyncio.run(e._deduct_fee_from_bnb(5.0, None, defer_swap=True)) and calls == []          # nothing owed
     src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    for name, rel in (("    async def open_position(\n", "            _book_release()\n            if _bnb_swap_owed:"),
+    for name, rel in (("    async def open_position(\n", "            _book_release()\n            if _rtp_arm_after_release:"),   # (325) the paper TP arm sits between
                       ("    async def open_manual_position", "        _book_release()   # 🔒 after the bookkeeping writes")):
         i = src.index(name); body = src[i:src.index("\n    async def ", i + 10)]
         a = body.index("_bnb_swap_owed = await self._deduct_fee_from_bnb(entry_fee, db, defer_swap=True)")

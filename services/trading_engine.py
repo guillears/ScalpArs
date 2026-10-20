@@ -13372,8 +13372,16 @@ class TradingEngine:
         # 🎯 (DECISION_LOG 296) RESTING TAKE-PROFIT: AFTER the fill, the backstop and the COMMIT (an unbooked fill never carries one — the
         # 292 ③ flatten has nothing to cancel), only for an enabled sleeve (FRENZY_WILLY / FRENZY_LITE); live places the reduce-only
         # post-only limit, paper records what live would hold. Failure → [RESTING_TP_FAILED] + counter, the trade runs on its software TP.
+        # 🔓 (DECISION_LOG 325) PAPER still holds the account book lock here (released after the bookkeeping below): _rtp_arm waits on
+        # the global _close_lock, while a paper close holding _close_lock can run the emergency BNB top-up, which waits on the book
+        # lock → both wait forever (every paper close + the monitor freeze). Paper arms AFTER its book release, as the manual open
+        # does; live already released the book at the commit and arms here, unchanged.
+        _rtp_arm_after_release = False
         if _frenzy and (_fz_es in RTP_SLEEVES):
-            await self._rtp_arm(db, order)
+            if self.is_paper_mode:
+                _rtp_arm_after_release = True
+            else:
+                await self._rtp_arm(db, order)
         # 📓 Sep-18 decision journal: the fill (file-only, never raises)
         try:
             _djournal.note('OPEN', pair=pair, dir=direction, strategy=getattr(order, 'entry_strategy', None), price=getattr(order, 'entry_price', None),
@@ -13410,6 +13418,8 @@ class TradingEngine:
             # 🔒 paper: released only after the bookkeeping writes (deep review 140) — releasing at the commit lined the next
             # open's flush up against this save_state and one of them died on "database is locked" AFTER its row was booked
             _book_release()
+            if _rtp_arm_after_release:   # 🔓 (325) the paper resting TP, now that the book lock is free (never raises)
+                await self._rtp_arm(db, order)
             if _bnb_swap_owed:   # the emergency top-up (and its BNB price REST call) runs outside the book lock
                 try:
                     await self._execute_bnb_swap(db, swap_type="emergency")

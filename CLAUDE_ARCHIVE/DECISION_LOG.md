@@ -7766,3 +7766,20 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
     - **Abort write-back:** the C1 abort writes back the caller's load-time values for the columns it changed. That can overwrite a concurrent display-only peak / trough write made by another session in the same instant.
   - **Pre-existing, NOT changed here (separate issue):** a paper BOT open holds the book lock while FRENZY `_rtp_arm` takes `_close_lock`, and a paper close's emergency BNB swap takes the book lock under `_close_lock` → the same book ↔ close lock cycle the ➕ add had (round-3 #1). To be fixed in its own change.
   - Tests: tests/test_position_add.py now 45 (5 new). Full suite green on 3 consecutive runs; inline JS node --check OK.
+
+## (325) 2026-10-20 — 🔓 Paper deadlock: a FRENZY bot open armed its resting TP while holding the book lock (operator: "do it here")
+- **Bug (pre-existing, found in the DL 324 reviews):** in PAPER, `open_position` for a resting-TP sleeve called `_rtp_arm` (takes the global
+  `_close_lock`, no timeout) while still holding the account book lock (paper releases it only after the bookkeeping). A paper close
+  holding `_close_lock` can pay its fee → emergency BNB top-up → `_execute_bnb_swap` → the book lock (no timeout). Lock-order cycle → every
+  paper close and the monitor freeze until restart. Live is unaffected (the live swap takes no book lock; live releases the book at the commit).
+- **Fix:** paper defers `_rtp_arm` until right after its `_book_release()` (before the deferred BNB swap), as the 🖐 manual open already
+  does. Live arms at the original site, unchanged.
+- **Accepted edge:** if the paper bookkeeping between the commit and the release raises, the arm is skipped. The resting-TP sweep heals it
+  (paper `resting_tp_price` None → 'heal'), so the trade briefly runs on its software TP. Arming in a `finally` would re-create the cycle
+  (the book is still held there).
+- **Reviews:** caveman — no 🔴, test assert tightened, real-engine lock test added. Deep — SHIP. It built the full lock graph: the only
+  book→close edge left is the ➕ add (bounded 5 s); close→book is one-directional; `_cache_lock` is a leaf; no live cycle. Noted, unchanged: a
+  paper bot open still waits on `_close_lock` (no timeout) while holding the pair lock / open lane — a slow close stalls the next open, but
+  this is not a deadlock.
+- Tests: tests/test_paper_open_bnb_deadlock.py (source order, real-engine locks: new order finishes / old order deadlocks, lock-order
+  model); tests/test_pair_open_lock.py anchor updated.

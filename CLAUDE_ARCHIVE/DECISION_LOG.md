@@ -7485,3 +7485,38 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   beyond the stop · ⑦ master builder: NOT re-priced (output unchanged → STACK_VERSION stays 2026-10-19a); FRENZY_LONG fills before the
   DL 317 deploy traded −3 and later ones −4, both AS TRADED — LONG master stats must be read split by entry_frenzy_stop_pct (NULL / 3 vs 4)
   · ⑧ bot_own_stop_pct docstring names LITE_RETRY (−3) and LONG's own stop.
+
+## (318) 2026-10-20 — 🏦 Live P&L card missed a USDT Spot→UM deposit (+$1,045.08) — fix + 'Invested' display
+- **Incident:** the operator moved 1,045.07724177 USDT Spot → USDⓈ-M Futures (Binance row booked **2026-10-20T02:08:05.311Z**; the
+  Binance UI label "19/10 23:08:05 (UTC+8)" is misleading — the bot's balance log shows no jump at 15:08 UTC). Between ~02:08 and
+  ~02:18 UTC the live card read Initial $1,227.25 · P&L +$1,371.82 (+111.78 %) — the deposit counted as profit. The Investors-ledger
+  deposit (POST /api/investors/deposit, 01:55:07, NAV 1.2665) was correct; its `invalidate_flow_caches()` ran 13 min BEFORE the transfer
+  existed, so it could not help.
+- **Root cause (CONFIRMED, timing only — no detection bug):** `binance_service.get_transfer_rows` caches the TRANSFER income rows 10 min
+  per start_ms (the card's start_ms = the stored cursor, constant between deposits) + the /api/balance 90 s memo → a new transfer can stay
+  invisible ≤ ~11.5 min. Evidence: first sighting **02:18:10 UTC** (`[FLOW_UNRECONCILED] TRANSFER +1045.08` — the log-only alarm, because
+  the USDT was already in spot: no on-chain capital deposit within 48 h; expected for a spot-funded transfer), i.e. exactly the cache
+  expiry; at ~02:20 the operator's card read "Initial Balance: $1,227.25 · Net deposits +$1,045.08 · P&L +$326.75 (+14.38 %)" and the
+  row settles into BotState via the normal 15-min path. Candidates checked and cleared by code trace: income paging (ascending from
+  startTime, pages forward past 1000), income type (Spot→UM = TRANSFER), asset filter (USDT), cursor (≤ the transfer), swap-leg filter
+  (no BnbSwapLog within ±3 min; a +$1,045 inflow cannot match a buy leg), compare-and-swap store, baseline reset — none involved.
+- **Fix (no detection rewrite):** ① the live card's transfer read uses a **60 s** cache (`LIVE_CARD_TRANSFER_CACHE_S`, passed through
+  `_external_flow_rows(..., max_age_s=)`) and the /api/balance memo is **60 s** (`LIVE_FLOW_MEMO_S`, was 90) → a new transfer is on the
+  card ≤ ~2 min after Binance books it. Every other caller (fund/return metrics) keeps the 10-min cache. API weight: /fapi/v1/income
+  (weight 30) at most once per ~60 s while the dashboard is open (≤ 30 weight/min of 2,400); the capital cross-check keeps its 10-min
+  cache. The settle lag (15 min) stays above both cache ages (test-pinned) so the cursor can never pass an unseen row.
+  ② One INFO line per real Binance re-read: `[FLOW_READ] 🏦 Binance TRANSFER re-read: start <iso> (<ms = the cursor>) · N rows / P page(s)
+  · K USDT kept · newest <iso> <amount>` (cache hits log nothing).
+- **Display (operator):** LIVE card line 2 is now "Invested: $2,272.33 ($1,227.25 start + $1,045.08 deposits)" (withdrawals shown as
+  "− $X withdrawals"; no flows → "Invested: $X ($X start)"); P&L = equity − invested (unchanged formula), P&L % on invested (unchanged
+  basis). /api/balance adds `invested` + `pnl_pct` (pure `live_invested_numbers`). Paper card unchanged ("Initial Balance"). D12: the
+  card's Initial/P&L numbers appear in no text export (exports carry only "Portfolio now") — nothing to mirror.
+- **Correction path:** none needed — the 02:18 re-read already picked the row up and the 15-min settle stores it (+1,045.08, cursor =
+  1792462085311). If a future row is ever missed for good, the guarded edit is BotState.live_net_flows_usd += amount with
+  live_flows_cursor_ms set to the row's ms (compare-and-swap on the old cursor), never a baseline change.
+- **Tests:** tests/test_live_flows_detection.py (6): card path re-reads after 60 s while the default cache holds 10 min (the Oct-20
+  delay reproduced) · invalidate_flow_caches forces a re-read · paging past 1000 + USDT filter · the [FLOW_READ] line (one per re-read,
+  none on a hit) · Oct-20 card numbers (invested 2,272.33, P&L +326.75, +14.38 %; withdrawal basis) · wiring (settle > 600 > 60 s,
+  memo ≤ 60 s, API fields, template paper/live split). Suite 1544 passed.
+- **Review (caveman, pre-commit):** the [FLOW_READ] INFO line logs only when the re-read finds a different row set (count / newest row) or ≥ 10 min after the last line — the card re-reads every 60 s and one line/min would flood the hourly log reviews; test added (7 tests).
+- **Deep review (SHIP) nits applied:** settle-lag comment names both cache ages; get_transfer_rows docstring states the change/10-min log throttle; the throttle state is per start_ms key (≤ 8 keys) so the 600 s callers never flip the card's signature. Tests 7; full suite 1545+.

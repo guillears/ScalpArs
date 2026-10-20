@@ -13,6 +13,21 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# 🏦 (318) transfer-rows (Binance /fapi/v1/income TRANSFER, weight 30) cache ages. Default 10 min for the fund/return metrics;
+# the live portfolio card reads with 60 s (+ its 60 s memo in main.py) → a new transfer shows within ~2 min, ≤ ~30 weight/min.
+TRANSFER_ROWS_CACHE_S = 600
+LIVE_CARD_TRANSFER_CACHE_S = 60
+
+
+def transfer_reread_line(start_ms, fetched, pages, rows):
+    """🏦 (318) Pure: the INFO line logged on every real Binance transfer re-read (rows fetched / kept, newest kept row)."""
+    from datetime import datetime as _dt, timezone as _tz
+    _iso = lambda ms: _dt.fromtimestamp(int(ms) / 1000, tz=_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    newest = max(rows, key=lambda r: r[0]) if rows else None
+    tail = f"newest {_iso(newest[0])} {float(newest[1]):+,.2f}" if newest else "newest none"
+    return (f"[FLOW_READ] 🏦 Binance TRANSFER re-read: start {_iso(start_ms)} ({int(start_ms)}) · "
+            f"{int(fetched)} rows / {int(pages)} page(s) · {len(rows)} USDT kept · {tail}")
+
 _ban_until: float = 0
 _ban_persist_callback = None
 POST_BAN_COOLDOWN = 60
@@ -225,22 +240,27 @@ class BinanceService:
         self._cap_flow_cache = _cache
         return out
 
-    async def get_transfer_rows(self, start_ms: int):
+    async def get_transfer_rows(self, start_ms: int, max_age_s: float = TRANSFER_ROWS_CACHE_S):
         """Aug-27 phase-2: raw external USDT transfer rows [(ts_ms, amount)] since start_ms
-        (deposits +, withdrawals −). 10-min cache keyed on start_ms."""
+        (deposits +, withdrawals −). Cache keyed on start_ms; a hit is served while younger than
+        max_age_s (default 10 min). 🏦 (318) the live portfolio card passes LIVE_CARD_TRANSFER_CACHE_S
+        (60 s) so a fresh Spot→UM transfer shows within ~2 min instead of up to 10 (the Oct-20
+        +$1,045.08 deposit read as P&L for 10 min). A real re-read logs an INFO line when its result changes or every 10 min."""
         import time as _t
         _cache = getattr(self, '_tx_rows_cache', None) or {}
         _hit = _cache.get(start_ms)
-        if _hit and (_t.monotonic() - _hit[0]) < 600:
+        if _hit and (_t.monotonic() - _hit[0]) < float(max_age_s):
             return _hit[1]
         out = []
         cursor = start_ms
+        _fetched = 0; _pages = 0
         for _page in range(10):
             rows = await self.exchange.fapiPrivateGetIncome({
                 'incomeType': 'TRANSFER', 'startTime': int(cursor),
                 'endTime': int(_t.time() * 1000), 'limit': 1000})
             if not rows:
                 break
+            _fetched += len(rows); _pages += 1
             for r in rows:
                 if r.get('asset') == 'USDT':
                     out.append((int(r.get('time') or 0), float(r.get('income') or 0), str(r.get('tranId') or '')))
@@ -257,6 +277,20 @@ class BinanceService:
         # transfers survive; rows lacking tranId fall back to the (ts, amount) identity.
         out = [r for r in out if not ((r[2] or r[:2]) in _seen or _seen.add(r[2] or r[:2]))]
         out = [(t, a) for t, a, _ in out]  # callers consume (ts, amount)
+        # 🏦 (318 review) log a re-read only when what it found changed (row count / newest row) or ≥ 10 min after the last line —
+        # the live card re-reads every 60 s, one INFO line per minute would flood the hourly log reviews
+        _sig = (len(out), (max(out, key=lambda r: r[0]) if out else None))
+        _logged = getattr(self, '_tx_rows_logged', None)
+        if not isinstance(_logged, dict):
+            _logged = {}
+        _last = _logged.get(start_ms)                    # per start_ms key (deep review: the 600 s callers' keys never flip the card's)
+        if _last is None or _last[0] != _sig or (_t.monotonic() - _last[1]) >= 600:
+            logger.info(transfer_reread_line(start_ms, _fetched, _pages, out))
+            _logged[start_ms] = (_sig, _t.monotonic())
+            if len(_logged) > 8:
+                for _k in sorted(_logged, key=lambda k: _logged[k][1])[:-8]:
+                    _logged.pop(_k, None)
+            self._tx_rows_logged = _logged
         _cache[start_ms] = (_t.monotonic(), out)
         if len(_cache) > 8:  # Sep-7 hygiene: same cap as _cap_flow_cache
             for _k in sorted(_cache, key=lambda k: _cache[k][0])[:-8]:

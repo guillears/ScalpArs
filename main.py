@@ -31,7 +31,7 @@ from config import (
     trading_config, save_trading_config, load_trading_config,
     TradingConfig, ConfidenceConfig, SignalThresholds, InvestmentConfig
 )
-from services.binance_service import binance_service, set_ban_until, set_ban_persist_callback, get_ban_status
+from services.binance_service import binance_service, set_ban_until, set_ban_persist_callback, get_ban_status, LIVE_CARD_TRANSFER_CACHE_S
 from services.trading_engine import trading_engine, realtime_stop_loss_callback, _open_orders_cache, _cache_lock
 from services.trading_engine import ManualLimitError, normalize_manual_pair
 from services.resting_tp import RTP_SLEEVES as _RTP_SLEEVES   # 🎯 (DECISION_LOG 296)
@@ -1145,25 +1145,26 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         # FIXED baseline (BotState.live_initial_total_usd, set once — see _live_baseline): P&L = equity − baseline − net external
         # flows since the baseline, so the Initial Balance never moves and funding / BNB revaluation / fee drift land in P&L.
         # Fail-soft: a failed balance or transfer read → None → the card hides the two lines.
-        _live_pnl = _live_flows = _live_initial = None
+        _live_pnl = _live_flows = _live_initial = _live_invested = _live_pnl_pct = None
         if balance.get('ok', True) and bnb_price > 0:                  # a failed balance read is zeros — never derive from it
             try:
                 _base, _base_at = await _live_baseline(db, total, _live_open)
                 if _base is not None:
                     _now_m = time.monotonic(); _key = _base_at.isoformat()
-                    if _LIVE_FLOW_MEMO.get("until", 0) > _now_m and _LIVE_FLOW_MEMO.get("key") == _key:   # 90 s memo, failures included
+                    if _LIVE_FLOW_MEMO.get("until", 0) > _now_m and _LIVE_FLOW_MEMO.get("key") == _key:   # LIVE_FLOW_MEMO_S memo, failures included
                         _live_flows = _LIVE_FLOW_MEMO.get("value")
                     else:
                         try:
                             _live_flows = await _live_net_flows(db, _base_at)
                         except Exception as _fe:
-                            logger.warning(f"[BALANCE] live deposit/withdrawal read failed ({str(_fe)[:60]}) — card lines hidden for 90 s")
+                            logger.warning(f"[BALANCE] live deposit/withdrawal read failed ({str(_fe)[:60]}) — card lines hidden for {LIVE_FLOW_MEMO_S} s")
                             _live_flows = None
-                        _LIVE_FLOW_MEMO.update(until=_now_m + 90, key=_key, value=_live_flows)
+                        _LIVE_FLOW_MEMO.update(until=_now_m + LIVE_FLOW_MEMO_S, key=_key, value=_live_flows)
                     _live_initial, _live_pnl = live_card_numbers(total, _base, _live_flows)
+                    _live_invested, _live_pnl_pct = live_invested_numbers(_base, _live_flows, _live_pnl)
             except Exception as _pe:
                 logger.warning(f"[BALANCE] live P&L unavailable ({str(_pe)[:60]}) — card lines hidden")
-                _live_pnl = _live_flows = _live_initial = None
+                _live_pnl = _live_flows = _live_initial = _live_invested = _live_pnl_pct = None
         return {
             "usdt_balance": usdt_free,
             "bnb_balance": balance['bnb_total'],
@@ -1182,6 +1183,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "pnl_vs_start": _live_pnl,          # Oct-1: equity − fixed baseline − net flows (card colour + P&L line)
             "net_flows": _live_flows,           # external deposits (+) / withdrawals (−) since the baseline
             "initial_balance": _live_initial,   # FIXED live baseline (USDT + BNB at the snapshot)
+            "invested": _live_invested,         # 🏦 (318) capital put in = baseline + net deposits (the P&L / % basis)
+            "pnl_pct": _live_pnl_pct,           # 🏦 (318) P&L % on the invested capital
             "reserve": _reserve,
             "tradeable": _tradeable,
             "reserve_mode": _rmode,
@@ -1862,10 +1865,23 @@ def live_card_numbers(total, baseline, net_flows):
     return round(float(baseline), 2), round(float(total) - float(baseline) - float(net_flows), 2)
 
 
+def live_invested_numbers(baseline, net_flows, pnl):
+    """🏦 (318, operator) Pure: (invested, pnl_pct) for the LIVE card — invested = fixed baseline + net deposits (withdrawals
+    reduce it), the capital actually put in; P&L % is on that, so a deposit never inflates (or dilutes) the return.
+    (None, None) when any input is missing; pct None when invested ≤ 0."""
+    if baseline is None or net_flows is None or pnl is None:
+        return None, None
+    inv = round(float(baseline) + float(net_flows), 2)
+    return inv, (round(float(pnl) / inv * 100.0, 2) if inv > 0 else None)
+
+
 # A transfer is stored only once it is this old: its BNB-swap log row (written seconds after a swap) exists by then, and the lag
-# must stay ABOVE the 10-min transfer-rows cache (binance_service.get_transfer_rows) or the cursor could pass an unseen row.
+# must stay ABOVE every cache age the cursor path reads with (binance_service.LIVE_CARD_TRANSFER_CACHE_S = 60 s; default 600 s) or the cursor could pass an unseen row.
 # Stored rows are final: a swap leg whose log row was never written stays counted as a flow (fix = edit live_net_flows_usd).
 LIVE_FLOW_SETTLE_MS = 15 * 60 * 1000
+# 🏦 (318) /api/balance memo of the live net flows. With the card's 60 s transfer-rows cache (binance_service.LIVE_CARD_TRANSFER_CACHE_S)
+# a new transfer is on the card ≤ ~2 min after Binance books it (was ≤ 10 min + 90 s: the Oct-20 +$1,045.08 deposit read as P&L ~10 min). [FLOW_READ] logs only on a change or every 10 min (review).
+LIVE_FLOW_MEMO_S = 60
 
 
 def split_flow_rows(rows, cursor_ms, cutoff_ms):
@@ -1894,7 +1910,7 @@ async def _live_net_flows(db: AsyncSession, base_at) -> float:
     old = st.live_flows_cursor_ms if st is not None else None
     cursor = int(old) if old else base_ms - 1                        # −1: a transfer at the baseline millisecond still counts
     now_ms = int(time.time() * 1000)
-    rows = await _external_flow_rows(db, max(cursor, now_ms - 89 * 86_400_000))
+    rows = await _external_flow_rows(db, max(cursor, now_ms - 89 * 86_400_000), max_age_s=LIVE_CARD_TRANSFER_CACHE_S)
     settled, new_cur, pending = split_flow_rows(rows, cursor, now_ms - LIVE_FLOW_SETTLE_MS)
     stored = float(st.live_net_flows_usd or 0.0) if st is not None else 0.0
     if st is not None and new_cur > cursor:
@@ -1948,12 +1964,14 @@ async def _live_baseline(db: AsyncSession, total_now: float, live_open):
 _LIVE_FLOW_MEMO = {}   # Oct-1: /api/balance live net-flows memo {until: monotonic s, key: baseline iso, value: float | None}
 
 
-async def _external_flow_rows(db: AsyncSession, start_ms: int):
+async def _external_flow_rows(db: AsyncSession, start_ms: int, max_age_s=None):
     """Aug-27 review C1: TRANSFER income includes the bot's OWN BNB-swap legs (USDT leg to
     spot shows as an outflow; the BNB return is another asset, invisible to a USDT filter).
     External flows = TRANSFER rows MINUS rows matching a logged BnbSwapLog within +/-3 min
     (outbound leg ~ swap amount, or the small leftover-USDT return leg). Live only."""
-    rows = await binance_service.get_transfer_rows(start_ms)
+    # 🏦 (318) max_age_s: the live card reads the transfer rows with a 60 s cache (default 10 min for every other caller)
+    rows = await (binance_service.get_transfer_rows(start_ms) if max_age_s is None
+                  else binance_service.get_transfer_rows(start_ms, max_age_s=max_age_s))
     if not rows:
         return []
     _sw = (await db.execute(

@@ -8386,3 +8386,8 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   - ⑦ **Sleeve-sizing table.** New informational row "Frenzy-Willy-HT · ¼ × WILLY".
   - ⑧ **HT hard guard.** Commented as depending on the bot open lane.
 - **Tests:** `tests/test_frenzy_willy_ht.py`. Existing WILLY tests run with HT off in their fixture.
+
+## (342) 2026-10-21 — 🗂 Reset asks before downloading the Decisions CSV (operator)
+- **Why:** operator: clicking OK on the reset confirm downloaded the Decisions CSV automatically (Sep-30 safety save). They want to be asked.
+- **What:** after the reset confirm, a second box asks first. OK → download, then reset (same best-effort 15 s export; on failure it still asks "Reset anyway?"); Cancel → reset NOW without downloading (the box says the reset still happens). Box text: "Save a copy of the Decisions CSV first?" (wording per deep review). No other reset path auto-downloads.
+- **Tests:** `tests/test_reset_decisions_prompt.py`.

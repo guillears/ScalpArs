@@ -9185,13 +9185,17 @@
 
             if (!confirm(confirmMsg)) return;
 
-            // 🔭 Sep-30: a reset deletes the orders the Decisions CSV reads its POSITION rows from — save the journal first (best effort,
-            // aborted after 15 s; never blocks the reset). The journal lines themselves live outside the DB and survive the reset.
-            try { showToast('Saving Decisions CSV before reset…'); } catch (e) {}
-            try { await _downloadDecisionsCsv(15e3); }
-            catch (e) {                                         // the reset deletes those rows for good — let the operator decide
-                console.warn('pre-reset decisions export failed', e);
-                if (!confirm(`Decisions CSV was NOT saved (${e && e.message ? e.message : 'error'}).\n\nReset anyway?`)) return;
+            // 🔭 Sep-30: a reset deletes the orders the Decisions CSV reads its POSITION rows from — offer to save the journal first (best
+            // effort, aborted after 15 s; never blocks the reset). The journal lines themselves live outside the DB and survive the reset.
+            // Operator 2026-10-21: ASK first (OK = download, Cancel = skip) — no automatic download.
+            const _saveDec = confirm('Save a copy of the Decisions CSV first?\n\nOK = download it, then reset\nCancel = reset NOW without downloading (the reset still happens)\n\n(The reset deletes the trades its POSITION rows come from — last chance to save them.)');
+            if (_saveDec) {
+                try { showToast('Saving Decisions CSV before reset…'); } catch (e) {}
+                try { await _downloadDecisionsCsv(15e3); }
+                catch (e) {                                     // the reset deletes those rows for good — let the operator decide
+                    console.warn('pre-reset decisions export failed', e);
+                    if (!confirm(`Decisions CSV was NOT saved (${e && e.message ? e.message : 'error'}).\n\nReset anyway?`)) return;
+                }
             }
 
             try {

@@ -24,7 +24,8 @@ def test_stack_pct_ignores_size_reprices():
     zone = ((pd.to_numeric(k.entry_frenzy_vol_mult, errors="coerce") >= float(t_["frenzy_lite_c_vol_mult"]))
             & (pd.to_numeric(k.entry_btc_1h_slope, errors="coerce") > float(t_["frenzy_lite_c_btc_slope_min"])))
     lt_row = np.where(zone, lt, min(float(t_["frenzy_lite_c_tp_pct"]), lt)) if t_.get("frenzy_lite_c_enabled") else lt
-    tps = pd.Series(np.where((k.entry_strategy.astype(str) == "FRENZY_LITE") & (lt > 0), lt_row, tp), index=k.index)
+    # 10-21b: the LITE family (FRENZY_LITE + FRENZY_LITE_RETRY, DECISION_LOG 316 — the retry runs LITE's exit) prices at the LITE TP
+    tps = pd.Series(np.where(k.entry_strategy.astype(str).isin(["FRENZY_LITE", "FRENZY_LITE_RETRY"]) & (lt > 0), lt_row, tp), index=k.index)
     frenzy_tp = k.entry_strategy.astype(str).str.startswith("FRENZY") & (tps > 0) & (pd.to_numeric(k.peak_pnl, errors="coerce") >= tps)
     assert frenzy_tp.sum() > 0 and np.allclose(k.stack_pct[frenzy_tp & (k.entry_strategy.astype(str) != "FRENZY_WILLY")], tps[frenzy_tp & (k.entry_strategy.astype(str) != "FRENZY_WILLY")])       # 10-08a: peak ≥ +3 books +3 (every era)
     willy = k.entry_strategy.astype(str) == "FRENZY_WILLY"                     # 10-12c (282): today's WILLY exit re-walked (WILLY_EXIT_CF.csv)

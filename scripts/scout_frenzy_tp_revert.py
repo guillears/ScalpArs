@@ -31,6 +31,8 @@ import time
 
 import numpy as np
 import pandas as pd
+import os as _os_gk, sys as _sys_gk; _sys_gk.path.insert(0, _os_gk.path.dirname(_os_gk.path.abspath(__file__))) if _os_gk.path.dirname(_os_gk.path.abspath(__file__)) not in _sys_gk.path else None
+import scout_gatekit as _GK   # noqa: E402  🧰 (DECISION_LOG 331) DL-number deploy lookup + operator-closed fills (MANUAL / MANUAL_* / EXTERNAL_CLOSE) out of every gate
 
 if os.path.dirname(os.path.abspath(__file__)) not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -53,12 +55,16 @@ STATE = os.path.join(_ROOT, "reports", "SCOUT_FRENZY_TP_REVERT.json")
 
 
 def _git_ct(grep):
-    try:
-        out = subprocess.run(["git", "-C", _ROOT, "log", "--format=%ct", "--grep=" + grep, "--fixed-strings", "--reverse"],
-                             capture_output=True, text=True, timeout=10)
-        return pd.Timestamp(int(out.stdout.strip().splitlines()[0]) * 1000, unit="ms")
-    except Exception:
+    """🧰 (DECISION_LOG 331) the deploy commit time (UTC) for the DECISION_LOG number in `grep` — scout_gatekit.tag_commit_ts finds the
+    number anywhere in a '(DECISION_LOG a, b, c)' list (the old literal --fixed-strings grep missed multi-number commits). Not found →
+    None after a LOUD warning (the caller's placeholder pin, if any, is then a provisional floor)."""
+    import scout_gatekit as _GK
+    ct = _GK.tag_commit_ts(grep)
+    if ct is None:
+        if _GK.dl_from_tag(grep) is not None:
+            _GK.warn_not_evaluable(f"{__name__} floor {grep}", _GK.dl_from_tag(grep))
         return None
+    return pd.Timestamp(int(ct) * 1000, unit="ms")
 
 
 def deploy_ts():
@@ -186,8 +192,8 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     floor = deploy_ts()
     o = o[(o.ts >= floor) & o.sleeve.isin(SLEEVES)].reset_index(drop=True)   # 284: FRENZY_LITE runs its own +3 → not in this gate
     opens = [x for x in opens if pd.notna(x[0]) and x[0] >= floor and str(x[1]).endswith(SLEEVES)]
-    man = o[o.why.astype(str).str.upper().str.startswith("MANUAL")]
-    o = o[~o.why.astype(str).str.upper().str.startswith("MANUAL")].reset_index(drop=True)
+    man = o[_GK.reason_mask(o.why)]
+    o = o[~_GK.reason_mask(o.why)].reset_index(drop=True)
     span = max(int(live[2]), OLD_EXIT[2])
     tc = {}
     _pre = [score_fill(r, live, tc) for r in o.itertuples()]
@@ -235,7 +241,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     if len(und):
         L.append("Old exit still undecided (not counted yet): " + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair}" for r in und.itertuples()))
     if len(man):
-        L.append(f"Excluded: {len(man)} manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
+        L.append(f"Operator-closed: {len(man)} — excluded, manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
     if len(uns):
         L.append("UNSCORED (no path yet): " + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair} {str(r.sleeve).replace('FRENZY_', '')}"
                                                        + ("" if r.pend else " (final — no data)") for r in uns.itertuples()))

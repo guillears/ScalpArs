@@ -50,6 +50,8 @@ import time
 
 import numpy as np
 import pandas as pd
+import os as _os_gk, sys as _sys_gk; _sys_gk.path.insert(0, _os_gk.path.dirname(_os_gk.path.abspath(__file__))) if _os_gk.path.dirname(_os_gk.path.abspath(__file__)) not in _sys_gk.path else None
+import scout_gatekit as _GK   # noqa: E402  🧰 (DECISION_LOG 331) operator-closed fills (MANUAL / MANUAL_* / EXTERNAL_CLOSE) out of every gate
 
 if os.path.dirname(os.path.abspath(__file__)) not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -347,8 +349,8 @@ def run(now_ms=None, orders=None, state_path=None, rows_path=None, open_ts=None,
             open_ts = []
     rule = lite_rule(th)
     c = fam[(fam.strat == STRATEGY) & fam.closed & (fam.ts >= floor) & fam.pct.notna() & (fam.E > 0)].copy()
-    man = c[c.why.str.upper().str.startswith("MANUAL")]
-    c = c[~c.why.str.upper().str.startswith("MANUAL")].reset_index(drop=True)
+    man = c[_GK.reason_mask(c.why)]
+    c = c[~_GK.reason_mask(c.why)].reset_index(drop=True)
     c["k_now"] = k_now(c, fam) if len(c) else []
     c["gap_rebuilt"] = [np.nan if (g := gap_rebuild(load_5m(r.pair), r.entry_close)) is None else g for r in c.itertuples()]
     c["gap"], c["gap_src"] = pick_gap(c.gap_rebuilt.values, c.gap_stamp.values)
@@ -401,7 +403,7 @@ def run(now_ms=None, orders=None, state_path=None, rows_path=None, open_ts=None,
                  f"(rebuilt closed-bar gap vs the engine stamp, which includes the forming bar) · {int((c.gap_src == 'stamp').sum())} on the "
                  f"stamp fallback · {int((c.gap_src == 'none').sum())} with neither.")
     if len(man):
-        L.append(f"Excluded: {len(man)} manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
+        L.append(f"Operator-closed: {len(man)} — excluded, manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
     L.append(f"Evidence (not part of the verdict): {EVIDENCE}.")
     L.append(BAR)
     if "first" in st:
@@ -572,7 +574,7 @@ def selftest():
                 and "1 of 1 fills with both measures sit on different sides" in out and "UUUUSDT [unscored] gap – (stamp +2.50) k 1 · live +3.00 → walked UNPRICED" in out   # stamp 2.50 within 0.67 of the cut → UNSCORED (I-A)
                 and pick_gap([np.nan], [2.6])[1] == ["stamp"] and pick_gap([np.nan], [2.5])[1] == ["none"],
                 "first entry → rest; no gap stamp and no 5m cache → UNSCORED (priced, never counted as rest)\n" + out)
-            chk("Excluded: 1 manually closed" in out and "OLDUSDT" not in out and ": 4/4 · unpriced 1" in out and "COLLECTING" in out and BAR in out,
+            chk("Operator-closed: 1 — excluded, manually closed" in out and "OLDUSDT" not in out and ": 4/4 · unpriced 1" in out and "COLLECTING" in out and BAR in out,
                 "manual close excluded, pre-floor fill out, parity printed, the frozen bar in the output")
             rs = pd.read_csv(rp)
             chk(len(rs) == 5 and not os.path.exists(sp) and {"gap_rebuilt", "gap_stamp", "gap_src"} <= set(rs.columns)

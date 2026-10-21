@@ -62,6 +62,7 @@ _ROOT = os.path.dirname(_D)
 _ROOT in sys.path or sys.path.insert(0, _ROOT)
 import export_glob as EG                                     # noqa: E402
 import scout_long_stop4 as LS                                # noqa: E402  (the study walker, tick-first paths, Binance budget, bootstrap)
+import scout_gatekit as _GK                                  # noqa: E402  🧰 (DECISION_LOG 331) operator-closed fills out of the live comparison
 from services.frenzy import (frenzy_walk, normal_hour_usd, frenzy_flagged, frenzy_lite_status, frenzy_lite_stretch_id,  # noqa: E402
                              frenzy_bearish_block, FRENZY_LITE_READY)
 
@@ -216,7 +217,8 @@ def _ms_col(s, fill):
 
 
 def orders_frame():
-    o = LS.load_orders(cols=("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl_percentage", "is_paper"))
+    o = LS.load_orders(cols=("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl_percentage", "is_paper",
+                             "close_reason"))
     if not len(o):
         return o
     o = o.copy()
@@ -369,9 +371,10 @@ def main(argv=None):
           f"else +2) / −3 / 12 h maker TP · ${NOTIONAL:,.0f} · study walker + fees · ticks first, else fapi 1m = provisional")
     O = orders_frame()
     lt = O[(O.entry_strategy.astype(str) == "FRENZY_LITE") & (O.status.astype(str) == "CLOSED") & (O._k >= start)] if len(O) else O
+    lt, lt_opx = _GK.split_operator_closed(lt) if len(lt) else (lt, lt)   # 🧰 (331) the comparison reads only exits the BOT took (PAIR_HELD keeps every position)
     live_mean = float(pd.to_numeric(lt.pnl_percentage, errors="coerce").mean()) if len(lt) else np.nan
-    print(f"  same-period live FRENZY_LITE (booked): {len(lt)} fills · mean {live_mean:+.3f} %" if len(lt) else
-          "  same-period live FRENZY_LITE (booked): 0 fills (no comparison yet)")
+    print((f"  same-period live FRENZY_LITE (booked): {len(lt)} fills · mean {live_mean:+.3f} %" if len(lt) else
+           "  same-period live FRENZY_LITE (booked): 0 fills (no comparison yet)") + f" · {_GK.operator_closed_line(lt_opx)}")
     if not len(R):
         print(f"  verdict: collecting (0/{GATE_N} on 0/{GATE_DAYS} days)")
         return

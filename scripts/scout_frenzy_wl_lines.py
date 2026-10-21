@@ -47,6 +47,8 @@ import time
 
 import numpy as np
 import pandas as pd
+import os as _os_gk, sys as _sys_gk; _sys_gk.path.insert(0, _os_gk.path.dirname(_os_gk.path.abspath(__file__))) if _os_gk.path.dirname(_os_gk.path.abspath(__file__)) not in _sys_gk.path else None
+import scout_gatekit as _GK   # noqa: E402  🧰 (DECISION_LOG 331) DL-number deploy lookup + operator-closed fills (MANUAL / MANUAL_* / EXTERNAL_CLOSE) out of every gate
 
 if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -85,12 +87,16 @@ REVERT = ("Pre-committed revert if ever armed: the first 10 blocked signals re-p
 
 # ─────────────────────────── deploy floor ───────────────────────────
 def _git_ct(grep):
-    try:
-        out = subprocess.run(["git", "-C", _ROOT, "log", "--format=%ct", "--grep=" + grep, "--fixed-strings", "--reverse"],
-                             capture_output=True, text=True, timeout=10)
-        return pd.Timestamp(int(out.stdout.strip().splitlines()[0]) * 1000, unit="ms")
-    except Exception:
+    """🧰 (DECISION_LOG 331) the deploy commit time (UTC) for the DECISION_LOG number in `grep` — scout_gatekit.tag_commit_ts finds the
+    number anywhere in a '(DECISION_LOG a, b, c)' list (the old literal --fixed-strings grep missed multi-number commits). Not found →
+    None after a LOUD warning (the caller's placeholder pin, if any, is then a provisional floor)."""
+    import scout_gatekit as _GK
+    ct = _GK.tag_commit_ts(grep)
+    if ct is None:
+        if _GK.dl_from_tag(grep) is not None:
+            _GK.warn_not_evaluable(f"{__name__} floor {grep}", _GK.dl_from_tag(grep))
         return None
+    return pd.Timestamp(int(ct) * 1000, unit="ms")
 
 
 def deploy_ts():
@@ -406,8 +412,8 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, EX=None, retry=
         opens = list(open_ts)
     floor = deploy_ts() if deploy is None else pd.Timestamp(deploy)
     o = o[(o.ts >= floor)].reset_index(drop=True)
-    man = o[o.why.str.upper().str.startswith("MANUAL")]
-    o = o[~o.why.str.upper().str.startswith("MANUAL")].reset_index(drop=True)
+    man = o[_GK.reason_mask(o.why)]
+    o = o[~_GK.reason_mask(o.why)].reset_index(drop=True)
     csv_sets = universe_csv_sets() if csv_sets is None else csv_sets
     notes = []
     lg = o[o.strat == "FRENZY_LONG"]
@@ -440,7 +446,7 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, EX=None, retry=
     if not ok:
         out.append(f"⚠ frozen state corrupt — operator restore needed ({os.path.basename(state_path)}.*.bad); freezing skipped this run.")
     if len(man):
-        out.append(f"Excluded: {len(man)} manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} {r.strat}" for r in man.itertuples()) + ".")
+        out.append(f"Operator-closed: {len(man)} — excluded, manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} {r.strat}" for r in man.itertuples()) + ".")
     if notes:
         out.append(f"Data: {' · '.join(notes)}.")
     return out + [""]

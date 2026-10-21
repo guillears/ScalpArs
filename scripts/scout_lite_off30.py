@@ -44,6 +44,7 @@ import pandas as pd
 if os.path.dirname(os.path.abspath(__file__)) not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scout_b1h_negflank as NF                     # noqa: E402  (shared cooldown, bootstrap, loss share, freeze state I/O)
+import scout_gatekit as _GK                         # noqa: E402  🧰 (DECISION_LOG 331) operator-closed fills out of the counted cohort
 
 M5 = 300_000
 START = "2026-10-07 00:00"
@@ -53,7 +54,8 @@ BOOT_N, BOOT_SEED = 4000, 7
 MAX_REQ, WEIGHT_STOP, BUDGET_S = 2, 900, 25.0
 STRATEGY = "FRENZY_LITE"
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
-COLS = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "pnl", "entry_btc_1d_ret_pct", "entry_btc_trend_gap_pct")
+COLS = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "pnl", "entry_btc_1d_ret_pct", "entry_btc_trend_gap_pct",
+        "close_reason")
 LATE_S = 60                                         # a fill opened > 60 s after its signal bar's close is flagged (still counted)
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CACHE = os.path.join(_ROOT, "reports", "backtest_cache")
@@ -443,6 +445,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None):
         except Exception:
             open_ts = []
     win = o[o.ts >= pd.Timestamp(START)]
+    win, opx = _GK.split_operator_closed(win)                    # 🧰 (331) operator-closed (MANUAL / EXTERNAL_CLOSE): not the bot's exit → out, listed
     bear = win[win.bear.astype(bool)].copy()                     # refused by today's bearish-day block → apart, never counted
     cnt = win[~win.bear.astype(bool)].copy()
     cnt["dd30"] = score(cnt)
@@ -471,7 +474,8 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None):
          f"30-min window can't be read = UNSCORED. Reference: {REF}.", "", *HDR,
          _row(f"**zone (dd30 ≥ {OFF_PCT:g} %)**", zone), _row(f"rest (dd30 < {OFF_PCT:g} %)", rest),
          _row("UNSCORED (30-min high unreadable)", cnt[cnt.grp == "unscored"]),
-         _row("pre-block bearish fills, not counted (BTC 1d ret < 0 ∧ trend gap < 0)", bear), ""]
+         _row("pre-block bearish fills, not counted (BTC 1d ret < 0 ∧ trend gap < 0)", bear), "",
+         f"_{_GK.operator_closed_line(opx)} (bot fills closed from the dashboard / Binance app — not the bot's exit, never counted)._", ""]
     fmt = lambda r: (f"{r.ts:%m-%d %H:%M} {r.pair} {r.pct:+.2f} %" + (f" [{r.grp}]" if hasattr(r, "grp") else "")
                      + (f" (dd30 {r.dd30:.2f} %)" if not np.isnan(r.dd30) else "")
                      + (f" ⚠ late fill +{r.late_s:.0f} s after the bar close" if r.late_s > LATE_S else ""))

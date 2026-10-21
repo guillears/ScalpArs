@@ -106,9 +106,11 @@ def test_frozen_constants_match_live_json():
 def test_screen_uses_the_shared_rule():
     import inspect
     from scripts import screen_pool
-    assert screen_pool.today_size_scale is today_size_scale
+    # 🪜 10-21b: the shared rule is the row-level today_size_rule_row (today_size_rule + the exchange bracket cap)
+    assert screen_pool.today_size_rule_row is B.today_size_rule_row
     body = inspect.getsource(screen_pool.pnl_current)
-    assert "today_size_scale(" in body and "cell_lev_multiplier" in body and "getattr(" not in body
+    assert "today_size_rule_row(r)" in body and "getattr(" not in body
+    assert "today_size_rule(" in inspect.getsource(B.today_size_rule_row) and "bracket_cap_row(" in inspect.getsource(B.today_size_rule_row)
 
 
 def _rows(name):
@@ -167,5 +169,7 @@ def test_dl298_post_fill_is_not_rescaled(monkeypatch, cl):
 def test_dl298_builders_read_the_margin_scaled_leverage():
     src_b = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
     src_s = open(os.path.join(ROOT, "scripts", "screen_pool.py"), encoding="utf-8").read()
-    assert 'r.get("cell_lev_multiplier"), momentum_long_traded_lev(r))' in src_b
-    assert "r.get('cell_lev_multiplier'), momentum_long_traded_lev(r))" in src_s
+    # 10-21b: both go through today_size_rule_row, which feeds today_size_rule the margin-scaled leverage
+    assert 'g("cell_lev_multiplier"), momentum_long_traded_lev(r))' in src_b
+    assert "_f, _tag = today_size_rule_row(r)" in src_b
+    assert "today_size_rule_row(r)[0]" in src_s

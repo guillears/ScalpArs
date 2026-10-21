@@ -331,6 +331,12 @@ def _line(g, wcol=None):
 
 def render(st):
     st = st.copy() if len(st) else pd.DataFrame(columns=list(STORE_COLS))
+    # 🧰 (DECISION_LOG 331) bot fills the OPERATOR closed (close_reason MANUAL / MANUAL_* / EXTERNAL_CLOSE) never count in a tally — their
+    # exit is not the bot's (the stored rows keep them: sequencing / chains still see every real fill); listed apart below
+    import scout_gatekit as _GK
+    _opm = _GK.reason_mask(st.close_reason) if len(st) else np.array([], dtype=bool)
+    opx = st[_opm & _b(st.fresh).values] if len(st) else st
+    st = st[~_opm] if len(st) else st
     fr, cd, cl = _b(st.fresh), _b(st.cd_flag), _b(st.c120_flag)
     coh = st[fr & cd]
     state, det = decide(pd.DataFrame(dict(pct=coh.pnl_pct.values, window=coh.chain.astype(str).values, pair=coh.pair.values)))
@@ -352,6 +358,8 @@ def render(st):
             f"| rest (counted) | {_line(st[fr & ~cd])} |",
             f"| after-stop, before the floor (reference) | {_line(st[~fr & cd], 'chain')} |",
             f"| rest, before the floor (reference) | {_line(st[~fr & ~cd])} |", "",
+            f"_{_GK.operator_closed_line(opx.assign(entry_strategy='MOMENTUM') if len(opx) else opx)} (counted window; bot fills closed from "
+            f"the dashboard / Binance app — not the bot's exit)._", "",
             f"**Bar (frozen):** N ≥ {N_MIN} ∧ ≥ {W_MIN} windows (60-min chains) ∧ WR < {BE_WR:g} % (sleeve breakeven, frozen from the study) ∧ "
             f"chain-clustered bootstrap P(mean < 0) ≥ {P_MIN:.2f} (seed {BOOT_SEED}, {BOOT_N:,} resamples) ∧ no window / pair ≥ "
             f"{TOP_MAX * 100:.0f} % of the gross loss → **{lab}** ({det}).",

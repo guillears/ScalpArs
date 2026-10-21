@@ -19,7 +19,7 @@ def test_calm3d_sizes_1x_everywhere():
 
 def test_master_builder_reprices_calm3d():
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-19a"' in bld
+    assert 'STACK_VERSION = "2026-10-21b"' in bld
     from scripts.build_master_pool import today_size_scale   # 10-06c: one shared sizing rule
     assert today_size_scale("MOMENTUM", "LONG", "NONEXP_CALM3D", 2.0) == pytest.approx(0.5 * 0.05)   # 1× cell × the 10-14a momentum-long 20× → 1× (DECISION_LOG 289; 283: × 0.5)
     assert today_size_scale("MOMENTUM", "LONG", "NONEXP_CALM3D", 1.0) == pytest.approx(0.05)

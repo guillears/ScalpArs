@@ -151,8 +151,10 @@ def floor_ms():
             sys.path.insert(0, sd)
         import scout_revert_gates as RG
         return int(RG.deploy_ms("FRENZY_WILLY")) - 10 * MIN   # the commit time itself (deploy_ms adds 10 min)
-    except Exception:
-        return int(time.time() * 1000)
+    except Exception as e:   # 🧰 (DECISION_LOG 331) not found / unavailable → NOT EVALUABLE (loud; floor 2100 → nothing counted), never NOW
+        import scout_gatekit as _GK
+        _GK.warn_not_evaluable(f"WILLY_HOLD floor (DECISION_LOG 251: {str(e)[:80]})", 251)
+        return 4_102_444_800_000
 
 
 def _ms(s):
@@ -186,7 +188,7 @@ def orders():
     for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in ("opened_at", "pair", "entry_strategy", "status", "pnl_percentage",
-                                                                        "pnl", "notional_value", "direction"))
+                                                                        "pnl", "notional_value", "direction", "close_reason"))
             fr.append(d.assign(_m=os.path.getmtime(f)))
         except Exception:
             continue
@@ -261,6 +263,9 @@ def price_rows(rows, o, now_ms):
         sig = _ms(r.signal_at) or _ms(r.t)
         if rule is None:
             g = o[(o.entry_strategy.astype(str) == str(r.sleeve)) & (o.status.astype(str) == "CLOSED")] if len(o) else o
+            if len(g) and "close_reason" in g:                    # 🧰 (DECISION_LOG 331) operator-closed fills are not the sleeve's exit
+                import scout_gatekit as _GK
+                g = g[~_GK.reason_mask(g.close_reason)]
             if len(g) and sig:
                 ts = g.opened_at.map(_ms)
                 g = g[(ts - sig).abs() <= 3 * 86_400_000]

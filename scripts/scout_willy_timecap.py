@@ -166,6 +166,8 @@ import zipfile
 
 import numpy as np
 import pandas as pd
+import os as _os_gk, sys as _sys_gk; _sys_gk.path.insert(0, _os_gk.path.dirname(_os_gk.path.abspath(__file__))) if _os_gk.path.dirname(_os_gk.path.abspath(__file__)) not in _sys_gk.path else None
+import scout_gatekit as _GK   # noqa: E402  🧰 (DECISION_LOG 331) DL-number deploy lookup + operator-closed fills (MANUAL / MANUAL_* / EXTERNAL_CLOSE) out of every gate
 
 if os.path.dirname(os.path.abspath(__file__)) not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -425,12 +427,9 @@ def parity(why_live, pct_live, w):
 
 # ─────────────────────────── orders ───────────────────────────
 def deploy_ts():
-    try:
-        out = subprocess.run(["git", "-C", _ROOT, "log", "--format=%ct", "--grep=" + DEPLOY_GREP, "--fixed-strings", "--reverse"],
-                             capture_output=True, text=True, timeout=10)
-        return pd.Timestamp(int(out.stdout.strip().splitlines()[0]) * 1000, unit="ms")
-    except Exception:
-        return pd.Timestamp(DEPLOY_PIN)
+    """the DECISION_LOG 251 commit time (via _git_ct / scout_gatekit, DECISION_LOG 331); not found → the pinned 84318b3 time (loud warning)."""
+    t = _git_ct(DEPLOY_GREP)
+    return pd.Timestamp(DEPLOY_PIN) if t is None else t
 
 
 def _read_exports():
@@ -1075,13 +1074,16 @@ def _fx():
 
 
 def _git_ct(grep):
-    """the earliest commit whose message carries `grep` (fixed string) → its commit time (UTC), else None."""
-    try:
-        out = subprocess.run(["git", "-C", _ROOT, "log", "--format=%ct", "--grep=" + grep, "--fixed-strings", "--reverse"],
-                             capture_output=True, text=True, timeout=10)
-        return pd.Timestamp(int(out.stdout.strip().splitlines()[0]) * 1000, unit="ms")
-    except Exception:
+    """🧰 (DECISION_LOG 331) the deploy commit time (UTC) for the DECISION_LOG number in `grep` — scout_gatekit.tag_commit_ts finds the
+    number anywhere in a '(DECISION_LOG a, b, c)' list (the old literal --fixed-strings grep missed multi-number commits). Not found →
+    None after a LOUD warning (the caller's placeholder pin, if any, is then a provisional floor)."""
+    import scout_gatekit as _GK
+    ct = _GK.tag_commit_ts(grep)
+    if ct is None:
+        if _GK.dl_from_tag(grep) is not None:
+            _GK.warn_not_evaluable(f"{__name__} floor {grep}", _GK.dl_from_tag(grep))
         return None
+    return pd.Timestamp(int(ct) * 1000, unit="ms")
 
 
 def s4_deploy_ts():
@@ -1575,7 +1577,7 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok, lt=_FL297):
     tp, stop, hold = levels_
     FX = _fx()
     floor = s4_deploy_ts()
-    manual = o.why.astype(str).str.upper().str.startswith("MANUAL")          # operator closes: not the walked exit (each = a parity miss)
+    manual = _GK.reason_mask(o.why)          # operator closes: not the walked exit (each = a parity miss)
     man = o[manual & (o.ts >= floor)]
     man_all = o[manual]
     o = o[~manual].reset_index(drop=True)
@@ -1637,7 +1639,7 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok, lt=_FL297):
         L.append("Per fill (counted cohort): none yet — no WILLY fill closed since the DECISION_LOG 281 deploy.")
     uns = coh[coh.s4_src.isna()]
     if len(man):
-        L.append(f"Excluded: {len(man)} manually closed fill(s) (not the walked exit): "
+        L.append(f"Operator-closed: {len(man)} — excluded, manually closed fill(s) (not the walked exit): "
                  + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
 
     def undecided(n):
@@ -1857,7 +1859,7 @@ def s285_section(s4, opens, now_ms, levels_, st, ok, man_all=None):
     uns = coh[coh.s4_src.isna()]
     man = man_all[man_all.ts >= floor] if man_all is not None and len(man_all) else []
     if len(man):
-        L.append(f"Excluded: {len(man)} manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
+        L.append(f"Operator-closed: {len(man)} — excluded, manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
     if len(uns):
         L.append("UNPRICED (no path yet): " + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair}" + ("" if r.s285_pend else " (final — no data)")
                                                       for r in uns.itertuples()))
@@ -1964,7 +1966,7 @@ def s290_section(s4, opens, now_ms, levels_, st, ok, man_all=None):
     uns = coh[coh.s4_src.isna()]
     man = man_all[man_all.ts >= floor] if man_all is not None and len(man_all) else []
     if len(man):
-        L.append(f"Excluded: {len(man)} manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
+        L.append(f"Operator-closed: {len(man)} — excluded, manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
     if len(uns):
         L.append("UNPRICED (no path yet): " + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair}" + ("" if r.s290_pend else " (final — no data)")
                                                       for r in uns.itertuples()))
@@ -3161,7 +3163,7 @@ def selftest():
                              ignore_index=True)
             STATE5 = os.path.join(td, "S5.json")
             out = "\n".join(run(nowz, orders=man4, fetch=False, state_path=STATE5, th={"frenzy_willy_stop_pct": 4.0}, open_ts=[], study=False))
-            chk("Excluded: 1 manually closed fill(s) (not the walked exit): 10-14 09:00 S1USDT (MANUAL_CLOSE)" in out
+            chk("Operator-closed: 1 — excluded, manually closed fill(s) (not the walked exit): 10-14 09:00 S1USDT (MANUAL_CLOSE)" in out
                 and "| CAP90 (+1 / −4 / 90 min) | 22 |" in out
                 and {k: v for k, v in json.load(open(STATE5)).items() if k.startswith("S4_")} == {k: v for k, v in s4j.items() if k.startswith("S4_")},
                 "run(): a MANUAL close is dropped from the S4 cohort and listed (no parity miss, same S4 frozen verdicts)")

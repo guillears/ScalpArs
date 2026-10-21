@@ -39,6 +39,8 @@ import time
 
 import numpy as np
 import pandas as pd
+import os as _os_gk, sys as _sys_gk; _sys_gk.path.insert(0, _os_gk.path.dirname(_os_gk.path.abspath(__file__))) if _os_gk.path.dirname(_os_gk.path.abspath(__file__)) not in _sys_gk.path else None
+import scout_gatekit as _GK   # noqa: E402  🧰 (DECISION_LOG 331) operator-closed fills (MANUAL / MANUAL_* / EXTERNAL_CLOSE) out of every gate
 
 if os.path.dirname(os.path.abspath(__file__)) not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -264,8 +266,8 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None):
         opens = list(open_ts)
     floor = WT.deploy_ts()
     o = o[o.ts >= floor].reset_index(drop=True)
-    man = o[o.why.astype(str).str.upper().str.startswith("MANUAL")]
-    o = o[~o.why.astype(str).str.upper().str.startswith("MANUAL")].reset_index(drop=True)
+    man = o[_GK.reason_mask(o.why)]
+    o = o[~_GK.reason_mask(o.why)].reset_index(drop=True)
     wlate = o[o.why.astype(str) == "WILLY_LATE_TP"]                  # ⏰ DL 297 late-TP exits: a take-profit-class exit of a DIFFERENT rule than
     o = o[o.why.astype(str) != "WILLY_LATE_TP"].reset_index(drop=True)   # the one walked here → out, counted (scored by WILLY_TIMECAP's 297 read)
     tc = {}
@@ -307,7 +309,7 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None):
                  + ("" if par.all() else " — off: " + " · ".join(f"{r.pair} {r.par_txt}" for r in sc[~par].itertuples())))
         L.append("")
     if len(man):
-        L.append(f"Excluded: {len(man)} manually closed WILLY fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()))
+        L.append(f"Operator-closed: {len(man)} — excluded, manually closed WILLY fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()))
     if len(wlate):
         L.append(f"Excluded: {len(wlate)} WILLY_LATE_TP fill(s) (DECISION_LOG 297 late take profit — scored vs the old exit by WILLY_TIMECAP): "
                  + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair}" for r in wlate.itertuples()))

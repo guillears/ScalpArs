@@ -86,7 +86,7 @@ def test_wide_off_refused_in_master():
     assert len(w) >= 12 and not (w.stack_keep == True).any() and (w.stack_pnl == 0).all() and w.stack_pct.isna().all()
     assert set(w.stack_block_reason) <= {"FRENZY_WIDE_OFF", "PAIR_BLACKLIST", "SLEEVE_PAIR_BLACKLIST"} and (w.stack_block_reason == "FRENZY_WIDE_OFF").sum() >= 12
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
-    assert "k, why = False, 'FRENZY_WIDE_OFF'" in bld and (M.stack_version == "2026-10-19a").all()
+    assert "k, why = False, 'FRENZY_WIDE_OFF'" in bld and (M.stack_version == "2026-10-21b").all()
     assert os.path.exists(os.path.join(ROOT, "reports", "WIDE_STREAK_REBUILD.csv"))   # the hold-green replay input stays (re-enable path)
 
 
@@ -94,7 +94,7 @@ def test_b17_archived():
     M = _m()
     assert (M.era == "B17").sum() == 25 and os.path.exists(os.path.join(ROOT, "reports", "BASELINE17_batch1003-1006_orders.csv"))
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-19a"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
+    assert 'STACK_VERSION = "2026-10-21b"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
     assert "WIDE_HG_MAX_ATR_FROZEN = 12.0, 3.0" in bld and "Prior 10-06d — 10-06d:" in bld   # the STACK history keeps every step
 
 

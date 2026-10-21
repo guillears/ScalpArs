@@ -31,7 +31,8 @@ import pandas as pd
 START = "2026-10-06 00:00"
 SLOPE_MAX, WASHED, N_MIN, DAYS_MIN, BE_REF, BE_MIN_FILLS = -0.05, -15.0, 15, 8, 63.9, 30
 COLS = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "cell_multiplier_source",
-        "entry_btc_1h_slope", "entry_btc_off30d_high_pct", "entry_pair_ema20_ema50_gap_pct", "pnl")
+        "entry_btc_1h_slope", "entry_btc_off30d_high_pct", "entry_pair_ema20_ema50_gap_pct", "pnl", "close_reason")
+LAST_OPX = []   # 🧰 (DECISION_LOG 331) the operator-closed rows the last _orders() call dropped (printed next to each tally)
 YEAR_REF = ("yr5 falling 1h EMA20: 492 · 60 % · −0.125 % (144 days) vs rising −0.001 % · master falling 44 · 77 % · +0.154 % "
             "(ex washed-out 31 · −0.040 %)")
 
@@ -102,6 +103,9 @@ def _orders(start=START, empty_is_momentum=False):
     o = o[t.notna()].assign(ts=t[t.notna()])
     if start is not None:
         o = o[o.ts >= pd.Timestamp(start)]
+    import scout_gatekit as _GK                        # 🧰 (DECISION_LOG 331) bot fills the OPERATOR closed (MANUAL / EXTERNAL_CLOSE) never count
+    o, _opx = _GK.split_operator_closed(o)
+    LAST_OPX[:] = [_opx]
     o["pct"] = pd.to_numeric(o.pnl_percentage, errors="coerce")
     o["slope"] = pd.to_numeric(o.entry_btc_1h_slope, errors="coerce")
     o["off30"] = pd.to_numeric(o.get("entry_btc_off30d_high_pct"), errors="coerce")
@@ -111,6 +115,12 @@ def _orders(start=START, empty_is_momentum=False):
     return o[o.pct.notna()]
 
 
+def opx_text(opx):
+    """🧰 (DECISION_LOG 331) 'operator-closed: N — excluded (…)' for a section."""
+    import scout_gatekit as _GK
+    return _GK.operator_closed_line(opx) + " — bot fills closed from the dashboard / Binance app, not the bot's exit"
+
+
 def _line(g):
     return f"{len(g)} · {(g.pct > 0).mean() * 100:.0f}% · {g.pct.mean():+.3f} % · {g.day.nunique()} d" if len(g) else "0"
 
@@ -118,6 +128,7 @@ def _line(g):
 def run():
     """→ markdown lines. Never raises past the caller's try."""
     o = _orders()
+    opx = LAST_OPX[0] if LAST_OPX else None
     sl = o[o.slope.notna()]
     coh = sl[sl.slope <= SLOPE_MAX]
     washed = coh.off30.notna() & (coh.off30 <= WASHED)
@@ -133,6 +144,7 @@ def run():
          f"| **BTC 1h ≤ −0.05, ex washed-out (judged)** | {_line(judged)} |",
          f"| BTC 1h ≤ −0.05, washed-out only | {_line(coh[washed])} |",
          f"| BTC 1h > −0.05 (rest of the sleeve) | {_line(sl[sl.slope > SLOPE_MAX])} |",
+         f"| _{opx_text(opx)}_ | – |",
          f"| no 1h stamp | {len(o) - len(sl)} |", "",
          f"Sleeve breakeven WR {be:.1f} % ({'live, ' + str(len(o)) + ' fills' if be_live is not None else 'master reference until ' + str(BE_MIN_FILLS) + ' sleeve fills'}) · "
          + {"collecting": "⏳ collecting", "passes": "📋 PASSES the bar → review (cell sizing verdict first, never straight to arming)",
@@ -557,6 +569,9 @@ def _du_row(lab, g):
 def run_dailyup(now_ms=None, state_path=None, fetch=True, orders=None, open_ts=None):
     now_ms = now_ms or int(time.time() * 1000)
     o = (_orders(start=None, empty_is_momentum=True) if orders is None else orders).copy()
+    opx = (LAST_OPX[0] if LAST_OPX else None) if orders is None else None
+    if opx is not None and len(opx):
+        opx = opx[opx.ts >= pd.Timestamp(DU_START)]
     cnt_mask = o.ts >= pd.Timestamp(DU_START)
     need = int(o[cnt_mask].ts.max().value // 10**6) if cnt_mask.any() else None
     m5, d1, notes = load_btc(need, now_ms, fetch=fetch)
@@ -586,7 +601,8 @@ def run_dailyup(now_ms=None, state_path=None, fetch=True, orders=None, open_ts=N
          "| Reference only (before the counting start; as-traded, from exports, incl. B1 era — not comparable to the study's current-stack "
          "numbers) | N | days | WR | avg % | Σ$ as-sized | worst |", "|---|---|---|---|---|---|---|",
          _du_row("zone", ref[ref.grp == "zone"]), _du_row("NEGFLANK, not zone", ref[ref.grp == "neg_not_zone"]),
-         _du_row("rest of sleeve", ref[ref.grp == "rest"]), _du_row("UNSCORED", ref[ref.grp == "unscored"]), ""]
+         _du_row("rest of sleeve", ref[ref.grp == "rest"]), _du_row("UNSCORED", ref[ref.grp == "unscored"]), "",
+         f"_{opx_text(opx)} (counted window)._", ""]
     if len(zone):
         L += ["Counted zone fills: " + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair} {r.pct:+.2f} % (1h {r.slope:+.3f} · gap {r.gap:+.3f} · "
                                                     f"1d {r.d1s:+.3f})" for r in zone.itertuples()), ""]

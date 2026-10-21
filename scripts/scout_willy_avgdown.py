@@ -80,7 +80,7 @@ def fills():
         try:                                                    # export_glob adds the post-go-live LIVE exports (live rows only)
             fr.append(pd.read_csv(f, low_memory=False, usecols=lambda c: c in (
                 "opened_at", "pair", "direction", "status", "entry_strategy", "entry_price", "pnl_percentage", "pnl", "notional_value",
-                "is_paper")))
+                "is_paper", "close_reason")))
         except Exception:
             continue
     if not fr:
@@ -198,6 +198,10 @@ def verdict(adds, account=ACCOUNT):
 
 def main():
     a = fills()
+    import scout_gatekit as _GK                                 # 🧰 (DECISION_LOG 331) operator-closed fills: not the bot's exit → out, listed
+    a, opx = _GK.split_operator_closed(a) if len(a) else (a, a)
+    a = a.reset_index(drop=True)
+    print(f"  {_GK.operator_closed_line(opx)}")
     print(f"WILLY_AVGDOWN (DECISION_LOG 313, observe) · cohort FRENZY_WILLY closed fills opened ≥ {COHORT_START} UTC → {len(a)}"
           f"  (paper {int((a.is_paper.astype(str).str.lower() == 'true').sum()) if len(a) else 0} · live "
           f"{int((a.is_paper.astype(str).str.lower() == 'false').sum()) if len(a) else 0})")

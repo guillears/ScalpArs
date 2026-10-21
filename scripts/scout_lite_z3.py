@@ -31,7 +31,7 @@ def fresh_fills():
     for f in EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             fr.append(pd.read_csv(f, low_memory=False, usecols=lambda c: c in ("opened_at", "pair", "direction", "status", "entry_strategy",
-                                                                                 "pnl_percentage", "entry_btc_rsi_1h_prev", "is_paper")))
+                                                                                 "pnl_percentage", "entry_btc_rsi_1h_prev", "is_paper", "close_reason")))
         except Exception:
             continue
     if not fr:
@@ -44,7 +44,10 @@ def main():
     import study_ml_impulse_features as FX
     import study_ml_delay_common as DC
     a = fresh_fills()
-    print(f"LITE_WEAKBTC_BUYBLIP (Z3) · cohort: FRENZY_LITE closed fills opened ≥ {COHORT_START} UTC → {len(a)}")
+    import scout_gatekit as _GK                               # 🧰 (DECISION_LOG 331) operator-closed fills: not the bot's exit → out, listed
+    a, opx = _GK.split_operator_closed(a) if len(a) else (a, a)
+    a = a.reset_index(drop=True)
+    print(f"LITE_WEAKBTC_BUYBLIP (Z3) · cohort: FRENZY_LITE closed fills opened ≥ {COHORT_START} UTC → {len(a)} · {_GK.operator_closed_line(opx)}")
     if not len(a):
         return
     a["o_ms"] = DC._ms(a.opened_at).astype(np.int64)

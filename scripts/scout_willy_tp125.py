@@ -177,6 +177,10 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None, study=
         opens = list(open_ts)
     floor = WT.deploy_ts()
     o = o[o.ts >= floor].reset_index(drop=True)
+    import scout_gatekit as _GK                                     # 🧰 (DECISION_LOG 331) operator-closed (MANUAL / EXTERNAL_CLOSE) → out, listed
+    _opm = _GK.reason_mask(o.why)
+    opx = o[_opm]
+    o = o[~_opm].reset_index(drop=True)
     late = o[o.why.astype(str) == "FRENZY_TP_LATE"]                 # restart / feed-gap exits the walker cannot replicate → out, counted
     o = o[o.why.astype(str) != "FRENZY_TP_LATE"].reset_index(drop=True)
     wlate = o[o.why.astype(str) == "WILLY_LATE_TP"]                  # ⏰ DL 297 late-TP exits (+0.25 after 30 min): a different exit than the
@@ -193,6 +197,7 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None, study=
          f"Cohort: CLOSED {WT.STRATEGY} fills opened ≥ {floor:%Y-%m-%d %H:%M} UTC (the sleeve's ship), dedup (opened_at, pair, direction). "
          f"Both targets walked from each fill's own entry on the same path (WILLY_TIMECAP's walker and cache — no Binance call from this "
          f"line; 1m = provisional) with the bot's accounting. Same stop and same {hold}-min cap; only the target differs.", ""]
+    L.append(f"{_GK.operator_closed_line(opx.assign(close_reason=opx.why, opened_at=opx.ts.astype(str)) if len(opx) else opx)}.")
     if len(late):
         L.append(f"Excluded: {len(late)} FRENZY_TP_LATE fill(s) (restart / feed-gap exit the walker cannot replicate): "
                  + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair}" for r in late.itertuples()) + ".")

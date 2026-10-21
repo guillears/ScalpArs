@@ -69,12 +69,15 @@ def windows(mask_index):
     return [tuple(x) for x in out]
 
 
+LAST_OPX = []   # 🧰 (DECISION_LOG 331) the operator-closed rows the last _orders() call dropped
+
+
 def _orders():
     fr = []
     for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in ("opened_at", "pair", "direction", "entry_strategy", "status",
-                                                                          "pnl_percentage", "pnl", "cell_multiplier_source"))
+                                                                          "pnl_percentage", "pnl", "cell_multiplier_source", "close_reason"))
             if len(d) and {"opened_at", "pnl_percentage"} <= set(d.columns):
                 fr.append(d.assign(_m=os.path.getmtime(f)))
         except Exception:
@@ -86,6 +89,9 @@ def _orders():
     o = o.drop_duplicates(["_k", "pair", "direction"], keep="last")
     o = o[o.status.astype(str).str.upper() == "CLOSED"]
     o = o[(o.entry_strategy.astype(str) != "MANUAL") & ~o.get("cell_multiplier_source", pd.Series("", index=o.index)).astype(str).str.endswith("_PROBE")]
+    import scout_gatekit as _GK                                      # 🧰 (DECISION_LOG 331) operator-closed bot fills never count in a tally
+    o, _opx = _GK.split_operator_closed(o)
+    LAST_OPX[:] = [_opx]
     _t = pd.to_datetime(o._k, format="ISO8601", errors="coerce")   # one malformed row must not kill the section (review)
     o = o[_t.notna()].copy(); o["ms"] = (_t[_t.notna()] - pd.Timestamp(0)).dt.total_seconds() * 1000
     o["hour"] = (o.ms // H * H).astype("int64")
@@ -118,7 +124,8 @@ def run(EX, retry, last_closed_ms):
          f"State (frozen): BTC ≤ {OFF_MAX:g} % below its 30-day high (1h) ∧ BTC 3-day return > 0 → REBOUND. Unit = the window. "
          f"Year reference: {YEAR_REF}. Review at ≥ {REVIEW_W} REBOUND windows with ≥ {REVIEW_N} momentum-long fills: window means > 0 in ≥ 2/3 of "
          "windows ∧ mean of window means > 0 ∧ no window ≥ 50 % of the positive gain. A fill counts when the PRIOR closed hour was ON.", "",
-         f"**Now:** {state} · BTC {now.off30:+.1f} % vs its 30-day high · 3-day {now.r72:+.2f} %", ""]
+         f"**Now:** {state} · BTC {now.off30:+.1f} % vs its 30-day high · 3-day {now.r72:+.2f} %", "",
+         f"_Tallies exclude bot fills the operator closed — {__import__('scout_gatekit').operator_closed_line(LAST_OPX[0] if LAST_OPX else None)}._", ""]
     if len(W):
         L += ["| Window (UTC) | kind | ON hours | momentum longs: N · WR · avg % | all bot fills: N · avg % |", "|---|---|---|---|---|"]
         for r in W.sort_values("start_ms", ascending=False).head(12).itertuples():

@@ -663,6 +663,8 @@ def run(now_ms=None, orders=None, fetch=True):
             L += fn()
         except Exception as e:
             L += [f"## {name}", "", f"Unavailable this run ({str(e)[:120]}).", ""]
+    if orders is None:   # 🧰 (DECISION_LOG 331) bot fills the operator closed are dropped by NF._orders — listed here for both lines
+        L += [f"_PAIR_1H_DOWNTREND / TREND_ALIGNED — {NF.opx_text(NF.LAST_OPX[0] if NF.LAST_OPX else None)}._", ""]
     return L
 
 

@@ -8206,3 +8206,50 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   - The as-coded comparison fires REVERT ≈ 49 % of the time even if the filter works as backtested.
 - **Change (scout only, measurement):** both sides are priced by the same walker under today's live WILLY exit (scout_willy_timecap.evaluate_late book="live"). Frozen sample and bar unchanged: first 30 blocked on ≥ 10 days; blocked ≥ let-through → REVERT · ≤ let-through − 0.20 → confirmed · else hold → re-read at 60. The old as-booked read is printed for info only.
 - **Filter:** kept at 1.0 (no config change).
+
+## (337) 2026-10-21 — NAV history 'fund start' epoch (operator)
+- **Why:** the operator reset the live bot and deleted the only investor (total shares 0) and wants the Portfolio Management "NAV / Share History" chart to start fresh. nav_snapshots survive resets and investor deletions on purpose (Sep-7), so nothing may be deleted.
+- **Design: a READ boundary, never a delete.**
+  - Two BotState columns: `nav_epoch_start` (YYYY-MM-DD, UTC-3 day, same key as NavSnapshot.date) and `nav_epoch_started_at` (UTC-naive moment). BotState holds the other fund-level singletons (founding_allocated_usd) and is never deleted by a reset, so a new table was not needed. Migration in database.py.
+  - **Rule** (`nav_snapshot_in_epoch` + its SQL twin `_nav_epoch_clause`, pinned equal by test): a snapshot counts iff `date > epoch day`, or `date == epoch day` and `updated_at ≥ epoch moment`. The epoch day's row written by the previous fund never leaks in. The NAV loop now stamps `updated_at` explicitly (func.now() was 1-s and skipped on a no-change upsert), and logs the epoch day's pre-epoch row values when the new fund's first write supersedes them (the only value an upsert can replace).
+  - **Automatic:** `_investor_serialized` (every share mutator: add / deposit / withdraw / withdraw-all / deposit-all / transfer / edit / delete) reads total shares before and after the handler; > 0 → ≤ 1e-6 sets the epoch to now. 0 → 0 and > 0 → > 0 are no-ops. Fail-open: an epoch error is logged and never blocks the money operation.
+  - **Manual:** "↺ Start new NAV history" button (confirm dialog) → POST /api/nav/epoch, allowed any time, serialized with the share mutators. Changes only what is shown.
+  - **Startup:** if no epoch is set, total shares are 0 and snapshots exist → epoch = now, logged `[NAV_EPOCH]`. Covers the Oct-21 delete, which happened before this code. Re-runs are no-ops.
+  - **Reset:** /api/reset never sets or clears the epoch (resets stay NAV-neutral). An empty fund already has its epoch from the share change or the startup rule.
+- **Readers:** /api/investors `nav_history` (chart) and `nav_high_water` (HWM, over the whole epoch) read post-epoch rows only. The response adds `nav_epoch_start` / `nav_epoch_started_at`. Both text exports (shared `_buildNavHistoryLines`) print "NAV history since <date> (earlier history kept)", or "No NAV history since <date> yet". The chart shows "· since <date>" and an empty state. No other NavSnapshot reader exists (no HWM fee math in code).
+- **First investor after the epoch:** with 0 shares `_get_nav_per_share` = 1.0, so shares = deposit. The old HWM is never referenced.
+- **Reviews (coordinator, applied pre-commit):**
+  - **I1 loop race:** the write stamp is taken BEFORE the shares and equity reads (`_nav_snapshot_once`, split out of the loop). A row built from reads made before a concurrent delete/epoch is stamped before the epoch, so it stays excluded. Tested on the real clock; the test fails with the old stamp order.
+  - **I2 manual button:** returns 409 while total shares > 1e-6 unless `{force: true}`. The UI adds a second, stronger confirm ("restarts the HWM investors see").
+  - **I3 dust:** a full single withdrawal or withdraw-all slice that leaves ≤ 1e-6 shares burns exactly what was held. The ledger shares_delta matches, the split amount still sums, and 1e-13 → 0. The NAV loop, `_get_nav_per_share` and `/api/investors` use the same 1e-6 zero.
+  - **I4 first-deposit warning (non-blocking):** add-investor and deposit get `preview`, which returns `nav_start_warning` for a share-less fund whose equity E is neither ≈ 0 nor ≈ D (tolerance max($1, 0.5 % of D)). The message gives (E+D)/D and, if E > D, also E/D. This deliberately widens the brief's E − D > tol bar: E < D with the deposit not yet landed also starts NAV > 1. The UI confirms it before the real call. Minting math unchanged.
+  - **M2:** tests added — a raising mutator rolls back with no epoch; the loop's explicit updated_at, including on a no-change upsert.
+- Tests: tests/test_nav_epoch.py (32).
+
+## (339) 2026-10-21 — 🪜 Master rebuild respects the exchange bracket (STACK 2026-10-21b) + scripts/archive_batch.py (operator "fix the master rebuild")
+- **Bug:** build_master_pool re-priced kept fills at today's size, ignoring the leverage / notional Binance allowed. B23 SURGE AGT / GTC traded 10× (bracket_capped) but were priced at 20× ($319.95 / $191.44 vs as traded $159.98 / $95.72), and the CF_FADE_CAP05 bigger fade ticket sat above the bracket notional.
+- **Rule** (bracket_cap_scale / today_size_rule_row, ONE rule shared with screen_pool.pnl_current):
+  - A re-price never exceeds entry_bracket_max_leverage (≤ the as-traded leverage when capped).
+  - The notional is clipped only when entry_bracket_cap_notional > 0 is the tier cap for the leverage being priced: re-price at the traded leverage ∧ (uncapped ∨ capped with as-traded ≤ stamp), clip at max(stamp, as-traded).
+  - A stamp of 0 / NaN (the cut was on leverage) or a lower-leverage re-price → leverage cap only.
+  - Pre-Oct-1 rows carry no stamp → no cap.
+- **Moves 7 kept rows (+BRACKET_CAP):**
+  - AGT B23 $319.95 → $159.98
+  - GTC B23 $191.44 → $95.72
+  - AZTEC B16 36.09 → 23.75
+  - PARTI B16 71.21 → 55.66
+  - VTHO B17 92.37 → 89.41
+  - ZRX B17 40.75 → 30.05
+  - BRETT B18 53.33 → 49.59
+  - Non-probe kept $6,485.28 → $6,184.30. stack_keep / stack_pct unchanged; SCREENED_BASELINE byte-identical.
+- **Reviews:**
+  - An earlier version clipped a capped LOSER with an unknown (0) stamp (KOMA −$266 → −$133), flattering the fade sleeve. Fixed: unknown stamp → leverage cap only. KOMA is back at −$266.13.
+  - **Known two-sided gap:** 4 capped winners that traded above their stamp (TURTLE, ARX, GRIFFAIN ×2, ≈ +$117 of uplift) and KOMA (≈ −$133) keep their upsized fade ticket because their real tier limits are unknown. It nets slightly pessimistic.
+  - Late-arm stays priced at 15 / 0.30 (constants pinned to trading_config.json by a test).
+- **scripts/archive_batch.py:** one command to add a batch:
+  - copy + name the exports; refresh the BTC 5m cache within the request budget;
+  - re-run WILLY_EXIT_CF; require the STACK_VERSION bump (prints the suggested line, never edits source);
+  - build master + screen_pool + validate;
+  - print the per-sleeve table (bot only), MANUAL / operator-closed / EXTERNAL_CLOSE / bracket-capped rows, and DRAFT CURRENT_STATE + DL text (never written).
+  - It refuses overlaps and taken numbers and never overwrites. Exit 2 = refused / failed, 3 = STACK bump needed.
+- Ships with the scout fixes (DL 331, 333 scout part, 335 SURGE_BRACKET tracker, 336 WILLY walker-vs-walker).

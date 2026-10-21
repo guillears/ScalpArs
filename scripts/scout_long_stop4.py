@@ -53,6 +53,8 @@ import zipfile
 
 import numpy as np
 import pandas as pd
+import os as _os_gk, sys as _sys_gk; _sys_gk.path.insert(0, _os_gk.path.dirname(_os_gk.path.abspath(__file__))) if _os_gk.path.dirname(_os_gk.path.abspath(__file__)) not in _sys_gk.path else None
+import scout_gatekit as _GK   # noqa: E402  🧰 (DECISION_LOG 331) operator-closed fills (MANUAL / MANUAL_* / EXTERNAL_CLOSE) out of every gate
 
 _D = os.path.dirname(os.path.abspath(__file__))
 _D in sys.path or sys.path.insert(0, _D)
@@ -413,7 +415,7 @@ def fills(start=COHORT_START):
         return a, a
     a = a[(a.entry_strategy.astype(str) == STRATEGY) & (a.direction.astype(str).str.upper() == "LONG") & (a._k >= start)
           & (a.status.astype(str) == "CLOSED")]
-    man = a.close_reason.astype(str).str.upper().str.startswith("MANUAL")
+    man = _GK.reason_mask(a.close_reason)
     return a[~man].sort_values("_k").reset_index(drop=True), a[man].reset_index(drop=True)
 
 
@@ -468,7 +470,7 @@ def main(argv=None):
     a, man = fills(start)
     tag = "DIAGNOSTIC (cohort start overridden — NOT the frozen read) · " if diag else ""
     print(f"LONG_STOP4 (DECISION_LOG 315, observe) · {tag}cohort CLOSED {STRATEGY} LONG fills opened ≥ {start} UTC → {len(a)}"
-          f"  (MANUAL closes excluded: {len(man)})")
+          f"  (operator-closed: {len(man)} — excluded: MANUAL / EXTERNAL_CLOSE)")
     print(f"  shadow: stop −{SL_SHADOW:g} vs today's −{SL_LIVE:g} · TP +{TP} resting maker · {CAP // 60} h cap · study walker + fees · "
           f"ticks first (aggTrades archive), else fapi 1m = provisional")
     if not len(a):

@@ -55,7 +55,7 @@ def fills():
     for f in sorted(EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")), key=os.path.getmtime):
         try:
             fr.append(pd.read_csv(f, low_memory=False, usecols=lambda c: c in (
-                "opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "entry_price", "pnl_percentage")))
+                "opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "entry_price", "pnl_percentage", "close_reason")))
         except Exception:
             continue
     if not fr:
@@ -118,7 +118,11 @@ def kl1m(pair, start, end, bud):
 
 def main():
     a = fills()
-    print(f"LITE_OB_THIN (DECISION_LOG 302, long shot) · cohort FRENZY_LITE closed fills opened ≥ {COHORT_START} UTC → {len(a)}")
+    import scout_gatekit as _GK                               # 🧰 (DECISION_LOG 331) operator-closed fills: not the bot's exit → out, listed
+    a, opx = _GK.split_operator_closed(a) if len(a) else (a, a)
+    a = a.reset_index(drop=True)
+    print(f"LITE_OB_THIN (DECISION_LOG 302, long shot) · cohort FRENZY_LITE closed fills opened ≥ {COHORT_START} UTC → {len(a)}"
+          f" · {_GK.operator_closed_line(opx)}")
     if not len(a):
         return
     B, bud, rows, miss = books(), _Bud(), [], 0

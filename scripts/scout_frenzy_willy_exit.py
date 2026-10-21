@@ -36,6 +36,8 @@ import time
 
 import numpy as np
 import pandas as pd
+import os as _os_gk, sys as _sys_gk; _sys_gk.path.insert(0, _os_gk.path.dirname(_os_gk.path.abspath(__file__))) if _os_gk.path.dirname(_os_gk.path.abspath(__file__)) not in _sys_gk.path else None
+import scout_gatekit as _GK   # noqa: E402  🧰 (DECISION_LOG 331) DL-number deploy lookup + operator-closed fills (MANUAL / MANUAL_* / EXTERNAL_CLOSE) out of every gate
 
 if os.path.dirname(os.path.abspath(__file__)) not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -75,12 +77,15 @@ REVERT = ("Pre-committed revert if a sleeve ever takes one of these cells: its f
 
 
 def deploy_ts():
-    try:
-        out = subprocess.run(["git", "-C", _ROOT, "log", "--format=%ct", "--grep=" + DEPLOY_GREP, "--fixed-strings", "--reverse"],
-                             capture_output=True, text=True, timeout=10)
-        return pd.Timestamp(int(out.stdout.strip().splitlines()[0]) * 1000, unit="ms") + pd.Timedelta(minutes=DEPLOY_LAG_MIN)
-    except Exception:
+    """the DECISION_LOG 283 commit + DEPLOY_LAG_MIN via scout_gatekit (the number anywhere in a 'DECISION_LOG …' list — DECISION_LOG 331);
+    not found → the PLACEHOLDER pin + lag after a LOUD warning."""
+    import scout_gatekit as _GK
+    ct = _GK.tag_commit_ts(DEPLOY_GREP)
+    if ct is None:
+        if _GK.dl_from_tag(DEPLOY_GREP) is not None:
+            _GK.warn_not_evaluable(f"FRENZY_WILLY_TP floor {DEPLOY_GREP} (placeholder pin {DEPLOY_PIN} used)", _GK.dl_from_tag(DEPLOY_GREP))
         return pd.Timestamp(DEPLOY_PIN) + pd.Timedelta(minutes=DEPLOY_LAG_MIN)
+    return pd.Timestamp(int(ct) * 1000, unit="ms") + pd.Timedelta(minutes=DEPLOY_LAG_MIN)
 
 
 def _ns(th=None):
@@ -367,8 +372,8 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     floor = deploy_ts()
     o = o[o.ts >= floor].reset_index(drop=True)
     opens = [x for x in opens if pd.notna(x[0]) and x[0] >= floor]       # a stale pre-floor OPEN row never holds a freeze
-    man = o[o.why.astype(str).str.upper().str.startswith("MANUAL")]       # operator closes: not the walked exit → out, listed
-    o = o[~o.why.astype(str).str.upper().str.startswith("MANUAL")].reset_index(drop=True)
+    man = o[_GK.reason_mask(o.why)]       # operator closes: not the walked exit → out, listed
+    o = o[~_GK.reason_mask(o.why)].reset_index(drop=True)
     span = live[2]
     tc = {}
     _pre = [score_fill(r, live_by, alts, tc) for r in o.itertuples()]
@@ -415,7 +420,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
                      "skipped) — re-walked on aggTrades once the daily archive is out.")
         L.append("")
     if len(man):
-        L.append(f"Excluded: {len(man)} manually closed fill(s) (not the walked exit): "
+        L.append(f"Operator-closed: {len(man)} — excluded, manually closed fill(s) (not the walked exit): "
                  + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} {str(r.sleeve).replace('FRENZY_', '')} ({r.why})" for r in man.itertuples()) + ".")
     if len(uns):
         L.append("UNSCORED (no path yet): " + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair} {str(r.sleeve).replace('FRENZY_', '')}"
@@ -602,7 +607,7 @@ def selftest():
                 deploy_ts = _dts
             chk(_dts() >= pd.Timestamp("2026-10-12") + pd.Timedelta(minutes=DEPLOY_LAG_MIN), "re-based floor: the DL 283 commit (or pin) + 10 min")
             chk("KAIAUSDT LITE [ticks] live -3.10 (STOP @ 30 min) → +1 / −2 +1.10 / +1 / −2.5 +1.10 / +1 / −3 +1.10 / +1.25 / −2 -3.10" in out
-                and "UNSCORED (no path yet): 10-09 09:00 NOKUSDT LONG" in out and "Excluded: 1 manually closed" in out and "MANUSDT WIDE (MANUAL_TP)" in out and "WILUSDT" not in out and "OLDUSDT" not in out
+                and "UNSCORED (no path yet): 10-09 09:00 NOKUSDT LONG" in out and "Operator-closed: 1 — excluded, manually closed" in out and "MANUSDT WIDE (MANUAL_TP)" in out and "WILUSDT" not in out and "OLDUSDT" not in out
                 and "1/1 match" in out and "FRENZY_LITE: ⏳ COLLECTING" in out and not os.path.exists(sp), f"end-to-end\n{out}")
     finally:
         WT._CACHE, WT.MY_CACHE, WT.EXPORT_GLOB, WT._NET_BLOCKED = saved

@@ -84,6 +84,7 @@ Usage:  venv/bin/python scripts/scout_revert_gates.py            # print the sec
 import glob
 import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
 import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
+import scout_gatekit as _GK   # 🧰 (DECISION_LOG 331) DL-number deploy lookup + operator-closed fills excluded from the gates
 import json
 import os
 import subprocess
@@ -213,21 +214,27 @@ def load_state():
 
 
 def deploy_ms(name):
-    """push time of the gate's commit (git) + 10 min; the pinned fallback when git is unavailable."""
+    """push time of the gate's commit (git) + 10 min. 'grep:' entries resolve by DECISION_LOG NUMBER (scout_gatekit.dl_commit_ts — the
+    number may sit anywhere in a '(DECISION_LOG 261, 262, 263)' list; DECISION_LOG 331: the literal-tag grep missed multi-number commits
+    and silently counted from NOW). Not found → the pinned fallback when one exists (loud warning), else GateNotEvaluable (loud warning;
+    the gate row shows NOT EVALUABLE — never 'counted from now')."""
     h, fb = DEPLOYS[name]
-    try:
-        args = ["--grep=" + h[5:], "--fixed-strings", "--reverse"] if h.startswith("grep:") else [h]   # (no --since: it hid every commit here)   # grep: the FIRST commit naming it
-        out = subprocess.run(["git", "-C", ROOT, "log", "--format=%ct"] + args, capture_output=True, text=True, timeout=10)
-        out.stdout = (out.stdout.strip().splitlines() or [""])[0]
-        ct = int(out.stdout.strip())
-        return ct * 1000 + 10 * MIN
-    except Exception:
-        if fb is None:
-            # 🐻 (250, review): no pinned guess — until git shows the commit the floor is NOW (nothing before it can be counted; a pinned
-            # time earlier than the real deploy would count lock-era / pre-raise fills as the new rules'). Logged every run it applies.
-            log(f"deploy {name}: commit {h} not found in git — counting from NOW (no fill / refusal counted until the commit exists)")
-            return int(time.time() * 1000)
-        return _ms(fb) + 10 * MIN
+    ct = None
+    if h.startswith("grep:"):
+        ct = _GK.tag_commit_ts(h[5:])
+    else:
+        try:
+            out = subprocess.run(["git", "-C", ROOT, "log", "-1", "--format=%ct", h], capture_output=True, text=True, timeout=10)
+            ct = int((out.stdout.strip().splitlines() or [""])[0].strip())
+        except Exception:
+            ct = None
+    if ct is not None:
+        return int(ct) * 1000 + 10 * MIN
+    if fb is None:
+        _GK.warn_not_evaluable(f"revert gate deploy {name} ({h})", _GK.dl_from_tag(h))
+        raise _GK.GateNotEvaluable(f"deploy {name}: commit {h} not found in git")
+    log(f"⚠ deploy {name}: commit {h} not found in git — using the PINNED fallback {fb} UTC (+ 10 min)")
+    return _ms(fb) + 10 * MIN
 
 
 def cfg_value(key):
@@ -513,7 +520,7 @@ def episodes(rows, gap_min=EPISODE_MIN):
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "entry_price", "exit_price", "pnl_percentage",
               "leverage", "entry_frenzy_adx_delta", "entry_frenzy_di_spread", "entry_surge_trigger_at", "close_reason", "entry_pair_rank",
               "entry_bull_pct", "entry_btc_ema20_slope", "entry_btc_rsi_prev", "entry_btc_off30d_high_pct", "cell_multiplier_source", "entry_atr_pct",
-              "entry_btc_rsi")
+              "entry_btc_rsi", "bracket_capped", "entry_bracket_cap_notional", "notional_value", "pnl")   # last 4: 👁 SURGE_BRACKET (335)
 
 
 def _export_ms(path):
@@ -1199,16 +1206,18 @@ def gate_ms_pvr(J, st, budget, now_ms, need_days, orders_fn=None):
     G = st.setdefault("gates", {}).setdefault("MS_PVR_BLOCKED", {})
     store = G.setdefault("items", {})
     cfg, diffs = S.live_ms_settings()
-    A_ = (orders_fn or S.load_momentum_shorts)() if need_days is None else None
+    A_all = (orders_fn or S.load_momentum_shorts)() if need_days is None else None
     fills = {}
-    if A_ is not None:
-        for p_, t_ in zip(A_.pair, A_.o_ms):
+    if A_all is not None:
+        for p_, t_ in zip(A_all.pair, A_all.o_ms):                 # every real fill (operator-closed too) marks a double-count episode
             fills.setdefault(p_, []).append(int(t_))
+    # 🧰 (331) kept-side gate stats read only fills the BOT closed — operator-closed rows (MANUAL / EXTERNAL_CLOSE) listed apart
+    A_, A_opx = _GK.split_operator_closed(A_all) if A_all is not None else (None, None)
     sig = ms_pvr_signals(J, store)
     items = []
     for r in sig.itertuples():
         it = store.get(r.key) or dict(pair=r.pair, t=int(r.ms), ref=bool(int(r.ms) < MS_PVR_REG_MS))
-        if A_ is not None:
+        if A_all is not None:
             it["dup"] = ms_followed_by_fill(int(r.ms), r.pair, fills)
         if not it.get("final"):
             if "cls" not in it and budget.ok():
@@ -1297,7 +1306,8 @@ def gate_ms_pvr(J, st, budget, now_ms, need_days, orders_fn=None):
                      + f" ‖ ② KEPT-SIDE TALLY (momentum shorts PVR < 0.86, stack-kept, from 09-18 12:00, closed): {ks['n']} fills · "
                      + (f"{ks['wins']} won · WR {ks['wr']:.0f} % · mean {ks['mean']:+.3f} % · ${ks['sum_usd']:+.0f}" if ks["n"] else "–")
                      + f" · first-{S.REVIEW_N} set {len(first)}/{S.REVIEW_N}" + (f" (frozen {G.get('review_frozen_at')})" if G.get("review_first20") else "")
-                     + (f" · ⚠ replica re-validate needed: {G['revalidate']}" if diffs else ""))
+                     + (f" · ⚠ replica re-validate needed: {G['revalidate']}" if diffs else "")
+                     + " · " + _GK.operator_closed_line(A_opx[A_opx.o_ms >= int(pd.Timestamp(S.KEPT_FROM).value // 1_000_000)] if A_opx is not None and len(A_opx) else A_opx))
     fmt = lambda x: (f"{_fmt_t(x['t'])} {str(x['pair']).replace('USDT', '')} [{x.get('cls', '?')} PVR {_f(x.get('pvr_lo'), '.2f')}–{_f(x.get('pvr_hi'), '.2f')}"
                      + (" C1" if x.get("c1") else "") + "] "
                      + (f"{x['sim1']:+.2f}/{_f(x.get('sim5'))} ({x.get('how1', '')})" if x.get("sim1") is not None else f"pending ({x.get('p1', '?')})")
@@ -1711,6 +1721,118 @@ def gate_surge_b(orders, st):
     return state, t0
 
 
+# ── 👁 SURGE_BRACKET (DECISION_LOG 335, operator — OBSERVE-ONLY, never gated, never changes config). SURGE_LONG targets 20 × surge_long_lev_mult;
+# on thin pairs the exchange's leverage bracket caps it (B23 AGT / GTC traded 10× → half the notional). Every live SURGE_LONG fill (opened ≥
+# the later of the go-live 2026-10-14 18:36:30 UTC and the SURGE cohort floor 2026-09-30 15:30 UTC) is split CAPPED (bracket_capped = 1 or
+# traded leverage < the target) vs UNCAPPED: N · WR · avg % · Σ $ as traded; for capped fills the "doubled to target notional" counterfactual
+# $ = as-traded $ × target / traded leverage, held at entry_bracket_cap_notional when > 0 (the bracket's largest position; 0 = the target
+# leverage is above the pair's max → no notional cap known), and a thin-book cost sensitivity from reports/FADE_STOP_EXECUTION_2026-10-21.md
+# (live fade entries paid ≈ +0.2 %, stops ≈ +0.3 % of book walk): the doubled notional pays +0.2 % on entry and +0.3 % more when the exit
+# was a stop order (any close reason with STOP — trailing stops included; conservative: applied to the WHOLE doubled notional). Plus the
+# sleeve-wide size-up gate — the Pattern W bar on live SURGE_LONG fills: N ≥ 30 ∧ WR ≥ 70 % ∧ avg ≥ +0.10 % ∧ Σ $ > 0 (a size-up is only
+# considered there: SURGE-only, liquid pairs only, its own revert gate). Operator-closed fills are excluded (DECISION_LOG 331).
+SB_GOLIVE = _EG.LIVE_START_UTC                       # 2026-10-14T18:36:30 — the first LIVE fill can't predate it
+SB_COHORT_FLOOR = "2026-09-30T15:30:00"              # the SURGE cohort floor (first-trigger EMA13 bug before it)
+SB_BASE_LEV = 20.0                                   # SURGE_LONG's target = 20 × surge_long_lev_mult
+SB_SLIP_ENTRY, SB_SLIP_STOP = 0.2, 0.3               # % of notional — the fade execution study's thin-book walk (sensitivity only)
+SB_W = dict(n=30, wr=70.0, avg=0.10)                 # the Pattern W multiplier bar (CLAUDE.md) — Σ $ > 0 too
+_SB_TRUE = ("True", "true", "1", "1.0")
+
+
+def surge_bracket_target(mult=None):
+    """20 × surge_long_lev_mult (mult None → read from trading_config.json; blank / unreadable / ≤ 0 → 1.0)."""
+    try:
+        m = float((mult if mult is not None else cfg_value("surge_long_lev_mult")) or 1.0)
+    except (TypeError, ValueError):
+        m = 1.0
+    return SB_BASE_LEV * (m if m > 0 else 1.0)
+
+
+def surge_bracket_rows(orders, target_lev, since_ms=None):
+    """SURGE_LONG fills opened ≥ since_ms (default: the later of the go-live and the cohort floor) → per-fill frame (pure): capped, lev, pct,
+    usd, closed, stop, factor, cf_usd (doubled-to-target $; = usd when uncapped), slip_usd (the thin-book sensitivity, capped only)."""
+    t0 = since_ms if since_ms is not None else max(_ms(SB_GOLIVE), _ms(SB_COHORT_FLOOR))
+    if orders is None or not len(orders):
+        return pd.DataFrame(columns=["opened_at", "pair", "capped", "lev", "pct", "usd", "closed", "stop", "factor", "cf_usd", "slip_usd"])
+    o = orders[(orders.entry_strategy.astype(str) == "SURGE_LONG") & (orders.o_ms >= int(t0))].copy()
+    num = lambda c: pd.to_numeric(o[c], errors="coerce") if c in o else pd.Series(np.nan, index=o.index)
+    lev, notl, capn = num("leverage"), num("notional_value"), num("entry_bracket_cap_notional")
+    flag = o.bracket_capped.astype(str).isin(_SB_TRUE) if "bracket_capped" in o else pd.Series(False, index=o.index)
+    capped = flag | (lev < float(target_lev) - 1e-9)
+    f = (float(target_lev) / lev).where(capped & (lev > 0), 1.0)
+    room = (capn / notl).where((capn > 0) & (notl > 0))                  # the bracket's largest position ÷ the traded notional
+    f = np.minimum(f, room.fillna(np.inf)).clip(lower=1.0)
+    usd, pct = num("pnl"), num("pnl_percentage")
+    closed = (o.status.astype(str) == "CLOSED") & pct.notna()
+    stop = o.close_reason.astype(str).str.upper().str.contains("STOP") if "close_reason" in o else pd.Series(False, index=o.index)
+    xn = (notl * f).where(capped)                                           # the doubled notional
+    slip = -(xn * (SB_SLIP_ENTRY + np.where(stop, SB_SLIP_STOP, 0.0)) / 100.0)
+    return pd.DataFrame(dict(opened_at=o.opened_at.astype(str).str[:19].values, pair=o.pair.astype(str).values, capped=capped.values,
+                             lev=lev.values, pct=pct.values, usd=usd.values, closed=closed.values, stop=stop.values, factor=f.values,
+                             cf_usd=(usd * f).values, slip_usd=pd.Series(slip, index=o.index).where(capped, 0.0).values)).reset_index(drop=True)
+
+
+def surge_bracket_stats(r):
+    """closed fills → dict(n, wr, avg, usd, cf, slip) (pure)."""
+    c = r[r.closed.astype(bool)] if len(r) else r
+    n = len(c)
+    p = pd.to_numeric(c.pct, errors="coerce") if n else pd.Series(dtype=float)
+    return dict(n=n, wr=(float((p > 0).mean() * 100) if n else None), avg=(float(p.mean()) if n else None),
+                usd=float(pd.to_numeric(c.usd, errors="coerce").fillna(0).sum()) if n else 0.0,
+                cf=float(pd.to_numeric(c.cf_usd, errors="coerce").fillna(0).sum()) if n else 0.0,
+                slip=float(pd.to_numeric(c.slip_usd, errors="coerce").fillna(0).sum()) if n else 0.0)
+
+
+def surge_w_gate(s):
+    """the Pattern W size-up bar on ALL live SURGE_LONG fills (pure) → (met: bool, text)."""
+    n, wr, avg, usd = s["n"], s["wr"], s["avg"], s["usd"]
+    legs = [(n >= SB_W["n"], f"N {n}/{SB_W['n']}"), (wr is not None and wr >= SB_W["wr"], f"WR {'–' if wr is None else f'{wr:.0f}'} % vs ≥ {SB_W['wr']:.0f} %"),
+            (avg is not None and avg >= SB_W["avg"], f"avg {'–' if avg is None else f'{avg:+.2f}'} % vs ≥ +{SB_W['avg']:.2f} %"),
+            (usd > 0, f"Σ$ {usd:+.0f} > 0")]
+    met = all(ok for ok, _ in legs)
+    return met, " · ".join(("✓ " if ok else "✗ ") + t for ok, t in legs)
+
+
+def surge_bracket_lines(orders, op_closed=None, target_lev=None, since_ms=None):
+    """👁 SURGE_BRACKET markdown (never raises past the caller's guard)."""
+    tl = surge_bracket_target() if target_lev is None else float(target_lev)
+    t0 = since_ms if since_ms is not None else max(_ms(SB_GOLIVE), _ms(SB_COHORT_FLOOR))
+    r = surge_bracket_rows(orders, tl, t0)
+    cp, uc = r[r.capped.astype(bool)] if len(r) else r, r[~r.capped.astype(bool)] if len(r) else r
+    S, C, U = surge_bracket_stats(r), surge_bracket_stats(cp), surge_bracket_stats(uc)
+    fm = lambda v, d=2: "–" if v is None else f"{v:+.{d}f}"
+    wr = lambda v: "–" if v is None else f"{v:.0f} %"
+    met, wtxt = surge_w_gate(S)
+    n_open = int((~r.closed.astype(bool)).sum()) if len(r) else 0
+    L = ["## 👁 SURGE_BRACKET — capped vs uncapped live SURGE_LONG fills (DECISION_LOG 335, OBSERVE-ONLY)", "",
+         f"Live SURGE_LONG fills opened ≥ {_fmt_t(t0, True)} UTC (later of the go-live and the SURGE cohort floor). Capped = bracket_capped ∨ traded "
+         f"leverage < the target {tl:g}× (20 × surge_long_lev_mult). Counterfactual = as-traded $ × target / traded leverage, held at "
+         "entry_bracket_cap_notional when > 0. Sensitivity = the doubled notional pays the fade execution study's thin-book walk "
+         f"(+{SB_SLIP_ENTRY:g} % entry, +{SB_SLIP_STOP:g} % more on stop exits incl. trailing; whole notional, conservative). Never gated.", "",
+         "| Side | N | WR | Avg % | Σ $ as traded | Σ $ doubled to target | Σ $ doubled − thin-book cost |", "|---|---|---|---|---|---|---|"]
+    for lab, s in (("capped", C), ("uncapped", U), ("all", S)):
+        cf = f"{s['cf']:+.2f}" if s["n"] else "–"
+        cs = f"{s['cf'] + s['slip']:+.2f}" if s["n"] else "–"
+        L.append(f"| {lab} | {s['n']} | {wr(s['wr'])} | {fm(s['avg'], 3)} | {s['usd']:+.2f} | {cf} | {cs} |")
+    L.append("")
+    if len(cp):
+        L.append("Capped fills: " + " · ".join(
+            f"{x.pair} {x.opened_at[5:16].replace('T', ' ')} {x.lev:g}× → ×{x.factor:.2f}: "
+            + (f"{x.pct:+.2f} % · {x.usd:+.2f} $ → {x.cf_usd:+.2f} $ (thin-book {x.slip_usd:+.2f} ${', stop exit' if x.stop else ''})"
+               if x.closed else "open") for x in cp.itertuples()))
+    if len(uc):
+        L.append("Uncapped fills: " + " · ".join(f"{x.pair} {x.opened_at[5:16].replace('T', ' ')} {x.lev:g}× "
+                                                 + (f"{x.pct:+.2f} % · {x.usd:+.2f} $" if x.closed else "open") for x in uc.itertuples()))
+    L.append(f"**Sleeve-wide size-up gate (Pattern W bar, live SURGE_LONG, as traded):** {'✅ MET — size-up may be CONSIDERED (operator; liquid pairs only, own revert gate)' if met else '⏳ not met'} — {wtxt}."
+             + (f" {n_open} open fill(s) not counted." if n_open else ""))
+    if op_closed is not None and len(op_closed):
+        x = op_closed[(op_closed.entry_strategy.astype(str) == "SURGE_LONG").values & (op_closed.o_ms >= int(t0)).values] if "o_ms" in op_closed else op_closed.iloc[0:0]
+    else:
+        x = None
+    L += [f"_SURGE_BRACKET — {_GK.operator_closed_line(x)}._", ""]
+    return L
+
+
 def gate_bearrun(orders, st):
     G = st.setdefault("gates", {}).setdefault("BEARRUN", {})
     t0 = _ms(PROBE_START)
@@ -1952,8 +2074,29 @@ def _status_text(code, state, G):
         return "⚠ no data"
     if state == "error":
         return "⚠ error"
+    if state == "not_evaluable":
+        return "⛔ NOT EVALUABLE — deploy commit not found in git (nothing counted)"
     prov = G.get("provisional")
     return "⏳ collecting" + (f" (provisional on 1m prices: would {'FIRE' if prov == 'fired' else 'hold'})" if prov else "")
+
+
+# 🧰 (DECISION_LOG 331) the sleeves each orders-based gate reads — its operator-closed rows are listed next to its tally
+GATE_SLEEVES = {"FRENZY_LOCK": ("FRENZY_LONG", "FRENZY_WIDE"), "FRENZY_STRONG": ("FRENZY_LONG",), "FRENZY_GVOL": ("FRENZY_LONG", "FRENZY_WIDE"),
+                "HEAT_ADMIT": ("MOMENTUM",), "TP3_VS_LOCK": FRENZY3, "ATR_RAISE": ("FRENZY_LONG", "FRENZY_WIDE"),
+                "BEARRUN_5X": ("BEARRUN_SHORT",), "BEARRUN": ("BEARRUN_SHORT",), "FAN_10X": (FLIP_SRC,), "FADE_BRSI50": ("SPIKE_FADE",),
+                "SURGE_LONG": ("SURGE_LONG",)}
+
+
+def _opx_note(G, code, op_closed, t0):
+    """append 'operator-closed: N — excluded (…)' (the gate's sleeves, opened ≥ its floor) to the gate's progress text."""
+    sl = GATE_SLEEVES.get(code)
+    if not sl or G is None:
+        return
+    x = op_closed
+    if x is not None and len(x):
+        es = x.entry_strategy.fillna("MOMENTUM").astype(str).replace({"": "MOMENTUM", "nan": "MOMENTUM"})
+        x = x[es.isin(sl).values & (x.o_ms >= int(t0)).values]
+    G["progress"] = f"{G.get('progress', '–')} · {_GK.operator_closed_line(x)}"
 
 
 def run_section(now_ms=None, noted=None, record_notes=True):
@@ -1975,8 +2118,12 @@ def run_section(now_ms=None, noted=None, record_notes=True):
     except Exception as e:
         log(f"journal: {e}")
         J, jcov = None, None
+    # 🧰 (DECISION_LOG 331) bot fills the OPERATOR closed (close_reason MANUAL / MANUAL_* / EXTERNAL_CLOSE) never count in a gate —
+    # their exit is not the bot's; each orders-based gate lists its own excluded rows ("operator-closed: N — excluded")
+    orders_all = orders
+    orders, op_closed = _GK.split_operator_closed(orders_all)
     try:
-        ranks = rank_map(orders) if len(orders) else {}
+        ranks = rank_map(orders_all) if len(orders_all) else {}
     except Exception as e:
         log(f"ranks: {e}")
         ranks = {}
@@ -2087,6 +2234,10 @@ def run_section(now_ms=None, noted=None, record_notes=True):
             if newest is None or newest < t0:
                 res[code] = "collecting"
                 st["gates"][code]["progress"] = "no export covers it yet"
+            _opx_note(st["gates"][code], code, op_closed, t0)
+        except _GK.GateNotEvaluable as e:
+            res[code] = "not_evaluable"
+            st["gates"].setdefault(code, {})["progress"] = f"⛔ NOT EVALUABLE: {e}"
         except Exception as e:
             log(f"{code}: {e}")
             res[code] = "error"
@@ -2097,6 +2248,10 @@ def run_section(now_ms=None, noted=None, record_notes=True):
         if newest is None or newest < _t0:
             res["SURGE_LONG"] = "collecting"
             st["gates"]["SURGE_LONG"]["progress"] = "no export covers it yet"
+        _opx_note(st["gates"]["SURGE_LONG"], "SURGE_LONG", op_closed, _t0)
+    except _GK.GateNotEvaluable as e:
+        res["SURGE_LONG"] = "not_evaluable"
+        st["gates"].setdefault("SURGE_LONG", {})["progress"] = f"⛔ NOT EVALUABLE: {e}"
     except Exception as e:
         log(f"SURGE_LONG: {e}")
         res["SURGE_LONG"] = "error"
@@ -2107,6 +2262,7 @@ def run_section(now_ms=None, noted=None, record_notes=True):
             cov[code] = otxt + " · windows from 10-04 22:00 UTC"
             if newest is None or newest < _ms(PROBE_START):
                 st["gates"][code]["progress"] = "no export covers it yet (probe windows count from 10-04 22:00 UTC)"
+            _opx_note(st["gates"][code], code, op_closed, _ms(PROBE_START))
         except Exception as e:
             log(f"{code}: {e}")
             res[code] = "error"
@@ -2161,6 +2317,11 @@ def run_section(now_ms=None, noted=None, record_notes=True):
         if dt:
             L.append(f"- {DEFS[code][0]}: {dt}")
     L += ["", f"_Tick archives fetched this run: {fetched}. State: reports/SCOUT_REVERT_GATES.json._", ""]
+    try:                                                      # 👁 (335) SURGE_BRACKET — observe-only, never a gate row
+        L += surge_bracket_lines(orders, op_closed)
+    except Exception as e:
+        log(f"SURGE_BRACKET: {e}")
+        L += ["## 👁 SURGE_BRACKET", "", f"Unavailable this run ({str(e)[:120]}).", ""]
     st["updated_utc"] = _fmt_t(now_ms, True)
     try:
         atomic_write(STATE_JSON, json.dumps(st, indent=1, default=str))
@@ -2330,8 +2491,12 @@ def selftest():
         "Oct-8 gates wired (ORDER / DEFS / deploy key) · 205 marked superseded")
     _orig = DEPLOYS["FRENZY_OCT8"]
     DEPLOYS["FRENZY_OCT8"] = ("grep:(NO SUCH COMMIT 0xdeadbeef)", None)
-    _t = time.time() * 1000
-    chk(abs(deploy_ms("FRENZY_OCT8") - _t) < 60_000, "Oct-8 deploy: no commit found → the floor is NOW (no pinned guess)")
+    try:
+        deploy_ms("FRENZY_OCT8")
+        _ne = False
+    except _GK.GateNotEvaluable:
+        _ne = True
+    chk(_ne, "Oct-8 deploy: no commit found → NOT EVALUABLE (DECISION_LOG 331: never 'counted from now', no pinned guess)")
     DEPLOYS["FRENZY_OCT8"] = _orig
     chk(_status_text("ATR_RAISE", "fired", {}).startswith("🔔 FIRED → REVERT (operator decision): frenzy_max_atr_pct back to 2.5"), "atr raise status text")
     # ── Oct-8 (252) ──

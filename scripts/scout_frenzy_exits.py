@@ -187,6 +187,7 @@ once its 12 h (and the re-entry's) have passed. 1m bars are coarser than the yea
 import glob
 import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
 import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
+import scout_gatekit as _GK   # 🧰 (DECISION_LOG 331) DL-number deploy lookup + operator-closed fills excluded from the gates
 import io
 import json
 import os
@@ -326,25 +327,23 @@ def _oct8_ms():
             sys.path.insert(0, sd)
         import scout_revert_gates as _RG
         return int(_RG.deploy_ms("FRENZY_OCT8"))
-    except Exception:
-        return int(time.time() * 1000)   # scout_revert_gates unavailable → NOW (never count a pre-deploy row; same rule as its deploy_ms fallback)
+    except Exception as e:   # 🧰 (331) not found / unavailable → NOT EVALUABLE (loud; the floor sits in 2100 → nothing counted), never NOW
+        _GK.warn_not_evaluable(f"FRENZY Oct-8 trackers (DECISION_LOG 250 floor: {str(e)[:80]})", 250)
+        return NOT_FOUND_MS
 
 
 GVOL_OFF_TAG = "(DECISION_LOG 263)"   # the commit that switched the FRENZY market-volume gate OFF (frenzy_gvol_max 1.0 → 0, operator 2026-10-09)
+NOT_FOUND_MS = 4_102_444_800_000      # 2100-01-01 UTC — the floor of a gate whose deploy commit is not in git (NOT EVALUABLE: nothing counted)
 _GVOFF = []
 
 
 def gvol_off_ms():
-    """the gate-off deploy = the FIRST commit naming GVOL_OFF_TAG (git log --grep, fixed string) + 10 min; no such commit (yet) / git unavailable →
-    NOW (nothing before the real deploy is ever counted — the same rule as scout_revert_gates.deploy_ms). Memoised per process."""
+    """the gate-off deploy = the FIRST commit whose DECISION_LOG list names 263 (scout_gatekit.dl_deploy_ms — the real commit ec98aea is
+    titled '(DECISION_LOG 261, 262, 263)'; the old literal-tag grep never matched it and counted from NOW, DECISION_LOG 331) + 10 min.
+    Not found / git unavailable → LOUD warning, flag False, floor NOT_FOUND_MS: GVOL_SPLIT prints NOT EVALUABLE. Memoised per process."""
     if not _GVOFF:
-        try:
-            import subprocess
-            out = subprocess.run(["git", "-C", ROOT, "log", "--format=%ct", "--fixed-strings", "--reverse", "--grep=" + GVOL_OFF_TAG],
-                                 capture_output=True, text=True, timeout=10)
-            _GVOFF.extend([int(out.stdout.strip().splitlines()[0]) * 1000 + 10 * MIN, True])
-        except Exception:
-            _GVOFF.extend([int(time.time() * 1000), False])
+        t = _GK.dl_deploy_ms(_GK.dl_from_tag(GVOL_OFF_TAG), 10, label="GVOL_SPLIT / FRENZY gate-off era (DECISION_LOG 263)")
+        _GVOFF.extend([int(t), True] if t is not None else [NOT_FOUND_MS, False])
     return _GVOFF[0]
 
 
@@ -357,7 +356,8 @@ def gvol_gate_off_at(t_ms):
 def gvol_off_note():
     """how the gate-off floor was resolved (for the section text)."""
     gvol_off_ms()
-    return "the (DECISION_LOG 263) commit + 10 min" if _GVOFF[1] else "NOW — the (DECISION_LOG 263) commit is not in git yet, nothing is counted until it is"
+    return ("the (DECISION_LOG 263) commit + 10 min" if _GVOFF[1]
+            else "⛔ NOT EVALUABLE — the DECISION_LOG 263 commit is not in git, nothing is counted until it is")
 
 
 def wide_cap_at(t_ms, th, deploy_ms=None):
@@ -3355,7 +3355,7 @@ LITE_ATR_CAP = 2.5          # FROZEN: frenzy_max_atr_pct at LITE's registration 
 LITE_REVIEW_N, LITE_REVIEW_DAYS = 40, 15   # review due at ≥ 40 closed fills on ≥ 15 days
 LITE_FLAG_N = 20            # avg < 0 at ≥ 20 closed fills → flag for operator review (NOT an auto-off)
 LITE_COLS = ("k", "pair", "day", "closed", "actual", "atr", "hours", "above_streak", "vol_mult", "vs_vwap", "bar_ret", "gvol", "adx_delta", "di_spread",
-             "lev")
+             "lev", "reason")   # 🧰 (DECISION_LOG 331) reason = close_reason: operator-closed rows (MANUAL / EXTERNAL_CLOSE) are listed, never counted
 # 🪶 Oct-7 (DECISION_LOG 247, operator override at 3 fills): FRENZY_LITE lev 0.2 → 0.32. Results split by size era (the fill's own
 # cell_lev_multiplier); the first LITE_LEV_FLAG_N closed fills at ≥ 0.3 averaging < 0 → "⚠ review" flag — NEVER an automatic revert.
 LITE_LEV_NEW = 0.3          # a fill sized at lev mult ≥ this is the 0.32 era
@@ -3366,7 +3366,7 @@ def _lite_fills():
     """FRENZY_LITE LONG fills in the orders exports (newest export wins per opened_at + pair) → DataFrame in LITE_COLS (never raises on a bad file)."""
     cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "entry_atr_pct", "entry_frenzy_hours",
             "entry_frenzy_above_streak", "entry_frenzy_vol_mult", "entry_frenzy_vs_vwap_pct", "entry_frenzy_bar_ret_pct", "entry_frenzy_gvol",
-            "entry_frenzy_adx_delta", "entry_frenzy_di_spread", "cell_lev_multiplier")
+            "entry_frenzy_adx_delta", "entry_frenzy_di_spread", "cell_lev_multiplier", "close_reason")
     fr = []
     for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
@@ -3393,7 +3393,8 @@ def lite_rows(o):
                             actual=num("pnl_percentage").where(closed), atr=num("entry_atr_pct"), hours=num("entry_frenzy_hours"),
                             above_streak=num("entry_frenzy_above_streak"), vol_mult=num("entry_frenzy_vol_mult"), vs_vwap=num("entry_frenzy_vs_vwap_pct"),
                             bar_ret=num("entry_frenzy_bar_ret_pct"), gvol=num("entry_frenzy_gvol"), adx_delta=num("entry_frenzy_adx_delta"),
-                            di_spread=num("entry_frenzy_di_spread"), lev=num("cell_lev_multiplier")))
+                            di_spread=num("entry_frenzy_di_spread"), lev=num("cell_lev_multiplier"),
+                            reason=(o.close_reason.astype(object).where(o.close_reason.notna(), None) if "close_reason" in o else None)))
     return out.drop_duplicates(["k", "pair"], keep="last").reset_index(drop=True)
 
 
@@ -3440,6 +3441,10 @@ def lite_atr_split(w):
 
 def lite_lines(w):
     f = lambda v, d=3: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.{d}f}"
+    # 🧰 (DECISION_LOG 331) bot fills the OPERATOR closed never count in the watch / flag / size-era reads — listed apart
+    _opm = _GK.reason_mask(w.reason) if len(w) and "reason" in w else np.zeros(len(w), dtype=bool)
+    opx = w[_opm].assign(entry_strategy="FRENZY_LITE", close_reason=w.reason[_opm], opened_at=w.k[_opm]) if _opm.any() else w.iloc[0:0]
+    w = w[~_opm]
     st, tx = lite_watch(w)
     L = ["## 🪶 FRENZY_LITE (DECISION_LOG 243 — declared exception, ARMED, no ATR cap, NO automatic off)", "",
          f"**FRENZY_LITE watch:** " + {"flag": "⚠ FLAG FOR OPERATOR REVIEW (avg < 0 at ≥ 20 closed fills — not an auto-off)",
@@ -3456,6 +3461,7 @@ def lite_lines(w):
     op = int((~w.closed.astype(bool)).sum()) if len(w) else 0
     if op:
         L.append(f"_{op} open FRENZY_LITE fill(s) not counted yet._")
+    L.append(f"_{_GK.operator_closed_line(opx)} (bot fills closed from the dashboard / Binance app — not the bot's exit, never counted)._")
     return L + [""]
 
 
@@ -3504,28 +3510,110 @@ def lite_run(now_ms=None):
     return lite_lines(allr)
 
 
+# ─────────────────────────── 🎯 LITE TP gate (DECISION_LOG 284, RE-BASED by DECISION_LOG 333 on 2026-10-21) ───────────────────────────
+# Cohort (frozen): the FIRST 20 FRENZY_LITE + FRENZY_LITE_RETRY LONG fills by open time, opened ≥ the DL 301 deploy (LITE C exit — commit f12b39f,
+# 2026-10-15 21:36 UTC; looked up by DL number via scout_gatekit, the explicit time is the fallback), operator-closed fills (MANUAL /
+# EXTERNAL_CLOSE, DECISION_LOG 331) excluded and listed. Comparator = the LITE C exit actually traded (booked pnl %) vs the +1.5 counterfactual
+# (recorded peak_pnl ≥ +1.5 → books +1.5, else as traded). Read once all 20 are closed: CF avg > actual avg → "→ LITE to +1.5"; else hold.
+LTG_N, LTG_TP = 20, 1.5
+LTG_SLEEVES = ("FRENZY_LITE", "FRENZY_LITE_RETRY")
+LTG_DL, LTG_FLOOR_FALLBACK = 301, "2026-10-15T21:36:00"
+
+
+def ltg_floor():
+    """the DL 301 deploy (commit time, no lag — the gate counts from the deploy) as an ISO string; not in git → the explicit fallback."""
+    ct = _GK.dl_commit_ts(LTG_DL)
+    if ct is None:
+        _GK.warn_not_evaluable(f"LITE TP gate floor (DECISION_LOG {LTG_DL}) — explicit fallback {LTG_FLOOR_FALLBACK} UTC used", LTG_DL)
+        return LTG_FLOOR_FALLBACK
+    return pd.Timestamp(int(ct), unit="s").strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def ltg_read(o, floor):
+    """pure: export rows (opened_at, pair, direction, entry_strategy, status, pnl_percentage, peak_pnl, close_reason) → dict(state, n_closed,
+    first, actual, cf, opx). state: 'to_15' (CF avg > actual) · 'hold' · 'collecting'."""
+    o = o.copy()
+    if not len(o):
+        return dict(state="collecting", n_closed=0, first=o, actual=None, cf=None, opx=o)
+    o["_k"] = o.opened_at.astype(str).str[:19].str.replace(" ", "T")
+    o["_c"] = o.status.astype(str).str.upper().eq("CLOSED")
+    o = o.sort_values("_c", kind="stable").drop_duplicates(["_k", "pair", "direction"], keep="last")   # CLOSED beats OPEN
+    o = o[o.entry_strategy.astype(str).isin(LTG_SLEEVES) & (o.direction.astype(str) == "LONG") & (o._k >= str(floor)[:19])]
+    o = o[o.status.astype(str).str.upper().isin(["OPEN", "CLOSED"])]
+    o, opx = _GK.split_operator_closed(o)
+    first = o.sort_values(["_k", "pair"], kind="stable").head(LTG_N).copy()
+    first["kk"] = first._k
+    first["act"] = pd.to_numeric(first.pnl_percentage, errors="coerce").where(first._c)
+    pk = pd.to_numeric(first.get("peak_pnl"), errors="coerce") if "peak_pnl" in first else pd.Series(np.nan, index=first.index)
+    first["cf"] = np.where(pk >= LTG_TP, LTG_TP, first.act)
+    first["cf"] = first.cf.where(first.act.notna())
+    done = first[first.act.notna()]
+    act = float(done.act.mean()) if len(done) else None
+    cf = float(done.cf.mean()) if len(done) else None
+    if len(first) < LTG_N or len(done) < LTG_N:
+        state = "collecting"
+    else:
+        state = "to_15" if cf > act else "hold"
+    return dict(state=state, n_closed=len(done), first=first, actual=act, cf=cf, opx=opx)
+
+
+def ltg_lines(r, floor):
+    f = lambda v: "–" if v is None else f"{v:+.3f}"
+    verdict = {"to_15": "🔔 → LITE to +1.5 (frenzy_lite_tp_pct 0 — operator acts)", "hold": "✅ hold — LITE C stays",
+               "collecting": f"⏳ collecting ({r['n_closed']}/{LTG_N} closed)"}[r["state"]]
+    L = [f"## 🎯 LITE TP gate (DECISION_LOG 284, RE-BASED by 333 — LITE C actually traded vs the +{LTG_TP:g} counterfactual)", "",
+         f"Cohort (frozen): the first {LTG_N} FRENZY_LITE + FRENZY_LITE_RETRY fills opened ≥ {str(floor)[:16].replace('T', ' ')} UTC (DL {LTG_DL} "
+         f"deploy); +{LTG_TP:g} CF = recorded peak ≥ +{LTG_TP:g} books +{LTG_TP:g}, else as traded. Bar: CF avg > actual avg → LITE to +{LTG_TP:g}.", "",
+         f"**N {r['n_closed']}/{LTG_N} closed · actual (LITE C as traded) avg {f(r['actual'])} % · +{LTG_TP:g} CF avg {f(r['cf'])} % → {verdict}**",
+         f"_{_GK.operator_closed_line(r['opx'])} (not the bot's exit, never counted)._"]
+    fi = r["first"]
+    if len(fi):
+        L.append("Fills: " + " · ".join(f"{str(x.kk)[5:16].replace('T', ' ')} {str(x.pair).replace('USDT', '')}"
+                                        f"{'ʳ' if str(x.entry_strategy).endswith('RETRY') else ''} "
+                                        + (f"{x.act:+.2f}→{x.cf:+.2f}" if pd.notna(x.act) else "open") for x in fi.itertuples()))
+    return L + [""]
+
+
+def ltg_run():
+    cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "peak_pnl", "close_reason")
+    fr = []
+    for f in sorted(_EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")), key=os.path.getmtime):
+        try:
+            d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols)
+        except Exception:
+            continue
+        if {"opened_at", "entry_strategy", "pair", "status"} <= set(d.columns):
+            fr.append(d.reindex(columns=list(cols)))
+    o = pd.concat(fr, ignore_index=True) if fr else pd.DataFrame(columns=list(cols))
+    floor = ltg_floor()
+    return ltg_lines(ltg_read(o, floor), floor)
+
+
 # ─────────────────────────── 🎲 tracker 15 (FRENZY_WILLY, DECISION_LOG 251 — declared exception, no auto-off) ───────────────────────────
 WILLY_CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_WILLY.csv")
-WILLY_COLS = ("k", "pair", "day", "closed", "actual", "usd", "trig", "reason", "hours", "wait", "vol24", "mcap", "notional")
+WILLY_COLS = ("k", "pair", "day", "closed", "actual", "usd", "trig", "reason", "hours", "wait", "vol24", "mcap", "notional",
+              "entry")   # entry = the booked entry_price (DECISION_LOG 336: the let-through walker re-walks from it)
 
 
 def willy_deploy_ms():
     """the floor = the "(DECISION_LOG 251)" commit time (scout_revert_gates.deploy_ms − its 10 min): no FRENZY_WILLY fill can predate it, so
-    this and the dashboard (every WILLY fill) read the same set. Unavailable → NOW."""
+    this and the dashboard (every WILLY fill) read the same set. Not found / unavailable → NOT_FOUND_MS with a loud NOT-EVALUABLE warning
+    (scout_gatekit.warn_not_evaluable) — never NOW (DECISION_LOG 331): nothing is counted until the floor is readable."""
     try:
         sd = os.path.join(ROOT, "scripts")
         if sd not in sys.path:
             sys.path.insert(0, sd)
         import scout_revert_gates as _RG
         return int(_RG.deploy_ms("FRENZY_WILLY")) - 10 * MIN
-    except Exception:
-        return int(time.time() * 1000)
+    except Exception as e:   # 🧰 (331) not found / unavailable → NOT EVALUABLE (loud; nothing counted), never NOW
+        _GK.warn_not_evaluable(f"FRENZY_WILLY trackers (DECISION_LOG 251 floor: {str(e)[:80]})", 251)
+        return NOT_FOUND_MS
 
 
 def _willy_fills():
     """FRENZY_WILLY LONG fills in the orders exports (newest export wins per opened_at + pair) → DataFrame in WILLY_COLS."""
     cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "pnl", "close_reason", "entry_frenzy_willy_trigger",
-            "entry_frenzy_hours", "entry_frenzy_willy_wait_bars", "entry_pair_volume_24h_usd", "entry_mcap_usd", "notional_value")
+            "entry_frenzy_hours", "entry_frenzy_willy_wait_bars", "entry_pair_volume_24h_usd", "entry_mcap_usd", "notional_value", "entry_price")
     fr = []
     for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
@@ -3553,7 +3641,7 @@ def willy_rows(o, since_ms=None):
                             usd=num("pnl").where(closed), trig=pd.Series(tg, index=o.index).where(lambda x: x.isin(["A", "B"]), "?"),
                             reason=(o.close_reason.astype(str) if "close_reason" in o else ""), hours=num("entry_frenzy_hours"),
                             wait=num("entry_frenzy_willy_wait_bars"), vol24=num("entry_pair_volume_24h_usd"), mcap=num("entry_mcap_usd"),
-                            notional=num("notional_value")))
+                            notional=num("notional_value"), entry=num("entry_price")))
     if since_ms is not None:
         out = out[pd.to_datetime(out.k, errors="coerce").map(lambda t: (t.value // 1_000_000) if pd.notna(t) else -1) >= int(since_ms)]
     return out.drop_duplicates(["k", "pair"], keep="last").reset_index(drop=True)
@@ -3565,6 +3653,9 @@ def willy_merge(old, new):
         return pd.DataFrame(columns=list(WILLY_COLS))
     m = pd.concat(parts, ignore_index=True).reindex(columns=list(WILLY_COLS))
     m["closed"] = m.closed.astype(str).isin(_TRUE + ("true",))
+    # (336) a newer export row without an entry price never wipes the stored one (older exports / stores predate the column)
+    m["entry"] = pd.to_numeric(m.entry, errors="coerce")
+    m["entry"] = m.groupby(["k", "pair"], sort=False).entry.transform(lambda x: x.ffill().bfill())
     return m.drop_duplicates(["k", "pair"], keep="last").sort_values("k").reset_index(drop=True)
 
 
@@ -3662,7 +3753,8 @@ def willy_lines(w, since_ms=None, J=None):
 TB_CSV = os.path.join(ROOT, "reports", "SCOUT_WILLY_TURNOVER_BLOCKED.csv")
 TB_STATE = os.path.join(ROOT, "reports", "SCOUT_WILLY_TURNOVER_STATE.json")
 TB_N, TB_DAYS, TB_CONFIRM = 15, 8, -0.20
-TB_COLS = ("t", "pair", "gate", "trig", "R", "price", "pct", "how", "tries", "src", "final", "entry", "err", "vol24", "mcap")
+TB_COLS = ("t", "pair", "gate", "trig", "R", "price", "pct", "how", "tries", "src", "final", "entry", "err", "vol24", "mcap",
+           "wpct", "wwhy", "wsrc", "wfinal", "wrule")   # w* = the DECISION_LOG 336 walker (today's live WILLY exit, tb_walker_rule) — the v2 verdict's price
 # 🏷 (DECISION_LOG 314, operator 2026-10-19 "add the mcap split to the watch line"): the blocked / let-through cohorts are ALSO split by market
 # cap — the backtest put the whole filter value below $50M (blocked −0.24 vs kept +0.15) and showed it rarely fires above $200M (8 / 1,609).
 # The WILLY event carries R only, so a blocked row's mcap = its 24 h futures quote volume at the refusal (Σ the 288 5m klines closed before
@@ -3684,6 +3776,49 @@ TB2_STATE = os.path.join(ROOT, "reports", "SCOUT_WILLY_TURNOVER_STATE_V2.json")
 TB_MAX_TRIES = 3   # a row whose klines fail on 3 runs (or a delisted pair) is marked UNPRICEABLE and skipped — deterministic, never re-tried
 TB_TICK_DL = 2     # (272) aggTrades day archives this tracker may download per run (data.binance.vision, not the fapi weight)
 TB_HOW = {"TP": "take profit", "STOP": "stop", "CAP": "cap"}
+# 🚶 (DECISION_LOG 336, operator-approved) the v2 gate compares WALKER vs WALKER. The v2 bar above compared the blocked rows (priced by the
+# scout pricer: +tp / stop / cap, first-print TP booking, no late TP) with the let-through fills AS BOOKED — 19 paper-era let-through fills
+# were booked under the OLD WILLY exits (+1 / 120 min / no late TP), so the read mixed exits (reports/WILLY_TURNOVER_V2_DEEP_2026-10-21.md:
+# as coded blocked 21 · +0.216 vs booked 36 · +0.103 → REVERT; walker-vs-walker 21 · +0.199 vs 36 · +0.263 → HOLD). Since 336 BOTH sides are
+# priced by ONE walker under TODAY's live WILLY exit — scout_willy_timecap.evaluate_late(book="live"), the walker build_willy_exit_cf.py uses
+# (+tp / −stop / cap, ⏰ late TP DL 297, 🎯 resting TP DL 296 booking): blocked = the refusal's first print (the scout's entry ruler,
+# unchanged); let-through = the fill's booked entry price at its opened_at. Ticks first, the 1m fallback flagged (ᵖ, holds the read). The
+# frozen sample (first TB2_N blocked by refusal time on ≥ TB2_DAYS days) and the bar (≥ → REVERT · ≤ −TB2_MARGIN → confirmed · else hold →
+# re-read at TB2_N2) are UNCHANGED. The old as-booked read is printed beside it, info only. Let-through walks: reports/SCOUT_WILLY_TURNOVER_LT_WALK.csv.
+TB_WHOW = {"TP": "take profit", "LATE_TP": "late TP", "STOP": "stop", "CAP": "cap"}
+TB_LT_CSV = os.path.join(ROOT, "reports", "SCOUT_WILLY_TURNOVER_LT_WALK.csv")
+TB_LT_COLS = ("t", "pair", "entry", "booked", "reason", "wpct", "wwhy", "wsrc", "wfinal", "wrule", "tries", "err")
+# wrule = the walker rule label a w* price was walked under: a stored walk under another exit (the live WILLY exit changed) is walked again
+TB_RULER = "walker v walker (DECISION_LOG 336)"
+TB_BOOKED_CLASS = {"FRENZY_TP": "TP", "WILLY_LATE_TP": "LATE_TP", "STOP_LOSS": "STOP", "MAX_HOLD_TIME": "CAP"}
+
+
+def tb_walker_rule(th=None):
+    """(336) TODAY's live WILLY exit for the walker — the same reads build_willy_exit_cf.py makes: services.frenzy.frenzy_willy_levels (tp /
+    stop / cap), frenzy_willy_late_tp (⏰ DL 297, None = off) and resting_tp_willy_enabled (🎯 DL 296 → book='live'). → dict."""
+    sd = os.path.join(ROOT, "scripts")
+    if sd not in sys.path:
+        sys.path.insert(0, sd)
+    import scout_willy_hold as WH
+    from services.frenzy import frenzy_willy_levels, frenzy_willy_late_tp
+    th = WH._live_th() if th is None else th
+    tp, st, cap = frenzy_willy_levels(th)
+    late = frenzy_willy_late_tp(th)
+    rtp = bool(getattr(th, "resting_tp_willy_enabled", False))
+    label = (f"+{tp:g} / " + (f"−{abs(st):g}" if st else "no stop") + f" / {int(cap)} min" + (f" · late +{late[1]:g} from min {late[0]:g}" if late else "")
+             + (" · resting TP" if rtp else ""))
+    return dict(tp=float(tp), sl=(abs(float(st)) if st else None), cap=int(cap), late=late, rtp=rtp, label=label)
+
+
+def tb_walker_eval(P, wr):
+    """(336) one hybrid path under the walker rule — exactly build_willy_exit_cf.walk: no late TP and no resting TP → the print-booking
+    walker (FX.evaluate); else scout_willy_timecap.evaluate_late with book 'live' when the resting TP is on."""
+    import scout_frenzy_willy_exit as FWX
+    tp, sl, cap = wr["tp"], wr["sl"], wr["cap"]
+    if wr["late"] is None and not wr["rtp"]:
+        return FWX.evaluate(P, tp, sl, cap)
+    lm, lp = (float(wr["late"][0]), float(wr["late"][1])) if wr["late"] else (float(cap) + 1.0, tp)
+    return FWX.WT.evaluate_late(P, tp, sl, cap, lm, lp, book="live" if wr["rtp"] else "print")
 
 
 def willy_events():
@@ -3804,35 +3939,157 @@ def tb_step(state, blocked):
 
 
 def tb2_step(state, blocked, lt):
-    """(314) the override gate v2 (pure): blocked = RULE-blocked rows (priced, final, not UNPRICEABLE), lt = let-through WILLY fills
-    (columns t, pct) — both filtered here to t ≥ TB2_FROM. → state (frozen once it holds a verdict)."""
+    """(314) the override gate v2 (pure): blocked = RULE-blocked rows (not UNPRICEABLE), lt = let-through WILLY fills — both filtered here
+    to t ≥ TB2_FROM. (336) WALKER vs WALKER: both sides are read on the walker columns wpct / wfinal (today's live WILLY exit, one walker);
+    a provisional (wfinal False) or unpriced walker price on EITHER side of the frozen window holds the read (let-through rows whose walk
+    is UNPRICEABLE are listed apart and never counted). → state (frozen once it holds a verdict). A legacy hold made under the pre-336
+    ruler (no 'ruler' key) is dropped and re-read here; a legacy VERDICT stays frozen."""
     st = dict(state or {})
     if st.get("verdict"):
         return st
+    if st.get("held_at_30") and st.get("ruler") != TB_RULER:
+        st = {}
     b = blocked[(blocked.t.astype(str).str[:19] >= TB2_FROM) & (blocked.how.astype(str) != "UNPRICEABLE")] if len(blocked) else blocked
     stage = TB2_N2 if st.get("held_at_30") else TB2_N
     b = b.sort_values("t", kind="stable").head(stage)           # deep review: a FROZEN first-N sample (like v1) — later rows never hold the read
-    bp = pd.to_numeric(b.pct, errors="coerce") if len(b) else pd.Series(dtype=float)
-    if len(b) and ("final" in b) and not b.final.astype(str).isin(_TRUE).all():
-        return st                                               # a provisional price inside the sample holds the read
+    bp = pd.to_numeric(b.wpct, errors="coerce") if len(b) and "wpct" in b else pd.Series(np.nan, index=b.index, dtype=float)
+    if len(b) and not (b.wfinal.astype(str).isin(_TRUE).all() if "wfinal" in b else False):
+        return st                                               # a provisional / missing walker price inside the sample holds the read
     n, nd = int(bp.notna().sum()), (b.t.astype(str).str[:10].nunique() if len(b) else 0)
     if len(b) < stage or nd < TB2_DAYS or bp.isna().any():
         return st
     t_last = str(b.t.astype(str).str[:19].iloc[-1])
     l = lt[(lt.t.astype(str).str[:19] >= TB2_FROM) & (lt.t.astype(str).str[:19] <= t_last)] if len(lt) else lt   # same period as the sample
-    lp = pd.to_numeric(l.pct, errors="coerce").dropna() if len(l) else pd.Series(dtype=float)
-    if not len(lp):
+    if len(l) and "wwhy" in l:
+        l = l[l.wwhy.astype(str) != "UNPRICEABLE"]
+    if not len(l):
         return st
+    lp = pd.to_numeric(l.wpct, errors="coerce") if "wpct" in l else pd.Series(np.nan, index=l.index, dtype=float)
+    if lp.isna().any() or not (l.wfinal.astype(str).isin(_TRUE).all() if "wfinal" in l else False):
+        return st                                               # every let-through fill of the window walked, final — else wait
     bm, lm = float(bp.mean()), float(lp.mean())
     if bm >= lm:
         v = "REVERT: set frenzy_willy_max_vol_mcap_ratio 0"
     elif bm <= lm - TB2_MARGIN:
         v = "filter confirmed"
     elif stage == TB2_N:
-        return dict(st, held_at_30=True, at30=dict(n=n, days=int(nd), blocked=bm, let_through=lm))
+        return dict(st, held_at_30=True, ruler=TB_RULER, at30=dict(n=n, days=int(nd), blocked=bm, let_through=lm, n_lt=int(len(lp))))
     else:
         v = "holds (operator decides)"
-    return dict(st, verdict=v, n=n, days=int(nd), blocked=bm, let_through=lm, n_lt=int(len(lp)), at=str(b.t.iloc[-1]))
+    return dict(st, verdict=v, ruler=TB_RULER, n=n, days=int(nd), blocked=bm, let_through=lm, n_lt=int(len(lp)), at=str(b.t.iloc[-1]))
+
+
+def tb_archive_entries():
+    """(336) {(opened_at[:19] 'T', pair): entry_price} for every FRENZY_WILLY fill in the archived batches (reports/BASELINE*_orders*.csv) —
+    the let-through walker's fallback when a stored WILLY row predates the entry column and its export left ~/Downloads. Never raises."""
+    out = {}
+    for f in sorted(glob.glob(os.path.join(ROOT, "reports", "BASELINE[0-9]*_*orders*.csv"))):
+        try:
+            d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in ("opened_at", "pair", "entry_strategy", "entry_price"))
+        except Exception:
+            continue
+        if not {"opened_at", "pair", "entry_strategy", "entry_price"} <= set(d.columns):
+            continue
+        d = d[d.entry_strategy.astype(str) == "FRENZY_WILLY"]
+        for k, p, e in zip(d.opened_at.astype(str).str[:19].str.replace(" ", "T"), d.pair.astype(str), pd.to_numeric(d.entry_price, errors="coerce")):
+            if np.isfinite(e) and e > 0:
+                out[(k, p)] = float(e)
+    return out
+
+
+def tb_lt_merge(old, new):
+    """(336) the let-through walk store: a final walker price is kept; new booked fields refresh (pure)."""
+    parts = [x for x in (old, new) if x is not None and len(x)]
+    if not parts:
+        return pd.DataFrame(columns=list(TB_LT_COLS))
+    m = pd.concat(parts, ignore_index=True).reindex(columns=list(TB_LT_COLS))
+    return m.drop_duplicates(["t", "pair"], keep="last").sort_values("t").reset_index(drop=True)
+
+
+def tb_lt_price(w, now_ms, budget=None, wr=None, store=TB_LT_CSV, entries=None):
+    """(336) the let-through side under the walker: every CLOSED let-through WILLY fill (w = the WILLY store rows, operator-closed already
+    excluded by the caller) opened ≥ TB2_FROM, re-walked from its BOOKED entry price at its opened_at under today's live WILLY exit
+    (tb_walk entry mode → tb_walker_eval) — ticks first, the 1m tail flagged provisional. A final walk is never redone; a fill that fails
+    TB_MAX_TRIES runs (no entry price / no path) → wwhy UNPRICEABLE, listed apart; a run before the fill's exit window (max hold + 1 min)
+    has passed is PENDING and never counts as a try. Persisted to `store` (None = no write). → DataFrame."""
+    sd = os.path.join(ROOT, "scripts")
+    if sd not in sys.path:
+        sys.path.insert(0, sd)
+    import scout_willy_hold as WH
+    wr = tb_walker_rule() if wr is None else wr
+    rule = WH.exit_rule("FRENZY_WILLY")
+    budget = {"dl": TB_TICK_DL, "deadline": time.monotonic() + 60} if budget is None else budget
+    old = _load_csv(store, ["t", "pair"]) if store and os.path.exists(store) else pd.DataFrame(columns=list(TB_LT_COLS))
+    old = old.reindex(columns=list(TB_LT_COLS))
+    if not len(w):
+        return old.iloc[0:0]
+    c = w[w.closed.astype(str).isin(_TRUE + ("true",)) & (w.k.astype(str).str[:19] >= TB2_FROM)]
+    ent = None
+    rows, state, tc = [], {}, {}
+    prev = {(str(a), str(b)): r for a, b, r in zip(old.t.astype(str), old.pair.astype(str), old.to_dict("records"))}
+    for r in c.itertuples():
+        k, pair = str(r.k)[:19], str(r.pair)
+        o = dict(prev.get((k, pair)) or {})
+        rec = dict(t=k, pair=pair, booked=pd.to_numeric(r.actual, errors="coerce"), reason=str(r.reason),
+                   entry=pd.to_numeric(getattr(r, "entry", np.nan), errors="coerce"))
+        if not (pd.notna(rec["entry"]) and rec["entry"] > 0):
+            rec["entry"] = pd.to_numeric(o.get("entry"), errors="coerce")
+        if not (pd.notna(rec["entry"]) and rec["entry"] > 0):
+            if ent is None:
+                ent = entries if entries is not None else tb_archive_entries()
+            rec["entry"] = ent.get((k, pair), np.nan)
+        same_rule = str(o.get("wrule")) == wr["label"]
+        done = same_rule and pd.notna(pd.to_numeric(o.get("wpct"), errors="coerce")) and str(o.get("wfinal")) in _TRUE
+        if done or (same_rule and str(o.get("wwhy")) == "UNPRICEABLE"):
+            rows.append({**o, **{x: rec[x] for x in ("booked", "reason")}})
+            continue
+        rec.update({x: o.get(x, np.nan) for x in ("wpct", "wwhy", "wsrc", "wfinal", "tries", "err")} if same_rule else dict(tries=0))
+        rec["wrule"] = wr["label"]
+        te = _ms(k)
+        res = None
+        window_done = te + wr["cap"] * MIN + MIN <= now_ms          # the fill's max-hold exit window (+1 min) has passed
+        if pd.notna(rec["entry"]) and rec["entry"] > 0 and window_done:
+            try:
+                res = tb_walk(pair, te, rule, now_ms, budget, lambda a, b, _p=pair: WH.klines_1m(_p, a, b, state), tc, wr=wr,
+                              entry=(float(rec["entry"]), te))
+            except WH.RateLimited:
+                rows.append(rec)
+                continue
+            except Exception as e:
+                rec["err"] = f"lt walk error: {type(e).__name__}: {e}"[:200]
+                rows.append(rec)
+                continue
+        if res is not None and pd.notna(res.get("wpct")):
+            rec.update(wpct=res["wpct"], wwhy=res["wwhy"], wsrc=res["wsrc"], wfinal=bool(res["wfinal"]), tries=0)
+        elif not window_done:
+            pass                                                     # review fix: still inside its exit window = PENDING — no try counted
+        else:
+            n = int(pd.to_numeric(rec.get("tries"), errors="coerce") or 0) + 1 if pd.notna(pd.to_numeric(rec.get("tries"), errors="coerce")) else 1
+            rec["tries"] = n
+            if n >= TB_MAX_TRIES:
+                rec["wwhy"] = "UNPRICEABLE"
+        rows.append(rec)
+    out = tb_lt_merge(old, pd.DataFrame(rows, columns=list(TB_LT_COLS)) if rows else None)
+    if store and len(out):
+        _save_csv(out, store)
+    keys = set(zip(c.k.astype(str).str[:19], c.pair.astype(str)))
+    return out[[(a, b) in keys for a, b in zip(out.t.astype(str), out.pair.astype(str))]].reset_index(drop=True)
+
+
+def tb_lt_parity(ltw, since_ms):
+    """(336) walker vs booked on the let-through fills opened ≥ since_ms (the DL 296 / 297 deploy — booked under today's exit): → dict(n,
+    booked, walker, same, mad) or None. same = the walker's exit class equals the booked close reason's class (pure)."""
+    if since_ms is None or ltw is None or not len(ltw):
+        return None
+    g = ltw[[(_ms(t) or 0) >= int(since_ms) for t in ltw.t.astype(str)]]
+    wp, bp = pd.to_numeric(g.wpct, errors="coerce"), pd.to_numeric(g.booked, errors="coerce")
+    g = g[wp.notna() & bp.notna()]
+    if not len(g):
+        return None
+    wp, bp = pd.to_numeric(g.wpct, errors="coerce"), pd.to_numeric(g.booked, errors="coerce")
+    wcls = g.wwhy.astype(str).map({v: k for k, v in TB_WHOW.items()})
+    bcls = g.reason.astype(str).map(TB_BOOKED_CLASS)
+    return dict(n=int(len(g)), booked=float(bp.mean()), walker=float(wp.mean()), same=int((wcls == bcls).sum()), mad=float((wp - bp).abs().mean()))
 
 
 def _tb_k1m(m1):
@@ -3844,52 +4101,80 @@ def _tb_k1m(m1):
 
 TB_ENTRY_MAX_MS = 60_000                         # caveman review: a tick entry later than this after the refusal → the 1m entry
 
-def tb_walk(pair, t, rule, now_ms, budget, kl, tcache=None):
+def tb_walk(pair, t, rule, now_ms, budget, kl, tcache=None, wr=None, entry=None):
     """(272) one blocked entry refused at t (ms) under rule = (tp, stop ≤ 0 or None, cap min): ticks first, the 1m tail only after the ticks
     end and only when the exit is not decided on them (kl(start, end) → klines_1m rows, called lazily). → dict(pct, how, src, final,
-    entry) or None (no path / exit undecided). final = decided on tick prints, or no needed tick day can still arrive."""
+    entry) or None (no path / exit undecided). final = decided on tick prints, or no needed tick day can still arrive.
+    (336) wr = tb_walker_rule() → the SAME path is also walked under today's live WILLY exit: + wpct / wwhy / wsrc / wfinal (NaN when the
+    walker is undecided). entry = (E, te_ms) → a let-through FILL walked from its booked entry price at its open (no refusal-print search)."""
     import scout_frenzy_willy_exit as FWX
     WT = FWX.WT
     tp, stop, cap = rule
     sl = abs(float(stop)) if stop else None
+    hz = max(int(cap), int(wr["cap"])) if wr else int(cap)          # the path covers both exits' caps
     start = -(-int(t) // MIN) * MIN
-    days = [f"{d:%Y-%m-%d}" for d in pd.date_range(pd.Timestamp(t, unit="ms").normalize(), pd.Timestamp(t + (cap + 1) * MIN, unit="ms").normalize())]
+    days = [f"{d:%Y-%m-%d}" for d in pd.date_range(pd.Timestamp(t, unit="ms").normalize(), pd.Timestamp(t + (hz + 1) * MIN, unit="ms").normalize())]
     def states(bud):
         """per needed UTC day: 'ok' (on disk) / 'pending' / 'missing' (given up). bud {'dl': 0} = cache only, never a network call."""
         return {d: ("ok" if WT._tick_file(pair, d) is not None else _tick_day(pair, d, now_ms, bud)[0]) for d in days}
 
+    def fin(ev, P, st):
+        on_ticks = not ev["on_bar"] and P["n_tick"] > 0
+        src = "ticks" if on_ticks else FWX.path_src(P)
+        return src, bool(on_ticks or src == "ticks" or all(v in ("ok", "missing") for v in st.values()))
+
+    def evals(P):
+        return FWX.evaluate(P, tp, sl, cap), (tb_walker_eval(P, wr) if wr else None)
+
     def once(st):
-        z = WT._load_day(pair, days[0], tcache)
         E = te = None
-        if z is not None and (z[2] is None or WT._covers(z[2], (int(t), int(t) + MIN))):
-            i = int(np.searchsorted(z[0], int(t), side="left"))
-            if i < len(z[0]) and z[0][i] < int(pd.Timestamp(days[0]).value // 1_000_000) + 86_400_000 and z[0][i] - int(t) <= TB_ENTRY_MAX_MS:
-                E, te = float(z[1][i]), int(z[0][i]) - 1    # −1 ms: prints sharing the entry print's ms stay on the path (the entry print
-                #                                            itself is a −0.09 % event, never a line)
+        if entry is not None:                        # (336) a let-through fill: its booked entry price at its open
+            E, te = float(entry[0]), int(entry[1])
+        else:
+            z = WT._load_day(pair, days[0], tcache)
+            if z is not None and (z[2] is None or WT._covers(z[2], (int(t), int(t) + MIN))):
+                i = int(np.searchsorted(z[0], int(t), side="left"))
+                if i < len(z[0]) and z[0][i] < int(pd.Timestamp(days[0]).value // 1_000_000) + 86_400_000 and z[0][i] - int(t) <= TB_ENTRY_MAX_MS:
+                    E, te = float(z[1][i]), int(z[0][i]) - 1    # −1 ms: prints sharing the entry print's ms stay on the path (the entry print
+                    #                                            itself is a −0.09 % event, never a line)
         k1m = None
         if E is None:                                # no tick print at the refusal → the old 1m ruler's entry (next minute's open), provisional
-            m1 = kl(start, start + cap * MIN)
+            m1 = kl(start, start + hz * MIN)
             if not m1 or int(m1[0][0]) != start:
                 return None
             k1m = _tb_k1m(m1)
             E, te = float(m1[0][1]), start
-        P = FWX.load_path(pair, te, E, cap, tcache, k1m=_tb_k1m([]) if k1m is None else k1m)
-        ev = FWX.evaluate(P, tp, sl, cap)
-        if ev["why"] == "UNRES" and k1m is None and P["end_ms"] < te + cap * MIN:
-            m1 = kl(start, te + (cap + 1) * MIN)        # caveman review: through te + cap (the entry print can sit after `start`)
+        P = FWX.load_path(pair, te, E, hz, tcache, k1m=_tb_k1m([]) if k1m is None else k1m)
+        ev, evw = evals(P)
+        und = ev["why"] == "UNRES" or (evw is not None and evw["why"] == "UNRES")
+        if und and k1m is None and P["end_ms"] < te + hz * MIN:
+            m1 = kl(start, te + (hz + 1) * MIN)         # caveman review: through te + cap (the entry print can sit after `start`)
             if m1:
-                P = FWX.load_path(pair, te, E, cap, tcache, k1m=_tb_k1m(m1))
-                ev = FWX.evaluate(P, tp, sl, cap)
-        if ev["why"] == "UNRES":
+                P = FWX.load_path(pair, te, E, hz, tcache, k1m=_tb_k1m(m1))
+                ev, evw = evals(P)
+        if ev["why"] == "UNRES" and (evw is None or evw["why"] == "UNRES"):
             return None
-        on_ticks = not ev["on_bar"] and P["n_tick"] > 0
-        src = "ticks" if on_ticks else FWX.path_src(P)
-        final = bool(on_ticks or src == "ticks" or all(v in ("ok", "missing") for v in st.values()))
-        return dict(pct=round(float(ev["pct"]), 4), how=TB_HOW[ev["why"]], src=src, final=final, entry=E)
+        out = dict(entry=E)
+        if ev["why"] != "UNRES":
+            src, final = fin(ev, P, st)
+            out.update(pct=round(float(ev["pct"]), 4), how=TB_HOW[ev["why"]], src=src, final=final)
+        if evw is not None:
+            if evw["why"] == "UNRES":
+                out.update(wpct=np.nan, wwhy=np.nan, wsrc=np.nan, wfinal=False)
+            else:
+                wsrc, wfinal = fin(evw, P, st)
+                out.update(wpct=round(float(evw["pct"]), 4), wwhy=TB_WHOW.get(evw["why"], evw["why"]), wsrc=wsrc, wfinal=wfinal)
+        if entry is None and "pct" not in out:
+            return None                              # a blocked row always carries the scout price (v1 / info read)
+        return out
+
+    def settled(x):
+        # a blocked row needs its scout price final (+ the walker's); a let-through fill (entry mode) only its walker price
+        return x is not None and (entry is not None or bool(x.get("final"))) and (wr is None or bool(x.get("wfinal")))
 
     st = states({"dl": 0})                           # (272 review M7) the cached ticks first — no download yet
     w = once(st)
-    if (w is None or not w["final"]) and any(v != "ok" for v in st.values()):
+    if not settled(w) and any(v != "ok" for v in st.values()):
         st2 = states(budget)                         # only an undecided / provisional result may spend the archive budget
         if st2 != st:
             if tcache is not None:
@@ -3898,11 +4183,13 @@ def tb_walk(pair, t, rule, now_ms, budget, kl, tcache=None):
     return w
 
 
-def tb_price(rows, now_ms, budget=None, w=None):
+def tb_price(rows, now_ms, budget=None, w=None, wr=None):
     """price the RULE-blocked rows under WILLY's live exit with the (272) ticks-first ruler (tb_walk). Re-prices rows priced before 272 (no
     src) and provisional rows (final False) each run; a final row is never touched; let-through rows (the pending entry filled later — w =
     the WILLY fills) are never priced (272 review M7). A pre-272 row whose re-walk fails TB_MAX_TRIES runs → UNPRICEABLE (its refuted 1m
-    price dropped, out of the verdict — review M1). Stops on 418 / 429 / weight / the shared cooldown (scout_willy_hold)."""
+    price dropped, out of the verdict — review M1). Stops on 418 / 429 / weight / the shared cooldown (scout_willy_hold).
+    (336) wr = tb_walker_rule() → each row also carries the walker price (wpct / wwhy / wsrc / wfinal); a row FINAL under the scout ruler but
+    without a final walker price is walked again for the walker columns only (its scout price is never rewritten)."""
     sd = os.path.join(ROOT, "scripts")
     if sd not in sys.path:
         sys.path.insert(0, sd)
@@ -3912,20 +4199,28 @@ def tb_price(rows, now_ms, budget=None, w=None):
     rule = WH.exit_rule("FRENZY_WILLY")
     cap = int(rule[2])
     rows = rows.reindex(columns=list(dict.fromkeys(list(TB_COLS) + list(rows.columns)))).copy()
-    for c in ("how", "src", "final", "err"):
+    for c in ("how", "src", "final", "err", "wwhy", "wsrc", "wfinal", "wrule"):
         rows[c] = rows[c].astype(object)   # an all-NaN column reads back as float64 → assigning "take profit" raised (10-08 live run)
     tc = {}
     lf = tb_later_filled(rows, w) if len(rows) else pd.Series(dtype=bool)
+    if wr is not None:
+        cap = max(cap, int(wr["cap"]))
     for i, r in rows.iterrows():
         if r.gate != "FRENZY_WILLY_TURNOVER" or str(r.how) == "UNPRICEABLE" or bool(lf.get(i, False)):
             continue
-        if pd.notna(r.pct) and isinstance(r.src, str) and str(r.final) in _TRUE:
-            continue                                  # final under the 272 ruler — never re-priced
+        old_final = pd.notna(r.pct) and isinstance(r.src, str) and str(r.final) in _TRUE
+        w_done = wr is None or (pd.notna(pd.to_numeric(r.wpct, errors="coerce")) and str(r.wfinal) in _TRUE and str(r.wrule) == wr["label"])
+        if old_final and w_done:
+            continue                                  # final under the 272 ruler (and the 336 walker) — never re-priced
+        if wr is not None and pd.notna(pd.to_numeric(r.wpct, errors="coerce")) and str(r.wrule) != wr["label"]:
+            for c in ("wpct", "wwhy", "wsrc"):        # (336) walked under another live exit → stale: cleared, walked again below
+                rows.at[i, c] = np.nan
+            rows.at[i, "wfinal"] = False
         t = _ms(r.t)
         if t + cap * MIN + MIN > now_ms:
             continue
         try:
-            res = tb_walk(str(r.pair), t, rule, now_ms, budget, lambda a, b: WH.klines_1m(str(r.pair), a, b, state), tc)
+            res = tb_walk(str(r.pair), t, rule, now_ms, budget, lambda a, b: WH.klines_1m(str(r.pair), a, b, state), tc, wr=wr)
         except WH.RateLimited:
             continue   # a rate-limit stop is never counted as a failed try; later rows may still be decided on cached ticks
         except Exception as e:                        # round-2 review: a code / data bug is logged on the row, never a silent failed try
@@ -3933,10 +4228,16 @@ def tb_price(rows, now_ms, budget=None, w=None):
             print(f"[WILLY_TURNOVER_BLOCKED] tb_walk error {r.pair} {r.t}: {type(e).__name__}: {e}")
             continue
         if res is not None:
+            if wr is not None:
+                res = {**res, "wrule": wr["label"]}
             for k, v in res.items():
+                if old_final and not k.startswith("w"):
+                    continue                          # (336) a final scout price is never rewritten — only the walker columns fill in
                 rows.at[i, k] = v
             rows.at[i, "tries"] = 0                   # caveman review: a success resets the failure count
             continue
+        if old_final:
+            continue                                  # (336) a walker-only re-walk that fails never touches the final scout row
         n = int(pd.to_numeric(r.tries, errors="coerce") or 0) + 1 if pd.notna(pd.to_numeric(r.tries, errors="coerce")) else 1
         rows.at[i, "tries"] = n
         if n >= TB_MAX_TRIES:
@@ -3988,7 +4289,7 @@ def _tb_rule_label():
         return "scout_willy_hold.exit_rule('FRENZY_WILLY')"
 
 
-def tb_lines(rows, w, state):
+def tb_lines(rows, w, state, ltw=None, par=None, wr_label=None):
     f = lambda v, d=3: "–" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{float(v):+.{d}f}"
     blk = tb_rule_blocked(rows, w)
     unr = rows[rows.gate == "FRENZY_WILLY_TURNOVER_UNREAD"] if len(rows) else rows
@@ -4039,15 +4340,45 @@ def tb_lines(rows, w, state):
     L.append(f"| UNREAD refusals (not priced) | {len(unr)} | {unr.t.astype(str).str[:10].nunique() if len(unr) else 0} | – | – | – | – |")
     s2 = state.get("_v2") or {}
     b2 = blk[blk.t.astype(str).str[:19] >= TB2_FROM] if len(blk) else blk
+    b2 = b2[b2.how.astype(str) != "UNPRICEABLE"] if len(b2) else b2
     l2 = lt[lt.t.astype(str).str[:19] >= TB2_FROM] if len(lt) else lt
-    b2p, l2p = pd.to_numeric(b2.pct, errors="coerce").dropna() if len(b2) else [], pd.to_numeric(l2.pct, errors="coerce").dropna() if len(l2) else []
-    L.append(f"**⚖ Override gate v2 (DECISION_LOG 314 — v1 fired 10-18, operator KEPT the filter):** "
-             + (f"**{s2['verdict']}** (frozen: {s2['n']} blocked on {s2['days']} days avg {f(s2['blocked'])} % vs let-through {f(s2['let_through'])} %)"
-                if s2.get("verdict") else
-                f"⏳ since {TB2_FROM[:16]} UTC: blocked {len(b2p)}/{TB2_N2 if s2.get('held_at_30') else TB2_N} on "
-                f"{b2.t.astype(str).str[:10].nunique() if len(b2) else 0}/{TB2_DAYS} days · avg {f(np.mean(b2p) if len(b2p) else None)} % vs let-through "
-                f"{len(l2p)} · {f(np.mean(l2p) if len(l2p) else None)} %" + (" · held at 30 → re-read at 60" if s2.get("held_at_30") else ""))
-             + f". Rule: blocked avg ≥ let-through → REVERT · ≤ let-through − {TB2_MARGIN:.2f} → confirmed · else hold → re-read once at {TB2_N2}.")
+    stage = TB2_N2 if s2.get("held_at_30") and s2.get("ruler") == TB_RULER else TB2_N
+
+    def st_(p):
+        p = pd.to_numeric(pd.Series(p), errors="coerce").dropna()
+        return (f"{len(p)} · {(p > 0).mean() * 100:.0f} % · {f(p.mean())} %" if len(p) else "0 · – · – %")
+    # 🚶 (336) the VERDICT read — walker vs walker, today's live WILLY exit on both sides
+    bw = pd.to_numeric(b2.wpct, errors="coerce") if len(b2) and "wpct" in b2 else pd.Series(dtype=float)
+    bwp = int((~b2.wfinal.astype(str).isin(_TRUE)).sum()) if len(b2) and "wfinal" in b2 else len(b2)
+    lw = ltw if ltw is not None and len(ltw) else pd.DataFrame(columns=list(TB_LT_COLS))
+    lwu = int((lw.wwhy.astype(str) == "UNPRICEABLE").sum()) if len(lw) else 0
+    lwk = lw[lw.wwhy.astype(str) != "UNPRICEABLE"] if len(lw) else lw
+    lwv = pd.to_numeric(lwk.wpct, errors="coerce") if len(lwk) else pd.Series(dtype=float)
+    lwp = int((~lwk.wfinal.astype(str).isin(_TRUE)).sum()) if len(lwk) else 0
+    if s2.get("verdict"):
+        head = (f"**{s2['verdict']}** (frozen {str(s2.get('at', ''))[:16]}, {s2.get('ruler', 'pre-336 ruler: blocked scout price vs let-through as booked')}: "
+                f"{s2['n']} blocked on {s2['days']} days avg {f(s2['blocked'])} % vs let-through {s2.get('n_lt', '–')} · {f(s2['let_through'])} %)")
+    else:
+        head = (f"⏳ blocked {int(bw.notna().sum())}/{stage} walked on {b2.t.astype(str).str[:10].nunique() if len(b2) else 0}/{TB2_DAYS} days"
+                + (" · held at 30 → re-read at 60" if stage == TB2_N2 else ""))
+    L.append(f"**⚖ Override gate v2 (DECISION_LOG 314; walker v walker since DECISION_LOG 336 — v1 fired 10-18, operator KEPT the filter):** {head}. "
+             f"Rule: blocked avg ≥ let-through → REVERT · ≤ let-through − {TB2_MARGIN:.2f} → confirmed · else hold → re-read once at {TB2_N2}; "
+             f"frozen sample = the first {TB2_N} blocked by refusal time on ≥ {TB2_DAYS} days, let-through = the closed WILLY fills of the same period.")
+    L.append(f"- 🚶 **Walker read (the verdict)** — both sides under today's live WILLY exit ({wr_label or 'tb_walker_rule'}; scout_willy_timecap."
+             f"evaluate_late book='live', the build_willy_exit_cf walker; ticks first, ᵖ = 1m part): blocked {st_(bw)}"
+             + (f" ({bwp} provisional ᵖ)" if bwp else "") + f" vs let-through {st_(lwv)}" + (f" ({lwp} provisional ᵖ)" if lwp else "")
+             + (f" · {lwu} let-through UNPRICEABLE (no entry / path, not counted)" if lwu else "")
+             + (f" · Δ {float(bw.mean()) - float(lwv.mean()):+.3f}" if bw.notna().any() and lwv.notna().any() else "") + ".")
+    bo = pd.to_numeric(b2.pct, errors="coerce") if len(b2) else pd.Series(dtype=float)
+    lo = pd.to_numeric(l2.pct, errors="coerce") if len(l2) else pd.Series(dtype=float)
+    L.append(f"- 📒 Old as-booked read (info only — mixes exit eras, DECISION_LOG 336): blocked (scout pricer {_tb_rule_label()}, no late TP, "
+             f"first-print TP) {st_(bo)} vs let-through AS BOOKED {st_(lo)}"
+             + (f" · Δ {float(bo.mean()) - float(lo.mean()):+.3f}" if bo.notna().any() and lo.notna().any() else "") + ".")
+    L.append("- 🔍 Walker parity on let-through (post DL 296 / 297 fills, booked under today's exit): "
+             + (f"{par['n']} fills · booked {f(par['booked'])} % vs walker {f(par['walker'])} % · same exit class {par['same']}/{par['n']} · "
+                f"mean |Δ| {par['mad']:.2f}" if par else "no post-297 let-through fill walked yet") + ".")
+    L.append(f"- N per side: blocked {len(b2)} rule-blocked since {TB2_FROM[:10]} ({int(bw.notna().sum())} walked) · let-through {len(l2)} closed fills "
+             f"({int(lwv.notna().sum())} walked).")
     return L + [""]
 
 
@@ -4057,7 +4388,12 @@ def tb_run(w, now_ms=None, state_path=TB_STATE):
     rows = tb_merge(old, tb_rows(willy_events()))
     since = willy_deploy_ms()
     rows = rows[rows.t.map(lambda x: (_ms(x) or 0) >= since)].reset_index(drop=True) if len(rows) else rows
-    rows = tb_price(rows, now_ms, w=w)
+    try:
+        wr = tb_walker_rule()                      # 🚶 (336) today's live WILLY exit — the v2 verdict's walker
+    except Exception as e:
+        wr = None
+        print(f"[WILLY_TURNOVER_BLOCKED] walker rule unreadable ({type(e).__name__}: {e}) — v2 read not evaluable this run")
+    rows = tb_price(rows, now_ms, w=w, wr=wr)
     rows = tb_fill_mcap(rows)   # 🏷 (314) mcap split — observe-only
     if len(rows):
         _save_csv(rows, TB_CSV)
@@ -4077,14 +4413,23 @@ def tb_run(w, now_ms=None, state_path=TB_STATE):
         s2 = json.load(open(v2_path)) if os.path.exists(v2_path) else {}
     except Exception:
         s2 = {}
-    lt = w.rename(columns={"k": "t"}).assign(pct=pd.to_numeric(w.actual, errors="coerce")) if len(w) else pd.DataFrame(columns=["t", "pct"])
-    n2 = tb2_step(s2, tb_rule_blocked(rows, w), lt)
+    ltw, par = None, None
+    if wr is not None:
+        try:
+            ltw = tb_lt_price(w, now_ms, wr=wr, store=TB_LT_CSV)    # 🚶 (336) the let-through side under the SAME walker
+            import scout_willy_timecap as _WTC
+            _t297 = _WTC.s297_deploy_ts()
+            par = tb_lt_parity(ltw, None if _t297 is None else int(_t297.value // 1_000_000))
+        except Exception as e:
+            ltw = None
+            print(f"[WILLY_TURNOVER_BLOCKED] let-through walker error: {type(e).__name__}: {e}")
+    n2 = tb2_step(s2, tb_rule_blocked(rows, w), ltw) if ltw is not None else s2   # no walker → no read (never the as-booked fallback)
     if n2 != s2:
         try:
             tmp = f"{v2_path}.{os.getpid()}.tmp"; json.dump(n2, open(tmp, "w"), indent=1); os.replace(tmp, v2_path)
         except Exception:
             pass
-    return tb_lines(rows, w, dict(new, _v2=n2))
+    return tb_lines(rows, w, dict(new, _v2=n2), ltw=ltw, par=par, wr_label=(wr or {}).get("label"))
 
 
 def willy_run(now_ms=None, J=None):
@@ -4099,9 +4444,15 @@ def willy_run(now_ms=None, J=None):
         if allr.duplicated(["k", "pair"]).any():
             raise ValueError("duplicate WILLY rows")
         _save_csv(allr, WILLY_CSV)
-    out = willy_lines(allr, since, J)
+    # 🧰 (DECISION_LOG 331) bot fills the OPERATOR closed (MANUAL / EXTERNAL_CLOSE) stay in the store but never count in a read — listed apart
+    _opm = _GK.reason_mask(allr.reason) if len(allr) and "reason" in allr else np.zeros(len(allr), dtype=bool)
+    wk = allr[~_opm].reset_index(drop=True) if len(allr) else allr
+    opx = allr[_opm].assign(entry_strategy="FRENZY_WILLY", close_reason=allr.reason[_opm], opened_at=allr.k[_opm]) if _opm.any() else allr.iloc[0:0]
+    out = willy_lines(wk, since, J)
+    out = out[:-1] + [f"_FRENZY_WILLY reads — {_GK.operator_closed_line(opx)} (bot fills closed from the dashboard / Binance app, never counted)._", ""] \
+        if out and out[-1] == "" else out + [f"_FRENZY_WILLY reads — {_GK.operator_closed_line(opx)}._", ""]
     try:
-        out += tb_run(allr, now_ms)
+        out += tb_run(wk, now_ms)
     except Exception as ex:
         out += ["## 🔄 WILLY_TURNOVER_BLOCKED", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
     return out
@@ -4920,10 +5271,17 @@ def _gvs_rebuilt(sigs, now_ms):
 
 def gvs_run(now_ms, F3, ex_label=None):
     off = gvol_off_ms()
+    if not _GVOFF[1]:   # 🧰 (331) deploy commit not found → NOT EVALUABLE (never 'counted from now')
+        return ["## 🌊 GVOL_SPLIT", "", f"**{gvol_off_note()}.**", ""]
     old = _load_csv(GVS_CSV, ("k", "pair", "side", "frozen"))
-    d = gvs_merge(old if len(old) else None, gvs_rows(F3, off))
+    # 🧰 (DECISION_LOG 331) bot fills the OPERATOR closed (MANUAL / EXTERNAL_CLOSE) never count — dropped from the rows AND the store
+    F3k, opx = _GK.split_operator_closed(F3) if F3 is not None and len(F3) else (F3, F3)
+    opx = opx[opx.entry_strategy.astype(str).isin(list(GVS_SLEEVES)) & pd.Series([_ms(k) >= off for k in opx.k], index=opx.index, dtype=bool)] \
+        if opx is not None and len(opx) else opx
+    opk = {(_iso(_ms(k)), str(p)) for k, p in zip(opx.k, opx.pair)} if opx is not None and len(opx) else set()
+    d = gvs_merge(old if len(old) else None, gvs_rows(F3k, off))
     if len(d):
-        d = d[[_ms(k) >= off for k in d.k]].reset_index(drop=True) if len(d) else d
+        d = d[[_ms(k) >= off and (str(k), str(p)) not in opk for k, p in zip(d.k, d.pair)]].reset_index(drop=True) if len(d) else d
     if len(d):
         sigs = [gvs_sig_bar(k, str(cu) in _TRUE) for k, cu in zip(d.k, d.catchup)]
         d = gvs_resolve(d, _gvs_rebuilt(sigs, now_ms), now_ms)
@@ -4941,9 +5299,10 @@ def gvs_run(now_ms, F3, ex_label=None):
         if ns != state:
             tmp = f"{GVS_STATE}.{os.getpid()}.tmp"; json.dump(ns, open(tmp, "w"), indent=1); os.replace(tmp, GVS_STATE)
             state = ns
+    opl = f"_{_GK.operator_closed_line(opx)} (bot fills closed from the dashboard / Binance app — not the bot's exit, never counted)._"
     if not len(d):
-        return gvs_lines(pd.DataFrame(columns=list(GVS_COLS)), state, off, ex_label)[:-1] + ["No FRENZY / WIDE / LITE fill since the gate-off deploy yet.", ""]
-    return gvs_lines(d, state, off, ex_label)
+        return gvs_lines(pd.DataFrame(columns=list(GVS_COLS)), state, off, ex_label)[:-1] + ["No FRENZY / WIDE / LITE fill since the gate-off deploy yet.", opl, ""]
+    return gvs_lines(d, state, off, ex_label) + [opl, ""]
 
 
 ERA_NOTE = "_⚠ Era note (DECISION_LOG 250): from 2026-10-08 the bearish-day block also filters FRENZY / WIDE / LITE entries — read the split at review._"
@@ -4985,6 +5344,10 @@ def _extras(now_ms, th, F, J, allr):
         out += era_noted(lite_run(now_ms))
     except Exception as ex:
         out += ["## 🪶 FRENZY_LITE", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
+    try:   # 🎯 (284 → re-based 333) LITE TP gate: LITE C as traded vs the +1.5 counterfactual, operator-closed fills out
+        out += ltg_run()
+    except Exception as ex:
+        out += ["## 🎯 LITE TP gate", "", f"Unavailable this run ({str(ex)[:120]}).", ""]
     try:   # 🎲 Oct-8 (251) tracker 15 FRENZY_WILLY (declared exception — frozen revert / cap-loss reads, operator decides)
         out += willy_run(now_ms, Je)
     except Exception as ex:

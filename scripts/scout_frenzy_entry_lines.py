@@ -40,6 +40,7 @@ import pandas as pd
 if os.path.dirname(os.path.abspath(__file__)) not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scout_b1h_negflank as NF                     # noqa: E402  (bootstrap, gross-loss share, breakeven, freeze hold, state I/O)
+import scout_gatekit as _GK                         # noqa: E402  🧰 (DECISION_LOG 331) DL-number deploy lookup + operator-closed exclusion
 
 # FROZEN 2026-10-09 — distribution only: np.percentile(entry_frenzy_vs_vwap_pct, 75) over every FRENZY_LONG + FRENZY_WIDE row of
 # reports/MASTER_POOL_stacked.csv (any stack_keep), N = 15 (all stamped; 1.155 … 14.792) = 12.984 → round(·, 1) = 13.0. pnl not read.
@@ -53,7 +54,7 @@ FAMILY = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY")
 REF_STRAT = "FRENZY_LITE"
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 COLS = ("opened_at", "closed_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "pnl",
-        "entry_frenzy_spike_at", "entry_frenzy_vs_vwap_pct")
+        "entry_frenzy_spike_at", "entry_frenzy_vs_vwap_pct", "close_reason")
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATES = {"REENTRY": os.path.join(_ROOT, "reports", "SCOUT_FRENZY_REENTRY.json"),
           "STRETCHED": os.path.join(_ROOT, "reports", "SCOUT_FRENZY_STRETCHED.json")}
@@ -63,28 +64,23 @@ REVERT = ("Pre-committed revert if ever armed: the first 10 blocked signals re-p
 
 # ─────────────────────────── deploy floor ───────────────────────────
 def deploy_ts(log=None):
-    """push time of the first commit whose message carries '(DECISION_LOG 250)' + 10 min (scout_revert_gates.deploy_ms); git
-    unavailable / commit absent → NOW (nothing counted until the commit exists)."""
-    try:
-        out = subprocess.run(["git", "-C", _ROOT, "log", "--format=%ct", "--grep=" + DEPLOY_GREP, "--fixed-strings", "--reverse"],
-                             capture_output=True, text=True, timeout=10)
-        ct = int((out.stdout.strip().splitlines() or [""])[0])
-        return pd.Timestamp(ct * 1000 + 10 * MIN_MS, unit="ms")
-    except Exception:
+    """the DECISION_LOG 250 deploy commit time + 10 min (scout_gatekit.dl_deploy_ms: the number may sit anywhere in a 'DECISION_LOG …'
+    list — DECISION_LOG 331). Not found / git unavailable → LOUD warning, NOT EVALUABLE: the floor is 2100-01-01 (nothing counted) and
+    the section's Data line says so — never 'counted from now'."""
+    t = _GK.dl_deploy_ms(_GK.dl_from_tag(DEPLOY_GREP), 10, label="FRENZY_REENTRY_AFTER_WIN / FRENZY_STRETCHED (DECISION_LOG 250 floor)")
+    if t is None:
         if log is not None:
-            log.append(f"deploy commit {DEPLOY_GREP} not found in git — counting from NOW")
-        return pd.Timestamp(int(time.time() * 1000), unit="ms")
+            log.append(f"⛔ NOT EVALUABLE — the deploy commit for {DEPLOY_GREP} is not in git; nothing is counted until it is")
+        return pd.Timestamp("2100-01-01")
+    return pd.Timestamp(int(t), unit="ms")
 
 
 def gvol_off_ts():
-    """the market-volume-gate-OFF deploy = first commit naming '(DECISION_LOG 263)' + 10 min (scout_frenzy_exits.gvol_off_ms); not in git
-    yet → None (every counted fill so far is gate-ON era)."""
-    try:
-        out = subprocess.run(["git", "-C", _ROOT, "log", "--format=%ct", "--grep=" + GVOL_OFF_GREP, "--fixed-strings", "--reverse"],
-                             capture_output=True, text=True, timeout=10)
-        return pd.Timestamp(int(out.stdout.strip().splitlines()[0]) * 1000 + 10 * MIN_MS, unit="ms")
-    except Exception:
-        return None
+    """the market-volume-gate-OFF deploy = the DECISION_LOG 263 commit (ec98aea '(DECISION_LOG 261, 262, 263)') + 10 min via
+    scout_gatekit (DECISION_LOG 331 — the literal-tag grep never matched it); not in git → None after a LOUD warning (the era note
+    then says so — the cohort and verdicts pool both eras, so nothing else depends on it)."""
+    t = _GK.dl_deploy_ms(_GK.dl_from_tag(GVOL_OFF_GREP), 10, label="FRENZY entry lines — gate-OFF era note (DECISION_LOG 263)")
+    return None if t is None else pd.Timestamp(int(t), unit="ms")
 
 
 def era_line(cnt, off):
@@ -335,6 +331,9 @@ def run(now_ms=None, orders=None, state_paths=None, open_ts=None, deploy=None):
             open_ts = []
     off = gvol_off_ts()
     win = fam[fam.ts >= dep]
+    # 🧰 (331) bot fills the OPERATOR closed (MANUAL / EXTERNAL_CLOSE) never count — their exit is not the bot's; listed apart
+    win, opx = _GK.split_operator_closed(win)
+    notes.append(_GK.operator_closed_line(opx[opx.strat.isin(COUNTED + (REF_STRAT,))] if len(opx) else opx))
     cnt = win[win.strat.isin(COUNTED)].copy()
     ref = win[win.strat == REF_STRAT].copy()
     out = []

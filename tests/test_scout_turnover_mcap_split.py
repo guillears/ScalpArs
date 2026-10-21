@@ -54,11 +54,11 @@ def test_lines_carry_the_split_and_the_gate_is_unchanged():
 
 def _blk(n, pct, start_day=20):
     return pd.DataFrame([dict(t=f"2026-10-{start_day + (i % 10):02d}T17:00:{i % 60:02d}", pair=f"P{i}USDT", gate="FRENZY_WILLY_TURNOVER",
-                              pct=pct, how="take profit", final=True) for i in range(n)])
+                              pct=pct, how="take profit", final=True, wpct=pct, wfinal=True) for i in range(n)])
 
 
 def _lt(n, pct):
-    return pd.DataFrame([dict(t=f"2026-10-{20 + (i % 10):02d}T18:00:00", pct=pct) for i in range(n)])
+    return pd.DataFrame([dict(t=f"2026-10-{20 + (i % 10):02d}T18:00:00", pct=pct, wpct=pct, wfinal=True) for i in range(n)])
 
 
 def test_v2_gate_counts_the_v1_rows_and_waits():
@@ -105,7 +105,7 @@ def test_tb_vol24_window_column_and_scaling(monkeypatch):
 def test_v2_gate_frozen_first_sample():
     """deep review G1: the read takes the FIRST 30 by time; a later provisional row never holds it; let-through cut at the sample's end."""
     b = pd.concat([_blk(30, 0.5), pd.DataFrame([dict(t="2026-10-31T23:00:00", pair="LATEUSDT", gate="FRENZY_WILLY_TURNOVER", pct=np.nan,
-                                                       how=np.nan, final=False)])], ignore_index=True)
-    lt = pd.concat([_lt(40, 0.1), pd.DataFrame([dict(t="2026-11-05T00:00:00", pct=99.0)])], ignore_index=True)   # after the sample → excluded
+                                                       how=np.nan, final=False, wpct=np.nan, wfinal=False)])], ignore_index=True)
+    lt = pd.concat([_lt(40, 0.1), pd.DataFrame([dict(t="2026-11-05T00:00:00", pct=99.0, wpct=99.0, wfinal=True)])], ignore_index=True)   # after the sample → excluded
     s = SF.tb2_step({}, b, lt)
     assert s["verdict"].startswith("REVERT") and s["n"] == 30 and abs(s["let_through"] - 0.1) < 1e-9

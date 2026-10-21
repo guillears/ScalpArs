@@ -62,6 +62,8 @@ import time
 
 import numpy as np
 import pandas as pd
+import os as _os_gk, sys as _sys_gk; _sys_gk.path.insert(0, _os_gk.path.dirname(_os_gk.path.abspath(__file__))) if _os_gk.path.dirname(_os_gk.path.abspath(__file__)) not in _sys_gk.path else None
+import scout_gatekit as _GK   # noqa: E402  🧰 (DECISION_LOG 331) operator-closed fills (MANUAL / MANUAL_* / EXTERNAL_CLOSE) out of every gate
 
 if os.path.dirname(os.path.abspath(__file__)) not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -458,8 +460,8 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, o
     cstart = count_start() if cstart is None else pd.Timestamp(cstart)
     o = o[o.ts >= floor].reset_index(drop=True)
     opens = [x for x in opens if pd.notna(x[0]) and x[0] >= cstart]             # only a counted-era OPEN row can hold the freeze
-    man = o[o.why.astype(str).str.upper().str.startswith("MANUAL")]
-    c = o[~o.why.astype(str).str.upper().str.startswith("MANUAL")].reset_index(drop=True)
+    man = o[_GK.reason_mask(o.why)]
+    c = o[~_GK.reason_mask(o.why)].reset_index(drop=True)
     c["era"] = np.where(c.ts >= cstart, "forward", "context")
     notes = []
     fw = c[c.era == "forward"]
@@ -537,7 +539,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, o
                      f"{r.ts:%m-%d %H:%M} {r.pair}" + ("" if r.pend else " (final — no data)") for r in c[c.walk.isna()].itertuples()) if c.walk.isna().any() else "")
                  + " · ᵖ = provisional 1m part.")
     if len(man):
-        L.append(f"Excluded: {len(man)} manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
+        L.append(f"Operator-closed: {len(man)} — excluded, manually closed fill(s): " + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair} ({r.why})" for r in man.itertuples()) + ".")
     L.append(f"Evidence (not part of the verdict): {EVIDENCE}.")
     L.append(BAR)
     if ok and "first" in st:
@@ -784,7 +786,7 @@ def selftest():
                 and "kept 1 · 1 d · 100 % · +1.020" in out.split("B19 pre-registration context")[1].split("\n")[0], f"context line\n{out}")
             chk("| kept (slope > 0) | 1 | 1 | 1 | 100 % | +1.050 %" in out and "| **blocked (slope ≤ 0)** | 1 | 1 | 1 | 0 % | -4.000 %" in out,
                 f"forward groups on the walked % (OPEN row superseded by its CLOSED twin)\n{out}")
-            chk("LAGUSDT slope –/lag [unscored]" in out and "| UNSCORED" in out and "Excluded: 1 manually closed" in out and "LITUSDT" not in out
+            chk("LAGUSDT slope –/lag [unscored]" in out and "| UNSCORED" in out and "Operator-closed: 1 — excluded, manually closed" in out and "LITUSDT" not in out
                 and "NOPUSDT" in out and "UNPRICED" in out, f"unscored listed (never counted) · manual excluded · non-WILLY out · unpriced listed\n{out}")
             chk("reason + % within 0.05 pts): 4/4 · unpriced 1: 10-12 11:00 NOPUSDT ·" in out and "Now: ⏳ COLLECTING (blocked N 1/15" in out and not os.path.exists(sp)
                 and os.path.exists(rp) and len(pd.read_csv(rp)) == 5, f"parity + collecting + rows stored, no state written\n{out}")

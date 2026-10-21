@@ -32,6 +32,7 @@ _D = os.path.dirname(os.path.abspath(__file__))
 _D in sys.path or sys.path.insert(0, _D)
 import export_glob as EG                                     # noqa: E402
 import scout_b1h_negflank as NF                              # noqa: E402  (shared cooldown helpers)
+import scout_gatekit as _GK                                  # noqa: E402  🧰 (DECISION_LOG 331) operator-closed fills out of the gate
 
 COHORT_START = "2026-10-15T00:00:00"                         # plus: only fills that STORED a LITE C TP (frenzy_lite_tp_used set = switch ON at entry)
 VOL_CUT, SLOPE_CUT, TP_HI, TP_LO, STOP = 20.0, 0.0, 3.0, 2.0, 3.0
@@ -123,7 +124,9 @@ def walk(bars, entry):
 
 def main():
     a = fills()
-    print(f"LITE C revert gate (DECISION_LOG 301) · cohort FRENZY_LITE closed fills opened ≥ {COHORT_START} UTC → {len(a)}")
+    a, opx = _GK.split_operator_closed(a) if len(a) else (a, a)   # 🧰 (331) operator-closed (MANUAL / EXTERNAL_CLOSE): not the bot's exit
+    print(f"LITE C revert gate (DECISION_LOG 301) · cohort FRENZY_LITE closed fills opened ≥ {COHORT_START} UTC → {len(a)}"
+          f" · {_GK.operator_closed_line(opx)}")
     if not len(a):
         return
     a["zone"] = [in_zone(r) for r in a.to_dict("records")]

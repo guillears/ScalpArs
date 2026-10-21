@@ -3310,6 +3310,7 @@ class TradingEngine:
                     Order.status == 'CLOSED',
                     Order.post_exit_peak_pnl.is_(None),
                     Order.closed_at >= cutoff,
+                    or_(Order.import_source.is_(None), Order.import_source != 'BINANCE_APP_HISTORY'),   # 🧾 (DECISION_LOG 329) never a 📱 app row
                 )
             )
             candidates = result.scalars().all()
@@ -12009,6 +12010,9 @@ class TradingEngine:
                         Order.status == "CLOSED",
                         Order.is_paper == self.is_paper_mode,
                         Order.closed_at >= cooldown_threshold,
+                        # 🧾 (DECISION_LOG 329 review) operator rule: a trade made in the Binance app never changes bot behaviour — an
+                        # auto-recorded 📱 row never starts the re-entry cooldown (🖐 pop-up rows unchanged)
+                        or_(Order.import_source.is_(None), Order.import_source != 'BINANCE_APP_HISTORY'),
                     )
                 ).order_by(desc(Order.closed_at)).limit(1)
             )
@@ -15060,7 +15064,7 @@ class TradingEngine:
         the import) → positions RE-READ (side / size within max(1 step, 0.5 %) / entry within 0.5 % — changed → refused, the stop cancelled)
         → the row + an OPEN_{dir} Transaction committed → resting TP (_rtp_arm, a fixed TP only) → cache → price stream → the untracked
         state of the pair cleared (entries unblock). Entry = Binance's average entry, qty = its contracts, investment = notional / leverage,
-        entry_fee = an ESTIMATE (taker × entry notional; the app order's real fee is not read here — DECISION_LOG 330 auto-record will),
+        entry_fee = an ESTIMATE (taker × entry notional; the app order's real fee is not read here — DECISION_LOG 329 auto-record will),
         opened_at = imported_at = now (Binance's real open time is not read: tracking starts at the import). Raises ValueError (readable
         refusal, nothing written / nothing left on the exchange) / RuntimeError (a booking failure — the text says what is on Binance)."""
         pair = normalize_manual_pair(pair)
@@ -15105,7 +15109,7 @@ class TradingEngine:
         investment = notional / lev
         tc = config.trading_config
         tf = float(getattr(tc, 'taker_fee', tc.trading_fee) or 0.0)
-        entry_fee = notional * tf   # ESTIMATE: the app order's real fee (maker / taker, BNB discount) is not read here (DECISION_LOG 330)
+        entry_fee = notional * tf   # ESTIMATE: the app order's real fee (maker / taker, BNB discount) is not read here (DECISION_LOG 329)
         # the exit: the SAME checks as the 🖐 pop-up at the position's own leverage (floor, stop needed, backstop gap)
         sl, tp = manual_exit_levels(th, exit_mode, sl_pct, tp_pct, float(lev))
         price = await self._add_live_price(pair, symbol)   # the exits' source: the websocket tick ≤ 5 s, else REST

@@ -99,6 +99,7 @@ class BinanceService:
         self.research_exchange = None
         # 💹 Oct-7 (DECISION_LOG 245): dashboard display reads (all-symbols last price) — own client + throttle, created lazily.
         self.display_exchange = None
+        self.recorder_exchange = None   # 🧾 (DECISION_LOG 329 review I5) the Binance-app trade recorder's own authenticated client (lazy)
         # Public exchange for market data (no auth needed)
         self.public_exchange = ccxt.binanceusdm({
             'enableRateLimit': True,
@@ -512,6 +513,8 @@ class BinanceService:
             await self.research_exchange.close()
         if getattr(self, 'display_exchange', None) is not None:
             await self.display_exchange.close()
+        if getattr(self, 'recorder_exchange', None) is not None:   # 🧾 (DECISION_LOG 329 review I5)
+            await self.recorder_exchange.close()
     
     @property
     def _last_balance_payload(self):
@@ -1578,6 +1581,101 @@ class BinanceService:
         except Exception as e:
             logger.error(f"[BINANCE] Error fetching trades for {symbol}: {e}")
             return None
+
+    # ── 🧾 (DECISION_LOG 329) auto-record Binance-app trades — RAW reads for services/app_trades.py ─────────────────────────────────────
+    # (329 review I5) ALL of them run on a DEDICATED authenticated client (same keys, its OWN ccxt rate limiter), created lazily: the
+    # recorder's 30-weight income pages are never queued in front of the bot's orders (trading client) nor of the scan / FRENZY kline reads
+    # (public client). The ban state stays SHARED: services/app_trades._call runs BinanceService._detect_ban on every error of these calls
+    # and checks get_ban_status() before each one. They RAISE on any error (never swallow) and never sleep out a ban.
+    # Weights (Binance USDⓈ-M): income 30 · userTrades 5 · symbolConfig 5 · positionRisk 5 · klines limit 1000 → 5 · ticker price 1.
+    def _recorder_client(self):
+        """(DECISION_LOG 329 review I5) the app-trade recorder's own authenticated client (lazily created, closed in close())."""
+        if getattr(self, 'recorder_exchange', None) is None:
+            self.recorder_exchange = ccxt.binanceusdm({
+                'apiKey': settings.binance_api_key, 'secret': settings.binance_api_secret, 'enableRateLimit': True, 'sandbox': False,
+                'options': {'defaultType': 'future', 'adjustForTimeDifference': True}})
+        return self.recorder_exchange
+
+    def used_weight_1m(self) -> Optional[int]:
+        """(DECISION_LOG 329) X-MBX-USED-WEIGHT-1M of the recorder client's last answer (IP-wide counter), None when absent."""
+        h = getattr(getattr(self, 'recorder_exchange', None), 'last_response_headers', None) or {}
+        try:
+            for k, v in dict(h).items():
+                if str(k).lower() == 'x-mbx-used-weight-1m':
+                    return int(float(v))
+        except (TypeError, ValueError):
+            return None
+        return None
+
+    async def fetch_income_page(self, start_ms: int, end_ms: int, limit: int = 1000, symbol: Optional[str] = None,
+                                income_type: Optional[str] = None) -> List[Dict]:
+        """(DECISION_LOG 329) GET /fapi/v1/income, oldest first — ALL types by default (one call covers REALIZED_PNL + COMMISSION +
+        FUNDING_FEE), or one symbol id / one income type. The caller keeps windows ≤ 7 days and pages on the last row's time (dedup on
+        (incomeType, tranId, symbol, asset) — tranId alone is unique only within an income type). Raises on error."""
+        q = {'startTime': int(start_ms), 'endTime': int(end_ms), 'limit': int(limit)}
+        if symbol:
+            q['symbol'] = str(symbol)
+        if income_type:
+            q['incomeType'] = str(income_type)
+        rows = await self._recorder_client().fapiPrivateGetIncome(q)
+        return list(rows or [])
+
+    async def fetch_user_trades_page(self, symbol_id: str, start_ms: Optional[int] = None, end_ms: Optional[int] = None, limit: int = 1000,
+                                     from_id: Optional[int] = None) -> List[Dict]:
+        """(DECISION_LOG 329) GET /fapi/v1/userTrades for ONE symbol id (e.g. 'BTCUSDT'), oldest first: a time window ≤ 7 days, OR (Binance
+        forbids both together) from_id = the next trade id — the lossless continuation of a full page. Raw rows (price, qty, side,
+        realizedPnl, commission, commissionAsset, orderId, id, time, maker). Raises on error."""
+        q = {'symbol': str(symbol_id), 'limit': int(limit)}
+        if from_id is not None:
+            q['fromId'] = int(from_id)
+        else:
+            q['startTime'], q['endTime'] = int(start_ms), int(end_ms)
+        rows = await self._recorder_client().fapiPrivateGetUserTrades(q)
+        return list(rows or [])
+
+    async def get_symbol_leverages(self) -> Dict[str, int]:
+        """(DECISION_LOG 329) {symbol id: CURRENT leverage setting} from GET /fapi/v1/symbolConfig (all symbols, one call). The setting at
+        record time, not necessarily the one a past trade used — rows record it as approximate. Raises on error."""
+        res = await self._recorder_client().fapiPrivateGetSymbolConfig()
+        out = {}
+        for r in (res or []):
+            try:
+                out[str(r.get('symbol'))] = int(float(r.get('leverage')))
+            except (TypeError, ValueError, AttributeError):
+                continue
+        return out
+
+    async def get_net_positions(self) -> Dict[str, float]:
+        """(DECISION_LOG 329) {symbol id: SIGNED net quantity} of every non-zero position (one-way mode: positionAmt, + long / − short) from
+        the raw positionRisk endpoint (no market load). The recorder anchors each symbol's fill replay on it. Raises on error (never 'no
+        positions' for a failed read)."""
+        cli = self._recorder_client()
+        fn = getattr(cli, 'fapiPrivateV3GetPositionRisk', None) or getattr(cli, 'fapiPrivateV2GetPositionRisk')
+        res = await fn()
+        if not isinstance(res, list):
+            raise ValueError("positionRisk answer is not a list")
+        out = {}
+        for r in res:
+            sid = str(r.get('symbol') or '')
+            amt = float(r['positionAmt'])                  # a malformed row raises — never read as flat
+            if sid and amt != 0:
+                out[sid] = out.get(sid, 0.0) + amt
+        return out
+
+    async def fetch_bnb_1m_closes(self, start_ms: int, limit: int = 1000) -> List[Tuple[int, float]]:
+        """(DECISION_LOG 329) BNBUSDT perpetual 1m klines from start_ms: [(open ms, close)] — BNB-paid commissions → USDT at the fill's
+        minute. Raises on error."""
+        raw = await self._recorder_client().fapiPublicGetKlines({'symbol': 'BNBUSDT', 'interval': '1m', 'startTime': int(start_ms),
+                                                                 'limit': int(limit)})
+        return [(int(r[0]), float(r[4])) for r in raw or []]
+
+    async def fetch_bnb_price_raw(self) -> float:
+        """(DECISION_LOG 329 review) the current BNBUSDT perpetual price (the estimate fallback) — raises on error / a non-positive price."""
+        r = await self._recorder_client().fapiPublicGetTickerPrice({'symbol': 'BNBUSDT'})
+        px = float((r or {}).get('price'))
+        if not (px > 0):
+            raise ValueError(f"BNB price {px}")
+        return px
 
     async def fetch_funding_rate(self, symbol: str) -> Optional[float]:
         """Fetch the current funding rate for a futures symbol (Exploration Analytics, Apr 28).

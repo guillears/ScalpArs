@@ -5505,6 +5505,8 @@
                                         <input type="number" step="5" min="5" id="config-mcap-refresh-minutes" class="w-14 bg-white/5 border border-emerald-500/40 rounded px-2 py-1 text-emerald-200 text-center" value="30"></label>
                                     <label class="flex items-center gap-1 text-xs text-violet-300" title="🧭 Sep-29 ZONE STAMPS (DECISION_LOG 127): stamp on every order the four readings behind the momentum-long watch items C (majors soft: BTC 5m EMA50 vs EMA100 gap, ETH last closed 5m bar return) and D (laggard pair on a BTC up-day: BTC last closed daily return, pair 1h EMA20 vs EMA200 gap). Three small fetches per scan + one 1h fetch per fill (after the exchange order). Observe-only for the C / D watch items; off = NULL stamps. ⚠ Oct-8 (DECISION_LOG 250): the BTC daily return also FEEDS the FRENZY bearish-day block — OFF (or a reading older than 30 min) leaves that block unable to read it, so it fails open (no bearish block).">🧭 Zone stamps
                                         <input type="checkbox" id="config-entry-zone-stamps-enabled" class="accent-violet-500"></label>
+                                    <label class="flex items-center gap-1 text-xs text-sky-300" title="🧾 (DECISION_LOG 329) AUTO-RECORD BINANCE-APP TRADES: live only, every 5 min (the first run backfills from the first live trade, bot-stopped periods included). Reads Binance's income history + your fills and books every COMPLETED trade you made in the Binance app as a closed 🖐 MANUAL row marked 📱 (Binance's real fills, P&L and fees; funding kept apart like every row). Never an open row, never in the Bot view or any systematic table. An episode it cannot explain exactly is NOT recorded ([APP_TRADE_AMBIGUOUS] in the log). Check: /api/app_trades/reconcile. Off = the job does nothing.">📱 Record app trades
+                                        <input type="checkbox" id="config-app-trade-record-enabled" class="accent-sky-500"></label>
                                 <span class="text-xs text-gray-500">(crowded entry → sized down to these; ratio 0 = off; ship 0.90 / 1.0 / 1.0; sub-1× allowed — the PVR≥0.93 read may earn it; ≤0 coerced to 1.0)</span>
                             </div>
                         </div>
@@ -8089,6 +8091,12 @@
             const base = `View: ${ORIGIN_LABELS[v] || 'All trades'}` + (v === 'ALL' ? ' (bot + manual; matches the balance)' : ' (the other side\'s P&L taken out of the account)');
             const scope = (perfs || []).length > 1 ? ' (BULLISH + BEARISH regimes; NEUTRAL not counted)' : '';
             return v === 'MANUAL' ? base : `${base} · Bot trades touched by you (exit edited / closed by hand / ➕ size added)${scope}: ${n} · ${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)}`;
+        }
+        function _appTradesReportLine(perfs) {   // 🧾 (DECISION_LOG 329) BOTH text exports: 📱 Binance-app trades in the slice + ambiguous skipped
+            let n = 0, w = 0, pnl = 0, sp = 0, amb = 0;
+            (perfs || []).forEach(p => { const a = (p && p.app_trades) || null; if (a) { n += (a.n || 0); w += (a.wins || 0); pnl += (a.pnl || 0); sp += (a.avg_pct || 0) * (a.n || 0); amb = Math.max(amb, a.ambiguous_skipped || 0); } });
+            const scope = (perfs || []).length > 1 ? ' (BULLISH + BEARISH regimes)' : '';
+            return `📱 App trades${scope}: ${n} · WR ${n ? (100 * w / n).toFixed(1) + '%' : '—'} · Σ ${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)} · avg ${n ? ((sp / n) >= 0 ? '+' : '') + (sp / n).toFixed(3) + '%' : '—'} · ambiguous episodes skipped: ${amb} (MANUAL — never in the Bot view or any systematic table)`;
         }
         function setOriginView(v) {
             if (!ORIGIN_VIEWS.includes(v)) v = 'ALL';
@@ -11235,6 +11243,7 @@
                     if (_fbits.length) lines.push(`⚠ ACTIVE FILTERS (this report is a SLICE, not the full book): ${_fbits.join(' · ')}`);
                 }
                 lines.push(_originReportLine(_ov1, [perf]));
+                lines.push(_appTradesReportLine([perf]));   // 🧾 (DECISION_LOG 329)
                 if (regimeFilter) lines.push(`Filter: ${regimeFilter} trades only`);
                 if (windowFilter === 'custom') {
                     const _from = (document.getElementById('window-from-date') || {}).value || '';
@@ -12877,6 +12886,7 @@
                     if (_fbits.length) lines.push(`⚠ ACTIVE FILTERS (this report is a SLICE, not the full book): ${_fbits.join(' · ')}`);
                 }
                 lines.push(_originReportLine(_ov2, [perfBull, perfBear]));
+                lines.push(_appTradesReportLine([perfBull, perfBear]));   // 🧾 (DECISION_LOG 329)
                 if (windowFilter === 'custom') {
                     const _from = (document.getElementById('window-from-date') || {}).value || '';
                     const _to = (document.getElementById('window-to-date') || {}).value || '';
@@ -13233,7 +13243,7 @@
                 if (sleeveBody) {
                     const sp = data.sleeve_performance;
                     if (sp && sp.length > 0) {
-                        const slColors = { 'Mom-Long': 'text-emerald-400', 'Mom-Short': 'text-red-400', 'Flip-Short': 'text-purple-400', 'Flip-Long': 'text-orange-400', 'BullRun-Long': 'text-cyan-400', 'BearRun-Short': 'text-rose-400', 'Manual': 'text-amber-300', 'Total': 'text-gray-200' };
+                        const slColors = { 'Mom-Long': 'text-emerald-400', 'Mom-Short': 'text-red-400', 'Flip-Short': 'text-purple-400', 'Flip-Long': 'text-orange-400', 'BullRun-Long': 'text-cyan-400', 'BearRun-Short': 'text-rose-400', 'Manual': 'text-amber-300', 'App': 'text-sky-300', 'Total': 'text-gray-200' };   // 📱 App (329)
                         sleeveBody.innerHTML = sp.map(s => {
                             const isTot = s.sleeve === 'Total';
                             const netCls = s.net_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -13242,7 +13252,7 @@
                             const pfCls = s.pf >= 1 ? 'text-emerald-400' : 'text-red-400';
                             return `
                                 <tr class="hover:bg-white/5${isTot ? ' border-t border-white/20 font-semibold' : ''}">
-                                    <td class="px-3 py-2 ${slColors[s.sleeve] || 'text-gray-300'} font-medium">${s.sleeve}</td>
+                                    <td class="px-3 py-2 ${slColors[s.sleeve] || 'text-gray-300'} font-medium">${s.sleeve === 'App' ? '📱 App' : (s.sleeve === 'Manual' ? '🖐 Manual' : s.sleeve)}</td>
                                     <td class="px-3 py-2 text-center">${s.n}</td>
                                     <td class="px-3 py-2 text-right">${s.wr.toFixed(1)}%</td>
                                     <td class="px-3 py-2 text-right ${avgCls}">${s.avg_pct >= 0 ? '+' : ''}${s.avg_pct.toFixed(3)}%</td>
@@ -19270,6 +19280,10 @@
             _setHTMLIfChanged(el, html); el.classList.remove('hidden');
         }
         function importBadgeHtml(o) {
+            if (o && o.import_source === 'BINANCE_APP_HISTORY') {   // 🧾 (DECISION_LOG 329) a trade made in the Binance app, auto-recorded
+                const t2 = `📱 Made in the Binance app — auto-recorded from Binance's own fills (real prices, P&L and fees; quantity = peak size; leverage = the symbol's setting at record time, approximate)${o.imported_at ? ' · recorded ' + formatTime(o.imported_at) : ''}`;
+                return `<span class="ml-1 text-[10px] cursor-help" title="${_impEsc(t2)}">📱</span>`;
+            }
             if (!o || !o.imported_at) return '';
             const t = `📥 Imported from Binance at ${formatTime(o.imported_at)} — opened in the Binance app; the bot tracks it from then on (opened time = the import, entry / size = Binance's, entry fee estimated)`;
             return `<span class="ml-1 text-[10px] cursor-help" title="${_impEsc(t)}">📥</span>`;
@@ -20891,6 +20905,7 @@
                 { const _e = document.getElementById('config-mcap-fetch-enabled'); if (_e) _e.checked = config.mcap_fetch_enabled !== false; }
                 { const _e = document.getElementById('config-mcap-refresh-minutes'); if (_e && config.mcap_refresh_minutes !== undefined) _e.value = config.mcap_refresh_minutes; }
                 { const _e = document.getElementById('config-entry-zone-stamps-enabled'); if (_e) _e.checked = config.entry_zone_stamps_enabled !== false; }
+                { const _e = document.getElementById('config-app-trade-record-enabled'); if (_e) _e.checked = config.app_trade_record_enabled !== false; }   // 🧾 (329)
                 
                 updateInvestmentUnit();
                 updateReserveUnit();
@@ -22493,6 +22508,7 @@
                 mcap_fetch_enabled: !!document.getElementById('config-mcap-fetch-enabled')?.checked,
                 mcap_refresh_minutes: (() => { const _v = parseFloat(document.getElementById('config-mcap-refresh-minutes')?.value); return (isFinite(_v) && _v >= 5) ? _v : 30; })(),
                 entry_zone_stamps_enabled: (document.getElementById('config-entry-zone-stamps-enabled')?.checked ?? true),
+                app_trade_record_enabled: (document.getElementById('config-app-trade-record-enabled')?.checked ?? true),   // 🧾 (DECISION_LOG 329)
                 bnb_swap_enabled: document.getElementById('config-bnb-swap-enabled').value === 'true',
                 paper_bnb_initial_usd: safeFloat(document.getElementById('config-paper-bnb-initial').value),
                 bnb_check_interval_hours: parseInt(document.getElementById('config-bnb-check-interval').value) || 12,

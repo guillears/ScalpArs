@@ -8,7 +8,7 @@ operator, and books it as a 🖐 MANUAL row with a real exit mode and a resting 
 
 Conventions (the same every exit uses):
   * P&L % is NET of fees on the entry notional (services.position_add.pnl_pct_net) — the import's entry fee is an ESTIMATE (taker rate
-    × entry notional): Binance's real fill fee of an app order is not read here (DECISION_LOG 330 auto-record will provide it).
+    × entry notional): Binance's real fill fee of an app order is not read here (DECISION_LOG 329 auto-record will provide it).
   * One-way position mode: one position per symbol (the bot's assumption, checked at go-live).
 """
 import math

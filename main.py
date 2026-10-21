@@ -71,6 +71,7 @@ _bnb_swap_task = None
 _nav_task = None
 _frenzy_task = None
 _orderbook_task = None
+_app_trade_task = None   # 🧾 (DECISION_LOG 329) Binance-app trade recorder
 should_stop = False
 _scan_lock = asyncio.Lock()
 # 💰 Sep-21 — investor/NAV writes are read-modify-write across separate sessions, so two concurrent
@@ -345,7 +346,7 @@ async def nav_snapshot_loop():
 
 async def start_background_tasks():
     """Start background trading tasks"""
-    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, _app_trade_task, should_stop
     should_stop = False
     
     # Start WebSocket tracker for real-time price tracking
@@ -370,12 +371,16 @@ async def start_background_tasks():
     _nav_task = asyncio.create_task(nav_snapshot_loop())
     _frenzy_task = asyncio.create_task(frenzy_loop())   # 🔥 Oct-3: FRENZY at the bar close, not after the scan
     _orderbook_task = asyncio.create_task(orderbook_loop())   # 📖 Oct-3: order-book snapshots (research)
+    # 🧾 (DECISION_LOG 329) Binance-app trade recorder: own task + own sessions, LIVE only and app_trade_record_enabled checked every pass
+    # (the task idles in paper / switched off); runs while the bot is stopped too — the operator's app trades happen then as well
+    from services.app_trades import app_trade_loop as _app_trade_loop
+    _app_trade_task = asyncio.create_task(_app_trade_loop(lambda: should_stop))
     logger.info("[STARTUP] Monitor, scan, BNB swap, NAV snapshot and FRENZY loops started independently")
 
 
 async def stop_background_tasks():
     """Stop background trading tasks"""
-    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, _app_trade_task, should_stop
     should_stop = True
 
     # Stop WebSocket tracker
@@ -389,6 +394,12 @@ async def stop_background_tasks():
                 await task
             except asyncio.CancelledError:
                 pass
+    if _app_trade_task:   # 🧾 (DECISION_LOG 329) the Binance-app trade recorder (cancelled mid-pass: rows already written stay; cursor kept)
+        _app_trade_task.cancel()
+        try:
+            await _app_trade_task
+        except (asyncio.CancelledError, Exception):
+            pass
 
     # Aug-24 (33): cancel in-flight fire-and-forget funding stamps so a deploy doesn't log
     # "Task was destroyed but it is pending" (fail-open metric — a lost stamp stays NULL).
@@ -607,6 +618,7 @@ class ConfigUpdate(BaseModel):
     mcap_fetch_enabled: Optional[bool] = None      # 💰 Sep-28 (DECISION_LOG 124)
     mcap_refresh_minutes: Optional[float] = None
     entry_zone_stamps_enabled: Optional[bool] = None   # 🧭 Sep-29 zone stamps kill switch
+    app_trade_record_enabled: Optional[bool] = None    # 🧾 (DECISION_LOG 329) Binance-app trade recorder kill switch
     bnb_swap_enabled: Optional[bool] = None
     bnb_check_interval_hours: Optional[int] = None
     bnb_runway_hours: Optional[int] = None
@@ -2589,6 +2601,26 @@ class ManualImportRequest(BaseModel):   # 📥 (DECISION_LOG 328)
     tp_pct: Optional[float] = None            # P&L % net of fees — FIXED / FLOOR (optional)
 
 
+@app.get("/api/app_trades/reconcile")
+async def app_trades_reconcile(db: AsyncSession = Depends(get_db)):
+    """🧾 (DECISION_LOG 329) acceptance check of the Binance-app trade recorder — NO exchange read here: the Binance side is the per-UTC-day
+    income sums the recorder stores after every pass (Σ REALIZED_PNL gross + Σ COMMISSION in USDT + Σ FUNDING_FEE since the first live
+    order); the DB side is read now (Σ pnl — net of fees — and Σ funding_fee_usd of every live CLOSED row closed since then: bot + 🖐 + 📥 +
+    📱). gap = Binance − DB, split trading / funding, with what is known to sit in it (services.app_trades.reconcile_report)."""
+    if trading_engine.is_paper_mode:
+        return {"mode": "paper", "note": "the app-trade recorder runs in live mode only"}
+    from services.app_trades import reconcile_from_db, load_state, IMPORT_SOURCE_APP_HISTORY
+    bs = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+    state = load_state(bs.app_trades_state_json if bs else None)
+    era = (await db.execute(select(func.min(Order.opened_at)).where(and_(
+        Order.is_paper == False, or_(Order.import_source.is_(None), Order.import_source != IMPORT_SOURCE_APP_HISTORY))))).scalar()  # noqa: E712
+    out = await reconcile_from_db(db, state, era)
+    out["recorder_enabled"] = bool(getattr(config.trading_config, 'app_trade_record_enabled', True))
+    from services.app_trades import ms_to_dt as _ms_dt
+    out["cursor"] = (_ms_dt(bs.app_trades_cursor_ms).isoformat() if bs and bs.app_trades_cursor_ms else None)
+    return out
+
+
 @app.get("/api/manual/import_candidates")
 async def manual_import_candidates():
     """📥 (DECISION_LOG 328): the Binance positions the bot does NOT track (confirmed UNTRACKED NO_ROW, from the reconciler's state + its
@@ -4074,6 +4106,8 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
     Worst % (fat-tail visibility)."""
     def sleeve(o):
         if (o.entry_strategy or '') == 'MANUAL':
+            if (getattr(o, 'import_source', None) or '') == 'BINANCE_APP_HISTORY':
+                return 'App'     # 🧾 (DECISION_LOG 329) trades made in the Binance app, auto-recorded — own row next to 🖐 Manual
             return 'Manual'  # 🖐 Sep-29: operator-opened positions — own row, never a systematic sleeve
         if (o.entry_strategy or '') == 'BULLRUN_LONG':
             return 'BullRun-Long'  # Aug 21 gate 57: own row — must NOT contaminate Mom-Long
@@ -4128,6 +4162,7 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
                         and sum(o.pnl or 0 for o in g) / start_balance > -1 else None),
         }
     order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Surge-Long', 'Surge-Short', 'Frenzy-Long', 'Frenzy-Wide', 'Frenzy-Lite', 'Frenzy-Lite-Retry', 'Frenzy-Willy', 'Manual']   # 🖐 Sep-29: own row · 🔁 (316) Frenzy-Lite-Retry
+    order.append('App')   # 🧾 (DECISION_LOG 329) 📱 Binance-app trades, after 🖐 Manual
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
     all_closed = [o for o in orders if o.pnl_percentage is not None]
     total = stats('Total', all_closed)
@@ -4146,7 +4181,10 @@ def _compute_strategy_performance(orders, start_balance=None, window_days=None):
     for o in orders:
         if o.pnl_percentage is None:
             continue
-        label = f"{o.entry_strategy or 'MOMENTUM'} · {'L' if o.direction == 'LONG' else 'S'}"
+        _es_lbl = o.entry_strategy or 'MOMENTUM'
+        if _es_lbl == 'MANUAL' and (getattr(o, 'import_source', None) or '') == 'BINANCE_APP_HISTORY':
+            _es_lbl = 'APP'   # 🧾 (DECISION_LOG 329) 📱 Binance-app trades apart from the 🖐 pop-up's MANUAL rows
+        label = f"{_es_lbl} · {'L' if o.direction == 'LONG' else 'S'}"
         groups.setdefault(label, []).append(o)
 
     def stats(name, g):
@@ -5296,6 +5334,18 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     if _origin == 'MANUAL':
         signal_expired_orders = []   # (323) aborted maker entries are the bot's
     _origin_touched = touched_summary(orders) if _origin != 'MANUAL' else {"n": 0, "pnl": 0.0}
+    # 🧾 (DECISION_LOG 329) 📱 Binance-app trades in this slice (regime / window / view) + ambiguous episodes the recorder skipped (all-time,
+    # live only) — both text exports print it. Never raises (a bad state read → 0 skipped).
+    try:
+        from services.app_trades import app_trades_summary as _ats, load_state as _ats_state
+        _amb_n = 0
+        if not trading_engine.is_paper_mode:
+            _bs_raw = (await db.execute(select(BotState.app_trades_state_json).limit(1))).scalar()
+            _amb_n = len((_ats_state(_bs_raw).get("ambiguous") or {}))
+        _app_trades = _ats(orders, _amb_n)
+    except Exception as _ate:
+        logger.debug(f"[PERF] app trades summary skipped: {_ate}")
+        _app_trades = {"n": 0, "wins": 0, "wr": None, "pnl": 0.0, "avg_pct": None, "ambiguous_skipped": 0}
 
     # Apply flip-source filter if requested (Jun 16). Slices the pool by entry_strategy so every
     # downstream table re-computes for ONE flip sleeve in isolation — the per-source evaluation
@@ -5412,6 +5462,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "return_multiple": early_return_multiple,
             "daily_compound_return": 0,
             "origin": _origin, "origin_touched": {"n": 0, "pnl": 0.0}, "origin_out_pnl": round(_origin_out_pnl, 2),   # (323) an empty view still says which view it is
+            "app_trades": _app_trades,   # 🧾 (DECISION_LOG 329)
             "runtime_days": round(trading_engine.get_runtime_seconds() / 86400.0, 2),
             "by_confidence": {},
             "by_macro_trend": macro_trend_performance,
@@ -9627,6 +9678,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "avg_leverage": round(avg_leverage, 2),
         "return_multiple": round(return_multiple, 4),
         "origin": _origin, "origin_touched": _origin_touched,   # 🤖 (323) the view + bot trades the operator edited / closed by hand
+        "app_trades": _app_trades,   # 🧾 (DECISION_LOG 329) 📱 Binance-app trades in this slice + ambiguous episodes skipped (both text exports)
         "origin_out_pnl": round(_origin_out_pnl, 2),             # (323) realized P&L of the side left out — the UI takes it out of the balance
         "daily_compound_return": round(daily_compound_return, 4),
         "runtime_days": round(runtime_days, 2),

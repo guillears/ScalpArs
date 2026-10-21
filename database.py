@@ -221,6 +221,9 @@ async def init_db():
                 for _im_col, _im_type in (('imported_at', 'DATETIME'), ('import_source', 'VARCHAR(20)')):   # 📥 (DECISION_LOG 328) import from Binance
                     if _im_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_im_col} {_im_type}"))
+                for _ap_col, _ap_type in (('app_trade_key', 'VARCHAR(64)'), ('app_fee_estimated', 'BOOLEAN'), ('app_fills', 'INTEGER')):   # 🧾 (DECISION_LOG 329) Binance-app trades
+                    if _ap_col not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ap_col} {_ap_type}"))
                 if 'backstop_algo_id' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN backstop_algo_id VARCHAR(30)"))
                 if 'backstop_pct' not in columns:   # 🛡 (DECISION_LOG 292) per-order backstop record
@@ -767,6 +770,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN founding_allocated_usd FLOAT DEFAULT 0"))
             if 'orders' in inspector.get_table_names():   # 🔒 Oct-8 (251, round-3): the WILLY hold's per-open read (status, entry_strategy, is_paper)
                 connection.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_status_strategy ON orders (status, entry_strategy, is_paper)"))
+                # 🧾 (DECISION_LOG 329) one row per Binance-app episode — the recorder's idempotency (SQLite: NULLs never collide)
+                connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_orders_app_trade_key ON orders (app_trade_key)"))
             if 'willy_hold_blocks' in inspector.get_table_names():   # 🔒 Oct-8 (251): the WILLY hold's refusal reason (OPEN / UNREAD)
                 _wh_cols = [c['name'] for c in inspector.get_columns('willy_hold_blocks')]
                 if 'reason' not in _wh_cols:
@@ -859,6 +864,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN frenzy_last_judged_bar_ms BIGINT"))
                 if 'frenzy_unjudged_json' not in bs_columns:      # ⏪ Oct-6: per-pair horizon of pairs a completed pass could not read
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN frenzy_unjudged_json TEXT"))
+                if 'app_trades_cursor_ms' not in bs_columns:      # 🧾 (DECISION_LOG 329) Binance-app trade recorder cursor + state
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN app_trades_cursor_ms BIGINT"))
+                if 'app_trades_state_json' not in bs_columns:
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN app_trades_state_json TEXT"))
 
             # Jun 14 — Phantom Flip cohort sub-division (matched-long fade by C/W family)
             if 'phantom_flips' in inspector.get_table_names():

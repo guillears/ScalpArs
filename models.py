@@ -32,7 +32,8 @@ class Order(Base):
     # 🔒 Oct-8 (251, round-3 review): the WILLY global hold reads (status, entry_strategy, is_paper) on EVERY automated open — indexed
     # (a fresh DB gets it from create_all; an EXISTING orders table gets it from database.py's migration — CREATE INDEX IF NOT EXISTS;
     # verified Oct-8: PRAGMA index_list(orders) lists ix_orders_status_strategy after init_db on a migrated scratch DB)
-    __table_args__ = (Index("ix_orders_status_strategy", "status", "entry_strategy", "is_paper"),)
+    __table_args__ = (Index("ix_orders_status_strategy", "status", "entry_strategy", "is_paper"),
+                      Index("ix_orders_app_trade_key", "app_trade_key", unique=True))   # 🧾 (DECISION_LOG 329) idempotency (NULLs never collide)
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     binance_order_id = Column(String(50), nullable=True)  # Null for paper trades
@@ -398,7 +399,15 @@ class Order(Base):
     # read — tracking starts here); entry_price / quantity = Binance's position; entry_fee = an ESTIMATE (taker × entry notional).
     # NULL = not imported. Both ride the orders CSV (D12).
     imported_at = Column(DateTime, nullable=True)                   # when the row was created from the Binance position (UTC)
-    import_source = Column(String(20), nullable=True)               # 'BINANCE_APP' (services.position_import.IMPORT_SOURCE_BINANCE_APP)
+    import_source = Column(String(20), nullable=True)               # 'BINANCE_APP' (services.position_import.IMPORT_SOURCE_BINANCE_APP) · 'BINANCE_APP_HISTORY' (DL 329)
+    # 🧾 (DECISION_LOG 329) a trade the operator made directly in the BINANCE APP, auto-recorded from Binance's own fills (services/app_trades.py):
+    # always CLOSED (never OPEN — no exit / reconcile / backstop logic can touch it), entry_strategy MANUAL, import_source BINANCE_APP_HISTORY.
+    # app_trade_key = "{symbol}:{first fill's trade id}" (unique — re-runs insert nothing) · app_fee_estimated = a BNB-paid commission was
+    # converted at the CURRENT BNB price (the fill minute's kline was unavailable) · app_fills = Binance fills in the episode. NULL on every
+    # other row. All three ride the orders CSV (D12).
+    app_trade_key = Column(String(64), nullable=True)
+    app_fee_estimated = Column(Boolean, nullable=True)
+    app_fills = Column(Integer, nullable=True)
     manual_note = Column(String(200), nullable=True)                # the operator's hypothesis for the trade
     manual_block_reason = Column(String(60), nullable=True)         # Sep-29: gate shown on the Top Pairs row at the click ('NONE' = enterable, NULL = no scan data)
     manual_setup_rating = Column(String(15), nullable=True)         # the pair's rating at the click (STRONG_BUY / VERY_STRONG / NO_TRADE)
@@ -1157,6 +1166,11 @@ class BotState(Base):
 
     # Binance IP ban expiry (epoch seconds) -- persisted so it survives restarts
     ban_until = Column(Float, nullable=True, default=0.0)
+
+    # 🧾 (DECISION_LOG 329) Binance-app trade recorder: the end (ms) of the last COMPLETED pass (NULL = never ran → backfill from the first
+    # live order) and its JSON state (per-UTC-day income sums for the reconcile check, ambiguous / deferred episodes, open-position partials).
+    app_trades_cursor_ms = Column(BigInteger, nullable=True)
+    app_trades_state_json = Column(Text, nullable=True)
     
     # Last updated
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())

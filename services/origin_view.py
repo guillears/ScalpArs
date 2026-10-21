@@ -6,6 +6,9 @@ PURE helpers (no I/O). Who opened the trade decides its side:
            app trades; a bot position whose row was LOST is also adopted this way and then counts as MANUAL — rare, accepted).
            A 📥 IMPORTED app position (DECISION_LOG 328: import_source 'BINANCE_APP') is booked with entry_strategy 'MANUAL' → MANUAL by
            the first rule; no extra rule is needed (and RECOVERED stays MANUAL as before)
+           A 📱 trade made in the Binance app and AUTO-RECORDED from Binance's fills (DECISION_LOG 329: import_source
+           'BINANCE_APP_HISTORY', always CLOSED) is also booked with entry_strategy 'MANUAL' → MANUAL by the first rule (never in the
+           Bot view; the sleeve / strategy tables show it as its own "📱 App" row next to "🖐 Manual")
   BOT    = everything else. A bot trade whose exit the operator edited (exit_override_at set), closed in the Binance app
            (close_reason EXTERNAL_CLOSE) or ADDED size to (➕ manual_added_at set, DECISION_LOG 324) stays BOT — the bot chose the
            entry — and is counted as "touched by you".

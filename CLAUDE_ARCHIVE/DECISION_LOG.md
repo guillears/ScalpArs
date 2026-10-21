@@ -7860,7 +7860,7 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   `_untracked_seen`) → counter MANUAL_IMPORT + `[MANUAL_IMPORT]` log line with every value.
 - **Row:** entry_strategy MANUAL, confidence STRONG_BUY, manual_exit_mode / pattern_fixed_sl_pct / tp_pct per the mode, entry = Binance's
   average entry, qty = contracts, notional = qty × entry, investment = notional / leverage, entry_fee = ESTIMATE (taker × entry notional;
-  the app order's real fee is not read — DL 330 auto-record will provide it), opened_at = imported_at = the import time (Binance's real
+  the app order's real fee is not read — DL 329 auto-record will provide it), opened_at = imported_at = the import time (Binance's real
   open time is not read: tracking starts at the import), import_source "BINANCE_APP", backstop_algo_id / pct / trigger recorded.
 - **New columns** `orders.imported_at` (DATETIME) + `orders.import_source` (VARCHAR 20) — models.py + database.py migration; they ride
   the orders CSV (D12). /api/orders/open and /api/orders/closed carry them (badge).
@@ -7880,7 +7880,7 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   readings describe the import moment, MANUAL rows stay out of every systematic read); (d) no balance / bracket check (the position and
   its margin already exist); (e) the import refuses any open order on the symbol, including a non-reduce-only entry limit.
 - **Accepted gaps:** an order the operator places in the app between the orders list and the commit is not seen (the next reconcile and
-  the stop sweeps run as for any manual row); the entry fee is an estimate until DL 330; the opened time is the import time.
+  the stop sweeps run as for any manual row); the entry fee is an estimate until DL 329; the opened time is the import time.
 - origin_view: imported rows are MANUAL via entry_strategy; RECOVERED → MANUAL unchanged. No config field (D11 n/a); no analytics table
   (D12: the two columns ride the CSV).
 - Tests: tests/test_manual_import.py (every refusal incl. paper / pair held / read fail / side / no position / dust / leverage unknown +
@@ -7918,3 +7918,291 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
     a commit error with an unreadable row keeps the stop; the flatten re-check (row appears / mark replaced mid-loop); the candidate flags
     at 100×; the bot-leftover message; the UI fixes (static + node risk line for Floor / Bull-Run).
 - **Final verification (SHIP), noted not fixed:** a cancel whose shielded placement then returns None is not re-counted (rare; a stop may rest unlogged) · a cancel during the 'changed' withdraw can report "could NOT be withdrawn" for a stop already withdrawn · the UI risk line does not flag MOMENTUM's 1.2 % stop vs the backstop gap at very high leverage (the engine still refuses).
+
+## (329) 2026-10-20 — 🧾 Auto-record Binance-app trades (operator)
+- **Why:** the operator trades a lot directly in the Binance app (Oct-20: BTW, IOST ×6+, COMP). Those trades were in the Binance balance
+  and the live P&L card but in NO table / calendar / win rate. Operator decisions: record every app trade with Binance's REAL numbers;
+  backfill from the first live trade (min opened_at of live orders, our own 📱 rows excluded) to now, INCLUDING periods when the bot was
+  stopped; classify as MANUAL (never in the Bot view or any systematic analysis); own "📱 App" line apart from 🖐 pop-up trades.
+- **Data source (server side, the bot's authenticated ccxt client — new binance_service methods, all RAISE on error):**
+  `fetch_income_page` (GET /fapi/v1/income, all types in one call → REALIZED_PNL + COMMISSION + FUNDING_FEE, weight 30) says which
+  symbols traded when and feeds the reconcile sums; `fetch_user_trades_page` (GET /fapi/v1/userTrades per symbol, weight 5) gives the
+  fills; `get_net_positions` (positionRisk, signed positionAmt) anchors the replay; `get_symbol_leverages` (symbolConfig, one call);
+  `fetch_bnb_1m_closes` (public BNBUSDT 1m klines, 1000-minute blocks, cached); `used_weight_1m` (X-MBX-USED-WEIGHT-1M of the last answer).
+  Windows ≤ 7 days, pages of 1000 on the last row's time (dedup on tranId / trade id). Throttle: this job's own budget ≤ 600 weight / min
+  (rolling 60 s) + a 60 s pause when the header reads > 1,800. An active ban → the pass is skipped; a 418 / 429 / ban answer →
+  `_detect_ban` + the pass STOPS (cursor not moved, resumes next cycle; rows already written stay — idempotent).
+- **Episodes (services/app_trades.py, pure):** per symbol, fills replayed in time order as ONE signed net position (one-way mode), flat →
+  flat. A zero-crossing fill is split (its closing part ends the episode and carries the fill's whole realizedPnl; commission pro rata) →
+  two episodes. The replay is ANCHORED on the live position: start net = live net − Σ signed fills; a non-zero start net reads older 7-day
+  windows (≤ 13, never before the era start) until it starts flat. Still open at the end → NOT recorded (📥 import / untracked flow);
+  already open at the era start → skipped. A symbol with a fill < 180 s (review I4; was 60 s) before the position read is retried next pass (the anchor could
+  miss it). A symbol whose fills cannot be read is retried from the same point for up to 14 days (then dropped, ERROR log).
+- **Attribution vs DB rows (live, OPEN or CLOSED, same pair, our 📱 rows excluded) — CONSERVATIVE: anything not explained exactly records
+  NOTHING and logs `[APP_TRADE_AMBIGUOUS]` with the episode's fills (the operator never sees invented numbers):**
+  - membership: a row whose Binance order ids (binance_order_id + its Transactions' ids — in production the ENTRY id and ➕ ADD ids only: a CLOSE Transaction carries the entry id or None, the bot's close order id is never stored) appear in the symbol's fills
+    belongs to the episode holding them (exact); otherwise its window [opened_at − 90 s, (closed_at or now) + 90 s] overlapping the episode.
+    A member's window is widened to its own fills (a booking time off its fill never makes the bot's fill look like the app's). A 📥 imported
+    row (DL 328) adopted the WHOLE position → its window starts at the episode start.
+  - no member → pure APP trade (APP_CLOSE). Opposite-direction member, or a member (no own fill in the episode) opened before the episode
+    began → ambiguous. Any member OPEN → deferred (re-read every pass, holds the read window; still OPEN 3 days after Binance went flat →
+    ambiguous). Every fill inside a member window AND |net| ≤ members' concurrent qty × 1.01 at every fill → the bot's → nothing.
+  - else ONE "app share" line: qty = max over fills of (|net| − members' concurrent qty); P&L = episode Σ(realizedPnl − commission) −
+    Σ members' booked pnl; entry = VWAP of opening fills NOT a member's (order id; for a member without a known entry id, fills within 90 s
+    of its open; for an imported row every fill up to the import) — they must cover the share, else ambiguous; exit = VWAP of closing fills
+    not in a member's ids when they match the share (±1 %), else VWAP of ALL closing fills — in production ALWAYS the blended VWAP (the
+    bot's close order ids are never stored; review I1) — APPROXIMATION noted on the row; the P&L does not depend on it; close_reason
+    APP_ADD_SOLD_BY_BOT when the final reducing fill came within 5 s of a member's closed_at (DL 322 residual sweep), else APP_CLOSE;
+    funding = episode funding − members' funding_fee_usd. A share at or below 1 % of the peak with fills outside every window → ambiguous.
+  - Deviations from the brief, with reasons: (a) membership by order id first (exact; the brief's time-overlap alone would join a bot row
+    opened within 90 s after an unrelated app close); (b) "max |net| ≤ Σ rows' qty" is checked PER FILL against the rows open at that
+    moment (Σ over sequential rows would hide an app position held across two bot trades); (c) rows SIGNAL_EXPIRED / CANCELLED (never filled)
+    are not members (one could otherwise "explain" an app fill and lose it).
+- **Row (Order, CLOSED, is_paper False — never OPEN, so no exit / reconcile / backstop logic touches it):** entry_strategy MANUAL, confidence
+  STRONG_BUY, import_source BINANCE_APP_HISTORY, imported_at = record time, app_trade_key "{symbol}:{first fill trade id}" (unique index →
+  re-runs insert nothing), direction = first fill, entry / exit = VWAP of opening / closing fills, quantity = peak |net| (a scale-in/out
+  episode is ONE row at its peak size), opened_at / closed_at = first / last fill, pnl = Σ realizedPnl − Σ commission (USDT; BNB commission ×
+  the BNB 1m close of the fill minute; unavailable → the current BNB price and app_fee_estimated = True), entry_fee / exit_fee = opening /
+  closing fills' commission, funding_fee_usd = Σ FUNDING_FEE over [opened_at, closed_at] (the existing column) — NOT in pnl (the bot's
+  convention), pnl_percentage = pnl / (entry × qty) × 100, leverage = the symbol's CURRENT setting (approximate, noted; unreadable → 1),
+  investment = notional / leverage, entry / exit order type MAKER / TAKER / MIXED from the fills' maker flag, peak / trough 0 (no intratrade
+  path), notes = how it was built. New columns (models.py + database.py migration, ride the orders CSV — D12): orders.app_trade_key VARCHAR(64)
+  + UNIQUE INDEX ix_orders_app_trade_key, orders.app_fee_estimated BOOLEAN, orders.app_fills INTEGER; bot_state.app_trades_cursor_ms BIGINT
+  + bot_state.app_trades_state_json TEXT (cursor + per-UTC-day income sums + ambiguous / deferred / retry / open-position partials).
+- **Schedule:** `app_trade_loop` started with the app's background tasks (its own task, its own sessions, never blocks monitor / scan;
+  exception → logged, next cycle). First pass ~90 s after startup (backfill from the era start), then every 5 min from max(era, UTC midnight
+  of cursor − 1 day) (deferred / retry episodes pull it back). Only symbols with income since cursor − 10 min, open positions, deferred and
+  retry symbols are re-read. It runs whether the bot is running or stopped; each pass checks LIVE mode and the kill switch.
+- **Config (D11):** `app_trade_record_enabled` (default true) — config.py + trading_config.json + ConfigUpdate + engine wiring (the loop
+  reads it every pass and between symbols) + UI toggle "📱 Record app trades" (next to 🧭 Zone stamps) + load / save handlers.
+- **Views:** origin_view unchanged (entry_strategy MANUAL → MANUAL; docstring notes the new source). Sleeve table: MANUAL split into
+  "🖐 Manual" and "📱 App" (by import_source); strategy table: "APP · L/S" apart from "MANUAL · L/S". Every systematic table that excludes
+  MANUAL keeps excluding them (they ARE MANUAL). Calendar / Performance need no change — tests pin All (in), Bot (out), Manual (in).
+  Closed / Open Orders: a 📱 badge (importBadgeHtml) with how the row was built.
+- **D12:** /api/performance carries `app_trades` {n, wins, wr, pnl, avg_pct, ambiguous_skipped} for the slice; BOTH text exports
+  (copyAnalytics + copySplitReport) print "📱 App trades: N · WR · Σ $ · avg % · ambiguous episodes skipped: K" via `_appTradesReportLine`
+  (helper + 2 calls, grep count 3).
+- **Reconcile (operator acceptance check):** GET /api/app_trades/reconcile (no exchange read): Binance = Σ REALIZED_PNL (GROSS of
+  commission) + Σ COMMISSION (USDT-converted) + Σ FUNDING_FEE from the stored per-day income sums since the era start; DB = Σ pnl (NET of
+  fees) + Σ funding_fee_usd of ALL live CLOSED rows closed since the era start (bot + 🖐 + 📥 + 📱). gap total / trading / funding, and
+  gap_explained_by: open positions' realized partials + opening commissions, their funding, ambiguous episodes (n, $), deferred episodes,
+  fee-estimate rows; `unexplained` = the rest (bot rows' booked fees / fills vs Binance's, 📥 imported rows' estimated entry fee, funding
+  not stamped on a bot row). `[APP_TRADE_RECONCILE]` logged after the backfill, after any pass that recorded a row, and hourly.
+- **Gaps (accepted, told to the operator):** (1) the 📥 imported row (DL 328) is NOT rewritten with its real fee — the difference shows in
+  the reconcile's unexplained part; (2) leverage is today's setting, not the trade's; (3) an app-share exit price may blend the bot's
+  fills (P&L exact); (4) funding on an episode that began before the pass's income read comes from a separate income read (None → NULL);
+  (5) Binance serves ~3 months of income history — an era older than that loses its oldest sums; (6) [superseded by review round 1 —
+  📱 rows are now excluded from the re-entry cooldown and the post-exit pick-up];
+  (7) a fully-bot episode whose close fill lies > 90 s after the row's booked close (no order id link) is ambiguous, not "the bot's".
+- Tests (first build): tests/test_app_trades.py (23): episodes (scale-in/out · flip → two episodes with the split fill · still open · leading partial),
+  pure app numbers (VWAPs, pnl, funding apart, pnl %, order types) + idempotent re-run, BNB at the fill minute + the estimate flag + leverage
+  fallback, era bound + bot-stopped period, open-position anchor + busy symbol, backward extension, mixed (fully bot · BTW → APP_ADD_SOLD_BY_BOT
+  = episode − booked · row OPEN deferred · booked-before-fill row still the bot's · imported row adopts the position), ambiguous (opposite
+  direction; app entry not identifiable) + log, ban / 429 stop + ban / kill switch / paper make no call, weight budget, reconcile math +
+  endpoint after a pass, views (sleeve / strategy split, Bot view excludes, summary), exports + config + badge wiring, node --check + the
+  export line in node, migration on a stripped DB (columns + unique index), the loop survives a failing pass. DL 328's "DL 330" → "DL 329".
+- **Reviews (round 1: DO-NOT-SHIP → fixed):**
+  - **C1 🔴 income dedup:** tranId is unique only within an income type (a TRANSFER and a COMMISSION can share one) → rows now keyed on
+    (incomeType, tranId, symbol, asset) (`income_key`). Test: a TRANSFER sharing a COMMISSION's tranId — both kept, commission in the sums.
+  - **I1 close ids:** the bot's CLOSE Transactions carry the ENTRY id (or None) → a share's exit is always the blended VWAP of ALL closing
+    fills (flagged on the row). Test fixture now production-shaped (CLOSE Transaction = entry id); DL / docstring text corrected. NOT done
+    (optional): stamping the close order id on new CLOSE Transactions — left out to keep the close path untouched.
+  - **I2 share P&L absorbs booking errors:** the share P&L is ALSO computed from its own fills ((exit − app entry) × qty × dir − app fees);
+    a gap > max($0.50, 2 % of |share pnl|) → ambiguous (nothing written, logged). A member with notes RTP_FILL_UNVERIFIED /
+    RTP_SETTLE_BLOCKED → ambiguous. EXTERNAL_CLOSE with a fallback price: the fallback is not stamped on the row (`_get_actual_fill_price`
+    only logs it) → detected as "the row's exit_price matches no closing fill of the episode within 0.1 %" → ambiguous (no close-path
+    change). Tests: booked $40 off · RTP_FILL_UNVERIFIED · EXTERNAL_CLOSE at 0.95 (no fill) → nothing; EXTERNAL_CLOSE at a real fill → recorded.
+  - **I3 app reducing a bot row:** a closing fill that takes |net| below the members' concurrent quantity > 30 s before the close of every
+    member open at that moment → ambiguous + log (was silently "BOT"). A maker fill within 0.05 % of a member's resting_tp_price is the
+    bot's own resting TP (partial before its final close) and is exempt. Tests: app sells 1000 of the bot's 2714 ten minutes before the
+    stop → ambiguous; the same fill as a resting-TP maker fill → the bot's.
+  - **I4 missing / lagged fills:** per symbol per pass window the fills must reproduce the income — every REALIZED_PNL / COMMISSION
+    tradeId among the fills read, Σ realizedPnl and Σ commission (USDT) within $0.01 — else [APP_TRADE_FILL_MISMATCH], the symbol is
+    skipped and retried (retry list). Busy window 60 → 180 s. Paging lossless: userTrades continue a full page with fromId (never with a
+    time window); income pages overlap on the last row's time and dedupe; a full income page inside one millisecond raises (pass ends,
+    logged) instead of skipping. Limit: the guard covers the pass window; fills read further back for an anchor are checked by the per-row
+    exact check (I6) instead. Tests: a hidden opening fill (repeat-size false flat) and a hidden closing fill → skipped; same-ms paging.
+  - **I5 own client:** all recorder reads run on `binance_service.recorder_exchange` (lazy, same keys, own ccxt rate limiter, closed in
+    close()); positions via raw positionRisk (V3, V2 fallback), BNB price via the raw ticker. Ban state stays shared (`_call` runs
+    `BinanceService._detect_ban` on every error, checks `get_ban_status()` before every call). Tests: every read hits the dedicated client
+    (trading / public / spot clients raise if touched); a 418 from it sets the bot-wide `_ban_until` and stops the pass.
+  - **I6 exact per-row check:** every pure APP 📱 row: pnl vs Σ REALIZED_PNL + Σ COMMISSION (USDT) income of its symbol over [opened_at,
+    closed_at], to $0.01 (stored per key in the recorder state; income from the pass read, or one budgeted symbol read when older). SHARE
+    rows reported apart (episode − booked by design; episode_vs_income shown). /api/app_trades/reconcile → `app_rows_exact` {n_exact,
+    n_mismatched, mismatched_ids, n_pending, totals, rows, share_rows}; `[APP_TRADE_RECONCILE]` prints "N exact / M mismatched (#ids) / K
+    pending". The account-level gap stays, with `account_gap_noise_sources` listed. Test: an unexplained income row inside an old episode →
+    that row mismatched by id, the in-window row exact; log line pinned.
+  - **Minor:** 📱 rows excluded from the same-pair re-entry cooldown (operator rule: app trades never change bot behaviour; 🖐 rows
+    unchanged) and from the post-exit restart pick-up. The BNB current price and the episode funding / income reads go through the
+    budgeted, ban-checked `_call` (raising variants, paginated). Ambiguous episodes: re-judged every time their symbol is re-read (any pass
+    with new activity on it, a deferred / retry entry, or an open position) — not pinned after the defer limit (documented, no change).
+  - **Limits restated:** funding of a SHARE line = episode funding − the bot rows' funding_fee_usd (a row whose funding read failed counts 0 →
+    its funding lands on the 📱 line); Binance serves ~3 months of income and ~6 months of userTrades — older days keep the sums stored
+    when read; a pending exact check (income unreadable at record time) is not retried.
+  - Tests after round 1: 32 in tests/test_app_trades.py.
+- **Reviews (round 2: no critical, DO-NOT-SHIP → fixed):**
+  - **A — exact check vs flips:** the per-row check now sums ONLY the income rows whose tradeId is one of the episode's fills
+    (`episode_income_pnl`): a split fill's realizedPnl counts only where the episode holds its closing part, its commission × the episode's
+    share of the fill — exactly as the row. Boundary-millisecond rows of the neighbour episode never leak in. Test: long 100 → SELL 150 →
+    BUY 50 → two rows (LONG 100, SHORT 50), both exact.
+  - **B — I3 false ambiguity on a bot flatten:** a closing fill whose net_after ≤ eps is skipped by the I3 check (a flatten carries no app
+    share). Test: bot BUY 100, its stop sells 100 at t+5 min, row booked at t+7 min (BACKSTOP_STOP) → BOT.
+  - **C — exact check gates the write:** a pure APP row is written only when its income agrees to $0.01. ok=False → ambiguous (logged with
+    the row / income / Δ); income unreadable (pending) → not written, the symbol is put on the retry list from the episode start. SHARE rows
+    stay reported apart (not gated). Test updated: the old episode with an extra income row on its own closing fill → not written, ambiguous
+    "exact check failed … Δ −1.5000"; the in-window row exact; log "1 exact / 0 mismatched (none)".
+  - **D — I2 cross-check vs the blended exit:** with v.exit_approx (always in production, I1) the app's true exit is unknown but IS one of the
+    episode's closing prices → the residual "episode − booked" must lie in the P&L band from the lowest to the highest closing price (entry
+    side and qty exact), widened by max($0.50, 2 %). A bot booking error moves it out of the band; the blend alone cannot. With identified
+    exit fills the point comparison stays. Chosen over skipping the exit side: the band keeps a real bound on the exit.
+  - **E — EXTERNAL_CLOSE fallback detection:** accepted exit prices = any closing fill, any closing ORDER's VWAP (multi-fill market exit on a
+    thin pair) or the VWAP of all closing fills (`close_price_candidates`). Test: a two-fill bot exit booked at its VWAP → the share is recorded.
+  - **F — I4 guard at the edges:** fills are read FILL_PAD_MS (2 min) before the symbol's start; the guard runs per UTC day and pairs income
+    rows to fills by tradeId (a fill and its income row on opposite sides of an edge pair up); sums compare the rows with THOSE fills; a fill
+    with P&L / fee ≥ 2 min after the start must have an income row. A bad day CUTS the replay: only fills after the last bad day are replayed
+    (anchored from the end on the live position, so exact); earlier episodes wait (retry from the first bad day) — one bad window never
+    blocks later ones. Income rows without a tradeId make their day bad (conservative). Tests: fill 30 s before lo with its income just after
+    → paired, recorded, exact; a hidden fill on Oct-5 → the Oct-12 episode still recorded, retry from Oct-5.
+  - **G — per-symbol start:** retry / deferred points apply to THAT symbol only (its own budgeted symbol income read from its point); the
+    global income read stays at max(era, midnight of cursor − 1 day). Test: retry on one symbol from Oct-10 → the global read starts Oct-19.
+  - **H — state on a stop:** an AppTradeStop now saves the state (exact entries of rows already written, ambiguous / deferred / retry), the
+    cursor still not moved; an existing 📱 key without an exact entry gets one when its episode is read again. Tests: 429 on a later symbol →
+    the written row's exact entry is saved; a pre-existing row gets its entry.
+  - **I — checks:** header pause tested (1,900 → one 60 s sleep; 100 → none). I3 vs the BOT verdict: after B, a bot-only episode is
+    ambiguous only for a NON-flatten reduction below the bot's quantity > 30 s before its close that is not a maker fill at the row's resting-TP
+    limit (a resting TP is post-only, so it is always maker) — the bot makes no other partial closes today; if one appears, it is ambiguous
+    (no invented numbers), never a wrong row.
+  - **J — side effects noted:** (1) the BNB 24 h fee burn (`total_fee` of closed rows) now includes 📱 fees — it feeds the BNB top-up target
+    (accurate: app trades burn BNB too); the bot's sizing uses the bot-only burn (`_bot_open_filter`), unaffected. (2) the live baseline /
+    first-live-order derivations read live orders: 📱 rows are always after the era start, so the baseline time is unchanged; the account
+    views now carry 📱 pnl (more correct: it was already in the balance). (3) a maker entry that filled LATE on a row booked SIGNAL_EXPIRED
+    (never a member) would be labelled 📱 (rare; visible by its order id).
+  - Tests after round 2: 39 in tests/test_app_trades.py.
+- **Reviews (round 3: deep SHIP, no critical — applied before commit):**
+  - **1 — retry / deferred points survive a stop:** before each symbol the recorder copies its retry entry and deferred episodes; an
+    AppTradeStop inside the symbol (after the guard popped the point, e.g. a 429 on the leverage read) restores them before the state save.
+    Test: retry popped, then a 429 → the saved state still holds the same point and first-seen time.
+  - **2 — exact check window:** the income read for the exact sum is widened by ±2 min (FILL_PAD_MS) around the episode (the tradeId filter
+    still scopes it to the episode's own fills); funding keeps the tight [opened_at, closed_at] window. Test: the close's income rows land
+    30 s after the fill → the row is exact and written; a funding row 40 s after the close is not the trade's.
+  - **3 — 14-day drop ages on first listing:** retry entries are {point, first_seen_ms} (old bare-int entries are converted, aged from now);
+    the drop counts from first_seen_ms, never from the point (backfill points are older than 14 days from the start). A dropped entry goes
+    into `ambiguous` ("dropped after 14 days of retries", key {symbol}:retry:{point}) so the reconcile explains it; the log says nothing was
+    recorded there. Test: a weeks-old point listed an hour ago is kept; listed 15 days ago → dropped into ambiguous.
+  - **4 — multi-fill flatten:** every fill of the ORDER that flattens the position is exempt from the I3 check. Test: BUY 100, the stop order
+    fills 60 + 40, row booked 120 s later → BOT.
+  - **5 — existing-key exact entry:** only an episode that still reads APP (or SHARE) gets an exact entry of that kind; one that now reads
+    BOT / DEFER / AMBIGUOUS gets none. Test.
+  - **6 — write errors:** in the one-by-one insert fallback, an IntegrityError that is not the app_trade_key duplicate logs a WARNING and puts
+    the episode into `ambiguous` ("write failed: …") — never a silent skip (it is retried on later passes, each with the warning). Test.
+  - **7 — WILLY late-TP re-price (documented, no change):** the row keeps only its CURRENT resting_tp_price (no history column). A maker
+    partial fill at an OLDER limit before a re-price loses the I3 exemption → that episode is ambiguous (nothing recorded, logged) — a rare
+    false-ambiguous, never a wrong row.
+  - **8 — in plain words for the operator:**
+    - The recorder starts at the first live trade in the CURRENT database (Oct-16 19:58, after the DB reset). App trades from Oct-14 to
+      Oct-16 are NOT recorded.
+    - A 📱 "app share" line (your coins on a pair the bot also traded) is exact only as a pair total: bot row + 📱 line = Binance's total
+      for that episode. Its own split is checked against what its fills allow (the band), not to the cent.
+    - The P&L of a 📱 row does NOT include funding (kept in its own column, as on every bot row); Binance's position history includes it,
+      so the two can differ by the funding.
+    - A trade you built in steps (scale in / out) is ONE row at its biggest size.
+    - Leverage shown = the pair's leverage setting today, not necessarily the one you used.
+    - "ambiguous episodes skipped" in the reports counts ALL TIME (not the selected window).
+    - The BNB 24 h fee burn now includes your app trades' fees, so after the first backfill the BNB reserve target can rise; the top-ups to
+      reach it are bought with FREE USDT from the account.
+  - Tests now 45 in tests/test_app_trades.py.
+- **Final gate (SHIP):** a retry entry popped when the guard passed and re-added later in the same pass (pending exact check / older fills unreadable) now keeps its original first_seen_ms — the 14-day clock can't restart. Noted: a deferred episode that turns ambiguous right before a stopped pass can sit in both lists until the next pass (reconcile counts it twice meanwhile).
+
+## (330) 2026-10-21 — 📦 B23 archived (2nd live batch) + master STACK 2026-10-21a (operator "save current batch … add it to master batch")
+- **Archive:** export scalpars_orders_live_2026-10-21_02-14-46 → reports/BASELINE23_batch1016-1020_LIVE_orders.csv (+ the decisions journal beside it, as with B22).
+  - **Window:** fills Oct-16 19:58 → Oct-20 22:10 UTC.
+  - **Rows:** 64 closed = 40 bot + 24 MANUAL (MANUAL_EXEMPT in the master). Binance-app-only trades are not in the DB, so not in the archive (DL 329 auto-record not deployed yet).
+- **Master:** scripts/build_willy_exit_cf.py re-run (35/36 WILLY fills re-priced; ICNT 10-20 18:10 has no path cache → as traded), STACK_VERSION 2026-10-21a (no rule re-price since 10-19a), scripts/build_master_pool.py → B23 raw 64 · 70.3 % · +$173 | stack-kept 40 · 72.5 % · +$586.
+- **Validation:** validate_against_master F2 first failed (the BTC 5m cache ended before B22 + B23). Refreshed reports/backtest_cache/k5m_full/BTCUSDT.csv from public klines (2 calls, weight ≤ 10) → ALL CHECKS PASS.
+- **Per sleeve, bot only, as traded:**
+  - SURGE_LONG 2 · 100 % · +5.84 % · +$256
+  - LITE 6 · 67 % · +0.72 % · +$103
+  - LITE_RETRY 3 · 100 % · +1.34 % · +$56
+  - WILLY 9 · 78 % · −0.01 % · +$125
+  - MOMENTUM 15 · 73 % · −0.01 % · +$44 (13 longs −0.07 %, 2 shorts +0.40 %)
+  - LONG 3 · 67 % · −0.06 %
+  - SPIKE_FADE 2 · 0 % · −1.95 % · −$337 (KMNO, SOLV)
+- **Interference:** AUSDT LITE_RETRY was closed manually (+0.02 %; the walker says TP at 497 min); ICNT LITE was closed in the app (fallback price); SOLV fade was sized down by low free USDT (app margin). Batch reset pending: operator, after the push + the DL 329 first backfill.
+
+## (332) 2026-10-21 — 🔒 FADE LATE-ARM KEPT despite its fired revert (operator declared override) — new gate at 8 live late exits
+- **Fired gate (DL 111):** "first 8 RUNNER_TRAIL_LATE exits or 30 days: Σ(late − base) × size < 0 ∨ cuts > rescues ∨ any single cut > $100 → after_min 0". At the 30-day read (due 10-24) there is 1 live late exit, SUPER B19 10-10: late +0.256 % vs the base-stack shadow +0.292 % (TRAIL) → Δ −0.036 pt ≈ −$4.9, a cut with 0 rescues → fired.
+- **Operator decision:** keep late-arm ON (`spike_fade_late_arm_after_min` stays 15). Reason: one live trade is too little evidence, and the master shows two cases where the rule helped (SENT B2 −0.16 → +0.27, PROVE B12 −1.53 → +0.22).
+  - Transparency: those two are the in-sample trades the rule was designed on (CF_FADE_LATE_ARM), not forward evidence.
+  - The mechanism is rare: it triggered on 1 of 76 kept fades since the ship.
+- **New, tighter gate (replaces the 30-day read):** at the first **8 LIVE** RUNNER_TRAIL_LATE exits counted from the 09-24 ship (SUPER = #1; SENT/PROVE never count), if Σ(late − base) × size < 0 ∨ cuts > rescues ∨ any single cut > $100 → `spike_fade_late_arm_after_min` 0, with no further vote.
+- **No config change.** A prepared "late-arm OFF" edit was withdrawn the same hour (operator: not intended); the master pool keeps pricing CF_FADE_LATE_ARM with 15 / 0.30.
+
+## (333) 2026-10-21 — 🎯 LITE stays on LITE C (+2 / +3); the DL 284 "+1.5 vs +3" gate re-based on today's exit (operator: "keep LITE C")
+- **Watchlist read (10-21):** the DL 284 TP gate stood at 14/20 with +1.5 ahead (+0.24 vs −0.13 %/fill). But the gate compares the +1.5 counterfactual with the "actual +3 exit", and that exit was replaced on 10-15 by LITE C (DL 301: +3 when vol ≥ 20× ∧ BTC 1h slope > 0, else +2). Most +1.5 "rescues" (EPIC, BTW) are trades LITE C's +2 already exits.
+- **Before → after, master per batch** (LITE + LITE_RETRY stack-kept, today's LITE C pricing vs flat +1.5, avg %/fill):
+  - B18 +2.00 → +1.50
+  - B19 +0.22 → −0.58 (Σ −10.5)
+  - B20 −3.00 → +1.50
+  - B21 +1.25 → +0.37
+  - B22 −0.37 → −0.62
+  - B23 +0.92 → +0.82
+  - ALL 33: +0.48 → +0.10 (Σ +15.7 → +3.3)
+  - Excluding the 2 operator-closed fills: 31 · +0.53 → +0.06.
+  - Mechanism: 20 winners capped (−19.0 pts) vs 2 peak ≥ 1.5 losers saved (+6.6). The year study at DL 284 also had +3 > +1.5 (+0.267 vs +0.030 %/fill).
+- **Decision:** keep LITE C, no config change. The gate is RE-BASED, with the same bar ("+1.5 CF averages higher → +1.5"): the comparator becomes the LITE C exit actually traded; the cohort is the first 20 LITE + LITE_RETRY fills opened ≥ 2026-10-15 21:36 UTC (commit f12b39f); operator-closed fills are excluded (DL 331 rule). Rationale: the old comparator no longer exists, so this is not a bar move. B23's 9 post-301 fills already lean LITE C (+0.92 vs +0.82).
+- **Follow-up:** the scout (scout_frenzy_exits.py LITE TP gate) must use the re-based cohort / comparator. Folded into the scout-fixes work, then reviewed with it.
+
+## (334) 2026-10-21 — 🪤 FADE_LAGGARD filter KEPT despite its fired revert; the revert is re-written as a money test (operator declared override)
+- **Filter (DL 128, live since 09-29):** SPIKE_FADE refused when pair daily −DI(14) > 16.1 ∧ BTC 4h EMA50 > EMA200.
+- **Fired:** the revert ("first N≥10 blocked fades re-simmed under the live fade stack — WR ≥66% ∨ Σ>0 → off") fired on the WR leg only.
+  - Log read: reports/WATCHLIST_LOGREADS_2026-10-21.md. Of 16 journal blocks, the 4 from 10-03 are lost (pair hidden, logs expired); 12 were priced with scripts/study_fade_tp_walk.py, ticks first.
+  - First 10: 70 % WR · Σ −1.34 pts. All 12: 67 % · Σ −2.64. At a realistic fill 2–8 s after the signal, WR is 60 % → not fired.
+- **Before → after, three blocks:**
+  - ① Live blocked: 12 · 67 % · −0.22 %/fill · Σ −2.64 pts.
+  - ② Master per batch, with → without the filter: B1 +$379 → +$422 · B2 +$1,797 → +$1,639 · B8 +$81 → +$151 · B9 +$229 → −$132 · B10 −$43 → −$231 · ALL 76 · 87 % · +0.31 % · +$4,253 → 86 · 84 % · +0.24 % · +$3,659 (blocked 10 · 60 % · −0.30 % · −$594).
+  - ③ Backtest yr3 (at ship): blocked 295 · 55 % · −0.437 %/fill vs rest +0.009, negative 7/7 months, 5/5 seeds.
+- **Decision (operator):** keep the filter. The WR leg ignored this cohort's breakeven (≈79 %: small wins ≈+0.3 vs −1.5 stops), so a 70 % WR still loses money.
+- **New revert (replaces the old one):** the NEXT 10 blocked fades (log-priced from 2026-10-21 02:14 UTC on, signal-price convention, live fade stack) with Σ > 0 → `spike_fade_lag_ndi_min` 0, no further vote. Read at every batch review before CloudWatch's 14-day retention drops the lines.
+
+## (331) 2026-10-21 — scout fixes: DL-tag date lookup + operator-closed fills excluded from gates
+- **Found by:** the 2026-10-21 watchlist review. Scouts found a gate's start with `git log --grep "(DECISION_LOG 263)" --fixed-strings`. The real commit ec98aea is titled "(DECISION_LOG 261, 262, 263)", so nothing matched and the gate silently counted from NOW. GVOL_SPLIT counted 0 fills, the REENTRY / STRETCHED era notes said "not in git yet", and the revert-gates row FRENZY_GVOL was not capped at the switch.
+- **Fix 1 (new shared helper `scripts/scout_gatekit.py`):** `dl_commit_ts(n)` finds the oldest commit whose subject names n anywhere in a "DECISION_LOG a, b, c" / "DL a, b" list. If no subject has it, it falls back to the full message. Every scout git lookup now goes through it: scout_revert_gates.deploy_ms (grep: entries), scout_frenzy_exits (gvol_off_ms, Oct-8 / WILLY floors), scout_frenzy_entry_lines, scout_frenzy_tp_revert, scout_frenzy_wl_lines, scout_frenzy_willy_exit, scout_willy_timecap (+ WILLY_BTC1H / WILLY_STOP / WILLY_TP125 through it) and scout_willy_hold. Not found → a LOUD "GATE NOT EVALUABLE" warning and nothing counted. It never silently falls back to NOW: revert-gate rows show "⛔ NOT EVALUABLE", and GVOL_SPLIT prints NOT EVALUABLE. Existing explicit placeholder pins stay as the fallback, now with a loud warning. Every DL these scouts use (202, 205, 208, 250–252, 263, 281, 283, 285, 288, 290, 297, 301) resolves today.
+- **Fix 2 (operator-approved):** a bot fill (entry_strategy ≠ MANUAL) that the OPERATOR closed — close_reason MANUAL / MANUAL_* (dashboard; paper-era MANUAL_CLOSE) or EXTERNAL_CLOSE (Binance app) — does not carry the bot's exit. One shared filter (`split_operator_closed` / `reason_mask`) now drops these fills from every scout gate / observe tally that reads closed bot fills. Each gate prints its own line: "operator-closed: N — excluded (…)". OVERRIDE_TP / OVERRIDE_SL (operator-edited level, executed by the bot) stay in. No bar changed.
+  - **Covered:** revert gates (orders gates + MS_PVR kept side), GVOL_SPLIT, LITE watch / size eras, FRENZY_WILLY reads + WILLY_TURNOVER_BLOCKED let-through, REENTRY / STRETCHED, LITE C (301), LITE_OB_THIN, Z3, LITE_OFF30H3, LITE_GREEN_RETRY live-LITE comparison, LITE_STRETCH_REENTRY, LITE_BTC1H_FALLING / LONG_NONTOP50, FRENZY_TP_REVERT, FRENZY_WILLY_TP, LONG_STOP4, WILLY_TIMECAP / BTC1H / STOP / TP125 / AVGDOWN / MKTDIP / HOLD proxy, ML_STOP_COOLDOWN, NEGFLANK / NEG_DAILYUP, ML trend lines, ML_MARKET_TURN, rebound tally.
+  - **Not in the scouts:** the FRENZY_LITE_RETRY step-up (316), the LITE 309 step-down, and the LONG −4 (317) FRENZY Fills read live in the dashboard (main.py / templates). They are outside this change's scope and NOT yet filtered.
+- **Add-on (DL 333 re-base):** new LITE TP gate section in scout_frenzy_exits (`ltg_read` / `ltg_lines`).
+  - Cohort: the first 20 FRENZY_LITE + FRENZY_LITE_RETRY fills opened ≥ the DL 301 deploy (f12b39f, 2026-10-15 21:36 UTC, by DL lookup; explicit fallback), operator-closed excluded.
+  - Comparator: LITE C as traded vs the +1.5 counterfactual (recorded peak ≥ +1.5 → +1.5, else as traded). CF avg > actual → "→ LITE to +1.5"; else hold. Read once all 20 are closed.
+- **Tallies before → after (export scalpars_orders_live_2026-10-21_02-14-46; B23 operator-closed bot fills = AUSDT FRENZY_LITE_RETRY 10-20 14:50 MANUAL, ICNTUSDT FRENZY_LITE 10-20 22:10 EXTERNAL_CLOSE):**
+  - GVOL_SPLIT: 0 counted (floor = NOW) → HIGH 15 on 7 d · 60 % · +0.11 % / LOW 29 on 9 d · 41 % · −0.70 % / UNSCORED 10. Collecting (HIGH days 7/8; held on BTWUSDT 10-14 unscored); ICNT excluded.
+  - Revert gates FRENZY_GVOL (resolved by 263): 20/20 · −1.53 % "fired" (cohort ran past the switch) → 17/20 · −1.27 % capped at the switch, collecting. Resolved row, so no alert. Every other row is unchanged apart from the new operator-closed note.
+  - LITE C (301): ZONE 2 · −1.87 % → ZONE 1 · −3.11 %. OUTSIDE unchanged (4 · Σ Δ −3.95 pts, collecting 4/10).
+  - LITE watch: 32 closed · avg +0.060 % → 31 · +0.083 % (12/15 days).
+  - LITE_GREEN_RETRY live-LITE comparison: 2 fills · +0.69 % → 1 · +2.01 %.
+  - FRENZY_WILLY_TP LITE cell: 14 → 13/15.
+  - LITE TP gate (re-based): 7/20 closed · LITE C +1.278 % vs +1.5 CF +0.841 % → collecting (2 operator-closed excluded).
+  - REENTRY / STRETCHED era notes: "not in git yet" → split at 2026-10-09 14:17 UTC.
+  - LITE_RETRY step-up, LONG −4, WILLY, ML and fade gates: no operator-closed fill in their cohorts.
+- Tests: tests/test_scout_gatekit.py (25: DL list matching incl. "(DECISION_LOG 261, 262, 263)" / "(DECISION_LOG 263)" / "(DECISION_LOG 316, 317)", missing DL → not evaluable, the operator-closed filter, the B23 rows, the re-based LITE TP gate). Scout selftests updated (revert-gates "NOT EVALUABLE" instead of NOW; "Operator-closed: N — excluded" wording). Full suite green.
+
+## (335) 2026-10-21 — 👁 SURGE_BRACKET watch (operator): capped vs uncapped SURGE fills; no resize at N = 3
+- **Question (operator):** "shouldn't we re-size the SURGE trades?" SURGE_LONG targets 20× (lev mult 1.0). On AGT 10-18 / GTC 10-19 Binance's bracket allowed only 10× at that notional. The engine keeps the margin and drops the leverage, so the notional halves.
+- **Before → after per batch** ("double the margin when the leverage is capped"):
+  - B16 SAND SURGE_SHORT −$223: n/a (SURGE_SHORT off).
+  - B22 STRK +$75: uncapped, unchanged.
+  - B23 GTC +$96 → +$191 · AGT +$160 → +$320.
+  - SURGE_LONG total +$331 → +$586.
+  - No backtest block: the backtest does not model brackets.
+- **Decision:** no resize.
+  - N = 3 vs the Pattern W size-up bar (N ≥ 30 ∧ WR ≥ 70 % ∧ avg ≥ +0.10 % ∧ Σ$ > 0).
+  - Capped pairs are the thin ones; the fade execution study measured our own orders walking thin books (+0.2–0.4 %), and doubling scales that.
+  - A generic "top up margin when capped" would also hit fades.
+- **Watch:** tracker SURGE_BRACKET (scout) tracks capped vs uncapped live fills, the doubled counterfactual, and a thin-book cost sensitivity. A size-up is only via the Pattern W bar, SURGE-only, liquid pairs, with its own revert gate. CURRENT_STATE line added.
+
+## (336) 2026-10-21 — 🎯 WILLY turnover v2 gate priced walker-vs-walker (operator "do the WILLY scout fix")
+- **Why:** reports/WILLY_TURNOVER_V2_DEEP_2026-10-21.md. The scout compared blocked entries (walker) with let-through fills AS BOOKED, and 19 of those were booked under the old exits.
+  - As coded: blocked 21 · +0.216 vs let-through 36 · +0.103 → "REVERT".
+  - Walker-vs-walker under today's exit: +0.199 vs +0.263 → HOLD, day-CI [−0.83, +0.73].
+  - The as-coded comparison fires REVERT ≈ 49 % of the time even if the filter works as backtested.
+- **Change (scout only, measurement):** both sides are priced by the same walker under today's live WILLY exit (scout_willy_timecap.evaluate_late book="live"). Frozen sample and bar unchanged: first 30 blocked on ≥ 10 days; blocked ≥ let-through → REVERT · ≤ let-through − 0.20 → confirmed · else hold → re-read at 60. The old as-booked read is printed for info only.
+- **Filter:** kept at 1.0 (no config change).

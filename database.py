@@ -768,6 +768,10 @@ async def init_db():
                 _bs_cols = [c['name'] for c in inspector.get_columns('bot_state')]
                 if 'founding_allocated_usd' not in _bs_cols:
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN founding_allocated_usd FLOAT DEFAULT 0"))
+                if 'nav_epoch_start' not in _bs_cols:          # 📈 (DECISION_LOG 337) NAV history "fund start" epoch (display boundary)
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN nav_epoch_start VARCHAR(10)"))
+                if 'nav_epoch_started_at' not in _bs_cols:
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN nav_epoch_started_at DATETIME"))
             if 'orders' in inspector.get_table_names():   # 🔒 Oct-8 (251, round-3): the WILLY hold's per-open read (status, entry_strategy, is_paper)
                 connection.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_status_strategy ON orders (status, entry_strategy, is_paper)"))
                 # 🧾 (DECISION_LOG 329) one row per Binance-app episode — the recorder's idempotency (SQLite: NULLs never collide)

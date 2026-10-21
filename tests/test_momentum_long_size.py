@@ -145,7 +145,7 @@ def test_bracket_keeps_the_reference_notional_with_the_full_margin():
 def test_logs_quiet_reference_and_scaled_min():
     i = ENG.index("    async def open_position("); j = ENG.index("\n    async def ", i + 10)
     body = ENG[i:j]
-    assert "min ${_inv_cfg.min_investment_size * _ml_min_scale:.2f}" in body and "min ${config.trading_config.investment.min_investment_size * _ml_min_scale:.2f}" in body
+    assert "min ${_inv_cfg.min_investment_size * _ml_min_scale * _ht_min_scale:.2f}" in body and "min ${config.trading_config.investment.min_investment_size * _ml_min_scale * _ht_min_scale:.2f}" in body   # 🎲¼ (341) × HT's own scale (1 for every other open)
     assert "momentum-long margin ×{_ml_min_scale:.3g} (paired {_ml_ref_lev:g}x" in body and "momentum-long margin ×{_ml_min_scale:.3g}, paired" in body
     assert "base_lev_multiplier=(ml_lev or 1.0) * f, quiet=True)" in ENG and "if not quiet:" in ENG
 

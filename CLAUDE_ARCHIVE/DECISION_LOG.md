@@ -8253,3 +8253,136 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   - print the per-sleeve table (bot only), MANUAL / operator-closed / EXTERNAL_CLOSE / bracket-capped rows, and DRAFT CURRENT_STATE + DL text (never written).
   - It refuses overlaps and taken numbers and never overwrites. Exit 2 = refused / failed, 3 = STACK bump needed.
 - Ships with the scout fixes (DL 331, 333 scout part, 335 SURGE_BRACKET tracker, 336 WILLY walker-vs-walker).
+
+## (338) 2026-10-21 — 🖐 Manual entry: exit explained under the dropdown + unused SL/TP greyed out (operator)
+- **What:** dashboard only (templates/index.html, the manual-entry-modal and its JS). No change to engine, services/, config values or main.py: GET /api/config already gives the page `thresholds`, `investment` and `confidence_levels` (window._cachedConfig).
+  - **The line:** a 📖 line (`#manual-exit-explain`) under the Exit row. It describes the chosen exit's stop, take profit, other exits and max hold in the active ⇄ unit. % mode shows "−3.00 % (≈ −$300.00 on this $10,000.00 position)". $ mode shows "−$300.00 (−3.00 %)", where $ = slTpUsdFromPct(%, Size × Lev).
+  - **Inputs:** every number is read from the saved config when the line is drawn. The leverage floor uses the same manualStopForLeverage the risk line and stop table use. The line turns orange with "⚠ … the open will be refused" exactly when the engine would refuse:
+    - **leverage floor:** manual_exit_levels / manual_momentum_refusal;
+    - **broker-backstop gap:** the safety stop may rest only within 92 % of the liquidation distance and must sit 0.3 above the trade's own stop. New UI constants MANUAL_BACKSTOP_* are pinned to the engine's.
+  - **Code:** pure builder `manualExitExplainText(mode, o)`, render `manualExitExplainRender()` called from manualRiskLine (every input / change).
+- **Greyed boxes:** the rule for which SL / TP boxes a mode ignores is unchanged (DL 320). Those boxes are now dimmed (opacity, not-allowed cursor). They carry a "set by the Momentum / Frenzy / Bull-Run exit" or "set by the floor stop" note in their "= …" slot, plus a tooltip. The submit already sent `null` for a disabled box, so the server payloads are unchanged. A test re-verifies this for every mode with both boxes typed.
+- **What each mode does today (verified in code; live config values at 2026-10-21):**
+
+| Mode | Stop | Profit side / TP | Max hold | Code |
+|---|---|---|---|---|
+| FIXED | typed SL (≤ leverage floor; with backstop on ≤ 92 % liq − 0.3) | typed TP; resting maker limit when resting_tp_manual_enabled (true), else software TP; nothing else | global max_holding_time_minutes (1200 = 20 h) | trading_engine.py manual intercept (monitor ~17622, realtime ~21540), manual_exit_levels, resting_tp.py rtp_row_target |
+| FLOOR | manual_floor_for_leverage (20× → −3.00) | optional TP, resting maker as FIXED | 20 h | same + manual_floor_for_leverage |
+| MOMENTUM | STRONG_BUY stop_loss −0.70; signal_active_sl −1.00 while the pair's signal is on; NO ATR widening for MANUAL (exit_entry_atr_pct → None) | runner trail from +0.40 peak (LONG 1.0× entry ATR, BE floor +0.10; SHORT 0.5× ATR capped at 35 % of peak, no BE floor) · hard-TP ladder (LONG 1.25 → +1.00 …, SHORT 1.00 → +0.75 …; floor = trigger − offset) · EMA13-cross exit LONG off / SHORT on (needs EMA5/8 flip) · NO_EXPANSION 180 min | 20 h | realtime stack ~22430 (stop), ~23065 (long runner), ~21818 (ladder), ~22080 (EMA13), monitor NO_EXPANSION ~17700 |
+| FRENZY | frenzy_stop_pct −3.00 (frenzy_stop_for, sleeve None) | frenzy_lock_arm_pct 0 → fixed software TP frenzy_tp_pct +1.50 (no resting TP for manual FRENZY); trail arm +5.0 never reached under that TP | min(global, frenzy_max_hold_minutes 720) = 12 h | services/frenzy.py frenzy_exit_for(use_tp=True), monitor max-hold ~17552 |
+| BULLRUN | bullrun_base_sl −0.70 widened to 1.5× entry ATR, cap sl_atr_widen_floor −1.20, clamped at the leverage floor | BE: at +1.00 peak → +0.20, then trail 2.0× entry ATR; ladder 4:3.5 … 30:27 (10 rungs, peak:floor); no fixed TP | 20 h | manual_bullrun_exit_for → _bullrun_exit_for (door None) |
+| BULLRUN_SL | typed SL until peak ≥ bullrun_be_arm_pct (+1.00) | then exactly the Bull-Run profit side | 20 h | manual_bullrun_exit_for(custom_sl) |
+
+- **Behaviour worth knowing (unchanged — not touched here):**
+  - **① Momentum NO_EXPANSION closes winners too.** STRONG_BUY be_level1_trigger / offset = 99, so after 180 min the check closes ANY manual MOMENTUM trade, in profit or not, unless the pair's signal is still on in its direction (then the clock restarts).
+  - **② Leverage refusals by mode (live config, engine-verified).** First refused leverage: FLOOR 34× (backstop gap: from there the floor stop + 0.3 sits past 92 % of the liquidation distance; 50×: −1.20 floor needs a safety stop at −1.50, liquidation caps it at −1.38) · MOMENTUM and BULLRUN 47× (backstop gap) · FRENZY 24× (its −3.00 stop is wider than the leverage floor) · FIXED with a 1.00 stop 53×. The widest stop you can type at 50× is −1.08, not the −1.20 floor the stop table shows.
+  - **③ MOMENTUM safety-stop width.** The backstop check uses the ATR-widen cap (−1.20) as the stack's widest stop, though manual momentum never widens.
+  - **④ FRENZY trail is unreachable today.** A manual FRENZY trade's trail (arm +5) never runs while frenzy_tp_pct +1.5 is on.
+- Tests: tests/test_manual_exit_explain_ui.py (11):
+  - wiring;
+  - every mode against a FAKE config (no hard-coded number survives);
+  - $ = slTpUsdFromPct;
+  - the FRENZY lock variant;
+  - the refusal note = the engine's refusals at every leverage 1–125, LONG and SHORT, for the FAKE config (backstop off and on) and the live trading_config.json;
+  - a mode switch greys the box and never submits ignored values;
+  - review I1 / I2 / M3;
+  - node --check of all inline scripts.
+  - Full suite: 1852 passed.
+- **Reviews (coordinator, SHIP after fixes — all applied):**
+  - **I1 (stale config after Save):** saveConfig on res.ok now re-fetches GET /api/config into window._cachedConfig, then calls manualRiskLine(). This is one surgical line after the success toast; the concurrent WILLY-toggle edits are untouched. The tooltip now says "re-read at page load and after every successful Save" (true).
+  - **I2 (fallback numbers):** with no config or no thresholds, the line reads "settings not loaded yet — reopen in a moment": no number and no ⚠.
+  - **M1 (no-expansion wording):** "at 3 h it closes, in profit or not, unless the pair's signal is still on (the clock then restarts)".
+  - **M2 (SHORT EMA13 exit):** it now says "… until the runner arms (+0.40 %)", read from runner_trail_short_arm_peak (+ its ATR minimum when > 0). Verified at EMA13_RUNNER_SUPPRESS in check_realtime_stop_loss: an armed short rides through the cross.
+  - **M3 (refusal advice):**
+    - FIXED / BULLRUN_SL: "lower the leverage or use a tighter stop";
+    - the other modes: "lower the leverage or use Custom SL/TP";
+    - MOMENTUM safety-stop refusal: "the momentum stop's −1.20 % cap is checked against the exchange safety stop, which can rest at most −X % …".
+  - **M4 (parity coverage):** the parity test also covers the live config and SHORT.
+
+## (340) 2026-10-21 — 🔓 FRENZY_WILLY global hold switched OFF via new switch (operator)
+- **Operator:** "we should revert it asap". New config `frenzy_willy_global_hold` (code default True = the DL 251 semantics; `trading_config.json` **false**). UI toggle "WILLY global hold (block all other bot entries while a WILLY is open)" in the FRENZY/WILLY settings box (load + save); `/api/status` frenzy monitor carries `willy_global_hold`; the monitor line (dashboard + both text exports) and the config block (both exports) print "global hold ON / OFF".
+- **Why:** the hold (DL 251, Oct-8) was built for a WILLY at **20× with NO stop** (a −3 % move ≈ 14 % of the account, loss bounded only by the time cap). Since DL 271 / 280 WILLY runs a **−4 % stop at 10×** (one stop ≈ −9.8 % of the book), so the hold's original reason is gone, and it has no measured value.
+- **Hold-blocked record** (`reports/SCOUT_WILLY_HOLD.csv`, priced at their then-exits; recomputed 2026-10-21 after review). 13 setups were blocked from 10-09 to 10-17:
+  - **5 were FRENZY_WILLY entries:** 5 · 80 % · +0.05 %/trade · Σ +0.25. WILLY's own slot cap still blocks these, so the switch does not free them.
+  - **The 8 non-WILLY setups the switch frees** (FRENZY_LONG 3 · FRENZY_LITE 2 · FRENZY_WIDE 2 · SPIKE_FADE 1): 8 · 50 % · **−0.56 %/trade · Σ −4.5 pts**. They fall on 10-09 → 10-12, about one market window, and the SPIKE_FADE is priced at its sleeve mean.
+  - Small N and inconclusive. If anything, the freed fills LOST money, so there is **no evidence that the hold costs money**.
+  - **This is an OPERATOR OVERRIDE BELOW THE EVIDENCE BAR.** It rests only on the hold's original reason (20×, no stop) no longer holding. The tighter gate (b) below is the guard.
+  - (The first draft's "13 · 62 % · −0.33 %/trade · Σ −4.2" pooled the WILLY entries in. Its numbers were right, but they described the wrong cohort.)
+- **Engine (paper = live):** `TradingEngine._willy_global_hold_on()` (unreadable config → ON). When OFF:
+  - `_willy_hold_block` returns False at once: no open-WILLY read, no FRENZY_WILLY_HOLD / _UNREAD counter, no `willy_hold_blocks` row.
+  - The under-book-lock re-check (FRENZY_WILLY_HOLD_RACE) and the FRENZY catch-up deferral stand down.
+  - The LITE "hold — stretch NOT judged" deferral stands down, and a stale `_fz_lite_hold_first` marker is dropped, so it is never HOLD_EXPIRED.
+- **WILLY guards that stay:**
+  - **Own slots** (`frenzy_willy_max_slots` 1, FRENZY_WILLY_MAX_SLOTS) are now THE one-WILLY-at-a-time guard. The pending red-candle entry's quiet check uses `_willy_slots_full` in place of the hold, so a pending WILLY **stays armed** while slots are full, as it did under the hold. A late MAX_SLOTS refusal sets `_willy_slots_full`, which keeps it pending.
+  - **Pair held** (FRENZY_WILLY_PAIR_HELD): a WILLY never opens on a pair with any open position.
+  - Lateness / dislocation (FRENZY_WILLY_LATE / _DISLOC).
+  - Turnover filter (`frenzy_willy_max_vol_mcap_ratio`).
+- **Same pair, other sleeves:** the hold was never the only same-pair guard. `open_position`'s unconditional one-position-per-pair check (PAIR_HELD, before sizing) plus the bot open lane (one bot open at a time) and the per-pair open lock still refuse any other sleeve on a WILLY's pair, LONG or SHORT, so no two rows ever share a pair (Binance one-way mode would net them). Tested end-to-end.
+- **Dependents:**
+  - LITE_RETRY's re-checked "WILLY hold" filter (DL 316) is gone with the switch (`_frenzy_open`'s first check).
+  - FRENZY's ON-bar `_willy_hold` deferral and WILLY entry B's `_on_hold_deferred` only fire on a hold refusal, so they go inert.
+  - `_willy_hold_flush` on WILLY close is a no-op with no events.
+  - The scout's WILLY_HOLD "cost of the hold" and the HOLD_FRENZY_EXEMPT watch (DL 266) stop receiving rows. Their history stays; the exempt gate is moot while the switch is OFF.
+  - Manual / 📥 import / 📱 auto-recorded trades were never held.
+- **🔒 REVERT gates (alert-only; the operator decides):**
+  - **(a)** (wording tightened 2026-10-21 by the coordinator: tied to what the switch changes) A UTC day on which **at least one non-WILLY bot fill was OPENED while a FRENZY_WILLY was open**, within the OFF era (≥ deploy), and that day's bot P&L is **≤ −10 % of the account** → switch the hold back ON and review. Positions opened before the WILLY never count; a dry run showed they would have fired the loose wording on 10-15 with the hold ON. The exports carry no balance column, so the tracker assumes $1,225 (`--account` overrides) and prints that on every line.
+  - **(b) Tighter gate on the freed cohort:** non-WILLY bot fills opened while a FRENZY_WILLY was open, opened ≥ the DL 340 deploy. After the first 8 such fills, if avg P&L % < 0 AND Σ ≤ −4 pts → **ALERT: review turning the hold back ON**. The sample is frozen at those 8 fills and the threshold is never re-fit.
+  - Tracker: `scripts/scout_willy_hold_off.py` (state `reports/SCOUT_WILLY_HOLD_OFF_STATE.json`, test `tests/test_scout_willy_hold_off.py`).
+- **Review fixes (same change):**
+  - `open_position` HARD single-WILLY guard: a FRENZY_WILLY open re-counts the open WILLY rows inside the bot open lane, before any exchange order, and refuses at ≥ `frenzy_willy_max_slots` (FRENZY_WILLY_MAX_SLOTS), whatever the switch says. A refusal there keeps a pending entry armed.
+  - `_willy_slots_full` logs a warning and rolls back on a read failure. `_willy_hold_state` deliberately does NOT roll back: under the book lock, a LIVE fill is booked even on UNREAD.
+  - Tests: each test gets fresh process-wide asyncio locks (`database.db_write_lock` and others), which fixes an order-dependent loop-binding leak. The e2e tests now run fully offline.
+- Tests: `tests/test_willy_global_hold_switch.py` (13, incl. the hard single-WILLY guard e2e) + `tests/test_scout_willy_hold_off.py` (8): default / json / UI / exports / API wiring; OFF never blocks, counts or records any sleeve; ON still blocks; real `open_position` e2e (OFF: MOMENTUM opens next to a WILLY; OFF: the WILLY's pair is refused PAIR_HELD for LONG and SHORT; ON: refused + recorded); `_frenzy_open` LITE / LITE_RETRY / FRENZY_LONG not refused for the hold; the LITE eval opens with a WILLY open; a pending WILLY stays armed on full slots, then opens ignoring the hold; `_willy_slots_full` reader (fail-closed). The hold's own tests (`@pytest.mark.willy_hold`) pin the switch ON in `tests/conftest.py`. Full suite after the review fixes: 1873 passed ×2, plus the three-file order check in both orders.
+
+## (341) 2026-10-21 — 🎲¼ FRENZY_WILLY_HT: a quarter-size WILLY on turnover-only refusals (operator option B, "build it, reviews")
+- **Why.** About 1/3 of WILLY setups are refused by the turnover filter (vol/mcap ≥ 1.0). In `reports/WILLY_TURNOVER_REPRICE_2026-10-19.md`, under today's live entry and exit, there were 477 blocked vs 1,093 kept, i.e. 30 %. Those numbers are walker prices and in-sample. The filter's evidence is shadow-only, and the v2 gate compares walker-priced blocked entries against booked let-through fills. HT turns the blocked cohort into real fills at ¼ risk, so the filter can be judged on fills.
+- **Entry.** HT uses exactly WILLY's entry: a new flag, then the first red 5m bar within 60 minutes, with the same A/B one-shot. It fires only when the full-size WILLY was refused solely by a measured ratio.
+  - The quiet hold / WILLY-slot / pair-held check must already have passed.
+  - An unreadable ratio is a different refusal, so it never fires HT.
+  - At the red bar, HT runs through WILLY's open path: lateness, dislocation, pair held, plus its own slot.
+  - If HT opens, the pending WILLY entry ends (journal and monitor event `FRENZY_WILLY_HT_TAKEN`). If HT's slot is full, the refusal is counted once (`FRENZY_WILLY_HT_MAX_SLOTS`) and the entry stays armed. Any other HT refusal also leaves the entry armed.
+  - The turnover shadow record (counter plus journal line) is unchanged.
+- **Size.**
+  - `frenzy_willy_ht_size_frac` 0.25 × the margin WILLY would have opened (its invest/lev mults, balance caps and the $100 min clamp already applied), at the SAME leverage. The notional is therefore exactly ¼ (tested end-to-end), and the bracket and liquidation distance are WILLY's.
+  - The min-margin guards judge HT at WILLY's size (`_ml_min_scale`, the DL 298 pattern), so a quarter ticket is never refused for being a quarter. A smaller margin can only ease the BNB reserve and funds checks.
+- **Exit.** HT uses WILLY's exit: `WILLY_EXIT_CLASS = (FRENZY_WILLY, FRENZY_WILLY_HT)` in every exit and protection site:
+  - the candle and realtime exits, the time cap and the late-TP limit swap;
+  - the resting TP (`RTP_SLEEVES` with WILLY's switch; `RTP_SWITCHES` de-duplicated) and the backstop stop (`bot_own_stop_pct`);
+  - the touch markers and the cache stop on open and on rebuild;
+  - the RTP arm at open, the A/B stamps and the episode one-shot DB check.
+  - HT is also added to `FRENZY_STRATEGIES` (urgent exits, follow list) and has no pair-EMA exit.
+- **Not a WILLY.** HT is not counted by the WILLY slot count, the open_position hard single-WILLY guard (DL 340), the global-hold state or hold flushes. HT is never a hold trigger. When the hold is ON, HT is a blocked sleeve under the generic rule.
+- **Own slot.** `frenzy_willy_ht_max_slots` 1, checked three times:
+  - the pre-check at the red bar;
+  - `_frenzy_open`'s slot check;
+  - a hard guard inside open_position, in the bot open lane before any exchange order, which also refuses if the count can't be read.
+- **Switch:** `frenzy_willy_ht_enabled` true (code and JSON).
+- **Records.**
+  - Order `entry_strategy` FRENZY_WILLY_HT. The trigger, mcap, 24 h volume and ratio ride the existing `entry_mcap_usd`, `entry_pair_volume_24h_usd` and `entry_vol_mcap_ratio` columns (the same inputs the filter read; no new column).
+  - New counters: FRENZY_WILLY_HT_MAX_SLOTS / _FAILED, plus the `_bk`-prefixed open-path ones.
+  - UI and reports:
+    - Its own rows: the FRENZY Fills table row with the gate text (UI and both exports), the strategy row "Frenzy-Willy-HT", and the open-positions label.
+    - The strategy filter option, the TP badge and the pair-table outcome line.
+    - The monitor line and the config block (both exports).
+    - Inputs: an enable toggle, the size fraction and max slots, next to the WILLY settings.
+- **Analysis.** HT is PROBE_EXEMPT in `build_master_pool.py` (a reduced-size line under the full-size-only rule; no master fill yet, so STACK_VERSION is unchanged). It is never MOM/FLIP in `screen_pool.py`, and `archive_batch.py` keeps it off the headline table on its own line.
+- **🔒 Gates, all alert-only** (`services.frenzy.frenzy_willy_ht_gate`, shared by the dashboard row and `scripts/scout_willy_ht.py`; cohort from the deploy; operator-closed fills excluded):
+  - Early kill: Σ ≤ −8 pts → review.
+  - First read: the first 10 average < 0 → review.
+  - Main read at the frozen first 30 fills on ≥ 10 UTC days, vs full-size WILLY fills opened in the same period:
+    - HT avg ≥ WILLY avg → recommend removing the turnover filter (ratio 0) and turning HT off;
+    - HT ≤ WILLY − 0.20 %/trade → filter confirmed, HT off;
+    - else re-read at 60.
+- **Operator chose option B** (build HT, alert-only). Below the usual evidence bar: there is no HT fill yet.
+- **Caveats.**
+  - The liquidity and gross caps in open_position apply to HT's OWN (quarter) size after the ¼ scaling. So an HT can be above ¼ of a WILLY that those caps would have shrunk: "¼" is exact versus WILLY's uncapped ticket, not versus a capped one.
+  - The master marks HT `is_probe` (PROBE_EXEMPT), but probes stay `stack_keep`. Any FRENZY aggregate built from the master must filter `is_probe` (as the full-size tables already do), or HT leaks into the FRENZY totals.
+- **Review fixes (deep: FIX-FIRST, same day):**
+  - ① **Sleeve table.** The fixed order list dropped the Frenzy-Willy-HT row from the sleeve table (UI and both exports), so the rows no longer summed to Total. HT is now added, plus a catch-all for any unlisted sleeve. A test runs /api/performance and checks the sums.
+  - ② **Bracket keep.** HT's min-margin factor is now a separate `_ht_min_scale`, and the DL 298 `momentum_long_bracket_keep` runs only for a resized momentum long (`_ml_ref_lev` set, not HT). A bracket-bound HT stays ≤ ¼ of WILLY's margin at ≤ WILLY's leverage (tested; the test fails on the old code).
+  - ③ **Refusal semantics now match WILLY's.** HT's own lateness / dislocation / bare open_position refusal ENDS the pending entry. A hold, pair held, HT slot full or our own crash keep it armed. LATE/DISLOC are counted once per entry because it ends.
+  - ④ **Gate text.** KILL / FIRST now show the main-read status after them. The main read needs ≥ 10 full-size WILLY comparator fills in the period, else REREAD. The re-read sample is the first 60 HT fills, once ≥ 60 exist.
+  - ⑤ **Size fraction.** The UI clamps it to (0, 1] on save; out of range is saved as 0.25 with a warning toast. PUT /api/config refuses an out-of-range fraction, a non-bool switch and slots < 1 (`frenzy_willy_ht_config_errors`).
+  - ⑦ **Sleeve-sizing table.** New informational row "Frenzy-Willy-HT · ¼ × WILLY".
+  - ⑧ **HT hard guard.** Commented as depending on the bot open lane.
+- **Tests:** `tests/test_frenzy_willy_ht.py`. Existing WILLY tests run with HT off in their fixture.

@@ -1408,6 +1408,22 @@ def run():
     except Exception as _ss_e:
         log(f"stop-slip tracker failed: {_ss_e}")
         _rg_sec += ["## 🧯 Stop-exit slippage", "", f"Unavailable this run ({str(_ss_e)[:120]}).", ""]
+    try:                                               # 🔓 Oct-21 WILLY_HOLD_OFF revert gates (DECISION_LOG 340; orders exports only, alert-only; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_hold_off as _who
+        _rg_sec += _who.run(now_ms)
+    except Exception as _who_e:
+        log(f"WILLY_HOLD_OFF revert gates failed: {_who_e}")
+        _rg_sec += ["## 🔓 WILLY_HOLD_OFF", "", f"Unavailable this run ({str(_who_e)[:120]}).", ""]
+    try:                                               # 🎲¼ Oct-21 WILLY_HT gates (DECISION_LOG 341; orders exports only, alert-only; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_ht as _wht
+        _rg_sec += _wht.run(now_ms)
+    except Exception as _wht_e:
+        log(f"WILLY_HT gates failed: {_wht_e}")
+        _rg_sec += ["## 🎲¼ WILLY_HT", "", f"Unavailable this run ({str(_wht_e)[:120]}).", ""]
     _ev_at = next((i for i, x in enumerate(L) if x.startswith("## Evidence so far")), len(L))
     L[_ev_at:_ev_at] = _rg_sec + _fz_sec + _st_sec                         # above the evidence table, so the events / "no events" line keep their place
     if not len(rep):

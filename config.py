@@ -1510,7 +1510,7 @@ class SignalThresholds(BaseModel):
     # (FRENZY_WILLY_MAX_SLOTS), FRENZY's dislocation (FRENZY_WILLY_DISLOC) and lateness (FRENZY_WILLY_LATE) guards. Own exit
     # (services.frenzy.frenzy_willy_exit_for): fixed TP +1 % net (FRENZY_TP; operator Oct-8 change from the specified +2; a missed +1 peak closed
     # at a loss = FRENZY_TP_LATE) · NO STOP LOSS (operator Oct-8 — superseded by DECISION_LOG 271: −4 in paper and live; then: paper none at all; live: the resting exchange backstop is kept and the
-    # software line sits just inside it) · 120-min time cap (MAX_HOLD_TIME; operator Oct-8 change from 60). 🔒 GLOBAL HOLD (operator Oct-8):
+    # software line sits just inside it) · 120-min time cap (MAX_HOLD_TIME; operator Oct-8 change from 60). 🔒 GLOBAL HOLD (operator Oct-8; switch frenzy_willy_global_hold — OFF since 2026-10-21, DL 340):
     # while ANY FRENZY_WILLY is open NO other automated trade opens — every sleeve, pair, direction, other WILLY entries included (one choke
     # point: TradingEngine._willy_hold_block in open_position, + _frenzy_open so FRENZY / WIDE / LITE / WILLY name it); MANUAL opens are never
     # blocked; unreadable → refuse (fail-closed). Counter FRENZY_WILLY_HOLD (+ _UNREAD) + one persisted row per (WILLY, pair, direction, sleeve)
@@ -1543,7 +1543,34 @@ class SignalThresholds(BaseModel):
     #   10× safe at any MMR ≤ 2.5 %. Year book (LITE 8×, LONG 2×, WIDE 1×): $42,716 vs today's $3,185 — in-sample, caps not modelled.
     #   🔒 REVERT the TP / cap (not the 10×): at the first 20 WILLY fills on ≥ 8 days after this deploy, if the old exit (+1/−4/120, Scout shadow
     #   OLD_EXIT) beats the new one by mean paired Δ > 0 at day-bootstrap P ≥ 0.90, OR the new exit's average < 0. 60-min cap read by Scout T125C60.
-    frenzy_willy_max_slots: int = 1               # max FRENZY_WILLY open at once — 1 (the global hold makes it 1 anyway)
+    frenzy_willy_max_slots: int = 1               # max FRENZY_WILLY open at once — 1 (THE one-WILLY-at-a-time guard since the global hold is OFF, DL 340)
+    # 🔓 2026-10-21 (DECISION_LOG 340, operator: "we should revert it asap"): switch for the GLOBAL HOLD above. The hold was built for a 20×
+    # WILLY with NO stop (a −3 % move ≈ 14 % of the account); since DL 271/280 WILLY runs a −4 % stop at 10×. Hold record (reports/
+    # SCOUT_WILLY_HOLD.csv, priced at their then-exits): 13 setups blocked 10-09 → 10-17 — 5 were WILLY entries (still blocked by WILLY's own
+    # slot: 5 · 80 % · +0.05 %/trade) and the 8 NON-WILLY setups this switch frees came to 8 · 50 % · −0.56 %/trade · Σ −4.5 pts (10-09 →
+    # 10-12, ≈ one market window; one SPIKE_FADE priced at its sleeve mean) — small N, inconclusive: if anything the freed fills LOST. This is
+    # an OPERATOR OVERRIDE BELOW THE EVIDENCE BAR (no evidence the hold costs money; its 20×-no-stop reason is gone). OFF → _willy_hold_block never blocks / counts / records; every WILLY-own
+    # guard stays (own slots FRENZY_WILLY_MAX_SLOTS — a pending entry stays armed while they are full, as it did under the hold —, pair held
+    # FRENZY_WILLY_PAIR_HELD, lateness / dislocation, turnover filter) and open_position's one-position-per-pair rule (PAIR_HELD) still keeps
+    # every other sleeve off a WILLY's pair. Code default True (the shipped semantics); trading_config.json sets false (operator).
+    # 🔒 REVERT gates, alert-only (scripts/scout_willy_hold_off.py): (a) a UTC day on which ≥ 1 non-WILLY bot fill was OPENED while a WILLY
+    # was open (≥ deploy) and that day's bot P&L ≤ −10 % of the account → switch back on + review · (b) the first 8 non-WILLY bot fills opened while a
+    # WILLY was open (≥ the DL 340 deploy, frozen) average < 0 AND Σ ≤ −4 pts → review turning the hold back ON.
+    frenzy_willy_global_hold: bool = True
+    # 🎲¼ 2026-10-21 FRENZY_WILLY_HT (DECISION_LOG 341, operator option B "build it" — alert-only gates, no auto-off): a QUARTER-size sleeve for
+    # the WILLY setups the turnover filter ALONE refuses (measured 24 h volume / mcap ≥ frenzy_willy_max_vol_mcap_ratio; never "unreadable";
+    # any other refusal — hold, WILLY slot, pair held, lateness, dislocation — → no HT). ≈ 30 % of WILLY setups are turnover-blocked
+    # (reports/WILLY_TURNOVER_REPRICE_2026-10-19.md: blocked 477 · 72.5 % · −0.24 vs kept 1,093 · 79 % · +0.08, under today's live entry +
+    # exit — walker prices, in-sample): HT turns that shadow-only evidence into real fills. Same entry / guards as WILLY and the SAME exit
+    # (TP +1.25 resting maker · −4 stop · 90-min cap · late TP @30 · exchange backstop); own tag FRENZY_WILLY_HT, own slot, size = this
+    # fraction × the margin WILLY would have opened at the SAME leverage (= ¼ of the notional). NOT a WILLY for the WILLY slot, the hard
+    # single-WILLY guard or the global hold (never a hold trigger; as a blocked sleeve it follows the generic hold rule). Gates (scout
+    # scripts/scout_willy_ht.py + the FRENZY table row; ALERT only): Σ ≤ −8 pts → review · first 10 avg < 0 → review · main read at 30 fills on
+    # ≥ 10 days vs full-size WILLY same period: HT ≥ WILLY → recommend turnover ratio 0 + HT off · HT ≤ WILLY − 0.20 → filter confirmed,
+    # HT off · else re-read at 60. Code default ON (operator).
+    frenzy_willy_ht_enabled: bool = True
+    frenzy_willy_ht_size_frac: float = 0.25       # × WILLY's margin at WILLY's leverage (0 < f ≤ 1; else 0.25 used)
+    frenzy_willy_ht_max_slots: int = 1            # FRENZY_WILLY_HT open at once (its OWN slot; WILLY's slot never counts HT)
     # 🎯 2026-10-15 RESTING TAKE-PROFIT (DECISION_LOG 296, operator-armed DECLARED EXCEPTION — below the usual evidence bar): a reduce-only,
     # post-only (GTX) LIMIT rests on Binance at the price that books the SAME net TP with the MAKER exit fee (services/resting_tp.py +
     # exec_shadow.resting_tp_price). Evidence: live TP give-back 4/4 (WILLY ZK +1.12 / BLUR +1.09 / RLC +1.08 vs +1.25, LITE DEEP +2.80 vs

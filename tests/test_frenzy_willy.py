@@ -27,7 +27,7 @@ BAR_OPEN = LAST + BAR_MS            # the forming bar's open = the close of the 
 def _th(**kw):
     base = dict(frenzy_willy_enabled=True, frenzy_willy_entry_a=True, frenzy_willy_entry_b=True, frenzy_willy_tp_pct=1.0, frenzy_willy_stop_pct=0.0,
                 frenzy_willy_max_hold_minutes=120, frenzy_willy_max_slots=1, frenzy_willy_invest_mult=1.0, frenzy_willy_lev_mult=1.0,
-                frenzy_willy_red_max_wait_minutes=60)
+                frenzy_willy_red_max_wait_minutes=60, frenzy_willy_ht_enabled=False)   # 🎲¼ (341) HT off here — its own tests: tests/test_frenzy_willy_ht.py
     base.update(kw)
     return NS(**base)
 
@@ -251,7 +251,7 @@ def test_global_hold_during_pending_stays_then_opens(monkeypatch):
     o, _ = _run(e, dict(spike_ts=sp, bar_ret_pct=-0.2))                                            # red, but a WILLY is open → stays pending
     assert len(o) == 1 and e._fz_willy_pending["FOOUSDT"]["blocked"] is True
     o, f = _run(e, dict(spike_ts=sp, bar_ret_pct=-0.2), prev=sp, bar_open=BAR_OPEN + BAR_MS)        # still held: re-checked quietly
-    assert o == [] and "blocked (hold / pair held)" in f["willy_last"]
+    assert o == [] and "blocked (hold / slots full / pair held)" in f["willy_last"]
     e._held = False; e._open_result = "opened"                                                     # the other WILLY closed
     o, _ = _run(e, dict(spike_ts=sp, bar_ret_pct=0.3), prev=sp, bar_open=BAR_OPEN + 2 * BAR_MS)     # green: waits
     assert o == []
@@ -824,8 +824,12 @@ def test_frenzy_open_willy_path(monkeypatch):
     assert b == ["FRENZY_WILLY_PAIR_HELD"] and o == [] and f["_willy_pair_held"] is True and "refused: the pair already has an open position" in f["willy_last"]
     b, o, _, _ = asyncio.run(run([("A", "FRENZY_WILLY", "OPEN", bar_dt - dt.timedelta(minutes=5))]))
     assert b == ["FRENZY_WILLY_MAX_SLOTS"] and o == []
+    monkeypatch.setattr(th, "frenzy_willy_global_hold", True)                                      # 🔓 (340) the switch ON: the hold first
     b, o, _, f = asyncio.run(run([("A", "FRENZY_WILLY", "OPEN", bar_dt - dt.timedelta(minutes=5))], hold_free=False))   # the real read: the hold first
     assert b == ["FRENZY_WILLY_HOLD"] and o == [] and f["_willy_hold"] is True
+    monkeypatch.setattr(th, "frenzy_willy_global_hold", False)                                     # 🔓 (340) OFF: WILLY's own slot cap refuses
+    b, o, _, f = asyncio.run(run([("A", "FRENZY_WILLY", "OPEN", bar_dt - dt.timedelta(minutes=5))], hold_free=False))
+    assert b == ["FRENZY_WILLY_MAX_SLOTS"] and o == [] and "_willy_hold" not in f and f["_willy_slots_full"] is True
     b, o, _, _ = asyncio.run(run([("A", "FRENZY_LITE", "OPEN", bar_dt - dt.timedelta(minutes=5)), ("B", "FRENZY_LITE", "OPEN", bar_dt)]))
     assert b == [] and len(o) == 1                                                                # LITE's slots are not WILLY's (hold stubbed free)
     b, o, _, f = asyncio.run(run([], live=1.02))
@@ -854,8 +858,8 @@ def test_exit_wiring_every_path():
     assert eng.count("frenzy_willy_exit_for(") == 2
     assert eng.count("_held_minutes(order.opened_at)") == 1 and eng.count("_held_minutes(order_info.get('opened_at'))") == 1
     assert "max_hold = frenzy_willy_levels(config.trading_config.thresholds)[2]" in eng
-    for a, b in (('elif (order.entry_strategy or "") == "FRENZY_WILLY":   # 🎲 Oct-8 (251): its OWN exit', 'elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop'),
-                 ("elif (order_info.get('entry_strategy') or '') == 'FRENZY_WILLY':", "elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop")):
+    for a, b in (('elif (order.entry_strategy or "") in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN exit', 'elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop'),
+                 ("elif (order_info.get('entry_strategy') or '') in WILLY_EXIT_CLASS:", "elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop")):
         assert eng.index(a) < eng.index(b)
     assert "_urgent_exit = (order.entry_strategy or \"\") in FRENZY_STRATEGIES" in eng and "_urgent_exit_paper = (order.entry_strategy or \"\") in FRENZY_STRATEGIES" in eng
 
@@ -926,13 +930,15 @@ def test_ui_inputs_load_save_and_both_exports():
     assert "WILLY ${_bt.frenzy_willy_enabled === true ? 'ON' : 'OFF'}" in html
     assert "enters on the first red 5m candle ≤ ${_bt.frenzy_willy_red_max_wait_minutes ?? 60} min after the trigger" in html
     assert "TP +${_bt.frenzy_willy_tp_pct ?? 1} / ${(_bt.frenzy_willy_stop_pct ?? 4) > 0 ? 'SL −' + _bt.frenzy_willy_stop_pct : 'no SL'} / ${_bt.frenzy_willy_max_hold_minutes ?? 120} min" in html
-    assert "global hold (no other automated open while a WILLY is open; manual exempt) · declared exception" in html
+    assert "'global hold ON (no other automated open while a WILLY is open; manual exempt)'} · declared exception" in html
+    assert "${_bt.frenzy_willy_global_hold === false ? 'global hold OFF (DECISION_LOG 340" in html                   # 🔓 (340) config export
+    assert "${m.willy_global_hold === false ? 'global hold OFF (DECISION_LOG 340" in html                           # 🔓 (340) monitor line (dashboard + both exports)
     assert html.count("lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));") == 2
     assert "WILLY ${m.willy_enabled ? 'ON' : 'OFF'}" in html and "first red candle ≤ ${m.willy_red_wait ?? '-'} min" in html and "waiting red · expires ' + frenzyWillyClock(x.exp_ms)" in html
     assert html.count("lines.push(...frenzyReportLines(perf, hr2));") == 2
     assert html.count("FRENZY Fills (FRENZY_LONG · FRENZY_WIDE · FRENZY_LITE · FRENZY_WILLY)") == 2
     assert '<option value="FRENZY_WILLY">' in html and "strat === 'FRENZY_WILLY') return tags" in html
-    assert "if ((o.entry_strategy || '') === 'FRENZY_WILLY') {" in html and ">🎯 TP +${_wTp}% · ${_wSl} · ${_wMh}m</span>" in html and "'no SL'" in html
+    assert "if (['FRENZY_WILLY', 'FRENZY_WILLY_HT'].includes(o.entry_strategy || '')) {" in html   # 🎲¼ (341) HT = WILLY's exit badge and ">🎯 TP +${_wTp}% · ${_wSl} · ${_wMh}m</span>" in html and "'no SL'" in html
     assert "(?:WIDE |LITE |WILLY [AB] )?opened/.exec((f && f.willy_last) || '')" in html
     assert "${f.willy_last ? ' | 🎲 ' + frenzyLastFireLocal(f.willy_last) : ''}${f.willy_pending ? ' | 🟥 ' + frenzyWillyPendingText(f) : ''}" in html   # export
     assert "frenzyWillyPendingText(f)) + '</span>'" in html                                       # UI cell
@@ -1098,7 +1104,7 @@ def test_hold_rechecked_under_the_book_lock():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     i = eng.index("        _book_release = await self._book_hold()\n        # 🔒 (251, round-2 review)")
     blk = eng[i:i + 1600]
-    assert "if (await self._willy_hold_state(db))[0]:" in blk and "if self.is_paper_mode:" in blk and "_book_release()\n                return None" in blk
+    assert "if self._willy_global_hold_on() and (await self._willy_hold_state(db))[0]:" in blk and "if self.is_paper_mode:" in blk and "_book_release()\n                return None" in blk
     assert 'self._willy_event("FRENZY_WILLY_HOLD_RACE", pair,' in blk
     assert "WILLY_HOLD_MEMO_S" not in eng and "_wh_free_at" not in eng                             # no "free" memo anywhere
     # the cache rebuild keeps an order opened after its snapshot

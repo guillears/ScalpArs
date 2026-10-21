@@ -743,6 +743,10 @@ def main(allow_proxy=False):
         # 10-08b (252): judged at TODAY's frozen lev (the master prices every BEARRUN fill at it) — a 1× probe only while it is ≤ 0.05
         if BEARRUN_LEV_FROZEN <= 0.05:
             df['is_probe'] = df['is_probe'] | ((df.entry_strategy.astype(str) == 'BEARRUN_SHORT') & (_lev < 1.0))
+    # 🎲¼ 10-21 (DECISION_LOG 341): FRENZY_WILLY_HT = a QUARTER-size WILLY on turnover-blocked setups — a reduced-size line under the
+    # full-size-only rule (PROBE_EXEMPT, its own line; never blended into FRENZY_WILLY's full-size row, never re-priced). No master fill
+    # yet → nothing moves, STACK_VERSION unchanged.
+    df['is_probe'] = df['is_probe'] | (df.entry_strategy.astype(str) == 'FRENZY_WILLY_HT')
     df['is_door'] = src.str.contains('CALM3D')
     vol = df.entry_pair_volume_24h_usd
     # 🔥 Sep-18 long heat block parity — the engine's own pure rule with the SHIPPED thresholds pinned here

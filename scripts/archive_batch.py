@@ -328,10 +328,15 @@ def _sleeve(d):
                       for st, x in zip(s, dr)], index=d.index)
 
 
+REDUCED_SIZE_SLEEVES = ("FRENZY_WILLY_HT",)   # 🎲¼ (DECISION_LOG 341) quarter-size lines — full-size-only rule: off the headline table, own line
+
+
 def _probe(d):
+    """reduced-size rows kept off the headline sleeve table: *_PROBE cell fires + REDUCED_SIZE_SLEEVES (FRENZY_WILLY_HT, ¼ size)."""
     src = (d.get("cell_multiplier_source", pd.Series("", index=d.index)).fillna("").astype(str)
            + d.get("pattern_cell_source", pd.Series("", index=d.index)).fillna("").astype(str))
-    return src.str.upper().str.contains("PROBE")
+    es = d.get("entry_strategy", pd.Series("", index=d.index)).astype(str)
+    return src.str.upper().str.contains("PROBE") | es.isin(REDUCED_SIZE_SLEEVES)
 
 
 def batch_report(d, era, master=None):
@@ -381,7 +386,13 @@ def batch_report(d, era, master=None):
     opc = d[GK.operator_closed_mask(d) & ~manual]
     brk = d[_truthy(d.bracket_capped)] if "bracket_capped" in d else d.iloc[:0]
     probes = int((~manual & _probe(d)).sum())
-    L.append(f"MANUAL fills: {int(manual.sum())}" + (f" · *_PROBE fills (excluded): {probes}" if probes else ""))
+    L.append(f"MANUAL fills: {int(manual.sum())}" + (f" · *_PROBE fills (excluded): {probes}" if probes else ""))   # (341: FRENZY_WILLY_HT counted here too — its own line below)
+    for _rs in REDUCED_SIZE_SLEEVES:   # 🎲¼ (341) its own line, as traded (never blended into FRENZY_WILLY's full-size row)
+        _g = d[(d.entry_strategy.astype(str) == _rs) & ~manual]
+        if len(_g):
+            _p = pd.to_numeric(_g.pnl_percentage, errors="coerce"); _u = pd.to_numeric(_g.pnl, errors="coerce")
+            L.append(f"{_rs} (reduced size, separate line): N {len(_g)} · WR {100 * (_u > 0).mean():.0f}% · avg {_p.mean():+.2f} % · "
+                     f"Σ {_p.sum():+.2f} % · ${_u.sum():+.2f}")
 
     def _lst(g, extra=None):
         return ", ".join(f"{p} {str(o)[5:16].replace('T', ' ')} {s}" + (f" ({extra(r)})" if extra else "")

@@ -25,9 +25,10 @@ from typing import Dict, Optional, Tuple
 
 RTP_SLEEVES = {"FRENZY_WILLY": "resting_tp_willy_enabled", "FRENZY_LITE": "resting_tp_lite_enabled",
                "FRENZY_LONG": "resting_tp_frenzy_long_enabled",   # 🎯 310: + FRENZY_LONG (fixed frenzy_tp_pct) · never FRENZY_WIDE (off)
-               "FRENZY_LITE_RETRY": "resting_tp_lite_retry_enabled"}   # 🔁 316: LITE's resting TP, own switch (attribution)
+               "FRENZY_LITE_RETRY": "resting_tp_lite_retry_enabled",   # 🔁 316: LITE's resting TP, own switch (attribution)
+               "FRENZY_WILLY_HT": "resting_tp_willy_enabled"}   # 🎲¼ 341: the quarter-size WILLY runs WILLY's exit — WILLY's switch
 RTP_MANUAL_KEY, RTP_OVERRIDE_KEY = "resting_tp_manual_enabled", "resting_tp_override_enabled"   # 🎯 (310) the operator's own fixed TPs
-RTP_SWITCHES = tuple(RTP_SLEEVES.values()) + (RTP_MANUAL_KEY, RTP_OVERRIDE_KEY)
+RTP_SWITCHES = tuple(dict.fromkeys(RTP_SLEEVES.values())) + (RTP_MANUAL_KEY, RTP_OVERRIDE_KEY)   # unique (341: HT shares WILLY's switch)
 RTP_ROW_STRATEGIES = tuple(RTP_SLEEVES) + ("MANUAL",)   # the sweep's row filter (+ every row with an exit override)
 RTP_QUERY_MIN_S = 1.0          # at most one order query per order per second (fill detection, only while the price is at / through)
 RTP_HEAL_RETRY_S = 30.0        # a failed placement retries per order no sooner than this
@@ -120,7 +121,7 @@ def rtp_target(th, entry_strategy, held_minutes=None, lite_tp=None) -> Optional[
         return None
     try:
         from services.frenzy import frenzy_willy_tp_at, frenzy_tp_for
-        if es == "FRENZY_WILLY":
+        if es in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):   # 🎲¼ (341) HT = WILLY's exit
             tp, why = frenzy_willy_tp_at(th, held_minutes)
         else:
             if (_f(getattr(th, 'frenzy_lock_arm_pct', 0)) or 0) > 0:
@@ -141,7 +142,7 @@ def rtp_reason_for_limit(th, entry_strategy, direction, entry_px, entry_fee_pct,
     """Which take profit a RECORDED limit books (restart-proof, from the price alone): WILLY_LATE_TP when the WILLY late TP is on and the
     limit's net % sits nearer the late target than the WILLY TP, else FRENZY_TP."""
     try:
-        if str(entry_strategy or "") != "FRENZY_WILLY":
+        if str(entry_strategy or "") not in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):   # 🎲¼ (341)
             return "FRENZY_TP"
         from services.frenzy import frenzy_willy_late_tp, frenzy_willy_levels
         from services.exec_shadow import net_pct_at

@@ -329,6 +329,7 @@
                     <div class="flex flex-col text-gray-400" title="⇄ (DECISION_LOG 326) type the stop / target in % (P&amp;L net of fees, what the engine uses) or in $ (= Size × Lev × % / 100, exactly). The order always carries the %. Remembered in this browser.">Unit<div id="manual-sltp-unit" role="group" aria-label="Stop / target unit" class="flex rounded border border-amber-500/40 overflow-hidden"><button type="button" id="manual-sltp-unit-pct" onclick="manualSetSlTpUnit('pct')" aria-pressed="true" class="px-2 py-1 text-xs">%</button><button type="button" id="manual-sltp-unit-usd" onclick="manualSetSlTpUnit('usd')" aria-pressed="false" class="px-2 py-1 text-xs border-l border-amber-500/40">$</button></div></div>
                     <label class="flex flex-col text-gray-400"><span class="whitespace-nowrap"><span id="manual-sl-unit-lbl">SL %</span> <span id="manual-sl-conv" class="text-[10px] text-gray-500"></span></span><input id="manual-sl" type="number" step="0.1" min="0" placeholder="1.5" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400"><span class="whitespace-nowrap"><span id="manual-tp-unit-lbl">TP %</span> <span id="manual-tp-conv" class="text-[10px] text-gray-500"></span></span><input id="manual-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <div id="manual-exit-explain" class="basis-full text-[11px] text-sky-200/90 -mt-1" aria-live="polite" title="📖 (DECISION_LOG 338) What the chosen exit will do, from the bot's LIVE saved settings (re-read at page load and after every successful Save) — in the unit picked (% or $; $ = Size × Lev × % / 100). Stops and targets are P&amp;L % net of fees, as the engine reads them. Greyed SL / TP boxes are not used by this exit and are never sent."></div>
                     <div id="manual-limit-hint" class="hidden basis-full text-[11px] text-gray-500 -mt-1" title="🪜 The exchange's position limit for this pair at the leverage typed (Binance lowers the leverage it allows as the position grows). An order over the limit is refused, never resized."></div>
                     <div id="manual-pair-hint" class="basis-full text-[11px] text-gray-500 -mt-1" title="What the bot sees for this pair right now — stamped on the order automatically (manual_block_reason / manual_setup_rating / manual_setup_side in the export)"></div>
                     <div id="manual-risk-line" class="basis-full text-[11px] text-gray-400" title="Loss if the stop fires. SL / stop % are P&amp;L net of fees (the engine closes when the trade's net-of-fees P&amp;L reaches the stop), so the round-trip fee is already inside this figure — no fee is added on top. Slippage past the stop is not included. Account = the latest total portfolio shown on the dashboard."></div>
@@ -683,6 +684,7 @@
                         <option value="FRENZY_LITE">🪶 FRENZY_LITE</option>
                         <option value="FRENZY_LITE_RETRY">🔁 FRENZY_LITE_RETRY</option>
                         <option value="FRENZY_WILLY">🎲 FRENZY_WILLY</option>
+                        <option value="FRENZY_WILLY_HT">🎲¼ FRENZY_WILLY_HT</option>
                         <!-- Jun 23: removed dead/redundant options post-reset — All flips (==FAN, the only live flip),
                              LONG_UNMATCHED_ONLY / PAIR_RSI_OB / BOUNCE_LONG (all disabled → 0 trades post-reset).
                              Jun 26: BULL_LONG option removed too (sleeve disabled bull_long_enabled=false).
@@ -4083,6 +4085,7 @@
                 <button onclick="openFundDepositModal()" class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm rounded-lg">+ Deposit Funds</button>
                 <button onclick="openFundWithdrawModal()" class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white text-sm rounded-lg">− Withdraw Funds</button>
                 <button onclick="openInvestorModal('add')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm rounded-lg transition">+ Add Investor</button>
+                <button id="nav-epoch-btn" onclick="startNewNavHistory()" class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded-lg transition" title="Start the NAV / Share chart and the high-water mark fresh from now. Display only: no history, investor, share or ledger data is deleted or changed (DECISION_LOG 337).">↺ Start new NAV history</button>
                 </div>
             </div>
             <div class="glass rounded-xl p-6">
@@ -4109,10 +4112,11 @@
                 <!-- NAV / Share history (Jul 2, 2026) — deposit/withdrawal-proof performance record -->
                 <div id="nav-history-wrap" class="mb-6 hidden">
                     <div class="flex items-center justify-between mb-2">
-                        <h3 class="text-xs font-semibold text-gray-400">NAV / Share History (daily)</h3>
+                        <h3 class="text-xs font-semibold text-gray-400">NAV / Share History (daily) <span id="nav-history-epoch" class="font-normal text-gray-500 hidden" title="A new NAV history was started on this day (fund emptied or ↺ button). Earlier history is kept in the database, just not shown."></span></h3>
                         <span id="nav-history-range" class="text-[11px] text-gray-500"></span>
                     </div>
-                    <div style="height: 160px;"><canvas id="nav-history-chart"></canvas></div>
+                    <p id="nav-history-empty" class="text-[11px] text-gray-500 py-3 text-center hidden"></p>
+                    <div id="nav-history-canvas-wrap" style="height: 160px;"><canvas id="nav-history-chart"></canvas></div>
                 </div>
 
                 <div class="overflow-x-auto">
@@ -4649,7 +4653,8 @@
                                     <tr data-ss="fzw" class="border-t border-white/5"><td class="py-1 pr-3"><span class="text-gray-200">FRENZY_WIDE</span></td><td class="text-center px-2"><label class="inline-flex items-center cursor-pointer" title="FRENZY_WIDE master switch."><input type="checkbox" id="config-fz-wide-enabled" class="sr-only peer"><div class="relative w-8 h-4 bg-gray-700 rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div></label></td><td class="text-center px-2"><span class="text-gray-600">–</span></td><td class="text-center px-1"><input type="number" id="config-fz-wide-invest-mult" step="0.05" min="0" value="1.0" class="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white text-center text-xs" title="FRENZY_WIDE invest mult (absolute-assign, capped; blank → 1.0). Live 0.2 since 2026-10-14 (DECISION_LOG 289): BLOCKER size, same revert gate as FRENZY_LONG (LITE's first 20 fills); margin clamped up to the $100 min investment, never refused for it."></td><td class="text-center px-1"><input type="number" id="config-fz-wide-lev-mult" step="0.01" min="0" value="0.2" class="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white text-center text-xs" title="FRENZY_WIDE leverage mult (blank → 0.05 = 1×; 0 → the 0.05 floor). Live 0.05 = 1×."></td><td class="ss-margin text-right pr-3 text-gray-500"></td><td class="ss-lev text-right pr-3 text-gray-500"></td><td class="ss-notional text-right pr-3 text-gray-500"></td><td class="ss-stop text-right pr-3 text-gray-500"></td><td class="ss-cost text-right pr-3"></td><td class="ss-note text-gray-500 text-[11px]"></td></tr>
                                     <tr data-ss="fzl" class="border-t border-white/5"><td class="py-1 pr-3"><span class="text-gray-200">FRENZY_LITE</span></td><td class="text-center px-2"><label class="inline-flex items-center cursor-pointer" title="🪶 Oct-7 (DECISION_LOG 243 — declared exception, no auto-off): FRENZY_LITE master switch — held above the spike average with volume below the FRENZY setup, first ~17 h, no ATR cap."><input type="checkbox" id="config-fz-lite-enabled" class="sr-only peer"><div class="relative w-8 h-4 bg-gray-700 rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div></label></td><td class="text-center px-2"><span class="text-gray-600">–</span></td><td class="text-center px-1"><input type="number" id="config-fz-lite-invest-mult" step="0.05" min="0" value="1.0" class="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white text-center text-xs" title="FRENZY_LITE invest mult (absolute-assign, capped; blank → 1.0)."></td><td class="text-center px-1"><input type="number" id="config-fz-lite-lev-mult" step="0.01" min="0" value="0.2" class="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white text-center text-xs" title="FRENZY_LITE leverage mult (blank → 0.2; 0 → the 0.05 floor)."></td><td class="ss-margin text-right pr-3 text-gray-500"></td><td class="ss-lev text-right pr-3 text-gray-500"></td><td class="ss-notional text-right pr-3 text-gray-500"></td><td class="ss-stop text-right pr-3 text-gray-500"></td><td class="ss-cost text-right pr-3"></td><td class="ss-note text-gray-500 text-[11px]"></td></tr>
                                     <tr data-ss="fzlr" class="border-t border-white/5"><td class="py-1 pr-3"><span class="text-gray-200">FRENZY_LITE_RETRY</span></td><td class="text-center px-2"><label class="inline-flex items-center cursor-pointer" title="🔁 2026-10-19 (DECISION_LOG 316 — operator DECLARED OVERRIDE): FRENZY_LITE_RETRY master switch — a LITE stretch refused ONLY for a green signal candle opens on the first red / flat candle of the SAME stretch that is still LITE-ready within the retry window (15 min). Every LITE open filter re-checked; LITE's exit; NO slot limit of its own (global caps apply). Gates: Σ ≤ −6 pts → off · first 10 avg &lt; 0 → off · 20 fills on ≥ 10 days avg &gt; 0 and ≥ live LITE → Lev 0.4 (8×). Real era +0.34 %/fill (43 fills, in-sample) vs two-year backtest −0.09 %/fill."><input type="checkbox" id="config-fz-lite-retry-enabled" class="sr-only peer"><div class="relative w-8 h-4 bg-gray-700 rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div></label></td><td class="text-center px-2"><span class="text-gray-600">–</span></td><td class="text-center px-1"><input type="number" id="config-fz-lite-retry-invest-mult" step="0.05" min="0" value="1.0" class="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white text-center text-xs" title="FRENZY_LITE_RETRY invest mult (absolute-assign, capped; blank → 1.0)."></td><td class="text-center px-1"><input type="number" id="config-fz-lite-retry-lev-mult" step="0.01" min="0" value="0.2" class="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white text-center text-xs" title="FRENZY_LITE_RETRY leverage mult (blank → 0.2 = 4×; LITE runs 0.4 = 8×). Step to 0.4 only through the DECISION_LOG 316 main read."></td><td class="ss-margin text-right pr-3 text-gray-500"></td><td class="ss-lev text-right pr-3 text-gray-500"></td><td class="ss-notional text-right pr-3 text-gray-500"></td><td class="ss-stop text-right pr-3 text-gray-500"></td><td class="ss-cost text-right pr-3"></td><td class="ss-note text-gray-500 text-[11px]"></td></tr>
-                                    <tr data-ss="fzy" class="border-t border-white/5"><td class="py-1 pr-3"><span class="text-gray-200">FRENZY_WILLY</span></td><td class="text-center px-2"><label class="inline-flex items-center cursor-pointer" title="🎲 Oct-8 (DECISION_LOG 251 — operator DECLARED EXCEPTION, armed against the evidence, no auto-off): FRENZY_WILLY master switch — entry A on a new FRENZY flag, entry B on a fresh ON bar FRENZY / WIDE / LITE did not take. No filters. Own exit TP +1 % / no stop / 120 min. While a WILLY is open no other automated trade opens (global hold)."><input type="checkbox" id="config-fz-willy-enabled" class="sr-only peer"><div class="relative w-8 h-4 bg-gray-700 rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div></label></td><td class="text-center px-2"><span class="text-gray-600">–</span></td><td class="text-center px-1"><input type="number" id="config-fz-willy-invest-mult" step="0.05" min="0" value="1.0" class="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white text-center text-xs" title="FRENZY_WILLY invest mult (absolute-assign, capped; blank → 1.0)."></td><td class="text-center px-1"><input type="number" id="config-fz-willy-lev-mult" step="0.05" min="0" value="1.0" class="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white text-center text-xs" title="FRENZY_WILLY leverage mult (blank → 1.0 = 20× at the 20× base; the pair's exchange leverage brackets and the balance→leverage schedule still cap it)."></td><td class="ss-margin text-right pr-3 text-gray-500"></td><td class="ss-lev text-right pr-3 text-gray-500"></td><td class="ss-notional text-right pr-3 text-gray-500"></td><td class="ss-stop text-right pr-3 text-gray-500"></td><td class="ss-cost text-right pr-3"></td><td class="ss-note text-gray-500 text-[11px]"></td></tr>
+                                    <tr data-ss="fzy" class="border-t border-white/5"><td class="py-1 pr-3"><span class="text-gray-200">FRENZY_WILLY</span></td><td class="text-center px-2"><label class="inline-flex items-center cursor-pointer" title="🎲 Oct-8 (DECISION_LOG 251 — operator DECLARED EXCEPTION, armed against the evidence, no auto-off): FRENZY_WILLY master switch — entry A on a new FRENZY flag, entry B on a fresh ON bar FRENZY / WIDE / LITE did not take. No filters. Own exit TP +1 % / no stop / 120 min. Global hold (no other automated trade while a WILLY is open): own switch below — OFF since 2026-10-21 (DECISION_LOG 340)."><input type="checkbox" id="config-fz-willy-enabled" class="sr-only peer"><div class="relative w-8 h-4 bg-gray-700 rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div></label></td><td class="text-center px-2"><span class="text-gray-600">–</span></td><td class="text-center px-1"><input type="number" id="config-fz-willy-invest-mult" step="0.05" min="0" value="1.0" class="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white text-center text-xs" title="FRENZY_WILLY invest mult (absolute-assign, capped; blank → 1.0)."></td><td class="text-center px-1"><input type="number" id="config-fz-willy-lev-mult" step="0.05" min="0" value="1.0" class="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white text-center text-xs" title="FRENZY_WILLY leverage mult (blank → 1.0 = 20× at the 20× base; the pair's exchange leverage brackets and the balance→leverage schedule still cap it)."></td><td class="ss-margin text-right pr-3 text-gray-500"></td><td class="ss-lev text-right pr-3 text-gray-500"></td><td class="ss-notional text-right pr-3 text-gray-500"></td><td class="ss-stop text-right pr-3 text-gray-500"></td><td class="ss-cost text-right pr-3"></td><td class="ss-note text-gray-500 text-[11px]"></td></tr>
+                                    <tr data-ss="fzyht" class="border-t border-white/5"><td class="py-1 pr-3 pl-4" title="🎲¼ (DECISION_LOG 341) FRENZY_WILLY_HT — informational: its size is the WILLY row's margin × the WILLY_HT size fraction at WILLY's leverage (switch / fraction / max open in the FRENZY settings)."><span class="text-gray-600 mr-1">↳</span>Frenzy-Willy-HT · ¼ × WILLY</td><td class="text-center px-2"><span class="text-gray-600">–</span></td><td class="text-center px-2"><span class="text-gray-600">–</span></td><td class="text-center px-1"><span class="ss-ro-inv text-gray-400"></span></td><td class="text-center px-1"><span class="ss-ro-lev text-gray-400"></span></td><td class="ss-margin text-right pr-3 text-gray-500"></td><td class="ss-lev text-right pr-3 text-gray-500"></td><td class="ss-notional text-right pr-3 text-gray-500"></td><td class="ss-stop text-right pr-3 text-gray-500"></td><td class="ss-cost text-right pr-3"></td><td class="ss-note text-gray-500 text-[11px]"></td></tr>
                                     <tr><td colspan="11" class="pt-3 pb-1 text-[11px] uppercase tracking-wide text-sky-300/80">🖐 Manual</td></tr>
                                     <tr data-ss="manual" class="border-t border-white/5"><td class="py-1 pr-3"><span class="text-gray-200">Manual (dashboard-opened)</span></td><td class="text-center px-2"><span class="text-gray-600">–</span></td><td class="text-center px-2"><span class="text-gray-600">–</span></td><td colspan="2" class="text-center px-1 text-gray-500 text-[11px]">max open <input type="number" id="config-manual-max-open-positions" step="1" min="0" max="20" value="8" class="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-white text-center text-xs" title="Own lane for dashboard-opened positions: they never consume a bot slot and are capped here (balance still binds). 0 = manual entry off."></td><td colspan="6" class="text-gray-500 text-[11px] pl-2">size, leverage and stop set per trade in the manual-entry panel (own slot lane; balance still binds)</td></tr>
                                     <tr id="ss-totals" class="border-t border-white/20"><td colspan="11" class="pt-2 text-gray-400"></td></tr>
@@ -5029,10 +5034,14 @@
                             <div title="🔁 (DECISION_LOG 316 — operator DECLARED OVERRIDE): FRENZY_LITE_RETRY window — minutes after the refused green candle's close in which the first red / flat candle of the same stretch (still LITE-ready) may open the retry. Frozen at 15 (the deep dive's S15r) — never re-fit. Accepted 5–60. Switch / size → ⚖️ Sleeve Sizing."><label class="block text-xs text-gray-400 mb-1">🔁 LITE retry window (min)</label><input type="number" step="5" min="5" max="60" id="config-fz-lite-retry-wait" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="15"></div>
                             <div title="🎲 Oct-8 (DECISION_LOG 251 — declared exception): FRENZY_WILLY entry A — the 5m bar a pair becomes FRENZY-flagged for an episode (as the bot first sees it; once per episode, never after a restart for an episode already flagged)."><label class="block text-xs text-gray-400 mb-1">WILLY entry A (new flag)</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-fz-willy-entry-a" class="sr-only peer" checked><div class="w-9 h-5 bg-white/10 peer-checked:bg-orange-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div></label></div>
                             <div title="🎲 Oct-8 (DECISION_LOG 251): FRENZY_WILLY entry B — an episode's fresh ON bar on which FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE opened nothing (any refusal). One B fill per episode."><label class="block text-xs text-gray-400 mb-1">WILLY entry B (ON not taken)</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-fz-willy-entry-b" class="sr-only peer" checked><div class="w-9 h-5 bg-white/10 peer-checked:bg-orange-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div></label></div>
+                            <div title="🔓 2026-10-21 (DECISION_LOG 340, operator: revert the hold): WILLY GLOBAL HOLD — ON = while a FRENZY_WILLY is open no other automated trade opens (DECISION_LOG 251; built for a 20× WILLY with no stop). OFF = other bot entries keep opening; WILLY keeps its own guards (WILLY max open, never on a pair with an open position, lateness / dislocation, turnover filter) and no two positions ever share a pair. Operator override BELOW the evidence bar: the 8 non-WILLY setups the hold blocked (10-09 → 10-12) came to 8 · 50 % · −0.56 %/trade · Σ −4.5 pts (one window, inconclusive). Revert gates (alert-only, scripts/scout_willy_hold_off.py): (a) a UTC day on which a non-WILLY bot fill was OPENED while a WILLY was open and that day's bot P&amp;L is ≤ −10 % of the account → back ON + review · (b) the first 8 non-WILLY fills opened during a WILLY average &lt; 0 AND Σ ≤ −4 pts → review turning it back ON. Manual trades are never blocked either way."><label class="block text-xs text-gray-400 mb-1">WILLY global hold (block all other bot entries while a WILLY is open)</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-fz-willy-global-hold" class="sr-only peer"><div class="w-9 h-5 bg-white/10 peer-checked:bg-orange-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div></label></div>
+                            <div title="🎲¼ 2026-10-21 (DECISION_LOG 341, operator option B): FRENZY_WILLY_HT — a QUARTER-size WILLY for the setups the turnover filter ALONE refuses (measured 24 h volume / mcap ≥ the WILLY turnover cap; any other refusal → no HT). Same entry and guards, WILLY's exit (TP / resting maker TP / stop / time cap / late TP / backstop), its own slot. Never counts as a WILLY (slot, hard guard, global hold). Gates are ALERT-only: Σ ≤ −8 pts · first 10 avg &lt; 0 · main read at 30 fills on ≥ 10 days vs full-size WILLY (HT ≥ WILLY → drop the turnover filter + HT off · HT ≤ WILLY − 0.20 → filter confirmed, HT off · else re-read at 60)."><label class="block text-xs text-gray-400 mb-1">🎲¼ WILLY_HT (quarter size on turnover-only refusals)</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-fz-willy-ht-enabled" class="sr-only peer" checked><div class="w-9 h-5 bg-white/10 peer-checked:bg-orange-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div></label></div>
+                            <div title="🎲¼ (DECISION_LOG 341): FRENZY_WILLY_HT size = this fraction × the margin WILLY would have opened, at WILLY's leverage (so the notional is exactly this fraction of WILLY's). 0.25 = a quarter. Accepted 0 &lt; f ≤ 1; anything else runs 0.25."><label class="block text-xs text-gray-400 mb-1">WILLY_HT size × WILLY</label><input type="number" step="0.05" min="0.05" max="1" id="config-fz-willy-ht-size-frac" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.25"></div>
+                            <div title="🎲¼ (DECISION_LOG 341): max FRENZY_WILLY_HT positions open at once — its OWN slot (WILLY's slot never counts HT, HT's never counts WILLY). Full → the WILLY entry stays armed for a later red bar."><label class="block text-xs text-gray-400 mb-1">WILLY_HT max open</label><input type="number" step="1" min="1" id="config-fz-willy-ht-slots" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1"></div>
                             <div title="🎲 Oct-8 (DECISION_LOG 251): FRENZY_WILLY fixed take profit, net % (its own exit — never FRENZY's +3). Operator: +1. Research on the flag cohort: TP +1 / SL −3 / 60 min ≈ −0.01…−0.08 %/trade (≈ 0 or negative; the no-stop / 120-min variant was not studied). Blank / 0 → 1."><label class="block text-xs text-gray-400 mb-1">WILLY take profit +%</label><input type="number" step="0.25" min="0" id="config-fz-willy-tp" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0"></div>
                             <div title="🛡 DECISION_LOG 271 (operator): WILLY stop −4 % — one stop for paper and live (the per-order exchange backstop rests just beyond it, capped below liquidation). 0 / blank is REFUSED since DECISION_LOG 292 (a sleeve never runs without a bot stop; a hand-edited 0 runs 4.0 + CRITICAL log). Evidence: −4 beats no-stop by +0.076 %/fill on the reachable yr5 cohort (P 0.995)."><label class="block text-xs text-gray-400 mb-1">WILLY stop % (&gt; 0)</label><input type="number" step="0.1" min="0.1" id="config-fz-willy-stop" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="4"></div>
                             <div title="🎲 Oct-8 (DECISION_LOG 251, operator: 120): FRENZY_WILLY closes after this many minutes (its own cap — never the global / FRENZY 12 h; not a stop). Blank / 0 → 120."><label class="block text-xs text-gray-400 mb-1">WILLY max hold (min)</label><input type="number" step="5" min="1" id="config-fz-willy-max-hold" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="120"></div>
-                            <div title="🎲 Oct-8 (DECISION_LOG 251): max FRENZY_WILLY positions open at once — 1 (the global hold already allows only one: while a WILLY is open no other automated trade opens, WILLY included; manual trades are never blocked)."><label class="block text-xs text-gray-400 mb-1">WILLY max open</label><input type="number" step="1" min="1" id="config-fz-willy-slots" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1"></div>
+                            <div title="🎲 Oct-8 (DECISION_LOG 251): max FRENZY_WILLY positions open at once — 1. Since the global hold is OFF (DECISION_LOG 340) this is THE one-WILLY-at-a-time guard (a WILLY waiting for its red candle stays armed while it is full); manual trades are never blocked."><label class="block text-xs text-gray-400 mb-1">WILLY max open</label><input type="number" step="1" min="1" id="config-fz-willy-slots" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1"></div>
                             <div title="⏰ 2026-10-15 (DECISION_LOG 297, operator-armed declared exception): from this order age (minutes since the fill) a FRENZY_WILLY takes profit at the late TP below instead of the WILLY TP (stop and max hold unchanged; close reason WILLY_LATE_TP). With a resting TP the +TP limit is swapped for the late limit at that minute (already through → market now). 0 = off."><label class="block text-xs text-gray-400 mb-1">WILLY late TP after (min)</label><input type="number" step="1" min="0" id="config-fz-willy-late-tp-min" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="30"></div>
                             <div title="⏰ (DECISION_LOG 297): the late take profit, net %, used from the minute above. Must be below the WILLY take profit. 0 = off. Rollback: first 5 changed trades &lt; −6 points vs the old exit, or first 10 on ≥ 5 days net &lt; 0."><label class="block text-xs text-gray-400 mb-1">WILLY late TP +%</label><input type="number" step="0.05" min="0" id="config-fz-willy-late-tp-pct" class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.25"></div>
                             <div title="🎯 2026-10-15 (DECISION_LOG 296, operator-armed declared exception): a reduce-only post-only LIMIT rests on Binance at the price that books the SAME net take profit with the maker fee (live TPs gave back −0.13…−0.22 to the market order). The software TP becomes a safety net; every other exit cancels the limit first. Paper books at the limit only when the price trades ≥ 1 tick through it. Off = exactly the old exit. Revert: after 15 armed WILLY TPs, mean booked TP net % ≤ the market counterfactual, or any accounting mismatch vs Binance."><label class="block text-xs text-gray-400 mb-1">🎯 WILLY resting TP</label><label class="flex items-center cursor-pointer mt-1"><input type="checkbox" id="config-rtp-willy-enabled" class="sr-only peer" checked><div class="w-9 h-5 bg-white/10 peer-checked:bg-orange-500/50 rounded-full relative transition-colors"><div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div></div></label></div>
@@ -8488,7 +8497,7 @@
             const strat = o.entry_strategy || '';
             const fg = src.match(/\+((FGP_(QS|RSI|TG)))/);
             if (fg) tags.push(fg[1]);
-            if (strat.startsWith('SPIKE') || strat.startsWith('FLIP:') || strat === 'BULL_LONG' || strat === 'BOUNCE_LONG' || strat === 'BULLRUN_LONG' || strat === 'BEARRUN_SHORT' || strat.startsWith('SURGE_') || strat === 'FRENZY_LONG' || strat === 'FRENZY_WIDE' || strat === 'FRENZY_LITE_RETRY' || strat === 'FRENZY_LITE' || strat === 'FRENZY_WILLY') return tags;  // Aug 21: sleeve fills take no door/band badges (gate-51 table is strategy-scoped already)
+            if (strat.startsWith('SPIKE') || strat.startsWith('FLIP:') || strat === 'BULL_LONG' || strat === 'BOUNCE_LONG' || strat === 'BULLRUN_LONG' || strat === 'BEARRUN_SHORT' || strat.startsWith('SURGE_') || strat === 'FRENZY_WILLY_HT' || strat === 'FRENZY_LONG' || strat === 'FRENZY_WIDE' || strat === 'FRENZY_LITE_RETRY' || strat === 'FRENZY_LITE' || strat === 'FRENZY_WILLY') return tags;  // Aug 21: sleeve fills take no door/band badges (gate-51 table is strategy-scoped already)
             if (src === 'NONEXP_CALM3D') tags.push('CALM3D');
             else if (src.endsWith('_PROBE')) tags.push(src.replace('_PROBE', ''));
             else if (src === 'UNMATCHED') {
@@ -8548,10 +8557,10 @@
         // 🔥 Oct 2: FRENZY — one formatter for the dashboard line and BOTH text exports (clipboard + saved file)
         function frenzyMonitorStr(m) {
             if (!m) return 'unavailable';
-            return `LONG ${m.long_enabled ? 'ON' : 'OFF'} · short observations ${m.short_observe ? 'ON' : 'OFF'} · sizing Inv x${m.invest_mult} Lev x${m.lev_mult}${m.lev_mult_strong > 0 ? ' (x' + m.lev_mult_strong + ' when ADX rising ∧ +DI above)' : ''} · ATR <= ${m.max_atr}% · stop ${m.stop}%${Number(m.long_stop) > 0 && Number(m.long_stop) !== Number(m.stop) ? ' (LONG −' + m.long_stop + '%)' : ''} · ${m.lock_arm > 0 ? 'exit: lock +' + m.lock_floor + '% at +' + m.lock_arm + '%, trail ' + m.lock_trail + ' pts below the peak · ' : (m.tp > 0 ? 'take profit +' + m.tp + '% · ' : 'trail +' + m.trail_arm + '% / ' + m.trail_give + '% · ') + (Number(m.lite_tp) > 0 ? 'LITE take profit +' + m.lite_tp + '% · ' : '')}max ${m.max_slots} open · ${m.max_pair_day > 0 ? '<= ' + m.max_pair_day + ' entries per pair per day' : 'no per-pair day cap'} · WIDE ${m.wide_enabled ? 'ON' : 'OFF'} (Inv x${m.wide_invest_mult ?? '-'} Lev x${m.wide_lev_mult ?? '-'} · max ${m.wide_max_slots ?? '-'} open) · LITE ${m.lite_enabled ? 'ON' : 'OFF'} (held ≥${m.lite_min_above ?? '-'} closes above avg, volume < setup ×, ≤${m.lite_max_hours ?? '-'} h · Inv x${m.lite_invest_mult ?? '-'} Lev x${m.lite_lev_mult ?? '-'} · max ${m.lite_max_slots ?? '-'} open · no ATR cap · no auto-off) · 🔁 LITE RETRY ${m.lite_retry_enabled ? 'ON' : 'OFF'} (green refusal → first red / flat READY bar ≤ ${m.lite_retry_wait ?? '-'} min · Inv x${m.lite_retry_invest_mult ?? '-'} Lev x${m.lite_retry_lev_mult ?? '-'} · no slot limit · LITE exit · declared override${(m.lite_retry_pending && m.lite_retry_pending.length) ? ' · armed: ' + m.lite_retry_pending.map(x => x.pair + ' until ' + frenzyWillyClock(x.exp_ms)).join(', ') : ''}) · WILLY ${m.willy_enabled ? 'ON' : 'OFF'}: ${[m.willy_entry_a ? 'new-flag' : '', m.willy_entry_b ? 'ON-not-taken' : ''].filter(Boolean).join(' + ') || 'no entry'} · first red candle ≤ ${m.willy_red_wait ?? '-'} min · ${m.willy_turnover_max > 0 ? 'turnover < ' + m.willy_turnover_max + '× mcap' + (m.willy_mcap_fetch === false ? ' (⚠ mcap fetch OFF → WILLY can\'t enter)' : '') : 'turnover filter OFF'}${(m.willy_pending && m.willy_pending.length) ? ' · armed: ' + m.willy_pending.map(x => x.pair + ' ' + x.trig + ' waiting red · expires ' + frenzyWillyClock(x.exp_ms) + (x.blocked ? ' (blocked: hold / pair held)' : '')).join(', ') : ''} · TP +${m.willy_tp ?? '-'} / ${m.willy_stop ? 'SL −' + m.willy_stop : 'no SL'} / ${m.willy_max_hold ?? '-'} min · Inv x${m.willy_invest_mult ?? '-'} Lev x${m.willy_lev_mult ?? '-'} · max ${m.willy_max_slots ?? '-'} open · ${m.willy_stop ? 'same stop in paper and live' : '⚠ no bot stop (live = exchange backstop only)'}${m.willy_events && Object.keys(m.willy_events).length ? ' · events ' + Object.entries(m.willy_events).map(([k, v]) => k.replace('FRENZY_WILLY_', '') + ' ' + v).join(', ') : ''} · global hold · declared exception · bearish-day block ${m.bearish_block ? 'ON' : 'OFF'} · market volume ${m.gvol_max > 0 ? '< ' + m.gvol_max + 'x required' : 'gate OFF'} (last ${m.gvol != null ? Number(m.gvol).toFixed(2) + 'x' : '-'}${m.gvol_bar ? ' on the bar closing ' + m.gvol_bar + ' UTC' : ''})`
+            return `LONG ${m.long_enabled ? 'ON' : 'OFF'} · short observations ${m.short_observe ? 'ON' : 'OFF'} · sizing Inv x${m.invest_mult} Lev x${m.lev_mult}${m.lev_mult_strong > 0 ? ' (x' + m.lev_mult_strong + ' when ADX rising ∧ +DI above)' : ''} · ATR <= ${m.max_atr}% · stop ${m.stop}%${Number(m.long_stop) > 0 && Number(m.long_stop) !== Number(m.stop) ? ' (LONG −' + m.long_stop + '%)' : ''} · ${m.lock_arm > 0 ? 'exit: lock +' + m.lock_floor + '% at +' + m.lock_arm + '%, trail ' + m.lock_trail + ' pts below the peak · ' : (m.tp > 0 ? 'take profit +' + m.tp + '% · ' : 'trail +' + m.trail_arm + '% / ' + m.trail_give + '% · ') + (Number(m.lite_tp) > 0 ? 'LITE take profit +' + m.lite_tp + '% · ' : '')}max ${m.max_slots} open · ${m.max_pair_day > 0 ? '<= ' + m.max_pair_day + ' entries per pair per day' : 'no per-pair day cap'} · WIDE ${m.wide_enabled ? 'ON' : 'OFF'} (Inv x${m.wide_invest_mult ?? '-'} Lev x${m.wide_lev_mult ?? '-'} · max ${m.wide_max_slots ?? '-'} open) · LITE ${m.lite_enabled ? 'ON' : 'OFF'} (held ≥${m.lite_min_above ?? '-'} closes above avg, volume < setup ×, ≤${m.lite_max_hours ?? '-'} h · Inv x${m.lite_invest_mult ?? '-'} Lev x${m.lite_lev_mult ?? '-'} · max ${m.lite_max_slots ?? '-'} open · no ATR cap · no auto-off) · 🔁 LITE RETRY ${m.lite_retry_enabled ? 'ON' : 'OFF'} (green refusal → first red / flat READY bar ≤ ${m.lite_retry_wait ?? '-'} min · Inv x${m.lite_retry_invest_mult ?? '-'} Lev x${m.lite_retry_lev_mult ?? '-'} · no slot limit · LITE exit · declared override${(m.lite_retry_pending && m.lite_retry_pending.length) ? ' · armed: ' + m.lite_retry_pending.map(x => x.pair + ' until ' + frenzyWillyClock(x.exp_ms)).join(', ') : ''}) · WILLY ${m.willy_enabled ? 'ON' : 'OFF'}: ${[m.willy_entry_a ? 'new-flag' : '', m.willy_entry_b ? 'ON-not-taken' : ''].filter(Boolean).join(' + ') || 'no entry'} · first red candle ≤ ${m.willy_red_wait ?? '-'} min · ${m.willy_turnover_max > 0 ? 'turnover < ' + m.willy_turnover_max + '× mcap' + (m.willy_mcap_fetch === false ? ' (⚠ mcap fetch OFF → WILLY can\'t enter)' : '') : 'turnover filter OFF'}${(m.willy_pending && m.willy_pending.length) ? ' · armed: ' + m.willy_pending.map(x => x.pair + ' ' + x.trig + ' waiting red · expires ' + frenzyWillyClock(x.exp_ms) + (x.blocked ? ' (blocked: hold / pair held)' : '')).join(', ') : ''} · TP +${m.willy_tp ?? '-'} / ${m.willy_stop ? 'SL −' + m.willy_stop : 'no SL'} / ${m.willy_max_hold ?? '-'} min · Inv x${m.willy_invest_mult ?? '-'} Lev x${m.willy_lev_mult ?? '-'} · max ${m.willy_max_slots ?? '-'} open · ${m.willy_stop ? 'same stop in paper and live' : '⚠ no bot stop (live = exchange backstop only)'}${m.willy_events && Object.keys(m.willy_events).length ? ' · events ' + Object.entries(m.willy_events).map(([k, v]) => k.replace('FRENZY_WILLY_', '') + ' ' + v).join(', ') : ''} · ${m.willy_global_hold === false ? 'global hold OFF (DECISION_LOG 340: other bot entries open alongside a WILLY; never on its pair)' : 'global hold ON'} · 🎲¼ WILLY_HT ${m.willy_ht_enabled === false ? 'OFF' : 'ON'} (turnover-only refusals at ×${m.willy_ht_size_frac ?? 0.25} size · max ${m.willy_ht_max_slots ?? 1} open · WILLY's exit · DECISION_LOG 341) · declared exception · bearish-day block ${m.bearish_block ? 'ON' : 'OFF'} · market volume ${m.gvol_max > 0 ? '< ' + m.gvol_max + 'x required' : 'gate OFF'} (last ${m.gvol != null ? Number(m.gvol).toFixed(2) + 'x' : '-'}${m.gvol_bar ? ' on the bar closing ' + m.gvol_bar + ' UTC' : ''})`
                 + ` · last scan ${m.checked ? m.checked + ' UTC' : 'never'}${m.shortlisted != null ? ` (${m.shortlisted} shortlisted, ${m.flagged} flagged${m.unreadable ? ', ' + m.unreadable + ' unreadable' : ''}${m.took_s != null ? ', ' + m.took_s + 's' : ''})` : ''}${m.error ? ' · ' + m.error : ''}`;
         }
-        const FRENZY_NUM_FIELDS = [['config-fz-spike-ret', 'frenzy_spike_ret_pct', 5.0], ['config-fz-spike-vol', 'frenzy_spike_vol_mult', 20.0], ['config-fz-spike-usd', 'frenzy_spike_min_hour_usd', 2000000], ['config-fz-state-vol', 'frenzy_state_vol_mult', 100.0], ['config-fz-min-hours', 'frenzy_min_hours', 2.0], ['config-fz-max-hours', 'frenzy_max_hours', 96.0], ['config-fz-min-vol', 'frenzy_min_volume_usd', 20000000], ['config-fz-shortlist', 'frenzy_shortlist_change_pct', 15.0], ['config-fz-max-atr', 'frenzy_max_atr_pct', 3.0], ['config-fz-stop', 'frenzy_stop_pct', 3.0], ['config-fz-long-stop', 'frenzy_long_stop_pct', 0], ['config-fz-trail-arm', 'frenzy_trail_arm_pct', 5.0], ['config-fz-trail-give', 'frenzy_trail_giveback_pct', 1.5], ['config-fz-tp', 'frenzy_tp_pct', 3.0], ['config-fz-lite-tp', 'frenzy_lite_tp_pct', 0], ['config-fz-lock-arm', 'frenzy_lock_arm_pct', 0], ['config-fz-lock-floor', 'frenzy_lock_floor_pct', 2.0], ['config-fz-lock-trail', 'frenzy_lock_trail_pct', 2.0], ['config-fz-max-hold', 'frenzy_max_hold_minutes', 720], ['config-fz-slots', 'frenzy_max_slots', 2], ['config-fz-pair-day', 'frenzy_max_entries_per_pair_day', 3], ['config-fz-invest-mult', 'frenzy_long_invest_mult', 1.0], ['config-fz-lev-mult', 'frenzy_long_lev_mult', 0.1], ['config-fz-lev-mult-strong', 'frenzy_long_lev_mult_strong', 0], ['config-fz-wide-invest-mult', 'frenzy_wide_invest_mult', 1.0], ['config-fz-wide-lev-mult', 'frenzy_wide_lev_mult', 0.05], ['config-fz-wide-slots', 'frenzy_wide_max_slots', 2], ['config-fz-wide-choppy', 'frenzy_wide_above_share_min', 0], ['config-fz-wide-hold-streak', 'frenzy_wide_hold_green_streak', 12], ['config-fz-lite-invest-mult', 'frenzy_lite_invest_mult', 1.0], ['config-fz-lite-lev-mult', 'frenzy_lite_lev_mult', 0.2], ['config-fz-lite-slots', 'frenzy_lite_max_slots', 2], ['config-fz-lite-max-hours', 'frenzy_lite_max_hours', 16.75], ['config-fz-lite-min-above', 'frenzy_lite_min_above_closes', 12], ['config-fz-lite-c-vol', 'frenzy_lite_c_vol_mult', 20], ['config-fz-lite-c-slope', 'frenzy_lite_c_btc_slope_min', 0], ['config-fz-lite-c-tp', 'frenzy_lite_c_tp_pct', 2.0], ['config-fz-lite-retry-wait', 'frenzy_lite_retry_wait_minutes', 15], ['config-fz-lite-retry-invest-mult', 'frenzy_lite_retry_invest_mult', 1.0], ['config-fz-lite-retry-lev-mult', 'frenzy_lite_retry_lev_mult', 0.2], ['config-fz-willy-invest-mult', 'frenzy_willy_invest_mult', 1.0], ['config-fz-willy-lev-mult', 'frenzy_willy_lev_mult', 0.5], ['config-fz-willy-tp', 'frenzy_willy_tp_pct', 1.25], ['config-fz-willy-stop', 'frenzy_willy_stop_pct', 4.0], ['config-fz-willy-max-hold', 'frenzy_willy_max_hold_minutes', 90], ['config-fz-willy-late-tp-min', 'frenzy_willy_late_tp_minutes', 30], ['config-fz-willy-late-tp-pct', 'frenzy_willy_late_tp_pct', 0.25], ['config-fz-willy-slots', 'frenzy_willy_max_slots', 1], ['config-fz-willy-red-wait', 'frenzy_willy_red_max_wait_minutes', 60], ['config-fz-willy-a-cold', 'frenzy_willy_a_cold_max_bars', 3], ['config-fz-willy-turnover', 'frenzy_willy_max_vol_mcap_ratio', 0], ['config-fz-gvol-max', 'frenzy_gvol_max', 0], ['config-fz-disloc', 'frenzy_max_entry_dislocation_pct', 1.0], ['config-fz-catchup', 'frenzy_catchup_max_bars', 6]];   // [input id, config key, shipped default] — the load and the save both walk this list
+        const FRENZY_NUM_FIELDS = [['config-fz-spike-ret', 'frenzy_spike_ret_pct', 5.0], ['config-fz-spike-vol', 'frenzy_spike_vol_mult', 20.0], ['config-fz-spike-usd', 'frenzy_spike_min_hour_usd', 2000000], ['config-fz-state-vol', 'frenzy_state_vol_mult', 100.0], ['config-fz-min-hours', 'frenzy_min_hours', 2.0], ['config-fz-max-hours', 'frenzy_max_hours', 96.0], ['config-fz-min-vol', 'frenzy_min_volume_usd', 20000000], ['config-fz-shortlist', 'frenzy_shortlist_change_pct', 15.0], ['config-fz-max-atr', 'frenzy_max_atr_pct', 3.0], ['config-fz-stop', 'frenzy_stop_pct', 3.0], ['config-fz-long-stop', 'frenzy_long_stop_pct', 0], ['config-fz-trail-arm', 'frenzy_trail_arm_pct', 5.0], ['config-fz-trail-give', 'frenzy_trail_giveback_pct', 1.5], ['config-fz-tp', 'frenzy_tp_pct', 3.0], ['config-fz-lite-tp', 'frenzy_lite_tp_pct', 0], ['config-fz-lock-arm', 'frenzy_lock_arm_pct', 0], ['config-fz-lock-floor', 'frenzy_lock_floor_pct', 2.0], ['config-fz-lock-trail', 'frenzy_lock_trail_pct', 2.0], ['config-fz-max-hold', 'frenzy_max_hold_minutes', 720], ['config-fz-slots', 'frenzy_max_slots', 2], ['config-fz-pair-day', 'frenzy_max_entries_per_pair_day', 3], ['config-fz-invest-mult', 'frenzy_long_invest_mult', 1.0], ['config-fz-lev-mult', 'frenzy_long_lev_mult', 0.1], ['config-fz-lev-mult-strong', 'frenzy_long_lev_mult_strong', 0], ['config-fz-wide-invest-mult', 'frenzy_wide_invest_mult', 1.0], ['config-fz-wide-lev-mult', 'frenzy_wide_lev_mult', 0.05], ['config-fz-wide-slots', 'frenzy_wide_max_slots', 2], ['config-fz-wide-choppy', 'frenzy_wide_above_share_min', 0], ['config-fz-wide-hold-streak', 'frenzy_wide_hold_green_streak', 12], ['config-fz-lite-invest-mult', 'frenzy_lite_invest_mult', 1.0], ['config-fz-lite-lev-mult', 'frenzy_lite_lev_mult', 0.2], ['config-fz-lite-slots', 'frenzy_lite_max_slots', 2], ['config-fz-lite-max-hours', 'frenzy_lite_max_hours', 16.75], ['config-fz-lite-min-above', 'frenzy_lite_min_above_closes', 12], ['config-fz-lite-c-vol', 'frenzy_lite_c_vol_mult', 20], ['config-fz-lite-c-slope', 'frenzy_lite_c_btc_slope_min', 0], ['config-fz-lite-c-tp', 'frenzy_lite_c_tp_pct', 2.0], ['config-fz-lite-retry-wait', 'frenzy_lite_retry_wait_minutes', 15], ['config-fz-lite-retry-invest-mult', 'frenzy_lite_retry_invest_mult', 1.0], ['config-fz-lite-retry-lev-mult', 'frenzy_lite_retry_lev_mult', 0.2], ['config-fz-willy-invest-mult', 'frenzy_willy_invest_mult', 1.0], ['config-fz-willy-lev-mult', 'frenzy_willy_lev_mult', 0.5], ['config-fz-willy-tp', 'frenzy_willy_tp_pct', 1.25], ['config-fz-willy-stop', 'frenzy_willy_stop_pct', 4.0], ['config-fz-willy-max-hold', 'frenzy_willy_max_hold_minutes', 90], ['config-fz-willy-late-tp-min', 'frenzy_willy_late_tp_minutes', 30], ['config-fz-willy-late-tp-pct', 'frenzy_willy_late_tp_pct', 0.25], ['config-fz-willy-slots', 'frenzy_willy_max_slots', 1], ['config-fz-willy-ht-size-frac', 'frenzy_willy_ht_size_frac', 0.25], ['config-fz-willy-ht-slots', 'frenzy_willy_ht_max_slots', 1], ['config-fz-willy-red-wait', 'frenzy_willy_red_max_wait_minutes', 60], ['config-fz-willy-a-cold', 'frenzy_willy_a_cold_max_bars', 3], ['config-fz-willy-turnover', 'frenzy_willy_max_vol_mcap_ratio', 0], ['config-fz-gvol-max', 'frenzy_gvol_max', 0], ['config-fz-disloc', 'frenzy_max_entry_dislocation_pct', 1.0], ['config-fz-catchup', 'frenzy_catchup_max_bars', 6]];   // [input id, config key, shipped default] — the load and the save both walk this list
         // ⏪ Oct-6 (operator): an ON setup whose entry bar passed says WHEN it turned ON — f.on_ms = the ON bar's CLOSE (UTC ms), shown in the
         // app's time convention (America/Argentina/Buenos_Aires, h23 — same as surgeTime / formatTime) plus the elapsed time in Spanish. Live
         // panel: "ON 10:40 · hace 25 min" (refreshes with the table). Text exports: "ON desde 10-06 10:40" (no "hace" — it goes stale).
@@ -11059,7 +11068,7 @@
             {
                 const _bt = cfg?.thresholds || {};
                 lines.push(`  🌊 Bull-Run Sleeve (gate 57): ${_bt.bullrun_sleeve_enabled !== false ? `ON — GREEN(r72≥${_bt.bullrun_green_r72_on ?? 10}/${_bt.bullrun_green_r72_off ?? 8} ∧ above≥${_bt.bullrun_green_above_on ?? 56}/${_bt.bullrun_green_above_off ?? 53} ∧ eff≥${_bt.bullrun_green_eff_on ?? 0.10}/${_bt.bullrun_green_eff_off ?? 0.10}) latch ${_bt.bullrun_latch_r6h ?? -3}%/1hEMA50 · top-${_bt.bullrun_universe_size ?? 10} COIN · dip ${_bt.bullrun_dip_atr_mult ?? 0.3}×ATR · ${_bt.bullrun_max_slots ?? 4} slots · Inv ${_bt.bullrun_invest_mult ?? 1}x/Lev ${_bt.bullrun_lev_mult ?? 1}x · SL ${_bt.bullrun_base_sl_pct ?? -0.7}/ATR · BE ${_bt.bullrun_be_arm_pct ?? 1.0}→${_bt.bullrun_be_lock_pct ?? 0.2} · trail ${_bt.bullrun_trail_atr_mult ?? 2.0}×ATR (REARM ${(_bt.bullrun_rearm_trail_atr_mult > 0) ? _bt.bullrun_rearm_trail_atr_mult + '×' : 'same'}) · BTC off-24h gate ${(_bt.bullrun_btc_off24h_max ?? 0) < 0 ? `≤${_bt.bullrun_btc_off24h_max}%` : 'OFF'} · ladder ${(_bt.bullrun_ladder || '').trim() ? _bt.bullrun_ladder : 'OFF'} · blacklist ${(_bt.bullrun_pair_blacklist || '').trim() || 'none'} · BTC≥EMA13 ${_bt.bullrun_btc_ema13_required !== false ? 'ON' : 'off'} · 1h-slope>${(_bt.bullrun_btc_1h_slope_min === null || _bt.bullrun_btc_1h_slope_min === undefined) ? 'off' : _bt.bullrun_btc_1h_slope_min} · breadth ${_bt.bullrun_breadth_enabled === true && (_bt.bullrun_breadth_min > 0) ? `≥${_bt.bullrun_breadth_min}%` : 'off'} · disloc≤${(_bt.bullrun_max_entry_dislocation_pct > 0) ? _bt.bullrun_max_entry_dislocation_pct + '%' : 'off'} · RE-ARM ${_bt.bullrun_rearm_enabled !== false ? `ON(ADX≥${_bt.bullrun_rearm_adx_min ?? 30}↑/stay ${_bt.bullrun_rearm_adx_off ?? 30}, alts r6h>${_bt.bullrun_rearm_alt_r6h_min ?? 1}% & ≥${_bt.bullrun_rearm_alt_above_pct ?? 80}% >1hEMA50, ≤${_bt.bullrun_rearm_max_hours ?? 24}h, only ≤${_bt.bullrun_rearm_after_green_hours ?? 48}h after GREEN, entry-age ≤${(_bt.bullrun_rearm_max_entry_age_min > 0) ? _bt.bullrun_rearm_max_entry_age_min + 'min' : 'off'}/flap ${_bt.bullrun_rearm_flap_merge_min ?? 30}min)` : 'off'}` : 'OFF'}`);
-                lines.push(`  🔥 FRENZY sleeve: LONG ${_bt.frenzy_long_enabled === true ? 'ON' : 'OFF'} · short observations ${_bt.frenzy_short_observe !== false ? 'ON' : 'OFF'} · spike 30m ≥${_bt.frenzy_spike_ret_pct ?? 5}% ∧ vol ≥${_bt.frenzy_spike_vol_mult ?? 20}× · setup vol ≥${_bt.frenzy_state_vol_mult ?? 100}× ∧ ≥${_bt.frenzy_min_hours ?? 2} h · flag ≤${_bt.frenzy_max_hours ?? 96} h · 24h vol ≥$${((_bt.frenzy_min_volume_usd ?? 20000000) / 1e6).toFixed(0)}M · ATR ≤${_bt.frenzy_max_atr_pct ?? 2.5}%${_bt.frenzy_long_skip_green_bar !== false ? ' · signal candle red/flat only' : ''} · bearish-day block ${_bt.frenzy_bearish_day_block === true ? 'ON (no FRENZY / WIDE / LITE entry while BTC day < 0 ∧ trend gap < 0)' : 'OFF'} · stop ${_bt.frenzy_stop_pct ?? 3}%${Number(_bt.frenzy_long_stop_pct) > 0 ? ' (FRENZY_LONG −' + _bt.frenzy_long_stop_pct + '%, DECISION_LOG 317)' : ''} · ${(_bt.frenzy_lock_arm_pct ?? 0) > 0 ? 'exit: lock +' + (_bt.frenzy_lock_floor_pct ?? 2) + '% at +' + _bt.frenzy_lock_arm_pct + '%, trail ' + (_bt.frenzy_lock_trail_pct ?? 2) + ' pts below the peak (no fixed TP) · ' : ((_bt.frenzy_tp_pct ?? 0) > 0 ? 'take profit +' + _bt.frenzy_tp_pct + '% · ' : 'trail +' + (_bt.frenzy_trail_arm_pct ?? 5) + '%/' + (_bt.frenzy_trail_giveback_pct ?? 1.5) + '% · ')}${Number(_bt.frenzy_lite_tp_pct) > 0 ? 'LITE own take profit +' + _bt.frenzy_lite_tp_pct + '% (DECISION_LOG 284) · ' : ''}${_bt.frenzy_lite_c_enabled === true ? 'LITE C: TP +' + (_bt.frenzy_lite_c_tp_pct ?? 2) + ' unless vol ≥' + (_bt.frenzy_lite_c_vol_mult ?? 20) + '× and BTC 1h rising (slope > ' + (_bt.frenzy_lite_c_btc_slope_min ?? 0) + '%) (DECISION_LOG 301) · ' : 'LITE C OFF · '}hold ≤${_bt.frenzy_max_hold_minutes ?? 720}m · max ${_bt.frenzy_max_slots ?? 2} open · ${(_bt.frenzy_max_entries_per_pair_day ?? 3) > 0 ? '≤' + (_bt.frenzy_max_entries_per_pair_day ?? 3) + ' entries per pair per day' : 'no per-pair day cap'} · Inv ×${_bt.frenzy_long_invest_mult ?? 1} Lev ×${_bt.frenzy_long_lev_mult ?? 0.1}${(_bt.frenzy_long_lev_mult_strong ?? 0) > 0 ? ' (×' + _bt.frenzy_long_lev_mult_strong + ' when ADX rising ∧ +DI above)' : ''} · WIDE ${_bt.frenzy_wide_enabled === true ? 'ON' : 'OFF'} (ATR / green-candle refusals, Inv ×${_bt.frenzy_wide_invest_mult ?? 1} Lev ×${_bt.frenzy_wide_lev_mult ?? 0.05}, max ${_bt.frenzy_wide_max_slots ?? 2} open${(_bt.frenzy_wide_hold_green_streak ?? 0) > 0 ? ', only hold-green (> ' + _bt.frenzy_wide_hold_green_streak + ' closes above avg)' : ''}${(_bt.frenzy_wide_above_share_min ?? 0) > 0 ? ', skip choppy ≤' + _bt.frenzy_wide_above_share_min + '% closes above avg' : ''}) · LITE ${_bt.frenzy_lite_enabled === true ? 'ON' : 'OFF'} (held ≥${_bt.frenzy_lite_min_above_closes ?? 12} closes above avg with volume < ${_bt.frenzy_state_vol_mult ?? 100}×, ${_bt.frenzy_min_hours ?? 2}–${_bt.frenzy_lite_max_hours ?? 16.75} h after the spike, each stretch judged once on its first signal candle, Inv ×${_bt.frenzy_lite_invest_mult ?? 1} Lev ×${_bt.frenzy_lite_lev_mult ?? 0.2}, max ${_bt.frenzy_lite_max_slots ?? 2} open · no ATR cap · no auto-off) · WILLY ${_bt.frenzy_willy_enabled === true ? 'ON' : 'OFF'}: ${[_bt.frenzy_willy_entry_a !== false ? 'new-flag' : '', _bt.frenzy_willy_entry_b !== false ? 'ON-not-taken' : ''].filter(Boolean).join(' + ') || 'no entry'} · enters on the first red 5m candle ≤ ${_bt.frenzy_willy_red_max_wait_minutes ?? 60} min after the trigger · new-flag A for a pair read late ≤ ${_bt.frenzy_willy_a_cold_max_bars ?? 3} candles after its spike · ${(_bt.frenzy_willy_max_vol_mcap_ratio ?? 0) > 0 ? 'turnover < ' + _bt.frenzy_willy_max_vol_mcap_ratio + '× mcap (unknown mcap = no entry)' : 'turnover filter OFF'} · TP +${_bt.frenzy_willy_tp_pct ?? 1} / ${(_bt.frenzy_willy_stop_pct ?? 4) > 0 ? 'SL −' + _bt.frenzy_willy_stop_pct : 'no SL'} / ${_bt.frenzy_willy_max_hold_minutes ?? 120} min · Inv ×${_bt.frenzy_willy_invest_mult ?? 1} Lev ×${_bt.frenzy_willy_lev_mult ?? 1} · max ${_bt.frenzy_willy_max_slots ?? 1} open · ${(_bt.frenzy_willy_stop_pct ?? 4) > 0 ? 'same stop in paper and live' : '⚠ no bot stop (live = exchange backstop only)'} · global hold (no other automated open while a WILLY is open; manual exempt) · declared exception · market volume ${(_bt.frenzy_gvol_max ?? 0) > 0 ? '< ' + _bt.frenzy_gvol_max + '× required' : 'gate OFF'} · 🔁 LITE RETRY ${_bt.frenzy_lite_retry_enabled === true ? 'ON' : 'OFF'} (LITE green refusal → first red / flat READY bar of the same stretch ≤ ${_bt.frenzy_lite_retry_wait_minutes ?? 15} min, every LITE open filter, Inv ×${_bt.frenzy_lite_retry_invest_mult ?? 1} Lev ×${_bt.frenzy_lite_retry_lev_mult ?? 0.2}, no slot limit, LITE exit · DECISION_LOG 316) · ${(_bt.frenzy_catchup_max_bars ?? 0) > 0 ? 'catch-up of a missed ON bar ≤' + _bt.frenzy_catchup_max_bars + ' bars old (price within ' + (_bt.frenzy_max_entry_dislocation_pct ?? 1) + '% of its close)' : 'catch-up OFF'} · no auto-off`);
+                lines.push(`  🔥 FRENZY sleeve: LONG ${_bt.frenzy_long_enabled === true ? 'ON' : 'OFF'} · short observations ${_bt.frenzy_short_observe !== false ? 'ON' : 'OFF'} · spike 30m ≥${_bt.frenzy_spike_ret_pct ?? 5}% ∧ vol ≥${_bt.frenzy_spike_vol_mult ?? 20}× · setup vol ≥${_bt.frenzy_state_vol_mult ?? 100}× ∧ ≥${_bt.frenzy_min_hours ?? 2} h · flag ≤${_bt.frenzy_max_hours ?? 96} h · 24h vol ≥$${((_bt.frenzy_min_volume_usd ?? 20000000) / 1e6).toFixed(0)}M · ATR ≤${_bt.frenzy_max_atr_pct ?? 2.5}%${_bt.frenzy_long_skip_green_bar !== false ? ' · signal candle red/flat only' : ''} · bearish-day block ${_bt.frenzy_bearish_day_block === true ? 'ON (no FRENZY / WIDE / LITE entry while BTC day < 0 ∧ trend gap < 0)' : 'OFF'} · stop ${_bt.frenzy_stop_pct ?? 3}%${Number(_bt.frenzy_long_stop_pct) > 0 ? ' (FRENZY_LONG −' + _bt.frenzy_long_stop_pct + '%, DECISION_LOG 317)' : ''} · ${(_bt.frenzy_lock_arm_pct ?? 0) > 0 ? 'exit: lock +' + (_bt.frenzy_lock_floor_pct ?? 2) + '% at +' + _bt.frenzy_lock_arm_pct + '%, trail ' + (_bt.frenzy_lock_trail_pct ?? 2) + ' pts below the peak (no fixed TP) · ' : ((_bt.frenzy_tp_pct ?? 0) > 0 ? 'take profit +' + _bt.frenzy_tp_pct + '% · ' : 'trail +' + (_bt.frenzy_trail_arm_pct ?? 5) + '%/' + (_bt.frenzy_trail_giveback_pct ?? 1.5) + '% · ')}${Number(_bt.frenzy_lite_tp_pct) > 0 ? 'LITE own take profit +' + _bt.frenzy_lite_tp_pct + '% (DECISION_LOG 284) · ' : ''}${_bt.frenzy_lite_c_enabled === true ? 'LITE C: TP +' + (_bt.frenzy_lite_c_tp_pct ?? 2) + ' unless vol ≥' + (_bt.frenzy_lite_c_vol_mult ?? 20) + '× and BTC 1h rising (slope > ' + (_bt.frenzy_lite_c_btc_slope_min ?? 0) + '%) (DECISION_LOG 301) · ' : 'LITE C OFF · '}hold ≤${_bt.frenzy_max_hold_minutes ?? 720}m · max ${_bt.frenzy_max_slots ?? 2} open · ${(_bt.frenzy_max_entries_per_pair_day ?? 3) > 0 ? '≤' + (_bt.frenzy_max_entries_per_pair_day ?? 3) + ' entries per pair per day' : 'no per-pair day cap'} · Inv ×${_bt.frenzy_long_invest_mult ?? 1} Lev ×${_bt.frenzy_long_lev_mult ?? 0.1}${(_bt.frenzy_long_lev_mult_strong ?? 0) > 0 ? ' (×' + _bt.frenzy_long_lev_mult_strong + ' when ADX rising ∧ +DI above)' : ''} · WIDE ${_bt.frenzy_wide_enabled === true ? 'ON' : 'OFF'} (ATR / green-candle refusals, Inv ×${_bt.frenzy_wide_invest_mult ?? 1} Lev ×${_bt.frenzy_wide_lev_mult ?? 0.05}, max ${_bt.frenzy_wide_max_slots ?? 2} open${(_bt.frenzy_wide_hold_green_streak ?? 0) > 0 ? ', only hold-green (> ' + _bt.frenzy_wide_hold_green_streak + ' closes above avg)' : ''}${(_bt.frenzy_wide_above_share_min ?? 0) > 0 ? ', skip choppy ≤' + _bt.frenzy_wide_above_share_min + '% closes above avg' : ''}) · LITE ${_bt.frenzy_lite_enabled === true ? 'ON' : 'OFF'} (held ≥${_bt.frenzy_lite_min_above_closes ?? 12} closes above avg with volume < ${_bt.frenzy_state_vol_mult ?? 100}×, ${_bt.frenzy_min_hours ?? 2}–${_bt.frenzy_lite_max_hours ?? 16.75} h after the spike, each stretch judged once on its first signal candle, Inv ×${_bt.frenzy_lite_invest_mult ?? 1} Lev ×${_bt.frenzy_lite_lev_mult ?? 0.2}, max ${_bt.frenzy_lite_max_slots ?? 2} open · no ATR cap · no auto-off) · WILLY ${_bt.frenzy_willy_enabled === true ? 'ON' : 'OFF'}: ${[_bt.frenzy_willy_entry_a !== false ? 'new-flag' : '', _bt.frenzy_willy_entry_b !== false ? 'ON-not-taken' : ''].filter(Boolean).join(' + ') || 'no entry'} · enters on the first red 5m candle ≤ ${_bt.frenzy_willy_red_max_wait_minutes ?? 60} min after the trigger · new-flag A for a pair read late ≤ ${_bt.frenzy_willy_a_cold_max_bars ?? 3} candles after its spike · ${(_bt.frenzy_willy_max_vol_mcap_ratio ?? 0) > 0 ? 'turnover < ' + _bt.frenzy_willy_max_vol_mcap_ratio + '× mcap (unknown mcap = no entry)' : 'turnover filter OFF'} · TP +${_bt.frenzy_willy_tp_pct ?? 1} / ${(_bt.frenzy_willy_stop_pct ?? 4) > 0 ? 'SL −' + _bt.frenzy_willy_stop_pct : 'no SL'} / ${_bt.frenzy_willy_max_hold_minutes ?? 120} min · Inv ×${_bt.frenzy_willy_invest_mult ?? 1} Lev ×${_bt.frenzy_willy_lev_mult ?? 1} · max ${_bt.frenzy_willy_max_slots ?? 1} open · ${(_bt.frenzy_willy_stop_pct ?? 4) > 0 ? 'same stop in paper and live' : '⚠ no bot stop (live = exchange backstop only)'} · ${_bt.frenzy_willy_global_hold === false ? 'global hold OFF (DECISION_LOG 340: other bot entries open alongside a WILLY, never on its pair; WILLY max open + pair-held stay)' : 'global hold ON (no other automated open while a WILLY is open; manual exempt)'} · declared exception · 🎲¼ WILLY_HT ${_bt.frenzy_willy_ht_enabled === false ? 'OFF' : 'ON'} (WILLY setups refused only by turnover → ×${_bt.frenzy_willy_ht_size_frac ?? 0.25} size, max ${_bt.frenzy_willy_ht_max_slots ?? 1} open, WILLY's exit, alert-only gates · DECISION_LOG 341) · market volume ${(_bt.frenzy_gvol_max ?? 0) > 0 ? '< ' + _bt.frenzy_gvol_max + '× required' : 'gate OFF'} · 🔁 LITE RETRY ${_bt.frenzy_lite_retry_enabled === true ? 'ON' : 'OFF'} (LITE green refusal → first red / flat READY bar of the same stretch ≤ ${_bt.frenzy_lite_retry_wait_minutes ?? 15} min, every LITE open filter, Inv ×${_bt.frenzy_lite_retry_invest_mult ?? 1} Lev ×${_bt.frenzy_lite_retry_lev_mult ?? 0.2}, no slot limit, LITE exit · DECISION_LOG 316) · ${(_bt.frenzy_catchup_max_bars ?? 0) > 0 ? 'catch-up of a missed ON bar ≤' + _bt.frenzy_catchup_max_bars + ' bars old (price within ' + (_bt.frenzy_max_entry_dislocation_pct ?? 1) + '% of its close)' : 'catch-up OFF'} · no auto-off`);
                 lines.push(`  🎯 Resting take-profit (DECISION_LOG 296): WILLY ${_bt.resting_tp_willy_enabled !== false ? 'ON' : 'OFF'} · LITE ${_bt.resting_tp_lite_enabled !== false ? 'ON' : 'OFF'} · LITE RETRY ${_bt.resting_tp_lite_retry_enabled !== false ? 'ON' : 'OFF'} · FRENZY_LONG ${_bt.resting_tp_frenzy_long_enabled !== false ? 'ON' : 'OFF'} · Manual FIXED ${_bt.resting_tp_manual_enabled !== false ? 'ON' : 'OFF'} · Override TP ${_bt.resting_tp_override_enabled !== false ? 'ON' : 'OFF'} (310) — reduce-only post-only limit at the net TP with the maker fee; software TP = safety net after ≥${_bt.resting_tp_through_ticks ?? 2} ticks through for ≥${_bt.resting_tp_grace_s ?? 3}s; every other exit cancels it first; paper fills at ≥ 1 tick through`);
                 lines.push(`  ⏰ WILLY late take profit (DECISION_LOG 297): ${(Number(_bt.frenzy_willy_late_tp_minutes ?? 30) > 0 && Number(_bt.frenzy_willy_late_tp_pct ?? 0.25) > 0) ? 'ON — from ' + (_bt.frenzy_willy_late_tp_minutes ?? 30) + ' min after the fill the TP is +' + (_bt.frenzy_willy_late_tp_pct ?? 0.25) + '% (WILLY_LATE_TP); stop / max hold unchanged' : 'OFF'}`);
                 lines.push(`  ⚡ SURGE sleeves: LONG ${_bt.surge_long_enabled !== false ? 'ON' : 'OFF'} · SHORT ${_bt.surge_short_enabled !== false ? 'ON' : 'OFF'} · trigger BTC |30m| ≥${_bt.surge_btc_move_pct ?? 0.3}% ∧ vol ≥${_bt.surge_btc_vol_mult ?? 5}× median${(_bt.surge_long_gvol_min ?? 1) > 0 ? ' (LONG: market volume ≥' + (_bt.surge_long_gvol_min ?? 1) + '×)' : ' (LONG market-volume leg OFF)'}${_bt.surge_long_require_24h_high !== false ? ' (LONG: 24h-high close)' : ''}${_bt.surge_short_require_24h_low ? ' (SHORT: 24h-low close)' : ''} · spacing ${_bt.surge_trigger_spacing_hours ?? 4}h${_bt.surge_spacing_after_fill !== false ? ' (from the last trigger that FILLED)' : ''} · top-${_bt.surge_universe_size ?? 20} ATR≥${_bt.surge_atr_min_pct ?? 1.5}%${_bt.surge_long_require_leader !== false ? ' · LONG leader' : ''}${(_bt.surge_long_min_ema13_50_gap_pct === null || _bt.surge_long_min_ema13_50_gap_pct === undefined) ? ' · LONG EMA13−50 gap gate OFF' : ' · LONG EMA13−50 gap ≥' + _bt.surge_long_min_ema13_50_gap_pct + '% (DL 287)'}${_bt.surge_short_require_leader ? ' · SHORT leader' : ''} · delay L ${_bt.surge_long_entry_delay_min ?? 0}m / S ${_bt.surge_short_entry_delay_min ?? 20}m · window ${_bt.surge_entry_window_min ?? 5}m · ${_bt.surge_max_slots ?? 4} slots/side · LONG Inv ${_bt.surge_long_invest_mult ?? 1}x Lev ${_bt.surge_long_lev_mult ?? 1}x / SHORT Inv ${_bt.surge_short_invest_mult ?? 1}x Lev ${_bt.surge_short_lev_mult ?? 1}x · LONG exit Bull-Run trail ${_bt.surge_long_trail_atr_mult ?? 1}×ATR${_bt.surge_long_exit_no_lock !== false ? ' WITHOUT the +0.2% lock / ladder' : ' with the +0.2% lock + ladder'} · SHORT exit own (Bear-Run stop/trail/ladder, no EMA13) · max hold ${_bt.surge_max_hold_minutes ?? 240}m · disloc ≤${_bt.surge_max_entry_dislocation_pct ?? 0.3}% · blacklist L ${(_bt.surge_long_pair_blacklist || '').trim() || 'none'} / S ${(_bt.surge_short_pair_blacklist || '').trim() || 'none'} · kill verdict L ${(_bt.surge_long_kill_verdict || '').trim() || 'not judged'} / S ${(_bt.surge_short_kill_verdict || '').trim() || 'not judged'}`);
@@ -11135,10 +11144,13 @@
         // NAV/share history section (Jul 2, 2026) — shared by BOTH report builders (D12).
         function _buildNavHistoryLines(invData, hr, hr2) {
             const lines = [];
-            if (!invData || !(invData.nav_history || []).length) return lines;
-            const hist = invData.nav_history;
+            const epoch = invData ? (invData.nav_epoch_start || null) : null;   // 📈 (DECISION_LOG 337) same post-epoch rows as the chart
+            if (!invData || (!(invData.nav_history || []).length && !epoch)) return lines;
+            const hist = invData.nav_history || [];
             lines.push(`\n${hr}`);
             lines.push('## NAV / SHARE HISTORY (daily, UTC-3)\n');
+            if (epoch) lines.push(`NAV history since ${epoch} (earlier history kept)`);
+            if (!hist.length) { lines.push(`No NAV history since ${epoch} yet`); return lines; }
             lines.push(`Current NAV: $${(invData.nav_per_share || 0).toFixed(6)}  |  High-Water Mark: $${(invData.nav_high_water || 0).toFixed(6)}  |  Portfolio: $${(invData.portfolio_value || 0).toFixed(2)}  |  Tradeable: ${(invData.tradeable != null ? '$' + invData.tradeable.toFixed(2) : '-')}  |  Reserve: ${(invData.reserve != null ? '$' + invData.reserve.toFixed(2) : '-')} (${invData.reserve_mode || '-'})`);
             lines.push('');
             lines.push(`${'Date'.padEnd(12)} ${'NAV/Share'.padStart(12)} ${'Δ day'.padStart(10)} ${'Portfolio $'.padStart(14)}`);
@@ -17676,7 +17688,7 @@
                             <td class="px-2 py-1.5 text-right ${(f.atr_pct != null && (!_maxAtr || f.atr_pct <= _maxAtr)) ? 'text-emerald-400' : 'text-red-400'}">${f.atr_pct != null ? f.atr_pct.toFixed(2) + '%' : '—'}</td>
                             <td class="px-2 py-1.5 text-right text-gray-400">${f.volume_24h != null ? '$' + (f.volume_24h / 1e6).toFixed(0) + 'M' : '—'}</td>
                             <td class="px-2 py-1.5 ${(f.ready || f.lite_ready) ? 'text-emerald-400 font-semibold' : (f.in_state ? 'text-orange-300' : 'text-gray-400')}">${_fzE(frenzyStatusText(f))}${f.stale ? ' (not read this bar)' : ''}</td>
-                            <td class="px-2 py-1.5 text-gray-400">${_fzE(frenzyLastFireLocal(f.last_fire))}${f.willy_last ? '<br><span class="text-fuchsia-300">🎲 ' + _fzE(frenzyLastFireLocal(f.willy_last)) + '</span>' : ''}${f.willy_pending ? '<br><span class="text-red-300">🟥 ' + _fzE(frenzyWillyPendingText(f)) + '</span>' : ''}${f.lite_retry_last ? '<br><span class="text-sky-300">🔁 ' + _fzE(frenzyLastFireLocal(f.lite_retry_last)) + '</span>' : ''}</td>
+                            <td class="px-2 py-1.5 text-gray-400">${_fzE(frenzyLastFireLocal(f.last_fire))}${f.willy_last ? '<br><span class="text-fuchsia-300">🎲 ' + _fzE(frenzyLastFireLocal(f.willy_last)) + '</span>' : ''}${f.willy_pending ? '<br><span class="text-red-300">🟥 ' + _fzE(frenzyWillyPendingText(f)) + '</span>' : ''}${f.lite_retry_last ? '<br><span class="text-sky-300">🔁 ' + _fzE(frenzyLastFireLocal(f.lite_retry_last)) + '</span>' : ''}${f.willy_ht_last ? '<br><span class="text-fuchsia-200">🎲¼ ' + _fzE(frenzyLastFireLocal(f.willy_ht_last)) + '</span>' : ''}</td>
                         </tr>`).join('') : '<tr><td colspan="11" class="px-3 py-3 text-center text-gray-500">No pair is flagged right now</td></tr>';
                     }
                     const fzB = document.getElementById('frenzy-body');
@@ -18259,7 +18271,8 @@
         function _frenzyJustOpened(f) {
             const m = /^(\d\d)-(\d\d) (\d\d):(\d\d) (?:WIDE |LITE |WILLY [AB] )?opened/.exec((f && f.last_fire) || '')
                    || /^(\d\d)-(\d\d) (\d\d):(\d\d) (?:WIDE |LITE |WILLY [AB] )?opened/.exec((f && f.willy_last) || '')   // 🎲 WILLY's own field
-                   || /^(\d\d)-(\d\d) (\d\d):(\d\d) LITE RETRY opened/.exec((f && f.lite_retry_last) || '');   // 🔁 (316) the retry's own field
+                   || /^(\d\d)-(\d\d) (\d\d):(\d\d) LITE RETRY opened/.exec((f && f.lite_retry_last) || '')   // 🔁 (316) the retry's own field
+                   || /^(\d\d)-(\d\d) (\d\d):(\d\d) WILLY HT [AB] opened/.exec((f && f.willy_ht_last) || '');   // 🎲¼ (341) HT's own field
             if (!m) return false;
             const now = new Date();
             let t = Date.UTC(now.getUTCFullYear(), +m[1] - 1, +m[2], +m[3], +m[4]);
@@ -18645,10 +18658,10 @@
                     // +1.0 → lock +0.2 / 2×ATR trail) — the RUNNER/🛡 badges describe the alt
                     // machinery, which can never touch a sleeve trade (operator-caught cosmetic
                     // mislabel on the first live fill). Show the sleeve's true state instead.
-                    if ((o.entry_strategy || '') === 'FRENZY_WILLY') {   // 🎲 Oct-8 (251): its OWN exit — fixed TP / NO stop / time cap (never FRENZY's +3)
+                    if (['FRENZY_WILLY', 'FRENZY_WILLY_HT'].includes(o.entry_strategy || '')) {   // 🎲¼ (341) HT = WILLY's exit · 🎲 Oct-8 (251): its OWN exit — fixed TP / NO stop / time cap (never FRENZY's +3)
                         const _wTp = Number(_rtTh.frenzy_willy_tp_pct) > 0 ? Number(_rtTh.frenzy_willy_tp_pct) : 1, _wSlN = Math.abs(Number(_rtTh.frenzy_willy_stop_pct)) || 0, _wMh = Number(_rtTh.frenzy_willy_max_hold_minutes) >= 1 ? Math.round(Number(_rtTh.frenzy_willy_max_hold_minutes)) : 120;
                         const _wSl = _wSlN > 0 ? `SL −${_wSlN}%` : 'no SL';
-                        tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-fuchsia-500/20 text-fuchsia-300" title="🎲 FRENZY_WILLY (declared exception, entry ${o.entry_frenzy_willy_trigger || '?'}): closes at +${_wTp}% net or after ${_wMh} min${_wSlN > 0 ? ', stop −' + _wSlN + '%' : ' — NO stop loss (live: the exchange backstop stays)'} · while it is open no other automated trade opens (global hold) · peak so far ${_tpPeak.toFixed(2)}%">🎯 TP +${_wTp}% · ${_wSl} · ${_wMh}m</span>`;
+                        tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-fuchsia-500/20 text-fuchsia-300" title="🎲 FRENZY_WILLY (declared exception, entry ${o.entry_frenzy_willy_trigger || '?'}): closes at +${_wTp}% net or after ${_wMh} min${_wSlN > 0 ? ', stop −' + _wSlN + '%' : ' — NO stop loss (live: the exchange backstop stays)'} · ${_rtTh.frenzy_willy_global_hold === false ? 'global hold OFF (DECISION_LOG 340): other bot entries still open, never on this pair' : 'while it is open no other automated trade opens (global hold)'} · peak so far ${_tpPeak.toFixed(2)}%">🎯 TP +${_wTp}% · ${_wSl} · ${_wMh}m</span>`;
                     } else if (['FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE'].includes(o.entry_strategy || '') || (o.entry_strategy || '') === 'FRENZY_LITE_RETRY' || ((o.entry_strategy || '') === 'MANUAL' && o.manual_exit_mode === 'FRENZY')) {   // 🔥 Oct 2: FRENZY (and a manual trade on its exit) runs its own stop + trailing exit — never the 🛡 / RUNNER machinery
                         const _fzArm = _rtTh.frenzy_trail_arm_pct ?? 5, _fzGive = _rtTh.frenzy_trail_giveback_pct ?? 1.5;
                         const _fzLiteFam = ['FRENZY_LITE', 'FRENZY_LITE_RETRY'].includes(o.entry_strategy || '');   // 🔁 (316) the retry runs LITE's TP
@@ -19173,7 +19186,8 @@
             [['manual-sl', 'manual-sl-conv'], ['manual-tp', 'manual-tp-conv']].forEach(([id, cid]) => {
                 const el = document.getElementById(id), c = document.getElementById(cid); if (!el || !c) return;
                 const s = String(el.value || '').trim(), x = parseFloat(s);
-                if (el.disabled || s === '' || !Number.isFinite(x)) { c.textContent = ''; return; }
+                if (el.disabled) { c.textContent = el.dataset && el.dataset.why ? el.dataset.why : ''; return; }   // 📖 (338) a greyed box says who sets it
+                if (s === '' || !Number.isFinite(x)) { c.textContent = ''; return; }
                 if (n == null) { c.textContent = '= ? (type Size × Lev)'; return; }
                 c.textContent = _manualSlTpUnit === 'usd' ? `= ${slTpFmtPct(manualFieldPct(id))}` : `= ${slTpFmtUsd(slTpUsdFromPct(x, n))}`;
             });
@@ -19212,6 +19226,7 @@
         function manualRiskLine() {
             const el = document.getElementById('manual-risk-line'); if (!el) return;
             try { manualSlTpConv(); } catch (e) {}   // ⇄ (326) the "= …" line under SL / TP
+            try { manualExitExplainRender(); } catch (e) {}   // 📖 (338) the exit explained under the Exit dropdown
             const g = id => document.getElementById(id);
             const size = parseFloat(g('manual-investment')?.value || ''), lev = parseFloat(g('manual-leverage')?.value || '');
             const mode = g('manual-exit-mode')?.value || 'FIXED';
@@ -19245,6 +19260,169 @@
                 + (tooWide ? ` · ⚠ wider than the −${_lf.toFixed(2)} % (−${slTpFmtUsd(slTpUsdFromPct(_lf, pos))} on this position) allowed at ${lev}× — the open will be refused` : '');
             setCls(z != null ? z : 0);
         }
+        // 📖 MANUAL EXIT EXPLAIN BEGIN — (DECISION_LOG 338, operator 2026-10-21) one plain-language line under the Exit dropdown: what the
+        // chosen exit does to a MANUAL trade, read at render time from the bot's SAVED config (window._cachedConfig = GET /api/config, the
+        // same source as manualRiskLine) — no number is hard-coded here. Engine sources mirrored (services/trading_engine.py unless noted):
+        // FIXED / FLOOR → the MANUAL intercept (only the row's SL / TP; resting maker TP when resting_tp_manual_enabled, services/resting_tp.py
+        // rtp_row_target) · FLOOR stop = manual_floor_for_leverage (manualStopForLeverage) · FRENZY → services/frenzy.py frenzy_exit_for
+        // (sleeve None → frenzy_stop_pct; use_tp → lock-then-trail when frenzy_lock_arm_pct > 0, else the fixed frenzy_tp_pct, else the trail)
+        // + max hold min(global, frenzy_max_hold_minutes) · BULLRUN / BULLRUN_SL → manual_bullrun_exit_for → _bullrun_exit_for (no door →
+        // bullrun_trail_atr_mult) · MOMENTUM → the momentum stack with STRONG_BUY (stop_loss / signal_active_sl, NO ATR widening for MANUAL:
+        // exit_entry_atr_pct), the runner trail, the hard-TP ladder (trigger:offset → floor = trigger − offset), the EMA13-cross exit,
+        // NO_EXPANSION and MAX_HOLD. Pure: (mode, o) → { text, why: { sl, tp }, warn }. o = { cfg, size, lev, dir, unit, sl, tp } (sl / tp = %).
+        const MANUAL_EXIT_FIELD_WHY = {
+            MOMENTUM: { sl: 'Momentum', tp: 'Momentum' }, FLOOR: { sl: 'floor' }, FRENZY: { sl: 'Frenzy', tp: 'Frenzy' },
+            BULLRUN: { sl: 'Bull-Run', tp: 'Bull-Run' }, BULLRUN_SL: { tp: 'Bull-Run' },
+        };
+        function manualExitFieldWhy(mode, k) { const v = (MANUAL_EXIT_FIELD_WHY[mode] || {})[k]; return v ? `set by the ${v} ${v === 'floor' ? 'stop' : 'exit'}` : ''; }
+        function manualExitExplainText(mode, o) {
+            o = o || {};
+            if (!o.cfg || !o.cfg.thresholds) return { text: 'settings not loaded yet — reopen in a moment', why: { sl: manualExitFieldWhy(mode, 'sl') || null, tp: manualExitFieldWhy(mode, 'tp') || null }, warn: false };   // 338 I2: never fallback numbers shown as real
+            const cfg = o.cfg, th = cfg.thresholds, inv = cfg.investment || {}, conf = (cfg.confidence_levels || {}).STRONG_BUY || {};
+            const num = (v, d) => { const x = Number(v); return (v === null || v === undefined || v === '' || !Number.isFinite(x)) ? d : x; };
+            const lev = Number(o.lev), size = Number(o.size);
+            const pos = (size > 0 && lev >= 1) ? size * lev : null;
+            const usdMode = o.unit === 'usd' && pos != null;
+            const dir = String(o.dir || 'LONG').toUpperCase() === 'SHORT' ? 'SHORT' : 'LONG';
+            const p2 = x => Math.abs(x).toFixed(2);
+            const tr = x => (Math.floor(Math.abs(x) * 100 + 1e-9) / 100).toFixed(2);   // a stop / limit shown rounded toward the safe side
+            // a signed P&L % in the active unit; the other unit in brackets (the same helper as the $ fields → the figures agree exactly)
+            const amt = (pct, onPos) => {
+                const u = pos != null ? slTpUsdFromPct(pct, pos) : null;
+                if (u == null) return slTpFmtPct(pct, true);
+                return usdMode ? `${slTpFmtUsd(u, true)} (${slTpFmtPct(pct, true)})`
+                               : `${slTpFmtPct(pct, true)} (≈ ${slTpFmtUsd(u, true)}${onPos ? ` on this ${slTpFmtUsd(pos)} position` : ''})`;
+            };
+            const fmtMin = m => m >= 60 ? `${Math.round(m / 6) / 10} h` : `${Math.round(m)} min`;
+            const gHold = num(inv.max_holding_time_minutes, 0);
+            const holdTxt = m => m > 0 ? `max hold ${fmtMin(m)}` : 'no max hold';
+            const floorCfg = num(th.manual_floor_sl_pct, -3);
+            const levFloor = lev >= 1 ? Math.abs(manualStopForLeverage(lev, floorCfg).stop) : Math.abs(floorCfg);
+            const lf = Math.floor(levFloor * 100 + 1e-9) / 100;   // as the risk line / the stop table show it (never wider than the engine's)
+            const levTxt = lev >= 1 ? `${lev}×` : 'this leverage';
+            const fix = (mode === 'FIXED' || mode === 'BULLRUN_SL') ? 'lower the leverage or use a tighter stop' : 'lower the leverage or use Custom SL/TP';
+            const refused = w => ` · ⚠ its −${p2(w)} % stop is wider than the −${lf.toFixed(2)} % allowed at ${levTxt} — the open will be refused (${fix})`;
+            const sl = Number(o.sl), tp = Number(o.tp), hasSl = o.sl != null && sl > 0, hasTp = o.tp != null && tp > 0;
+            const rtpOn = th.resting_tp_manual_enabled === true;
+            const tpTxt = () => hasTp ? `TP ${amt(tp)}${rtpOn ? ' as a resting maker limit (on Binance in live)' : ' (software, every tick)'}` : 'no TP';
+            const why = { sl: manualExitFieldWhy(mode, 'sl') || null, tp: manualExitFieldWhy(mode, 'tp') || null };
+            let parts = [], warnW = null;   // warnW = a stop wider than the leverage floor → the engine refuses the open
+            let own = null, ownStored = true;   // the trade's own widest stop for the safety-stop check (manual_exit_levels / manual_own_stop_pct)
+            // 🛡 broker backstop on: the exchange safety stop (order_backstop_pct) must rest ≥ MIN_GAP beyond the trade's own stop, and never past
+            // LIQ_SHARE of the liquidation distance — else manual_exit_levels refuses the open (paper = live, 271). Same constants as the engine.
+            const bkCap = (th.broker_backstop_enabled === true && lev >= 1) ? Math.max(0, 100 / lev - MANUAL_MAINT_MARGIN_PCT_UI) * MANUAL_BACKSTOP_LIQ_SHARE_UI : null;
+            const bkBase = num(th.broker_backstop_pct, 2.5) || 2.5;
+            const bkPct = () => { let want = ownStored && own != null ? Math.max(bkBase, own + MANUAL_BACKSTOP_MARGIN_PCT_UI) : bkBase; return bkCap > 0 ? Math.min(want, bkCap) : want; };
+            const maxTyped = bkCap != null ? Math.max(0, Math.min(levFloor, bkCap - MANUAL_BACKSTOP_MIN_GAP_PCT_UI)) : levFloor;   // manual_max_stop_pct
+            const mt = (Math.floor(maxTyped * 100 + 1e-9) / 100).toFixed(2);
+            // Bull-Run profit side (shared by BULLRUN and BULLRUN_SL): break-even lock, ATR trail, ladder rungs "peak:floor"
+            const brArm = num(th.bullrun_be_arm_pct, 1) || 1, brLock = num(th.bullrun_be_lock_pct, 0.2) || 0.2, brTrail = num(th.bullrun_trail_atr_mult, 2) || 2;
+            const brProfit = () => {
+                const out = [`break-even: at a +${p2(brArm)} % peak the stop moves to ${amt(brLock)}, then trails ${brTrail}× the entry ATR under the peak`];
+                const rungs = String(th.bullrun_ladder || '').split(',').map(t => t.split(':').map(Number))
+                    .filter(r => r.length === 2 && Number.isFinite(r[0]) && Number.isFinite(r[1]) && r[1] < r[0]).sort((a, b) => a[0] - b[0]);
+                if (rungs.length) out.push(`ladder: a +${p2(rungs[0][0])} % peak locks +${p2(rungs[0][1])} %`
+                    + (rungs.length > 1 ? ` … +${p2(rungs[rungs.length - 1][0])} % locks +${p2(rungs[rungs.length - 1][1])} % (${rungs.length} rungs)` : ''));
+                out.push('no fixed TP');
+                return out;
+            };
+            if (mode === 'FIXED') {
+                parts.push(hasSl ? `Stop ${amt(-sl, true)}` : `Stop: type your SL (widest −${mt} % at ${levTxt})`);
+                own = hasSl ? sl : null;
+                parts.push(tpTxt(), 'no other exit');
+                if (hasSl && sl > levFloor + 1e-9) warnW = sl;
+            } else if (mode === 'FLOOR') {
+                parts.push(`Stop ${amt(-lf, true)} = the leverage floor at ${levTxt}`, tpTxt(), 'no other exit');
+                own = Math.round(levFloor * 1e4) / 1e4;
+            } else if (mode === 'FRENZY') {
+                const st = Math.abs(num(th.frenzy_stop_pct, 3)) || 3;
+                parts.push(`Stop ${amt(-st, true)}`);
+                own = st;
+                const la = num(th.frenzy_lock_arm_pct, 0), ftp = num(th.frenzy_tp_pct, 0);
+                const arm = Math.abs(num(th.frenzy_trail_arm_pct, 5)), give = Math.abs(num(th.frenzy_trail_giveback_pct, 1.5));
+                if (la > 0) {
+                    parts.push(`at a +${p2(la)} % peak it locks ${amt(Math.min(num(th.frenzy_lock_floor_pct, 2), la))}, then trails ${p2(Math.abs(num(th.frenzy_lock_trail_pct, 2)))} points under the peak (no fixed TP)`);
+                } else {
+                    if (ftp > 0) parts.push(`TP ${amt(ftp)} (software, every tick)`);
+                    if (arm > 0 && give > 0 && !(ftp > 0 && ftp <= arm)) parts.push(`from a +${p2(arm)} % peak it trails ${p2(give)} % of price under the best point`);
+                    if (!(ftp > 0) && !(arm > 0 && give > 0)) parts.push('no TP');
+                }
+                const fz = num(th.frenzy_max_hold_minutes, 720);
+                const fh = fz > 0 ? (gHold > 0 ? Math.min(gHold, fz) : fz) : gHold;
+                parts.push(holdTxt(fh));   // its own max hold (FRENZY): pushed here, the tail skips the global one
+                if (st > levFloor + 1e-9) warnW = st;
+            } else if (mode === 'BULLRUN' || mode === 'BULLRUN_SL') {
+                const base = num(th.bullrun_base_sl_pct, -0.7) || -0.7, mult = num(th.sl_atr_multiplier, 0), cap = num(th.sl_atr_widen_floor_pct, 0);
+                if (mode === 'BULLRUN') {
+                    let w = null;   // manual_bullrun_worst_stop_pct: the widest stop it can reach (null = uncapped → the leverage floor)
+                    if (mult > 0) {
+                        if (cap < 0) {
+                            w = Math.min(base, cap);
+                            parts.push(`Stop ${amt(base, true)} widened to ${mult}× the entry ATR, at most ${amt(Math.max(w, -lf))}`);
+                        } else parts.push(`Stop ${amt(base, true)} widened to ${mult}× the entry ATR, never past the ${amt(-lf)} leverage floor`);
+                    } else { w = base; parts.push(`Stop ${amt(base, true)}`); }
+                    if (w != null && Math.abs(w) > levFloor + 1e-9) warnW = Math.abs(w);
+                    own = w != null ? Math.abs(w) : Math.abs(floorCfg);
+                } else {
+                    parts.push(hasSl ? `Your stop ${amt(-sl, true)} until the peak reaches +${p2(brArm)} %` : `Stop: type your SL (widest −${mt} % at ${levTxt}) — it holds until the peak reaches +${p2(brArm)} %`);
+                    if (hasSl && sl > levFloor + 1e-9) warnW = sl;
+                    own = hasSl ? sl : null;
+                }
+                parts = parts.concat(brProfit());
+            } else if (mode === 'MOMENTUM') {
+                const st = num(conf.stop_loss, -0.7), sas = num(conf.signal_active_sl, st);
+                parts.push(`Stop ${amt(st, true)}` + (sas < st ? `, ${amt(sas)} while the pair's ${dir} signal is still on` : '') + ' (no ATR widening on manual trades)');
+                const S = dir === 'SHORT';
+                const rtOn = S ? th.runner_trail_short_enabled === true : th.runner_trail_enabled === true;
+                const rtArm = num(S ? th.runner_trail_short_arm_peak : th.runner_trail_arm_peak, 0.45), rtN = num(S ? th.runner_trail_short_atr_mult : th.runner_trail_atr_mult, 0.5);
+                const rtFrac = num(S ? th.runner_trail_short_giveback_frac : th.runner_trail_giveback_frac, 0), rtAmin = num(S ? th.runner_trail_short_atr_min : th.runner_trail_atr_min, 0);
+                const rtLockOn = S ? th.runner_trail_short_be_ratchet_enabled === true : th.runner_trail_be_ratchet_enabled !== false;
+                const rtLock = num(S ? th.runner_trail_short_be_lock_pct : th.runner_trail_be_lock_pct, 0.1);
+                if (rtOn) parts.push(`from a +${p2(rtArm)} % peak it trails ${rtN}× the entry ATR under the peak` + (rtFrac > 0 ? ` (at most ${Math.round(rtFrac * 100)} % of the peak)` : '')
+                    + (rtLockOn ? `, never below ${amt(rtLock)}` : '') + (rtAmin > 0 ? ` (entry ATR ≥ ${rtAmin} %; else a pullback trail from +${p2(num(conf.tp_min, 0.4))} %)` : ''));
+                else parts.push(`pullback trail from a +${p2(num(conf.tp_min, 0.4))} % peak`);
+                if (th.hard_tp_enabled === true) {
+                    const rungs = String((S ? th.hard_tp_ladder_short : th.hard_tp_ladder_long) || '').split(',').map(t => t.split(':').map(Number))
+                        .filter(r => r.length === 2 && r[0] > 0 && r[1] > 0 && r[1] < r[0]).sort((a, b) => a[0] - b[0]);
+                    if (rungs.length) parts.push(`ladder: a +${p2(rungs[0][0])} % peak locks +${p2(rungs[0][0] - rungs[0][1])} %` + (rungs.length > 1 ? ` (${rungs.length} rungs)` : ''));
+                    else if (num(th.hard_tp_pct, 1) > 0) parts.push(`TP ${amt(num(th.hard_tp_pct, 1))}`);
+                }
+                const e13 = th.ema13_cross_exit_enabled === true && (S ? th.ema13_cross_exit_short_enabled : th.ema13_cross_exit_long_enabled) !== false;
+                // a SHORT's EMA13 cross is ignored once its runner trail has armed (EMA13_RUNNER_SUPPRESS, check_realtime_stop_loss)
+                const e13Until = (S && rtOn && rtAmin <= 0) ? ` until the runner arms (+${p2(rtArm)} %)` : (S && rtOn ? ` until the runner arms (+${p2(rtArm)} %, entry ATR ≥ ${rtAmin} %)` : '');
+                parts.push(e13 ? `closes when price crosses EMA13${th.ema13_cross_requires_stack_flip === true ? ' with the EMA5/8 stack flipped' : ''}${e13Until}` : `EMA13-cross exit off for ${dir}s`);
+                const nx = num(inv.no_expansion_minutes, 0);
+                if (nx > 0) {
+                    const t1 = num(conf.be_level1_trigger, 99), o1 = num(conf.be_level1_offset, 99);
+                    parts.push(t1 >= 50 && o1 >= 50 ? `at ${fmtMin(nx)} it closes, in profit or not, unless the pair's signal is still on (the clock then restarts)`
+                        : `at ${fmtMin(nx)} it closes if the peak < +${p2(t1)} % and P&L < ${slTpFmtPct(o1, true)}, unless the signal is still on`);
+                }
+                const w = Math.abs(Math.min(st, sas));
+                if (w > levFloor + 1e-9) warnW = w;
+                // the safety-stop check uses the stack's widest stop (ATR widen cap / flagged-trade backstop), the backstop its base distance
+                own = Math.max(Math.abs(num(th.sl_atr_widen_floor_pct, -1.2) || -1.2), Math.abs(num(th.fl1_wide_sl_backstop, -1.2) || -1.2)); ownStored = false;
+            } else return { text: '', why, warn: false };
+            if (mode !== 'FRENZY') parts.push(holdTxt(gHold));   // MAX_HOLD_TIME: the universal safety net (investment.max_holding_time_minutes)
+            let tail = warnW != null ? refused(warnW) : '';
+            if (!tail && bkCap != null && own != null && own + MANUAL_BACKSTOP_MIN_GAP_PCT_UI > bkPct() + 1e-9)
+                tail = mode === 'MOMENTUM'
+                    ? ` · ⚠ the momentum stop's −${tr(own)} % cap is checked against the exchange safety stop, which can rest at most −${tr(bkPct())} % from the entry at ${levTxt} — the open will be refused (${fix})`
+                    : ` · ⚠ at ${levTxt} the exchange safety stop can rest at most −${tr(bkPct())} % from the entry, too close to its −${tr(own)} % stop — the open will be refused (${fix})`;
+            return { text: parts.join(' · ') + tail, why, warn: !!tail };
+        }
+        // paints the line + the greyed boxes' "set by …" note from the live form (called by manualRiskLine on every input / change)
+        function manualExitExplainRender() {
+            const g = id => document.getElementById(id);
+            const el = g('manual-exit-explain');
+            const mode = g('manual-exit-mode')?.value || 'FIXED';
+            const fp = id => { const el2 = g(id); if (!el2 || el2.disabled) return null; const v = manualFieldPct(id); return Number.isFinite(v) ? v : null; };
+            const r = manualExitExplainText(mode, { cfg: window._cachedConfig || {}, size: parseFloat(g('manual-investment')?.value || ''),
+                lev: parseFloat(g('manual-leverage')?.value || ''), dir: g('manual-direction')?.value || 'LONG', unit: _manualSlTpUnit,
+                sl: fp('manual-sl'), tp: fp('manual-tp') });
+            if (el) { el.textContent = r.text ? '📖 ' + r.text : ''; if (el.classList) { el.classList.toggle('text-orange-300', !!r.warn); el.classList.toggle('text-sky-200/90', !r.warn); } }
+            return r;
+        }
+        // 📖 MANUAL EXIT EXPLAIN END
         try { manualExitModeChanged(); } catch (e) {}   // default exit = Momentum stack → SL/TP inputs start disabled
         // 📥 IMPORT FROM BINANCE (DECISION_LOG 328, operator 2026-10-20) — a position opened in the Binance app is UNTRACKED (no row: no stop /
         // target management, entries on the pair blocked). The banner above the orders tabs lists them (GET /api/manual/import_candidates —
@@ -19651,6 +19829,13 @@
             const m = document.getElementById('manual-exit-mode')?.value || 'FIXED';
             const sl = document.getElementById('manual-sl'), tp = document.getElementById('manual-tp');
             if (sl) sl.disabled = (m !== 'FIXED' && m !== 'BULLRUN_SL'); if (tp) tp.disabled = (m === 'MOMENTUM' || m === 'FRENZY' || m === 'BULLRUN' || m === 'BULLRUN_SL');   // FLOOR: floor stop + optional TP · FRENZY: its own stop + trail
+            // 📖 (338) a box the mode ignores is greyed with who sets it (the submit never sends a disabled box)
+            [[sl, 'sl'], [tp, 'tp']].forEach(([el, k]) => { if (!el) return;
+                const w = el.disabled ? manualExitFieldWhy(m, k) : '';
+                if (el.dataset) { if (w) el.dataset.why = w; else delete el.dataset.why; }
+                el.title = w ? `Not used: ${w} — see the line under the Exit dropdown. Never sent with the order.` : '';
+                el.style.opacity = el.disabled ? '0.4' : ''; el.style.cursor = el.disabled ? 'not-allowed' : '';
+                const lb = el.parentElement; if (lb && lb.style) lb.style.opacity = el.disabled ? '0.7' : ''; });
             try { manualRiskLine(); } catch (e) {}
         }
         async function openManualPosition() {
@@ -19701,6 +19886,7 @@
         // (services/trading_engine.py manual_floor_for_leverage: MANUAL_LIQ_SAFETY 0.80, MANUAL_MAINT_MARGIN_PCT 0.50) —
         // tests/test_manual_stop_table.py pins the two constants to the engine's.
         const MANUAL_LIQ_SAFETY_UI = 0.80, MANUAL_MAINT_MARGIN_PCT_UI = 0.50;
+        const MANUAL_BACKSTOP_MARGIN_PCT_UI = 0.5, MANUAL_BACKSTOP_MIN_GAP_PCT_UI = 0.3, MANUAL_BACKSTOP_LIQ_SHARE_UI = 0.92;   // 📖 (338) engine's MANUAL_BACKSTOP_* (pinned by tests/test_manual_exit_explain_ui.py)
         function manualStopForLeverage(lev, floorPct) {
             const cfg = -Math.abs(Number.isFinite(floorPct) && floorPct !== 0 ? floorPct : -3.0);
             const liq = Math.max(0, 100 / lev - MANUAL_MAINT_MARGIN_PCT_UI);
@@ -19915,7 +20101,12 @@
                 S.fzw = { ...absCap(_ssNum('config-fz-wide-invest-mult', 1.0), _ssNum('config-fz-wide-lev-mult', 0.05)), stop: fzSl, stopNote: 'FRENZY stop', note: 'absolute-assign, capped' };
                 S.fzl = { ...absCap(_ssNum('config-fz-lite-invest-mult', 1.0), _ssNum('config-fz-lite-lev-mult', 0.2)), stop: fzSl, stopNote: 'FRENZY stop', note: 'absolute-assign, capped · no ATR cap' };   // 🪶 Oct-7 (243)
                 S.fzlr = { ...absCap(_ssNum('config-fz-lite-retry-invest-mult', 1.0), _ssNum('config-fz-lite-retry-lev-mult', 0.2)), stop: fzSl, stopNote: 'FRENZY stop (LITE exit)', note: 'absolute-assign, capped · no slot limit of its own' };   // 🔁 (316)
-                S.fzy = { ...absCap(_ssNum('config-fz-willy-invest-mult', 1.0), _ssNum('config-fz-willy-lev-mult', 0.5)), stop: (Math.abs(_ssNum('config-fz-willy-stop', 4.0)) > 0 ? -Math.abs(_ssNum('config-fz-willy-stop', 4.0)) : fzSl), stopNote: (Math.abs(_ssNum('config-fz-willy-stop', 4.0)) > 0 ? 'WILLY stop' : 'NO stop — cost shown at the FRENZY stop for scale'), note: 'absolute-assign, capped · declared exception · no filters · global hold' };   // 🎲 Oct-8 (251)
+                {   // 🎲¼ (341) informational row: HT = WILLY's margin × the size fraction at WILLY's leverage (the engine clamps the fraction to (0, 1], else 0.25)
+                    const _htf0 = _ssNum('config-fz-willy-ht-size-frac', 0.25), _htf = (Number.isFinite(_htf0) && _htf0 > 0 && _htf0 <= 1) ? _htf0 : 0.25;
+                    const _hton = document.getElementById('config-fz-willy-ht-enabled')?.checked !== false;
+                    S.fzyht = { info: `${_hton ? 'ON' : 'OFF'} · margin × ${_htf} of the WILLY row above, same leverage → notional × ${_htf} · WILLY's stop / exit · own slot (max ${_ssNum('config-fz-willy-ht-slots', 1) || 1}) · only WILLY setups refused by turnover alone` };
+                }
+                S.fzy = { ...absCap(_ssNum('config-fz-willy-invest-mult', 1.0), _ssNum('config-fz-willy-lev-mult', 0.5)), stop: (Math.abs(_ssNum('config-fz-willy-stop', 4.0)) > 0 ? -Math.abs(_ssNum('config-fz-willy-stop', 4.0)) : fzSl), stopNote: (Math.abs(_ssNum('config-fz-willy-stop', 4.0)) > 0 ? 'WILLY stop' : 'NO stop — cost shown at the FRENZY stop for scale'), note: 'absolute-assign, capped · declared exception · no filters · ' + (window._cachedConfig?.thresholds?.frenzy_willy_global_hold === false ? 'global hold OFF (DL 340)' : 'global hold') };   // 🎲 Oct-8 (251)
             }
             if (cellNote) for (const k of ['mom_long', 'unm', 'quiet', 'demux', 'mom_short', 'c1', 'c1demux']) S[k].note = (S[k].note ? S[k].note + ' · ' : '') + cellNote;
             {   // ⚖️ 2026-10-12 (DECISION_LOG 283): momentum_long_lev_mult — every MOMENTUM LONG row (cells + doors), on top of the cell lev; ≤ 0 / blank = 1, clamped 0.05–1
@@ -20186,9 +20377,32 @@
             const canvas = document.getElementById('nav-history-chart');
             if (!wrap || !canvas) return;
             const hist = data.nav_history || [];
-            if (hist.length < 2) { wrap.classList.add('hidden'); return; }  // need ≥2 days for a line
+            // 📈 (DECISION_LOG 337) fund-start epoch: the server already returns only post-epoch rows; say so on the card
+            const epoch = data.nav_epoch_start || null;
+            const epochEl = document.getElementById('nav-history-epoch');
+            if (epochEl) { epochEl.textContent = epoch ? `· since ${epoch}` : ''; epochEl.classList.toggle('hidden', !epoch); }
+            const emptyEl = document.getElementById('nav-history-empty');
+            const canvasWrap = document.getElementById('nav-history-canvas-wrap');
+            if (hist.length < 2) {   // need ≥2 days for a line
+                if (!epoch) { wrap.classList.add('hidden'); return; }
+                wrap.classList.remove('hidden');
+                if (canvasWrap) canvasWrap.classList.add('hidden');
+                if (emptyEl) {
+                    emptyEl.textContent = hist.length === 0
+                        ? `No NAV history since ${epoch} yet (earlier history kept)`
+                        : `NAV history since ${epoch}: 1 day so far — the line starts on the 2nd day (earlier history kept)`;
+                    emptyEl.classList.remove('hidden');
+                }
+                const rangeEl0 = document.getElementById('nav-history-range');
+                if (rangeEl0) rangeEl0.textContent = '';
+                if (window._navChart) { window._navChart.destroy(); window._navChart = null; }
+                _navHistHash = '';
+                return;
+            }
             wrap.classList.remove('hidden');
-            const hash = JSON.stringify([hist, data.nav_high_water]);
+            if (canvasWrap) canvasWrap.classList.remove('hidden');
+            if (emptyEl) emptyEl.classList.add('hidden');
+            const hash = JSON.stringify([hist, data.nav_high_water, epoch]);
             if (hash === _navHistHash) return;
             _navHistHash = hash;
             const rangeEl = document.getElementById('nav-history-range');
@@ -20252,6 +20466,29 @@
             });
         }
 
+        // 📈 (DECISION_LOG 337) manual fund-start epoch — display boundary only, nothing is deleted
+        async function startNewNavHistory() {
+            if (!confirm('Start a new NAV / Share history from now?\n\nThe chart and the high-water mark will only show NAV from this moment on. '
+                + 'Nothing is deleted: earlier NAV history, investors, shares and the ledger stay exactly as they are.')) return;
+            // review I2: with investors holding shares the HWM THEY see restarts — a second, explicit confirm (server: 409 without force)
+            const _held = (window._navTotalShares || 0) > 1e-6;
+            if (_held && !confirm(`⚠ Investors currently hold ${(window._navTotalShares || 0).toFixed(4)} shares.\n\n`
+                + 'Starting a new NAV history ALSO restarts the high-water mark they see: their chart and HWM will start from today\'s NAV, '
+                + 'and any earlier peak is no longer shown. Their shares, value and ledger do not change.\n\nStart the new history anyway?')) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/nav/epoch`, { method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ force: _held }) });
+                const out = await res.json().catch(() => ({}));
+                if (!res.ok) { showToast(out.detail || 'Could not start a new NAV history', 'error'); return; }
+                showToast(`New NAV history started (${out.nav_epoch_start}) — earlier history kept`, 'success');
+                _navHistHash = '';
+                await loadInvestors();
+            } catch (e) {
+                console.error('NAV epoch failed:', e);
+                showToast('Could not start a new NAV history', 'error');
+            }
+        }
+
         function renderAdxArrow() {
             const el = document.getElementById('btc-adx-dir-tag');
             if (!el) return;
@@ -20290,6 +20527,7 @@
                 document.getElementById('portfolio-total-value').textContent = `$${data.portfolio_value.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
                 document.getElementById('portfolio-nav').textContent = `$${data.nav_per_share.toFixed(4)}`;
                 document.getElementById('portfolio-total-shares').textContent = data.total_shares.toFixed(2);
+                window._navTotalShares = data.total_shares || 0;   // 📈 (337) the epoch button / first-deposit warning read it
 
                 // Tradeable / Reserve split (mirrors the balance card; only shown when a reserve is active)
                 const splitEl = document.getElementById('portfolio-reserve-split');
@@ -20569,16 +20807,33 @@
             document.getElementById('investor-modal').classList.add('hidden');
         }
 
+        // 📈 (DECISION_LOG 337, review I4) first deposit into a share-less fund: dry-run it and, if the account already holds
+        // other money (NAV would not start at $1.00), show the server's nav_start_warning in a confirm. Non-blocking; any
+        // preview error falls through to the real call (which validates on its own).
+        async function _confirmNavStart(url, body) {
+            if (body.founding || !((body.deposit_amount || body.amount || 0) > 0) || (window._navTotalShares || 0) > 1e-6) return true;
+            try {
+                const r = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(Object.assign({}, body, { preview: true })) });
+                if (!r.ok) return true;
+                const p = await r.json();
+                if (p && p.nav_start_warning) return confirm(`⚠ NAV start check\n\n${p.nav_start_warning}\n\nContinue with this deposit anyway?`);
+            } catch (e) { console.error('NAV start preview failed:', e); }
+            return true;
+        }
+
         async function submitAddInvestor() {
             const name = document.getElementById('investor-add-name').value.trim();
             if (!name) { showToast('Name is required', 'error'); return; }
             const eth_wallet = (document.getElementById('investor-add-wallet')?.value || '').trim();
             if (eth_wallet && !/^0x[0-9a-fA-F]{40}$/.test(eth_wallet)) { showToast('Invalid ETH address (0x + 40 hex chars)', 'error'); return; }
             try {
+                const _addBody = {name, eth_wallet: eth_wallet || null, deposit_amount: (function(){ const v = safeFloat(document.getElementById('investor-add-amount')?.value); return isNaN(v) || v <= 0 ? null : v; })(), founding: !!document.getElementById('investor-add-founding')?.checked};
+                if (!(await _confirmNavStart(`${API_BASE}/api/investors`, _addBody))) return;
                 const res = await fetch(`${API_BASE}/api/investors`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name, eth_wallet: eth_wallet || null, deposit_amount: (function(){ const v = safeFloat(document.getElementById('investor-add-amount')?.value); return isNaN(v) || v <= 0 ? null : v; })(), founding: !!document.getElementById('investor-add-founding')?.checked})
+                    body: JSON.stringify(_addBody)
                 });
                 const data = await res.json();
                 if (res.ok) {
@@ -20623,6 +20878,7 @@
             const amount = safeFloat(document.getElementById('investor-deposit-amount').value);
             if (!amount || amount <= 0) { showToast('Enter a valid amount', 'error'); return; }
             try {
+                if (!(await _confirmNavStart(`${API_BASE}/api/investors/deposit`, {investor_id: id, amount}))) return;
                 const res = await fetch(`${API_BASE}/api/investors/deposit`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -21569,6 +21825,8 @@
                 { const _e = document.getElementById('config-fz-willy-enabled'); if (_e) _e.checked = config.thresholds.frenzy_willy_enabled === true; }   // 🎲 Oct-8 (251)
                 { const _e = document.getElementById('config-fz-willy-entry-a'); if (_e) _e.checked = config.thresholds.frenzy_willy_entry_a !== false; }
                 { const _e = document.getElementById('config-fz-willy-entry-b'); if (_e) _e.checked = config.thresholds.frenzy_willy_entry_b !== false; }
+                { const _e = document.getElementById('config-fz-willy-global-hold'); if (_e) _e.checked = config.thresholds.frenzy_willy_global_hold !== false; }   // 🔓 (340) missing key = the code default (ON)
+                { const _e = document.getElementById('config-fz-willy-ht-enabled'); if (_e) _e.checked = config.thresholds.frenzy_willy_ht_enabled !== false; }   // 🎲¼ (341) missing key = the code default (ON)
                 { const _e = document.getElementById('config-rtp-willy-enabled'); if (_e) _e.checked = config.thresholds.resting_tp_willy_enabled !== false; }   // 🎯 (296)
                 { const _e = document.getElementById('config-rtp-lite-enabled'); if (_e) _e.checked = config.thresholds.resting_tp_lite_enabled !== false; }   // 🎯 (296)
                 { const _e = document.getElementById('config-rtp-frenzy-long-enabled'); if (_e) _e.checked = config.thresholds.resting_tp_frenzy_long_enabled !== false; }   // 🎯 (310)
@@ -22481,6 +22739,13 @@
                     if (!(Number.isFinite(_sx) && _sx > 0)) { showToast(`${_sname} must be > 0 — every FRENZY sleeve needs its own stop (not saved)`, 'error'); return; }
                 }
             }
+            {   // 🎲¼ (DECISION_LOG 341) WILLY_HT size × WILLY must be in (0, 1] — anything else is saved as the default 0.25 (visible note)
+                const _hf = document.getElementById('config-fz-willy-ht-size-frac');
+                if (_hf) {
+                    const _hv = String(_hf.value ?? '').trim(), _hx = _hv === '' ? NaN : Number(_hv);
+                    if (!(Number.isFinite(_hx) && _hx > 0 && _hx <= 1)) { _hf.value = '0.25'; showToast('WILLY_HT size × WILLY must be > 0 and ≤ 1 — saved as the default 0.25', 'warning'); }
+                }
+            }
             const invMode = document.getElementById('config-investment-mode').value;
             const invValue = safeFloat(document.getElementById('config-investment-value').value);
             const resMode = document.getElementById('config-reserve-mode').value;
@@ -23067,6 +23332,8 @@
                     frenzy_willy_enabled: document.getElementById('config-fz-willy-enabled')?.checked ?? false,   // 🎲 Oct-8 (251)
                     frenzy_willy_entry_a: document.getElementById('config-fz-willy-entry-a')?.checked ?? true,
                     frenzy_willy_entry_b: document.getElementById('config-fz-willy-entry-b')?.checked ?? true,
+                    frenzy_willy_global_hold: document.getElementById('config-fz-willy-global-hold')?.checked ?? true,   // 🔓 (340)
+                    frenzy_willy_ht_enabled: document.getElementById('config-fz-willy-ht-enabled')?.checked ?? true,   // 🎲¼ (341)
                     resting_tp_willy_enabled: document.getElementById('config-rtp-willy-enabled')?.checked ?? true,   // 🎯 (296)
                     resting_tp_lite_enabled: document.getElementById('config-rtp-lite-enabled')?.checked ?? true,   // 🎯 (296)
                     resting_tp_frenzy_long_enabled: document.getElementById('config-rtp-frenzy-long-enabled')?.checked ?? true,   // 🎯 (310)
@@ -23078,7 +23345,7 @@
                     frenzy_long_skip_green_bar: document.getElementById('config-fz-skip-green')?.checked ?? true,
                     frenzy_bearish_day_block: document.getElementById('config-fz-bearish-block')?.checked ?? false,   // 🐻 Oct-8 (250)
                     frenzy_pair_blacklist: String(document.getElementById('config-fz-blacklist')?.value ?? '').trim().toUpperCase(),  // blank = none
-                    ...Object.fromEntries(FRENZY_NUM_FIELDS.map(([_id, _key, _def]) => { const v = String(document.getElementById(_id)?.value ?? '').trim(); const x = v === '' ? _def : safeFloat(v); return [_key, (_key === 'frenzy_willy_a_cold_max_bars' && x > 12) ? 12 : (x === null || x === undefined || Number.isNaN(x) || (x < 0 && _key !== 'frenzy_lite_c_btc_slope_min')) ? _def : ((_key === 'frenzy_max_slots' || _key === 'frenzy_wide_max_slots' || _key === 'frenzy_max_hold_minutes' || _key === 'frenzy_max_entries_per_pair_day' || _key === 'frenzy_catchup_max_bars' || _key === 'frenzy_wide_hold_green_streak' || _key === 'frenzy_lite_max_slots' || _key === 'frenzy_lite_min_above_closes' || _key === 'frenzy_willy_max_slots' || _key === 'frenzy_willy_max_hold_minutes' || _key === 'frenzy_willy_red_max_wait_minutes' || _key === 'frenzy_willy_a_cold_max_bars') ? Math.round(x) : x)]; })),
+                    ...Object.fromEntries(FRENZY_NUM_FIELDS.map(([_id, _key, _def]) => { const v = String(document.getElementById(_id)?.value ?? '').trim(); const x = v === '' ? _def : safeFloat(v); return [_key, (_key === 'frenzy_willy_a_cold_max_bars' && x > 12) ? 12 : (x === null || x === undefined || Number.isNaN(x) || (x < 0 && _key !== 'frenzy_lite_c_btc_slope_min')) ? _def : ((_key === 'frenzy_willy_ht_max_slots' || _key === 'frenzy_max_slots' || _key === 'frenzy_wide_max_slots' || _key === 'frenzy_max_hold_minutes' || _key === 'frenzy_max_entries_per_pair_day' || _key === 'frenzy_catchup_max_bars' || _key === 'frenzy_wide_hold_green_streak' || _key === 'frenzy_lite_max_slots' || _key === 'frenzy_lite_min_above_closes' || _key === 'frenzy_willy_max_slots' || _key === 'frenzy_willy_max_hold_minutes' || _key === 'frenzy_willy_red_max_wait_minutes' || _key === 'frenzy_willy_a_cold_max_bars') ? Math.round(x) : x)]; })),
                     // 🩹 Oct 2 Recovery Hold — the enabled flag is sent ONLY when toggled on this page (a page loaded before an auto-kill must not re-arm it)
                     ...((document.getElementById('config-rh-enabled')?.checked ?? false) !== (window._rhLoadedEnabled ?? false) ? { recovery_hold_enabled: document.getElementById('config-rh-enabled')?.checked ?? false } : {}),
                     ...Object.fromEntries([['config-rh-rsi-min', 'recovery_hold_rsi_min', 60], ['config-rh-rsi-max', 'recovery_hold_rsi_max', 66], ['config-rh-room', 'recovery_hold_room_pct', 0.5],
@@ -23172,6 +23439,8 @@
                     window._rhLoadedEnabled = document.getElementById('config-rh-enabled')?.checked ?? false;
                     window._sgLoadedEnabled = { long: document.getElementById('config-sg-long-enabled')?.checked ?? true, short: document.getElementById('config-sg-short-enabled')?.checked ?? true };
                     showToast('Configuration saved successfully');
+                    // 📖 (338 review I1) the 🖐 pop-up's exit line + risk line read window._cachedConfig — refresh it with what the server now holds
+                    try { const _cr = await fetch(`${API_BASE}/api/config`); if (_cr.ok) { window._cachedConfig = await _cr.json(); try { manualRiskLine(); } catch (e) {} } } catch (e) {}
                 } else {
                     const data = await res.json();
                     showToast(data.detail || 'Error saving configuration', 'error');

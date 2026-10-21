@@ -68,6 +68,7 @@ def sleeve(r):
     """Return 'MOM_LONG' / 'MOM_SHORT' / 'FLIP_SHORT' if the row SURVIVES the current stack, else None."""
     if r.get('status') != 'CLOSED' or r['pair'] in BL: return None
     if (r.get('entry_strategy') or '').upper().startswith('SURGE_'): return None   # ⚡ Sep-30: own sleeve, never MOM/FLIP
+    if (r.get('entry_strategy') or '').upper() == 'FRENZY_WILLY_HT': return None   # 🎲¼ (DECISION_LOG 341): quarter-size WILLY — own reduced-size line, never MOM/FLIP
     d = r['direction']
     # --- MOM-long: keep only unmatched longs (long_unmatched_only) ---
     if d == 'LONG' and not isflip(r):

@@ -831,6 +831,108 @@ def frenzy_exit_for(pnl, peak_pnl, th, stop_floor=None, short=False, use_tp=Fals
 # (120). While a WILLY is open NO other automated trade opens (the global hold, TradingEngine._willy_hold_block). All research says ≈ 0 or
 # negative (reports/FRENZY_NEW_FLAG_X_STUDY_2026-10-07.md, FRENZY_FLAG_TRADE_MATH_2026-10-08.md, FRENZY_SECONDS_DELAY_STUDY_2026-10-08.md).
 FRENZY_WILLY = "FRENZY_WILLY"
+# 🎲¼ 2026-10-21 FRENZY_WILLY_HT (operator option B, DECISION_LOG 341): a QUARTER-size sleeve for the WILLY setups the turnover filter alone
+# refuses (24 h volume / mcap ≥ frenzy_willy_max_vol_mcap_ratio, a MEASURED ratio — never "unreadable"). Same entry and guards as WILLY, the
+# SAME exit (WILLY_EXIT_CLASS: TP / resting maker TP / stop / time cap / late TP / backstop), its OWN slot (frenzy_willy_ht_max_slots) and
+# size (frenzy_willy_ht_size_frac × the margin WILLY would have opened, same leverage → exactly ¼ of the notional). NOT a WILLY for the
+# WILLY slot count, the hard single-WILLY guard or the global hold (HT is never a hold trigger; as a blocked sleeve it follows the generic
+# rule). Purpose: real-fill evidence on the turnover filter instead of shadow-only.
+FRENZY_WILLY_HT = "FRENZY_WILLY_HT"
+WILLY_EXIT_CLASS = (FRENZY_WILLY, FRENZY_WILLY_HT)   # every exit / protection site: run WILLY's exit
+WILLY_HT_FRAC_DEF = 0.25
+WILLY_HT_KILL_SUM, WILLY_HT_FIRST_N, WILLY_HT_MAIN_N, WILLY_HT_MAIN_DAYS, WILLY_HT_REREAD_N, WILLY_HT_CONFIRM_GAP = -8.0, 10, 30, 10, 60, 0.20
+WILLY_HT_MIN_WILLY = 10   # (341 review) the main read needs ≥ 10 full-size WILLY comparator fills in the same period, else REREAD
+
+
+def is_willy_exit_class(es) -> bool:
+    """True for a row that runs the WILLY exit (FRENZY_WILLY · FRENZY_WILLY_HT). Never raises."""
+    try:
+        return str(es or "") in WILLY_EXIT_CLASS
+    except Exception:
+        return False
+
+
+def frenzy_willy_ht_frac(th) -> float:
+    """the HT size fraction the engine USES: frenzy_willy_ht_size_frac in (0, 1]; blank / ≤ 0 / > 1 / unreadable → 0.25. Never raises."""
+    try:
+        v = float(getattr(th, 'frenzy_willy_ht_size_frac', WILLY_HT_FRAC_DEF))
+        return v if (math.isfinite(v) and 0 < v <= 1.0) else WILLY_HT_FRAC_DEF
+    except Exception:
+        return WILLY_HT_FRAC_DEF
+
+
+def frenzy_willy_ht_config_errors(th) -> list:
+    """🎲¼ PUT /api/config refusals for the FRENZY_WILLY_HT fields (DECISION_LOG 341). The UI clamps the size fraction to the default
+    0.25 (with a note) before it sends; anything else that reaches the server out of range is refused."""
+    errs = []
+    if not isinstance(getattr(th, 'frenzy_willy_ht_enabled', True), bool):
+        errs.append("frenzy_willy_ht_enabled must be true or false")
+    v = _fin(getattr(th, 'frenzy_willy_ht_size_frac', WILLY_HT_FRAC_DEF))
+    if v is None or not (0 < v <= 1.0):
+        errs.append("frenzy_willy_ht_size_frac must be > 0 and ≤ 1 (0.25 = a quarter of WILLY)")
+    s_ = _fin(getattr(th, 'frenzy_willy_ht_max_slots', 1))
+    if s_ is None or s_ < 1:
+        errs.append("frenzy_willy_ht_max_slots must be ≥ 1")
+    return errs
+
+
+def frenzy_willy_ht_gate(ht_fills, willy_fills) -> Tuple[str, str]:
+    """🔒 (DECISION_LOG 341) the FRENZY_WILLY_HT gates — ALL alert-only (the operator switches; nothing automatic). ht_fills / willy_fills =
+    iterables of (opened_at datetime, pnl_percentage) of CLOSED fills (operator-closed already excluded by the caller). Verdicts:
+    KILL (Σ ≤ −8 pts at any N → review) · FIRST (first 10 avg < 0 → review) — both still show the main-read status after them ·
+    COLLECTING · MAIN at the FROZEN sample = the shortest prefix with ≥ 30 fills on ≥ 10 UTC days, vs full-size WILLY fills opened in the same
+    period (≥ the first HT fill, ≤ the last sampled one; ≥ WILLY_HT_MIN_WILLY of them, else REREAD): HT avg ≥ WILLY avg → REMOVE_FILTER
+    (recommend turnover ratio 0 + HT off) · HT avg ≤ WILLY avg − 0.20 → CONFIRMED (filter kept, HT off) · else REREAD, judged again on the
+    first 60 HT fills once ≥ 60 exist (INCONCLUSIVE if still between). → (verdict, text). Never raises."""
+    try:
+        hf = sorted([(a, float(p)) for a, p in (ht_fills or []) if a is not None and _fin(p) is not None], key=lambda x: x[0])
+        n = len(hf)
+        tail = " (alert-only · operator switches · DECISION_LOG 341)"
+        if n == 0:
+            return "COLLECTING", (f"⏳ 0/{WILLY_HT_MAIN_N} closed — gates: kill Σ ≤ {WILLY_HT_KILL_SUM:g} pts · first read {WILLY_HT_FIRST_N} (avg < 0) · "
+                                  f"main read {WILLY_HT_MAIN_N} on ≥ {WILLY_HT_MAIN_DAYS} days vs WILLY" + tail)
+
+        def _read(sample, label):
+            t0, t1 = sample[0][0], sample[-1][0]
+            wv = [float(p) for a, p in (willy_fills or []) if a is not None and t0 <= a <= t1 and _fin(p) is not None]
+            mavg = sum(p for _, p in sample) / len(sample)
+            wavg = (sum(wv) / len(wv)) if wv else None
+            head = (f"📋 {label} — first {len(sample)} HT fills avg {mavg:+.3f}% vs full-size WILLY same period "
+                    + (f"{wavg:+.3f}% ({len(wv)} fills)" if wavg is not None else "n/a (no WILLY fills)"))
+            if len(wv) < WILLY_HT_MIN_WILLY:
+                return "REREAD", head + f" · comparator too thin ({len(wv)} < {WILLY_HT_MIN_WILLY} WILLY fills)"
+            if mavg >= wavg:
+                return "REMOVE_FILTER", head + " → recommend removing the turnover filter (ratio 0) and HT off"
+            if mavg <= wavg - WILLY_HT_CONFIRM_GAP:
+                return "CONFIRMED", head + f" → turnover filter confirmed (HT ≤ WILLY − {WILLY_HT_CONFIRM_GAP:.2f}), HT off"
+            return "REREAD", head
+
+        ssum = sum(p for _, p in hf)
+        main, ds = None, set()
+        for k, (a, _) in enumerate(hf):
+            ds.add(a.date())
+            if k + 1 >= WILLY_HT_MAIN_N and len(ds) >= WILLY_HT_MAIN_DAYS:
+                main = hf[:k + 1]
+                break
+        if main is None:
+            mv, mt = "COLLECTING", f"⏳ {n}/{WILLY_HT_MAIN_N} closed on {len(ds)}/{WILLY_HT_MAIN_DAYS} days · Σ {ssum:+.2f} pts · avg {ssum / n:+.3f}%"
+        else:
+            mv, mt = _read(main, "MAIN READ")
+            if mv == "REREAD":
+                if n < WILLY_HT_REREAD_N:
+                    mt += f" → inconclusive, re-read at {WILLY_HT_REREAD_N} HT fills ({n}/{WILLY_HT_REREAD_N})"
+                else:
+                    v2, t2 = _read(hf[:WILLY_HT_REREAD_N], f"RE-READ at {WILLY_HT_REREAD_N}")
+                    mv, mt = (v2 if v2 != "REREAD" else "INCONCLUSIVE"), t2 + (" → still inconclusive: operator decides" if v2 == "REREAD" else "")
+        if ssum <= WILLY_HT_KILL_SUM:
+            return "KILL", f"🛑 EARLY KILL — Σ {ssum:+.2f} pts ≤ {WILLY_HT_KILL_SUM:g} on {n} fills → ALERT: review FRENZY_WILLY_HT · main read: {mt}" + tail
+        first = hf[:WILLY_HT_FIRST_N]
+        if n >= WILLY_HT_FIRST_N and sum(p for _, p in first) / len(first) < 0:
+            return "FIRST", (f"⚠ FIRST READ — first {WILLY_HT_FIRST_N} avg {sum(p for _, p in first) / len(first):+.3f}% < 0 → ALERT: review "
+                             f"FRENZY_WILLY_HT · main read: {mt}" + tail)
+        return mv, mt + tail
+    except Exception:
+        return "COLLECTING", "gate unreadable"
 WILLY_TP_DEF, WILLY_HOLD_DEF = 1.0, 120   # 🎯 operator Oct-8 originals — ONLY the blank / 0 fallbacks of frenzy_willy_levels; the LIVE exit is trading_config.json (+1.25 / −4 / 90 since DECISION_LOG 281)
 
 

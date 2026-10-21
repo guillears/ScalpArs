@@ -1132,6 +1132,15 @@ class BotState(Base):
     # cannot be gamed by removing or editing rows.
     founding_allocated_usd = Column(Float, nullable=False, default=0.0, server_default="0")
 
+    # 📈 (DECISION_LOG 337) NAV history "fund start" epoch — a DISPLAY boundary, never a delete. nav_snapshots survive resets and
+    # investor deletions on purpose (Sep-7); the epoch only scopes what the NAV/share chart, the HWM and both text exports READ.
+    # Set automatically when total shares go from > 0 to 0 (every share mutator runs through _investor_serialized), by the manual
+    # "↺ Start new NAV history" button (POST /api/nav/epoch), and once at startup for a share-less fund that still shows old history.
+    # Rule (nav_snapshot_in_epoch): a snapshot counts iff date > nav_epoch_start, or date == nav_epoch_start AND it was written at /
+    # after nav_epoch_started_at (UTC naive) — so the epoch day's pre-epoch row never leaks in. NULL = no epoch (whole table).
+    nav_epoch_start = Column(String(10), nullable=True)      # YYYY-MM-DD, UTC-3 calendar day (matches NavSnapshot.date)
+    nav_epoch_started_at = Column(DateTime, nullable=True)   # exact moment (UTC naive, same clock as NavSnapshot.updated_at)
+
     # BTC regime tracking — persisted across restarts so regime age survives
     # downtime. Updated each scan cycle when BTC regime classification changes.
     # See CLAUDE.md May 5 entry on regime stability instrumentation.

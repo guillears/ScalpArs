@@ -30,6 +30,7 @@ from services.orderbook_stats import orderbook_metrics, OB_FIELDS
 from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_vol24_at, FRENZY_CATCHUP_STALE, frenzy_tp_for
 from services.frenzy import frenzy_lite_c_tp, frenzy_lite_c_enabled, frenzy_lite_tp_override   # 🎯 (DECISION_LOG 301) LITE C
 from services.frenzy import frenzy_stop_for   # 🛑 (DECISION_LOG 317) FRENZY_LONG's own stop
+from services.frenzy import FRENZY_WILLY_HT, WILLY_EXIT_CLASS, frenzy_willy_ht_frac   # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY
 from services.touch_snapshot import TOUCH_LEVELS, touch_mark, touch_features, touch_snapshot, touch_outcome   # 🛑👁 (317) observe-only touch snapshots
 from services.frenzy import (FRENZY_LITE_RETRY, FRENZY_LITE_FAMILY, frenzy_lite_retry_enabled, frenzy_lite_retry_pending,  # 🔁 (DECISION_LOG 316)
                              frenzy_lite_retry_pending_clean, frenzy_lite_retry_step, LITE_RETRY_OPEN, LITE_RETRY_DROP)
@@ -618,7 +619,7 @@ def bot_own_stop_pct(th, entry_strategy):
         if es in ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_LITE_RETRY"):   # 🔁 (316) the retry runs LITE's stop
             float(getattr(th, 'frenzy_stop_pct', 3.0) or 3.0)   # an unreadable shared stop → None (the bot's base distance), as before 317
             return frenzy_stop_for(th, es)   # 🛑 (317) FRENZY_LONG: frenzy_long_stop_pct when > 0 → its backstop rests at that stop + MANUAL_BACKSTOP_MARGIN_PCT
-        if es == "FRENZY_WILLY":
+        if es in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):   # 🎲¼ (341) HT = WILLY's stop → WILLY's backstop
             v = abs(float(getattr(th, 'frenzy_willy_stop_pct', 0.0) or 0.0))
             return v if v > 0 else None
     except (TypeError, ValueError):
@@ -1142,7 +1143,7 @@ _frenzy_kl_cache: Dict[str, dict] = {}
 FRENZY_KL_TAIL = 5
 FRENZY_KL_FULL_EVERY = 12
 FRENZY_KL_LIMIT = 1500   # bars per full 5m read = the cached window length (the studies' 1499 closed bars + the forming bar)
-FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY") + (FRENZY_LITE_RETRY,)   # 🔁 (316) + FRENZY_LITE_RETRY (LITE's exit) · 🔥 Oct-3: all run the FRENZY sleeve exit intercept, hold cap and urgent-close path (🪶 Oct-7 LITE, DECISION_LOG 243 · 🎲 Oct-8 WILLY, 251 — its OWN exit / hold cap, see frenzy_willy_exit_for)
+FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY") + (FRENZY_LITE_RETRY, FRENZY_WILLY_HT)   # 🎲¼ (341) + HT (WILLY's exit, below)   # 🔁 (316) + FRENZY_LITE_RETRY (LITE's exit) · 🔥 Oct-3: all run the FRENZY sleeve exit intercept, hold cap and urgent-close path (🪶 Oct-7 LITE, DECISION_LOG 243 · 🎲 Oct-8 WILLY, 251 — its OWN exit / hold cap, see frenzy_willy_exit_for)
 FRENZY_ENTRY_MAX_LATE_S = 120   # a long opens only within this many seconds of its signal bar's close (the test entered at the next open)
 # (9d733e2 pushed 15:09 UTC). The first trigger's 4 fills (14:50 UTC, EMA13 first-tick bug) are excluded — operator reset the batch.
 _breadth_n_bull: int = 0
@@ -1277,7 +1278,7 @@ def _ema13_cross_exit_applies(entry_strategy):
         es = (entry_strategy or "")
         if es.startswith("FLIP:"):
             return False
-        if es in ("SPIKE_FADE", "SPIKE_BOUNCE", "SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY") or es == FRENZY_LITE_RETRY:   # ⚡ SURGE: no pair-EMA entry condition (Sep-30 SOON/MOVR) · 🪶 243 LITE · 🎲 251 WILLY
+        if es in ("SPIKE_FADE", "SPIKE_BOUNCE", "SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY") or es in (FRENZY_LITE_RETRY, FRENZY_WILLY_HT):   # ⚡ SURGE: no pair-EMA entry condition (Sep-30 SOON/MOVR) · 🪶 243 LITE · 🎲 251 WILLY
             return False
         return True
     except Exception:
@@ -4387,7 +4388,7 @@ class TradingEngine:
             if st.get('busy'):
                 return None   # a background query / swap is in flight — its result books itself
             # ⏰ (297) the WILLY late minute: swap the +TP limit for the late one (cancel first)
-            if st.get('es') == "FRENZY_WILLY" and not st.get('why') and now_m >= float(st.get('swap_next', -1e18)):   # 🎯 (310) never on an operator TP
+            if st.get('es') in WILLY_EXIT_CLASS and not st.get('why') and now_m >= float(st.get('swap_next', -1e18)):   # 🎯 (310) never on an operator TP
                 tgt = rtp_target(th, st['es'], _held_minutes(st.get('opened_at')))
                 if tgt is not None and tgt[1] != self._rtp_reason(st):
                     st['swap_next'] = now_m + 5.0
@@ -9435,6 +9436,8 @@ class TradingEngine:
             # Capped like the FRENZY catch-up (deep review M3): only within frenzy_catchup_max_bars (6) bars of the first held signal bar —
             # past that the stretch is consumed (FRENZY_LITE_HOLD_EXPIRED), never a stale late entry.
             _hf = self.__dict__.setdefault('_fz_lite_hold_first', {})
+            if not self._willy_global_hold_on():   # 🔓 (340) hold OFF: no held stretch to expire (a marker from before the switch is dropped)
+                _hf.pop(pair, None)
             if ready and _hf.get(pair, (None,))[0] == sid and (int(bar_open) - int(_hf[pair][1])) > \
                     max(0, int(float(getattr(th, 'frenzy_catchup_max_bars', 6) or 0))) * 300_000:
                 _hf.pop(pair, None)
@@ -9498,7 +9501,7 @@ class TradingEngine:
         frenzy_willy_stop_pct (None = no stop), every other sleeve frenzy_stop_for (LONG −4 since 317). Never raises."""
         try:
             th = config.trading_config.thresholds
-            if es == "FRENZY_WILLY":
+            if es in WILLY_EXIT_CLASS:   # 🎲¼ (341)
                 _s = frenzy_willy_levels(th)[1]
                 return abs(float(_s)) if _s is not None else None
             return round(float(frenzy_stop_for(th, es)), 4)
@@ -9554,7 +9557,7 @@ class TradingEngine:
             self._touch_write(order)
             mk = (self.__dict__.setdefault('_touch_mk', {})).pop(order.id, None) or {}
             th = config.trading_config.thresholds
-            tp = (frenzy_willy_levels(th)[0] if order.entry_strategy == "FRENZY_WILLY"
+            tp = (frenzy_willy_levels(th)[0] if order.entry_strategy in WILLY_EXIT_CLASS
                   else frenzy_tp_for(th, order.entry_strategy, getattr(order, 'frenzy_lite_tp_used', None)))
             for lv in TOUCH_LEVELS:
                 if getattr(order, f'touch{lv}_at', None) is None:
@@ -9743,7 +9746,7 @@ class TradingEngine:
             status, age = frenzy_catchup_check(ep, prev_ms, max_bars)
             if status is None:
                 return
-            if status != FRENZY_CATCHUP_STALE:
+            if status != FRENZY_CATCHUP_STALE and self._willy_global_hold_on():   # 🔓 (340) hold OFF → the catch-up is judged now
                 _wh_held, _, _, _ = await self._willy_hold_state(db)
                 if _wh_held:   # 🔒 (251) WILLY global hold: never burn the one catch-up chance on it — re-judged once the WILLY closes
                     self._frenzy_willy_defer_on(pair, ep.get('on_bar_ts'))
@@ -9841,6 +9844,10 @@ class TradingEngine:
     # Read: the in-memory open-orders cache first (a shortcut: a WILLY is added to it the moment it opens), then ALWAYS one indexed DB read
     # (no "free" memo — deep review I1: a cache rebuild from a stale snapshot could drop a just-committed WILLY); opens are serialized by
     # the bot open lane, so that is one SELECT per automated open. Unreadable → REFUSE (fail-closed, FRENZY_WILLY_HOLD_UNREAD).
+    # 🔓 2026-10-21 (DECISION_LOG 340, operator): frenzy_willy_global_hold = false switches ALL of this off (_willy_global_hold_on): the
+    # choke points, the LITE / catch-up deferrals and the under-lock re-check stand down; WILLY keeps its own slots (a pending entry stays
+    # armed while they are full — _willy_slots_full), pair-held, lateness / dislocation and turnover guards; open_position's PAIR_HELD keeps
+    # every other sleeve off a WILLY's pair (one position per pair — Binance one-way mode would net them).
     async def _willy_hold_state(self, db=None):
         """→ (held, willy_order_id, willy_pair, why) — why 'OPEN' (a WILLY is open) · 'UNREAD' (could not tell → held) · None (free)."""
         try:
@@ -9860,13 +9867,95 @@ class TradingEngine:
                     _row = (await _s.execute(_q)).first()
         except Exception as e:
             logger.warning(f"[FRENZY_WILLY_HOLD] open-WILLY check unreadable ({str(e)[:80]}) — automated open refused (fail-closed)")
+            # (340 review) NO rollback of the caller's session here: under the book lock a LIVE open whose exchange order already filled is
+            # booked even on UNREAD (FRENZY_WILLY_HOLD_RACE) — a rollback would expire / discard that open's state. Fail-closed is the answer.
             return True, None, None, 'UNREAD'
         if _row is not None:
             return True, int(_row[0]), _row[1], 'OPEN'
         return False, None, None, None
 
+    def _willy_global_hold_on(self) -> bool:
+        """🔓 2026-10-21 (DECISION_LOG 340): frenzy_willy_global_hold — False = the global hold is OFF (no automated open is refused, counted
+        or recorded because a WILLY is open; every WILLY-own guard stays). Paper = live. Unreadable config → True (the shipped semantics)."""
+        try:
+            return bool(getattr(config.trading_config.thresholds, 'frenzy_willy_global_hold', True))
+        except Exception:
+            return True
+
+    async def _willy_slots_full(self, db) -> bool:
+        """🔓 (340) WILLY's OWN one-at-a-time guard while the global hold is OFF: True = open FRENZY_WILLY ≥ frenzy_willy_max_slots (the same
+        clamp _frenzy_open uses). A pending red-candle entry stays armed while it is True — as it did under the hold. Unreadable → True
+        (logged, the session rolled back). The HARD guard is in open_position: every FRENZY_WILLY open re-counts the open WILLY rows inside
+        the bot open lane, before any exchange order, and is refused at ≥ frenzy_willy_max_slots (FRENZY_WILLY_MAX_SLOTS) whatever the switch."""
+        try:
+            _slots = max(1, int(getattr(config.trading_config.thresholds, 'frenzy_willy_max_slots', 1) or 1))
+            _n = (await db.execute(select(func.count(Order.id)).where(and_(
+                Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == "FRENZY_WILLY")))).scalar() or 0
+            return _n >= _slots
+        except Exception as e:
+            logger.warning(f"[FRENZY_WILLY] open-WILLY slot count unreadable ({str(e)[:80]}) — treated as full (a pending entry stays armed)")
+            try:
+                await db.rollback()   # a failed read leaves the session's transaction unusable for the caller's next statement
+            except Exception:
+                pass
+            return True
+
+    async def _willy_ht_slots_full(self, db) -> bool:
+        """🎲¼ (341) FRENZY_WILLY_HT's OWN slot: True = open FRENZY_WILLY_HT ≥ frenzy_willy_ht_max_slots (≥ 1). Unreadable → True (logged, rolled
+        back) — the WILLY entry stays armed. open_position re-checks it under the bot open lane (hard guard)."""
+        try:
+            _slots = max(1, int(getattr(config.trading_config.thresholds, 'frenzy_willy_ht_max_slots', 1) or 1))
+            _n = (await db.execute(select(func.count(Order.id)).where(and_(
+                Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == FRENZY_WILLY_HT)))).scalar() or 0
+            return _n >= _slots
+        except Exception as e:
+            logger.warning(f"[FRENZY_WILLY_HT] open-HT slot count unreadable ({str(e)[:80]}) — treated as full")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            return True
+
+    async def _frenzy_willy_ht_try(self, db, pair, ep, flag, ind, bar_open, pd_, ratio, bar_txt) -> str:
+        """🎲¼ (DECISION_LOG 341) one FRENZY_WILLY_HT attempt on a red bar whose full-size WILLY the turnover filter alone refused — the SAME
+        refusal semantics as the full WILLY (341 review): → "opened" · "armed" = keep the pending entry (HT slot full — counted once per pending
+        entry as FRENZY_WILLY_HT_MAX_SLOTS —, the hold, pair held, or our own crash) · "ended" = refused at the red bar for HT's own guards
+        (lateness / dislocation / a bare open_position refusal — each counted once, by the open path, since the entry ends). Never raises; the
+        open path's markers are cleared so they never leak into WILLY's own handling."""
+        try:
+            if await self._willy_ht_slots_full(db):
+                if not pd_.get('ht_full'):
+                    pd_['ht_full'] = True
+                    self._record_filter_block("FRENZY_WILLY_HT_MAX_SLOTS", "LONG")
+                    logger.info(f"[FRENZY_WILLY_HT] {pair}: WILLY {pd_.get('trig')} turnover-blocked (R={ratio:.2f}) but the HT slot is full — stays armed")
+                flag['willy_ht_last'] = f"{bar_txt} WILLY HT {pd_.get('trig')} · HT slot full · stays armed"
+                return "armed"
+            _wb = int((int(bar_open) - int(pd_['armed'])) // 300_000)
+            _ok = await self._frenzy_open(db, flag, ind, bar_open, willy=pd_['trig'], willy_ht=True,
+                                          willy_note=f"turnover {ratio:.2f}× mcap → quarter size · red candle ({float(ep.get('bar_ret_pct') or 0):+.2f}%) · {_wb} bars after the trigger",
+                                          willy_wait_bars=_wb)
+            if _ok:
+                logger.info(f"[FRENZY_WILLY_HT] {pair}: WILLY {pd_.get('trig')} turnover-blocked (R={ratio:.2f}) → opened at quarter size")
+                self._willy_event("FRENZY_WILLY_HT_TAKEN", pair, reason=f"R={ratio:.3f} · {pd_.get('trig')}",
+                                  price=(flag.get('live_price') or flag.get('price')))   # the pending entry ends here (not an expiry): journal + monitor tally
+                return "opened"
+            if any(flag.get(k) for k in ('_willy_hold', '_willy_pair_held', '_willy_slots_full', '_willy_open_failed')):
+                return "armed"
+            logger.info(f"[FRENZY_WILLY_HT] {pair}: refused at the red bar for its own guards ({flag.get('willy_ht_last') or 'open path'}) — entry done")
+            return "ended"
+        except Exception as e:
+            logger.error(f"[FRENZY_WILLY_HT] {pair}: attempt failed ({str(e)[:120]})")
+            self._record_filter_block("FRENZY_WILLY_HT_FAILED", "LONG")
+            return "armed"
+        finally:
+            for _k in ('_willy_hold', '_willy_pair_held', '_willy_slots_full', '_willy_open_failed'):
+                flag.pop(_k, None)
+
     async def _willy_hold_block(self, db, pair, direction, sleeve, price=None, invest_mult=None, lev_mult=None, signal_ms=None) -> bool:
-        """🔒 True = this automated open is refused by the WILLY hold (counted + recorded); False = free to proceed. Never raises."""
+        """🔒 True = this automated open is refused by the WILLY hold (counted + recorded); False = free to proceed. Never raises.
+        🔓 (340) frenzy_willy_global_hold OFF → always False: no read, no FRENZY_WILLY_HOLD counter, no willy_hold_blocks row."""
+        if not self._willy_global_hold_on():
+            return False
         try:
             held, wid, wpair, why = await self._willy_hold_state(db)
         except Exception:
@@ -10019,7 +10108,7 @@ class TradingEngine:
         try:
             _t = datetime.utcfromtimestamp(int(spike_ms) / 1000)
             return (await db.execute(select(Order.id).where(and_(
-                Order.pair == pair, Order.entry_strategy == "FRENZY_WILLY", Order.entry_frenzy_willy_trigger == trig,
+                Order.pair == pair, Order.entry_strategy.in_(WILLY_EXIT_CLASS), Order.entry_frenzy_willy_trigger == trig,   # 🎲¼ (341) an HT fill uses the episode's one-shot too
                 Order.is_paper == self.is_paper_mode, Order.entry_frenzy_spike_at > _t - timedelta(seconds=1),
                 Order.entry_frenzy_spike_at < _t + timedelta(seconds=1))))).first() is not None
         except Exception as e:
@@ -10230,7 +10319,8 @@ class TradingEngine:
             # ① the hold / pair-held guards FIRST (round-3 deep review I1): a turnover refusal is recorded only when the entry could otherwise
             # open. Checked quietly; the FIRST time it blocks this pending entry, the open path runs once to record it (FRENZY_WILLY_HOLD /
             # FRENZY_WILLY_PAIR_HELD + the hold event) and the entry is marked blocked — later red bars re-check quietly.
-            _held = (await self._willy_hold_state(db))[0]
+            # 🔓 (340) global hold OFF: the quiet check is WILLY's OWN slot cap (one WILLY at a time) instead of the hold — same "stays armed"
+            _held = (await self._willy_hold_state(db))[0] if self._willy_global_hold_on() else await self._willy_slots_full(db)
             if not _held:
                 try:
                     _held = (await db.execute(select(Order.id).where(and_(Order.pair == pair, Order.status == "OPEN",
@@ -10239,11 +10329,11 @@ class TradingEngine:
                     _held = True
             if _held:
                 if not _pd.get('blocked'):
-                    await self._frenzy_open(db, flag, ind, bar_open, willy=_pd['trig'], willy_note="red candle — blocked (hold / pair held)",
+                    await self._frenzy_open(db, flag, ind, bar_open, willy=_pd['trig'], willy_note="red candle — blocked (hold / slots full / pair held)",
                                             willy_wait_bars=int((int(bar_open) - int(_pd['armed'])) // 300_000))
-                    flag.pop('_willy_hold', None); flag.pop('_willy_pair_held', None); flag.pop('_willy_open_failed', None)
+                    flag.pop('_willy_hold', None); flag.pop('_willy_pair_held', None); flag.pop('_willy_slots_full', None); flag.pop('_willy_open_failed', None)
                     _pd['blocked'] = True; await self._frenzy_willy_save()
-                flag['willy_last'] = f"{_bar_txt} WILLY {_pd['trig']} armed · red bar but blocked (hold / pair held) · waiting"
+                flag['willy_last'] = f"{_bar_txt} WILLY {_pd['trig']} armed · red bar but blocked (hold / slots full / pair held) · waiting"
                 return
             # ② 🔄 turnover filter at the red bar (operator DECLARED OVERRIDE): R < frenzy_willy_max_vol_mcap_ratio, unreadable = refused; stays armed
             _cut = float(getattr(th, 'frenzy_willy_max_vol_mcap_ratio', 0) or 0)
@@ -10264,6 +10354,13 @@ class TradingEngine:
                                     + f" → refused (stays armed until {_until} UTC)")
                         await self._frenzy_willy_save()
                     flag['willy_last'] = f"{_bar_txt} WILLY {_pd['trig']} armed · red bar refused: " + (f"turnover {_R:.2f}× mcap ≥ {_cut:g}×" if _R is not None else "turnover unreadable")
+                    # 🎲¼ (DECISION_LOG 341) FRENZY_WILLY_HT: the full-size WILLY was refused SOLELY by a MEASURED turnover ratio (the hold /
+                    # slot / pair-held check above passed; never on "unreadable") → the quarter-size HT tries the same red bar through the WILLY
+                    # open path (lateness / dislocation / pair held / its own slot). Opened, or refused for HT's own late / disloc / bare open-path
+                    # refusal → the pending entry ends (WILLY's rule). HT slot full / hold / pair held / crash → it stays armed (turnover record unchanged).
+                    if _tw == "FRENZY_WILLY_TURNOVER" and bool(getattr(th, 'frenzy_willy_ht_enabled', True)):
+                        if (await self._frenzy_willy_ht_try(db, pair, ep, flag, ind, bar_open, _pd, _R, _bar_txt)) in ("opened", "ended"):
+                            _pend.pop(pair, None); await self._frenzy_willy_save()   # opened, or refused for HT's own late / disloc / open path (WILLY's rule)
                     return
             _pd['blocked'] = False   # free now: the open path decides
             _wb = int((int(bar_open) - int(_pd['armed'])) // 300_000)
@@ -10273,7 +10370,7 @@ class TradingEngine:
             if _ok:
                 _pend.pop(pair, None); await self._frenzy_willy_save()
                 return
-            if flag.pop('_willy_hold', False) or flag.pop('_willy_pair_held', False):
+            if flag.pop('_willy_hold', False) | flag.pop('_willy_pair_held', False) | flag.pop('_willy_slots_full', False):   # | : every marker popped
                 _pd['blocked'] = True; await self._frenzy_willy_save()   # stays pending until it opens or expires
                 return
             if flag.pop('_willy_open_failed', False):
@@ -10289,7 +10386,7 @@ class TradingEngine:
 
     async def _frenzy_open(self, db, flag, indicators, bar_open, wide: bool = False, catchup_now: Optional[int] = None,
                            lite: bool = False, willy: Optional[str] = None, willy_note: Optional[str] = None, willy_wait_bars: Optional[int] = None,
-                           lite_retry: Optional[dict] = None):
+                           lite_retry: Optional[dict] = None, willy_ht: bool = False):
         """🔥 Open FRENZY_LONG for a flagged pair whose setup turned ON on the bar that just closed. One entry per pair per bar (memory
         + DB: restart-proof), ≤ frenzy_max_slots open at once. Opens through open_position(frenzy_long=True): own size, direct taker
         at the live price behind the dislocation guard, own exit. Own try/except: can never break the scan.
@@ -10308,20 +10405,25 @@ class TradingEngine:
         lite_retry={pending} (🔁 2026-10-19 FRENZY_LITE_RETRY, DECISION_LOG 316 — declared override): tagged FRENZY_LITE_RETRY — LITE's filters
         (WILLY hold, pair held = FRENZY_LITE_RETRY_PAIR_HELD, the LITE-family pair-day cap, market volume, lateness, dislocation, bearish day) but
         NO sleeve slot limit (operator; global caps in open_position still apply) and never LITE's slots; own size (frenzy_lite_retry_*), LITE's
-        exit; stamps the wait from the green bar's close and the green bar's return. Outcome text → flag['lite_retry_last']."""
+        exit; stamps the wait from the green bar's close and the green bar's return. Outcome text → flag['lite_retry_last'].
+        willy_ht=True with willy='A' / 'B' (🎲¼ 2026-10-21 FRENZY_WILLY_HT, DECISION_LOG 341): the WILLY path tagged FRENZY_WILLY_HT — every
+        WILLY guard (hold as a blocked sleeve, pair held, lateness, dislocation; no gvol / bearish / day cap) but its OWN slot
+        (frenzy_willy_ht_max_slots; full → flag['_willy_slots_full'], the caller keeps the entry armed) and ¼ of WILLY's size (open_position).
+        Outcome text → flag['willy_ht_last']."""
         pair = flag['pair']; th = config.trading_config.thresholds; _cu = catchup_now is not None
         _wl = willy in ("A", "B")   # 🎲 (251)
+        _ht = bool(willy_ht) and _wl   # 🎲¼ (341) the quarter-size WILLY (WILLY-class entry, own tag / slot / size)
         _lr = bool(lite_retry) and not _wl   # 🔁 (316)
         if _lr:
             lite = True   # 🔁 a LITE-family open (pair held, LITE-family day cap, never the strong bump); _lr then lifts the slot limit and re-tags it
-        _es = "FRENZY_WILLY" if _wl else (FRENZY_LITE_RETRY if _lr else ("FRENZY_LITE" if lite else ("FRENZY_WIDE" if wide else "FRENZY_LONG"))); _bk = "FRENZY" if _es == "FRENZY_LONG" else _es   # strategy tag · block-counter prefix
-        _tg = f"WILLY {willy} " if _wl else ("LITE RETRY " if _lr else ("LITE " if lite else ("WIDE " if wide else "")))   # last_fire prefix (the dashboard's "just opened" matcher knows them all)
+        _es = (FRENZY_WILLY_HT if _ht else "FRENZY_WILLY") if _wl else (FRENZY_LITE_RETRY if _lr else ("FRENZY_LITE" if lite else ("FRENZY_WIDE" if wide else "FRENZY_LONG"))); _bk = "FRENZY" if _es == "FRENZY_LONG" else _es   # strategy tag · block-counter prefix
+        _tg = (f"WILLY HT {willy} " if _ht else f"WILLY {willy} ") if _wl else ("LITE RETRY " if _lr else ("LITE " if lite else ("WIDE " if wide else "")))   # last_fire prefix (the dashboard's "just opened" matcher knows them all)
         _sig = "LITE signal" if lite else "setup ON"   # 🪶 (243 review) log wording — FRENZY / WIDE keep "setup ON" (scripts/scout_gvol.py parses it)
         if _lr:
             _sig = "LITE retry — red / flat bar after a green refusal"
         if _wl:
             _sig = f"entry {willy} — {willy_note or ('new flag' if willy == 'A' else 'ON not taken')}"   # 🎲 (251) e.g. "entry A — red candle (−0.21%) · 2 bars after the trigger"
-        _lfk = 'willy_last' if _wl else ('lite_retry_last' if _lr else 'last_fire')   # 🎲 (251 review) WILLY's / 🔁 the retry's outcome never overwrites FRENZY / WIDE / LITE's last_fire
+        _lfk = ('willy_ht_last' if _ht else 'willy_last') if _wl else ('lite_retry_last' if _lr else 'last_fire')   # 🎲 (251 review) WILLY's / 🔁 the retry's outcome never overwrites FRENZY / WIDE / LITE's last_fire
         try:
             _bar_dt = datetime.utcfromtimestamp(bar_open / 1000)
             # 🔒 (251) the WILLY global hold FIRST — FRENZY / WIDE / LITE / WILLY name it (FRENZY_WILLY_HOLD), never a pair / slot refusal
@@ -10333,12 +10435,16 @@ class TradingEngine:
                 flag[_lfk] = (f"{_bar_dt:%m-%d %H:%M} {_tg}refused: WILLY hold — FRENZY_WILLY {_wh.get('willy_pair') or ''} open"
                               if _wh.get('why') == 'OPEN' else f"{_bar_dt:%m-%d %H:%M} {_tg}refused: WILLY hold (open-WILLY check unreadable)")
                 return False
-            _sdef = 1 if _wl else 2   # 🎲 WILLY: 0 / blank → 1 (the global hold allows one anyway)
+            _sdef = 1 if _wl else 2   # 🎲 WILLY: 0 / blank → 1 (one WILLY at a time — its own guard since the global hold is OFF, DL 340)
             _slots = max(1, int(getattr(th, 'frenzy_willy_max_slots' if _wl else ('frenzy_lite_max_slots' if lite else ('frenzy_wide_max_slots' if wide else 'frenzy_max_slots')), _sdef) or _sdef))   # 0 / blank = the sleeve default (2; WILLY 1)
+            if _ht:
+                _slots = max(1, int(getattr(th, 'frenzy_willy_ht_max_slots', 1) or 1))   # 🎲¼ (341) HT's OWN slot (0 / blank → 1)
             _n_open = 0 if _lr else ((await db.execute(select(func.count(Order.id)).where(and_(
                 Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == _es)))).scalar() or 0)   # 🔁 (316) the retry: NO sleeve slot limit (operator)
             if not _lr and _n_open >= _slots:
-                self._record_filter_block(f"{_bk}_MAX_SLOTS", "LONG")
+                self._record_filter_block(f"{_bk}_MAX_SLOTS", "LONG")   # 🎲¼ HT: FRENZY_WILLY_HT_MAX_SLOTS (its own slot)
+                if _wl:
+                    flag['_willy_slots_full'] = True   # 🔓 (340) a pending WILLY stays armed while its own slots are full (the hold's old role)
                 flag[_lfk] = f"{_bar_dt:%m-%d %H:%M} {_tg}refused: {_n_open} {_es} positions open (max {_slots})"
                 return
             if (await db.execute(select(Order.id).where(and_(Order.pair == pair, Order.entry_strategy == _es,
@@ -10495,7 +10601,7 @@ class TradingEngine:
                                    f"{'fresh' if _zfresh else 'stale / off'}) — fail-open, entries proceed (logged once per bar)")
             _pvr = ((indicators.get('volume') or 0) / indicators['avg_volume']) if (indicators and indicators.get('avg_volume')) else None
             if _wl:   # 🎲 (251) the operator's log line: "[FRENZY_WILLY] PAIR: entry A (new flag) → opening" / "entry B (ON not taken: <reason>) → opening"
-                logger.info(f"[FRENZY_WILLY] {pair}: {_sig} → opening")
+                logger.info(f"[{_es}] {pair}: {_sig} → opening")
             logger.warning(f"[{_es}] {pair}: {_sig} {flag.get('hours') or 0:.1f} h after the spike ({flag.get('vs_vwap_pct') or 0:+.1f}% vs its average "
                            f"price, volume {flag.get('vol_mult') or 0:.0f}× normal, ATR {('%.2f%%' % atr) if atr is not None else 'unreadable'}) → opening")
             self._frenzy_open_refusal = None
@@ -10507,6 +10613,7 @@ class TradingEngine:
                 entry_global_volume_ratio=_g.get('_global_volume_ratio'), entry_pair_volume_ratio=_pvr,
                 frenzy_long=not (wide or lite or _wl), frenzy_wide=(wide and not _wl), frenzy_lite=(lite and not _wl), frenzy_willy=_wl,
                 entry_frenzy_willy_trigger=(willy if _wl else None), entry_frenzy_willy_wait_bars=(willy_wait_bars if _wl else None), frenzy_bar_open_ms=(int(_leash_time.time() * 1000) if _cu else bar_open), frenzy_catchup=_cu,   # ⏪ catch-up: only the bot-open-lane wait counts
+                frenzy_willy_ht=_ht,   # 🎲¼ (341) with frenzy_willy=True → tagged FRENZY_WILLY_HT by open_position
                 frenzy_lite_retry=_lr,   # 🔁 (316) the retry rides lite=True (LITE-family open) and is tagged FRENZY_LITE_RETRY by open_position
                 entry_frenzy_retry_wait_min=(round((int(bar_open) - int(lite_retry['green'])) / 60_000.0, 2) if _lr else None),
                 entry_frenzy_retry_green_ret=((lite_retry or {}).get('ret') if _lr else None),
@@ -10529,6 +10636,8 @@ class TradingEngine:
             _why = getattr(self, '_frenzy_open_refusal', None)
             if not order and _why and str(_why).startswith("WILLY hold"):
                 flag['_willy_hold'] = True   # 🔒 refused at open_position's choke point (a WILLY opened in between) — same deferral as above
+            elif not order and _why and str(_why).startswith("WILLY slots full") and _wl:
+                flag['_willy_slots_full'] = True   # 🔒 (340) open_position's hard single-WILLY guard: the pending entry stays armed
             flag[_lfk] = f"{_bar_dt:%m-%d %H:%M} " + _tg + ("opened" if order else (f"refused: {_why}" if _why else "refused by the open path (slots / balance / cooldown / price moved)"))
             if not order and not _why:   # a late refusal is already counted as FRENZY_LATE (caveman review: no double count)
                 self._record_filter_block(f"{_bk}_OPEN_REFUSED", "LONG")
@@ -11533,6 +11642,7 @@ class TradingEngine:
         frenzy_wide: bool = False,   # 🔥🌐 Oct-3: the FRENZY open path tagged FRENZY_WIDE (own size fields frenzy_wide_*)
         frenzy_lite: bool = False,   # 🪶 Oct-7 (243): the FRENZY open path tagged FRENZY_LITE (own size fields frenzy_lite_*; never the strong bump)
         frenzy_willy: bool = False,   # 🎲 Oct-8 (251): the FRENZY open path tagged FRENZY_WILLY (own size fields frenzy_willy_*; never the strong bump)
+        frenzy_willy_ht: bool = False,   # 🎲¼ (341): with frenzy_willy=True → tagged FRENZY_WILLY_HT (WILLY's size × frenzy_willy_ht_size_frac, own slot, WILLY's exit)
         frenzy_lite_retry: bool = False,   # 🔁 (316): with frenzy_lite=True → tagged FRENZY_LITE_RETRY (own size fields frenzy_lite_retry_*; LITE's exit)
         entry_frenzy_retry_wait_min: Optional[float] = None,   # 🔁 (316) minutes from the green bar's close to the entry bar's close
         entry_frenzy_retry_green_ret: Optional[float] = None,   # 🔁 (316) the refused green bar's return, %
@@ -11624,6 +11734,8 @@ class TradingEngine:
         # (bearrun_short is NOT in the list: that fill comes from the momentum ladder's own open, so its refusals are the pair's.)
         _frenzy = bool(frenzy_long or frenzy_wide or frenzy_lite or frenzy_willy) and direction == "LONG"   # 🔥 FRENZY fill (LONG only) — FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE / FRENZY_WILLY
         _fz_es = ("FRENZY_WILLY" if (_frenzy and frenzy_willy) else FRENZY_LITE_RETRY if (_frenzy and frenzy_lite and frenzy_lite_retry) else "FRENZY_LITE" if (_frenzy and frenzy_lite) else "FRENZY_WIDE" if (_frenzy and frenzy_wide) else "FRENZY_LONG")   # 🔥🌐 Oct-3 / 🪶 Oct-7 / 🎲 Oct-8: the tag, size prefix and cell source
+        if _fz_es == "FRENZY_WILLY" and frenzy_willy_ht:
+            _fz_es = FRENZY_WILLY_HT   # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY: own tag / slot; WILLY's size fields × frenzy_willy_ht_size_frac, WILLY's exit
         _fz_bk = "FRENZY" if _fz_es == "FRENZY_LONG" else _fz_es                  # its filter-block prefix (FRENZY_LATE / FRENZY_WIDE_LATE / FRENZY_LITE_LATE …)
         _surge = (surge_dir in ("LONG", "SHORT") and surge_dir == direction) or _frenzy   # ⚡ SURGE fill (a mismatched direction is never one); FRENZY rides the same open path
         self._open_ctx_momentum = not (flip_source or bull_long or bullrun_long or bounce_long
@@ -12735,6 +12847,8 @@ class TradingEngine:
         if _surge:
             _th_sg = config.trading_config.thresholds
             _sg_pref = _fz_es.lower() if _frenzy else f'surge_{direction.lower()}'   # 🔥 FRENZY: its own size fields (frenzy_long_* / frenzy_wide_* / frenzy_lite_* / frenzy_willy_*)
+            if _frenzy and _fz_es == FRENZY_WILLY_HT:
+                _sg_pref = "frenzy_willy"   # 🎲¼ (341) HT sizes off WILLY's fields, then × frenzy_willy_ht_size_frac (below)
             # an explicit 0 means "as small as allowed" (the floors), never the 1× default — the mult is this sleeve's risk control (Oct-3 review)
             _sg_inv = getattr(_th_sg, f'{_sg_pref}_invest_mult', 1.0); _sg_lev = getattr(_th_sg, f'{_sg_pref}_lev_mult', 1.0)
             if _frenzy and _fz_es == "FRENZY_LONG" and frenzy_strong:   # 💪 Oct-4 (197): strong signal bar → its own leverage multiplier (0 = off)
@@ -12763,6 +12877,17 @@ class TradingEngine:
         # smaller margin is never refused where today's would pass). CROSS margin → same liquidation risk.
         investment, _ml_min_scale, _ml_ref_lev = self.momentum_long_resize(pair, investment, leverage, available, confidence, total_portfolio,
                                                                            cell_mult, cell_lev_mult, _mult_target, _wh_es, direction, _ml_lev)
+        _ht_min_scale = 1.0   # 🎲¼ (341 review) HT's own min-margin scale — kept OUT of _ml_min_scale so DL 298's bracket keep never sees HT
+        if _frenzy and _fz_es == FRENZY_WILLY_HT and investment > 0:
+            # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY: the margin WILLY would have opened (its own invest / lev mults, balance caps and the
+            # min-size clamp already applied) × frenzy_willy_ht_size_frac at the SAME leverage → exactly ¼ of WILLY's notional; same leverage =
+            # the same bracket / liquidation distance as WILLY. The min-margin guards below judge it at WILLY's size (_ht_min_scale, the DL 298
+            # idea, but a SEPARATE factor: momentum_long_bracket_keep must never "restore" HT to a full margin): a quarter ticket is never refused
+            # for being a quarter. The liquidity / gross caps below then apply to HT's OWN (quarter) size — an HT can be above ¼ of a capped WILLY.
+            _htf = frenzy_willy_ht_frac(config.trading_config.thresholds)
+            investment = investment * _htf
+            _ht_min_scale = _htf
+            logger.info(f"[FRENZY_WILLY_HT] {pair}: size × {_htf:g} of WILLY's → margin ${investment:.2f} at {leverage}x (notional ${investment * leverage:.2f})")
         if cell_capped:
             logger.info(
                 f"[CELL_MULT_CAPPED] {pair} {direction}: target multiplier inv={cell_mult}x lev={cell_lev_mult}x via {cell_src} "
@@ -12778,6 +12903,42 @@ class TradingEngine:
             if _frenzy:
                 self._frenzy_open_refusal = "WILLY hold (a FRENZY_WILLY position is open)"
             return None
+
+        # 🔒 (DECISION_LOG 340 review) HARD single-WILLY guard, whatever frenzy_willy_global_hold says: a FRENZY_WILLY open re-counts the open
+        # FRENZY_WILLY rows HERE — inside the bot open lane (one bot open at a time) and BEFORE any exchange order, so a refusal never orphans
+        # a fill — and refuses at ≥ frenzy_willy_max_slots (FRENZY_WILLY_MAX_SLOTS). _frenzy_open's slot check is the early, named one; this
+        # one is the backstop for any path / timing that reaches open_position. Unreadable → refused (fail-closed).
+        if _wh_es == "FRENZY_WILLY":
+            _wslots = max(1, int(getattr(config.trading_config.thresholds, 'frenzy_willy_max_slots', 1) or 1))
+            try:
+                _wn = (await db.execute(select(func.count(Order.id)).where(and_(
+                    Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == "FRENZY_WILLY")))).scalar() or 0
+            except Exception as _we:
+                logger.warning(f"[FRENZY_WILLY] {pair}: open-WILLY count unreadable in open_position ({str(_we)[:80]}) — refused (fail-closed)")
+                _wn = _wslots
+            if _wn >= _wslots:
+                self._record_filter_block("FRENZY_WILLY_MAX_SLOTS", direction)
+                if _frenzy:
+                    self._frenzy_open_refusal = f"WILLY slots full ({_wn} FRENZY_WILLY open, max {_wslots})"
+                logger.info(f"[FRENZY_WILLY] {pair}: refused in open_position — {_wn} FRENZY_WILLY open (max {_wslots})")
+                return None
+        # 🎲¼ (DECISION_LOG 341) the same hard guard for HT's OWN slot (frenzy_willy_ht_max_slots) — HT never counts as a WILLY. Like the WILLY guard
+        # above it is a count-then-insert check: it is race-free ONLY because every bot open runs one at a time in the bot open lane
+        # (serialized_per_pair(lane=BOT_OPEN_LANE) on open_position). An open path that bypassed the lane would need a re-count under the book lock.
+        if _wh_es == FRENZY_WILLY_HT:
+            _hslots = max(1, int(getattr(config.trading_config.thresholds, 'frenzy_willy_ht_max_slots', 1) or 1))
+            try:
+                _hn = (await db.execute(select(func.count(Order.id)).where(and_(
+                    Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == FRENZY_WILLY_HT)))).scalar() or 0
+            except Exception as _he:
+                logger.warning(f"[FRENZY_WILLY_HT] {pair}: open-HT count unreadable in open_position ({str(_he)[:80]}) — refused (fail-closed)")
+                _hn = _hslots
+            if _hn >= _hslots:
+                self._record_filter_block("FRENZY_WILLY_HT_MAX_SLOTS", direction)
+                if _frenzy:
+                    self._frenzy_open_refusal = f"WILLY slots full ({_hn} FRENZY_WILLY_HT open, max {_hslots})"
+                logger.info(f"[FRENZY_WILLY_HT] {pair}: refused in open_position — {_hn} FRENZY_WILLY_HT open (max {_hslots})")
+                return None
 
         # ── Liquidity-aware sizing caps (Jun 2 — see CLAUDE.md) ──────────────────
         # ① per-pair liquidity cap: throttle this order's NOTIONAL to a small slice
@@ -12848,10 +13009,10 @@ class TradingEngine:
             # apply throttle: shrink margin to fit the capped notional
             if _final_notional < _desired_notional - 0.01:
                 _new_investment = _final_notional / leverage
-                if _new_investment < _inv_cfg.min_investment_size * _ml_min_scale:   # ⚖️ (298) the momentum-long margin is judged at today's size
+                if _new_investment < _inv_cfg.min_investment_size * _ml_min_scale * _ht_min_scale:   # ⚖️ (298) the momentum-long margin is judged at today's size
                     logger.warning(
                         f"[LIQ_CAP] {pair} {direction}: {_cap_reason} cap -> ${_new_investment:.2f} margin "
-                        f"< min ${_inv_cfg.min_investment_size * _ml_min_scale:.2f} (pair too thin / no gross room) — skip"
+                        f"< min ${_inv_cfg.min_investment_size * _ml_min_scale * _ht_min_scale:.2f} (pair too thin / no gross room) — skip"
                     )
                     self._record_filter_block('LIQ_CAP_SKIP', direction)  # Jun 2: surface liquidity-below-min rejections in Filter Blocks
                     return None
@@ -12880,7 +13041,7 @@ class TradingEngine:
                 if _lev_eff < leverage - 1e-9 or _n_ok < investment * leverage - 0.01:
                     _lev_eff = float(int(_lev_eff)) if _lev_eff >= 1 else _lev_eff      # the exchange takes whole leverages
                     _new_inv = min(investment, _n_ok / _lev_eff)
-                    if _ml_min_scale < 1.0 - 1e-12 and _lev_eff > 0:
+                    if _ml_ref_lev is not None and _fz_es != FRENZY_WILLY_HT and _ml_min_scale < 1.0 - 1e-12 and _lev_eff > 0:   # 🎲¼ (341 review) a resized momentum long ONLY
                         # ⚖️ (DECISION_LOG 298) a resized momentum long: the reduced margin must not shrink the DL 289 notional when the brackets
                         # allow it at a lower leverage — retry with the FULL margin, never above the reference notional
                         try:
@@ -12892,9 +13053,9 @@ class TradingEngine:
                             logger.info(f"[BRACKET_CAP] {pair} LONG: momentum long at the full margin keeps ${_ml_b[0] * _ml_b[1]:,.0f} at {_ml_b[1]:g}× "
                                         f"(reduced margin would give ${_new_inv * _lev_eff:,.0f}; reference ${investment * leverage:,.0f})")
                             _new_inv, _lev_eff = _ml_b
-                    if _new_inv < config.trading_config.investment.min_investment_size * _ml_min_scale:   # ⚖️ (298) judged at today's size
+                    if _new_inv < config.trading_config.investment.min_investment_size * _ml_min_scale * _ht_min_scale:   # ⚖️ (298) judged at today's size
                         logger.warning(f"[BRACKET_CAP] {pair} {direction}: brackets allow ${_n_ok:,.0f} at {_lev_eff:g}× → margin "
-                                       f"${_new_inv:.2f} < min ${config.trading_config.investment.min_investment_size * _ml_min_scale:.2f} — skip")
+                                       f"${_new_inv:.2f} < min ${config.trading_config.investment.min_investment_size * _ml_min_scale * _ht_min_scale:.2f} — skip")
                         self._record_filter_block('BRACKET_CAP_SKIP', direction)
                         return None
                     logger.info(f"[BRACKET_CAP] {pair} {direction}: ${investment * leverage:,.0f} at {leverage:g}× → ${_new_inv * _lev_eff:,.0f} at "
@@ -13260,7 +13421,7 @@ class TradingEngine:
         # 🔒 (251, round-2 review) the WILLY hold re-checked UNDER the book lock, memo bypassed: a maker entry waits 15–45 s, during which a
         # FRENZY_WILLY may have committed. Paper: refused here (counted + recorded). Live: the exchange order is ALREADY filled — refusing would
         # orphan a real position, so it is booked and counted as FRENZY_WILLY_HOLD_RACE (logged) for review.
-        if (await self._willy_hold_state(db))[0]:
+        if self._willy_global_hold_on() and (await self._willy_hold_state(db))[0]:   # 🔓 (340) hold OFF → no re-check (paper = live)
             if self.is_paper_mode:
                 await self._willy_hold_block(db, pair, direction, _wh_es, price=current_price, invest_mult=cell_mult, lev_mult=cell_lev_mult,
                                              signal_ms=(frenzy_bar_open_ms if _frenzy else None))
@@ -13375,8 +13536,8 @@ class TradingEngine:
             entry_frenzy_above_share=(entry_frenzy_above_share if _frenzy else None),
             entry_frenzy_above_streak=(entry_frenzy_above_streak if _frenzy else None),
             entry_frenzy_catchup=(bool(frenzy_catchup) if _frenzy else None),   # ⏪ Oct-6: True = catch-up fill · False = normal FRENZY fill
-            entry_frenzy_willy_trigger=(entry_frenzy_willy_trigger if (_frenzy and _fz_es == "FRENZY_WILLY" and entry_frenzy_willy_trigger in ("A", "B")) else None),   # 🎲 (251)
-            entry_frenzy_willy_wait_bars=(int(entry_frenzy_willy_wait_bars) if (_frenzy and _fz_es == "FRENZY_WILLY" and entry_frenzy_willy_wait_bars is not None) else None),
+            entry_frenzy_willy_trigger=(entry_frenzy_willy_trigger if (_frenzy and _fz_es in WILLY_EXIT_CLASS and entry_frenzy_willy_trigger in ("A", "B")) else None),   # 🎲 (251)
+            entry_frenzy_willy_wait_bars=(int(entry_frenzy_willy_wait_bars) if (_frenzy and _fz_es in WILLY_EXIT_CLASS and entry_frenzy_willy_wait_bars is not None) else None),
             entry_frenzy_retry_wait_min=(entry_frenzy_retry_wait_min if (_frenzy and _fz_es == FRENZY_LITE_RETRY) else None),   # 🔁 (316)
             entry_frenzy_stop_pct=(self._frenzy_entry_stop_pct(_fz_es) if _frenzy else None),   # 🛑 (317) the stop this FRENZY fill runs at entry
             entry_btc_price=(globals().get('_current_btc_price') if _frenzy else None),   # 🛑👁 (317) the touch snapshots' BTC-since-entry base
@@ -13624,7 +13785,7 @@ class TradingEngine:
                 # Jul 27 spike ship: fixed SLs — CHASE spike_sl_pct (−1.2, winner-breath
                 # margin), FADE spike_fade_sl_pct (−0.70, squeeze bound). ATR widening is
                 # skipped for both in the check paths (entry_strategy-gated).
-                'stop_loss': (frenzy_willy_levels(config.trading_config.thresholds)[1] if (_frenzy and _fz_es == "FRENZY_WILLY")   # 🎲 None = no WILLY stop
+                'stop_loss': (frenzy_willy_levels(config.trading_config.thresholds)[1] if (_frenzy and _fz_es in WILLY_EXIT_CLASS)   # 🎲 None = no WILLY stop
                               else float(getattr(config.trading_config.thresholds, 'spike_sl_pct', -1.2) or -1.2) if spike_chase_probe
                               else float(getattr(config.trading_config.thresholds, 'spike_fade_sl_pct', -1.50) or -1.50) if spike_fade
                               else float(getattr(config.trading_config.thresholds, 'spike_bounce_sl_pct', -0.70) or -0.70) if spike_bounce
@@ -16205,9 +16366,9 @@ class TradingEngine:
             _rtp_es = order.entry_strategy or ''
             _rtp_th = config.trading_config.thresholds
             _rtp_lock = float(getattr(_rtp_th, 'frenzy_lock_arm_pct', 0) or 0) > 0   # lock-then-trail REPLACES the fixed TP (not WILLY)
-            if (_rtp_es == "FRENZY_WILLY" or (_rtp_es in ("FRENZY_LITE", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE_RETRY") and not _rtp_lock)) \
+            if (_rtp_es in WILLY_EXIT_CLASS or (_rtp_es in ("FRENZY_LITE", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE_RETRY") and not _rtp_lock)) \
                     and order.entry_price and order.notional_value:
-                _rtp_tp = frenzy_willy_levels(_rtp_th)[0] if _rtp_es == "FRENZY_WILLY" else frenzy_tp_for(_rtp_th, _rtp_es, getattr(order, 'frenzy_lite_tp_used', None))
+                _rtp_tp = frenzy_willy_levels(_rtp_th)[0] if _rtp_es in WILLY_EXIT_CLASS else frenzy_tp_for(_rtp_th, _rtp_es, getattr(order, 'frenzy_lite_tp_used', None))
                 _rtp_tick = cached_tick(binance_service.exchange.markets if getattr(binance_service, '_markets_loaded', False) else None,
                                         order.pair.replace('USDT', '/USDT:USDT'), order.entry_price)
                 if _rtp_tp and _rtp_tp > 0 and _rtp_tick:
@@ -17547,7 +17708,7 @@ class TradingEngine:
                 _sg_mh = int(float(getattr(config.trading_config.thresholds, 'surge_max_hold_minutes', 240) or 0))
                 if _sg_mh > 0:
                     max_hold = min(max_hold, _sg_mh) if max_hold > 0 else _sg_mh
-            elif (order.entry_strategy or "") == "FRENZY_WILLY":   # 🎲 Oct-8 (251): its OWN time cap (frenzy_willy_max_hold_minutes, 120; never the global / FRENZY 12 h)
+            elif (order.entry_strategy or "") in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN time cap (frenzy_willy_max_hold_minutes, 120; never the global / FRENZY 12 h)
                 max_hold = frenzy_willy_levels(config.trading_config.thresholds)[2]
             elif (order.entry_strategy or "") in FRENZY_STRATEGIES or ((order.entry_strategy or "") == "MANUAL" and getattr(order, 'manual_exit_mode', None) == "FRENZY"):   # 🔥 FRENZY (and a manual trade on the FRENZY exit): the tested 12 h cap (frenzy_max_hold_minutes; 0 = global)
                 _fz_mh = int(float(getattr(config.trading_config.thresholds, 'frenzy_max_hold_minutes', 720) or 0))
@@ -17695,7 +17856,7 @@ class TradingEngine:
                     _rtp_on_m = ((order.entry_strategy or "") in FRENZY_STRATEGIES) and self._rtp_state(order.id, row=order) is not None
                     if (order.entry_strategy or "") == "SURGE_SHORT":
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None))
-                    elif (order.entry_strategy or "") == "FRENZY_WILLY":   # 🎲 Oct-8 (251): its OWN exit — frenzy_willy_tp_pct / frenzy_willy_stop_pct / frenzy_willy_max_hold_minutes (+1.25 / −4 / 90 since DL 281; never FRENZY's TP3) · ⏰ late TP (297)
+                    elif (order.entry_strategy or "") in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN exit — frenzy_willy_tp_pct / frenzy_willy_stop_pct / frenzy_willy_max_hold_minutes (+1.25 / −4 / 90 since DL 281; never FRENZY's TP3) · ⏰ late TP (297)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
                                                                                 _held_minutes(order.opened_at), None, resting_tp=_rtp_on_m)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live
                     elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
@@ -21607,7 +21768,7 @@ class TradingEngine:
                     _rtp_on_rt = ((order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES) and self._rtp_state(order_id, pair=pair, opened_at=order_info.get('opened_at')) is not None
                     if (order_info.get('entry_strategy') or '') == 'SURGE_SHORT':
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'))
-                    elif (order_info.get('entry_strategy') or '') == 'FRENZY_WILLY':   # 🎲 Oct-8 (251): its OWN exit on every tick — frenzy_willy_tp_pct / _stop_pct / _max_hold_minutes (+1.25 / −4 / 90 since DL 281) · ⏰ late TP (297)
+                    elif (order_info.get('entry_strategy') or '') in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN exit on every tick — frenzy_willy_tp_pct / _stop_pct / _max_hold_minutes (+1.25 / −4 / 90 since DL 281) · ⏰ late TP (297)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
                                                                                 _held_minutes(order_info.get('opened_at')), None, resting_tp=_rtp_on_rt)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live
                     elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
@@ -23508,7 +23669,7 @@ class TradingEngine:
                 # computes elapsed-minutes from open against fast_exit_window_minutes.
                 'opened_at': order.opened_at,
                 # Jul 27 spike ship: fixed SLs survive cache rebuilds/restarts via entry_strategy
-                'stop_loss': (frenzy_willy_levels(config.trading_config.thresholds)[1] if (order.entry_strategy or '') == 'FRENZY_WILLY'   # 🎲 None = no WILLY stop
+                'stop_loss': (frenzy_willy_levels(config.trading_config.thresholds)[1] if (order.entry_strategy or '') in WILLY_EXIT_CLASS   # 🎲 None = no WILLY stop (🎲¼ 341: + HT)
                               else float(getattr(config.trading_config.thresholds, 'spike_sl_pct', -1.2) or -1.2) if (order.entry_strategy or '') == 'SPIKE_CHASE'
                               else float(getattr(config.trading_config.thresholds, 'spike_fade_sl_pct', -1.50) or -1.50) if (order.entry_strategy or '') == 'SPIKE_FADE'
                               else float(getattr(config.trading_config.thresholds, 'spike_bounce_sl_pct', -0.70) or -0.70) if (order.entry_strategy or '') == 'SPIKE_BOUNCE'

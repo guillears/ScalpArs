@@ -26,6 +26,21 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    ([ENTRY_EXEC] / decision vs fill), stop slippage ([EXIT_SLIPPAGE]), size vs target (CELL_MULT_CAPPED by balance?), live avg %/fill
    vs master +0.09 % (124 fills · 69 % WR). 🔒 REVIEW (fade sizing / entry timing) if the first 10 live fades average < −0.5 %/fill OR
    their median stop slippage exceeds the backtest's assumption. Observe-only; the $200M/$300M mcap line (41i) runs alongside.
+②d **👁 WILLY global hold OFF (DECISION_LOG 340, 2026-10-21)** — every bot fill opened while a FRENZY_WILLY was open (the trades the
+   hold used to block): per sleeve N · WR · avg % · Σ $ vs the same sleeve's fills with no WILLY open (same batch); worst UTC day's combined
+   bot P&L % of the account on days with WILLY + other bot positions concurrent. Run scripts/scout_willy_hold_off.py (also embedded in the
+   opportunity scout). 🔒 REVERT gates (alert-only): (a) a UTC day on which ≥ 1 non-WILLY bot fill was OPENED while a FRENZY_WILLY was
+   open (≥ the DL 340 deploy; positions opened before the WILLY never count) and that day's bot P&L ≤ −10 % of the account (ASSUMED $1,225
+   unless --account) → switch frenzy_willy_global_hold back on, then review · (b) the first 8 non-WILLY bot fills opened
+   while a WILLY was open (≥ the DL 340 deploy, frozen once reached) average < 0 AND Σ ≤ −4 pts → ALERT: review turning the hold back ON.
+   Reference (hold ON, reports/SCOUT_WILLY_HOLD.csv): 13 blocked 10-09 → 10-17 = 5 WILLY entries (still slot-blocked) + the 8 non-WILLY
+   setups the switch frees: 8 · 50 % · −0.56 %/trade · Σ −4.5 pts (one window, inconclusive). Operator override below the evidence bar.
+②e **🎲¼ FRENZY_WILLY_HT (DECISION_LOG 341, 2026-10-21, alert-only)** — quarter-size WILLY fills on turnover-only refusals: run
+   scripts/scout_willy_ht.py (also in the opportunity scout). Per fill: R (entry_vol_mcap_ratio), mcap, 24 h volume, size check (notional ≈ ¼ of
+   the same-period WILLY tickets at the same leverage), exit reason vs WILLY's. Three blocks: ① batch HT vs WILLY · ② master per batch (HT is
+   its own PROBE_EXEMPT line) · ③ backtest turnover-blocked cohort (reports/WILLY_TURNOVER_REPRICE_2026-10-19.md: blocked −0.24 vs kept +0.08).
+   🔒 Gates: Σ ≤ −8 pts → review · first 10 avg < 0 → review · main read at the frozen first 30 on ≥ 10 days vs full-size WILLY: HT ≥ WILLY →
+   recommend turnover ratio 0 + HT off · HT ≤ WILLY − 0.20 → filter confirmed, HT off · else re-read at 60.
 ③ **Then EVERY open watchlist gate in CLAUDE_CURRENT_STATE.md and every scout tracker** — run each scout script and report tallies vs
    bars unprompted (the standing batch-watchlist rule).
 Goal stated by the operator: make the bot highly profitable going forward (≈ 10 %/day ambition) — FRENZY and SPIKE_FADE are the

@@ -118,7 +118,18 @@ def _investor_serialized(fn):
             # the session has not begun a transaction and will read A's committed write. Expiring
             # keeps that true if anyone later adds a dependency that reads on this session.
             _db.expire_all()
+            # 📈 (DECISION_LOG 337) every share mutator runs here, so the > 0 -> 0 "fund emptied" edge is caught in ONE
+            # place (a new /api/investors write route inherits it). Fail-open: a NAV-epoch error never blocks a money op.
+            try:
+                _shares_before = await _get_total_shares(_db)
+            except Exception as _ee:
+                _shares_before = None
+                logger.error(f"[NAV_EPOCH] shares-before read failed in {fn.__name__}: {_ee}")
             result = await fn(*args, **kwargs)
+            try:
+                await _nav_epoch_after_share_change(_db, _shares_before)
+            except Exception as _ee:
+                logger.error(f"[NAV_EPOCH] epoch check failed after {fn.__name__}: {_ee}")
             # commit while still holding the lock, so the next waiter reads committed state rather
             # than its own snapshot. get_db's later commit is a true no-op (verified in review) —
             # it only re-enters the fair write queue once more, which is harmless.
@@ -305,6 +316,42 @@ async def bnb_swap_loop():
         await asyncio.sleep(interval)
 
 
+async def _nav_snapshot_once(db: AsyncSession, now_utc: datetime = None) -> bool:
+    """One hourly NAV upsert (body of nav_snapshot_loop; split out so the epoch race is testable). Returns True if a row
+    was written. 📈 (DECISION_LOG 337, review I1) the write time is taken FIRST — before the shares / equity reads — so
+    a row built from reads that pre-date a concurrent epoch (last investor deleted between the read and the write) is
+    stamped BEFORE nav_epoch_started_at and stays excluded from the new history. Explicit (not func.now(): 1-s
+    resolution, and skipped on a no-change upsert)."""
+    _now_utc = now_utc or datetime.utcnow()
+    total_shares = await _get_total_shares(db)
+    if total_shares <= _NAV_SHARES_EPS:          # (337 I3) dust is "no shares" — NAV undefined
+        return False
+    # _get_portfolio_value raises on a failed live balance fetch (C1) — caught by the loop, snapshot skipped,
+    # retried next hour. The <=0 guard is a second line of defense: never persist a zero/negative-equity NAV.
+    portfolio = await _get_portfolio_value(db)
+    if portfolio <= 0:
+        logger.warning(f"[NAV_LOOP] Skipping snapshot: non-positive portfolio value {portfolio}")
+        return False
+    nav = portfolio / total_shares
+    today = _nav_day_utc3(_now_utc)
+    snap = (await db.execute(select(NavSnapshot).where(NavSnapshot.date == today))).scalar_one_or_none()
+    if snap:
+        _ep_day, _ep_at = await _get_nav_epoch(db)
+        if _ep_day == today and _ep_at is not None and (snap.updated_at is None or snap.updated_at < _ep_at) \
+                and _now_utc >= _ep_at:
+            logger.info(f"[NAV_EPOCH] {today}: the epoch day's pre-epoch row (NAV {snap.nav_per_share}, "
+                        f"portfolio {snap.portfolio_value}, shares {snap.total_shares}) is superseded by the new fund's first write")
+        snap.portfolio_value = round(portfolio, 2)
+        snap.total_shares = round(total_shares, 6)
+        snap.nav_per_share = round(nav, 6)
+        snap.updated_at = _now_utc
+    else:
+        db.add(NavSnapshot(date=today, portfolio_value=round(portfolio, 2), total_shares=round(total_shares, 6),
+                           nav_per_share=round(nav, 6), updated_at=_now_utc))
+    await locked_commit(db)
+    return True
+
+
 async def nav_snapshot_loop():
     """Hourly NAV/share snapshot (Jul 2, 2026). Upserts one row per UTC-3 calendar
     day, so today's row tracks live equity and yesterday's last write becomes the
@@ -316,29 +363,7 @@ async def nav_snapshot_loop():
     while not should_stop:
         try:
             async with AsyncSessionLocal() as db:
-                total_shares = await _get_total_shares(db)
-                if total_shares > 0:
-                    # _get_portfolio_value raises on a failed live balance fetch (C1) —
-                    # caught below, snapshot skipped, retried next hour. The <=0 guard is
-                    # a second line of defense: never persist a zero/negative-equity NAV.
-                    portfolio = await _get_portfolio_value(db)
-                    if portfolio <= 0:
-                        logger.warning(f"[NAV_LOOP] Skipping snapshot: non-positive portfolio value {portfolio}")
-                        await asyncio.sleep(3600)
-                        continue
-                    nav = portfolio / total_shares
-                    today = datetime.now(timezone(timedelta(hours=-3))).strftime("%Y-%m-%d")
-                    result = await db.execute(select(NavSnapshot).where(NavSnapshot.date == today))
-                    snap = result.scalar_one_or_none()
-                    if snap:
-                        snap.portfolio_value = round(portfolio, 2)
-                        snap.total_shares = round(total_shares, 6)
-                        snap.nav_per_share = round(nav, 6)
-                    else:
-                        db.add(NavSnapshot(date=today, portfolio_value=round(portfolio, 2),
-                                           total_shares=round(total_shares, 6),
-                                           nav_per_share=round(nav, 6)))
-                    await locked_commit(db)
+                await _nav_snapshot_once(db)
         except Exception as e:
             logger.error(f"[NAV_LOOP] Error in NAV snapshot loop: {e}")
         await asyncio.sleep(3600)
@@ -502,6 +527,14 @@ async def lifespan(app: FastAPI):
         if open_orders:
             logger.info(f"[STARTUP] Subscribed to {len(open_orders)} open order pairs for WebSocket tracking (preserved existing tracking)")
     
+    # 📈 (DECISION_LOG 337) a fund that emptied before the epoch code existed gets its NAV-history start once (logged; no data touched)
+    try:
+        async with AsyncSessionLocal() as _ep_db:
+            if await _nav_epoch_startup_backfill(_ep_db):
+                await locked_commit(_ep_db)
+    except Exception as _epe:
+        logger.warning(f"[NAV_EPOCH] startup backfill skipped: {_epe}")
+
     # Live Terminal — start background heartbeat task once event loop is up
     _start_terminal_heartbeat()
 
@@ -3806,7 +3839,7 @@ _SLEEVE_LABELS = {   # 🧭 Oct-5 (operator): open positions per sleeve under th
     ("MOMENTUM", "LONG"): "Momentum Long", ("MOMENTUM", "SHORT"): "Momentum Short", ("SPIKE_FADE", "SHORT"): "Spike Fade Short",
     ("SPIKE_CHASE", "LONG"): "Spike Chase Long", ("SPIKE_BOUNCE", "LONG"): "Spike Bounce Long", ("BULLRUN_LONG", "LONG"): "Bull-Run Long",
     ("BEARRUN_SHORT", "SHORT"): "Bear-Run Short", ("SURGE_LONG", "LONG"): "SURGE Long", ("SURGE_SHORT", "SHORT"): "SURGE Short",
-    ("FRENZY_LONG", "LONG"): "FRENZY Long", ("FRENZY_WIDE", "LONG"): "FRENZY WIDE Long", ("FRENZY_LITE", "LONG"): "FRENZY LITE Long", ("FRENZY_LITE_RETRY", "LONG"): "FRENZY LITE RETRY Long", ("FRENZY_WILLY", "LONG"): "FRENZY WILLY Long",
+    ("FRENZY_LONG", "LONG"): "FRENZY Long", ("FRENZY_WIDE", "LONG"): "FRENZY WIDE Long", ("FRENZY_LITE", "LONG"): "FRENZY LITE Long", ("FRENZY_LITE_RETRY", "LONG"): "FRENZY LITE RETRY Long", ("FRENZY_WILLY", "LONG"): "FRENZY WILLY Long", ("FRENZY_WILLY_HT", "LONG"): "FRENZY WILLY HT Long (¼)",
     ("BULL_LONG", "LONG"): "Bull Long", ("BOUNCE_LONG", "LONG"): "Bounce Long",
 }
 
@@ -3909,6 +3942,7 @@ def _frenzy_monitor_payload():
         from services.trading_engine import _frenzy_status as _fzs, _frenzy_flags as _fzf
         from services.frenzy import frenzy_lite_need as _fz_lite_need, frenzy_lite_hmax as _fz_lite_hmax, frenzy_willy_levels as _fz_willy_levels, frenzy_willy_wait_ms as _fz_willy_wait
         from services.frenzy import frenzy_lite_retry_wait_ms as _fz_lr_wait, frenzy_stop_for as _fz_stop_for   # 🔁 (316) · 🛑 (317)
+        from services.frenzy import frenzy_willy_ht_frac as _fz_ht_frac   # 🎲¼ (341)
         from datetime import datetime as _dt
         _th = config.trading_config.thresholds
         _ca = _fzs.get('checked_at')
@@ -3941,6 +3975,10 @@ def _frenzy_monitor_payload():
                 "willy_lev_mult": float(1.0 if getattr(_th, 'frenzy_willy_lev_mult', 1.0) is None else getattr(_th, 'frenzy_willy_lev_mult', 1.0)),
                 "willy_tp": _fz_willy_lv[0], "willy_stop": (abs(_fz_willy_lv[1]) if _fz_willy_lv[1] is not None else None),   # None = NO stop
                 "willy_max_hold": _fz_willy_lv[2], "willy_max_slots": max(1, int(getattr(_th, 'frenzy_willy_max_slots', 1) or 1)),
+                "willy_global_hold": bool(getattr(_th, 'frenzy_willy_global_hold', True)),   # 🔓 (340) the switch the engine USES (OFF since 2026-10-21)
+                # 🎲¼ (341) FRENZY_WILLY_HT: switch, the size fraction the engine USES, own slot
+                "willy_ht_enabled": bool(getattr(_th, 'frenzy_willy_ht_enabled', True)),
+                "willy_ht_size_frac": _fz_ht_frac(_th), "willy_ht_max_slots": max(1, int(getattr(_th, 'frenzy_willy_ht_max_slots', 1) or 1)),
                 "willy_red_wait": int(_fz_willy_wait(_th) // 60_000),   # 🟥 the red-candle wait the engine USES (minutes)
                 "willy_turnover_max": float(getattr(_th, 'frenzy_willy_max_vol_mcap_ratio', 0) or 0),   # 🔄 0 = off
                 "willy_mcap_fetch": bool(getattr(config.trading_config, 'mcap_fetch_enabled', True)),   # OFF + the filter on → WILLY can't enter
@@ -3979,7 +4017,7 @@ def _frenzy_flag_view(f):
             "code": f.get('code'), "text": f.get('text'), "last_fire": f.get('last_fire'), "stale": bool(f.get('misses')),
             "lite_code": f.get('lite_code'), "lite_ready": bool(f.get('lite_ready')),   # 🪶 Oct-7 (243): FRENZY_LITE's read on the last bar
             "lite_retry_last": f.get('lite_retry_last'), "lite_retry_pending": f.get('lite_retry_pending'),   # 🔁 (316) the retry's own outcome / armed window
-            "willy_last": f.get('willy_last'), "willy_pending": f.get('willy_pending'),   # 🟥 {trig, armed_ms, exp_ms} while armed (UI: the operator's clock)   # 🎲 Oct-8 (251): FRENZY_WILLY's own last outcome on this pair (never mixed into last_fire)
+            "willy_last": f.get('willy_last'), "willy_ht_last": f.get('willy_ht_last'), "willy_pending": f.get('willy_pending'),   # 🎲¼ (341) HT's own outcome   # 🟥 {trig, armed_ms, exp_ms} while armed (UI: the operator's clock)   # 🎲 Oct-8 (251): FRENZY_WILLY's own last outcome on this pair (never mixed into last_fire)
             "lite_judged_ms": f.get('lite_judged_ms'),   # 🕒 Oct-7: when LITE judged the current stretch (UTC ms) — the UI shows it in the operator's clock
             # ⏪ Oct-6: CLOSE time (UTC ms) of the bar the current setup turned ON (on_bar_ts + 5 min) — the UI shows "ON since HH:MM" in the
             # viewer's local time; None when the setup is not ON (the server text stays the fallback)
@@ -4125,6 +4163,8 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
             return 'Frenzy-Lite-Retry'   # 🔁 (316): own row — LITE green-bar retry (declared override), never blended into Frenzy-Lite
         if (o.entry_strategy or '') == 'FRENZY_LITE':
             return 'Frenzy-Lite'   # 🪶 Oct-7 (243): own row — held above, volume below FRENZY's, first ~17 h
+        if (o.entry_strategy or '') == 'FRENZY_WILLY_HT':
+            return 'Frenzy-Willy-HT'   # 🎲¼ (341): own row — quarter-size, turnover-blocked WILLY setups (a reduced-size line, never blended into Frenzy-Willy)
         if (o.entry_strategy or '') == 'FRENZY_WILLY':
             return 'Frenzy-Willy'   # 🎲 Oct-8 (251): own row — declared exception (new flag + ON not taken, red-candle entry, turnover filter, TP +1 / no SL / 120 min, global hold)
         if 'FLIP' in (o.entry_strategy or ''):
@@ -4161,8 +4201,9 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
                         if start_balance and start_balance > 0 and window_days and window_days >= 0.5
                         and sum(o.pnl or 0 for o in g) / start_balance > -1 else None),
         }
-    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Surge-Long', 'Surge-Short', 'Frenzy-Long', 'Frenzy-Wide', 'Frenzy-Lite', 'Frenzy-Lite-Retry', 'Frenzy-Willy', 'Manual']   # 🖐 Sep-29: own row · 🔁 (316) Frenzy-Lite-Retry
+    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Surge-Long', 'Surge-Short', 'Frenzy-Long', 'Frenzy-Wide', 'Frenzy-Lite', 'Frenzy-Lite-Retry', 'Frenzy-Willy', 'Frenzy-Willy-HT', 'Manual']   # 🖐 Sep-29: own row · 🔁 (316) Frenzy-Lite-Retry · 🎲¼ (341) HT
     order.append('App')   # 🧾 (DECISION_LOG 329) 📱 Binance-app trades, after 🖐 Manual
+    order += sorted(k for k in groups if k not in order)   # (341 review) a sleeve missing from the list above still gets its row — rows always sum to Total
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
     all_closed = [o for o in orders if o.pnl_percentage is not None]
     total = stats('Total', all_closed)
@@ -4214,7 +4255,7 @@ def _compute_strategy_performance(orders, start_balance=None, window_days=None):
         }
 
     _pref = ['MOMENTUM', 'FAN_RATIO_GATE', 'BULL_LONG', 'PAIR_RSI_OB', 'BOUNCE_LONG',
-             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY']   # 🔁 (316) after LITE
+             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY'] + ['FRENZY_WILLY_HT']   # 🔁 (316) after LITE · 🎲¼ (341) HT after WILLY
 
     def _rank(label):
         head = label.split(' · ')[0]
@@ -5365,7 +5406,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # are their own program; blending full-size spikes would contaminate the
             # sleeve stats the locked gates read. (Probe-era spike rows carry MOMENTUM
             # labels and stay — cohort key for those = cell_multiplier_source.)
-            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY', 'MANUAL')   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
+            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY', 'MANUAL') + ('FRENZY_WILLY_HT',)   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
             orders = [o for o in orders if not _es(o).startswith('FLIP:') and _es(o).upper() not in _SLEEVES]
         else:
             # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side
@@ -8522,7 +8563,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                                 ("FRENZY_WIDE", "FRENZY_WIDE (FRENZY's ATR / green-candle refusals · same exit)"),
                                 ("FRENZY_LITE", "FRENZY_LITE (held above, volume < FRENZY's, ≤ ~17 h · no ATR cap · same exit)"),
                                 ("FRENZY_LITE_RETRY", "FRENZY_LITE_RETRY (LITE green refusal → first red / flat READY bar ≤ 15 min · LITE exit · 4× · no slot limit · declared override)"),
-                                ("FRENZY_WILLY", "FRENZY_WILLY (new flag + ON not taken · red-candle entry · turnover < 1× mcap · TP +1 / no SL / 120 min · global hold · declared exception)")):
+                                ("FRENZY_WILLY", "FRENZY_WILLY (new flag + ON not taken · red-candle entry · turnover < 1× mcap · TP +1 / no SL / 120 min · global hold · declared exception)"),
+                                ("FRENZY_WILLY_HT", "FRENZY_WILLY_HT (¼ size · WILLY setups refused ONLY by turnover ≥ 1× mcap · WILLY's exit · own slot · alert-only gates)")):
             _fz_all = [o for o in orders if (o.entry_strategy or '') == _fz_es and o.pnl_percentage is not None]
             _fz_life = [float(p) for (p,) in (await db.execute(select(Order.pnl_percentage).where(and_(
                 Order.entry_strategy == _fz_es, Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
@@ -8555,6 +8597,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 _lrw = [getattr(o, 'entry_frenzy_retry_wait_min', None) for o in _fz_all if getattr(o, 'entry_frenzy_retry_wait_min', None) is not None]
                 if _lrw:
                     _fz_gate += f" · avg wait {sum(_lrw) / len(_lrw):.1f} min after the green bar"
+            if _fz_es == "FRENZY_WILLY_HT":   # 🎲¼ (341) alert-only gates: kill · first read · main read vs full-size WILLY (operator-closed fills out)
+                from services.frenzy import frenzy_willy_ht_gate as _htg
+                _ht_q = lambda _s: select(Order.opened_at, Order.pnl_percentage, Order.close_reason).where(and_(
+                    Order.entry_strategy == _s, Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode, Order.pnl_percentage.isnot(None)))
+                _ht_bot = lambda rows: [(a, p) for a, p, r in rows if not str(r or '').upper().split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE')
+                                        and not str(r or '').upper().startswith('MANUAL_')]
+                _fz_gate = _htg(_ht_bot((await db.execute(_ht_q("FRENZY_WILLY_HT"))).all()), _ht_bot((await db.execute(_ht_q("FRENZY_WILLY"))).all()))[1]
             if _fz_es == "FRENZY_WILLY":   # 🎲 Oct-8 (251) declared exception: BOTH frozen reads (operator decides — never auto-off)
                 # same cohort rule as the scout (services.frenzy.frenzy_willy_reads): EVERY lifetime WILLY fill of this mode, open ones included,
                 # ordered by OPEN time. Floor: no FRENZY_WILLY fill can predate the "(DECISION_LOG 251)" commit, which is the scout's floor too.
@@ -12438,6 +12487,7 @@ class InvestorCreate(BaseModel):
     eth_wallet: Optional[str] = None   # optional at creation; can be added later via PATCH
     deposit_amount: Optional[float] = None   # Aug-24: optional initial deposit at creation (same NAV math as /deposit)
     founding: bool = False                   # Sep-21: this share DIVIDES pre-existing capital (NAV 1.0), it is not new money
+    preview: bool = False                    # 📈 (337 I4) dry run: the price + nav_start_warning, nothing written (no lock taken)
 
 
 _ETH_ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -12454,6 +12504,7 @@ def _clean_eth_wallet(raw) -> Optional[str]:
 class InvestorDeposit(BaseModel):
     investor_id: int
     amount: float
+    preview: bool = False   # 📈 (337 I4) dry run: the price + nav_start_warning, nothing written (no lock taken)
 
 class InvestorWithdraw(BaseModel):
     investor_id: int
@@ -12590,9 +12641,123 @@ async def _get_total_shares(db: AsyncSession) -> float:
     return result.scalar()
 
 
+# 📈 (DECISION_LOG 337) NAV history "fund start" epoch — a READ boundary over nav_snapshots, never a delete.
+_NAV_SHARES_EPS = 1e-6   # total shares at/below this = "no shares" (pro-rata dust); the epoch trigger's zero
+
+
+def _nav_day_utc3(now_utc: datetime) -> str:
+    """UTC-3 calendar day of a UTC-naive moment — the same day key NavSnapshot.date uses."""
+    return (now_utc.replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=-3)))).strftime("%Y-%m-%d")
+
+
+def nav_snapshot_in_epoch(snap_date, snap_updated_at, epoch_start, epoch_started_at) -> bool:
+    """THE epoch rule (pure). No epoch -> every row counts. Otherwise a row counts iff its day is AFTER the epoch day,
+    or it IS the epoch day and it was written at/after the epoch moment (the day row is upserted hourly, so a row last
+    written before the epoch still holds the previous fund's NAV — it must not leak into the new history)."""
+    if not epoch_start:
+        return True
+    if snap_date > epoch_start:
+        return True
+    if snap_date < epoch_start:
+        return False
+    if epoch_started_at is None:        # date-only epoch (never written by this code) — the whole day counts
+        return True
+    return snap_updated_at is not None and snap_updated_at >= epoch_started_at
+
+
+def _nav_epoch_clause(epoch_start, epoch_started_at):
+    """SQL twin of nav_snapshot_in_epoch (tests pin the two to the same answer). None = no filter."""
+    if not epoch_start:
+        return None
+    if epoch_started_at is None:
+        return NavSnapshot.date >= epoch_start
+    return or_(NavSnapshot.date > epoch_start,
+               and_(NavSnapshot.date == epoch_start, NavSnapshot.updated_at >= epoch_started_at))
+
+
+async def _get_nav_epoch(db: AsyncSession):
+    """(nav_epoch_start, nav_epoch_started_at) from the BotState singleton, or (None, None)."""
+    st = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+    if st is None:
+        return None, None
+    return getattr(st, "nav_epoch_start", None), getattr(st, "nav_epoch_started_at", None)
+
+
+async def _set_nav_epoch(db: AsyncSession, reason: str, now_utc: datetime = None):
+    """Start a new NAV history NOW. Writes ONLY the two BotState epoch fields — no snapshot is touched.
+    The caller commits. Returns (epoch_start, epoch_started_at); raises RuntimeError if BotState is missing."""
+    st = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+    if st is None:
+        raise RuntimeError("BotState row missing — cannot record the NAV epoch")
+    now_utc = now_utc or datetime.utcnow()
+    st.nav_epoch_start = _nav_day_utc3(now_utc)
+    st.nav_epoch_started_at = now_utc
+    logger.info(f"[NAV_EPOCH] New NAV history starts {st.nav_epoch_start} ({now_utc.isoformat()} UTC) — reason: {reason}. "
+                f"Earlier nav_snapshots rows are KEPT (display boundary only).")
+    return st.nav_epoch_start, st.nav_epoch_started_at
+
+
+async def _nav_epoch_after_share_change(db: AsyncSession, shares_before: float):
+    """Called inside _investor_serialized after every share mutator (before its commit): a > 0 -> 0 transition of the
+    fund's TOTAL shares (last investor deleted, full withdrawal, pro-rata full withdraw-all, deposit edit to 0) ends
+    the fund's life -> a new NAV history starts. 0 -> 0 and > 0 -> > 0 are no-ops (idempotent)."""
+    if shares_before is None or shares_before <= _NAV_SHARES_EPS:
+        return False
+    after = await _get_total_shares(db)          # autoflush: sees the handler's pending changes
+    if after > _NAV_SHARES_EPS:
+        return False
+    await _set_nav_epoch(db, reason=f"total shares {shares_before:.6f} -> {after:.6f}")
+    return True
+
+
+async def _nav_epoch_startup_backfill(db: AsyncSession) -> bool:
+    """One-time rule for funds that emptied BEFORE this code existed (the Oct-21 live delete): no shares, no epoch,
+    but old snapshots still on the chart -> start the history now. Re-runs are no-ops once an epoch exists. The
+    caller commits."""
+    st = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+    if st is None or getattr(st, "nav_epoch_start", None):
+        return False
+    if await _get_total_shares(db) > _NAV_SHARES_EPS:
+        return False
+    if not (await db.execute(select(func.count(NavSnapshot.id)))).scalar():
+        return False                              # no history to scope — nothing to hide
+    await _set_nav_epoch(db, reason="startup: no shares outstanding and no epoch set (fund emptied before DL 337)")
+    return True
+
+
+def nav_start_warning(equity: float, deposit: float):
+    """📈 (DECISION_LOG 337, review I4) Non-blocking: the FIRST deposit into a share-less fund is minted at NAV 1.00
+    (shares = deposit), but NAV is equity / shares — money already on the account that is not this deposit makes NAV
+    jump on the next read. The server cannot tell whether the deposit has already landed, so:
+      · |E − D| ≤ tol (tol = max($1, 0.5 % of D)) -> the deposit IS the account (it landed) -> NAV ≈ 1.00, no warning;
+      · E ≤ tol -> empty account, the money is still to arrive -> NAV 1.00, no warning;
+      · otherwise warn, with the starting NAV for the reading(s) still possible.
+    Minting math is never changed by this. Returns the warning text or None."""
+    e, d = float(equity or 0.0), float(deposit or 0.0)
+    if d <= 0:
+        return None
+    tol = max(1.0, 0.005 * d)
+    if e <= tol or abs(e - d) <= tol:
+        return None
+    msg = (f"Account equity is ${e:,.2f}; with a ${d:,.2f} deposit NAV would start at (E+D)/D ≈ {(e + d) / d:.4f} "
+           f"if the deposit has not reached the account yet")
+    if e > d:   # E/D > 1 is only possible if the account holds more than this deposit — the 'already landed' reading too
+        msg += f" (or E/D ≈ {e / d:.4f} if it already has)"
+    return (msg + f". To start at $1.00, enter ${e + d:,.2f} as this investor's deposit"
+            + (f" (${e:,.2f} if the deposit is already on the account)" if e > d else "")
+            + " — or record the existing equity first.")
+
+
+async def _nav_start_warning_for(db: AsyncSession, deposit: float):
+    """The warning only applies to a share-less fund (the first mint). Preview-only — it reads live equity."""
+    if (await _get_total_shares(db)) > _NAV_SHARES_EPS:
+        return None
+    return nav_start_warning(await _get_portfolio_value(db), deposit)
+
+
 async def _get_nav_per_share(db: AsyncSession) -> float:
     total_shares = await _get_total_shares(db)
-    if total_shares <= 0:
+    if total_shares <= _NAV_SHARES_EPS:          # 📈 (337 I3) dust = no shares: never price NAV off a 1e-13 denominator
         return 1.0
     portfolio = await _get_portfolio_value(db)
     return portfolio / total_shares
@@ -12751,7 +12916,7 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
     # two-pass version could straddle a monitor-loop commit (review minor).
     comps = await _portfolio_components(db, fresh=False)   # ⚡ Oct-5: the 10-s investors list is a dashboard read
     portfolio_value = comps["total_equity"]
-    nav = portfolio_value / total_shares if total_shares > 0 else 1.0
+    nav = portfolio_value / total_shares if total_shares > _NAV_SHARES_EPS else 1.0   # (337 I3) same zero as _get_nav_per_share
 
     rows = []
     for inv in investors:
@@ -12769,16 +12934,23 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
             "eth_wallet": inv.eth_wallet,
         })
 
-    # NAV history (last 120 days shown) + high-water mark, live point included via the hourly upsert
-    hist_result = await db.execute(
-        select(NavSnapshot).order_by(NavSnapshot.date.desc()).limit(120)
-    )
+    # NAV history (last 120 days shown) + high-water mark, live point included via the hourly upsert.
+    # 📈 (DECISION_LOG 337) both read ONLY the current fund epoch's rows — earlier rows stay in the table untouched.
+    _ep_day, _ep_at = await _get_nav_epoch(db)
+    _ep_clause = _nav_epoch_clause(_ep_day, _ep_at)
+    _hq = select(NavSnapshot)
+    if _ep_clause is not None:
+        _hq = _hq.where(_ep_clause)
+    hist_result = await db.execute(_hq.order_by(NavSnapshot.date.desc()).limit(120))
     snaps = list(reversed(hist_result.scalars().all()))
     nav_history = [{"date": s.date, "nav": round(s.nav_per_share, 6),
                     "portfolio_value": round(s.portfolio_value, 2)} for s in snaps]
-    # HWM over the WHOLE table, not the 120-day display window — a windowed max would
+    # HWM over the WHOLE epoch, not the 120-day display window — a windowed max would
     # silently decay once an early peak scrolls out (review I4; fee math depends on this)
-    hwm_result = await db.execute(select(func.max(NavSnapshot.nav_per_share)))
+    _mq = select(func.max(NavSnapshot.nav_per_share))
+    if _ep_clause is not None:
+        _mq = _mq.where(_ep_clause)
+    hwm_result = await db.execute(_mq)
     high_water = max(hwm_result.scalar() or 0.0, nav)
 
     # Tradeable / Reserve split — same engine-mirroring helper as the balance card
@@ -12791,6 +12963,8 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
         "portfolio_value": round(portfolio_value, 2),
         "nav_history": nav_history,
         "nav_high_water": round(high_water, 6),
+        "nav_epoch_start": _ep_day,                                            # 📈 (337) None = no epoch (whole history)
+        "nav_epoch_started_at": (_ep_at.isoformat() + "Z") if _ep_at else None,
         "reserve": _reserve,
         "tradeable": _tradeable,
         "reserve_mode": _rmode,
@@ -12861,6 +13035,10 @@ async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db))
         nav = await _get_nav_per_share(db)
         if nav <= 0:
             raise HTTPException(503, "NAV unavailable — retry shortly (nothing was created)")
+    if getattr(body, "preview", False):          # 📈 (337 I4) dry run — nothing created
+        return {"ok": True, "preview": True, "nav": round(nav, 6) if nav else None,
+                "new_shares": round((_founding_shares if _founding_shares is not None else _dep / nav), 6) if _dep > 0 else None,
+                "nav_start_warning": (await _nav_start_warning_for(db, _dep)) if (_dep > 0 and not _founding) else None}
     inv = Investor(name=name, shares=0.0, total_deposited=0.0, total_withdrawn=0.0,
                    eth_wallet=_clean_eth_wallet(body.eth_wallet))
     db.add(inv)
@@ -12898,6 +13076,9 @@ async def investor_deposit(body: InvestorDeposit, db: AsyncSession = Depends(get
     if nav <= 0:
         raise HTTPException(503, "NAV unavailable — refusing to price share issuance (retry shortly)")
     new_shares = body.amount / nav
+    if getattr(body, "preview", False):          # 📈 (337 I4) dry run — nothing written
+        return {"ok": True, "preview": True, "new_shares": round(new_shares, 6), "nav": round(nav, 6),
+                "nav_start_warning": await _nav_start_warning_for(db, body.amount)}
     inv.shares += new_shares
     inv.total_deposited += body.amount
     await db.flush()
@@ -12970,7 +13151,11 @@ async def investor_withdraw(body: InvestorWithdraw, db: AsyncSession = Depends(g
         max_value = inv.shares * nav
         raise HTTPException(400, f"Insufficient shares. Max withdrawal: ${max_value:.2f}")
 
-    inv.shares = max(0.0, inv.shares - shares_needed)
+    _left = inv.shares - shares_needed
+    if _left <= _NAV_SHARES_EPS:                 # 📈 (337 I3) a full withdrawal's float dust (e.g. 1e-13) is EXACTLY zero —
+        shares_needed = inv.shares               # the ledger burns what the investor held, so Σ ledger shares_delta == 0
+        _left = 0.0
+    inv.shares = _left
     inv.total_withdrawn += body.amount
     await db.flush()
     _log_investor_ledger(db, inv.id, "WITHDRAW", body.amount, nav, -shares_needed)
@@ -13039,6 +13224,8 @@ async def fund_withdraw(body: FundWithdraw, db: AsyncSession = Depends(get_db)):
         if sh > inv.shares + 1e-6:
             sh = inv.shares
             amt = round(sh * nav, 2)  # Sep-7 review: clamped burn must ledger the clamped VALUE, not the full slice
+        elif inv.shares - sh <= _NAV_SHARES_EPS:
+            sh = inv.shares           # 📈 (337 I3) float dust left by a full slice is burned too (amount unchanged: the split still sums)
         allocated += amt
         plan.append((inv, amt, sh))
     split = [{"investor": inv.name, "amount": amt, "shares_burned": round(sh, 6),
@@ -13204,6 +13391,29 @@ async def remove_investor(investor_id: int, db: AsyncSession = Depends(get_db)):
     return {"ok": True}
 
 
+class NavEpochRequest(BaseModel):
+    force: bool = False   # required while investors hold shares (the HWM they see restarts)
+
+
+@app.post("/api/nav/epoch")
+@_investor_serialized
+async def start_nav_epoch(body: Optional[NavEpochRequest] = None, db: AsyncSession = Depends(get_db)):
+    """📈 (DECISION_LOG 337) "↺ Start new NAV history": the NAV/share chart, the HWM and both text exports read only
+    snapshots from NOW on. Changes what is SHOWN, never data: no nav_snapshots row, investor, share or ledger row is
+    touched. Serialized with the share mutators so it cannot interleave with one.
+    Review I2: while investors hold shares it restarts the high-water mark THEY see -> 409 unless {"force": true}."""
+    _shares = await _get_total_shares(db)
+    if _shares > _NAV_SHARES_EPS and not (body is not None and body.force):
+        raise HTTPException(409, f"Investors hold {_shares:,.4f} shares — a new NAV history also restarts the "
+                                 f"high-water mark they see. Confirm with force=true.")
+    try:
+        _day, _at = await _set_nav_epoch(db, reason="manual (dashboard button)" + (f", forced with {_shares:.6f} shares outstanding" if _shares > _NAV_SHARES_EPS else ""))
+    except RuntimeError as _e:
+        raise HTTPException(503, str(_e))
+    await db.flush()
+    return {"ok": True, "nav_epoch_start": _day, "nav_epoch_started_at": _at.isoformat() + "Z"}
+
+
 # ----- Server Info -----
 
 _server_initial_ip = None
@@ -13303,6 +13513,8 @@ async def update_config(config_update: ConfigUpdate):
     _cfg_errs.extend(_rtp_cfg_errors(new_config.thresholds))
     from services.frenzy import frenzy_lite_retry_config_errors as _lr_cfg_errors   # 🔁 (DECISION_LOG 316) FRENZY_LITE_RETRY
     _cfg_errs.extend(_lr_cfg_errors(new_config.thresholds))
+    from services.frenzy import frenzy_willy_ht_config_errors as _ht_cfg_errors   # 🎲¼ (DECISION_LOG 341) FRENZY_WILLY_HT
+    _cfg_errs.extend(_ht_cfg_errors(new_config.thresholds))
     from services.frenzy import frenzy_long_stop_config_errors as _ls_cfg_errors   # 🛑 (DECISION_LOG 317) FRENZY_LONG's own stop
     try:
         _sb_lev = float(new_config.confidence_levels["STRONG_BUY"].leverage)   # the sleeves open at the STRONG_BUY level

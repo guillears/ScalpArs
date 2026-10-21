@@ -34,6 +34,30 @@ async def db():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_process_locks(monkeypatch):
+    """🔒 (DECISION_LOG 340 review) every process-wide asyncio.Lock gets a FRESH instance per test. Python ≥ 3.10 binds a Lock to the event
+    loop of its first CONTENDED acquire; tests run many asyncio.run() loops in one process, so a lock contended in one test (e.g. concurrent
+    background inserts through database.locked_commit) raised "bound to a different event loop" in the next — an order-dependent leak.
+    Names imported by value elsewhere (main._cache_lock) are replaced alongside their source."""
+    import database as _db
+    import services.trading_engine as _te
+    monkeypatch.setattr(_db, "db_write_lock", asyncio.Lock())
+    _cl = asyncio.Lock()
+    monkeypatch.setattr(_te, "_cache_lock", _cl)
+    monkeypatch.setattr(_te, "_close_lock", asyncio.Lock())
+    _m = sys.modules.get("main")
+    if _m is not None:
+        if hasattr(_m, "_cache_lock"):
+            monkeypatch.setattr(_m, "_cache_lock", _cl)
+        for _n in ("_scan_lock", "_investor_lock", "_live_px_lock", "_PAPER_BOOK_LOCK"):
+            if isinstance(getattr(_m, _n, None), asyncio.Lock):
+                monkeypatch.setattr(_m, _n, asyncio.Lock())
+    from services import mcap_service as _mcs
+    if getattr(_mcs, "_save_lock", None) is not None:
+        monkeypatch.setattr(_mcs, "_save_lock", None)
+
+
+@pytest.fixture(autouse=True)
 def _no_orderbook_network(monkeypatch):
     """📖 Oct-3: manual opens read the order book (research stamp) — never the network in tests."""
     from services import binance_service as _bs
@@ -63,9 +87,12 @@ def _willy_hold_free(request, monkeypatch):
     Older tests drive the open paths with STUB db objects that cannot answer that read — for those (and for db=None, which would reach the
     real AsyncSessionLocal) the hold reads 'no WILLY open'. A real SQLAlchemy AsyncSession (in-memory SQLite) always gets the REAL check, and
     tests marked @pytest.mark.willy_hold get the real check whatever the db (tests/test_frenzy_willy.py)."""
-    if request.node.get_closest_marker("willy_hold"):
-        return
     import services.trading_engine as _te
+    if request.node.get_closest_marker("willy_hold"):
+        # 🔓 (DECISION_LOG 340) the hold's own tests pin the switch ON (trading_config.json runs it OFF since 2026-10-21); a test that
+        # checks the OFF path monkeypatches _willy_global_hold_on / frenzy_willy_global_hold itself
+        monkeypatch.setattr(_te.TradingEngine, "_willy_global_hold_on", lambda self: True)
+        return
     from sqlalchemy.ext.asyncio import AsyncSession as _AS
     _real = _te.TradingEngine._willy_hold_state
 

@@ -29,6 +29,7 @@ RTP_SLEEVES = {"FRENZY_WILLY": "resting_tp_willy_enabled", "FRENZY_LITE": "resti
                "FRENZY_WILLY_HT": "resting_tp_willy_enabled"}   # 🎲¼ 341: the quarter-size WILLY runs WILLY's exit — WILLY's switch
 RTP_MANUAL_KEY, RTP_OVERRIDE_KEY = "resting_tp_manual_enabled", "resting_tp_override_enabled"   # 🎯 (310) the operator's own fixed TPs
 RTP_SWITCHES = tuple(dict.fromkeys(RTP_SLEEVES.values())) + (RTP_MANUAL_KEY, RTP_OVERRIDE_KEY)   # unique (341: HT shares WILLY's switch)
+RTP_MANUAL_TP_MODES = ("FIXED", "FLOOR", "NOSTOP")   # 🎯 (310) the MANUAL exit modes whose TP is a fixed line (📥 343: + NOSTOP — typed or adopted from the app)
 RTP_ROW_STRATEGIES = tuple(RTP_SLEEVES) + ("MANUAL",)   # the sweep's row filter (+ every row with an exit override)
 RTP_QUERY_MIN_S = 1.0          # at most one order query per order per second (fill detection, only while the price is at / through)
 RTP_HEAL_RETRY_S = 30.0        # a failed placement retries per order no sooner than this
@@ -85,7 +86,7 @@ def rtp_row_enabled(th, row) -> bool:
 
 def rtp_row_target(th, row, held_minutes=None) -> Optional[Tuple[float, str]]:
     """🎯 (310) The resting TP this ROW should carry now → (NET tp %, close reason) or None (= withdraw / none). Restart-proof: read from the
-    row only. MANUAL: manual_exit_mode FIXED (None = FIXED, the exits' own default) or FLOOR (its optional TP) with pattern_fixed_tp_pct > 0
+    row only. MANUAL: manual_exit_mode FIXED (None = FIXED, the exits' own default), FLOOR or NOSTOP (their optional TP) with pattern_fixed_tp_pct > 0
     → MANUAL_TP; MOMENTUM / FRENZY / BULLRUN(_SL) or TP ≤ 0 / None → None. An exit override on a bot row: its pattern_fixed_tp_pct > 0 → OVERRIDE_TP,
     no TP → None (the sleeve's own TP is replaced, never kept). Otherwise the sleeve rule (rtp_target, incl. the LITE C stored TP). Never raises."""
     try:
@@ -94,7 +95,7 @@ def rtp_row_target(th, row, held_minutes=None) -> Optional[Tuple[float, str]]:
             return rtp_target(th, getattr(row, 'entry_strategy', None), held_minutes, getattr(row, 'frenzy_lite_tp_used', None))
         if not rtp_row_enabled(th, row):
             return None
-        if why == "MANUAL_TP" and str(getattr(row, 'manual_exit_mode', None) or "FIXED").upper() not in ("FIXED", "FLOOR"):   # FLOOR's optional TP is a fixed line too (Sep-30; AGT #22 10-19)
+        if why == "MANUAL_TP" and str(getattr(row, 'manual_exit_mode', None) or "FIXED").upper() not in RTP_MANUAL_TP_MODES:   # FLOOR's optional TP is a fixed line too (Sep-30; AGT #22 10-19) · NOSTOP's (343)
             return None
         tp = _f(getattr(row, 'pattern_fixed_tp_pct', None))
         return (tp, why) if tp and tp > 0 else None

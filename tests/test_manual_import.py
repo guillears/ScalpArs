@@ -107,11 +107,11 @@ def _harness(monkeypatch, tmp_path, *, paper=False, positions_seq=(None,), open_
         state["pos"] += 1; log.append(("positions", state["pos"]))
         src = seq[min(state["pos"] - 1, len(seq) - 1)]
         return None if src == "FAIL" else [dict(p) for p in src]
-    async def _oo(pair):
+    async def _oo(pair):   # 📥 (343) the symbol's open orders as list_symbol_open_orders returns them ([] = none, "FAIL" = unreadable)
         log.append(("open_orders", pair))
         n = sum(1 for x in log if x[0] == "open_orders")
         src = open_orders_seq[min(n - 1, len(open_orders_seq) - 1)] if open_orders_seq else open_orders
-        return None if src == "FAIL" else (src or {"regular": 0, "algo": 0, "total": 0})
+        return None if src == "FAIL" else [dict(o) for o in (src or [])]
     async def _place(pair, direction, trig):
         log.append(("backstop", pair, direction, round(trig, 8)))
         if place_delay:
@@ -119,8 +119,9 @@ def _harness(monkeypatch, tmp_path, *, paper=False, positions_seq=(None,), open_
             log.append(("backstop_done", bk_id))
         return bk_id
     async def _cancel(pair, algo_id): log.append(("cancel_backstop", algo_id)); return bk_cancel_ok
-    for name, fn in (("get_open_positions", _positions), ("count_symbol_open_orders", _oo), ("place_backstop_stop", _place),
-                     ("cancel_backstop_stop", _cancel)):
+    async def _cancel_reg(pair, oid): log.append(("cancel_regular", oid)); return {"result": "canceled", "filled": 0.0}
+    for name, fn in (("get_open_positions", _positions), ("list_symbol_open_orders", _oo), ("place_backstop_stop", _place),
+                     ("cancel_backstop_stop", _cancel), ("cancel_resting_tp", _cancel_reg)):
         monkeypatch.setattr(B, name, fn if not paper else _boom(name))
     for name in ("create_market_order", "close_position", "get_current_price", "cancel_all_backstops"):
         monkeypatch.setattr(B, name, _boom(name))
@@ -170,7 +171,7 @@ def _harness(monkeypatch, tmp_path, *, paper=False, positions_seq=(None,), open_
 
 def _imp(direction="LONG", exit_mode="FIXED", sl=1.5, tp=3.0, pair="FOOUSDT"):
     async def fn(eng, db):
-        return await eng.import_binance_position(db, pair, direction, exit_mode, sl, tp)
+        return await eng.import_binance_position(db, pair, direction, exit_mode, sl, tp, app_orders_seen=[])   # (343) what the pop-up showed
     return fn
 
 
@@ -258,11 +259,16 @@ def test_manual_cap_counts_imported_rows(monkeypatch, tmp_path):
     assert "manual trades are off" in asyncio.run(run(_imp()))
 
 
-def test_own_binance_orders_refuse_before_the_stop(monkeypatch, tmp_path):
-    run, log, T, read, eng, *_ = _harness(monkeypatch, tmp_path, open_orders={"regular": 1, "algo": 1, "total": 2})
+ENTRY_LIMIT = dict(kind="regular", id="77", type="LIMIT", side="BUY", qty=500.0, price=1.9, trigger_price=0.0, reduce_only=False, close_position=False)
+
+
+def test_other_binance_orders_refuse_before_the_stop(monkeypatch, tmp_path):
+    """📥 (343 — replaces DL 328's "any own order refuses"): an order the bot cannot take over (here a resting ENTRY limit) refuses before
+    anything is placed or cancelled; the app's own TP / SL no longer refuse (tests/test_import_nostop_block.py)."""
+    run, log, T, read, eng, *_ = _harness(monkeypatch, tmp_path, open_orders=[ENTRY_LIMIT])
     r = asyncio.run(run(_imp()))
-    assert "2 open order(s) on FOOUSDT (yours or a leftover) — cancel them in the Binance app first, or the bot's stop/TP would race them" in r
-    assert "may have left a reduce-only limit" not in r
+    assert "1 open order(s) on the symbol the bot cannot take over: LIMIT BUY @ 1.9" in r and "on the opening side" in r
+    assert "cancel them in the Binance app first (nothing changed)" in r and "may have left a reduce-only limit" not in r
     assert _kinds(log) == ["positions", "open_orders"] and _nothing_written(read)
     run, log, *_ = _harness(monkeypatch, tmp_path, open_orders="FAIL")
     assert "could not read the open orders of FOOUSDT" in asyncio.run(run(_imp())) and _kinds(log) == ["positions", "open_orders"]
@@ -307,7 +313,7 @@ def test_import_waits_for_the_pair_lock(monkeypatch, tmp_path):
     monkeypatch.setattr(T, "manual_open_wait_s", lambda tc: 0.05)
     async def go(eng, db):
         async with eng._pair_open_guard("FOOUSDT", None):
-            return await asyncio.create_task(eng.import_binance_position(db, "FOOUSDT", "LONG", "FIXED", 1.5, 3.0))
+            return await asyncio.create_task(eng.import_binance_position(db, "FOOUSDT", "LONG", "FIXED", 1.5, 3.0, app_orders_seen=[]))
     r = asyncio.run(run(go))
     assert "is being opened right now" in r and _kinds(log) == []
 
@@ -321,7 +327,7 @@ def test_momentum_mode_runs_the_first_tick_check(monkeypatch, tmp_path):
     async def go(eng, db):
         db.add(models.PairData(pair="FOOUSDT", price=2.0, volume_24h=1e6, ema5=2.05, ema8=2.06, ema13=2.1, updated_at=dt.datetime.utcnow()))   # LONG below EMA13, stack against
         await db.commit()
-        return await eng.import_binance_position(db, "FOOUSDT", "LONG", "MOMENTUM", None, None)
+        return await eng.import_binance_position(db, "FOOUSDT", "LONG", "MOMENTUM", None, None, app_orders_seen=[])
     r = asyncio.run(run(go))
     assert "Momentum stack would close this LONG at the first tick" in r and [x for x in log if x[0] == "backstop"] == []
 
@@ -340,7 +346,8 @@ def test_candidates_join_the_snapshot_and_skip_side_mismatch(monkeypatch, tmp_pa
     c = {x["pair"]: x for x in eng.import_candidates()}
     assert set(c) == {"FOOUSDT", "BAZUSDT"}
     f = c["FOOUSDT"]
-    assert f["side"] == "LONG" and f["qty"] == 1000.0 and f["entry_price"] == 2.0 and f["leverage"] == 20 and f["notional"] == 2000.0
+    assert f["side"] == "LONG" and f["qty"] == 1000.0 and f["entry_price"] == 2.0 and f["leverage"] == 20 and f["notional"] == 2100.0   # (343) at mark
+    assert f["notional_basis"] == "mark" and f["notional_entry"] == 2000.0
     assert f["investment"] == 100.0 and f["mark_price"] == 2.1 and f["unrealized_pnl"] == 100.0 and f["floor_stop_pct"] == -3.0
     assert f["max_stop_pct"] == 3.0 and f["importable"] is True and f["why_not"] is None and 11 <= f["snapshot_age_s"] <= 30
     assert c["BAZUSDT"]["importable"] is False and "not a whole number" in c["BAZUSDT"]["why_not"]
@@ -386,7 +393,7 @@ def test_endpoints(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "trading_engine", eng)
     async def go(eng, db):
         c = await main.manual_import_candidates()
-        ok = await main.manual_import(main.ManualImportRequest(pair="FOOUSDT", direction="LONG", exit_mode="FIXED", sl_pct=1.5, tp_pct=3.0), db=db)
+        ok = await main.manual_import(main.ManualImportRequest(pair="FOOUSDT", direction="LONG", exit_mode="FIXED", sl_pct=1.5, tp_pct=3.0, app_orders_seen=[]), db=db)
         try:
             await main.manual_import(main.ManualImportRequest(pair="FOOUSDT", direction="LONG"), db=db)
             bad = None
@@ -483,17 +490,17 @@ console.log(JSON.stringify({ r1, conv1, r2, p3, n: importNotional() }));
 
 # ── review fixes (DECISION_LOG 328 "Reviews") ─────────────────────────────────────────────────────────────────────────────────────
 def test_own_orders_message_flags_a_bot_leftover(monkeypatch, tmp_path):
-    run, log, T, read, eng, *_ = _harness(monkeypatch, tmp_path, open_orders={"regular": 1, "algo": 0, "total": 1})
+    run, log, T, read, eng, *_ = _harness(monkeypatch, tmp_path, open_orders=[ENTRY_LIMIT])
     eng._rtp_dirty_pairs = {"FOOUSDT"}   # the bot's last close on the pair could not verify its reduce-only limit
     r = asyncio.run(run(_imp()))
-    assert "1 open order(s) on FOOUSDT (yours or a leftover)" in r and "the bot's last close on this pair may have left a reduce-only limit" in r
+    assert "1 open order(s) on the symbol the bot cannot take over" in r and "the bot's last close on this pair may have left a reduce-only limit" in r
 
 
 def test_cancel_during_placement_withdraws_the_placed_stop(monkeypatch, tmp_path):
     """(review 1) a task cancelled while place_backstop_stop is in flight waits for it (shielded) and withdraws the stop it placed."""
     run, log, T, read, eng, *_ = _harness(monkeypatch, tmp_path, place_delay=0.05)
     async def go(eng, db):
-        t = asyncio.ensure_future(eng.import_binance_position(db, "FOOUSDT", "LONG", "FIXED", 1.5, 3.0))
+        t = asyncio.ensure_future(eng.import_binance_position(db, "FOOUSDT", "LONG", "FIXED", 1.5, 3.0, app_orders_seen=[]))
         while not any(x[0] == "backstop" for x in log):
             await asyncio.sleep(0.001)
         t.cancel()
@@ -510,11 +517,11 @@ def test_cancel_during_placement_withdraws_the_placed_stop(monkeypatch, tmp_path
 
 def test_failed_placement_that_may_have_landed_says_so(monkeypatch, tmp_path):
     """(review 1) the call failed (None) but Binance now shows an algo order → the refusal says a stop MAY rest there."""
-    run, log, T, read, eng, *_ = _harness(monkeypatch, tmp_path, bk_id=None,
-                                          open_orders_seq=[{"regular": 0, "algo": 0, "total": 0}, {"regular": 0, "algo": 1, "total": 1}])
+    landed = dict(kind="algo", id="999", type="STOP_MARKET", side="SELL", qty=0.0, price=0.0, trigger_price=1.95, reduce_only=False, close_position=True)
+    run, log, T, read, eng, *_ = _harness(monkeypatch, tmp_path, bk_id=None, open_orders_seq=[[], [landed]])
     r = asyncio.run(run(_imp()))
     assert "could not be confirmed" in r and "A stop MAY rest on Binance" in r and _nothing_written(read)
-    run, log, *_ = _harness(monkeypatch, tmp_path, bk_id=None, open_orders_seq=[{"regular": 0, "algo": 0, "total": 0}, "FAIL"])
+    run, log, *_ = _harness(monkeypatch, tmp_path, bk_id=None, open_orders_seq=[[], "FAIL"])
     assert "A stop MAY rest on Binance" in asyncio.run(run(_imp()))
 
 

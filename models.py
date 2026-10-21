@@ -382,7 +382,14 @@ class Order(Base):
     entry_gap_5_20_prev_signed_pct = Column(Float, nullable=True)   # same, one 5m bar earlier (EMA5/EMA20 prev1, current price)
     entry_gap_5_8_signed_pct = Column(Float, nullable=True)         # (EMA5 − EMA8) / EMA8 %, + = EMA5 above
     # 🖐 Sep-29 MANUAL sleeve (operator-opened positions; entry_strategy='MANUAL'; excluded from every systematic read)
-    manual_exit_mode = Column(String(12), nullable=True)            # FIXED | MOMENTUM | FLOOR | FRENZY | BULLRUN | BULLRUN_SL
+    manual_exit_mode = Column(String(12), nullable=True)            # FIXED | MOMENTUM | FLOOR | FRENZY | BULLRUN | BULLRUN_SL | NOSTOP (343)
+    # 🖐 / 📥 (DECISION_LOG 343) NOSTOP rows: the EMERGENCY stop distance (price %, positive — the backstop unit: trigger = entry × (1 ∓ pct/100))
+    # the row's only stop rests at on Binance (backstop_algo_id). NULL = none (a true no stop, or any other mode). Rides the orders CSV (D12).
+    manual_emergency_stop_pct = Column(Float, nullable=True)
+    # ⛔ (DECISION_LOG 343) "block bot trades while this is open": while ANY open row carries True, open_position refuses every bot sleeve
+    # open (counter MANUAL_BLOCK; manual / import / ➕ never blocked). Lifts when the row closes (only OPEN rows are read) or by the
+    # dashboard's "Lift block" (POST /api/manual/lift_block). The flag stays on the closed row as the record. Rides the orders CSV (D12).
+    manual_block_bot = Column(Boolean, default=False, nullable=True)
     # ✎ Oct-2 (DECISION_LOG 182): the operator replaced this position's exit with his own stop / target P&L (set from the Close
     # popup). For a BOT trade: from that moment ONLY pattern_fixed_sl_pct / pattern_fixed_tp_pct (+ max hold) close it, and the
     # close reads OVERRIDE_SL / OVERRIDE_TP. For a MANUAL trade the mode simply becomes FIXED. NULL = never overridden.

@@ -33,7 +33,7 @@ def test_open_paths_record_what_was_placed():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert "backstop_pct=_bk_rec_pct, backstop_trigger_price=_bk_rec_trig," in eng                     # bot open
     assert "and (self.is_paper_mode or _bk_algo_id)):" in eng                                          # live: only a placed stop is recorded
-    assert "order.backstop_pct = order_backstop_pct(th, \"MANUAL\", exit_mode, sl, leverage)" in eng   # manual open
+    assert "_bk_rec = manual_backstop_pct_for(th, exit_mode, sl, leverage, emergency)" in eng and "order.backstop_pct = _bk_rec" in eng   # manual open (343: NOSTOP → emergency / none)
     assert eng.count("backstop_pct, ") >= 2 and "order.backstop_pct, order.backstop_trigger_price = _bk_pct, _bk_tr" in eng   # failed-close re-place
     assert "_bko.backstop_pct, _bko.backstop_trigger_price = _bk_pct, _bk_tr" in eng                  # heal sweep
     assert "await self.backstop_reprice_sweep()" in eng

@@ -676,10 +676,13 @@ class ManualOpenRequest(BaseModel):   # 🖐 Sep-29 MANUAL sleeve
     direction: str
     investment: float
     leverage: float = 20.0
-    exit_mode: str = "FIXED"          # FIXED | MOMENTUM | FLOOR | FRENZY | BULLRUN | BULLRUN_SL
+    exit_mode: str = "FIXED"          # FIXED | MOMENTUM | FLOOR | FRENZY | BULLRUN | BULLRUN_SL | NOSTOP (343)
     sl_pct: Optional[float] = None    # price-move %, FIXED mode (sign ignored)
-    tp_pct: Optional[float] = None    # price-move %, FIXED or FLOOR mode, optional
+    tp_pct: Optional[float] = None    # price-move %, FIXED / FLOOR / NOSTOP mode, optional
     note: Optional[str] = None
+    emergency_stop: bool = True               # 🖐 (343) NOSTOP: the one exchange stop at entry × (1 ∓ pct %); False = a true no stop
+    emergency_stop_pct: Optional[float] = None   # price-move %; None = thresholds.manual_emergency_stop_pct (15)
+    block_bot: bool = False                   # ⛔ (343) no bot sleeve opens while this row is open
 
 
 # ============== Auth Routes ==============
@@ -844,6 +847,13 @@ async def get_status(db: AsyncSession = Depends(get_db)):
         logger.debug(f"[STATUS] bearrun chip skipped: {e}")
     # ⚡ Sep-30 SURGE sleeves chip (both sides)
     _status["surge"] = _surge_monitor_payload()
+    # ⛔ (DECISION_LOG 343 review #4) the bot-block flag could not be read on the last open attempt (fail-closed: bot opens refused) — the
+    # dashboard says so; cleared by the next successful read
+    try:
+        _mbf = trading_engine.__dict__.get('_manual_block_read_failed_at')
+        _status["manual_block_unreadable"] = (_mbf.isoformat() if _mbf is not None else None)
+    except Exception:
+        _status["manual_block_unreadable"] = None
     return _status
 
 
@@ -1843,6 +1853,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "entry_btc_1d_ret_pct": getattr(o, 'entry_btc_1d_ret_pct', None), "entry_pair_1h_ema20_200_gap_pct": getattr(o, 'entry_pair_1h_ema20_200_gap_pct', None),
             "entry_pair_1d_ndi": getattr(o, 'entry_pair_1d_ndi', None), "entry_btc_4h_ema50_200_gap_pct": getattr(o, 'entry_btc_4h_ema50_200_gap_pct', None),   # 🪤 Sep-29 fade laggard readings
             "manual_exit_mode": getattr(o, 'manual_exit_mode', None), "manual_note": getattr(o, 'manual_note', None),   # 🖐 Sep-29 MANUAL sleeve
+            "manual_emergency_stop_pct": getattr(o, 'manual_emergency_stop_pct', None), "manual_block_bot": bool(getattr(o, 'manual_block_bot', False) or False),   # 🖐 / ⛔ (343)
             "entry_frenzy_willy_trigger": getattr(o, 'entry_frenzy_willy_trigger', None),   # 🎲 Oct-8 (251): FRENZY_WILLY entry A / B (open-order badge)
             "frenzy_lite_tp_used": getattr(o, 'frenzy_lite_tp_used', None), "lite_c_zone": getattr(o, 'lite_c_zone', None),   # 🎯 (301) LITE C stored TP / zone
             "entry_frenzy_willy_wait_bars": getattr(o, 'entry_frenzy_willy_wait_bars', None), "entry_vol_mcap_ratio": getattr(o, 'entry_vol_mcap_ratio', None),   # 🟥🔄 (251)
@@ -2305,6 +2316,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_btc_1d_ret_pct": getattr(o, 'entry_btc_1d_ret_pct', None), "entry_pair_1h_ema20_200_gap_pct": getattr(o, 'entry_pair_1h_ema20_200_gap_pct', None),
             "entry_pair_1d_ndi": getattr(o, 'entry_pair_1d_ndi', None), "entry_btc_4h_ema50_200_gap_pct": getattr(o, 'entry_btc_4h_ema50_200_gap_pct', None),   # 🪤 Sep-29 fade laggard readings
             "manual_exit_mode": getattr(o, 'manual_exit_mode', None), "manual_note": getattr(o, 'manual_note', None),   # 🖐 Sep-29 MANUAL sleeve
+            "manual_emergency_stop_pct": getattr(o, 'manual_emergency_stop_pct', None), "manual_block_bot": bool(getattr(o, 'manual_block_bot', False) or False),   # 🖐 / ⛔ (343)
             "entry_frenzy_willy_trigger": getattr(o, 'entry_frenzy_willy_trigger', None),   # 🎲 Oct-8 (251): FRENZY_WILLY entry A / B (closed orders: the A / B split)
             "frenzy_lite_tp_used": getattr(o, 'frenzy_lite_tp_used', None), "lite_c_zone": getattr(o, 'lite_c_zone', None),   # 🎯 (301) LITE C stored TP / zone
             "entry_frenzy_willy_wait_bars": getattr(o, 'entry_frenzy_willy_wait_bars', None), "entry_vol_mcap_ratio": getattr(o, 'entry_vol_mcap_ratio', None),   # 🟥🔄 (251)
@@ -2631,7 +2643,13 @@ class ManualImportRequest(BaseModel):   # 📥 (DECISION_LOG 328)
     direction: str
     exit_mode: str = "FLOOR"
     sl_pct: Optional[float] = None            # P&L % net of fees, typed positive (the engine makes it negative) — FIXED / BULLRUN_SL
-    tp_pct: Optional[float] = None            # P&L % net of fees — FIXED / FLOOR (optional)
+    tp_pct: Optional[float] = None            # P&L % net of fees — FIXED / FLOOR / NOSTOP (optional)
+    keep_app_tp: bool = True                  # 📥 (343) adopt the app's TP (the bot cancels it and places its own at the same price)
+    app_tp_price: Optional[float] = None      # the app TP price the pop-up showed (a different one at the click → refused)
+    emergency_stop: bool = True               # NOSTOP: the one exchange stop; False = a true no stop
+    emergency_stop_pct: Optional[float] = None   # price-move %; None = thresholds.manual_emergency_stop_pct (15)
+    block_bot: bool = False                   # ⛔ no bot sleeve opens while this row is open
+    app_orders_seen: Optional[List[str]] = None   # (343 review #3) "kind:id" of the app orders the pop-up showed — an unseen one → refused
 
 
 @app.get("/api/app_trades/reconcile")
@@ -2671,7 +2689,10 @@ async def manual_import(request: ManualImportRequest, db: AsyncSession = Depends
     readable refusal (nothing written, nothing left on the exchange); 500 = a booking failure (the text says what is on Binance)."""
     try:
         order = await trading_engine.import_binance_position(db, pair=request.pair, direction=request.direction, exit_mode=request.exit_mode,
-                                                             sl_pct=request.sl_pct, tp_pct=request.tp_pct)
+                                                             sl_pct=request.sl_pct, tp_pct=request.tp_pct, keep_app_tp=request.keep_app_tp,
+                                                             app_tp_price=request.app_tp_price, emergency_stop=request.emergency_stop,
+                                                             emergency_stop_pct=request.emergency_stop_pct, block_bot=request.block_bot,
+                                                             app_orders_seen=request.app_orders_seen)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -2682,7 +2703,41 @@ async def manual_import(request: ManualImportRequest, db: AsyncSession = Depends
             "notional_value": round(float(order.notional_value or 0), 2), "entry_fee": order.entry_fee, "exit_mode": order.manual_exit_mode,
             "sl_pct": order.pattern_fixed_sl_pct, "tp_pct": order.pattern_fixed_tp_pct, "backstop_pct": order.backstop_pct,
             "backstop_trigger_price": order.backstop_trigger_price, "resting_tp_price": getattr(order, 'resting_tp_price', None),
-            "imported_at": (order.imported_at.isoformat() if order.imported_at else None), "import_source": order.import_source}
+            "imported_at": (order.imported_at.isoformat() if order.imported_at else None), "import_source": order.import_source,
+            # 📥 (343) the app's orders taken over / cancelled · No-stop emergency · ⛔ block
+            "adopted_tp_price": getattr(order, '_import_adopted_tp_price', None), "app_orders_cancelled": getattr(order, '_import_cancelled', []),
+            "tp_partial": bool(getattr(order, '_import_tp_partial', False)), "emergency_stop_pct": order.manual_emergency_stop_pct,
+            "block_bot": bool(order.manual_block_bot)}
+
+
+@app.get("/api/manual/import_orders")
+async def manual_import_orders(pair: str, direction: str):
+    """📥 (DECISION_LOG 343): the import pop-up's read of ONE untracked position — re-read from Binance with its liquidation price, and the
+    symbol's open orders classified TP / SL / other (the app TP's price and its net % on this entry; a partial-coverage flag; the refusal an
+    "other" order raises). Read-only; {'error': …} when a read failed. Live only."""
+    try:
+        return await trading_engine.import_preview(pair, direction)
+    except Exception as e:
+        logger.error(f"[MANUAL_IMPORT] import_orders failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"import orders read failed: {e}")
+
+
+class LiftBlockRequest(BaseModel):   # ⛔ (DECISION_LOG 343)
+    order_id: int
+
+
+@app.post("/api/manual/lift_block")
+async def manual_lift_block(request: LiftBlockRequest, db: AsyncSession = Depends(get_db)):
+    """⛔ (DECISION_LOG 343): "Lift block" — the bot may open trades again although this manual position stays open (manual_block_bot =
+    False on that row). 400 = a readable refusal (not open / not blocking)."""
+    try:
+        o = await trading_engine.lift_manual_block(db, request.order_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[MANUAL_BLOCK] lift failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"lift block failed: {e}")
+    return {"ok": True, "order_id": o.id, "pair": o.pair, "manual_block_bot": bool(o.manual_block_bot)}
 
 
 @app.get("/api/manual/limits")
@@ -2708,7 +2763,8 @@ async def manual_open(request: ManualOpenRequest, db: AsyncSession = Depends(get
     try:
         order = await trading_engine.open_manual_position(
             db, pair=request.pair, direction=request.direction, investment=request.investment, leverage=request.leverage,
-            exit_mode=request.exit_mode, sl_pct=request.sl_pct, tp_pct=request.tp_pct, note=request.note)
+            exit_mode=request.exit_mode, sl_pct=request.sl_pct, tp_pct=request.tp_pct, note=request.note,
+            emergency_stop=request.emergency_stop, emergency_stop_pct=request.emergency_stop_pct, block_bot=request.block_bot)
     except ManualLimitError as e:                # 🪜 over the exchange's position limit: same 400 + the one-click corrections
         return JSONResponse(status_code=400, content={"detail": str(e), "fixes": e.fixes})
     except ValueError as e:
@@ -2718,7 +2774,9 @@ async def manual_open(request: ManualOpenRequest, db: AsyncSession = Depends(get
         raise HTTPException(status_code=500, detail=f"manual open failed: {e}")
     return {"status": "open", "order_id": order.id, "pair": order.pair, "direction": order.direction, "entry_price": order.entry_price,
             "exit_mode": order.manual_exit_mode, "sl_pct": order.pattern_fixed_sl_pct, "tp_pct": order.pattern_fixed_tp_pct,
-            "block_reason": order.manual_block_reason, "setup_rating": order.manual_setup_rating, "setup_side": order.manual_setup_side}
+            "block_reason": order.manual_block_reason, "setup_rating": order.manual_setup_rating, "setup_side": order.manual_setup_side,
+            "emergency_stop_pct": order.manual_emergency_stop_pct, "block_bot": bool(order.manual_block_bot),   # 🖐 (343)
+            "backstop_trigger_price": order.backstop_trigger_price, "warning": getattr(order, '_open_warning', None)}
 
 
 @app.post("/api/recover-positions")
@@ -3219,12 +3277,12 @@ async def get_performance(regime: str = None, window_hours: int = None,
     await trading_engine.initialize(db)
 
     try:
-        return await _compute_performance(db, regime=regime, window_hours=window_hours,
-                                          from_date=from_date, to_date=to_date, flip_source=flip_source,
-                                          direction=direction, cell_source=cell_source, origin=origin)
+        out = await _compute_performance(db, regime=regime, window_hours=window_hours,
+                                         from_date=from_date, to_date=to_date, flip_source=flip_source,
+                                         direction=direction, cell_source=cell_source, origin=origin)
     except Exception as e:
         logger.error(f"[PERF] Unhandled error in get_performance: {e}\n{traceback.format_exc()}")
-        return {
+        out = {
             "total_trades": 0, "total_longs": 0, "total_shorts": 0,
             "total_wins": 0, "total_losses": 0,
             "win_rate": 0, "win_rate_longs": 0, "win_rate_shorts": 0,
@@ -3293,6 +3351,18 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "day_time_heatmap": [],
             "_error": str(e)
         }
+    # ⛔ (DECISION_LOG 343) the active "block bot trades" state, printed by BOTH text exports (D12). Its own guard: a failure here never
+    # zeroes the performance payload; None = unreadable (the exports say so), [] = no block.
+    try:
+        if isinstance(out, dict):
+            out["manual_block"] = await trading_engine.manual_block_state(db)
+    except Exception as _mb_err:
+        logger.error(f"[PERF] manual block state failed: {_mb_err}")
+        try:
+            out["manual_block"] = None
+        except Exception:
+            pass
+    return out
 
 
 def _compute_entry_type_stats(orders, signal_expired_orders=None):

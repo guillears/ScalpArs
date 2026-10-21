@@ -325,10 +325,12 @@
                     <label class="flex flex-col text-gray-400">Side<select id="manual-direction" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></label>
                     <label class="flex flex-col text-gray-400">Size $<input id="manual-investment" type="number" step="10" min="1" value="500" oninput="manualLimitHint()" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400">Lev<input id="manual-leverage" type="number" step="1" min="1" max="125" value="20" oninput="manualLimitHint()" class="w-14 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
-                    <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack; refused only when its EMA13-cross exit would close the trade at the first tick (counter-trend entry with the EMA5/EMA8 stack against it) · FLOOR = hard stop at the floor (the widest safe stop for your leverage) + optional TP · FRENZY = the FRENZY sleeve's exit with its CURRENT settings (stop, trailing exit, max hold — see the FRENZY box); no SL / TP to type · BULL-RUN = the Bull-Run sleeve's exit with its CURRENT settings (stop widened by ATR, break-even lock, ATR trail, profit ladder — exact values in the MANUAL badge hover); no SL / TP to type · BULL-RUN TP + CUSTOM SL = your own stop (type it in SL %) until the break-even arms at +1 %, then the same Bull-Run profit side (lock, ATR trail, ladder); no TP to type">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM" selected>Momentum stack</option><option value="FLOOR">Floor stop (+ opt. TP)</option><option value="FRENZY">🔥 Frenzy exit</option><option value="BULLRUN">🌊 Bull-Run exit</option><option value="BULLRUN_SL">🌊 Bull-Run TP + custom SL</option></select></label>
+                    <label class="flex flex-col text-gray-400" title="FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack; refused only when its EMA13-cross exit would close the trade at the first tick (counter-trend entry with the EMA5/EMA8 stack against it) · FLOOR = hard stop at the floor (the widest safe stop for your leverage) + optional TP · FRENZY = the FRENZY sleeve's exit with its CURRENT settings (stop, trailing exit, max hold — see the FRENZY box); no SL / TP to type · BULL-RUN = the Bull-Run sleeve's exit with its CURRENT settings (stop widened by ATR, break-even lock, ATR trail, profit ladder — exact values in the MANUAL badge hover); no SL / TP to type · BULL-RUN TP + CUSTOM SL = your own stop (type it in SL %) until the break-even arms at +1 %, then the same Bull-Run profit side (lock, ATR trail, ladder); no TP to type">Exit<select id="manual-exit-mode" class="bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200" onchange="manualExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM" selected>Momentum stack</option><option value="FLOOR">Floor stop (+ opt. TP)</option><option value="FRENZY">🔥 Frenzy exit</option><option value="BULLRUN">🌊 Bull-Run exit</option><option value="BULLRUN_SL">🌊 Bull-Run TP + custom SL</option><option value="NOSTOP">🚫 No stop (+ opt. TP)</option></select></label>
                     <div class="flex flex-col text-gray-400" title="⇄ (DECISION_LOG 326) type the stop / target in % (P&amp;L net of fees, what the engine uses) or in $ (= Size × Lev × % / 100, exactly). The order always carries the %. Remembered in this browser.">Unit<div id="manual-sltp-unit" role="group" aria-label="Stop / target unit" class="flex rounded border border-amber-500/40 overflow-hidden"><button type="button" id="manual-sltp-unit-pct" onclick="manualSetSlTpUnit('pct')" aria-pressed="true" class="px-2 py-1 text-xs">%</button><button type="button" id="manual-sltp-unit-usd" onclick="manualSetSlTpUnit('usd')" aria-pressed="false" class="px-2 py-1 text-xs border-l border-amber-500/40">$</button></div></div>
                     <label class="flex flex-col text-gray-400"><span class="whitespace-nowrap"><span id="manual-sl-unit-lbl">SL %</span> <span id="manual-sl-conv" class="text-[10px] text-gray-500"></span></span><input id="manual-sl" type="number" step="0.1" min="0" placeholder="1.5" class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
                     <label class="flex flex-col text-gray-400"><span class="whitespace-nowrap"><span id="manual-tp-unit-lbl">TP %</span> <span id="manual-tp-conv" class="text-[10px] text-gray-500"></span></span><input id="manual-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-20 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label>
+                    <div id="manual-emergency-wrap" class="hidden items-end gap-2 text-gray-400" title="🚫 (DECISION_LOG 343) No stop: the bot never closes this trade on a loss (no stop, no floor, no max hold) — only at the TP or when you close it. Emergency stop ticked = ONE stop-market order (close-all) rests on Binance this % of PRICE from the fill (LONG below, SHORT above) — the only stop; it is a price move, not the net-of-fees SL % (the loss is ≈ this % of the position + fees). Unticked = nothing on the loss side: loss unlimited until liquidation. Live: a % at or beyond the liquidation price Binance reports after the fill is moved inside it (you are told)."><label class="flex items-center gap-1 pb-1 whitespace-nowrap"><input id="manual-emergency-on" type="checkbox" checked onchange="manualExitModeChanged()" class="accent-amber-400"> Emergency stop</label><label class="flex flex-col">% of price<input id="manual-emergency-pct" type="number" step="0.5" min="0.5" max="94" value="15" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200"></label></div>
+                    <label class="basis-full flex items-center gap-1 text-[11px] text-rose-300" title="⛔ (DECISION_LOG 343) While this position is open the bot opens NO trade of its own (every sleeve refused, counter MANUAL_BLOCK) — to keep the account's collateral for it. Your manual / import / ➕ trades are never blocked. Lifts by itself when this position closes; the dashboard banner has a Lift block button."><input id="manual-block-bot" type="checkbox" class="accent-rose-400"> ⛔ Block bot trades while this is open</label>
                     <div id="manual-exit-explain" class="basis-full text-[11px] text-sky-200/90 -mt-1" aria-live="polite" title="📖 (DECISION_LOG 338) What the chosen exit will do, from the bot's LIVE saved settings (re-read at page load and after every successful Save) — in the unit picked (% or $; $ = Size × Lev × % / 100). Stops and targets are P&amp;L % net of fees, as the engine reads them. Greyed SL / TP boxes are not used by this exit and are never sent."></div>
                     <div id="manual-limit-hint" class="hidden basis-full text-[11px] text-gray-500 -mt-1" title="🪜 The exchange's position limit for this pair at the leverage typed (Binance lowers the leverage it allows as the position grows). An order over the limit is refused, never resized."></div>
                     <div id="manual-pair-hint" class="basis-full text-[11px] text-gray-500 -mt-1" title="What the bot sees for this pair right now — stamped on the order automatically (manual_block_reason / manual_setup_rating / manual_setup_side in the export)"></div>
@@ -369,7 +371,7 @@
             <div id="import-position-modal" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="import-position-modal-title" onclick="importModalBackdropClick(event)">
                 <div class="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-sky-500/30 bg-[#1f2333] p-4 shadow-2xl" oninput="importRiskLine()" onchange="importRiskLine()">
                     <div class="flex items-center justify-between mb-3">
-                        <h3 id="import-position-modal-title" class="text-sm font-semibold text-sky-300" title="Takes over a position you opened in the Binance app: no order is sent for the position itself. The bot books it at Binance's own entry price and size (the entry fee is an estimate), places its exchange safety stop, and from then on runs the exit you pick here, exactly like a 🖐 manual trade. SL / TP are P&amp;L % NET of fees on the imported entry. Refused when the position has its own TP / SL orders on Binance (cancel them in the app first), when the stop / target is already passed, or when the position changes while it is being imported.">📥 Import from Binance</h3>
+                        <h3 id="import-position-modal-title" class="text-sm font-semibold text-sky-300" title="Takes over a position you opened in the Binance app: no order is sent for the position itself. The bot books it at Binance's own entry price and size (the entry fee is an estimate), places its exchange safety stop, and from then on runs the exit you pick here, exactly like a 🖐 manual trade. SL / TP are P&amp;L % NET of fees on the imported entry. The app's own TP / SL on Binance are cancelled at the import; a kept TP is re-created by the bot at the same price (DECISION_LOG 343). Refused when another kind of order rests on the symbol, when the stop / target is already passed, or when the position changes while it is being imported.">📥 Import from Binance</h3>
                         <button type="button" id="import-position-close" onclick="closeImportModal()" class="px-2 py-0.5 rounded text-gray-400 hover:text-white hover:bg-white/10" title="Close (Esc)" aria-label="Close">✕</button>
                     </div>
                     <div class="text-xs space-y-1">
@@ -377,10 +379,13 @@
                         <div id="import-pos-facts" class="text-gray-400"></div>
                     </div>
                     <div class="flex flex-wrap items-end gap-3 text-xs mt-3">
-                    <label class="flex flex-col text-gray-400" title="The same exits as the 🖐 manual entry. FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack (refused when its EMA13-cross exit would close the trade at the first tick) · FLOOR = hard stop at the widest safe stop for the position's leverage + optional TP · FRENZY = the FRENZY sleeve's exit with its CURRENT settings · BULL-RUN = the Bull-Run sleeve's exit · BULL-RUN TP + CUSTOM SL = your own stop until the break-even arms, then the Bull-Run profit side">Exit<select id="import-exit-mode" class="bg-white/5 border border-sky-500/40 rounded px-2 py-1 text-sky-200" onchange="importExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM">Momentum stack</option><option value="FLOOR" selected>Floor stop (+ opt. TP)</option><option value="FRENZY">🔥 Frenzy exit</option><option value="BULLRUN">🌊 Bull-Run exit</option><option value="BULLRUN_SL">🌊 Bull-Run TP + custom SL</option></select></label>
+                    <label class="flex flex-col text-gray-400" title="The same exits as the 🖐 manual entry. FIXED = only your SL (and optional TP) · MOMENTUM = the momentum exit stack (refused when its EMA13-cross exit would close the trade at the first tick) · FLOOR = hard stop at the widest safe stop for the position's leverage + optional TP · FRENZY = the FRENZY sleeve's exit with its CURRENT settings · BULL-RUN = the Bull-Run sleeve's exit · BULL-RUN TP + CUSTOM SL = your own stop until the break-even arms, then the Bull-Run profit side">Exit<select id="import-exit-mode" class="bg-white/5 border border-sky-500/40 rounded px-2 py-1 text-sky-200" onchange="importExitModeChanged()"><option value="FIXED">Custom SL/TP</option><option value="MOMENTUM">Momentum stack</option><option value="FLOOR" selected>Floor stop (+ opt. TP)</option><option value="FRENZY">🔥 Frenzy exit</option><option value="BULLRUN">🌊 Bull-Run exit</option><option value="BULLRUN_SL">🌊 Bull-Run TP + custom SL</option><option value="NOSTOP">🚫 No stop (+ opt. TP)</option></select></label>
                     <div class="flex flex-col text-gray-400" title="⇄ (DECISION_LOG 326) type the stop / target in % (P&amp;L net of fees, what the engine uses) or in $ (= quantity × entry × % / 100, exactly). The import always carries the %. Remembered in this browser.">Unit<div id="import-sltp-unit" role="group" aria-label="Stop / target unit" class="flex rounded border border-sky-500/40 overflow-hidden"><button type="button" id="import-sltp-unit-pct" onclick="importSetSlTpUnit('pct')" aria-pressed="true" class="px-2 py-1 text-xs">%</button><button type="button" id="import-sltp-unit-usd" onclick="importSetSlTpUnit('usd')" aria-pressed="false" class="px-2 py-1 text-xs border-l border-sky-500/40">$</button></div></div>
                     <label class="flex flex-col text-gray-400"><span class="whitespace-nowrap"><span id="import-sl-unit-lbl">SL %</span> <span id="import-sl-conv" class="text-[10px] text-gray-500"></span></span><input id="import-sl" type="number" step="0.1" min="0" placeholder="1.5" class="w-20 bg-white/5 border border-sky-500/40 rounded px-2 py-1 text-sky-200"></label>
                     <label class="flex flex-col text-gray-400"><span class="whitespace-nowrap"><span id="import-tp-unit-lbl">TP %</span> <span id="import-tp-conv" class="text-[10px] text-gray-500"></span></span><input id="import-tp" type="number" step="0.1" min="0" placeholder="opt." class="w-20 bg-white/5 border border-sky-500/40 rounded px-2 py-1 text-sky-200"></label>
+                    <div id="import-emergency-wrap" class="hidden items-end gap-2 text-gray-400" title="🚫 (DECISION_LOG 343) No stop: the bot never closes this trade on a loss (no stop, no floor, no max hold) — only at the TP or when you close it. Emergency stop ticked = ONE stop-market order (close-all) rests on Binance this % of PRICE from the entry (LONG below, SHORT above) — the only stop; a price move, not the net-of-fees SL % (the loss is ≈ this % of the position + fees). Refused when it sits at or beyond the liquidation price Binance reports. Unticked = nothing on the loss side: loss unlimited until liquidation."><label class="flex items-center gap-1 pb-1 whitespace-nowrap"><input id="import-emergency-on" type="checkbox" checked onchange="importExitModeChanged()" class="accent-sky-400"> Emergency stop</label><label class="flex flex-col">% of price<input id="import-emergency-pct" type="number" step="0.5" min="0.5" max="94" value="15" class="w-16 bg-white/5 border border-sky-500/40 rounded px-2 py-1 text-sky-200"></label></div>
+                    <div class="basis-full text-[11px] space-y-0.5" title="📥 (DECISION_LOG 343) The orders resting on Binance for this symbol, read when the pop-up opened (re-read at the import). On Import the bot places its own stop first, then CANCELS the app's TP / SL, checks they are gone, books the trade and places its own take profit. Kept TP = the bot's own TP at the same price, covering the whole position. Any other order (an entry limit, a trailing stop …) refuses the import — nothing is changed."><div id="import-app-orders" class="text-gray-400"></div><label id="import-keep-tp-wrap" class="hidden items-center gap-1 text-sky-200"><input id="import-keep-tp" type="checkbox" checked onchange="importExitModeChanged()" class="accent-sky-400"> Keep it (the bot takes it over)</label></div>
+                    <label class="basis-full flex items-center gap-1 text-[11px] text-rose-300" title="⛔ (DECISION_LOG 343) While this position is open the bot opens NO trade of its own (every sleeve refused, counter MANUAL_BLOCK) — to keep the account's collateral for it. Your manual / import / ➕ trades are never blocked. Lifts by itself when this position closes; the dashboard banner has a Lift block button."><input id="import-block-bot" type="checkbox" class="accent-rose-400"> ⛔ Block bot trades while this is open</label>
                     <div id="import-risk-line" class="basis-full text-[11px] text-gray-400" title="Loss if the stop fires, on the imported position (quantity × entry). Stops are P&amp;L % NET of fees (the engine closes when the trade's net-of-fees P&amp;L reaches the stop), so the round-trip fee is already inside this figure. Slippage past the stop is not included. Account = the latest total portfolio shown on the dashboard."></div>
                     <div id="import-what-line" class="basis-full text-[11px] text-sky-200/80"></div>
                     <div class="basis-full flex justify-end"><button id="import-pos-btn" onclick="submitImportPosition()" class="px-4 py-2 rounded-lg bg-sky-500/20 border border-sky-400/60 text-sky-200 hover:bg-sky-500/30 transition font-semibold disabled:opacity-40 disabled:cursor-not-allowed">📥 Import position</button></div>
@@ -425,6 +430,7 @@
             <!-- 📥 (DECISION_LOG 328) shown only while Binance holds a position the bot does not track (UNTRACKED NO_ROW); refreshed with the
                  open-orders cadence (≥ 5 s apart). Each line has its 📥 Import button (opens #import-position-modal). -->
             <div id="import-candidates-banner" class="hidden mb-3 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-100 space-y-1" role="status" aria-live="polite"></div>
+            <div id="manual-block-banner" class="hidden mb-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100 space-y-1" role="status" aria-live="polite" title="⛔ (DECISION_LOG 343) A manual position you flagged blocks every bot entry while it is open (counter MANUAL_BLOCK). It lifts by itself when that position closes."></div>
             <div class="flex items-center space-x-8 border-b border-white/10 mb-4">
                 <button onclick="switchOrdersTab('transactions', event)" id="tab-transactions" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition tab-active">
                     Transactions
@@ -5646,6 +5652,8 @@
                                         <input type="number" step="0.1" id="config-spike-fade-lag-btc-gap-min" class="w-16 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="0"></label>
                                     <label class="flex items-center gap-1 text-xs text-amber-300" title="🖐 Sep-29 MANUAL sleeve: hard stop (% of price move) used by the FLOOR exit mode and the widest stop the FIXED mode accepts. A manual position is never stop-less. Negative number. At high leverage the effective floor is tighter: 80% of the liquidation distance (100 / leverage − 0.5% maintenance margin).">Manual floor SL %
                                         <input type="number" step="0.1" max="0" id="config-manual-floor-sl-pct" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="-3"></label>
+                                    <label class="flex items-center gap-1 text-xs text-amber-300" title="🚫 (DECISION_LOG 343) the No-stop exit's EMERGENCY stop default — prefilled in the 🖐 manual entry and 📥 import pop-ups (each trade stores its own). A PRICE move % from the entry (LONG: entry × (1 − % / 100)), not the net-of-fees SL %. ONE stop on Binance, the trade's only stop. Each trade can untick it (a true no stop).">No-stop emergency %
+                                        <input type="number" step="0.5" min="0.5" max="94" id="config-manual-emergency-stop-pct" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="15"></label>
                                     <label class="flex items-center gap-1 text-xs text-gray-400" title="🛡 Aug-10 FRESH-BREAKOUT GUARD: block a fade when the pair spiked from a base RSI below this AND its EMA13-50 gap is above PGapMin (non-crashed) — a low-base spike on a healthy-ish pair is the START of a move, not an exhaustion (the 6-40s DOA death class). Stack-screened: blocked 20·45%·−$344 combined, VANRY class kept. Counter SPIKE_FADE_FRESHBREAK. 0 = off.">Base RSI min
                                         <input type="number" step="1" id="config-spike-fade-fb-rsi-prev-min" class="w-14 bg-white/5 border border-rose-500/40 rounded px-2 py-1 text-rose-200 text-center" value="44"></label>
                                     <label class="flex items-center gap-1 text-xs text-gray-400" title="Crash-extreme boundary of the fresh-breakout guard: pairs with EMA13-50 gap ≤ this are capitulation-extremes (VANRY class) and stay fadeable at any base RSI.">FB PGap min
@@ -8628,6 +8636,14 @@
             return (p && p.exp_ms) ? `WILLY ${p.trig} armed · waiting red · expires ${frenzyWillyClock(p.exp_ms)}` : '';
         }
         function frenzyMark(f) { return f ? ('🔥' + (f.in_state ? '★' : '') + (f.late ? '⏳' : '')) : ''; }
+        function manualBlockReportLines(perf, hr2) {   // ⛔ (DECISION_LOG 343) Manual block state — called by BOTH text exports (clipboard + saved file)
+            const out = [`\n${hr2}`, '## ⛔ Manual block (DECISION_LOG 343 — an open manual position flagged "block bot trades" refuses every bot entry, counter MANUAL_BLOCK)\n'];
+            const mb = perf ? perf.manual_block : undefined;
+            if (mb == null) out.push('  Block state: unreadable (the server could not read it — the engine fails closed: bot entries are refused while unknown)');
+            else if (!mb.length) out.push('  Block state: none — bot entries are not blocked by a manual position');
+            else for (const b of mb) out.push(`  ⛔ BLOCKED by ${b.pair} ${b.direction || ''} (manual #${b.order_id}${b.opened_at ? ', open since ' + b.opened_at : ''}) — every bot sleeve open is refused until it closes or the block is lifted`);
+            return out;
+        }
         function liteCReportLines(perf, hr2) {   // 🎯 (DECISION_LOG 301) LITE C Tally — called by BOTH text exports (clipboard + saved file)
             const out = [];
             const rows = perf.lite_c_rows || [];
@@ -9340,6 +9356,7 @@
                     }
                 }
                 window._lastStatusIsPaper = data.is_paper;   // read by the manual-entry confirmation (LIVE warning)
+                { const _u = data.manual_block_unreadable || null; if (_u !== (window._manualBlockUnreadable || null)) { window._manualBlockUnreadable = _u; try { renderManualBlockBanner(null); } catch (e) {} } }   // ⛔ (343 review #4)
                 if (data.sizing_equity != null) { window._ssEquity = Number(data.sizing_equity); window._ssFeeBurn = Number(data.fee_reserve_burn_usd || 0); try { renderSleeveSizing(); } catch (_e) {} }   // ⚖️ Oct-4
                 { const _mp = document.getElementById('manual-entry-btn'); if (_mp && data.manual_max_open_positions != null) { _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0); if (_mp.classList.contains('hidden')) { try { closeManualModal(); } catch (e) {} } } }   // 🖐 cap 0 = manual entry off (shown in paper AND live since Oct-2) · Oct-20: hides the 🖐 button (and closes the pop-up)
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
@@ -10471,6 +10488,7 @@
 
             lines.push(...frenzyReportLines(perf, hr2));   // 🔥 FRENZY Sleeve · Flagged Pairs · Fills · Short Observations
             lines.push(...liteCReportLines(perf, hr2));   // 🎯 (DECISION_LOG 301) LITE C Tally
+            lines.push(...manualBlockReportLines(perf, hr2));   // ⛔ (DECISION_LOG 343) Manual block state
 
             if ((perf.surge_rows && perf.surge_rows.length > 0) || perf.surge_monitor) {
                 lines.push(`\n${hr2}`);
@@ -10960,7 +10978,7 @@
             lines.push(`  Entry Quality Score Filter: ${th.entry_quality_score_filter_enabled ? 'ON' : 'OFF'}  |  Block when score ≤ ${th.entry_quality_score_block_max ?? 1}  (May 15 PM opt-in. Score ≤ 1 cross-sample = N=95, 34.7% WR, −$684)`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 2 candles ago)`);
             lines.push(`  ⛽ BNB reserve ceiling (Sep 29): ${cfg.bnb_max_reserve_pct_of_equity ?? 10}% of equity (top-up target / emergency threshold ×0.5 / any single swap; never below the $${cfg.bnb_min_balance_usd ?? 50} floor; 0 = no cap). Burn forecast = systematic fills only; paper BNB clamped at 0 (excess fees paid from USDT)`);
-            lines.push(`  🖐 Manual sleeve (Sep 29): dashboard-opened positions, label MANUAL (excluded from every systematic read); floor SL ${th.manual_floor_sl_pct ?? -3}% (FLOOR mode stop and the widest FIXED stop accepted); own slot lane, cap ${cfg.investment?.manual_max_open_positions ?? 8} (bot slots exclude MANUAL)`);
+            lines.push(`  🖐 Manual sleeve (Sep 29): dashboard-opened positions, label MANUAL (excluded from every systematic read); floor SL ${th.manual_floor_sl_pct ?? -3}% (FLOOR mode stop and the widest FIXED stop accepted); No-stop emergency stop default −${th.manual_emergency_stop_pct ?? 15}% of price (343); own slot lane, cap ${cfg.investment?.manual_max_open_positions ?? 8} (bot slots exclude MANUAL)`);
             lines.push(`  🪤 Fade laggard gate (Sep 29): SPIKE_FADE blocked when pair daily −DI(14) > ${th.spike_fade_lag_ndi_min ?? 0} AND BTC 4h EMA50/EMA200 gap > ${th.spike_fade_lag_btc_gap_min ?? 0}% (0 = off; counter SPIKE_FADE_LAGGARD; stamps entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct; revert: first 10 blocked re-simmed WR ≥66% or Σ>0 → 0)`);
             lines.push(`  🧭 Low-ADX RSI-momentum gate (Sep 29): LONG blocked when RSI < RSI 2 candles ago AND pair ADX < ${th.long_rsi_momentum_adx_max ?? 0} (0 = off; counter PAIR_RSI_MOMENTUM_LOADX; revert: first 8 blocked re-simmed WR ≥60% or net>0 → 0)`);
             lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  |  Mode: ${th.ema_gap_expanding_mode || 'both'}  (both = beat prev1 AND prev2 [strict]; prev2_only = beat prev2 only [relaxed, tags MARGINAL])`);
@@ -12625,6 +12643,7 @@
 
             lines.push(...frenzyReportLines(perf, hr2));   // 🔥 FRENZY Sleeve · Flagged Pairs · Fills · Short Observations
             lines.push(...liteCReportLines(perf, hr2));   // 🎯 (DECISION_LOG 301) LITE C Tally
+            lines.push(...manualBlockReportLines(perf, hr2));   // ⛔ (DECISION_LOG 343) Manual block state
 
             if ((perf.surge_rows && perf.surge_rows.length > 0) || perf.surge_monitor) {
                 lines.push(`\n${hr2}`);
@@ -18553,6 +18572,7 @@
                 const tbody = document.getElementById('open-orders-table-body');
                 window._openOrdersById = {};   // ➕ (DECISION_LOG 324) the add pop-up reads the row it was opened from
                 (data || []).forEach(o => { if (o && o.id != null) window._openOrdersById[o.id] = o; });
+                try { renderManualBlockBanner(data || []); } catch (e) {}   // ⛔ (DECISION_LOG 343) the "bot trades blocked" banner
                 
                 if (!data || data.length === 0) {
                     _setHTMLIfChanged(tbody, '<tr><td colspan="19" class="px-4 py-8 text-center text-gray-500">No open orders</td></tr>');
@@ -19081,6 +19101,7 @@
                 : m === 'BULLRUN' ? `exit: BULL-RUN — stop ${_fzT.bullrun_base_sl_pct ?? -0.7}% widened by ${_fzT.sl_atr_multiplier ?? 1.5}×ATR up to ${_fzT.sl_atr_widen_floor_pct ?? -1.2}%, break-even at +${_fzT.bullrun_be_arm_pct ?? 1}% (locks +${_fzT.bullrun_be_lock_pct ?? 0.2}%), trail ${_fzT.bullrun_trail_atr_mult ?? 2}×ATR below the peak, ladder ${_fzT.bullrun_ladder || 'off'} (live settings)`
                 : m === 'MOMENTUM' ? 'exit: MOMENTUM stack (STRONG_BUY stop −0.70%, runner arm +0.40%, EMA13 cross)'
                 : m === 'FLOOR' ? `exit: FLOOR — hard SL ${sl != null ? sl.toFixed(2) + '%' : '(config floor)'}${tp != null ? ', TP +' + Number(tp).toFixed(2) + '%' : ', no TP'}`
+                : m === 'NOSTOP' ? `exit: NO STOP — ${o.manual_emergency_stop_pct != null ? 'emergency stop −' + o.manual_emergency_stop_pct + '% of price on Binance (the only stop)' : 'no stop at all'}${tp != null ? ', TP +' + Number(tp).toFixed(2) + '%' : ', no TP'}, no max hold`
                 : `exit: CUSTOM — SL ${sl != null ? sl.toFixed(2) + '%' : '—'}${tp != null ? ', TP +' + Number(tp).toFixed(2) + '%' : ', no TP'}`;
             const _e = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
             const _setup = o.manual_setup_rating ? ` (setup ${_e(o.manual_setup_rating)}${o.manual_setup_side ? ' ' + _e(o.manual_setup_side) : ''})` : (o.manual_setup_side ? ` (fan ${_e(o.manual_setup_side)})` : '');
@@ -19205,6 +19226,7 @@
             const m = document.getElementById('manual-entry-modal'); if (!m) return;
             if (!manualModalIsOpen()) _manualModalReturnFocus = document.activeElement;
             m.classList.remove('hidden'); m.classList.add('flex');
+            try { noStopResetForm('manual'); } catch (e) {}   // 🚫 / ⛔ (343) emergency ticked at the saved default, block unticked
             try { manualSlTpPaint(); } catch (e) {}   // ⇄ (326) the remembered % / $ unit
             try { manualExitModeChanged(); } catch (e) {}
             try { manualPairHint(); } catch (e) {}
@@ -19249,7 +19271,12 @@
             } else if (mode === 'FLOOR') { stop = levFloor; stopTxt = `−${(Math.floor(levFloor * 100 + 1e-9) / 100).toFixed(2)} % floor stop`; }
             else if (mode === 'FRENZY') { const f = Number(th.frenzy_stop_pct); if (f > 0) { stop = f; stopTxt = `−${f} % Frenzy stop`; } }
             else if (mode === 'BULLRUN') { const w = Math.abs(Number(th.sl_atr_widen_floor_pct ?? -1.2)); if (w > 0) { stop = Math.min(w, levFloor); stopTxt = `−${stop} % Bull-Run stop (widest, ATR-widened)`; } }
-            const modeName = { MOMENTUM: 'Momentum', FRENZY: 'Frenzy', BULLRUN: 'Bull-Run', BULLRUN_SL: 'Bull-Run', FLOOR: 'floor', FIXED: 'custom' }[mode] || mode;
+            else if (mode === 'NOSTOP') {   // 🚫 (343) the emergency stop's loss, or "no stop" with the (isolated-estimate) liquidation distance
+                const _liqPct = Math.max(0, 100 / lev - MANUAL_MAINT_MARGIN_PCT_UI);
+                const r = noStopRiskText(pos, noStopEmergencyPct('manual'), `≈ −${_liqPct.toFixed(1)} % of price (isolated estimate at ${lev}×; cross margin liquidates further — Binance's price is read after the fill)`);
+                el.textContent = r.text; setCls(r.z != null ? r.z : (r.unlimited ? 10 : 0)); return;
+            }
+            const modeName = { MOMENTUM: 'Momentum', FRENZY: 'Frenzy', BULLRUN: 'Bull-Run', BULLRUN_SL: 'Bull-Run', FLOOR: 'floor', FIXED: 'custom', NOSTOP: 'No-stop' }[mode] || mode;
             if (stop == null) {
                 el.textContent = stopTxt ? `Position ${usd(pos)} · risk at the ${stopTxt}` : `Position ${usd(pos)} · stop set by the ${modeName} exit`;
                 setCls(0); return;
@@ -19273,10 +19300,12 @@
         // + max hold min(global, frenzy_max_hold_minutes) · BULLRUN / BULLRUN_SL → manual_bullrun_exit_for → _bullrun_exit_for (no door →
         // bullrun_trail_atr_mult) · MOMENTUM → the momentum stack with STRONG_BUY (stop_loss / signal_active_sl, NO ATR widening for MANUAL:
         // exit_entry_atr_pct), the runner trail, the hard-TP ladder (trigger:offset → floor = trigger − offset), the EMA13-cross exit,
-        // NO_EXPANSION and MAX_HOLD. Pure: (mode, o) → { text, why: { sl, tp }, warn }. o = { cfg, size, lev, dir, unit, sl, tp } (sl / tp = %).
+        // NO_EXPANSION and MAX_HOLD · NOSTOP (DECISION_LOG 343) → the MANUAL intercept with no stop / floor / max hold: the optional TP, the
+        // emergency stop (manual_emergency_stop_pct, a PRICE move — services/manual_nostop.py) or nothing. Pure: (mode, o) → { text, why: { sl, tp },
+        // warn }. o = { cfg, size, lev, dir, unit, sl, tp, emergency } (sl / tp = %; emergency = price % or null = unticked).
         const MANUAL_EXIT_FIELD_WHY = {
             MOMENTUM: { sl: 'Momentum', tp: 'Momentum' }, FLOOR: { sl: 'floor' }, FRENZY: { sl: 'Frenzy', tp: 'Frenzy' },
-            BULLRUN: { sl: 'Bull-Run', tp: 'Bull-Run' }, BULLRUN_SL: { tp: 'Bull-Run' },
+            BULLRUN: { sl: 'Bull-Run', tp: 'Bull-Run' }, BULLRUN_SL: { tp: 'Bull-Run' }, NOSTOP: { sl: 'No-stop' },   // 🚫 (343) no stop to type
         };
         function manualExitFieldWhy(mode, k) { const v = (MANUAL_EXIT_FIELD_WHY[mode] || {})[k]; return v ? `set by the ${v} ${v === 'floor' ? 'stop' : 'exit'}` : ''; }
         function manualExitExplainText(mode, o) {
@@ -19405,8 +19434,13 @@
                 if (w > levFloor + 1e-9) warnW = w;
                 // the safety-stop check uses the stack's widest stop (ATR widen cap / flagged-trade backstop), the backstop its base distance
                 own = Math.max(Math.abs(num(th.sl_atr_widen_floor_pct, -1.2) || -1.2), Math.abs(num(th.fl1_wide_sl_backstop, -1.2) || -1.2)); ownStored = false;
+            } else if (mode === 'NOSTOP') {   // 🚫 (343) no bot stop, no floor, no max hold — only the TP, the emergency stop or you
+                const em = Number(o.emergency), hasEm = o.emergency != null && em > 0;
+                parts.push(hasEm ? `No bot stop · ONE emergency stop on Binance at −${p2(em)} % of price from the entry (${pos != null ? '≈ ' + slTpFmtUsd(-pos * em / 100, true) + ' + fees' : 'the whole position'}) — the only stop`
+                                 : 'No stop at all — the bot never closes it on a loss (no stop, no floor, no safety stop): loss unlimited until liquidation');
+                parts.push(tpTxt(), 'closes only at the TP or when you close it', 'no max hold');
             } else return { text: '', why, warn: false };
-            if (mode !== 'FRENZY') parts.push(holdTxt(gHold));   // MAX_HOLD_TIME: the universal safety net (investment.max_holding_time_minutes)
+            if (mode !== 'FRENZY' && mode !== 'NOSTOP') parts.push(holdTxt(gHold));   // MAX_HOLD_TIME: the universal safety net (investment.max_holding_time_minutes) — never on NOSTOP (343)
             let tail = warnW != null ? refused(warnW) : '';
             if (!tail && bkCap != null && own != null && own + MANUAL_BACKSTOP_MIN_GAP_PCT_UI > bkPct() + 1e-9)
                 tail = mode === 'MOMENTUM'
@@ -19422,7 +19456,7 @@
             const fp = id => { const el2 = g(id); if (!el2 || el2.disabled) return null; const v = manualFieldPct(id); return Number.isFinite(v) ? v : null; };
             const r = manualExitExplainText(mode, { cfg: window._cachedConfig || {}, size: parseFloat(g('manual-investment')?.value || ''),
                 lev: parseFloat(g('manual-leverage')?.value || ''), dir: g('manual-direction')?.value || 'LONG', unit: _manualSlTpUnit,
-                sl: fp('manual-sl'), tp: fp('manual-tp') });
+                sl: fp('manual-sl'), tp: fp('manual-tp'), emergency: (typeof noStopEmergencyPct === 'function' ? noStopEmergencyPct('manual') : null) });
             if (el) { el.textContent = r.text ? '📖 ' + r.text : ''; if (el.classList) { el.classList.toggle('text-orange-300', !!r.warn); el.classList.toggle('text-sky-200/90', !r.warn); } }
             return r;
         }
@@ -19438,6 +19472,86 @@
         var _impEsc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         var _impQty = v => (v == null || !Number.isFinite(Number(v))) ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 8 });
         var _impUsd = v => (v == null || !Number.isFinite(Number(v))) ? '—' : '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: Math.abs(Number(v)) >= 100 ? 0 : 2 });
+        // 🚫 NO-STOP BEGIN — (DECISION_LOG 343) shared by the 🖐 and 📥 pop-ups (prefix 'manual' / 'import'): the emergency stop controls and
+        // the risk line. The emergency % is a PRICE move (the trigger is entry × (1 ∓ % / 100), services/manual_nostop.py), so its loss is
+        // position × % / 100 (+ fees) — not the net-of-fees SL % arithmetic.
+        var _importPreview = null, _importPreviewSeq = 0;
+        function noStopEmergencyPct(prefix) {   // null = unticked (a true no stop) · NaN = a bad % · else the % (blank → the saved default)
+            const on = document.getElementById(prefix + '-emergency-on'), el = document.getElementById(prefix + '-emergency-pct');
+            if (!on || !on.checked) return null;
+            const raw = String(el?.value ?? '').trim();
+            const x = raw === '' ? Number(window._cachedConfig?.thresholds?.manual_emergency_stop_pct ?? 15) : parseFloat(raw);
+            return (Number.isFinite(x) && x > 0 && x < 95) ? Math.round(Math.abs(x) * 1e4) / 1e4 : NaN;
+        }
+        function noStopEmergencyPaint(prefix, show) {
+            const w = document.getElementById(prefix + '-emergency-wrap');
+            if (w && w.classList) { w.classList.toggle('hidden', !show); w.classList.toggle('flex', !!show); }
+            const on = document.getElementById(prefix + '-emergency-on'), el = document.getElementById(prefix + '-emergency-pct');
+            if (el) el.disabled = !(on && on.checked);
+        }
+        function noStopResetForm(prefix) {
+            const on = document.getElementById(prefix + '-emergency-on'), el = document.getElementById(prefix + '-emergency-pct'), bb = document.getElementById(prefix + '-block-bot');
+            if (on) on.checked = true;
+            if (el) el.value = String(window._cachedConfig?.thresholds?.manual_emergency_stop_pct ?? 15);
+            if (bb) bb.checked = false;
+        }
+        // "Position $X · at −15 % emergency ≈ −$Y (Z % of the account)" / "Position $X · no stop — loss unlimited until liquidation at <liq>"
+        function noStopRiskText(pos, emergency, liqTxt) {
+            const acct = Number(window._lastTotalPortfolio);
+            if (emergency != null && Number.isNaN(emergency)) return { text: `Position ${_impUsd(pos)} · type an emergency stop % between 0 and 94 (or untick it)`, z: null, unlimited: false };
+            if (emergency != null && emergency > 0) {
+                const y = pos * emergency / 100, z = acct > 0 ? y / acct * 100 : null;
+                return { text: `Position ${_impUsd(pos)} · at −${emergency} % emergency ≈ −${slTpFmtUsd(y).replace(/^−/, '')}${z != null ? ` (${z.toFixed(z >= 10 ? 0 : 1)} % of the account)` : ''} + fees`, z, unlimited: false };
+            }
+            return { text: `Position ${_impUsd(pos)} · no stop — loss unlimited until liquidation ${liqTxt || '(price unknown)'}`, z: null, unlimited: true };
+        }
+        // 📥 (343) the symbol's open orders, read when the pop-up opens (GET /api/manual/import_orders — re-read again at the import)
+        async function loadImportPreview(pair, dir) {
+            const seq = ++_importPreviewSeq;
+            _importPreview = { loading: true };
+            try { importAppOrdersRender(); } catch (e) {}
+            let d = null;
+            try {
+                const res = await fetch(`${API_BASE}/api/manual/import_orders?pair=${encodeURIComponent(pair)}&direction=${encodeURIComponent(dir)}`);
+                d = await res.json().catch(() => null);
+                if (!res.ok) d = { error: (d && d.detail) || `read failed (${res.status})` };
+            } catch (e) { d = { error: 'no answer from the server' }; }
+            if (seq !== _importPreviewSeq || _importModalPair !== pair) return;   // a newer pop-up owns the box
+            _importPreview = d || { error: 'empty answer' };
+            try { importAppOrdersRender(); } catch (e) {}
+            try { importExitModeChanged(); } catch (e) {}
+        }
+        function importKeepTpEffective() {   // the app TP is adopted at the click: exactly one, a TP-line exit, Keep ticked
+            const p = _importPreview, k = document.getElementById('import-keep-tp');
+            const m = document.getElementById('import-exit-mode')?.value || 'FLOOR';
+            return !!(p && !p.error && !p.loading && p.tp_count === 1 && k && k.checked && ['FIXED', 'FLOOR', 'NOSTOP'].includes(m));
+        }
+        function importAppOrdersRender() {
+            const box = document.getElementById('import-app-orders'), wrap = document.getElementById('import-keep-tp-wrap');
+            if (!box) return;
+            const p = _importPreview;
+            const showKeep = !!(p && !p.error && !p.loading && p.tp_count === 1);
+            if (wrap && wrap.classList) { wrap.classList.toggle('hidden', !showKeep); wrap.classList.toggle('flex', showKeep); }
+            if (!p) { box.textContent = ''; return; }
+            if (p.loading) { box.innerHTML = '<span class="text-gray-500">Reading the open orders on Binance…</span>'; return; }
+            if (p.error) { box.innerHTML = `<span class="text-red-400">⚠ ${_impEsc(p.error)} — Import is blocked until the orders are read</span> <button type="button" onclick="loadImportPreview(_importModalPair, (importCand(_importModalPair) || {}).side)" class="ml-1 px-2 py-0.5 rounded bg-sky-500/30 hover:bg-sky-500/50 text-sky-100">Retry</button>`; return; }
+            const lines = [];
+            const fmtP = v => v == null ? '—' : Number(v).toPrecision(6);
+            if (p.tp_count === 1) {
+                const tpo = (p.orders || []).find(o => o.cls === 'tp') || {};
+                lines.push(`<span class="text-sky-200">TP on Binance${p.tp_maybe_leftover ? ' (could be a bot leftover)' : ''} found: <b>${_impEsc(fmtP(p.tp_price))}</b> (${p.tp_pct != null ? '+' + Number(p.tp_pct).toFixed(2) + ' % net of fees' : 'no profit after fees'}) · ${_impEsc(tpo.type || '')}</span>`);
+                if (p.tp_partial) lines.push(`<span class="text-amber-300">⚠ the app TP covers only ${_impQty(p.tp_qty)} of ${_impQty(p.qty)} — kept, the bot's TP covers the WHOLE position</span>`);
+            } else if (p.tp_count > 1) {
+                lines.push(`<span class="text-amber-300">⚠ ${p.tp_count} take-profit orders on Binance — the bot keeps one: cancel the others in the app, or untick Keep (all are cancelled at the import)</span>`);
+            }
+            (p.orders || []).filter(o => o.cls === 'sl').forEach(o => lines.push(`<span class="text-gray-300">SL on Binance found: ${_impEsc(fmtP(o.level))} (${_impEsc(o.type)}) — cancelled at the import; the exit picked here replaces it</span>`));
+            if (p.tp_count > 1) (p.orders || []).filter(o => o.cls === 'tp').forEach(o => lines.push(`<span class="text-gray-400">TP ${_impEsc(fmtP(o.level))} (${_impEsc(o.type)})</span>`));
+            (p.orders || []).filter(o => o.cls === 'leftover').forEach(o => lines.push(`<span class="text-gray-400">Leftover from the bot: ${_impEsc(o.type)} ${_impEsc(fmtP(o.level))} (a reduce-only limit an earlier bot close left) — cancelled at the import, never kept</span>`));
+            if (p.refusal) lines.push(`<span class="text-red-400">⚠ ${_impEsc(p.refusal)}${p.leftover_note ? ' (the bot\'s last close on this pair may have left a reduce-only limit)' : ''} — the import will be refused</span>`);
+            if (!lines.length) lines.push('<span class="text-gray-500">No TP / SL orders on Binance for this position.</span>');
+            box.innerHTML = lines.join('<br>');
+        }
+        // 🚫 NO-STOP END
         async function loadImportCandidates(force) {
             if (!force && Date.now() - _importCandsAt < 5000) return;
             _importCandsAt = Date.now();
@@ -19449,26 +19563,74 @@
             renderImportBanner();
         }
         function importCand(pair) { return _importCands.find(c => c.pair === pair) || null; }
+        // (DECISION_LOG 343 banner fix) the size as Binance shows it — quantity × MARK ("at entry" only when no mark was read) — and the
+        // unrealized P&L with Binance's ROI (unrealized / initial margin); the snapshot age only as a warning when stale (> 90 s)
+        function importSizeText(c) {
+            const pnl = Number(c.unrealized_pnl), roi = Number(c.roi_pct);
+            const pnlTxt = (c.unrealized_pnl != null && Number.isFinite(pnl)) ? ` · P&L ${pnl >= 0 ? '+' : '−'}$${Math.abs(pnl).toFixed(2)}${c.roi_pct != null && Number.isFinite(roi) ? ` (${roi >= 0 ? '+' : '−'}${Math.abs(roi).toFixed(1)} % ROI)` : ''}` : '';
+            return `${_impUsd(c.notional)} ${c.notional_basis === 'entry' ? 'at entry' : 'at mark'}${pnlTxt}`;
+        }
+        function importStaleNote(c) {
+            const a = Number(c && c.snapshot_age_s);
+            if (!(c && c.snapshot_stale) || !Number.isFinite(a)) return '';
+            return ` · ⚠ figures ${a >= 120 ? Math.round(a / 60) + ' min' : Math.round(a) + ' s'} old`;
+        }
         function renderImportBanner() {
             const el = document.getElementById('import-candidates-banner'); if (!el) return;
             if (!_importCands.length) { el.classList.add('hidden'); _setHTMLIfChanged(el, ''); return; }
             const html = _importCands.map(c => {
                 const why = c.importable ? '' : (c.why_not || 'not importable right now');
-                const age = (c.snapshot_age_s != null) ? ` · figures ${Math.round(c.snapshot_age_s)} s old` : '';
+                const age = importStaleNote(c);   // (343 banner fix) no ticking age — a warning only when the figures are stale
                 const needFixed = c.floor_exceeds_max ? ` · import needs a custom stop at ${_impEsc(c.leverage)}×` : '';   // (328 review 4) the Floor stop is refused at this leverage
-                return `<div class="flex flex-wrap items-center gap-2"><span>📱 Binance holds <b>${_impEsc(c.pair)} ${_impEsc(c.side)} ${_impQty(c.qty)}</b> (≈ ${_impUsd(c.notional)}, ${c.leverage != null ? _impEsc(c.leverage) + '×' : '?×'}) that the bot does not track — no stop / target management, new entries on it are blocked<span class="text-amber-300">${needFixed}</span><span class="text-sky-300/60">${_impEsc(age)}</span></span>`
+                return `<div class="flex flex-wrap items-center gap-2"><span>📱 Binance holds <b>${_impEsc(c.pair)} ${_impEsc(c.side)} ${_impQty(c.qty)}</b> (≈ ${_impEsc(importSizeText(c))}, ${c.leverage != null ? _impEsc(c.leverage) + '×' : '?×'}) that the bot does not track — no stop / target management, new entries on it are blocked<span class="text-amber-300">${needFixed}${_impEsc(age)}</span></span>`
                     + `<span title="${_impEsc(why || 'Book it as a 🖐 manual trade with an exit and an exchange safety stop')}"><button type="button" data-pair="${_impEsc(c.pair)}" onclick="openImportModal(this.dataset.pair, this)" ${why ? 'disabled' : ''} class="px-2 py-0.5 rounded font-semibold ${why ? 'bg-white/5 text-gray-500 cursor-not-allowed' : 'bg-sky-500/30 hover:bg-sky-500/50 text-sky-100'}">📥 Import</button></span></div>`;
             }).join('');
             _setHTMLIfChanged(el, html); el.classList.remove('hidden');
         }
+        // ⛔ / 🚫 (DECISION_LOG 343) the row flags (both orders tables, through importBadgeHtml) + the banner with its Lift block button
+        function manualFlagBadgesHtml(o) {
+            if (!o || (o.entry_strategy || '') !== 'MANUAL') return '';
+            let h = '';
+            if (o.manual_exit_mode === 'NOSTOP') {
+                const t = o.manual_emergency_stop_pct != null ? `🚫 No stop — the only stop is the emergency stop on Binance at −${o.manual_emergency_stop_pct} % of price from the entry`
+                                                              : '🚫 No stop at all — the bot never closes it on a loss (TP or your close only); loss unlimited until liquidation';
+                h += `<span class="ml-1 text-[10px] cursor-help" title="${_impEsc(t)}">🚫</span>`;
+            }
+            if (o.manual_block_bot) {
+                const t = o.status === 'CLOSED' || o.closed_at ? '⛔ This position blocked the bot\'s trades while it was open' : '⛔ While this position is open the bot opens no trade of its own (Lift block in the banner above the orders)';
+                h += `<span class="ml-1 text-[10px] cursor-help" title="${_impEsc(t)}">⛔</span>`;
+            }
+            return h;
+        }
+        function renderManualBlockBanner(orders) {
+            const el = document.getElementById('manual-block-banner'); if (!el) return;
+            if (orders) window._manualBlockOrders = orders; else orders = window._manualBlockOrders || [];
+            const bl = (orders || []).filter(o => o && o.manual_block_bot);
+            const unread = window._manualBlockUnreadable ? '<div>⛔ block state unreadable — bot opens refused (fail-closed, counter MANUAL_BLOCK_READ_FAILED) until the database answers again</div>' : '';
+            if (!bl.length && !unread) { el.classList.add('hidden'); _setHTMLIfChanged(el, ''); return; }
+            const html = unread + bl.map(o => `<div class="flex flex-wrap items-center gap-2"><span>⛔ Bot trades blocked by <b>${_impEsc(o.pair)}</b> (manual${o.direction ? ' ' + _impEsc(o.direction) : ''}) — the bot opens nothing while it is open</span>`
+                + `<button type="button" data-oid="${Number(o.id)}" data-pair="${_impEsc(o.pair)}" onclick="liftManualBlock(Number(this.dataset.oid), this.dataset.pair, this)" class="px-2 py-0.5 rounded font-semibold bg-rose-500/30 hover:bg-rose-500/50 text-rose-100">Lift block</button></div>`).join('');
+            _setHTMLIfChanged(el, html); el.classList.remove('hidden');
+        }
+        async function liftManualBlock(orderId, pair, btn) {
+            const msg = `Lift the block? The bot may open its own trades again while ${pair} stays open.`;
+            if (!((btn && btn.getBoundingClientRect && typeof confirmNear === 'function') ? await confirmNear(btn, msg, 'Lift block', 'px-3 py-1 bg-rose-500/30 hover:bg-rose-500/50 text-rose-100 rounded text-xs font-semibold') : confirm(msg))) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/manual/lift_block`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order_id: orderId }) });
+                const d = await res.json().catch(() => ({}));
+                if (res.ok) { showToast(`⛔ Block lifted — the bot may trade again (${pair} stays open)`); loadOpenOrders(); }
+                else showToast((d && d.detail) || 'Lift block failed', 'error');
+            } catch (e) { showToast('Lift block failed: ' + e, 'error'); }
+        }
         function importBadgeHtml(o) {
+            const _flags = manualFlagBadgesHtml(o);   // ⛔ / 🚫 (343)
             if (o && o.import_source === 'BINANCE_APP_HISTORY') {   // 🧾 (DECISION_LOG 329) a trade made in the Binance app, auto-recorded
                 const t2 = `📱 Made in the Binance app — auto-recorded from Binance's own fills (real prices, P&L and fees; quantity = peak size; leverage = the symbol's setting at record time, approximate)${o.imported_at ? ' · recorded ' + formatTime(o.imported_at) : ''}`;
-                return `<span class="ml-1 text-[10px] cursor-help" title="${_impEsc(t2)}">📱</span>`;
+                return `<span class="ml-1 text-[10px] cursor-help" title="${_impEsc(t2)}">📱</span>` + _flags;
             }
-            if (!o || !o.imported_at) return '';
+            if (!o || !o.imported_at) return _flags;
             const t = `📥 Imported from Binance at ${formatTime(o.imported_at)} — opened in the Binance app; the bot tracks it from then on (opened time = the import, entry / size = Binance's, entry fee estimated)`;
-            return `<span class="ml-1 text-[10px] cursor-help" title="${_impEsc(t)}">📥</span>`;
+            return `<span class="ml-1 text-[10px] cursor-help" title="${_impEsc(t)}">📥</span>` + _flags;
         }
         function importModalIsOpen() { const m = document.getElementById('import-position-modal'); return !!(m && !m.classList.contains('hidden')); }
         function importNotional() {
@@ -19525,6 +19687,11 @@
             const m = document.getElementById('import-exit-mode')?.value || 'FLOOR';
             const sl = document.getElementById('import-sl'), tp = document.getElementById('import-tp');
             if (sl) sl.disabled = (m !== 'FIXED' && m !== 'BULLRUN_SL'); if (tp) tp.disabled = (m === 'MOMENTUM' || m === 'FRENZY' || m === 'BULLRUN' || m === 'BULLRUN_SL');   // same enabling as the 🖐 form
+            // 📥 (343) Keep the app TP: only for a TP-line exit (Custom / Floor / No stop); while kept, the TP box is the app's price (greyed)
+            const keep = document.getElementById('import-keep-tp');
+            if (keep) keep.disabled = !['FIXED', 'FLOOR', 'NOSTOP'].includes(m);
+            if (tp && importKeepTpEffective()) tp.disabled = true;
+            noStopEmergencyPaint('import', m === 'NOSTOP');
             try { importRiskLine(); } catch (e) {}
         }
         // Live risk line (the manualRiskLine pattern): position = quantity × entry; loss at the stop = position × stop % / 100 (stops are P&L
@@ -19549,8 +19716,21 @@
             else if (mode === 'FRENZY') { const f = Number(c.frenzy_stop_pct ?? th.frenzy_stop_pct); if (f > 0) { stop = f; stopTxt = `−${f} % Frenzy stop`; } }
             else if (mode === 'BULLRUN') { const w = Number(c.bullrun_worst_stop_pct); if (w > 0) { stop = w; stopTxt = `−${w} % Bull-Run stop (widest, ATR-widened)`; } }
             else if (mode === 'MOMENTUM') { const w = Number(c.momentum_stop_pct); if (w > 0) { stop = w; stopTxt = `−${w} % Momentum stop (widest)`; } }
-            const modeName = { MOMENTUM: 'Momentum', FRENZY: 'Frenzy', BULLRUN: 'Bull-Run', BULLRUN_SL: 'Bull-Run', FLOOR: 'floor', FIXED: 'custom' }[mode] || mode;
-            if (stop == null) {
+            const modeName = { MOMENTUM: 'Momentum', FRENZY: 'Frenzy', BULLRUN: 'Bull-Run', BULLRUN_SL: 'Bull-Run', FLOOR: 'floor', FIXED: 'custom', NOSTOP: 'No-stop' }[mode] || mode;
+            const _pv = (typeof _importPreview !== 'undefined' && _importPreview && !_importPreview.error && !_importPreview.loading) ? _importPreview : null;
+            const _em = mode === 'NOSTOP' ? noStopEmergencyPct('import') : null;
+            if (mode === 'NOSTOP') {   // 🚫 (343) the emergency stop's loss, or no stop with Binance's liquidation price
+                const liq = _pv ? _pv.liquidation_price : null;
+                const liqTxt = liq == null ? '(Binance has not reported the liquidation price — the import refuses an emergency stop it cannot check)'
+                    : (Number(liq) <= 0 && c.side === 'LONG') ? '(no liquidation price: the account covers a fall to zero)' : `at ${Number(liq).toPrecision(6)}`;
+                const r = noStopRiskText(pos, _em, liqTxt);
+                let extra = '';
+                if (_em > 0 && liq != null && Number(liq) > 0) {
+                    const trig = c.side === 'LONG' ? Number(c.entry_price) * (1 - _em / 100) : Number(c.entry_price) * (1 + _em / 100);
+                    if ((c.side === 'LONG' && trig <= Number(liq)) || (c.side === 'SHORT' && trig >= Number(liq))) extra = ` · ⚠ the emergency stop ${trig.toPrecision(6)} is at / beyond the liquidation price ${Number(liq).toPrecision(6)} — the import will be refused`;
+                }
+                el.textContent = r.text + extra; setCls(extra ? 10 : (r.z != null ? r.z : (r.unlimited ? 10 : 0)));
+            } else if (stop == null) {
                 el.textContent = stopTxt ? `Position ${_impUsd(pos)} · risk at the ${stopTxt}` : `Position ${_impUsd(pos)} · stop set by the ${modeName} exit`;
                 setCls(0);
             } else {
@@ -19562,10 +19742,18 @@
                 setCls(z != null ? z : 0);
             }
             if (what) {
-                const tp = (mode === 'FIXED' || mode === 'FLOOR') ? importFieldPct('import-tp') : null;
-                what.textContent = `On Import: nothing is bought or sold — a safety stop (closes the whole position on Binance if the bot cannot act) is placed beyond the stop`
-                    + (tp > 0 ? `, a resting take profit at +${slTpFmtPct(tp).replace(/^\+/, '')} (${slTpFmtUsd(slTpUsdFromPct(tp, pos))})` : '')
-                    + `; the position becomes a 🖐 manual trade with the ${modeName} exit; new entries on ${c.pair} unblock. Refused if it has its own TP / SL orders on Binance — cancel them in the app first.`;
+                const _keep = importKeepTpEffective();
+                const tp = (mode === 'FIXED' || mode === 'FLOOR' || mode === 'NOSTOP') && !_keep ? importFieldPct('import-tp') : null;
+                const _nApp = _pv ? ((_pv.tp_count || 0) + (_pv.sl_count || 0) + (_pv.leftover_count || 0)) : 0;
+                const _stopPart = mode !== 'NOSTOP' ? 'a safety stop (closes the whole position on Binance if the bot cannot act) is placed beyond the stop'
+                    : (_em > 0 ? `ONE emergency stop is placed on Binance at −${_em} % of price (the only stop)` : 'NO stop is placed (none on Binance, none in the bot)');
+                what.textContent = `On Import: nothing is bought or sold — ${_stopPart}`
+                    + (_nApp ? `, then the app's ${_nApp} TP/SL order(s) on Binance are cancelled` : '')
+                    + (_keep ? ` and the bot places its own take profit at the app's price ${Number(_pv.tp_price).toPrecision(6)}${_pv.tp_pct != null ? ' (+' + Number(_pv.tp_pct).toFixed(2) + ' % net)' : ''}, covering the whole position`
+                       : tp > 0 ? `, a take profit at +${slTpFmtPct(tp).replace(/^\+/, '')} (${slTpFmtUsd(slTpUsdFromPct(tp, pos))})` : '')
+                    + `; the position becomes a 🖐 manual trade with the ${modeName} exit; new entries on ${c.pair} unblock.`
+                    + (document.getElementById('import-block-bot')?.checked ? ' ⛔ The bot opens no trade while it is open.' : '')
+                    + ' Refused (nothing changed) if any other kind of order rests on the symbol.';
             }
         }
         function openImportModal(pair, btn) {
@@ -19577,16 +19765,19 @@
             _importModalPair = pair;
             const pnl = Number(c.unrealized_pnl);
             document.getElementById('import-pos-head').textContent = `${c.pair} · ${c.side} · ${c.leverage}×`;
-            document.getElementById('import-pos-facts').textContent = `Size ${_impQty(c.qty)} · entry ${c.entry_price != null ? Number(c.entry_price).toPrecision(6) : '—'} · position ${_impUsd(c.notional)} · margin ${_impUsd(c.investment)}`
+            const roi = Number(c.roi_pct);
+            document.getElementById('import-pos-facts').textContent = `Size ${_impQty(c.qty)} · entry ${c.entry_price != null ? Number(c.entry_price).toPrecision(6) : '—'} · position ${_impUsd(c.notional)} ${c.notional_basis === 'entry' ? 'at entry' : 'at mark'} · margin ${_impUsd(c.investment)}`
                 + (c.mark_price != null ? ` · mark ${Number(c.mark_price).toPrecision(6)}` : '')
-                + (Number.isFinite(pnl) ? ` · unrealized P&L ${pnl >= 0 ? '+' : '−'}$${Math.abs(pnl).toFixed(2)}` : '')
+                + (Number.isFinite(pnl) && c.unrealized_pnl != null ? ` · unrealized P&L ${pnl >= 0 ? '+' : '−'}$${Math.abs(pnl).toFixed(2)}${c.roi_pct != null && Number.isFinite(roi) ? ` (${roi >= 0 ? '+' : '−'}${Math.abs(roi).toFixed(1)} % ROI)` : ''}` : '')
                 + (c.max_stop_pct != null ? ` · widest stop allowed −${(Math.floor(Number(c.max_stop_pct) * 100 + 1e-9) / 100).toFixed(2)} %` : '')
-                + (c.snapshot_age_s != null ? ` (figures ${Math.round(c.snapshot_age_s)} s old — re-read from Binance at the import)` : '');
+                + ' (re-read from Binance at the import)' + importStaleNote(c);   // (343 banner fix) no ticking age unless stale
             // (328 review 4) at a leverage where even the Floor stop sits too close to the safety stop, start on Custom SL/TP and say why
             const sel = document.getElementById('import-exit-mode'); if (sel) sel.value = c.floor_exceeds_max ? 'FIXED' : 'FLOOR';
             if (c.floor_exceeds_max) showToast(`At ${c.leverage}× the Floor stop is too close to Binance's safety stop — type a custom stop of at most −${(Math.floor(Number(c.max_stop_pct) * 100 + 1e-9) / 100).toFixed(2)} %`, 'warning');
             ['import-sl', 'import-tp'].forEach(id => { const el = document.getElementById(id); if (el) { el.value = ''; delete el.dataset.pct; delete el.dataset.usdShown; delete el.dataset.notional; } });
+            try { noStopResetForm('import'); const k = document.getElementById('import-keep-tp'); if (k) k.checked = true; } catch (e) {}   // 🚫 / ⛔ / 📥 (343) defaults
             m.classList.remove('hidden'); m.classList.add('flex');
+            loadImportPreview(c.pair, c.side);   // 📥 (343) the app's TP / SL on Binance (async; the box says "reading…" meanwhile)
             try { importSlTpPaint(); } catch (e) {}
             try { importExitModeChanged(); } catch (e) {}
             try { document.getElementById('import-exit-mode')?.focus(); } catch (e) {}
@@ -19595,7 +19786,7 @@
             const m = document.getElementById('import-position-modal'); if (!m || !importModalIsOpen()) return;
             m.classList.add('hidden'); m.classList.remove('flex');
             const back = (_importReturnFocus && document.contains(_importReturnFocus) && _importReturnFocus !== document.body) ? _importReturnFocus : null;
-            _importReturnFocus = null; _importModalPair = null;
+            _importReturnFocus = null; _importModalPair = null; _importPreview = null; _importPreviewSeq++;
             try { back && back.focus(); } catch (e) {}
         }
         document.addEventListener('mousedown', e => { const m = document.getElementById('import-position-modal'); _importBackdropDown = !!(m && e.target === m && !document.getElementById('near-confirm')); }, true);
@@ -19612,21 +19803,39 @@
                 // ⇄ (326) always the % — a $ typed is converted on quantity × entry (4 dp); a disabled field is never sent
                 sl_pct: (g('import-sl')?.disabled || (g('import-sl')?.value === '' && !g('import-sl')?.validity?.badInput)) ? null : importFieldPct('import-sl'),
                 tp_pct: (g('import-tp')?.disabled || (g('import-tp')?.value === '' && !g('import-tp')?.validity?.badInput)) ? null : importFieldPct('import-tp'),
+                // 📥 (343) the app's TP kept (its price as shown — a different one at the click is refused) · ⛔ block · 🚫 emergency stop
+                keep_app_tp: importKeepTpEffective(), app_tp_price: importKeepTpEffective() ? _importPreview.tp_price : null,
+                block_bot: !!g('import-block-bot')?.checked,
             };
+            if (!_importPreview || _importPreview.loading) { showToast('Still reading the open orders on Binance — try again in a second', 'error'); return; }
+            if (_importPreview.error) {   // (343 review #3) never import blind: the orders on Binance must have been read and shown
+                showToast(`The open orders on Binance could not be read (${_importPreview.error}) — nothing imported`, 'error',
+                          [{ label: 'Retry', onClick: () => loadImportPreview(c.pair, c.side) }]);
+                return;
+            }
+            body.app_orders_seen = (_importPreview.orders || []).filter(o => ['tp', 'sl', 'leftover'].includes(o.cls)).map(o => `${o.kind}:${o.id}`);   // an unseen one → refused
+            if (_importPreview && _importPreview.refusal) { showToast(_importPreview.refusal, 'error'); return; }
+            if (body.exit_mode === 'NOSTOP') {
+                const _em = noStopEmergencyPct('import');
+                if (Number.isNaN(_em)) { showToast('The emergency stop % must be a number between 0 and 94 (or untick it)', 'error'); return; }
+                body.emergency_stop = _em != null; body.emergency_stop_pct = _em;
+            }
             if (Number.isNaN(body.sl_pct) || Number.isNaN(body.tp_pct)) { showToast('SL / TP must be numbers', 'error'); return; }
             if ((body.exit_mode === 'FIXED' || body.exit_mode === 'BULLRUN_SL') && !(body.sl_pct > 0)) { showToast('This exit needs a stop loss', 'error'); return; }
             const pos = importNotional();
             const _usdNote = (_importSlTpUnit === 'usd' && pos != null && (body.sl_pct != null || body.tp_pct != null))
                 ? ` [${body.sl_pct != null ? 'SL ' + slTpFmtUsd(slTpUsdFromPct(body.sl_pct, pos)) + ' = ' + slTpFmtPct(body.sl_pct) : ''}${body.sl_pct != null && body.tp_pct != null ? ' · ' : ''}${body.tp_pct != null ? 'TP ' + slTpFmtUsd(slTpUsdFromPct(body.tp_pct, pos)) + ' = ' + slTpFmtPct(body.tp_pct) : ''}]` : '';
             const btn = g('import-pos-btn');
-            const msg = `🔴 LIVE · Import ${body.direction} ${body.pair} ${_impQty(c.qty)} (${c.leverage}×) as a manual trade — exit ${body.exit_mode}${body.sl_pct != null ? ' SL ' + body.sl_pct + '%' : ''}${body.tp_pct != null ? ' TP ' + body.tp_pct + '%' : ''}, safety stop on Binance?${_usdNote}`;
+            const _stopMsg = body.exit_mode !== 'NOSTOP' ? ', safety stop on Binance' : (body.emergency_stop ? `, NO bot stop — emergency stop −${body.emergency_stop_pct} % of price on Binance` : ', NO STOP AT ALL (loss unlimited until liquidation)');
+            const _appMsg = _importPreview && !_importPreview.error ? (((_importPreview.tp_count || 0) + (_importPreview.sl_count || 0)) ? ` · the app's TP/SL on Binance are CANCELLED${body.keep_app_tp ? ' (TP re-created by the bot at ' + Number(_importPreview.tp_price).toPrecision(6) + ')' : ''}` : '') : '';
+            const msg = `🔴 LIVE · Import ${body.direction} ${body.pair} ${_impQty(c.qty)} (${c.leverage}×) as a manual trade — exit ${body.exit_mode}${body.sl_pct != null ? ' SL ' + body.sl_pct + '%' : ''}${body.tp_pct != null ? ' TP ' + body.tp_pct + '%' : ''}${_stopMsg}${_appMsg}${body.block_bot ? ' · ⛔ bot trades blocked while open' : ''}?${_usdNote}`;
             if (!((btn && btn.getBoundingClientRect) ? await confirmNear(btn, msg, 'Import', 'px-3 py-1 bg-sky-500/30 hover:bg-sky-500/50 text-sky-100 rounded text-xs font-semibold') : confirm(msg))) return;
             _importBusy = true; if (btn) btn.disabled = true;
             try {
                 const res = await fetch(`${API_BASE}/api/manual/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                 const data = await res.json().catch(() => ({}));
                 if (res.ok) {
-                    showToast(`📥 ${data.pair} ${data.direction} imported — ${_impQty(data.quantity)} @ ${data.entry_price} (exit ${data.exit_mode}${data.sl_pct != null ? ' SL ' + data.sl_pct : ''}${data.tp_pct != null ? ' TP ' + data.tp_pct : ''}; safety stop at ${data.backstop_trigger_price != null ? Number(data.backstop_trigger_price).toPrecision(6) : '—'})`);
+                    showToast(`📥 ${data.pair} ${data.direction} imported — ${_impQty(data.quantity)} @ ${data.entry_price} (exit ${data.exit_mode}${data.sl_pct != null ? ' SL ' + data.sl_pct : ''}${data.tp_pct != null ? ' TP ' + data.tp_pct : ''}${data.adopted_tp_price != null ? ' = the app TP ' + data.adopted_tp_price : ''}; ${data.backstop_trigger_price != null ? (data.exit_mode === 'NOSTOP' ? 'emergency' : 'safety') + ' stop at ' + Number(data.backstop_trigger_price).toPrecision(6) : 'NO stop'}${(data.app_orders_cancelled || []).length ? ' · ' + data.app_orders_cancelled.length + ' app order(s) cancelled' : ''}${data.block_bot ? ' · ⛔ bot blocked' : ''})`);
                     closeImportModal();
                     _importCands = _importCands.filter(x => x.pair !== data.pair); renderImportBanner();
                     loadImportCandidates(true); loadOpenOrders(); loadTransactions();
@@ -19840,6 +20049,7 @@
                 el.title = w ? `Not used: ${w} — see the line under the Exit dropdown. Never sent with the order.` : '';
                 el.style.opacity = el.disabled ? '0.4' : ''; el.style.cursor = el.disabled ? 'not-allowed' : '';
                 const lb = el.parentElement; if (lb && lb.style) lb.style.opacity = el.disabled ? '0.7' : ''; });
+            if (typeof noStopEmergencyPaint === 'function') noStopEmergencyPaint('manual', m === 'NOSTOP');   // 🚫 (343) the emergency stop controls, NOSTOP only
             try { manualRiskLine(); } catch (e) {}
         }
         async function openManualPosition() {
@@ -19854,6 +20064,12 @@
                 sl_pct: (g('manual-sl')?.disabled || (g('manual-sl')?.value === '' && !g('manual-sl')?.validity?.badInput)) ? null : manualFieldPct('manual-sl'),
                 tp_pct: (g('manual-tp')?.disabled || (g('manual-tp')?.value === '' && !g('manual-tp')?.validity?.badInput)) ? null : manualFieldPct('manual-tp'),
             };
+            if (g('manual-block-bot')?.checked) body.block_bot = true;   // ⛔ (343) sent only when ticked (the server default is off)
+            if (body.exit_mode === 'NOSTOP') {   // 🚫 (343) the emergency stop: ticked → its % (blank = the saved default), unticked → none
+                const _em = noStopEmergencyPct('manual');
+                if (Number.isNaN(_em)) { showToast('The emergency stop % must be a number between 0 and 94 (or untick it)', 'error'); return; }
+                body.emergency_stop = _em != null; body.emergency_stop_pct = _em;
+            }
             if (!body.pair) { showToast('Pair is required', 'error'); return; }
             if (Number.isNaN(body.sl_pct) || Number.isNaN(body.tp_pct)) {   // 326 review: a mistyped SL / TP or a $ with no Size × Lev is refused, never dropped
                 showToast((_manualSlTpUnit === 'usd' && manualNotional() == null) ? 'Type Size and Lev first — a $ stop / target converts on Size × Lev' : 'SL / TP must be numbers', 'error'); return; }
@@ -19864,14 +20080,14 @@
             if (body.exit_mode === 'BULLRUN_SL' && !(body.sl_pct > 0)) { showToast('Bull-Run TP + custom SL needs a stop loss %', 'error'); return; }
             // Oct-1 (operator): the same in-page confirmation as Close, next to the Open button (browser confirm() opens at the top)
             const _liveNow = (window._lastStatusIsPaper === false);
-            const _ob = g('manual-open-btn'); const _omsg = `${_liveNow ? '🔴 LIVE — REAL MONEY · ' : ''}Open ${body.direction} ${body.pair} $${body.investment} × ${body.leverage} (${body.exit_mode}${body.exit_mode === 'FIXED' ? ` SL ${body.sl_pct}%${body.tp_pct ? ' TP ' + body.tp_pct + '%' : ''}` : body.exit_mode === 'FLOOR' ? ` floor stop${body.tp_pct ? ' · TP ' + body.tp_pct + '%' : ' · no TP'}` : body.exit_mode === 'BULLRUN_SL' ? ` SL ${body.sl_pct}% · Bull-Run TP (break-even, ATR trail, ladder)` : body.exit_mode === 'BULLRUN' ? ' Bull-Run stop + TP' : ''}) at market?${_slTpUsdNote}`;
+            const _ob = g('manual-open-btn'); const _omsg = `${_liveNow ? '🔴 LIVE — REAL MONEY · ' : ''}Open ${body.direction} ${body.pair} $${body.investment} × ${body.leverage} (${body.exit_mode}${body.exit_mode === 'FIXED' ? ` SL ${body.sl_pct}%${body.tp_pct ? ' TP ' + body.tp_pct + '%' : ''}` : body.exit_mode === 'FLOOR' ? ` floor stop${body.tp_pct ? ' · TP ' + body.tp_pct + '%' : ' · no TP'}` : body.exit_mode === 'BULLRUN_SL' ? ` SL ${body.sl_pct}% · Bull-Run TP (break-even, ATR trail, ladder)` : body.exit_mode === 'BULLRUN' ? ' Bull-Run stop + TP' : body.exit_mode === 'NOSTOP' ? ` NO STOP${body.emergency_stop ? ' · emergency stop −' + body.emergency_stop_pct + ' % of price' : ' · no emergency stop — loss unlimited until liquidation'}${body.tp_pct ? ' · TP ' + body.tp_pct + '%' : ' · no TP'}` : ''}${body.block_bot ? ' · ⛔ bot trades blocked while open' : ''}) at market?${_slTpUsdNote}`;
             if (!((_ob && _ob.getBoundingClientRect) ? await confirmNear(_ob, _omsg, 'Open', 'px-3 py-1 bg-amber-500/30 hover:bg-amber-500/50 text-amber-100 rounded text-xs font-semibold') : confirm(_omsg))) return;
             const btn = g('manual-open-btn'); if (btn) btn.disabled = true;
             try {
                 const res = await fetch(`${API_BASE}/api/orders/manual_open`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                 const data = await res.json().catch(() => ({}));
                 if (res.ok) {
-                    showToast(`MANUAL ${data.direction} ${data.pair} opened @ ${data.entry_price} (exit ${data.exit_mode}${data.sl_pct != null ? ' SL ' + data.sl_pct : ''}${data.tp_pct != null ? ' TP ' + data.tp_pct : ''})`);
+                    showToast(`MANUAL ${data.direction} ${data.pair} opened @ ${data.entry_price} (exit ${data.exit_mode}${data.sl_pct != null ? ' SL ' + data.sl_pct : ''}${data.tp_pct != null ? ' TP ' + data.tp_pct : ''}${data.emergency_stop_pct != null ? ' · emergency stop −' + data.emergency_stop_pct + ' %' : ''}${data.block_bot ? ' · ⛔ bot blocked' : ''})${data.warning ? ' ⚠ ' + data.warning : ''}`, data.warning ? 'warning' : undefined);
                     closeManualModal();   // Oct-20: the pop-up closes after a successful open
                     loadOpenOrders(); loadTransactions(); loadBalance();
                 } else {
@@ -21436,6 +21652,7 @@
                 { const _e=document.getElementById('config-spike-fade-lag-ndi-min'); if(_e && config.thresholds.spike_fade_lag_ndi_min !== undefined) _e.value = config.thresholds.spike_fade_lag_ndi_min; }   // 🪤 Sep-29 fade laggard gate
                 { const _e=document.getElementById('config-spike-fade-lag-btc-gap-min'); if(_e && config.thresholds.spike_fade_lag_btc_gap_min !== undefined) _e.value = config.thresholds.spike_fade_lag_btc_gap_min; }
                 { const _e=document.getElementById('config-manual-floor-sl-pct'); if(_e && config.thresholds.manual_floor_sl_pct !== undefined) _e.value = config.thresholds.manual_floor_sl_pct; }   // 🖐 Sep-29 MANUAL sleeve
+                { const _e=document.getElementById('config-manual-emergency-stop-pct'); if(_e && config.thresholds.manual_emergency_stop_pct !== undefined) _e.value = config.thresholds.manual_emergency_stop_pct; }   // 🚫 (343) No-stop emergency default
                 renderManualStopTable();   // Oct-1: the read-only stop-by-leverage table follows the floor setting
                 { const _e=document.getElementById('config-spike-fade-fb-rsi-prev-min'); if(_e && config.thresholds.spike_fade_fb_rsi_prev_min !== undefined) _e.value = config.thresholds.spike_fade_fb_rsi_prev_min; }
                 { const _e=document.getElementById('config-spike-fade-fb-pgap-min'); if(_e && config.thresholds.spike_fade_fb_pgap_min !== undefined) _e.value = config.thresholds.spike_fade_fb_pgap_min; }
@@ -22750,6 +22967,13 @@
                     if (!(Number.isFinite(_hx) && _hx > 0 && _hx <= 1)) { _hf.value = '0.25'; showToast('WILLY_HT size × WILLY must be > 0 and ≤ 1 — saved as the default 0.25', 'warning'); }
                 }
             }
+            {   // 🚫 (DECISION_LOG 343 review #9) the No-stop emergency default must be in (0, 95) — anything else is saved as the default 15 (visible note)
+                const _ef = document.getElementById('config-manual-emergency-stop-pct');
+                if (_ef) {
+                    const _ev = String(_ef.value ?? '').trim(), _ex = _ev === '' ? NaN : Math.abs(Number(_ev));
+                    if (!(Number.isFinite(_ex) && _ex > 0 && _ex < 95)) { _ef.value = '15'; showToast('No-stop emergency % must be > 0 and < 95 — saved as the default 15', 'warning'); }
+                }
+            }
             const invMode = document.getElementById('config-investment-mode').value;
             const invValue = safeFloat(document.getElementById('config-investment-value').value);
             const resMode = document.getElementById('config-reserve-mode').value;
@@ -23063,6 +23287,7 @@
                     spike_fade_lag_ndi_min: (() => { const _v = document.getElementById('config-spike-fade-lag-ndi-min')?.value; return safeFloat(_v === '' || _v == null ? 16.1 : _v); })(),   // 🪤 Sep-29 fade laggard gate
                     spike_fade_lag_btc_gap_min: (() => { const _v = document.getElementById('config-spike-fade-lag-btc-gap-min')?.value; return safeFloat(_v === '' || _v == null ? 0 : _v); })(),
                     manual_floor_sl_pct: (() => { const _v = document.getElementById('config-manual-floor-sl-pct')?.value; const f = safeFloat(_v === '' || _v == null ? -3 : _v); return -Math.abs(f); })(),   // 🖐 Sep-29 MANUAL sleeve
+                    manual_emergency_stop_pct: (() => { const _v = document.getElementById('config-manual-emergency-stop-pct')?.value; const f = Math.abs(safeFloat(_v === '' || _v == null ? 15 : _v)); return (f > 0 && f < 95) ? f : 15; })(),   // 🚫 (343) No-stop emergency default
                     spike_fade_fb_rsi_prev_min: (() => { const _v = document.getElementById('config-spike-fade-fb-rsi-prev-min')?.value; return safeFloat(_v === '' || _v == null ? 44 : _v); })(),
                     spike_fade_fb_pgap_min: (() => { const _v = document.getElementById('config-spike-fade-fb-pgap-min')?.value; return safeFloat(_v === '' || _v == null ? -0.40 : _v); })(),
                     spike_fade_tripwire_pct: safeFloat(document.getElementById('config-spike-fade-tripwire-pct')?.value || -1.5),

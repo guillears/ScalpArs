@@ -221,6 +221,9 @@ async def init_db():
                 for _im_col, _im_type in (('imported_at', 'DATETIME'), ('import_source', 'VARCHAR(20)')):   # 📥 (DECISION_LOG 328) import from Binance
                     if _im_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_im_col} {_im_type}"))
+                for _ns_col, _ns_type in (('manual_emergency_stop_pct', 'FLOAT'), ('manual_block_bot', 'BOOLEAN')):   # 🖐 / 📥 (DECISION_LOG 343) No stop · ⛔ block
+                    if _ns_col not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ns_col} {_ns_type}"))
                 for _ap_col, _ap_type in (('app_trade_key', 'VARCHAR(64)'), ('app_fee_estimated', 'BOOLEAN'), ('app_fills', 'INTEGER')):   # 🧾 (DECISION_LOG 329) Binance-app trades
                     if _ap_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ap_col} {_ap_type}"))

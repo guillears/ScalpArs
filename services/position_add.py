@@ -21,6 +21,7 @@ ADD_FIXED_MODES = ("FIXED", "FLOOR")
 ADD_LEV_TOL = 0.15                  # review I5: Binance's position leverage vs the row's — a wider gap refuses (the order would re-lever it)
 ADD_RECHECK_QTY_TOL = 0.10          # review I1: a late growth within 10 % of the add's requested qty is the add (else: not ours → alert only)
 ADD_REFUSE_TRAILING = "switch this trade to a fixed stop/target first (✏️ Close → Set exit), then add"
+ADD_REFUSE_NOSTOP = "a No-stop trade cannot be added to (its emergency stop would not follow the new average) — give it a stop first (✏️ Close → Set exit), then add"
 
 
 def _f(v) -> Optional[float]:
@@ -35,6 +36,8 @@ def add_exit_refusal(entry_strategy, manual_exit_mode, exit_override_at) -> Opti
     """None = the row carries a FIXED-LEVEL exit (an add may re-base it) · else the readable refusal. MANUAL rows in FIXED / FLOOR
     (a NULL mode = FIXED, the exits' own default) and ANY row with an operator exit override qualify; MOMENTUM / FRENZY / BULLRUN /
     BULLRUN_SL manual rows and un-overridden bot rows are refused (their peak / trail state is in % of the old entry)."""
+    if str(entry_strategy or "").upper() == "MANUAL" and str(manual_exit_mode or "").upper() == "NOSTOP":
+        return ADD_REFUSE_NOSTOP   # 🖐 (DECISION_LOG 343) checked first: its emergency stop is not re-based by the add path
     if exit_override_at is not None:
         return None
     if str(entry_strategy or "").upper() == "MANUAL" and str(manual_exit_mode or "FIXED").upper() in ADD_FIXED_MODES:

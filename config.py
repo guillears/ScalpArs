@@ -849,6 +849,11 @@ class SignalThresholds(BaseModel):
     # 🖐 Sep-29 MANUAL sleeve: hard stop (price-move %) for FLOOR mode and the widest SL FIXED mode accepts — a stop-less
     # position is never allowed (at 20× a −5% print is the whole margin). Operator research instrument; no systematic read uses it.
     manual_floor_sl_pct: float = -3.0
+    # 🖐 / 📥 (DECISION_LOG 343, operator 2026-10-21): the "No stop" exit's EMERGENCY stop default — the % prefilled in the 🖐 and 📥 pop-ups
+    # (each trade stores its own in Order.manual_emergency_stop_pct). PRICE move % (the safety-stop unit: trigger = entry × (1 − pct/100) for
+    # a LONG), not the net-of-fees SL %. ONE closePosition stop on Binance, the row's only stop. Evidence: none needed — an operator risk cap,
+    # not a strategy filter (IOST example: position ≈ 3.6× the account → −15 % ≈ −$1,620). Unticking it per trade = a true no stop.
+    manual_emergency_stop_pct: float = 15.0
     gapmin_probe_max_open: int = 3       # concurrent GAPMIN probes (both directions combined)
     # Jul 13 PM (operator: "both ways"): the GAPMIN probe covers SHORTS too — band
     # [floor, ema_gap_threshold_short=0.08); the 0.06/0.08 thresholds predate most of the

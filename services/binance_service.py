@@ -78,6 +78,21 @@ def get_ban_status() -> dict:
     return {"banned": False, "remaining_seconds": 0}
 
 
+def _liq_price(pos) -> Optional[float]:
+    """📥 (DECISION_LOG 343) a ccxt position's liquidation price (unified liquidationPrice, else info.liquidationPrice) → float ≥ 0, or None
+    when Binance did not report one (never invented). 0.0 is a real answer on a LONG (cross margin covering a fall to zero)."""
+    for v in ((pos or {}).get('liquidationPrice'), ((pos or {}).get('info') or {}).get('liquidationPrice')):
+        if v is None or v == '':
+            continue
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            continue
+        if x == x and x >= 0 and x != float('inf'):
+            return x
+    return None
+
+
 def _range_24h_pct(high, low) -> float:
     """24 h low→high swing in % from a ccxt ticker's high / low; 0.0 when either is missing or not positive (never raises)."""
     try:
@@ -1266,6 +1281,58 @@ class BinanceService:
             logger.error(f"[BINANCE] open orders read failed for {pair}: {e}")
             return None
 
+    @staticmethod
+    def _open_order_view(o, kind) -> Dict:
+        """📥 (DECISION_LOG 343) one open order (regular ccxt order or a raw ALGO row) → the fields the import classifies on. Missing → 0 / ''."""
+        o = o or {}
+        info = (o.get('info') or {}) if kind == 'regular' else o
+
+        def _num(*vals):
+            for v in vals:
+                try:
+                    x = float(v)
+                except (TypeError, ValueError):
+                    continue
+                if x == x and x not in (float('inf'), float('-inf')):
+                    return x
+            return 0.0
+
+        def _flag(*vals):
+            for v in vals:
+                if v is None or v == '':
+                    continue
+                return v is True or str(v).strip().lower() == 'true'
+            return False
+        if kind == 'regular':
+            typ = str(info.get('type') or info.get('origType') or o.get('type') or '').upper()
+            return {'kind': 'regular', 'id': str(o.get('id') or info.get('orderId') or ''), 'type': typ,
+                    'side': str(info.get('side') or o.get('side') or '').upper(),
+                    'qty': _num(info.get('origQty'), o.get('amount')), 'price': _num(info.get('price'), o.get('price')),
+                    'trigger_price': _num(info.get('stopPrice'), o.get('stopPrice'), o.get('triggerPrice')),
+                    'reduce_only': _flag(o.get('reduceOnly'), info.get('reduceOnly')), 'close_position': _flag(info.get('closePosition'))}
+        typ = str(o.get('orderType') or o.get('type') or '').upper()
+        return {'kind': 'algo', 'id': str(o.get('algoId') or ''), 'type': typ, 'side': str(o.get('side') or '').upper(),
+                'qty': _num(o.get('quantity'), o.get('origQty')), 'price': _num(o.get('price')),
+                'trigger_price': _num(o.get('triggerPrice'), o.get('stopPrice')),
+                'reduce_only': _flag(o.get('reduceOnly')), 'close_position': _flag(o.get('closePosition'))}
+
+    async def list_symbol_open_orders(self, pair: str) -> Optional[List[Dict]]:
+        """📥 (DECISION_LOG 343, read-only) every open order on ONE symbol, REGULAR (weight 1) + ALGO / conditional (weight 1 — where the app's
+        position TP / SL and the bot's backstops live), each as _open_order_view → [{'kind', 'id', 'type', 'side', 'qty', 'price',
+        'trigger_price', 'reduce_only', 'close_position'}] · None when either read failed (never taken as "none")."""
+        try:
+            await self._check_ban()
+            await self.load_markets()
+            rows = await self.exchange.fetch_open_orders(pair.replace('USDT', '/USDT:USDT'))
+            algo = await self.exchange.fapiPrivateGetOpenAlgoOrders({'symbol': pair})
+            if isinstance(algo, dict):   # tolerate a wrapped list ({'orders': [...]}) as well as the plain list
+                algo = algo.get('orders') or algo.get('rows') or []
+            return [self._open_order_view(o, 'regular') for o in (rows or [])] + [self._open_order_view(o, 'algo') for o in (algo or [])]
+        except Exception as e:
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] open orders list failed for {pair}: {e}")
+            return None
+
     async def get_position_mode_dual(self) -> Optional[bool]:
         """🛡 (DECISION_LOG 292 ④, read-only) True = HEDGE (dual-side) position mode, False = ONE-WAY (what the bot assumes), None = unreadable."""
         try:
@@ -1506,7 +1573,10 @@ class BinanceService:
                         'unrealized_pnl': float(pos.get('unrealizedPnl', 0)),
                         'leverage': int(pos.get('leverage') or 1),
                         'notional': float(pos.get('notional', 0)),
-                        'margin': float(pos.get('initialMargin', 0))
+                        'margin': float(pos.get('initialMargin', 0)),
+                        # 📥 (DECISION_LOG 343) Binance's liquidation price — None = not reported (never read as "no liquidation"); 0.0 on a
+                        # LONG = the account covers a fall to zero (cross margin). The No-stop import's emergency stop is judged against it.
+                        'liquidation_price': _liq_price(pos),
                     })
             
             return open_positions
@@ -1535,6 +1605,7 @@ class BinanceService:
                         'mark_price': float(pos.get('markPrice', 0)),
                         'unrealized_pnl': float(pos.get('unrealizedPnl', 0)),
                         'leverage': int(pos.get('leverage') or 1),
+                        'liquidation_price': _liq_price(pos),   # 📥 (343) None = not reported
                     }
             return None
         except Exception as e:

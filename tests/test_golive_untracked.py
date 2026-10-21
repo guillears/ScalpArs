@@ -144,6 +144,8 @@ def test_untracked_symbol_blocks_bot_entries(monkeypatch):
     blocks = []
     eng._record_filter_block = lambda name, d, had_room=True: blocks.append((name, d))
     eng._mark_untracked("FOOUSDT", "LONG", 5.0, 2.0, "NO_ROW", "RECONCILE")
+    async def _no_block(): return None   # ⛔ (343) no manual block in this test (its DB is absent — the block check would fail closed)
+    eng.manual_block_active = _no_block
     async def go():
         return await eng.open_position(db=None, pair="FOOUSDT", direction="LONG", confidence="STRONG_BUY", current_price=2.0)
     assert asyncio.run(go()) is None and blocks == [("UNTRACKED_POSITION_BLOCK", "LONG")]

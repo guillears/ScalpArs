@@ -168,7 +168,7 @@ def test_open_checks(monkeypatch):
 def test_wiring_both_paths_ui_and_override():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     ui = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
-    assert eng.count('in ("FIXED", "FLOOR", "FRENZY", "BULLRUN", "BULLRUN_SL")') == 1 and eng.count("in ('FIXED', 'FLOOR', 'FRENZY', 'BULLRUN', 'BULLRUN_SL')") == 1
+    assert eng.count('in ("FIXED", "FLOOR", "FRENZY", "BULLRUN", "BULLRUN_SL", MANUAL_NOSTOP_MODE)') == 1 and eng.count("in ('FIXED', 'FLOOR', 'FRENZY', 'BULLRUN', 'BULLRUN_SL', MANUAL_NOSTOP_MODE)") == 1   # (343) + NOSTOP
     assert eng.count("manual_bullrun_exit_for(") == 3                                   # def + monitor + realtime
     assert '(order.manual_exit_mode or "") == "BULLRUN_SL" and _br_unarmed' in eng            # an edit keeps the custom stop only before the arm
     assert "['MOMENTUM', 'FRENZY', 'BULLRUN', 'BULLRUN_SL'].includes" in ui and "['BULLRUN', 'BULLRUN_SL'].includes(o.manual_exit_mode || '')" in ui

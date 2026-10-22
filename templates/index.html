@@ -454,6 +454,11 @@
         :root .bg-white\/5 { background-color: var(--surface-2); }
         :root .bg-white\/10 { background-color: color-mix(in srgb, var(--fg) 7%, var(--surface-2)); }
         :root .hover\:bg-white\/5:hover, :root .hover\:bg-white\/10:hover, :root .hover\:bg-white\/20:hover { background-color: color-mix(in srgb, var(--fg) 8%, transparent); }
+        /* operator 10-22: arbitrary white tints (the highlighted LINKUSDT row, faint panels) were invisible on the light theme */
+        :root .bg-white\/\[0\.02\] { background-color: color-mix(in srgb, var(--fg) 2.5%, transparent); }
+        :root .bg-white\/\[0\.03\] { background-color: color-mix(in srgb, var(--fg) 3.5%, transparent); }
+        :root .bg-white\/\[0\.07\] { background-color: color-mix(in srgb, var(--fg) 7%, transparent); }
+        :root .bg-white\/\[0\.07\].hover\:bg-white\/10:hover { background-color: color-mix(in srgb, var(--fg) 11%, transparent); }
         :root .border-white\/5, :root .border-white\/10, :root .border-white\/15 { border-color: var(--line); }
         :root .border-white\/20, :root .border-white\/25 { border-color: color-mix(in srgb, var(--muted) 35%, var(--line)); }
         :root .bg-black\/20 { background-color: var(--surface-2); }

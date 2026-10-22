@@ -165,6 +165,11 @@
         :root #balance-cards > .glass > p.text-2xl { font-weight: 600; }
         /* operator 10-22: the Total card is the tallest — the other three centre their text in the middle of the box */
         :root #balance-cards > .glass:not(:last-child) { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+        /* operator 10-22: on a phone the cards stack — centre the Total card too (sparkline + period buttons included); desktop unchanged */
+        @media (max-width: 767px) {
+            :root #balance-cards > .glass:last-child { text-align: center; }
+            :root #balance-cards > .glass:last-child #portfolio-spark-wrap > .flex { justify-content: center; }
+        }
         :root main h2 { color: var(--fg); font-weight: 600; }
         :root .bg-\[\#1f2333\] { background-color: var(--surface); }
         :root .bg-\[\#262a40\] { background-color: var(--surface-2); }
@@ -9765,7 +9770,9 @@
                     const _tp = document.getElementById('total-portfolio');
                     const _d = data.pnl_vs_start != null ? Number(data.pnl_vs_start)   // paper: vs the true seed (an open trade's entry fee counts) · live: equity − fixed baseline − net deposits
                         : ((data.starting_balance != null && data.total_portfolio != null) ? Number(data.total_portfolio) - Number(data.starting_balance) : 0);
-                    const _st = _d > 0.005 ? 'text-emerald-400' : (_d < -0.005 ? 'text-red-400' : 'text-white');
+                    // operator 10-22: moves within ±0.1 % of the portfolio (e.g. BNB price wobble) stay neutral — never red / green for cents
+                    const _thr = Math.max(0.005, 0.001 * Math.abs(Number(data.total_portfolio) || 0));
+                    const _st = _d > _thr ? 'text-emerald-400' : (_d < -_thr ? 'text-red-400' : 'text-white');
                     ['text-emerald-400', 'text-red-400', 'text-white'].forEach(c => _tp.classList.toggle(c, c === _st));
                     // Oct-1 (operator): Initial Balance + P&L under Total Trades. Paper: the seed. Live: the FIXED baseline (BotState.live_initial_total_usd)
                     // (deposits / withdrawals since the first live order are shown on the Initial line and never count as P&L).
@@ -9779,7 +9786,7 @@
                             const _sg = _d > 0.005 ? '+' : (_d < -0.005 ? '-' : '');
                             const _basis = _seed + _fl;   // capital put in = initial + net deposits (a deposit must not inflate the %)
                             const _pct = _basis > 0 ? ` (${_sg}${Math.abs(_d / _basis * 100).toFixed(2)}%)` : '';
-                            const _cls = _d > 0.005 ? 'text-emerald-400' : (_d < -0.005 ? 'text-red-400' : 'text-gray-500');
+                            const _cls = _d > _thr ? 'text-emerald-400' : (_d < -_thr ? 'text-red-400' : 'text-gray-500');   // same ±0.1 % neutral band
                             if (!data.is_paper && data.invested != null) {   // 🏦 (318, operator) LIVE: "Invested: $X ($start start + $deposits deposits)"; P&L = equity − invested, % on invested
                                 const _inv = Number(data.invested);
                                 _pi.textContent = `Invested: ${formatUSD(_inv)}`;   // (318, operator) the breakdown moved to the hover tooltip

@@ -208,3 +208,31 @@ def test_second_origin_switch_shares_state():
     setv = re.search(r"function setOriginView\(v\) \{.*?\n        \}\n", html, re.S).group(0)
     assert "_paintOriginSwitch();" in setv
     assert ".origin-seg button[aria-pressed=\"true\"]" in html
+
+
+def test_empty_book_still_paints_the_dropdowns():
+    """operator 10-22: after a reset (no closed orders) the empty-view early return must still carry the (off) map — it did not."""
+    out = _perf([])
+    assert out["total_trades"] == 0
+    assert out["cell_source_options"] == []
+    st = out["sleeve_filter_status"]
+    assert st and all(v["n"] == 0 for v in st.values())
+    assert set(st) >= {"FRENZY_WILLY", "SURGE_SHORT", "FAN_RATIO_GATE"}
+    out2 = _perf(ROWS, flip_source="FRENZY_WILLY", direction="SHORT")   # a filtered-empty view: same keys, whole-book counts
+    assert out2["total_trades"] == 0 and out2["sleeve_filter_status"]["FRENZY_WILLY"]["n"] == 1
+
+
+def test_perf_exception_fallback_still_paints_off_marks(monkeypatch):
+    """review: the all-zeros fallback (a perf exception) keeps the config-only (off) map instead of dropping it."""
+    import main
+    from unittest.mock import AsyncMock
+
+    async def boom(*a, **k):
+        raise RuntimeError("perf broke")
+    monkeypatch.setattr(main, "_compute_performance", boom)
+    monkeypatch.setattr(main.trading_engine, "initialize", AsyncMock(return_value=None))
+    monkeypatch.setattr(main.trading_engine, "manual_block_state", AsyncMock(return_value=[]))
+    out = asyncio.run(main.get_performance(db=None))
+    assert out["_error"] == "perf broke" and out["cell_source_options"] == []
+    st = out["sleeve_filter_status"]
+    assert st and all(v["n"] == 0 for v in st.values()) and "FRENZY_WIDE" in st

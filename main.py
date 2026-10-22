@@ -3358,6 +3358,14 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "day_time_heatmap": [],
             "_error": str(e)
         }
+    # 🧹 (DL 346, review) the all-zeros fallback still paints the Sleeve "(off)" marks (config-only; whole-book counts unknown → 0)
+    if isinstance(out, dict) and "sleeve_filter_status" not in out:
+        out.setdefault("cell_source_options", [])
+        try:
+            out["sleeve_filter_status"] = _sleeve_filter_status(getattr(getattr(config, 'trading_config', None), 'thresholds', None), [])
+        except Exception as _sfe:
+            logger.warning(f"[PERF] fallback sleeve_filter_status failed: {_sfe}")
+            out["sleeve_filter_status"] = {}
     # ⛔ (DECISION_LOG 343) the active "block bot trades" state, printed by BOTH text exports (D12). Its own guard: a failure here never
     # zeroes the performance payload; None = unreadable (the exports say so), [] = no block.
     try:
@@ -5616,6 +5624,18 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     # readings at the click) must never enter those buckets. Totals, balances and the sleeve table keep using `orders`.
     _ind_orders = [o for o in orders if (getattr(o, 'entry_strategy', None) or '').upper() != 'MANUAL']
 
+    # 🧹 (DL 346, review) the filter-dropdown helpers can never blank /api/performance — each fails alone to an empty list / map; computed BEFORE the empty-view early return so an empty book still shows the (off) marks
+    try:
+        _cell_source_options_safe = _cell_source_options(_book_all)
+    except Exception as e:
+        logger.warning(f"[PERF] cell_source_options failed: {e}")
+        _cell_source_options_safe = []
+    try:
+        _sleeve_filter_status_safe = _sleeve_filter_status(getattr(getattr(config, 'trading_config', None), 'thresholds', None), _book_all)
+    except Exception as e:
+        logger.warning(f"[PERF] sleeve_filter_status failed: {e}")
+        _sleeve_filter_status_safe = {}
+
     if not orders:
         logger.warning("[PERF] No closed orders found for is_paper=%s (regime=%s), returning empty performance",
                        trading_engine.is_paper_mode, regime)
@@ -5734,6 +5754,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
+            "cell_source_options": _cell_source_options_safe,   # 🧹 (DL 346) the dropdowns stay painted on an empty view
+            "sleeve_filter_status": _sleeve_filter_status_safe,
         }
 
     # Separate longs and shorts
@@ -9843,18 +9865,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         entry_funnel = {"blocked_by_filter_room": 0, "blocked_at_max": 0, "blocked_supp": 0, "cap_skip_normal": 0, "cap_skip_flip": 0, "blocked_long": 0,
                         "blocked_short": 0, "opened_normal": 0, "opened_normal_long": 0, "opened_normal_short": 0,
                         "opened_flip": 0, "opened_flip_long": 0, "opened_flip_short": 0, "top_blockers": []}
-
-    # 🧹 (DL 346, review) the filter-dropdown helpers can never blank /api/performance — each fails alone to an empty list / map
-    try:
-        _cell_source_options_safe = _cell_source_options(_book_all)
-    except Exception as e:
-        logger.warning(f"[PERF] cell_source_options failed: {e}")
-        _cell_source_options_safe = []
-    try:
-        _sleeve_filter_status_safe = _sleeve_filter_status(getattr(getattr(config, 'trading_config', None), 'thresholds', None), _book_all)
-    except Exception as e:
-        logger.warning(f"[PERF] sleeve_filter_status failed: {e}")
-        _sleeve_filter_status_safe = {}
 
     return {
         "total_trades": total_trades,

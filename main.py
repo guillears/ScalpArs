@@ -1194,9 +1194,11 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         _live_open = (await db.execute(
             select(Order).where(
                 and_(Order.status == "OPEN", Order.is_paper == False)))).scalars().all()
-        # walletBalance excludes unrealized on Binance futures → add it (true equity, review I1)
-        total = balance['usdt_total'] + _open_unrealized_pnl(_live_open) + bnb_usd
-        _reserve, _tradeable, _rmode = _reserve_split(usdt_free, balance['usdt_used'])
+        # 🏦 (344, operator bug report) equity = Binance's USDT marginBalance (walletBalance + unrealized over EVERY position — an
+        # untracked / not-imported app trade included) + the BNB leg. The DB-row unrealized is NOT added on top (no double count).
+        _usdt_eq, _usdt_unrl, _usdt_im = live_equity_parts(balance, _live_open)
+        total = _usdt_eq + bnb_usd
+        _reserve, _tradeable, _rmode = _reserve_split(usdt_free, _usdt_im)
         _live_open_count = len(_live_open)
         # 🏦 Oct-1 (operator: "there will be an initial balance, and also deposits"): the card's Initial Balance / P&L in LIVE.
         # FIXED baseline (BotState.live_initial_total_usd, set once — see _live_baseline): P&L = equity − baseline − net external
@@ -1205,7 +1207,7 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         _live_pnl = _live_flows = _live_initial = _live_invested = _live_pnl_pct = None
         if balance.get('ok', True) and bnb_price > 0:                  # a failed balance read is zeros — never derive from it
             try:
-                _base, _base_at = await _live_baseline(db, total, _live_open)
+                _base, _base_at = await _live_baseline(db, total, _live_open, open_unrealized=_usdt_unrl)
                 if _base is not None:
                     _now_m = time.monotonic(); _key = _base_at.isoformat()
                     if _LIVE_FLOW_MEMO.get("until", 0) > _now_m and _LIVE_FLOW_MEMO.get("key") == _key:   # LIVE_FLOW_MEMO_S memo, failures included
@@ -1227,7 +1229,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "bnb_balance": balance['bnb_total'],
             "bnb_balance_usd": round(bnb_usd, 2),
             "bnb_balance_is_usd": False,
-            "usdt_in_orders": balance['usdt_used'],
+            "usdt_in_orders": round(_usdt_im, 2),   # 🏦 (344) the margin actually locked (USDT initialMargin = position + open-order IM), not total − free
+            "usdt_unrealized": round(_usdt_unrl, 2) if balance.get('ok', True) else None,   # 🏦 (344) Binance open P&L over ALL positions — inside total_portfolio ("incl. open P&L"); None on a failed read (sub-line hidden)
             "open_orders_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']),   # bot lane (🖐 Sep-29, parity with paper)
             "manual_open_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') == 'MANUAL']),
             "open_by_sleeve": _open_by_sleeve(_live_open),
@@ -1995,11 +1998,14 @@ async def _live_net_flows(db: AsyncSession, base_at) -> float:
     return round(stored + pending, 2)
 
 
-async def _live_baseline(db: AsyncSession, total_now: float, live_open):
+async def _live_baseline(db: AsyncSession, total_now: float, live_open, open_unrealized=None):
     """🏦 The live account's FIXED starting balance → (usd, taken_at) or (None, None). Read from BotState; when absent it is set
     ONCE here (only when the equity is above $1 — fund the futures wallet first): with no live order yet = today's equity, now; with live orders already on file (a live era that predates this
     column) = back-derived at the first order (equity − closed P&L − open unrealized + open entry fees − flows since then), so
-    the card continues that era instead of restarting it. Cleared only by a LIVE full reset (reset_trading)."""
+    the card continues that era instead of restarting it. Cleared only by a LIVE full reset (reset_trading).
+    🏦 (344) open_unrealized = Binance's unrealized over ALL positions (the same leg total_now carries since 344) — used in the
+    back-derivation instead of the DB rows' unrealized so an untracked position's open P&L never lands in the baseline. An
+    EXISTING baseline is returned untouched (this only matters for the one-time set)."""
     st = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
     if st is None:
         return None, None
@@ -2015,7 +2021,8 @@ async def _live_baseline(db: AsyncSession, total_now: float, live_open):
             pass
         closed = float((await db.execute(select(func.coalesce(func.sum(Order.pnl), 0)).where(
             and_(Order.status == "CLOSED", Order.is_paper == False)))).scalar() or 0)
-        pnl = closed + _open_unrealized_pnl(live_open) - sum(float(getattr(o, "entry_fee", 0) or 0.0) for o in live_open)
+        _unrl = float(open_unrealized) if open_unrealized is not None else _open_unrealized_pnl(live_open)
+        pnl = closed + _unrl - sum(float(getattr(o, "entry_fee", 0) or 0.0) for o in live_open)
         flows = sum(a2 for _, a2 in await _external_flow_rows(db, int(era0.replace(tzinfo=timezone.utc).timestamp() * 1000)))
         base, at = float(total_now) - pnl - flows, era0
     if not (base > 1.0):                                              # an empty / unfunded wallet is never a baseline — retried next poll
@@ -12600,6 +12607,20 @@ def _open_unrealized_pnl(open_orders) -> float:
     return total
 
 
+def live_equity_parts(bal: dict, live_open) -> tuple:
+    """🏦 (DECISION_LOG 344) THE live USDT-equity definition → (usdt_equity, usdt_unrealized, usdt_initial_margin).
+    usdt_equity = Binance's USDT-asset marginBalance (walletBalance + unrealizedProfit over EVERY USDT-margined position — bot rows,
+    imported and untracked app trades alike); callers add the BNB leg (bnb_total × price) themselves. Per-USDT-asset on purpose:
+    in Multi-Assets mode totalMarginBalance also values BNB, which would then be counted twice (the go-live preflight refuses
+    Multi-Assets mode anyway). Legacy fallback (a balance payload without the 344 keys — old stubs): walletBalance + the DB rows'
+    unrealized and ccxt 'used', i.e. the pre-344 formula."""
+    if 'usdt_margin_balance' in bal:
+        return (float(bal.get('usdt_margin_balance') or 0.0), float(bal.get('usdt_unrealized') or 0.0),
+                float(bal.get('usdt_initial_margin') or 0.0))
+    u = _open_unrealized_pnl(live_open)
+    return float(bal.get('usdt_total') or 0.0) + u, u, float(bal.get('usdt_used') or 0.0)
+
+
 # ⚡ Oct-5 refresh fix 3 (DECISION_LOG 212): the dashboard's 10-s batch hit the paper-book recompute 3× (balance card, investors,
 # status) — ~24 sum queries on the ONE uvicorn worker that also runs the scan loops. Dashboard reads share one result for
 # _PAPER_BOOK_TTL_S; money paths (deposits / withdrawals / NAV snapshots / engine sizing) always pass fresh=True or call the
@@ -12664,9 +12685,13 @@ async def _portfolio_components(db: AsyncSession, fresh: bool = True) -> dict:
             select(Order).where(and_(Order.status == "OPEN", Order.is_paper == False))
         )
         open_orders = result.scalars().all()
-        free, margin = bal['usdt_free'], bal['usdt_used']
-        # usdt_total = Binance walletBalance (excludes unrealized)
+        # 🏦 (344) ONE live-equity definition with /api/balance: total = USDT marginBalance (all positions, untracked included)
+        # + BNB; realized = walletBalance + BNB (the closed-P&L baseline the day-return walk needs); margin = USDT initialMargin.
+        _usdt_eq, _unrl_live, _im = live_equity_parts(bal, open_orders)
+        free, margin = bal['usdt_free'], _im
         realized = bal['usdt_total'] + bnb_usd
+        return {"free": free, "margin": margin, "unrealized": _unrl_live, "bnb": bnb_usd,
+                "realized_equity": realized, "total_equity": _usdt_eq + bnb_usd}
     unrealized = _open_unrealized_pnl(open_orders)
     return {"free": free, "margin": margin, "unrealized": unrealized, "bnb": bnb_usd,
             "realized_equity": realized, "total_equity": realized + unrealized}

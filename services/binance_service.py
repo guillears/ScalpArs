@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import asyncio
 import logging
 import re
+import math
 import time
 from config import settings, trading_config
 from datetime import datetime
@@ -580,13 +581,31 @@ class BinanceService:
             # Extract stable Wallet Balance and USDT-only Available Balance
             # from raw Binance response (the CCXT 'free' field is account-wide,
             # which includes BNB value — we want USDT-only).
-            usdt_wallet = float(usdt_balance.get('total', 0))
-            usdt_free = float(usdt_balance.get('free', 0))
+            usdt_wallet = float(usdt_balance.get('total') or 0)    # (344) `or 0`: ccxt leaves a field None when Binance omits its source
+            usdt_free = float(usdt_balance.get('free') or 0)
+            # 🏦 (DECISION_LOG 344) Binance's own equity for the USDT asset: marginBalance = walletBalance + unrealizedProfit over
+            # EVERY USDT-margined position (bot rows, imported app trades AND untracked ones). ccxt 4.5.x maps 'total' to marginBalance
+            # and 'used' to initialMargin, but the raw asset fields are read explicitly so a ccxt mapping change cannot move the card.
+            def _num(v, fb):
+                """(344 review) None / '' / unparsable / non-finite → fb."""
+                try:
+                    x = float(v)
+                except (TypeError, ValueError):
+                    return fb
+                return x if math.isfinite(x) else fb
+            usdt_unrealized = 0.0
+            usdt_margin_balance = usdt_wallet          # no raw USDT asset → ccxt 'total' (= marginBalance on ccxt 4.5.x)
+            usdt_initial_margin = _num(usdt_balance.get('used'), 0.0)
             raw_info = balance.get('info', {})
             for asset in raw_info.get('assets', []):
                 if asset.get('asset') == 'USDT':
-                    usdt_wallet = float(asset.get('walletBalance', usdt_wallet))
-                    usdt_free = float(asset.get('maxWithdrawAmount', usdt_free))
+                    usdt_wallet = _num(asset.get('walletBalance'), usdt_wallet)
+                    usdt_free = _num(asset.get('maxWithdrawAmount'), usdt_free)
+                    usdt_unrealized = _num(asset.get('unrealizedProfit'), 0.0)
+                    usdt_margin_balance = _num(asset.get('marginBalance'), usdt_wallet + usdt_unrealized)
+                    _pim, _oim = _num(asset.get('positionInitialMargin'), None), _num(asset.get('openOrderInitialMargin'), None)
+                    _fb_im = (_pim or 0.0) + (_oim or 0.0) if (_pim is not None or _oim is not None) else usdt_initial_margin
+                    usdt_initial_margin = _num(asset.get('initialMargin'), _fb_im)
                     break
             
             # Aug-22: Binance "Margin Ratio" inputs (cross wallet): totalMaintMargin / totalMarginBalance
@@ -599,13 +618,18 @@ class BinanceService:
             _payload = {
                 'ok': True,
                 'usdt_free': usdt_free,
-                'usdt_used': float(usdt_balance.get('used', 0)),
+                'usdt_used': float(usdt_balance.get('used') or 0),
                 'usdt_total': usdt_wallet,
-                'bnb_free': float(bnb_balance.get('free', 0)),
-                'bnb_total': float(bnb_balance.get('total', 0)),
-                'total_portfolio': float(balance.get('total', {}).get('USDT', 0)),
+                'bnb_free': float(bnb_balance.get('free') or 0),
+                'bnb_total': float(bnb_balance.get('total') or 0),
+                'total_portfolio': float((balance.get('total') or {}).get('USDT') or 0),
                 'maint_margin': _maint,
                 'margin_balance': _mbal,
+                # 🏦 (344) per-USDT-asset (never totalMarginBalance: in Multi-Assets mode that also values BNB, which the card adds
+                # separately as bnb_total × price → it would be counted twice)
+                'usdt_margin_balance': usdt_margin_balance,
+                'usdt_unrealized': usdt_unrealized,
+                'usdt_initial_margin': usdt_initial_margin,
             }
             # Aug-22 review: short-lived copy for same-poll consumers (status margin ratio) — 5 s TTL
             self._last_balance_payload = dict(_payload, _ts=time.time())
@@ -625,6 +649,9 @@ class BinanceService:
                 'total_portfolio': 0,
                 'maint_margin': 0,
                 'margin_balance': 0,
+                'usdt_margin_balance': 0,
+                'usdt_unrealized': 0,
+                'usdt_initial_margin': 0,
             }
     
     async def get_top_futures_pairs(

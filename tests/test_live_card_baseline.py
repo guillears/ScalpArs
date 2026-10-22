@@ -35,7 +35,7 @@ def test_wiring_model_migration_reset():
     mdl = open(os.path.join(ROOT, "models.py")).read(); dbs = open(os.path.join(ROOT, "database.py")).read()
     assert "live_initial_total_usd = Column(Float, nullable=True)" in mdl and "live_baseline_at = Column(DateTime, nullable=True)" in mdl
     assert "ADD COLUMN live_initial_total_usd FLOAT" in dbs and "ADD COLUMN live_baseline_at DATETIME" in dbs
-    assert src.count("await _live_baseline(db, total, _live_open)") == 1
+    assert src.count("await _live_baseline(db, total, _live_open, open_unrealized=_usdt_unrl)") == 1
     lb = src[src.index("async def _live_baseline("):src.index("_LIVE_FLOW_MEMO = {}")]
     assert "await locked_commit(db)" in lb and "await db.commit()" not in lb and "if not (base > 1.0):" in lb
     assert "_bs.live_initial_total_usd = None; _bs.live_baseline_at = None" in src        # only a LIVE full reset clears it

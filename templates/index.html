@@ -276,12 +276,14 @@
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">USDT in Open Orders</p>
                     <p id="usdt-orders" class="text-2xl font-bold text-white">$0.00</p>
+                    <p id="usdt-orders-note" class="text-xs text-gray-500" title="Margin locked by open positions and open orders (Binance initial margin) — it does not grow with an open loss">position margin</p>
                     <p id="usdt-orders-count" class="text-xs text-gray-500 mt-1"></p>
                     <div id="usdt-orders-sleeves" class="text-xs text-gray-500"></div>
                 </div>
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">Total Portfolio Value</p>
                     <p id="total-portfolio" class="text-2xl font-bold text-white">$0.00</p>
+                    <p id="portfolio-open-pnl" class="text-xs text-gray-500 hidden" title="Binance margin balance: wallet + the open P&amp;L of EVERY position (bot, imported and untracked app trades) + BNB"></p>
                     <p id="total-trades-count" class="text-xs text-gray-500 mt-1"></p>
                     <p id="portfolio-initial" class="text-xs text-gray-500 mt-0.5 hidden"></p>
                     <p id="portfolio-pnl" class="text-xs text-gray-500 mt-0.5 hidden"></p>
@@ -9360,6 +9362,18 @@
                 if (data.sizing_equity != null) { window._ssEquity = Number(data.sizing_equity); window._ssFeeBurn = Number(data.fee_reserve_burn_usd || 0); try { renderSleeveSizing(); } catch (_e) {} }   // ⚖️ Oct-4
                 { const _mp = document.getElementById('manual-entry-btn'); if (_mp && data.manual_max_open_positions != null) { _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0); if (_mp.classList.contains('hidden')) { try { closeManualModal(); } catch (e) {} } } }   // 🖐 cap 0 = manual entry off (shown in paper AND live since Oct-2) · Oct-20: hides the 🖐 button (and closes the pop-up)
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
+                {   // 🏦 (344, operator bug report) live: the open P&L (all positions, untracked included) inside the total
+                    const _op = document.getElementById('portfolio-open-pnl');
+                    if (_op) {
+                        const _has = data.usdt_unrealized != null && isFinite(Number(data.usdt_unrealized));
+                        _op.classList.toggle('hidden', !_has);
+                        if (_has) {
+                            const _u = Number(data.usdt_unrealized);
+                            const _c = _u > 0.005 ? 'text-emerald-400' : (_u < -0.005 ? 'text-red-400' : 'text-gray-500');
+                            _op.innerHTML = `incl. open P&amp;L <span class="${_c}">${_u < -0.005 ? '-' : (_u > 0.005 ? '+' : '')}${formatUSD(Math.abs(_u))}</span>`;
+                        }
+                    }
+                }
                 {   // Oct-1 (operator): white at the starting balance (or when it is unknown), green above it, red below it
                     const _tp = document.getElementById('total-portfolio');
                     const _d = data.pnl_vs_start != null ? Number(data.pnl_vs_start)   // paper: vs the true seed (an open trade's entry fee counts) · live: equity − fixed baseline − net deposits
@@ -9393,6 +9407,7 @@
                         }
                     }
                 }
+                window._lastOpenPnl = (data.usdt_unrealized != null && isFinite(Number(data.usdt_unrealized))) ? Number(data.usdt_unrealized) : null;   // 🏦 (344) the exports' "incl. open P&L"
                 window._lastTotalPortfolio = data.total_portfolio;  // Aug-14: calendar footer + exports read this (Portfolio-now line)
                 // Live-update the calendar footer span (fixes the render-order race: the
                 // calendar draws once on load — often BEFORE the first balance fetch — and
@@ -9477,7 +9492,7 @@
                 const _f = v => v == null ? '-' : (v >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(v));
                 lines.push(`\n${hr2}`);
                 lines.push('## EOM Projection (fixed-date, MTD-rate; d3/d7 = improvement signal)\n');
-                lines.push(`Portfolio now: ${window._lastTotalPortfolio != null ? '$' + Math.round(window._lastTotalPortfolio) : '-'}  |  Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}`);
+                lines.push(`Portfolio now: ${window._lastTotalPortfolio != null ? '$' + Math.round(window._lastTotalPortfolio) : '-'}${window._lastOpenPnl != null ? ` (incl. open P&L ${window._lastOpenPnl < 0 ? '-' : '+'}$${Math.abs(window._lastOpenPnl).toFixed(2)})` : ''}  |  Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}`);
                 lines.push(`Era marks: ${(_ep.marks || []).join(' · ') || '-'}`);
             }
 
@@ -11342,7 +11357,7 @@
                     const _f = v => v == null ? '-' : (v >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(v));
                     lines.push(`\n${hr2}`);
                     lines.push('## EOM Projection (fixed-date, MTD-rate; d3/d7 = improvement signal)\n');
-                    lines.push(`Portfolio now: ${window._lastTotalPortfolio != null ? '$' + Math.round(window._lastTotalPortfolio) : '-'}  |  Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}`);
+                    lines.push(`Portfolio now: ${window._lastTotalPortfolio != null ? '$' + Math.round(window._lastTotalPortfolio) : '-'}${window._lastOpenPnl != null ? ` (incl. open P&L ${window._lastOpenPnl < 0 ? '-' : '+'}$${Math.abs(window._lastOpenPnl).toFixed(2)})` : ''}  |  Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}`);
                     lines.push(`Era marks: ${(_ep.marks || []).join(' · ') || '-'}`);
                 }
 

@@ -519,7 +519,7 @@ def test_engine_and_api_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert 'FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY")' in eng            # FRENZY exit / hold cap / urgent close
     assert "if _lite and not ep.get('in_state'):" in eng and "await self._frenzy_lite_eval(db, pair, ep, flag, ind, closed, bar_open, norm_hour=_nc[1])" in eng
-    assert "if not (_on or _obs or _wide or _lite or _willy):" in eng and "if _on or _wide or _lite or _willy:" in eng
+    assert "if not (_on or _obs or _wide or _lite or _willy or _fbs):" in eng and "if _on or _wide or _lite or _willy:" in eng
     assert '"FRENZY_LITE" if (_frenzy and frenzy_lite)' in eng                        # tag → frenzy_lite_* size fields
     i = eng.index("async def _frenzy_lite_eval("); body = eng[i:eng.index("@staticmethod", i)]
     assert "atr" not in re.sub(r'""".*?"""', "", body, flags=re.S).replace("ATR", "")          # no ATR filter in the LITE path

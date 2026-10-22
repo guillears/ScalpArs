@@ -116,6 +116,9 @@ class BinanceService:
         # 💹 Oct-7 (DECISION_LOG 245): dashboard display reads (all-symbols last price) — own client + throttle, created lazily.
         self.display_exchange = None
         self.recorder_exchange = None   # 🧾 (DECISION_LOG 329 review I5) the Binance-app trade recorder's own authenticated client (lazy)
+        self.flatbase_exchange = None   # 🩳 (DECISION_LOG 348) FLATBASE 14-day history reads: own public client + throttle (lazy)
+        self.flatbase_limited_until = 0.0   # 🩳 a 429 / 418 on the FLATBASE client → its reader defers until then
+        self.flatbase_used_weight = 0   # the X-MBX-USED-WEIGHT-1M of its last response (the reader stops above FLATBASE_WEIGHT_STOP)
         # Public exchange for market data (no auth needed)
         self.public_exchange = ccxt.binanceusdm({
             'enableRateLimit': True,
@@ -531,6 +534,8 @@ class BinanceService:
             await self.display_exchange.close()
         if getattr(self, 'recorder_exchange', None) is not None:   # 🧾 (DECISION_LOG 329 review I5)
             await self.recorder_exchange.close()
+        if getattr(self, 'flatbase_exchange', None) is not None:   # 🩳 (DECISION_LOG 348)
+            await self.flatbase_exchange.close()
     
     @property
     def _last_balance_payload(self):
@@ -901,6 +906,34 @@ class BinanceService:
         logger.error(f"[BINANCE] Failed to fetch OHLCV for {symbol} after 3 attempts")
         return []
     
+    async def get_ohlcv_until(self, pair_id: str, timeframe: str, end_ms: int, limit: int = 1500) -> Optional[List]:
+        """🩳 (DECISION_LOG 348) the `limit` (≤ 1500) bars of `timeframe` whose OPEN is ≤ end_ms, oldest first — the PUBLIC /fapi/v1/klines
+        with endTime (weight 10 at limit > 1000) on the FLATBASE client: its OWN lazily-created public ccxt client and throttle, so the
+        14-day history reads never queue in front of the scan / FRENZY / order reads. pair_id = the exchange id ('ABCUSDT'; no markets load).
+        The used weight of the last response is kept in self.flatbase_used_weight (X-MBX-USED-WEIGHT-1M). → None on any failure or during a
+        ban / cooldown (never sleeps it out; the caller fails closed and retries later), [] when the exchange has no bar there. Never raises."""
+        try:
+            if _ban_until > time.time():
+                return None
+            if self.flatbase_exchange is None:
+                self.flatbase_exchange = ccxt.binanceusdm({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
+            raw = await self.flatbase_exchange.fapiPublicGetKlines({
+                'symbol': str(pair_id).replace('/USDT:USDT', 'USDT').replace('/', ''), 'interval': timeframe,
+                'endTime': int(end_ms), 'limit': max(1, min(int(limit), 1500))})
+            try:
+                _h = getattr(self.flatbase_exchange, 'last_response_headers', None) or {}
+                _w = next((v for k, v in _h.items() if str(k).lower() == 'x-mbx-used-weight-1m'), None)
+                self.flatbase_used_weight = int(_w) if _w is not None else self.flatbase_used_weight
+            except (TypeError, ValueError, AttributeError):
+                pass
+            return [[int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5])] for r in raw or []]
+        except Exception as e:
+            self._detect_ban(e)
+            if isinstance(e, (RateLimitExceeded, DDoSProtection)) or any(x in str(e) for x in ('429', '418', '-1003', 'Too many requests')):
+                self.flatbase_limited_until = time.time() + 60.0   # the reader defers (no attempt spent) for a minute
+            logger.warning(f"[BINANCE] FLATBASE klines until {end_ms} for {pair_id} ({timeframe}) failed: {str(e)[:120]}")
+            return None
+
     async def get_current_price(self, symbol: str) -> float:
         """Get current price for a symbol"""
         try:
@@ -1775,19 +1808,22 @@ class BinanceService:
             raise ValueError(f"BNB price {px}")
         return px
 
-    async def fetch_funding_rate(self, symbol: str) -> Optional[float]:
+    async def fetch_funding_rate(self, symbol: str, max_age_s: Optional[float] = None) -> Optional[float]:
         """Fetch the current funding rate for a futures symbol (Exploration Analytics, Apr 28).
 
         Returns the rate as a decimal (e.g., 0.0001 = 0.01%) or None on error.
         Cached per-symbol for 8h to match Binance's funding interval — first call
         per scan-cycle hits the API, subsequent same-symbol calls within 8h reuse.
+        max_age_s (🩳 DECISION_LOG 348): a cached rate older than this is re-read (FLATBASE_SHORT stamps the rate AT its entry — hourly-
+        funding pumps move it within the hour); None = the 8 h cache as before.
         """
         try:
             now = time.time()
             cached = self._funding_rate_cache.get(symbol)
             if cached:
                 rate, fetched_at = cached
-                if (now - fetched_at) < self._funding_rate_ttl_seconds:
+                _ttl = self._funding_rate_ttl_seconds if max_age_s is None else min(self._funding_rate_ttl_seconds, float(max_age_s))
+                if (now - fetched_at) < _ttl:
                     return rate
 
             await self.load_public_markets()

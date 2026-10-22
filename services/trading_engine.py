@@ -18,7 +18,7 @@ from sqlalchemy.orm.attributes import set_committed_value   # ➕ (324 R5)
 from sqlalchemy import inspect as sa_inspect   # ➕ (324 round-3 #5)
 from sqlalchemy.orm.base import NO_VALUE   # ➕ (324 round-4)
 
-from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, FrenzyBreak, FrenzyFlag, WillyHoldBlock
+from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, FrenzyBreak, FrenzyFlag, WillyHoldBlock, FlatbaseEpisode
 from database import AsyncSessionLocal, locked_commit, locked_execute_commit
 import config
 from config import save_trading_config, TradingConfig
@@ -31,6 +31,11 @@ from services.frenzy import frenzy_catchup_check, frenzy_catchup_moved, frenzy_v
 from services.frenzy import frenzy_lite_c_tp, frenzy_lite_c_enabled, frenzy_lite_tp_override   # 🎯 (DECISION_LOG 301) LITE C
 from services.frenzy import frenzy_stop_for   # 🛑 (DECISION_LOG 317) FRENZY_LONG's own stop
 from services.frenzy import FRENZY_WILLY_HT, WILLY_EXIT_CLASS, frenzy_willy_ht_frac   # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY
+from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled, flatbase_params, flatbase_exit_for,   # 🩳 (DECISION_LOG 348)
+                               flat14_from_bars, flat_ok, s4_scan, is_boundary_close, turnover_route, base_close_ms, max_hold_minutes as flatbase_max_hold_minutes,
+                               FLAT_PAGES, FLAT_PAGE_LIMIT, FLAT_MAX_ATTEMPTS, FLAT_TF, FLAT_EXPECTED, ENTRY_MAX_LATE_S as FLATBASE_ENTRY_MAX_LATE_S,
+                               ST_TRACKING, ST_OPENED, ST_SHADOW, ST_MISSED, ST_EXPIRED, ST_NOT_FLAT, ST_UNREADABLE, ST_REFUSED,
+                               ACT_ENTER, ACT_MISSED, ACT_EXPIRED, ACT_NO_DATA, ROUTE_SHADOW)
 from services.touch_snapshot import TOUCH_LEVELS, touch_mark, touch_features, touch_snapshot, touch_outcome   # 🛑👁 (317) observe-only touch snapshots
 from services.frenzy import (FRENZY_LITE_RETRY, FRENZY_LITE_FAMILY, frenzy_lite_retry_enabled, frenzy_lite_retry_pending,  # 🔁 (DECISION_LOG 316)
                              frenzy_lite_retry_pending_clean, frenzy_lite_retry_step, LITE_RETRY_OPEN, LITE_RETRY_DROP)
@@ -194,7 +199,7 @@ _fade_lag_ndi_cache: Dict[str, tuple] = {}   # symbol → (read_at, −DI) — d
 PAIR_REASON_PLACEHOLDER = "No EMA Stack"
 PAIR_REASON_AWAITING = "Awaiting scan (no pair data yet)"   # what the Top Pairs row shows when nothing was ever stamped
 _PAIR_REASON_EXCLUDED_PREFIXES = ("FLIP_", "OPEN_", "BACKSTOP_", "BULL_LONG", "BULLRUN_", "BR_", "SPIKE_", "BOUNCE_", "REDEPLOY", "PASS:", "SURGE_", "FRENZY_",
-                                  "BOOKING_FAILED")   # 🛡 (292 ③) a live booking failure is an event, not a gate
+                                  "BOOKING_FAILED", "FLATBASE_")   # 🩳 (348) the FLATBASE_SHORT sleeve's own counters   # 🛡 (292 ③) a live booking failure is an event, not a gate
 _PAIR_REASON_ALLOWED = ("SPIKE_GUARD",)                 # momentum-ladder gates that happen to share an excluded prefix
 _PAIR_REASON_NOT_A_BLOCK = ("LONG_HEAT_FAILOPEN", "UNTRACKED_POSITION", "UNTRACKED_FLATTENED")   # counters that do not refuse the trade (🛡 292 ②: the detection events; UNTRACKED_POSITION_BLOCK IS the pair's refusal)
 
@@ -625,6 +630,8 @@ def bot_own_stop_pct(th, entry_strategy):
         if es in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):   # 🎲¼ (341) HT = WILLY's stop → WILLY's backstop
             v = abs(float(getattr(th, 'frenzy_willy_stop_pct', 0.0) or 0.0))
             return v if v > 0 else None
+        if es == FLATBASE_SHORT:   # 🩳 (348) the +15 % PRICE stop → its backstop rests at stop + MANUAL_BACKSTOP_MARGIN_PCT (liquidation-capped)
+            return flatbase_params(th)['stop']
     except (TypeError, ValueError):
         pass
     return None
@@ -1098,6 +1105,12 @@ def _bot_open_filter():
     return or_(Order.entry_strategy.is_(None), Order.entry_strategy != "MANUAL")
 
 
+def _bot_slot_filter():
+    """🩳 (DECISION_LOG 348) SQL clause selecting the bot rows that consume a max_open_positions SLOT: _bot_open_filter minus FLATBASE_SHORT
+    (operator: no cap of its own and never counted in the bot's slots — like MANUAL's own lane). The fee burn (_bot_open_filter) keeps it."""
+    return and_(_bot_open_filter(), or_(Order.entry_strategy.is_(None), Order.entry_strategy != FLATBASE_SHORT))
+
+
 async def _fade_pair_1d_ndi(symbol: str):
     """🪤 pair daily Wilder −DI(14) for the fade laggard gate: cached 60 min per symbol (a re-signalling pair does not re-fetch),
     the fetch bounded to 4 s (caveman review: a 429 back-off inside get_ohlcv could stall the scan loop ~30 s) — any timeout,
@@ -1173,6 +1186,20 @@ FRENZY_KL_TAIL = 5
 FRENZY_KL_FULL_EVERY = 12
 FRENZY_KL_LIMIT = 1500   # bars per full 5m read = the cached window length (the studies' 1499 closed bars + the forming bar)
 FRENZY_STRATEGIES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY") + (FRENZY_LITE_RETRY, FRENZY_WILLY_HT)   # 🎲¼ (341) + HT (WILLY's exit, below)   # 🔁 (316) + FRENZY_LITE_RETRY (LITE's exit) · 🔥 Oct-3: all run the FRENZY sleeve exit intercept, hold cap and urgent-close path (🪶 Oct-7 LITE, DECISION_LOG 243 · 🎲 Oct-8 WILLY, 251 — its OWN exit / hold cap, see frenzy_willy_exit_for)
+FLATBASE_PAGE_PACE_S = 2.0      # 🩳 (348) seconds between the FLATBASE 14-day history pages (its own client; never the FRENZY reads)
+FLATBASE_WEIGHT_STOP = 600      # 🩳 (348) the FLATBASE reader stops while the IP's 1-min used weight is above this (Binance cap 2,400)
+FLATBASE_EXTRA_READS_MAX = 20   # 🩳 (348) tracked pairs read per pass beyond the FRENZY shortlist / flags (the rest rotate to later passes)
+
+
+def _bs_ban_active() -> bool:
+    """the bot-wide Binance ban / cooldown state (services.binance_service) — True = no new FLATBASE read now."""
+    try:
+        from services.binance_service import get_ban_status
+        return bool(get_ban_status().get('banned'))
+    except Exception:
+        return False
+
+
 FRENZY_ENTRY_MAX_LATE_S = 120   # a long opens only within this many seconds of its signal bar's close (the test entered at the next open)
 # (9d733e2 pushed 15:09 UTC). The first trigger's 4 fills (14:50 UTC, EMA13 first-tick bug) are excluded — operator reset the batch.
 _breadth_n_bull: int = 0
@@ -1307,7 +1334,7 @@ def _ema13_cross_exit_applies(entry_strategy):
         es = (entry_strategy or "")
         if es.startswith("FLIP:"):
             return False
-        if es in ("SPIKE_FADE", "SPIKE_BOUNCE", "SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY") or es in (FRENZY_LITE_RETRY, FRENZY_WILLY_HT):   # ⚡ SURGE: no pair-EMA entry condition (Sep-30 SOON/MOVR) · 🪶 243 LITE · 🎲 251 WILLY
+        if es in ("SPIKE_FADE", "SPIKE_BOUNCE", "SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY") or es in (FRENZY_LITE_RETRY, FRENZY_WILLY_HT) or es in FLATBASE_CLASS:   # 🩳 (348) defence in depth (its intercept runs first)   # ⚡ SURGE: no pair-EMA entry condition (Sep-30 SOON/MOVR) · 🪶 243 LITE · 🎲 251 WILLY
             return False
         return True
     except Exception:
@@ -8779,8 +8806,9 @@ class TradingEngine:
             _wide = bool(getattr(th, 'frenzy_wide_enabled', False))   # 🔥🌐 Oct-3 FRENZY-WIDE: its own switch (the pass runs for it too)
             _lite = bool(getattr(th, 'frenzy_lite_enabled', False))   # 🪶 Oct-7 FRENZY_LITE (DECISION_LOG 243): its own switch, same pass / bars / latency
             _willy = bool(getattr(th, 'frenzy_willy_enabled', False))   # 🎲 Oct-8 FRENZY_WILLY (DECISION_LOG 251): its own switch, same pass / bars
-            _frenzy_status.update(enabled=_on, observe=_obs, wide=_wide, lite=_lite, willy=_willy)
-            if not (_on or _obs or _wide or _lite or _willy):
+            _fbs = flatbase_enabled(th)   # 🩳 (DECISION_LOG 348) FLATBASE_SHORT: its own switch, the same pass / bars / episodes
+            _frenzy_status.update(enabled=_on, observe=_obs, wide=_wide, lite=_lite, willy=_willy, flatbase=_fbs)
+            if not (_on or _obs or _wide or _lite or _willy or _fbs):
                 _frenzy_flags.clear()
                 return
             now_ms = _leash_time.time() * 1000
@@ -8796,6 +8824,7 @@ class TradingEngine:
                 _frenzy_status.update(pass_bar=bar_open, passes=0, judged=set(), catchup_prev=await self._frenzy_judged_get())
             _frenzy_status['passes'] = int(_frenzy_status.get('passes') or 0) + 1
             _frenzy_status['bar'] = bar_open
+            self._fbs_eval_q = []; self._fbs_enter_q = []   # 🩳 (348) a crashed pass never leaves stale FLATBASE work for this bar
             _judged = _frenzy_status.setdefault('judged', set())   # pairs read on this bar: a retry pass never re-reads or re-counts them
             allp = await binance_service.get_top_futures_pairs(
                 5000, new_listing_filter_days=getattr(tc, 'new_listing_filter_days', 0),
@@ -8823,11 +8852,25 @@ class TradingEngine:
                     _follow += [p for (p,) in (await db.execute(select(FrenzyBreak.pair).where(FrenzyBreak.bar_close_at >= _since).distinct())).all()]
                     _follow += [p for (p,) in (await db.execute(select(Order.pair).where(and_(
                         Order.entry_strategy.in_(FRENZY_STRATEGIES), Order.is_paper == self.is_paper_mode, Order.opened_at >= _since)).distinct())).all()]
+                    _follow += await self._flatbase_follow_seed(db)   # 🩳 (348) episodes FLATBASE is still tracking (their S4 window may outlive the flag)
                 except Exception as _se:
                     logger.warning(f"[FRENZY] follow-list seed failed ({str(_se)[:80]}) — shortlist only")
             for k in _follow:
                 if k in by and k.upper() not in skip and k not in names and (len(names) < 40 or k in _frenzy_flags):   # a flagged pair is never crowded out (Oct-3 review)
                     names.append(k)
+            _fz_names = list(names)   # FRENZY's own read set — the FLATBASE-only extras below never enter any FRENZY / WIDE / LITE / WILLY judgement
+            _fbs_only, _fbs_seen = set(), set()
+            if _fbs:   # 🩳 (348) pairs with a TRACKING episode (its 96 h S4 window outlives the flag): ≤ FLATBASE_EXTRA_READS_MAX EXTRA reads per pass, rotating
+                _fbx = sorted(p for p in self._flatbase_pairs() if p in by and p.upper() not in skip and p not in names)
+                if _fbx:
+                    _o = int(self.__dict__.get('_fbs_follow_rot', 0)) % len(_fbx)
+                    _take = (_fbx[_o:] + _fbx[:_o])[:FLATBASE_EXTRA_READS_MAX]
+                    self._fbs_follow_rot = _o + len(_take)
+                    names += _take
+                    _fbs_only = set(_take)   # read for FLATBASE ONLY (never flagged / judged / traded by the long sleeves)
+                    if len(_fbx) > len(_take):
+                        logger.info(f"[FLATBASE_SHORT] {len(_fbx)} tracked pairs off the FRENZY read — {len(_take)} read this pass (cap "
+                                    f"{FLATBASE_EXTRA_READS_MAX}), the rest on the next passes")
             # klines for the whole shortlist CONCURRENTLY (≤ 6 at a time) so the scan is held a few seconds, not one pair after another
             if _on or _wide or _lite or _willy:   # 🌊 Oct-3 (DECISION_LOG 194): the market's volume on the bar that just closed, read in parallel (own client) — 🎲 WILLY: stamp only
                 self._frenzy_gvol_start(allp, bar_open - 300_000)
@@ -8923,11 +8966,17 @@ class TradingEngine:
                             _nc = (now_ms, normal_hour_usd(_h1, int(closed[-1][0])), (360 + sum(map(ord, pair)) % 120) * 60_000)
                             _frenzy_norm_cache[pair] = _nc
                         ep = frenzy_walk(closed, _nc[1], th) if _nc[1] else None
+                        if pair in _fbs_only:   # 🩳 (348) a FLATBASE-only read: queued for FLATBASE, then OUT — no flag, no FRENZY / WILLY / LITE state
+                            _fbs_seen.add(pair)
+                            self.__dict__.setdefault('_fbs_eval_q', []).append((pair, ep, closed, by[pair], bar_open))
+                            continue
                         seen.add(pair); _judged.add(pair)   # read successfully (flagged or not)
                         _pp = self._frenzy_pair_prev(pair, _cu_prev)   # ⏪ this pair's catch-up horizon, taken BEFORE its unread record is cleared
                         self.__dict__.setdefault('_fz_pair_unjudged', {}).pop(pair, None)
                         _lo_prev = self.__dict__.setdefault('_fz_pair_last_ok', {}).get(pair)   # 🎲 (251) judged by THIS process on the previous bar?
                         self.__dict__.setdefault('_fz_pair_last_ok', {})[pair] = bar_open - 300_000
+                        if _fbs:   # 🩳 (348) queued only — judged AFTER this pass's per-pair loop (never on the FRENZY decision path), flagged or not
+                            self.__dict__.setdefault('_fbs_eval_q', []).append((pair, ep, closed, by[pair], bar_open))
                         if not frenzy_flagged(ep, th):
                             _frenzy_flags.pop(pair, None)
                             continue
@@ -9005,8 +9054,12 @@ class TradingEngine:
                         _frenzy_flags.pop(k, None)
             await self._frenzy_willy_sweep(bar_open, _willy, seen)   # 🎲 (251) pending red-candle entries: episode over / wait passed / WILLY off → expire
             await self._frenzy_lite_retry_sweep(bar_open, seen)   # 🔁 (316) pending LITE retries: window passed / episode over / switched off → drop
+            if _fbs:
+                await self._flatbase_run_queue(db)       # 🩳 (348) tracking / FLAT reads / S4 judgement for every pair read this pass
+                await self._flatbase_enter_queued(db)   # 🩳 (348) S4 entries found this pass, after every FRENZY decision
+                await self._flatbase_sweep(bar_open, seen | _fbs_seen)   # 🩳 (348) a TRACKING episode whose pair is no longer read and whose window is long over → EXPIRED
             self._journal_pair = None; self._journal_ctx = None
-            self._frenzy_note_unread(names, seen, bar_open - 300_000, _cu_prev)   # ⏪ pairs NOT read on this bar keep their own horizon
+            self._frenzy_note_unread(_fz_names, seen, bar_open - 300_000, _cu_prev)   # ⏪ pairs NOT read on this bar keep their own horizon
             await self._frenzy_judged_set(bar_open - 300_000)   # ⏪ this bar was judged by a completed pass (survives pauses / restarts)
             await self._frenzy_persist_flags()
             for k in [k for k, v in _frenzy_norm_cache.items() if now_ms - v[0] > 24 * 3600_000]:
@@ -9015,7 +9068,7 @@ class TradingEngine:
                 _frenzy_kl_cache.pop(k, None)
             if n_bad and _frenzy_status['passes'] < 3:
                 _frenzy_status['bar'] = None   # some pairs could not be read: one more pass on the next scan (pairs already judged are skipped)
-            _frenzy_status.update(checked_at=now_ms, shortlisted=len(names), unreadable=n_bad, flagged=len(_frenzy_flags), error=None,
+            _frenzy_status.update(checked_at=now_ms, shortlisted=len(_fz_names), unreadable=n_bad, flagged=len(_frenzy_flags), error=None,
                                   took_s=round(_leash_time.time() - now_ms / 1000, 1))
             if _frenzy_flags or n_bad:
                 logger.info(f"[FRENZY] {len(names)} shortlisted · {len(_frenzy_flags)} flagged ({', '.join(sorted(_frenzy_flags)) or '-'}) · "
@@ -9044,6 +9097,464 @@ class TradingEngine:
                         + (" · catch-up" if catchup else ""))
         except Exception:
             pass
+
+    # ── 🩳 FLATBASE_SHORT (DECISION_LOG 348 — operator DISCIPLINE OVERRIDE) ──────────────────────────────────────────────────────────────
+    # Pure rules: services/flatbase.py. State per (pair, spike_ms) of THIS mode in self._fbs_eps, backed by the flatbase_episodes ledger
+    # (models.FlatbaseEpisode) — first-seen bar, the FLAT label (read ONCE per episode, a background task: 3 public 5m kline reads, weight 30),
+    # and the ONE decision per episode (OPENED / SHADOW / MISSED / EXPIRED / NOT_FLAT / UNREADABLE / REFUSED). Judged in the FRENZY pass on the
+    # bar that just closed: an episode is TRACKED the first time the pass sees it FRENZY-flagged (the study's first-seen gate) and followed —
+    # flagged or not — until its 96 h window ends. S4 is judged only on a 4-hour-boundary close; a qualifying boundary that passed unjudged
+    # (outage / restart) is MISSED, never caught up. Crash-isolated (FLATBASE_FAILED): never raises into the pass.
+    def _fbs_state(self) -> dict:
+        """{(pair, spike_ms): rec} of the CURRENT mode (a paper ↔ live switch starts a fresh map — the ledger is per mode)."""
+        mode = bool(self.is_paper_mode)
+        if self.__dict__.get('_fbs_mode') is not mode:
+            self._fbs_mode = mode
+            self._fbs_eps = {}
+            self._fbs_loaded = False
+        return self.__dict__.setdefault('_fbs_eps', {})
+
+    @staticmethod
+    def _fbs_ms(dt) -> Optional[int]:
+        try:
+            return int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
+        except Exception:
+            return None
+
+    async def _flatbase_ready(self, db) -> bool:
+        """load the TRACKING ledger rows of this mode once per process / mode (a restart resumes every episode with its first-seen bar and
+        FLAT label). False = unreadable → no FLATBASE decision this pass (fail-closed, FLATBASE_STATE_UNREAD once per bar)."""
+        eps = self._fbs_state()
+        if self.__dict__.get('_fbs_loaded'):
+            return True
+        try:   # every TRACKING row of this mode (a stale one — a long outage — is closed EXPIRED by the next pass / sweep, never left open)
+            rows = (await db.execute(select(FlatbaseEpisode).where(and_(
+                FlatbaseEpisode.is_paper == self.is_paper_mode, FlatbaseEpisode.status == ST_TRACKING))
+                .order_by(FlatbaseEpisode.spike_at.desc()).limit(500))).scalars().all()
+            for r in rows:
+                sp = self._fbs_ms(r.spike_at)
+                if sp is None:
+                    continue
+                eps[(r.pair, sp)] = dict(id=r.id, status=ST_TRACKING, first_seen_ms=self._fbs_ms(r.first_seen_at),
+                                         flat=(float(r.flat14_pct) / 100.0 if r.flat14_pct is not None else None),
+                                         cov=(float(r.flat_cov_pct) / 100.0 if r.flat_cov_pct is not None else None),
+                                         attempts=int(r.flat_attempts or 0), retry_bar=None, busy=False)
+            self._fbs_loaded = True
+            if rows:
+                logger.info(f"[FLATBASE_SHORT] resumed {len(rows)} tracked episode(s): {', '.join(sorted({r.pair for r in rows}))}")
+            return True
+        except Exception as e:
+            if self.__dict__.get('_fbs_unread_bar') != _frenzy_status.get('bar'):
+                self._fbs_unread_bar = _frenzy_status.get('bar')
+                self._record_filter_block("FLATBASE_STATE_UNREAD", "SHORT")
+                logger.warning(f"[FLATBASE_SHORT] episode ledger unreadable ({str(e)[:100]}) — no FLATBASE decision this pass (fail-closed)")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            return False
+
+    async def _flatbase_follow_seed(self, db) -> list:
+        """the pairs FLATBASE is still tracking — kept in the FRENZY read after a restart (their 96 h S4 window may outlive the flag)."""
+        try:
+            if not flatbase_enabled(config.trading_config.thresholds) or not await self._flatbase_ready(db):
+                return []
+            return sorted({k[0] for k, r in self._fbs_state().items() if r.get('status') == ST_TRACKING})
+        except Exception:
+            return []
+
+    def _flatbase_pairs(self) -> set:
+        """pairs with a TRACKING episode now (the pass follows them like flagged pairs — never crowded out of the read)."""
+        try:
+            return {k[0] for k, r in self._fbs_state().items() if r.get('status') == ST_TRACKING}   # mode-checked map
+        except Exception:
+            return set()
+
+    def _fbs_count(self, name, pair) -> None:
+        """a FLATBASE filter-block counter whose journal line names THIS pair (sync: no await between the swap and the restore)."""
+        _jp = getattr(self, '_journal_pair', None)
+        self._journal_pair = pair
+        try:
+            self._record_filter_block(name, "SHORT")
+        finally:
+            self._journal_pair = _jp
+
+    async def _flatbase_write(self, rec_id, **vals) -> bool:
+        """update the ledger row in a short session of its own (never the pass's transaction). Never raises."""
+        try:
+            async with AsyncSessionLocal() as _s:
+                await _s.execute(update(FlatbaseEpisode).where(FlatbaseEpisode.id == rec_id).values(**vals)
+                                 .execution_options(synchronize_session=False))
+                await locked_commit(_s)
+            return True
+        except Exception as e:
+            logger.error(f"[FLATBASE_SHORT] ledger row {rec_id}: write failed ({str(e)[:100]})")
+            return False
+
+    async def _flatbase_finalize(self, pair, spike_ms, status, reason, **vals) -> None:
+        """the episode's ONE decision: ledger status + reason (+ features), the in-memory record leaves TRACKING, a journal line
+        e=FLATBASE (the decisions export carries the ledger rows too). Never raises."""
+        rec = self._fbs_state().get((pair, spike_ms))
+        if rec is None:
+            return
+        rec['status'] = status
+        if rec.get('id') is not None:
+            await self._flatbase_write(rec['id'], status=status, reason=(str(reason)[:200] if reason else None), decided_at=datetime.utcnow(), **vals)
+        try:
+            _djournal.note('FLATBASE', gate=status, dir="SHORT", pair=pair, reason=(str(reason)[:120] if reason else None),
+                           price=(float(vals['entry_price']) if vals.get('entry_price') else None))
+        except Exception:
+            pass
+        logger.info(f"[FLATBASE_SHORT] {pair} (spike {datetime.utcfromtimestamp(spike_ms / 1000):%m-%d %H:%M} UTC): {status} — {reason}")
+
+    async def _flatbase_order_exists(self, db, pair, spike_ms) -> Optional[bool]:
+        """an Order FLATBASE_SHORT for this episode (entry_frenzy_spike_at ± 1 s) exists in this mode → True · None = unreadable."""
+        try:
+            _t = datetime.utcfromtimestamp(int(spike_ms) / 1000)
+            return (await db.execute(select(Order.id).where(and_(
+                Order.pair == pair, Order.entry_strategy == FLATBASE_SHORT, Order.is_paper == self.is_paper_mode,
+                Order.entry_frenzy_spike_at > _t - timedelta(seconds=1), Order.entry_frenzy_spike_at < _t + timedelta(seconds=1))))).first() is not None
+        except Exception as e:
+            logger.warning(f"[FLATBASE_SHORT] {pair}: one-per-episode check unreadable ({str(e)[:80]})")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            return None
+
+    async def _flatbase_track(self, db, pair, spike_ms, seen_open_ms) -> None:
+        """the first pass that sees this episode FRENZY-flagged: resume its ledger row, or create it (TRACKING, first-seen = the bar that just
+        closed — the study's first-seen gate), start the FLAT read and warm the pair's market cap (the turnover rule reads it ≥ 4 h later)."""
+        eps = self._fbs_state()
+        key = (pair, int(spike_ms))
+        _t = datetime.utcfromtimestamp(int(spike_ms) / 1000)
+        try:
+            async with AsyncSessionLocal() as _s:
+                row = (await _s.execute(select(FlatbaseEpisode).where(and_(
+                    FlatbaseEpisode.pair == pair, FlatbaseEpisode.is_paper == self.is_paper_mode,
+                    FlatbaseEpisode.spike_at > _t - timedelta(seconds=1), FlatbaseEpisode.spike_at < _t + timedelta(seconds=1))))).scalars().first()
+                if row is None:
+                    row = FlatbaseEpisode(pair=pair, spike_at=_t, is_paper=bool(self.is_paper_mode), status=ST_TRACKING,
+                                          first_seen_at=datetime.utcfromtimestamp(int(seen_open_ms) / 1000), flat_attempts=0,
+                                          created_at=datetime.utcnow())
+                    _s.add(row)
+                    await locked_commit(_s)
+                    await _s.refresh(row)
+                    logger.info(f"[FLATBASE_SHORT] {pair}: tracking the FRENZY episode (spike {_t:%m-%d %H:%M} UTC) — reading its 14-day base")
+                eps[key] = dict(id=row.id, status=row.status, first_seen_ms=self._fbs_ms(row.first_seen_at),
+                                flat=(float(row.flat14_pct) / 100.0 if row.flat14_pct is not None else None),
+                                cov=(float(row.flat_cov_pct) / 100.0 if row.flat_cov_pct is not None else None),
+                                attempts=int(row.flat_attempts or 0), retry_bar=None, busy=False)
+        except Exception as e:
+            logger.warning(f"[FLATBASE_SHORT] {pair}: episode ledger write failed ({str(e)[:100]}) — not tracked this bar (retried next bar)")
+            return
+        if eps[key]['status'] == ST_TRACKING and await self._flatbase_order_exists(db, pair, spike_ms):
+            await self._flatbase_finalize(pair, int(spike_ms), ST_OPENED, "an order for this episode is already on record")
+            return
+        try:   # the turnover rule's market cap: a one-pair background fetch now (deduped 10 min), in the cache long before the S4 bar
+            from services import mcap_service as _mcs
+            if _mcs.get(pair)[0] is None:
+                _mcs.request_pair(pair)
+        except Exception:
+            pass
+
+    async def _flatbase_flat_read(self, pair, spike_ms, symbol) -> None:
+        """background: the 14-day base of ONE episode from the PUBLIC 5m klines ending at the base bar (3 reads × 1,500 rows, weight 30, one
+        at a time across episodes, ≥ FLATBASE_PAGE_PACE_S apart, on the FLATBASE client — never the shared public client's queue; a used
+        weight above FLATBASE_WEIGHT_STOP or a ban / cooldown defers the read to a later bar WITHOUT spending an attempt) → FLAT (label kept) / NOT_FLAT / UNREADABLE (< 90 % present, a < 14-day listing, or FLAT_MAX_ATTEMPTS failed
+        reads — fail-closed, FLATBASE_FLAT_UNREADABLE). Never raises."""
+        rec = self._fbs_state().get((pair, spike_ms))
+        if rec is None:
+            return
+        _lk = self.__dict__.get('_fbs_flat_lock')
+        if _lk is None:
+            _lk = self._fbs_flat_lock = asyncio.Lock()
+        try:
+            if rec.get('status') != ST_TRACKING:
+                return   # decided before the task ran (the finally clears busy)
+            async with _lk:
+                if (float(getattr(binance_service, 'flatbase_used_weight', 0) or 0) > FLATBASE_WEIGHT_STOP
+                        and _leash_time.time() - float(self.__dict__.get('_fbs_last_page_t', 0)) < 60.0) or _bs_ban_active() \
+                        or float(getattr(binance_service, 'flatbase_limited_until', 0) or 0) > _leash_time.time():
+                    logger.info(f"[FLATBASE_SHORT] {pair}: 14-day read deferred (used weight {getattr(binance_service, 'flatbase_used_weight', 0)} "
+                                f"> {FLATBASE_WEIGHT_STOP} or a ban / cooldown) — next bar, no attempt spent")
+                    return
+                rec['attempts'] = int(rec.get('attempts') or 0) + 1
+                bc = base_close_ms(spike_ms)
+                rows, end, ok = [], int(bc) - 1, True
+                for _pg in range(FLAT_PAGES):
+                    if _pg:
+                        await asyncio.sleep(FLATBASE_PAGE_PACE_S)   # paced: a burst of first-seen episodes never bursts the IP weight
+                    try:
+                        page = await asyncio.wait_for(binance_service.get_ohlcv_until(pair, FLAT_TF, end, FLAT_PAGE_LIMIT), 20.0)
+                    except asyncio.TimeoutError:
+                        page = None   # a timed-out read is a FAILED read (counts toward FLAT_MAX_ATTEMPTS)
+                    self._fbs_last_page_t = _leash_time.time()
+                    if page is None:
+                        ok = False
+                        break
+                    if float(getattr(binance_service, 'flatbase_used_weight', 0) or 0) > FLATBASE_WEIGHT_STOP and _pg < FLAT_PAGES - 1 \
+                            and len(page) >= FLAT_PAGE_LIMIT:
+                        rec['attempts'] -= 1   # stop above the weight ceiling: not a failed read — retried on a later bar
+                        logger.info(f"[FLATBASE_SHORT] {pair}: used weight {binance_service.flatbase_used_weight} > {FLATBASE_WEIGHT_STOP} — read paused")
+                        return
+                    page = [r for r in page if int(r[0]) <= end]
+                    if not page:
+                        break
+                    rows = page + rows
+                    end = int(page[0][0]) - 1
+                    if len(page) < FLAT_PAGE_LIMIT:
+                        break   # the listing's first bar reached
+            if rec.get('status') != ST_TRACKING:
+                return
+            if not ok and float(getattr(binance_service, 'flatbase_limited_until', 0) or 0) > _leash_time.time():
+                rec['attempts'] -= 1   # 429 / 418 on the FLATBASE client = a defer like a ban, never a spent attempt
+                logger.info(f"[FLATBASE_SHORT] {pair}: 14-day read rate-limited — deferred, no attempt spent")
+                return
+            if not ok:
+                await self._flatbase_write(rec['id'], flat_attempts=rec['attempts'])
+                if rec['attempts'] >= FLAT_MAX_ATTEMPTS:
+                    self._fbs_count("FLATBASE_FLAT_UNREADABLE", pair)
+                    await self._flatbase_finalize(pair, spike_ms, ST_UNREADABLE, f"14-day history unreadable after {rec['attempts']} reads (fail-closed)")
+                else:
+                    logger.warning(f"[FLATBASE_SHORT] {pair}: 14-day history read failed (attempt {rec['attempts']}/{FLAT_MAX_ATTEMPTS}) — retried next bar")
+                return
+            rng, cov, n = flat14_from_bars(rows, bc)
+            vals = dict(flat_attempts=rec['attempts'], flat_cov_pct=(round(cov * 100, 2) if cov is not None else None),
+                        flat14_pct=(round(rng * 100, 4) if rng is not None else None))
+            rec['cov'] = cov
+            if rng is None:
+                self._fbs_count("FLATBASE_FLAT_UNREADABLE", pair)
+                await self._flatbase_write(rec['id'], **vals)
+                await self._flatbase_finalize(pair, spike_ms, ST_UNREADABLE,
+                                              f"14-day base not scorable: {n} of {FLAT_EXPECTED} 5m bars present "
+                                              f"({(cov or 0) * 100:.0f} %, needs 90 %) or a listing younger than 14 days (fail-closed)")
+                return
+            if not flat_ok(rng, config.trading_config.thresholds):
+                self._fbs_count("FLATBASE_NOT_FLAT", pair)
+                await self._flatbase_write(rec['id'], **vals)
+                await self._flatbase_finalize(pair, spike_ms, ST_NOT_FLAT,
+                                              f"14-day range {rng * 100:.1f} % > {flatbase_params(config.trading_config.thresholds)['flat_max'] * 100:.1f} %")
+                return
+            rec['flat'] = rng
+            await self._flatbase_write(rec['id'], **vals)
+            logger.info(f"[FLATBASE_SHORT] {pair}: FLAT base — 14-day range {rng * 100:.1f} % ({cov * 100:.0f} % of bars) → waiting for the S4 "
+                        f"4-hour close below the spike VWAP")
+        except Exception as e:
+            logger.warning(f"[FLATBASE_SHORT] {pair}: 14-day read crashed ({str(e)[:100]}) — retried next bar")
+        finally:
+            rec['busy'] = False
+
+    async def _flatbase_eval(self, db, pair, ep, closed, info, bar_open) -> None:
+        """🩳 FLATBASE_SHORT for ONE pair read on this pass (flagged or not). ① a FRENZY-flagged episode not yet tracked → tracked · ② each
+        TRACKING episode of the pair: the FLAT read (background, retried), then — on a 4-hour-boundary close, or once its window is over —
+        the S4 scan: ENTER (the bar that just closed IS the first qualifying bar) → _flatbase_enter · MISSED · EXPIRED · WAIT. Never raises."""
+        th = config.trading_config.thresholds
+        if not flatbase_enabled(th):
+            return
+        try:
+            if not await self._flatbase_ready(db):
+                return
+            eps = self._fbs_state()
+            last_open = int(closed[-1][0])
+            if ep is not None and frenzy_flagged(ep, th) and ep.get('spike_ts') is not None and (pair, int(ep['spike_ts'])) not in eps:
+                await self._flatbase_track(db, pair, int(ep['spike_ts']), last_open)
+            p = flatbase_params(th)
+            for key in [k for k in list(eps) if k[0] == pair]:
+                rec = eps.get(key)
+                if rec is None or rec.get('status') != ST_TRACKING:
+                    continue
+                spike_ms = key[1]
+                if rec.get('flat') is None and not rec.get('busy') and rec.get('retry_bar') != last_open \
+                        and int(rec.get('attempts') or 0) < FLAT_MAX_ATTEMPTS:
+                    rec['busy'] = True; rec['retry_bar'] = last_open
+                    _tk = asyncio.create_task(self._flatbase_flat_read(pair, spike_ms, pair))
+                    _ts = self.__dict__.setdefault('_fbs_tasks', set()); _ts.add(_tk); _tk.add_done_callback(_ts.discard)
+                    rec['task'] = _tk
+                past = last_open > (spike_ms - 300_000) + int(round(p['max_h'] * 12)) * 300_000
+                if not is_boundary_close(last_open) and not past:
+                    continue   # S4 is only ever judged on a 4-hour close
+                scan = s4_scan(closed, spike_ms, th, rec.get('first_seen_ms'))
+                st = scan.get('status')
+                if is_boundary_close(last_open):   # the per-4-h audit line (MISSED / outage reviews read it)
+                    _lv = scan.get('last_vol24')
+                    logger.info(f"[FLATBASE_S4] {pair} spike {datetime.utcfromtimestamp(spike_ms / 1000):%m-%d %H:%M} · 4-h close "
+                                f"{datetime.utcfromtimestamp((last_open + 300_000) / 1000):%m-%d %H:%M}: close {scan.get('last_close')} vs VWAP "
+                                f"{(round(scan['last_vwap'], 8) if scan.get('last_vwap') is not None else None)} · vol24 "
+                                f"{('$%.1fM' % (_lv / 1e6)) if _lv is not None else 'n/a'} · {st}")
+                if st == ACT_ENTER:   # judged AFTER every pair's FRENZY decisions this bar (_flatbase_enter_queued) — FRENZY keeps its latency
+                    self.__dict__.setdefault('_fbs_enter_q', []).append((pair, spike_ms, rec, scan, closed, info, bar_open))
+                elif st == ACT_MISSED:
+                    if await self._flatbase_order_exists(db, pair, spike_ms):   # a crash between the order and its ledger write
+                        await self._flatbase_finalize(pair, spike_ms, ST_OPENED, "an order for this episode is already on record")
+                        continue
+                    self._fbs_count("FLATBASE_MISSED_BOUNDARY", pair)
+                    await self._flatbase_finalize(pair, spike_ms, ST_MISSED,
+                                                  f"the first qualifying 4-h close ({datetime.utcfromtimestamp((int(scan['bar_open']) + 300_000) / 1000):%m-%d %H:%M} UTC) "
+                                                  f"was not judged live (outage / restart) — never caught up", entry_price=scan.get('close'))
+                elif st == ACT_EXPIRED or (st == ACT_NO_DATA and past):
+                    await self._flatbase_finalize(pair, spike_ms, ST_EXPIRED, (f"no 4-h close below the spike VWAP within {p['max_h']:g} h"
+                                                                              if st == ACT_EXPIRED else "the spike bar left the 5m window"))
+                elif st == ACT_NO_DATA:
+                    self._fbs_count("FLATBASE_NO_DATA", pair)
+                    logger.warning(f"[FLATBASE_SHORT] {pair}: 4-h close but the episode could not be read from the 5m window — not judged")
+                elif scan.get('vol_low_last') is not None:
+                    self._fbs_count("FLATBASE_VOL24_LOW", pair)
+                    logger.info(f"[FLATBASE_SHORT] {pair}: 4-h close below the spike VWAP but 24 h volume ${scan['vol_low_last'] / 1e6:.1f}M < "
+                                f"${p['min_vol'] / 1e6:.0f}M — next 4-h close")
+            for key in [k for k, r in list(eps.items()) if r.get('status') != ST_TRACKING and not r.get('busy')
+                        and int(bar_open) - k[1] > int((p['max_h'] + 6) * 3_600_000)]:
+                eps.pop(key, None)   # decided and old: the ledger keeps the record
+        except Exception as e:
+            self._fbs_count("FLATBASE_FAILED", pair)
+            logger.error(f"[FLATBASE_SHORT] {pair}: evaluation failed ({str(e)[:160]})")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
+    async def _flatbase_run_queue(self, db) -> None:
+        """🩳 (348) the pairs read on this pass, judged for FLATBASE only now — AFTER every FRENZY / LITE / WILLY decision of the pass: ledger
+        reads / writes, the one-per-episode checks, the market-cap request and the 14-day history reads (background, own client) never sit on
+        the FRENZY decision path. Never raises."""
+        q = self.__dict__.get('_fbs_eval_q') or []
+        self._fbs_eval_q = []
+        for pair, ep, closed, info, bar_open in q:
+            self._journal_pair = pair
+            await self._flatbase_eval(db, pair, ep, closed, info, bar_open)   # crash-isolated per pair
+        self._journal_pair = None
+
+    async def _flatbase_enter_queued(self, db) -> None:
+        """the S4 entries found on this pass, judged AFTER the per-pair loop (FRENZY / LITE / WILLY decide first, without FLATBASE's mcap /
+        funding reads or its order in their way); open_position still refuses an order outside the S4 bar's 5m bar. Never raises."""
+        q = self.__dict__.get('_fbs_enter_q') or []
+        self._fbs_enter_q = []
+        for pair, sp, rec, scan, closed, info, bar_open in q:
+            try:
+                if rec.get('status') == ST_TRACKING:
+                    self._journal_pair = pair
+                    await self._flatbase_enter(db, pair, sp, rec, scan, closed, info, bar_open)
+            except Exception as e:
+                self._fbs_count("FLATBASE_FAILED", pair)
+                logger.error(f"[FLATBASE_SHORT] {pair}: entry failed ({str(e)[:160]})")
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
+        self._journal_pair = None
+
+    async def _flatbase_sweep(self, bar_open, seen=None) -> None:
+        """end of a pass: a TRACKING episode whose pair was NOT read on this pass (left the universe / delisted / unreadable) and whose S4
+        window ended more than 6 h ago is closed EXPIRED — the ledger never keeps a stale TRACKING row and the pass stops following it."""
+        try:
+            p = flatbase_params(config.trading_config.thresholds)
+            for (pair, sp), rec in list(self._fbs_state().items()):
+                if rec.get('status') == ST_TRACKING and not rec.get('busy') and (seen is None or pair not in seen) \
+                        and int(bar_open) - int(sp) > int((p['max_h'] + 6) * 3_600_000):
+                    await self._flatbase_finalize(pair, sp, ST_EXPIRED, "the pair was no longer read when its S4 window ended")
+        except Exception as e:
+            logger.warning(f"[FLATBASE_SHORT] sweep failed ({str(e)[:100]})")
+
+    async def _flatbase_enter(self, db, pair, spike_ms, rec, scan, closed, info, bar_open) -> None:
+        """the S4 bar just closed: ① one per episode (Order on record → OPENED) · ② the FLAT label (unknown → UNREADABLE, fail-closed) ·
+        ③ pair held → REFUSED (FLATBASE_PAIR_HELD) · ④ turnover (24 h volume / mcap ≤ flatbase_turnover_min → SHADOW, observe only; unknown
+        mcap → trade) · ⑤ the order: SHORT at market through open_position(flatbase_short=True). Any refusal ENDS the episode (S4 is the first
+        qualifying bar only)."""
+        th = config.trading_config.thresholds
+        _ebar = datetime.utcfromtimestamp(int(scan['bar_open']) / 1000)
+        _ex = await self._flatbase_order_exists(db, pair, spike_ms)
+        if _ex is None:
+            self._fbs_count("FLATBASE_STATE_UNREAD", pair)
+            await self._flatbase_finalize(pair, spike_ms, ST_REFUSED, "one-per-episode check unreadable at the S4 bar (fail-closed)")
+            return
+        if _ex:
+            await self._flatbase_finalize(pair, spike_ms, ST_OPENED, "an order for this episode is already on record")
+            return
+        _tk = rec.get('task')
+        if rec.get('flat') is None and _tk is not None and not _tk.done():   # a first-seen-late episode: its FLAT read is in flight — wait, bounded
+            try:
+                await asyncio.wait_for(asyncio.shield(_tk), 25.0)
+            except Exception:
+                pass
+        if rec.get('status') != ST_TRACKING:
+            return   # the read decided it (NOT_FLAT / UNREADABLE)
+        if rec.get('flat') is None:
+            self._fbs_count("FLATBASE_FLAT_UNREADABLE", pair)
+            await self._flatbase_finalize(pair, spike_ms, ST_UNREADABLE, "S4 bar reached before the 14-day base could be read (fail-closed)",
+                                          entry_bar_at=_ebar, entry_price=scan.get('close'))
+            return
+        if not flat_ok(rec['flat'], th):
+            self._fbs_count("FLATBASE_NOT_FLAT", pair)
+            await self._flatbase_finalize(pair, spike_ms, ST_NOT_FLAT, f"14-day range {rec['flat'] * 100:.1f} % above the cap at the S4 bar")
+            return
+        feats = dict(entry_bar_at=_ebar, entry_price=scan.get('close'), vwap=scan.get('vwap'),
+                     vs_vwap_pct=(round(scan['vs_vwap_pct'], 4) if scan.get('vs_vwap_pct') is not None else None), peak=scan.get('peak'),
+                     off_peak_pct=(round(scan['off_peak_pct'], 4) if scan.get('off_peak_pct') is not None else None),
+                     hours=(round(scan['hours'], 3) if scan.get('hours') is not None else None), vol24_usd=scan.get('vol24'))
+        try:
+            _held = (await db.execute(select(Order.entry_strategy, Order.direction).where(and_(
+                Order.pair == pair, Order.status == "OPEN", Order.is_paper == self.is_paper_mode)))).first()
+        except Exception:
+            _held = ("unreadable", "?")   # fail-closed
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+        if _held is not None:
+            self._fbs_count("FLATBASE_PAIR_HELD", pair)
+            await self._flatbase_finalize(pair, spike_ms, ST_REFUSED, f"pair held ({_held[0] or 'MOMENTUM'} {_held[1]} open) at the S4 bar", **feats)
+            return
+        _mc = None
+        try:
+            from services import mcap_service as _mcs
+            _mc = _mcs.get(pair)[0]
+            if _mc is None:   # warmed when tracking started; one bounded wait on the shared one-pair fetch if it is still missing
+                _mc = (await _mcs.fetch_pair_now(pair, timeout_s=4.0))[0]
+        except Exception:
+            _mc = None
+        route, R = turnover_route(scan.get('vol24'), _mc, th)
+        _sym = (info or {}).get('symbol') or pair.replace('USDT', '/USDT:USDT')
+        try:
+            _fr = await asyncio.wait_for(binance_service.fetch_funding_rate(_sym, max_age_s=300), 4.0)   # public premiumIndex (observe stamp)
+        except Exception:
+            _fr = None
+        feats.update(mcap_usd=_mc, turnover=R, funding_rate=_fr)
+        if route == ROUTE_SHADOW:
+            self._fbs_count("FLATBASE_TURNOVER_SHADOW", pair)
+            await self._flatbase_finalize(pair, spike_ms, ST_SHADOW,
+                                          f"turnover {R:.2f}× mcap ≤ {flatbase_params(th)['turnover_min']:g}× → observe only (no order)" if R is not None
+                                          else "24 h volume unreadable with a known market cap → observe only (no order)", **feats)
+            return
+        self._frenzy_open_refusal = None
+        self._journal_pair = pair
+        _p_close = float(scan['close'])
+        try:
+            atr = wilder_atr_pct(closed[-300:])
+        except Exception:
+            atr = None
+        logger.warning(f"[FLATBASE_SHORT] {pair}: S4 — 4-h close {_p_close:g} {scan.get('vs_vwap_pct') or 0:+.2f}% vs the spike VWAP, "
+                       f"{scan.get('hours') or 0:.1f} h after the spike, base range {rec['flat'] * 100:.1f} %, turnover "
+                       f"{('%.2f×' % R) if R is not None else 'unknown (mcap n/a)'} → opening SHORT")
+        order = await self.open_position(
+            db=db, pair=pair, direction="SHORT", confidence="STRONG_BUY", current_price=_p_close,
+            entry_atr_pct=(round(atr, 4) if atr is not None else None), entry_pair_volume_24h_usd=scan.get('vol24'), entry_funding_rate=_fr,
+            entry_bull_pct=globals().get('_market_bull_pct'), entry_bear_pct=globals().get('_market_bear_pct'),
+            flatbase_short=True, flatbase_bar_close_ms=int(bar_open),
+            entry_frenzy_spike_at=datetime.utcfromtimestamp(int(spike_ms) / 1000),
+            entry_frenzy_hours=(round(scan['hours'], 2) if scan.get('hours') is not None else None), entry_frenzy_vwap=scan.get('vwap'),
+            entry_frenzy_vs_vwap_pct=feats['vs_vwap_pct'],
+            entry_frenzy_run_pct=(round(scan['run_pct'], 2) if scan.get('run_pct') is not None else None),
+            entry_flatbase_flat14_pct=round(rec['flat'] * 100, 4),
+            entry_flatbase_flat_cov_pct=(round(rec['cov'] * 100, 2) if rec.get('cov') is not None else None),
+            entry_flatbase_off_peak_pct=feats['off_peak_pct'])
+        if order:
+            await self._flatbase_finalize(pair, spike_ms, ST_OPENED, f"opened #{order.id}", order_id=order.id, **feats)
+            return
+        _why = getattr(self, '_frenzy_open_refusal', None)
+        if not _why:   # a named refusal (late / manual block …) is counted where it happened
+            self._fbs_count("FLATBASE_OPEN_REFUSED", pair)
+        await self._flatbase_finalize(pair, spike_ms, ST_REFUSED, (_why or "refused by the open path (balance / cooldown / bracket / liquidity)") + " at the S4 bar",
+                                      **feats)
 
     async def _frenzy_persist_flags(self) -> None:
         """🔥 Rewrite the restart seed (table frenzy_flags) with the pairs flagged now — own short session, never raises."""
@@ -11701,6 +12212,15 @@ class TradingEngine:
         entry_frenzy_above_share: Optional[float] = None,
         entry_frenzy_above_streak: Optional[int] = None,
         entry_frenzy_gvol: Optional[float] = None,
+        # 🩳 2026-10-22 FLATBASE_SHORT (DECISION_LOG 348): a SHORT from _flatbase_enter (a FLAT-based FRENZY episode's S4 bar). Tagged
+        # FLATBASE_SHORT; rides the SURGE open path (alt entry filters / pattern cells bypassed, direct taker, NO dislocation guard — the study
+        # entered at the bar close) with its own size (flatbase_invest_mult × flatbase_lev_mult, absolute-assign = the momentum-long mults),
+        # NO slot cap and never counted in max_open_positions (_bot_slot_filter), its own exit (services.flatbase.flatbase_exit_for).
+        flatbase_short: bool = False,
+        flatbase_bar_close_ms: Optional[int] = None,   # the S4 bar's close — the order must reach the open path inside the same 5m bar
+        entry_flatbase_flat14_pct: Optional[float] = None,
+        entry_flatbase_flat_cov_pct: Optional[float] = None,
+        entry_flatbase_off_peak_pct: Optional[float] = None,
         # Jul 13: GAPFLAT probe — this LONG failed ONLY the gap-expanding check (passed the whole
         # rest of the ladder). Opens as a REAL order at ~1x effective leverage (invest_mult x
         # lev_mult from gap_probe_* config), tagged cell_src=GAPFLAT_PROBE (own analytics row;
@@ -11770,7 +12290,8 @@ class TradingEngine:
         if _fz_es == "FRENZY_WILLY" and frenzy_willy_ht:
             _fz_es = FRENZY_WILLY_HT   # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY: own tag / slot; WILLY's size fields × frenzy_willy_ht_size_frac, WILLY's exit
         _fz_bk = "FRENZY" if _fz_es == "FRENZY_LONG" else _fz_es                  # its filter-block prefix (FRENZY_LATE / FRENZY_WIDE_LATE / FRENZY_LITE_LATE …)
-        _surge = (surge_dir in ("LONG", "SHORT") and surge_dir == direction) or _frenzy   # ⚡ SURGE fill (a mismatched direction is never one); FRENZY rides the same open path
+        _fbs = bool(flatbase_short) and direction == "SHORT" and not _frenzy   # 🩳 (348) FLATBASE_SHORT fill (SHORT only)
+        _surge = (surge_dir in ("LONG", "SHORT") and surge_dir == direction) or _frenzy or _fbs   # ⚡ SURGE fill (a mismatched direction is never one); FRENZY / 🩳 FLATBASE ride the same open path
         self._open_ctx_momentum = not (flip_source or bull_long or bullrun_long or bounce_long
                                        or spike_chase_probe or spike_fade or spike_bounce or _surge)
         if not self.is_running:
@@ -11783,7 +12304,7 @@ class TradingEngine:
         _mb = await self.manual_block_active()
         if _mb is not None:
             self._record_filter_block(MANUAL_BLOCK_READ_FAILED_FILTER if _mb.get('error') else MANUAL_BLOCK_FILTER, direction)
-            if _frenzy:
+            if _frenzy or _fbs:
                 self._frenzy_open_refusal = f"bot trades are blocked by the manual {_mb.get('pair')} position (⛔)"
             logger.info(f"[MANUAL_BLOCK] {pair} {direction}: bot entry refused — ⛔ bot trades blocked by the manual {_mb.get('pair')} "
                         f"#{_mb.get('order_id')}" + (f" (flag unreadable: {_mb.get('error')} — fail-closed)" if _mb.get('error') else ""))
@@ -11793,7 +12314,7 @@ class TradingEngine:
         _ut = self.untracked_block(pair) if not self.is_paper_mode else None
         if _ut is not None:
             self._record_filter_block("UNTRACKED_POSITION_BLOCK", direction)
-            if _frenzy:
+            if _frenzy or _fbs:
                 self._frenzy_open_refusal = f"untracked Binance position on {pair} ({_ut.get('side')} {_ut.get('qty')}) — resolve it first"
             logger.critical(f"[UNTRACKED_POSITION_BLOCK] {pair} {direction}: entry refused — Binance holds an untracked {_ut.get('side')} "
                             f"{_ut.get('qty')} on this symbol ({_ut.get('reason')})")
@@ -11801,7 +12322,7 @@ class TradingEngine:
         # 🎯 (DECISION_LOG 296, round 2 #10) a pair that may still carry an UNVERIFIED reduce-only limit (forced close / blocked settle) has
         # its reduce-only orders cleared before ANY new open (a leftover limit must never reduce the new position); unverifiable → refused
         if not self.is_paper_mode and not await self.rtp_preopen_clear(pair):
-            if _frenzy:
+            if _frenzy or _fbs:
                 self._frenzy_open_refusal = f"{pair} may carry a leftover reduce-only limit — refused until it is cleared"
             return None
 
@@ -11832,7 +12353,7 @@ class TradingEngine:
         # never consume a systematic slot (NULL entry_strategy = legacy momentum rows, kept in the count).
         total_open = await db.execute(
             select(func.count(Order.id)).where(
-                and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_open_filter())
+                and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_slot_filter())   # 🩳 (348) FLATBASE_SHORT holds no slot
             )
         )
         # Jun 2: when redeploy_leftover is on, the count limit rises to the hard
@@ -11844,7 +12365,7 @@ class TradingEngine:
         if _redeploy_on:
             _eff_max_pos = max(_eff_max_pos, getattr(_inv_cfg, 'max_open_positions_hard', _eff_max_pos))
         _open_count_now = total_open.scalar()
-        if _open_count_now >= _eff_max_pos:
+        if _open_count_now >= _eff_max_pos and not _fbs:   # 🩳 (348) FLATBASE_SHORT: no slot cap of its own and never refused by the bot's slots
             logger.warning(f"[SKIP] {pair}: Max open positions ({_eff_max_pos}) reached")
             # Jun 18: the REAL cap-cost — a fully-qualified signal we couldn't open because full.
             try: self._cap_skip_counts["flip" if flip_source else "normal"] += 1
@@ -11857,7 +12378,21 @@ class TradingEngine:
         # Jun 2: this open sits in the "redeploy band" if it's beyond the normal
         # max_open_positions — only reachable because redeploy raised the ceiling.
         # Recorded as REDEPLOY_OPEN after the Order commits (positive-event counter).
-        _is_redeploy_open = _redeploy_on and _open_count_now >= _inv_cfg.max_open_positions
+        _is_redeploy_open = _redeploy_on and _open_count_now >= _inv_cfg.max_open_positions and not _fbs   # 🩳 (348) never a slot open
+        if _fbs:   # 🩳 (348) flatbase_max_open: its OWN optional cap (0 = no cap — operator decision pending), never the bot's slots
+            _fb_cap = int(flatbase_params(config.trading_config.thresholds)['max_open'])
+            if _fb_cap > 0:
+                try:
+                    _fb_n = (await db.execute(select(func.count(Order.id)).where(and_(
+                        Order.status == "OPEN", Order.is_paper == self.is_paper_mode, Order.entry_strategy == FLATBASE_SHORT)))).scalar() or 0
+                except Exception as _fbe:
+                    logger.warning(f"[FLATBASE_SHORT] {pair}: open-FLATBASE count unreadable ({str(_fbe)[:80]}) — refused (fail-closed)")
+                    _fb_n = _fb_cap
+                if _fb_n >= _fb_cap:
+                    self._record_filter_block("FLATBASE_MAX_OPEN", direction)
+                    self._frenzy_open_refusal = f"{_fb_n} FLATBASE_SHORT open (flatbase_max_open {_fb_cap})"
+                    logger.info(f"[FLATBASE_SHORT] {pair}: refused — {self._frenzy_open_refusal}")
+                    return None
 
         # Jul 13: GAPFLAT probe caps — a probe must NEVER crowd out the core edge. It opens only
         # when ① the book is light (open count <= max_open_positions - 2 at open time — i.e. a
@@ -11900,6 +12435,8 @@ class TradingEngine:
                 self._record_filter_block("PAIR_NO_TRADE", direction)
             except Exception:
                 pass
+            if _fbs:   # 🩳 (348) named refusal (counted above)
+                self._frenzy_open_refusal = f"{pair} is on the no-trade list"
             return None
 
         # Jul 30: MAJORS probe caps — mirror of the fleet blocks (same slot guard, own
@@ -12146,6 +12683,8 @@ class TradingEngine:
         existing = result.scalar_one_or_none()
         if existing:
             logger.info(f"[SKIP] {pair}: Already have open position")
+            if _fbs:
+                self._frenzy_open_refusal = f"pair held ({existing.entry_strategy or 'MOMENTUM'} {existing.direction} open)"
             try:
                 # Jul 15 visibility fix (audit B7): the one-position-per-pair rule was a
                 # zero-counter black hole — every repeat signal on a held pair vanished.
@@ -12891,7 +13430,7 @@ class TradingEngine:
         # keep bar reads; the mults are UI fields.
         if _surge:
             _th_sg = config.trading_config.thresholds
-            _sg_pref = _fz_es.lower() if _frenzy else f'surge_{direction.lower()}'   # 🔥 FRENZY: its own size fields (frenzy_long_* / frenzy_wide_* / frenzy_lite_* / frenzy_willy_*)
+            _sg_pref = _fz_es.lower() if _frenzy else ('flatbase' if _fbs else f'surge_{direction.lower()}')   # 🔥 FRENZY: its own size fields (frenzy_long_* / frenzy_wide_* / frenzy_lite_* / frenzy_willy_*) · 🩳 flatbase_invest_mult / flatbase_lev_mult
             if _frenzy and _fz_es == FRENZY_WILLY_HT:
                 _sg_pref = "frenzy_willy"   # 🎲¼ (341) HT sizes off WILLY's fields, then × frenzy_willy_ht_size_frac (below)
             # an explicit 0 means "as small as allowed" (the floors), never the 1× default — the mult is this sleeve's risk control (Oct-3 review)
@@ -12901,14 +13440,17 @@ class TradingEngine:
                 if _sg_strong > 0:
                     _sg_lev = _sg_strong
                     logger.info(f"[FRENZY_LONG] {pair}: ADX rising ∧ +DI above −DI → lev mult {_sg_strong:g} (normal {getattr(_th_sg, 'frenzy_long_lev_mult', 1.0)})")
+            if _fbs:   # 🩳 (348) the values the engine USES (a hand-edited bad value → the momentum-long mults, never a wider size)
+                _fbp = flatbase_params(_th_sg)
+                _sg_inv, _sg_lev = _fbp['invest'], _fbp['lev']
             cell_mult = max(0.1, min(1.0 if _sg_inv is None else float(_sg_inv), _inv_cap))
             cell_lev_mult = max(0.05, min(1.0 if _sg_lev is None else float(_sg_lev), _lev_cap))
-            cell_src = _fz_es if _frenzy else f"SURGE_{direction}"
+            cell_src = _fz_es if _frenzy else (FLATBASE_SHORT if _fbs else f"SURGE_{direction}")
             _mult_target = "both"
 
         # 🔒 Oct-8 FRENZY_WILLY GLOBAL HOLD label (DECISION_LOG 251) = the Order's entry_strategy — computed BEFORE the size since 2026-10-12
         # (DECISION_LOG 283): the momentum-long leverage factor keys on it (entry_strategy MOMENTUM ∧ LONG → momentum_long_lev_mult).
-        _wh_es = (_fz_es if _frenzy else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))))))))
+        _wh_es = (_fz_es if _frenzy else FLATBASE_SHORT if _fbs else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))))))))
         _ml_lev = momentum_long_lev_factor(config.trading_config.thresholds, _wh_es, direction)
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
@@ -12945,7 +13487,7 @@ class TradingEngine:
         # on EVERY automated path, once the size is known (the event records it); fail-closed when the open-WILLY read fails. (_wh_es above.)
         if await self._willy_hold_block(db, pair, direction, _wh_es, price=current_price, invest_mult=cell_mult, lev_mult=cell_lev_mult,
                                         signal_ms=(frenzy_bar_open_ms if _frenzy else None)):
-            if _frenzy:
+            if _frenzy or _fbs:   # 🩳 (348) FLATBASE names the refusal too (counted here, never as FLATBASE_OPEN_REFUSED)
                 self._frenzy_open_refusal = "WILLY hold (a FRENZY_WILLY position is open)"
             return None
 
@@ -13156,6 +13698,13 @@ class TradingEngine:
                 logger.warning(f"[{_fz_es}] {pair}: reached the order {_fz_late2:.0f}s after the bar closed (waited for another bot open) — "
                                f"skipped (max {FRENZY_ENTRY_MAX_LATE_S}s)")
                 return None
+        if _fbs and flatbase_bar_close_ms is not None:   # 🩳 (348) a missed S4 boundary is never caught up: the order must start inside the same 5m bar
+            _fb_late = (_leash_time.time() * 1000 - int(flatbase_bar_close_ms)) / 1000.0
+            if _fb_late > FLATBASE_ENTRY_MAX_LATE_S:
+                self._record_filter_block("FLATBASE_LATE", direction)
+                self._frenzy_open_refusal = f"reached the order {_fb_late:.0f}s after the 4-h bar closed (max {FLATBASE_ENTRY_MAX_LATE_S}s — same 5m bar)"
+                logger.warning(f"[FLATBASE_SHORT] {pair}: {self._frenzy_open_refusal} — skipped")
+                return None
         if _surge:
             maker_enabled = False
             try:   # the fresh book: WS trackers exist only for pairs already held, and a SURGE pair never is (PAIR_HELD)
@@ -13166,6 +13715,8 @@ class TradingEngine:
                         _eb_bid, _eb_ask = _sg_ob.get('best_bid'), _sg_ob.get('best_ask')
                         if frenzy_bar_open_ms is not None:   # normal FRENZY: the 5m boundary (signal bar's close) · catch-up: the decision time
                             _eb_lag = _leash_time.time() - int(frenzy_bar_open_ms) / 1000.0
+                        elif _fbs and flatbase_bar_close_ms is not None:   # 🩳 (348) the S4 bar's close
+                            _eb_lag = _leash_time.time() - int(flatbase_bar_close_ms) / 1000.0
                 except Exception:
                     _eb_bid = _eb_ask = _eb_lag = None
             except Exception:
@@ -13176,7 +13727,7 @@ class TradingEngine:
                     _sg_live_px = float(_sg_tr.last_price) if (_sg_tr and _sg_tr.last_price) else None
                 except Exception:
                     _sg_live_px = None
-            _sg_max = float(getattr(config.trading_config.thresholds, 'frenzy_max_entry_dislocation_pct' if _frenzy else 'surge_max_entry_dislocation_pct', 0) or 0) or None
+            _sg_max = None if _fbs else (float(getattr(config.trading_config.thresholds, 'frenzy_max_entry_dislocation_pct' if _frenzy else 'surge_max_entry_dislocation_pct', 0) or 0) or None)   # 🩳 (348) no guard: the study entered at the bar close
             if _sg_live_px and bullrun_disloc_exceeded(_sg_max, current_price, _sg_live_px):
                 self._record_filter_block(f"{_fz_bk}_DISLOC" if _frenzy else "SURGE_DISLOC", direction)
                 if _frenzy:
@@ -13396,7 +13947,7 @@ class TradingEngine:
         if _surge:
             try:
                 _eb_m = entry_book_metrics(direction, current_price, _eb_bid, _eb_ask, actual_price, _eb_lag)
-                logger.info(f"[ENTRY_EXEC] {pair} {direction} ({_fz_es if _frenzy else 'SURGE'}): drift {_eb_m.get('entry_book_drift_pct')}% · "
+                logger.info(f"[ENTRY_EXEC] {pair} {direction} ({_fz_es if _frenzy else (FLATBASE_SHORT if _fbs else 'SURGE')}): drift {_eb_m.get('entry_book_drift_pct')}% · "
                             f"spread {_eb_m.get('entry_book_spread_pct')}% · fill vs book {_eb_m.get('entry_fill_vs_book_pct')}% · "
                             f"lag {_eb_m.get('entry_order_lag_s')}s · total vs decision {_entry_slippage_pct}%")
             except Exception:
@@ -13411,7 +13962,7 @@ class TradingEngine:
         if (not self.is_paper_mode and actual_price and actual_price > 0
                 and bool(getattr(config.trading_config.thresholds, 'broker_backstop_enabled', False))):
             try:
-                _bk_pct = order_backstop_pct(config.trading_config.thresholds, (_fz_es if _frenzy else None), None, None, leverage)   # 271: per order
+                _bk_pct = order_backstop_pct(config.trading_config.thresholds, (_fz_es if _frenzy else (FLATBASE_SHORT if _fbs else None)), None, None, leverage)   # 271: per order
                 _bk_trigger = actual_price * (1 - _bk_pct / 100.0) if direction == "LONG" else actual_price * (1 + _bk_pct / 100.0)
                 _bk_algo_id = await binance_service.place_backstop_stop(pair, direction, _bk_trigger)
                 if _bk_algo_id:
@@ -13431,7 +13982,7 @@ class TradingEngine:
                 _st_fill['bk'] = _bk_algo_id   # a flatten after a failed booking cancels this stop too
             if (actual_price and actual_price > 0 and bool(getattr(config.trading_config.thresholds, 'broker_backstop_enabled', False))
                     and (self.is_paper_mode or _bk_algo_id)):
-                _bk_rec_pct = order_backstop_pct(config.trading_config.thresholds, (_fz_es if _frenzy else None), None, None, leverage)
+                _bk_rec_pct = order_backstop_pct(config.trading_config.thresholds, (_fz_es if _frenzy else (FLATBASE_SHORT if _fbs else None)), None, None, leverage)
                 _bk_rec_trig = backstop_trigger_price(actual_price, direction, _bk_rec_pct)
         except Exception as _bkr_err:
             logger.error(f"[BACKSTOP_RECORD] {pair}: {_bkr_err}")
@@ -13571,9 +14122,11 @@ class TradingEngine:
             entry_surge_gvol=(entry_surge_gvol if _surge else None),
             entry_surge_pair_move_pct=(entry_surge_pair_move_pct if _surge else None),
             entry_surge_trigger_at=(entry_surge_trigger_at if _surge else None),
-            entry_frenzy_spike_at=(entry_frenzy_spike_at if _frenzy else None), entry_frenzy_hours=(entry_frenzy_hours if _frenzy else None),
-            entry_frenzy_vwap=(entry_frenzy_vwap if _frenzy else None), entry_frenzy_vs_vwap_pct=(entry_frenzy_vs_vwap_pct if _frenzy else None),
-            entry_frenzy_vol_mult=(entry_frenzy_vol_mult if _frenzy else None), entry_frenzy_run_pct=(entry_frenzy_run_pct if _frenzy else None),
+            entry_frenzy_spike_at=(entry_frenzy_spike_at if (_frenzy or _fbs) else None), entry_frenzy_hours=(entry_frenzy_hours if (_frenzy or _fbs) else None),   # 🩳 (348) FLATBASE: the episode id / hours / VWAP / run
+            entry_frenzy_vwap=(entry_frenzy_vwap if (_frenzy or _fbs) else None), entry_frenzy_vs_vwap_pct=(entry_frenzy_vs_vwap_pct if (_frenzy or _fbs) else None),
+            entry_frenzy_vol_mult=(entry_frenzy_vol_mult if _frenzy else None), entry_frenzy_run_pct=(entry_frenzy_run_pct if (_frenzy or _fbs) else None),
+            entry_flatbase_flat14_pct=(entry_flatbase_flat14_pct if _fbs else None), entry_flatbase_flat_cov_pct=(entry_flatbase_flat_cov_pct if _fbs else None),
+            entry_flatbase_off_peak_pct=(entry_flatbase_off_peak_pct if _fbs else None),
             entry_frenzy_stop_atr=(entry_frenzy_stop_atr if _frenzy else None),
             entry_frenzy_bar_ret_pct=(entry_frenzy_bar_ret_pct if _frenzy else None),
             entry_frenzy_di_spread=(entry_frenzy_di_spread if _frenzy else None),
@@ -13584,7 +14137,7 @@ class TradingEngine:
             entry_frenzy_willy_trigger=(entry_frenzy_willy_trigger if (_frenzy and _fz_es in WILLY_EXIT_CLASS and entry_frenzy_willy_trigger in ("A", "B")) else None),   # 🎲 (251)
             entry_frenzy_willy_wait_bars=(int(entry_frenzy_willy_wait_bars) if (_frenzy and _fz_es in WILLY_EXIT_CLASS and entry_frenzy_willy_wait_bars is not None) else None),
             entry_frenzy_retry_wait_min=(entry_frenzy_retry_wait_min if (_frenzy and _fz_es == FRENZY_LITE_RETRY) else None),   # 🔁 (316)
-            entry_frenzy_stop_pct=(self._frenzy_entry_stop_pct(_fz_es) if _frenzy else None),   # 🛑 (317) the stop this FRENZY fill runs at entry
+            entry_frenzy_stop_pct=(self._frenzy_entry_stop_pct(_fz_es) if _frenzy else (flatbase_params(config.trading_config.thresholds)['stop'] if _fbs else None)),   # 🛑 (317) the stop this FRENZY fill runs at entry · 🩳 FLATBASE's price stop
             entry_btc_price=(globals().get('_current_btc_price') if _frenzy else None),   # 🛑👁 (317) the touch snapshots' BTC-since-entry base
             entry_frenzy_retry_green_ret=(entry_frenzy_retry_green_ret if (_frenzy and _fz_es == FRENZY_LITE_RETRY) else None),
             entry_frenzy_catchup_bars=(entry_frenzy_catchup_bars if (_frenzy and frenzy_catchup) else None),
@@ -13639,7 +14192,7 @@ class TradingEngine:
             cell_multiplier_capped=cell_capped,
             # Jun 14: Flip Entry sleeve strategy tag (segregates flip P&L from momentum)
             # Jun 18: BULL_LONG tag for the build-side sleeve (real long, normal exit; NOT _is_flip)
-            entry_strategy=(_fz_es if _frenzy else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),
+            entry_strategy=(_fz_es if _frenzy else FLATBASE_SHORT if _fbs else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),
             # Initialize dynamic TP tracking
             current_tp_level=1,
             dynamic_tp_target=conf_config.tp_min,
@@ -13705,7 +14258,7 @@ class TradingEngine:
         # lock → both wait forever (every paper close + the monitor freeze). Paper arms AFTER its book release, as the manual open
         # does; live already released the book at the commit and arms here, unchanged.
         _rtp_arm_after_release = False
-        if _frenzy and (_fz_es in RTP_SLEEVES):
+        if (_frenzy and (_fz_es in RTP_SLEEVES)) or _fbs:   # 🩳 (348) FLATBASE_SHORT's −8 % price TP rests too (resting_tp_flatbase_enabled)
             if self.is_paper_mode:
                 _rtp_arm_after_release = True
             else:
@@ -13820,7 +14373,7 @@ class TradingEngine:
                 'opened_at': order.opened_at,          # Jul 28 review M-5: spike stale-kill/trail live from t0
                 'entry_atr_pct': entry_atr_pct,        # (both were previously added only at the first cache refresh)
                 'entry_br_door': entry_br_door,        # Sep-21 (57i): the realtime BR exit needs the door for the trail width
-                'entry_strategy': (_fz_es if _frenzy else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),  # Sep 15 gate 60: BEARRUN_SHORT twin (momentum exits; label parity with the Order row). Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches; Aug 21: BULLRUN_LONG (gate 57, dedicated BR_ exits)
+                'entry_strategy': (_fz_es if _frenzy else FLATBASE_SHORT if _fbs else f"SURGE_{direction}" if _surge else "BEARRUN_SHORT" if bearrun_short else ("BULLRUN_LONG" if bullrun_long else ("SPIKE_BOUNCE" if spike_bounce else ("SPIKE_FADE" if spike_fade else ("SPIKE_CHASE" if spike_chase_probe else ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")))))))),  # Sep 15 gate 60: BEARRUN_SHORT twin (momentum exits; label parity with the Order row). Jun 15: flips exit via realtime stack; Jul 27: SPIKE_* gate option-D / fixed-SL branches; Aug 21: BULLRUN_LONG (gate 57, dedicated BR_ exits)
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_btc_rsi_closed': order.entry_btc_rsi_closed,   # 🩹 Oct-2: the realtime hold trigger needs it from t0
                 'entry_price': actual_price,
@@ -13831,6 +14384,7 @@ class TradingEngine:
                 # margin), FADE spike_fade_sl_pct (−0.70, squeeze bound). ATR widening is
                 # skipped for both in the check paths (entry_strategy-gated).
                 'stop_loss': (frenzy_willy_levels(config.trading_config.thresholds)[1] if (_frenzy and _fz_es in WILLY_EXIT_CLASS)   # 🎲 None = no WILLY stop
+                              else -flatbase_params(config.trading_config.thresholds)['stop'] if _fbs   # 🩳 (348) display only — its exit runs on price levels
                               else float(getattr(config.trading_config.thresholds, 'spike_sl_pct', -1.2) or -1.2) if spike_chase_probe
                               else float(getattr(config.trading_config.thresholds, 'spike_fade_sl_pct', -1.50) or -1.50) if spike_fade
                               else float(getattr(config.trading_config.thresholds, 'spike_bounce_sl_pct', -0.70) or -0.70) if spike_bounce
@@ -16443,7 +16997,7 @@ class TradingEngine:
             max_exit_retries = 3
             exit_result = None
 
-            _urgent_exit = (order.entry_strategy or "") in FRENZY_STRATEGIES or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (   # 🩹 RH: the hold's own closes are stop-class; a released trade's close follows its base reason
+            _urgent_exit = (order.entry_strategy or "") in FRENZY_STRATEGIES + FLATBASE_CLASS or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (   # 🩹 RH: the hold's own closes are stop-class; a released trade's close follows its base reason
                 "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_", "OVERRIDE_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent; Sep-29 MANUAL_SL/TP too
             ))
 
@@ -16795,7 +17349,7 @@ class TradingEngine:
         else:
             # --- Paper mode: no retry needed, no slippage ---
             _slippage_pct = None
-            _urgent_exit_paper = (order.entry_strategy or "") in FRENZY_STRATEGIES or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (
+            _urgent_exit_paper = (order.entry_strategy or "") in FRENZY_STRATEGIES + FLATBASE_CLASS or reason.startswith(RH_STOP_CLASS) or any(_rh_strip(reason).startswith(p) for p in (
                 "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED", "BR_", "MANUAL_", "OVERRIDE_",  # Aug 21 gate 57: all bull-run sleeve exits are stop-class/urgent
             ))
             # 🎯 (DECISION_LOG 296) paper = live: a recorded paper resting TP books at ITS limit with the maker fee when the tracked price
@@ -18200,6 +18754,8 @@ class TradingEngine:
                     max_hold = min(max_hold, _sg_mh) if max_hold > 0 else _sg_mh
             elif (order.entry_strategy or "") in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN time cap (frenzy_willy_max_hold_minutes, 120; never the global / FRENZY 12 h)
                 max_hold = frenzy_willy_levels(config.trading_config.thresholds)[2]
+            elif (order.entry_strategy or "") in FLATBASE_CLASS:   # 🩳 (348) its OWN 72 h time exit (flatbase_max_hold_hours) — never the global 20 h cap
+                max_hold = flatbase_max_hold_minutes(config.trading_config.thresholds)
             elif (order.entry_strategy or "") in FRENZY_STRATEGIES or ((order.entry_strategy or "") == "MANUAL" and getattr(order, 'manual_exit_mode', None) == "FRENZY"):   # 🔥 FRENZY (and a manual trade on the FRENZY exit): the tested 12 h cap (frenzy_max_hold_minutes; 0 = global)
                 _fz_mh = int(float(getattr(config.trading_config.thresholds, 'frenzy_max_hold_minutes', 720) or 0))
                 if _fz_mh > 0:
@@ -18334,7 +18890,7 @@ class TradingEngine:
             # FL / momentum-exit stack / check_exit_conditions so none of the alt exit
             # machinery ever touches them. `continue` sits OUTSIDE the try so a sleeve order
             # can never fall through into the alt chain on an error.
-            if (order.entry_strategy or "") in ("BULLRUN_LONG", "SURGE_LONG", "SURGE_SHORT") + FRENZY_STRATEGIES:   # ⚡ SURGE_LONG = same exit (own trail); SURGE_SHORT = its own
+            if (order.entry_strategy or "") in ("BULLRUN_LONG", "SURGE_LONG", "SURGE_SHORT") + FRENZY_STRATEGIES + FLATBASE_CLASS:   # ⚡ SURGE_LONG = same exit (own trail); SURGE_SHORT = its own · 🩳 (348) FLATBASE its own
                 try:
                     if order.direction == "LONG":
                         _br_raw = (current_price - order.entry_price) * order.quantity
@@ -18350,9 +18906,12 @@ class TradingEngine:
                     order.peak_pnl = _br_peak
                     order.trough_pnl = min(realtime_trough, _br_pnl)
                     # 🎯 (DECISION_LOG 296) a resting TP alive on this order → the sleeve's software TP is the safety net only (_rtp_gate)
-                    _rtp_on_m = ((order.entry_strategy or "") in FRENZY_STRATEGIES) and self._rtp_state(order.id, row=order) is not None
+                    _rtp_on_m = ((order.entry_strategy or "") in FRENZY_STRATEGIES + FLATBASE_CLASS) and self._rtp_state(order.id, row=order) is not None
                     if (order.entry_strategy or "") == "SURGE_SHORT":
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(_br_pnl, _br_peak, getattr(order, 'entry_atr_pct', None))
+                    elif (order.entry_strategy or "") in FLATBASE_CLASS:   # 🩳 (348) its OWN exit on PRICE levels: −8 % TP (resting maker limit) · +15 % stop · 72 h
+                        _br_close, _br_reason, _br_stop = flatbase_exit_for(order.entry_price, current_price, _held_minutes(order.opened_at),
+                                                                            config.trading_config.thresholds, resting_tp=_rtp_on_m)
                     elif (order.entry_strategy or "") in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN exit — frenzy_willy_tp_pct / frenzy_willy_stop_pct / frenzy_willy_max_hold_minutes (+1.25 / −4 / 90 since DL 281; never FRENZY's TP3) · ⏰ late TP (297)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
                                                                                 _held_minutes(order.opened_at), None, resting_tp=_rtp_on_m)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live
@@ -19608,7 +20167,7 @@ class TradingEngine:
         try:
             _scan_start_open_count_q = await db.execute(
                 select(func.count(Order.id)).where(
-                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_open_filter())   # 🖐 bot lane only
+                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_slot_filter())   # 🖐 bot lane only · 🩳 (348) slot rows
                 )
             )
             _scan_start_open_count = _scan_start_open_count_q.scalar() or 0
@@ -20018,7 +20577,7 @@ class TradingEngine:
         try:
             _open_count_q = await db.execute(
                 select(func.count(Order.id)).where(
-                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_open_filter())   # 🖐 bot lane only
+                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode, _bot_slot_filter())   # 🖐 bot lane only · 🩳 (348) slot rows
                 )
             )
             _open_positions_in_scan = _open_count_q.scalar() or 0
@@ -22259,7 +22818,7 @@ class TradingEngine:
             # are updated inline here (the shared tracking below is skipped for sleeve orders —
             # phantom/shadow columns stay NULL for them, on record). `continue` sits OUTSIDE the
             # try so a sleeve order can never fall through into the alt chain on an error.
-            if (order_info.get('entry_strategy') or '') in ('BULLRUN_LONG', 'SURGE_LONG', 'SURGE_SHORT') + FRENZY_STRATEGIES:   # ⚡ SURGE_LONG: same exit, own trail · SURGE_SHORT: its own
+            if (order_info.get('entry_strategy') or '') in ('BULLRUN_LONG', 'SURGE_LONG', 'SURGE_SHORT') + FRENZY_STRATEGIES + FLATBASE_CLASS:   # ⚡ SURGE_LONG: same exit, own trail · SURGE_SHORT: its own · 🩳 (348) FLATBASE its own
                 try:
                     if (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES and not order_info.get('_closing_in_progress'):   # 🛑👁 (317) first −2 / −3 touch marker (memory only, observe; never for a row being closed)
                         self._touch_note(order_id, pnl_pct, order_info.get('peak_pnl', 0) or 0, current_price)
@@ -22268,9 +22827,12 @@ class TradingEngine:
                     if pnl_pct < (order_info.get('trough_pnl', 0) or 0):
                         order_info['trough_pnl'] = pnl_pct
                     # 🎯 (DECISION_LOG 296) a resting TP alive on this order → the sleeve's software TP is the safety net only (_rtp_gate)
-                    _rtp_on_rt = ((order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES) and self._rtp_state(order_id, pair=pair, opened_at=order_info.get('opened_at')) is not None
+                    _rtp_on_rt = ((order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES + FLATBASE_CLASS) and self._rtp_state(order_id, pair=pair, opened_at=order_info.get('opened_at')) is not None
                     if (order_info.get('entry_strategy') or '') == 'SURGE_SHORT':
                         _br_close, _br_reason, _br_stop = surge_short_exit_for(pnl_pct, _br_peak_rt, order_info.get('entry_atr_pct'))
+                    elif (order_info.get('entry_strategy') or '') in FLATBASE_CLASS:   # 🩳 (348) its OWN exit on every tick (price levels) · 72 h
+                        _br_close, _br_reason, _br_stop = flatbase_exit_for(entry_price, current_price, _held_minutes(order_info.get('opened_at')),
+                                                                            config.trading_config.thresholds, resting_tp=_rtp_on_rt)
                     elif (order_info.get('entry_strategy') or '') in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN exit on every tick — frenzy_willy_tp_pct / _stop_pct / _max_hold_minutes (+1.25 / −4 / 90 since DL 281) · ⏰ late TP (297)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
                                                                                 _held_minutes(order_info.get('opened_at')), None, resting_tp=_rtp_on_rt)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live
@@ -24173,6 +24735,7 @@ class TradingEngine:
                 'opened_at': order.opened_at,
                 # Jul 27 spike ship: fixed SLs survive cache rebuilds/restarts via entry_strategy
                 'stop_loss': (frenzy_willy_levels(config.trading_config.thresholds)[1] if (order.entry_strategy or '') in WILLY_EXIT_CLASS   # 🎲 None = no WILLY stop (🎲¼ 341: + HT)
+                              else -flatbase_params(config.trading_config.thresholds)['stop'] if (order.entry_strategy or '') in FLATBASE_CLASS   # 🩳 (348) display — its exit runs on price
                               else float(getattr(config.trading_config.thresholds, 'spike_sl_pct', -1.2) or -1.2) if (order.entry_strategy or '') == 'SPIKE_CHASE'
                               else float(getattr(config.trading_config.thresholds, 'spike_fade_sl_pct', -1.50) or -1.50) if (order.entry_strategy or '') == 'SPIKE_FADE'
                               else float(getattr(config.trading_config.thresholds, 'spike_bounce_sl_pct', -0.70) or -0.70) if (order.entry_strategy or '') == 'SPIKE_BOUNCE'

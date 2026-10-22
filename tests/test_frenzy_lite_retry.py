@@ -453,7 +453,7 @@ def test_reports_d12():
 def test_sleeve_and_strategy_rows():
     import main as M
     src = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
-    assert "'Frenzy-Lite', 'Frenzy-Lite-Retry', 'Frenzy-Willy', 'Frenzy-Willy-HT', 'Manual']" in src   # 🎲¼ (341) + HT after WILLY                            # own sleeve row, right after LITE
+    assert "'Frenzy-Lite', 'Frenzy-Lite-Retry', 'Frenzy-Willy', 'Frenzy-Willy-HT', 'Flatbase-Short', 'Manual']" in src   # 🩳 (348) Flatbase-Short   # 🎲¼ (341) + HT after WILLY                            # own sleeve row, right after LITE
     rows = M._compute_sleeve_performance([NS(entry_strategy=FRENZY_LITE_RETRY, direction="LONG", pnl_percentage=1.0, pnl=10.0,
                                              opened_at=dt.datetime(2026, 10, 19), closed_at=dt.datetime(2026, 10, 19, 1)),
                                           NS(entry_strategy="FRENZY_LITE", direction="LONG", pnl_percentage=-1.0, pnl=-10.0,

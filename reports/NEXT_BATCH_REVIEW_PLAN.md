@@ -41,6 +41,12 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    its own PROBE_EXEMPT line) · ③ backtest turnover-blocked cohort (reports/WILLY_TURNOVER_REPRICE_2026-10-19.md: blocked −0.24 vs kept +0.08).
    🔒 Gates: Σ ≤ −8 pts → review · first 10 avg < 0 → review · main read at the frozen first 30 on ≥ 10 days vs full-size WILLY: HT ≥ WILLY →
    recommend turnover ratio 0 + HT off · HT ≤ WILLY − 0.20 → filter confirmed, HT off · else re-read at 60.
+②f **🩳 FLATBASE_SHORT (DECISION_LOG 348, 2026-10-22, alert-only, discipline override)** — run scripts/scout_flatbase_short.py (also in the
+   opportunity scout): real CLOSED fills from the deploy + 10 min (operator-closed out) → flatbase_gate verdict (3 stop-outs in a row / Σ ≤ −30 →
+   review · first 10 avg < 0 → review · 30 fills on ≥ 10 days: ≥ +0.5 % step up, < 0 off, else re-read at 60). Per fill: flat14, turnover, mcap,
+   VWAP distance, peak drop, funding, exit reason, MISSED / REFUSED / SHADOW tallies from the e=FLATBASE decision rows. After 30 real fills: the
+   SHADOW (turnover ≤ 1) cohort priced from klines vs real, same period → shadow better = review adding them. Three blocks: ① batch · ② master per
+   batch (FLATBASE_SLEEVE rows) · ③ the study's 2026 cell (+0.93 all / +1.65 turnover > 1, in-sample) as the backtest reference.
 ③ **Then EVERY open watchlist gate in CLAUDE_CURRENT_STATE.md and every scout tracker** — run each scout script and report tallies vs
    bars unprompted (the standing batch-watchlist rule).
 Goal stated by the operator: make the bot highly profitable going forward (≈ 10 %/day ambition) — FRENZY and SPIKE_FADE are the

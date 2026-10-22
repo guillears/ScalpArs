@@ -1424,6 +1424,14 @@ def run():
     except Exception as _wht_e:
         log(f"WILLY_HT gates failed: {_wht_e}")
         _rg_sec += ["## 🎲¼ WILLY_HT", "", f"Unavailable this run ({str(_wht_e)[:120]}).", ""]
+    try:                                               # 🩳 Oct-22 FLATBASE_SHORT gates (DECISION_LOG 348; orders + decisions exports, alert-only; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_flatbase_short as _fbs
+        _rg_sec += _fbs.run(now_ms)
+    except Exception as _fbs_e:
+        log(f"FLATBASE_SHORT gates failed: {_fbs_e}")
+        _rg_sec += ["## 🩳 FLATBASE_SHORT", "", f"Unavailable this run ({str(_fbs_e)[:120]}).", ""]
     _ev_at = next((i for i, x in enumerate(L) if x.startswith("## Evidence so far")), len(L))
     L[_ev_at:_ev_at] = _rg_sec + _fz_sec + _st_sec                         # above the evidence table, so the events / "no events" line keep their place
     if not len(rep):

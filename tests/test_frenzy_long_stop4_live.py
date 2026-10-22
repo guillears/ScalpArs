@@ -56,7 +56,7 @@ def test_entry_stamp(monkeypatch):
     assert TE.TradingEngine._frenzy_entry_stop_pct("FRENZY_LITE") == 3.0
     assert TE.TradingEngine._frenzy_entry_stop_pct("FRENZY_WILLY") == 4.0
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
-    assert "entry_frenzy_stop_pct=(self._frenzy_entry_stop_pct(_fz_es) if _frenzy else None)" in eng
+    assert "entry_frenzy_stop_pct=(self._frenzy_entry_stop_pct(_fz_es) if _frenzy else (flatbase_params(config.trading_config.thresholds)['stop'] if _fbs else None))" in eng   # 🩳 (348) FLATBASE stamps its price stop
     assert "_stop = ((abs(_wsl) if _wsl is not None else None) if _wl else frenzy_stop_for(th, _es))" in eng   # stop/ATR stamp uses it too
 
 

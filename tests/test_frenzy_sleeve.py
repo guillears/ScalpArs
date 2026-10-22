@@ -184,7 +184,7 @@ def test_config_parity_and_every_surface():
 def test_engine_and_api_wiring():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert eng.count("frenzy_exit_for(") == 4                                             # sleeve: candle + realtime · MANUAL "Frenzy exit": candle + realtime
-    assert "await self._update_frenzy(db, wait=False)" in eng and eng.count('(_fz_es if _frenzy else f"SURGE_{direction}" if _surge') == 3   # + the WILLY global hold's sleeve label (251)
+    assert "await self._update_frenzy(db, wait=False)" in eng and eng.count('(_fz_es if _frenzy else FLATBASE_SHORT if _fbs else f"SURGE_{direction}" if _surge') == 3   # + the WILLY global hold's sleeve label (251) · 🩳 (348) FLATBASE tag
     assert "_sg_pref = _fz_es.lower() if _frenzy else" in eng and 'cell_src = _fz_es if _frenzy else' in eng
     assert '"SURGE_SHORT", "SURGE_LONG", "FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE", "FRENZY_WILLY")' in eng                           # no pair-EMA exit on a FRENZY fill
     assert "_frenzy_kill" not in eng and "frenzy_kill_verdict" not in eng                 # operator: no automatic off
@@ -272,7 +272,7 @@ def test_exit_through_the_engine_intercept_and_the_late_entry_guard():
     eng = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
     assert 'f"{_bk}_PAIR_DAY_CAP"' in eng and "frenzy_max_entries_per_pair_day" in eng                    # per-pair daily ceiling (DECISION_LOG 177)
     assert TE.FRENZY_ENTRY_MAX_LATE_S == 120 and 'f"{_fz_bk}_LATE"' in eng and 'f"{_fz_bk}_DISLOC" if _frenzy else "SURGE_DISLOC"' in eng and 'f"{_bk}_DISLOC"' in eng
-    assert eng.count('(order.entry_strategy or "") in FRENZY_STRATEGIES or reason.startswith(RH_STOP_CLASS)') == 2   # live + paper: every FRENZY close is taker
+    assert eng.count('(order.entry_strategy or "") in FRENZY_STRATEGIES + FLATBASE_CLASS or reason.startswith(RH_STOP_CLASS)') == 2   # live + paper: every FRENZY (🩳 + FLATBASE, 348) close is taker
     assert "self._journal_pair = pair; self._journal_ctx = None" in eng and "await self._frenzy_persist_flags()" in eng
     import models as M
     assert M.FrenzyFlag.__tablename__ == "frenzy_flags"

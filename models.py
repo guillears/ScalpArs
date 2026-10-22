@@ -338,6 +338,12 @@ class Order(Base):
     touch3_btc_1h_slope = Column(Float, nullable=True)
     touch3_recovered_tp = Column(Boolean, nullable=True)
     touch3_min_after = Column(Float, nullable=True)
+    # 🩳 (DECISION_LOG 348) FLATBASE_SHORT entry stamps — the rest ride existing columns: entry_frenzy_spike_at (the episode id), entry_frenzy_hours,
+    # entry_frenzy_vwap / entry_frenzy_vs_vwap_pct (the distance below the spike VWAP), entry_frenzy_run_pct, entry_pair_volume_24h_usd (the kline
+    # 24 h volume the rule judged), entry_mcap_usd, entry_vol_mcap_ratio (= the turnover the route used), entry_funding_rate (premiumIndex)
+    entry_flatbase_flat14_pct = Column(Float, nullable=True)       # the 14-day close range at the base bar, % (max/min − 1; FLAT ≤ flatbase_flat_max)
+    entry_flatbase_flat_cov_pct = Column(Float, nullable=True)     # share of the 14-day bars present when that range was read, %
+    entry_flatbase_off_peak_pct = Column(Float, nullable=True)     # the entry bar's close vs the episode peak (highest high since the spike bar), %
     # 📖 Oct-3 (DECISION_LOG 192): the ORDER BOOK at a MANUAL click (services/orderbook_stats.orderbook_metrics) — OBSERVE-ONLY research stamps
     manual_ob_spread_pct = Column(Float, nullable=True)
     manual_ob_top_bid_usd = Column(Float, nullable=True)
@@ -1311,6 +1317,44 @@ class FrenzyFlag(Base):
     pair = Column(String(30), primary_key=True)
     spike_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FlatbaseEpisode(Base):
+    """🩳 2026-10-22 (DECISION_LOG 348) — the FLATBASE_SHORT EPISODE LEDGER: one row per (FRENZY episode, mode) the sleeve followed. It makes the
+    sleeve restart-safe (first-seen bar, the FLAT label computed ONCE, the one decision per episode) and it IS the observe-only shadow record:
+    status SHADOW = an S4 setup the turnover rule (24 h volume / mcap ≤ flatbase_turnover_min) kept out — no order — with its entry price,
+    turnover and features, priced later by scripts/scout_flatbase_short.py from klines with the sleeve's exit. Rides the decisions export
+    as e=FLATBASE rows (fb_* columns). Written by TradingEngine._flatbase_* only.
+    status: TRACKING · OPENED (order_id) · SHADOW · MISSED (the first qualifying 4-h close passed unjudged — outage / restart) · EXPIRED
+    (no qualifying bar within the window) · NOT_FLAT · UNREADABLE (14-day history unreadable / < 90 % present — fail-closed) · REFUSED
+    (the open path refused the S4 bar: pair held, manual block, balance, lateness … — reason says which)."""
+    __tablename__ = "flatbase_episodes"
+    __table_args__ = (UniqueConstraint("pair", "spike_at", "is_paper", name="uq_flatbase_episode"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    pair = Column(String(30), nullable=False, index=True)
+    spike_at = Column(DateTime, nullable=False, index=True)        # close time of the spike bar (naive UTC) = orders.entry_frenzy_spike_at
+    is_paper = Column(Boolean, nullable=False, default=True)
+    first_seen_at = Column(DateTime, nullable=False)               # OPEN time of the first closed bar the engine saw this episode flagged on
+    status = Column(String(12), nullable=False, default="TRACKING", index=True)
+    reason = Column(String(200), nullable=True)
+    flat14_pct = Column(Float, nullable=True)                      # the 14-day close range at the base bar, % (NULL until read / unreadable)
+    flat_cov_pct = Column(Float, nullable=True)                    # share of the 14-day bars present, %
+    flat_attempts = Column(Integer, nullable=False, default=0)     # history reads tried (≤ services.flatbase.FLAT_MAX_ATTEMPTS)
+    decided_at = Column(DateTime, nullable=True)                   # when the status left TRACKING
+    entry_bar_at = Column(DateTime, nullable=True)                 # OPEN time of the S4 bar (its close = entry decision)
+    entry_price = Column(Float, nullable=True)                     # the S4 bar's close (SHADOW: the shadow entry; OPENED: the decision price)
+    vwap = Column(Float, nullable=True)
+    vs_vwap_pct = Column(Float, nullable=True)
+    peak = Column(Float, nullable=True)
+    off_peak_pct = Column(Float, nullable=True)
+    hours = Column(Float, nullable=True)                           # hours from the spike bar's open to the S4 bar's open
+    vol24_usd = Column(Float, nullable=True)                       # kline 24 h quote volume at the S4 bar
+    mcap_usd = Column(Float, nullable=True)
+    turnover = Column(Float, nullable=True)                        # vol24_usd / mcap_usd (NULL = market cap unknown → traded)
+    funding_rate = Column(Float, nullable=True)                    # premiumIndex lastFundingRate at the decision (observe)
+    order_id = Column(Integer, nullable=True)                      # OPENED: the order row
+    created_at = Column(DateTime, nullable=True)
 
 
 class OrderbookSnap(Base):

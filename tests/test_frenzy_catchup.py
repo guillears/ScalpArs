@@ -258,7 +258,7 @@ def test_wiring_and_surfaces():
     assert _elif in body and "await self._frenzy_catchup(db, pair, ep, closed, _nc[1], flag, by[pair], bar_open, _pp, _cu_max, _on, _wide," in body
     assert body.index("if ep.get('fresh_on'):") < body.index("await self._frenzy_mark_on_done(pair, ep.get('on_bar_ts'))") < body.index(_elif)
     assert body.index("_pp = self._frenzy_pair_prev(pair, _cu_prev)") < body.index("self.__dict__.setdefault('_fz_pair_unjudged', {}).pop(pair, None)")
-    assert body.index("self._frenzy_note_unread(names, seen, bar_open - 300_000, _cu_prev)") < body.index("await self._frenzy_judged_set(bar_open - 300_000)")
+    assert body.index("self._frenzy_note_unread(_fz_names, seen, bar_open - 300_000, _cu_prev)") < body.index("await self._frenzy_judged_set(bar_open - 300_000)")
     assert "self._frenzy_gvol_catchup_start(" not in body                                       # fix 8: lazy, inside _frenzy_catchup only
     # stored only after the pair loop completed (an exception before it leaves the bar unjudged)
     assert body.index("for _fut in asyncio.as_completed(_fz_tasks):") < body.index("await self._frenzy_judged_set(bar_open - 300_000)") < body.index("except Exception as e:\n            logger.error(f\"[FRENZY] update failed")

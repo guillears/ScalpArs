@@ -138,7 +138,8 @@ def _setup(monkeypatch, paper=False, rows=(), place=None, fetch=None, cancel="ca
                frenzy_lock_arm_pct=0.0, resting_tp_willy_enabled=True, resting_tp_lite_enabled=True, resting_tp_grace_s=3.0,
                resting_tp_through_ticks=2, frenzy_willy_late_tp_minutes=30.0, frenzy_willy_late_tp_pct=0.25, broker_backstop_enabled=True,
                resting_tp_frenzy_long_enabled=False, resting_tp_manual_enabled=False, resting_tp_override_enabled=False,   # 🎯 (310) the 296 scope; the 310 switches: tests/test_resting_tp_fixed_all.py
-               resting_tp_lite_retry_enabled=False)   # 🔁 (316) its own switch: tests/test_frenzy_lite_retry.py
+               resting_tp_lite_retry_enabled=False,   # 🔁 (316) its own switch: tests/test_frenzy_lite_retry.py
+               resting_tp_flatbase_enabled=False)   # 🩳 (348) its own switch: tests/test_flatbase_short.py
     _kw.update(th_kw or {})
     for k, v in _kw.items():
         monkeypatch.setattr(th, k, v, raising=False)

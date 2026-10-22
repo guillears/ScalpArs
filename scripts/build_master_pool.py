@@ -568,7 +568,7 @@ def stack_pair_blacklist_reason(strat, pair):
     s = str(strat)
     if p in {x.upper() for x in PAIR_BLACKLIST_FROZEN}:
         return "PAIR_BLACKLIST"
-    key = "FRENZY" if s.startswith("FRENZY_") else s
+    key = "FRENZY" if (s.startswith("FRENZY_") or s == "FLATBASE_SHORT") else s   # 🩳 10-22 (DECISION_LOG 348): FLATBASE reads the FRENZY pass's universe
     if key in NO_TRADE_SLEEVES and p in NO_TRADE_PAIRS_FROZEN:
         return "PAIR_NO_TRADE"
     if p in SLEEVE_BLACKLISTS_FROZEN.get(key, ()):
@@ -833,6 +833,8 @@ def main(allow_proxy=False):
                     k, why = False, 'SURGE_LONG_EMA_GAP'
             elif strat == 'FRENZY_WIDE':
                 k, why = False, 'FRENZY_WIDE_OFF'   # ⛔ 10-14b (DECISION_LOG 291): frenzy_wide_enabled = false → today's stack never opens it
+            elif strat == 'FLATBASE_SHORT':
+                why = 'FLATBASE_SLEEVE'  # 🩳 10-22 (DECISION_LOG 348): its own SHORT sleeve (FRENZY episode on a flat base) — never a momentum / flip row; no master fill yet → nothing re-prices, STACK_VERSION unchanged
             elif strat == 'FRENZY_LITE_RETRY':
                 why = 'FRENZY_SLEEVE'    # 🔁 10-19 (DECISION_LOG 316): LITE's green-bar retry — its own entry_strategy, never a momentum row (no master fill yet)
             elif strat in ('FRENZY_LONG', 'FRENZY_LITE', 'FRENZY_WILLY'):   # 🎲 Oct-8 (251) WILLY: same tag, never a momentum row
@@ -1020,7 +1022,7 @@ def main(allow_proxy=False):
     # FROZEN with STACK_VERSION (review: never read the live JSON — a later settings change must not silently re-price history; a sizing
     # change = a new STACK_VERSION with these values updated; tests/test_long_chop_burst.py pins them against trading_config.json)
     _th = dict(frenzy_long_invest_mult=0.2, frenzy_long_lev_mult=0.05, frenzy_long_lev_mult_strong=0.0, frenzy_wide_invest_mult=0.2,   # 10-14a (289): LONG / WIDE blocker size 0.2 × 1× · WILLY 10× · LITE 8× (309)
-               frenzy_wide_lev_mult=0.05, frenzy_lite_invest_mult=1.0, frenzy_lite_lev_mult=0.4, frenzy_lite_retry_invest_mult=1.0, frenzy_lite_retry_lev_mult=0.2, frenzy_willy_invest_mult=1.0, frenzy_willy_lev_mult=0.5, surge_long_invest_mult=1.0, surge_long_lev_mult=1.0, bearrun_invest_mult=1.0, bearrun_lev_mult=0.25,
+               frenzy_wide_lev_mult=0.05, frenzy_lite_invest_mult=1.0, frenzy_lite_lev_mult=0.4, frenzy_lite_retry_invest_mult=1.0, frenzy_lite_retry_lev_mult=0.2, frenzy_willy_invest_mult=1.0, frenzy_willy_lev_mult=0.5, surge_long_invest_mult=1.0, surge_long_lev_mult=1.0, bearrun_invest_mult=1.0, bearrun_lev_mult=0.25, flatbase_invest_mult=0.2, flatbase_lev_mult=0.25,
                frenzy_tp_pct=FRENZY_TP_FROZEN, frenzy_lite_tp_pct=FRENZY_LITE_TP_FROZEN, frenzy_lite_c_enabled=FRENZY_LITE_C_ENABLED_FROZEN, frenzy_lite_c_vol_mult=FRENZY_LITE_C_VOL_FROZEN, frenzy_lite_c_btc_slope_min=FRENZY_LITE_C_SLOPE_FROZEN, frenzy_lite_c_tp_pct=FRENZY_LITE_C_TP_FROZEN, frenzy_lock_arm_pct=0.0, frenzy_lock_floor_pct=2.0, frenzy_lock_trail_pct=2.0,   # 10-08a: fixed TP, lock off (250) · +1.5 since 10-12d (283)
                frenzy_wide_hold_green_streak=WIDE_HG_STREAK_FROZEN, frenzy_max_atr_pct=WIDE_HG_MAX_ATR_FROZEN)        # WIDE hold-green (231) · ATR 3.0 (250)
     SLEEVE_SIZE_FROZEN = _th
@@ -1038,6 +1040,8 @@ def main(allow_proxy=False):
             return float(_th.get("frenzy_lite_retry_invest_mult", 1.0)), float(_th.get("frenzy_lite_retry_lev_mult", 0.2))
         if strat == "FRENZY_WILLY":   # 🎲 Oct-8 (251): frozen 1 × 1.0 (20×), priced AS TRADED (not in FRENZY3: no +3 re-price, no bearish block — it has neither)
             return float(_th.get("frenzy_willy_invest_mult", 1.0)), float(_th.get("frenzy_willy_lev_mult", 1.0))
+        if strat == "FLATBASE_SHORT":   # 🩳 10-22 (DECISION_LOG 348): the momentum-long mults 0.2 × 0.25 (5×), priced as traded until a STACK_VERSION re-prices it
+            return float(_th.get("flatbase_invest_mult", 0.2)), float(_th.get("flatbase_lev_mult", 0.25))
         if strat == "SURGE_LONG":
             return float(_th.get("surge_long_invest_mult", 1.0)), float(_th.get("surge_long_lev_mult", 1.0))
         if strat == "BEARRUN_SHORT":

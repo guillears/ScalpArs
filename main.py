@@ -25,7 +25,7 @@ from sqlalchemy import select, and_, or_, func, desc, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit, locked_execute_commit
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FrenzyBreak, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FrenzyBreak, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -917,6 +917,16 @@ async def _willy_drain_hold_writes():
         pass
 
 
+async def _flatbase_reset_state(db, is_paper):
+    """🩳 (DECISION_LOG 348) FLATBASE_SHORT is SHORT-only (ALL / SHORT resets only). Like WILLY's seen-episode map, a reset must never let
+    an episode decided before it be traded again: rows of episodes whose S4 window may still be open (spike ≤ max hours + 6 h ago) are KEPT
+    — decided ones stay decided (OPENED / SHADOW / MISSED …, their order may be gone), TRACKING ones keep tracking; only older rows are
+    deleted (the batch archive's decisions export already carries them). The engine's in-memory map is kept for the same reason."""
+    from services.flatbase import flatbase_params
+    _keep = datetime.utcnow() - timedelta(hours=flatbase_params(config.trading_config.thresholds)['max_h'] + 6)
+    await db.execute(delete(FlatbaseEpisode).where(and_(FlatbaseEpisode.is_paper == is_paper, FlatbaseEpisode.spike_at < _keep)))
+
+
 async def _willy_reset_state(db, is_paper):
     """🔒 Oct-8 (DECISION_LOG 251): the WILLY hold's refusal rows of this mode go with the orders they refer to; the engine's pending red-candle
     entries, B one-shots, in-memory hold events, event tally and LITE hold deferrals are cleared. The SEEN-episode map is KEPT on purpose: a
@@ -976,6 +986,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         # Known quirk (review): in PAPER mode with shares outstanding, a paper reset re-seeds
         # paper_balance so the surviving history shows a NAV cliff — honest, and live-unaffected.
         await _willy_reset_state(db, is_paper)   # 🔒 (251) WILLY hold rows + pending / one-shot state (the in-flight writes were drained above)
+        await _flatbase_reset_state(db, is_paper)   # 🩳 (348) the FLATBASE episode ledger
         import services.trading_engine as _te
         _te.reset_phantom_flip_state()
 
@@ -1047,6 +1058,8 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
             )
         if direction == "LONG":   # 🔒 (251) FRENZY_WILLY is LONG-only: its hold rows + pending / one-shot state go with a LONG reset
             await _willy_reset_state(db, is_paper)
+        if direction == "SHORT":   # 🩳 (348) FLATBASE_SHORT is SHORT-only: its ledger goes with a SHORT reset
+            await _flatbase_reset_state(db, is_paper)
         trading_engine.rtp_clear_all()   # 🎯 (296) deleted rows never leave resting-TP realtime state behind
 
         await locked_commit(db)
@@ -1165,7 +1178,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "bnb_balance": round(bnb_usd, 2),
             "bnb_balance_is_usd": True,
             "usdt_in_orders": used_margin,
-            "open_orders_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']),   # bot lane (🖐 Sep-29)
+            "open_orders_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') not in ('MANUAL', 'FLATBASE_SHORT')]),   # bot SLOT lane (🖐 Sep-29 · 🩳 348: FLATBASE holds no slot)
+            "flatbase_open_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') == 'FLATBASE_SHORT']),   # 🩳 (348) shown as its own "+N flatbase"
             "manual_open_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') == 'MANUAL']),
             "open_by_sleeve": _open_by_sleeve(open_orders),
             "manual_max_open_positions": getattr(config.trading_config.investment, 'manual_max_open_positions', 8),
@@ -1243,7 +1257,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "bnb_balance_is_usd": False,
             "usdt_in_orders": round(_usdt_im, 2),   # 🏦 (344) the margin actually locked (USDT initialMargin = position + open-order IM), not total − free
             "usdt_unrealized": round(_usdt_unrl, 2) if balance.get('ok', True) else None,   # 🏦 (344) Binance open P&L over ALL positions — inside total_portfolio ("incl. open P&L"); None on a failed read (sub-line hidden)
-            "open_orders_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') != 'MANUAL']),   # bot lane (🖐 Sep-29, parity with paper)
+            "open_orders_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') not in ('MANUAL', 'FLATBASE_SHORT')]),   # bot SLOT lane (🖐 Sep-29, parity with paper · 🩳 348)
+            "flatbase_open_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') == 'FLATBASE_SHORT']),   # 🩳 (348)
             "manual_open_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') == 'MANUAL']),
             "open_by_sleeve": _open_by_sleeve(_live_open),
             "manual_max_open_positions": getattr(config.trading_config.investment, 'manual_max_open_positions', 8),
@@ -2574,7 +2589,25 @@ async def export_decisions_csv(days: int = 3, db: AsyncSession = Depends(get_db)
                              wh_invest_mult=b.invest_mult, wh_lev_mult=b.lev_mult, wh_willy_id=b.willy_order_id, wh_willy_pair=b.willy_pair, wh_reason=(b.reason or "OPEN")))
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] WILLY hold rows skipped: {_e}")
-    _cols = list(_dj.EXPORT_COLS) + _ob_cols + _wh_cols
+    # 🩳 (DECISION_LOG 348) the FLATBASE_SHORT episode ledger rides this file as FLATBASE rows (one per episode followed in the window, any
+    # status — SHADOW rows are the observe-only cohort scripts/scout_flatbase_short.py prices from klines).
+    _fb_cols = ["fb_spike_at", "fb_status", "fb_reason", "fb_first_seen_at", "fb_flat14_pct", "fb_flat_cov_pct", "fb_entry_bar_at", "fb_vwap",
+                "fb_vs_vwap_pct", "fb_peak", "fb_off_peak_pct", "fb_hours", "fb_vol24_usd", "fb_mcap_usd", "fb_turnover", "fb_funding_rate", "fb_order_id"]
+    try:
+        _since_fb = datetime.utcnow() - timedelta(days=days)
+        _fmt = lambda d: d.strftime('%Y-%m-%dT%H:%M:%S') if d else None
+        for b in (await db.execute(select(FlatbaseEpisode).where(and_(FlatbaseEpisode.is_paper == trading_engine.is_paper_mode,
+                                                                      or_(FlatbaseEpisode.spike_at >= _since_fb, FlatbaseEpisode.decided_at >= _since_fb)))
+                                   .order_by(FlatbaseEpisode.spike_at))).scalars().all():
+            rows.append(dict(t=_fmt(b.decided_at or b.created_at or b.spike_at), e="FLATBASE", pair=b.pair, dir="SHORT", strategy="FLATBASE_SHORT",
+                             price=b.entry_price, gate=b.status, fb_spike_at=_fmt(b.spike_at), fb_status=b.status, fb_reason=b.reason,
+                             fb_first_seen_at=_fmt(b.first_seen_at), fb_flat14_pct=b.flat14_pct, fb_flat_cov_pct=b.flat_cov_pct,
+                             fb_entry_bar_at=_fmt(b.entry_bar_at), fb_vwap=b.vwap, fb_vs_vwap_pct=b.vs_vwap_pct, fb_peak=b.peak,
+                             fb_off_peak_pct=b.off_peak_pct, fb_hours=b.hours, fb_vol24_usd=b.vol24_usd, fb_mcap_usd=b.mcap_usd,
+                             fb_turnover=b.turnover, fb_funding_rate=b.funding_rate, fb_order_id=b.order_id))
+    except Exception as _e:
+        logger.warning(f"[DECISIONS_EXPORT] FLATBASE rows skipped: {_e}")
+    _cols = list(_dj.EXPORT_COLS) + _ob_cols + _wh_cols + _fb_cols
 
     def _write_csv():   # off the event loop: up to ~50k BOOK rows (deep review)
         buf = io.StringIO()
@@ -3998,6 +4031,7 @@ _SLEEVE_LABELS = {   # 🧭 Oct-5 (operator): open positions per sleeve under th
     ("SPIKE_CHASE", "LONG"): "Spike Chase Long", ("SPIKE_BOUNCE", "LONG"): "Spike Bounce Long", ("BULLRUN_LONG", "LONG"): "Bull-Run Long",
     ("BEARRUN_SHORT", "SHORT"): "Bear-Run Short", ("SURGE_LONG", "LONG"): "SURGE Long", ("SURGE_SHORT", "SHORT"): "SURGE Short",
     ("FRENZY_LONG", "LONG"): "FRENZY Long", ("FRENZY_WIDE", "LONG"): "FRENZY WIDE Long", ("FRENZY_LITE", "LONG"): "FRENZY LITE Long", ("FRENZY_LITE_RETRY", "LONG"): "FRENZY LITE RETRY Long", ("FRENZY_WILLY", "LONG"): "FRENZY WILLY Long", ("FRENZY_WILLY_HT", "LONG"): "FRENZY WILLY HT Long (¼)",
+    ("FLATBASE_SHORT", "SHORT"): "FLATBASE Short",   # 🩳 (DECISION_LOG 348)
     ("BULL_LONG", "LONG"): "Bull Long", ("BOUNCE_LONG", "LONG"): "Bounce Long",
 }
 
@@ -4101,6 +4135,7 @@ def _frenzy_monitor_payload():
         from services.frenzy import frenzy_lite_need as _fz_lite_need, frenzy_lite_hmax as _fz_lite_hmax, frenzy_willy_levels as _fz_willy_levels, frenzy_willy_wait_ms as _fz_willy_wait
         from services.frenzy import frenzy_lite_retry_wait_ms as _fz_lr_wait, frenzy_stop_for as _fz_stop_for   # 🔁 (316) · 🛑 (317)
         from services.frenzy import frenzy_willy_ht_frac as _fz_ht_frac   # 🎲¼ (341)
+        from services.flatbase import flatbase_params as _fb_params   # 🩳 (348)
         from datetime import datetime as _dt
         _th = config.trading_config.thresholds
         _ca = _fzs.get('checked_at')
@@ -4138,6 +4173,12 @@ def _frenzy_monitor_payload():
                 "willy_ht_enabled": bool(getattr(_th, 'frenzy_willy_ht_enabled', True)),
                 "willy_ht_size_frac": _fz_ht_frac(_th), "willy_ht_max_slots": max(1, int(getattr(_th, 'frenzy_willy_ht_max_slots', 1) or 1)),
                 "willy_red_wait": int(_fz_willy_wait(_th) // 60_000),   # 🟥 the red-candle wait the engine USES (minutes)
+                # 🩳 (348) FLATBASE_SHORT: switch, the values the engine USES, the episodes it is tracking now
+                "flatbase_enabled": getattr(_th, 'flatbase_short_enabled', False) is True,
+                "flatbase": _fb_params(_th),
+                "flatbase_tracking": [dict(pair=k[0], spike_ms=k[1], flat_pct=(round(v['flat'] * 100, 1) if v.get('flat') is not None else None),
+                                           first_seen_ms=v.get('first_seen_ms'))
+                                      for k, v in sorted((getattr(trading_engine, '_fbs_eps', None) or {}).items()) if v.get('status') == 'TRACKING'],
                 "willy_turnover_max": float(getattr(_th, 'frenzy_willy_max_vol_mcap_ratio', 0) or 0),   # 🔄 0 = off
                 "willy_mcap_fetch": bool(getattr(config.trading_config, 'mcap_fetch_enabled', True)),   # OFF + the filter on → WILLY can't enter
                 "willy_backstop_live": None,   # DECISION_LOG 271: no hidden floor — WILLY's stop is frenzy_willy_stop_pct, paper = live (key kept for old UIs)
@@ -4323,6 +4364,8 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
             return 'Frenzy-Lite'   # 🪶 Oct-7 (243): own row — held above, volume below FRENZY's, first ~17 h
         if (o.entry_strategy or '') == 'FRENZY_WILLY_HT':
             return 'Frenzy-Willy-HT'   # 🎲¼ (341): own row — quarter-size, turnover-blocked WILLY setups (a reduced-size line, never blended into Frenzy-Willy)
+        if (o.entry_strategy or '') == 'FLATBASE_SHORT':
+            return 'Flatbase-Short'   # 🩳 (DECISION_LOG 348): own row — FLAT-base FRENZY episode short (S4 · −8 / +15 / 72 h · discipline override), never blended into Mom-Short
         if (o.entry_strategy or '') == 'FRENZY_WILLY':
             return 'Frenzy-Willy'   # 🎲 Oct-8 (251): own row — declared exception (new flag + ON not taken, red-candle entry, turnover filter, TP +1 / no SL / 120 min, global hold)
         if 'FLIP' in (o.entry_strategy or ''):
@@ -4359,7 +4402,7 @@ def _compute_sleeve_performance(orders, start_balance=None, window_days=None):
                         if start_balance and start_balance > 0 and window_days and window_days >= 0.5
                         and sum(o.pnl or 0 for o in g) / start_balance > -1 else None),
         }
-    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Surge-Long', 'Surge-Short', 'Frenzy-Long', 'Frenzy-Wide', 'Frenzy-Lite', 'Frenzy-Lite-Retry', 'Frenzy-Willy', 'Frenzy-Willy-HT', 'Manual']   # 🖐 Sep-29: own row · 🔁 (316) Frenzy-Lite-Retry · 🎲¼ (341) HT
+    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long', 'BullRun-Long', 'BearRun-Short', 'Surge-Long', 'Surge-Short', 'Frenzy-Long', 'Frenzy-Wide', 'Frenzy-Lite', 'Frenzy-Lite-Retry', 'Frenzy-Willy', 'Frenzy-Willy-HT', 'Flatbase-Short', 'Manual']   # 🩳 (348) Flatbase-Short   # 🖐 Sep-29: own row · 🔁 (316) Frenzy-Lite-Retry · 🎲¼ (341) HT
     order.append('App')   # 🧾 (DECISION_LOG 329) 📱 Binance-app trades, after 🖐 Manual
     order += sorted(k for k in groups if k not in order)   # (341 review) a sleeve missing from the list above still gets its row — rows always sum to Total
     rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
@@ -4413,7 +4456,7 @@ def _compute_strategy_performance(orders, start_balance=None, window_days=None):
         }
 
     _pref = ['MOMENTUM', 'FAN_RATIO_GATE', 'BULL_LONG', 'PAIR_RSI_OB', 'BOUNCE_LONG',
-             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY'] + ['FRENZY_WILLY_HT']   # 🔁 (316) after LITE · 🎲¼ (341) HT after WILLY
+             'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY'] + ['FRENZY_WILLY_HT'] + ['FLATBASE_SHORT']   # 🩳 (348)   # 🔁 (316) after LITE · 🎲¼ (341) HT after WILLY
 
     def _rank(label):
         head = label.split(' · ')[0]
@@ -5459,6 +5502,7 @@ SLEEVE_FILTER_SWITCHES = {
     'FRENZY_LITE_RETRY': ('frenzy_lite_enabled', 'frenzy_lite_retry_enabled'),  # the retry runs only while LITE is on
     'FRENZY_WILLY': ('frenzy_willy_enabled',),
     'FRENZY_WILLY_HT': ('frenzy_willy_enabled', 'frenzy_willy_ht_enabled'),    # HT tries only WILLY's refused red bars
+    'FLATBASE_SHORT': ('flatbase_short_enabled',),                             # 🩳 (DECISION_LOG 348) its own master switch
 }
 _SLEEVE_SWITCH_MISSING = object()
 
@@ -5653,7 +5697,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # are their own program; blending full-size spikes would contaminate the
             # sleeve stats the locked gates read. (Probe-era spike rows carry MOMENTUM
             # labels and stay — cohort key for those = cell_multiplier_source.)
-            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY', 'MANUAL') + ('FRENZY_WILLY_HT',)   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
+            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG', 'SPIKE_CHASE', 'SPIKE_FADE', 'SPIKE_BOUNCE', 'BULLRUN_LONG', 'BEARRUN_SHORT', 'SURGE_LONG', 'SURGE_SHORT', 'FRENZY_LONG', 'FRENZY_WIDE', 'FRENZY_LITE', 'FRENZY_LITE_RETRY', 'FRENZY_WILLY', 'MANUAL') + ('FRENZY_WILLY_HT', 'FLATBASE_SHORT')   # 🖐 Sep-29: manual fills are never pure momentum  # Sep 15 (deep review): both regime sleeves excluded from pure momentum too
             orders = [o for o in orders if not _es(o).startswith('FLIP:') and _es(o).upper() not in _SLEEVES]
         else:
             # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side
@@ -8824,7 +8868,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                                 ("FRENZY_LITE", "FRENZY_LITE (held above, volume < FRENZY's, ≤ ~17 h · no ATR cap · same exit)"),
                                 ("FRENZY_LITE_RETRY", "FRENZY_LITE_RETRY (LITE green refusal → first red / flat READY bar ≤ 15 min · LITE exit · 4× · no slot limit · declared override)"),
                                 ("FRENZY_WILLY", "FRENZY_WILLY (new flag + ON not taken · red-candle entry · turnover < 1× mcap · TP +1 / no SL / 120 min · global hold · declared exception)"),
-                                ("FRENZY_WILLY_HT", "FRENZY_WILLY_HT (¼ size · WILLY setups refused ONLY by turnover ≥ 1× mcap · WILLY's exit · own slot · alert-only gates)")):
+                                ("FRENZY_WILLY_HT", "FRENZY_WILLY_HT (¼ size · WILLY setups refused ONLY by turnover ≥ 1× mcap · WILLY's exit · own slot · alert-only gates)"),
+                                ("FLATBASE_SHORT", "🩳 FLATBASE_SHORT (FLAT 14-d base · S4 4-h close < spike VWAP ≥ 4 h · turnover > 1 · −8 % TP / +15 % stop / 72 h · no slot · discipline override)")):
             _fz_all = [o for o in orders if (o.entry_strategy or '') == _fz_es and o.pnl_percentage is not None]
             _fz_life = [float(p) for (p,) in (await db.execute(select(Order.pnl_percentage).where(and_(
                 Order.entry_strategy == _fz_es, Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
@@ -8864,6 +8909,28 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 _ht_bot = lambda rows: [(a, p) for a, p, r in rows if not str(r or '').upper().split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE')
                                         and not str(r or '').upper().startswith('MANUAL_')]
                 _fz_gate = _htg(_ht_bot((await db.execute(_ht_q("FRENZY_WILLY_HT"))).all()), _ht_bot((await db.execute(_ht_q("FRENZY_WILLY"))).all()))[1]
+            if _fz_es == "FLATBASE_SHORT":   # 🩳 (348) alert-only gates (operator-closed fills out) + the observe-only shadow cohort (ledger)
+                from services.flatbase import flatbase_gate as _fbg
+                from services.flatbase import net_of_funding_pct as _fbn
+                _fb_q = select(Order.opened_at, Order.pnl_percentage, Order.close_reason, Order.funding_fee_usd, Order.entry_price, Order.quantity).where(and_(
+                    Order.entry_strategy == "FLATBASE_SHORT", Order.status == 'CLOSED', Order.is_paper == trading_engine.is_paper_mode,
+                    Order.pnl_percentage.isnot(None)))
+                _fb_bot, _fb_unk = [], 0
+                for a, p_, r, ff, ep_, q_ in (await db.execute(_fb_q)).all():
+                    if str(r or '').upper().split(' ')[0] in ('MANUAL', 'EXTERNAL_CLOSE') or str(r or '').upper().startswith('MANUAL_'):
+                        continue
+                    _nv, _known = _fbn(p_, ff, ep_, q_)   # the gates read the short NET of funding
+                    _fb_unk += 0 if _known else 1
+                    _fb_bot.append((a, _nv, r))
+                _fz_gate = _fbg(_fb_bot)[1] + (f" · net of funding (funding unknown on {_fb_unk} fill(s) — paper / unread: pnl % only)" if _fb_unk
+                                               else " · net of funding")
+                try:
+                    _fb_led = (await db.execute(select(FlatbaseEpisode.status, func.count(FlatbaseEpisode.id)).where(
+                        FlatbaseEpisode.is_paper == trading_engine.is_paper_mode).group_by(FlatbaseEpisode.status))).all()
+                    if _fb_led:
+                        _fz_gate += " · episodes: " + " · ".join(f"{k} {v}" for k, v in sorted(_fb_led, key=lambda kv: -kv[1]))
+                except Exception as _fbe:
+                    logger.debug(f"[PERF] flatbase ledger tally skipped: {_fbe}")
             if _fz_es == "FRENZY_WILLY":   # 🎲 Oct-8 (251) declared exception: BOTH frozen reads (operator decides — never auto-off)
                 # same cohort rule as the scout (services.frenzy.frenzy_willy_reads): EVERY lifetime WILLY fill of this mode, open ones included,
                 # ordered by OPEN time. Floor: no FRENZY_WILLY fill can predate the "(DECISION_LOG 251)" commit, which is the scout's floor too.
@@ -8878,6 +8945,17 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     _fz_gate += f" · avg wait {sum(_wwb) / len(_wwb):.1f} bars to the red candle"
                 _fz_gate += " · same stop in paper and live (frenzy_willy_stop_pct)"
             frenzy_rows.append({"row": _fz_lbl, **_fz_stats(_fz_all), "gate": _fz_gate})
+            if _fz_es == "FLATBASE_SHORT":   # 🩳 (348) the observe-only cohort (turnover ≤ 1 → no order): count + setups, priced by the scout from klines
+                try:
+                    _sh = (await db.execute(select(FlatbaseEpisode).where(and_(FlatbaseEpisode.is_paper == trading_engine.is_paper_mode,
+                                                                               FlatbaseEpisode.status == "SHADOW")).order_by(FlatbaseEpisode.decided_at.desc()))).scalars().all()
+                    frenzy_rows.append({"row": "  👁 observe-only (turnover ≤ 1 · no order)", "n": len(_sh), "wr": None, "avg_pct": None, "total_usd": 0.0,
+                                        "avg_peak": None, "episodes": len(_sh),
+                                        "gate": ((" · ".join(f"{e.pair} {e.entry_bar_at:%m-%d %H:%M} R {e.turnover:.2f}" for e in _sh[:8] if e.entry_bar_at and e.turnover is not None)
+                                                  + " · priced by scripts/scout_flatbase_short.py (same exit) · compared with real after 30 fills")
+                                                 if _sh else "none yet")})
+                except Exception as _she:
+                    logger.debug(f"[PERF] flatbase shadow rows skipped: {_she}")
             if _fz_es == "FRENZY_WILLY" and _fz_all:   # 🎲 (251) entry A (new flag) vs B (ON not taken) — entry_frenzy_willy_trigger
                 for _wt, _wl in (("A", "  A · new flag"), ("B", "  B · fresh ON bar FRENZY / WIDE / LITE did not take")):
                     frenzy_rows.append({"row": _wl, **_fz_stats([o for o in _fz_all if getattr(o, 'entry_frenzy_willy_trigger', None) == _wt]), "gate": ""})
@@ -13795,6 +13873,8 @@ async def update_config(config_update: ConfigUpdate):
     except Exception:
         _sb_lev = 20.0
     _cfg_errs.extend(_ls_cfg_errors(new_config.thresholds, _sb_lev))
+    from services.flatbase import flatbase_config_errors as _fb_cfg_errors   # 🩳 (DECISION_LOG 348) FLATBASE_SHORT
+    _cfg_errs.extend(_fb_cfg_errors(new_config.thresholds, _sb_lev))
     try:   # ⚖️ (DECISION_LOG 298) the momentum-long margin share: 0.05 – 1 (the UI saves a blank as 1.0 = off)
         _mli = float(getattr(new_config.thresholds, 'momentum_long_invest_mult', 1.0))
         if not (math.isfinite(_mli) and 0.05 - 1e-12 <= _mli <= 1.0 + 1e-12):

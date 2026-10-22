@@ -1576,6 +1576,32 @@ class SignalThresholds(BaseModel):
     frenzy_willy_ht_enabled: bool = True
     frenzy_willy_ht_size_frac: float = 0.25       # × WILLY's margin at WILLY's leverage (0 < f ≤ 1; else 0.25 used)
     frenzy_willy_ht_max_slots: int = 1            # FRENZY_WILLY_HT open at once (its OWN slot; WILLY's slot never counts HT)
+    # 🩳 2026-10-22 FLATBASE_SHORT (DECISION_LOG 348 — operator DISCIPLINE OVERRIDE: the study FAILED its ship bars; alert-only gates, no
+    # auto-off). Short a FRENZY episode whose coin was FLAT for the 14 days before the spike (14-d close range ≤ flatbase_flat_max at the base
+    # bar, 30 min before the spike bar's close, ≥ 90 % of the 5m bars present, read once per episode — the study's exact 4,032 5m closes),
+    # entering on the study's S4: the FIRST 5m close on a UTC 4-hour boundary ≥ 4 h after the spike bar with close < the spike-anchored VWAP,
+    # 24 h volume ≥ $20M, ≤ 96 h after the spike; one per episode (DB + the flatbase_episodes ledger, restart-safe; a missed boundary is never
+    # caught up). Turnover (24 h volume / mcap) > 1 → trade; ≤ 1 → observe-only shadow (ledger SHADOW); unknown mcap → trade. Exit = price
+    # −8 % (resting maker TP) · +15 % stop (bot + exchange backstop) · 72 h. Size = the momentum-long mults (0.2 margin at 0.25 lev → ≈ $62 at 5×,
+    # $310 notional), NO slot cap and NOT counted in max_open_positions. Evidence (reports/FRENZY_FLATBASE_SHORT_2026-10-22*.md): closest
+    # cell S4 · TP −8 · 72 h · stop 15 = +0.93 %/trade in 2026 [+0.28, +1.53], walk-forward unstable, fair-random p 0.050; turnover > 1
+    # cohort +1.65 in-sample (2026-H2 held out +1.25 [−0.1, +2.4] — the OOS lift CI touches 0). 🔒 Gates (scripts/scout_flatbase_short.py +
+    # the FRENZY table row, ALERT only): 3 stop-outs in a row or Σ ≤ −30 pts → review · first 10 avg < 0 → review · main read at 30 fills
+    # on ≥ 10 days: avg ≥ +0.5 % → step the size up · < 0 → switch off · else re-read at 60 · observe cohort vs real after 30 real fills.
+    flatbase_short_enabled: bool = True
+    flatbase_flat_max: float = 0.444              # 14-day close range at the base bar, a fraction (0.444 = 44.4 %; study tertile 44.39 %)
+    flatbase_min_vol_usd: float = 20e6            # 24 h quote volume at the entry bar (kline volume × typical price)
+    flatbase_turnover_min: float = 1.0            # trade when 24 h volume / mcap > this; ≤ → observe-only shadow; unknown mcap → trade
+    flatbase_tp_pct: float = 8.0                  # take profit: price −8 % from the fill (resting maker limit)
+    flatbase_stop_pct: float = 15.0               # stop: price +15 % from the fill (bot stop; exchange backstop +0.5 beyond)
+    flatbase_max_hold_hours: float = 72.0         # time exit
+    flatbase_min_hours_after_spike: float = 4.0   # S4: the boundary bar opens ≥ this long after the spike bar's open (48 bars)
+    flatbase_max_hours_after_spike: float = 96.0  # … and ≤ this long (1,152 bars; ≤ 100 — the 5m window must hold the spike bar)
+    flatbase_invest_mult: float = 0.2             # = momentum_long_invest_mult (DL 298): the margin share
+    flatbase_lev_mult: float = 0.25               # = momentum_long_lev_mult: × the STRONG_BUY leverage (20 × 0.25 = 5×)
+    # its OWN open cap (never the bot's slots), 0 = no cap. Operator decided 10 on 2026-10-22: the study's bursts reached 24 open
+    # (≈ $1.5k margin ≈ 46 % of the account at today's size) — a refusal at the cap ends that episode (FLATBASE_MAX_OPEN).
+    flatbase_max_open: int = 10                 # operator 2026-10-22: cap 10 open (≤ ~$620 margin ≈ 19 % of the account); 0 = no cap
     # 🎯 2026-10-15 RESTING TAKE-PROFIT (DECISION_LOG 296, operator-armed DECLARED EXCEPTION — below the usual evidence bar): a reduce-only,
     # post-only (GTX) LIMIT rests on Binance at the price that books the SAME net TP with the MAKER exit fee (services/resting_tp.py +
     # exec_shadow.resting_tp_price). Evidence: live TP give-back 4/4 (WILLY ZK +1.12 / BLUR +1.09 / RLC +1.08 vs +1.25, LITE DEEP +2.80 vs
@@ -1597,6 +1623,7 @@ class SignalThresholds(BaseModel):
     resting_tp_manual_enabled: bool = True        # MANUAL trades in FIXED or FLOOR mode with a TP > 0 (MANUAL_TP; FRENZY / BULLRUN / MOMENTUM = none)
     resting_tp_override_enabled: bool = True      # a bot trade whose exit the operator overrode with a TP > 0 (OVERRIDE_TP; an override with no TP = none)
     resting_tp_frenzy_long_enabled: bool = True   # FRENZY_LONG (fixed frenzy_tp_pct; none while frenzy_lock_arm_pct > 0) — never FRENZY_WIDE (off)
+    resting_tp_flatbase_enabled: bool = True      # 🩳 FLATBASE_SHORT (DECISION_LOG 348): its −8 % price TP rests as a maker limit (the study's TP level; own switch)
     resting_tp_grace_s: float = 3.0               # safety net: seconds the price must stay through the limit (0–60)
     resting_tp_through_ticks: int = 2             # safety net: ticks THROUGH the limit (1–50)
     # ⏰ 2026-10-15 WILLY LATE TAKE-PROFIT (DECISION_LOG 297, operator-armed DECLARED EXCEPTION — reports/WILLY_DURATION_30MIN_RESTUDY_2026-10-15.md

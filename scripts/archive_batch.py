@@ -329,6 +329,8 @@ def _sleeve(d):
 
 
 REDUCED_SIZE_SLEEVES = ("FRENZY_WILLY_HT",)   # 🎲¼ (DECISION_LOG 341) quarter-size lines — full-size-only rule: off the headline table, own line
+# 🩳 (DECISION_LOG 348) FLATBASE_SHORT is FULL size (the momentum-long mults) → its own headline row via _sleeve (entry_strategy); its
+# observe-only shadows ride the decisions export (e=FLATBASE rows) archived beside the orders file — scripts/scout_flatbase_short.py prices them.
 
 
 def _probe(d):

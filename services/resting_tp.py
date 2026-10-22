@@ -12,7 +12,8 @@ Mechanism (reports/MAKER_TP_ENTRY_DESIGN_2026-10-15.md §3):
     THROUGH the limit for ≥ resting_tp_grace_s → cancel the limit, market-close ONLY the rest (reduce-only), book a blended exit
   * every other exit cancels the limit FIRST, re-reads its fill, closes only the remainder and books blended (one Order row)
   * paper = live bookkeeping: the paper TP books at the limit with the maker fee only when the tracked price trades ≥ 1 tick THROUGH it
-Switches per sleeve (resting_tp_willy_enabled / resting_tp_lite_enabled / resting_tp_frenzy_long_enabled / resting_tp_lite_retry_enabled); OFF → paper and live behave
+Switches per sleeve (resting_tp_willy_enabled / resting_tp_lite_enabled / resting_tp_frenzy_long_enabled / resting_tp_lite_retry_enabled /
+resting_tp_flatbase_enabled — 🩳 DL 348, the SHORT's −8 % price TP); OFF → paper and live behave
 exactly as before this ship.
 🎯 DECISION_LOG 310 — every FIXED take-profit line: the operator's MANUAL trades in FIXED or FLOOR mode with a TP > 0 (resting_tp_manual_enabled,
 reason MANUAL_TP — incl. a mid-trade edit to FIXED), any bot trade whose exit the operator overrode with a TP > 0 (resting_tp_override_enabled,
@@ -26,7 +27,8 @@ from typing import Dict, Optional, Tuple
 RTP_SLEEVES = {"FRENZY_WILLY": "resting_tp_willy_enabled", "FRENZY_LITE": "resting_tp_lite_enabled",
                "FRENZY_LONG": "resting_tp_frenzy_long_enabled",   # 🎯 310: + FRENZY_LONG (fixed frenzy_tp_pct) · never FRENZY_WIDE (off)
                "FRENZY_LITE_RETRY": "resting_tp_lite_retry_enabled",   # 🔁 316: LITE's resting TP, own switch (attribution)
-               "FRENZY_WILLY_HT": "resting_tp_willy_enabled"}   # 🎲¼ 341: the quarter-size WILLY runs WILLY's exit — WILLY's switch
+               "FRENZY_WILLY_HT": "resting_tp_willy_enabled",   # 🎲¼ 341: the quarter-size WILLY runs WILLY's exit — WILLY's switch
+               "FLATBASE_SHORT": "resting_tp_flatbase_enabled"}   # 🩳 348: the −8 % PRICE take profit (net target derived per row, rtp_row_target)
 RTP_MANUAL_KEY, RTP_OVERRIDE_KEY = "resting_tp_manual_enabled", "resting_tp_override_enabled"   # 🎯 (310) the operator's own fixed TPs
 RTP_SWITCHES = tuple(dict.fromkeys(RTP_SLEEVES.values())) + (RTP_MANUAL_KEY, RTP_OVERRIDE_KEY)   # unique (341: HT shares WILLY's switch)
 RTP_MANUAL_TP_MODES = ("FIXED", "FLOOR", "NOSTOP")   # 🎯 (310) the MANUAL exit modes whose TP is a fixed line (📥 343: + NOSTOP — typed or adopted from the app)
@@ -91,6 +93,8 @@ def rtp_row_target(th, row, held_minutes=None) -> Optional[Tuple[float, str]]:
     no TP → None (the sleeve's own TP is replaced, never kept). Otherwise the sleeve rule (rtp_target, incl. the LITE C stored TP). Never raises."""
     try:
         why = rtp_fixed_reason(row)
+        if why is None and str(getattr(row, 'entry_strategy', None) or "") == "FLATBASE_SHORT":
+            return _flatbase_row_target(th, row)   # 🩳 (348) the PRICE TP → the row's own net target (its entry fee)
         if why is None:
             return rtp_target(th, getattr(row, 'entry_strategy', None), held_minutes, getattr(row, 'frenzy_lite_tp_used', None))
         if not rtp_row_enabled(th, row):
@@ -99,6 +103,24 @@ def rtp_row_target(th, row, held_minutes=None) -> Optional[Tuple[float, str]]:
             return None
         tp = _f(getattr(row, 'pattern_fixed_tp_pct', None))
         return (tp, why) if tp and tp > 0 else None
+    except Exception:
+        return None
+
+
+def _flatbase_row_target(th, row) -> Optional[Tuple[float, str]]:
+    """🩳 (DECISION_LOG 348) FLATBASE_SHORT's take profit is a PRICE level (fill × (1 − flatbase_tp_pct %), the study's) — the resting-TP
+    machinery speaks NET %, so the row's own entry fee (entry_fee / notional) and the maker fee give the net whose limit lands on that
+    price (services.flatbase.rtp_net_tp; exec_shadow.resting_tp_price solves it back to the same level). None = switch off / bad row."""
+    try:
+        if not rtp_enabled(th, "FLATBASE_SHORT"):
+            return None
+        e, q, f = _f(getattr(row, 'entry_price', None)), _f(getattr(row, 'quantity', None)), _f(getattr(row, 'entry_fee', None))
+        if not (e and e > 0 and q and q > 0) or f is None:
+            return None
+        import config as _cfg
+        from services.flatbase import rtp_net_tp
+        net = rtp_net_tp(e, f / (e * q) * 100.0, float(getattr(_cfg.trading_config, 'maker_fee', 0.00018)), th)
+        return (net, "FRENZY_TP") if net and net > 0 else None
     except Exception:
         return None
 
@@ -124,6 +146,9 @@ def rtp_target(th, entry_strategy, held_minutes=None, lite_tp=None) -> Optional[
         from services.frenzy import frenzy_willy_tp_at, frenzy_tp_for
         if es in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):   # 🎲¼ (341) HT = WILLY's exit
             tp, why = frenzy_willy_tp_at(th, held_minutes)
+        elif es == "FLATBASE_SHORT":   # 🩳 (348) the nominal PRICE TP — the row-derived net (rtp_row_target) is what the engine places
+            from services.flatbase import flatbase_params
+            tp, why = flatbase_params(th)['tp'], "FRENZY_TP"
         else:
             if (_f(getattr(th, 'frenzy_lock_arm_pct', 0)) or 0) > 0:
                 return None

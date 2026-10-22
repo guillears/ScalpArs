@@ -9257,14 +9257,20 @@
             applyBalancesHidden(localStorage.getItem('balancesHidden') === '1');
         }
 
+        // operator 10-22: a status poll requested BEFORE a Pause/Start click must never flip the button back (the bot was paused, the UI showed
+        // RUNNING again). Every click bumps this counter (before and after its request); a poll that saw the counter change skips the run state.
+        let _runToggleSeq = 0;
         async function loadStatus() {
             try {
+                const _seq0 = _runToggleSeq;
                 const res = await fetch(`${API_BASE}/api/status`);
                 const data = await res.json();
 
-                isRunning = data.is_running;
+                if (_seq0 === _runToggleSeq) {   // no Pause/Start click since this poll was sent → its run state is current
+                    isRunning = data.is_running;
+                    runtimeSeconds = data.runtime_seconds;
+                }
                 isPaperMode = data.is_paper_mode;
-                runtimeSeconds = data.runtime_seconds;
                 {   // 🛡 (DECISION_LOG 292 ②) Binance positions the bot has no open row for — entries on them are blocked
                     const _ua = document.getElementById('untracked-alert');
                     const _ul = Array.isArray(data.untracked_positions) ? data.untracked_positions : [];
@@ -9587,17 +9593,22 @@
         }
 
         // Toggle bot
+        let _toggleInFlight = false;   // review 10-22: a 2nd click while the request is pending must not send / flip again
         async function toggleBot() {
+            if (_toggleInFlight) return;
+            _toggleInFlight = true;
             try {
                 const endpoint = isRunning ? '/api/pause' : '/api/start';
+                _runToggleSeq++;   // polls already in flight are now stale for the run state
                 const res = await fetch(`${API_BASE}${endpoint}`, { method: 'POST' });
+                _runToggleSeq++;   // and polls sent while this request was in flight too
                 const data = await res.json().catch(() => ({}));   // a proxy 502/504 HTML page must not hide the reason
                 if (!res.ok) {   // 🛡 (DECISION_LOG 293) e.g. start refused while a paper / live switch is running
                     showToast((data && data.detail) ? String(data.detail) : `Request refused (HTTP ${res.status})`, 'error');
                     return;
                 }
                 
-                isRunning = !isRunning;
+                isRunning = (endpoint === '/api/start');   // the state the server just confirmed — never a blind flip
                 updateStatusUI();
                 
                 if (isRunning) {
@@ -9619,6 +9630,8 @@
             } catch (e) {
                 console.error('Error toggling bot:', e);
                 showToast('Error toggling bot', 'error');
+            } finally {
+                _toggleInFlight = false;
             }
         }
 

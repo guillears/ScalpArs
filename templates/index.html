@@ -163,6 +163,8 @@
         :root .glass.rounded-xl, :root .glass.rounded-2xl { border-radius: var(--r); }
         :root #balance-cards > .glass:last-child { box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
         :root #balance-cards > .glass > p.text-2xl { font-weight: 600; }
+        /* operator 10-22: the Total card is the tallest — the other three centre their text in the middle of the box */
+        :root #balance-cards > .glass:not(:last-child) { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
         :root main h2 { color: var(--fg); font-weight: 600; }
         :root .bg-\[\#1f2333\] { background-color: var(--surface); }
         :root .bg-\[\#262a40\] { background-color: var(--surface-2); }
@@ -172,7 +174,7 @@
         :root header.glass { background: var(--surface); border-width: 0 0 1px; border-color: var(--line); }
         :root header.glass + div.glass { background: var(--surface); border-width: 0 0 1px; border-color: var(--line); }
         :root header h1.bg-clip-text { background: none; color: var(--fg); -webkit-text-fill-color: currentColor; letter-spacing: .14em; font-size: 1.25rem; }
-        :root .scalpars-logo-accent { color: var(--accent); }
+        :root .scalpars-logo-accent { color: var(--pos); }   /* operator 10-22: ARS in green */
         :root .scalpars-theme-btn { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;
             border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); font-size: 16px; line-height: 1; flex: none; }
         :root .scalpars-theme-btn:hover { border-color: var(--muted); }
@@ -636,13 +638,13 @@
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">Total Portfolio Value</p>
                     <p id="total-portfolio" class="text-2xl font-bold text-white">$0.00</p>
+                    <p id="portfolio-open-pnl" class="hidden"></p>   <!-- 🏦 (344) kept, never shown: the card line was removed 10-22 (operator); the exports keep "incl. open P&L" -->
                     <!-- 🎨 (DECISION_LOG 345) realized-equity sparkline from the calendar data already loaded; hidden under 2 points -->
                     <div id="portfolio-spark-wrap">
                         <svg id="portfolio-spark" viewBox="0 0 300 40" preserveAspectRatio="none" role="img" aria-label="Portfolio value" style="display:none"></svg>
                         <p id="portfolio-spark-empty" class="text-xs text-gray-500">not enough history yet</p>
                         <div class="flex items-center flex-wrap"><div id="portfolio-spark-periods" role="group" aria-label="Sparkline period"><button type="button" data-period="7D" aria-pressed="true" onclick="if(window.scalparsSparkPeriod)window.scalparsSparkPeriod('7D')">7D</button><button type="button" data-period="30D" aria-pressed="false" onclick="if(window.scalparsSparkPeriod)window.scalparsSparkPeriod('30D')">30D</button><button type="button" data-period="ALL" aria-pressed="false" onclick="if(window.scalparsSparkPeriod)window.scalparsSparkPeriod('ALL')">ALL</button></div><span id="portfolio-spark-meta">last 7 days · realized</span></div>
                     </div>
-                    <p id="portfolio-open-pnl" class="text-xs text-gray-500 hidden" title="Binance margin balance: wallet + the open P&amp;L of EVERY position (bot, imported and untracked app trades) + BNB"></p>
                     <p id="total-trades-count" class="text-xs text-gray-500 mt-1"></p>
                     <p id="portfolio-initial" class="text-xs text-gray-500 mt-0.5 hidden"></p>
                     <p id="portfolio-pnl" class="text-xs text-gray-500 mt-0.5 hidden"></p>
@@ -9753,18 +9755,7 @@
                 if (data.sizing_equity != null) { window._ssEquity = Number(data.sizing_equity); window._ssFeeBurn = Number(data.fee_reserve_burn_usd || 0); try { renderSleeveSizing(); } catch (_e) {} }   // ⚖️ Oct-4
                 { const _mp = document.getElementById('manual-entry-btn'); if (_mp && data.manual_max_open_positions != null) { _mp.classList.toggle('hidden', Number(data.manual_max_open_positions) <= 0); if (_mp.classList.contains('hidden')) { try { closeManualModal(); } catch (e) {} } } }   // 🖐 cap 0 = manual entry off (shown in paper AND live since Oct-2) · Oct-20: hides the 🖐 button (and closes the pop-up)
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
-                {   // 🏦 (344, operator bug report) live: the open P&L (all positions, untracked included) inside the total
-                    const _op = document.getElementById('portfolio-open-pnl');
-                    if (_op) {
-                        const _has = data.usdt_unrealized != null && isFinite(Number(data.usdt_unrealized));
-                        _op.classList.toggle('hidden', !_has);
-                        if (_has) {
-                            const _u = Number(data.usdt_unrealized);
-                            const _c = _u > 0.005 ? 'text-emerald-400' : (_u < -0.005 ? 'text-red-400' : 'text-gray-500');
-                            _op.innerHTML = `incl. open P&amp;L <span class="${_c}">${_u < -0.005 ? '-' : (_u > 0.005 ? '+' : '')}${formatUSD(Math.abs(_u))}</span>`;
-                        }
-                    }
-                }
+                // 🏦 (344) the card's "incl. open P&L" line was removed (operator 10-22: card too busy) — the text exports keep it (window._lastOpenPnl)
                 {   // Oct-1 (operator): white at the starting balance (or when it is unknown), green above it, red below it
                     const _tp = document.getElementById('total-portfolio');
                     const _d = data.pnl_vs_start != null ? Number(data.pnl_vs_start)   // paper: vs the true seed (an open trade's entry fee counts) · live: equity − fixed baseline − net deposits

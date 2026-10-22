@@ -1218,6 +1218,18 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
                         except Exception as _fe:
                             logger.warning(f"[BALANCE] live deposit/withdrawal read failed ({str(_fe)[:60]}) — card lines hidden for {LIVE_FLOW_MEMO_S} s")
                             _live_flows = None
+                        if _live_flows is not None:           # 🏦 (347) pre-trade deposits = the start (fresh reads only — ≤ 1 try per memo period)
+                            try:
+                                _base, _base_at, _live_flows = await _live_pretrade_fold(db, _base, _base_at, _live_flows)
+                                _key = _base_at.isoformat()   # a fold moves the baseline: the memo follows it (no re-read next poll)
+                            except Exception as _fe2:
+                                try:                          # never leave the request's session in a failed transaction …
+                                    await db.rollback()
+                                    _live_open = (await db.execute(select(Order).where(   # … and re-load the rows the rollback expired
+                                        and_(Order.status == "OPEN", Order.is_paper == False)))).scalars().all()
+                                except Exception:
+                                    pass
+                                logger.warning(f"[BALANCE] pre-trade deposit fold skipped ({str(_fe2)[:60]}) — card shows them as deposits")
                         _LIVE_FLOW_MEMO.update(until=_now_m + LIVE_FLOW_MEMO_S, key=_key, value=_live_flows)
                     _live_initial, _live_pnl = live_card_numbers(total, _base, _live_flows)
                     _live_invested, _live_pnl_pct = live_invested_numbers(_base, _live_flows, _live_pnl)
@@ -2035,6 +2047,67 @@ async def _live_baseline(db: AsyncSession, total_now: float, live_open, open_unr
 
 
 _LIVE_FLOW_MEMO = {}   # Oct-1: /api/balance live net-flows memo {until: monotonic s, key: baseline iso, value: float | None}
+
+# 🏦 (347) a transfer row is folded into the pre-trade start only once it is this old: above the card's 60 s transfer-rows cache (a row
+# the cached read could not see yet never sits below the moved cursor) and above the seconds a BNB-swap log row takes to be written.
+LIVE_PRETRADE_FOLD_MIN_AGE_MS = 2 * LIVE_CARD_TRANSFER_CACHE_S * 1000
+
+
+async def _live_bot_order_exists(db: AsyncSession) -> bool:
+    """🏦 (347) True once the BOT has made a live trade. Same split as services/origin_view.order_origin: entry_strategy 'MANUAL'
+    (🖐 pop-up, 📥 imports, 📱 auto-recorded app trades) or confidence 'RECOVERED' (an adopted app position) is the operator's, not the
+    bot's — those never end the pre-trade window ("the bot started" = its first own fill)."""
+    q = select(Order.id).where(and_(
+        Order.is_paper == False,
+        Order.status.in_(("OPEN", "CLOSED")),                       # a SIGNAL_EXPIRED / aborted maker row never filled — not a trade
+        func.upper(func.trim(func.coalesce(Order.entry_strategy, ''))) != 'MANUAL',
+        func.upper(func.trim(func.coalesce(Order.confidence, ''))) != 'RECOVERED')).limit(1)
+    return (await db.execute(q)).scalar() is not None
+
+
+async def _live_pretrade_fold(db: AsyncSession, base, base_at, flows):
+    """🏦 (347, operator) Until the bot's first live trade every deposit / withdrawal IS the starting balance: net flows since the baseline
+    are folded into live_initial_total_usd (P&L and invested are unchanged — base + flows is the same sum, only the split moves).
+    → (base, base_at, flows) after the fold; the inputs unchanged when there is nothing to fold (flows None / |flows| < $0.01 / a bot
+    trade on file / every row still younger than LIVE_PRETRADE_FOLD_MIN_AGE_MS / lost a race). Reads the transfer rows with the same
+    start + max age as _live_net_flows (a cache hit — no extra Binance read). Folded rows are fenced by the cursor (set to the newest
+    folded row), so a younger row stays a flow and folds on a later read; a compare-and-swap on (baseline_at, cursor) makes two
+    concurrent polls fold once. Writes only when a deposit/withdrawal actually landed before the first bot trade."""
+    if flows is None or base is None or base_at is None or abs(float(flows)) < 0.01:
+        return base, base_at, flows
+    if await _live_bot_order_exists(db):
+        return base, base_at, flows
+    # populate_existing: _live_net_flows' compare-and-swap (synchronize_session=False) may just have moved the stored flows / cursor in this
+    # same session — never fold off the identity map's stale copy
+    st = (await db.execute(select(BotState).limit(1).execution_options(populate_existing=True))).scalar_one_or_none()
+    if st is None or st.live_baseline_at != base_at:
+        return base, base_at, flows
+    base_ms = int(base_at.replace(tzinfo=timezone.utc).timestamp() * 1000)
+    old = st.live_flows_cursor_ms
+    cursor = int(old) if old else base_ms - 1                        # the same cursor _live_net_flows reads from
+    now_ms = int(time.time() * 1000)
+    rows = await _external_flow_rows(db, max(cursor, now_ms - 89 * 86_400_000), max_age_s=LIVE_CARD_TRANSFER_CACHE_S)
+    ripe = [(int(ts), float(a)) for ts, a in rows or [] if cursor < int(ts) <= now_ms - LIVE_PRETRADE_FOLD_MIN_AGE_MS]
+    fold = round(float(st.live_net_flows_usd or 0.0) + sum(a for _, a in ripe), 8)     # stored (already ≤ cursor) + ripe rows
+    if abs(fold) < 0.01:
+        return base, base_at, flows
+    new_base = round(float(base) + fold, 2)
+    if not (new_base > 1.0):                                          # same floor as _live_baseline: an emptied wallet is never a start
+        return base, base_at, flows
+    new_at = datetime.utcnow()
+    new_cur = max([cursor] + [ts for ts, _ in ripe])                  # never None: a None cursor would restart at new_at and drop young rows
+    res = await db.execute(update(BotState).where(
+        BotState.id == st.id, BotState.live_baseline_at == base_at,
+        BotState.live_flows_cursor_ms.is_(None) if old is None else BotState.live_flows_cursor_ms == old)
+        .values(live_initial_total_usd=new_base, live_baseline_at=new_at, live_net_flows_usd=0.0, live_flows_cursor_ms=new_cur)
+        .execution_options(synchronize_session=False))
+    await locked_commit(db)
+    if res.rowcount != 1:                                             # another poll folded / stored first — its numbers win next read
+        return base, base_at, flows
+    await db.refresh(st)
+    logger.info(f"[BALANCE] 🏦 pre-trade deposits folded into the start: ${float(base):,.2f} → ${new_base:,.2f} "
+                f"({fold:+,.2f}; no bot trade yet; cursor {new_cur})")
+    return new_base, new_at, round(float(flows) - fold, 2)
 
 
 async def _external_flow_rows(db: AsyncSession, start_ms: int, max_age_s=None):

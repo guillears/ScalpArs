@@ -216,7 +216,7 @@ def test_ui_and_wiring_pins():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     html = open(os.path.join(root, "templates", "index.html")).read()
     src = open(os.path.join(root, "main.py")).read()
-    assert 'id="portfolio-open-pnl"' in html and "data.usdt_unrealized" in html and ">position margin<" in html
+    assert 'id="portfolio-open-pnl" class="hidden"' in html and "data.usdt_unrealized" in html and ">position margin<" in html   # card line hidden 10-22; exports keep it
     assert "_open_unrealized_pnl(_live_open) + bnb_usd" not in src                # the pre-344 card formula is gone
     assert "\"usdt_in_orders\": balance['usdt_used']" not in src
     import re
@@ -224,8 +224,8 @@ def test_ui_and_wiring_pins():
     assert len(calls) == 2, calls                                               # /api/balance + _portfolio_components
     assert any("_usdt_eq, _usdt_unrl, _usdt_im = live_equity_parts(balance, _live_open)" in l for l in calls)
     assert any("_usdt_eq, _unrl_live, _im = live_equity_parts(bal, open_orders)" in l for l in calls)
-    # the card sub-line hides on null / non-finite; both text exports print "incl. open P&L" next to "Portfolio now" (D12), omitted when null
-    assert "const _has = data.usdt_unrealized != null && isFinite(Number(data.usdt_unrealized));" in html
+    # 10-22 (operator): the card sub-line is gone (never filled); both text exports still print "incl. open P&L" next to "Portfolio now" (D12)
+    assert "const _has = data.usdt_unrealized != null" not in html and "incl. open P&amp;L <span" not in html
     exp = [l for l in html.splitlines() if "lines.push(`Portfolio now:" in l]
     assert len(exp) == 2 and all("${window._lastOpenPnl != null ? ` (incl. open P&L " in l for l in exp)
     assert "window._lastOpenPnl = (data.usdt_unrealized != null && isFinite(Number(data.usdt_unrealized))) ? Number(data.usdt_unrealized) : null;" in html

@@ -5327,6 +5327,94 @@ def _compute_liquidity_sizing(orders):
     return {'rows': rows, 'summary': summary}
 
 
+# 🧹 (DL 346, review) the regime sleeves have NO Sleeve-select option — their cell tags are the only UI way to slice them, so they
+# count as momentum-family here (entry_strategy values as stamped by trading_engine's open path).
+_CELL_FILTER_MOMENTUM_FAMILY = ('', 'MOMENTUM', 'BULLRUN_LONG', 'BEARRUN_SHORT')
+
+
+def _is_momentum_or_flip_strategy(entry_strategy) -> bool:
+    """🧹 (DL 346) MOMENTUM (incl. legacy NULL/'' rows), the Bull-Run / Bear-Run regime sleeves, or any FLIP:* source — the books
+    whose cell tags are sub-groups the Sleeve filter cannot separate. Every other entry_strategy (FRENZY_*, SPIKE_*, SURGE_*, MANUAL,
+    BULL_LONG, …) is its own sleeve."""
+    es = (entry_strategy or '').strip().upper()
+    return es in _CELL_FILTER_MOMENTUM_FAMILY or es.startswith('FLIP:')
+
+
+def _flip_source_match(entry_strategy, fs) -> bool:
+    """The flip_source filter's per-sleeve match (one predicate for the server filter and the Sleeve-select counts):
+    FLIP:<fs> prefix (incl. ×N mult variants) or a bare entry_strategy == fs. `fs` is already stripped + upper-cased."""
+    es = (entry_strategy or '').upper()
+    return es.startswith(f'FLIP:{fs}') or es == fs
+
+
+def _cell_source_options(orders) -> list:
+    """🧹 (DL 346) Options for the dashboard "Filter by Momentum cell" select: every distinct cell_multiplier_source
+    carried by a MOMENTUM / FLIP row. Sleeve-identity tags (FRENZY_WILLY on FRENZY_WILLY rows, SURGE_LONG, SPIKE_FADE, …)
+    never appear, because they live only on their own sleeve's rows — decided by entry_strategy, no sleeve-name list to go
+    stale. Probe tickets (*_PROBE / FGP_*) stay excluded (they have their own 🪟 table). The filter's values and the
+    server-side slicing are unchanged."""
+    out = set()
+    for o in orders:
+        s = getattr(o, 'cell_multiplier_source', None) or ''
+        if not s or '_PROBE' in s or 'FGP_' in s:
+            continue
+        if _is_momentum_or_flip_strategy(getattr(o, 'entry_strategy', None)):
+            out.add(s)
+    return sorted(out)
+
+
+# 🧹 (DL 346) "Filter by Sleeve" option value → the config switches the ENGINE reads to open that sleeve (all must be on).
+# A value missing here (MOMENTUM, legacy BULL_LONG …) or a switch missing from the config = unknown → shown as active (never hidden wrongly).
+SLEEVE_FILTER_SWITCHES = {
+    'FAN_RATIO_GATE': ('flip_entry_enabled',),                                  # FLIP:FAN_RATIO_GATE — the flip sleeve's master kill-switch
+    'SPIKE_CHASE': ('spike_chase_probe_enabled', 'spike_chase_enabled'),       # probe flag = the chase/fade program's master trigger
+    'SPIKE_FADE': ('spike_chase_probe_enabled', 'spike_fade_enabled'),
+    'SPIKE_BOUNCE': ('spike_bounce_enabled',),
+    'SURGE_LONG': ('surge_long_enabled',),
+    'SURGE_SHORT': ('surge_short_enabled',),
+    'FRENZY_LONG': ('frenzy_long_enabled',),
+    'FRENZY_WIDE': ('frenzy_wide_enabled',),
+    'FRENZY_LITE': ('frenzy_lite_enabled',),
+    'FRENZY_LITE_RETRY': ('frenzy_lite_enabled', 'frenzy_lite_retry_enabled'),  # the retry runs only while LITE is on
+    'FRENZY_WILLY': ('frenzy_willy_enabled',),
+    'FRENZY_WILLY_HT': ('frenzy_willy_enabled', 'frenzy_willy_ht_enabled'),    # HT tries only WILLY's refused red bars
+}
+_SLEEVE_SWITCH_MISSING = object()
+
+
+def _sleeve_enabled(th, value):
+    """True / False from the live config, None = unknown (no mapping, or a switch the config does not carry)."""
+    fields = SLEEVE_FILTER_SWITCHES.get((value or '').strip().upper())
+    if not fields or th is None:
+        return None
+    vals = [getattr(th, f, _SLEEVE_SWITCH_MISSING) for f in fields]
+    if any(v is _SLEEVE_SWITCH_MISSING for v in vals):
+        return None
+    if not all(bool(v) for v in vals):
+        return False
+    if (value or '').strip().upper() == 'FAN_RATIO_GATE':
+        # mirror trading_engine._flip_registry: a flip source opens only while it is listed in flip_entry_sources
+        src = getattr(th, 'flip_entry_sources', _SLEEVE_SWITCH_MISSING)
+        if not isinstance(src, str):
+            return None                                   # missing / unreadable → unknown → active
+        names = {(part.strip().split(':')[0] or '').strip().upper() for part in src.split(',') if part.strip()}
+        return 'FAN_RATIO_GATE' in names
+    return True
+
+
+def _sleeve_filter_status(th, orders) -> dict:
+    """🧹 (DL 346) {sleeve_value: {"enabled": True|False|None, "n": closed trades}} for the dashboard's Sleeve select.
+    `n` counts with the same matching the server-side flip_source filter uses (FAN = FLIP:FAN_RATIO_GATE* prefix, the
+    others = exact entry_strategy); the UI greys an OFF sleeve and disables it only when it is OFF with n == 0."""
+    counts = {k: 0 for k in SLEEVE_FILTER_SWITCHES}
+    for o in orders:
+        es = getattr(o, 'entry_strategy', None)
+        for k in counts:
+            if _flip_source_match(es, k):
+                counts[k] += 1
+    return {k: {"enabled": _sleeve_enabled(th, k), "n": counts[k]} for k in SLEEVE_FILTER_SWITCHES}
+
+
 async def _compute_performance(db: AsyncSession, regime: str = None, window_hours: int = None,
                                 from_date: str = None, to_date: str = None, flip_source: str = None,
                                 direction: str = None, cell_source: str = None, origin: str = None):
@@ -5337,6 +5425,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
     )
     all_orders = result.scalars().all()
+    _book_all = all_orders   # 🧹 (DL 346) the whole closed book (pre-view) — the filter dropdowns' options never depend on a filter
     # 🤖 (DECISION_LOG 323) All · Bot · Manual: filter the WHOLE book first (every table — regime / funnel / flip logs included — reads
     # one side only). The P&L of the side left out (all time) is kept aside: it sits in the real balance, so the initial-balance
     # derivations below remove it and the return multiple / daily compound start from the real capital.
@@ -5489,13 +5578,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side
             # sleeves (BULL_LONG / BOUNCE_LONG) carry a BARE entry_strategy, so accept an
             # exact match too — lets the filter isolate those long sleeves the same way.
-            _pre = f'FLIP:{_fs}'
-            orders = [o for o in orders if _es(o).upper().startswith(_pre) or _es(o).upper() == _fs]
+            orders = [o for o in orders if _flip_source_match(_es(o), _fs)]   # 🧹 (DL 346) shared with the Sleeve-select counts
         # SIGNAL_EXPIRED rows are aborted maker entries (never flips) → keep only for MOMENTUM/ALL
         if _fs != 'MOMENTUM':
             signal_expired_orders = []
 
-    # Jul 30: Cell/Door filter (cell_multiplier_source axis — orthogonal to flip_source: a
+    # Jul 30: Cell/Door filter (UI: "Filter by Momentum cell" since DL 346) (cell_multiplier_source axis — orthogonal to flip_source: a
     # CALM3D door trade is still MOMENTUM sleeve). FULLSIZE = strip every probe ticket
     # (*_PROBE / FGP_*) so the headline tables show the real-money book; PLAIN = no cell tag
     # (the un-multiplied base book — a view that otherwise exists nowhere); exact tag = that
@@ -9756,6 +9844,18 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                         "blocked_short": 0, "opened_normal": 0, "opened_normal_long": 0, "opened_normal_short": 0,
                         "opened_flip": 0, "opened_flip_long": 0, "opened_flip_short": 0, "top_blockers": []}
 
+    # 🧹 (DL 346, review) the filter-dropdown helpers can never blank /api/performance — each fails alone to an empty list / map
+    try:
+        _cell_source_options_safe = _cell_source_options(_book_all)
+    except Exception as e:
+        logger.warning(f"[PERF] cell_source_options failed: {e}")
+        _cell_source_options_safe = []
+    try:
+        _sleeve_filter_status_safe = _sleeve_filter_status(getattr(getattr(config, 'trading_config', None), 'thresholds', None), _book_all)
+    except Exception as e:
+        logger.warning(f"[PERF] sleeve_filter_status failed: {e}")
+        _sleeve_filter_status_safe = {}
+
     return {
         "total_trades": total_trades,
         "entry_funnel": entry_funnel,
@@ -9962,16 +10062,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # row-for-row ≈ the Unmatched Losers table (C-matches ~0, W-only ~17%) — pure duplication.
         # The 4-Cohort Pattern Coverage summary still reports the truly-unmatched aggregate.
         "flip_trades": _compute_flip_trades(_flip_orders),  # FLIP TRADE LOG (Jun 14 — merged scorecard; replaced flip_entry)
-        # Jul 30 — data-driven options for the UI Cell/Door filter: every distinct non-probe
-        # cell tag present in the closed book (computed from ALL closed orders, not the filtered
-        # pool, so the dropdown stays stable while a filter is active). Probes excluded by
-        # design (their instrument is the 🪟 probe table; per-probe global slices are noise).
-        "cell_source_options": sorted({
-            (getattr(o, 'cell_multiplier_source', None) or '') for o in all_orders
-            if (getattr(o, 'cell_multiplier_source', None) or '')
-            and '_PROBE' not in (getattr(o, 'cell_multiplier_source', None) or '')
-            and 'FGP_' not in (getattr(o, 'cell_multiplier_source', None) or '')
-        }),
+        # Jul 30 — data-driven options for the UI Momentum-cell filter (was "Cell/Door"; DL 346: only
+        # MOMENTUM / FLIP sub-groups — sleeve-identity tags are hidden, the Sleeve filter already slices them).
+        # Computed from ALL closed orders, not the filtered pool, so the dropdown stays stable while a filter is active.
+        "cell_source_options": _cell_source_options_safe,
+        # 🧹 (DL 346) Sleeve select: which sleeves the live config has switched OFF + closed trades per sleeve (whole book)
+        "sleeve_filter_status": _sleeve_filter_status_safe,
         "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
         "liquidity_sizing": _compute_liquidity_sizing(orders),  # LIQUIDITY SIZING (Jun 2, observation-only)
     }

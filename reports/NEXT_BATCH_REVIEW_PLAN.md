@@ -47,6 +47,10 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    VWAP distance, peak drop, funding, exit reason, MISSED / REFUSED / SHADOW tallies from the e=FLATBASE decision rows. After 30 real fills: the
    SHADOW (turnover ≤ 1) cohort priced from klines vs real, same period → shadow better = review adding them. Three blocks: ① batch · ② master per
    batch (FLATBASE_SLEEVE rows) · ③ the study's 2026 cell (+0.93 all / +1.65 turnover > 1, in-sample) as the backtest reference.
+   + the three OBSERVE lines (DL 348 addendum, no gate — report them, never switch on them): 🩳① NON-FLAT pumps priced like the sleeve
+   (turnover > 1 vs FLAT real, ≤ 1 vs FLAT shadows, same period; unscored turnover apart) · 🩳② MISSED / MAX_OPEN / UNREADABLE / refused
+   setups per reason (N · avg · Σ) · 🩳③ FRENZY longs blocked PAIR_HELD by an open FLATBASE short per sleeve vs the short's own pnl + funding
+   (LITE unpriced while LITE C is on; generic PAIR_HELD = unattributed). Read each section's coverage line first (waiting / unpriced / unscored ≠ rest).
 ③ **Then EVERY open watchlist gate in CLAUDE_CURRENT_STATE.md and every scout tracker** — run each scout script and report tallies vs
    bars unprompted (the standing batch-watchlist rule).
 Goal stated by the operator: make the bot highly profitable going forward (≈ 10 %/day ambition) — FRENZY and SPIKE_FADE are the

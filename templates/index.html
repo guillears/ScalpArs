@@ -192,6 +192,10 @@
         /* tables */
         :root thead th { background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
         :root :where(tbody) td { border-top: 1px solid var(--line); }
+        /* operator 10-22: live tables (open orders every 1 s, top pairs every 10 s) are rewritten under the cursor — a faded hover restarted on
+           every rewrite and blinked. Rows show their hover tint instantly. */
+        :root tbody tr { transition: none; }
+        :root tbody tr :is(button, a).transition { transition: none; }   /* the row's Close button re-faded the same way */
         :root tbody tr:not([class*="bg-"]):hover > td:not([class*="bg-"]) { background-color: color-mix(in srgb, var(--fg) 4%, transparent); }   /* tinted rows keep their tint */
 
         /* form controls */

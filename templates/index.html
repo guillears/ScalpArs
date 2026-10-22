@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SCALPARS - Neural Decision Engine</title>
+    <!-- 🎨 (DECISION_LOG 345) theme before first paint — default dark; 'light' only when the operator picked it (no flash) -->
+    <script id="scalpars-theme-early">try { if (localStorage.getItem('scalpars-theme') === 'light') document.documentElement.setAttribute('data-theme', 'light'); } catch (e) {}</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -108,6 +113,343 @@
         /* Account Balance privacy toggle — blur values but keep them live-updating underneath */
         #balance-cards.balances-hidden { filter: blur(9px); user-select: none; pointer-events: none; }
     </style>
+    <!-- 🎨 SCALPARS THEME LAYER (DECISION_LOG 345, 2026-10-22) — look only: tokens + overrides of the existing classes.
+         DARK is the default; LIGHT = <html data-theme="light"> (header ☀/☾ button, remembered in localStorage 'scalpars-theme').
+         Selectors are prefixed with :root so they outrank the Tailwind play-CDN utilities (injected at runtime) without !important;
+         variant utilities (peer-checked:, hover:) and the Live Terminal's body.lt-mode rules still win where they should.
+         The colour-utility map below was generated from the page's own class inventory. Remove this block to get the old look back. -->
+    <style id="scalpars-theme">
+        :root, body.lt-mode {
+            --bg: #0e1118; --surface: #151922; --surface-2: #1b2030; --line: #262c3c;
+            --fg: #e6e9f0; --muted: #8b94a7; --faint: #646d80; --track: #343b4e;
+            --accent: #f0a43c; --accent-soft: #3a2a14;
+            --pos: #3fcf90; --pos-soft: #12301f; --neg: #f26d6d; --neg-soft: #3a1a1c;
+            --warn: #e9b949; --warn-soft: #362b10; --info: #6aa5ea; --info-soft: #172a42;
+            --violet: #a993ee; --violet-soft: #251e3d;
+            --fuchsia: #e48ad8; --fuchsia-soft: #351a33; --teal: #4fd1c0; --teal-soft: #113030;
+            --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+            --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+            --font-num: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+            --r: 10px;
+            color-scheme: dark;
+        }
+        :root[data-theme="light"] {
+            --bg: #f3f4f7; --surface: #ffffff; --surface-2: #eceef3; --line: #dcdfe7;
+            --fg: #151a26; --muted: #5b6375; --faint: #848b9b; --track: #c9cdd8;
+            --accent: #b86a0e; --accent-soft: #f6e7d2;
+            --pos: #0f7a55; --pos-soft: #dcf1e8; --neg: #bf3236; --neg-soft: #f8e1e1;
+            --warn: #9a6a09; --warn-soft: #f7edd2; --info: #2c64a8; --info-soft: #dfe9f6;
+            --violet: #6b4fb3; --violet-soft: #e9e3f6;
+            --fuchsia: #a3307f; --fuchsia-soft: #f6e1ef; --teal: #0f766e; --teal-soft: #d9f0ed;
+            --shadow: 0 1px 2px rgba(20, 26, 40, .06), 0 4px 16px rgba(20, 26, 40, .05);
+            color-scheme: light;
+        }
+        body.lt-mode { color-scheme: dark; }
+
+        /* page + type */
+        :root body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); }
+        :root body:not(.lt-mode) { -webkit-font-smoothing: antialiased; }
+        html { background: var(--bg); }
+        :root .font-mono,
+        :root td.text-right,
+        :root #usdt-balance, :root #bnb-balance, :root #usdt-orders, :root #total-portfolio,
+        :root #timer, :root #server-ip { font-family: var(--font-num); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+        :root table { font-variant-numeric: tabular-nums; }
+        html.scalpars-theme-switching *, html.scalpars-theme-switching *::before, html.scalpars-theme-switching *::after { transition: none !important; }
+        :root :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        /* cards */
+        :root .glass { background: var(--surface); border-color: var(--line); backdrop-filter: none; -webkit-backdrop-filter: none; }
+        :root .glass.rounded-xl, :root .glass.rounded-2xl { border-radius: var(--r); }
+        :root #balance-cards > .glass:last-child { box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+        :root #balance-cards > .glass > p.text-2xl { font-weight: 600; }
+        :root main h2 { color: var(--fg); font-weight: 600; }
+        :root .bg-\[\#1f2333\] { background-color: var(--surface); }
+        :root .bg-\[\#262a40\] { background-color: var(--surface-2); }
+        :root .bg-\[\#12121a\] { background-color: var(--bg); }
+
+        /* header + regime bar */
+        :root header.glass { background: var(--surface); border-width: 0 0 1px; border-color: var(--line); }
+        :root header.glass + div.glass { background: var(--surface); border-width: 0 0 1px; border-color: var(--line); }
+        :root header h1.bg-clip-text { background: none; color: var(--fg); -webkit-text-fill-color: currentColor; letter-spacing: .14em; font-size: 1.25rem; }
+        :root .scalpars-logo-accent { color: var(--accent); }
+        :root .scalpars-theme-btn { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px;
+            border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); font-size: 16px; line-height: 1; flex: none; }
+        :root .scalpars-theme-btn:hover { border-color: var(--muted); }
+        :root .tab-active { color: var(--fg); border-bottom-color: var(--accent); }
+        :root .lt-nav-toggle { background: var(--surface-2); border: 0; border-radius: 8px; padding: 3px; gap: 2px; font: 600 12px/1.2 var(--font-ui); letter-spacing: 0; }
+        :root .lt-nav-toggle button { color: var(--muted); border-radius: 6px; padding: 5px 10px; white-space: nowrap; }
+        :root .lt-nav-toggle button.active { background: var(--surface); color: var(--fg); box-shadow: var(--shadow); }
+        :root .lt-nav-toggle button:hover:not(.active) { background: transparent; color: var(--fg); }
+
+        /* tables */
+        :root thead th { background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+        :root :where(tbody) td { border-top: 1px solid var(--line); }
+        :root tbody tr:not([class*="bg-"]):hover > td:not([class*="bg-"]) { background-color: color-mix(in srgb, var(--fg) 4%, transparent); }   /* tinted rows keep their tint */
+
+        /* form controls */
+        :root :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea) {
+            background-color: var(--surface-2); border-color: var(--line); color: var(--fg); }
+        :root option, :root optgroup { background-color: var(--surface); color: var(--fg); }
+        :root ::placeholder { color: var(--faint); }
+        :root input[type="checkbox"], :root input[type="radio"] { accent-color: var(--accent); }
+        :root .scrollbar-thin::-webkit-scrollbar-track { background: var(--surface-2); }
+        :root .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--line); }
+
+        /* sparkline in the Total Portfolio Value card */
+        #portfolio-spark-wrap { margin: 6px 0 2px; }
+        #portfolio-spark { width: 100%; height: 40px; display: block; }
+        #portfolio-spark-periods { display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--surface-2); margin-top: 3px; }
+        #portfolio-spark-periods button { font: 600 11px/1 var(--font-ui); color: var(--muted); padding: 3px 7px; border-radius: 4px; border: 0; background: transparent; cursor: pointer; }
+        #portfolio-spark-periods button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: var(--shadow); }
+        #portfolio-spark-meta { font-size: 11px; color: var(--muted); margin-left: 6px; }
+
+        /* phone: no page-level sideways scroll from the header row */
+        @media (max-width: 767px) {
+            :root header .container > .flex { flex-wrap: wrap; row-gap: 8px; }
+            :root header .container > .flex > .flex { flex-wrap: wrap; row-gap: 8px; }
+            :root div:has(> #tab-bnb-swaps) { overflow-x: auto; }
+            :root div:has(> #tab-bnb-swaps) > button { flex: none; }
+            :root div:has(> div > #nav-epoch-btn) { flex-wrap: wrap; gap: 8px; }
+            :root div:has(> #nav-epoch-btn) { flex-wrap: wrap; }
+            :root main p { overflow-wrap: anywhere; }
+            :root div:has(> #origin-switch), :root div:has(> div > #origin-switch) { flex-wrap: wrap; row-gap: 8px; }
+            :root #pnl-calendar-grid > div { min-width: 0; overflow: hidden; }
+            :root #pnl-calendar-grid .text-xs { font-size: 10px; letter-spacing: -.02em; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+        }
+
+        /* ── colour utilities → tokens (generated from the page's class inventory) ── */
+        :root .bg-amber-500\/10,
+        :root .bg-amber-500\/20,
+        :root .bg-amber-500\/30,
+        :root .bg-amber-500\/5,
+        :root .bg-amber-900\/10,
+        :root .bg-amber-900\/20,
+        :root .bg-amber-950\/20,
+        :root .bg-yellow-500\/20,
+        :root .hover\:bg-amber-500\/20:hover,
+        :root .hover\:bg-amber-500\/30:hover { background-color: var(--warn-soft); }
+        :root .bg-blue-500\/20,
+        :root .bg-cyan-500\/20,
+        :root .bg-cyan-500\/25,
+        :root .bg-cyan-600\/30,
+        :root .bg-cyan-950\/15,
+        :root .bg-sky-500\/10,
+        :root .bg-sky-500\/15,
+        :root .bg-sky-500\/20,
+        :root .bg-sky-500\/25,
+        :root .bg-sky-500\/30,
+        :root .hover\:bg-sky-500\/30:hover { background-color: var(--info-soft); }
+        :root .bg-emerald-500\/15,
+        :root .bg-emerald-500\/20,
+        :root .bg-emerald-500\/25,
+        :root .bg-emerald-900\/20,
+        :root .bg-emerald-950\/10,
+        :root .hover\:bg-emerald-500\/25:hover,
+        :root .hover\:bg-emerald-500\/30:hover { background-color: var(--pos-soft); }
+        :root .bg-fuchsia-500\/20,
+        :root .bg-fuchsia-500\/25,
+        :root .bg-fuchsia-900\/10,
+        :root .bg-fuchsia-950\/10,
+        :root .bg-fuchsia-950\/15,
+        :root .bg-pink-500\/20 { background-color: var(--fuchsia-soft); }
+        :root .bg-gray-500\/20,
+        :root .bg-gray-800\/40,
+        :root .bg-slate-500\/15,
+        :root .hover\:bg-slate-500\/25:hover { background-color: var(--surface-2); }
+        :root .bg-gray-700,
+        :root .hover\:bg-gray-600:hover { background-color: var(--track); }
+        :root .bg-gray-800,
+        :root .bg-gray-900 { background-color: var(--surface); }
+        :root .bg-indigo-600\/30,
+        :root .bg-purple-500\/20,
+        :root .bg-purple-500\/25,
+        :root .bg-purple-600\/30 { background-color: var(--violet-soft); }
+        :root .bg-orange-500\/10,
+        :root .bg-orange-500\/15,
+        :root .bg-orange-500\/20,
+        :root .bg-orange-500\/25,
+        :root .bg-orange-500\/5,
+        :root .bg-orange-600\/30,
+        :root .hover\:bg-orange-500\/15:hover { background-color: var(--accent-soft); }
+        :root .bg-red-500\/10,
+        :root .bg-red-500\/15,
+        :root .bg-red-500\/20,
+        :root .bg-red-500\/25,
+        :root .bg-red-500\/30,
+        :root .bg-red-600\/30,
+        :root .bg-red-900\/10,
+        :root .bg-red-900\/20,
+        :root .bg-rose-500\/10,
+        :root .bg-rose-500\/20,
+        :root .bg-rose-500\/30,
+        :root .hover\:bg-red-500\/20:hover { background-color: var(--neg-soft); }
+        :root .bg-teal-500\/15,
+        :root .bg-teal-500\/20,
+        :root .bg-teal-500\/5,
+        :root .bg-teal-600\/30 { background-color: var(--teal-soft); }
+        :root .border-amber-400\/60,
+        :root .border-amber-500\/20,
+        :root .border-amber-500\/30,
+        :root .border-amber-500\/40,
+        :root .border-amber-500\/60,
+        :root .border-amber-700\/50,
+        :root .border-yellow-500\/25,
+        :root .border-yellow-500\/40 { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
+        :root .border-amber-800\/40,
+        :root .border-amber-900\/40,
+        :root .border-yellow-900\/40 { border-color: color-mix(in srgb, var(--warn) 30%, var(--line)); }
+        :root .border-cyan-500\/20,
+        :root .border-cyan-500\/25,
+        :root .border-cyan-500\/40,
+        :root .border-sky-400\/60,
+        :root .border-sky-500\/30,
+        :root .border-sky-500\/40 { border-color: color-mix(in srgb, var(--info) 55%, var(--line)); }
+        :root .border-cyan-800\/30,
+        :root .border-cyan-900\/40 { border-color: color-mix(in srgb, var(--info) 30%, var(--line)); }
+        :root .border-emerald-400\/60,
+        :root .border-emerald-500\/20,
+        :root .border-emerald-500\/25,
+        :root .border-emerald-500\/30,
+        :root .border-emerald-500\/40,
+        :root .border-lime-500\/40 { border-color: color-mix(in srgb, var(--pos) 55%, var(--line)); }
+        :root .border-emerald-900\/40 { border-color: color-mix(in srgb, var(--pos) 30%, var(--line)); }
+        :root .border-fuchsia-500\/20,
+        :root .border-fuchsia-500\/30,
+        :root .border-fuchsia-500\/40 { border-color: color-mix(in srgb, var(--fuchsia) 55%, var(--line)); }
+        :root .border-fuchsia-800\/20,
+        :root .border-fuchsia-800\/30,
+        :root .border-fuchsia-800\/40,
+        :root .border-fuchsia-900\/40 { border-color: color-mix(in srgb, var(--fuchsia) 30%, var(--line)); }
+        :root .border-gray-500,
+        :root .border-gray-700,
+        :root .border-gray-700\/40,
+        :root .border-gray-800,
+        :root .border-slate-500\/40 { border-color: var(--line); }
+        :root .border-orange-500\/20,
+        :root .border-orange-500\/25,
+        :root .border-orange-500\/30,
+        :root .border-orange-500\/40 { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+        :root .border-orange-900\/40 { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); }
+        :root .border-red-500\/30,
+        :root .border-red-500\/60,
+        :root .border-rose-500\/25,
+        :root .border-rose-500\/40 { border-color: color-mix(in srgb, var(--neg) 55%, var(--line)); }
+        :root .border-rose-900\/40 { border-color: color-mix(in srgb, var(--neg) 30%, var(--line)); }
+        :root .border-teal-500\/25,
+        :root .border-teal-500\/30,
+        :root .border-teal-500\/40 { border-color: color-mix(in srgb, var(--teal) 55%, var(--line)); }
+        :root .border-violet-900\/30,
+        :root .border-violet-900\/40 { border-color: color-mix(in srgb, var(--violet) 30%, var(--line)); }
+        :root .hover\:text-amber-200:hover,
+        :root .hover\:text-amber-300:hover,
+        :root .text-amber-100,
+        :root .text-amber-200,
+        :root .text-amber-200\/90,
+        :root .text-amber-300,
+        :root .text-amber-300\/90,
+        :root .text-amber-400,
+        :root .text-amber-400\/70,
+        :root .text-amber-400\/80,
+        :root .text-amber-500\/70,
+        :root .text-amber-500\/80,
+        :root .text-yellow-200,
+        :root .text-yellow-300,
+        :root .text-yellow-400,
+        :root .text-yellow-400\/80 { color: var(--warn); }
+        :root .hover\:text-emerald-300:hover,
+        :root .text-emerald-200,
+        :root .text-emerald-300,
+        :root .text-emerald-400,
+        :root .text-emerald-400\/50,
+        :root .text-emerald-400\/70,
+        :root .text-emerald-400\/80,
+        :root .text-emerald-500,
+        :root .text-emerald-500\/70,
+        :root .text-emerald-500\/80,
+        :root .text-green-300,
+        :root .text-lime-200,
+        :root .text-lime-300 { color: var(--pos); }
+        :root .hover\:text-fuchsia-300:hover,
+        :root .text-fuchsia-200,
+        :root .text-fuchsia-300,
+        :root .text-fuchsia-300\/70,
+        :root .text-fuchsia-300\/80,
+        :root .text-fuchsia-400,
+        :root .text-fuchsia-500\/60,
+        :root .text-fuchsia-500\/70,
+        :root .text-pink-400 { color: var(--fuchsia); }
+        :root .hover\:text-gray-100:hover,
+        :root .text-gray-100,
+        :root .text-gray-200,
+        :root .text-gray-300,
+        :root .text-slate-200,
+        :root .text-slate-300 { color: var(--fg); }
+        :root .hover\:text-gray-400:hover,
+        :root .text-gray-400,
+        :root .text-gray-500,
+        :root .text-slate-400 { color: var(--muted); }
+        :root .hover\:text-orange-300:hover,
+        :root .text-orange-200,
+        :root .text-orange-300,
+        :root .text-orange-300\/80,
+        :root .text-orange-400 { color: var(--accent); }
+        :root .hover\:text-red-200:hover,
+        :root .hover\:text-red-300:hover,
+        :root .text-red-200,
+        :root .text-red-300,
+        :root .text-red-400,
+        :root .text-red-400\/50,
+        :root .text-red-400\/70,
+        :root .text-red-500,
+        :root .text-rose-100,
+        :root .text-rose-200,
+        :root .text-rose-300,
+        :root .text-rose-400,
+        :root .text-rose-500 { color: var(--neg); }
+        :root .hover\:text-sky-300:hover,
+        :root .text-blue-300,
+        :root .text-blue-400,
+        :root .text-blue-400\/70,
+        :root .text-cyan-200,
+        :root .text-cyan-300,
+        :root .text-cyan-300\/80,
+        :root .text-cyan-300\/90,
+        :root .text-cyan-400,
+        :root .text-cyan-400\/80,
+        :root .text-sky-100,
+        :root .text-sky-200,
+        :root .text-sky-200\/80,
+        :root .text-sky-200\/90,
+        :root .text-sky-300,
+        :root .text-sky-300\/80,
+        :root .text-sky-400,
+        :root .text-sky-500 { color: var(--info); }
+        :root .text-gray-600 { color: var(--faint); }
+        :root .text-indigo-300,
+        :root .text-indigo-400,
+        :root .text-purple-300,
+        :root .text-purple-400,
+        :root .text-violet-300,
+        :root .text-violet-400 { color: var(--violet); }
+        :root .text-teal-200,
+        :root .text-teal-300,
+        :root .text-teal-300\/90,
+        :root .text-teal-400,
+        :root .text-teal-500 { color: var(--teal); }
+        :root .text-white, :root .hover\:text-white:hover { color: var(--fg); }
+        :root .bg-white\/5 { background-color: var(--surface-2); }
+        :root .bg-white\/10 { background-color: color-mix(in srgb, var(--fg) 7%, var(--surface-2)); }
+        :root .hover\:bg-white\/5:hover, :root .hover\:bg-white\/10:hover, :root .hover\:bg-white\/20:hover { background-color: color-mix(in srgb, var(--fg) 8%, transparent); }
+        :root .border-white\/5, :root .border-white\/10, :root .border-white\/15 { border-color: var(--line); }
+        :root .border-white\/20, :root .border-white\/25 { border-color: color-mix(in srgb, var(--muted) 35%, var(--line)); }
+        :root .bg-black\/20 { background-color: var(--surface-2); }
+        :root :is(.bg-amber-600, .bg-amber-700, .bg-blue-400, .bg-blue-600, .bg-cyan-500, .bg-cyan-600, .bg-emerald-400, .bg-emerald-500, .bg-emerald-600, .bg-fuchsia-500, .bg-fuchsia-600, .bg-green-600, .bg-indigo-600, .bg-lime-600, .bg-orange-400, .bg-orange-500, .bg-orange-600, .bg-pink-500, .bg-purple-500, .bg-purple-600, .bg-red-600, .bg-rose-500, .bg-rose-600, .bg-sky-600, .bg-sky-700, .bg-teal-500, .bg-teal-600, .bg-yellow-400, .bg-yellow-500, .bg-yellow-600).text-white,
+        :root :is(.bg-amber-600, .bg-amber-700, .bg-blue-400, .bg-blue-600, .bg-cyan-500, .bg-cyan-600, .bg-emerald-400, .bg-emerald-500, .bg-emerald-600, .bg-fuchsia-500, .bg-fuchsia-600, .bg-green-600, .bg-indigo-600, .bg-lime-600, .bg-orange-400, .bg-orange-500, .bg-orange-600, .bg-pink-500, .bg-purple-500, .bg-purple-600, .bg-red-600, .bg-rose-500, .bg-rose-600, .bg-sky-600, .bg-sky-700, .bg-teal-500, .bg-teal-600, .bg-yellow-400, .bg-yellow-500, .bg-yellow-600) .text-white { color: #fff; }
+    </style>
     <!-- Live Terminal — phosphor-green observability view (UI-only, additive) -->
     <!-- Cache-bust query param: bump when CSS changes meaningfully -->
     <link rel="stylesheet" href="/static/live_terminal.css?v=13">
@@ -128,7 +470,7 @@
                 <div class="flex items-center space-x-4">
                     <h1 class="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent cursor-pointer select-none"
                         title="Back to top" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">
-                        SCALPARS
+                        SCALP<span class="scalpars-logo-accent">ARS</span>
                     </h1>
                     <div id="status-badge" class="flex items-center space-x-2 px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-400">
                         <span id="status-dot" class="w-2 h-2 rounded-full bg-yellow-400 pulse-yellow"></span>
@@ -193,6 +535,9 @@
                         <button id="lt-nav-dashboard" class="active" onclick="if(window.LiveTerminal)window.LiveTerminal.hide()">Dashboard</button>
                         <button id="lt-nav-terminal" onclick="if(window.LiveTerminal)window.LiveTerminal.show()">Live Terminal</button>
                     </div>
+
+                    <!-- 🎨 (DECISION_LOG 345) light / dark -->
+                    <button type="button" id="theme-toggle-btn" class="scalpars-theme-btn" onclick="if(window.scalparsToggleTheme)window.scalparsToggleTheme()" title="Switch light / dark" aria-label="Switch to light mode" aria-pressed="false">☀</button>
 
                     <!-- Logout Button -->
                     <a href="/logout" class="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all duration-200" title="Logout">
@@ -283,6 +628,12 @@
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">Total Portfolio Value</p>
                     <p id="total-portfolio" class="text-2xl font-bold text-white">$0.00</p>
+                    <!-- 🎨 (DECISION_LOG 345) realized-equity sparkline from the calendar data already loaded; hidden under 2 points -->
+                    <div id="portfolio-spark-wrap">
+                        <svg id="portfolio-spark" viewBox="0 0 300 40" preserveAspectRatio="none" role="img" aria-label="Portfolio value" style="display:none"></svg>
+                        <p id="portfolio-spark-empty" class="text-xs text-gray-500">not enough history yet</p>
+                        <div class="flex items-center flex-wrap"><div id="portfolio-spark-periods" role="group" aria-label="Sparkline period"><button type="button" data-period="7D" aria-pressed="true" onclick="if(window.scalparsSparkPeriod)window.scalparsSparkPeriod('7D')">7D</button><button type="button" data-period="30D" aria-pressed="false" onclick="if(window.scalparsSparkPeriod)window.scalparsSparkPeriod('30D')">30D</button><button type="button" data-period="ALL" aria-pressed="false" onclick="if(window.scalparsSparkPeriod)window.scalparsSparkPeriod('ALL')">ALL</button></div><span id="portfolio-spark-meta">last 7 days · realized</span></div>
+                    </div>
                     <p id="portfolio-open-pnl" class="text-xs text-gray-500 hidden" title="Binance margin balance: wallet + the open P&amp;L of EVERY position (bot, imported and untracked app trades) + BNB"></p>
                     <p id="total-trades-count" class="text-xs text-gray-500 mt-1"></p>
                     <p id="portfolio-initial" class="text-xs text-gray-500 mt-0.5 hidden"></p>
@@ -9282,6 +9633,7 @@
                 loadClosedOrders();
                 loadTransactions();
                 loadPerformance();
+                loadPnlCalendar();   // 🎨 (DECISION_LOG 345 review) the calendar + portfolio sparkline follow the mode at once
                 showToast(enabled ? 'Paper trading mode enabled' : 'Live trading mode enabled');
             } catch (err) {
                 console.error('Error toggling paper mode:', err);
@@ -24077,6 +24429,123 @@
             setTimeout(_autoDecTick, 30e3);                  // catch up shortly after the page opens
             setInterval(_autoDecTick, 10 * 60e3);
             window.addEventListener('storage', e => { if (e.key === _AUTO_DEC_LAST || e.key === _AUTO_DEC_ON) { const c = document.getElementById('auto-decisions-toggle'); if (c) c.checked = _lsGet(_AUTO_DEC_ON) === '1'; _autoDecStatus(); } });
+        })();
+        </script>
+        <!-- 🎨 (DECISION_LOG 345) theme button + Total Portfolio Value sparkline. Look only: reads data the page already loaded
+             (the Daily P&L Calendar's pnlCalData — paper/live and All/Bot/Manual aware), makes no request of its own, never throws. -->
+        <script id="scalpars-theme-js">
+        (function () {
+            // ── light / dark button (default dark; choice remembered in localStorage 'scalpars-theme') ──
+            const THEME_KEY = 'scalpars-theme';
+            const root = document.documentElement;
+            function paintThemeBtn() {
+                const b = document.getElementById('theme-toggle-btn');
+                if (!b) return;
+                const light = root.getAttribute('data-theme') === 'light';
+                b.textContent = light ? '☾' : '☀';
+                b.setAttribute('aria-label', light ? 'Switch to dark mode' : 'Switch to light mode');
+                b.setAttribute('aria-pressed', light ? 'true' : 'false');
+            }
+            window.scalparsToggleTheme = function () {
+                const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+                root.classList.add('scalpars-theme-switching');   // no colour fade while the theme flips
+                root.setAttribute('data-theme', next);
+                try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+                requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('scalpars-theme-switching')));
+                paintThemeBtn();
+            };
+            paintThemeBtn();
+
+            // ── Total Portfolio Value sparkline: 7D · 30D · ALL (daily points — the only history is per day) ──
+            const PERIOD_KEY = 'scalpars-spark-period';
+            const PERIODS = { '7D': 7, '30D': 30, 'ALL': null };
+            const LABELS = { '7D': 'last 7 days · realized', '30D': 'last 30 days · realized', 'ALL': 'since history start · realized' };
+            let period = '7D';
+            try { const s = localStorage.getItem(PERIOD_KEY); if (s && Object.prototype.hasOwnProperty.call(PERIODS, s)) period = s; } catch (e) {}
+            let lastData = null;
+            const cache = {};   // period → series, rebuilt when the calendar data object changes (one poll cycle)
+
+            function isoLocal(d) {
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            }
+            // Realized-equity close of each local day, back-walked from the calendar's portfolio_now (same ruler as the calendar).
+            function buildSeries(cal, p) {
+                if (!cal || !cal.days || cal.portfolio_now == null || !isFinite(Number(cal.portfolio_now))) return [];
+                const keys = Object.keys(cal.days).sort();
+                if (!keys.length) return [];
+                const now = new Date();
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const first = new Date(keys[0] + 'T00:00:00');
+                const histStart = new Date(first.getFullYear(), first.getMonth(), first.getDate() - 1);   // close of the day before the first trade
+                const n = PERIODS[p];
+                let start = n == null ? histStart : new Date(today.getFullYear(), today.getMonth(), today.getDate() - n);
+                if (start < histStart) start = histStart;
+                let after = 0;   // P&L of days after the running date
+                const pnlOf = k => Number((cal.days[k] || {}).pnl) || 0;
+                const pts = [];
+                for (let d = new Date(today); d >= start; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1)) {
+                    const k = isoLocal(d);
+                    pts.push({ date: k, v: Number(cal.portfolio_now) - after });
+                    after += pnlOf(k);
+                    if (pts.length > 4000) break;
+                }
+                return pts.reverse();
+            }
+            function fmt(v) { return (v < 0 ? '−$' : '$') + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+            function render() {
+                try {
+                    const svg = document.getElementById('portfolio-spark');
+                    const empty = document.getElementById('portfolio-spark-empty');
+                    const meta = document.getElementById('portfolio-spark-meta');
+                    if (!svg || !empty) return;
+                    document.querySelectorAll('#portfolio-spark-periods button').forEach(b => b.setAttribute('aria-pressed', b.dataset.period === period ? 'true' : 'false'));
+                    if (!cache[period]) cache[period] = buildSeries(lastData, period);
+                    const data = cache[period];
+                    if (!data || data.length < 2) {   // guard: fewer than 2 points → no chart, keep the buttons
+                        svg.style.display = 'none'; svg.innerHTML = '';
+                        empty.style.display = '';
+                        if (meta) meta.textContent = '';
+                        return;
+                    }
+                    const vals = data.map(p => p.v);
+                    const w = 300, h = 40, pad = 4, min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1;
+                    const x = i => pad + i * (w - 2 * pad) / (vals.length - 1), y = v => h - pad - (v - min) / span * (h - 2 * pad);
+                    const line = vals.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ');
+                    const fill = line + ' L' + x(vals.length - 1).toFixed(1) + ' ' + (h - pad) + ' L' + x(0).toFixed(1) + ' ' + (h - pad) + ' Z';
+                    const chg = vals[vals.length - 1] - vals[0];
+                    const col = chg >= 0 ? 'var(--pos)' : 'var(--neg)';
+                    // colours via style= (var() inside presentation attributes paints black on older Safari/iOS); the end dot is a
+                    // zero-length round-capped non-scaling stroke, so the stretched viewBox cannot turn it into an ellipse
+                    const ex = x(vals.length - 1).toFixed(1), ey = y(vals[vals.length - 1]).toFixed(1);
+                    svg.innerHTML = '<path d="' + fill + '" style="fill:' + col + ';fill-opacity:.14;stroke:none"/>'
+                        + '<path d="' + line + '" style="fill:none;stroke:' + col + ';stroke-width:2;stroke-linejoin:round" vector-effect="non-scaling-stroke"/>'
+                        + '<path d="M' + ex + ' ' + ey + ' L' + ex + ' ' + ey + '" style="fill:none;stroke:' + col + ';stroke-width:6;stroke-linecap:round" vector-effect="non-scaling-stroke"/>';
+                    svg.setAttribute('aria-label', 'Realized portfolio value, ' + LABELS[period] + ': ' + fmt(vals[0]) + ' to ' + fmt(vals[vals.length - 1]));
+                    svg.style.display = ''; empty.style.display = 'none';
+                    if (meta) {
+                        meta.textContent = LABELS[period] + ' · ' + (chg >= 0 ? '+' : '') + fmt(chg);
+                        meta.title = 'Realized equity at each day close (closed trades only, deposits/withdrawals not drawn), back-walked from today the same way as the Daily P&L Calendar; follows Paper/Live and the All/Bot/Manual view.';
+                    }
+                } catch (e) { /* never throw into the dashboard */ }
+            }
+            window.scalparsSparkPeriod = function (p) {
+                try {
+                    if (!Object.prototype.hasOwnProperty.call(PERIODS, p)) return;
+                    period = p;
+                    try { localStorage.setItem(PERIOD_KEY, p); } catch (e) {}
+                    render();
+                } catch (e) {}
+            };
+            // Follow the calendar's own fetches (it refreshes on its poll, on the origin switch and on paper/live) — no extra request.
+            function poll() {
+                try {
+                    const d = (typeof pnlCalData !== 'undefined') ? pnlCalData : null;
+                    if (d !== lastData) { lastData = d; for (const k in cache) delete cache[k]; render(); }
+                } catch (e) {}
+            }
+            render();
+            setInterval(poll, 2000);
+            setTimeout(poll, 300);
         })();
         </script>
 </body>

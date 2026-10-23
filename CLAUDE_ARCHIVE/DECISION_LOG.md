@@ -8712,3 +8712,15 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   0.2 × 5× fills and can print "ROLLBACK: bearrun_lev_mult 0.05" — IGNORE it, superseded here); templates/index.html both exports still print the
   "5x ROLLBACK (252)" text; config.py:1211 comment; the (200) BEARRUN arm action names only bearrun_lev_mult (also needs invest 1.0). Separate latent
   edge: a spike fade on a pair whose ladder SHORT got the bear bypass in the same scan is tagged BEARRUN_SHORT but sized as a spike (never seen).
+
+## (361) 2026-10-23 — 🧾 LIVE → PAPER allowed with the operator's own Binance-app positions, after a confirm (operator: "keep the transaction in Binance and switch to paper")
+- **Why:** after the B24 save the operator wanted to continue in paper while a Binance-app BTCUSDT position stayed open; the switch was refused
+  ("untracked Binance position(s) still open … close or import them") and importing doesn't help (an imported row is a LIVE bot position → refused too).
+- **Change:** services/trading_engine.set_paper_mode(…, ack_untracked=) — LIVE → PAPER with untracked positions is refused with .checks =
+  [{"untracked": [...]}] unless the acknowledged list covers every one (case / space-insensitive) → the switch goes through, logged
+  [MODE_SWITCH] … ACKNOWLEDGED. LIVE BOT positions still refuse (they would lose their exits) — the ack never overrides that. main.py
+  /api/paper-mode: ack_untracked query param (comma-separated); an untracked refusal returns detail {"reason", "untracked"} (other refusals
+  unchanged, a plain string). Dashboard: on that refusal, a confirm box ("… stay open on Binance and the bot will NOT watch them in paper mode
+  … Switch to PAPER anyway?") → retry with the pairs acknowledged. Back to live: the pre-flight reads Binance again and REFUSES (412) while they are open — import is live-only, so the only way back to LIVE is closing them in the Binance app (the confirm box says so). In paper nothing touches them: the untracked marks are cleared on the switch and the reconciler (the only path that could flatten / cancel) runs in live only.
+- **Tests:** tests/test_golive_live_switch.py (refusal carries the list · partial ack refused · full ack switches · ack never overrides a live
+  bot row · endpoint returns the list and passes the ack · UI strings).

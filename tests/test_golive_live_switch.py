@@ -160,6 +160,69 @@ def test_live_to_paper_refused_while_an_untracked_position_is_known(monkeypatch)
     eng._mark_untracked("FOOUSDT", "LONG", 3.0, 1.0, "NO_ROW", "RECONCILE")
     e = _refused(T, run, True)
     assert e.status == 409 and "FOOUSDT" in str(e) and eng.is_paper_mode is False
+    assert e.checks == [{"untracked": ["FOOUSDT"]}]                                               # 🧾 (361) the dashboard asks with this list
+
+
+def _run_ack(T, eng, ack, rows=()):
+    import models
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool)
+    S = async_sessionmaker(engine, expire_on_commit=False)
+    async def go():
+        async with engine.begin() as c:
+            await c.run_sync(models.Base.metadata.create_all)
+        async with S() as s:
+            for pair, d, is_paper in rows:
+                s.add(models.Order(pair=pair, direction=d, status="OPEN", entry_price=1.0, current_price=1.0, investment=10.0, leverage=1.0,
+                                   notional_value=10.0, quantity=10.0, confidence="STRONG_BUY", is_paper=is_paper, opened_at=datetime.utcnow()))
+            await s.commit()
+        try:
+            async with S() as s:
+                return await eng.set_paper_mode(True, s, ack_untracked=ack)
+        finally:
+            await engine.dispose()
+    return asyncio.run(go())
+
+
+def test_live_to_paper_with_acknowledged_app_positions_goes_through(monkeypatch):
+    """🧾 (DECISION_LOG 361) the operator confirmed their Binance-app positions stay open, unwatched → the switch goes through."""
+    T, eng, run, calls, saved = _harness(monkeypatch, paper=False)
+    eng._mark_untracked("BTCUSDT", "SHORT", 0.01, 1.0, "NO_ROW", "RECONCILE")
+    eng._mark_untracked("AGTUSDT", "SHORT", 3.0, 1.0, "NO_ROW", "RECONCILE")
+    with pytest.raises(T.ModeSwitchRefused) as ei:                                                 # a partial ack is not enough
+        _run_ack(T, eng, ["btcusdt"])
+    assert ei.value.checks == [{"untracked": ["BTCUSDT", "AGTUSDT"]}] and eng.is_paper_mode is False
+    assert _run_ack(T, eng, [" btcusdt", "AGTUSDT "]) == {"paper_mode": True, "changed": True} and eng.is_paper_mode is True and calls == []
+
+
+def test_ack_never_overrides_a_live_bot_position(monkeypatch):
+    T, eng, run, calls, saved = _harness(monkeypatch, paper=False)
+    eng._mark_untracked("BTCUSDT", "SHORT", 0.01, 1.0, "NO_ROW", "RECONCILE")
+    with pytest.raises(T.ModeSwitchRefused) as ei:
+        _run_ack(T, eng, ["BTCUSDT"], rows=[("BARUSDT", "SHORT", False)])
+    assert "LIVE position" in str(ei.value) and eng.is_paper_mode is False
+
+
+def test_endpoint_returns_the_untracked_list_and_passes_the_ack(monkeypatch):
+    import main
+    from fastapi import HTTPException
+    from services.trading_engine import ModeSwitchRefused
+    async def _init(db): return None
+    seen = {}
+    async def _sw(enabled, db, ack_untracked=None):
+        seen["ack"] = ack_untracked
+        if not ack_untracked:
+            raise ModeSwitchRefused("untracked Binance position(s) still open on BTCUSDT", 409, [{"untracked": ["BTCUSDT"]}])
+        return {"paper_mode": True, "changed": True}
+    monkeypatch.setattr(main.trading_engine, "initialize", _init)
+    monkeypatch.setattr(main.trading_engine, "set_paper_mode", _sw)
+    with pytest.raises(HTTPException) as ei:
+        asyncio.run(main.set_paper_mode(True, None, ""))
+    assert ei.value.status_code == 409 and ei.value.detail["untracked"] == ["BTCUSDT"] and "BTCUSDT" in ei.value.detail["reason"]
+    assert asyncio.run(main.set_paper_mode(True, None, "BTCUSDT")) == {"paper_mode": True, "changed": True} and seen["ack"] == ["BTCUSDT"]
+    html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+    assert "&ack_untracked=${encodeURIComponent(_ut.join(','))}" in html and "Switch to PAPER anyway?" in html
 
 
 def test_one_switch_at_a_time_and_start_refused_while_switching(monkeypatch):

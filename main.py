@@ -879,15 +879,21 @@ async def pause_bot(db: AsyncSession = Depends(get_db)):
 
 
 @app.post("/api/paper-mode")
-async def set_paper_mode(enabled: bool, db: AsyncSession = Depends(get_db)):
+async def set_paper_mode(enabled: bool, db: AsyncSession = Depends(get_db), ack_untracked: str = ""):
     """Toggle paper trading mode — 🛡 (DECISION_LOG 292 ④) refused with a 4xx + the reason when unsafe: PAPER → LIVE while the bot runs,
-    while a paper position is OPEN, or when the read-only live pre-flight fails (412); LIVE → PAPER while a live position is OPEN (409)."""
+    while a paper position is OPEN, or when the read-only live pre-flight fails (412); LIVE → PAPER while a live position is OPEN (409).
+    🧾 (DECISION_LOG 361) LIVE → PAPER with untracked Binance (app) positions → 409 with detail {"reason", "untracked": [...]} so the dashboard
+    can ask the operator; ack_untracked = the comma-separated pairs they confirmed (they stay open on Binance, unwatched in paper)."""
     from services.trading_engine import ModeSwitchRefused
     await trading_engine.initialize(db)
+    _ack = [x for x in str(ack_untracked or "").split(",") if x.strip()]
     try:
-        result = await trading_engine.set_paper_mode(enabled, db)
+        result = await (trading_engine.set_paper_mode(enabled, db, ack_untracked=_ack) if _ack else trading_engine.set_paper_mode(enabled, db))
     except ModeSwitchRefused as e:
         logger.warning(f"[MODE_SWITCH_REFUSED] → {'PAPER' if enabled else 'LIVE'}: {e}")
+        _ut = next((c.get("untracked") for c in (getattr(e, "checks", None) or []) if isinstance(c, dict) and c.get("untracked")), None)
+        if _ut:
+            raise HTTPException(status_code=e.status, detail={"reason": str(e), "untracked": list(_ut)})
         raise HTTPException(status_code=e.status, detail=str(e))
     return result
 

@@ -4830,13 +4830,16 @@ class TradingEngine:
     async def _count_open(self, db, paper: bool) -> int:
         return int((await db.execute(select(func.count(Order.id)).where(and_(Order.status == "OPEN", Order.is_paper == paper)))).scalar() or 0)
 
-    async def set_paper_mode(self, enabled: bool, db: AsyncSession):
+    async def set_paper_mode(self, enabled: bool, db: AsyncSession, ack_untracked=None):
         """Toggle paper trading mode — 🛡 (DECISION_LOG 292 ④) a SAFE switch, never a bare flag flip:
         PAPER → LIVE refused (ModeSwitchRefused) while the bot runs, while any paper position is OPEN (they would freeze), or when the
         read-only live pre-flight fails (live_preflight). LIVE → PAPER refused while any LIVE position is OPEN (it would lose its exits).
         Same mode → no-op. Every switch is logged [MODE_SWITCH]. ONE switch at a time (a second request while one runs → 409; the
         2026-10-14 go-live saw two PAPER → LIVE pre-flights run concurrently from repeated toggle clicks), and a bot start that lands
-        during the pre-flight is caught by a re-check before the flip (start() also refuses while a switch runs)."""
+        during the pre-flight is caught by a re-check before the flip (start() also refuses while a switch runs).
+        🧾 (DECISION_LOG 361) LIVE → PAPER with UNTRACKED Binance positions (the operator's own app trades — no bot row, no bot exits to lose):
+        refused with .checks = [{"untracked": [...]}] unless ack_untracked names every one of them (the operator confirmed in the dashboard that
+        they stay open on Binance, unwatched while in paper) → the switch goes through, logged [MODE_SWITCH] with the acknowledged list."""
         enabled = bool(enabled)
         _lk = self.__dict__.get('_mode_switch_lock')
         if _lk is None:
@@ -4844,14 +4847,14 @@ class TradingEngine:
         if _lk.locked():
             raise ModeSwitchRefused("a mode switch is already in progress — wait for it to finish", 409)
         async with _lk:
-            return await self._set_paper_mode_locked(enabled, db)
+            return await self._set_paper_mode_locked(enabled, db, ack_untracked=ack_untracked)
 
     def mode_switch_in_progress(self) -> bool:
         """A paper ↔ live switch holds the lock right now (start() refuses meanwhile)."""
         _lk = self.__dict__.get('_mode_switch_lock')
         return bool(_lk is not None and _lk.locked())
 
-    async def _set_paper_mode_locked(self, enabled: bool, db: AsyncSession):
+    async def _set_paper_mode_locked(self, enabled: bool, db: AsyncSession, ack_untracked=None):
         if enabled == bool(self.is_paper_mode):
             return {"paper_mode": enabled, "changed": False}
         if not enabled:   # PAPER → LIVE
@@ -4877,8 +4880,13 @@ class TradingEngine:
             if _n:
                 raise ModeSwitchRefused(f"{_n} LIVE position(s) still OPEN — close them before switching to PAPER (they would lose their exits)", 409)
             _ut = list((self.__dict__.get('_untracked_positions') or {}).keys())
+            _ack = {str(x).strip().upper() for x in (ack_untracked or ()) if str(x).strip()}
+            if _ut and not set(_ut) <= _ack:   # 🧾 (361) the operator's app trades: refused until they confirm they stay open, unwatched
+                raise ModeSwitchRefused(f"untracked Binance position(s) still open on {', '.join(_ut)} — they would stay open on Binance and "
+                                        f"NOT be watched in paper mode: confirm to switch anyway, or close them first", 409, [{"untracked": _ut}])
             if _ut:
-                raise ModeSwitchRefused(f"untracked Binance position(s) still open on {', '.join(_ut)} — close or import them before switching to PAPER", 409)
+                logger.warning(f"[MODE_SWITCH] LIVE → PAPER with untracked Binance position(s) {', '.join(_ut)} ACKNOWLEDGED by the operator — "
+                               f"they stay open on Binance and are not watched while in paper (re-read on the next switch to live)")
         self.is_paper_mode = enabled
         self.rtp_clear_all()   # 🎯 (296) no resting-TP realtime state crosses into the other book
         self._bnb_usd_last = None  # Sep-11 (review M-1): a live→paper→live toggle must not reuse a stale live cache

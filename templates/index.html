@@ -9726,13 +9726,24 @@
             e.target.disabled = true;   // 🛡 (DECISION_LOG 293) one switch at a time — the live pre-flight takes a few seconds
             showToast(enabled ? 'Switching to paper…' : 'Running live pre-flight checks…');
             try {
-                const _pmRes = await fetch(`${API_BASE}/api/paper-mode?enabled=${enabled}`, { method: 'POST' });
+                let _pmRes = await fetch(`${API_BASE}/api/paper-mode?enabled=${enabled}`, { method: 'POST' });
                 if (!_pmRes.ok) {   // 🛡 (DECISION_LOG 292 ④) the server refused the switch — show why, keep the toggle where it was
-                    let _why = 'Mode switch refused';
-                    try { const _d = await _pmRes.json(); if (_d && _d.detail) _why = String(_d.detail); } catch (_) {}
-                    e.target.checked = !isPaperMode;
-                    showToast(_why, 'error');
-                    return;
+                    let _why = 'Mode switch refused', _ut = null;
+                    try { const _d = await _pmRes.json(); if (_d && _d.detail) { if (typeof _d.detail === 'object') { _why = String(_d.detail.reason || _why); _ut = Array.isArray(_d.detail.untracked) ? _d.detail.untracked : null; } else _why = String(_d.detail); } } catch (_) {}
+                    // 🧾 (DECISION_LOG 361) LIVE → PAPER with the operator's own Binance-app positions: ask, then retry with them acknowledged
+                    if (enabled && _ut && _ut.length) {
+                        if (confirm(`${_ut.join(', ')} — your Binance-app position(s) stay open on Binance and the bot will NOT watch them in paper mode. Manage them in the app. You can't switch back to LIVE until they are closed on Binance.\n\nSwitch to PAPER anyway?`)) {
+                            _pmRes = await fetch(`${API_BASE}/api/paper-mode?enabled=${enabled}&ack_untracked=${encodeURIComponent(_ut.join(','))}`, { method: 'POST' });
+                            if (!_pmRes.ok) { try { const _d2 = await _pmRes.json(); const _dd = _d2 && _d2.detail; _why = typeof _dd === 'string' ? _dd : String((_dd && _dd.reason) || _why); } catch (_) {} }
+                        } else {
+                            _why = `Switch cancelled — ${_ut.join(', ')} still open on Binance (still LIVE)`;
+                        }
+                    }
+                    if (!_pmRes.ok) {
+                        e.target.checked = !isPaperMode;
+                        showToast(_why, 'error');
+                        return;
+                    }
                 }
                 isPaperMode = enabled;
                 e.target.checked = !enabled;   // 🛡 (293) checked = LIVE — a poll may have redrawn the old side mid-switch

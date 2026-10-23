@@ -8539,3 +8539,8 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Tests:** tests/test_scout_lite_late_btcfall.py (cut + unscored · master stack values + forward key skip + operator-closed · COLLECTING /
   ARM_CANDIDATE / RETIRE / KEEP_OBSERVING (concentration) · decided once · empty inputs · wiring).
 - **Review fixes (caveman):** forward excludes EVERY master key (stack-blocked / operator-closed master rows no longer re-enter from the exports — MOVR / SAND 10-07 did); the first non-COLLECTING verdict is persisted to reports/.lite_late_btcfall_gate.json (decided once survives a master rebuild); stable sort; the prefix = every fill opened by the crossing fill's time.
+
+## (354) 2026-10-23 — 🩳 FLATBASE_SHORT exit labels in P&L terms (operator: "TP is +8% or +15%? is confusing")
+- The open-row badge read "🩳 −8% / +15% / 72h" (price moves from the fill); every other sleeve badge is P&L. Now "🩳 TP +8% · SL −15% · 72h";
+  the hover keeps the price levels; the export config line, the FRENZY monitor line (dashboard + both exports) and the strategy hover say "TP +8 % (price −8 %) / SL −15 % (price +15 %)".
+  The 🩳 box inputs already say "Take profit: price −%" / "Stop: price +%" (unchanged). Display only. Test: tests/test_flatbase_badge_labels.py.

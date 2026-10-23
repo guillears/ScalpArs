@@ -18,10 +18,10 @@ FROZEN DEFINITION (pre-registered 2026-10-19 — never re-fit, never re-fit the 
            1-SECOND bars (hi / lo / first / last print, ticks strictly after the fill second); the uncovered tail (archive not published
            yet) from public fapi 1m klines (from the first whole minute after the covered time) → PROVISIONAL (flagged; re-run later).
   walker   the study's generic first-touch walker (study_frenzy_realfills_common.walk, copied VERBATIM below so this tracked scout never
-           imports an untracked study; tests/test_scout_long_stop4.py checks parity when the study file exists): gross price lines, the
+           imports an untracked study; tests/test_scout_long_stop4.py checks parity when the study file exists): gross price lines (the gate calls it via walk_net — NET targets, DL 355), the
            stop judged BEFORE the take-profit on the same bar (same-bar stop + TP = STOP), a bar opening through the stop fills at its open.
            Fees as the study: entry taker 0.045 %; the resting TP (DL 310) exits MAKER 0.018 % at the line; stop / cap exits taker 0.045 %
-           + 0.03 % slippage. TP +1.5, 12 h cap — unchanged; only the stop moves: shadow −4 vs the same walker at today's −3.
+           + 0.03 % slippage. Since DECISION_LOG 355 the gate walks NET targets (walk_net: a TP books +1.5, a stop −sl − slip, like live). TP +1.5, 12 h cap — unchanged; only the stop moves: shadow −4 vs the same walker at today's −3.
   Δ        shadow(−4) − walker(−3), % of notional per fill; $ at the fill's notional_value (fallback $100 = LONG blocker size).
            Parity: walker(−3) vs booked pnl_percentage, sign disagreements printed.
   live-stopped = the fill's booked close_reason is a stop (contains "STOP"; no reason → pnl_percentage ≤ −2).
@@ -129,6 +129,17 @@ def walk(P, tp=np.inf, sl=3.0, b=np.inf, be=0.1, A=np.inf, G=np.inf, cap=720, tp
     f = P["cl"][n - 1]
     why = "CAP" if P["end_ms"] >= te + cap * MIN - MIN else "UNRES"
     return f - ENTRY - TAKER * (1 + f / 100) - SLIP, why, (t[n - 1] - te) / MIN
+
+
+def walk_net(P, tp, sl, cap=720):
+    """🔧 (DECISION_LOG 355) the LIVE convention: TP and stop are NET of fees (services.frenzy.frenzy_exit_for judges net pnl; the resting TP
+    price is solved to book net +tp after the entry taker + maker exit — services.exec_shadow.resting_tp_price). The study walker above takes
+    gross price lines and then subtracts fees (a +1.5 TP booked ≈ +1.437 — fees counted twice vs live). Here the net targets are turned into
+    the gross lines that book them, so a TP win books exactly +tp and a stop books −sl − slippage (or worse on a gap), like live fills."""
+    assert sl > ENTRY + TAKER, "stop must exceed the round-trip fees"
+    g_tp = (tp + ENTRY + MAKER) / (1 - MAKER / 100) if np.isfinite(tp) else tp       # gross move that books net +tp with a maker exit
+    g_sl = (sl - ENTRY - TAKER) / (1 - TAKER / 100)                                  # gross drop where net = −sl with a taker exit
+    return walk(P, tp=g_tp, sl=g_sl, cap=cap)
 
 
 def day_boot(vals, days, nb=BOOT_N, seed=BOOT_SEED):
@@ -427,9 +438,10 @@ def live_stopped(close_reason, pnl_pct):
 
 
 def shadow(P):
-    """→ dict(base, base_why, base_min, shadow, shadow_why, shadow_min, delta) — the study walker at −3 (today) and −4 (shadow)."""
-    b, bw, bm = walk(P, tp=TP, sl=SL_LIVE, cap=CAP)
-    s, sw, sm = walk(P, tp=TP, sl=SL_SHADOW, cap=CAP)
+    """→ dict(base, base_why, base_min, shadow, shadow_why, shadow_min, delta) — the study walker at −3 (today) and −4 (shadow), on NET
+    targets since DECISION_LOG 355 (walk_net; the gate bars are unchanged)."""
+    b, bw, bm = walk_net(P, tp=TP, sl=SL_LIVE, cap=CAP)        # 🔧 (355) net targets, like live
+    s, sw, sm = walk_net(P, tp=TP, sl=SL_SHADOW, cap=CAP)
     return dict(base=b, base_why=bw, base_min=bm, shadow=s, shadow_why=sw, shadow_min=sm,
                 delta=(s - b) if (np.isfinite(s) and np.isfinite(b)) else np.nan)
 

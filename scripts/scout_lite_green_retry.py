@@ -28,7 +28,7 @@ FROZEN DEFINITION (pre-registered 2026-10-19 — never re-fit)
            on the pair that UTC day) · DISLOCATION (first print after close + 8 s × 1.001 more than 1 % (+0.1 slack) from the close).
   priced   entry = the bar's close + 8 s, first print (ticks; else the next 1m open = provisional) × (1 + 0.10 % live slip) — the study's
            price_one; LITE C: TP +3 if vol × ≥ 20 ∧ BTC 1h EMA20 slope > 0 (last closed hour), else +2 · stop −3 · 12 h · resting maker TP at
-           the line · the study walker + fees (scout_long_stop4.walk = study_frenzy_realfills_common.walk). $ at LITE's $2,450 notional (8×).
+           the line · the study walker on NET targets like live (scout_long_stop4.walk_net, DECISION_LOG 355; was .walk = gross lines − fees). $ at LITE's $2,450 notional (8×).
   NOT reconstructed (stated): the ≤ 25-pair FRENZY shortlist, the market-volume gate, the first-bar guarantee / restarts / pauses, the
            engine's 6–8 h normal-hour cache, the ticker 24 h volume (rebuilt as 288 × volume × typical price, the walk's convention),
            positions absent from the exports.
@@ -350,7 +350,7 @@ def shadow_one(r, orders, bud, now, fetch=True):
         return dict(base, status="NONE", reason="DISLOCATION", bars_after=jj - j0)
     Q = LS.rebase(P, f)
     tp = lite_c_tp(ep["vol_mult"], slope)
-    pct, xwhy, xmin = LS.walk(Q, tp=tp, sl=SL, cap=CAP)
+    pct, xwhy, xmin = LS.walk_net(Q, tp=tp, sl=SL, cap=CAP)          # 🔧 (DECISION_LOG 355) net TP / stop like live LITE (no fee double count)
     if xwhy == "UNRES":
         return dict(base, status="PENDING", reason="12 h path not complete")
     return dict(base, status="FILL", reason="READY", bars_after=jj - j0, entry_at=pd.Timestamp(te, unit="ms").strftime("%Y-%m-%dT%H:%M:%S"),
@@ -368,7 +368,7 @@ def main(argv=None):
     print(f"LITE_GREEN_RETRY (DECISION_LOG 315, observe) · {tag}cohort {GATE} refusals (decisions journals) ≥ {start} UTC → {len(R)}"
           f" on {R.pair.nunique() if len(R) else 0} pairs")
     print(f"  shadow: the next red / flat READY bar of the same stretch · close + 8 s × 1.001 · LITE C (+3 if vol ≥ 20× ∧ BTC 1h slope > 0, "
-          f"else +2) / −3 / 12 h maker TP · ${NOTIONAL:,.0f} · study walker + fees · ticks first, else fapi 1m = provisional")
+          f"else +2) / −3 / 12 h maker TP · ${NOTIONAL:,.0f} · study walker on NET targets (DL 355) · ticks first, else fapi 1m = provisional")
     O = orders_frame()
     lt = O[(O.entry_strategy.astype(str) == "FRENZY_LITE") & (O.status.astype(str) == "CLOSED") & (O._k >= start)] if len(O) else O
     lt, lt_opx = _GK.split_operator_closed(lt) if len(lt) else (lt, lt)   # 🧰 (331) the comparison reads only exits the BOT took (PAIR_HELD keeps every position)

@@ -16,9 +16,9 @@ import scout_long_stop4 as LS  # noqa: E402
 
 MIN = 60_000
 TE = 1_800_000_000_000                                   # a whole minute
-BASE_STOP = -3 - 0.045 - 0.045 * (1 - 0.03) - 0.03       # the study's net −3 stop exit
-SH_STOP = -4 - 0.045 - 0.045 * (1 - 0.04) - 0.03
-TP_NET = 1.5 - 0.045 - 0.018 * (1 + 0.015)
+BASE_STOP = -3 - 0.03                                     # 🔧 (355) net −3 stop + slippage, like live
+SH_STOP = -4 - 0.03
+TP_NET = 1.5                                              # a TP books exactly the net target (live)
 
 
 def _path(bars, te=TE):
@@ -46,11 +46,11 @@ def test_deeper_stop_costs_one_point():
     s = LS.shadow(_full([(0, 0.2, -3.5, -3.2), (-3.2, -3.0, -4.6, -4.4)]))
     assert (s["base_why"], s["shadow_why"]) == ("STOP", "STOP")
     assert s["shadow"] == pytest.approx(SH_STOP)
-    assert s["delta"] == pytest.approx(SH_STOP - BASE_STOP)          # −1 + 0.045 × 0.01
+    assert s["delta"] == pytest.approx(SH_STOP - BASE_STOP)          # −1
 
 
 def test_non_stopped_fill_delta_is_exactly_zero():
-    for bars in ([(0, 1.6, -1.0, 1.5)], [(0, 0.5, -2.9, -2.0), (-2.0, 1.55, -2.1, 1.5)]):
+    for bars in ([(0, 1.6, -1.0, 1.5)], [(0, 0.5, -2.9, -2.0), (-2.0, 1.6, -2.1, 1.5)]):
         s = LS.shadow(_full(bars))
         assert s["base_why"] == s["shadow_why"] == "TP"
         assert s["delta"] == 0.0
@@ -185,3 +185,15 @@ def test_walker_is_the_study_walker():
         P = _path(bars)
         for sl in (3.0, 4.0):
             assert LS.walk(P, tp=1.5, sl=sl, cap=720) == ns["walk"](P, tp=1.5, sl=sl, cap=720)
+
+
+def test_walk_net_books_the_live_net_targets():
+    """🔧 (DECISION_LOG 355) the live bot judges TP / stop on NET pnl — a TP win books +1.5 (not ≈ +1.437), a stop −sl − slippage."""
+    b, why, _ = LS.walk_net(_full([(0, 1.6, -0.1, 1.5)]), tp=1.5, sl=3.0)
+    assert why == "TP" and b == pytest.approx(1.5)
+    b, why, _ = LS.walk_net(_full([(0, 1.55, -0.1, 1.5)]), tp=1.5, sl=3.0)      # gross +1.55 does not yet book net +1.5
+    assert why != "TP"
+    b, why, _ = LS.walk_net(_full([(0, 0.1, -2.95, -2.9)]), tp=1.5, sl=3.0)     # gross −2.95 is already net ≤ −3
+    assert why == "STOP" and b == pytest.approx(-3.0 - 0.03)
+    b, why, _ = LS.walk_net(_full([(0, 0.1, -2.85, -2.8)]), tp=1.5, sl=3.0)
+    assert why != "STOP"

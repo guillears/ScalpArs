@@ -8544,3 +8544,18 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - The open-row badge read "🩳 −8% / +15% / 72h" (price moves from the fill); every other sleeve badge is P&L. Now "🩳 TP +8% · SL −15% · 72h";
   the hover keeps the price levels; the export config line, the FRENZY monitor line (dashboard + both exports) and the strategy hover say "TP +8 % (price −8 %) / SL −15 % (price +15 %)".
   The 🩳 box inputs already say "Take profit: price −%" / "Stop: price +%" (unchanged). Display only. Test: tests/test_flatbase_badge_labels.py.
+
+## (355) 2026-10-23 — 🔧 Scout walkers book NET targets like live (operator: "we talk about NET! maybe you are double counting fees?")
+- **Found:** the live bot judges FRENZY / WILLY / LITE TP and stop on NET pnl (frenzy_exit_for / frenzy_willy_exit_for; the resting TP price
+  from exec_shadow.resting_tp_price books net +tp after entry taker + maker exit). The REALFILLS study walker (study_frenzy_realfills_common.walk,
+  copied verbatim into scripts/scout_long_stop4.py) takes gross price lines and then subtracts fees → a +1.5 TP booked ≈ +1.437 and a −3 stop
+  ≈ −3.12 (fees counted twice vs live). Users: the LONG_STOP4 scout and the LITE_GREEN_RETRY scout. Checked clean (net ≥ tp): scout_frenzy_exits /
+  WILLY walkers; engine replays; FLATBASE (its live TP is a price level).
+- **Fix:** scout_long_stop4.walk_net (net targets → the gross lines that book them; a TP books exactly +tp, a stop −sl − slippage or worse on a
+  gap) used by LONG_STOP4's shadow() and LITE_GREEN_RETRY; the verbatim study walk() stays for the parity test. Gate bars unchanged (Δ-based,
+  same convention on both arms). Impact on what was shown (FRENZY_LONG master 32): −3 −0.27 → ≈ −0.23, −4 +0.22 → ≈ +0.27 (Δ unchanged).
+- **Also on the gross convention (deep review, report-only):** the REALFILLS study family (study_frenzy_realfills_*.py → FRENZY_REALFILLS_EXIT_RUNNER
+  2026-10-19, cited by DL 315 / 317), study_lite_green_retry_deep.py (DL 315 / 316), study_long_stop_saved_* — synthetic check: levels move ≤ 0.02 pts,
+  stop-width Δ ≤ 0.011 → no decision revisited. Live check: resting-TP fills book the net target exactly (LITE C +2.003…2.020, LONG AGT +1.5006).
+- **Tests:** tests/test_scout_long_stop4.py (net constants; walk_net books +1.5 / −3.03; gross +1.55 does not yet book +1.5; gross −2.95 is
+  already net ≤ −3).

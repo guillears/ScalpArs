@@ -697,7 +697,7 @@
     "bearrun_bypass_gates": "BTC_ADX_BLOCK_SHORT,BTC_RSI_ADX_CROSS,BTC_1H_5M_RSI_DIR_GATE,BTC_SLOPE_GATE,BTC_1H_RSI_MIN_GATE",
     "bearrun_pair_blacklist": "BTCUSDT,ETHUSDT",
     "bearrun_pair_spacing_hours": 2.0,
-    "bearrun_invest_mult": 1.0,
+    "bearrun_invest_mult": 0.2,
     "bearrun_lev_mult": 0.25,
     "bearrun_window_merge_minutes": 180.0,
     "surge_long_enabled": true,

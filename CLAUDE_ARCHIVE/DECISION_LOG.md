@@ -8638,3 +8638,18 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Review round (caveman + deep, both SHIP; flat walk_v2 byte-identical on 200k random paths):** a ladder FLOOR exit that replaces a flat TP / cap pays 0.05 (taker + slip vs the maker TP); ladder reads show "no verdict (parity)" like the other gates; per-fill list capped at 20; HOLD text splits unpriced / unresolved.
 - **Tests:** tests/test_scout_willy_exit_v2.py (INIT-shape walks: tick / bar booking, the peak event never sets its own floor; reads
   CANDIDATE / KEEP_FLAT / one-fill concentration; ladder keys persist with the MAIN read).
+
+## (360) 2026-10-23 — ⚖️ Bear-Run size = FLATBASE size (operator: "match it to flatbase"; declared size cut, no code change)
+- **Change:** `bearrun_invest_mult` 1.0 → **0.2** (trading_config.json); `bearrun_lev_mult` stays 0.25 (5×). ≈ $2,250 → ≈ $500 notional per short (0.2 × base ≈ $93 margin, raised to the $100 min_investment_size)
+  at today's ≈ $1,870 account — the same as FLATBASE_SHORT / momentum long (0.2 × 5×). A 10-22-type window (3 shorts ≈ −2.5 %) ≈ −$9 at the new size vs ≈ −$42 at the old size on today's equity (the booked −$69 was on ≈ $750 margins).
+- **Why:** after the 10-22 / 10-23 Bear-Run work — sleeve-kill checklist (no separator), trigger-timing replay (no earlier trigger helps), V2 replay
+  (fails vs T0 under every exit, 0/4 walk-forward), V2 separator screen (2,041 features, no survivor) — the sleeve is ≈ break-even / slightly negative
+  (replay −0.03 … −0.16 %/short; live 2 windows +$7 / −$69). The operator chose to keep it ON at probe-like $ (not off: it is the only forward source)
+  while the false-start exit study and the V2 live shadow (both launched 2026-10-23) decide what it becomes. Operator-instructed size cut, acknowledged
+  (memory "filters, not sizing": the filter / exit hunt was run first and found nothing armable).
+- **Gates:** the 10-08 "first 3 complete windows at 5× Σ < 0 → back to 0.05" revert gate is SUPERSEDED (this size is ≈ probe $); the (200) arm bar still
+  decides any return to full size (= invest 1.0 ∧ lev 1.0). No other config touched.
+- **Known stale surfaces (deep review; follow-up, not in this commit):** scripts/scout_revert_gates.py still runs the BEARRUN_5X gate (it counts these
+  0.2 × 5× fills and can print "ROLLBACK: bearrun_lev_mult 0.05" — IGNORE it, superseded here); templates/index.html both exports still print the
+  "5x ROLLBACK (252)" text; config.py:1211 comment; the (200) BEARRUN arm action names only bearrun_lev_mult (also needs invest 1.0). Separate latent
+  edge: a spike fade on a pair whose ladder SHORT got the bear bypass in the same scan is tagged BEARRUN_SHORT but sized as a spike (never seen).

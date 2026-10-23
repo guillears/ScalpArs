@@ -60,6 +60,11 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    switching `frenzy_willy_a_nomiss` off; else keep (never re-fit). Expect ≈ 0.66 fills / week (study), so the gate is months away —
    report the tally anyway. Backtest reference: reports/WILLY_VOLUME_FLOOR_2026-10-23.md § R_NOMISS (62 · 69.4 % · −0.525 vs on-time
    −0.456, Δ −0.07, CI −0.81…+0.63).
+②h **📏 FRENZY_LONG RE-SIZE read (locked DECISION_LOG 317 · scout DECISION_LOG 351, observe-only)** — run scripts/scout_long_resize.py
+   (also in the opportunity scout): CLOSED FRENZY_LONG fills on the live −4 stop (entry_frenzy_stop_pct ≥ 3.5) from EVERY export → the
+   locked DL 317 verdict (REVERT to −3 · COLLECTING · HOLD · RESIZE = propose blocker → invest 1.0 at lev 0.05, operator decides) + the
+   info-only confidence line (N ≥ 30 / 10 days · WR > breakeven ≈ 74 % · avg ≥ +0.10 at P ≥ 0.95 · Σ $ > 0 · haircut). Show it next to
+   ② master (32 fills re-walked at +1.5 TP: −4 +0.22 %/fill · 78 % vs −3 −0.27 · 63 %) and ③ backtest (623 · 73 % · −0.04 at −4).
 ③ **Then EVERY open watchlist gate in CLAUDE_CURRENT_STATE.md and every scout tracker** — run each scout script and report tallies vs
    bars unprompted (the standing batch-watchlist rule).
 Goal stated by the operator: make the bot highly profitable going forward (≈ 10 %/day ambition) — FRENZY and SPIKE_FADE are the

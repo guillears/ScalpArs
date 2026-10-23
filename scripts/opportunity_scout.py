@@ -1432,6 +1432,14 @@ def run():
     except Exception as _wnm_e:
         log(f"WILLY R_NOMISS gate failed: {_wnm_e}")
         _rg_sec += ["## 🧭 WILLY A R_NOMISS", "", f"Unavailable this run ({str(_wnm_e)[:120]}).", ""]
+    try:                                               # 📏 Oct-23 FRENZY_LONG re-size read across every export (locked DL 317 gate + DL 351 confidence line; orders exports only, observe-only; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_long_resize as _lrs
+        _rg_sec += _lrs.run(now_ms)
+    except Exception as _lrs_e:
+        log(f"FRENZY_LONG re-size read failed: {_lrs_e}")
+        _rg_sec += ["## 📏 FRENZY_LONG RE-SIZE read", "", f"Unavailable this run ({str(_lrs_e)[:120]}).", ""]
     try:                                               # 🩳 Oct-22 FLATBASE_SHORT gates + observe lines ① non-flat · ② missed · ③ blocked longs (DECISION_LOG 348; alert-only; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

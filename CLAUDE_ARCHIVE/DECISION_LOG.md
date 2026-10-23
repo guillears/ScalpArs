@@ -8499,3 +8499,19 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **🔒 Gate (frozen, alert-only — scripts/scout_willy_nomiss.py, embedded in the opportunity scout):** cohort = CLOSED WILLY-class fills opened ≥ this commit + 10 min, operator-closed out. At the first 15 R_NOMISS fills (≥ 10 same-period normal WILLY fills needed, else NO_COMPARATOR — no verdict): avg pnl_percentage < the same-period normal WILLY-class avg − 0.30 pts → ALERT: review switching `frenzy_willy_a_nomiss` off; else keep (never re-fit). The scout also counts the journal events (incl. _OFF refusals while the switch is off — counted, not priced).
 - **Tests:** tests/test_willy_nomiss.py (BTR shape opens · red bar before the read → old message · first red > 60 min → refused / expires · floor below $20M at the entry bar → refused · turnover > 1 → WILLY_HT · switch off → old behaviour · inside the window unchanged · restart (persisted pending + fresh process + seen episode) · one per episode · the real _frenzy_open stamps the column · migration · config / UI / export parity · scout gate). Pinned: tests/test_frenzy_sleeve.py field count 70 → 71 + UI map; tests/test_manual_entry_stamps.py sleeve-only stamp list.
 
+
+## (351) 2026-10-23 — 📏 FRENZY_LONG RE-SIZE read in the scout (operator: "yes add the tracker"; observe-only, no engine / config change)
+- **Why:** operator — "−4 % the overall year might be positive … so LONG might go full size". On the 32 master FRENZY_LONG fills (B16–B23, re-walked at today's +1.5 TP — as traded they were 34 % · −1.19; the
+  REALFILLS study's 29 + 3 B18 stops it had missed — ERA / W / ORCA 10-06…08, all through −4 within 8–50 min on 1m klines) −4 books
+  +0.22 %/fill · 78 % vs −0.27 · 63 % at −3 (5 of 12 stops saved; ≈ +0.11…+0.15 after the 30–50 % haircut). Two-year backtest at −4:
+  623 · 73 % · −0.04 (2026-H2 negative). No live −4 fill in the exports yet (first ones in the batch started 10-23 01:03 UTC).
+- **Found while building (operator had flagged "I remembered something alike"):** DL 317 had ALREADY locked the RE-SIZING read (≥ 20 live −4
+  fills on ≥ 8 days, avg > 0 at day-boot P ≥ 0.80 ∧ WR ≥ 73 % ∧ no day / pair ≥ 50 % of the gain → propose blocker → invest 1.0 at lev 0.05),
+  coded only in services.frenzy.frenzy_long_stop4_gate for the dashboard FRENZY Fills row (live DB → censored by every reset), never in the scout.
+- **Ship:** scripts/scout_long_resize.py (+ opportunity-scout section): cohort = CLOSED FRENZY_LONG LONG fills with entry_frenzy_stop_pct ≥ 3.5
+  from every orders export (dedup (opened_at, pair, direction), CLOSED wins; operator-closed out via scout_gatekit) → the LOCKED gate via the same
+  function (verdict unchanged, gates do not move) + a CONFIDENCE info line with the stricter bars proposed 2026-10-23 before the locked read was
+  found (N ≥ 30 on ≥ 10 days · WR > the cohort's breakeven ≈ 74 % · avg ≥ +0.10 % at day-boot P ≥ 0.95 · Σ $ > 0 · haircut shown). Info only —
+  a RESIZE with "not yet" confidence is reported as such; the operator decides the step.
+- **Tests:** tests/test_scout_long_resize.py (cohort filters + dedup + operator-closed · locked verdict = the dashboard function · RESIZE /
+  COLLECTING / REVERT via touch rows · confidence STRONG / fail · empty exports · wiring).

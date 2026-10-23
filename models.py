@@ -305,6 +305,7 @@ class Order(Base):
     entry_frenzy_catchup = Column(Boolean, nullable=True)          # ⏪ Oct-6: True = a CATCH-UP fill (its fresh ON bar fell while the pass was not judging — pause / restart); False = a normal FRENZY fill; NULL = not FRENZY
     entry_frenzy_willy_trigger = Column(String(2), nullable=True)   # 🎲 Oct-8 (251): FRENZY_WILLY entry — 'A' = new flag · 'B' = fresh ON bar FRENZY / WIDE / LITE did not take (NULL = not WILLY)
     entry_frenzy_willy_wait_bars = Column(Integer, nullable=True)   # 🎲 Oct-8 (251): closed 5m bars from the trigger bar to the first RED bar it opened on (0 = the trigger bar was red)
+    entry_frenzy_willy_nomiss = Column(Boolean, nullable=True)      # 🧭 (350): True = R_NOMISS entry A (read after the late window, no red 5m bar missed since the spike) · False = other WILLY fill · NULL = not WILLY
     entry_frenzy_retry_wait_min = Column(Float, nullable=True)     # 🔁 (316) FRENZY_LITE_RETRY: minutes from the green bar's close to the entry bar's close (NULL = not a retry)
     entry_frenzy_retry_green_ret = Column(Float, nullable=True)    # 🔁 (316) FRENZY_LITE_RETRY: the refused green signal bar's return, % (NULL = not a retry)
     entry_frenzy_stop_pct = Column(Float, nullable=True)           # 🛑 (317) the loss stop (+%) this FRENZY fill ran at entry (LONG 4 since 317, else 3; WILLY its own; NULL = not FRENZY / pre-317)

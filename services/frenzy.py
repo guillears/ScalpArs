@@ -1084,7 +1084,8 @@ def frenzy_willy_pending_clean(v) -> Optional[dict]:
         return dict(trig=v['trig'], spike=int(v['spike']), armed=int(v['armed']), exp=int(v['exp']), why=str(v.get('why') or '')[:160],
                     blocked=bool(v.get('blocked')),
                     turnover=(_tw if _tw in ("FRENZY_WILLY_TURNOVER", "FRENZY_WILLY_TURNOVER_UNREAD") else None),
-                    tkinds=[k for k in (v.get('tkinds') or []) if k in ("FRENZY_WILLY_TURNOVER", "FRENZY_WILLY_TURNOVER_UNREAD")])
+                    tkinds=[k for k in (v.get('tkinds') or []) if k in ("FRENZY_WILLY_TURNOVER", "FRENZY_WILLY_TURNOVER_UNREAD")],
+                    **({'nomiss': True} if v.get('nomiss') is True else {}))   # 🧭 (350) an R_NOMISS entry A keeps its tag across a restart
     except (TypeError, ValueError, KeyError):
         return None
 
@@ -1136,6 +1137,40 @@ def frenzy_willy_late_bars(spike_ts, bar_open) -> Optional[int]:
         d = int(bar_open) - int(spike_ts)
         return max(0, d // BAR_MS)
     except (TypeError, ValueError):
+        return None
+
+
+def frenzy_willy_a_nomiss_on(th) -> bool:
+    """🧭 (DECISION_LOG 350) the R_NOMISS switch — strictly False switches it off; missing / unreadable = the code default (ON)."""
+    return getattr(th, 'frenzy_willy_a_nomiss', True) is not False
+
+
+def frenzy_willy_no_red_missed(closed, spike_ts, bar_open) -> Optional[bool]:
+    """🧭 (DECISION_LOG 350) R_NOMISS — did a pair read AFTER the cold late window miss nothing an on-time WILLY A would have acted on?
+    closed = CLOSED 5m rows [open_ms, o, h, l, c, v], oldest first, ending at the bar just judged (its open = bar_open − BAR_MS); spike_ts =
+    the spike bar's CLOSE (frenzy_walk). The bars checked run from the spike bar itself (an on-time A judges it as its trigger bar: a red
+    spike bar would have opened at once) up to, but NOT including, the bar just judged (that is the candidate entry bar — the normal red-bar
+    path judges it). RED = close < open, strictly — frenzy_willy_red's rule (a flat bar is NOT red; it would not have opened an on-time A).
+    → True = no red bar closed in that span (the entry bar is the one an on-time WILLY would take) · False = a red bar was missed ·
+    None = unreadable (rows missing / not contiguous / not ending at the bar just judged / a non-positive or bad open / close) — the caller
+    refuses (fail-closed). Pure; never raises."""
+    try:
+        sp, bo = int(spike_ts), int(bar_open)
+        last = bo - BAR_MS                      # the bar just judged (open ms)
+        first = sp - BAR_MS                     # the spike bar (open ms)
+        if not closed or int(closed[-1][0]) != last or first > last:
+            return None
+        rows = [r for r in closed if first <= int(r[0]) < last]
+        if len(rows) != (last - first) // BAR_MS or any(int(r[0]) != first + k * BAR_MS for k, r in enumerate(rows)):
+            return None
+        missed = False
+        for r in rows:
+            o, c = float(r[1]), float(r[4])
+            if not (math.isfinite(o) and math.isfinite(c) and o > 0 and c > 0):
+                return None
+            missed = missed or c < o
+        return not missed
+    except (TypeError, ValueError, IndexError):
         return None
 
 

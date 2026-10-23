@@ -51,6 +51,15 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    (turnover > 1 vs FLAT real, ≤ 1 vs FLAT shadows, same period; unscored turnover apart) · 🩳② MISSED / MAX_OPEN / UNREADABLE / refused
    setups per reason (N · avg · Σ) · 🩳③ FRENZY longs blocked PAIR_HELD by an open FLATBASE short per sleeve vs the short's own pnl + funding
    (LITE unpriced while LITE C is on; generic PAIR_HELD = unattributed). Read each section's coverage line first (waiting / unpriced / unscored ≠ rest).
+②g **🧭 WILLY A R_NOMISS (DECISION_LOG 350, 2026-10-23, alert-only)** — run scripts/scout_willy_nomiss.py (also in the opportunity
+   scout): CLOSED WILLY-class fills from the deploy + 10 min (operator-closed out) split by `entry_frenzy_willy_nomiss` — R_NOMISS vs normal
+   WILLY (WILLY + HT) same period: N · days · WR · avg % · Σ pts · $. Journal tallies (e = WILLY): A_NOMISS (allowed) · _MISSED (a red bar
+   already closed → refused as before) · _LATE (no red missed, red wait from the spike over) · _OFF (eligible while the switch was off) ·
+   _VOL24_LOW (refused at the red bar by the $20M floor). Per fill: bars late at the read, wait bars from the spike, turnover route (HT share
+   vs the study's 27 %). 🔒 Gate (frozen): at the first 15 R_NOMISS fills, avg < the same-period normal WILLY avg − 0.30 pts → review
+   switching `frenzy_willy_a_nomiss` off; else keep (never re-fit). Expect ≈ 0.66 fills / week (study), so the gate is months away —
+   report the tally anyway. Backtest reference: reports/WILLY_VOLUME_FLOOR_2026-10-23.md § R_NOMISS (62 · 69.4 % · −0.525 vs on-time
+   −0.456, Δ −0.07, CI −0.81…+0.63).
 ③ **Then EVERY open watchlist gate in CLAUDE_CURRENT_STATE.md and every scout tracker** — run each scout script and report tallies vs
    bars unprompted (the standing batch-watchlist rule).
 Goal stated by the operator: make the bot highly profitable going forward (≈ 10 %/day ambition) — FRENZY and SPIKE_FADE are the

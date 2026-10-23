@@ -1424,6 +1424,14 @@ def run():
     except Exception as _wht_e:
         log(f"WILLY_HT gates failed: {_wht_e}")
         _rg_sec += ["## 🎲¼ WILLY_HT", "", f"Unavailable this run ({str(_wht_e)[:120]}).", ""]
+    try:                                               # 🧭 Oct-23 WILLY A R_NOMISS gate + events (DECISION_LOG 350; orders + decisions exports, alert-only; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_nomiss as _wnm
+        _rg_sec += _wnm.run(now_ms)
+    except Exception as _wnm_e:
+        log(f"WILLY R_NOMISS gate failed: {_wnm_e}")
+        _rg_sec += ["## 🧭 WILLY A R_NOMISS", "", f"Unavailable this run ({str(_wnm_e)[:120]}).", ""]
     try:                                               # 🩳 Oct-22 FLATBASE_SHORT gates + observe lines ① non-flat · ② missed · ③ blocked longs (DECISION_LOG 348; alert-only; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

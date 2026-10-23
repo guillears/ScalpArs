@@ -39,7 +39,7 @@ from services.flatbase import (FLATBASE_SHORT, FLATBASE_CLASS, flatbase_enabled,
 from services.touch_snapshot import TOUCH_LEVELS, touch_mark, touch_features, touch_snapshot, touch_outcome   # 🛑👁 (317) observe-only touch snapshots
 from services.frenzy import (FRENZY_LITE_RETRY, FRENZY_LITE_FAMILY, frenzy_lite_retry_enabled, frenzy_lite_retry_pending,  # 🔁 (DECISION_LOG 316)
                              frenzy_lite_retry_pending_clean, frenzy_lite_retry_step, LITE_RETRY_OPEN, LITE_RETRY_DROP)
-from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, frenzy_wide_shadow, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio
+from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, frenzy_wide_shadow, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio, frenzy_willy_a_nomiss_on, frenzy_willy_no_red_missed
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 from services.golive_guards import (backstop_heal_skip_inflight, backstop_trigger_price, backstop_needs_replace, algo_status_resting, find_untracked_positions,  # 🛡 (DECISION_LOG 292)
                                    untracked_action, preflight_failures, BACKSTOP_REPLACE_RETRY_S, BACKSTOP_REPRICE_INTERVAL_S, UNTRACKED_CONFIRM_PASSES,
@@ -9033,7 +9033,8 @@ class TradingEngine:
                         # switch: the 'seen' episode map is kept up to date so switching WILLY on never fires A for an episode already flagged.
                         await self._frenzy_willy_eval(db, pair, ep, flag, ind, bar_open, _prev.get('spike_ts'), _willy,
                                                       dict(on=_on, ready=ready, code=code, text=text),
-                                                      pair_warm=(_lo_prev is not None and int(_lo_prev) == bar_open - 600_000))
+                                                      pair_warm=(_lo_prev is not None and int(_lo_prev) == bar_open - 600_000),
+                                                      closed=closed)   # 🧭 (350) R_NOMISS reads the bars since the spike
                     except Exception as _fe:
                         n_bad += 1
                         logger.warning(f"[FRENZY] {pair}: not read this bar ({str(_fe)[:120]})")
@@ -10755,7 +10756,35 @@ class TradingEngine:
         except Exception:
             return None
 
-    async def _frenzy_willy_eval(self, db, pair, ep, flag, ind, bar_open, prev_spike_ms, enabled, fz=None, pair_warm=False) -> None:
+    def _frenzy_willy_nomiss_ok(self, pair, sp, bar_open, late, closed, wait_ms) -> bool:
+        """🧭 (DECISION_LOG 350) R_NOMISS for a cold new episode the late window alone refuses: True = entry A may arm as the on-time A would
+        have — frenzy_willy_a_nomiss ON, no red 5m bar missed since the spike (frenzy_willy_no_red_missed; unreadable = refused), and the bar
+        just closed still inside the red wait counted from the spike. Every refusal path keeps today's "late window — no entry A" log (the
+        caller prints it) and adds one event: _MISSED (a red bar was missed) · _LATE (no red missed, but the wait from the spike is over) ·
+        _OFF (eligible, switch off — the observe tally). The allowed tally (FRENZY_WILLY_A_NOMISS) is counted where A arms. Never raises."""
+        try:
+            if late is None or closed is None:
+                return False
+            nm = frenzy_willy_no_red_missed(closed, sp, bar_open)
+            if nm is None:
+                return False
+            th = config.trading_config.thresholds
+            if nm is False:
+                self._willy_event("FRENZY_WILLY_A_NOMISS_MISSED", pair, reason=f"read {late} bars after the spike · a red bar already closed")
+                return False
+            if int(bar_open) > int(sp) + int(wait_ms):
+                self._willy_event("FRENZY_WILLY_A_NOMISS_LATE", pair, reason=f"read {late} bars after the spike · no red bar yet, the red wait from the spike is over")
+                return False
+            if not frenzy_willy_a_nomiss_on(th):
+                self._willy_event("FRENZY_WILLY_A_NOMISS_OFF", pair, reason=f"read {late} bars after the spike · no red bar missed · switch OFF")
+                logger.info(f"[FRENZY_WILLY] {pair}: read {late} bars after the spike, no red bar missed — R_NOMISS switched off (frenzy_willy_a_nomiss)")
+                return False
+            return True
+        except Exception as e:
+            logger.warning(f"[FRENZY_WILLY] {pair}: R_NOMISS check failed ({str(e)[:80]}) — refused as before")
+            return False
+
+    async def _frenzy_willy_eval(self, db, pair, ep, flag, ind, bar_open, prev_spike_ms, enabled, fz=None, pair_warm=False, closed=None) -> None:
         """🎲 Oct-8 FRENZY_WILLY for ONE flagged pair on the bar that just closed — LAST in the pass (after FRENZY / WIDE / LITE). Always keeps the
         seen-episode map; acts only when frenzy_willy_enabled. ① a pending entry of an OLDER episode expires first; ② a trigger ARMS a pending
         entry (A: new flag · B: fresh ON bar FRENZY / WIDE / LITE did not take — never on a bar A was considered, never on an ON bar the WILLY
@@ -10766,7 +10795,13 @@ class TradingEngine:
         dislocation). Turnover / hold / pair-held refusals and an open-path crash keep it pending (each refusal recorded once per pending).
         pair_warm = THIS process judged this pair on the previous bar; a COLD pair's new episode may still fire A while its spike bar closed
         ≤ frenzy_willy_a_cold_max_bars (3) bars before the bar just closed (0 = only the bar just closed) — armed on THIS bar (the red-candle
-        wait runs from arming). WILLY's outcome goes to flag['willy_last'] (never FRENZY's last_fire).
+        wait runs from arming). 🧭 R_NOMISS (DECISION_LOG 350, frenzy_willy_a_nomiss): a cold new episode PAST that window still arms A when
+        NO red 5m bar closed from the spike bar up to the bar just closed (frenzy_willy_no_red_missed on `closed`; unreadable = refused) and
+        the bar just closed is still inside the red wait counted from the SPIKE — armed exactly as an on-time A (armed = the spike close,
+        exp = spike + wait, so the first red bar must still come ≤ 60 min after the spike), tagged nomiss (Order.entry_frenzy_willy_nomiss);
+        at its red bar the $ 24 h-volume floor (frenzy_min_volume_usd) is re-checked (below / unreadable → the entry ends,
+        FRENZY_WILLY_NOMISS_VOL24_LOW), then every WILLY guard / turnover routing as usual. A missed red bar → refused as before.
+        WILLY's outcome goes to flag['willy_last'] (never FRENZY's last_fire).
         Crash-isolated (FRENZY_WILLY_FAILED) — never raises into the pass; a crash never drops a pending entry."""
         try:
             th = config.trading_config.thresholds
@@ -10800,8 +10835,10 @@ class TradingEngine:
             _bar_txt = f"{datetime.utcfromtimestamp(int(bar_open) / 1000):%m-%d %H:%M}"
             _wait = frenzy_willy_wait_ms(th)
 
-            async def _arm(trig, why):
-                _pend[pair] = dict(trig=trig, spike=sp, armed=int(bar_open), exp=int(bar_open) + _wait, why=str(why)[:160], blocked=False, turnover=None)
+            async def _arm(trig, why, armed=None, nomiss=False):
+                _a0 = int(bar_open) if armed is None else int(armed)   # 🧭 (350) R_NOMISS arms as the on-time A would have: at the spike close
+                _pend[pair] = dict(trig=trig, spike=sp, armed=_a0, exp=_a0 + _wait, why=str(why)[:160], blocked=False, turnover=None,
+                                   **({'nomiss': True} if nomiss else {}))
                 if trig == "B":
                     self.__dict__.setdefault('_fz_willy_b_used', {})[pair] = sp   # one B per episode — used even if it expires
                 self._willy_event(f"FRENZY_WILLY_ARMED_{trig}", pair, reason=why)
@@ -10816,7 +10853,9 @@ class TradingEngine:
                 await self._frenzy_willy_save()
             _tried_a = False
             if _new and bool(getattr(th, 'frenzy_willy_entry_a', True)) and pair not in _pend:
-                if _cold_skip:
+                _nomiss = (self._frenzy_willy_nomiss_ok(pair, sp, bar_open, _late, closed, _wait)   # 🧭 (350) — only with the stored state read:
+                           if (_cold_skip and getattr(self, '_fz_judged_loaded', False)) else False)   # no MISSED / OFF event on an unread-state pass
+                if _cold_skip and not _nomiss:
                     logger.info(f"[FRENZY_WILLY] {pair}: episode (spike {_sp_txt}) already flagged before this process judged the pair on the "
                                 f"previous bar (restart / joined the read late / FRENZY paused) and {_late if _late is not None else '?'} bars old "
                                 f"> the {frenzy_willy_a_cold_bars(th)}-bar late window — no entry A")
@@ -10826,7 +10865,12 @@ class TradingEngine:
                 else:
                     _tried_a = True
                     _d = await self._frenzy_willy_done_db(db, pair, sp, 'A')
-                    if _d is False:   # a late cold A arms on THIS bar: its red-candle wait runs from now (arming), not from the spike bar
+                    if _d is False and _nomiss:   # 🧭 (350) R_NOMISS: armed as the on-time A (wait from the spike); the first red bar is its entry bar
+                        logger.info(f"[FRENZY_WILLY] {pair}: read {_late} bars after the spike but no red bar missed — entry A allowed (R_NOMISS)")
+                        self._willy_event("FRENZY_WILLY_A_NOMISS", pair, reason=f"read {_late} bars after the spike {_sp_txt}",
+                                          price=(flag.get('live_price') or flag.get('price')))
+                        await _arm('A', f"R_NOMISS: read {_late} bars after the spike, no red bar missed", armed=sp, nomiss=True)
+                    elif _d is False:   # a late cold A arms on THIS bar: its red-candle wait runs from now (arming), not from the spike bar
                         await _arm('A', f"flag {_late} bars late: joined the read late" if (_late and not pair_warm) else "new flag")
                     elif _d:
                         logger.info(f"[FRENZY_WILLY] {pair}: entry A already taken for the episode (spike {_sp_txt}) — a fill before a restart")
@@ -10860,6 +10904,25 @@ class TradingEngine:
             if not _red:
                 flag['willy_last'] = f"{_bar_txt} WILLY {_pd['trig']} armed · waiting red" + (" (candle unreadable)" if _red is None else "")
                 return
+            # ⓪ 🧭 (350) R_NOMISS — BEFORE the hold / slot / pair-held check (a sub-floor pair ends here, never logged as a hold block): the
+            # pair joined the read through the shortlist, so its $ 24 h-volume floor is re-checked at the entry bar (the study's rule ③); below
+            # it / unreadable → this entry ends (one-shot; counted FRENZY_WILLY_NOMISS_VOL24_LOW). On-time WILLY: unchanged (no nomiss tag).
+            if _pd.get('nomiss'):
+                _vmin = float(getattr(th, 'frenzy_min_volume_usd', 20e6) or 0)
+                try:
+                    _v24 = float(flag.get('volume_24h'))
+                    _v24 = _v24 if _v24 == _v24 else None
+                except (TypeError, ValueError):
+                    _v24 = None
+                if _v24 is None or _v24 < _vmin:
+                    _pend.pop(pair, None)
+                    self._record_filter_block("FRENZY_WILLY_NOMISS_VOL24_LOW", "LONG")
+                    _vt = f"${_v24 / 1e6:.1f}M" if _v24 is not None else "unreadable"
+                    self._willy_event("FRENZY_WILLY_A_NOMISS_VOL24_LOW", pair, reason=f"24 h volume {_vt} < ${_vmin / 1e6:.0f}M", tally=False)
+                    logger.info(f"[FRENZY_WILLY] {pair}: R_NOMISS entry A refused at the red bar — 24 h volume {_vt} < ${_vmin / 1e6:.0f}M (no entry, no re-arm)")
+                    flag['willy_last'] = f"{_bar_txt} WILLY A (R_NOMISS) refused: 24 h volume {_vt} < ${_vmin / 1e6:.0f}M"
+                    await self._frenzy_willy_save()
+                    return
             # ① the hold / pair-held guards FIRST (round-3 deep review I1): a turnover refusal is recorded only when the entry could otherwise
             # open. Checked quietly; the FIRST time it blocks this pending entry, the open path runs once to record it (FRENZY_WILLY_HOLD /
             # FRENZY_WILLY_PAIR_HELD + the hold event) and the entry is marked blocked — later red bars re-check quietly.
@@ -11157,6 +11220,7 @@ class TradingEngine:
                 entry_global_volume_ratio=_g.get('_global_volume_ratio'), entry_pair_volume_ratio=_pvr,
                 frenzy_long=not (wide or lite or _wl), frenzy_wide=(wide and not _wl), frenzy_lite=(lite and not _wl), frenzy_willy=_wl,
                 entry_frenzy_willy_trigger=(willy if _wl else None), entry_frenzy_willy_wait_bars=(willy_wait_bars if _wl else None), frenzy_bar_open_ms=(int(_leash_time.time() * 1000) if _cu else bar_open), frenzy_catchup=_cu,   # ⏪ catch-up: only the bot-open-lane wait counts
+                entry_frenzy_willy_nomiss=(bool(((getattr(self, '_fz_willy_pending', None) or {}).get(pair) or {}).get('nomiss')) if _wl else None),   # 🧭 (350) the pending entry's R_NOMISS tag
                 frenzy_willy_ht=_ht,   # 🎲¼ (341) with frenzy_willy=True → tagged FRENZY_WILLY_HT by open_position
                 frenzy_lite_retry=_lr,   # 🔁 (316) the retry rides lite=True (LITE-family open) and is tagged FRENZY_LITE_RETRY by open_position
                 entry_frenzy_retry_wait_min=(round((int(bar_open) - int(lite_retry['green'])) / 60_000.0, 2) if _lr else None),
@@ -12192,6 +12256,7 @@ class TradingEngine:
         entry_frenzy_retry_green_ret: Optional[float] = None,   # 🔁 (316) the refused green bar's return, %
         entry_frenzy_willy_trigger: Optional[str] = None,   # 🎲 (251) 'A' = new flag · 'B' = fresh ON bar FRENZY / WIDE / LITE did not take
         entry_frenzy_willy_wait_bars: Optional[int] = None,   # 🎲 (251) closed 5m bars from the trigger to the red entry bar (0 = the trigger bar was red)
+        entry_frenzy_willy_nomiss: Optional[bool] = None,   # 🧭 (350) True = an R_NOMISS entry A (read after the late window, no red bar missed)
         frenzy_strong: bool = False,   # 💪 Oct-4 (197): FRENZY_LONG with ADX rising ∧ +DI above −DI → frenzy_long_lev_mult_strong
         frenzy_bar_open_ms: Optional[int] = None,   # 🔥 Oct-3: the signal bar's open — lateness re-checked AFTER the bot open lane
         frenzy_catchup: bool = False,   # ⏪ Oct-6: a catch-up fill (its fresh ON bar was never judged) → entry_frenzy_catchup
@@ -14136,6 +14201,7 @@ class TradingEngine:
             entry_frenzy_catchup=(bool(frenzy_catchup) if _frenzy else None),   # ⏪ Oct-6: True = catch-up fill · False = normal FRENZY fill
             entry_frenzy_willy_trigger=(entry_frenzy_willy_trigger if (_frenzy and _fz_es in WILLY_EXIT_CLASS and entry_frenzy_willy_trigger in ("A", "B")) else None),   # 🎲 (251)
             entry_frenzy_willy_wait_bars=(int(entry_frenzy_willy_wait_bars) if (_frenzy and _fz_es in WILLY_EXIT_CLASS and entry_frenzy_willy_wait_bars is not None) else None),
+            entry_frenzy_willy_nomiss=(bool(entry_frenzy_willy_nomiss) if (_frenzy and _fz_es in WILLY_EXIT_CLASS) else None),   # 🧭 (350) False = a normal WILLY fill
             entry_frenzy_retry_wait_min=(entry_frenzy_retry_wait_min if (_frenzy and _fz_es == FRENZY_LITE_RETRY) else None),   # 🔁 (316)
             entry_frenzy_stop_pct=(self._frenzy_entry_stop_pct(_fz_es) if _frenzy else (flatbase_params(config.trading_config.thresholds)['stop'] if _fbs else None)),   # 🛑 (317) the stop this FRENZY fill runs at entry · 🩳 FLATBASE's price stop
             entry_btc_price=(globals().get('_current_btc_price') if _frenzy else None),   # 🛑👁 (317) the touch snapshots' BTC-since-entry base

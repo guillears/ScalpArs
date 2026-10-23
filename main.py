@@ -1887,6 +1887,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "entry_frenzy_willy_trigger": getattr(o, 'entry_frenzy_willy_trigger', None),   # 🎲 Oct-8 (251): FRENZY_WILLY entry A / B (open-order badge)
             "frenzy_lite_tp_used": getattr(o, 'frenzy_lite_tp_used', None), "lite_c_zone": getattr(o, 'lite_c_zone', None),   # 🎯 (301) LITE C stored TP / zone
             "entry_frenzy_willy_wait_bars": getattr(o, 'entry_frenzy_willy_wait_bars', None), "entry_vol_mcap_ratio": getattr(o, 'entry_vol_mcap_ratio', None),   # 🟥🔄 (251)
+            "entry_frenzy_willy_nomiss": getattr(o, 'entry_frenzy_willy_nomiss', None),   # 🧭 (350) R_NOMISS entry A
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             # ➕ (DECISION_LOG 324) add to position: the badge (count / Σ margin / last add) + whether the ➕ button is enabled (a fixed-level exit
             # only; add_block = the reason shown on a disabled button — the engine re-checks everything at the click)
@@ -2415,6 +2416,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_frenzy_willy_trigger": getattr(o, 'entry_frenzy_willy_trigger', None),   # 🎲 Oct-8 (251): FRENZY_WILLY entry A / B (closed orders: the A / B split)
             "frenzy_lite_tp_used": getattr(o, 'frenzy_lite_tp_used', None), "lite_c_zone": getattr(o, 'lite_c_zone', None),   # 🎯 (301) LITE C stored TP / zone
             "entry_frenzy_willy_wait_bars": getattr(o, 'entry_frenzy_willy_wait_bars', None), "entry_vol_mcap_ratio": getattr(o, 'entry_vol_mcap_ratio', None),   # 🟥🔄 (251)
+            "entry_frenzy_willy_nomiss": getattr(o, 'entry_frenzy_willy_nomiss', None),   # 🧭 (350) R_NOMISS entry A
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             # ➕ (DECISION_LOG 324) size added by the operator (the row's qty / avg entry / invested already include it)
             "manual_add_count": getattr(o, 'manual_add_count', None), "manual_add_investment": getattr(o, 'manual_add_investment', None),

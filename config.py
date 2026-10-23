@@ -1646,6 +1646,19 @@ class SignalThresholds(BaseModel):
     # bar closed ≤ this many 5m bars before the bar just closed (k bars late; armed on THAT pass, the red-candle wait counts from arming).
     # Every episode already seen (persisted willy_seen + FrenzyFlag seed + the DB fill check) still never fires; older than the window never.
     frenzy_willy_a_cold_max_bars: int = 3         # (blank / < 0 → 3 = 15 min; 0 = the old rule: only a spike on the bar just closed; clamped to ≤ 12 = 1 h)
+    # 🧭 2026-10-23 R_NOMISS (DECISION_LOG 350, operator-approved fix): a cold pair read PAST the late window above still gets entry A when NO red
+    # 5m bar (close < open, strictly — WILLY's red rule; flat is not red) closed from the spike bar up to the bar just read: the late read missed
+    # nothing, so the entry bar is the one an on-time WILLY takes. Armed as the on-time A (red wait counted from the SPIKE, so the first red bar
+    # must still come ≤ frenzy_willy_red_max_wait_minutes after the spike); the $ 24 h-volume floor (frenzy_min_volume_usd) is re-checked at the
+    # red bar; turnover routing (WILLY / WILLY_HT ¼), hold, slots, pair held, lateness, dislocation unchanged. One A per episode (seen map +
+    # DB backstop). Fills stamp entry_frenzy_willy_nomiss = True. Evidence: BTRUSDT 10-22 (spike 17:30, all green until the first red 18:05,
+    # first read 18:05 via the $20M floor → refused by the 3-bar window though its entry bar was identical); reports/WILLY_VOLUME_FLOOR_2026-10-23.md
+    # § R_NOMISS: 62 routed trades in 94 weeks (≈ 0.66 / week) · 69.4 % WR · −0.525 %/trade vs on-time WILLY −0.456 → Δ −0.07 (day-boot CI
+    # −0.81 … +0.63): statistically indistinguishable from WILLY. 🔒 Gate (alert-only, scripts/scout_willy_nomiss.py): at the first 15 R_NOMISS
+    # fills, avg < the same-period normal WILLY avg − 0.30 pts → review switching this off. False = the old rule (refused, logged, counted _OFF).
+    # Lateness of an R_NOMISS entry is bounded ONLY by frenzy_willy_red_max_wait_minutes (from the spike), not by the cold window's bar cap —
+    # raising that wait above 60 min lets R_NOMISS arm later too (every bar since the spike must still be green). (DL 350 review)
+    frenzy_willy_a_nomiss: bool = True
     # 🔄 Oct-8 TURNOVER FILTER (operator DECLARED OVERRIDE, DECISION_LOG 251; reports/FRENZY_VOL_MCAP_STUDY_2026-10-08.md — "24 h volume must be
     # below the market cap"): a WILLY entry (A and B) opens only while R = the pair's 24 h quote volume (the value stamped entry_pair_volume_24h_usd)
     # / its market cap (services.mcap_service.get — in-memory cache, its staleness rule) is BELOW this. Judged at the RED-bar open with the

@@ -23,17 +23,28 @@ _R = os.path.dirname(_D)
 _R in sys.path or sys.path.insert(0, _R)
 import scout_gatekit as _GK                                  # noqa: E402
 import scout_willy_hold_off as _HO                           # noqa: E402  (the shared export loader: dedup, CLOSED wins, paper + live)
+import willy_exit_era as WEra                                # noqa: E402  🎲² (DECISION_LOG 356) exit-era split / header
 from services.frenzy import frenzy_willy_ht_gate             # noqa: E402
 
 DL = 341
 
 
 def cohorts(a, since):
-    """→ (ht kept, willy kept, ht operator-closed) — CLOSED, opened ≥ since, operator-closed out."""
+    """→ (ht kept, willy kept, ht operator-closed) — CLOSED, opened ≥ since, operator-closed out. DL 356: the gate was registered under the
+    OLD WILLY exit (+1.25 fixed) → V2 runner / floor fills (either sleeve) are kept OUT of both sides (v2_out lists them)."""
     c = a[(a.status.astype(str) == "CLOSED") & (a.o >= since)]
     ht, ox = _GK.split_operator_closed(c[c.es == "FRENZY_WILLY_HT"]) if len(c) else (c, c)
     w, _ = _GK.split_operator_closed(c[c.es == "FRENZY_WILLY"]) if len(c) else (c, c)
+    ht, _ = WEra.split(ht)
+    w, _ = WEra.split(w)
     return ht.sort_values("o"), w.sort_values("o"), ox
+
+
+def v2_out(a, since):
+    """DL 356: the closed, non-operator-closed WILLY / HT fills opened ≥ since → (all of them, the V2 runner / floor ones kept out)."""
+    c = a[(a.status.astype(str) == "CLOSED") & (a.o >= since) & a.es.isin(("FRENZY_WILLY", "FRENZY_WILLY_HT"))] if len(a) else a
+    k, _ = _GK.split_operator_closed(c) if len(c) else (c, c)
+    return k, WEra.split(k)[1] if len(k) else k
 
 
 def run(now_ms=None, paths=None, since_ms=None):
@@ -46,6 +57,11 @@ def run(now_ms=None, paths=None, since_ms=None):
     a = _HO.load(paths)
     ht, w, ox = cohorts(a, since)
     L.append(f"Cohort: CLOSED fills opened ≥ {since:%Y-%m-%d %H:%M} UTC (deploy + 10 min) · {_GK.operator_closed_line(ox)}")
+    allw, vx = v2_out(a, since)
+    L.append(WEra.era_line(allw, "WILLY_HT"))                                 # DL 356 (c)
+    if len(vx):
+        L.append(f"V2 runner / floor fills kept OUT of both sides (DECISION_LOG 356 — the gate was registered on the old +{WEra.OLD_TP:g} exit): "
+                 + " · ".join(f"{r.o:%m-%d %H:%M} {r.pair} {r.es} {r.pct:+.2f} %" for r in vx.itertuples()))
     for name, g in (("FRENZY_WILLY_HT (¼)", ht), ("FRENZY_WILLY (full)", w)):
         L.append(f"- {name}: " + (f"N {len(g)} · {g.o.dt.date.nunique()} days · WR {(g.pct > 0).mean():.0%} · avg {g.pct.mean():+.3f} % · "
                                   f"Σ {g.pct.sum():+.2f} pts · ${g.usd.sum():+.2f}" if len(g) else "N 0"))

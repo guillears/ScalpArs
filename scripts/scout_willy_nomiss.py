@@ -31,6 +31,7 @@ _R = os.path.dirname(_D)
 _R in sys.path or sys.path.insert(0, _R)
 import export_glob as EG                                     # noqa: E402
 import scout_gatekit as _GK                                  # noqa: E402
+import willy_exit_era as WEra                                # noqa: E402  🎲² (DECISION_LOG 356) exit-era split / header
 
 DL = 350
 GATE_N = 15                                                  # frozen first-N R_NOMISS fills
@@ -40,7 +41,7 @@ WILLY_CLASS = ("FRENZY_WILLY", "FRENZY_WILLY_HT")
 PATTERN = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 DEC_PATTERNS = (os.path.expanduser("~/Downloads/scalpars_decisions_*.csv"), os.path.join(_R, "reports", "BASELINE*_decisions.csv"))
 COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "is_paper",
-        "entry_frenzy_willy_nomiss")
+        "entry_frenzy_willy_nomiss") + tuple(WEra.V2_COLS)     # DL 356: the V2 stamps ride the reader
 EVENTS = ("FRENZY_WILLY_A_NOMISS", "FRENZY_WILLY_A_NOMISS_MISSED", "FRENZY_WILLY_A_NOMISS_LATE", "FRENZY_WILLY_A_NOMISS_OFF",
           "FRENZY_WILLY_A_NOMISS_VOL24_LOW")
 
@@ -79,12 +80,14 @@ def load(paths=None):
 
 
 def cohorts(a, since):
-    """→ (R_NOMISS kept, normal WILLY-class kept, operator-closed) — CLOSED, opened ≥ since, operator-closed out."""
+    """→ (R_NOMISS kept, normal WILLY-class kept, operator-closed) — CLOSED, opened ≥ since, operator-closed out. DL 356: the gate (DL 350)
+    was registered on the OLD WILLY exit → V2 runner / floor fills are kept OUT of both sides (listed by run)."""
     c = a[(a.status.astype(str) == "CLOSED") & (a.o >= since) & a.es.isin(WILLY_CLASS)] if len(a) else a
     if not len(c):
         return c, c, c
     kept, ox = _GK.split_operator_closed(c)
     kept = kept[kept.pct.notna()]
+    kept, _ = WEra.split(kept)
     return kept[kept.nomiss].sort_values("o"), kept[~kept.nomiss].sort_values("o"), ox
 
 
@@ -150,8 +153,16 @@ def run(now_ms=None, paths=None, dec_paths=None, since_ms=None):
     if since_ms is None:
         return L + [f"⚠ NOT EVALUABLE — the DECISION_LOG {DL} deploy commit is not in git yet; nothing is counted.", ""]
     since = pd.Timestamp(int(since_ms), unit="ms")
-    nm, normal, ox = cohorts(load(paths), since)
+    a = load(paths)
+    nm, normal, ox = cohorts(a, since)
     L.append(f"Cohort: CLOSED WILLY-class fills opened ≥ {since:%Y-%m-%d %H:%M} UTC (deploy + 10 min) · {_GK.operator_closed_line(ox)}")
+    _c = a[(a.status.astype(str) == "CLOSED") & (a.o >= since) & a.es.isin(WILLY_CLASS)] if len(a) else a
+    _c = _GK.split_operator_closed(_c)[0] if len(_c) else _c
+    L.append(WEra.era_line(_c, "WILLY_NOMISS"))                                # DL 356 (c)
+    _vx = WEra.split(_c)[1] if len(_c) else _c
+    if len(_vx):
+        L.append(f"V2 runner / floor fills kept OUT of both sides (DECISION_LOG 356 — the gate was registered on the old +{WEra.OLD_TP:g} exit): "
+                 + " · ".join(f"{r.o:%m-%d %H:%M} {r.pair}{' R_NOMISS' if r.nomiss else ''} {r.pct:+.2f} %" for r in _vx.itertuples()))
     L.append(_line("R_NOMISS (entry_frenzy_willy_nomiss)", nm))
     L.append(_line("normal WILLY (same period, WILLY + HT)", normal))
     v, txt = gate(nm, normal)

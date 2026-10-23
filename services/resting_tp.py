@@ -42,7 +42,7 @@ RTP_GRACE_DEF, RTP_THROUGH_DEF = 3.0, 2
 RTP_IO_TIMEOUT_S = 3.0         # every exchange call under the close lock / in the gate is bounded; a timeout = UNKNOWN (never filled / canceled)
 RTP_STRAY_MAX_PER_PASS = 5      # stray reduce-only limits cancelled per arm / heal pass (bounded close-lock hold)
 RTP_BUSY_WATCHDOG_S = 6.0      # an in-flight flag older than 2 × RTP_IO_TIMEOUT_S is cleared (a lost background task)
-RTP_STOP_CLASS = ("STOP_LOSS", "MAX_HOLD_TIME", "BACKSTOP", "MANUAL_SL", "OVERRIDE_SL", "FL_EMERGENCY_SL", "FL_DEEP_STOP")   # + the operator's "MANUAL" close   # never wait on a blocked cancel
+RTP_STOP_CLASS = ("STOP_LOSS", "WILLY_FLOOR", "MAX_HOLD_TIME", "BACKSTOP", "MANUAL_SL", "OVERRIDE_SL", "FL_EMERGENCY_SL", "FL_DEEP_STOP")   # + the operator's "MANUAL" close   # never wait on a blocked cancel
 RTP_ORDER_TYPE_MAKER, RTP_ORDER_TYPE_BLEND = "MAKER", "MAKER+TAKER"
 _QTY_EPS = 1e-9
 
@@ -86,7 +86,19 @@ def rtp_row_enabled(th, row) -> bool:
     return rtp_enabled(th, getattr(row, 'entry_strategy', None))
 
 
-def rtp_row_target(th, row, held_minutes=None) -> Optional[Tuple[float, str]]:
+def rtp_willy_row_args(th, row, willy_armed=None) -> dict:
+    """🎲² (DECISION_LOG 356) the WILLY exit V2 inputs of rtp_target for a WILLY / WILLY_HT row: its stored take profit
+    (frenzy_willy_tp_target_pct; NULL = the config TP) and whether its profit floor is armed (stored peak / arm time, or the caller's
+    in-memory knowledge `willy_armed` — the realtime path arms before the monitor persists the peak). Never raises."""
+    try:
+        from services.frenzy import frenzy_willy_floor_armed
+        return dict(willy_tp=getattr(row, 'frenzy_willy_tp_target_pct', None),
+                    willy_armed=bool(willy_armed) or frenzy_willy_floor_armed(th, row))
+    except Exception:
+        return dict(willy_tp=None, willy_armed=False)
+
+
+def rtp_row_target(th, row, held_minutes=None, willy_armed=None) -> Optional[Tuple[float, str]]:
     """🎯 (310) The resting TP this ROW should carry now → (NET tp %, close reason) or None (= withdraw / none). Restart-proof: read from the
     row only. MANUAL: manual_exit_mode FIXED (None = FIXED, the exits' own default), FLOOR or NOSTOP (their optional TP) with pattern_fixed_tp_pct > 0
     → MANUAL_TP; MOMENTUM / FRENZY / BULLRUN(_SL) or TP ≤ 0 / None → None. An exit override on a bot row: its pattern_fixed_tp_pct > 0 → OVERRIDE_TP,
@@ -95,6 +107,8 @@ def rtp_row_target(th, row, held_minutes=None) -> Optional[Tuple[float, str]]:
         why = rtp_fixed_reason(row)
         if why is None and str(getattr(row, 'entry_strategy', None) or "") == "FLATBASE_SHORT":
             return _flatbase_row_target(th, row)   # 🩳 (348) the PRICE TP → the row's own net target (its entry fee)
+        if why is None and str(getattr(row, 'entry_strategy', None) or "") in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):
+            return rtp_target(th, getattr(row, 'entry_strategy', None), held_minutes, **rtp_willy_row_args(th, row, willy_armed))   # 🎲² (356)
         if why is None:
             return rtp_target(th, getattr(row, 'entry_strategy', None), held_minutes, getattr(row, 'frenzy_lite_tp_used', None))
         if not rtp_row_enabled(th, row):
@@ -131,21 +145,23 @@ def rtp_row_reason(th, row, limit_px, maker_fee_rate, entry_fee_pct=None) -> str
     if why:
         return why
     return rtp_reason_for_limit(th, getattr(row, 'entry_strategy', None), getattr(row, 'direction', None), getattr(row, 'entry_price', None),
-                                entry_fee_pct, limit_px, maker_fee_rate)
+                                entry_fee_pct, limit_px, maker_fee_rate, willy_tp=getattr(row, 'frenzy_willy_tp_target_pct', None))
 
 
-def rtp_target(th, entry_strategy, held_minutes=None, lite_tp=None) -> Optional[Tuple[float, str]]:
+def rtp_target(th, entry_strategy, held_minutes=None, lite_tp=None, willy_tp=None, willy_armed=False) -> Optional[Tuple[float, str]]:
     """(NET take profit a resting TP books at this order age, the close reason it books) or None = no resting TP for this order (switch off,
     not a resting-TP sleeve, TP off, or FRENZY_LITE while frenzy_lock_arm_pct > 0 — lock-then-trail replaces the fixed TP). FRENZY_WILLY
     follows its age: the WILLY TP (FRENZY_TP) before frenzy_willy_late_tp_minutes, the late TP (WILLY_LATE_TP, DECISION_LOG 297) after.
-    lite_tp (🎯 DECISION_LOG 301 LITE C): the order's stored LITE TP (Order.frenzy_lite_tp_used) — FRENZY_LITE / FRENZY_LITE_RETRY only; None → the config TP."""
+    lite_tp (🎯 DECISION_LOG 301 LITE C): the order's stored LITE TP (Order.frenzy_lite_tp_used) — FRENZY_LITE / FRENZY_LITE_RETRY only; None → the config TP.
+    willy_tp / willy_armed (🎲² DECISION_LOG 356): a WILLY row's stored take profit (None → the config TP) and its armed floor (the late
+    downgrade never applies once armed — the limit stays at the stored TP)."""
     es = str(entry_strategy or "")
     if not rtp_enabled(th, es):
         return None
     try:
         from services.frenzy import frenzy_willy_tp_at, frenzy_tp_for
         if es in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):   # 🎲¼ (341) HT = WILLY's exit
-            tp, why = frenzy_willy_tp_at(th, held_minutes)
+            tp, why = frenzy_willy_tp_at(th, held_minutes, tp_used=willy_tp, armed=bool(willy_armed))
         elif es == "FLATBASE_SHORT":   # 🩳 (348) the nominal PRICE TP — the row-derived net (rtp_row_target) is what the engine places
             from services.flatbase import flatbase_params
             tp, why = flatbase_params(th)['tp'], "FRENZY_TP"
@@ -164,13 +180,13 @@ def rtp_tp_pct(th, entry_strategy, held_minutes=None, lite_tp=None) -> Optional[
     return t[0] if t else None
 
 
-def rtp_reason_for_limit(th, entry_strategy, direction, entry_px, entry_fee_pct, limit_px, maker_fee_rate) -> str:
+def rtp_reason_for_limit(th, entry_strategy, direction, entry_px, entry_fee_pct, limit_px, maker_fee_rate, willy_tp=None) -> str:
     """Which take profit a RECORDED limit books (restart-proof, from the price alone): WILLY_LATE_TP when the WILLY late TP is on and the
-    limit's net % sits nearer the late target than the WILLY TP, else FRENZY_TP."""
+    limit's net % sits nearer the late target than the WILLY TP, else FRENZY_TP. willy_tp (🎲² 356): the row's stored TP (None = config)."""
     try:
         if str(entry_strategy or "") not in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):   # 🎲¼ (341)
             return "FRENZY_TP"
-        from services.frenzy import frenzy_willy_late_tp, frenzy_willy_levels
+        from services.frenzy import frenzy_willy_late_tp, frenzy_willy_tp_value
         from services.exec_shadow import net_pct_at
         late = frenzy_willy_late_tp(th)
         if late is None:
@@ -178,7 +194,7 @@ def rtp_reason_for_limit(th, entry_strategy, direction, entry_px, entry_fee_pct,
         net = net_pct_at(direction, entry_px, limit_px, entry_fee_pct, maker_fee_rate)
         if net is None:
             return "FRENZY_TP"
-        return "WILLY_LATE_TP" if net < (late[1] + frenzy_willy_levels(th)[0]) / 2.0 else "FRENZY_TP"
+        return "WILLY_LATE_TP" if net < (late[1] + frenzy_willy_tp_value(th, willy_tp)) / 2.0 else "FRENZY_TP"
     except Exception:
         return "FRENZY_TP"
 

@@ -960,19 +960,138 @@ def frenzy_willy_late_tp(th) -> Optional[Tuple[float, float]]:
     return mins, pct
 
 
-def frenzy_willy_tp_at(th, held_minutes) -> Tuple[float, str]:
+def frenzy_willy_tp_at(th, held_minutes, tp_used=None, armed=False) -> Tuple[float, str]:
     """(the WILLY take profit in force at this age, its close reason): the late TP (WILLY_LATE_TP) once the order is ≥ the late minutes old,
-    else the WILLY TP (FRENZY_TP). Unknown age → the WILLY TP. ONE rule for the exit, the resting limit and the sweeps."""
+    else the WILLY TP (FRENZY_TP). Unknown age → the WILLY TP. ONE rule for the exit, the resting limit and the sweeps.
+    🎲² (DECISION_LOG 356 WILLY exit V2) tp_used = the order's OWN stored take profit (Order.frenzy_willy_tp_target_pct; None / unusable →
+    the config TP, exactly as before) · armed = the order's profit floor is armed → the late downgrade never applies (the TP stays put)."""
+    base = frenzy_willy_tp_value(th, tp_used)
+    if armed:
+        return base, "FRENZY_TP"
     late = frenzy_willy_late_tp(th)
     try:
-        if late is not None and held_minutes is not None and float(held_minutes) >= late[0]:
+        if late is not None and held_minutes is not None and float(held_minutes) >= late[0] and late[1] < base:
             return late[1], "WILLY_LATE_TP"
     except (TypeError, ValueError):
         pass
-    return frenzy_willy_levels(th)[0], "FRENZY_TP"
+    return base, "FRENZY_TP"
 
 
-def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None, resting_tp=False) -> Tuple[bool, str, Optional[float]]:
+# ── 🎲² 2026-10-23 WILLY EXIT V2 (DECISION_LOG 356 — operator-approved DECLARED OVERRIDE below the locked gates) ───────────────────────────
+# Evidence: reports/WILLY_HIGHTARGET_2026-10-23.md + reports/WILLY_EXITV2_2026-10-23.md (backtest A: 2026 +0.022 %/fill at F 0.5, −0.030 at
+# F 1.0; master real fills: TP+floor +0.21 %/fill at F 1.0 — the operator's chosen floor, declared override). Applies to FRENZY_WILLY and
+# FRENZY_WILLY_HT (HT runs WILLY's exit). The target is decided at entry and STORED on the row (restart-proof; never re-decided):
+#  ① TP at the spike high: H = the episode's highest 5m high from the spike bar through the red signal bar (frenzy_walk's `peak` at the entry
+#    pass). P_H = H × (1 − frenzy_willy_high_k_pct %); T = the NET % booked at P_H (entry taker fee + MAKER exit fee, exec_shadow.net_pct_at);
+#    T_used = max(frenzy_willy_tp_pct, min(frenzy_willy_high_tp_max_pct, T)). Switch off / H unknown → T_used = frenzy_willy_tp_pct (today).
+#  ② profit FLOOR: only for an order whose T_used is ABOVE frenzy_willy_floor_arm_pct (a runner target — with T_used ≤ the arm the TP and the
+#    arm coincide and the exit is exactly today's). Armed once the stored peak net ≥ the arm: close at market when net ≤ frenzy_willy_floor_pct
+#    (WILLY_FLOOR); the stop and the late-TP downgrade no longer apply; the time cap still closes.
+#  The stop is unchanged (−frenzy_willy_stop_pct): the study's BTC-falling −2.5 stop was NOT shipped (backtest 2026 Δ −0.003; the falling side
+#  is governed by the WILLY_BTC1H gate).
+#    0 = off (always −frenzy_willy_stop_pct).
+WILLY_V2_K_DEF, WILLY_V2_TPMAX_DEF, WILLY_V2_ARM_DEF, WILLY_V2_FLOOR_DEF = 1.0, 8.0, 1.25, 1.0   # floor 1.0: operator (master evidence), DL 356
+
+
+def _g(row, key):
+    """a field of an Order row or of its cache dict (None when missing). Never raises."""
+    try:
+        return row.get(key) if isinstance(row, dict) else getattr(row, key, None)
+    except Exception:
+        return None
+
+
+def frenzy_willy_high_target_on(th) -> bool:
+    return getattr(th, 'frenzy_willy_high_target_enabled', True) is True
+
+
+def frenzy_willy_tp_value(th, tp_used=None) -> float:
+    """the take profit an order runs: its stored T_used when finite and > 0, else the config WILLY TP (frenzy_willy_levels)."""
+    v = _fin(tp_used)
+    return v if (v is not None and v > 0) else frenzy_willy_levels(th)[0]
+
+
+def frenzy_willy_high_target(th, entry_px, spike_high, entry_fee_pct, maker_fee_rate) -> Tuple[float, Optional[float]]:
+    """① → (T_used, T raw or None). T_used = max(WILLY TP, min(cap, T)); switch off / H, entry or fees unusable → (WILLY TP, None). Never raises."""
+    base = frenzy_willy_levels(th)[0]
+    try:
+        if not frenzy_willy_high_target_on(th):
+            return base, None
+        e, h, ef, mk = _fin(entry_px), _fin(spike_high), _fin(entry_fee_pct), _fin(maker_fee_rate)
+        if not (e and e > 0 and h and h > 0) or ef is None or mk is None or ef < 0 or mk < 0:
+            return base, None
+        k = _f(th, 'frenzy_willy_high_k_pct', WILLY_V2_K_DEF)
+        cap = _f(th, 'frenzy_willy_high_tp_max_pct', WILLY_V2_TPMAX_DEF)
+        from services.exec_shadow import net_pct_at
+        t = net_pct_at("LONG", e, h * (1.0 - k / 100.0), ef, mk)
+        if t is None:
+            return base, None
+        return round(max(base, min(cap, t)), 4), round(t, 4)
+    except Exception:
+        return base, None
+
+
+def frenzy_willy_row_tp(th, row) -> float:
+    return frenzy_willy_tp_value(th, _g(row, 'frenzy_willy_tp_target_pct'))
+
+
+def frenzy_willy_floor_levels(th) -> Tuple[float, float]:
+    """② (arm %, floor %) — bad values fall back to the defaults (1.25 / 1.0); a floor < 0 or not below the arm → min(1.0, arm / 2)."""
+    arm = _f(th, 'frenzy_willy_floor_arm_pct', WILLY_V2_ARM_DEF)
+    fl = _f(th, 'frenzy_willy_floor_pct', WILLY_V2_FLOOR_DEF)
+    arm = arm if arm > 0 else WILLY_V2_ARM_DEF
+    return arm, (fl if 0 <= fl < arm else min(WILLY_V2_FLOOR_DEF, arm / 2.0))
+
+
+def frenzy_willy_floor_applies(th, tp_used) -> bool:
+    """② a floor exists for an order only when its take profit is a RUNNER target (T_used > the arm). T_used ≤ arm → today's exit exactly."""
+    return frenzy_willy_tp_value(th, tp_used) > frenzy_willy_floor_levels(th)[0] + 1e-9
+
+
+def frenzy_willy_floor_armed(th, row, peak=None) -> bool:
+    """② the row's floor is ARMED: it applies (runner target) and (willy_floor_armed_at recorded or max(stored peak, `peak`) ≥ the arm).
+    Restart-safe (the stored peak / the recorded arm time). Never raises."""
+    try:
+        if _g(row, 'willy_floor_armed_at') is not None:   # (review) once armed, never un-armed by a later config edit (never re-decided)
+            return True
+        if not frenzy_willy_floor_applies(th, _g(row, 'frenzy_willy_tp_target_pct')):
+            return False
+        pk = max(_fin(_g(row, 'peak_pnl')) or 0.0, _fin(peak) or 0.0)
+        return pk >= frenzy_willy_floor_levels(th)[0] - 1e-9
+    except Exception:
+        return False
+
+
+def frenzy_willy_v2_config_errors(th) -> list:
+    """🎲² (DECISION_LOG 356) PUT /api/config refusals for the WILLY exit V2 fields."""
+    errs = []
+    if not isinstance(getattr(th, 'frenzy_willy_high_target_enabled', True), bool):
+        errs.append("frenzy_willy_high_target_enabled must be true or false")
+    k = _fin(getattr(th, 'frenzy_willy_high_k_pct', WILLY_V2_K_DEF))
+    if k is None or not (0 <= k <= 20):
+        errs.append("frenzy_willy_high_k_pct must be from 0 to 20 (% below the spike high)")
+    mx = _fin(getattr(th, 'frenzy_willy_high_tp_max_pct', WILLY_V2_TPMAX_DEF))
+    try:
+        wtp = frenzy_willy_levels(th)[0]
+    except Exception:
+        wtp = 1.25
+    if mx is None or not (wtp <= mx <= 50):
+        errs.append(f"frenzy_willy_high_tp_max_pct must be from the WILLY take profit (+{wtp}%) to 50")
+    arm = _fin(getattr(th, 'frenzy_willy_floor_arm_pct', WILLY_V2_ARM_DEF))
+    fl = _fin(getattr(th, 'frenzy_willy_floor_pct', WILLY_V2_FLOOR_DEF))
+    if arm is None or not (0 < arm <= 50):
+        errs.append("frenzy_willy_floor_arm_pct must be > 0 and ≤ 50")
+    if fl is None or fl < 0 or (arm is not None and fl >= arm):
+        errs.append("frenzy_willy_floor_pct must be ≥ 0 and below frenzy_willy_floor_arm_pct")
+    try:   # (deep review) arm below the WILLY TP would give every +TP fill a floor — "T_used = WILLY TP → today's exit" must hold
+        if arm is not None and arm < frenzy_willy_levels(th)[0] - 1e-9:
+            errs.append("frenzy_willy_floor_arm_pct must be ≥ frenzy_willy_tp_pct (the floor only arms on a runner target)")
+    except Exception:
+        pass
+    return errs
+
+
+def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None, resting_tp=False, row=None) -> Tuple[bool, str, Optional[float]]:
     """FRENZY_WILLY's own exit → (close, reason, line). Order: TP — pnl ≥ +tp → FRENZY_TP; a peak that already reached +tp while the close was
     missed (feed gap / failed close / restart) closes at once → FRENZY_TP if the exit pnl ≥ 0 else FRENZY_TP_LATE (never labelled a TP at a
     loss) · a configured stop (frenzy_willy_stop_pct > 0; 4.0 since DECISION_LOG 271) → STOP_LOSS · held ≥ the cap → MAX_HOLD_TIME (line = pnl).
@@ -982,19 +1101,34 @@ def frenzy_willy_exit_for(pnl, peak_pnl, th, held_minutes=None, stop_floor=None,
     ⏰ (DECISION_LOG 297) from age ≥ frenzy_willy_late_tp_minutes the take profit is frenzy_willy_late_tp_pct → WILLY_LATE_TP (current P&L
     only); the +tp branches below stay (a jump straight past +tp still books FRENZY_TP).
     resting_tp=True (🎯 DECISION_LOG 296): a resting exchange TP limit is alive — neither TP branch fires here (the limit books the TP; the
-    engine runs the through + grace safety net); stop and time cap are judged exactly as before."""
+    engine runs the through + grace safety net); stop and time cap are judged exactly as before.
+    🎲² row (DECISION_LOG 356, an Order or its cache dict): the row's OWN take profit (frenzy_willy_tp_target_pct) replaces the config
+    one; an ARMED floor (frenzy_willy_floor_armed — runner target and peak ≥ the arm) closes
+    at net ≤ frenzy_willy_floor_pct → WILLY_FLOOR, skips the late TP and the stop, keeps the time cap. row None / a pre-V2 row → today's exit."""
     tp, stop, mh = frenzy_willy_levels(th)
+    armed, fl = False, None
+    if row is not None:
+        tp = frenzy_willy_row_tp(th, row)
+        armed = frenzy_willy_floor_armed(th, row, peak_pnl)
+        fl = frenzy_willy_floor_levels(th)[1]
     try:
         p = float(pnl); pk = float(peak_pnl or 0.0)
         if stop_floor is not None:
             stop = float(stop_floor) if stop is None else max(stop, float(stop_floor))
         if p >= tp and not resting_tp:
             return True, "FRENZY_TP", tp
-        late_tp, late_reason = frenzy_willy_tp_at(th, held_minutes)
-        if late_reason == "WILLY_LATE_TP" and p >= late_tp and not resting_tp:   # ⏰ (297) late TP: the CURRENT P&L only (a peak before
-            return True, "WILLY_LATE_TP", late_tp                                  # the late minute is no fill at the late target)
+        if not armed:
+            late_tp, late_reason = frenzy_willy_tp_at(th, held_minutes, tp_used=tp)
+            if late_reason == "WILLY_LATE_TP" and p >= late_tp and not resting_tp:   # ⏰ (297) late TP: the CURRENT P&L only (a peak before
+                return True, "WILLY_LATE_TP", late_tp                                  # the late minute is no fill at the late target)
         if pk >= tp and not resting_tp:
             return True, ("FRENZY_TP" if p >= 0 else "FRENZY_TP_LATE"), p
+        if armed:   # 🎲² (356) the floor replaces the stop and the late TP; the time cap still closes
+            if p <= fl:
+                return True, "WILLY_FLOOR", fl
+            if held_minutes is not None and float(held_minutes) >= mh:
+                return True, "MAX_HOLD_TIME", p
+            return False, "WILLY_FLOOR", fl
         if stop is not None and p <= stop:
             return True, "STOP_LOSS", stop
         if held_minutes is not None and float(held_minutes) >= mh:

@@ -30,6 +30,7 @@ _D = os.path.dirname(os.path.abspath(__file__))
 _D in sys.path or sys.path.insert(0, _D)
 import export_glob as EG                                     # noqa: E402
 import scout_gatekit as _GK                                  # noqa: E402
+import willy_exit_era as WEra                                # noqa: E402  🎲² (DECISION_LOG 356) exit-era header
 
 DL = 340
 ACCOUNT = 1225.0                                             # same stated account as scout_willy_avgdown (no balance column in the exports)
@@ -37,7 +38,8 @@ DAY_LOSS_PCT = -10.0                                         # gate (a)
 B_N, B_AVG_MAX, B_SUM_MAX = 8, 0.0, -4.0                     # gate (b): first 8 fills · avg < 0 AND Σ ≤ −4 pts
 STATE = os.path.join(os.path.dirname(_D), "reports", "SCOUT_WILLY_HOLD_OFF_STATE.json")
 PATTERN = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
-COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "is_paper")
+COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "is_paper") \
+    + tuple(WEra.V2_COLS)                                    # DL 356: the V2 stamps ride the reader (scout_willy_ht shares this loader)
 
 
 def _ts(s):
@@ -159,6 +161,9 @@ def run(now_ms=None, paths=None, since_ms=None, account=ACCOUNT, state_path=STAT
     a = load(paths)
     b = freed(a, since, now)
     L.append(f"Cohort: bot fills opened ≥ {since:%Y-%m-%d %H:%M} UTC (deploy + 10 min) while a FRENZY_WILLY of the same book was open.")
+    _w = a[(a.es == "FRENZY_WILLY") & (a.o >= since)] if len(a) else a
+    L.append(WEra.era_line(_w, "WILLY_HOLD_OFF", note="WILLY fills only set the open intervals here; no WILLY % is compared (gate (a) is the "
+                                                      "account's real day P&L, V2 included)"))   # DL 356 (c)
     L.append("")
     rows = gate_a(a, since, now, account)
     L.append(f"**Gate (a)** — UTC days on which ≥ 1 non-WILLY bot fill was OPENED while a FRENZY_WILLY was open (a freed fill): that day's bot "

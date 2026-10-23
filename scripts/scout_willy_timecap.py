@@ -172,6 +172,7 @@ import scout_gatekit as _GK   # noqa: E402  🧰 (DECISION_LOG 331) DL-number de
 if os.path.dirname(os.path.abspath(__file__)) not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scout_b1h_negflank as NF                     # noqa: E402  (shared cooldown, bootstrap, freeze hold, state I/O)
+import willy_exit_era as WEra                       # noqa: E402  🎲² (DECISION_LOG 356) exit-era split: V2 runner / floor fills out of old-exit cohorts
 
 MIN = 60_000
 DAY_MS = 86_400_000
@@ -196,7 +197,7 @@ DEPLOY_PIN = "2026-10-08 15:13:12"                   # 84318b3 commit time (UTC)
 STRATEGY = "FRENZY_WILLY"
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 COLS = ("opened_at", "closed_at", "pair", "direction", "entry_strategy", "status", "entry_price", "exit_price", "notional_value",
-        "pnl_percentage", "pnl", "close_reason", "entry_frenzy_willy_trigger")
+        "pnl_percentage", "pnl", "close_reason", "entry_frenzy_willy_trigger") + tuple(WEra.V2_COLS)   # DL 356: the V2 stamps ride the reader
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CACHE = os.path.join(_ROOT, "reports", "backtest_cache")
 MY_CACHE = os.path.join(_CACHE, "scout_willy_timecap")
@@ -308,6 +309,8 @@ def levels(th=None):
             return float(v) if v not in (None, "") else d
         except (TypeError, ValueError):
             return d
+    # DL 356: deliberately the OLD fixed-exit fields only (TP / stop / hold — unchanged by WILLY exit V2); the V2 fields
+    # (frenzy_willy_high_*, floor_*) are never read here — V2 runner / floor fills are split out of every cohort instead (v2_split).
     tp, st, mh = _f("frenzy_willy_tp_pct", 1.0), abs(_f("frenzy_willy_stop_pct", 0.0)), _f("frenzy_willy_max_hold_minutes", 120)
     st = st if st > 0 else None                                      # DECISION_LOG 271: WILLY's own stop, no hidden floor, paper = live
     return (tp if tp > 0 else 1.0), st, (int(round(mh)) if mh >= 1 else 120)
@@ -484,6 +487,8 @@ def _prep(o):
                           why=o.close_reason.astype(str).values,
                           trig=o.entry_frenzy_willy_trigger.fillna("?").astype(str).str.strip().str.upper().values,
                           closed_at=o.closed_at.astype(str).values))
+    d[WEra.TP_COL] = (pd.to_numeric(o[WEra.TP_COL], errors="coerce").values if WEra.TP_COL in o.columns
+                      else np.full(len(d), np.nan))      # DL 356: the order's stored V2 target (NaN = pre-V2) — the exit era of the fill
     tf = pd.to_datetime(o.opened_at.astype(str), format="ISO8601", errors="coerce").values   # sub-second when the export carries it
     d["tf"] = np.where(pd.isna(tf), d.ts.values, tf)
     d = d[d.ts.notna() & d.E.notna() & (d.E > 0) & d.pct.notna()].copy()
@@ -491,6 +496,31 @@ def _prep(o):
     d = d.drop(columns=["tf"])
     d["day"] = d.ts.dt.strftime("%Y-%m-%d")
     return d.sort_values(["ts", "pair"], kind="stable").reset_index(drop=True)
+
+
+def v2_split(d):
+    """DECISION_LOG 356 → (old-exit cohort, V2-changed fills). Every cell / parity line / verdict of this scout walks the pinned
+    fixed exit (+1.25 / −4 / 90, late +0.25 @ 30); a V2 fill with a runner target (> +1.25) or a WILLY_FLOOR close ran another exit →
+    kept OUT and listed (v2_lines). A V2 fill with target == +1.25 ran the old exit exactly → stays in. Prepared frames carry the close
+    reason as `why`."""
+    if d is None or not len(d):
+        return d, (d.iloc[:0] if d is not None else d)
+    x = d if "close_reason" in d.columns or "why" not in d.columns else d.assign(close_reason=d.why)
+    _, ch = WEra.masks(x)
+    ch = ch.values.astype(bool)
+    return d[~ch].reset_index(drop=True), d[ch].reset_index(drop=True)
+
+
+def v2_lines(d, v2x, label):
+    """the era header (willy_exit_era.era_line) + the split-out V2 runner / floor fills with a count."""
+    x = d if d is None or not len(d) or "close_reason" in d.columns or "why" not in d.columns else d.assign(close_reason=d.why)
+    L = [WEra.era_line(x, label)]
+    if v2x is not None and len(v2x):
+        L.append(f"V2 runner / floor fills kept OUT of every cohort, parity line and verdict below (DECISION_LOG 356 — their exit is not "
+                 f"the walked +{WEra.OLD_TP:g} exit; not a random subset: selected by the spike-high distance): {len(v2x)} — "
+                 + " · ".join(f"{r.ts:%m-%d %H:%M} {r.pair} target +{getattr(r, WEra.TP_COL):g} {r.why} {r.pct:+.2f} %"
+                              for r in v2x.itertuples()) + ".")
+    return L
 
 
 # ─────────────────────────── cache ───────────────────────────
@@ -1581,6 +1611,7 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok, lt=_FL297):
     man = o[manual & (o.ts >= floor)]
     man_all = o[manual]
     o = o[~manual].reset_index(drop=True)
+    o, v2x = v2_split(o)                                         # DL 356: idempotent guard for direct callers (run() already split)
     lt = late_levels() if lt is _FL297 else lt                   # DL 304: the run's late TP (late_levels of the run's config)
     s4 = s4_frame(o, tp, stop, hold, tcache, lt)
     done = load_attempts()["done"]
@@ -1626,6 +1657,8 @@ def s4_section(o, opens, now_ms, levels_, tcache, st, ok, lt=_FL297):
         L.append(f"| {lab(n)} | {j['n']} | {j['days']} | {j['mean']:+.3f} | {j['sum']:+.2f} | "
                  f"{ptxt} | {stxt} | {'✓' if j['integ'] else '✗'} ({j['n_untouched']}) | {j['par'] * 100:.0f} % |")
     L.append("")
+    if v2x is not None and len(v2x):                             # DL 356: only on a direct call (run() splits before the header)
+        L += v2_lines(o, v2x, "S4")[1:]
     _es = era_split_line(coh, [n for n, _, _ in S4_CELLS if not s4_na(n, tp, hold)], "S4 cells")
     if _es:
         L.append(_es)
@@ -2051,6 +2084,9 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
         opens = list(open_ts)
     floor = deploy_ts()
     o = o[o.ts >= floor].reset_index(drop=True)
+    L_era = v2_lines(o, None, "WILLY_TIMECAP")                     # DL 356 (c): the era of the whole loaded cohort, printed once
+    o, v2x = v2_split(o)                                           # DL 356 (b): runner / floor fills out of every cohort below
+    L_era = L_era[:1] + v2_lines(o, v2x, "WILLY_TIMECAP")[1:]
     tc = {}                                                        # one tick cache for the source pass, the walk and the lag checks
     o["src"] = [score_fill(r, hold, tp, stop, tc)[1] for r in o.itertuples()]
     notes = ensure_data(o, hold, now_ms, fetch=fetch)
@@ -2071,6 +2107,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
          f"Walked from each fill's own entry on aggTrades (1m klines = provisional) with the bot's accounting (net = gross − 0.045 − "
          f"0.045 × exit/entry). Live exit read from trading_config.json: {live_lab}. Variants differ only on fills WITHOUT a TP inside "
          f"the cap.", ""]
+    L += L_era + [""]
     L += summary_block(sc, hold, live_lab) + [""]
     if len(sc):
         L.append("By trigger: " + " · ".join(

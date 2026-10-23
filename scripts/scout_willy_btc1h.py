@@ -22,8 +22,9 @@ COHORT         CLOSED FRENZY_WILLY LONG fills, non-MANUAL (MANUAL_* closes liste
                pin 2026-10-12 12:00 UTC + 10 min), so the counted cohort runs ONE live exit (+1.25 / −4 / 90); it was 2026-10-12 00:00
                before (0 forward fills then, nothing frozen). Fills from the WILLY_TIMECAP deploy floor (the "(DECISION_LOG 251)" commit) to
                that deploy = the B19 "pre-registration context" line — shown, NEVER counted.
-PRICING        every fill re-walked under WILLY's live exit (scout_willy_hold.exit_rule('FRENZY_WILLY') → +1.25 / −4 / 90 min since
-               DECISION_LOG 281; +1 / −4 / 120 before) with the
+PRICING        every fill re-walked under WILLY's REGISTERED exit, PINNED since DECISION_LOG 356 (willy_rule → +1.25 / −4 / 90 min, the
+               DECISION_LOG 281 live exit; never read from the config again — V2 per-order targets / floor never enter the walk; V2 runner /
+               floor fills stay in the groups, walked like every fill, and are kept out of the parity line) with the
                ticks-first hybrid walker (scout_frenzy_willy_exit.load_path / evaluate, DECISION_LOG 272; tick ruler, bot accounting).
                Cache only (WILLY_TIMECAP's fetch pass fills the tick / 1m caches for the same fills). Walker parity vs the actual exit
                printed. Unpriced fills are listed and hold the freeze while their data is still due; a fill with a 1m part (provisional)
@@ -70,6 +71,7 @@ if os.path.dirname(os.path.abspath(__file__)) not in __import__("sys").path:
 import scout_b1h_negflank as NF                     # noqa: E402  (BTC 5m cache + rate-limited fetcher, bootstrap, loss share, freeze hold, state I/O)
 import scout_frenzy_willy_exit as FWX               # noqa: E402  (the 272 hybrid walker, thresholds namespace, order prep)
 import scout_willy_hold as WH                       # noqa: E402  (WILLY's live exit from trading_config.json)
+import willy_exit_era as WEra                       # noqa: E402  🎲² (DECISION_LOG 356) pinned old exit + exit-era split / header
 
 WT = FWX.WT
 # FROZEN 2026-10-12 (DECISION_LOG 275) — never re-fit
@@ -197,13 +199,16 @@ def load_orders(orders=None):
     opens = [(a, f"OPEN {p}") for a, p in zip(t[op], o.pair[op].astype(str)) if pd.notna(a)]
     cl = o[o.status.astype(str).str.upper() == "CLOSED"]
     d = FWX._prep(cl)
-    br = pd.DataFrame(dict(ts=pd.to_datetime(cl.opened_at.astype(str).str[:19], format="ISO8601", errors="coerce").values,
-                           pair=cl.pair.astype(str).values, bar_ret=pd.to_numeric(cl[DIP_COL], errors="coerce").values))
-    d = d.merge(br.drop_duplicates(["ts", "pair"]), on=["ts", "pair"], how="left") if len(d) else d.assign(bar_ret=pd.Series(dtype=float))
+    br = pd.DataFrame({"ts": pd.to_datetime(cl.opened_at.astype(str).str[:19], format="ISO8601", errors="coerce").values,
+                       "pair": cl.pair.astype(str).values, "bar_ret": pd.to_numeric(cl[DIP_COL], errors="coerce").values,
+                       WEra.TP_COL: pd.to_numeric(cl[WEra.TP_COL], errors="coerce").values})   # DL 356: the fill's stored V2 target (NaN = pre-V2)
+    d = d.drop(columns=[WEra.TP_COL], errors="ignore")
+    d = (d.merge(br.drop_duplicates(["ts", "pair"]), on=["ts", "pair"], how="left") if len(d)
+         else d.assign(bar_ret=pd.Series(dtype=float), **{WEra.TP_COL: pd.Series(dtype=float)}))
     return d, opens
 
 
-COLS = tuple(WT.COLS) + (DIP_COL,)
+COLS = tuple(dict.fromkeys(tuple(WT.COLS) + (DIP_COL, "close_reason") + tuple(WEra.V2_COLS)))   # DL 356: the V2 stamps ride the reader
 
 
 def _read_exports():
@@ -221,10 +226,24 @@ def _read_exports():
 
 
 # ─────────────────────────── pricing ───────────────────────────
+# 🔒 DECISION_LOG 356 (WILLY exit V2): the frozen DL 275 / 279 bars were registered on ONE live exit, +1.25 / −4 / 90 (DL 281; the walker
+# never modelled the DL 297 late TP). That exit is PINNED here — never read from trading_config.json / services.frenzy any more, so a later
+# config change (or V2's per-order targets) can never move the frozen walk. (Was: scout_willy_hold.exit_rule('FRENZY_WILLY') on the config.)
+PINNED_RULE = (float(WEra.OLD_TP), float(WEra.OLD_STOP), int(WEra.OLD_HOLD))
+
+
 def willy_rule(th=None):
-    """WILLY's live exit (tp %, stop % positive or None, cap min) — scout_willy_hold.exit_rule('FRENZY_WILLY') on trading_config.json."""
-    tp, st, cap = WH.exit_rule(STRATEGY, FWX._ns(th))
-    return float(tp), (abs(float(st)) if st else None), int(cap)
+    """the REGISTERED WILLY exit (tp %, stop % positive, cap min) = PINNED_RULE (+1.25 / −4 / 90) — `th` is accepted for call-compat and
+    IGNORED (DECISION_LOG 356: a frozen gate keeps the exit it was registered with)."""
+    return PINNED_RULE
+
+
+def _v2ch(c):
+    """DL 356 → boolean array: V2 fills whose live exit differs from the pinned one (runner target > +1.25 or a WILLY_FLOOR close)."""
+    if not len(c):
+        return np.zeros(0, dtype=bool)
+    x = c if "close_reason" in c.columns else c.assign(close_reason=c.why)
+    return WEra.masks(x)[1].values.astype(bool)
 
 
 def price(r, rule, tcache=None):
@@ -445,14 +464,15 @@ def _fmt_uns(d):
 
 
 # ─────────────────────────── run ───────────────────────────
-def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, open_ts=None, th=None, floor=None, cstart=None):
+def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, open_ts=None, th=None, floor=None, cstart=None, rule=None):
     """→ markdown lines (the caller wraps it in its own try). Ticks / 1m: cache only (WILLY_TIMECAP's fetch pass). BTC 5m: cache first,
     then NEG_DAILYUP's rate-limited fetcher (shared cooldown, used-weight stop at 900, 418/429 stop) only when fetch and the cache is
-    behind the newest counted fill."""
+    behind the newest counted fill. DL 356: the walk uses PINNED_RULE (th is ignored for the exit); `rule` = a synthetic exit for the
+    hermetic selftest harness ONLY — production callers never pass it."""
     now_ms = now_ms or int(time.time() * 1000)
     state_path, rows_path = state_path or STATE, rows_path or ROWS_CSV
     WT._K1.clear()
-    rule = willy_rule(th)
+    rule = willy_rule(th) if rule is None else (float(rule[0]), (abs(float(rule[1])) if rule[1] else None), int(rule[2]))
     o, opens = load_orders(orders)
     if open_ts is not None:
         opens = list(open_ts)
@@ -509,8 +529,11 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, o
     L = ["## 🧭🎲 WILLY_BTC1H — FRENZY_WILLY vs BTC 1 h EMA20 slope at entry (pre-registered 2026-10-12, DECISION_LOG 275, OBSERVE only)", "",
          f"Split (frozen): BTC 1 h EMA20 slope of the last CLOSED 1 h bar at entry (5m closes resampled on the hour, no look-ahead; < "
          f"{WARM_BARS} h warm-up or BTC cache behind → UNSCORED, never counted) > 0 → kept, ≤ 0 → blocked. Cohort: CLOSED non-MANUAL "
-         f"FRENZY_WILLY fills opened ≥ {cstart:%Y-%m-%d %H:%M} UTC ({COUNT_FROM} + 10 min: one live exit), every fill re-walked under WILLY's live exit ({lab}) with the ticks-first ruler "
+         f"FRENZY_WILLY fills opened ≥ {cstart:%Y-%m-%d %H:%M} UTC ({COUNT_FROM} + 10 min: one live exit), every fill re-walked under WILLY's registered exit ({lab}, pinned — DECISION_LOG 356) with the ticks-first ruler "
          f"(DECISION_LOG 272). Market-wide variable → DAY units (a WILLY on/off switch).", "",
+         WEra.era_line(c.assign(close_reason=c.why) if len(c) else c, "WILLY_BTC1H",
+                       note=("V2 runner / floor fills stay in the groups (their ENTRY is the tested variable; every fill is walked under the "
+                             "pinned exit, never its booked V2 %) and are kept OUT of the walker-parity line") if _v2ch(c).any() else None), "",
          *HDR, _row("kept (slope > 0)", kept), _row("**blocked (slope ≤ 0)**", blocked),
          _row("UNSCORED (no warmed / current BTC 1 h bar) — never counted", uns[uns.walk.notna()] if len(uns) else uns), ""]
     nx = len(X)
@@ -531,9 +554,13 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, rows_path=None, o
             f"[{r.grp}] candle {('–' if pd.isna(r.bar_ret) else f'{r.bar_ret:+.2f}')}{'' if r.sgrp is None or r.sgrp != r.sgrp else f' ({r.sgrp})'} · live {r.pct:+.2f} → walked "
             + (f"{r.walk:+.2f} ({r.walk_why} @ {r.walk_min:.0f} min) [{r.src}{'ᵖ' if r.src != 'ticks' else ''}]" if r.walk == r.walk else "UNPRICED")
             for r in c.itertuples()))
-        pz = c[c.walk.notna()]
+        _ch = _v2ch(c)
+        pz = c[c.walk.notna() & ~_ch]                                # DL 356: a V2 runner / floor fill booked another exit → not a parity case
+        pv = c[c.walk.notna() & _ch]
         off = pz[~pz.par_ok.astype(bool)]
         L.append(f"Walker parity (walked vs the actual exit, reason + % within {WT.PARITY_TOL} pts): {int(pz.par_ok.astype(bool).sum())}/{len(pz)}"
+                 + (f" (+ {len(pv)} V2 runner / floor fill(s) out — booked the V2 exit, not the pinned one: "
+                    + " · ".join(f"{r.pair} target +{getattr(r, WEra.TP_COL):g} {r.why} {r.pct:+.2f}" for r in pv.itertuples()) + ")" if len(pv) else "")
                  + ("" if not len(off) else " — off: " + " · ".join(f"{r.pair} live {r.why} {r.pct:+.3f} vs walk {r.walk_why} {r.walk:+.3f}" for r in off.itertuples()))
                  + f" · unpriced {int(c.walk.isna().sum())}" + (": " + " · ".join(
                      f"{r.ts:%m-%d %H:%M} {r.pair}" + ("" if r.pend else " (final — no data)") for r in c[c.walk.isna()].itertuples()) if c.walk.isna().any() else "")
@@ -778,10 +805,11 @@ def selftest():
                 np.savez_compressed(os.path.join(_CACHE, "ticks_q", pair, f"{ts[:10]}.npz"),
                                     t=(tk + np.array([60_000, 300_000])[:len(nets)]).astype(np.int64), p=np.array([px(x) for x in nets]))
             th = {"frenzy_willy_tp_pct": 1.0, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_max_hold_minutes": 120}
-            chk(willy_rule(th) == (1.0, 4.0, 120), "WILLY's live exit read through scout_willy_hold.exit_rule")
+            chk(willy_rule(th) == willy_rule() == PINNED_RULE == (1.25, 4.0, 90), "DL 356: the registered exit is pinned — a config never moves it")
+            th = (1.0, 4.0, 120)                                         # the harness's synthetic exit (run(rule=…), selftest only)
             sp, rp = os.path.join(td, "s.json"), os.path.join(td, "rows.csv")
             now = pd.Timestamp("2026-10-13 05:00").value // 10**6
-            out = "\n".join(run(now, fetch=False, state_path=sp, rows_path=rp, th=th, floor="2026-10-08 15:13:12"))
+            out = "\n".join(run(now, fetch=False, state_path=sp, rows_path=rp, rule=th, floor="2026-10-08 15:13:12"))
             chk("pre-registered 2026-10-12, DECISION_LOG 275" in out and "B19 pre-registration context" in out
                 and "kept 1 · 1 d · 100 % · +1.020" in out.split("B19 pre-registration context")[1].split("\n")[0], f"context line\n{out}")
             chk("| kept (slope > 0) | 1 | 1 | 1 | 100 % | +1.050 %" in out and "| **blocked (slope ≤ 0)** | 1 | 1 | 1 | 0 % | -4.000 %" in out,
@@ -791,7 +819,7 @@ def selftest():
             chk("reason + % within 0.05 pts): 4/4 · unpriced 1: 10-12 11:00 NOPUSDT ·" in out and "Now: ⏳ COLLECTING (blocked N 1/15" in out and not os.path.exists(sp)
                 and os.path.exists(rp) and len(pd.read_csv(rp)) == 5, f"parity + collecting + rows stored, no state written\n{out}")
 
-            o2 = "\n".join(run(now, fetch=False, state_path=os.path.join(td, "s_cs.json"), rows_path=os.path.join(td, "rows_cs.csv"), th=th,
+            o2 = "\n".join(run(now, fetch=False, state_path=os.path.join(td, "s_cs.json"), rows_path=os.path.join(td, "rows_cs.csv"), rule=th,
                                 floor="2026-10-08 15:13:12", cstart="2026-10-12 05:00"))
             chk("KEPUSDT (ctx)" in o2 and "| kept (slope > 0) | 0 |" in o2 and "opened ≥ 2026-10-12 05:00 UTC (the DECISION_LOG 281 deploy" in o2,
                 f"(281) a fill before the counted floor is context only (never counted)\n{o2}")
@@ -803,20 +831,20 @@ def selftest():
             lo_ = int(bk.open_time.max())
             pd.concat([bk, pd.DataFrame(dict(open_time=[lo_ + M5_MS, lo_ + 2 * M5_MS], c=[1.0, 1.0]))]).to_csv(
                 os.path.join(_CACHE, "k5m_full", "BTCUSDT.csv"), index=False)
-            out = "\n".join(run(now, fetch=False, state_path=sp, rows_path=rp, th=th, floor="2026-10-08 15:13:12"))
+            out = "\n".join(run(now, fetch=False, state_path=sp, rows_path=rp, rule=th, floor="2026-10-08 15:13:12"))
             chk("BTC 5m closes to 10-13 01:10 UTC, last full 1 h bar 10-13 01:00 UTC" in out and "02:00 UTC" not in out.split("Slope coverage")[1].split("\n")[0],
                 f"coverage: max 5m close + last full hour\n{out}")
             bk.to_csv(os.path.join(_CACHE, "k5m_full", "BTCUSDT.csv"), index=False)
             # ── (L5) fetch=True: NF.load_btc called only when the cache is behind the newest counted fill
             calls = []
             NF.load_btc = lambda need, now_ms, fetch=True: (calls.append(need), (None, None, ["stub fetch"]))[1]   # noqa: E731
-            out = "\n".join(run(now, fetch=True, state_path=sp, rows_path=rp, th=th, floor="2026-10-08 15:13:12"))
+            out = "\n".join(run(now, fetch=True, state_path=sp, rows_path=rp, rule=th, floor="2026-10-08 15:13:12"))
             chk(calls == [pd.Timestamp("2026-10-13 03:00").value // 10**6] and "Data: stub fetch." in out, f"cache behind → one fetch ({calls})")
             calls.clear()
             fresh = pd.DataFrame([r for r in rows if r["pair"] != "LAGUSDT"])
-            run(now, orders=fresh, fetch=True, state_path=sp, rows_path=rp, th=th, floor="2026-10-08 15:13:12")
+            run(now, orders=fresh, fetch=True, state_path=sp, rows_path=rp, rule=th, floor="2026-10-08 15:13:12")
             chk(calls == [], "cache covers the newest counted fill → no fetch")
-            run(now, fetch=False, state_path=sp, rows_path=rp, th=th, floor="2026-10-08 15:13:12")
+            run(now, fetch=False, state_path=sp, rows_path=rp, rule=th, floor="2026-10-08 15:13:12")
             chk(calls == [], "fetch=False → never")
             NF.load_btc = saved[11]
             # the REAL fetcher: shared cooldown honoured; with no cooldown the network block fails the request cleanly (never raises)
@@ -826,10 +854,10 @@ def selftest():
             os.makedirs(NF.DU_CACHE)
             with open(NF.SHARED_COOLDOWN, "w") as f:
                 f.write(str(now + 3_600_000))
-            out = "\n".join(run(now, fetch=True, state_path=sp, rows_path=rp, th=th, floor="2026-10-08 15:13:12"))
+            out = "\n".join(run(now, fetch=True, state_path=sp, rows_path=rp, rule=th, floor="2026-10-08 15:13:12"))
             chk("fetching stopped: rate-limit cooldown until" in out and "fetch failed" not in out, f"cooldown → no request\n{out}")
             os.remove(NF.SHARED_COOLDOWN)
-            out = "\n".join(run(now, fetch=True, state_path=sp, rows_path=rp, th=th, floor="2026-10-08 15:13:12"))
+            out = "\n".join(run(now, fetch=True, state_path=sp, rows_path=rp, rule=th, floor="2026-10-08 15:13:12"))
             chk("5m fetch failed (network blocked (selftest))" in out and not os.listdir(NF.DU_CACHE), f"network blocked → clean failure, no cache write\n{out}")
             chk(not os.path.exists(sp), "still nothing frozen")
             # ── (L5) 3-day lag hold
@@ -869,11 +897,11 @@ def selftest():
             pd.DataFrame(rr).to_csv(os.path.join(dl, "scalpars_orders_paper_a.csv"), index=False)
             sp, rp = os.path.join(td, "s.json"), os.path.join(td, "rows.csv")
             n1 = pd.Timestamp("2026-10-15 06:00").value // 10**6                                # < 3 days after the lag fill
-            out = "\n".join(run(n1, fetch=False, state_path=sp, rows_path=rp, th=th, floor="2026-10-08 15:13:12"))
+            out = "\n".join(run(n1, fetch=False, state_path=sp, rows_path=rp, rule=th, floor="2026-10-08 15:13:12"))
             chk("LGXUSDT slope –/lag [unscored]" in out and "BTC slope pending LGXUSDT" in out and not os.path.exists(sp),
                 f"a lag fill ≤ the prefix end defers the freeze\n{out}")
             n2 = pd.Timestamp("2026-10-25 00:00").value // 10**6
-            out = "\n".join(run(n2, fetch=False, state_path=sp, rows_path=rp, th=th, floor="2026-10-08 15:13:12"))
+            out = "\n".join(run(n2, fetch=False, state_path=sp, rows_path=rp, rule=th, floor="2026-10-08 15:13:12"))
             st_ = NF.du_load_state(sp)[0]
             f0 = st_.get("first", {})
             chk(os.path.exists(sp) and f0.get("n") == 15 and f0.get("days") == 8 and f0.get("n_unscored_le_prefix") == {"total": 1, "lag": 1}
@@ -881,7 +909,7 @@ def selftest():
                 f"frozen + persisted, unscored on record; DIP_SUB untouched (no rising fills)\n{st_}\n{out}")
             raw0 = open(sp).read()
             pd.DataFrame(rr + [dict(rr[0], opened_at="2026-10-20T12:00:00", pair="ZZZUSDT")]).to_csv(os.path.join(dl, "scalpars_orders_paper_a.csv"), index=False)
-            out = "\n".join(run(n2 + 86_400_000, fetch=False, state_path=sp, rows_path=rp, th=th, floor="2026-10-08 15:13:12"))
+            out = "\n".join(run(n2 + 86_400_000, fetch=False, state_path=sp, rows_path=rp, rule=th, floor="2026-10-08 15:13:12"))
             chk(open(sp).read() == raw0 and "Live (information only, never re-decides)" in out, "never re-frozen on a later run")
     finally:
         (_CACHE, WT._CACHE, WT.MY_CACHE, WT.EXPORT_GLOB, WT._NET_BLOCKED, NF._NET_BLOCKED, socket.socket,

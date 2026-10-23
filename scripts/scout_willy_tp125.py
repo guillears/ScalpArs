@@ -22,6 +22,9 @@ ADOPTED     live target ≥ +1.25 → no new verdict / freeze; the switch time i
             FRENZY_TP_LATE exits (restart / feed gap, not replicable by the walker) leave the cohort and are listed.
 CAVEAT      Δ is per fill on the SAME entries. A higher target keeps the single WILLY slot — and the global hold (no other automated open
             while a WILLY is open) — busy longer; the extra minutes held are printed, the trades they would block are not modelled.
+DL 356      (WILLY exit V2) the walked "today's" exit is PINNED to the pre-V2 fixed exit (+1.25 / −4 / 90, willy_exit_era.OLD_*) — never
+            read from trading_config.json again; V2 runner / floor fills (stored target > +1.25 or a WILLY_FLOOR close) leave the cohort,
+            listed; a V2 fill with target +1.25 ran the old exit and stays. The exit-era line (willy_exit_era.era_line) prints every run.
 Usage: venv/bin/python scripts/scout_willy_tp125.py [--selftest]
 """
 import os
@@ -35,6 +38,7 @@ if os.path.dirname(os.path.abspath(__file__)) not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scout_b1h_negflank as NF                     # noqa: E402  (bootstrap, freeze hold, state I/O)
 import scout_willy_timecap as WT                    # noqa: E402  (cohort loader, walker, shared caches, attempts ledger)
+import willy_exit_era as WEra                       # noqa: E402  🎲² (DECISION_LOG 356) pinned old exit + exit-era split / header
 
 TP_ALT = 1.25
 BASE_TP = 1.00                                       # the +1.00 comparator the revert read needs once +1.25 is live
@@ -48,6 +52,25 @@ STUDY_VER = 1                                        # bump when the study re-wa
 MY_CACHE = os.path.join(_ROOT, "reports", "backtest_cache", "scout_willy_tp125")
 REVERT = ("Pre-committed revert if +1.25 is ever adopted: the first 15 WILLY fills after the switch — Σ % below what the +1.00 target "
           "would have given on the same fills (this walker) → back to +1.00.")
+
+
+def _v2_split(o):
+    """DECISION_LOG 356 → (old-exit cohort, V2 runner / floor fills). The walk prices the pinned fixed exit; a V2 fill with a runner target
+    (> +1.25) or a WILLY_FLOOR close booked another exit (parity / Δ vs live would be fake) → kept OUT and listed. A V2 fill with target
+    == +1.25 ran the old exit exactly → stays in. Prepared frames carry the close reason as `why`."""
+    if o is None or not len(o):
+        return o, (o.iloc[:0] if o is not None else o)
+    ch = WEra.masks(o if "close_reason" in o.columns else o.assign(close_reason=o.why))[1].values.astype(bool)
+    return o[~ch].reset_index(drop=True), o[ch].reset_index(drop=True)
+
+
+def _v2_lines(era, v2x):
+    L = [era]
+    if v2x is not None and len(v2x):
+        L.append(f"Excluded: {len(v2x)} V2 runner / floor fill(s) (DECISION_LOG 356 — booked the per-order V2 exit, not the pinned "
+                 f"+{WEra.OLD_TP:g} one this shadow walks): " + ", ".join(
+                     f"{r.ts:%m-%d %H:%M} {r.pair} target +{getattr(r, WEra.TP_COL):g} {r.why} {r.pct:+.2f}" for r in v2x.itertuples()) + ".")
+    return L
 
 
 # ─────────────────────────── scoring ───────────────────────────
@@ -171,7 +194,9 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None, study=
     now_ms = now_ms or int(time.time() * 1000)
     state_path = state_path or STATE
     WT._K1.clear()
-    tp, stop, hold = WT.levels(th)
+    # 🔒 DECISION_LOG 356: the frozen bar keeps the exit it was registered with — the pre-V2 fixed exit (+1.25 / −4 / 90), PINNED, never
+    # read from trading_config.json (a later config change cannot move it). An explicit `th` = the hermetic selftest harness only.
+    tp, stop, hold = WT.levels(th) if th is not None else (float(WEra.OLD_TP), float(WEra.OLD_STOP), int(WEra.OLD_HOLD))
     o, opens = WT.load_orders(orders)
     if open_ts is not None:
         opens = list(open_ts)
@@ -185,6 +210,8 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None, study=
     o = o[o.why.astype(str) != "FRENZY_TP_LATE"].reset_index(drop=True)
     wlate = o[o.why.astype(str) == "WILLY_LATE_TP"]                  # ⏰ DL 297 late-TP exits (+0.25 after 30 min): a different exit than the
     o = o[o.why.astype(str) != "WILLY_LATE_TP"].reset_index(drop=True)   # one walked here → out, counted (scored by WILLY_TIMECAP's 297 read)
+    _era = WEra.era_line(o.assign(close_reason=o.why) if len(o) else o, "WILLY_TP125")   # DL 356 (c), before the split
+    o, v2x = _v2_split(o)                                            # DL 356 (b): V2 runner / floor fills ran another exit → out, listed
     tc = {}
     sc_all = scored_frame(o, hold, tp, stop, tc)
     done = WT.load_attempts()["done"]
@@ -204,6 +231,7 @@ def run(now_ms=None, orders=None, state_path=None, open_ts=None, th=None, study=
     if len(wlate):
         L.append(f"Excluded: {len(wlate)} WILLY_LATE_TP fill(s) (DECISION_LOG 297 late take profit — scored vs the old exit by WILLY_TIMECAP): "
                  + ", ".join(f"{r.ts:%m-%d %H:%M} {r.pair}" for r in wlate.itertuples()) + ".")
+    L += _v2_lines(_era, v2x)                                       # DL 356 (b)(c)
     if tp >= TP_ALT - 1e-9:                                         # +1.25 (or higher) is live → no verdict / freeze; the revert read runs
         return L + adopted_block(sc, sc_all, tp, now_ms, state_path) + [""]
     L += [*HDR, _row(f"**{live_lab}**", sc, "LIVE"), _row(f"**TP +{TP_ALT:g}**", sc, "TP125"), ""]

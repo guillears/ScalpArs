@@ -677,6 +677,9 @@ def blocked_lines(ctx):
             line += (f" · unpriced {len(br)} (LITE C: TP depends on the unstamped entry vol-mult / BTC 1h slope) — bracket avg "
                      f"[{sum(x['lo'] for x in br) / len(br):+.3f}, {sum(x['hi'] for x in br) / len(br):+.3f}] %")
         line += f" · waiting {k_('WAIT')} · unpriced (no data / fetch) {k_('UNPRICED')}"
+        if s in ("FRENZY_WILLY", "FRENZY_WILLY_HT"):   # 🎲² (DECISION_LOG 356) the V2 per-order runner target is not reconstructible here
+            line += (" · 🎲² priced under the fixed WILLY exit (+1.25 / −4 / 90, late TP, resting TP) — the DL 356 V2 runner target / "
+                     "profit floor needs the episode spike high, not on a BLOCK row (a runner could book above or below this)")
         L.append(line)
     if holders:
         hs = list(holders.values())

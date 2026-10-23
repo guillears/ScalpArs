@@ -16,7 +16,7 @@ from typing import Dict, List, Optional
 TOUCH_LEVELS = (2, 3)
 TOUCH_FIELDS = ("at", "min", "peak_before", "vs_ema50_pct", "rsi", "adx", "vs_vwap_pct", "vol_ratio", "atr_pct", "btc_since_entry_pct",
                 "btc_1h_slope", "recovered_tp", "min_after")
-TP_REASONS = ("FRENZY_TP", "WILLY_LATE_TP")
+TP_REASONS = ("FRENZY_TP", "WILLY_LATE_TP", "WILLY_FLOOR")   # 🎲² (356) a V2 runner that armed and floored at ≈ +1.0 recovered past the WILLY TP
 BAR_MS = 300_000
 STALE_MS = 600_000   # the last cached CLOSED bar must have closed ≤ 10 min before the touch, else the pair fields are None
 

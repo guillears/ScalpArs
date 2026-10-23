@@ -257,6 +257,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN frenzy_lite_tp_used FLOAT"))
                 if 'lite_c_zone' not in columns:   # 🎯 (DECISION_LOG 301) LITE C zone flag
                     connection.execute(text("ALTER TABLE orders ADD COLUMN lite_c_zone BOOLEAN"))
+                for _wv_col, _wv_type in (('entry_frenzy_willy_spike_high', 'FLOAT'), ('frenzy_willy_tp_target_pct', 'FLOAT'),
+                                          ('willy_floor_armed_at', 'DATETIME')):   # 🎲² (DECISION_LOG 356) WILLY exit V2
+                    if _wv_col not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_wv_col} {_wv_type}"))
                 for _fb_col in ('entry_flatbase_flat14_pct', 'entry_flatbase_flat_cov_pct', 'entry_flatbase_off_peak_pct'):   # 🩳 (DECISION_LOG 348) FLATBASE_SHORT stamps
                     if _fb_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_fb_col} FLOAT"))

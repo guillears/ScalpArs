@@ -59,6 +59,7 @@ if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in __import__
     __import__("sys").path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # services.frenzy (the engine's pure rule)
 import scout_b1h_negflank as NF                     # noqa: E402  (bootstrap, freeze hold, state I/O)
 import scout_willy_hold as WH                       # noqa: E402  (the tracker's store + config reader)
+import willy_exit_era as WEra                       # noqa: E402  🎲² (DECISION_LOG 356) exit-era header
 
 FRENZY3 = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")
 N_MIN, DAYS_MIN, REREAD_N = 15, 8, 30
@@ -71,6 +72,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.path.join(_ROOT, "reports", "SCOUT_HOLD_FRENZY_EXEMPT.json")
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 OCOLS = ("opened_at", "closed_at", "pair", "entry_strategy", "status", "entry_btc_1d_ret_pct", "entry_btc_trend_gap_pct")
+ECOLS = ("close_reason",) + tuple(WEra.V2_COLS)     # DL 356: read along (era line only) — OCOLS stays the selftest's positional schema
 REVERT = ("Pre-committed revert if the exemption is ever armed: the first 15 FRENZY-family fills opened while a WILLY was open average "
           "< 0 % → restore the hold for them.")
 
@@ -148,14 +150,14 @@ def load_orders():
     fr = []
     for f in _EG.glob_exports(EXPORT_GLOB):
         try:
-            d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in OCOLS)
+            d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in OCOLS or c in ECOLS)
         except Exception:
             continue
         if {"opened_at", "pair", "entry_strategy", "status"} <= set(d.columns):
             fr.append(d.assign(_m=os.path.getmtime(f)))
     if not fr:
         return pd.DataFrame(columns=list(OCOLS) + ["o_ms", "c_ms", "_c"])
-    o = pd.concat(fr, ignore_index=True).reindex(columns=list(OCOLS) + ["_m"]).sort_values("_m", kind="stable")
+    o = pd.concat(fr, ignore_index=True).reindex(columns=list(OCOLS) + list(ECOLS) + ["_m"]).sort_values("_m", kind="stable")
     o["_k"] = o.opened_at.astype(str).str[:19]
     o["_c"] = o.status.astype(str).str.upper().eq("CLOSED")
     o = o.sort_values("_c", kind="stable").drop_duplicates(["_k", "pair", "entry_strategy"], keep="last")
@@ -397,6 +399,9 @@ def run(now_ms=None, rows=None, orders=None, state_path=None, th=None, ctx=None)
                          f"N {f0['n']} · {f0['days']} d): {f0['state']}** ({f0['detail']})")
         L.append(f"Live (information only, never re-decides): {live_state} — {live_det}")
     L.append(REVERT)
+    _w = o[o.entry_strategy.astype(str).isin(("FRENZY_WILLY", "FRENZY_WILLY_HT")) & o._c.astype(bool)] if len(o) else o
+    L.append(WEra.era_line(_w, "HOLD_FRENZY_EXEMPT", note="information only — this line prices FRENZY / WIDE / LITE refusals; no WILLY % is "
+                                                          "priced or compared (WILLY fills only occupy pairs / slots in the re-checks)"))   # DL 356 (c)
     if notes:
         L.append("BTC data: " + " · ".join(notes) + ".")
     return L + [""]

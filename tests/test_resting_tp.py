@@ -634,8 +634,8 @@ def test_every_exit_path_cancels_first_source_pins():
     op = eng[eng.index("_st_fill['committed'] = True   # 🛡 (292 ③) booked"):]
     assert op.index("await self._rtp_arm(db, order)") > 0
     # both exit paths: the same WILLY / FRENZY exit with the resting flag, then the same gate
-    assert eng.count("_held_minutes(order.opened_at), None, resting_tp=_rtp_on_m)") == 1
-    assert eng.count("_held_minutes(order_info.get('opened_at')), None, resting_tp=_rtp_on_rt)") == 1
+    assert eng.count("_held_minutes(order.opened_at), None, resting_tp=_rtp_on_m, row=order)") == 1   # 🎲² (356) + the row (own TP / floor)
+    assert eng.count("_held_minutes(order_info.get('opened_at')), None, resting_tp=_rtp_on_rt, row=order_info)") == 1
     # 🎯 (310) + the operator-TP branch (MANUAL FIXED / override) of each path: the same gate, monitor awaits, realtime in the background
     assert eng.count("await self._rtp_gate(order.id, current_price)") == 2 and eng.count("await self._rtp_gate(order_id, current_price, background=True)") == 2
     assert "await self.resting_tp_sweep()" in eng

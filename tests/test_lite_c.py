@@ -212,7 +212,7 @@ def test_entry_decision_uses_the_stamped_values_and_every_consumer_reads_the_row
     # the row's frenzy_lite_tp_used to rtp_target; the only direct rtp_target call left is the WILLY-only late swap
     calls = re.findall(r"rtp_target\(([^\n]*)\)", eng)
     assert [c for c in calls if "st['es']" not in c] == [], calls
-    assert len(re.findall(r"rtp_row_target\(th, o, _held_minutes\(o\.opened_at\)\)", eng)) == 3 and "rtp_row_target(config.trading_config.thresholds, order, 0.0)" in eng
+    assert len(re.findall(r"rtp_row_target\(th, o, _held_minutes\(o\.opened_at\), willy_armed=", eng)) == 3 and "rtp_row_target(config.trading_config.thresholds, order, 0.0)" in eng   # 🎲² (356) + the armed-floor flag
     _rs = _src("services", "resting_tp.py")
     assert "return rtp_target(th, getattr(row, 'entry_strategy', None), held_minutes, getattr(row, 'frenzy_lite_tp_used', None))" in _rs
     assert "frenzy_tp_for(_rtp_th, _rtp_es, getattr(order, 'frenzy_lite_tp_used', None))" in eng   # 📏 295 shadow context

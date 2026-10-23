@@ -44,6 +44,7 @@ if os.path.dirname(os.path.abspath(__file__)) not in __import__("sys").path:
 import scout_b1h_negflank as NF                     # noqa: E402  (bootstrap, freeze hold, state I/O)
 import scout_willy_timecap as WT                    # noqa: E402  (walker, caches, data fetcher, accounting)
 import scout_willy_hold as WH                       # noqa: E402  (the FRENZY live exit from trading_config.json)
+import willy_exit_era as WEra                       # noqa: E402  🎲² (DECISION_LOG 356) exit-era header
 
 SLEEVES = ("FRENZY_LONG", "FRENZY_WIDE", "FRENZY_LITE")
 PROVISIONAL = ("1m", "ticks+1m")                    # (272) a fill with a 1m segment: provisional while its tick archive is pending
@@ -365,6 +366,7 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
     live_by = {s: frenzy_levels(th, s) for s in SLEEVES}   # DECISION_LOG 284: LITE walks its own TP
     _t = _ns(th)
     paused = _num(_t, "frenzy_lock_arm_pct", 0.0) > 0 or _num(_t, "frenzy_tp_pct", 3.0) <= 0
+    # DL 356: WT.levels reads only frenzy_willy_tp_pct (unchanged by WILLY exit V2) — never the V2 per-order target / floor fields
     alts = {n: (float(WT.levels(vars(_t))[0]) if tp_ is None else tp_, sl_) for n, tp_, sl_ in GRID}
     o, opens = load_orders(orders)
     if open_ts is not None:
@@ -396,7 +398,9 @@ def run(now_ms=None, orders=None, fetch=True, state_path=None, open_ts=None, th=
          f"−2 / −2.5 / −3 stop, or +{TP125:g} / −4? (DECISION_LOG 267 · 269, OBSERVE only, exit shadow grid)", "",
          f"Cohort: CLOSED FRENZY_LONG / WIDE / LITE fills opened ≥ {floor:%Y-%m-%d %H:%M} UTC (today's +{live[0]:g} / −{live[1] or 0:g} exit went live — {DEPLOY_GREP} + {DEPLOY_LAG_MIN} min; re-based 2026-10-12), re-walked from "
          f"each fill's own entry on the same hybrid path (ticks first, then the 1m tail — DECISION_LOG 272; WILLY_TIMECAP's caches; a 1m part = provisional; a cell undecided at the path end is not counted for that cell) with the bot's accounting. Every exit "
-         f"keeps the live {live[2]}-min cap; TP and stop differ per cell. Judged per sleeve.", ""]
+         f"keeps the live {live[2]}-min cap; TP and stop differ per cell. Judged per sleeve.", "",
+         WEra.era_line(o, "FRENZY_WILLY_TP", note="cohort = FRENZY_LONG / WIDE / LITE only — no WILLY fill is walked or gated here; the "
+                       "+1 / +1.25 cells are fixed targets, not the V2 WILLY exit (DECISION_LOG 356)"), ""]
     if paused:
         L.append("⏸ PAUSED: the live FRENZY exit is not a fixed TP (frenzy_lock_arm_pct > 0 or frenzy_tp_pct ≤ 0) — the '(live)' row below is "
                  "NOT what live trades; no Δ is judged and nothing is frozen until the fixed TP is back.")

@@ -21,6 +21,7 @@ HTTP 418 / 429 (no more network this run; unpriced rows are retried next run). S
 import glob
 import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
 import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
+import willy_exit_era as WEra   # 🎲² (DECISION_LOG 356) exit-era header
 import json
 import os
 import sys
@@ -188,7 +189,8 @@ def orders():
     for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
             d = pd.read_csv(f, low_memory=False, usecols=lambda c: c in ("opened_at", "pair", "entry_strategy", "status", "pnl_percentage",
-                                                                        "pnl", "notional_value", "direction", "close_reason"))
+                                                                        "pnl", "notional_value", "direction", "close_reason")
+                            + tuple(WEra.V2_COLS))   # DL 356: the V2 stamps ride the reader (era line)
             fr.append(d.assign(_m=os.path.getmtime(f)))
         except Exception:
             continue
@@ -311,11 +313,15 @@ def run(now_ms=None):
         rows["usd"] = pd.to_numeric(rows.pct, errors="coerce") / 100 * base * pd.to_numeric(rows.inv, errors="coerce").fillna(1.0) \
             * pd.to_numeric(rows.lev, errors="coerce").fillna(1.0)
     per, blocked, cost = cost_summary(rows, w_usd)
+    _era = WEra.era_line(wc, "WILLY_HOLD", note=("WILLY's own Σ$ is its BOOKED money (V2 runner / floor fills included — not an exit "
+                                                 "comparison); a blocked WILLY row is priced at the config TP / stop / cap (a refusal has no "
+                                                 "spike-high stamp, so its V2 target cannot be rebuilt)") if WEra.counts(wc)[2] else None)   # DL 356 (c)
     L = ["## 🔒 WILLY_HOLD — the cost of the FRENZY_WILLY global hold (DECISION_LOG 251, declared exception, no auto-off)", "",
          f"_Rows from {pd.Timestamp(fl, unit='ms'):%Y-%m-%d %H:%M} UTC (the (DECISION_LOG 251) commit). Blocked trades priced AS IF OPENED: "
          f"FRENZY / WIDE / LITE at the live fixed exit when priced (today +{exit_rule('FRENZY_LONG')[0]:g} / {exit_rule('FRENZY_LONG')[1]:g} / {exit_rule('FRENZY_LONG')[2] // 60} h; +3 / −3 before DECISION_LOG 283), WILLY at its own exit (1m klines, FEE 0.09 + SLIP 0.10); other sleeves "
          "at their own ±3-day mean realised % (PROXY — no kline replica of their exit stacks). $ = % × the base notional (median WILLY fill"
-         f"{' $%.0f' % base if base == base else ' — none yet'}) × the blocked trade's invest × lev mult._" + (" ⚠ network stopped (418 / 429 / weight) — unpriced rows retry next run." if stopped else ""), ""]
+         f"{' $%.0f' % base if base == base else ' — none yet'}) × the blocked trade's invest × lev mult._" + (" ⚠ network stopped (418 / 429 / weight) — unpriced rows retry next run." if stopped else ""),
+         _era, ""]
     if not len(rows):
         return L + ["No refused trade recorded yet.", ""]
     L += ["| Sleeve | Setups | Tries | Days | Priced | Σ % | Σ $ |", "|---|---|---|---|---|---|---|"]

@@ -49,6 +49,7 @@ import export_glob as EG                                     # noqa: E402
 import scout_b1h_negflank as NF                              # noqa: E402  (shared cooldown helpers)
 import scout_frenzy_willy_exit as FX                         # noqa: E402  (the study's path builder)
 import study_reentry_after_loss_avgdown as AD                # noqa: E402  (the study's walker — the scout and the study agree)
+import willy_exit_era as WEra                                # noqa: E402  🎲² (DECISION_LOG 356) exit-era split / header
 
 COHORT_START = "2026-10-19T13:00:00"
 W = AD.SL["FRENZY_WILLY"]                                   # d 1 · S 4.0 · tp 1.25 · cap 90 · late (30, 0.25) · N 2300
@@ -80,7 +81,7 @@ def fills():
         try:                                                    # export_glob adds the post-go-live LIVE exports (live rows only)
             fr.append(pd.read_csv(f, low_memory=False, usecols=lambda c: c in (
                 "opened_at", "pair", "direction", "status", "entry_strategy", "entry_price", "pnl_percentage", "pnl", "notional_value",
-                "is_paper", "close_reason")))
+                "is_paper", "close_reason") + tuple(WEra.V2_COLS)))   # DL 356: the V2 stamps ride the reader
         except Exception:
             continue
     if not fr:
@@ -202,6 +203,9 @@ def main():
     a, opx = _GK.split_operator_closed(a) if len(a) else (a, a)
     a = a.reset_index(drop=True)
     print(f"  {_GK.operator_closed_line(opx)}")
+    print(WEra.era_line(a, "WILLY_AVGDOWN", note=("the shadow walks EVERY fill under the study's pinned exit (+1.25 / −4 / 90, late +0.25 @ 30 — "
+                                                  "never the config), so V2 fills stay in the add-leg gate; V2 runner / floor fills are kept "
+                                                  "OUT of the walker-vs-booked parity line") if WEra.counts(a)[2] else None))   # DL 356 (c)
     print(f"WILLY_AVGDOWN (DECISION_LOG 313, observe) · cohort FRENZY_WILLY closed fills opened ≥ {COHORT_START} UTC → {len(a)}"
           f"  (paper {int((a.is_paper.astype(str).str.lower() == 'true').sum()) if len(a) else 0} · live "
           f"{int((a.is_paper.astype(str).str.lower() == 'false').sum()) if len(a) else 0})")
@@ -229,16 +233,19 @@ def main():
         notional = _num(r.get("notional_value"))
         notional = notional if np.isfinite(notional) and notional > 0 else float(W["N"])
         booked = _num(r.get("pnl_percentage"))
+        v2c = WEra.is_v2_changed(r)                             # DL 356: booked the V2 runner / floor exit → not a parity case
         rows.append(dict(day=str(r["opened_at"])[:10], opened_at=str(r["opened_at"])[:19], pair=r["pair"], notional=notional, booked=booked,
                          **s, leg_usd=(s["leg"] * notional / 100 if s["trig"] else 0.0), merged_usd=s["merged"] * notional / 100,
-                         sign_flag=bool(np.isfinite(booked) and np.sign(booked) != np.sign(s["base"]))))
+                         v2c=v2c, sign_flag=bool(not v2c and np.isfinite(booked) and np.sign(booked) != np.sign(s["base"]))))
     d = pd.DataFrame(rows)
     print(f"  scored {len(d)} · pending {pend} (budget / cooldown / window not complete — re-run later) · unresolved path {unres}")
     if not len(d):
         print(f"  verdict: collecting (0/{GATE_N} on 0/{GATE_DAYS} days)")
         return
-    gap = (d.base - d.booked).abs()
-    print(f"  parity walker-vs-booked: mean |Δ| {gap.mean():.2f} pp · sign disagreements {int(d.sign_flag.sum())}/{len(d)}")
+    dp = d[~d.v2c]                                              # DL 356: V2 runner / floor fills out of the parity read
+    gap = (dp.base - dp.booked).abs()
+    print(f"  parity walker-vs-booked: mean |Δ| {gap.mean():.2f} pp · sign disagreements {int(dp.sign_flag.sum())}/{len(dp)}"
+          + (f" · {int(d.v2c.sum())} V2 runner / floor fill(s) out (booked the V2 exit)" if d.v2c.any() else ""))
     for x in d[d.sign_flag].itertuples():
         print(f"    ⚠ {x.opened_at} {x.pair}: booked {x.booked:+.2f} vs walker {x.base:+.2f} ({x.base_why})")
     t = d[d.trig]

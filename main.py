@@ -1888,6 +1888,8 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "frenzy_lite_tp_used": getattr(o, 'frenzy_lite_tp_used', None), "lite_c_zone": getattr(o, 'lite_c_zone', None),   # 🎯 (301) LITE C stored TP / zone
             "entry_frenzy_willy_wait_bars": getattr(o, 'entry_frenzy_willy_wait_bars', None), "entry_vol_mcap_ratio": getattr(o, 'entry_vol_mcap_ratio', None),   # 🟥🔄 (251)
             "entry_frenzy_willy_nomiss": getattr(o, 'entry_frenzy_willy_nomiss', None),   # 🧭 (350) R_NOMISS entry A
+            "frenzy_willy_tp_target_pct": getattr(o, 'frenzy_willy_tp_target_pct', None), "entry_frenzy_willy_spike_high": getattr(o, 'entry_frenzy_willy_spike_high', None),   # 🎲² (356) WILLY exit V2: the row's own TP / spike high
+            "willy_floor_armed_at": (o.willy_floor_armed_at.isoformat() if getattr(o, 'willy_floor_armed_at', None) else None),
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             # ➕ (DECISION_LOG 324) add to position: the badge (count / Σ margin / last add) + whether the ➕ button is enabled (a fixed-level exit
             # only; add_block = the reason shown on a disabled button — the engine re-checks everything at the click)
@@ -2417,6 +2419,8 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "frenzy_lite_tp_used": getattr(o, 'frenzy_lite_tp_used', None), "lite_c_zone": getattr(o, 'lite_c_zone', None),   # 🎯 (301) LITE C stored TP / zone
             "entry_frenzy_willy_wait_bars": getattr(o, 'entry_frenzy_willy_wait_bars', None), "entry_vol_mcap_ratio": getattr(o, 'entry_vol_mcap_ratio', None),   # 🟥🔄 (251)
             "entry_frenzy_willy_nomiss": getattr(o, 'entry_frenzy_willy_nomiss', None),   # 🧭 (350) R_NOMISS entry A
+            "frenzy_willy_tp_target_pct": getattr(o, 'frenzy_willy_tp_target_pct', None), "entry_frenzy_willy_spike_high": getattr(o, 'entry_frenzy_willy_spike_high', None),   # 🎲² (356) WILLY exit V2: the row's own TP / spike high
+            "willy_floor_armed_at": (o.willy_floor_armed_at.isoformat() if getattr(o, 'willy_floor_armed_at', None) else None),
             "exit_override_at": (o.exit_override_at.isoformat() if getattr(o, 'exit_override_at', None) else None),   # ✎ Oct-2 operator exit override
             # ➕ (DECISION_LOG 324) size added by the operator (the row's qty / avg entry / invested already include it)
             "manual_add_count": getattr(o, 'manual_add_count', None), "manual_add_investment": getattr(o, 'manual_add_investment', None),
@@ -13869,6 +13873,8 @@ async def update_config(config_update: ConfigUpdate):
     _cfg_errs.extend(_lr_cfg_errors(new_config.thresholds))
     from services.frenzy import frenzy_willy_ht_config_errors as _ht_cfg_errors   # 🎲¼ (DECISION_LOG 341) FRENZY_WILLY_HT
     _cfg_errs.extend(_ht_cfg_errors(new_config.thresholds))
+    from services.frenzy import frenzy_willy_v2_config_errors as _wv2_cfg_errors   # 🎲² (DECISION_LOG 356) WILLY exit V2
+    _cfg_errs.extend(_wv2_cfg_errors(new_config.thresholds))
     from services.frenzy import frenzy_long_stop_config_errors as _ls_cfg_errors   # 🛑 (DECISION_LOG 317) FRENZY_LONG's own stop
     try:
         _sb_lev = float(new_config.confidence_levels["STRONG_BUY"].leverage)   # the sleeves open at the STRONG_BUY level

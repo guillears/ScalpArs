@@ -39,6 +39,7 @@ _D = os.path.dirname(os.path.abspath(__file__))
 _D in sys.path or sys.path.insert(0, _D)
 import export_glob as EG                                     # noqa: E402
 import scout_b1h_negflank as NF                              # noqa: E402  (shared cooldown helpers)
+import willy_exit_era as WEra                                # noqa: E402  🎲² (DECISION_LOG 356) exit-era split / header
 
 COHORT_START = "2026-10-17T00:00:00"
 BR_MAX, GAP_MIN, MIN_COINS = 0.2979, 1.393, 30           # the study's exact cell (study_willy_cont_followup.py)
@@ -61,7 +62,8 @@ def fills():
     for f in sorted(EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")), key=os.path.getmtime):
         try:
             fr.append(pd.read_csv(f, low_memory=False, usecols=lambda c: c in (
-                "opened_at", "pair", "direction", "status", "entry_strategy", "entry_price", "pnl_percentage", "entry_ema_gap_8_13", "close_reason")))
+                "opened_at", "pair", "direction", "status", "entry_strategy", "entry_price", "pnl_percentage", "entry_ema_gap_8_13", "close_reason")
+                + tuple(WEra.V2_COLS)))                         # DL 356: the V2 stamps ride the reader
         except Exception:
             continue
     if not fr:
@@ -170,6 +172,8 @@ def main():
     a = a.reset_index(drop=True)
     print(f"WILLY_MKTDIP (DECISION_LOG 305, observe) · cohort FRENZY_WILLY closed fills opened ≥ {COHORT_START} UTC → {len(a)}"
           f" · {_GK.operator_closed_line(opx)}")
+    print(WEra.era_line(a, "WILLY_MKTDIP", note=("touch / +2 are read on the 1m path with the frozen lines (never the booked exit), so V2 "
+                                                 "fills stay in the gate; 'avg booked' counts old-exit fills only") if WEra.counts(a)[2] else None))   # DL 356 (c)
     if not len(a):
         return
     bud, rows, pend = _Bud(), [], 0
@@ -184,7 +188,8 @@ def main():
             continue
         gap = pd.to_numeric(pd.Series([r.get("entry_ema_gap_8_13")]), errors="coerce").iloc[0]
         zone = "UNSCORED" if (np.isnan(br) or np.isnan(gap)) else ("ZONE" if (br <= BR_MAX and gap > GAP_MIN) else "REST")
-        rows.append(dict(day=str(r["opened_at"])[:10], zone=zone, touch=pt[0], cont=pt[1], pct=pd.to_numeric(pd.Series([r.get("pnl_percentage")]), errors="coerce").iloc[0]))
+        rows.append(dict(day=str(r["opened_at"])[:10], zone=zone, touch=pt[0], cont=pt[1], pct=pd.to_numeric(pd.Series([r.get("pnl_percentage")]), errors="coerce").iloc[0],
+                         v2c=WEra.is_v2_changed(r)))                # DL 356: a V2 runner / floor fill booked another exit
     d = pd.DataFrame(rows)
     print(f"  scored {len(d)} · pending {pend} (budget / cooldown / window not complete — re-run later)")
     for last, lag in sorted(_UNIV_SEEN.items()):
@@ -193,8 +198,10 @@ def main():
         return
     for z, g in d.groupby("zone"):
         t = g[g.touch]
+        gb = g[~g.v2c]                                          # DL 356: booked % of old-exit fills only (V2 runner / floor out, counted)
         print(f"  {z:9s} fills {len(g):3d} · touched +1.25 {len(t):3d} on {t.day.nunique()} days · reached +2 by 30 min "
-              f"{int(t.cont.sum())} ({(t.cont.mean() if len(t) else float('nan')):.0%}) · avg booked {g.pct.mean():+.2f} %")
+              f"{int(t.cont.sum())} ({(t.cont.mean() if len(t) else float('nan')):.0%}) · avg booked {gb.pct.mean():+.2f} %"
+              + (f" (old-exit fills; {int(g.v2c.sum())} V2 runner / floor out)" if g.v2c.any() else ""))
     zt, rt = d[(d.zone == "ZONE") & d.touch], d[(d.zone == "REST") & d.touch]
     zr, rr = (zt.cont.mean() if len(zt) else np.nan), (rt.cont.mean() if len(rt) else np.nan)
     if len(zt) >= RETIRE_N and zr < RETIRE_RATE:

@@ -8559,3 +8559,68 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   stop-width Δ ≤ 0.011 → no decision revisited. Live check: resting-TP fills book the net target exactly (LITE C +2.003…2.020, LONG AGT +1.5006).
 - **Tests:** tests/test_scout_long_stop4.py (net constants; walk_net books +1.5 / −3.03; gross +1.55 does not yet book +1.5; gross −2.95 is
   already net ≤ −3).
+
+## (356) 2026-10-23 — 🎲² WILLY EXIT V2: TP at the spike high + profit floor (operator-approved DECLARED OVERRIDE below the locked gates)
+- **Why (operator):** ARKUSDT 10-23 — WILLY booked +1.29 % at the fixed +1.25 while the spike high sat 4.6 % above the entry and price went
+  on through it within 20 min. Study reports/WILLY_HIGHTARGET_2026-10-23.md (no variant passed the frozen study bar) + the operator's master
+  read (36 real fills, ticks: today +0.263 → +0.64 %/fill; TP+floor ≈ +0.21, BTC-falling stop ≈ +0.17) → asked for a backtest gate at the
+  operator bar (pooled 2026 Δ ≥ 0): reports/WILLY_EXITV2_2026-10-23.md (pre-registered _PREREG.md).
+- **Backtest verdict per component (③ 4,129 fills yr6a+yr6, 1,393 unique; 2026 pooled H1+H2):**
+  - **A (TP at spike high × 0.99 + arm +1.25 + floor F): SHIPS by the operator bar at the walk-forward floor F 0.5: +0.022 %/fill [−0.056,
+    +0.103]** (3/4 halves; fails the stricter study bar — CI crosses 0). F 1.0 = −0.030 (worst floor in 2026). Haircut 30–50 % → ≈ +0.011…+0.015.
+    Intrabar-order caveat: on 1m bars the order inside the arming minute is unknown — the result swings −0.17 ("high always first") … +0.038
+    (red bar = high first); the pre-registered convention and the OHLC heuristic clear the bar. Real fills (ticks, no assumption): ② master
+    +0.13/fill at F 0.5, **+0.21 at F 1.0 (best, most consistent; worst case −0.25 vs today)**; ① live 18 fills negative at every F (7 armed).
+  - **B (−2.5 stop when BTC 1h slope ≤ 0): NOT SHIPPED — 2026 Δ −0.003 [−0.071, +0.062]** (saves +232 pts on 156 falling fills that stop at
+    −4, costs −237 pts on 84 that dipped to −2.5 and recovered); real fills looked good only because none of the 13 falling fills dipped and
+    recovered. Operator (final): no dead code — no field / column / UI / per-order stop; the falling side is governed by the WILLY_BTC1H gate
+    (13/15 on 4/8 days).
+- **Floor = 1.0 = OPERATOR's choice on the master real fills (declared override vs the backtest's walk-forward 0.5);** both numbers recorded
+  in config.py. Override acknowledged: A sits below the locked N≥30 / study gates; it ships on point estimates with a tight frozen revert gate.
+- **Rules (services/frenzy.py, ONE function set for exit / resting limit / sweeps / scout):**
+  ① at entry (open_position, from the ACTUAL fill, paper = live): H = frenzy_walk's `peak` at the entry pass = the highest 5m high from the
+  spike bar through the red signal bar (flag['peak'], stamped `entry_frenzy_willy_spike_high`); P_H = H × (1 − `frenzy_willy_high_k_pct` %);
+  T = net % at P_H with the entry taker fee + MAKER exit (exec_shadow.net_pct_at); T_used = max(`frenzy_willy_tp_pct`, min(`frenzy_willy_high_tp_max_pct`, T))
+  → stored `frenzy_willy_tp_target_pct` (frenzy_willy_high_target). Switch off / H or fees unusable → +1.25. Logged [WILLY_V2] (H, T, T_used, floor, stop).
+  ② floor only for a RUNNER target (T_used > `frenzy_willy_floor_arm_pct` — with T_used ≤ the arm the TP and the arm coincide and the exit is
+  provably today's, incl. a +1.25 touch the resting limit did not fill): armed once the stored peak ≥ the arm (frenzy_willy_floor_armed: stored
+  peak_pnl / `willy_floor_armed_at` / the live peak — restart-safe; the monitor records willy_floor_armed_at once, the realtime path marks the
+  cache dict + the resting-TP state); armed → close at market when net ≤ `frenzy_willy_floor_pct` (WILLY_FLOOR), no stop, no late-TP downgrade
+  (resting limit stays at T_used), the 90-min cap still closes. Unarmed → today exactly (late +0.25 after 30 min, −4, cap).
+  ③ resting maker TP = rtp_row_target → the row's stored T_used (rtp_willy_row_args; LITE C pattern) — restart-proof; the WILLY_LATE_TP swap
+  (gate + sweep + reprice) is skipped once armed; rtp_reason_for_limit judges a limit against the row's own TP. WILLY_FLOOR is in
+  RTP_STOP_CLASS (never waits on a blocked cancel) and in the post-exit tracking lists. The stop and the exchange backstop are unchanged (−4).
+  ④ switches: `frenzy_willy_high_target_enabled` false → +1.25 and no floor for NEW fills (an open runner keeps its stored target + floor —
+  never re-decided, the LITE C rule). Fields (D11): config.py defaults + evidence comment · trading_config.json · UI inputs in the FRENZY box
+  next to the WILLY TP / late TP (toggle + 4 numbers, FRENZY_NUM_FIELDS load/save) · config_errors (frenzy_willy_v2_config_errors: k 0–20,
+  cap ≥ WILLY TP ≤ 50, arm > 0, 0 ≤ floor < arm) · `_buildConfigLines` line (both exports). Columns (D12): entry_frenzy_willy_spike_high,
+  frenzy_willy_tp_target_pct, willy_floor_armed_at (+ migration, /api orders payloads, both caches). Open-row badge: the order's own TP · SL ·
+  "floor +1.0 after +1.25" / "floor +1.0 ✓armed"; close reason WILLY_FLOOR rendered with a hover.
+- **Scout (observe-only, frozen revert gates — one-change attribution via ledger A):** scripts/scout_willy_exit_v2.py (+ opportunity scout).
+  Cohort: closed WILLY + WILLY_HT fills ≥ the DL 356 deploy + 10 min (exports, dedup, operator-closed out). SHADOW = the PINNED old exit
+  (+1.25 resting / −4 / late 0.25 @30 / 90, scout_willy_timecap.evaluate_late(book="live")) on the same tick → 1m path; PARITY = the V2 re-walk
+  (walk_v2, stamped target) vs booked, < 90 % within 0.15 → no verdict. Ledger A on ARMED fills: Σ(live − shadow) split runners / floor /
+  other; per-batch before → after table by BTC side. 🔒 Gates (persisted reports/.willy_exit_v2_gate.json, each decided once): EARLY first 10
+  armed avg live < shadow − 0.15 → alert · MAIN ≥ 15 armed on ≥ 6 UTC days Σ(live − shadow) < 0 → REVERT to +1.25 · FINAL 25 armed Σ < 0 →
+  REVERT. (Ledger B dropped with component B.)
+- **Scout audit (operator: "consider the scout"): every WILLY scout made V2-aware** via the shared scripts/willy_exit_era.py (pinned old exit;
+  V2 = stamped target; "changed" = target > +1.25 or WILLY_FLOOR; era_line "exit era: pre-V2 N · V2 N (runner target / floor N)"):
+  scout_willy_timecap (V2 runner fills split out BEFORE every walk: CAP15/20, S4 / OLD_EXIT revert gate, DL 285 / 290 / 297 cells; listed
+  apart) · scout_frenzy_willy_exit (FRENZY-only cohort; era line) · scout_frenzy_exits (WILLY tracker: old-exit vs V2 rows; TURNOVER v2 gate
+  walker PINNED (tb_walker_rule_pinned) — let-through V2 fills re-walked under the pinned exit; parity / as-booked rows exclude runners) ·
+  scout_willy_btc1h (exit PINNED +1.25 / −4 / 90 — it read the live config before; runners out of parity; test: a config change does not move
+  it) · scout_willy_tp125 / scout_willy_stop (pinned exit; runners out of the cohort) · scout_willy_ht / scout_willy_nomiss (runners out of
+  BOTH sides of the avg-vs-avg gates) · scout_willy_avgdown / scout_willy_mktdip (runners out of the booked / parity reads) ·
+  scout_willy_hold / _hold_off / _hold_frenzy (era line only — no exit comparison) · scout_stop_slip (unrelated fix found: WILLY_HT stops
+  fell through to the momentum branch → aliased to WILLY's −4) · scout_flatbase_short ③ (note: blocked WILLY longs priced at the fixed exit).
+- **Tests:** tests/test_willy_exit_v2.py (target far / near / missing / switch / cap / k; unarmed + legacy + T 1.25 = today on 4,000 random
+  states; +1.25 touch with resting TP = today; runner TP / floor / gap; armed ignores late + stop, cap closes; restart via stored peak / arm
+  time; HT; badge; resting target / reason / late swap only unarmed; engine arm places the stored target live + paper; sweep keeps an armed
+  limit and re-prices an unarmed one at 40 min; arm note recorded once; backstop unchanged; D11 / D12 parity; real sqlite migration; source
+  pins) · tests/test_scout_willy_exit_v2.py (walk_v2 = old exit at T 1.25 on 200 random paths; floor / gap / cap / late / stop; ledger + parity +
+  era + frozen gates + parity block; dedup; wiring) · tests/test_scout_willy_v2_era_group{1,2,3}.py (every audited scout). Updated pins:
+  test_frenzy_sleeve (76 fields + toggle), test_lite_c / test_resting_tp (row-aware calls), test_manual_entry_stamps (sleeve-only stamp).
+- **Open risks:** a resting post-only limit placed when the price already sits at / above P_H is rejected (GTX) → no limit rests, the
+  software TP fires at T_used on the touch (market close, taker) and the heal pass retries every 30 s (it skips a crossed limit); a floor exit on a gap books the market (below +1.0, logged [WILLY_V2]); parity of the
+  scout may fail on stop / floor slippage (no verdict until explained).
+- **Review round (caveman + deep, both SHIP) — applied:** an armed floor is never un-armed by a later config edit (willy_floor_armed_at checked first); badge drops the SL once armed; PUT refuses frenzy_willy_floor_arm_pct < frenzy_willy_tp_pct (else every +TP fill would get a floor); touch_snapshot TP_REASONS += WILLY_FLOOR (a runner that recovered past +1.25 and floored stays "recovered"); a dropped test_lite_c assertion restored; dead frenzy_willy_badge helper removed; comment fixes. **Known, accepted:** ① the arm compares the engine's TAKER-estimated net while T_used is a MAKER net → targets in ≈ (1.25, 1.28) fill their limit before they can arm (books ≥ T_used, never worse than today); the floor exits at taker net ≤ +1.0 minus market slippage (≈ +0.9). ② restart within one monitor pass of the first +1.25 touch reseeds unarmed (re-arms on the next touch; worst case = today's exit without the +1.25 TP). ③ floor / arm LEVELS are read live: editing frenzy_willy_floor_pct / _arm_pct moves open armed runners' floor (the TP target itself is stored per order and never moves).

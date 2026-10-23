@@ -188,6 +188,7 @@ import glob
 import os as _os_eg, sys as _sys_eg; _d_eg = _os_eg.path.dirname(_os_eg.path.abspath(__file__)); _d_eg in _sys_eg.path or _sys_eg.path.insert(0, _d_eg)
 import export_glob as _EG   # 📦 (DECISION_LOG 294) paper + post-go-live LIVE exports
 import scout_gatekit as _GK   # 🧰 (DECISION_LOG 331) DL-number deploy lookup + operator-closed fills excluded from the gates
+import willy_exit_era as WEra   # 🎲² (DECISION_LOG 356) WILLY exit V2: era split / pinned old exit / era line
 import io
 import json
 import os
@@ -3592,7 +3593,22 @@ def ltg_run():
 # ─────────────────────────── 🎲 tracker 15 (FRENZY_WILLY, DECISION_LOG 251 — declared exception, no auto-off) ───────────────────────────
 WILLY_CSV = os.path.join(ROOT, "reports", "SCOUT_FRENZY_WILLY.csv")
 WILLY_COLS = ("k", "pair", "day", "closed", "actual", "usd", "trig", "reason", "hours", "wait", "vol24", "mcap", "notional",
-              "entry")   # entry = the booked entry_price (DECISION_LOG 336: the let-through walker re-walks from it)
+              "entry",   # entry = the booked entry_price (DECISION_LOG 336: the let-through walker re-walks from it)
+              "tpt")     # 🎲² tpt = Order.frenzy_willy_tp_target_pct (DECISION_LOG 356 V2 stamp; NaN = pre-V2) — the exit-era split
+
+
+def _wera(df, tp_col="tpt", reason_col="reason"):
+    """🎲² (356) a WILLY store / walk frame renamed to the export column names willy_exit_era reads (pure; missing columns stay missing)."""
+    if df is None or not len(df):
+        return df
+    return df.rename(columns={tp_col: WEra.TP_COL, reason_col: "close_reason"})
+
+
+def _wera_changed(df, tp_col="tpt", reason_col="reason"):
+    """🎲² (356) boolean mask (aligned to df): V2 runner-target / WILLY_FLOOR fills — kept OUT of every old-exit comparison."""
+    if df is None or not len(df):
+        return pd.Series([], dtype=bool)
+    return WEra.masks(_wera(df, tp_col, reason_col))[1].reindex(df.index, fill_value=False).astype(bool)
 
 
 def willy_deploy_ms():
@@ -3613,7 +3629,8 @@ def willy_deploy_ms():
 def _willy_fills():
     """FRENZY_WILLY LONG fills in the orders exports (newest export wins per opened_at + pair) → DataFrame in WILLY_COLS."""
     cols = ("opened_at", "pair", "direction", "entry_strategy", "status", "pnl_percentage", "pnl", "close_reason", "entry_frenzy_willy_trigger",
-            "entry_frenzy_hours", "entry_frenzy_willy_wait_bars", "entry_pair_volume_24h_usd", "entry_mcap_usd", "notional_value", "entry_price")
+            "entry_frenzy_hours", "entry_frenzy_willy_wait_bars", "entry_pair_volume_24h_usd", "entry_mcap_usd", "notional_value", "entry_price") \
+        + tuple(WEra.V2_COLS)   # 🎲² (356) the V2 stamps — the exit era is never silently unknown
     fr = []
     for f in _EG.glob_exports(os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")):
         try:
@@ -3641,7 +3658,7 @@ def willy_rows(o, since_ms=None):
                             usd=num("pnl").where(closed), trig=pd.Series(tg, index=o.index).where(lambda x: x.isin(["A", "B"]), "?"),
                             reason=(o.close_reason.astype(str) if "close_reason" in o else ""), hours=num("entry_frenzy_hours"),
                             wait=num("entry_frenzy_willy_wait_bars"), vol24=num("entry_pair_volume_24h_usd"), mcap=num("entry_mcap_usd"),
-                            notional=num("notional_value"), entry=num("entry_price")))
+                            notional=num("notional_value"), entry=num("entry_price"), tpt=num(WEra.TP_COL)))
     if since_ms is not None:
         out = out[pd.to_datetime(out.k, errors="coerce").map(lambda t: (t.value // 1_000_000) if pd.notna(t) else -1) >= int(since_ms)]
     return out.drop_duplicates(["k", "pair"], keep="last").reset_index(drop=True)
@@ -3656,6 +3673,8 @@ def willy_merge(old, new):
     # (336) a newer export row without an entry price never wipes the stored one (older exports / stores predate the column)
     m["entry"] = pd.to_numeric(m.entry, errors="coerce")
     m["entry"] = m.groupby(["k", "pair"], sort=False).entry.transform(lambda x: x.ffill().bfill())
+    m["tpt"] = pd.to_numeric(m.tpt, errors="coerce")   # 🎲² (356) same for the V2 target stamp: an older export never wipes it
+    m["tpt"] = m.groupby(["k", "pair"], sort=False).tpt.transform(lambda x: x.ffill().bfill())
     return m.drop_duplicates(["k", "pair"], keep="last").sort_values("k").reset_index(drop=True)
 
 
@@ -3713,6 +3732,8 @@ def willy_lines(w, since_ms=None, J=None):
          "on the flag cohort ≈ −0.01…−0.08 %/trade; the no-stop / 120-min / red-candle variant was not studied._", "",
          f"**Frozen reads:** {frenzy_willy_reads_text(willy_verdict(w), WILLY_HOLD_DEF)}.", "",
          f"**Red-candle arms:** {arm_n} armed · {exp_n} expired (no red candle / turnover-refused until the wait ended; WILLY events, from the floor).", "",
+         WEra.era_line(_wera(w), "FRENZY_WILLY", "the frozen reads are the first 20 / 10 fills (all pre-V2); the table's 'All' is split by exit "
+                       "era below — V2 runner / floor fills booked under the DL 356 per-order target"), "",
          "_Paper: no stop · live: the exchange backstop (≈ −2.2 %) acts as the stop — paper and live results differ on deep losers._", "",
          "| Cohort | N | Days | WR | Avg % | Σ$ | Worst % |", "|---|---|---|---|---|---|---|"]
     hb = w.hours.map(lambda v: _hours_bucket(float(v)) if pd.notna(v) else "?") if len(w) else pd.Series(dtype=str)
@@ -3722,6 +3743,10 @@ def willy_lines(w, since_ms=None, J=None):
     groups += [("B · ON not taken", w[w.trig == "B"] if len(w) else w), ("? · no trigger stamp", w[~w.trig.isin(["A", "B"])] if len(w) else w)]
     groups += [(f"wait {b} bars", w[wb == b]) for b in ("0 (red trigger bar)", "1–3", "4+", "?")] if len(w) else []
     groups += [("All", w)]
+    if len(w):   # 🎲² (356) the same fills split by exit era — runner / floor fills never silently mixed into an old-exit read
+        _ch = _wera_changed(w)
+        if _ch.any():
+            groups += [("All · old exit (pre-V2 + V2 target +1.25)", w[~_ch]), ("All · 🎲² V2 runner / floor (DL 356)", w[_ch])]
     for lab, g in groups:
         if (lab.startswith("?") or lab.endswith("? after the spike") or lab == "wait ? bars") and not len(g):
             continue
@@ -3787,7 +3812,8 @@ TB_HOW = {"TP": "take profit", "STOP": "stop", "CAP": "cap"}
 # re-read at TB2_N2) are UNCHANGED. The old as-booked read is printed beside it, info only. Let-through walks: reports/SCOUT_WILLY_TURNOVER_LT_WALK.csv.
 TB_WHOW = {"TP": "take profit", "LATE_TP": "late TP", "STOP": "stop", "CAP": "cap"}
 TB_LT_CSV = os.path.join(ROOT, "reports", "SCOUT_WILLY_TURNOVER_LT_WALK.csv")
-TB_LT_COLS = ("t", "pair", "entry", "booked", "reason", "wpct", "wwhy", "wsrc", "wfinal", "wrule", "tries", "err")
+TB_LT_COLS = ("t", "pair", "entry", "booked", "reason", "wpct", "wwhy", "wsrc", "wfinal", "wrule", "tries", "err",
+              "tpt")   # 🎲² (356) the fill's V2 target stamp — a runner / floor fill is kept out of the walker-vs-BOOKED parity
 # wrule = the walker rule label a w* price was walked under: a stored walk under another exit (the live WILLY exit changed) is walked again
 TB_RULER = "walker v walker (DECISION_LOG 336)"
 TB_BOOKED_CLASS = {"FRENZY_TP": "TP", "WILLY_LATE_TP": "LATE_TP", "STOP_LOSS": "STOP", "MAX_HOLD_TIME": "CAP"}
@@ -3808,6 +3834,17 @@ def tb_walker_rule(th=None):
     label = (f"+{tp:g} / " + (f"−{abs(st):g}" if st else "no stop") + f" / {int(cap)} min" + (f" · late +{late[1]:g} from min {late[0]:g}" if late else "")
              + (" · resting TP" if rtp else ""))
     return dict(tp=float(tp), sl=(abs(float(st)) if st else None), cap=int(cap), late=late, rtp=rtp, label=label)
+
+
+def tb_walker_rule_pinned():
+    """🎲² (DECISION_LOG 356) the v2 override gate's walker PINNED to the exit it was registered with (DL 314 / 336: +1.25 / −4 / 90 min ·
+    late +0.25 from min 30 · resting TP on) — a frozen comparison never follows a config change. Same formatter as tb_walker_rule, so the
+    label (and every stored walk keyed on it) is unchanged. V2 per-order targets are NOT part of this rule: both sides are walked from the
+    entry under the old fixed exit (a V2 runner let-through fill is re-walked under it, never read as booked)."""
+    tp, st, cap = WEra.OLD_TP, WEra.OLD_STOP, WEra.OLD_HOLD
+    return tb_walker_rule(SimpleNamespace(frenzy_willy_tp_pct=tp, frenzy_willy_stop_pct=st, frenzy_willy_max_hold_minutes=cap,
+                                          frenzy_willy_late_tp_minutes=WEra.OLD_LATE[0], frenzy_willy_late_tp_pct=WEra.OLD_LATE[1],
+                                          resting_tp_willy_enabled=True))
 
 
 def tb_walker_eval(P, wr):
@@ -4016,7 +4053,7 @@ def tb_lt_price(w, now_ms, budget=None, wr=None, store=TB_LT_CSV, entries=None):
     if sd not in sys.path:
         sys.path.insert(0, sd)
     import scout_willy_hold as WH
-    wr = tb_walker_rule() if wr is None else wr
+    wr = tb_walker_rule_pinned() if wr is None else wr   # 🎲² (356) the frozen v2 gate's walker is pinned (never the live config)
     rule = WH.exit_rule("FRENZY_WILLY")
     budget = {"dl": TB_TICK_DL, "deadline": time.monotonic() + 60} if budget is None else budget
     old = _load_csv(store, ["t", "pair"]) if store and os.path.exists(store) else pd.DataFrame(columns=list(TB_LT_COLS))
@@ -4031,7 +4068,8 @@ def tb_lt_price(w, now_ms, budget=None, wr=None, store=TB_LT_CSV, entries=None):
         k, pair = str(r.k)[:19], str(r.pair)
         o = dict(prev.get((k, pair)) or {})
         rec = dict(t=k, pair=pair, booked=pd.to_numeric(r.actual, errors="coerce"), reason=str(r.reason),
-                   entry=pd.to_numeric(getattr(r, "entry", np.nan), errors="coerce"))
+                   entry=pd.to_numeric(getattr(r, "entry", np.nan), errors="coerce"),
+                   tpt=pd.to_numeric(getattr(r, "tpt", np.nan), errors="coerce"))   # 🎲² (356) V2 target stamp (parity split)
         if not (pd.notna(rec["entry"]) and rec["entry"] > 0):
             rec["entry"] = pd.to_numeric(o.get("entry"), errors="coerce")
         if not (pd.notna(rec["entry"]) and rec["entry"] > 0):
@@ -4041,7 +4079,7 @@ def tb_lt_price(w, now_ms, budget=None, wr=None, store=TB_LT_CSV, entries=None):
         same_rule = str(o.get("wrule")) == wr["label"]
         done = same_rule and pd.notna(pd.to_numeric(o.get("wpct"), errors="coerce")) and str(o.get("wfinal")) in _TRUE
         if done or (same_rule and str(o.get("wwhy")) == "UNPRICEABLE"):
-            rows.append({**o, **{x: rec[x] for x in ("booked", "reason")}})
+            rows.append({**o, **{x: rec[x] for x in ("booked", "reason", "tpt")}})
             continue
         rec.update({x: o.get(x, np.nan) for x in ("wpct", "wwhy", "wsrc", "wfinal", "tries", "err")} if same_rule else dict(tries=0))
         rec["wrule"] = wr["label"]
@@ -4082,6 +4120,8 @@ def tb_lt_parity(ltw, since_ms):
     if since_ms is None or ltw is None or not len(ltw):
         return None
     g = ltw[[(_ms(t) or 0) >= int(since_ms) for t in ltw.t.astype(str)]]
+    if len(g) and "tpt" in g:   # 🎲² (356) booked under a V2 runner target / floor ≠ the old exit the walker walks → never in parity
+        g = g[~_wera_changed(g).values]
     wp, bp = pd.to_numeric(g.wpct, errors="coerce"), pd.to_numeric(g.booked, errors="coerce")
     g = g[wp.notna() & bp.notna()]
     if not len(g):
@@ -4304,6 +4344,8 @@ def tb_lines(rows, w, state, ltw=None, par=None, wr_label=None):
          f"print at / after the refusal — then the 1m tail only after the ticks end; ᵖ = provisional 1m part), average > 0 % → REVERT; ≤ "
          f"{TB_CONFIRM:+.2f} % → filter confirmed. UNREAD refusals (mcap / volume unknown) are listed apart, never priced as blocked-by-rule. _The "
          "study priced the OLD WILLY exit (−3 stop / 60 min / immediate entry). Since DECISION_LOG 271 WILLY runs its own stop in paper and live._", "",
+         WEra.era_line(_wera(w), "WILLY let-through", "V2 runner / floor fills are listed apart from the as-booked rows and re-walked "
+                       "under the PINNED old exit in the v2 walker read (DL 356)"), "",
          "| Cohort | N | Days | Priced | WR | Avg % | Worst % |", "|---|---|---|---|---|---|---|"]
 
     def row(lab, g, col="pct"):
@@ -4315,7 +4357,12 @@ def tb_lines(rows, w, state, ltw=None, par=None, wr_label=None):
     for tg in ("A", "B"):
         row(f"blocked · entry {tg}", blk[blk.trig == tg] if len(blk) else blk)
     lt = w.rename(columns={"k": "t"}).assign(pct=pd.to_numeric(w.actual, errors="coerce")) if len(w) else pd.DataFrame(columns=["t", "pct"])
-    row("let through — WILLY fills (as traded, same live exit)", lt)
+    # 🎲² (DECISION_LOG 356) a let-through fill booked under a V2 runner target / floor is not the old exit → OUT of every as-booked row
+    _lch = _wera_changed(w).values if len(w) else np.zeros(0, dtype=bool)
+    lt_v2, lt = (lt[_lch], lt[~_lch]) if len(lt) else (lt, lt)
+    row("let through — WILLY fills (as traded, old exit)", lt)
+    if len(lt_v2):
+        row("let through — 🎲² V2 runner / floor fills (DL 356, as booked — apart, never in the old-exit rows)", lt_v2)
     # 🏷 (314) the same two cohorts split by market cap (observe-only, never gated)
     for lab in [b[2] for b in TB_MCAP_BUCKETS] + ["mcap unknown"]:
         bm = blk[blk.mcap.map(tb_mcap_bucket) == lab] if len(blk) and "mcap" in blk else blk.iloc[0:0]
@@ -4347,7 +4394,7 @@ def tb_lines(rows, w, state, ltw=None, par=None, wr_label=None):
     def st_(p):
         p = pd.to_numeric(pd.Series(p), errors="coerce").dropna()
         return (f"{len(p)} · {(p > 0).mean() * 100:.0f} % · {f(p.mean())} %" if len(p) else "0 · – · – %")
-    # 🚶 (336) the VERDICT read — walker vs walker, today's live WILLY exit on both sides
+    # 🚶 (336) the VERDICT read — walker vs walker, the registered WILLY exit on both sides (🎲² pinned since DECISION_LOG 356)
     bw = pd.to_numeric(b2.wpct, errors="coerce") if len(b2) and "wpct" in b2 else pd.Series(dtype=float)
     bwp = int((~b2.wfinal.astype(str).isin(_TRUE)).sum()) if len(b2) and "wfinal" in b2 else len(b2)
     lw = ltw if ltw is not None and len(ltw) else pd.DataFrame(columns=list(TB_LT_COLS))
@@ -4364,11 +4411,13 @@ def tb_lines(rows, w, state, ltw=None, par=None, wr_label=None):
     L.append(f"**⚖ Override gate v2 (DECISION_LOG 314; walker v walker since DECISION_LOG 336 — v1 fired 10-18, operator KEPT the filter):** {head}. "
              f"Rule: blocked avg ≥ let-through → REVERT · ≤ let-through − {TB2_MARGIN:.2f} → confirmed · else hold → re-read once at {TB2_N2}; "
              f"frozen sample = the first {TB2_N} blocked by refusal time on ≥ {TB2_DAYS} days, let-through = the closed WILLY fills of the same period.")
-    L.append(f"- 🚶 **Walker read (the verdict)** — both sides under today's live WILLY exit ({wr_label or 'tb_walker_rule'}; scout_willy_timecap."
+    L.append(f"- 🚶 **Walker read (the verdict)** — both sides under the registered WILLY exit (pinned, DL 356) ({wr_label or 'tb_walker_rule'}; scout_willy_timecap."
              f"evaluate_late book='live', the build_willy_exit_cf walker; ticks first, ᵖ = 1m part): blocked {st_(bw)}"
              + (f" ({bwp} provisional ᵖ)" if bwp else "") + f" vs let-through {st_(lwv)}" + (f" ({lwp} provisional ᵖ)" if lwp else "")
              + (f" · {lwu} let-through UNPRICEABLE (no entry / path, not counted)" if lwu else "")
-             + (f" · Δ {float(bw.mean()) - float(lwv.mean()):+.3f}" if bw.notna().any() and lwv.notna().any() else "") + ".")
+             + (f" · Δ {float(bw.mean()) - float(lwv.mean()):+.3f}" if bw.notna().any() and lwv.notna().any() else "")
+             + (f" · 🎲² {len(lt_v2)} V2 runner / floor let-through fill(s) re-walked under this PINNED old exit (DL 356), never as booked"
+                if len(lt_v2) else "") + ".")
     bo = pd.to_numeric(b2.pct, errors="coerce") if len(b2) else pd.Series(dtype=float)
     lo = pd.to_numeric(l2.pct, errors="coerce") if len(l2) else pd.Series(dtype=float)
     L.append(f"- 📒 Old as-booked read (info only — mixes exit eras, DECISION_LOG 336): blocked (scout pricer {_tb_rule_label()}, no late TP, "
@@ -4389,7 +4438,7 @@ def tb_run(w, now_ms=None, state_path=TB_STATE):
     since = willy_deploy_ms()
     rows = rows[rows.t.map(lambda x: (_ms(x) or 0) >= since)].reset_index(drop=True) if len(rows) else rows
     try:
-        wr = tb_walker_rule()                      # 🚶 (336) today's live WILLY exit — the v2 verdict's walker
+        wr = tb_walker_rule_pinned()               # 🚶 (336) the v2 verdict's walker — 🎲² PINNED to its registered exit (DECISION_LOG 356)
     except Exception as e:
         wr = None
         print(f"[WILLY_TURNOVER_BLOCKED] walker rule unreadable ({type(e).__name__}: {e}) — v2 read not evaluable this run")

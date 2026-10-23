@@ -608,6 +608,13 @@ class Order(Base):
     # (False, missing stamps included); NULL on every non-LITE fill and before 301. Ride the orders CSV as model columns.
     frenzy_lite_tp_used = Column(Float, nullable=True)
     lite_c_zone = Column(Boolean, nullable=True)
+    # 🎲² (DECISION_LOG 356) WILLY EXIT V2 — FRENZY_WILLY / FRENZY_WILLY_HT fills only, decided ONCE at entry (restart-proof; NULL = a pre-V2
+    # row → the config exit, exactly as before): entry_frenzy_willy_spike_high = H, the episode's highest 5m high from the spike bar through the red
+    # signal bar · frenzy_willy_tp_target_pct = T_used, the NET take profit this order runs (max(WILLY TP, min(cap, net at H × (1 − k %)))) ·
+    # willy_floor_armed_at = the first time the profit floor armed (runner target and peak ≥ the arm). The stop stays entry_frenzy_stop_pct.
+    entry_frenzy_willy_spike_high = Column(Float, nullable=True)
+    frenzy_willy_tp_target_pct = Column(Float, nullable=True)
+    willy_floor_armed_at = Column(DateTime, nullable=True)
 
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3 design).
     # cell_multiplier = the INVESTMENT multiplier ACTUALLY applied to this trade after hard-cap clamping.

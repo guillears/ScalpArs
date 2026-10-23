@@ -8698,6 +8698,87 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Commit note:** the scout's counted cohort starts at the commit whose SUBJECT names "DECISION_LOG 358" (scout_gatekit) — until then
   WILLY_EXIT_V2b prints NOT evaluable.
 
+## (359) 2026-10-23 — 🐻⏩ BEARRUN_V2_SHADOW scout line (operator: run V2 as a LIVE shadow to collect forward windows; observe-only)
+- **Why:** Bear-Run V2 (BTC 1 h slope + DI trigger) FAILED the forced replay (reports/BEARRUN_V2_REPLAY_s1.md: V2-C1 / C2 lose vs T0 under every
+  exit, window-bootstrap CI below 0 for exits a / b). Under exit d (hold while ON) clean slides earn (+415 %) and false starts cancel it (−331 %).
+  No ON-bar feature separates them (reports/BEARRUN_V2_2026-10-22.md, BEARRUN_V2_SEPARATORS). The history cannot give more windows, so the
+  shadow collects forward, out-of-sample ones. A 10-22-type day costs nothing to observe.
+- **Ship (scout only, no engine / config / UI change):** scripts/scout_bearrun_v2.py + an isolated opportunity-scout section. It reads public
+  BTCUSDT 1 h klines and runs the study's frozen V2-C1 state machine (scripts/study_bearrun_early_trigger.py v2_state, PRIMARY V2-C1).
+  Wilder is copied verbatim because the study file is untracked; a test pins the copy.
+  - ON = EMA20 slope3 < 0 ∧ −DI > +DI ∧ BTC 6 h ≤ −1 %.
+  - OFF = slope ≥ 0 ∨ +DI > −DI on 2 consecutive bars ∨ +1.5 % off the window's running low.
+  - A new ON needs a later hour than the last OFF. A re-ON ≤ 180 min after an OFF continues the SAME window (the study's merge(), MERGE_MIN
+    180), keyed on the first ON. The hold-while-ON basket exits at the FIRST OFF; the window OFF shown is the last one.
+  - ⚠ Two 1 h adaptations, because the study's v2_state ran on the 5-MIN grid (r6 from 5-min prices, the 1 h legs re-read every 5 min, so
+    ON / OFF could flip intra-hour):
+    ① everything is read at the CLOSED 1 h bar, so an ON can come later than the study's, or be missed on an intra-hour dip that recovers by
+    the close;
+    ② the bounce leg: the running low starts at the ON close; a bar's high is tested against the low of EARLIER bars and its close against
+    the low including itself.
+    The backtest reference numbers come from the 5-min machine.
+  - C2 label: ≥ 50 % of the top-50 alts below their price 24 h earlier, from the same klines; n/a if fewer than 40 are readable.
+  - Class at ON + 24 h:
+    - clean_slide: −3 % without a +1.5 % bounce.
+    - false_start F1: a new 24 h high or +2 % before −3 % from the high. "Neither in 24 h" counts as F1_unresolved, as in the study.
+    - true_other: everything else.
+  - Basket PROXY (not the engine): equal-weight short of the top-20 alt perps by 24 h quote volume at the ON hour. BTC, ETH, stablecoins
+    and non-COIN underlyings are excluded. The universe is today's top 60, snapshotted per window at the first run that prices it
+    (universe_at), then re-ranked on kline quote volume. Entry is the ON-hour close. Two exits, both paying 0.10 % round-trip fees:
+    - d = first-OFF close, +2 % stop on 1 h highs, 24 h cap.
+    - a' = +0.5 / −1, first touch on 1 h bars (stop first in the same bar), 6 h cap.
+    A bar that OPENS beyond the stop books the gapped open. A per-symbol 4xx drops that coin (listed); only budget / cooldown / network
+    halts leave a window un-final for a retry. The BTC low / drop is capped at ON + 24 h, like d.
+  - T0 comparison: BEARRUN_SHORT fills from the orders exports (or a stamped entry_bear_bypass; MANUAL out; dedup key; operator-closed
+    flagged), listed per window as inside / after, with lateness vs the V2 ON and P&L.
+- **Cohort / persistence:** windows with ON ≥ this entry's commit + 10 min (scout_gatekit.dl_deploy_ms(359)). Until the commit exists, the
+  line prints NOT evaluable plus the last 72 h as context. A window is final 24 h after ON once its basket is fully priced. Its record is
+  appended once to reports/.scout_bearrun_v2_windows.json, under a flock, and never rewritten. Klines of final windows are cached under
+  reports/backtest_cache/scout_bearrun_v2/.
+- **🔒 Gate = the PRE-COMMITTED gate of reports/BEARRUN_V2_2026-10-22.md ('Pre-committed gate (frozen now; window units)'), the only
+  terminal decision.** Each read is decided ONCE and persisted in the same file. A read waits (WAITING) while any cohort window opened by
+  its prefix end is not final yet.
+  - ARM read, at the shortest prefix of ≥ 20 final windows spanning ≥ 6 distinct ISO weeks. ARM_CANDIDATE iff ALL hold:
+    ① ≥ 20 windows on ≥ 6 weeks;
+    ② V2-d Σ of window basket means > 0 ∧ window-bootstrap P(Σ > 0) ≥ 0.90 (4,000, seed 7);
+    ③ no window ≥ 50 % of Σ;
+    ④ false starts lose ≤ 60 % of what clean slides earn: max(0, −Σ false) ≤ 0.6 × Σ clean, with Σ clean > 0;
+    ⑤ the replay walk-forward held-out total is not negative. Its frozen ref is −253 (V2 picks −23 / −50 / −58 / −123 vs T0 −9), so ⑤ FAILS
+    until a new replay.
+    Probe size bearrun_lev_mult 0.05, revert if the first 10 armed windows have Σ ≤ 0. The operator decides; nothing is armed by the
+    scout. Otherwise NO_ARM, with the failed conditions listed.
+  - DROP read, at the 30th final window: DROP_SHADOW iff Σ ≤ 0 ∧ false starts cost more than clean slides earn; else KEEP_SHADOW.
+  - INTERIM checkpoint at ≥ 8 windows on ≥ 8 UTC days: printed only. It is NON-TERMINAL, never frozen and never a 'stays off'.
+  - Tally lines show Σ, P, clean share, largest-window share, FS-loss ratio, days, ISO weeks and the span in weeks.
+- **Network:** public fapi only. Stops at ≤ 900 used weight (X-MBX-USED-WEIGHT-1M) or 400 requests per run, paced 0.25 s. Honours the
+  shared cooldown (binance_cooldown.py). A 418 / 429 arms it and stops; a 403 stops. First live run: 63 requests, weight 53.
+- **First live context (2026-10-23, not counted):** V2 ON 10-22 02:00 → OFF 10-23 05:00 (slope ≥ 0). BTC 83,357 → 80,889 (−2.96 %), class
+  true_other (just short of the −3 % slide), C2 ✓ 66 %. Basket d +2.52 %/coin (WR 70 %, 6 stops); a' −0.05 %. T0 had no fill in the
+  exports for this window: the 10-22 16:35 SOL / HBAR / APT fills were never exported.
+- **Review round 1 (caveman), applied:**
+  - The terminal gate is now the study's pre-committed gate; the 8 / 8 read was demoted to an interim checkpoint.
+  - Window fragments are merged.
+  - The 5-min vs 1 h adaptation is declared.
+  - A 4xx drops the coin.
+  - Decisions wait for pending windows.
+  - Gap stops, the universe snapshot, the state flock and the 24 h low cap were added.
+- **Tests:** tests/test_scout_bearrun_v2.py covers:
+  - ON legs + warm-up · OFF on slope / +DI×2 / bounce · fragment merge (≤ 180 min same window, first OFF for the basket, > 180 min a new
+    window) · the four classes + pending.
+  - walk d (stop / gap stop / OFF close / cap) and a' (TP / stop / both-in-bar / cap) · basket ranking, C2 label and n/a, kline cache ·
+    4xx drop vs 5xx unread · 24 h low cap.
+  - Cooldown blocks without a call · 418 / 429 arm + stop · 403 · weight stop.
+  - Append-only · interim non-terminal · ARM COLLECTING on weeks / ⑤ blocks today / ④ FS ratio / ③ concentration / shortest prefix /
+    WAITING on pending · DROP · decided once · pending through the persisted reads.
+  - run(): NOT evaluable persists nothing, provisional before ON + 24 h, persisted once after with universe_at + flock, rerun unchanged,
+    budget stop persists nothing, T0 inside / blank-bypass and MANUAL excluded · wiring.
+
+- **Deep review (offline equivalence vs the study, 2025-01 → 2026-10-22):** the 1 h-close grid sees 85.6 % of the study's 376 V2-C1 windows
+  (99.4 % of its own windows overlap a study window; ON within 1 h in 70 %). The 54 windows it MISSES are 40 false starts + 14 true_other + 0 clean
+  slides → this shadow is a FRIENDLIER trigger than the 5-min machine the backtest priced (false-start share 29.8 % vs 35.9 %). An ARM_CANDIDATE
+  carries over ONLY to an engine that also evaluates V2 at closed 1 h bars (a monitor-tick engine re-admits those false starts). Survivorship:
+  the universe is today's top-60 snapshotted at the first run that prices a window; windows older than the ≈ 20-day (499-bar) lookback are lost if
+  the scout doesn't run. T0 detection verified on 89 exports (UNI / XLM 10-07 only; FLATBASE / MANUAL / SURGE excluded).
 ## (360) 2026-10-23 — ⚖️ Bear-Run size = FLATBASE size (operator: "match it to flatbase"; declared size cut, no code change)
 - **Change:** `bearrun_invest_mult` 1.0 → **0.2** (trading_config.json); `bearrun_lev_mult` stays 0.25 (5×). ≈ $2,250 → ≈ $500 notional per short (0.2 × base ≈ $93 margin, raised to the $100 min_investment_size)
   at today's ≈ $1,870 account — the same as FLATBASE_SHORT / momentum long (0.2 × 5×). A 10-22-type window (3 shorts ≈ −2.5 %) ≈ −$9 at the new size vs ≈ −$42 at the old size on today's equity (the booked −$69 was on ≈ $750 margins).

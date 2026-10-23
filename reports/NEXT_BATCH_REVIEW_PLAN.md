@@ -88,6 +88,16 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    [−0.03, +0.24], 2025 −0.04). Also check: the [WILLY_V2] entry log (H, T_used, "(runner)" / "(base TP)") on every live fill · any post-only
    (GTX) reject of the resting limit when the price already sat above P_H at placement (RESTING_TP heal / safety-net lines) · the late re-price
    of runner limits at 30 min.
+②k **🐻⏩ BEARRUN_V2_SHADOW (DECISION_LOG 359, observe-only, the study's pre-committed gate)** — run scripts/scout_bearrun_v2.py
+   (also in the opportunity scout). Read per V2 window (closed 1 h bars; fragments ≤ 180 min merged): ON / OFF (reason, fragments), BTC ON
+   → low (% drop, capped at +24 h), class, C1 r6 / C2 label, basket d and a' (proxy, not the engine; dropped coins), and the T0 line (did
+   today's Bear-Run trade inside / after the window, how late, result). Then the tally: windows · days · ISO weeks + span · V2-d Σ ·
+   P(Σ > 0) · clean share · largest window · FS-loss ratio · a' Σ · classes.
+   Then: the interim 8 / 8 checkpoint (informational only) · the ARM read (20 windows on 6 weeks, P ≥ 0.90, FS loss ≤ 60 % of the clean
+   gain, no window ≥ 50 %, walk-forward ⑤ — fails at today's −253) · the DROP read at 30 windows. Verdicts persist in
+   reports/.scout_bearrun_v2_windows.json. Read it next to the false-start exit study.
+   Three blocks: ① live shadow windows · ② master Bear-Run fills (2, both 10-07) · ③ backtest ref (5-min machine, proxy exit d V2-C1
+   +0.02 %/trade; forced replay loses vs T0).
 ③ **Then EVERY open watchlist gate in CLAUDE_CURRENT_STATE.md and every scout tracker** — run each scout script and report tallies vs
    bars unprompted (the standing batch-watchlist rule).
 Goal stated by the operator: make the bot highly profitable going forward (≈ 10 %/day ambition) — FRENZY and SPIKE_FADE are the

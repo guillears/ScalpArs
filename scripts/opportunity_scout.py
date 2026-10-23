@@ -1464,6 +1464,14 @@ def run():
     except Exception as _fbs_e:
         log(f"FLATBASE_SHORT gates failed: {_fbs_e}")
         _rg_sec += ["## 🩳 FLATBASE_SHORT", "", f"Unavailable this run ({str(_fbs_e)[:120]}).", ""]
+    try:                                               # 🐻⏩ Oct-23 BEARRUN_V2_SHADOW (DECISION_LOG 359; public 1 h klines, observe-only, frozen read; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_bearrun_v2 as _brv2
+        _rg_sec += _brv2.run(now_ms)
+    except Exception as _brv2_e:
+        log(f"BEARRUN_V2_SHADOW failed: {_brv2_e}")
+        _rg_sec += ["## 🐻⏩ BEARRUN_V2_SHADOW", "", f"Unavailable this run ({str(_brv2_e)[:120]}).", ""]
     _ev_at = next((i for i, x in enumerate(L) if x.startswith("## Evidence so far")), len(L))
     L[_ev_at:_ev_at] = _rg_sec + _fz_sec + _st_sec                         # above the evidence table, so the events / "no events" line keep their place
     if not len(rep):

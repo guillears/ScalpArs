@@ -4560,7 +4560,7 @@
                     </div>
                     <div class="flex gap-3 justify-end">
                         <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
-                        <button onclick="submitAddInvestor()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm transition">Add</button>
+                        <button onclick="_investorSubmitOnce(submitAddInvestor)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm transition">Add</button>
                     </div>
                 </div>
 
@@ -4581,7 +4581,7 @@
                     </div>
                     <div class="flex gap-3 justify-end">
                         <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
-                        <button onclick="submitEditInvestor()" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm transition">Save</button>
+                        <button onclick="_investorSubmitOnce(submitEditInvestor)" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm transition">Save</button>
                     </div>
                 </div>
 
@@ -4595,7 +4595,7 @@
                     </div>
                     <div class="flex gap-3 justify-end">
                         <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
-                        <button onclick="submitDeposit()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm transition">Deposit</button>
+                        <button onclick="_investorSubmitOnce(submitDeposit)" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm transition">Deposit</button>
                     </div>
                 </div>
 
@@ -4614,7 +4614,7 @@
                     </div>
                     <div class="flex gap-3 justify-end">
                         <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
-                        <button onclick="submitTransfer()" class="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-sm transition">Transfer</button>
+                        <button onclick="_investorSubmitOnce(submitTransfer)" class="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-sm transition">Transfer</button>
                     </div>
                 </div>
 
@@ -4629,7 +4629,7 @@
                     </div>
                     <div class="flex gap-3 justify-end">
                         <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
-                        <button onclick="submitWithdraw()" class="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-sm transition">Withdraw</button>
+                        <button onclick="_investorSubmitOnce(submitWithdraw)" class="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-sm transition">Withdraw</button>
                     </div>
                 </div>
 
@@ -4640,7 +4640,7 @@
                     <p class="text-xs text-gray-500">Their remaining value will be auto-withdrawn before removal.</p>
                     <div class="flex gap-3 justify-end">
                         <button onclick="closeInvestorModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-sm transition">Cancel</button>
-                        <button onclick="submitRemoveInvestor()" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm transition">Remove</button>
+                        <button onclick="_investorSubmitOnce(submitRemoveInvestor)" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm transition">Remove</button>
                     </div>
                 </div>
             </div>
@@ -21525,6 +21525,16 @@
                 if (p && p.nav_start_warning) return confirm(`⚠ NAV start check\n\n${p.nav_start_warning}\n\nContinue with this deposit anyway?`);
             } catch (e) { console.error('NAV start preview failed:', e); }
             return true;
+        }
+
+        // 🔒 (DECISION_LOG 352) one investor-modal submit at a time — a double click / Enter + click never posts twice
+        // (10-23: two "Add Guille" submits in one second → the second answered 409 "already exists"; on Deposit /
+        // Withdraw / Transfer the same double submit would register the money twice).
+        let _investorSubmitBusy = false;
+        async function _investorSubmitOnce(fn) {
+            if (_investorSubmitBusy) { showToast('Previous request still in progress…', 'info'); return; }
+            _investorSubmitBusy = true;
+            try { await fn(); } finally { _investorSubmitBusy = false; }
         }
 
         async function submitAddInvestor() {

@@ -8515,3 +8515,12 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   a RESIZE with "not yet" confidence is reported as such; the operator decides the step.
 - **Tests:** tests/test_scout_long_resize.py (cohort filters + dedup + operator-closed · locked verdict = the dashboard function · RESIZE /
   COLLECTING / REVERT via touch rows · confidence STRONG / fail · empty exports · wiring).
+
+## (352) 2026-10-23 — 🔒 Investor buttons: one submit at a time (operator: removed Guille, re-added → "already exists" although it was added)
+- **Cause (CloudWatch):** DELETE /api/investors/22 at 03:19:30, then 4 × POST /api/investors at 03:19:45 (200 · 200 · 200 · 409) = two submits of
+  one "Add" (each = the NAV-start preview + the real POST, `_confirmNavStart`): the first created Guille, the second's real POST hit the
+  name check → 409 toast. The name is UNIQUE in the DB → one Guille. Same double submit on Deposit / Withdraw / Transfer would register twice.
+- **Fix (templates/index.html):** `_investorSubmitOnce(fn)` — a busy flag around the six investor-modal buttons (Add · Save · Deposit · Transfer ·
+  Withdraw · Remove); a click while one is pending is dropped; released in `finally`. The fund deposit / withdraw flow already had its own guard.
+  Tests: tests/test_investor_submit_once.py (every button wrapped, no unguarded call, node run: double click → 1 post, released after an error).
+  A dropped click shows a 'Previous request still in progress' toast (reviews). Not built: server-side idempotency key for deposit / withdraw / transfer (two tabs / replays still double-post) and a fetch timeout (a hung request leaves the buttons dead until reload) — follow-ups.

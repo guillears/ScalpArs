@@ -1376,7 +1376,7 @@ def run():
     except Exception as _wb1h_e:
         log(f"WILLY_BTC1H observe line failed: {_wb1h_e}")
         _rg_sec += ["## 🧭🎲 WILLY_BTC1H", "", f"Unavailable this run ({str(_wb1h_e)[:120]}).", ""]
-    try:                                               # 🎲² Oct-23 WILLY_EXIT_V2 (DECISION_LOG 356; frozen revert gates, verdict persisted; ticks / 1m cache + timecap's budgeted fetch; never breaks the run)
+    try:                                               # 🎲² Oct-23 WILLY_EXIT_V2b (DECISION_LOG 356 → 358; frozen revert gates, verdict persisted; ticks / 1m cache + timecap's budgeted fetch; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import scout_willy_exit_v2 as _wv2

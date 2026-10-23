@@ -40,7 +40,7 @@ from services.touch_snapshot import TOUCH_LEVELS, touch_mark, touch_features, to
 from services.frenzy import (FRENZY_LITE_RETRY, FRENZY_LITE_FAMILY, frenzy_lite_retry_enabled, frenzy_lite_retry_pending,  # 🔁 (DECISION_LOG 316)
                              frenzy_lite_retry_pending_clean, frenzy_lite_retry_step, LITE_RETRY_OPEN, LITE_RETRY_DROP)
 from services.frenzy import frenzy_walk, frenzy_flagged, frenzy_long_status, frenzy_exit_for, frenzy_breaks, normal_hour_usd, frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend, frenzy_wide_ready, frenzy_wide_shadow, FRENZY_WIDE_CODES, global_volume_ratio, merge_klines, frenzy_wide_choppy, frenzy_wide_hold_green_block, frenzy_gvol_block, frenzy_bearish_block, frenzy_lite_status, frenzy_lite_stretch_id, FRENZY_LITE_READY, FRENZY_LITE_COUNTED, FRENZY_LITE_SHOWN, FRENZY_LITE_JUDGES, frenzy_lite_need, frenzy_willy_exit_for, frenzy_willy_levels, frenzy_willy_new_flag, frenzy_willy_a_cold_bars, frenzy_willy_late_bars, frenzy_willy_pending_clean, frenzy_willy_red, frenzy_willy_wait_ms, vol_mcap_ratio, frenzy_willy_a_nomiss_on, frenzy_willy_no_red_missed
-from services.frenzy import frenzy_willy_high_target, frenzy_willy_floor_armed, frenzy_willy_row_tp, frenzy_willy_floor_levels   # 🎲² (DECISION_LOG 356) WILLY exit V2
+from services.frenzy import frenzy_willy_high_target, frenzy_willy_row_tp   # 🎲² (DECISION_LOG 356) WILLY exit V2 · 🎲²ᵇ (358) floor removed
 from services.hard_tp_ladder import parse_hard_tp_ladder, hard_tp_ladder_floor, DEFAULT_LADDER_RUNGS
 from services.golive_guards import (backstop_heal_skip_inflight, backstop_trigger_price, backstop_needs_replace, algo_status_resting, find_untracked_positions,  # 🛡 (DECISION_LOG 292)
                                    untracked_action, preflight_failures, BACKSTOP_REPLACE_RETRY_S, BACKSTOP_REPRICE_INTERVAL_S, UNTRACKED_CONFIRM_PASSES,
@@ -3414,7 +3414,7 @@ class TradingEngine:
                     _reason_base.startswith("HARD_TP") or  # Jul 20: hard TP cap — regret rows are its revert-gate data
                     _reason_base.startswith("SPIKE_") or  # Jul 27: spike option-D reasons (SL/FLOOR/RSI_COOL) — post-exit rows are the BANANA-watch + fade-looseness read instruments
 
-                    _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("FRENZY_TP") or _reason_base.startswith("WILLY_LATE_TP") or _reason_base.startswith("WILLY_FLOOR") or _reason_base.startswith("PATTERN_FIXED_SL") or
+                    _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("FRENZY_TP") or _reason_base.startswith("WILLY_LATE_TP") or _reason_base.startswith("WILLY_FLOOR") or _reason_base.startswith("PATTERN_FIXED_SL") or   # WILLY_FLOOR: historical V2-era rows (floor removed, DL 358)
                     # Jun 14: Flip Entry exits — keep post-exit tracking alive across restart
                     _reason_base.startswith("FLIP_")):
                 continue
@@ -4029,8 +4029,7 @@ class TradingEngine:
                       okey=ts_key(row.opened_at), paper=bool(self.is_paper_mode), ef=self._rtp_entry_fee_pct(row),
                       entry=float(row.entry_price or 0), swap_next=-1e18, busy=False,
                       why=rtp_fixed_reason(row),   # 🎯 (310) MANUAL_TP / OVERRIDE_TP — no WILLY late swap on an operator TP
-                      wtp=getattr(row, 'frenzy_willy_tp_target_pct', None),   # 🎲² (356) the row's stored WILLY TP (None = config)
-                      warm=((row.entry_strategy or '') in WILLY_EXIT_CLASS and frenzy_willy_floor_armed(config.trading_config.thresholds, row)))   # 🎲² armed floor → no late swap
+                      wtp=getattr(row, 'frenzy_willy_tp_target_pct', None))   # 🎲² (356) the row's stored WILLY TP (None = config) · 🎲²ᵇ (358) late swap for every row
             _rtp_rt[order_id] = st
             return st
         except Exception:
@@ -4452,7 +4451,7 @@ class TradingEngine:
                 return None   # a background query / swap is in flight — its result books itself
             # ⏰ (297) the WILLY late minute: swap the +TP limit for the late one (cancel first)
             if st.get('es') in WILLY_EXIT_CLASS and not st.get('why') and now_m >= float(st.get('swap_next', -1e18)):   # 🎯 (310) never on an operator TP
-                tgt = rtp_target(th, st['es'], _held_minutes(st.get('opened_at')), willy_tp=st.get('wtp'), willy_armed=bool(st.get('warm')))   # 🎲² (356) own TP · armed = no late swap
+                tgt = rtp_target(th, st['es'], _held_minutes(st.get('opened_at')), willy_tp=st.get('wtp'))   # 🎲² (356) the row's own TP · 🎲²ᵇ (358) no armed exception
                 if tgt is not None and tgt[1] != self._rtp_reason(st):
                     st['swap_next'] = now_m + 5.0
                     st['busy'], st['busy_at'] = True, now_m
@@ -4508,7 +4507,7 @@ class TradingEngine:
                     o = (await s.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
                     if o is None or o.status != "OPEN" or o.closing_in_progress or order_id in _exit_retry_queue:
                         return 'skipped'
-                    tgt = rtp_row_target(th, o, _held_minutes(o.opened_at), willy_armed=bool((_rtp_rt.get(order_id) or {}).get('warm')))   # 🎯 (310) row-derived (MANUAL FIXED / override / sleeve) · 🎲² (356) armed floor
+                    tgt = rtp_row_target(th, o, _held_minutes(o.opened_at))   # 🎯 (310) row-derived (MANUAL FIXED / override / sleeve) · 🎲² (356) the row's own WILLY TP
                     late = late and rtp_fixed_reason(o) is None   # 🎯 (310) review: never a WILLY late swap on an operator TP (stale state after a blocked withdraw)
                     if tgt is None or o.resting_tp_price is None:
                         return 'skipped'
@@ -4631,7 +4630,7 @@ class TradingEngine:
                             or (self.is_paper_mode and o.resting_tp_price is not None)):
                         return 'skipped'
                     # 🎯 (310) an exit override no longer skips by itself: the row's target decides (override with a TP → OVERRIDE_TP limit)
-                    tgt = rtp_row_target(th, o, _held_minutes(o.opened_at), willy_armed=bool((_rtp_rt.get(order_id) or {}).get('warm')))   # 🎲² (356)
+                    tgt = rtp_row_target(th, o, _held_minutes(o.opened_at))   # 🎲² (356) the row's own WILLY TP
                     if tgt is None:
                         return 'skipped'
                     if self.is_paper_mode:
@@ -4685,7 +4684,7 @@ class TradingEngine:
                         continue
                     filled = float(o.resting_tp_filled_qty or 0)
                     has = bool(o.protective_tp_order_id) if not paper else (o.resting_tp_price is not None and filled <= 0)
-                    tgt = rtp_row_target(th, o, _held_minutes(o.opened_at), willy_armed=bool((_rtp_rt.get(o.id) or {}).get('warm')))   # 🎯 (310) an override with a TP re-prices to it; without one → withdraw · 🎲² (356)
+                    tgt = rtp_row_target(th, o, _held_minutes(o.opened_at))   # 🎯 (310) an override with a TP re-prices to it; without one → withdraw · 🎲² (356) the row's own WILLY TP
                     if has or is_full(o.quantity, filled):
                         self._rtp_state(o.id, row=o)
                     if tgt is None:
@@ -10056,33 +10055,6 @@ class TradingEngine:
         except Exception:
             return None
 
-    def _willy_v2_arm_note(self, order_id, row, peak, persist_row=None) -> bool:
-        """🎲² (DECISION_LOG 356) a WILLY / WILLY_HT row whose profit floor is armed (runner target ∧ peak ≥ the arm): marks the resting-TP
-        state (no late-TP swap from now on), logs [WILLY_V2] once, and — on the monitor path (persist_row = the ORM row, committed by the
-        monitor) — records willy_floor_armed_at the first time. The realtime path only marks memory (its cache dict carries the mark).
-        → armed. Never raises."""
-        try:
-            th = config.trading_config.thresholds
-            if not frenzy_willy_floor_armed(th, row, peak):
-                return False
-            st = _rtp_rt.get(order_id)
-            if st is not None:
-                st['warm'] = True
-            _g = (lambda k: row.get(k)) if isinstance(row, dict) else (lambda k: getattr(row, k, None))
-            if _g('willy_floor_armed_at') is None:
-                _now = datetime.utcnow()
-                arm, fl = frenzy_willy_floor_levels(th)
-                if isinstance(row, dict):
-                    row['willy_floor_armed_at'] = _now
-                elif persist_row is not None:
-                    persist_row.willy_floor_armed_at = _now
-                logger.info(f"[WILLY_V2] {_g('pair')} #{order_id} {_g('entry_strategy')}: floor ARMED — peak {float(peak or 0):+.2f}% ≥ +{arm}% → "
-                            f"exit at net ≤ +{fl}% (WILLY_FLOOR); stop and late TP off; TP stays +{frenzy_willy_row_tp(th, row)}%"
-                            + ("" if persist_row is not None else " (realtime; recorded by the monitor)"))
-            return True
-        except Exception:
-            return False
-
     # ── 🛑👁 (DECISION_LOG 317) TOUCH SNAPSHOTS — observe only (services/touch_snapshot.py). Markers live in memory per order id (both the
     # realtime and the monitor path note readings — no I/O); the monitor writes a touched level's snapshot on the row ONCE (the row is
     # committed with the monitor's own updates); the close writes any snapshot still missing + the outcome. Never raises, never decides.
@@ -14062,11 +14034,10 @@ class TradingEngine:
             except Exception as _wv2_err:   # never blocks the open: today's exit
                 _wv2_tp, _wv2_traw = frenzy_willy_levels(_wv2_th)[0], None
                 logger.error(f"[WILLY_V2] {pair}: exit decision failed ({_wv2_err}) — today's exit")
-            _wv2_arm, _wv2_fl = frenzy_willy_floor_levels(_wv2_th)
             logger.info(f"[WILLY_V2] {pair} {_fz_es}: entry {actual_price} · spike high H {entry_frenzy_willy_spike_high} → net at H×(1−k) "
                         f"{_wv2_traw if _wv2_traw is not None else 'n/a'}% → TP +{_wv2_tp}% "
-                        f"{'(runner — floor +' + str(_wv2_fl) + ' after +' + str(_wv2_arm) + ')' if (_wv2_tp or 0) > _wv2_arm + 1e-9 else '(no floor)'} · "
-                        f"stop −{self._frenzy_entry_stop_pct(_fz_es)}% · BTC 1h slope {entry_btc_1h_slope}")
+                        f"{'(runner)' if (_wv2_tp or 0) > frenzy_willy_levels(_wv2_th)[0] + 1e-9 else '(base TP)'} · "
+                        f"stop −{self._frenzy_entry_stop_pct(_fz_es)}% · late TP + time cap as before (V2b, DECISION_LOG 358) · BTC 1h slope {entry_btc_1h_slope}")
 
         # Create order record
         # Aug-11 🛡 BROKER BACKSTOP (live only): resting exchange-side STOP_MARKET via the
@@ -14612,7 +14583,7 @@ class TradingEngine:
                 'pattern_fixed_tp_pct': _pcell_fixed_tp,
                 'pattern_fixed_sl_pct': _pcell_fixed_sl,
                 'frenzy_lite_tp_used': _lc_tp_used,   # 🎯 (DECISION_LOG 301) LITE C stored TP (NULL = config TP)
-                'frenzy_willy_tp_target_pct': _wv2_tp, 'willy_floor_armed_at': None,   # 🎲² (356) WILLY exit V2 (row-derived exit)
+                'frenzy_willy_tp_target_pct': _wv2_tp,   # 🎲² (356) WILLY exit V2 (row-derived exit)
             }
             if pair not in _open_orders_cache:
                 _open_orders_cache[pair] = []
@@ -18086,6 +18057,7 @@ class TradingEngine:
         if _reason_base.startswith("BR_"):  # Aug 21 gate 57: bull-run sleeve reasons (BR_STOP_LOSS → STOP_LOSS etc.)
             _reason_base = _reason_base[3:]
         _reason_base = _rh_strip(_reason_base)   # FL_RH_x → x
+        # WILLY_FLOOR below: historical only (🎲² DL 356 V2 floor, removed by DL 358 — no new row carries it)
         if not _reason_base.startswith(RH_STOP_CLASS) and not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("LADDER_FLOOR") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("HARD_TP") or _reason_base.startswith("SPIKE_") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("FRENZY_TP") or _reason_base.startswith("WILLY_LATE_TP") or _reason_base.startswith("WILLY_FLOOR") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("BACKSTOP_STOP")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
@@ -19032,11 +19004,8 @@ class TradingEngine:
                         _br_close, _br_reason, _br_stop = flatbase_exit_for(order.entry_price, current_price, _held_minutes(order.opened_at),
                                                                             config.trading_config.thresholds, resting_tp=_rtp_on_m)
                     elif (order.entry_strategy or "") in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN exit — frenzy_willy_tp_pct / frenzy_willy_stop_pct / frenzy_willy_max_hold_minutes (+1.25 / −4 / 90 since DL 281; never FRENZY's TP3) · ⏰ late TP (297)
-                        self._willy_v2_arm_note(order.id, order, _br_peak, persist_row=order)   # 🎲² (356) floor armed → recorded once (committed below)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
-                                                                                _held_minutes(order.opened_at), None, resting_tp=_rtp_on_m, row=order)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live · 🎲² (356) the row's own TP / stop / floor
-                        if _br_close and _br_reason == "WILLY_FLOOR":
-                            logger.warning(f"[WILLY_V2] {order.pair} #{order.id}: floor exit — net {_br_pnl:+.2f}% ≤ +{_br_stop}% (peak {_br_peak:+.2f}%) → WILLY_FLOOR (monitor)")
+                                                                                _held_minutes(order.opened_at), None, resting_tp=_rtp_on_m, row=order)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live · 🎲² (356) the row's own TP · 🎲²ᵇ (358) no profit floor
                     elif (order.entry_strategy or "") in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
                         # 271: no hidden floor (stop_floor None) — frenzy_stop_pct, paper = live
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(_br_pnl, _br_peak, config.trading_config.thresholds,
@@ -22956,11 +22925,8 @@ class TradingEngine:
                         _br_close, _br_reason, _br_stop = flatbase_exit_for(entry_price, current_price, _held_minutes(order_info.get('opened_at')),
                                                                             config.trading_config.thresholds, resting_tp=_rtp_on_rt)
                     elif (order_info.get('entry_strategy') or '') in WILLY_EXIT_CLASS:   # 🎲¼ (341) + HT · 🎲 Oct-8 (251): its OWN exit on every tick — frenzy_willy_tp_pct / _stop_pct / _max_hold_minutes (+1.25 / −4 / 90 since DL 281) · ⏰ late TP (297)
-                        self._willy_v2_arm_note(order_id, order_info, _br_peak_rt)   # 🎲² (356) armed on this tick → the resting-TP gate knows (the monitor persists)
                         _br_close, _br_reason, _br_stop = frenzy_willy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
-                                                                                _held_minutes(order_info.get('opened_at')), None, resting_tp=_rtp_on_rt, row=order_info)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live · 🎲² (356) the row's own TP / stop / floor
-                        if _br_close and _br_reason == "WILLY_FLOOR" and not order_info.get('_closing_in_progress'):
-                            logger.warning(f"[WILLY_V2] {pair} #{order_id}: floor exit — net {pnl_pct:+.2f}% ≤ +{_br_stop}% (peak {_br_peak_rt:+.2f}%) → WILLY_FLOOR (realtime)")
+                                                                                _held_minutes(order_info.get('opened_at')), None, resting_tp=_rtp_on_rt, row=order_info)   # 271: no hidden floor — WILLY's own frenzy_willy_stop_pct, paper = live · 🎲² (356) the row's own TP · 🎲²ᵇ (358) no profit floor
                     elif (order_info.get('entry_strategy') or '') in FRENZY_STRATEGIES:   # 🔥 its own stop + trailing exit (services.frenzy)
                         # 271: no hidden floor (stop_floor None) — frenzy_stop_pct, paper = live
                         _br_close, _br_reason, _br_stop = frenzy_exit_for(pnl_pct, _br_peak_rt, config.trading_config.thresholds,
@@ -25005,7 +24971,6 @@ class TradingEngine:
                 'exit_override_at': getattr(order, 'exit_override_at', None),   # ✎ operator exit override (survives the rebuild)
                 'frenzy_lite_tp_used': getattr(order, 'frenzy_lite_tp_used', None),   # 🎯 (DECISION_LOG 301) LITE C stored TP (restart-proof)
                 'frenzy_willy_tp_target_pct': getattr(order, 'frenzy_willy_tp_target_pct', None),   # 🎲² (356) WILLY exit V2 — restart-proof
-                'willy_floor_armed_at': getattr(order, 'willy_floor_armed_at', None),
             }
 
             if order.pair not in new_cache:

@@ -8,10 +8,17 @@ runner target can book something that exit never could → a fake delta in a bef
   (b) recognises V2 fills by their STAMPS and either re-walks them under V2 or splits them out — never mixes them silently,
   (c) prints era_line(...) — "exit era: pre-V2 N · V2 N (runner target / floor N)" — so batch reviews cannot mix eras.
 
+🎲²ᵇ DECISION_LOG 358 (V2b): the floor was REMOVED from the engine — a V2b fill runs its stored target with the old stop / late TP / cap.
+The classification below is unchanged and stays correct for both eras: a V2b fill is recognised by the SAME target stamp, and a runner
+target (> +1.25) is still the only way its exit can differ from the old one; WILLY_FLOOR closes exist only on V2 (DL 356) era rows
+(closed before the DL 358 deploy, e.g. INIT 10-23). willy_floor_armed_at (ARM_COL) is historical — still read from the exports when present,
+never written by the engine anymore. Era-specific splits (V2 floor vs V2b) live in scripts/scout_willy_exit_v2.py.
+
 Classification (from the orders export alone; restart-proof, no config read):
-  V2 era        = frenzy_willy_tp_target_pct is a finite number (stamped by the V2 code on every WILLY / HT fill, switch on or off)
+  V2 era        = frenzy_willy_tp_target_pct is a finite number (stamped by the V2 / V2b code on every WILLY / HT fill, switch on or off)
   V2 changed    = V2 era AND (target > OLD_TP + EPS  OR  close reason WILLY_FLOOR) — the only fills whose exit can differ from the old one.
-                  A V2 fill with target == +1.25 runs the old exit exactly (the floor needs a target above the arm) → safe in old cohorts.
+                  A V2 / V2b fill with target == +1.25 runs the old exit exactly (V2's floor needed a target above the arm; V2b has none)
+                  → safe in old cohorts.
 Pure pandas / stdlib; every helper is total (never raises on a missing column)."""
 import math
 

@@ -69,20 +69,25 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    scout): LITE + LITE_RETRY fills ≥ 12 h after the spike with BTC's 1 h slope ≤ 0 vs the rest of LITE — MASTER history · FORWARD · POOLED
    (N · days · WR · avg · Σ · $), the cell fill list, the gate verdict (read at 15 fills on 8 days), next to LITE_BTC1H_FALLING and the
    backtest ref (cell −0.57 vs rest +0.03; failed 2026 OOS). Save the batch export first — an unsaved reset loses the forward fills.
-②j **🎲² WILLY EXIT V2 (DECISION_LOG 356, 2026-10-23, operator declared override, frozen revert gates)** — run scripts/scout_willy_exit_v2.py
-   (also in the opportunity scout). Read, in this order: ⓐ the era line ("exit era: pre-V2 N · V2 N (runner target / floor N)") — every
-   WILLY scout now prints one; old-exit gates (TIMECAP / S4 / OLD_EXIT, TP125, STOP, BTC1H, HT, R_NOMISS, TURNOVER) keep V2 runner / floor
-   fills OUT (listed apart) or re-walk them under the pinned old exit, so never mix eras by hand · ⓑ the PARITY line (V2 re-walk with the
-   fill's stamped target vs booked, ±0.15; < 90 % → "no verdict (parity)": find why before reading anything else — stop / floor gaps, maker
-   TP fills) · ⓒ LEDGER A on the ARMED fills: Σ(live − shadow) split runners (TP above +1.25) · floor exits (WILLY_FLOOR) · other (cap) —
-   the shadow is the PINNED +1.25 resting / −4 / late +0.25 @30 / 90 exit on the same tick → 1m path · ⓓ the per-batch BEFORE (shadow) →
-   AFTER (live V2) table split by BTC side at entry (falling / rising / unread — analytics only; the falling side is governed by the
-   WILLY_BTC1H gate, the −2.5 falling stop was NOT shipped) · ⓔ gate status: EARLY (first 10 armed avg < shadow − 0.15 → alert) · MAIN (15
-   armed on ≥ 6 UTC days, Σ(live − shadow) < 0 → REVERT to +1.25 = frenzy_willy_high_target_enabled false) · FINAL (25 armed, Σ < 0 →
-   REVERT); verdicts persist in reports/.willy_exit_v2_gate.json. Three blocks: ① batch (live V2 vs shadow) · ② master per batch (the
-   36-fill master read: today +0.263 → A at floor 1.0 ≈ +0.47, operator expectation) · ③ backtest ref (reports/WILLY_EXITV2_2026-10-23.md:
-   2026 +0.022 at floor 0.5, −0.030 at floor 1.0 — thin). Also check: the [WILLY_V2] entry log (H, T_used) on every live fill · any
-   post-only (GTX) reject of the resting limit when the price already sat above P_H at placement (RESTING_TP heal / safety-net lines).
+②j **🎲²ᵇ WILLY EXIT V2b (DECISION_LOG 358 — the DL 356 floor REMOVED; target at the spike high kept; frozen revert gates)** — run
+   scripts/scout_willy_exit_v2.py (also in the opportunity scout). Live exit: stored target TP (resting maker) · stop −4 throughout · late TP
+   +0.25 @30 for every trade · cap 90 · no floor. Read, in this order: ⓐ the era line ("exit era: pre-V2 N · V2 N (runner target / floor N)") —
+   every WILLY scout prints one; old-exit gates (TIMECAP / S4 / OLD_EXIT, TP125, STOP, BTC1H, HT, R_NOMISS, TURNOVER) keep runner / floor fills
+   OUT (listed apart) or re-walk them under the pinned old exit, so never mix eras by hand · ⓑ the V2 (floor) era block — fills closed before
+   the DL 358 deploy (INIT 10-23) shown APART: booked vs "what V2b would have booked" vs the +1.25 exit; transition fills counted by line only ·
+   ⓒ the PARITY line (V2b re-walk with the fill's stamped target vs booked, ±0.15; < 90 % → "no verdict (parity)": find why before reading
+   anything else — stop gaps, maker TP fills, late re-price) · ⓓ the SHADOW LINES on the RUNNER fills (target > +1.25; Δ = shadow − the live
+   V2b re-walk, same path): (a) today's +1.25 exit (the gate shadow) · (b) FLOOR10 = the removed DL 356 floor · (c) the DL 357 ladders STEPS /
+   TRAIL10 / TRAIL15 / HALF (floor exits pay 0.05) · (d) NOLATE (target until the cap, stop −4) + the per-fill list (last 20) · ⓔ the
+   per-batch BEFORE (shadow a) → AFTER (live V2b) table split by BTC side at entry (analytics only; the falling side is governed by the
+   WILLY_BTC1H gate) · ⓕ gate status (counted from the DL 358 deploy + 10 min, runner fills): V2B_EARLY (first 10 avg < shadow − 0.15 →
+   alert) · V2B_MAIN (15 on ≥ 6 UTC days, Σ(live − shadow) < 0 → REVERT to +1.25 = frenzy_willy_high_target_enabled false) · V2B_FINAL (25,
+   Σ < 0 → REVERT) · V2B_SH_<shadow> (15 on 6 days: CANDIDATE iff avg Δ ≥ +0.10 ∧ no fill ≥ 50 % of the gain, else KEEP); verdicts persist in
+   reports/.willy_exit_v2b_gate.json (fresh file — the DL 356 file is never read). Three blocks: ① batch (live V2b vs shadow) · ② master per
+   batch (36 fills: today +0.263, target-no-floor H1_k1 +0.24 Δ) · ③ backtest ref (reports/WILLY_HIGHTARGET_2026-10-23.md H1_k1: 2026 +0.10
+   [−0.03, +0.24], 2025 −0.04). Also check: the [WILLY_V2] entry log (H, T_used, "(runner)" / "(base TP)") on every live fill · any post-only
+   (GTX) reject of the resting limit when the price already sat above P_H at placement (RESTING_TP heal / safety-net lines) · the late re-price
+   of runner limits at 30 min.
 ③ **Then EVERY open watchlist gate in CLAUDE_CURRENT_STATE.md and every scout tracker** — run each scout script and report tallies vs
    bars unprompted (the standing batch-watchlist rule).
 Goal stated by the operator: make the bot highly profitable going forward (≈ 10 %/day ambition) — FRENZY and SPIKE_FADE are the

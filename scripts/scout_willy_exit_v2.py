@@ -1,44 +1,43 @@
-"""🎲² WILLY EXIT V2 scout (DECISION_LOG 356 — observe-only; FROZEN revert gates, verdict persisted).
+"""🎲²ᵇ WILLY EXIT V2b scout (DECISION_LOG 358 — the V2 floor REMOVED; observe-only, FROZEN revert gates, verdicts persisted).
 
-What V2 changed (services/frenzy.py): a FRENZY_WILLY / FRENZY_WILLY_HT fill aims its take profit just below the episode's spike high
-(Order.frenzy_willy_tp_target_pct = max(+1.25, min(+8, net at H × 0.99)), resting maker limit) and, when that target is ABOVE the floor arm
-(+1.25), a profit floor arms once the peak reaches +1.25: then it closes at net ≤ +1.0 (WILLY_FLOOR), with no stop and no late-TP
-downgrade; the 90-min cap still closes. A target of exactly +1.25 runs the old exit. The stop is unchanged (−4; the study's BTC-falling −2.5
-stop was NOT shipped — the falling side is governed by the WILLY_BTC1H gate).
+History: DECISION_LOG 356 shipped WILLY exit V2 = a per-order take profit aimed just below the spike high (Order.frenzy_willy_tp_target_pct =
+max(+1.25, min(+8, net at H × 0.99)), resting maker limit) + a profit FLOOR (+1.0 once the peak touched +1.25; stop and late TP skipped when
+armed). DECISION_LOG 357 added ladder shadows of that floor. DECISION_LOG 358 (2026-10-23, operator) REMOVED the floor from the engine: the
+live WILLY / WILLY_HT exit is now V2b = TP at the stored target · stop −4 throughout · the 30-min late TP +0.25 for EVERY trade (no armed
+exception) · 90-min cap. Evidence: reports/WILLY_HIGHTARGET_2026-10-23.md variant H1_k1 (backtest 2026 Δ vs the +1.25 exit +0.10
+[−0.03, +0.24], master +0.24, live +0.07) vs the floor (backtest −0.03 at F 1.0 / +0.02 at F 0.5, live negative at every F).
 
-Cohort: CLOSED FRENZY_WILLY + FRENZY_WILLY_HT LONG fills from the orders exports (export_glob; dedup (opened_at[:19], pair, direction), CLOSED
-wins; operator-closed out via scout_gatekit) opened ≥ the DL 356 deploy (scout_gatekit.dl_deploy_ms(356, lag_min=10)).
+ERAS (from the orders exports; dedup (opened_at[:19], pair, direction), CLOSED wins; operator-closed out via scout_gatekit):
+  V2 (floor) fills   — V2-stamped (target column set) and CLOSED before the DL 358 deploy (INIT 10-23) → shown APART, never counted.
+  transition fills   — V2-stamped, opened before the DL 358 deploy + 10 min but closed after the deploy → listed by count, never counted.
+  V2b counted cohort — opened ≥ the DL 358 deploy + 10 min (scout_gatekit.dl_deploy_ms(358, lag_min=10)).
+  RUNNER fill        — a V2b fill whose stored target is > +1.25 (only those can differ from the old exit; no arming anymore).
 
 Per fill (same tick → 1m hybrid path as the other WILLY scouts, scout_frenzy_willy_exit.load_path; caches + the budgeted public fetch helper
 of scout_willy_timecap.ensure_data only):
-  SHADOW = TODAY's old exit on that path — +1.25 net resting maker TP / −4 / late +0.25 after 30 min / 90 cap
-           (scout_willy_timecap.evaluate_late(book="live"), net convention) — PINNED here, never read from config.
-  LIVE   = the booked pnl_percentage.
-  PARITY = re-walk of the LIVE V2 exit with the fill's stamped target (walk_v2) vs booked: < 90 % of priced fills within 0.15 →
-           "no verdict (parity)" (nothing is frozen on a failed parity).
+  LIVE    = the booked pnl_percentage.
+  PARITY  = re-walk of the LIVE V2b exit with the fill's stamped target (walk_v2, no floor) vs booked: < 90 % of priced fills within 0.15 →
+            "no verdict (parity)" (nothing is frozen on a failed parity).
+  SHADOWS on every RUNNER fill (same path, same convention; Δ = shadow − the live V2b re-walk, paired):
+    (a) TODAY  — the pinned pre-356 exit: +1.25 resting maker TP / −4 / late +0.25 after 30 min / 90 cap (scout_willy_timecap.evaluate_late
+                 (book="live")) — the GATE shadow, never read from config.
+    (b) FLOOR10 — the DL 356 rule: flat floor +1.0 once +1.25 is touched (no stop / no late TP while armed; cap closes).
+    (c) the four DL 357 ladders (floor = f(peak of the EARLIER events), armed at +1.25):
+          STEPS    peak < 2 → +1.0 · < 3 → +1.5 · < 4 → +2.25 · < 5 → +3.0 · ≥ 5 → peak − 1.5
+          TRAIL10  max(+1.0, peak − 1.0)      TRAIL15  max(+1.0, peak − 1.5)      HALF  max(+1.0, 50 % of peak)
+    (d) NOLATE — no late TP: ride the target until the 90-min cap, stop −4.
+    A FLOOR exit in (b) / (c) pays FLOOR_SLIP 0.05 (a taker market close; V2b never floors, so every shadow floor exit replaces a maker /
+    stop / cap exit — the DL 357 convention).
 
-Ledger A (target + floor): the ARMED fills (runner target > the arm and peak ≥ the arm: willy_floor_armed_at, or peak_pnl ≥ the arm) —
-Σ(live − shadow) split into runners (TP above +1.25) · floor exits (WILLY_FLOOR) · other (cap / late). Per-batch before (shadow) → after
-(live) table, split by BTC side at entry (entry_btc_1h_slope ≤ 0 = falling — analytics only).
-
-🔒 FROZEN gates (decided ONCE each, persisted in reports/.willy_exit_v2_gate.json; operator decides — nothing automatic):
-  EARLY  — the first 10 armed fills: avg(live) < avg(shadow) − 0.15 → ALERT (review)
-  MAIN   — the shortest prefix of ≥ 15 armed fills on ≥ 6 UTC days: Σ(live − shadow) < 0 → REVERT to +1.25 (frenzy_willy_high_target_enabled
-           false) · else PASS
-  FINAL  — the first 25 armed fills: Σ(live − shadow) < 0 → REVERT · else PASS
-An armed fill without a priced path holds the freeze of any read whose sample it belongs to.
-
-🪜 LADDER SHADOWS (operator 2026-10-23 after INIT 10-23: peak +2.85 → floored at +1.06, then ran to +11.5 %; DECISION_LOG 357 — observe-only):
-every priced V2 fill is ALSO re-walked with a rising floor (only runner targets can differ; the rest show Δ = 0) instead of the flat +1.0 (same path, same arm +1.25, the floor at
-each event = f(peak of the EARLIER events) — never the event that sets the peak):
-  STEPS    peak < 2 → +1.0 · < 3 → +1.5 · < 4 → +2.25 · < 5 → +3.0 · ≥ 5 → peak − 1.5
-  TRAIL10  max(+1.0, peak − 1.0)      TRAIL15  max(+1.0, peak − 1.5)      HALF  max(+1.0, 50 % of peak)
-Δ = ladder walk − the flat V2 re-walk of the SAME fill (paired, same convention; a ladder FLOOR exit where the flat walk did not floor pays
-LADDER_FLOOR_SLIP 0.05 — the taker market close vs the maker TP it replaces (deep review); fills that never armed show Δ = 0 — a live-armed fill whose
-re-walk never arms counts in the 15 with Δ = 0).
-🔒 FROZEN read per ladder (decided once, persisted): at the shortest prefix of ≥ 15 armed fills on ≥ 6 UTC days → CANDIDATE (operator decides
-an engine change) iff avg Δ ≥ +0.10 %/fill ∧ no single fill carries ≥ 50 % of the positive Δ; else KEEP_FLAT. Master evidence (36 fills,
-10-23): flat +0.45 vs ladders +0.30 … +0.34 — the ladder sells runners that breathe on the way up (CFX, CAP)."""
+🔒 FROZEN gates (decided ONCE each, persisted in reports/.willy_exit_v2b_gate.json under V2B_* keys — a fresh file, so nothing from the
+DL 356 file can leak; operator decides — nothing automatic). Δ = live (booked) − shadow (a):
+  V2B_EARLY — the first 10 runner fills: avg(live) < avg(shadow a) − 0.15 → ALERT (review)
+  V2B_MAIN  — the shortest prefix of ≥ 15 runner fills on ≥ 6 UTC days: Σ Δ < 0 → REVERT to +1.25 (frenzy_willy_high_target_enabled
+              false) · else PASS
+  V2B_FINAL — the first 25 runner fills: Σ Δ < 0 → REVERT · else PASS
+🔒 FROZEN read per shadow (b)(c)(d) (V2B_SH_<name>): at the shortest prefix of ≥ 15 runner fills on ≥ 6 UTC days → CANDIDATE (operator
+decides an engine change) iff avg Δ (shadow − live re-walk) ≥ +0.10 %/fill ∧ no single fill carries ≥ 50 % of the positive Δ; else KEEP.
+A runner fill without a priced path / with an unresolved walk holds the freeze of any read whose sample it belongs to."""
 import json
 import math
 import os
@@ -54,16 +53,19 @@ import export_glob as _EG          # noqa: E402
 import scout_gatekit as _GK        # noqa: E402
 import willy_exit_era as WEra      # noqa: E402
 
-DL = 356
+DL, DL_V2 = 358, 356
+LAG_MIN = 10
 _ROOT = os.path.dirname(_HERE)
-STATE = os.path.join(_ROOT, "reports", ".willy_exit_v2_gate.json")
+STATE = os.path.join(_ROOT, "reports", ".willy_exit_v2b_gate.json")   # fresh file (DL 358) — the DL 356 file is never read
+KEY = "V2B_"                                                              # every persisted key carries it
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 STRATEGIES = ("FRENZY_WILLY", "FRENZY_WILLY_HT")
 COLS = ("opened_at", "closed_at", "pair", "direction", "entry_strategy", "status", "entry_price", "pnl_percentage", "close_reason",
         "peak_pnl", "entry_btc_1h_slope") + WEra.V2_COLS
-# the PINNED pre-356 exit (the shadow) — DECISION_LOG 281 / 297; never read from config
+# the PINNED pre-356 exit (shadow a) — DECISION_LOG 281 / 297; never read from config
 OLD_TP, OLD_STOP, OLD_CAP, (OLD_LATE_MIN, OLD_LATE_TP) = WEra.OLD_TP, WEra.OLD_STOP, WEra.OLD_HOLD, WEra.OLD_LATE
-ARM, FLOOR = 1.25, 1.0                    # the shipped floor (DL 356; operator) — the parity re-walk uses these
+ARM, FLOOR = 1.25, 1.0                    # the REMOVED DL 356 floor — shadow (b) / the V2-era re-walk only (never the live exit)
+FLOOR_SLIP = 0.05                         # a shadow floor exit = a taker market close (DL 357 convention)
 PARITY_TOL, PARITY_MIN = 0.15, 0.90
 EARLY_N, EARLY_GAP = 10, 0.15
 MAIN_N, MAIN_DAYS = 15, 6
@@ -76,21 +78,24 @@ LADDERS = {
     "TRAIL15": lambda p: max(1.0, p - 1.5),
     "HALF": lambda p: max(1.0, 0.5 * p),
 }
-LADDER_N, LADDER_DAYS, LADDER_MIN_GAIN, LADDER_SHARE = 15, 6, 0.10, 0.50
-LADDER_FLOOR_SLIP = 0.05                  # a ladder floor exit (taker + slippage) that replaces a flat TP / cap / late exit
+SHADOWS = ("FLOOR10",) + tuple(LADDERS) + ("NOLATE",)    # (b) · (c) · (d)
+SH_N, SH_DAYS, SH_MIN_GAIN, SH_SHARE = 15, 6, 0.10, 0.50
+LIST_CAP = 20
 
 
 # ─────────────────────────── walkers (net % path: t, hi, lo, cl, op, bar, end_ms, te) ───────────────────────────
-def walk_v2(P, tp, sl=OLD_STOP, cap=OLD_CAP, late=OLD_LATE_MIN, ztp=OLD_LATE_TP, arm=ARM, floor=FLOOR, floor_fn=None):
-    """the LIVE V2 exit on a net path → dict(why TP / LATE_TP / STOP / FLOOR / CAP / UNRES, pct, armed). Before the floor arms it is
-    scout_willy_timecap.evaluate_late(book="live") exactly (stop first on an event touching both lines; resting TP books the line; a late line
-    already through at the first late event books that print / bar open). The floor exists only when tp > arm; it arms on the first event
-    with hi ≥ arm (not judged on the arming event itself — the order inside a bar is unknown); armed: an event touching the floor → FLOOR
-    (bar: min(floor, open); tick: the print) — checked before the TP (conservative); no stop, no late line; the cap still closes."""
+def walk_v2(P, tp, sl=OLD_STOP, cap=OLD_CAP, late=OLD_LATE_MIN, ztp=OLD_LATE_TP, arm=ARM, floor=None, floor_fn=None):
+    """a WILLY exit on a net path → dict(why TP / LATE_TP / STOP / FLOOR / CAP / UNRES, pct, armed).
+    Default (floor None, floor_fn None) = the LIVE V2b exit (DL 358): scout_willy_timecap.evaluate_late(book="live") exactly with the
+    stored target (stop first on an event touching both lines; resting TP books the line; a late line already through at the first late
+    event books that print / bar open). late=None → no late TP (shadow d).
+    SHADOW TOOL ONLY (the engine has no floor since DL 358): floor (flat) or floor_fn(peak of the EARLIER events) — exists only when tp > arm;
+    it arms on the first event with hi ≥ arm (not judged on the arming event itself); armed: an event touching the floor → FLOOR (bar:
+    min(floor, open); tick: the print) — checked before the TP (conservative); no stop, no late line; the cap still closes."""
     te = int(P["te"])
     t, hi, lo, op, bar = P["t"], P["hi"], P["lo"], P["op"], P["bar"]
     n = int(np.searchsorted(t, te + cap * MIN, side="right"))
-    has_floor = floor is not None and float(tp) > float(arm) + 1e-9
+    has_floor = (floor is not None or floor_fn is not None) and float(tp) > float(arm) + 1e-9
     use_late = late is not None and ztp is not None and float(ztp) < float(tp)
     i0 = None
     if use_late:
@@ -131,10 +136,21 @@ def walk_v2(P, tp, sl=OLD_STOP, cap=OLD_CAP, late=OLD_LATE_MIN, ztp=OLD_LATE_TP,
 
 
 def shadow_today(P):
-    """the PINNED old exit (+1.25 resting / −4 / late +0.25 @30 / 90) — scout_willy_timecap.evaluate_late(book='live')."""
+    """(a) the PINNED old exit (+1.25 resting / −4 / late +0.25 @30 / 90) — scout_willy_timecap.evaluate_late(book='live')."""
     import scout_willy_timecap as WT
     r = WT.evaluate_late(P, OLD_TP, OLD_STOP, OLD_CAP, OLD_LATE_MIN, OLD_LATE_TP, book="live")
     return dict(why=r["why"], pct=float(r["pct"]) if r.get("pct") is not None else float("nan"))
+
+
+def shadow_walk(P, tp, name):
+    """(b) FLOOR10 · (c) a DL 357 ladder · (d) NOLATE → booked % (a FLOOR exit pays FLOOR_SLIP; UNRES → nan)."""
+    if name == "NOLATE":
+        w = walk_v2(P, tp, late=None)
+    elif name == "FLOOR10":
+        w = walk_v2(P, tp, floor=FLOOR)
+    else:
+        w = walk_v2(P, tp, floor_fn=LADDERS[name])
+    return float(w["pct"]) - (FLOOR_SLIP if w["why"] == "FLOOR" else 0.0)
 
 
 # ─────────────────────────── cohort ───────────────────────────
@@ -170,19 +186,34 @@ def dedup(raw):
 
 
 def cohort(raw, floor_ms):
-    """→ (closed counted fills, operator-closed excluded, all closed WILLY rows for the era line)."""
+    """→ dict(kept = counted V2b fills (opened ≥ floor_ms, operator-closed out) · ox = operator-closed · allc = every closed WILLY row
+    (era line) · v2 = V2 (floor) era fills (stamped, closed before the DL 358 deploy = floor_ms − LAG_MIN) · trans = stamped fills opened
+    before floor_ms but closed at / after the deploy)."""
     o = dedup(raw)
     c = o[o.status.astype(str).str.upper() == "CLOSED"].copy() if len(o) else o
+    empty = c.iloc[0:0] if len(c) else c
+    out = dict(kept=empty, ox=empty, allc=c, v2=empty, trans=empty)
     if not len(c):
-        return c, c, c
+        return out
     c["ts"] = pd.to_datetime(c._k, format="ISO8601", errors="coerce")
     c = c[c.ts.notna()].copy()
-    allc = c
+    cl = pd.to_datetime(c.closed_at.astype(str).str[:19], format="ISO8601", errors="coerce") if "closed_at" in c else pd.Series(pd.NaT, index=c.index)
+    c["cts"] = cl.where(cl.notna(), c.ts)
+    out["allc"] = c
     if floor_ms is None:
-        return c.iloc[0:0], c.iloc[0:0], allc
-    c = c[c.ts >= pd.Timestamp(int(floor_ms), unit="ms")]
-    kept, ox = _GK.split_operator_closed(c)
-    return kept.sort_values(["ts", "pair"], kind="stable").reset_index(drop=True), ox, allc
+        out.update(kept=c.iloc[0:0], ox=c.iloc[0:0], v2=c.iloc[0:0], trans=c.iloc[0:0])
+        return out
+    floor_ts = pd.Timestamp(int(floor_ms), unit="ms")
+    cut_ts = pd.Timestamp(int(floor_ms) - LAG_MIN * MIN, unit="ms")
+    pre = c[c.ts < floor_ts]
+    v2p, _ = WEra.masks(pre)
+    old_v2 = pre[v2p.values & (pre.cts < cut_ts).values]
+    trans = pre[v2p.values & (pre.cts >= cut_ts).values]
+    k = c[c.ts >= floor_ts]
+    kept, ox = _GK.split_operator_closed(k)
+    out.update(kept=kept.sort_values(["ts", "pair"], kind="stable").reset_index(drop=True), ox=ox,
+               v2=old_v2.sort_values(["ts", "pair"], kind="stable").reset_index(drop=True), trans=trans)
+    return out
 
 
 def _f(v):
@@ -193,15 +224,10 @@ def _f(v):
     return x if math.isfinite(x) else None
 
 
-def armed_live(r, arm=ARM):
-    """the fill ARMED live: a runner target (> arm) and (willy_floor_armed_at recorded or peak_pnl ≥ arm)."""
+def is_runner(r):
+    """a RUNNER fill: its stored target is above the old +1.25 TP (the only fills whose V2b exit can differ from the old exit)."""
     tp = _f(r.get(WEra.TP_COL))
-    if tp is None or tp <= arm + 1e-9:
-        return False
-    if str(r.get(WEra.ARM_COL) or "").strip() not in ("", "nan", "NaT", "None"):
-        return True
-    pk = _f(r.get("peak_pnl"))
-    return pk is not None and pk >= arm - 1e-9
+    return tp is not None and tp > OLD_TP + WEra.EPS
 
 
 def btc_side(v):
@@ -209,17 +235,22 @@ def btc_side(v):
     return "unread" if x is None else ("falling" if x <= 0 else "rising")
 
 
+def _price_cols():
+    return (("live", "shadow", "shadow_why", "v2b", "v2b_why", "v2f", "v2f_why", "runner", "src", "side", "delta")
+            + tuple(x for k_ in SHADOWS for x in (f"sh_{k_}", f"d_{k_}")))
+
+
 def price(c, path_fn=None, fetch=False, now_ms=None):
-    """→ c with shadow / v2 walk columns. path_fn(row) → P or None (default: the hybrid tick → 1m loader on the shared caches)."""
+    """→ c with the shadow (a) / V2b re-walk / V2-floor re-walk / shadow (b)(c)(d) columns. path_fn(row) → P or None (default: the hybrid
+    tick → 1m loader on the shared caches)."""
     c = c.copy()
     if not len(c):
-        for k in ("live", "shadow", "shadow_why", "v2", "v2_why", "armed", "src", "side", "delta") + tuple(
-                x for k_ in LADDERS for x in (f"lad_{k_}", f"ladd_{k_}")):
+        for k in _price_cols():
             c[k] = pd.Series(dtype=object)
         return c
     c["live"] = pd.to_numeric(c.pnl_percentage, errors="coerce")
     c["side"] = [btc_side(v) for v in c.get("entry_btc_1h_slope", pd.Series([None] * len(c)))]
-    c["armed"] = [armed_live(r) for r in c.to_dict("records")]
+    c["runner"] = [is_runner(r) for r in c.to_dict("records")]
     if path_fn is None:
         import scout_frenzy_willy_exit as FX
         import scout_willy_timecap as WT
@@ -232,7 +263,7 @@ def price(c, path_fn=None, fetch=False, now_ms=None):
                 fr = c.assign(src=None)[["ts", "pair", "te", "src"]]
                 WT.ensure_data(fr, OLD_CAP, now_ms or int(pd.Timestamp.now("UTC").value // 1_000_000), fetch=True)
             except Exception as e:
-                print(f"  (WILLY_EXIT_V2: fetch pass skipped: {str(e)[:80]})")
+                print(f"  (WILLY_EXIT_V2b: fetch pass skipped: {str(e)[:80]})")
 
         def path_fn(r):
             if not (r["E"] and r["E"] > 0):
@@ -240,42 +271,48 @@ def price(c, path_fn=None, fetch=False, now_ms=None):
             P = FX.load_path(r["pair"], int(r["te"]), float(r["E"]), max(OLD_CAP, 120), tcache)
             P["_src"] = FX.path_src(P)
             return P
-    sh, shw, v2, v2w, src = [], [], [], [], []
-    lad = {k: [] for k in LADDERS}
+    cols = {k: [] for k in ("shadow", "shadow_why", "v2b", "v2b_why", "v2f", "v2f_why", "src")}
+    sh = {k: [] for k in SHADOWS}
     for r in c.to_dict("records"):
         try:
             P = path_fn(r)
         except Exception:
             P = None
         if P is None or not len(P.get("t", [])):
-            sh.append(np.nan); shw.append("UNPRICED"); v2.append(np.nan); v2w.append("UNPRICED"); src.append(None)
-            for k in LADDERS:
-                lad[k].append(np.nan)
+            for k, v in (("shadow", np.nan), ("shadow_why", "UNPRICED"), ("v2b", np.nan), ("v2b_why", "UNPRICED"), ("v2f", np.nan),
+                         ("v2f_why", "UNPRICED"), ("src", None)):
+                cols[k].append(v)
+            for k in SHADOWS:
+                sh[k].append(np.nan)
             continue
+        tp = _f(r.get(WEra.TP_COL)) or OLD_TP
         s = shadow_today(P)
-        w = walk_v2(P, _f(r.get(WEra.TP_COL)) or OLD_TP)
-        sh.append(s["pct"]); shw.append(s["why"]); v2.append(w["pct"]); v2w.append(w["why"]); src.append(P.get("_src", "path"))
-        for k, fn in LADDERS.items():   # 🪜 (357) same path, same target, rising floor
-            lw = walk_v2(P, _f(r.get(WEra.TP_COL)) or OLD_TP, floor_fn=fn)
-            lad[k].append(lw["pct"] - (LADDER_FLOOR_SLIP if (lw["why"] == "FLOOR" and w["why"] != "FLOOR") else 0.0))
-    c["shadow"], c["shadow_why"], c["v2"], c["v2_why"], c["src"] = sh, shw, v2, v2w, src
+        w = walk_v2(P, tp)                       # the LIVE V2b exit (DL 358)
+        wf = walk_v2(P, tp, floor=FLOOR)         # the V2 (DL 356) exit — parity of the V2-era fills only
+        for k, v in (("shadow", s["pct"]), ("shadow_why", s["why"]), ("v2b", w["pct"]), ("v2b_why", w["why"]), ("v2f", wf["pct"]),
+                     ("v2f_why", wf["why"]), ("src", P.get("_src", "path"))):
+            cols[k].append(v)
+        for k in SHADOWS:
+            sh[k].append(shadow_walk(P, tp, k))
+    for k, v in cols.items():
+        c[k] = v
     c["delta"] = c.live - c.shadow
-    for k in LADDERS:
-        c[f"lad_{k}"] = lad[k]
-        c[f"ladd_{k}"] = c[f"lad_{k}"] - c.v2
+    for k in SHADOWS:
+        c[f"sh_{k}"] = sh[k]
+        c[f"d_{k}"] = pd.to_numeric(c[f"sh_{k}"], errors="coerce") - pd.to_numeric(c.v2b, errors="coerce")
     return c
 
 
 # ─────────────────────────── gates ───────────────────────────
-def parity(c):
-    """→ (ok, text): share of priced fills whose V2 re-walk is within PARITY_TOL of the booked %."""
-    g = c[c.v2.notna() & c.live.notna()] if len(c) else c
+def parity(c, col="v2b", label="V2b re-walk"):
+    """→ (ok, text): share of priced fills whose re-walk is within PARITY_TOL of the booked %."""
+    g = c[c[col].notna() & c.live.notna()] if len(c) else c
     if not len(g):
-        return True, "parity: no priced fill yet"
-    within = (g.v2 - g.live).abs() <= PARITY_TOL
+        return True, f"parity ({label} vs booked): no priced fill yet"
+    within = (pd.to_numeric(g[col]) - g.live).abs() <= PARITY_TOL
     share = float(within.mean())
     ok = share >= PARITY_MIN
-    return ok, (f"parity (V2 re-walk vs booked, ±{PARITY_TOL}): {int(within.sum())}/{len(g)} = {share * 100:.0f} %"
+    return ok, (f"parity ({label} vs booked, ±{PARITY_TOL}): {int(within.sum())}/{len(g)} = {share * 100:.0f} %"
                 + ("" if ok else f" < {PARITY_MIN * 100:.0f} % → no verdict (parity)"))
 
 
@@ -283,9 +320,21 @@ def _days(g):
     return g.ts.dt.strftime("%Y-%m-%d").nunique() if len(g) else 0
 
 
+def _runners(c):
+    return c[c.runner.astype(bool)].sort_values(["ts", "pair"], kind="stable") if len(c) else c
+
+
+def _prefix(a, n, days):
+    for k in range(len(a)):
+        s = a.iloc[:k + 1]
+        if k + 1 >= n and _days(s) >= days:
+            return s
+    return None
+
+
 def reads(c):
-    """the three FROZEN reads on the armed fills (in open order) → {name: (verdict, text, sample_complete)}. COLLECTING = not reached."""
-    a = c[c.armed].sort_values(["ts", "pair"], kind="stable") if len(c) else c
+    """the three FROZEN gate reads on the RUNNER fills (in open order) → {name: (verdict, text, sample_complete)}."""
+    a = _runners(c)
     out = {}
 
     def _sample_ok(s):
@@ -295,36 +344,55 @@ def reads(c):
     if len(e) >= EARLY_N:
         lv, sv = e.live.mean(), e.shadow.mean()
         if not _sample_ok(e):
-            out["EARLY"] = ("HOLD", f"first {EARLY_N} armed: {int(e.shadow.isna().sum())} unpriced — held", False)
+            out[KEY + "EARLY"] = ("HOLD", f"first {EARLY_N} runner fills: {int(e.shadow.isna().sum())} unpriced — held", False)
         else:
             bad = lv < sv - EARLY_GAP
-            out["EARLY"] = (("ALERT" if bad else "OK"), f"first {EARLY_N} armed: live {lv:+.3f} vs shadow {sv:+.3f} %/fill (alert if < shadow − "
-                            f"{EARLY_GAP}) → " + ("⚠ ALERT: review WILLY exit V2" if bad else "no alert"), True)
+            out[KEY + "EARLY"] = (("ALERT" if bad else "OK"), f"first {EARLY_N} runner fills: live {lv:+.3f} vs shadow {sv:+.3f} %/fill (alert if < "
+                                  f"shadow − {EARLY_GAP}) → " + ("⚠ ALERT: review WILLY exit V2b" if bad else "no alert"), True)
     else:
-        out["EARLY"] = ("COLLECTING", f"early alert: {len(a)}/{EARLY_N} armed", False)
-    m = None
-    for k in range(len(a)):
-        s = a.iloc[:k + 1]
-        if k + 1 >= MAIN_N and _days(s) >= MAIN_DAYS:
-            m = s
-            break
+        out[KEY + "EARLY"] = ("COLLECTING", f"early alert: {len(a)}/{EARLY_N} runner fills", False)
+    m = _prefix(a, MAIN_N, MAIN_DAYS)
     if m is None:
-        out["MAIN"] = ("COLLECTING", f"main read: {len(a)}/{MAIN_N} armed on {_days(a)}/{MAIN_DAYS} UTC days", False)
+        out[KEY + "MAIN"] = ("COLLECTING", f"main read: {len(a)}/{MAIN_N} runner fills on {_days(a)}/{MAIN_DAYS} UTC days", False)
     elif not _sample_ok(m):
-        out["MAIN"] = ("HOLD", f"main read sample ({len(m)}): {int(m.shadow.isna().sum())} unpriced — held", False)
+        out[KEY + "MAIN"] = ("HOLD", f"main read sample ({len(m)}): {int(m.shadow.isna().sum())} unpriced — held", False)
     else:
         sd = float(m.delta.sum())
-        out["MAIN"] = (("REVERT" if sd < 0 else "PASS"), f"main read ({len(m)} armed on {_days(m)} days): Σ(live − shadow) {sd:+.2f} pts → "
-                       + ("🛑 REVERT to +1.25 (frenzy_willy_high_target_enabled false)" if sd < 0 else "PASS (keep V2)"), True)
+        out[KEY + "MAIN"] = (("REVERT" if sd < 0 else "PASS"), f"main read ({len(m)} runner fills on {_days(m)} days): Σ(live − shadow) {sd:+.2f} pts → "
+                             + ("🛑 REVERT to +1.25 (frenzy_willy_high_target_enabled false)" if sd < 0 else "PASS (keep V2b)"), True)
     f = a.head(FINAL_N)
     if len(f) < FINAL_N:
-        out["FINAL"] = ("COLLECTING", f"final read: {len(a)}/{FINAL_N} armed", False)
+        out[KEY + "FINAL"] = ("COLLECTING", f"final read: {len(a)}/{FINAL_N} runner fills", False)
     elif not _sample_ok(f):
-        out["FINAL"] = ("HOLD", f"final read sample: {int(f.shadow.isna().sum())} unpriced — held", False)
+        out[KEY + "FINAL"] = ("HOLD", f"final read sample: {int(f.shadow.isna().sum())} unpriced — held", False)
     else:
         sd = float(f.delta.sum())
-        out["FINAL"] = (("REVERT" if sd < 0 else "PASS"), f"final read (first {FINAL_N} armed): Σ(live − shadow) {sd:+.2f} pts → "
-                        + ("🛑 REVERT to +1.25" if sd < 0 else "PASS (keep V2)"), True)
+        out[KEY + "FINAL"] = (("REVERT" if sd < 0 else "PASS"), f"final read (first {FINAL_N} runner fills): Σ(live − shadow) {sd:+.2f} pts → "
+                              + ("🛑 REVERT to +1.25 (frenzy_willy_high_target_enabled false)" if sd < 0 else "PASS (keep V2b)"), True)
+    return out
+
+
+def shadow_reads(c):
+    """per shadow (b)(c)(d): the frozen read on the runner fills (open order) → {V2B_SH_<name>: (verdict, text, complete)}."""
+    a = _runners(c)
+    m = _prefix(a, SH_N, SH_DAYS)
+    out = {}
+    for k in SHADOWS:
+        name = f"{KEY}SH_{k}"
+        if m is None:
+            out[name] = ("COLLECTING", f"{len(a)}/{SH_N} runner fills on {_days(a)}/{SH_DAYS} days", False)
+            continue
+        d = pd.to_numeric(m[f"d_{k}"], errors="coerce")
+        if d.isna().any():
+            nv = int(pd.to_numeric(m.v2b, errors="coerce").isna().sum())
+            out[name] = ("HOLD", f"sample ({len(m)}): {nv} unpriced / {int(d.isna().sum()) - nv} unresolved shadow walks — held", False)
+            continue
+        gain = d.clip(lower=0)
+        share = float(gain.max() / gain.sum()) if gain.sum() > 0 else 1.0
+        ok = float(d.mean()) >= SH_MIN_GAIN and share < SH_SHARE
+        out[name] = (("CANDIDATE" if ok else "KEEP"),
+                     f"{len(m)} runner fills on {_days(m)} days: avg Δ (shadow − live V2b) {d.mean():+.3f} %/fill · top fill {share:.0%} of the gain → "
+                     + (f"CANDIDATE: operator decides an engine change to {k}" if ok else "keep V2b"), True)
     return out
 
 
@@ -339,7 +407,7 @@ def frozen(state_path, name, v, txt, complete, allow):
         st = {}
     if name in st:
         return st[name]["verdict"], st[name]["text"] + f" (frozen {str(st[name].get('at', ''))[:16]} UTC)"
-    if complete and allow and v not in ("COLLECTING", "HOLD"):
+    if state_path and complete and allow and v not in ("COLLECTING", "HOLD"):
         try:
             st[name] = {"verdict": v, "text": txt, "at": pd.Timestamp.now("UTC").isoformat()}
             with open(state_path, "w") as fh:
@@ -355,59 +423,42 @@ def _avg(s):
     return f"{s.mean():+.3f}" if len(s) else "n/a"
 
 
-def ledger_a(c):
-    a = c[c.armed & c.delta.notna()] if len(c) else c
-    if not len(a):
-        return ["Ledger A (target + floor): 0 armed priced fills"]
-    rs = a.close_reason.astype(str)
-    run = a[rs.str.endswith("FRENZY_TP") & (a.live > OLD_TP + 0.05)]
-    flo = a[rs.str.endswith(WEra.FLOOR_REASON)]
-    oth = a[~a.index.isin(run.index) & ~a.index.isin(flo.index)]
-    L = [f"Ledger A (target + floor): {len(a)} armed priced fills · Σ(live − shadow) {a.delta.sum():+.2f} pts · avg {a.delta.mean():+.3f}"]
-    for lab, g in (("runners (TP above +1.25)", run), ("floor exits (WILLY_FLOOR)", flo), ("other (cap / late / stop)", oth)):
-        L.append(f"  {lab}: {len(g)} · live {_avg(g.live)} vs shadow {_avg(g.shadow)} · Σ Δ {g.delta.sum():+.2f}" if len(g) else f"  {lab}: 0")
+def _fmt(v):
+    x = _f(v)
+    return "n/a" if x is None else f"{x:+.2f}"
+
+
+def v2_era_lines(v):
+    """the V2 (floor, DL 356) fills — closed before the DL 358 deploy: shown APART, never in a gate or a shadow read."""
+    if not len(v):
+        return ["V2 (floor, DL 356) era fills — closed before the DL 358 deploy: 0"]
+    rs = v.close_reason.astype(str)
+    L = [f"V2 (floor, DL 356) era fills — closed before the DL 358 deploy, shown APART (never counted): {len(v)} · "
+         f"floor exits (WILLY_FLOOR) {int(rs.str.endswith(WEra.FLOOR_REASON).sum())} · booked avg {_avg(v.live)} · "
+         f"what V2b would have booked {_avg(v.v2b)} · today's +1.25 exit {_avg(v.shadow)}"]
+    if v.v2f.notna().any():
+        L.append("  " + parity(v, col="v2f", label="V2-floor re-walk")[1].replace(" → no verdict (parity)", " (informational — no read uses this era)"))
+    L.append("  per fill: " + " · ".join(
+        f"{r.pair} {str(r.opened_at)[5:16]} target {_fmt(getattr(r, WEra.TP_COL))} booked {_fmt(r.live)} {r.close_reason} | V2b {_fmt(r.v2b)} · "
+        f"+1.25 exit {_fmt(r.shadow)}" for r in v.tail(LIST_CAP).itertuples()))
     return L
 
 
-def ladder_reads(c):
-    """🪜 (357) per ladder: the frozen read on the armed fills (open order) → {name: (verdict, text, complete)}."""
-    a = c[c.armed].sort_values(["ts", "pair"], kind="stable") if len(c) else c
-    m = None
-    for k in range(len(a)):
-        s = a.iloc[:k + 1]
-        if k + 1 >= LADDER_N and _days(s) >= LADDER_DAYS:
-            m = s
-            break
-    out = {}
-    for k in LADDERS:
-        col = f"ladd_{k}"
-        if m is None:
-            out[f"LADDER_{k}"] = ("COLLECTING", f"{len(a)}/{LADDER_N} armed on {_days(a)}/{LADDER_DAYS} days", False)
-            continue
-        d = pd.to_numeric(m[col], errors="coerce")
-        if d.isna().any():
-            nv = int(pd.to_numeric(m.v2, errors="coerce").isna().sum())
-            out[f"LADDER_{k}"] = ("HOLD", f"sample ({len(m)}): {nv} unpriced / {int(d.isna().sum()) - nv} unresolved ladder walks — held", False)
-            continue
-        gain = d.clip(lower=0)
-        share = float(gain.max() / gain.sum()) if gain.sum() > 0 else 1.0
-        ok = float(d.mean()) >= LADDER_MIN_GAIN and share < LADDER_SHARE
-        out[f"LADDER_{k}"] = (("CANDIDATE" if ok else "KEEP_FLAT"),
-                              f"{len(m)} armed on {_days(m)} days: avg Δ vs flat {d.mean():+.3f} %/fill · top fill {share:.0%} of the gain → "
-                              + ("🪜 CANDIDATE: operator decides an engine ladder" if ok else "keep the flat +1.0 floor"), True)
-    return out
-
-
-def ladder_ledger(c):
-    a = c[c.armed & c.v2.notna()] if len(c) else c
+def shadow_ledger(c):
+    a = c[c.runner.astype(bool) & c.v2b.notna()] if len(c) else c
     if not len(a):
-        return ["🪜 Ladder shadows: 0 armed priced fills"]
-    L = [f"🪜 Ladder shadows on {len(a)} armed fills (Δ = ladder − flat +1.0 re-walk, same path):"]
-    for k in LADDERS:
-        d = pd.to_numeric(a[f"ladd_{k}"], errors="coerce")
-        L.append(f"  {k}: avg {_avg(a[f'lad_{k}'])} vs flat {_avg(a.v2)} · Σ Δ {d.sum():+.2f} · better {int((d > 1e-9).sum())} / worse {int((d < -1e-9).sum())}")
-    L.append("  per fill (last 20): " + " · ".join(f"{r.pair} {str(r.opened_at)[5:16]} flat {r.v2:+.2f} | " + " ".join(f"{k} {getattr(r, f'lad_{k}'):+.2f}" for k in LADDERS)
-                                                    for r in a.tail(20).itertuples()))
+        return ["Shadow lines: 0 priced runner fills"]
+    L = [f"Shadow lines on {len(a)} priced runner fills (Δ = shadow − the live V2b re-walk, same path; booked live avg {_avg(a.live)} · "
+         f"V2b re-walk avg {_avg(a.v2b)}):",
+         f"  (a) TODAY +1.25 exit (the gate shadow): avg {_avg(a.shadow)} · Σ(live − shadow) {pd.to_numeric(a.delta, errors='coerce').sum():+.2f} · "
+         f"Σ(shadow − re-walk) {(pd.to_numeric(a.shadow, errors='coerce') - pd.to_numeric(a.v2b, errors='coerce')).sum():+.2f}"]
+    tag = {"FLOOR10": "(b)", "NOLATE": "(d)"}
+    for k in SHADOWS:
+        d = pd.to_numeric(a[f"d_{k}"], errors="coerce")
+        L.append(f"  {tag.get(k, '(c)')} {k}: avg {_avg(a[f'sh_{k}'])} · Σ Δ {d.sum():+.2f} · better {int((d > 1e-9).sum())} / worse {int((d < -1e-9).sum())}")
+    L.append(f"  per fill (last {LIST_CAP}): " + " · ".join(
+        f"{r.pair} {str(r.opened_at)[5:16]} T {_fmt(getattr(r, WEra.TP_COL))} live {_fmt(r.live)} V2b {_fmt(r.v2b)} | a {_fmt(r.shadow)} "
+        + " ".join(f"{k} {_fmt(getattr(r, f'sh_{k}'))}" for k in SHADOWS) for r in a.tail(LIST_CAP).itertuples()))
     return L
 
 
@@ -415,48 +466,49 @@ def batch_table(c):
     if not len(c):
         return []
     g = c[c.shadow.notna()]
-    L = ["| batch | BTC side | N | armed | before: shadow (today's exit) %/fill | after: live V2 %/fill | Δ |", "|---|---|---|---|---|---|---|"]
+    L = ["| batch | BTC side | N | runner | before: shadow (today's exit) %/fill | after: live V2b %/fill | Δ |", "|---|---|---|---|---|---|---|"]
     for (b, s), x in g.groupby(["batch", "side"], sort=True):
-        L.append(f"| {b} | {s} | {len(x)} | {int(x.armed.sum())} | {_avg(x.shadow)} | {_avg(x.live)} | {x.delta.mean():+.3f} |")
+        L.append(f"| {b} | {s} | {len(x)} | {int(x.runner.sum())} | {_avg(x.shadow)} | {_avg(x.live)} | {x.delta.mean():+.3f} |")
     for s, x in g.groupby("side", sort=True):
-        L.append(f"| ALL | {s} | {len(x)} | {int(x.armed.sum())} | {_avg(x.shadow)} | {_avg(x.live)} | {x.delta.mean():+.3f} |")
-    L.append(f"| ALL | all | {len(g)} | {int(g.armed.sum())} | {_avg(g.shadow)} | {_avg(g.live)} | {g.delta.mean():+.3f} |")
+        L.append(f"| ALL | {s} | {len(x)} | {int(x.runner.sum())} | {_avg(x.shadow)} | {_avg(x.live)} | {x.delta.mean():+.3f} |")
+    L.append(f"| ALL | all | {len(g)} | {int(g.runner.sum())} | {_avg(g.shadow)} | {_avg(g.live)} | {g.delta.mean():+.3f} |")
     return L
 
 
 def run(now_ms=None, paths=None, raw=None, floor_ms="auto", path_fn=None, fetch=True, state_path=STATE):
-    L = [f"## 🎲² WILLY_EXIT_V2 — TP at the spike high + floor (DECISION_LOG {DL}, frozen gates; shadow = the pinned +1.25 / −4 / late 0.25@30 / 90 exit)", ""]
+    L = [f"## 🎲²ᵇ WILLY_EXIT_V2b — TP at the spike high, no floor (DECISION_LOG {DL}; frozen gates on runner fills; shadow = the pinned "
+         f"+1.25 / −4 / late 0.25@30 / 90 exit)", ""]
     if raw is None:
         raw = read_exports(paths or EXPORT_GLOB)
     if floor_ms == "auto":
-        floor_ms = _GK.dl_deploy_ms(DL, lag_min=10, label="WILLY_EXIT_V2")
-    c, ox, allc = cohort(raw, floor_ms)
-    L.append(WEra.era_line(allc, "WILLY + WILLY_HT, all closed in the exports"))
+        floor_ms = _GK.dl_deploy_ms(DL, lag_min=LAG_MIN, label="WILLY_EXIT_V2b")
+    co = cohort(raw, floor_ms)
+    L.append(WEra.era_line(co["allc"], "WILLY + WILLY_HT, all closed in the exports"))
     if floor_ms is None:
-        L += ["NOT evaluable yet — no DECISION_LOG 356 commit found (the counted cohort starts at its deploy + 10 min).", ""]
+        L += [f"NOT evaluable yet — no DECISION_LOG {DL} commit found (the counted cohort starts at its deploy + {LAG_MIN} min; the V2 floor "
+              f"era is split at the deploy).", ""]
         return L
-    L.append(f"Cohort: {len(c)} closed WILLY / WILLY_HT fills since the DL 356 deploy + 10 min · " + _GK.operator_closed_line(ox))
-    c = price(c, path_fn=path_fn, fetch=fetch, now_ms=now_ms)
+    c = co["kept"]
+    L.append(f"Cohort: {len(c)} closed WILLY / WILLY_HT fills since the DL {DL} deploy + {LAG_MIN} min · " + _GK.operator_closed_line(co["ox"])
+             + f" · transition (opened before the counted floor = the DL {DL} deploy + 10 min, closed after the deploy — not counted): {len(co['trans'])}")
+    both = pd.concat([c.assign(_era="V2B"), co["v2"].assign(_era="V2")], ignore_index=True) if (len(c) or len(co["v2"])) else c.assign(_era="V2B")
+    both = price(both, path_fn=path_fn, fetch=fetch, now_ms=now_ms)
+    c = both[both._era == "V2B"].reset_index(drop=True) if len(both) else both
+    v = both[both._era == "V2"].reset_index(drop=True) if len(both) else both
+    L += v2_era_lines(v)
     n_un = int(c.shadow.isna().sum()) if len(c) else 0
-    L.append(f"Priced: {len(c) - n_un} · unpriced (no path yet): {n_un} · armed: {int(c.armed.sum()) if len(c) else 0} · "
-             f"runner targets (> +{ARM}): {int((pd.to_numeric(c.get(WEra.TP_COL), errors='coerce') > ARM + 1e-9).sum()) if len(c) else 0}")
+    L.append(f"Priced: {len(c) - n_un} · unpriced (no path yet): {n_un} · runner fills (target > +{OLD_TP}): {int(c.runner.sum()) if len(c) else 0}")
     pok, ptxt = parity(c)
     L.append(ptxt)
-    L += ledger_a(c)
-    L += ladder_ledger(c)
+    L += shadow_ledger(c)
     L += [""] + batch_table(c) + [""]
-    L.append("🔒 FROZEN gates (operator decides; persisted once decided):")
-    for name, (v, txt, complete) in reads(c).items():
-        if not pok and complete:
-            L.append(f"  {name}: no verdict (parity) — {txt}")
+    L.append("🔒 FROZEN gates + shadow reads (operator decides; persisted once decided):")
+    for name, (vv, txt, complete) in list(reads(c).items()) + list(shadow_reads(c).items()):
+        if not pok and complete:   # (review) a verdict frozen earlier still shows; the parity guard only blocks NEW freezes
+            fv, ft = frozen(state_path, name, vv, txt, False, False)
+            L.append(f"  {name}: {ft}" if "(frozen " in ft else f"  {name}: no verdict (parity) — {txt}")
             continue
-        fv, ft = frozen(state_path, name, v, txt, complete, pok)
-        L.append(f"  {name}: {ft}")
-    for name, (v, txt, complete) in ladder_reads(c).items():   # 🪜 (357) observe-only reads, same persistence
-        if not pok and complete:
-            L.append(f"  {name}: no verdict (parity) — {txt}")
-            continue
-        fv, ft = frozen(state_path, name, v, txt, complete, pok)
+        fv, ft = frozen(state_path, name, vv, txt, complete, pok)
         L.append(f"  {name}: {ft}")
     L.append("")
     return L
@@ -477,10 +529,14 @@ def selftest():
     assert walk_v2(up, 3.5)["why"] == "TP" and walk_v2(up, 3.5)["pct"] == 3.5
     assert shadow_today(up)["why"] == "TP" and abs(shadow_today(up)["pct"] - 1.25) < 1e-9
     dip = _P(te, [(5, 1.3, 1.3), (8, 0.9, 0.9), (12, 3.6, 3.6)])
-    assert walk_v2(dip, 3.5)["why"] == "FLOOR" and abs(walk_v2(dip, 3.5)["pct"] - 0.9) < 1e-9
+    assert walk_v2(dip, 3.5)["why"] == "TP"                                   # V2b: no floor — rides the dip to the target
+    assert walk_v2(dip, 3.5, floor=FLOOR)["why"] == "FLOOR"                   # the DL 356 floor (shadow b only)
+    assert abs(shadow_walk(dip, 3.5, "FLOOR10") - (0.9 - FLOOR_SLIP)) < 1e-9
     same = _P(te, [(5, 0.7, 0.7), (35, 0.3, 0.3)])
-    assert walk_v2(same, 1.25) == {**walk_v2(same, 1.25)} and walk_v2(same, 1.25)["why"] == shadow_today(same)["why"] == "LATE_TP"
-    print("selftest WILLY_EXIT_V2 OK")
+    assert walk_v2(same, 1.25)["why"] == shadow_today(same)["why"] == "LATE_TP"
+    lt = _P(te, [(5, 2.0, 2.0), (35, 0.3, 0.3), (60, 3.6, 3.6)])
+    assert walk_v2(lt, 3.5)["why"] == "LATE_TP" and walk_v2(lt, 3.5, late=None)["why"] == "TP"   # (d) NOLATE rides past the late line
+    print("selftest WILLY_EXIT_V2b OK")
     return True
 
 

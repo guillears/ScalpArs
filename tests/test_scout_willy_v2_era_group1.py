@@ -17,8 +17,7 @@ import willy_exit_era as WEra  # noqa: E402
 
 E = 100.0
 TH = {"frenzy_willy_tp_pct": 1.25, "frenzy_willy_stop_pct": 4.0, "frenzy_willy_max_hold_minutes": 90,
-      "frenzy_willy_high_target_enabled": True, "frenzy_willy_high_k_pct": 50, "frenzy_willy_high_tp_max_pct": 8.0,
-      "frenzy_willy_floor_arm_pct": 1.25, "frenzy_willy_floor_pct": 1.0}
+      "frenzy_willy_high_target_enabled": True, "frenzy_willy_high_k_pct": 50, "frenzy_willy_high_tp_max_pct": 8.0}
 
 
 def _px(net):

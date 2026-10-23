@@ -96,10 +96,14 @@ def test_sparkline_ids_periods_and_guard():
     assert js.count("try {") >= 4                 # never throws into the dashboard
 
 
+# ids removed on purpose by a FEATURE removal (not the restyle) — the guard compares against git HEAD, so they show up until committed
+INTENTIONALLY_REMOVED = {"config-fz-willy-floor", "config-fz-willy-floor-arm"}   # 🎲²ᵇ DECISION_LOG 358: the WILLY V2 floor removed
+
+
 def test_no_existing_id_removed():
     head = _ids(_head("templates/index.html"))
     now = _ids(_read(INDEX))
-    missing = head - now
+    missing = head - now - INTENTIONALLY_REMOVED
     assert not missing, f"ids removed by the restyle: {sorted(missing)[:20]}"
 
 

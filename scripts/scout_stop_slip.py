@@ -279,8 +279,9 @@ def stop_line(row, cfg):
         return _f(th, "fl1_wide_sl_backstop", -1.2), 0.01, "fl1_wide_sl_backstop"   # realtime + 0.01 · polling 0
     if kind == "FL_DEEP_STOP":
         return _f(th, "fl2_deep_stop", -1.0), 0.01, "fl2_deep_stop"                 # realtime + 0.01 · polling 0
-    # 🎲¼ WILLY_HT runs WILLY's exit (services.frenzy.WILLY_EXIT_CLASS, DL 341) → the same stop line. 🎲² DL 356 V2 leaves the stop at −4; an
-    # armed floor skips the stop and closes WILLY_FLOOR (a profit-side line, not counted here) — so a WILLY STOP_LOSS is always this line.
+    # 🎲¼ WILLY_HT runs WILLY's exit (services.frenzy.WILLY_EXIT_CLASS, DL 341) → the same stop line. 🎲² DL 356 V2 leaves the stop at −4; its
+    # armed floor (V2-era rows only — removed by DL 358, V2b keeps the −4 stop throughout) closed WILLY_FLOOR (a profit-side line, not counted
+    # here) — so a WILLY STOP_LOSS is always this line.
     es = "FRENZY_WILLY" if es == "FRENZY_WILLY_HT" else es
     if es == "FRENZY_WILLY":   # 🎲 Oct-8 (251): NO stop by default (frenzy_willy_stop_pct 0 = none; > 0 re-arms it — services.frenzy.frenzy_willy_levels)
         _ws = abs(_f(th, "frenzy_willy_stop_pct", 0.0))

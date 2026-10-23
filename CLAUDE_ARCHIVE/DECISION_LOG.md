@@ -8639,6 +8639,65 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Tests:** tests/test_scout_willy_exit_v2.py (INIT-shape walks: tick / bar booking, the peak event never sets its own floor; reads
   CANDIDATE / KEEP_FLAT / one-fill concentration; ladder keys persist with the MAIN read).
 
+## (358) 2026-10-23 — 🎲²ᵇ WILLY EXIT V2b: the profit FLOOR REMOVED from the engine (operator; the spike-high target stays)
+- **Why (operator):** INIT 10-23, the first V2 fill (HT, target +7.42), floored at +1.06 and then ran through its +7.42 target. Operator rule:
+  never ship switched-off features — the floor CODE is removed, not left behind an off switch.
+- **Evidence (same studies as DL 356; Δ = %/fill vs today's +1.25 / −4 / late 0.25 @30 / 90 exit):**
+
+  | variant | ③ backtest 2026 (pooled) | ② master (36 real fills) | ① live (18 fills) |
+  |---|---|---|---|
+  | **V2b = target H × 0.99, NO floor** (WILLY_HIGHTARGET H1_k1 = this exact exit) | **+0.10 [−0.03, +0.24]** (3/4 halves; 2025 −0.04) | **+0.24** [−0.13, +0.72] | **+0.07** |
+  | V2 = target + floor F 1.0 (DL 356 as shipped) | −0.03 (worst floor in 2026) | +0.21 | negative |
+  | V2 = target + floor F 0.5 (walk-forward pick) | +0.02 [−0.06, +0.10] | +0.13 | −0.16 [−0.31, −0.08] |
+
+  The floor costs on every block except the master F 1.0 point, which is below V2b's own master number. INIT is the live illustration (+1.06
+  booked vs +7.42 reachable). The no-floor exit is still a DECLARED OVERRIDE below the locked study gates (CI crosses 0) → the frozen revert
+  gates below stay.
+- **New live WILLY / WILLY_HT exit (V2b):** TP = the stored per-order target (unchanged: max(+1.25, min(8, net at H × 0.99)), resting maker,
+  `frenzy_willy_tp_target_pct`) · stop −4 THROUGHOUT · the 30-min late TP (+0.25; the resting limit re-priced) for EVERY trade exactly as
+  before V2 (no armed exception) · 90-min cap. A target of +1.25 is the pre-356 exit exactly; a runner target only moves the TP level.
+- **Removed (code, no off switch):** config fields `frenzy_willy_floor_arm_pct` + `frenzy_willy_floor_pct` (config.py, trading_config.json,
+  the two UI inputs, FRENZY_NUM_FIELDS load/save, `frenzy_willy_v2_config_errors` floor checks, the `_buildConfigLines` text) · the floor branch in
+  `frenzy_willy_exit_for` · `frenzy_willy_floor_levels` / `_floor_applies` / `_floor_armed` and WILLY_V2_ARM_DEF / WILLY_V2_FLOOR_DEF · the
+  `armed` parameter of `frenzy_willy_tp_at` · `willy_armed` in `rtp_target` / `rtp_row_target` and `rtp_willy_row_args` · the resting-TP
+  gate / reprice / heal / sweep `warm` plumbing (`_rtp_state` no longer seeds it) · `_willy_v2_arm_note` + its [WILLY_V2] arm / floor-exit logs
+  (this also removes the cosmetic "None #6" pair in the realtime arm log) · the open-row badge floor text · writes of `willy_floor_armed_at`
+  (new-order cache, cache rebuild, monitor). The [WILLY_V2] entry log now reads "(runner)" / "(base TP)" + "late TP + time cap as before (V2b)".
+- **Kept (history / data):** close reason WILLY_FLOOR in the closed-orders rendering (hover marked historical), the post-exit tracking reason
+  lists, `RTP_STOP_CLASS` and touch_snapshot `TP_REASONS` (INIT 10-23 is a real WILLY_FLOOR row) — each commented as historical; the Order
+  column `willy_floor_armed_at` stays in the schema and the /api orders payloads (no drops; models.py marks it HISTORICAL ONLY; never written
+  or read by the engine). Kept unchanged: `frenzy_willy_high_target_enabled` / `_high_k_pct` / `_high_tp_max_pct`, the target / spike-high stamps.
+- **Open row armed under V2 before this deploy:** it simply runs V2b — its stored target stays the TP, the −4 stop applies again, the late TP
+  applies (from ≥ 30 min the next resting-TP gate / sweep pass re-prices the limit to +0.25 — no "warm" mark survives the restart), the cap
+  closes. Its willy_floor_armed_at stamp is ignored. Worst case: a runner that had armed and now sits between +1.0 and −4 is no longer
+  floored (rides to the target / late TP / stop / cap) — the V2b exit by definition.
+- **Scout (scripts/scout_willy_exit_v2.py, rewritten for V2b; observe-only):** eras — V2 (floor) fills = target-stamped and CLOSED before the
+  DL 358 deploy (INIT) shown APART (booked vs "what V2b would have booked" vs the +1.25 exit, V2-floor re-walk parity informational);
+  transition fills (opened before, closed after the deploy) counted by line only; the counted V2b cohort = opened ≥ the DL 358 deploy + 10 min.
+  RUNNER fill = target > +1.25 (no arming). Parity = the V2b re-walk (walk_v2 with no floor) vs booked (< 90 % within 0.15 → no verdict).
+  🔒 Gates (fresh state file reports/.willy_exit_v2b_gate.json, keys V2B_* — no DL 356 verdict can leak; none was decided): V2B_EARLY first 10
+  runner fills avg live < shadow(a) − 0.15 → ALERT · V2B_MAIN ≥ 15 runner fills on ≥ 6 UTC days Σ(live − shadow a) < 0 → REVERT to +1.25
+  (`frenzy_willy_high_target_enabled` false) · V2B_FINAL 25 runner fills Σ < 0 → REVERT. Shadow (a) = the PINNED +1.25 exit (unchanged).
+  SHADOW LINES on every runner fill (paired Δ = shadow − the live V2b re-walk, ledger + per-fill list capped 20): (a) today's +1.25 exit ·
+  (b) FLOOR10 = the DL 356 flat floor +1.0 after +1.25 · (c) the four DL 357 ladders STEPS / TRAIL10 / TRAIL15 / HALF · (d) NOLATE = no late TP
+  (target until the 90-min cap, stop −4). A floor exit in (b) / (c) pays 0.05 (taker market close — V2b never floors, so every shadow floor
+  exit replaces a maker / stop / cap exit; the DL 357 convention). 🔒 Frozen read per shadow (b)(c)(d) (V2B_SH_<name>): at the shortest prefix
+  of ≥ 15 runner fills on ≥ 6 UTC days → CANDIDATE iff avg Δ ≥ +0.10 ∧ no single fill ≥ 50 % of the positive Δ, else KEEP; persisted;
+  "no verdict (parity)" on failed parity; unpriced / unresolved → HOLD. walk_v2 keeps the floor capability ONLY as the shadow tool.
+- **Other WILLY scouts:** scripts/willy_exit_era.py logic unchanged and still correct (V2b fills carry the same target stamp; "changed" =
+  target > +1.25 or WILLY_FLOOR — a V2b runner differs from the old exit only by its target; WILLY_FLOOR exists only on V2-era rows); docstring
+  updated. The 15 audited scouts split "runner / floor" fills by that helper → no logic assumed an engine floor; only scout_stop_slip's comment
+  (an armed floor skipped the stop) updated to "V2-era rows only".
+- **Tests:** tests/test_willy_exit_v2.py rewritten (every row = the old exit at its own target on 4,000 random states incl. a V2-armed row;
+  INIT shape +7.42 / peak +2.85 rides to −4 / late TP / cap; armed-under-V2 row runs V2b incl. the late re-price; tp_at has no armed param;
+  switch off; HT; floor code gone; resting target + late re-price for runners; engine arm places the stored target live + paper; sweep re-prices
+  a V2-armed row and an unarmed runner at 40 min; config fields removed + an old config with the keys still loads; PUT validation; UI / export /
+  model / migration / source pins) · tests/test_scout_willy_exit_v2.py rewritten (era split, transition, runner cohort, shadows a–d, frozen
+  reads + persistence under V2B_*, parity block, HOLD on unpriced, not-evaluable, concentration) · pins: test_frenzy_sleeve 76 → 74 frenzy_
+  fields, test_lite_c row-target call shape, test_theme_layer allow-list of the two intentionally removed input ids.
+- **Commit note:** the scout's counted cohort starts at the commit whose SUBJECT names "DECISION_LOG 358" (scout_gatekit) — until then
+  WILLY_EXIT_V2b prints NOT evaluable.
+
 ## (360) 2026-10-23 — ⚖️ Bear-Run size = FLATBASE size (operator: "match it to flatbase"; declared size cut, no code change)
 - **Change:** `bearrun_invest_mult` 1.0 → **0.2** (trading_config.json); `bearrun_lev_mult` stays 0.25 (5×). ≈ $2,250 → ≈ $500 notional per short (0.2 × base ≈ $93 margin, raised to the $100 min_investment_size)
   at today's ≈ $1,870 account — the same as FLATBASE_SHORT / momentum long (0.2 × 5×). A 10-22-type window (3 shorts ≈ −2.5 %) ≈ −$9 at the new size vs ≈ −$42 at the old size on today's equity (the booked −$69 was on ≈ $750 margins).

@@ -1635,22 +1635,19 @@ class SignalThresholds(BaseModel):
     # the old +1.25/−4/90 exit · or the first 10 changed trades on ≥ 5 days net < 0.
     frenzy_willy_late_tp_minutes: float = 30.0    # order age (minutes since the fill) from which the late TP applies (≤ 0 = off)
     frenzy_willy_late_tp_pct: float = 0.25        # late take profit, net % (≤ 0 = off; must be below frenzy_willy_tp_pct)
-    # 🎲² 2026-10-23 WILLY EXIT V2 (DECISION_LOG 356 — operator-approved DECLARED OVERRIDE below the locked gates; services/frenzy.py
-    # frenzy_willy_high_target / frenzy_willy_floor_armed). FRENZY_WILLY + FRENZY_WILLY_HT. Decided ONCE at entry, stored on the row:
-    #  ① TP = max(frenzy_willy_tp_pct, min(frenzy_willy_high_tp_max_pct, the NET % at spike high × (1 − frenzy_willy_high_k_pct %))) (maker exit)
-    #  ② floor (only when ① gave a target ABOVE the arm): peak net ≥ frenzy_willy_floor_arm_pct → armed → close at ≤ frenzy_willy_floor_pct
-    #     (WILLY_FLOOR); armed = no stop, no late-TP downgrade; the time cap still closes. Switch off → TP 1.25 and no floor (today).
-    # Evidence: reports/WILLY_HIGHTARGET_2026-10-23.md + reports/WILLY_EXITV2_2026-10-23.md — backtest (4,129 fills, 2026 pooled): floor 0.5
-    # +0.022 %/fill [−0.056, +0.103] (the walk-forward pick), floor 1.0 −0.030; master real fills (36, ticks): A at floor 1.0 +0.21 %/fill (best,
-    # most consistent; worst case −0.25 vs today). FLOOR 1.0 = the OPERATOR's choice on the master evidence (declared override vs the backtest's
-    # 0.5). The study's BTC-falling −2.5 stop was NOT shipped (backtest 2026 Δ −0.003; WILLY_BTC1H gate governs the falling side).
-    # 🔒 FROZEN gates (scripts/scout_willy_exit_v2.py, verdict persisted): early alert — first 10 armed fills average < the today-exit shadow − 0.15
-    # · REVERT to +1.25 — at 15 armed fills with a target > +1.25 on ≥ 6 UTC days, Σ(live − shadow) < 0 · at 25 armed Σ(live − shadow) < 0.
-    frenzy_willy_high_target_enabled: bool = True  # ①+② on (False = TP frenzy_willy_tp_pct and no floor, exactly the pre-356 exit)
-    frenzy_willy_high_k_pct: float = 1.0          # ① target price = spike high × (1 − k %) (0–20)
-    frenzy_willy_high_tp_max_pct: float = 8.0     # ① cap on the net target (≥ frenzy_willy_tp_pct, ≤ 50)
-    frenzy_willy_floor_arm_pct: float = 1.25      # ② the floor arms once the peak net reaches this (> 0)
-    frenzy_willy_floor_pct: float = 1.0           # ② armed: close at market when net ≤ this (≥ 0, below the arm) — operator 1.0 (master); backtest preferred 0.5
+    # 🎲² 2026-10-23 WILLY EXIT V2 (DECISION_LOG 356) → 🎲²ᵇ V2b (DECISION_LOG 358, operator: the profit floor REMOVED — no off switch kept;
+    # services/frenzy.py frenzy_willy_high_target). FRENZY_WILLY + FRENZY_WILLY_HT. Decided ONCE at entry, stored on the row:
+    #  TP = max(frenzy_willy_tp_pct, min(frenzy_willy_high_tp_max_pct, the NET % at spike high × (1 − frenzy_willy_high_k_pct %))) (maker exit);
+    #  stop −frenzy_willy_stop_pct throughout · the late TP (frenzy_willy_late_tp_*) for every order · time cap. Switch off → TP +1.25 (pre-356).
+    # Evidence: reports/WILLY_HIGHTARGET_2026-10-23.md variant H1_k1 (= this exact exit): backtest 2026 Δ vs the +1.25 exit +0.10 %/fill
+    # [−0.03, +0.24] (3/4 halves), master +0.24, live +0.07 — vs WITH the floor: backtest −0.03 (F 1.0) / +0.02 (F 0.5), live negative at every F.
+    # The study's BTC-falling −2.5 stop was NOT shipped (backtest 2026 Δ −0.003; WILLY_BTC1H gate governs the falling side).
+    # 🔒 FROZEN gates (scripts/scout_willy_exit_v2.py, verdict persisted, counted from the DL 358 deploy on RUNNER fills = target > +1.25):
+    # early alert — first 10 runner fills average < the today-exit shadow − 0.15 · REVERT to +1.25 (this switch false) — at 15 runner fills on
+    # ≥ 6 UTC days Σ(live − shadow) < 0 · at 25 runner fills Σ(live − shadow) < 0.
+    frenzy_willy_high_target_enabled: bool = True  # on (False = TP frenzy_willy_tp_pct, exactly the pre-356 exit)
+    frenzy_willy_high_k_pct: float = 1.0          # target price = spike high × (1 − k %) (0–20)
+    frenzy_willy_high_tp_max_pct: float = 8.0     # cap on the net target (≥ frenzy_willy_tp_pct, ≤ 50)
     # 🟥 Oct-8 (operator): A / B no longer open on the trigger bar — the trigger ARMS a pending entry that opens on the FIRST closed RED 5m bar
     # (close < open; unreadable ≠ red; a red trigger bar opens at once) within this many minutes of the trigger bar while the episode lasts;
     # else FRENZY_WILLY_RED_EXPIRED (no entry, the episode's A / B one-shot stays used). Guards are judged at the red bar; a global-hold /

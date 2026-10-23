@@ -9819,8 +9819,17 @@
                 }
                 const ordCountEl = document.getElementById('usdt-orders-count');
                 if (ordCountEl && data.open_orders_count != null) {
-                    ordCountEl.textContent = `Open Positions: ${data.open_orders_count}` + (data.manual_open_count ? ` (+${data.manual_open_count} manual)` : '')
-                        + (data.flatbase_open_count ? ` (+${data.flatbase_open_count} flatbase)` : '');   // 🩳 (348) FLATBASE holds no bot slot
+                    // 🩳 (DECISION_LOG 362, operator) the TOTAL open first; the lanes underneath — FLATBASE / manual hold no bot slot (348)
+                    const _bo = Number(data.open_orders_count || 0), _mo = Number(data.manual_open_count || 0), _fo = Number(data.flatbase_open_count || 0);
+                    const _fcap = Number(data.flatbase_max_open || 0);
+                    const _rdp = Number(data.max_open_positions_redeploy || 0);   // (362 review) the redeploy band can open past the normal cap
+                    const _lanes = [`Bot slots ${_bo} / ${data.max_open_positions ?? '–'}` + (_rdp > Number(data.max_open_positions || 0) ? ` (redeploy ≤ ${_rdp})` : '')];
+                    if (_fo || _fcap) _lanes.push(`FLATBASE ${_fo}${_fcap > 0 ? ' / ' + _fcap : ''}`);
+                    if (_mo) _lanes.push(`manual ${_mo}`);
+                    ordCountEl.textContent = `Open Positions: ${_bo + _mo + _fo}`;
+                    let _lanesEl = document.getElementById('usdt-orders-lanes');
+                    if (!_lanesEl) { _lanesEl = document.createElement('p'); _lanesEl.id = 'usdt-orders-lanes'; _lanesEl.className = 'text-xs text-gray-500'; ordCountEl.after(_lanesEl); }
+                    _lanesEl.textContent = _lanes.join(' · ');
                 }
                 {   // 🧭 Oct-5 (operator): one line per sleeve with open positions, same font / size as "Open Positions"
                     const _sl = document.getElementById('usdt-orders-sleeves');

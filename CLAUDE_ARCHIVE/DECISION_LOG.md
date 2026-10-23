@@ -8805,3 +8805,10 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   … Switch to PAPER anyway?") → retry with the pairs acknowledged. Back to live: the pre-flight reads Binance again and REFUSES (412) while they are open — import is live-only, so the only way back to LIVE is closing them in the Binance app (the confirm box says so). In paper nothing touches them: the untracked marks are cleared on the switch and the reconciler (the only path that could flatten / cancel) runs in live only.
 - **Tests:** tests/test_golive_live_switch.py (refusal carries the list · partial ack refused · full ack switches · ack never overrides a live
   bot row · endpoint returns the list and passes the ack · UI strings).
+
+## (362) 2026-10-23 — 🩳 "Open Positions" shows the TOTAL; the lanes underneath (operator: "why not considering flatbase as open positions?")
+- The card read "Open Positions: 0 (+2 flatbase)" with 2 FLATBASE shorts open (they hold no bot slot, DL 348) — it looked like nothing was open.
+  Now: "Open Positions: <bot + manual + FLATBASE>" and a line "Bot slots n / max · FLATBASE n / cap · manual n" (FLATBASE shown when open or
+  capped; manual only when open; "(redeploy ≤ hard)" when the redeploy band is on). /api/balance (paper + live) gains flatbase_max_open +
+  max_open_positions_redeploy. Display only — slot accounting unchanged.
+- Test: tests/test_flatbase_short.py (total line, lane text, both payloads carry the cap).

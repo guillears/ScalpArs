@@ -1185,8 +1185,11 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "bnb_balance_is_usd": True,
             "usdt_in_orders": used_margin,
             "open_orders_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') not in ('MANUAL', 'FLATBASE_SHORT')]),   # bot SLOT lane (🖐 Sep-29 · 🩳 348: FLATBASE holds no slot)
-            "flatbase_open_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') == 'FLATBASE_SHORT']),   # 🩳 (348) shown as its own "+N flatbase"
+            "flatbase_open_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') == 'FLATBASE_SHORT']),   # 🩳 (348) holds no bot slot · shown in the lanes line (362)
             "manual_open_count": len([o for o in open_orders if (getattr(o, 'entry_strategy', None) or '') == 'MANUAL']),
+            "flatbase_max_open": int(getattr(config.trading_config.thresholds, 'flatbase_max_open', 0) or 0),   # 🩳 (362) the FLATBASE lane cap shown next to the slots
+            "max_open_positions_redeploy": (int(getattr(config.trading_config.investment, 'max_open_positions_hard', 0) or 0)
+                                            if getattr(config.trading_config.investment, 'redeploy_leftover_enabled', False) else None),   # 🩳 (362 review) the redeploy band's hard cap
             "open_by_sleeve": _open_by_sleeve(open_orders),
             "manual_max_open_positions": getattr(config.trading_config.investment, 'manual_max_open_positions', 8),
             "total_trades_count": _total_trades,
@@ -1266,6 +1269,9 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "open_orders_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') not in ('MANUAL', 'FLATBASE_SHORT')]),   # bot SLOT lane (🖐 Sep-29, parity with paper · 🩳 348)
             "flatbase_open_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') == 'FLATBASE_SHORT']),   # 🩳 (348)
             "manual_open_count": len([o for o in _live_open if (getattr(o, 'entry_strategy', None) or '') == 'MANUAL']),
+            "flatbase_max_open": int(getattr(config.trading_config.thresholds, 'flatbase_max_open', 0) or 0),   # 🩳 (362)
+            "max_open_positions_redeploy": (int(getattr(config.trading_config.investment, 'max_open_positions_hard', 0) or 0)
+                                            if getattr(config.trading_config.investment, 'redeploy_leftover_enabled', False) else None),   # 🩳 (362 review) the redeploy band's hard cap
             "open_by_sleeve": _open_by_sleeve(_live_open),
             "manual_max_open_positions": getattr(config.trading_config.investment, 'manual_max_open_positions', 8),
             "total_trades_count": (await db.execute(

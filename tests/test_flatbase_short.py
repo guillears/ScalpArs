@@ -805,7 +805,10 @@ def test_max_open_cap_and_dashboard_count(monkeypatch):
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert main.count("not in ('MANUAL', 'FLATBASE_SHORT')]),   # bot SLOT lane") == 2 and main.count('"flatbase_open_count": len(') == 2
     html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
-    assert "(+${data.flatbase_open_count} flatbase)" in html
+    assert "ordCountEl.textContent = `Open Positions: ${_bo + _mo + _fo}`;" in html                  # 🩳 (362) total first
+    assert "`Bot slots ${_bo} / ${data.max_open_positions ?? '–'}` + (_rdp > Number(data.max_open_positions || 0) ? ` (redeploy ≤ ${_rdp})` : '')" in html
+    assert main.count('"max_open_positions_redeploy": (int(getattr(config.trading_config.investment, \'max_open_positions_hard\'') == 2 and "`FLATBASE ${_fo}${_fcap > 0 ? ' / ' + _fcap : ''}`" in html
+    assert main.count('"flatbase_max_open": int(getattr(config.trading_config.thresholds, \'flatbase_max_open\', 0) or 0)') == 2
 
 
 def _real_pass(monkeypatch, fbs_on, tracked=("TRKUSDT",)):

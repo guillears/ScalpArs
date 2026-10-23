@@ -65,6 +65,10 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    locked DL 317 verdict (REVERT to −3 · COLLECTING · HOLD · RESIZE = propose blocker → invest 1.0 at lev 0.05, operator decides) + the
    info-only confidence line (N ≥ 30 / 10 days · WR > breakeven ≈ 74 % · avg ≥ +0.10 at P ≥ 0.95 · Σ $ > 0 · haircut). Show it next to
    ② master (32 fills re-walked at +1.5 TP: −4 +0.22 %/fill · 78 % vs −3 −0.27 · 63 %) and ③ backtest (623 · 73 % · −0.04 at −4).
+②i **🕰🧭 LITE_LATE_BTCFALL (DECISION_LOG 353, observe-only, frozen gate)** — run scripts/scout_lite_late_btcfall.py (also in the opportunity
+   scout): LITE + LITE_RETRY fills ≥ 12 h after the spike with BTC's 1 h slope ≤ 0 vs the rest of LITE — MASTER history · FORWARD · POOLED
+   (N · days · WR · avg · Σ · $), the cell fill list, the gate verdict (read at 15 fills on 8 days), next to LITE_BTC1H_FALLING and the
+   backtest ref (cell −0.57 vs rest +0.03; failed 2026 OOS). Save the batch export first — an unsaved reset loses the forward fills.
 ③ **Then EVERY open watchlist gate in CLAUDE_CURRENT_STATE.md and every scout tracker** — run each scout script and report tallies vs
    bars unprompted (the standing batch-watchlist rule).
 Goal stated by the operator: make the bot highly profitable going forward (≈ 10 %/day ambition) — FRENZY and SPIKE_FADE are the

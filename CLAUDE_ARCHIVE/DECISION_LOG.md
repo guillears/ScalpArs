@@ -8524,3 +8524,18 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   Withdraw · Remove); a click while one is pending is dropped; released in `finally`. The fund deposit / withdraw flow already had its own guard.
   Tests: tests/test_investor_submit_once.py (every button wrapped, no unguarded call, node run: double click → 1 post, released after an error).
   A dropped click shows a 'Previous request still in progress' toast (reviews). Not built: server-side idempotency key for deposit / withdraw / transfer (two tabs / replays still double-post) and a fetch timeout (a hung request leaves the buttons dead until reload) — follow-ups.
+
+## (353) 2026-10-23 — 🕰🧭 LITE_LATE_BTCFALL scout line (operator: "I consider it a serious filter … add the historic trades (master batch)"; observe-only)
+- **Why:** AVAUSDT FRENZY_LITE 10-23 03:00 — 14.9 h after the spike, BTC 1 h slope −0.085 → −3 stop in 15 min (−2.85 %, −$53.99).
+- **Study:** reports/LITE_LATE_BTCFALL_2026-10-23.md (cut pre-registered in _PREREG.md). Cell = ≥ 12 h ∧ BTC 1 h slope ≤ 0. ① live 3–4 fills ·
+  ② master 3 · +0.49 % (rest 28 · +0.53 with operator-closed out) · ③ backtest yr6 s1 109 · 50 % · −0.57 vs rest 1,343 · +0.03 (seeds 2/3 −0.61 / −0.60 below rest);
+  2025 −0.97 · 2026-H1 +0.02 · 2026-H2 −0.36; family-wise null p < 0.001, LOMO robust, but 2026 OOS −0.12 (P 0.63) FAILED → no filter now
+  (block ≈ $2–3 / week on 2026 after haircut). Late alone is NOT bad (late ∧ BTC rising = LITE's best cell, +0.39).
+- **Ship (scout only):** scripts/scout_lite_late_btcfall.py + opportunity-scout section. MASTER (today's stack, stack_keep, y = stack_pct) +
+  forward exports (keys not in master) POOLED for the gate per the operator. Deep review: pooling could make an arm EASIER (a weak master
+  rest, diluted master losing days) → the master may only VETO: an arm also needs the forward fills alone to agree (forward cell avg <
+  forward rest avg, ≥ 1 forward cell fill, no forward day / pair ≥ 50 % of the forward cell loss). Revert gate = the study's (first 15 post-arm
+  blocked-cell shadow fills average > the kept LITE fills → back off). Verdict persisted once decided (reports/.lite_late_btcfall_gate.json). Frozen gate (see CURRENT_STATE). AVA 10-23 listed, not counted (batch reset unsaved).
+- **Tests:** tests/test_scout_lite_late_btcfall.py (cut + unscored · master stack values + forward key skip + operator-closed · COLLECTING /
+  ARM_CANDIDATE / RETIRE / KEEP_OBSERVING (concentration) · decided once · empty inputs · wiring).
+- **Review fixes (caveman):** forward excludes EVERY master key (stack-blocked / operator-closed master rows no longer re-enter from the exports — MOVR / SAND 10-07 did); the first non-COLLECTING verdict is persisted to reports/.lite_late_btcfall_gate.json (decided once survives a master rebuild); stable sort; the prefix = every fill opened by the crossing fill's time.

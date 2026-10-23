@@ -1440,6 +1440,14 @@ def run():
     except Exception as _lrs_e:
         log(f"FRENZY_LONG re-size read failed: {_lrs_e}")
         _rg_sec += ["## 📏 FRENZY_LONG RE-SIZE read", "", f"Unavailable this run ({str(_lrs_e)[:120]}).", ""]
+    try:                                               # 🕰🧭 Oct-23 LITE_LATE_BTCFALL observe line (DECISION_LOG 353; master + orders exports, frozen gate; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_lite_late_btcfall as _llb
+        _rg_sec += _llb.run(now_ms)
+    except Exception as _llb_e:
+        log(f"LITE_LATE_BTCFALL line failed: {_llb_e}")
+        _rg_sec += ["## 🕰🧭 LITE_LATE_BTCFALL", "", f"Unavailable this run ({str(_llb_e)[:120]}).", ""]
     try:                                               # 🩳 Oct-22 FLATBASE_SHORT gates + observe lines ① non-flat · ② missed · ③ blocked longs (DECISION_LOG 348; alert-only; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

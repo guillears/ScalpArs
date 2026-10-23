@@ -8624,3 +8624,17 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   software TP fires at T_used on the touch (market close, taker) and the heal pass retries every 30 s (it skips a crossed limit); a floor exit on a gap books the market (below +1.0, logged [WILLY_V2]); parity of the
   scout may fail on stop / floor slippage (no verdict until explained).
 - **Review round (caveman + deep, both SHIP) — applied:** an armed floor is never un-armed by a later config edit (willy_floor_armed_at checked first); badge drops the SL once armed; PUT refuses frenzy_willy_floor_arm_pct < frenzy_willy_tp_pct (else every +TP fill would get a floor); touch_snapshot TP_REASONS += WILLY_FLOOR (a runner that recovered past +1.25 and floored stays "recovered"); a dropped test_lite_c assertion restored; dead frenzy_willy_badge helper removed; comment fixes. **Known, accepted:** ① the arm compares the engine's TAKER-estimated net while T_used is a MAKER net → targets in ≈ (1.25, 1.28) fill their limit before they can arm (books ≥ T_used, never worse than today); the floor exits at taker net ≤ +1.0 minus market slippage (≈ +0.9). ② restart within one monitor pass of the first +1.25 touch reseeds unarmed (re-arms on the next touch; worst case = today's exit without the +1.25 TP). ③ floor / arm LEVELS are read live: editing frenzy_willy_floor_pct / _arm_pct moves open armed runners' floor (the TP target itself is stored per order and never moves).
+
+## (357) 2026-10-23 — 🪜 WILLY V2 ladder SHADOWS in the scout (operator: "WILLY should have a ladder after the +1.25 arm; +1 is too low"; observe-only)
+- **Why:** INIT 10-23 16:30, the first V2 fill (HT, target +7.42): armed, peak +2.85 within a minute, floored at +1.06 (+$10.60), then dipped
+  −2.2 % and ran to +11.5 % (through the target). A trailing floor would have booked ≈ +1.8.
+- **Master check (36 WILLY fills, the V2 target, floor variants after the +1.25 arm):** flat +1.0 +0.45 %/fill (vs today +0.26) · STEPS
+  (2→1.5 · 3→2.25 · 4→3 · 5+→peak−1.5) +0.30 · TRAIL peak−1.0 +0.34 · peak−1.5 +0.33 · 50 % of peak +0.32 — the ladders sell runners that
+  breathe on the way up (CFX +6.31 → 1.4…2.3, CAP +2.41 → 1.43) and barely help the floor exits (most peaked < +2). → NOT in the engine.
+- **Ship (scout only):** scripts/scout_willy_exit_v2.py walk_v2(floor_fn=) + LADDERS (STEPS / TRAIL10 / TRAIL15 / HALF): every armed V2 fill
+  re-walked with a rising floor (= f(peak of EARLIER events), same path / target / arm); paired Δ vs the flat re-walk; ledger + per-fill list.
+  🔒 Frozen read per ladder (persisted): at the shortest prefix of ≥ 15 armed fills on ≥ 6 UTC days → CANDIDATE (operator decides an engine
+  ladder) iff avg Δ ≥ +0.10 %/fill ∧ no fill ≥ 50 % of the positive Δ; else KEEP_FLAT.
+- **Review round (caveman + deep, both SHIP; flat walk_v2 byte-identical on 200k random paths):** a ladder FLOOR exit that replaces a flat TP / cap pays 0.05 (taker + slip vs the maker TP); ladder reads show "no verdict (parity)" like the other gates; per-fill list capped at 20; HOLD text splits unpriced / unresolved.
+- **Tests:** tests/test_scout_willy_exit_v2.py (INIT-shape walks: tick / bar booking, the peak event never sets its own floor; reads
+  CANDIDATE / KEEP_FLAT / one-fill concentration; ladder keys persist with the MAIN read).

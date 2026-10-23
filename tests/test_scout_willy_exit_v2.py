@@ -120,7 +120,8 @@ def test_run_ledger_parity_era_and_frozen_gates(tmp_path):
     assert "EARLY: first 10 armed" in out and "no alert" in out
     assert "MAIN: main read (15 armed on 8 days): Σ(live − shadow) +16.25 pts → PASS (keep V2)" in out
     st = json.load(open(state))
-    assert set(st) == {"EARLY", "MAIN"} and st["MAIN"]["verdict"] == "PASS" and "FINAL" not in st
+    assert {"EARLY", "MAIN"} <= set(st) and st["MAIN"]["verdict"] == "PASS" and "FINAL" not in st
+    assert set(st) - {"EARLY", "MAIN"} == {f"LADDER_{k}" for k in S.LADDERS}                      # 🪜 (357) ladder reads freeze at 15 armed too
     # frozen: a later run with a terrible tape keeps the decided verdicts
     rows2 = [dict(r, pnl_percentage=(-4.0 if r["frenzy_willy_tp_target_pct"] == 3.5 else r["pnl_percentage"])) for r in rows]
     out2 = "\n".join(S.run(raw=_exports(rows2), floor_ms=0, path_fn=_const_paths(sh), fetch=False, state_path=state))
@@ -167,3 +168,33 @@ def test_dedup_closed_wins_and_ht_counted():
 def test_wired_into_opportunity_scout():
     src = open(os.path.join(ROOT, "scripts", "opportunity_scout.py"), encoding="utf-8").read()
     assert "import scout_willy_exit_v2 as _wv2" in src and "_rg_sec += _wv2.run(now_ms)" in src
+
+
+def test_ladder_walk_raises_the_floor_from_earlier_peaks_only():
+    """🪜 (357) INIT 10-23 shape: arm, peak +2.85, fall → flat books +1.0; TRAIL10 books +1.85; STEPS +1.5; the peak event itself never sets its own floor."""
+    te = 1_760_000_000_000
+    P = _P(te, [(1, 1.3, 1.3), (2, 2.85, 2.85), (3, 0.9, 0.9), (20, 7.5, 7.5)])
+    assert S.walk_v2(P, 7.42)["pct"] == 0.9                                                       # flat: the 0.9 print (tick)
+    w = S.walk_v2(P, 7.42, floor_fn=S.LADDERS["TRAIL10"])
+    assert w["why"] == "FLOOR" and w["pct"] == 0.9                                               # a tick books the print below the floor
+    P2 = _P(te, [(1, 1.3, 1.3), (2, 2.85, 2.85), (3, 1.9, 1.6), (20, 7.5, 7.5)], bar=True)
+    P2["op"] = np.array([1.3, 2.85, 1.9, 7.5])
+    assert S.walk_v2(P2, 7.42, floor_fn=S.LADDERS["TRAIL10"])["pct"] == 1.85                     # bar: min(floor 1.85, open 1.9)
+    assert S.walk_v2(P2, 7.42, floor_fn=S.LADDERS["STEPS"])["pct"] == 7.42                      # STEPS floor +1.5 < the 1.6 low → rides to TP
+    assert S.walk_v2(P2, 7.42)["why"] == "TP"                                                     # flat +1.0 rides the 1.6 dip to the target
+    one = _P(te, [(1, 1.3, 1.3), (2, 3.0, 1.0)], bar=True)
+    one["op"] = np.array([1.3, 2.0])
+    assert S.walk_v2(one, 7.42, floor_fn=S.LADDERS["TRAIL10"])["pct"] == 1.0                     # the bar setting the 3.0 peak judges the OLD floor
+
+
+def test_ladder_reads_candidate_and_keep_flat():
+    import pandas as pd
+    ts = pd.to_datetime([f"2026-11-{1 + i // 2:02d}T10:{i:02d}:00" for i in range(16)])
+    base = pd.DataFrame(dict(ts=ts, pair=[f"P{i}" for i in range(16)], armed=True, v2=1.0))
+    for k in S.LADDERS:
+        base[f"lad_{k}"] = 1.0; base[f"ladd_{k}"] = 0.0
+    base["ladd_TRAIL10"] = 0.2; base["lad_TRAIL10"] = 1.2
+    r = S.ladder_reads(base)
+    assert r["LADDER_TRAIL10"][0] == "CANDIDATE" and r["LADDER_STEPS"][0] == "KEEP_FLAT"
+    one = base.copy(); one["ladd_HALF"] = [5.0] + [0.0] * 15
+    assert S.ladder_reads(one)["LADDER_HALF"][0] == "KEEP_FLAT"                                   # one fill carries the gain

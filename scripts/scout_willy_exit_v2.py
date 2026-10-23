@@ -26,7 +26,19 @@ Ledger A (target + floor): the ARMED fills (runner target > the arm and peak ≥
   MAIN   — the shortest prefix of ≥ 15 armed fills on ≥ 6 UTC days: Σ(live − shadow) < 0 → REVERT to +1.25 (frenzy_willy_high_target_enabled
            false) · else PASS
   FINAL  — the first 25 armed fills: Σ(live − shadow) < 0 → REVERT · else PASS
-An armed fill without a priced path holds the freeze of any read whose sample it belongs to."""
+An armed fill without a priced path holds the freeze of any read whose sample it belongs to.
+
+🪜 LADDER SHADOWS (operator 2026-10-23 after INIT 10-23: peak +2.85 → floored at +1.06, then ran to +11.5 %; DECISION_LOG 357 — observe-only):
+every priced V2 fill is ALSO re-walked with a rising floor (only runner targets can differ; the rest show Δ = 0) instead of the flat +1.0 (same path, same arm +1.25, the floor at
+each event = f(peak of the EARLIER events) — never the event that sets the peak):
+  STEPS    peak < 2 → +1.0 · < 3 → +1.5 · < 4 → +2.25 · < 5 → +3.0 · ≥ 5 → peak − 1.5
+  TRAIL10  max(+1.0, peak − 1.0)      TRAIL15  max(+1.0, peak − 1.5)      HALF  max(+1.0, 50 % of peak)
+Δ = ladder walk − the flat V2 re-walk of the SAME fill (paired, same convention; a ladder FLOOR exit where the flat walk did not floor pays
+LADDER_FLOOR_SLIP 0.05 — the taker market close vs the maker TP it replaces (deep review); fills that never armed show Δ = 0 — a live-armed fill whose
+re-walk never arms counts in the 15 with Δ = 0).
+🔒 FROZEN read per ladder (decided once, persisted): at the shortest prefix of ≥ 15 armed fills on ≥ 6 UTC days → CANDIDATE (operator decides
+an engine change) iff avg Δ ≥ +0.10 %/fill ∧ no single fill carries ≥ 50 % of the positive Δ; else KEEP_FLAT. Master evidence (36 fills,
+10-23): flat +0.45 vs ladders +0.30 … +0.34 — the ladder sells runners that breathe on the way up (CFX, CAP)."""
 import json
 import math
 import os
@@ -57,10 +69,19 @@ EARLY_N, EARLY_GAP = 10, 0.15
 MAIN_N, MAIN_DAYS = 15, 6
 FINAL_N = 25
 MIN = 60_000
+# 🪜 ladder shadows (DL 357) — frozen
+LADDERS = {
+    "STEPS": lambda p: 1.0 if p < 2 else 1.5 if p < 3 else 2.25 if p < 4 else 3.0 if p < 5 else p - 1.5,
+    "TRAIL10": lambda p: max(1.0, p - 1.0),
+    "TRAIL15": lambda p: max(1.0, p - 1.5),
+    "HALF": lambda p: max(1.0, 0.5 * p),
+}
+LADDER_N, LADDER_DAYS, LADDER_MIN_GAIN, LADDER_SHARE = 15, 6, 0.10, 0.50
+LADDER_FLOOR_SLIP = 0.05                  # a ladder floor exit (taker + slippage) that replaces a flat TP / cap / late exit
 
 
 # ─────────────────────────── walkers (net % path: t, hi, lo, cl, op, bar, end_ms, te) ───────────────────────────
-def walk_v2(P, tp, sl=OLD_STOP, cap=OLD_CAP, late=OLD_LATE_MIN, ztp=OLD_LATE_TP, arm=ARM, floor=FLOOR):
+def walk_v2(P, tp, sl=OLD_STOP, cap=OLD_CAP, late=OLD_LATE_MIN, ztp=OLD_LATE_TP, arm=ARM, floor=FLOOR, floor_fn=None):
     """the LIVE V2 exit on a net path → dict(why TP / LATE_TP / STOP / FLOOR / CAP / UNRES, pct, armed). Before the floor arms it is
     scout_willy_timecap.evaluate_late(book="live") exactly (stop first on an event touching both lines; resting TP books the line; a late line
     already through at the first late event books that print / bar open). The floor exists only when tp > arm; it arms on the first event
@@ -76,6 +97,7 @@ def walk_v2(P, tp, sl=OLD_STOP, cap=OLD_CAP, late=OLD_LATE_MIN, ztp=OLD_LATE_TP,
         idx = np.flatnonzero(t[:n] > te + late * MIN)
         i0 = int(idx[0]) if len(idx) else None
     armed = False
+    pk = float("-inf")                    # 🪜 (357) peak of the EARLIER events — the ladder floor never uses the event that sets the peak
     for i in range(n):
         b, o = bool(bar[i]), float(op[i]) if np.isfinite(op[i]) else float("nan")
         if not armed:
@@ -94,12 +116,15 @@ def walk_v2(P, tp, sl=OLD_STOP, cap=OLD_CAP, late=OLD_LATE_MIN, ztp=OLD_LATE_TP,
                 return dict(why=("LATE_TP" if lt else "TP"), pct=float(v), armed=False)
             if has_floor and hi[i] >= arm:
                 armed = True
+            pk = max(pk, float(hi[i]))
             continue
-        if lo[i] <= floor:
-            v = (min(float(floor), o) if np.isfinite(o) else float(floor)) if b else float(lo[i])
+        fl = float(floor_fn(pk)) if floor_fn is not None else float(floor)
+        if lo[i] <= fl:
+            v = (min(fl, o) if np.isfinite(o) else fl) if b else float(lo[i])
             return dict(why="FLOOR", pct=float(v), armed=True)
         if hi[i] >= tp:
             return dict(why="TP", pct=float(tp), armed=True)
+        pk = max(pk, float(hi[i]))
     if n == 0 or int(P["end_ms"]) < te + cap * MIN:
         return dict(why="UNRES", pct=float("nan"), armed=armed)
     return dict(why="CAP", pct=float(P["cl"][n - 1]), armed=armed)
@@ -188,7 +213,8 @@ def price(c, path_fn=None, fetch=False, now_ms=None):
     """→ c with shadow / v2 walk columns. path_fn(row) → P or None (default: the hybrid tick → 1m loader on the shared caches)."""
     c = c.copy()
     if not len(c):
-        for k in ("live", "shadow", "shadow_why", "v2", "v2_why", "armed", "src", "side", "delta"):
+        for k in ("live", "shadow", "shadow_why", "v2", "v2_why", "armed", "src", "side", "delta") + tuple(
+                x for k_ in LADDERS for x in (f"lad_{k_}", f"ladd_{k_}")):
             c[k] = pd.Series(dtype=object)
         return c
     c["live"] = pd.to_numeric(c.pnl_percentage, errors="coerce")
@@ -215,6 +241,7 @@ def price(c, path_fn=None, fetch=False, now_ms=None):
             P["_src"] = FX.path_src(P)
             return P
     sh, shw, v2, v2w, src = [], [], [], [], []
+    lad = {k: [] for k in LADDERS}
     for r in c.to_dict("records"):
         try:
             P = path_fn(r)
@@ -222,12 +249,20 @@ def price(c, path_fn=None, fetch=False, now_ms=None):
             P = None
         if P is None or not len(P.get("t", [])):
             sh.append(np.nan); shw.append("UNPRICED"); v2.append(np.nan); v2w.append("UNPRICED"); src.append(None)
+            for k in LADDERS:
+                lad[k].append(np.nan)
             continue
         s = shadow_today(P)
         w = walk_v2(P, _f(r.get(WEra.TP_COL)) or OLD_TP)
         sh.append(s["pct"]); shw.append(s["why"]); v2.append(w["pct"]); v2w.append(w["why"]); src.append(P.get("_src", "path"))
+        for k, fn in LADDERS.items():   # 🪜 (357) same path, same target, rising floor
+            lw = walk_v2(P, _f(r.get(WEra.TP_COL)) or OLD_TP, floor_fn=fn)
+            lad[k].append(lw["pct"] - (LADDER_FLOOR_SLIP if (lw["why"] == "FLOOR" and w["why"] != "FLOOR") else 0.0))
     c["shadow"], c["shadow_why"], c["v2"], c["v2_why"], c["src"] = sh, shw, v2, v2w, src
     c["delta"] = c.live - c.shadow
+    for k in LADDERS:
+        c[f"lad_{k}"] = lad[k]
+        c[f"ladd_{k}"] = c[f"lad_{k}"] - c.v2
     return c
 
 
@@ -334,6 +369,48 @@ def ledger_a(c):
     return L
 
 
+def ladder_reads(c):
+    """🪜 (357) per ladder: the frozen read on the armed fills (open order) → {name: (verdict, text, complete)}."""
+    a = c[c.armed].sort_values(["ts", "pair"], kind="stable") if len(c) else c
+    m = None
+    for k in range(len(a)):
+        s = a.iloc[:k + 1]
+        if k + 1 >= LADDER_N and _days(s) >= LADDER_DAYS:
+            m = s
+            break
+    out = {}
+    for k in LADDERS:
+        col = f"ladd_{k}"
+        if m is None:
+            out[f"LADDER_{k}"] = ("COLLECTING", f"{len(a)}/{LADDER_N} armed on {_days(a)}/{LADDER_DAYS} days", False)
+            continue
+        d = pd.to_numeric(m[col], errors="coerce")
+        if d.isna().any():
+            nv = int(pd.to_numeric(m.v2, errors="coerce").isna().sum())
+            out[f"LADDER_{k}"] = ("HOLD", f"sample ({len(m)}): {nv} unpriced / {int(d.isna().sum()) - nv} unresolved ladder walks — held", False)
+            continue
+        gain = d.clip(lower=0)
+        share = float(gain.max() / gain.sum()) if gain.sum() > 0 else 1.0
+        ok = float(d.mean()) >= LADDER_MIN_GAIN and share < LADDER_SHARE
+        out[f"LADDER_{k}"] = (("CANDIDATE" if ok else "KEEP_FLAT"),
+                              f"{len(m)} armed on {_days(m)} days: avg Δ vs flat {d.mean():+.3f} %/fill · top fill {share:.0%} of the gain → "
+                              + ("🪜 CANDIDATE: operator decides an engine ladder" if ok else "keep the flat +1.0 floor"), True)
+    return out
+
+
+def ladder_ledger(c):
+    a = c[c.armed & c.v2.notna()] if len(c) else c
+    if not len(a):
+        return ["🪜 Ladder shadows: 0 armed priced fills"]
+    L = [f"🪜 Ladder shadows on {len(a)} armed fills (Δ = ladder − flat +1.0 re-walk, same path):"]
+    for k in LADDERS:
+        d = pd.to_numeric(a[f"ladd_{k}"], errors="coerce")
+        L.append(f"  {k}: avg {_avg(a[f'lad_{k}'])} vs flat {_avg(a.v2)} · Σ Δ {d.sum():+.2f} · better {int((d > 1e-9).sum())} / worse {int((d < -1e-9).sum())}")
+    L.append("  per fill (last 20): " + " · ".join(f"{r.pair} {str(r.opened_at)[5:16]} flat {r.v2:+.2f} | " + " ".join(f"{k} {getattr(r, f'lad_{k}'):+.2f}" for k in LADDERS)
+                                                    for r in a.tail(20).itertuples()))
+    return L
+
+
 def batch_table(c):
     if not len(c):
         return []
@@ -366,9 +443,16 @@ def run(now_ms=None, paths=None, raw=None, floor_ms="auto", path_fn=None, fetch=
     pok, ptxt = parity(c)
     L.append(ptxt)
     L += ledger_a(c)
+    L += ladder_ledger(c)
     L += [""] + batch_table(c) + [""]
     L.append("🔒 FROZEN gates (operator decides; persisted once decided):")
     for name, (v, txt, complete) in reads(c).items():
+        if not pok and complete:
+            L.append(f"  {name}: no verdict (parity) — {txt}")
+            continue
+        fv, ft = frozen(state_path, name, v, txt, complete, pok)
+        L.append(f"  {name}: {ft}")
+    for name, (v, txt, complete) in ladder_reads(c).items():   # 🪜 (357) observe-only reads, same persistence
         if not pok and complete:
             L.append(f"  {name}: no verdict (parity) — {txt}")
             continue

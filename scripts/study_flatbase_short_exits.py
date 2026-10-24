@@ -46,22 +46,27 @@ def paths(arr, idx, n):
     return H, Lo, O, Cc, T, av
 
 
-def simulate(E, H, Lo, O, Cc, T, av, data_open):
+def simulate(E, H, Lo, O, Cc, T, av, data_open, exits=None):
+    """exits: list of (tp, hold_h, stop) — default the module grid EXITS (unchanged behaviour); TPS / STOPS derived from it when given."""
+    EXITS_ = EXITS if exits is None else list(exits)
+    TPS_ = TPS if exits is None else sorted({tp for tp, _, _ in EXITS_}, key=str)
+    STOPS_ = STOPS if exits is None else sorted({s for _, _, s in EXITS_})
+    NX_ = len(EXITS_)
     n = len(E); r = np.arange(n)
     hh = np.where(np.isnan(H), -np.inf, H); ll = np.where(np.isnan(Lo), np.inf, Lo)
     cmh = np.maximum.accumulate(hh, 1); cml = np.minimum.accumulate(ll, 1)
     rm = np.minimum.accumulate(np.minimum(ll, E[:, None]), 1)
     rm_prev = np.concatenate([E[:, None], rm[:, :-1]], 1)
     armed = rm_prev <= E[:, None] * 0.92
-    kS = {s: first_idx(cmh >= (E * (1 + s / 100))[:, None]) for s in STOPS}
+    kS = {s: first_idx(cmh >= (E * (1 + s / 100))[:, None]) for s in STOPS_}
     kTR = {}
-    for s in STOPS:
+    for s in STOPS_:
         lev = np.where(armed, np.minimum(E[:, None] * (1 + s / 100), rm_prev * 1.04), E[:, None] * (1 + s / 100))
         k = first_idx(hh >= lev)
         kTR[s] = (k, lev[r, np.clip(k, 0, HM - 1)])
-    kT = {tp: first_idx(cml <= (E * (1 - tp / 100))[:, None]) for tp in TPS if tp != "trail"}
-    G = np.zeros((n, NX)); XT = np.zeros((n, NX), dtype="int64"); RS = np.zeros((n, NX), dtype="int8")
-    for j, (tp, hd, s) in enumerate(EXITS):
+    kT = {tp: first_idx(cml <= (E * (1 - tp / 100))[:, None]) for tp in TPS_ if tp != "trail"}
+    G = np.zeros((n, NX_)); XT = np.zeros((n, NX_), dtype="int64"); RS = np.zeros((n, NX_), dtype="int8")
+    for j, (tp, hd, s) in enumerate(EXITS_):
         hb = hd * 12
         kmax = np.minimum(hb, av)
         if tp == "trail":
@@ -92,7 +97,10 @@ def one_per_pair(entry_ms, XT):
 
 
 def worker(args):
-    pair, eps, sig, now_ms = args
+    """args = (pair, eps, sig, now_ms[, exits]) — exits: optional (tp, hold_h, stop) grid for simulate (default the module EXITS)."""
+    pair, eps, sig, now_ms, *_x = args
+    exits = _x[0] if _x else None
+    NX = len(EXITS) if exits is None else len(exits)
     full = C.load_full(pair)
     if full is None:
         return None
@@ -119,7 +127,7 @@ def worker(args):
     if len(sig):
         idx = np.array([pos(x) for x in sig.i_t])
         H, Lo, O, Cc, T, av = paths((t, o, h, l, c), idx, n)
-        G, XT, RS = simulate(sig.E.values, H, Lo, O, Cc, T, av, data_open)
+        G, XT, RS = simulate(sig.E.values, H, Lo, O, Cc, T, av, data_open, exits=exits)
         fu, ms = C.funding_sum(F, np.repeat(sig.entry_ms.values[:, None], NX, 1).ravel(), XT.ravel())
         NET = G - C.FEES + fu.reshape(G.shape)
         TK = np.zeros(G.shape, bool)
@@ -155,7 +163,7 @@ def worker(args):
         ri = cand[np.minimum(pp, len(cand) - 1)]
         H, Lo, O, Cc, T, av = paths((t, o, h, l, c), ri, n)
         E0 = c[ri] * (1 - C.SLIP)
-        G, XT, _ = simulate(E0, H, Lo, O, Cc, T, av, data_open)
+        G, XT, _ = simulate(E0, H, Lo, O, Cc, T, av, data_open, exits=exits)
         em = t[ri] + C.BAR
         fu, _ = C.funding_sum(F, np.repeat(em[:, None], NX, 1).ravel(), XT.ravel())
         net = G - C.FEES + fu.reshape(G.shape)

@@ -8969,3 +8969,17 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - Tests: tests/test_scout_flatbase_extra.py (entry-bar start ms, slippage convention, live levels, CANDIDATE / freeze / verbatim persisted
   text, day concentration vs fill concentration, bootstrap-only fail, HOLD → resolves, UNPRICEABLE_FINAL never re-fetched, stopped-fill
   parity, cut-winner split, guard: no test run() writes the real state / final files); tests/test_flatbase_short.py run() isolated.
+
+## (368) 2026-10-24 — 🔬 FLATBASE exit study: take-profit −3 / −5 / −8 × stop 5 / 10 / 15 (operator: "run the study with −3 % and 5 % stop") → KEEP TP −8 / stop 15
+- reports/FRENZY_FLATBASE_TP3_STOP5_2026-10-24.md (+ _PREREG.md written before any result, _tables.md, _cells.csv, _trades.csv, _wick1m.csv);
+  scripts/study_flatbase_tp3_stop5.py; scripts/study_flatbase_short_exits.py gained an optional exit grid for simulate() / worker() (default
+  output unchanged — the live cell reproduces the 10-22 study exactly). S4 · 72 h, ≈ 2,250 simulated shorts 2025-01 → 2026-10, 0.20 % costs,
+  real funding, one short per pair, random-entry null.
+- Result (avg net %/trade incl. funding, 2025-H1 / 2025-H2 / 2026-H1 / 2026-H2): live −8 / 15 +1.00 / +0.30 / +1.08 / +0.66 (2026 +0.93).
+  Every alternative is below it in 2026; all 8 have the 2026 Bonferroni lower bound of Δ < 0 (7 of 8 with the whole 95 % CI below 0); none passes "better in every half". Closest:
+  −8 / 10 (2026 +0.77, Δ −0.17; better in 2 of 4 halves). −5 / 5 2026 −0.14; −3 / 15 +0.15. Master (38 real episodes): every 5 % / 10 %
+  stop cell negative (−0.71 … −1.34) vs live +0.32.
+- Why the 6 live fills looked different: 3 of 6 hit −15 (≈ 21 % in the 2026 backtest). TP −5 / stop 5 in 2026: saved 234 live stops
+  (+2,679 pts) but stopped 193 winners and capped 454 (−3,725 pts). 5 % stop: ≈ 39 % of its stop-outs are 1m wicks (never a 1m close at the
+  stop; 515 of 1,282 checked); drawdown at the study sizing −192 … −270 % vs −48 % live (deterministic re-run) (tighter stop → bigger position at the same risk).
+- Decision: keep TP −8 / stop 15. The DL 367 exit shadows keep tracking on live fills (their frozen read decides if live disagrees).

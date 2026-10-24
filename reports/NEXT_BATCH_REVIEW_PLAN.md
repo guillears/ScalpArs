@@ -117,6 +117,13 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    reports/.scout_bearrun_v2_windows.json. Read it next to the false-start exit study.
    Three blocks: ① live shadow windows · ② master Bear-Run fills (2, both 10-07) · ③ backtest ref (5-min machine, proxy exit d V2-C1
    +0.02 %/trade; forced replay loses vs T0).
+②l **🐻⏬ BEARRUN_R24_25 shadow (DECISION_LOG 369, observe-only, r24 −2.5 vs 4)** — run scripts/scout_bearrun_r24.py (also in the
+   opportunity scout). Read: the parity line (CONTAINMENT of live Bear-Run fills in the replica T0), every extra window (start → end, end
+   reason, kind EARLIER / TAIL / EXTRA, BTC move, class, basket a' / d proxies priced on 5m bars from the window start — EARLIER d held to
+   V25 OFF), unpriceable / lost records, totals by class and kind, the interim line and the frozen read (20 windows on 6 weeks → CANDIDATE
+   / KEEP_4; ④ fails with no clean slide). Check the r24 guard line is absent. Three blocks: ① live extra windows · ② master Bear-Run
+   fills (10-07 ×2, 10-22 ×3) · ③ prior evidence (timing study T0 −0.096 %/fill; earlier triggers add losing shorts). Blind spot:
+   earlier entries can displace T0's own fills (slots / spacing).
 ③ **Then EVERY open watchlist gate in CLAUDE_CURRENT_STATE.md and every scout tracker** — run each scout script and report tallies vs
    bars unprompted (the standing batch-watchlist rule).
 Goal stated by the operator: make the bot highly profitable going forward (≈ 10 %/day ambition) — FRENZY and SPIKE_FADE are the

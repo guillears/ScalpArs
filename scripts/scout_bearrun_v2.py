@@ -188,12 +188,13 @@ class Net:
             return None
 
 
-def _cache_path(name):
-    return os.path.join(CACHE, name)
+def _cache_path(name, cache_dir=None):
+    return os.path.join(cache_dir or CACHE, name)
 
 
-def _cache_get(name):
-    p = _cache_path(name)
+def _cache_get(name, cache_dir=None):
+    """cache_dir None = this scout's CACHE (scripts/scout_bearrun_r24.py passes its own folder)."""
+    p = _cache_path(name, cache_dir)
     if os.path.exists(p):
         try:
             with open(p) as f:
@@ -203,10 +204,10 @@ def _cache_get(name):
     return None
 
 
-def _cache_put(name, obj):
+def _cache_put(name, obj, cache_dir=None):
     try:
-        os.makedirs(CACHE, exist_ok=True)
-        p = _cache_path(name)
+        os.makedirs(cache_dir or CACHE, exist_ok=True)
+        p = _cache_path(name, cache_dir)
         tmp = f"{p}.{os.getpid()}.tmp"
         with open(tmp, "w") as f:
             json.dump(obj, f)
@@ -336,13 +337,15 @@ def v2_windows(D):
     return out
 
 
-def classify(D, i0):
-    """window class over the 24 h after the ON close (needs bars i0+1 … i0+24) → (class, sub, final?)."""
+def classify(D, i0, bars_per_h=1):
+    """window class over the 24 h after the ON close (needs bars i0+1 … i0+24) → (class, sub, final?). bars_per_h = bars per hour of D
+    (1 = this scout's 1 h frame; scripts/scout_bearrun_r24.py classifies on 5m bars with 12)."""
     c, h, l = D.c.values, D.h.values, D.l.values
     p0 = float(c[i0])
-    H = float(np.max(h[max(0, i0 - 23):i0 + 1]))                   # BTC's 24 h high at ON (incl. the ON bar)
-    seg = range(i0 + 1, min(len(D), i0 + 1 + HORIZON_H))
-    final = (i0 + HORIZON_H) < len(D)
+    hz = HORIZON_H * int(bars_per_h)
+    H = float(np.max(h[max(0, i0 - (24 * int(bars_per_h) - 1)):i0 + 1]))   # BTC's 24 h high at ON (incl. the ON bar)
+    seg = range(i0 + 1, min(len(D), i0 + 1 + hz))
+    final = (i0 + hz) < len(D)
     runlo, slide = p0, False
     for j in seg:
         if h[j] > runlo * (1 + BOUNCE_PCT / 100):
@@ -380,10 +383,11 @@ def walk_d(bars, e, x_bar):
     return (1 - bars[x_bar][4] / en) * 100 - FEE_RT, "EXIT"
 
 
-def walk_a(bars, e, last):
-    """exit a': +0.5 % TP / −1 % stop, first touch on 1 h bars (both in one bar → stop), 6 h cap at the close."""
+def walk_a(bars, e, last, cap=A_CAP_H):
+    """exit a': +0.5 % TP / −1 % stop, first touch on 1 h bars (both in one bar → stop), 6 h cap at the close. cap = the cap in BARS
+    (scripts/scout_bearrun_r24.py walks 5m bars with 6 × 12)."""
     en = bars[e][4]
-    x = min(e + A_CAP_H, last)
+    x = min(e + cap, last)
     sl = en * (1 + A_STOP / 100)
     for j in range(e + 1, x + 1):
         if bars[j][1] >= sl:
@@ -392,7 +396,7 @@ def walk_a(bars, e, last):
             return -A_STOP - FEE_RT, "STOP"
         if bars[j][3] <= en * (1 - A_TP / 100):
             return A_TP - FEE_RT, "TP"
-    return (1 - bars[x][4] / en) * 100 - FEE_RT, ("CAP" if x == e + A_CAP_H else "OPEN")
+    return (1 - bars[x][4] / en) * 100 - FEE_RT, ("CAP" if x == e + cap else "OPEN")
 
 
 def _contig(rows, start_ms):
@@ -592,12 +596,13 @@ def _week(w):
     return (int(iso[0]), int(iso[1]))
 
 
-def summary(P):
-    """the window-unit numbers every read prints: Σ, P(Σ > 0), clean share, largest-window share, FS-loss ratio, days / weeks / span."""
-    v = np.array([w["d_mean"] for w in P], float)
+def summary(P, key="d_mean"):
+    """the window-unit numbers every read prints: Σ, P(Σ > 0), clean share, largest-window share, FS-loss ratio, days / weeks / span.
+    key = the per-window value summed (V2: the d basket mean; scripts/scout_bearrun_r24.py reads its a' basket mean)."""
+    v = np.array([w[key] for w in P], float)
     S = float(v.sum()) if len(v) else 0.0
-    cl = float(sum(w["d_mean"] for w in P if w["cls"] == "clean_slide"))
-    fs = float(sum(w["d_mean"] for w in P if w["cls"] == "false_start"))
+    cl = float(sum(w[key] for w in P if w["cls"] == "clean_slide"))
+    fs = float(sum(w[key] for w in P if w["cls"] == "false_start"))
     fs_loss = max(0.0, -fs)
     span_w = ((int(P[-1]["on_ms"]) - int(P[0]["on_ms"])) / (7 * 24 * HOUR)) if len(P) > 1 else 0.0
     return dict(n=len(P), S=S, p=p_sum_pos(v) if len(v) else float("nan"),

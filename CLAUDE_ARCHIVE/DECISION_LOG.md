@@ -8983,3 +8983,51 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   (+2,679 pts) but stopped 193 winners and capped 454 (−3,725 pts). 5 % stop: ≈ 39 % of its stop-outs are 1m wicks (never a 1m close at the
   stop; 515 of 1,282 checked); drawdown at the study sizing −192 … −270 % vs −48 % live (deterministic re-run) (tighter stop → bigger position at the same risk).
 - Decision: keep TP −8 / stop 15. The DL 367 exit shadows keep tracking on live fills (their frozen read decides if live disagrees).
+
+## (369) 2026-10-24 — 🐻⏬ Bear-Run r24 −2.5 % shadow (operator: "I think we should change bear to −2.5 %"; observe-only, config unchanged)
+- Operator chose a scout tracking line, NO config change (bearrun_r24_on stays 4.0 / off 3.0). New scripts/scout_bearrun_r24.py, also in
+  the opportunity scout (fail-soft, after BEARRUN_V2_SHADOW). Tests tests/test_scout_bearrun_r24.py. scripts/study_bearrun_timing_triggers.py
+  (was untracked) ships with it: new pure compute_readings() (readings() output unchanged — verified identical on the study's 190,004
+  readings and all 9 variants) and run_variant(engine_kw=…). scripts/scout_bearrun_v2.py gained optional cache_dir / summary(key) /
+  classify(bars_per_h) / walk_a(cap) parameters (defaults byte-identical, its tests green).
+- Rule: the 5m monitor replica + the REAL engine _bearrun_next_state, every leg at the live trading_config.json value. T0 = today (r24 ≤ −4
+  / stay ≤ −3) · V25 = r24 ≤ −2.5 / stay ≤ −1.5, every other leg identical. V25 ⊇ T0 on every bar while the live r24 legs are stricter —
+  GUARD: if live bearrun_r24_on ≤ 2.5 or r24_off ≤ 1.5 the scout warns and evaluates / reads nothing. Unit = EXTRA time (V25 ON ∧ T0 OFF),
+  stretches merged ≤ 180 min when T0 stays OFF in the gap; end = V25 OFF or T0 ON; kind EARLIER (T0 ON at the end or ≤ 180 min after) /
+  TAIL (starts where a T0 stretch ended) / TAIL→EARLIER / EXTRA (T0 never ON in the move), settled at finality. Per-entry refusals
+  (off24lo, breadth, blacklist, spacing) are not monitor legs → not modelled. Engine-parity test: compute_readings vs the engine's own
+  999-close / 149-hour arithmetic at one bar (r24 / r6 / eff24 exact, below24 ±0.5, e50h ±0.01 %).
+- Pricing (PROXY of the sleeve, not the engine) ON THE 5m GRID FROM THE WINDOW START (review fix: a 1 h entry grid entered 27 of 79 history
+  windows at / after their end, crediting time the change never adds): basket = top-20 alt perps by quote volume of the 24 closed 1 h bars
+  before the start (V2 top-60 universe snapshot, SHORT); entry = each coin's close of the 5m bar closing at the start (always inside the
+  window); a' +0.5 / −1 / 6 h on 5m bars (both in one bar → stop) = the gate's value; d = hold while V25 ON: exit at the window end
+  (EXTRA / TAIL) or, for EARLIER windows, at V25 OFF (the full V25 stretch, labelled), +2 % stop on 5m highs, 24 h cap; 0.10 % fees. Class
+  = V2 classify() on 5m BTC bars (bars_per_h 12) at +24 h from the start. ≈ 60 cached 1 h ranking requests + 20 × one 290-bar 5m request
+  per final window; only FINAL windows are priced; context windows are priced only before the commit.
+- Parity = CONTAINMENT of live Bear-Run fills (journal OPEN BEARRUN_SHORT + orders BEARRUN_SHORT, dedup per pair ±2 min) in the replica
+  T0 ON (±15 min); it cannot see replica ON time the engine missed.
+- Cohort: extra windows starting ≥ this commit + 10 min (scout_gatekit.dl_deploy_ms(369)); before: NOT evaluable, nothing persisted, last
+  7 days printed as context. Final = end known ∧ 24 h since the start ∧ 180 min since the end ∧ fully priced. Append-only
+  reports/.scout_bearrun_r24_windows.json; never silently dropped: a time-final window with no priceable coin → 'unpriceable' record; a
+  seen cohort window that scrolls out of the 30-day 5m fetch (8-day warm-up) before final → 'lost' record; stretches that would merge into
+  an already-persisted window → a 'lost' counter line. Unpriceable / lost are listed + counted, never in the read.
+- 🔒 Frozen read (decided once): shortest prefix of ≥ 20 final priced extra windows spanning ≥ 6 ISO weeks → CANDIDATE (operator decides
+  lowering bearrun_r24_on 2.5 / off 1.5) iff Σ a' window means > 0 ∧ window-bootstrap P(Σ > 0) ≥ 0.90 (4,000, seed 7) ∧ no window ≥ 50 %
+  of Σ ∧ false-start windows lose ≤ 60 % of the clean-slide gain (④ FAILS automatically when the prefix holds no clean slide); else KEEP_4.
+  Waits while any extra window in the prefix is not final. INTERIM line at ≥ 8 windows, non-terminal. A CANDIDATE is a proxy result:
+  re-check on an engine replay before any config change.
+- Prior evidence: reports/BEARRUN_TRIGGER_TIMING_2026-10-23_FINAL.md (3 seeds, today's momentum-short exit): T0 48 fills/seed · 57 % WR ·
+  −0.096 %/fill · Σ −4.66 %; earlier dd24 triggers T1a / T1b / T1c Δ Σ −11.7 / −10.3 / −3.8 % vs T0, worse than the shuffled-timing null;
+  reports/BEARRUN_V2_REPLAY_s12.md: V2 loses vs T0 under every exit. r24 −2.5 itself never tested.
+- Replica history (no pricing, 2025-01 → 2026-10-21, live legs): 79 extra windows (43 EXTRA · 35 EARLIER · 1 TAIL; median 80 / 35 min),
+  38 ISO weeks, ≈ 3.8 / month → the 20-window / 6-week read lands in ≈ 5–6 months. T0 dropped OFF on the eff24 leg in 215 of 216 OFF
+  transitions, so V25's lower stay band (−1.5) almost never lengthens a window — the change is about EARLIER / standalone ON time.
+- Blind spots: proxy basket ≠ engine fills (no gates / signals / per-entry refusals / slippage) · the momentum-short exit and its EMA13
+  cross exit not modelled · earlier entries take slots / per-pair spacing and can displace T0's own later fills (not modelled) · 5m
+  closed-bar replica vs the engine's ~110 s poll · universe survivorship.
+- First run (2026-10-24 16:05 UTC, pre-review 1 h-grid build, NOT evaluable — commit not in git): parity 5/5 live fills contained (2/2
+  live windows: 10-07, 10-22). Context: 10-22 14:50 → 16:35 EARLIER (T0 ON 16:35), true_other; 10-23 01:35 → 01:45 TAIL; 10-24 15:20 →
+  15:50 EXTRA. (Its 1 h-grid basket numbers are superseded by the 5m pricing.) 192 requests, used weight 8.
+- Verification pass (pre-commit): an EARLIER window's d exit ("V25 OFF") is searched from the window END (a merged window's gaps are V25-off
+  too — the first version exited inside the first gap); drop_pct starts after the entry bar; a window whose 24 h class is still unresolved
+  (a BTC 5m gap) is retried, never persisted as final with class "pending".

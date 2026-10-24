@@ -1440,6 +1440,14 @@ def run():
     except Exception as _wnm_e:
         log(f"WILLY R_NOMISS gate failed: {_wnm_e}")
         _rg_sec += ["## 🧭 WILLY A R_NOMISS", "", f"Unavailable this run ({str(_wnm_e)[:120]}).", ""]
+    try:                                               # 🕰 Oct-24 WILLY late-join refusals priced on the live V2b exit (DECISION_LOG 366; decisions exports + public 5m klines, frozen gate, observe-only; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_willy_latejoin as _wlj
+        _rg_sec += _wlj.run(now_ms)
+    except Exception as _wlj_e:
+        log(f"WILLY late-join line failed: {_wlj_e}")
+        _rg_sec += ["## 🕰 WILLY LATE-JOIN (low-volume late spikes)", "", f"Unavailable this run ({str(_wlj_e)[:120]}).", ""]
     try:                                               # 📏 Oct-23 FRENZY_LONG re-size read across every export (locked DL 317 gate + DL 351 confidence line; orders exports only, observe-only; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

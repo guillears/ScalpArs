@@ -65,6 +65,17 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    switching `frenzy_willy_a_nomiss` off; else keep (never re-fit). Expect ≈ 0.66 fills / week (study), so the gate is months away —
    report the tally anyway. Backtest reference: reports/WILLY_VOLUME_FLOOR_2026-10-23.md § R_NOMISS (62 · 69.4 % · −0.525 vs on-time
    −0.456, Δ −0.07, CI −0.81…+0.63).
+②g′ **🕰 WILLY LATE-JOIN refusals (DECISION_LOG 366, 2026-10-24, observe-only)** — run scripts/scout_willy_latejoin.py (also in the
+   opportunity scout; fetches public 5m klines within the budget, cached). Every refusal R_NOMISS still logs (_MISSED / _LATE / _OFF)
+   priced as an armed-at-join WILLY on today's V2b exit: table L bucket (4–12 · 13–36 · 37+) × class (LOWVOL < $20M at the spike /
+   LIQUID) — N · priced · WR · avg % · Σ pts · expired · held; per-refusal list (pair, spike, L, vol24, entry, target, exit, net %);
+   the same-period on-time WILLY comparator; the timing line (TIMING? count, spike bar not green count, status counts). 🔒 Gate (frozen, the
+   2026-10-22 study's): L 4–12, first 30 priced on ≥ 10 days → RE-OPEN CANDIDATE iff avg > 0 ∧ day-boot 95 % LB > 0, else KEEP; freezes only
+   once the prefix's last spike ≤ the newest decisions export − 65 min; *_FINAL / TIMING? / OVERLAP rows are out (counted in the gate text).
+   LOWVOL-only and L 13–36 (LIGHTUSDT 10-24 was L 28) / 37+ = observe-only. The study's −0.27 is a reference, not the same cohort (the gated
+   rows here are _MISSED reads; R_NOMISS takes the rest). Expect ≈ 2 L 4–12 refusals / week (study) → months to the gate. Check the CSV
+   reports/SCOUT_WILLY_LATEJOIN.csv, its `status` column (PENDING / NODATA / UNPRICED / UNRES = held; *_FINAL / TIMING? / OVERLAP = out).
+   Not modelled: HT routing, slots / pair held / disloc, the 25-pair cap, reads with no journal row, VOL24_LOW kills at the red bar.
 ②h **📏 FRENZY_LONG RE-SIZE read (locked DECISION_LOG 317 · scout DECISION_LOG 351, observe-only)** — run scripts/scout_long_resize.py
    (also in the opportunity scout): CLOSED FRENZY_LONG fills on the live −4 stop (entry_frenzy_stop_pct ≥ 3.5) from EVERY export → the
    locked DL 317 verdict (REVERT to −3 · COLLECTING · HOLD · RESIZE = propose blocker → invest 1.0 at lev 0.05, operator decides) + the

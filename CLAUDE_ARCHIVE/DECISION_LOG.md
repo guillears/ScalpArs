@@ -8862,3 +8862,72 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   operator to re-decide frenzy_willy_ht_max_slots.
 - Schema: models.Order.entry_willy_ht_size_frac (Float, nullable) + the database.py ALTER (with the DL 356 WILLY columns); rides the orders CSV.
   Tests: tests/test_frenzy_willy_ht.py (the engine stamps 0.25 on HT, None on WILLY; test_ht_resize_ladder).
+
+## (366) 2026-10-24 — 🕰 WILLY late-join low-volume spikes scout line (operator: "add the late-join low-volume spikes to scout"; observe-only)
+- **Why:** LIGHTUSDT 10-24 — the spike bar (open 10:40, close 10:45 UTC) had a 24 h quote volume of about $7M, under the FRENZY shortlist floor
+  (`frenzy_min_volume_usd` $20M). The pair joined the shortlist only at 13:05, once the pump itself pushed the volume over the floor, and
+  WILLY refused entry A as 28 bars late. The operator wants a live record of what these late joiners would have made. No engine change.
+- **Prior evidence:** reports/WILLY_LATE_JOIN_2026-10-22.md (pre-registered). 720 backtest late joiners (L 4–12, R1-60) · 72 % WR ·
+  −0.267 %/trade, day-bootstrap 95 % −0.43 … −0.11, negative in 2025, 2026-H1 and 2026-H2; on-time WILLY −0.456 with the same walker. The
+  rules failed the study's bars ②③⑤, so no engine change, and the study proposed exactly this observe line. 86 % of the L 4–12 joiners
+  were late because of the volume floor. Live + master refusals then: 13 · Σ −0.9 pts. DL 350 (R_NOMISS) already re-admits the late reads
+  that missed no red bar; this line prices the ones it still refuses. **So the gated L 4–12 cohort here is (almost all) _MISSED reads** —
+  a red bar had already closed — while the study's 720 pooled missed AND no-red-missed joiners, on the OLD +1.25 exit, with 5,000 day
+  resamples (4,000 here). The study is a reference, not the same cohort; the report labels it that way. _OFF rows (R_NOMISS-eligible while
+  the switch is off) are priced on the same R1 rule.
+- **Cohort:** decisions-export journal rows e = WILLY with gate FRENZY_WILLY_A_NOMISS_MISSED · _LATE · _OFF (services/trading_engine
+  `_frenzy_willy_nomiss_ok`), from the DL 350 deploy + 10 min (scout_gatekit). The journal is mode-agnostic, so the same event sits in paper
+  and live exports: dedup (t, pair, gate), then one row per (pair, spike bar), first read kept; mode = the oldest export holding the row (a
+  column, pooled in the gate). Timing (verified against services.frenzy.frenzy_willy_late_bars and the INIT 10-23 event): forming bar
+  B = floor(t, 5 min), join bar = [B − 5, B), spike bar open = B − (L + 1) × 5 min.
+- **Per refusal (scripts/scout_willy_latejoin.py):** public 5m klines (own budgeted fetch: ≤ 30 pages / run, stop at used weight 900 or on
+  418/429 with the shared cooldown, pages cached in reports/backtest_cache/scout_willy_latejoin/5m once complete). ① L bucket 4–12 · 13–36 ·
+  37+. ② vol24 = Σ quote volume of the 288 5m bars ending with the spike bar → LOWVOL (< the floor) · LIQUID (≥ the floor: the 15 % move
+  leg or the 25-pair cap held it back) · UNREAD (< 288 bars). ③ Entry = the study's R1: armed at the join bar, the first red 5m bar (close
+  < open; the join bar counts) closing ≤ join close + `frenzy_willy_red_max_wait_minutes` → entry = its close × 1.001 at close + 8 s (live
+  ruler). No red bar → EXPIRED (counted, not priced); window not closed → PENDING; a gap → NODATA. ④ Exit = the live V2b (DL 358): target
+  max(+1.25, min(+8, net at H × 0.99)) with H = the highest 5m high from the spike bar through the red bar, on the engine's fee convention
+  (scout_willy_exit_v2.target_at_k with the config taker fee as the entry fee + the maker exit fee); stop −4 · late TP +0.25 after 30 min ·
+  cap 90, walked by scout_willy_exit_v2.walk_v2 on the hybrid tick → 1m net path (scout_frenzy_willy_exit.load_path; missing 1m pages via
+  scout_willy_timecap.ensure_data). Unresolved → UNRES (unscored). Exit constants pinned, not read from config. The TP touch is tested on
+  the taker-exit net path (≈ 0.03 % conservative vs a maker exit; inherited from the V2b scout). The wait follows the engine
+  (frenzy_willy_wait_ms): 0 = the join bar only; only blank / negative / unreadable falls back to 60.
+  ⑤ Timing guard: B = floor(t, 5 min) assumes the event was written inside its pass's bar; t − B > 120 s → TIMING? (not priced, out of the
+  gate, counted). The derived spike bar is checked on the fetched bars (spike_ok = closed green; a non-green count is printed).
+  ⑥ Same pump twice: a refusal whose entry falls inside an earlier PRICED refusal's hold (entry → exit) on the same pair → OVERLAP (not
+  priced, out of the gate).
+  ⑦ Terminal statuses (so the gate can never be held forever): a symbol answered 4xx on its 5m page is remembered
+  (reports/backtest_cache/scout_willy_latejoin/bad_symbols.json, never re-requested) → NODATA_FINAL; a NODATA (bars read, gap) / UNPRICED /
+  UNRES row whose window closed > 7 days ago with its fetch final (the 1m page attempt done in scout_willy_timecap's attempts) → *_FINAL.
+  *_FINAL rows never hold the freeze, are never priced, and are counted in the gate text. A 403 (WAF) stops fetching like 418 / 429 (only
+  418 / 429 arm the shared cooldown).
+- **🔒 Gate (frozen; the study's pre-registered gate):** L 4–12, all classes. At the first prefix by spike time holding ≥ 30 priced
+  refusals on ≥ 10 UTC days → RE-OPEN CANDIDATE iff avg > 0 ∧ day-clustered bootstrap 95 % lower bound > 0 (4,000 resamples, seed 7); else
+  KEEP (no change). A PENDING / NODATA / UNPRICED / UNRES row inside the prefix holds the freeze; *_FINAL / TIMING? / OVERLAP rows are out
+  (counted). It freezes only when the prefix's last spike is ≤ the newest decisions-export stamp − 65 min (a refusal of an earlier spike can
+  still arrive in a later export); before that it shows HOLD with the would-be verdict. Persisted once in
+  reports/.willy_latejoin_gate.json; never re-fit. A candidate means the operator re-runs the study's full bar; nothing is automatic.
+  LOWVOL-only and L 13–36 / 37+ summaries are observe-only with no gate.
+- **Report:** the section "🕰 WILLY LATE-JOIN (low-volume late spikes)" in the opportunity scout (after R_NOMISS; fails soft): bucket ×
+  class table, the gate, the observe-only summaries, the study reference, the same-period on-time WILLY + HT comparator from the orders
+  exports (scout_willy_hold_off.load, per book), the last 20 refusals; CSV reports/SCOUT_WILLY_LATEJOIN.csv, one row per refusal.
+- **Blind spots (printed):** engine-only guards (WILLY / HT slot, pair already held, dislocation / lateness guards, turnover refusal, global
+  hold, the episode ending inside the wait); the 25-pair cap timing — LIQUID also covers restart / FRENZY-paused / pre-filter cold reads;
+  turnover routing WILLY vs WILLY_HT ¼ (no scout reads a supply source offline, so every refusal is priced as a full position); late reads
+  with NO journal row (no-red check unreadable, late unreadable, stored state unread, WILLY or entry A off); R_NOMISS entries killed at the
+  red bar by FRENZY_WILLY_A_NOMISS_VOL24_LOW (counted in scout_willy_nomiss, priced nowhere); _OFF rows priced on R1; late reads before the
+  DL 350 deploy (never journaled); 1m-only paths are kept (no tick-provisional hold); the TP touch on a taker-exit net path; a refusal
+  reaches the line only with the next decisions export.
+- **First run (2026-10-24, exports to 10-24 08:21 UTC):** 2 refusals, both L 37+ LOWVOL: SOPHUSDT (L 38, vol24 $9.0M) TP +2.41 ·
+  KATUSDT (L 54, $5.8M) stop −4.00. L 4–12: 0 → gate COLLECTING. LIGHTUSDT is not in an export yet.
+- **Tests:** tests/test_scout_willy_latejoin.py (L / spike-bar parsing against the engine's arithmetic, dedup + modes, LOWVOL / LIQUID /
+  UNREAD, red-bar entry incl. the join bar, expiry, pending and gaps, H and the target convention, the V2b walk TP / stop / late TP / cap /
+  unresolved, the frozen gate collecting / candidate / keep / hold / freeze-once, budget + cache with no network, never raising on bad rows;
+  after the dual review: terminal *_FINAL statuses + the remembered 4xx symbol, the 120 s timing boundary, spike_ok, OVERLAP + exit time,
+  the export-stamp freeze lag, wait 0, NaN pairs, and the fetch budget with a mocked Binance — used-weight stop at 900, cooldown, 418 / 429
+  / 403 stops (cooldown armed for 418 / 429 only), partial pages not cached, unclosed bars dropped).
+- Verification pass (pre-commit): a 5m 403 / 451 block now also stops the 1m catch-up; a blocked / rate-limited 1m attempt (HTTP 403 / 408 /
+  418 / 429 / 451) never counts as a final give-up; only HTTP 400 (invalid / delisted symbol) is remembered as a bad symbol (other 4xx / 5xx /
+  timeouts are transient); a code or environment error holds (never turns NODATA_FINAL); a priced refusal behind an earlier, still
+  unresolved same-pair refusal is OVERLAP? (holds) until that one resolves; the newest-export stamp uses filename stamps only (archived
+  copies without one never move the freeze); tests block the 1m fetch and the timecap cache too.

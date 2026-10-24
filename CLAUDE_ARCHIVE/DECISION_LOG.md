@@ -9031,3 +9031,20 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - Verification pass (pre-commit): an EARLIER window's d exit ("V25 OFF") is searched from the window END (a merged window's gaps are V25-off
   too — the first version exited inside the first gap); drop_pct starts after the entry bar; a window whose 24 h class is still unresolved
   (a BTC 5m gap) is retried, never persisted as final with class "pending".
+
+## (370) 2026-10-24 — 🎯 FLATBASE take-profit +1 % shadows: TP1 (−1/15) · TP1_SL10 (−1/10) · TP1_SL5 (−1/5) (operator: "almost all flatbase trades reached 1 % — that would give like 100 % WR … add this to scout" · "the SL should be narrower too"; observe-only)
+- Live: 5 of the 6 real FLATBASE fills reached +1 % (BMT peaked +0.50). On those 6 the scout prices TP1 −1.73 · TP1_SL10 −0.90 · TP1_SL5 −0.07 %/fill vs −3.57 live (no funding).
+- Backtest (reports/FRENZY_FLATBASE_TP1_2026-10-24_{cells.csv,tables.md,trades.csv} = scripts/study_flatbase_tp3_stop5.py with exactly 3 lines
+  changed: TPS, STOPS, HOLDS = [1, 2, 8], [5, 10, 15], [72] · OUT · sys.path; deterministic, seed 24; its tp8 / 72 h / stop 15 row equals
+  DL 368's live row). S4 · 72 h, same costs / funding / one short per pair;
+  avg net %/trade WITH funding, 2025-H1 / 2025-H2 / 2026-H1 / 2026-H2 (2026 WR · 2026 avg): TP +1 / stop 15 +0.21 / −0.20 / +0.02 / −0.17 (92 % · −0.05) ·
+  stop 10 +0.15 / −0.11 / −0.03 / −0.16 (90 % · −0.07) · stop 5 +0.03 / −0.02 / −0.16 / −0.25 (82 % · −0.19) · live TP +8 / stop 15
+  +1.00 / +0.30 / +1.08 / +0.66 (68 % · +0.93). Why: break-even ≈ 95 % WR if every loss were a full −15 stop; realised 2026 break-even
+  92.3 % vs WR 91.8 % (time exits and funding-negative TPs count as losses; avg win +0.79 / loss −9.39) → about break-even (±0.1 by cost
+  model: the study charges taker slip on the TP, the scout books a maker TP at ≈ +0.94), ≈ 0.9 %/trade below the live exit; a narrower stop
+  (90.5 % / 85.7 % break-even vs WR 89.6 % / 82.3 %) cuts more +1 % winners than it saves.
+- Added to scripts/scout_flatbase_short.py TP_SHADOWS (same frozen read as DL 367). Bonferroni is /len(TP_SHADOWS) → the DL 367 cells'
+  level tightens 0.99 → 0.99375 (the conservative direction; nothing was frozen yet — reports/.flatbase_tp_shadow_gate.json does not exist);
+  printed as 99.38 %. The TP1 verdict lines print this run's per-half Δ (tp1_backtest_note, no-funding columns). Known bias: a fill ≤ 60 s
+  into its 5m bar starts the path at that bar, so a few seconds of pre-fill prints can touch a +1 % TP (none of the 6 live fills affected).
+  Config unchanged.

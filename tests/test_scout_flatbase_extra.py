@@ -359,7 +359,8 @@ def _tp_lines(S, kinds, tmp, name, kl=None, now=0, fills=None, **kw):
 def test_exit_shadows_entry_bar_slippage_and_live_levels():
     import scout_flatbase_short as S
     from scout_long_stop4 import Budget
-    assert S.TP_SHADOWS == {"TP5": (5.0, 15.0), "TP3": (3.0, 15.0), "TP5_SL10": (5.0, 10.0), "TP5_SL5": (5.0, 5.0), "TP8_SL10": (8.0, 10.0)}
+    assert S.TP_SHADOWS == {"TP5": (5.0, 15.0), "TP3": (3.0, 15.0), "TP5_SL10": (5.0, 10.0), "TP5_SL5": (5.0, 5.0), "TP8_SL10": (8.0, 10.0),
+                            "TP1": (1.0, 15.0), "TP1_SL10": (1.0, 10.0), "TP1_SL5": (1.0, 5.0)}
     assert S._tp_live() == (S.flatbase_params(S._frozen_th())["tp"], S.flatbase_params(S._frozen_th())["stop"]) == (8.0, 15.0)
     b = int(pd.Timestamp("2026-11-01T10:00:00").value // 10**6)
     assert S.tp_path_start(b + 9_000) == (b, False) and S.tp_path_start(b + 60_000) == (b, False)      # ≤ 60 s: the bar at the boundary
@@ -376,11 +377,17 @@ def test_exit_shadows_entry_bar_slippage_and_live_levels():
     # the entry = the real fill at slip 0; the taker slip only on a stop / time exit
     w = S.tp_shadow_walk(1.0, [[b, 1.0, 1.0, 0.90, 0.92, 0]], slip=0.1)
     assert w["LIVE"]["net_pct"] == pytest.approx(8.0 - 0.045 - 0.018 * 0.92)
+    assert w["TP1"]["net_pct"] == pytest.approx(1.0 - 0.045 - 0.018 * 0.99) and w["TP1"]["reason"] == "FRENZY_TP"   # (370) +1 maker TP
+    assert w["TP1_SL5"]["net_pct"] == pytest.approx(1.0 - 0.045 - 0.018 * 0.99)
     w = S.tp_shadow_walk(1.0, [[b, 1.0, 1.2, 1.0, 1.1, 0]], slip=0.1)
     x = 1.15 * 1.001
     assert w["LIVE"]["net_pct"] == pytest.approx((1 - x) * 100 - 0.045 - 0.045 * x)
     p = S.tp_shadow_price(next(_tp_fills(["cut"]).itertuples()), Budget(), 0, klines=_tp_kl(_tp_fills(["cut"])), slip=0.0)
     assert p["TP5_SL5"] < -5.0 and p["TP5_SL10"] > 4.9 and p["TP5"] > 4.9 and p["LIVE"] > 7.9 and p["TP8_SL10"] > 7.9
+    assert p["TP1"] == pytest.approx(1.0 - 0.045 - 0.018 * 0.99) and p["TP1_SL5"] < -5.0 and p["TP1_SL10"] > 0.9   # squeeze +6 % stops SL5
+    # (370) the TP +1 cells read their prior from the DL 370 run; a cell in neither grid still says so
+    assert S.tp_backtest_note("TP1").startswith("backtest (DL 370 run) Δ vs live") and "26-H2" in S.tp_backtest_note("TP1_SL5")
+    assert "never in the exit-study grid" in S.tp_backtest_note("TP3")
 
 
 def test_exit_shadows_candidate_freeze_split_and_verbatim(tmp_path):
@@ -393,7 +400,7 @@ def test_exit_shadows_candidate_freeze_split_and_verbatim(tmp_path):
     assert "frozen sample: parity on the sample 100% (≥ 90%) · live-stopped 20/20 (100 % required)" in out
     for k in S.TP_SHADOWS:
         assert f"FB_TP_{k}: CANDIDATE" in out
-    assert "one-sided 99% LB" in out and "Bonferroni ×5" in out and "4000 (seed 367)" in out
+    assert "one-sided 99.38% LB" in out and "Bonferroni ×8" in out and "4000 (seed 367)" in out
     assert "in-sample haircut 30–50 %" in out and "if adopted: revert to TP −8 / stop 15 if the first 15 fills" in out
     assert "incl. the 10-24 motivating batch" in out
     # the backtest per-half Δ, nofund columns, where the cell exists; TP −3 / stop 5 never in the grid

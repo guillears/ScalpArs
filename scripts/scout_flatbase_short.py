@@ -775,7 +775,14 @@ def resize_lines(real, inv_now=None):
 # "a 5 % TP with a different SL?"); TP8_SL10 = the isolating cell (today's TP, the 10 % stop alone). Prior = the exit study's S4 · 72 h cells
 # (reports/FRENZY_FLATBASE_SHORT_2026-10-22_EXITS_cells.csv, the NO-FUNDING columns — the shadows leave funding out too): today's −8 / 15 wins
 # every half against every TP −5 cell; TP −3 and a 5 % stop were never in its grid (tp_backtest_note prints the per-half Δ at read time).
-TP_SHADOWS = {"TP5": (5.0, 15.0), "TP3": (3.0, 15.0), "TP5_SL10": (5.0, 10.0), "TP5_SL5": (5.0, 5.0), "TP8_SL10": (8.0, 10.0)}
+# TP1 (operator 2026-10-24: "almost all FLATBASE trades reached 1 % — that would give ~100 % WR"): a scratch run of the DL 368 study machinery
+# (S4 · 72 h, reports/FRENZY_FLATBASE_TP1_2026-10-24_*) gave TP +1 / stop 15 WR 92 % but avg −0.05 %/trade in 2026 (with funding;
+# +0.21 / −0.20 / +0.02 / −0.17 per half) vs live +0.93 — break-even ≈ 95 % if every loss were a full stop; realised 2026 break-even 92.3 %
+# vs WR 91.8 % (time exits / funding count as losses too) → about break-even (±0.1 by cost model), ≈ 0.9 %/trade below the live exit.
+# Tracked like the others. TP1_SL10 / TP1_SL5 (operator: "the SL should be narrower too"): same run
+# — stop 10 WR 90 % avg −0.07, stop 5 WR 82 % avg −0.19 (2026); a narrower stop cuts more +1 % winners than it saves.
+TP_SHADOWS = {"TP5": (5.0, 15.0), "TP3": (3.0, 15.0), "TP5_SL10": (5.0, 10.0), "TP5_SL5": (5.0, 5.0), "TP8_SL10": (8.0, 10.0),
+              "TP1": (1.0, 15.0), "TP1_SL10": (1.0, 10.0), "TP1_SL5": (1.0, 5.0)}
 TP_SH_DL = 367
 TP_SH_PARITY_TOL, TP_SH_PARITY_MIN = 0.50, 0.90                # the live re-walk vs the booked pnl_percentage (+ 100 % on the live-stopped fills)
 TP_SH_N, TP_SH_DAYS, TP_SH_MIN_GAIN, TP_SH_SHARE = 30, 10, 0.10, 0.50
@@ -786,6 +793,7 @@ TP_SH_STATE = os.path.join(_R, "reports", ".flatbase_tp_shadow_gate.json")
 TP_SH_FINAL = "cache"                                         # → CACHE/tp_shadow_unpriceable.json at call time (UNPRICEABLE_FINAL fills, never re-fetched)
 TP_SH_FINAL_NAME = "tp_shadow_unpriceable.json"
 TP_SH_CELLS = os.path.join(_R, "reports", "FRENZY_FLATBASE_SHORT_2026-10-22_EXITS_cells.csv")
+TP_SH_CELLS_TP1 = os.path.join(_R, "reports", "FRENZY_FLATBASE_TP1_2026-10-24_cells.csv")   # (370) the TP +1 / +2 × stop 5 / 10 / 15 run
 
 
 def _th_tp(tp, stop=15.0):
@@ -906,7 +914,7 @@ def tp_backtest_note(k, path=TP_SH_CELLS):
         grid_sl = {c.split("|")[3] for c in d.cell}
         miss = ([f"TP −{tp:g}"] if f"tp{tp:g}" not in grid_tp else []) + ([f"stop {sl:g}"] if f"stop{sl:g}" not in grid_sl else [])
         if miss:
-            return f"backtest: {' and '.join(miss)} never in the exit-study grid — no prior"
+            return tp1_backtest_note(tp, sl, ltp, lsl, h) or f"backtest: {' and '.join(miss)} never in the exit-study grid — no prior"
         cell, live = d[d.cell == f"S4|tp{tp:g}|{h:g}h|stop{sl:g}"], d[d.cell == f"S4|tp{ltp:g}|{h:g}h|stop{lsl:g}"]
         if not len(cell) or not len(live):
             return "backtest: cell missing in the exit study"
@@ -915,6 +923,20 @@ def tp_backtest_note(k, path=TP_SH_CELLS):
             f"{lab} {float(cell[f'{c}_nofund'].iloc[0]) - float(live[f'{c}_nofund'].iloc[0]):+.2f}" for lab, c in hs)
     except Exception as e:
         return f"backtest: unreadable ({str(e)[:60]})"
+
+
+def tp1_backtest_note(tp, sl, ltp, lsl, h, path=None):
+    """(370) the TP +1 / +2 run's per-half Δ (shadow − live, NO-funding columns, S4 · 72 h; cells named tp{tp}|{h}h|stop{sl}) or None."""
+    try:
+        d = pd.read_csv(path or TP_SH_CELLS_TP1, usecols=lambda c: c == "cell" or c.endswith("_nofund"))
+        cell, live = d[d.cell == f"tp{tp:g}|{h:g}h|stop{sl:g}"], d[d.cell == f"tp{ltp:g}|{h:g}h|stop{lsl:g}"]
+        if not len(cell) or not len(live):
+            return None
+        hs = (("25-H1", "2025H1"), ("25-H2", "2025H2"), ("26-H1", "2026H1"), ("26-H2", "2026H2"))
+        return "backtest (DL 370 run) Δ vs live (no funding, S4 · 72 h) " + " / ".join(
+            f"{lab} {float(cell[f'{c}_nofund'].iloc[0]) - float(live[f'{c}_nofund'].iloc[0]):+.2f}" for lab, c in hs)
+    except Exception:
+        return None
 
 
 def tp_boot(d, days, n=TP_SH_BOOT_N, seed=TP_SH_BOOT_SEED, m=None):
@@ -951,7 +973,7 @@ def tp_gate_read(k, smp):
     fail = ([f"avg < +{TP_SH_MIN_GAIN:g}"] if avg < TP_SH_MIN_GAIN else []) + (["CI lower bound ≤ 0"] if ci is None or ci[0] <= 0 else []) \
         + ([f"top day ≥ {TP_SH_SHARE:.0%}"] if day_sh >= TP_SH_SHARE else []) + ([f"top fill ≥ {TP_SH_SHARE:.0%}"] if fill_sh >= TP_SH_SHARE else [])
     v = "KEEP" if fail else "CANDIDATE"
-    ci_t = (f"day-block bootstrap {TP_SH_BOOT_N} (seed {TP_SH_BOOT_SEED}) one-sided {lvl:.0%} LB {ci[0]:+.3f} (Bonferroni ×{len(TP_SHADOWS)}; "
+    ci_t = (f"day-block bootstrap {TP_SH_BOOT_N} (seed {TP_SH_BOOT_SEED}) one-sided {lvl:.2%} LB {ci[0]:+.3f} (Bonferroni ×{len(TP_SHADOWS)}; "
             f"[{ci[0]:+.3f}, {ci[1]:+.3f}])" if ci else "bootstrap n/a (< 2 days)")
     txt = (f"first {len(smp)} real fills on {len(set(days))} UTC days (incl. the 10-24 motivating batch — operator override, in-sample): avg Δ ({k} − live −{ltp:g}/{lsl:g}) "
            f"{avg:+.3f} %/fill · {ci_t} · top day {day_sh:.0%} / top fill {fill_sh:.0%} of the gain → "

@@ -1582,8 +1582,8 @@ class SignalThresholds(BaseModel):
     # entering on the study's S4: the FIRST 5m close on a UTC 4-hour boundary ≥ 4 h after the spike bar with close < the spike-anchored VWAP,
     # 24 h volume ≥ $20M, ≤ 96 h after the spike; one per episode (DB + the flatbase_episodes ledger, restart-safe; a missed boundary is never
     # caught up). Turnover (24 h volume / mcap) > 1 → trade; ≤ 1 → observe-only shadow (ledger SHADOW); unknown mcap → trade. Exit = price
-    # −8 % (resting maker TP) · +15 % stop (bot + exchange backstop) · 72 h. Size = the momentum-long mults (0.2 margin at 0.25 lev → ≈ $62 at 5×,
-    # $310 notional), NO slot cap and NOT counted in max_open_positions. Evidence (reports/FRENZY_FLATBASE_SHORT_2026-10-22*.md): closest
+    # −8 % (resting maker TP) · +15 % stop (bot + exchange backstop) · 72 h. Size = the momentum-long mults (0.2 margin at 0.25 lev → ≈ $100 margin /
+    # $500 notional at 5×, floor-bound below ≈ $2,050 equity), own cap flatbase_max_open, NOT counted in max_open_positions. Evidence (reports/FRENZY_FLATBASE_SHORT_2026-10-22*.md): closest
     # cell S4 · TP −8 · 72 h · stop 15 = +0.93 %/trade in 2026 [+0.28, +1.53], walk-forward unstable, fair-random p 0.050; turnover > 1
     # cohort +1.65 in-sample (2026-H2 held out +1.25 [−0.1, +2.4] — the OOS lift CI touches 0). 🔒 Gates (scripts/scout_flatbase_short.py +
     # the FRENZY table row, ALERT only): 3 stop-outs in a row or Σ ≤ −30 pts → review · first 10 avg < 0 → review · main read at 30 fills

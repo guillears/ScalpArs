@@ -51,6 +51,7 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    (turnover > 1 vs FLAT real, ≤ 1 vs FLAT shadows, same period; unscored turnover apart) · 🩳② MISSED / MAX_OPEN / UNREADABLE / refused
    setups per reason (N · avg · Σ) · 🩳③ FRENZY longs blocked PAIR_HELD by an open FLATBASE short per sleeve vs the short's own pnl + funding
    (LITE unpriced while LITE C is on; generic PAIR_HELD = unattributed). Read each section's coverage line first (waiting / unpriced / unscored ≠ rest).
+   📈 + the RE-SIZE LADDER line under the gate verdict (DL 363): stage (0.2 / 0.5 / 1.0), current run at this size · days · avg, the gate on that run → STEP-UP (also re-decide flatbase_max_open) / STEP-DOWN / next-step.
 ②g **🧭 WILLY A R_NOMISS (DECISION_LOG 350, 2026-10-23, alert-only)** — run scripts/scout_willy_nomiss.py (also in the opportunity
    scout): CLOSED WILLY-class fills from the deploy + 10 min (operator-closed out) split by `entry_frenzy_willy_nomiss` — R_NOMISS vs normal
    WILLY (WILLY + HT) same period: N · days · WR · avg % · Σ pts · $. Journal tallies (e = WILLY): A_NOMISS (allowed) · _MISSED (a red bar

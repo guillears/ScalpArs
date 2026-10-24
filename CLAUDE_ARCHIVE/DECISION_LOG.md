@@ -8812,3 +8812,17 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   capped; manual only when open; "(redeploy ≤ hard)" when the redeploy band is on). /api/balance (paper + live) gains flatbase_max_open +
   max_open_positions_redeploy. Display only — slot accounting unchanged.
 - Test: tests/test_flatbase_short.py (total line, lane text, both payloads carry the cap).
+
+## (363) 2026-10-23 — 📈 FLATBASE_SHORT re-size ladder in the scout (operator: "add the re-sizing of FLATBASE if it ends up being good"; observe-only)
+- The DL 348 gate already said "main read at 30 fills on ≥ 10 UTC days: avg ≥ +0.5 % → step the size up" but named no size. Frozen now
+  (scripts/scout_flatbase_short.py resize_lines, printed under the gate verdict): invest **0.2 → 0.5 → 1.0** × 5× (lev 0.25 unchanged). Today
+  0.2 is floor-bound (≈ $100 margin / $500 notional below ≈ $2,050 equity), so the first step is ≈ ×2.3 in notional (≈ $1,150), then ≈ $2,280.
+- Every rung is judged by the SAME frozen gate (services.flatbase.flatbase_gate) run on the CURRENT run of fills at that size (cell_multiplier;
+  fills since the last fill at a different size — 0.5 → 0.2 → 0.5 never reuses old 0.5 fills): STEP_UP → step-up candidate; OFF or REVIEW
+  (3 stop-outs in a row · Σ ≤ −30 pts · first 10 avg < 0) at a rung above 0.2 → step-down candidate. Deep review: no parallel bar, and a single
+  stop-out (≈ −15 pts) never triggers a step-down. An off-ladder invest value (tolerance 0.005) gets NO step verdict; fills with an
+  unknown size are counted aloud; a newest fill sized ≠ trading_config.json prints a sync warning. Above 0.2 the ladder line — not the sleeve
+  gate line (all fills, frozen first-30 sample, keeps saying STEP_UP) — is the size verdict.
+- 🔒 Every step up ALSO requires the operator to re-decide `flatbase_max_open` (10): FLATBASE holds no bot slot and the cap was sized for 0.2 —
+  at 1.0, 10 open ≈ 10 full slots of margin outside the bot's 4. The line prints the implied margin. Every step is the operator's decision
+  (nothing automatic). Test: tests/test_scout_flatbase_extra.py::test_resize_ladder_frozen_steps_and_step_down.

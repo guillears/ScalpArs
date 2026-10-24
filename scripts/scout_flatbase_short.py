@@ -72,7 +72,7 @@ DEC_PATTERNS = (os.path.expanduser("~/Downloads/scalpars_decisions_*.csv"), os.p
 CACHE = os.path.join(_R, "reports", "backtest_cache", "scout_flatbase_short")
 SLIP_DEF = 0.03                                              # % per taker side when the real fills carry too few slippage stamps
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "is_paper",
-              "funding_fee_usd", "entry_price", "quantity", "entry_slippage_pct", "entry_mcap_usd")
+              "funding_fee_usd", "entry_price", "quantity", "entry_slippage_pct", "entry_mcap_usd", "cell_multiplier")
 FUND_URL = "https://fapi.binance.com/fapi/v1/fundingRate?symbol={s}&startTime={a}&endTime={b}&limit=1000"
 FB_COLS = ("e", "pair", "price", "fb_spike_at", "fb_status", "fb_entry_bar_at", "fb_turnover", "fb_mcap_usd", "fb_vol24_usd", "fb_flat14_pct")
 LEDGER_COLS = FB_COLS + ("t", "fb_reason", "fb_first_seen_at")
@@ -706,6 +706,70 @@ def blocked_lines(ctx):
     return L + [""]
 
 
+# 📈 (DECISION_LOG 363, operator 2026-10-23: "add the re-sizing of FLATBASE if it ends up being good") — the frozen size ladder.
+# Size = flatbase_invest_mult (lev 0.25 = 5× unchanged); each fill carries its invest multiplier in cell_multiplier. Every rung is judged by
+# the SAME frozen gate as the sleeve (services.flatbase.flatbase_gate — first-30-on-10-days main read, net of funding, STEP_UP / OFF / REVIEW /
+# REREAD) run on the CURRENT run of fills at that size (deep review: no parallel, unfrozen bar; no one-stop day trigger).
+LADDER = (0.2, 0.5, 1.0)                     # momentum-long size (DL 348) → ½ slot → full slot
+LADDER_TOL = 0.005                           # the engine stamps the exact config float — 0.25 is OFF the ladder, not "0.2"
+FB_SLOT_MARGIN_REF = 456.0                   # ≈ one equal-split slot at ≈ $1,870 equity (for the cap note only)
+
+
+def resize_lines(real, inv_now=None):
+    """🔒 the frozen FLATBASE re-size ladder → printed lines (operator decides; nothing automatic). → STEP-UP candidate when flatbase_gate on
+    the current run at this size says STEP_UP; STEP-DOWN candidate (rungs above 0.2) when it says OFF or REVIEW. Every step up also needs the
+    operator to re-decide flatbase_max_open (FLATBASE holds no bot slot — the cap was sized for 0.2). Above 0.2 the ladder line — not the
+    sleeve gate line above it (all fills, frozen first-30 sample) — is the size verdict. Off the ladder → no step verdict. Never raises."""
+    try:
+        cap = 0
+        if inv_now is None:
+            from types import SimpleNamespace as _NS
+            with open(os.path.join(_R, "trading_config.json"), encoding="utf-8") as _fh:
+                _fp = flatbase_params(_NS(**json.load(_fh)["thresholds"]))   # the engine's own reading (invalid → its fallback)
+            inv_now, cap = float(_fp["invest"]), int(_fp.get("max_open") or 0)
+        inv_now = float(inv_now)
+        lvl = min(range(len(LADDER)), key=lambda i: abs(LADDER[i] - inv_now))
+        off_ladder = abs(LADDER[lvl] - inv_now) > LADDER_TOL
+        nxt = LADDER[lvl + 1] if lvl + 1 < len(LADDER) else None
+        if len(real):
+            srt = real.assign(_cm=pd.to_numeric(real.get("cell_multiplier"), errors="coerce")).sort_values("o")
+        else:
+            srt = real.assign(_cm=pd.Series(dtype=float))
+        n_nan = int(srt._cm.isna().sum())
+        known = srt[srt._cm.notna()]
+        # only the CURRENT run at this size: fills since the last fill at a different size (0.5 → 0.2 → 0.5 never reuses old 0.5 fills)
+        other = known[(known._cm - LADDER[lvl]).abs() > LADDER_TOL]
+        at = known[(known._cm - LADDER[lvl]).abs() <= LADDER_TOL]
+        if len(other):
+            at = at[at.o > other.o.max()]
+        days = at.o.dt.date.nunique() if len(at) else 0
+        L = [f"📈 Re-size ladder (DECISION_LOG 363, frozen): {' → '.join(f'{x:g}' for x in LADDER)} invest × 5× · now {inv_now:g} · current run "
+             f"at this size: {len(at)} fills on {days} days" + (f" · avg {at.net.mean():+.3f} %" if len(at) else "")
+             + (f" · ⚠ {n_nan} fill(s) with unknown size not counted" if n_nan else "")]
+        if len(known) and abs(float(known._cm.iloc[-1]) - inv_now) > LADDER_TOL:
+            L.append(f"  ⚠ the newest fill was sized {float(known._cm.iloc[-1]):g} but trading_config.json says {inv_now:g} — sync the config")
+        if off_ladder:
+            L.append(f"  ⚠ {inv_now:g} is OFF the ladder — no step verdict (set flatbase_invest_mult to a rung)")
+            return L
+        v, txt = flatbase_gate([(r.o.to_pydatetime(), r.net, r.close_reason) for r in at.itertuples()])
+        L.append(f"  gate on this run: {v} — {txt}")
+        if lvl > 0 and v in ("OFF", "REVIEW"):
+            L.append(f"  🛑 STEP-DOWN candidate to {LADDER[lvl - 1]:g} (operator decides)")
+            return L
+        if nxt is None:
+            L.append("  top of the ladder (full slot) — no further step")
+            return L
+        if v == "STEP_UP":
+            m = (f" — with the cap at {cap} that is up to ≈ ${cap * FB_SLOT_MARGIN_REF * nxt:,.0f} margin outside the bot slots "
+                 f"(≈ {cap * FB_SLOT_MARGIN_REF * nxt / (FB_SLOT_MARGIN_REF * 4):.1f}× the 4-slot book at ≈ $1,870 equity)" if cap else "")
+            L.append(f"  ✅ STEP-UP candidate {LADDER[lvl]:g} → {nxt:g} (operator decides) · ALSO re-decide flatbase_max_open{m}")
+        else:
+            L.append(f"  next step {LADDER[lvl]:g} → {nxt:g} when this gate reads STEP_UP (now {v})")
+        return L
+    except Exception as e:
+        return [f"📈 Re-size ladder: unreadable ({str(e)[:80]})"]
+
+
 def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klines=None, funding=None, klines1m=None, th_long=None):
     L = [f"## 🩳 FLATBASE_SHORT — flat-base FRENZY short (DECISION_LOG {DL}, discipline override, ALERT-only gates)", ""]
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
@@ -725,6 +789,7 @@ def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klin
              + (f" · funding unknown on {_unk} fill(s) (paper / unread — pnl % only)" if _unk else ""))
     v, txt = flatbase_gate([(r.o.to_pydatetime(), r.net, r.close_reason) for r in real.itertuples()])
     L.append(f"Gate verdict: {v} — {txt}")
+    L += resize_lines(real)
     sh = load_shadows(dec_paths)
     sh = sh[sh.t >= since] if len(sh) else sh
     from scout_long_stop4 import Budget

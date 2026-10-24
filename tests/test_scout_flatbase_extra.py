@@ -268,3 +268,54 @@ def test_cache_keys_and_final_no_klines(SC, tmp_path):
     fresh = NS(pair="GONEUSDT", spike_ms=sp + 30 * DAY, fs_ms=None, s4_ms=None, px=None, vol24=None)   # closed < 1 day ago: retried
     assert SC.price_setup("missed", fresh, None, sp + 30 * DAY + 102 * HOUR, klines=kl)["state"] == "UNPRICED"
     assert not os.path.exists(os.path.join(SC.CACHE, "setups", f"missed_GONEUSDT_{sp + 30 * DAY}_s0.030.json"))
+
+
+def test_resize_ladder_frozen_steps_and_step_down():
+    """📈 (DECISION_LOG 363) FLATBASE re-size ladder 0.2 → 0.5 → 1.0 (5× unchanged): every rung is judged by the sleeve's own frozen gate
+    (flatbase_gate) on the CURRENT run of fills at that size — STEP_UP → step-up candidate (+ re-decide flatbase_max_open); OFF / REVIEW at a
+    rung above 0.2 → step-down candidate. One stop-out never triggers a step-down (deep review I1)."""
+    import pandas as pd
+    import scout_flatbase_short as S
+    def fills(n, net, cm, days=None, reason="TAKE_PROFIT"):
+        days = days or n
+        return pd.DataFrame(dict(o=pd.to_datetime([f"2026-11-{1 + (i % days):02d}T10:00:{i % 60:02d}" for i in range(n)]),
+                                 net=[net] * n, cell_multiplier=[cm] * n, close_reason=[reason] * n)).sort_values("o", ignore_index=True)
+    t = " ".join(S.resize_lines(fills(5, 1.0, 0.2), inv_now=0.2))
+    assert "next step 0.2 → 0.5" in t and "now COLLECTING" in t and "CANDIDATE" not in t
+    t = " ".join(S.resize_lines(fills(30, 1.0, 0.2, 10), inv_now=0.2))
+    assert "✅ STEP-UP candidate 0.2 → 0.5" in t and "re-decide flatbase_max_open" in t
+    assert "✅ STEP-UP candidate 0.5 → 1" in " ".join(S.resize_lines(fills(30, 0.8, 0.5, 10), inv_now=0.5))
+    assert "next step 0.5 → 1" in " ".join(S.resize_lines(fills(12, 0.8, 0.5, 10), inv_now=0.5))      # collecting at the new size
+    assert "🛑 STEP-DOWN candidate to 0.2" in " ".join(S.resize_lines(fills(15, -0.5, 0.5, 10), inv_now=0.5))   # first 10 avg < 0
+    one_stop = pd.concat([fills(5, 1.0, 0.5, 5), fills(1, -15.1, 0.5, 1, "STOP_LOSS").assign(o=lambda d: d.o + pd.Timedelta(days=9))],
+                         ignore_index=True)
+    assert "STEP-DOWN" not in " ".join(S.resize_lines(one_stop, inv_now=0.5))                          # I1: one stop ≠ step down
+    three = pd.concat([fills(3, 1.0, 0.5, 3), fills(3, -15.1, 0.5, 3, "STOP_LOSS").assign(o=lambda d: d.o + pd.Timedelta(days=5))],
+                      ignore_index=True)
+    assert "🛑 STEP-DOWN" in " ".join(S.resize_lines(three, inv_now=0.5))                             # 3 stops in a row / Σ ≤ −30
+    assert "STEP-DOWN" not in " ".join(S.resize_lines(fills(15, -0.5, 0.2, 10), inv_now=0.2))          # no rung below 0.2
+    assert "top of the ladder" in " ".join(S.resize_lines(fills(3, 1.0, 1.0), inv_now=1.0))
+    assert "OFF the ladder" in " ".join(S.resize_lines(fills(3, 1.0, 0.3), inv_now=0.3))
+    assert "unreadable" in " ".join(S.resize_lines(None, inv_now=0.5))                                 # never raises
+    # after a step-down (0.5 fills exist, back at 0.2) only the new 0.2 run counts — the old 0.2 STEP_UP does not re-arm
+    back = pd.concat([fills(30, 1.0, 0.2, 10), fills(15, -0.5, 0.5, 10).assign(o=lambda d: d.o + pd.Timedelta(days=20)),
+                      fills(3, 1.0, 0.2, 3).assign(o=lambda d: d.o + pd.Timedelta(days=60))], ignore_index=True)
+    t = " ".join(S.resize_lines(back, inv_now=0.2))
+    assert "CANDIDATE" not in t and "3 fills on 3 days" in t
+    run2 = pd.concat([fills(15, 1.0, 0.5, 10), fills(2, 1.0, 0.2, 2).assign(o=lambda d: d.o + pd.Timedelta(days=20)),
+                      fills(4, 1.0, 0.5, 4).assign(o=lambda d: d.o + pd.Timedelta(days=40))], ignore_index=True)
+    assert "4 fills on 4 days" in " ".join(S.resize_lines(run2, inv_now=0.5))                         # 0.5 → 0.2 → 0.5
+    # caveman review: off the ladder (0.75 / 0.25) → no step verdict even with a good prior 0.5 run
+    t = " ".join(S.resize_lines(fills(30, 1.0, 0.5, 10), inv_now=0.75))
+    assert "OFF the ladder" in t and "CANDIDATE" not in t
+    assert "OFF the ladder" in " ".join(S.resize_lines(fills(3, 1.0, 0.25), inv_now=0.25))
+    # unknown size → counted aloud, never silently dropped; newest fill ≠ config → sync warning
+    t = " ".join(S.resize_lines(fills(4, 1.0, float("nan")), inv_now=0.2))
+    assert "4 fill(s) with unknown size not counted" in t and "0 fills on 0 days" in t
+    assert "sync the config" in " ".join(S.resize_lines(fills(4, 1.0, 0.5), inv_now=0.2))
+    # OFF from the main read (30 on 10 days avg < 0, no early warning: wins then losses) at 0.5 → step down
+    mixed = pd.concat([fills(10, 2.0, 0.5, 10), fills(20, -1.5, 0.5, 10).assign(o=lambda d: d.o + pd.Timedelta(days=10))], ignore_index=True)
+    assert "🛑 STEP-DOWN candidate to 0.2" in " ".join(S.resize_lines(mixed, inv_now=0.5))
+    # the config-read path prints the cap note on a step-up
+    t = " ".join(S.resize_lines(fills(30, 1.0, S.flatbase_params(S._frozen_th())["invest"], 10)))
+    assert "re-decide flatbase_max_open" in t or "OFF the ladder" in t

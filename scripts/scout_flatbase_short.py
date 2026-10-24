@@ -65,7 +65,7 @@ import scout_gatekit as _GK                                  # noqa: E402
 import scout_willy_hold_off as _HO                           # noqa: E402  (the shared orders-export loader: dedup, CLOSED wins, paper + live)
 from services.flatbase import (FLATBASE_SHORT, flatbase_gate, flatbase_observe_gate, price_path_exit, flatbase_params,   # noqa: E402
                                BAR_MS, net_of_funding_pct, s4_scan, ST_NOT_FLAT, ST_MISSED, ST_REFUSED, ST_UNREADABLE,
-                               ACT_ENTER, ACT_MISSED, ACT_EXPIRED, ACT_WAIT)
+                               ACT_ENTER, ACT_MISSED, ACT_EXPIRED, ACT_WAIT, STOP_REASONS)
 
 DL = 348
 DEC_PATTERNS = (os.path.expanduser("~/Downloads/scalpars_decisions_*.csv"), os.path.join(_R, "reports", "BASELINE*_decisions.csv"))
@@ -770,7 +770,303 @@ def resize_lines(real, inv_now=None):
         return [f"📈 Re-size ladder: unreadable ({str(e)[:80]})"]
 
 
-def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klines=None, funding=None, klines1m=None, th_long=None):
+# 🎯 (DECISION_LOG 367, operator 2026-10-24: "something to consider, lowering the TP of FLATBASE trades" — after KAT 10-24 peaked +6 % and
+# stopped −15) — exit shadows on every REAL fill: (take-profit %, stop %), the 72 h hold unchanged. TP5_SL10 / TP5_SL5 (operator 2026-10-24:
+# "a 5 % TP with a different SL?"); TP8_SL10 = the isolating cell (today's TP, the 10 % stop alone). Prior = the exit study's S4 · 72 h cells
+# (reports/FRENZY_FLATBASE_SHORT_2026-10-22_EXITS_cells.csv, the NO-FUNDING columns — the shadows leave funding out too): today's −8 / 15 wins
+# every half against every TP −5 cell; TP −3 and a 5 % stop were never in its grid (tp_backtest_note prints the per-half Δ at read time).
+TP_SHADOWS = {"TP5": (5.0, 15.0), "TP3": (3.0, 15.0), "TP5_SL10": (5.0, 10.0), "TP5_SL5": (5.0, 5.0), "TP8_SL10": (8.0, 10.0)}
+TP_SH_DL = 367
+TP_SH_PARITY_TOL, TP_SH_PARITY_MIN = 0.50, 0.90                # the live re-walk vs the booked pnl_percentage (+ 100 % on the live-stopped fills)
+TP_SH_N, TP_SH_DAYS, TP_SH_MIN_GAIN, TP_SH_SHARE = 30, 10, 0.10, 0.50
+TP_SH_BOOT_N, TP_SH_BOOT_SEED, TP_SH_ALPHA = 4000, 367, 0.05   # UTC-day-block bootstrap; one-sided α / len(TP_SHADOWS) (Bonferroni)
+TP_SH_ENTRY_TOL_MS = 60_000                                   # a fill ≤ 60 s into its 5m bar starts the path AT that bar (like price_shadow)
+TP_SH_EPS = 0.005                                             # |Δ| ≤ this = unchanged in the split lines
+TP_SH_STATE = os.path.join(_R, "reports", ".flatbase_tp_shadow_gate.json")
+TP_SH_FINAL = "cache"                                         # → CACHE/tp_shadow_unpriceable.json at call time (UNPRICEABLE_FINAL fills, never re-fetched)
+TP_SH_FINAL_NAME = "tp_shadow_unpriceable.json"
+TP_SH_CELLS = os.path.join(_R, "reports", "FRENZY_FLATBASE_SHORT_2026-10-22_EXITS_cells.csv")
+
+
+def _th_tp(tp, stop=15.0):
+    from types import SimpleNamespace
+    th = _frozen_th()
+    return SimpleNamespace(**dict(vars(th), flatbase_tp_pct=float(tp), flatbase_stop_pct=float(stop)))
+
+
+def _tp_live():
+    """(TP %, stop %) of the shipped exit — flatbase_params on the frozen DL 348 rule (never a later settings change)."""
+    p = flatbase_params(_frozen_th())
+    return float(p['tp']), float(p['stop'])
+
+
+def tp_path_start(t_ms):
+    """→ (path start ms, entry bar skipped). Real fills open ~HH:00:09–13: a fill ≤ 60 s into its 5m bar starts AT that bar (the bar opening
+    at the boundary — price_shadow's and the exit study's convention; a few seconds of pre-fill prints); later in the bar → the next bar."""
+    b = int(t_ms) // BAR_MS * BAR_MS
+    return (b, False) if int(t_ms) - b <= TP_SH_ENTRY_TOL_MS else (b + BAR_MS, True)
+
+
+def tp_shadow_walk(entry_price, rows, slip=SLIP_DEF):
+    """→ {"LIVE" | shadow: price_path_exit dict} on one path, or None (no path / a variant still OPEN). entry_price = the REAL fill (already
+    slipped): price_path_exit slips its decision price by (1 − slip), so it gets entry / (1 − slip) and its entry slip cancels — the entry is
+    priced at slip 0, the taker slip stays on a stop / time exit only (a resting TP has none)."""
+    s = float(slip or 0)
+    dec = float(entry_price) / (1.0 - s / 100.0)
+    out = {}
+    for k, (tp, sl) in (("LIVE", _tp_live()),) + tuple(TP_SHADOWS.items()):
+        x = price_path_exit(dec, rows, _th_tp(tp, sl), slip_pct=s)
+        if x is None or x["reason"] == "OPEN":
+            return None
+        out[k] = x
+    return out
+
+
+def _tp_rows(r, bud, now_ms, fetch=True, klines=None):
+    start, _ = tp_path_start(int(pd.Timestamp(r.o).value // 1_000_000))
+    hb = int(round(flatbase_params(_frozen_th())['max_hold_h'] * 12))
+    if klines is None:
+        import scout_long_stop4 as _LS
+        return _LS.fapi_klines(str(r.pair), "5m", start, hb, bud, CACHE, now=now_ms, fetch=fetch), start, hb
+    return klines(str(r.pair), start, hb), start, hb
+
+
+def tp_shadow_price(r, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF):
+    """one real fill → {"LIVE": re-walk at the shipped exit, <shadow>: …} (net %, price + fees, NO funding — the same hold-independent
+    convention for every variant) or None when the path is unreadable / a variant's 72 h window is not over. Never raises."""
+    try:
+        rows, _, _ = _tp_rows(r, bud, now_ms, fetch=fetch, klines=klines)
+        w = tp_shadow_walk(float(r.entry_price), rows, slip) if rows else None
+        return None if w is None else {k: float(x["net_pct"]) for k, x in w.items()}
+    except Exception:
+        return None
+
+
+def tp_shadow_eval(r, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, finals=None):
+    """→ (status, walk). PRICED (walk) · HOLD (not fetched / budget stop / window not over) · UNPRICEABLE_FINAL (the 72 h window closed
+    > 1 day ago and the path came back empty or OPEN on TWO separate runs — a single timeout also returns [], so one miss is never final;
+    recorded in `finals` {key: …} and never re-fetched once final). Never raises."""
+    try:
+        start, _ = tp_path_start(int(pd.Timestamp(r.o).value // 1_000_000))
+        key = f"{r.pair}|{start}"
+        _fe = finals.get(key) if finals is not None else None
+        if finals is not None and key in finals and (not isinstance(_fe, dict) or _fe.get("final", True) is True):   # malformed → final
+            return "UNPRICEABLE_FINAL", None
+        rows, start, hb = _tp_rows(r, bud, now_ms, fetch=fetch, klines=klines)
+        if rows is None:                                                       # budget / cooldown / no fetch — retry next run
+            return "HOLD", None
+        w = tp_shadow_walk(float(r.entry_price), rows, slip) if rows else None
+        if w is not None:
+            return "PRICED", w
+        if int(now_ms) >= start + hb * BAR_MS + FINAL_AFTER_MS and finals is not None:
+            e = finals.setdefault(key, dict(pair=str(r.pair), opened=str(r.o), misses=0, final=False))
+            e.update(misses=int(e.get("misses") or 0) + 1, bars=len(rows), at=pd.Timestamp.now("UTC").isoformat())
+            if e["misses"] >= 2:                                               # a second run's miss → final
+                e["final"] = True
+                return "UNPRICEABLE_FINAL", None
+        return "HOLD", None
+    except Exception:
+        return "HOLD", None
+
+
+def _live_kind(cr):
+    s = str(cr or "").strip().upper().split(" ")[0]
+    return "STOP" if s in STOP_REASONS else "TIME" if s.startswith("MAX_HOLD") else "TP" if "TP" in s else "OTHER"
+
+
+def tp_split_line(k, ok):
+    """the two-sided read of one shadow on every priced fill: live-STOPPED → saved / unchanged / deeper · live-TP → give-back (the shadow's
+    lower TP) / cut winners (the shadow STOPPED a live winner: Δ ≈ −(TP_live + stop)) · live-TIME / other. n · ΣΔ each."""
+    b = {}
+    for r, w in ok:
+        d = w[k]["net_pct"] - w["LIVE"]["net_pct"]
+        lk, sr = _live_kind(r.close_reason), str(w[k]["reason"])
+        if lk == "STOP":
+            c = "stopped→saved" if d > TP_SH_EPS else "stopped→deeper" if d < -TP_SH_EPS else "stopped→unchanged"
+        elif lk == "TP":
+            c = ("TP→cut winner" if sr in STOP_REASONS else "TP→give-back" if d < -TP_SH_EPS else "TP→unchanged")
+        else:
+            c = f"{lk.lower()}→" + ("cut" if sr in STOP_REASONS else "TP" if "TP" in sr else "time")
+        n, s = b.get(c, (0, 0.0))
+        b[c] = (n + 1, s + d)
+    order = ("stopped→saved", "stopped→unchanged", "stopped→deeper", "TP→give-back", "TP→cut winner", "TP→unchanged")
+    keys = [c for c in order if c in b] + sorted(c for c in b if c not in order)
+    return f"  split {k}: " + (" · ".join(f"{c} {b[c][0]} (Δ Σ {b[c][1]:+.2f})" for c in keys) if keys else "none priced")
+
+
+def tp_backtest_note(k, path=TP_SH_CELLS):
+    """the exit study's per-half Δ (shadow − live, NO-funding columns, S4 · 72 h) for the same cell, or why there is none. Never raises."""
+    try:
+        tp, sl = TP_SHADOWS[k]
+        ltp, lsl = _tp_live()
+        h = flatbase_params(_frozen_th())['max_hold_h']
+        d = pd.read_csv(path, usecols=lambda c: c == "cell" or c.endswith("_nofund"))
+        d = d[d.cell.astype(str).str.startswith(f"S4|") & d.cell.astype(str).str.contains(f"|{h:g}h|", regex=False)]
+        grid_tp = {c.split("|")[1] for c in d.cell}
+        grid_sl = {c.split("|")[3] for c in d.cell}
+        miss = ([f"TP −{tp:g}"] if f"tp{tp:g}" not in grid_tp else []) + ([f"stop {sl:g}"] if f"stop{sl:g}" not in grid_sl else [])
+        if miss:
+            return f"backtest: {' and '.join(miss)} never in the exit-study grid — no prior"
+        cell, live = d[d.cell == f"S4|tp{tp:g}|{h:g}h|stop{sl:g}"], d[d.cell == f"S4|tp{ltp:g}|{h:g}h|stop{lsl:g}"]
+        if not len(cell) or not len(live):
+            return "backtest: cell missing in the exit study"
+        hs = (("2025", "2025"), ("26-H1", "2026H1"), ("26-H2", "2026H2"))
+        return "backtest Δ vs live (no funding, S4 · 72 h) " + " / ".join(
+            f"{lab} {float(cell[f'{c}_nofund'].iloc[0]) - float(live[f'{c}_nofund'].iloc[0]):+.2f}" for lab, c in hs)
+    except Exception as e:
+        return f"backtest: unreadable ({str(e)[:60]})"
+
+
+def tp_boot(d, days, n=TP_SH_BOOT_N, seed=TP_SH_BOOT_SEED, m=None):
+    """UTC-day-block bootstrap of the pooled avg Δ → (one-sided lower bound, upper bound) at α / m each side (Bonferroni over the m
+    shadows); None (< 2 days)."""
+    import numpy as np
+    m = len(TP_SHADOWS) if m is None else m
+    g = pd.DataFrame(dict(p=np.asarray(d, float), d=[str(x) for x in days])).groupby("d").p.agg(["sum", "count"])
+    if len(g) < 2:
+        return None
+    s, c = g["sum"].values, g["count"].values
+    idx = np.random.default_rng(seed).integers(0, len(g), size=(n, len(g)))
+    mu = s[idx].sum(1) / c[idx].sum(1)
+    q = 100.0 * TP_SH_ALPHA / m
+    return float(np.percentile(mu, q)), float(np.percentile(mu, 100.0 - q))
+
+
+def tp_gate_read(k, smp):
+    """🔒 one shadow's frozen read on the frozen sample [(row, walk)] → (verdict, text). Parity is checked by the caller."""
+    ltp, lsl = _tp_live()
+    tp, sl = TP_SHADOWS[k]
+    d = [w[k]["net_pct"] - w["LIVE"]["net_pct"] for _, w in smp]
+    days = [r.o.date() for r, _ in smp]
+    avg = sum(d) / len(d)
+    ci = tp_boot(d, days)
+    lvl = 1.0 - TP_SH_ALPHA / len(TP_SHADOWS)
+    byday = {}
+    for x, dd in zip(d, days):
+        byday[dd] = byday.get(dd, 0.0) + x
+    pos_d = [v for v in byday.values() if v > 0]
+    day_sh = max(pos_d) / sum(pos_d) if pos_d else 1.0
+    pos_f = [x for x in d if x > 0]
+    fill_sh = max(pos_f) / sum(pos_f) if pos_f else 1.0
+    fail = ([f"avg < +{TP_SH_MIN_GAIN:g}"] if avg < TP_SH_MIN_GAIN else []) + (["CI lower bound ≤ 0"] if ci is None or ci[0] <= 0 else []) \
+        + ([f"top day ≥ {TP_SH_SHARE:.0%}"] if day_sh >= TP_SH_SHARE else []) + ([f"top fill ≥ {TP_SH_SHARE:.0%}"] if fill_sh >= TP_SH_SHARE else [])
+    v = "KEEP" if fail else "CANDIDATE"
+    ci_t = (f"day-block bootstrap {TP_SH_BOOT_N} (seed {TP_SH_BOOT_SEED}) one-sided {lvl:.0%} LB {ci[0]:+.3f} (Bonferroni ×{len(TP_SHADOWS)}; "
+            f"[{ci[0]:+.3f}, {ci[1]:+.3f}])" if ci else "bootstrap n/a (< 2 days)")
+    txt = (f"first {len(smp)} real fills on {len(set(days))} UTC days (incl. the 10-24 motivating batch — operator override, in-sample): avg Δ ({k} − live −{ltp:g}/{lsl:g}) "
+           f"{avg:+.3f} %/fill · {ci_t} · top day {day_sh:.0%} / top fill {fill_sh:.0%} of the gain → "
+           + (f"CANDIDATE: operator decides TP −{tp:g} / stop {sl:g} · if adopted: revert to TP −{ltp:g} / stop {lsl:g} if the first 15 fills after the switch "
+              f"average < the live-exit re-walk on the same fills" if v == "CANDIDATE" else f"keep −{ltp:g} / {lsl:g} ({'; '.join(fail)})")
+           + f" · in-sample haircut 30–50 % (levels chosen after the 10-24 batch, which is in the sample) → expect {avg * 0.5:+.3f}…{avg * 0.7:+.3f}"
+           + f" · {tp_backtest_note(k)}")
+    return v, txt
+
+
+def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, state_path=TP_SH_STATE, final_path=TP_SH_FINAL):
+    """🔒 (DECISION_LOG 367) the frozen exit-shadow reads → printed lines. Δ = shadow − the live re-walk (same path, same fees / slippage).
+    Split lines on every priced fill. Frozen sample = the first 30 real fills on ≥ 10 UTC days of the FLATBASE cohort run() builds (DL 348
+    deploy + 10 min, every paper + live export, operator-closed out) — operator override 2026-10-24 ("COUNT THEM!"): the 6 motivating 10-24
+    fills are counted (in-sample), the verdict prints the 30–50 % haircut; UNPRICEABLE_FINAL fills are out (counted).
+    CANDIDATE (operator decides) iff avg Δ ≥ +0.10 ∧ day-block bootstrap Bonferroni LB > 0 ∧ no UTC day / fill ≥ 50 % of the positive Δ —
+    read only when parity on the sample ≥ 90 % ∧ 100 % on its live-stopped fills; else KEEP. A sample fill still HOLD holds. Never raises."""
+    import json as _j
+    ltp, lsl = _tp_live()
+    L = [f"🎯 Exit shadows (DECISION_LOG {TP_SH_DL}, frozen, observe-only): "
+         f"{' · '.join(f'{k} TP −{tp:g} / stop {sl:g}' for k, (tp, sl) in TP_SHADOWS.items())} vs the live TP −{ltp:g} / stop {lsl:g} on the "
+         f"same path (72 h · fees · entry at the real fill, taker slip {slip:.3f} % on stop / time exits · funding left out)"]
+    try:
+        if final_path == TP_SH_FINAL:
+            final_path = os.path.join(CACHE, TP_SH_FINAL_NAME)          # resolved per call: a test's CACHE monkeypatch keeps it in tmp
+        finals = {}
+        try:
+            if final_path and os.path.exists(final_path):
+                with open(final_path, encoding="utf-8") as fh:
+                    finals = _j.load(fh) or {}
+        except Exception:
+            finals = {}
+        n_fin0 = _j.dumps(finals, sort_keys=True)                      # a miss count or a new final both rewrite the file
+        rs = real.sort_values("o") if len(real) else real
+        rows_ = list(rs.itertuples())
+        ev = [tp_shadow_eval(r, bud, now_ms, fetch=fetch, klines=klines, slip=slip, finals=finals) for r in rows_]
+        if final_path and _j.dumps(finals, sort_keys=True) != n_fin0:
+            try:
+                os.makedirs(os.path.dirname(final_path), exist_ok=True)
+                with open(final_path, "w", encoding="utf-8") as fh:
+                    _j.dump(finals, fh, indent=1)
+            except Exception:
+                pass
+        ok = [(r, w) for r, (s, w) in zip(rows_, ev) if s == "PRICED"]
+        n_fin = sum(1 for s, _ in ev if s == "UNPRICEABLE_FINAL")
+        n_skip = sum(1 for r in rows_ if tp_path_start(int(pd.Timestamp(r.o).value // 1_000_000))[1])
+        L.append(f"  priced {len(ok)} / {len(rows_)} real fills · hold {sum(1 for s, _ in ev if s == 'HOLD')} · UNPRICEABLE_FINAL {n_fin} (out, "
+                 f"never re-fetched)" + (f" · {n_skip} fill(s) > 60 s into the 5m bar → path from the next bar" if n_skip else ""))
+        if not ok:
+            L.append(f"  0 / {len(rows_)} real fills priced yet")
+        else:
+            par = sum(1 for r, w in ok if abs(w["LIVE"]["net_pct"] - float(r.pct)) <= TP_SH_PARITY_TOL) / len(ok)
+            L.append(f"  parity (live re-walk vs booked, ±{TP_SH_PARITY_TOL:g}) {par:.0%} on all priced · " + " · ".join(
+                [f"live re-walk avg {sum(w['LIVE']['net_pct'] for _, w in ok) / len(ok):+.3f}"]
+                + [f"{k} avg {sum(w[k]['net_pct'] for _, w in ok) / len(ok):+.3f} (Δ Σ {sum(w[k]['net_pct'] - w['LIVE']['net_pct'] for _, w in ok):+.2f})"
+                   for k in TP_SHADOWS]))
+            L.append("  per fill: " + " · ".join(f"{r.pair} {r.o:%m-%d %H:%M} booked {float(r.pct):+.2f} | live {w['LIVE']['net_pct']:+.2f} "
+                                                 + " ".join(f"{k} {w[k]['net_pct']:+.2f}" for k in TP_SHADOWS) for r, w in ok[-20:]))
+            L += [tp_split_line(k, ok) for k in TP_SHADOWS]
+        st = {}
+        try:
+            if state_path and os.path.exists(state_path):
+                with open(state_path, encoding="utf-8") as fh:
+                    st = _j.load(fh) or {}
+        except Exception:
+            st = {}
+        smp, ds, n_post = None, set(), 0
+        post = [(r, s, w) for r, (s, w) in zip(rows_, ev) if s != "UNPRICEABLE_FINAL"]
+        n_post = len(post)
+        for i, (r, _, _) in enumerate(post):
+            ds.add(r.o.date())
+            if i + 1 >= TP_SH_N and len(ds) >= TP_SH_DAYS:
+                smp = post[:i + 1]
+                break
+        par_txt, par_ok = "", False
+        if smp is not None and not any(s != "PRICED" for _, s, _ in smp):
+            par_s = sum(1 for r, _, w in smp if abs(w["LIVE"]["net_pct"] - float(r.pct)) <= TP_SH_PARITY_TOL) / len(smp)
+            stp = [(r, w) for r, _, w in smp if _live_kind(r.close_reason) == "STOP"]
+            # an exchange-BACKSTOP fill books at the backstop (≈ stop + 0.5) — the re-walk prices the bot stop: within 1.0 for those
+            _tol = lambda r: TP_SH_PARITY_TOL + (0.5 if "BACKSTOP" in str(r.close_reason).upper() else 0.0)
+            stp_ok = sum(1 for r, w in stp if abs(w["LIVE"]["net_pct"] - float(r.pct)) <= _tol(r))
+            par_ok = par_s >= TP_SH_PARITY_MIN and stp_ok == len(stp)
+            par_txt = f"parity on the sample {par_s:.0%} (≥ {TP_SH_PARITY_MIN:.0%}) · live-stopped {stp_ok}/{len(stp)} (100 % required)"
+            L.append(f"  frozen sample: {par_txt}" + ("" if par_ok else " → no verdict (parity)"))
+        for k in TP_SHADOWS:
+            name = f"FB_TP_{k}"
+            if name in st:
+                L.append(f"  {name}: {st[name]['verdict']} — {st[name]['text']} (frozen {str(st[name].get('at', ''))[:16]} UTC)")
+                continue
+            if smp is None:
+                L.append(f"  {name}: COLLECTING — {n_post}/{TP_SH_N} real fills on {len(ds)}/{TP_SH_DAYS} days · {tp_backtest_note(k)}")
+                continue
+            if any(s != "PRICED" for _, s, _ in smp):
+                L.append(f"  {name}: HOLD — {sum(s != 'PRICED' for _, s, _ in smp)} fill(s) in the frozen {len(smp)} not priced yet")
+                continue
+            if not par_ok:
+                L.append(f"  {name}: no verdict (parity)")
+                continue
+            v, txt = tp_gate_read(k, [(r, w) for r, _, w in smp])
+            txt += f" · {par_txt}"
+            L.append(f"  {name}: {v} — {txt}")
+            if state_path:
+                try:
+                    st[name] = {"verdict": v, "text": txt, "at": pd.Timestamp.now("UTC").isoformat()}
+                    with open(state_path, "w", encoding="utf-8") as fh:
+                        _j.dump(st, fh, indent=1)
+                except Exception:
+                    pass
+        return L
+    except Exception as e:
+        return L + [f"  unreadable ({str(e)[:80]})"]
+
+
+def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klines=None, funding=None, klines1m=None, th_long=None,
+        tp_state_path=TP_SH_STATE, tp_klines=None, tp_final_path=TP_SH_FINAL):
     L = [f"## 🩳 FLATBASE_SHORT — flat-base FRENZY short (DECISION_LOG {DL}, discipline override, ALERT-only gates)", ""]
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     if since_ms is None:
@@ -811,7 +1107,9 @@ def run(now_ms=None, paths=None, dec_paths=None, since_ms=None, fetch=True, klin
              + (f" · avg {sum(p for _, p in priced) / len(priced):+.3f} %" if priced else "")
              + (f" · ⚠ fetch stopped: {bud.why}" if bud.stop else ""))
     ov, otxt = flatbase_observe_gate(list(real.net), same)
-    L += [f"Observe-cohort verdict: {ov} — {otxt}", ""]
+    L.append(f"Observe-cohort verdict: {ov} — {otxt}")
+    L += tp_shadow_lines(real, bud, now_ms, fetch=fetch, klines=(tp_klines or klines), slip=slip, state_path=tp_state_path,
+                         final_path=tp_final_path) + [""]
     # ── DL 348 addendum: the three observe lines (each its own section, crash-isolated; the same Budget) ──
     try:
         frame = read_decisions(dec_paths)

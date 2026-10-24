@@ -8931,3 +8931,41 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   timeouts are transient); a code or environment error holds (never turns NODATA_FINAL); a priced refusal behind an earlier, still
   unresolved same-pair refusal is OVERLAP? (holds) until that one resolves; the newest-export stamp uses filename stamps only (archived
   copies without one never move the freeze); tests block the 1m fetch and the timecap cache too.
+
+## (367) 2026-10-24 — 🎯 FLATBASE_SHORT exit shadows: lower take-profit / tighter stop on every real fill (operator: "something to consider, lowering the tp to flatbase trades" · "what about a 5 % TP with a different SL? −5 % or −10 %?"; observe-only)
+- Trigger: the 10-24 paper batch — BMT / INIT / KAT stopped at −15.1 (KAT after peaking +5.98, INIT +2.68), BTR / ARK took +7.95. On those
+  fills TP −5 would have saved KAT; the operator asked for lower targets and tighter stops.
+- scripts/scout_flatbase_short.py tp_shadow_lines: every REAL closed FLATBASE fill (the run() cohort: DL 348 deploy + 10 min, all paper +
+  live exports, operator-closed out) is re-walked on its public 5m path with services.flatbase.price_path_exit (stop first on a bar touching
+  both, TP maker, stop / time taker; funding EXCLUDED — the hold-independent convention for every variant; a squeeze pays the short's
+  funding, so leaving it out is conservative for the shorter-holding shadows) under the live exit (read from flatbase_params(_frozen_th()),
+  today TP −8 / stop 15; parity vs the booked pnl_percentage, ±0.5) and five shadows: TP5 (−5 / 15) · TP3 (−3 / 15) · TP5_SL10 (−5 / 10) ·
+  TP5_SL5 (−5 / 5) · TP8_SL10 (−8 / 10, added on review: the isolating cell — the 10 % stop alone). 72 h hold unchanged. Δ = shadow − live
+  re-walk on the same path.
+- Conventions: ENTRY BAR — real fills open ~HH:00:09–13; a fill ≤ 60 s into its 5m bar starts the path AT that bar (the bar opening at the
+  boundary, like price_shadow and the exit study); later → the next bar (counted on the priced line). SLIPPAGE — entry_price is the real,
+  already-slipped fill: priced at slip 0 (price_path_exit gets entry / (1 − slip) so its entry slip cancels), the taker slip (the fills'
+  median) stays on stop / time exits only. UNPRICEABLE_FINAL — a fill whose 72 h window closed > 1 day ago with no priceable path (fapi []
+  / a short path still OPEN) on TWO separate runs (a single timeout also returns [], so one miss is never final) is dropped from the
+  sample, counted, recorded in reports/backtest_cache/scout_flatbase_short/tp_shadow_unpriceable.json and never re-fetched. A live stop filled
+  by the exchange BACKSTOP (≈ stop + 0.5) gets a ±1.0 parity tolerance on the live-stopped check (the re-walk prices the bot stop).
+- Split lines per shadow on every priced fill (the two-sided read, 🔒 EXIT/STOP COUNTERFACTUALS): live-STOPPED → saved / unchanged / deeper ·
+  live-TP → give-back / cut winners (the shadow stopped a live winner, Δ ≈ −(TP_live + stop)) · live-TIME; n · ΣΔ each.
+- 🔒 Frozen read per shadow (FB_TP_<name>, reports/.flatbase_tp_shadow_gate.json, decided once). Sample = the first 30 real FLATBASE fills on
+  ≥ 10 UTC days of the run() cohort. **Operator declared override (2026-10-24, "COUNT THEM! count all the flatbase trades we have"): the 6
+  motivating fills are counted (in-sample) — the verdict prints the 30–50 % haircut.** CANDIDATE (operator decides the exit) iff ALL:
+  (a) avg Δ ≥ +0.10 %/fill · (b) UTC-day-block bootstrap (4,000 resamples, seed 367) one-sided lower bound > 0 at 1 − 0.05/5 = 99 %
+  (Bonferroni across the 5 shadows; the CI is printed) · (c) no single UTC DAY ≥ 50 % of the positive Δ (WINDOW-UNITS) and no single fill
+  ≥ 50 % · (d) parity on the frozen sample ≥ 90 % AND 100 % on its live-stopped fills (else no verdict, nothing persisted); else KEEP −8 / 15.
+  A sample fill still HOLD holds the freeze. The verdict text carries the 30–50 % haircut, the exit study's per-half Δ of the same cell and,
+  on CANDIDATE, the pre-committed revert gate: "if adopted: revert to TP −8 / stop 15 if the first 15 fills after the switch average < the
+  live-exit re-walk on the same fills". Ship one change at a time — at most one shadow is adopted per read.
+- Prior (reports/FRENZY_FLATBASE_SHORT_2026-10-22_EXITS_cells.csv, S4 · 72 h, NO-FUNDING columns — the shadows' convention; Δ vs today's
+  −8 / 15, 2025 / 2026-H1 / 2026-H2): TP5 −0.26 / −0.41 / −0.70 · TP5_SL10 −0.23 / −0.73 / −0.61 · TP8_SL10 −0.06 / −0.35 / +0.07 —
+  today's exit beats every TP −5 cell in every half; TP −3 and a 5 % stop were never in the grid (no prior). The profit-lock study (10-23)
+  found every lock before −8 lowers the average (a short at +6 % reaches −8 89 % of the time).
+- First live read (6 fills on 2 days, 100 % parity, slip −0.016 % median): live re-walk −3.57 · TP5 −1.73 · TP3 −3.07 · TP5_SL10 −0.07 ·
+  TP5_SL5 +1.60 · TP8_SL10 −7.07 %/fill (the 10 % stop cut two +7.9 winners) — COLLECTING 6/30 on 2/10 days; no change.
+- Tests: tests/test_scout_flatbase_extra.py (entry-bar start ms, slippage convention, live levels, CANDIDATE / freeze / verbatim persisted
+  text, day concentration vs fill concentration, bootstrap-only fail, HOLD → resolves, UNPRICEABLE_FINAL never re-fetched, stopped-fill
+  parity, cut-winner split, guard: no test run() writes the real state / final files); tests/test_flatbase_short.py run() isolated.

@@ -80,7 +80,8 @@ def test_nonflat_line_cohort_s4_pricing_turnover_and_cache(SC, tmp_path):
                        entry_strategy="FLATBASE_SHORT", pnl=2.0, pnl_percentage=7.5, close_reason="FRENZY_TP", entry_price=1.0, quantity=50.0)
                   ]).to_csv(orders, index=False)
     since = sp - 3 * DAY
-    L = SC.run(now_ms=now, paths=[str(orders)], dec_paths=[str(dec)], since_ms=since, klines=kl, funding=lambda s, a, b: -0.2)
+    L = SC.run(now_ms=now, paths=[str(orders)], dec_paths=[str(dec)], since_ms=since, klines=kl, funding=lambda s, a, b: -0.2,
+               tp_state_path=None, tp_final_path=None)
     txt = "\n".join(L)
     sec = txt[txt.index("## 🩳①"):txt.index("## 🩳②")]
     assert "Cohort: 3 NOT_FLAT episodes" in sec and "priced 2 · waiting 1" in sec                     # TRACKING folded into its decision
@@ -92,7 +93,7 @@ def test_nonflat_line_cohort_s4_pricing_turnover_and_cache(SC, tmp_path):
     assert "unscored (no mcap source) N 1" in sec and "FLAT real N 1" in sec
     # cached per setup: a second run with no network gives the same numbers
     L2 = SC.run(now_ms=now, paths=[str(orders)], dec_paths=[str(dec)], since_ms=since, klines=lambda *a: pytest.fail("refetched"),
-                funding=lambda s, a, b: pytest.fail("refetched"))
+                funding=lambda s, a, b: pytest.fail("refetched"), tp_klines=lambda *a: [], tp_state_path=None, tp_final_path=None)   # (367) own path
     t2 = "\n".join(L2)
     assert f"> 1 N 1 · WR {100 if want > 0 else 0}% · avg {want:+.3f} %" in t2
     assert os.path.exists(os.path.join(SC.CACHE, "setups", f"nonflat_NF1USDT_{sp}_s0.030.json"))
@@ -140,7 +141,8 @@ def test_missed_line_per_reason(SC, tmp_path):
         dict(e="FLATBASE", pair="UNRUSDT", fb_spike_at=_iso(int(flat_rows[on2][0]) + BAR), fb_status="UNREADABLE",
              fb_reason="14-day history unreadable after 3 reads (fail-closed)"),
         dict(e="FLATBASE", pair="SHUSDT", price=1.0, fb_spike_at=_iso(sp), fb_status="SHADOW", fb_entry_bar_at=_iso(s4))]).to_csv(dec, index=False)
-    L = SC.run(now_ms=now, paths=[], dec_paths=[str(dec)], since_ms=sp - DAY, klines=kl, funding=lambda s, a, b: 0.0)
+    L = SC.run(now_ms=now, paths=[], dec_paths=[str(dec)], since_ms=sp - DAY, klines=kl, funding=lambda s, a, b: 0.0,
+               tp_state_path=None, tp_final_path=None)
     txt = "\n".join(L)
     sec = txt[txt.index("## 🩳②"):txt.index("## 🩳③")]
     assert "MISSED 1 · FLATBASE_MAX_OPEN 1 · FLAT_UNREADABLE 1" in sec
@@ -211,7 +213,7 @@ def test_blocked_line_sleeves_holder_fold_and_net(SC, tmp_path):
                   dict(t=_iso(t_w), e="BLOCK", pair="B1USDT", dir="SHORT", gate="PAIR_HELD", n=1)]).to_csv(dec, index=False)
     now = ta + 20 * DAY
     L = SC.run(now_ms=now, paths=[str(orders)], dec_paths=[str(dec)], since_ms=ta - DAY, klines=lambda *a: [], funding=lambda *a: 0.0,
-               klines1m=m1, th_long=_th_long())
+               klines1m=m1, th_long=_th_long(), tp_state_path=None, tp_final_path=None)
     txt = "\n".join(L)
     sec = txt[txt.index("## 🩳③"):]
     assert ("Cohort: 9 PAIR_HELD LONG blocks ≥ deploy (any holder) · held by a FLATBASE_SHORT (inferred from the orders exports): 7 sleeve-named · "
@@ -233,7 +235,8 @@ def test_blocked_line_sleeves_holder_fold_and_net(SC, tmp_path):
 
 def test_sections_crash_isolated(SC, tmp_path, monkeypatch):
     monkeypatch.setattr(SC, "missed_lines", lambda ctx: 1 / 0)
-    L = SC.run(now_ms=T0 + 30 * DAY, paths=[], dec_paths=[], since_ms=T0, klines=lambda *a: [], funding=lambda *a: 0.0)
+    L = SC.run(now_ms=T0 + 30 * DAY, paths=[], dec_paths=[], since_ms=T0, klines=lambda *a: [], funding=lambda *a: 0.0, tp_state_path=None,
+               tp_final_path=None)
     txt = "\n".join(L)
     assert "## 🩳① FLATBASE observe" in txt and "## 🩳② FLATBASE observe — MISSED setups\n\nUnavailable this run" in txt
     assert "## 🩳③ FLATBASE observe" in txt
@@ -241,13 +244,15 @@ def test_sections_crash_isolated(SC, tmp_path, monkeypatch):
 
 def test_ctx_failure_keeps_the_gate_and_no_block_skips_config(SC, tmp_path, monkeypatch):
     monkeypatch.setattr(SC, "read_decisions", lambda *a, **k: 1 / 0)
-    L = SC.run(now_ms=T0 + 30 * DAY, paths=[], dec_paths=[], since_ms=T0, klines=lambda *a: [], funding=lambda *a: 0.0)
+    L = SC.run(now_ms=T0 + 30 * DAY, paths=[], dec_paths=[], since_ms=T0, klines=lambda *a: [], funding=lambda *a: 0.0, tp_state_path=None,
+               tp_final_path=None)
     txt = "\n".join(L)
     assert "Gate verdict:" in txt and "observe lines unavailable (division by zero)" in txt and "## 🩳① FLATBASE observe —" not in txt
     monkeypatch.undo()
     monkeypatch.setattr(SC, "CACHE", str(tmp_path / "cache"))
     monkeypatch.setattr(SC, "_live_th", lambda: pytest.fail("config read with no block"))
-    L = SC.run(now_ms=T0 + 30 * DAY, paths=[], dec_paths=[], since_ms=T0, klines=lambda *a: [], funding=lambda *a: 0.0)
+    L = SC.run(now_ms=T0 + 30 * DAY, paths=[], dec_paths=[], since_ms=T0, klines=lambda *a: [], funding=lambda *a: 0.0, tp_state_path=None,
+               tp_final_path=None)
     assert "no PAIR_HELD LONG block yet" in "\n".join(L)
 
 
@@ -319,3 +324,179 @@ def test_resize_ladder_frozen_steps_and_step_down():
     # the config-read path prints the cap note on a step-up
     t = " ".join(S.resize_lines(fills(30, 1.0, S.flatbase_params(S._frozen_th())["invest"], 10)))
     assert "re-decide flatbase_max_open" in t or "OFF the ladder" in t
+
+
+# ── 🎯 DL 367: FLATBASE exit shadows on every real fill ─────────────────────────────────────────────────────────────────────────
+
+def _tp_fills(kinds, days=10, sec=10):
+    """one real fill per kind on 2026-11-(1 + i % days) 10:00:<sec>, entry 1.0; booked = what the live exit pays on that kind's path."""
+    book = {"dip": (-15.1, "STOP_LOSS"), "sq": (-15.1, "STOP_LOSS"), "win": (7.9, "FRENZY_TP"), "cut": (7.9, "FRENZY_TP")}
+    return pd.DataFrame(dict(o=pd.to_datetime([f"2026-11-{1 + (i % days):02d}T10:00:{sec:02d}" for i in range(len(kinds))]),
+                             pair=[f"P{i}USDT" for i in range(len(kinds))], entry_price=1.0,
+                             pct=[book[k][0] for k in kinds], close_reason=[book[k][1] for k in kinds], kind=list(kinds))).sort_values("o", kind="stable")
+
+
+# entry 1.0 short · dip: −6 % then a squeeze to the +15 % stop · sq: straight to +20 % · win: straight through −8 · cut: +6 % then −10 %
+_TP_PATHS = {"dip": [(1.0, 0.94), (1.2, 0.99)], "sq": [(1.2, 1.0)], "win": [(1.0, 0.90)], "cut": [(1.06, 0.99), (1.05, 0.90)]}
+
+
+def _tp_kl(f, seen=None):
+    m = dict(zip(f.pair, f.kind))
+    def kl(sym, start, hb):
+        seen is not None and seen.append((sym, start, hb))
+        return [[start + j * BAR, 1.0, h, l, l, 0] for j, (h, l) in enumerate(_TP_PATHS[m[sym]])]
+    return kl
+
+
+def _tp_lines(S, kinds, tmp, name, kl=None, now=0, fills=None, **kw):
+    from scout_long_stop4 import Budget
+    f = _tp_fills(kinds) if fills is None else fills
+    kw.setdefault("final_path", None)
+    return " ".join(S.tp_shadow_lines(f, Budget(), now, klines=kl or _tp_kl(f),
+                                      slip=0.0, state_path=(str(tmp / name) if name else None), **kw))
+
+
+def test_exit_shadows_entry_bar_slippage_and_live_levels():
+    import scout_flatbase_short as S
+    from scout_long_stop4 import Budget
+    assert S.TP_SHADOWS == {"TP5": (5.0, 15.0), "TP3": (3.0, 15.0), "TP5_SL10": (5.0, 10.0), "TP5_SL5": (5.0, 5.0), "TP8_SL10": (8.0, 10.0)}
+    assert S._tp_live() == (S.flatbase_params(S._frozen_th())["tp"], S.flatbase_params(S._frozen_th())["stop"]) == (8.0, 15.0)
+    b = int(pd.Timestamp("2026-11-01T10:00:00").value // 10**6)
+    assert S.tp_path_start(b + 9_000) == (b, False) and S.tp_path_start(b + 60_000) == (b, False)      # ≤ 60 s: the bar at the boundary
+    assert S.tp_path_start(b + 61_000) == (b + BAR, True)                                             # later: the next bar
+    for sec, want in ((13, b), (0, b)):
+        seen = []
+        f = _tp_fills(["win"], sec=sec)
+        S.tp_shadow_eval(next(f.itertuples()), Budget(), 0, klines=_tp_kl(f, seen), slip=0.0)
+        assert seen == [("P0USDT", want, 864)]
+    f = _tp_fills(["win"]).assign(o=pd.Timestamp("2026-11-01T10:02:30"))
+    seen = []
+    S.tp_shadow_eval(next(f.itertuples()), Budget(), 0, klines=_tp_kl(f, seen), slip=0.0)
+    assert seen[0][1] == b + BAR
+    # the entry = the real fill at slip 0; the taker slip only on a stop / time exit
+    w = S.tp_shadow_walk(1.0, [[b, 1.0, 1.0, 0.90, 0.92, 0]], slip=0.1)
+    assert w["LIVE"]["net_pct"] == pytest.approx(8.0 - 0.045 - 0.018 * 0.92)
+    w = S.tp_shadow_walk(1.0, [[b, 1.0, 1.2, 1.0, 1.1, 0]], slip=0.1)
+    x = 1.15 * 1.001
+    assert w["LIVE"]["net_pct"] == pytest.approx((1 - x) * 100 - 0.045 - 0.045 * x)
+    p = S.tp_shadow_price(next(_tp_fills(["cut"]).itertuples()), Budget(), 0, klines=_tp_kl(_tp_fills(["cut"])), slip=0.0)
+    assert p["TP5_SL5"] < -5.0 and p["TP5_SL10"] > 4.9 and p["TP5"] > 4.9 and p["LIVE"] > 7.9 and p["TP8_SL10"] > 7.9
+
+
+def test_exit_shadows_candidate_freeze_split_and_verbatim(tmp_path):
+    """🔒 CANDIDATE iff avg Δ ≥ +0.10 ∧ day-block bootstrap Bonferroni LB > 0 ∧ no day / fill ≥ 50 % of the gain ∧ parity; decided once."""
+    import json
+    import scout_flatbase_short as S
+    kinds = ["dip" if (i // 10) % 2 == 0 else "win" for i in range(30)]           # every day: 2 dips + 1 win
+    out = _tp_lines(S, kinds, tmp_path, "tp.json")
+    assert "priced 30 / 30" in out and "parity (live re-walk vs booked, ±0.5) 100%" in out
+    assert "frozen sample: parity on the sample 100% (≥ 90%) · live-stopped 20/20 (100 % required)" in out
+    for k in S.TP_SHADOWS:
+        assert f"FB_TP_{k}: CANDIDATE" in out
+    assert "one-sided 99% LB" in out and "Bonferroni ×5" in out and "4000 (seed 367)" in out
+    assert "in-sample haircut 30–50 %" in out and "if adopted: revert to TP −8 / stop 15 if the first 15 fills" in out
+    assert "incl. the 10-24 motivating batch" in out
+    # the backtest per-half Δ, nofund columns, where the cell exists; TP −3 / stop 5 never in the grid
+    assert "backtest: TP −3 never in the exit-study grid" in out and "backtest: stop 5 never in the exit-study grid" in out
+    assert "backtest Δ vs live (no funding, S4 · 72 h) 2025 -0.26 / 26-H1 -0.41 / 26-H2 -0.70" in out
+    assert "split TP5: stopped→saved 20" in out and "TP→give-back 10" in out
+    st = json.load(open(tmp_path / "tp.json"))
+    assert set(st) == {f"FB_TP_{k}" for k in S.TP_SHADOWS}
+    out2 = _tp_lines(S, ["win"] * 30, tmp_path, "tp.json")                         # later data never re-fits
+    for k in S.TP_SHADOWS:
+        assert f"FB_TP_{k}: {st[f'FB_TP_{k}']['verdict']} — {st[f'FB_TP_{k}']['text']} (frozen " in out2
+    out3 = _tp_lines(S, ["win"] * 30, tmp_path, "k.json")                          # straight winners: lower TPs only give back
+    assert "FB_TP_TP5: KEEP" in out3 and "keep −8 / 15 (avg < +0.1; CI lower bound ≤ 0" in out3
+
+
+def test_exit_shadows_day_concentration_and_bootstrap(tmp_path):
+    import scout_flatbase_short as S
+    # 27 straight squeezes (TP5 = live) + 3 dips all on day 1 → avg +2, top fill 33 % but top DAY 100 % → KEEP (window units)
+    kinds = ["dip" if i in (0, 10, 20) else "sq" for i in range(30)]
+    out = _tp_lines(S, kinds, tmp_path, "c.json")
+    i = out.index("FB_TP_TP5:")
+    seg = out[i:out.index("FB_TP_TP3:")]
+    assert "KEEP" in seg and "top day 100% / top fill 33%" in seg and "top day ≥ 50%" in seg
+    # 3 dip-days + 7 win-days: avg +3.9, top day 33 % — but a resample with no dip-day is > 1 % likely → LB ≤ 0 → KEEP
+    kinds = ["dip" if i % 10 < 3 else "win" for i in range(30)]
+    out = _tp_lines(S, kinds, tmp_path, "b.json")
+    seg = out[out.index("FB_TP_TP5:"):out.index("FB_TP_TP3:")]
+    assert "KEEP" in seg and "CI lower bound ≤ 0" in seg and "avg <" not in seg and "top day ≥" not in seg
+    lb = S.tp_boot([1.0] * 20 + [-0.5] * 10, [d // 3 for d in range(30)])
+    assert lb is not None and lb[0] < lb[1] and S.tp_boot([1.0], [0]) is None
+
+
+def test_exit_shadows_hold_resolve_final_parity(tmp_path):
+    import json
+    import scout_flatbase_short as S
+    kinds = ["dip" if (i // 10) % 2 == 0 else "win" for i in range(30)]
+    f = _tp_fills(kinds)
+    full = _tp_kl(f)
+    openp = lambda sym, a, hb: [[a, 1.0, 1.01, 0.99, 1.0, 0]] if sym == "P3USDT" else full(sym, a, hb)   # P3 window still OPEN
+    out = _tp_lines(S, kinds, tmp_path, "h.json", kl=openp, now=0)
+    assert "FB_TP_TP5: HOLD — 1 fill(s) in the frozen 30 not priced yet" in out and not (tmp_path / "h.json").exists()
+    assert "priced 29 / 30 real fills · hold 1 · UNPRICEABLE_FINAL 0" in out
+    out = _tp_lines(S, kinds, tmp_path, "h.json", kl=full, now=0)                   # the path completes → resolves
+    assert "FB_TP_TP5: CANDIDATE" in out and (tmp_path / "h.json").exists()
+    # a closed window (> 72 h + 1 day) with no path → UNPRICEABLE_FINAL: out of the sample, counted, never re-fetched
+    fin = tmp_path / "fin.json"
+    now = int(pd.Timestamp("2026-12-31").value // 10**6)
+    dead = lambda sym, a, hb: [] if sym == "P3USDT" else full(sym, a, hb)
+    out = _tp_lines(S, kinds, tmp_path, "u.json", kl=dead, now=now, final_path=str(fin))
+    assert "UNPRICEABLE_FINAL 0" in out and "hold 1" in out                   # one miss (it could be a timeout) is never final
+    out = _tp_lines(S, kinds, tmp_path, "u.json", kl=dead, now=now, final_path=str(fin))   # the second run's miss → final
+    assert "UNPRICEABLE_FINAL 1" in out and "COLLECTING — 29/30" in out and list(json.load(open(fin))) == [
+        f"P3USDT|{int(pd.Timestamp('2026-11-04T10:00:00').value // 10**6)}"]
+    again = lambda sym, a, hb: pytest.fail("refetched") if sym == "P3USDT" else full(sym, a, hb)
+    assert "UNPRICEABLE_FINAL 1" in _tp_lines(S, kinds, tmp_path, "u.json", kl=again, now=now, final_path=str(fin))
+    assert "UNPRICEABLE_FINAL 0" in _tp_lines(S, kinds, tmp_path, None, kl=dead, now=0)               # window not closed → HOLD
+    # parity: 90 % overall is not enough when a live-STOPPED fill disagrees; < 90 % → no verdict; nothing persisted
+    one = _tp_fills(kinds).copy()
+    one.loc[one.pair == "P0USDT", "pct"] = -12.0                                     # a stopped fill off by 3
+    out = _tp_lines(S, kinds, tmp_path, "p1.json", fills=one)
+    assert "live-stopped 19/20 (100 % required) → no verdict (parity)" in out and "FB_TP_TP5: no verdict (parity)" in out
+    assert not (tmp_path / "p1.json").exists()
+    out = _tp_lines(S, kinds, tmp_path, "p2.json", fills=_tp_fills(kinds).assign(pct=0.0))
+    assert "no verdict (parity)" in out and not (tmp_path / "p2.json").exists()
+    assert "COLLECTING — 5/30" in _tp_lines(S, kinds[:5], tmp_path, None, fills=_tp_fills(kinds).head(5))
+    from scout_long_stop4 import Budget
+    assert "0 / 0 real fills priced" in " ".join(S.tp_shadow_lines(_tp_fills([]), Budget(), 0, klines=lambda *a: [], state_path=None,
+                                                                   final_path=None))
+    assert "unreadable" in " ".join(S.tp_shadow_lines(None, Budget(), 0, state_path=None, final_path=None))   # never raises
+
+
+def test_exit_shadows_split_cut_winner():
+    import scout_flatbase_short as S
+    from scout_long_stop4 import Budget
+    kinds = ["cut", "dip", "sq"]
+    f = _tp_fills(kinds)
+    ok = [(r, S.tp_shadow_eval(r, Budget(), 0, klines=_tp_kl(f), slip=0.0)[1]) for r in f.itertuples()]
+    t = {k: S.tp_split_line(k, ok) for k in S.TP_SHADOWS}
+    assert "TP→cut winner 1" in t["TP5_SL5"] and "stopped→saved 2" in t["TP5_SL5"]
+    assert "TP→give-back 1" in t["TP5"] and "stopped→saved 1" in t["TP5"] and "stopped→unchanged 1" in t["TP5"]
+    d = ok[0][1]["TP5_SL5"]["net_pct"] - ok[0][1]["LIVE"]["net_pct"]
+    assert d == pytest.approx(-(5.0 + 8.0), abs=0.2)                                  # Δ ≈ −(TP_live + stop)
+
+
+def test_runs_in_tests_never_write_the_real_tp_state(SC, tmp_path):
+    """every scout run() in the FLATBASE tests passes tp_state_path / tp_final_path, and a full run leaves the real files untouched."""
+    import ast
+    for fn in ("test_scout_flatbase_extra.py", "test_flatbase_short.py"):
+        tree = ast.parse(open(os.path.join(ROOT, "tests", fn), encoding="utf-8").read())
+        calls = [c for c in ast.walk(tree) if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "run"
+                 and isinstance(c.func.value, ast.Name) and c.func.value.id == "SC"]
+        assert calls and all({"tp_state_path", "tp_final_path"} <= {k.arg for k in c.keywords} for c in calls), fn
+    mt = lambda p: os.path.getmtime(p) if os.path.exists(p) else None
+    reals = (SC.TP_SH_STATE, os.path.join(ROOT, "reports", "backtest_cache", "scout_flatbase_short", SC.TP_SH_FINAL_NAME))
+    before = [mt(p) for p in reals]
+    kinds = ["dip" if (i // 10) % 2 == 0 else "win" for i in range(30)]
+    f = _tp_fills(kinds)
+    orders = tmp_path / "scalpars_orders_paper_g.csv"
+    f.assign(opened_at=f.o.dt.strftime("%Y-%m-%dT%H:%M:%S"), closed_at=(f.o + pd.Timedelta(hours=2)).dt.strftime("%Y-%m-%dT%H:%M:%S"),
+             direction="SHORT", status="CLOSED", entry_strategy="FLATBASE_SHORT", pnl=1.0, pnl_percentage=f.pct, quantity=100.0,
+             ).drop(columns=["o", "pct"]).to_csv(orders, index=False)
+    st = tmp_path / "g.json"
+    L = SC.run(now_ms=0, paths=[str(orders)], dec_paths=[], since_ms=int(pd.Timestamp("2026-10-30").value // 10**6), klines=lambda *a: [],
+               funding=lambda *a: 0.0, tp_klines=_tp_kl(f), tp_state_path=str(st), tp_final_path=str(tmp_path / "gf.json"))
+    assert "FB_TP_TP5: CANDIDATE" in "\n".join(L) and st.exists()
+    assert [mt(p) for p in reals] == before

@@ -8843,3 +8843,22 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   nothing) but never varied its minute under the high target.
 - Same commit: the midnight-UTC flake fix in tests/test_frenzy_lite_retry.py (one clock read; the seeded fill on today's UTC date; the bar ≥ 00:05
   so the "already entered this bar" guard never catches the seed) — test only, the engine is unchanged.
+
+## (365) 2026-10-24 — 📈 FRENZY_WILLY_HT re-size ladder in scripts/scout_willy_ht.py + the HT size stamp entry_willy_ht_size_frac (operator: "and frenzy willy ht re sizing too … add the willy re sizing to scout"; observe-only)
+- Ladder `frenzy_willy_ht_size_frac` **0.25 → 0.5 → 1.0** of WILLY's margin (same leverage). Judged under TODAY's exit — HT + full-size WILLY
+  fills opened ≥ the DL 358 deploy + 10 min, runner fills INCLUDED (the DL 341 gate keeps V2 runner fills out of both sides because it was
+  registered on the old +1.25 exit, so under V2b it barely collects — the ladder is the read that tracks HT under the live exit).
+- Each rung = the CURRENT run of HT fills at that size (new Order column `entry_willy_ht_size_frac`, stamped in open_position from
+  frenzy_willy_ht_frac — the only way to know an HT fill's size; HT fills before this deploy are 0.25, the only value since DL 341; an unstamped
+  fill after it is counted aloud as unknown), run through the SAME services.frenzy.frenzy_willy_ht_gate vs same-period WILLY:
+  a size step needs the locked Pattern-W multiplier gate (each rung doubles size): on the frozen sample (30 on ≥ 10 days, ≥ 10 same-period
+  WILLY comparators) HT WR ≥ 70 % ∧ avg ≥ +0.10 % ∧ Σ > 0, AND HT ≥ WILLY − 0.10 → STEP-UP candidate · REMOVE_FILTER (HT ≥ WILLY) + the
+  Pattern-W bar → full size by the DL 341 rule (turnover ratio 0 + HT off), ADVISORY: the filter change needs the registered DL 341 gate (old-exit
+  cohort) to agree, or the operator to declare this V2b read the governing one (deep review: never pick whichever read is preferred) ·
+  CONFIRMED (HT ≤ WILLY − 0.20) / KILL (Σ ≤ −8) / FIRST (first 10 < 0) / frozen HT avg < 0 / first-60 avg < 0 → STEP-DOWN candidate (at 0.25:
+  the DL 341 rule, HT off) · else no step. Off-ladder → no verdict; newest fill ≠ config → sync warning.
+- Risk (deep review): at 1.0 an HT is a SECOND full WILLY ticket in its own slot (HT is not a hold trigger; the WILLY global hold is off since
+  DL 340), so WILLY-class exposure can double, and the Σ ≤ −8 pts kill costs 4× the dollars of 0.25 — the 0.5 → 1.0 line also asks the
+  operator to re-decide frenzy_willy_ht_max_slots.
+- Schema: models.Order.entry_willy_ht_size_frac (Float, nullable) + the database.py ALTER (with the DL 356 WILLY columns); rides the orders CSV.
+  Tests: tests/test_frenzy_willy_ht.py (the engine stamps 0.25 on HT, None on WILLY; test_ht_resize_ladder).

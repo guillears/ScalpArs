@@ -170,7 +170,7 @@ def _open(monkeypatch, pair, open_rows=(), hold_on=False, tiers=None, **kw):
             r = await e.open_position(db=db, pair=pair, direction="LONG", confidence="STRONG_BUY", current_price=1.0,
                                       entry_frenzy_willy_trigger="A", **kw)
         async with SL() as s_:
-            rows = [(o.pair, o.entry_strategy, o.investment, o.leverage, o.notional_value, o.entry_frenzy_willy_trigger)
+            rows = [(o.pair, o.entry_strategy, o.investment, o.leverage, o.notional_value, o.entry_frenzy_willy_trigger, o.entry_willy_ht_size_frac)
                     for o in (await s_.execute(select(models.Order).where(models.Order.status == "OPEN"))).scalars().all()]
         await eng.dispose()
         return r, blocks, rows
@@ -181,8 +181,9 @@ def test_ht_is_a_quarter_of_willy_at_the_same_leverage(monkeypatch):
     r1, _, w = _open(monkeypatch, "FOOUSDT", frenzy_willy=True)
     r2, _, h = _open(monkeypatch, "FOOUSDT", frenzy_willy=True, frenzy_willy_ht=True)
     assert r1 is not None and r2 is not None
-    (wp, wes, winv, wlev, wnot, wtr), (hp, hes, hinv, hlev, hnot, htr) = w[0], h[0]
+    (wp, wes, winv, wlev, wnot, wtr, wfr), (hp, hes, hinv, hlev, hnot, htr, hfr) = w[0], h[0]
     assert wes == "FRENZY_WILLY" and hes == "FRENZY_WILLY_HT" and htr == "A"
+    assert wfr is None and hfr == 0.25                                                                  # 📈 (365) the HT size stamp
     assert hlev == wlev and abs(hinv / winv - 0.25) < 1e-6 and abs(hnot / wnot - 0.25) < 1e-3
 
 
@@ -395,3 +396,75 @@ def test_gate_review_fixes_and_config_validation():
     main = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
     assert "_cfg_errs.extend(_ht_cfg_errors(new_config.thresholds))" in main
     assert "'Frenzy-Willy', 'Frenzy-Willy-HT', 'Flatbase-Short', 'Manual']" in main   # 🩳 (348)
+
+
+# ─────────────────────────── 📈 (DECISION_LOG 365) the HT re-size ladder in scripts/scout_willy_ht.py ───────────────────────────
+def _ladder_frame(ht_rows, w_rows):
+    """ht_rows / w_rows: lists of (day index, pnl %, size frac or None); 2 fills a day max; days from 2026-11-01."""
+    import pandas as pd
+    rows = []
+    for es, src in (("FRENZY_WILLY_HT", ht_rows), ("FRENZY_WILLY", w_rows)):
+        for k, (d, p, f) in enumerate(src):
+            rows.append(dict(o=pd.Timestamp("2026-11-01") + pd.Timedelta(days=d, minutes=k), status="CLOSED", es=es, entry_strategy=es,
+                             pct=p, close_reason="FRENZY_TP", entry_willy_ht_size_frac=f))
+    return pd.DataFrame(rows)
+
+
+def test_ht_resize_ladder():
+    import os
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import scout_willy_ht as H
+    import pandas as pd
+    V2B = int(pd.Timestamp("2026-10-30").value // 1_000_000)
+    STAMP = int(pd.Timestamp("2026-10-31").value // 1_000_000)
+    W = [(d, 1.0, None) for d in range(12) for _ in range(2)]                  # 24 full-size WILLY fills at +1.0
+    j = lambda ht, frac=0.25, w=W: " ".join(H.resize_lines(_ladder_frame(ht, w), V2B, STAMP, frac_now=frac))
+    assert H.LADDER == (0.25, 0.5, 1.0) and H.STEP_GAP == 0.10 and H.PRE_STAMP_FRAC == 0.25
+    t = j([(d, 0.8, 0.25) for d in range(5)])
+    assert "now 0.25 · current run at this size: 5 fills on 5 days" in t and "next step 0.25 → 0.5" in t and "CANDIDATE" not in t
+    t = j([(d % 10, 0.95, 0.25) for d in range(30)])                           # 30 on 10 days: +0.95 vs WILLY +1.0 → within 0.10
+    assert "✅ STEP-UP candidate 0.25 → 0.5" in t and "REREAD" in t
+    t = j([(d % 10, 0.85, 0.25) for d in range(30)])                           # +0.85 vs +1.0: between −0.20 and −0.10 → no step
+    assert "no step: frozen 30 HT avg +0.850 %" in t
+    assert "full size by the DL 341 rule" in j([(d % 10, 1.2, 0.25) for d in range(30)])                    # HT ≥ WILLY
+    assert "🛑 STEP-DOWN candidate to 0.25" in j([(d % 10, 0.2, 0.5) for d in range(30)], 0.5)            # CONFIRMED at 0.5
+    assert "DL 341 rule applies" in j([(d % 10, 0.2, 0.25) for d in range(30)])                            # CONFIRMED at 0.25
+    assert "🛑 STEP-DOWN" in j([(d, -1.0, 0.5) for d in range(10)], 0.5)                                    # first 10 avg < 0
+    # unstamped: before the stamp deploy = 0.25 · after it = unknown, counted aloud
+    pre = _ladder_frame([(-2, 0.8, None)], W)                                                              # 10-30 ≥ V2B, < STAMP
+    assert "current run at this size: 1 fills" in " ".join(H.resize_lines(pre, V2B, STAMP, frac_now=0.25))
+    post = _ladder_frame([(3, 0.8, None)], W)
+    assert "1 HT fill(s) with unknown size not counted" in " ".join(H.resize_lines(post, V2B, STAMP, frac_now=0.25))
+    # only the current run at a size; fills before the V2b deploy never count
+    run = [(0, 1.0, 0.5), (1, 1.0, 0.25), (2, 1.0, 0.5), (3, 1.0, 0.5)]
+    assert "current run at this size: 2 fills on 2 days" in j(run, 0.5)
+    old = _ladder_frame([(-5, 1.0, 0.25)], W)
+    assert "current run at this size: 0 fills" in " ".join(H.resize_lines(old, V2B, STAMP, frac_now=0.25))
+    assert "OFF the ladder" in j([(0, 1.0, 0.3)], 0.3) and "sync the config" in j([(0, 1.0, 0.5)], 0.25)
+    assert "top of the ladder" in j([(0, 1.0, 1.0)], 1.0)
+    assert "NOT evaluable" in " ".join(H.resize_lines(_ladder_frame([], W), None, None, frac_now=0.25))
+    assert "no exports" in " ".join(H.resize_lines(None, V2B, STAMP, frac_now=0.25))                     # never raises
+    assert "no exports" in " ".join(H.resize_lines(pd.DataFrame(), V2B, STAMP, frac_now=0.25))
+    assert "ADVISORY" in j([(d % 10, 1.2, 0.25) for d in range(30)])                                      # HT ≥ WILLY + Pattern-W
+    Wn = [(d, -0.1, None) for d in range(30) for _ in range(2)]
+    sixty = [(d % 10, 1.0, 0.5) for d in range(30)] + [(10 + d % 10, -1.2, 0.5) for d in range(30)]       # frozen 30 fine, first 60 < 0
+    assert "🛑 STEP-DOWN candidate to 0.25" in j(sixty, 0.5, Wn)
+    assert "unreadable" in " ".join(H.resize_lines(_ladder_frame([(0, 1.0, 0.25)], W).drop(columns=["pct"]), V2B, STAMP, frac_now=0.25))
+    assert (H.STEP_MIN_AVG, H.STEP_MIN_WR) == (0.10, 0.70)
+    # the Pattern-W bar: avg +0.60 ≥ WILLY +0.5 − 0.10 but WR 60 % < 70 % → no step
+    W5 = [(d, 0.5, None) for d in range(12) for _ in range(2)]
+    mixed = [(d % 10, (2.0 if d % 5 < 3 else -1.5), 0.25) for d in range(30)]
+    assert "no step: frozen 30 HT avg +0.600 % · WR 60%" in j(mixed, 0.25, [(d, 0.65, None) for d in range(12) for _ in range(2)])
+    assert "the size bar fails" in j(mixed, 0.25, W5)                                                    # HT ≥ WILLY but WR 60 %
+    # 0.5 → 1.0 also re-decides the HT slot cap
+    assert "ALSO re-decide frenzy_willy_ht_max_slots" in j([(d % 10, 0.95, 0.5) for d in range(30)], 0.5)
+    # KILL (Σ ≤ −8) at 0.5 → step down · fewer than 10 same-period WILLY comparators → no step yet
+    assert "🛑 STEP-DOWN candidate to 0.25" in j([(0, -4.1, 0.5), (1, -4.1, 0.5)], 0.5)
+    t = j([(d % 10, 0.95, 0.25) for d in range(30)], 0.25, [(d, 1.0, None) for d in range(3)])
+    assert "CANDIDATE" not in t and "next step 0.25 → 0.5" in t
+    # REMOVE_FILTER but HT itself loses (WILLY worse) → the size follows HT's expectancy: step down
+    assert "🛑 STEP-DOWN candidate to 0.25" in j([(d % 10, -0.1, 0.5) for d in range(30)], 0.5, [(d, -0.5, None) for d in range(12) for _ in range(2)])
+    # a NaN pct never enters the frozen sample (the gate drops it too)
+    t = j([(d % 10, 0.95, 0.25) for d in range(30)] + [(10, float("nan"), 0.25)])
+    assert "current run at this size: 30 fills" in t and "✅ STEP-UP" in t

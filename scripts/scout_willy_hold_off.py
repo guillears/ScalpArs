@@ -39,7 +39,7 @@ B_N, B_AVG_MAX, B_SUM_MAX = 8, 0.0, -4.0                     # gate (b): first 8
 STATE = os.path.join(os.path.dirname(_D), "reports", "SCOUT_WILLY_HOLD_OFF_STATE.json")
 PATTERN = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "is_paper") \
-    + tuple(WEra.V2_COLS)                                    # DL 356: the V2 stamps ride the reader (scout_willy_ht shares this loader)
+    + tuple(WEra.V2_COLS) + ("entry_willy_ht_size_frac",)    # DL 356: the V2 stamps ride the reader (scout_willy_ht shares this loader) · 365 HT size
 
 
 def _ts(s):

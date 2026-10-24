@@ -616,6 +616,9 @@ class Order(Base):
     entry_frenzy_willy_spike_high = Column(Float, nullable=True)
     frenzy_willy_tp_target_pct = Column(Float, nullable=True)
     willy_floor_armed_at = Column(DateTime, nullable=True)
+    # 📈 (DECISION_LOG 365) FRENZY_WILLY_HT only: the size fraction of WILLY's margin this HT order opened at (frenzy_willy_ht_frac at entry) —
+    # the HT re-size ladder counts each rung on the fills actually opened at it. NULL on every other fill and on HT fills before 365 (all 0.25).
+    entry_willy_ht_size_frac = Column(Float, nullable=True)
 
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3 design).
     # cell_multiplier = the INVESTMENT multiplier ACTUALLY applied to this trade after hard-cap clamping.

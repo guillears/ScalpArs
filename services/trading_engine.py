@@ -13542,6 +13542,7 @@ class TradingEngine:
         investment, _ml_min_scale, _ml_ref_lev = self.momentum_long_resize(pair, investment, leverage, available, confidence, total_portfolio,
                                                                            cell_mult, cell_lev_mult, _mult_target, _wh_es, direction, _ml_lev)
         _ht_min_scale = 1.0   # 🎲¼ (341 review) HT's own min-margin scale — kept OUT of _ml_min_scale so DL 298's bracket keep never sees HT
+        _ht_frac_stamp = None   # 📈 (365) the HT size fraction stamped on the Order (entry_willy_ht_size_frac)
         if _frenzy and _fz_es == FRENZY_WILLY_HT and investment > 0:
             # 🎲¼ (DECISION_LOG 341) the quarter-size WILLY: the margin WILLY would have opened (its own invest / lev mults, balance caps and the
             # min-size clamp already applied) × frenzy_willy_ht_size_frac at the SAME leverage → exactly ¼ of WILLY's notional; same leverage =
@@ -13551,6 +13552,7 @@ class TradingEngine:
             _htf = frenzy_willy_ht_frac(config.trading_config.thresholds)
             investment = investment * _htf
             _ht_min_scale = _htf
+            _ht_frac_stamp = _htf
             logger.info(f"[FRENZY_WILLY_HT] {pair}: size × {_htf:g} of WILLY's → margin ${investment:.2f} at {leverage}x (notional ${investment * leverage:.2f})")
         if cell_capped:
             logger.info(
@@ -14271,6 +14273,7 @@ class TradingEngine:
             frenzy_lite_tp_used=_lc_tp_used, lite_c_zone=_lc_zone,   # 🎯 (DECISION_LOG 301) LITE C: the TP decided at entry (NULL = config TP) · zone flag
             entry_frenzy_willy_spike_high=(entry_frenzy_willy_spike_high if (_frenzy and _fz_es in WILLY_EXIT_CLASS) else None),   # 🎲² (356) WILLY exit V2 stamps
             frenzy_willy_tp_target_pct=_wv2_tp,   # 🎲² (356) the WILLY TP decided at entry (NULL = pre-V2 row → config TP)
+            entry_willy_ht_size_frac=_ht_frac_stamp,   # 📈 (365) HT only: the size fraction it opened at (the HT re-size ladder)
             entry_book_drift_pct=_eb_m.get('entry_book_drift_pct'), entry_book_spread_pct=_eb_m.get('entry_book_spread_pct'),   # 📏 (295)
             entry_fill_vs_book_pct=_eb_m.get('entry_fill_vs_book_pct'), entry_order_lag_s=_eb_m.get('entry_order_lag_s'),
             entry_fee=entry_fee,

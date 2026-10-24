@@ -41,6 +41,10 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    its own PROBE_EXEMPT line) · ③ backtest turnover-blocked cohort (reports/WILLY_TURNOVER_REPRICE_2026-10-19.md: blocked −0.24 vs kept +0.08).
    🔒 Gates: Σ ≤ −8 pts → review · first 10 avg < 0 → review · main read at the frozen first 30 on ≥ 10 days vs full-size WILLY: HT ≥ WILLY →
    recommend turnover ratio 0 + HT off · HT ≤ WILLY − 0.20 → filter confirmed, HT off · else re-read at 60.
+   📈 + the HT RE-SIZE LADDER line (DL 365): 0.25 → 0.5 → 1.0 of WILLY's margin, judged under today's V2b exit on the current run at this size
+   (entry_willy_ht_size_frac) vs same-period WILLY → STEP-UP (frozen 30 / 10 days: Pattern-W WR ≥ 70 % ∧ avg ≥ +0.10 ∧ Σ > 0, and HT ≥
+   WILLY − 0.10) / STEP-DOWN (CONFIRMED / KILL / FIRST / avg < 0 / first-60 avg < 0) / full size by the DL 341 rule (HT ≥ WILLY + Pattern-W,
+   advisory until the DL 341 gate agrees).
 ②f **🩳 FLATBASE_SHORT (DECISION_LOG 348, 2026-10-22, alert-only, discipline override)** — run scripts/scout_flatbase_short.py (also in the
    opportunity scout): real CLOSED fills from the deploy + 10 min (operator-closed out) → flatbase_gate verdict (3 stop-outs in a row / Σ ≤ −30 →
    review · first 10 avg < 0 → review · 30 fills on ≥ 10 days: ≥ +0.5 % step up, < 0 off, else re-read at 60). Per fill: flat14, turnover, mcap,

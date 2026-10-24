@@ -79,7 +79,9 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    ⓒ the PARITY line (V2b re-walk with the fill's stamped target vs booked, ±0.15; < 90 % → "no verdict (parity)": find why before reading
    anything else — stop gaps, maker TP fills, late re-price) · ⓓ the SHADOW LINES on the RUNNER fills (target > +1.25; Δ = shadow − the live
    V2b re-walk, same path): (a) today's +1.25 exit (the gate shadow) · (b) FLOOR10 = the removed DL 356 floor · (c) the DL 357 ladders STEPS /
-   TRAIL10 / TRAIL15 / HALF (floor exits pay 0.05) · (d) NOLATE (target until the cap, stop −4) + the per-fill list (last 20) · ⓔ the
+   TRAIL10 / TRAIL15 / HALF (floor exits pay 0.05) · (d) NOLATE (target until the cap, stop −4) · (e) TGT15 / TGT20 (scout label (e)) = the target 1.5 / 2 %
+   below the spike high instead of 1 % (DL 364; check the 'target recompute' line reads n/n) · (f) LATE45 / LATE60 = the
+   +0.25 late TP from minute 45 / 60 instead of 30 + the per-fill list (last 20) · ⓔ the
    per-batch BEFORE (shadow a) → AFTER (live V2b) table split by BTC side at entry (analytics only; the falling side is governed by the
    WILLY_BTC1H gate) · ⓕ gate status (counted from the DL 358 deploy + 10 min, runner fills): V2B_EARLY (first 10 avg < shadow − 0.15 →
    alert) · V2B_MAIN (15 on ≥ 6 UTC days, Σ(live − shadow) < 0 → REVERT to +1.25 = frenzy_willy_high_target_enabled false) · V2B_FINAL (25,

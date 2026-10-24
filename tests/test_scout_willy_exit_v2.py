@@ -32,7 +32,10 @@ def test_pinned_constants_and_fresh_state():
     assert (S.ARM, S.FLOOR, S.FLOOR_SLIP) == (1.25, 1.0, 0.05)
     assert (S.EARLY_N, S.EARLY_GAP, S.MAIN_N, S.MAIN_DAYS, S.FINAL_N) == (10, 0.15, 15, 6, 25)
     assert (S.SH_N, S.SH_DAYS, S.SH_MIN_GAIN, S.SH_SHARE) == (15, 6, 0.10, 0.50)
-    assert S.SHADOWS == ("FLOOR10", "STEPS", "TRAIL10", "TRAIL15", "HALF", "NOLATE")
+    assert S.SHADOWS == ("FLOOR10", "STEPS", "TRAIL10", "TRAIL15", "HALF", "NOLATE", "TGT15", "TGT20", "LATE45", "LATE60")
+    assert S.LATE_MINS == {"LATE45": 45.0, "LATE60": 60.0}
+    assert S.TARGET_KS == {"TGT15": 1.5, "TGT20": 2.0} and (S.LIVE_K, S.TGT_MAX, S.MAKER_FEE_DEF) == (1.0, 8.0, 0.00018)
+    assert {"entry_fee", "quantity"} <= set(S.COLS)
     assert S.STATE.endswith(os.path.join("reports", ".willy_exit_v2b_gate.json")) and S.KEY == "V2B_"
     assert set(WEra.V2_COLS) <= set(S.COLS) and "close_reason" in S.COLS and "closed_at" in S.COLS
 
@@ -96,7 +99,7 @@ def _exports(rows):
 def _row(pair, opened, tp_t, pnl, reason, peak=1.3, closed="x", slope=0.1, es="FRENZY_WILLY", status="CLOSED", armed_at=None):
     return dict(opened_at=opened, closed_at=closed, pair=pair, direction="LONG", entry_strategy=es, status=status, entry_price=1.0,
                 pnl_percentage=pnl, close_reason=reason, peak_pnl=peak, entry_btc_1h_slope=slope, frenzy_willy_tp_target_pct=tp_t,
-                willy_floor_armed_at=armed_at, entry_frenzy_willy_spike_high=1.05)
+                willy_floor_armed_at=armed_at, entry_frenzy_willy_spike_high=1.05, entry_fee=0.4, quantity=1000.0)
 
 
 TP_PATH = [(1, 1.3, 1.3), (5, 3.6, 3.6)]                          # V2b +3.5 TP · shadow (a) +1.25 · every floor shadow +3.5 (Δ 0)
@@ -157,6 +160,11 @@ def test_run_mixed_book_reverts_and_floor_shadows_become_candidates(tmp_path):
     for k in ("FLOOR10", "STEPS", "TRAIL10", "TRAIL15", "HALF"):
         assert f"V2B_SH_{k}: 15 runner fills on 8 days: avg Δ (shadow − live V2b) +2.310 %/fill · top fill 14% of the gain → CANDIDATE" in out, k
     assert "V2B_SH_NOLATE: 15 runner fills on 8 days: avg Δ (shadow − live V2b) +0.000 %/fill · top fill 100% of the gain → keep V2b" in out
+    # (e) a lower target books less on the 8 TP fills (the 7 stops never reach either target) → KEEP
+    for k in S.TARGET_KS:
+        d = (S.target_at_k(rows[2], S.TARGET_KS[k]) - 3.5) * 8 / 15
+        assert f"V2B_SH_{k}: 15 runner fills on 8 days: avg Δ (shadow − live V2b) {d:+.3f} %/fill" in out and d < 0, k
+    assert "(e) TGT15: avg" in out and "(e) target recompute check (k 1 vs the stored target, ±0.02): 0/16 ⚠" in out   # fixture targets are hand-set
     assert "(b) FLOOR10: avg" in out and "(c) STEPS" in out and "(d) NOLATE" in out and "(a) TODAY +1.25 exit (the gate shadow)" in out
     assert out.count("per fill (last 20): ") == 1 and out.split("per fill (last 20): ")[1].split("\n")[0].count(" | a ") == 16
     assert "| ALL | falling |" in out and "| ALL | rising |" in out
@@ -177,7 +185,12 @@ def test_run_all_runners_win_passes_and_shadows_keep(tmp_path):
     assert "V2B_MAIN: main read (15 runner fills on 8 days): Σ(live − shadow) +33.75 pts → PASS (keep V2b)" in out
     assert "V2B_FINAL: final read (first 25 runner fills): Σ(live − shadow) +56.25 pts → PASS (keep V2b)" in out
     for k in S.SHADOWS:
-        assert f"V2B_SH_{k}: 15 runner fills on 8 days: avg Δ (shadow − live V2b) +0.000" in out and "keep V2b" in out
+        if k in S.TARGET_KS:      # (e) every TP fill books the lower target instead of +3.5
+            d = S.target_at_k(rows[2], S.TARGET_KS[k]) - 3.5
+            assert f"V2B_SH_{k}: 15 runner fills on 8 days: avg Δ (shadow − live V2b) {d:+.3f}" in out and d < 0
+        else:
+            assert f"V2B_SH_{k}: 15 runner fills on 8 days: avg Δ (shadow − live V2b) +0.000" in out
+    assert "keep V2b" in out
 
 
 def test_parity_fail_blocks_freeze(tmp_path):
@@ -236,3 +249,29 @@ def test_era_helper_still_classifies_v2b_and_floor_rows():
                        dict(frenzy_willy_tp_target_pct=3.5, close_reason="WILLY_LATE_TP"),       # V2b runner
                        dict(frenzy_willy_tp_target_pct=7.42, close_reason="WILLY_FLOOR")])       # V2-era floor row (INIT)
     assert WEra.counts(df) == (1, 3, 2)
+
+
+def test_target_shadows_recompute_the_engine_target():
+    """(e) TGT15 / TGT20 (operator 2026-10-23): the target at H × (1 − k %) on the engine's fee convention — the k 1.0 recompute reproduces a
+    real stored target (AVAUSDT 10-24: entry 0.4544, H 0.4847, entry fee $3.2579 on $7,239.72 → stored +5.5374)."""
+    ava = dict(entry_price=0.4544, entry_frenzy_willy_spike_high=0.4847, entry_fee=3.2579, quantity=7239.72 / 0.4544)
+    assert S.target_at_k(ava, 1.0, maker=0.00018) == 5.5374
+    assert S.target_at_k(ava, 1.5, maker=0.00018) == 5.0042 and S.target_at_k(ava, 2.0, maker=0.00018) == 4.471
+    assert S.target_at_k(dict(ava, entry_frenzy_willy_spike_high=0.46), 2.0, maker=0.00018) == 1.25        # floor +1.25
+    assert S.target_at_k(dict(ava, entry_frenzy_willy_spike_high=0.6), 1.5, maker=0.00018) == 8.0          # cap +8
+    for bad in (dict(ava, entry_fee=None), dict(ava, quantity=0), dict(ava, entry_frenzy_willy_spike_high=None), {}):
+        assert S.target_at_k(bad, 1.5) is None
+    P = _P(TE0, [(1, 1.3, 1.3), (5, 5.2, 5.2)])                     # reaches +5.2: k 1.5 / 2.0 fill, the live +5.5374 does not
+    assert S.shadow_walk(P, 5.5374, "TGT15", ava) == 5.0042 and S.shadow_walk(P, 5.5374, "TGT20", ava) == 4.471
+    assert S.walk_v2(P, 5.5374)["why"] == "CAP"                                                         # the live +5.5374 never fills
+    assert np.isnan(S.shadow_walk(P, 5.5374, "TGT15", None))                                            # unpriceable → unresolved
+
+
+def test_late_minute_shadows():
+    """(f) LATE45 / LATE60 (operator 2026-10-24): the +0.25 late line from minute 45 / 60 instead of 30, everything else live V2b."""
+    p = _P(TE0, [(2, 1.3, 1.3), (35, 0.6, 0.6), (50, 0.7, 0.7), (55, 3.6, 3.6)])
+    assert S.walk_v2(p, 3.5)["why"] == "LATE_TP" and abs(S.walk_v2(p, 3.5)["pct"] - 0.6) < 1e-9       # live: the first tick past 30 min books its print
+    assert abs(S.shadow_walk(p, 3.5, "LATE45") - 0.7) < 1e-9                                            # 45: the 50-min print
+    assert S.shadow_walk(p, 3.5, "LATE60") == 3.5                                                       # 60: rides to the +3.5 target at 55 min
+    stop = _P(TE0, [(2, 1.3, 1.3), (35, 0.6, 0.6), (40, -4.1, -4.1)])
+    assert S.walk_v2(stop, 3.5)["pct"] == 0.6 and S.shadow_walk(stop, 3.5, "LATE45") == -4.1           # waiting longer can also lose

@@ -8826,3 +8826,20 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - 🔒 Every step up ALSO requires the operator to re-decide `flatbase_max_open` (10): FLATBASE holds no bot slot and the cap was sized for 0.2 —
   at 1.0, 10 open ≈ 10 full slots of margin outside the bot's 4. The line prints the implied margin. Every step is the operator's decision
   (nothing automatic). Test: tests/test_scout_flatbase_extra.py::test_resize_ladder_frozen_steps_and_step_down.
+
+## (364) 2026-10-24 — 🎯 WILLY V2b lower-target shadows TGT15 / TGT20 + later late-TP shadows LATE45 / LATE60 in scripts/scout_willy_exit_v2.py (operator: "test the peak × 0.99 (today) vs 1.5 % less than peak or vs 2 % less"; observe-only)
+- Shadow (e): the live V2b exit (stop −4 · late +0.25 @30 · cap 90) with the target max(+1.25, min(+8, net at H × (1 − k %))), k = 1.5 / 2.0
+  instead of the live 1.0 — the engine's own fee convention (the fill's entry fee % + the maker exit fee, exec_shadow.net_pct_at). Needs the
+  fill's spike high, entry_fee and quantity (export columns); unpriceable → that shadow is unresolved (holds its read). A "target recompute"
+  line checks that k 1.0 reproduces every runner fill's STORED target within 0.02 (AVAUSDT 10-24: +5.5374 exactly; its k 1.5 / 2.0 targets
+  +5.00 / +4.47).
+- Frozen read = the same as every V2b shadow: at 15 runner fills on 6 days, CANDIDATE iff avg Δ (shadow − live V2b re-walk) ≥ +0.10 %/fill ∧
+  no single fill ≥ 50 % of the gain, else KEEP (persisted as V2B_SH_TGT15 / V2B_SH_TGT20). Operator decides any engine change.
+- Prior (reports/WILLY_HIGHTARGET_2026-10-23.md, no-floor rows): master k 1 +0.42 vs k 2 +0.27 %/fill; backtest 2026 Δ vs the +1.25 exit
+  +0.02 vs −0.03 (both inside noise; k 1.5 untested) — k 2 is not expected to win; the shadows settle it on live fills.
+- Shadow (f) LATE45 / LATE60 (operator 2026-10-24: "now that the target is higher, maybe that number should not be 30 min"): the live V2b
+  exit with the +0.25 late TP from minute 45 / 60 instead of 30 (target, stop −4, 90-min cap unchanged); (d) NOLATE is the "never" end of the
+  same axis. Same frozen read. Prior: the high-target study found the 30-min late TP decides most V2 outcomes (H4, a 180-min cap, added
+  nothing) but never varied its minute under the high target.
+- Same commit: the midnight-UTC flake fix in tests/test_frenzy_lite_retry.py (one clock read; the seeded fill on today's UTC date; the bar ≥ 00:05
+  so the "already entered this bar" guard never catches the seed) — test only, the engine is unchanged.

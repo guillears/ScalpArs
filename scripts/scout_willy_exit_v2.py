@@ -26,6 +26,14 @@ of scout_willy_timecap.ensure_data only):
           STEPS    peak < 2 → +1.0 · < 3 → +1.5 · < 4 → +2.25 · < 5 → +3.0 · ≥ 5 → peak − 1.5
           TRAIL10  max(+1.0, peak − 1.0)      TRAIL15  max(+1.0, peak − 1.5)      HALF  max(+1.0, 50 % of peak)
     (d) NOLATE — no late TP: ride the target until the 90-min cap, stop −4.
+    (e) TGT15 / TGT20 (operator 2026-10-23) — the live V2b exit with the target aimed LOWER: T = max(+1.25, min(+8, net at H × (1 − k %)))
+                 with k = 1.5 / 2.0 instead of the live 1.0 (same fee convention as the engine: the fill's entry fee % + the maker exit fee,
+                 services.exec_shadow.net_pct_at). Unpriceable target (no H / no entry fee) → that shadow is unresolved (holds its read).
+                 Prior: reports/WILLY_HIGHTARGET_2026-10-23.md (no-floor rows) — master k 1 +0.42 vs k 2 +0.27 %/fill, backtest 2026 Δ
+                 +0.02 vs −0.03 (both inside noise; k 1.5 untested).
+    (f) LATE45 / LATE60 (operator 2026-10-24: "now that the target is higher, maybe the late TP should not be at 30 min") — the live V2b
+                 exit with the +0.25 late TP starting at minute 45 / 60 instead of 30 (target, stop −4 and the 90-min cap unchanged; NOLATE
+                 (d) is the "never" end of the same axis).
     A FLOOR exit in (b) / (c) pays FLOOR_SLIP 0.05 (a taker market close; V2b never floors, so every shadow floor exit replaces a maker /
     stop / cap exit — the DL 357 convention).
 
@@ -61,7 +69,7 @@ KEY = "V2B_"                                                              # ever
 EXPORT_GLOB = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 STRATEGIES = ("FRENZY_WILLY", "FRENZY_WILLY_HT")
 COLS = ("opened_at", "closed_at", "pair", "direction", "entry_strategy", "status", "entry_price", "pnl_percentage", "close_reason",
-        "peak_pnl", "entry_btc_1h_slope") + WEra.V2_COLS
+        "peak_pnl", "entry_btc_1h_slope", "entry_fee", "quantity") + WEra.V2_COLS
 # the PINNED pre-356 exit (shadow a) — DECISION_LOG 281 / 297; never read from config
 OLD_TP, OLD_STOP, OLD_CAP, (OLD_LATE_MIN, OLD_LATE_TP) = WEra.OLD_TP, WEra.OLD_STOP, WEra.OLD_HOLD, WEra.OLD_LATE
 ARM, FLOOR = 1.25, 1.0                    # the REMOVED DL 356 floor — shadow (b) / the V2-era re-walk only (never the live exit)
@@ -78,7 +86,13 @@ LADDERS = {
     "TRAIL15": lambda p: max(1.0, p - 1.5),
     "HALF": lambda p: max(1.0, 0.5 * p),
 }
-SHADOWS = ("FLOOR10",) + tuple(LADDERS) + ("NOLATE",)    # (b) · (c) · (d)
+# 🎯 (e) lower-target shadows (operator 2026-10-23) — k % below the spike high H; frozen
+TARGET_KS = {"TGT15": 1.5, "TGT20": 2.0}
+LIVE_K, TGT_MAX = 1.0, 8.0                # the live V2b k and cap (DL 356) — pinned, never read from config
+MAKER_FEE_DEF = 0.00018
+# ⏱ (f) later late-TP shadows (operator 2026-10-24) — the +0.25 late line from minute 45 / 60 instead of 30; frozen
+LATE_MINS = {"LATE45": 45.0, "LATE60": 60.0}
+SHADOWS = ("FLOOR10",) + tuple(LADDERS) + ("NOLATE",) + tuple(TARGET_KS) + tuple(LATE_MINS)    # (b) · (c) · (d) · (e) · (f)
 SH_N, SH_DAYS, SH_MIN_GAIN, SH_SHARE = 15, 6, 0.10, 0.50
 LIST_CAP = 20
 
@@ -142,8 +156,51 @@ def shadow_today(P):
     return dict(why=r["why"], pct=float(r["pct"]) if r.get("pct") is not None else float("nan"))
 
 
-def shadow_walk(P, tp, name):
-    """(b) FLOOR10 · (c) a DL 357 ladder · (d) NOLATE → booked % (a FLOOR exit pays FLOOR_SLIP; UNRES → nan)."""
+_MAKER = []
+
+
+def _maker_fee():
+    if _MAKER:
+        return _MAKER[0]
+    _MAKER.append(_maker_fee_read())
+    return _MAKER[0]
+
+
+def _maker_fee_read():
+    try:
+        with open(os.path.join(_ROOT, "trading_config.json"), encoding="utf-8") as fh:
+            v = float(json.load(fh).get("maker_fee", MAKER_FEE_DEF))
+        return v if math.isfinite(v) and 0 <= v < 0.01 else MAKER_FEE_DEF
+    except Exception:
+        return MAKER_FEE_DEF
+
+
+def target_at_k(r, k, maker=None):
+    """(e) the V2b target a fill would have stored with k % below its spike high: max(+1.25, min(+8, net at H × (1 − k %))) on the engine's
+    fee convention (entry fee % of the fill + the maker exit fee) → float, or None when H / entry / fee is unusable. Never raises on bad row data (a failed services import raises)."""
+    if _ROOT not in sys.path:
+        sys.path.insert(0, _ROOT)
+    from services.exec_shadow import net_pct_at     # an import failure raises (never silently unpriced)
+    try:
+        e, h, fee, q = (_f(r.get(x)) for x in ("entry_price", WEra.HIGH_COL, "entry_fee", "quantity"))
+        if not (e and e > 0 and h and h > 0 and q and q > 0) or fee is None or fee < 0:
+            return None
+        t = net_pct_at("LONG", e, h * (1.0 - k / 100.0), fee / (e * q) * 100.0, _maker_fee() if maker is None else maker)
+        return None if t is None else round(max(OLD_TP, min(TGT_MAX, t)), 4)
+    except Exception:
+        return None
+
+
+def shadow_walk(P, tp, name, r=None):
+    """(b) FLOOR10 · (c) a DL 357 ladder · (d) NOLATE · (e) TGT15 / TGT20 (needs the fill row r) · (f) LATE45 / LATE60 → booked % (a FLOOR exit pays FLOOR_SLIP;
+    UNRES / unpriceable target → nan)."""
+    if name in LATE_MINS:
+        return float(walk_v2(P, tp, late=LATE_MINS[name])["pct"])
+    if name in TARGET_KS:
+        tk = target_at_k(r or {}, TARGET_KS[name])
+        if tk is None:
+            return float("nan")
+        return float(walk_v2(P, tk)["pct"])
     if name == "NOLATE":
         w = walk_v2(P, tp, late=None)
     elif name == "FLOOR10":
@@ -293,7 +350,7 @@ def price(c, path_fn=None, fetch=False, now_ms=None):
                      ("v2f_why", wf["why"]), ("src", P.get("_src", "path"))):
             cols[k].append(v)
         for k in SHADOWS:
-            sh[k].append(shadow_walk(P, tp, k))
+            sh[k].append(shadow_walk(P, tp, k, r))
     for k, v in cols.items():
         c[k] = v
     c["delta"] = c.live - c.shadow
@@ -373,7 +430,7 @@ def reads(c):
 
 
 def shadow_reads(c):
-    """per shadow (b)(c)(d): the frozen read on the runner fills (open order) → {V2B_SH_<name>: (verdict, text, complete)}."""
+    """per shadow (b)(c)(d)(e)(f): the frozen read on the runner fills (open order) → {V2B_SH_<name>: (verdict, text, complete)}."""
     a = _runners(c)
     m = _prefix(a, SH_N, SH_DAYS)
     out = {}
@@ -385,7 +442,9 @@ def shadow_reads(c):
         d = pd.to_numeric(m[f"d_{k}"], errors="coerce")
         if d.isna().any():
             nv = int(pd.to_numeric(m.v2b, errors="coerce").isna().sum())
-            out[name] = ("HOLD", f"sample ({len(m)}): {nv} unpriced / {int(d.isna().sum()) - nv} unresolved shadow walks — held", False)
+            un = m[d.isna() & pd.to_numeric(m.v2b, errors="coerce").notna()]
+            who = (" (" + ", ".join(f"{r.pair} {str(r.ts)[5:16]}" for r in un.head(5).itertuples()) + ")") if len(un) else ""
+            out[name] = ("HOLD", f"sample ({len(m)}): {nv} unpriced / {int(d.isna().sum()) - nv} unresolved shadow walks{who} — held", False)
             continue
         gain = d.clip(lower=0)
         share = float(gain.max() / gain.sum()) if gain.sum() > 0 else 1.0
@@ -452,7 +511,12 @@ def shadow_ledger(c):
          f"V2b re-walk avg {_avg(a.v2b)}):",
          f"  (a) TODAY +1.25 exit (the gate shadow): avg {_avg(a.shadow)} · Σ(live − shadow) {pd.to_numeric(a.delta, errors='coerce').sum():+.2f} · "
          f"Σ(shadow − re-walk) {(pd.to_numeric(a.shadow, errors='coerce') - pd.to_numeric(a.v2b, errors='coerce')).sum():+.2f}"]
-    tag = {"FLOOR10": "(b)", "NOLATE": "(d)"}
+    tag = {"FLOOR10": "(b)", "NOLATE": "(d)", **{k: "(e)" for k in TARGET_KS}, **{k: "(f)" for k in LATE_MINS}}
+    # (e) convention check: the k = 1.0 recompute must reproduce each fill's STORED target, else the (e) targets are off
+    rc = [(target_at_k(r, LIVE_K), _f(r.get(WEra.TP_COL))) for r in a.to_dict("records")]
+    ok = sum(1 for x, y in rc if x is not None and y is not None and abs(x - y) <= 0.02)
+    L.append(f"  (e) target recompute check (k {LIVE_K:g} vs the stored target, ±0.02): {ok}/{len(rc)}"
+             + ("" if ok == len(rc) else " ⚠ (e) targets differ from the stored ones (bad fee/H row, or frenzy_willy_high_k_pct changed from 1.0) — read with care"))
     for k in SHADOWS:
         d = pd.to_numeric(a[f"d_{k}"], errors="coerce")
         L.append(f"  {tag.get(k, '(c)')} {k}: avg {_avg(a[f'sh_{k}'])} · Σ Δ {d.sum():+.2f} · better {int((d > 1e-9).sum())} / worse {int((d < -1e-9).sum())}")

@@ -246,8 +246,13 @@ def _open(monkeypatch, rows, flag_kw=None, th_kw=None, held=False, bearish=False
     for k, v in dict(dict(frenzy_gvol_max=0.0, frenzy_lite_max_slots=2, frenzy_max_entries_per_pair_day=3, frenzy_bearish_day_block=True,
                           frenzy_max_entry_dislocation_pct=1.0), **(th_kw or {})).items():
         monkeypatch.setattr(th, k, v, raising=False)
-    bar_open = int(time.time() // 300) * 300_000
-    now = dt.datetime.utcnow()
+    # ONE clock read. Seeded fills sit on TODAY's UTC date (the day caps count per UTC day — "30 min ago" fell on yesterday 00:00-00:30 UTC),
+    # and the bar is ≥ 00:05 so the seed at midnight stays before it (the "already entered this bar" guard checks opened_at > bar − 1 s)
+    _ts = time.time()
+    now = dt.datetime.utcfromtimestamp(_ts)
+    _d0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    seed_at = max(now - dt.timedelta(minutes=30), _d0)
+    bar_open = max(int(_ts // 300) * 300_000, int((_d0 - dt.datetime(1970, 1, 1)).total_seconds() * 1000) + 300_000)
 
     async def run():
         eng = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -257,7 +262,7 @@ def _open(monkeypatch, rows, flag_kw=None, th_kw=None, held=False, bearish=False
             async with async_sessionmaker(eng, expire_on_commit=False)() as db:
                 for pair, strat, status in rows:
                     db.add(models.Order(pair=pair, direction="LONG", status=status, is_paper=True, entry_strategy=strat, confidence="STRONG_BUY",
-                                        entry_price=1.0, quantity=1.0, investment=1.0, leverage=4, notional_value=4.0, opened_at=now - dt.timedelta(minutes=30)))
+                                        entry_price=1.0, quantity=1.0, investment=1.0, leverage=4, notional_value=4.0, opened_at=seed_at))
                 await db.commit()
                 blocks, opened = [], []
                 e = _engine(TE, blocks)

@@ -9057,3 +9057,21 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   colspans 19 → 20. Test: tests/test_worst_pnl_column.py.
 - Follow-up (operator, same day): in Open Orders the Worst P&L % is white like Peak P&L % (no red); Closed Orders keeps its colours
   (its Peak column is coloured too).
+
+## (372) 2026-10-25 — 📦 B24 archived (LIVE batch) + master STACK 2026-10-25a
+- **Archive:** export BASELINE24_batch1023_LIVE_orders → reports/BASELINE24_batch1023_LIVE_orders.csv (+ the decisions journal beside it).
+  - **Window:** fills Oct-23 04:00 → Oct-23 16:30 UTC.
+  - **Rows:** 4 = 4 bot + 0 MANUAL (MANUAL_EXEMPT in the master).
+- **Master:** build_willy_exit_cf.py → build_master_pool.py (STACK 2026-10-25a) → screen_pool.py → validate_against_master.py. B24 stack-kept 4 · +1.96 % · +11 $.
+- **Per sleeve, bot only, as traded:**
+  - FLATBASE_SHORT 1 · 100 % · +7.95 % · +40 $
+  - FRENZY_LITE 1 · 0 % · -2.59 % · -97 $
+  - FRENZY_WILLY 2 · 100 % · +1.18 % · +68 $
+- ⚠ Not re-priced to rules shipped since 10-21b (written into STACK_VERSION): FRENZY_WILLY / WILLY_HT still at the pre-356 exit (+1.25 / −4 /
+  90 / late 30 @ +0.25) — the live V2b target-near-the-spike-high exit (356 → 358) is not modelled (B24's INIT 10-23 booked +1.06 under the
+  V2 floor, priced +1.25 here; its V2b target was +7.42 and the WILLY_EXIT_V2b scout's re-walk of its path books +7.42 — peak while
+  held +2.85, i.e. after the floor exit); Bear-Run size 0.2 invest (360) not applied; FLATBASE_SHORT (348)
+  kept as traded (own sleeve). WILLY_EXIT_CF.csv also upgraded 2 B23 rows (BAT / ALT 10-20) from the 1m to the tick path —
+  same cf_pct (+1.25 TP). A V2b re-walk in build_willy_exit_cf.py is the follow-up before WILLY master reads are quoted as today's exit.
+- Validation: validate_against_master.py ALL CHECKS PASS; SCREENED_BASELINE unchanged (82 · 84 % · +$1,148).
+- Current batch = B25 (PAPER since 2026-10-23 ~18:30 UTC).

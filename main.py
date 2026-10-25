@@ -1935,6 +1935,11 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
                 cached_peak_pnl if cached_peak_pnl is not None else (o.peak_pnl or 0),
                 pnl_pct,
             ), 2),
+            # 📉 Worst P&L % (operator 2026-10-24) — the trough, same source order + invariant as the peak: cache, then DB, never above current
+            "trough_pnl": round(min(
+                cached_trough_pnl if cached_trough_pnl is not None else (o.trough_pnl or 0),
+                pnl_pct,
+            ), 2),
             "pnl": round(pnl, 2),
             "pnl_percentage": round(pnl_pct, 2),
             "duration": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
@@ -2452,6 +2457,9 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "pnl": round(o.pnl or 0, 2),
             "pnl_percentage": round(o.pnl_percentage or 0, 2),
             "peak_pnl": round(o.peak_pnl or 0, 2),
+            # 📉 Worst P&L % (operator 2026-10-24) — never above the booked close (a reconcile / external close can skip the trough update)
+            "trough_pnl": (round(min(o.trough_pnl, o.pnl_percentage if o.pnl_percentage is not None else o.trough_pnl), 2)
+                           if o.trough_pnl is not None else None),
             "close_reason": o.close_reason,
             "duration": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
             "opened_at": o.opened_at.isoformat(),

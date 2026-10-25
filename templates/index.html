@@ -871,6 +871,7 @@
                                 <th class="px-4 py-3 font-medium text-center">Flag</th>
                                 <th class="px-4 py-3 font-medium text-right">Duration</th>
                                 <th class="px-4 py-3 font-medium text-right">Peak P&L %</th>
+                                <th class="px-4 py-3 font-medium text-right" title="The lowest net P&L % this trade reached since entry">Worst P&L %</th>
                                 <th class="px-4 py-3 font-medium text-right">Entry</th>
                                 <th class="px-4 py-3 font-medium text-right">Current</th>
                                 <th class="px-4 py-3 font-medium text-right">Fee</th>
@@ -881,7 +882,7 @@
                         </thead>
                         <tbody id="open-orders-table-body" class="divide-y divide-white/5">
                             <tr>
-                                <td colspan="19" class="px-4 py-8 text-center text-gray-500">No open orders</td>
+                                <td colspan="20" class="px-4 py-8 text-center text-gray-500">No open orders</td>
                             </tr>
                         </tbody>
                     </table>
@@ -909,6 +910,7 @@
                                 <th class="px-4 py-3 font-medium text-right">Total Fee</th>
                                 <th class="px-4 py-3 font-medium text-right">P&L</th>
                                 <th class="px-4 py-3 font-medium text-right">Peak P&L %</th>
+                                <th class="px-4 py-3 font-medium text-right" title="The lowest net P&L % this trade reached since entry">Worst P&L %</th>
                                 <th class="px-4 py-3 font-medium text-center">BE Level</th>
                                 <th class="px-4 py-3 font-medium text-right">Duration</th>
                                 <th class="px-4 py-3 font-medium">Reason</th>
@@ -917,7 +919,7 @@
                         </thead>
                         <tbody id="closed-orders-table-body" class="divide-y divide-white/5">
                             <tr>
-                                <td colspan="19" class="px-4 py-8 text-center text-gray-500">No closed orders</td>
+                                <td colspan="20" class="px-4 py-8 text-center text-gray-500">No closed orders</td>
                             </tr>
                         </tbody>
                     </table>
@@ -19072,7 +19074,7 @@
                 try { renderManualBlockBanner(data || []); } catch (e) {}   // ⛔ (DECISION_LOG 343) the "bot trades blocked" banner
                 
                 if (!data || data.length === 0) {
-                    _setHTMLIfChanged(tbody, '<tr><td colspan="19" class="px-4 py-8 text-center text-gray-500">No open orders</td></tr>');
+                    _setHTMLIfChanged(tbody, '<tr><td colspan="20" class="px-4 py-8 text-center text-gray-500">No open orders</td></tr>');
                     return;
                 }
                 
@@ -19299,6 +19301,7 @@
                             <td class="px-4 py-3 text-center">${(flagBadge || tpTierBadge) ? (flagBadge + tpTierBadge) : beBadge}</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
                             <td class="px-4 py-3 text-right text-white font-medium">${o.peak_pnl >= 0 ? '+' : ''}${o.peak_pnl.toFixed(2)}%</td>
+                            <td class="px-4 py-3 text-right ${(o.trough_pnl ?? 0) < 0 ? 'text-red-400' : 'text-gray-400'} font-medium">${o.trough_pnl == null ? '—' : (o.trough_pnl >= 0 ? '+' : '') + o.trough_pnl.toFixed(2) + '%'}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.entry_price)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.current_price)}</td>
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(o.total_fees)}</td>
@@ -19338,7 +19341,7 @@
                 const tbody = document.getElementById('closed-orders-table-body');
                 
                 if (!data || data.length === 0) {
-                    _setHTMLIfChanged(tbody, '<tr><td colspan="19" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>');
+                    _setHTMLIfChanged(tbody, '<tr><td colspan="20" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>');
                     return true;
                 }
                 
@@ -19425,6 +19428,7 @@
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(o.total_fee)}</td>
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
                             <td class="px-4 py-3 text-right ${(o.peak_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${(o.peak_pnl || 0) >= 0 ? '+' : ''}${(o.peak_pnl || 0).toFixed(2)}%</td>
+                            <td class="px-4 py-3 text-right ${(o.trough_pnl ?? 0) < 0 ? 'text-red-400' : 'text-gray-400'} font-medium">${o.trough_pnl == null ? '—' : (o.trough_pnl >= 0 ? '+' : '') + o.trough_pnl.toFixed(2) + '%'}</td>
                             <td class="px-4 py-3 text-center">${beBadge}</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
                             <td class="px-4 py-3 text-xs">${(() => {
@@ -19448,7 +19452,7 @@
                         </tr>
                     `;
                 }).join('');
-                if (_hiddenN > 0) _rowsHtml += '<tr><td colspan="19" class="px-4 py-3 text-center"><button class="text-xs text-sky-400 hover:text-sky-300 underline" onclick="_closedShowAll=true; loadClosedOrders()">Show all ' + data.length + ' closed orders (' + _hiddenN + ' older hidden)</button></td></tr>';
+                if (_hiddenN > 0) _rowsHtml += '<tr><td colspan="20" class="px-4 py-3 text-center"><button class="text-xs text-sky-400 hover:text-sky-300 underline" onclick="_closedShowAll=true; loadClosedOrders()">Show all ' + data.length + ' closed orders (' + _hiddenN + ' older hidden)</button></td></tr>';
                 _setHTMLIfChanged(tbody, _rowsHtml);
                 return true;   // ⚡ Oct-5 (212): success flag — checkClosedOrders only advances its probe signature on a good load
             } catch (e) {

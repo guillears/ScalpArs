@@ -9048,3 +9048,10 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   printed as 99.38 %. The TP1 verdict lines print this run's per-half Δ (tp1_backtest_note, no-funding columns). Known bias: a fill ≤ 60 s
   into its 5m bar starts the path at that bar, so a few seconds of pre-fill prints can touch a +1 % TP (none of the 6 live fills affected).
   Config unchanged.
+
+## (371) 2026-10-24 — 📉 "Worst P&L %" column in Open Orders and Closed Orders (operator: "besides peak P&L, a column of worst through … both tables")
+- Display only (no trading logic, no config, no new column): Order.trough_pnl (already tracked by the monitor loop and the open-orders
+  cache, already in the orders CSV) is served by /api/orders/open (cache → DB, clamped to ≤ the current P&L — the peak's invariant mirrored)
+  and /api/orders/closed (stored value clamped to ≤ the booked close — the reconcile EXTERNAL_CLOSE / BACKSTOP, CLOSE_FALLBACK
+  and imported app trades skip the trough update; 6 of 64 closed rows in BASELINE23 had the trough above the close), and shown right after "Peak P&L %" in both tables (red when < 0, "—" when missing). Empty-row
+  colspans 19 → 20. Test: tests/test_worst_pnl_column.py.

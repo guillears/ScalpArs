@@ -19301,7 +19301,7 @@
                             <td class="px-4 py-3 text-center">${(flagBadge || tpTierBadge) ? (flagBadge + tpTierBadge) : beBadge}</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
                             <td class="px-4 py-3 text-right text-white font-medium">${o.peak_pnl >= 0 ? '+' : ''}${o.peak_pnl.toFixed(2)}%</td>
-                            <td class="px-4 py-3 text-right ${(o.trough_pnl ?? 0) < 0 ? 'text-red-400' : 'text-gray-400'} font-medium">${o.trough_pnl == null ? '—' : (o.trough_pnl >= 0 ? '+' : '') + o.trough_pnl.toFixed(2) + '%'}</td>
+                            <td class="px-4 py-3 text-right text-white font-medium">${o.trough_pnl == null ? '—' : (o.trough_pnl >= 0 ? '+' : '') + o.trough_pnl.toFixed(2) + '%'}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.entry_price)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.current_price)}</td>
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(o.total_fees)}</td>

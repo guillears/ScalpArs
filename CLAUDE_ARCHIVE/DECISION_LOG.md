@@ -9055,3 +9055,5 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   and /api/orders/closed (stored value clamped to ≤ the booked close — the reconcile EXTERNAL_CLOSE / BACKSTOP, CLOSE_FALLBACK
   and imported app trades skip the trough update; 6 of 64 closed rows in BASELINE23 had the trough above the close), and shown right after "Peak P&L %" in both tables (red when < 0, "—" when missing). Empty-row
   colspans 19 → 20. Test: tests/test_worst_pnl_column.py.
+- Follow-up (operator, same day): in Open Orders the Worst P&L % is white like Peak P&L % (no red); Closed Orders keeps its colours
+  (its Peak column is coloured too).

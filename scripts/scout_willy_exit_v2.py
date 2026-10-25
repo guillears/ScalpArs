@@ -526,6 +526,46 @@ def shadow_ledger(c):
     return L
 
 
+def sleeve_split_lines(c, pok=True):
+    """(operator 2026-10-25: "different frenzies may need different exits / protections, like WILLY vs WILLY_HT") — every shadow line and the
+    shadow reads per sleeve. OBSERVE-ONLY: the frozen gates / reads above stay pooled (pre-registered); these per-sleeve reads are printed with
+    the same bar but never persisted."""
+    if not len(c) or "entry_strategy" not in c:
+        return []
+    L = ["Per sleeve (observe-only — the frozen reads stay pooled; same bar, never persisted):"]
+    pr = c[c.runner.astype(bool) & c.v2b.notna()] if len(c) else c
+    if len(pr):   # same-period comparison: only UTC days on which BOTH sleeves have priced runner fills (the sleeves fire on different days)
+        dd = pr.assign(_d=pr.ts.dt.strftime("%Y-%m-%d"))
+        both = set.intersection(*[set(dd[dd.entry_strategy.astype(str) == es]._d) for es in STRATEGIES])
+        sd = dd[dd._d.isin(both)]
+        L.append(f"  same days only ({len(both)} UTC days with both sleeves): " + " | ".join(
+            f"{es} n {int((sd.entry_strategy.astype(str) == es).sum())} · " + " · ".join(
+                f"{k} Δ {_avg(sd[sd.entry_strategy.astype(str) == es][f'd_{k}'])}" for k in SHADOWS) for es in STRATEGIES))
+    for es in STRATEGIES:
+        g = c[c.entry_strategy.astype(str) == es]
+        a = g[g.runner.astype(bool) & g.v2b.notna()] if len(g) else g
+        if not len(a):
+            L.append(f"  {es}: 0 priced runner fills")
+            continue
+        L.append(f"  {es}: {len(a)} priced runner fills on {_days(a)} days · live {_avg(a.live)} · V2b re-walk {_avg(a.v2b)} · "
+                 f"(a) today's +1.25 exit {_avg(a.shadow)} · "
+                 + " · ".join(f"{k} Δ {_avg(a[f'd_{k}'])}" for k in SHADOWS))
+        rd = shadow_reads(g)
+        ok_s, _ = parity(g)                                    # the parity guard per sleeve too (one sleeve can fail inside a passing pool)
+        coll = [t for v, t, _ in rd.values() if v == "COLLECTING"]
+        if len(coll) == len(rd):
+            L.append(f"    shadow reads: COLLECTING — {coll[0]}")
+            continue
+        for name, (v, txt, complete) in rd.items():
+            lab = name.replace(KEY, KEY + es + '_')
+            if complete and not (pok and ok_s):
+                L.append(f"    {lab}: no verdict (parity)")
+                continue
+            txt = txt.replace(f"CANDIDATE: operator decides an engine change to", "per-sleeve hint (not a gate):")
+            L.append(f"    {lab}: {'HINT' if v == 'CANDIDATE' else v} — {txt}")
+    return L
+
+
 def batch_table(c):
     if not len(c):
         return []
@@ -565,6 +605,7 @@ def run(now_ms=None, paths=None, raw=None, floor_ms="auto", path_fn=None, fetch=
     pok, ptxt = parity(c)
     L.append(ptxt)
     L += shadow_ledger(c)
+    L += sleeve_split_lines(c, pok)
     L += [""] + batch_table(c) + [""]
     L.append("🔒 FROZEN gates + shadow reads (operator decides; persisted once decided):")
     for name, (vv, txt, complete) in list(reads(c).items()) + list(shadow_reads(c).items()):

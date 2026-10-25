@@ -275,3 +275,27 @@ def test_late_minute_shadows():
     assert S.shadow_walk(p, 3.5, "LATE60") == 3.5                                                       # 60: rides to the +3.5 target at 55 min
     stop = _P(TE0, [(2, 1.3, 1.3), (35, 0.6, 0.6), (40, -4.1, -4.1)])
     assert S.walk_v2(stop, 3.5)["pct"] == 0.6 and S.shadow_walk(stop, 3.5, "LATE45") == -4.1           # waiting longer can also lose
+
+
+def test_per_sleeve_split_willy_vs_ht_observe_only(tmp_path):
+    """(operator 2026-10-25) every shadow line per sleeve (WILLY / WILLY_HT): printed, same bar, labelled a hint, never persisted; the
+    pooled frozen reads unchanged. HT here = the stop path (a floor saves it), WILLY = the TP path (Δ 0) → the sleeves differ."""
+    rows, paths = _book(stop_every=0, n=34)
+    out_rows = []
+    for r in rows:
+        if str(r["pair"]).startswith("R") and int(r["pair"][1:-4]) % 2:
+            r = dict(r, entry_strategy="FRENZY_WILLY_HT", pnl_percentage=-4.1, close_reason="STOP_LOSS")
+            paths[r["pair"]] = STOP_PATH
+        out_rows.append(r)
+    state = str(tmp_path / "g.json")
+    out = "\n".join(S.run(raw=_exports(out_rows), floor_ms=FLOOR_MS, path_fn=_fn(paths), fetch=False, state_path=state))
+    assert "Per sleeve (observe-only" in out
+    assert "  FRENZY_WILLY: 17 priced runner fills" in out and "  FRENZY_WILLY_HT: 17 priced runner fills" in out
+    assert "V2B_FRENZY_WILLY_HT_SH_FLOOR10: HINT — " in out and "per-sleeve hint (not a gate)" in out   # the floor saves HT's stops
+    assert "V2B_FRENZY_WILLY_SH_FLOOR10: KEEP" in out                                                   # WILLY: Δ 0 → keep
+    st = json.load(open(state))
+    assert not any("FRENZY_WILLY" in k for k in st)                                                     # never persisted
+    assert "V2B_SH_FLOOR10: 15 runner fills on 8 days" in out                                          # the pooled read unchanged
+    assert "same days only (" in out
+    lines = S.sleeve_split_lines(S.price(S.cohort(_exports(out_rows), FLOOR_MS)["kept"], path_fn=_fn(paths)), pok=False)
+    assert any("no verdict (parity)" in x for x in lines)                                               # the parity guard holds

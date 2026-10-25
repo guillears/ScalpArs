@@ -45,6 +45,15 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    (entry_willy_ht_size_frac) vs same-period WILLY → STEP-UP (frozen 30 / 10 days: Pattern-W WR ≥ 70 % ∧ avg ≥ +0.10 ∧ Σ > 0, and HT ≥
    WILLY − 0.10) / STEP-DOWN (CONFIRMED / KILL / FIRST / avg < 0 / first-60 avg < 0) / full size by the DL 341 rule (HT ≥ WILLY + Pattern-W,
    advisory until the DL 341 gate agrees).
+   ❓ OPERATOR QUESTIONS (2026-10-25) — answer each with a clear recommendation, three blocks (① batch · ② master per batch · ③ backtest):
+     (1) should WILLY_HT exist at all? — answered by scout_willy_ht.py's FROZEN DL 341 gate (main read at the first 30 HT fills on ≥ 10 days
+         vs same-period WILLY) + the DL 365 ladder; any answer before that is an operator-discretion read BELOW the gate, labelled so
+     (2) or exist with its OWN exit / protection? (the DL 373 per-sleeve split: every V2b shadow — floor, ladders, NOLATE, TGT15 / TGT20,
+         LATE45 / LATE60 — on HT fills vs WILLY fills; compare on the 'same days only' line)
+     (3) or filter HT winners vs losers so the kept HT fills can share WILLY's exit? (W/L separator screen on HT fills FIRST — stamped
+         entry columns, turnover R, mcap, 24 h volume, spike stats, BTC state: scripts/sweep_separators.py (cite its output) + exhaustive
+         2D with a shuffled null + OOS confirmation + the screen's blind-spot list; a filter needs the expectancy bar (N ≥ 15, ≥ 8 windows,
+         95 % window-bootstrap) else it ships OBSERVE-ONLY — HT N will be small, so expect a watchlist item, not a filter; then the exit read)
 ②f **🩳 FLATBASE_SHORT (DECISION_LOG 348, 2026-10-22, alert-only, discipline override)** — run scripts/scout_flatbase_short.py (also in the
    opportunity scout): real CLOSED fills from the deploy + 10 min (operator-closed out) → flatbase_gate verdict (3 stop-outs in a row / Σ ≤ −30 →
    review · first 10 avg < 0 → review · 30 fills on ≥ 10 days: ≥ +0.5 % step up, < 0 off, else re-read at 60). Per fill: flat14, turnover, mcap,
@@ -97,7 +106,8 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    V2b re-walk, same path): (a) today's +1.25 exit (the gate shadow) · (b) FLOOR10 = the removed DL 356 floor · (c) the DL 357 ladders STEPS /
    TRAIL10 / TRAIL15 / HALF (floor exits pay 0.05) · (d) NOLATE (target until the cap, stop −4) · (e) TGT15 / TGT20 (scout label (e)) = the target 1.5 / 2 %
    below the spike high instead of 1 % (DL 364; check the 'target recompute' line reads n/n) · (f) LATE45 / LATE60 = the
-   +0.25 late TP from minute 45 / 60 instead of 30 + the per-fill list (last 20) · ⓔ the
+   +0.25 late TP from minute 45 / 60 instead of 30 + the per-fill list (last 20) + the PER-SLEEVE split (DL 373: every
+   shadow line and read for FRENZY_WILLY vs FRENZY_WILLY_HT, observe-only hints) · ⓔ the
    per-batch BEFORE (shadow a) → AFTER (live V2b) table split by BTC side at entry (analytics only; the falling side is governed by the
    WILLY_BTC1H gate) · ⓕ gate status (counted from the DL 358 deploy + 10 min, runner fills): V2B_EARLY (first 10 avg < shadow − 0.15 →
    alert) · V2B_MAIN (15 on ≥ 6 UTC days, Σ(live − shadow) < 0 → REVERT to +1.25 = frenzy_willy_high_target_enabled false) · V2B_FINAL (25,
@@ -324,6 +334,9 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
       LITE +0.19 on the year), and the LITE "EMA13/50 gap > 1.87 ∧ not first entry" borderline zone (if the operator registers it).
 
 ## 1. FRENZY_WILLY
+- [ ] **WILLY_HT Q1 (operator 2026-10-25): should HT exist at all?** — scout_willy_ht.py's frozen DL 341 gate (first 30 HT on ≥ 10 days vs same-period WILLY) + the DL 365 ladder; before that, an operator-discretion read labelled below the gate; clear keep / off recommendation
+- [ ] **WILLY_HT Q2: or HT with its OWN exit / protection?** — the DL 373 per-sleeve split (every V2b shadow on HT vs WILLY fills, read on the 'same days only' line); name the exit if one separates
+- [ ] **WILLY_HT Q3: or filter HT winners vs losers so kept HT fills share WILLY's exit?** — W/L screen on HT fills FIRST (sweep_separators.py output, exhaustive 2D + shuffled null + OOS, blind spots); filter only at the expectancy bar (N ≥ 15, ≥ 8 windows, 95 % window-bootstrap), else observe-only; then the exit read
 - Reference numbers below come from the yr5 A 1,067-fill cohort (pre-270 recipe): re-derive them on today's stack, one seed,
   eligible pairs, de-duplicated before quoting. The WILLY exit FAMILY on the same fills: TIMECAP, TP125, SL4, combo +1.25/−4, the
   6 EMA-cross variants and the runner leg below — every candidate faces a max-statistic shuffled null over the whole family (state

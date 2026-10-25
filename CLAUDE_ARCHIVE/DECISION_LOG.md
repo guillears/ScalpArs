@@ -9075,3 +9075,15 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   same cf_pct (+1.25 TP). A V2b re-walk in build_willy_exit_cf.py is the follow-up before WILLY master reads are quoted as today's exit.
 - Validation: validate_against_master.py ALL CHECKS PASS; SCREENED_BASELINE unchanged (82 · 84 % · +$1,148).
 - Current batch = B25 (PAPER since 2026-10-23 ~18:30 UTC).
+
+## (373) 2026-10-25 — 🎲 WILLY exit scout split per sleeve: FRENZY_WILLY vs FRENZY_WILLY_HT (operator: "maybe different frenzies need different exits / protections, like willy vs willy ht"; observe-only)
+- scripts/scout_willy_exit_v2.py sleeve_split_lines: after the pooled shadow ledger, each sleeve gets its own line (priced runner fills · days
+  · live · V2b re-walk · today's +1.25 exit · every shadow's avg Δ: FLOOR10, the four ladders, NOLATE, TGT15 / TGT20, LATE45 / LATE60) and
+  its own shadow reads on the same bar (15 runner fills on 6 days, avg Δ ≥ +0.10, top fill < 50 %) — printed only, never persisted,
+  labelled HINT / "per-sleeve hint (not a gate)", and subject to the parity guard pooled AND per sleeve (no verdict while either < 90 %).
+  A "same days only" line compares the sleeves on UTC days where both have priced runner fills (each sleeve's own first 15 cover different
+  days — the exit Δ depends on the regime). The
+  frozen gates and reads stay POOLED (WILLY + HT, as pre-registered in DL 356 / 358 / 364): a per-sleeve verdict is a hint for the operator,
+  not a decision.
+- Already per sleeve elsewhere: FRENZY_LONG / WIDE / LITE exit shadows (scout_frenzy_willy_exit, scout_frenzy_exits — judged per sleeve).
+- Test: tests/test_scout_willy_exit_v2.py::test_per_sleeve_split_willy_vs_ht_observe_only.

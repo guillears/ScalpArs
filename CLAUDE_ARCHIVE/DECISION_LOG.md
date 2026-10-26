@@ -9374,3 +9374,29 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   registered as FROZEN OBSERVE lines (cohort ≥ 2026-10-27; bars in CURRENT_STATE; OBS-2's in-sample worth ≈ $10 over 37 in-state trading days of a 71-day span — operator call
   declined, observe instead) · OBS-3 mechanical lines read alongside.
 - **Next (running):** the BTC-reactive exit study (exit when BTC turns in the first minutes) — the one idea the grid could not test.
+
+## (381) 2026-10-26 — ₿ BTC-REACTIVE ML EXIT study: REFUTED · two rare frozen observe lines (operator: "run the BTC-reactive exit study" → "yes")
+- **Hypothesis:** an ML long whose BTC turns down in the first minutes becomes a loser; exiting on BTC beats the pair's own exit — the one
+  idea DL 380's grid could not test. Study reports/ML_BTC_EXIT_2026-10-26.md (+ CSVs; scripts/study_ml_btcexit_*.py), master-led on DL 380's
+  cohort (158 KEEP + 9 B25, PROBE 166 apart) and replica (BASE equal on all 333 fills); validate ALL PASS. BTC paths: ticks on 133 master +
+  166 probe, 1m on 25 master (B19–B23) + 9 B25. 44 public BTC 1m calls (fetch cache gitignored).
+- **Information:** BTC 15 min after entry separates outcome on all fills (W +0.07 / L −0.09, AUC 0.76), but on the fills a rule could still act
+  on, BTC AUC is 0.53 / 0.64 / 0.58 / 0.65 / 0.66 at N 1 / 3 / 5 / 10 / 15 — below the pair's own P&L at the same minute (0.68–0.80); within
+  pair-P&L terciles 0.47–0.57 (yr5 0.50–0.53); leave-one-day-out "pair P&L + peak" vs "+ BTC" never gains more than 0.001 (−0.019 … −0.002;
+  yr5 ≤ 0). BTC adds nothing the pair hasn't already shown.
+- **Exit grid (after the dual-review re-run):** 128 pre-declared rules × 3 latency scenarios (FAST = tick + 8 s / close of the 1m bar holding
+  the trigger, −0.02 slip; SLOW ≥ 60 s). Rules with Δ > 0: 39 / 33 / 28 (IDEAL / FAST / SLOW); FAST 13 significantly negative, none clears
+  Bonferroni; each winner cut ≈ −0.65 vs each loser saved ≈ +0.40; all 4 BTC-trail (TR) rules significantly negative (−0.05 … −0.17), the
+  TRG variants not significant; best FAST rule XN_N3_x0.10 +0.0086 [−0.004, +0.024] (6 fills, ≈ $10 / 71 days, yr5 −0.003); master vs yr5
+  sign agreement 70 %, corr +0.71. Losing eras not fixed (G6 stays −0.13 under every top rule; G5 −0.04 → −0.03 at best).
+- **Verdicts:** 95 DECIDED rejected · 0 ship-grade · OPERATOR CALL ×2 (the identical XG_N10_x0.20 ≡ XGN_N10_x0.20: 4 fills, all losers saved,
+  +0.0076 [+0.000, +0.017], ≈ $9 / 71 days, 0 fires in G6 / B25, yr5 −0.003) → recommended NO, not shipped · 31 KEEP OBSERVING; by the
+  pre-declared selection rule (a CI-low tie at 0.0000 between identical twins resolved by grid order — stated in the report) two frozen lines:
+  OBS-B1 `ML_BTCEXIT_N5_X015_NG` (= XG_N5_x0.15, 2 master fires, +0.0060) and OBS-B2 `ML_BTCEXIT_N5_X015_SLBE` (= TS_N5_x0.15_L+0.0,
+  4 fires, +0.0051, yr5 −0.011); exact text in CURRENT_STATE; ~9–18 months to a read.
+- **Dual-review fixes (re-run, verdict unchanged):** 1m sources read only fully closed bars (removes an intrabar look-ahead; the APT 10-16
+  artefact behind the first run's G6 gain is gone) · FAST latency applied on 1m fills · SLOW truly ≥ 60 s · fetch writes max(existing,
+  Retry-After) to the shared cooldown and exits non-zero on other errors · the first run's OBS-B2 (TS_N15_x0.30_L-0.4) is no longer eligible.
+  Remaining 1m limits: triggers up to 59 s late on 1m, BASE / TS on the synthetic 1m path for 34 fills (B19–B25 ticks would remove them).
+- **Conclusion across DL 378 ④ / 380 / 381:** the momentum-long exit is not the leak; recent eras lose on entries / regime (more
+  never-green losers). The batch review digs there.

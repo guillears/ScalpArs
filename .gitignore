@@ -74,3 +74,4 @@ reports/BASELINE*_decisions.csv
 reports/.scout_*.lock
 reports/PREP_B25_ML_WL_fetch/
 reports/ML_EXIT_DEEP_2026-10-26_fetch/
+reports/ML_BTC_EXIT_2026-10-26_fetch/

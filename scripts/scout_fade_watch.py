@@ -56,7 +56,7 @@ FORWARD COHORT  lines 1 / 2 / 4 / 5 / 6: CLOSED SPIKE_FADE fills (paper + live v
   Line 3      — confirmation tracker at the first 10 high-mcap fades: CAP_CANDIDATE (operator decides "high-mcap fades max 1.5×") iff
                 their avg P&L % < 0 (DL 311 wording; % never raw $ — CLAUDE.md principle 3); else KEEP_2X. Informational, never in the
                 read: Σ$ traded vs 1.5× vs 1× per book (paper / live never summed) and the > 4 %-of-account test at each size (reference
-                equity = the newest export's balance column for the fill's book, else ASSUMED $2,900 paper / $1,225 live).
+                equity = the newest export's balance column for the fill's book, else ASSUMED $2,900 paper (→ $10,000 for paper fills opened ≥ 2026-10-26 13:50 UTC, DL 375) / $1,225 live).
 Usage           venv/bin/python scripts/scout_fade_watch.py      (batch review)
 """
 import json
@@ -88,8 +88,21 @@ BE_FALLBACK, BE_MIN_LOSSES = 72.0, 5
 BOOT_N, BOOT_SEED = 4000, 7
 MCAP_READ_N, ACCT_LOSS_PCT = 10, 4.0
 ACCOUNT_PAPER, ACCOUNT_LIVE = 2900.0, 1225.0                 # stated assumptions when no export carries a balance column
+# 💵 operator paper TOP-UP (2026-10-26 ~13:50 UTC, Settings → Paper Balance 2,900 → 10,000, no reset; DECISION_LOG 375): a paper fill opened
+# at / after the top-up is judged against the new balance. (time ms, paper equity) steps, newest last. The step time is approximate
+# (± 5 min): a fill opened 13:45–13:55 UTC can land on either side.
+PAPER_EQUITY_STEPS = ((0, ACCOUNT_PAPER), (int(pd.Timestamp("2026-10-26 13:50:00").value // 1_000_000), 10000.0))
+
 BALANCE_COLS = ("balance", "account_balance", "wallet_balance", "total_balance", "equity", "account_equity")
 STATE = os.path.join(_R, "reports", ".scout_fade_watch.json")
+
+def paper_equity_at(ms):
+    """the assumed paper equity at a fill's open time (the newest step at / before it; None → the first step)."""
+    v = PAPER_EQUITY_STEPS[0][1]
+    for t, e in PAPER_EQUITY_STEPS:
+        if ms is not None and int(ms) >= t:
+            v = e
+    return v
 PATTERN = os.path.expanduser("~/Downloads/scalpars_orders_paper_*.csv")
 COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "is_paper",
         "entry_adx", "entry_adx_delta", "entry_mcap_usd", "cell_multiplier", "notional_value", "entry_desired_notional",
@@ -315,7 +328,10 @@ def ref_equity(paths=None):
     for book, v in (("paper", ACCOUNT_PAPER), ("live", ACCOUNT_LIVE)):
         if book not in eq:
             eq[book] = v
-            src[book] = f"{book} ASSUMED ${v:,.0f} (no balance column)"
+            src[book] = (f"{book} ASSUMED ${v:,.0f} (no balance column)" if book == "live" else
+                         "paper ASSUMED (no balance column) " + " → ".join(
+                             f"${e:,.0f}" + ("" if t == 0 else f" from {pd.Timestamp(t, unit='ms'):%Y-%m-%d %H:%M} UTC")
+                             for t, e in PAPER_EQUITY_STEPS) + " (DL 375 top-up)")
     return eq, "reference equity " + " / ".join(src[b] for b in ("paper", "live"))
 
 
@@ -327,7 +343,7 @@ def mcap_floor_ms():
     return int(pd.Timestamp(MCAP_FLOOR_PIN).value // 1_000_000), f"DL {MCAP_DL} deploy, pinned"
 
 
-def mcap_rows(fw, eq):
+def mcap_rows(fw, eq, paper_assumed=None):
     """high-mcap fades with traded / 1.5× / 1× $ and % of the book's reference equity → (rows frame, unscored count)."""
     m = pd.to_numeric(fw.entry_mcap_usd, errors="coerce") if len(fw) else pd.Series(dtype=float)
     uns = int(m.isna().sum())
@@ -339,7 +355,11 @@ def mcap_rows(fw, eq):
     h["shadow"] = [x for x, _ in s15]
     h["shadow1"] = [x for x, _ in s10]
     h["szlab"] = [lab for _, lab in s15]
-    h["acct"] = [eq["paper"] if p else eq["live"] for p in h.paper]
+    # no balance column → the time-stepped assumption (top-up aware). ⚠ a real balance column is the NEWEST balance for every fill (no
+    # per-fill balance is exported today) — the source line says which applies.
+    _assumed_paper = (eq.get("paper") == ACCOUNT_PAPER) if paper_assumed is None else bool(paper_assumed)
+    h["acct"] = [(paper_equity_at(None if pd.isna(o) else int(pd.Timestamp(o).value // 1_000_000)) if _assumed_paper else eq["paper"])
+                 if p else eq["live"] for p, o in zip(h.paper, h.o)]
     h["loss_pct"] = -h.usd / h.acct * 100.0
     h["loss_pct15"] = -h.shadow / h.acct * 100.0
     h["loss_pct1"] = -h.shadow1 / h.acct * 100.0
@@ -475,7 +495,7 @@ def mcap_lines(a, state_path, paths, mcap_since_ms=None):
     fw, ox = forward(a, since)
     pend = pending_opens(a, since)
     eq, eq_src = ref_equity(paths)
-    h, uns = mcap_rows(fw, eq)
+    h, uns = mcap_rows(fw, eq, paper_assumed=("paper ASSUMED" in eq_src))
     L = [f"**③ High-mcap 1.5× cap** (entry_mcap_usd ≥ ${MCAP_MIN / 1e6:.0f}M · closed SPIKE_FADE fills opened ≥ {_floor_text(since, how)} · "
          f"{_GK.operator_closed_line(ox)}; shadow X = pnl × min(X / cell_multiplier, 1), sized-below-desired fills re-ticketed at "
          f"min(desired × X / mult, liquidity cap, notional)) · {eq_src}"]

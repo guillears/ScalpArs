@@ -119,7 +119,8 @@ def test_shadow_labels_sized_below_and_desired_unknown():
     assert s == -300.0 and "desired unknown" in lab
 
 
-def test_mcap_line_unscored_and_avg_pct_read(tmp_path):
+def test_mcap_line_unscored_and_avg_pct_read(tmp_path, monkeypatch):
+    monkeypatch.setattr(S, "PAPER_EQUITY_STEPS", ((0, S.ACCOUNT_PAPER),))   # the pre-top-up $2,900 account (fixture dates are 2026-11)
     rows = [_row(i, 0.4, mcap=300e6, day=i) for i in range(9)] + [_row(50, 0.3, mcap=None), _row(51, 0.3, mcap=50e6)]
     fw = _fw(tmp_path, rows)
     eq, _ = S.ref_equity([_csv(tmp_path, rows, "e.csv")])
@@ -307,3 +308,19 @@ def test_shadow_notional_unknown_no_saving():
              liquidity_capped=True)
     assert S.shadow_usd(r) == (-300.0, "liquidity-capped, notional unknown — no saving")
     assert S.shadow_usd(dict(r, notional_value=0.0))[1] == "liquidity-capped, notional unknown — no saving"
+
+
+def test_paper_equity_steps_at_the_topup():
+    """(DL 375) the operator's paper top-up 2,900 → 10,000 on 2026-10-26 13:50 UTC: fills before it are judged on $2,900, after on $10,000."""
+    t = int(pd.Timestamp("2026-10-26 13:50:00").value // 1_000_000)
+    assert S.paper_equity_at(t - 1) == 2900.0 and S.paper_equity_at(t) == 10000.0 and S.paper_equity_at(None) == 2900.0
+
+
+def test_mcap_rows_account_steps_across_the_topup(tmp_path, monkeypatch):
+    """(DL 375) paper fills before the top-up step are judged on $2,900, after it on $10,000 (no balance column)."""
+    t0 = int(pd.Timestamp(T0).value // 1_000_000)
+    monkeypatch.setattr(S, "PAPER_EQUITY_STEPS", ((0, 2900.0), (t0 + 5 * 86_400_000, 10000.0)))
+    rows = [_row(1, -1.5, mcap=300e6, day=1), _row(9, -1.5, mcap=300e6, day=9)]
+    eq, src = S.ref_equity([_csv(tmp_path, rows, "e.csv")])
+    h, _ = S.mcap_rows(_fw(tmp_path, rows), eq, paper_assumed=("paper ASSUMED" in src))
+    assert sorted(h.acct.tolist()) == [2900.0, 10000.0] and "$2,900 → $10,000 from" in src

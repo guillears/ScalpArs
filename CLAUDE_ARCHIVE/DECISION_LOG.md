@@ -9170,3 +9170,23 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   moved to DL 311, 4 % test printed at traded / 1.5× / 1×, $ per book never summed; in-sample before / after added; liquidity labels and
   desired-NaN guard; all-NaN $ guard; the printed floor is the one used (overrides included); balance keyed by book + fixed-equity blind
   spot; 41m wording matches the code.
+
+## (375) 2026-10-26 — 💵 Paper top-up 2,900 → 10,000 USDT, no reset (operator: "can i add more money in USDT balance … so as to not reset the bot, and keep collecting data in same batch")
+- Done by the operator in Settings → Paper Balance at ≈ 13:50 UTC (the engine re-derives the paper USDT from paper_balance + closed P&L
+  − open margin, so the extra 7,100 USDT appears as free balance; no reset, open trades / history / scout counts untouched). The dashboard's
+  Initial Balance now reads $10,100 (10,000 + the $100 BNB seed) and P&L −$1,350.73 (−13.37 % of the NEW base; on the original $3,000 base
+  the B25 paper run is ≈ −45 %).
+- Not built: a dated "paper deposit" button (Settings field is enough for a one-off; recommended only for repeated top-ups or if investor
+  NAV / share is watched in paper — raising the balance without issuing shares makes paper NAV / share jump).
+- Sync: trading_config.json paper_balance 2900 → 10000 (else the next push would overwrite the UI value). scripts/scout_fade_watch.py: the
+  paper reference equity is time-stepped (PAPER_EQUITY_STEPS: $2,900 before 2026-10-26 13:50 UTC, $10,000 after) for the "% of the account"
+  figures; test added.
+- Deploy check (deep review): the predeploy hook copies the repo's trading_config.json over the server file (not a merge) → 10000 matches
+  the UI; on restart the paper balance is rebuilt from config initial + closed P&L (idempotent — the 7,100 is never added twice, no reset);
+  runtime_initial_total_usd (the ~$3,000 baseline for investor minting) is unchanged. Pre-existing: every push overwrites ALL UI fields.
+- ⚠ Latent sizing step: reserve_schedule's first tier is "10000:8000" — at ≈ $8.7k total portfolio nothing is held back now, but if paper
+  equity passes $10,000 tradeable capital is capped at $8,000 ($ per trade steps DOWN again inside B25). Compare in %.
+- Scout review fixes: an explicit "paper ASSUMED" flag (not a value compare), the source text built from PAPER_EQUITY_STEPS, the step time
+  ± 5 min noted, a test with fills on both sides of the step.
+- Analysis: B25 is ONE batch with a size boundary at the top-up — $ per trade jumps after it (the bot sizes off the balance); compare in %
+  per trade (CLAUDE.md principle 3), never raw $, across the boundary.

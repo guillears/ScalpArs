@@ -9355,3 +9355,22 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   atomic, crash-safe freeze file; one complete-fill set per sleeve with HOLD / "not evaluable" accounting; ensure_data gets the real path
   source; maker-fee + era-TP docstrings; tests for TODAY-vs-era, NO_VERDICT never flips, prefix parity, shortest prefix, young / old
   incomplete fills, unreadable state, h_window / no look-ahead, weight stop / cooldown / request cap, non-identical Δ CANDIDATE.
+
+## (380) 2026-10-26 — 🏃 ML EXIT DEEP STUDY: no exit change · HIGH-ATR looser-trail watch (08-26) RETIRED · two frozen observe lines (operator: "yes to 1")
+- **Ask (operator):** "maybe the trades are good, the exit strategy is wrong — get more on winners, the same on losers." Study
+  reports/ML_EXIT_DEEP_2026-10-26.md (+ CSVs, scripts/study_ml_exit_b25_*.py), MASTER-LED (rule 378 ②): 158 KEEP master fills at 1× + 9 B25
+  provisional, PROBE apart; validate_against_master ALL PASS; paths 135 ticks / 23 1m (B25 9 × 1m), none missing; the 10-05 replica matched the
+  live exit reason 100 % on the 149 replicable master fills (ticks Δ −0.002, 1m Δ −0.06; 8 pre-06-24 TRAIL_OLD + 1 MANUAL not replicable; B25 8 of 9). 83 public kline calls (fetch cache gitignored).
+- **Winners:** real giveback (median +0.42 from peak, Σ +51.6 pts on 119) but post-exit price is a coin flip (median −0.00 / −0.08 / −0.03 /
+  0.00 at +5 / 15 / 30 / 60 min; above our exit at +15 min only 42 %). 22 winner-side variants: none reliable (best ladder OFF +0.021
+  [−0.017, +0.085], one washed-out-window day = 117 % of the net, ex-washed −0.000, recent eras negative).
+- **Losers:** 71 % never reach +0.10 in 10 min, but so do 20 % of winners (finish +0.47); 12 loser rules all negative (−0.008…−0.063, stop
+  −0.6 / linear decay / never-green-15 significant), backtest same sign on all 12. Wider stop −1.2 on the 44 live-stopped: 12 saved (+11.8) vs
+  31 deeper (−12.3), live-stopped net −0.48 (the whole-cohort +0.004 is a replica artefact from 2 fills live did not stop) — a wash; the 10-05 verdict stands.
+- **Diagnosis:** same exit +0.53 / fill in BASE vs −0.13 in B17–B24; winners show no era trend (peak +0.65…+0.96, giveback +0.38…+0.45);
+  the losing eras carry more never-green losers (74–83 % vs 50–67 %) → entries / regime, not the exit (consistent with DL 378 prep ④).
+- **Decisions (operator OK 10-26):** NO exit change · the 2026-08-26 HIGH-ATR looser-trail watch ③ RETIRED (N 54 high-ATR fills: k 1.5
+  +0.027, P(Δ≤0) 0.36, 2 of 7 era groups positive, yr5 −0.009; on the watch's OWN definition ATR ≥ 0.7: master N 20 Δ −0.028, yr5 N 322 Δ −0.011 [−0.020, −0.003], significantly negative) · OBS-1 ladder OFF when ATR ≥ 0.50 and OBS-2 lock +0.20 when ATR ≥ 0.50
+  registered as FROZEN OBSERVE lines (cohort ≥ 2026-10-27; bars in CURRENT_STATE; OBS-2's in-sample worth ≈ $10 over 37 in-state trading days of a 71-day span — operator call
+  declined, observe instead) · OBS-3 mechanical lines read alongside.
+- **Next (running):** the BTC-reactive exit study (exit when BTC turns in the first minutes) — the one idea the grid could not test.

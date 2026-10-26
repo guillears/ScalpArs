@@ -511,7 +511,7 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
       observe-only. Before → after in the three blocks.
 
 ## 4. MOMENTUM LONG — make it profitable
-- [ ] **⭐ ML EXIT DEEP REVIEW (operator 2026-10-26: "maybe the trades are good, the exit strategy is wrong — get more on winners, the same on
+- [x] **✅ DONE 10-26 (DECISION_LOG 380: no exit change; the review reads OBS-1 / OBS-2 on fresh fills + the BTC-reactive exit study) — ⭐ ML EXIT DEEP REVIEW (operator 2026-10-26: "maybe the trades are good, the exit strategy is wrong — get more on winners, the same on
       losers"). MASTER-LED (real fills per batch + B25; the 10-05 yr5 study 'no exit change, flat optimum' is the BACKTEST cross-check only):**
       ① POST-EXIT per winner — how far price ran after our exit (+5 / +15 / +30 / +60 min and the max before a −x pullback), giveback = peak
       − exit, per exit reason (runner trail / ladder / lock / time) → money left on the table per trade and per batch · ② MAE / MFE W vs L —

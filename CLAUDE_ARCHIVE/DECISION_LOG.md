@@ -9087,3 +9087,86 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   not a decision.
 - Already per sleeve elsewhere: FRENZY_LONG / WIDE / LITE exit shadows (scout_frenzy_willy_exit, scout_frenzy_exits — judged per sleeve).
 - Test: tests/test_scout_willy_exit_v2.py::test_per_sleeve_split_willy_vs_ht_observe_only.
+
+## (374) 2026-10-26 — 🩸 SPIKE_FADE watchlist: ADX rising, pair ADX ≤ 19.2, high-mcap 1.5× cap + HB size / HB×ADX / HB×BTC-ADX (operator; observe-only)
+- (+ ④ HEALTHY_BEAR size shadow — operator 2026-10-26: "add HEALTHY_BEAR smaller size to watchlist"; + ⑤ HB + ADX not rising and
+  ⑥ HB + BTC ADX high — operator: "yes add both to scout")
+- **Evidence (registration):** winners-vs-losers screen on 83 SPIKE_FADE fades = 76 master stack-kept non-probe fills
+  (reports/MASTER_POOL_stacked.csv, stack_pct) + 7 closed fades of scalpars_orders_paper_2026-10-26_12-39-59.csv (B25), dedup
+  opened_at[:19] + pair. Pool 83 · 86 % WR · +0.265 %/fill · avg win +0.546 / loss −1.394 → breakeven WR ≈ 72 %. NO separator beyond chance:
+  0 of 38 entry columns at p < 0.05 (median split vs 2,000 permutations); reports/FADE_WL_SCREEN_2026-10-19.md agrees. The six lines are
+  operator watch lines, not evidence-backed candidates. In-sample before / after: block = −$832 (41 fades · 80 % WR) for ① / −$550
+  (20 · 80 %) for ② — the weak side sits above the ≈ 72 % breakeven; registration Δ is in-sample (30–50 % haircut) and NOT a ship case
+  (per-batch table in the 2026-10-26 session report; no file).
+- **Lines (🔒 thresholds FROZEN, never re-fit):**
+  ① ADX_RISING — `entry_adx_delta` ≥ +2.359 (pool median): at the frozen threshold weak (ADX Δ < 2.359) 41 · 80 % · +0.104 vs strong 42 · 90 % ·
+  +0.423 (screen median split hi +0.420 / lo +0.114), permutation p 0.10. Filter candidate =
+  block the weak side (ADX Δ < 2.359). ② PAIR_ADX_LOW — `entry_adx` ≤ 19.2 (pool low quarter): at the frozen threshold weak 20 · 80 % · +0.096 vs rest 63 · 87 % ·
+  +0.319, p 0.35 (B25: RAYSOL 14.8 in the zone; 1000LUNC 19.37 just above the frozen 19.2 — not blocked). Filter candidate = block pair ADX ≤ 19.2. ③ MCAP_CAP15 — size, not filter:
+  SPIKE_FADE runs `spike_fade_invest_mult` 2.0 × `spike_fade_lev_mult` 1.0 (cell_multiplier 2.0, justified by low caps); on a big coin a −1.5 %
+  stop at 2× ≈ $305 ≈ 10–12 % of the paper account. Candidate: high-mcap (≥ $200M, the DL 311 line) fades max 1.5× invest.
+- **⚠ DL 311 / 41i gate TRIGGERED NOW** (1000LUNC 10-25, $249M, −$308 ≈ −10.6 % of the $2,900 paper account) → the mcap / size question
+  is REOPENED at the B25 review. Line ③ prices the operator's 1.5× candidate on every stamped ≥ $200M fade since 10-19 (−$308 → −$236,
+  still ≈ −8.1 %; 1× ≈ −$157, −5.4 % — re-ticketed at desired × 0.5 on the liquidity-capped 1000LUNC). No size cap alone meets the 4 % bar at today's stop width — the decision is stop width × size
+  (NEXT_BATCH_REVIEW_PLAN §5). The forward read (first 10, avg P&L % < 0 per DL 311) continues as the confirmation tracker. DL 312's
+  "1× if ≥ $300M" did not fire ($249M < $300M).
+- **④ HB_SIZE — HEALTHY_BEAR size shadow (operator, same day):** SPIKE_FADE fades with `entry_btc_regime` == HEALTHY_BEAR (unstamped →
+  unscored) priced at 1× invest instead of the traded 2× (shadow $ = pnl × min(1.0 / cell_multiplier, 1), same sized-below-desired
+  handling as ③). Registration (pool 83, master stack_pct + B25): HEALTHY_BEAR 24 · 71 % WR · +0.07 %/fill · +$711 · 7 of the 13 pool stops
+  (master 22 · 73 % · +0.13 · +$978 · 6 stops; B25 2 · 50 % · −0.62 · −$267), permutation p 0.17 vs the rest; STRONG_BEAR 10 · 100 % · +0.52,
+  BEAR_EXHAUSTED 4 · 100 %, CHOPPY_WEAK 27 · 93 % · +0.39, CHOPPY_FLAT 18 · 83 % · +0.12. ⚠ The 10-19 study's today's-stack BACKTEST
+  contradicts it (zone 121 · 77 % · +0.23 vs +0.02). ④ is the SIZE version of the 41h observe gate (HEALTHY_BEAR ∧ BTC trend gap ≥ −0.13 —
+  its sub-zone is tallied forward on the same line): sizing on a still-winning cohort (CLAUDE.md "high WR but net-losing is NOT a filter
+  candidate when the loss is sizing"), not a block.
+- **⑤ HB_ADXFLAT / ⑥ HB_BTCADX — entry-FILTER candidates (block the zone), 🔒 thresholds FROZEN:** ⑤ `entry_btc_regime` == HEALTHY_BEAR ∧
+  `entry_adx_delta` ≤ 2.4341 (the backtest HB median); ⑥ HEALTHY_BEAR ∧ `entry_btc_adx_prev` > 24.5874 (the backtest HB 75th percentile).
+  Discovery: HB × one-variable screen (38 stamped cols × q25/q50/q75 × lo/hi = 226 cells) on the 180 HEALTHY_BEAR fades of the 2-year
+  backtest (reports/ENGINE_REPLAY_YR6W_2Y_TODAY_fills.csv, tick-priced pct from reports/FADE_SIZE_MCAP_2026-10-19_rows.csv), confirmed on
+  the 24 HB master + B25 fades: family max |gap| 0.539 vs null p95 0.775 (P 0.72); confirmations 37 / 113 vs a null mean 36.4 (P 0.43) →
+  NO separator beyond chance; these two are the most consistent pair → watch lines only. ⑤ backtest 90 · −0.06 vs rest +0.40; master + B25
+  15 · 67 % · −0.14 · 5 of HB's 7 stops (rest 9 · +0.42). Before → after (block zone): B25 7 · −$396 → 6 · −$92 (blocks RAYSOL −$304) ·
+  master 76 · +$4,237 → 62 · +$4,095 (blocked 14 · 71 % · −0.05 % · +$141) · ALL 83 · +$3,841 → 68 · +$4,004. ⑥ backtest 45 · −0.17 vs rest
+  +0.29; master + B25 7 · 43 % · −0.47 · 4 stops. Before → after: B25 unchanged (RAYSOL's BTC ADX 22.2) · master 76 · +$4,237 → 69 · +$4,652
+  (blocked 7 · 43 % · −$415) · ALL 83 → 76 · +$4,256. Both in-sample hindsight (30–50 % haircut), chance-level by the screen; ⑤ overlaps
+  lines ① and ④. Zone = HB rows at the threshold; rest = every other scored fade (non-HB included); an HB fade without the variable or a
+  fade without a regime stamp → unscored. Read exactly like ① ② (expectancy bar on the forward zone cohort).
+- **Build:** scripts/scout_fade_watch.py (wired into opportunity_scout.py after the revert-gate tracker, fail-soft). Forward cohort ① ② ④ =
+  CLOSED SPIKE_FADE fills (paper + live via export_glob) opened ≥ this entry's commit + 10 min (⑤ ⑥ too) (scout_gatekit.dl_deploy_ms; not in git → NOT
+  EVALUABLE, nothing counted or persisted); dedup (opened_at[:19], pair, direction), CLOSED wins; operator-closed excluded (scout_gatekit);
+  missing stamp = unscored, never "rest". Line ③'s cohort starts at the DL 311 mcap-stamp deploy (4353aa9, 2026-10-19 05:08 UTC; resolved
+  via dl_deploy_ms(311, lag 0), pinned if not found) and runs even before this entry is in git. Stamped columns only — no network, no bot API.
+- **🔒 Reads (decided once, reports/.scout_fade_watch.json; COLLECTING never persisted):**
+  ①② CLAUDE.md EXPECTANCY filter bar on the forward WEAK side, read at the first prefix by open time with N ≥ 15 on ≥ 8 UTC days: WR <
+  sleeve breakeven (|avg loss| / (avg win + |avg loss|) on the prefix's forward kept fades; 72 % if < 5 losses) ∧ P(avg < 0) ≥ 0.95 by a
+  day-clustered bootstrap (4,000, seed 7) ∧ ≥ 8 days ∧ no single day / pair ≥ 50 % of the cohort loss ∧ N ≥ 15 → FILTER_CANDIDATE (operator
+  decides; 30–50 % in-sample haircut; pre-committed revert if shipped: the first 10 blocked fades re-priced average > 0); else KEEP_OBSERVING.
+  The strong side prints for contrast. ③ every stamped fade with entry_mcap_usd ≥ $200M: traded $ vs the 1.5× and 1× shadows = pnl ×
+  min(X / cell_multiplier, 1); a fill sized below its desired notional re-tickets at min(desired × X / mult, entry_liquidity_cap_notional,
+  notional) — labelled "liquidity-capped" only when liquidity_capped is true, else "sized below desired"; liquidity_capped with desired
+  unknown → no saving (flagged). Σ$ per book (paper / live never summed) and the Δ, largest loss at traded / 1.5× / 1×, the > 4 %-of-account
+  test at each size, unscored (no mcap) count — all informational. Read (confirmation tracker, DL 311 wording, % never raw $) at the first
+  10: avg P&L % < 0 → CAP_CANDIDATE (operator decides), else KEEP_2X. Reference equity per book = the newest export's balance column for
+  that book (is_paper), else ASSUMED $2,900 paper / $1,225 live (printed). ④ at the shortest prefix of ≥ 15 HEALTHY_BEAR fades on ≥ 8 UTC
+  days: SIZE_CUT_CANDIDATE ("HEALTHY_BEAR fades at 1×" — operator decides) iff avg P&L % < 0 ∧ day-clustered bootstrap P(avg < 0) ≥ 0.80
+  (deliberately below the 0.95 filter bar: a size cut is the lighter action) ∧ no single day ≥ 50 % of the cohort loss; else KEEP_2X. Per
+  fill traded $ vs 1× $, Σ per book and the Δ.
+- **Blind spots (printed):** registration pool = master (mixed exit eras re-priced to today's stack) + 7 B25 fills; mcap stamp only since
+  10-19 (master has none — FADE_SIZE_MCAP_2026-10-19 scored it separately); windows = UTC days; the 4 % test uses a FIXED reference
+  equity (the paper balance drifts); no backtest block yet — the fade backtest
+  (yr5 / yr6) must be re-read for each line at the B25 review.
+- **Tests:** tests/test_scout_fade_watch.py (23; ⑤ ⑥ zone split at the frozen thresholds + unscored, reads COLLECTING /
+  FILTER_CANDIDATE / KEEP_OBSERVING, decide-once): frozen split + unscored; forward cohort (floor, sleeve, CLOSED-wins dedup, operator-closed);
+  not-evaluable writes nothing; expectancy bar COLLECTING / FILTER_CANDIDATE / KEEP_OBSERVING (incl. pair concentration); breakeven
+  formula + fallback; 1.5× / 1× shadow plain / liquidity-capped / tight cap / sized-below-desired label / desired unknown; mcap avg-% read
+  COLLECTING / KEEP_2X (a > 4 % single loss alone does not flip it) / CAP_CANDIDATE; line ③ floor at DL 311 (override + pin); all-NaN $
+  never blanks ① ②; balance column per book vs assumption; ④ split / 41h sub-zone / 1× shadow / read COLLECTING / SIZE_CUT_CANDIDATE /
+  KEEP_2X (one-day concentration) / decide-once; no writes outside tmp.
+- **Final review round (applied pre-commit):** every read (① ② ④ ⑤ ⑥ prefix crossing, ③ first 10) returns HOLD — never persisted —
+  while any non-CLOSED SPIKE_FADE row in the loaded exports (opened ≥ the line's floor) opened ≤ the crossing fill; shadow: liquidity_capped
+  with notional unknown / ≤ 0 → no saving (flagged); tests never depend on the repo's git history (mcap_since_ms passed or dl_deploy_ms
+  patched); ① ② restated at the frozen thresholds; ④ has no pair-concentration check (market-wide cohort, by design); the fixed
+  "no balance column" text dropped from the blind spots (ref_equity prints its source). Tests 25.
+- **Dual review applied pre-commit:** ③ read switched from Σ$ < 0 ∨ single > 4 % to DL 311's avg P&L % < 0 (principle 3), cohort floor
+  moved to DL 311, 4 % test printed at traded / 1.5× / 1×, $ per book never summed; in-sample before / after added; liquidity labels and
+  desired-NaN guard; all-NaN $ guard; the printed floor is the one used (overrides included); balance keyed by book + fixed-equity blind
+  spot; 41m wording matches the code.

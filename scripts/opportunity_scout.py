@@ -1280,6 +1280,14 @@ def run():
     except Exception as _rg_e:
         log(f"revert-gate tracker failed: {_rg_e}")
         _rg_sec = ["## ⏳ Revert gates", "", f"Unavailable this run ({str(_rg_e)[:120]}).", ""]
+    try:                                               # 🩸 Oct-26 SPIKE_FADE watch lines (DECISION_LOG 374; orders exports only, frozen reads, observe-only; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_fade_watch as _fdw
+        _rg_sec += _fdw.run(now_ms)
+    except Exception as _fdw_e:
+        log(f"SPIKE_FADE watch lines failed: {_fdw_e}")
+        _rg_sec += ["## 🩸 SPIKE_FADE watch lines", "", f"Unavailable this run ({str(_fdw_e)[:120]}).", ""]
     try:                                               # 🌡 Oct-5 heat block × BTC regime observation (pre-registered; reads the tracker's priced heat blocks; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

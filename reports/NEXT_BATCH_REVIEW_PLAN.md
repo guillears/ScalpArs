@@ -489,6 +489,14 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
       If there is no REARM / GREEN at all, say so and check the logs for why (memory: absence = logs question).
 - [ ] Full read of everything in CLAUDE_CURRENT_STATE + Scout; any finding → before/after in the three blocks + recommendation.
 - [ ] SPIKE_FADE: high potential and strong in every batch — look for scale-up / more-fills levers as well as risk.
+- [ ] **🩸 SPIKE_FADE watch lines (DECISION_LOG 374, CURRENT_STATE 41k–41p)** — re-read `scripts/scout_fade_watch.py`: ① ADX
+      rising (`entry_adx_delta` < 2.359 weak side) · ② pair ADX ≤ 19.2 · ③ high-mcap (≥ $200M, since the DL 311 deploy) 1.5× / 1× shadow
+      (avg-% read; $ per book; 4 % test at each size) — ⚠ the DL 311 / 41i gate TRIGGERED (1000LUNC 10-25): the mcap / size question is
+      REOPENED here · ④ HEALTHY_BEAR at 1× size shadow (+ the 41h sub-zone; the today's-stack backtest contradicts the pool — re-read it) ·
+      ⑤ HB ∧ ADX Δ ≤ 2.4341 and ⑥ HB ∧ BTC ADX prev > 24.5874 (41o / 41p; filter candidates from a chance-level HB screen; ⑤ overlaps ① ④).
+      For EACH line add the fade backtest block (yr5 / yr6, today's fade stack, per seed) next to the batch and master blocks — the scout
+      has none yet. Also answer the fade STOP-SIZE question: at 2× each −1.5 % stop ≈ $305 ≈ 10–12 % of the paper account (B25 RAYSOL
+      −$304, 1000LUNC −$308) — price the stop width / size per fill vs the ≈ 72 % breakeven WR, two-sided, live-stopped cohort only.
 - [ ] **SPIKE_FADE vs FRENZY on the same pump** (Claude): the engine never holds both on one pair — open_position refuses any second
       position (generic PAIR_HELD, the counter does not name the holder), a 5-min cooldown follows any close on the pair, LITE / WILLY
       refuse as *_PAIR_HELD, FRENZY / WIDE as *_PAIR_HELD_BY_LITE, and the WILLY global hold blocks fades. So read it as a pair-occupancy

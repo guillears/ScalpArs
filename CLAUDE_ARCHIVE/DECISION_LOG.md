@@ -9190,3 +9190,16 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   ± 5 min noted, a test with fills on both sides of the step.
 - Analysis: B25 is ONE batch with a size boundary at the top-up — $ per trade jumps after it (the bot sizes off the balance); compare in %
   per trade (CLAUDE.md principle 3), never raw $, across the boundary.
+
+## (376) 2026-10-26 — 🧭 Batch review METHOD pinned (operator: "go slowly, sleeve by sleeve … master before / after, current batch, backtest, then your recommendation, then the next sleeve" + the six additions approved)
+- Binding for every batch review, pinned at the top of CLAUDE_CURRENT_STATE.md, reports/NEXT_BATCH_REVIEW_PLAN.md and the fixed "D. Method" rows of
+  scripts/batch_review_checklist.py: ONE SLEEVE AT A TIME — ① master before → after per batch · ② current batch · ③ backtest · ④ the quant
+  recommendation (a clear call per watchlist item) · ⑤ STOP for the operator's OK; new strategies W/L first, then exits; momentum longs W/L on
+  the full master.
+- Six additions: ⓪ STEP 0 data first (master WILLY at V2b, the batch in the master + validation, size boundaries) · sleeve ORDER by stake
+  (SPIKE_FADE → WILLY + HT → FLATBASE → LITE / FRENZY_LONG → ML → MS → FAN → Bear-Run / SURGE / rest) · today's-stack before → after with
+  haircut / DAY units / concentration, backtest refute-only · every item classified DECIDED / OPERATOR CALL below bar / KEEP OBSERVING ·
+  a PORTFOLIO view after all sleeves → one-page decisions + go-live criteria · ship ONE change at a time.
+- Review fixes: the three blocks are PRESENTED master → batch → backtest (the content of the three-block rule is unchanged); title "BATCH REVIEW
+  METHOD" (binding for every review, B25 specifics in parentheses); "−45 %" labelled as B25 net P&L, not drawdown; STEP 0 first in the
+  checklist's method rows; the plan lines under a "## 🧭 Method" heading.

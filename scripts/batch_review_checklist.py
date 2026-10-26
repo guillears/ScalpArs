@@ -45,13 +45,26 @@ ITEM = re.compile(r"^\s*(?:> )?\s*(?:[-*] |\d+[a-z]?(?:-\d+)?\. |[①-⑳]|(?:\S
 HEADING = re.compile(r"^(?:> )?#{1,4}\s+(.*)")
 
 METHOD = [
+    "STEP 0 — data first (operator 2026-10-26), before any sleeve: master WILLY re-priced at the live V2b exit · the batch in the master "
+    "(provisional if still running) · size boundaries marked (paper top-up / sizing changes; compare in %) — then the rows below",
     "Save the batch: reports/BASELINE<N>_batch<dates>_<LIVE|PAPER>_orders.csv (bot fills only, MANUAL out) + the decisions journal beside it",
     "Paper = live: paper fills count for every gate (same exits) — state the mode of each fill in every table",
     "Decisions exports cover the whole batch with no ≥ 3-day gap (lite_ob_thin / green_retry / willy_hold need them)",
     "Era tags: every deploy in the batch → its fills tagged by era (deploy + 10 min); normalize across config changes",
     "Run scripts/validate_against_master.py (ALL CHECKS PASS before showing any analysis)",
     "Master pool: archive the batch (scripts/build_master_pool.py); re-run scripts/screen_pool.py if the stack changed",
-    "Every table: ① batch · ② master per batch · ③ backtest; before → after per batch; say whether a candidate ADDS or REMOVES a filter",
+    "Sleeve ORDER by stake: SPIKE_FADE → WILLY + WILLY_HT → FLATBASE → LITE / FRENZY_LONG → momentum long → momentum short → FAN flips → "
+    "Bear-Run / SURGE / rest",
+    "ONE SLEEVE AT A TIME (operator 2026-10-26): ① master batch before → after per batch · ② current batch before → after · ③ backtest "
+    "before → after · ④ the quant recommendation (a clear call per watchlist item) · ⑤ STOP for the operator's OK before the next sleeve; "
+    "new strategies: winners vs losers FIRST, then exits; momentum longs: W/L on the full master",
+    "Every table carries the three blocks (current batch · master per batch · backtest), presented master → batch → backtest (the sleeve "
+    "order above); before → after per batch; say whether a candidate ADDS or REMOVES a filter",
+    "Before → after on TODAY's stack (re-simulate first); in-sample results labelled + 30–50 % haircut; market-wide effects in DAY units; "
+    "per-pair / per-day concentration; the backtest refutes, never proves alone",
+    "Classify every watchlist item: DECIDED by its frozen gate · OPERATOR CALL below the bar (say so) · KEEP OBSERVING (count + expected date)",
+    "After all sleeves: PORTFOLIO view (shared slots, concurrent exposure, worst day, drawdown, sleeve overlap) → one-page decisions list + "
+    "go-live criteria; ship ONE change at a time (risk-first; size/filter apart from exits)",
     "Operator-closed (MANUAL / MANUAL_* / EXTERNAL_CLOSE) fills excluded from every gate (scout_gatekit)",
     "Learnings box per sleeve first (plan §0a) · freeze predicted separators before reading (§0a+) · bug gate: two independent derivations "
     "+ an independent reviewer agent on any recommendation (§0c)",

@@ -619,6 +619,12 @@ class Order(Base):
     # 📈 (DECISION_LOG 365) FRENZY_WILLY_HT only: the size fraction of WILLY's margin this HT order opened at (frenzy_willy_ht_frac at entry) —
     # the HT re-size ladder counts each rung on the fills actually opened at it. NULL on every other fill and on HT fills before 365 (all 0.25).
     entry_willy_ht_size_frac = Column(Float, nullable=True)
+    # 📈 (DECISION_LOG 383) ALT-CORRELATION REGIME STAMP — OBSERVE-ONLY, every fill (all sleeves + MANUAL), paper = live (services/alt_corr.py):
+    # entry_alt_corr24 = OBS-R1, the mean pairwise Pearson correlation of 5m log returns over the trailing 288 CLOSED bars among the top-20 of the
+    # previous UTC day's top-50 quote-volume list (ex BTC / stables; frozen line > 0.3164, ML_REGIME_WL_2026-10-26 §8) · entry_alt_beta24 = R1b,
+    # the median alt beta to BTC over the same bars (> 1.372). Computed once per 5m close; NULL on any error / missing data / a value > 2 bars old.
+    entry_alt_corr24 = Column(Float, nullable=True)
+    entry_alt_beta24 = Column(Float, nullable=True)
 
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3 design).
     # cell_multiplier = the INVESTMENT multiplier ACTUALLY applied to this trade after hard-cap clamping.
@@ -1455,6 +1461,37 @@ class WillyHoldBlock(Base):
     invest_mult = Column(Float, nullable=True)                    # the size it would have opened with (cell / sleeve multipliers)
     lev_mult = Column(Float, nullable=True)
     repeats = Column(Integer, nullable=False, default=1)
+    is_paper = Column(Boolean, nullable=False, default=True)
+
+
+class MatchedLongRefusal(Base):
+    """🧷 (DECISION_LOG 383) MATCHED MOMENTUM-LONG REFUSAL RECORDER — OBSERVE-ONLY. One row per LONG_UNMATCHED_ONLY refusal (a momentum LONG that
+    matched a Pattern C / W signature and was refused), at most one per (pair, 5m bar): the FIRST refusal of the bar is kept (its price / labels /
+    snapshot). Written fire-and-forget by TradingEngine._ml_refusal_record (never blocks or changes the decision); rides the Decisions CSV export
+    as e=ML_MATCHED rows (mr_* columns) because the EB log bundle (the journal's only reader) is broken; priced by
+    scripts/scout_ml_matched_refusals.py with the validated ML exit replica. Kept 90 days (main.alt_corr_loop prunes)."""
+    __tablename__ = "ml_matched_refusals"
+    __table_args__ = (UniqueConstraint("pair", "bar_at", "is_paper", name="uq_ml_matched_refusal"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    pair = Column(String(30), nullable=False, index=True)
+    at = Column(DateTime, nullable=False, index=True)              # the refusal (naive UTC, ms precision)
+    bar_at = Column(DateTime, nullable=False)                      # OPEN time of the 5m bar it fell in (the dedupe key)
+    price = Column(Float, nullable=True)                           # the decision price open_position held
+    confidence = Column(String(20), nullable=True)
+    labels = Column(String(60), nullable=True)                     # the EXACT matched patterns, e.g. "C6+W2" (the engine's _um_pats)
+    family = Column(String(4), nullable=True)                      # C / W / C+W
+    c_any = Column(Boolean, nullable=True)
+    w_any = Column(Boolean, nullable=True)
+    btc_regime = Column(String(20), nullable=True)                 # classify_btc_regime at the refusal (STRONG_BULL … — the frozen cell ②)
+    open_count = Column(Integer, nullable=True)                    # bot slot rows open at the refusal (open_position's own count)
+    max_positions = Column(Integer, nullable=True)                 # the effective slot cap it compared against
+    room = Column(Boolean, nullable=True)                          # a free slot existed (always true at this site: the cap check runs first)
+    post_gate = Column(String(40), nullable=True)                  # the later gate that would ALSO have refused it (LONG_HEAT_BLOCK / LONG_MEGACAP_BLOCK), "" = none
+    btc_off30d_pct = Column(Float, nullable=True)                  # the heat gate's 30-day reading (≤ 30 min old, else NULL)
+    alt_corr24 = Column(Float, nullable=True)                      # 📈 the DL 383 regime stamp at the refusal
+    alt_beta24 = Column(Float, nullable=True)
+    entry_fields_json = Column(Text, nullable=True)                # the entry_* indicator snapshot open_position held (JSON object)
     is_paper = Column(Boolean, nullable=False, default=True)
 
 

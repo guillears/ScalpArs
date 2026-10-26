@@ -1,0 +1,171 @@
+cell,kind,verdict,why,live_N,live_days,live_WR,live_avg,live_LB_bonf,live_ctl_avg,live_delta_vs_ctl,live_top_day_share,live_top_pair_share,live_fails,rpl_N_per_seed,rpl_days,rpl_WR,rpl_avg,rpl_LB_bonf,rpl_ctl_avg,rpl_delta_vs_ctl
+ALL matched,pattern,DECIDED no,LIVE avg -0.214 ≤ 0,318.0,36.0,48.4,-0.214,-0.401,-0.001,-0.213,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,5251.0,622.0,57.1,-0.133,-0.178,-0.155,0.022
+C-only (no W),pattern,DECIDED no,LIVE avg -0.231 ≤ 0,97.0,27.0,50.5,-0.231,-0.486,0.122,-0.353,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,1214.3,513.0,57.1,-0.117,-0.199,-0.146,0.029
+W-only (C-free),pattern,DECIDED no,LIVE avg -0.173 ≤ 0,164.0,34.0,48.8,-0.173,-0.383,0.041,-0.214,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,3484.3,596.0,57.3,-0.136,-0.188,-0.153,0.017
+C+W,pattern,DECIDED no,LIVE avg -0.305 ≤ 0,57.0,19.0,43.9,-0.305,-0.608,0.031,-0.336,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,552.3,410.0,56.2,-0.157,-0.269,-0.162,0.005
+has C2,pattern,DECIDED no,LIVE avg -0.197 ≤ 0,54.0,17.0,50.0,-0.197,-0.461,0.005,-0.202,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,386.7,278.0,56.9,-0.135,-0.281,-0.157,0.022
+has C4,pattern,DECIDED no,LIVE avg -0.281 ≤ 0,57.0,23.0,49.1,-0.281,-0.579,-0.083,-0.198,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,523.0,285.0,53.5,-0.138,-0.259,-0.184,0.046
+has C5,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,7.0,7.0,57.1,-0.114,-0.741,0.589,-0.703,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,9.0,15.0,55.6,-0.038,-0.889,-0.069,0.031
+has C6,pattern,DECIDED no,LIVE avg -0.254 ≤ 0,27.0,10.0,48.1,-0.254,-0.613,0.24,-0.494,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,669.7,289.0,60.0,-0.095,-0.199,-0.12,0.025
+has C7,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,9.0,6.0,44.4,-0.254,-1.135,0.582,-0.836,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,287.7,227.0,56.8,-0.17,-0.343,-0.158,-0.012
+has C8,pattern,DECIDED no,LIVE avg -0.553 ≤ 0,17.0,4.0,23.5,-0.553,-0.978,0.098,-0.651,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,20.3,35.0,54.1,-0.133,-0.497,-0.17,0.037
+has C9,pattern,DECIDED no,LIVE avg -0.345 ≤ 0,14.0,10.0,42.9,-0.345,-0.77,0.006,-0.351,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,114.7,96.0,53.8,-0.144,-0.361,-0.224,0.08
+has W1,pattern,DECIDED no,LIVE avg -0.378 ≤ 0,37.0,16.0,29.7,-0.378,-0.693,0.252,-0.63,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,378.0,338.0,58.6,-0.128,-0.23,-0.145,0.017
+has W2,pattern,DECIDED no,LIVE avg -0.027 ≤ 0,86.0,24.0,59.3,-0.027,-0.353,0.043,-0.07,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,2644.0,526.0,58.0,-0.131,-0.194,-0.139,0.008
+has W4,pattern,DECIDED no,LIVE avg -0.230 ≤ 0,68.0,23.0,47.1,-0.23,-0.464,0.068,-0.298,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,974.3,480.0,59.3,-0.12,-0.198,-0.141,0.021
+has W5,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,5.0,5.0,40.0,-0.321,-0.734,-0.274,-0.047,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,316.0,306.0,54.9,-0.177,-0.291,-0.159,-0.018
+has W6,pattern,DECIDED no,LIVE avg -0.253 ≤ 0,64.0,21.0,46.9,-0.253,-0.507,0.079,-0.332,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,1005.3,407.0,53.1,-0.185,-0.272,-0.179,-0.006
+W1 C-free,pattern,DECIDED no,LIVE avg -0.240 ≤ 0,19.0,13.0,36.8,-0.24,-0.81,0.187,-0.427,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,285.3,288.0,58.8,-0.132,-0.258,-0.157,0.025
+W2 C-free,pattern,DECIDED no,LIVE avg -0.046 ≤ 0,82.0,24.0,58.5,-0.046,-0.365,0.043,-0.089,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,2556.3,522.0,58.2,-0.127,-0.188,-0.139,0.012
+W4 C-free,pattern,DECIDED no,LIVE avg -0.220 ≤ 0,42.0,21.0,42.9,-0.22,-0.519,0.223,-0.443,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,786.0,441.0,59.5,-0.126,-0.212,-0.137,0.011
+W6 C-free,pattern,DECIDED no,LIVE avg -0.186 ≤ 0,51.0,19.0,49.0,-0.186,-0.49,0.079,-0.265,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,789.0,374.0,52.6,-0.187,-0.281,-0.182,-0.005
+W1 alone,pattern,DECIDED no,LIVE avg -0.452 ≤ 0,11.0,7.0,27.3,-0.452,-1.099,0.262,-0.714,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,67.3,103.0,54.0,-0.175,-0.421,-0.146,-0.029
+W2 alone,pattern,DECIDED no,LIVE avg -0.034 ≤ 0,50.0,21.0,60.0,-0.034,-0.428,0.02,-0.054,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,1597.7,481.0,58.4,-0.118,-0.19,-0.134,0.016
+W4 alone,pattern,DECIDED no,LIVE avg -0.281 ≤ 0,31.0,18.0,38.7,-0.281,-0.64,0.463,-0.744,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,251.3,265.0,61.4,-0.066,-0.208,-0.135,0.069
+W6 alone,pattern,DECIDED no,LIVE avg -0.208 ≤ 0,34.0,16.0,47.1,-0.208,-0.586,0.273,-0.481,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,473.3,295.0,51.4,-0.209,-0.314,-0.196,-0.013
+C2 alone,pattern,DECIDED no,LIVE avg -0.175 ≤ 0,22.0,10.0,54.5,-0.175,-0.6,0.092,-0.267,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,158.3,177.0,54.5,-0.143,-0.329,-0.136,-0.007
+C4 alone,pattern,DECIDED no,LIVE avg -0.149 ≤ 0,26.0,17.0,53.8,-0.149,-0.614,0.056,-0.205,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,310.3,233.0,50.7,-0.172,-0.322,-0.184,0.012
+C6 alone,pattern,DECIDED no,LIVE avg -0.174 ≤ 0,17.0,9.0,58.8,-0.174,-0.605,0.285,-0.459,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,471.7,258.0,60.6,-0.087,-0.197,-0.119,0.032
+ALL matched × regime_lbl=CHOPPY_FLAT,pattern×regime,DECIDED no,LIVE avg -0.419 ≤ 0,35.0,6.0,34.3,-0.419,-0.83,0.998,-1.417,,,days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,,,,,,,
+ALL matched × regime_lbl=CHOPPY_WEAK,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,6.0,3.0,16.7,-0.346,-0.79,-0.766,0.42,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0,15.0,17.0,46.7,-0.34,-0.829,-0.161,-0.179
+ALL matched × regime_lbl=HEALTHY_BEAR,pattern×regime,DECIDED no,LIVE avg -0.069 ≤ 0,29.0,5.0,62.1,-0.069,-0.192,0.998,-1.067,,,N<30;days<10;avg<+0.10;LB_bonf<=0;<ctl,,,,,,,
+ALL matched × regime_lbl=HEALTHY_BULL,pattern×regime,DECIDED no,LIVE avg -0.220 ≤ 0,153.0,33.0,47.1,-0.22,-0.453,-0.012,-0.208,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,3099.7,591.0,55.4,-0.158,-0.213,-0.158,0.0
+ALL matched × regime_lbl=STRONG_BULL,pattern×regime,DECIDED no,LIVE avg -0.122 ≤ 0,90.0,26.0,56.7,-0.122,-0.377,-0.055,-0.067,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,2136.3,472.0,59.8,-0.096,-0.173,-0.121,0.025
+ALL matched × z_1h=1h<=0,pattern×regime,DECIDED no,LIVE avg -0.268 ≤ 0,169.0,25.0,43.2,-0.268,-0.448,0.018,-0.286,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,2313.7,426.0,56.1,-0.157,-0.228,-0.178,0.021
+ALL matched × z_1h=1h>0,pattern×regime,DECIDED no,LIVE avg -0.153 ≤ 0,149.0,24.0,54.4,-0.153,-0.429,-0.028,-0.125,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,2937.3,469.0,57.9,-0.115,-0.169,-0.136,0.021
+ALL matched × z_24h=24h<=0,pattern×regime,DECIDED no,LIVE avg -0.242 ≤ 0,180.0,26.0,42.8,-0.242,-0.44,0.009,-0.251,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,2242.7,405.0,55.8,-0.156,-0.229,-0.189,0.033
+ALL matched × z_24h=24h>0,pattern×regime,DECIDED no,LIVE avg -0.178 ≤ 0,138.0,26.0,55.8,-0.178,-0.41,-0.022,-0.156,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,3008.3,465.0,58.1,-0.117,-0.173,-0.141,0.024
+"ALL matched × z_30d=off30(-10,-3]",pattern×regime,DECIDED no,LIVE avg -0.299 ≤ 0,217.0,26.0,43.8,-0.299,-0.473,-0.05,-0.249,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,1988.0,327.0,55.9,-0.139,-0.212,-0.171,0.032
+ALL matched × z_30d=off30>-3,pattern×regime,DECIDED no,LIVE avg -0.032 ≤ 0,101.0,12.0,58.4,-0.032,-0.412,0.154,-0.186,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,1000.7,169.0,57.0,-0.139,-0.225,-0.122,-0.017
+ALL matched × z_br=breadth<=50,pattern×regime,DECIDED no,LIVE avg -0.248 ≤ 0,210.0,29.0,43.8,-0.248,-0.455,-0.016,-0.232,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,2998.7,472.0,56.9,-0.137,-0.201,-0.168,0.031
+ALL matched × z_br=breadth>50,pattern×regime,DECIDED no,LIVE avg -0.150 ≤ 0,106.0,18.0,57.5,-0.15,-0.427,0.053,-0.203,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,2252.3,385.0,57.5,-0.129,-0.185,-0.129,0.0
+W-only (C-free) × regime_lbl=CHOPPY_FLAT,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,7.0,5.0,28.6,-0.474,-1.169,0.998,-1.472,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,,,,,,,
+W-only (C-free) × regime_lbl=HEALTHY_BEAR,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,9.0,4.0,55.6,-0.015,-1.234,0.998,-1.013,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,,,,,,,
+W-only (C-free) × regime_lbl=HEALTHY_BULL,pattern×regime,DECIDED no,LIVE avg -0.252 ≤ 0,100.0,29.0,42.0,-0.252,-0.496,0.032,-0.284,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,2142.3,536.0,55.8,-0.157,-0.225,-0.159,0.002
+W-only (C-free) × regime_lbl=STRONG_BULL,pattern×regime,DECIDED no,LIVE below same-days control (Δ -0.026),45.0,19.0,66.7,0.013,-0.349,0.039,-0.026,4.08,2.76,avg<+0.10;LB_bonf<=0;<ctl;conc>=50%,1333.3,407.0,59.8,-0.099,-0.183,-0.112,0.013
+W-only (C-free) × z_1h=1h<=0,pattern×regime,DECIDED no,LIVE avg -0.247 ≤ 0,79.0,21.0,43.0,-0.247,-0.492,0.104,-0.351,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,1353.7,353.0,55.8,-0.166,-0.256,-0.175,0.009
+W-only (C-free) × z_1h=1h>0,pattern×regime,DECIDED no,LIVE avg -0.104 ≤ 0,85.0,20.0,54.1,-0.104,-0.449,-0.088,-0.016,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,2130.7,450.0,58.2,-0.116,-0.175,-0.137,0.021
+W-only (C-free) × z_24h=24h<=0,pattern×regime,DECIDED no,LIVE avg -0.177 ≤ 0,91.0,23.0,44.0,-0.177,-0.413,0.115,-0.292,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,1349.7,357.0,55.6,-0.158,-0.247,-0.184,0.026
+W-only (C-free) × z_24h=24h>0,pattern×regime,DECIDED no,LIVE avg -0.168 ≤ 0,73.0,20.0,54.8,-0.168,-0.506,-0.083,-0.085,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,2134.7,429.0,58.4,-0.122,-0.183,-0.137,0.015
+"W-only (C-free) × z_30d=off30(-10,-3]",pattern×regime,DECIDED no,LIVE avg -0.251 ≤ 0,113.0,25.0,45.1,-0.251,-0.444,0.003,-0.254,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,1337.0,295.0,56.2,-0.14,-0.234,-0.174,0.034
+W-only (C-free) × z_30d=off30>-3,pattern×regime,DECIDED no,LIVE avg -0.001 ≤ 0,51.0,10.0,56.9,-0.001,-0.462,0.154,-0.155,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,668.0,154.0,58.0,-0.125,-0.221,-0.108,-0.017
+W-only (C-free) × z_br=breadth<=50,pattern×regime,DECIDED no,LIVE avg -0.180 ≤ 0,110.0,27.0,46.4,-0.18,-0.413,0.039,-0.219,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,1866.0,412.0,56.7,-0.138,-0.221,-0.169,0.031
+W-only (C-free) × z_br=breadth>50,pattern×regime,DECIDED no,LIVE avg -0.162 ≤ 0,52.0,16.0,53.8,-0.162,-0.565,0.053,-0.215,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,1618.3,365.0,58.0,-0.132,-0.191,-0.121,-0.011
+C-only (no W) × regime_lbl=CHOPPY_FLAT,pattern×regime,DECIDED no,LIVE avg -0.337 ≤ 0,15.0,4.0,40.0,-0.337,-0.492,0.998,-1.335,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,,,,,,,
+C-only (no W) × regime_lbl=HEALTHY_BEAR,pattern×regime,DECIDED no,LIVE avg -0.123 ≤ 0,13.0,3.0,61.5,-0.123,-0.163,0.998,-1.121,,,N<30;days<10;avg<+0.10;LB_bonf<=0;<ctl,,,,,,,
+C-only (no W) × regime_lbl=HEALTHY_BULL,pattern×regime,DECIDED no,LIVE avg -0.107 ≤ 0,37.0,15.0,56.8,-0.107,-0.514,0.013,-0.12,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,644.7,384.0,53.6,-0.164,-0.272,-0.17,0.006
+C-only (no W) × regime_lbl=STRONG_BULL,pattern×regime,DECIDED no,LIVE avg -0.249 ≤ 0,26.0,14.0,53.8,-0.249,-0.736,0.192,-0.441,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,565.3,309.0,61.1,-0.062,-0.179,-0.119,0.057
+C-only (no W) × z_1h=1h<=0,pattern×regime,DECIDED no,LIVE avg -0.191 ≤ 0,57.0,16.0,49.1,-0.191,-0.49,0.068,-0.259,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,640.0,309.0,56.6,-0.124,-0.229,-0.166,0.042
+C-only (no W) × z_1h=1h>0,pattern×regime,DECIDED no,LIVE avg -0.288 ≤ 0,40.0,15.0,52.5,-0.288,-0.647,0.331,-0.619,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,574.3,304.0,57.6,-0.108,-0.224,-0.131,0.023
+C-only (no W) × z_24h=24h<=0,pattern×regime,DECIDED no,LIVE avg -0.252 ≤ 0,56.0,16.0,44.6,-0.252,-0.604,0.095,-0.347,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,599.0,286.0,56.2,-0.14,-0.25,-0.163,0.023
+C-only (no W) × z_24h=24h>0,pattern×regime,DECIDED no,LIVE avg -0.202 ≤ 0,41.0,17.0,58.5,-0.202,-0.528,0.313,-0.515,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,615.3,327.0,58.0,-0.094,-0.203,-0.127,0.033
+"C-only (no W) × z_30d=off30(-10,-3]",pattern×regime,DECIDED no,LIVE avg -0.336 ≤ 0,65.0,19.0,44.6,-0.336,-0.617,0.107,-0.443,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,453.7,242.0,57.3,-0.105,-0.222,-0.175,0.07
+C-only (no W) × z_30d=off30>-3,pattern×regime,DECIDED no,LIVE avg -0.016 ≤ 0,32.0,9.0,62.5,-0.016,-0.482,0.157,-0.173,,,days<10;avg<+0.10;LB_bonf<=0;<ctl,229.7,114.0,56.5,-0.137,-0.288,-0.117,-0.02
+C-only (no W) × z_br=breadth<=50,pattern×regime,DECIDED no,LIVE avg -0.254 ≤ 0,67.0,19.0,46.3,-0.254,-0.553,0.096,-0.35,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,756.0,352.0,57.1,-0.116,-0.221,-0.155,0.039
+C-only (no W) × z_br=breadth>50,pattern×regime,DECIDED no,LIVE avg -0.179 ≤ 0,30.0,12.0,60.0,-0.179,-0.515,0.242,-0.421,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,458.3,247.0,57.2,-0.118,-0.225,-0.126,0.008
+C+W × regime_lbl=CHOPPY_FLAT,pattern×regime,DECIDED no,LIVE avg -0.484 ≤ 0,13.0,4.0,30.8,-0.484,-0.94,0.998,-1.482,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,,,,,,,
+C+W × regime_lbl=HEALTHY_BEAR,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,7.0,3.0,71.4,-0.041,-0.318,0.998,-1.039,,,N<30;days<10;avg<+0.10;LB_bonf<=0;<ctl,,,,,,,
+C+W × regime_lbl=HEALTHY_BULL,pattern×regime,DECIDED no,LIVE avg -0.285 ≤ 0,16.0,13.0,56.2,-0.285,-0.768,-0.319,0.034,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0,312.7,284.0,56.1,-0.153,-0.309,-0.184,0.031
+C+W × regime_lbl=STRONG_BULL,pattern×regime,DECIDED no,LIVE avg -0.266 ≤ 0,19.0,9.0,36.8,-0.266,-0.698,0.5,-0.766,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,237.7,224.0,56.4,-0.161,-0.307,-0.121,-0.04
+C+W × z_1h=1h<=0,pattern×regime,DECIDED no,LIVE avg -0.453 ≤ 0,33.0,12.0,33.3,-0.453,-0.708,0.045,-0.498,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,320.0,242.0,56.8,-0.184,-0.333,-0.169,-0.015
+C+W × z_1h=1h>0,pattern×regime,DECIDED no,LIVE avg -0.101 ≤ 0,24.0,11.0,58.3,-0.101,-0.612,0.131,-0.232,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,232.3,230.0,55.5,-0.119,-0.281,-0.128,0.009
+C+W × z_24h=24h<=0,pattern×regime,DECIDED no,LIVE avg -0.403 ≤ 0,33.0,12.0,36.4,-0.403,-0.703,0.109,-0.512,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,294.0,222.0,56.1,-0.181,-0.332,-0.191,0.01
+C+W × z_24h=24h>0,pattern×regime,DECIDED no,LIVE avg -0.170 ≤ 0,24.0,12.0,54.2,-0.17,-0.627,0.109,-0.279,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,258.3,252.0,56.4,-0.129,-0.285,-0.145,0.016
+"C+W × z_30d=off30(-10,-3]",pattern×regime,DECIDED no,LIVE avg -0.376 ≤ 0,39.0,12.0,38.5,-0.376,-0.706,-0.141,-0.235,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,197.3,183.0,51.0,-0.21,-0.385,-0.186,-0.024
+C+W × z_30d=off30>-3,pattern×regime,DECIDED no,LIVE avg -0.150 ≤ 0,18.0,7.0,55.6,-0.15,-0.578,0.667,-0.817,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,103.0,89.0,51.5,-0.233,-0.485,-0.117,-0.116
+C+W × z_br=breadth<=50,pattern×regime,DECIDED no,LIVE avg -0.462 ≤ 0,33.0,12.0,30.3,-0.462,-0.798,-0.066,-0.396,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,376.7,273.0,57.4,-0.169,-0.303,-0.178,0.009
+C+W × z_br=breadth>50,pattern×regime,DECIDED no,LIVE avg -0.088 ≤ 0,24.0,10.0,62.5,-0.088,-0.427,0.131,-0.219,,,N<30;avg<+0.10;LB_bonf<=0;<ctl,175.7,190.0,53.7,-0.13,-0.31,-0.121,-0.009
+W2 C-free × regime_lbl=HEALTHY_BULL,pattern×regime,DECIDED no,LIVE avg -0.134 ≤ 0,50.0,16.0,48.0,-0.134,-0.528,-0.009,-0.125,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,1268.0,382.0,56.3,-0.158,-0.245,-0.135,-0.023
+W2 C-free × regime_lbl=STRONG_BULL,pattern×regime,DECIDED no,LIVE below same-days control (Δ -0.015),32.0,13.0,75.0,0.092,-0.227,0.107,-0.015,0.8,0.38,avg<+0.10;LB_bonf<=0;<ctl;conc>=50%,1288.3,389.0,60.1,-0.096,-0.182,-0.11,0.014
+W2 C-free × z_1h=1h<=0,pattern×regime,DECIDED no,LIVE avg -0.200 ≤ 0,29.0,11.0,48.3,-0.2,-0.506,0.127,-0.327,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,796.7,239.0,56.9,-0.154,-0.279,-0.149,-0.005
+W2 C-free × z_1h=1h>0,pattern×regime,DECIDED no,"LIVE +0.039 fails [avg<+0.10;LB_bonf<=0;conc>=50%]; replay refutes (-0.115, Δ +0.012)",53.0,16.0,64.2,0.039,-0.386,-0.129,0.168,2.0,1.14,avg<+0.10;LB_bonf<=0;conc>=50%,1759.7,415.0,58.8,-0.115,-0.184,-0.127,0.012
+W2 C-free × z_24h=24h<=0,pattern×regime,DECIDED no,LIVE avg -0.103 ≤ 0,39.0,14.0,48.7,-0.103,-0.418,0.076,-0.179,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,861.0,262.0,56.1,-0.145,-0.268,-0.164,0.019
+W2 C-free × z_24h=24h>0,pattern×regime,DECIDED no,"LIVE +0.006 fails [avg<+0.10;LB_bonf<=0;conc>=50%]; replay refutes (-0.118, Δ +0.007)",43.0,13.0,67.4,0.006,-0.462,-0.118,0.124,15.53,7.75,avg<+0.10;LB_bonf<=0;conc>=50%,1695.3,388.0,59.3,-0.118,-0.196,-0.125,0.007
+"W2 C-free × z_30d=off30(-10,-3]",pattern×regime,DECIDED no,LIVE avg -0.192 ≤ 0,50.0,16.0,52.0,-0.192,-0.442,-0.004,-0.188,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,947.3,243.0,57.9,-0.114,-0.228,-0.155,0.041
+W2 C-free × z_30d=off30>-3,pattern×regime,DECIDED no,"LIVE +0.182 fails [days<10;LB_bonf<=0;conc>=50%]; replay refutes (-0.118, Δ -0.022)",32.0,8.0,68.8,0.182,-0.421,0.154,0.028,0.71,0.4,days<10;LB_bonf<=0;conc>=50%,508.3,135.0,58.8,-0.118,-0.245,-0.096,-0.022
+W2 C-free × z_br=breadth<=50,pattern×regime,DECIDED no,LIVE avg -0.017 ≤ 0,44.0,16.0,56.8,-0.017,-0.43,-0.059,0.042,,,WR<61.5;avg<+0.10;LB_bonf<=0,1250.3,304.0,58.2,-0.116,-0.225,-0.164,0.048
+W2 C-free × z_br=breadth>50,pattern×regime,DECIDED no,LIVE avg -0.099 ≤ 0,37.0,11.0,59.5,-0.099,-0.511,0.018,-0.117,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,1306.0,331.0,58.2,-0.137,-0.209,-0.102,-0.035
+W4 C-free × regime_lbl=HEALTHY_BULL,pattern×regime,DECIDED no,LIVE avg -0.351 ≤ 0,29.0,14.0,37.9,-0.351,-0.648,0.125,-0.476,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,485.0,339.0,60.5,-0.118,-0.221,-0.152,0.034
+W4 C-free × regime_lbl=STRONG_BULL,pattern×regime,DECIDED no,LIVE below same-days control (Δ -0.292),10.0,8.0,60.0,0.111,-0.63,0.403,-0.292,1.5,1.43,N<30;days<10;WR<61.5;LB_bonf<=0;<ctl;conc>=50%,295.3,245.0,58.4,-0.13,-0.276,-0.088,-0.042
+W4 C-free × z_1h=1h<=0,pattern×regime,DECIDED no,LIVE avg -0.392 ≤ 0,15.0,10.0,33.3,-0.392,-0.803,0.532,-0.924,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,259.7,192.0,62.8,-0.115,-0.279,-0.146,0.031
+W4 C-free × z_1h=1h>0,pattern×regime,DECIDED no,LIVE avg -0.125 ≤ 0,27.0,14.0,48.1,-0.125,-0.53,0.091,-0.216,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,526.3,319.0,57.9,-0.131,-0.228,-0.121,-0.01
+W4 C-free × z_24h=24h<=0,pattern×regime,DECIDED no,LIVE avg -0.220 ≤ 0,21.0,12.0,42.9,-0.22,-0.595,0.417,-0.637,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,266.7,203.0,62.6,-0.085,-0.238,-0.16,0.075
+W4 C-free × z_24h=24h>0,pattern×regime,DECIDED no,LIVE avg -0.219 ≤ 0,21.0,11.0,42.9,-0.219,-0.606,0.028,-0.247,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,519.3,308.0,57.9,-0.147,-0.253,-0.121,-0.026
+"W4 C-free × z_30d=off30(-10,-3]",pattern×regime,DECIDED no,LIVE avg -0.314 ≤ 0,26.0,13.0,38.5,-0.314,-0.654,0.214,-0.528,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,272.3,199.0,60.8,-0.114,-0.27,-0.139,0.025
+W4 C-free × z_30d=off30>-3,pattern×regime,DECIDED no,LIVE avg -0.068 ≤ 0,16.0,9.0,50.0,-0.068,-0.508,0.231,-0.299,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,131.0,101.0,59.3,-0.077,-0.258,-0.097,0.02
+W4 C-free × z_br=breadth<=50,pattern×regime,DECIDED no,LIVE avg -0.344 ≤ 0,27.0,15.0,33.3,-0.344,-0.687,-0.01,-0.334,,,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,382.0,255.0,61.5,-0.127,-0.253,-0.14,0.013
+W4 C-free × z_br=breadth>50,pattern×regime,DECIDED no,LIVE below same-days control (Δ -0.377),15.0,10.0,60.0,0.003,-0.721,0.38,-0.377,41.19,41.19,N<30;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl;conc>=50%,404.0,251.0,57.6,-0.125,-0.231,-0.117,-0.008
+W6 C-free × regime_lbl=CHOPPY_FLAT,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,5.0,4.0,40.0,-0.362,-1.256,0.998,-1.36,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,,,,,,,
+W6 C-free × regime_lbl=HEALTHY_BEAR,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,5.0,2.0,60.0,-0.005,-0.036,,,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,,,,,,,
+W6 C-free × regime_lbl=HEALTHY_BULL,pattern×regime,DECIDED no,LIVE avg -0.186 ≤ 0,41.0,18.0,48.8,-0.186,-0.458,0.054,-0.24,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,789.0,374.0,52.6,-0.187,-0.281,-0.182,-0.005
+W6 C-free × z_1h=1h<=0,pattern×regime,DECIDED no,LIVE avg -0.192 ≤ 0,31.0,12.0,45.2,-0.192,-0.571,0.045,-0.237,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,504.0,239.0,51.7,-0.209,-0.315,-0.214,0.005
+W6 C-free × z_1h=1h>0,pattern×regime,DECIDED no,LIVE avg -0.176 ≤ 0,20.0,9.0,55.0,-0.176,-0.762,0.102,-0.278,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,285.0,178.0,54.3,-0.149,-0.294,-0.159,0.01
+W6 C-free × z_24h=24h<=0,pattern×regime,DECIDED no,LIVE avg -0.202 ≤ 0,38.0,12.0,44.7,-0.202,-0.471,0.038,-0.24,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,442.3,218.0,51.6,-0.206,-0.324,-0.224,0.018
+W6 C-free × z_24h=24h>0,pattern×regime,DECIDED no,LIVE avg -0.139 ≤ 0,13.0,8.0,61.5,-0.139,-0.832,0.18,-0.319,,,N<30;days<10;avg<+0.10;LB_bonf<=0;<ctl,346.7,209.0,53.8,-0.164,-0.298,-0.156,-0.008
+"W6 C-free × z_30d=off30(-10,-3]",pattern×regime,DECIDED no,LIVE avg -0.184 ≤ 0,33.0,14.0,48.5,-0.184,-0.565,0.073,-0.257,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,341.7,173.0,48.4,-0.23,-0.357,-0.218,-0.012
+W6 C-free × z_30d=off30>-3,pattern×regime,DECIDED no,LIVE avg -0.190 ≤ 0,18.0,5.0,50.0,-0.19,-0.601,0.099,-0.289,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,139.3,72.0,55.7,-0.171,-0.354,-0.096,-0.075
+W6 C-free × z_br=breadth<=50,pattern×regime,DECIDED no,LIVE avg -0.151 ≤ 0,38.0,16.0,50.0,-0.151,-0.48,0.045,-0.196,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,568.3,255.0,49.7,-0.219,-0.331,-0.221,0.002
+W6 C-free × z_br=breadth>50,pattern×regime,DECIDED no,LIVE avg -0.287 ≤ 0,13.0,7.0,46.2,-0.287,-0.993,0.189,-0.476,,,N<30;days<10;WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,220.7,154.0,60.1,-0.107,-0.237,-0.118,0.011
+ALL matched × era=2026-H2,era,DECIDED no,LIVE avg -0.214 ≤ 0,318.0,36.0,48.4,-0.214,-0.401,-0.001,-0.213,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,522.0,95.0,59.2,-0.089,-0.207,-0.018,-0.071
+W-only (C-free) × era=2026-H2,era,DECIDED no,LIVE avg -0.173 ≤ 0,164.0,34.0,48.8,-0.173,-0.383,0.041,-0.214,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,322.3,89.0,58.0,-0.117,-0.251,-0.016,-0.101
+C-only (no W) × era=2026-H2,era,DECIDED no,LIVE avg -0.231 ≤ 0,97.0,27.0,50.5,-0.231,-0.486,0.122,-0.353,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,146.3,69.0,62.2,-0.037,-0.228,0.005,-0.042
+C+W × era=2026-H2,era,DECIDED no,LIVE avg -0.305 ≤ 0,57.0,19.0,43.9,-0.305,-0.608,0.031,-0.336,,,WR<61.5;avg<+0.10;LB_bonf<=0;<ctl,53.3,56.0,58.1,-0.057,-0.386,-0.044,-0.013
+has C1,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,23.0,35.0,63.8,-0.042,-0.435,-0.215,0.173
+has W3,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,37.3,49.0,65.2,0.012,-0.428,-0.168,0.18
+W3 C-free,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,27.0,44.0,70.4,0.12,-0.164,-0.165,0.285
+W5 C-free,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,278.7,290.0,55.6,-0.157,-0.271,-0.146,-0.011
+W3 alone,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,9.0,15.0,66.7,0.162,-0.494,-0.205,0.367
+W5 alone,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,25.0,51.0,49.3,-0.189,-0.545,-0.015,-0.174
+C5 alone,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,1.7,3.0,100.0,0.203,0.095,0.037,0.166
+C7 alone,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,73.3,77.0,60.5,-0.13,-0.456,-0.185,0.055
+C8 alone,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,3.0,7.0,100.0,0.561,0.19,-0.133,0.694
+= W2+W4,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,410.0,304.0,58.8,-0.147,-0.267,-0.132,-0.015
+= W2+W6,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,228.3,174.0,52.7,-0.18,-0.346,-0.167,-0.013
+= C6+W4,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,116.0,135.0,56.3,-0.122,-0.291,-0.146,0.024
+= W2+W5,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,94.7,131.0,57.4,-0.112,-0.298,-0.155,0.043
+= C2+W6,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,86.7,103.0,60.4,-0.114,-0.37,-0.224,0.11
+= C4+C9,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,84.7,80.0,52.8,-0.148,-0.408,-0.233,0.085
+= W1+W2,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,73.3,106.0,65.9,-0.036,-0.25,-0.106,0.07
+= C7+W6,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,60.0,71.0,55.0,-0.166,-0.478,-0.2,0.034
+= W1+W2+W5,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,46.0,78.0,57.2,-0.162,-0.435,-0.124,-0.038
+= C6+W1,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,42.3,63.0,61.4,-0.071,-0.348,-0.092,0.021
+= C4+W4,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,37.7,60.0,62.8,-0.002,-0.35,-0.108,0.106
+= C2+C4,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,36.0,39.0,63.0,-0.075,-0.391,-0.209,0.134
+= C7+W2,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,35.0,41.0,49.5,-0.436,-0.789,-0.139,-0.297
+= W5+W6,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,29.0,42.0,52.9,-0.222,-0.548,-0.266,0.044
+= W1+W4,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,26.7,48.0,56.2,-0.2,-0.655,-0.138,-0.062
+= W1+W2+W4,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,23.3,48.0,48.6,-0.308,-0.667,-0.034,-0.274
+= C2+C7,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,22.7,32.0,73.5,0.24,-0.39,0.04,0.2
+= W2+W4+W5,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,22.0,36.0,54.5,-0.202,-0.585,-0.154,-0.048
+= C2+C7+W6,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,20.0,25.0,48.3,-0.293,-0.744,-0.15,-0.143
+= C7+W2+W6,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,17.0,23.0,51.0,-0.143,-0.86,-0.314,0.171
+= W2+W5+W6,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,16.7,19.0,48.0,-0.223,-0.554,-0.199,-0.024
+= C2+W4,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,16.0,31.0,64.6,-0.183,-0.671,-0.033,-0.15
+= W1+W2+W4+W5,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,15.3,29.0,76.1,0.014,-0.447,-0.008,0.022
+= C4+C7+C9,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,14.7,25.0,68.2,0.044,-0.511,-0.317,0.361
+= C6+C7,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,14.0,21.0,64.3,-0.207,-0.824,-0.277,0.07
+= C4+W1,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,13.7,26.0,56.1,-0.058,-0.504,-0.26,0.202
+= W2+W4+W6,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,13.3,23.0,70.0,-0.01,-0.528,-0.098,0.088
+= C7+W5+W6,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,12.0,16.0,50.0,-0.3,-0.842,-0.246,-0.054
+= C1+W2,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,11.7,16.0,60.0,-0.093,-0.765,-0.133,0.04
+= C2+C4+C9,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,11.7,17.0,54.3,-0.201,-0.672,-0.124,-0.077
+= W1+W5,pattern,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,10.3,24.0,38.7,-0.385,-0.77,-0.18,-0.205
+ALL matched × z_30d=off30<=-10,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,2262.3,236.0,58.3,-0.126,-0.19,-0.164,0.038
+W-only (C-free) × regime_lbl=CHOPPY_WEAK,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,8.7,10.0,38.5,-0.469,-1.121,-0.191,-0.278
+W-only (C-free) × z_30d=off30<=-10,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,1479.3,212.0,58.0,-0.136,-0.22,-0.155,0.019
+C-only (no W) × regime_lbl=CHOPPY_WEAK,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,4.3,8.0,53.8,-0.15,-1.313,-0.085,-0.065
+C-only (no W) × z_30d=off30<=-10,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,531.0,200.0,57.2,-0.118,-0.248,-0.146,0.028
+C+W × regime_lbl=CHOPPY_WEAK,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,2.0,3.0,66.7,-0.195,-0.341,0.188,-0.383
+C+W × z_30d=off30<=-10,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,252.0,158.0,62.3,-0.084,-0.239,-0.157,0.073
+W2 C-free × z_30d=off30<=-10,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,1100.7,187.0,58.2,-0.142,-0.232,-0.142,0.0
+W4 C-free × regime_lbl=CHOPPY_WEAK,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,5.7,6.0,29.4,-0.624,-1.365,-0.098,-0.526
+W4 C-free × z_30d=off30<=-10,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,382.7,162.0,58.6,-0.151,-0.261,-0.146,-0.005
+W6 C-free × z_30d=off30<=-10,pattern×regime,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,308.0,144.0,55.8,-0.147,-0.302,-0.184,0.037
+ALL matched × era=2025,era,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,3393.0,351.0,56.4,-0.14,-0.198,-0.213,0.073
+W-only (C-free) × era=2025,era,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,2307.7,336.0,57.0,-0.133,-0.206,-0.212,0.079
+C-only (no W) × era=2025,era,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,739.0,302.0,56.2,-0.123,-0.229,-0.206,0.083
+C+W × era=2025,era,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,346.3,233.0,52.7,-0.224,-0.364,-0.215,-0.009
+ALL matched × era=2026-H1,era,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,1336.0,176.0,58.1,-0.135,-0.211,-0.088,-0.047
+W-only (C-free) × era=2026-H1,era,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,854.3,171.0,57.7,-0.151,-0.232,-0.085,-0.066
+C-only (no W) × era=2026-H1,era,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,329.0,142.0,56.7,-0.137,-0.263,-0.071,-0.066
+C+W × era=2026-H1,era,DECIDED no,LIVE N<10 — no evidence to move the block,,,,,,,,,,,152.7,121.0,63.5,-0.04,-0.204,-0.095,0.055

@@ -3,6 +3,7 @@ SCALPARS Trading Platform - Trading Engine
 """
 import asyncio
 import calendar
+import collections
 import contextlib
 import contextvars
 import functools
@@ -18,7 +19,7 @@ from sqlalchemy.orm.attributes import set_committed_value   # ➕ (324 R5)
 from sqlalchemy import inspect as sa_inspect   # ➕ (324 round-3 #5)
 from sqlalchemy.orm.base import NO_VALUE   # ➕ (324 round-4)
 
-from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, FrenzyBreak, FrenzyFlag, WillyHoldBlock, FlatbaseEpisode
+from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, FrenzyBreak, FrenzyFlag, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal
 from database import AsyncSessionLocal, locked_commit, locked_execute_commit
 import config
 from config import save_trading_config, TradingConfig
@@ -109,6 +110,20 @@ from services.resting_tp import (RTP_SLEEVES, RTP_QUERY_MIN_S, RTP_HEAL_RETRY_S,
                                   RTP_STRAY_MAX_PER_PASS, RTP_BUSY_WATCHDOG_S, rtp_enabled,
                                   RTP_SWITCHES, RTP_ROW_STRATEGIES, rtp_row_target, rtp_row_enabled, rtp_row_reason, rtp_fixed_reason)   # 🎯 (310) every fixed TP
 from services import decision_journal as _djournal  # Sep-18 📓 decision journal (file-only, never raises)
+from services.alt_corr import AltCorrTracker   # 📈 (DECISION_LOG 383) alt-correlation regime stamp (observe-only)
+# 📈 (DECISION_LOG 383) ONE process-wide tracker: refreshed once per 5m close by main.alt_corr_loop (own task, own public client); read at every
+# Order build by alt_corr_stamp() — a pure memory read, mode-agnostic (paper = live), NULL on any error / stale value.
+alt_corr_tracker = AltCorrTracker(fetch_klines=binance_service.fetch_regime_klines, fetch_universe=binance_service.fetch_regime_universe_inputs,
+                                  is_limited=binance_service.regime_limited)
+
+
+def alt_corr_stamp(now_ms=None) -> dict:
+    """📈 (DECISION_LOG 383) {'entry_alt_corr24', 'entry_alt_beta24'} for a fill now (None / None on any failure). Never raises."""
+    try:
+        c, b = alt_corr_tracker.stamp(now_ms)
+    except Exception:
+        c, b = None, None
+    return {'entry_alt_corr24': c, 'entry_alt_beta24': b}
 from services.websocket_tracker import websocket_tracker
 
 
@@ -10558,6 +10573,102 @@ class TradingEngine:
             logger.warning(f"[FRENZY_WILLY_HOLD] {pair}: block event not queued ({str(e)[:100]})")
             return False
 
+    # ── 🧷 (DECISION_LOG 383) matched momentum-long refusal recorder (observe-only) ────────────────────────────────────────────────────────────
+    ML_REFUSAL_SEEN_MAX = 5000   # in-memory dedupe keys kept (an OrderedDict: oldest keys dropped first beyond this — O(1) per refusal)
+
+    def _ml_refusal_record(self, pair, price, confidence, labels, c_any, w_any, entry_fields, open_count=None, max_positions=None,
+                           btc_regime=None, btc_slope=None, btc_rsi_prev=None, bull_pct=None, pair_rank=None, probe=False, now_ms=None) -> bool:
+        """🧷 queue ONE ml_matched_refusals row for this LONG_UNMATCHED_ONLY refusal — at most one per (pair, 5m bar): the first refusal of the
+        bar wins (in-memory dedupe here + the table's unique (pair, bar_at, is_paper) across restarts). The insert runs in a background task
+        with its own short session (never blocks the scan). post_gate = the later momentum-long gate that would ALSO have refused it, judged
+        with the engine's own pure rules (heat, mega-cap; probes are exempt from both, as in open_position). → True when queued. Never raises."""
+        try:
+            now_ms = int(now_ms if now_ms is not None else _leash_time.time() * 1000)
+            bar = (now_ms // 300_000) * 300_000
+            seen = self.__dict__.get('_mr_seen')
+            if not isinstance(seen, collections.OrderedDict):
+                seen = self.__dict__['_mr_seen'] = collections.OrderedDict()
+            key = (str(pair), bar)
+            if key in seen:
+                return False
+            while len(seen) >= self.ML_REFUSAL_SEEN_MAX:
+                seen.popitem(last=False)          # insertion order = time order → the oldest key goes first
+            seen[key] = now_ms
+            th = config.trading_config.thresholds
+            off30 = None
+            try:
+                off30 = (_bullrun_monitor.get('off30d') if (_leash_time.time() - (_bullrun_monitor.get('off30d_at') or 0)) <= 1800 else None)
+            except Exception:
+                off30 = None
+            post = ""
+            if not probe:
+                try:
+                    if long_heat_eval(th, btc_slope, btc_rsi_prev, bull_pct, off30)[1]:
+                        post = "LONG_HEAT_BLOCK"
+                except Exception:
+                    pass
+                try:
+                    if not post and long_megacap_block(th, pair_rank):
+                        post = "LONG_MEGACAP_BLOCK"
+                except Exception:
+                    pass
+            if not btc_regime:
+                try:
+                    btc_regime = classify_btc_regime(globals().get('_current_btc_adx'), globals().get('_current_btc_rsi'),
+                                                     globals().get('_btc_ema20_slope_pct_raw', globals().get('_btc_ema20_slope_pct')))
+                except Exception:
+                    btc_regime = None
+            ac = alt_corr_stamp(now_ms)
+
+            def _clean(v):
+                if isinstance(v, float) and not math.isfinite(v):
+                    return None
+                return v if isinstance(v, (bool, int, float, str)) or v is None else str(v)[:60]
+            ef = {str(k): _clean(v) for k, v in (entry_fields or {}).items()}
+            if probe:
+                ef['probe'] = True
+            row = dict(pair=str(pair)[:30], at=datetime.utcfromtimestamp(now_ms / 1000), bar_at=datetime.utcfromtimestamp(bar / 1000),
+                       price=(float(price) if price else None), confidence=(str(confidence)[:20] if confidence else None),
+                       labels=(str(labels)[:60] if labels else None),
+                       family=("C+W" if (c_any and w_any) else "C" if c_any else "W" if w_any else None),
+                       c_any=bool(c_any), w_any=bool(w_any), btc_regime=(str(btc_regime)[:20] if btc_regime else None),
+                       open_count=(int(open_count) if open_count is not None else None),
+                       max_positions=(int(max_positions) if max_positions is not None else None),
+                       room=(None if (open_count is None or max_positions is None) else bool(int(open_count) < int(max_positions))),
+                       post_gate=post, btc_off30d_pct=(float(off30) if off30 is not None else None),
+                       alt_corr24=ac.get('entry_alt_corr24'), alt_beta24=ac.get('entry_alt_beta24'),
+                       entry_fields_json=json.dumps(ef, separators=(',', ':'), allow_nan=False), is_paper=bool(self.is_paper_mode))
+            self._wh_spawn(self._ml_refusal_insert(row, key))
+            return True
+        except Exception as e:
+            logger.warning(f"[ML_MATCHED_REFUSAL] {pair}: not queued ({str(e)[:100]})")
+            return False
+
+    async def _ml_refusal_insert(self, row, key=None) -> bool:
+        """🧷 own short session (≤ 10 s); a row a previous process already wrote for the same (pair, bar) is left as it is. A failed insert
+        (DB lock / timeout — anything but a UNIQUE violation) drops its dedupe key so the next refusal of that pair in the same bar retries.
+        One insert per refusal (≤ 1 / pair / 5 min, ≈ 10–50 / day): the same accepted db_write_lock class as _willy_hold_insert — not batched.
+        Never raises."""
+        try:
+            async with AsyncSessionLocal() as _ms:
+                _hit = (await _ms.execute(select(MatchedLongRefusal.id).where(and_(
+                    MatchedLongRefusal.pair == row['pair'], MatchedLongRefusal.bar_at == row['bar_at'],
+                    MatchedLongRefusal.is_paper == row['is_paper'])))).first()
+                if _hit is not None:
+                    return False
+                _ms.add(MatchedLongRefusal(**row))
+                await asyncio.wait_for(locked_commit(_ms), 10.0)
+            return True
+        except Exception as e:
+            _uniq = "UNIQUE" in str(e).upper()
+            if not _uniq and key is not None:
+                try:
+                    (self.__dict__.get('_mr_seen') or {}).pop(key, None)
+                except Exception:
+                    pass
+            (logger.debug if _uniq else logger.warning)(f"[ML_MATCHED_REFUSAL] {row.get('pair')}: not recorded ({str(e)[:100]})")
+            return False
+
     def _wh_spawn(self, coro):
         """🔒 fire-and-forget (kept referenced until done) — the hold's DB writes never stall a scan / an open. → the task (or None)."""
         try:
@@ -12935,6 +13046,20 @@ class TradingEngine:
                 'entry_pair_volume_24h_usd': entry_pair_volume_24h_usd, 'entry_pair_rank': entry_pair_rank,
                 'entry_quality_score': entry_quality_score,
             }.items() if v is not None}
+            # 🧷 (DECISION_LOG 383) MATCHED-LONG REFUSAL RECORDER — observe-only: one persisted row per (pair, 5m bar) with the exact labels, the
+            # decision price / confidence, this entry_* snapshot and the slot state; fire-and-forget (own session), never raises, never alters
+            # the refusal below. Rides the Decisions CSV as e=ML_MATCHED rows (scripts/scout_ml_matched_refusals.py prices them).
+            try:
+                self._ml_refusal_record(
+                    pair=pair, price=current_price, confidence=confidence, labels=_um_pats, c_any=bool(_pc_any_e), w_any=bool(_pw_any_e),
+                    entry_fields=dict(_um_ef, entry_btc_regime=entry_btc_regime, entry_btc_trend_gap_pct=globals().get('_current_btc_trend_gap_pct'),
+                                      entry_ema50_slope=entry_ema50_slope, entry_cohort=_um_cohort),
+                    open_count=_open_count_now, max_positions=_eff_max_pos, btc_regime=entry_btc_regime,
+                    btc_slope=entry_btc_ema20_slope, btc_rsi_prev=entry_btc_rsi_prev, bull_pct=entry_bull_pct, pair_rank=entry_pair_rank,
+                    probe=bool(gap_probe or gapmin_probe or slopegate_probe or rsiadx_probe or deadband_probe or rsiceil_probe
+                               or gminflat_probe or adxmax_probe or dbdown_probe or adxmax2_probe or deepgap_probe or majors_probe))
+            except Exception:
+                pass
             _seed_phantom_flip(pair, current_price, "LONG", "LONG_UNMATCHED_ONLY", cohort=_um_cohort, entry_fields=_um_ef)
             # Jul 4 (operator) — SAME-direction phantom of the blocked matched long itself
             # (mode='PASS'): measures whether the Jun-9 LONG_UNMATCHED_ONLY block is over-
@@ -14150,6 +14275,7 @@ class TradingEngine:
                 logger.error(f"[FRENZY_LITE_C] {pair}: TP decision failed ({_lc_err}) — stored {_lc_tp_used}")
             logger.info(f"[FRENZY_LITE_C] {pair}: vol {entry_frenzy_vol_mult}× · BTC 1h slope {entry_btc_1h_slope} → "
                         f"{'ZONE' if _lc_zone else 'outside'} · TP {('+' + str(_lc_tp_used) + '% (stored)') if _lc_tp_used is not None else 'config (LITE C off)'}")
+        _ac_stamp = alt_corr_stamp()   # 📈 (DECISION_LOG 383) observe-only regime stamp — memory read, NULL on any failure, never blocks
         order = Order(
             binance_order_id=binance_order_id,
             backstop_algo_id=_bk_algo_id,
@@ -14274,6 +14400,7 @@ class TradingEngine:
             entry_frenzy_willy_spike_high=(entry_frenzy_willy_spike_high if (_frenzy and _fz_es in WILLY_EXIT_CLASS) else None),   # 🎲² (356) WILLY exit V2 stamps
             frenzy_willy_tp_target_pct=_wv2_tp,   # 🎲² (356) the WILLY TP decided at entry (NULL = pre-V2 row → config TP)
             entry_willy_ht_size_frac=_ht_frac_stamp,   # 📈 (365) HT only: the size fraction it opened at (the HT re-size ladder)
+            entry_alt_corr24=_ac_stamp.get('entry_alt_corr24'), entry_alt_beta24=_ac_stamp.get('entry_alt_beta24'),   # 📈 (DECISION_LOG 383) OBS-R1 / R1b
             entry_book_drift_pct=_eb_m.get('entry_book_drift_pct'), entry_book_spread_pct=_eb_m.get('entry_book_spread_pct'),   # 📏 (295)
             entry_fill_vs_book_pct=_eb_m.get('entry_fill_vs_book_pct'), entry_order_lag_s=_eb_m.get('entry_order_lag_s'),
             entry_fee=entry_fee,
@@ -16672,6 +16799,7 @@ class TradingEngine:
         if pair in meta and (time.time() - (getattr(self, '_scan_pair_meta_at', 0.0) or 0.0)) <= 1800:
             st['entry_pair_volume_24h_usd'], st['entry_pair_rank'], st['entry_pair_age_days'] = meta[pair]
         st['entry_vol_mcap_ratio'] = vol_mcap_ratio(st.get('entry_pair_volume_24h_usd'), st.get('entry_mcap_usd'))   # 🔄 (251) never raises
+        st.update(alt_corr_stamp())   # 📈 (DECISION_LOG 383) the alt-correlation regime stamp (memory read; NULL on any failure)
         st['entry_funding_rate'] = round(_fr, 6) if isinstance(_fr, (int, float)) else None
         # entry_slippage_pct stays NULL: a manual paper fill IS the clicked price (nothing to measure), and a 0.0 would enter
         # the account-level slippage averages (deep review)

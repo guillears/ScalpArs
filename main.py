@@ -25,7 +25,7 @@ from sqlalchemy import select, and_, or_, func, desc, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal, locked_commit, locked_execute_commit
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FrenzyBreak, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, FrenzyBreak, PhantomFlip, NavSnapshot, MonitorPeriod, BearMonitorPeriod, SurgeTrigger, OrderbookSnap, WillyHoldBlock, FlatbaseEpisode, MatchedLongRefusal
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -72,6 +72,7 @@ _nav_task = None
 _frenzy_task = None
 _orderbook_task = None
 _app_trade_task = None   # 🧾 (DECISION_LOG 329) Binance-app trade recorder
+_alt_corr_task = None   # 📈 (DECISION_LOG 383) alt-correlation regime stamp refresher
 should_stop = False
 _scan_lock = asyncio.Lock()
 # 💰 Sep-21 — investor/NAV writes are read-modify-write across separate sessions, so two concurrent
@@ -293,6 +294,40 @@ async def orderbook_loop():
             await asyncio.sleep(30)
 
 
+ALT_CORR_OFFSET_S = 1.0          # 📈 (383 review) the refresh starts 1 s after the 5m close (the closed bar is final on the REST klines by then)
+ML_REFUSAL_RETENTION_DAYS = 90   # 🧷 (DECISION_LOG 383) ml_matched_refusals kept 90 days (≤ 1 row / pair / 5 min; live ≈ 10–50 / day)
+
+
+async def alt_corr_loop():
+    """📈 (DECISION_LOG 383) OBSERVE-ONLY: ~1 s after every 5-minute close (383 review: done ≈ close + 3–4 s, before FRENZY's close + 4 s pass
+    in the normal case — a fill before it finishes carries the previous bar's value), the alt-correlation regime stamp (services.alt_corr; OBS-R1 / R1b) is
+    recomputed for the bar that just closed — its own task and its own public client, so the scan / FRENZY / order paths never wait on it.
+    Runs whether the bot is running or stopped and in both modes (the stamp is mode-agnostic: paper = live). Hourly it also prunes the
+    🧷 ml_matched_refusals table to ML_REFUSAL_RETENTION_DAYS. Never stops on an error."""
+    from services.trading_engine import alt_corr_tracker
+    await asyncio.sleep(5)
+    _last_prune = 0.0
+    while not should_stop:
+        try:
+            await alt_corr_tracker.refresh()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"[ALT_CORR] loop error: {str(e)[:120]}")
+        try:
+            if time.time() - _last_prune > 3600:
+                _last_prune = time.time()
+                async with AsyncSessionLocal() as db:   # lock FIRST, then the delete (locked_execute_commit)
+                    await locked_execute_commit(db, delete(MatchedLongRefusal).where(
+                        MatchedLongRefusal.at < datetime.utcnow() - timedelta(days=ML_REFUSAL_RETENTION_DAYS)))
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"[ML_MATCHED_REFUSAL] prune skipped: {str(e)[:120]}")
+        _now = time.time()
+        await asyncio.sleep(max(1.0, (int(_now // 300) + 1) * 300 + ALT_CORR_OFFSET_S - _now))
+
+
 async def bnb_swap_loop():
     """Periodic loop to check BNB balance and auto-swap USDT to BNB for fee coverage."""
     global should_stop
@@ -371,7 +406,7 @@ async def nav_snapshot_loop():
 
 async def start_background_tasks():
     """Start background trading tasks"""
-    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, _app_trade_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, _app_trade_task, _alt_corr_task, should_stop
     should_stop = False
     
     # Start WebSocket tracker for real-time price tracking
@@ -396,6 +431,7 @@ async def start_background_tasks():
     _nav_task = asyncio.create_task(nav_snapshot_loop())
     _frenzy_task = asyncio.create_task(frenzy_loop())   # 🔥 Oct-3: FRENZY at the bar close, not after the scan
     _orderbook_task = asyncio.create_task(orderbook_loop())   # 📖 Oct-3: order-book snapshots (research)
+    _alt_corr_task = asyncio.create_task(alt_corr_loop())   # 📈 (DECISION_LOG 383) alt-correlation stamp, once per 5m close (observe-only)
     # 🧾 (DECISION_LOG 329) Binance-app trade recorder: own task + own sessions, LIVE only and app_trade_record_enabled checked every pass
     # (the task idles in paper / switched off); runs while the bot is stopped too — the operator's app trades happen then as well
     from services.app_trades import app_trade_loop as _app_trade_loop
@@ -405,7 +441,7 @@ async def start_background_tasks():
 
 async def stop_background_tasks():
     """Stop background trading tasks"""
-    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, _app_trade_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, _frenzy_task, _orderbook_task, _app_trade_task, _alt_corr_task, should_stop
     should_stop = True
 
     # Stop WebSocket tracker
@@ -419,6 +455,12 @@ async def stop_background_tasks():
                 await task
             except asyncio.CancelledError:
                 pass
+    if _alt_corr_task:   # 📈 (DECISION_LOG 383) the alt-correlation stamp refresher (observe-only)
+        _alt_corr_task.cancel()
+        try:
+            await _alt_corr_task
+        except (asyncio.CancelledError, Exception):
+            pass
     if _app_trade_task:   # 🧾 (DECISION_LOG 329) the Binance-app trade recorder (cancelled mid-pass: rows already written stay; cursor kept)
         _app_trade_task.cancel()
         try:
@@ -2558,6 +2600,21 @@ async def export_orders_csv(db: AsyncSession = Depends(get_db)):
 
 
 
+# 🧷 (DECISION_LOG 383) the ML_MATCHED rows of the Decisions CSV (one per ml_matched_refusals row): t = the refusal (ms), price / conf in the shared
+# columns, everything else in mr_* columns (mr_entry_fields = the JSON entry_* snapshot). Read by scripts/scout_ml_matched_refusals.py.
+ML_MATCHED_EXPORT_DAYS = 30
+ML_MATCHED_EXPORT_COLS = ["mr_bar_at", "mr_labels", "mr_family", "mr_c_any", "mr_w_any", "mr_btc_regime", "mr_open_count", "mr_max_positions",
+                          "mr_room", "mr_post_gate", "mr_btc_off30d_pct", "mr_alt_corr24", "mr_alt_beta24", "mr_is_paper", "mr_entry_fields"]
+
+
+def ml_matched_export_row(b, fmt) -> dict:
+    return dict(t=fmt(b.at), e="ML_MATCHED", pair=b.pair, dir="LONG", gate="LONG_UNMATCHED_ONLY", strategy="MOMENTUM", price=b.price,
+                conf=b.confidence, room=b.room, mr_bar_at=fmt(b.bar_at), mr_labels=b.labels, mr_family=b.family, mr_c_any=b.c_any,
+                mr_w_any=b.w_any, mr_btc_regime=b.btc_regime, mr_open_count=b.open_count, mr_max_positions=b.max_positions, mr_room=b.room,
+                mr_post_gate=(b.post_gate or ""), mr_btc_off30d_pct=b.btc_off30d_pct, mr_alt_corr24=b.alt_corr24, mr_alt_beta24=b.alt_beta24,
+                mr_is_paper=b.is_paper, mr_entry_fields=b.entry_fields_json)
+
+
 @app.get("/api/decisions/export.csv")
 async def export_decisions_csv(days: int = 3, db: AsyncSession = Depends(get_db)):
     """🔭 Sep-30 — "Download Decisions CSV": what the bot DECIDED, for the opportunity scout (scripts/opportunity_scout.py).
@@ -2633,7 +2690,20 @@ async def export_decisions_csv(days: int = 3, db: AsyncSession = Depends(get_db)
                              fb_turnover=b.turnover, fb_funding_rate=b.funding_rate, fb_order_id=b.order_id))
     except Exception as _e:
         logger.warning(f"[DECISIONS_EXPORT] FLATBASE rows skipped: {_e}")
-    _cols = list(_dj.EXPORT_COLS) + _ob_cols + _wh_cols + _fb_cols
+    # 🧷 (DECISION_LOG 383) the matched momentum-long refusals (ml_matched_refusals) ride this file as ML_MATCHED rows — the last
+    # max(days, ML_MATCHED_EXPORT_DAYS) days of this mode, not only the `days` window: the EB log bundle is broken, so this file is their only
+    # exit (a download gap < 30 days loses nothing; the table keeps 90) and scripts/scout_ml_matched_refusals.py merges every download.
+    _mr_cols = ML_MATCHED_EXPORT_COLS
+    try:
+        _fmt_mr = lambda d: d.strftime('%Y-%m-%dT%H:%M:%S.%f')[:23] if d else None
+        _since_mr = datetime.utcnow() - timedelta(days=max(days, ML_MATCHED_EXPORT_DAYS))
+        for b in (await db.execute(select(MatchedLongRefusal).where(and_(MatchedLongRefusal.is_paper == trading_engine.is_paper_mode,
+                                                                         MatchedLongRefusal.at >= _since_mr))
+                                   .order_by(MatchedLongRefusal.at.desc()).limit(20000))).scalars().all()[::-1]:   # bounded: the newest 20,000 (383 review)
+            rows.append(ml_matched_export_row(b, _fmt_mr))
+    except Exception as _e:
+        logger.warning(f"[DECISIONS_EXPORT] ML_MATCHED rows skipped: {_e}")
+    _cols = list(_dj.EXPORT_COLS) + _ob_cols + _wh_cols + _fb_cols + _mr_cols
 
     def _write_csv():   # off the event loop: up to ~50k BOOK rows (deep review)
         buf = io.StringIO()
@@ -8318,6 +8388,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 btc_ext_vals_eco.append(_d if direction == 'LONG' else -_d)
             # BTC 1h Slope (May 14)
             btc_1h_slopes_eco = [getattr(o, 'entry_btc_1h_slope', None) for o in group if getattr(o, 'entry_btc_1h_slope', None) is not None]
+            alt_corrs_eco = [o.entry_alt_corr24 for o in group if getattr(o, 'entry_alt_corr24', None) is not None]   # 📈 (DECISION_LOG 383)
+            alt_betas_eco = [o.entry_alt_beta24 for o in group if getattr(o, 'entry_alt_beta24', None) is not None]
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
             else:
@@ -8416,6 +8488,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 "avg_btc_ext_pct": round(sum(btc_ext_vals_eco) / len(btc_ext_vals_eco), 4) if btc_ext_vals_eco else None,
                 # BTC 1h EMA20 slope (May 14) — higher-TF context, raw signed
                 "avg_btc_1h_slope": round(sum(btc_1h_slopes_eco) / len(btc_1h_slopes_eco), 4) if btc_1h_slopes_eco else None,
+                # 📈 (DECISION_LOG 383) alt-correlation regime stamp (OBS-R1 corr > 0.3164 / R1b beta > 1.372 = the frozen loser-regime line)
+                "avg_alt_corr24": round(sum(alt_corrs_eco) / len(alt_corrs_eco), 4) if alt_corrs_eco else None,
+                "avg_alt_beta24": round(sum(alt_betas_eco) / len(alt_betas_eco), 4) if alt_betas_eco else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_trough_pct": round(sum(troughs) / len(troughs), 4) if troughs else None,
                 "worst_trough_pct": round(min(troughs), 4) if troughs else None,
@@ -8478,6 +8553,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         ext_vals = [(getattr(o, 'entry_dist_from_ema13_pct', None) if direction == 'LONG' else -getattr(o, 'entry_dist_from_ema13_pct', None)) for o in group if getattr(o, 'entry_dist_from_ema13_pct', None) is not None]
         btc_ext_vals = [(getattr(o, 'entry_btc_dist_from_ema13_pct', None) if direction == 'LONG' else -getattr(o, 'entry_btc_dist_from_ema13_pct', None)) for o in group if getattr(o, 'entry_btc_dist_from_ema13_pct', None) is not None]
         btc_1h_slopes = [getattr(o, 'entry_btc_1h_slope', None) for o in group if getattr(o, 'entry_btc_1h_slope', None) is not None]
+        alt_corrs = [o.entry_alt_corr24 for o in group if getattr(o, 'entry_alt_corr24', None) is not None]   # 📈 (DECISION_LOG 383)
+        alt_betas = [o.entry_alt_beta24 for o in group if getattr(o, 'entry_alt_beta24', None) is not None]
         breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None] if direction == 'LONG' else [o.entry_bear_pct for o in group if o.entry_bear_pct is not None]
         peaks = [o.peak_pnl or 0 for o in group]
         troughs = [o.trough_pnl for o in group if o.trough_pnl is not None]
@@ -8509,6 +8586,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "avg_btc_trend_gap": _avg(btc_trend_gaps, 4), "avg_pair_ema20_ema50_gap": _avg(pair_ema20_ema50_gaps, 4),
             "avg_exit_btc_trend_gap": _avg(exit_btc_trend_gaps, 4), "avg_pair_vol_usd": (round(sum(pair_vol_usds) / len(pair_vol_usds), 0) if pair_vol_usds else None),
             "avg_ext_pct": _avg(ext_vals, 4), "avg_btc_ext_pct": _avg(btc_ext_vals, 4), "avg_btc_1h_slope": _avg(btc_1h_slopes, 4),
+            "avg_alt_corr24": _avg(alt_corrs, 4), "avg_alt_beta24": _avg(alt_betas, 4),   # 📈 (DECISION_LOG 383) OBS-R1 / R1b
             "avg_peak_pct": round(sum(peaks) / count, 4) if count else None, "avg_trough_pct": _avg(troughs, 4),
             "worst_trough_pct": round(min(troughs), 4) if troughs else None,
             "avg_pnl_pct": round(sum(pnls) / count, 4) if count else None, "total_pnl_usd": round(sum(o.pnl or 0 for o in group), 2),

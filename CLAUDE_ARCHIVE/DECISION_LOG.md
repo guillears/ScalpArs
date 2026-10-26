@@ -9460,3 +9460,86 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   scout keeps only the regime watch lines.
 - **Lesson (permanent):** replay per-trade selection is path-dependent — a trade-level live-vs-replay comparison needs multi-start
   (seeds × start offsets) robustness before any read; reinforces the master-over-backtest rule (DL 378).
+
+## (383) 2026-10-26 — 📈🧷 OBSERVE-ONLY: alt-correlation regime stamp on every fill (OBS-R1 / R1b) + matched momentum-long refusal recorder & scout (operator-approved; no trading decision changes, no config change)
+- **Why:** ML_REGIME_WL_2026-10-26 §8 froze OBS-R1 `ML_HICORR_REGIME` (corr > 0.3164, alias R1b beta > 1.372), but the value was only
+  rebuildable offline from klines; ML_MATCHED_SHADOW_2026-10-26 §0 found that NO surface records the exact C/W labels of a
+  `LONG_UNMATCHED_ONLY` refusal (CloudWatch = family only, 14 days; the server journal needs the EB log bundle, broken since 10-19), so its two
+  frozen cells (`W2 C-free`, `W2 C-free × STRONG_BULL`) could never be read forward. Both are now recorded at the source.
+- **A — stamp (services/alt_corr.py; orders.entry_alt_corr24 / entry_alt_beta24, migration in database.py):** exactly
+  `study_ml_regime_wl_build.breadth_feats`: mean pairwise Pearson corr of 5m log returns over the trailing 288 CLOSED bars among the top-20
+  (ex BTC / stables / non-[A-Z0-9]+USDT) of the USDT-perp top-50 ranked on UTC day X − 2's quote volume (the study reads the list DATED the
+  previous day, which `backtest_phase1_universe` ranks on the day before it — kept for parity, the thresholds were fitted on it); a pair is
+  scored only if its last closed bar is ≤ 30 min stale, its window contiguous and it has ≥ 7 days of history (onboardDate ≤ last bar −
+  2016 bars); ≥ 8 scored pairs else NULL; beta = median cov(x, btc) [ddof 1] / var(btc) [ddof 0] (the study's exact formula). PARITY TEST:
+  engine function == the study's own breadth_feats on a fixed 2,100-bar fixture (incl. a stale, a short-history and a gappy pair) to 1e-12,
+  also from a 290-bar fetch; universe day-offset parity tested against the study's universe() reader.
+  Computed ONCE per 5m close in its own task (`main.alt_corr_loop`, started 1 s after the close — the closed bar is final on the REST
+  klines by then — and done ≈ close + 3–4 s) on its own throttled public client (`binance_service.fetch_regime_klines` /
+  `fetch_regime_universe_inputs`, own back-off: see the dual-review bullet): 21 × 5m klines (limit 290, weight 2 → 42 weight / 5 min, ~2.4 s
+  wall, ~1.3 ms CPU) + once per UTC day the universe (exchangeInfo 1 + ticker/24hr 40 + ≤ 100 × 1d klines 1 → ~141 weight, ~13 s wall;
+  candidates = top 100 by rolling 24 h volume; a failed rebuild keeps the previous list, as the study falls back to the latest older list).
+  The Order build reads it from memory (`alt_corr_stamp()`, ~0.5 µs, never awaits / raises): open_position (every bot sleeve) and the MANUAL
+  sleeve via `_manual_entry_stamps` (also the 📥 import path — like every other entry_* stamp there, it is the value at import time). NOT
+  stamped: the 🧾 Binance-app trade recorder (services/app_trades.py ~L1251) and `/api/recover-positions` (rows rebuilt from the exchange)
+  — "every fill" means every bot / MANUAL / 📥-import fill. LAG: a fill before the bar's refresh finishes (≈ the first 3–4 s after a close)
+  carries the PREVIOUS bar's value; FRENZY's pass at close + 4 s normally gets the current bar but is not guaranteed to (a slow refresh →
+  previous bar). A value older than 2 bars → NULL. Mode-agnostic (paper = live). Live smoke 2026-10-26 ~14:10 UTC: corr 0.454 · beta 1.444 · 20/20 scored (in the
+  zone, consistent with B25's 0.42–0.54).
+  D12: `AltCorr` / `AltBeta` on the dashboard "Entry Conditions by Outcome" table (header cloned into both "by Strategy" tables) and in BOTH
+  text exports (outcome + strategy blocks of the clipboard and the saved-file export); backend `avg_alt_corr24` / `avg_alt_beta24` in the
+  outcome builder and `_ec_row`; the values ride the orders CSV as real columns.
+- **B — refusal recorder (models.MatchedLongRefusal → table ml_matched_refusals; TradingEngine._ml_refusal_record):** at the
+  `LONG_UNMATCHED_ONLY` refusal site, one row per (pair, 5m bar) — first refusal of the bar wins (in-memory dedupe + unique (pair, bar_at,
+  is_paper) across restarts): ms time, bar, decision price, confidence, EXACT labels (`_um_pats`, e.g. "C6+W2"), family, c_any / w_any, BTC
+  regime label, open slot count / effective cap / room (always true here — the cap check runs first), `post_gate` (heat / mega-cap would
+  ALSO have refused it — the engine's own pure rules, probes exempt as in open_position), the 30-day reading, the alt corr / beta, and the full
+  entry_* snapshot `_um_ef` (+ BTC regime / trend gap / EMA50 slope / cohort) as JSON. Fire-and-forget insert in its own short session
+  (`_wh_spawn`, ≤ 10 s); wrapped in try/except at the call site — the refusal, the counter and the flip path are byte-for-byte unchanged.
+  Persistence choice: a small table riding the EXISTING Decisions CSV export as `e=ML_MATCHED` rows (mr_* columns; the WILLY_HOLD /
+  FLATBASE precedent) — not the journal (file-only, reachable only through the broken EB bundle) and not the orders CSV (a refusal is not an
+  Order). Export window = max(days, 30) days so a download gap < 30 days loses nothing; table kept 90 days (hourly prune in alt_corr_loop);
+  at most 1 row / pair / 5 min (live ≈ 10–50 / day per the study).
+- **Scout `scripts/scout_ml_matched_refusals.py`:** merges every decisions export (dedup pair + t) · cohort = refusals ≥
+  `dl_deploy_ms(383)` (commit + 10 min) minus post_gate / probe rows · prices each with the validated replica `ml_exit_optimize_yr5` RP.BASE
+  (today's ML exit), taker fee, recorded price / ATR (verified: 12/12 study shadows re-priced identically through the scout) · paths from the
+  caches + its own budgeted public top-up (reports/SCOUT_ML_MATCHED_REFUSALS_fetch/, ≤ 150 calls / run, ≤ 400 weight / min, shared cooldown
+  honoured / armed) · one shadow per pair at a time (a pending shadow keeps its pair busy) · same-days unmatched control = closed non-probe
+  unmatched momentum-long fills (orders exports, operator-closed out) priced by the same replica / fee · final prices cached write-once in
+  reports/SCOUT_ML_MATCHED_REFUSALS.csv.
+- 🔒 **Frozen cells / gate (study §4, never re-fit):** ① `W2_CFREE` (W2 ∧ no C) · ② `W2_CFREE_SBULL` (① ∧ BTC regime STRONG_BULL). Read
+  at the first open-ordered prefix of ≥ 30 priced episodes on ≥ 10 UTC days (HOLD while an earlier refusal of the cell is pending): WR ≥
+  61.5 % ∧ avg ≥ +0.10 %/fill ∧ day-block bootstrap LB > 0 at α 0.025 (Bonferroni over 2) ∧ ≥ the same-days control avg ∧ no day / pair ≥
+  50 % of net → **OPERATOR CALL** on a 1× probe (never automatic; then the 30–50 % haircut and its own revert gate); else **DECIDED no**
+  (the recorder can then be retired). Decided once, atomic freeze file reports/.scout_ml_matched_refusals_gate.json.
+- **OBS-R1 / R1b read:** the stamp makes the R1 zone readable directly on fills (`entry_alt_corr24 > 0.3164`, `entry_alt_beta24 > 1.372`)
+  — the ML_REGIME_WL §8 decision rule is unchanged (cohort from 2026-10-27 00:00 UTC, DAY units, ≥ 3 separate regime episodes); fills
+  before this deploy keep using the kline rebuild.
+- **Blind spots:** `post_gate` judges ONLY the heat and mega-cap gates — LONG_CHOP_BURST (needs the fill book) and the later sizing /
+  balance / bracket skips in open_position are NOT judged, so a recorded refusal may still have been skipped later · slot competition ignored · entry at the decision price,
+  taker, no queue / slippage model · the universe ranks the top 100 by rolling 24 h volume as candidates (a top-20 member of day X − 2
+  outside today's top 100 would be missed — not seen in the smoke) · a refresh still running in the first ~3 s after a close stamps the
+  previous bar's value (≤ 2 bars by rule) · one DB insert per refusal (not batched — the same accepted db_write_lock class as
+  `_willy_hold_insert`; ≤ 1 / pair / 5 min).
+- **Dual-review fixes applied (caveman + deep, before the diff):** ① the regime client has its OWN back-off: a 429 / 418 / -1003 /
+  RateLimitExceeded / DDoSProtection → `regime_limited_until = now + max(Retry-After, 120 s)`; no regime read while it runs or while
+  `_ban_until > 0` (until the main client's POST_BAN_COOLDOWN clears it); used weight > 1,500 → a 30 s pause; `AltCorrTracker` starts no
+  further read once the client is limited (no gather fan-out after a 429 — the bar, or the daily universe rebuild, is abandoned and retried
+  later) · ② refresh moved from close + 6 s to close + 1 s (lag wording above) · ③ a failed refusal insert (anything but a UNIQUE
+  violation) frees its dedupe key so the next refusal of the bar retries; the dedupe is an OrderedDict capped from the oldest end (O(1)) ·
+  ④ the ML_MATCHED export query is bounded (newest 20,000 rows) · ⑤ scout: NOT_EVALUABLE is stored as terminal (never re-fetched); a 418 /
+  429 writes the shared cooldown as max(existing, now + max(15 min, Retry-After)) · ⑥ "No data" colspan 37 → 39 on the by-Outcome and both
+  by-Strategy tables (the by-Close-Reason table keeps 37 — no alt columns there) · ⑦ a universe list > 1 day older than needed is logged
+  with its age.
+- **Files:** services/alt_corr.py (new) · services/trading_engine.py · services/binance_service.py · models.py · database.py · main.py ·
+  templates/index.html · scripts/scout_ml_matched_refusals.py (new) · tests/test_dl383_altcorr_refusals.py (new, 29 tests) ·
+  tests/test_manual_entry_stamps.py (fixture gives the tracker a value). trading_config.json unchanged (no config field).
+  Suite: 2,377 passed (`set -o pipefail; venv/bin/pytest tests/ -q -p no:cacheprovider`).
+- **Matched-long shadow study (reports/ML_MATCHED_SHADOW_2026-10-26.md, operator: "should we allow any pattern too?"):** 318 refused matched
+  longs priced at today's ML exit (validated replica) on 36 days: 48.4 % WR · −0.214 %/fill vs the same-days unmatched control −0.001 (N 58);
+  worse in July / Sept / Oct and in every pattern, combo and regime split; 0 of 170 cells pass → DECIDED: keep `long_unmatched_only = true`,
+  no probe. The July phantoms do worse under today's exit (−0.066 → −0.257). Least-bad W2 C-free 82 · 58.5 % · −0.046 (< control); its
+  positive slices are one-day carried and backtest-refuted → frozen as the recorder's two cells above.
+- **Local-only study outputs (gitignored, rebuild with scripts/study_ml_matched_build.py / _analyse.py):** ML_MATCHED_SHADOW_2026-10-26_
+  episodes.csv (10.6 MB), _regime.csv, _replay_blocks.csv.gz, _shadows.csv.gz and the fetch cache; the report, cells, verdicts, parity,
+  controls and CloudWatch refusal list are committed.

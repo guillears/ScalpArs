@@ -119,6 +119,9 @@ class BinanceService:
         self.flatbase_exchange = None   # 🩳 (DECISION_LOG 348) FLATBASE 14-day history reads: own public client + throttle (lazy)
         self.flatbase_limited_until = 0.0   # 🩳 a 429 / 418 on the FLATBASE client → its reader defers until then
         self.flatbase_used_weight = 0   # the X-MBX-USED-WEIGHT-1M of its last response (the reader stops above FLATBASE_WEIGHT_STOP)
+        self.regime_exchange = None     # 📈 (DECISION_LOG 383) alt-correlation stamp reads (5m / 1d klines, ticker/24hr, exchangeInfo): own public client (lazy)
+        self.regime_limited_until = 0.0   # 📈 (383 review) a 429 / 418 / -1003 (or used weight > REGIME_WEIGHT_STOP) on the regime client → no regime read until then
+        self.regime_used_weight = None    # the X-MBX-USED-WEIGHT-1M of its last response
         # Public exchange for market data (no auth needed)
         self.public_exchange = ccxt.binanceusdm({
             'enableRateLimit': True,
@@ -536,6 +539,8 @@ class BinanceService:
             await self.recorder_exchange.close()
         if getattr(self, 'flatbase_exchange', None) is not None:   # 🩳 (DECISION_LOG 348)
             await self.flatbase_exchange.close()
+        if getattr(self, 'regime_exchange', None) is not None:   # 📈 (DECISION_LOG 383)
+            await self.regime_exchange.close()
     
     @property
     def _last_balance_payload(self):
@@ -932,6 +937,110 @@ class BinanceService:
             if isinstance(e, (RateLimitExceeded, DDoSProtection)) or any(x in str(e) for x in ('429', '418', '-1003', 'Too many requests')):
                 self.flatbase_limited_until = time.time() + 60.0   # the reader defers (no attempt spent) for a minute
             logger.warning(f"[BINANCE] FLATBASE klines until {end_ms} for {pair_id} ({timeframe}) failed: {str(e)[:120]}")
+            return None
+
+    REGIME_LIMIT_BACKOFF_S = 120.0   # 📈 (383 review) minimum back-off after a rate-limit answer (or Retry-After, whichever is longer)
+    REGIME_WEIGHT_STOP = 1500        # IP used weight (1 min) above which the regime reads stand down (the trading / scan clients keep the room)
+    REGIME_WEIGHT_PAUSE_S = 30.0
+
+    def _regime_client(self):
+        """📈 (DECISION_LOG 383) the alt-correlation stamp's OWN public client + throttle (never queued in front of the scan / FRENZY / order reads)."""
+        if self.regime_exchange is None:
+            self.regime_exchange = ccxt.binanceusdm({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
+        return self.regime_exchange
+
+    def regime_limited(self) -> bool:
+        """📈 (383 review) True = no regime read now: an IP ban is recorded (_ban_until > 0 — stays set until the main client's
+        POST_BAN_COOLDOWN clears it) or the regime client is in its own back-off window. Never raises."""
+        try:
+            return _ban_until > 0 or time.time() < float(self.regime_limited_until or 0.0)
+        except Exception:
+            return True
+
+    def _regime_headers(self):
+        try:
+            return dict(getattr(self.regime_exchange, 'last_response_headers', None) or {})
+        except Exception:
+            return {}
+
+    def _regime_after_ok(self) -> None:
+        """read X-MBX-USED-WEIGHT-1M of the last response; above REGIME_WEIGHT_STOP → a short back-off (the rest of this bar is skipped)."""
+        try:
+            h = self._regime_headers()
+            w = next((v for k, v in h.items() if str(k).lower() == 'x-mbx-used-weight-1m'), None)
+            if w is not None:
+                self.regime_used_weight = int(w)
+                if self.regime_used_weight > self.REGIME_WEIGHT_STOP:
+                    self.regime_limited_until = max(float(self.regime_limited_until or 0.0), time.time() + self.REGIME_WEIGHT_PAUSE_S)
+                    logger.warning(f"[BINANCE] regime reads paused {self.REGIME_WEIGHT_PAUSE_S:.0f}s — IP used weight {self.regime_used_weight}")
+        except (TypeError, ValueError):
+            pass
+
+    def _regime_on_error(self, e) -> None:
+        """a rate-limit answer → back off max(Retry-After, REGIME_LIMIT_BACKOFF_S); a ban is recorded for the whole bot (_detect_ban)."""
+        self._detect_ban(e)
+        txt = str(e)
+        if isinstance(e, (RateLimitExceeded, DDoSProtection)) or any(x in txt for x in ('429', '418', '-1003', 'Too many requests')):
+            ra = 0.0
+            try:
+                h = self._regime_headers()
+                v = next((v for k, v in h.items() if str(k).lower() == 'retry-after'), None)
+                ra = float(v) if v is not None else 0.0
+            except (TypeError, ValueError):
+                ra = 0.0
+            self.regime_limited_until = max(float(self.regime_limited_until or 0.0), time.time() + max(ra, self.REGIME_LIMIT_BACKOFF_S))
+            logger.warning(f"[BINANCE] regime reads backing off {max(ra, self.REGIME_LIMIT_BACKOFF_S):.0f}s after a rate-limit answer: {txt[:100]}")
+
+    async def fetch_regime_klines(self, pair_id: str, interval: str = '5m', limit: int = 290) -> Optional[List]:
+        """📈 (DECISION_LOG 383) RAW public /fapi/v1/klines rows (open ms, o, h, l, c, v, close ms, quote volume, …) for pair_id ('ABCUSDT'),
+        newest `limit` bars incl. the forming one. Weight 2 at limit 100–499. None on any error, during a ban or the regime back-off
+        (never raises, never sleeps)."""
+        if self.regime_limited():
+            return None
+        try:
+            raw = await self._regime_client().fapiPublicGetKlines({
+                'symbol': str(pair_id).replace('/USDT:USDT', 'USDT').replace('/', ''), 'interval': interval, 'limit': max(1, min(int(limit), 499))})
+            self._regime_after_ok()
+            return list(raw or [])
+        except Exception as e:
+            self._regime_on_error(e)
+            logger.debug(f"[BINANCE] regime klines {pair_id} {interval} failed: {str(e)[:120]}")
+            return None
+
+    async def fetch_regime_universe_inputs(self) -> Optional[Tuple[Dict[str, float], Dict[str, int]]]:
+        """📈 (DECISION_LOG 383) once per UTC day: ({symbol: rolling 24 h quote volume} of every USDT PERPETUAL (ticker/24hr, weight 40),
+        {symbol: onboardDate ms} (exchangeInfo, weight 1)). None on any error / ban / back-off (never raises)."""
+        if self.regime_limited():
+            return None
+        try:
+            cl = self._regime_client()
+            info = await cl.fapiPublicGetExchangeInfo()
+            self._regime_after_ok()
+            if self.regime_limited():
+                return None
+            perp, listed = set(), {}
+            for s in (info or {}).get('symbols') or []:
+                sym = str(s.get('symbol') or '')
+                if sym.endswith('USDT') and s.get('contractType') == 'PERPETUAL' and s.get('status') in ('TRADING', 'SETTLING'):
+                    perp.add(sym)
+                    try:
+                        listed[sym] = int(s.get('onboardDate') or 0) or None
+                    except (TypeError, ValueError):
+                        listed[sym] = None
+            tick = await cl.fapiPublicGetTicker24hr()
+            self._regime_after_ok()
+            vols = {}
+            for t in tick or []:
+                sym = str(t.get('symbol') or '')
+                if sym in perp:
+                    try:
+                        vols[sym] = float(t.get('quoteVolume') or 0)
+                    except (TypeError, ValueError):
+                        continue
+            return (vols, listed) if vols else None
+        except Exception as e:
+            self._regime_on_error(e)
+            logger.warning(f"[BINANCE] regime universe read failed: {str(e)[:120]}")
             return None
 
     async def get_current_price(self, symbol: str) -> float:

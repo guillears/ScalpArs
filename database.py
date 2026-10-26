@@ -262,6 +262,9 @@ async def init_db():
                                           ('entry_willy_ht_size_frac', 'FLOAT')):   # 🎲² (DECISION_LOG 356) WILLY exit V2 · 📈 (365) HT size stamp
                     if _wv_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_wv_col} {_wv_type}"))
+                for _ac_col in ('entry_alt_corr24', 'entry_alt_beta24'):   # 📈 (DECISION_LOG 383) alt-correlation regime stamp (observe-only)
+                    if _ac_col not in columns:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_ac_col} FLOAT"))
                 for _fb_col in ('entry_flatbase_flat14_pct', 'entry_flatbase_flat_cov_pct', 'entry_flatbase_off_peak_pct'):   # 🩳 (DECISION_LOG 348) FLATBASE_SHORT stamps
                     if _fb_col not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_fb_col} FLOAT"))

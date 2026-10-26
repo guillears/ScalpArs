@@ -1408,6 +1408,14 @@ def run():
     except Exception as _mlrl_e:
         log(f"ML_REGIME_LINES line failed: {_mlrl_e}")
         _rg_sec += ["## 🌐 ML_REGIME_LINES", "", f"Unavailable this run ({str(_mlrl_e)[:120]}).", ""]
+    try:                                               # 🧷 Oct-26 ML_MATCHED_REFUSALS — refused C/W-matched momentum longs priced at today's ML exit vs the same-days unmatched control (DECISION_LOG 383; frozen cells, OPERATOR CALL; decisions + orders exports, caches + budgeted public 1m / 5m; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_ml_matched_refusals as _mmr
+        _rg_sec += _mmr.run(now_ms)
+    except Exception as _mmr_e:
+        log(f"ML_MATCHED_REFUSALS line failed: {_mmr_e}")
+        _rg_sec += ["## 🧷 ML_MATCHED_REFUSALS", "", f"Unavailable this run ({str(_mmr_e)[:120]}).", ""]
     try:                                               # 🔁📏 Oct-9 FRENZY_REENTRY_AFTER_WIN + FRENZY_STRETCHED (pre-registered; orders exports only, no Binance; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

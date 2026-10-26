@@ -145,6 +145,7 @@ def test_manual_fill_records_every_field_a_momentum_fill_records(monkeypatch):
         monkeypatch.setitem(T._bullrun_monitor, k, v)
     for k, v in dict(off24lo=1.9, updated_at=now).items():
         monkeypatch.setitem(T._bearrun_monitor, k, v)
+    monkeypatch.setattr(T.alt_corr_tracker, "value", dict(bar_close_ms=int(time.time() * 1000) // 300_000 * 300_000, corr=0.41, beta=1.3, n=20, at=0))   # 📈 (383)
     eng = T.TradingEngine.__new__(T.TradingEngine); eng.is_paper_mode = True
     eng._scan_pair_meta = {"QNTUSDT": (2.5e8, 17, 900.0)}; eng._scan_pair_meta_at = time.time()
     st = asyncio.run(eng._manual_entry_stamps("QNTUSDT", "QNT/USDT:USDT", "LONG", 268.0))

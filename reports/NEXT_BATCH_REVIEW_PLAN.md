@@ -511,6 +511,16 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
       observe-only. Before → after in the three blocks.
 
 ## 4. MOMENTUM LONG — make it profitable
+
+- [ ] **🧷📈 ML_MATCHED_REFUSALS + ALT-CORR STAMP (DECISION_LOG 383, observe-only, frozen cells → OPERATOR CALL):** download the Decisions
+      CSV (it now carries `e=ML_MATCHED` rows, last 30 days) and run scripts/scout_ml_matched_refusals.py (also in the opportunity scout;
+      per-refusal prices in reports/SCOUT_ML_MATCHED_REFUSALS.csv). Read: refusals recorded vs the LONG_UNMATCHED_ONLY counter (a big gap =
+      recorder or export broken — check before any read) · post-gate / probe exclusions · priced / pending / not evaluable · ALL matched,
+      C-only, W-only, C+W vs the same-days unmatched control → the two frozen cells `W2_CFREE` / `W2_CFREE_SBULL` (gate: 30 priced episodes on
+      ≥ 10 days, WR ≥ 61.5 %, avg ≥ +0.10, day-boot LB > 0 at α 0.025, ≥ control, no day / pair ≥ 50 % → OPERATOR CALL; else DECIDED no).
+      ALT-CORR: check the stamp coverage on the batch's fills (NULL share; > 10 % NULL = a refresh problem — look at `[ALT_CORR]` warnings)
+      and read OBS-R1 / R1b on the momentum longs opened ≥ 2026-10-27 directly from `entry_alt_corr24 > 0.3164` / `entry_alt_beta24 > 1.372`
+      (AltCorr / AltBeta columns of the W/L tables), DAY units, ML_REGIME_WL §8 rule unchanged.
 - [x] **✅ DONE 10-26 (DECISION_LOG 380: no exit change; the review reads OBS-1 / OBS-2 on fresh fills + the BTC-reactive exit study) — ⭐ ML EXIT DEEP REVIEW (operator 2026-10-26: "maybe the trades are good, the exit strategy is wrong — get more on winners, the same on
       losers"). MASTER-LED (real fills per batch + B25; the 10-05 yr5 study 'no exit change, flat optimum' is the BACKTEST cross-check only):**
       ① POST-EXIT per winner — how far price ran after our exit (+5 / +15 / +30 / +60 min and the max before a −x pullback), giveback = peak

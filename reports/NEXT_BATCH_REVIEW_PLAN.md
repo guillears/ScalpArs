@@ -521,6 +521,12 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
       stop or 'never-green by N min' exit on losers — each read on the live-exited cohort (stop CFs on the live-stopped cohort), winners'
       cost counted, day-block bootstrap, per-batch, haircut · ④ by regime (STRONG_BULL vs rest) and ATR bucket — the exit may need to differ
       by state · then the backtest cross-check (ML_EXIT_OPT_*_YR5) as a caveat.
+- [x] **✝ RETIRED 10-26 (DECISION_LOG 382) — the regime study's 13-fill "replay did not take it" lead:** closed-bar re-check refuted by
+      parity (taken → CLOSED_PASS 15 %) and live-vs-replay refuted (machinery 8 / 13 = 62 %; replay per-trade selection is path noise).
+      Nothing to read.
+- [ ] **🌐 ML regime lines (DECISION_LOG 382):** read the Scout section ML_REGIME_LINES — OBS-R1 / R1b / R2 on fills ≥ 2026-10-27 (frozen
+      reads at N 15 / 30, ≥ 3 episodes for a switch candidate) read jointly with the DL 289 kill gate · OBS-C1 (R1 zone ∧ corr15 > 0.365)
+      scored with study_ml_impulse_fetch.py + _features.py on the R1-zone fills the scout lists (each fill counted once with PREP P6).
 - [ ] **Observe lines registered 2026-10-12 (DECISION_LOG 273), arm decision deferred by the operator:** BTC24H_DOWN (block ML when BTC
       24-h ≤ 0) and ML_ADX_RISING_IN_REGIME (step 2: keep only rising closed-bar ADX on the fills step 1 keeps). Re-read both on the new
       fills in all three blocks (① batch · ② master per batch · ③ backtest) against their frozen bar in CURRENT_STATE; then bring the

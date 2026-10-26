@@ -1,0 +1,7 @@
+split,desc,side,N,stat,days,1D tests,1D p<0.05,1D p_fw<0.05,2D full-cov vars,2D tests,2D p<0.01,2D null count p<0.01 median / p95,2D p_fw<0.05
+A_HICORR,top-20 24 h corr > 0.3164 (bad) vs ≤,bad,79,79·62%·-0.077,33,409,15,0,71,9777,112,173 / 335,0
+A_HICORR,top-20 24 h corr > 0.3164 (bad) vs ≤,good,79,79·80%·+0.326,40,353,19,0,107,22309,349,362 / 891,0
+C_LATEERA,"G5–G6 (bad, observational) vs G0–G4",bad,65,65·52%·-0.087,22,408,23,1,78,11879,148,234 / 596,0
+C_LATEERA,"G5–G6 (bad, observational) vs G0–G4",good,93,93·84%·+0.272,49,352,8,0,107,22435,167,308 / 731,0
+D_LOWRV7,BTC 7 d realised vol ≤ 0.1122 (bad) vs >,bad,79,79·59%·-0.028,35,412,22,0,71,9816,201,196 / 342,0
+D_LOWRV7,BTC 7 d realised vol ≤ 0.1122 (bad) vs >,good,79,79·82%·+0.277,36,362,22,0,107,22338,257,339 / 656,0

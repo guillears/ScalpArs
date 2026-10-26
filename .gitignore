@@ -75,3 +75,7 @@ reports/.scout_*.lock
 reports/PREP_B25_ML_WL_fetch/
 reports/ML_EXIT_DEEP_2026-10-26_fetch/
 reports/ML_BTC_EXIT_2026-10-26_fetch/
+
+# DL 382 regime study — large local frames (rebuild: study_ml_regime_wl_build.py / _analyse.py)
+reports/ML_REGIME_WL_2026-10-26_replay_regime.csv
+reports/ML_REGIME_WL_2026-10-26_D.pkl

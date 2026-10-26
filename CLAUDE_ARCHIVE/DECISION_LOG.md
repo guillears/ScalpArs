@@ -9400,3 +9400,63 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   Remaining 1m limits: triggers up to 59 s late on 1m, BASE / TS on the synthetic 1m path for 34 fills (B19–B25 ticks would remove them).
 - **Conclusion across DL 378 ④ / 380 / 381:** the momentum-long exit is not the leak; recent eras lose on entries / regime (more
   never-green losers). The batch review digs there.
+
+## (382) 2026-10-26 — 🔬 ML regime W/L study recorded · OBS-R1 / R1b / R2 (+ C1) registered (scout ML_REGIME_LINES) · the 13-fill replay lead TESTED TWICE AND RETIRED (operator: no switch / filter / sizing change) — no engine / config change
+- **Regime study (reports/ML_REGIME_WL_2026-10-26.md, pre-registered; scripts/study_ml_regime_wl_{build,analyse,deep,barnull,candidates,replaycal}.py;
+  158 KEEP master + 9 B25, validate ALL PASS):** the momentum-long loss in B12–B24 is a REGIME change, not a broken entry cell — from
+  2026-09-21 alts move in lock-step with BTC (top-20 24 h corr 0.15–0.34 → 0.42, beta 0.8–1.4 → 1.4–1.8, dispersion 9.6–14.9 → 6.0–8.4,
+  BTC 1d EMA50 above EMA200, lower 7-day vol), all co-moving = ONE episode · uniform degradation 31 / 31 sub-cohorts (never-green losers
+  8 → 34 % of fills, top pair 6.6 % of the bad-era loss) → checklist ③ = regime / unmeasured variable · best separator = the pre-registered
+  T5 alt-correlation: corr24 > 0.3164 79·62 %·−0.08 vs 79·80 %·+0.33 (Δ −0.40, p 0.001; beta alias monotone; era order holds in master and
+  the backtest) but ≈ 2 regime episodes, weak in DAY units (day ρ −0.21, rotation p 0.38, within-era −0.03), the bad side breaks even
+  (WR 62 % ≥ 61.5, P(avg<0) 0.80) and B25 won 7 of 9 (the report's B25 corr 0.42–0.54 / median 0.51 used the STALE 10-11 list
+  fallback; on the correct D − 2 lists 0.30–0.44, median 0.41 — 8 of 9 in the R1 zone, not "the most correlated tape") · inside the bad regime no entry separator beats
+  chance (1D / exhaustive 2D 9.8 k–11.9 k quadrants below the shifted-label null / interaction at chance; a same-statistic within-side null
+  passes the expectancy bar 92 times vs 69 real, P 0.90) · R3 (BTC 1d macro switch: time-confounded, 1 episode, backtest no), C2 (LOWRV7 ∧
+  EMA20 slope) and C3 (LOWRV7 ∧ Ext%) DECIDED rejected (within-side null, backtest flat / opposite, B25 contradicts).
+- **Operator decisions (2026-10-26):** NO regime switch, NO regime-conditional filter, NO sizing change; ML-OFF stays with the DL 289 kill
+  gate; the frozen regime watch lines registered; the replay lead tested (below) and then RETIRED.
+- **OBS lines (frozen in the study §8; cohort ML KEEP ≥ 2026-10-27 00:00 UTC, DAY units, the 9 B25 fills SEEN apart — 9 · 78 % · +0.16;
+  corrected corr24 0.298–0.437 → R1 zone 8 · 88 % · +0.21 (ADA 10-25 0.298 out), beta 1.54–1.78 and rv7 0.097–0.100 → all 9 in the R1b /
+  R2 zones):** scripts/scout_ml_regime_lines.py (+ tests/test_scout_ml_regime_lines.py; in the opportunity scout as
+  ML_REGIME_LINES) computes per fill from closed 5m bars OBS-R1 ML_HICORR_REGIME (top-20 24 h 5m-return corr > 0.3164; R1b beta > 1.372,
+  read with R1) and OBS-R2 ML_LOWRV7 (BTC rv7 ≤ 0.1122). Universe = the study's: a fill on UTC day D reads the list DATED D − 1 = every
+  USDT perpetual ranked by its D − 2 quote volume (1d klines, full exchange universe, backtest_phase1_universe.py convention); later dates
+  rebuilt by the scout from 1d volumes of every current perpetual, only when that daily fetch is complete (an early stop leaves an
+  "universe incomplete" marker and no list; no stale-list fallback); the rebuild equals the cached list on 10-10 / 10-11 (test). Within the
+  cache-list span (lists dated ≤ 2026-10-11) the formulas reproduce the study's per-fill table exactly (corr / beta / rv7 max |Δ| < 1e-13 on
+  its 185 fills ≤ 10-11 12:00). The DL 383 stamps entry_alt_corr24 / entry_alt_beta24 (same D − 2 definition) are preferred when an order
+  row carries them, with the stamp-vs-rebuild agreement printed. A read is NEVER decided while a cohort fill up to the n-th zone fill is
+  unscored or an ML fill opened before it is still OPEN (HOLD). Bar: SWITCH-CANDIDATE → OPERATOR CALL iff zone N ≥ 15 on ≥ 8 days ∧ WR < 61.5 % ∧ day-boot P(avg<0) ≥ 0.95 ∧
+  no day / pair ≥ 50 % of the zone loss ∧ ≥ 3 episodes (split by ≥ 5 consecutive outside-zone noon readings) · RETIRE at N ≥ 15 if zone
+  avg ≥ 0 · read once at N = 15 and once at N = 30 (decide-once, reports/.ml_regime_lines_gate.json) · R1 read jointly with the DL 289
+  kill gate (no double count). OBS-C1 (R1 zone ∧ corr15 > 0.365) needs the 1m top-10 grid → a CURRENT_STATE line read with
+  study_ml_impulse_fetch.py + _features.py; shares fills with PREP P6 (each fill counts once). Caches first, then a budgeted public fetch
+  (1d volumes of every perpetual + 5m for BTC and the lists' top-20; ≤ 150 requests / run, resumes next run; ≤ 250 weight / min;
+  X-MBX-USED-WEIGHT-1M ≥ 350 → wait, at most 2 waits per run in total; 418 / 429 → shared cooldown).
+- **The 13-fill replay lead — TESTED TWICE, RETIRED.** Lead (study §5): today's engine replayed on the same calendar does not lose in the
+  bad windows (G5 +0.06, G6-to-10-11 +0.23); master bad-era fills the replay also took 27 · 59 % · +0.13, the 13 it did not take 13 · 38 %
+  · −0.38 (54 % never-green). Both tests used a frozen parity bar of ≥ 70 % on BOTH bad-era sets of that split (133 master KEEP fills
+  < 2026-10-11 12:00, i.e. the yr6 / cache-list span).
+  ① CLOSED-BAR GATE RE-CHECK — the real engine (today's config) run on the last 5m bar closed before each fill (closed-bar copy of the
+  replay harness, open_position up to a sentinel at the paper maker, journal captured in memory; spot check AAVE 09-21: closed-bar BTC RSI
+  80.1 vs live 68.6, forming-bar BTC ADX rebuilt 20.06 = the live stamp). Parity: not-taken 13 → CLOSED_FAIL 12 (92 %) but also-taken 27 →
+  CLOSED_PASS 4 (15 %); all-era agreement 50 %; 121 / 133 fills fail ≥ 1 gate on the closed bar — an ML
+  entry fires the moment ~40 near-threshold gates align on the FORMING bar, so "fails on a closed bar" is near-universal → REFUTED
+  (reports/ML_CLOSEDBAR_REFUTED_PARITY_2026-10-26.json / .csv).
+  ② LIVE vs REPLAY (operator option 1) — REPLAY_TAKEN iff any of 3 seeds of the yr6-style continuous engine replay (snapshot
+  code_yr6_01419d4 harness, ticks-rebuilt forming bar at a seeded 111.6 ± 5 s scan clock, 1 Hz monitor, FRENZY pass, latency 160 ms, open
+  delay 6 s, 3-day warm-up) opened the same pair LONG within ±1 5m bar. DEFINITION check on yr6 vs the study's ±10 min: 13 / 13 and 27 / 27,
+  131 / 133 overall ✅. MACHINERY check — the SAME snapshot, config, flags and seeds re-run from 2026-09-21 (yr6's chunks start 09-16 /
+  10-01; 3 × 5,650 s, 227 s wall per simulated day per seed): not-taken → LIVE_ONLY 8 / 13 = 62 % ❌ (also-taken 25 / 27 = 93 %; tag = yr6 on
+  82 % of the 40 in-window fills; FET / 0G / PENGU / SAND / UNI flipped to taken, FORM / INJ to not taken). Same-snapshot runs that differ
+  only in the start day share just 15 / 23 / 22 of ≈ 35 ML fills per seed (44–66 %: 15 / 34 · 23 / 35 · 22 / 35) → the replay's per-trade selection is PATH NOISE (state
+  carried from the warm-up: slots, cooldowns, BTC-accel reference, monitors); the −0.38 lead is not a stable property of those entries
+  (reports/ML_LIVE_VS_REPLAY_REFUTED_PARITY_2026-10-26.json). The parity generators of both tests (scout_ml_closedbar_gates.py /
+  ml_closedbar_probe.py, scout_ml_live_vs_replay.py + its launcher) were local, unversioned and are removed. Replay outputs (replay/lvr_par0921_*, lvr_smoke_today_*) stay local in the
+  ignored cache; today's engine on the yr6 harness ran clean (smoke 10-09, 0 tracebacks) with two gaps (no load_markets → software TP; no
+  get_ohlcv_until → FLATBASE history fails closed).
+- **Operator decision (2026-10-26): RETIRE the live-vs-replay line** — no gate, no runner, no outcome read was ever presented; the
+  scout keeps only the regime watch lines.
+- **Lesson (permanent):** replay per-trade selection is path-dependent — a trade-level live-vs-replay comparison needs multi-start
+  (seeds × start offsets) robustness before any read; reinforces the master-over-backtest rule (DL 378).

@@ -1400,6 +1400,14 @@ def run():
     except Exception as _fv2b_e:
         log(f"FRENZY_V2B_SHADOW line failed: {_fv2b_e}")
         _rg_sec += ["## 🎲🪶 FRENZY_V2B_SHADOW", "", f"Unavailable this run ({str(_fv2b_e)[:120]}).", ""]
+    try:                                               # 🌐 Oct-26 ML_REGIME_LINES — frozen momentum-long regime watch OBS-R1 / R1b / R2 (DECISION_LOG 382; frozen reads at N 15 / 30 → OPERATOR CALL; caches + budgeted public 5m; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_ml_regime_lines as _mlrl
+        _rg_sec += _mlrl.run(now_ms)
+    except Exception as _mlrl_e:
+        log(f"ML_REGIME_LINES line failed: {_mlrl_e}")
+        _rg_sec += ["## 🌐 ML_REGIME_LINES", "", f"Unavailable this run ({str(_mlrl_e)[:120]}).", ""]
     try:                                               # 🔁📏 Oct-9 FRENZY_REENTRY_AFTER_WIN + FRENZY_STRETCHED (pre-registered; orders exports only, no Binance; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

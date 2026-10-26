@@ -1,0 +1,62 @@
+{
+ "n": 133,
+ "n_evaluated": 133,
+ "bad": {
+  "not_taken": 13,
+  "not_taken_closed_fail": 12,
+  "taken": 27,
+  "taken_closed_pass": 4,
+  "fail_share_not_taken": 0.9230769230769231,
+  "pass_share_taken": 0.14814814814814814,
+  "agreement": 0.4,
+  "not_taken_stat": "13·38%·-0.379",
+  "taken_stat": "27·59%·+0.127",
+  "closed_fail_stat": "35·54%·+0.018",
+  "closed_pass_stat": "5·40%·-0.425"
+ },
+ "good": {
+  "not_taken": 37,
+  "not_taken_closed_fail": 36,
+  "taken": 42,
+  "taken_closed_pass": 4,
+  "fail_share_not_taken": 0.972972972972973,
+  "pass_share_taken": 0.09523809523809523,
+  "agreement": 0.5063291139240507,
+  "not_taken_stat": "37·86%·+0.324",
+  "taken_stat": "42·83%·+0.298",
+  "closed_fail_stat": "74·84%·+0.295",
+  "closed_pass_stat": "5·100%·+0.527"
+ },
+ "all": {
+  "not_taken": 58,
+  "not_taken_closed_fail": 56,
+  "taken": 75,
+  "taken_closed_pass": 10,
+  "fail_share_not_taken": 0.9655172413793104,
+  "pass_share_taken": 0.13333333333333333,
+  "agreement": 0.49624060150375937,
+  "not_taken_stat": "58·74%·+0.115",
+  "taken_stat": "75·75%·+0.229",
+  "closed_fail_stat": "121·74%·+0.184",
+  "closed_pass_stat": "12·75%·+0.134"
+ },
+ "parity_ok": false,
+ "probe_version": 1,
+ "at": "2026-10-26T17:22:40.106330+00:00",
+ "notes": [],
+ "regime_parity": {
+  "br_corr24h_top20": {
+   "n": 133,
+   "max_abs_diff": 8.326672684688674e-17
+  },
+  "br_beta_btc_24h": {
+   "n": 133,
+   "max_abs_diff": 4.440892098500626e-16
+  },
+  "btc_rv_7d": {
+   "n": 133,
+   "max_abs_diff": 1.0949574580365606e-14
+  }
+ },
+ "note": "closed-bar re-check (DL 382 v1): generators scout_ml_closedbar_gates.py / ml_closedbar_probe.py were local, unversioned and are removed; scope = the 133 master KEEP fills < 2026-10-11 12:00"
+}

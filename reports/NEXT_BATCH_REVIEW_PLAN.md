@@ -401,6 +401,19 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
       price the longer global hold too (the runner keeps every other sleeve blocked; HOLD_FRENZY_EXEMPT / WILLY_HOLD).
 
 ## 2. FRENZY_LONG / FRENZY_WIDE / FRENZY_LITE
+- [ ] **🎲🪶 FRENZY_V2B_SHADOW (DECISION_LOG 379, observe-only, frozen gate → OPERATOR CALL):** run scripts/scout_frenzy_v2b_shadow.py (also
+      in the opportunity scout; per-fill CSV reports/SCOUT_FRENZY_V2B_SHADOW.csv). LITE (+ RETRY) and FRENZY_LONG fills; Δ = shadow − TODAY's
+      exit re-walked on the same path (LITE stored LITE C TP / −3 · LONG +1.5 / −4): V2B (WILLY's exit: T = max(+1.25, min(+8, net@H×0.99)) /
+      −4 / late +0.25 @30 / 90) · LITE V2B_OWN (same, −3) · fixed TPs at today's sleeve stop: LITE TP4 / TP5 / TP6 (−3) · LONG TP2 / TP3 /
+      TP4 (−4), 12 h. Read per sleeve: the era-replica parity line first (≥ 90 %; the reference misses are all LIVE-mode stop / market-TP
+      fills) → N · WR · avg · Σ shadow vs TODAY + paired Δ on the complete fills (same set for every shadow), day-boot CI, Bonferroni LB
+      (α 0.05 / m, LITE m 5 · LONG m 4), top day / pair → splits by dist_H (near < 3 · 3–6 · ≥ 6) and LITE zone → T1 check (near-H Δ >
+      far-H Δ?) and T2 check (LONG higher TPs predicted WORSE — a beat refutes DL 284). Gate per sleeve × shadow: 30 complete fills on
+      ≥ 10 days · avg Δ ≥ +0.10 · LB > 0 · prefix parity ≥ 90 % (else NO_VERDICT) · no day ≥ 50 % of Σ Δ → CANDIDATE = operator call, never
+      automatic; HOLD on open / incomplete fills < 3 days old, older ones listed "not evaluable". Cohort from the DL 379 commit + 10 min; the
+      MASTER / ARCHIVED block is IN-SAMPLE (10-26 cache-only run, numbers move as paths arrive: LITE 34 complete — V2B −0.45 / V2B_OWN −0.62
+      / TP4 −0.12 / TP5 +0.32 / TP6 +0.23; LONG 24 — V2B +0.63 (LB −0.14) / TP2 −0.10 / TP3 −0.57 / TP4 −0.02 → T2 consistent) — never a
+      ship basis.
 - [ ] **LITE × bearish-day block (operator 2026-10-12 — review in LITE):** the only Scout line is FRENZY_BEARISH_BLOCKED (the DL 250 revert
       gate, scripts/scout_frenzy_exits.py, store reports/SCOUT_FRENZY_BEARISH_BLOCKED.csv): every FRENZY / WIDE / LITE bearish-day refusal
       priced as if opened (+3 / −3 / 12 h, ticks once published), frozen at the first 15 counted blocked signals on ≥ 8 days, blocked mean > 0

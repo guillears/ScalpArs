@@ -9304,3 +9304,54 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Review fixes (dual review):** FLATBASE backtest loop overwrote its frame → each shadow now counts its 8–12 shadow-only rows (standalone
   avg slightly lower, e.g. TP1 +0.06 → +0.04; paired Δ and the 'all 8 worse' verdict unchanged); prereg +64 rows (Conf, FanR, post-entry
   columns descriptive-only); the 9 seen B25 ML fills tagged SEEN; HT Q1 ruler quotes DL 365 exactly; audit flags moved to plan §0b.
+
+## (379) 2026-10-26 — 🎲🪶 FRENZY_V2B_SHADOW scout line: LITE / FRENZY_LONG on WILLY's V2b exit + fixed higher TPs (OBSERVE-ONLY, frozen gate → operator call; no engine / config change)
+- **Operator ask:** "should FRENZY_LITE (incl. LITE_RETRY) and FRENZY_LONG test WILLY's V2b exit instead of their own?" + (same day) fixed
+  higher-TP shadows: LITE TP4 / TP5 / TP6 (own −3) and LONG TP2 / TP3 / TP4 (own −4), same per-sleeve paired-Δ frozen gate, Bonferroni on the LB.
+- **Theory (printed in every run):** T1 — the spike-high target pays only when H is near the entry and volume is still alive; LITE enters
+  hours into an episode with faded volume → far-H LITE fills should NOT gain; LONG enters on the hot volume state → closer to WILLY. Check:
+  near-H (< 3 %) Δ > far-H (≥ 6 %) Δ. T2 (DL 284) — LITE is all-or-nothing (winners all ran to +3, losers never passed +0.68) → a higher
+  fixed TP costs only the winners that stall between +3 and the new TP (reads how far LITE winners run); LONG is bounce-then-collapse (why
+  +1.5) → PREDICTION: higher fixed TPs are WORSE for LONG; a LONG TPx beating the replica refutes it and is reported.
+- **Spec (scripts/scout_frenzy_v2b_shadow.py, tests/test_scout_frenzy_v2b_shadow.py, wired into scripts/opportunity_scout.py after
+  WILLY_EXIT_V2b):** cohort = CLOSED FRENZY_LITE / LITE_RETRY / LONG fills from ~/Downloads/scalpars_orders_*.csv (export_glob) ∪
+  reports/BASELINE*_orders.csv, dedup (opened_at[:19], pair, direction), CLOSED beats OPEN, operator-closed out. Gate cohort = opened ≥
+  scout_gatekit.dl_deploy_ms(379) (commit + 10 min); older = MASTER / ARCHIVED REFERENCE, labelled IN-SAMPLE, never counted or frozen;
+  pre-DL 250 fills (lock / trail era, exit not replicable) excluded and counted. Per fill: H = max 5m high from the spike bar
+  (entry_frenzy_spike_at = its close) through the last 5m bar closed at the fill (build_willy_exit_cf.h_window / reconstruct_high, cache
+  5m → 1m → ticks; else scout_willy_latejoin's cached public 5m page, ≤ 15 / run, stop at used weight ≥ 500, shared cooldown honoured) — no
+  look-ahead; dist_H = T raw = net % at the PRICE H × 0.99 (services.frenzy.frenzy_willy_high_target on PINNED V2b params, entry fee % of the
+  fill + TODAY's config maker fee), uncapped; hours since spike; entry vol mult; LITE C zone. BASELINE = TODAY's live exit re-walked on every
+  fill's own path (scout_frenzy_willy_exit.load_path ticks → 1m; scout_willy_exit_v2.walk_v2, net lines, 12 h cap): LITE (+ RETRY) stored
+  frenzy_lite_tp_used else the LITE C rule on its stamps, −3 · LONG +1.5 / −4 (HARDCODED — no stored LONG TP column; update on a LONG TP
+  change, parity guards it). The ERA replica (LITE stored TP else pre-283 +3 · 283→284 +1.5 · 284→301 +3 · ≥ 301 LITE C; LONG pre-283 +3
+  else +1.5; stamped stop else LONG −4 from 317 / −3) is the PARITY check only — a resting TP is assumed in every era, so the pre-296 /
+  pre-310 market TPs are known misses (in-sample REF only). Shadows: V2B (T, −4, late +0.25 @30, cap 90, no floor) · LITE V2B_OWN (−3) ·
+  TPx fixed at TODAY's sleeve stop (LITE −3 · LONG −4), 12 h. Δ = shadow − TODAY, paired; a fill counts only when TODAY and EVERY shadow of
+  its sleeve resolved (the SAME fills for every shadow). Read: N · WR · avg · Σ shadow vs replica + Δ, day-block bootstrap 95 % CI + Bonferroni LB,
+  top day / pair share; splits by dist_H bucket and LITE zone; T1 / T2 checks. Ticks / 1m via scout_willy_timecap.ensure_data (≤ 2 req,
+  fills of the last 7 days). Writes only reports/SCOUT_FRENZY_V2B_SHADOW.csv + reports/.frenzy_v2b_shadow_gate.json; never the DB / bot API.
+- **🔒 FROZEN gate (set 2026-10-26, before any gate-cohort fill):** per sleeve × shadow, at the shortest prefix (open order) of ≥ 30 paired
+  COMPLETE fills (same set for every shadow of the sleeve) on ≥ 10 UTC days → CANDIDATE = OPERATOR CALL (never automatic) iff avg Δ ≥ +0.10 %/fill ∧ day-bootstrap one-sided LB > 0 at
+  α = 0.05 / m (Bonferroni; LITE m 5 = V2B, V2B_OWN, TP4, TP5, TP6 · LONG m 4 = V2B, TP2, TP3, TP4) ∧ era-replica parity ON THE PREFIX ≥ 90 %
+  (±0.15) ∧ no UTC day ≥ 50 % of Σ Δ; else KEEP the live exit. HOLD while a cohort fill opened ≤ the prefix end is OPEN or incomplete (no
+  path / no H / an unresolved walk) and < 3 days old; older incomplete fills are counted and printed as "not evaluable" in the gate line
+  (never a silent drop). Parity < 90 % → NO_VERDICT. Decided ONCE — CANDIDATE / KEEP / NO_VERDICT persisted atomically (temp + os.replace);
+  an unreadable state file is never overwritten (warning, nothing frozen that run). Plus the T1 check (near-H Δ > far-H Δ).
+- **First run (export 2026-10-26 15-11-28; cache-only re-run after the dual review; gate cohort NOT evaluable — no DL 379 commit yet).
+  MASTER / ARCHIVED REFERENCE, IN-SAMPLE, not counted, Δ vs TODAY's exit; numbers move as paths arrive (1m tails → ticks, H pages):**
+  LITE 37 fills / 15 days, 34 complete (2 newest 10-25/26 fills no path yet) — TODAY (LITE C / −3) avg +0.20 · V2B Δ −0.45 (CI
+  [−1.17, +0.26]) · V2B_OWN −0.62 · TP4 −0.12 · TP5 +0.32 (Bonf LB −0.87, top day 55 %) · TP6 +0.23 (top day 114 %); V2B by dist_H near
+  −0.84 (13) · mid +0.60 (14) · far −1.81 (7) → T1 near > far holds but near is itself negative; V2B zone −1.46 (12) vs out +0.11 (22);
+  TP5 zone +1.50 (12) vs out −0.32 (22). LONG 24 / 11 days, all complete — TODAY (+1.5 / −4) avg +0.35 · V2B Δ +0.63 (CI [−0.05, +1.43],
+  Bonf LB −0.14, top pair 73 %) · TP2 −0.10 · TP3 −0.57 · TP4 −0.02 → T2 CONSISTENT on today's stack (no higher TP beats +1.5). dist_H on
+  LONG mostly ≥ 6 % (13 / 24) — T1's "LONG near H" premise does not hold on the reference. (The pre-review era-baseline numbers — LONG V2B
+  +1.67, "T2 refuted" — mixed the −3 / +3-TP eras into the Δ and are retracted; the era replica now serves parity only.)
+- **Parity (era replica, footnote):** LITE 31/35 = 89 % · LONG 22/24 = 92 %; all 6 misses are LIVE-mode fills (10-14 18:36 → 10-23): stops booked off the −3 line (DUSK −2.54, SOPH −2.59, ICNT −2.35,
+  EPIC −3.43) and market TPs before the resting TP (DEEP +2.80 pre-296, AGT +1.27 pre-310). Paper fills replicate.
+- **Wiring:** reports/NEXT_BATCH_REVIEW_PLAN.md §2 checkbox · CLAUDE_CURRENT_STATE.md watchlist line after FRENZY_LITE_RETRY ·
+  reports/BATCH_REVIEW_CHECKLIST.md regenerated. Nothing armed.
+- **Dual-review fixes applied (pre-commit):** TODAY baseline (era replica = parity only); prefix-scoped parity; NO_VERDICT persisted;
+  atomic, crash-safe freeze file; one complete-fill set per sleeve with HOLD / "not evaluable" accounting; ensure_data gets the real path
+  source; maker-fee + era-TP docstrings; tests for TODAY-vs-era, NO_VERDICT never flips, prefix parity, shortest prefix, young / old
+  incomplete fills, unreadable state, h_window / no look-ahead, weight stop / cooldown / request cap, non-identical Δ CANDIDATE.

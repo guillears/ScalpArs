@@ -1392,6 +1392,14 @@ def run():
     except Exception as _wv2_e:
         log(f"WILLY_EXIT_V2 line failed: {_wv2_e}")
         _rg_sec += ["## 🎲² WILLY_EXIT_V2", "", f"Unavailable this run ({str(_wv2_e)[:120]}).", ""]
+    try:                                               # 🎲🪶 Oct-26 FRENZY_V2B_SHADOW — LITE / LONG on WILLY's V2b exit + fixed higher TPs (DECISION_LOG 379; frozen gate, OPERATOR CALL; caches + budgeted public 5m / 1m; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_frenzy_v2b_shadow as _fv2b
+        _rg_sec += _fv2b.run(now_ms)
+    except Exception as _fv2b_e:
+        log(f"FRENZY_V2B_SHADOW line failed: {_fv2b_e}")
+        _rg_sec += ["## 🎲🪶 FRENZY_V2B_SHADOW", "", f"Unavailable this run ({str(_fv2b_e)[:120]}).", ""]
     try:                                               # 🔁📏 Oct-9 FRENZY_REENTRY_AFTER_WIN + FRENZY_STRETCHED (pre-registered; orders exports only, no Binance; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

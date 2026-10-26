@@ -1,0 +1,17 @@
+scope,variant,months,months_better
+all_S4,TP1,21,5
+all_S4,TP1_SL10,21,6
+all_S4,TP1_SL5,21,6
+all_S4,TP3,21,5
+all_S4,TP5,21,7
+all_S4,TP5_SL10,21,6
+all_S4,TP5_SL5,21,5
+all_S4,TP8_SL10,21,9
+today,TP1,21,6
+today,TP1_SL10,21,4
+today,TP1_SL5,21,5
+today,TP3,21,4
+today,TP5,21,6
+today,TP5_SL10,21,4
+today,TP5_SL5,21,5
+today,TP8_SL10,21,7

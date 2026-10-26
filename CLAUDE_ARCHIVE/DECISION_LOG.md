@@ -9260,3 +9260,47 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   out-of-window bars ignored and a gap never trusted; stamped T wins; no-H invariant / NO_H; master uses the V2b CF for WILLY + HT, stack
   version; the pre-356 table = the V2b table's before column) · test_master_frenzy_lock_wide::test_willy_priced_at_todays_exit (V2b rule from
   config, TP books the fill's target, no FLOOR, INIT +7.42) · STACK_VERSION pins 2026-10-25a → 2026-10-26a (6 tests).
+
+## (378) 2026-10-26 — 🧰 B25 review PREP (four items, operator: "yes to point 5, and start the 4 prep items") + two permanent rules + HT Q1 ruler + CURRENT_STATE config audit — NOTHING shipped, no config / engine change
+- **Two permanent rules (CLAUDE.md, operator 2026-10-26):** ① **W/L = EVERY VARIABLE** — every winners-vs-losers read tests at minimum every
+  dashboard "Entry Conditions … Winners vs Losers" column (incl. ATR%), then every entry_* stamp, every BTC macro + pair-level variable;
+  coverage table + blind spots first ("I didn't consider X" is not acceptable). ② **MASTER OVER BACKTEST** — "The backtest is not as accurate
+  as master batch trades": real fills (master per batch + current batch) lead; the backtest (as-was recall W 66 % / L 62 % on ML; no slots /
+  holds / HT routing) is a secondary cross-check — its refutation is a caveat, never a veto on its own when the master disagrees. Plan ② updated.
+- **Point 5 — WILLY_HT Q1 ruler (operator: yes):** the DL 341 gate starves under V2b (V2 runner fills excluded), so "should HT exist?" is decided
+  at the review by the V2b today's-exit comparison HT vs same-days WILLY at the DL 365 ladder bar, presented as an OPERATOR CALL below the
+  DL 341 gate (plan ②e + checklist).
+- **FLATBASE deep review registered for the review (operator: "to be added in the watchlist analysis, not run now"):** plan ②f ⭐ — theory
+  first, ALL exit alternatives (TP 1–10 × stop 3–20 / none × caps, BE, trail, partial, ATR-scaled; MAE / MFE; two-sided CF on the live-stopped
+  cohort), W/L on every variable incl. ATR; every FLATBASE fill counted; 12-month signal rebuild only after engine-bar parity.
+- **Prep ① learnings box per sleeve:** reports/PREP_B25_SLEEVE_LEARNINGS.md (11 boxes, stake order; gate counts as of the 10-24 export — re-run
+  every scout on B25 before quoting). Its contradiction audit → CURRENT_STATE corrected in place against trading_config.json (SPIKE_FADE 2×/1×,
+  SURGE_SHORT off, max_open 4, paper $10,000, runner arm 0.40, C1 / W2+W1 SHORT 1×, UNMATCHED LONG 1.5×) + 6 AUDIT FLAG checklist rows
+  (WILLY DL 281 gate "REVERT CANDIDATE" at 61 % parity · 1000LUNC −$308 vs the DL 165 tight revert · DL 55 fade ceiling reopen overdue since
+  10-14 · MS `btc_rsi_adx_multiplier_short` cells 2.0× in config vs master MS at 1× · FLATBASE Σ −21.5 vs the −30 bar · "no more entry filters"
+  line vs "filters, not sizing").
+- **Prep ② theory + frozen predictions (blind to B25):** reports/PREP_B25_THEORY_PREREG.md + PREP_B25_PREREG.csv (1,218 rows = every dashboard
+  + entry_* column × 8 sleeves; 233 non-NONE (230 directional); the 40 top-5 rows are the primary predictions — ~10–12 of 233 will "confirm" by luck). DL 374
+  fade lines contain 7 B25 fills (rows tagged CONTAINS_B25 — exclude them when scoring on B25). HT: 0 master fills, theory + backtest only.
+- **Prep ③ backtest blocks (local caches, 0 Binance calls):** reports/PREP_B25_BACKTEST_BLOCKS.md + PREP_B25_BT_*.csv. Fade ① ② ⑤ ⑥ not
+  supported, ③ 1.5× big-cap = a ruin lever (−$700…−880 / 2 y, DD −8 %) not an edge, ④ HEALTHY_BEAR is the fades' best regime (1× costs
+  $2.4–3.5k); FLATBASE live TP −8 / 15 / 72 h +1.42 %/fill, all 8 shadows worse; WILLY V2b vs old +0.20 (2026), floor / ladders worse, TGT20
+  weak hint, no separate HT exit supported. Per rule ②: cross-checks only, the master leads at the review.
+- **Prep ④ ML W/L on the full master (225 variables, 155 screenable / 70 blind listed):** reports/PREP_B25_ML_WL.md + CSVs. 158 kept · 71 % ·
+  +0.124 (breakeven WR 61.5 %); 1D 21 hits vs ~33 by chance; 2D 172 at p<0.01 inside a circular-shift label null (median 104, p95 426; ≤ 157 distinct shifts) → no separator
+  survives. Closest loser line ADXΔ ≤ 0.309 ∧ regime ≠ STRONG_BULL (58 · 59 % · −0.11, fails only on confidence P 0.84); winner signature
+  STRONG_BULL / BTC ADX > 27.99 (53 · 77 % · +0.28 in-sample, reversed in B17–B24). Recent eras carry the losses (B17–B24 37 · 49 % · −0.09)
+  with zones flat in BASE–B3 → an unmeasured regime variable (sleeve-kill ③), not a missing filter. Frozen B25 lines P1–P7 (§12);
+  cohort = ML fills ≥ 10-23 18:00; thresholds cut on the master KEEP pool only; the 9 B25 fills the study already saw (opened before the
+  10-26 prep) are tagged SEEN and scored apart — confirmation counts only fills opened after the study. ~510 public kline calls (peak 281 weight / min);
+  the fetch cache reports/PREP_B25_ML_WL_fetch/ (16 MB) is NOT committed (re-fetchable by scripts/study_ml_wl_b25prep_fetch.py).
+- **ML EXIT deep review registered for the review (operator: "maybe the trades are good, the exit strategy is wrong"):** plan §4 ⭐ — master-led
+  post-exit run per winner, giveback per exit reason, MAE / MFE W vs L with timing, two-sided runner / stop CFs on the live-exited cohorts,
+  by regime and ATR; the 10-05 yr5 'flat optimum' study is the backtest cross-check only (rule ②).
+- **Local-only inputs (not in git, reproducible from their own builders):** reports/ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv (41 MB), reports/
+  ML_WL_1015_features.csv, ML_IMPULSE_fill_features.csv, WILLY_HIGHTARGET_2026-10-23_bt.csv and the kline fetch cache (gitignored) — the
+  prep scripts read them; their helper modules (study_willy_hightarget_common / _bt, study_ml_wl_1015_common / _features, yr5_fills_trimmed,
+  ml_pair_strength) ARE committed, plus the two small inputs ML_PAIR_STRENGTH_2026-10-04_master_features.csv and SCOUT_ML_COOLDOWN.csv.
+- **Review fixes (dual review):** FLATBASE backtest loop overwrote its frame → each shadow now counts its 8–12 shadow-only rows (standalone
+  avg slightly lower, e.g. TP1 +0.06 → +0.04; paired Δ and the 'all 8 worse' verdict unchanged); prereg +64 rows (Conf, FanR, post-entry
+  columns descriptive-only); the 9 seen B25 ML fills tagged SEEN; HT Q1 ruler quotes DL 365 exactly; audit flags moved to plan §0b.

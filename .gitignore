@@ -72,3 +72,4 @@ reports/.live_exports/
 # Batch decision journals (order-book BOOK rows) are kept local only — operator 2026-10-16 (DECISION_LOG 307)
 reports/BASELINE*_decisions.csv
 reports/.scout_*.lock
+reports/PREP_B25_ML_WL_fetch/

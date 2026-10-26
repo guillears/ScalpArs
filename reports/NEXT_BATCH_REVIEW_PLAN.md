@@ -4,7 +4,7 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
 
 ## 🧭 Method (binding, operator 2026-10-26)
 **🧭 BATCH REVIEW METHOD (operator 2026-10-26, binding for every batch review): ONE SLEEVE AT A TIME — ① master batch trades: before → after per batch for each watchlist item / candidate · ② current batch: before → after · ③ backtest: before → after · ④ the quant recommendation for that sleeve (a clear call per watchlist item) · ⑤ STOP for the operator's OK, then the next sleeve. New strategies: winners vs losers FIRST, then exits; momentum longs: W/L on the full master. Starts with the regenerated checklist (scripts/batch_review_checklist.py).**
-**🧭 + six method points (operator 2026-10-26, binding):** ⓪ STEP 0 before any sleeve — data first: master WILLY priced at the live V2b exit, the batch added to the master (provisional if it still runs) + validate_against_master ALL PASS, size boundaries marked (B25: the 10-26 13:50 UTC paper top-up; compare in %) · ① sleeve ORDER by stake (money at risk / open decisions): SPIKE_FADE (size question triggered) → WILLY + WILLY_HT (V2b exit, HT questions) → FLATBASE → LITE / FRENZY_LONG → momentum long → momentum short → FAN flips → Bear-Run / SURGE / rest · ② every before → after on TODAY's stack (re-simulate first), in-sample results labelled with the 30–50 % haircut, market-wide effects in DAY units, per-pair / per-day concentration checked; the backtest REFUTES, never proves alone · ③ each watchlist item classified: DECIDED by its frozen gate (follow it) / OPERATOR CALL below the bar (recommendation stated as below-bar) / KEEP OBSERVING (count + expected date, no debate) · ④ after all sleeves, a PORTFOLIO view: shared slots, concurrent exposure, worst day, max peak-to-trough drawdown (B25 reference: net P&L −$1,350.73 at 10-26 13:50 UTC ≈ −45 % of the original $3,000 base after the 10-23 reset), sleeve overlap · ⑤ ship ONE change at a time even with several approvals (risk-first; size/filter changes apart from exit changes) → final one-page decisions list + go-live criteria.
+**🧭 + six method points (operator 2026-10-26, binding):** ⓪ STEP 0 before any sleeve — data first: master WILLY priced at the live V2b exit, the batch added to the master (provisional if it still runs) + validate_against_master ALL PASS, size boundaries marked (B25: the 10-26 13:50 UTC paper top-up; compare in %) · ① sleeve ORDER by stake (money at risk / open decisions): SPIKE_FADE (size question triggered) → WILLY + WILLY_HT (V2b exit, HT questions) → FLATBASE → LITE / FRENZY_LONG → momentum long → momentum short → FAN flips → Bear-Run / SURGE / rest · ② every before → after on TODAY's stack (re-simulate first), in-sample results labelled with the 30–50 % haircut, market-wide effects in DAY units, per-pair / per-day concentration checked; the backtest never proves alone — ⚖ EVIDENCE WEIGHT (operator 2026-10-26, DL 378): real fills (master per batch re-priced on today's stack + current batch) are the PRIMARY evidence; the backtest is less accurate than real fills (as-was replay recalls only W 66 % / L 62 % of ML fills; no slots / holds / HT routing; reconstructed mcap etc.), so it is a SECONDARY cross-check: when master and backtest disagree, the master read leads and the backtest's disagreement is reported as a caveat (with its fidelity on that sleeve), never as a veto on its own; a backtest refutation only decides an item when the master evidence is itself thin or absent · ③ each watchlist item classified: DECIDED by its frozen gate (follow it) / OPERATOR CALL below the bar (recommendation stated as below-bar) / KEEP OBSERVING (count + expected date, no debate) · ④ after all sleeves, a PORTFOLIO view: shared slots, concurrent exposure, worst day, max peak-to-trough drawdown (B25 reference: net P&L −$1,350.73 at 10-26 13:50 UTC ≈ −45 % of the original $3,000 base after the 10-23 reset), sleeve overlap · ⑤ ship ONE change at a time even with several approvals (risk-first; size/filter changes apart from exit changes) → final one-page decisions list + go-live criteria.
 
 ## ⭐ Operator priorities — next batch review (2026-10-19)
 ① **FRENZY_LITE_RETRY step-up read (DECISION_LOG 316)** — "is LITE retry ready for 8× same as LITE": frozen gate on its CLOSED fills —
@@ -52,6 +52,10 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    ❓ OPERATOR QUESTIONS (2026-10-25) — answer each with a clear recommendation, three blocks (① batch · ② master per batch · ③ backtest):
      (1) should WILLY_HT exist at all? — answered by scout_willy_ht.py's FROZEN DL 341 gate (main read at the first 30 HT fills on ≥ 10 days
          vs same-period WILLY) + the DL 365 ladder; any answer before that is an operator-discretion read BELOW the gate, labelled so
+         ✅ OPERATOR 2026-10-26 (point 5, DECISION_LOG 378): the DL 341 gate starves under V2b (V2 runner fills are excluded), so Q1 is
+         DECIDED BY the today's-exit comparison — HT vs same-days WILLY, both under V2b, read with the DL 365 ladder EXACTLY as frozen in ②e
+         above (STEP-UP / STEP-DOWN incl. KILL Σ ≤ −8 and FIRST first-10 < 0; a STEP-DOWN at the 0.25 stage = HT off) — presented as an
+         OPERATOR CALL below the DL 341 gate, labelled so
      (2) or exist with its OWN exit / protection? (the DL 373 per-sleeve split: every V2b shadow — floor, ladders, NOLATE, TGT15 / TGT20,
          LATE45 / LATE60 — on HT fills vs WILLY fills; compare on the 'same days only' line)
      (3) or filter HT winners vs losers so the kept HT fills can share WILLY's exit? (W/L separator screen on HT fills FIRST — stamped
@@ -70,6 +74,16 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
    (LITE unpriced while LITE C is on; generic PAIR_HELD = unattributed). Read each section's coverage line first (waiting / unpriced / unscored ≠ rest).
    🎯 + the EXIT SHADOW lines (DL 367 / 370): TP5 · TP3 · TP5_SL10 · TP5_SL5 · TP8_SL10 · TP1 · TP1_SL10 · TP1_SL5 vs the live TP −8 / stop 15 on the same path — priced / hold / UNPRICEABLE_FINAL, parity n/n (+ live-stopped 100 %), per-fill list, split lines (stopped saved / deeper · TP give-back / cut winners), FB_TP_* verdicts (bootstrap LB, top day, haircut, backtest Δ).
    📈 + the RE-SIZE LADDER line under the gate verdict (DL 363): stage (0.2 / 0.5 / 1.0), current run at this size · days · avg, the gate on that run → STEP-UP (also re-decide flatbase_max_open) / STEP-DOWN / next-step.
+   ⭐ DEEP REVIEW (operator 2026-10-26 — little history, huge potential; run AT the batch review, not before): ① THEORY first — why a flat base
+   then a short pays, who is on the other side, which states break it (BTC regime, squeezes, funding), predicted separators frozen BEFORE the
+   W/L read · ② ALL EXIT alternatives — TP 1–10 × stop 3–20 / none × time caps 12–96 h, break-even after +x, trailing from the trough, partial
+   TP, ATR-scaled TP/SL; MAE/MFE (how many reach −1/−3/−5/−8 and when); two-sided CF read on the live-stopped cohort, day-block bootstrap,
+   Bonferroni + shuffled null; ranked per trade AND per slot-day · ③ WINNERS vs LOSERS on EVERY variable — every dashboard W/L column (Conf, FanR, RSI,
+   ADX, ADXDir, RSIDir, Gap, Gap5-8, Gap8-13, Stretch, EMA20Slp, BTCSlp, BTCRSI, BTCADX, BTCADXDir, BTCRSIDir, ADXΔ, RngPos, Breadth, ATR%,
+   BTCTrend, PairTrend, GlobalVol, PairVol$, Ext%, BTCExt%, 1hSlope), every entry_* stamp + the FLATBASE stamps (flat14, turnover, mcap, VWAP
+   distance, peak drop, funding), multi-TF ATR / slopes / RSI / ADX, BTC macro; coverage table + blind spots first · cohort = EVERY FLATBASE fill
+   (master + B25 + motivating in-sample, COUNT THEM) + the 12-month signal rebuild ONLY after engine-bar parity on every live fill. Backtest
+   reference already built: reports/PREP_B25_BACKTEST_BLOCKS.md §2 (live TP −8 / 15 / 72 h +1.42 %/fill; all 8 shadows worse).
 ②g **🧭 WILLY A R_NOMISS (DECISION_LOG 350, 2026-10-23, alert-only)** — run scripts/scout_willy_nomiss.py (also in the opportunity
    scout): CLOSED WILLY-class fills from the deploy + 10 min (operator-closed out) split by `entry_frenzy_willy_nomiss` — R_NOMISS vs normal
    WILLY (WILLY + HT) same period: N · days · WR · avg % · Σ pts · $. Journal tallies (e = WILLY): A_NOMISS (allowed) · _MISSED (a red bar
@@ -337,8 +351,17 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
       GVOL_SPLIT bar), LITE −4 stop near-miss (P 0.93), LONG 30-min cap near-miss (P 0.88), the bearish-day block's LITE cost (blocked
       LITE +0.19 on the year), and the LITE "EMA13/50 gap > 1.87 ∧ not first entry" borderline zone (if the operator registers it).
 
+## 0b. AUDIT FLAGS (learnings-box contradiction audit 2026-10-26, DECISION_LOG 378) — read each AT the sleeve step it names (WILLY → step WILLY, fades → step SPIKE_FADE, FLATBASE → step FLATBASE, MS → step momentum short, the wording row → PORTFOLIO step)
+
+- [ ] **AUDIT FLAG (learnings box 10-26): WILLY DL 281 revert gate shows REVERT CANDIDATE** (new exit avg < 0 over 23 fills, parity 61 % vs the 90 % bar) — read it at STEP 0 with V2b pricing; state whether the gate is still the right ruler under V2b
+- [ ] **AUDIT FLAG: SPIKE_FADE 1000LUNC −$308 vs the DL 165 tight revert** (one $10–20M-volume fill losing > $300) — check if it trips, before the size question
+- [ ] **AUDIT FLAG: DL 55 fade volume-ceiling reopen (due 2026-10-14: ceiling → 0 + large-cap 0.5× probe) never executed or deferred** — decide or re-date it in the SPIKE_FADE step
+- [ ] **AUDIT FLAG: momentum-short `btc_rsi_adx_multiplier_short` cells still 2.0× in config (35-40:33-36, 25-30:28-30) while the master prices MS at 1×** — verify what the engine applies and re-price if needed (MS step)
+- [ ] **AUDIT FLAG: FLATBASE Σ −21.5 pts vs the −30 review bar** — one more full stop crosses it; read the gate first in the FLATBASE step
+- [ ] **AUDIT FLAG: the 'no more entry filters — exit + sizing is the lever' CURRENT_STATE line contradicts the operator's 10-09 'filters, not sizing' rule** — resolve wording at the PORTFOLIO step
+
 ## 1. FRENZY_WILLY
-- [ ] **WILLY_HT Q1 (operator 2026-10-25): should HT exist at all?** — scout_willy_ht.py's frozen DL 341 gate (first 30 HT on ≥ 10 days vs same-period WILLY) + the DL 365 ladder; before that, an operator-discretion read labelled below the gate; clear keep / off recommendation
+- [ ] **WILLY_HT Q1 (operator 2026-10-25): should HT exist at all?** — scout_willy_ht.py's frozen DL 341 gate (first 30 HT on ≥ 10 days vs same-period WILLY) + the DL 365 ladder — ✅ operator 10-26 (DL 378): decided by the V2b today's-exit comparison vs same-days WILLY (DL 365 bar), an OPERATOR CALL below the starved DL 341 gate; clear keep / off recommendation
 - [ ] **WILLY_HT Q2: or HT with its OWN exit / protection?** — the DL 373 per-sleeve split (every V2b shadow on HT vs WILLY fills, read on the 'same days only' line); name the exit if one separates
 - [ ] **WILLY_HT Q3: or filter HT winners vs losers so kept HT fills share WILLY's exit?** — W/L screen on HT fills FIRST (sweep_separators.py output, exhaustive 2D + shuffled null + OOS, blind spots); filter only at the expectancy bar (N ≥ 15, ≥ 8 windows, 95 % window-bootstrap), else observe-only; then the exit read
 - Reference numbers below come from the yr5 A 1,067-fill cohort (pre-270 recipe): re-derive them on today's stack, one seed,
@@ -475,6 +498,16 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
       observe-only. Before → after in the three blocks.
 
 ## 4. MOMENTUM LONG — make it profitable
+- [ ] **⭐ ML EXIT DEEP REVIEW (operator 2026-10-26: "maybe the trades are good, the exit strategy is wrong — get more on winners, the same on
+      losers"). MASTER-LED (real fills per batch + B25; the 10-05 yr5 study 'no exit change, flat optimum' is the BACKTEST cross-check only):**
+      ① POST-EXIT per winner — how far price ran after our exit (+5 / +15 / +30 / +60 min and the max before a −x pullback), giveback = peak
+      − exit, per exit reason (runner trail / ladder / lock / time) → money left on the table per trade and per batch · ② MAE / MFE W vs L —
+      full trough + peak distributions and their timing (prep ④ medians: W peak +0.76 @ 17 min / trough −0.28 @ 3 min; L peak +0.03 @ 3 min /
+      trough −0.75 @ 15 min → most losers never go green, so a stop-side change is the lever on losers and a runner-side change on winners) ·
+      ③ two-sided CFs on today's stack: wider / later runner (arm, trail k, lock, ladder rungs, time) to keep winners longer, tighter / earlier
+      stop or 'never-green by N min' exit on losers — each read on the live-exited cohort (stop CFs on the live-stopped cohort), winners'
+      cost counted, day-block bootstrap, per-batch, haircut · ④ by regime (STRONG_BULL vs rest) and ATR bucket — the exit may need to differ
+      by state · then the backtest cross-check (ML_EXIT_OPT_*_YR5) as a caveat.
 - [ ] **Observe lines registered 2026-10-12 (DECISION_LOG 273), arm decision deferred by the operator:** BTC24H_DOWN (block ML when BTC
       24-h ≤ 0) and ML_ADX_RISING_IN_REGIME (step 2: keep only rising closed-bar ADX on the fills step 1 keeps). Re-read both on the new
       fills in all three blocks (① batch · ② master per batch · ③ backtest) against their frozen bar in CURRENT_STATE; then bring the

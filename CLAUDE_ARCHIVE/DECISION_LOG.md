@@ -9073,6 +9073,7 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   held +2.85, i.e. after the floor exit); Bear-Run size 0.2 invest (360) not applied; FLATBASE_SHORT (348)
   kept as traded (own sleeve). WILLY_EXIT_CF.csv also upgraded 2 B23 rows (BAT / ALT 10-20) from the 1m to the tick path —
   same cf_pct (+1.25 TP). A V2b re-walk in build_willy_exit_cf.py is the follow-up before WILLY master reads are quoted as today's exit.
+  → **FIXED in DECISION_LOG 377 (STACK 2026-10-26a): master WILLY / WILLY_HT now priced at the V2b exit.**
 - Validation: validate_against_master.py ALL CHECKS PASS; SCREENED_BASELINE unchanged (82 · 84 % · +$1,148).
 - Current batch = B25 (PAPER since 2026-10-23 ~18:30 UTC).
 
@@ -9203,3 +9204,59 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - Review fixes: the three blocks are PRESENTED master → batch → backtest (the content of the three-block rule is unchanged); title "BATCH REVIEW
   METHOD" (binding for every review, B25 specifics in parentheses); "−45 %" labelled as B25 net P&L, not drawdown; STEP 0 first in the
   checklist's method rows; the plan lines under a "## 🧭 Method" heading.
+
+## (377) 2026-10-26 — 🎲 Master WILLY / WILLY_HT re-priced at the live V2b exit (STACK 2026-10-26a)
+- **Why (operator: "do it now"; B25 review STEP 0):** STACK 2026-10-25a still priced every master FRENZY_WILLY fill at the pre-356 exit
+  (+1.25 / −4 / 90 / late 30 @ +0.25 / rtp) — DL 372's caveat. The live exit since DL 356 → 358 is V2b: per-order target
+  T = max(+1.25, min(+8, net at H × 0.99)) (H = the episode's spike high; entry taker fee of the fill + the MAKER exit fee), resting maker TP at T,
+  −4 throughout, late +0.25 after 30 min for every trade, 90-min cap, no floor.
+- **Build (scripts/build_willy_exit_cf.py, parameterised):** `--rule v2b` (default) → reports/WILLY_EXIT_CF.csv (exit_rule
+  "V2b:T=max(1.25,min(8,net@H*0.99))/-4/90/late30@+0.25/rtp/nofloor"): every CLOSED FRENZY_WILLY + FRENZY_WILLY_HT fill of the archived
+  batches re-walked on its ticks → 1m path (same loader as before) with scout_willy_exit_v2.walk_v2 (no floor — the V2b scout's walker; = the
+  old evaluate_late exactly at T = +1.25, tested on 150 random paths incl. the exit minute). T = the stamped `frenzy_willy_tp_target_pct` when the
+  fill ran one, else services.frenzy.frenzy_willy_high_target (the engine's own function) on H. H = the stamp `entry_frenzy_willy_spike_high`,
+  else rebuilt like frenzy_walk's `peak`: max high from the spike bar (entry_frenzy_spike_at − 5 min) through the last 5m bar closed at the
+  fill, from the first cache covering the window completely: k5m_full 5m → complete 1m → full tick days (no network). New columns: target_pct ·
+  t_src · spike_high · h_src · target_calc · stamp_* · entry_fee_pct · pre356_pct / pre356_why (the old exit on the same path = "before").
+  `--rule pre356` → reports/WILLY_EXIT_CF_PRE356.csv reproduces the 10-25a table BIT-EXACT (38 rows, never read by the master).
+  `--validate GLOB` = the H / T rebuild vs the stamps on exports.
+- **H-rebuild validation:** 14 stamped WILLY / HT fills (INIT 10-23 + 13 in the B25 exports): H rebuilt on 9 (5 without a cache) — **9 / 9
+  exact** (max error 4e-6 %, float32 ticks); the engine function on the stamped H reproduces **14 / 14 stamped T exactly**. On the 14 B19 fills
+  5m, 1m and ticks give the same H. Cross-check vs reports/WILLY_HIGHTARGET_2026-10-23_real.csv: H identical on 35 / 35; that study's T sat a
+  constant ≈ 0.028 lower (it charged a taker exit fee; the engine uses the maker fee — 14 / 14 stamps confirm the engine convention), so
+  its H1_k1 per-fill numbers differ only by that on target-TP fills.
+- **Coverage:** 38 / 38 master WILLY fills priced (0 WILLY_HT in the master; B25 holds 7 HT fills — priced from the same CF when archived).
+  H: 1 stamp · 14 5m · 22 ticks · 1 none (ICNT 10-16 00:05 — its path stops at −4.06 before ever touching +1.25, so every T ≥ +1.25 books the
+  same exit: priced, t_src "invariant"). Unpriced (as traded, listed by the builder): 0. Rule for a no-H fill whose +1.25 walk ends on the TP:
+  cf NO_H → as traded + listed.
+- **Master (build_master_pool.py):** WILLY_EXIT_FROZEN → the V2b rule (the builder still refuses a CF priced under another rule); FRENZY_WILLY
+  priced from it as before (today's size 1 × 0.5 = 10×); FRENZY_WILLY_HT (PROBE_EXEMPT, never re-sized) now takes the CF pct with $ at its
+  as-traded notional. STACK_VERSION 2026-10-26a. Only 18 WILLY rows moved (stack_pct / stack_pnl); every other column and row identical.
+  screen_pool: SCREENED_BASELINE unchanged (82 · 84 % · +$1,148 — WILLY is not in it). validate_against_master ALL CHECKS PASS.
+- **Before (pre-356) → after (V2b), FRENZY_WILLY, master stack-kept (N · WR · avg % · Σ % · $ at today's size):**
+
+  | era | pre-356 exit | V2b exit |
+  |---|---|---|
+  | B19 | 14 · 93 % · +0.73 · +10.25 · +$621 | 14 · 86 % · +0.80 · +11.22 · +$789 |
+  | B20 | 3 · 67 % · −0.51 · −1.53 · −$92 | 3 · 67 % · +1.67 · +5.01 · +$354 |
+  | B21 | 2 · 100 % · +1.25 · +2.50 · +$177 | 2 · 100 % · +1.22 · +2.43 · +$173 |
+  | B22 | 8 · 75 % · −0.19 · −1.56 · −$33 | 8 · 75 % · +0.01 · +0.08 · +$8 |
+  | B23 | 9 · 78 % · −0.02 · −0.20 · +$122 | 9 · 78 % · −0.05 · −0.43 · +$85 |
+  | B24 | 2 · 100 % · +1.25 · +2.50 · +$68 | 2 · 100 % · +4.34 · +8.67 · +$130 |
+  | **ALL** | **38 · 84 % · +0.31 · +11.96 · +$863** | **38 · 82 % · +0.71 · +26.98 · +$1,538** |
+
+  B24 stack-kept (all sleeves) +1.96 % · +$11 → +3.51 % · +$73. WILLY_HT: 0 master fills (no row). Δ +0.40 %/fill · +$675 — IN-SAMPLE (the V2b target was chosen on these fills' study, DL 356 / 358):
+  30–50 % haircut ⇒ ≈ +0.20…+0.28 %/fill. Concentration: INIT +6.17, RSR +5.35, ALT 10-20 −1.0 (+1.25 → late +0.25), LPT −5.25 (+1.25 →
+  −4 stop: target +8 never reached), BTW −0.89, CFX +1.20, CAP 10-12 +1.19 (per-fill Δ = cf_pct − pre356_pct in reports/WILLY_EXIT_CF.csv).
+  ⚠ 2 fills carry 77 % of the Δ (INIT +6.17 + RSR +5.35 of +15.02; INIT motivated DL 357/358) — breaks the ≥50 % concentration rule, so the
+  re-price is a pricing fix, NOT evidence for V2b: ex-INIT 37 · +0.29 → +0.53 (Δ +0.24) · ex-INIT+RSR 36 · +0.26 → +0.36 (Δ +0.10). V2b is judged by its own
+  scout gates (V2B_EARLY / MAIN / FINAL), never by this table. H rule: T = net % at the price H × 0.99 (the string's `net@H*0.99`).
+- **Sanity — INIT 10-23 16:30:** V2-floor booked +1.06 (WILLY_FLOOR) · pre-356 +1.25 · **V2b +7.4243 (TP at its stamped target, 19.9 min)** = the
+  WILLY_EXIT_V2b scout's re-walk (+7.42).
+- **Remaining gaps (in STACK_VERSION):** Bear-Run size 0.2 invest (360) not applied; FLATBASE_SHORT (348) as traded (own sleeve). WILLY now on
+  today's exit.
+- **Tests:** tests/test_willy_exit_cf_v2b.py (rule strings + switch-off; T = the engine function / base / cap; V2b TP at T from H, late TP for
+  a runner, INIT-shape stop with no floor, cap / unres; V2b = old exit at T 1.25 on 150 random paths incl. minutes; H window; 5m rebuild with
+  out-of-window bars ignored and a gap never trusted; stamped T wins; no-H invariant / NO_H; master uses the V2b CF for WILLY + HT, stack
+  version; the pre-356 table = the V2b table's before column) · test_master_frenzy_lock_wide::test_willy_priced_at_todays_exit (V2b rule from
+  config, TP books the fill's target, no FLOOR, INIT +7.42) · STACK_VERSION pins 2026-10-25a → 2026-10-26a (6 tests).

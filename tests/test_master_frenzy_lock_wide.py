@@ -86,7 +86,7 @@ def test_wide_off_refused_in_master():
     assert len(w) >= 12 and not (w.stack_keep == True).any() and (w.stack_pnl == 0).all() and w.stack_pct.isna().all()
     assert set(w.stack_block_reason) <= {"FRENZY_WIDE_OFF", "PAIR_BLACKLIST", "SLEEVE_PAIR_BLACKLIST"} and (w.stack_block_reason == "FRENZY_WIDE_OFF").sum() >= 12
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py"), encoding="utf-8").read()
-    assert "k, why = False, 'FRENZY_WIDE_OFF'" in bld and (M.stack_version == "2026-10-25a").all()
+    assert "k, why = False, 'FRENZY_WIDE_OFF'" in bld and (M.stack_version == "2026-10-26a").all()
     assert os.path.exists(os.path.join(ROOT, "reports", "WIDE_STREAK_REBUILD.csv"))   # the hold-green replay input stays (re-enable path)
 
 
@@ -94,7 +94,7 @@ def test_b17_archived():
     M = _m()
     assert (M.era == "B17").sum() == 25 and os.path.exists(os.path.join(ROOT, "reports", "BASELINE17_batch1003-1006_orders.csv"))
     bld = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert 'STACK_VERSION = "2026-10-25a"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
+    assert 'STACK_VERSION = "2026-10-26a"' in bld and "frenzy_fixed_pct(strat," in bld and 'reason[n] = "FRENZY_BEARISH_DAY"' in bld
     assert "WIDE_HG_MAX_ATR_FROZEN = 12.0, 3.0" in bld and "Prior 10-06d — 10-06d:" in bld   # the STACK history keeps every step
 
 
@@ -119,19 +119,29 @@ def test_wide_hold_green_cap_is_era_aware():
 
 def test_willy_priced_at_todays_exit():
     """10-12c (DECISION_LOG 282): every kept FRENZY_WILLY fill is priced at TODAY's WILLY exit re-walked on its own path
-    (reports/WILLY_EXIT_CF.csv); size at today's frenzy_willy_lev_mult."""
+    (reports/WILLY_EXIT_CF.csv); size at today's frenzy_willy_lev_mult. 10-26a (DECISION_LOG 377): today's exit = V2b (356 → 358) —
+    per-fill target T from the spike high, resting maker TP at T, −4, late +0.25 @30 for every trade, 90 cap, no floor."""
     M = _m()
     w = M[(M.stack_keep == True) & (M.entry_strategy.astype(str) == "FRENZY_WILLY")]
     cf = pd.read_csv(os.path.join(ROOT, "reports", "WILLY_EXIT_CF.csv"))
     th = _th()
-    # 10-16a: + the late TP (DECISION_LOG 297) and the resting maker TP (296) — scripts/build_willy_exit_cf.py exit_rule
     assert th["resting_tp_willy_enabled"] is True and 0 < float(th["frenzy_willy_late_tp_pct"]) < float(th["frenzy_willy_tp_pct"])
-    assert cf.exit_rule.eq(f"+{float(th['frenzy_willy_tp_pct']):g}/-{abs(float(th['frenzy_willy_stop_pct'])):g}/{int(th['frenzy_willy_max_hold_minutes'])}"
-                           f"/late{float(th['frenzy_willy_late_tp_minutes']):g}@+{float(th['frenzy_willy_late_tp_pct']):g}/rtp").all()
+    assert th["frenzy_willy_high_target_enabled"] is True
+    assert cf.exit_rule.eq(f"V2b:T=max({float(th['frenzy_willy_tp_pct']):g},min({float(th['frenzy_willy_high_tp_max_pct']):g},"
+                           f"net@H*{1 - float(th['frenzy_willy_high_k_pct']) / 100:g}))/-{abs(float(th['frenzy_willy_stop_pct'])):g}"
+                           f"/{int(th['frenzy_willy_max_hold_minutes'])}/late{float(th['frenzy_willy_late_tp_minutes']):g}"
+                           f"@+{float(th['frenzy_willy_late_tp_pct']):g}/rtp/nofloor").all()
     tpw = float(th["frenzy_willy_tp_pct"])
-    assert np.allclose(cf.cf_pct[cf.cf_why == "TP"], tpw)                        # 296: a resting TP books exactly the line
+    tp = cf[cf.cf_why == "TP"]
+    assert len(tp) >= 10 and np.allclose(tp.cf_pct, tp.target_pct)               # 296 / 356: the resting TP books exactly the fill's own target
+    assert (cf.target_pct.dropna() >= tpw - 1e-9).all() and (cf.target_pct.dropna() <= float(th["frenzy_willy_high_tp_max_pct"]) + 1e-9).all()
+    assert (cf.target_pct > tpw + 1e-9).sum() >= 10                              # runner targets exist (the re-price is not a no-op)
     late = cf[cf.cf_why == "LATE_TP"]
-    assert len(late) >= 3 and (late.cf_min >= float(th["frenzy_willy_late_tp_minutes"])).all() and (late.cf_pct >= float(th["frenzy_willy_late_tp_pct"]) - 1e-9).all()   # ZK / API3 10-09, DUSK 10-15
+    assert len(late) >= 3 and (late.cf_min >= float(th["frenzy_willy_late_tp_minutes"])).all() and (late.cf_pct >= float(th["frenzy_willy_late_tp_pct"]) - 1e-9).all()
+    assert (cf.cf_why != "FLOOR").all()                                          # 358: no floor
+    # INIT 10-23 (the DL 357 / 358 case): V2-floor booked +1.06, the V2b re-walk books its stamped +7.42 target
+    init = cf[(cf.pair == "INITUSDT") & (cf.opened_at == "2026-10-23T16:30:09")].iloc[0]
+    assert init.t_src == "stamp" and abs(init.cf_pct - 7.4243) < 1e-6 and init.cf_why == "TP" and abs(init.live_pct - 1.0597) < 1e-3
     # an UNRES row (no path cache yet) keeps its as-traded pct — allowed ONLY for fills opened after the DL 281 deploy (B20+), which already
     # traded today's +1.25 / −4 / 90 live; an older fill must carry a re-walked cf_pct
     m = {(str(a)[:19], p): (c if pd.notna(c) else (lp if str(a)[:19] >= "2026-10-12T04:00" else float("nan")))

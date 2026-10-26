@@ -198,9 +198,9 @@ def main():
           "mean |Δ|", round((post.cf_pct - post.booked_pct).abs().mean(), 3), "Σ walker", round(post.cf_pct.sum(), 2), "Σ booked", round(post.booked_pct.sum(), 2))
     st = f[f.bcls.isin(["STOP"])]
     print("stops (all eras, −4 stop since DL 271):", len(st), "walker STOP", int((st.cf_why == "STOP").sum()), "mean walker", round(st.cf_pct.mean(), 3), "booked", round(st.booked_pct.mean(), 3))
-    cf = pd.read_csv(os.path.join(RP, "WILLY_EXIT_CF.csv"))
+    cf = pd.read_csv(os.path.join(RP, "WILLY_EXIT_CF_PRE356.csv"))   # the pre-356 table (WILLY_EXIT_CF.csv is V2b since DL 377)
     m = f.merge(cf, left_on=["t", "pair"], right_on=["opened_at", "pair"], how="inner")
-    print("vs master WILLY_EXIT_CF.csv:", len(m), "rows, max |walker − cf|", round((m.cf_pct_x - m.cf_pct_y).abs().max(), 4))
+    print("vs master WILLY_EXIT_CF_PRE356.csv:", len(m), "rows, max |walker − cf|", round((m.cf_pct_x - m.cf_pct_y).abs().max(), 4))
     # tick share
     print("live paths", L.cf_path.value_counts().to_dict())
 

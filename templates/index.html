@@ -1086,7 +1086,7 @@
                     <button id="copy-analytics-btn" onclick="copyAnalytics()" class="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Copy Analytics</button>
                     <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Copy Split Report</button>
                     <a id="download-orders-csv-btn" href="/api/orders/export.csv" download class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors" title="Download all CLOSED + SIGNAL_EXPIRED orders for current mode (paper/live) as CSV — no row limit, every Order column included. Use for counterfactual analysis, cross-sample re-binning, custom cross-tabs." onclick="this.href='/api/orders/export.csv?t=' + Date.now()">Download Orders CSV</a>
-                    <a id="download-decisions-csv-btn" href="/api/decisions/export.csv" download class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium rounded transition-colors" title="🔭 What the bot DECIDED over the last 3 days (decision journal): every fill with its strategy, every refusal aggregated per 5 min × pair × gate, and the positions open right now. Read by the hourly opportunity scout (scripts/opportunity_scout.py) to tell 'no signal' from 'blocked by gate X' from 'book full'. Save it to Downloads." onclick="this.href='/api/decisions/export.csv?days=3&t=' + Date.now()">Download Decisions CSV</a>
+                    <a id="download-decisions-csv-btn" href="/api/decisions/export.csv" download class="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium rounded transition-colors" title="🔭 What the bot DECIDED over the whole current paper batch (decision journal, up to 7 days; live: the last 3 days): every fill with its strategy, every refusal aggregated per 5 min × pair × gate, and the positions open right now. Read by the hourly opportunity scout (scripts/opportunity_scout.py) to tell 'no signal' from 'blocked by gate X' from 'book full'. Save it to Downloads." onclick="this.href='/api/decisions/export.csv?t=' + Date.now()">Download Decisions CSV</a>
                     <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer whitespace-nowrap" title="🔭 While THIS dashboard tab is open, download the Decisions CSV automatically twice a day (every ~12 h) into your Downloads folder (the scout reads it). Uses your existing login in this browser; nothing is sent anywhere else. The first time, the browser may ask to allow automatic downloads from this site. A download that fails (e.g. the login expired) is retried every 10 minutes. If no file appears in Downloads, allow automatic downloads for this site in the browser settings — the page cannot see a download the browser blocked. Chrome's 'Ask where to save each file' turns it into a Save dialog, and Memory Saver can pause a background tab.">
                         <input type="checkbox" id="auto-decisions-toggle" onchange="_autoDecToggle(this.checked)" class="accent-sky-600"> Auto 2×/day
                         <span id="auto-decisions-status" class="text-gray-500"></span>
@@ -24565,12 +24565,12 @@
             const last = +(_lsGet(_AUTO_DEC_LAST) || 0);
             el.textContent = msg || (_lsGet(_AUTO_DEC_ON) === '1' ? (last ? '· sent ' + new Date(last).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '· pending') : '');
         }
-        async function _downloadDecisionsCsv(timeoutMs = 60e3){   // throws on any failure (the caller decides whether to retry)
+        async function _downloadDecisionsCsv(timeoutMs = 60e3, days = 3){   // 🗂 (392) auto / pre-reset: 3 days (overlapping files); the button: the batch   // throws on any failure (the caller decides whether to retry)
             const now = Date.now();
             const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), timeoutMs);
             let r, blob;
             try {
-                r = await fetch('/api/decisions/export.csv?days=3&t=' + now, {credentials: 'same-origin', signal: ctl.signal});
+                r = await fetch('/api/decisions/export.csv?days=' + days + '&t=' + now, {credentials: 'same-origin', signal: ctl.signal});
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 if (r.redirected || !(r.headers.get('Content-Type') || '').includes('text/csv')) throw new Error('not a CSV (login?)');
                 blob = await r.blob();                        // the timeout covers the body read too

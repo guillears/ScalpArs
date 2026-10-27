@@ -2687,11 +2687,15 @@ def ml_matched_export_row(b, fmt) -> dict:
 
 
 @app.get("/api/decisions/export.csv")
-async def export_decisions_csv(days: int = 3, db: AsyncSession = Depends(get_db)):
+async def export_decisions_csv(days: Optional[int] = None, db: AsyncSession = Depends(get_db)):
     """🔭 Sep-30 — "Download Decisions CSV": what the bot DECIDED, for the opportunity scout (scripts/opportunity_scout.py).
     Rows: every fill (OPEN, with strategy), waiver (ADMIT) and lapsed maker entry (EXPIRED) from the decision journal, every
     refusal (BLOCK) aggregated per 5 min × pair × direction × gate, plus one POSITION_OPEN row per position open RIGHT NOW (the
-    orders export carries closed trades only). Last `days` UTC days (1–7). Read-only; the orders export is unchanged.
+    orders export carries closed trades only). 🗂 (DECISION_LOG 392) no `days` (the dashboard button) = the whole CURRENT PAPER BATCH: from
+    the UTC day of this paper batch's first bot order (a paper reset clears the rows; MANUAL out) to today, ≤ 7 days (was a fixed 3 — a
+    4+-day batch lost its first days' OPEN / BLOCK rows); LIVE (never reset) → 3. `days` (1–7) overrides — the auto-download and the
+    pre-reset save pass 3 (twice-daily overlapping files; the scouts read them all). Every section starts at the same UTC midnight.
+    Read-only; the orders export is unchanged.
     Rows: OPEN/ADMIT/EXPIRED (journal lines) · BLOCK (per 5 min × pair × dir × gate; pair-less = MARKET) · SCAN (5-min heartbeat =
     journal coverage) · FAILS (per 5 min × pair × dir × FULL gate set "A+B+…" × source — which gates must ALL be loosened to free a
     trade) · POSITION (every bot + MANUAL position overlapping the window, open or closed, with `closed`)."""
@@ -2703,11 +2707,23 @@ async def export_decisions_csv(days: int = 3, db: AsyncSession = Depends(get_db)
         _dj.flush()                                                    # the current scan's buffered events (same thread as note())
     except Exception:
         pass
-    days = max(1, min(7, int(days or 3)))
+    if days is None:   # the current PAPER batch: its first bot order → today (UTC days, both ends counted); live has no batch → 3
+        days = 3
+        if trading_engine.is_paper_mode:
+            try:
+                _first = (await db.execute(select(func.min(Order.opened_at)).where(and_(
+                    Order.is_paper == True, Order.status.in_(["OPEN", "CLOSED"]),
+                    or_(Order.entry_strategy.is_(None), Order.entry_strategy != "MANUAL"))))).scalar()
+                if _first:
+                    days = (datetime.utcnow().date() - _first.date()).days + 1
+            except Exception:
+                days = 3
+    days = max(1, min(_dj.EXPORT_MAX_DAYS, int(days or 3)))
+    _day0 = datetime.combine(datetime.utcnow().date() - timedelta(days=days - 1), datetime.min.time())   # the journal's first UTC day
     rows = await _aio.to_thread(_dj.export_rows, days)                 # file reads off the event loop
     try:   # every position (bot + MANUAL) that overlapped the window, with its close time — the journal has no CLOSE event
         await trading_engine.initialize(db)
-        _since = datetime.utcnow() - timedelta(days=days, hours=24)
+        _since = _day0 - timedelta(hours=24)
         _pos = (await db.execute(select(Order).where(and_(
             Order.status.in_(["OPEN", "CLOSED"]), Order.is_paper == trading_engine.is_paper_mode,
             or_(Order.status == "OPEN", Order.closed_at >= _since))).order_by(Order.opened_at))).scalars().all()
@@ -2722,7 +2738,7 @@ async def export_decisions_csv(days: int = 3, db: AsyncSession = Depends(get_db)
     from services.orderbook_stats import OB_FIELDS as _OBF
     _ob_cols = ["ob_mid"] + [f"ob_{k}" for k in _OBF]
     try:
-        _since_ob = datetime.utcnow() - timedelta(days=days)
+        _since_ob = _day0
         _sel = [OrderbookSnap.at, OrderbookSnap.pair, OrderbookSnap.reason, OrderbookSnap.mid] + [getattr(OrderbookSnap, k) for k in _OBF]
         for s in (await db.execute(select(*_sel).where(OrderbookSnap.at >= _since_ob).order_by(OrderbookSnap.at))).all():   # plain rows, no ORM objects (review)
             rows.append(dict(t=s[0].strftime('%Y-%m-%dT%H:%M:%S'), e="BOOK", pair=s[1], src=s[2], ob_mid=s[3],
@@ -2733,7 +2749,7 @@ async def export_decisions_csv(days: int = 3, db: AsyncSession = Depends(get_db)
     # (open WILLY, pair, direction, sleeve) with its repeats — so scripts/scout_willy_hold.py can price the "cost of the hold".
     _wh_cols = ["wh_signal_at", "wh_last_at", "wh_repeats", "wh_invest_mult", "wh_lev_mult", "wh_willy_id", "wh_willy_pair", "wh_reason"]
     try:
-        _since_wh = datetime.utcnow() - timedelta(days=days)
+        _since_wh = _day0
         for b in (await db.execute(select(WillyHoldBlock).where(and_(WillyHoldBlock.is_paper == trading_engine.is_paper_mode,
                                                                      WillyHoldBlock.first_at >= _since_wh)).order_by(WillyHoldBlock.first_at))).scalars().all():
             rows.append(dict(t=b.first_at.strftime('%Y-%m-%dT%H:%M:%S'), e="WILLY_HOLD", pair=b.pair, dir=b.direction, strategy=b.sleeve,
@@ -2748,7 +2764,7 @@ async def export_decisions_csv(days: int = 3, db: AsyncSession = Depends(get_db)
     _fb_cols = ["fb_spike_at", "fb_status", "fb_reason", "fb_first_seen_at", "fb_flat14_pct", "fb_flat_cov_pct", "fb_entry_bar_at", "fb_vwap",
                 "fb_vs_vwap_pct", "fb_peak", "fb_off_peak_pct", "fb_hours", "fb_vol24_usd", "fb_mcap_usd", "fb_turnover", "fb_funding_rate", "fb_order_id"]
     try:
-        _since_fb = datetime.utcnow() - timedelta(days=days)
+        _since_fb = _day0
         _fmt = lambda d: d.strftime('%Y-%m-%dT%H:%M:%S') if d else None
         for b in (await db.execute(select(FlatbaseEpisode).where(and_(FlatbaseEpisode.is_paper == trading_engine.is_paper_mode,
                                                                       or_(FlatbaseEpisode.spike_at >= _since_fb, FlatbaseEpisode.decided_at >= _since_fb)))

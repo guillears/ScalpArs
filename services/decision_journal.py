@@ -172,9 +172,12 @@ def _rollover(d, today):
 EXPORT_COLS = ("t", "e", "pair", "dir", "gate", "n", "no_room", "strategy", "price", "conf", "cell", "via", "reason", "closed", "src")
 
 
+EXPORT_MAX_DAYS = 7    # 🗂 (DECISION_LOG 392) a whole-batch export is capped here (rows are built in memory in the trading process)
+
+
 def export_rows(days=3, now=None, directory=None):
     """🔭 Sep-30 — the journal as rows for the "Download Decisions CSV" export (read by scripts/opportunity_scout.py).
-    Last `days` UTC days (1..7). OPEN / ADMIT / EXPIRED kept one per line; BLOCK lines AGGREGATED per 5-minute bucket ×
+    Last `days` UTC days (1..EXPORT_MAX_DAYS). OPEN / ADMIT / EXPIRED kept one per line; BLOCK lines AGGREGATED per 5-minute bucket ×
     pair × direction × gate (`n` = lines, `no_room` = how many had no free slot; a BLOCK with no pair = pair "MARKET");
     SCAN lines become one heartbeat row per 5-minute bucket (`n` = scans) so a reader knows which minutes the journal really
     covers (a missing day / downtime is a gap, not "no action"); FAILS lines (the FULL gate set one candidate failed) aggregate
@@ -182,7 +185,7 @@ def export_rows(days=3, now=None, directory=None):
     set once per 5 min, so a FAILS `n` ≈ 5-minute buckets, not scans). Never raises."""
     out, agg, beats, fails = [], {}, {}, {}
     try:
-        days = max(1, min(7, int(days or 3)))
+        days = max(1, min(EXPORT_MAX_DAYS, int(days or 3)))
         now = now or datetime.utcnow()
         d = directory or _dir()
         wanted = {(now - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days)}

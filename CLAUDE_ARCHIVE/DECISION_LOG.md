@@ -9723,3 +9723,20 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **B25 before the fix (77 bot fills, 10-23 18:30 → 10-27):** FLATBASE 41 columns at 0 %; FRENZY family 10 (signed gaps, funding,
   1d −DI, age, BTC 4h gap, alt-corr pre-383); SPIKE_FADE 11 (BTC slopes, global volume, signed gaps, funding, BTC price); FAN 11;
   MOMENTUM 5 (1d −DI, BTC price, BTC 4h gap, alt-corr pre-383) — every one is produced by the 389 backfill from 10-27 17:12 UTC.
+
+## (392) 2026-10-27 — 🗂 Decisions export covers the whole current batch (operator: "check if the decisions file needs any update too, mainly due to new sleeves or strategies"; export only, no trading / config change)
+- **Finding (B25 export 10-27 16:29):** 82 POSITION rows (from the DB, every position of the batch) but only 61 OPEN rows — 21 fills
+  without their OPEN row (matched per fill on pair + minute): FLATBASE 8, MOMENTUM 4, WILLY 2, WILLY_HT 2, LITE_RETRY 2, FAN 1,
+  FADE 1, FRENZY_LONG 1. All 21 opened 10-23 20:00 → 10-24 21:20 — the journal-based rows (OPEN, ADMIT,
+  BLOCK, FAILS, SCAN, WILLY) were cut at the export's fixed 3 UTC days (BLOCK / FAILS / SCAN start 10-24 23:55). No sleeve skips the
+  journal: open_position writes OPEN for every sleeve; nothing was lost on the server (retention 45 days). Every active sleeve appears
+  in OPEN / POSITION; FLATBASE has its own ledger rows (e=FLATBASE), WILLY its hold rows.
+- **Fix (after both reviews):** /api/decisions/export.csv with no `days` (the dashboard button) = the whole CURRENT PAPER BATCH: from the
+  UTC midnight of the batch's first bot order (MANUAL / app-history imports out; a paper ALL reset clears the rows) to today, ≤ 7 days
+  (decision_journal.EXPORT_MAX_DAYS, the old cap); LIVE (never reset, app-history rows back to the first live trade) → 3. The
+  auto-download (twice daily, overlapping — the scouts merge every file) and the pre-reset save keep `days=3` (size: ≈ 9 MB / day, built
+  in memory in the trading process; the hourly scout parses every decisions file of 50 days). Every section (journal, POSITION − 24 h,
+  BOOK, WILLY_HOLD, FLATBASE) now starts at the same UTC midnight (was rolling now − days). Caveats: the first day can carry the previous
+  batch's journal rows before the reset (no reset timestamp is stored — a BotState column would make it exact); a LONG / SHORT-only reset
+  keeps the other direction's rows and stretches the window (≤ 7).
+  Test: tests/test_decisions_export.py::test_export_default_covers_the_whole_batch.

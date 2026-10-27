@@ -113,3 +113,52 @@ def test_shutdown_paths_flush_the_journal():
     assert "atexit.register(flush)" in open(dj.__file__).read()
     main_src = open(os.path.join(root, "main.py")).read()
     assert "await stop_background_tasks()\n    finally:" in main_src and "_djs.flush()" in main_src
+
+
+def test_export_default_covers_the_whole_batch(monkeypatch):
+    """🗂 DECISION_LOG 392: with no `days` the export reads the journal from the UTC day of this mode's first order to today (≤ 14) —
+    a 5-day batch no longer loses its first two days of OPEN / BLOCK rows to the old fixed 3; an explicit `days` still wins."""
+    import asyncio
+    import datetime as dt
+    import os
+    os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./_x.db")
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    import main
+    import models
+    from services import decision_journal as dj
+    seen = []
+    monkeypatch.setattr(dj, "export_rows", lambda days, *a, **k: (seen.append(days), [])[1])
+
+    async def _noinit(db):
+        return None
+    monkeypatch.setattr(main.trading_engine, "initialize", _noinit)
+
+    async def run(first_days_ago, days):
+        eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with eng.begin() as c:
+            await c.run_sync(models.Base.metadata.create_all)
+        S = async_sessionmaker(eng, expire_on_commit=False)
+        async with S() as db:
+            if first_days_ago is not None:
+                t = dt.datetime.utcnow() - dt.timedelta(days=first_days_ago)
+                db.add(models.Order(pair="AUSDT", direction="LONG", status="CLOSED", is_paper=main.trading_engine.is_paper_mode,
+                                    confidence="STRONG_BUY", entry_price=1.0, quantity=1.0, investment=1.0, leverage=1, notional_value=1.0,
+                                    opened_at=t, closed_at=t))
+                await db.commit()
+            await main.export_decisions_csv(days=days, db=db)
+        await eng.dispose()
+    _was = main.trading_engine.is_paper_mode
+    try:
+        main.trading_engine.is_paper_mode = True
+        asyncio.run(run(4, None))
+        asyncio.run(run(40, None))
+        asyncio.run(run(None, None))
+        asyncio.run(run(4, 2))
+        main.trading_engine.is_paper_mode = False
+        asyncio.run(run(4, None))                       # live has no batch → 3
+    finally:
+        main.trading_engine.is_paper_mode = _was
+    assert seen == [5, dj.EXPORT_MAX_DAYS, 3, 2, 3] and dj.EXPORT_MAX_DAYS == 7
+    ui = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "index.html"), encoding="utf-8").read()
+    assert ui.count("/api/decisions/export.csv?t=") == 1                       # the button: the batch
+    assert "async function _downloadDecisionsCsv(timeoutMs = 60e3, days = 3)" in ui   # auto + pre-reset: 3 days

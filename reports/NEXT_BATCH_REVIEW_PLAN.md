@@ -4,6 +4,19 @@ Run all of this when the operator sends the next batch export (`scalpars_orders_
 
 ## 🧭 Method (binding, operator 2026-10-26)
 **🧭 BATCH REVIEW METHOD (operator 2026-10-26, binding for every batch review): ONE SLEEVE AT A TIME — ① master batch trades: before → after per batch for each watchlist item / candidate · ② current batch: before → after · ③ backtest: before → after · ④ the quant recommendation for that sleeve (a clear call per watchlist item) · ⑤ STOP for the operator's OK, then the next sleeve. New strategies: winners vs losers FIRST, then exits; momentum longs: W/L on the full master. Starts with the regenerated checklist (scripts/batch_review_checklist.py).**
+**🔎 PER-SLEEVE STANDARD — EVERY sleeve, no exception (operator 2026-10-27, DECISION_LOG 398: "all SLEEVES should have it" · "Winners vs
+losers and before and after per batch"):** for EACH of SPIKE_FADE · FRENZY_WILLY · FRENZY_WILLY_HT · FLATBASE_SHORT · FRENZY_LITE ·
+FRENZY_LITE_RETRY · FRENZY_LONG · MOMENTUM LONG · MOMENTUM SHORT · FLIP:FAN_RATIO_GATE (+ FS / ML / MS screened pools) · BULLRUN_LONG ·
+BEARRUN_SHORT · SURGE_LONG · SPIKE_BOUNCE / SPIKE_CHASE — ① **WINNERS vs LOSERS on every variable**: `venv/bin/python
+scripts/sweep_separators.py <SLEEVE>` on the sleeve's REAL fills (master on today's stack + the current batch; `ALL` runs every sleeve) +
+the Scout 🔎 SEPARATOR SWEEP row (1D / 2D survivors vs a shuffled null, blind spots < 80 % listed and read on their scored subset), then
+exhaustive 2D + OOS per the W/L rule · ② **BEFORE → AFTER per batch** for every candidate filter / exit / size (master per batch + the
+current batch, N · WR · avg % · $ · daily compound return) · ③ backtest = cross-check only. A sleeve below 6 fills (or too thin for two
+eras) is written down as "keep collecting — N" — never skipped silently. 10-27 baseline (scout run, family-wise vs a day-block
+shuffled null): no sleeve's best split beats luck's best (MOMENTUM LONG p 0.67, SPIKE_FADE 0.78, FRENZY_WILLY 1.00, FRENZY_LITE 0.20,
+Bull-Run 0.29, FLIP 0.67 — FLIP's survivor count is the closest, count p 0.08) → today's single-variable "consistent" splits are luck-level;
+the review must beat the null, not just pass both eras.
+
 **🧭 + six method points (operator 2026-10-26, binding):** ⓪ STEP 0 before any sleeve — data first: master WILLY priced at the live V2b exit, the batch added to the master (provisional if it still runs) + validate_against_master ALL PASS, size boundaries marked (B25: the 10-26 13:50 UTC paper top-up; compare in %) · ① sleeve ORDER by stake (money at risk / open decisions): SPIKE_FADE (size question triggered) → WILLY + WILLY_HT (V2b exit, HT questions) → FLATBASE → LITE / FRENZY_LONG → momentum long → momentum short → FAN flips → Bear-Run / SURGE / rest · ② every before → after on TODAY's stack (re-simulate first) — per sleeve, master per batch AND current batch, ALWAYS with the DAILY COMPOUND RETURN before → after (operator 10-27) — DCR-cal = (Π_d (1 + r_d))^(1/D) − 1 over every calendar day D of the batch, r_d = the sleeve's realised day P&L (net of fees + funding, on the close's UTC day) ÷ start-of-day ACCOUNT equity on that path (batch start balance + realised account P&L so far; "after" adds the sleeve's counterfactual Δ), 0 % on no-fill days, a flow day (e.g. the 10-26 13:50 paper top-up) split at the flow; before AND after both on today's stack + sizing; not the dashboard %/day (fixed batch-start denominator), in-sample results labelled with the 30–50 % haircut, market-wide effects in DAY units, per-pair / per-day concentration checked; the backtest never proves alone — ⚖ EVIDENCE WEIGHT (operator 2026-10-26, DL 378): real fills (master per batch re-priced on today's stack + current batch) are the PRIMARY evidence; the backtest is less accurate than real fills (as-was replay recalls only W 66 % / L 62 % of ML fills; no slots / holds / HT routing; reconstructed mcap etc.), so it is a SECONDARY cross-check: when master and backtest disagree, the master read leads and the backtest's disagreement is reported as a caveat (with its fidelity on that sleeve), never as a veto on its own; a backtest refutation only decides an item when the master evidence is itself thin or absent · ③ each watchlist item classified: DECIDED by its frozen gate (follow it) / OPERATOR CALL below the bar (recommendation stated as below-bar) / KEEP OBSERVING (count + expected date, no debate) · ④ after all sleeves, a PORTFOLIO view: shared slots, concurrent exposure, worst day, max peak-to-trough drawdown (B25 reference: net P&L −$1,350.73 at 10-26 13:50 UTC ≈ −45 % of the original $3,000 base after the 10-23 reset), sleeve overlap · ⑤ ship ONE change at a time even with several approvals (risk-first; size/filter changes apart from exit changes) → final one-page decisions list + go-live criteria.
 
 ## ⭐ Operator priorities — next batch review (2026-10-19)
@@ -662,6 +675,18 @@ at once.
   stopped −1.20 % — on a 2.7 % ATR coin the 1 × ATR trail protects nothing below ≈ +1.5 %). Each fill re-walked (ticks where cached, else 1m); the live-exit re-walk must reproduce the
   booked exits first; stop-width variants on the LIVE-STOPPED cohort only. Three blocks (batch · master per batch · two-year replay), each
   with N · WR · avg % · Σ $ · hold HH:MM · DCR before → after; decided at N ≥ 15 filled triggers (the 202 review), 30–50 % in-sample haircut.
+
+- **Exit grid status (DECISION_LOG 397, 10-27):** backtest done — 556 tick-walked two-year fills, NO variant passed the frozen gate
+  (reports/SURGE_EXIT_GRID_PREREG.txt); today's exit kept. At the review: re-run `venv/bin/python scripts/study_surge_exit_grid.py
+  --reuse` (backtest reused, real fills re-read from every export, frozen variants / gate) → the real-fill table is the forward read;
+  it overrides the backtest only at N ≥ 15 real fills (master over backtest), else a caveat.
+- **SURGE ENTRY / REGIME W/L (DECISION_LOG 397 follow-up, the real lever):** 44 % of backtest fills never reach +1 % and lose ≈ −1.4 %
+  under every exit; the sleeve is ≈ break-even over two years (+0.05 %/fill) and pays only in 2026-H2 (+0.71 vs −0.21 / −0.20). Read:
+  fills that reached +1 % vs not — every entry_* stamp + BTC macro + trigger variables (BTC 30-min move, bar volume ×, market volume,
+  breadth, ADX), coverage table first (scout_stamp_coverage ✅ for SURGE_LONG), TRIGGER units (one trigger = one observation), per-period
+  (2025 · 26-H1 · 26-H2) consistency, cohort = every real fill (+ the yr6 replay fills as the cross-check). scripts/sweep_separators.py
+  SURGE_LONG runs on real fills since DL 398 (5 today — below its 6-fill floor) before any "no separator" / switch-off claim
+  (sleeve-kill checklist ①–④).
 
 ### 🛡 SURGE_LONG EMA-gap filter (DECISION_LOG 287) — read at every batch review
 - Count `SURGE_LONG_EMA_GAP` blocks (and `_FAILOPEN`) from the engine counters / `[SURGE_LONG_EMA_GAP]` log; re-price each blocked candidate

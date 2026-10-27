@@ -71,6 +71,10 @@ METHOD = [
     "Run the full opportunity scout (scripts/opportunity_scout.py) AND every standalone scout; re-run tick-first scouts once the aggTrades "
     "archives publish (≥ 6 h after the day ends)",
     "Any 'no separator' / sleeve-kill claim → scripts/sweep_separators.py output first (CLAUDE.md sleeve-kill checklist)",
+    "EVERY sleeve (no exception — DECISION_LOG 398): ① WINNERS vs LOSERS on every variable — scripts/sweep_separators.py <SLEEVE> (real "
+    "fills: master on today's stack + current batch) + the Scout 🔎 SEPARATOR SWEEP row (survivors vs shuffled null, blind spots) · "
+    "② BEFORE → AFTER per batch (master per batch + current batch, with the daily compound return) for every candidate · ③ backtest "
+    "cross-check only — sleeves too thin to sweep are listed as 'keep collecting' with their N",
     "Show BASE stats with and without the washed-out window (Jun-18 → Jul-2) where it applies",
     "'Why no X trades' → grep the server logs FIRST (absence is a logs question)",
     "Flag every read DECIDED or within ~20 % of its bar; list every read that could not run and why",

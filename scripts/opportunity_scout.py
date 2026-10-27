@@ -1296,6 +1296,14 @@ def run():
     except Exception as _stc_e:
         log(f"stamp coverage lines failed: {_stc_e}")
         _rg_sec += ["## 🧾🔒 STAMP COVERAGE per sleeve", "", f"Unavailable this run ({str(_stc_e)[:120]}).", ""]
+    try:                                               # 🔎 Oct-27 SEPARATOR SWEEP every sleeve (DECISION_LOG 398; local CSVs, cached per cohort; alert-only; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_sweep_all as _swa
+        _rg_sec += _swa.run(budget_s=_swa.BUDGET_S)
+    except Exception as _swa_e:
+        log(f"separator sweep lines failed: {_swa_e}")
+        _rg_sec += ["## 🔎 SEPARATOR SWEEP — every sleeve", "", f"Unavailable this run ({str(_swa_e)[:120]}).", ""]
     try:                                               # 🩸🌙 Oct-26 OBS-F1 LATE-TAPE WEAK SPIKE (DECISION_LOG 384; orders exports + cached BTC 1d klines, one budgeted public GET; frozen read → OPERATOR CALL; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -1,0 +1,23 @@
+SURGE_LONG EXIT GRID — PRE-REGISTRATION (DECISION_LOG 397)
+written 2026-10-27 22:07:39 UTC, before any variant was priced. Operator 2026-10-27: "clearly the exit mechanism is not good!" after BTW / EVAA
+(peaks +0.90 / +1.32 %, both stopped −1.20 %; EVAA armed at +1.0 but the 1 × ATR 2.69 % line sat at −1.37 % < the −1.2 % stop).
+
+CONTROL TODAY (DL 203): initial stop min(−0.7, max(−1.5 × ATR, −1.2)); arm at peak ≥ +1.0 net; then line = max(stop, peak − 1 × entry
+ATR); no lock / ladder; 240 min hold. Engine parity asserted (_bullrun_exit_for no_lock=True; LOCK_LADDER = no_lock=False).
+
+VARIANTS (16): LOCK_LADDER, LOCK_ONLY, ARM05_BE, TRAIL_0.5ATR, TRAIL_2ATR, HOLD_60, HOLD_120, WILLY_LIKE, TP1_SL1.2, TP1_SL2, TP2_SL1.2, TP2_SL2, TP3_SL1.2, TP3_SL2, TP5_SL1.2, TP5_SL2
+  LOCK_LADDER  DL 203's alternative: at +1.0 line = max(+0.2, peak − 1×ATR, bullrun_ladder floor)
+  LOCK_ONLY    the same without the ladder
+  ARM05_BE     at peak ≥ +0.5 line = max(0.0, peak − 1×ATR) (break-even floor), before it the initial stop
+  TRAIL_0.5ATR / TRAIL_2ATR   today's arm, trail 0.5 / 2 × ATR
+  HOLD_60 / HOLD_120          today's exit, max hold 60 / 120 min
+  WILLY_LIKE   the WILLY V2b shape with the fixed floor target (SURGE has no spike-high stamp): resting TP +1.25, from minute 30 TP +0.25,
+               stop −4, 90 min cap
+  TPx_SLy      resting TP +x % (1 / 2 / 3 / 5) with a fixed stop −y % (1.2 / 2), 240 min
+Costs: 0.09 fees in every walk; entry slip −0.03; market exits −0.17; a resting TP books its line (0 exit slip).
+COHORT: ENGINE_REPLAY_YR6_2Y_TODAY_fills.csv SURGE_LONG CLOSED with EMA13−EMA50 gap ≥ 0, 3 seeds pooled, tick-walked (primary);
+1m-walked = sensitivity only. Parity gate: TODAY walk vs the replay pct within ±0.10 on ≥ 85 % of tick fills, else STOP.
+GATE (frozen): CANDIDATE iff mean Δ vs TODAY > 0 ∧ day-clustered bootstrap P(Δ > 0) ≥ 1 − 0.05 / 16 ∧ Δ > 0 in each of 2025 / 2026-H1 /
+2026-H2 ∧ DCR-cal (today's size, every calendar day, per seed averaged) above TODAY's. Real fills (paper + live, floor 09-30 15:30)
+reported per fill; with N < 15 they are a caveat, not a veto. A CANDIDATE is an operator call with the 30–50 % haircut and its own
+revert gate — never automatic. No re-fitting of levels after this file.

@@ -9843,3 +9843,65 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   exit re-walk must reproduce the booked exits first; stop-width variants read on the LIVE-STOPPED cohort only (CLAUDE.md); three blocks
   (batch · master per batch · two-year replay) with N · WR · avg % · Σ $ · hold HH:MM · DCR before → after; decided only at N ≥ 15 filled
   triggers (the 202 review), in-sample haircut. reports/NEXT_BATCH_REVIEW_PLAN.md §5.
+
+## (397) 2026-10-27 — ⚡🎯 SURGE_LONG exit grid: NO variant beats today's exit — keep it (operator: "clearly the exit mechanism is not good!" → "yes run the SURGE exit study now"; research only, no trading / config change)
+- **Study:** scripts/study_surge_exit_grid.py, pre-registered reports/SURGE_EXIT_GRID_PREREG.txt (frozen before pricing), tables
+  reports/SURGE_EXIT_GRID_tables.md, per-fill reports/SURGE_EXIT_GRID_fills.csv / _real.csv. 16 variants vs TODAY on 556 tick-walked
+  two-year replay fills (yr6, 3 seeds, DL 287 gap filter; TODAY walk = replay 100 % within ±0.10; TODAY + LOCK_LADDER lines asserted equal
+  to _bullrun_exit_for) + the 5 closed real fills. Costs: 0.09 fees, entry −0.03, market exits −0.17, resting TP books its line.
+- **Result (gate: Δ > 0 ∧ day-boot P ≥ 0.9969 ∧ Δ > 0 in 2025 / 26-H1 / 26-H2 ∧ DCR above TODAY): ❌ none passes.** TODAY 34 % · +0.050
+  %/fill · DCR −0.004 %/day. Best others: TRAIL_2ATR +0.059 (Δ +0.009, P 0.52, loses 26-H2) · HOLD_60 +0.053 (Δ +0.004) · every lock /
+  break-even / tight-trail / fixed-TP / WILLY-like cell is NEGATIVE (−0.06 … −0.21 %/fill), all of them losing −0.3 … −0.7 %/fill in
+  2026-H2, the only period SURGE makes money (TODAY +0.71 there vs −0.21 in 2025 and −0.20 in 26-H1) (TP5_SL2 ≈ +0.00, Δ −0.05).
+- **Why:** 246 / 556 fills (44 %) never reach +1.0 and lose ≈ −1.41 % under every exit (only ARM05_BE rescues the +0.5–1.0 bucket, −1.42 →
+  −0.21, but halves the runners); the ≥ +3 % bucket (147 fills, +3.09 % today) pays for everything and the lock / break-even / tight-
+  trail / TP2 cells cut it (+1.2 … +2.1; TP3_SL1.2 keeps +2.97 there but loses the +1.5–3 bucket). The +1.0–1.5 bucket (EVAA's case, 64 fills) is where a lock helps (−1.04 → −0.01) — far smaller than what it costs the
+  runners. Same mechanism as the 10-15 trail-cap study ("capping a winner chops the runner").
+- **Real fills only (operator 10-27: "re-run … only with trades in master batch + current batch (I DONT TRUST BACKTEST)") — N 5 =
+  every SURGE_LONG fill ever (STRK 10-15 · AGT 10-18 · GTC 10-19 in the master; BTW + EVAA 10-27 = ONE trigger in B25), each walked on
+  Binance's own aggTrades (public API < 2 days, else the data.binance.vision daily archive); TODAY walk reproduces the booked pct on 4 / 5
+  (AGT ⚠: a 3 % swing inside 2 s — the bot booked +7.53 at 94.1 s, the every-print walk +4.83 → every AGT cell uncertain). Means (same
+  costs): booked +2.16 · TODAY +1.45 · TRAIL_2ATR +3.32 (STRK +7.12 / AGT +10.36, GTC +1.99) · TP5_SL1.2 +2.40 · ARM05_BE +1.90 (BTW
+  −1.49 → −0.40, EVAA −1.40 → −0.23) · LOCK_ONLY +1.73 (EVAA → −0.02) · LOCK_LADDER +1.60 · TP3_SL1.2 +1.20 · WILLY_LIKE +1.02 · TP2 /
+  TP1 +0.60 / +0.48. Four market moments: no difference is separable from luck; the break-even / lock cells fix exactly the 10-27 losers
+  without touching these 3 winners, but cost −0.20 / −0.11 %/fill on the 556 replay fills (runners). Costs note: real walks start at
+  the actual fill price and still subtract the −0.03 entry slip (shifts every cell equally; ranking unaffected); TP levels are net of
+  0.09 fees (TP +1 ≈ +1.09 gross). Tables: reports/SURGE_EXIT_GRID_tables.md · per fill reports/SURGE_EXIT_GRID_real.csv.
+- **Verdict:** keep today's exit (DL 203). The SURGE problem is not the exit: at today's entry stack the sleeve is ≈ break-even over two years
+  (+0.05 %/fill, DCR ≈ 0) and only pays in a strong bull regime (26-H2). The next lever is ENTRY / REGIME (which triggers reach +1 %):
+  a winners-vs-losers study under the sleeve-kill checklist before any SURGE switch decision. The 15-trigger review keeps the exit grid
+  (scout) for the forward read.
+
+## (398) 2026-10-27 — 🔎 Separator sweep for EVERY sleeve + Scout section + per-sleeve review standard (operator: "why we should add it! all SLEEVES should have it! why this one dont?" · "add it to ALL sleeves, to scout, to watchlist, then reviews, commit and push" · "Winners vs loosers and before and after per batch"; tooling / docs only, no trading / config change)
+- **Gap:** scripts/sweep_separators.py (the sleeve-kill checklist's automated W/L screen, CLAUDE.md, Jul-3) read only SCREENED_BASELINE —
+  flip shorts / momentum long / momentum short. Every sleeve shipped since (FRENZY LONG / LITE / RETRY / WILLY / WILLY_HT, SPIKE_FADE,
+  FLATBASE, SURGE, Bull-Run, Bear-Run) had no mode, so the plan's "cite sweep_separators.py" (WILLY_HT Q3, sleeve-kill claims) could not
+  be met for them.
+- **Fix:** the tool is now functions + CLI (FS / ML / MS numeric output unchanged; new header lines + level tests): `sweep_separators.py <ENTRY_STRATEGY>`
+  (or MOMENTUM:LONG / MOMENTUM:SHORT, or ALL) = the sleeve's REAL fills — master rows kept by today's stack (P&L = stack_pct) + the current
+  batch's closed bot fills from every export (as traded), dedup (opened_at, pair, direction), MANUAL out; era split = the cohort's median
+  date; < 6 fills → "keep collecting"; columns < 80 % scored are printed as BLIND SPOTS (never silently dropped).
+- **Scout 🔎 SEPARATOR SWEEP (scripts/scout_sweep_all.py, opportunity scout):** per sleeve N (master · batch) · columns tested · blind spots
+  · 1D tests / survivors vs a SHUFFLED NULL (day blocks, × 50) · 2D cells / survivors vs null (× 3, indicative) · top 1D splits ·
+  family-wise read. Cached per cohort fingerprint (reports/.scout_sweep_cache.json; a cold run ≈ 11 min standalone).
+- **10-27 baseline (fresh run after both reviews; the read is FAMILY-WISE — the sleeve's strongest split, min |Δ| over both eras,
+  against the strongest split of each of 50 shuffles, P&L shuffled in UTC-DAY blocks within each era = window units):** NO sleeve's
+  best split beats luck's best — MOMENTUM:LONG 340 fills best 0.16 % vs luck 0.26 (p 0.67) · MOMENTUM:SHORT 88 0.23 vs 0.41 (p 0.82) ·
+  SPIKE_FADE 86 0.33 vs 0.56 (p 0.78) · BULLRUN_LONG 102 0.67 vs 0.88 (p 0.29) · FRENZY_WILLY 46 1.34 vs 2.74 (p 1.00) · FRENZY_LITE 39
+  2.22 vs 2.94 (p 0.20) · FRENZY_LONG 31 1.80 vs 2.26 (p 0.27) · FLIP:FAN 40 0.37 vs 0.56 (p 0.67) · LITE_RETRY 13 (p 0.43) · FLATBASE 12
+  (5 tests, p 0.55) · FS / ML / MS screened (p 0.29 / 0.43 / 0.86). Survivor COUNTS (a weak statistic: collinear columns, luck passes
+  ~⅓ of tests) are near their null everywhere; the closest is FLIP:FAN 49 vs ≈ 36 (count p 0.08) — a broad weak tilt (EMA50 slope /
+  EMA gap), not a single separator. The cross-era "both eras agree" screen alone is mostly luck: a W/L candidate must beat the null.
+  Too thin: SURGE_LONG 5, WILLY_HT 9, SPIKE_BOUNCE 8, Bear-Run 2 (and FLATBASE / RETRY only partly).
+- **Review fixes (caveman + deep):** era split in opened_at's 'T' format (a ' ' split put the median day in era B) · export rows already in
+  the master are dropped whatever their stack_keep (master stack_pct wins; the batch defaults to fills after the master's last) ·
+  FLAG / CATEGORY columns (≤ 6 levels: pattern matches, heat flags, regimes, text) now get level-vs-rest tests; never-stamped columns
+  are counted and > 6-level text listed — nothing dropped silently (FS / ML / MS therefore gain level tests: their numeric output is
+  unchanged) · the null shuffles DAY blocks (window units) and the read is family-wise with an empirical p · cache key = cohort values +
+  both scripts' source + null sizes, read / write closed, pid tmp, .gitignore · scout re-sweeps changed sleeves within a 240 s budget
+  (the rest shown "not swept this run") · warnings scoped to the CLI. SURGE study: aggTrades paced 1.0 s (≤ 1,200 weight / min by
+  construction), archive 404 → fill skipped, only COMPLETE windows cached, parity gate fails on NaN and on --reuse, config check at run
+  time (not import).
+- **Standard (NEXT_BATCH_REVIEW_PLAN "PER-SLEEVE STANDARD", batch_review_checklist METHOD row, CURRENT_STATE):** every sleeve at every
+  review — ① W/L on every variable (this sweep + exhaustive 2D + OOS), ② before → after per batch (master per batch + current batch, with
+  the daily compound return), ③ backtest cross-check only; a thin sleeve is written down "keep collecting — N", never skipped.

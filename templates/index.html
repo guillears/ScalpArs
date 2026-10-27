@@ -209,11 +209,16 @@
 
         /* sparkline in the Total Portfolio Value card */
         #portfolio-spark-wrap { margin: 6px 0 2px; }
-        #portfolio-spark { width: 100%; height: 40px; display: block; }
+        #portfolio-spark-box { position: relative; }
+        #portfolio-spark { width: 100%; height: 40px; display: block; touch-action: pan-y; cursor: crosshair; }
+        @media (min-width: 768px) { #portfolio-spark { height: 56px; } }   /* phone stays 40 px: the card must fit the first screen */
+        /* high / low pinned at their own point with a short leader (Binance style); flipped to the inner side near an edge */
+        #portfolio-spark-hi, #portfolio-spark-lo { position: absolute; display: none; font-size: 9px; line-height: 1; white-space: nowrap; color: var(--muted); padding: 1px 2px; border-radius: 3px; background: color-mix(in srgb, var(--surface) 88%, transparent); pointer-events: none; font-variant-numeric: tabular-nums; }
+        #portfolio-spark-tip { position: absolute; bottom: 100%; margin-bottom: 4px; z-index: 30; max-width: 100%; padding: 4px 7px; border-radius: 6px; font-size: 11px; line-height: 1.3; color: var(--fg); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); pointer-events: none; font-variant-numeric: tabular-nums; }
         #portfolio-spark-periods { display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--surface-2); margin-top: 3px; }
         #portfolio-spark-periods button { font: 600 11px/1 var(--font-ui); color: var(--muted); padding: 3px 7px; border-radius: 4px; border: 0; background: transparent; cursor: pointer; }
         #portfolio-spark-periods button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: var(--shadow); }
-        #portfolio-spark-meta { font-size: 11px; color: var(--muted); margin-left: 6px; }
+        #portfolio-spark-meta { font-size: 11px; color: var(--muted); margin-left: 6px; flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* (386) never wraps: the card keeps its phone height */
 
         /* 🧹 (DL 346) segmented All · Bot · Manual switch in the Performance filter row (same look as the sparkline periods) */
         .origin-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); flex: none; }
@@ -654,8 +659,13 @@
                     <p id="total-portfolio" class="text-2xl font-bold text-white">$0.00</p>
                     <p id="portfolio-open-pnl" class="hidden"></p>   <!-- 🏦 (344) kept, never shown: the card line was removed 10-22 (operator); the exports keep "incl. open P&L" -->
                     <!-- 🎨 (DECISION_LOG 345) realized-equity sparkline from the calendar data already loaded; hidden under 2 points -->
+                    <!-- 🎨 (DECISION_LOG 386) return % vs a dashed zero line · hollow dot = now incl. open · high / low inside the chart · hover tooltip -->
                     <div id="portfolio-spark-wrap">
-                        <svg id="portfolio-spark" viewBox="0 0 300 40" preserveAspectRatio="none" role="img" aria-label="Portfolio value" style="display:none"></svg>
+                        <div id="portfolio-spark-box">
+                            <svg id="portfolio-spark" viewBox="0 0 300 40" preserveAspectRatio="none" role="img" aria-label="Portfolio return" style="display:none"></svg>
+                            <span id="portfolio-spark-hi" aria-hidden="true"></span><span id="portfolio-spark-lo" aria-hidden="true"></span>
+                            <div id="portfolio-spark-tip" role="status" style="display:none"></div>
+                        </div>
                         <p id="portfolio-spark-empty" class="text-xs text-gray-500">not enough history yet</p>
                         <div class="flex items-center flex-wrap"><div id="portfolio-spark-periods" role="group" aria-label="Sparkline period"><button type="button" data-period="7D" aria-pressed="true" onclick="if(window.scalparsSparkPeriod)window.scalparsSparkPeriod('7D')">7D</button><button type="button" data-period="30D" aria-pressed="false" onclick="if(window.scalparsSparkPeriod)window.scalparsSparkPeriod('30D')">30D</button><button type="button" data-period="ALL" aria-pressed="false" onclick="if(window.scalparsSparkPeriod)window.scalparsSparkPeriod('ALL')">ALL</button></div><span id="portfolio-spark-meta">last 7 days · realized</span></div>
                     </div>
@@ -9971,6 +9981,7 @@
                 lines.push(`Portfolio now: ${window._lastTotalPortfolio != null ? '$' + Math.round(window._lastTotalPortfolio) : '-'}${window._lastOpenPnl != null ? ` (incl. open P&L ${window._lastOpenPnl < 0 ? '-' : '+'}$${Math.abs(window._lastOpenPnl).toFixed(2)})` : ''}  |  Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}`);
                 lines.push(`Era marks: ${(_ep.marks || []).join(' · ') || '-'}`);
             }
+            try { const _sr = window.scalparsSparkReturns ? window.scalparsSparkReturns() : null; if (_sr) lines.push(_sr); } catch (e) {}   // 🎨 (386) sparkline return % — same as the card
 
             if (perf.sleeve_performance && perf.sleeve_performance.length > 0) {
                 lines.push(`\n${hr2}`);
@@ -11838,6 +11849,7 @@
                     lines.push(`Portfolio now: ${window._lastTotalPortfolio != null ? '$' + Math.round(window._lastTotalPortfolio) : '-'}${window._lastOpenPnl != null ? ` (incl. open P&L ${window._lastOpenPnl < 0 ? '-' : '+'}$${Math.abs(window._lastOpenPnl).toFixed(2)})` : ''}  |  Projected by ${_ep.label}: $${Math.round(_ep.proj)}  |  d vs 3d ago: ${_f(_ep.d3)}  |  d vs 7d ago: ${_f(_ep.d7)}`);
                     lines.push(`Era marks: ${(_ep.marks || []).join(' · ') || '-'}`);
                 }
+                try { const _sr = window.scalparsSparkReturns ? window.scalparsSparkReturns() : null; if (_sr) lines.push(_sr); } catch (e) {}   // 🎨 (386) sparkline return % — same as the card
 
                 if (perf.sleeve_performance && perf.sleeve_performance.length > 0) {
                     lines.push(`\n${hr2}`);
@@ -24634,78 +24646,267 @@
             };
             paintThemeBtn();
 
-            // ── Total Portfolio Value sparkline: 7D · 30D · ALL (daily points — the only history is per day) ──
+            // ── Total Portfolio Value sparkline (DECISION_LOG 386): RETURN % with a dashed zero line — 7D hourly, 30D / ALL daily ──
+            // Return compounds each step's realized P&L on the equity at that step's start, with deposits / withdrawals / paper top-ups
+            // stripped (the calendar's `flows`), so a top-up never reads as profit or as a jump. A hollow end dot = now incl. open P&L.
             const PERIOD_KEY = 'scalpars-spark-period';
             const PERIODS = { '7D': 7, '30D': 30, 'ALL': null };
-            const LABELS = { '7D': 'last 7 days · realized', '30D': 'last 30 days · realized', 'ALL': 'since history start · realized' };
+            const LABELS = { '7D': 'last 7 days', '30D': 'last 30 days', 'ALL': 'since history start' };
+            const MIN_SPAN = 4;   // the y-range never zooms tighter than 4 pp (±2 %) — a quiet week must look quiet
+            const HOUR = 3600e3;
             let period = '7D';
             try { const s = localStorage.getItem(PERIOD_KEY); if (s && Object.prototype.hasOwnProperty.call(PERIODS, s)) period = s; } catch (e) {}
             let lastData = null;
             const cache = {};   // period → series, rebuilt when the calendar data object changes (one poll cycle)
+            let shown = null;   // the series on screen (hover reads it)
 
             function isoLocal(d) {
                 return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
             }
-            // Realized-equity close of each local day, back-walked from the calendar's portfolio_now (same ruler as the calendar).
-            function buildSeries(cal, p) {
-                if (!cal || !cal.days || cal.portfolio_now == null || !isFinite(Number(cal.portfolio_now))) return [];
-                const keys = Object.keys(cal.days).sort();
-                if (!keys.length) return [];
+            function dayStart(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+            // steps [{t0, t1, pnl, trades}] oldest first: hourly for 7D (the calendar's UTC-hour buckets), local days otherwise
+            function buildSteps(cal, p) {
                 const now = new Date();
-                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const keys = Object.keys(cal.days || {}).sort();
+                if (!keys.length) return [];
                 const first = new Date(keys[0] + 'T00:00:00');
-                const histStart = new Date(first.getFullYear(), first.getMonth(), first.getDate() - 1);   // close of the day before the first trade
+                const histStart = new Date(first.getFullYear(), first.getMonth(), first.getDate() - 1);
+                const steps = [];
+                if (p === '7D' && Array.isArray(cal.hours)) {
+                    const byH = {}; cal.hours.forEach(h => { byH[h.t] = h; });
+                    const end = Math.floor(now.getTime() / HOUR) * HOUR;
+                    let start = end - 7 * 24 * HOUR;
+                    if (start < histStart.getTime()) start = Math.floor(histStart.getTime() / HOUR) * HOUR;
+                    for (let t = start; t <= end; t += HOUR) {
+                        const h = byH[t] || {};
+                        steps.push({ t0: t, t1: Math.min(t + HOUR, now.getTime()), pnl: Number(h.pnl) || 0, trades: Number(h.trades) || 0, hourly: true });
+                    }
+                    return steps;
+                }
+                const today = dayStart(now);
                 const n = PERIODS[p];
                 let start = n == null ? histStart : new Date(today.getFullYear(), today.getMonth(), today.getDate() - n);
                 if (start < histStart) start = histStart;
-                let after = 0;   // P&L of days after the running date
-                const pnlOf = k => Number((cal.days[k] || {}).pnl) || 0;
-                const pts = [];
-                for (let d = new Date(today); d >= start; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1)) {
-                    const k = isoLocal(d);
-                    pts.push({ date: k, v: Number(cal.portfolio_now) - after });
-                    after += pnlOf(k);
-                    if (pts.length > 4000) break;
+                const floorDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 4000);   // cap from the OLD end: today stays the anchor
+                if (start < floorDay) start = floorDay;
+                for (let d = new Date(start); d <= today; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+                    const e = cal.days[isoLocal(d)] || {};
+                    const nx = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+                    const dr = Number(e.day_return_pct);   // the server's Modified-Dietz day return (flows weighted by the time they were present)
+                    steps.push({ t0: d.getTime(), t1: Math.min(nx.getTime(), now.getTime()), pnl: Number(e.pnl) || 0, trades: Number(e.trades) || 0, hourly: false,
+                                 dr: (e.day_return_pct != null && isFinite(dr)) ? dr : null });
                 }
-                return pts.reverse();
+                return steps;
+            }
+            // hour start ms → growth factor of that hour (realized P&L on the equity at its start, flows stripped), for the hours the
+            // calendar carries (last 8 days): the daily views use it for every day it fully covers, so a top-up mid-day is priced
+            // exactly as on 7D (losses before it on the small account, wins after it on the big one)
+            function hourFactors(cal) {
+                if (!Array.isArray(cal.hours) || cal.portfolio_now == null) return null;
+                const now = Date.now(), end = Math.floor(now / HOUR) * HOUR, start = end - 8 * 24 * HOUR;
+                const byH = {}; cal.hours.forEach(h => { byH[h.t] = Number(h.pnl) || 0; });
+                const flows = Array.isArray(cal.flows) ? cal.flows : [];
+                const fl = t => flows.filter(f => f.t >= t && f.t < t + HOUR).reduce((a, f) => a + (Number(f.amount) || 0), 0);
+                const out = { from: start, f: {} };
+                let close = Number(cal.portfolio_now);
+                for (let t = end; t >= start; t -= HOUR) {
+                    const pnl = byH[t] || 0, flow = fl(t), open = close - pnl - flow, base = open + flow;
+                    out.f[t] = base > 0 ? 1 + pnl / base : 1;
+                    close = open;
+                }
+                return out;
+            }
+            // → [{t, eq, r, pnl, trades, flow}]: point 0 = the window start (r 0); point i = the close of step i
+            function buildSeries(cal, p) {
+                if (!cal || !cal.days || cal.portfolio_now == null || !isFinite(Number(cal.portfolio_now))) return [];
+                const steps = buildSteps(cal, p);
+                if (steps.length < 1) return [];
+                const flows = Array.isArray(cal.flows) ? cal.flows.filter(f => isFinite(Number(f.t)) && isFinite(Number(f.amount))) : [];
+                steps.forEach(s => { s.flow = flows.filter(f => f.t >= s.t0 && f.t < s.t1).reduce((a, f) => a + Number(f.amount), 0); });
+                // equity at each step close, back-walked from now (realized): close_i = close_{i+1} − pnl_{i+1} − flow_{i+1}
+                const close = new Array(steps.length);
+                close[steps.length - 1] = Number(cal.portfolio_now);
+                for (let i = steps.length - 2; i >= 0; i--) close[i] = close[i + 1] - steps[i + 1].pnl - steps[i + 1].flow;
+                const open0 = close[0] - steps[0].pnl - steps[0].flow;
+                const pts = [{ t: steps[0].t0, eq: open0, r: 0, pnl: 0, trades: 0, flow: 0, start: true }];
+                const HF = steps[0].hourly ? null : hourFactors(cal);
+                const dayByHours = s => {   // a local day fully inside the hourly window → product of its hours (local days start on the hour)
+                    if (!HF || s.t0 < HF.from) return null;
+                    let f = 1;
+                    for (let t = s.t0; t < s.t1; t += HOUR) { const k = Math.floor(t / HOUR) * HOUR; f *= (HF.f[k] != null ? HF.f[k] : 1); }
+                    return f;
+                };
+                let g = 1;
+                for (let i = 0; i < steps.length; i++) {
+                    const base = (i ? close[i - 1] : open0) + steps[i].flow;   // a flow joins the base of its step (an hour on 7D)
+                    const fh = dayByHours(steps[i]);
+                    if (fh != null) g *= fh;                                     // last 8 days: hourly-exact
+                    else if (steps[i].dr != null) g *= 1 + steps[i].dr / 100;   // older days: the calendar's own Modified-Dietz day %
+                    else if (base > 0) g *= 1 + steps[i].pnl / base;
+                    pts.push({ t: steps[i].t1, t0: steps[i].t0, eq: close[i], r: (g - 1) * 100, pnl: steps[i].pnl, trades: steps[i].trades, flow: steps[i].flow, hourly: steps[i].hourly });
+                }
+                const tot = Number(cal.total_now), real = Number(cal.portfolio_now);
+                pts.nowR = (isFinite(tot) && real > 0 && Math.abs(tot - real) >= 0.005) ? ((g * (1 + (tot - real) / real)) - 1) * 100 : null;
+                pts.nowEq = isFinite(tot) ? tot : null;
+                pts.pnlSum = steps.reduce((a, s) => a + s.pnl, 0);
+                return pts;
             }
             function fmt(v) { return (v < 0 ? '−$' : '$') + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+            function pct(v) { const r = Math.round(v * 100) / 100; return (r > 0 ? '+' : r < 0 ? '−' : '') + Math.abs(r).toFixed(2) + ' %'; }
+            function geom(svg) {
+                const h = svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.height ? svg.viewBox.baseVal.height : 40;
+                return { w: 300, h: h, pad: 4 };
+            }
             function render() {
                 try {
                     const svg = document.getElementById('portfolio-spark');
                     const empty = document.getElementById('portfolio-spark-empty');
                     const meta = document.getElementById('portfolio-spark-meta');
+                    const hi = document.getElementById('portfolio-spark-hi'), lo = document.getElementById('portfolio-spark-lo');
                     if (!svg || !empty) return;
                     document.querySelectorAll('#portfolio-spark-periods button').forEach(b => b.setAttribute('aria-pressed', b.dataset.period === period ? 'true' : 'false'));
                     if (!cache[period]) cache[period] = buildSeries(lastData, period);
                     const data = cache[period];
+                    hideTip();
                     if (!data || data.length < 2) {   // guard: fewer than 2 points → no chart, keep the buttons
-                        svg.style.display = 'none'; svg.innerHTML = '';
+                        svg.style.display = 'none'; svg.innerHTML = ''; shown = null;
                         empty.style.display = '';
                         if (meta) meta.textContent = '';
+                        if (hi) hi.style.display = 'none'; if (lo) lo.style.display = 'none';
                         return;
                     }
-                    const vals = data.map(p => p.v);
-                    const w = 300, h = 40, pad = 4, min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1;
-                    const x = i => pad + i * (w - 2 * pad) / (vals.length - 1), y = v => h - pad - (v - min) / span * (h - 2 * pad);
+                    shown = data;
+                    const vals = data.map(p => p.r);
+                    const all = data.nowR != null ? vals.concat([data.nowR]) : vals;
+                    let mn = Math.min(0, ...all), mx = Math.max(0, ...all);
+                    if (mx - mn < MIN_SPAN) { const mid = (mx + mn) / 2; mn = mid - MIN_SPAN / 2; mx = mid + MIN_SPAN / 2; }
+                    const G = geom(svg), w = G.w, h = G.h, pad = G.pad;
+                    const xEnd = data.nowR != null ? w - pad - 6 : w - pad;   // room for the hollow "now" dot
+                    const x = i => pad + i * (xEnd - pad) / (vals.length - 1), y = v => h - pad - (v - mn) / (mx - mn) * (h - 2 * pad);
+                    const zyn = y(0), zy = zyn.toFixed(1);
                     const line = vals.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ');
-                    const fill = line + ' L' + x(vals.length - 1).toFixed(1) + ' ' + (h - pad) + ' L' + x(0).toFixed(1) + ' ' + (h - pad) + ' Z';
-                    const chg = vals[vals.length - 1] - vals[0];
-                    const col = chg >= 0 ? 'var(--pos)' : 'var(--neg)';
-                    // colours via style= (var() inside presentation attributes paints black on older Safari/iOS); the end dot is a
-                    // zero-length round-capped non-scaling stroke, so the stretched viewBox cannot turn it into an ellipse
+                    const area = line + ' L' + x(vals.length - 1).toFixed(1) + ' ' + zy + ' L' + x(0).toFixed(1) + ' ' + zy + ' Z';
+                    // green above zero / red below: one shape, clipped at the zero line (colours via style= — older Safari paints var() in attributes black)
                     const ex = x(vals.length - 1).toFixed(1), ey = y(vals[vals.length - 1]).toFixed(1);
-                    svg.innerHTML = '<path d="' + fill + '" style="fill:' + col + ';fill-opacity:.14;stroke:none"/>'
-                        + '<path d="' + line + '" style="fill:none;stroke:' + col + ';stroke-width:2;stroke-linejoin:round" vector-effect="non-scaling-stroke"/>'
-                        + '<path d="M' + ex + ' ' + ey + ' L' + ex + ' ' + ey + '" style="fill:none;stroke:' + col + ';stroke-width:6;stroke-linecap:round" vector-effect="non-scaling-stroke"/>';
-                    svg.setAttribute('aria-label', 'Realized portfolio value, ' + LABELS[period] + ': ' + fmt(vals[0]) + ' to ' + fmt(vals[vals.length - 1]));
+                    const endCol = vals[vals.length - 1] >= 0 ? 'var(--pos)' : 'var(--neg)';
+                    let s = '<defs><clipPath id="psk-up"><rect x="0" y="0" width="' + w + '" height="' + zy + '"/></clipPath>'
+                        + '<clipPath id="psk-dn"><rect x="0" y="' + zy + '" width="' + w + '" height="' + (h - zyn).toFixed(1) + '"/></clipPath></defs>';
+                    [['psk-up', 'var(--pos)'], ['psk-dn', 'var(--neg)']].forEach(([c, col]) => {
+                        s += '<g clip-path="url(#' + c + ')"><path d="' + area + '" style="fill:' + col + ';fill-opacity:.14;stroke:none"/>'
+                            + '<path d="' + line + '" style="fill:none;stroke:' + col + ';stroke-width:2;stroke-linejoin:round" vector-effect="non-scaling-stroke"/></g>';
+                    });
+                    s += '<path d="M' + pad + ' ' + zy + ' L' + (w - pad) + ' ' + zy + '" style="fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3;opacity:.7" vector-effect="non-scaling-stroke"/>';
+                    data.forEach((p, i) => {   // deposit / withdrawal / paper top-up tick
+                        if (p.flow && Math.abs(p.flow) >= 0.005) {
+                            const fx = x(i).toFixed(1);
+                            s += '<path d="M' + fx + ' ' + pad + ' L' + fx + ' ' + (h - pad) + '" style="fill:none;stroke:var(--accent);stroke-width:1;stroke-dasharray:2 2" vector-effect="non-scaling-stroke"><title>'
+                                + (p.flow > 0 ? 'Deposit / top-up +' : 'Withdrawal ') + fmt(Math.abs(p.flow)) + ' (not counted as return)</title></path>';
+                        }
+                    });
+                    s += '<path d="M' + ex + ' ' + ey + ' L' + ex + ' ' + ey + '" style="fill:none;stroke:' + endCol + ';stroke-width:6;stroke-linecap:round" vector-effect="non-scaling-stroke"/>';
+                    if (data.nowR != null) {   // hollow dot = now incl. open P&L (= the headline value)
+                        const nx = (w - pad - 2).toFixed(1), ny = y(data.nowR).toFixed(1), nc = data.nowR >= 0 ? 'var(--pos)' : 'var(--neg)';
+                        s += '<path d="M' + ex + ' ' + ey + ' L' + nx + ' ' + ny + '" style="fill:none;stroke:' + nc + ';stroke-width:1;stroke-dasharray:2 2" vector-effect="non-scaling-stroke"/>'
+                            + '<path d="M' + nx + ' ' + ny + ' L' + nx + ' ' + ny + '" style="fill:none;stroke:' + nc + ';stroke-width:7;stroke-linecap:round" vector-effect="non-scaling-stroke"/>'
+                            + '<path d="M' + nx + ' ' + ny + ' L' + nx + ' ' + ny + '" style="fill:none;stroke:var(--surface);stroke-width:3.5;stroke-linecap:round" vector-effect="non-scaling-stroke"/>';
+                    }
+                    s += '<path id="portfolio-spark-guide" d="" style="fill:none;stroke:var(--muted);stroke-width:1;display:none" vector-effect="non-scaling-stroke"/>';
+                    svg.innerHTML = s;
+                    const last = vals[vals.length - 1];
+                    svg.setAttribute('aria-label', 'Realized return, ' + LABELS[period] + ': ' + pct(last) + ' (' + fmt(data.pnlSum) + ')'
+                        + (data.nowR != null ? '; now incl. open ' + pct(data.nowR) : ''));
                     svg.style.display = ''; empty.style.display = 'none';
+                    // high / low pinned beside their own point ("+9.69 % —" / "— −35.89 %"), label on the side with room
+                    const pin = (el, i, v) => {
+                        if (!el) return;
+                        const H = svg.clientHeight || h, xp = x(i) / w, yp = Math.max(5, Math.min(H - 5, y(v) / h * H));
+                        const right = xp < 0.5;
+                        el.textContent = right ? '— ' + pct(v) : pct(v) + ' —';
+                        el.style.left = (xp * 100).toFixed(2) + '%';
+                        el.style.top = yp.toFixed(1) + 'px';
+                        el.style.transform = right ? 'translate(2px, -50%)' : 'translate(calc(-100% - 2px), -50%)';
+                        el.style.display = 'block';
+                    };
+                    let iMax = 0, iMin = 0;
+                    vals.forEach((v, i) => { if (v > vals[iMax]) iMax = i; if (v < vals[iMin]) iMin = i; });
+                    if (vals[iMax] > vals[iMin]) { pin(hi, iMax, vals[iMax]); pin(lo, iMin, vals[iMin]); }
+                    else { if (hi) hi.style.display = 'none'; if (lo) lo.style.display = 'none'; }
                     if (meta) {
-                        meta.textContent = LABELS[period] + ' · ' + (chg >= 0 ? '+' : '') + fmt(chg);
-                        meta.title = 'Realized equity at each day close (closed trades only, deposits/withdrawals not drawn), back-walked from today the same way as the Daily P&L Calendar; follows Paper/Live and the All/Bot/Manual view.';
+                        // ONE short line beside the buttons (operator: the card must still fit the first phone screen) — the period is the
+                        // pressed button; the long wording lives in the title / aria-label / tooltip
+                        const usd0 = v => (v < 0 ? '−$' : '$') + Math.round(Math.abs(v)).toLocaleString();
+                        meta.textContent = pct(last) + ' · ' + usd0(data.pnlSum) + (data.nowR != null ? ' · now ' + pct(data.nowR) : '');
+                        meta.title = LABELS[period] + ' · realized ' + pct(last) + ' (' + fmt(data.pnlSum) + ')' + (data.nowR != null ? ' · now incl. open ' + pct(data.nowR) : '') + '. '
+                            + 'Realized return: each ' + (period === '7D' ? 'hour' : 'day') + '\'s closed-trade P&L compounded on the equity at its start; '
+                            + 'deposits, withdrawals and paper top-ups are taken out (dashed tick), so they never count as return. The hollow dot is now incl. open trades '
+                            + '(the headline value). Follows Paper/Live and the All/Bot/Manual view.';
                     }
                 } catch (e) { /* never throw into the dashboard */ }
             }
+            // ── hover / touch tooltip ──
+            function hideTip() {
+                const t = document.getElementById('portfolio-spark-tip'); if (t) t.style.display = 'none';
+                const g = document.getElementById('portfolio-spark-guide'); if (g) g.style.display = 'none';
+            }
+            function showTip(ev) {
+                try {
+                    const svg = document.getElementById('portfolio-spark'), tip = document.getElementById('portfolio-spark-tip');
+                    if (!svg || !tip || !shown || shown.length < 2 || svg.style.display === 'none') return;
+                    const rc = svg.getBoundingClientRect(); if (!rc.width) return;
+                    const G = geom(svg), xEnd = shown.nowR != null ? G.w - G.pad - 6 : G.w - G.pad;
+                    const vx = (ev.clientX - rc.left) / rc.width * G.w;
+                    const i = Math.max(0, Math.min(shown.length - 1, Math.round((vx - G.pad) / (xEnd - G.pad) * (shown.length - 1))));
+                    const p = shown[i];
+                    const d = new Date(p.t0 != null ? p.t0 : p.t);
+                    const when = p.start ? 'window start' : (p.hourly
+                        ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
+                        : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+                    let txt = when + ' · ' + pct(p.r) + ' · ' + fmt(p.eq);
+                    if (!p.start) txt += ' · ' + (p.trades ? (p.pnl >= 0 ? '+' : '') + fmt(p.pnl) + ' (' + p.trades + ' trade' + (p.trades === 1 ? '' : 's') + ')' : 'no closes');
+                    if (p.flow && Math.abs(p.flow) >= 0.005) txt += ' · ' + (p.flow > 0 ? 'top-up +' : 'withdrawal ') + fmt(Math.abs(p.flow));
+                    if (i === shown.length - 1 && shown.nowR != null) txt += ' · now incl. open ' + pct(shown.nowR) + ' · ' + fmt(shown.nowEq);
+                    tip.textContent = txt;
+                    tip.style.display = 'block';
+                    const px = (G.pad + i * (xEnd - G.pad) / (shown.length - 1)) / G.w * rc.width;
+                    const wrap = tip.parentElement.getBoundingClientRect();
+                    const left = Math.max(0, Math.min(rc.left - wrap.left + px - tip.offsetWidth / 2, wrap.width - tip.offsetWidth));
+                    tip.style.left = left.toFixed(0) + 'px';
+                    const g = document.getElementById('portfolio-spark-guide');
+                    if (g) { const gx = (G.pad + i * (xEnd - G.pad) / (shown.length - 1)).toFixed(1); g.setAttribute('d', 'M' + gx + ' 0 L' + gx + ' ' + G.h); g.style.display = ''; }
+                } catch (e) {}
+            }
+            (function bindTip() {
+                const svg = document.getElementById('portfolio-spark');
+                if (!svg) return;
+                svg.addEventListener('pointermove', showTip);
+                svg.addEventListener('pointerdown', showTip);
+                svg.addEventListener('pointerleave', hideTip);
+                document.addEventListener('pointerdown', e => { if (e.target !== svg && !svg.contains(e.target)) hideTip(); });
+            })();
+            // the SVG height follows the CSS (40 px phone · 56 px wider screens): keep the viewBox in step so nothing is squashed
+            function syncBox() {
+                try {
+                    const svg = document.getElementById('portfolio-spark');
+                    if (!svg) return;
+                    const want = window.matchMedia && window.matchMedia('(min-width: 768px)').matches ? 56 : 40;
+                    if (svg.viewBox.baseVal.height !== want) { svg.setAttribute('viewBox', '0 0 300 ' + want); render(); }
+                } catch (e) {}
+            }
+            window.addEventListener('resize', syncBox);
+            // 🎨 (386) the card's return % for both text exports (D12): every period from the same series the chart draws
+            window.scalparsSparkReturns = function () {
+                try {
+                    const d = (typeof pnlCalData !== 'undefined') ? pnlCalData : lastData;
+                    if (!d) return null;
+                    const parts = []; let nowR = null;
+                    ['7D', '30D', 'ALL'].forEach(k => {
+                        const ser = buildSeries(d, k);
+                        if (ser && ser.length >= 2) { parts.push(k + ' ' + pct(ser[ser.length - 1].r) + ' (' + fmt(ser.pnlSum) + ')'); if (k === '7D') nowR = ser.nowR; }
+                    });
+                    if (!parts.length) return null;
+                    return 'Portfolio return (realized, deposits / top-ups stripped): ' + parts.join(' · ') + (nowR != null ? ' · now incl. open (7D) ' + pct(nowR) : '');
+                } catch (e) { return null; }
+            };
             window.scalparsSparkPeriod = function (p) {
                 try {
                     if (!Object.prototype.hasOwnProperty.call(PERIODS, p)) return;
@@ -24721,6 +24922,7 @@
                     if (d !== lastData) { lastData = d; for (const k in cache) delete cache[k]; render(); }
                 } catch (e) {}
             }
+            syncBox();
             render();
             setInterval(poll, 2000);
             setTimeout(poll, 300);

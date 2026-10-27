@@ -9591,3 +9591,34 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   block (from the B25 start 10-23 18:30 UTC) with an in-sample read of registration ∪ gate cohort beside the gate read — informational,
   never persisted, never the decision. At the read the operator sees both.
 - Tests: test_floor_is_the_study_cutoff_once_deployed, test_registration_block_is_informational_and_never_persisted.
+
+## (386) 2026-10-27 — 🎨 Total Portfolio Value sparkline = RETURN % (operator: "Any idea to improve the look of this chart? it still makes sense?" → "build all five … except number 2"; display + read-only API fields, no trading / config change)
+
+- **Why:** the DL 345 sparkline drew realized equity back-walked from today WITHOUT flows, so the 10-26 13:50 UTC paper top-up
+  (2,900 → 10,000) was projected into every earlier day (a week ago showed ≈ $10k, the account held ≈ $3k); its min→max autoscale made
+  any week a cliff; its end dot (realized) never matched the headline (incl. open).
+- **Now:** ① realized RETURN % compounded per step on the equity at the step's start, deposits / withdrawals / paper top-ups stripped,
+  dashed zero line, green above / red below (one shape clipped at zero), dashed accent tick at each flow (title: not counted as return)
+  · ③ hollow end dot = now incl. open P&L (the headline value) · ④ hover / tap tooltip (time · return · equity · step P&L + trades ·
+  top-up · now incl. open) · ⑤ the y-range never zooms tighter than ±2 % (4 pp), high / low pinned beside their own point with a short
+  leader, Binance style (operator idea; label flips to the inner side past mid-chart, small backing) · ⑥ 7D = one point per UTC hour; 30D / ALL daily, but every day inside the last 8 days is the product of its hours
+  (hourly-exact around a mid-day top-up — the operator's batch: 7D = 30D = ALL −29.68 % on the export's fills) and older days use the
+  calendar's Modified-Dietz day %. Height: phone 40 px (unchanged — operator: the card must fit the first phone screen), ≥ 768 px 56 px
+  (viewBox follows); the line under the chart is ONE short no-wrap row ("−29.68 % · −$879 · now −29.97 %", ellipsis if ever too
+  long; the long wording in its title / tooltip) — verified at the operator's 368 px phone width: row 24 px, card height unchanged.
+  Item ② (a Batch button) declined by the operator.
+- **API (/api/pnl-calendar, read-only additions):** `hours` (realized P&L + trades per UTC hour, last 8 days, origin-filtered),
+  `flows` ([{t, amount}] — live external transfers as before + NEW paper top-ups), `total_now`. **Paper top-ups are now flows**: every
+  ConfigChangeLog edit of `paper_balance` / `paper_bnb_initial_usd` after the first paper order (earlier = starting capital) joins
+  flows_by_day with its time-of-day weight → the paper calendar's day %, month walk and EOM revisions no longer count a top-up as
+  capital that was always there (e.g. a day before the top-up is judged on the small account). **Deep-review fixes:** ① a day WITH a
+  flow now gets its EXACT time-weighted return (split at each flow time with the day's close times — a top-up after the day's
+  losses no longer dilutes them; 30D / ALL stay equal to 7D after the day leaves the 8-day hourly window); ② the EOM month rate
+  (eom_now / revisions dcr) chains the flow-stripped day growth instead of balance / month-start balance — identical on a month
+  with no flows, but a deposit / top-up no longer reads as compound return (the review reproduced 4.72 %/day from the 10-26 top-up;
+  this also fixes the same pre-existing flaw for LIVE deposits). Known gap: a paper_balance change that bypasses the Settings save
+  (a pushed trading_config.json, /api/config/pairs-limit) writes no ConfigChangeLog row → invisible as a flow (as before).
+- **D12:** both text exports carry `Portfolio return (realized, deposits / top-ups stripped): 7D · 30D · ALL · now incl. open` from
+  the same series (window.scalparsSparkReturns). Tests: tests/test_spark_paper_flows.py (top-up = flow with its time, pre-first-order
+  edit ignored, day 0 judged on 2,900, BNB seed edit + garbage value, hourly buckets, total_now). Verified in the browser on a harness
+  built from scalpars_orders_paper_2026-10-27_01-06-29.csv (phone 375 px: card height unchanged; desktop 56 px; tooltip; 30D).

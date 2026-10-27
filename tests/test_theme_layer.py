@@ -90,7 +90,10 @@ def test_sparkline_ids_periods_and_guard():
     js = re.search(r'<script id="scalpars-theme-js">(.*?)</script>', src, re.S).group(1)
     assert "const PERIOD_KEY = 'scalpars-spark-period'" in js
     assert "data.length < 2" in js                # guard: fewer than 2 points → hide the chart, keep the buttons
-    assert "'last 7 days · realized'" in js and "fill=\"' + col" not in js and "<circle" not in js   # style= colours, no stretched dot
+    assert "'7D': 'last 7 days'" in js and "fill=\"' + col" not in js and "<circle" not in js   # style= colours, no stretched dot
+    # 🎨 DECISION_LOG 386: return % vs a dashed zero line, a ±2 % minimum range, the hollow now-dot, tooltip, both text exports
+    assert "const MIN_SPAN = 4" in js and "stroke-dasharray:3 3" in js and "nowR" in js and "portfolio-spark-tip" in card
+    assert src.count("window.scalparsSparkReturns ? window.scalparsSparkReturns()") == 2
     assert "fetch(" not in js                     # reads the calendar data already loaded — no request of its own
     assert "pnlCalData" in js
     assert js.count("try {") >= 4                 # never throws into the dashboard

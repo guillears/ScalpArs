@@ -2278,12 +2278,22 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
     offset = timedelta(minutes=tz_offset_min)
     days: Dict[str, dict] = {}
     pcts_by_day: Dict[str, list] = {}
+    # 🎨 (DECISION_LOG 386) realized P&L per UTC hour for the last 8 days — the Total Portfolio Value sparkline's 7D view (hourly points)
+    hours: Dict[int, dict] = {}
+    trades_by_day: Dict[str, list] = {}   # (386) local close time + pnl — the exact time-weighted day return on a day with a flow
+    _hours_from = (datetime.utcnow() - timedelta(days=8)).replace(minute=0, second=0, microsecond=0)   # the client's window starts on this hour
     _origin_out_pnl = 0.0   # (323) realized P&L of the side the view leaves out — removed from the equity below
     for closed_at, pnl, pnl_pct, _es, _conf in rows:
         if not origin_keep(_es, _conf, _origin):
             _origin_out_pnl += (pnl or 0.0)
             continue
+        if closed_at >= _hours_from:
+            _hk = int(closed_at.replace(minute=0, second=0, microsecond=0, tzinfo=timezone.utc).timestamp() * 1000)
+            _he = hours.setdefault(_hk, {"pnl": 0.0, "trades": 0})
+            _he["pnl"] += (pnl or 0.0)
+            _he["trades"] += 1
         d = (closed_at + offset).date().isoformat()
+        trades_by_day.setdefault(d, []).append((closed_at + offset, pnl or 0.0))
         e = days.setdefault(d, {"pnl": 0.0, "trades": 0, "wins": 0})
         e["pnl"] += (pnl or 0.0)
         e["trades"] += 1
@@ -2314,6 +2324,37 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
     # actually present (deposit at 18:00 -> 25% weight). The equity walks strip net flows so
     # day-start balances stay true. Paper: no flows -> identical to the legacy math.
     flows_by_day = {}
+    flow_local_by_day = {}   # (386) local day → [(local time, amount)] — splits a flow day into exact time-weighted segments
+    flow_events = []   # (386) [(ts_ms, amount)] — the sparkline's return % strips them and marks them on the line
+    if days and trading_engine.is_paper_mode:
+        # 🎨 (DECISION_LOG 386) PAPER top-ups: a mid-run Settings edit of paper_balance / paper_bnb_initial_usd moves the paper equity
+        # (the seed) without any order — the 10-26 13:50 UTC 2,900 → 10,000 top-up back-walked $7,100 of fake capital into every
+        # earlier day. ConfigChangeLog keeps each edit with its time; edits before the first paper order are the starting capital.
+        try:
+            _p_first = (await db.execute(select(func.min(Order.opened_at)).where(Order.is_paper == True))).scalar()
+            if _p_first is not None:
+                _cl = (await db.execute(
+                    select(ConfigChangeLog.changed_at, ConfigChangeLog.old_value, ConfigChangeLog.new_value)
+                    .where(and_(ConfigChangeLog.field.in_(("paper_balance", "paper_bnb_initial_usd")),
+                                ConfigChangeLog.changed_at > _p_first))
+                    .order_by(ConfigChangeLog.changed_at))).all()
+                for _ct, _ov, _nv in _cl:
+                    try:
+                        _famt = float(_nv) - float(_ov)
+                    except (TypeError, ValueError):
+                        continue
+                    if abs(_famt) < 0.005:
+                        continue
+                    _fts = int(_ct.replace(tzinfo=timezone.utc).timestamp() * 1000)
+                    flow_events.append((_fts, _famt))
+                    _flocal = _ct + offset
+                    flow_local_by_day.setdefault(_flocal.date().isoformat(), []).append((_flocal, _famt))
+                    _day_end = datetime.combine(_flocal.date(), datetime.max.time())
+                    _frac = max(0.0, min(1.0, (_day_end - _flocal).total_seconds() / 86400.0))
+                    flows_by_day.setdefault(_flocal.date().isoformat(), []).append((_famt, _frac))
+        except Exception as _pf_err:
+            logger.warning(f"[PNL_CAL] paper top-up read failed ({str(_pf_err)[:60]}) - paper day percentages stay flow-blind")
+            flows_by_day = {}; flow_events = []; flow_local_by_day = {}
     if days and not trading_engine.is_paper_mode:
         try:
             _fd_start = int((datetime.fromisoformat(sorted(days.keys())[0]) - offset - timedelta(days=1)).replace(tzinfo=timezone.utc).timestamp() * 1000)
@@ -2325,14 +2366,17 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
             if _era_row_c is not None:
                 _fd_start = max(_fd_start, int(_era_row_c.replace(tzinfo=timezone.utc).timestamp() * 1000))
             for _fts, _famt in await _external_flow_rows(db, _fd_start):
+                flow_events.append((int(_fts), float(_famt)))
                 _flocal = datetime.utcfromtimestamp(_fts / 1000) + offset
+                flow_local_by_day.setdefault(_flocal.date().isoformat(), []).append((_flocal, float(_famt)))
                 _fday = _flocal.date().isoformat()
                 _day_end = datetime.combine(_flocal.date(), datetime.max.time())
                 _frac = max(0.0, min(1.0, (_day_end - _flocal).total_seconds() / 86400.0))
                 flows_by_day.setdefault(_fday, []).append((_famt, _frac))
         except Exception as _fl_err:
             logger.warning(f"[PNL_CAL] transfer fetch failed ({str(_fl_err)[:60]}) - day percentages fall back to flow-blind")
-            flows_by_day = {}
+            flows_by_day = {}; flow_events = []; flow_local_by_day = {}
+    day_growth = {}   # (386) unrounded day growth factor (flows stripped) — the EOM month rate chains these
     if portfolio_now is not None:
         running = portfolio_now
         _all_iso = sorted(set(list(days.keys()) + list(flows_by_day.keys())), reverse=True)
@@ -2344,7 +2388,24 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
             start = running - _pnl - _dnet
             if e:
                 _base = start + sum(a_ * f_ for a_, f_ in _dflows)
-                e["day_return_pct"] = round(_pnl / _base * 100.0, 2) if _base > 0 else None
+                _g = (1.0 + _pnl / _base) if _base > 0 else None
+                _fl_t = flow_local_by_day.get(d)
+                if _fl_t and _g is not None:
+                    # 🎨 (386) a day WITH a flow: exact time-weighted return — split at each flow time (a top-up after the day's losses
+                    # must not dilute them; Modified-Dietz only approximates that). Same-instant ties: the trade first.
+                    _ev = sorted([(t_, 1, a_) for t_, a_ in _fl_t] + [(t_, 0, p_) for t_, p_ in trades_by_day.get(d, [])],
+                                 key=lambda z: (z[0], z[1]))
+                    _eq = start; _sb = start; _g = 1.0
+                    for _t, _kind, _a in _ev:
+                        if _kind == 1:
+                            if _sb > 0:
+                                _g *= _eq / _sb
+                            _eq += _a; _sb = _eq
+                        else:
+                            _eq += _a
+                    _g = (_g * _eq / _sb) if _sb > 0 else None
+                day_growth[d] = _g if (_g is not None and _g > 0) else None   # a wiped-out day never flips the month chain's sign
+                e["day_return_pct"] = round((_g - 1.0) * 100.0, 2) if _g is not None else None
             running = start
 
     for e in days.values():
@@ -2376,7 +2437,7 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
             _iso = _d.isoformat()
             _mk = _iso[:7]
             if _mk != _m_key:
-                _m_key = _mk; _m_active = 0; _m_total = 0.0
+                _m_key = _mk; _m_active = 0; _m_total = 0.0; _m_g = 1.0
                 _m_bal0 = _cur
                 _m_first = _d.replace(day=1)
                 _m_ld = _mr(_d.year, _d.month)[1]
@@ -2385,12 +2446,17 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
             _cur += sum(a_ for a_, _ in flows_by_day.get(_iso, []))  # Aug-27: flows move balances, not P&L
             if _e:
                 _cur += _e["pnl"]; _m_total += _e["pnl"]
+                if day_growth.get(_iso) is not None:
+                    _m_g *= day_growth[_iso]   # (386) flow-stripped growth: a deposit / top-up is never "return"
                 if _e.get("trades", 0) > 0:
                     _m_active += 1
             # same >=4-active-days noise floor as the MTD row, applied per month
             if _m_active >= 4:
                 _elapsed = (_d - _m_first).days + 1
-                _dcr = ((_cur / _m_bal0) ** (1.0 / _elapsed) - 1.0) if (_m_bal0 > 0 and _cur > 0) else 0.0
+                # (386) the month's rate from the chained flow-stripped day growth — identical to (_cur / _m_bal0) on a month with
+                # no flows; with a deposit / paper top-up the old ratio read the new capital as compound return (deep review: a
+                # 2,900 → 10,000 top-up showed 4.72 %/day)
+                _dcr = (_m_g ** (1.0 / _elapsed) - 1.0) if _m_g > 0 else 0.0
                 _left = _m_ld - _d.day
                 revisions_by_month[_mk].append({"date": _iso, "proj": round(_cur * ((1.0 + _dcr) ** _left), 2),
                                                 "bal": round(_cur, 2), "dcr": round(_dcr * 100, 4), "days_left": _left,
@@ -2412,6 +2478,11 @@ async def get_pnl_calendar(tz_offset_min: int = 0, origin: str = None, db: Async
     return {"days": days, "portfolio_now": round(portfolio_now, 2) if portfolio_now is not None else None,
             "portfolio_real": round(portfolio_real, 2) if portfolio_real is not None else None,
             "origin": _origin, "origin_out_pnl": round(_origin_out_pnl, 2),
+            # 🎨 (386) sparkline inputs: hourly realized P&L (UTC hour start ms, last 8 days), external flows / paper top-ups, and the
+            # equity incl. open P&L (= portfolio_now on a filtered origin view) for the hollow "now" dot
+            "hours": [{"t": k, "pnl": round(v["pnl"], 2), "trades": v["trades"]} for k, v in sorted(hours.items())],
+            "flows": [{"t": t, "amount": round(a, 2)} for t, a in sorted(flow_events)],
+            "total_now": round(float(total_equity_now), 2) if total_equity_now is not None else None,
             "revisions": revisions, "avg7": avg7, "ship_marks": _SHIP_MARKS,
             # Aug-22 (operator caught MTD→EOM $2,790/$3,462 vs $4k+ on every other row): the other period rows
             # compound from LIVE TOTAL equity (incl. open unrealized); this cell compounded the month's rate from

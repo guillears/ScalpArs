@@ -45,7 +45,7 @@ def test_observe_only_and_parity():
     _z = "'1h', 260), 8.0), 20, 200)"   # Oct-3: the read is bounded (the bot open lane is held there)
     assert eng.index(_z) > eng.index("binance_order_id = None") and eng.index(_z) < eng.index("        order = Order(\n            binance_order_id=binance_order_id,")
     assert "entry_btc_ema50_100_gap_pct=_g.get('_current_btc_ema50_100_gap_pct')" in eng and "put('entry_btc_1d_ret_pct'" in eng
-    assert eng.count("getattr(config.trading_config, 'entry_zone_stamps_enabled', True)") == 3   # scan block + open_position + (Oct-8, 250) the FRENZY bearish gate's freshness
+    assert eng.count("getattr(config.trading_config, 'entry_zone_stamps_enabled', True)") == 4   # scan block + open_position + (Oct-8, 250) the FRENZY bearish gate's freshness + (389) the post-fill stamp backfill
     # observe-only (EXCEPT, since Oct-8 / DECISION_LOG 250, the BTC daily return feeding the FRENZY bearish-day gate — tests/test_frenzy_bearish_day.py):
     # no line that touches a zone reading is a gate / sizing / signal statement
     for c in ("_current_btc_ema50_100_gap_pct", "_current_eth_5m_ret1_pct", "_current_btc_1d_ret_pct", "_z_pair_gap", "entry_pair_1h_ema20_200_gap_pct"):

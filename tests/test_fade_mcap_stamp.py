@@ -287,7 +287,7 @@ def test_wiring_post_fill_never_on_the_order_path():
     assert "fetch_pair_now" not in body and "request_pair" not in body                            # no network on the open path itself
     assert "_mcap_usd, _cmc_rank = _mcs.get(pair)" in body                                        # the cache stamp stays first
     # observe-only: no line touching the backfill feeds a gate / size / signal
-    k = ENG.index("    def _spike_mcap_schedule("); k2 = ENG.index("    async def _rtp_arm(", k)
+    k = ENG.index("    def _spike_mcap_schedule("); k2 = ENG.index("    # 🧾 (DECISION_LOG 389) every bot fill records every entry stamp", k)   # 389's own block: tests/test_entry_stamp_backfill.py
     for ln in ENG[k:k2].splitlines():
         if not ln.strip().startswith("#"):
             assert not any(x in ln for x in ("_record_filter_block", "investment", "leverage", "quantity", "entry_price")), ln

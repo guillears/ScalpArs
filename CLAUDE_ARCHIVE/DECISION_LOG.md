@@ -9658,3 +9658,36 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   ≈ 0.6 MB every 5 min); the Mac tab had been open ≈ 12.5 h (page loads 03:00 → 15:32 UTC) → renderer out of memory over time.
   Charts are destroyed before redraw, live-terminal arrays are capped; no leak pinned yet → needs a heap measurement on the
   operator's logged-in tab.
+
+## (389) 2026-10-27 — 🧾 every bot fill records every shared entry stamp (post-fill backfill) + 🩳📋 OBS-FB1 frozen FLATBASE observe line (operator: "Record the missing indicators on FLATBASE trades" → "make sure all current active sleeves are collecting ALL data!" · "record this in scout … or in watchlist"; observe-only, no trading / config change)
+- **Audit (fills ≥ 10-16, B22–B25 + current export):** columns the bot can record (≥ 80 % filled on some sleeve) vs each sleeve —
+  FLATBASE_SHORT ≈ 60 shared columns NULL (every pair indicator, BTC RSI / ADX / slopes / ATR, breadth volume, signed gaps, rank, age);
+  FRENZY LONG / LITE / RETRY / WILLY / HT: funding, pair rank / age, signed gaps, gap_expand_marginal, pair 1d −DI, BTC 4h gap (WILLY / HT
+  also di_spread / adx_delta / vol_trend — left NULL on purpose, see below); SPIKE_FADE: BTC EMA20 + 1h slope, global volume ratio, funding, signed gaps;
+  MOMENTUM / FAN / SURGE: pair 1d −DI + BTC 4h gap (fade-only), BTC price (+ FAN / SURGE funding, age, signed gaps). Cause: each sleeve
+  path passes its own subset to open_position.
+- **Fix:** open_position → `_stamp_backfill_schedule(order)` after the commit + refresh, never awaited (MANUAL + replays skipped: MANUAL has
+  its own full pass). Market half snapshotted at the fill (market_entry_stamps + monitor_entry_stamps + zone stamps + BTC price + BTC 4h
+  gap; breadth / global volume ratio only once a scan has published — restart defaults 0 % / 1.0 are not readings; scan age, and rank
+  except FRENZY_* / FLATBASE). Background task, 2–5 s after the fill (staggered), no extra reads while binance_service.regime_limited():
+  5m klines (301) cut at the fill's bar → pair_entry_stamps on the scan's own 100-bar window at the FILL price; quality score from the
+  values the row will hold (sleeve rsi / adx / gap / slope first); funding ≤ 1 h old; pair 1d −DI (cached 60 min); FRENZY trend stamps
+  (di_spread / adx_delta / vol_trend on 300 closed bars) for FLATBASE only → ONE guarded UPDATE (id + pair + opened_at ± 1 s), COALESCE
+  per column. Never written (STAMP_BACKFILL_NEVER): entry_atr_pct (stop widening + runner floor), entry_btc_rsi_closed (recovery-hold
+  ruler), entry_btc_regime (exit-time regime), entry_br_door (Bull-Run trail), entry_btc_eff72 / r72 (open-path long-heat journal, kept
+  as seen), booking columns. Also not backfilled: entry_macro_trend (main.py buckets NULL as NEUTRAL — unchanged), FRENZY_* trend stamps
+  (they size DL 197 on their own signal bar; a later value could read as the strong condition on a fill not strong-sized). Cost ≈ 5 public
+  weight / fill. ⚠ Dashboard side effect: pooled tables that skip NULL (quality score, RSI / ADX / ATR / DI buckets, funding, pair age,
+  Entry Conditions W/L) include FRENZY / FLATBASE / fade fills from the deploy on — composition break vs earlier batches. Backfilled pair
+  stamps are read seconds after the decision bar. No new columns (CSV carries them, D12); no config field (D11 n/a). Tests:
+  tests/test_entry_stamp_backfill.py (+ test_fade_mcap_stamp span, test_zone_stamps count 3 → 4).
+- **OBS-FB1 (FLATBASE, frozen observe line, NO verdict):** from the 12-fill W/L read (35 stamped columns, the rest NULL — the gap above):
+  with the TP −1 / stop 5 shadow only BMT (run 70.4 %) and ORDER (run 195.8 %, off-peak −34.8 %) lose; zone run ≤ 67.82 ∧ off-peak > −27.21
+  → 10 fills · TP1_SL5 100 % · +0.94 % (+$76) vs live −1.27 %. Chance-level: shuffled-label null gives as clean a split 49 % of the time
+  (and the live-exit label's best cut, 3 losers / 0 winners on ATR / vol24 / turnover / mcap / VWAP distance, 100 %); the 21-month study
+  (1,084 fills, today's stack, funding) refutes: zone + TP1/SL5 −0.06 %/fill (−0.10 / −0.04 / −0.02 by half) vs live +1.42. Scout section
+  OBS-FB1 splits every priced fill (zone / out / unscored × live and TP1_SL5); fresh = opened ≥ 2026-10-27 19:30 UTC is the evidence, the
+  12 registration fills shown apart; read at the FLATBASE deep review with the expectancy bar; thresholds never re-fit.
+- **FLATBASE gate 10-27:** REVIEW (4 stops in a row on 10-24 · Σ −42.98 ≤ −30 · first 10 avg < 0); 12 · 50 % · −3.58 %. B25 exit table
+  (11 fills): live −4.62 % / −$629 · TP1_SL5 −0.15 % / +$1 · TP1 −0.52 · TP1_SL10 −1.06 · TP3 −1.97 · TP5_SL5 −1.43 · TP5_SL10 −1.89 ·
+  TP8_SL10 −3.53 · TP5 −4.16. Recommendation: keep it on in paper, deep review at the batch review (operator call pending).

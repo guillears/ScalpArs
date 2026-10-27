@@ -4202,6 +4202,156 @@ class TradingEngine:
             logger.warning(f"[SPIKE_MCAP] {pair} #{order_id}: post-fill mcap stamp failed (observe-only, trade unaffected): {str(e)[:120]}")
             return False
 
+    # 🧾 (DECISION_LOG 389) every bot fill records every entry stamp — operator 10-27 ("make sure all current active sleeves are collecting ALL
+    # data"): the sleeve paths each passed their own subset (FLATBASE_SHORT ≈ 60 of the shared columns empty; FRENZY no funding / rank / signed
+    # gaps; SPIKE_FADE no BTC slopes; the fade-laggard pair pair only on fades). After the fill + commit, ONE background pass fills the shared
+    # columns that are still NULL — never overwrites a sleeve's own value (COALESCE in the UPDATE), never delays or resizes the trade.
+    STAMP_BACKFILL_FRENZY = ("FLATBASE_SHORT",)   # the FRENZY trend stamps — FLATBASE only: FRENZY_* compute them at their own signal bar (a later
+    # value could read as the DL 197 strong-size condition on a fill that was not strong-sized)
+    STAMP_BACKFILL_NO_RANK = ("FRENZY_", "FLATBASE_SHORT")   # these pass entry_pair_rank=None on purpose (NULL = outside the momentum universe)
+    # never backfilled: the entry columns an OPEN position's exit / hold logic reads (entry_atr_pct = stop widening + runner floor ·
+    # entry_btc_rsi_closed = the recovery-hold ruler · entry_btc_regime = exit-time regime · entry_br_door = the Bull-Run trail) — a value
+    # appearing mid-trade would change how a live position exits — plus the open-path long-heat journal readings (eff72 / r72, kept as
+    # the open path saw them) and the booking columns
+    STAMP_BACKFILL_NEVER = frozenset({'entry_atr_pct', 'entry_btc_rsi_closed', 'entry_btc_regime', 'entry_br_door', 'entry_btc_eff72',
+                                      'entry_btc_r72_pct', 'entry_price', 'entry_fee', 'entry_strategy', 'entry_order_type'})
+
+    def _stamp_backfill_schedule(self, order) -> bool:
+        """OBSERVE-ONLY post-fill backfill of the shared entry stamps. The MARKET half is snapshotted NOW (the fill's moment, module globals —
+        the readings the sleeve saw); the PAIR half (5m indicators at the fill price, funding, daily −DI, scan rank / age) is read in the
+        background task. Skipped in replays and for MANUAL (its own full stamp pass). Never raises. → True when a task was scheduled."""
+        try:
+            import os as _os
+            if _os.environ.get("SCALPARS_REPLAY") == "1" or getattr(order, 'id', None) is None:
+                return False
+            es = str(getattr(order, 'entry_strategy', None) or "")
+            if es == "MANUAL":
+                return False
+            g = globals(); th = config.trading_config.thresholds; now_s = _leash_time.time()
+            snap = {}
+            try:
+                snap.update(market_entry_stamps(g, order.direction, None, bool(getattr(th, 'btc_global_filter_enabled', False)), th))
+                snap.pop('entry_macro_trend', None)   # not backfilled: the dashboard already buckets a sleeve's NULL as NEUTRAL — kept as it was
+            except Exception:
+                pass
+            if (now_s - (getattr(self, '_scan_pair_meta_at', 0.0) or 0.0)) > 1800:   # no scan published yet (restart): breadth 0 % /
+                for k in ('entry_bull_pct', 'entry_bear_pct', 'entry_global_volume_ratio'):   # volume 1.0 are defaults, not readings
+                    snap.pop(k, None)
+            try:
+                snap.update(monitor_entry_stamps(_bullrun_monitor, _bearrun_monitor, now_s))
+            except Exception:
+                pass
+            if bool(getattr(config.trading_config, 'entry_zone_stamps_enabled', True)) and (now_s - (g.get('_zone_stamps_at') or 0)) <= 1800:
+                for k in ('_current_btc_ema50_100_gap_pct', '_current_eth_5m_ret1_pct', '_current_btc_1d_ret_pct'):
+                    snap['entry' + k[len('_current'):]] = g.get(k)
+            snap['entry_btc_price'] = g.get('_current_btc_price')
+            if (now_s - (g.get('_btc_4h_gap_at') or 0)) <= 1800:
+                snap['entry_btc_4h_ema50_200_gap_pct'] = g.get('_current_btc_4h_ema50_200_gap_pct')
+            meta = getattr(self, '_scan_pair_meta', {}) or {}
+            if order.pair in meta and (now_s - (getattr(self, '_scan_pair_meta_at', 0.0) or 0.0)) <= 1800:
+                _v24, _rk, _age = meta[order.pair]
+                snap.update(entry_pair_volume_24h_usd=_v24, entry_pair_age_days=_age)
+                if not es.startswith(self.STAMP_BACKFILL_NO_RANK):
+                    snap['entry_pair_rank'] = _rk
+            t = asyncio.get_running_loop().create_task(self._stamp_backfill(
+                order.id, order.pair, getattr(order, 'opened_at', None), order.direction, es, getattr(order, 'entry_price', None), snap))
+            _ts = self.__dict__.setdefault('_stamp_backfill_tasks', set())
+            _ts.add(t); t.add_done_callback(_ts.discard)
+            return True
+        except Exception:
+            return False
+
+    async def _stamp_backfill(self, order_id, pair, opened_at, direction, es, entry_price, snap) -> int:
+        """The background half: 5m klines up to the fill → the momentum scan's own pair stamps (pair_entry_stamps at the FILL price, quality
+        score) + the FRENZY trend stamps on closed bars (FLATBASE fills) + funding + the pair's daily −DI, then ONE guarded UPDATE that sets
+        each column only where it is still NULL, and only while the row is still this fill (id + pair + opened_at ±1 s). Every read is bounded;
+        any failure leaves that stamp NULL. → number of candidate columns sent (0 on failure). Never raises."""
+        try:
+            th = config.trading_config.thresholds
+            st = {k: v for k, v in (snap or {}).items() if v is not None}
+            symbol = pair.replace('USDT', '/USDT:USDT')
+
+            await asyncio.sleep(2.0 + (order_id % 7) * 0.5)   # off the fill's own moment (staggered): never queues in front of its next trading reads
+            try:
+                _limited = bool(binance_service.regime_limited())   # rate-limited / banned → the market snapshot only, no extra public reads
+            except Exception:
+                _limited = True
+
+            async def _get(coro, t):
+                try:
+                    return await asyncio.wait_for(coro, t)
+                except Exception:
+                    return None
+            if _limited:
+                k5 = fr = ndi = None
+            else:
+                k5, fr, ndi = await asyncio.gather(_get(binance_service.get_ohlcv(symbol, '5m', 301), 8.0),   # 300 closed bars for the FRENZY stamps
+                                                   _get(binance_service.fetch_funding_rate(symbol, max_age_s=3600), 6.0),   # hourly-funding pumps: ≤ 1 h old
+                                                   _get(_fade_pair_1d_ndi(symbol), 6.0))
+            if isinstance(fr, (int, float)):
+                st['entry_funding_rate'] = round(fr, 6)
+            if ndi is not None:
+                st['entry_pair_1d_ndi'] = ndi
+            if k5 and opened_at is not None:   # the bars up to the fill — a fill in a bar's last seconds never reads the next bar
+                try:
+                    _fms = int((opened_at - datetime(1970, 1, 1)).total_seconds() * 1000) if opened_at.tzinfo is None else int(opened_at.timestamp() * 1000)
+                    k5 = [b for b in k5 if int(b[0]) <= _fms] or None
+                except Exception:
+                    k5 = None
+            if k5:
+                try:
+                    # the scan's own 100-bar window (momentum / MANUAL) — EMA50 / ADX warm-up matches theirs
+                    ind = calculate_indicators(k5[-100:], pair_volume_bars=getattr(th, 'pair_volume_lookback_bars', 20),
+                                               global_volume_bars=getattr(th, 'global_volume_lookback_bars', 48)) or {}
+                    if ind and entry_price and float(entry_price) > 0:
+                        ind = dict(ind, price=float(entry_price))   # price-relative stamps describe the fill, as the scan's describe its decision
+                    if ind:
+                        st.update({k: v for k, v in pair_entry_stamps(ind, direction).items() if v is not None})
+                        g = globals()
+                        try:   # the score from the values the ROW will hold (a sleeve's own rsi / adx / gap / slope win the COALESCE)
+                            async with AsyncSessionLocal() as _rs:
+                                _cur = (await _rs.execute(select(Order.entry_rsi, Order.entry_adx, Order.entry_gap, Order.entry_ema20_slope)
+                                                          .where(Order.id == order_id))).first()
+                        except Exception:
+                            _cur = None
+                        _q = [(_cur[i] if (_cur and _cur[i] is not None) else v) for i, v in
+                              enumerate((st.get('entry_rsi'), st.get('entry_adx'), st.get('entry_gap'), st.get('entry_ema20_slope')))]
+                        _qs = _calculate_quality_score(direction, _q[0], _q[1], _q[2], st.get('entry_bull_pct', g.get('_market_bull_pct')),
+                                                       st.get('entry_bear_pct', g.get('_market_bear_pct')), g.get('_current_btc_adx'), _q[3])
+                        if _qs is not None:
+                            st['entry_quality_score'] = _qs
+                except Exception as _e:
+                    logger.debug(f"[STAMP_BACKFILL] {pair} #{order_id}: pair indicators failed ({_e})")
+                if es.startswith(self.STAMP_BACKFILL_FRENZY):
+                    try:
+                        from services.frenzy import frenzy_di_spread, frenzy_adx_delta, frenzy_vol_trend
+                        _cl = [b for b in k5 if int(b[0]) + 300_000 <= int(_leash_time.time() * 1000)]   # CLOSED bars only, as the flag reads them
+                        for col, fn, rows in (('entry_frenzy_di_spread', frenzy_di_spread, _cl[-300:]), ('entry_frenzy_adx_delta', frenzy_adx_delta, _cl[-300:]),
+                                              ('entry_frenzy_vol_trend', frenzy_vol_trend, _cl)):
+                            v = fn(rows)
+                            if v is not None:
+                                st[col] = v
+                    except Exception as _e:
+                        logger.debug(f"[STAMP_BACKFILL] {pair} #{order_id}: FRENZY stamps failed ({_e})")
+            cols = Order.__table__.columns
+            vals = {k: func.coalesce(getattr(Order, k), v) for k, v in st.items()
+                    if k in cols and k.startswith('entry_') and k not in self.STAMP_BACKFILL_NEVER}
+            if not vals:
+                return 0
+            conds = [Order.id == order_id, Order.pair == pair]
+            if opened_at is not None:
+                conds.append(Order.opened_at.between(opened_at - timedelta(seconds=1), opened_at + timedelta(seconds=1)))
+            async with AsyncSessionLocal() as _ss:
+                res = await locked_execute_commit(_ss, update(Order).where(and_(*conds)).values(**vals))
+            if not bool(getattr(res, 'rowcount', 0)):
+                logger.info(f"[STAMP_BACKFILL] {pair} {es} #{order_id}: row moved — no write")
+                return 0
+            logger.info(f"[STAMP_BACKFILL] {pair} {es} #{order_id}: {len(vals)} entry stamps offered (NULL columns filled, sleeve values kept)")
+            return len(vals)
+        except Exception as e:
+            logger.warning(f"[STAMP_BACKFILL] {pair} #{order_id}: post-fill stamp pass failed (observe-only, trade unaffected): {str(e)[:120]}")
+            return 0
+
     async def _rtp_arm(self, db, order):
         """OPEN path (bot fills, after the commit): the resting TP for an enabled sleeve. Under _close_lock with the row re-read (a close
         that raced the open never gets a limit after it). Live: stale close-side reduce-only limits on the symbol are cancelled first (a
@@ -14477,6 +14627,7 @@ class TradingEngine:
         # 🏷 (DECISION_LOG 311) OBSERVE-ONLY: a SPIKE_* fill with no cached market cap → post-fill background stamp (never awaited here)
         if spike_fade or spike_chase_probe or spike_bounce:
             self._spike_mcap_schedule(order)
+        self._stamp_backfill_schedule(order)   # 🧾 (DECISION_LOG 389) OBSERVE-ONLY: the shared entry stamps a sleeve path left NULL (background)
         # 🎯 (DECISION_LOG 296) RESTING TAKE-PROFIT: AFTER the fill, the backstop and the COMMIT (an unbooked fill never carries one — the
         # 292 ③ flatten has nothing to cancel), only for an enabled sleeve (FRENZY_WILLY / FRENZY_LITE); live places the reduce-only
         # post-only limit, paper records what live would hold. Failure → [RESTING_TP_FAILED] + counter, the trade runs on its software TP.

@@ -72,7 +72,8 @@ DEC_PATTERNS = (os.path.expanduser("~/Downloads/scalpars_decisions_*.csv"), os.p
 CACHE = os.path.join(_R, "reports", "backtest_cache", "scout_flatbase_short")
 SLIP_DEF = 0.03                                              # % per taker side when the real fills carry too few slippage stamps
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "pnl", "pnl_percentage", "close_reason", "is_paper",
-              "funding_fee_usd", "entry_price", "quantity", "entry_slippage_pct", "entry_mcap_usd", "cell_multiplier")
+              "funding_fee_usd", "entry_price", "quantity", "entry_slippage_pct", "entry_mcap_usd", "cell_multiplier",
+              "entry_frenzy_run_pct", "entry_flatbase_off_peak_pct")
 FUND_URL = "https://fapi.binance.com/fapi/v1/fundingRate?symbol={s}&startTime={a}&endTime={b}&limit=1000"
 FB_COLS = ("e", "pair", "price", "fb_spike_at", "fb_status", "fb_entry_bar_at", "fb_turnover", "fb_mcap_usd", "fb_vol24_usd", "fb_flat14_pct")
 LEDGER_COLS = FB_COLS + ("t", "fb_reason", "fb_first_seen_at")
@@ -984,6 +985,53 @@ def tp_gate_read(k, smp):
     return v, txt
 
 
+# 🩳📋 (DECISION_LOG 389) OBS-FB1 "small pump, shallow off-peak" — FROZEN observe line, registered 2026-10-27 from the 12 real fills
+# (operator: "record this … for next batch review of this sleeve"). On those 12, the TP −1 / stop 5 shadow lost only on BMT (run 70.4 %)
+# and ORDER (run 195.8 %, off-peak −34.8 %); every winner had run ≤ 67.8 % and off-peak > −27.2 %. In-sample + chance-level (shuffled-label
+# null: as clean a split in 49 % of random labelings), and the 21-month study refutes it (zone + TP1/SL5 −0.06 %/fill vs live +1.42) → NO
+# verdict here: the zone is split on every priced fill under the live exit AND the TP1_SL5 shadow; fresh fills (opened ≥ the pin) are the
+# evidence, the 12 registration fills are shown apart. Read at the FLATBASE deep review / the 30-fill main read with the expectancy bar.
+OBS_PK_RUN_MAX, OBS_PK_OFFPK_MIN = 67.82, -27.21                 # frozen: entry_frenzy_run_pct ≤ · entry_flatbase_off_peak_pct >
+OBS_PK_PIN = pd.Timestamp("2026-10-27T19:30:00")                 # the registration export (scalpars_orders_paper_2026-10-27_16-29-11, UTC)
+OBS_PK_SHADOW = "TP1_SL5"
+
+
+def obs_pk_zone(run_pct, off_peak_pct):
+    """zone / out / unscored for one fill (frozen thresholds). Pure."""
+    try:
+        rp, op = float(run_pct), float(off_peak_pct)
+    except (TypeError, ValueError):
+        return "unscored"
+    if rp != rp or op != op:
+        return "unscored"
+    return "zone" if (rp <= OBS_PK_RUN_MAX and op > OBS_PK_OFFPK_MIN) else "out"
+
+
+def obs_pk_lines(ok):
+    """OBS-FB1 lines from the priced exit-shadow fills [(row, walks)] — never raises."""
+    L = [f"🩳📋 OBS-FB1 (DECISION_LOG 389, frozen observe line, no verdict): zone = run ≤ {OBS_PK_RUN_MAX:g} % ∧ off-peak > {OBS_PK_OFFPK_MIN:g} % · "
+         f"live exit vs {OBS_PK_SHADOW} shadow · fresh = opened ≥ {OBS_PK_PIN:%Y-%m-%d %H:%M} UTC"]
+    try:
+        def blk(rows, label):
+            parts = []
+            for z in ("zone", "out", "unscored"):
+                g = [(r, w) for r, w in rows if obs_pk_zone(getattr(r, 'entry_frenzy_run_pct', None), getattr(r, 'entry_flatbase_off_peak_pct', None)) == z]
+                if not g:
+                    parts.append(f"{z} N 0")
+                    continue
+                lv = [w['LIVE']['net_pct'] for _, w in g]; sh = [w[OBS_PK_SHADOW]['net_pct'] for _, w in g]
+                parts.append(f"{z} N {len(g)} · live WR {sum(x > 0 for x in lv) / len(g):.0%} avg {sum(lv) / len(g):+.2f} · "
+                             f"{OBS_PK_SHADOW} WR {sum(x > 0 for x in sh) / len(g):.0%} avg {sum(sh) / len(g):+.2f}")
+            return f"  {label}: " + " | ".join(parts)
+        reg = [(r, w) for r, w in ok if r.o < OBS_PK_PIN]
+        fresh = [(r, w) for r, w in ok if r.o >= OBS_PK_PIN]
+        L.append(blk(fresh, f"FRESH (the evidence) {len(fresh)} fill(s)"))
+        L.append(blk(reg, f"registration (in-sample: opened before the pin — the rule was read from these) {len(reg)} fill(s)"))
+        return L
+    except Exception as e:
+        return L + [f"  unreadable ({str(e)[:80]})"]
+
+
 def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, state_path=TP_SH_STATE, final_path=TP_SH_FINAL):
     """🔒 (DECISION_LOG 367) the frozen exit-shadow reads → printed lines. Δ = shadow − the live re-walk (same path, same fees / slippage).
     Split lines on every priced fill. Frozen sample = the first 30 real fills on ≥ 10 UTC days of the FLATBASE cohort run() builds (DL 348
@@ -1033,6 +1081,7 @@ def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, s
             L.append("  per fill: " + " · ".join(f"{r.pair} {r.o:%m-%d %H:%M} booked {float(r.pct):+.2f} | live {w['LIVE']['net_pct']:+.2f} "
                                                  + " ".join(f"{k} {w[k]['net_pct']:+.2f}" for k in TP_SHADOWS) for r, w in ok[-20:]))
             L += [tp_split_line(k, ok) for k in TP_SHADOWS]
+            L += obs_pk_lines(ok)
         st = {}
         try:
             if state_path and os.path.exists(state_path):

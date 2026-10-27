@@ -9905,3 +9905,17 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Standard (NEXT_BATCH_REVIEW_PLAN "PER-SLEEVE STANDARD", batch_review_checklist METHOD row, CURRENT_STATE):** every sleeve at every
   review — ① W/L on every variable (this sweep + exhaustive 2D + OOS), ② before → after per batch (master per batch + current batch, with
   the daily compound return), ③ backtest cross-check only; a thin sleeve is written down "keep collecting — N", never skipped.
+
+## (399) 2026-10-27 — 📱 Phone: sideways scroll + desktop layout back on the phone — Top Pairs title row now wraps (operator screenshot: "why layout in phone changed and we have again lateral scrolling?"; UI only, no trading / config change)
+- **Cause (measured at 375 px):** the "Top Pairs by Volume" title row (title · Top 50 select · "← Only these pairs can open trades" ·
+  Auto-refresh · Refresh Now · 🖐) is one non-wrapping flex row 374 px wide inside a 327 px column → the document was 398 px on a 375 px
+  screen. iOS Safari then widens the LAYOUT viewport to the content, so the md: (≥ 768 px) rules fire — the four balance cards side by
+  side, the header on one line cut at the right ("Pau…") and sideways scrolling. The 🖐 button (DL 320) is what pushed the row past the
+  phone width; the viewport meta (width=device-width) is unchanged — iOS widened the layout viewport because content overflowed it.
+- **Fix (templates/index.html, phone media query only):** every section title row (`main section > .flex.justify-between` and its inner
+  flex groups) wraps with an 8 px row gap; inside the space-x-* groups the per-child left margin is replaced by an 8 px column gap (a
+  wrapped item starts flush). Matches 4 title rows (Top Pairs, Daily P&L Calendar, Portfolio Management, Trading Configuration). Desktop unchanged. Chart canvases capped
+  at 100 % width on phones (an undrawn canvas is 300 px wide — past a 320 px screen). Deep review (browser, before / after): 375 px 398 → 375,
+  320 px 398 → 320, 768 / 1280 identical. Noted, not changed: tablets 768–1113 px already scroll sideways from the header's status group
+  (pre-existing, separate fix). Re-measured at 375 px: document width 375 = viewport, 0 elements past the
+  edge outside a scroll container (with live-length header text: IP + "4d 05:11:13" + Pause), balance cards one column.

@@ -222,6 +222,13 @@
             :root div:has(> #origin-switch), :root div:has(> div > #origin-switch) { flex-wrap: wrap; row-gap: 8px; }
             :root #pnl-calendar-grid > div { min-width: 0; overflow: hidden; }
             :root #pnl-calendar-grid .text-xs { font-size: 10px; letter-spacing: -.02em; }
+            /* 10-27 (DL 399): every section title row wraps (the Top Pairs row — title · Top 50 · note · auto-refresh · Refresh · 🖐 — was
+               47 px wider than a 375 px phone; iOS then widens the layout viewport → the md: desktop grid + sideways scroll) */
+            :root main section > .flex.justify-between, :root main section > .flex.justify-between > .flex { flex-wrap: wrap; row-gap: 8px; }
+            /* (review) space-x-* puts a left margin on every child but the first — a wrapped item would start its line indented */
+            :root main section > .flex.justify-between > .flex[class*="space-x-"] { column-gap: 8px; }
+            :root main section > .flex.justify-between > .flex[class*="space-x-"] > * { margin-left: 0 !important; }
+            :root main canvas { max-width: 100%; }   /* (review) an undrawn chart canvas defaults to 300 px — past a 320 px phone's column */
         }
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }

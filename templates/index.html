@@ -8446,6 +8446,21 @@
                 _ooLast = _now;
                 _rfGuard('oo', loadOpenOrders);
             }, 1000);
+            // ⏱ (DL 388) the Open Orders duration ticks every second between loads — phones reload every 3 s, so it jumped 3 s at a
+            // time. Local text-only update: server seconds (with fraction) at render + time since render (no request, no table rebuild, no clock skew).
+            setInterval(() => {
+                if (document.hidden) return;
+                try {
+                    const _now = Date.now();
+                    document.querySelectorAll('#open-orders-table-body .oo-dur').forEach(el => {
+                        const t = Math.max(0, Math.floor(+el.dataset.s + (_now - +el.dataset.t) / 1000));
+                        if (!isFinite(t)) return;
+                        const p2 = n => String(n).padStart(2, '0');
+                        const txt = p2(Math.floor(t / 3600)) + ':' + p2(Math.floor(t % 3600 / 60)) + ':' + p2(t % 60);
+                        if (el.textContent !== txt) el.textContent = txt;
+                    });
+                } catch (e) {}
+            }, 250);   // sampled 4×/s so timer jitter never shows a second twice or skips one; the text changes once a second
             // 👆 Oct-7: the tab-switch load goes through the same in-flight guard + cadence stamp (no duplicate fetch).
             window._ooRefreshNow = () => { _ooLast = Date.now(); _rfGuard('oo', loadOpenOrders); };
 
@@ -19287,7 +19302,7 @@
                             })()}">${formatUSD(o.notional_value)}</td>
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
                             <td class="px-4 py-3 text-center">${(flagBadge || tpTierBadge) ? (flagBadge + tpTierBadge) : beBadge}</td>
-                            <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
+                            <td class="px-4 py-3 text-right font-mono">${Number.isFinite(+o.duration_seconds) && o.duration_seconds !== null ? `<span class="oo-dur" data-s="${(+o.duration_seconds).toFixed(3)}" data-t="${Date.now()}">${o.duration}</span>` : o.duration}</td>
                             <td class="px-4 py-3 text-right text-white font-medium">${o.peak_pnl >= 0 ? '+' : ''}${o.peak_pnl.toFixed(2)}%</td>
                             <td class="px-4 py-3 text-right text-white font-medium">${o.trough_pnl == null ? '—' : (o.trough_pnl >= 0 ? '+' : '') + o.trough_pnl.toFixed(2) + '%'}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.entry_price)}</td>

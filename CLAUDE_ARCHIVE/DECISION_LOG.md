@@ -9647,3 +9647,14 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Tests:** test_theme_layer pins the removal + centring (removed ids in INTENTIONALLY_REMOVED); test_external_close_fill: the two
   fill-price tests used a fixed 2026-10-20 open time that aged out of the 7-day Binance window (fill_trades_since_ms clamp) on
   10-27 → `_recent()` (now − 1 d); production code unchanged.
+
+## (388) 2026-10-27 — ⏱ Open Orders duration ticks every second on phones (operator: "in mobile … the timer does not move every seconds, it jumps every 3 seconds"; display only, no trading / config change)
+- **Cause:** touch devices poll the Open tab every 3 s by design (Oct-7: a 1 s tbody rebuild made taps lag); the duration is the
+  server string, so it only changed on a reload.
+- **Fix:** the cell carries `data-s` (server duration_seconds, fraction kept) + `data-t` (render time); a 250 ms ticker rewrites
+  only the span text (≤ 1 write / s, no request, no tbody rebuild → the Oct-7 tap fix is untouched). A row without a finite
+  duration_seconds keeps the plain server text. Runs on desktop too (fills the gap between 1 s polls; same value ± latency).
+- **Also looked at (no change):** desktop "Aw, Snap! Error code 5" — server logs clean (all 200, largest payload /api/performance
+  ≈ 0.6 MB every 5 min); the Mac tab had been open ≈ 12.5 h (page loads 03:00 → 15:32 UTC) → renderer out of memory over time.
+  Charts are destroyed before redraw, live-terminal arrays are capped; no leak pinned yet → needs a heap measurement on the
+  operator's logged-in tab.

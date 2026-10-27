@@ -783,11 +783,18 @@ def resize_lines(real, inv_now=None):
 # Tracked like the others. TP1_SL10 / TP1_SL5 (operator: "the SL should be narrower too"): same run
 # — stop 10 WR 90 % avg −0.07, stop 5 WR 82 % avg −0.19 (2026); a narrower stop cuts more +1 % winners than it saves.
 TP_SHADOWS = {"TP5": (5.0, 15.0), "TP3": (3.0, 15.0), "TP5_SL10": (5.0, 10.0), "TP5_SL5": (5.0, 5.0), "TP8_SL10": (8.0, 10.0),
-              "TP1": (1.0, 15.0), "TP1_SL10": (1.0, 10.0), "TP1_SL5": (1.0, 5.0)}
+              "TP1": (1.0, 15.0), "TP1_SL10": (1.0, 10.0), "TP1_SL5": (1.0, 5.0),
+              # 🎯 (DECISION_LOG 390, operator 2026-10-27) tighter stops under the small TP, registered AFTER the 12-fill read (in-sample):
+              # on those 12, TP −2 / stop 5 +0.18 · TP −1 / stop 4 +0.09 · −1 / 3 −0.49 · −1 / 2 −0.75 %/fill vs live −3.57
+              "TP1_SL4": (1.0, 4.0), "TP1_SL3": (1.0, 3.0), "TP1_SL2": (1.0, 2.0), "TP2_SL5": (2.0, 5.0)}
+TP_SH_LATE = ("TP1_SL4", "TP1_SL3", "TP1_SL2", "TP2_SL5")      # the DL 390 additions
+# Bonferroni per shadow: the DL 367 / 370 eight keep their frozen ×8 (pre-committed gates never move); the DL 390 four are judged at ×12
+# (the whole family — the stricter bar for the late additions)
+TP_SH_M = {k: (12 if k in TP_SH_LATE else 8) for k in TP_SHADOWS}   # literals: a later addition never moves either bar
 TP_SH_DL = 367
 TP_SH_PARITY_TOL, TP_SH_PARITY_MIN = 0.50, 0.90                # the live re-walk vs the booked pnl_percentage (+ 100 % on the live-stopped fills)
 TP_SH_N, TP_SH_DAYS, TP_SH_MIN_GAIN, TP_SH_SHARE = 30, 10, 0.10, 0.50
-TP_SH_BOOT_N, TP_SH_BOOT_SEED, TP_SH_ALPHA = 4000, 367, 0.05   # UTC-day-block bootstrap; one-sided α / len(TP_SHADOWS) (Bonferroni)
+TP_SH_BOOT_N, TP_SH_BOOT_SEED, TP_SH_ALPHA = 4000, 367, 0.05   # UTC-day-block bootstrap; one-sided α / TP_SH_M[k] (Bonferroni: ×8 the original eight, ×12 the DL 390 four)
 TP_SH_ENTRY_TOL_MS = 60_000                                   # a fill ≤ 60 s into its 5m bar starts the path AT that bar (like price_shadow)
 TP_SH_EPS = 0.005                                             # |Δ| ≤ this = unchanged in the split lines
 TP_SH_STATE = os.path.join(_R, "reports", ".flatbase_tp_shadow_gate.json")
@@ -915,7 +922,12 @@ def tp_backtest_note(k, path=TP_SH_CELLS):
         grid_sl = {c.split("|")[3] for c in d.cell}
         miss = ([f"TP −{tp:g}"] if f"tp{tp:g}" not in grid_tp else []) + ([f"stop {sl:g}"] if f"stop{sl:g}" not in grid_sl else [])
         if miss:
-            return tp1_backtest_note(tp, sl, ltp, lsl, h) or f"backtest: {' and '.join(miss)} never in the exit-study grid — no prior"
+            _n1 = tp1_backtest_note(tp, sl, ltp, lsl, h)
+            if _n1:
+                return _n1
+            if tp in (1.0, 2.0):   # the DL 370 run has TP −1 / −2 — only the stop is missing there
+                miss = [m_ for m_ in miss if not m_.startswith("TP")]
+            return f"backtest: {' and '.join(miss)} never in the exit-study grid — no prior"
         cell, live = d[d.cell == f"S4|tp{tp:g}|{h:g}h|stop{sl:g}"], d[d.cell == f"S4|tp{ltp:g}|{h:g}h|stop{lsl:g}"]
         if not len(cell) or not len(live):
             return "backtest: cell missing in the exit study"
@@ -944,7 +956,7 @@ def tp_boot(d, days, n=TP_SH_BOOT_N, seed=TP_SH_BOOT_SEED, m=None):
     """UTC-day-block bootstrap of the pooled avg Δ → (one-sided lower bound, upper bound) at α / m each side (Bonferroni over the m
     shadows); None (< 2 days)."""
     import numpy as np
-    m = len(TP_SHADOWS) if m is None else m
+    m = 8 if m is None else m   # the original eight's frozen ×8 (DL 390: the late four pass m=12 via TP_SH_M)
     g = pd.DataFrame(dict(p=np.asarray(d, float), d=[str(x) for x in days])).groupby("d").p.agg(["sum", "count"])
     if len(g) < 2:
         return None
@@ -962,8 +974,9 @@ def tp_gate_read(k, smp):
     d = [w[k]["net_pct"] - w["LIVE"]["net_pct"] for _, w in smp]
     days = [r.o.date() for r, _ in smp]
     avg = sum(d) / len(d)
-    ci = tp_boot(d, days)
-    lvl = 1.0 - TP_SH_ALPHA / len(TP_SHADOWS)
+    m = TP_SH_M.get(k, len(TP_SHADOWS))
+    ci = tp_boot(d, days, m=m)
+    lvl = 1.0 - TP_SH_ALPHA / m
     byday = {}
     for x, dd in zip(d, days):
         byday[dd] = byday.get(dd, 0.0) + x
@@ -974,13 +987,15 @@ def tp_gate_read(k, smp):
     fail = ([f"avg < +{TP_SH_MIN_GAIN:g}"] if avg < TP_SH_MIN_GAIN else []) + (["CI lower bound ≤ 0"] if ci is None or ci[0] <= 0 else []) \
         + ([f"top day ≥ {TP_SH_SHARE:.0%}"] if day_sh >= TP_SH_SHARE else []) + ([f"top fill ≥ {TP_SH_SHARE:.0%}"] if fill_sh >= TP_SH_SHARE else [])
     v = "KEEP" if fail else "CANDIDATE"
-    ci_t = (f"day-block bootstrap {TP_SH_BOOT_N} (seed {TP_SH_BOOT_SEED}) one-sided {lvl:.2%} LB {ci[0]:+.3f} (Bonferroni ×{len(TP_SHADOWS)}; "
+    ci_t = (f"day-block bootstrap {TP_SH_BOOT_N} (seed {TP_SH_BOOT_SEED}) one-sided {lvl:.2%} LB {ci[0]:+.3f} (Bonferroni ×{m}; "
             f"[{ci[0]:+.3f}, {ci[1]:+.3f}])" if ci else "bootstrap n/a (< 2 days)")
     txt = (f"first {len(smp)} real fills on {len(set(days))} UTC days (incl. the 10-24 motivating batch — operator override, in-sample): avg Δ ({k} − live −{ltp:g}/{lsl:g}) "
            f"{avg:+.3f} %/fill · {ci_t} · top day {day_sh:.0%} / top fill {fill_sh:.0%} of the gain → "
            + (f"CANDIDATE: operator decides TP −{tp:g} / stop {sl:g} · if adopted: revert to TP −{ltp:g} / stop {lsl:g} if the first 15 fills after the switch "
               f"average < the live-exit re-walk on the same fills" if v == "CANDIDATE" else f"keep −{ltp:g} / {lsl:g} ({'; '.join(fail)})")
-           + f" · in-sample haircut 30–50 % (levels chosen after the 10-24 batch, which is in the sample) → expect {avg * 0.5:+.3f}…{avg * 0.7:+.3f}"
+           + (f" · in-sample haircut 30–50 % (levels chosen after the 10-27 12-fill read — DL 390 — which is in the sample) → expect {avg * 0.5:+.3f}…{avg * 0.7:+.3f}"
+              if k in TP_SH_LATE else
+              f" · in-sample haircut 30–50 % (levels chosen after the 10-24 batch, which is in the sample) → expect {avg * 0.5:+.3f}…{avg * 0.7:+.3f}")
            + f" · {tp_backtest_note(k)}")
     return v, txt
 
@@ -1041,7 +1056,7 @@ def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, s
     read only when parity on the sample ≥ 90 % ∧ 100 % on its live-stopped fills; else KEEP. A sample fill still HOLD holds. Never raises."""
     import json as _j
     ltp, lsl = _tp_live()
-    L = [f"🎯 Exit shadows (DECISION_LOG {TP_SH_DL}, frozen, observe-only): "
+    L = [f"🎯 Exit shadows (DECISION_LOG {TP_SH_DL} / 370 / 390 — {', '.join(TP_SH_LATE)} added by DL 390, frozen, observe-only): "
          f"{' · '.join(f'{k} TP −{tp:g} / stop {sl:g}' for k, (tp, sl) in TP_SHADOWS.items())} vs the live TP −{ltp:g} / stop {lsl:g} on the "
          f"same path (72 h · fees · entry at the real fill, taker slip {slip:.3f} % on stop / time exits · funding left out)"]
     try:

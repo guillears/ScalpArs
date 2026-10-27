@@ -360,7 +360,10 @@ def test_exit_shadows_entry_bar_slippage_and_live_levels():
     import scout_flatbase_short as S
     from scout_long_stop4 import Budget
     assert S.TP_SHADOWS == {"TP5": (5.0, 15.0), "TP3": (3.0, 15.0), "TP5_SL10": (5.0, 10.0), "TP5_SL5": (5.0, 5.0), "TP8_SL10": (8.0, 10.0),
-                            "TP1": (1.0, 15.0), "TP1_SL10": (1.0, 10.0), "TP1_SL5": (1.0, 5.0)}
+                            "TP1": (1.0, 15.0), "TP1_SL10": (1.0, 10.0), "TP1_SL5": (1.0, 5.0),
+                            "TP1_SL4": (1.0, 4.0), "TP1_SL3": (1.0, 3.0), "TP1_SL2": (1.0, 2.0), "TP2_SL5": (2.0, 5.0)}   # + DL 390
+    assert all(S.TP_SH_M[k] == 8 for k in S.TP_SHADOWS if k not in S.TP_SH_LATE)      # the DL 367 / 370 eight keep their frozen ×8
+    assert all(S.TP_SH_M[k] == 12 for k in S.TP_SH_LATE)
     assert S._tp_live() == (S.flatbase_params(S._frozen_th())["tp"], S.flatbase_params(S._frozen_th())["stop"]) == (8.0, 15.0)
     b = int(pd.Timestamp("2026-11-01T10:00:00").value // 10**6)
     assert S.tp_path_start(b + 9_000) == (b, False) and S.tp_path_start(b + 60_000) == (b, False)      # ≤ 60 s: the bar at the boundary
@@ -401,6 +404,7 @@ def test_exit_shadows_candidate_freeze_split_and_verbatim(tmp_path):
     for k in S.TP_SHADOWS:
         assert f"FB_TP_{k}: CANDIDATE" in out
     assert "one-sided 99.38% LB" in out and "Bonferroni ×8" in out and "4000 (seed 367)" in out
+    assert "one-sided 99.58% LB" in out and "Bonferroni ×12" in out and "chosen after the 10-27 12-fill read — DL 390" in out   # the late four
     assert "in-sample haircut 30–50 %" in out and "if adopted: revert to TP −8 / stop 15 if the first 15 fills" in out
     assert "incl. the 10-24 motivating batch" in out
     # the backtest per-half Δ, nofund columns, where the cell exists; TP −3 / stop 5 never in the grid
@@ -507,3 +511,24 @@ def test_runs_in_tests_never_write_the_real_tp_state(SC, tmp_path):
                funding=lambda *a: 0.0, tp_klines=_tp_kl(f), tp_state_path=str(st), tp_final_path=str(tmp_path / "gf.json"))
     assert "FB_TP_TP5: CANDIDATE" in "\n".join(L) and st.exists()
     assert [mt(p) for p in reals] == before
+
+
+def test_late_shadows_judged_on_the_same_sample_after_the_eight_froze(tmp_path):
+    """DL 390: the original eight frozen in an earlier run (state file) keep their text verbatim; the four late additions are judged on
+    the same frozen sample and added — the file ends with 12 keys, nothing re-fit."""
+    import json
+    import scout_flatbase_short as S
+    kinds = ["dip" if (i // 10) % 2 == 0 else "win" for i in range(30)]
+    seed = {f"FB_TP_{k}": {"verdict": "KEEP", "text": f"frozen earlier {k}", "at": "2026-11-20T00:00:00+00:00"}
+            for k in S.TP_SHADOWS if k not in S.TP_SH_LATE}
+    (tmp_path / "tp.json").write_text(json.dumps(seed))
+    out = _tp_lines(S, kinds, tmp_path, "tp.json")
+    for k in S.TP_SHADOWS:
+        if k in S.TP_SH_LATE:
+            assert f"FB_TP_{k}: CANDIDATE" in out or f"FB_TP_{k}: KEEP" in out
+        else:
+            assert f"FB_TP_{k}: KEEP — frozen earlier {k} (frozen 2026-11-20T00:00 UTC)" in out
+    st = json.load(open(tmp_path / "tp.json"))
+    assert set(st) == {f"FB_TP_{k}" for k in S.TP_SHADOWS}
+    assert all(st[f"FB_TP_{k}"]["text"] == f"frozen earlier {k}" for k in S.TP_SHADOWS if k not in S.TP_SH_LATE)
+    assert all("Bonferroni ×12" in st[f"FB_TP_{k}"]["text"] for k in S.TP_SH_LATE)

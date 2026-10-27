@@ -9691,3 +9691,14 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **FLATBASE gate 10-27:** REVIEW (4 stops in a row on 10-24 · Σ −42.98 ≤ −30 · first 10 avg < 0); 12 · 50 % · −3.58 %. B25 exit table
   (11 fills): live −4.62 % / −$629 · TP1_SL5 −0.15 % / +$1 · TP1 −0.52 · TP1_SL10 −1.06 · TP3 −1.97 · TP5_SL5 −1.43 · TP5_SL10 −1.89 ·
   TP8_SL10 −3.53 · TP5 −4.16. Recommendation: keep it on in paper, deep review at the batch review (operator call pending).
+
+## (390) 2026-10-27 — 🎯 FLATBASE exit shadows: TP −1 with stops 4 / 3 / 2 and TP −2 / stop 5 added (operator: "what about +1% TP and other SL, like -2, -3 or -4%" → "yes add both"; observe-only, no trading / config change)
+- **12 real fills (B24 + B25, scout re-walk, funding out), %/fill:** live −8 / 15 −3.57 · TP2_SL5 +0.18 · TP1_SL4 +0.09 · TP1_SL5 −0.07 ·
+  TP2_SL3 −0.24 · TP3_SL5 −0.40 · TP1_SL3 −0.49 · TP3_SL3 −0.66 · TP1_SL2 −0.75. Below stop 4 the stop cuts winners (ARK / LIGHT ≈ 3 %
+  against first, T / DODOX ≈ 2 %); ORDER gapped through every stop ≤ 4 (−4.19). Best ≈ break-even.
+- **Scout (frozen):** TP_SHADOWS + TP1_SL4 · TP1_SL3 · TP1_SL2 · TP2_SL5 (TP_SH_LATE), same frozen sample (first 30 real fills on ≥ 10 UTC
+  days), same CANDIDATE bar. Bonferroni per shadow (TP_SH_M): the DL 367 / 370 eight keep their pre-committed ×8 (gates never move); the
+  four late additions are judged at ×12 (the whole family) and print their own in-sample note (levels chosen after the 10-27 read).
+  Backtest prior: TP2_SL5 from the DL 370 run; stops 2 / 3 / 4 never in any grid → "no prior".
+- **Deep review grid (NEXT_BATCH_REVIEW_PLAN ②f ⭐):** stops now 2–20 / none, explicitly 2 / 3 / 4 under TP 1–3, rebuilt on the 21-month
+  set at the batch review (the study grid stopped at 5).

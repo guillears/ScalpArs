@@ -1274,6 +1274,8 @@ class SignalThresholds(BaseModel):
     # sizing PER SIDE (operator 2026-09-30; absolute-assign, never re-multiplied by cells): 1× = normal trades. Raise a side only after
     # ITS keep bar — the two sides have different evidence (LONG failed the grid bar, SHORT passed).
     surge_long_invest_mult: float = 1.0
+    # ⚡📏 2026-10-27 (DECISION_LOG 396, operator): trading_config 0.4 → 8× (was 20× = one fill ≈ 5× the account, −$570 at a −1.2 % stop);
+    # the default stays 1.0 (a missing key keeps the code's historic 1×). Back up only via the SURGE_BRACKET Pattern W bar.
     surge_long_lev_mult: float = 1.0
     surge_short_invest_mult: float = 1.0
     surge_short_lev_mult: float = 1.0

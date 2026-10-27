@@ -124,7 +124,8 @@ DEPLOYS = {"FRENZY_TP3": ("2e36c26", "2026-10-04 19:23:15"),
            "FRENZY_WILLY": ("grep:(DECISION_LOG 251)", None),   # 🎲 Oct-8 FRENZY_WILLY (declared exception) — its commit message must carry "(DECISION_LOG 251)"; not found → NOW
            "GVOL_OFF_263": ("grep:(DECISION_LOG 263)", None),   # 🌊 Oct-9 (263) market-volume gate OFF (frenzy_gvol_max 0) — resolves the (194) row; not found → NOW
            "SIZING_252": ("grep:(DECISION_LOG 252)", None),   # 🐻🔄 Oct-8 sizing: BEARRUN 5× + FAN flips 10× (one commit; its message must carry "(DECISION_LOG 252)"); not found → NOW
-           "FRENZY_OCT8": ("grep:(DECISION_LOG 250)", None)}   # 🐻⬆🎯 Oct-8: bearish-day block + ATR 3.0 + fixed TP (one commit; its message must carry "(DECISION_LOG 250)")   # 🔁 Oct-5 heat re-scope reverted   # 🎯 Oct-5 lock-then-trail exit (commit message carries the exact string)   # ⚡ Oct-4 option B (found by its commit message)
+           "FRENZY_OCT8": ("grep:(DECISION_LOG 250)", None),
+           "SURGE_SIZE_396": ("grep:(DECISION_LOG 396)", None)}   # ⚡📏 Oct-27 SURGE_LONG 20× → 8× (surge_long_lev_mult 0.4) — the SURGE_SIZE before / after split   # 🐻⬆🎯 Oct-8: bearish-day block + ATR 3.0 + fixed TP (one commit; its message must carry "(DECISION_LOG 250)")   # 🔁 Oct-5 heat re-scope reverted   # 🎯 Oct-5 lock-then-trail exit (commit message carries the exact string)   # ⚡ Oct-4 option B (found by its commit message)
 SHIPS = {"HEAT": "2026-09-25", "LOADX": "2026-09-29", "MEGACAP": "2026-09-23"}
 # Oct-4 operator: "keep collecting" → trackers extended to 30; (new N, frozen N, frozen verdict) — the frozen first-N verdict stays on record
 EXT_N = {"LOADX": (30, 8, "FIRED (fragile at t+5m)"), "HEAT": (30, 6, "FIRED (6/6 won)"),
@@ -520,7 +521,8 @@ def episodes(rows, gap_min=EPISODE_MIN):
 ORDER_COLS = ("opened_at", "closed_at", "pair", "direction", "status", "entry_strategy", "entry_price", "exit_price", "pnl_percentage",
               "leverage", "entry_frenzy_adx_delta", "entry_frenzy_di_spread", "entry_surge_trigger_at", "close_reason", "entry_pair_rank",
               "entry_bull_pct", "entry_btc_ema20_slope", "entry_btc_rsi_prev", "entry_btc_off30d_high_pct", "cell_multiplier_source", "entry_atr_pct",
-              "entry_btc_rsi", "bracket_capped", "entry_bracket_cap_notional", "notional_value", "pnl")   # last 4: 👁 SURGE_BRACKET (335)
+              "entry_btc_rsi", "bracket_capped", "entry_bracket_cap_notional", "notional_value", "pnl",   # last 4: 👁 SURGE_BRACKET (335)
+              "investment", "entry_desired_notional")   # ⚡📏 SURGE_SIZE (396)
 
 
 def _export_ms(path):
@@ -1739,6 +1741,10 @@ SB_W = dict(n=30, wr=70.0, avg=0.10)                 # the Pattern W multiplier 
 _SB_TRUE = ("True", "true", "1", "1.0")
 
 
+_SW_UNSET = object()   # ⚡📏 (396) "read the re-size deploy from git" (None = not deployed)
+# old_target 20× = the schedule's 0:20 tier: every pre-396 SURGE fill opened below $25k equity (above it the tier is 15× — revisit then)
+
+
 def surge_bracket_target(mult=None):
     """20 × surge_long_lev_mult (mult None → read from trading_config.json; blank / unreadable / ≤ 0 → 1.0)."""
     try:
@@ -1748,18 +1754,23 @@ def surge_bracket_target(mult=None):
     return SB_BASE_LEV * (m if m > 0 else 1.0)
 
 
-def surge_bracket_rows(orders, target_lev, since_ms=None):
+def surge_bracket_rows(orders, target_lev, since_ms=None, old_target=None, switch_ms=None):
     """SURGE_LONG fills opened ≥ since_ms (default: the later of the go-live and the cohort floor) → per-fill frame (pure): capped, lev, pct,
-    usd, closed, stop, factor, cf_usd (doubled-to-target $; = usd when uncapped), slip_usd (the thin-book sensitivity, capped only)."""
+    usd, closed, stop, factor, cf_usd (doubled-to-target $; = usd when uncapped), slip_usd (the thin-book sensitivity, capped only).
+    old_target + switch_ms (⚡📏 396): fills opened before switch_ms (every fill while switch_ms is None) are judged against the target
+    they were opened under (20×), not today's."""
     t0 = since_ms if since_ms is not None else max(_ms(SB_GOLIVE), _ms(SB_COHORT_FLOOR))
     if orders is None or not len(orders):
         return pd.DataFrame(columns=["opened_at", "pair", "capped", "lev", "pct", "usd", "closed", "stop", "factor", "cf_usd", "slip_usd"])
     o = orders[(orders.entry_strategy.astype(str) == "SURGE_LONG") & (orders.o_ms >= int(t0))].copy()
     num = lambda c: pd.to_numeric(o[c], errors="coerce") if c in o else pd.Series(np.nan, index=o.index)
     lev, notl, capn = num("leverage"), num("notional_value"), num("entry_bracket_cap_notional")
+    tgt = pd.Series(float(target_lev), index=o.index)
+    if old_target is not None:   # not deployed yet (switch_ms None) → every fill opened under the old target
+        tgt = tgt.where(o.o_ms >= int(switch_ms), float(old_target)) if switch_ms is not None else pd.Series(float(old_target), index=o.index)
     flag = o.bracket_capped.astype(str).isin(_SB_TRUE) if "bracket_capped" in o else pd.Series(False, index=o.index)
-    capped = flag | (lev < float(target_lev) - 1e-9)
-    f = (float(target_lev) / lev).where(capped & (lev > 0), 1.0)
+    capped = flag | (lev < tgt - 1e-9)
+    f = (tgt / lev).where(capped & (lev > 0), 1.0)
     room = (capn / notl).where((capn > 0) & (notl > 0))                  # the bracket's largest position ÷ the traded notional
     f = np.minimum(f, room.fillna(np.inf)).clip(lower=1.0)
     usd, pct = num("pnl"), num("pnl_percentage")
@@ -1793,11 +1804,12 @@ def surge_w_gate(s):
     return met, " · ".join(("✓ " if ok else "✗ ") + t for ok, t in legs)
 
 
-def surge_bracket_lines(orders, op_closed=None, target_lev=None, since_ms=None):
+def surge_bracket_lines(orders, op_closed=None, target_lev=None, since_ms=None, switch_ms=_SW_UNSET):
     """👁 SURGE_BRACKET markdown (never raises past the caller's guard)."""
     tl = surge_bracket_target() if target_lev is None else float(target_lev)
     t0 = since_ms if since_ms is not None else max(_ms(SB_GOLIVE), _ms(SB_COHORT_FLOOR))
-    r = surge_bracket_rows(orders, tl, t0)
+    sw = surge_size_switch_ms() if switch_ms is _SW_UNSET else switch_ms
+    r = surge_bracket_rows(orders, tl, t0, old_target=SB_BASE_LEV, switch_ms=sw)
     cp, uc = r[r.capped.astype(bool)] if len(r) else r, r[~r.capped.astype(bool)] if len(r) else r
     S, C, U = surge_bracket_stats(r), surge_bracket_stats(cp), surge_bracket_stats(uc)
     fm = lambda v, d=2: "–" if v is None else f"{v:+.{d}f}"
@@ -1806,7 +1818,7 @@ def surge_bracket_lines(orders, op_closed=None, target_lev=None, since_ms=None):
     n_open = int((~r.closed.astype(bool)).sum()) if len(r) else 0
     L = ["## 👁 SURGE_BRACKET — capped vs uncapped live SURGE_LONG fills (DECISION_LOG 335, OBSERVE-ONLY)", "",
          f"Live SURGE_LONG fills opened ≥ {_fmt_t(t0, True)} UTC (later of the go-live and the SURGE cohort floor). Capped = bracket_capped ∨ traded "
-         f"leverage < the target {tl:g}× (20 × surge_long_lev_mult). Counterfactual = as-traded $ × target / traded leverage, held at "
+         f"leverage < the target it opened under ({tl:g}× = 20 × surge_long_lev_mult today; 20× before the DECISION_LOG 396 re-size). Counterfactual = as-traded $ × target / traded leverage, held at "
          "entry_bracket_cap_notional when > 0. Sensitivity = the doubled notional pays the fade execution study's thin-book walk "
          f"(+{SB_SLIP_ENTRY:g} % entry, +{SB_SLIP_STOP:g} % more on stop exits incl. trailing; whole notional, conservative). Never gated.", "",
          "| Side | N | WR | Avg % | Σ $ as traded | Σ $ doubled to target | Σ $ doubled − thin-book cost |", "|---|---|---|---|---|---|---|"]
@@ -1823,13 +1835,95 @@ def surge_bracket_lines(orders, op_closed=None, target_lev=None, since_ms=None):
     if len(uc):
         L.append("Uncapped fills: " + " · ".join(f"{x.pair} {x.opened_at[5:16].replace('T', ' ')} {x.lev:g}× "
                                                  + (f"{x.pct:+.2f} % · {x.usd:+.2f} $" if x.closed else "open") for x in uc.itertuples()))
-    L.append(f"**Sleeve-wide size-up gate (Pattern W bar, live SURGE_LONG, as traded):** {'✅ MET — size-up may be CONSIDERED (operator; liquid pairs only, own revert gate)' if met else '⏳ not met'} — {wtxt}."
+    L.append(f"**Sleeve-wide size-up gate (Pattern W bar, live SURGE_LONG, as traded — Σ $ mixes 20× pre-396 and 8× fills; SURGE_SIZE shows Σ $ at today's size):** {'✅ MET — size-up may be CONSIDERED (operator; liquid pairs only, own revert gate)' if met else '⏳ not met'} — {wtxt}."
              + (f" {n_open} open fill(s) not counted." if n_open else ""))
     if op_closed is not None and len(op_closed):
         x = op_closed[(op_closed.entry_strategy.astype(str) == "SURGE_LONG").values & (op_closed.o_ms >= int(t0)).values] if "o_ms" in op_closed else op_closed.iloc[0:0]
     else:
         x = None
     L += [f"_SURGE_BRACKET — {_GK.operator_closed_line(x)}._", ""]
+    return L
+
+
+# ── ⚡📏 SURGE_SIZE (DECISION_LOG 396, operator 2026-10-27 — OBSERVE-ONLY, never changes config). SURGE_LONG went 20× → 8× (surge_long_lev_mult
+# 1.0 → 0.4, the same margin): at 20× one full-slot fill was ≈ 5× the account ($47.5k at $9.75k equity; −$570 at a −1.2 % stop), more than
+# any other sleeve; only Binance's bracket kept the 10-27 BTW / EVAA fills at $14.3k / $11.9k. The read: every SURGE_LONG fill from the cohort
+# floor, split BEFORE / AFTER the 396 deploy — N · WR · avg % (the % is size-invariant: the re-size changes $ only) · traded leverage ·
+# notional (mean / max) · notional ÷ the account (≈ margin × 4 slots ÷ 0.975, the equal-split base) · $ per 1 % adverse price move (max) ·
+# Σ $ as traded and, for BEFORE fills, Σ $ re-priced at today's target (× min(1, target ÷ traded leverage), margin unchanged — a lower
+# bound when the bracket allowed more at the lower leverage). Size back toward 1× ONLY via the Pattern W bar above (operator call, own
+# revert gate); the (202) revert to surge_long_lev_mult 0.05 still stands (first 15 filled triggers mean ≤ 0).
+SZ_SLOTS, SZ_FEE_RES = 4, 0.975                      # equal split over max_open_positions (4) after the 2.5 % fee reserve (trading_config 10-27)
+
+
+def surge_size_switch_ms():
+    """the DL 396 deploy (commit + 10 min, as deploy_ms) or None while it is not committed (every fill then counts as BEFORE) — resolved
+    directly (no GATE NOT EVALUABLE alarm: an observe-only split, not a revert gate)."""
+    try:
+        ct = _GK.tag_commit_ts(DEPLOYS["SURGE_SIZE_396"][0][5:])
+        return int(ct) * 1000 + 10 * MIN if ct is not None else None
+    except Exception:
+        return None
+
+
+def surge_size_rows(orders, target_lev, switch_ms, since_ms=None):
+    """SURGE_LONG fills from the cohort floor (pure) → per-fill frame: after, lev, notl, inv, full, acct_x, per1, pct, usd, closed, usd_now.
+    full = the FULL slot margin the engine sized before any bracket cut = entry_desired_notional ÷ the target the fill opened under (20×
+    before 396 — the 0:20 schedule tier, account < $25k — today's target after), else the traded margin. The account ≈ full × 4 ÷ 0.975.
+    usd_now (BEFORE fills) = as-traded $ × today's notional ÷ traded notional, today's notional = full × today's target, held at
+    entry_bracket_cap_notional when > 0 — the engine re-sizes from the FULL margin, so a bracket-cut loser can grow (BTW 10-27: $14,250 →
+    up to $19,007); a cap stamp of 0 = a leverage cut, the 8× tier is unknown → an upper estimate. AFTER = opened ≥ switch_ms ∧ traded
+    leverage ≤ today's target (a fill above it opened under the old size — e.g. in the push → deploy gap — stays BEFORE)."""
+    t0 = since_ms if since_ms is not None else _ms(SB_COHORT_FLOOR)
+    cols = ["opened_at", "pair", "after", "lev", "notl", "inv", "full", "acct_x", "per1", "pct", "usd", "closed", "usd_now"]
+    if orders is None or not len(orders):
+        return pd.DataFrame(columns=cols)
+    o = orders[(orders.entry_strategy.astype(str) == "SURGE_LONG") & (orders.o_ms >= int(t0))].copy()
+    num = lambda c: pd.to_numeric(o[c], errors="coerce") if c in o else pd.Series(np.nan, index=o.index)
+    lev, notl, inv, pct, usd = num("leverage"), num("notional_value"), num("investment"), num("pnl_percentage"), num("pnl")
+    des, capn = num("entry_desired_notional"), num("entry_bracket_cap_notional")
+    tl = float(target_lev)
+    after = ((o.o_ms >= int(switch_ms)) & ~(lev > tl + 1e-9)) if switch_ms is not None else pd.Series(False, index=o.index)
+    full = (des / pd.Series(np.where(after, tl, SB_BASE_LEV), index=o.index)).where(des > 0).fillna(inv)
+    tn = full * tl
+    tn = tn.where(~(capn > 0), np.minimum(tn, capn))
+    k = (tn / notl).where((notl > 0) & (tn > 0))
+    usd_now = usd.where(after | k.isna(), usd * k)
+    acct = full * SZ_SLOTS / SZ_FEE_RES
+    return pd.DataFrame(dict(opened_at=o.opened_at.astype(str).str[:19].values, pair=o.pair.astype(str).values, after=after.values,
+                             lev=lev.values, notl=notl.values, inv=inv.values, full=full.values, acct_x=(notl / acct).where(acct > 0).values,
+                             per1=(notl / 100.0).values, pct=pct.values, usd=usd.values,
+                             closed=((o.status.astype(str) == "CLOSED") & pct.notna()).values, usd_now=usd_now.values)).reset_index(drop=True)
+
+
+def surge_size_lines(orders, target_lev=None, switch_ms=_SW_UNSET, since_ms=None):
+    """⚡📏 SURGE_SIZE markdown (never raises past the caller's guard)."""
+    tl = surge_bracket_target() if target_lev is None else float(target_lev)
+    sw = surge_size_switch_ms() if switch_ms is _SW_UNSET else switch_ms
+    r = surge_size_rows(orders, tl, sw, since_ms)
+    fm = lambda v, f: "–" if v is None or not np.isfinite(v) else format(v, f)
+    L = ["## ⚡📏 SURGE_SIZE — SURGE_LONG size before / after the 20× → 8× re-size (DECISION_LOG 396, OBSERVE-ONLY)", "",
+         f"Today's target {tl:g}× (20 × surge_long_lev_mult) · re-size deployed {('at ' + _fmt_t(sw, True) + ' UTC') if sw is not None else 'not yet (every fill counts as BEFORE)'}"
+         f" · paper + live fills from the SURGE cohort floor {SB_COHORT_FLOOR[:16].replace('T', ' ')} UTC. Avg % is size-invariant — the re-size moves $ only. "
+         f"Account ≈ the FULL slot margin (desired notional ÷ the target it opened under, before any bracket cut) × {SZ_SLOTS} slots ÷ {SZ_FEE_RES:g}. "
+         f"Today's size = BEFORE fills re-priced at full margin × {tl:g}× (held at the bracket cap notional when stamped; a leverage-cut fill with no "
+         "stamped cap is an upper estimate — a bracket-cut loser can be BIGGER at today's size). AFTER = opened after the deploy at ≤ today's target.", "",
+         "| Era | N closed | WR | Avg % | Traded lev (mean) | Notional mean / max | Notional ÷ account (mean / max) | $ per 1 % move (max) | Σ $ as traded | Σ $ at today's size |",
+         "|---|---|---|---|---|---|---|---|---|---|"]
+    for lab, g in (("before 396 (20× target)", r[~r.after.astype(bool)] if len(r) else r), ("after 396", r[r.after.astype(bool)] if len(r) else r)):
+        c = g[g.closed.astype(bool)] if len(g) else g
+        n = len(c)
+        p = pd.to_numeric(c.pct, errors="coerce") if n else pd.Series(dtype=float)
+        gl = lambda col, fn: float(fn(pd.to_numeric(g[col], errors="coerce").dropna())) if len(g) and pd.to_numeric(g[col], errors="coerce").notna().any() else None
+        L.append(f"| {lab} | {n} | {fm(float((p > 0).mean() * 100) if n else None, '.0f')}{' %' if n else ''} | {fm(float(p.mean()) if n else None, '+.3f')} | "
+                 f"{fm(gl('lev', np.mean), '.1f')}× | ${fm(gl('notl', np.mean), ',.0f')} / ${fm(gl('notl', np.max), ',.0f')} | "
+                 f"{fm(gl('acct_x', np.mean), '.2f')}× / {fm(gl('acct_x', np.max), '.2f')}× | ${fm(gl('per1', np.max), ',.0f')} | "
+                 f"{fm(float(pd.to_numeric(c.usd, errors='coerce').fillna(0).sum()) if n else None, '+.2f')} | "
+                 f"{fm(float(pd.to_numeric(c.usd_now, errors='coerce').fillna(0).sum()) if n else None, '+.2f')} |")
+    n_open = int((~r.closed.astype(bool)).sum()) if len(r) else 0
+    L += ["", "Size back toward 1× only via the SURGE_BRACKET Pattern W bar above (operator call, liquid pairs, own revert gate); the (202) row's "
+          "revert to surge_long_lev_mult 0.05 still stands. The batch review shows the daily compound return before → after (CLAUDE.md step 3)."
+          + (f" {n_open} open fill(s) not counted." if n_open else ""), ""]
     return L
 
 
@@ -2317,11 +2411,17 @@ def run_section(now_ms=None, noted=None, record_notes=True):
         if dt:
             L.append(f"- {DEFS[code][0]}: {dt}")
     L += ["", f"_Tick archives fetched this run: {fetched}. State: reports/SCOUT_REVERT_GATES.json._", ""]
+    _sw = surge_size_switch_ms()                              # ⚡📏 (396) resolved once for both sections
     try:                                                      # 👁 (335) SURGE_BRACKET — observe-only, never a gate row
-        L += surge_bracket_lines(orders, op_closed)
+        L += surge_bracket_lines(orders, op_closed, switch_ms=_sw)
     except Exception as e:
         log(f"SURGE_BRACKET: {e}")
         L += ["## 👁 SURGE_BRACKET", "", f"Unavailable this run ({str(e)[:120]}).", ""]
+    try:                                                      # ⚡📏 (396) SURGE_SIZE — observe-only, never a gate row
+        L += surge_size_lines(orders, switch_ms=_sw)
+    except Exception as e:
+        log(f"SURGE_SIZE: {e}")
+        L += ["## ⚡📏 SURGE_SIZE", "", f"Unavailable this run ({str(e)[:120]}).", ""]
     st["updated_utc"] = _fmt_t(now_ms, True)
     try:
         atomic_write(STATE_JSON, json.dumps(st, indent=1, default=str))

@@ -653,6 +653,16 @@ at once.
 - Questions to answer: does a sleeve only work in one regime (regime switch, not a filter)? which per-pair variables separate within
   a regime? LONG / WIDE size; momentum long; flip short; why the FULL stack ruins in every config (non-FRENZY sleeves sharing the book).
 
+### ⚡ SURGE_LONG size + EXIT GRID (DECISION_LOG 396, operator 2026-10-27) — read at every batch review
+- **Size:** scout ⚡📏 SURGE_SIZE (scout_revert_gates) — before / after the 20× → 8× re-size: N · WR · avg % · notional ÷ account · $ per 1 %
+  · Σ $ as traded vs at today's size + DCR before → after. Back toward 1× only via the SURGE_BRACKET Pattern W bar (operator call).
+- **Exit grid (operator: "its current logic, vs other alternatives of fix TP? or … frenzy willy exit?"):** today's Bull-Run 1 × ATR trail
+  without the +0.2 % lock / ladder vs WITH lock + ladder (the DL 203 re-walk) · 2 × ATR trail · fixed TP +1 / +2 / +3 / +5 % × SL −1.2 / −2 %
+  · FRENZY_WILLY V2b exit · max hold 60 / 120 min · 0.5 × ATR trail · trail armed at +0.5 % (10-27 BTW / EVAA: peaks +0.90 / +1.32 %, both
+  stopped −1.20 % — on a 2.7 % ATR coin the 1 × ATR trail protects nothing below ≈ +1.5 %). Each fill re-walked (ticks where cached, else 1m); the live-exit re-walk must reproduce the
+  booked exits first; stop-width variants on the LIVE-STOPPED cohort only. Three blocks (batch · master per batch · two-year replay), each
+  with N · WR · avg % · Σ $ · hold HH:MM · DCR before → after; decided at N ≥ 15 filled triggers (the 202 review), 30–50 % in-sample haircut.
+
 ### 🛡 SURGE_LONG EMA-gap filter (DECISION_LOG 287) — read at every batch review
 - Count `SURGE_LONG_EMA_GAP` blocks (and `_FAILOPEN`) from the engine counters / `[SURGE_LONG_EMA_GAP]` log; re-price each blocked candidate
   from its logged px (ticks first, SURGE_LONG exit). 🔒 REVERT → off if ≥ 10 blocked over ≥ 5 windows show WR ≥ 31.5 % ∧ avg > 0.

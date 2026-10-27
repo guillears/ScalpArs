@@ -70,7 +70,51 @@ def test_w_gate_and_lines():
                       pnl_percentage=-0.5 if i < 10 else 0.5) for i in range(30)])
     assert not RG.surge_w_gate(RG.surge_bracket_stats(RG.surge_bracket_rows(losing, 20.0)))[0]      # WR 67 % < 70 %
     opx = _o([dict(STRK, opened_at="2026-10-16T00:00:00", close_reason="EXTERNAL_CLOSE")])
-    L = "\n".join(RG.surge_bracket_lines(o, opx, target_lev=20.0))
+    L = "\n".join(RG.surge_bracket_lines(o, opx, target_lev=20.0, switch_ms=None))
     assert "| capped | 2 | 100 % | +5.843 | +255.70 | +511.40 | +467.11 |" in L
     assert "| uncapped | 1 | 100 % | +1.527 | +74.64 | +74.64 | +74.64 |" in L
     assert "1 open fill(s) not counted" in L and "operator-closed: 1 — excluded" in L and "⏳ not met" in L
+
+
+# ⚡📏 DECISION_LOG 396: SURGE_LONG 20× → 8× — the real 10-27 B25 rows (server log [BRACKET_CAP] / [TRADE] lines)
+BTW = dict(opened_at="2026-10-27T21:36:45", pair="BTWUSDT", entry_strategy="SURGE_LONG", status="CLOSED", leverage=10.0, bracket_capped=True,
+           entry_bracket_cap_notional=0.0, notional_value=14250.0, investment=1425.0, entry_desired_notional=47518.548189, pnl=-171.46, pnl_percentage=-1.2032, close_reason="BR_STOP_LOSS")
+EVAA = dict(opened_at="2026-10-27T21:36:53", pair="EVAAUSDT", entry_strategy="SURGE_LONG", status="OPEN", leverage=5.0, bracket_capped=True,
+            entry_bracket_cap_notional=0.0, notional_value=11879.64, investment=2375.93, entry_desired_notional=47518.548189, pnl=np.nan, pnl_percentage=np.nan, close_reason=None)
+SW = RG._ms("2026-10-28T00:00:00")
+
+
+def test_bracket_judges_each_fill_against_the_target_it_opened_under():
+    x = dict(GTC, bracket_capped=False)                                           # 10× fill, no bracket flag
+    before = RG.surge_bracket_rows(_o([x]), 8.0, old_target=20.0, switch_ms=SW)    # opened under 20× → capped, factor 2
+    assert bool(before.capped.iloc[0]) and before.factor.iloc[0] == 2.0
+    after = RG.surge_bracket_rows(_o([dict(x, opened_at="2026-10-28T01:00:00")]), 8.0, old_target=20.0, switch_ms=SW)
+    assert not bool(after.capped.iloc[0]) and after.factor.iloc[0] == 1.0          # 10× ≥ today's 8× target → uncapped
+    pre = RG.surge_bracket_rows(_o([x]), 8.0, old_target=20.0, switch_ms=None)     # re-size not deployed yet → the old 20× target
+    assert bool(pre.capped.iloc[0]) and pre.factor.iloc[0] == 2.0
+
+
+def test_surge_size_rows_and_lines():
+    new = dict(BTW, opened_at="2026-10-28T03:00:00", leverage=8.0, bracket_capped=False, notional_value=19007.42, investment=2375.93,
+               entry_desired_notional=19007.419276, pnl=-228.09, pnl_percentage=-1.2)
+    rb = RG.surge_size_rows(_o([BTW]), 8.0, SW).iloc[0]
+    full = 47518.548189 / 20                                                         # the FULL slot margin before the bracket cut
+    assert not rb.after and abs(rb.full - full) < 1e-9
+    assert abs(rb.acct_x - 14250.0 / (full * 4 / 0.975)) < 1e-9                       # ≈ 1.46× (not 2.44× off the cut margin)
+    assert abs(rb.usd_now - (-171.46 * full * 8 / 14250.0)) < 1e-9                   # at 8× the full margin re-sizes UP → ≈ −$228.70
+    assert not RG.surge_size_rows(_o([EVAA]), 8.0, SW).iloc[0].closed                 # open: not counted
+    rn = RG.surge_size_rows(_o([new]), 8.0, SW).iloc[0]
+    assert rn.after and rn.usd_now == rn.usd                                         # after the re-size: as traded
+    late20 = RG.surge_size_rows(_o([dict(new, leverage=20.0)]), 8.0, SW).iloc[0]
+    assert not late20.after                                                          # a 20× fill after the switch time = the old size
+    capd = RG.surge_size_rows(_o([dict(BTW, entry_bracket_cap_notional=16000.0)]), 8.0, SW).iloc[0]
+    assert abs(capd.usd_now - (-171.46 * 16000.0 / 14250.0)) < 1e-9                  # held at the stamped bracket cap
+    nolev = RG.surge_size_rows(_o([dict(BTW, leverage=np.nan, entry_desired_notional=np.nan, notional_value=np.nan)]), 8.0, SW).iloc[0]
+    assert nolev.usd_now == -171.46                                                  # unpriceable → kept as traded, never dropped
+    L = "\n".join(RG.surge_size_lines(_o([BTW, EVAA, new]), target_lev=8.0, switch_ms=SW))
+    assert "| before 396 (20× target) | 1 | 0 % | -1.203 | 7.5× | $13,065 / $14,250 | 1.34× / 1.46× |" in L
+    assert "| after 396 | 1 | 0 % | -1.200 | 8.0× | $19,007 / $19,007 |" in L
+    assert "-171.46 | -228.70 |" in L and "-228.09 | -228.09 |" in L and "1 open fill(s) not counted" in L
+    L0 = "\n".join(RG.surge_size_lines(_o([BTW]), target_lev=8.0, switch_ms=None))   # not deployed yet → every fill BEFORE
+    assert "not yet (every fill counts as BEFORE)" in L0 and "| after 396 | 0 |" in L0
+    assert RG.surge_size_lines(pd.DataFrame(), target_lev=8.0, switch_ms=None)       # empty never raises

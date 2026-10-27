@@ -163,9 +163,15 @@ def test_master_sleeve_sizes_frozen_match_live_json():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     bld = open(os.path.join(root, "scripts", "build_master_pool.py"), encoding="utf-8").read()
     th = json.load(open(os.path.join(root, "trading_config.json")))["thresholds"]
-    m = _re.search(r"_th = dict\(([^)]*)\)", bld, _re.S)
-    frozen = {k: float(v) for k, v in _re.findall(r"(\w+)=([0-9.]+)", m.group(1))}
+    # (DECISION_LOG 396 review) the whole dict up to SLEEVE_SIZE_FROZEN — the old "[^)]*" stopped at the first ")" in a comment and
+    # checked only 4 keys (surge_long_lev_mult went 0.4 live while the master still froze 1.0, unseen)
+    m = _re.search(r"_th = dict\((.*?)\)\s*\n\s*SLEEVE_SIZE_FROZEN", bld, _re.S)
+    frozen = {k: float(v) for k, v in _re.findall(r"(\w+)=([0-9.]+)\b", m.group(1))}
+    assert len(frozen) >= 17 and "surge_long_lev_mult" in frozen
+    KNOWN_NOT_REPRICED = {"bearrun_invest_mult"}   # DL 360 Bear-Run 0.2 invest — STACK_VERSION records it as NOT re-priced
     for k, v in frozen.items():
+        if k in KNOWN_NOT_REPRICED:
+            continue
         assert abs(float(th[k]) - v) < 1e-9, k
     # 10-05a: the UNMATCHED long cell size the master re-prices to == the live pattern-cell rule (and the quiet boost never exceeds it)
     um = float(_re.search(r"UNMATCHED_LONG_INV_FROZEN = ([0-9.]+)", bld).group(1))

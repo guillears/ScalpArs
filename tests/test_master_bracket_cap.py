@@ -92,12 +92,13 @@ def test_stack_version_and_master_rows():
     if not os.path.exists(p):
         pytest.skip("master not built")
     rows = {(r["opened_at"][:19], r["pair"]): r for r in csv.DictReader(open(p, encoding="utf-8"))}
-    for row, traded in ((AGT, "159.98"), (GTC, "95.72")):
+    # ⚡📏 10-27a (DECISION_LOG 396): SURGE_LONG today 8× — below the pairs' 10× max, so no bracket cut is left: traded 10× → 8× (× 0.8)
+    for row, today in ((AGT, "127.98"), (GTC, "76.58")):
         m = rows.get((row["opened_at"], row["pair"]))
         if m is None:
             pytest.skip("B23 not in the master")
-        assert float(m["stack_pnl"]) == pytest.approx(float(traded), abs=0.011)
-        assert "BRACKET_CAP" in m["size_note"]
+        assert float(m["stack_pnl"]) == pytest.approx(float(today), abs=0.011)
+        assert "BRACKET_CAP" not in str(m["size_note"] or "")
 
 
 def test_capped_loser_with_unknown_cap_notional_is_not_shrunk():

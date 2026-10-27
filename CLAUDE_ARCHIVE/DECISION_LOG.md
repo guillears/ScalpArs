@@ -9803,3 +9803,43 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   after both on today's stack + sizing (the master per batch as STACK, never as-traded), so the Δ is the change alone. It is the
   sleeve's contribution to the account's daily compounding — NOT the dashboard's per-sleeve %/day (fixed batch-start denominator) nor
   the runtime KPI (paused time out). Each master batch starts from its own reset balance.
+
+## (396) 2026-10-27 — ⚡📏 SURGE_LONG re-sized 20× → 8× (`surge_long_lev_mult` 1.0 → 0.4) + scout SURGE_SIZE + SURGE exit grid registered (operator: "the investment size calls my attention too" → "yes go with 0.4" · "Is surge sizing in scout watchlist? if not added, it should be" · "to be analised too, the exit mechanism of SURGE … its current logic, vs other alternatives of fix TP? or … frenzy willy exit?")
+- **Why:** SURGE_LONG took a FULL equal-split slot (≈ $2,376 margin at ≈ $9,750 equity: (equity − 2.5 % fee reserve) ÷ 4) at the base 20× → a
+  $47.5k notional ≈ 4.9× the account in ONE fill (≈ −$570 at its −1.2 % stop ≈ 6 % of the account), the largest of any sleeve (momentum
+  long 0.2× · FRENZY_LITE 0.8–1.9× · SPIKE_FADE 0.8×) — on an UNPROVEN sleeve (DL 146–148 / 202 discipline override, grid bar failed; first
+  fills since 09-30 on 10-27). Only Binance's leverage bracket kept the 10-27 fills small: BTWUSDT wanted $47,519 at 20× → $14,250 at 10×
+  (pair max 10×, margin $2,375.93 → $1,425.00), EVAAUSDT → $11,880 at 5× (margin kept) (server log [BRACKET_CAP]); BTW stopped −1.20 %.
+- **Change:** `surge_long_lev_mult` 0.4 in trading_config.json (config.py default stays 1.0 with the evidence comment; the UI field
+  config-sg-long-lev-mult + load / save already existed — D11 complete). Same margin, 8× → full-size notional ≈ $19k ≈ 1.95× the account
+  (FRENZY_LITE's largest), ≈ −$230 at −1.2 %. Size-only: N · WR · avg % per fill are unchanged, so the (202) 15-trigger revert gate and the
+  kill bar read the same; Σ $ scales. SURGE_SHORT untouched (OFF).
+- **Gates (pre-committed):** back toward 1× only via the SURGE_BRACKET Pattern W bar (DL 335: N ≥ 30 ∧ WR ≥ 70 % ∧ avg ≥ +0.10 % ∧ Σ $ > 0 on
+  SURGE_LONG fills; operator call, liquid pairs, own revert gate) · the (202) revert (first 15 filled triggers mean ≤ 0 →
+  `surge_long_lev_mult` 0.05) still stands.
+- **Scout (scout_revert_gates.py):** ⚡📏 SURGE_SIZE — every SURGE_LONG fill from the cohort floor (09-30 15:30) split BEFORE / AFTER this
+  deploy (DEPLOYS["SURGE_SIZE_396"], found by this commit's "(DECISION_LOG 396)"): N · WR · avg % · traded leverage · notional mean / max ·
+  notional ÷ account (≈ margin × 4 ÷ 0.975) · $ per 1 % move · Σ $ as traded and BEFORE fills re-priced at today's target (× min(1, 8 ÷
+  traded lev), margin unchanged — a lower bound). 👁 SURGE_BRACKET now judges each fill against the target it OPENED under (20× before this
+  deploy, 8× after; every fill 20× while the deploy is not in git) — the B23 AGT / GTC 10× fills stay capped ×2 (+$511.40 doubled, as the
+  335 record). tests/test_scout_surge_bracket.py (+2).
+- **Master re-priced (STACK_VERSION 2026-10-27a, scripts/build_master_pool.py SLEEVE_SIZE_FROZEN surge_long_lev_mult 1.0 → 0.4):** size-only,
+  3 rows move (stack_pct unchanged): B22 STRK 20× → 8× +$74.64 → +$29.86 · B23 AGT / GTC 10× → 8× +$159.98 → +$127.98 / +$95.72 → +$76.58
+  (no bracket cut left at 8× < the pairs' 10× max); non-probe kept Σ $6,773.30 → $6,677.38; SCREENED_BASELINE unchanged;
+  validate_against_master ALL PASS. The pin test (tests/test_long_chop_burst.py) had checked only 4 of 17 frozen sizes — its regex stopped
+  at the first ")" in a comment — so this drift was invisible; it now parses the whole dict (Bear-Run 0.2 invest = the documented
+  not-re-priced exception, DL 360).
+- **Review fixes (caveman + deep):** SURGE_SIZE uses the FULL slot margin (entry_desired_notional ÷ the target the fill opened under) for
+  the account ratio and for today's size — the engine re-sizes from the full margin, so a bracket-cut loser can be BIGGER at 8× (BTW 10-27:
+  −$171.46 as traded at $14,250 → ≈ −$228.70 at $19,007); AFTER also requires traded leverage ≤ today's target (a 20× fill in the push →
+  deploy gap stays BEFORE); unpriceable fills stay as traded; the deploy resolves once per run without the gate alarm. On today's exports
+  (5 closed SURGE_LONG fills, paper + live): as traded +$16.07 → at today's 8× −$222.76 (the 3 old winners were small-balance fills, the 2
+  bracket-cut 10-27 losers grow).
+- **Registered for the batch review (operator):** SURGE_LONG EXIT GRID — today's exit (Bull-Run 1 × ATR trail, NO +0.2 % lock / ladder,
+  base stop, 240 min max hold; DL 203) vs: the same trail WITH the lock + ladder (the 203 re-walk) · 2 × ATR trail · fixed TP +1 / +2 / +3 /
+  +5 % with SL −1.2 / −2 % · the FRENZY_WILLY V2b exit · shorter max holds · a 0.5 × ATR trail · the trail armed at +0.5 % (operator 10-27
+  after BTW / EVAA: peaks +0.90 / +1.32 % both stopped −1.20 % — EVAA armed at +1.0 but the 1 × ATR (2.69 %) line sat at −1.37 % < the
+  −1.2 % stop, so nothing protected it below ≈ +1.5 %; one trigger = one observation) — per fill re-walked on klines (ticks where cached), the live
+  exit re-walk must reproduce the booked exits first; stop-width variants read on the LIVE-STOPPED cohort only (CLAUDE.md); three blocks
+  (batch · master per batch · two-year replay) with N · WR · avg % · Σ $ · hold HH:MM · DCR before → after; decided only at N ≥ 15 filled
+  triggers (the 202 review), in-sample haircut. reports/NEXT_BATCH_REVIEW_PLAN.md §5.

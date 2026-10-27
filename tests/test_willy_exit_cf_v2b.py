@@ -143,7 +143,7 @@ def test_no_h_is_priced_only_when_the_exit_is_target_invariant(monkeypatch):
 def test_master_prices_willy_and_ht_from_the_v2b_cf():
     import build_master_pool as B
     src = open(os.path.join(ROOT, "scripts", "build_master_pool.py")).read()
-    assert B.STACK_VERSION == "2026-10-26a"
+    assert B.STACK_VERSION == "2026-10-27a"
     assert f'WILLY_EXIT_FROZEN = "{C.rule_v2b(C.load_th())}"' in src                 # the frozen rule = today's config rule
     assert 'WILLY_CF_STRATS = ("FRENZY_WILLY", "FRENZY_WILLY_HT")' in src and 'strat == "FRENZY_WILLY_HT" and bool(r.stack_keep)' in src
     cf = pd.read_csv(os.path.join(ROOT, "reports", "WILLY_EXIT_CF.csv"))
@@ -152,7 +152,7 @@ def test_master_prices_willy_and_ht_from_the_v2b_cf():
     k = M[(M.stack_keep == True) & M.entry_strategy.astype(str).isin(["FRENZY_WILLY", "FRENZY_WILLY_HT"])]
     m = {(a, p): c for a, p, c in zip(cf.opened_at, cf.pair, cf.cf_pct) if pd.notna(c)}
     assert len(k) >= 38 and all(abs(r.stack_pct - m[(str(r.opened_at)[:19], r.pair)]) < 1e-9 for r in k.itertuples())
-    assert (M.stack_version == "2026-10-26a").all()
+    assert (M.stack_version == "2026-10-27a").all()
 
 
 def test_pre356_cf_file_reproduces_the_old_stack():

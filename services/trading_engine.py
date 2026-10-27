@@ -4444,6 +4444,138 @@ class TradingEngine:
             logger.debug(f"[STAMP_COVERAGE] {pair} #{order_id}: check failed ({e})")
             return []
 
+    # 🧾⏪ (DECISION_LOG 393) the stamps of fills that opened BEFORE the post-fill backfill (DL 389) are rebuilt ONLY where the rebuild is
+    # EXACT. Parity on every fill that carries the live value (scripts/study_stamp_rebuild_parity.py + the DL 393 deep review's independent
+    # re-check): pair daily −DI 30 / 30 and BTC 4h EMA50/200 gap 30 / 30 (SPIKE_FADE 10-01 → 10-27), listing age 391 / 391 (07-14 → 10-27) —
+    # 0 mismatches; every 5m indicator (forming bar at an unrecorded scan moment) 16–41 % → never written. AMBIGUITY RULE (zero errors):
+    # live reads are not taken exactly AT the fill — the 1d −DI is cached ≤ 60 min (and the post-fill backfill reads it ≤ ~15 s AFTER), the
+    # 4h gap is accepted ≤ 30 min stale, listing age is taken at scan time (≤ 30 min before) or by the backfill (seconds after) — so a value is
+    # written only when EVERY moment live could have read gives the same value (from the window before to +60 s); otherwise it stays NULL.
+    STAMP_REBUILD_EXACT = ('entry_pair_1d_ndi', 'entry_btc_4h_ema50_200_gap_pct', 'entry_pair_age_days')
+    STAMP_REBUILD_MAX = 3000          # rows per process run (the DB holds the current paper batch + the live history)
+    STAMP_REBUILD_LAG_MS = {'entry_pair_1d_ndi': 3_600_000, 'entry_btc_4h_ema50_200_gap_pct': 1_800_000, 'entry_pair_age_days': 1_800_000}
+    STAMP_REBUILD_LEAD_MS = 60_000    # live reads up to ~15 s AFTER the fill (the post-fill backfill) — checked to +60 s
+    STAMP_REBUILD_WEIGHT_STOP = 1500  # the FLATBASE client's last X-MBX-USED-WEIGHT-1M above which the rebuild stops (next restart resumes)
+    STAMP_REBUILD_NDI_MIN_AGE_D = 43  # closed_wilder_ndi needs ≥ 42 closed daily bars — a younger pair is never fetched
+
+    def _stamp_rebuild_schedule(self) -> bool:
+        """start the one-time exact rebuild in the background (once per process; never in replays). Never raises."""
+        try:
+            import os as _os
+            if _os.environ.get("SCALPARS_REPLAY") == "1" or getattr(self, '_stamp_rebuild_started', False):
+                return False
+            self._stamp_rebuild_started = True
+            t = asyncio.get_running_loop().create_task(self._stamp_rebuild_exact())
+            _ts = self.__dict__.setdefault('_stamp_backfill_tasks', set())
+            _ts.add(t); t.add_done_callback(_ts.discard)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def stamp_rebuild_age(fill_ms, onboard_ms, lag_ms=1_800_000, lead_ms=60_000):
+        """listing age only when unambiguous: the 0.1-day rounding is the same from `lag_ms` before the fill to `lead_ms` after it (age only
+        grows, so the two ends decide). Pure."""
+        try:
+            f = lambda t: round((int(t) - int(onboard_ms)) / 86400000.0, 1)
+            a, b = f(int(fill_ms) - int(lag_ms)), f(int(fill_ms) + int(lead_ms))
+            return f(fill_ms) if a == b else None
+        except Exception:
+            return None
+
+    async def _stamp_rebuild_exact(self) -> int:
+        """bot fills (OPEN / CLOSED, MANUAL out, both modes) with any of STAMP_REBUILD_EXACT NULL → klines up to the read moment on the
+        FLATBASE history client (its own throttle — never in front of the scan / FRENZY / order reads; paced 0.5 s; stops on a ban / rate
+        limit / used weight ≥ STAMP_REBUILD_WEIGHT_STOP) → the AMBIGUITY RULE above → ONE guarded UPDATE per row with COALESCE (a live value
+        always wins; id + pair + opened_at ± 1 s). Readings cached per (pair, UTC day) / 4h bar. → rows updated. Never raises."""
+        n_upd, n_amb = 0, 0
+        try:
+            cols = [getattr(Order, c) for c in self.STAMP_REBUILD_EXACT]
+            async with AsyncSessionLocal() as _s:
+                rows = (await _s.execute(select(Order.id, Order.pair, Order.opened_at, *cols).where(and_(
+                    Order.status.in_(["OPEN", "CLOSED"]), or_(Order.entry_strategy.is_(None), Order.entry_strategy != "MANUAL"),
+                    Order.opened_at.isnot(None), or_(*[c.is_(None) for c in cols]))).order_by(Order.opened_at.desc())
+                    .limit(self.STAMP_REBUILD_MAX))).all()
+            if not rows:
+                return 0
+            logger.info(f"[STAMP_REBUILD] {len(rows)} older fill(s) with an exact stamp missing — rebuilding (pair 1d −DI, BTC 4h gap, age)")
+            mk = {}
+            try:
+                await binance_service.load_public_markets()
+                mk = binance_service.public_exchange.markets or {}
+            except Exception:
+                mk = {}
+            c4h, c1d = {}, {}
+            L = self.STAMP_REBUILD_LAG_MS
+
+            def _limited():
+                try:
+                    _w = getattr(binance_service, 'flatbase_used_weight', None)
+                    return (float(getattr(binance_service, 'flatbase_limited_until', 0) or 0) > _leash_time.time()
+                            or binance_service.regime_limited() or (_w is not None and int(_w) >= self.STAMP_REBUILD_WEIGHT_STOP))
+                except Exception:
+                    return True
+
+            async def _ndi(pair, at_ms):
+                k = (pair, at_ms // 86_400_000)
+                if k not in c1d:
+                    _rows = await binance_service.get_ohlcv_until(pair, '1d', at_ms, 200)
+                    await asyncio.sleep(0.5)
+                    c1d[k] = closed_wilder_ndi(_rows) if _rows else None
+                return c1d[k]
+
+            async def _gap(at_ms):
+                k = at_ms // 14_400_000
+                if k not in c4h:
+                    _rows = await binance_service.get_ohlcv_until('BTCUSDT', '4h', at_ms, 1000)
+                    await asyncio.sleep(0.5)
+                    c4h[k] = closed_ema_gap_pct(_rows, 50, 200) if _rows else None
+                return c4h[k]
+            for oid, pair, op, ndi0, gap0, age0 in rows:
+                if _limited():
+                    logger.warning(f"[STAMP_REBUILD] stopped (rate-limited / banned / weight) after {n_upd} row(s) — the next restart resumes")
+                    break
+                fms = int((op - datetime(1970, 1, 1)).total_seconds() * 1000) if op.tzinfo is None else int(op.timestamp() * 1000)
+                st = {}
+                _ob = (((mk.get(pair.replace('USDT', '/USDT:USDT')) or {}).get('info')) or {}).get('onboardDate')
+                if age0 is None and _ob is not None:
+                    v = self.stamp_rebuild_age(fms, _ob, L['entry_pair_age_days'], self.STAMP_REBUILD_LEAD_MS)
+                    if v is None:
+                        n_amb += 1
+                    else:
+                        st['entry_pair_age_days'] = v
+                _age_d = age0 if age0 is not None else ((fms - int(_ob)) / 86400000.0 if _ob is not None else None)
+                if ndi0 is None and not (_age_d is not None and _age_d < self.STAMP_REBUILD_NDI_MIN_AGE_D):
+                    _d0, _d1 = (fms - L['entry_pair_1d_ndi']) // 86_400_000, (fms + self.STAMP_REBUILD_LEAD_MS) // 86_400_000
+                    if _d0 != _d1:   # the window crosses a UTC midnight: live could hold either day's reading → NULL, nothing fetched
+                        n_amb += 1
+                    else:
+                        a = await _ndi(pair, fms)
+                        if a is not None:
+                            st['entry_pair_1d_ndi'] = a
+                if gap0 is None:
+                    _b0, _b1 = (fms - L['entry_btc_4h_ema50_200_gap_pct']) // 14_400_000, fms // 14_400_000
+                    if _b0 != _b1:   # within 30 min after a 4h close: live may still hold the previous bar's reading → NULL, nothing fetched
+                        n_amb += 1
+                    else:
+                        a = await _gap(fms)
+                        if a is not None:
+                            st['entry_btc_4h_ema50_200_gap_pct'] = a
+                if not st:
+                    continue
+                vals = {c: func.coalesce(getattr(Order, c), v) for c, v in st.items()}
+                async with AsyncSessionLocal() as _us:
+                    res = await locked_execute_commit(_us, update(Order).where(and_(
+                        Order.id == oid, Order.pair == pair,
+                        Order.opened_at.between(op - timedelta(seconds=1), op + timedelta(seconds=1)))).values(**vals))
+                n_upd += int(bool(getattr(res, 'rowcount', 0)))
+            logger.info(f"[STAMP_REBUILD] done: {n_upd} row(s) updated · {n_amb} stamp(s) left NULL as ambiguous (live could have read "
+                        f"another value) — exact stamps only, COALESCE")
+            return n_upd
+        except Exception as e:
+            logger.warning(f"[STAMP_REBUILD] failed after {n_upd} row(s) (observe-only, trading unaffected): {str(e)[:120]}")
+            return n_upd
+
     async def _rtp_arm(self, db, order):
         """OPEN path (bot fills, after the commit): the resting TP for an enabled sleeve. Under _close_lock with the row re-read (a close
         that raced the open never gets a limit after it). Live: stale close-side reduce-only limits on the symbol are cancelled first (a
@@ -21005,6 +21137,7 @@ class TradingEngine:
         # 📐 Sep-29: the scanned universe's per-pair volume / rank / listing age, for the MANUAL sleeve's entry stamps
         self._scan_pair_meta = {r['pair']: (r.get('volume_24h'), r.get('rank'), r.get('age_days')) for r in _collected}
         self._scan_pair_meta_at = time.time()
+        self._stamp_rebuild_schedule()   # 🧾⏪ (DECISION_LOG 393) once per process: the three EXACT stamps on older fills (background)
 
         # ── Phase 2: Compute global volume ratio and market breadth ──
         if _scan_avg_vol_sum > 0:

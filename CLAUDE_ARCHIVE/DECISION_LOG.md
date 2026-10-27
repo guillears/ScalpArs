@@ -9740,3 +9740,33 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   batch's journal rows before the reset (no reset timestamp is stored — a BotState column would make it exact); a LONG / SHORT-only reset
   keeps the other direction's rows and stretches the window (≤ 7).
   Test: tests/test_decisions_export.py::test_export_default_covers_the_whole_batch.
+
+## (393) 2026-10-27 — 🧾⏪ Older fills: only the EXACT stamps are rebuilt (operator: "can we rebuild them now … you have to be 300 % sure … 0 errors" → "rebuild the three exact ones"; observe-only, no trading / config change)
+- **Parity first (scripts/study_stamp_rebuild_parity.py → reports/STAMP_REBUILD_PARITY_2026-10-27.csv / _summary.csv):** every rebuildable
+  stamp was rebuilt for the 130 real fills (10-16 → 10-27, B22–B25 + exports) that ALREADY carry the live value and compared per column,
+  three treatments of the forming 5m bar (FULL finished bar / PART from 1m bars before the fill / PARTC incl. the fill minute). Exact
+  (|Δ| ≤ the column's rounding unit): BTC 4h EMA50/200 gap 100 % (N 12) · pair 1d −DI 100 % (N 12) · BTC 1h RSI prev 97 % · FRENZY
+  di_spread / adx_delta / vol_trend 91–97 % · pair RSI prev 91 % · funding 45 % · BTC RSI 32 % · pair RSI 16 % · ADX / DI / EMA gaps /
+  slopes / stretch 0–31 % · BTC price 31 % (median $5, max $51). Cause: the live 5m stamps read a FORMING bar at an unrecorded scan
+  moment; history only has the finished bar. → anything below 100 % is NEVER written (an estimate next to real values would silently
+  contaminate every later W/L read; an honest NULL is better).
+- **Independent re-check (deep review, every fill that carries the live value, B1–B24 archives + all 77 paper exports):** pair 1d −DI
+  30 / 30 exact, BTC 4h gap 30 / 30 (SPIKE_FADE 10-01 → 10-27; 2 in the first UTC hour, 7 within 30 min of a 4h close — all matched),
+  listing age 391 / 391 (07-14 → 10-27) — 0 mismatches, max |Δ| 0.
+- **Ambiguity rule (live reads are NOT taken exactly at the fill):** the live 1d −DI is cached ≤ 60 min per symbol and the post-fill
+  backfill reads it ≤ ~15 s AFTER the fill; the BTC 4h gap is a global accepted ≤ 30 min stale; listing age is taken at scan time
+  (≤ 30 min before) or by the backfill (seconds after). A stamp is written ONLY when every moment live could have read gives the SAME value:
+  1d −DI — the same UTC day from fill − 60 min to fill + 60 s; 4h gap — the same 4h bar from fill − 30 min to the fill; age — the same
+  0.1-day rounding from fill − 30 min to fill + 60 s. Otherwise NULL, nothing fetched (counted in the [STAMP_REBUILD] done line). On the
+  current B25 + live B22–B24 rows: −DI ≈ 96 % written, 4h gap ≈ 85 %, age ≈ 85 % (the rest NULL as ambiguous).
+- **Rebuilt (engine, once per process, background):** TradingEngine._stamp_rebuild_exact — bot fills (OPEN / CLOSED, MANUAL out, both
+  modes, ≤ 3,000 newest) with entry_pair_1d_ndi / entry_btc_4h_ema50_200_gap_pct / entry_pair_age_days NULL → the live windows on the
+  FLATBASE history client (200 1d bars / 1,000 4h bars with open ≤ the fill — the forming bar dropped by closed_wilder_ndi /
+  closed_ema_gap_pct exactly as live; listing age = (fill − onboardDate) / 1 d, rounded 0.1) → one guarded UPDATE per row, COALESCE.
+  Paced 0.5 s, stops on a ban / rate limit / FLATBASE-client used weight ≥ 1,500 (the next restart resumes); a pair < 43 days old at the
+  fill is never fetched (closed_wilder_ndi needs ≥ 42 closed daily bars). Started after the first scan publishes its pair meta.
+  Caveat: a SPIKE_FADE row whose live 1d −DI / 4h gap was NULL because the gate failed open now carries the value the gate never saw — a
+  gate replay from stamps must not read those rows as "should have been blocked".
+- **Stays NULL on the 77 pre-fix B25 fills:** every 5m pair / BTC indicator the sleeve did not stamp itself (FLATBASE ≈ 38 columns,
+  FRENZY signed gaps / funding, fade BTC slopes / global volume / funding / signed gaps, momentum BTC price), breadth and global volume
+  everywhere they were missing. The batch review treats them as a stated blind spot. services/stamp_rebuild.py = research only.

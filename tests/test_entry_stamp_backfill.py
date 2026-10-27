@@ -225,3 +225,112 @@ def test_coverage_scout_flags_gaps_and_unclassified(tmp_path):
     assert "- MANUAL" not in out and "- 🚨 MANUAL" not in out and "Verdict: 🚨 ALERT" in out   # MANUAL fills never counted
     assert "MOMENTUM" not in out                                                              # expired / adopted rows are not fills
     assert "① Current batch BEFORE the fix" in out and "② Since the fix" in out                # the pre-fix fills are shown, never hidden
+
+
+# ── 🧾⏪ DECISION_LOG 393: the exact rebuild of older fills ─────────────────────────────────────────────────────────────────────────
+
+def _bars(n, step, t_end, p0=1.0):
+    """n bars of `step` whose open ≤ t_end, aligned to the exchange grid (opens at multiples of step); each bar's prices depend only on
+    its own open time — the same bar is identical whatever read moment asked for it (as on Binance)."""
+    last = (int(t_end) // step) * step
+    out = []
+    for i in range(n):
+        t = last - (n - 1 - i) * step
+        k = t // step
+        o = 1.0 + 0.05 * ((k * 7919) % 13) / 13.0
+        c = o * (1.0 + (0.01 if k % 3 else -0.006))
+        out.append([t, o, max(o, c) * 1.002, min(o, c) * 0.998, c, 1000.0])
+    return out
+
+
+def test_exact_rebuild_fills_only_the_three_and_keeps_live_values(monkeypatch):
+    import services.trading_engine as TE
+    from services.indicators import closed_wilder_ndi, closed_ema_gap_pct
+    asked = []
+
+    async def until(pair_id, tf, end_ms, limit=1500):
+        asked.append((pair_id, tf, limit))
+        return _bars(limit, 86_400_000 if tf == "1d" else 14_400_000, end_ms)
+
+    async def nosleep(*a, **k):
+        return None
+
+    async def nomk():
+        return None
+    monkeypatch.setattr(TE.binance_service, "get_ohlcv_until", until)
+    monkeypatch.setattr(TE.binance_service, "load_public_markets", nomk)
+    monkeypatch.setattr(TE.binance_service, "public_exchange", type("X", (), {"markets": {"BANK/USDT:USDT": {"info": {"onboardDate": 1_700_000_000_000}}}})())
+    monkeypatch.setattr(TE.binance_service, "regime_limited", lambda: False)
+    monkeypatch.setattr(TE.asyncio, "sleep", nosleep)
+    e = _engine()
+    rows = [_fb_row(opened_at=dt.datetime(2026, 10, 26, 21, 0, 10)), _fb_row(pair="AUSDT", entry_strategy="MOMENTUM", entry_pair_1d_ndi=12.5, entry_btc_4h_ema50_200_gap_pct=-1.0,
+                                entry_pair_age_days=99.0, opened_at=dt.datetime(2026, 10, 25, 1, 0, 0)),
+            _fb_row(pair="MUSDT", entry_strategy="MANUAL", opened_at=dt.datetime(2026, 10, 25, 2, 0, 0))]
+
+    async def fn(ids):
+        return await e._stamp_rebuild_exact()
+    n, got = asyncio.run(_with_db(monkeypatch, rows)(fn))
+    fb, mom, man = got
+    fms = int((dt.datetime(2026, 10, 26, 21, 0, 10) - dt.datetime(1970, 1, 1)).total_seconds() * 1000)   # 1 h into the 4h bar, 21 h into the day
+    assert n == 1                                                                   # the MOMENTUM row was complete, MANUAL out
+    assert fb.entry_pair_1d_ndi is not None and fb.entry_pair_1d_ndi == closed_wilder_ndi(_bars(200, 86_400_000, fms))   # the live arithmetic
+    assert fb.entry_btc_4h_ema50_200_gap_pct == closed_ema_gap_pct(_bars(1000, 14_400_000, fms), 50, 200)
+    assert fb.entry_pair_age_days == round((fms - 1_700_000_000_000) / 86400000.0, 1)
+    assert fb.entry_rsi is None and fb.entry_btc_rsi is None                        # nothing beyond the three exact stamps
+    assert (mom.entry_pair_1d_ndi, mom.entry_btc_4h_ema50_200_gap_pct, mom.entry_pair_age_days) == (12.5, -1.0, 99.0)
+    assert man.entry_pair_1d_ndi is None and ("MUSDT", "1d", 200) not in asked
+    assert ("BANKUSDT", "1d", 200) in asked and ("BTCUSDT", "4h", 1000) in asked     # the live windows: 200 daily · 1,000 4h bars
+
+
+def test_exact_rebuild_stops_when_rate_limited(monkeypatch):
+    import services.trading_engine as TE
+
+    async def until(*a, **k):
+        raise AssertionError("no read while limited")
+
+    async def nomk():
+        return None
+    monkeypatch.setattr(TE.binance_service, "get_ohlcv_until", until)
+    monkeypatch.setattr(TE.binance_service, "load_public_markets", nomk)
+    monkeypatch.setattr(TE.binance_service, "regime_limited", lambda: True)
+    e = _engine()
+
+    async def fn(ids):
+        return await e._stamp_rebuild_exact()
+    n, (row,) = asyncio.run(_with_db(monkeypatch, [_fb_row()])(fn))
+    assert n == 0 and row.entry_pair_1d_ndi is None
+
+
+def test_exact_rebuild_scope_pinned():
+    import services.trading_engine as TE
+    assert TE.TradingEngine.STAMP_REBUILD_EXACT == ('entry_pair_1d_ndi', 'entry_btc_4h_ema50_200_gap_pct', 'entry_pair_age_days')
+    src = open(os.path.join(ROOT, "services", "trading_engine.py"), encoding="utf-8").read()
+    assert src.count("self._stamp_rebuild_schedule()") == 1 and "await self._stamp_rebuild_schedule" not in src
+
+
+def test_exact_rebuild_leaves_ambiguous_reads_null(monkeypatch):
+    """a fill in the first hour of a UTC day (live 1d −DI cached ≤ 60 min → it may still hold yesterday's reading) and in the first 30 min of
+    a 4h bar (the live gap accepted ≤ 30 min stale): when the two possible readings differ, the stamp stays NULL — never a guess."""
+    import services.trading_engine as TE
+
+    async def until(pair_id, tf, end_ms, limit=1500):
+        return _bars(limit, 86_400_000 if tf == "1d" else 14_400_000, end_ms)
+
+    async def nosleep(*a, **k):
+        return None
+
+    async def nomk():
+        return None
+    monkeypatch.setattr(TE.binance_service, "get_ohlcv_until", until)
+    monkeypatch.setattr(TE.binance_service, "load_public_markets", nomk)
+    monkeypatch.setattr(TE.binance_service, "public_exchange", type("X", (), {"markets": {}})())
+    monkeypatch.setattr(TE.binance_service, "regime_limited", lambda: False)
+    monkeypatch.setattr(TE.asyncio, "sleep", nosleep)
+    e = _engine()
+
+    async def fn(ids):
+        return await e._stamp_rebuild_exact()
+    n, (row,) = asyncio.run(_with_db(monkeypatch, [_fb_row(opened_at=dt.datetime(2026, 10, 26, 0, 10, 0))])(fn))
+    assert n == 0 and row.entry_pair_1d_ndi is None and row.entry_btc_4h_ema50_200_gap_pct is None
+    assert TE.TradingEngine.stamp_rebuild_age(10 * 86_400_000 + 3_600_000, 0) == 10.0          # 10.04 d now and 10.02 d 30 min earlier → 10.0
+    assert TE.TradingEngine.stamp_rebuild_age(int(10.25 * 86_400_000) + 60_000, 0) is None      # crosses the 10.2 / 10.3 rounding edge

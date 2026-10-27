@@ -1,0 +1,217 @@
+breakeven WR 71.0 % · entry vars 64
+                                       split  side         master  master days  master episodes (gap > 3 d)   B25 (prov.)           BT s1           BT s2           BT s3  P(avg<0) day-boot
+0   S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone)  zone  14·71%·-0.116           14                            7  2·50%·-0.616  121·77%·+0.216  127·76%·+0.121  122·80%·+0.165            0.67925
+1   S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone)  rest  62·90%·+0.403           40                            5  6·67%·-0.267  504·72%·+0.018  481·70%·-0.053  477·72%·-0.062            0.00000
+2  S2 alt beta to BTC (24 h) > master median  zone  38·87%·+0.189           27                            9  8·62%·-0.354  467·76%·+0.084  452·74%·+0.000  453·75%·-0.008            0.04500
+3  S2 alt beta to BTC (24 h) > master median  rest  38·87%·+0.426           21                            3             0  158·64%·-0.026  156·65%·-0.067  146·68%·-0.041            0.00125
+4               S3 BTC 1d EMA50 above EMA200  zone  35·89%·+0.223           23                            3  8·62%·-0.354  185·74%·+0.136  177·69%·-0.037  188·72%·+0.017            0.02075
+5               S3 BTC 1d EMA50 above EMA200  rest  41·85%·+0.379           22                            2             0  440·73%·+0.023  431·73%·-0.009  411·74%·-0.030            0.00175
+split overlap (master, share of S2 zone also in S3): 0.82 · S1 in S3: 0.5
+                                        split  side        pool   N  days  1D_tests  1D_p05  1D_p05_chance  1D_cheapbar_real  1D_cheapbar_null_median  1D_cheapbar_P  1D_cheapbar_perm_median  1D_cheapbar_perm_P  1D_p05_perm  1D_rotations  1D_fw_min_p  2D_quadrants  2D_vars  2D_real_abs_t3  2D_null_abs_t3_median  2D_P_count  2D_real_max_abs_t  2D_null_max_abs_t_p95  2D_P_max  2D_cheapbar_real  2D_cheapbar_null_median  2D_cheapbar_P  2D_rotations  2D_perm_abs_t3_median  2D_perm_P_count  2D_perm_max_abs_t_p95  2D_perm_P_max  2D_cheapbar_perm_median  2D_cheapbar_perm_P
+0    S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone)  zone      master  14    14       141       0           7.05                 1                      1.0       0.909091                      1.0               0.744           13            11     0.083333           NaN      NaN             NaN                    NaN         NaN                NaN                    NaN       NaN               NaN                      NaN            NaN           NaN                    NaN              NaN                    NaN            NaN                      NaN                 NaN
+1    S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone)  zone  master+B25  16    16       142       0           7.10                23                     23.0       0.538462                     22.0               0.464            6            13     0.071429           NaN      NaN             NaN                    NaN         NaN                NaN                    NaN       NaN               NaN                      NaN            NaN           NaN                    NaN              NaN                    NaN            NaN                      NaN                 NaN
+2    S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone)  rest      master  62    40       160       7           8.00                 0                      0.0       1.000000                      0.0               1.000           14            59     0.016667        5724.0     57.0            13.0                    2.0    0.135593           3.523804               3.998714  0.220339              62.0                     15.0       0.016949          59.0                    2.0         0.100000               3.847406       0.173333                     18.0            0.030000
+3    S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone)  rest  master+B25  68    43       160      13           8.00                 0                      0.0       1.000000                      0.0               1.000           14            65     0.015152        5791.0     57.0            10.0                    5.0    0.369231           3.312030               4.072408  0.569231              70.0                     49.0       0.292308          65.0                    4.0         0.213333               3.984870       0.453333                     42.0            0.220000
+4   S2 alt beta to BTC (24 h) > master median  zone      master  38    27       156       5           7.80                 3                      4.0       0.628571                      3.0               0.603            6            35     0.027778        5139.0     57.0            14.0                   39.0    0.914286           3.546566               4.030800  0.600000             217.0                    195.0       0.371429          35.0                   31.0         0.846667               4.147700       0.680000                    180.0            0.316667
+5   S2 alt beta to BTC (24 h) > master median  zone  master+B25  46    30       158       3           7.90                 7                      9.0       0.720930                      8.0               0.638           12            43     0.022727        5379.0     57.0           213.0                  147.0    0.186047           3.818951               4.515842  0.883721             613.0                    511.0       0.325581          43.0                  136.5         0.166667               4.668059       0.886667                    489.5            0.193333
+6   S2 alt beta to BTC (24 h) > master median  rest      master  38    21       156       2           7.80                 1                      0.0       0.485714                      1.0               0.538            7            35     0.027778        5059.0     56.0             2.0                    2.0    0.542857           3.091085               3.904761  0.542857              29.0                     97.0       1.000000          35.0                    2.0         0.563333               3.760697       0.613333                     89.0            0.960000
+7   S2 alt beta to BTC (24 h) > master median  rest  master+B25  38    21       156       2           7.80                 1                      0.0       0.485714                      1.0               0.551            7            35     0.027778        5059.0     56.0             2.0                    2.0    0.542857           3.091085               3.904761  0.542857              29.0                     97.0       1.000000          35.0                    2.0         0.600000               3.824310       0.636667                     90.0            0.940000
+8                S3 BTC 1d EMA50 above EMA200  zone      master  35    23       154       3           7.70                 0                      0.5       1.000000                      1.0               1.000           14            32     0.030303        5068.0     57.0            13.0                   30.0    0.718750           3.411166               4.220684  0.718750             175.0                    128.0       0.250000          32.0                   15.0         0.596667               4.212693       0.660000                     89.0            0.130000
+9                S3 BTC 1d EMA50 above EMA200  zone  master+B25  43    26       162      14           8.10                 5                      5.0       0.525000                      5.0               0.521           18            40     0.024390        5364.0     57.0           366.0                   87.0    0.000000           4.261386               4.927392  0.125000             753.0                    391.0       0.025000          40.0                   88.0         0.006667               4.590562       0.163333                    413.0            0.023333
+10               S3 BTC 1d EMA50 above EMA200  rest      master  41    22       155       4           7.75                 1                      1.0       0.631579                      1.0               0.546            8            38     0.025641        5270.0     57.0             5.0                    3.0    0.421053           3.089288               4.052284  0.710526              93.0                    159.5       0.894737          38.0                    3.0         0.406667               3.993046       0.700000                    155.0            0.856667
+11               S3 BTC 1d EMA50 above EMA200  rest  master+B25  41    22       155       4           7.75                 1                      1.0       0.631579                      1.0               0.557            8            38     0.025641        5270.0     57.0             5.0                    3.0    0.421053           3.089288               4.052284  0.710526              93.0                    159.5       0.894737          38.0                    3.0         0.383333               3.943180       0.640000                    154.0            0.826667
+                                                        candidate master blocked    master kept  master Δ$ in-sample (2×) B25 blocked (prov.)       bar master  P_neg master  days master  top pair share          bar ALL             BT s1 blocked vs kept
+0                      C1 block HB ∧ trend gap ≥ −0.13 (41h zone)  14·71%·-0.116  62·90%·+0.403                     34.52        2·50%·-0.616    fail (wr,p,n)       0.67925           14        0.250002         fail (p)  121·77%·+0.216 vs 504·72%·+0.018
+1                                     C2 block HEALTHY_BEAR (all)  22·73%·+0.130  54·93%·+0.380                   -978.36        2·50%·-0.616      fail (wr,p)       0.35575           18        0.193771         fail (p)  180·74%·+0.154 vs 445·73%·+0.017
+2                                       C3 block alt beta > 1.030  38·87%·+0.189  38·87%·+0.426                  -1531.14        8·62%·-0.354      fail (wr,p)       0.04500           27        0.200003      fail (wr,p)  467·76%·+0.084 vs 158·64%·-0.026
+3                                  C4 block BTC 1d EMA50 > EMA200  35·89%·+0.223  41·85%·+0.379                  -1705.77        8·62%·-0.354      fail (wr,p)       0.02075           23        0.250004      fail (wr,p)  185·74%·+0.136 vs 440·73%·+0.023
+4                                     DL374 ① block ADX Δ < 2.359  37·81%·+0.128  39·92%·+0.477                   -999.38        4·75%·-0.126      fail (wr,p)       0.12225           29        0.162320      fail (wr,p)  306·75%·+0.073 vs 319·71%·+0.040
+5                                   DL374 ② block pair ADX ≤ 19.2  18·83%·+0.167  58·88%·+0.351                   -810.67        2·50%·-0.543      fail (wr,p)       0.19875           16        0.333335      fail (wr,p)  174·74%·+0.089 vs 451·73%·+0.044
+6                               DL374 ⑤ block HB ∧ ADX Δ ≤ 2.4341  14·71%·-0.045  62·90%·+0.387                   -141.36         1·0%·-1.491    fail (wr,p,n)       0.57250           11        0.316381         fail (p)   90·69%·-0.077 vs 535·74%·+0.079
+7                       DL374 ⑥ block HB ∧ BTC ADX prev > 24.5874   7·43%·-0.474  69·91%·+0.386                    415.32                   0  fail (p,days,n)       0.90650            7        0.316379  fail (p,days,n)   45·69%·-0.219 vs 580·74%·+0.078
+8        W2D S2 zone ∧ entry_atr_pct lo 0.5171 ∧ p_r4h lo -0.3748   9·44%·-0.665  67·93%·+0.438                    668.16        2·50%·-0.543         fail (n)       0.99425            8        0.200003         fail (n)   84·82%·+0.106 vs 541·72%·+0.049
+9   W2D S3 zone ∧ entry_atr_pct lo 0.5143 ∧ entry_pos_di lo 49.22  10·60%·-0.432  66·91%·+0.419                    422.20        4·50%·-0.581       fail (p,n)       0.94750           10        0.250004         fail (n)   43·74%·+0.031 vs 582·73%·+0.058
+10   W2D S3 zone ∧ d_di_spread lo 34.38 ∧ entry_atr_pct lo 0.5143   9·56%·-0.505  67·91%·+0.416                    478.87         2·0%·-1.493       fail (p,n)       0.94950            9        0.250004         fail (n)   40·75%·+0.034 vs 585·73%·+0.058
+11                         W1D S2 zone ∧ d_di_spread <=q33(27.43)  13·69%·-0.191  63·90%·+0.410                    151.58        3·67%·-0.297       fail (p,n)       0.78475           13        0.250005         fail (p)  154·79%·+0.121 vs 471·72%·+0.035
+12                        W1D S3 zone ∧ entry_pos_di <=q33(43.91)  12·75%·-0.150  64·89%·+0.393                    141.28        3·67%·-0.297    fail (wr,p,n)       0.75900           11        0.333341      fail (wr,p)   58·74%·+0.180 vs 567·73%·+0.044
+13                             W1D S3 zone ∧ p_rv24h >q67(0.3519)  12·75%·-0.096  64·89%·+0.383                    -58.49       2·100%·+0.299    fail (wr,p,n)       0.65025            9        0.333338    fail (wr,p,n)   72·68%·+0.048 vs 553·74%·+0.057
+DL 374 registration B25 fills: 7 (expected 7) · out-of-registration B25: ['PARTIUSDT']
+DL 374 forward cohort floor = commit 20c482b9 (2026-10-26 13:19:33 UTC) + 10 min → B25 fills at/after 13:29:33: 0
+41h zone FORWARD since registration (opened > 09-18): zone 9·67%·-0.250 · $-196 · 9 days vs rest 30·87%·+0.174
+41h zone ALL (master + B25): 16·69%·-0.179 · Σ$ -302 · 16 days · SHIP bar N≥20 ∧ WR≤55 ∧ Σ<0 → NOT MET
+DL 165 ($10–20M band since 10-01):               opened_at        pair  entry_pair_volume_24h_usd       pct     usd  liquidity_capped  notional_value
+59  2026-10-03T04:19:58  RESOLVUSDT               1.164460e+07  0.287172   31.92             False    11114.914614
+63  2026-10-06T12:26:45    ORDIUSDT               1.167118e+07  0.269722   64.53             False    23924.974112
+74  2026-10-17T00:29:07    KMNOUSDT               1.779712e+07 -1.500034 -178.08             False    11871.733658
+                                        split         pool  side          fills  $ at 2× (traded/stack)      $ at 1×  worst fill $ (2×)  fills losing > 4 % of $2,900 at 2×  at 1×
+0    S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone)       master  zone  14·71%·-0.116              -34.520000   -17.260000        -312.430000                                   3      1
+1    S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone)       master  rest  62·90%·+0.403             4271.300000  2233.225000        -314.990000                                   5      2
+2    S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone)  B25 (prov.)  zone   2·50%·-0.616             -267.286633  -133.643316        -304.041016                                   1      1
+3    S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone)  B25 (prov.)  rest   6·67%·-0.267             -270.540003  -135.270002        -308.398995                                   2      1
+4   S2 alt beta to BTC (24 h) > master median       master  zone  38·87%·+0.189             1531.140000   807.930000        -266.130000                                   4      1
+5   S2 alt beta to BTC (24 h) > master median       master  rest  38·87%·+0.426             2705.640000  1408.035000        -314.990000                                   4      2
+6   S2 alt beta to BTC (24 h) > master median  B25 (prov.)  zone   8·62%·-0.354             -537.826636  -268.913318        -308.398995                                   3      2
+7   S2 alt beta to BTC (24 h) > master median  B25 (prov.)  rest              0                0.000000     0.000000                NaN                                   0      0
+8                S3 BTC 1d EMA50 above EMA200       master  zone  35·89%·+0.223             1705.770000   852.885000        -266.130000                                   3      1
+9                S3 BTC 1d EMA50 above EMA200       master  rest  41·85%·+0.379             2531.010000  1363.080000        -314.990000                                   5      2
+10               S3 BTC 1d EMA50 above EMA200  B25 (prov.)  zone   8·62%·-0.354             -537.826636  -268.913318        -308.398995                                   3      2
+11               S3 BTC 1d EMA50 above EMA200  B25 (prov.)  rest              0                0.000000     0.000000                NaN                                   0      0
+12                    HEALTHY_BEAR (DL 374 ④)       master  zone  22·73%·+0.130              978.360000   489.180000        -312.430000                                   4      1
+13                    HEALTHY_BEAR (DL 374 ④)       master  rest  54·93%·+0.380             3258.420000  1726.785000        -314.990000                                   4      2
+14                    HEALTHY_BEAR (DL 374 ④)  B25 (prov.)  zone   2·50%·-0.616             -267.286633  -133.643316        -304.041016                                   1      1
+15                    HEALTHY_BEAR (DL 374 ④)  B25 (prov.)  rest   6·67%·-0.267             -270.540003  -135.270002        -308.398995                                   2      1
+                               variable    direction               threshold    master high     master low master direction B25 refute-only read (N ≥ 5 per side)
+0                                   RSI     W_HIGHER                    74.4  46·91%·+0.343  30·80%·+0.252     as predicted         not readable (N < 5 per side)
+1                                   ADX     W_HIGHER                    19.2  58·88%·+0.351  18·83%·+0.167     as predicted         not readable (N < 5 per side)
+2                                ADXDir         NONE                     NaN            NaN            NaN              NaN                                   NaN
+3                                RSIDir         NONE                     NaN            NaN            NaN              NaN                                   NaN
+4                                   Gap      W_LOWER                   0.284  41·85%·+0.269  35·89%·+0.351     as predicted         not readable (N < 5 per side)
+5                                Gap5-8      W_LOWER                   0.176  44·82%·+0.301  32·94%·+0.316     as predicted         not readable (N < 5 per side)
+6                               Gap8-13      W_LOWER                   0.093  40·85%·+0.267  36·89%·+0.352     as predicted         not readable (N < 5 per side)
+7                               Stretch     W_HIGHER                    1.23  44·86%·+0.385  32·88%·+0.200     as predicted         not readable (N < 5 per side)
+8                              EMA20Slp      W_LOWER                   0.112  41·85%·+0.274  35·89%·+0.346     as predicted         not readable (N < 5 per side)
+9                                BTCSlp      W_LOWER                       0              0              0              n/a         not readable (N < 5 per side)
+10                               BTCRSI      W_LOWER                      40  42·88%·+0.231  34·85%·+0.401     as predicted         not readable (N < 5 per side)
+11                               BTCADX      W_LOWER                 24.5874  26·81%·+0.175  50·90%·+0.376     as predicted         not readable (N < 5 per side)
+12                            BTCADXDir         NONE                     NaN            NaN            NaN              NaN                                   NaN
+13                            BTCRSIDir      W_FALSE                     NaN  31·84%·+0.275  45·89%·+0.329     as predicted         not readable (N < 5 per side)
+14                                 ADXΔ     W_HIGHER                   2.359  39·92%·+0.477  37·81%·+0.128     as predicted         not readable (N < 5 per side)
+15                               RngPos         NONE                     NaN            NaN            NaN              NaN                                   NaN
+16                              Breadth     W_HIGHER                    59.1  39·85%·+0.348  37·89%·+0.264     as predicted         not readable (N < 5 per side)
+17                                 ATR%         NONE                     NaN            NaN            NaN              NaN                                   NaN
+18                             BTCTrend      W_LOWER                   -0.13  58·88%·+0.259  18·83%·+0.464     as predicted         not readable (N < 5 per side)
+19                            PairTrend     W_HIGHER                   -0.40  56·89%·+0.302  20·80%·+0.323         OPPOSITE         not readable (N < 5 per side)
+20                            GlobalVol     W_HIGHER                     1.0              0              0              n/a         not readable (N < 5 per side)
+21                             PairVol$      W_LOWER                 3760000  35·89%·+0.348  41·85%·+0.272         OPPOSITE         not readable (N < 5 per side)
+22                                 Ext%     W_HIGHER                    1.53  44·84%·+0.350  32·91%·+0.249     as predicted         not readable (N < 5 per side)
+23                              BTCExt%      W_LOWER                  -0.054  35·86%·+0.192  41·88%·+0.406     as predicted         not readable (N < 5 per side)
+24                              1hSlope      W_LOWER                       0              0              0              n/a         not readable (N < 5 per side)
+25                  Regime HEALTHY_BEAR      W_FALSE            HEALTHY_BEAR  22·73%·+0.130  54·93%·+0.380     as predicted         not readable (N < 5 per side)
+26                HB and ADX not rising      W_FALSE  HB & adx_delta<=2.4341  14·71%·-0.045  62·90%·+0.387     as predicted         not readable (N < 5 per side)
+27                           Market cap      W_LOWER               200000000              0    1·0%·-1.500              n/a         not readable (N < 5 per side)
+28            Spike-bar volume multiple      W_LOWER                    3.21  41·85%·+0.287  35·89%·+0.330     as predicted         not readable (N < 5 per side)
+29                                  +DI     W_HIGHER                    43.6  43·91%·+0.379  33·82%·+0.213     as predicted         not readable (N < 5 per side)
+30                                  -DI      W_LOWER                    14.6  34·82%·+0.290  42·90%·+0.321     as predicted         not readable (N < 5 per side)
+31                          EMA50 slope     W_HIGHER                  -0.069  41·93%·+0.377  35·80%·+0.225     as predicted         not readable (N < 5 per side)
+32                Pair 1d -DI (laggard)      W_LOWER                    16.1              0  20·85%·+0.081              n/a         not readable (N < 5 per side)
+33                 BTC 4h EMA50/200 gap      W_LOWER                       0  20·85%·+0.081              0              n/a         not readable (N < 5 per side)
+34                        BTC 1d return      W_LOWER                       0  8·100%·+0.301  12·75%·-0.066         OPPOSITE         not readable (N < 5 per side)
+35                              BTC ATR     W_HIGHER                   0.088  37·89%·+0.402  39·85%·+0.217     as predicted         not readable (N < 5 per side)
+36                 Pair rank (thinness)     W_HIGHER                     170  45·87%·+0.233  31·87%·+0.415         OPPOSITE         not readable (N < 5 per side)
+37                             Pair age     W_HIGHER                     180  74·86%·+0.297  2·100%·+0.679         OPPOSITE         not readable (N < 5 per side)
+38                        Quality score     W_HIGHER                       0  64·86%·+0.256  12·92%·+0.578         OPPOSITE         not readable (N < 5 per side)
+39                       Entry slippage      W_LOWER                    0.10   3·33%·-0.823  73·89%·+0.354     as predicted         not readable (N < 5 per side)
+40                        RSI jump size         NONE                     NaN            NaN            NaN              NaN                                   NaN
+41                Spike-candle return %     W_HIGHER                     NaN            NaN            NaN              NaN                                   NaN
+42   Seconds from trigger close to fill      W_LOWER                     NaN            NaN            NaN              NaN                                   NaN
+43                 Pre-spike RSI (base)     W_HIGHER                      44  41·88%·+0.282  35·86%·+0.337         OPPOSITE         not readable (N < 5 per side)
+44                 entry_book_drift_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+45                entry_book_spread_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+46               entry_fill_vs_book_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+47                    entry_order_lag_s         NONE                     NaN            NaN            NaN              NaN                                   NaN
+48                          entry_price         NONE                     NaN            NaN            NaN              NaN                                   NaN
+49              entry_price_vs_ema5_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+50                    entry_macro_trend         NONE                     NaN            NaN            NaN              NaN                                   NaN
+51                  entry_btc_rsi_prev6         NONE                     NaN            NaN            NaN              NaN                                   NaN
+52                     entry_btc_rsi_1h         NONE                     NaN            NaN            NaN              NaN                                   NaN
+53                entry_btc_rsi_1h_prev         NONE                     NaN            NaN            NaN              NaN                                   NaN
+54               entry_pattern_c1_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+55               entry_pattern_c2_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+56               entry_pattern_c3_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+57               entry_pattern_c4_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+58               entry_pattern_c5_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+59               entry_pattern_c6_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+60               entry_pattern_c7_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+61               entry_pattern_c8_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+62               entry_pattern_c9_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+63            entry_pattern_c_any_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+64               entry_pattern_w1_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+65               entry_pattern_w2_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+66               entry_pattern_w3_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+67               entry_pattern_w4_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+68               entry_pattern_w5_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+69               entry_pattern_w6_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+70            entry_pattern_w_any_match         NONE                     NaN            NaN            NaN              NaN                                   NaN
+71                       entry_bull_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+72          entry_btc_regime_started_at         NONE                     NaN            NaN            NaN              NaN                                   NaN
+73                   entry_funding_rate         NONE                     NaN            NaN            NaN              NaN                                   NaN
+74                 entry_btc_off24h_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+75                entry_btc_off24lo_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+76                entry_long_heat_flags         NONE                     NaN            NaN            NaN              NaN                                   NaN
+77            entry_btc_off30d_high_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+78                    entry_btc_r72_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+79                      entry_btc_eff72         NONE                     NaN            NaN            NaN              NaN                                   NaN
+80                entry_btc_above72_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+81        entry_chop_burst_prior_fill_s         NONE                     NaN            NaN            NaN              NaN                                   NaN
+82                         entry_br_r72         NONE                     NaN            NaN            NaN              NaN                                   NaN
+83                       entry_br_above         NONE                     NaN            NaN            NaN              NaN                                   NaN
+84                         entry_br_eff         NONE                     NaN            NaN            NaN              NaN                                   NaN
+85                      entry_br_off24h         NONE                     NaN            NaN            NaN              NaN                                   NaN
+86                        entry_br_door         NONE                     NaN            NaN            NaN              NaN                                   NaN
+87              entry_br_bull_pct_top10         NONE                     NaN            NaN            NaN              NaN                                   NaN
+88              entry_br_bear_pct_top10         NONE                     NaN            NaN            NaN              NaN                                   NaN
+89                     entry_br_top10_n         NONE                     NaN            NaN            NaN              NaN                                   NaN
+90                entry_br_door_age_min         NONE                     NaN            NaN            NaN              NaN                                   NaN
+91                 entry_vol_mcap_ratio         NONE                     NaN            NaN            NaN              NaN                                   NaN
+92                       entry_cmc_rank         NONE                     NaN            NaN            NaN              NaN                                   NaN
+93             entry_surge_btc_move_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+94                     entry_surge_gvol         NONE                     NaN            NaN            NaN              NaN                                   NaN
+95            entry_surge_pair_move_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+96               entry_surge_trigger_at         NONE                     NaN            NaN            NaN              NaN                                   NaN
+97                entry_frenzy_spike_at         NONE                     NaN            NaN            NaN              NaN                                   NaN
+98                   entry_frenzy_hours         NONE                     NaN            NaN            NaN              NaN                                   NaN
+99                    entry_frenzy_vwap         NONE                     NaN            NaN            NaN              NaN                                   NaN
+100            entry_frenzy_vs_vwap_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+101               entry_frenzy_vol_mult         NONE                     NaN            NaN            NaN              NaN                                   NaN
+102                entry_frenzy_run_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+103               entry_frenzy_stop_atr         NONE                     NaN            NaN            NaN              NaN                                   NaN
+104            entry_frenzy_bar_ret_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+105           entry_frenzy_above_streak         NONE                     NaN            NaN            NaN              NaN                                   NaN
+106            entry_frenzy_above_share         NONE                     NaN            NaN            NaN              NaN                                   NaN
+107           entry_frenzy_catchup_bars         NONE                     NaN            NaN            NaN              NaN                                   NaN
+108       entry_frenzy_catchup_move_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+109                entry_frenzy_catchup         NONE                     NaN            NaN            NaN              NaN                                   NaN
+110          entry_frenzy_willy_trigger         NONE                     NaN            NaN            NaN              NaN                                   NaN
+111        entry_frenzy_willy_wait_bars         NONE                     NaN            NaN            NaN              NaN                                   NaN
+112           entry_frenzy_willy_nomiss         NONE                     NaN            NaN            NaN              NaN                                   NaN
+113         entry_frenzy_retry_wait_min         NONE                     NaN            NaN            NaN              NaN                                   NaN
+114        entry_frenzy_retry_green_ret         NONE                     NaN            NaN            NaN              NaN                                   NaN
+115               entry_frenzy_stop_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+116                     entry_btc_price         NONE                     NaN            NaN            NaN              NaN                                   NaN
+117           entry_flatbase_flat14_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+118         entry_flatbase_flat_cov_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+119         entry_flatbase_off_peak_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+120              entry_frenzy_di_spread         NONE                     NaN            NaN            NaN              NaN                                   NaN
+121              entry_frenzy_adx_delta         NONE                     NaN            NaN            NaN              NaN                                   NaN
+122                   entry_frenzy_gvol         NONE                     NaN            NaN            NaN              NaN                                   NaN
+123              entry_frenzy_vol_trend         NONE                     NaN            NaN            NaN              NaN                                   NaN
+124         entry_btc_ema50_100_gap_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+125               entry_eth_5m_ret1_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+126     entry_pair_1h_ema20_200_gap_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+127           entry_gap_5_20_signed_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+128      entry_gap_5_20_prev_signed_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+129            entry_gap_5_8_signed_pct         NONE                     NaN            NaN            NaN              NaN                                   NaN
+130                      entry_bear_r24         NONE                     NaN            NaN            NaN              NaN                                   NaN
+131                  entry_bear_below24         NONE                     NaN            NaN            NaN              NaN                                   NaN
+132                    entry_bear_eff24         NONE                     NaN            NaN            NaN              NaN                                   NaN
+133                  entry_bear_off24lo         NONE                     NaN            NaN            NaN              NaN                                   NaN
+134                   entry_bear_bypass         NONE                     NaN            NaN            NaN              NaN                                   NaN
+135              entry_desired_notional         NONE                     NaN            NaN            NaN              NaN                                   NaN
+136        entry_liquidity_cap_notional         NONE                     NaN            NaN            NaN              NaN                                   NaN
+137          entry_bracket_max_leverage         NONE                     NaN            NaN            NaN              NaN                                   NaN
+138          entry_bracket_cap_notional         NONE                     NaN            NaN            NaN              NaN                                   NaN
+139                entry_btc_rsi_closed         NONE                     NaN            NaN            NaN              NaN                                   NaN
+140                           entry_fee         NONE                     NaN            NaN            NaN              NaN                                   NaN
+141       entry_frenzy_willy_spike_high         NONE                     NaN            NaN            NaN              NaN                                   NaN
+142            entry_willy_ht_size_frac         NONE                     NaN            NaN            NaN              NaN                                   NaN
+143           entry_gap_expand_marginal         NONE                     NaN            NaN            NaN              NaN                                   NaN
+144                      entry_strategy         NONE                     NaN            NaN            NaN              NaN                                   NaN
+145                    entry_order_type         NONE                     NaN            NaN            NaN              NaN                                   NaN
+146                                Conf         NONE                     NaN            NaN            NaN              NaN                                   NaN
+147                                FanR         NONE                     NaN            NaN            NaN              NaN                                   NaN
+148                      BTCTrend(exit)  DESCRIPTIVE                     NaN            NaN            NaN              NaN                                   NaN
+149                                Peak  DESCRIPTIVE                     NaN            NaN            NaN              NaN                                   NaN
+150                              Trough  DESCRIPTIVE                     NaN            NaN            NaN              NaN                                   NaN
+151                         WorstTrough  DESCRIPTIVE                     NaN            NaN            NaN              NaN                                   NaN
+152                              SLProf  DESCRIPTIVE                     NaN            NaN            NaN              NaN                                   NaN
+153                            Duration  DESCRIPTIVE                     NaN            NaN            NaN              NaN                                   NaN

@@ -84,3 +84,5 @@ reports/ML_MATCHED_SHADOW_2026-10-26_episodes.csv
 reports/ML_MATCHED_SHADOW_2026-10-26_regime.csv
 reports/ML_MATCHED_SHADOW_2026-10-26_replay_blocks.csv.gz
 reports/ML_MATCHED_SHADOW_2026-10-26_shadows.csv.gz
+reports/FADE_REGIME_WL_2026-10-26_fetch/
+reports/.scout_fade_late_weak.json

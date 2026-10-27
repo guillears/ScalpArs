@@ -563,6 +563,7 @@ new fills (opened after the 271 deploy, 2026-10-12) as their own line — they a
       For EACH line add the fade backtest block (yr5 / yr6, today's fade stack, per seed) next to the batch and master blocks — the scout
       has none yet. Also answer the fade STOP-SIZE question: at 2× each −1.5 % stop ≈ $305 ≈ 10–12 % of the paper account (B25 RAYSOL
       −$304, 1000LUNC −$308) — price the stop width / size per fill vs the ≈ 72 % breakeven WR, two-sided, live-stopped cohort only.
+- [ ] **🩸🌙 OBS-F1 LATE-TAPE WEAK SPIKE (DECISION_LOG 384, CURRENT_STATE 41q)** — re-read `scripts/scout_fade_late_weak.py` (zone / control / early / unscored; frozen read at 15 zone fades on 8 days → OPERATOR CALL). Three blocks: master (`reports/FADE_REGIME_WL_2026-10-26_obs_per_batch.csv`), the batch, the backtest (refuted 3 / 3 at registration — caveat, master leads). Also re-read the 41h zone (16 · 69 % · −0.18 at registration) and the uniform-degradation table (`_uniform.csv`) on the new batch: if fades recover while the tape stays late, the degradation was the tape.
 - [ ] **SPIKE_FADE vs FRENZY on the same pump** (Claude): the engine never holds both on one pair — open_position refuses any second
       position (generic PAIR_HELD, the counter does not name the holder), a 5-min cooldown follows any close on the pair, LITE / WILLY
       refuse as *_PAIR_HELD, FRENZY / WIDE as *_PAIR_HELD_BY_LITE, and the WILLY global hold blocks fades. So read it as a pair-occupancy

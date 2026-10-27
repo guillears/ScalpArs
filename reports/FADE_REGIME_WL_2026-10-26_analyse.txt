@@ -1,0 +1,6 @@
+cohort: master kept 76 · 45 days · B25 8 · blocked 50 · BT 1832
+breakeven WR (master kept, today's stack) = 71.0 % · avg win +0.562 / loss -1.374
+vars: market rebuilt 82 · market stamps 35 · pair rebuilt 20 · pair stamps 48
+regime tests 360 · p<0.05 12 (chance ≈ 18) · p_fw<0.05 0
+entry tests (all fills) 158 · p<0.05 4 (chance ≈ 8) · p_fw<0.05 0
+day-level vars 170 · p_rotation<0.05 3 (chance ≈ 8)

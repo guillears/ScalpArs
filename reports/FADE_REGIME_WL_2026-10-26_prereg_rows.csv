@@ -1,0 +1,155 @@
+variable,column,direction,threshold,contains_B25,master high,master low,master Δ high−low,master days hi/lo,B25 high,B25 low,B25 Δ high−low,B25 ex-registration high,B25 ex-registration low,B25 ex-registration Δ high−low,master direction,B25 refute-only read (N ≥ 5 per side),verdict
+RSI,entry_rsi,W_HIGHER,74.4,False,46·91%·+0.343,30·80%·+0.252,0.09182885069934166,35/24,6·67%·-0.280,2·50%·-0.577,0.2970687495504219,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+ADX,entry_adx,W_HIGHER,19.2,True,58·88%·+0.351,18·83%·+0.167,0.18340553705378113,38/16,6·67%·-0.291,2·50%·-0.543,0.2527984939235756,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+ADXDir,entry_adx>entry_adx_prev,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+RSIDir,entry_rsi>entry_rsi_prev,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+Gap,entry_gap,W_LOWER,0.284,False,41·85%·+0.269,35·89%·+0.351,-0.0819674964833697,33/26,6·83%·+0.026,2·0%·-1.493,1.519273916809143,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+Gap5-8,entry_ema_gap_5_8,W_LOWER,0.176,False,44·82%·+0.301,32·94%·+0.316,-0.015491005524980617,33/25,4·75%·-0.127,4·50%·-0.581,0.4533552073648441,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+Gap8-13,entry_ema_gap_8_13,W_LOWER,0.093,False,40·85%·+0.267,36·89%·+0.352,-0.08470199844534992,32/27,6·83%·+0.026,2·0%·-1.493,1.519273916809143,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+Stretch,entry_ema5_stretch,W_HIGHER,1.23,False,44·86%·+0.385,32·88%·+0.200,0.18576617682793398,32/24,4·75%·-0.127,4·50%·-0.581,0.4533552073648441,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+EMA20Slp,entry_ema20_slope,W_LOWER,0.112,False,41·85%·+0.274,35·89%·+0.346,-0.07192365762776648,31/25,6·83%·+0.026,2·0%·-1.493,1.519273916809143,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+BTCSlp,entry_btc_ema20_slope,W_LOWER,0,False,0,0,,0/0,0,0,,0,0,,n/a,not readable (N < 5 per side),
+BTCRSI,entry_btc_rsi,W_LOWER,40,False,42·88%·+0.231,34·85%·+0.401,-0.17052666819585213,29/26,5·80%·-0.021,3·33%·-0.909,0.887967251912825,0,1·0%·-1.495,,as predicted,not readable (N < 5 per side),
+BTCADX,entry_btc_adx_prev,W_LOWER,24.5874,True,26·81%·+0.175,50·90%·+0.376,-0.20078134991986943,22/37,2·100%·+0.300,6·50%·-0.572,0.8717973978624703,0,1·0%·-1.495,,as predicted,not readable (N < 5 per side),
+BTCADXDir,entry_btc_adx>entry_btc_adx_prev,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+BTCRSIDir,entry_btc_rsi>entry_btc_rsi_prev,W_FALSE,,False,31·84%·+0.275,45·89%·+0.329,-0.05466490423496423,22/35,1·0%·-1.491,7·71%·-0.191,-1.2999153411339506,0,1·0%·-1.495,,as predicted,not readable (N < 5 per side),
+ADXΔ,entry_adx_delta,W_HIGHER,2.359,True,39·92%·+0.477,37·81%·+0.128,0.3483203502196936,33/29,4·50%·-0.582,4·75%·-0.126,-0.4553847214795023,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+RngPos,entry_range_position,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+Breadth,entry_bear_pct,W_HIGHER,59.1,False,39·85%·+0.348,37·89%·+0.264,0.08330935936766692,30/29,6·50%·-0.580,2·100%·+0.324,-0.9042483781897583,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+ATR%,entry_atr_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+BTCTrend,entry_btc_trend_gap_pct,W_LOWER,-0.13,False,58·88%·+0.259,18·83%·+0.464,-0.20508155813726403,40/13,7·57%·-0.453,1·100%·+0.338,-0.7906546276189415,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+PairTrend,entry_pair_ema20_ema50_gap_pct,W_HIGHER,-0.40,False,56·89%·+0.302,20·80%·+0.323,-0.021020573694378375,37/16,6·67%·-0.280,2·50%·-0.577,0.2970687495504219,1·0%·-1.495,0,,OPPOSITE,not readable (N < 5 per side),
+GlobalVol,entry_global_volume_ratio,W_HIGHER,1.0,False,0,0,,0/0,0,0,,0,0,,n/a,not readable (N < 5 per side),
+PairVol$,entry_pair_volume_24h_usd,W_LOWER,3760000,False,35·89%·+0.348,41·85%·+0.272,0.07560181124797627,27/29,4·50%·-0.566,4·75%·-0.142,-0.4232944031948173,0,1·0%·-1.495,,OPPOSITE,not readable (N < 5 per side),
+Ext%,entry_dist_from_ema13_pct,W_HIGHER,1.53,False,44·84%·+0.350,32·91%·+0.249,0.10096975111812945,31/26,4·75%·-0.127,4·50%·-0.581,0.4533552073648441,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+BTCExt%,entry_btc_dist_from_ema13_pct,W_LOWER,-0.054,False,35·86%·+0.192,41·88%·+0.406,-0.21372377116913197,22/30,3·67%·-0.251,5·60%·-0.416,0.16456854936101828,0,1·0%·-1.495,,as predicted,not readable (N < 5 per side),
+1hSlope,entry_btc_1h_slope,W_LOWER,0,False,0,0,,0/0,0,0,,0,0,,n/a,not readable (N < 5 per side),
+Regime HEALTHY_BEAR,entry_btc_regime,W_FALSE,HEALTHY_BEAR,True,22·73%·+0.130,54·93%·+0.380,-0.24993053636499735,18/38,2·50%·-0.616,6·67%·-0.267,-0.3489690970766825,0,1·0%·-1.495,,as predicted,not readable (N < 5 per side),
+HB and ADX not rising,entry_btc_regime+entry_adx_delta,W_FALSE,HB & adx_delta<=2.4341,True,14·71%·-0.045,62·90%·+0.387,-0.4317604374404081,11/40,1·0%·-1.491,7·71%·-0.191,-1.2999153411339506,0,1·0%·-1.495,,as predicted,not readable (N < 5 per side),
+Market cap,entry_mcap_usd,W_LOWER,200000000,True,0,1·0%·-1.500,,0/1,2·50%·-0.554,4·75%·-0.159,-0.3955386967693422,0,1·0%·-1.495,,n/a,not readable (N < 5 per side),
+Spike-bar volume multiple,entry_pair_volume_ratio,W_LOWER,3.21,False,41·85%·+0.287,35·89%·+0.330,-0.04296902716829887,30/25,6·67%·-0.267,2·50%·-0.615,0.34770175057671665,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
++DI,entry_pos_di,W_HIGHER,43.6,False,43·91%·+0.379,33·82%·+0.213,0.16610662938618176,33/26,5·60%·-0.388,3·67%·-0.297,-0.09081075909413266,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+-DI,entry_neg_di,W_LOWER,14.6,False,34·82%·+0.290,42·90%·+0.321,-0.03162256984796147,28/33,3·67%·-0.297,5·60%·-0.388,0.09081075909413266,0,1·0%·-1.495,,as predicted,not readable (N < 5 per side),
+EMA50 slope,entry_ema50_slope,W_HIGHER,-0.069,False,41·93%·+0.377,35·80%·+0.225,0.1519573554971406,30/27,5·60%·-0.388,3·67%·-0.297,-0.09081075909413266,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+Pair 1d -DI (laggard),entry_pair_1d_ndi,W_LOWER,16.1,False,0,20·85%·+0.081,,0/14,6·67%·-0.279,2·50%·-0.579,0.2997747683699662,0,1·0%·-1.495,,n/a,not readable (N < 5 per side),
+BTC 4h EMA50/200 gap,entry_btc_4h_ema50_200_gap_pct,W_LOWER,0,False,20·85%·+0.081,0,,14/0,1·100%·+0.338,7·57%·-0.453,0.7906546276189415,0,1·0%·-1.495,,n/a,not readable (N < 5 per side),
+BTC 1d return,entry_btc_1d_ret_pct,W_LOWER,0,False,8·100%·+0.301,12·75%·-0.066,0.3671090065076567,5/9,0,8·62%·-0.354,,0,1·0%·-1.495,,OPPOSITE,not readable (N < 5 per side),
+BTC ATR,entry_btc_atr_pct,W_HIGHER,0.088,False,37·89%·+0.402,39·85%·+0.217,0.18557159296183354,26/26,4·50%·-0.566,4·75%·-0.142,-0.4232944031948251,1·0%·-1.495,0,,as predicted,not readable (N < 5 per side),
+Pair rank (thinness),entry_pair_rank,W_HIGHER,170,False,45·87%·+0.233,31·87%·+0.415,-0.18241264291002743,32/21,5·60%·-0.413,3·67%·-0.256,-0.15727794417699886,1·0%·-1.495,0,,OPPOSITE,not readable (N < 5 per side),
+Pair age,entry_pair_age_days,W_HIGHER,180,False,74·86%·+0.297,2·100%·+0.679,-0.38228373632754,44/2,8·62%·-0.354,0,,1·0%·-1.495,0,,OPPOSITE,not readable (N < 5 per side),
+Quality score,entry_quality_score,W_HIGHER,0,False,64·86%·+0.256,12·92%·+0.578,-0.3213270033489746,42/9,8·62%·-0.354,0,,1·0%·-1.495,0,,OPPOSITE,not readable (N < 5 per side),
+Entry slippage,entry_slippage_pct,W_LOWER,0.10,False,3·33%·-0.823,73·89%·+0.354,-1.1769263732629278,3/42,0,8·62%·-0.354,,0,1·0%·-1.495,,as predicted,not readable (N < 5 per side),
+RSI jump size,entry_rsi - entry_rsi_prev,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+Spike-candle return %,(not stamped),W_HIGHER,,,,,,,,,,,,,,,no prediction / not stamped
+Seconds from trigger close to fill,(not stamped),W_LOWER,,,,,,,,,,,,,,,no prediction / not stamped
+Pre-spike RSI (base),entry_rsi_prev,W_HIGHER,44,False,41·88%·+0.282,35·86%·+0.337,-0.05541986947989347,29/26,6·67%·-0.267,2·50%·-0.615,0.34770175057671665,1·0%·-1.495,0,,OPPOSITE,not readable (N < 5 per side),
+entry_book_drift_pct,entry_book_drift_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_book_spread_pct,entry_book_spread_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_fill_vs_book_pct,entry_fill_vs_book_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_order_lag_s,entry_order_lag_s,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_price,entry_price,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_price_vs_ema5_pct,entry_price_vs_ema5_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_macro_trend,entry_macro_trend,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_rsi_prev6,entry_btc_rsi_prev6,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_rsi_1h,entry_btc_rsi_1h,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_rsi_1h_prev,entry_btc_rsi_1h_prev,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_c1_match,entry_pattern_c1_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_c2_match,entry_pattern_c2_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_c3_match,entry_pattern_c3_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_c4_match,entry_pattern_c4_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_c5_match,entry_pattern_c5_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_c6_match,entry_pattern_c6_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_c7_match,entry_pattern_c7_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_c8_match,entry_pattern_c8_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_c9_match,entry_pattern_c9_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_c_any_match,entry_pattern_c_any_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_w1_match,entry_pattern_w1_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_w2_match,entry_pattern_w2_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_w3_match,entry_pattern_w3_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_w4_match,entry_pattern_w4_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_w5_match,entry_pattern_w5_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_w6_match,entry_pattern_w6_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pattern_w_any_match,entry_pattern_w_any_match,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_bull_pct,entry_bull_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_regime_started_at,entry_btc_regime_started_at,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_funding_rate,entry_funding_rate,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_off24h_pct,entry_btc_off24h_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_off24lo_pct,entry_btc_off24lo_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_long_heat_flags,entry_long_heat_flags,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_off30d_high_pct,entry_btc_off30d_high_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_r72_pct,entry_btc_r72_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_eff72,entry_btc_eff72,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_above72_pct,entry_btc_above72_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_chop_burst_prior_fill_s,entry_chop_burst_prior_fill_s,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_br_r72,entry_br_r72,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_br_above,entry_br_above,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_br_eff,entry_br_eff,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_br_off24h,entry_br_off24h,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_br_door,entry_br_door,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_br_bull_pct_top10,entry_br_bull_pct_top10,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_br_bear_pct_top10,entry_br_bear_pct_top10,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_br_top10_n,entry_br_top10_n,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_br_door_age_min,entry_br_door_age_min,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_vol_mcap_ratio,entry_vol_mcap_ratio,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_cmc_rank,entry_cmc_rank,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_surge_btc_move_pct,entry_surge_btc_move_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_surge_gvol,entry_surge_gvol,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_surge_pair_move_pct,entry_surge_pair_move_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_surge_trigger_at,entry_surge_trigger_at,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_spike_at,entry_frenzy_spike_at,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_hours,entry_frenzy_hours,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_vwap,entry_frenzy_vwap,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_vs_vwap_pct,entry_frenzy_vs_vwap_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_vol_mult,entry_frenzy_vol_mult,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_run_pct,entry_frenzy_run_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_stop_atr,entry_frenzy_stop_atr,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_bar_ret_pct,entry_frenzy_bar_ret_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_above_streak,entry_frenzy_above_streak,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_above_share,entry_frenzy_above_share,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_catchup_bars,entry_frenzy_catchup_bars,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_catchup_move_pct,entry_frenzy_catchup_move_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_catchup,entry_frenzy_catchup,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_willy_trigger,entry_frenzy_willy_trigger,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_willy_wait_bars,entry_frenzy_willy_wait_bars,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_willy_nomiss,entry_frenzy_willy_nomiss,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_retry_wait_min,entry_frenzy_retry_wait_min,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_retry_green_ret,entry_frenzy_retry_green_ret,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_stop_pct,entry_frenzy_stop_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_price,entry_btc_price,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_flatbase_flat14_pct,entry_flatbase_flat14_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_flatbase_flat_cov_pct,entry_flatbase_flat_cov_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_flatbase_off_peak_pct,entry_flatbase_off_peak_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_di_spread,entry_frenzy_di_spread,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_adx_delta,entry_frenzy_adx_delta,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_gvol,entry_frenzy_gvol,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_vol_trend,entry_frenzy_vol_trend,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_ema50_100_gap_pct,entry_btc_ema50_100_gap_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_eth_5m_ret1_pct,entry_eth_5m_ret1_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_pair_1h_ema20_200_gap_pct,entry_pair_1h_ema20_200_gap_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_gap_5_20_signed_pct,entry_gap_5_20_signed_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_gap_5_20_prev_signed_pct,entry_gap_5_20_prev_signed_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_gap_5_8_signed_pct,entry_gap_5_8_signed_pct,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_bear_r24,entry_bear_r24,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_bear_below24,entry_bear_below24,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_bear_eff24,entry_bear_eff24,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_bear_off24lo,entry_bear_off24lo,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_bear_bypass,entry_bear_bypass,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_desired_notional,entry_desired_notional,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_liquidity_cap_notional,entry_liquidity_cap_notional,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_bracket_max_leverage,entry_bracket_max_leverage,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_bracket_cap_notional,entry_bracket_cap_notional,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_btc_rsi_closed,entry_btc_rsi_closed,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_fee,entry_fee,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_frenzy_willy_spike_high,entry_frenzy_willy_spike_high,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_willy_ht_size_frac,entry_willy_ht_size_frac,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_gap_expand_marginal,entry_gap_expand_marginal,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_strategy,entry_strategy,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+entry_order_type,entry_order_type,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+Conf,confidence,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+FanR,entry_ema_gap_5_8 / entry_ema_gap_8_13,NONE,,,,,,,,,,,,,,,no prediction / not stamped
+BTCTrend(exit),exit BTC trend,DESCRIPTIVE,,,,,,,,,,,,,,,no prediction / not stamped
+Peak,peak_pnl,DESCRIPTIVE,,,,,,,,,,,,,,,no prediction / not stamped
+Trough,trough_pnl,DESCRIPTIVE,,,,,,,,,,,,,,,no prediction / not stamped
+WorstTrough,worst trough,DESCRIPTIVE,,,,,,,,,,,,,,,no prediction / not stamped
+SLProf,SL profile,DESCRIPTIVE,,,,,,,,,,,,,,,no prediction / not stamped
+Duration,duration,DESCRIPTIVE,,,,,,,,,,,,,,,no prediction / not stamped

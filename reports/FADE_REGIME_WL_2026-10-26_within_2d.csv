@@ -1,0 +1,401 @@
+split,side,pool,var_a,side_a,thr_a,var_b,side_b,thr_b,quadrant,rest,t,days,bar_pass,bar_fails,P_neg,top_pair_share
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_pos_di,lo,44.29094552767121,f_pair_neg,lo,0.5,28·79%·+0.054,34·100%·+0.690,-3.523803932198398,23,False,"wr,p",0.34425,0.1937710426256361
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_ema_gap_5_8,hi,0.18475,f_pair,lo,0.005,26·100%·+0.755,36·83%·+0.149,3.3223050637893343,23,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_pos_di,lo,44.29094552767121,s_fb_run,hi,1.8921864652454268,7·43%·-0.559,55·96%·+0.525,-3.3149754312875066,6,False,"days,n",0.97825,0.31638143138889463
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_ema_gap_5_8,hi,0.18475,f_pair3,lo,0.005,24·100%·+0.780,38·84%·+0.165,3.290590157925233,22,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_adx_rising,hi,0.5,f_pair,lo,0.005,40·100%·+0.636,22·73%·-0.020,3.2353569198799663,29,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_di_spread,lo,30.370425023254473,f_pair_neg,lo,0.5,26·77%·+0.053,36·100%·+0.655,-3.20808595358941,22,False,"wr,p",0.351,0.1937710426256361
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_pos_di,lo,44.29094552767121,p_r4h,lo,-0.5121829003872813,20·75%·-0.028,42·98%·+0.608,-3.1834340557744407,17,False,"wr,p",0.55825,0.24034178254568167
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_ema50_slope,lo,-0.0542,f_pair_neg,lo,0.5,26·77%·+0.056,36·100%·+0.654,-3.1774329332456643,21,False,"wr,p",0.3325,0.1937710426256361
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_pattern_c4_match,lo,0.5,f_pair_neg,lo,0.5,35·83%·+0.152,27·100%·+0.728,-3.1747059482290254,28,False,"wr,p",0.09425,0.1937710426256361
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_rsi_prev,lo,44.230000000000004,f_pair_neg,lo,0.5,26·77%·+0.058,36·100%·+0.652,-3.1510984217524545,20,False,"wr,p",0.33075,0.1937710426256361
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_ema_gap_5_8,hi,0.18475,p_qv24_x7d,lo,0.7322464182132187,16·100%·+0.943,46·87%·+0.215,3.1264460648563643,15,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_pair_ema20_ema50_gap_pct,lo,-0.0342,f_pair_neg,lo,0.5,26·77%·+0.069,36·100%·+0.644,-3.0308680435753588,21,False,"wr,p",0.31,0.1937710426256361
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_adx_rising,hi,0.5,f_pair3,lo,0.005,37·100%·+0.637,25·76%·+0.056,3.000217734570056,27,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_pos_di,hi,44.29094552767121,p_r4h,lo,-0.5121829003872813,11·100%·+0.794,51·88%·+0.318,2.9735434646337557,11,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_adx_delta,lo,2.33405,entry_pos_di,lo,44.29094552767121,23·78%·+0.048,39·97%·+0.612,-2.967421094266026,20,False,"wr,p",0.3665,0.24034178254568167
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_pair_rank,hi,181.5,entry_pos_di,lo,44.29094552767121,15·73%·-0.076,47·96%·+0.556,-2.93400728332858,15,False,"wr,p",0.628,0.3163808310258726
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_pos_di,hi,44.29094552767121,p_qv24_x7d,lo,0.7322464182132187,15·100%·+0.744,47·87%·+0.294,2.8920617632511827,15,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_ema_gap_8_13,hi,0.09784999999999999,p_qv24_x7d,lo,0.7322464182132187,14·100%·+0.757,48·88%·+0.300,2.881706506459294,13,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_gap,hi,0.28515,p_qv24_x7d,lo,0.7322464182132187,14·100%·+0.757,48·88%·+0.300,2.881706506459294,13,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_ema20_slope,hi,0.11515,p_qv24_x7d,lo,0.7322464182132187,14·100%·+0.757,48·88%·+0.300,2.881706506459294,13,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_adx_rising,lo,0.5,d_log_vol24h,lo,6.551685899508385,9·56%·-0.328,53·96%·+0.527,-2.8679575808294313,9,False,"p,n",0.87825,0.3163787116983542
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_adx_rising,lo,0.5,entry_pair_volume_24h_usd,lo,3561959.823328,9·56%·-0.328,53·96%·+0.527,-2.8679575808294313,9,False,"p,n",0.87825,0.3163787116983542
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_adx_rising,lo,0.5,entry_ema_gap_5_8,lo,0.18475,10·60%·-0.267,52·96%·+0.532,-2.8678059073755806,10,False,"p,n",0.84275,0.31637871169835424
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_rsi_prev,lo,44.230000000000004,p_prevbar_ret,lo,0.06969786424962925,7·57%·-0.470,55·95%·+0.514,-2.807752996635205,6,False,"p,days,n",0.92275,0.33333710159461644
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_adx_delta,hi,2.33405,f_pair,lo,0.005,24·100%·+0.729,38·84%·+0.197,2.799960470705951,22,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_log_vol24h,lo,6.551685899508385,entry_adx_delta,lo,2.33405,18·72%·-0.027,44·98%·+0.579,-2.797382379184461,17,False,"wr,p",0.56,0.2403417825456817
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_adx_delta,lo,2.33405,entry_pair_volume_24h_usd,lo,3561959.823328,18·72%·-0.027,44·98%·+0.579,-2.797382379184461,17,False,"wr,p",0.56,0.2403417825456817
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_pattern_w1_match,lo,0.5,entry_pos_di,lo,44.29094552767121,25·80%·+0.091,37·97%·+0.614,-2.791617832884483,22,False,"wr,p",0.27075,0.24034069833043578
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_ema_gap_5_8,hi,0.18475,p_beta24_btc,lo,0.7692518763309897,15·100%·+0.919,47·87%·+0.238,2.762004316162467,14,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_adx_rising,hi,0.5,p_qv24_x7d,lo,0.7322464182132187,22·100%·+0.755,40·85%·+0.209,2.7575933821166614,19,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_pattern_w1_match,hi,0.5,p_prevbar_ret,hi,0.06969786424962925,13·100%·+0.984,49·88%·+0.249,2.7477200244475264,13,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_pair_volume_24h_usd,lo,3561959.823328,entry_pos_di,lo,44.29094552767121,18·72%·-0.022,44·98%·+0.577,-2.7404781994424403,17,False,"wr,p",0.52875,0.2403417825456817
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_log_vol24h,lo,6.551685899508385,entry_pos_di,lo,44.29094552767121,18·72%·-0.022,44·98%·+0.577,-2.7404781994424403,17,False,"wr,p",0.52875,0.2403417825456817
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_fanr,hi,1.621850333255062,f_pair_neg,lo,0.5,26·77%·+0.097,36·100%·+0.624,-2.7368326198362456,21,False,"wr,p",0.27175,0.1937710426256361
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,entry_pos_di,hi,44.29094552767121,p_prevbar_ret,hi,0.06969786424962925,14·100%·+0.728,48·88%·+0.308,2.736433747686991,14,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_adx_rising,lo,0.5,entry_ema_gap_8_13,lo,0.09784999999999999,11·64%·-0.195,51·96%·+0.532,-2.7361577483872526,11,False,"p,n",0.77975,0.31637871169835424
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_adx_rising,lo,0.5,entry_gap,lo,0.28515,11·64%·-0.195,51·96%·+0.532,-2.7361577483872526,11,False,"p,n",0.77975,0.31637871169835424
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_adx_rising,lo,0.5,entry_ema20_slope,lo,0.11515,11·64%·-0.195,51·96%·+0.532,-2.7361577483872526,11,False,"p,n",0.77975,0.31637871169835424
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_adx_rising,lo,0.5,entry_pos_di,lo,44.29094552767121,11·64%·-0.195,51·96%·+0.532,-2.7361577483872526,11,False,"p,n",0.77975,0.31637871169835424
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master,d_adx_rising,lo,0.5,f_pair_neg,lo,0.5,11·64%·-0.195,51·96%·+0.532,-2.7361577483872526,11,False,"p,n",0.77975,0.31637871169835424
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pos_di,hi,44.55314284587947,p_prevbar_ret,hi,0.0459595842444815,14·100%·+0.736,54·85%·+0.242,3.312030182995958,14,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,d_adx_rising,hi,0.5,f_pair,lo,0.005,43·98%·+0.572,25·72%·-0.049,3.140816118288693,31,False,"wr,p,conc",0.0,1.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pos_di,hi,44.55314284587947,p_r4h,lo,-0.5310802069798393,13·100%·+0.733,55·85%·+0.252,3.116702119443419,12,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_ema_gap_8_13,hi,0.10565,p_beta24_btc,lo,0.9037564484189868,13·100%·+0.735,55·85%·+0.251,3.106038235449196,13,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_gap,hi,0.30179999999999996,p_beta24_btc,lo,0.9037564484189868,13·100%·+0.735,55·85%·+0.251,3.106038235449196,13,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_ema20_slope,hi,0.1276,p_beta24_btc,lo,0.9037564484189868,13·100%·+0.735,55·85%·+0.251,3.106038235449196,13,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,d_adx_rising,hi,0.5,p_beta24_btc,lo,0.9037564484189868,26·100%·+0.690,42·81%·+0.129,3.050776252827237,18,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pattern_w6_match,hi,0.5,entry_pos_di,hi,44.55314284587947,6·100%·+0.797,62·87%·+0.300,3.0430793425089977,6,False,"wr,p,days,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,d_fanr,hi,1.5593574509918346,entry_pos_di,hi,44.55314284587947,10·100%·+0.740,58·86%·+0.276,3.0091613429653057,10,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_ema50_slope,lo,-0.0513,entry_pos_di,hi,44.55314284587947,11·100%·+0.730,57·86%·+0.269,3.0078520536759252,11,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pair_rank,lo,184.5,p_beta24_btc,lo,0.9037564484189868,20·100%·+0.774,48·83%·+0.164,2.9894101341373465,14,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_ema_gap_5_8,hi,0.18764999999999998,p_beta24_btc,lo,0.9037564484189868,15·100%·+0.917,53·85%·+0.182,2.9700264332239286,14,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pattern_w_any_match,hi,0.5,p_qv24_x7d,lo,0.7572543193885133,18·100%·+0.819,50·84%·+0.173,2.9669803106166173,16,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pair_rank,hi,184.5,entry_pattern_w1_match,lo,0.5,20·75%·-0.067,48·94%·+0.515,-2.9571714443486594,19,False,"wr,p",0.6425,0.24069778574431233
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pattern_w1_match,hi,0.5,f_pair,lo,0.005,22·100%·+0.734,46·83%·+0.157,2.9317098584974643,21,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pair_rank,lo,184.5,entry_pattern_c4_match,hi,0.5,9·100%·+0.714,59·86%·+0.287,2.9248376637936233,8,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pattern_w_any_match,lo,0.5,p_beta24_btc,hi,0.9037564484189868,14·64%·-0.272,54·94%·+0.503,-2.920417594777359,13,False,"p,n",0.88375,0.20024903840624222
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pos_di,hi,44.55314284587947,p_beta24_btc,lo,0.9037564484189868,17·100%·+0.670,51·84%·+0.235,2.917057035203611,16,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pos_di,hi,44.55314284587947,entry_rsi,lo,76.28,7·100%·+0.750,61·87%·+0.297,2.8975853794376523,7,False,"wr,p,days,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pattern_w1_match,hi,0.5,p_prevbar_ret,hi,0.0459595842444815,14·100%·+0.933,54·85%·+0.191,2.8866049551712805,14,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pattern_w2_match,lo,0.5,p_beta24_btc,hi,0.9037564484189868,28·79%·+0.022,40·95%·+0.569,-2.881728752852561,23,False,"wr,p",0.43125,0.16684041807228292
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pattern_w1_match,hi,0.5,f_pair3,lo,0.005,20·100%·+0.762,48·83%·+0.169,2.8721723334057705,19,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_dist_from_ema13_pct,hi,1.6088,entry_pattern_w1_match,hi,0.5,20·100%·+0.762,48·83%·+0.170,2.8617965199868904,18,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pattern_w1_match,lo,0.5,p_beta24_btc,hi,0.9037564484189868,17·71%·-0.159,51·94%·+0.511,-2.854263838655044,15,False,p,0.78975,0.20024903840624217
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,d_adx_rising,hi,0.5,f_pair3,lo,0.005,40·98%·+0.568,28·75%·+0.023,2.8528007420812433,29,False,"wr,p,conc",0.0,1.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_gap,lo,0.30179999999999996,entry_pair_rank,hi,184.5,17·71%·-0.119,51·94%·+0.498,-2.8506242284363914,16,False,p,0.723,0.24052026483625716
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,d_log_vol24h,hi,6.553092099846687,f_pair,lo,0.005,26·100%·+0.669,42·81%·+0.142,2.840558736429471,21,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pair_volume_24h_usd,hi,3573486.664465,f_pair,lo,0.005,26·100%·+0.669,42·81%·+0.142,2.840558736429471,21,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pattern_w1_match,hi,0.5,p_qv24_x7d,lo,0.7572543193885133,11·100%·+1.060,57·86%·+0.205,2.8152575774749367,11,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,p_beta24_btc,lo,0.9037564484189868,p_qv24_x7d,lo,0.7572543193885133,18·100%·+0.803,50·84%·+0.179,2.811931869093149,14,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_ema5_stretch,hi,1.3157,entry_pattern_w1_match,hi,0.5,19·100%·+0.776,49·84%·+0.176,2.8064984810398985,18,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pattern_w1_match,hi,0.5,entry_price_vs_ema5_pct,hi,1.3333,19·100%·+0.776,49·84%·+0.176,2.8064984810398985,18,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,p_beta24_btc,lo,0.9037564484189868,p_offhi_7d,lo,-8.753413427914598,18·94%·+0.805,50·86%·+0.178,2.7906353711984924,14,False,"wr,p,conc",0.0,1.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pair_volume_24h_usd,hi,3573486.664465,f_pair3,lo,0.005,24·100%·+0.688,44·82%·+0.156,2.785838782674953,20,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,d_log_vol24h,hi,6.553092099846687,f_pair3,lo,0.005,24·100%·+0.688,44·82%·+0.156,2.785838782674953,20,False,"wr,p",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,f_pair_neg,lo,0.5,p_beta24_btc,hi,0.9037564484189868,33·82%·+0.084,35·94%·+0.589,-2.7524185273966104,25,False,"wr,p",0.223,0.16684041807228292
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pattern_w1_match,lo,0.5,f_pair_neg,lo,0.5,35·80%·+0.099,33·97%·+0.603,-2.7501599792896942,29,False,"wr,p",0.186,0.1624809734101485
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pair_ema20_ema50_gap_pct,lo,-0.031700000000000006,entry_pos_di,hi,44.55314284587947,11·100%·+0.683,57·86%·+0.278,2.7450537053850184,11,False,"wr,p,n",0.0,0.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_ema_gap_5_8,hi,0.18764999999999998,f_pair,lo,0.005,28·96%·+0.650,40·82%·+0.129,2.7321531288186764,25,False,"wr,p,conc",0.0,1.0
+S1 HB ∧ BTC trend gap ≥ −0.13 (41h zone),rest,master+B25,entry_pattern_w1_match,hi,0.5,entry_pos_di,hi,44.55314284587947,20·100%·+0.628,48·83%·+0.225,2.7196241389554863,20,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_atr_pct,lo,0.5171,p_r4h,lo,-0.37475998867239063,9·44%·-0.665,29·100%·+0.453,-3.546566221406557,8,False,n,0.99425,0.2000032515048119
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pattern_w6_match,hi,0.5,f_pair,lo,0.005,6·100%·+0.671,32·84%·+0.098,3.3080659922793516,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_atr_pct,hi,0.5171,p_r7d,hi,6.228920780400338,10·100%·+0.577,28·82%·+0.050,3.247111806136595,8,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,d_rsi_jump,lo,31.01,entry_pair_age_days,lo,630.55,8·100%·+0.558,30·83%·+0.090,3.219302111452889,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,d_rsi_jump,lo,31.01,entry_atr_pct,hi,0.5171,7·100%·+0.556,31·84%·+0.106,3.1757997192519114,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,p_beta24_btc,lo,1.1885114762580642,p_r4h,hi,-0.37475998867239063,8·100%·+0.551,30·83%·+0.092,3.175450489975095,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pattern_w1_match,hi,0.5,entry_pos_di,hi,45.9625947431053,13·100%·+0.539,25·80%·+0.006,3.1231650847426113,12,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_atr_pct,hi,0.5171,s_hi15_dist,hi,0.19772154182174922,10·100%·+0.570,28·82%·+0.052,3.122552122024833,8,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_atr_pct,hi,0.5171,p_r24h,hi,-0.9186830934108103,9·100%·+0.569,29·83%·+0.071,3.0930831408212853,8,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pattern_w_any_match,hi,0.5,entry_pos_di,hi,45.9625947431053,15·100%·+0.520,23·78%·-0.028,3.0925803240906484,14,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,p_corr24_btc,hi,0.3196812281965099,s_sec_in_bar,hi,190.0,11·100%·+0.550,27·81%·+0.041,3.0840834742313548,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pos_di,hi,45.9625947431053,p_corr24_btc,hi,0.3196812281965099,11·100%·+0.550,27·81%·+0.041,3.080457105250948,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_atr_pct,hi,0.5171,entry_rsi,lo,75.515,9·100%·+0.579,29·83%·+0.067,3.079367673018134,8,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,d_rsi_jump,lo,31.01,p_offhi_7d,hi,-9.532084546157154,12·100%·+0.522,26·81%·+0.035,3.03772455228573,11,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_atr_pct,hi,0.5171,p_corr24_btc,hi,0.3196812281965099,11·100%·+0.544,27·81%·+0.044,2.9911136691856384,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pattern_w_any_match,hi,0.5,p_qv24_x7d,lo,0.8059945910774999,11·100%·+0.538,27·81%·+0.046,2.9384605090729727,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,p_corr24_btc,hi,0.3196812281965099,s_hi15_dist,hi,0.19772154182174922,11·100%·+0.539,27·81%·+0.046,2.931321865600918,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pos_di,hi,45.9625947431053,entry_slippage_pct,lo,0.0,18·100%·+0.488,20·75%·-0.081,2.928626009171237,17,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pattern_c2_match,lo,0.5,entry_pos_di,hi,45.9625947431053,15·100%·+0.505,23·78%·-0.018,2.927639292432244,15,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,p_r7d,hi,6.228920780400338,s_run15,hi,2.095834149410347,8·100%·+0.572,30·83%·+0.086,2.9265761774289745,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_adx,lo,25.02815,p_offhi_7d,hi,-9.532084546157154,11·100%·+0.514,27·81%·+0.056,2.9108094456226263,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_adx_prev,lo,22.1188,p_offhi_7d,hi,-9.532084546157154,11·100%·+0.514,27·81%·+0.056,2.9108094456226263,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_atr_pct,lo,0.5171,p_offhi_7d,lo,-9.532084546157154,9·56%·-0.498,29·97%·+0.401,-2.9010830125504894,8,False,n,0.9645,0.2500042384776411
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pattern_w1_match,hi,0.5,p_qv24_x7d,lo,0.8059945910774999,8·100%·+0.583,30·83%·+0.083,2.900342734138557,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,d_log_vol24h,lo,6.607999642543559,entry_rsi_prev,hi,44.120000000000005,9·100%·+0.513,29·83%·+0.088,2.897026001082053,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pair_volume_24h_usd,lo,4065908.3346249997,entry_rsi_prev,hi,44.120000000000005,9·100%·+0.513,29·83%·+0.088,2.897026001082053,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_range_position,lo,85.85,s_sec_in_bar,hi,190.0,8·100%·+0.579,30·83%·+0.085,2.884931501700039,8,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_atr_pct,hi,0.5171,entry_slippage_pct,lo,0.0,19·100%·+0.479,19·74%·-0.102,2.8746894017177924,15,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,d_rsi_jump,lo,31.01,s_run15,hi,2.095834149410347,6·100%·+0.523,32·84%·+0.126,2.869053019832665,5,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_atr_pct,hi,0.5171,p_ema50_gap_1h,hi,-0.6706802515652144,10·100%·+0.534,28·82%·+0.065,2.8682884178779804,8,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,d_adx_rising,hi,0.5,entry_atr_pct,hi,0.5171,17·100%·+0.488,21·76%·-0.054,2.863628637550438,14,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,p_r24h,hi,-0.9186830934108103,s_run15,hi,2.095834149410347,9·100%·+0.548,29·83%·+0.077,2.8586771180111215,8,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_ema50_slope,hi,-0.06555,entry_rsi,lo,75.515,6·100%·+0.614,32·84%·+0.109,2.85456587714093,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pattern_w1_match,hi,0.5,p_corr24_btc,hi,0.3196812281965099,15·100%·+0.497,23·78%·-0.013,2.8515691560224408,13,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pattern_w_any_match,hi,0.5,p_corr24_btc,hi,0.3196812281965099,15·100%·+0.497,23·78%·-0.013,2.8515691560224408,13,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pair_age_days,lo,630.55,entry_rsi_prev,hi,44.120000000000005,8·100%·+0.517,30·83%·+0.101,2.8493846622489793,8,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_atr_pct,lo,0.5171,entry_ema50_slope,lo,-0.06555,8·50%·-0.571,30·97%·+0.391,-2.848499452532228,8,False,n,0.96325,0.2500050548190664
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pattern_w1_match,hi,0.5,p_beta24_btc,lo,1.1885114762580642,6·100%·+0.625,32·84%·+0.107,2.8483482427166553,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,entry_pos_di,hi,45.9625947431053,s_sec_in_bar,hi,190.0,11·100%·+0.528,27·81%·+0.050,2.845864574465681,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master,p_ema50_gap_1h,hi,-0.6706802515652144,s_run15,hi,2.095834149410347,9·100%·+0.545,29·83%·+0.078,2.841380473163286,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_atr_pct,hi,0.5171,s_hi15_dist,hi,0.14519712659358805,12·100%·+0.542,34·76%·-0.064,3.818951240764167,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pos_di,hi,45.98645047826781,p_corr24_btc,hi,0.3355390564796378,13·100%·+0.526,33·76%·-0.076,3.8049631707626355,11,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w_any_match,hi,0.5,entry_pos_di,hi,45.98645047826781,17·100%·+0.497,29·72%·-0.142,3.791495188735487,15,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,p_corr24_btc,hi,0.3355390564796378,s_sec_in_bar,hi,196.0,12·100%·+0.534,34·76%·-0.061,3.772709767547735,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w1_match,hi,0.5,entry_pos_di,hi,45.98645047826781,15·100%·+0.511,31·74%·-0.107,3.7663444310388567,13,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w6_match,hi,0.5,f_pair,lo,0.005,7·100%·+0.623,39·79%·-0.001,3.7348421313430586,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_atr_pct,hi,0.5171,entry_rsi,lo,76.41,10·100%·+0.555,36·78%·-0.034,3.6850715407836736,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_gap,hi,0.40149999999999997,entry_pattern_w6_match,hi,0.5,6·100%·+0.655,40·80%·+0.010,3.674346244599835,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_dist_from_ema13_pct,hi,1.6368,entry_pattern_w6_match,hi,0.5,6·100%·+0.655,40·80%·+0.010,3.674346244599835,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_ema20_slope,hi,0.14405,entry_pattern_w6_match,hi,0.5,6·100%·+0.655,40·80%·+0.010,3.674346244599835,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_ema_gap_8_13,hi,0.14684999999999998,entry_pattern_w6_match,hi,0.5,6·100%·+0.655,40·80%·+0.010,3.674346244599835,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w6_match,hi,0.5,s_fb_run,hi,1.9393567247055987,6·100%·+0.655,40·80%·+0.010,3.674346244599835,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w6_match,hi,0.5,entry_price_vs_ema5_pct,hi,1.34935,6·100%·+0.655,40·80%·+0.010,3.674346244599835,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_ema5_stretch,hi,1.3314,entry_pattern_w6_match,hi,0.5,6·100%·+0.655,40·80%·+0.010,3.674346244599835,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w_any_match,lo,0.5,p_offhi_7d,lo,-9.467411845120825,8·38%·-0.844,38·92%·+0.292,-3.6420700836602378,7,False,"days,n",0.9925,0.2003585400238555
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w_any_match,hi,0.5,p_qv24_x7d,lo,0.8207378691828254,12·100%·+0.522,34·76%·-0.057,3.6136462557648157,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w1_match,hi,0.5,p_corr24_btc,hi,0.3355390564796378,17·100%·+0.477,29·72%·-0.130,3.579366203675315,14,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w_any_match,hi,0.5,p_corr24_btc,hi,0.3355390564796378,17·100%·+0.477,29·72%·-0.130,3.579366203675315,14,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pos_di,hi,45.98645047826781,p_offlo_7d,lo,10.500260240342318,15·100%·+0.474,31·74%·-0.089,3.535910362387442,13,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w1_match,hi,0.5,p_qv24_x7d,lo,0.8207378691828254,8·100%·+0.583,38·79%·-0.009,3.516973170381876,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w1_match,hi,0.5,p_rv24h,lo,0.3263473820371998,12·100%·+0.514,34·76%·-0.054,3.5168216220566997,11,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_atr_pct,hi,0.5171,entry_pair_ema20_ema50_gap_pct,lo,-0.031700000000000006,12·100%·+0.509,34·76%·-0.052,3.5004773473550297,11,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,p_corr24_btc,hi,0.3355390564796378,s_hi15_dist,hi,0.14519712659358805,11·100%·+0.521,35·77%·-0.040,3.491715383849657,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w1_match,hi,0.5,p_beta24_btc,lo,1.2378220863369318,7·100%·+0.597,39·79%·+0.004,3.4873616658972266,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_c_any_match,lo,0.5,p_qv24_x7d,lo,0.8207378691828254,11·100%·+0.519,35·77%·-0.039,3.4852660053285276,11,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,p_r7d,hi,3.249439452778047,s_run15,hi,2.0493992287888063,10·100%·+0.526,36·78%·-0.026,3.484638061670787,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w1_match,hi,0.5,s_sec_in_bar,hi,196.0,14·100%·+0.488,32·75%·-0.078,3.470426022098196,11,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_atr_pct,hi,0.5171,p_prevbar_ret,hi,0.03893659558071855,13·100%·+0.497,33·76%·-0.065,3.468803733693854,12,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pos_di,hi,45.98645047826781,p_r1h,lo,-0.0469263107545081,11·100%·+0.481,35·77%·-0.027,3.449633470831638,11,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_c4_match,lo,0.5,entry_pos_di,hi,45.98645047826781,17·100%·+0.462,29·72%·-0.122,3.4197897696165533,15,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_ema50_slope,hi,-0.0542,entry_pattern_w_any_match,hi,0.5,13·100%·+0.487,33·76%·-0.061,3.413513866248507,12,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,d_di_spread,hi,31.43662341776717,p_offlo_7d,lo,10.500260240342318,14·100%·+0.466,32·75%·-0.069,3.4096118683038794,12,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pair_volume_ratio,hi,3.26505,entry_pattern_w_any_match,hi,0.5,15·100%·+0.473,31·74%·-0.089,3.404939165422471,13,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_atr_pct,lo,0.5171,p_r4h,lo,-0.4004158646300493,10·40%·-0.730,36·94%·+0.323,-3.4027293118071618,9,False,n,0.997,0.16683056644359423
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w1_match,hi,0.5,p_ema50_gap_1h,hi,-0.8060403136974259,11·100%·+0.508,35·77%·-0.036,3.3982876692516846,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_atr_pct,hi,0.5171,s_run15,hi,2.0493992287888063,20·100%·+0.445,26·69%·-0.176,3.398145362789524,15,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_pattern_w6_match,hi,0.5,entry_quality_score,lo,2.0,6·100%·+0.525,40·80%·+0.030,3.391218452228692,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_ema5_stretch,hi,1.3314,p_r24h,hi,-0.9186830934108103,12·100%·+0.495,34·76%·-0.047,3.389178771214677,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_price_vs_ema5_pct,hi,1.34935,p_r24h,hi,-0.9186830934108103,12·100%·+0.495,34·76%·-0.047,3.389178771214677,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,zone,master+B25,entry_atr_pct,hi,0.5171,s_vol5_x60,hi,6.622651918396898,12·100%·+0.494,34·76%·-0.047,3.3872252042821245,11,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pattern_c4_match,lo,0.5,f_pair_neg,lo,0.5,17·71%·-0.031,21·100%·+0.796,-3.0910846060086845,12,False,p,0.561,0.2403406339058969
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pattern_c_any_match,lo,0.5,f_pair_neg,lo,0.5,16·69%·-0.056,22·100%·+0.776,-3.052256023402029,11,False,p,0.5925,0.2403406339058969
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_adx_delta,hi,2.4454000000000002,entry_quality_score,hi,1.0,9·100%·+0.867,29·83%·+0.289,2.8635924007791447,8,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_atr_pct,hi,0.44855,f_pair_neg,lo,0.5,16·69%·-0.028,22·100%·+0.756,-2.8188531587099632,11,False,p,0.54375,0.2403406339058969
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_adx_delta,hi,2.4454000000000002,p_ema50_gap_1h,lo,-0.8256665802136964,7·100%·+1.360,31·84%·+0.215,2.672333430820233,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,f_pair,lo,0.005,p_offlo_7d,hi,7.445660719405822,16·100%·+0.852,22·77%·+0.116,2.657999183823526,11,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_adx_delta,hi,2.4454000000000002,p_qv24_x7d,lo,0.8310944831312218,9·100%·+1.169,29·83%·+0.195,2.625994969213982,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pattern_c_any_match,lo,0.5,p_offlo_7d,lo,7.445660719405822,10·60%·-0.190,28·96%·+0.646,-2.603838504192399,9,False,"p,n",0.754,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master,p_offhi_7d,lo,-8.775728554681457,p_offlo_7d,hi,7.445660719405822,7·100%·+1.344,31·84%·+0.218,2.583528125640679,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_atr_pct,hi,0.44855,p_offlo_7d,lo,7.445660719405822,8·50%·-0.330,30·97%·+0.627,-2.573553179101928,5,False,"p,days,n",0.89475,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pattern_c_any_match,lo,0.5,entry_pattern_w2_match,lo,0.5,16·75%·+0.007,22·95%·+0.731,-2.5722110795546675,13,False,"wr,p",0.4765,0.25000165624376075
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pattern_c_any_match,hi,0.5,entry_quality_score,hi,1.0,7·100%·+0.844,31·84%·+0.331,2.560449986720777,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_adx_delta,hi,2.4454000000000002,s_hi15_dist,lo,0.08647452980031775,7·100%·+0.857,31·84%·+0.329,2.480578465558748,5,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,p_prevbar_ret,hi,0.039885227074598545,p_qv24_x7d,lo,0.8310944831312218,10·100%·+1.065,28·82%·+0.197,2.478482896904716,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,f_pair3,lo,0.005,p_offlo_7d,hi,7.445660719405822,13·100%·+0.920,25·80%·+0.169,2.469357437938881,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pair_age_days,hi,626.85,p_qv24_x7d,lo,0.8310944831312218,7·100%·+1.305,31·84%·+0.227,2.45483702367471,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,p_offlo_7d,hi,7.445660719405822,p_qv24_x7d,lo,0.8310944831312218,10·100%·+1.057,28·82%·+0.201,2.425855923576051,8,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_adx_delta,hi,2.4454000000000002,s_vol5_x60,lo,5.69484404844426,7·100%·+0.846,31·84%·+0.331,2.4258112202236832,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pattern_c_any_match,lo,0.5,p_beta24_btc,hi,0.5131178508398124,11·73%·-0.101,27·93%·+0.640,-2.4143755635079747,9,False,"wr,p,n",0.65025,0.3333361746713223
+S2 alt beta to BTC (24 h) > master median,rest,master,f_pair_neg,lo,0.5,p_offlo_7d,lo,7.445660719405822,16·75%·+0.045,22·95%·+0.703,-2.409716678939783,12,False,"wr,p",0.38625,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_adx_delta,hi,2.4454000000000002,p_r24h,lo,-1.0068977395009282,9·100%·+1.112,29·83%·+0.213,2.371844928287106,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_adx_prev,hi,20.017,f_pair_neg,lo,0.5,15·73%·+0.032,23·96%·+0.683,-2.3324638293271858,11,False,"wr,p",0.40875,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_adx,hi,22.8357,f_pair_neg,lo,0.5,15·73%·+0.032,23·96%·+0.683,-2.3324638293271858,11,False,"wr,p",0.40875,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_adx_prev,hi,20.017,p_offlo_7d,lo,7.445660719405822,11·64%·-0.100,27·96%·+0.640,-2.326706558616477,9,False,"p,n",0.63375,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_adx,hi,22.8357,p_offlo_7d,lo,7.445660719405822,11·64%·-0.100,27·96%·+0.640,-2.326706558616477,9,False,"p,n",0.63375,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_gap,hi,0.27959999999999996,entry_pattern_c_any_match,hi,0.5,8·100%·+0.825,30·83%·+0.319,2.322414899711079,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_quality_score,hi,1.0,p_prevbar_ret,hi,0.039885227074598545,8·100%·+0.809,30·83%·+0.324,2.3194550654408226,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pattern_c_any_match,hi,0.5,p_corr24_btc,hi,0.15265272735492896,9·100%·+0.803,29·83%·+0.309,2.318447144926609,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pos_di,hi,44.036553019924256,p_offlo_7d,hi,7.445660719405822,10·100%·+0.793,28·82%·+0.295,2.2744371058448865,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_adx_delta,hi,2.4454000000000002,p_corr24_btc,hi,0.15265272735492896,9·100%·+0.796,29·83%·+0.311,2.2702281944852274,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pattern_w6_match,lo,0.5,p_offlo_7d,lo,7.445660719405822,16·75%·+0.065,22·95%·+0.688,-2.262586564178069,11,False,"wr,p",0.35825,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master,p_offlo_7d,hi,7.445660719405822,p_r24h,lo,-1.0068977395009282,8·100%·+1.160,30·83%·+0.230,2.2529134093027974,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pattern_c4_match,lo,0.5,entry_pattern_w2_match,lo,0.5,17·76%·+0.074,21·95%·+0.711,-2.252886279763922,14,False,"wr,p",0.35875,0.25000165624376075
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_adx_delta,hi,2.4454000000000002,s_sec_in_bar,lo,210.5,10·100%·+1.006,28·82%·+0.219,2.205890700859894,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pattern_c4_match,hi,0.5,entry_quality_score,hi,1.0,6·100%·+0.793,32·84%·+0.357,2.201909811796316,5,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pair_volume_ratio,hi,3.43255,s_sec_in_bar,hi,210.5,9·67%·-0.169,29·93%·+0.610,-2.2007945242493134,6,False,"p,days,n",0.7385,0.33333445269407913
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pair_age_days,hi,626.85,p_ema50_gap_1h,lo,-0.8256665802136964,6·100%·+1.350,32·84%·+0.252,2.1815362152748166,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,entry_pattern_c4_match,lo,0.5,p_offlo_7d,lo,7.445660719405822,12·67%·-0.032,26·96%·+0.637,-2.177433771375122,10,False,"p,n",0.53775,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master,p_offlo_7d,hi,7.445660719405822,s_hi15_dist,lo,0.08647452980031775,8·100%·+0.808,30·83%·+0.324,2.1722553423635897,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master,f_pair3,lo,0.005,p_offlo_7d,lo,7.445660719405822,17·76%·+0.094,21·95%·+0.694,-2.1722145253527825,11,False,"wr,p",0.27775,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pattern_c4_match,lo,0.5,f_pair_neg,lo,0.5,17·71%·-0.031,21·100%·+0.796,-3.0910846060086845,12,False,p,0.561,0.2403406339058969
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pattern_c_any_match,lo,0.5,f_pair_neg,lo,0.5,16·69%·-0.056,22·100%·+0.776,-3.052256023402029,11,False,p,0.5925,0.2403406339058969
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_adx_delta,hi,2.4454000000000002,entry_quality_score,hi,1.0,9·100%·+0.867,29·83%·+0.289,2.8635924007791447,8,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_atr_pct,hi,0.44855,f_pair_neg,lo,0.5,16·69%·-0.028,22·100%·+0.756,-2.8188531587099632,11,False,p,0.54375,0.2403406339058969
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_adx_delta,hi,2.4454000000000002,p_ema50_gap_1h,lo,-0.8256665802136964,7·100%·+1.360,31·84%·+0.215,2.672333430820233,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,f_pair,lo,0.005,p_offlo_7d,hi,7.445660719405822,16·100%·+0.852,22·77%·+0.116,2.657999183823526,11,False,"wr,p",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_adx_delta,hi,2.4454000000000002,p_qv24_x7d,lo,0.8310944831312218,9·100%·+1.169,29·83%·+0.195,2.625994969213982,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pattern_c_any_match,lo,0.5,p_offlo_7d,lo,7.445660719405822,10·60%·-0.190,28·96%·+0.646,-2.603838504192399,9,False,"p,n",0.754,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,p_offhi_7d,lo,-8.775728554681457,p_offlo_7d,hi,7.445660719405822,7·100%·+1.344,31·84%·+0.218,2.583528125640679,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_atr_pct,hi,0.44855,p_offlo_7d,lo,7.445660719405822,8·50%·-0.330,30·97%·+0.627,-2.573553179101928,5,False,"p,days,n",0.89475,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pattern_c_any_match,lo,0.5,entry_pattern_w2_match,lo,0.5,16·75%·+0.007,22·95%·+0.731,-2.5722110795546675,13,False,"wr,p",0.4765,0.25000165624376075
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pattern_c_any_match,hi,0.5,entry_quality_score,hi,1.0,7·100%·+0.844,31·84%·+0.331,2.560449986720777,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_adx_delta,hi,2.4454000000000002,s_hi15_dist,lo,0.08647452980031775,7·100%·+0.857,31·84%·+0.329,2.480578465558748,5,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,p_prevbar_ret,hi,0.039885227074598545,p_qv24_x7d,lo,0.8310944831312218,10·100%·+1.065,28·82%·+0.197,2.478482896904716,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,f_pair3,lo,0.005,p_offlo_7d,hi,7.445660719405822,13·100%·+0.920,25·80%·+0.169,2.469357437938881,10,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pair_age_days,hi,626.85,p_qv24_x7d,lo,0.8310944831312218,7·100%·+1.305,31·84%·+0.227,2.45483702367471,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,p_offlo_7d,hi,7.445660719405822,p_qv24_x7d,lo,0.8310944831312218,10·100%·+1.057,28·82%·+0.201,2.425855923576051,8,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_adx_delta,hi,2.4454000000000002,s_vol5_x60,lo,5.69484404844426,7·100%·+0.846,31·84%·+0.331,2.4258112202236832,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pattern_c_any_match,lo,0.5,p_beta24_btc,hi,0.5131178508398124,11·73%·-0.101,27·93%·+0.640,-2.4143755635079747,9,False,"wr,p,n",0.65025,0.3333361746713223
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,f_pair_neg,lo,0.5,p_offlo_7d,lo,7.445660719405822,16·75%·+0.045,22·95%·+0.703,-2.409716678939783,12,False,"wr,p",0.38625,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_adx_delta,hi,2.4454000000000002,p_r24h,lo,-1.0068977395009282,9·100%·+1.112,29·83%·+0.213,2.371844928287106,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_adx_prev,hi,20.017,f_pair_neg,lo,0.5,15·73%·+0.032,23·96%·+0.683,-2.3324638293271858,11,False,"wr,p",0.40875,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_adx,hi,22.8357,f_pair_neg,lo,0.5,15·73%·+0.032,23·96%·+0.683,-2.3324638293271858,11,False,"wr,p",0.40875,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_adx_prev,hi,20.017,p_offlo_7d,lo,7.445660719405822,11·64%·-0.100,27·96%·+0.640,-2.326706558616477,9,False,"p,n",0.63375,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_adx,hi,22.8357,p_offlo_7d,lo,7.445660719405822,11·64%·-0.100,27·96%·+0.640,-2.326706558616477,9,False,"p,n",0.63375,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_gap,hi,0.27959999999999996,entry_pattern_c_any_match,hi,0.5,8·100%·+0.825,30·83%·+0.319,2.322414899711079,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_quality_score,hi,1.0,p_prevbar_ret,hi,0.039885227074598545,8·100%·+0.809,30·83%·+0.324,2.3194550654408226,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pattern_c_any_match,hi,0.5,p_corr24_btc,hi,0.15265272735492896,9·100%·+0.803,29·83%·+0.309,2.318447144926609,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pos_di,hi,44.036553019924256,p_offlo_7d,hi,7.445660719405822,10·100%·+0.793,28·82%·+0.295,2.2744371058448865,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_adx_delta,hi,2.4454000000000002,p_corr24_btc,hi,0.15265272735492896,9·100%·+0.796,29·83%·+0.311,2.2702281944852274,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pattern_w6_match,lo,0.5,p_offlo_7d,lo,7.445660719405822,16·75%·+0.065,22·95%·+0.688,-2.262586564178069,11,False,"wr,p",0.35825,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,p_offlo_7d,hi,7.445660719405822,p_r24h,lo,-1.0068977395009282,8·100%·+1.160,30·83%·+0.230,2.2529134093027974,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pattern_c4_match,lo,0.5,entry_pattern_w2_match,lo,0.5,17·76%·+0.074,21·95%·+0.711,-2.252886279763922,14,False,"wr,p",0.35875,0.25000165624376075
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_adx_delta,hi,2.4454000000000002,s_sec_in_bar,lo,210.5,10·100%·+1.006,28·82%·+0.219,2.205890700859894,9,False,"wr,p,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pattern_c4_match,hi,0.5,entry_quality_score,hi,1.0,6·100%·+0.793,32·84%·+0.357,2.201909811796316,5,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pair_volume_ratio,hi,3.43255,s_sec_in_bar,hi,210.5,9·67%·-0.169,29·93%·+0.610,-2.2007945242493134,6,False,"p,days,n",0.7385,0.33333445269407913
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pair_age_days,hi,626.85,p_ema50_gap_1h,lo,-0.8256665802136964,6·100%·+1.350,32·84%·+0.252,2.1815362152748166,6,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,entry_pattern_c4_match,lo,0.5,p_offlo_7d,lo,7.445660719405822,12·67%·-0.032,26·96%·+0.637,-2.177433771375122,10,False,"p,n",0.53775,0.31637918469879767
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,p_offlo_7d,hi,7.445660719405822,s_hi15_dist,lo,0.08647452980031775,8·100%·+0.808,30·83%·+0.324,2.1722553423635897,7,False,"wr,p,days,n",0.0,0.0
+S2 alt beta to BTC (24 h) > master median,rest,master+B25,f_pair3,lo,0.005,p_offlo_7d,lo,7.445660719405822,17·76%·+0.094,21·95%·+0.694,-2.1722145253527825,11,False,"wr,p",0.27775,0.31637918469879767
+S3 BTC 1d EMA50 above EMA200,zone,master,p_beta24_btc,lo,1.191998398334398,p_r24h,hi,-0.0440334654337237,10·100%·+0.629,25·84%·+0.060,3.411165775398462,7,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_atr_pct,lo,0.5143,entry_pos_di,lo,49.21778978403907,10·60%·-0.432,25·100%·+0.484,-3.2651534982240067,10,False,"p,n",0.9475,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,d_di_spread,lo,34.378527945136575,entry_atr_pct,lo,0.5143,9·56%·-0.505,26·100%·+0.474,-3.2533494778582353,9,False,"p,n",0.9495,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_adx_delta,hi,2.4547,s_hi15_dist,lo,0.1830161054172663,7·100%·+0.624,28·86%·+0.122,3.2041422759883926,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_atr_pct,lo,0.5143,p_r24h,lo,-0.0440334654337237,8·50%·-0.584,27·100%·+0.461,-3.1803672746751506,7,False,"days,n",0.9685,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,d_di_spread,lo,34.378527945136575,s_fb_run,lo,2.142934841727384,11·64%·-0.347,24·100%·+0.484,-3.091986009552782,11,False,"p,n",0.93925,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,d_di_spread,lo,34.378527945136575,entry_ema5_stretch,lo,1.4497,11·64%·-0.347,24·100%·+0.484,-3.091986009552782,11,False,"p,n",0.93925,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,d_di_spread,lo,34.378527945136575,entry_price_vs_ema5_pct,lo,1.471,11·64%·-0.347,24·100%·+0.484,-3.091986009552782,11,False,"p,n",0.93925,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,d_di_spread,hi,34.378527945136575,s_hi15_dist,lo,0.1830161054172663,6·100%·+0.633,29·86%·+0.138,3.0627025838690485,5,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pattern_w1_match,hi,0.5,s_sec_in_bar,hi,193.0,11·100%·+0.584,24·83%·+0.057,3.0508216673465656,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,p_offlo_7d,hi,10.5565458506635,p_r24h,hi,-0.0440334654337237,8·100%·+0.630,27·85%·+0.102,3.0490282998814116,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pos_di,hi,49.21778978403907,s_hi15_dist,lo,0.1830161054172663,7·100%·+0.608,28·86%·+0.126,3.0432425137767507,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pair_ema20_ema50_gap_pct,lo,0.0272,p_ema50_gap_1h,hi,-0.4302722390880809,6·100%·+0.682,29·86%·+0.128,3.0392174858502115,5,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pattern_w1_match,hi,0.5,p_qv24_x7d,lo,0.8068810085685097,9·100%·+0.613,26·85%·+0.087,2.9879525618924463,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pattern_w_any_match,hi,0.5,s_sec_in_bar,hi,193.0,13·100%·+0.552,22·82%·+0.028,2.967307966955702,12,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pattern_w1_match,hi,0.5,p_r24h,hi,-0.0440334654337237,9·100%·+0.602,26·85%·+0.091,2.9389768000272016,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pair_rank,hi,203.0,entry_pos_di,hi,49.21778978403907,10·100%·+0.565,25·84%·+0.086,2.938604110338172,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pair_ema20_ema50_gap_pct,lo,0.0272,p_r24h,hi,-0.0440334654337237,6·100%·+0.673,29·86%·+0.129,2.9266554821693833,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pattern_w1_match,hi,0.5,p_beta24_btc,lo,1.191998398334398,8·100%·+0.623,27·85%·+0.104,2.926160824728451,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_atr_pct,lo,0.5143,entry_ema_gap_5_8,lo,0.2198,13·69%·-0.226,22·100%·+0.487,-2.9186329549371397,12,False,"p,n",0.816,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,d_di_spread,lo,34.378527945136575,entry_pattern_w2_match,lo,0.5,12·67%·-0.271,23·100%·+0.480,-2.9081477584716304,11,False,"p,n",0.84875,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pos_di,lo,49.21778978403907,p_r24h,lo,-0.0440334654337237,12·67%·-0.272,23·100%·+0.481,-2.9058217226403076,11,False,"p,n",0.862,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pattern_w_any_match,hi,0.5,p_qv24_x7d,lo,0.8068810085685097,11·100%·+0.569,24·83%·+0.064,2.889934254218479,9,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pair_ema20_ema50_gap_pct,lo,0.0272,s_sec_in_bar,hi,193.0,8·100%·+0.625,27·85%·+0.103,2.8839797959814377,7,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_ema_gap_5_8,lo,0.2198,p_r24h,lo,-0.0440334654337237,10·60%·-0.384,25·100%·+0.465,-2.8734825203224643,10,False,"p,n",0.90625,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_ema50_slope,lo,-0.0514,p_ema50_gap_1h,hi,-0.4302722390880809,6·100%·+0.668,29·86%·+0.130,2.8716902574735887,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,p_r24h,hi,-0.0440334654337237,s_hi15_dist,lo,0.1830161054172663,9·100%·+0.563,26·85%·+0.105,2.862593025842515,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,d_adx_rising,hi,0.5,p_r24h,hi,-0.0440334654337237,16·100%·+0.519,19·79%·-0.027,2.8588925314585736,12,False,"wr,p",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pattern_w6_match,hi,0.5,f_pair,lo,0.005,7·100%·+0.618,28·86%·+0.124,2.854120377662333,7,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pos_di,lo,49.21778978403907,s_fb_run,lo,2.142934841727384,13·69%·-0.218,22·100%·+0.483,-2.8517573057016437,13,False,"p,n",0.805,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pos_di,lo,49.21778978403907,entry_price_vs_ema5_pct,lo,1.471,13·69%·-0.218,22·100%·+0.483,-2.8517573057016437,13,False,"p,n",0.805,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_ema5_stretch,lo,1.4497,entry_pos_di,lo,49.21778978403907,13·69%·-0.218,22·100%·+0.483,-2.8517573057016437,13,False,"p,n",0.805,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,d_di_spread,lo,34.378527945136575,p_r24h,lo,-0.0440334654337237,11·64%·-0.319,24·100%·+0.471,-2.851042141389193,9,False,"p,n",0.941,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,p_r1h,lo,-0.1146131805157546,s_sec_in_bar,hi,193.0,9·100%·+0.561,26·85%·+0.106,2.841284348437817,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_atr_pct,lo,0.5143,entry_dist_from_ema13_pct,lo,1.867,14·71%·-0.174,21·100%·+0.487,-2.8269298318247524,12,False,"wr,p,n",0.793,0.2500042384776411
+S3 BTC 1d EMA50 above EMA200,zone,master,p_corr24_btc,hi,0.3393691843016011,s_sec_in_bar,hi,193.0,9·100%·+0.560,26·85%·+0.106,2.826508249514633,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pair_volume_24h_usd,lo,4362422.1154,entry_pos_di,hi,49.21778978403907,12·100%·+0.534,23·83%·+0.060,2.801525645642677,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,d_log_vol24h,lo,6.639727686350285,entry_pos_di,hi,49.21778978403907,12·100%·+0.534,23·83%·+0.060,2.801525645642677,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_pair_volume_ratio,hi,3.6809,entry_pattern_w1_match,hi,0.5,11·100%·+0.559,24·83%·+0.068,2.797855631746931,11,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master,entry_rsi,hi,77.0,s_hi15_dist,lo,0.1830161054172663,8·100%·+0.569,27·85%·+0.120,2.7872062433095244,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,d_di_spread,lo,33.92355451516501,entry_dist_from_ema13_pct,lo,1.7861,14·50%·-0.593,29·100%·+0.457,-4.261386317979907,13,False,n,0.98175,0.1431044237706983
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,d_di_spread,lo,33.92355451516501,entry_price_vs_ema5_pct,lo,1.3976,14·50%·-0.593,29·100%·+0.457,-4.261386317979907,13,False,n,0.98175,0.1431044237706983
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,d_di_spread,lo,33.92355451516501,entry_ema5_stretch,lo,1.3783,14·50%·-0.593,29·100%·+0.457,-4.261386317979907,13,False,n,0.98175,0.1431044237706983
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_dist_from_ema13_pct,lo,1.7861,entry_pos_di,lo,48.33215222229628,16·56%·-0.488,27·100%·+0.473,-4.219042959086649,14,True,—,0.98075,0.1431044237706983
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pos_di,lo,48.33215222229628,entry_price_vs_ema5_pct,lo,1.3976,16·56%·-0.488,27·100%·+0.473,-4.219042959086649,14,True,—,0.98075,0.1431044237706983
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_ema5_stretch,lo,1.3783,entry_pos_di,lo,48.33215222229628,16·56%·-0.488,27·100%·+0.473,-4.219042959086649,14,True,—,0.98075,0.1431044237706983
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pos_di,hi,48.33215222229628,p_r7d,hi,1.8721612938960908,11·100%·+0.617,32·78%·-0.057,4.128598139801856,9,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pos_di,hi,48.33215222229628,entry_slippage_pct,lo,0.0,21·100%·+0.512,22·68%·-0.263,4.088129356057227,18,False,"wr,p",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,d_adx_rising,hi,0.5,entry_pos_di,hi,48.33215222229628,21·100%·+0.512,22·68%·-0.263,4.088129356057227,18,False,"wr,p",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pos_di,hi,48.33215222229628,s_vol5_x60,lo,6.732044936357587,6·100%·+0.669,37·81%·+0.026,4.06485168710707,5,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pos_di,hi,48.33215222229628,p_beta24_btc,lo,1.2783896939022483,11·100%·+0.610,32·78%·-0.055,4.044087605156329,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pattern_w2_match,lo,0.5,entry_pos_di,lo,48.33215222229628,18·61%·-0.388,25·100%·+0.478,-4.018337739651401,14,True,—,0.96025,0.1431044237706983
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pattern_c2_match,lo,0.5,entry_pos_di,hi,48.33215222229628,18·100%·+0.529,25·72%·-0.183,4.017092217673431,16,False,"wr,p",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,d_di_spread,lo,33.92355451516501,entry_pattern_w2_match,lo,0.5,16·56%·-0.467,27·100%·+0.460,-3.9773395885971463,13,True,—,0.97375,0.1431044237706983
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,d_di_spread,lo,33.92355451516501,entry_pos_di,lo,48.33215222229628,20·65%·-0.313,23·100%·+0.488,-3.9580787056221824,16,False,p,0.94775,0.1431044237706983
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pattern_c9_match,lo,0.5,entry_pos_di,hi,48.33215222229628,19·100%·+0.516,24·71%·-0.202,3.9488903297913387,17,False,"wr,p",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pos_di,hi,48.33215222229628,s_sec_in_bar,hi,199.0,12·100%·+0.582,31·77%·-0.065,3.9397313494307884,11,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pattern_w_any_match,hi,0.5,entry_pos_di,hi,48.33215222229628,17·100%·+0.529,26·73%·-0.155,3.9194563872745176,16,False,"wr,p",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pattern_w1_match,hi,0.5,p_beta24_btc,lo,1.2783896939022483,9·100%·+0.635,34·79%·-0.022,3.911217694093436,9,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_ema20_slope,lo,0.1863,entry_pos_di,hi,48.33215222229628,7·100%·+0.684,36·81%·+0.005,3.9105391195885235,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_ema_gap_8_13,lo,0.1654,entry_pos_di,hi,48.33215222229628,7·100%·+0.684,36·81%·+0.005,3.9105391195885235,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_gap,lo,0.483,entry_pos_di,hi,48.33215222229628,7·100%·+0.684,36·81%·+0.005,3.9105391195885235,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pattern_w1_match,hi,0.5,entry_pos_di,hi,48.33215222229628,15·100%·+0.547,28·75%·-0.116,3.905758731364054,14,False,"wr,p",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pos_di,hi,48.33215222229628,p_prevbar_ret,hi,0.0298685782556651,10·100%·+0.613,33·79%·-0.036,3.897220602897965,9,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_dist_from_ema13_pct,hi,1.7861,p_beta24_btc,lo,1.2783896939022483,11·100%·+0.592,32·78%·-0.048,3.860833707255551,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_ema5_stretch,hi,1.3783,p_beta24_btc,lo,1.2783896939022483,11·100%·+0.592,32·78%·-0.048,3.860833707255551,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_price_vs_ema5_pct,hi,1.3976,p_beta24_btc,lo,1.2783896939022483,11·100%·+0.592,32·78%·-0.048,3.860833707255551,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,d_di_spread,lo,33.92355451516501,entry_atr_pct,lo,0.5143,11·45%·-0.685,32·97%·+0.390,-3.860409691528394,11,False,n,0.99825,0.16691672113918504
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pair_ema20_ema50_gap_pct,lo,0.0272,entry_pos_di,hi,48.33215222229628,7·100%·+0.688,36·81%·+0.004,3.8556020384610084,7,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pair_volume_ratio,hi,3.6091,entry_pos_di,hi,48.33215222229628,17·100%·+0.523,26·73%·-0.151,3.846318901115405,14,False,"wr,p",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pattern_w_any_match,lo,0.5,p_offhi_7d,lo,-10.089949159170896,8·38%·-0.844,35·94%·+0.335,-3.7987066205734807,7,False,"days,n",0.9925,0.2003585400238555
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pos_di,hi,48.33215222229628,p_r4h,lo,-0.4059216809933264,9·100%·+0.620,34·79%·-0.018,3.7751887285065187,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pair_volume_24h_usd,lo,4124709.58148,entry_pos_di,hi,48.33215222229628,12·100%·+0.540,31·77%·-0.049,3.7193256513738313,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,d_log_vol24h,lo,6.615393375528163,entry_pos_di,hi,48.33215222229628,12·100%·+0.540,31·77%·-0.049,3.7193256513738313,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pair_rank,hi,203.0,entry_pos_di,hi,48.33215222229628,11·100%·+0.550,32·78%·-0.034,3.716867514042534,9,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pos_di,hi,48.33215222229628,p_r1h,lo,-0.071684587813614,12·100%·+0.537,31·77%·-0.048,3.70487163575072,11,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pattern_w1_match,hi,0.5,p_r7d,hi,1.8721612938960908,11·100%·+0.577,32·78%·-0.043,3.702090381937289,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_pos_di,hi,48.33215222229628,p_r24h,hi,-0.7354579897481561,12·100%·+0.559,31·77%·-0.057,3.6961050484549136,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_price_vs_ema5_pct,hi,1.3976,p_r7d,hi,1.8721612938960908,10·100%·+0.587,33·79%·-0.028,3.6673280161394053,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,zone,master+B25,entry_ema5_stretch,hi,1.3783,p_r7d,hi,1.8721612938960908,10·100%·+0.587,33·79%·-0.028,3.6673280161394053,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_pattern_c4_match,lo,0.5,f_pair_neg,lo,0.5,19·68%·-0.055,22·100%·+0.755,-3.0892879841708156,14,False,p,0.597,0.19376996657799625
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_pattern_c_any_match,lo,0.5,f_pair_neg,lo,0.5,18·67%·-0.079,23·100%·+0.738,-3.0623037830581787,13,False,p,0.6465,0.19376996657799625
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_gap,hi,0.2189,entry_pair_volume_ratio,lo,3.1314,6·100%·+0.926,35·83%·+0.286,3.0413099988176153,5,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_ema_gap_8_13,hi,0.0724,entry_pair_volume_ratio,lo,3.1314,6·100%·+0.926,35·83%·+0.286,3.0413099988176153,5,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx_delta,hi,2.1279,entry_quality_score,hi,1.0,7·100%·+0.869,34·82%·+0.279,3.0375620024501995,7,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx_delta,hi,2.1279,p_ema50_gap_1h,lo,-0.935810216580979,8·100%·+1.257,33·82%·+0.167,2.7809474213655707,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_ema20_slope,hi,0.0929,entry_pair_volume_ratio,lo,3.1314,7·100%·+0.843,34·82%·+0.284,2.5776771194904584,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx_delta,hi,2.1279,s_vol5_x60,lo,5.656922700304268,7·100%·+0.824,34·82%·+0.288,2.5581150030903888,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_quality_score,hi,1.0,p_prevbar_ret,hi,0.068119891008167,6·100%·+0.820,35·83%·+0.304,2.5247264599337873,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx_delta,hi,2.1279,p_r24h,lo,-1.0469986040018586,11·100%·+0.990,30·80%·+0.155,2.515228320866512,9,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,d_rsi_jump,hi,29.639999999999993,entry_range_position,lo,90.2,7·100%·+0.798,34·82%·+0.293,2.507995089984237,7,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx,hi,23.7559,p_prevbar_ret,lo,0.068119891008167,8·62%·-0.328,33·91%·+0.551,-2.492074133066272,7,False,"p,days,n",0.87075,0.333335557822904
+S3 BTC 1d EMA50 above EMA200,rest,master,p_offhi_7d,lo,-8.254987388213731,p_offlo_7d,hi,8.09727418492785,9·100%·+1.101,32·81%·+0.176,2.4599505491791422,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx_prev,lo,21.4051,entry_quality_score,hi,1.0,7·100%·+0.775,34·82%·+0.298,2.442179804711753,7,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx_delta,hi,2.1279,p_qv24_x7d,lo,0.8297292315243022,8·100%·+1.184,33·82%·+0.184,2.438207362878148,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx,hi,23.7559,f_pair_neg,lo,0.5,16·69%·-0.034,25·96%·+0.644,-2.4355989328086807,13,False,p,0.559,0.24034057123407443
+S3 BTC 1d EMA50 above EMA200,rest,master,p_prevbar_ret,hi,0.068119891008167,p_qv24_x7d,lo,0.8297292315243022,11·100%·+0.969,30·80%·+0.163,2.4307247080964,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_pair_ema20_ema50_gap_pct,hi,-0.0085,p_offlo_7d,hi,8.09727418492785,9·100%·+0.766,32·81%·+0.271,2.4114987735504467,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_quality_score,hi,1.0,p_rv24h,hi,0.2692032916300381,7·100%·+0.778,34·82%·+0.297,2.3854933808870507,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx_delta,hi,2.1279,s_sec_in_bar,lo,208.0,12·100%·+0.913,29·79%·+0.159,2.3828215252133966,11,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_pair_volume_ratio,hi,3.1314,f_pair_neg,lo,0.5,13·69%·-0.114,28·93%·+0.609,-2.382655986023825,9,False,"p,n",0.6745,0.2500016562437608
+S3 BTC 1d EMA50 above EMA200,rest,master,p_ema50_gap_1h,lo,-0.935810216580979,p_offlo_7d,hi,8.09727418492785,10·100%·+1.011,31·81%·+0.176,2.3519298105903874,9,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx_prev,hi,21.4051,f_pair_neg,lo,0.5,17·71%·+0.002,24·96%·+0.647,-2.345966459322319,14,False,p,0.48875,0.24034057123407443
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_pattern_c2_match,lo,0.5,f_pair_neg,lo,0.5,28·79%·+0.156,13·100%·+0.862,-2.340177474601994,17,False,"wr,p",0.12075,0.19376996657799628
+S3 BTC 1d EMA50 above EMA200,rest,master,p_offlo_7d,hi,8.09727418492785,p_r24h,lo,-1.0469986040018586,9·100%·+1.075,32·81%·+0.184,2.34005123279704,9,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_ema50_slope,hi,-0.049,entry_pair_volume_ratio,lo,3.1314,7·100%·+0.788,34·82%·+0.295,2.331063225436946,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_pair_ema20_ema50_gap_pct,hi,-0.0085,entry_pair_volume_ratio,lo,3.1314,7·100%·+0.788,34·82%·+0.295,2.331063225436946,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_atr_pct,hi,0.4856,p_offlo_7d,lo,8.09727418492785,7·43%·-0.409,34·94%·+0.542,-2.3285992622894818,5,False,"p,days,n",0.9,0.31637918469879767
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_pattern_c_any_match,hi,0.5,p_corr24_btc,hi,0.0926726754066099,9·100%·+0.753,32·81%·+0.274,2.3275348994158085,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx_prev,hi,21.4051,p_prevbar_ret,lo,0.068119891008167,9·67%·-0.227,32·91%·+0.550,-2.3098539991001914,8,False,"p,n",0.8065,0.333335557822904
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_pair_rank,lo,163.0,f_pair,lo,0.005,20·95%·+0.700,21·76%·+0.074,2.30729408846157,14,False,"wr,p,conc",0.0,1.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_rsi_prev,hi,44.98,p_offlo_7d,hi,8.09727418492785,8·100%·+0.768,33·82%·+0.285,2.2989717628675512,7,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_pattern_c_any_match,lo,0.5,p_offlo_7d,lo,8.09727418492785,10·60%·-0.179,31·94%·+0.560,-2.2831183207632426,8,False,"p,n",0.72375,0.31637918469879767
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx_prev,hi,21.4051,p_offlo_7d,lo,8.09727418492785,10·60%·-0.177,31·94%·+0.559,-2.277784914663009,9,False,"p,n",0.71675,0.31637918469879767
+S3 BTC 1d EMA50 above EMA200,rest,master,f_pair_neg,lo,0.5,s_sec_in_bar,hi,208.0,16·69%·-0.011,25·96%·+0.629,-2.2699500910079977,12,False,p,0.5285,0.24033984545191908
+S3 BTC 1d EMA50 above EMA200,rest,master,p_r7d,lo,-0.6603773584905603,s_sec_in_bar,lo,208.0,11·100%·+0.928,30·80%·+0.178,2.269640773115953,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,p_qv24_x7d,lo,0.8297292315243022,p_rv24h,hi,0.2692032916300381,10·100%·+0.990,31·81%·+0.182,2.2662979375359513,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_adx_delta,lo,2.1279,p_prevbar_ret,lo,0.068119891008167,12·75%·-0.081,29·90%·+0.570,-2.24548934377517,8,False,"wr,p,n",0.66,0.333335557822904
+S3 BTC 1d EMA50 above EMA200,rest,master,entry_pattern_c_any_match,lo,0.5,s_fb_run,hi,1.4872699773128328,13·62%·-0.102,28·96%·+0.603,-2.245300683759716,11,False,"p,n",0.6415,0.2403406339058969
+S3 BTC 1d EMA50 above EMA200,rest,master,p_qv24_x7d,lo,0.8297292315243022,p_r1h,hi,-0.0488758553274681,9·100%·+1.046,32·81%·+0.192,2.241585797768019,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_pattern_c4_match,lo,0.5,f_pair_neg,lo,0.5,19·68%·-0.055,22·100%·+0.755,-3.0892879841708156,14,False,p,0.597,0.19376996657799625
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_pattern_c_any_match,lo,0.5,f_pair_neg,lo,0.5,18·67%·-0.079,23·100%·+0.738,-3.0623037830581787,13,False,p,0.6465,0.19376996657799625
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_gap,hi,0.2189,entry_pair_volume_ratio,lo,3.1314,6·100%·+0.926,35·83%·+0.286,3.0413099988176153,5,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_ema_gap_8_13,hi,0.0724,entry_pair_volume_ratio,lo,3.1314,6·100%·+0.926,35·83%·+0.286,3.0413099988176153,5,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx_delta,hi,2.1279,entry_quality_score,hi,1.0,7·100%·+0.869,34·82%·+0.279,3.0375620024501995,7,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx_delta,hi,2.1279,p_ema50_gap_1h,lo,-0.935810216580979,8·100%·+1.257,33·82%·+0.167,2.7809474213655707,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_ema20_slope,hi,0.0929,entry_pair_volume_ratio,lo,3.1314,7·100%·+0.843,34·82%·+0.284,2.5776771194904584,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx_delta,hi,2.1279,s_vol5_x60,lo,5.656922700304268,7·100%·+0.824,34·82%·+0.288,2.5581150030903888,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_quality_score,hi,1.0,p_prevbar_ret,hi,0.068119891008167,6·100%·+0.820,35·83%·+0.304,2.5247264599337873,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx_delta,hi,2.1279,p_r24h,lo,-1.0469986040018586,11·100%·+0.990,30·80%·+0.155,2.515228320866512,9,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,d_rsi_jump,hi,29.639999999999993,entry_range_position,lo,90.2,7·100%·+0.798,34·82%·+0.293,2.507995089984237,7,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx,hi,23.7559,p_prevbar_ret,lo,0.068119891008167,8·62%·-0.328,33·91%·+0.551,-2.492074133066272,7,False,"p,days,n",0.87075,0.333335557822904
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,p_offhi_7d,lo,-8.254987388213731,p_offlo_7d,hi,8.09727418492785,9·100%·+1.101,32·81%·+0.176,2.4599505491791422,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx_prev,lo,21.4051,entry_quality_score,hi,1.0,7·100%·+0.775,34·82%·+0.298,2.442179804711753,7,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx_delta,hi,2.1279,p_qv24_x7d,lo,0.8297292315243022,8·100%·+1.184,33·82%·+0.184,2.438207362878148,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx,hi,23.7559,f_pair_neg,lo,0.5,16·69%·-0.034,25·96%·+0.644,-2.4355989328086807,13,False,p,0.559,0.24034057123407443
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,p_prevbar_ret,hi,0.068119891008167,p_qv24_x7d,lo,0.8297292315243022,11·100%·+0.969,30·80%·+0.163,2.4307247080964,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_pair_ema20_ema50_gap_pct,hi,-0.0085,p_offlo_7d,hi,8.09727418492785,9·100%·+0.766,32·81%·+0.271,2.4114987735504467,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_quality_score,hi,1.0,p_rv24h,hi,0.2692032916300381,7·100%·+0.778,34·82%·+0.297,2.3854933808870507,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx_delta,hi,2.1279,s_sec_in_bar,lo,208.0,12·100%·+0.913,29·79%·+0.159,2.3828215252133966,11,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_pair_volume_ratio,hi,3.1314,f_pair_neg,lo,0.5,13·69%·-0.114,28·93%·+0.609,-2.382655986023825,9,False,"p,n",0.6745,0.2500016562437608
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,p_ema50_gap_1h,lo,-0.935810216580979,p_offlo_7d,hi,8.09727418492785,10·100%·+1.011,31·81%·+0.176,2.3519298105903874,9,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx_prev,hi,21.4051,f_pair_neg,lo,0.5,17·71%·+0.002,24·96%·+0.647,-2.345966459322319,14,False,p,0.48875,0.24034057123407443
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_pattern_c2_match,lo,0.5,f_pair_neg,lo,0.5,28·79%·+0.156,13·100%·+0.862,-2.340177474601994,17,False,"wr,p",0.12075,0.19376996657799628
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,p_offlo_7d,hi,8.09727418492785,p_r24h,lo,-1.0469986040018586,9·100%·+1.075,32·81%·+0.184,2.34005123279704,9,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_ema50_slope,hi,-0.049,entry_pair_volume_ratio,lo,3.1314,7·100%·+0.788,34·82%·+0.295,2.331063225436946,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_pair_ema20_ema50_gap_pct,hi,-0.0085,entry_pair_volume_ratio,lo,3.1314,7·100%·+0.788,34·82%·+0.295,2.331063225436946,6,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_atr_pct,hi,0.4856,p_offlo_7d,lo,8.09727418492785,7·43%·-0.409,34·94%·+0.542,-2.3285992622894818,5,False,"p,days,n",0.9,0.31637918469879767
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_pattern_c_any_match,hi,0.5,p_corr24_btc,hi,0.0926726754066099,9·100%·+0.753,32·81%·+0.274,2.3275348994158085,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx_prev,hi,21.4051,p_prevbar_ret,lo,0.068119891008167,9·67%·-0.227,32·91%·+0.550,-2.3098539991001914,8,False,"p,n",0.8065,0.333335557822904
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_pair_rank,lo,163.0,f_pair,lo,0.005,20·95%·+0.700,21·76%·+0.074,2.30729408846157,14,False,"wr,p,conc",0.0,1.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_rsi_prev,hi,44.98,p_offlo_7d,hi,8.09727418492785,8·100%·+0.768,33·82%·+0.285,2.2989717628675512,7,False,"wr,p,days,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_pattern_c_any_match,lo,0.5,p_offlo_7d,lo,8.09727418492785,10·60%·-0.179,31·94%·+0.560,-2.2831183207632426,8,False,"p,n",0.72375,0.31637918469879767
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx_prev,hi,21.4051,p_offlo_7d,lo,8.09727418492785,10·60%·-0.177,31·94%·+0.559,-2.277784914663009,9,False,"p,n",0.71675,0.31637918469879767
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,f_pair_neg,lo,0.5,s_sec_in_bar,hi,208.0,16·69%·-0.011,25·96%·+0.629,-2.2699500910079977,12,False,p,0.5285,0.24033984545191908
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,p_r7d,lo,-0.6603773584905603,s_sec_in_bar,lo,208.0,11·100%·+0.928,30·80%·+0.178,2.269640773115953,8,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,p_qv24_x7d,lo,0.8297292315243022,p_rv24h,hi,0.2692032916300381,10·100%·+0.990,31·81%·+0.182,2.2662979375359513,10,False,"wr,p,n",0.0,0.0
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_adx_delta,lo,2.1279,p_prevbar_ret,lo,0.068119891008167,12·75%·-0.081,29·90%·+0.570,-2.24548934377517,8,False,"wr,p,n",0.66,0.333335557822904
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,entry_pattern_c_any_match,lo,0.5,s_fb_run,hi,1.4872699773128328,13·62%·-0.102,28·96%·+0.603,-2.245300683759716,11,False,"p,n",0.6415,0.2403406339058969
+S3 BTC 1d EMA50 above EMA200,rest,master+B25,p_qv24_x7d,lo,0.8297292315243022,p_r1h,hi,-0.0488758553274681,9·100%·+1.046,32·81%·+0.192,2.241585797768019,8,False,"wr,p,n",0.0,0.0

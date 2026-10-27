@@ -159,18 +159,20 @@ def _paths(paths):
     return paths if paths is not None else sorted(EG.glob_exports(PATTERN), key=os.path.getmtime)
 
 
-def load(paths=None):
-    """every export row (paper + live), dedup (opened_at[:19], pair, direction) — a CLOSED row wins, then the newest export."""
+def load(paths=None, extra=()):
+    """every export row (paper + live), dedup (opened_at[:19], pair, direction) — a CLOSED row wins, then the newest export.
+    extra = more columns to keep (the DL 384 OBS-F1 line reads entry_pos_di / entry_dist_from_ema13_pct)."""
+    cols = COLS + tuple(c for c in extra if c not in COLS)
     fr = []
     for f in _paths(paths):
         try:
-            fr.append(pd.read_csv(f, low_memory=False, usecols=lambda c: c in COLS))
+            fr.append(pd.read_csv(f, low_memory=False, usecols=lambda c: c in cols))
         except Exception:
             continue
     if not fr:
-        return pd.DataFrame(columns=list(COLS) + ["o", "y", "usd", "paper"])
+        return pd.DataFrame(columns=list(cols) + ["o", "y", "usd", "paper"])
     a = pd.concat(fr, ignore_index=True)
-    for c in COLS:
+    for c in cols:
         if c not in a:
             a[c] = None
     a["_k"] = a.opened_at.astype(str).str[:19].str.replace(" ", "T") + "|" + a.pair.astype(str) + "|" + a.direction.astype(str).str.upper()

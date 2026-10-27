@@ -9543,3 +9543,38 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Local-only study outputs (gitignored, rebuild with scripts/study_ml_matched_build.py / _analyse.py):** ML_MATCHED_SHADOW_2026-10-26_
   episodes.csv (10.6 MB), _regime.csv, _replay_blocks.csv.gz, _shadows.csv.gz and the fetch cache; the report, cells, verdicts, parity,
   controls and CloudWatch refusal list are committed.
+
+## (384) 2026-10-26 — 🩸🌙 SPIKE_FADE winners vs losers BY REGIME: no regime separator beyond chance · OBS-F1 "late-tape weak spike" frozen observe line + scout (operator: "dig into spike fade winners vs loosers by regime" → "yes, commit and push"; no trading decision, no config change)
+
+- **Theory first (prereg `reports/FADE_REGIME_WL_2026-10-26_PREREG.md`, 15 predictions scored):** a fade pays when the tape sells the spike;
+  predicted that high alt beta (BTC drags the spiked coin back — the mirror of the ML OBS-R1 finding) helps fades. **Refuted**: high-beta
+  tape fades +0.19 vs +0.43 %/fill (n.s.). 2 of 15 confirmed in master: P11 (pair 24h-volume inflation, p 0.028) and P14 (41h HEALTHY_BEAR ∧ trend gap ≥ −0.13
+  worse, p 0.0005; the today's-stack backtest is opposite on 3 / 3 seeds).
+- **Pool:** 76 master kept fades (STACK 2026-10-26a, 87 % · +0.31 · +$4,237; breakeven 71.0 %) + B25 8 closed fades (provisional,
+  62 % · −0.35 · −$538, all pre top-up). 117 regime variables (BTC multi-TF, breadth, alt corr / beta, funding, vol; open interest NOT tested — blind spot §10) + every dashboard
+  W/L column + every entry_* stamp; coverage table + blind spots in the report §1 / §10.
+- **Regime screen:** sign → median → terciles, fill AND day units — fewer passes than chance; every top split flat or refuted in the
+  backtest. **Uniform degradation (checklist ③):** since ~10-05 (B17 → B25) fades 23 · 74 % · −0.16 vs 89 % · +0.40 before, stop rate 15 → 26 %;
+  33 / 36 cohorts worse together; the 6 recent losers = 6 pairs on 6 days → market state, not a broken cell. Only thin-book vertical spikes
+  held (7 / 7 in the low-volume and high-ADX buckets). Negative pair funding at entry 13 · 85 % · +0.57 (squeeze theory refuted; info only).
+- **Within-regime W/L (1D + exhaustive 2D, shuffled null):** one interaction survives only with B25 included → **OBS-F1** = BTC 1d
+  EMA50 > EMA200 ∧ `entry_pos_di` ≤ 48.5 ∧ `entry_dist_from_ema13_pct` ≤ 1.80 (🔒 frozen, outward from fitted 48.33 / 1.786).
+  Master 12 · 67 % · −0.30 (bar FAIL: P 0.89, N < 15) · master + B25 17 · 59 % · −0.44 on 14 days / 15 pairs (top day 28 %, pair 14 %),
+  bar PASS (P 0.978). Before → after: master +$4,237 → +$4,494 (in-sample; +$129 … +$180 after the 30–50 % haircut) · B25 −$538 → +$136
+  (blocks LUNA2 W, 1000LUNC / RAYSOL / PARTI stops, MOCA W). Backtest refutes 3 / 3 seeds (2025 above-EMA200: weak spikes won) — caveat,
+  not veto (master over backtest), but with the in-sample origin it is OBSERVE-ONLY (OBSERVE-FIRST). The early-tape twin is positive
+  (26 · 88 % · +0.33) — the effect is the interaction, not weak spikes per se.
+- **Gate (CURRENT_STATE 41q, `scripts/scout_fade_late_weak.py`, wired in opportunity_scout):** CLOSED fades opened ≥ max(2026-10-27 00:00
+  UTC, DL 384 commit + 10 min); read ONCE at zone N ≥ 15 on ≥ 8 UTC days: avg ≥ +0.20 → RETIRE; WR < forward breakeven (71 % if < 5
+  losses) ∧ avg < 0 ∧ day-bootstrap P ≥ 0.95 ∧ no day / pair ≥ 50 % → FILTER_CANDIDATE (OPERATOR CALL; haircut; revert if the first 10
+  blocked fades re-price avg > 0) else KEEP_OBSERVING. Pauses when BTC 1d EMA50 ≤ EMA200. BTC 1d klines: one public GET (weight 5),
+  cached in reports/backtest_cache/scout_fade_late_weak/, shared cooldown / used-weight discipline; only CLOSED daily bars cached; a missing bar holds the read (COLLECTING,
+  not persisted). Paper + live pooled in %. Scout EMA gap reproduces the study's
+  value on all 17 registration fills; the B25 split reproduces (zone 5 · −$674 / control 3 · +$136). Expected read ≈ early December.
+- **Existing lines:** 41h zone 16 · 69 % · −0.18 (fail, P 0.79) → KEEP OBSERVING (B25 −$538 → −$271; master +$35) · DL 374 ①②⑤⑥ fail on
+  the full master, no forward fills yet → KEEP OBSERVING · ③ high-mcap 2 / 10 · DL 165 revert not triggered (1000LUNC $4.1M volume,
+  outside its $10–20M band).
+- **Size (stated apart):** B25 fade loss = 3 full −1.5 % stops at 2× (−$754). No regime size cut is supported (every "bad" regime is
+  still profitable in master); stays the stop-width × size question of plan §5 (41m / 41n shadows decide).
+- **Local-only (gitignored):** reports/FADE_REGIME_WL_2026-10-26_fetch/ (16 MB kline cache; rebuild with
+  scripts/study_fade_regime_wl_fetch.py). Report, prereg, CSVs and the study scripts are committed.

@@ -1288,6 +1288,14 @@ def run():
     except Exception as _fdw_e:
         log(f"SPIKE_FADE watch lines failed: {_fdw_e}")
         _rg_sec += ["## 🩸 SPIKE_FADE watch lines", "", f"Unavailable this run ({str(_fdw_e)[:120]}).", ""]
+    try:                                               # 🩸🌙 Oct-26 OBS-F1 LATE-TAPE WEAK SPIKE (DECISION_LOG 384; orders exports + cached BTC 1d klines, one budgeted public GET; frozen read → OPERATOR CALL; never breaks the run)
+        if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import scout_fade_late_weak as _flw
+        _rg_sec += _flw.run(now_ms)
+    except Exception as _flw_e:
+        log(f"OBS-F1 late-tape weak spike line failed: {_flw_e}")
+        _rg_sec += ["## 🩸🌙 OBS-F1 LATE-TAPE WEAK SPIKE", "", f"Unavailable this run ({str(_flw_e)[:120]}).", ""]
     try:                                               # 🌡 Oct-5 heat block × BTC regime observation (pre-registered; reads the tracker's priced heat blocks; never breaks the run)
         if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

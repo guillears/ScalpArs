@@ -9770,3 +9770,17 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
 - **Stays NULL on the 77 pre-fix B25 fills:** every 5m pair / BTC indicator the sleeve did not stamp itself (FLATBASE ≈ 38 columns,
   FRENZY signed gaps / funding, fade BTC slopes / global volume / funding / signed gaps, momentum BTC price), breadth and global volume
   everywhere they were missing. The batch review treats them as a stated blind spot. services/stamp_rebuild.py = research only.
+
+## (394) 2026-10-27 — 📓 Decisions export: Bear-Run refusals recorded + spike-path refusals name their pair (operator: "Decisions export has everything needed too correct?"; journal / export only, no trading / config change)
+- **Audit of the 10-27 17:40 export (whole batch, 4.7 days):** every POSITION has its OPEN row; BLOCK rows with gate names exist for
+  momentum, FAN, FRENZY LONG / LITE / RETRY / WILLY / WILLY_HT, FLATBASE (+ its episode rows), SPIKE_FADE / CHASE (+ WILLY event rows).
+  Gaps: ① Bear-Run's own refusal (the momentum short it would have let past a BTC gate, refused by OFF24LO / BLACKLIST / SPACING /
+  BREADTH) went only to the log and its window ledger — the CSV showed just the BTC gate's BLOCK; ② 21 spike-path BLOCK rows were "MARKET"
+  (the spike scanner reset the journal pair and never set it per candidate). Bull-Run / SURGE: 0 BLOCK rows — their gates fire only
+  while their trigger is on (server-log check of the batch in the operator note).
+- **Fix:** ① `_bearrun_bypass` journals its own BEARRUN event (pair, SHORT, gate BEARRUN_REFUSED_<rule>, reason with the bypassed gate +
+  off24lo / r24 / eff24 / breadth) — NOT a BLOCK (the gate's BLOCK row stays the count; no double count); export_rows aggregates BEARRUN
+  rows per 5 min × pair × rule (`n`, the first line's values — an ON window can refuse every scan). Server logs for the batch: Bear-Run
+  ON with 10 bypasses + 6 refusals (log-only until this deploy); Bull-Run DARK all batch; SURGE no trigger. Still MARKET by nature: UNTRACKED_POSITION /
+  MANUAL_IMPORT (account-level, 13 rows). ② the spike scanner sets the journal pair per candidate and the scan clears it after the cycle. Test:
+  tests/test_decisions_export.py::test_bearrun_refusals_ride_the_export_and_spike_blocks_name_their_pair.

@@ -162,3 +162,26 @@ def test_export_default_covers_the_whole_batch(monkeypatch):
     ui = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "index.html"), encoding="utf-8").read()
     assert ui.count("/api/decisions/export.csv?t=") == 1                       # the button: the batch
     assert "async function _downloadDecisionsCsv(timeoutMs = 60e3, days = 3)" in ui   # auto + pre-reset: 3 days
+
+
+def test_bearrun_refusals_ride_the_export_and_spike_blocks_name_their_pair(tmp_path):
+    """📓 DECISION_LOG 394: a Bear-Run refusal (its own BEARRUN event — never a second BLOCK) is exported one per line with its rule and
+    values; the spike scanner names the pair on its journal lines (its BLOCK rows were MARKET) and clears it after the cycle."""
+    import os
+    d = str(tmp_path)
+    lines = [{"t": "2026-10-27T12:00:01.000", "e": "BEARRUN", "pair": "XUSDT", "dir": "SHORT", "gate": "BEARRUN_REFUSED_OFF24LO",
+              "reason": "would bypass BTC_SLOPE_GATE; off24lo 1.2"},
+             {"t": "2026-10-27T12:02:01.000", "e": "BEARRUN", "pair": "XUSDT", "dir": "SHORT", "gate": "BEARRUN_REFUSED_OFF24LO",
+              "reason": "would bypass BTC_SLOPE_GATE; off24lo 1.3"},          # same 5-min bucket → one row, n 2, the first values
+             {"t": "2026-10-27T12:00:01.000", "e": "BLOCK", "pair": "XUSDT", "dir": "SHORT", "gate": "BTC_SLOPE_GATE"}]
+    with open(os.path.join(d, "decisions-2026-10-27.jsonl"), "w") as f:
+        f.write("\n".join(json.dumps(x) for x in lines) + "\n")
+    rows = dj.export_rows(days=1, now=datetime(2026, 10, 27, 15, 0), directory=d)
+    br = [r for r in rows if r["e"] == "BEARRUN"]
+    assert len(br) == 1 and br[0]["gate"] == "BEARRUN_REFUSED_OFF24LO" and br[0]["n"] == 2 and br[0]["reason"].endswith("off24lo 1.2")
+    assert sum(r.get("n", 0) for r in rows if r["e"] == "BLOCK") == 1                 # the refusal is not a second BLOCK
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services", "trading_engine.py"), encoding="utf-8").read()
+    i = src.index("    async def _spike_scanner_cycle("); j = src.index("    async def open_position(", i)
+    assert "self._journal_pair = p.get('pair'); self._journal_ctx = None" in src[i:j]
+    assert src.count("self._journal_pair = None; self._journal_ctx = None   # 📓 (DL 394)") == 1
+    assert "_djournal.note('BEARRUN', pair=pair, dir='SHORT', gate=f\"BEARRUN_REFUSED_{self._bear_refuse}\"" in src

@@ -5393,7 +5393,8 @@ class TradingEngine:
             pass  # Regime global not yet set (cold start) — record as decisive
         # Sep-29 (operator-caught: QNT/SOON showed "No EMA Stack" + STRONG_BUY while the BTC ADX floor was the real block):
         # EVERY recorded block stamps the pair in context, so the Top Pairs "Block Reason" is the gate that actually
-        # refused the setup. _journal_pair is set per pair in both scan phases and cleared on the spike path; display only.
+        # refused the setup. _journal_pair is set per pair in both scan phases and per candidate on the spike path (DL 394, cleared after
+        # the cycle; spike / OPEN_ gates never stamp — excluded prefixes); display only.
         # FIRST DECISIVE GATE WINS (caveman review): stamp only over the per-scan placeholder, and never with a counter that
         # belongs to another sleeve or to the infrastructure (a flip/bull-run/spike/bounce refusal or an OPEN_FAILED recorded
         # later in the same pair iteration must not rename the gate that refused the rated setup). Explicit stamps at the veto
@@ -8942,6 +8943,12 @@ class TradingEngine:
                 _bearrun_monitor[_k] = int(_bearrun_monitor.get(_k, 0) or 0) + 1
             # NOT _record_filter_block: the normal gate blocks and counts this candidate right after — a second
             # counter would double-count it in blocked_short. Ledger (per window) + the log line are the record.
+            try:   # 📓 (DL 394) its own journal event (NOT a BLOCK: the normal gate's BLOCK row is the count) → the decisions export carries why
+                _djournal.note('BEARRUN', pair=pair, dir='SHORT', gate=f"BEARRUN_REFUSED_{self._bear_refuse}",
+                               reason=f"would bypass {gate}; off24lo {_bearrun_monitor.get('off24lo')} r24 {_bearrun_monitor.get('r24')} "
+                                      f"eff24 {_bearrun_monitor.get('eff24')} bear {globals().get('_market_bear_pct')} bull {globals().get('_market_bull_pct')}")
+            except Exception:
+                pass
             logger.info(f"[BEARRUN_REFUSED] {pair}: SHORT would bypass {gate} but refused by {self._bear_refuse} (off24lo {_bearrun_monitor.get('off24lo')}% vs max {getattr(th, 'bearrun_btc_off24lo_max', None)} · r24 {_bearrun_monitor.get('r24')}% · eff24 {_bearrun_monitor.get('eff24')} · breadth bear {globals().get('_market_bear_pct')}/bull {globals().get('_market_bull_pct')} vs floor {getattr(th, 'bearrun_breadth_min', None)})")
         return False
 
@@ -12339,6 +12346,7 @@ class TradingEngine:
                 if isinstance(ohlcv, Exception) or not ohlcv or len(ohlcv) < 20:
                     continue
                 _checked += 1
+                self._journal_pair = p.get('pair'); self._journal_ctx = None   # 📓 (DL 394) the spike path's BLOCK lines name their pair (were MARKET)
                 try:
                     closes = [float(c[4]) for c in ohlcv]
                     rsi, rsi_prev = self._spike_rsi12(closes)
@@ -23126,6 +23134,7 @@ class TradingEngine:
             await self._spike_scanner_cycle(db, set(p['pair'] for p in top_pairs))
         except Exception as _ss_err:
             logger.error(f"[SPIKE_SCANNER] cycle failed (fail-silent): {_ss_err}")
+        self._journal_pair = None; self._journal_ctx = None   # 📓 (DL 394) the spike path's last pair never names a later line
         # ===== SPIKE SCANNER END =====
 
         self._last_scan_time = time.time()

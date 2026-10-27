@@ -183,7 +183,7 @@ def export_rows(days=3, now=None, directory=None):
     covers (a missing day / downtime is a gap, not "no action"); FAILS lines (the FULL gate set one candidate failed) aggregate
     per 5-minute bucket × pair × direction × gate set × source (`gate` = the set joined by "+"; the engine writes an identical
     set once per 5 min, so a FAILS `n` ≈ 5-minute buckets, not scans). Never raises."""
-    out, agg, beats, fails = [], {}, {}, {}
+    out, agg, beats, fails, bears = [], {}, {}, {}, {}
     try:
         days = max(1, min(EXPORT_MAX_DAYS, int(days or 3)))
         now = now or datetime.utcnow()
@@ -201,7 +201,7 @@ def export_rows(days=3, now=None, directory=None):
                     try:                                              # one bad line never skips the rest of the file
                         r = json.loads(line)
                         ev = r.get('e')
-                        if ev in ('BLOCK', 'SCAN', 'FAILS'):
+                        if ev in ('BLOCK', 'SCAN', 'FAILS', 'BEARRUN'):
                             t = str(r.get('t', ''))
                             bucket = f"{t[:14]}{int(t[14:16]) // 5 * 5:02d}:00"
                             if ev == 'SCAN':
@@ -210,6 +210,11 @@ def export_rows(days=3, now=None, directory=None):
                             if ev == 'FAILS':
                                 fk = (bucket, r.get('pair') or '?', r.get('dir'), r.get('gates'), r.get('src'))
                                 fails[fk] = fails.get(fk, 0) + 1
+                                continue
+                            if ev == 'BEARRUN':   # 🐻 (DL 394) Bear-Run refusals: per 5 min × pair × rule, n + the first line's values
+                                bk = (bucket, r.get('pair') or 'MARKET', r.get('dir'), r.get('gate'))
+                                b = bears.setdefault(bk, [0, r.get('reason')])
+                                b[0] += 1
                                 continue
                             key = (bucket, r.get('pair') or 'MARKET', r.get('dir'), r.get('gate'))
                             a = agg.setdefault(key, [0, 0])
@@ -224,6 +229,8 @@ def export_rows(days=3, now=None, directory=None):
             continue
     for (bucket, pair, dr, gate), (n, noroom) in agg.items():
         out.append(dict(t=bucket, e='BLOCK', pair=pair, dir=dr, gate=gate, n=n, no_room=noroom))
+    for (bucket, pair, dr, gate), (n, why) in bears.items():
+        out.append(dict(t=bucket, e='BEARRUN', pair=pair, dir=dr, gate=gate, n=n, reason=why))
     for bucket, n in beats.items():
         out.append(dict(t=bucket, e='SCAN', n=n))
     for (bucket, pair, dr, gates, src), n in fails.items():

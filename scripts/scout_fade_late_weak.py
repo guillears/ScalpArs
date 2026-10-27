@@ -16,8 +16,10 @@ ZONE            a SPIKE_FADE fill where ALL hold (🔒 thresholds frozen 2026-10
                 CONTROL = late tape ∧ scored ∧ not weak (the complement). EARLY tape (EMA50 ≤ EMA200) → outside the line (the zone empties and
                 the line PAUSES, never judged on early-tape fills). Missing stamp → UNSCORED (never control); BTC bar missing (cache stale,
                 cooldown) → WAITING: the read stays COLLECTING (not persisted) until the bar is there.
-COHORT          CLOSED SPIKE_FADE fills opened ≥ max(2026-10-27 00:00 UTC, DL 384 commit + 10 min) (scout_gatekit.dl_deploy_ms; not in git →
-                NOT EVALUABLE, nothing counted or persisted); paper + live POOLED in % (the read is % only; book shown per fill; the
+COHORT          CLOSED SPIKE_FADE fills opened ≥ 2026-10-26 15:12 UTC = the study's data cutoff (DECISION_LOG 385, operator: "consider all
+                this batch too" — every fade the study did not see counts, the rest of B25 included; NOT EVALUABLE until the DL 384
+                commit is in git). The B25 fades opened before the cutoff (the study's 8; a fade still OPEN at the 15:11 export would also land here) are
+                shown apart (registration block + an in-sample read, never persisted); paper + live POOLED in % (the read is % only; book shown per fill; the
                 cohort $ lines are informational and mix books); dedup
                 (opened_at[:19], pair, direction), CLOSED wins; operator-closed (MANUAL / MANUAL_* / EXTERNAL_CLOSE) excluded.
 🔒 READ          decided ONCE (persisted in reports/.scout_fade_late_weak.json; COLLECTING / HOLD / ERROR never persisted; a paused line
@@ -50,7 +52,12 @@ import scout_ml_regime_lines as _MRL                         # noqa: E402  budge
 DL = 384
 KEY = "OBS_F1_LATE_WEAK"
 POS_DI_MAX, EXT13_MAX = 48.5, 1.80                           # 🔒 frozen 2026-10-26 (fitted 48.33 / 1.786, rounded outward)
-FLOOR_PIN = "2026-10-27T00:00:00"                            # 🔒 cohort floor (registration: fills opened ≥ 10-27 00:00 UTC)
+# 🔒 gate cohort floor = the study's data cutoff (DECISION_LOG 385, operator 2026-10-27 "consider all this batch too"): the study read
+# B25 from scalpars_orders_paper_2026-10-26_15-11-28.csv (newest fill PARTI 13:19) — every fade opened after it is out-of-sample, so the
+# rest of B25 counts. The 8 B25 fades the study saw (5 in the zone) are shown as the REGISTRATION block with an informational
+# in-sample read beside the gate read — never persisted, never the decision (they suggested the rule).
+FLOOR_PIN = "2026-10-26T15:12:00"
+REG_FROM = "2026-10-23T18:30:00"                             # B25 start (bot in PAPER since 10-23 18:30 UTC)
 GATE_N, GATE_DAYS, P_MIN, SHARE_MAX, RETIRE_AVG = 15, 8, 0.95, 0.50, 0.20
 BE_FALLBACK, BE_MIN_LOSSES = 71.0, 5
 BOOT_N, BOOT_SEED = 4000, 7
@@ -188,10 +195,36 @@ def read(g, pending=None):
         return "ERROR", f"read unreadable ({str(e)[:80]})"
 
 
+def registration_lines(a, k, since, g):
+    """the B25 fades the study saw (opened REG_FROM → the cutoff) + an in-sample read of registration ∪ gate cohort — informational,
+    NEVER persisted and never the decision."""
+    reg_from, reg_to = pd.Timestamp(REG_FROM), min(since, pd.Timestamp(FLOOR_PIN))   # never later than the study cutoff
+    if reg_to <= reg_from:
+        return ["Registration block: none (the cohort floor is at / before the B25 start)."]
+    rf, _ = _FW.forward(a, reg_from)
+    rf = rf[rf.o < reg_to]
+    rg = rf.assign(side=side(rf, late_gap(k, rf.o))) if len(rf) else rf.assign(side=[])
+    L = [f"**Registration block (B25 fades the study saw, {reg_from:%m-%d %H:%M} → {reg_to:%m-%d %H:%M} UTC — in-sample):** "
+         f"zone {_FW._stat(rg[rg.side == 'zone'] if len(rg) else rg)} · control {_FW._stat(rg[rg.side == 'control'] if len(rg) else rg)}"
+         + "".join(f" · {lab} {int((rg.side == s_).sum())}" for s_, lab in (("early", "early tape"), ("unscored", "unscored"),
+                                                                           ("nobar", "waiting (BTC bar missing)")) if len(rg) and (rg.side == s_).any())]
+    for r in (rg[rg.side == "zone"].itertuples() if len(rg) else []):
+        L.append(f"    · {r.pair} {r.o:%m-%d %H:%M} {'paper' if r.paper else 'live'} · {r.y:+.2f} % · ${r.usd:+.2f}")
+    both = pd.concat([rg, g[g.o >= reg_to]] if len(g) else [rg], ignore_index=True)
+    if len(both) and (both.side == "nobar").any():
+        L.append("  In-sample read skipped this run (BTC daily bar missing).")
+    elif len(both):
+        v, txt = read(both)
+        txt = txt.split(" → ")[0].replace(" — decided once at the read", "")         # no 🚨 / OPERATOR CALL wording: not the gate
+        L.append(f"  In-sample read WITH the registration block (B25 only, not master; informational — not the gate, never persisted): would be {v} — {txt}")
+    return L
+
+
 def floor_ms():
-    pin = int(pd.Timestamp(FLOOR_PIN).value // 1_000_000)
+    """the pinned study cutoff; None (NOT EVALUABLE) until the DL 384 scout commit is in git. The stamps the line reads predate the
+    scout, so fills between the cutoff and the deploy are scored like any later fill."""
     dep = _GK.dl_deploy_ms(DL, lag_min=10, label="OBS-F1 late-tape weak spike")
-    return None if dep is None else max(pin, int(dep))
+    return None if dep is None else int(pd.Timestamp(FLOOR_PIN).value // 1_000_000)
 
 
 def run(now_ms=None, paths=None, since_ms=None, state_path=STATE, bars=None, fetch=True):
@@ -203,7 +236,7 @@ def run(now_ms=None, paths=None, since_ms=None, state_path=STATE, bars=None, fet
          "+0.42; master alone 12 · 67 % · −0.30 (fails the bar); backtest refutes 3 / 3 seeds → observe-only, OPERATOR CALL at the read."]
     how = "override"
     if since_ms is None:
-        since_ms, how = floor_ms(), f"max(10-27 00:00, DL {DL} commit + 10 min)"
+        since_ms, how = floor_ms(), "the study's data cutoff — every fade the study did not see"
     if since_ms is None:
         L += [f"⚠ NOT EVALUABLE — the DECISION_LOG {DL} deploy commit is not in git yet; nothing is counted or persisted.", BLIND, ""]
         return L
@@ -232,6 +265,10 @@ def run(now_ms=None, paths=None, since_ms=None, state_path=STATE, bars=None, fet
         v, txt = _FW.decide_once(state_path, KEY, *read(g, pend))
     L.append(f"  Read (zone N ≥ {GATE_N} on ≥ {GATE_DAYS} days: avg ≥ +{RETIRE_AVG:.2f} → RETIRE; WR < breakeven ∧ avg < 0 ∧ P(avg < 0) ≥ "
              f"{P_MIN} day-bootstrap ∧ no day / pair ≥ 50 % → FILTER_CANDIDATE; else KEEP_OBSERVING): {v} — {txt}")
+    try:                                                               # informational: a failure here must not hide the gate read
+        L += registration_lines(a, k, since, g)
+    except Exception as e:
+        L.append(f"Registration block unavailable ({str(e)[:80]}).")
     L += [BLIND, ""]
     return L
 

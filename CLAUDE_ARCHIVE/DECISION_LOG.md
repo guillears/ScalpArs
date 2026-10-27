@@ -9578,3 +9578,16 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   still profitable in master); stays the stop-width × size question of plan §5 (41m / 41n shadows decide).
 - **Local-only (gitignored):** reports/FADE_REGIME_WL_2026-10-26_fetch/ (16 MB kline cache; rebuild with
   scripts/study_fade_regime_wl_fetch.py). Report, prereg, CSVs and the study scripts are committed.
+
+## (385) 2026-10-27 — 🩸🌙 OBS-F1 cohort widened to the study's data cutoff (operator: "keep observing, but … we should consider all this batch too"; observe-only, no trading / config change)
+
+- **Change:** the OBS-F1 gate cohort floor moves from max(2026-10-27 00:00 UTC, DL 384 commit + 10 min) to **2026-10-26 15:12 UTC** —
+  the newest export the study read (scalpars_orders_paper_2026-10-26_15-11-28.csv; newest fill PARTI 13:19). Every fade the study did
+  not see now counts toward the frozen read, including the rest of B25 (first: INIT 10-26 20:04, control, +0.32 %). No read had been
+  persisted (no state file), thresholds and the bar are unchanged — the gate's evidence widened, it did not move.
+- **The 8 B25 fades the study saw stay OUT of the gate** (zone 5 · 40 % · −0.76 % · −$674: LUNA2 W, 1000LUNC / RAYSOL / PARTI stops,
+  MOCA W; control 3 · 100 % · +0.33): they suggested the rule, so counting them would test it on the data it was fitted to (the reason
+  the bar passes only with them: master alone 12 · 67 % · −0.30, P 0.89). To "consider" them, the scout shows them as a REGISTRATION
+  block (from the B25 start 10-23 18:30 UTC) with an in-sample read of registration ∪ gate cohort beside the gate read — informational,
+  never persisted, never the decision. At the read the operator sees both.
+- Tests: test_floor_is_the_study_cutoff_once_deployed, test_registration_block_is_informational_and_never_persisted.

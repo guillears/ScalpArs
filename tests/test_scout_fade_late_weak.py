@@ -150,12 +150,24 @@ def test_not_evaluable_and_no_bars(tmp_path, monkeypatch):
     assert any("unavailable" in x for x in L) and not os.path.exists(st)
 
 
-def test_floor_is_max_of_pin_and_deploy(monkeypatch):
+def test_floor_is_the_study_cutoff_once_deployed(monkeypatch):
     pin = int(pd.Timestamp(S.FLOOR_PIN).value // 1_000_000)
-    monkeypatch.setattr(S._GK, "dl_deploy_ms", lambda *a, **k: pin - DAY)
+    monkeypatch.setattr(S._GK, "dl_deploy_ms", lambda *a, **k: pin + DAY)        # deploy after the cutoff: the cutoff still rules
     assert S.floor_ms() == pin
-    monkeypatch.setattr(S._GK, "dl_deploy_ms", lambda *a, **k: pin + DAY)
-    assert S.floor_ms() == pin + DAY
+    monkeypatch.setattr(S._GK, "dl_deploy_ms", lambda *a, **k: None)
+    assert S.floor_ms() is None
+
+
+def test_registration_block_is_informational_and_never_persisted(tmp_path, monkeypatch):
+    monkeypatch.setattr(S, "REG_FROM", (T0 - dt.timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%S"))
+    reg = [_row(100 + i, -1.0 if i % 3 else 0.3, day=-9 + i // 2) for i in range(16)]      # 16 in-sample zone fades before SINCE
+    fwd = [_row(i, 0.3, pdi=60, day=i) for i in range(3)]                                  # gate cohort: 3 control fades only
+    st = str(tmp_path / "st.json")
+    L = _run(tmp_path, reg + fwd, state=st)
+    assert _verdict(L) == "COLLECTING" and not os.path.exists(st)                         # the gate never counts the registration fades
+    info = [x for x in L if x.lstrip().startswith("In-sample read WITH")]
+    assert len(info) == 1 and "would be FILTER_CANDIDATE" in info[0] and "🚨" not in info[0]
+    assert any(x.startswith("**Registration block") and "zone N 16" in x for x in L)
 
 
 def test_fetch_caches_only_closed_bars_and_refetches_next_day(tmp_path, monkeypatch):

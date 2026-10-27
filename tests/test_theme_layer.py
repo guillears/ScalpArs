@@ -1,7 +1,7 @@
 """🎨 Oct-22 dashboard visual refresh (DECISION_LOG 345) — LOOK ONLY.
 
 Pins the theme layer (tokens, dark default, light under data-theme), the header light/dark button, the early no-flash head
-script, the Total Portfolio Value sparkline (ids, period keys, <2-point guard, no own request) and — the load-bearing part —
+script, the removal of the Total Portfolio Value sparkline (DL 387) and — the load-bearing part —
 that the refresh removed nothing: every element id in HEAD's index.html is still present, and login.html keeps its form
 contract (action, method, field names, the ids its script and the ?error=1 hook use)."""
 import os
@@ -78,29 +78,24 @@ def test_early_head_script_default_dark_no_flash():
     assert "try" in body and "catch" in body
 
 
-def test_sparkline_ids_periods_and_guard():
+def test_sparkline_removed_and_total_card_centred():
+    """🎨 DECISION_LOG 387 (operator 10-27): the return sparkline is gone (markup, CSS, JS, both export lines); every balance card,
+    the Total card included, centres its text like the other three."""
     src = _read(INDEX)
-    card = src[src.index('id="total-portfolio"'):src.index('id="total-trades-count"')]
-    for i in ("portfolio-spark-wrap", "portfolio-spark", "portfolio-spark-empty", "portfolio-spark-periods", "portfolio-spark-meta"):
-        assert f'id="{i}"' in card, i
-    for p in ("7D", "30D", "ALL"):
-        assert f'data-period="{p}"' in card
-    assert 'data-period="24H"' not in card       # only daily history exists → no 24H (operator rule)
-    assert "aria-pressed" in card and "not enough history yet" in card
+    for gone in ("portfolio-spark", "scalparsSpark", "scalpars-spark-period"):
+        assert gone not in src, gone
+    css = _theme_block(src)
+    assert ":root #balance-cards > .glass { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }" in css
+    assert ".glass:not(:last-child) { display: flex" not in css
     js = re.search(r'<script id="scalpars-theme-js">(.*?)</script>', src, re.S).group(1)
-    assert "const PERIOD_KEY = 'scalpars-spark-period'" in js
-    assert "data.length < 2" in js                # guard: fewer than 2 points → hide the chart, keep the buttons
-    assert "'7D': 'last 7 days'" in js and "fill=\"' + col" not in js and "<circle" not in js   # style= colours, no stretched dot
-    # 🎨 DECISION_LOG 386: return % vs a dashed zero line, a ±2 % minimum range, the hollow now-dot, tooltip, both text exports
-    assert "const MIN_SPAN = 4" in js and "stroke-dasharray:3 3" in js and "nowR" in js and "portfolio-spark-tip" in card
-    assert src.count("window.scalparsSparkReturns ? window.scalparsSparkReturns()") == 2
-    assert "fetch(" not in js                     # reads the calendar data already loaded — no request of its own
-    assert "pnlCalData" in js
-    assert js.count("try {") >= 4                 # never throws into the dashboard
+    assert "scalparsToggleTheme" in js and "fetch(" not in js
 
 
 # ids removed on purpose by a FEATURE removal (not the restyle) — the guard compares against git HEAD, so they show up until committed
-INTENTIONALLY_REMOVED = {"config-fz-willy-floor", "config-fz-willy-floor-arm"}   # 🎲²ᵇ DECISION_LOG 358: the WILLY V2 floor removed
+INTENTIONALLY_REMOVED = {"config-fz-willy-floor", "config-fz-willy-floor-arm",   # 🎲²ᵇ DECISION_LOG 358: the WILLY V2 floor removed
+                         "portfolio-spark-wrap", "portfolio-spark-box", "portfolio-spark", "portfolio-spark-hi", "portfolio-spark-lo",
+                         "portfolio-spark-tip", "portfolio-spark-empty", "portfolio-spark-periods", "portfolio-spark-meta",
+                         "portfolio-spark-guide", "psk-up", "psk-dn"}   # 🎨 DL 387: sparkline removed
 
 
 def test_no_existing_id_removed():

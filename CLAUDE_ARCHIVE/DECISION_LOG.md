@@ -9634,3 +9634,16 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   · ② phone (< 768 px, 40 px chart — the numbers looked cramped): no numbers, a small dot (fg ring + core coloured by the value's sign) at the
   high and the low (ties → latest point; skipped when it is the end point or sits on the 0 % baseline, already marked); values on the tap tooltip; the 768 px crossover re-renders via the viewBox sync. The dotted accent tick = the 10-26 paper
   top-up (explained to the operator; tooltip "top-up +$7,100").
+
+## (387) 2026-10-27 — 🎨 Total Portfolio Value sparkline REMOVED (operator: "I dont think the chart really adds value, im thinking of removing it" → "yes go ahead, be sure the numbers stay centered as the rest of the cards"; display only, no trading / config change)
+- **Why:** the card showed two different % at once (chart "return −31 %" on the ≈ $3k pre-top-up account vs "P&L −5.25 %" on
+  $10,100) — both right, but a card must read in one second; the paper top-up split the history into two account sizes that needed a
+  marker + footnote; the P&L calendar already carries daily returns; the chart never drove a decision. Revisit (simpler) once live
+  with a long history if wanted.
+- **Removed:** card markup (ids portfolio-spark-*, psk-up / psk-dn), its CSS, the sparkline JS in scalpars-theme-js (theme button
+  kept), the `Portfolio return …` line in BOTH text exports. **Kept (server, DL 386):** /api/pnl-calendar `flows` / `total_now` +
+  flow-stripped day returns and the EOM chained growth (a top-up is not profit); `hours` stays in the payload (no reader now, harmless).
+- **Layout:** all four balance cards centre their text (desktop + phone), the Total card included.
+- **Tests:** test_theme_layer pins the removal + centring (removed ids in INTENTIONALLY_REMOVED); test_external_close_fill: the two
+  fill-price tests used a fixed 2026-10-20 open time that aged out of the 7-day Binance window (fill_trades_since_ms clamp) on
+  10-27 → `_recent()` (now − 1 d); production code unchanged.

@@ -1,4 +1,4 @@
-"""🎨 DECISION_LOG 386: the Total Portfolio Value sparkline inputs on /api/pnl-calendar — a mid-run PAPER top-up (Settings edit of
+"""🎨 DECISION_LOG 386 (chart removed in 387 — the server fields stay; `hours` has no reader now): the portfolio return inputs on /api/pnl-calendar — a mid-run PAPER top-up (Settings edit of
 paper_balance / paper_bnb_initial_usd, kept in ConfigChangeLog) is a flow: it lands in `flows` with its time and is stripped from the
 day-return base (the day before the top-up is judged on the small account), an edit before the first paper order is starting capital
 (ignored), hourly realized P&L buckets (`hours`, last 8 days) and `total_now` ride the payload. In-memory SQLite, no network."""

@@ -5,7 +5,7 @@ import asyncio
 import inspect
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -65,9 +65,14 @@ def test_main_wiring():
     assert "_reconcile_skip_counter >= RECONCILE_FALLBACK_AFTER_SKIPS" in inspect.getsource(main._reconcile_open_orders)
 
 
+def _recent():
+    """an open time inside the 7-day Binance window: fill_trades_since_ms clamps to now − 7 d, so a fixed date ages out (DL 387)."""
+    return (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)).replace(microsecond=0)
+
+
 def test_main_fill_price_reads_the_lifetime_and_skips_the_tp():
     import main
-    order = SimpleNamespace(pair="BRUSDT", direction="LONG", quantity=300.0, opened_at=datetime(2026, 10, 20, 12, 29, 40),
+    order = SimpleNamespace(pair="BRUSDT", direction="LONG", quantity=300.0, opened_at=_recent(),
                             protective_tp_order_id="777", resting_tp_filled_qty=100.0, current_price=0.68483, entry_price=0.671248)
     op_ms = int((order.opened_at - datetime(1970, 1, 1)).total_seconds() * 1000)
     trades = [_t("buy", 0.671248, 300, op_ms + 100, "1"), _t("sell", 0.7086, 100, op_ms + 9000, "777"),
@@ -84,7 +89,7 @@ def test_main_fill_price_reads_the_lifetime_and_skips_the_tp():
 
 def test_engine_fill_price_excludes_settled_tp_ids():
     from services.trading_engine import trading_engine, binance_service
-    order = SimpleNamespace(pair="AUSDT", direction="LONG", quantity=10.0, opened_at=datetime(2026, 10, 20, 13, 0, 0),
+    order = SimpleNamespace(pair="AUSDT", direction="LONG", quantity=10.0, opened_at=_recent(),
                             protective_tp_order_id=None)
     op_ms = int((order.opened_at - datetime(1970, 1, 1)).total_seconds() * 1000)
     trades = [_t("sell", 0.098, 4, op_ms + 5000, "997521405"), _t("sell", 0.0969, 6, op_ms + 6000, "3")]

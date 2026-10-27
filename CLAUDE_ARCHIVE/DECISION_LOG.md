@@ -9784,3 +9784,22 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   ON with 10 bypasses + 6 refusals (log-only until this deploy); Bull-Run DARK all batch; SURGE no trigger. Still MARKET by nature: UNTRACKED_POSITION /
   MANUAL_IMPORT (account-level, 13 rows). ② the spike scanner sets the journal pair per candidate and the scan clears it after the cycle. Test:
   tests/test_decisions_export.py::test_bearrun_refusals_ride_the_export_and_spike_blocks_name_their_pair.
+
+## (395) 2026-10-27 — ⏱ FLATBASE exit shadows: average hold per exit level (HH:MM) + 📈 rule: daily compound return before → after in every comparison (operator: "add what the new avg duration of those trades would be in each level" · "same format as we track time 00:00" · "in every before and after comparison of master batch and current batch, per sleeve, we need to see the daily compound return too"; scout / docs only, no trading / config change)
+- **Scout (scout_flatbase_short.tp_hold_lines):** under the exit-shadow parity line, the average and (true) median hold in HH:MM (the
+  dashboard's duration format) — booked (opened → closed, real fills) · the live re-walk · every shadow ((bars − ½) × 5 min from the path
+  start: the exit placed mid-bar, ± 2.5 min). 12 real fills 10-23 → 10-27 (avg / median): booked 07:13 / 05:45 · live re-walk 07:13 / 05:45
+  (the walker's hold is faithful) · TP8_SL10 05:22 / 03:45 · TP5 04:34 / 03:15 · TP5_SL10 03:22 / 02:25 · TP5_SL5 02:25 / 01:17 · TP3
+  02:04 / 00:55 · TP2_SL5 00:59 / 00:27 · TP1 00:38 / 00:07 · TP1_SL10 00:37 · TP1_SL5 00:36 · TP1_SL4 00:29 · TP1_SL3 00:26 · TP1_SL2
+  00:13 / 00:05 (walks include the minutes from the fill to the walk's first bar; half-up rounding). A shorter hold frees the margin and the coin sooner (an open FLATBASE short blocks FRENZY longs on its coin ≤ 72 h).
+- **Labels (operator: "TP shouldn't be negative"):** every FLATBASE exit is printed in the PROFIT view of the short — TP +8 % / SL −15 %
+  (was "TP −8 / stop 15", the price-move view). Display only: the shadow keys (TP5_SL10 …), the levels and the frozen gate math are unchanged.
+- **Permanent rule (CLAUDE.md "How to evaluate" step 3, CURRENT_STATE method point ②, NEXT_BATCH_REVIEW_PLAN ②):** every before → after
+  comparison — per sleeve, master per batch AND current batch — shows the DAILY COMPOUND RETURN before and after, next to N · WR · avg % ·
+  $: DCR-cal = (Π_d (1 + r_d))^(1/D) − 1 over EVERY calendar day D of the batch; r_d = the sleeve's realised day P&L (net of fees +
+  funding, booked on the close's UTC day; still-open fills out) ÷ start-of-day ACCOUNT equity on that path (batch start balance +
+  realised account P&L so far; "after" adds the sleeve's cumulative counterfactual Δ); 0 % on no-fill days; a day with a flow (deposit /
+  paper top-up, e.g. 10-26 13:50 UTC) is split at the flow: (1 + P&L_pre / E_start)(1 + P&L_post / (E_at_flow + flow)) − 1. Before AND
+  after both on today's stack + sizing (the master per batch as STACK, never as-traded), so the Δ is the change alone. It is the
+  sleeve's contribution to the account's daily compounding — NOT the dashboard's per-sleeve %/day (fixed batch-start denominator) nor
+  the runtime KPI (paused time out). Each master batch starts from its own reset balance.

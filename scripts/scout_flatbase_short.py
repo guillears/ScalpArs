@@ -49,6 +49,7 @@ Usage           venv/bin/python scripts/scout_flatbase_short.py [--no-fetch]
 """
 import glob
 import json
+import math
 import os
 import re
 import sys
@@ -775,9 +776,9 @@ def resize_lines(real, inv_now=None):
 # stopped −15) — exit shadows on every REAL fill: (take-profit %, stop %), the 72 h hold unchanged. TP5_SL10 / TP5_SL5 (operator 2026-10-24:
 # "a 5 % TP with a different SL?"); TP8_SL10 = the isolating cell (today's TP, the 10 % stop alone). Prior = the exit study's S4 · 72 h cells
 # (reports/FRENZY_FLATBASE_SHORT_2026-10-22_EXITS_cells.csv, the NO-FUNDING columns — the shadows leave funding out too): today's −8 / 15 wins
-# every half against every TP −5 cell; TP −3 and a 5 % stop were never in its grid (tp_backtest_note prints the per-half Δ at read time).
+# every half against every TP +5 cell; TP +3 and a 5 % stop were never in its grid (tp_backtest_note prints the per-half Δ at read time).
 # TP1 (operator 2026-10-24: "almost all FLATBASE trades reached 1 % — that would give ~100 % WR"): a scratch run of the DL 368 study machinery
-# (S4 · 72 h, reports/FRENZY_FLATBASE_TP1_2026-10-24_*) gave TP +1 / stop 15 WR 92 % but avg −0.05 %/trade in 2026 (with funding;
+# (S4 · 72 h, reports/FRENZY_FLATBASE_TP1_2026-10-24_*) gave TP +1 / SL −15 WR 92 % but avg −0.05 %/trade in 2026 (with funding;
 # +0.21 / −0.20 / +0.02 / −0.17 per half) vs live +0.93 — break-even ≈ 95 % if every loss were a full stop; realised 2026 break-even 92.3 %
 # vs WR 91.8 % (time exits / funding count as losses too) → about break-even (±0.1 by cost model), ≈ 0.9 %/trade below the live exit.
 # Tracked like the others. TP1_SL10 / TP1_SL5 (operator: "the SL should be narrower too"): same run
@@ -785,7 +786,7 @@ def resize_lines(real, inv_now=None):
 TP_SHADOWS = {"TP5": (5.0, 15.0), "TP3": (3.0, 15.0), "TP5_SL10": (5.0, 10.0), "TP5_SL5": (5.0, 5.0), "TP8_SL10": (8.0, 10.0),
               "TP1": (1.0, 15.0), "TP1_SL10": (1.0, 10.0), "TP1_SL5": (1.0, 5.0),
               # 🎯 (DECISION_LOG 390, operator 2026-10-27) tighter stops under the small TP, registered AFTER the 12-fill read (in-sample):
-              # on those 12, TP −2 / stop 5 +0.18 · TP −1 / stop 4 +0.09 · −1 / 3 −0.49 · −1 / 2 −0.75 %/fill vs live −3.57
+              # on those 12, TP +2 / SL −5 +0.18 · TP +1 / SL −4 +0.09 · +1 / −3 −0.49 · +1 / −2 −0.75 %/fill vs live −3.57
               "TP1_SL4": (1.0, 4.0), "TP1_SL3": (1.0, 3.0), "TP1_SL2": (1.0, 2.0), "TP2_SL5": (2.0, 5.0)}
 TP_SH_LATE = ("TP1_SL4", "TP1_SL3", "TP1_SL2", "TP2_SL5")      # the DL 390 additions
 # Bonferroni per shadow: the DL 367 / 370 eight keep their frozen ×8 (pre-committed gates never move); the DL 390 four are judged at ×12
@@ -920,12 +921,12 @@ def tp_backtest_note(k, path=TP_SH_CELLS):
         d = d[d.cell.astype(str).str.startswith(f"S4|") & d.cell.astype(str).str.contains(f"|{h:g}h|", regex=False)]
         grid_tp = {c.split("|")[1] for c in d.cell}
         grid_sl = {c.split("|")[3] for c in d.cell}
-        miss = ([f"TP −{tp:g}"] if f"tp{tp:g}" not in grid_tp else []) + ([f"stop {sl:g}"] if f"stop{sl:g}" not in grid_sl else [])
+        miss = ([f"TP +{tp:g} %"] if f"tp{tp:g}" not in grid_tp else []) + ([f"SL −{sl:g} %"] if f"stop{sl:g}" not in grid_sl else [])
         if miss:
             _n1 = tp1_backtest_note(tp, sl, ltp, lsl, h)
             if _n1:
                 return _n1
-            if tp in (1.0, 2.0):   # the DL 370 run has TP −1 / −2 — only the stop is missing there
+            if tp in (1.0, 2.0):   # the DL 370 run has TP +1 / +2 — only the stop is missing there
                 miss = [m_ for m_ in miss if not m_.startswith("TP")]
             return f"backtest: {' and '.join(miss)} never in the exit-study grid — no prior"
         cell, live = d[d.cell == f"S4|tp{tp:g}|{h:g}h|stop{sl:g}"], d[d.cell == f"S4|tp{ltp:g}|{h:g}h|stop{lsl:g}"]
@@ -989,10 +990,11 @@ def tp_gate_read(k, smp):
     v = "KEEP" if fail else "CANDIDATE"
     ci_t = (f"day-block bootstrap {TP_SH_BOOT_N} (seed {TP_SH_BOOT_SEED}) one-sided {lvl:.2%} LB {ci[0]:+.3f} (Bonferroni ×{m}; "
             f"[{ci[0]:+.3f}, {ci[1]:+.3f}])" if ci else "bootstrap n/a (< 2 days)")
-    txt = (f"first {len(smp)} real fills on {len(set(days))} UTC days (incl. the 10-24 motivating batch — operator override, in-sample): avg Δ ({k} − live −{ltp:g}/{lsl:g}) "
+    txt = (f"first {len(smp)} real fills on {len(set(days))} UTC days (incl. the 10-24 motivating batch — operator override, in-sample): avg Δ ({k} − live TP +{ltp:g} % / SL −{lsl:g} %) "
            f"{avg:+.3f} %/fill · {ci_t} · top day {day_sh:.0%} / top fill {fill_sh:.0%} of the gain → "
-           + (f"CANDIDATE: operator decides TP −{tp:g} / stop {sl:g} · if adopted: revert to TP −{ltp:g} / stop {lsl:g} if the first 15 fills after the switch "
-              f"average < the live-exit re-walk on the same fills" if v == "CANDIDATE" else f"keep −{ltp:g} / {lsl:g} ({'; '.join(fail)})")
+           + (f"CANDIDATE: operator decides TP +{tp:g} % / SL −{sl:g} % · if adopted: revert to TP +{ltp:g} % / SL −{lsl:g} % if the first 15 fills "
+              f"after the switch average < the live-exit re-walk on the same fills" if v == "CANDIDATE"
+              else f"keep TP +{ltp:g} % / SL −{lsl:g} % ({'; '.join(fail)})")
            + (f" · in-sample haircut 30–50 % (levels chosen after the 10-27 12-fill read — DL 390 — which is in the sample) → expect {avg * 0.5:+.3f}…{avg * 0.7:+.3f}"
               if k in TP_SH_LATE else
               f" · in-sample haircut 30–50 % (levels chosen after the 10-24 batch, which is in the sample) → expect {avg * 0.5:+.3f}…{avg * 0.7:+.3f}")
@@ -1001,7 +1003,7 @@ def tp_gate_read(k, smp):
 
 
 # 🩳📋 (DECISION_LOG 389) OBS-FB1 "small pump, shallow off-peak" — FROZEN observe line, registered 2026-10-27 from the 12 real fills
-# (operator: "record this … for next batch review of this sleeve"). On those 12, the TP −1 / stop 5 shadow lost only on BMT (run 70.4 %)
+# (operator: "record this … for next batch review of this sleeve"). On those 12, the TP +1 / SL −5 shadow lost only on BMT (run 70.4 %)
 # and ORDER (run 195.8 %, off-peak −34.8 %); every winner had run ≤ 67.8 % and off-peak > −27.2 %. In-sample + chance-level (shuffled-label
 # null: as clean a split in 49 % of random labelings), and the 21-month study refutes it (zone + TP1/SL5 −0.06 %/fill vs live +1.42) → NO
 # verdict here: the zone is split on every priced fill under the live exit AND the TP1_SL5 shadow; fresh fills (opened ≥ the pin) are the
@@ -1047,6 +1049,39 @@ def obs_pk_lines(ok):
         return L + [f"  unreadable ({str(e)[:80]})"]
 
 
+def hhmm(minutes):
+    """minutes → 'HH:MM' (the dashboard's duration format; hours past 99 keep growing). Pure."""
+    m = max(0, int(math.floor(float(minutes) + 0.5)))   # half-up (round() is half-to-even and every mid-bar value ends in .5)
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def tp_hold_lines(ok):
+    """⏱ (DECISION_LOG 395, operator 10-27) average hold per exit on the priced fills: the real booked hold (opened → closed), the live
+    re-walk and every shadow ((bars − ½) × 5 min from the path start: the exit placed mid-bar, ± 2.5 min; a fill > 60 s into its bar starts
+    the walk at the next bar) + the median. Shorter holds free the money / the pair sooner (an open FLATBASE short blocks FRENZY longs on its coin). Never raises."""
+    try:
+        import statistics as _stt
+
+        def _h(xs):
+            return (sum(xs) / len(xs), _stt.median(xs)) if xs else (None, None)
+        booked = [(pd.Timestamp(r.c) - pd.Timestamp(r.o)).total_seconds() / 60.0 for r, _ in ok
+                  if getattr(r, "c", None) is not None and not pd.isna(r.c) and pd.Timestamp(r.c) >= pd.Timestamp(r.o)]
+        def lead(r):   # minutes from the fill to the walk's first bar (a fill > 60 s into its bar starts the walk at the next bar)
+            o_ms = int(pd.Timestamp(r.o).value // 1_000_000)
+            return (tp_path_start(o_ms)[0] - o_ms) / 60_000.0
+        parts = []
+        a, m = _h(booked)
+        if a is not None:
+            parts.append(f"booked {hhmm(a)} (median {hhmm(m)})")
+        for k in ("LIVE",) + tuple(TP_SHADOWS):
+            a, m = _h([lead(r) + (w[k]["bars"] - 0.5) * 5.0 for r, w in ok if w.get(k, {}).get("bars") is not None])   # exit mid-bar (± 2.5 min)
+            if a is not None:
+                parts.append(f"{'live re-walk' if k == 'LIVE' else k} {hhmm(a)} (median {hhmm(m)})")
+        return [f"  ⏱ avg hold per exit, HH:MM (DL 395; walks ± 2.5 min, {len(ok)} priced fills): " + " · ".join(parts)] if parts else []
+    except Exception as e:
+        return [f"  ⏱ avg hold unreadable ({str(e)[:60]})"]
+
+
 def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, state_path=TP_SH_STATE, final_path=TP_SH_FINAL):
     """🔒 (DECISION_LOG 367) the frozen exit-shadow reads → printed lines. Δ = shadow − the live re-walk (same path, same fees / slippage).
     Split lines on every priced fill. Frozen sample = the first 30 real fills on ≥ 10 UTC days of the FLATBASE cohort run() builds (DL 348
@@ -1057,7 +1092,7 @@ def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, s
     import json as _j
     ltp, lsl = _tp_live()
     L = [f"🎯 Exit shadows (DECISION_LOG {TP_SH_DL} / 370 / 390 — {', '.join(TP_SH_LATE)} added by DL 390, frozen, observe-only): "
-         f"{' · '.join(f'{k} TP −{tp:g} / stop {sl:g}' for k, (tp, sl) in TP_SHADOWS.items())} vs the live TP −{ltp:g} / stop {lsl:g} on the "
+         f"{' · '.join(f'{k} TP +{tp:g} % / SL −{sl:g} %' for k, (tp, sl) in TP_SHADOWS.items())} vs the live TP +{ltp:g} % / SL −{lsl:g} % on the "
          f"same path (72 h · fees · entry at the real fill, taker slip {slip:.3f} % on stop / time exits · funding left out)"]
     try:
         if final_path == TP_SH_FINAL:
@@ -1093,6 +1128,7 @@ def tp_shadow_lines(real, bud, now_ms, fetch=True, klines=None, slip=SLIP_DEF, s
                 [f"live re-walk avg {sum(w['LIVE']['net_pct'] for _, w in ok) / len(ok):+.3f}"]
                 + [f"{k} avg {sum(w[k]['net_pct'] for _, w in ok) / len(ok):+.3f} (Δ Σ {sum(w[k]['net_pct'] - w['LIVE']['net_pct'] for _, w in ok):+.2f})"
                    for k in TP_SHADOWS]))
+            L += tp_hold_lines(ok)
             L.append("  per fill: " + " · ".join(f"{r.pair} {r.o:%m-%d %H:%M} booked {float(r.pct):+.2f} | live {w['LIVE']['net_pct']:+.2f} "
                                                  + " ".join(f"{k} {w[k]['net_pct']:+.2f}" for k in TP_SHADOWS) for r, w in ok[-20:]))
             L += [tp_split_line(k, ok) for k in TP_SHADOWS]

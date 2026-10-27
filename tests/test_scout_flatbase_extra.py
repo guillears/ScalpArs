@@ -405,10 +405,10 @@ def test_exit_shadows_candidate_freeze_split_and_verbatim(tmp_path):
         assert f"FB_TP_{k}: CANDIDATE" in out
     assert "one-sided 99.38% LB" in out and "Bonferroni ×8" in out and "4000 (seed 367)" in out
     assert "one-sided 99.58% LB" in out and "Bonferroni ×12" in out and "chosen after the 10-27 12-fill read — DL 390" in out   # the late four
-    assert "in-sample haircut 30–50 %" in out and "if adopted: revert to TP −8 / stop 15 if the first 15 fills" in out
+    assert "in-sample haircut 30–50 %" in out and "if adopted: revert to TP +8 % / SL −15 % if the first 15 fills" in out
     assert "incl. the 10-24 motivating batch" in out
-    # the backtest per-half Δ, nofund columns, where the cell exists; TP −3 / stop 5 never in the grid
-    assert "backtest: TP −3 never in the exit-study grid" in out and "backtest: stop 5 never in the exit-study grid" in out
+    # the backtest per-half Δ, nofund columns, where the cell exists; TP +3 / SL −5 never in the grid
+    assert "backtest: TP +3 % never in the exit-study grid" in out and "backtest: SL −5 % never in the exit-study grid" in out
     assert "backtest Δ vs live (no funding, S4 · 72 h) 2025 -0.26 / 26-H1 -0.41 / 26-H2 -0.70" in out
     assert "split TP5: stopped→saved 20" in out and "TP→give-back 10" in out
     st = json.load(open(tmp_path / "tp.json"))
@@ -417,7 +417,7 @@ def test_exit_shadows_candidate_freeze_split_and_verbatim(tmp_path):
     for k in S.TP_SHADOWS:
         assert f"FB_TP_{k}: {st[f'FB_TP_{k}']['verdict']} — {st[f'FB_TP_{k}']['text']} (frozen " in out2
     out3 = _tp_lines(S, ["win"] * 30, tmp_path, "k.json")                          # straight winners: lower TPs only give back
-    assert "FB_TP_TP5: KEEP" in out3 and "keep −8 / 15 (avg < +0.1; CI lower bound ≤ 0" in out3
+    assert "FB_TP_TP5: KEEP" in out3 and "keep TP +8 % / SL −15 % (avg < +0.1; CI lower bound ≤ 0" in out3
 
 
 def test_exit_shadows_day_concentration_and_bootstrap(tmp_path):
@@ -532,3 +532,19 @@ def test_late_shadows_judged_on_the_same_sample_after_the_eight_froze(tmp_path):
     assert set(st) == {f"FB_TP_{k}" for k in S.TP_SHADOWS}
     assert all(st[f"FB_TP_{k}"]["text"] == f"frozen earlier {k}" for k in S.TP_SHADOWS if k not in S.TP_SH_LATE)
     assert all("Bonferroni ×12" in st[f"FB_TP_{k}"]["text"] for k in S.TP_SH_LATE)
+
+
+def test_hold_lines_hhmm_per_exit():
+    """⏱ DECISION_LOG 395: average / median hold per exit in HH:MM — booked (opened → closed) and every walk ((bars − ½) × 5 min, mid-bar,
+    + the minutes from the fill to the walk's first bar)."""
+    import scout_flatbase_short as S
+    from types import SimpleNamespace as NS
+    assert S.hhmm(0) == "00:00" and S.hhmm(65) == "01:05" and S.hhmm(437.6) == "07:18" and S.hhmm(6005) == "100:05" and S.hhmm(-3) == "00:00"
+    o = pd.Timestamp("2026-10-24T08:00:00")                            # on a bar open: the walk starts at the fill (lead 0)
+    walk = lambda b: {k: {"bars": b, "net_pct": 0.0} for k in ("LIVE",) + tuple(S.TP_SHADOWS)}
+    ok = [(NS(o=o, c=o + pd.Timedelta(minutes=60)), walk(12)), (NS(o=o, c=o + pd.Timedelta(minutes=180)), walk(36)),
+          (NS(o=o, c=pd.NaT), walk(6))]
+    line = S.tp_hold_lines(ok)[0]
+    assert "HH:MM" in line and "3 priced fills" in line
+    assert "booked 02:00 (median 02:00)" in line                       # the open row (no close) is not in the booked mean; true median
+    assert "live re-walk 01:28 (median 00:58)" in line and "TP1_SL5 01:28 (median 00:58)" in line   # mid-bar: (27.5 + 177.5 + 57.5) / 3

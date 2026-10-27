@@ -9622,3 +9622,9 @@ replica → WR ≥ 50 % OR Σ > 0 ⇒ long_chop_burst_block_enabled = false. Bef
   the same series (window.scalparsSparkReturns). Tests: tests/test_spark_paper_flows.py (top-up = flow with its time, pre-first-order
   edit ignored, day 0 judged on 2,900, BNB seed edit + garbage value, hourly buckets, total_now). Verified in the browser on a harness
   built from scalpars_orders_paper_2026-10-27_01-06-29.csv (phone 375 px: card height unchanged; desktop 56 px; tooltip; 30D).
+
+- **(386b) 2026-10-27 polish (operator, after seeing it live on phone + desktop):** high / low labels without the backing box — light
+  text + a 9 px leader line pointing at the point (CSS ::before / ::after, data-side), nudged outward (high up, low down) so the number
+  clears a flat line; the line under the chart is labelled "return −30.5 % · P&L −$522" (unlabelled numbers read strange; −30 % with
+  only −$522 is right — the losses hit the ≈ $3k account before the top-up); "incl. open" stays on the hollow dot + tooltip. Phone
+  368 px: one row, 24 px, not clipped.
